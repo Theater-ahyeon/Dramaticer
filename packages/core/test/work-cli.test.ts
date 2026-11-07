@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, expect, it, onTestFinished } from "vitest";
 import {
+	type EmbeddingClient,
 	type LlmChannelsConfig,
 	type LlmClient,
 	StoryStore,
@@ -17,7 +18,10 @@ const fakeClient: LlmClient = {
 	},
 };
 
-function createConfig(withBackground: boolean): LlmChannelsConfig {
+function createConfig(
+	withBackground: boolean,
+	withEmbeddings = false,
+): LlmChannelsConfig {
 	const channel = (id: string) => ({
 		id,
 		api: "openai-completions" as const,
@@ -43,7 +47,29 @@ function createConfig(withBackground: boolean): LlmChannelsConfig {
 		channels.set("bg", channel("bg"));
 		models.set("background", model("background"));
 	}
-	return { channels, models };
+	const embeddings = new Map([
+		[
+			"default",
+			{
+				id: "default",
+				api: "openai-embeddings" as const,
+				baseUrl: "http://127.0.0.1:1234/v1",
+				apiKey: "",
+				model: "fake-embedding",
+				dimensions: 1024,
+				batchSize: 32,
+				requestsPerMinute: 0,
+				maxRetries: 0,
+				retryBaseDelayMs: 0,
+				timeoutMs: 1_000,
+			},
+		],
+	]);
+	return {
+		channels,
+		models,
+		embeddings: withEmbeddings ? embeddings : new Map(),
+	};
 }
 
 function createTempDb(): string {
@@ -161,6 +187,38 @@ describe("dramaticer work", () => {
 		await expect(
 			runWorkCli(["work", "--db", dbPath, "--unknown", "x"], base),
 		).rejects.toThrow("不认识的参数");
+	});
+
+	it("默认注册表执行 embeddings 任务并写入向量", async () => {
+		const dbPath = createTempDb();
+		const embedder: EmbeddingClient = {
+			dimensions: 1024,
+			async embed(texts) {
+				return texts.map(() => new Array<number>(1024).fill(0.5));
+			},
+		};
+		const result = await runWorkCli(
+			["work", "--db", dbPath, "--kind", "embeddings"],
+			{
+				loadEnv: () => undefined,
+				loadConfig: async () => createConfig(true, true),
+				createClient: () => fakeClient,
+				createEmbedder: () => embedder,
+				log: () => undefined,
+			},
+		);
+		expect(result.runs).toHaveLength(1);
+		expect(result.runs[0]?.kind).toBe("embeddings");
+		expect(result.runs[0]?.status).toBe("done");
+
+		const store = StoryStore.open(dbPath);
+		try {
+			const chunks = store.countChunksForNode("n-a");
+			expect(chunks).toBeGreaterThan(0);
+			expect(store.countChunkVectorsForNode("n-a")).toBe(chunks);
+		} finally {
+			store.close();
+		}
 	});
 
 	it("渠道配置里没有 background 模型时抛错", async () => {

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import Database from "better-sqlite3";
+import * as sqliteVec from "sqlite-vec";
 import type {
 	BackgroundJob,
 	BackgroundJobStatus,
@@ -48,7 +49,11 @@ import type {
 import { createTokenEstimator } from "../tokens.js";
 import type { TurnTrace } from "../trace.js";
 import { serializeJsonValue } from "./json-value.js";
-import { applyMigrations } from "./migrations.js";
+import {
+	DEFAULT_EMBEDDING_DIMENSIONS,
+	applyMigrations,
+	buildMigrations,
+} from "./migrations.js";
 
 interface StoryRow {
 	readonly id: string;
@@ -182,6 +187,23 @@ interface ChunkRow {
 	readonly score: number;
 }
 
+interface ChunkTextRow {
+	readonly chunk_id: number;
+	readonly text: string;
+}
+
+interface ChunkIdentityRow {
+	readonly story_id: string;
+	readonly node_id: string;
+}
+
+interface ChunkVectorRow {
+	readonly chunk_id: number;
+	readonly story_id: string;
+	readonly node_id: string;
+	readonly distance: number;
+}
+
 interface PlotNoteRow {
 	readonly id: string;
 	readonly story_id: string;
@@ -233,6 +255,36 @@ export interface ChunkSearchMatch {
 	readonly chunkId: number;
 	/** FTS5 的 bm25 原始分数，越小越相关。 */
 	readonly score: number;
+}
+
+export interface ChunkWithoutVector {
+	readonly chunkId: number;
+	readonly text: string;
+}
+
+export interface ChunkVectorInput {
+	readonly chunkId: number;
+	readonly embedding: readonly number[];
+}
+
+export interface SearchVectorsOptions {
+	readonly storyId: string;
+	/** 只搜索该节点祖先路径上的楼层，排除该节点自身与其他分支。 */
+	readonly beforeNodeId?: string;
+	readonly limit?: number;
+}
+
+export interface VectorSearchMatch {
+	readonly storyId: string;
+	readonly nodeId: string;
+	readonly chunkId: number;
+	/** 向量的 L2 距离，越小越接近。 */
+	readonly distance: number;
+}
+
+export interface StoryStoreOpenOptions {
+	/** 向量维度；必须与数据库中已有的 chunk_vectors 表一致。 */
+	readonly embeddingDimensions?: number;
 }
 
 export interface ListEntitiesOptions {
@@ -505,18 +557,24 @@ function rowToPlotNote(row: PlotNoteRow): PlotNote {
 
 export class StoryStore {
 	readonly #db: Database.Database;
+	readonly #embeddingDimensions: number;
 
-	private constructor(db: Database.Database) {
+	private constructor(db: Database.Database, embeddingDimensions: number) {
 		this.#db = db;
+		this.#embeddingDimensions = embeddingDimensions;
 	}
 
-	static open(path: string): StoryStore {
+	static open(path: string, options: StoryStoreOpenOptions = {}): StoryStore {
 		assertNonEmptyString(path, "数据库路径");
+		const embeddingDimensions =
+			options.embeddingDimensions ?? DEFAULT_EMBEDDING_DIMENSIONS;
 		const db = new Database(path);
 		db.pragma("foreign_keys = ON");
-		const store = new StoryStore(db);
+		const store = new StoryStore(db, embeddingDimensions);
 		try {
-			applyMigrations(db);
+			sqliteVec.load(db);
+			applyMigrations(db, buildMigrations(embeddingDimensions));
+			store.#assertEmbeddingDimensions();
 			store.#backfillChunks();
 		} catch (error) {
 			db.close();
@@ -1449,6 +1507,152 @@ export class StoryStore {
 		return row.count;
 	}
 
+	/** 统计某个楼层已经写入的向量数。 */
+	countChunkVectorsForNode(nodeId: string): number {
+		assertNonEmptyString(nodeId, "楼层节点 id");
+		if (!this.getNode(nodeId)) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
+		const row = this.#db
+			.prepare("SELECT COUNT(*) AS count FROM chunk_vectors WHERE node_id = ?")
+			.get(nodeId) as { readonly count: number };
+		return row.count;
+	}
+
+	/** 返回某个楼层里还没有向量的块，按序号排序。 */
+	listChunksMissingVectors(nodeId: string): ChunkWithoutVector[] {
+		assertNonEmptyString(nodeId, "楼层节点 id");
+		if (!this.getNode(nodeId)) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
+		const rows = this.#db
+			.prepare(
+				`SELECT c.id AS chunk_id, c.text
+				FROM chunks AS c
+				WHERE c.node_id = ?
+					AND NOT EXISTS (
+						SELECT 1 FROM chunk_vectors AS v WHERE v.chunk_id = c.id
+					)
+				ORDER BY c.ordinal ASC`,
+			)
+			.all(nodeId) as ChunkTextRow[];
+		return rows.map((row) => ({ chunkId: row.chunk_id, text: row.text }));
+	}
+
+	/**
+	 * 在同一个事务里写入块向量。向量维度必须与数据库一致；
+	 * 块不存在、向量非法或同一块重复写入都直接抛错。
+	 */
+	insertChunkVectors(inputs: readonly ChunkVectorInput[]): void {
+		if (!Array.isArray(inputs)) {
+			throw new Error("块向量必须是数组");
+		}
+		if (inputs.length === 0) return;
+		const seen = new Set<number>();
+		const rows = inputs.map((input, index) => {
+			const label = `块向量[${index}]`;
+			if (input === null || typeof input !== "object" || Array.isArray(input)) {
+				throw new Error(`${label} 必须是对象`);
+			}
+			const { chunkId, embedding } = input;
+			if (!Number.isInteger(chunkId) || chunkId < 1) {
+				throw new Error(`${label}.chunkId 必须是正整数`);
+			}
+			if (seen.has(chunkId)) {
+				throw new Error(`${label} 重复写入块 ${chunkId}`);
+			}
+			seen.add(chunkId);
+			const chunk = this.#db
+				.prepare("SELECT story_id, node_id FROM chunks WHERE id = ?")
+				.get(chunkId) as ChunkIdentityRow | undefined;
+			if (!chunk) {
+				throw new Error(`${label} 引用了不存在的块 ${chunkId}`);
+			}
+			return {
+				chunkId,
+				storyId: chunk.story_id,
+				nodeId: chunk.node_id,
+				embedding: this.#normaliseEmbedding(embedding, `${label}.embedding`),
+			};
+		});
+		const insert = this.#db.prepare(
+			`INSERT INTO chunk_vectors (chunk_id, story_id, node_id, embedding)
+			VALUES (?, ?, ?, ?)`,
+		);
+		this.#db.transaction(() => {
+			for (const row of rows) {
+				insert.run(BigInt(row.chunkId), row.storyId, row.nodeId, row.embedding);
+			}
+		})();
+	}
+
+	/**
+	 * 按距离检索块向量。给 beforeNodeId 时只搜索它的祖先路径；
+	 * 返回顺序是距离从小到大。
+	 */
+	searchVectors(
+		vector: readonly number[],
+		options: SearchVectorsOptions,
+	): VectorSearchMatch[] {
+		assertNonEmptyString(options.storyId, "故事 id");
+		if (!this.getStory(options.storyId)) {
+			throw new Error(`故事不存在：${options.storyId}`);
+		}
+		const query = this.#normaliseEmbedding(vector, "查询向量");
+		const limit = options.limit ?? DEFAULTS.searchLimit;
+		if (
+			!Number.isInteger(limit) ||
+			limit < 1 ||
+			limit > DEFAULTS.maxSearchLimit
+		) {
+			throw new Error(
+				`检索条数必须是 1 到 ${DEFAULTS.maxSearchLimit} 之间的整数`,
+			);
+		}
+		const beforeNodeId = options.beforeNodeId ?? null;
+		if (beforeNodeId !== null) {
+			assertNonEmptyString(beforeNodeId, "楼层节点 id");
+			const node = this.getNode(beforeNodeId);
+			if (!node) {
+				throw new Error(`楼层节点不存在：${beforeNodeId}`);
+			}
+			if (node.storyId !== options.storyId) {
+				throw new Error(
+					`楼层节点 ${beforeNodeId} 属于另一个故事 ${node.storyId}`,
+				);
+			}
+		}
+		const rows = this.#db
+			.prepare(
+				`WITH RECURSIVE ancestors(node_id) AS (
+					SELECT parent_id FROM nodes WHERE id = @beforeNodeId
+					UNION ALL
+					SELECT nodes.parent_id
+					FROM nodes JOIN ancestors ON nodes.id = ancestors.node_id
+					WHERE nodes.parent_id IS NOT NULL
+				)
+				SELECT chunk_id, story_id, node_id, distance
+				FROM chunk_vectors
+				WHERE embedding MATCH @vector AND k = @limit
+					AND story_id = @storyId
+					AND (@beforeNodeId IS NULL
+						OR node_id IN (SELECT node_id FROM ancestors))
+				ORDER BY distance ASC`,
+			)
+			.all({
+				vector: query,
+				limit,
+				storyId: options.storyId,
+				beforeNodeId,
+			}) as ChunkVectorRow[];
+		return rows.map((row) => ({
+			storyId: row.story_id,
+			nodeId: row.node_id,
+			chunkId: row.chunk_id,
+			distance: row.distance,
+		}));
+	}
+
 	/**
 	 * 在块索引里检索。给 beforeNodeId 时只搜索它的祖先路径，结果是同一楼层
 	 * 多个块里分数最好的那一块，因此每个楼层只占一个位次。
@@ -1869,6 +2073,47 @@ export class StoryStore {
 			if (info.changes !== 1) continue;
 			insertText.run(info.lastInsertRowid, normalized, node.id, node.storyId);
 		}
+	}
+
+	/**
+	 * 校验数据库里的 vec0 表维度与本次打开使用的配置一致。
+	 * vec0 的维度创建后不能修改，维度不一致时写入与检索都会失败。
+	 */
+	#assertEmbeddingDimensions(): void {
+		const row = this.#db
+			.prepare("SELECT sql FROM sqlite_master WHERE name = 'chunk_vectors'")
+			.get() as { readonly sql: string } | undefined;
+		if (!row) {
+			throw new Error("数据库缺少 chunk_vectors 表");
+		}
+		const match = /embedding\s+float\[(\d+)\]/i.exec(row.sql);
+		if (!match) {
+			throw new Error("无法从 chunk_vectors 表读取向量维度");
+		}
+		const actual = Number(match[1]);
+		if (actual !== this.#embeddingDimensions) {
+			throw new Error(
+				`数据库的向量维度是 ${actual}，与配置的 ${this.#embeddingDimensions} 不一致`,
+			);
+		}
+	}
+
+	#normaliseEmbedding(value: unknown, label: string): Buffer {
+		if (!Array.isArray(value)) {
+			throw new Error(`${label} 必须是数字数组`);
+		}
+		if (value.length !== this.#embeddingDimensions) {
+			throw new Error(
+				`${label} 的维度必须是 ${this.#embeddingDimensions}，实际为 ${value.length}`,
+			);
+		}
+		const numbers = value.map((item, index) => {
+			if (typeof item !== "number" || !Number.isFinite(item)) {
+				throw new Error(`${label}[${index}] 必须是有限数字`);
+			}
+			return item;
+		});
+		return Buffer.from(new Float32Array(numbers).buffer);
 	}
 
 	/**

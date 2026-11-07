@@ -57,6 +57,7 @@ function createConfig(): LlmChannelsConfig {
 			["main", model("main")],
 			["background", model("background")],
 		]),
+		embeddings: new Map(),
 	};
 }
 

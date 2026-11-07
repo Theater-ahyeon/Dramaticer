@@ -17,6 +17,7 @@
 | `@earendil-works/pi-ai` | 根目录 | dev | `spikes/pi/` 的验证脚本使用（ADR-0009） |
 | `@earendil-works/pi-agent-core` | 根目录 | dev | `spikes/pi/` 验证单轮执行器与三个钩子；M1-T06 或 M1-T07 接入后再移到 `packages/core`（ADR-0009） |
 | `yaml` | `packages/core` | runtime | 解析 `data/channels.yaml` 渠道配置 |
+| `sqlite-vec` | `packages/core` | runtime | 块向量的 vec0 虚拟表与 KNN 检索（DESIGN §13） |
 | `png-chunks-extract` | `packages/st-compat` | runtime | 解析角色卡 PNG 的块（ADR-0003） |
 | `png-chunks-extract` | 根目录 | dev | `scripts/snapshot-private-data.mjs` 从角色卡提取世界书引用（ADR-0003） |
 | `png-chunk-text` | `packages/st-compat` | runtime | 解码角色卡 PNG 的 tEXt 文本块（ADR-0003） |

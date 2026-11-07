@@ -33,3 +33,13 @@ models:
     maxTokens: 8192
     reasoning: true
     channels: [main]
+
+embeddings:
+  default:
+    api: openai-embeddings
+    baseUrl: https://api.siliconflow.cn/v1
+    apiKey: ${SILICONFLOW_API_KEY}
+    model: BAAI/bge-m3
+    dimensions: 1024
+    batchSize: 32
+    requestsPerMinute: 20

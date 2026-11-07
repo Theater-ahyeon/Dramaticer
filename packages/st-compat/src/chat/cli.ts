@@ -101,7 +101,11 @@ export async function runChatCli(
 		dependencies.dbPath ??
 		path.join(repoRoot, "data", "dramaticer.db");
 	await mkdir(path.dirname(dbPath), { recursive: true });
-	const store = StoryStore.open(dbPath);
+	const embeddingDimensions = config.embeddings.get("default")?.dimensions;
+	const store = StoryStore.open(
+		dbPath,
+		embeddingDimensions === undefined ? {} : { embeddingDimensions },
+	);
 	try {
 		if (store.getStory(parsed.storyId) === null) {
 			store.createStory({

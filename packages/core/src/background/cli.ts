@@ -4,9 +4,18 @@ import { fileURLToPath } from "node:url";
 import { loadDotEnv } from "../env.js";
 import { type LlmChannelsConfig, loadChannelsConfig } from "../llm/channels.js";
 import { createLlmClient } from "../llm/configure.js";
+import {
+	type EmbeddingClient,
+	createEmbeddingClient,
+} from "../llm/embeddings.js";
 import type { LlmClient } from "../llm/types.js";
+import {
+	EMBEDDINGS_JOB_KIND,
+	createEmbeddingsHandler,
+} from "../memory/embed.js";
 import { createEventExtractionHandler } from "../memory/extract.js";
 import { createSummaryHandler } from "../memory/summarize.js";
+import { DEFAULT_EMBEDDING_DIMENSIONS } from "../store/migrations.js";
 import { StoryStore } from "../store/story-store.js";
 import {
 	type BackgroundJobRun,
@@ -27,6 +36,7 @@ export interface WorkCliDependencies {
 	readonly loadEnv?: (filePath: string) => void;
 	readonly loadConfig?: (filePath: string) => Promise<LlmChannelsConfig>;
 	readonly createClient?: (config: LlmChannelsConfig) => LlmClient;
+	readonly createEmbedder?: (config: LlmChannelsConfig) => EmbeddingClient;
 	readonly registry?: BackgroundJobRegistry;
 	readonly now?: () => number;
 	readonly log?: (message: string) => void;
@@ -57,12 +67,6 @@ export async function runWorkCli(
 				defaultModel: "background",
 				cacheDir: null,
 			}));
-	const registry: BackgroundJobRegistry =
-		dependencies.registry ??
-		createBackgroundJobRegistry({
-			events: createEventExtractionHandler(),
-			summary: createSummaryHandler(),
-		});
 	const log = dependencies.log ?? console.log;
 
 	if (!existsSync(parsed.dbPath)) {
@@ -74,8 +78,26 @@ export async function runWorkCli(
 		throw new Error("渠道配置里没有 background 模型");
 	}
 	const client = createClient(config);
+	const embeddingConfig = config.embeddings.get("default");
+	const embedder = embeddingConfig
+		? (dependencies.createEmbedder ?? createEmbeddingClient)(config)
+		: null;
+	const registry: BackgroundJobRegistry =
+		dependencies.registry ??
+		createBackgroundJobRegistry({
+			events: createEventExtractionHandler(),
+			summary: createSummaryHandler(),
+			...(embedder === null
+				? {}
+				: {
+						[EMBEDDINGS_JOB_KIND]: createEmbeddingsHandler({ embedder }),
+					}),
+		});
 
-	const store = StoryStore.open(parsed.dbPath);
+	const store = StoryStore.open(parsed.dbPath, {
+		embeddingDimensions:
+			embeddingConfig?.dimensions ?? DEFAULT_EMBEDDING_DIMENSIONS,
+	});
 	try {
 		const stories = store.listStories();
 		const runs: BackgroundJobRun[] = [];

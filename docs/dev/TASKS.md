@@ -270,7 +270,8 @@
   - 现有离线 `ChunkIndex` 保留给 st-compat 的基线评测；运行时检索只读 `StoryStore` 内的索引。
   验收：一楼的块数与 `chunkText` 一致；分支上的楼层不出现在当前路径的检索结果里；全角文本与带标点查询能命中；同一楼层多个块只占一个结果位次；回填重复运行后块数不变；`pnpm check` 通过。
 
-- [ ] **M2-T09 embedding 客户端与向量索引** | 依赖：M2-T03、M2-T08 | DESIGN §7、§13 | 需要 HUMAN-02（已完成）
+- [x] **M2-T09 embedding 客户端与向量索引** | 依赖：M2-T03、M2-T08 | DESIGN §7、§13 | 需要 HUMAN-02（已完成）
+  完成：2026-11-07 `sqlite-vec@0.1.9` 加载进 `StoryStore`；迁移 v11 按配置维度创建 `chunk_vectors`（vec0，按故事与节点过滤）；`EmbeddingClient` 与 OpenAI 兼容实现（批量、限速、重试、维度校验）接入 `data/channels.yaml` 的 `embeddings` 段；`embeddings` 后台任务只处理缺失向量的块，`searchVectors` 支持祖先路径过滤；16 个单元测试与 1 个真实 bge-m3 live 测试，门禁通过（416 个测试）
   做什么：
   - 新增 `sqlite-vec` 与 `@types`（如果有）；在 `DEPENDENCIES.md` 登记。`StoryStore.open` 加载扩展。
   - core 新增 `EmbeddingClient` 接口与 OpenAI 兼容实现：`/embeddings`、批量、限速、重试、维度校验；配置写进 `data/channels.yaml` 的 `embeddings` 段（`api: openai-embeddings`、`baseUrl`、`apiKey` 环境变量引用、`model`、`dimensions`），`channels.example.yaml` 增加 `bge-m3` 示例，密钥只从 `.env` 读取。

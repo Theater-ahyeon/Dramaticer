@@ -6,7 +6,7 @@ export interface Migration {
 	readonly statements: readonly string[];
 }
 
-export const MIGRATIONS: readonly Migration[] = [
+const BASE_MIGRATIONS: readonly Migration[] = [
 	{
 		version: 1,
 		description: "初始 schema：故事、楼层、状态 diff、楼层全文索引",
@@ -319,6 +319,37 @@ export const MIGRATIONS: readonly Migration[] = [
 		],
 	},
 ];
+
+export const DEFAULT_EMBEDDING_DIMENSIONS = 1024;
+
+/**
+ * vec0 的维度在创建表时固定，所以迁移列表按配置的 embedding 维度生成。
+ * 同一个数据库必须始终用同一个维度打开，StoryStore 会校验表里的实际维度。
+ */
+export function buildMigrations(
+	embeddingDimensions: number = DEFAULT_EMBEDDING_DIMENSIONS,
+): readonly Migration[] {
+	if (!Number.isInteger(embeddingDimensions) || embeddingDimensions < 1) {
+		throw new Error("embedding 维度必须是正整数");
+	}
+	return [
+		...BASE_MIGRATIONS,
+		{
+			version: 11,
+			description: "块向量：vec0 表按 chunks.id 保存 embedding，供向量检索",
+			statements: [
+				`CREATE VIRTUAL TABLE chunk_vectors USING vec0(
+					chunk_id INTEGER PRIMARY KEY,
+					story_id TEXT,
+					node_id TEXT,
+					embedding float[${embeddingDimensions}]
+				)`,
+			],
+		},
+	];
+}
+
+export const MIGRATIONS: readonly Migration[] = buildMigrations();
 
 export const LATEST_SCHEMA_VERSION: number =
 	MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;

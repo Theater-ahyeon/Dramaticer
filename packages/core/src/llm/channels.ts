@@ -50,6 +50,23 @@ export interface LlmModelConfig {
 export interface LlmChannelsConfig {
 	readonly channels: ReadonlyMap<string, LlmChannelConfig>;
 	readonly models: ReadonlyMap<string, LlmModelConfig>;
+	readonly embeddings: ReadonlyMap<string, EmbeddingProviderConfig>;
+}
+
+export type EmbeddingApi = "openai-embeddings";
+
+export interface EmbeddingProviderConfig {
+	readonly id: string;
+	readonly api: EmbeddingApi;
+	readonly baseUrl: string;
+	readonly apiKey: string;
+	readonly model: string;
+	readonly dimensions: number;
+	readonly batchSize: number;
+	readonly requestsPerMinute: number;
+	readonly maxRetries: number;
+	readonly retryBaseDelayMs: number;
+	readonly timeoutMs: number;
 }
 
 const DEFAULT_REQUESTS_PER_MINUTE = 30;
@@ -115,7 +132,18 @@ export function parseChannelsConfig(
 	if (models.size === 0) {
 		throw new Error(`${label}.models 不能为空`);
 	}
-	return { channels, models };
+	const rawEmbeddings =
+		root.embeddings === undefined
+			? {}
+			: requireObject(root.embeddings, `${label}.embeddings`);
+	const embeddings = new Map<string, EmbeddingProviderConfig>();
+	for (const [alias, value] of Object.entries(rawEmbeddings)) {
+		embeddings.set(
+			alias,
+			parseEmbedding(alias, value, env, `${label}.embeddings.${alias}`),
+		);
+	}
+	return { channels, models, embeddings };
 }
 
 function parseChannel(
@@ -143,6 +171,74 @@ function parseChannel(
 		api,
 		baseUrl,
 		apiKey,
+		requestsPerMinute: optionalInt(
+			value.requestsPerMinute,
+			`${label}.requestsPerMinute`,
+			DEFAULT_REQUESTS_PER_MINUTE,
+			0,
+		),
+		maxRetries: optionalInt(
+			value.maxRetries,
+			`${label}.maxRetries`,
+			DEFAULT_MAX_RETRIES,
+			0,
+		),
+		retryBaseDelayMs: optionalInt(
+			value.retryBaseDelayMs,
+			`${label}.retryBaseDelayMs`,
+			DEFAULT_RETRY_BASE_DELAY_MS,
+			0,
+		),
+		timeoutMs: optionalInt(
+			value.timeoutMs,
+			`${label}.timeoutMs`,
+			DEFAULT_TIMEOUT_MS,
+			1,
+		),
+	};
+}
+
+function parseEmbedding(
+	id: string,
+	value: unknown,
+	env: Readonly<Record<string, string | undefined>>,
+	label: string,
+): EmbeddingProviderConfig {
+	if (!isJsonObject(value)) {
+		throw new Error(`${label} 必须是对象`);
+	}
+	const api = value.api === undefined ? "openai-embeddings" : value.api;
+	if (api !== "openai-embeddings") {
+		throw new Error(`${label}.api 只能是 openai-embeddings`);
+	}
+	const baseUrl = interpolate(
+		requireString(value.baseUrl, `${label}.baseUrl`),
+		env,
+		`${label}.baseUrl`,
+	);
+	if (baseUrl.trim().length === 0) {
+		throw new Error(`${label}.baseUrl 不能为空`);
+	}
+	const model = interpolate(
+		requireString(value.model, `${label}.model`),
+		env,
+		`${label}.model`,
+	);
+	if (model.trim().length === 0) {
+		throw new Error(`${label}.model 不能为空`);
+	}
+	return {
+		id,
+		api,
+		baseUrl,
+		apiKey: parseApiKey(
+			requireString(value.apiKey, `${label}.apiKey`),
+			env,
+			`${label}.apiKey`,
+		),
+		model,
+		dimensions: requirePositiveInt(value.dimensions, `${label}.dimensions`),
+		batchSize: optionalInt(value.batchSize, `${label}.batchSize`, 32, 1),
 		requestsPerMinute: optionalInt(
 			value.requestsPerMinute,
 			`${label}.requestsPerMinute`,
@@ -301,6 +397,13 @@ function optionalInt(
 		value < minimum
 	) {
 		throw new Error(`${label} 必须是不小于 ${minimum} 的整数`);
+	}
+	return value;
+}
+
+function requirePositiveInt(value: unknown, label: string): number {
+	if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
+		throw new Error(`${label} 必须是正整数`);
 	}
 	return value;
 }

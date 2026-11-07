@@ -205,3 +205,15 @@
   - 重跑判断不用任务状态，而用已有的有效摘要：章节摘要已覆盖任务楼层时不再调用模型；主线摘要已覆盖最后一条章节的终点时不再调用模型。这样模型调用失败后重试只补缺失的一级。
   - `token_count` 由存储层在写入时用 `createTokenEstimator` 计算，调用方不能传入，避免与正文不一致。
 - **影响**：M2-T12 的摘要槽位直接读 `getValidSummaries`，取主线与最近一条章节；M2-T15 的评测在切换分支后重新查询，不需要额外清理摘要。
+
+## ADR-0019 向量索引的维度、存储与渠道（2026-11-07）
+
+- **背景**：M2-T09 要给块建立向量索引。`sqlite-vec` 的 `vec0` 虚拟表在创建时固定向量维度，而维度来自渠道配置；同一个数据库文件可能被 `work` 与 `chat` 以不同配置打开。检索还需要按故事与祖先路径过滤，否则其他故事或分支的向量会混进结果。
+- **决定**：
+  - schema 版本 11 新增 `chunk_vectors USING vec0(chunk_id INTEGER PRIMARY KEY, story_id TEXT, node_id TEXT, embedding float[N])`。`chunk_id` 是 `chunks.id` 的行号；`story_id` 与 `node_id` 是 vec0 的元数据列，KNN 查询直接在 `WHERE` 里按故事与节点集合过滤，不需要先取远超 limit 的候选再筛选。
+  - 迁移列表由 `buildMigrations(embeddingDimensions)` 生成，默认维度 1024。`StoryStore.open(path, { embeddingDimensions })` 加载 `sqlite-vec` 扩展后应用迁移；已有数据库从 `sqlite_master` 解析实际维度，与本次配置不一致时直接抛错，避免写入一半才发现维度不符。`dramaticer work` 与 `dramaticer chat` 都传入 `embeddings.default.dimensions`。
+  - `chunk_vectors` 的主键用 BigInt 绑定：`vec0` 只接受 SQLite 整数类型的绑定值，better-sqlite3 的普通 JS number 会被拒绝。
+  - `EmbeddingClient` 是薄接口（`dimensions`、`embed(texts)`）。OpenAI 兼容实现负责批量、每分钟请求数限速、429/5xx 与网络错误退避重试、超时与维度校验；响应按 `index` 还原顺序，缺少条目、重复 index 与非有限数字都直接抛错。
+  - 渠道配置在 `data/channels.yaml` 顶层的 `embeddings` 段，与 `channels`、`models` 平级；`apiKey` 同样必须写成 `${变量}` 引用。默认项名为 `default`，`channels.example.yaml` 给出 bge-m3 示例。
+  - 后台任务类型 `embeddings` 只为任务楼层里还没有向量的块调用渠道；`dramaticer work` 只有在配置了 `embeddings.default` 时才把该类型加入默认注册表，避免没有 embedding 渠道时把任务标成失败。块文本使用原始块文本，不预先做检索规范化。
+- **影响**：M2-T10 的混合检索直接调用 `searchVectors`，得到块级距离后与 BM25、实体命中一起做 RRF 融合。更换 embedding 模型且维度变化时需要重建数据库或新增迁移；当前实现选择直接报错，不静默截断向量。
