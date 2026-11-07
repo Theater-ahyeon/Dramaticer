@@ -1,3 +1,6 @@
+import { createHash } from "node:crypto";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
@@ -71,6 +74,7 @@ describe("evaluateAcuCoverage", () => {
 		const result = await evaluateAcuCoverage({
 			chatPath: `${fixturesPath}cells/chat.jsonl`,
 			storyId: story,
+			corpus: "legacy",
 			questions,
 		});
 		expect(result.applicable).toBe(true);
@@ -138,6 +142,7 @@ describe("evaluateAcuCoverage", () => {
 		const result = await evaluateAcuCoverage({
 			chatPath: `${fixturesPath}sql/chat.jsonl`,
 			storyId: story,
+			corpus: "legacy",
 			questions,
 		});
 		expect(result.applicable).toBe(true);
@@ -164,6 +169,7 @@ describe("evaluateAcuCoverage", () => {
 		const result = await evaluateAcuCoverage({
 			chatPath: `${fixturesPath}adjacent/chat.jsonl`,
 			storyId: story,
+			corpus: "legacy",
 			questions: [question("merged", "集市时间"), question("single", "集市")],
 		});
 		expect(result.applicable).toBe(true);
@@ -182,6 +188,7 @@ describe("evaluateAcuCoverage", () => {
 			evaluateAcuCoverage({
 				chatPath: `${fixturesPath}cells/chat.jsonl`,
 				storyId: story,
+				corpus: "legacy",
 				questions: [
 					{
 						id: "missing",
@@ -204,6 +211,7 @@ describe("evaluateAcuCoverage", () => {
 		const result = await evaluateAcuCoverage({
 			chatPath: `${fixturesPath}none/chat.jsonl`,
 			storyId: story,
+			corpus: "legacy",
 			questions: [
 				{
 					id: "none",
@@ -246,5 +254,78 @@ describe("collectAcuBaseline", () => {
 				evalsetRoot: `${fixturesPath}不存在`,
 			}),
 		).rejects.toThrow();
+	});
+
+	it("新增语料缺少状态题时跳过并计数", async () => {
+		const dir = await mkdtemp(
+			path.join(path.dirname(fileURLToPath(import.meta.url)), ".tmp-acu-"),
+		);
+		try {
+			const content = await readFile(
+				path.join(fixturesPath, "..", "retrieval-chat.jsonl"),
+				"utf8",
+			);
+			const size = Buffer.byteLength(content);
+			const sha256 = createHash("sha256").update(content).digest("hex");
+			await writeFile(path.join(dir, "chat.jsonl"), content, "utf8");
+			await writeFile(
+				path.join(dir, "state-旧故事.jsonl"),
+				`${JSON.stringify({
+					id: "state:旧故事:m4",
+					story: "旧故事",
+					askAtNode: "旧故事:m4:s0",
+					question: "青铜匕",
+					answer: "青铜匕",
+					evidenceNodes: ["旧故事:m3:s0"],
+					kind: "state",
+				})}\n`,
+				"utf8",
+			);
+			await writeFile(
+				path.join(dir, "manifest.json"),
+				JSON.stringify({
+					files: [
+						{
+							role: "chat",
+							character: "旧故事",
+							corpus: "legacy",
+							target: "chat.jsonl",
+							size,
+							sha256,
+						},
+						{
+							role: "chat",
+							character: "新故事",
+							corpus: "latest",
+							target: "chat.jsonl",
+							size,
+							sha256,
+						},
+					],
+				}),
+				"utf8",
+			);
+			const baseline = await collectAcuBaseline({
+				rawRoot: dir,
+				evalsetRoot: dir,
+				generatedAt: "2026-01-06T00:00:00.000Z",
+			});
+			expect(baseline.skippedStories).toEqual([
+				{ story: "新故事", corpus: "latest", reason: "缺少状态题文件" },
+			]);
+			expect(
+				baseline.corpora.map((item) => [
+					item.corpus,
+					item.chatCount,
+					item.skippedStoryCount,
+					item.questionCount,
+				]),
+			).toEqual([
+				["legacy", 1, 0, 0],
+				["latest", 1, 1, 0],
+			]);
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
 	});
 });

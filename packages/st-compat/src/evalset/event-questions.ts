@@ -139,11 +139,48 @@ const SYSTEM_PROMPT = [
 	'{"question":"问题","answer":"答案","evidenceNodes":["楼层id"]}',
 ].join("\n");
 
+export interface EventQuestionPlan {
+	readonly story: string;
+	readonly floorCount: number;
+	readonly availableWindowCount: number;
+	readonly windowCount: number;
+	/** 每个窗口一次请求，未考虑缓存命中。 */
+	readonly requestCount: number;
+}
+
+/**
+ * 只计算事件题生成需要多少个窗口与请求，不调用模型。
+ * 用于把新增语料的出题成本写进报告。
+ */
+export async function planEventQuestions(
+	entries: AsyncIterable<StChatEntry> | Iterable<StChatEntry>,
+	options: EventQuestionOptions,
+): Promise<EventQuestionPlan> {
+	const resolved = resolveOptions(options);
+	const chat = await collectChat(entries, resolved);
+	const allWindows = buildWindows(chat.floors, resolved);
+	const windows = sampleEvenly(allWindows, resolved.maxWindows);
+	return {
+		story: resolved.storyId,
+		floorCount: chat.floors.length,
+		availableWindowCount: allWindows.length,
+		windowCount: windows.length,
+		requestCount: windows.length,
+	};
+}
+
+export async function planEventQuestionsFromFile(
+	filePath: string,
+	options: EventQuestionOptions,
+): Promise<EventQuestionPlan> {
+	return planEventQuestions(parseChatJsonlFile(filePath), options);
+}
+
 /**
  * 让后台模型按窗口阅读聊天，生成事件类记忆题。
  *
  * 每个窗口的最后一楼是提问楼层，模型只能引用窗口内更早的楼层作为证据；
- * 生成结果会逐条校验并去重，再按窗口轮转选取，避免所有题集中在故事开头。
+ * 生成结果会逐条校验并去重，再按窗口轮转选取，避免所有题目集中在故事开头。
  */
 export async function buildEventQuestions(
 	entries: AsyncIterable<StChatEntry> | Iterable<StChatEntry>,

@@ -7,11 +7,27 @@ import { isJsonObject } from "@dramaticer/core";
 
 export type CorpusGroup = "legacy" | "latest" | "shared";
 
+/** 评测使用的两个对话语料分组；预设不分语料。 */
+export type StoryCorpus = Exclude<CorpusGroup, "shared">;
+
+export const STORY_CORPORA: readonly StoryCorpus[] = ["legacy", "latest"];
+
 const CORPUS_GROUPS: readonly CorpusGroup[] = ["legacy", "latest", "shared"];
 
 /** 旧清单没有 corpus 字段，这些条目属于 legacy 语料。 */
 export function isLegacyCorpus(file: SnapshotManifestFile): boolean {
 	return file.corpus === undefined || file.corpus === "legacy";
+}
+
+/** 对话条目所属的语料分组；旧清单没有 corpus 字段时按 legacy 处理。 */
+export function storyCorpus(file: SnapshotManifestFile): StoryCorpus {
+	if (file.role !== "chat") {
+		throw new Error(`只有 chat 条目才有语料分组：${file.target}`);
+	}
+	if (file.corpus === "shared") {
+		throw new Error(`chat 条目不能属于 shared 语料：${file.target}`);
+	}
+	return file.corpus ?? "legacy";
 }
 
 export interface SnapshotManifestFile {

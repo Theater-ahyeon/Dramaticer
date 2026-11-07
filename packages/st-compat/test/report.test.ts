@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { AcuBaseline } from "../src/evalset/acu.js";
 import type { RetrievalBaseline } from "../src/evalset/retrieval.js";
-import { parseSnapshotManifest } from "../src/health/manifest.js";
+import { parseSnapshotManifest, storyCorpus } from "../src/health/manifest.js";
 import {
 	collectHealthReport,
 	renderPrivateReport,
@@ -22,6 +22,7 @@ const retrieval: RetrievalBaseline = {
 	stories: [
 		{
 			story: "私有角色名",
+			corpus: "legacy",
 			floorCount: 5,
 			chunkCount: 6,
 			byKind: [
@@ -30,6 +31,19 @@ const retrieval: RetrievalBaseline = {
 			total: { questionCount: 2, hitAt5: 1, hitAt10: 2, hitAt20: 2 },
 		},
 	],
+	corpora: [
+		{
+			corpus: "legacy",
+			chatCount: 1,
+			skippedStoryCount: 0,
+			eventQuestionRequestEstimate: 0,
+			byKind: [
+				{ kind: "state", questionCount: 2, hitAt5: 1, hitAt10: 2, hitAt20: 2 },
+			],
+			total: { questionCount: 2, hitAt5: 1, hitAt10: 2, hitAt20: 2 },
+		},
+	],
+	skippedStories: [],
 	byKind: [
 		{ kind: "state", questionCount: 2, hitAt5: 1, hitAt10: 2, hitAt20: 2 },
 	],
@@ -41,6 +55,7 @@ const acu: AcuBaseline = {
 	stories: [
 		{
 			story: "私有表格故事",
+			corpus: "legacy",
 			applicable: true,
 			snapshotFloorCount: 2,
 			byKind: [{ kind: "state", questionCount: 2, coveredCount: 1 }],
@@ -50,6 +65,7 @@ const acu: AcuBaseline = {
 		},
 		{
 			story: "私有空表故事",
+			corpus: "legacy",
 			applicable: false,
 			snapshotFloorCount: 0,
 			byKind: [],
@@ -59,6 +75,7 @@ const acu: AcuBaseline = {
 		},
 		{
 			story: "私有零题故事",
+			corpus: "legacy",
 			applicable: true,
 			snapshotFloorCount: 0,
 			byKind: [],
@@ -67,6 +84,18 @@ const acu: AcuBaseline = {
 			coveredCount: 0,
 		},
 	],
+	corpora: [
+		{
+			corpus: "legacy",
+			chatCount: 3,
+			skippedStoryCount: 0,
+			byKind: [{ kind: "state", questionCount: 2, coveredCount: 1 }],
+			byAnswerLength: [{ label: "1 字符", questionCount: 1, coveredCount: 1 }],
+			questionCount: 2,
+			coveredCount: 1,
+		},
+	],
+	skippedStories: [],
 	byKind: [{ kind: "state", questionCount: 2, coveredCount: 1 }],
 	byAnswerLength: [{ label: "1 字符", questionCount: 1, coveredCount: 1 }],
 	total: { questionCount: 2, coveredCount: 1 },
@@ -156,6 +185,41 @@ describe("parseSnapshotManifest", () => {
 				files: [{ ...base, size: 10, sha256: "A".repeat(64) }],
 			}),
 		).toThrow("manifest.files[0].sha256 必须是 64 位小写十六进制");
+	});
+
+	it("对话语料默认 legacy，shared 与非对话条目直接抛错", () => {
+		const base = {
+			role: "chat",
+			target: "a.jsonl",
+			size: 10,
+			sha256: "a".repeat(64),
+		};
+		const legacy = parseSnapshotManifest({ files: [base] }).files[0];
+		expect(legacy && storyCorpus(legacy)).toBe("legacy");
+		const latest = parseSnapshotManifest({
+			files: [{ ...base, corpus: "latest" }],
+		}).files[0];
+		expect(latest && storyCorpus(latest)).toBe("latest");
+		const shared = parseSnapshotManifest({
+			files: [{ ...base, corpus: "shared" }],
+		}).files[0];
+		expect(() => shared && storyCorpus(shared)).toThrow(
+			"chat 条目不能属于 shared 语料",
+		);
+		const preset = parseSnapshotManifest({
+			files: [
+				{
+					role: "preset",
+					corpus: "shared",
+					target: "p.json",
+					size: 1,
+					sha256: "b".repeat(64),
+				},
+			],
+		}).files[0];
+		expect(() => preset && storyCorpus(preset)).toThrow(
+			"只有 chat 条目才有语料分组",
+		);
 	});
 });
 
@@ -399,6 +463,65 @@ describe("报告渲染", () => {
 		expect(text).toContain("正则作用范围");
 		expect(text).toContain("目标标签前 20");
 		expect(text).toContain("diff/快照");
+	});
+
+	it("对话体量、状态存储与重复度按语料分栏", async () => {
+		const dir = await mkdtemp(
+			path.join(path.dirname(fileURLToPath(import.meta.url)), ".tmp-report-"),
+		);
+		try {
+			const content = await readFile(
+				path.join(fixturesPath, "health-chat.jsonl"),
+				"utf8",
+			);
+			const size = Buffer.byteLength(content);
+			const sha256 = createHash("sha256").update(content).digest("hex");
+			await writeFile(path.join(dir, "legacy.jsonl"), content, "utf8");
+			await writeFile(path.join(dir, "latest.jsonl"), content, "utf8");
+			await writeFile(
+				path.join(dir, "manifest.json"),
+				JSON.stringify({
+					files: [
+						{
+							role: "chat",
+							character: "测试角色",
+							corpus: "legacy",
+							target: "legacy.jsonl",
+							size,
+							sha256,
+						},
+						{
+							role: "chat",
+							character: "测试角色",
+							corpus: "latest",
+							target: "latest.jsonl",
+							size,
+							sha256,
+						},
+					],
+				}),
+				"utf8",
+			);
+			const report = await collectHealthReport({
+				rawRoot: dir,
+				generatedAt: "2026-01-02T00:00:00.000Z",
+			});
+			expect(report.chats.map((chat) => chat.corpus)).toEqual([
+				"legacy",
+				"latest",
+			]);
+			const publicText = renderPublicReport(report);
+			expect(publicText).toContain("### 旧语料（1 个对话）");
+			expect(publicText).toContain("### 新增语料（1 个对话）");
+			expect(publicText).toContain("| 新增对话 1 |");
+			expect(publicText).toContain("旧语料合计");
+			expect(publicText).toContain("新增语料合计");
+			expect(publicText).not.toContain("测试角色");
+			const privateText = renderPrivateReport(report);
+			expect(privateText).toContain("| 新增语料 | 测试角色 |");
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
 	});
 
 	it("检索基线按对话统计，统计版不出现私有故事名", async () => {

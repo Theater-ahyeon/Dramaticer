@@ -45,6 +45,8 @@ export interface StateQuestionOptions {
 	readonly maxAnswerLength?: number;
 	/** 每条路径最多出多少题；缺省时按题目下限平均分配。 */
 	readonly maxPerPath?: number;
+	/** 允许一个故事出 0 道题（新语料里楼层太短时使用）。 */
+	readonly allowEmpty?: boolean;
 }
 
 export interface StateQuestionStats {
@@ -119,6 +121,7 @@ interface ResolvedOptions {
 	readonly maxPathDepth: number;
 	readonly maxAnswerLength: number;
 	readonly maxPerPath: number | null;
+	readonly allowEmpty: boolean;
 }
 
 const EXCLUDED_ROOTS: Readonly<Record<string, true>> = {
@@ -144,11 +147,26 @@ export async function buildStateQuestions(
 		throw new Error("聊天记录只有头部，没有楼层");
 	}
 	const candidates = buildCandidates(state, resolved);
-	if (candidates.length === 0) {
-		throw new Error(`故事 ${resolved.storyId} 没有满足间隔要求的状态题候选`);
-	}
 	const selected = selectCandidates(candidates, resolved);
+	if (selected.length === 0 && resolved.allowEmpty) {
+		return {
+			questions: [],
+			stats: {
+				story: resolved.storyId,
+				messageCount: state.messageCount,
+				updateCount: state.updateCount,
+				pathCount: state.paths.size,
+				candidateCount: candidates.length,
+				questionCount: 0,
+				minGap: 0,
+				maxGap: 0,
+			},
+		};
+	}
 	if (selected.length < resolved.minQuestions) {
+		if (candidates.length === 0) {
+			throw new Error(`故事 ${resolved.storyId} 没有满足间隔要求的状态题候选`);
+		}
 		throw new Error(
 			`故事 ${resolved.storyId} 只能生成 ${selected.length} 道状态题，低于下限 ${resolved.minQuestions}`,
 		);
@@ -252,6 +270,7 @@ function resolveOptions(options: StateQuestionOptions): ResolvedOptions {
 		maxPathDepth,
 		maxAnswerLength,
 		maxPerPath,
+		allowEmpty: options.allowEmpty === true,
 	};
 }
 

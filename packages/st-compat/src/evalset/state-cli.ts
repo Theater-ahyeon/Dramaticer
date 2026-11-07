@@ -1,12 +1,18 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { isLegacyCorpus, openSnapshot } from "../health/manifest.js";
+import {
+	STORY_CORPORA,
+	type StoryCorpus,
+	openSnapshot,
+	storyCorpus,
+} from "../health/manifest.js";
 import {
 	sampleDeterministic,
 	sanitizeFileName,
 	storyIdOf,
 } from "./question-files.js";
 import {
+	type StateQuestionOptions,
 	buildStateQuestionsFromFile,
 	verifyStateQuestionsFromFile,
 } from "./state-questions.js";
@@ -15,9 +21,24 @@ export const STATE_QUESTION_MIN = 50;
 export const STATE_QUESTION_MAX = 100;
 const VERIFICATION_SAMPLE_SIZE = 10;
 
+/** 旧语料的题目区间与间隔；新语料楼层短，用更小的间隔和题量。 */
+const CORPUS_OPTIONS: Readonly<
+	Record<StoryCorpus, Omit<StateQuestionOptions, "storyId">>
+> = {
+	legacy: {},
+	latest: {
+		minGap: 3,
+		minQuestions: 1,
+		maxQuestions: 50,
+		maxPerPath: 3,
+		allowEmpty: true,
+	},
+};
+
 export interface StateStorySummary {
 	readonly story: string;
-	readonly file: string;
+	readonly corpus: StoryCorpus;
+	readonly file: string | null;
 	readonly questions: number;
 	readonly candidates: number;
 	readonly messages: number;
@@ -25,6 +46,7 @@ export interface StateStorySummary {
 	readonly paths: number;
 	readonly verified: number;
 	readonly sampled: readonly string[];
+	readonly skipped: string | null;
 }
 
 export interface RunStateQuestionsOptions {
@@ -73,7 +95,7 @@ export async function runStateQuestionsCli(
 ): Promise<{ summaries: readonly StateStorySummary[]; summaryPath: string }> {
 	const log = options.log ?? ((message: string) => console.log(message));
 	const snapshot = await openSnapshot(options.rawRoot);
-	const chatFiles = snapshot.filesByRole("chat").filter(isLegacyCorpus);
+	const chatFiles = snapshot.filesByRole("chat");
 	if (chatFiles.length === 0) {
 		throw new Error("manifest 里没有 chat");
 	}
@@ -86,9 +108,35 @@ export async function runStateQuestionsCli(
 			throw new Error(`manifest 里出现了重复的故事名 ${storyId}`);
 		}
 		seenStories.add(storyId);
+		const corpus = storyCorpus(file);
 		const chatPath = await snapshot.resolveFile(file);
-		const result = await buildStateQuestionsFromFile(chatPath, { storyId });
-		assertStateQuestionCount(storyId, result.questions.length);
+		const result = await buildStateQuestionsFromFile(chatPath, {
+			storyId,
+			...CORPUS_OPTIONS[corpus],
+		});
+		if (corpus === "legacy") {
+			assertStateQuestionCount(storyId, result.questions.length);
+		}
+		if (result.questions.length === 0) {
+			const skipped = "没有满足间隔要求的状态题候选";
+			summaries.push({
+				story: storyId,
+				corpus,
+				file: null,
+				questions: 0,
+				candidates: result.stats.candidateCount,
+				messages: result.stats.messageCount,
+				updates: result.stats.updateCount,
+				paths: result.stats.pathCount,
+				verified: 0,
+				sampled: [],
+				skipped,
+			});
+			log(
+				`${storyId}：跳过（${skipped}，楼层 ${result.stats.messageCount}，变量路径 ${result.stats.pathCount}）。`,
+			);
+			continue;
+		}
 		const verification = await verifyStateQuestionsFromFile(
 			chatPath,
 			result.questions,
@@ -118,6 +166,7 @@ export async function runStateQuestionsCli(
 
 		summaries.push({
 			story: storyId,
+			corpus,
 			file: fileName,
 			questions: result.stats.questionCount,
 			candidates: result.stats.candidateCount,
@@ -126,9 +175,10 @@ export async function runStateQuestionsCli(
 			paths: result.stats.pathCount,
 			verified: verification.checked - verification.failures.length,
 			sampled: sampled.map((question) => question.id),
+			skipped: null,
 		});
 		log(
-			`${storyId}：${result.stats.questionCount} 题（候选 ${result.stats.candidateCount}，楼层 ${result.stats.messageCount}，变量路径 ${result.stats.pathCount}），核对抽样 ${sampled.length} 题全部一致。`,
+			`${storyId}（${corpus}）：${result.stats.questionCount} 题（候选 ${result.stats.candidateCount}，楼层 ${result.stats.messageCount}，变量路径 ${result.stats.pathCount}），核对抽样 ${sampled.length} 题全部一致。`,
 		);
 	}
 

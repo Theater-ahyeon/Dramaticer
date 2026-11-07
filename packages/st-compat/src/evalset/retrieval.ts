@@ -7,8 +7,14 @@ import {
 	chunkText,
 } from "@dramaticer/core";
 import { parseChatJsonlFile } from "../chat-jsonl.js";
-import { isLegacyCorpus, openSnapshot } from "../health/manifest.js";
+import {
+	STORY_CORPORA,
+	type StoryCorpus,
+	openSnapshot,
+	storyCorpus,
+} from "../health/manifest.js";
 import { messageNodeId, parseMessageIndex } from "../node-id.js";
+import { planEventQuestionsFromFile } from "./event-questions.js";
 import type { QuestionKind, RetrievalQuestion } from "./question-files.js";
 import {
 	readQuestionFile,
@@ -16,6 +22,7 @@ import {
 	storyIdOf,
 } from "./question-files.js";
 import { addCounts, emptyCounts, requireNonEmpty } from "./shared.js";
+import type { SkippedStory } from "./shared.js";
 
 const DEFAULT_MAX_CHARS = 400;
 const DEFAULT_OVERLAP_CHARS = 80;
@@ -35,8 +42,19 @@ export interface RetrievalKindScore extends RetrievalScore {
 
 export interface RetrievalStoryScore {
 	readonly story: string;
+	readonly corpus: StoryCorpus;
 	readonly floorCount: number;
 	readonly chunkCount: number;
+	readonly byKind: readonly RetrievalKindScore[];
+	readonly total: RetrievalScore;
+}
+
+export interface RetrievalCorpusScore {
+	readonly corpus: StoryCorpus;
+	readonly chatCount: number;
+	readonly skippedStoryCount: number;
+	/** 尚未生成事件题时，按默认窗口估算的请求数。 */
+	readonly eventQuestionRequestEstimate: number;
 	readonly byKind: readonly RetrievalKindScore[];
 	readonly total: RetrievalScore;
 }
@@ -46,6 +64,8 @@ export interface RetrievalBaseline {
 	readonly maxChars: number;
 	readonly overlapChars: number;
 	readonly stories: readonly RetrievalStoryScore[];
+	readonly corpora: readonly RetrievalCorpusScore[];
+	readonly skippedStories: readonly SkippedStory[];
 	readonly byKind: readonly RetrievalKindScore[];
 	readonly total: RetrievalScore;
 }
@@ -53,6 +73,7 @@ export interface RetrievalBaseline {
 export interface EvaluateRetrievalOptions {
 	readonly chatPath: string;
 	readonly storyId: string;
+	readonly corpus: StoryCorpus;
 	readonly questions: readonly RetrievalQuestion[];
 	readonly maxChars?: number;
 	readonly overlapChars?: number;
@@ -147,6 +168,7 @@ export async function evaluateRetrieval(
 		}
 		return {
 			story: storyId,
+			corpus: options.corpus,
 			floorCount,
 			chunkCount: index.count(),
 			byKind: kindScores,
@@ -163,16 +185,22 @@ export async function collectRetrievalBaseline(
 	const maxChars = options.maxChars ?? DEFAULT_MAX_CHARS;
 	const overlapChars = options.overlapChars ?? DEFAULT_OVERLAP_CHARS;
 	const snapshot = await openSnapshot(options.rawRoot);
-	const chatFiles = snapshot.filesByRole("chat").filter(isLegacyCorpus);
+	const chatFiles = snapshot.filesByRole("chat");
 	if (chatFiles.length === 0) {
 		throw new Error("manifest 里没有 chat");
 	}
 
 	const stories: RetrievalStoryScore[] = [];
+	const skippedStories: SkippedStory[] = [];
+	const eventRequests = new Map<StoryCorpus, number>();
 	for (const file of chatFiles) {
 		const story = storyIdOf(file);
+		const corpus = storyCorpus(file);
 		const baseName = sanitizeFileName(story);
+		const chatPath = await snapshot.resolveFile(file);
 		const questions: RetrievalQuestion[] = [];
+		let skipReason: string | null = null;
+		let hasEventQuestions = false;
 		for (const kind of KIND_ORDER) {
 			const questionPath = path.join(
 				options.evalsetRoot,
@@ -180,16 +208,35 @@ export async function collectRetrievalBaseline(
 			);
 			if (!existsSync(questionPath)) {
 				if (kind === "state") {
-					throw new Error(`缺少状态题文件：${questionPath}`);
+					if (corpus === "legacy") {
+						throw new Error(`缺少状态题文件：${questionPath}`);
+					}
+					skipReason = "缺少状态题文件";
+					break;
 				}
 				continue;
 			}
+			if (kind === "event") hasEventQuestions = true;
 			questions.push(...(await readQuestionFile(questionPath, kind)));
+		}
+		if (!hasEventQuestions) {
+			const plan = await planEventQuestionsFromFile(chatPath, {
+				storyId: story,
+			});
+			eventRequests.set(
+				corpus,
+				(eventRequests.get(corpus) ?? 0) + plan.requestCount,
+			);
+		}
+		if (skipReason !== null) {
+			skippedStories.push({ story, corpus, reason: skipReason });
+			continue;
 		}
 		stories.push(
 			await evaluateRetrieval({
-				chatPath: await snapshot.resolveFile(file),
+				chatPath,
 				storyId: story,
+				corpus,
 				questions,
 				maxChars,
 				overlapChars,
@@ -202,18 +249,31 @@ export async function collectRetrievalBaseline(
 	for (const story of stories) {
 		addCounts(total, story.total);
 		for (const score of story.byKind) {
-			let target = byKind.get(score.kind);
-			if (!target) {
-				target = emptyCounts(SCORE_KEYS);
-				byKind.set(score.kind, target);
-			}
-			addCounts<(typeof SCORE_KEYS)[number]>(target, score);
+			recordKindScore(byKind, score);
 		}
 	}
-	const kindScores: RetrievalKindScore[] = [];
-	for (const kind of KIND_ORDER) {
-		const score = byKind.get(kind);
-		if (score) kindScores.push({ kind, ...score });
+
+	const corpora: RetrievalCorpusScore[] = [];
+	for (const corpus of STORY_CORPORA) {
+		const corpusStories = stories.filter((story) => story.corpus === corpus);
+		const skipped = skippedStories.filter((story) => story.corpus === corpus);
+		if (corpusStories.length === 0 && skipped.length === 0) continue;
+		const corpusTotal = emptyCounts(SCORE_KEYS);
+		const corpusByKind = new Map<QuestionKind, MutableScore>();
+		for (const story of corpusStories) {
+			addCounts(corpusTotal, story.total);
+			for (const score of story.byKind) {
+				recordKindScore(corpusByKind, score);
+			}
+		}
+		corpora.push({
+			corpus,
+			chatCount: corpusStories.length + skipped.length,
+			skippedStoryCount: skipped.length,
+			eventQuestionRequestEstimate: eventRequests.get(corpus) ?? 0,
+			byKind: collectKindScores(corpusByKind),
+			total: corpusTotal,
+		});
 	}
 
 	return {
@@ -221,9 +281,34 @@ export async function collectRetrievalBaseline(
 		maxChars,
 		overlapChars,
 		stories,
-		byKind: kindScores,
+		corpora,
+		skippedStories,
+		byKind: collectKindScores(byKind),
 		total,
 	};
+}
+
+function recordKindScore(
+	byKind: Map<QuestionKind, MutableScore>,
+	score: RetrievalKindScore,
+): void {
+	let target = byKind.get(score.kind);
+	if (!target) {
+		target = emptyCounts(SCORE_KEYS);
+		byKind.set(score.kind, target);
+	}
+	addCounts<(typeof SCORE_KEYS)[number]>(target, score);
+}
+
+function collectKindScores(
+	byKind: Map<QuestionKind, MutableScore>,
+): RetrievalKindScore[] {
+	const scores: RetrievalKindScore[] = [];
+	for (const kind of KIND_ORDER) {
+		const score = byKind.get(kind);
+		if (score) scores.push({ kind, ...score });
+	}
+	return scores;
 }
 
 function dedupeByNodeId(matches: readonly ChunkMatch[]): ChunkMatch[] {

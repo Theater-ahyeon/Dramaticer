@@ -1,3 +1,6 @@
+import { createHash } from "node:crypto";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { RetrievalQuestion } from "../src/evalset/question-files.js";
@@ -69,6 +72,7 @@ describe("evaluateRetrieval", () => {
 		const result = await evaluateRetrieval({
 			chatPath: `${fixturesPath}retrieval-chat.jsonl`,
 			storyId: story,
+			corpus: "legacy",
 			questions,
 		});
 		expect(result.floorCount).toBe(10);
@@ -98,6 +102,7 @@ describe("evaluateRetrieval", () => {
 		const result = await evaluateRetrieval({
 			chatPath: `${fixturesPath}retrieval-dup-chat.jsonl`,
 			storyId: story,
+			corpus: "legacy",
 			questions: [question],
 			maxChars: 3,
 			overlapChars: 0,
@@ -126,6 +131,7 @@ describe("evaluateRetrieval", () => {
 			evaluateRetrieval({
 				chatPath: `${fixturesPath}retrieval-dup-chat.jsonl`,
 				storyId: story,
+				corpus: "legacy",
 				questions: [question],
 				maxChars: 3,
 				overlapChars: 0,
@@ -140,6 +146,7 @@ describe("evaluateRetrieval", () => {
 			evaluateRetrieval({
 				chatPath: `${fixturesPath}retrieval-chat.jsonl`,
 				storyId: story,
+				corpus: "legacy",
 				questions: [],
 			}),
 		).rejects.toThrow();
@@ -175,5 +182,101 @@ describe("collectRetrievalBaseline", () => {
 				evalsetRoot: `${fixturesPath}不存在的目录`,
 			}),
 		).rejects.toThrow();
+	});
+
+	it("新增语料缺少状态题时跳过并估算事件题请求", async () => {
+		const dir = await mkdtemp(
+			path.join(
+				path.dirname(fileURLToPath(import.meta.url)),
+				".tmp-retrieval-",
+			),
+		);
+		try {
+			const content = await readFile(
+				path.join(fixturesPath, "retrieval-chat.jsonl"),
+				"utf8",
+			);
+			const size = Buffer.byteLength(content);
+			const sha256 = createHash("sha256").update(content).digest("hex");
+			await writeFile(path.join(dir, "chat.jsonl"), content, "utf8");
+			await writeFile(
+				path.join(dir, "state-旧故事.jsonl"),
+				`${JSON.stringify({
+					id: "state:旧故事:m4",
+					story: "旧故事",
+					askAtNode: "旧故事:m4:s0",
+					question: "青铜匕",
+					answer: "青铜匕",
+					evidenceNodes: ["旧故事:m3:s0"],
+					kind: "state",
+				})}\n`,
+				"utf8",
+			);
+			await writeFile(
+				path.join(dir, "event-旧故事.jsonl"),
+				`${JSON.stringify({
+					id: "event:旧故事:m8",
+					story: "旧故事",
+					askAtNode: "旧故事:m8:s0",
+					question: "发生了什么？",
+					answer: "练习",
+					evidenceNodes: ["旧故事:m2:s0"],
+					kind: "event",
+				})}\n`,
+				"utf8",
+			);
+			await writeFile(
+				path.join(dir, "manifest.json"),
+				JSON.stringify({
+					files: [
+						{
+							role: "chat",
+							character: "旧故事",
+							corpus: "legacy",
+							target: "chat.jsonl",
+							size,
+							sha256,
+						},
+						{
+							role: "chat",
+							character: "新故事",
+							corpus: "latest",
+							target: "chat.jsonl",
+							size,
+							sha256,
+						},
+					],
+				}),
+				"utf8",
+			);
+			const baseline = await collectRetrievalBaseline({
+				rawRoot: dir,
+				evalsetRoot: dir,
+				generatedAt: "2026-01-05T00:00:00.000Z",
+			});
+			expect(
+				baseline.stories.map((item) => ({
+					story: item.story,
+					corpus: item.corpus,
+				})),
+			).toEqual([{ story: "旧故事", corpus: "legacy" }]);
+			expect(baseline.skippedStories).toEqual([
+				{ story: "新故事", corpus: "latest", reason: "缺少状态题文件" },
+			]);
+			expect(
+				baseline.corpora.map((item) => [
+					item.corpus,
+					item.chatCount,
+					item.skippedStoryCount,
+				]),
+			).toEqual([
+				["legacy", 1, 0],
+				["latest", 1, 1],
+			]);
+			expect(baseline.corpora[1]?.eventQuestionRequestEstimate).toBe(1);
+			expect(baseline.corpora[1]?.total.questionCount).toBe(0);
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
 	});
 });

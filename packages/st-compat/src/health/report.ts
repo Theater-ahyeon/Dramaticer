@@ -1,14 +1,21 @@
 import { type TokenEstimator, createTokenEstimator } from "@dramaticer/core";
 import type { AcuBaseline, AcuScore } from "../evalset/acu.js";
+import type { QuestionKind } from "../evalset/question-files.js";
 import type {
 	RetrievalBaseline,
+	RetrievalKindScore,
 	RetrievalScore,
 } from "../evalset/retrieval.js";
 import type { ChatHealth } from "./chat-health.js";
 import { analyzeChat } from "./chat-health.js";
 import type { EntityHealth } from "./entity-health.js";
 import { analyzeEntityFiles } from "./entity-health.js";
-import { openSnapshot } from "./manifest.js";
+import {
+	STORY_CORPORA,
+	type StoryCorpus,
+	openSnapshot,
+	storyCorpus,
+} from "./manifest.js";
 import type { PresetHealth } from "./preset-health.js";
 import { analyzePresets, parsePresetFiles } from "./preset-health.js";
 import type { RegexHealth } from "./regex-health.js";
@@ -22,6 +29,7 @@ import {
 export interface ChatReportEntry {
 	readonly character: string | null;
 	readonly fileName: string;
+	readonly corpus: StoryCorpus;
 	readonly stats: ChatHealth;
 }
 
@@ -76,6 +84,7 @@ export async function collectHealthReport(
 		chats.push({
 			character: file.character ?? null,
 			fileName: file.target,
+			corpus: storyCorpus(file),
 			stats: await analyzeChat(await snapshot.resolveFile(file), {
 				tokenEstimator,
 			}),
@@ -121,13 +130,13 @@ export function renderPrivateReport(
 	lines.push("## 对话");
 	lines.push("");
 	lines.push(
-		"| 角色 | 文件 | 楼层 | 用户 | 助手 | system | swipe | 文件字节 | 正文字节 | 变量字节 | 其他字节 |",
-		"|---|---|---|---|---|---|---|---|---|---|---|",
+		"| 语料 | 角色 | 文件 | 楼层 | 用户 | 助手 | system | swipe | 文件字节 | 正文字节 | 变量字节 | 其他字节 |",
+		"|---|---|---|---|---|---|---|---|---|---|---|---|",
 	);
 	for (const chat of report.chats) {
 		const stats = chat.stats;
 		lines.push(
-			`| ${cell(chat.character ?? "未知")} | ${cell(chat.fileName)} | ${stats.messageCount} | ${stats.roleCounts.user} | ${stats.roleCounts.assistant} | ${stats.roleCounts.system} | ${stats.swipeCount} | ${stats.fileBytes} | ${stats.bodyBytes} | ${stats.variablesBytes} | ${stats.otherBytes} |`,
+			`| ${corpusLabel(chat.corpus)} | ${cell(chat.character ?? "未知")} | ${cell(chat.fileName)} | ${stats.messageCount} | ${stats.roleCounts.user} | ${stats.roleCounts.assistant} | ${stats.roleCounts.system} | ${stats.swipeCount} | ${stats.fileBytes} | ${stats.bodyBytes} | ${stats.variablesBytes} | ${stats.otherBytes} |`,
 		);
 	}
 	lines.push("");
@@ -137,6 +146,7 @@ export function renderPrivateReport(
 		lines.push(`### ${chat.character ?? "未知角色"}`);
 		lines.push("");
 		lines.push(`- 文件：${chat.fileName}`);
+		lines.push(`- 语料：${corpusLabel(chat.corpus)}`);
 		lines.push(`- 文件字节：${chat.stats.fileBytes}`);
 		lines.push(`- 消息序列化后的字节：${chat.stats.rawBytes}`);
 		lines.push(`- 头部字节：${chat.stats.headerBytes}`);
@@ -254,20 +264,27 @@ export function renderPublicReport(
 	lines.push("");
 	lines.push("## 对话体量");
 	lines.push("");
-	lines.push(
-		"| 对话 | 楼层 | 用户 | 助手 | system | swipe | 文件字节 | 头部字节 | 正文字节 | 变量字节 | 其他字节 | 正文 token | 变量 token | 其他 token |",
-		"|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
-	);
-	report.chats.forEach((chat, index) => {
-		const stats = chat.stats;
+	for (const group of groupChats(report.chats)) {
+		const totals = sumChats(group.chats);
 		lines.push(
-			`| 对话 ${index + 1} | ${stats.messageCount} | ${stats.roleCounts.user} | ${stats.roleCounts.assistant} | ${stats.roleCounts.system} | ${stats.swipeCount} | ${stats.fileBytes} | ${stats.headerBytes} | ${stats.bodyBytes} | ${stats.variablesBytes} | ${stats.otherBytes} | ${stats.bodyTokens} | ${stats.variablesTokens} | ${stats.otherTokens} |`,
+			`### ${corpusLabel(group.corpus)}（${group.chats.length} 个对话）`,
 		);
-	});
-	lines.push(
-		`| 合计 | ${report.totals.messageCount} | ${sumRole(report.chats, "user")} | ${sumRole(report.chats, "assistant")} | ${sumRole(report.chats, "system")} | ${report.totals.swipeCount} | ${report.totals.fileBytes} | ${report.totals.headerBytes} | ${report.totals.bodyBytes} | ${report.totals.variablesBytes} | ${report.totals.otherBytes} | ${report.totals.bodyTokens} | ${report.totals.variablesTokens} | ${report.totals.otherTokens} |`,
-	);
-	lines.push("");
+		lines.push("");
+		lines.push(
+			"| 对话 | 楼层 | 用户 | 助手 | system | swipe | 文件字节 | 头部字节 | 正文字节 | 变量字节 | 其他字节 | 正文 token | 变量 token | 其他 token |",
+			"|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
+		);
+		group.chats.forEach((chat, index) => {
+			const stats = chat.stats;
+			lines.push(
+				`| ${corpusRowLabel(group.corpus, index + 1)} | ${stats.messageCount} | ${stats.roleCounts.user} | ${stats.roleCounts.assistant} | ${stats.roleCounts.system} | ${stats.swipeCount} | ${stats.fileBytes} | ${stats.headerBytes} | ${stats.bodyBytes} | ${stats.variablesBytes} | ${stats.otherBytes} | ${stats.bodyTokens} | ${stats.variablesTokens} | ${stats.otherTokens} |`,
+			);
+		});
+		lines.push(
+			`| ${corpusLabel(group.corpus)}合计（${totals.chatCount} 个对话） | ${totals.messageCount} | ${sumRole(group.chats, "user")} | ${sumRole(group.chats, "assistant")} | ${sumRole(group.chats, "system")} | ${totals.swipeCount} | ${totals.fileBytes} | ${totals.headerBytes} | ${totals.bodyBytes} | ${totals.variablesBytes} | ${totals.otherBytes} | ${totals.bodyTokens} | ${totals.variablesTokens} | ${totals.otherTokens} |`,
+		);
+		lines.push("");
+	}
 	lines.push("其他字段里占比最大的字段（全部对话合计，不含正文和变量）：");
 	lines.push("");
 	lines.push("| 字段 | 字节 | 占其他比例 |");
@@ -280,38 +297,47 @@ export function renderPublicReport(
 	lines.push("");
 	lines.push("## 状态存储");
 	lines.push("");
-	lines.push(
-		"| 对话 | 主路径快照字节 | 原生 diff 字节 | diff 条数 | diff/快照 |",
-		"|---|---|---|---|---|",
-	);
-	report.chats.forEach((chat, index) => {
-		const stats = chat.stats;
+	for (const group of groupChats(report.chats)) {
+		const totals = sumChats(group.chats);
+		lines.push(`### ${corpusLabel(group.corpus)}`);
+		lines.push("");
 		lines.push(
-			`| 对话 ${index + 1} | ${stats.snapshotBytes} | ${stats.diffBytes} | ${stats.diffCount} | ${formatPercent(ratio(stats.diffBytes, stats.snapshotBytes))} |`,
+			"| 对话 | 主路径快照字节 | 原生 diff 字节 | diff 条数 | diff/快照 |",
+			"|---|---|---|---|---|",
 		);
-	});
-	lines.push(
-		`| 合计 | ${report.totals.snapshotBytes} | ${report.totals.diffBytes} | ${report.totals.diffCount} | ${formatPercent(ratio(report.totals.diffBytes, report.totals.snapshotBytes))} |`,
-	);
-	lines.push("");
+		group.chats.forEach((chat, index) => {
+			const stats = chat.stats;
+			lines.push(
+				`| ${corpusRowLabel(group.corpus, index + 1)} | ${stats.snapshotBytes} | ${stats.diffBytes} | ${stats.diffCount} | ${formatPercent(ratio(stats.diffBytes, stats.snapshotBytes))} |`,
+			);
+		});
+		lines.push(
+			`| ${corpusLabel(group.corpus)}合计 | ${totals.snapshotBytes} | ${totals.diffBytes} | ${totals.diffCount} | ${formatPercent(ratio(totals.diffBytes, totals.snapshotBytes))} |`,
+		);
+		lines.push("");
+	}
 	lines.push("## 重复度");
 	lines.push("");
 	lines.push(
 		`相邻 AI 回复的字符 n-gram Jaccard 相似度：${ngramDescription(report)}。窗口均值按连续窗口统计，持续上升指连续 5 个窗口不下降且首尾上涨至少 0.02，起点均值不低于 0.03。`,
 	);
 	lines.push("");
-	lines.push(
-		"| 对话 | 相邻回复对 | 平均相似度 | 峰值窗口 | 峰值均值 | 持续上升起点 |",
-	);
-	lines.push("|---|---|---|---|---|---|");
-	report.chats.forEach((chat, index) => {
-		const duplication = chat.stats.duplication;
-		const peak = duplication.peakWindow;
+	for (const group of groupChats(report.chats)) {
+		lines.push(`### ${corpusLabel(group.corpus)}`);
+		lines.push("");
 		lines.push(
-			`| 对话 ${index + 1} | ${duplication.pairs.length} | ${formatDecimal(meanSimilarity(chat.stats))} | ${peak ? `${peak.startFloor}–${peak.endFloor} 楼` : "无"} | ${peak ? formatDecimal(peak.meanSimilarity) : "无"} | ${duplication.riseStartFloor === null ? "无" : `第 ${duplication.riseStartFloor} 楼`} |`,
+			"| 对话 | 相邻回复对 | 平均相似度 | 峰值窗口 | 峰值均值 | 持续上升起点 |",
 		);
-	});
-	lines.push("");
+		lines.push("|---|---|---|---|---|---|");
+		group.chats.forEach((chat, index) => {
+			const duplication = chat.stats.duplication;
+			const peak = duplication.peakWindow;
+			lines.push(
+				`| ${corpusRowLabel(group.corpus, index + 1)} | ${duplication.pairs.length} | ${formatDecimal(meanSimilarity(chat.stats))} | ${peak ? `${peak.startFloor}–${peak.endFloor} 楼` : "无"} | ${peak ? formatDecimal(peak.meanSimilarity) : "无"} | ${duplication.riseStartFloor === null ? "无" : `第 ${duplication.riseStartFloor} 楼`} |`,
+			);
+		});
+		lines.push("");
+	}
 	lines.push("## 实体");
 	lines.push("");
 	lines.push("| 指标 | 数量 |");
@@ -426,6 +452,12 @@ export function renderPublicReport(
 	lines.push(
 		"- ACU 对照组的表格内容来自对话头部的 `sheets` 单元格历史与逐楼层 `hash_sheets`、消息里的 `TavernDB_ACU_Data`，以及 `TavernDB_ACU_IsolatedData` 里记录的 SQL 更新。SQL 更新在内存 SQLite 里按楼层顺序重放；每个单元格和答案都做 NFKC 规范化、去掉空白与标点，再判断答案是否出现在某一个单元格里。",
 	);
+	lines.push(
+		"- 对话按 manifest 的语料分组分栏：旧语料是原有的 3 个对话，新增语料是按修改时间取样的对话。统计版只出现分组名与组内序号。",
+	);
+	lines.push(
+		"- 新增语料只生成了状态题。事件题请求估算按每个窗口一次请求计算，不含缓存命中；本报告不调用模型出题。",
+	);
 	return `${lines.join("\n")}\n`;
 }
 
@@ -440,30 +472,87 @@ function renderRetrievalSection(
 		`分块：固定窗口 ${retrieval.maxChars} 字符、重叠 ${retrieval.overlapChars} 字符，按 FTS5 trigram 建索引。写入与查询都先做 NFKC 规范化并去掉标点、符号和空白；同一楼层的多个块只占一个位次。每道题只在提问楼层之前的楼层里检索；证据楼层出现在前 K 个结果里算命中。`,
 	);
 	lines.push("");
-	lines.push("| 对话 | 楼层 | 块数 |");
-	lines.push("|---|---|---|");
-	retrieval.stories.forEach((story, index) => {
-		const label = privateView ? cell(story.story) : `对话 ${index + 1}`;
-		lines.push(`| ${label} | ${story.floorCount} | ${story.chunkCount} |`);
-	});
-	lines.push("");
-	lines.push("| 对话 | 题目类型 | 题数 | 命中@5 | 命中@10 | 命中@20 |");
-	lines.push("|---|---|---|---|---|---|");
-	retrieval.stories.forEach((story, index) => {
-		const label = privateView ? cell(story.story) : `对话 ${index + 1}`;
-		for (const score of story.byKind) {
-			lines.push(
-				scoreRow(label, score.kind === "state" ? "状态题" : "事件题", score),
-			);
-		}
-		lines.push(scoreRow(label, "全部", story.total));
-	});
-	for (const score of retrieval.byKind) {
+	lines.push(
+		"| 语料 | 对话 | 已评测 | 未评测 | 状态题 | 事件题 | 事件题请求估算 | 题数 | 命中@5 | 命中@10 | 命中@20 |",
+	);
+	lines.push("|---|---|---|---|---|---|---|---|---|---|---|");
+	for (const corpus of retrieval.corpora) {
 		lines.push(
-			scoreRow("合计", score.kind === "state" ? "状态题" : "事件题", score),
+			`| ${corpusLabel(corpus.corpus)} | ${corpus.chatCount} | ${corpus.chatCount - corpus.skippedStoryCount} | ${corpus.skippedStoryCount} | ${kindQuestionCount(corpus.byKind, "state")} | ${kindQuestionCount(corpus.byKind, "event")} | ${corpus.eventQuestionRequestEstimate} | ${corpus.total.questionCount} | ${corpus.total.hitAt5} | ${corpus.total.hitAt10} | ${corpus.total.hitAt20} |`,
 		);
 	}
-	lines.push(scoreRow("合计", "全部", retrieval.total));
+	for (const corpus of retrieval.corpora) {
+		const corpusStories = retrieval.stories.filter(
+			(story) => story.corpus === corpus.corpus,
+		);
+		const skipped = retrieval.skippedStories.filter(
+			(story) => story.corpus === corpus.corpus,
+		);
+		lines.push("");
+		lines.push(`### ${corpusLabel(corpus.corpus)}`);
+		lines.push("");
+		if (corpusStories.length > 0) {
+			lines.push("| 对话 | 楼层 | 块数 |");
+			lines.push("|---|---|---|");
+			corpusStories.forEach((story, index) => {
+				const label = privateView
+					? cell(story.story)
+					: corpusRowLabel(story.corpus, index + 1);
+				lines.push(`| ${label} | ${story.floorCount} | ${story.chunkCount} |`);
+			});
+			lines.push("");
+			lines.push("| 对话 | 题目类型 | 题数 | 命中@5 | 命中@10 | 命中@20 |");
+			lines.push("|---|---|---|---|---|---|");
+			corpusStories.forEach((story, index) => {
+				const label = privateView
+					? cell(story.story)
+					: corpusRowLabel(story.corpus, index + 1);
+				for (const score of story.byKind) {
+					lines.push(
+						scoreRow(
+							label,
+							score.kind === "state" ? "状态题" : "事件题",
+							score,
+						),
+					);
+				}
+				lines.push(scoreRow(label, "全部", story.total));
+			});
+			for (const score of corpus.byKind) {
+				lines.push(
+					scoreRow(
+						`${corpusLabel(corpus.corpus)}合计`,
+						score.kind === "state" ? "状态题" : "事件题",
+						score,
+					),
+				);
+			}
+			lines.push(
+				scoreRow(`${corpusLabel(corpus.corpus)}合计`, "全部", corpus.total),
+			);
+		} else {
+			lines.push("没有可评测的对话。");
+		}
+		if (skipped.length > 0) {
+			lines.push("");
+			if (privateView) {
+				lines.push(
+					`未评测：${skipped
+						.map((story) => `${cell(story.story)}（${story.reason}）`)
+						.join("、")}`,
+				);
+			} else {
+				lines.push(`未评测：${skipped.length} 个对话`);
+			}
+		}
+	}
+}
+
+function kindQuestionCount(
+	scores: readonly RetrievalKindScore[],
+	kind: QuestionKind,
+): number {
+	return scores.find((score) => score.kind === kind)?.questionCount ?? 0;
 }
 
 function scoreRow(
@@ -488,43 +577,83 @@ function renderAcuSection(
 		"在提问楼层之前最近的 ACU 表格内容里查找标准答案：每个单元格和答案都做 NFKC 规范化、去掉空白与标点符号之后，判断答案是否出现在某一个单元格里；相邻单元格不会被拼成一段文本。没有表格数据的对话记为“不适用”，不进入合计。",
 	);
 	lines.push("");
-	lines.push("| 对话 | 题数 | 有表格内容的提问楼层 | 覆盖 | 覆盖率 |");
-	lines.push("|---|---|---|---|---|");
-	acu.stories.forEach((story, index) => {
-		const label = privateView ? cell(story.story) : `对话 ${index + 1}`;
-		if (!story.applicable) {
-			lines.push(`| ${label} | 不适用 | 0 | 0 | 不适用 |`);
-			return;
-		}
+	lines.push("| 语料 | 对话 | 已评测 | 未评测 | 题数 | 覆盖 | 覆盖率 |");
+	lines.push("|---|---|---|---|---|---|---|");
+	for (const corpus of acu.corpora) {
 		lines.push(
-			`| ${label} | ${story.questionCount} | ${story.snapshotFloorCount} | ${story.coveredCount} | ${formatPercent(ratio(story.coveredCount, story.questionCount))} |`,
+			`| ${corpusLabel(corpus.corpus)} | ${corpus.chatCount} | ${corpus.chatCount - corpus.skippedStoryCount} | ${corpus.skippedStoryCount} | ${corpus.questionCount} | ${corpus.coveredCount} | ${formatPercent(ratio(corpus.coveredCount, corpus.questionCount))} |`,
 		);
-	});
-	lines.push(
-		`| 合计 | ${acu.total.questionCount} | — | ${acu.total.coveredCount} | ${formatPercent(ratio(acu.total.coveredCount, acu.total.questionCount))} |`,
-	);
-	lines.push("");
-	lines.push("| 对话 | 题目类型 | 题数 | 覆盖 | 覆盖率 |");
-	lines.push("|---|---|---|---|---|");
-	acu.stories.forEach((story, index) => {
-		if (!story.applicable) return;
-		const label = privateView ? cell(story.story) : `对话 ${index + 1}`;
-		for (const score of story.byKind) {
-			lines.push(acuScoreRow(label, score.kind, score));
-		}
-	});
-	for (const score of acu.byKind) {
-		lines.push(acuScoreRow("合计", score.kind, score));
 	}
-	lines.push("");
-	lines.push("按规范化之后的答案长度（合计）：");
-	lines.push("");
-	lines.push("| 答案长度 | 题数 | 覆盖 | 覆盖率 |");
-	lines.push("|---|---|---|---|");
-	for (const score of acu.byAnswerLength) {
-		lines.push(
-			`| ${cell(score.label)} | ${score.questionCount} | ${score.coveredCount} | ${formatPercent(ratio(score.coveredCount, score.questionCount))} |`,
+	for (const corpus of acu.corpora) {
+		const corpusStories = acu.stories.filter(
+			(story) => story.corpus === corpus.corpus,
 		);
+		const skipped = acu.skippedStories.filter(
+			(story) => story.corpus === corpus.corpus,
+		);
+		lines.push("");
+		lines.push(`### ${corpusLabel(corpus.corpus)}`);
+		lines.push("");
+		if (corpusStories.length > 0) {
+			lines.push("| 对话 | 题数 | 有表格内容的提问楼层 | 覆盖 | 覆盖率 |");
+			lines.push("|---|---|---|---|---|");
+			corpusStories.forEach((story, index) => {
+				const label = privateView
+					? cell(story.story)
+					: corpusRowLabel(story.corpus, index + 1);
+				if (!story.applicable) {
+					lines.push(`| ${label} | 不适用 | 0 | 0 | 不适用 |`);
+					return;
+				}
+				lines.push(
+					`| ${label} | ${story.questionCount} | ${story.snapshotFloorCount} | ${story.coveredCount} | ${formatPercent(ratio(story.coveredCount, story.questionCount))} |`,
+				);
+			});
+			lines.push(
+				`| ${corpusLabel(corpus.corpus)}合计 | ${corpus.questionCount} | — | ${corpus.coveredCount} | ${formatPercent(ratio(corpus.coveredCount, corpus.questionCount))} |`,
+			);
+			lines.push("");
+			lines.push("| 对话 | 题目类型 | 题数 | 覆盖 | 覆盖率 |");
+			lines.push("|---|---|---|---|---|");
+			corpusStories.forEach((story, index) => {
+				if (!story.applicable) return;
+				const label = privateView
+					? cell(story.story)
+					: corpusRowLabel(story.corpus, index + 1);
+				for (const score of story.byKind) {
+					lines.push(acuScoreRow(label, score.kind, score));
+				}
+			});
+			for (const score of corpus.byKind) {
+				lines.push(
+					acuScoreRow(`${corpusLabel(corpus.corpus)}合计`, score.kind, score),
+				);
+			}
+			lines.push("");
+			lines.push("按规范化之后的答案长度：");
+			lines.push("");
+			lines.push("| 答案长度 | 题数 | 覆盖 | 覆盖率 |");
+			lines.push("|---|---|---|---|");
+			for (const score of corpus.byAnswerLength) {
+				lines.push(
+					`| ${cell(score.label)} | ${score.questionCount} | ${score.coveredCount} | ${formatPercent(ratio(score.coveredCount, score.questionCount))} |`,
+				);
+			}
+		} else {
+			lines.push("没有可评测的对话。");
+		}
+		if (skipped.length > 0) {
+			lines.push("");
+			if (privateView) {
+				lines.push(
+					`未评测：${skipped
+						.map((story) => `${cell(story.story)}（${story.reason}）`)
+						.join("、")}`,
+				);
+			} else {
+				lines.push(`未评测：${skipped.length} 个对话`);
+			}
+		}
 	}
 }
 
@@ -631,6 +760,25 @@ function renderRegexDetails(
 			lines.push(`| ${cell(item.tag)} | ${item.scriptCount} |`);
 		}
 	}
+}
+
+function groupChats(
+	chats: readonly ChatReportEntry[],
+): readonly { corpus: StoryCorpus; chats: readonly ChatReportEntry[] }[] {
+	const groups: { corpus: StoryCorpus; chats: ChatReportEntry[] }[] = [];
+	for (const corpus of STORY_CORPORA) {
+		const list = chats.filter((chat) => chat.corpus === corpus);
+		if (list.length > 0) groups.push({ corpus, chats: list });
+	}
+	return groups;
+}
+
+function corpusLabel(corpus: StoryCorpus): string {
+	return corpus === "legacy" ? "旧语料" : "新增语料";
+}
+
+function corpusRowLabel(corpus: StoryCorpus, index: number): string {
+	return corpus === "legacy" ? `对话 ${index}` : `新增对话 ${index}`;
 }
 
 function sumChats(chats: readonly ChatReportEntry[]): HealthTotals {

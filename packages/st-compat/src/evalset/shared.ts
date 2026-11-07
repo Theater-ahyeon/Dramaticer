@@ -1,3 +1,11 @@
+import type { StoryCorpus } from "../health/manifest.js";
+
+export interface SkippedStory {
+	readonly story: string;
+	readonly corpus: StoryCorpus;
+	readonly reason: string;
+}
+
 export function requireNonEmpty(value: string, label: string): string {
 	if (typeof value !== "string" || value.trim().length === 0) {
 		throw new Error(`${label} 必须是非空字符串`);

@@ -7,6 +7,7 @@ import {
 	buildEventQuestions,
 	buildEventQuestionsFromFile,
 	parseChatJsonl,
+	planEventQuestions,
 	verifyEventQuestions,
 	verifyEventQuestionsFromFile,
 } from "../src/index.js";
@@ -345,6 +346,30 @@ describe("buildEventQuestions", () => {
 				options({ minWindowFloors: 10 }),
 			),
 		).rejects.toThrow(/构造不出窗口/);
+	});
+});
+
+describe("planEventQuestions", () => {
+	it("不调用模型，按窗口数给出请求估算", async () => {
+		const plan = await planEventQuestions(
+			parseChatJsonl([buildLines().join("\n")]),
+			options(),
+		);
+		expect(plan.story).toBe(storyId);
+		expect(plan.floorCount).toBe(64);
+		expect(plan.availableWindowCount).toBeGreaterThan(0);
+		expect(plan.windowCount).toBe(Math.min(plan.availableWindowCount, 6));
+		expect(plan.requestCount).toBe(plan.windowCount);
+	});
+
+	it("楼层不足时返回零个窗口", async () => {
+		const plan = await planEventQuestions(
+			parseChatJsonl([buildLines(2).join("\n")]),
+			options(),
+		);
+		expect(plan.floorCount).toBe(2);
+		expect(plan.windowCount).toBe(0);
+		expect(plan.requestCount).toBe(0);
 	});
 });
 

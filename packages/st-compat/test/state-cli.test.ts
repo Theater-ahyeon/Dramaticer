@@ -38,6 +38,7 @@ describe("writeStateSummary", () => {
 			const stories = [
 				{
 					story: "故事甲",
+					corpus: "legacy",
 					file: "state-故事甲.jsonl",
 					questions: 60,
 					candidates: 80,
@@ -46,6 +47,7 @@ describe("writeStateSummary", () => {
 					paths: 20,
 					verified: 60,
 					sampled: ["q1", "q2"],
+					skipped: null,
 				},
 			];
 			const summaryPath = await writeStateSummary(

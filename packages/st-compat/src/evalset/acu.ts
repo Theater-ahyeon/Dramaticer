@@ -7,7 +7,12 @@ import {
 } from "@dramaticer/core";
 import Database from "better-sqlite3";
 import { parseChatJsonlFile } from "../chat-jsonl.js";
-import { isLegacyCorpus, openSnapshot } from "../health/manifest.js";
+import {
+	STORY_CORPORA,
+	type StoryCorpus,
+	openSnapshot,
+	storyCorpus,
+} from "../health/manifest.js";
 import { parseMessageIndex } from "../node-id.js";
 import type { QuestionKind, RetrievalQuestion } from "./question-files.js";
 import {
@@ -16,6 +21,7 @@ import {
 	storyIdOf,
 } from "./question-files.js";
 import { addCounts, emptyCounts, requireNonEmpty } from "./shared.js";
+import type { SkippedStory } from "./shared.js";
 
 const KIND_ORDER: readonly QuestionKind[] = ["state", "event"];
 const ANSWER_LENGTH_BUCKETS: readonly {
@@ -46,6 +52,7 @@ export interface AcuLengthScore extends AcuScore {
 
 export interface AcuStoryScore extends AcuScore {
 	readonly story: string;
+	readonly corpus: StoryCorpus;
 	/** 这个对话里是否存在任何 ACU 表格数据；没有就是“不适用” */
 	readonly applicable: boolean;
 	/** 有表格内容的提问楼层数 */
@@ -54,9 +61,19 @@ export interface AcuStoryScore extends AcuScore {
 	readonly byAnswerLength: readonly AcuLengthScore[];
 }
 
+export interface AcuCorpusScore extends AcuScore {
+	readonly corpus: StoryCorpus;
+	readonly chatCount: number;
+	readonly skippedStoryCount: number;
+	readonly byKind: readonly AcuKindScore[];
+	readonly byAnswerLength: readonly AcuLengthScore[];
+}
+
 export interface AcuBaseline {
 	readonly generatedAt: string;
 	readonly stories: readonly AcuStoryScore[];
+	readonly corpora: readonly AcuCorpusScore[];
+	readonly skippedStories: readonly SkippedStory[];
 	readonly byKind: readonly AcuKindScore[];
 	readonly byAnswerLength: readonly AcuLengthScore[];
 	readonly total: AcuScore;
@@ -65,6 +82,7 @@ export interface AcuBaseline {
 export interface EvaluateAcuCoverageOptions {
 	readonly chatPath: string;
 	readonly storyId: string;
+	readonly corpus: StoryCorpus;
 	readonly questions: readonly RetrievalQuestion[];
 }
 
@@ -213,6 +231,7 @@ export async function evaluateAcuCoverage(
 	}
 	return {
 		story: storyId,
+		corpus: options.corpus,
 		applicable,
 		snapshotFloorCount,
 		byKind: kindScores,
@@ -225,16 +244,20 @@ export async function collectAcuBaseline(
 	options: CollectAcuBaselineOptions,
 ): Promise<AcuBaseline> {
 	const snapshot = await openSnapshot(options.rawRoot);
-	const chatFiles = snapshot.filesByRole("chat").filter(isLegacyCorpus);
+	const chatFiles = snapshot.filesByRole("chat");
 	if (chatFiles.length === 0) {
 		throw new Error("manifest 里没有 chat");
 	}
 
 	const stories: AcuStoryScore[] = [];
+	const skippedStories: SkippedStory[] = [];
 	for (const file of chatFiles) {
 		const story = storyIdOf(file);
+		const corpus = storyCorpus(file);
 		const baseName = sanitizeFileName(story);
+		const chatPath = await snapshot.resolveFile(file);
 		const questions: RetrievalQuestion[] = [];
+		let skipReason: string | null = null;
 		for (const kind of KIND_ORDER) {
 			const questionPath = path.join(
 				options.evalsetRoot,
@@ -242,21 +265,63 @@ export async function collectAcuBaseline(
 			);
 			if (!existsSync(questionPath)) {
 				if (kind === "state") {
-					throw new Error(`缺少状态题文件：${questionPath}`);
+					if (corpus === "legacy") {
+						throw new Error(`缺少状态题文件：${questionPath}`);
+					}
+					skipReason = "缺少状态题文件";
+					break;
 				}
 				continue;
 			}
 			questions.push(...(await readQuestionFile(questionPath, kind)));
 		}
+		if (skipReason !== null) {
+			skippedStories.push({ story, corpus, reason: skipReason });
+			continue;
+		}
 		stories.push(
 			await evaluateAcuCoverage({
-				chatPath: await snapshot.resolveFile(file),
+				chatPath,
 				storyId: story,
+				corpus,
 				questions,
 			}),
 		);
 	}
 
+	const corpora: AcuCorpusScore[] = [];
+	for (const corpus of STORY_CORPORA) {
+		const corpusStories = stories.filter((story) => story.corpus === corpus);
+		const skipped = skippedStories.filter((story) => story.corpus === corpus);
+		if (corpusStories.length === 0 && skipped.length === 0) continue;
+		const aggregate = aggregateAcuScores(corpusStories);
+		corpora.push({
+			corpus,
+			chatCount: corpusStories.length + skipped.length,
+			skippedStoryCount: skipped.length,
+			...aggregate.total,
+			byKind: aggregate.byKind,
+			byAnswerLength: aggregate.byAnswerLength,
+		});
+	}
+
+	const overall = aggregateAcuScores(stories);
+	return {
+		generatedAt: options.generatedAt ?? new Date().toISOString(),
+		stories,
+		corpora,
+		skippedStories,
+		byKind: overall.byKind,
+		byAnswerLength: overall.byAnswerLength,
+		total: overall.total,
+	};
+}
+
+function aggregateAcuScores(stories: readonly AcuStoryScore[]): {
+	readonly total: AcuScore;
+	readonly byKind: readonly AcuKindScore[];
+	readonly byAnswerLength: readonly AcuLengthScore[];
+} {
 	const total = emptyCounts(SCORE_KEYS);
 	const byKind = new Map<QuestionKind, MutableScore>();
 	const byLength = new Map<string, MutableScore>();
@@ -290,14 +355,7 @@ export async function collectAcuBaseline(
 		const score = byLength.get(bucket.label);
 		if (score) lengthScores.push({ label: bucket.label, ...score });
 	}
-
-	return {
-		generatedAt: options.generatedAt ?? new Date().toISOString(),
-		stories,
-		byKind: kindScores,
-		byAnswerLength: lengthScores,
-		total,
-	};
+	return { total, byKind: kindScores, byAnswerLength: lengthScores };
 }
 
 function answerLengthBucket(length: number): string {

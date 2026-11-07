@@ -63,3 +63,5 @@
 - 2026-11-07 | S50 | M2-T15 | DONE | 新增 `memory-eval`：导入 3 个对话、实体与 13,818 条块向量，按文本缓存 embedding，`retrieveMemory` 对 386 道题按题型与对话计分；core 拆出 `rankMemoryRoutes` 与 `fuseRetrievalRoutes`，实体命中改为按名称排序以保证复现；融合状态题@20 13.6%、事件题@5 83.3%、@20 98.0%，状态 45% 与事件 @5 88% 未通过、事件 @20 通过，9 个分对话非回归门槛 7 个通过（对话 1、3 的事件 @5 未通过）；事件表因后台渠道 2.7 次/分钟未建立并在报告中标注；ADR-0023 与 HUMAN-08 记录状态题口径，M2-T99 阻塞；8 个新测试，门禁通过（461 个测试）
 
 - 2026-11-07 | S51 | D-T01 | DONE | 快照脚本新增 latest 取样：每个对话目录取最新 jsonl，排除 legacy 三个目录，按修改时间降序取 `DRAMATICER_LATEST_CHATS` 个（默认 4，0 关闭），连同角色卡与世界书复制；manifest 每条新增 `corpus`（legacy/latest，预设 shared）与 `sourceMtime`，解析层校验并保留；实测 94 个文件、legacy 9 条、latest 11 条、shared 74 条，重复运行 `files` 数组完全一致，legacy 对话与卡、世界书路径和 sha256 不变；五个评测入口只读 legacy 语料，避免新增语料缺题目文件时报错；2 个新测试，门禁通过（463 个测试）
+
+- 2026-11-07 | S52 | D-T02 | DONE | `manifest` 新增 `storyCorpus` 与 `STORY_CORPORA`；体检的对话体量、状态存储、重复度与 BM25、ACU 三节按 legacy/latest 分栏，旧语料数字保持不变；`state-cli` 按语料选择出题参数（legacy 50–100、gap 30；latest gap 3、最多 50、允许空结果），新增语料生成 101 道题，单楼对话跳过；`collectRetrievalBaseline` 对新增语料缺状态题时跳过并记录原因，`planEventQuestions` 按窗口给出事件题请求估算（新增语料 3 次）；两份报告重新生成，重复运行除生成时间外逐字节一致；新增 7 个测试，门禁通过（470 个测试）

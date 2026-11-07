@@ -91,6 +91,31 @@ describe("readSnapshot", () => {
 });
 
 describe("buildStateQuestions", () => {
+	it("allowEmpty 时没有候选返回空结果", async () => {
+		const lines = [
+			JSON.stringify({ character_name: "测试角色" }),
+			JSON.stringify({
+				name: "角色",
+				is_user: false,
+				mes: "只有一楼",
+				variables: [{ stat_data: { hp: 100 } }],
+			}),
+		];
+		const result = await buildStateQuestions(
+			parseChatJsonl([lines.join("\n")]),
+			{
+				storyId,
+				allowEmpty: true,
+			},
+		);
+		expect(result.questions).toEqual([]);
+		expect(result.stats.questionCount).toBe(0);
+		expect(result.stats.candidateCount).toBe(0);
+		await expect(
+			buildStateQuestions(parseChatJsonl([lines.join("\n")]), { storyId }),
+		).rejects.toThrow("没有满足间隔要求的状态题候选");
+	});
+
 	it("按稳定区间出题，答案取快照，证据是变化楼层", async () => {
 		const { result } = await generate();
 		expect(result.questions).toHaveLength(6);
