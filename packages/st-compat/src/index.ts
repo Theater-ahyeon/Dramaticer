@@ -3,6 +3,7 @@ import { getCoreVersion } from "@dramaticer/core";
 export * from "./character-card.js";
 export * from "./chat-import.js";
 export * from "./chat-jsonl.js";
+export * from "./evalset/acu.js";
 export * from "./evalset/event-questions.js";
 export * from "./evalset/question-files.js";
 export * from "./evalset/retrieval.js";

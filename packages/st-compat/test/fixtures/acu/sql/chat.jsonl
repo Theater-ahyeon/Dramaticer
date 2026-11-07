@@ -1,0 +1,7 @@
+{"user_name":"用户","character_name":"数据库故事"}
+{"name":"角色","is_user":false,"is_system":false,"mes":"初始化。","TavernDB_ACU_IsolatedData":{"":{"storageFrame":{"version":2,"logEntries":[{"seq":1,"operations":[{"kind":"sql_sheet_batch","sheetKey":"sheet_t","statements":["INSERT OR REPLACE INTO t_state (row_id, place) VALUES (1, '集市')"]}]}]}}}}
+{"name":"用户","is_user":true,"is_system":false,"mes":"第二楼。"}
+{"name":"角色","is_user":false,"is_system":false,"mes":"更新地点。","TavernDB_ACU_IsolatedData":{"":{"storageFrame":{"version":2,"logEntries":[{"seq":1,"operations":[{"kind":"sql_batch","statements":["UPDATE t_state SET place = ? WHERE row_id = ?;"],"params":[["矿镇","1"]]}]}]}}}}
+{"name":"用户","is_user":true,"is_system":false,"mes":"第四楼。"}
+{"name":"角色","is_user":false,"is_system":false,"mes":"插入纪要。","TavernDB_ACU_IsolatedData":{"":{"storageFrame":{"version":2,"logEntries":[{"seq":1,"operations":[{"kind":"sql_sheet_batch","sheetKey":"sheet_j","statements":["INSERT INTO t_journal (entry) VALUES ('夜里下了雨')"]}]}]}}}}
+{"name":"用户","is_user":true,"is_system":false,"mes":"第六楼。"}

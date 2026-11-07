@@ -10,6 +10,7 @@ export interface RetrievalQuestion {
 	readonly story: string;
 	readonly askAtNode: string;
 	readonly question: string;
+	readonly answer: string;
 	readonly evidenceNodes: readonly string[];
 	readonly kind: QuestionKind;
 }
@@ -66,6 +67,7 @@ function parseQuestion(
 		story: requireString(value.story, `${label} 的 story`),
 		askAtNode: requireString(value.askAtNode, `${label} 的 askAtNode`),
 		question: requireString(value.question, `${label} 的 question`),
+		answer: readAnswer(value.answer, `${label} 的 answer`),
 		evidenceNodes: value.evidenceNodes.map((node, index) =>
 			requireString(node, `${label} 的 evidenceNodes[${index}]`),
 		),
@@ -78,4 +80,16 @@ function requireString(value: unknown, label: string): string {
 		throw new Error(`${label} 必须是非空字符串`);
 	}
 	return value;
+}
+
+/** 状态题的答案可能是数字或布尔值，统一转成文本供比较。 */
+function readAnswer(value: unknown, label: string): string {
+	if (typeof value === "string") {
+		if (value.length === 0) throw new Error(`${label} 必须是非空字符串`);
+		return value;
+	}
+	if (typeof value === "number" || typeof value === "boolean") {
+		return String(value);
+	}
+	throw new Error(`${label} 必须是字符串、数字或布尔值`);
 }

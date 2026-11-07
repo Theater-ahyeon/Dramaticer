@@ -3,36 +3,32 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加），按下面的模板填写。
 
 ## 最近一次会话
-- 会话：13
-- 任务：M0-T12 朴素 BM25 检索基线
-- 结果：完成。core 新增 `src/retrieval/chunk-text.ts`（固定窗口分块，默认 400 字符、重叠 80）和 `src/retrieval/chunk-index.ts`（FTS5 trigram 块索引，查询侧取三字窗口用 OR 连接）；st-compat 新增 `evalset/retrieval.ts`（按题目在提问楼层之前检索、统计命中@5/10/20）和 `evalset/question-files.ts`（题目文件读取与文件名工具），体检报告新增检索基线章节。3 个对话 386 题：命中@5 = 126（32.6%），@10 = 143（37.0%），@20 = 153（39.6%）；事件题分别是 113/128/137（75.3%/85.3%/91.3%），状态题 13/15/16（5.5%/6.4%/6.8%）。16 个新测试，`pnpm check` 通过（invariants → typecheck → lint → 150 个测试）。
+- 会话：14
+- 任务：M0-T13 ACU 对照组
+- 结果：完成。st-compat 新增 `src/evalset/acu.ts`：从三种来源还原提问楼层之前最近的表格内容——① 头部 `chat_metadata.sheets` 的 `cellHistory`（cell uid → 值）配合逐楼层 `hash_sheets` 的 cell uid 网格；② `TavernDB_ACU_Data` 与 `TavernDB_ACU_IsolatedData.independentData` 的整表 `content`；③ `TavernDB_ACU_IsolatedData.storageFrame.logEntries` 里的 SQL 更新，在内存 SQLite 里按楼层顺序重放（按 INSERT 列名建表，`sql_batch` 的参数绑定执行）。答案在 NFKC 规范化、去掉空白/标点/符号后做包含判断。报告新增“ACU 对照组（表格覆盖）”章节（私有版与统计版）。3 个对话 386 题：覆盖 91（23.6%），状态题 88/236（37.3%），事件题 3/150（2.0%）；按答案长度：1 字符 27/33、2–3 字符 39/61、4–9 字符 25/69、10 字符以上 0/223。7 个新测试，`pnpm check` 通过（157 个测试）。
 
 ## 当前状态
-- 门禁：`pnpm check` 通过（150 个测试）。
-- core/retrieval（从 `index.ts` 导出）：
-  - `chunkText(text, {maxChars, overlapChars})`：按 Unicode 码点切固定窗口，默认 400/80；空白文本返回空数组；不会拆开代理对。
-  - `ChunkIndex`：`open(path = ":memory:")`，`add(chunks)`，`search(query, {storyId, nodeIds, limit})`，`count()`，`close()`。FTS5 表名 `chunk_text`，trigram 分词，`bm25()` 升序排序（分数越小越相关）。
-  - `buildTrigramQuery(text)`：NFKC 后删除标点、符号和空白，生成全部连续三字窗口，`"..." OR "..."`；不足三字返回 null。
-  - `search` 的 `nodeIds` 用 JSON `json_each` 过滤；传入空数组直接返回空结果。
-- st-compat/evalset：
-  - `question-files.ts`：`RetrievalQuestion`（id、story、askAtNode、question、evidenceNodes、kind）、`readQuestionFile`、`sanitizeFileName`、`storyIdOf`。状态题 CLI 和事件题 CLI 已改用这里的工具，删掉了各自的副本。
-  - `retrieval.ts`：`evaluateRetrieval({chatPath, storyId, questions, maxChars?, overlapChars?})` 现场建块索引，只允许提问楼层之前的节点；`collectRetrievalBaseline({rawRoot, evalsetRoot})` 按 manifest 读 `state-<故事>.jsonl`（必需）和 `event-<故事>.jsonl`（可选），汇总每个对话、每种题型的命中数。
-- 体检报告：
-  - `health/manifest.ts`：从 `report.ts` 移出的 manifest 类型与读取函数；`report.ts` 继续 re-export，旧的 import 不用改。
-  - `report.ts` 的 `renderPrivateReport(report, retrieval?)` 和 `renderPublicReport(report, retrieval?)` 接受可选的检索基线，追加“## 检索基线（BM25）”章节；统计版只显示“对话 N”，不出现故事名。
-  - `health/cli.ts` 先跑体检，再跑检索基线，两个报告一起写。因此 `pnpm --filter @dramaticer/st-compat report` 现在要求 `eval-private/evalset/state-*.jsonl` 已经生成（M0-T10）。
-- 数据核对：386 道题的所有 askAtNode 和 evidenceNodes 都是当前 swipe 的节点 id，块索引覆盖全部证据楼层（0 个缺失、0 个 swipe 不一致），所以基线数字没有受 swipe 影响。
-- 依赖没有变化；core 不出现 ST 概念（I1）。`scripts/` 与 `tools/` 未修改。
+- 门禁：`pnpm check` 通过（157 个测试）。
+- `packages/st-compat/src/evalset/acu.ts`（从 `index.ts` 导出）：
+  - `normalizeForTableMatch(text)`：NFKC、转小写、删掉 `\s`、`\p{P}`、`\p{S}`。
+  - `evaluateAcuCoverage({chatPath, storyId, questions})`：单次流式读聊天文件；提问楼层取该楼层处理前的表格状态（消息序号 `< askIndex`）；返回 `applicable`、`snapshotFloorCount`、`byKind`、`byAnswerLength` 与总覆盖数。
+  - `collectAcuBaseline({rawRoot, evalsetRoot})`：按 manifest 读 `state-<故事>.jsonl`（必需）与 `event-<故事>.jsonl`（可选）；没有表格数据的对话 `applicable=false`，不进入合计。
+  - 表格来源语义：`hash_sheets` 是整份替换（后出现的消息覆盖前一份）；`TavernDB_ACU_Data` / `independentData` 按 sheet uid 合并；`storageFrame.logEntries` 只走 SQL 重放。`sheet_replace` 的 `content` 不参与快照，避免与 SQL 状态重复和过期。
+  - `AcuTableDatabase`：`sql_sheet_batch` 用 `exec`，`sql_batch` 用参数绑定；表不存在时按第一条 INSERT 的列名建表（`row_id` 为 INTEGER PRIMARY KEY，其余 TEXT）；建表失败或语句出错直接抛错。
+- `evalset/question-files.ts`：`RetrievalQuestion` 新增 `answer`，解析时接受字符串、数字、布尔值（数字/布尔转文本），空字符串报错。
+- 体检报告：`renderPrivateReport(report, retrieval?, acu?)`、`renderPublicReport(report, retrieval?, acu?)` 新增第三个参数；`health/cli.ts` 先跑体检、检索基线、ACU 基线再写两份报告。统计版的 ACU 章节只出现“对话 N”。
+- 依赖：`better-sqlite3` 与 `@types/better-sqlite3` 加到 `packages/st-compat`（`DEPENDENCIES.md` 已有登记，不需要新增行）。
+- 测试：新增 `test/acu.test.ts`（7 个）与 `test/fixtures/acu/`（cells、sql、none 三套聊天与 manifest、typed-answers）；`retrieval` 测试与 fixture 补了 `answer` 字段；`fixtures/evalset/state-测试角色.jsonl` 也补了 `answer`。
 
 ## 下一步
-- 执行 M0-T13（ACU 对照组）：先探测 `chat_metadata.sheets`、消息里的 `TavernDB_ACU_*`、`hash_sheets`，在提问楼层时刻取表格内容，用规范化字符串匹配判断答案是否出现；没有 ACU 数据的对话记“不适用”。把覆盖率写进 health（私有版和统计版）。
+- 执行 M0-REVIEW-1（代码与不变量审查）：按 TASKS 里的条目逐条核对，结论写 `docs/dev/reports/M0-review-1.md`，发现的问题转成 `M0-FIX-n` 插在任务下面。
 - 之后 M0-T99（M0 验收）：汇总所有报告，逐条审查 I1–I10，确认 M1 任务清单。
-- M1 之前处理 HUMAN-05：后台渠道账号仍被停用；第三个对话用了 `auto/deepseek-v4.1-flash`。换模型会让 `eval-private/llm-cache` 全部失效。
-- HUMAN-01 里的 antigravity 账号被停用属于上游封禁，不是代码问题，不要反复重试。
 
 ## 注意事项
+- ACU 覆盖率的数字要连带解释：事件题答案通常是长句，规范化后整句包含几乎不会命中；状态题里 1–3 字符的答案（例如 `是`、`0`、`2`）在表格里很容易偶然出现。报告里已经按答案长度分档，引用数字时不要只引合计。
+- 当前 `.env` 指向 `opendesign/deepseek-v4.1-flash`（HUMAN-05 已完成）。M0-T13 没有调用 LLM；ACU 判定只用字符串匹配。
+- `pnpm --filter @dramaticer/st-compat report` 现在会跑三件事：体检、检索基线、ACU 基线，耗时约 9 秒；需要 `eval-private/evalset/` 里已有状态题和事件题文件。
 - `.env` 已由人类填写，**不要覆盖**；`.env.example` 只列变量名。
-- 当前 `.env` 仍指向已停用的 `antigravity/gemini-3.8-flash`。临时换模型用命令行环境变量覆盖，例如 `DRAMATICER_BG_MODEL=auto/deepseek-v4.1-flash pnpm --filter @dramaticer/st-compat evalset:events`。
 - 缓存按模型区分；换模型不会命中旧缓存。删除 `eval-private/llm-cache` 可以强制重新生成。缓存和评测集都包含私有正文，只能留在被 git 忽略的目录。
 - 状态题核对依赖“空对象表示没有更新”的语义（ADR-0006）；改动 `readSnapshot` 或快照展开规则时，必须同时重新跑 `evalset`。
 - 检索基线的阈值：固定 400 字符、重叠 80；改动分块大小会改变命中率，报告里记录了这两个数字。state 题普遍命中低是因为变量值不写在正文里，这是基线应有的结果，不要为了数字去调整题目。

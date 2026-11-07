@@ -1,0 +1,6 @@
+{"user_name":"用户","character_name":"表格故事","chat_metadata":{"sheets":[{"uid":"sheet_t","name":"状态表","enable":true,"cellHistory":[{"uid":"cell_h1","data":{"value":"地点"},"type":"column_header"},{"uid":"cell_v1","data":{"value":"集市"},"type":"undefined"},{"uid":"cell_h2","data":{"value":"时间"},"type":"column_header"},{"uid":"cell_v2","data":{"value":"12:00"},"type":"undefined"},{"uid":"cell_v3","data":{"value":"矿镇"},"type":"undefined"}]}]}}
+{"name":"角色","is_user":false,"is_system":false,"mes":"开场。"}
+{"name":"角色","is_user":false,"is_system":false,"mes":"第二楼。","hash_sheets":{"sheet_t":[["cell_h1","cell_v1"],["cell_h2","cell_v2"]]}}
+{"name":"用户","is_user":true,"is_system":false,"mes":"第三楼。"}
+{"name":"角色","is_user":false,"is_system":false,"mes":"第四楼。","hash_sheets":{"sheet_t":[["cell_h1","cell_v3"]]}}
+{"name":"用户","is_user":true,"is_system":false,"mes":"第五楼。"}

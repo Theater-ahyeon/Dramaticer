@@ -1,4 +1,5 @@
 import path from "node:path";
+import type { AcuBaseline, AcuScore } from "../evalset/acu.js";
 import type {
 	RetrievalBaseline,
 	RetrievalScore,
@@ -114,6 +115,7 @@ export async function collectHealthReport(
 export function renderPrivateReport(
 	report: HealthReport,
 	retrieval?: RetrievalBaseline,
+	acu?: AcuBaseline,
 ): string {
 	const lines: string[] = [];
 	lines.push("# M0 私有体检报告", "");
@@ -236,12 +238,17 @@ export function renderPrivateReport(
 		lines.push("");
 		renderRetrievalSection(lines, retrieval, true);
 	}
+	if (acu) {
+		lines.push("");
+		renderAcuSection(lines, acu, true);
+	}
 	return `${lines.join("\n")}\n`;
 }
 
 export function renderPublicReport(
 	report: HealthReport,
 	retrieval?: RetrievalBaseline,
+	acu?: AcuBaseline,
 ): string {
 	const lines: string[] = [];
 	lines.push("# M0 体检报告（统计版）", "");
@@ -403,6 +410,10 @@ export function renderPublicReport(
 		lines.push("");
 		renderRetrievalSection(lines, retrieval, false);
 	}
+	if (acu) {
+		lines.push("");
+		renderAcuSection(lines, acu, false);
+	}
 	lines.push("");
 	lines.push("## 方法");
 	lines.push("");
@@ -420,6 +431,9 @@ export function renderPublicReport(
 	);
 	lines.push(
 		"- 正则分类按 findRegex 与 replaceString 的结构判定，判定顺序依次是流式版本、内联脚本、渲染 HTML、删除思考链、删除内容、重排捕获内容、文本替换。可升级指这条正则能改由块策略、渲染器或沙箱渲染器承担；比例按启用的脚本计算。",
+	);
+	lines.push(
+		"- ACU 对照组的表格内容来自对话头部的 `sheets` 单元格历史与逐楼层 `hash_sheets`、消息里的 `TavernDB_ACU_Data`，以及 `TavernDB_ACU_IsolatedData` 里记录的 SQL 更新。SQL 更新在内存 SQLite 里按楼层顺序重放；表格和答案都做 NFKC 规范化、去掉空白与标点后再判断包含。",
 	);
 	return `${lines.join("\n")}\n`;
 }
@@ -470,6 +484,66 @@ function scoreRow(
 		.map((hit) => `${hit}（${formatPercent(ratio(hit, score.questionCount))}）`)
 		.join(" | ");
 	return `| ${label} | ${questionType} | ${score.questionCount} | ${hits} |`;
+}
+
+function renderAcuSection(
+	lines: string[],
+	acu: AcuBaseline,
+	privateView: boolean,
+): void {
+	lines.push("## ACU 对照组（表格覆盖）");
+	lines.push("");
+	lines.push(
+		"在提问楼层之前最近的 ACU 表格内容里查找标准答案：表格文本和答案都做 NFKC 规范化、去掉空白与标点符号之后再判断包含。没有表格数据的对话记为“不适用”，不进入合计。",
+	);
+	lines.push("");
+	lines.push("| 对话 | 题数 | 有表格内容的提问楼层 | 覆盖 | 覆盖率 |");
+	lines.push("|---|---|---|---|---|");
+	acu.stories.forEach((story, index) => {
+		const label = privateView ? cell(story.story) : `对话 ${index + 1}`;
+		if (!story.applicable) {
+			lines.push(`| ${label} | 不适用 | 0 | 0 | 不适用 |`);
+			return;
+		}
+		lines.push(
+			`| ${label} | ${story.questionCount} | ${story.snapshotFloorCount} | ${story.coveredCount} | ${formatPercent(ratio(story.coveredCount, story.questionCount))} |`,
+		);
+	});
+	lines.push(
+		`| 合计 | ${acu.total.questionCount} | — | ${acu.total.coveredCount} | ${formatPercent(ratio(acu.total.coveredCount, acu.total.questionCount))} |`,
+	);
+	lines.push("");
+	lines.push("| 对话 | 题目类型 | 题数 | 覆盖 | 覆盖率 |");
+	lines.push("|---|---|---|---|---|");
+	acu.stories.forEach((story, index) => {
+		if (!story.applicable) return;
+		const label = privateView ? cell(story.story) : `对话 ${index + 1}`;
+		for (const score of story.byKind) {
+			lines.push(acuScoreRow(label, score.kind, score));
+		}
+	});
+	for (const score of acu.byKind) {
+		lines.push(acuScoreRow("合计", score.kind, score));
+	}
+	lines.push("");
+	lines.push("按规范化之后的答案长度（合计）：");
+	lines.push("");
+	lines.push("| 答案长度 | 题数 | 覆盖 | 覆盖率 |");
+	lines.push("|---|---|---|---|");
+	for (const score of acu.byAnswerLength) {
+		lines.push(
+			`| ${cell(score.label)} | ${score.questionCount} | ${score.coveredCount} | ${formatPercent(ratio(score.coveredCount, score.questionCount))} |`,
+		);
+	}
+}
+
+function acuScoreRow(
+	label: string,
+	kind: "state" | "event",
+	score: AcuScore,
+): string {
+	const typeLabel = kind === "state" ? "状态题" : "事件题";
+	return `| ${label} | ${typeLabel} | ${score.questionCount} | ${score.coveredCount} | ${formatPercent(ratio(score.coveredCount, score.questionCount))} |`;
 }
 
 function renderPresetDetails(lines: string[], presets: PresetHealth): void {

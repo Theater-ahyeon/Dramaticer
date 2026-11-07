@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { collectAcuBaseline } from "../evalset/acu.js";
 import { collectRetrievalBaseline } from "../evalset/retrieval.js";
 import {
 	collectHealthReport,
@@ -27,16 +28,17 @@ const publicReportPath = path.join(
 
 const report = await collectHealthReport({ rawRoot });
 const retrieval = await collectRetrievalBaseline({ rawRoot, evalsetRoot });
+const acu = await collectAcuBaseline({ rawRoot, evalsetRoot });
 await mkdir(path.dirname(privateReportPath), { recursive: true });
 await mkdir(path.dirname(publicReportPath), { recursive: true });
 await writeFile(
 	privateReportPath,
-	renderPrivateReport(report, retrieval),
+	renderPrivateReport(report, retrieval, acu),
 	"utf8",
 );
 await writeFile(
 	publicReportPath,
-	renderPublicReport(report, retrieval),
+	renderPublicReport(report, retrieval, acu),
 	"utf8",
 );
 
@@ -45,6 +47,9 @@ console.log(
 );
 console.log(
 	`检索基线：${retrieval.total.questionCount} 道题，命中@5 ${retrieval.total.hitAt5}，命中@10 ${retrieval.total.hitAt10}，命中@20 ${retrieval.total.hitAt20}。`,
+);
+console.log(
+	`ACU 对照：${acu.total.questionCount} 道题，表格覆盖 ${acu.total.coveredCount}。`,
 );
 console.log(`私有报告：${privateReportPath}`);
 console.log(`统计报告：${publicReportPath}`);
