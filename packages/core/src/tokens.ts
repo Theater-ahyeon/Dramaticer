@@ -11,7 +11,7 @@ export interface TokenEstimatorOptions {
 /**
  * 创建一个不依赖分词器的 token 估算函数。
  *
- * 中文按字符数估算、其余字符按 4 个字符估算，适合在体检报告里比较不同字段的相对大小。
+ * 中文按字符数估算、其余字符按 4 个字符估算，适合比较不同段落占用预算的相对大小。
  */
 export function createTokenEstimator(
 	options: TokenEstimatorOptions = {},

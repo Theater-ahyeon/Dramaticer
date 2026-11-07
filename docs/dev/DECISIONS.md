@@ -123,3 +123,14 @@
   - CLI：`dramaticer probe <channel> [--model <alias>]`。渠道被多个模型使用时必须指定模型，避免把某个模型的能力写到另一个模型上。
 - **实测（`main` 渠道，`opendesign/deepseek-v4.1-flash`）**：流式、函数调用、思考、用量、缓存统计均支持；预填充不支持，模型忽略末尾的助手消息并重新输出完整 JSON。第二次相同的大前缀请求命中缓存 5248 个 token。流式请求收到 7 个正文增量，首个增量 2093 毫秒，2173 毫秒完成。
 - **影响**：M1-T06 直接读取 `models.<alias>.probe.structuredOutput` 选择传输方式。探测本身不重试也不限速，渠道繁忙时可能把单项记为未知；重新运行 `pnpm dramaticer probe <channel> --model <alias>` 即可刷新结果。`data/channels.yaml` 被 git 忽略，体检结果不会提交。
+
+## ADR-0012 上下文组装器的数据模型（2026-11-07）
+
+- **背景**：DESIGN §9 要求原生模板由有序段落组成，段落可以是静态文本、条件段或 harness 槽位；还要按优先级裁剪 token 预算，并在 Trace 里记录每一段的来源和 token 数。槽位内容的角色（system / user / assistant）和顺序必须能直接交给 `LlmRequest`。
+- **决定**：
+  - `packages/core/src/context/template.ts` 定义模板数据：`ContextTemplate` 是片段数组；片段只有 `static`（静态文本）与 `slot`（槽位名取自 DESIGN §9 的九个槽位）两种。条件段用片段上的 `when` 表达，不对静态段和槽位分别造条件包装类型。
+  - 条件本身也是数据：`switch`（开关，未设置按 false）、`state`（按路径 `exists` / `equals` / `truthy`），以及 `all` / `any` / `not` 组合。条件在调用槽位提供者之前求值，条件为假的槽位不会被取内容。
+  - 槽位提供者返回 `ContextMessage[]`（`role` 加 `content`）和一句来源描述，而不是纯文本：历史槽位需要按 user / assistant 交替输出，其余槽位输出 system 消息。没有提供者、返回 `null` 或返回空消息都记为 `missing-slot`，不抛错；提供者返回的消息结构不合法则直接抛错。
+  - 预算裁剪按片段的 `priority` 从高到低选择，同优先级保留模板里靠前的片段；片段整体保留或整体丢弃，不做片段内部截断。选中之后按模板顺序输出，保证上下文前缀稳定。Trace 按模板顺序列出每个片段的状态（`included`、`condition-false`、`missing-slot`、`budget-dropped`）、来源与 token 数，并给出总 token 数。
+  - `createTokenEstimator` 从 `packages/st-compat/src/health/token-estimate.ts` 移到 `packages/core/src/tokens.ts`，st-compat 的体检报告改为从 core 引用，避免两套估算函数。
+- **影响**：M1-T07 把 `AssembledContext.messages` 直接放进 `LlmRequest`，把 `trace` 写进楼层节点。片段内部截断与槽位自己的 top-K 控制留给 M2 的提供者实现；本任务只保证整体预算与可观测性。

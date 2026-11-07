@@ -1,12 +1,15 @@
 import { stat } from "node:fs/promises";
-import type { JsonObject, JsonValue } from "@dramaticer/core";
+import {
+	type JsonObject,
+	type JsonValue,
+	type TokenEstimator,
+	createTokenEstimator,
+} from "@dramaticer/core";
 import type { StChatEntry, StChatMessage } from "../chat-jsonl.js";
 import { parseChatJsonlFile } from "../chat-jsonl.js";
 import { diffSnapshots, readSnapshot } from "../state-diff.js";
 import type { DuplicationCurve, ReplyText } from "./duplication.js";
 import { analyzeDuplication } from "./duplication.js";
-import type { TokenEstimator } from "./token-estimate.js";
-import { createTokenEstimator } from "./token-estimate.js";
 
 export interface RoleCounts {
 	readonly user: number;

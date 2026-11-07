@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createTokenEstimator } from "../src/health/token-estimate.js";
+import { createTokenEstimator } from "../src/tokens.js";
 
 describe("createTokenEstimator", () => {
 	it("中文按 1.5 个字符算一个 token", () => {

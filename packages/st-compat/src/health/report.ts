@@ -1,3 +1,4 @@
+import { type TokenEstimator, createTokenEstimator } from "@dramaticer/core";
 import type { AcuBaseline, AcuScore } from "../evalset/acu.js";
 import type {
 	RetrievalBaseline,
@@ -17,8 +18,6 @@ import {
 	REGEX_CATEGORY_LABELS,
 	analyzeRegexScripts,
 } from "./regex-health.js";
-import type { TokenEstimator } from "./token-estimate.js";
-import { createTokenEstimator } from "./token-estimate.js";
 
 export interface ChatReportEntry {
 	readonly character: string | null;

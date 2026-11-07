@@ -1,7 +1,6 @@
+import { type TokenEstimator, createTokenEstimator } from "@dramaticer/core";
 import { parsePresetFile } from "../preset.js";
 import type { StPreset } from "../preset.js";
-import type { TokenEstimator } from "./token-estimate.js";
-import { createTokenEstimator } from "./token-estimate.js";
 
 export interface MacroUse {
 	readonly name: string;

@@ -3,29 +3,30 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加），按下面的模板填写。
 
 ## 最近一次会话
-- 会话：30
-- 任务：M1-T03 渠道体检
+- 会话：31
+- 任务：M1-T04 原生上下文模板与组装器
 - 结果：完成（`DONE`）。
-  - 新增 `packages/core/src/llm/probe.ts`：`probeChannel` 对单个渠道依次检查流式、思考、用量、函数调用、预填充与缓存统计。流式按正文增量个数判定（不少于 2 个为 `streaming`，只有 1 个或正文只在结束时到达为 `buffered`）；缓存统计用同一个大前缀连续请求两次，看第二次的 `cachedTokens`。
-  - `core/llm` 接口扩展：`LlmRequest`、`LlmProviderRequest` 增加可选 `tools`，`LlmResult`、`LlmProviderResult` 增加 `toolCalls`；pi 适配器映射工具定义并提取工具调用，路由层透传，缓存键只在带工具时把工具定义并入请求体（不带工具的旧缓存键不变）。
-  - `channels.ts` 增加 `LlmModelProbe` 类型、`models.<alias>.probe` 的解析与 `writeModelProbe`。写回用 YAML Document，保留注释与 `${ENV}` 引用原文。
-  - CLI：`packages/core/src/cli/index.ts`，命令 `dramaticer probe <channel> [--model <alias>]`；渠道被多个模型使用时必须指定 `--model`。根目录脚本 `pnpm dramaticer ...`，core 脚本 `pnpm --filter @dramaticer/core probe`，`package.json` 增加 `bin.dramaticer`。
-  - 真实渠道（`main`，`opendesign/deepseek-v4.1-flash`）：流式、函数调用、思考、用量、缓存统计均支持；预填充不支持，模型忽略末尾助手消息并重新输出完整 JSON。流式请求 7 个正文增量，首个增量 2093 毫秒，2173 毫秒完成；第二次相同的大前缀请求命中缓存 5248 个 token。
-  - 新增 9 个模拟提供方测试与 1 个 `llm-probe.live.test.ts`（默认跳过，`DRAMATICER_LIVE=1` 时运行）。门禁 `pnpm check` 通过（32 个测试文件、250 个测试）。
+  - 新增 `packages/core/src/context/template.ts`：`ContextTemplate` 是片段数组，片段只有 `static`（静态文本）与 `slot`（`lore`、`character`、`persona`、`summary`、`state`、`memory`、`history`、`director`、`protocol`）两种。条件段用片段上的 `when` 表达；条件本身是数据：`switch`（未设置按 false）、`state`（按路径 `exists` / `equals` / `truthy`）、`all` / `any` / `not`。
+  - 新增 `packages/core/src/context/assembler.ts`：`assembleContext` 先求值条件（条件为假的槽位不调用提供者），再向 `ContextSlotProvider` 取 `ContextMessage[]` 与来源描述。没有提供者、返回 `null` 或空消息记 `missing-slot`；消息结构不合法直接抛错。
+  - 预算按片段 `priority` 从高到低整体保留，同优先级保留模板里靠前的片段；选中后按模板顺序输出，保证前缀稳定。Trace 按模板顺序记录每个片段的 `status`（`included`、`condition-false`、`missing-slot`、`budget-dropped`）、`source`、`tokens`、`priority`，以及总 token 数。
+  - `createTokenEstimator` 从 `packages/st-compat/src/health/token-estimate.ts` 移到 `packages/core/src/tokens.ts`，st-compat 的体检报告与测试改从 core 引用，旧文件删除。ADR-0012 记录数据模型。
+  - 15 个组装器测试、5 个 token 测试；门禁 `pnpm check` 通过（33 个测试文件、265 个测试，另 1 个 live 跳过）。
 
 ## 当前状态
-- M1-T03 已完成；下一会话执行 M1-T04（原生上下文模板与组装器）。
-- 门禁：`pnpm check` 通过（250 个测试）。
-- `data/channels.yaml` 的 `models.main.probe` 已有本机体检结果；该文件被 git 忽略。新克隆仓库复制 `channels.example.yaml` 后，先运行 `pnpm dramaticer probe main --model main` 再使用体检结果。
-- `probeChannel` 直接调用渠道适配器，不经过 `LlmRouter` 的限速、重试与缓存；单项失败会记为 `unknown` 并写入 `notes`。
+- M1-T04 已完成；下一会话执行 M1-T05（块解析器）。
+- 门禁：`pnpm check` 通过（265 个测试）。
+- `packages/core` 已导出 `assembleContext`、模板与条件类型、`createTokenEstimator`。
+- 组装器只做片段级预算裁剪；片段内部截断、槽位自己的 top-K 留给 M2 的提供者实现。
+- 还没有默认的原生模板内容；M1-T07 需要一份默认模板（槽位顺序与少量静态文本）。
 - `packages/core` 的运行时依赖仍是 `@earendil-works/pi-ai@1.5.0`、`better-sqlite3`、`yaml`；`pi-agent-core` 仍在根目录 devDependencies，等 M1-T06 或 M1-T07 接入工具/单轮执行器时再移动。
-- 工具调用只做到接口透传与探测，尚未实现工具执行循环；那是 M1-T06、M1-T07 的范围。
 
 ## 下一步
-- 执行 M1-T04（原生上下文模板与组装器）：
-  - 实现 DESIGN §9 的原生模板（静态段、条件段、槽位）、槽位提供者接口、按优先级的 token 预算裁剪、Trace 记录（每一段的来源与 token 数）。
-  - 测试覆盖预算裁剪、条件段、缺失槽位。
+- 执行 M1-T05（块解析器）：
+  - 在 core 里实现增量（流式）标签块解析器：未闭合块、嵌套、可配置标签名、普通文本与块交错。
+  - 块类型登记表里，每种类型声明显示、上下文、语义三类策略的接口（策略实现留到后面）。
+  - 验收：随机切分输入后逐段喂入，结果与一次性解析一致。
 - M1-T06 可以直接读取 `models.<alias>.probe.structuredOutput` 选择函数调用或文本标签模式。
+- M1-T07 用 `assembleContext` 的 `messages` 直接构造 `LlmRequest`，把 `trace` 写进楼层节点。
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**；`loadDotEnv` 会覆盖进程里已有的同名变量，这是有意行为（ADR-0010）。
