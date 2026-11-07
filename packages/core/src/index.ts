@@ -1,3 +1,5 @@
+export { isRecord } from "./json.js";
+export * from "./llm/client.js";
 export { LATEST_SCHEMA_VERSION } from "./store/migrations.js";
 export type {
 	AppendNodeInput,

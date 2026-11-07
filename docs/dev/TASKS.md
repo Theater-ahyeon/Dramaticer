@@ -72,7 +72,8 @@
   做什么：从 MVU 的 diff 中按规则生成题目：在第 Y 楼提问"在第 X 楼之后，<变量路径> 的值是什么"，标准答案取自快照，证据是第 X 楼。只挑间隔大的（Y − X ≥ 30）和重要的变量（变化次数少、不是每楼都变的那种）。每个对话出 50 到 100 题。格式为 JSONL：`{id, story, askAtNode, question, answer, evidenceNodes, kind:"state"}`，写到 `eval-private/evalset/`。
   验收：题目数量达标；随机抽 10 题，自动核对答案和快照一致。
 
-- [ ] **M0-T11 LLM 最小客户端与事件类题目** | 依赖：M0-T07 | 需要 HUMAN-01
+- [x] **M0-T11 LLM 最小客户端与事件类题目** | 依赖：M0-T07 | 需要 HUMAN-01
+  完成：2026-11-06 新增 core 的 OpenAI 兼容客户端（可配置限速、重试、按请求 hash 缓存、思考 token 统计）与 st-compat 事件题生成器；3 个对话共 150 题（各 50），结构核对全部一致；`antigravity/gemini-3.8-flash` 账号中途被上游停用，第三个对话改用 `auto/deepseek-v4.1-flash`（HUMAN-05）；spotcheck 30 题；15 个新测试，门禁通过
   做什么：在 core 里写一个最小的 OpenAI 兼容客户端（只为 M0 服务，到 M1 会被 pi-ai 替换，所以接口保持很薄）；渠道从 `.env` 读取（`DRAMATICER_BG_BASE_URL`、`DRAMATICER_BG_API_KEY`、`DRAMATICER_BG_MODEL`）；带限速（每分钟请求数可以配置）、重试和缓存（同样的输入不重复调用）。然后用它让后台模型按窗口阅读对话，生成事件类题目（`kind:"event"`），每个对话 50 题。另外随机抽 20% 写进 `eval-private/evalset/spotcheck.md`，供人类**可选地**抽查。
   验收：题目生成完成；在 HUMAN.md 里新增一条可选事项 HUMAN-03，请人类抽查（这条不阻塞任何任务）。
 
@@ -90,7 +91,7 @@
 
 ## M1：模型层与单轮生成（DESIGN §9、§10、§11）
 
-- [ ] **M1-T01 pi 技术验证** | 依赖：M0-T99 | 部分需要 HUMAN-01、HUMAN-04
+- [ ] **M1-T01 pi 技术验证** | 依赖：M0-T99 | 部分需要 HUMAN-04、HUMAN-05
   做什么：在 `spikes/pi/` 里写最小脚本，验证 `@earendil-works/pi-ai`（先读 node_modules 里的 README 和类型定义）：① 用 openai-completions 加 `.env` 里的渠道：流式输出、思考内容、函数调用；② google-generative-ai 能不能用自定义 baseUrl 指到本地的 gcli2api（服务没运行就跳过，并记录下来）；③ abort 之后保留部分内容，再续写；④ pi-agent-core 的 `prepareRequest`、`beforeToolCall`、`finishTurn` 三个钩子。
   产出：ADR，写明是否采用 pi，以及哪些部分采用。
   验收：每一项的结果都有记录（通过、失败或跳过，并附原因）。

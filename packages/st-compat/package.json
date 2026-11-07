@@ -17,6 +17,7 @@
 	"scripts": {
 		"build": "tsc",
 		"evalset": "tsc -b && node dist/evalset/cli.js",
+		"evalset:events": "tsc -b && node dist/evalset/event-cli.js",
 		"report": "tsc -b && node dist/health/cli.js"
 	}
 }
