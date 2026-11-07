@@ -29,6 +29,11 @@ import {
 	type Summary,
 	isSummaryLevel,
 } from "../memory/summary.js";
+import {
+	buildTrigramQuery,
+	normalizeRetrievalText,
+} from "../retrieval/chunk-index.js";
+import { chunkText } from "../retrieval/chunk-text.js";
 import { applyStateDiffsTo } from "../state.js";
 import type {
 	NewStateDiff,
@@ -170,6 +175,13 @@ interface NormalisedSummary {
 	readonly createdAt: string;
 }
 
+interface ChunkRow {
+	readonly chunk_id: number;
+	readonly story_id: string;
+	readonly node_id: string;
+	readonly score: number;
+}
+
 interface PlotNoteRow {
 	readonly id: string;
 	readonly story_id: string;
@@ -206,6 +218,21 @@ export interface AppendNodeInput {
 export interface SearchNodeTextOptions {
 	readonly storyId?: string;
 	readonly limit?: number;
+}
+
+export interface SearchChunksOptions {
+	readonly storyId: string;
+	/** 只搜索该节点祖先路径上的楼层，排除该节点自身与其他分支。 */
+	readonly beforeNodeId?: string;
+	readonly limit?: number;
+}
+
+export interface ChunkSearchMatch {
+	readonly storyId: string;
+	readonly nodeId: string;
+	readonly chunkId: number;
+	/** FTS5 的 bm25 原始分数，越小越相关。 */
+	readonly score: number;
 }
 
 export interface ListEntitiesOptions {
@@ -487,13 +514,15 @@ export class StoryStore {
 		assertNonEmptyString(path, "数据库路径");
 		const db = new Database(path);
 		db.pragma("foreign_keys = ON");
+		const store = new StoryStore(db);
 		try {
 			applyMigrations(db);
+			store.#backfillChunks();
 		} catch (error) {
 			db.close();
 			throw error;
 		}
-		return new StoryStore(db);
+		return store;
 	}
 
 	close(): void {
@@ -808,6 +837,11 @@ export class StoryStore {
 				createdAt,
 			);
 			moveHead.run(id, input.storyId);
+			this.#indexNodeChunks({
+				id,
+				storyId: input.storyId,
+				raw: input.raw,
+			});
 			const node = this.getNode(id);
 			if (!node) {
 				throw new Error(`楼层节点写入后读取失败：${id}`);
@@ -1403,6 +1437,105 @@ export class StoryStore {
 		return row.count;
 	}
 
+	/** 统计某个楼层写入的检索块数。 */
+	countChunksForNode(nodeId: string): number {
+		assertNonEmptyString(nodeId, "楼层节点 id");
+		if (!this.getNode(nodeId)) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
+		const row = this.#db
+			.prepare("SELECT COUNT(*) AS count FROM chunks WHERE node_id = ?")
+			.get(nodeId) as { readonly count: number };
+		return row.count;
+	}
+
+	/**
+	 * 在块索引里检索。给 beforeNodeId 时只搜索它的祖先路径，结果是同一楼层
+	 * 多个块里分数最好的那一块，因此每个楼层只占一个位次。
+	 */
+	searchChunks(
+		query: string,
+		options: SearchChunksOptions,
+	): ChunkSearchMatch[] {
+		if (typeof query !== "string") {
+			throw new Error("检索语句必须是字符串");
+		}
+		assertNonEmptyString(options.storyId, "故事 id");
+		if (!this.getStory(options.storyId)) {
+			throw new Error(`故事不存在：${options.storyId}`);
+		}
+		const ftsQuery = buildTrigramQuery(query);
+		if (ftsQuery === null) return [];
+		const limit = options.limit ?? DEFAULTS.searchLimit;
+		if (
+			!Number.isInteger(limit) ||
+			limit < 1 ||
+			limit > DEFAULTS.maxSearchLimit
+		) {
+			throw new Error(
+				`检索条数必须是 1 到 ${DEFAULTS.maxSearchLimit} 之间的整数`,
+			);
+		}
+		const beforeNodeId = options.beforeNodeId ?? null;
+		if (beforeNodeId !== null) {
+			assertNonEmptyString(beforeNodeId, "楼层节点 id");
+			const node = this.getNode(beforeNodeId);
+			if (!node) {
+				throw new Error(`楼层节点不存在：${beforeNodeId}`);
+			}
+			if (node.storyId !== options.storyId) {
+				throw new Error(
+					`楼层节点 ${beforeNodeId} 属于另一个故事 ${node.storyId}`,
+				);
+			}
+		}
+		const rows = this.#db
+			.prepare(
+				`WITH RECURSIVE ancestors(node_id) AS (
+					SELECT parent_id FROM nodes WHERE id = @beforeNodeId
+					UNION ALL
+					SELECT nodes.parent_id
+					FROM nodes JOIN ancestors ON nodes.id = ancestors.node_id
+					WHERE nodes.parent_id IS NOT NULL
+				),
+				matches AS (
+					SELECT c.id AS chunk_id, c.node_id, c.story_id,
+						bm25(chunks_fts) AS score
+					FROM chunks_fts
+					JOIN chunks AS c ON c.id = chunks_fts.rowid
+					WHERE chunks_fts MATCH @query
+						AND c.story_id = @storyId
+						AND (@beforeNodeId IS NULL
+							OR c.node_id IN (SELECT node_id FROM ancestors))
+				),
+				ranked AS (
+					SELECT chunk_id, node_id, story_id, score,
+						ROW_NUMBER() OVER (
+							PARTITION BY node_id
+							ORDER BY score ASC, chunk_id ASC
+						) AS position
+					FROM matches
+				)
+				SELECT chunk_id, node_id, story_id, score
+				FROM ranked
+				WHERE position = 1
+				ORDER BY score ASC, chunk_id ASC
+				LIMIT @limit`,
+			)
+			.all({
+				query: ftsQuery,
+				storyId: options.storyId,
+				beforeNodeId,
+				limit,
+			}) as ChunkRow[];
+		return rows.map((row) => ({
+			storyId: row.story_id,
+			nodeId: row.node_id,
+			chunkId: row.chunk_id,
+			score: row.score,
+		}));
+	}
+
 	searchNodeText(
 		query: string,
 		options: SearchNodeTextOptions = {},
@@ -1712,6 +1845,58 @@ export class StoryStore {
 			throw new Error(`后台任务不存在：${id}`);
 		}
 		return job;
+	}
+
+	/** 把楼层的原文切成检索块并写入 FTS；已存在的块由唯一约束挡住，可重复调用。 */
+	#indexNodeChunks(node: {
+		readonly id: string;
+		readonly storyId: string;
+		readonly raw: string;
+	}): void {
+		const insertChunk = this.#db.prepare(
+			`INSERT INTO chunks (story_id, node_id, ordinal, text)
+			VALUES (?, ?, ?, ?)
+			ON CONFLICT (node_id, ordinal) DO NOTHING`,
+		);
+		const insertText = this.#db.prepare(
+			`INSERT INTO chunks_fts (rowid, text, node_id, story_id)
+			VALUES (?, ?, ?, ?)`,
+		);
+		for (const [ordinal, text] of chunkText(node.raw).entries()) {
+			const normalized = normalizeRetrievalText(text);
+			if (normalized === "") continue;
+			const info = insertChunk.run(node.storyId, node.id, ordinal, text);
+			if (info.changes !== 1) continue;
+			insertText.run(info.lastInsertRowid, normalized, node.id, node.storyId);
+		}
+	}
+
+	/**
+	 * 为还没有任何块的楼层补建索引。迁移后首次打开会覆盖全部旧楼层；
+	 * 空文本的楼层没有块，下次打开会再次尝试，但不会产生重复行。
+	 */
+	#backfillChunks(): void {
+		const nodes = this.#db
+			.prepare(
+				`SELECT id, story_id, raw FROM nodes
+				WHERE NOT EXISTS (SELECT 1 FROM chunks WHERE chunks.node_id = nodes.id)
+				ORDER BY row_id ASC`,
+			)
+			.all() as {
+			readonly id: string;
+			readonly story_id: string;
+			readonly raw: string;
+		}[];
+		if (nodes.length === 0) return;
+		this.#db.transaction(() => {
+			for (const node of nodes) {
+				this.#indexNodeChunks({
+					id: node.id,
+					storyId: node.story_id,
+					raw: node.raw,
+				});
+			}
+		})();
 	}
 
 	#normaliseSummary(input: NewSummaryInput): NormalisedSummary {

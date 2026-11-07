@@ -289,6 +289,35 @@ export const MIGRATIONS: readonly Migration[] = [
 			END`,
 		],
 	},
+	{
+		version: 10,
+		description:
+			"运行时分块与 BM25 索引：每个楼层的检索块及其 trigram 全文索引",
+		statements: [
+			`CREATE TABLE chunks (
+				id INTEGER PRIMARY KEY,
+				story_id TEXT NOT NULL REFERENCES stories(id),
+				node_id TEXT NOT NULL REFERENCES nodes(id),
+				ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+				text TEXT NOT NULL,
+				UNIQUE (node_id, ordinal)
+			) STRICT`,
+			"CREATE INDEX chunks_story_node_idx ON chunks(story_id, node_id)",
+			`CREATE TRIGGER chunks_story_matches_node
+			BEFORE INSERT ON chunks
+			WHEN COALESCE((SELECT story_id FROM nodes WHERE id = NEW.node_id), '') <> NEW.story_id
+			BEGIN
+				SELECT RAISE(ABORT, '文本块的 story_id 必须与所在楼层一致');
+			END`,
+			// 与 node_text 相同：trigram 让中文不需要预先分词；rowid 对应 chunks.id。
+			`CREATE VIRTUAL TABLE chunks_fts USING fts5(
+				text,
+				node_id UNINDEXED,
+				story_id UNINDEXED,
+				tokenize = 'trigram'
+			)`,
+		],
+	},
 ];
 
 export const LATEST_SCHEMA_VERSION: number =

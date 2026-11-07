@@ -21,9 +21,11 @@ export * from "./state.js";
 export { LATEST_SCHEMA_VERSION } from "./store/migrations.js";
 export type {
 	AppendNodeInput,
+	ChunkSearchMatch,
 	CreateStoryInput,
 	ListEntitiesOptions,
 	ResolveEntitiesOptions,
+	SearchChunksOptions,
 	SearchNodeTextOptions,
 } from "./store/story-store.js";
 export { StoryStore } from "./store/story-store.js";

@@ -261,7 +261,8 @@
   - 两种结构化输出模式产生的笔记走同一写入路径。
   验收：文本标签模式与函数调用模式各写入一条笔记；`fulfill` 后不再出现在 open 列表；对已兑现笔记再次 `fulfill` 抛错；裸连接修改笔记文本被触发器拒绝；事务失败时助手楼层与笔记一起回滚；`pnpm check` 通过。
 
-- [ ] **M2-T08 运行时分块与 BM25 索引** | 依赖：M2-T01 | DESIGN §7、§14
+- [x] **M2-T08 运行时分块与 BM25 索引** | 依赖：M2-T01 | DESIGN §7、§14
+  完成：2026-11-07 迁移 v10 新增 `chunks`（按楼层与序号唯一）与 FTS5 trigram 的 `chunks_fts`；`appendNode` 在写楼层的同一事务里用 `chunkText` 分块、`normalizeRetrievalText` 规范化后写入索引；打开数据库时给尚无块的楼层回填，重复打开不产生重复块；`searchChunks` 用 FTS5 bm25 排序，`beforeNodeId` 通过递归祖先路径过滤，同一楼层多个块只保留分数最高的一块；新增 6 个测试，门禁通过（399 个测试）
   做什么：
   - 迁移 v10：新增 `chunks(id INTEGER PRIMARY KEY, story_id, node_id, ordinal, text)` 与 FTS5 trigram 的 `chunks_fts`；`appendNode` 在同一个事务里用现有 `chunkText` 与 `normalizeRetrievalText` 写入该楼层的块。
   - 迁移完成后对已有楼层做一次回填；回填可重复执行，不产生重复块。
