@@ -28,7 +28,7 @@ const isSource = (p) => /\.(m?[jt]sx?|cts|mts)$/.test(p);
 // I1: core must not know about SillyTavern.
 const coreSrc = walk(join(root, "packages", "core", "src"), isSource);
 const stTerms =
-	/\b(setvar|getvar|addvar|prompt_order|promptOrder|sillytavern|chatHistory|worldInfoBefore|worldInfoAfter|charDescription|personaDescription|tavern)\b/i;
+	/\b(setvar|getvar|addvar|prompt_order|promptOrder|sillytavern|chatHistory|worldInfo\w*|charDescription|personaDescription|tavern|marker)\b/i;
 for (const f of coreSrc) {
 	const text = readFileSync(f, "utf8");
 	if (/from\s+["'][^"']*st-compat[^"']*["']|import\(\s*["'][^"']*st-compat/.test(text)) {
@@ -92,9 +92,13 @@ for (const m of manifests) {
 }
 
 // I10: offline unit tests use no network and no private data.
+// Covers every file under a test directory (fixtures and helper modules included),
+// not just *.test.* sources.
 const testFiles = walk(
 	join(root, "packages"),
-	(p) => /\.test\.[cm]?[jt]sx?$/.test(p) && !/\.live\.test\./.test(p),
+	(p) =>
+		!/\.live\.test\./.test(p) &&
+		(/[\\/]test[\\/]/.test(p) || /\.test\.[cm]?[jt]sx?$/.test(p)),
 );
 for (const f of testFiles) {
 	const text = readFileSync(f, "utf8");
