@@ -34,7 +34,12 @@ import {
 	isEntityKind,
 	normalizeEntityName,
 } from "../entity.js";
-import { type JsonObject, isJsonObject, rejectUnknownKeys } from "../json.js";
+import {
+	type JsonObject,
+	assertPlainObject,
+	isJsonObject,
+	rejectUnknownKeys,
+} from "../json.js";
 import { isLlmReasoningLevel } from "../llm/types.js";
 import {
 	DEFAULT_MEMORY_EVENT_LIMIT,
@@ -70,6 +75,7 @@ import type {
 	StateDiffOp,
 	StateSnapshot,
 	Story,
+	StoryTime,
 	TimelineNode,
 	TimelineRole,
 } from "../timeline.js";
@@ -145,6 +151,8 @@ interface StateDiffRow {
 	readonly value: string | null;
 	readonly reason: string | null;
 	readonly source: string;
+	readonly story_time_start: string | null;
+	readonly story_time_end: string | null;
 	readonly created_at: string;
 }
 
@@ -486,6 +494,7 @@ interface NormalisedStateDiff {
 	readonly valueJson: string | null;
 	readonly reason: string | null;
 	readonly source: string;
+	readonly storyTime: StoryTime | null;
 }
 
 interface NormalisedAlias {
@@ -658,6 +667,28 @@ function assertStateDiffPath(
 	}
 }
 
+/** 起止都为空的 storyTime 与未指定等价，统一存成 NULL。 */
+function normaliseStoryTime(value: unknown, label: string): StoryTime | null {
+	if (value === undefined || value === null) return null;
+	const record = assertPlainObject(value, `${label} 的 storyTime`);
+	rejectUnknownKeys(record, ["start", "end"], `${label} 的 storyTime`);
+	const start = normaliseStoryTimeBound(
+		record.start,
+		`${label} 的 storyTime.start`,
+	);
+	const end = normaliseStoryTimeBound(record.end, `${label} 的 storyTime.end`);
+	if (start === null && end === null) return null;
+	return { start, end };
+}
+
+function normaliseStoryTimeBound(value: unknown, label: string): string | null {
+	if (value === undefined || value === null) return null;
+	if (typeof value !== "string" || value.trim().length === 0) {
+		throw new Error(`${label} 必须是非空字符串或 null`);
+	}
+	return value;
+}
+
 function rowToStateDiff(row: StateDiffRow): StateDiff {
 	const path: unknown = JSON.parse(row.path);
 	assertStateDiffPath(path, `状态 diff ${row.id}`);
@@ -671,6 +702,10 @@ function rowToStateDiff(row: StateDiffRow): StateDiff {
 		value: row.value === null ? null : JSON.parse(row.value),
 		reason: row.reason,
 		source: row.source,
+		storyTime:
+			row.story_time_start === null && row.story_time_end === null
+				? null
+				: { start: row.story_time_start, end: row.story_time_end },
 		createdAt: row.created_at,
 	};
 }
@@ -1665,8 +1700,8 @@ export class StoryStore {
 		);
 		const createdAt = new Date().toISOString();
 		const insert = this.#db.prepare(
-			`INSERT INTO state_diffs (story_id, node_id, ordinal, path, op, value, reason, source, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			`INSERT INTO state_diffs (story_id, node_id, ordinal, path, op, value, reason, source, story_time_start, story_time_end, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		);
 		const nextOrdinal = this.#db.prepare(
 			"SELECT COALESCE(MAX(ordinal), -1) + 1 AS next_ordinal FROM state_diffs WHERE node_id = ?",
@@ -1701,6 +1736,8 @@ export class StoryStore {
 						diff.valueJson,
 						diff.reason,
 						diff.source,
+						diff.storyTime?.start ?? null,
+						diff.storyTime?.end ?? null,
 						createdAt,
 					);
 					ordinals.set(diff.nodeId, ordinal + 1);
@@ -1714,6 +1751,7 @@ export class StoryStore {
 						value: diff.valueJson === null ? null : JSON.parse(diff.valueJson),
 						reason: diff.reason,
 						source: diff.source,
+						storyTime: diff.storyTime,
 						createdAt,
 					});
 				}
@@ -3724,6 +3762,7 @@ export class StoryStore {
 			valueJson,
 			reason,
 			source: input.source,
+			storyTime: normaliseStoryTime(input.storyTime, label),
 		};
 	}
 }

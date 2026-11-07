@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
 	LEDGER_NAMESPACES,
 	type StoryStore,
+	type StoryTime,
 	listLedgerEntities,
 	mvuLedgerPath,
 	readLedger,
+	readLedgerFacts,
 	validateLedgerDiff,
 } from "../src/index.js";
 import { openTempStore } from "./temp-store.js";
@@ -13,6 +15,8 @@ interface RawDiff {
 	readonly path: readonly string[];
 	readonly op: "set" | "delete";
 	readonly value?: unknown;
+	readonly storyTime?: StoryTime | null;
+	readonly source?: "model" | "settler" | "player" | "import";
 }
 
 function seed(store: StoryStore): void {
@@ -34,7 +38,8 @@ function write(store: StoryStore, nodeId: string, diffs: readonly RawDiff[]) {
 			path: diff.path,
 			op: diff.op,
 			value: diff.value,
-			source: "test",
+			source: diff.source ?? "model",
+			storyTime: diff.storyTime,
 		})),
 	);
 }
@@ -99,6 +104,49 @@ describe("validateLedgerDiff", () => {
 		for (const diff of validDiffs) {
 			expect(() => validateLedgerDiff(diff), diff.path.join(".")).not.toThrow();
 		}
+	});
+
+	it("九类事实都能带 storyTime 与 source", () => {
+		for (const diff of validDiffs) {
+			expect(() =>
+				validateLedgerDiff({
+					...diff,
+					storyTime: { start: "第一天", end: null },
+					source: "settler",
+				}),
+			).not.toThrow();
+		}
+	});
+
+	it("来源与故事时间非法时指出位置", () => {
+		expect(() =>
+			validateLedgerDiff({
+				path: ["time", "current"],
+				op: "set",
+				value: "黄昏",
+				source: "chat" as never,
+			}),
+		).toThrow(
+			/台账路径 "time"\."current" 无效：source 只能是 model、settler、player、import，收到 "chat"/,
+		);
+		expect(() =>
+			validateLedgerDiff({
+				path: ["time", "current"],
+				op: "set",
+				value: "黄昏",
+				storyTime: { start: 3, end: null } as never,
+			}),
+		).toThrow(
+			/台账路径 "time"\."current" 无效：storyTime\.start 必须是非空字符串或 null/,
+		);
+		expect(() =>
+			validateLedgerDiff({
+				path: ["time", "current"],
+				op: "set",
+				value: "黄昏",
+				storyTime: { start: "黄昏", end: null, extra: 1 } as never,
+			}),
+		).toThrow(/storyTime\.extra 是未知字段/);
 	});
 
 	it("非法命名空间、路径段与值都指出位置", () => {
@@ -245,6 +293,57 @@ describe("台账读取", () => {
 				},
 			],
 		});
+	});
+
+	it("读回仍然成立的事实及其 storyTime 与 source", () => {
+		const { store } = openTempStore();
+		seed(store);
+		write(store, "n-root", [
+			{
+				path: ["time", "current"],
+				op: "set",
+				value: "第三天黄昏",
+				storyTime: { start: "第三天黄昏", end: null },
+				source: "model",
+			},
+			{
+				path: ["mvu", "stat_data", "hp"],
+				op: "set",
+				value: 100,
+				storyTime: { start: "第一天", end: "第二天" },
+				source: "import",
+			},
+			{
+				path: ["clue", "徽章", "status"],
+				op: "set",
+				value: "open",
+				source: "settler",
+			},
+			{
+				path: ["clue", "徽章", "status"],
+				op: "delete",
+				source: "player",
+			},
+		]);
+
+		expect(readLedgerFacts(store, "n-root")).toEqual([
+			{
+				path: ["time", "current"],
+				value: "第三天黄昏",
+				storyTime: { start: "第三天黄昏", end: null },
+				source: "model",
+			},
+			{
+				path: ["mvu", "stat_data", "hp"],
+				value: 100,
+				storyTime: { start: "第一天", end: "第二天" },
+				source: "import",
+			},
+		]);
+		expect(readLedgerFacts(store, "n-root", ["mvu"])).toHaveLength(1);
+		expect(readLedgerFacts(store, "n-root", ["character"])).toEqual([]);
+		// 值视图保持不变：被删除的字段不出现，父对象保留。
+		expect(readLedger(store, "n-root", ["clue"])).toEqual({ 徽章: {} });
 	});
 
 	it("分支切换后读到各自的状态，已兑现的线索不出现在未兑现列表", () => {

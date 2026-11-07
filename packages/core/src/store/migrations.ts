@@ -491,6 +491,14 @@ export function buildMigrations(
 				) STRICT`,
 			],
 		},
+		{
+			version: 18,
+			description: "台账事实的故事时间：diff 可带故事内时间段",
+			statements: [
+				"ALTER TABLE state_diffs ADD COLUMN story_time_start TEXT",
+				"ALTER TABLE state_diffs ADD COLUMN story_time_end TEXT",
+			],
+		},
 	];
 }
 

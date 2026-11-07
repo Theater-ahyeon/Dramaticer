@@ -3,7 +3,7 @@ import {
 	assertPlainObject,
 	rejectUnknownKeys,
 } from "../json.js";
-import type { StateDiffOp } from "../timeline.js";
+import type { StateDiffOp, StoryTime } from "../timeline.js";
 
 export const LEDGER_NAMESPACES = [
 	"character",
@@ -42,6 +42,10 @@ export const USER_WILL_KINDS = [
 ] as const;
 export type UserWillKind = (typeof USER_WILL_KINDS)[number];
 
+/** 台账事实的来源：正文模型写入、结算器补写、玩家变更卡、导入。 */
+export const LEDGER_SOURCES = ["model", "settler", "player", "import"] as const;
+export type LedgerSource = (typeof LEDGER_SOURCES)[number];
+
 const CHARACTER_TEXT_FIELDS = [
 	"identity",
 	"appearance",
@@ -68,6 +72,10 @@ export interface LedgerDiffInput {
 	readonly path: readonly string[];
 	readonly op: StateDiffOp;
 	readonly value?: unknown;
+	/** 事实成立的故事内时间段；缺省表示未指定。 */
+	readonly storyTime?: StoryTime | null;
+	/** 事实来源；缺省由写入方补齐。 */
+	readonly source?: LedgerSource;
 }
 
 /**
@@ -91,6 +99,8 @@ export function validateLedgerDiff(diff: LedgerDiffInput): void {
 	if (diff.op === "set") {
 		assertJsonValue(diff.value, `台账路径 ${pathLabel(path)} 的值`);
 	}
+	validateSource(path, diff.source);
+	validateStoryTime(path, diff.storyTime);
 	const [namespace, ...rest] = path as [string, ...string[]];
 	if (!isLedgerNamespace(namespace)) {
 		fail(path, `未知台账命名空间 ${JSON.stringify(namespace)}`);
@@ -427,6 +437,42 @@ function requireObjectText(
 	const candidate = value[field];
 	if (typeof candidate !== "string" || candidate.trim().length === 0) {
 		throw new Error(`${label}.${field} 必须是非空字符串`);
+	}
+}
+
+function validateSource(
+	path: readonly string[],
+	source: string | undefined,
+): void {
+	if (source === undefined) return;
+	if (!includes(LEDGER_SOURCES, source)) {
+		fail(
+			path,
+			`source 只能是 ${LEDGER_SOURCES.join("、")}，收到 ${JSON.stringify(source)}`,
+		);
+	}
+}
+
+function validateStoryTime(
+	path: readonly string[],
+	storyTime: StoryTime | null | undefined,
+): void {
+	if (storyTime === undefined || storyTime === null) return;
+	const label = `台账路径 ${pathLabel(path)} 的 storyTime`;
+	const record = assertPlainObject(storyTime, label);
+	rejectUnknownKeys(record, ["start", "end"], label);
+	requireStoryTimeBound(path, record.start, "start");
+	requireStoryTimeBound(path, record.end, "end");
+}
+
+function requireStoryTimeBound(
+	path: readonly string[],
+	value: unknown,
+	field: "start" | "end",
+): void {
+	if (value === undefined || value === null) return;
+	if (typeof value !== "string" || value.trim().length === 0) {
+		fail(path, `storyTime.${field} 必须是非空字符串或 null`);
 	}
 }
 

@@ -19,6 +19,12 @@ export interface TimelineNode {
 
 export type StateDiffOp = "set" | "delete";
 
+/** 事实成立的故事内时间段；起点、终点都可以为空。 */
+export interface StoryTime {
+	readonly start: string | null;
+	readonly end: string | null;
+}
+
 export interface StateDiff {
 	readonly id: number;
 	readonly storyId: string;
@@ -31,6 +37,7 @@ export interface StateDiff {
 	readonly value: unknown;
 	readonly reason: string | null;
 	readonly source: string;
+	readonly storyTime: StoryTime | null;
 	readonly createdAt: string;
 }
 
@@ -40,6 +47,7 @@ interface NewStateDiffBase {
 	readonly path: readonly string[];
 	readonly reason?: string | null;
 	readonly source: string;
+	readonly storyTime?: StoryTime | null;
 }
 
 export type NewStateDiff =

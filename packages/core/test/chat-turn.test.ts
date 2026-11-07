@@ -175,7 +175,7 @@ describe("runChatTurn", () => {
 			path: ["场景", "地点"],
 			op: "set",
 			value: "山门",
-			source: "structured-output:text-tags",
+			source: "model",
 		});
 		expect(result.structured.notes).toEqual([{ text: "门后有人跟踪" }]);
 		expect(result.structured.issues).toEqual([]);
@@ -261,9 +261,7 @@ describe("runChatTurn", () => {
 			"state_get",
 		]);
 		expect(result.stateDiffs).toHaveLength(1);
-		expect(result.stateDiffs[0]?.source).toBe(
-			"structured-output:function-call",
-		);
+		expect(result.stateDiffs[0]?.source).toBe("model");
 		expect(result.structured.notes).toHaveLength(1);
 		expect(result.plotNotes).toHaveLength(1);
 		expect(result.plotNotes[0]).toMatchObject({

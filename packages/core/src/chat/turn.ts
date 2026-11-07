@@ -214,12 +214,7 @@ export async function generateAssistantTurn(
 			raw: result.text,
 		});
 		const savedDiffs = options.store.appendStateDiffs(
-			toNewStateDiffs(
-				options.storyId,
-				node.id,
-				options.structuredOutput,
-				structured.stateUpdates,
-			),
+			toNewStateDiffs(options.storyId, node.id, structured.stateUpdates),
 		);
 		const plotNotes = options.store.insertPlotNotes(
 			structured.notes.map((note) => ({
@@ -388,7 +383,6 @@ function emptyUsage(): LlmUsage {
 function toNewStateDiffs(
 	storyId: string,
 	nodeId: string,
-	mode: StructuredOutputMode,
 	updates: readonly AcceptedStateUpdate[],
 ): NewStateDiff[] {
 	return updates.map((update) => {
@@ -397,7 +391,7 @@ function toNewStateDiffs(
 			nodeId,
 			path: update.path,
 			reason: update.reason,
-			source: `structured-output:${mode}`,
+			source: "model",
 		};
 		return update.op === "set"
 			? { ...common, op: "set", value: update.value }

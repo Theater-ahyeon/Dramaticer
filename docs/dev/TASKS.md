@@ -6,6 +6,44 @@
 
 ---
 
+## F：取证（先于 R1，人类 2026-11-07 指定）
+
+> 背景与决定见 ADR-0037。F0 的结论出来之前，不选 R1 及之后的任务。F0 的全部模型调用一律用 magpie 网关（`http://127.0.0.1:3425/v1`）上的 **DeepSeek V4.1 Flash**；`.env` 的后台与正文渠道已经是 `opendesign/deepseek-v4.1-flash`，不要改用其他模型。
+
+- [ ] **F0-T01 全量对话统计（不调用模型）** | 依赖：无
+  做什么：
+  - 只读扫描三个目录的 `chats/`：`D:\SillyTavern\TauriTavern\default-user\`、`D:\SillyTavern\data\default-user\`、`D:\SillyTavern\luker\Luker\data\default-user\`（人类已授权只读）。按文件名去重（约 230 个对话），流式处理，不把整个文件读进上下文。
+  - 统计：每个对话的楼层数分布（P50、P75、P90、最大值）、当前 swipe 正文的 token 估算、能整个放进 128K、200K、1M 上下文的对话各占多少、重 roll 率（swipe 数大于 1 的助手楼层占比）、按修改时间划分的近期与早期对比。
+  验收：统计数字写进 `docs/dev/reports/F0-corpus.md`；用“对话 N”代替角色名，不写原文、角色名或绝对路径以外的私有标识。
+
+- [ ] **F0-T02 拒绝与接受回复对的归因（后台渠道，约 200 次调用）** | 依赖：F0-T01
+  做什么：
+  - 从有重 roll 的助手楼层里抽取回复对（`swipe_id` 指向的那个算接受，其余算拒绝），按对话分层抽样约 200 对，复制到 `eval-private/f0/`。
+  - 让后台模型对比每一对，判断被拒绝的回复主要差在哪里，从这些类别里选一个主因加最多两个次因：遗忘或前后矛盾、OOC、重复或原地打转、不推进剧情、没听用户的指示、文笔或文风、拒答或说教、截断、格式或状态栏、其他。
+  - 记录归因模型自己的置信度。处理两个偏差：玩家有时会切回早先的 swipe；有时重 roll 只是想看看别的写法。
+  验收：得到失败原因分布并写进 `docs/dev/reports/F0.md` 的对应章节；抽样与调用次数有记录；不写原文与角色名。
+
+- [ ] **F0-T03 裁判校准（后台渠道，约 400 次调用）** | 依赖：F0-T02
+  做什么：
+  - 把同一批回复对隐去标签，以两种顺序分别交给裁判模型，统计裁判选中玩家实际所选回复的比例、位置偏差，并给出置信区间。
+  验收：结论写明 R2 的 LLM 裁判能不能代表玩家的喜好，写进 `docs/dev/reports/F0.md`。
+
+- [ ] **F0-T04 全文基线小样本与渠道上限探测（正文渠道，最多 30 次调用）** | 依赖：F0-T01
+  做什么：
+  - 先探测正文渠道能接受的最大请求长度（从 32K 开始逐级增加到 1M，记录成功与否、首字延迟、是否被截断）。
+  - 挑 3 到 5 个能整个放进上下文的分支点，分别用“全部正文 + 原生模板”和“当前记忆引擎”各生成一次，交给裁判比较矛盾和遗忘。
+  - 不调用本地 ST（I14）。
+  验收：上限探测与两组生成的结果写进 `docs/dev/reports/F0.md`。
+
+- [ ] **F0-T99 取证报告与路线建议** | 依赖：F0-T01、F0-T02、F0-T03、F0-T04
+  做什么：
+  - 汇总成 `docs/dev/reports/F0.md`，逐条回答：P1 玩家不满意的主因是不是上下文或方向能解决的问题；P3 全文直接塞进上下文够不够用；P4 裁判能不能信。
+  - 在“Dramaticer 是独立产品”的前提下给出建议：①主菜按失败原因分布怎样排序；②和 ST 对齐做到哪里算“够用”、主动放弃哪些长尾；③最小可玩版本怎样提前；④怎样把玩家的重 roll、编辑、选择收集为偏好信号，用来校准评测。
+  - “中间层接入”最多作为可选方式，不做可行性论证；为这个决定写一条 ADR，并在 HUMAN.md 新增一条请人类决定。结果写 `MILESTONE_DONE`。
+  验收：报告章节齐全，每条建议都有对应数字或调用记录；人类决定写在 HUMAN.md。
+
+---
+
 ## M0：数据与度量（DESIGN §2、§14、§15）
 
 - [x] **M0-T01 仓库与工程骨架** | 依赖：无
@@ -542,6 +580,8 @@
 
 ## R1：世界模型（台账与记忆）
 
+> F0 取证完成并给出路线建议之前，不选本节及之后的任务（ADR-0037）。
+
 - [x] **R1-T01 台账结构与 MVU 映射** | 依赖：M2-T02、M2-T04、M4-T02 | DESIGN §5、§7.1
   完成：2026-11-07 `packages/core/src/ledger` 定义九个命名空间与路径表，`validateLedgerDiff` 校验路径、类型、范围与线索状态，`readLedger` 与 `listLedgerEntities` 复用状态快照；st-compat 导入 MVU 时加 `mvu` 前缀；ADR-0034；门禁通过（629 个测试）
   做什么：
@@ -551,7 +591,8 @@
   - st-compat 导入 MVU 快照时把路径映射为 `["mvu", ...]`；没有 MVU 的卡不生成 `mvu` 命名空间；评测数据库由 raw 重建，不做旧库迁移。
   验收：九个命名空间各有一条通过校验的 diff；未知命名空间、空路径段、错误值类型、非法线索状态各抛错并指出位置；MVU 快照导入后沿路径回放与原文一致；`readLedger` 前缀读取与分支切换正确；`pnpm check` 通过。
 
-- [ ] **R1-T01.a 台账事实补 storyTime 与 source** | 依赖：R1-T01 | DESIGN §7.1、ADR-0035
+- [x] **R1-T01.a 台账事实补 storyTime 与 source** | 依赖：R1-T01 | DESIGN §7.1、ADR-0035
+  完成：2026-11-07 迁移 v18 给 `state_diffs` 增加 `story_time_start`/`story_time_end`；`StateDiff` 增加 `storyTime`，存储层把起止都为空归一为 null；`validateLedgerDiff` 校验 `source` 四值与 `storyTime` 形状；新增 `readLedgerFacts` 读回事实及其元数据，`readLedger`/`listLedgerEntities` 值视图不变；正文模型的结构化写入来源改为 `model`；后续 R1 迁移编号顺延到 v19–v25；门禁通过
   做什么：
   - 按 v2.1 第二节，把 `storyTime`（事实成立的故事时间段，起止都可空）与 `source`（`model`、`settler`、`player`、`import`）作为每条台账事实的元数据；`storyTime` 进入存储，`source` 与现有 `StateDiff.source` 的关系写清楚。
   - `validateLedgerDiff` 校验两个字段的类型与来源取值；导入 MVU 的事实来源为 `import`。
@@ -567,7 +608,7 @@
 
 - [ ] **R1-T02 台账结算器** | 依赖：R1-T01、R1-T01.a、R1-T01.b、M2-T03、M4-T03 | DESIGN §7.2 | I12
   做什么：
-  - 迁移 v18 新增 `ledger_settlements(node_id PRIMARY KEY, story_id, source, added_count, repairs, created_at)`；`repairs` 存 JSON 数组 `{path, action, reason}`，同故事触发器与 M2-T02 的一致。
+  - 迁移 v19 新增 `ledger_settlements(node_id PRIMARY KEY, story_id, source, added_count, repairs, created_at)`；`repairs` 存 JSON 数组 `{path, action, reason}`，同故事触发器与 M2-T02 的一致。
   - 后台任务类型 `settle`：沿当前路径取最多 `settleWindowFloors`（默认 4）个已确认、尚未结算的助手楼层；一次请求返回 `{nodeId, diffs}` 数组。窗口内有解析失败或校验失败的条目时，该楼层整条拒绝并记入 `repairs`，其余楼层照常写入；整次请求失败按 M2-T03 的规则重试。
   - 优先级：该楼层已有的模型写入 diff 优先；结算器跳过相同路径，只补缺失的路径。修复动作限定为补值、删除非法条目、改写线索状态三种，修复原因进入 `repairs` 与 Trace。
   - 写入在一个事务里完成；同一楼层重复结算不新增 diff；结算结果与楼层绑定，swipe 与编辑的新节点各自结算。
@@ -576,7 +617,7 @@
 
 - [ ] **R1-T02.a 现场分析** | 依赖：R1-T02 | DESIGN §7.3、§9
   做什么：
-  - 迁移 v19 新增 `scene_analyses(node_id PRIMARY KEY, story_id, text, token_count, created_at)`，同故事触发器与 M2-T02 一致。
+  - 迁移 v20 新增 `scene_analyses(node_id PRIMARY KEY, story_id, text, token_count, created_at)`，同故事触发器与 M2-T02 一致。
   - 后台任务 `scene`：读结算后的台账快照与最近 `sceneWindowFloors`（默认 6）楼原文，由 `settler` 角色输出一小段，写明在场人物各自想要什么、知道什么、张力在哪里；长度按 token 估算器控制；同一楼层重复执行覆盖同一行。
   - 新增 `scene` 槽位提供者，取当前路径上最近一条分析；没有时槽位为空并在 Trace 里标注缺失；注入位置在历史之后、导演之前。
   - 分析在间隙执行，回合内不调用模型；结果不写台账，也不修改楼层原文。
@@ -592,7 +633,7 @@
 
 - [ ] **R1-T03.a 父子分块** | 依赖：M2-T08、M2-T10 | DESIGN §7.3
   做什么：
-  - 迁移 v20 给 `chunks` 增加父段字段（`parent_ordinal`、`parent_text`）：父段按段落边界切分，过长的段落退化为整楼；检索只匹配小块，命中后返回父段文本。
+  - 迁移 v21 给 `chunks` 增加父段字段（`parent_ordinal`、`parent_text`）：父段按段落边界切分，过长的段落退化为整楼；检索只匹配小块，命中后返回父段文本。
   - 打开数据库时按新规则重建块，旧块与对应向量一并删除；`embeddings` 任务随后补齐缺失向量。回填可重复执行，不产生重复块。
   - `searchChunks` 与 `searchVectors` 返回父段文本；多路融合按楼层去重时保留父段文本，Trace 记录注入的是整段还是整楼。
   验收：小块命中后返回父段；同一父段多个小块只占一个结果位次；回填重复运行后块数不变；旧向量被清理且不参与查询；`pnpm check` 通过。
@@ -621,7 +662,7 @@
 
 - [ ] **R1-T05 八段式章节压缩** | 依赖：M2-T06、R1-T01 | DESIGN §7.3
   做什么：
-  - 迁移 v21 新增 `chapter_compressions(id, story_id, level, start_node_id, end_node_id, sections, token_count, created_at)`，`level` 取 `chapter` 或 `mainline`，同一故事、级别、起止节点唯一；`sections` 存 JSON，键固定为 `剧情脉络`、`人物档案`、`关系网`、`世界与设定`、`物品与资源`、`伏笔与约定`、`当前情况`、`用户意志`。
+  - 迁移 v22 新增 `chapter_compressions(id, story_id, level, start_node_id, end_node_id, sections, token_count, created_at)`，`level` 取 `chapter` 或 `mainline`，同一故事、级别、起止节点唯一；`sections` 存 JSON，键固定为 `剧情脉络`、`人物档案`、`关系网`、`世界与设定`、`物品与资源`、`伏笔与约定`、`当前情况`、`用户意志`。
   - 后台任务 `compression`：每 `chapterSize`（默认 20）个已确认助手楼层生成一条章节压缩，输入为窗口原文与上一份压缩；每 5 条章节压缩生成一条主线压缩，输入为最近 5 条章节压缩。八个键必须齐全，值为字符串；缺键或类型不符整条拒绝并记录原因。
   - 有效性与 M2-T06 一致：起止节点都在当前路径上且起点在终点之前；重复执行不产生重复行；空窗口不调用模型。
   - 槽位提供者按预算注入主线与最近章节压缩，用户意志段永远保留；Trace 来源写 `compression:<level>`。
@@ -629,7 +670,7 @@
 
 - [ ] **R1-T06 后台预筛世界书** | 依赖：M2-T13、R1-T02 | DESIGN §7.3、§9
   做什么：
-  - 迁移 v22 新增 `lore_prefilter(node_id PRIMARY KEY, story_id, entry_ids, created_at)`；`entry_ids` 存 JSON 数组。
+  - 迁移 v23 新增 `lore_prefilter(node_id PRIMARY KEY, story_id, entry_ids, created_at)`；`entry_ids` 存 JSON 数组。
   - 后台任务 `lore_prefilter`：回合落定后，用本轮用户消息、最近一条压缩摘要与下一拍方案构造查询；先用 BM25 取前 `prefilterLimit`（默认 20）条非恒常 lore，再由后台模型判断相关性并写入当前 head 楼层的预筛结果；恒常条目永远保留。
   - 下一轮组装时 `createLoreSlotProvider` 优先读当前 head 的预筛结果，没有记录时退回关键词与实体命中；回合内不调用模型。
   - 重复执行覆盖同一 `node_id`，不新增行；分支切换后只使用当前路径上的预筛结果。
@@ -645,7 +686,7 @@
 
 - [ ] **R1-T07.a 自然语言修订记忆** | 依赖：R1-T07、R1-T01.a | DESIGN §7.1
   做什么：
-  - 迁移 v23 新增 `ledger_change_cards(id, story_id, source_node_id, text, diffs, before, status, created_at, decided_at)`，`status` 取 `pending`、`approved`、`rejected`、`rolled_back`；`diffs` 与 `before` 存 JSON，写入前用 `validateLedgerDiff` 校验。
+  - 迁移 v24 新增 `ledger_change_cards(id, story_id, source_node_id, text, diffs, before, status, created_at, decided_at)`，`status` 取 `pending`、`approved`、`rejected`、`rolled_back`；`diffs` 与 `before` 存 JSON，写入前用 `validateLedgerDiff` 校验。
   - 后台任务 `memory_revision`：读取最近的玩家消息，识别明确的修改要求，生成变更卡草案；模糊陈述、疑问与角色台词不生成。
   - 批准时把 `diffs` 写成 `source` 为 `player` 的事实，同时把同一段话写进 `userWill`；拒绝只改状态；已批准的回滚写反向 diff 恢复 `before` 里的原值，保留原事实的变更历史。
   - CLI：`dramaticer ledger cards <story>` 列出待定卡片，`--approve <id>`、`--reject <id>`、`--rollback <id>` 执行对应动作；R5 面板复用同一接口。
@@ -653,7 +694,7 @@
 
 - [ ] **R1-T08 上下文包复用** | 依赖：R1-T02.a、R1-T03.a、R1-T06、M2-T12 | DESIGN §7.3、§9
   做什么：
-  - 迁移 v24 新增 `context_packs(node_id PRIMARY KEY, story_id, payload, created_at)`；`payload` 存检索结果、预筛世界书条目 id、现场分析引用与台账快照版本。
+  - 迁移 v25 新增 `context_packs(node_id PRIMARY KEY, story_id, payload, created_at)`；`payload` 存检索结果、预筛世界书条目 id、现场分析引用与台账快照版本。
   - 第一次生成玩家楼层的回复时组装上下文并写入上下文包；swipe 与重新生成同一楼层直接读包，不重新检索、不重新调用 embedding 或预筛；包不存在时按现有路径组装并写入。
   - 玩家编辑输入产生新楼层，不继承旧包；包引用的条目被删或分析楼层不在当前路径时视为不存在，重新组装。
   - 包本身不触发模型调用；回合内只读，回合外只准备下一轮能提前准备的部分。

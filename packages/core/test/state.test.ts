@@ -18,6 +18,7 @@ function diff(
 		value: op === "set" ? value : null,
 		reason: null,
 		source: "test",
+		storyTime: null,
 		createdAt: "2026-11-07T00:00:00.000Z",
 	};
 	ordinal += 1;

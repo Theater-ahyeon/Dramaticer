@@ -430,6 +430,65 @@ describe("状态 diff", () => {
 		expect(store.getStateDiffs(swipe.id)).toEqual([]);
 	});
 
+	it("storyTime 随 diff 存储，起止都为空视为未指定", () => {
+		const { store } = openTempStore();
+		const { user } = seedStory(store);
+		const stored = store.appendStateDiffs([
+			{
+				storyId: "story-1",
+				nodeId: user.id,
+				path: ["生命"],
+				op: "set",
+				value: 100,
+				source: "model",
+				storyTime: { start: "第一天", end: "第二天" },
+			},
+			{
+				storyId: "story-1",
+				nodeId: user.id,
+				path: ["体力"],
+				op: "set",
+				value: 50,
+				source: "model",
+				storyTime: { start: null, end: null },
+			},
+		]);
+
+		expect(stored[0]?.storyTime).toEqual({ start: "第一天", end: "第二天" });
+		expect(stored[1]?.storyTime).toBeNull();
+		const diffs = store.getStateDiffs(user.id);
+		expect(diffs[0]?.storyTime).toEqual({ start: "第一天", end: "第二天" });
+		expect(diffs[1]?.storyTime).toBeNull();
+		expect(store.getStateSnapshot(user.id).state).toEqual({
+			生命: 100,
+			体力: 50,
+		});
+
+		expect(() =>
+			store.appendStateDiff({
+				storyId: "story-1",
+				nodeId: user.id,
+				path: ["生命"],
+				op: "set",
+				value: 90,
+				source: "model",
+				storyTime: { start: 3 } as never,
+			}),
+		).toThrow(/storyTime\.start 必须是非空字符串或 null/);
+		expect(() =>
+			store.appendStateDiff({
+				storyId: "story-1",
+				nodeId: user.id,
+				path: ["生命"],
+				op: "set",
+				value: 90,
+				source: "model",
+				storyTime: { start: "第一天", end: null, extra: 1 } as never,
+			}),
+		).toThrow(/storyTime\.extra 是未知字段/);
+		expect(diffs).toEqual(store.getStateDiffs(user.id));
+	});
+
 	it("一批 diff 中任何一条非法都不会写入", () => {
 		const { store } = openTempStore();
 		const { user } = seedStory(store);

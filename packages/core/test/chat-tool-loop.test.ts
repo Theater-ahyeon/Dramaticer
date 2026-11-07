@@ -314,7 +314,7 @@ describe("单轮执行器的读取工具循环", () => {
 		expect(result.stateDiffs[0]).toMatchObject({
 			path: ["角色", "山神", "情绪"],
 			value: "警觉",
-			source: "structured-output:function-call",
+			source: "model",
 		});
 		expect(result.plotNotes.map((note) => note.text)).toEqual([
 			"井底的回声来自另一个人",

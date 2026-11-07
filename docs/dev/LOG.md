@@ -114,3 +114,6 @@
 - 2026-11-07 | S75 | R0-T02 | 追加 | 会话期间人类放入 `docs/proposals/v2.2.md`（深回合草稿与提交、导演手记、运行日志、模板深回合配置、原生元数据、SKILL.md、应用内助手），已分拣为 R0-T03，依赖 R0-T02
 - 2026-11-07 | S76 | R0-T03 | DONE | ADR-0036 合并 v2.2：D1–D5 写入 DESIGN §10.1 与 R3-T00 的细化说明，D6 的 `SKILL.md` 技能格式与第三节三项写入 §18；新增 §10.3 应用内助手（与正剧隔离、复用深回合运行时、类型化 server 接口、三级权限、影响剧情的修改走变更卡），§7.3、§8.1 的侧边引用改指助手，§15 增加 E 与 H 两行并让 R7 去掉侧边 agent；TASKS 新增 E-T01（R2-T99 之后）与 H-T00（R5-T99 之后），R5-T05 验收加入 2000 楼虚拟列表与分页读取；INBOX 清空；只改文档，门禁通过（629 个测试）
 
+
+- 2026-11-07 | S77 | R1-T01.a | DONE | 迁移 v18 给 `state_diffs` 增加 `story_time_start`/`story_time_end`；`StateDiff` 增加 `storyTime`，起止都为空归一为 null；`validateLedgerDiff` 增加 `LEDGER_SOURCES`（model、settler、player、import）与 `storyTime` 形状校验；新增 `readLedgerFacts` 读回仍然成立的事实及其元数据，`readLedger`/`listLedgerEntities` 值视图不变；结构化输出写入来源改为 `model`；DESIGN §7.1 与后续 R1 迁移编号同步；4 个新测试，门禁通过（633 个测试）
+- 2026-11-07 | S77 | 分拣 | INBOX 的 F0 取证条目转为 TASKS 顶部的「F：取证」（F0-T01 统计、F0-T02 归因、F0-T03 裁判校准、F0-T04 全文基线、F0-T99 报告），ADR-0037 记录插队、独立产品形态与固定模型；R1 标题下标注 F0 完成前不选后续任务；INBOX 清空

@@ -3,18 +3,21 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：76
-- 任务：R0-T03 合并 v2.2 补充提案
-- 结果：完成（`DONE`），门禁通过（629 个测试，3 个 live 跳过）。
-  - `docs/dev/DECISIONS.md`：新增 ADR-0036，记录采纳 `docs/proposals/v2.2.md`；外部参考（TauriTavern 为 AGPL-3.0）只借鉴设计，不复制代码。
-  - `docs/DESIGN.md`：§10.1 增加深回合五项要点（草稿与提交分开、导演手记按楼层存修改、运行日志并入 Trace、模板附带深回合配置、原生元数据保真）；新增 §10.3 应用内助手（与正剧隔离、复用深回合运行时、类型化 server 接口、三级权限、影响剧情的修改走变更卡）；§7.3 与 §8.1 里的“侧边”改为应用内助手；§15 新增 E（排障命令行）与 H（应用内助手）两行，R7 去掉侧边 agent；§18 增加 `SKILL.md` 技能格式、本机 embedding、上千楼虚拟列表与分页、多设备同步；附录 A 加 Q38。
-  - `docs/dev/TASKS.md`：R0-T03 标为完成；R3-T00 的细化说明加入 D1–D5；新增 `E-T01`（依赖 R2-T99）与 `H-T00`（依赖 R5-T99、E-T01）；R5-T05 的验收加入 2000 楼虚拟列表与分页读取；R7-T00 与 R7-T99 删除侧边 agent。
-  - `docs/dev/INBOX.md`：v2.2 条目移入已处理，未处理区为空。
+- 会话：77
+- 任务：R1-T01.a 台账事实补 storyTime 与 source
+- 结果：完成（`DONE`），门禁通过（633 个测试，3 个 live 跳过）。
+  - 迁移 v18：`state_diffs` 增加 `story_time_start` 与 `story_time_end`（可空 TEXT）。`StateDiff` 增加 `storyTime: StoryTime | null`，`NewStateDiff` 增加可选的 `storyTime`；存储层把起止都为空的 `storyTime` 归一为 `null`。
+  - `packages/core/src/ledger/schema.ts`：新增 `LEDGER_SOURCES`（`model`、`settler`、`player`、`import`）与 `LedgerSource`；`LedgerDiffInput` 增加可选的 `storyTime` 与 `source`；`validateLedgerDiff` 校验来源取值与 `storyTime` 的 `start`/`end` 形状（非空字符串或 null，拒绝未知字段），错误带完整路径。
+  - `packages/core/src/ledger/read.ts`：新增 `readLedgerFacts(store, nodeId, prefix?)`，沿路径回放台账 diff，返回仍然成立的事实 `{path, value, storyTime, source}`；删除的路径不出现，同一路径以最后一次写入为准；存储里出现枚举外的来源时抛错并指出路径。`readLedger` 与 `listLedgerEntities` 的快照值视图保持不变。
+  - `packages/core/src/chat/turn.ts`：正文模型经结构化输出写入的 diff 来源从 `structured-output:<mode>` 改为 `model`，模式仍记录在 Trace 的 `structured.mode`。
+  - 文档：DESIGN §7.1 写明 `storyTime` 的存储形状、`source` 取值与 `readLedgerFacts`；TASKS 的 R1-T01.a 标为完成，后续 R1 迁移编号从 v18–v24 顺延为 v19–v25。
 
 ## 当前状态
-- M0、M1、M2、M3、D-T01 至 D-T04、M4-T00 至 M4-T06、R0-T01、R0-T02、R0-T03、R1-T01 完成。
-- 数据库 schema 版本 17。R1 的迁移编号已按执行顺序排好：v18 结算记录（R1-T02）、v19 现场分析（R1-T02.a）、v20 父子分块（R1-T03.a）、v21 章节压缩（R1-T05）、v22 世界书预筛（R1-T06）、v23 变更卡（R1-T07.a）、v24 上下文包（R1-T08）。在已排定的任务之间插入新迁移时，后续编号要一起顺延。
-- 台账只有结构与读取，**没有写入校验的强制点**：`appendStateDiffs` 不调用 `validateLedgerDiff`；R1-T02 的结算器负责在写入前校验（I12）。现有结构化输出 `state_update` 仍可写任意路径。
+- M0、M1、M2、M3、D-T01 至 D-T04、M4-T00 至 M4-T06、R0-T01 至 R0-T03、R1-T01、R1-T01.a 完成。
+- 人类在会话 77 末尾追加了 F0 取证要求：TASKS 顶部新增「F：取证」一节并排在 R1 之前，F0 完成前不选 R1 及之后的任务；ADR-0037 记录插队、独立产品形态与固定模型。F0 全部模型调用用 magpie 网关的 DeepSeek V4.1 Flash，三个 ST 数据目录的只读扫描已获授权。
+- 数据库 schema 版本 18。R1 的迁移编号已按执行顺序排好：v19 结算记录（R1-T02）、v20 现场分析（R1-T02.a）、v21 父子分块（R1-T03.a）、v22 章节压缩（R1-T05）、v23 世界书预筛（R1-T06）、v24 变更卡（R1-T07.a）、v25 上下文包（R1-T08）。在已排定的任务之间插入新迁移时，后续编号要一起顺延。
+- 台账只有结构与读取，**没有写入校验的强制点**：`appendStateDiffs` 不调用 `validateLedgerDiff`；R1-T02 的结算器负责在写入前校验（I12）。现有结构化输出 `state_update` 仍可写任意路径，来源记为 `model`。
+- `readLedgerFacts` 不读取快照缓存，按 `getStateDiffsAlongPath` 回放，返回顺序是路径上首次出现的顺序。
 - `packages/core` 的现有模块（楼层树、快照、后台任务、事件、摘要、笔记、检索、Director v1、上下文组装、执行器）全部保留；v2 的结算器、八段式压缩、世界书预筛与用户意志在 R1 新增或替换，届时删除被取代的实现与测试。
 - 已注册的槽位是九个（`packages/core/src/context/template.ts` 的 `CONTEXT_SLOT_NAMES`：lore、character、persona、summary、state、memory、history、director、protocol）；DESIGN §9 里的 `ledger` 对应实现的 `state`，`beat` 尚未注册。R1-T02.a 要新增 `scene` 槽位，R2-T01 的朴素模式要排除它。
 - `packages/server` 已提供故事、导入、设置、模板、SSE 回合与后台运行时缓存；R5 再补后台调度、分支与面板接口。
@@ -26,14 +29,16 @@
 - M3 的两项效果目标按 ADR-0029 保留为未证实；v2 的门槛改由 R6 按 B0/B1 对比判定。
 
 ## 下一步
-- **R1-T01.a 台账事实补 storyTime 与 source**：`storyTime`（起止都可空）进入存储，`source` 取 `model`、`settler`、`player`、`import`，与现有 `StateDiff.source` 的关系写清楚；`validateLedgerDiff` 校验两个字段的类型与取值；导入 MVU 的事实来源为 `import`；`readLedger` 与 `listLedgerEntities` 能读回；旧路径与快照语义不变。
+- **F0-T01 全量对话统计**（最高优先级；F0 完成前不选 R1 及之后的任务）：只读扫描 `D:\SillyTavern\TauriTavern\default-user\`、`D:\SillyTavern\data\default-user\`、`D:\SillyTavern\luker\Luker\data\default-user\` 的 `chats/`，按文件名去重（约 230 个对话），流式处理；统计楼层数分布（P50/P75/P90/最大）、当前 swipe 正文 token 估算、能整个放进 128K/200K/1M 的对话占比、重 roll 率、近期与早期对比；只把统计数字写到 `docs/dev/reports/F0-corpus.md`，用「对话 N」代替角色名。
+- 之后按 F0 顺序：F0-T02 拒绝与接受回复对的归因（约 200 次调用）、F0-T03 裁判校准（约 400 次）、F0-T04 全文基线与渠道上限探测（最多 30 次）、F0-T99 报告与路线建议。F0 的全部模型调用固定用 magpie 网关（`http://127.0.0.1:3425/v1`）上的 DeepSeek V4.1 Flash；不调用本地 ST（I14）。
+- F0-T99 给出建议并经人类确认后，再按 TASKS 的 R1 顺序继续：
 - **R1-T01.b 渠道按岗位配置**：`data/channels.yaml` 增加 `roles`（`writer`、`settler`、`planner`、`judge`）；缺省 `writer` 回落 `main`、其余回落 `background`；创建路由时校验 `judge` 与 `writer` 不是同一个 `baseUrl`；Trace 记录角色与渠道。
-- **R1-T02 台账结算器**：迁移 v18 新增 `ledger_settlements`；后台 `settle` 任务按窗口处理已确认、未结算的助手楼层；模型已写路径优先，结算器只补缺失路径；修复动作限定为补值、删除非法条目、改写线索状态；写入在一个事务里，重复结算不新增 diff，swipe 与编辑节点各自结算；回合内不等待。
-- **R1-T02.a 现场分析**：迁移 v19 新增 `scene_analyses`；后台 `scene` 任务读台账与最近 6 楼原文，输出一小段；新增 `scene` 槽位，取当前路径最近一条；回合内零调用。
+- **R1-T02 台账结算器**：迁移 v19 新增 `ledger_settlements`；后台 `settle` 任务按窗口处理已确认、未结算的助手楼层；模型已写路径优先，结算器只补缺失路径；修复动作限定为补值、删除非法条目、改写线索状态；写入在一个事务里，重复结算不新增 diff，swipe 与编辑节点各自结算；回合内不等待。结算器写入前调用 `validateLedgerDiff`，来源用 `settler`。
+- **R1-T02.a 现场分析**：迁移 v20 新增 `scene_analyses`；后台 `scene` 任务读台账与最近 6 楼原文，输出一小段；新增 `scene` 槽位，取当前路径最近一条；回合内零调用。
 - **R1-T03 批量事件抽取**：一次请求处理最多 8 个连续、未抽取的已确认助手楼层；返回 `{nodeId, events}`，未知或重复楼层整窗拒绝；重跑无重复；与结算窗口互不阻塞。
-- **R1-T03.a 父子分块**：迁移 v20 给 `chunks` 加父段字段；检索匹配小块、命中返回整段或整楼；回填时删除旧块与旧向量，再由 `embeddings` 补齐。
+- **R1-T03.a 父子分块**：迁移 v21 给 `chunks` 加父段字段；检索匹配小块、命中返回整段或整楼；回填时删除旧块与旧向量，再由 `embeddings` 补齐。
 - **R1-T03.b 重排序**：新增 `RerankClient` 与 `channels.yaml` 的 `reranker` 段；融合后取前 20 重排，开关默认关闭，R1-T04.b 评测确认有提升才打开。
-- 之后按 TASKS 顺序：R1-T04.a/.b 回填与记忆评测、R1-T05 八段式压缩（v21）、R1-T06 世界书预筛（v22）、R1-T07 用户意志、R1-T07.a 自然语言修订记忆（v23）、R1-T08 上下文包复用（v24）、R1-T99；再到 R2、E-T01、X1/X2、R3、R4、R5、H-T00、R6、R7。
+- 之后按 TASKS 顺序：R1-T04.a/.b 回填与记忆评测、R1-T05 八段式压缩（v22）、R1-T06 世界书预筛（v23）、R1-T07 用户意志、R1-T07.a 自然语言修订记忆（v24）、R1-T08 上下文包复用（v25）、R1-T99；再到 R2、E-T01、X1/X2、R3、R4、R5、H-T00、R6、R7。
 - E-T01（`dramaticer explain`）排在 R2-T99 之后；H-T00（应用内助手）排在 R5-T99 之后并取代原 R7 的侧边 agent。
 
 ## 注意事项

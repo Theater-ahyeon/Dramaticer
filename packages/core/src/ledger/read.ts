@@ -1,6 +1,7 @@
 import { type JsonObject, type JsonValue, isJsonObject } from "../json.js";
 import { readStateValue } from "../state.js";
 import type { StoryStore } from "../store/story-store.js";
+import type { StateDiff, StoryTime } from "../timeline.js";
 import {
 	AFFECTION_LEVELS,
 	type AffectionLevel,
@@ -8,6 +9,8 @@ import {
 	CLUE_STATUSES,
 	type CharacterTier,
 	type ClueStatus,
+	LEDGER_SOURCES,
+	type LedgerSource,
 	isLedgerNamespace,
 } from "./schema.js";
 
@@ -46,7 +49,18 @@ export interface LedgerEntities {
 	readonly openClues: readonly LedgerClue[];
 }
 
-type LedgerStore = Pick<StoryStore, "getStateSnapshot">;
+/** 一条仍然成立的台账事实，带来源与故事时间。 */
+export interface LedgerFact {
+	readonly path: readonly string[];
+	readonly value: JsonValue;
+	readonly storyTime: StoryTime | null;
+	readonly source: LedgerSource;
+}
+
+type LedgerStore = Pick<
+	StoryStore,
+	"getStateSnapshot" | "getStateDiffsAlongPath"
+>;
 
 /**
  * 读取某个楼层末端的台账快照；传入前缀时只返回该子树，路径不存在返回
@@ -61,6 +75,41 @@ export function readLedger(
 	if (prefix === undefined) return state;
 	assertPrefix(prefix);
 	return readStateValue(state, prefix) as JsonValue | undefined;
+}
+
+/**
+ * 沿路径回放台账 diff，返回每条仍然成立的事实及其元数据。被删除的路径
+ * 不出现；同一路径以最后一次写入为准。
+ */
+export function readLedgerFacts(
+	store: LedgerStore,
+	nodeId: string,
+	prefix?: readonly string[],
+): LedgerFact[] {
+	if (prefix !== undefined) assertPrefix(prefix);
+	const facts = new Map<string, LedgerFact>();
+	for (const diff of store.getStateDiffsAlongPath(nodeId)) {
+		if (!isLedgerNamespace(diff.path[0] ?? "")) continue;
+		if (
+			prefix !== undefined &&
+			(diff.path.length < prefix.length ||
+				!prefix.every((segment, index) => diff.path[index] === segment))
+		) {
+			continue;
+		}
+		const key = JSON.stringify(diff.path);
+		if (diff.op === "delete") {
+			facts.delete(key);
+			continue;
+		}
+		facts.set(key, {
+			path: diff.path,
+			value: diff.value as JsonValue,
+			storyTime: diff.storyTime,
+			source: ledgerSourceOf(diff),
+		});
+	}
+	return [...facts.values()];
 }
 
 /** 列出台账里的人物、关系与尚未兑现的线索。 */
@@ -236,6 +285,16 @@ function readInertiaField(
 
 function sortedKeys(object: JsonObject): string[] {
 	return Object.keys(object).sort();
+}
+
+function ledgerSourceOf(diff: StateDiff): LedgerSource {
+	const source = diff.source;
+	if (!(LEDGER_SOURCES as readonly string[]).includes(source)) {
+		throw new Error(
+			`台账路径 ${diff.path.map((segment) => JSON.stringify(segment)).join(".")} 的来源 ${JSON.stringify(source)} 不在 ${LEDGER_SOURCES.join("、")} 之内`,
+		);
+	}
+	return source as LedgerSource;
 }
 
 function assertPrefix(prefix: readonly string[]): void {
