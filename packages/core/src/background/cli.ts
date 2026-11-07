@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadDotEnv } from "../env.js";
+import { SETTLE_JOB_KIND, createSettleHandler } from "../ledger/settle.js";
 import {
 	type LlmChannelsConfig,
 	loadChannelsConfig,
@@ -94,6 +95,10 @@ export async function runWorkCli(
 			events: createEventExtractionHandler(),
 			summary: createSummaryHandler(),
 			[NPC_AGENDA_JOB_KIND]: createNpcAgendaHandler(),
+			[SETTLE_JOB_KIND]: {
+				handler: createSettleHandler(),
+				enqueue: "settled",
+			},
 			...(embedder === null
 				? {}
 				: {

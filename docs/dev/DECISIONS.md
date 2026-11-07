@@ -584,3 +584,13 @@
   - 阶段顺序按 ADR-0044：P1 技术验证依赖 R5-T99，P2 内核改造依赖 P1 与 R5-T99，P3 依赖 P2，P4 依赖 P3，P5 依赖 P4 与 M5-T99；C 线兼容插件依赖 P2，本 ADR 不重复建立兼容插件任务（ADR-0038 已落为 C-T01–C-T05）。
   - `docs/proposals/plugins.md` 第七节的三条新不变量写进 DESIGN §19.7；AGENTS.md 是否加入由人类决定，记为 HUMAN-10，不修改 AGENTS.md。
 - **影响**：`docs/DESIGN.md` §19 由摘要补齐为完整章节（Context 与注册表、扩展点与分发模式、两档插件、清单与玩法包、卡片依赖、插件市场、不变量、执行顺序）；`docs/dev/TASKS.md` 的 P 阶段建立 P1–P5 并写清依赖与验收；`docs/dev/HUMAN.md` 新增 HUMAN-10（不阻塞）。本轮只改文档与任务清单，不新增依赖，门禁测试数不变。
+
+## ADR-0046 结算任务记录修复结果的位置（2026-11-07）
+
+- **背景**：R1-T02.2 的任务文本要求修复原因「进入 `repairs` 与 Trace」。结算在回复落定之后的间隙里运行，而 TurnTrace 在生成回合内一次写完并按楼层只读保存（`saveTurnTrace`），结算发生时无法追加字段，也没有后台任务的 Trace 表。
+- **选项**：给 traces 增加可更新的结算段（需要新的写入接口，且把后台结果混进回合记录）；新增后台任务的 Trace 表（R1-T02.1 的存储已经用 `ledger_settlements` 记录结算结果，会形成第二份事实）；把修复结果留在 `ledger_settlements.repairs`，请求级失败留在 `background_jobs.last_error`（采纳）。
+- **决定**：
+  - 每个楼层的结算结果（新增条数、来源、全部修复记录）写进 `ledger_settlements.repairs`；整次请求失败由任务框架记入 `background_jobs.last_error` 并按既有规则重试，不额外写 Trace。
+  - 回合 Trace 的 `structured` 段继续只描述生成回合内模型自己的写入与被拒绝的条目，结算不改写已保存的 Trace。
+  - 结算窗口以当前 head 为终点：一次请求覆盖 head 路径上最多 `settleWindowFloors` 个未结算楼层；其余楼层对应的 `settle` 任务执行时窗口已空，直接完成。
+- **影响**：`docs/dev/TASKS.md` 的 R1-T02.2 按上述方式记录修复原因；后续 R1-T07.a 从 `ledger_settlements.repairs` 读取冲突记录生成变更卡。

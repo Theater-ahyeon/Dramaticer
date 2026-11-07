@@ -1862,6 +1862,46 @@ export class StoryStore {
 		return rows.map(rowToStateDiff);
 	}
 
+	/**
+	 * 删除某个楼层上的状态 diff；结算器替换不合格条目时使用。
+	 * 传入不属于该楼层的 id 时整次抛错，不删除任何行。
+	 */
+	deleteStateDiffs(nodeId: string, ids: readonly number[]): number {
+		if (!this.getNode(nodeId)) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
+		if (!Array.isArray(ids)) {
+			throw new Error("要删除的状态 diff id 必须是数组");
+		}
+		if (ids.length === 0) return 0;
+		for (const id of ids) {
+			if (!Number.isInteger(id) || id < 1) {
+				throw new Error(`状态 diff id 必须是正整数：${String(id)}`);
+			}
+		}
+		const remove = this.#db.prepare(
+			"DELETE FROM state_diffs WHERE id = ? AND node_id = ?",
+		);
+		const invalidateSnapshots = this.#db.prepare(
+			`WITH RECURSIVE affected(node_id) AS (
+				SELECT id FROM nodes WHERE id = ?
+				UNION ALL
+				SELECT nodes.id FROM nodes JOIN affected ON nodes.parent_id = affected.node_id
+			)
+			DELETE FROM state_snapshots WHERE node_id IN (SELECT node_id FROM affected)`,
+		);
+		return this.#db.transaction((): number => {
+			for (const id of ids) {
+				const info = remove.run(id, nodeId);
+				if (info.changes !== 1) {
+					throw new Error(`楼层 ${nodeId} 没有 id 为 ${id} 的状态 diff`);
+				}
+			}
+			invalidateSnapshots.run(nodeId);
+			return ids.length;
+		})();
+	}
+
 	/** 按路径顺序（根在前）累加所需的全部状态 diff。 */
 	getStateDiffsAlongPath(nodeId: string): StateDiff[] {
 		if (!this.getNode(nodeId)) {

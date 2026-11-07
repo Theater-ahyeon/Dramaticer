@@ -99,7 +99,8 @@
   - 后台任务注册表按类型声明入队条件：`confirmed`（有子节点，现状）与 `settled`（已落定的助手楼层）；`settle` 使用 `settled`。
   验收：迁移后新表存在且跨故事的结算记录与候选被触发器拒绝；置信度越界抛错并指出位置；同一实体候选重复写入只累加 `hits`；窗口只取当前路径上已落定、未结算的助手楼层且排除中止楼层；`settled` 条件为尚未确认的助手楼层建任务、`confirmed` 条件不建；`pnpm check` 通过。
 
-- [ ] **R1-T02.2 结算任务与修复** | 依赖：R1-T02.1
+- [x] **R1-T02.2 结算任务与修复** | 依赖：R1-T02.1
+  完成：2026-11-07 新增 `ledger/settle.ts`（`createSettleHandler`、`SETTLE_JOB_KIND`）：按 head 路径一次请求结算最多 4 个已落定未结算楼层，已有台账写入优先且先校验、不合格条目删除并记入 `repairs`，模型输出按楼层整体拒绝、整次请求失败交给任务框架重试；`StoryStore.deleteStateDiffs` 支持删除并失效快照；修复原因存 `ledger_settlements.repairs`（ADR-0046）；`dramaticer work` 注册 `settle` 任务（条件 `settled`）；新增 10 个测试；门禁通过（759 个测试）
   做什么：
   - 后台任务 `settle`：沿当前路径取最多 `settleWindowFloors`（默认 4）个已落定、尚未结算的助手楼层；一次请求返回 `{nodeId, diffs}` 数组。窗口内有解析失败或校验失败的条目时，该楼层整条拒绝并记入 `repairs`，其余楼层照常写入；整次请求失败按 M2-T03 的规则重试。
   - 落定即结算：回复落定后对 head 结算；被放弃的节点保留结算结果但不参与当前路径。
