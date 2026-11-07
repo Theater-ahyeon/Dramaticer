@@ -19,6 +19,11 @@ import {
 	type MemoryEvent,
 	type NewMemoryEventInput,
 } from "../memory/event.js";
+import {
+	type NewSummaryInput,
+	type Summary,
+	isSummaryLevel,
+} from "../memory/summary.js";
 import { applyStateDiffsTo } from "../state.js";
 import type {
 	NewStateDiff,
@@ -30,6 +35,7 @@ import type {
 	TimelineNode,
 	TimelineRole,
 } from "../timeline.js";
+import { createTokenEstimator } from "../tokens.js";
 import type { TurnTrace } from "../trace.js";
 import { serializeJsonValue } from "./json-value.js";
 import { applyMigrations } from "./migrations.js";
@@ -123,6 +129,17 @@ interface MemoryEventRow {
 	readonly created_at: string;
 }
 
+interface SummaryRow {
+	readonly id: string;
+	readonly story_id: string;
+	readonly level: string;
+	readonly start_node_id: string;
+	readonly end_node_id: string;
+	readonly text: string;
+	readonly token_count: number;
+	readonly created_at: string;
+}
+
 interface NormalisedMemoryEvent {
 	readonly id: string;
 	readonly storyId: string;
@@ -134,6 +151,17 @@ interface NormalisedMemoryEvent {
 	readonly importance: number;
 	readonly knowers: readonly string[];
 	readonly text: string;
+	readonly createdAt: string;
+}
+
+interface NormalisedSummary {
+	readonly id: string;
+	readonly storyId: string;
+	readonly level: Summary["level"];
+	readonly startNodeId: string;
+	readonly endNodeId: string;
+	readonly text: string;
+	readonly tokenCount: number;
 	readonly createdAt: string;
 }
 
@@ -223,6 +251,8 @@ const DEFAULTS = {
 	maxSearchLimit: 1000,
 	minQueryLength: 3,
 } as const;
+
+const estimateTokens = createTokenEstimator();
 
 function assertNonEmptyString(
 	value: unknown,
@@ -390,6 +420,22 @@ function parseStoredNameArray(value: string, label: string): string[] {
 		}
 		return item;
 	});
+}
+
+function rowToSummary(row: SummaryRow): Summary {
+	if (!isSummaryLevel(row.level)) {
+		throw new Error(`摘要 ${row.id} 的级别不合法：${row.level}`);
+	}
+	return {
+		id: row.id,
+		storyId: row.story_id,
+		level: row.level,
+		startNodeId: row.start_node_id,
+		endNodeId: row.end_node_id,
+		text: row.text,
+		tokenCount: row.token_count,
+		createdAt: row.created_at,
+	};
 }
 
 export class StoryStore {
@@ -1135,6 +1181,114 @@ export class StoryStore {
 		return row.count;
 	}
 
+	/**
+	 * 写入一条摘要。起点必须是终点的祖先，text 去掉首尾空白后必须非空；
+	 * token_count 在这里用统一估算器计算。
+	 */
+	insertSummary(input: NewSummaryInput): Summary {
+		const summary = this.#normaliseSummary(input);
+		this.#db
+			.prepare(
+				`INSERT INTO summaries
+					(id, story_id, level, start_node_id, end_node_id, text, token_count, created_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			)
+			.run(
+				summary.id,
+				summary.storyId,
+				summary.level,
+				summary.startNodeId,
+				summary.endNodeId,
+				summary.text,
+				summary.tokenCount,
+				summary.createdAt,
+			);
+		return {
+			id: summary.id,
+			storyId: summary.storyId,
+			level: summary.level,
+			startNodeId: summary.startNodeId,
+			endNodeId: summary.endNodeId,
+			text: summary.text,
+			tokenCount: summary.tokenCount,
+			createdAt: summary.createdAt,
+		};
+	}
+
+	/** 起止节点都在 head 的路径上、且起点在终点之前的摘要才有效。 */
+	isSummaryValid(summary: Summary, headNodeId: string): boolean {
+		const head = this.getNode(headNodeId);
+		if (!head) {
+			throw new Error(`楼层节点不存在：${headNodeId}`);
+		}
+		if (head.storyId !== summary.storyId) return false;
+		const path = this.getPathToNode(headNodeId);
+		const startIndex = path.findIndex(
+			(node) => node.id === summary.startNodeId,
+		);
+		if (startIndex === -1) return false;
+		const endIndex = path.findIndex((node) => node.id === summary.endNodeId);
+		return endIndex !== -1 && startIndex < endIndex;
+	}
+
+	/** 只返回在当前 head 路径上仍然有效的摘要；先章节后主线，各自从早到晚。 */
+	getValidSummaries(storyId: string, headNodeId: string): Summary[] {
+		assertNonEmptyString(storyId, "故事 id");
+		const head = this.getNode(headNodeId);
+		if (!head) {
+			throw new Error(`楼层节点不存在：${headNodeId}`);
+		}
+		if (head.storyId !== storyId) {
+			throw new Error(`楼层节点 ${headNodeId} 属于另一个故事 ${head.storyId}`);
+		}
+		const rows = this.#db
+			.prepare(
+				`WITH RECURSIVE path(node_id, position) AS (
+					SELECT id, 0 FROM nodes WHERE id = ?
+					UNION ALL
+					SELECT nodes.parent_id, path.position + 1
+					FROM path JOIN nodes ON nodes.id = path.node_id
+					WHERE nodes.parent_id IS NOT NULL
+				)
+				SELECT s.*
+				FROM summaries AS s
+				JOIN path AS start ON start.node_id = s.start_node_id
+				JOIN path AS end ON end.node_id = s.end_node_id
+				WHERE s.story_id = ?
+					AND start.position > end.position
+				ORDER BY (s.level = 'chapter') DESC, end.position DESC`,
+			)
+			.all(headNodeId, storyId) as SummaryRow[];
+		return rows.map(rowToSummary);
+	}
+
+	/** 统计路径上已确认（有子节点）的助手楼层数，包含给定节点自身。 */
+	countConfirmedAssistantNodesOnPath(nodeId: string): number {
+		assertNonEmptyString(nodeId, "楼层节点 id");
+		if (!this.getNode(nodeId)) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
+		const row = this.#db
+			.prepare(
+				`WITH RECURSIVE path(node_id) AS (
+					SELECT id FROM nodes WHERE id = ?
+					UNION ALL
+					SELECT nodes.parent_id
+					FROM path JOIN nodes ON nodes.id = path.node_id
+					WHERE nodes.parent_id IS NOT NULL
+				)
+				SELECT COUNT(*) AS count
+				FROM path
+				JOIN nodes ON nodes.id = path.node_id
+				WHERE nodes.role = 'assistant'
+					AND EXISTS (
+						SELECT 1 FROM nodes AS child WHERE child.parent_id = nodes.id
+					)`,
+			)
+			.get(nodeId) as { readonly count: number };
+		return row.count;
+	}
+
 	searchNodeText(
 		query: string,
 		options: SearchNodeTextOptions = {},
@@ -1444,6 +1598,70 @@ export class StoryStore {
 			throw new Error(`后台任务不存在：${id}`);
 		}
 		return job;
+	}
+
+	#normaliseSummary(input: NewSummaryInput): NormalisedSummary {
+		if (input === null || typeof input !== "object" || Array.isArray(input)) {
+			throw new Error("摘要必须是对象");
+		}
+		assertNonEmptyString(input.storyId, "摘要的 storyId");
+		if (!this.getStory(input.storyId)) {
+			throw new Error(`故事不存在：${input.storyId}`);
+		}
+		if (!isSummaryLevel(input.level)) {
+			throw new Error(`摘要级别不合法：${String(input.level)}`);
+		}
+		assertNonEmptyString(input.startNodeId, "摘要的 startNodeId");
+		assertNonEmptyString(input.endNodeId, "摘要的 endNodeId");
+		const start = this.getNode(input.startNodeId);
+		if (!start) {
+			throw new Error(`摘要的起点楼层不存在：${input.startNodeId}`);
+		}
+		if (start.storyId !== input.storyId) {
+			throw new Error(
+				`摘要的起点楼层属于另一个故事 ${start.storyId}：${input.startNodeId}`,
+			);
+		}
+		const end = this.getNode(input.endNodeId);
+		if (!end) {
+			throw new Error(`摘要的终点楼层不存在：${input.endNodeId}`);
+		}
+		if (end.storyId !== input.storyId) {
+			throw new Error(
+				`摘要的终点楼层属于另一个故事 ${end.storyId}：${input.endNodeId}`,
+			);
+		}
+		if (typeof input.text !== "string") {
+			throw new Error("摘要的 text 必须是字符串");
+		}
+		const text = input.text.trim();
+		if (text.length === 0) {
+			throw new Error("摘要的 text 不能是空字符串");
+		}
+		const path = this.getPathToNode(input.endNodeId);
+		const startIndex = path.findIndex((node) => node.id === input.startNodeId);
+		if (startIndex === -1) {
+			throw new Error(
+				`摘要的起点必须是终点的祖先：${input.startNodeId} 不在 ${input.endNodeId} 的路径上`,
+			);
+		}
+		if (startIndex === path.length - 1) {
+			throw new Error("摘要的起点必须在终点之前");
+		}
+		const id = input.id ?? randomUUID();
+		assertNonEmptyString(id, "摘要的 id");
+		const createdAt = input.createdAt ?? new Date().toISOString();
+		assertNonEmptyString(createdAt, "摘要的 createdAt");
+		return {
+			id,
+			storyId: input.storyId,
+			level: input.level,
+			startNodeId: input.startNodeId,
+			endNodeId: input.endNodeId,
+			text,
+			tokenCount: estimateTokens(text),
+			createdAt,
+		};
 	}
 
 	#normaliseMemoryEvent(

@@ -6,6 +6,7 @@ import { type LlmChannelsConfig, loadChannelsConfig } from "../llm/channels.js";
 import { createLlmClient } from "../llm/configure.js";
 import type { LlmClient } from "../llm/types.js";
 import { createEventExtractionHandler } from "../memory/extract.js";
+import { createSummaryHandler } from "../memory/summarize.js";
 import { StoryStore } from "../store/story-store.js";
 import {
 	type BackgroundJobRun,
@@ -60,6 +61,7 @@ export async function runWorkCli(
 		dependencies.registry ??
 		createBackgroundJobRegistry({
 			events: createEventExtractionHandler(),
+			summary: createSummaryHandler(),
 		});
 	const log = dependencies.log ?? console.log;
 

@@ -243,7 +243,8 @@
   - `getEventsForPath(nodeId, options)` 按楼层顺序返回事件；同一楼层重复执行不产生重复行。
   验收：假客户端返回 3 条合法事件时全部写入；包含一条非法事件时整批不写入且任务有错误原因；重跑不重复；`getEventsForPath` 的分页与 limit 正确；触发器拒绝修改与删除事件；`pnpm check` 通过。
 
-- [ ] **M2-T06 分层摘要** | 依赖：M2-T03 | DESIGN §5、§7
+- [x] **M2-T06 分层摘要** | 依赖：M2-T03 | DESIGN §5、§7
+  完成：2026-11-07 迁移 v8 新增 `summaries`（同故事、级别、起止节点唯一，触发器拒绝跨故事行）；`StoryStore` 新增 `insertSummary`（起点必须是终点祖先、正文非空、token 数由估算器计算）、`isSummaryValid`、`getValidSummaries`（按 head 路径过滤，先章节后主线）、`countConfirmedAssistantNodesOnPath`；core 新增 `memory/summary.ts` 与 `memory/summarize.ts`：章节摘要每 20 个已确认助手楼层触发、窗口为上一章节终点之后的原文，主线摘要每 5 条章节摘要触发、窗口为最近 5 条章节摘要，窗口大小可注入，重跑按已有摘要跳过；`dramaticer work` 默认注册 `summary` 处理器；10 个新测试，门禁通过（388 个测试，ADR-0018）
   做什么：
   - 迁移 v8：新增 `summaries(id, story_id, level, start_node_id, end_node_id, text, token_count, created_at)`，`level` 取 `chapter` 或 `mainline`，同一故事、级别、起止节点唯一。
   - `isSummaryValid(summary, headNodeId)`：起止节点都在 head 的路径上，且起点在终点之前。`getValidSummaries(storyId, headNodeId)` 只返回有效摘要。
