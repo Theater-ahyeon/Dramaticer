@@ -67,7 +67,8 @@
   做什么：在 st-compat 里实现分类器，分类与 DESIGN §6 对应：html_render、html_script、delete（区分只影响显示、只影响 prompt、带深度限制）、strip_cot、rewrite_capture、text_replace、streaming_variant。再判断每一条是否"可以自动升级"成块策略。对全部预设运行一遍，统计数字追加到 M0-health 报告里。
   验收：每个分类都有合成用例；报告里有可升级比例。
 
-- [ ] **M0-T10 评测集：状态类题目（规则生成）** | 依赖：M0-T07
+- [x] **M0-T10 评测集：状态类题目（规则生成）** | 依赖：M0-T07
+  完成：2026-11-06 实现 `evalset/state-questions.ts` 与 `evalset/cli.ts`：按稳定区间生成状态题并回放快照核对；3 个对话共 236 题（71/65/100），全部核对一致；ADR-0006 修正空对象快照语义，9 个新测试，门禁通过
   做什么：从 MVU 的 diff 中按规则生成题目：在第 Y 楼提问"在第 X 楼之后，<变量路径> 的值是什么"，标准答案取自快照，证据是第 X 楼。只挑间隔大的（Y − X ≥ 30）和重要的变量（变化次数少、不是每楼都变的那种）。每个对话出 50 到 100 题。格式为 JSONL：`{id, story, askAtNode, question, answer, evidenceNodes, kind:"state"}`，写到 `eval-private/evalset/`。
   验收：题目数量达标；随机抽 10 题，自动核对答案和快照一致。
 

@@ -17,7 +17,12 @@ export interface SnapshotDiffDelete {
 
 export type SnapshotDiff = SnapshotDiffSet | SnapshotDiffDelete;
 
-/** 读取 MVU 快照；根不是对象时直接报错。null 表示这一层没有更新。 */
+/**
+ * 读取 MVU 快照；根不是对象时直接报错。
+ *
+ * null 表示这一层没有更新；ST 在没有变量更新的楼层写 `[{}]`，解析后是空对象，
+ * 同样表示没有更新。真正清空全部变量时 MVU 写的是 `{"stat_data":{}}` 之类的嵌套空对象。
+ */
 export function readSnapshot(
 	value: JsonValue,
 	label: string,
@@ -26,6 +31,7 @@ export function readSnapshot(
 	if (!isJsonObject(value)) {
 		throw new Error(`${label}的 MVU 变量快照必须是对象或 null`);
 	}
+	if (Object.keys(value).length === 0) return null;
 	return value;
 }
 

@@ -7,6 +7,7 @@ import type {
 import type { StChatEntry, StChatMessage } from "./chat-jsonl.js";
 import { parseChatJsonlFile } from "./chat-jsonl.js";
 import type { JsonObject } from "./json.js";
+import { currentSwipeIndex, messageNodeId, swipeNodeId } from "./node-id.js";
 import type { SnapshotDiff } from "./state-diff.js";
 import { diffSnapshots, readSnapshot } from "./state-diff.js";
 
@@ -72,8 +73,8 @@ export async function importChatToStore(
 		const message = entry.message;
 		const role = roleOf(message);
 		const createdAt = createdAtFromSendDate(message.sendDate);
+		const mainNodeId = messageNodeId(idPrefix, message);
 		const currentSwipe = currentSwipeIndex(message);
-		const mainNodeId = `${idPrefix}:m${message.index}:s${currentSwipe}`;
 
 		store.appendNode({
 			id: mainNodeId,
@@ -102,7 +103,7 @@ export async function importChatToStore(
 		for (let index = 0; index < message.swipes.length; index += 1) {
 			if (index === currentSwipe) continue;
 			const swipe = message.swipes[index];
-			const siblingId = `${idPrefix}:m${message.index}:s${index}`;
+			const siblingId = swipeNodeId(idPrefix, message.index, index);
 			store.appendNode({
 				id: siblingId,
 				storyId,
@@ -160,20 +161,6 @@ function roleOf(message: StChatMessage): TimelineRole {
 	if (message.isSystem) return "system";
 	if (message.isUser) return "user";
 	return "assistant";
-}
-
-function currentSwipeIndex(message: StChatMessage): number {
-	if (message.swipes.length === 0) return 0;
-	const swipeId = message.swipeId;
-	if (
-		swipeId !== null &&
-		Number.isInteger(swipeId) &&
-		swipeId >= 0 &&
-		swipeId < message.swipes.length
-	) {
-		return swipeId;
-	}
-	return 0;
 }
 
 function createdAtFromSendDate(

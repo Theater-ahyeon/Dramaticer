@@ -2,8 +2,7 @@ import { stat } from "node:fs/promises";
 import type { StChatEntry, StChatMessage } from "../chat-jsonl.js";
 import { parseChatJsonlFile } from "../chat-jsonl.js";
 import type { JsonObject, JsonValue } from "../json.js";
-import { isJsonObject } from "../json.js";
-import { diffSnapshots } from "../state-diff.js";
+import { diffSnapshots, readSnapshot } from "../state-diff.js";
 import type { DuplicationCurve, ReplyText } from "./duplication.js";
 import { analyzeDuplication } from "./duplication.js";
 import type { TokenEstimator } from "./token-estimate.js";
@@ -135,7 +134,10 @@ export async function analyzeChat(
 			fieldSizes.set(field, (fieldSizes.get(field) ?? 0) + size);
 		}
 
-		const snapshot = readMessageSnapshot(message);
+		const snapshot = readSnapshot(
+			message.variables,
+			`第 ${message.index} 条消息`,
+		);
 		if (snapshot !== null) {
 			snapshotBytes += snapshotSize(snapshot);
 			const diffs = diffSnapshots(previousSnapshot, snapshot);
@@ -202,15 +204,6 @@ function countRole(
 	} else {
 		counts.assistant += 1;
 	}
-}
-
-function readMessageSnapshot(message: StChatMessage): JsonObject | null {
-	const value = message.variables;
-	if (value === null) return null;
-	if (!isJsonObject(value)) {
-		throw new Error(`第 ${message.index} 条消息的 MVU 快照不是对象`);
-	}
-	return value;
 }
 
 function snapshotSize(value: JsonValue | null): number {

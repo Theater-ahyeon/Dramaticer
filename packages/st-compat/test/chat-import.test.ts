@@ -200,6 +200,31 @@ describe("importChatToStore", () => {
 		expect(store.getNode("prefix:m0:s0")?.role).toBe("system");
 	});
 
+	it("空对象快照表示没有变量更新，不会删除已有状态", async () => {
+		const store = openStore();
+		const lines = [
+			JSON.stringify({ character_name: "角色" }),
+			JSON.stringify({ mes: "开场", variables: [{ stat_data: { hp: 100 } }] }),
+			JSON.stringify({ is_user: true, mes: "空更新", variables: [{}] }),
+			JSON.stringify({ mes: "继续", variables: [{ stat_data: { hp: 90 } }] }),
+		];
+		await importChatToStore(store, parseChatJsonl([lines.join("\n")]), {
+			storyId: "empty",
+		});
+
+		expect(store.getStateDiffs("empty:m1:s0")).toEqual([]);
+		expect(snapshotAt(store, "empty:m1:s0")).toEqual({
+			stat_data: { hp: 100 },
+		});
+		expect(
+			store.getStateDiffs("empty:m2:s0").map((diff) => ({
+				path: diff.path,
+				op: diff.op,
+				value: diff.value,
+			})),
+		).toEqual([{ path: ["stat_data", "hp"], op: "set", value: 90 }]);
+	});
+
 	it("根快照不是对象时拒绝导入", async () => {
 		const store = openStore();
 		const lines = [
