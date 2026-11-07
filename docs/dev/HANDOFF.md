@@ -3,37 +3,35 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加），按下面的模板填写。
 
 ## 最近一次会话
-- 会话：19
-- 任务：M0-FIX-4 检索规范化与命中口径
+- 会话：20
+- 任务：M0-FIX-5 ACU 快照逐单元格判定
 - 结果：完成。
-  - `packages/core/src/retrieval/chunk-index.ts` 新增导出 `normalizeRetrievalText`（NFKC 后去掉 `\p{P}`、`\p{S}`、空白）。`ChunkIndex.add` 写入规范化后的文本，规范化结果为空的块跳过；`buildTrigramQuery` 用同一函数，查询与索引口径一致。`buildTrigramQuery` 不再接受非字符串输入（错误由 `normalizeRetrievalText` 抛出）。
-  - `packages/st-compat/src/evalset/retrieval.ts` 检索结果先按 `nodeId` 保序去重再取前 K；`askAtNode` 解析出的楼层下标在 `nodeIdByIndex` 中不存在时抛出 `题目 <id> 的提问楼层 <nodeId> 超出故事 <story> 的楼层范围`。
-  - `packages/st-compat/src/health/report.ts` 的检索章节说明补上写入与查询共用规范化、同一楼层只占一个位次。
-- 测试：`chunk-text.test.ts` 新增 4 个边界用例（长度等于 `maxChars`、`maxChars + 1`、末尾残片小于步长、`\r\n` 归一化），非法参数改为按消息断言；`chunk-index.test.ts` 新增 3 个用例（全角写入与带标点查询命中、纯标点块不写入、重复写入保留两条记录），非法参数按消息断言并覆盖 `limit` 上限；`retrieval.test.ts` 新增 2 个用例（同一楼层多个块只占一个位次、越界 `askAtNode` 抛错），配 fixture `packages/st-compat/test/fixtures/retrieval-dup-chat.jsonl`。`pnpm check` 通过（23 个测试文件，188 个测试）。
-- 冒烟：`pnpm --filter @dramaticer/st-compat report` 用真实快照重跑，检索命中从 126/143/153 升到 141/156/163（@5/@10/@20）；对话 2 的块数从 3548 变成 3547，因为一个只有标点的块规范化后为空，不再写入索引。
-- 报告：`docs/dev/reports/M0-health.md` 已随报告重新生成，ACU 数字未变（91/386）。
+  - `packages/st-compat/src/evalset/acu.ts`：`collectSnapshotText` 换成 `collectSnapshotValues`，返回表格值列表。三处来源都按单元格收集：`hash_sheets` 行里的 uid 对应单元格值、`TavernDB_ACU_Data` 的整表内容（`collectSheetContents` 存 `readonly string[]`，原 `renderRows` 拆成 `collectCellValues`）、`AcuTableDatabase.values()`（原 `dump()`）。匹配时每个值单独 `normalizeForTableMatch`，`tableValues.some(value => value.includes(answerText))`；相邻单元格不再拼接。
+  - 沿用问题进行中的楼层记录 `seenFloors`；流式读完后把没出现过的提问楼层汇总抛错：`故事 <story> 缺少提问楼层：<nodeId>（题目 <id>、<id>）`。
+  - `packages/st-compat/src/health/report.ts`：ACU 章节与公共说明改成“每个单元格和答案分别规范化后判断答案是否出现在某一个单元格里”。
+  - 测试：`acu.test.ts` 新增 2 个用例——相邻单元格 fixture（`test/fixtures/acu/adjacent/chat.jsonl`，只有 `集市` 与 `时间` 两个单元格）上 `集市时间` 未命中而 `集市` 命中；越界 `askAtNode` 抛错且消息带楼层与题目 id。
+- 冒烟：`pnpm --filter @dramaticer/st-compat report` 重跑成功，检索命中仍是 141/156/163，ACU 覆盖仍是 91/386（状态题 88/236、事件题 3/150，按答案长度 27/33、39/61、25/69、0/223）。真实数据里没有答案依赖相邻单元格拼接，数字不变。
+- 报告：`docs/dev/reports/M0-health.md` 与私有版 `eval-private/reports/health.md` 已重新生成，只改了 ACU 段落措辞与生成时间。
 
 ## 当前状态
-- 门禁：`pnpm check` 通过（188 个测试）。
+- 门禁：`pnpm check` 通过（190 个测试）。
+- ACU 对照组：快照是单元格值列表，逐值规范化后判断包含；提问楼层不在对话里直接抛错。
 - 检索：写入与查询共用 `normalizeRetrievalText`；检索评测按 `nodeId` 去重；`askAtNode` 越界抛错。
 - 存储：`StoryStore.runInTransaction<T>(fn)` 是唯一的显式事务入口；`appendStateDiffs` 内部用 `db.transaction`，嵌套时走 savepoint。
 - 聊天解析：`parseChatJsonl` 只剥离首行的 BOM；`parseChatJsonlFile` 的错误包装为“解析聊天文件失败：<path>”。
 - 角色卡：`isPngData` 是模块内函数；PNG 文本块先做 base64 规范化回环校验，再做 JSON 解析。
 - LLM 客户端：`LlmRequest.signal` 贯穿请求、退避与限速等待；`sleep` 选项的签名是 `(ms, signal) => Promise<void>`；`LlmClient` 接口未变。
-- TASKS：M0-FIX-1 到 M0-FIX-4 已标记 `[x]`；M0-FIX-5 到 M0-FIX-11 待做；M0-T99 依赖全部 M0 任务。
+- TASKS：M0-FIX-1 到 M0-FIX-5 已标记 `[x]`；M0-FIX-6 到 M0-FIX-11 待做；M0-T99 依赖全部 M0 任务。
 - 门禁脚本（受保护，未改）：HUMAN-06 记录 I1 关键词缺 `marker`、I10 不扫描 test 目录里的 fixture 与辅助模块。
 
 ## 下一步
-- 执行 M0-FIX-5（ACU 快照逐单元格判定）：先读 `packages/st-compat/src/evalset/acu.ts` 与 `packages/st-compat/test/acu.test.ts`、`fixtures/acu/`，把单元格历史与 SQL 重放都改成返回值列表，逐值规范化后判断包含；提问楼层在聊天里不存在时抛出并列出题目 id；补“只有 `集市` 与 `时间` 两个单元格时 `集市时间` 不命中、`集市` 命中”的负例，然后 `pnpm --filter @dramaticer/st-compat report` 更新两份报告的 ACU 数字，最后 `pnpm check`。
+- 执行 M0-FIX-6（存储层校验与测试资源清理）：`getStateDiffs` 对不存在的楼层抛错；`applyMigrations` 入口校验 `MIGRATIONS[i].version === i + 1`；`rowToStateDiff` 校验 `path` 是非空字符串数组；删除 `getLatestSchemaVersion`；`store.test.ts` 的版本测试注册临时目录清理，并清理仓库里已积累的 `packages/core/test/.tmp-store-*` 目录（当前 43 个，被 git 忽略）。补“存在性抛错、乱序迁移列表抛错、非法 path 抛错”用例后跑 `pnpm check`。
 
 ## 注意事项
-- 检索规范化会改变命中数字；M0-FIX-5 之后 ACU 数字也会变。每次跑 report 都会更新 `docs/dev/reports/M0-health.md`，单独重跑只改生成时间的差异不要带进提交。
-- `ChunkIndex.add` 会跳过规范化后为空的块；`chunkCount` 报告的是实际写入索引的块数。
 - 报告里的问题行号对应审查时的代码；修复任务会改动这些位置，引用报告时以报告里的文件与符号为准。
 - `docs/dev/TASKS.md:55`、`:60`、`:71` 与 `LOG.md:12`、`:13`、`:15` 的数字已经过期（7 个测试实际 8 个、47.8% 实际 20.8%、9 个实际 8 个），M0-FIX-11 统一修正，不要提前在别处重复改。
 - `.env` 已由人类填写，**不要覆盖**；`.env.example` 只列变量名。M0 的审查与修复不需要调用 LLM。
-- `pnpm --filter @dramaticer/st-compat report` 会跑体检、检索基线、ACU 基线，耗时约 10 秒；需要 `eval-private/evalset/` 里已有状态题与事件题。
+- `pnpm --filter @dramaticer/st-compat report` 会跑体检、检索基线、ACU 基线，耗时约 10 秒；需要 `eval-private/evalset/` 里已有状态题与事件题。单独重跑只改生成时间时不要把时间差异带进提交。
 - 不要修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 下的文件；需要改时写进 HUMAN.md。
 - 提交前跑 `pnpm check`；新增依赖要登记到 `docs/dev/DEPENDENCIES.md`。
-- `packages/core/test/` 下有 28 个 `.tmp-store-*` 残留目录（被 git 忽略），M0-FIX-6 会清理并补上测试清理逻辑。
 - 临时脚本放 `.devloop/scratch/`（已被 git 忽略），用完删除；`tsc -b` 会把 `packages/*/dist` 编译出来，可以直接用 `node` 跑 `dist` 里的模块做冒烟验证。

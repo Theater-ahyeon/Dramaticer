@@ -150,6 +150,55 @@ describe("evaluateAcuCoverage", () => {
 		]);
 	});
 
+	it("相邻单元格不会被拼成一段文本再匹配", async () => {
+		const story = "相邻单元格";
+		const question = (id: string, answer: string): RetrievalQuestion => ({
+			id,
+			story,
+			askAtNode: `${story}:m2:s0`,
+			question: "地点与时间是什么？",
+			answer,
+			evidenceNodes: [],
+			kind: "state",
+		});
+		const result = await evaluateAcuCoverage({
+			chatPath: `${fixturesPath}adjacent/chat.jsonl`,
+			storyId: story,
+			questions: [question("merged", "集市时间"), question("single", "集市")],
+		});
+		expect(result.applicable).toBe(true);
+		expect(result.snapshotFloorCount).toBe(1);
+		expect(result.questionCount).toBe(2);
+		expect(result.coveredCount).toBe(1);
+		expect(result.byAnswerLength).toEqual([
+			{ label: "2–3 字符", questionCount: 1, coveredCount: 1 },
+			{ label: "4–9 字符", questionCount: 1, coveredCount: 0 },
+		]);
+	});
+
+	it("提问楼层在对话里不存在时抛出并列出题目 id", async () => {
+		const story = "表格故事";
+		await expect(
+			evaluateAcuCoverage({
+				chatPath: `${fixturesPath}cells/chat.jsonl`,
+				storyId: story,
+				questions: [
+					{
+						id: "missing",
+						story,
+						askAtNode: `${story}:m9:s0`,
+						question: "地点是什么？",
+						answer: "集市",
+						evidenceNodes: [],
+						kind: "state",
+					},
+				],
+			}),
+		).rejects.toThrow(
+			`故事 ${story} 缺少提问楼层：${story}:m9:s0（题目 missing）`,
+		);
+	});
+
 	it("没有表格数据时记不适用", async () => {
 		const story = "无表格故事";
 		const result = await evaluateAcuCoverage({

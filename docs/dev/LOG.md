@@ -21,3 +21,4 @@
 - 2026-11-06 | S17 | M0-FIX-2 | DONE | 聊天解析首行剥离 UTF-8 BOM（流式与文件两种入口都有用例）；`splitChatLines` 两处内联换行处理改用 `stripCarriageReturn`；角色卡改用 `field-readers.ts` 的读取函数并删除本地重复实现，PNG 载荷增加 base64 回环校验；`SourceLine`、`splitChatLines`、`isPngData`、`SnapshotDiffOp` 退出公开导出；PNG fixture 支持原样写入文本，补 tEXt 解码失败与非法 base64 两条用例；3 个新测试，门禁通过（166 个测试）
 - 2026-11-06 | S18 | M0-FIX-3 | DONE | 后台 LLM 客户端：2xx 非 JSON 只请求一次，中止与超时等读取错误原样抛出；退避与限速等待接收中止信号，Retry-After 上限 60000ms；缓存键并入 apiKey 摘要，stableJson 与 JSON.stringify 语义一致；删除不可达的尾部抛出与 LlmResponseError 重试分支；13 个新测试，门禁通过（179 个测试）
 - 2026-11-06 | S19 | M0-FIX-4 | DONE | `ChunkIndex` 写入与查询共用 `normalizeRetrievalText`（NFKC + 去标点/符号/空白），纯标点块不写入；检索评测按 `nodeId` 保序去重，越界 `askAtNode` 抛错并指出题目；补分块与索引边界测试，报告命中更新为 141/156/163（@5/@10/@20），门禁通过（188 个测试）
+- 2026-11-06 | S20 | M0-FIX-5 | DONE | ACU 表格快照改为单元格值列表（单元格历史、整表内容、SQL 重放），逐值规范化后判断答案是否出现在某一个单元格里，相邻单元格不再拼接；提问楼层不在对话里抛错并带楼层与题目 id；补相邻单元格负例（`集市时间` 不命中、`集市` 命中）与缺楼层用例，报告 ACU 覆盖仍为 91/386，门禁通过（190 个测试）

@@ -433,7 +433,7 @@ export function renderPublicReport(
 		"- 正则分类按 findRegex 与 replaceString 的结构判定，判定顺序依次是流式版本、内联脚本、渲染 HTML、删除思考链、删除内容、重排捕获内容、文本替换。可升级指这条正则能改由块策略、渲染器或沙箱渲染器承担；比例按启用的脚本计算。",
 	);
 	lines.push(
-		"- ACU 对照组的表格内容来自对话头部的 `sheets` 单元格历史与逐楼层 `hash_sheets`、消息里的 `TavernDB_ACU_Data`，以及 `TavernDB_ACU_IsolatedData` 里记录的 SQL 更新。SQL 更新在内存 SQLite 里按楼层顺序重放；表格和答案都做 NFKC 规范化、去掉空白与标点后再判断包含。",
+		"- ACU 对照组的表格内容来自对话头部的 `sheets` 单元格历史与逐楼层 `hash_sheets`、消息里的 `TavernDB_ACU_Data`，以及 `TavernDB_ACU_IsolatedData` 里记录的 SQL 更新。SQL 更新在内存 SQLite 里按楼层顺序重放；每个单元格和答案都做 NFKC 规范化、去掉空白与标点，再判断答案是否出现在某一个单元格里。",
 	);
 	return `${lines.join("\n")}\n`;
 }
@@ -494,7 +494,7 @@ function renderAcuSection(
 	lines.push("## ACU 对照组（表格覆盖）");
 	lines.push("");
 	lines.push(
-		"在提问楼层之前最近的 ACU 表格内容里查找标准答案：表格文本和答案都做 NFKC 规范化、去掉空白与标点符号之后再判断包含。没有表格数据的对话记为“不适用”，不进入合计。",
+		"在提问楼层之前最近的 ACU 表格内容里查找标准答案：每个单元格和答案都做 NFKC 规范化、去掉空白与标点符号之后，判断答案是否出现在某一个单元格里；相邻单元格不会被拼成一段文本。没有表格数据的对话记为“不适用”，不进入合计。",
 	);
 	lines.push("");
 	lines.push("| 对话 | 题数 | 有表格内容的提问楼层 | 覆盖 | 覆盖率 |");

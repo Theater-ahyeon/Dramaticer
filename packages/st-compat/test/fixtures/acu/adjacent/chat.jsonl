@@ -1,0 +1,4 @@
+{"user_name":"用户","character_name":"相邻单元格","chat_metadata":{"sheets":[{"uid":"sheet_a","name":"状态表","enable":true,"cellHistory":[{"uid":"cell_a1","data":{"value":"集市"},"type":"undefined"},{"uid":"cell_a2","data":{"value":"时间"},"type":"undefined"}]}]}}
+{"name":"角色","is_user":false,"is_system":false,"mes":"第一楼。"}
+{"name":"角色","is_user":false,"is_system":false,"mes":"第二楼。","hash_sheets":{"sheet_a":[["cell_a1","cell_a2"]]}}
+{"name":"用户","is_user":true,"is_system":false,"mes":"第三楼。"}

@@ -93,8 +93,8 @@ export function normalizeForTableMatch(text: string): string {
 }
 
 /**
- * ACU 对照组：把提问楼层之前最近的表格内容拼成文本，判断题目的标准答案
- * 是否原样出现在表格里。表格有三处来源：对话头部 `sheets` 的单元格历史
+ * ACU 对照组：取提问楼层之前最近的表格内容，判断题目的标准答案是否原样
+ * 出现在某一个单元格里。表格有三处来源：对话头部 `sheets` 的单元格历史
  * 加上逐楼层的 `hash_sheets`、消息里的 `TavernDB_ACU_Data`，以及
  * `TavernDB_ACU_IsolatedData` 里记录的 SQL 更新。
  */
@@ -117,10 +117,11 @@ export async function evaluateAcuCoverage(
 
 	const cells = new Map<string, string>();
 	let hashSheets: readonly HashSheetSnapshot[] | null = null;
-	const fullContents = new Map<string, string>();
+	const fullContents = new Map<string, readonly string[]>();
 	const database = new AcuTableDatabase();
 	let applicable = false;
 	let snapshotFloorCount = 0;
+	const seenFloors = new Set<number>();
 	const byKind = new Map<QuestionKind, MutableScore>();
 	const byLength = new Map<string, MutableScore>();
 	const total = createScore();
@@ -135,13 +136,21 @@ export async function evaluateAcuCoverage(
 			const { message } = entry;
 			const asked = questionsByFloor.get(message.index);
 			if (asked) {
-				const tableText = normalizeForTableMatch(
-					collectSnapshotText(cells, hashSheets, fullContents, database),
-				);
-				if (tableText.length > 0) snapshotFloorCount += 1;
+				seenFloors.add(message.index);
+				const tableValues = collectSnapshotValues(
+					cells,
+					hashSheets,
+					fullContents,
+					database,
+				)
+					.map(normalizeForTableMatch)
+					.filter((value) => value !== "");
+				if (tableValues.length > 0) snapshotFloorCount += 1;
 				for (const question of asked) {
 					const answerText = normalizeForTableMatch(question.answer);
-					const covered = answerText !== "" && tableText.includes(answerText);
+					const covered =
+						answerText !== "" &&
+						tableValues.some((value) => value.includes(answerText));
 					let kindScore = byKind.get(question.kind);
 					if (!kindScore) {
 						kindScore = createScore();
@@ -173,6 +182,19 @@ export async function evaluateAcuCoverage(
 		}
 	} finally {
 		database.close();
+	}
+
+	const missingFloors = [...questionsByFloor.entries()]
+		.filter(([floor]) => !seenFloors.has(floor))
+		.map(([, questions]) => ({
+			floor: questions[0]?.askAtNode ?? "",
+			ids: questions.map((question) => question.id),
+		}));
+	if (missingFloors.length > 0) {
+		const detail = missingFloors
+			.map(({ floor, ids }) => `${floor}（题目 ${ids.join("、")}）`)
+			.join("；");
+		throw new Error(`故事 ${storyId} 缺少提问楼层：${detail}`);
 	}
 
 	const kindScores: AcuKindScore[] = [];
@@ -305,26 +327,26 @@ function toScore(score: MutableScore): AcuScore {
 	};
 }
 
-function collectSnapshotText(
+function collectSnapshotValues(
 	cells: ReadonlyMap<string, string>,
 	hashSheets: readonly HashSheetSnapshot[] | null,
-	fullContents: ReadonlyMap<string, string>,
+	fullContents: ReadonlyMap<string, readonly string[]>,
 	database: AcuTableDatabase,
-): string {
-	const parts: string[] = [];
+): string[] {
+	const values: string[] = [];
 	if (hashSheets) {
 		for (const sheet of hashSheets) {
 			for (const row of sheet.rows) {
 				for (const uid of row) {
 					const value = cells.get(uid);
-					if (value !== undefined && value !== "") parts.push(value);
+					if (value !== undefined && value !== "") values.push(value);
 				}
 			}
 		}
 	}
-	for (const content of fullContents.values()) parts.push(content);
-	parts.push(database.dump());
-	return parts.join("\n");
+	for (const sheetValues of fullContents.values()) values.push(...sheetValues);
+	values.push(...database.values());
+	return values;
 }
 
 function readCellValues(
@@ -368,7 +390,7 @@ function readHashSheets(raw: JsonObject): readonly HashSheetSnapshot[] | null {
 
 function readFullSheetContents(
 	raw: JsonObject,
-	target: Map<string, string>,
+	target: Map<string, readonly string[]>,
 ): boolean {
 	let found = false;
 	const data = raw.TavernDB_ACU_Data;
@@ -383,7 +405,7 @@ function readFullSheetContents(
 /** 只取 `independentData`（整表内容）；`storageFrame` 的日志交给 SQL 重放。 */
 function collectIndependentData(
 	value: JsonValue,
-	target: Map<string, string>,
+	target: Map<string, readonly string[]>,
 ): boolean {
 	if (Array.isArray(value)) {
 		let found = false;
@@ -407,7 +429,7 @@ function collectIndependentData(
 
 function collectSheetContents(
 	value: JsonValue,
-	target: Map<string, string>,
+	target: Map<string, readonly string[]>,
 ): boolean {
 	if (Array.isArray(value)) {
 		let found = false;
@@ -420,9 +442,9 @@ function collectSheetContents(
 	const uid = value.uid;
 	const content = value.content;
 	if (typeof uid === "string" && Array.isArray(content)) {
-		const text = renderRows(content);
-		if (text !== "") {
-			target.set(uid, text);
+		const values = collectCellValues(content);
+		if (values.length > 0) {
+			target.set(uid, values);
 			return true;
 		}
 		return false;
@@ -434,20 +456,18 @@ function collectSheetContents(
 	return found;
 }
 
-function renderRows(rows: readonly JsonValue[]): string {
-	const lines: string[] = [];
+function collectCellValues(rows: readonly JsonValue[]): string[] {
+	const values: string[] = [];
 	for (const row of rows) {
 		if (!Array.isArray(row)) continue;
-		const parts: string[] = [];
 		for (const item of row) {
-			if (typeof item === "string" && item !== "") parts.push(item);
+			if (typeof item === "string" && item !== "") values.push(item);
 			else if (typeof item === "number" && Number.isFinite(item)) {
-				parts.push(String(item));
+				values.push(String(item));
 			}
 		}
-		if (parts.length > 0) lines.push(parts.join("\t"));
 	}
-	return lines.join("\n");
+	return values;
 }
 
 function readSqlOperations(raw: JsonObject): SqlOperation[] {
@@ -520,13 +540,13 @@ class AcuTableDatabase {
 		});
 	}
 
-	dump(): string {
+	values(): string[] {
 		const tables = this.database
 			.prepare(
 				"SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY rowid",
 			)
 			.all() as { name: string }[];
-		const parts: string[] = [];
+		const values: string[] = [];
 		for (const { name } of tables) {
 			const rows = this.database
 				.prepare(`SELECT * FROM ${quoteIdentifier(name)}`)
@@ -535,11 +555,11 @@ class AcuTableDatabase {
 				for (const value of Object.values(row)) {
 					if (value === null || value === undefined) continue;
 					const text = String(value);
-					if (text !== "") parts.push(text);
+					if (text !== "") values.push(text);
 				}
 			}
 		}
-		return parts.join("\n");
+		return values;
 	}
 
 	close(): void {
