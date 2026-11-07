@@ -20,6 +20,11 @@ import {
 	type NewMemoryEventInput,
 } from "../memory/event.js";
 import {
+	type NewPlotNoteInput,
+	type PlotNote,
+	isPlotNoteStatus,
+} from "../memory/plot-note.js";
+import {
 	type NewSummaryInput,
 	type Summary,
 	isSummaryLevel,
@@ -162,6 +167,24 @@ interface NormalisedSummary {
 	readonly endNodeId: string;
 	readonly text: string;
 	readonly tokenCount: number;
+	readonly createdAt: string;
+}
+
+interface PlotNoteRow {
+	readonly id: string;
+	readonly story_id: string;
+	readonly source_node_id: string;
+	readonly text: string;
+	readonly status: string;
+	readonly created_at: string;
+	readonly fulfilled_at: string | null;
+}
+
+interface NormalisedPlotNote {
+	readonly id: string;
+	readonly storyId: string;
+	readonly sourceNodeId: string;
+	readonly text: string;
 	readonly createdAt: string;
 }
 
@@ -435,6 +458,21 @@ function rowToSummary(row: SummaryRow): Summary {
 		text: row.text,
 		tokenCount: row.token_count,
 		createdAt: row.created_at,
+	};
+}
+
+function rowToPlotNote(row: PlotNoteRow): PlotNote {
+	if (!isPlotNoteStatus(row.status)) {
+		throw new Error(`剧情笔记 ${row.id} 的状态不合法：${row.status}`);
+	}
+	return {
+		id: row.id,
+		storyId: row.story_id,
+		sourceNodeId: row.source_node_id,
+		text: row.text,
+		status: row.status,
+		createdAt: row.created_at,
+		fulfilledAt: row.fulfilled_at,
 	};
 }
 
@@ -1181,6 +1219,82 @@ export class StoryStore {
 		return row.count;
 	}
 
+	/** 写入一批剧情笔记；整批在一个事务里，任一条非法就全部回滚。 */
+	insertPlotNotes(inputs: readonly NewPlotNoteInput[]): PlotNote[] {
+		if (!Array.isArray(inputs)) {
+			throw new Error("剧情笔记必须是数组");
+		}
+		if (inputs.length === 0) return [];
+		const normalised = inputs.map((input, index) =>
+			this.#normalisePlotNote(input, index),
+		);
+		const insert = this.#db.prepare(
+			`INSERT INTO plot_notes
+				(id, story_id, source_node_id, text, status, created_at, fulfilled_at)
+			VALUES (?, ?, ?, ?, 'open', ?, NULL)`,
+		);
+		const created: PlotNote[] = [];
+		this.#db.transaction(() => {
+			for (const note of normalised) {
+				insert.run(
+					note.id,
+					note.storyId,
+					note.sourceNodeId,
+					note.text,
+					note.createdAt,
+				);
+				created.push({
+					id: note.id,
+					storyId: note.storyId,
+					sourceNodeId: note.sourceNodeId,
+					text: note.text,
+					status: "open",
+					createdAt: note.createdAt,
+					fulfilledAt: null,
+				});
+			}
+		})();
+		return created;
+	}
+
+	/** 按创建顺序返回故事里尚未兑现的剧情笔记。 */
+	getOpenPlotNotes(storyId: string): PlotNote[] {
+		assertNonEmptyString(storyId, "故事 id");
+		if (!this.getStory(storyId)) {
+			throw new Error(`故事不存在：${storyId}`);
+		}
+		const rows = this.#db
+			.prepare(
+				`SELECT * FROM plot_notes
+				WHERE story_id = ? AND status = 'open'
+				ORDER BY row_id ASC`,
+			)
+			.all(storyId) as PlotNoteRow[];
+		return rows.map(rowToPlotNote);
+	}
+
+	/** 把一条未兑现的剧情笔记标记为已兑现；已兑现的再次兑现直接抛错。 */
+	fulfillPlotNote(noteId: string, at: string): PlotNote {
+		assertNonEmptyString(noteId, "剧情笔记 id");
+		assertNonEmptyString(at, "兑现时间");
+		const row = this.#db
+			.prepare("SELECT * FROM plot_notes WHERE id = ?")
+			.get(noteId) as PlotNoteRow | undefined;
+		if (!row) {
+			throw new Error(`剧情笔记不存在：${noteId}`);
+		}
+		const note = rowToPlotNote(row);
+		if (note.status !== "open") {
+			throw new Error(`剧情笔记已经兑现：${noteId}`);
+		}
+		this.#db
+			.prepare(
+				"UPDATE plot_notes SET status = 'fulfilled', fulfilled_at = ? WHERE id = ?",
+			)
+			.run(at, noteId);
+		return { ...note, status: "fulfilled", fulfilledAt: at };
+	}
+
 	/**
 	 * 写入一条摘要。起点必须是终点的祖先，text 去掉首尾空白后必须非空；
 	 * token_count 在这里用统一估算器计算。
@@ -1727,6 +1841,48 @@ export class StoryStore {
 			importance: input.importance,
 			knowers: normaliseNameArray(input.knowers, `${label} 的 knowers`),
 			text: input.text,
+			createdAt,
+		};
+	}
+
+	#normalisePlotNote(
+		input: NewPlotNoteInput,
+		index: number,
+	): NormalisedPlotNote {
+		const label = `剧情笔记[${index}]`;
+		if (input === null || typeof input !== "object" || Array.isArray(input)) {
+			throw new Error(`${label} 必须是对象`);
+		}
+		assertNonEmptyString(input.storyId, `${label} 的 storyId`);
+		if (!this.getStory(input.storyId)) {
+			throw new Error(`故事不存在：${input.storyId}`);
+		}
+		assertNonEmptyString(input.sourceNodeId, `${label} 的 sourceNodeId`);
+		const node = this.getNode(input.sourceNodeId);
+		if (!node) {
+			throw new Error(`${label} 指向的楼层节点不存在：${input.sourceNodeId}`);
+		}
+		if (node.storyId !== input.storyId) {
+			throw new Error(
+				`${label} 的 storyId 与楼层节点所属故事不一致：${input.storyId}`,
+			);
+		}
+		if (typeof input.text !== "string") {
+			throw new Error(`${label} 的 text 必须是字符串`);
+		}
+		const text = input.text.trim();
+		if (text.length === 0) {
+			throw new Error(`${label} 的 text 不能是空字符串`);
+		}
+		const id = input.id ?? randomUUID();
+		assertNonEmptyString(id, `${label} 的 id`);
+		const createdAt = input.createdAt ?? new Date().toISOString();
+		assertNonEmptyString(createdAt, `${label} 的 createdAt`);
+		return {
+			id,
+			storyId: input.storyId,
+			sourceNodeId: input.sourceNodeId,
+			text,
 			createdAt,
 		};
 	}

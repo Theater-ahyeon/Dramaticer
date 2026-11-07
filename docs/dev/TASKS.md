@@ -252,7 +252,8 @@
   - 摘要请求只使用窗口内的楼层原文，不携带其他分支的内容；写入前校验 `text` 非空、`token_count` 由现有估算器重新计算。
   验收：路径上的摘要有效，切到其他分支后旧摘要失效；章节与主线的唯一约束生效；重复执行不产生重复行；窗口参数变化时范围正确；空窗口不调用模型；`pnpm check` 通过。
 
-- [ ] **M2-T07 剧情笔记** | 依赖：M2-T01 | DESIGN §7、§11
+- [x] **M2-T07 剧情笔记** | 依赖：M2-T01 | DESIGN §7、§11
+  完成：2026-11-07 迁移 v9 新增 `plot_notes`（状态只取 `open`/`fulfilled`，已兑现必须有兑现时间、未兑现必须为空）；`StoryStore` 新增 `insertPlotNotes`（整批校验与写入、正文去两端空白）、`getOpenPlotNotes`（按创建顺序）、`fulfillPlotNote`（只接受未兑现，重复兑现抛错）；触发器允许更新 `status` 与 `fulfilled_at`，拒绝修改正文/来源与删除；`runChatTurn` 在同一事务里保存 `structured.notes`，两种模式共用一条写入路径，结果新增 `plotNotes`；新增 5 个测试覆盖两种模式、兑现、校验、触发器与事务回滚，门禁通过（393 个测试）
   做什么：
   - 迁移 v9：新增 `plot_notes(id, story_id, source_node_id, text, status, created_at, fulfilled_at)`，`status` 取 `open` 或 `fulfilled`。
   - `runChatTurn` 在写入助手楼层的事务里保存 `structured.notes`，每条笔记关联助手楼层；`note` 的文本不可修改，数据库触发器只允许更新 `status` 与 `fulfilled_at`。

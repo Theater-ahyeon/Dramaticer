@@ -1,3 +1,4 @@
+import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import {
 	type LlmCallOptions,
@@ -178,6 +179,14 @@ describe("runChatTurn", () => {
 		});
 		expect(result.structured.notes).toEqual([{ text: "门后有人跟踪" }]);
 		expect(result.structured.issues).toEqual([]);
+		expect(result.plotNotes).toHaveLength(1);
+		expect(result.plotNotes[0]).toMatchObject({
+			sourceNodeId: result.node.id,
+			text: "门后有人跟踪",
+			status: "open",
+			fulfilledAt: null,
+		});
+		expect(store.getOpenPlotNotes("s1")).toEqual(result.plotNotes);
 
 		const stateUpdateBlocks = result.blocks.filter(
 			(block) => block.kind === "block" && block.name === "state_update",
@@ -253,6 +262,15 @@ describe("runChatTurn", () => {
 			"structured-output:function-call",
 		);
 		expect(result.structured.notes).toHaveLength(1);
+		expect(result.plotNotes).toHaveLength(1);
+		expect(result.plotNotes[0]).toMatchObject({
+			sourceNodeId: result.node.id,
+			text: "伏笔",
+			status: "open",
+		});
+		expect(store.getOpenPlotNotes("s1").map((note) => note.text)).toEqual([
+			"伏笔",
+		]);
 		expect(result.structured.issues).toHaveLength(1);
 		expect(result.structured.issues[0]?.payload).toBe("state_update");
 		expect(result.trace.structured).toMatchObject({
@@ -330,5 +348,45 @@ describe("runChatTurn", () => {
 			}),
 		).rejects.toThrow("不一致");
 		expect(store.getHead("s1")?.role).toBe("user");
+	});
+
+	it("写笔记失败时助手楼层与笔记一起回滚", async () => {
+		const { store, path } = openTempStore();
+		seedStory(store);
+		const raw = new Database(path);
+		try {
+			raw.exec(`CREATE TRIGGER test_abort_notes
+				BEFORE INSERT ON plot_notes
+				BEGIN
+					SELECT RAISE(ABORT, '笔记写入失败');
+				END`);
+		} finally {
+			raw.close();
+		}
+		const { client } = createFakeClient({
+			chunks: splitChunks(REPLY_WITH_TAGS, 9),
+			resultText: REPLY_WITH_TAGS,
+		});
+
+		await expect(
+			runChatTurn({
+				store,
+				client,
+				storyId: "s1",
+				userText: "我推开山门。",
+				template: createDefaultContextTemplate({
+					structuredOutput: "text-tags",
+				}),
+				providers: providers(store),
+				budgetTokens: 4_000,
+				structuredOutput: "text-tags",
+			}),
+		).rejects.toThrow("笔记写入失败");
+
+		expect(store.getOpenPlotNotes("s1")).toEqual([]);
+		expect(store.getPathToHead("s1").map((node) => node.role)).toEqual([
+			"assistant",
+			"user",
+		]);
 	});
 });

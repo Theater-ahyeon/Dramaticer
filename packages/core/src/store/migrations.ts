@@ -246,6 +246,49 @@ export const MIGRATIONS: readonly Migration[] = [
 			END`,
 		],
 	},
+	{
+		version: 9,
+		description: "剧情笔记：来源楼层、未兑现与已兑现状态",
+		statements: [
+			`CREATE TABLE plot_notes (
+				row_id INTEGER PRIMARY KEY,
+				id TEXT NOT NULL UNIQUE,
+				story_id TEXT NOT NULL REFERENCES stories(id),
+				source_node_id TEXT NOT NULL REFERENCES nodes(id),
+				text TEXT NOT NULL,
+				status TEXT NOT NULL CHECK (status IN ('open', 'fulfilled')),
+				created_at TEXT NOT NULL,
+				fulfilled_at TEXT,
+				CHECK (
+					(status = 'open' AND fulfilled_at IS NULL)
+					OR (status = 'fulfilled' AND fulfilled_at IS NOT NULL)
+				)
+			) STRICT`,
+			"CREATE INDEX plot_notes_story_status_idx ON plot_notes(story_id, status, row_id)",
+			`CREATE TRIGGER plot_notes_story_matches_node
+			BEFORE INSERT ON plot_notes
+			WHEN COALESCE((SELECT story_id FROM nodes WHERE id = NEW.source_node_id), '') <> NEW.story_id
+			BEGIN
+				SELECT RAISE(ABORT, '剧情笔记的 story_id 必须与来源楼层一致');
+			END`,
+			// 只允许更新 status 与 fulfilled_at，正文与来源在写入后固定。
+			`CREATE TRIGGER plot_notes_immutable_fields
+			BEFORE UPDATE ON plot_notes
+			WHEN NEW.id <> OLD.id
+				OR NEW.story_id <> OLD.story_id
+				OR NEW.source_node_id <> OLD.source_node_id
+				OR NEW.text <> OLD.text
+				OR NEW.created_at <> OLD.created_at
+			BEGIN
+				SELECT RAISE(ABORT, '剧情笔记的正文与来源不可修改');
+			END`,
+			`CREATE TRIGGER plot_notes_no_delete
+			BEFORE DELETE ON plot_notes
+			BEGIN
+				SELECT RAISE(ABORT, '剧情笔记不可删除');
+			END`,
+		],
+	},
 ];
 
 export const LATEST_SCHEMA_VERSION: number =

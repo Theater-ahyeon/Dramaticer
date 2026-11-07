@@ -10,6 +10,7 @@ import type {
 	LlmRequest,
 	LlmStreamingClient,
 } from "../llm/types.js";
+import type { PlotNote } from "../memory/plot-note.js";
 import type { StoryStore } from "../store/story-store.js";
 import {
 	collectStructuredOutputFromText,
@@ -50,6 +51,7 @@ export interface ChatTurnResult {
 	readonly userNode: TimelineNode;
 	readonly node: TimelineNode;
 	readonly stateDiffs: readonly StateDiff[];
+	readonly plotNotes: readonly PlotNote[];
 	readonly structured: StructuredOutputCollection;
 	readonly blocks: readonly ParsedContent[];
 	readonly reasoning: string;
@@ -149,6 +151,13 @@ export async function runChatTurn(
 				structured.stateUpdates,
 			),
 		);
+		const plotNotes = options.store.insertPlotNotes(
+			structured.notes.map((note) => ({
+				storyId: options.storyId,
+				sourceNodeId: node.id,
+				text: note.text,
+			})),
+		);
 		const trace: TurnTrace = {
 			storyId: options.storyId,
 			nodeId: node.id,
@@ -183,6 +192,7 @@ export async function runChatTurn(
 			userNode,
 			node,
 			stateDiffs: savedDiffs,
+			plotNotes,
 			structured,
 			blocks,
 			reasoning: result.reasoning,
