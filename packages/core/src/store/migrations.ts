@@ -148,6 +148,39 @@ export const MIGRATIONS: readonly Migration[] = [
 			END`,
 		],
 	},
+	{
+		version: 6,
+		description: "实体与别名：角色卡和世界书定义的人名、地名与词条",
+		statements: [
+			`CREATE TABLE entities (
+				row_id INTEGER PRIMARY KEY,
+				id TEXT NOT NULL UNIQUE,
+				story_id TEXT NOT NULL REFERENCES stories(id),
+				kind TEXT NOT NULL CHECK (kind IN ('character', 'location', 'item', 'faction', 'lore', 'unknown')),
+				name TEXT NOT NULL,
+				normalized_name TEXT NOT NULL,
+				description TEXT NOT NULL,
+				source TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				UNIQUE (story_id, normalized_name)
+			) STRICT`,
+			"CREATE INDEX entities_story_kind_idx ON entities(story_id, kind)",
+			`CREATE TABLE entity_aliases (
+				entity_id TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+				story_id TEXT NOT NULL REFERENCES stories(id),
+				alias TEXT NOT NULL,
+				normalized_alias TEXT NOT NULL,
+				PRIMARY KEY (entity_id, normalized_alias)
+			) STRICT`,
+			"CREATE INDEX entity_aliases_lookup_idx ON entity_aliases(story_id, normalized_alias)",
+			`CREATE TRIGGER entity_aliases_story_matches_entity
+			BEFORE INSERT ON entity_aliases
+			WHEN COALESCE((SELECT story_id FROM entities WHERE id = NEW.entity_id), '') <> NEW.story_id
+			BEGIN
+				SELECT RAISE(ABORT, '实体别名的 story_id 必须与实体一致');
+			END`,
+		],
+	},
 ];
 
 export const LATEST_SCHEMA_VERSION: number =

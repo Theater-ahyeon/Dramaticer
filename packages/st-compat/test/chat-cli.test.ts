@@ -182,6 +182,9 @@ describe("dramaticer chat", () => {
 				"history",
 			]);
 			expect(trace?.structured.acceptedStateUpdates).toBe(1);
+			const entity = store.findEntityByName("s1", "山神");
+			expect(entity?.kind).toBe("character");
+			expect(entity?.aliases).toEqual(["山神"]);
 		} finally {
 			store.close();
 		}

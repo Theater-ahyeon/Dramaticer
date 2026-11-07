@@ -3,6 +3,7 @@ export * from "./blocks/index.js";
 export * from "./chat/index.js";
 export * from "./cli/index.js";
 export * from "./context/index.js";
+export * from "./entity.js";
 export * from "./env.js";
 export * from "./json.js";
 export * from "./llm/channels.js";
@@ -20,6 +21,8 @@ export { LATEST_SCHEMA_VERSION } from "./store/migrations.js";
 export type {
 	AppendNodeInput,
 	CreateStoryInput,
+	ListEntitiesOptions,
+	ResolveEntitiesOptions,
 	SearchNodeTextOptions,
 } from "./store/story-store.js";
 export { StoryStore } from "./store/story-store.js";

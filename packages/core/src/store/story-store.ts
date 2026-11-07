@@ -4,6 +4,13 @@ import type {
 	BackgroundJob,
 	BackgroundJobStatus,
 } from "../background/types.js";
+import {
+	type Entity,
+	type EntityKind,
+	type NewEntityInput,
+	isEntityKind,
+	normalizeEntityName,
+} from "../entity.js";
 import { isJsonObject } from "../json.js";
 import { applyStateDiffsTo } from "../state.js";
 import type {
@@ -68,6 +75,20 @@ interface StateSnapshotRow {
 	readonly computed_at: string;
 }
 
+interface EntityRow {
+	readonly id: string;
+	readonly story_id: string;
+	readonly kind: string;
+	readonly name: string;
+	readonly description: string;
+	readonly source: string;
+	readonly created_at: string;
+}
+
+interface EntityAliasRow {
+	readonly alias: string;
+}
+
 interface BackgroundJobRow {
 	readonly id: number;
 	readonly story_id: string;
@@ -101,6 +122,14 @@ export interface SearchNodeTextOptions {
 	readonly limit?: number;
 }
 
+export interface ListEntitiesOptions {
+	readonly kind?: EntityKind;
+}
+
+export interface ResolveEntitiesOptions {
+	readonly storyId?: string;
+}
+
 export interface EnqueueBackgroundJobsInput {
 	readonly storyId: string;
 	readonly kinds: readonly string[];
@@ -128,6 +157,30 @@ interface NormalisedStateDiff {
 	readonly valueJson: string | null;
 	readonly reason: string | null;
 	readonly source: string;
+}
+
+interface NormalisedAlias {
+	readonly alias: string;
+	readonly normalized: string;
+}
+
+function normaliseAliases(aliases: readonly string[]): NormalisedAlias[] {
+	if (!Array.isArray(aliases)) {
+		throw new Error("实体别名必须是数组");
+	}
+	const seen = new Set<string>();
+	const result: NormalisedAlias[] = [];
+	for (const alias of aliases) {
+		assertNonEmptyString(alias, "实体别名");
+		const normalized = normalizeEntityName(alias);
+		if (normalized.length === 0) {
+			throw new Error(`实体别名去掉标点与空白后为空：${alias}`);
+		}
+		if (seen.has(normalized)) continue;
+		seen.add(normalized);
+		result.push({ alias, normalized });
+	}
+	return result;
 }
 
 const DEFAULTS = {
@@ -318,6 +371,214 @@ export class StoryStore {
 			.prepare("SELECT id, title, created_at FROM stories ORDER BY rowid ASC")
 			.all() as StoryRow[];
 		return rows.map(rowToStory);
+	}
+
+	/**
+	 * 按规范化名称合并：同一故事里的同名实体只有一行，重复导入只补别名。
+	 * 名称本身总是登记为别名，因此 resolveEntities 也能按名称命中。
+	 */
+	upsertEntity(input: NewEntityInput): Entity {
+		assertNonEmptyString(input.storyId, "故事 id");
+		if (!isEntityKind(input.kind)) {
+			throw new Error(`实体类型不合法：${String(input.kind)}`);
+		}
+		assertNonEmptyString(input.name, "实体名称");
+		assertNonEmptyString(input.source, "实体来源");
+		const description = input.description ?? "";
+		if (typeof description !== "string") {
+			throw new Error("实体描述必须是字符串");
+		}
+		const normalizedName = normalizeEntityName(input.name);
+		if (normalizedName.length === 0) {
+			throw new Error(`实体名称去掉标点与空白后为空：${input.name}`);
+		}
+		if (!this.getStory(input.storyId)) {
+			throw new Error(`故事不存在：${input.storyId}`);
+		}
+		if (input.id !== undefined) {
+			assertNonEmptyString(input.id, "实体 id");
+		}
+		const aliases = normaliseAliases(input.aliases ?? []);
+		const createdAt = input.createdAt ?? new Date().toISOString();
+		assertNonEmptyString(createdAt, "实体的创建时间");
+		const existing = this.#db
+			.prepare(
+				`SELECT id, story_id, kind, name, description, source, created_at
+				FROM entities WHERE story_id = ? AND normalized_name = ?`,
+			)
+			.get(input.storyId, normalizedName) as EntityRow | undefined;
+		const insertAlias = this.#db.prepare(
+			`INSERT INTO entity_aliases (entity_id, story_id, alias, normalized_alias)
+			VALUES (?, ?, ?, ?)
+			ON CONFLICT (entity_id, normalized_alias) DO NOTHING`,
+		);
+		return this.#db.transaction((): Entity => {
+			if (existing) {
+				for (const alias of aliases) {
+					insertAlias.run(
+						existing.id,
+						input.storyId,
+						alias.alias,
+						alias.normalized,
+					);
+				}
+				const merged = this.getEntity(existing.id);
+				if (!merged) {
+					throw new Error(`实体读取失败：${existing.id}`);
+				}
+				return merged;
+			}
+			const id = input.id ?? randomUUID();
+			if (this.getEntity(id)) {
+				throw new Error(`实体已存在：${id}`);
+			}
+			this.#db
+				.prepare(
+					`INSERT INTO entities
+						(id, story_id, kind, name, normalized_name, description, source, created_at)
+					VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+				)
+				.run(
+					id,
+					input.storyId,
+					input.kind,
+					input.name,
+					normalizedName,
+					description,
+					input.source,
+					createdAt,
+				);
+			insertAlias.run(id, input.storyId, input.name, normalizedName);
+			for (const alias of aliases) {
+				insertAlias.run(id, input.storyId, alias.alias, alias.normalized);
+			}
+			const entity = this.getEntity(id);
+			if (!entity) {
+				throw new Error(`实体写入后读取失败：${id}`);
+			}
+			return entity;
+		})();
+	}
+
+	getEntity(id: string): Entity | null {
+		const row = this.#db
+			.prepare(
+				`SELECT id, story_id, kind, name, description, source, created_at
+				FROM entities WHERE id = ?`,
+			)
+			.get(id) as EntityRow | undefined;
+		return row ? this.#rowToEntity(row) : null;
+	}
+
+	findEntityByName(storyId: string, name: string): Entity | null {
+		assertNonEmptyString(storyId, "故事 id");
+		assertNonEmptyString(name, "实体名称");
+		const normalized = normalizeEntityName(name);
+		if (normalized.length === 0) return null;
+		const row = this.#db
+			.prepare(
+				`SELECT id, story_id, kind, name, description, source, created_at
+				FROM entities WHERE story_id = ? AND normalized_name = ?`,
+			)
+			.get(storyId, normalized) as EntityRow | undefined;
+		return row ? this.#rowToEntity(row) : null;
+	}
+
+	listEntities(storyId: string, options: ListEntitiesOptions = {}): Entity[] {
+		assertNonEmptyString(storyId, "故事 id");
+		if (options.kind !== undefined && !isEntityKind(options.kind)) {
+			throw new Error(`实体类型不合法：${String(options.kind)}`);
+		}
+		const rows = this.#db
+			.prepare(
+				`SELECT id, story_id, kind, name, description, source, created_at
+				FROM entities
+				WHERE story_id = @storyId AND (@kind IS NULL OR kind = @kind)
+				ORDER BY row_id ASC`,
+			)
+			.all({ storyId, kind: options.kind ?? null }) as EntityRow[];
+		return rows.map((row) => this.#rowToEntity(row));
+	}
+
+	/**
+	 * 按规范化后的别名返回全部命中的实体。不同实体可以共用同一个别名
+	 * （例如角色名同时作为某个世界书词条的主关键词），调用方拿到全部候选。
+	 */
+	resolveEntities(
+		alias: string,
+		options: ResolveEntitiesOptions = {},
+	): Entity[] {
+		assertNonEmptyString(alias, "实体别名");
+		const normalized = normalizeEntityName(alias);
+		if (normalized.length === 0) {
+			throw new Error(`实体别名去掉标点与空白后为空：${alias}`);
+		}
+		if (options.storyId !== undefined) {
+			assertNonEmptyString(options.storyId, "故事 id");
+			if (!this.getStory(options.storyId)) {
+				throw new Error(`故事不存在：${options.storyId}`);
+			}
+		}
+		const rows = this.#db
+			.prepare(
+				`SELECT e.id, e.story_id, e.kind, e.name, e.description, e.source, e.created_at
+				FROM entities AS e
+				JOIN entity_aliases AS a ON a.entity_id = e.id
+				WHERE a.normalized_alias = @normalized
+					AND (@storyId IS NULL OR e.story_id = @storyId)
+				ORDER BY e.row_id ASC`,
+			)
+			.all({
+				normalized,
+				storyId: options.storyId ?? null,
+			}) as EntityRow[];
+		return rows.map((row) => this.#rowToEntity(row));
+	}
+
+	addEntityAlias(entityId: string, alias: string): Entity {
+		assertNonEmptyString(entityId, "实体 id");
+		const entity = this.getEntity(entityId);
+		if (!entity) {
+			throw new Error(`实体不存在：${entityId}`);
+		}
+		assertNonEmptyString(alias, "实体别名");
+		const normalized = normalizeEntityName(alias);
+		if (normalized.length === 0) {
+			throw new Error(`实体别名去掉标点与空白后为空：${alias}`);
+		}
+		this.#db
+			.prepare(
+				`INSERT INTO entity_aliases (entity_id, story_id, alias, normalized_alias)
+				VALUES (?, ?, ?, ?)
+				ON CONFLICT (entity_id, normalized_alias) DO NOTHING`,
+			)
+			.run(entity.id, entity.storyId, alias, normalized);
+		const updated = this.getEntity(entity.id);
+		if (!updated) {
+			throw new Error(`实体读取失败：${entity.id}`);
+		}
+		return updated;
+	}
+
+	#rowToEntity(row: EntityRow): Entity {
+		if (!isEntityKind(row.kind)) {
+			throw new Error(`实体 ${row.id} 的类型不合法：${row.kind}`);
+		}
+		const aliases = this.#db
+			.prepare(
+				"SELECT alias FROM entity_aliases WHERE entity_id = ? ORDER BY rowid ASC",
+			)
+			.all(row.id) as EntityAliasRow[];
+		return {
+			id: row.id,
+			storyId: row.story_id,
+			kind: row.kind,
+			name: row.name,
+			description: row.description,
+			source: row.source,
+			createdAt: row.created_at,
+			aliases: aliases.map((alias) => alias.alias),
+		};
 	}
 
 	appendNode(input: AppendNodeInput): TimelineNode {

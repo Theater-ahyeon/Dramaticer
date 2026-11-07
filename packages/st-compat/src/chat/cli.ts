@@ -20,6 +20,7 @@ import {
 	type StCharacterCard,
 	parseCharacterCardFile,
 } from "../character-card.js";
+import { importCharacterCardEntity } from "../entity-import.js";
 import { renderCharacterPrompt } from "./character.js";
 
 const repoRoot = fileURLToPath(new URL("../../../../", import.meta.url));
@@ -118,6 +119,7 @@ export async function runChatCli(
 			}
 			log(`已创建故事 ${parsed.storyId}`);
 		}
+		importCharacterCardEntity(store, parsed.storyId, card);
 		const budgetTokens =
 			parsed.budgetTokens ?? model.contextWindow - model.maxTokens;
 		if (budgetTokens <= 0) {

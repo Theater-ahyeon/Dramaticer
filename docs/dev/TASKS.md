@@ -225,12 +225,13 @@
   - `runChatTurn` 不调用后台模型；主循环与后台任务的客户端分开创建。
   验收：已确认节点才会入队；同一节点同一类型只有一行；drain 执行一次处理器后标为 `done`；失败按次数重试后标为 `failed` 并保留最后错误；`--kind` 只执行指定类型；chat 轮次中后台客户端零调用；`pnpm check` 通过。
 
-- [ ] **M2-T04 实体与别名表** | 依赖：M2-T01 | DESIGN §7
+- [x] **M2-T04 实体与别名表** | 依赖：M2-T01 | DESIGN §7
+  完成：2026-11-07 迁移 v6 新增 `entities`（按故事与规范化名称唯一）与 `entity_aliases`（按实体与规范化别名唯一）；`normalizeEntityName` 复用 NFKC、去标点符号空白、大小写折叠；`upsertEntity` 同名合并只补别名，`resolveEntities` 返回同一别名的全部实体；st-compat 导入角色卡与世界书实体并在 chat 启动时合并；7+7 个新测试，门禁通过（370 个测试）
   做什么：
-  - 迁移 v6：新增 `entities(id, story_id, kind, name, description, source, created_at)` 与 `entity_aliases(entity_id, alias, normalized_alias)`；同一故事内 `normalized_alias` 唯一。
+  - 迁移 v6：新增 `entities(row_id, id, story_id, kind, name, normalized_name, description, source, created_at)` 与 `entity_aliases(entity_id, story_id, alias, normalized_alias)`；同一故事内 `normalized_name` 唯一，同一实体内 `normalized_alias` 唯一（ADR-0017）。
   - core 定义 `EntityKind`（`character`、`location`、`item`、`faction`、`lore`、`unknown`）与实体读写接口；名称规范化复用 NFKC、大小写折叠、去空白与标点。
   - `upsertEntity` 合并同名实体与别名；`resolveEntities(alias)` 按规范化后的别名返回实体列表。
-  - st-compat 新增角色卡与世界书的实体导入：角色卡的名字作为 `character`；世界书条目的名字或 `comment` 作为 `lore` 实体名，主关键词作为别名。core 不出现世界书、角色卡等 ST 类型。
+  - st-compat 新增角色卡与世界书的实体导入：角色卡的名字作为 `character`，昵称作为别名；世界书条目的 `comment`（没有时用第一个可用主关键词）作为 `lore` 实体名，主关键词作为别名。core 不出现世界书、角色卡等 ST 类型。
   验收：合成角色卡与世界书导入后实体数、别名数符合预期；重复名称与别名合并；全角、大小写、标点差异能命中同一实体；一个别名对应多个实体时返回全部；缺失字段的条目跳过并在导入结果里计数；`pnpm check` 通过。
 
 - [ ] **M2-T05 事件抽取** | 依赖：M2-T03、M2-T04 | DESIGN §7
