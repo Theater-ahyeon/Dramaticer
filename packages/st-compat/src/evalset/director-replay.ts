@@ -181,6 +181,7 @@ export function createChatReplayGenerator(
 				embedder: options.embedder,
 				directorConfig: options.directorConfig,
 				mechanisms: options.mechanisms,
+				historyBlockPolicy: store.getStorySettings(storyId).historyBlockPolicy,
 			}),
 			budgetTokens: options.budgetTokens,
 			structuredOutput: options.structuredOutput,

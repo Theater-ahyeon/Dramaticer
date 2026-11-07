@@ -569,6 +569,14 @@ export function buildMigrations(
 				END`,
 			],
 		},
+		{
+			version: 22,
+			description: "历史槽位的块 prompt 视图策略",
+			statements: [
+				`ALTER TABLE story_settings ADD COLUMN history_block_policy TEXT NOT NULL
+					DEFAULT '{"mode":"default","overrides":{}}'`,
+			],
+		},
 	];
 }
 

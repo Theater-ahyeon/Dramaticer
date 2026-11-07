@@ -1,8 +1,16 @@
-import type { ParsedBlock, ParsedContent } from "./types.js";
+import type {
+	BlockContextStrategy,
+	ParsedBlock,
+	ParsedContent,
+} from "./types.js";
 
 export interface ContextViewOptions {
 	/** 当前楼层距离尾部的深度，0 表示最新一层；只影响 keep-depth 策略。 */
 	readonly depth?: number;
+	/** 覆盖块类型自带的上下文策略；返回值按块逐个求值。 */
+	readonly resolveStrategy?: (block: ParsedBlock) => BlockContextStrategy;
+	/** 某个块被整段省略时回调；嵌套在已省略块里的块不会再次回调。 */
+	readonly onOmit?: (block: ParsedBlock) => void;
 }
 
 /**
@@ -19,19 +27,30 @@ export function renderContextView(
 	}
 	let text = "";
 	for (const item of content) {
-		text += item.kind === "text" ? item.text : renderBlock(item, depth);
+		text +=
+			item.kind === "text" ? item.text : renderBlock(item, depth, options);
 	}
 	return text;
 }
 
-function renderBlock(block: ParsedBlock, depth: number): string {
-	const strategy = block.type.context;
-	if (strategy.kind === "drop") return "";
-	if (strategy.kind === "keep-depth" && depth >= strategy.depth) return "";
+function renderBlock(
+	block: ParsedBlock,
+	depth: number,
+	options: ContextViewOptions,
+): string {
+	const strategy = options.resolveStrategy?.(block) ?? block.type.context;
+	if (strategy.kind === "drop") {
+		options.onOmit?.(block);
+		return "";
+	}
+	if (strategy.kind === "keep-depth" && depth >= strategy.depth) {
+		options.onOmit?.(block);
+		return "";
+	}
 	if (strategy.kind === "compress") {
 		throw new Error(`块 ${block.name} 的 compress 上下文策略尚未实现`);
 	}
-	const inner = renderContextView(block.content, { depth });
+	const inner = renderContextView(block.content, options);
 	return block.complete
 		? `<${block.name}>${inner}</${block.name}>`
 		: `<${block.name}>${inner}`;

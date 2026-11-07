@@ -94,6 +94,33 @@ describe("assembleContext", () => {
 		]);
 	});
 
+	it("槽位带回历史块视图统计时写进 Trace 条目", async () => {
+		const history = {
+			policy: "default" as const,
+			recentRawFloors: 1,
+			omitted: [{ blockType: "选项", characters: 10, tokens: 5 }],
+		};
+		const result = await assembleContext({
+			template: baseTemplate,
+			budgetTokens: 1_000,
+			storyId: "story-1",
+			tokenEstimator: lengthTokens,
+			providers: {
+				history: {
+					provide: () => ({
+						messages: [{ role: "assistant", content: "正文" }],
+						source: "最近 1 楼",
+						history,
+					}),
+				},
+			},
+		});
+		const entry = result.trace.entries.find(
+			(item) => item.segmentId === "history",
+		);
+		expect(entry?.history).toEqual(history);
+	});
+
 	it("条件不满足时跳过片段，并且不调用槽位提供者", async () => {
 		let called = 0;
 		const template: ContextTemplate = {

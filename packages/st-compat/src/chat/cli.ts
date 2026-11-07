@@ -188,6 +188,7 @@ export async function runChatCli(
 					...DEFAULT_DIRECTOR_CONFIG,
 					enabled: parsed.directorEnabled,
 				},
+				historyBlockPolicy: settings.historyBlockPolicy,
 			}),
 			budgetTokens,
 			structuredOutput: mode,

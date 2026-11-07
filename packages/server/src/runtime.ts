@@ -118,6 +118,7 @@ export class StoryRuntimeManager {
 				characterPrompt: settings.characterPrompt,
 				embedder,
 				directorConfig: settings.directorConfig,
+				historyBlockPolicy: settings.historyBlockPolicy,
 			}),
 			chatClient: this.#createClient(config, modelAlias),
 			backgroundClient:

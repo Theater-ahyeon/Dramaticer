@@ -139,6 +139,61 @@ describe("槽位提供者", () => {
 		expect(content?.messages[1]?.content).not.toContain("<state_update>");
 	});
 
+	it("历史槽位默认省略更早楼层的显示类块，并在 Trace 里记录省略量", async () => {
+		const { store } = openTempStore();
+		store.createStory({ id: "s1", title: "测试" });
+		store.appendNode({
+			id: "n-greeting",
+			storyId: "s1",
+			parentId: null,
+			role: "assistant",
+			raw: "开场<选项>甲</选项>",
+		});
+		store.appendNode({
+			id: "n-user",
+			storyId: "s1",
+			parentId: "n-greeting",
+			role: "user",
+			raw: "我推门进去。",
+		});
+		store.appendNode({
+			id: "n-reply",
+			storyId: "s1",
+			parentId: "n-user",
+			role: "assistant",
+			raw: "请进。<选项>乙</选项>",
+		});
+
+		const provider = createHistorySlotProvider(store, {
+			limit: 3,
+			estimator: (text) => text.length,
+		});
+		const content = await provider.provide(request("s1", "n-reply", "history"));
+		expect(content?.messages.map((message) => message.content)).toEqual([
+			"开场",
+			"我推门进去。",
+			"请进。<选项>乙</选项>",
+		]);
+		expect(content?.history).toEqual({
+			policy: "default",
+			recentRawFloors: 1,
+			omitted: [{ blockType: "选项", characters: 10, tokens: 10 }],
+		});
+
+		const full = createHistorySlotProvider(store, {
+			limit: 3,
+			estimator: (text) => text.length,
+			policy: { mode: "full", overrides: {} },
+		});
+		const fullContent = await full.provide(request("s1", "n-reply", "history"));
+		expect(fullContent?.messages[0]?.content).toBe("开场<选项>甲</选项>");
+		expect(fullContent?.history).toEqual({
+			policy: "full",
+			recentRawFloors: 1,
+			omitted: [],
+		});
+	});
+
 	it("状态槽位回放路径上的 diff", async () => {
 		const { store } = openTempStore();
 		store.createStory({ id: "s1", title: "测试" });

@@ -1,4 +1,9 @@
 import {
+	DEFAULT_HISTORY_BLOCK_POLICY,
+	type HistoryBlockPolicy,
+	assertHistoryBlockPolicy,
+} from "../blocks/history.js";
+import {
 	type ContextTemplate,
 	assertContextTemplate,
 } from "../context/template.js";
@@ -31,6 +36,8 @@ export interface StorySettings {
 	/** 知情者视角；为空表示全知。 */
 	readonly viewpoint: string | null;
 	readonly directorConfig: DirectorConfig;
+	/** 历史槽位的块 prompt 视图策略。 */
+	readonly historyBlockPolicy: HistoryBlockPolicy;
 	readonly updatedAt: string;
 }
 
@@ -47,6 +54,7 @@ export interface StorySettingsUpdate {
 	readonly reasoning?: LlmReasoningLevel;
 	readonly viewpoint?: string | null;
 	readonly directorConfig?: DirectorConfig;
+	readonly historyBlockPolicy?: HistoryBlockPolicy;
 }
 
 export const STORY_SETTINGS_UPDATE_KEYS: readonly (keyof StorySettingsUpdate)[] =
@@ -63,6 +71,7 @@ export const STORY_SETTINGS_UPDATE_KEYS: readonly (keyof StorySettingsUpdate)[] 
 		"reasoning",
 		"viewpoint",
 		"directorConfig",
+		"historyBlockPolicy",
 	];
 
 /** 尚未保存设置时使用的数值与枚举；故事 id 与更新时间由调用方补齐。 */
@@ -73,6 +82,7 @@ export const DEFAULT_STORY_SETTINGS_VALUES = {
 	maxTokens: 4_096,
 	reasoning: "low",
 	directorConfig: DEFAULT_DIRECTOR_CONFIG,
+	historyBlockPolicy: DEFAULT_HISTORY_BLOCK_POLICY,
 } as const;
 
 export interface ContextTemplateRecord {
@@ -191,6 +201,12 @@ export function assertStorySettingsUpdate(update: StorySettingsUpdate): void {
 	}
 	if (update.directorConfig !== undefined) {
 		assertDirectorConfig(update.directorConfig);
+	}
+	if (update.historyBlockPolicy !== undefined) {
+		assertHistoryBlockPolicy(
+			update.historyBlockPolicy,
+			"故事设置的 historyBlockPolicy",
+		);
 	}
 }
 

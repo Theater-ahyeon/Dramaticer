@@ -92,7 +92,7 @@ function assertDisplayStrategy(
 	}
 }
 
-function assertContextStrategy(
+export function assertBlockContextStrategy(
 	context: BlockContextStrategy,
 	name: string,
 ): void {
@@ -137,7 +137,7 @@ export function createBlockTypeRegistry(
 			throw new Error(`块类型重复注册：${type.name}`);
 		}
 		assertDisplayStrategy(type.display, type.name);
-		assertContextStrategy(type.context, type.name);
+		assertBlockContextStrategy(type.context, type.name);
 		assertSemanticsStrategy(type.semantics, type.name);
 		byName.set(type.name, type);
 	}
@@ -160,6 +160,30 @@ export const DEFAULT_BLOCK_TYPES: readonly BlockTypeDefinition[] = [
 	{
 		name: "选项",
 		display: { kind: "native", component: "options" },
+		context: { kind: "keep" },
+		semantics: { kind: "none" },
+	},
+	{
+		name: "状态栏",
+		display: { kind: "native", component: "status" },
+		context: { kind: "keep" },
+		semantics: { kind: "none" },
+	},
+	{
+		name: "变量更新",
+		display: { kind: "hidden" },
+		context: { kind: "drop" },
+		semantics: { kind: "none" },
+	},
+	{
+		name: "分析",
+		display: { kind: "native", component: "analysis" },
+		context: { kind: "keep" },
+		semantics: { kind: "none" },
+	},
+	{
+		name: "图片",
+		display: { kind: "native", component: "image" },
 		context: { kind: "keep" },
 		semantics: { kind: "none" },
 	},

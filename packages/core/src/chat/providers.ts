@@ -1,3 +1,7 @@
+import {
+	type HistoryBlockPolicy,
+	renderHistoryView,
+} from "../blocks/history.js";
 import { parseBlocks } from "../blocks/parser.js";
 import { renderContextView } from "../blocks/view.js";
 import type {
@@ -28,6 +32,12 @@ import { type TokenEstimator, createTokenEstimator } from "../tokens.js";
 export interface HistorySlotProviderOptions {
 	/** 最多带最近多少楼，默认 20。 */
 	readonly limit?: number;
+	/** 块的 prompt 视图策略，默认省略更早楼层的显示类块。 */
+	readonly policy?: HistoryBlockPolicy;
+	/** `default` 策略下不套用显示类省略的楼数，默认 1。 */
+	readonly recentRawFloors?: number;
+	/** 统计省略量用的 token 估算器，默认与上下文组装相同。 */
+	readonly estimator?: TokenEstimator;
 }
 
 export const DEFAULT_HISTORY_LIMIT = 20;
@@ -56,7 +66,7 @@ export function createStaticSlotProvider(
 	};
 }
 
-/** 把路径上的最近若干楼渲染成上下文视图，交给历史槽位。 */
+/** 把路径上的最近若干楼渲染成 prompt 视图，交给历史槽位。 */
 export function createHistorySlotProvider(
 	store: StoryStore,
 	options: HistorySlotProviderOptions = {},
@@ -70,15 +80,29 @@ export function createHistorySlotProvider(
 			if (request.nodeId === null) return null;
 			const path = store.getPathToNode(request.nodeId);
 			const nodes = path.slice(-limit);
+			const view = renderHistoryView(
+				nodes.map((node, index) => ({
+					raw: node.raw,
+					depth: nodes.length - 1 - index,
+				})),
+				{
+					policy: options.policy,
+					recentRawFloors: options.recentRawFloors,
+					estimator: options.estimator,
+				},
+			);
 			const messages: ContextMessage[] = [];
 			nodes.forEach((node, index) => {
-				const depth = nodes.length - 1 - index;
-				const text = renderContextView(parseBlocks(node.raw), { depth });
+				const text = view.texts[index] ?? "";
 				if (text.trim().length === 0) return;
 				messages.push({ role: node.role, content: text });
 			});
 			if (messages.length === 0) return null;
-			return { messages, source: `history:最近 ${messages.length} 楼` };
+			return {
+				messages,
+				source: `history:最近 ${messages.length} 楼`,
+				history: view.trace,
+			};
 		},
 	};
 }
@@ -504,6 +528,8 @@ export interface StandardChatProvidersOptions {
 	readonly embedder?: EmbeddingClient | null;
 	readonly directorConfig?: DirectorConfig;
 	readonly mechanisms?: readonly DirectorMechanism[];
+	/** 块的 prompt 视图策略；不设置时使用默认策略。 */
+	readonly historyBlockPolicy?: HistoryBlockPolicy;
 }
 
 /** 生产对话与回放评测共用的七个槽位。 */
@@ -518,7 +544,9 @@ export function createStandardChatProviders(
 			: { character: createCharacterSlotProvider(options.characterPrompt) };
 	return {
 		...character,
-		history: createHistorySlotProvider(options.store),
+		history: createHistorySlotProvider(options.store, {
+			policy: options.historyBlockPolicy,
+		}),
 		state: createStateSlotProvider(options.store),
 		scene: createSceneSlotProvider(options.store),
 		summary: createSummarySlotProvider(options.store),

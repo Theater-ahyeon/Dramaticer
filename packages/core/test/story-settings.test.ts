@@ -4,6 +4,7 @@ import { describe, expect, it, onTestFinished } from "vitest";
 import {
 	DEFAULT_CONTEXT_TEMPLATE_ID,
 	DEFAULT_DIRECTOR_CONFIG,
+	DEFAULT_HISTORY_BLOCK_POLICY,
 	type StorySettingsUpdate,
 	StoryStore,
 	createDefaultContextTemplate,
@@ -54,6 +55,7 @@ describe("故事设置", () => {
 			reasoning: "low",
 			viewpoint: null,
 			directorConfig: DEFAULT_DIRECTOR_CONFIG,
+			historyBlockPolicy: DEFAULT_HISTORY_BLOCK_POLICY,
 			updatedAt: createdAt,
 		});
 		close();
@@ -77,6 +79,10 @@ describe("故事设置", () => {
 			reasoning: "high",
 			viewpoint: "山神",
 			directorConfig: { ...DEFAULT_DIRECTOR_CONFIG, enabled: false },
+			historyBlockPolicy: {
+				mode: "full",
+				overrides: { 选项: { kind: "drop" } },
+			},
 		});
 		store.updateStorySettings("s1", { temperature: 0.1 });
 		close();
@@ -97,6 +103,10 @@ describe("故事设置", () => {
 				reasoning: "high",
 				viewpoint: "山神",
 				directorConfig: { enabled: false },
+				historyBlockPolicy: {
+					mode: "full",
+					overrides: { 选项: { kind: "drop" } },
+				},
 			});
 		} finally {
 			reopened.close();
@@ -125,6 +135,16 @@ describe("故事设置", () => {
 					} as never,
 				},
 				"未知字段",
+			],
+			[{ historyBlockPolicy: { mode: "huge" } as never }, "historyBlockPolicy"],
+			[
+				{
+					historyBlockPolicy: {
+						mode: "default",
+						overrides: { 选项: { kind: "compress" } },
+					},
+				},
+				"compress",
 			],
 			[{ templateId: "missing" }, "上下文模板不存在"],
 			[{ unknown: true } as never, "未知字段"],

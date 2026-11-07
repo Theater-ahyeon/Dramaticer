@@ -3,34 +3,36 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：94
-- 任务：R1-T02.a 现场分析
-- 结果：完成（`DONE`），门禁通过（774 个测试，3 个 live 跳过）。
-  - 迁移 v21 新增 `scene_analyses(node_id PRIMARY KEY, story_id, text, token_count, created_at)`，同故事触发器与归属不可修改的更新触发器。
-  - `packages/core/src/memory/scene.ts`：`SCENE_JOB_KIND`、`SCENE_WINDOW_FLOORS`（6）、`DEFAULT_SCENE_MAX_TOKENS`（200）、`createSceneHandler`。处理器读取该楼层的 `getStateSnapshot(job.nodeId)` 与路径上最近 6 楼非空原文，请求 `temperature: 0` 与 `maxTokens`，保存的分析带 token 估算数。
-  - 等待机制：`BackgroundJobDeferredError`（`background/types.ts`）与 `StoryStore.deferBackgroundJob`。`drainBackgroundJobs` 捕获该错误后退回 pending、撤销本次执行计数；其它错误仍按 `MAX_BACKGROUND_JOB_ATTEMPTS` 重试。
-  - `scene` 槽位：`CONTEXT_SLOT_NAMES` 里位于 `history` 与 `director` 之间；默认模板段落放在 `memory` 之后、`director` 之前；`createSceneSlotProvider` 取当前路径最近一条分析，没有时返回 null（Trace 记 `missing-slot`）；已加入 `createStandardChatProviders`，现在是八个槽位（character 有提示词时）。
-  - `dramaticer work` 注册 `scene`，入队条件 `settled`，与 `settle` 相同。
-  - 新增 5 个测试（`packages/core/test/scene-analysis.test.ts`）；更新三处既有断言（`chat-turn.test.ts` 的 Trace 顺序、`chat-providers.test.ts` 的标准槽位集合、`st-compat/test/chat-cli.test.ts` 的 Trace 槽位列表）。
-  - 用 `.devloop/scratch/` 的临时脚本跑过一次真实 drain 加 `assembleContext`：`settle` 与 `scene` 在同一轮依次完成，场景段在 Trace 里为 `included`，来源形如 `scene:楼层 a2，估算 10 token`；脚本已删除。
-  - ADR-0048 记录锚点、槽位位置与等待机制。
+- 会话：95
+- 任务：R1-T02.b 块的 prompt 视图
+- 结果：完成（`DONE`），门禁通过（783 个测试通过，3 个 live 跳过，共 786 个）。
+  - 新增 `packages/core/src/blocks/history.ts`：`HistoryBlockPolicy`（`mode` 取 `default` / `full`，`overrides` 按块类型名覆盖上下文策略）、`DEFAULT_RECENT_RAW_FLOORS`（1）、`DEFAULT_HISTORY_OMITTED_BLOCK_NAMES`（选项、状态栏、变量更新、分析、图片）、`renderHistoryView`。
+  - `full` 与改动前的 `renderContextView` 逐字节一致；`default` 只在更早楼层省略显示类块，最近 `recentRawFloors` 楼不套用这层省略，但思考块与写入块照旧按块类型策略省略。未闭合块一律保留；`default` 下围栏代码块按原文保留。
+  - `DEFAULT_BLOCK_TYPES` 增加 `状态栏`、`变量更新`、`分析`、`图片` 四个原生块；`变量更新` 隐藏且上下文策略为删除，`选项` 的上下文策略保持保留。
+  - `ContextSlotContent.history` 与 `ContextTraceEntry.history` 记录 `policy`、`recentRawFloors`、按块类型的省略字符与估算 token（无省略时为空数组）；组装器把槽位字段复制进 Trace。
+  - 故事设置新增 `historyBlockPolicy`（缺省 `{mode:"default",overrides:{}}`，`overrides` 里的 `compress` 在保存时拒绝）；迁移 v22 给 `story_settings` 加列。server、`dramaticer chat` 与回放生成器都从故事设置读取。
+  - 新增测试：`core/test/history-view.test.ts` 7 个；`chat-providers.test.ts` 1 个；`context-assembler.test.ts` 1 个；`story-settings.test.ts` 补默认值、往返与两个非法用例；`block-parser.test.ts` 的原生块类型列表断言补四个新块。
+  - 离线统计脚本 `pnpm r1:history-view`（`scripts/r1-history-view.mjs`）：3 个 legacy 对话各取主路径最后 20 楼，估算输入 100,776 → 78,910 token（-21.7%）；数字与口径写进 `docs/dev/reports/R1.md`。该数字以 st-compat 把 ST 标签映射成显示类块为前提。
+  - ADR-0049 记录策略形状、生效顺序、Trace 位置与迁移编号顺延。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a。完成记录与验收标准见 `docs/dev/TASKS-archive.md`，未完成任务见 `docs/dev/TASKS.md`。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b。完成记录与验收标准见 `docs/dev/TASKS-archive.md`，未完成任务见 `docs/dev/TASKS.md`。
 - **R1-T02 已拆成 R1-T02.1–R1-T02.4**（父任务是文字说明，不是可勾选任务）：四个子任务全部完成，R1-T02 的总验收由 R1-T99 逐条核对。
 - v3 阶段顺序：R1 最小集 → R3 快回合 → O 开局与方向 → R2 评测底座 → E → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045。
 - HUMAN-09 仍待处理（不阻塞）：ADR-0042 声明的 `bg-fallback`、`main-fallback`、`codex` 别名在 `data/channels.yaml` 里已经出现，`channels.example.yaml` 是否需要补上请人类确认；没有改这两个文件。
 - HUMAN-10 待处理（不阻塞）：插件不变量是否加进 AGENTS.md。
-- 数据库 schema 版本 21（v19 结算记录、v20 实体候选与置信度、v21 现场分析）；后续编号：v22 变更卡、v23 开盘包、v24 开场候选、v25 偏好记录、v26 父子分块、v27 章节压缩、v28 世界书预筛、v29 上下文包；插入新迁移时后续编号一起顺延。
+- 数据库 schema 版本 22（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略）；后续编号：v23 变更卡、v24 开局包、v25 开场候选、v26 偏好记录、v27 父子分块、v28 章节压缩、v29 世界书预筛、v30 上下文包；插入新迁移时后续编号一起顺延。
 - 结算只有 `dramaticer work` 调度：server 的回合路径不补建也不执行后台任务，所以回合内后台客户端零调用是结构保证；要真正结算故事，跑 `pnpm work --db <path> --kind settle`，要生成现场分析跑 `pnpm work --db <path> --kind scene`。
 - 结算窗口以 head 为终点（ADR-0046），冲突检查窗口同样取 head 路径最后 `conflictWindowFloors` 楼。窗口内没有未结算楼层时不调用模型。
 - 现场分析以被分析的楼层为锚点：台账快照取该楼层的结算结果，原文窗口是该楼层路径上的最近 6 楼；没有结算记录时任务退回 pending（ADR-0048）。
 - 冲突检测依赖模型在同一个结算请求里返回 `conflicts`；程序不自行判断语义矛盾，只做事实级拒绝与记录。R1-T07.a 从 `repairs` 里筛 `action` 为 `conflict` 的记录生成待审变更卡。
 - 实体解析只处理 `character.<名称>`、`relation.<from>.<to>` 两端、`item.<名称>`、`scene.places.<地点>`；`clue`、`knowledge` 的知情者、`userWill` 不做实体映射。规范名称采用实体的 `name` 而不是 id。
 - 已注册的槽位是十个（`packages/core/src/context/template.ts` 的 `CONTEXT_SLOT_NAMES`：lore、character、persona、summary、state、memory、history、scene、director、protocol）；DESIGN §9 里的 `ledger` 对应实现的 `state`，`beat` 尚未注册。DESIGN §9 把 `scene` 排在 `history` 之后、`director` 之前，而默认模板里 `history` 是最后一段，所以模板段落放在 `memory` 与 `director` 之间（ADR-0048）。`block_format` 是模板里的可选静态段，不是槽位。
+- 原生块类型现在是 12 个（`thinking`、`选项`、`状态栏`、`变量更新`、`分析`、`图片`、`页眉`、`悄悄话`、`旁白`、`备忘`、`state_update`、`plot_note`）；其中 `thinking`、`变量更新`、`state_update`、`plot_note` 的上下文策略是删除。
+- 历史槽位的默认策略：更早楼层省略五个显示类块，最近 1 楼不套用这层省略；`full` 是改动前的行为，用于对照。设置项 `historyBlockPolicy` 存在 `story_settings.history_block_policy`（JSON）。
 - `packages/server` 已提供故事、导入、设置、模板、SSE 回合与后台运行时缓存；`packages/protocol` 已提供 HTTP 与 SSE 类型；`packages/web` 尚未创建。
-- 故事设置缺省值：`budgetTokens` 12000、`structuredOutput` `text-tags`、`temperature` 0.8、`maxTokens` 4096（server 对没有保存过设置的故事改用 `min(4096, writer 模型声明)`）、`reasoning` `low`、导演使用默认配置。
+- 故事设置缺省值：`budgetTokens` 12000、`structuredOutput` `text-tags`、`temperature` 0.8、`maxTokens` 4096（server 对没有保存过设置的故事改用 `min(4096, writer 模型声明)`）、`reasoning` `low`、`historyBlockPolicy` `{mode:"default",overrides:{}}`、导演使用默认配置。
 - 快照：`eval-private/raw/` 有 94 个文件；manifest 记录 `corpus` 与 `sourceMtime`。`eval-private/reference/` 有 5 部参照小说。
 - 事件表已在 v7 建立，但真实回放里没有事件；R1-T03 改为批量窗口后由 R1-T04.a/.b 回填。
 - F0 的私有产物：`eval-private/f0/pairs.jsonl`（290 对）、`attribution.jsonl`、`judge.jsonl`（793 行）、`fulltext/work.db`、`fulltext-probe.json`、`fulltext-branches.json`、`fulltext-generations.jsonl`、`fulltext-judgements.jsonl`、`fulltext-summary.json`、`llm-cache/`。`eval-private/reports/f0-corpus-map.json` 是对话编号到文件路径的映射。
@@ -39,8 +41,8 @@
 - 插件系统在 DESIGN §19 是唯一权威；P 阶段任务在 TASKS 的「P：插件内核」小节，C 线兼容插件任务已存在且依赖 P2。
 
 ## 下一步
-- **R1-T02.b 块的 prompt 视图**：core 新增历史渲染函数，用 `BlockParser` 取出每楼正文里的块，按块类型策略（保留 / 删除 / 保留到深度 N / 压缩）生成 prompt 视图；最近 `recentRawFloors`（默认 1）楼保留完整原文；显示类块在更早楼层省略；未知块、未闭合块与代码块按原文保留。`history` 槽位改用这个函数，`historyBlockPolicy` 取 `default`、`full` 或按块类型覆盖，`full` 与现有实现逐字节一致；Trace 记录省略量与策略；在 3 个 legacy 对话的固定分支点上离线统计省略前后 token，数字写进 `docs/dev/reports/R1.md`。
-- 之后是 R1-T03 批量事件抽取、R1-T04.a 批量抽取管线与断点续跑。
+- **R1-T03 批量事件抽取**：把 `events` 任务改成批量窗口，一次请求处理最多 `eventWindowFloors`（默认 8）个沿当前路径连续、尚未抽取的已确认助手楼层；输入包含窗口内原文与前后各一楼边界；模型返回 `{nodeId, events}` 数组，未知或重复楼层整窗拒绝并记录原因；事件仍写只追加表，重跑不产生重复行；窗口与结算窗口互不阻塞。验收见 TASKS。
+- 之后是 R1-T04.a 批量抽取管线与断点续跑。
 - R1 最小集之后是 R3 快回合（R3-T01 至 R3-T99）、O 开局与方向、R2 评测底座。
 
 ## 注意事项
@@ -50,6 +52,11 @@
 - `channels.example.yaml` 的 roles 示例里 judge 指向 background 并附了说明；复制示例时如果 background 与 main 是同一家族，启动会失败，需要另配一个家族的模型。
 - tests 目录不在 tsc 的 `include` 里（`packages/*/tsconfig.json` 只含 `src`），测试里的 `TurnTrace` 字面量漏字段不会被类型检查发现；新增 Trace 字段时手动检查测试构造点（`core/test/trace-store.test.ts`、`core/test/ledger-settlement.test.ts`、`st-compat/test/director-eval.test.ts` 的 `emptyTrace`）。
 - 新增槽位或模板段落时同步更新既有断言：`core/test/chat-turn.test.ts` 的 Trace 顺序、`core/test/chat-providers.test.ts` 的标准槽位集合、`st-compat/test/chat-cli.test.ts` 的槽位列表。
+- 新增或调整原生块类型时同步更新 `core/test/block-parser.test.ts` 的默认块类型列表断言。
+- 历史槽位的 `full` 是“改动前的渲染”的对照口径；`default` 的最近一楼仍会省略思考块与写入块，不要再把“最近一楼”理解成返回完整原文。省略统计按整段标签文本计算。
+- `default` 下围栏代码块不受块策略影响；围栏未闭合时一直保留到楼层结尾。
+- `pnpm r1:history-view` 需要先构建 `packages/core/dist` 与 `packages/st-compat/dist`（`pnpm run typecheck` 即可）；脚本只读 `eval-private/raw/`，不写数据库，输出贴进 `docs/dev/reports/R1.md`。
+- 离线统计里“含标签映射”一列用的是 F0 的标签分类，不是 core 的原生块类型；st-compat 的标签映射落地后要复核 `DEFAULT_HISTORY_OMITTED_BLOCK_NAMES` 与原生块类型表。
 - 后台任务需要等待其它任务完成时抛 `BackgroundJobDeferredError`（`background/types.ts`），drain 会把任务退回 pending 且不消耗执行次数；不要用抛普通错误的方式等待，那会消耗重试次数。
 - `docs/dev/TASKS.md` 只保留未完成任务与当前阶段；查已完成任务的说明、验收与完成记录读 `docs/dev/TASKS-archive.md`。
 - `docs/dev/reports/F0.md` 里只有 F0-T02、F0-T03、F0-T04、F0-T99 四个标记段；重跑脚本只会替换对应标记之间的内容，手写部分不要放进标记之间。F0-T99 节里引用的数字必须与前面各节和 `docs/dev/reports/F0-corpus.md` 一致。

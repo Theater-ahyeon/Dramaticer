@@ -4,6 +4,7 @@ import {
 	type DirectorMechanism,
 	type EmbeddingClient,
 	type EventPoolUpsertResult,
+	type HistoryBlockPolicy,
 	type NpcAgendaUpsertResult,
 	type StoryStore,
 	createStandardChatProviders,
@@ -105,6 +106,8 @@ export interface CreateChatProvidersOptions {
 	readonly embedder?: EmbeddingClient | null;
 	readonly directorConfig?: DirectorConfig;
 	readonly mechanisms?: readonly DirectorMechanism[];
+	/** 故事设置里的历史块策略；不设置时使用默认策略。 */
+	readonly historyBlockPolicy?: HistoryBlockPolicy;
 }
 
 /** 生产对话与回放评测共用的槽位集合：从角色卡渲染提示词后交给 core。 */
@@ -118,5 +121,6 @@ export function createChatProviders(
 		embedder: options.embedder,
 		directorConfig: options.directorConfig,
 		mechanisms: options.mechanisms,
+		historyBlockPolicy: options.historyBlockPolicy,
 	});
 }

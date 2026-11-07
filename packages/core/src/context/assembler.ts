@@ -1,3 +1,4 @@
+import type { HistoryViewTrace } from "../blocks/history.js";
 import { type TokenEstimator, createTokenEstimator } from "../tokens.js";
 import {
 	type ContextConditionFacts,
@@ -21,6 +22,8 @@ export interface ContextSlotContent {
 	readonly messages: readonly ContextMessage[];
 	/** 写进 Trace 的来源描述，例如"世界书：2 条常驻、3 条检索"。 */
 	readonly source: string;
+	/** 历史槽位的块视图统计；其它槽位不产生这个字段。 */
+	readonly history?: HistoryViewTrace;
 }
 
 export interface ContextSlotProvider {
@@ -58,6 +61,8 @@ export interface ContextTraceEntry {
 	readonly priority: number;
 	readonly tokens: number;
 	readonly status: ContextTraceStatus;
+	/** 历史槽位生效的块视图策略与省略量；没有省略时 omitted 为空。 */
+	readonly history?: HistoryViewTrace;
 }
 
 export interface ContextTrace {
@@ -95,6 +100,7 @@ interface ResolvedSegment {
 	readonly messages: readonly ContextMessage[] | null;
 	readonly source: string;
 	readonly status: "candidate" | "condition-false" | "missing-slot";
+	readonly history?: HistoryViewTrace;
 }
 
 /**
@@ -161,6 +167,7 @@ export async function assembleContext(
 			priority: item.segment.priority ?? 0,
 			tokens,
 			status,
+			...(item.history === undefined ? {} : { history: item.history }),
 		});
 		if (status === "included") {
 			const included = item.messages as readonly ContextMessage[];
@@ -254,6 +261,7 @@ async function resolveSegment(
 		messages: content.messages,
 		source: content.source,
 		status: "candidate",
+		...(content.history === undefined ? {} : { history: content.history }),
 	};
 }
 

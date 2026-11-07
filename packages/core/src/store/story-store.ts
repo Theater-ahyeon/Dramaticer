@@ -7,6 +7,10 @@ import {
 	type BackgroundJobStatus,
 	isBackgroundJobEnqueueCondition,
 } from "../background/types.js";
+import {
+	type HistoryBlockPolicy,
+	assertHistoryBlockPolicy,
+} from "../blocks/history.js";
 import { parseContextCondition } from "../context/condition.js";
 import {
 	type ContextCondition,
@@ -137,6 +141,7 @@ interface StorySettingsRow {
 	readonly reasoning: string;
 	readonly viewpoint: string | null;
 	readonly director_config: string;
+	readonly history_block_policy: string;
 	readonly updated_at: string;
 }
 
@@ -646,6 +651,10 @@ function rowToStorySettings(row: StorySettingsRow): StorySettings {
 		row.director_config,
 	) as DirectorConfig;
 	assertDirectorConfig(parsedDirectorConfig);
+	const parsedHistoryBlockPolicy: unknown = JSON.parse(
+		row.history_block_policy,
+	);
+	assertHistoryBlockPolicy(parsedHistoryBlockPolicy);
 	return {
 		storyId: row.story_id,
 		cardName: row.card_name,
@@ -660,6 +669,7 @@ function rowToStorySettings(row: StorySettingsRow): StorySettings {
 		reasoning: row.reasoning,
 		viewpoint: row.viewpoint,
 		directorConfig: parsedDirectorConfig,
+		historyBlockPolicy: parsedHistoryBlockPolicy,
 		updatedAt: row.updated_at,
 	};
 }
@@ -687,6 +697,11 @@ function serializeDirectorConfig(config: DirectorConfig): string {
 		if (value !== undefined) defined[key] = value;
 	}
 	return serializeJsonValue(defined, "故事设置的 directorConfig");
+}
+
+function serializeHistoryBlockPolicy(policy: HistoryBlockPolicy): string {
+	assertHistoryBlockPolicy(policy, "故事设置的 historyBlockPolicy");
+	return JSON.stringify(policy);
 }
 
 function rowToNode(row: NodeRow): TimelineNode {
@@ -1160,6 +1175,7 @@ export class StoryStore {
 			reasoning: DEFAULT_STORY_SETTINGS_VALUES.reasoning,
 			viewpoint: null,
 			directorConfig: DEFAULT_STORY_SETTINGS_VALUES.directorConfig,
+			historyBlockPolicy: DEFAULT_STORY_SETTINGS_VALUES.historyBlockPolicy,
 			updatedAt: story.createdAt,
 		};
 	}
@@ -1235,6 +1251,10 @@ export class StoryStore {
 				update.directorConfig !== undefined
 					? update.directorConfig
 					: current.directorConfig,
+			historyBlockPolicy:
+				update.historyBlockPolicy !== undefined
+					? update.historyBlockPolicy
+					: current.historyBlockPolicy,
 		};
 		const updatedAt = new Date().toISOString();
 		this.#db
@@ -1242,8 +1262,8 @@ export class StoryStore {
 				`INSERT INTO story_settings
 					(story_id, card_name, character_prompt, persona, template_id, model,
 					 budget_tokens, structured_output, temperature, max_tokens, reasoning,
-					 viewpoint, director_config, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+					 viewpoint, director_config, history_block_policy, updated_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 				ON CONFLICT(story_id) DO UPDATE SET
 					card_name = excluded.card_name,
 					character_prompt = excluded.character_prompt,
@@ -1257,6 +1277,7 @@ export class StoryStore {
 					reasoning = excluded.reasoning,
 					viewpoint = excluded.viewpoint,
 					director_config = excluded.director_config,
+					history_block_policy = excluded.history_block_policy,
 					updated_at = excluded.updated_at`,
 			)
 			.run(
@@ -1273,6 +1294,7 @@ export class StoryStore {
 				next.reasoning,
 				next.viewpoint,
 				serializeDirectorConfig(next.directorConfig),
+				serializeHistoryBlockPolicy(next.historyBlockPolicy),
 				updatedAt,
 			);
 		const saved = this.getStorySettings(storyId);

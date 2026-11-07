@@ -16,6 +16,7 @@
 		"f0:attribution": "node scripts/f0-attribution.mjs",
 		"f0:judge": "node scripts/f0-judge.mjs",
 		"f0:fulltext": "node scripts/f0-fulltext.mjs",
+		"r1:history-view": "node scripts/r1-history-view.mjs",
 		"probe": "pnpm --filter @dramaticer/st-compat build && node packages/st-compat/dist/cli.js probe",
 		"chat": "pnpm --filter @dramaticer/st-compat build && node packages/st-compat/dist/cli.js chat",
 		"work": "pnpm --filter @dramaticer/st-compat build && node packages/st-compat/dist/cli.js work",

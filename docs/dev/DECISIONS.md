@@ -625,3 +625,20 @@
   - `scene_analyses` 以 `node_id` 为主键，重复执行覆盖同一行的文本、token 数与创建时间；槽位取当前路径上最近一条分析，跨分支不共享。
   - `CONTEXT_SLOT_NAMES` 按 DESIGN §9 把 `scene` 放在 `history` 与 `director` 之间；`createDefaultContextTemplate` 的段落放在 `memory` 之后、`director` 之前。
 - **影响**：`dramaticer work` 注册 `scene`；`deferBackgroundJob` 之后其它需要等待依赖的后台任务可以复用它。R1-T07.b 的 `gap_pass` 合并调用会取代这一步的独立请求时，删除独立任务，不保留两套。
+
+## ADR-0049 历史槽位的块 prompt 视图（2026-11-07）
+
+- **背景**：R1-T02.b 要求历史槽位按块类型策略生成 prompt 视图，`default` 省略显示类块、最近一楼保留，`full` 与改动前逐字节一致；策略按故事设置可配，Trace 记录省略量。改动前历史槽位已经调用 `renderContextView`，所以 `full` 就是那次调用的行为。
+- **选项**：
+  - `default` 下最近一楼完全按原文返回（会让 `thinking`、`state_update` 等块重新进入 prompt，与设计里“思考不进入上下文”的既有行为冲突，排除）。
+  - 把显示类省略写进块类型自带的 `context` 策略（会改变 `full`，与“逐字节一致”的验收冲突，排除）。
+  - 块类型自带策略保持原样；`default` 只在更早楼层叠加一层显示类省略，最近 `recentRawFloors` 楼不叠加（采纳）。
+- **决定**：
+  - 新增 `blocks/history.ts`：`HistoryBlockPolicy`（`mode` 取 `default` 或 `full`，`overrides` 按块类型名覆盖上下文策略）、`DEFAULT_RECENT_RAW_FLOORS`（1）、`DEFAULT_HISTORY_OMITTED_BLOCK_NAMES`（`选项`、`状态栏`、`变量更新`、`分析`、`图片`）、`renderHistoryView`。
+  - `default` 的生效顺序：未闭合块一律保留；`overrides` 优先；更早楼层命中显示类省略列表时整段删除；其余按块类型的 `context`。最近 `recentRawFloors` 楼跳过第三步，仍执行前两步与块类型策略。
+  - `full` 只执行“未闭合块保留”与 `overrides`，其余与改动前的 `renderContextView` 完全一致；`overrides` 里的 `compress` 在保存设置时就拒绝，渲染层遇到 `compress` 照旧抛错。
+  - `default` 下围栏代码块按原文保留（未闭合的围栏延伸到楼层结尾），避免示例代码里的标签被当成真正的块处理。
+  - `DEFAULT_BLOCK_TYPES` 增加原生显示类块 `状态栏`、`变量更新`、`分析`、`图片`，其中 `变量更新` 隐藏且上下文策略为删除；`选项` 的上下文策略保持保留，由 `default` 的省略列表负责在历史里省略。
+  - 省略统计写进 `ContextSlotContent.history` 并复制到 `ContextTraceEntry.history`：`policy`、`recentRawFloors`、`omitted`（按块类型汇总的字符数与估算 token 数，从多到少排序，无省略时为空数组）。统计按完整标签文本计算。
+  - 故事设置新增 `historyBlockPolicy`，缺省 `{mode:"default",overrides:{}}`；server、`dramaticer chat` 与回放生成器都从故事设置读取。schema 迁移插入 v22，后续迁移编号顺延：变更卡 v23、开局包 v24、开场候选 v25、偏好记录 v26、父子分块 v27、章节压缩 v28、世界书预筛 v29、上下文包 v30。
+- **影响**：历史槽位的默认渲染会省略更早楼层的显示类块；`full` 保留旧行为用于对照。`docs/dev/reports/R1.md` 记录 3 个 legacy 对话、每对话 20 楼的离线统计：估算输入从 100,776 token 降到 78,910（21.7%），该数字以 st-compat 的标签映射到位为前提。C 线标签映射落地后，`DEFAULT_HISTORY_OMITTED_BLOCK_NAMES` 与原生块类型表要按兼容插件的实际标签名复核。
