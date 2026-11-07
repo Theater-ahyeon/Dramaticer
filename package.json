@@ -14,6 +14,7 @@
 		"snapshot": "node scripts/snapshot-private-data.mjs",
 		"probe": "pnpm --filter @dramaticer/st-compat build && node packages/st-compat/dist/cli.js probe",
 		"chat": "pnpm --filter @dramaticer/st-compat build && node packages/st-compat/dist/cli.js chat",
+		"work": "pnpm --filter @dramaticer/st-compat build && node packages/st-compat/dist/cli.js work",
 		"dramaticer": "pnpm --filter @dramaticer/st-compat build && node packages/st-compat/dist/cli.js",
 		"check": "pnpm run invariants && pnpm run typecheck && pnpm run lint && pnpm run test"
 	},

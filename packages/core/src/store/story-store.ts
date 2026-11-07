@@ -1,5 +1,9 @@
 import { randomUUID } from "node:crypto";
 import Database from "better-sqlite3";
+import type {
+	BackgroundJob,
+	BackgroundJobStatus,
+} from "../background/types.js";
 import { isJsonObject } from "../json.js";
 import { applyStateDiffsTo } from "../state.js";
 import type {
@@ -64,6 +68,19 @@ interface StateSnapshotRow {
 	readonly computed_at: string;
 }
 
+interface BackgroundJobRow {
+	readonly id: number;
+	readonly story_id: string;
+	readonly node_id: string;
+	readonly kind: string;
+	readonly status: string;
+	readonly attempts: number;
+	readonly last_error: string | null;
+	readonly created_at: string;
+	readonly started_at: string | null;
+	readonly finished_at: string | null;
+}
+
 export interface CreateStoryInput {
 	readonly id?: string;
 	readonly title: string;
@@ -82,6 +99,25 @@ export interface AppendNodeInput {
 export interface SearchNodeTextOptions {
 	readonly storyId?: string;
 	readonly limit?: number;
+}
+
+export interface EnqueueBackgroundJobsInput {
+	readonly storyId: string;
+	readonly kinds: readonly string[];
+	readonly createdAt?: string;
+}
+
+export interface ListBackgroundJobsOptions {
+	readonly storyId?: string;
+	readonly status?: BackgroundJobStatus;
+	readonly kinds?: readonly string[];
+	readonly limit?: number;
+}
+
+export interface FailBackgroundJobInput {
+	readonly error: string;
+	readonly maxAttempts: number;
+	readonly finishedAt?: string;
 }
 
 interface NormalisedStateDiff {
@@ -175,6 +211,39 @@ function rowToStateSnapshot(row: StateSnapshotRow): StateSnapshot {
 	};
 }
 
+function isBackgroundJobStatus(value: unknown): value is BackgroundJobStatus {
+	return (
+		value === "pending" ||
+		value === "running" ||
+		value === "done" ||
+		value === "failed"
+	);
+}
+
+function assertBackgroundJobId(value: unknown): asserts value is number {
+	if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
+		throw new Error(`后台任务 id 必须是正整数：${String(value)}`);
+	}
+}
+
+function rowToBackgroundJob(row: BackgroundJobRow): BackgroundJob {
+	if (!isBackgroundJobStatus(row.status)) {
+		throw new Error(`后台任务 ${row.id} 的状态不合法：${row.status}`);
+	}
+	return {
+		id: row.id,
+		storyId: row.story_id,
+		nodeId: row.node_id,
+		kind: row.kind,
+		status: row.status,
+		attempts: row.attempts,
+		lastError: row.last_error,
+		createdAt: row.created_at,
+		startedAt: row.started_at,
+		finishedAt: row.finished_at,
+	};
+}
+
 export class StoryStore {
 	readonly #db: Database.Database;
 
@@ -242,6 +311,13 @@ export class StoryStore {
 			.prepare("SELECT id, title, created_at FROM stories WHERE id = ?")
 			.get(id) as StoryRow | undefined;
 		return row ? rowToStory(row) : null;
+	}
+
+	listStories(): Story[] {
+		const rows = this.#db
+			.prepare("SELECT id, title, created_at FROM stories ORDER BY rowid ASC")
+			.all() as StoryRow[];
+		return rows.map(rowToStory);
 	}
 
 	appendNode(input: AppendNodeInput): TimelineNode {
@@ -701,6 +777,210 @@ export class StoryStore {
 			throw new Error(`楼层 ${nodeId} 的 Trace 记录与楼层不一致`);
 		}
 		return parsed as unknown as TurnTrace;
+	}
+
+	/** 为故事里已确认（有子节点）的楼层补建缺失的后台任务。 */
+	enqueueMissingBackgroundJobs(
+		input: EnqueueBackgroundJobsInput,
+	): BackgroundJob[] {
+		assertNonEmptyString(input.storyId, "故事 id");
+		if (!Array.isArray(input.kinds)) {
+			throw new Error("后台任务类型必须是数组");
+		}
+		if (!this.getStory(input.storyId)) {
+			throw new Error(`故事不存在：${input.storyId}`);
+		}
+		const kinds: string[] = [];
+		for (const kind of input.kinds) {
+			assertNonEmptyString(kind, "后台任务类型");
+			if (kind !== kind.trim()) {
+				throw new Error(`后台任务类型不能包含首尾空白：${kind}`);
+			}
+			if (kinds.includes(kind)) {
+				throw new Error(`后台任务类型重复：${kind}`);
+			}
+			kinds.push(kind);
+		}
+		if (kinds.length === 0) return [];
+		const createdAt = input.createdAt ?? new Date().toISOString();
+		assertNonEmptyString(createdAt, "后台任务的创建时间");
+		const nodes = this.#db
+			.prepare(
+				`SELECT id FROM nodes
+				WHERE story_id = ?
+					AND EXISTS (SELECT 1 FROM nodes AS child WHERE child.parent_id = nodes.id)
+				ORDER BY row_id ASC`,
+			)
+			.all(input.storyId) as { readonly id: string }[];
+		const insert = this.#db.prepare(
+			`INSERT INTO background_jobs
+				(story_id, node_id, kind, status, attempts, last_error, created_at, started_at, finished_at)
+			VALUES (?, ?, ?, 'pending', 0, NULL, ?, NULL, NULL)
+			ON CONFLICT (node_id, kind) DO NOTHING`,
+		);
+		const created: BackgroundJob[] = [];
+		this.#db.transaction(() => {
+			for (const node of nodes) {
+				for (const kind of kinds) {
+					const info = insert.run(input.storyId, node.id, kind, createdAt);
+					if (info.changes !== 1) continue;
+					const job = this.getBackgroundJob(Number(info.lastInsertRowid));
+					if (!job) {
+						throw new Error(
+							`后台任务写入后读取失败：${String(info.lastInsertRowid)}`,
+						);
+					}
+					created.push(job);
+				}
+			}
+		})();
+		return created;
+	}
+
+	getBackgroundJob(id: number): BackgroundJob | null {
+		assertBackgroundJobId(id);
+		const row = this.#db
+			.prepare("SELECT * FROM background_jobs WHERE id = ?")
+			.get(id) as BackgroundJobRow | undefined;
+		return row ? rowToBackgroundJob(row) : null;
+	}
+
+	listBackgroundJobs(options: ListBackgroundJobsOptions = {}): BackgroundJob[] {
+		if (options.storyId !== undefined) {
+			assertNonEmptyString(options.storyId, "故事 id");
+		}
+		if (
+			options.status !== undefined &&
+			!isBackgroundJobStatus(options.status)
+		) {
+			throw new Error(`后台任务状态不合法：${String(options.status)}`);
+		}
+		const kinds: string[] = [];
+		if (options.kinds !== undefined) {
+			if (!Array.isArray(options.kinds)) {
+				throw new Error("后台任务类型必须是数组");
+			}
+			for (const kind of options.kinds) {
+				assertNonEmptyString(kind, "后台任务类型");
+				if (kinds.includes(kind)) {
+					throw new Error(`后台任务类型重复：${kind}`);
+				}
+				kinds.push(kind);
+			}
+			if (kinds.length === 0) return [];
+		}
+		const limit = options.limit ?? -1;
+		if (typeof limit !== "number" || !Number.isInteger(limit) || limit === 0) {
+			throw new Error("后台任务条数必须是非零整数");
+		}
+		const params: Record<string, unknown> = {
+			storyId: options.storyId ?? null,
+			status: options.status ?? null,
+			limit,
+		};
+		let kindClause = "";
+		if (kinds.length > 0) {
+			const placeholders = kinds.map((kind, index) => {
+				params[`kind${index}`] = kind;
+				return `@kind${index}`;
+			});
+			kindClause = ` AND kind IN (${placeholders.join(", ")})`;
+		}
+		const rows = this.#db
+			.prepare(
+				`SELECT * FROM background_jobs
+				WHERE (@storyId IS NULL OR story_id = @storyId)
+					AND (@status IS NULL OR status = @status)${kindClause}
+				ORDER BY created_at ASC, id ASC
+				LIMIT @limit`,
+			)
+			.all(params) as BackgroundJobRow[];
+		return rows.map(rowToBackgroundJob);
+	}
+
+	/** 把 pending 任务标为 running，并累计执行次数。 */
+	startBackgroundJob(id: number, startedAt?: string): BackgroundJob {
+		const job = this.#requireBackgroundJob(id);
+		if (job.status !== "pending") {
+			throw new Error(
+				`后台任务 ${id} 的状态是 ${job.status}，只有 pending 可以开始执行`,
+			);
+		}
+		const at = startedAt ?? new Date().toISOString();
+		assertNonEmptyString(at, "后台任务的开始时间");
+		this.#db
+			.prepare(
+				`UPDATE background_jobs
+				SET status = 'running', attempts = attempts + 1, started_at = ?, finished_at = NULL
+				WHERE id = ?`,
+			)
+			.run(at, id);
+		return this.#requireBackgroundJob(id);
+	}
+
+	/** 把 running 任务标为 done，并清空上一次失败的错误。 */
+	finishBackgroundJob(id: number, finishedAt?: string): BackgroundJob {
+		const job = this.#requireBackgroundJob(id);
+		if (job.status !== "running") {
+			throw new Error(
+				`后台任务 ${id} 的状态是 ${job.status}，只有 running 可以完成`,
+			);
+		}
+		const at = finishedAt ?? new Date().toISOString();
+		assertNonEmptyString(at, "后台任务的完成时间");
+		this.#db
+			.prepare(
+				`UPDATE background_jobs
+				SET status = 'done', last_error = NULL, finished_at = ?
+				WHERE id = ?`,
+			)
+			.run(at, id);
+		return this.#requireBackgroundJob(id);
+	}
+
+	/**
+	 * 记录一次失败：执行次数达到上限时标为 failed，否则退回 pending 等待下一轮。
+	 */
+	failBackgroundJob(id: number, input: FailBackgroundJobInput): BackgroundJob {
+		const job = this.#requireBackgroundJob(id);
+		if (job.status !== "running") {
+			throw new Error(
+				`后台任务 ${id} 的状态是 ${job.status}，只有 running 可以记录失败`,
+			);
+		}
+		assertNonEmptyString(input.error, "后台任务的错误信息");
+		if (
+			typeof input.maxAttempts !== "number" ||
+			!Number.isInteger(input.maxAttempts) ||
+			input.maxAttempts < 1
+		) {
+			throw new Error("后台任务的最大执行次数必须是正整数");
+		}
+		const at = input.finishedAt ?? new Date().toISOString();
+		assertNonEmptyString(at, "后台任务的完成时间");
+		const exhausted = job.attempts >= input.maxAttempts;
+		this.#db
+			.prepare(
+				`UPDATE background_jobs
+				SET status = ?, last_error = ?, started_at = ?, finished_at = ?
+				WHERE id = ?`,
+			)
+			.run(
+				exhausted ? "failed" : "pending",
+				input.error,
+				exhausted ? job.startedAt : null,
+				exhausted ? at : null,
+				id,
+			);
+		return this.#requireBackgroundJob(id);
+	}
+
+	#requireBackgroundJob(id: number): BackgroundJob {
+		const job = this.getBackgroundJob(id);
+		if (!job) {
+			throw new Error(`后台任务不存在：${id}`);
+		}
+		return job;
 	}
 
 	#normaliseStateDiff(input: NewStateDiff, index: number): NormalisedStateDiff {

@@ -29,35 +29,33 @@ function createTempDb(): string {
 }
 
 function createConfig(): LlmChannelsConfig {
+	const channel = (id: string) => ({
+		id,
+		api: "openai-completions" as const,
+		baseUrl: "http://localhost:1234",
+		apiKey: "",
+		requestsPerMinute: 0,
+		maxRetries: 0,
+		retryBaseDelayMs: 0,
+		timeoutMs: 1_000,
+	});
+	const model = (alias: string) => ({
+		alias,
+		id: "fake-model",
+		channels: [alias],
+		contextWindow: 8_192,
+		maxTokens: 1_024,
+		reasoning: true,
+		probe: null,
+	});
 	return {
 		channels: new Map([
-			[
-				"main",
-				{
-					id: "main",
-					api: "openai-completions",
-					baseUrl: "http://localhost:1234",
-					apiKey: "",
-					requestsPerMinute: 0,
-					maxRetries: 0,
-					retryBaseDelayMs: 0,
-					timeoutMs: 1_000,
-				},
-			],
+			["main", channel("main")],
+			["bg", channel("bg")],
 		]),
 		models: new Map([
-			[
-				"main",
-				{
-					alias: "main",
-					id: "fake-model",
-					channels: ["main"],
-					contextWindow: 8_192,
-					maxTokens: 1_024,
-					reasoning: true,
-					probe: null,
-				},
-			],
+			["main", model("main")],
+			["background", model("background")],
 		]),
 	};
 }
@@ -242,6 +240,35 @@ describe("dramaticer chat", () => {
 		} finally {
 			store.close();
 		}
+	});
+
+	it("对话轮次只创建正文客户端，不触碰后台模型", async () => {
+		const dbPath = createTempDb();
+		const fake = createFakeClient();
+		const aliases: string[] = [];
+		await runChatCli(
+			[
+				"chat",
+				"--story",
+				"s1",
+				"--card",
+				cardPath,
+				"--user",
+				"我推开山门。",
+				"--db",
+				dbPath,
+			],
+			{
+				...dependencies(fake, [], []),
+				createClient: (_config, alias) => {
+					aliases.push(alias);
+					return fake.client;
+				},
+			},
+		);
+
+		expect(aliases).toEqual(["main"]);
+		expect(fake.requests).toHaveLength(1);
 	});
 
 	it("参数错误给出用法", async () => {

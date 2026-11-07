@@ -1,3 +1,4 @@
+export * from "./background/index.js";
 export * from "./blocks/index.js";
 export * from "./chat/index.js";
 export * from "./cli/index.js";

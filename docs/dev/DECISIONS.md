@@ -169,3 +169,15 @@
   - CLI 入口放在 st-compat（`packages/st-compat/src/cli.ts`），分发 `probe`（调用 core 的 `runProbeCli`）与 `chat`：`chat --story <id> --card <path> --user <text> [--db <path>] [--model <alias>] [--budget <tokens>] [--max-tokens <n>] [--temperature <x>]`。故事不存在时按卡名建立故事并把 `first_mes` 写成开场楼层；每次运行都用角色卡字段重建角色槽位，因此同一故事始终带同一张卡。模型别名默认取 `main`，配置里没有 `main` 时要求 `--model`。
   - 结构化输出模式来自渠道体检（`resolveStructuredOutputMode(model.probe)`）：函数调用模式把 `STRUCTURED_OUTPUT_TOOLS` 放进请求，文本标签模式在 protocol 段说明标签写法。
 - **影响**：M1-T99 的首字延迟直接读 Trace 的 `timing.firstTokenMs`。M2 的状态快照缓存替换 `createStateSlotProvider` 里的即时回放即可，接口不变。显示视图与压缩策略仍未实现。
+
+## ADR-0016 后台任务的队列与重试语义（2026-11-07）
+
+- **背景**：M2-T03 要建立后台任务的公共前提：事件抽取、摘要与向量索引都按楼层、按类型各执行一次。任务必须能跨进程暂停与恢复，不能挂在一个长期运行的循环里；chat 轮次不能因为后台工作增加模型调用。
+- **决定**：
+  - schema 版本 5 新增 `background_jobs(id, story_id, node_id, kind, status, attempts, last_error, created_at, started_at, finished_at)`，`UNIQUE(node_id, kind)` 保证同一楼层的同一类型只有一行；`status` 只取 `pending`、`running`、`done`、`failed`。触发器拒绝 `story_id` 与楼层所属故事不一致的行。
+  - “已确认楼层”沿用 M2-T01 的定义：存在子节点。`enqueueMissingJobs` 只扫描这些楼层，按楼层创建顺序、再按类型顺序插入；`ON CONFLICT DO NOTHING` 让重复调用不产生新行。入队只针对本轮请求的类型，drain 不带类型过滤时取注册表里的全部类型。
+  - 任务类型注册表是 `kind → handler` 的只读映射，处理器收到 `{store, client, job}`。drain 只执行注册表里的类型；请求或队列里出现未注册的类型直接抛错，避免静默跳过任务。
+  - `attempts` 在每次开始执行前加一。一次 drain 里每个候选任务最多执行一次；失败时记录 `last_error` 并退回 `pending`，`attempts` 达到 3（首次执行加两次重试）仍未成功时标为 `failed` 并写入 `finished_at`。成功时清空 `last_error`。进程在执行中退出留下的 `running` 行不会自动重置，下一轮只处理 `pending`，避免重复执行。
+  - drain 先补齐任务，再按 `created_at`、`id` 顺序取 `pending` 行，`limit` 默认为 20，只作用于本轮；任务按故事分别执行，`drainBackgroundJobs` 的接口保持 `{storyId, client, kinds, limit, now}`。时间戳统一由注入的 `now` 生成，测试可以固定。
+  - `dramaticer work --db <path> [--limit <n>] [--kind <kind>]` 只执行一轮后退出：遍历数据库里的全部故事，每个故事最多执行 `--limit` 条；`--kind` 同时限制补建与执行的任务类型。后台客户端使用 `data/channels.yaml` 的 `background` 模型，与 chat 的正文客户端分开创建；`runChatTurn` 不接受也不创建后台客户端。
+- **影响**：M2-T05、M2-T06、M2-T09 只需把处理器登记进注册表，就能通过 `dramaticer work` 运行。M2-T03 结束时注册表默认为空，`work` 输出全零统计；具体任务类型随各自任务加入。

@@ -215,7 +215,8 @@
   - `createStateSlotProvider` 改用快照，不再每轮从根节点回放；输出格式保持不变。
   验收：随机路径上快照与逐条 diff 回放完全一致；同一节点第二次读取不重新计算（`computed_at` 不变）；追加 diff 后该节点与后代缓存失效；不同分支的快照互不影响；删除型 diff 与 `__proto__` 路径的用例通过；`pnpm check` 通过。
 
-- [ ] **M2-T03 后台任务框架** | 依赖：M2-T01 | DESIGN §4、§7、§14
+- [x] **M2-T03 后台任务框架** | 依赖：M2-T01 | DESIGN §4、§7、§14
+  完成：2026-11-07 迁移 v5 新增 `background_jobs` 与同故事触发器；`enqueueMissingJobs` 只为已确认楼层补建任务且重复调用不产生新行；`drainBackgroundJobs` 通过注册表执行处理器，`attempts` 达 3 次仍未成功标为 `failed` 并保留最后错误；`dramaticer work` 单轮执行并打印统计；15 个新测试，门禁通过（356 个测试）
   做什么：
   - 迁移 v5：新增 `background_jobs(id, story_id, node_id, kind, status, attempts, last_error, created_at, started_at, finished_at, UNIQUE(node_id, kind))`，状态取 `pending`、`running`、`done`、`failed`。
   - 任务类型注册表。`enqueueMissingJobs(storyId)` 扫描已确认节点，为每个尚未入队的类型补建任务；重复调用不产生重复行。

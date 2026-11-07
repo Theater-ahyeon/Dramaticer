@@ -122,6 +122,32 @@ export const MIGRATIONS: readonly Migration[] = [
 			END`,
 		],
 	},
+	{
+		version: 5,
+		description: "后台任务队列：每个已确认楼层的每种任务类型一行",
+		statements: [
+			`CREATE TABLE background_jobs (
+				id INTEGER PRIMARY KEY,
+				story_id TEXT NOT NULL REFERENCES stories(id),
+				node_id TEXT NOT NULL REFERENCES nodes(id),
+				kind TEXT NOT NULL,
+				status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'done', 'failed')),
+				attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+				last_error TEXT,
+				created_at TEXT NOT NULL,
+				started_at TEXT,
+				finished_at TEXT,
+				UNIQUE (node_id, kind)
+			) STRICT`,
+			"CREATE INDEX background_jobs_story_status_idx ON background_jobs(story_id, status, created_at)",
+			`CREATE TRIGGER background_jobs_story_matches_node
+			BEFORE INSERT ON background_jobs
+			WHEN COALESCE((SELECT story_id FROM nodes WHERE id = NEW.node_id), '') <> NEW.story_id
+			BEGIN
+				SELECT RAISE(ABORT, '后台任务的 story_id 必须与所在楼层一致');
+			END`,
+		],
+	},
 ];
 
 export const LATEST_SCHEMA_VERSION: number =
