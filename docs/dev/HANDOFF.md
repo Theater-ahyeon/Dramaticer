@@ -3,49 +3,52 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：89
-- 任务：R1-T01.c 生成长度默认值与截断统计
-- 结果：完成（`DONE`），门禁通过（733 个测试，3 个 live 跳过）。
-  - `resolveDefaultMaxTokens(config, modelAlias)`（`packages/core/src/llm/channels.ts`）返回 `min(4096, 模型声明的 maxTokens)`；模型不在配置里时抛错。`DEFAULT_OUTPUT_MAX_TOKENS` 为 4,096。
-  - `DEFAULT_STORY_SETTINGS_VALUES.maxTokens` 从 1,024 改为 4,096；`StoryStore.hasStorySettings` 判断故事是否保存过设置，server 运行时只在没有保存时用 `resolveDefaultMaxTokens`，保存过就沿用设置值。`StoryRuntime` 新增 `maxTokens`，`handleTurnStream` 用它而不是 `runtime.settings.maxTokens`。
-  - 路由器续写轮次按剩余输出额度发请求：`outputCap = request.maxTokens ?? model.maxTokens`，每轮 `maxTokens = max(1, outputCap - 已用)`；渠道没有报告 `completionTokens` 时用 token 估算器按新增正文估算。用完额度不再续写。
-  - `detectTruncations` 同时检出 length、未闭合标签与突然中断；`detectTruncation` 仍返回第一个（续写判定不变）。`TurnTrace.llm.truncation` 改为 `truncations: readonly LlmTruncationReason[]`，`chat/turn.ts` 用 `expectedTags = state_update、plot_note`、`detectAbruptEnd` 开启、结束字符补上 `>`（以完整标签收尾不算突然中断）计算；中止保存的 Trace 写空数组。
-  - 测试：`llm-truncation.test.ts` 新增 `detectTruncations` 两个用例；`llm-channels.test.ts` 新增缺省上限三例；`llm-router.test.ts` 新增剩余额度两例；`chat-turn.test.ts` 新增三种截断各一例并断言完整回复的 `truncations` 为空；`server/test/runtime.test.ts` 新增缺省上限与已保存设置两例。
+- 会话：90
+- 任务：R1-T02.1 结算存储与任务条件
+- 结果：完成（`DONE`），门禁通过（749 个测试，3 个 live 跳过）。
+  - 迁移 v19 新增 `ledger_settlements(node_id PRIMARY KEY, story_id, source, added_count, repairs, created_at)`，带同故事触发器与 `story_id` 索引；迁移 v20 新增 `entity_candidates`（主键 `story_id + normalized_name + kind`，`hits` 自增）与 `state_diffs.confidence`（0 到 1，空表示未结算）。
+  - `StateDiff`/`NewStateDiff` 增加 `confidence`，存储层用 `assertLedgerConfidence` 校验；`validateLedgerDiff` 接受并校验 `confidence`。
+  - 新模块 `packages/core/src/ledger/settlement.ts`：`LedgerSettlement`、`NewLedgerSettlement`、`LedgerRepair`（`fill`、`delete`、`rewrite_status`）、`EntityCandidate`、`NewEntityCandidateInput` 与校验函数。
+  - `StoryStore` 新增 `recordLedgerSettlement`（同一楼层重复结算抛错）、`getLedgerSettlement`、`listLedgerSettlements`、`listUnsettledSettledAssistantNodes(storyId, limit)`（沿当前 head 路径、从旧到新、排除中止楼层与已结算楼层）、`upsertEntityCandidate`（同一名称与类别只累加 `hits`，首个楼层不变）、`listEntityCandidates`。
+  - 后台任务注册表改为“类型 → `{handler, enqueue}`”，`createBackgroundJobRegistry` 仍然接受裸函数（入队条件 `confirmed`）；`EnqueueMissingBackgroundJobs` 增加 `conditions` 记录，`drainBackgroundJobs` 按注册表把条件传给存储层。`settled` 条件为全体已落定助手楼层建任务（不要求已确认），`confirmed` 保持旧行为（有子节点的楼层）。
+  - 测试：新增 `packages/core/test/ledger-settlement.test.ts` 16 例（结算记录读写与触发器、置信度、实体候选、结算窗口、入队条件）。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c。完成记录与验收标准见 `docs/dev/TASKS-archive.md`，未完成任务见 `docs/dev/TASKS.md`。
-- 下一步按文件顺序是 **R1-T02 台账结算器**；R1 的顺序是 T02、T02.a、T02.b、T03、T04.a、T07、T07.a、T07.b、T99。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1。完成记录与验收标准见 `docs/dev/TASKS-archive.md`，未完成任务见 `docs/dev/TASKS.md`。
+- **R1-T02 已拆成 R1-T02.1–R1-T02.4**（父任务是文字说明，不是可勾选任务）：R1-T02.1 完成；下一步是 **R1-T02.2 结算任务与修复**（`settle` 处理器、窗口请求、结构化写入优先、补值/删除/改写线索状态、事务与幂等、分支隔离、间隙执行），之后是 R1-T02.3（实体解析、`knowledge` 去重、冲突拒绝）与 R1-T02.4（`block_format` 段）。
 - v3 阶段顺序：R1 最小集 → R3 快回合 → O 开局与方向 → R2 评测底座 → E → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
-- 人类已确认的路线变更：ADR-0038（四个 ST 兼容插件取代兼容线 C-T00）、ADR-0039（F0-T100 直接写 v3，人类试玩改为自动试玩加评测）、ADR-0040（共存规则写入 C 线验收）、ADR-0041（方案评审提案 A1–A11）、ADR-0042（模型渠道回退顺序）、ADR-0043（F0 结论）、ADR-0044（v3 路线）、ADR-0045（插件系统）。
-- HUMAN-09 仍待处理（不阻塞）：ADR-0042 声明的 `bg-fallback`、`main-fallback`、`codex` 别名在 `data/channels.yaml` 里已经出现（F0 实际用了 `main-fallback` 与 `bg-fallback`），`channels.example.yaml` 是否需要补上请人类确认；没有改这两个文件。
+- 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045。
+- HUMAN-09 仍待处理（不阻塞）：ADR-0042 声明的 `bg-fallback`、`main-fallback`、`codex` 别名在 `data/channels.yaml` 里已经出现，`channels.example.yaml` 是否需要补上请人类确认；没有改这两个文件。
 - HUMAN-10 待处理（不阻塞）：插件不变量是否加进 AGENTS.md。
-- 数据库 schema 版本 18；迁移编号 v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 变更卡、v23 开局包、v24 开场候选、v25 偏好记录、v26 父子分块、v27 章节压缩、v28 世界书预筛、v29 上下文包；插入新迁移时后续编号一起顺延。
-- 台账只有结构与读取，**没有写入校验的强制点**：`appendStateDiffs` 不调用 `validateLedgerDiff`；R1-T02 的结算器负责在写入前校验（I12）。
+- 数据库 schema 版本 20（v19 结算记录、v20 实体候选与置信度）；后续编号：v21 现场分析、v22 变更卡、v23 开盘包、v24 开场候选、v25 偏好记录、v26 父子分块、v27 章节压缩、v28 世界书预筛、v29 上下文包；插入新迁移时后续编号一起顺延。
+- **结算只有存储，没有执行器**：`settle` 任务类型尚未注册处理器，实体候选、置信度与结算记录暂时没有生产代码写入；R1-T02.2 负责注册处理器并写入它们。`appendStateDiffs` 仍不调用 `validateLedgerDiff`（I12 由 R1-T02.2 在写入前校验）。
+- “已落定”的判定：助手楼层，且 Trace 的 `llm.stopReason` 不是 `aborted`；没有 Trace 的楼层（导入内容）按已落定处理。判定在 SQL 里用 `json_extract(traces.trace, '$.llm.stopReason')`。
+- 注册表类型变化：`BackgroundJobRegistry` 的值是 `{handler, enqueue}`；`BackgroundJobHandler` 签名未变。新增任务类型时用 `createBackgroundJobRegistry({ settle: { handler, enqueue: "settled" } })` 这种写法。
 - `readLedgerFacts` 不读取快照缓存，按 `getStateDiffsAlongPath` 回放，返回顺序是路径上首次出现的顺序。
-- 已注册的槽位是九个（`packages/core/src/context/template.ts` 的 `CONTEXT_SLOT_NAMES`：lore、character、persona、summary、state、memory、history、director、protocol）；DESIGN §9 里的 `ledger` 对应实现的 `state`，`beat` 尚未注册。R1-T02.a 新增 `scene` 槽位。R1-T02 的 `block_format` 是模板里的可选静态段，不是槽位。R3-T03 的写作约定使用已注册的 `protocol` 槽位。
-- `packages/server` 已提供故事、导入、设置、模板、SSE 回合与后台运行时缓存；`packages/protocol` 已提供 HTTP 与 SSE 类型；`packages/web` 尚未创建。
+- 已注册的槽位是九个（`packages/core/src/context/template.ts` 的 `CONTEXT_SLOT_NAMES`：lore、character、persona、summary、state、memory、history、director、protocol）；DESIGN §9 里的 `ledger` 对应实现的 `state`，`beat` 尚未注册。R1-T02.a 新增 `scene` 槽位。R1-T02.4 的 `block_format` 是模板里的可选静态段，不是槽位。
+- `packages/server` 已提供故事、导入、设置、模板、SSE 回合与后台运行时缓存；`packages/protocol` 已提供 HTTP 与 SSE 类型；`packages/web` 尚未创建。server 目前不调度后台任务，任务只由 `dramaticer work` 执行。
 - 故事设置缺省值：`budgetTokens` 12000、`structuredOutput` `text-tags`、`temperature` 0.8、`maxTokens` 4096（server 对没有保存过设置的故事改用 `min(4096, writer 模型声明)`）、`reasoning` `low`、导演使用默认配置。
 - 快照：`eval-private/raw/` 有 94 个文件；manifest 记录 `corpus` 与 `sourceMtime`。`eval-private/reference/` 有 5 部参照小说。
 - 事件表已在 v7 建立，但真实回放里没有事件；R1-T03 改为批量窗口后由 R1-T04.a/.b 回填。
 - F0 的私有产物：`eval-private/f0/pairs.jsonl`（290 对）、`attribution.jsonl`、`judge.jsonl`（793 行）、`fulltext/work.db`、`fulltext-probe.json`、`fulltext-branches.json`、`fulltext-generations.jsonl`、`fulltext-judgements.jsonl`、`fulltext-summary.json`、`llm-cache/`。`eval-private/reports/f0-corpus-map.json` 是对话编号到文件路径的映射。
 - HUMAN-03（事件题抽查）仍未完成，不阻塞任何任务；其余 HUMAN 条目均已完成。
 - M3 的两项效果目标按 ADR-0029 保留为未证实；v2 的门槛改由 R6 按 B0/B1 对比判定。
-- 插件系统在 DESIGN §19 是唯一权威（Context 与注册表、扩展点与分发模式、两档插件、清单与玩法包、市场、三条插件不变量、P1–P5 顺序）；P 阶段任务在 TASKS 的「P：插件内核」小节，C 线兼容插件任务已存在且依赖 P2。
+- 插件系统在 DESIGN §19 是唯一权威；P 阶段任务在 TASKS 的「P：插件内核」小节，C 线兼容插件任务已存在且依赖 P2。
 
 ## 下一步
-- **R1-T02 台账结算器**：迁移 v19 新增 `ledger_settlements`，v20 新增 `entity_candidates` 与 `state_diffs` 置信度列；后台任务类型 `settle`（窗口默认 4 个已落定未结算的助手楼层）；先收本楼层已有结构化写入再对缺失路径调模型；修复动作只限补值、删除非法条目、改写线索状态；实体名称规范化；`knowledge` 按 `factId` 去重；冲突事实不覆盖并进 `repairs`；一个事务写入；间隙执行（I11）。
-- 截断率指标由 R2-T02 的试玩记录与 R2-T06 的记分牌从 `trace.llm.truncations` 读取，这两项任务实现时不再改 Trace 结构。
+- **R1-T02.2 结算任务与修复**：注册 `settle` 处理器；沿当前路径取 `settleWindowFloors`（默认 4）个已落定未结算的助手楼层，一次请求返回 `{nodeId, diffs}`；先收本楼层已有结构化写入，再对缺失路径调用模型；修复动作只限补值、删除、改写线索状态；写入先 `validateLedgerDiff` 并在一个事务里完成，同时写 `ledger_settlements`；重复执行不新增 diff；分支隔离；`generateAssistantTurn` 不等待结算，没有后台客户端时任务保持 pending。任务文本见 `docs/dev/TASKS.md` 的 R1-T02.2。
+- R1-T02.3 用存储层已有的 `upsertEntityCandidate`/`listEntityCandidates` 实现“同一窗口出现两次或被模型直接写入才建档”，并把 `knowledge` 值改为 `{factId, text}` 按 `factId` 去重、冲突事实拒绝并记入 `repairs`。
+- R1-T02.4 在原生模板加可选 `block_format` 段，默认关闭，关闭时与现在逐字节一致。
 - R1 最小集之后是 R3 快回合（R3-T01 至 R3-T99）、O 开局与方向、R2 评测底座。
-- 记忆增强（R1 续）排在 R5 与 60 轮自动试玩之后；R2-T09 的长对话遗忘报告是先后与默认开关的输入，四项都不删除。
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
 - 不要修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 下的任何文件。不变量 I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账是唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖任何其他工作区包、ST 语义只在兼容插件里实现。
 - 渠道角色：角色类型叫 `LlmModelRole`（`writer`、`settler`、`planner`、`judge`），与表示消息角色的 `LlmRole`（system、user、assistant）不是一回事。`createLlmClient` 会校验 judge 与 writer 的模型家族，缺省回落也算在内：只要配置里同时有 `main` 与 `background` 且两者同家族，创建任何客户端都会抛错。`data/channels.yaml` 目前用 `judge: codex`（`codex/gpt-6.1-terra`，gpt 家族）与 writer 的 deepseek 区分；改 writer 或 judge 的模型时要保持家族不同。
 - `channels.example.yaml` 的 roles 示例里 judge 指向 background 并附了说明；复制示例时如果 background 与 main 是同一家族，启动会失败，需要另配一个家族的模型。
-- tests 目录不在 tsc 的 `include` 里（`packages/*/tsconfig.json` 只含 `src`），测试里的 `LlmChannelsConfig`、`TurnTrace` 字面量漏字段不会被类型检查发现；新增字段时手动检查 `packages/*/test` 里的配置构造点（`core/test/work-cli.test.ts`、`server/test/turns.test.ts`、`server/test/runtime.test.ts`、`st-compat/test/chat-cli.test.ts`）与 Trace 构造点（`core/test/trace-store.test.ts`、`st-compat/test/director-eval.test.ts` 的 `emptyTrace`）。
-- `docs/dev/TASKS.md` 只保留未完成任务与当前阶段；查已完成任务（F0、M0–M4、D、R0-T01–T04、R1-T01 至 R1-T01.c）的说明、验收与完成记录读 `docs/dev/TASKS-archive.md`。
-- `docs/dev/reports/F0.md` 里只有 F0-T02、F0-T03、F0-T04、F0-T99 四个标记段；重跑脚本只会替换对应标记之间的内容，手写部分（F0-T03 的门槛、F0-T99 的汇总结论）不要放进标记之间。F0-T99 节里引用的数字必须与前面各节和 `docs/dev/reports/F0-corpus.md` 一致。
+- tests 目录不在 tsc 的 `include` 里（`packages/*/tsconfig.json` 只含 `src`），测试里的 `TurnTrace` 字面量漏字段不会被类型检查发现；新增 Trace 字段时手动检查测试构造点（`core/test/trace-store.test.ts`、`core/test/ledger-settlement.test.ts`、`st-compat/test/director-eval.test.ts` 的 `emptyTrace`）。
+- `docs/dev/TASKS.md` 只保留未完成任务与当前阶段；查已完成任务的说明、验收与完成记录读 `docs/dev/TASKS-archive.md`。
+- `docs/dev/reports/F0.md` 里只有 F0-T02、F0-T03、F0-T04、F0-T99 四个标记段；重跑脚本只会替换对应标记之间的内容，手写部分不要放进标记之间。F0-T99 节里引用的数字必须与前面各节和 `docs/dev/reports/F0-corpus.md` 一致。
 - `pnpm f0:fulltext` 阶段与文件：`DRAMATICER_F0_FULLTEXT_STAGE=probe|generate|judge|report|all`（默认 all），`DRAMATICER_F0_FULLTEXT_RERUN=1` 忽略已有结果重跑。分支集合固定为对话 128、132、10、223；对话 95 因提供方 `content_filter` 被替换。
 - `fulltext-probe.json` 的 `previousCalls` 记录被重跑覆盖的探测调用数；重跑探测时这个字段会累加，不要手工清零。
 - 请求长度探测的输入是重复的合成中文文本，core 的 token 估算把中文按 1.5 字符/token 算，比渠道实际计数高约 20%；报告同时给估算值与渠道报告的输入合计。「1M 级别」指目标 1,048,576 token 的探测级别，渠道报告的实际输入是 873,850 token。
@@ -58,7 +61,7 @@
 - `parseChatJsonl` 默认在 `swipe_id` 越界或非整数时抛错（导入语义）；只读分析用 `{ strictSwipeId: false }`，不要用在导入路径上。
 - 服务端启动时提供 `channels` 就会加载渠道配置；配置缺失或环境变量没设置会让启动失败，这是有意的快速失败。测试里通过 `channels.load` 与 `createClient` 注入假客户端。
 - SSE 测试的临时目录用 `packages/server/test/.tmp-server-*`，已忽略；假渠道的 baseUrl 用 `127.0.0.1`，I10 允许。`runtime.test.ts` 用 `.tmp-runtime-*`，临时文件用 `mkdtempSync` 创建，需按同样规则忽略（已被 test 目录通配）。
-- 中止保存的部分正文会写 Trace，`stopReason` 为 `aborted`，`usage` 全为 `null`、`truncations` 为空数组；不要把它当成正常完成。
+- 中止保存的部分正文会写 Trace，`stopReason` 为 `aborted`，`usage` 全为 `null`、`truncations` 为空数组；不要把它当成正常完成，结算窗口与入队都会排除它。
 - 事件抽取原来每轮约 1,219 个请求，后台渠道实测约 2.7 次/分钟；R1-T03 的批量窗口应显著减少请求数。长任务用 `--resume` 与缓存续跑，不要在单个会话里等整轮回填。
 - `memory-eval` 默认删除临时库；`--db` 指定仓库内路径时同样在结束时删除。embedding 缓存保留。
 - `director-eval` 的 `workDir` 默认在 `eval-private/memory-cache/tmp/director-eval`，结束时整目录删除。

@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
 import Database from "better-sqlite3";
 import * as sqliteVec from "sqlite-vec";
-import type {
-	BackgroundJob,
-	BackgroundJobStatus,
+import {
+	type BackgroundJob,
+	type BackgroundJobEnqueueCondition,
+	type BackgroundJobStatus,
+	isBackgroundJobEnqueueCondition,
 } from "../background/types.js";
 import { parseContextCondition } from "../context/condition.js";
 import {
@@ -40,6 +42,19 @@ import {
 	isJsonObject,
 	rejectUnknownKeys,
 } from "../json.js";
+import {
+	LEDGER_SOURCES,
+	type LedgerSource,
+	assertLedgerConfidence,
+} from "../ledger/schema.js";
+import {
+	type EntityCandidate,
+	type LedgerRepair,
+	type LedgerSettlement,
+	type NewEntityCandidateInput,
+	type NewLedgerSettlement,
+	assertLedgerRepairs,
+} from "../ledger/settlement.js";
 import { isLlmReasoningLevel } from "../llm/types.js";
 import {
 	DEFAULT_MEMORY_EVENT_LIMIT,
@@ -153,6 +168,25 @@ interface StateDiffRow {
 	readonly source: string;
 	readonly story_time_start: string | null;
 	readonly story_time_end: string | null;
+	readonly confidence: number | null;
+	readonly created_at: string;
+}
+
+interface LedgerSettlementRow {
+	readonly node_id: string;
+	readonly story_id: string;
+	readonly source: string;
+	readonly added_count: number;
+	readonly repairs: string;
+	readonly created_at: string;
+}
+
+interface EntityCandidateRow {
+	readonly story_id: string;
+	readonly normalized_name: string;
+	readonly kind: string;
+	readonly hits: number;
+	readonly first_node_id: string;
 	readonly created_at: string;
 }
 
@@ -470,6 +504,8 @@ export interface ResolveEntitiesOptions {
 export interface EnqueueBackgroundJobsInput {
 	readonly storyId: string;
 	readonly kinds: readonly string[];
+	/** 每种任务类型的入队条件；缺省为 confirmed。 */
+	readonly conditions?: Readonly<Record<string, BackgroundJobEnqueueCondition>>;
 	readonly createdAt?: string;
 }
 
@@ -495,6 +531,7 @@ interface NormalisedStateDiff {
 	readonly reason: string | null;
 	readonly source: string;
 	readonly storyTime: StoryTime | null;
+	readonly confidence: number | null;
 }
 
 interface NormalisedAlias {
@@ -706,6 +743,40 @@ function rowToStateDiff(row: StateDiffRow): StateDiff {
 			row.story_time_start === null && row.story_time_end === null
 				? null
 				: { start: row.story_time_start, end: row.story_time_end },
+		confidence: row.confidence,
+		createdAt: row.created_at,
+	};
+}
+
+function rowToLedgerSettlement(row: LedgerSettlementRow): LedgerSettlement {
+	if (!(LEDGER_SOURCES as readonly string[]).includes(row.source)) {
+		throw new Error(`楼层 ${row.node_id} 的结算来源不合法：${row.source}`);
+	}
+	return {
+		nodeId: row.node_id,
+		storyId: row.story_id,
+		source: row.source as LedgerSource,
+		addedCount: row.added_count,
+		repairs: assertLedgerRepairs(
+			JSON.parse(row.repairs) as unknown,
+			`楼层 ${row.node_id} 的结算记录`,
+		),
+		createdAt: row.created_at,
+	};
+}
+
+function rowToEntityCandidate(row: EntityCandidateRow): EntityCandidate {
+	if (!isEntityKind(row.kind)) {
+		throw new Error(
+			`实体候选 ${row.normalized_name} 的类别不合法：${row.kind}`,
+		);
+	}
+	return {
+		storyId: row.story_id,
+		normalizedName: row.normalized_name,
+		kind: row.kind,
+		hits: row.hits,
+		firstNodeId: row.first_node_id,
 		createdAt: row.created_at,
 	};
 }
@@ -1712,8 +1783,8 @@ export class StoryStore {
 		);
 		const createdAt = new Date().toISOString();
 		const insert = this.#db.prepare(
-			`INSERT INTO state_diffs (story_id, node_id, ordinal, path, op, value, reason, source, story_time_start, story_time_end, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			`INSERT INTO state_diffs (story_id, node_id, ordinal, path, op, value, reason, source, story_time_start, story_time_end, confidence, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		);
 		const nextOrdinal = this.#db.prepare(
 			"SELECT COALESCE(MAX(ordinal), -1) + 1 AS next_ordinal FROM state_diffs WHERE node_id = ?",
@@ -1750,6 +1821,7 @@ export class StoryStore {
 						diff.source,
 						diff.storyTime?.start ?? null,
 						diff.storyTime?.end ?? null,
+						diff.confidence,
 						createdAt,
 					);
 					ordinals.set(diff.nodeId, ordinal + 1);
@@ -1764,6 +1836,7 @@ export class StoryStore {
 						reason: diff.reason,
 						source: diff.source,
 						storyTime: diff.storyTime,
+						confidence: diff.confidence,
 						createdAt,
 					});
 				}
@@ -1830,6 +1903,190 @@ export class StoryStore {
 			)
 			.get(nodeId) as { readonly count: number };
 		return row.count;
+	}
+
+	/** 记录一个楼层的结算结果；同一楼层只允许结算一次。 */
+	recordLedgerSettlement(input: NewLedgerSettlement): LedgerSettlement {
+		assertNonEmptyString(input.nodeId, "结算记录的楼层 id");
+		assertNonEmptyString(input.storyId, "结算记录的故事 id");
+		const node = this.getNode(input.nodeId);
+		if (!node) {
+			throw new Error(`楼层节点不存在：${input.nodeId}`);
+		}
+		if (node.storyId !== input.storyId) {
+			throw new Error(
+				`结算记录的 storyId 与楼层所属故事不一致：${input.storyId}`,
+			);
+		}
+		if (!(LEDGER_SOURCES as readonly string[]).includes(input.source)) {
+			throw new Error(
+				`结算记录的来源只能是 ${LEDGER_SOURCES.join("、")}，收到 ${JSON.stringify(input.source)}`,
+			);
+		}
+		if (!Number.isInteger(input.addedCount) || input.addedCount < 0) {
+			throw new Error("结算记录的新增条数必须是非负整数");
+		}
+		const repairs = assertLedgerRepairs(input.repairs, `楼层 ${input.nodeId}`);
+		if (this.getLedgerSettlement(input.nodeId) !== null) {
+			throw new Error(`楼层 ${input.nodeId} 已经结算过`);
+		}
+		const createdAt = input.createdAt ?? new Date().toISOString();
+		assertNonEmptyString(createdAt, "结算记录的创建时间");
+		this.#db
+			.prepare(
+				`INSERT INTO ledger_settlements
+					(node_id, story_id, source, added_count, repairs, created_at)
+				VALUES (?, ?, ?, ?, ?, ?)`,
+			)
+			.run(
+				input.nodeId,
+				input.storyId,
+				input.source,
+				input.addedCount,
+				JSON.stringify(repairs),
+				createdAt,
+			);
+		return {
+			nodeId: input.nodeId,
+			storyId: input.storyId,
+			source: input.source,
+			addedCount: input.addedCount,
+			repairs,
+			createdAt,
+		};
+	}
+
+	/** 读取某个楼层的结算结果；没有结算过时返回 null。 */
+	getLedgerSettlement(nodeId: string): LedgerSettlement | null {
+		if (!this.getNode(nodeId)) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
+		const row = this.#db
+			.prepare("SELECT * FROM ledger_settlements WHERE node_id = ?")
+			.get(nodeId) as LedgerSettlementRow | undefined;
+		return row === undefined ? null : rowToLedgerSettlement(row);
+	}
+
+	/** 按创建顺序列出故事的结算记录。 */
+	listLedgerSettlements(storyId: string): LedgerSettlement[] {
+		assertNonEmptyString(storyId, "结算记录的故事 id");
+		if (!this.getStory(storyId)) {
+			throw new Error(`故事不存在：${storyId}`);
+		}
+		const rows = this.#db
+			.prepare(
+				`SELECT * FROM ledger_settlements
+				WHERE story_id = ?
+				ORDER BY created_at ASC, node_id ASC`,
+			)
+			.all(storyId) as LedgerSettlementRow[];
+		return rows.map(rowToLedgerSettlement);
+	}
+
+	/**
+	 * 沿当前路径取最多 limit 个已落定、尚未结算的助手楼层，按从旧到新排列。
+	 * 已落定指正文生成完成；中止保存的部分正文不算。
+	 */
+	listUnsettledSettledAssistantNodes(storyId: string, limit: number): string[] {
+		assertNonEmptyString(storyId, "故事 id");
+		if (!this.getStory(storyId)) {
+			throw new Error(`故事不存在：${storyId}`);
+		}
+		if (!Number.isInteger(limit) || limit < 1) {
+			throw new Error("结算窗口的楼层数必须是正整数");
+		}
+		const head = this.getHead(storyId);
+		if (head === null) return [];
+		const rows = this.#db
+			.prepare(
+				`WITH RECURSIVE chain(node_id, depth) AS (
+					SELECT id, 0 FROM nodes WHERE id = ?
+					UNION ALL
+					SELECT nodes.parent_id, chain.depth + 1
+					FROM nodes JOIN chain ON nodes.id = chain.node_id
+					WHERE nodes.parent_id IS NOT NULL
+				)
+				SELECT nodes.id AS node_id
+				FROM nodes
+				JOIN chain ON nodes.id = chain.node_id
+				LEFT JOIN traces ON traces.node_id = nodes.id
+				WHERE nodes.role = 'assistant'
+					AND COALESCE(json_extract(traces.trace, '$.llm.stopReason'), '') <> 'aborted'
+					AND NOT EXISTS (
+						SELECT 1 FROM ledger_settlements
+						WHERE ledger_settlements.node_id = nodes.id
+					)
+				ORDER BY chain.depth DESC
+				LIMIT ?`,
+			)
+			.all(head.id, limit) as { readonly node_id: string }[];
+		return rows.map((row) => row.node_id);
+	}
+
+	/**
+	 * 记录一次未知实体名称的出现；同一故事、同一规范化名称与类别只累加
+	 * 命中次数，首个楼层保持第一次出现的位置。
+	 */
+	upsertEntityCandidate(input: NewEntityCandidateInput): EntityCandidate {
+		assertNonEmptyString(input.storyId, "实体候选的故事 id");
+		if (!this.getStory(input.storyId)) {
+			throw new Error(`故事不存在：${input.storyId}`);
+		}
+		if (!isEntityKind(input.kind)) {
+			throw new Error(`实体候选的 kind 不合法：${String(input.kind)}`);
+		}
+		const node = this.getNode(input.nodeId);
+		if (!node) {
+			throw new Error(`楼层节点不存在：${input.nodeId}`);
+		}
+		if (node.storyId !== input.storyId) {
+			throw new Error(
+				`实体候选的 storyId 与楼层所属故事不一致：${input.storyId}`,
+			);
+		}
+		const normalizedName = normalizeEntityName(input.name);
+		if (normalizedName.length === 0) {
+			throw new Error(`实体名称去掉标点与空白后为空：${input.name}`);
+		}
+		const createdAt = input.createdAt ?? new Date().toISOString();
+		assertNonEmptyString(createdAt, "实体候选的创建时间");
+		this.#db
+			.prepare(
+				`INSERT INTO entity_candidates
+					(story_id, normalized_name, kind, hits, first_node_id, created_at)
+				VALUES (?, ?, ?, 1, ?, ?)
+				ON CONFLICT (story_id, normalized_name, kind)
+				DO UPDATE SET hits = hits + 1`,
+			)
+			.run(input.storyId, normalizedName, input.kind, input.nodeId, createdAt);
+		const row = this.#db
+			.prepare(
+				`SELECT * FROM entity_candidates
+				WHERE story_id = ? AND normalized_name = ? AND kind = ?`,
+			)
+			.get(input.storyId, normalizedName, input.kind) as
+			| EntityCandidateRow
+			| undefined;
+		if (row === undefined) {
+			throw new Error(`实体候选写入后读取失败：${normalizedName}`);
+		}
+		return rowToEntityCandidate(row);
+	}
+
+	/** 列出故事里还没有建档的实体名称，按规范化名称与类别排序。 */
+	listEntityCandidates(storyId: string): EntityCandidate[] {
+		assertNonEmptyString(storyId, "实体候选的故事 id");
+		if (!this.getStory(storyId)) {
+			throw new Error(`故事不存在：${storyId}`);
+		}
+		const rows = this.#db
+			.prepare(
+				`SELECT * FROM entity_candidates
+				WHERE story_id = ?
+				ORDER BY normalized_name ASC, kind ASC`,
+			)
+			.all(storyId) as EntityCandidateRow[];
+		return rows.map(rowToEntityCandidate);
 	}
 
 	/**
@@ -3001,7 +3258,7 @@ export class StoryStore {
 		return parsed as unknown as TurnTrace;
 	}
 
-	/** 为故事里已确认（有子节点）的楼层补建缺失的后台任务。 */
+	/** 按任务类型的入队条件为故事补建缺失的后台任务。 */
 	enqueueMissingBackgroundJobs(
 		input: EnqueueBackgroundJobsInput,
 	): BackgroundJob[] {
@@ -3024,16 +3281,60 @@ export class StoryStore {
 			kinds.push(kind);
 		}
 		if (kinds.length === 0) return [];
+		const declared = input.conditions ?? {};
+		for (const [kind, condition] of Object.entries(declared)) {
+			if (!kinds.includes(kind)) {
+				throw new Error(`后台任务类型 ${kind} 不在本次入队的类型列表里`);
+			}
+			if (!isBackgroundJobEnqueueCondition(condition)) {
+				throw new Error(
+					`后台任务类型 ${kind} 的入队条件不合法：${String(condition)}`,
+				);
+			}
+		}
+		const conditionFor = (kind: string): BackgroundJobEnqueueCondition =>
+			Object.hasOwn(declared, kind)
+				? (declared[kind] ?? "confirmed")
+				: "confirmed";
 		const createdAt = input.createdAt ?? new Date().toISOString();
 		assertNonEmptyString(createdAt, "后台任务的创建时间");
+		const requiresSettled = kinds.some(
+			(kind) => conditionFor(kind) === "settled",
+		);
+		const requiresConfirmed = kinds.some(
+			(kind) => conditionFor(kind) === "confirmed",
+		);
 		const nodes = this.#db
-			.prepare(
-				`SELECT id FROM nodes
-				WHERE story_id = ?
-					AND EXISTS (SELECT 1 FROM nodes AS child WHERE child.parent_id = nodes.id)
-				ORDER BY row_id ASC`,
-			)
+			.prepare("SELECT id FROM nodes WHERE story_id = ? ORDER BY row_id ASC")
 			.all(input.storyId) as { readonly id: string }[];
+		const confirmed = requiresConfirmed
+			? new Set(
+					(
+						this.#db
+							.prepare(
+								`SELECT DISTINCT parent_id AS id FROM nodes
+								WHERE story_id = ? AND parent_id IS NOT NULL`,
+							)
+							.all(input.storyId) as { readonly id: string }[]
+					).map((row) => row.id),
+				)
+			: new Set<string>();
+		const settled = requiresSettled
+			? new Set(
+					(
+						this.#db
+							.prepare(
+								`SELECT nodes.id AS id
+								FROM nodes
+								LEFT JOIN traces ON traces.node_id = nodes.id
+								WHERE nodes.story_id = ?
+									AND nodes.role = 'assistant'
+									AND COALESCE(json_extract(traces.trace, '$.llm.stopReason'), '') <> 'aborted'`,
+							)
+							.all(input.storyId) as { readonly id: string }[]
+					).map((row) => row.id),
+				)
+			: new Set<string>();
 		const insert = this.#db.prepare(
 			`INSERT INTO background_jobs
 				(story_id, node_id, kind, status, attempts, last_error, created_at, started_at, finished_at)
@@ -3044,6 +3345,11 @@ export class StoryStore {
 		this.#db.transaction(() => {
 			for (const node of nodes) {
 				for (const kind of kinds) {
+					const eligible =
+						conditionFor(kind) === "settled"
+							? settled.has(node.id)
+							: confirmed.has(node.id);
+					if (!eligible) continue;
 					const info = insert.run(input.storyId, node.id, kind, createdAt);
 					if (info.changes !== 1) continue;
 					const job = this.getBackgroundJob(Number(info.lastInsertRowid));
@@ -3775,6 +4081,10 @@ export class StoryStore {
 			reason,
 			source: input.source,
 			storyTime: normaliseStoryTime(input.storyTime, label),
+			confidence: assertLedgerConfidence(
+				input.confidence,
+				`${label} 的 confidence`,
+			),
 		};
 	}
 }

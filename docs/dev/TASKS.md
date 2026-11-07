@@ -85,19 +85,40 @@
   - R2-T02 的试玩记录与 R2-T06 的记分牌新增截断率。
   验收：默认值按渠道声明计算并有测试（渠道声明大于、小于 4096 两种）；三种截断都能在 Trace 里读到；`pnpm check` 通过。
 
-- [ ] **R1-T02 台账结算器** | 依赖：R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、M2-T03、M4-T03 | DESIGN §7.2 | I12 | ADR-0041（A2、A4、A5）
+**R1-T02 台账结算器**（已拆成 R1-T02.1 至 R1-T02.4） | 依赖：R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、M2-T03、M4-T03 | DESIGN §7.2 | I12 | ADR-0041（A2、A4、A5）
+
+  总验收（四个子任务全部完成后由 R1-T99 逐条核对）：模型写入的路径不被覆盖，缺失路径被补齐；非法条目被拒绝并记录原因；不认识的名称两次出现后建档、只出现一次不建档；`knowledge` 按 `factId` 去重；与原文冲突的事实不覆盖并记入 `repairs`；重复执行不产生重复行；分支切换后另一分支的结算不参与；`block_format` 关闭时模板与现在逐字节一致；回合内后台客户端零调用。
+
+- [x] **R1-T02.1 结算存储与任务条件** | 依赖：R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、M2-T03、M4-T03
+  完成：2026-11-07 迁移 v19 `ledger_settlements` 与 v20 `entity_candidates`、`state_diffs.confidence`；`StateDiff`/`NewStateDiff` 与 `validateLedgerDiff` 增加置信度校验；存储层新增结算记录、实体候选与结算窗口读取；后台任务注册表按类型声明 `confirmed`/`settled` 入队条件；门禁通过（749 个测试）
   做什么：
-  - 迁移 v19 新增 `ledger_settlements(node_id PRIMARY KEY, story_id, source, added_count, repairs, created_at)`；`repairs` 存 JSON 数组 `{path, action, reason}`，同故事触发器与 M2-T02 的一致。
-  - 迁移 v20 新增 `entity_candidates(story_id, normalized_name, kind, hits, first_node_id, created_at)` 并给 `state_diffs` 增加结算置信度列（0 到 1，空表示未结算）；`validateLedgerDiff` 校验置信度范围。
-  - 后台任务类型 `settle`：沿当前路径取最多 `settleWindowFloors`（默认 4）个已落定、尚未结算的助手楼层；已落定指正文生成完成，不要求已确认。一次请求返回 `{nodeId, diffs}` 数组。窗口内有解析失败或校验失败的条目时，该楼层整条拒绝并记入 `repairs`，其余楼层照常写入；整次请求失败按 M2-T03 的规则重试。
-  - 落定即结算：回复落定后对 head 结算，被放弃的节点保留结算结果但不参与当前路径。后台任务框架按任务类型声明落定条件，不再统一要求已确认。
-  - 输入顺序：本楼层已有的结构化写入（`state_update`、原生块，兼容插件开启时还有 MVU 与表格编辑）→ 校验与修复 → 只对缺失的路径调用模型。该楼层已有的写入优先，结算器跳过相同路径。修复动作限定为补值、删除非法条目、改写线索状态三种，修复原因进入 `repairs` 与 Trace。
-  - 实体解析：写入前把人物、地点、物品的名称对照实体与别名表规范化；不认识的名称进 `entity_candidates`，同一窗口出现两次以上或被模型直接写入时才建档。`knowledge` 的值为 `{factId, text}`，`factId` 指向事件或线索，同一 `factId` 不重复写入。
-  - 冲突处理：与最近 `conflictWindowFloors`（默认 6）楼原文矛盾的结算事实不覆盖已有值，拒绝写入并记入 `repairs`；R1-T07.a 把这些记录转成待审变更卡。
-  - 原生模板新增可选的 `block_format` 段，说明 `state_update` 与 `plot_note` 的格式，默认关闭；开启后只说明格式，不要求模型输出（I13）。
+  - 迁移 v19 新增 `ledger_settlements(node_id PRIMARY KEY, story_id, source, added_count, repairs, created_at)`；`repairs` 存 JSON 数组 `{path, action, reason}`，`action` 取 `fill`、`delete`、`rewrite_status`；同故事触发器与 M2-T02 的一致。
+  - 迁移 v20 新增 `entity_candidates(story_id, normalized_name, kind, hits, first_node_id, created_at)` 并把 `state_diffs` 增加 `confidence` 列（0 到 1，空表示未结算）。
+  - `StateDiff` 与 `NewStateDiff` 增加 `confidence`；存储层校验 0 到 1；`validateLedgerDiff` 校验置信度范围。
+  - 存储层提供结算记录读写、实体候选写入与读取、以及“沿当前路径取最多 N 个已落定且尚未结算的助手楼层”。已落定指助手楼层已生成完成（中止保存的部分正文不算），不要求已确认。
+  - 后台任务注册表按类型声明入队条件：`confirmed`（有子节点，现状）与 `settled`（已落定的助手楼层）；`settle` 使用 `settled`。
+  验收：迁移后新表存在且跨故事的结算记录与候选被触发器拒绝；置信度越界抛错并指出位置；同一实体候选重复写入只累加 `hits`；窗口只取当前路径上已落定、未结算的助手楼层且排除中止楼层；`settled` 条件为尚未确认的助手楼层建任务、`confirmed` 条件不建；`pnpm check` 通过。
+
+- [ ] **R1-T02.2 结算任务与修复** | 依赖：R1-T02.1
+  做什么：
+  - 后台任务 `settle`：沿当前路径取最多 `settleWindowFloors`（默认 4）个已落定、尚未结算的助手楼层；一次请求返回 `{nodeId, diffs}` 数组。窗口内有解析失败或校验失败的条目时，该楼层整条拒绝并记入 `repairs`，其余楼层照常写入；整次请求失败按 M2-T03 的规则重试。
+  - 落定即结算：回复落定后对 head 结算；被放弃的节点保留结算结果但不参与当前路径。
+  - 输入顺序：本楼层已有的结构化写入（`state_update`、原生块）→ 校验与修复 → 只对缺失的路径调用模型。该楼层已有的写入优先，结算器跳过相同路径。修复动作限定为补值、删除非法条目、改写线索状态三种，修复原因进入 `repairs` 与 Trace。
   - 写入在一个事务里完成；同一楼层重复结算不新增 diff；结算结果与楼层绑定，swipe 与编辑的新节点各自结算。
   - 结算在间隙执行，`generateAssistantTurn` 不等待它；没有后台客户端时任务保持 pending。
-  验收：模型写入的路径不被覆盖，缺失路径被补齐；非法条目被拒绝并记录原因；不认识的名称两次出现后建档、只出现一次不建档；`knowledge` 按 `factId` 去重；与原文冲突的事实不覆盖并记入 `repairs`；重复执行不产生重复行；分支切换后另一分支的结算不参与；`block_format` 关闭时模板与现在逐字节一致；回合内后台客户端零调用；`pnpm check` 通过。
+  验收：模型写入的路径不被覆盖，缺失路径被补齐；非法条目被拒绝并记录原因；重复执行不产生重复行；分支切换后另一分支的结算不参与；回合内后台客户端零调用；没有后台客户端时任务保持 pending；`pnpm check` 通过。
+
+- [ ] **R1-T02.3 实体解析、knowledge 去重与冲突拒绝** | 依赖：R1-T02.2
+  做什么：
+  - 写入前把人物、地点、物品的名称对照实体与别名表规范化；不认识的名称进 `entity_candidates`，同一窗口出现两次以上或被模型直接写入时才建档。
+  - `knowledge` 的值为 `{factId, text}`，`factId` 指向事件或线索，同一 `factId` 不重复写入。
+  - 与最近 `conflictWindowFloors`（默认 6）楼原文矛盾的结算事实不覆盖已有值，拒绝写入并记入 `repairs`；R1-T07.a 把这些记录转成待审变更卡。
+  验收：不认识的名称两次出现后建档、只出现一次不建档；`knowledge` 按 `factId` 去重；与原文冲突的事实不覆盖并记入 `repairs`；`pnpm check` 通过。
+
+- [ ] **R1-T02.4 块格式说明段** | 依赖：M1-T04
+  做什么：
+  - 原生模板新增可选的 `block_format` 段，说明 `state_update` 与 `plot_note` 的格式，默认关闭；开启后只说明格式，不要求模型输出（I13）。
+  验收：`block_format` 关闭时模板与现在逐字节一致；开启后模板包含两种写入的格式说明且不出现强制输出要求；`pnpm check` 通过。
 
 - [ ] **R1-T02.a 现场分析** | 依赖：R1-T02 | DESIGN §7.3、§9 | ADR-0041（A2）
   做什么：

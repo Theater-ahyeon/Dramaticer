@@ -2,6 +2,7 @@ import type { LlmClient } from "../llm/types.js";
 import type { StoryStore } from "../store/story-store.js";
 import type {
 	BackgroundJob,
+	BackgroundJobEnqueueCondition,
 	BackgroundJobRegistry,
 	BackgroundJobStatus,
 } from "./types.js";
@@ -14,10 +15,12 @@ export interface EnqueueMissingJobsOptions {
 	readonly store: StoryStore;
 	readonly storyId: string;
 	readonly kinds: readonly string[];
+	/** 每种任务类型的入队条件；缺省为 confirmed。 */
+	readonly conditions?: Readonly<Record<string, BackgroundJobEnqueueCondition>>;
 	readonly now?: () => number;
 }
 
-/** 为已确认楼层补建指定类型的任务；重复调用不产生重复行。 */
+/** 按任务类型的入队条件补建任务；重复调用不产生重复行。 */
 export function enqueueMissingJobs(
 	options: EnqueueMissingJobsOptions,
 ): BackgroundJob[] {
@@ -25,6 +28,7 @@ export function enqueueMissingJobs(
 	return options.store.enqueueMissingBackgroundJobs({
 		storyId: options.storyId,
 		kinds: options.kinds,
+		conditions: options.conditions,
 		createdAt: new Date(now()).toISOString(),
 	});
 }
@@ -88,6 +92,9 @@ export async function drainBackgroundJobs(
 		store,
 		storyId,
 		kinds,
+		conditions: Object.fromEntries(
+			kinds.map((kind) => [kind, registry.get(kind)?.enqueue ?? "confirmed"]),
+		),
 		now,
 	});
 	const pending = store.listBackgroundJobs({
@@ -98,8 +105,8 @@ export async function drainBackgroundJobs(
 	});
 	const runs: BackgroundJobRun[] = [];
 	for (const job of pending) {
-		const handler = registry.get(job.kind);
-		if (handler === undefined) {
+		const type = registry.get(job.kind);
+		if (type === undefined) {
 			throw new Error(`没有注册后台任务类型 ${job.kind}`);
 		}
 		const running = store.startBackgroundJob(
@@ -107,7 +114,7 @@ export async function drainBackgroundJobs(
 			new Date(now()).toISOString(),
 		);
 		try {
-			await handler({ store, client: options.client, job: running });
+			await type.handler({ store, client: options.client, job: running });
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			const failed = store.failBackgroundJob(job.id, {

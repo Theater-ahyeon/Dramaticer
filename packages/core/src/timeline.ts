@@ -38,6 +38,8 @@ export interface StateDiff {
 	readonly reason: string | null;
 	readonly source: string;
 	readonly storyTime: StoryTime | null;
+	/** 结算置信度，0 到 1；空表示这条事实来自正文模型而不是结算器。 */
+	readonly confidence: number | null;
 	readonly createdAt: string;
 }
 
@@ -48,6 +50,7 @@ interface NewStateDiffBase {
 	readonly reason?: string | null;
 	readonly source: string;
 	readonly storyTime?: StoryTime | null;
+	readonly confidence?: number | null;
 }
 
 export type NewStateDiff =

@@ -76,6 +76,8 @@ export interface LedgerDiffInput {
 	readonly storyTime?: StoryTime | null;
 	/** 事实来源；缺省由写入方补齐。 */
 	readonly source?: LedgerSource;
+	/** 结算置信度；缺省表示这条事实来自正文模型。 */
+	readonly confidence?: number | null;
 }
 
 /**
@@ -101,6 +103,10 @@ export function validateLedgerDiff(diff: LedgerDiffInput): void {
 	}
 	validateSource(path, diff.source);
 	validateStoryTime(path, diff.storyTime);
+	assertLedgerConfidence(
+		diff.confidence,
+		`台账路径 ${pathLabel(path)} 的 confidence`,
+	);
 	const [namespace, ...rest] = path as [string, ...string[]];
 	if (!isLedgerNamespace(namespace)) {
 		fail(path, `未知台账命名空间 ${JSON.stringify(namespace)}`);
@@ -451,6 +457,23 @@ function validateSource(
 			`source 只能是 ${LEDGER_SOURCES.join("、")}，收到 ${JSON.stringify(source)}`,
 		);
 	}
+}
+
+/** 结算置信度：0 到 1 的数字；空表示未结算。 */
+export function assertLedgerConfidence(
+	value: unknown,
+	label: string,
+): number | null {
+	if (value === undefined || value === null) return null;
+	if (
+		typeof value !== "number" ||
+		!Number.isFinite(value) ||
+		value < 0 ||
+		value > 1
+	) {
+		throw new Error(`${label} 必须是 0 到 1 之间的数字或 null`);
+	}
+	return value;
 }
 
 function validateStoryTime(

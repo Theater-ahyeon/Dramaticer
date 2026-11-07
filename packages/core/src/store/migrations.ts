@@ -499,6 +499,50 @@ export function buildMigrations(
 				"ALTER TABLE state_diffs ADD COLUMN story_time_end TEXT",
 			],
 		},
+		{
+			version: 19,
+			description: "楼层结算结果：每个已落定的助手楼层一行",
+			statements: [
+				`CREATE TABLE ledger_settlements (
+					node_id TEXT PRIMARY KEY NOT NULL REFERENCES nodes(id),
+					story_id TEXT NOT NULL REFERENCES stories(id),
+					source TEXT NOT NULL CHECK (source IN ('model', 'settler', 'player', 'import')),
+					added_count INTEGER NOT NULL CHECK (added_count >= 0),
+					repairs TEXT NOT NULL,
+					created_at TEXT NOT NULL
+				) STRICT`,
+				"CREATE INDEX ledger_settlements_story_idx ON ledger_settlements(story_id)",
+				`CREATE TRIGGER ledger_settlements_story_matches_node
+				BEFORE INSERT ON ledger_settlements
+				WHEN COALESCE((SELECT story_id FROM nodes WHERE id = NEW.node_id), '') <> NEW.story_id
+				BEGIN
+					SELECT RAISE(ABORT, '结算记录的 story_id 必须与所在楼层一致');
+				END`,
+			],
+		},
+		{
+			version: 20,
+			description: "结算置信度与实体候选",
+			statements: [
+				"ALTER TABLE state_diffs ADD COLUMN confidence REAL CHECK (confidence IS NULL OR (confidence >= 0 AND confidence <= 1))",
+				`CREATE TABLE entity_candidates (
+					story_id TEXT NOT NULL REFERENCES stories(id),
+					normalized_name TEXT NOT NULL,
+					kind TEXT NOT NULL CHECK (kind IN ('character', 'location', 'item', 'faction', 'lore', 'unknown')),
+					hits INTEGER NOT NULL CHECK (hits >= 1),
+					first_node_id TEXT NOT NULL REFERENCES nodes(id),
+					created_at TEXT NOT NULL,
+					PRIMARY KEY (story_id, normalized_name, kind)
+				) STRICT`,
+				"CREATE INDEX entity_candidates_story_idx ON entity_candidates(story_id)",
+				`CREATE TRIGGER entity_candidates_story_matches_node
+				BEFORE INSERT ON entity_candidates
+				WHEN COALESCE((SELECT story_id FROM nodes WHERE id = NEW.first_node_id), '') <> NEW.story_id
+				BEGIN
+					SELECT RAISE(ABORT, '实体候选的 story_id 必须与首个楼层一致');
+				END`,
+			],
+		},
 	];
 }
 
