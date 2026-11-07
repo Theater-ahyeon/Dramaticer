@@ -9,6 +9,7 @@ import {
 } from "@earendil-works/pi-ai";
 import { streamSimple as googleStreamSimple } from "@earendil-works/pi-ai/api/google-generative-ai";
 import { streamSimple as openAiStreamSimple } from "@earendil-works/pi-ai/api/openai-completions";
+import type { JsonObject } from "../json.js";
 import type { LlmChannelApi } from "./channels.js";
 import { createEventStream } from "./event-stream.js";
 import {
@@ -163,7 +164,38 @@ export class PiLlmChannel implements LlmChannel {
 			if (message.role === "user") {
 				return { role: "user", content: message.content, timestamp: at };
 			}
-			return syntheticAssistant(model, message.content, at);
+			if (message.role === "tool") {
+				return {
+					role: "toolResult",
+					toolCallId: message.toolCallId,
+					toolName: message.toolName,
+					content: [{ type: "text", text: message.content }],
+					isError: message.isError ?? false,
+					timestamp: at,
+				};
+			}
+			const content: AssistantMessage["content"] = [];
+			if (message.content.length > 0) {
+				content.push({ type: "text", text: message.content });
+			}
+			for (const call of message.toolCalls ?? []) {
+				content.push({
+					type: "toolCall",
+					id: call.id,
+					name: call.name,
+					arguments: call.arguments,
+				});
+			}
+			return {
+				role: "assistant",
+				content,
+				api: model.api,
+				provider: model.provider,
+				model: model.id,
+				usage: zeroUsage(),
+				stopReason: "stop",
+				timestamp: at,
+			};
 		});
 		if (continuation !== undefined) {
 			converted.push(
@@ -240,7 +272,7 @@ function toProviderResult(
 			toolCalls.push({
 				id: block.id,
 				name: block.name,
-				arguments: block.arguments,
+				arguments: block.arguments as JsonObject,
 			});
 		}
 	}

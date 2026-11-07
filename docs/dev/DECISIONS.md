@@ -236,3 +236,20 @@
   - 卡内嵌世界书先由 `worldInfoFromCharacterBook` 转换成与世界书文件相同的视图（`keys` → `key`、`enabled` → `disable`、`secondary_keys` → `keysecondary`），再走同一套实体与 lore 导入。`dramaticer chat` 新增可重复的 `--world <path>`，每份世界书按文件名作为世界书名称。
   - 导演槽位只注入来源楼层在当前分支路径上的未兑现笔记；楼层年龄按当前楼层与来源楼层在路径上的位置差计算。另一条分支的笔记既不出现，也不会被误算年龄。槽位不调用模型，只渲染文本。
 - **影响**：M2-T14 的 `lore_lookup` 读取工具直接复用 `listLoreEntries` 与 `findEntityByName`；M2-T15 的评测需要先导入世界书条目，常驻条目会进入每一道题的上下文。世界书内容更新时不会自动覆盖已有行，需要新增明确的更新接口（当前世界书按只读处理）。
+
+## ADR-0022 读取工具循环由 core 实现（2026-11-07）
+
+- **背景**：M2-T14 要在主模型调用之后执行最多 2 轮读取工具。DESIGN §10 原先把 `pi-agent-core` 定为无状态单轮执行器，并计划使用它的 `prepareRequest`、`beforeToolCall`、`finishTurn` 三个钩子。`core/llm` 已经把 pi-ai 包成 `LlmStreamingClient`，路由层负责限速、重试、渠道切换、缓存与截断续写；领域层不出现 pi 类型（ADR-0010）。
+- **接口冲突**：
+  - `pi-agent-core` 的 `StreamFn` 必须接收 pi-ai 的 `Model` 与 `TranscriptContext`，返回 `AssistantMessageEventStream`。我们的客户端接收 `LlmRequest`、返回 `LlmStream`，没有 pi-ai 的部分消息结构；要满足这个形状，适配器必须为每个正文增量手工构造 `text_start`、`text_delta`、`text_end` 与不断增长的 `AssistantMessage`，再在结束时把 `LlmResult` 翻译回去。
+  - `Agent` 自己持有对话记录、系统提示词与工具声明。我们的上下文每一轮都由 `assembleContext` 按模板重新组装，工具结果又只属于本轮。用 `prepareRequest` 替换 pi 的记录后，还要把 pi 的 `toolResult` 消息转换回 `LlmMessage` 才能让下一轮模型看到检索结果，等于维护两套消息模型。
+  - 流式回调、首字计时、Trace 与中止都由现有链路负责；交给 `Agent` 后这些信号要再从 pi 的事件流读回，增加一层没有独立价值的转接。
+- **决定**：
+  - 不把 `pi-agent-core` 接入运行时。它继续只作为根目录 devDependency，供 `spikes/pi/` 的验证脚本使用。
+  - 在 `packages/core/src/chat/executor.ts` 实现 `runModelTurns`，直接建在 `LlmStreamingClient` 上，用同样的职责划分替代三个钩子：
+    - 组装好的上下文在每次请求前原样注入，工具结果追加在它后面；
+    - 模型请求的读取工具在参数校验通过后才执行，未知或写入类工具不执行；
+    - 每次执行读取工具记一轮，达到 2 轮后不再执行，直接结束本次生成。
+  - `LlmMessage` 扩展为消息联合类型，支持助手消息携带工具调用与工具结果消息；pi-ai 适配器负责映射成 `toolCall` 与 `toolResult` 内容块，缓存键并入工具调用与结果字段。`identity: { attribution: null }` 仍在 pi-ai 适配器里设置。
+  - Trace 增加 `tools`：`rounds` 是实际执行的读取工具轮数，`calls` 按调用顺序记录工具名（参数校验失败的调用也记录）。
+- **影响**：DESIGN §4 与 §10 的执行器描述改为 core 实现。读取工具只在函数调用模式提供；文本标签模式不发送工具定义。工具轮次里模型先输出的过渡文本会经 `onTextDelta` 显示，但不进入楼层原文；保存的正文取最后一个没有读取工具调用的轮次。M2-T99 的 I6 复核以 Trace 的 `tools.rounds` 不超过 2、模型请求次数为 1 加工具轮数为准。

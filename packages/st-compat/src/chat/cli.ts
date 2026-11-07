@@ -180,6 +180,7 @@ export async function runChatCli(
 			budgetTokens,
 			structuredOutput: mode,
 			model: modelAlias,
+			embedder,
 			maxTokens: parsed.maxTokens ?? undefined,
 			temperature: parsed.temperature ?? undefined,
 			reasoning: "low",
@@ -191,7 +192,7 @@ export async function runChatCli(
 		write("\n");
 		const usage = result.trace.llm.usage;
 		log(
-			`楼层 ${result.node.id}：状态变更 ${result.stateDiffs.length} 条，剧情笔记 ${result.structured.notes.length} 条，拒绝 ${result.structured.issues.length} 条`,
+			`楼层 ${result.node.id}：状态变更 ${result.stateDiffs.length} 条，剧情笔记 ${result.structured.notes.length} 条，拒绝 ${result.structured.issues.length} 条，读取工具 ${result.trace.tools.rounds} 轮`,
 		);
 		log(
 			`模型 ${result.trace.llm.model}，渠道 ${result.trace.llm.channel ?? "缓存"}，首字 ${

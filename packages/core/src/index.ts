@@ -34,6 +34,7 @@ export { StoryStore } from "./store/story-store.js";
 export * from "./structured/index.js";
 export * from "./timeline.js";
 export * from "./tokens.js";
+export * from "./tools/index.js";
 export * from "./trace.js";
 
 export interface EngineVersion {

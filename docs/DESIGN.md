@@ -54,7 +54,7 @@
 │ Memory Engine：事件(只追加)·状态(diff)·分层摘要·剧情笔记·混合检索 │
 │ Director：线索追踪·重复检测·节奏状态机·NPC 议程·事件池          │
 │ Context Assembler：预设为骨架，harness 填 marker，token 预算    │
-│ Turn Executor：pi-agent-core（无状态单轮执行器）               │
+│ Turn Executor：core 单轮执行器（读取工具最多 2 轮）              │
 │ Background Workers：抽取/摘要/议程推进/出图，独立渠道池+限速      │
 │ Trace & Eval                                               │
 └───────────────────────────┬────────────────────────────────┘
@@ -136,7 +136,7 @@
 
 ## 10. 模型层
 
-- **pi-ai 与 pi-agent-core**（MIT，`@earendil-works/*`）：锁死版本，外面包一层 `core/llm` 接口。agent-core 只当作无状态的单轮执行器，用 `prepareRequest` 注入组装好的上下文，用 `beforeToolCall` 校验，用 `finishTurn` 限制工具调用不超过 1–2 轮。`identity` 设为 `null`。
+- **pi-ai**（MIT，`@earendil-works/*`）：锁死版本，外面包一层 `core/llm` 接口。单轮执行器在 `core/chat/executor.ts` 里直接建在这层接口上：组装好的上下文每次请求前注入，读取工具的调用先校验参数，工具往返最多 2 轮（ADR-0022）。`pi-agent-core` 只保留给验证脚本，不进入运行时。`identity` 的归属声明设为 `{ attribution: null }`。
 - **适配器顺序**：OpenAI 兼容 Chat Completions 优先（覆盖各种公益站和中转），Gemini 原生第二（赠金直连、gcli2api、Antigravity；未做端到端验证，见 ADR-0020）。
 - **多渠道**：同一模型可以配多个渠道，按优先级自动切换；Trace 记录实际使用的渠道。
 - **渠道体检**：检测真流式还是假流式、函数调用、思考输出、预填充、缓存统计是否可用，据此自动决定结构化输出用哪种模式。

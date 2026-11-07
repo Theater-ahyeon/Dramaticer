@@ -27,10 +27,29 @@ export function requestCacheKey(
 ): string {
 	const body: Record<string, unknown> = {
 		model: modelId,
-		messages: request.messages.map((message) => ({
-			role: message.role,
-			content: message.content,
-		})),
+		messages: request.messages.map((message) =>
+			message.role === "tool"
+				? {
+						role: message.role,
+						content: message.content,
+						tool_call_id: message.toolCallId,
+						name: message.toolName,
+						is_error: message.isError ?? false,
+					}
+				: {
+						role: message.role,
+						content: message.content,
+						...(message.toolCalls === undefined
+							? {}
+							: {
+									tool_calls: message.toolCalls.map((call) => ({
+										id: call.id,
+										name: call.name,
+										arguments: call.arguments,
+									})),
+								}),
+					},
+		),
 		stream: false,
 	};
 	if (request.temperature !== undefined) {

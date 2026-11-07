@@ -1,9 +1,24 @@
+import type { JsonObject } from "../json.js";
+
 export type LlmRole = "system" | "user" | "assistant";
 
-export interface LlmMessage {
-	readonly role: LlmRole;
-	readonly content: string;
-}
+/**
+ * 一条发给模型的消息。工具往返需要三种额外信息：助手消息里的工具调用、
+ * 工具结果对应的调用 id，以及工具名（部分渠道要求结果带上它）。
+ */
+export type LlmMessage =
+	| {
+			readonly role: LlmRole;
+			readonly content: string;
+			readonly toolCalls?: readonly LlmToolCall[];
+	  }
+	| {
+			readonly role: "tool";
+			readonly content: string;
+			readonly toolCallId: string;
+			readonly toolName: string;
+			readonly isError?: boolean;
+	  };
 
 export type LlmReasoningLevel =
 	| "off"
@@ -34,7 +49,7 @@ export interface LlmToolDefinition {
 export interface LlmToolCall {
 	readonly id: string;
 	readonly name: string;
-	readonly arguments: Record<string, unknown>;
+	readonly arguments: JsonObject;
 }
 
 export interface LlmRequest {

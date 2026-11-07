@@ -313,7 +313,8 @@
   - `createDirectorSlotProvider`：把未兑现的剧情笔记按创建顺序渲染成一行一条，带“距创建经过的楼层数”；不调用模型，不做实时决策。没有未兑现笔记时返回 `null`。
   验收：常驻条目每轮都出现；非恒常条目只在关键词或实体命中时出现；重复条目去重；已兑现笔记不出现；楼层年龄计算正确；预算裁剪顺序符合上述规则；`pnpm check` 通过。
 
-- [ ] **M2-T14 读取工具与单轮执行器** | 依赖：M2-T10、M2-T12、M2-T13 | DESIGN §10、§11
+- [x] **M2-T14 读取工具与单轮执行器** | 依赖：M2-T10、M2-T12、M2-T13 | DESIGN §10、§11
+  完成：2026-11-07 `core/src/tools/read-tools.ts` 定义 `memory_search`、`lore_lookup`、`state_get` 的 JSON Schema、参数校验与执行函数；`core/src/chat/executor.ts` 的 `runModelTurns` 直接在 `LlmStreamingClient` 上执行主请求与最多 2 轮读取工具，只有读取工具会在校验通过后执行，写入工具只收集；`LlmMessage` 支持助手工具调用与工具结果消息，pi-ai 适配器映射成 `toolCall` 与 `toolResult`；`runChatTurn` 在函数调用模式提供全部工具、文本标签模式不提供；Trace 新增 `tools.rounds` 与 `tools.calls`；`dramaticer chat` 把 embedder 交给读取工具并打印工具轮数；11 个新测试，门禁通过（453 个测试）；ADR-0022
   做什么：
   - 新增 `memory_search`、`lore_lookup`、`state_get` 三个读取工具的定义、JSON Schema 与执行函数；`memory_search` 调用 `retrieveMemory`，`lore_lookup` 查 lore 条目与实体，`state_get` 读快照或按路径读值。
   - 接入 pi-agent-core 的无状态单轮执行器：`prepareRequest` 注入已经组装好的上下文，`beforeToolCall` 只允许读取工具并校验参数，`finishTurn` 把工具往返限制在最多 2 轮，`identity` 设为 `{ attribution: null }`。如果 pi-agent-core 的流式接口与现有 `LlmStreamingClient` 无法共存，写 ADR 记录替代实现，验收标准不变。

@@ -256,6 +256,9 @@ describe("runChatTurn", () => {
 		expect(requests[0]?.tools?.map((tool) => tool.name)).toEqual([
 			"state_update",
 			"plot_note",
+			"memory_search",
+			"lore_lookup",
+			"state_get",
 		]);
 		expect(result.stateDiffs).toHaveLength(1);
 		expect(result.stateDiffs[0]?.source).toBe(

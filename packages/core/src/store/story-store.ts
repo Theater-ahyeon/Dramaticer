@@ -1339,6 +1339,22 @@ export class StoryStore {
 		return rows.map(rowToMemoryEvent);
 	}
 
+	/** 读取某个楼层产生的全部事件，按 ordinal 排列。 */
+	getEventsForNode(nodeId: string): MemoryEvent[] {
+		assertNonEmptyString(nodeId, "楼层节点 id");
+		if (!this.getNode(nodeId)) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
+		const rows = this.#db
+			.prepare(
+				`SELECT * FROM memory_events
+				WHERE source_node_id = ?
+				ORDER BY ordinal ASC`,
+			)
+			.all(nodeId) as MemoryEventRow[];
+		return rows.map(rowToMemoryEvent);
+	}
+
 	/** 统计某个楼层已经抽取的事件数；重复执行前用它判断是否已经处理过。 */
 	countEventsForNode(nodeId: string): number {
 		assertNonEmptyString(nodeId, "楼层节点 id");

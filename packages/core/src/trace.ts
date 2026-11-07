@@ -28,6 +28,13 @@ export interface TurnTraceStructuredOutput {
 	readonly issues: readonly StructuredOutputIssue[];
 }
 
+export interface TurnTraceTools {
+	/** 实际执行的读取工具轮数。 */
+	readonly rounds: number;
+	/** 每次读取工具调用的工具名，按调用顺序；参数非法的调用也记录。 */
+	readonly calls: readonly string[];
+}
+
 export interface TurnTraceTiming {
 	/** 第一个正文增量到达的毫秒数；没有正文时为 null。 */
 	readonly firstTokenMs: number | null;
@@ -43,6 +50,7 @@ export interface TurnTrace {
 	readonly createdAt: string;
 	readonly context: ContextTrace;
 	readonly llm: TurnTraceLlm;
+	readonly tools: TurnTraceTools;
 	readonly structured: TurnTraceStructuredOutput;
 	readonly timing: TurnTraceTiming;
 }

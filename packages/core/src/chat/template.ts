@@ -19,6 +19,7 @@ const TEXT_TAG_PROTOCOL = `你在扮演故事里的角色，用正文推进故�
 const FUNCTION_CALL_PROTOCOL = `你在扮演故事里的角色，用正文推进故事。正文结束后，通过工具调用提交本轮产生的状态变更与剧情笔记。
 
 工具规则：
+- 需要回忆过去的原文或事件时，可以调用 memory_search；需要世界书资料或实体档案时，调用 lore_lookup；需要核对状态值时，调用 state_get。读取工具返回结果后继续写正文。
 - state_update 每次调用只写一条变更，path 从宽到窄，不能为空。
 - plot_note 每次调用只写一条笔记，记录尚未兑现的伏笔或线索。
 - 没有变化的字段不要提交；不要在正文里写这些 JSON。`;

@@ -1,15 +1,11 @@
-import { BlockParser } from "../blocks/parser.js";
 import type { ParsedContent } from "../blocks/types.js";
 import {
 	type ContextSlotProviders,
 	assembleContext,
 } from "../context/assembler.js";
 import type { ContextTemplate } from "../context/template.js";
-import type {
-	LlmReasoningLevel,
-	LlmRequest,
-	LlmStreamingClient,
-} from "../llm/types.js";
+import type { EmbeddingClient } from "../llm/embeddings.js";
+import type { LlmReasoningLevel, LlmStreamingClient } from "../llm/types.js";
 import type { PlotNote } from "../memory/plot-note.js";
 import type { StoryStore } from "../store/story-store.js";
 import {
@@ -23,7 +19,9 @@ import type {
 	StructuredOutputMode,
 } from "../structured/types.js";
 import type { NewStateDiff, StateDiff, TimelineNode } from "../timeline.js";
+import { READ_TOOLS } from "../tools/read-tools.js";
 import type { TurnTrace } from "../trace.js";
+import { MAX_TOOL_ROUNDS, runModelTurns } from "./executor.js";
 
 export interface ChatTurnOptions {
 	readonly store: StoryStore;
@@ -34,6 +32,12 @@ export interface ChatTurnOptions {
 	readonly providers?: ContextSlotProviders;
 	readonly budgetTokens: number;
 	readonly structuredOutput: StructuredOutputMode;
+	/** 有 embedding 客户端时 memory_search 启用向量路。 */
+	readonly embedder?: EmbeddingClient | null;
+	/** 知情者视角；不设置时读取工具返回全知结果。 */
+	readonly viewpoint?: string | null;
+	/** 最多执行多少轮读取工具，默认 2，上限由执行器强制。 */
+	readonly maxToolRounds?: number;
 	readonly model?: string;
 	readonly maxTokens?: number;
 	readonly temperature?: number;
@@ -91,50 +95,41 @@ export async function runChatTurn(
 		providers: options.providers,
 	});
 
-	const request: LlmRequest = {
+	const startedAt = now();
+	const functionCall = options.structuredOutput === "function-call";
+	const turn = await runModelTurns({
+		client: options.client,
 		messages: assembled.messages,
-		tools:
-			options.structuredOutput === "function-call"
-				? STRUCTURED_OUTPUT_TOOLS
-				: undefined,
+		structuredTools: functionCall ? STRUCTURED_OUTPUT_TOOLS : undefined,
+		readTools: functionCall ? READ_TOOLS : undefined,
+		toolContext: {
+			store: options.store,
+			storyId: options.storyId,
+			beforeNodeId: userNode.id,
+			embedder: options.embedder ?? null,
+			viewpoint: options.viewpoint ?? null,
+		},
+		maxToolRounds: options.maxToolRounds ?? MAX_TOOL_ROUNDS,
 		model: options.model,
 		maxTokens: options.maxTokens,
 		temperature: options.temperature,
 		reasoning: options.reasoning,
 		signal: options.signal,
-	};
-
-	const parser = new BlockParser();
-	const startedAt = now();
-	let firstTokenMs: number | null = null;
-	let receivedText = "";
-	const stream = options.client.stream(request, {
 		continuation: {
 			expectedTags: ["state_update", "plot_note"],
 			continueOn: ["length", "unclosed_tag"],
 		},
+		onTextDelta: options.onTextDelta,
+		onThinkingDelta: options.onThinkingDelta,
+		now,
 	});
-	for await (const event of stream) {
-		if (event.type === "thinking_delta") {
-			options.onThinkingDelta?.(event.delta);
-			continue;
-		}
-		if (firstTokenMs === null) firstTokenMs = now() - startedAt;
-		receivedText += event.delta;
-		parser.push(event.delta);
-		options.onTextDelta?.(event.delta, parser.snapshot());
-	}
-	const result = await stream.result();
+	const result = turn.result;
 	const completedAt = now();
-	const blocks = parser.finish();
-	if (receivedText !== result.text) {
-		throw new Error("流式增量拼接后的正文与生成结果不一致，无法保存楼层原文");
-	}
+	const blocks = turn.blocks;
 
-	const structured =
-		options.structuredOutput === "function-call"
-			? collectStructuredOutputFromToolCalls(result.toolCalls)
-			: collectStructuredOutputFromText(result.text);
+	const structured = functionCall
+		? collectStructuredOutputFromToolCalls(turn.toolCalls)
+		: collectStructuredOutputFromText(result.text);
 
 	return await options.store.runInTransaction(() => {
 		const node = options.store.appendNode({
@@ -171,10 +166,14 @@ export async function runChatTurn(
 				stopReason: result.stopReason,
 				finishReason: result.finishReason,
 				truncation: result.truncation,
-				usage: result.usage,
-				attempts: result.attempts,
-				rounds: result.rounds,
-				cached: result.cached,
+				usage: turn.usage,
+				attempts: turn.attempts,
+				rounds: turn.modelRounds,
+				cached: turn.cached,
+			},
+			tools: {
+				rounds: turn.rounds,
+				calls: turn.calls.map((call) => call.name),
 			},
 			structured: {
 				mode: structured.mode,
@@ -183,7 +182,7 @@ export async function runChatTurn(
 				issues: structured.issues,
 			},
 			timing: {
-				firstTokenMs,
+				firstTokenMs: turn.firstTokenMs,
 				durationMs: completedAt - startedAt,
 			},
 		};
