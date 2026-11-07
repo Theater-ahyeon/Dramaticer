@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	buildChoiceMessages,
+	countDuplicatePrompts,
 	parseChoice,
 	picksAccepted,
 	renderJudgeSection,
@@ -98,6 +99,33 @@ describe("picksAccepted", () => {
 		expect(picksAccepted("accepted-first", "A")).toBe(true);
 		expect(picksAccepted("accepted-first", "B")).toBe(false);
 		expect(() => picksAccepted("accepted-first", "C")).toThrow("choice 不合法");
+	});
+});
+
+describe("countDuplicatePrompts", () => {
+	it("内容完全相同的配对只算一份独立样本", () => {
+		const first = pair({ id: "对话 1:0", context: [] });
+		const copy = pair({ id: "对话 2:0", context: [] });
+		expect(countDuplicatePrompts([first, copy])).toEqual({
+			requests: 4,
+			unique: 2,
+			duplicates: 2,
+		});
+		expect(countDuplicatePrompts([first])).toEqual({
+			requests: 2,
+			unique: 2,
+			duplicates: 0,
+		});
+	});
+
+	it("内容不同的配对不算重复", () => {
+		const first = pair({ id: "对话 1:0", context: [] });
+		const other = pair({
+			id: "对话 2:0",
+			context: [],
+			acceptedText: "另一份被保留的回复",
+		});
+		expect(countDuplicatePrompts([first, other]).duplicates).toBe(0);
 	});
 });
 
@@ -258,5 +286,25 @@ describe("renderJudgeSection", () => {
 		const section = renderJudgeSection({ summary, meta });
 		expect(section).toContain("可以用于偏好判断");
 		expect(section).toContain("这是同模型自评");
+		expect(section).not.toContain("玩家切回较早 swipe");
+	});
+
+	it("玩家切回较早 swipe 的分组一致率低于门槛时写进结论", () => {
+		const summary = summarizeJudge(
+			[
+				pair({ id: "对话 1:2", acceptedNotLast: false }),
+				pair({ id: "对话 2:5", acceptedNotLast: true }),
+			],
+			[
+				judgement("对话 1:2", "rejected-first", "B"),
+				judgement("对话 1:2", "accepted-first", "A"),
+				judgement("对话 2:5", "rejected-first", "A"),
+				judgement("对话 2:5", "accepted-first", "A"),
+			],
+			new Map(),
+		);
+		const section = renderJudgeSection({ summary, meta });
+		expect(section).toContain("玩家切回较早 swipe 的 2 次判断");
+		expect(section).toContain("50.0%");
 	});
 });

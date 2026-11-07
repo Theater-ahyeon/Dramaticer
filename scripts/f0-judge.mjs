@@ -10,6 +10,7 @@ import {
 import {
 	JUDGE_ORDERS,
 	buildChoiceMessages,
+	countDuplicatePrompts,
 	parseChoice,
 	picksAccepted,
 	renderJudgeSection,
@@ -167,6 +168,11 @@ async function main() {
 		defaultModel: MODEL_ALIAS,
 		cacheDir: CACHE_DIR,
 	});
+	// 失败过的判断要真的重新请求：缓存里留着不合法输出，命中缓存只会得到同样结果。
+	const retryClient = createLlmClient(channels, {
+		defaultModel: MODEL_ALIAS,
+		cacheDir: null,
+	});
 
 	const pairs = await readPairs();
 	const attributionByPair = await readAttribution();
@@ -217,8 +223,10 @@ async function main() {
 		let entry;
 		try {
 			const { messages } = buildChoiceMessages(job.pair, job.order);
+			const activeClient =
+				existing.get(job.key)?.ok === false ? retryClient : client;
 			const request = (tokens) =>
-				client.complete({
+				activeClient.complete({
 					messages,
 					model: MODEL_ALIAS,
 					temperature: 0,
@@ -303,6 +311,7 @@ async function main() {
 		modelOverride === ""
 			? null
 			: `裁判请求发往 magpie 的 \`${modelOverride}\`（DeepSeek V4.1 Flash 的 routing group）。配置里的 \`${configuredModel.id}\` 在 2026-11-07 返回上游 membership entitlement 错误，本次全部判断改用同一模型的路由组；\`eval-private/f0/judge.jsonl\` 里旧的判断被同键的新行覆盖。`;
+	const duplicatePrompts = countDuplicatePrompts(picked);
 	const generatedAt = new Date().toISOString();
 	const result = {
 		generatedAt,
@@ -319,6 +328,7 @@ async function main() {
 		failedJudgements: selectedResults.length - okEntries.length,
 		cost: { ...cost, thisRun: runStats },
 		routeNote,
+		duplicatePrompts,
 	};
 	await writeFile(SUMMARY_PATH, `${JSON.stringify(result, null, "\t")}\n`, "utf8");
 
@@ -332,6 +342,7 @@ async function main() {
 			sampleStats,
 			cost,
 			routeNote,
+			duplicatePrompts,
 			failedJudgements: selectedResults.length - okEntries.length,
 		},
 	});

@@ -34,6 +34,24 @@ function contextBlock(context) {
 		.join("\n\n");
 }
 
+/**
+ * 语料里有文件名不同、内容完全相同的对话副本。内容相同的请求只算一份独立样本，
+ * 后发的请求会命中本地缓存；报告里要写明这一点。
+ */
+export function countDuplicatePrompts(pairs) {
+	const seen = new Set();
+	let duplicates = 0;
+	for (const pair of pairs) {
+		for (const order of JUDGE_ORDERS) {
+			const { messages } = buildChoiceMessages(pair, order);
+			const signature = JSON.stringify(messages);
+			if (seen.has(signature)) duplicates += 1;
+			else seen.add(signature);
+		}
+	}
+	return { requests: seen.size + duplicates, unique: seen.size, duplicates };
+}
+
 export function buildChoiceMessages(pair, order) {
 	assertOrder(order);
 	const rejected = pair.rejectedText;
@@ -322,10 +340,15 @@ export function renderJudgeSection({ summary, meta }) {
 	lines.push(`| 有判断的配对 | ${summary.pairs} |`);
 	lines.push(`| 成功判断 | ${judgements.judgements} |`);
 	lines.push(
-		`| 失败判断 | ${meta.failedJudgements}（没有计入一致率，下次运行会重试） |`,
+		`| 失败判断 | ${meta.failedJudgements}（模型输出不合法或调用失败，没有计入一致率；明细留在 \`eval-private/f0/judge.jsonl\`） |`,
 	);
 	lines.push(`| 网络请求（成功判断） | ${meta.cost.requests} |`);
 	lines.push(`| 缓存命中（成功判断） | ${meta.cost.cacheHits} |`);
+	if (meta.duplicatePrompts && meta.duplicatePrompts.duplicates > 0) {
+		lines.push(
+			`| 内容完全相同的重复判断 | ${meta.duplicatePrompts.duplicates}（语料里有文件名不同、内容相同的对话副本；独立判断 ${meta.duplicatePrompts.unique}，重复请求部分命中缓存，不增加独立样本） |`,
+		);
+	}
 	lines.push(
 		`| 因输出为空或截断而重试的判断 | ${meta.cost.retries} |`,
 	);
@@ -406,6 +429,18 @@ export function renderJudgeSection({ summary, meta }) {
 		if (!thresholds.positionPassed) failed.push("位置偏差");
 		lines.push(
 			`- ${failed.join("与")}未达到门槛：R2 的 LLM 裁判只用于有台账可对照的矛盾与遗忘判定；偏好判断改用玩家的选择数据（重 roll、编辑、选择）。`,
+		);
+	}
+	const reverted = summary.groups.find(
+		(group) => group.label === "被接受的不是最后一条",
+	);
+	if (
+		reverted !== undefined &&
+		reverted.agreement !== null &&
+		reverted.agreement < thresholds.agreement
+	) {
+		lines.push(
+			`- 玩家切回较早 swipe 的 ${reverted.judgements} 次判断里一致率只有 ${pct(reverted.agreement)}，低于门槛；这类偏好直接采用玩家数据，不用裁判外推。`,
 		);
 	}
 	lines.push(
