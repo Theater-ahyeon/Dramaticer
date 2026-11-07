@@ -70,7 +70,7 @@ export const DEFAULT_STORY_SETTINGS_VALUES = {
 	budgetTokens: 12_000,
 	structuredOutput: "text-tags",
 	temperature: 0.8,
-	maxTokens: 1_024,
+	maxTokens: 4_096,
 	reasoning: "low",
 	directorConfig: DEFAULT_DIRECTOR_CONFIG,
 } as const;

@@ -77,7 +77,8 @@
   - 创建路由时校验 `judge` 与 `writer` 的模型家族不同：由模型名映射家族（映射不到的按完整模型名比较），不比较 `baseUrl`（所有模型都经过同一个本地网关）；相同则直接失败并指出两个角色，不自动替换。
   验收：四个角色各自解析到配置的模型别名；缺省回落正确；`judge` 与 `writer` 同模型家族时创建路由抛错并指出角色；`baseUrl` 相同但模型不同不报错；Trace 里有角色与渠道；`pnpm check` 通过。
 
-- [ ] **R1-T01.c 生成长度默认值与截断统计** | 依赖：M4-T02、R1-T01.b | DESIGN §10.2 | ADR-0041（A6）
+- [x] **R1-T01.c 生成长度默认值与截断统计** | 依赖：M4-T02、R1-T01.b | DESIGN §10.2 | ADR-0041（A6）
+  完成：2026-11-07 故事设置 `maxTokens` 缺省值改为 4,096 与 writer 模型声明上限取小（`resolveDefaultMaxTokens`，server 运行时只在故事没有保存过设置时使用，`StoryStore.hasStorySettings` 区分）；路由器续写轮次只拿剩余输出额度；`TurnTrace.llm.truncation` 换成 `truncations` 数组，`detectTruncations` 同时检出 length、未闭合标签与突然中断；门禁通过（733 个测试）
   做什么：
   - 故事设置 `maxTokens` 的默认值改为 4096 与 writer 模型在 `data/channels.yaml` 里声明的 `maxTokens` 中较小的一个；已保存的故事设置不改。
   - 截断检测结果（以 length 结束、标签未闭合、正文突然中断）写进 Trace；不自动续写到设置上限之外。

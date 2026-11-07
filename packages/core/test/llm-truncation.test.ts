@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { detectTruncation, resolveContinuationOptions } from "../src/index.js";
+import {
+	detectTruncation,
+	detectTruncations,
+	resolveContinuationOptions,
+} from "../src/index.js";
 
 describe("detectTruncation", () => {
 	it("以 length 结束直接判为截断", () => {
@@ -63,6 +67,30 @@ describe("detectTruncation", () => {
 				{ detectAbruptEnd: true, terminators: ";" },
 			),
 		).toBeNull();
+	});
+});
+
+describe("detectTruncations", () => {
+	it("同时报告 length、未闭合标签与突然中断", () => {
+		expect(
+			detectTruncations(
+				{ text: '<state_update>{"hp":1', stopReason: "length" },
+				{ expectedTags: ["state_update"], detectAbruptEnd: true },
+			),
+		).toEqual(["length", "unclosed_tag", "abrupt_end"]);
+	});
+
+	it("没有截断时返回空数组", () => {
+		expect(
+			detectTruncations(
+				{ text: "<state_update>{}</state_update>", stopReason: "stop" },
+				{
+					expectedTags: ["state_update"],
+					terminators: "。>",
+					detectAbruptEnd: true,
+				},
+			),
+		).toEqual([]);
 	});
 });
 

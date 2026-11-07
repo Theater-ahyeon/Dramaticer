@@ -3,6 +3,7 @@ import {
 	createLlmClient,
 	modelFamily,
 	parseChannelsConfig,
+	resolveDefaultMaxTokens,
 	resolveModelForRole,
 } from "../src/index.js";
 
@@ -276,5 +277,40 @@ models:
 			roleEnv,
 		);
 		expect(() => createLlmClient(config)).toThrow("judge 与 writer");
+	});
+});
+
+describe("故事设置的输出上限缺省值", () => {
+	const text = `
+channels:
+  gateway:
+    baseUrl: \${URL}
+    apiKey: \${KEY}
+models:
+  large:
+    id: opendesign/deepseek-v4.1-flash
+    maxTokens: 8192
+    channels: [gateway]
+  small:
+    id: vendor/model-x
+    maxTokens: 2048
+    channels: [gateway]
+`;
+
+	it("渠道声明大于 4096 时取 4096", () => {
+		const config = parseChannelsConfig(text, { URL: "u", KEY: "k" });
+		expect(resolveDefaultMaxTokens(config, "large")).toBe(4_096);
+	});
+
+	it("渠道声明小于 4096 时取声明值", () => {
+		const config = parseChannelsConfig(text, { URL: "u", KEY: "k" });
+		expect(resolveDefaultMaxTokens(config, "small")).toBe(2_048);
+	});
+
+	it("模型不在配置里时抛错", () => {
+		const config = parseChannelsConfig(text, { URL: "u", KEY: "k" });
+		expect(() => resolveDefaultMaxTokens(config, "missing")).toThrow(
+			"没有配置模型 missing",
+		);
 	});
 });

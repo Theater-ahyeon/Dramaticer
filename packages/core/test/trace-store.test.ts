@@ -33,7 +33,7 @@ function traceFor(
 			channel: "fake-channel",
 			stopReason: "stop",
 			finishReason: "stop",
-			truncation: null,
+			truncations: [],
 			usage: {
 				promptTokens: 1,
 				completionTokens: 2,

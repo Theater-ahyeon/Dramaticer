@@ -58,7 +58,7 @@ function emptyTrace(nodeId: string): TurnTrace {
 			channel: "fake",
 			stopReason: "stop",
 			finishReason: "stop",
-			truncation: null,
+			truncations: [],
 			usage: {
 				promptTokens: 0,
 				completionTokens: 0,

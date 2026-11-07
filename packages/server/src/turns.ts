@@ -121,7 +121,7 @@ export async function handleTurnStream(
 			embedder: runtime.embedder,
 			viewpoint: runtime.settings.viewpoint,
 			model: runtime.modelAlias,
-			maxTokens: runtime.settings.maxTokens,
+			maxTokens: runtime.maxTokens,
 			temperature: runtime.settings.temperature,
 			reasoning: runtime.settings.reasoning,
 			signal: ticket.signal,

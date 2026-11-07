@@ -7,6 +7,10 @@ import {
 } from "../context/assembler.js";
 import type { ContextTemplate } from "../context/template.js";
 import type { EmbeddingClient } from "../llm/embeddings.js";
+import {
+	DEFAULT_TRUNCATION_TERMINATORS,
+	detectTruncations,
+} from "../llm/truncation.js";
 import type {
 	LlmReasoningLevel,
 	LlmStreamingClient,
@@ -87,6 +91,19 @@ export interface ChatTurnResult {
 	readonly reasoning: string;
 	readonly trace: TurnTrace;
 }
+
+/** 正文里需要成对闭合的写入标签；续写与截断检测共用。 */
+const WRITE_BLOCK_TAGS = ["state_update", "plot_note"] as const;
+
+/**
+ * 截断检测口径：未闭合的写入标签、没有以结束字符收尾的正文都算截断；
+ * 以完整标签收尾的回复不算突然中断。
+ */
+const TRUNCATION_OPTIONS = {
+	expectedTags: WRITE_BLOCK_TAGS,
+	terminators: `${DEFAULT_TRUNCATION_TERMINATORS}>`,
+	detectAbruptEnd: true,
+} as const;
 
 /**
  * 单轮生成：追加用户楼层，组装上下文，流式生成并解析块，
@@ -174,7 +191,7 @@ export async function generateAssistantTurn(
 			reasoning: options.reasoning,
 			signal: options.signal,
 			continuation: {
-				expectedTags: ["state_update", "plot_note"],
+				expectedTags: WRITE_BLOCK_TAGS,
 				continueOn: ["length", "unclosed_tag"],
 			},
 			onTextDelta: options.onTextDelta,
@@ -201,6 +218,10 @@ export async function generateAssistantTurn(
 	const result = turn.result;
 	const completedAt = now();
 	const blocks = turn.blocks;
+	const truncations = detectTruncations(
+		{ text: result.text, stopReason: result.stopReason },
+		TRUNCATION_OPTIONS,
+	);
 
 	const structured = functionCall
 		? collectStructuredOutputFromToolCalls(turn.toolCalls)
@@ -236,7 +257,7 @@ export async function generateAssistantTurn(
 				channel: result.channel,
 				stopReason: result.stopReason,
 				finishReason: result.finishReason,
-				truncation: result.truncation,
+				truncations,
 				usage: turn.usage,
 				attempts: turn.attempts,
 				rounds: turn.modelRounds,
@@ -335,7 +356,7 @@ async function persistAbortedTurn(input: {
 				channel: null,
 				stopReason: "aborted",
 				finishReason: null,
-				truncation: null,
+				truncations: [],
 				usage: emptyUsage(),
 				attempts: 0,
 				rounds: 0,

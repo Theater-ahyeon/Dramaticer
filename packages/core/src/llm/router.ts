@@ -1,4 +1,5 @@
 import { setTimeout as delay } from "node:timers/promises";
+import { createTokenEstimator } from "../tokens.js";
 import {
 	readCachedResult,
 	requestCacheKey,
@@ -141,6 +142,9 @@ export class LlmRouter implements LlmStreamingClient {
 		}
 
 		const totalRounds = 1 + continuationOptions.maxRounds;
+		/** 本次调用的输出上限；续写轮次与首轮共用这个上限。 */
+		const outputCap = request.maxTokens ?? route.model.maxTokens;
+		let outputTokens = 0;
 		let rounds = 0;
 		let attempts = 0;
 		let generatedText = request.continuation?.text ?? "";
@@ -152,6 +156,7 @@ export class LlmRouter implements LlmStreamingClient {
 
 		while (true) {
 			throwIfAborted(request.signal);
+			const priorChars = generatedText.length;
 			const round = await this.runRound({
 				route,
 				channels,
@@ -159,6 +164,7 @@ export class LlmRouter implements LlmStreamingClient {
 				priorText: generatedText,
 				priorReasoning: generatedReasoning,
 				continuation,
+				maxTokens: Math.max(1, outputCap - outputTokens),
 				emit,
 			});
 			attempts += round.attempts;
@@ -166,6 +172,7 @@ export class LlmRouter implements LlmStreamingClient {
 			generatedText = round.text;
 			generatedReasoning = round.reasoning;
 			usage = addUsage(usage, round.usage);
+			outputTokens += roundOutputTokens(round, priorChars);
 			last = { result: round.result, channel: round.channel };
 			truncation = detectTruncation(
 				{ text: generatedText, stopReason: round.result.stopReason },
@@ -176,6 +183,7 @@ export class LlmRouter implements LlmStreamingClient {
 				generatedText.length + generatedReasoning.length > 0;
 			const shouldContinue =
 				rounds < totalRounds &&
+				outputTokens < outputCap &&
 				((truncation !== null &&
 					continuationOptions.continueOn.includes(truncation)) ||
 					interrupted);
@@ -228,6 +236,8 @@ export class LlmRouter implements LlmStreamingClient {
 		readonly priorText: string;
 		readonly priorReasoning: string;
 		readonly continuation: LlmRequest["continuation"];
+		/** 本轮允许生成的输出 token 数；续写轮次只拿剩余额度。 */
+		readonly maxTokens: number;
 		readonly emit: (event: LlmStreamEvent) => void;
 	}): Promise<{
 		readonly result: LlmProviderResult;
@@ -256,7 +266,7 @@ export class LlmRouter implements LlmStreamingClient {
 					messages: input.request.messages,
 					tools: input.request.tools,
 					temperature: input.request.temperature,
-					maxTokens: input.request.maxTokens,
+					maxTokens: input.maxTokens,
 					reasoning: input.request.reasoning,
 					continuation: activeContinuation,
 					signal: input.request.signal,
@@ -436,6 +446,18 @@ function truncationOptions(options: ResolvedContinuationOptions) {
 		terminators: options.terminators,
 		detectAbruptEnd: options.detectAbruptEnd,
 	};
+}
+
+const estimateTokens = createTokenEstimator();
+
+/** 一轮实际消耗的输出 token；渠道没有报告用量时按正文估算。 */
+function roundOutputTokens(
+	round: { readonly usage: LlmUsage; readonly text: string },
+	priorChars: number,
+): number {
+	const reported = round.usage.completionTokens;
+	if (reported !== null) return reported;
+	return estimateTokens(round.text.slice(priorChars));
 }
 
 function failedResult(

@@ -4,7 +4,7 @@ import type {
 	LlmTruncationReason,
 } from "./types.js";
 
-const DEFAULT_TERMINATORS = "。！？!?…」』】）)]}\"'”’";
+export const DEFAULT_TRUNCATION_TERMINATORS = "。！？!?…」』】）)]}\"'”’";
 
 export interface DetectTruncationOptions {
 	readonly expectedTags?: readonly string[];
@@ -12,26 +12,39 @@ export interface DetectTruncationOptions {
 	readonly detectAbruptEnd?: boolean;
 }
 
-/** 按结束原因、未闭合标签与句尾判断内容是否被截断。 */
+/**
+ * 同时检出全部截断原因，按 length、unclosed_tag、abrupt_end 的固定顺序返回。
+ * 用来把一轮生成的全部截断写进 Trace。
+ */
+export function detectTruncations(
+	result: Pick<LlmResult, "text" | "stopReason">,
+	options: DetectTruncationOptions = {},
+): LlmTruncationReason[] {
+	const reasons: LlmTruncationReason[] = [];
+	if (result.stopReason === "length") reasons.push("length");
+	const text = result.text;
+	const unclosedTag = (options.expectedTags ?? []).some((tag) =>
+		hasUnclosedTag(text, tag),
+	);
+	if (
+		unclosedTag ||
+		(options.expectedTags !== undefined &&
+			text.lastIndexOf("<") > text.lastIndexOf(">"))
+	) {
+		reasons.push("unclosed_tag");
+	}
+	if (options.detectAbruptEnd === true && isAbruptEnd(text, options)) {
+		reasons.push("abrupt_end");
+	}
+	return reasons;
+}
+
+/** 按结束原因、未闭合标签与句尾判断内容是否被截断；返回优先检查到的第一个原因。 */
 export function detectTruncation(
 	result: Pick<LlmResult, "text" | "stopReason">,
 	options: DetectTruncationOptions = {},
 ): LlmTruncationReason | null {
-	if (result.stopReason === "length") return "length";
-	const text = result.text;
-	for (const tag of options.expectedTags ?? []) {
-		if (hasUnclosedTag(text, tag)) return "unclosed_tag";
-	}
-	if (
-		options.expectedTags !== undefined &&
-		text.lastIndexOf("<") > text.lastIndexOf(">")
-	) {
-		return "unclosed_tag";
-	}
-	if (options.detectAbruptEnd === true && isAbruptEnd(text, options)) {
-		return "abrupt_end";
-	}
-	return null;
+	return detectTruncations(result, options)[0] ?? null;
 }
 
 export interface ResolvedContinuationOptions {
@@ -59,7 +72,7 @@ export function resolveContinuationOptions(
 		maxRounds,
 		continueOn,
 		expectedTags: options?.expectedTags,
-		terminators: options?.terminators ?? DEFAULT_TERMINATORS,
+		terminators: options?.terminators ?? DEFAULT_TRUNCATION_TERMINATORS,
 		detectAbruptEnd: options?.detectAbruptEnd ?? false,
 	};
 }
@@ -87,6 +100,6 @@ function isAbruptEnd(text: string, options: DetectTruncationOptions): boolean {
 	if (trimmed.length === 0) return false;
 	const last = trimmed.at(-1);
 	if (last === undefined) return false;
-	const terminators = options.terminators ?? DEFAULT_TERMINATORS;
+	const terminators = options.terminators ?? DEFAULT_TRUNCATION_TERMINATORS;
 	return !terminators.includes(last);
 }

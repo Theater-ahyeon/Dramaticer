@@ -255,6 +255,43 @@ describe("LlmRouter", () => {
 		expect(result.usage.completionTokens).toBe(12);
 	});
 
+	it("续写轮次只拿剩余的输出上限", async () => {
+		const channel = fakeChannel("a", (_request, call) => {
+			if (call === 1) {
+				return {
+					text: "前半",
+					stopReason: "length",
+					usage: usage(10, 40),
+				};
+			}
+			return { text: "后半", usage: usage(20, 7) };
+		});
+		const result = await createRouter([channel]).complete({
+			...request(),
+			maxTokens: 100,
+		});
+
+		expect(result.text).toBe("前半后半");
+		expect(channel.calls.map((call) => call.maxTokens)).toEqual([100, 60]);
+	});
+
+	it("输出上限用完后不再续写", async () => {
+		const channel = fakeChannel("a", () => ({
+			text: "前半",
+			stopReason: "length",
+			usage: usage(10, 40),
+		}));
+		const result = await createRouter([channel]).complete({
+			...request(),
+			maxTokens: 40,
+		});
+
+		expect(channel.calls).toHaveLength(1);
+		expect(result.text).toBe("前半");
+		expect(result.rounds).toBe(1);
+		expect(result.truncation).toBe("length");
+	});
+
 	it("未闭合的标签按配置续写", async () => {
 		const channel = fakeChannel("a", (_request, call) => {
 			if (call === 1) {

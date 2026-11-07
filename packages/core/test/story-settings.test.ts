@@ -50,7 +50,7 @@ describe("故事设置", () => {
 			budgetTokens: 12_000,
 			structuredOutput: "text-tags",
 			temperature: 0.8,
-			maxTokens: 1_024,
+			maxTokens: 4_096,
 			reasoning: "low",
 			viewpoint: null,
 			directorConfig: DEFAULT_DIRECTOR_CONFIG,

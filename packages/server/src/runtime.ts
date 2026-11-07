@@ -11,6 +11,7 @@ import {
 	createEmbeddingClient,
 	createLlmClient,
 	createStandardChatProviders,
+	resolveDefaultMaxTokens,
 	resolveModelForRole,
 } from "@dramaticer/core";
 
@@ -31,6 +32,8 @@ export const DEFAULT_EMBEDDING_ALIAS = "default";
 export interface StoryRuntime {
 	readonly settings: StorySettings;
 	readonly modelAlias: string;
+	/** 本轮生成的输出上限：保存过设置时用设置值，否则按 writer 模型声明计算。 */
+	readonly maxTokens: number;
 	readonly template: ContextTemplate;
 	readonly providers: ContextSlotProviders;
 	readonly chatClient: LlmStreamingClient;
@@ -75,12 +78,16 @@ export class StoryRuntimeManager {
 		const key = `${settings.updatedAt}\u0000${configFingerprint(config)}`;
 		const cached = this.#cache.get(storyId);
 		if (cached?.key === key) return cached.runtime;
-		const runtime = this.#build(settings, config);
+		const runtime = this.#build(storyId, settings, config);
 		this.#cache.set(storyId, { key, runtime });
 		return runtime;
 	}
 
-	#build(settings: StorySettings, config: LlmChannelsConfig): StoryRuntime {
+	#build(
+		storyId: string,
+		settings: StorySettings,
+		config: LlmChannelsConfig,
+	): StoryRuntime {
 		const modelAlias = settings.model ?? resolveModelForRole(config, "writer");
 		if (!config.models.has(modelAlias)) {
 			throw new Error(`故事设置的模型 ${modelAlias} 不在渠道配置里`);
@@ -98,9 +105,13 @@ export class StoryRuntimeManager {
 		const embedder = config.embeddings.has(DEFAULT_EMBEDDING_ALIAS)
 			? this.#createEmbedder(config)
 			: null;
+		const maxTokens = this.#store.hasStorySettings(storyId)
+			? settings.maxTokens
+			: resolveDefaultMaxTokens(config, modelAlias);
 		return {
 			settings,
 			modelAlias,
+			maxTokens,
 			template,
 			providers: createStandardChatProviders({
 				store: this.#store,

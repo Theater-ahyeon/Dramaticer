@@ -29,12 +29,12 @@ function tempStore(): StoryStore {
 	return store;
 }
 
-function model(alias: string, id: string): LlmModelConfig {
+function model(alias: string, id: string, maxTokens = 1_024): LlmModelConfig {
 	return {
 		alias,
 		id,
 		contextWindow: 8_192,
-		maxTokens: 1_024,
+		maxTokens,
 		reasoning: true,
 		channels: ["gateway"],
 		probe: null,
@@ -132,5 +132,45 @@ describe("StoryRuntimeManager 按角色创建客户端", () => {
 		const runtime = await manager.get("s1");
 		expect(runtime.backgroundClient).toBeNull();
 		expect(aliases).toEqual(["main"]);
+	});
+});
+
+describe("StoryRuntimeManager 计算输出上限", () => {
+	async function maxTokensFor(
+		config: LlmChannelsConfig,
+		saved?: number,
+	): Promise<number> {
+		const store = tempStore();
+		if (saved !== undefined) {
+			store.updateStorySettings("s1", { maxTokens: saved });
+		}
+		const manager = new StoryRuntimeManager({
+			store,
+			loadConfig: async () => config,
+			createClient: () => unusedClient,
+		});
+		return (await manager.get("s1")).maxTokens;
+	}
+
+	it("没有保存设置时取 4096 与 writer 声明上限的较小值", async () => {
+		expect(
+			await maxTokensFor(
+				configWith([model("main", "opendesign/deepseek-v4.1-flash", 8_192)]),
+			),
+		).toBe(4_096);
+		expect(
+			await maxTokensFor(
+				configWith([model("main", "opendesign/deepseek-v4.1-flash", 2_048)]),
+			),
+		).toBe(2_048);
+	});
+
+	it("保存过设置时沿用设置值", async () => {
+		expect(
+			await maxTokensFor(
+				configWith([model("main", "opendesign/deepseek-v4.1-flash", 8_192)]),
+				1_500,
+			),
+		).toBe(1_500);
 	});
 });

@@ -152,6 +152,24 @@ export function resolveModelForRole(
 	throw new Error(`角色 ${role} 没有配置模型，回落的 ${fallback} 模型也不存在`);
 }
 
+/** 故事设置没有保存过时使用的输出上限：不超过 4,096 token。 */
+export const DEFAULT_OUTPUT_MAX_TOKENS = 4_096;
+
+/**
+ * 故事设置 `maxTokens` 的缺省值：4,096 与模型在渠道配置里声明的
+ * 输出上限取小；模型不在配置里时抛错。
+ */
+export function resolveDefaultMaxTokens(
+	config: LlmChannelsConfig,
+	modelAlias: string,
+): number {
+	const model = config.models.get(modelAlias);
+	if (model === undefined) {
+		throw new Error(`没有配置模型 ${modelAlias}`);
+	}
+	return Math.min(DEFAULT_OUTPUT_MAX_TOKENS, model.maxTokens);
+}
+
 const MODEL_FAMILY_KEYWORDS: readonly (readonly [string, readonly string[]])[] =
 	[
 		["gemini", ["gemini", "gemma"]],

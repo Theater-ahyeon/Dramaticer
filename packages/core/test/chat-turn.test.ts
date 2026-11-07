@@ -29,6 +29,7 @@ interface FakeClientOptions {
 	readonly resultText: string;
 	readonly toolCalls?: readonly LlmToolCall[];
 	readonly reasoning?: string;
+	readonly stopReason?: LlmResult["stopReason"];
 }
 
 function splitChunks(text: string, size: number): string[] {
@@ -52,7 +53,7 @@ function createFakeClient(options: FakeClientOptions): {
 		reasoning,
 		toolCalls: options.toolCalls ?? [],
 		finishReason: "stop",
-		stopReason: "stop",
+		stopReason: options.stopReason ?? "stop",
 		model: "fake-model",
 		channel: "fake-channel",
 		usage: USAGE,
@@ -203,6 +204,7 @@ describe("runChatTurn", () => {
 			channel: "fake-channel",
 			usage: USAGE,
 			stopReason: "stop",
+			truncations: [],
 		});
 		expect(trace?.timing.firstTokenMs).not.toBeNull();
 		expect(
@@ -217,6 +219,43 @@ describe("runChatTurn", () => {
 			["protocol", "included"],
 			["history", "included"],
 		]);
+	});
+
+	it("Trace 记录 length、未闭合标签与突然中断", async () => {
+		const { store } = openTempStore();
+		seedStory(store);
+
+		async function truncationsFor(
+			text: string,
+			stopReason: LlmResult["stopReason"] = "stop",
+		) {
+			const { client } = createFakeClient({
+				chunks: [text],
+				resultText: text,
+				stopReason,
+			});
+			const result = await runChatTurn({
+				store,
+				client,
+				storyId: "s1",
+				userText: "继续。",
+				template: createDefaultContextTemplate({
+					structuredOutput: "text-tags",
+				}),
+				providers: providers(store),
+				budgetTokens: 4_000,
+				structuredOutput: "text-tags",
+			});
+			return store.getTurnTrace(result.node.id)?.llm.truncations;
+		}
+
+		expect(await truncationsFor("山门缓缓打开。", "length")).toEqual([
+			"length",
+		]);
+		expect(await truncationsFor("<state_update>已写。")).toEqual([
+			"unclosed_tag",
+		]);
+		expect(await truncationsFor("山门缓缓打开")).toEqual(["abrupt_end"]);
 	});
 
 	it("函数调用模式：带工具定义，非法负载记进 Trace", async () => {

@@ -17,7 +17,8 @@ export interface TurnTraceLlm {
 	readonly channel: string | null;
 	readonly stopReason: LlmStopReason;
 	readonly finishReason: string | null;
-	readonly truncation: LlmTruncationReason | null;
+	/** 检出的全部截断原因；没有截断时为空数组。 */
+	readonly truncations: readonly LlmTruncationReason[];
 	readonly usage: LlmUsage;
 	readonly attempts: number;
 	readonly rounds: number;

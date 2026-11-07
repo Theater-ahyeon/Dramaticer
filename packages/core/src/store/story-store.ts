@@ -1074,6 +1074,18 @@ export class StoryStore {
 		};
 	}
 
+	/** 故事是否保存过设置；没有保存时 `getStorySettings` 返回默认值。 */
+	hasStorySettings(storyId: string): boolean {
+		assertNonEmptyString(storyId, "故事 id");
+		if (!this.getStory(storyId)) {
+			throw new Error(`故事不存在：${storyId}`);
+		}
+		const row = this.#db
+			.prepare("SELECT 1 AS present FROM story_settings WHERE story_id = ?")
+			.get(storyId) as { readonly present: number } | undefined;
+		return row !== undefined;
+	}
+
 	/** 合并式更新；`null` 清空可空字段，未出现的字段保持原值。 */
 	updateStorySettings(
 		storyId: string,
