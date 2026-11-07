@@ -5,16 +5,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { OpenAiCompatibleClient } from "@dramaticer/core";
 import { parseChatJsonlFile } from "../chat-jsonl.js";
-import {
-	type SnapshotManifestFile,
-	readSnapshotManifest,
-} from "../health/report.js";
+import { readSnapshotManifest } from "../health/report.js";
 import { messageNodeId } from "../node-id.js";
 import {
 	type EventQuestion,
 	buildEventQuestionsFromFile,
 	verifyEventQuestionsFromFile,
 } from "./event-questions.js";
+import { sanitizeFileName, storyIdOf } from "./question-files.js";
 
 const repoRoot = fileURLToPath(new URL("../../../../", import.meta.url));
 const envPath = path.join(repoRoot, ".env");
@@ -283,10 +281,6 @@ function oneLine(text: string): string {
 	return text.replace(/\s+/g, " ").trim();
 }
 
-function storyIdOf(file: SnapshotManifestFile): string {
-	return file.character ?? path.basename(file.target).replace(/\.jsonl$/i, "");
-}
-
 /** 支持 `--story <id>` 与 `--story=<id>`，用于只重跑一个对话。 */
 function readStoryFilter(args: readonly string[]): string | undefined {
 	for (let index = 0; index < args.length; index += 1) {
@@ -328,8 +322,4 @@ function optionalInt(name: string, fallback: number): number {
 function nonEmpty(value: string | undefined): string | undefined {
 	const trimmed = value?.trim();
 	return trimmed ? trimmed : undefined;
-}
-
-function sanitizeFileName(value: string): string {
-	return value.replace(/[\\/:*?"<>|]/g, "_");
 }

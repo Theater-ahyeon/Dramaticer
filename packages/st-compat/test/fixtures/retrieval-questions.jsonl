@@ -1,0 +1,2 @@
+{"id":"retrieval:1","story":"测试故事","askAtNode":"测试故事:m9:s0","question":"苏禾在哪里练习青铜匕首的招式？","evidenceNodes":["测试故事:m4:s0"],"kind":"state"}
+{"id":"retrieval:2","story":"测试故事","askAtNode":"测试故事:m9:s0","question":"商贩说匕首来自哪里？","evidenceNodes":["测试故事:m2:s0"],"kind":"state"}

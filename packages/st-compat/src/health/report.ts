@@ -1,10 +1,14 @@
-import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { isJsonObject } from "../json.js";
+import type {
+	RetrievalBaseline,
+	RetrievalScore,
+} from "../evalset/retrieval.js";
 import type { ChatHealth } from "./chat-health.js";
 import { analyzeChat } from "./chat-health.js";
 import type { EntityHealth } from "./entity-health.js";
 import { analyzeEntityFiles } from "./entity-health.js";
+import type { SnapshotManifest, SnapshotManifestFile } from "./manifest.js";
+import { readSnapshotManifest } from "./manifest.js";
 import type { PresetHealth } from "./preset-health.js";
 import { analyzePresets, parsePresetFiles } from "./preset-health.js";
 import type { RegexHealth } from "./regex-health.js";
@@ -17,16 +21,8 @@ import {
 import type { TokenEstimator } from "./token-estimate.js";
 import { createTokenEstimator } from "./token-estimate.js";
 
-export interface SnapshotManifestFile {
-	readonly role: string;
-	readonly character?: string;
-	readonly target: string;
-}
-
-export interface SnapshotManifest {
-	readonly generatedAt: string | null;
-	readonly files: readonly SnapshotManifestFile[];
-}
+export type { SnapshotManifest, SnapshotManifestFile } from "./manifest.js";
+export { parseSnapshotManifest, readSnapshotManifest } from "./manifest.js";
 
 export interface ChatReportEntry {
 	readonly character: string | null;
@@ -65,46 +61,6 @@ export interface CollectHealthReportOptions {
 	readonly rawRoot: string;
 	readonly tokenEstimator?: TokenEstimator;
 	readonly generatedAt?: string;
-}
-
-export async function readSnapshotManifest(
-	manifestPath: string,
-): Promise<SnapshotManifest> {
-	const text = await readFile(manifestPath, "utf8");
-	return parseSnapshotManifest(JSON.parse(text));
-}
-
-export function parseSnapshotManifest(value: unknown): SnapshotManifest {
-	if (!isJsonObject(value)) {
-		throw new Error("manifest 根必须是对象");
-	}
-	if (!Array.isArray(value.files)) {
-		throw new Error("manifest.files 必须是数组");
-	}
-	const files = value.files.map((file, index) => {
-		if (!isJsonObject(file)) {
-			throw new Error(`manifest.files[${index}] 必须是对象`);
-		}
-		if (typeof file.role !== "string" || file.role.length === 0) {
-			throw new Error(`manifest.files[${index}].role 必须是非空字符串`);
-		}
-		if (typeof file.target !== "string" || file.target.length === 0) {
-			throw new Error(`manifest.files[${index}].target 必须是非空字符串`);
-		}
-		if (file.character !== undefined && typeof file.character !== "string") {
-			throw new Error(`manifest.files[${index}].character 必须是字符串`);
-		}
-		return {
-			role: file.role,
-			character: file.character,
-			target: file.target,
-		};
-	});
-	return {
-		generatedAt:
-			typeof value.generatedAt === "string" ? value.generatedAt : null,
-		files,
-	};
 }
 
 export async function collectHealthReport(
@@ -155,7 +111,10 @@ export async function collectHealthReport(
 	};
 }
 
-export function renderPrivateReport(report: HealthReport): string {
+export function renderPrivateReport(
+	report: HealthReport,
+	retrieval?: RetrievalBaseline,
+): string {
 	const lines: string[] = [];
 	lines.push("# M0 私有体检报告", "");
 	lines.push(`生成时间：${report.generatedAt}`);
@@ -273,10 +232,17 @@ export function renderPrivateReport(report: HealthReport): string {
 	lines.push("## 正则分类");
 	lines.push("");
 	renderRegexDetails(lines, report.regex, true);
+	if (retrieval) {
+		lines.push("");
+		renderRetrievalSection(lines, retrieval, true);
+	}
 	return `${lines.join("\n")}\n`;
 }
 
-export function renderPublicReport(report: HealthReport): string {
+export function renderPublicReport(
+	report: HealthReport,
+	retrieval?: RetrievalBaseline,
+): string {
 	const lines: string[] = [];
 	lines.push("# M0 体检报告（统计版）", "");
 	lines.push(`生成时间：${report.generatedAt}`);
@@ -433,6 +399,10 @@ export function renderPublicReport(report: HealthReport): string {
 	lines.push("## 正则分类");
 	lines.push("");
 	renderRegexDetails(lines, report.regex, false);
+	if (retrieval) {
+		lines.push("");
+		renderRetrievalSection(lines, retrieval, false);
+	}
 	lines.push("");
 	lines.push("## 方法");
 	lines.push("");
@@ -452,6 +422,54 @@ export function renderPublicReport(report: HealthReport): string {
 		"- 正则分类按 findRegex 与 replaceString 的结构判定，判定顺序依次是流式版本、内联脚本、渲染 HTML、删除思考链、删除内容、重排捕获内容、文本替换。可升级指这条正则能改由块策略、渲染器或沙箱渲染器承担；比例按启用的脚本计算。",
 	);
 	return `${lines.join("\n")}\n`;
+}
+
+function renderRetrievalSection(
+	lines: string[],
+	retrieval: RetrievalBaseline,
+	privateView: boolean,
+): void {
+	lines.push("## 检索基线（BM25）");
+	lines.push("");
+	lines.push(
+		`分块：固定窗口 ${retrieval.maxChars} 字符、重叠 ${retrieval.overlapChars} 字符，按 FTS5 trigram 建索引。每道题只在提问楼层之前的楼层里检索；证据楼层出现在前 K 个结果里算命中。`,
+	);
+	lines.push("");
+	lines.push("| 对话 | 楼层 | 块数 |");
+	lines.push("|---|---|---|");
+	retrieval.stories.forEach((story, index) => {
+		const label = privateView ? cell(story.story) : `对话 ${index + 1}`;
+		lines.push(`| ${label} | ${story.floorCount} | ${story.chunkCount} |`);
+	});
+	lines.push("");
+	lines.push("| 对话 | 题目类型 | 题数 | 命中@5 | 命中@10 | 命中@20 |");
+	lines.push("|---|---|---|---|---|---|");
+	retrieval.stories.forEach((story, index) => {
+		const label = privateView ? cell(story.story) : `对话 ${index + 1}`;
+		for (const score of story.byKind) {
+			lines.push(
+				scoreRow(label, score.kind === "state" ? "状态题" : "事件题", score),
+			);
+		}
+		lines.push(scoreRow(label, "全部", story.total));
+	});
+	for (const score of retrieval.byKind) {
+		lines.push(
+			scoreRow("合计", score.kind === "state" ? "状态题" : "事件题", score),
+		);
+	}
+	lines.push(scoreRow("合计", "全部", retrieval.total));
+}
+
+function scoreRow(
+	label: string,
+	questionType: string,
+	score: RetrievalScore,
+): string {
+	const hits = [score.hitAt5, score.hitAt10, score.hitAt20]
+		.map((hit) => `${hit}（${formatPercent(ratio(hit, score.questionCount))}）`)
+		.join(" | ");
+	return `| ${label} | ${questionType} | ${score.questionCount} | ${hits} |`;
 }
 
 function renderPresetDetails(lines: string[], presets: PresetHealth): void {

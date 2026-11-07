@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import type { RetrievalBaseline } from "../src/evalset/retrieval.js";
 import {
 	collectHealthReport,
 	parseSnapshotManifest,
@@ -8,6 +9,27 @@ import {
 } from "../src/health/report.js";
 
 const fixturesPath = fileURLToPath(new URL("./fixtures/", import.meta.url));
+
+const retrieval: RetrievalBaseline = {
+	generatedAt: "2026-01-03T00:00:00.000Z",
+	maxChars: 400,
+	overlapChars: 80,
+	stories: [
+		{
+			story: "私有角色名",
+			floorCount: 5,
+			chunkCount: 6,
+			byKind: [
+				{ kind: "state", questionCount: 2, hitAt5: 1, hitAt10: 2, hitAt20: 2 },
+			],
+			total: { questionCount: 2, hitAt5: 1, hitAt10: 2, hitAt20: 2 },
+		},
+	],
+	byKind: [
+		{ kind: "state", questionCount: 2, hitAt5: 1, hitAt10: 2, hitAt20: 2 },
+	],
+	total: { questionCount: 2, hitAt5: 1, hitAt10: 2, hitAt20: 2 },
+};
 
 describe("parseSnapshotManifest", () => {
 	it("拒绝缺少 files 的 manifest", () => {
@@ -87,5 +109,20 @@ describe("报告渲染", () => {
 		expect(text).toContain("正则作用范围");
 		expect(text).toContain("目标标签前 20");
 		expect(text).toContain("diff/快照");
+	});
+
+	it("检索基线按对话统计，统计版不出现私有故事名", async () => {
+		const report = await collectHealthReport({
+			rawRoot: fixturesPath,
+			generatedAt: "2026-01-02T00:00:00.000Z",
+		});
+		const publicText = renderPublicReport(report, retrieval);
+		expect(publicText).toContain("## 检索基线（BM25）");
+		expect(publicText).toContain("命中@5");
+		expect(publicText).toContain("50.0%");
+		expect(publicText).not.toContain("私有角色名");
+		const privateText = renderPrivateReport(report, retrieval);
+		expect(privateText).toContain("私有角色名");
+		expect(privateText).toContain("50.0%");
 	});
 });

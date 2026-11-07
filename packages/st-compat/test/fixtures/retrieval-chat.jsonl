@@ -1,0 +1,11 @@
+{"user_name":"用户","character_name":"角色"}
+{"name":"角色","is_user":false,"is_system":false,"mes":"开场：苏禾在集市买了一把青铜匕首，商贩收了她三枚铜钱。"}
+{"name":"用户","is_user":true,"mes":"苏禾问商贩这把匕首来自哪里。"}
+{"name":"角色","is_user":false,"is_system":false,"mes":"商贩说匕首从北边的矿镇运来，矿镇最近不太平。"}
+{"name":"用户","is_user":true,"mes":"苏禾把匕首收进背包，离开集市。"}
+{"name":"角色","is_user":false,"is_system":false,"mes":"傍晚苏禾在河边练习青铜匕首的招式，河面起了雾。"}
+{"name":"用户","is_user":true,"mes":"夜里客栈的老板提到矿镇发生了塌方。"}
+{"name":"角色","is_user":false,"is_system":false,"mes":"第二天清晨，苏禾决定前往矿镇查看塌方。"}
+{"name":"用户","is_user":true,"mes":"苏禾收拾行李准备出发。"}
+{"name":"系统","is_user":false,"is_system":true,"mes":"系统提示：矿镇发生了塌方，请保持警惕。"}
+{"name":"角色","is_user":false,"is_system":false,"mes":"苏禾踏上前往矿镇的路。"}

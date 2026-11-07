@@ -3,6 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { readSnapshotManifest } from "../health/report.js";
+import { sanitizeFileName, storyIdOf } from "./question-files.js";
 import {
 	buildStateQuestionsFromFile,
 	verifyStateQuestionsFromFile,
@@ -36,8 +37,7 @@ const summaries: StorySummary[] = [];
 const seenStories = new Set<string>();
 
 for (const file of chatFiles) {
-	const storyId =
-		file.character ?? path.basename(file.target).replace(/\.jsonl$/i, "");
+	const storyId = storyIdOf(file);
 	if (seenStories.has(storyId)) {
 		throw new Error(`manifest 里出现了重复的故事名 ${storyId}`);
 	}
@@ -122,8 +122,4 @@ function sampleQuestions<T>(questions: readonly T[]): T[] {
 		}
 		return question;
 	});
-}
-
-function sanitizeFileName(value: string): string {
-	return value.replace(/[\\/:*?"<>|]/g, "_");
 }

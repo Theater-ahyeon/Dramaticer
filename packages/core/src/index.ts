@@ -1,5 +1,7 @@
 export { isRecord } from "./json.js";
 export * from "./llm/client.js";
+export * from "./retrieval/chunk-index.js";
+export * from "./retrieval/chunk-text.js";
 export { LATEST_SCHEMA_VERSION } from "./store/migrations.js";
 export type {
 	AppendNodeInput,
