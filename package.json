@@ -11,11 +11,14 @@
 		"typecheck": "tsc -b",
 		"lint": "biome check .",
 		"test": "vitest run",
+		"snapshot": "node scripts/snapshot-private-data.mjs",
 		"check": "pnpm run invariants && pnpm run typecheck && pnpm run lint && pnpm run test"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^1.9.4",
 		"@types/node": "^24.13.0",
+		"png-chunk-text": "^1.0.0",
+		"png-chunks-extract": "^1.0.0",
 		"typescript": "^5.8.2",
 		"vitest": "^3.0.7"
 	}

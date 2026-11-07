@@ -10,3 +10,5 @@
 | `@types/node` | dev | Node 类型 |
 | `better-sqlite3` | runtime | SQLite 与 FTS5（ADR-0001） |
 | `@types/better-sqlite3` | dev | 类型 |
+| `png-chunks-extract` | dev | 读取 PNG 块（快照脚本从角色卡提取世界书引用；ADR-0003） |
+| `png-chunk-text` | dev | 解码 PNG tEXt 文本块（ADR-0003） |

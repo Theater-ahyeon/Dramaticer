@@ -18,7 +18,8 @@
   - 新建 `docs/dev/DEPENDENCIES.md`，登记所有依赖：包名用反引号括起来，并写一句理由
   验收：`pnpm install && pnpm check` 通过；`git status` 干净；故意在 core 里写一个 `setvar` 能让 invariants 失败（验证完删掉）。
 
-- [ ] **M0-T02 私有数据快照脚本** | 依赖：M0-T01
+- [x] **M0-T02 私有数据快照脚本** | 依赖：M0-T01
+  完成：2026-11-06 脚本复制 67 个文件（3 对话、3 卡、3 世界书、58 预设）到 `eval-private/raw`，manifest 的 sha256 与源文件、目标文件逐一核对一致
   做什么：写 `scripts/snapshot-private-data.mjs`。它从 `D:\SillyTavern\TauriTavern\default-user\` **只读地复制**以下内容到 `eval-private/raw/`：
   - `chats/` 下 3 个角色目录里各自**最大的**那个 jsonl：目录名以「仙侠雌竞」开头的、「银麒赎世」、「欲望世界-1600」
   - 这 3 个角色对应的角色卡（`characters/` 下同名的 png 或 json）
