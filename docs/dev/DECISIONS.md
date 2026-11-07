@@ -594,3 +594,19 @@
   - 回合 Trace 的 `structured` 段继续只描述生成回合内模型自己的写入与被拒绝的条目，结算不改写已保存的 Trace。
   - 结算窗口以当前 head 为终点：一次请求覆盖 head 路径上最多 `settleWindowFloors` 个未结算楼层；其余楼层对应的 `settle` 任务执行时窗口已空，直接完成。
 - **影响**：`docs/dev/TASKS.md` 的 R1-T02.2 按上述方式记录修复原因；后续 R1-T07.a 从 `ledger_settlements.repairs` 读取冲突记录生成变更卡。
+
+## ADR-0047 结算的实体解析、knowledge 形状与冲突记录（2026-11-07）
+
+- **背景**：R1-T02.3 要求写入前规范化人物、地点、物品的名称，`knowledge` 改按事实 id 去重，与最近原文冲突的事实不覆盖已有值并记入 `repairs`。结算器一次请求已经拿到窗口原文与台账快照，但模型输出里没有现成的冲突标记，候选实体的建档条件与修复动作的取值也需要落到具体实现。
+- **选项**：
+  - 规范写法用实体 id 还是实体的名称：实体 id 在导入时是随机 UUID，正文模型写的路径用名称，两套键会让同一人物在台账里出现两份；用实体名称作为规范写法，别名映射到它（采纳）。
+  - 冲突检测单独发一次请求还是让结算请求同时返回：单独请求会把结算调用次数翻倍；让同一个请求返回 `conflicts` 数组，程序只接受事实级的拒绝记录（采纳）。
+  - 冲突记录沿用 `delete` 还是新增动作：沿用 `delete` 会让 R1-T07.a 无法区分“条目非法”与“与原文冲突”；新增 `conflict` 动作（采纳）。
+  - `knowledge` 的路径段与值：路径第三段保留为条目 id，值改成 `{factId, text}`，按知情者与 `factId` 去重（采纳）；把 `factId` 直接当路径段会让已有测试数据与手写路径全部失效。
+- **决定**：
+  - 实体解析只处理 `character.<姓名>`、`relation.<from>.<to>` 的两端、`item.<名称>` 与 `scene.places.<地点>` 四个位置，类别分别为 `character`、`character`、`item`、`location`。已建档的名称按别名表换成实体的 `name`；同一窗口里出现两次以上的未建档名称、或被正文模型直接写入的未建档名称立即 `upsertEntity`（来源分别为 `settler` 与 `model`）；只出现一次的未建档名称逐次写入 `entity_candidates` 以累加命中次数，不改写路径。
+  - 名称规范化复用 `normalizeEntityName`；规范化后为空的路径段跳过实体处理，避免候选写入因空名称抛错。
+  - `knowledge.<知情者>.<条目 id>` 的值必须是 `{factId, text}`，两者都是非空字符串且不允许其他字段。结算时按“知情者 + factId”去重：沿当前路径已经生效的条目与同一窗口内先前接受的条目都算重复，重复提案直接跳过。
+  - 请求携带冲突检查窗口：当前 head 路径上最近的 `conflictWindowFloors`（默认 6）楼原文。模型把与这些原文明确矛盾的事实写进同一楼层的 `conflicts`（`path` 与 `reason`）；程序不写这些路径，已有值保持不变，并以 `{path, action: "conflict", reason}` 记入 `ledger_settlements.repairs`。`LEDGER_REPAIR_ACTIONS` 增加 `conflict`。
+  - 冲突记录与其它修复一样只落在 `ledger_settlements.repairs`（ADR-0046），不再额外写 Trace。
+- **影响**：R1-T07.a 从 `repairs` 里筛 `action` 为 `conflict` 的记录生成待审变更卡；`docs/DESIGN.md` §7.1 的 knowledge 行与 §7.2 的结算规则同步更新；`knowledge` 的旧字符串值不再通过校验，评测数据库由 raw 重建，不做旧库迁移。

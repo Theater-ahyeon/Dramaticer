@@ -3,31 +3,31 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：91
-- 任务：R1-T02.2 结算任务与修复
-- 结果：完成（`DONE`），门禁通过（759 个测试，3 个 live 跳过）。
-  - 新模块 `packages/core/src/ledger/settle.ts`：`SETTLE_JOB_KIND = "settle"`、`SETTLE_WINDOW_FLOORS = 4`、`createSettleHandler({ windowSize?, model? })`。处理器沿当前 head 路径取最多 4 个已落定、未结算的助手楼层，一次请求返回 `[{nodeId, diffs}]`；未知或重复 `nodeId` 让整次请求抛错（任务框架重试），单条 `diffs` 不合格只拒绝该楼层并在 `repairs` 记录原因。
-  - 输入顺序：先读本楼层已有 `state_diffs`。台账命名空间内的已有写入先 `validateLedgerDiff`；合格的路径作为“已有写入”跳过，不合格的删除并记 `delete` 修复；其他命名空间的写入不参与台账。模型只补缺失路径，写入的 diff `source` 为 `settler`、`confidence` 来自模型输出（必填，0 到 1）。
-  - 修复动作三种：`fill`（结算器补的每条 diff，原因取模型 `reason` 或默认文案）、`delete`（模型条目或已有写入不合格）、`rewrite_status`（线索状态别名如“已兑现”改写为 `fulfilled`）。
-  - 写入在一个事务里：先删除本楼层不合格的已有 diff，再追加新 diff，再写 `ledger_settlements`。楼层结算后不再进入窗口，重复执行不新增行；`swipe` / `edit` 产生的新节点各自结算。
-  - `StoryStore.deleteStateDiffs(nodeId, ids)` 新增：校验 id 属于该楼层，删除后失效该楼层及后代的快照缓存。
-  - `dramaticer work` 默认注册表加入 `settle`（入队条件 `settled`），CLI 代码里是 `createBackgroundJobRegistry({ [SETTLE_JOB_KIND]: { handler: createSettleHandler(), enqueue: "settled" } })`。
-  - 新增 `packages/core/test/ledger-settle.test.ts` 10 例：一次请求覆盖多楼层、已有路径不被覆盖、整楼层拒绝、已有不合格写入删除、线索状态改写、重复执行、分支隔离、请求级失败、无后台客户端保持 pending、空窗口不调用模型、删除存储边界。
-  - ADR-0046 记录修复结果的存放位置（`ledger_settlements.repairs` 与 `background_jobs.last_error`，不改写回合 Trace），以及结算窗口以 head 为终点。
+- 会话：92
+- 任务：R1-T02.3 实体解析、knowledge 去重与冲突拒绝
+- 结果：完成（`DONE`），门禁通过（766 个测试，3 个 live 跳过）。
+  - `packages/core/src/ledger/settle.ts`：
+    - 请求新增「冲突检查窗口」：head 路径上最近 `conflictWindowFloors`（默认 6，`SETTLE_CONFLICT_WINDOW_FLOORS`）楼原文，以 `<最近楼层 id=… 角色=…>` 段附在用户内容里。
+    - 模型输出每项可带 `conflicts: [{path, reason}]`；这些路径不写入，已有值保持不变，并以 `{path, action: "conflict", reason}` 记入 `ledger_settlements.repairs`。同一路径同时出现在 `diffs` 与 `conflicts` 时按冲突处理。
+    - 实体解析：`character.<名称>`、`relation.<from>.<to>` 两端、`item.<名称>`、`scene.places.<地点>` 分别按 `character`、`character`、`item`、`location` 类别查 `resolveEntities`，命中则换成实体的 `name`（规范名称，不是 id）。未建档名称只出现一次时逐次 `upsertEntityCandidate`；同一窗口出现两次以上或被正文模型直接写入（本楼层已通过校验的 set diff）时 `upsertEntity`，来源分别为 `settler` 与 `model`。候选与实体写入和 diff 写入在同一个事务里。
+    - `knowledge` 去重：按 `知情者 + factId` 建集合，来源是当前快照里的 `knowledge.*.*.factId` 与同一窗口里先前接受的条目；重复提案直接跳过，不记修复。
+  - `packages/core/src/ledger/schema.ts`：`knowledge` 值必须是 `{factId, text}`，两者非空字符串且不允许其他字段；`LEDGER_REPAIR_ACTIONS` 增加 `conflict`（ADR-0047）。
+  - `packages/core/src/ledger/settlement.ts`：修复动作取值加入 `conflict`。
+  - 新增测试 7 个：单次出现只记候选、同窗口两次建档、正文模型直接写入建档、别名换成规范名称（人物/地点/物品）、knowledge 按 factId 去重且不同知情者各记一条、冲突事实拒绝并记录、冲突窗口楼层数可配置。
+  - ADR-0047 记录上述选择；DESIGN §7.1 的 knowledge 行与 §7.2 的结算规则同步更新。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2。完成记录与验收标准见 `docs/dev/TASKS-archive.md`，未完成任务见 `docs/dev/TASKS.md`。
-- **R1-T02 已拆成 R1-T02.1–R1-T02.4**（父任务是文字说明，不是可勾选任务）：R1-T02.1、R1-T02.2 完成；下一步是 **R1-T02.3 实体解析、knowledge 去重与冲突拒绝**（用已有的 `upsertEntityCandidate`/`listEntityCandidates` 实现“同一窗口出现两次或模型直接写入才建档”，`knowledge` 值改为 `{factId, text}` 并按 `factId` 去重，冲突事实拒绝并记入 `repairs`），之后是 R1-T02.4（`block_format` 段）。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3。完成记录与验收标准见 `docs/dev/TASKS-archive.md`，未完成任务见 `docs/dev/TASKS.md`。
+- **R1-T02 已拆成 R1-T02.1–R1-T02.4**（父任务是文字说明，不是可勾选任务）：R1-T02.1、R1-T02.2、R1-T02.3 完成；下一步是 **R1-T02.4 块格式说明段**（原生模板新增可选 `block_format` 段，默认关闭，关闭时模板与现在逐字节一致；只说明 `state_update` 与 `plot_note` 的格式，不要求模型输出）。
 - v3 阶段顺序：R1 最小集 → R3 快回合 → O 开局与方向 → R2 评测底座 → E → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045。
 - HUMAN-09 仍待处理（不阻塞）：ADR-0042 声明的 `bg-fallback`、`main-fallback`、`codex` 别名在 `data/channels.yaml` 里已经出现，`channels.example.yaml` 是否需要补上请人类确认；没有改这两个文件。
 - HUMAN-10 待处理（不阻塞）：插件不变量是否加进 AGENTS.md。
-- 数据库 schema 版本 20（v19 结算记录、v20 实体候选与置信度）；后续编号：v21 现场分析、v22 变更卡、v23 开盘包、v24 开场候选、v25 偏好记录、v26 父子分块、v27 章节压缩、v28 世界书预筛、v29 上下文包；插入新迁移时后续编号一起顺延。
+- 数据库 schema 版本 20（v19 结算记录、v20 实体候选与置信度）；后续编号：v21 现场分析、v22 变更卡、v23 开盘包、v24 开场候选、v25 偏好记录、v26 父子分块、v27 章节压缩、v28 世界书预筛、v29 上下文包；插入新迁移时后续编号一起顺延。R1-T02.3 没有新增迁移。
 - 结算只有 `dramaticer work` 调度：server 的回合路径不补建也不执行后台任务，所以回合内后台客户端零调用是结构保证；要真正结算故事，跑 `pnpm work --db <path> --kind settle`。`generateAssistantTurn` 仍然只写模型自己的结构化 diff（`source` 为 `model`，`confidence` 为空）。
-- “已落定”的判定：助手楼层，且 Trace 的 `llm.stopReason` 不是 `aborted`；没有 Trace 的楼层（导入内容）按已落定处理。判定在 SQL 里用 `json_extract(traces.trace, '$.llm.stopReason')`。
-- 注册表类型：`BackgroundJobRegistry` 的值是 `{handler, enqueue}`；`BackgroundJobHandler` 签名未变。新增任务类型时用 `createBackgroundJobRegistry({ settle: { handler, enqueue: "settled" } })` 这种写法。
-- 结算窗口以 head 为终点（ADR-0046）：head 分支之外的旧楼层不会被结算，它们对应的 `settle` 任务执行时空窗口直接完成；被放弃的楼层如果已经结算过，结算记录与 diff 保留，但不进入其他分支的快照。
-- `readLedgerFacts` 不读取快照缓存，按 `getStateDiffsAlongPath` 回放，返回顺序是路径上首次出现的顺序。
+- 结算窗口以 head 为终点（ADR-0046），冲突检查窗口同样取 head 路径最后 `conflictWindowFloors` 楼。窗口内没有未结算楼层时不调用模型。
+- 冲突检测依赖模型在同一个结算请求里返回 `conflicts`；程序不自行判断语义矛盾，只做事实级拒绝与记录。R1-T07.a 从 `repairs` 里筛 `action` 为 `conflict` 的记录生成待审变更卡。
+- 实体解析只处理四个位置（见上）；`clue`、`knowledge` 的知情者、`userWill` 不做实体映射。规范名称采用实体的 `name` 而不是 id，目的是让正文模型写的名称路径与结算器写的路径共用同一套键。
 - 已注册的槽位是九个（`packages/core/src/context/template.ts` 的 `CONTEXT_SLOT_NAMES`：lore、character、persona、summary、state、memory、history、director、protocol）；DESIGN §9 里的 `ledger` 对应实现的 `state`，`beat` 尚未注册。R1-T02.a 新增 `scene` 槽位。R1-T02.4 的 `block_format` 是模板里的可选静态段，不是槽位。
 - `packages/server` 已提供故事、导入、设置、模板、SSE 回合与后台运行时缓存；`packages/protocol` 已提供 HTTP 与 SSE 类型；`packages/web` 尚未创建。
 - 故事设置缺省值：`budgetTokens` 12000、`structuredOutput` `text-tags`、`temperature` 0.8、`maxTokens` 4096（server 对没有保存过设置的故事改用 `min(4096, writer 模型声明)`）、`reasoning` `low`、导演使用默认配置。
@@ -39,8 +39,8 @@
 - 插件系统在 DESIGN §19 是唯一权威；P 阶段任务在 TASKS 的「P：插件内核」小节，C 线兼容插件任务已存在且依赖 P2。
 
 ## 下一步
-- **R1-T02.3 实体解析、knowledge 去重与冲突拒绝**：写入前把人物、地点、物品名称对照实体与别名表规范化；不认识的名称进 `entity_candidates`（同一窗口出现两次或模型直接写入才建档）；`knowledge` 值改为 `{factId, text}` 并改 `validateLedgerDiff` 的 knowledge 分支，同一 `factId` 不重复写入；与最近 6 楼原文冲突的事实拒绝写入并记入 `repairs`。任务文本见 `docs/dev/TASKS.md` 的 R1-T02.3。
-- R1-T02.4 在原生模板加可选 `block_format` 段，默认关闭，关闭时与现在逐字节一致。
+- **R1-T02.4 块格式说明段**：原生模板新增可选 `block_format` 段，说明 `state_update` 与 `plot_note` 的格式，默认关闭；开启后只说明格式，不要求模型输出（I13）。验收：关闭时模板与现在逐字节一致；开启后模板包含两种写入的格式说明且不出现强制输出要求。
+- 之后是 R1-T02.a 现场分析（迁移 v21、`scene` 槽位），再到 R1-T02.b 块的 prompt 视图、R1-T03 批量事件抽取。
 - R1 最小集之后是 R3 快回合（R3-T01 至 R3-T99）、O 开局与方向、R2 评测底座。
 
 ## 注意事项

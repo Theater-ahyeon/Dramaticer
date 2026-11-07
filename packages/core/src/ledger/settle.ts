@@ -1,13 +1,24 @@
 import type { BackgroundJobHandler } from "../background/types.js";
 import {
+	type EntityKind,
+	type NewEntityInput,
+	normalizeEntityName,
+} from "../entity.js";
+import {
 	type JsonObject,
 	assertPlainObject,
+	isJsonObject,
 	rejectUnknownKeys,
 } from "../json.js";
 import type { LlmMessage } from "../llm/types.js";
 import { parseJsonOutputArray } from "../memory/json-output.js";
 import type { StoryStore } from "../store/story-store.js";
-import type { NewStateDiff, StoryTime } from "../timeline.js";
+import type {
+	NewStateDiff,
+	StateDiffOp,
+	StoryTime,
+	TimelineNode,
+} from "../timeline.js";
 import {
 	CLUE_STATUSES,
 	type LedgerSource,
@@ -15,14 +26,17 @@ import {
 	isLedgerNamespace,
 	validateLedgerDiff,
 } from "./schema.js";
-import type { LedgerRepair } from "./settlement.js";
+import type { LedgerRepair, NewEntityCandidateInput } from "./settlement.js";
 
 export const SETTLE_JOB_KIND = "settle";
 export const SETTLE_WINDOW_FLOORS = 4;
+export const SETTLE_CONFLICT_WINDOW_FLOORS = 6;
 
 export interface SettleHandlerOptions {
 	/** 一次结算请求最多覆盖的楼层数；默认 4。 */
 	readonly windowSize?: number;
+	/** 与结算事实对比的最近原文楼层数；默认 6。 */
+	readonly conflictWindowFloors?: number;
 	/** 覆盖客户端默认模型；不设置时使用客户端的默认模型。 */
 	readonly model?: string;
 }
@@ -51,9 +65,9 @@ const DIFF_FIELDS = [
 ];
 
 const SYSTEM_PROMPT = [
-	"你是故事台账的结算器。阅读结算窗口里的楼层正文与当前台账快照，为每个楼层补齐正文已经确立、但楼层自己没有写入的台账事实。",
+	"你是故事台账的结算器。阅读结算窗口里的楼层正文、最近楼层的原文与当前台账快照，为每个楼层补齐正文已经确立、但楼层自己没有写入的台账事实。",
 	"只输出一个 JSON 数组，不要输出解释、前后缀或代码块标记。每一项形如：",
-	'{"nodeId":"楼层 id","diffs":[{"path":["clue","c1","status"],"op":"set","value":"open","confidence":0.8,"reason":"一句话依据"}]}',
+	'{"nodeId":"楼层 id","diffs":[{"path":["clue","c1","status"],"op":"set","value":"open","confidence":0.8,"reason":"一句话依据"}],"conflicts":[{"path":["character","凛","location"],"reason":"最近一楼明确写她还在教室"}]}',
 	"- nodeId 必须是窗口里出现过的楼层 id，每个楼层最多出现一次。",
 	"- path 至少两段：第一段是命名空间，后续路径段按命名空间的结构书写。",
 	"- op 只能是 set 或 delete；delete 不能带 value。",
@@ -61,6 +75,7 @@ const SYSTEM_PROMPT = [
 	"- reason 可选，写一句话说明正文里的依据。",
 	"- 楼层里已经写入的路径不要重复输出。",
 	"- 不要写正文里没有依据的事实；没有需要补的楼层仍然输出一项，diffs 为空数组。",
+	"- 要写的事实如果与“冲突检查窗口”的原文明确矛盾，不要写进 diffs，写进同一楼层的 conflicts；conflicts 只写 path 与 reason，不写值。已有事实与最近原文一致时保留已有值。",
 	"命名空间与路径：",
 	"- character.<人物 id>.<tier|identity|appearance|outfit|status|location>，tier 取 lead 或 minor",
 	'- relation.<from>.<to>.<type|stage|turningPoint|affectionInner|affectionOuter|inertia>，好感取 "敌对"、"冷淡"、"平常"、"亲近"、"倾心"，inertia 是 0 到 1',
@@ -68,9 +83,10 @@ const SYSTEM_PROMPT = [
 	"- scene.places.<地点 id>.<name|description|parent>；scene.current.<place|posture|atmosphere|participants>",
 	"- time.current 的值是故事内时间",
 	"- clue.<线索 id>.<text|status|openedAt|updatedAt>，status 取 open、progress、fulfilled",
-	"- knowledge.<知情者>.<事实> 的值是事实文本",
+	"- knowledge.<知情者>.<条目 id> 的值是 {factId,text}；factId 指向事件或线索的 id，同一个人对同一 factId 只写一次",
 	"- userWill.<id> 的值是 {kind,text,sourceNodeId,createdAt}",
 	"- mvu.<原始变量路径> 表示导入的 MVU 变量",
+	"- 人物、地点、物品的 id 直接写名称，程序会按实体表规范化。",
 ].join("\n");
 
 interface SettlerProposal {
@@ -82,6 +98,16 @@ interface SettlerProposal {
 		readonly confidence: number;
 	};
 	readonly reason: string | null;
+}
+
+interface SettlerConflict {
+	readonly path: readonly string[];
+	readonly reason: string;
+}
+
+interface FloorProposals {
+	readonly diffs: readonly unknown[];
+	readonly conflicts: readonly SettlerConflict[];
 }
 
 interface SettledFloor {
@@ -99,12 +125,28 @@ interface InvalidExistingDiff {
 	readonly reason: string;
 }
 
+interface CoveredPath {
+	readonly path: readonly string[];
+	readonly op: StateDiffOp;
+}
+
 interface WindowFloor {
 	readonly nodeId: string;
 	readonly raw: string;
 	/** 已通过校验的台账路径：本楼层已有写入，结算器跳过。 */
-	readonly covered: readonly (readonly string[])[];
+	readonly covered: readonly CoveredPath[];
 	readonly invalid: readonly InvalidExistingDiff[];
+}
+
+/** 人物、地点、物品名称的规范写法；键是类别与规范化名称。 */
+type EntityCanonicalNames = ReadonlyMap<string, string>;
+
+interface EntityResolution {
+	readonly canonical: EntityCanonicalNames;
+	/** 本窗口里出现、但还没有建档的名称，逐次写入以累加命中次数。 */
+	readonly candidates: readonly NewEntityCandidateInput[];
+	/** 本窗口出现两次以上或被正文模型直接写入的名称，立即建档。 */
+	readonly promoted: readonly NewEntityInput[];
 }
 
 /** 生成台账结算的后台任务处理器。 */
@@ -115,6 +157,11 @@ export function createSettleHandler(
 	if (!Number.isInteger(windowSize) || windowSize < 1) {
 		throw new Error("结算窗口的楼层数必须是正整数");
 	}
+	const conflictWindowFloors =
+		options.conflictWindowFloors ?? SETTLE_CONFLICT_WINDOW_FLOORS;
+	if (!Number.isInteger(conflictWindowFloors) || conflictWindowFloors < 1) {
+		throw new Error("冲突检查窗口的楼层数必须是正整数");
+	}
 	return async ({ store, client, job }) => {
 		const nodeIds = store.listUnsettledSettledAssistantNodes(
 			job.storyId,
@@ -124,9 +171,18 @@ export function createSettleHandler(
 		const floors = nodeIds.map((nodeId) => readWindowFloor(store, nodeId));
 		const snapshotNodeId = nodeIds[nodeIds.length - 1] as string;
 		const snapshot = store.getStateSnapshot(snapshotNodeId).state;
+		const conflictWindow = readConflictWindow(
+			store,
+			job.storyId,
+			snapshotNodeId,
+			conflictWindowFloors,
+		);
 		const messages: LlmMessage[] = [
 			{ role: "system", content: SYSTEM_PROMPT },
-			{ role: "user", content: buildUserContent(floors, snapshot) },
+			{
+				role: "user",
+				content: buildUserContent(floors, snapshot, conflictWindow),
+			},
 		];
 		const result = await client.complete({
 			messages,
@@ -134,10 +190,29 @@ export function createSettleHandler(
 			temperature: 0,
 		});
 		const proposals = parseSettleResponse(result.text, nodeIds);
+		const resolution = resolveWindowEntities(
+			store,
+			job.storyId,
+			floors,
+			proposals,
+		);
+		const knowledgeFacts = collectKnowledgeFacts(snapshot);
 		const plans = floors.map((floor) =>
-			planFloor(floor, proposals.get(floor.nodeId) ?? [], job.storyId),
+			planFloor(
+				floor,
+				proposals.get(floor.nodeId) ?? { diffs: [], conflicts: [] },
+				job.storyId,
+				resolution.canonical,
+				knowledgeFacts,
+			),
 		);
 		await store.runInTransaction(() => {
+			for (const candidate of resolution.candidates) {
+				store.upsertEntityCandidate(candidate);
+			}
+			for (const entity of resolution.promoted) {
+				store.upsertEntity(entity);
+			}
 			for (const plan of plans) {
 				if (plan.deleteIds.length > 0) {
 					store.deleteStateDiffs(plan.nodeId, plan.deleteIds);
@@ -162,7 +237,7 @@ function readWindowFloor(store: StoryStore, nodeId: string): WindowFloor {
 	if (!node) {
 		throw new Error(`结算窗口里的楼层不存在：${nodeId}`);
 	}
-	const covered: string[][] = [];
+	const covered: CoveredPath[] = [];
 	const invalid: InvalidExistingDiff[] = [];
 	for (const diff of store.getStateDiffs(nodeId)) {
 		const namespace = diff.path[0];
@@ -178,7 +253,7 @@ function readWindowFloor(store: StoryStore, nodeId: string): WindowFloor {
 				source: diff.source as LedgerSource,
 				confidence: diff.confidence,
 			});
-			covered.push([...diff.path]);
+			covered.push({ path: [...diff.path], op: diff.op });
 		} catch (error) {
 			invalid.push({
 				id: diff.id,
@@ -193,13 +268,20 @@ function readWindowFloor(store: StoryStore, nodeId: string): WindowFloor {
 function buildUserContent(
 	floors: readonly WindowFloor[],
 	snapshot: JsonObject,
+	conflictWindow: readonly TimelineNode[],
 ): string {
 	const lines = [
 		"当前台账快照（截至窗口最后一楼）：",
 		JSON.stringify(snapshot),
 		"",
-		"结算窗口：",
+		"冲突检查窗口（最近楼层的原文）：",
 	];
+	for (const node of conflictWindow) {
+		lines.push(`<最近楼层 id="${node.id}" 角色="${node.role}">`);
+		lines.push(node.raw);
+		lines.push("</最近楼层>");
+	}
+	lines.push("", "结算窗口：");
 	for (const floor of floors) {
 		lines.push(`<楼层 id="${floor.nodeId}">`);
 		lines.push("正文：");
@@ -208,8 +290,8 @@ function buildUserContent(
 			lines.push("本楼层没有通过校验的结构化写入。");
 		} else {
 			lines.push("本楼层已经写入的路径（不要重复输出）：");
-			for (const path of floor.covered) {
-				lines.push(JSON.stringify(path));
+			for (const covered of floor.covered) {
+				lines.push(JSON.stringify(covered.path));
 			}
 		}
 		lines.push("</楼层>");
@@ -221,13 +303,13 @@ function buildUserContent(
 function parseSettleResponse(
 	text: string,
 	windowIds: readonly string[],
-): Map<string, readonly unknown[]> {
+): Map<string, FloorProposals> {
 	const parsed = parseJsonOutputArray(text, "结算结果");
-	const byNode = new Map<string, readonly unknown[]>();
+	const byNode = new Map<string, FloorProposals>();
 	for (const [index, item] of parsed.entries()) {
 		const label = `结算结果[${index}]`;
 		const record = assertPlainObject(item, label);
-		rejectUnknownKeys(record, ["nodeId", "diffs"], label);
+		rejectUnknownKeys(record, ["nodeId", "diffs", "conflicts"], label);
 		const nodeId = record.nodeId;
 		if (typeof nodeId !== "string" || !windowIds.includes(nodeId)) {
 			throw new Error(`${label} 的 nodeId 不在结算窗口里：${String(nodeId)}`);
@@ -238,21 +320,249 @@ function parseSettleResponse(
 		if (!Array.isArray(record.diffs)) {
 			throw new Error(`${label} 的 diffs 必须是数组`);
 		}
-		byNode.set(nodeId, record.diffs);
+		const conflicts = record.conflicts ?? [];
+		if (!Array.isArray(conflicts)) {
+			throw new Error(`${label} 的 conflicts 必须是数组`);
+		}
+		byNode.set(nodeId, {
+			diffs: record.diffs,
+			conflicts: conflicts.map((conflict, conflictIndex) =>
+				readConflict(conflict, `${label}.conflicts[${conflictIndex}]`),
+			),
+		});
 	}
 	return byNode;
 }
 
+function readConflict(value: unknown, label: string): SettlerConflict {
+	const record = assertPlainObject(value, label);
+	rejectUnknownKeys(record, ["path", "reason"], label);
+	return {
+		path: readPath(record.path, `${label}.path`),
+		reason: readRequiredText(record.reason, `${label}.reason`),
+	};
+}
+
+function readRequiredText(value: unknown, label: string): string {
+	if (typeof value !== "string" || value.trim().length === 0) {
+		throw new Error(`${label} 必须是非空字符串`);
+	}
+	return value;
+}
+
+/** 结算窗口与冲突检查使用的最近楼层原文；以当前 head 为终点。 */
+function readConflictWindow(
+	store: StoryStore,
+	storyId: string,
+	fallbackNodeId: string,
+	floors: number,
+): TimelineNode[] {
+	const headPath = store.getPathToHead(storyId);
+	const path =
+		headPath.length > 0 ? headPath : store.getPathToNode(fallbackNodeId);
+	return path.slice(-floors);
+}
+
+interface EntityOccurrence {
+	readonly kind: EntityKind;
+	readonly name: string;
+	readonly nodeId: string;
+	readonly modelDirect: boolean;
+}
+
+/**
+ * 把窗口里人物、地点、物品的名称对照实体与别名表：已建档的名称换成实体
+ * 的规范写法；没建档的名称只出现一次时记入候选，出现两次以上或被正文
+ * 模型直接写入时立即建档。
+ */
+function resolveWindowEntities(
+	store: StoryStore,
+	storyId: string,
+	floors: readonly WindowFloor[],
+	proposals: ReadonlyMap<string, FloorProposals>,
+): EntityResolution {
+	const occurrences: EntityOccurrence[] = [];
+	for (const floor of floors) {
+		for (const covered of floor.covered) {
+			if (covered.op !== "set") continue;
+			for (const ref of entityReferences(covered.path)) {
+				occurrences.push({
+					kind: ref.kind,
+					name: covered.path[ref.index] as string,
+					nodeId: floor.nodeId,
+					modelDirect: true,
+				});
+			}
+		}
+		for (const raw of proposals.get(floor.nodeId)?.diffs ?? []) {
+			const path = proposalPathForResolution(raw);
+			if (path === null) continue;
+			for (const ref of entityReferences(path)) {
+				occurrences.push({
+					kind: ref.kind,
+					name: path[ref.index] as string,
+					nodeId: floor.nodeId,
+					modelDirect: false,
+				});
+			}
+		}
+	}
+	const groups = new Map<string, EntityOccurrence[]>();
+	for (const occurrence of occurrences) {
+		if (normalizeEntityName(occurrence.name).length === 0) continue;
+		const key = entityKey(occurrence.kind, occurrence.name);
+		const group = groups.get(key);
+		if (group === undefined) {
+			groups.set(key, [occurrence]);
+		} else {
+			group.push(occurrence);
+		}
+	}
+	const canonical = new Map<string, string>();
+	const candidates: NewEntityCandidateInput[] = [];
+	const promoted: NewEntityInput[] = [];
+	for (const [key, group] of groups) {
+		const first = group[0] as EntityOccurrence;
+		const known = store
+			.resolveEntities(first.name, { storyId })
+			.find((entity) => entity.kind === first.kind);
+		if (known !== undefined) {
+			canonical.set(key, known.name);
+			continue;
+		}
+		canonical.set(key, first.name);
+		const modelDirect = group.some((occurrence) => occurrence.modelDirect);
+		if (modelDirect || group.length >= 2) {
+			promoted.push({
+				storyId,
+				kind: first.kind,
+				name: first.name,
+				source: modelDirect ? "model" : "settler",
+			});
+			continue;
+		}
+		candidates.push({
+			storyId,
+			name: first.name,
+			kind: first.kind,
+			nodeId: first.nodeId,
+		});
+	}
+	return { canonical, candidates, promoted };
+}
+
+/** 台账路径里的人物、地点、物品名称各在哪个路径段。 */
+function entityReferences(
+	path: readonly string[],
+): readonly { readonly kind: EntityKind; readonly index: number }[] {
+	switch (path[0]) {
+		case "character":
+			return path.length >= 2 ? [{ kind: "character", index: 1 }] : [];
+		case "relation":
+			return path.length >= 3
+				? [
+						{ kind: "character", index: 1 },
+						{ kind: "character", index: 2 },
+					]
+				: [];
+		case "item":
+			return path.length >= 2 ? [{ kind: "item", index: 1 }] : [];
+		case "scene":
+			return path.length >= 3 && path[1] === "places"
+				? [{ kind: "location", index: 2 }]
+				: [];
+		default:
+			return [];
+	}
+}
+
+function canonicalizePath(
+	path: readonly string[],
+	canonical: EntityCanonicalNames,
+): string[] {
+	const next = [...path];
+	for (const ref of entityReferences(path)) {
+		const name = canonical.get(entityKey(ref.kind, path[ref.index] as string));
+		if (name !== undefined) {
+			next[ref.index] = name;
+		}
+	}
+	return next;
+}
+
+function entityKey(kind: EntityKind, name: string): string {
+	return `${kind}\u0000${normalizeEntityName(name)}`;
+}
+
+/** 只从可以读出路径的 set 提案里收集实体名称；不合法条目留给校验拒绝。 */
+function proposalPathForResolution(value: unknown): readonly string[] | null {
+	if (typeof value !== "object" || value === null || Array.isArray(value)) {
+		return null;
+	}
+	const record = value as Record<string, unknown>;
+	if (record.op !== "set") return null;
+	const path = record.path;
+	if (!Array.isArray(path) || path.length === 0) return null;
+	if (
+		!path.every((segment) => typeof segment === "string" && segment.length > 0)
+	) {
+		return null;
+	}
+	return path as readonly string[];
+}
+
+/** 沿路径已经生效的知情条目，按知情者与 factId 去重。 */
+function collectKnowledgeFacts(snapshot: JsonObject): Set<string> {
+	const facts = new Set<string>();
+	const knowledge = snapshot.knowledge;
+	if (!isJsonObject(knowledge)) return facts;
+	for (const [knower, entries] of Object.entries(knowledge)) {
+		if (!isJsonObject(entries)) continue;
+		for (const entry of Object.values(entries)) {
+			if (!isJsonObject(entry)) continue;
+			const factId = entry.factId;
+			if (typeof factId === "string" && factId.length > 0) {
+				facts.add(knowledgeKey(knower, factId));
+			}
+		}
+	}
+	return facts;
+}
+
+function knowledgeFactKey(diff: SettlerProposal["diff"]): string | null {
+	if (
+		diff.op !== "set" ||
+		diff.path[0] !== "knowledge" ||
+		diff.path.length !== 3
+	) {
+		return null;
+	}
+	if (!isJsonObject(diff.value)) return null;
+	const factId = diff.value.factId;
+	if (typeof factId !== "string" || factId.length === 0) return null;
+	return knowledgeKey(diff.path[1] as string, factId);
+}
+
+function knowledgeKey(knower: string, factId: string): string {
+	return `${knower}\u0000${factId}`;
+}
+
 /**
  * 把一个楼层的模型输出整理成待写入的 diff：本楼层已有的写入优先，
- * 该楼层任一条目不合格时整条拒绝，其余楼层照常写入。
+ * 该楼层任一条目不合格时整条拒绝，其余楼层照常写入。冲突事实只记入修复。
  */
 function planFloor(
 	floor: WindowFloor,
-	proposals: readonly unknown[],
+	proposals: FloorProposals,
 	storyId: string,
+	canonical: EntityCanonicalNames,
+	knowledgeFacts: Set<string>,
 ): SettledFloor {
-	const covered = new Set(floor.covered.map((path) => JSON.stringify(path)));
+	const covered = new Set(
+		floor.covered.map((item) =>
+			JSON.stringify(canonicalizePath(item.path, canonical)),
+		),
+	);
 	const accepted = new Map<
 		string,
 		{ readonly diff: NewStateDiff; readonly reason: string | null }
@@ -262,9 +572,22 @@ function planFloor(
 		action: "delete",
 		reason: `本楼层已有的台账写入不合格：${item.reason}`,
 	}));
+	const conflictRepairs: LedgerRepair[] = proposals.conflicts.map(
+		(conflict) => {
+			const path = canonicalizePath(conflict.path, canonical);
+			return {
+				path,
+				action: "conflict",
+				reason: `最近楼层的原文与该事实冲突：${conflict.reason}`,
+			};
+		},
+	);
+	const conflictPaths = new Set(
+		conflictRepairs.map((repair) => JSON.stringify(repair.path)),
+	);
 	const rewrites: LedgerRepair[] = [];
 	const rejections: LedgerRepair[] = [];
-	for (const [index, raw] of proposals.entries()) {
+	for (const [index, raw] of proposals.diffs.entries()) {
 		const label = `楼层 ${floor.nodeId} 的 diffs[${index}]`;
 		let proposal: SettlerProposal;
 		try {
@@ -277,10 +600,11 @@ function planFloor(
 			});
 			continue;
 		}
-		const key = JSON.stringify(proposal.diff.path);
-		if (covered.has(key)) continue;
+		const path = canonicalizePath(proposal.diff.path, canonical);
+		const key = JSON.stringify(path);
+		if (covered.has(key) || conflictPaths.has(key)) continue;
 		try {
-			const diff = rewriteClueStatus(proposal.diff, rewrites);
+			const diff = rewriteClueStatus({ ...proposal.diff, path }, rewrites);
 			validateLedgerDiff({
 				path: diff.path,
 				op: diff.op,
@@ -289,6 +613,11 @@ function planFloor(
 				source: "settler",
 				confidence: diff.confidence,
 			});
+			const knowledgeKey = knowledgeFactKey(diff);
+			if (knowledgeKey !== null) {
+				if (knowledgeFacts.has(knowledgeKey)) continue;
+				knowledgeFacts.add(knowledgeKey);
+			}
 			const common = {
 				storyId,
 				nodeId: floor.nodeId,
@@ -307,7 +636,7 @@ function planFloor(
 			});
 		} catch (error) {
 			rejections.push({
-				path: proposal.diff.path,
+				path,
 				action: "delete",
 				reason: error instanceof Error ? error.message : String(error),
 			});
@@ -319,7 +648,7 @@ function planFloor(
 			nodeId: floor.nodeId,
 			diffs: [],
 			deleteIds,
-			repairs: [...existingRepairs, ...rejections],
+			repairs: [...existingRepairs, ...conflictRepairs, ...rejections],
 			source: "settler",
 		};
 	}
@@ -333,11 +662,12 @@ function planFloor(
 		nodeId: floor.nodeId,
 		diffs: entries.map((entry) => entry.diff),
 		deleteIds,
-		repairs: [...existingRepairs, ...rewrites, ...fills],
+		repairs: [...existingRepairs, ...rewrites, ...conflictRepairs, ...fills],
 		source:
 			entries.length === 0 &&
 			rewrites.length === 0 &&
-			existingRepairs.length === 0
+			existingRepairs.length === 0 &&
+			conflictRepairs.length === 0
 				? "model"
 				: "settler",
 	};

@@ -1,11 +1,12 @@
 import type { EntityKind } from "../entity.js";
 import type { LedgerSource } from "./schema.js";
 
-/** 结算器允许的三种修复动作：补值、删除非法条目、改写线索状态。 */
+/** 结算器允许的修复动作：补值、删除非法条目、改写线索状态、拒绝与原文冲突的事实。 */
 export const LEDGER_REPAIR_ACTIONS = [
 	"fill",
 	"delete",
 	"rewrite_status",
+	"conflict",
 ] as const;
 export type LedgerRepairAction = (typeof LEDGER_REPAIR_ACTIONS)[number];
 

@@ -475,3 +475,300 @@ describe("结算任务", () => {
 		expect(requests).toEqual([]);
 	});
 });
+
+describe("结算的实体解析、knowledge 去重与冲突拒绝", () => {
+	it("不认识的名称只出现一次时只记候选，不建档", async () => {
+		const { store } = openTempStore();
+		seedStory(store);
+		const { client } = createFakeClient([
+			JSON.stringify([
+				{
+					nodeId: "a2",
+					diffs: [
+						{
+							path: ["character", "新同学", "status"],
+							op: "set",
+							value: "旁观",
+							confidence: 0.6,
+						},
+					],
+				},
+			]),
+		]);
+
+		await drain(store, client);
+
+		expect(store.listEntities("s1")).toEqual([]);
+		expect(store.listEntityCandidates("s1")).toMatchObject([
+			{ kind: "character", hits: 1, firstNodeId: "a2" },
+		]);
+		expect(store.getStateDiffs("a2").map((diff) => diff.path)).toEqual([
+			["character", "新同学", "status"],
+		]);
+	});
+
+	it("同一窗口里出现两次的名称立即建档", async () => {
+		const { store } = openTempStore();
+		seedStory(store);
+		const { client } = createFakeClient([
+			JSON.stringify([
+				{
+					nodeId: "a1",
+					diffs: [
+						{
+							path: ["character", "新同学", "location"],
+							op: "set",
+							value: "走廊",
+							confidence: 0.7,
+						},
+					],
+				},
+				{
+					nodeId: "a2",
+					diffs: [
+						{
+							path: ["character", "新同学", "status"],
+							op: "set",
+							value: "警觉",
+							confidence: 0.7,
+						},
+					],
+				},
+			]),
+		]);
+
+		await drain(store, client);
+
+		expect(store.listEntities("s1")).toMatchObject([
+			{ kind: "character", name: "新同学", source: "settler" },
+		]);
+		expect(store.listEntityCandidates("s1")).toEqual([]);
+		expect(store.getStateSnapshot("a2").state).toEqual({
+			character: { 新同学: { location: "走廊", status: "警觉" } },
+		});
+	});
+
+	it("正文模型直接写入的名称立即建档", async () => {
+		const { store } = openTempStore();
+		seedStory(store);
+		store.appendStateDiff({
+			storyId: "s1",
+			nodeId: "a2",
+			path: ["character", "转校生", "status"],
+			op: "set",
+			value: "沉默",
+			source: "model",
+		});
+		const { client } = createFakeClient([JSON.stringify([])]);
+
+		await drain(store, client);
+
+		expect(store.listEntities("s1")).toMatchObject([
+			{ kind: "character", name: "转校生", source: "model" },
+		]);
+		expect(store.listEntityCandidates("s1")).toEqual([]);
+	});
+
+	it("人物、地点与物品的名称按别名表换成规范写法", async () => {
+		const { store } = openTempStore();
+		seedStory(store);
+		store.upsertEntity({
+			storyId: "s1",
+			kind: "character",
+			name: "凛",
+			aliases: ["远坂凛"],
+			source: "card",
+		});
+		store.upsertEntity({
+			storyId: "s1",
+			kind: "location",
+			name: "学院",
+			aliases: ["时钟塔"],
+			source: "card",
+		});
+		store.upsertEntity({
+			storyId: "s1",
+			kind: "item",
+			name: "徽章",
+			aliases: ["刻纹徽章"],
+			source: "card",
+		});
+		const { client } = createFakeClient([
+			JSON.stringify([
+				{
+					nodeId: "a2",
+					diffs: [
+						{
+							path: ["character", "远坂凛", "status"],
+							op: "set",
+							value: "警惕",
+							confidence: 0.8,
+						},
+						{
+							path: ["scene", "places", "时钟塔", "name"],
+							op: "set",
+							value: "时钟塔",
+							confidence: 0.8,
+						},
+						{
+							path: ["item", "刻纹徽章", "holder"],
+							op: "set",
+							value: "凛",
+							confidence: 0.8,
+						},
+					],
+				},
+			]),
+		]);
+
+		await drain(store, client);
+
+		expect(store.getStateSnapshot("a2").state).toMatchObject({
+			character: { 凛: { status: "警惕" } },
+			scene: { places: { 学院: { name: "时钟塔" } } },
+			item: { 徽章: { holder: "凛" } },
+		});
+		expect(store.listEntityCandidates("s1")).toEqual([]);
+	});
+
+	it("knowledge 按知情者与 factId 去重，不同知情者各记一条", async () => {
+		const { store } = openTempStore();
+		seedStory(store);
+		store.appendStateDiff({
+			storyId: "s1",
+			nodeId: "a2",
+			path: ["knowledge", "凛", "k1"],
+			op: "set",
+			value: { factId: "clue-1", text: "知道信的来历" },
+			source: "model",
+		});
+		const { client } = createFakeClient([
+			JSON.stringify([
+				{
+					nodeId: "a2",
+					diffs: [
+						{
+							path: ["knowledge", "凛", "k2"],
+							op: "set",
+							value: { factId: "clue-1", text: "重复的同一条知识" },
+							confidence: 0.8,
+						},
+						{
+							path: ["knowledge", "卫宫", "k3"],
+							op: "set",
+							value: { factId: "clue-1", text: "卫宫也知道" },
+							confidence: 0.8,
+						},
+						{
+							path: ["knowledge", "凛", "k4"],
+							op: "set",
+							value: { factId: "clue-2", text: "知道第二件事" },
+							confidence: 0.8,
+						},
+					],
+				},
+			]),
+		]);
+
+		await drain(store, client);
+
+		expect(store.getStateDiffs("a2").map((diff) => diff.path)).toEqual([
+			["knowledge", "凛", "k1"],
+			["knowledge", "卫宫", "k3"],
+			["knowledge", "凛", "k4"],
+		]);
+	});
+
+	it("与最近原文冲突的事实不写入，记入修复记录", async () => {
+		const { store } = openTempStore();
+		seedStory(store);
+		store.appendStateDiff({
+			storyId: "s1",
+			nodeId: "a2",
+			path: ["character", "凛", "location"],
+			op: "set",
+			value: "教室",
+			source: "model",
+		});
+		const { client } = createFakeClient([
+			JSON.stringify([
+				{
+					nodeId: "a2",
+					diffs: [
+						{
+							path: ["character", "凛", "location"],
+							op: "set",
+							value: "屋顶",
+							confidence: 0.5,
+						},
+					],
+					conflicts: [
+						{
+							path: ["character", "凛", "location"],
+							reason: "最近一楼明确写她还在教室",
+						},
+					],
+				},
+			]),
+		]);
+
+		await drain(store, client);
+
+		expect(store.getStateSnapshot("a2").state).toEqual({
+			character: { 凛: { location: "教室" } },
+		});
+		const settlement = store.getLedgerSettlement("a2");
+		expect(settlement).toMatchObject({ source: "settler", addedCount: 0 });
+		expect(settlement?.repairs).toMatchObject([
+			{
+				path: ["character", "凛", "location"],
+				action: "conflict",
+			},
+		]);
+		expect(settlement?.repairs[0]?.reason).toContain(
+			"最近一楼明确写她还在教室",
+		);
+	});
+
+	it("冲突检查窗口取 head 路径上最近的楼层，楼层数可配置", async () => {
+		const { store } = openTempStore();
+		store.createStory({ id: "s1", title: "测试" });
+		const raws = [
+			"第一楼",
+			"第二楼",
+			"第三楼",
+			"第四楼",
+			"第五楼",
+			"第六楼",
+			"第七楼",
+			"第八楼",
+			"第九楼",
+		];
+		let parentId: string | null = null;
+		for (const [index, raw] of raws.entries()) {
+			const id = `n${index + 1}`;
+			store.appendNode({
+				id,
+				storyId: "s1",
+				parentId,
+				role: index % 2 === 0 ? "assistant" : "user",
+				raw,
+			});
+			parentId = id;
+		}
+		const { client, requests } = createFakeClient([JSON.stringify([])]);
+
+		await createSettleHandler({ conflictWindowFloors: 2 })({
+			store,
+			client,
+			job: jobFor("n1"),
+		});
+
+		const content = requests[0]?.messages[1]?.content ?? "";
+		expect(content).toContain('<最近楼层 id="n8"');
+		expect(content).toContain('<最近楼层 id="n9"');
+		expect(content).not.toContain('<最近楼层 id="n7"');
+		expect(content).toContain("第八楼");
+		expect(content).toContain("第九楼");
+	});
+});

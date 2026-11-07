@@ -68,6 +68,9 @@ const CLUE_TEXT_FIELDS = ["text", "openedAt", "updatedAt"] as const;
 
 const USER_WILL_FIELDS = ["kind", "text", "sourceNodeId", "createdAt"] as const;
 
+/** 知情条目的值：事实 id 指向事件或线索，正文写这条知识的具体内容。 */
+const KNOWLEDGE_FIELDS = ["factId", "text"] as const;
+
 export interface LedgerDiffInput {
 	readonly path: readonly string[];
 	readonly op: StateDiffOp;
@@ -358,9 +361,14 @@ function validateKnowledge(
 		return;
 	}
 	if (rest.length !== 2) {
-		fail(path, "knowledge 的路径必须是 knowledge.<知情者>.<事实>");
+		fail(path, "knowledge 的路径必须是 knowledge.<知情者>.<条目 id>");
 	}
-	requireText(path, diff, "knowledge 值");
+	if (diff.op === "delete") return;
+	const label = `台账路径 ${pathLabel(path)} 的值`;
+	const value = assertPlainObject(diff.value, label);
+	rejectUnknownKeys(value, KNOWLEDGE_FIELDS, label);
+	requireObjectText(value, "factId", label);
+	requireObjectText(value, "text", label);
 }
 
 function validateUserWill(

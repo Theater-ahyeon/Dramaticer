@@ -164,7 +164,7 @@ flowchart TB
 | `time.current` | 非空字符串 |
 | `clue.<id>.text` / `.openedAt` / `.updatedAt` | 非空字符串 |
 | `clue.<id>.status` | `open`、`progress`、`fulfilled` 之一 |
-| `knowledge.<知情者>.<事实>` | 非空字符串 |
+| `knowledge.<知情者>.<条目 id>` | `{factId, text}`；`factId` 指向事件或线索，同一知情者对同一 `factId` 只写一次 |
 | `userWill.<id>` | `{kind, text, sourceNodeId, createdAt}`，`kind` 取 `preference`、`boundary`、`correction` |
 | `mvu.<原始变量路径…>` | 任意 JSON 值 |
 
@@ -176,7 +176,10 @@ flowchart TB
 
 - 每次回复落定后在间隙运行，不阻塞回合；可以一次处理多个楼层。
 - 模型主动写了台账变更，就以模型写的为准；没写就由结算器补上；写坏了就修复，并记录修复原因（借鉴故事神谕的诊断模式）。
-- 输入是回复正文、当前台账快照与相关实体；输出是严格校验的台账 diff，不合格的条目整条拒绝并记录原因，重试按后台任务规则处理。
+- 输入是回复正文、当前台账快照、最近楼层原文与相关实体；输出是严格校验的台账 diff，不合格的条目整条拒绝并记录原因，重试按后台任务规则处理。
+- 写入前把人物、地点、物品的名称对照实体与别名表换成规范写法；不认识的名称进候选表，同一结算窗口出现两次以上或被正文模型直接写入时立即建档。
+- 与最近 `conflictWindowFloors`（默认 6）楼原文矛盾的结算事实不覆盖已有值，拒绝写入并以 `conflict` 动作记入 `repairs`，供变更卡复核。
+- `knowledge` 条目按知情者与 `factId` 去重，同一事实不重复写入。
 - 同一楼层重复结算不产生重复 diff；结算结果与楼层绑定，swipe 与编辑的新节点各自结算。
 
 ### 7.3 记忆分层

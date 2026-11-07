@@ -80,7 +80,7 @@ const validDiffs: readonly RawDiff[] = [
 	{
 		path: ["knowledge", "凛", "卫宫是御主"],
 		op: "set",
-		value: "知道卫宫是御主",
+		value: { factId: "clue-1", text: "知道卫宫是御主" },
 	},
 	{
 		path: ["userWill", "w1"],
@@ -208,6 +208,33 @@ describe("validateLedgerDiff", () => {
 					path: ["item", "徽章", "log", "battle-1"],
 					op: "set",
 					value: { text: "击退", nodeId: "n-root", at: "2026-11-07", x: 1 },
+				},
+				/未知字段/,
+			],
+			[
+				"知情条目的值不是对象",
+				{
+					path: ["knowledge", "凛", "k1"],
+					op: "set",
+					value: "知道卫宫是御主",
+				},
+				/的值 必须是对象/,
+			],
+			[
+				"知情条目缺少正文",
+				{
+					path: ["knowledge", "凛", "k1"],
+					op: "set",
+					value: { factId: "clue-1" },
+				},
+				/text 必须是非空字符串/,
+			],
+			[
+				"知情条目有未知字段",
+				{
+					path: ["knowledge", "凛", "k1"],
+					op: "set",
+					value: { factId: "clue-1", text: "知道", extra: 1 },
 				},
 				/未知字段/,
 			],
