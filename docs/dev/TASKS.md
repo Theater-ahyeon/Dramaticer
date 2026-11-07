@@ -450,13 +450,153 @@
   做什么：同 M0-T99；重跑门禁与 live 测试；逐条核对 M3-T08 的重复度与线索回收率门槛；复核 I1–I10，重点检查 I6（主循环只有一次主模型调用加最多 2 轮读取工具，导演不增加调用）、I7、I9（导演实时决策不调用 LLM）；在 `docs/dev/reports/M3.md` 报告哪些假设被证实、哪些需要调整；确认 M4 的条目。
   结果写 `MILESTONE_DONE`。
 
-## 兼容线（DESIGN §6、§9）——由 C-T00 细化，排在 M3 之后
+## M4：server、web 与工具——已由 M4-T00 细化
 
-- [ ] **C-T00 拆解兼容线**。粗粒度条目：预设转换成原生模板（条目对应段落、marker 对应槽位）；宏引擎（范围以 M0 报告里的宏统计为准）；正则第一层原样执行；第二层自动升级；MVU 转状态 schema；ACU 表格转初始记忆；导入时生成"跳过了哪些"的清单；**过关标准：58 个预设的可用率达到 M0 报告之后定下的目标**。
+- [x] **M4-T00 细化 M4 任务** | 依赖：无
+  完成：2026-11-07 把 M4 细化为 M4-T01 至 M4-T20 与 M4-T99：共享类型包、故事设置与模板持久化、重新生成、server 骨架与认证、故事导入、SSE 回合、后台任务、分支与面板接口、渠道管理、web 骨架与聊天、分支、面板、设置与模板、渠道面板、沙箱渲染、Playwright 端到端、自动试玩框架与真实 50 轮。读取工具与 `state_update`、`plot_note` 已在 M2-T14 与 M2-T07 接入主循环，M4 改为端到端核对；`illustrate` 留到 M6。ST 预设转换留在兼容线。兼容线段按 DESIGN §15 的表格移到 M4 之后。ADR-0030。
+  做什么：原条目：server（HTTP 加 SSE，默认只监听 127.0.0.1，局域网模式必须设密码）；web（移动端优先：聊天、分支、预设和模板编辑器、记忆面板、状态面板、导演面板、Trace 面板、渠道管理）；沙箱 iframe 渲染器；写入工具和读取工具接入主循环。**试玩验收按 ADR-0028：Playwright 端到端加 LLM 模拟用户至少 50 轮，产出私有报告与统计版报告，作者看统计版确认；不新增 HUMAN 阻塞项。统计版报告按 ADR-0029 增加 Director 机制命中次数、节奏阶段分布、新建与兑现的剧情笔记数、线索兑现率与兑现平均年龄。**
 
-## M4：server、web 与工具——由 M4-T00 细化
+- [ ] **M4-T01 共享 API 类型包** | 依赖：无 | DESIGN §13
+  做什么：
+  - 新增 `packages/protocol`（`@dramaticer/protocol`），只放 HTTP 与 SSE 的类型和常量：故事、楼层、路径、树、设置、模板、Trace、状态快照、事件、摘要、剧情笔记、导演决策、实体、lore、渠道脱敏视图、错误包装、SSE 事件联合类型与事件名。
+  - 领域类型从 `@dramaticer/core` 只用 `import type` 引用，编译结果不包含 core 的运行时代码；导出 `SSE_EVENT_NAMES` 等常量。根 `tsconfig.json` 增加项目引用，`pnpm check` 覆盖。
+  - 工作区类型依赖按现有规则不登记到 `DEPENDENCIES.md`。
+  验收：`pnpm check` 通过；`packages/protocol/dist` 里没有 core 的运行时 import；后续 server 与 web 任务可以直接引用这些类型，本任务先由 `tsc -b` 验证。
 
-- [ ] **M4-T00 拆解 M4**。粗粒度条目：server（HTTP 加 SSE，默认只监听 127.0.0.1，局域网模式必须设密码）；web（移动端优先：聊天、分支、预设和模板编辑器、记忆面板、状态面板、导演面板、Trace 面板、渠道管理）；沙箱 iframe 渲染器；写入工具和读取工具接入主循环。**试玩验收按 ADR-0028：Playwright 端到端加 LLM 模拟用户至少 50 轮，产出私有报告与统计版报告，作者看统计版确认；不新增 HUMAN 阻塞项。统计版报告按 ADR-0029 增加 Director 机制命中次数、节奏阶段分布、新建与兑现的剧情笔记数、线索兑现率与兑现平均年龄。**
+- [ ] **M4-T02 故事运行配置与模板持久化** | 依赖：M1-T07、M2-T01 | DESIGN §5、§9
+  做什么：
+  - 迁移 v17 新增 `story_settings(story_id PRIMARY KEY REFERENCES stories(id), card_name, character_prompt, persona, template_id, model, budget_tokens, structured_output, temperature, max_tokens, reasoning, viewpoint, director_config, updated_at)` 与 `context_templates(id PRIMARY KEY, name UNIQUE, template, created_at, updated_at)`；`template_id` 可空，空表示内置默认模板。
+  - `StoryStore` 新增 `getStorySettings`（缺失时返回默认值）、`updateStorySettings` 与模板 CRUD；枚举、数值范围、模板 JSON 与 `director_config` 在这里校验。
+  - core 新增 `createCharacterSlotProvider(characterPrompt)` 与 `createStandardChatProviders({store, characterPrompt, embedder, directorConfig, mechanisms})`；st-compat 的 `createChatProviders` 改为薄包装。
+  - `importCardContent` 返回 `{characterPrompt, cardName}`；`dramaticer chat` 导入后写入故事设置，后续组装优先读库里的提示词；没有设置时回退到 `--card`。
+  验收：重启数据库后设置与模板仍在；非法结构化输出模式、负预算、空模板抛错；内置默认模板可被故事引用；导入卡后不需要卡文件就能组装上下文（假客户端）；现有 chat 测试不回归；`pnpm check` 通过。
+
+- [ ] **M4-T03 重新生成助手楼层** | 依赖：M1-T07、M2-T01 | DESIGN §5
+  做什么：
+  - 从 `runChatTurn` 抽出 `generateAssistantTurn`：接收现有用户楼层 id，不再追加用户楼层；组装上下文、生成、解析块、写状态 diff 与笔记、写 Trace 都在新助手楼层上完成。
+  - `regenerateAssistantTurn(assistantNodeId)` 找到父用户楼层，用父楼层 raw 作为本轮输入，在父节点下新建助手兄弟节点并把 head 移过去；旧节点原文不变。
+  - `runChatTurn` 改为先追加用户楼层再调用 `generateAssistantTurn`，现有 CLI 行为不变。
+  验收：重新生成产生兄弟节点、旧节点与旧 Trace 不变、head 正确；父节点不是用户楼层时抛错；函数调用模式仍只有一次主调用与最多 2 轮读取；状态 diff、笔记与新 Trace 写在新楼层；`pnpm check` 通过。
+
+- [ ] **M4-T04 server 骨架、认证与静态资源** | 依赖：M4-T01 | DESIGN §13
+  做什么：
+  - 新增 `packages/server`（`@dramaticer/server`），使用 `node:http`，不引入 Web 框架；提供 `dramaticer-serve` 入口，参数 `--db`、`--port`（默认 8787）、`--host`（默认 127.0.0.1）、`--channels`、`--web`。
+  - 绑定非回环地址且没有设置 `DRAMATICER_SERVER_PASSWORD` 时拒绝启动；设置密码后 `/api/login` 用 `timingSafeEqual` 校验，成功后发 `HttpOnly; SameSite=Strict` 会话 cookie（内存会话表），除 `/api/health` 与 `/api/login` 外全部要求会话；状态变更请求校验 `Origin`。
+  - JSON 请求体上限 25 MB（角色卡 base64），超限 413；统一错误形状 `{error:{code,message,details?}}`；日志不输出请求正文、cookie 与密钥。
+  - 静态资源服务 `packages/web/dist`：MIME 正确，拒绝 `..` 与符号链接逃逸，找不到文件时回退 `index.html`。
+  验收：非回环无密码启动失败；错误密码 401、正确密码后可访问；无会话的 `/api` 401；超大请求 413；路径穿越被拒绝且读不到仓库外文件；`pnpm check` 通过。
+
+- [ ] **M4-T05 server 故事、导入与设置接口** | 依赖：M4-T04、M4-T02 | DESIGN §13
+  做什么：
+  - 故事：`GET/POST /api/stories`、`GET/PATCH /api/stories/:id`。
+  - 导入：`POST /api/stories/:id/import`，JSON 里带角色卡（PNG 的 base64 或 JSON）与可选世界书；用 st-compat 解析并导入实体、lore、`extensions.dramaticer` 与故事设置；同一张卡重复导入只补缺失内容。
+  - 设置与模板：`GET/PUT /api/stories/:id/settings`、`GET/POST /api/templates`、`GET/PUT/DELETE /api/templates/:id`；删除仍被故事引用的模板返回 409。
+  - 所有输入错误返回 400 与字段路径，未知故事 404；响应使用 protocol 类型。
+  验收：合成卡与世界书导入后实体、lore、设置正确；重复导入不重复；非法模板 JSON 与设置枚举 400；测试只用 fixture；`pnpm check` 通过。
+
+- [ ] **M4-T06 server 运行时与 SSE 对话** | 依赖：M4-T05、M4-T03、M4-T02 | DESIGN §10、§11
+  做什么：
+  - `StoryRuntime`：按故事设置建正文客户端、embedding 客户端、模板与槽位提供者；设置或渠道配置变化后失效；正文与后台客户端分开。
+  - `POST /api/stories/:id/turns` 返回 `text/event-stream`：`turn.started`、`text.delta`、`thinking.delta`、`blocks.replace`（节流 100 毫秒与结束时各一次）、`tool.call`、`turn.completed`（用户与助手楼层、状态 diff、笔记、用量、Trace 摘要、首字毫秒）、`turn.error`；每 15 秒心跳注释。
+  - 每个故事同时只允许一个回合，冲突 409；客户端断开触发 `AbortController`，已生成内容写入助手楼层并记录中止；服务端关闭中止全部回合。
+  - 一次回合只调用一次主模型；读取工具最多 2 轮；`state_update` 与 `plot_note` 在同一回复里收集并写入；文本标签模式不提供工具。
+  验收：假渠道下事件顺序与终态正确；增量按顺序到达；断开后上游中止且部分内容保留；并发第二轮 409；同一回合主模型调用次数与工具轮次符合上限；日志不含正文与密钥；`pnpm check` 通过。
+
+- [ ] **M4-T07 server 后台任务调度** | 依赖：M4-T06、M2-T03 | DESIGN §4、§7
+  做什么：
+  - 回合成功后在后台执行 `enqueueMissingJobs` 与 `drainBackgroundJobs`，不阻塞 SSE 结束；服务端同一时间只跑一个后台任务，按创建顺序；使用独立的 `background` 客户端与限速。
+  - 失败按任务框架的规则记录，超过重试次数后标为 `failed` 并保留最后错误；服务端关闭时中止正在执行的处理器。
+  - 新增 `GET /api/stories/:id/jobs` 返回 pending/running/done/failed 计数与最近错误，供面板显示。
+  验收：回合响应先于后台任务完成；事件、摘要与向量在任务完成后写入；失败重试到 `failed`；关闭服务不留下未结束的异步任务；测试用假处理器且零网络；`pnpm check` 通过。
+
+- [ ] **M4-T08 server 分支与面板接口** | 依赖：M4-T06、M4-T03
+  做什么：
+  - 分支：`GET /api/stories/:id/tree`、`GET /api/stories/:id/path?nodeId=`、`POST /api/nodes/:id/swipe`、`POST /api/nodes/:id/edit`、`POST /api/stories/:id/head`、`POST /api/nodes/:id/regenerate`。
+  - 面板：`GET /api/nodes/:id/trace`、`/state`、`/events?limit&offset`、`/summaries`、`/director`；`GET /api/stories/:id/notes`、`POST /api/notes/:id/fulfill`；`GET /api/stories/:id/entities`、`/lore`。
+  - 节点必须属于请求路径里的故事，否则 404；响应使用 protocol 类型；不返回密钥。
+  验收：swipe 与 edit 生成兄弟且旧节点不变；head 切换后路径正确；regenerate 走 M4-T03；面板数据与 store 一致；跨故事节点 404；`pnpm check` 通过。
+
+- [ ] **M4-T09 server 渠道管理接口** | 依赖：M4-T04、M1-T03
+  做什么：
+  - `GET /api/channels`：别名、模型、优先级、启用状态、`${ENV}` 变量名与是否已设置、最近体检结果；密钥值永远不出现在响应里。
+  - `PUT /api/channels`：编辑别名、模型、优先级、启用状态与新增渠道；密钥字段只接受环境变量引用；校验后原子写回 `channels.yaml`（临时文件加 rename），运行时缓存失效。
+  - `POST /api/channels/probe`：调用 `probeChannel`，只在用户点击时联网，结果写回配置。
+  验收：脱敏响应里没有密钥；非法 YAML、重复别名与缺失环境变量 400；写入后下一回合使用新配置；probe 用假提供方测试；真实渠道测试放 `*.live.test.ts`；`pnpm check` 通过。
+
+- [ ] **M4-T10 web 骨架与 API 客户端** | 依赖：M4-T05、M4-T06、M4-T01 | DESIGN §13
+  做什么：
+  - 新增 `packages/web`（React、Vite、TypeScript，中文，移动端优先）；路由使用 `react-router-dom`；页面：登录、故事列表、故事页（聊天、分支、面板、设置、渠道）。
+  - `api` 客户端使用 cookie 凭据与 protocol 类型；`streamTurn` 用 fetch 与 ReadableStream 解析 SSE，支持 AbortController；错误统一显示。
+  - 移动端布局：底部导航、安全区、390×844 无横向滚动；桌面宽屏两栏。
+  - 根脚本接入 `typecheck` 与 `build`；登记 `react`、`react-dom`、`react-router-dom`、`vite`、`@vitejs/plugin-react`、`@types/react`、`@types/react-dom`。
+  验收：`pnpm check` 与 `pnpm --filter @dramaticer/web build` 通过；SSE 解析器单测覆盖分块、多事件、注释与错误事件；API 客户端用假 fetch 测试；390×844 截图无横向滚动。
+
+- [ ] **M4-T11 web 聊天界面** | 依赖：M4-T10、M4-T06
+  做什么：
+  - 按当前路径渲染消息；流式正文、思考折叠；原生块组件（选项、页眉、悄悄话、旁白、备忘）；未知块显示原文。
+  - 发送、停止、失败重试；回合完成后显示状态 diff 数、新笔记与首字延迟；自动滚动与“回到底部”。
+  验收：增量逐字出现；思考默认折叠；停止后保留部分内容；错误重试不重复写楼层；键盘与触摸可用；纯逻辑单测覆盖 SSE 事件归并与块选择；`pnpm check` 通过。
+
+- [ ] **M4-T12 web 分支视图** | 依赖：M4-T11、M4-T08
+  做什么：
+  - 楼层树（缩进与折叠）、当前路径高亮、点击切换 head；swipe、编辑用户或助手文本、重新生成；切换前提示未确认楼层的后果。
+  验收：swipe 与 edit 后旧分支仍可切回；编辑后原文不变；head 切换与路径刷新正确；移动端可操作；纯逻辑单测覆盖树构造与路径标记；`pnpm check` 通过。
+
+- [ ] **M4-T13 web 状态与记忆面板** | 依赖：M4-T10、M4-T08
+  做什么：
+  - 状态快照按 key 树形展示、本楼 diff 高亮；事件列表（时间、地点、参与者、重要度、知情者、来源楼层）；摘要列表与覆盖区间；分页与空状态。
+  验收：面板数据与接口一致；长值可展开；空状态清楚；纯逻辑单测覆盖格式化与分页；`pnpm check` 通过。
+
+- [ ] **M4-T14 web 导演与 Trace 面板** | 依赖：M4-T10、M4-T08
+  做什么：
+  - 导演决策（机制、优先级、指令、信号）、未兑现笔记与兑现按钮；Trace 分段（来源、token、裁剪、缺失槽位）、工具轮次、渠道与用量；导演开关与节奏参数保存在故事设置。
+  验收：开关导演后下一回合行为不同；兑现后列表更新；Trace 与核心记录一致；纯逻辑单测覆盖展示模型；`pnpm check` 通过。
+
+- [ ] **M4-T15 web 故事设置与模板编辑器** | 依赖：M4-T10、M4-T05、M4-T02 | DESIGN §9
+  做什么：
+  - 故事设置：模型别名、预算、结构化输出模式、温度、最大 token、思考档位、视角、导演开关与参数；保存前做范围校验。
+  - 模板编辑器：段落列表（静态、槽位、条件）增删与上下移动、槽位选择、条件编辑；保存前由服务端 `assertContextTemplate` 校验；支持复制模板与设为故事默认。
+  - ST 预设转换属于兼容线，本任务不做，界面不放置未实现的导入入口。
+  验收：模板增删移动后组装顺序与预览一致；非法条件与空静态段被拒绝并显示字段错误；设置保存后下一回合生效；刷新后仍在；纯逻辑单测覆盖编辑状态与校验映射；`pnpm check` 通过。
+
+- [ ] **M4-T16 web 渠道管理面板** | 依赖：M4-T10、M4-T09
+  做什么：
+  - 渠道列表（别名、模型、优先级、启用、密钥变量是否设置、体检结果）；编辑与新增；体检按钮显示流式、函数调用、思考、预填充、用量结果；密钥只显示变量名与是否设置。
+  验收：界面不出现密钥值；保存后服务端配置更新；未设置的变量有醒目提示；体检失败显示错误；纯逻辑单测覆盖表单校验；`pnpm check` 通过。
+
+- [ ] **M4-T17 沙箱 iframe 块渲染器** | 依赖：M4-T11、M1-T05 | DESIGN §6
+  做什么：
+  - web 新增沙箱渲染组件：`<iframe sandbox="allow-scripts">`，不添加 `allow-same-origin`；`srcdoc` 注入块 HTML 与最小 CSP；模板来自块注册表的 `html` 显示策略，服务端在 `blocks.replace` 里带上显示策略与模板。
+  - postMessage 白名单：只接受 `ready`、`height`、`action`（`choice`、`scroll` 等固定类型）；校验 `event.source` 与 `event.origin === "null"`；父页面只回发固定字段。
+  - 原生块继续用 React 组件；未知块显示原文。
+  验收：脚本无法读取父页面 DOM 与 cookie；高度自适应；非法消息被忽略；模板 HTML 不进入主文档；Playwright 用例覆盖隔离与高度；`pnpm check` 通过。
+
+- [ ] **M4-T18 Playwright 端到端** | 依赖：M4-T11 至 M4-T17
+  做什么：
+  - 安装 `@playwright/test` 与 Chromium；`packages/web/e2e/` 配置 `pnpm e2e`：先构建 server 与 web，再启动本地假 OpenAI 兼容渠道与 server；假渠道返回固定 SSE，覆盖思考、块、`state_update`、`plot_note` 与读取工具调用。
+  - 用例覆盖：密码登录、创建故事、导入合成卡、两轮对话、swipe、编辑、分支切换、状态与记忆面板、导演与 Trace 面板、模板编辑、渠道编辑；390×844 与桌面两种视口。
+  - 默认不进入 `pnpm check`（浏览器体积），`pnpm e2e` 单独运行并写进文档。
+  验收：`pnpm e2e` 全部通过；不访问外网、不使用私有数据；失败截图与 trace 写进 `.devloop/scratch/e2e/`（git 忽略）；`pnpm check` 通过。
+
+- [ ] **M4-T19 自动试玩框架** | 依赖：M4-T18、M4-T07 | ADR-0028
+  做什么：
+  - `packages/web/e2e/playtest/`：用 Playwright 驱动真实界面；模拟用户由 `background` 模型生成，严格 JSON `{message}`，失败重试 3 次后终止并记录；50 轮内至少执行 2 次 swipe、2 次编辑、2 次分支切换，轮次位置可配置。
+  - 每轮记录序号、节点 id、用户与助手原文、首字毫秒、用量、状态 diff 数、新建与兑现笔记、导演决策、截图路径；报告头写模型别名、配置与样本数。
+  - 私有报告写 `eval-private/reports/m4-playtest.md`；统计版写 `docs/dev/reports/M4-playtest.md`，字段按 ADR-0028 与 ADR-0029：轮数、相邻块 Jaccard 与节拍余弦、首字延迟、token、Director 机制命中、节奏阶段分布、笔记新建与兑现、兑现率与平均年龄、错误数与复现步骤编号。
+  - 统计版不出现故事名、角色名、原文与题目文本；失败可整批重跑并注明。
+  验收：假渠道下 5 轮冒烟跑通且不联网；私有报告含逐轮记录与截图路径；统计版字段齐全并通过私有标识反向扫描；`pnpm check` 通过。
+
+- [ ] **M4-T20 真实 50 轮试玩与报告** | 依赖：M4-T19 | 使用 `.env` 里的真实渠道
+  做什么：用真实正文与后台渠道运行至少 50 轮，执行规定次数的 swipe、编辑与分支切换；生成两份报告；统计版写入 `docs/dev/reports/M4-playtest.md` 并在 `docs/dev/reports/M4.md` 引用；效果指标按 ADR-0029 原样报告，没有信号就写未证实。
+  验收：50 轮完成，失败轮次有原因；两份报告生成；统计版无私有信息；报告给出 Director 机制命中与节奏阶段分布；`pnpm check` 通过。
+
+- [ ] **M4-T99 M4 验收** | 依赖：M4 全部任务
+  做什么：同 M0-T99；重跑 `pnpm check`、`pnpm e2e` 与 50 轮试玩报告；逐条核对 M4-T01 至 M4-T20；复核 I1–I10，重点 I6（主循环一次主模型调用加最多 2 轮读取工具）、I7、I9，以及 server 不绕过 core 直接写库；检查默认回环监听与局域网密码；在 `docs/dev/reports/M4.md` 总结；确认 M5 条目。
+  结果写 `MILESTONE_DONE`；报告缺失时写 `PARTIAL`。
+
+## 兼容线（DESIGN §6、§9）——由 C-T00 细化，排在 M4 之后
+
+- [ ] **C-T00 细化兼容线**。原条目：预设转换成原生模板（条目对应段落、marker 对应槽位）；宏引擎（范围以 M0 报告里的宏统计为准）；正则第一层原样执行；第二层自动升级；MVU 转状态 schema；ACU 表格转初始记忆；导入时生成“跳过了哪些”的清单；**过关标准：58 个预设的可用率达到 M0 报告之后定下的目标**。
 
 ## M5：公开 alpha——由 M5-T00 细化
 ## M6：生图（ComfyUI 优先）——由 M6-T00 细化

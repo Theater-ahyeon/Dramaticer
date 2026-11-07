@@ -352,3 +352,17 @@
   - M4 的自动试玩报告在 ADR-0028 的字段之外增加：Director 机制命中次数、节奏阶段分布、新建与兑现的剧情笔记数、线索兑现率与兑现平均年龄。50 轮窗口比 M3-T08 的 5 轮更能观察到阶段转移与笔记兑现。
   - 如果 M4 的 50 轮数据仍然没有效果信号，再单独评估机制或目标，另写 ADR；不以单次回放的结果直接修改阈值。
 - **影响**：`docs/dev/reports/M3.md` 如实记录未证实；M4-T00 的细化与 ADR-0028 的报告字段按本条扩展；DESIGN §14 的目标保持原文不变，等 M4 数据再判断。
+
+## ADR-0030 M4 的 server、web 与工具边界（2026-11-07）
+
+- **背景**：M4 要新增 server 与 web 两个包，粗条目里的“写入工具和读取工具接入主循环”“预设和模板编辑器”“沙箱 iframe”需要说明当前实现与范围。读取工具与 `state_update`、`plot_note` 已在 M2-T14 与 M2-T07 接入主循环；`illustrate` 依赖 M6 的生图后端。任务清单里的兼容线段原先写在 M4 之前，DESIGN §15 的表格把 M4 排在兼容线之前。
+- **决定**：
+  - 任务顺序按 DESIGN §15 的表格改为 M4 → 兼容线 → M5。兼容线段仍与 M4 的沙箱渲染器衔接，不阻塞 M5；这一步只调整顺序，不改变兼容线的范围。
+  - 新增 `packages/protocol`：server 与 web 共用的 HTTP DTO、SSE 事件名与错误形状。只放类型与常量，领域类型通过 `import type` 引用 core，编译结果不包含 core 的运行时代码。server 依赖 core 与 st-compat，web 只依赖 protocol 与浏览器 API。
+  - server 使用 Node `node:http`，不引入 Web 框架。JSON 请求体上限 25 MB，角色卡以 base64 JSON 上传；静态资源由 server 提供 web 构建产物。默认只监听 127.0.0.1；绑定非回环地址时必须设置 `DRAMATICER_SERVER_PASSWORD`。会话 cookie 使用 `HttpOnly` 与 `SameSite=Strict`，密钥只存在服务端。
+  - 每故事运行配置持久化：迁移 v17 新增 `story_settings` 与 `context_templates`。角色卡提示词在导入时写入，运行时不再需要卡文件；上下文模板是结构化数据，保存在数据库。模板为空时使用内置默认模板。
+  - 重新生成从现有用户楼层生成新的助手兄弟节点，旧节点原文不变；`runChatTurn` 抽出“不追加用户楼层”的生成入口，CLI 与 server 共用。
+  - 工具范围：读取工具与结构化写入工具已经在主循环内；M4 通过 server 与端到端测试验证一次主模型调用、最多 2 轮读取工具、写入工具在同一回复里收集。`illustrate` 留到 M6，M4 不建空实现。
+  - 模板编辑器编辑原生上下文模板与故事设置；ST 预设转换、宏执行与正则执行属于兼容线，M4 不重复实现，界面不放置未实现的导入入口。
+  - 测试：server 单测使用假客户端与临时数据库；Playwright 端到端使用本地假 OpenAI 兼容渠道，默认不进入 `pnpm check`；50 轮试玩使用真实渠道，报告按 ADR-0028 与 ADR-0029。
+- **影响**：M4-T00 按以上边界细化为 M4-T01 至 M4-T20 与 M4-T99；`DEPENDENCIES.md` 登记 web 与测试依赖；DESIGN §13 的包列表同步。
