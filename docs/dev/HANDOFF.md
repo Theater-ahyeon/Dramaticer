@@ -3,24 +3,25 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：85
-- 任务：F0-T100 写 v3 并改写路线
-- 结果：完成（`MILESTONE_DONE`），门禁通过（712 个测试，3 个 live 跳过）。
-  - 新增 `docs/proposals/v3.md`：数据结论、主菜排序（开局与方向 → 输出形态 → 记忆与台账最小集 → 生图）、开局机制、输出形态、记忆最小集、偏好信号、评测与自动试玩、插件与 ST 兼容、阶段表、范围核对。
-  - ADR-0044 记录采纳与阶段顺序。`docs/DESIGN.md` 升为 v0.3：§1 主菜排序、§2.1 F0 取证数字、§3 原则 10–12、§4 插件层与偏好信号、§6 prompt 视图与块显示、§7.3 记忆增强次序与 `gap_pass`、§8.4 开局导演、§9 块格式说明与兼容插件、§10.1 分两段交付、§10.2 生成长度与裁判模型家族、§12 生图位置、§14.5 偏好信号与自动试玩、§15 路线表重写、§16 去掉两处已被取代的条目、§17 新增四项待验证、§19 插件系统、附录 Q39–Q43。
-  - `docs/dev/TASKS.md` 重写 F 之后的全部阶段：R1 最小集（含新增 R1-T02.b 块的 prompt 视图）、R3 快回合（细化到 5 个任务）、O 开局与方向（4 个任务）、R2 评测底座（新增 R2-T07/T07.a 偏好信号、R2-T08 公开合成基准、R2-T09 长对话遗忘评测）、E、R4、R5（最小界面先做，任务编号不变）、M6 生图第一批、R1 续（父子分块、重排序、事件表回填、八段式压缩、世界书预筛、上下文包，含 R1-T99.a）、R3b 深回合、P1–P5 位置、C 兼容插件、H、X、R6、M5、M7；R7 占位阶段取消（其四项内容已成独立阶段）。
-  - 数据库迁移编号按新顺序重排：v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 变更卡、v23 开局包、v24 开场候选、v25 偏好记录、v26 父子分块、v27 章节压缩、v28 世界书预筛、v29 上下文包。
+- 会话：86
+- 任务：R0-T04 合并 v3 插件系统提案
+- 结果：完成（`DONE`），门禁通过（712 个测试，3 个 live 跳过）。
+  - ADR-0045 记录采纳 `docs/proposals/plugins.md`：参照 Cordis（MIT 上游）的五个概念（Context、插件生命周期、事件分发、服务、玩法包补丁层），对外只暴露 Dramaticer 自己定义的类型；内置模块也按插件实现；上游采用与否由 P1 验证。
+  - `docs/DESIGN.md` §19 由摘要补齐为完整章节：19.1 Context 与插件注册表（`name`、`Config`、`inject`、`provide`、生命周期回收、热重载、类型边界）、19.2 扩展点与五种分发模式、19.3 两档插件、19.4 清单与玩法包与卡片依赖与按故事启用、19.5 插件市场、19.6 P1–P5 执行顺序、19.7 三条插件不变量与 I4/I8/I9/I12/I13/I15 的约束。
+  - `docs/dev/TASKS.md` 的 P 阶段建立 P1–P5：P1 技术验证依赖 R5-T99；P2 内核改造依赖 P1 与 R5-T99；P3 依赖 P2；P4 依赖 P3；P5 依赖 P4 与 M5-T99；C 线依赖 P2。每个任务都有做什么与验收。
+  - `docs/dev/HUMAN.md` 新增 HUMAN-10（不阻塞）：三条插件不变量是否作为 I16–I18 加入 AGENTS.md 由人类确认，确认之前以 DESIGN §19.7 为准。
 
 ## 当前状态
-- M0、M1、M2、M3、D-T01 至 D-T04、M4-T00 至 M4-T06、R0-T01 至 R0-T03、R1-T01、R1-T01.a、F0-T01 至 F0-T04、F0-T99、F0-T100 完成。
-- 下一步按文件顺序是 **R0-T04 合并 v3 插件系统提案**（`docs/proposals/plugins.md`，建立 P1–P5，位置按 ADR-0044），然后 **R0-T05 归档已完成任务**，然后进入 **R1 最小集**（第一个未完成任务是 R1-T01.b 渠道按岗位配置）。
+- M0、M1、M2、M3、D-T01 至 D-T04、M4-T00 至 M4-T06、R0-T01 至 R0-T04、R1-T01、R1-T01.a、F0-T01 至 F0-T04、F0-T99、F0-T100 完成。
+- 下一步按文件顺序是 **R0-T05 归档已完成任务**，然后进入 **R1 最小集**（第一个未完成任务是 R1-T01.b 渠道按岗位配置）。
 - v3 阶段顺序：R1 最小集 → R3 快回合 → O 开局与方向 → R2 评测底座 → E → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
-- 人类已确认的路线变更：ADR-0038（四个 ST 兼容插件取代兼容线 C-T00）、ADR-0039（F0-T100 直接写 v3，人类试玩改为自动试玩加评测）、ADR-0040（共存规则写入 C 线验收）、ADR-0041（方案评审提案 A1–A11）、ADR-0042（模型渠道回退顺序）、ADR-0043（F0 结论）、ADR-0044（v3 路线）。
+- 人类已确认的路线变更：ADR-0038（四个 ST 兼容插件取代兼容线 C-T00）、ADR-0039（F0-T100 直接写 v3，人类试玩改为自动试玩加评测）、ADR-0040（共存规则写入 C 线验收）、ADR-0041（方案评审提案 A1–A11）、ADR-0042（模型渠道回退顺序）、ADR-0043（F0 结论）、ADR-0044（v3 路线）、ADR-0045（插件系统）。
 - HUMAN-09 仍待处理（不阻塞）：ADR-0042 声明的 `bg-fallback`、`main-fallback`、`codex` 别名在 `data/channels.yaml` 里已经出现（F0 实际用了 `main-fallback` 与 `bg-fallback`），`channels.example.yaml` 是否需要补上请人类确认；没有改这两个文件。
-- 数据库 schema 版本 18；后续迁移编号见上面一节，插入新迁移时后续编号一起顺延。
+- HUMAN-10 待处理（不阻塞）：插件不变量是否加进 AGENTS.md。
+- 数据库 schema 版本 18；迁移编号 v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 变更卡、v23 开局包、v24 开场候选、v25 偏好记录、v26 父子分块、v27 章节压缩、v28 世界书预筛、v29 上下文包；插入新迁移时后续编号一起顺延。
 - 台账只有结构与读取，**没有写入校验的强制点**：`appendStateDiffs` 不调用 `validateLedgerDiff`；R1-T02 的结算器负责在写入前校验（I12）。
 - `readLedgerFacts` 不读取快照缓存，按 `getStateDiffsAlongPath` 回放，返回顺序是路径上首次出现的顺序。
-- 已注册的槽位是九个（`packages/core/src/context/template.ts` 的 `CONTEXT_SLOT_NAMES`：lore、character、persona、summary、state、memory、history、director、protocol）；DESIGN §9 里的 `ledger` 对应实现的 `state`，`beat` 尚未注册。R1-T02.a 新增 `scene` 槽位。R1-T02 的 `block_format` 是模板里的可选静态段，不是槽位。R3-T03 的写作契约使用已注册的 `protocol` 槽位。
+- 已注册的槽位是九个（`packages/core/src/context/template.ts` 的 `CONTEXT_SLOT_NAMES`：lore、character、persona、summary、state、memory、history、director、protocol）；DESIGN §9 里的 `ledger` 对应实现的 `state`，`beat` 尚未注册。R1-T02.a 新增 `scene` 槽位。R1-T02 的 `block_format` 是模板里的可选静态段，不是槽位。R3-T03 的写作约定使用已注册的 `protocol` 槽位。
 - `packages/server` 已提供故事、导入、设置、模板、SSE 回合与后台运行时缓存；`packages/protocol` 已提供 HTTP 与 SSE 类型；`packages/web` 尚未创建。
 - `story_settings` 默认值：`budgetTokens` 12000、`structuredOutput` `text-tags`、`temperature` 0.8、`maxTokens` 1024（R1-T01.c 改为 4096 与渠道声明取小）、`reasoning` `low`、导演使用默认配置。
 - 快照：`eval-private/raw/` 有 94 个文件；manifest 记录 `corpus` 与 `sourceMtime`。`eval-private/reference/` 有 5 部参照小说。
@@ -28,10 +29,10 @@
 - F0 的私有产物：`eval-private/f0/pairs.jsonl`（290 对）、`attribution.jsonl`、`judge.jsonl`（793 行）、`fulltext/work.db`、`fulltext-probe.json`、`fulltext-branches.json`、`fulltext-generations.jsonl`、`fulltext-judgements.jsonl`、`fulltext-summary.json`、`llm-cache/`。`eval-private/reports/f0-corpus-map.json` 是对话编号到文件路径的映射。
 - HUMAN-03（事件题抽查）仍未完成，不阻塞任何任务；其余 HUMAN 条目均已完成。
 - M3 的两项效果目标按 ADR-0029 保留为未证实；v2 的门槛改由 R6 按 B0/B1 对比判定。
+- 插件系统在 DESIGN §19 是唯一权威（Context 与注册表、扩展点与分发模式、两档插件、清单与玩法包、市场、三条插件不变量、P1–P5 顺序）；P 阶段任务在 TASKS 的「P：插件内核」小节，C 线兼容插件任务已存在且依赖 P2。
 
 ## 下一步
-- **R0-T04 合并 v3 插件系统提案**：按 `docs/proposals/plugins.md` 写 ADR 并把插件系统章节写进 DESIGN §19；建立 P1–P5，依赖固定为 P1→R5-T99、P2→P1+R5-T99、P3→P2、P4→P3、P5→P4+M5-T99，C 线依赖 P2；AGENTS.md 是否加入插件不变量在 HUMAN.md 请人类确认。
-- **R0-T05 归档已完成任务**：把 M0–M4、D、R0 已完成项与 F0 已完成项移到 `docs/dev/TASKS-archive.md`，TASKS.md 只保留未完成与当前阶段。
+- **R0-T05 归档已完成任务**：把 M0–M4、D、R0 已完成项与 F0 已完成项移到 `docs/dev/TASKS-archive.md`，TASKS.md 只保留未完成与当前阶段；顶部保留状态标记说明、选任务规则与指向归档文件的引用；HANDOFF 与 LOG 里对已完成任务细节的引用改成指向归档。
 - **R1-T01.b 渠道按岗位配置** 起继续 R1 最小集；R1 的顺序是 T01.b、T01.c、T02、T02.a、T02.b、T03、T04.a、T07、T07.a、T07.b、T99。
 - R1 最小集之后是 R3 快回合（R3-T01 至 R3-T99）、O 开局与方向、R2 评测底座。
 - 记忆增强（R1 续）排在 R5 与 60 轮自动试玩之后；R2-T09 的长对话遗忘报告是先后与默认开关的输入，四项都不删除。
@@ -44,7 +45,7 @@
 - `fulltext-probe.json` 的 `previousCalls` 记录被重跑覆盖的探测调用数；重跑探测时这个字段会累加，不要手工清零。
 - 请求长度探测的输入是重复的合成中文文本，core 的 token 估算把中文按 1.5 字符/token 算，比渠道实际计数高约 20%；报告同时给估算值与渠道报告的输入合计。「1M 级别」指目标 1,048,576 token 的探测级别，渠道报告的实际输入是 873,850 token。
 - `pnpm f0:corpus` 需要 `DRAMATICER_ST_ROOTS`（Windows 上用分号分隔三个 ST 数据目录），并保证 `packages/core/dist` 已构建；脚本会覆盖 `docs/dev/reports/F0-corpus.md` 与 `eval-private/reports/f0-corpus-map.json`。
-- F0-corpus 的标签块占比是保守口径：只用闭合的无属性标签块，带属性的 HTML 按正文计，合计 25.2%（中位数 0%）。引用标签占比时必须同时写明口径。
+- F0-corpus 的标签块占比是保守口径：只用闭合的无属性标签块，带属性的 HTML 按正文计，合计 25.2%（中位数 0%）。引用标签块占比时必须同时写明口径。
 - `pnpm f0:attribution` 需要先 `pnpm run typecheck` 构建 core 与 st-compat 的 `dist`，并读取 `eval-private/reports/f0-corpus-map.json`。环境变量：`DRAMATICER_F0_PAIRS_PER_BUCKET` 默认 67、`DRAMATICER_F0_CONCURRENCY` 默认 4、`DRAMATICER_F0_MAX_TOKENS` 默认 2500。归因输出必须原样使用固定类别，不放宽校验。
 - `pnpm f0:judge`：从已归因配对里按层抽 70/60/70，每对两种顺序，结果写 `eval-private/f0/judge.jsonl`；报告只替换 `<!-- F0-T03:begin -->` 到 `<!-- F0-T03:end -->`，门槛那段是手写的。判决输出必须同时有 `choice` 与 0 到 1 的 `confidence`；失败过的判断用 `cacheDir: null` 重试。`DRAMATICER_F0_JUDGE_MODEL` 只覆盖内存里的模型 id；`DRAMATICER_F0_JUDGE_RERUN=1` 忽略已有结果重判。
 - 语料里有文件名不同、内容完全相同的对话副本：F0-T03 的 390 次判断里有 24 次请求内容重复（13 次命中缓存），独立判断 366 次。引用样本量时要说明。

@@ -13,3 +13,4 @@ agent 遇到只有人类才能做的事，就记在这里，并在 TASKS 里把�
 | HUMAN-07 | 已完成（2026-11-07：目录里只有《龙族》系列，放了 5 部——Ⅰ、Ⅱ、Ⅳ、Ⅴ、前传；Ⅴ 原文件是 GB18030，已转成 UTF-8；5 部合计约 162 万内容字符、3 万个段落；全部在 `eval-private/reference/`，已被 git 忽略） | 不阻塞 | 参照小说已就位，D-T04 可以执行 | 无 |
 | HUMAN-08 | 已完成（2026-11-07：接受 ADR-0023 的状态层口径——状态题用提问楼层的快照值与标准答案的一致率衡量，文本召回 13.6% @20 原样保留在报告里，45% 只作为文本召回目标） | 不阻塞 | 已确认 | 无 |
 | HUMAN-09 | 待处理 | 不阻塞 | ADR-0042 声明的 `bg-fallback`、`main-fallback`、`codex` 三个模型别名在 `data/channels.yaml` 与 `channels.example.yaml` 里都不存在。F0-T03 在 `opendesign/deepseek-v4.1-flash` 持续返回 membership entitlement 错误时，按 ADR-0042 的回退顺序改用 magpie 的 `auto/deepseek-v4.1-flash`，通过脚本的环境变量 `DRAMATICER_F0_JUDGE_MODEL` 覆盖，没有改动这两个文件。是否补上别名请人类确认 | 无 |
+| HUMAN-10 | 待处理 | 不阻塞 | `docs/proposals/plugins.md` 第七节的三条插件不变量已写进 `docs/DESIGN.md` §19.7（插件不能修改楼层原文、状态写入必须经过结算器；回合内钩子有时间预算、超时跳过并写入 Trace；代码插件的权限必须声明并在安装时展示）。这三条是否作为 I16–I18 加入 AGENTS.md 的不变量表请人类确认；确认之前 AGENTS.md 保持原样，以 DESIGN §19.7 为准 | 无 |
