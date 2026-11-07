@@ -28,3 +28,9 @@
 - **选项**：使用 `png-chunks-extract` 加 `png-chunk-text`；使用 `pngjs`；手写解析。
 - **决定**：使用 `png-chunks-extract` 读取 PNG 块，使用 `png-chunk-text` 解码 `tEXt` 文本块，两个库都登记为根目录的开发依赖。base64 与 JSON 解码用 Node 内置能力。
 - **影响**：新增两个轻量开发依赖；M0-T04 可以直接复用这对库，避免再引入第二个 PNG 解析方案。
+
+## ADR-0004 楼层全文索引使用 FTS5 trigram（2026-11-06）
+- **背景**：`node_text` 需要支持中文原文检索。FTS5 默认的 `unicode61` 把连续的中日韩字符当成一个词，没有空格的整句无法被分词，检索基本不可用。
+- **选项**：`unicode61` 加应用层预分词；`trigram`；不建 FTS5，改用 LIKE。
+- **决定**：`node_text` 使用 `tokenize = 'trigram'`，由 `nodes` 表上的插入/删除触发器同步。查询按 FTS5 字符串字面量转义后做短语匹配；因为 trigram 需要至少 3 个字符，`searchNodeText` 对更短的查询直接抛错，不做模糊降级。
+- **影响**：SQLite 需要 3.34 以上（当前 3.53.4）。M0-T12 的 BM25 基线可以直接使用这张表；如果检索质量不足，在新增迁移里替换分词方案，不改调用方接口。

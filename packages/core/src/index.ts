@@ -1,3 +1,12 @@
+export { LATEST_SCHEMA_VERSION } from "./store/migrations.js";
+export type {
+	AppendNodeInput,
+	CreateStoryInput,
+	SearchNodeTextOptions,
+} from "./store/story-store.js";
+export { StoryStore } from "./store/story-store.js";
+export * from "./timeline.js";
+
 export interface EngineVersion {
 	readonly major: number;
 	readonly minor: number;

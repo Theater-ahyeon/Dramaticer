@@ -46,7 +46,8 @@
   - 解析结果用明确的 TS 类型表达
   验收：合成测试数据覆盖主要字段；解析之后再序列化，和原文件在结构上等价。
 
-- [ ] **M0-T06 core：原生领域模型与存储（M0 子集）** | 依赖：M0-T01 | DESIGN §5、§7
+- [x] **M0-T06 core：原生领域模型与存储（M0 子集）** | 依赖：M0-T01 | DESIGN §5、§7
+  完成：2026-11-06 `packages/core/src/timeline.ts` 定义 Story、TimelineNode、StateDiff、NewStateDiff、MemoryEvent；`store/` 用 better-sqlite3 建 stories/nodes/state_diffs 与 FTS5 node_text（trigram），schema 用 `PRAGMA user_version` 迁移，数据库触发器禁止修改楼层原文；13 个测试，门禁通过
   做什么：定义这些类型：Story、TimelineNode（含 parentId 和不可修改的 raw）、StateDiff、MemoryEvent（先只定义类型）；用 better-sqlite3 建表（nodes、state_diffs、带 FTS5 的 node_text）；写一个数据库迁移机制（schema 版本号）。**存储层不提供修改 raw 的接口**（不变量 I4），并写一个测试确保这一点。
   验收：能建库；能插入节点和 diff；能按路径（从根到某个节点）读出数据；FTS5 查询可用。
 
