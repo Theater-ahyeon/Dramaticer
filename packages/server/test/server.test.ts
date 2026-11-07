@@ -124,9 +124,8 @@ describe("认证", () => {
 		const after = await fetch(`${running.origin}/api/stories`, {
 			headers: { cookie },
 		});
-		expect(after.status).toBe(404);
-		const body = (await after.json()) as { error: { code: string } };
-		expect(body.error.code).toBe("not_found");
+		expect(after.status).toBe(200);
+		expect(await after.json()).toEqual([]);
 	});
 
 	it("请求体超过上限返回 413", async () => {
@@ -169,7 +168,7 @@ describe("认证", () => {
 		await fetch(`${running.origin}/api/stories`, { headers: { cookie } });
 		const log = lines.join("\n");
 		expect(log).toContain("POST /api/login 204");
-		expect(log).toContain("GET /api/stories 404");
+		expect(log).toContain("GET /api/stories 200");
 		expect(log).not.toContain("top-secret");
 		expect(log).not.toContain(cookie);
 		expect(log).not.toContain("password");

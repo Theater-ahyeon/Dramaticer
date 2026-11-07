@@ -66,6 +66,9 @@ importers:
       '@dramaticer/protocol':
         specifier: workspace:*
         version: link:../protocol
+      '@dramaticer/st-compat':
+        specifier: workspace:*
+        version: link:../st-compat
 
   packages/st-compat:
     dependencies:

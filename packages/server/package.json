@@ -19,6 +19,7 @@
 	},
 	"dependencies": {
 		"@dramaticer/core": "workspace:*",
-		"@dramaticer/protocol": "workspace:*"
+		"@dramaticer/protocol": "workspace:*",
+		"@dramaticer/st-compat": "workspace:*"
 	}
 }

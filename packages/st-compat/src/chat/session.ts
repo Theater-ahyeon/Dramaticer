@@ -3,13 +3,19 @@ import {
 	type DirectorConfig,
 	type DirectorMechanism,
 	type EmbeddingClient,
+	type EventPoolUpsertResult,
+	type NpcAgendaUpsertResult,
 	type StoryStore,
 	createStandardChatProviders,
 } from "@dramaticer/core";
 import type { StCharacterCard } from "../character-card.js";
 import { importDramaticerExtension } from "../dramaticer-extension.js";
-import { importCharacterCardEntity } from "../entity-import.js";
 import {
+	type EntityImportResult,
+	importCharacterCardEntity,
+} from "../entity-import.js";
+import {
+	type LoreImportResult,
 	importCharacterBookLore,
 	importWorldInfoLore,
 } from "../lore-import.js";
@@ -21,9 +27,42 @@ export interface ImportCardContentOptions {
 	readonly worlds?: readonly StWorldInfo[];
 }
 
+export interface ImportedLoreTotals {
+	readonly inserted: number;
+	readonly existing: number;
+	readonly skipped: number;
+}
+
 export interface ImportedCardContent {
 	readonly characterPrompt: string;
 	readonly cardName: string;
+	readonly entities: EntityImportResult;
+	readonly lore: ImportedLoreTotals;
+	readonly events: EventPoolUpsertResult;
+	readonly npcAgendas: NpcAgendaUpsertResult;
+}
+
+function addEntities(
+	total: EntityImportResult,
+	next: EntityImportResult,
+): EntityImportResult {
+	return {
+		created: total.created + next.created,
+		merged: total.merged + next.merged,
+		aliases: total.aliases + next.aliases,
+		skipped: total.skipped + next.skipped,
+	};
+}
+
+function addLore(
+	total: ImportedLoreTotals,
+	next: LoreImportResult,
+): ImportedLoreTotals {
+	return {
+		inserted: total.inserted + next.inserted,
+		existing: total.existing + next.existing,
+		skipped: total.skipped + next.skipped,
+	};
 }
 
 /** 把角色卡、卡内世界书、外部世界书与原生扩展导入故事。 */
@@ -33,15 +72,32 @@ export function importCardContent(
 	options: ImportCardContentOptions,
 ): ImportedCardContent {
 	const { card } = options;
-	importCharacterCardEntity(store, storyId, card);
+	let entities = importCharacterCardEntity(store, storyId, card);
+	let lore: ImportedLoreTotals = { inserted: 0, existing: 0, skipped: 0 };
 	if (card.characterBook !== null) {
-		importCharacterBookLore(store, storyId, card.characterBook, card.name);
+		const result = importCharacterBookLore(
+			store,
+			storyId,
+			card.characterBook,
+			card.name,
+		);
+		entities = addEntities(entities, result.entities);
+		lore = addLore(lore, result);
 	}
 	for (const worldInfo of options.worlds ?? []) {
-		importWorldInfoLore(store, storyId, worldInfo);
+		const result = importWorldInfoLore(store, storyId, worldInfo);
+		entities = addEntities(entities, result.entities);
+		lore = addLore(lore, result);
 	}
-	importDramaticerExtension(store, storyId, card);
-	return { characterPrompt: renderCharacterPrompt(card), cardName: card.name };
+	const extension = importDramaticerExtension(store, storyId, card);
+	return {
+		characterPrompt: renderCharacterPrompt(card),
+		cardName: card.name,
+		entities,
+		lore,
+		events: extension.events,
+		npcAgendas: extension.npcAgendas,
+	};
 }
 
 export interface CreateChatProvidersOptions {

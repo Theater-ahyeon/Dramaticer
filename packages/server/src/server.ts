@@ -18,6 +18,7 @@ import {
 	sendError,
 	sendJson,
 } from "./http.js";
+import { handleApiRequest } from "./routes.js";
 import { resolveStaticFile, serveStaticFile } from "./static-files.js";
 
 /** 角色卡以 base64 JSON 上传，这个上限要能装下一张卡。 */
@@ -175,7 +176,11 @@ async function handleRequest(
 		if (options.password !== null && !hasSession(req, options.sessions)) {
 			throw new HttpError(401, "unauthorized", "需要先登录");
 		}
-		throw new HttpError(404, "not_found", "没有这个接口");
+		await handleApiRequest(req, res, url, method, {
+			store: options.store,
+			maxJsonBodyBytes: options.maxJsonBodyBytes,
+		});
+		return;
 	}
 	if (method !== "GET" && method !== "HEAD") {
 		throw new HttpError(405, "bad_request", `不支持的请求方法：${method}`);

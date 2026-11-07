@@ -1,4 +1,8 @@
-import type { TimelineNode, TimelineRole } from "@dramaticer/core";
+import type {
+	StorySettings,
+	TimelineNode,
+	TimelineRole,
+} from "@dramaticer/core";
 
 /** 故事列表与详情共用的视图；head 为空表示还没有楼层。 */
 export interface StoryView {
@@ -16,6 +20,49 @@ export interface CreateStoryRequest {
 
 export interface UpdateStoryRequest {
 	readonly title?: string;
+}
+
+/** PNG 角色卡：`data` 是不带 data URI 前缀的 base64。 */
+export interface PngCharacterCard {
+	readonly format: "png";
+	readonly data: string;
+}
+
+/** JSON 角色卡：`data` 是卡片的 JSON 文本。 */
+export interface JsonCharacterCard {
+	readonly format: "json";
+	readonly data: string;
+}
+
+export type ImportCharacterCard = PngCharacterCard | JsonCharacterCard;
+
+export interface ImportStoryRequest {
+	readonly card: ImportCharacterCard;
+	/** 外部世界书的 JSON 文本，按数组顺序导入。 */
+	readonly worlds?: readonly string[];
+}
+
+export interface ImportStoryCounts {
+	readonly entities: {
+		readonly created: number;
+		readonly merged: number;
+		readonly aliases: number;
+		readonly skipped: number;
+	};
+	readonly lore: {
+		readonly inserted: number;
+		readonly existing: number;
+		readonly skipped: number;
+	};
+	readonly events: { readonly inserted: number; readonly updated: number };
+	readonly npcAgendas: { readonly inserted: number; readonly updated: number };
+}
+
+export interface ImportStoryResult {
+	readonly story: StoryView;
+	readonly cardName: string;
+	readonly settings: StorySettings;
+	readonly imported: ImportStoryCounts;
 }
 
 /** head 到根节点的完整路径，按根到 head 的顺序。 */

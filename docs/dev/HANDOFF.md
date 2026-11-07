@@ -3,23 +3,26 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：70
-- 任务：M4-T04 server 骨架、认证与静态资源
+- 会话：71
+- 任务：M4-T05 server 故事、导入与设置接口
 - 结果：完成（`DONE`）。
-  - 新增 `packages/server`（`@dramaticer/server`）：`node:http`，不引入 Web 框架；`dramaticer-serve` 入口与 `--db`、`--port`（默认 8787）、`--host`（默认 127.0.0.1）、`--channels`、`--web` 参数；根脚本为 `pnpm serve`。默认路径从仓库根目录解析：`data/dramaticer.db`、`data/channels.yaml`、`packages/web/dist`。
-  - 认证：绑定非回环地址且没有 `DRAMATICER_SERVER_PASSWORD` 时 `startServer` 先抛错，不会创建数据库；`/api/login` 对双方各取 sha256 摘要后用 `timingSafeEqual` 比较，成功后发 `dramaticer_session` cookie（`HttpOnly; SameSite=Strict; Path=/`，内存会话表）。除 `/api/health` 与 `/api/login` 外全部要求会话；非读取方法校验 `Origin` 的 host 与请求 `Host` 一致，缺少 `Origin` 的命令行请求放行。
-  - 请求与错误：JSON 请求体上限 25 MB（`MAX_JSON_BODY_BYTES`），超限部分不保留在内存，读完再返回 413；所有错误都是 `{error:{code,message,details?}}`；日志只有方法、路径、状态与耗时。
-  - 静态资源：`--web` 目录按扩展名给 MIME；先 realpath 再做目录包含判断，拒绝编码后的 `..`、反斜杠、NUL 与逃出目录的符号链接；找不到文件时回退 `index.html`。web 目录不存在时 API 外的请求返回 404。
-  - `startServer` 打开 `StoryStore`，健康检查返回核心版本与 `schemaVersion`；`close()` 先关闭 HTTP 连接再关闭数据库。
-  - 新增 `packages/server/test` 的 21 个测试（参数解析与回环判定、密码与 cookie、Origin、413、静态 MIME 与回退、路径穿越与符号链接、日志脱敏）。CLI 冒烟确认回环启动、健康检查 200、无密码时登录 400、静态 index 200，以及 `--host 0.0.0.0` 无密码时退出码 1。
-  - 门禁通过：606 个测试（新增 21 个）。
+  - 新增 `packages/server/src/routes.ts`，`startServer` 在会话校验后把 `/api` 请求交给 `handleApiRequest`；`/api/health` 与 `/api/login` 仍由 `server.ts` 直接处理。
+  - 故事：`GET/POST /api/stories`、`GET/PATCH /api/stories/:id`。列表与详情返回 `StoryView`（含 head），创建返回 201；`PATCH` 只接受 `title`；重复 id 409；未知故事 404；空标题与未知字段 400，`details.path` 指向字段。
+  - 导入：`POST /api/stories/:id/import`，请求形状 `{card:{format:"png"|"json",data:string}, worlds?:string[]}`，PNG 的 `data` 是不带前缀的 base64，JSON 卡与世界书是文本。解析在事务外完成；实体、卡内世界书、外部世界书、`extensions.dramaticer` 与故事设置（`cardName`、`characterPrompt`）在同一个事务里写入。重复导入幂等：实体只合并别名，lore 按来源跳过，事件池与 NPC 议程只更新。响应 `ImportStoryResult` 带各步计数。
+  - 设置：`GET/PUT /api/stories/:id/settings`，PUT 是合并式更新，未知字段与非法枚举/数值 400，`details.path` 从 store 错误里推断（`directorConfig.*` 也覆盖）；未知 `templateId` 400。
+  - 模板：`GET/POST /api/templates`、`GET/PUT/DELETE /api/templates/:id`。创建 201，删除 204；重名 409；仍被故事设置引用的模板 409 并返回 `{storyId}`；未知模板 404。
+  - core：`StoryStore.updateStoryTitle`；`findStoryUsingContextTemplate`（`deleteContextTemplate` 复用同一查询）。
+  - st-compat：`index.ts` 导出 `chat/session.js`；`importCardContent` 返回值增加 `entities`、`lore`、`events`、`npcAgendas` 计数，原调用方不受影响。
+  - protocol：`story.ts` 新增 `PngCharacterCard`、`JsonCharacterCard`、`ImportCharacterCard`、`ImportStoryRequest`、`ImportStoryCounts`、`ImportStoryResult`。
+  - `packages/server` 增加工作区依赖 `@dramaticer/st-compat`（不登记 DEPENDENCIES）与 tsconfig reference；锁文件已更新。
+  - 新增 `packages/server/test/stories.test.ts` 的 9 个测试（故事 CRUD、两种卡格式导入与重复导入、非法卡与世界书、设置、模板 CRUD 与引用冲突）。原 `server.test.ts` 里 `/api/stories` 的 404 断言改为 200 空列表。门禁通过：615 个测试（新增 9 个）。
 
 ## 当前状态
-- M0、M1、M2、M3、D-T01 至 D-T04、M4-T00 至 M4-T04 完成；M4-T05 待做。
+- M0、M1、M2、M3、D-T01 至 D-T04、M4-T00 至 M4-T05 完成；M4-T06 待做。
 - 数据库 schema 版本 17。
-- `packages/server` 已经有请求处理骨架：`src/server.ts` 的 `startServer` 返回 `{origin, store, close}`，`src/http.ts` 提供 `HttpError`、`sendJson`、`sendError`、`readJsonBody`，`src/auth.ts` 提供会话与 Origin 判断，`src/static-files.ts` 提供静态资源解析与发送。`--channels` 已经解析并保存，路由还没使用它。
-- `packages/server` 的依赖是 `@dramaticer/core` 与 `@dramaticer/protocol`；M4-T05 导入接口需要再加 `@dramaticer/st-compat`（工作区依赖，不需要登记）。
-- `packages/web` 尚未创建；`packages/web/dist` 不存在时 server 的静态请求返回 404 JSON。
+- `packages/server`：`startServer` 返回 `{origin, store, close}`；`http.ts` 提供 `HttpError`、`sendJson`、`sendError`、`readJsonBody`；`auth.ts` 提供会话与 Origin 判断；`static-files.ts` 提供静态资源；`routes.ts` 提供故事、导入、设置、模板接口。`--channels` 已经解析并保存，路由还没使用它。
+- `packages/server` 依赖 `@dramaticer/core`、`@dramaticer/protocol`、`@dramaticer/st-compat`。
+- `packages/web` 尚未创建；`packages/web/dist` 不存在时静态请求返回 404 JSON。
 - `story_settings` 默认值：`budgetTokens` 12000、`structuredOutput` `text-tags`、`temperature` 0.8、`maxTokens` 1024、`reasoning` `low`、导演使用默认配置。
 - 快照：`eval-private/raw/` 有 94 个文件；manifest 记录 `corpus` 与 `sourceMtime`。`eval-private/reference/` 有 5 部参照小说。
 - 事件表已在 v7 建立，但真实回放里没有事件；不要引用事件数字。
@@ -28,11 +31,12 @@
 - 兼容线 C-T00 排在 M4 之后，与 M4 的沙箱渲染器衔接。
 
 ## 下一步
-- **M4-T05 server 故事、导入与设置接口**，依赖 M4-T04、M4-T02，可以直接执行。
-  - 故事：`GET/POST /api/stories`、`GET/PATCH /api/stories/:id`；导入 `POST /api/stories/:id/import`（角色卡 PNG base64 或 JSON，可选世界书；走 st-compat 的解析与导入，重复导入只补缺失内容）。
-  - 设置与模板：`GET/PUT /api/stories/:id/settings`、模板 CRUD；删除仍被引用的模板 409；非法输入 400 带字段路径，未知故事 404。
-  - 在 `src/server.ts` 的路由里注册；复用 `HttpError`、`readJsonBody`、`hasSession` 的判断方式。响应类型从 `@dramaticer/protocol` 取，需要新类型时先加在 protocol。
-- 之后按 TASKS 顺序：M4-T06 server 运行时与 SSE 对话（用 `generateAssistantTurn` 与 `regenerateAssistantTurn`）。
+- **M4-T06 server 运行时与 SSE 对话**，依赖 M4-T05、M4-T03、M4-T02，可以直接执行。
+  - `StoryRuntime`：按故事设置建正文客户端、embedding 客户端、模板与槽位提供者；设置或渠道配置变化后失效；正文与后台客户端分开。
+  - `POST /api/stories/:id/turns` 返回 `text/event-stream`：`turn.started`、`text.delta`、`thinking.delta`、`blocks.replace`（节流 100 毫秒与结束时各一次）、`tool.call`、`turn.completed`（用户与助手楼层、状态 diff、笔记、用量、Trace 摘要、首字毫秒）、`turn.error`；每 15 秒心跳注释。
+  - 每个故事同时只允许一个回合，冲突 409；客户端断开触发 `AbortController`，已生成内容写入助手楼层并记录中止；服务端关闭中止全部回合。
+  - 运行时复用 `@dramaticer/protocol` 的 `TurnRequest` 与 SSE 事件类型；设置读取走 `store.getStorySettings`，模板走 `getContextTemplate`。
+- 之后按 TASKS 顺序：M4-T07 server 后台任务调度。
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
@@ -56,3 +60,4 @@
 - server 测试使用 `packages/server/test/.tmp-server-*` 临时目录（已被 git 忽略），并且只监听 127.0.0.1 的随机端口；写测试时不要发送外部网络请求（I10 会扫描测试文件里的 URL 字面量）。
 - Playwright 浏览器与 `pnpm e2e` 不进入 `pnpm check`；端到端失败产物写 `.devloop/scratch/e2e/`。
 - 故事设置的更新时间由存储层用 `new Date().toISOString()` 写入；测试不要断言具体时间值。
+- 导入接口的角色卡图片与 JSON 都在请求体内，25 MB 上限覆盖；PNG base64 目前只接受无前缀的 base64，测试里用 `node:zlib` 构造最小 PNG。

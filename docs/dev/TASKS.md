@@ -490,7 +490,8 @@
   - 静态资源服务 `packages/web/dist`：MIME 正确，拒绝 `..` 与符号链接逃逸，找不到文件时回退 `index.html`。
   验收：非回环无密码启动失败；错误密码 401、正确密码后可访问；无会话的 `/api` 401；超大请求 413；路径穿越被拒绝且读不到仓库外文件；`pnpm check` 通过。
 
-- [ ] **M4-T05 server 故事、导入与设置接口** | 依赖：M4-T04、M4-T02 | DESIGN §13
+- [x] **M4-T05 server 故事、导入与设置接口** | 依赖：M4-T04、M4-T02 | DESIGN §13
+  完成：2026-11-07 新增 `src/routes.ts`：故事 CRUD（`GET/POST /api/stories`、`GET/PATCH /api/stories/:id`）、导入（`POST /api/stories/:id/import`，JSON 或 PNG base64 卡加可选世界书，事务内导入实体、lore、`extensions.dramaticer` 与设置）、设置（`GET/PUT .../settings`）与模板 CRUD；`importCardContent` 返回实体、lore、事件与 NPC 议程计数；存储层新增 `updateStoryTitle` 与 `findStoryUsingContextTemplate`；错误带 `details.path`，未知故事/模板 404，重复故事/模板名与仍被引用的模板 409；9 个新测试，门禁通过（615 个测试）
   做什么：
   - 故事：`GET/POST /api/stories`、`GET/PATCH /api/stories/:id`。
   - 导入：`POST /api/stories/:id/import`，JSON 里带角色卡（PNG 的 base64 或 JSON）与可选世界书；用 st-compat 解析并导入实体、lore、`extensions.dramaticer` 与故事设置；同一张卡重复导入只补缺失内容。

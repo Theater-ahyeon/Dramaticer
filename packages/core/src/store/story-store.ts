@@ -988,6 +988,21 @@ export class StoryStore {
 		return row ? rowToStory(row) : null;
 	}
 
+	updateStoryTitle(id: string, title: string): Story {
+		assertNonEmptyString(title, "故事标题");
+		if (!this.getStory(id)) {
+			throw new Error(`故事不存在：${id}`);
+		}
+		this.#db
+			.prepare("UPDATE stories SET title = ? WHERE id = ?")
+			.run(title, id);
+		const story = this.getStory(id);
+		if (!story) {
+			throw new Error(`故事更新后读取失败：${id}`);
+		}
+		return story;
+	}
+
 	listStories(): Story[] {
 		const rows = this.#db
 			.prepare("SELECT id, title, created_at FROM stories ORDER BY rowid ASC")
@@ -1226,17 +1241,21 @@ export class StoryStore {
 		if (!this.getContextTemplate(id)) {
 			throw new Error(`上下文模板不存在：${id}`);
 		}
-		const reference = this.#db
+		const storyId = this.findStoryUsingContextTemplate(id);
+		if (storyId !== null) {
+			throw new Error(`上下文模板 ${id} 仍被故事 ${storyId} 引用，不能删除`);
+		}
+		this.#db.prepare("DELETE FROM context_templates WHERE id = ?").run(id);
+	}
+
+	/** 返回引用该模板的第一个故事 id；没有引用时返回 null。 */
+	findStoryUsingContextTemplate(id: string): string | null {
+		const row = this.#db
 			.prepare(
 				"SELECT story_id FROM story_settings WHERE template_id = ? LIMIT 1",
 			)
 			.get(id) as { readonly story_id: string } | undefined;
-		if (reference) {
-			throw new Error(
-				`上下文模板 ${id} 仍被故事 ${reference.story_id} 引用，不能删除`,
-			);
-		}
-		this.#db.prepare("DELETE FROM context_templates WHERE id = ?").run(id);
+		return row ? row.story_id : null;
 	}
 
 	#findTemplateIdByName(name: string): string | null {
