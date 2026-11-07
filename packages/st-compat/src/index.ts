@@ -1,5 +1,8 @@
 import { getCoreVersion } from "@dramaticer/core";
 
+export * from "./chat-jsonl.js";
+export * from "./json.js";
+
 export interface CompatInfo {
 	readonly format: "sillytavern";
 	readonly coreVersion: string;

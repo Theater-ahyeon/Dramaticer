@@ -1,0 +1,4 @@
+{"user_name":"测试用户","character_name":"测试角色","chat_metadata":{"note_prompt":"备注","variables":{"hp":1}},"header_extra":"保留"}
+{"name":"测试角色","is_user":false,"is_system":false,"send_date":"2026-01-01T00:00:00.000Z","mes":"第二条 swipe 的正文","swipes":["第一条 swipe","第二条 swipe"],"swipe_id":1,"swipe_info":[{"send_date":"2026-01-01T00:00:01.000Z","extra":{"reasoning":"第一次推理"}},{"send_date":"2026-01-01T00:00:02.000Z","extra":{"reasoning":"第二次推理"}}],"variables":[{"stat_data":{"hp":10}},{"stat_data":{"hp":12}}],"extra":{"token_count":42,"reasoning":"当前推理"},"unknown_message_field":{"keep":true}}
+{"name":"测试用户","is_user":true,"send_date":1767225600,"mes":"用户输入","variables":[{}],"extra":{"token_count":3}}
+{"name":"系统","is_system":true,"mes":"系统提示"}

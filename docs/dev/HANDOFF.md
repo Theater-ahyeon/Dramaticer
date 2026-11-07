@@ -3,30 +3,33 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加），按下面的模板填写。
 
 ## 最近一次会话
-- 会话：3
-- 任务：M0-T02 私有数据快照脚本
-- 结果：完成。`scripts/snapshot-private-data.mjs` 从 ST 数据根只读复制 3 个对话、3 张角色卡、3 本世界书和 58 个预设到 `eval-private/raw/`，生成带源路径、大小、sha256 的 `manifest.json`；逐文件核对源与目标的 sha256 一致。
+- 会话：4
+- 任务：M0-T03 st-compat 聊天 jsonl 解析
+- 结果：完成。新增 `packages/st-compat/src/chat-jsonl.ts`（流式逐行解析）、`packages/st-compat/src/json.ts`（JSON 值类型与对象判定）、合成测试数据与 10 个测试；真实快照 3 个对话共 1222 条消息全部解析，头部、swipe、变量、推理字段都正确。
 
 ## 当前状态
-- 门禁：`pnpm check` 通过。顺序是 invariants → typecheck（`tsc -b`）→ lint（`biome check .`）→ test（`vitest run`），当前 2 个测试。
-- 快照产物：`eval-private/raw/` 共 67 个数据文件加 `manifest.json`，约 137.09 MB。目录结构是 `chats/<角色>/`、`cards/`、`worlds/`、`presets/`。`eval-private/` 已被 git 忽略，`git status` 看不到。
-- 快照脚本：`node scripts/snapshot-private-data.mjs`，也可以运行 `pnpm snapshot`。源根由 `DRAMATICER_ST_ROOT` 指定，默认 `D:\SillyTavern\TauriTavern\default-user\`。
-  - 对话目录按名称选择：「仙侠雌竞」前缀、「银麒赎世」、「欲望世界-1600」；每个目录取最大的 `.jsonl`。
-  - 角色卡优先取同名 `.png`，没有就取 `.json`；PNG 的 `chara`/`ccv3` 文本块用 `png-chunks-extract` 加 `png-chunk-text` 解析。
-  - 世界书从卡的 `data.extensions.world` 或 `data.character_book.name` 推断，优先精确匹配 `worlds/<名字>.json`，再尝试唯一的前缀匹配。
-  - `OpenAI Settings/` 递归复制全部文件。
-  - manifest 的每一条记录 `role`、`character`（适用时）、`source`、`target`、`size`、`sha256`。
-- 工具链细节：
-  - `biome.json` 的格式化规则是 tab 缩进，JSON 文件也被格式化；`scripts/**` 与 `eval-private/**` 被 lint 忽略。
-  - `*.tsbuildinfo` 已加入 `.gitignore`。
-  - 新增依赖 `png-chunks-extract`、`png-chunk-text`（ADR-0003，已登记在 DEPENDENCIES.md）。
-- 本次没有改动任何设计不变量；快照脚本只读源目录，私有数据没有进入 git。
+- 门禁：`pnpm check` 通过。顺序是 invariants → typecheck（`tsc -b`）→ lint（`biome check .`）→ test（`vitest run`），当前 12 个测试。
+- 聊天解析 API：
+  - `parseChatJsonl(chunks)`：接受 `AsyncIterable<string> | Iterable<string>`，逐行抛出 `StChatEntry`（`kind: "header"` 一条，之后 `kind: "message"` 若干）。
+  - `parseChatJsonlFile(path)`：`createReadStream(..., { encoding: "utf8" })` 包装，错误会再包一层文件路径。
+  - `splitChatLines(chunks)` 单独导出，负责跨块切行、CRLF 和末尾无换行符。
+  - 单行长度没有上限，整个文件不会被一次性读入内存。
+- 类型（都在 `@dramaticer/st-compat` 的入口导出）：
+  - `StChatHeader`：`characterName`、`userName`、`chatMetadata`（原样）、`raw`（原始对象）。
+  - `StChatMessage`：`index`（从 0 开始，不含头部）、`name`、`isUser`、`isSystem`、`sendDate`（string | number | null）、`text`（即 `mes`，可能与当前 swipe 不同，因为消息被编辑过）、`swipes`（`StSwipe[]`：`index`、`text`、`info`=swipe_info[i]、`variables`=variables[i]）、`swipeId`、`reasoning`（`extra.reasoning`）、`variables`（当前 swipe 的 MVU 变量快照）、`raw`（原始对象）。
+  - `raw` 保存**整条原始记录**，未识别字段自然保留。`mes`、`swipes` 等大字段是同一个解析对象的引用，不会复制字符串。
+  - 缺失字段的默认值：`name`/`text` 为空串，`isUser`/`isSystem` 为 false，`sendDate` 为 null，`swipes` 为空数组，`variables` 为当前索引取到的值或 null。
+  - 变量数组与 `swipes` 平行；`variables[index]` 就是该 swipe 的 MVU 快照。
+- 测试：`packages/st-compat/test/chat-jsonl.test.ts` 加 `test/fixtures/chat-sample.jsonl`（合成的 4 行，含中文、swipe、推理、未知字段、数字时间戳、system 消息）。覆盖任意块切分一致、CRLF、150K 字符单行、末尾无换行、非法 JSON 行号、非对象行、空输入。
+- 真实数据观测（只给统计）：3 个对话分别 579/412/231 条消息，其中 291/209/115 条带 swipes，system 消息只在「欲望世界」里出现 55 条；`mes` 与当前 swipe 不同的消息有 68/5/54 条；最长正文约 9.5 万字符；解析耗时 129/57/243 毫秒；进程常驻内存峰值约 187 MB（35 MB 文件）。
+- 工具链不变：tab 缩进，`scripts/**`、`eval-private/**` 被 lint 忽略；新增文件已经过 biome 格式化。
+- 顺手产物：`eval-private/scratch/parse-chats.mjs` 是本次真实数据核对脚本，已被 git 忽略，可复用或删除。
 
 ## 下一步
-- 执行 M0-T03（st-compat：聊天 jsonl 解析）
-  - 实现流式逐行解析，单个文件最大 35 MB，每行可能超过 100 KB。
-  - 解析头部（character_name、user_name、chat_metadata 原样保留）和每条消息的 `name`、`is_user`、`is_system`、`send_date`、`mes`、`swipes`、`swipe_id`、`extra.reasoning`、`variables`；不认识的字段放进 `raw`。
-  - 验收用合成数据覆盖 swipe、system 消息、缺字段和超长行。
+- 执行 M0-T04（st-compat：角色卡解析）
+  - PNG 的 `tEXt` 块里 `chara` 或 `ccv3` 是 base64 编码的 JSON；JSON 卡直接读文件。依赖 `png-chunks-extract` 和 `png-chunk-text` 已经在根目录 devDependencies 里（ADR-0003）。
+  - 兼容 V2 和 V3，提取内嵌 `character_book`，`extensions` 原样保留；合成 PNG 在测试里用代码生成最小的 PNG 更稳妥。
+  - 可以复用 `src/json.ts` 的 `JsonValue`、`JsonObject`、`isJsonObject`。
 
 ## 注意事项
 - 私有数据只在给自己看的报告里引用；提交进仓库的内容只能有统计数字。

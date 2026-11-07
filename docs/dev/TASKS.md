@@ -28,7 +28,8 @@
   然后生成 `eval-private/raw/manifest.json`，记录源路径、大小、sha256。源路径通过环境变量 `DRAMATICER_ST_ROOT` 指定，默认值就是上面这个目录。
   验收：执行脚本后文件齐全，manifest 完整；脚本**只读**源目录；`git status` 里看不到 eval-private。
 
-- [ ] **M0-T03 st-compat：聊天 jsonl 解析** | 依赖：M0-T01
+- [x] **M0-T03 st-compat：聊天 jsonl 解析** | 依赖：M0-T01
+  完成：2026-11-06 `packages/st-compat/src/chat-jsonl.ts` 流式逐行解析，覆盖 swipe、system 消息、缺失字段、超长行；真实快照 3 个对话 1222 条消息全部解析通过
   做什么：实现**流式逐行**解析（单个文件可能有 35 MB，每行可能超过 100 KB）。解析出：头部信息（character_name、user_name、chat_metadata 原样保留）；每条消息的 `name`、`is_user`、`is_system`、`send_date`、`mes`（当前 swipe 的正文）、`swipes`、`swipe_id`、`extra.reasoning`、`variables`（MVU 变量）。不认识的字段放进 `raw` 里原样保留。
   验收：用合成的测试数据覆盖：swipe、system 消息、缺字段、超长行；类型完整。
 
