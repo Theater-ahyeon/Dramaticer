@@ -714,3 +714,21 @@
   - 每段的解析与写入包在同一个 try 里：任一步失败只把该段与错误信息记进 `rejected_segments`，其余段照常写入，任务以完成结束；整个回复不是 JSON 对象时任务失败并按任务框架重试。
   - 调用模型前比较任务楼层的结算记录与本次待结算窗口：两者都没有时抛 `BackgroundJobDeferredError`，不发出请求。
 - **影响**：schema 迁移编号顺延：开局包 v26、开场候选 v27、偏好记录 v28、父子分块 v29、章节压缩 v30、世界书预筛 v31、上下文包 v32。`gap_pass` 默认关闭，是否改为默认开启由 R1-T07.b.d 的对比结论决定；`gap_pass_runs.rejected_segments` 给出各段的拒绝比例，可直接用于该对比。事件段复用 `recordExtractedEvents`，与独立的 `events` 任务写同一张事件表与同一份抽取记录，先后执行都不会重复抽取。
+
+## ADR-0054 后台任务档位、长间隙阈值与过期任务丢弃（2026-11-07）
+
+- **背景**：R1-T07.b.c 要求后台任务类型声明 `gap` 与 `deferred` 两档，`drainBackgroundJobs` 只在长间隙或会话结束后执行 `deferred` 档，阈值来自故事设置 `gapPlanSeconds`（默认 212），由调用方传入本轮间隙秒数；执行前楼层不在当前 head 路径上的任务直接丢弃并计数；丢弃计数与关键间隙工作的未完成比例要能从存储层读出。任务没有规定档位怎样声明、丢弃用状态还是删除、比例的分母、`dramaticer work` 在缺少间隙参数时按什么处理。
+- **选项**：
+  - 丢弃时删除任务行：重新入队天然成立，但丢弃数量只能另建计数表（排除）；给 `background_jobs.status` 增加 `discarded` 并保留行（采纳）。SQLite 的 CHECK 约束不能直接改，迁移 v26 重建这张表并保留已有行。
+  - 丢弃后是否允许重新入队：不允许则切回旧分支时该楼层永远不再处理，`UNIQUE (node_id, kind)` 会挡住补建（排除）；`enqueueMissingJobs` 的冲突处理改成只把 `discarded` 行翻回 `pending`，其余状态不动（采纳）。
+  - 档位缺省值：缺省 `deferred` 会让新注册的任务在短间隙里静默不执行（排除）；缺省 `gap`，注册表里显式标注 `deferred`（采纳）；`events`、`summary`、`npc_agenda` 标为 `deferred`，结算、现场分析、用户意志、修订草案、`gap_pass` 与向量保持 `gap`。
+  - 未完成比例的分母：只算当前有效任务（`pending`、`running`、`done`、`failed`），丢弃的任务属于被放弃的分支，不计入（采纳）；没有任务时比例记 0。
+  - `dramaticer work` 缺少 `--gap-seconds` 时的语义：按短间隙处理会让既有命令（`--kind events` 等）静默不执行延后档（排除）；按会话结束处理，需要表达回合中短间隙时传 `--gap-seconds`（采纳）。
+  - 被丢弃的任务是否进入本轮结果：只计数会让排查缺少上下文（排除）；`BackgroundJobRun` 增加 `discarded` 状态的记录，同时结果里给出 `discarded` 条数（采纳）。
+- **决定**：
+  - `BackgroundJobType` 增加 `tier`（`gap` 或 `deferred`），注册表条目可以只写处理器，入队条件缺省 `confirmed`、档位缺省 `gap`；非法档位在注册时抛错。
+  - `drainBackgroundJobs` 增加 `gapSeconds` 与 `sessionEnded`；`sessionEnded` 或 `gapSeconds` 达到故事设置的 `gapPlanSeconds` 时才把 `deferred` 类型放进本轮；补建任务不看档位，延后任务先入队、等到长间隙再执行。
+  - 迁移 v26 给 `story_settings` 增加 `gap_plan_seconds`（默认 212，非负整数），并重建 `background_jobs` 让状态接受 `discarded`；重建时保留全部行、索引与同故事触发器。
+  - 存储层新增 `countBackgroundJobs`（按状态分组，可限定任务类型）与 `discardBackgroundJob`（只允许 `pending` 转 `discarded`，写 `finished_at`）；`background/backlog.ts` 的 `readGapWorkBacklog` 用它算出关键间隙工作的未完成比例。
+  - 没有 head 时不做丢弃判断，避免把全部任务误判为过期。
+- **影响**：schema 迁移编号顺延：开局包 v27、开场候选 v28、偏好记录 v29、父子分块 v30、章节压缩 v31、世界书预筛 v32、上下文包 v33。`dramaticer work` 新增 `--gap-seconds`，并在结束后打印关键间隙工作的待办、完成与未完成率；R2-T02 的试玩记录直接调 `readGapWorkBacklog` 取“下一轮开始时关键间隙工作未完成”的比例。

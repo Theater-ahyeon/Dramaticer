@@ -273,6 +273,79 @@ describe("dramaticer work", () => {
 		expect(executed).toEqual(["n-a"]);
 	});
 
+	it("--gap-seconds 决定可延后档是否执行，并读出间隙积压", async () => {
+		const dbPath = createTempDb();
+		const store = StoryStore.open(dbPath);
+		try {
+			store.appendNode({
+				id: "n-c",
+				storyId: "s1",
+				parentId: "n-b",
+				role: "assistant",
+				raw: "第二个助手楼层",
+			});
+		} finally {
+			store.close();
+		}
+		const executed: string[] = [];
+		const registry = createBackgroundJobRegistry({
+			settle: {
+				handler: (context) => {
+					executed.push(`settle:${context.job.nodeId}`);
+				},
+				enqueue: "settled",
+			},
+			events: {
+				handler: (context) => {
+					executed.push(`events:${context.job.nodeId}`);
+				},
+				tier: "deferred",
+			},
+		});
+		const logs: string[] = [];
+		const dependencies = {
+			loadEnv: () => undefined,
+			loadConfig: async () => createConfig(true),
+			createClient: () => fakeClient,
+			registry,
+			now: () => FIXED_NOW,
+			log: (message: string) => {
+				logs.push(message);
+			},
+		};
+
+		const short = await runWorkCli(
+			["work", "--db", dbPath, "--gap-seconds", "10", "--limit", "1"],
+			dependencies,
+		);
+		expect(executed).toEqual(["settle:n-a"]);
+		expect(short.gapBacklog.counts).toEqual({
+			pending: 1,
+			running: 0,
+			done: 1,
+			failed: 0,
+			discarded: 0,
+		});
+		expect(short.gapBacklog.unfinishedRatio).toBe(0.5);
+		expect(logs.some((line) => line.includes("未完成率 50.0%"))).toBe(true);
+
+		const long = await runWorkCli(
+			["work", "--db", dbPath, "--gap-seconds", "212"],
+			dependencies,
+		);
+		expect(executed).toEqual([
+			"settle:n-a",
+			"events:n-a",
+			"events:n-b",
+			"settle:n-c",
+		]);
+		expect(long.gapBacklog.unfinishedRatio).toBe(0);
+
+		await expect(
+			runWorkCli(["work", "--db", dbPath, "--gap-seconds", "-1"], dependencies),
+		).rejects.toThrow("--gap-seconds");
+	});
+
 	it("渠道配置里没有 background 模型时抛错", async () => {
 		const dbPath = createTempDb();
 		await expect(

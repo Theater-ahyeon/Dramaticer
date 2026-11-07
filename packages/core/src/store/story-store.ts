@@ -3,6 +3,7 @@ import Database from "better-sqlite3";
 import * as sqliteVec from "sqlite-vec";
 import {
 	type BackgroundJob,
+	type BackgroundJobCounts,
 	type BackgroundJobEnqueueCondition,
 	type BackgroundJobStatus,
 	isBackgroundJobEnqueueCondition,
@@ -157,6 +158,7 @@ interface StorySettingsRow {
 	readonly director_config: string;
 	readonly history_block_policy: string;
 	readonly gap_pass_enabled: number;
+	readonly gap_plan_seconds: number;
 	readonly updated_at: string;
 }
 
@@ -574,6 +576,11 @@ export interface ListBackgroundJobsOptions {
 	readonly limit?: number;
 }
 
+export interface CountBackgroundJobsOptions {
+	readonly storyId: string;
+	readonly kinds?: readonly string[];
+}
+
 export interface FailBackgroundJobInput {
 	readonly error: string;
 	readonly maxAttempts: number;
@@ -718,6 +725,7 @@ function rowToStorySettings(row: StorySettingsRow): StorySettings {
 			row.gap_pass_enabled,
 			`故事 ${row.story_id} 的 gap_pass_enabled`,
 		),
+		gapPlanSeconds: row.gap_plan_seconds,
 		updatedAt: row.updated_at,
 	};
 }
@@ -945,7 +953,8 @@ function isBackgroundJobStatus(value: unknown): value is BackgroundJobStatus {
 		value === "pending" ||
 		value === "running" ||
 		value === "done" ||
-		value === "failed"
+		value === "failed" ||
+		value === "discarded"
 	);
 }
 
@@ -1273,6 +1282,7 @@ export class StoryStore {
 			directorConfig: DEFAULT_STORY_SETTINGS_VALUES.directorConfig,
 			historyBlockPolicy: DEFAULT_STORY_SETTINGS_VALUES.historyBlockPolicy,
 			gapPassEnabled: DEFAULT_STORY_SETTINGS_VALUES.gapPassEnabled,
+			gapPlanSeconds: DEFAULT_STORY_SETTINGS_VALUES.gapPlanSeconds,
 			updatedAt: story.createdAt,
 		};
 	}
@@ -1356,6 +1366,10 @@ export class StoryStore {
 				update.gapPassEnabled !== undefined
 					? update.gapPassEnabled
 					: current.gapPassEnabled,
+			gapPlanSeconds:
+				update.gapPlanSeconds !== undefined
+					? update.gapPlanSeconds
+					: current.gapPlanSeconds,
 		};
 		const updatedAt = new Date().toISOString();
 		this.#db
@@ -1364,8 +1378,8 @@ export class StoryStore {
 					(story_id, card_name, character_prompt, persona, template_id, model,
 					 budget_tokens, structured_output, temperature, max_tokens, reasoning,
 					 viewpoint, director_config, history_block_policy, gap_pass_enabled,
-					 updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+					 gap_plan_seconds, updated_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 				ON CONFLICT(story_id) DO UPDATE SET
 					card_name = excluded.card_name,
 					character_prompt = excluded.character_prompt,
@@ -1381,6 +1395,7 @@ export class StoryStore {
 					director_config = excluded.director_config,
 					history_block_policy = excluded.history_block_policy,
 					gap_pass_enabled = excluded.gap_pass_enabled,
+					gap_plan_seconds = excluded.gap_plan_seconds,
 					updated_at = excluded.updated_at`,
 			)
 			.run(
@@ -1399,6 +1414,7 @@ export class StoryStore {
 				serializeDirectorConfig(next.directorConfig),
 				serializeHistoryBlockPolicy(next.historyBlockPolicy),
 				next.gapPassEnabled ? 1 : 0,
+				next.gapPlanSeconds,
 				updatedAt,
 			);
 		const saved = this.getStorySettings(storyId);
@@ -3928,7 +3944,13 @@ export class StoryStore {
 			`INSERT INTO background_jobs
 				(story_id, node_id, kind, status, attempts, last_error, created_at, started_at, finished_at)
 			VALUES (?, ?, ?, 'pending', 0, NULL, ?, NULL, NULL)
-			ON CONFLICT (node_id, kind) DO NOTHING`,
+			ON CONFLICT (node_id, kind) DO UPDATE SET
+				status = 'pending',
+				last_error = NULL,
+				started_at = NULL,
+				finished_at = NULL
+			WHERE background_jobs.status = 'discarded'
+			RETURNING id`,
 		);
 		const created: BackgroundJob[] = [];
 		this.#db.transaction(() => {
@@ -3939,19 +3961,78 @@ export class StoryStore {
 							? settled.has(node.id)
 							: confirmed.has(node.id);
 					if (!eligible) continue;
-					const info = insert.run(input.storyId, node.id, kind, createdAt);
-					if (info.changes !== 1) continue;
-					const job = this.getBackgroundJob(Number(info.lastInsertRowid));
+					const row = insert.get(input.storyId, node.id, kind, createdAt) as
+						| { readonly id: number }
+						| undefined;
+					if (row === undefined) continue;
+					const job = this.getBackgroundJob(row.id);
 					if (!job) {
-						throw new Error(
-							`后台任务写入后读取失败：${String(info.lastInsertRowid)}`,
-						);
+						throw new Error(`后台任务写入后读取失败：${String(row.id)}`);
 					}
 					created.push(job);
 				}
 			}
 		})();
 		return created;
+	}
+
+	/** 每个状态的任务条数；可以只看指定的任务类型。 */
+	countBackgroundJobs(
+		options: CountBackgroundJobsOptions,
+	): BackgroundJobCounts {
+		assertNonEmptyString(options.storyId, "故事 id");
+		const kinds: string[] = [];
+		if (options.kinds !== undefined) {
+			if (!Array.isArray(options.kinds)) {
+				throw new Error("后台任务类型必须是数组");
+			}
+			for (const kind of options.kinds) {
+				assertNonEmptyString(kind, "后台任务类型");
+				if (kinds.includes(kind)) {
+					throw new Error(`后台任务类型重复：${kind}`);
+				}
+				kinds.push(kind);
+			}
+			if (kinds.length === 0) {
+				return { pending: 0, running: 0, done: 0, failed: 0, discarded: 0 };
+			}
+		}
+		const params: Record<string, unknown> = { storyId: options.storyId };
+		let kindClause = "";
+		if (kinds.length > 0) {
+			const placeholders = kinds.map((kind, index) => {
+				params[`kind${index}`] = kind;
+				return `@kind${index}`;
+			});
+			kindClause = ` AND kind IN (${placeholders.join(", ")})`;
+		}
+		const rows = this.#db
+			.prepare(
+				`SELECT status, COUNT(*) AS count FROM background_jobs
+				WHERE story_id = @storyId${kindClause}
+				GROUP BY status`,
+			)
+			.all(params) as { readonly status: string; readonly count: number }[];
+		const counts: Record<string, number> = {
+			pending: 0,
+			running: 0,
+			done: 0,
+			failed: 0,
+			discarded: 0,
+		};
+		for (const row of rows) {
+			if (!isBackgroundJobStatus(row.status)) {
+				throw new Error(`后台任务的状态不合法：${row.status}`);
+			}
+			counts[row.status] = row.count;
+		}
+		return {
+			pending: counts.pending ?? 0,
+			running: counts.running ?? 0,
+			done: counts.done ?? 0,
+			failed: counts.failed ?? 0,
+			discarded: counts.discarded ?? 0,
+		};
 	}
 
 	getBackgroundJob(id: number): BackgroundJob | null {
@@ -4110,6 +4191,26 @@ export class StoryStore {
 				WHERE id = ?`,
 			)
 			.run(id);
+		return this.#requireBackgroundJob(id);
+	}
+
+	/** 楼层已经不在当前路径上时把 pending 任务标为 discarded；不会自动重试。 */
+	discardBackgroundJob(id: number, finishedAt?: string): BackgroundJob {
+		const job = this.#requireBackgroundJob(id);
+		if (job.status !== "pending") {
+			throw new Error(
+				`后台任务 ${id} 的状态是 ${job.status}，只有 pending 可以丢弃`,
+			);
+		}
+		const at = finishedAt ?? new Date().toISOString();
+		assertNonEmptyString(at, "后台任务的完成时间");
+		this.#db
+			.prepare(
+				`UPDATE background_jobs
+				SET status = 'discarded', started_at = NULL, finished_at = ?
+				WHERE id = ?`,
+			)
+			.run(at, id);
 		return this.#requireBackgroundJob(id);
 	}
 

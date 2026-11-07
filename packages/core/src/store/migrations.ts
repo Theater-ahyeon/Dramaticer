@@ -668,6 +668,40 @@ export function buildMigrations(
 				END`,
 			],
 		},
+		{
+			version: 26,
+			description: "间隙档位：长间隙阈值、后置任务与过期任务丢弃",
+			statements: [
+				`ALTER TABLE story_settings ADD COLUMN gap_plan_seconds INTEGER NOT NULL
+					DEFAULT 212 CHECK (gap_plan_seconds >= 0)`,
+				`CREATE TABLE background_jobs_next (
+					id INTEGER PRIMARY KEY,
+					story_id TEXT NOT NULL REFERENCES stories(id),
+					node_id TEXT NOT NULL REFERENCES nodes(id),
+					kind TEXT NOT NULL,
+					status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'done', 'failed', 'discarded')),
+					attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+					last_error TEXT,
+					created_at TEXT NOT NULL,
+					started_at TEXT,
+					finished_at TEXT,
+					UNIQUE (node_id, kind)
+				) STRICT`,
+				`INSERT INTO background_jobs_next
+					(id, story_id, node_id, kind, status, attempts, last_error, created_at, started_at, finished_at)
+				SELECT id, story_id, node_id, kind, status, attempts, last_error, created_at, started_at, finished_at
+				FROM background_jobs`,
+				"DROP TABLE background_jobs",
+				"ALTER TABLE background_jobs_next RENAME TO background_jobs",
+				"CREATE INDEX background_jobs_story_status_idx ON background_jobs(story_id, status, created_at)",
+				`CREATE TRIGGER background_jobs_story_matches_node
+				BEFORE INSERT ON background_jobs
+				WHEN COALESCE((SELECT story_id FROM nodes WHERE id = NEW.node_id), '') <> NEW.story_id
+				BEGIN
+					SELECT RAISE(ABORT, '后台任务的 story_id 必须与所在楼层一致');
+				END`,
+			],
+		},
 	];
 }
 

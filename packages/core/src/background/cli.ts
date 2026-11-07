@@ -36,18 +36,19 @@ import { SCENE_JOB_KIND, createSceneHandler } from "../memory/scene.js";
 import { createSummaryHandler } from "../memory/summarize.js";
 import { DEFAULT_EMBEDDING_DIMENSIONS } from "../store/migrations.js";
 import { StoryStore } from "../store/story-store.js";
+import { type GapWorkBacklog, readGapWorkBacklog } from "./backlog.js";
 import {
 	type BackgroundJobRun,
 	DEFAULT_BACKGROUND_JOB_LIMIT,
 	drainBackgroundJobs,
 } from "./drain.js";
 import { createBackgroundJobRegistry } from "./registry.js";
-import type { BackgroundJobRegistry } from "./types.js";
+import type { BackgroundJobCounts, BackgroundJobRegistry } from "./types.js";
 
 const repoRoot = fileURLToPath(new URL("../../../../", import.meta.url));
 
 const USAGE =
-	"用法：dramaticer work --db <path> [--limit <n>] [--kind <kind>]（--limit 是每个故事本轮最多执行的任务数）";
+	"用法：dramaticer work --db <path> [--limit <n>] [--kind <kind>] [--gap-seconds <n>]（--limit 是每个故事本轮最多执行的任务数；--gap-seconds 是上一轮落定到现在的秒数，不给时按会话结束处理）";
 
 export interface WorkCliDependencies {
 	readonly envPath?: string;
@@ -65,6 +66,8 @@ export interface WorkCliResult {
 	readonly dbPath: string;
 	readonly stories: number;
 	readonly enqueued: number;
+	readonly discarded: number;
+	readonly gapBacklog: GapWorkBacklog;
 	readonly runs: readonly BackgroundJobRun[];
 }
 
@@ -102,9 +105,12 @@ export async function runWorkCli(
 	const registry: BackgroundJobRegistry =
 		dependencies.registry ??
 		createBackgroundJobRegistry({
-			events: createEventExtractionHandler(),
-			summary: createSummaryHandler(),
-			[NPC_AGENDA_JOB_KIND]: createNpcAgendaHandler(),
+			events: { handler: createEventExtractionHandler(), tier: "deferred" },
+			summary: { handler: createSummaryHandler(), tier: "deferred" },
+			[NPC_AGENDA_JOB_KIND]: {
+				handler: createNpcAgendaHandler(),
+				tier: "deferred",
+			},
 			[SETTLE_JOB_KIND]: {
 				handler: createSettleHandler(),
 				enqueue: "settled",
@@ -139,7 +145,15 @@ export async function runWorkCli(
 	try {
 		const stories = store.listStories();
 		const runs: BackgroundJobRun[] = [];
+		const backlog = {
+			pending: 0,
+			running: 0,
+			done: 0,
+			failed: 0,
+			discarded: 0,
+		};
 		let enqueued = 0;
+		let discarded = 0;
 		for (const story of stories) {
 			const kinds = resolveStoryKinds(
 				registry,
@@ -154,16 +168,38 @@ export async function runWorkCli(
 				storyId: story.id,
 				kinds,
 				limit: parsed.limit ?? DEFAULT_BACKGROUND_JOB_LIMIT,
+				gapSeconds: parsed.gapSeconds ?? 0,
+				sessionEnded: parsed.gapSeconds === null,
 				now: dependencies.now,
 			});
 			enqueued += result.enqueued;
+			discarded += result.discarded;
 			runs.push(...result.runs);
+			const gapKinds = kinds.filter(
+				(kind) => registry.get(kind)?.tier === "gap",
+			);
+			if (gapKinds.length === 0) continue;
+			const storyBacklog = readGapWorkBacklog(store, story.id, gapKinds);
+			backlog.pending += storyBacklog.counts.pending;
+			backlog.running += storyBacklog.counts.running;
+			backlog.done += storyBacklog.counts.done;
+			backlog.failed += storyBacklog.counts.failed;
+			backlog.discarded += storyBacklog.counts.discarded;
 		}
 		const done = runs.filter((run) => run.status === "done").length;
 		const retrying = runs.filter((run) => run.status === "pending").length;
 		const failed = runs.filter((run) => run.status === "failed").length;
 		log(
-			`后台任务：故事 ${stories.length} 个，新增任务 ${enqueued} 条，执行 ${runs.length} 条（完成 ${done}，待重试 ${retrying}，失败 ${failed}）`,
+			`后台任务：故事 ${stories.length} 个，新增任务 ${enqueued} 条，执行 ${runs.length} 条（完成 ${done}，待重试 ${retrying}，失败 ${failed}，丢弃 ${discarded}）`,
+		);
+		const unfinished = backlog.pending + backlog.running;
+		const total = unfinished + backlog.done + backlog.failed;
+		const gapBacklog: GapWorkBacklog = {
+			counts: backlog satisfies BackgroundJobCounts,
+			unfinishedRatio: total === 0 ? 0 : unfinished / total,
+		};
+		log(
+			`关键间隙工作：待办 ${backlog.pending}，进行中 ${backlog.running}，完成 ${backlog.done}，失败 ${backlog.failed}，未完成率 ${(gapBacklog.unfinishedRatio * 100).toFixed(1)}%`,
 		);
 		for (const run of runs) {
 			if (run.status === "failed") {
@@ -176,6 +212,8 @@ export async function runWorkCli(
 			dbPath: parsed.dbPath,
 			stories: stories.length,
 			enqueued,
+			discarded,
+			gapBacklog,
 			runs,
 		};
 	} finally {
@@ -201,6 +239,7 @@ interface WorkArgs {
 	readonly dbPath: string;
 	readonly limit: number | null;
 	readonly kind: string | null;
+	readonly gapSeconds: number | null;
 }
 
 function parseWorkArgs(args: readonly string[]): WorkArgs {
@@ -209,6 +248,7 @@ function parseWorkArgs(args: readonly string[]): WorkArgs {
 		db: true,
 		limit: true,
 		kind: true,
+		"gap-seconds": true,
 	};
 	const values = new Map<string, string>();
 	for (let index = 1; index < args.length; index += 1) {
@@ -247,5 +287,18 @@ function parseWorkArgs(args: readonly string[]): WorkArgs {
 	if (kind !== undefined && (kind.length === 0 || kind !== kind.trim())) {
 		throw new Error(`--kind 必须是非空字符串；${USAGE}`);
 	}
-	return { dbPath, limit: parsedLimit, kind: kind ?? null };
+	const gapSeconds = values.get("gap-seconds");
+	const parsedGapSeconds = gapSeconds === undefined ? null : Number(gapSeconds);
+	if (
+		parsedGapSeconds !== null &&
+		(!Number.isFinite(parsedGapSeconds) || parsedGapSeconds < 0)
+	) {
+		throw new Error(`--gap-seconds 必须是非负数字；${USAGE}`);
+	}
+	return {
+		dbPath,
+		limit: parsedLimit,
+		kind: kind ?? null,
+		gapSeconds: parsedGapSeconds,
+	};
 }

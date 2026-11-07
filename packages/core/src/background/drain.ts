@@ -43,6 +43,10 @@ export interface DrainBackgroundJobsOptions {
 	readonly kinds?: readonly string[];
 	readonly limit?: number;
 	readonly maxAttempts?: number;
+	/** 本轮离上一次回复落定的秒数；不传时按 0 算。 */
+	readonly gapSeconds?: number;
+	/** 会话已经结束：不看间隙长短，可延后档同样执行。 */
+	readonly sessionEnded?: boolean;
 	readonly now?: () => number;
 }
 
@@ -58,12 +62,15 @@ export interface BackgroundJobRun {
 export interface BackgroundDrainResult {
 	/** 本轮补建的任务数。 */
 	readonly enqueued: number;
+	/** 本轮因为楼层不在当前路径上而丢弃的任务数。 */
+	readonly discarded: number;
 	readonly runs: readonly BackgroundJobRun[];
 }
 
 /**
  * 补齐缺失任务后按创建顺序执行一轮。每个任务本轮最多执行一次；
  * 失败的任务退回 pending，累计执行次数达到上限后标为 failed。
+ * 可延后档只在长间隙或会话结束后执行；楼层已经不在当前路径上的任务直接丢弃。
  */
 export async function drainBackgroundJobs(
 	options: DrainBackgroundJobsOptions,
@@ -87,7 +94,21 @@ export async function drainBackgroundJobs(
 	if (!Number.isInteger(maxAttempts) || maxAttempts < 1) {
 		throw new Error("后台任务的最大执行次数必须是正整数");
 	}
+	const gapSeconds = options.gapSeconds ?? 0;
+	if (
+		typeof gapSeconds !== "number" ||
+		!Number.isFinite(gapSeconds) ||
+		gapSeconds < 0
+	) {
+		throw new Error("本轮间隙秒数必须是非负数字");
+	}
 	const now = options.now ?? Date.now;
+	const gapPlanSeconds = store.getStorySettings(storyId).gapPlanSeconds;
+	const runDeferred =
+		options.sessionEnded === true || gapSeconds >= gapPlanSeconds;
+	const executableKinds = runDeferred
+		? kinds
+		: kinds.filter((kind) => registry.get(kind)?.tier === "gap");
 
 	const enqueued = enqueueMissingJobs({
 		store,
@@ -98,17 +119,37 @@ export async function drainBackgroundJobs(
 		),
 		now,
 	});
+	const headPath = store.getPathToHead(storyId);
+	const activeNodeIds =
+		headPath.length === 0 ? null : new Set(headPath.map((node) => node.id));
 	const pending = store.listBackgroundJobs({
 		storyId,
 		status: "pending",
-		kinds,
+		kinds: executableKinds,
 		limit,
 	});
 	const runs: BackgroundJobRun[] = [];
+	let discarded = 0;
 	for (const job of pending) {
 		const type = registry.get(job.kind);
 		if (type === undefined) {
 			throw new Error(`没有注册后台任务类型 ${job.kind}`);
+		}
+		if (activeNodeIds !== null && !activeNodeIds.has(job.nodeId)) {
+			const dropped = store.discardBackgroundJob(
+				job.id,
+				new Date(now()).toISOString(),
+			);
+			discarded += 1;
+			runs.push({
+				jobId: dropped.id,
+				nodeId: dropped.nodeId,
+				kind: dropped.kind,
+				status: dropped.status,
+				attempts: dropped.attempts,
+				error: dropped.lastError,
+			});
+			continue;
 		}
 		const running = store.startBackgroundJob(
 			job.id,
@@ -158,7 +199,7 @@ export async function drainBackgroundJobs(
 			error: done.lastError,
 		});
 	}
-	return { enqueued: enqueued.length, runs };
+	return { enqueued: enqueued.length, discarded, runs };
 }
 
 function resolveKinds(

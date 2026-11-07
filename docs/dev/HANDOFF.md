@@ -3,25 +3,27 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：101
-- 任务：R1-T07.b.b `gap_pass` 处理器
-- 结果：完成（`DONE`），门禁通过（822 个测试通过，3 个 live 跳过，共 825 个）。
-  - `ledger/gap-pass.ts` 新增后台任务 `gap_pass`（`GAP_PASS_JOB_KIND`，入队条件 `settled`）。一次请求输出 JSON 对象，键为 `settlement`、`scene`、`userWill`、`revision`、`events`；各段用 `JSON.stringify` 还原后交给 `parseSettleResponse`、`saveSceneAnalysisText`、`parseUserWillResponse`、`parseRevisionResponse`、`parseEventBatchExtraction`，写入走 R1-T07.b.a 的 `applySettlementProposals`、`applyCapturedUserWills`、`applyRevisionDrafts` 与 `recordExtractedEvents`。
-  - 段落缺失按空处理；单段解析或校验失败只拒绝该段，原因写进 `gap_pass_runs`（迁移 v25，每楼层一行、重复执行覆盖）。整个回复不是 JSON 对象时任务失败并按任务框架重试。
-  - 调用模型前比较任务楼层与待结算窗口：任务楼层既没有结算记录、也不在本次窗口时抛 `BackgroundJobDeferredError`，不发出请求。
-  - 故事设置新增 `gapPassEnabled`（默认 `false`）；`dramaticer work` 按故事读设置，关闭时既不建 `gap_pass` 任务也不执行已存在的任务，其余类型照常（`resolveStoryKinds`）。
-  - `memory/extract.ts` 导出 `selectEventWindow`、`formatEventWindow` 与 `recordExtractedEvents`；结算提示词的命名空间说明提成 `settle.ts` 的 `LEDGER_PATH_GUIDE`，两条提示词共用。
-  - ADR-0053；新增 6 个测试。
+- 会话：102
+- 任务：R1-T07.b.c 两档队列、过期丢弃与间隙未完成率
+- 结果：完成（`DONE`），门禁通过（830 个测试通过，3 个 live 跳过，共 833 个）。
+  - `BackgroundJobType` 增加 `tier`（`gap`、`deferred`），注册表条目的入队条件缺省 `confirmed`、档位缺省 `gap`，非法档位在注册时抛错；`background/cli.ts` 把 `events`、`summary`、`npc_agenda` 标为 `deferred`，结算、现场分析、用户意志、修订草案、`gap_pass` 与向量保持 `gap`。
+  - `drainBackgroundJobs` 新增 `gapSeconds` 与 `sessionEnded`：`sessionEnded` 为真，或 `gapSeconds` 达到故事设置的 `gapPlanSeconds` 时，本轮的待执行类型才包含 `deferred`；补建任务不看档位，延后任务先入队、等长间隙再执行。
+  - 执行前比对当前 head 路径：不在路径上的 pending 任务标为 `discarded`，结果里的 `discarded` 计数增加，`runs` 里多一条 `discarded` 记录；`enqueueMissingJobs` 的冲突处理只把 `discarded` 行翻回 `pending`（其余状态不动），所以切回旧分支时任务会重新入队。
+  - 迁移 v26：`story_settings` 增加 `gap_plan_seconds`（默认 212，非负整数）；`background_jobs` 重建以让状态接受 `discarded`，保留全部行、索引与同故事触发器。
+  - 存储层新增 `countBackgroundJobs`（按状态分组，可限定类型）与 `discardBackgroundJob`（只允许 `pending` 转 `discarded`）；`background/backlog.ts` 新增 `readGapWorkBacklog`，未完成比例的分母是 `pending`、`running`、`done`、`failed`，丢弃任务不计入，没有任务时为 0。
+  - `dramaticer work` 新增 `--gap-seconds <n>`；不给时按会话结束处理，因此延后档照常执行。结束时打印关键间隙工作的待办、进行中、完成、失败与未完成率。
+  - ADR-0054；DESIGN §7.3 补充档位与阈值；新增 8 个测试。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b。完成记录与验收标准见 `docs/dev/TASKS-archive.md`，未完成任务见 `docs/dev/TASKS.md`。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c。完成记录与验收标准见 `docs/dev/TASKS-archive.md`，未完成任务见 `docs/dev/TASKS.md`。
 - **R1-T02 已分成 R1-T02.1–R1-T02.4**；**R1-T07.b 已分成 .a–.d**，父任务都是文字说明，不是可勾选任务。
 - v3 阶段顺序：R1 最小集 → R3 快回合 → O 开局与方向 → R2 评测底座 → E → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045。
 - HUMAN-09 仍待处理（不阻塞）：ADR-0042 声明的 `bg-fallback`、`main-fallback`、`codex` 别名在 `data/channels.yaml` 里已经出现，`channels.example.yaml` 是否需要补上请人类确认；没有改这两个文件。
 - HUMAN-10 待处理（不阻塞）：插件不变量是否加进 AGENTS.md。
-- 数据库 schema 版本 25（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡、v25 合并调用开关与执行记录）；后续编号：v26 开局包、v27 开场候选、v28 偏好记录、v29 父子分块、v30 章节压缩、v31 世界书预筛、v32 上下文包；插入新迁移时后续编号一起顺延。
+- 数据库 schema 版本 26（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡、v25 合并调用开关与执行记录、v26 间隙档位阈值与丢弃状态）；后续编号：v27 开局包、v28 开场候选、v29 偏好记录、v30 父子分块、v31 章节压缩、v32 世界书预筛、v33 上下文包；插入新迁移时后续编号一起顺延。
 - 结算只有 `dramaticer work` 调度：server 的回合路径不补建也不执行后台任务，所以回合内后台客户端零调用是结构保证；要真正结算故事，跑 `pnpm work --db <path> --kind settle`，要生成现场分析跑 `--kind scene`，要捕获用户意志跑 `--kind user_will`，要生成修订草案跑 `--kind memory_revision`，要回填事件跑 `--kind events`（单故事、逐窗口推进，适合小批量），要合并调用跑 `--kind gap_pass`（先打开故事设置 `gapPassEnabled`），批量回填三个 legacy 对话用 R1-T04.a 的 `events-backfill`。
+- 后台任务分两档：`gap` 档每次间隙都执行，`deferred` 档（`events`、`summary`、`npc_agenda`，以及后续的世界书预筛）只在会话结束或间隙达到 `gapPlanSeconds` 时执行。`dramaticer work` 不给 `--gap-seconds` 就按会话结束处理；要模拟回合中的短间隙就传 `--gap-seconds <秒数>`，短于阈值时延后档只入队不执行。
 - `gap_pass` 默认关闭；开关关着时 `dramaticer work` 既不为故事补建该任务也不执行它，`--kind gap_pass` 同样被跳过。开启后与 `settle`、`scene`、`user_will`、`memory_revision`、`events` 并存，同一轮里先注册的任务先执行；两套写入走同一批函数与同一批表，先后执行不会重复写入。是否删除独立任务由 R1-T07.b.d 的对比结论决定。
 - 结算窗口以 head 为终点（ADR-0046），窗口取**最旧的** N 个未结算助手楼层（`listUnsettledSettledAssistantNodes` 按路径深度降序）；`gap_pass` 的任务楼层比窗口新时会被退回 pending，等前面的楼层结算完再跑。
 - 冲突检查窗口同样取 head 路径最后 `conflictWindowFloors` 楼。窗口内没有未结算楼层时不调用模型。
@@ -32,7 +34,7 @@
 - 原生块类型现在是 12 个（`thinking`、`选项`、`状态栏`、`变量更新`、`分析`、`图片`、`页眉`、`悄悄话`、`旁白`、`备忘`、`state_update`、`plot_note`）；其中 `thinking`、`变量更新`、`state_update`、`plot_note` 的上下文策略是删除。
 - 历史槽位的默认策略：更早楼层省略五个显示类块，最近 1 楼不套用这层省略；`full` 是改动前的行为，用于对照。设置项 `historyBlockPolicy` 存在 `story_settings.history_block_policy`（JSON）。
 - `packages/server` 已提供故事、导入、设置、模板、SSE 回合与后台运行时缓存；`packages/protocol` 已提供 HTTP 与 SSE 类型；`packages/web` 尚未创建。
-- 故事设置缺省值：`budgetTokens` 12000、`structuredOutput` `text-tags`、`temperature` 0.8、`maxTokens` 4096（server 对没有保存过设置的故事改用 `min(4096, writer 模型声明)`）、`reasoning` `low`、`historyBlockPolicy` `{mode:"default",overrides:{}}`、`gapPassEnabled` `false`、导演使用默认配置。
+- 故事设置缺省值：`budgetTokens` 12000、`structuredOutput` `text-tags`、`temperature` 0.8、`maxTokens` 4096（server 对没有保存过设置的故事改用 `min(4096, writer 模型声明)`）、`reasoning` `low`、`historyBlockPolicy` `{mode:"default",overrides:{}}`、`gapPassEnabled` `false`、`gapPlanSeconds` 212、导演使用默认配置。
 - 快照：`eval-private/raw/` 有 94 个文件；manifest 记录 `corpus` 与 `sourceMtime`。`eval-private/reference/` 有 5 部参照小说。
 - 事件表已在 v7 建立；批量抽取窗口与抽取记录在 R1-T03 实现；批量回填管线在 R1-T04.a 实现，真实回填由 R1-T04.b 执行。
 - F0 的私有产物：`eval-private/f0/pairs.jsonl`（290 对）、`attribution.jsonl`、`judge.jsonl`（793 行）、`fulltext/work.db`、`fulltext-probe.json`、`fulltext-branches.json`、`fulltext-generations.jsonl`、`fulltext-judgements.jsonl`、`fulltext-summary.json`、`llm-cache/`。`eval-private/reports/f0-corpus-map.json` 是对话编号到文件路径的映射。
@@ -41,8 +43,8 @@
 - 插件系统在 DESIGN §19 是唯一权威；P 阶段任务在 TASKS 的「P：插件内核」小节，C 线兼容插件任务已存在且依赖 P2。
 
 ## 下一步
-- **R1-T07.b.c 两档队列、过期丢弃与间隙未完成率**：后台任务类型声明档位 `gap`（下一轮要用：`gap_pass`、结算、现场分析、用户意志、修订草案与向量）与 `deferred`（事件抽取、摘要、NPC 议程、后续世界书预筛）；`drainBackgroundJobs` 只在长间隙或会话结束后执行 `deferred` 档，阈值来自故事设置 `gapPlanSeconds`（默认 212），由调用方传入本轮间隙秒数；执行前检查任务楼层是否还在当前 head 路径上，已经不在的直接丢弃并计数；计数与“下一轮开始时关键间隙工作未完成”的比例通过存储层查询读出。
-- 之后是 R1-T07.b.d（20 楼准确率对比与 ADR；`gap_pass_runs.rejected_segments` 的拒绝比例可直接用于对比）、R1-T99 R1 最小集验收，再是 R3 快回合（R3-T01 至 R3-T99）。
+- **R1-T07.b.d 合并与分开的结算准确率对比**：用评测对话的至少 20 个楼层，分别跑 `gap_pass` 与四个独立任务，对比结算 diff 数量、路径一致率、非法条目比例与冲突数量；`gap_pass_runs.rejected_segments` 的拒绝比例可直接用于对比；结论写 ADR 并决定 `gap_pass` 开关的默认值。
+- 之后是 R1-T99 R1 最小集验收（报告要含间隙未完成率，用 `readGapWorkBacklog` 读出），再是 R3 快回合（R3-T01 至 R3-T99）。
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
@@ -77,7 +79,11 @@
 - R1-T07.b.a 导出的函数是合并调用的唯一写入路径：`prepareSettlement` 每次读 head 上的未结算窗口；`applySettlementProposals` 的 `window.snapshot` 是冲突卡片 `before` 的来源；`applyCapturedUserWills` 与 `applyRevisionDrafts` 自己按稳定 id 去重，重复调用安全；`saveSceneAnalysisText` 只校验空正文与 token 数，结算是否完成由调用方判断。合并调用不要重建这些逻辑。
 - `gap_pass` 的输出顶层是对象，未知键整次拒绝；五个段落的解析器都要求数组或字符串，所以段落值原样 `JSON.stringify` 后传进去即可。段落写入顺序固定：结算 → 现场分析 → 用户意志 → 修订 → 事件。
 - `gap_pass` 的执行记录用 `store.saveGapPassRun` 与 `store.getGapPassRun` 读写，同一楼层覆盖；`rejectedSegments` 只记录被拒绝的段落与原因，成功时是空数组。
-- 新迁移编号：v26 开局包、v27 开场候选、v28 偏好记录、v29 父子分块、v30 章节压缩、v31 世界书预筛、v32 上下文包。
+- 后台任务档位写在 `createBackgroundJobRegistry` 的条目里（`tier: "deferred"`），缺省 `gap`。新增任务类型时先判断它是不是“下一轮要用”：不是就标 `deferred`，否则会挤占短间隙。
+- 延后档的阈值是故事设置 `gapPlanSeconds`（迁移 v26，默认 212）。`drainBackgroundJobs` 只接受调用方传入的 `gapSeconds` 与 `sessionEnded`，自己不看时间；`dramaticer work` 不给 `--gap-seconds` 时按会话结束处理。
+- 过期任务的丢弃在 `drainBackgroundJobs` 里做：只处理本轮会执行的类型，楼层不在 head 路径上就把 `pending` 标为 `discarded`；没有 head 时不做这项判断。`enqueueMissingJobs` 会把 `discarded` 行翻回 `pending`，所以切回旧分支后任务能重新跑，别在别处再写一套删除逻辑。
+- 间隙未完成率用 `readGapWorkBacklog(store, storyId, gapKinds)`：分母是 `pending`、`running`、`done`、`failed`，丢弃不计入，没有任务时为 0。R2-T02 的试玩记录直接复用这个函数。
+- 新迁移编号：v27 开局包、v28 开场候选、v29 偏好记录、v30 父子分块、v31 章节压缩、v32 世界书预筛、v33 上下文包。
 - 后台任务需要等待其它任务完成时抛 `BackgroundJobDeferredError`（`background/types.ts`），drain 会把任务退回 pending 且不消耗执行次数；不要用抛普通错误的方式等待，那会消耗重试次数。
 - `docs/dev/TASKS.md` 只保留未完成任务与当前阶段；查已完成任务的说明、验收与完成记录读 `docs/dev/TASKS-archive.md`。
 - `docs/dev/reports/F0.md` 里只有 F0-T02、F0-T03、F0-T04、F0-T99 四个标记段；重跑脚本只会替换对应标记之间的内容，手写部分不要放进标记之间。F0-T99 节里引用的数字必须与前面各节和 `docs/dev/reports/F0-corpus.md` 一致。

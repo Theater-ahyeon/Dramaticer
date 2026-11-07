@@ -57,6 +57,7 @@ describe("故事设置", () => {
 			directorConfig: DEFAULT_DIRECTOR_CONFIG,
 			historyBlockPolicy: DEFAULT_HISTORY_BLOCK_POLICY,
 			gapPassEnabled: false,
+			gapPlanSeconds: 212,
 			updatedAt: createdAt,
 		});
 		close();
@@ -85,6 +86,7 @@ describe("故事设置", () => {
 				overrides: { 选项: { kind: "drop" } },
 			},
 			gapPassEnabled: true,
+			gapPlanSeconds: 90,
 		});
 		store.updateStorySettings("s1", { temperature: 0.1 });
 		close();
@@ -110,6 +112,7 @@ describe("故事设置", () => {
 					overrides: { 选项: { kind: "drop" } },
 				},
 				gapPassEnabled: true,
+				gapPlanSeconds: 90,
 			});
 		} finally {
 			reopened.close();
@@ -141,6 +144,8 @@ describe("故事设置", () => {
 			],
 			[{ historyBlockPolicy: { mode: "huge" } as never }, "historyBlockPolicy"],
 			[{ gapPassEnabled: "yes" as never }, "gapPassEnabled"],
+			[{ gapPlanSeconds: -1 }, "gapPlanSeconds"],
+			[{ gapPlanSeconds: 1.5 }, "gapPlanSeconds"],
 			[
 				{
 					historyBlockPolicy: {

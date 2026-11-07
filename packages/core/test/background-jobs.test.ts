@@ -1,15 +1,21 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import Database from "better-sqlite3";
-import { describe, expect, it } from "vitest";
+import * as sqliteVec from "sqlite-vec";
+import { describe, expect, it, onTestFinished } from "vitest";
 import {
 	type BackgroundJob,
 	type BackgroundJobContext,
+	LATEST_SCHEMA_VERSION,
 	type LlmClient,
-	type StoryStore,
+	StoryStore,
 	type TimelineNode,
 	createBackgroundJobRegistry,
 	drainBackgroundJobs,
 	enqueueMissingJobs,
+	readGapWorkBacklog,
 } from "../src/index.js";
+import { MIGRATIONS, applyMigrations } from "../src/store/migrations.js";
 import { openTempStore } from "./temp-store.js";
 
 const FIXED_NOW = Date.UTC(2026, 10, 7, 12, 0, 0);
@@ -447,5 +453,262 @@ describe("后台任务状态迁移", () => {
 			}),
 		).rejects.toThrow("最大执行次数");
 		expect(store.listBackgroundJobs({ kinds: [] })).toEqual([]);
+	});
+});
+
+describe("后台任务档位", () => {
+	it("可延后档只在长间隙或会话结束后执行", async () => {
+		const { store } = openTempStore();
+		seedStory(store);
+		const executed: string[] = [];
+		const registry = createBackgroundJobRegistry({
+			settle: {
+				handler: (context) => {
+					executed.push(`settle:${context.job.nodeId}`);
+				},
+				enqueue: "settled",
+			},
+			events: {
+				handler: (context) => {
+					executed.push(`events:${context.job.nodeId}`);
+				},
+				tier: "deferred",
+			},
+		});
+		const drain = (options: {
+			readonly gapSeconds?: number;
+			readonly sessionEnded?: boolean;
+		}) =>
+			drainBackgroundJobs({
+				store,
+				registry,
+				client: unusedClient,
+				storyId: "s1",
+				kinds: ["settle", "events"],
+				now: () => FIXED_NOW,
+				...options,
+			});
+
+		const short = await drain({ gapSeconds: 30 });
+		expect(executed).toEqual(["settle:n-a"]);
+		expect(short.discarded).toBe(0);
+		expect(
+			store.listBackgroundJobs({ storyId: "s1", kinds: ["events"] }),
+		).toHaveLength(2);
+
+		const boundary = await drain({ gapSeconds: 211 });
+		expect(executed).toEqual(["settle:n-a"]);
+		expect(boundary.runs).toEqual([]);
+
+		store.updateStorySettings("s1", { gapPlanSeconds: 30 });
+		await drain({ gapSeconds: 30 });
+		expect(executed).toEqual(["settle:n-a", "events:n-a", "events:n-b"]);
+
+		store.appendNode({
+			id: "n-d",
+			storyId: "s1",
+			parentId: "n-c",
+			role: "user",
+			raw: "楼层 n-d",
+		});
+		await drain({ gapSeconds: 0, sessionEnded: true });
+		expect(executed).toContain("events:n-c");
+	});
+
+	it("没有声明档位的任务按 gap 处理，非法档位抛错", () => {
+		const registry = createBackgroundJobRegistry({
+			events: () => undefined,
+			summary: { handler: () => undefined, tier: "deferred" },
+		});
+		expect(registry.get("events")?.tier).toBe("gap");
+		expect(registry.get("summary")?.tier).toBe("deferred");
+		expect(() =>
+			createBackgroundJobRegistry({
+				events: { handler: () => undefined, tier: "later" as never },
+			}),
+		).toThrow("档位不合法");
+	});
+
+	it("间隙秒数不是非负数字时抛错", async () => {
+		const { store } = openTempStore();
+		seedStory(store);
+		const registry = createBackgroundJobRegistry({ events: () => undefined });
+		await expect(
+			drainBackgroundJobs({
+				store,
+				registry,
+				client: unusedClient,
+				storyId: "s1",
+				gapSeconds: -1,
+			}),
+		).rejects.toThrow("间隙秒数");
+	});
+});
+
+describe("过期任务丢弃", () => {
+	it("楼层不在当前路径上时丢弃任务，切回分支后重新入队", async () => {
+		const { store } = openTempStore();
+		seedStory(store);
+		const executed: string[] = [];
+		const registry = createBackgroundJobRegistry({
+			events: (context) => {
+				executed.push(context.job.nodeId);
+			},
+		});
+		const drain = () =>
+			drainBackgroundJobs({
+				store,
+				registry,
+				client: unusedClient,
+				storyId: "s1",
+				kinds: ["events"],
+				now: () => FIXED_NOW,
+			});
+
+		await enqueueMissingJobs({
+			store,
+			storyId: "s1",
+			kinds: ["events"],
+			now: () => FIXED_NOW,
+		});
+		const branch = store.swipeNode("n-b", "另一条分支的楼层");
+		store.setHead("s1", branch.id);
+
+		const second = await drain();
+		expect(second.discarded).toBe(1);
+		expect(second.runs).toEqual([
+			{
+				jobId: 1,
+				nodeId: "n-a",
+				kind: "events",
+				status: "done",
+				attempts: 1,
+				error: null,
+			},
+			{
+				jobId: 2,
+				nodeId: "n-b",
+				kind: "events",
+				status: "discarded",
+				attempts: 0,
+				error: null,
+			},
+		]);
+		expect(store.getBackgroundJob(2)?.status).toBe("discarded");
+		expect(store.countBackgroundJobs({ storyId: "s1" })).toEqual({
+			pending: 0,
+			running: 0,
+			done: 1,
+			failed: 0,
+			discarded: 1,
+		});
+		expect(executed).toEqual(["n-a"]);
+
+		store.setHead("s1", "n-b");
+		const third = await drain();
+		expect(third.enqueued).toBe(1);
+		expect(store.getBackgroundJob(2)).toMatchObject({
+			status: "done",
+			attempts: 1,
+		});
+		expect(executed).toContain("n-b");
+	});
+
+	it("只有 pending 任务可以丢弃", async () => {
+		const { store } = openTempStore();
+		seedStory(store);
+		const registry = createBackgroundJobRegistry({ events: () => undefined });
+		await drainBackgroundJobs({
+			store,
+			registry,
+			client: unusedClient,
+			storyId: "s1",
+			kinds: ["events"],
+		});
+		expect(() => store.discardBackgroundJob(1)).toThrow("只有 pending");
+	});
+});
+
+describe("间隙积压", () => {
+	it("按状态读出关键间隙工作的未完成比例", async () => {
+		const { store } = openTempStore();
+		seedStory(store);
+		const registry = createBackgroundJobRegistry({
+			events: () => undefined,
+			summary: { handler: () => undefined, tier: "deferred" },
+		});
+		await drainBackgroundJobs({
+			store,
+			registry,
+			client: unusedClient,
+			storyId: "s1",
+			kinds: ["events", "summary"],
+			limit: 1,
+			sessionEnded: true,
+			now: () => FIXED_NOW,
+		});
+		const backlog = readGapWorkBacklog(store, "s1", ["events"]);
+		expect(backlog.counts).toEqual({
+			pending: 1,
+			running: 0,
+			done: 1,
+			failed: 0,
+			discarded: 0,
+		});
+		expect(backlog.unfinishedRatio).toBe(0.5);
+		expect(readGapWorkBacklog(store, "s1", ["missing"]).unfinishedRatio).toBe(
+			0,
+		);
+		expect(() =>
+			store.countBackgroundJobs({ storyId: "s1", kinds: ["events", "events"] }),
+		).toThrow("重复");
+	});
+});
+
+describe("schema 迁移 v26", () => {
+	it("升级保留已有后台任务，并允许丢弃状态", () => {
+		const dir = mkdtempSync(join(import.meta.dirname, ".tmp-migrate-"));
+		const path = join(dir, "story.db");
+		onTestFinished(() => {
+			rmSync(dir, { recursive: true, force: true, maxRetries: 5 });
+		});
+		const raw = new Database(path);
+		sqliteVec.load(raw);
+		applyMigrations(
+			raw,
+			MIGRATIONS.filter((migration) => migration.version <= 25),
+		);
+		expect(raw.pragma("user_version", { simple: true })).toBe(25);
+		raw
+			.prepare("INSERT INTO stories (id, title, created_at) VALUES (?, ?, ?)")
+			.run("s1", "测试", FIXED_ISO);
+		raw
+			.prepare(
+				"INSERT INTO nodes (id, story_id, parent_id, role, raw, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+			)
+			.run("n-a", "s1", null, "assistant", "楼层", FIXED_ISO);
+		raw
+			.prepare(
+				`INSERT INTO background_jobs
+					(story_id, node_id, kind, status, attempts, created_at)
+				VALUES (?, ?, ?, 'pending', 2, ?)`,
+			)
+			.run("s1", "n-a", "events", FIXED_ISO);
+		raw.close();
+
+		const store = StoryStore.open(path);
+		try {
+			expect(store.getSchemaVersion()).toBe(LATEST_SCHEMA_VERSION);
+			expect(store.getBackgroundJob(1)).toMatchObject({
+				nodeId: "n-a",
+				kind: "events",
+				status: "pending",
+				attempts: 2,
+			});
+			expect(store.getStorySettings("s1").gapPlanSeconds).toBe(212);
+			expect(store.discardBackgroundJob(1).status).toBe("discarded");
+		} finally {
+			store.close();
+		}
 	});
 });

@@ -40,6 +40,8 @@ export interface StorySettings {
 	readonly historyBlockPolicy: HistoryBlockPolicy;
 	/** 间隙里用一次合并调用代替几个独立后台任务；默认关闭。 */
 	readonly gapPassEnabled: boolean;
+	/** 执行可延后档后台任务所需的间隙秒数；默认 212。 */
+	readonly gapPlanSeconds: number;
 	readonly updatedAt: string;
 }
 
@@ -58,6 +60,7 @@ export interface StorySettingsUpdate {
 	readonly directorConfig?: DirectorConfig;
 	readonly historyBlockPolicy?: HistoryBlockPolicy;
 	readonly gapPassEnabled?: boolean;
+	readonly gapPlanSeconds?: number;
 }
 
 export const STORY_SETTINGS_UPDATE_KEYS: readonly (keyof StorySettingsUpdate)[] =
@@ -76,6 +79,7 @@ export const STORY_SETTINGS_UPDATE_KEYS: readonly (keyof StorySettingsUpdate)[] 
 		"directorConfig",
 		"historyBlockPolicy",
 		"gapPassEnabled",
+		"gapPlanSeconds",
 	];
 
 /** 尚未保存设置时使用的数值与枚举；故事 id 与更新时间由调用方补齐。 */
@@ -88,6 +92,7 @@ export const DEFAULT_STORY_SETTINGS_VALUES = {
 	directorConfig: DEFAULT_DIRECTOR_CONFIG,
 	historyBlockPolicy: DEFAULT_HISTORY_BLOCK_POLICY,
 	gapPassEnabled: false,
+	gapPlanSeconds: 212,
 } as const;
 
 export interface ContextTemplateRecord {
@@ -218,6 +223,11 @@ export function assertStorySettingsUpdate(update: StorySettingsUpdate): void {
 		typeof update.gapPassEnabled !== "boolean"
 	) {
 		throw new Error("故事设置的 gapPassEnabled 必须是布尔值");
+	}
+	if (update.gapPlanSeconds !== undefined) {
+		if (!Number.isInteger(update.gapPlanSeconds) || update.gapPlanSeconds < 0) {
+			throw new Error("故事设置的 gapPlanSeconds 必须是非负整数");
+		}
 	}
 }
 
