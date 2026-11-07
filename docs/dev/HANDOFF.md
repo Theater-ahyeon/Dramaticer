@@ -3,28 +3,27 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：102
-- 任务：R1-T07.b.c 两档队列、过期丢弃与间隙未完成率
-- 结果：完成（`DONE`），门禁通过（830 个测试通过，3 个 live 跳过，共 833 个）。
-  - `BackgroundJobType` 增加 `tier`（`gap`、`deferred`），注册表条目的入队条件缺省 `confirmed`、档位缺省 `gap`，非法档位在注册时抛错；`background/cli.ts` 把 `events`、`summary`、`npc_agenda` 标为 `deferred`，结算、现场分析、用户意志、修订草案、`gap_pass` 与向量保持 `gap`。
-  - `drainBackgroundJobs` 新增 `gapSeconds` 与 `sessionEnded`：`sessionEnded` 为真，或 `gapSeconds` 达到故事设置的 `gapPlanSeconds` 时，本轮的待执行类型才包含 `deferred`；补建任务不看档位，延后任务先入队、等长间隙再执行。
-  - 执行前比对当前 head 路径：不在路径上的 pending 任务标为 `discarded`，结果里的 `discarded` 计数增加，`runs` 里多一条 `discarded` 记录；`enqueueMissingJobs` 的冲突处理只把 `discarded` 行翻回 `pending`（其余状态不动），所以切回旧分支时任务会重新入队。
-  - 迁移 v26：`story_settings` 增加 `gap_plan_seconds`（默认 212，非负整数）；`background_jobs` 重建以让状态接受 `discarded`，保留全部行、索引与同故事触发器。
-  - 存储层新增 `countBackgroundJobs`（按状态分组，可限定类型）与 `discardBackgroundJob`（只允许 `pending` 转 `discarded`）；`background/backlog.ts` 新增 `readGapWorkBacklog`，未完成比例的分母是 `pending`、`running`、`done`、`failed`，丢弃任务不计入，没有任务时为 0。
-  - `dramaticer work` 新增 `--gap-seconds <n>`；不给时按会话结束处理，因此延后档照常执行。结束时打印关键间隙工作的待办、进行中、完成、失败与未完成率。
-  - ADR-0054；DESIGN §7.3 补充档位与阈值；新增 8 个测试。
+- 会话：103
+- 任务：R1-T07.b.d 合并调用与四个独立任务的结算对比
+- 结果：完成（`DONE`），门禁通过（834 个测试通过，3 个 live 跳过，共 837 个）。
+  - 新增 `packages/st-compat/src/evalset/gap-pass-compare.ts` 与 `evalset/gap-pass-compare-cli.ts`（`pnpm --filter @dramaticer/st-compat gap-pass-compare`）：同一段对话导入两个数据库，独立任务档按 `settle`（窗口 4）→ `scene` → `user_will` → `memory_revision` 逐楼层执行，合并档每楼层执行一次 `gap_pass`；两边共用渠道配置、模型与结算窗口；每档完成写 sidecar（`<dir>/independent.result.json`、`<dir>/merged.result.json`），重跑直接复用，中断只损失正在进行的请求。
+  - 指标口径写进 ADR-0055：diff 只统计来源 `settler` 且 `confidence` 非空的写入（用户意志事实不计）；路径一致率是逐楼层交集/并集之和；非法条目是修复动作 `delete` 与 `rewrite_status`；冲突是修复动作 `conflict`。
+  - 20 楼样本（对话《银麒赎世》最早 20 个助手楼层，窗口 4）：独立任务 234 条 diff（均值 11.7，1 楼为空）、非法 0、冲突 1、1 个任务失败（用户意志引文被正确拒绝）、真实请求 63 次；合并调用 101 条 diff（均值 5.1，8 楼为空）、非法 3、冲突 2、结算段整段拒绝 12 次（6 次在“没有待结算的楼层”时仍输出结算段，6 次给出窗口外的楼层 id）、真实请求 20 次。路径一致率 13.9%（41/294），事实一致率 4.0%（13/322），路径集合完全相同 1 楼。
+  - 结论：`gapPassEnabled` 保持默认关闭；新增 R1-T07.b.d.a（分段边界与拒绝粒度）与 R1-T07.b.d.b（后台结构化输出 token 预算）。
+  - 评测配置把 `bg-fallback` 的 `maxTokens` 从 8192 提到 32768 才能得到可解析的结算 JSON（带思考的后台模型每次思考约 7 千 token）；该配置在 `eval-private/config/channels-compare.yaml`，不提交。
+  - CLI 新增 `--model`、`--channels`、`--cache`、`--window`；默认值保持生产行为。新增 4 个测试。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c。完成记录与验收标准见 `docs/dev/TASKS-archive.md`，未完成任务见 `docs/dev/TASKS.md`。
-- **R1-T02 已分成 R1-T02.1–R1-T02.4**；**R1-T07.b 已分成 .a–.d**，父任务都是文字说明，不是可勾选任务。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d。完成记录与验收标准见 `docs/dev/TASKS-archive.md`，未完成任务见 `docs/dev/TASKS.md`。
+- **R1-T07.b 已分成 .a–.d**；.d 已完成并新拆出 .d.a、.d.b 两个改进任务。**R1-T02 已分成 R1-T02.1–R1-T02.4**。
 - v3 阶段顺序：R1 最小集 → R3 快回合 → O 开局与方向 → R2 评测底座 → E → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045。
-- HUMAN-09 仍待处理（不阻塞）：ADR-0042 声明的 `bg-fallback`、`main-fallback`、`codex` 别名在 `data/channels.yaml` 里已经出现，`channels.example.yaml` 是否需要补上请人类确认；没有改这两个文件。
+- HUMAN-09 仍待处理（不阻塞）：ADR-0042 声明的 `bg-fallback`、`main-fallback`、`codex` 别名在 `data/channels.yaml` 里已经存在，`channels.example.yaml` 是否需要补上请人类确认；没有改这两个文件。
 - HUMAN-10 待处理（不阻塞）：插件不变量是否加进 AGENTS.md。
 - 数据库 schema 版本 26（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡、v25 合并调用开关与执行记录、v26 间隙档位阈值与丢弃状态）；后续编号：v27 开局包、v28 开场候选、v29 偏好记录、v30 父子分块、v31 章节压缩、v32 世界书预筛、v33 上下文包；插入新迁移时后续编号一起顺延。
 - 结算只有 `dramaticer work` 调度：server 的回合路径不补建也不执行后台任务，所以回合内后台客户端零调用是结构保证；要真正结算故事，跑 `pnpm work --db <path> --kind settle`，要生成现场分析跑 `--kind scene`，要捕获用户意志跑 `--kind user_will`，要生成修订草案跑 `--kind memory_revision`，要回填事件跑 `--kind events`（单故事、逐窗口推进，适合小批量），要合并调用跑 `--kind gap_pass`（先打开故事设置 `gapPassEnabled`），批量回填三个 legacy 对话用 R1-T04.a 的 `events-backfill`。
 - 后台任务分两档：`gap` 档每次间隙都执行，`deferred` 档（`events`、`summary`、`npc_agenda`，以及后续的世界书预筛）只在会话结束或间隙达到 `gapPlanSeconds` 时执行。`dramaticer work` 不给 `--gap-seconds` 就按会话结束处理；要模拟回合中的短间隙就传 `--gap-seconds <秒数>`，短于阈值时延后档只入队不执行。
-- `gap_pass` 默认关闭；开关关着时 `dramaticer work` 既不为故事补建该任务也不执行它，`--kind gap_pass` 同样被跳过。开启后与 `settle`、`scene`、`user_will`、`memory_revision`、`events` 并存，同一轮里先注册的任务先执行；两套写入走同一批函数与同一批表，先后执行不会重复写入。是否删除独立任务由 R1-T07.b.d 的对比结论决定。
+- `gap_pass` 默认关闭；开关关着时 `dramaticer work` 既不为故事补建该任务也不执行它，`--kind gap_pass` 同样被跳过。R1-T07.b.d 的对比结论是保持默认关闭，改进任务见 TASKS 的 R1-T07.b.d.a 与 R1-T07.b.d.b。
 - 结算窗口以 head 为终点（ADR-0046），窗口取**最旧的** N 个未结算助手楼层（`listUnsettledSettledAssistantNodes` 按路径深度降序）；`gap_pass` 的任务楼层比窗口新时会被退回 pending，等前面的楼层结算完再跑。
 - 冲突检查窗口同样取 head 路径最后 `conflictWindowFloors` 楼。窗口内没有未结算楼层时不调用模型。
 - 现场分析以被分析的楼层为锚点：台账快照取该楼层的结算结果，原文窗口是该楼层路径上的最近 6 楼；没有结算记录时任务退回 pending（ADR-0048）。`gap_pass` 里现场分析段同样要求任务楼层已有结算记录。
@@ -43,14 +42,21 @@
 - 插件系统在 DESIGN §19 是唯一权威；P 阶段任务在 TASKS 的「P：插件内核」小节，C 线兼容插件任务已存在且依赖 P2。
 
 ## 下一步
-- **R1-T07.b.d 合并与分开的结算准确率对比**：用评测对话的至少 20 个楼层，分别跑 `gap_pass` 与四个独立任务，对比结算 diff 数量、路径一致率、非法条目比例与冲突数量；`gap_pass_runs.rejected_segments` 的拒绝比例可直接用于对比；结论写 ADR 并决定 `gap_pass` 开关的默认值。
-- 之后是 R1-T99 R1 最小集验收（报告要含间隙未完成率，用 `readGapWorkBacklog` 读出），再是 R3 快回合（R3-T01 至 R3-T99）。
+- **R1-T07.b.d.a 合并调用的分段边界与拒绝粒度**：让每段输入只含该段可写的楼层；没有待结算楼层时模型的结算段按空处理；窗口外楼层 id 逐条丢弃并计数；用 R1-T07.b.d 的 20 楼样本重跑对比。
+- 之后是 R1-T07.b.d.b（后台结构化输出 token 预算），再是 R1-T99 R1 最小集验收（报告要含间隙未完成率，用 `readGapWorkBacklog` 读出，并引用 ADR-0055 的对比数字），最后进入 R3 快回合。
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
 - 不要修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 下的任何文件。不变量 I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账是唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖任何其他工作区包、ST 语义只在兼容插件里实现。
 - 渠道角色：角色类型叫 `LlmModelRole`（`writer`、`settler`、`planner`、`judge`），与表示消息角色的 `LlmRole`（system、user、assistant）不是一回事。`createLlmClient` 会校验 judge 与 writer 的模型家族，缺省回落也算在内：只要配置里同时有 `main` 与 `background` 且两者同家族，创建任何客户端都会抛错。`data/channels.yaml` 目前用 `judge: codex`（`codex/gpt-6.1-terra`，gpt 家族）与 writer 的 deepseek 区分；改 writer 或 judge 的模型时要保持家族不同。
 - `channels.example.yaml` 的 roles 示例里 judge 指向 background 并附了说明；复制示例时如果 background 与 main 是同一家族，启动会失败，需要另配一个家族的模型。
+- 后台路由现状（2026-11-07）：`opendesign/deepseek-v4.1-flash` 直接返回 membership entitlement 错误；可用的回退是 `bg-fallback`（`auto/deepseek-v4.1-flash`，经本地网关），单次结算请求约 60 到 150 秒；catie 的 `rp` 路由对部分对话返回内容政策拒绝。做后台评测时先确认路由可用，报告里记录实际路由。
+- 带思考的后台模型每次请求的思考约 7 千 token；生产 `maxTokens` 8192 会让 4 个楼层的结算 JSON 被截断（`stopReason` 为 `length`），解析整段失败。R1-T07.b.d 的评测因此把 `bg-fallback` 的 `maxTokens` 提到 32768（配置在 `eval-private/config/channels-compare.yaml`）。R1-T07.b.d.b 负责决定生产默认值怎么改。
+- 模型响应的磁盘缓存键包含 `max_tokens` **只在请求显式带 maxTokens 时**；处理器不传 maxTokens，键里就没有它，因此改渠道配置的 `maxTokens` 后必须换一个 `--cache` 目录，否则会复用旧上限的结果。R1-T07.b.d 就踩过这一点。
+- 对比 CLI：`pnpm --filter @dramaticer/st-compat gap-pass-compare --story <id> --floors 20 --model bg-fallback --channels <绝对路径> --cache <绝对路径>`；`--dir` 决定两个数据库与 sidecar 的位置，默认 `eval-private/memory-cache/gap-pass-compare/db`。sidecar 记录故事与样本楼层数，换故事或换楼层数必须先删掉它们。私有报告在 `eval-private/reports/gap-pass-compare.json`。
+- 对比的 diff 统计只算来源 `settler` 且 `confidence` 非空的写入；用户意志事实来源也是 `settler` 但没有置信度，按这个条件排除。修改统计口径时要同步 `gap-pass-compare.test.ts` 的断言。
+- `gap_pass` 的结算段解析是整段校验：窗口外楼层 id 或“本应没有结算段却输出了结算段”都会整段拒绝，该窗口 0 写入。R1-T07.b.d 的合并档 20 次调用里有 12 次因此被拒；这是 R1-T07.b.d.a 要处理的问题，测试改解析粒度时要保留非法条目的原因记录。
+- 每个后台任务连续失败 3 次才放弃；`attemptJob` 与生产 drain 的重试语义一致。`user_will` 的 `sourceQuote` 必须逐字出现在玩家楼层里，评测里有一次合法拒绝，不要当成程序错误。
 - tests 目录不在 tsc 的 `include` 里（`packages/*/tsconfig.json` 只含 `src`），测试里的 `TurnTrace` 字面量漏字段不会被类型检查发现；新增 Trace 字段时手动检查测试构造点（`core/test/trace-store.test.ts`、`core/test/ledger-settlement.test.ts`、`st-compat/test/director-eval.test.ts` 的 `emptyTrace`）。
 - 新增槽位或模板段落时同步更新既有断言：`core/test/chat-turn.test.ts` 的 Trace 顺序、`core/test/chat-providers.test.ts` 的标准槽位集合、`st-compat/test/chat-cli.test.ts` 的槽位列表。
 - 新增或调整原生块类型时同步更新 `core/test/block-parser.test.ts` 的默认块类型列表断言。
@@ -65,8 +71,8 @@
 - st-compat 的 `buildStoryEvents` 只针对主路径上已确认的助手楼层；批量窗口之后事件只写助手楼层。
 - `events-backfill` 不带 `--resume` 会删除数据库文件；跑长任务时必须带 `--resume`。`--limit` 是跨故事累计的窗口数，不是每故事一次。故事已导入时跳过导入，所以 manifest 里的对话改动后要删库重跑。
 - `events-backfill` 的请求数与缓存命中来自包装客户端检查 `LlmResult.cached`；真实渠道下缓存命中表示这次窗口没有发出网络请求。
-- 用户意志任务的窗口是“任务所在助手楼层的路径上最近 6 条玩家消息”；每个助手楼层一个 `settled` 任务，所以同一段玩家消息会被相邻的几个任务各送一次，重复条目由稳定 id 去掉。想减少请求数要等 `gap_pass` 与独立任务二选一（R1-T07.b.d 决定）。
-- `sourceQuote` 必须逐字出现在玩家楼层原文里；模型改写引文会让整次输出被拒（`gap_pass` 里只拒该段并记原因，独立任务失败并重试），不要放宽成模糊匹配，否则角色台词与旁白会被收进用户意志。
+- 用户意志任务的窗口是“任务所在助手楼层的路径上最近 6 条玩家消息”；每个助手楼层一个 `settled` 任务，所以同一段玩家消息会被相邻的几个任务各送一次，重复条目由稳定 id 去掉。
+- `sourceQuote` 必须逐字出现在玩家楼层原文里；模型改写引文会让整次输出被拒（`gap_pass` 里只拒该段并记原因，独立任务失败并重试），不要放宽成模糊匹配。
 - 用户意志的稳定 id 由正文决定：改写正文就是一条新事实；路径上已存在的 id 不会被覆盖，删除只能手动写 `delete`。
 - `userWill` 事实写在任务所在的助手楼层，所以分支切换后另一分支的条目不出现在快照里；槽位取 `readLedger(nodeId, ["userWill"])`，不要直接读 `getStateDiffs`。
 - `user_will` 槽位优先级 110，高于历史段 100；改动默认模板的优先级或插段时要同步 `core/test/user-will.test.ts` 的预算优先级断言。
@@ -105,7 +111,7 @@
 - `director-eval` 的 `workDir` 默认在 `eval-private/memory-cache/tmp/director-eval`，结束时整目录删除。
 - 状态题 JSONL 的 `path` 是 MVU 原始快照里的路径（可能以 `stat_data` 开头）；用 store 核对应读 `mvu` 子树（`mvuSnapshotAt`）。事件题不要带 `path` 字段。
 - 统计版报告不能出现私有故事名、原文或题目文本；参照统计版不能出现版权作品名、文件名或原文。写入前先检查。
-- 不要把 `eval-private/memory-cache/`、`eval-private/reports/`、`eval-private/f0/`、`eval-private/preferences/`、临时数据库、`eval-private/raw/`、`eval-private/reference/`、`eval-private/st-sandbox/` 加进提交。
+- 不要把 `eval-private/memory-cache/`、`eval-private/reports/`、`eval-private/f0/`、`eval-private/preferences/`、`eval-private/config/`、临时数据库、`eval-private/raw/`、`eval-private/reference/`、`eval-private/st-sandbox/` 加进提交。
 - 临时脚本放 `.devloop/scratch/`（已被 git 忽略），用完删除。
 - 安装依赖时用 `HTTP_PROXY= HTTPS_PROXY= pnpm install`；新增工作区包后需要 `--no-frozen-lockfile` 更新锁文件。
 - 渠道行为（ADR-0009、ADR-0011、ADR-0042）：`reasoning:"off"` 在该渠道仍会输出思考并消耗输出 token；abort 后 `usage` 全为 0；gcli2api 必须把 Gemini API 路径挂在 baseUrl 根下；该渠道不支持预填充。`opendesign/deepseek-v4.1-flash` 不可用时的回退顺序见 ADR-0042；评测报告必须记录实际使用的路由。

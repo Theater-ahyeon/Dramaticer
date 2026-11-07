@@ -26,6 +26,7 @@
 		"evalset": "tsc -b && node dist/evalset/cli.js",
 		"evalset:events": "tsc -b && node dist/evalset/event-cli.js",
 		"events-backfill": "tsc -b && node dist/evalset/events-cli.js",
+		"gap-pass-compare": "tsc -b && node dist/evalset/gap-pass-compare-cli.js",
 		"memory-eval": "tsc -b && node dist/evalset/memory-cli.js",
 		"director-eval": "tsc -b && node dist/evalset/director-cli.js",
 		"report": "tsc -b && node dist/health/cli.js",
