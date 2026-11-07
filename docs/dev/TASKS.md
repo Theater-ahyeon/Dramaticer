@@ -85,6 +85,10 @@
   做什么：解析 ACU 表格数据（`chat_metadata.sheets`，以及消息里的 `TavernDB_ACU_*`、`hash_sheets` 字段，先写探测代码弄清楚结构），在提问楼层时刻取出表格内容，判断答案是否出现在表格里（先用规范化字符串匹配；有 LLM 渠道时再加一个可选的 LLM 判定）。如果某个对话里没有 ACU 数据，就记为"不适用"。
   验收：报告里有"ACU 覆盖率"这个对照数字。
 
+- [ ] **M0-REVIEW-1 代码与不变量审查**（ADR-0002 要求累计推进 8 项任务后插入；M0-T11 完成时已到期） | 依赖：M0-T13
+  做什么：审查 `packages/core`、`packages/st-compat`、`scripts/` 的代码质量（没有用到的代码、重复实现、错误处理、fast-fail）；逐条核对不变量 I1–I10，其中 I4、I5、I6、I8、I9 必须指出对应的测试；检查 TASKS、HANDOFF、DECISIONS、DESIGN、DEPENDENCIES 与代码是否同步；列出没有测试覆盖的导出模块和 CLI 路径。
+  验收：结论写进 `docs/dev/reports/M0-review-1.md`；每个发现的问题转成 `M0-FIX-n` 修复任务插在本任务下面并写清验收标准；没有问题的条目也要写出判断依据。
+
 - [ ] **M0-T99 M0 验收与 M1 准备** | 依赖：M0 全部任务（M0-T11 如果被 HUMAN-01 阻塞，可以跳过，在报告里注明"事件类题目缺失"，等 HUMAN-01 处理完后再补做）
   做什么：运行所有报告；在 `docs/dev/reports/M0.md` 里总结：哪些设计假设被数据证实了，哪些被推翻了（推翻的写 ADR 并更新 DESIGN）；逐条审查不变量 I1–I10；确认 M1 的任务清单还适用（不适用就修改）。
   结果写 `MILESTONE_DONE`。
