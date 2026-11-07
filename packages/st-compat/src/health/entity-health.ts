@@ -1,6 +1,6 @@
+import { isJsonObject } from "@dramaticer/core";
 import { parseCharacterCardFile } from "../character-card.js";
 import type { StCardSpec, StCharacterCard } from "../character-card.js";
-import { isJsonObject } from "../json.js";
 import type { StWorldInfo } from "../world-info.js";
 import { parseWorldInfoFile } from "../world-info.js";
 

@@ -1,6 +1,9 @@
 import { isDeepStrictEqual } from "node:util";
-import type { JsonObject, JsonValue } from "./json.js";
-import { isJsonObject } from "./json.js";
+import {
+	type JsonObject,
+	type JsonValue,
+	isJsonObject,
+} from "@dramaticer/core";
 
 export interface SnapshotDiffSet {
 	readonly path: readonly string[];

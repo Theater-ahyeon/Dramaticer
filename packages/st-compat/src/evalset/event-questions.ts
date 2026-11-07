@@ -1,7 +1,11 @@
-import type { LlmClient, LlmRequest, LlmResult } from "@dramaticer/core";
+import {
+	type LlmClient,
+	type LlmRequest,
+	type LlmResult,
+	isJsonObject,
+} from "@dramaticer/core";
 import type { StChatEntry, StChatMessage } from "../chat-jsonl.js";
 import { parseChatJsonlFile } from "../chat-jsonl.js";
-import { isJsonObject } from "../json.js";
 import { messageNodeId, parseMessageIndex } from "../node-id.js";
 import { requireNonEmpty } from "./shared.js";
 

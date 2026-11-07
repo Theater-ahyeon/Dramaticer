@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { isRecord } from "../json.js";
+import { isJsonObject } from "../json.js";
 
 export type LlmRole = "system" | "user" | "assistant";
 
@@ -350,7 +350,7 @@ export class OpenAiCompatibleClient implements LlmClient {
 		} catch {
 			return null;
 		}
-		if (!isRecord(value) || value.version !== CACHE_VERSION) return null;
+		if (!isJsonObject(value) || value.version !== CACHE_VERSION) return null;
 		const result = parseCachedResult(value.result);
 		return result ? { ...result, cached: true, attempts: 0 } : null;
 	}
@@ -372,7 +372,7 @@ function parseCompletion(
 	requestedModel: string,
 	attempts: number,
 ): LlmResult {
-	if (!isRecord(payload)) {
+	if (!isJsonObject(payload)) {
 		throw new LlmResponseError("渠道响应不是对象");
 	}
 	if (payload.error !== undefined && payload.error !== null) {
@@ -385,17 +385,17 @@ function parseCompletion(
 		throw new LlmResponseError("渠道响应缺少 choices");
 	}
 	const choice = choices[0];
-	if (!isRecord(choice)) {
+	if (!isJsonObject(choice)) {
 		throw new LlmResponseError("choices[0] 不是对象");
 	}
-	const message = isRecord(choice.message) ? choice.message : {};
+	const message = isJsonObject(choice.message) ? choice.message : {};
 	const text = readContent(message.content);
 	const reasoning =
 		readString(message.reasoning_content) ??
 		readString(message.reasoning) ??
 		"";
 	const finishReason = readString(choice.finish_reason);
-	const usage = isRecord(payload.usage)
+	const usage = isJsonObject(payload.usage)
 		? parseUsage(payload.usage)
 		: {
 				promptTokens: null,
@@ -427,7 +427,7 @@ function readContent(value: unknown): string {
 			parts.push(part);
 			continue;
 		}
-		if (!isRecord(part)) continue;
+		if (!isJsonObject(part)) continue;
 		const text = readString(part.text);
 		if (text !== null) parts.push(text);
 	}
@@ -435,10 +435,10 @@ function readContent(value: unknown): string {
 }
 
 function parseUsage(usage: Record<string, unknown>): LlmUsage {
-	const completionDetails = isRecord(usage.completion_tokens_details)
+	const completionDetails = isJsonObject(usage.completion_tokens_details)
 		? usage.completion_tokens_details
 		: {};
-	const promptDetails = isRecord(usage.prompt_tokens_details)
+	const promptDetails = isJsonObject(usage.prompt_tokens_details)
 		? usage.prompt_tokens_details
 		: {};
 	return {
@@ -453,10 +453,10 @@ function parseUsage(usage: Record<string, unknown>): LlmUsage {
 }
 
 function parseCachedResult(value: unknown): LlmResult | null {
-	if (!isRecord(value)) return null;
+	if (!isJsonObject(value)) return null;
 	if (typeof value.text !== "string") return null;
 	if (typeof value.reasoning !== "string") return null;
-	if (!isRecord(value.usage)) return null;
+	if (!isJsonObject(value.usage)) return null;
 	const usage: LlmUsage = {
 		promptTokens: readNumber(value.usage.promptTokens),
 		completionTokens: readNumber(value.usage.completionTokens),

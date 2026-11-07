@@ -1,5 +1,10 @@
 import { readFile } from "node:fs/promises";
 import {
+	type JsonObject,
+	type JsonValue,
+	isJsonObject,
+} from "@dramaticer/core";
+import {
 	optionalJsonArray,
 	optionalNumber,
 	optionalObject,
@@ -10,8 +15,6 @@ import {
 	readString,
 	readStringList,
 } from "./field-readers.js";
-import type { JsonObject, JsonValue } from "./json.js";
-import { isJsonObject } from "./json.js";
 
 /** OpenAI 预设里的一条 prompt（酒馆的 Prompt 类） */
 export interface StPresetPrompt {

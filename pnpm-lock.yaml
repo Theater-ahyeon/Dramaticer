@@ -45,6 +45,12 @@ importers:
       better-sqlite3:
         specifier: ^13.0.3
         version: 13.0.3
+      png-chunk-text:
+        specifier: ^1.0.0
+        version: 1.0.0
+      png-chunks-extract:
+        specifier: ^1.0.0
+        version: 1.0.0
     devDependencies:
       '@types/better-sqlite3':
         specifier: ^9.6.0

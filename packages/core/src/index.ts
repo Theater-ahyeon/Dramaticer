@@ -1,4 +1,4 @@
-export { isRecord } from "./json.js";
+export * from "./json.js";
 export * from "./llm/client.js";
 export * from "./retrieval/chunk-index.js";
 export * from "./retrieval/chunk-text.js";

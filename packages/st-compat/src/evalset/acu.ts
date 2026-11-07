@@ -1,9 +1,13 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
+import {
+	type JsonObject,
+	type JsonValue,
+	isJsonObject,
+} from "@dramaticer/core";
 import Database from "better-sqlite3";
 import { parseChatJsonlFile } from "../chat-jsonl.js";
 import { openSnapshot } from "../health/manifest.js";
-import { type JsonObject, type JsonValue, isJsonObject } from "../json.js";
 import { parseMessageIndex } from "../node-id.js";
 import type { QuestionKind, RetrievalQuestion } from "./question-files.js";
 import {

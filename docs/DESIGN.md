@@ -73,7 +73,7 @@
 |---|---|
 | raw | 模型或用户的原始文本，永不修改 |
 | blocks | 解析结果（缓存，可以重建） |
-| state_diffs | 本楼产生的状态变更，例如 `{key, op, value, reason, source}` |
+| state_diffs | 本楼产生的状态变更，例如 `{path: ["角色", "卫宫", "好感度"], op, value, reason, source}` |
 | events / notes | 本楼新增的事件记忆和剧情笔记 |
 | images / trace | 生图结果、本轮完整请求记录 |
 

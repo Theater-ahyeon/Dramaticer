@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { isJsonObject } from "../json.js";
+import { isJsonObject } from "@dramaticer/core";
 
 export type QuestionKind = "state" | "event";
 

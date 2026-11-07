@@ -3,7 +3,7 @@ import { createReadStream } from "node:fs";
 import type { Stats } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
-import { isJsonObject } from "../json.js";
+import { isJsonObject } from "@dramaticer/core";
 
 export interface SnapshotManifestFile {
 	readonly role: string;

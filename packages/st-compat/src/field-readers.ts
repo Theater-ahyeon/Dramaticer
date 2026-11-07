@@ -1,5 +1,8 @@
-import type { JsonObject, JsonValue } from "./json.js";
-import { isJsonObject } from "./json.js";
+import {
+	type JsonObject,
+	type JsonValue,
+	isJsonObject,
+} from "@dramaticer/core";
 
 /**
  * 严格读取：字段缺失或为 null 时返回给定默认值，类型不对时立刻抛错。

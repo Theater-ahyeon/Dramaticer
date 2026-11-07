@@ -1,6 +1,9 @@
 import { createReadStream } from "node:fs";
-import type { JsonObject, JsonValue } from "./json.js";
-import { isJsonObject } from "./json.js";
+import {
+	type JsonObject,
+	type JsonValue,
+	isJsonObject,
+} from "@dramaticer/core";
 
 export interface StChatHeader {
 	readonly characterName: string | null;

@@ -26,8 +26,8 @@
 ## ADR-0003 PNG 文本块解析依赖（2026-11-06）
 - **背景**：快照脚本需要从角色卡 PNG 的 `tEXt` 块中取出 base64 编码的卡片 JSON，以确定角色引用的世界书；后续 M0-T04 也要解析 PNG 卡片。手写 PNG 字节解析既容易出错，也违反“成熟文件格式必须用库解析”的工程规则。
 - **选项**：使用 `png-chunks-extract` 加 `png-chunk-text`；使用 `pngjs`；手写解析。
-- **决定**：使用 `png-chunks-extract` 读取 PNG 块，使用 `png-chunk-text` 解码 `tEXt` 文本块，两个库都登记为根目录的开发依赖。base64 与 JSON 解码用 Node 内置能力。
-- **影响**：新增两个轻量开发依赖；M0-T04 可以直接复用这对库，避免再引入第二个 PNG 解析方案。
+- **决定**：使用 `png-chunks-extract` 读取 PNG 块，使用 `png-chunk-text` 解码 `tEXt` 文本块。base64 与 JSON 解码用 Node 内置能力。
+- **影响**：新增两个轻量开发依赖；M0-T04 可以直接复用这对库，避免再引入第二个 PNG 解析方案。M0-FIX-11 之后同两个库也是 `packages/st-compat` 的运行时依赖，根目录的副本只供快照脚本使用。
 
 ## ADR-0004 楼层全文索引使用 FTS5 trigram（2026-11-06）
 - **背景**：`node_text` 需要支持中文原文检索。FTS5 默认的 `unicode61` 把连续的中日韩字符当成一个词，没有空格的整句无法被分词，检索基本不可用。

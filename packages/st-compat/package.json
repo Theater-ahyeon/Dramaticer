@@ -13,7 +13,9 @@
 	},
 	"dependencies": {
 		"@dramaticer/core": "workspace:*",
-		"better-sqlite3": "^13.0.3"
+		"better-sqlite3": "^13.0.3",
+		"png-chunk-text": "^1.0.0",
+		"png-chunks-extract": "^1.0.0"
 	},
 	"scripts": {
 		"build": "tsc",

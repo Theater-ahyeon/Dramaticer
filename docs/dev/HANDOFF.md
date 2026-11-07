@@ -3,20 +3,22 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加），按下面的模板填写。
 
 ## 最近一次会话
-- 会话：25
-- 任务：M0-FIX-10 manifest 完整性校验
+- 会话：26
+- 任务：M0-FIX-11 依赖声明与文档同步
 - 结果：完成。
-  - `packages/st-compat/src/health/manifest.ts`：`SnapshotManifestFile` 增加 `size` 与 `sha256`，`parseSnapshotManifest` 要求 `size` 是非负安全整数、`sha256` 是 64 位小写十六进制；新增 `openSnapshot(rawRoot)`，返回 `{ manifest, filesByRole, resolveFile }`。
-  - `resolveFile` 先校验路径落在 `rawRoot` 内，再 `stat` 比对大小、`createHash("sha256")` 流式读完整个文件比对摘要；文件缺失、大小不符、摘要不符都抛错并带 `target`；同一 `target` 在一次 `openSnapshot` 生命周期内只校验一次。
-  - 调用方统一改走 `openSnapshot`：`collectHealthReport`（`health/report.ts`）、`collectRetrievalBaseline`、`collectAcuBaseline`、`runStateQuestionsCli`、`evalset/event-cli.ts`；`report.ts` 里本地的 `filesByRole`、`resolveInside` 已删除。
-  - fixture manifest 全部补齐 `size`/`sha256`（`test/fixtures/manifest.json`、`health-fields/`、`acu/cells|none|sql/`）。
-  - 测试：`report.test.ts` 新增“缺少大小或 sha256 抛错”“大小不符抛错并指出 target”“同长度篡改摘要不符抛错并指出 target”“文件不存在抛错并指出 target”，并在篡改前先断言未篡改的快照能读取。
-- 验证：`pnpm check` 通过（225 个测试）。用临时脚本对 `eval-private/raw` 调 `openSnapshot` 并逐个 `resolveFile`，67 个文件全部校验通过，脚本已删除。
+  - `packages/st-compat/package.json` 把 `png-chunks-extract` 与 `png-chunk-text` 声明为运行时依赖；根目录的 devDependencies 保留给 `scripts/snapshot-private-data.mjs`。
+  - `docs/dev/DEPENDENCIES.md` 每行增加“位置”列，并说明 `workspace:*` 工作区依赖不登记。
+  - JSON 类型与守卫合并：`packages/core/src/json.ts` 定义 `JsonValue`、`JsonObject`、`isJsonObject`；删除 `packages/st-compat/src/json.ts`，st-compat 各模块从 `@dramaticer/core` 导入，`packages/st-compat/src/index.ts` 再导出同一组符号；`packages/core/src/llm/client.ts` 的 `isRecord` 改名为 `isJsonObject`。
+  - 删除零消费者的 `MemoryEvent`；`docs/DESIGN.md` §5 的 `state_diffs` 示例改为 `path`。
+  - ADR-0003 记录两个 PNG 库在 st-compat 的运行时声明。
+  - TASKS 与 LOG 的 M0-T07、M0-T10 测试数改为 11、10，M0-T08 的 diff/快照改为 20.8%。
+- 验证：`pnpm install --frozen-lockfile` 与 `pnpm check` 通过（225 个测试）；`packages/st-compat/node_modules` 里有两个 PNG 库的链接；源码里的裸 import 只有 `@dramaticer/core`、`better-sqlite3`、两个 PNG 库与 `node:` 内置模块。
 
 ## 当前状态
 - 门禁：`pnpm check` 通过（225 个测试）。
-- 快照读取：唯一入口是 `health/manifest.ts` 的 `openSnapshot`；任何直接 `path.join(rawRoot, file.target)` 读 raw 的写法都违反 M0-FIX-10 的目的。
-- fixture 维护：修改 fixture 里的聊天、卡、世界书、预设文件后，必须同步更新对应 manifest 的 `size` 与 `sha256`，否则测试会因完整性校验失败而报错。
+- 快照读取：唯一入口是 `health/manifest.ts` 的 `openSnapshot`，校验路径、`size` 与 `sha256`；任何直接 `path.join(rawRoot, file.target)` 读 raw 的写法都违反完整性校验。
+- fixture 维护：修改 fixture 里的聊天、卡、世界书、预设文件后，必须同步更新对应 manifest 的 `size` 与 `sha256`。
+- JSON 守卫：只有 `packages/core/src/json.ts` 一份实现；st-compat 从 `@dramaticer/core` 导入，不要再建本地 `json.ts`。
 - 题目文件：`readQuestionFile` 拒绝重复 `id`；`sampleDeterministic` 的结果只由题目 `id` 集合决定。
 - 事件题：解析阶段的坏条目会进入 `failures`；`EventQuestionStats` 只保留 CLI 读取的字段。
 - 评测 CLI：`state-cli.ts` 承载状态题生成与 `summary.json` 写出；`event-cli.ts` 的 `--story` 不覆盖全局抽查与汇总。
@@ -28,16 +30,15 @@
 - 检索：写入与查询共用 `normalizeRetrievalText`；检索评测按 `nodeId` 去重；`askAtNode` 越界抛错。
 - 聊天解析：`parseChatJsonl` 只剥离首行的 BOM；`parseChatJsonlFile` 的错误包装为“解析聊天文件失败：<path>”。
 - 角色卡：PNG 文本块先做 base64 规范化回环校验，再做 JSON 解析。
-- LLM 客户端：`LlmRequest.signal` 贯穿请求、退避与限速等待。
-- TASKS：M0-FIX-1 到 M0-FIX-10 已标记 `[x]`；M0-FIX-11 待做；M0-T99 依赖全部 M0 任务。
+- LLM 客户端：`LlmRequest.signal` 贯穿请求、退避与限速等待；缓存键包含 `baseUrl` 与 api key 的 sha256 摘要。
+- 依赖：两个 PNG 库同时声明在 `packages/st-compat`（runtime）与根目录（dev，供快照脚本）；`DEPENDENCIES.md` 按声明位置分列登记。
+- TASKS：M0-FIX-1 到 M0-FIX-11 已标记 `[x]`；M0-T99 依赖全部 M0 任务。
 
 ## 下一步
-- 执行 M0-FIX-11（依赖声明与文档同步）：`packages/st-compat/package.json` 声明 `png-chunks-extract` 与 `png-chunk-text`；`DEPENDENCIES.md` 区分包内与根目录依赖；`core/src/json.ts` 与 `st-compat/src/json.ts` 只保留一份对象守卫；处理 `MemoryEvent`；`DESIGN.md` §5 的 `state_diffs` 字段改为 `path`；ADR-0007 补缓存键包含 `baseUrl`；`HANDOFF.md` 删除未实现的 `sheet_replace` 描述；修正 `TASKS.md` 与 `LOG.md` 里过期的测试计数与 47.8%。
-- 之后是 M0-T99（M0 验收）。
+- 执行 M0-T99（M0 验收）：运行所有报告；在 `docs/dev/reports/M0.md` 总结被数据证实或推翻的设计假设（推翻的写 ADR 并更新 DESIGN）；逐条审查不变量 I1–I10；确认 M1 任务清单还适用。结果写 `MILESTONE_DONE`。
 
 ## 注意事项
 - 报告里的问题行号对应审查时的代码；修复任务会改动这些位置，引用报告时以报告里的文件与符号为准。
-- `docs/dev/TASKS.md:55`、`:60`、`:71` 与 `LOG.md:12`、`:13`、`:15` 的数字已经过期，M0-FIX-11 统一修正，不要提前在别处重复改。
 - `.env` 已由人类填写，**不要覆盖**；`.env.example` 只列变量名。M0 的审查与修复不需要调用 LLM。
 - `pnpm --filter @dramaticer/st-compat report` 会跑体检、检索基线、ACU 基线，耗时约 10 秒；需要 `eval-private/evalset/` 里已有状态题与事件题。单独重跑只改生成时间时不要把时间差异带进提交。
 - `health/cli.ts` 的入口判断是 `import.meta.url === pathToFileURL(process.argv[1]).href`；测试导入它不会执行 `main`。`evalset/event-cli.ts` 仍在导入时执行，只测试它拆出的 `env.ts` 与 `event-output.ts`。

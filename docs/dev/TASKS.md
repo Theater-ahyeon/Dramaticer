@@ -47,17 +47,17 @@
   验收：合成测试数据覆盖主要字段；解析之后再序列化，和原文件在结构上等价。
 
 - [x] **M0-T06 core：原生领域模型与存储（M0 子集）** | 依赖：M0-T01 | DESIGN §5、§7
-  完成：2026-11-06 `packages/core/src/timeline.ts` 定义 Story、TimelineNode、StateDiff、NewStateDiff、MemoryEvent；`store/` 用 better-sqlite3 建 stories/nodes/state_diffs 与 FTS5 node_text（trigram），schema 用 `PRAGMA user_version` 迁移，数据库触发器禁止修改楼层原文；13 个测试，门禁通过
-  做什么：定义这些类型：Story、TimelineNode（含 parentId 和不可修改的 raw）、StateDiff、MemoryEvent（先只定义类型）；用 better-sqlite3 建表（nodes、state_diffs、带 FTS5 的 node_text）；写一个数据库迁移机制（schema 版本号）。**存储层不提供修改 raw 的接口**（不变量 I4），并写一个测试确保这一点。
+  完成：2026-11-06 `packages/core/src/timeline.ts` 定义 Story、TimelineNode、StateDiff、NewStateDiff；`store/` 用 better-sqlite3 建 stories/nodes/state_diffs 与 FTS5 node_text（trigram），schema 用 `PRAGMA user_version` 迁移，数据库触发器禁止修改楼层原文；13 个测试，门禁通过
+  做什么：定义这些类型：Story、TimelineNode（含 parentId 和不可修改的 raw）、StateDiff；用 better-sqlite3 建表（nodes、state_diffs、带 FTS5 的 node_text）；写一个数据库迁移机制（schema 版本号）。**存储层不提供修改 raw 的接口**（不变量 I4），并写一个测试确保这一点。
   验收：能建库；能插入节点和 diff；能按路径（从根到某个节点）读出数据；FTS5 查询可用。
 
 - [x] **M0-T07 st-compat：ST 对话导入为原生楼层树** | 依赖：M0-T03、M0-T06
-  完成：2026-11-06 `packages/st-compat/src/chat-import.ts`：当前 swipe 连成主路径、其他 swipe 建为兄弟节点，相邻楼层 MVU 快照生成 StateDiff；7 个测试，真实快照 1222 层往返零差异，门禁通过
+  完成：2026-11-06 `packages/st-compat/src/chat-import.ts`：当前 swipe 连成主路径、其他 swipe 建为兄弟节点，相邻楼层 MVU 快照生成 StateDiff；11 个测试，真实快照 1222 层往返零差异，门禁通过
   做什么：ST 对话 → 一条线性路径（当前 swipe 作为主路径上的节点，其余 swipe 作为兄弟节点）；**把相邻楼层的 MVU 变量做 diff，转成 StateDiff**，并验证按路径把 diff 依次累加之后能还原出原来的快照。
   验收：合成测试数据通过往返测试（快照 → diff → 快照）。
 
 - [x] **M0-T08 体检报告** | 依赖：M0-T02、M0-T05、M0-T07
-  完成：2026-11-06 `pnpm --filter @dramaticer/st-compat report` 生成私有报告与统计版 `docs/dev/reports/M0-health.md`；3 个对话 1222 层、diff/快照 47.8%、58 个预设的宏与正则统计；26 个新测试，门禁通过
+  完成：2026-11-06 `pnpm --filter @dramaticer/st-compat report` 生成私有报告与统计版 `docs/dev/reports/M0-health.md`；3 个对话 1222 层、diff/快照 20.8%、58 个预设的宏与正则统计；26 个新测试，门禁通过
   做什么：CLI 命令 `pnpm --filter @dramaticer/st-compat report`。对 eval-private 里的每个对话统计：楼层数；正文、变量、其他字段各占多少字节；估算的 token 数（估算函数做成可替换的，中文约 1.5 个字符算 1 个 token）；**原生 diff 存储和 ST 快照存储的体积比**；从卡和世界书里提取的实体数量；**重复度曲线**（相邻 AI 回复的字符 n-gram Jaccard 相似度，按楼层分窗口统计，标出从第几楼开始持续上升）。另外统计预设：宏的使用频率、正则作用范围和开关的分布。
   输出：详细报告写到 `eval-private/reports/health.md`（可以引用原文片段）；**只含统计数字的版本**写到 `docs/dev/reports/M0-health.md`（可以提交）。
   验收：两份报告都生成了；仓库版本里没有任何原文。
@@ -68,7 +68,7 @@
   验收：每个分类都有合成用例；报告里有可升级比例。
 
 - [x] **M0-T10 评测集：状态类题目（规则生成）** | 依赖：M0-T07
-  完成：2026-11-06 实现 `evalset/state-questions.ts` 与 `evalset/cli.ts`：按稳定区间生成状态题并回放快照核对；3 个对话共 236 题（71/65/100），全部核对一致；ADR-0006 修正空对象快照语义，9 个新测试，门禁通过
+  完成：2026-11-06 实现 `evalset/state-questions.ts` 与 `evalset/cli.ts`：按稳定区间生成状态题并回放快照核对；3 个对话共 236 题（71/65/100），全部核对一致；ADR-0006 修正空对象快照语义，10 个新测试，门禁通过
   做什么：从 MVU 的 diff 中按规则生成题目：在第 Y 楼提问"在第 X 楼之后，<变量路径> 的值是什么"，标准答案取自快照，证据是第 X 楼。只挑间隔大的（Y − X ≥ 30）和重要的变量（变化次数少、不是每楼都变的那种）。每个对话出 50 到 100 题。格式为 JSONL：`{id, story, askAtNode, question, answer, evidenceNodes, kind:"state"}`，写到 `eval-private/evalset/`。
   验收：题目数量达标；随机抽 10 题，自动核对答案和快照一致。
 
@@ -142,7 +142,8 @@
   做什么：`health/manifest.ts` 保留 `size` 与 `sha256`；读取 raw 前用 `stat` 与流式哈希比对，不一致时指出 `target` 并抛错。调用方（`collectHealthReport`、`collectRetrievalBaseline`、`collectAcuBaseline`、`evalset/cli.ts`、`evalset/event-cli.ts`）统一走同一入口。
   验收：新增“篡改一个 raw 文件后 report 抛错并指出 target”的测试（在临时目录构造）；`pnpm check` 通过。
 
-- [ ] **M0-FIX-11 依赖声明与文档同步** | 依赖：M0-FIX-2、M0-FIX-7
+- [x] **M0-FIX-11 依赖声明与文档同步** | 依赖：M0-FIX-2、M0-FIX-7
+  完成：2026-11-07 `packages/st-compat` 把 `png-chunks-extract` 与 `png-chunk-text` 声明为运行时依赖，根目录的副本留给快照脚本；`DEPENDENCIES.md` 增加位置列并说明工作区依赖不登记；JSON 类型与 `isJsonObject` 合并到 `packages/core/src/json.ts`，删除 `packages/st-compat/src/json.ts`，`LlmClient` 改用同一守卫；删除零消费者的 `MemoryEvent`；`DESIGN.md` §5 的 `state_diffs` 示例改用 `path`；ADR-0003 记录两个 PNG 库的两个声明位置；TASKS 与 LOG 的测试计数改为 11/10，diff/快照改为 20.8%；门禁通过（225 个测试）
   做什么：`packages/st-compat/package.json` 声明 `png-chunks-extract` 与 `png-chunk-text`（根目录保留给快照脚本的副本或删除），`DEPENDENCIES.md` 区分包内与根目录依赖并说明工作区依赖豁免；`core/src/json.ts` 与 `st-compat/src/json.ts` 只保留一份对象守卫；处理 `MemoryEvent`（删除或在 M2 任务里挂引用）；`DESIGN.md` §5 的 `state_diffs` 字段改为 `path`；ADR-0007 补缓存键包含 `baseUrl`；`HANDOFF.md` 删除未实现的 `sheet_replace` 描述；修正 `TASKS.md` 与 `LOG.md` 里过期的测试计数与 47.8%。
   验收：`pnpm install` 后 `pnpm check` 通过；`git diff` 里的文档数字与当前报告一致；不再有未声明的 import。
 

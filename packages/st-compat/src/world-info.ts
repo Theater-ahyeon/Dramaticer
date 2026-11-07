@@ -1,6 +1,11 @@
 import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
 import {
+	type JsonObject,
+	type JsonValue,
+	isJsonObject,
+} from "@dramaticer/core";
+import {
 	optionalBoolean,
 	optionalJsonArray,
 	optionalNumber,
@@ -11,8 +16,6 @@ import {
 	readString,
 	readStringList,
 } from "./field-readers.js";
-import type { JsonObject, JsonValue } from "./json.js";
-import { isJsonObject } from "./json.js";
 
 /**
  * ST 世界书条目。字段名与酒馆的 JSON 对齐（`key`、`keysecondary`、`disable`），

@@ -1,8 +1,11 @@
 import { isDeepStrictEqual } from "node:util";
+import {
+	type JsonObject,
+	type JsonValue,
+	isJsonObject,
+} from "@dramaticer/core";
 import type { StChatEntry } from "../chat-jsonl.js";
 import { parseChatJsonlFile } from "../chat-jsonl.js";
-import type { JsonObject, JsonValue } from "../json.js";
-import { isJsonObject } from "../json.js";
 import {
 	currentSwipeIndex,
 	messageNodeId,

@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { type JsonObject, isJsonObject } from "@dramaticer/core";
 import { decode as decodeText } from "png-chunk-text";
 import type { DecodedText } from "png-chunk-text";
 import extractChunks from "png-chunks-extract";
@@ -10,8 +11,6 @@ import {
 	readString,
 	readStringList,
 } from "./field-readers.js";
-import type { JsonObject } from "./json.js";
-import { isJsonObject } from "./json.js";
 
 export type StCardSpec = "chara_card_v1" | "chara_card_v2" | "chara_card_v3";
 

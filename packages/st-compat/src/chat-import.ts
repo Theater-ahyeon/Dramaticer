@@ -1,4 +1,5 @@
 import type {
+	JsonObject,
 	NewStateDiff,
 	Story,
 	StoryStore,
@@ -6,7 +7,6 @@ import type {
 } from "@dramaticer/core";
 import type { StChatEntry, StChatMessage } from "./chat-jsonl.js";
 import { parseChatJsonlFile } from "./chat-jsonl.js";
-import type { JsonObject } from "./json.js";
 import { currentSwipeIndex, messageNodeId, swipeNodeId } from "./node-id.js";
 import type { SnapshotDiff } from "./state-diff.js";
 import { diffSnapshots, readSnapshot } from "./state-diff.js";

@@ -44,20 +44,6 @@ export type NewStateDiff =
 	| (NewStateDiffBase & { readonly op: "set"; readonly value: unknown })
 	| (NewStateDiffBase & { readonly op: "delete" });
 
-export interface MemoryEvent {
-	readonly id: number;
-	readonly storyId: string;
-	readonly nodeId: string;
-	readonly summary: string;
-	readonly storyTime: string | null;
-	readonly participants: readonly string[];
-	readonly location: string | null;
-	readonly importance: number;
-	/** 知情者列表，供视角过滤使用。 */
-	readonly knowers: readonly string[];
-	readonly createdAt: string;
-}
-
 export interface NodeTextMatch {
 	readonly nodeId: string;
 	readonly storyId: string;

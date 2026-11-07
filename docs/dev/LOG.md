@@ -9,10 +9,10 @@
 - 2026-11-06 | S5 | M0-T04 | DONE | 实现角色卡解析（PNG 的 ccv3/chara、V1/V2/V3 JSON）与 13 个测试；真实快照 3 张卡解析通过，门禁通过
 - 2026-11-06 | S6 | M0-T05 | DONE | 实现世界书与预设解析（含 prompt_order、正则脚本、数字字符串额度）与 21 个测试；真实快照 3 个世界书、58 个预设解析并结构往返通过，门禁通过
 - 2026-11-06 | S7 | M0-T06 | DONE | 实现 core 领域类型与 SQLite 存储（stories/nodes/state_diffs/FTS5 node_text，trigram 分词，user_version 迁移，节点原文不可修改）与 13 个测试，门禁通过
-- 2026-11-06 | S8 | M0-T07 | DONE | 实现 ST 聊天导入：主路径与 swipe 兄弟节点、MVU 快照 diff；7 个测试，真实快照 1222 层累加往返零差异，门禁通过
-- 2026-11-06 | S9 | M0-T08 | DONE | 实现体检报告 CLI 与统计版报告：对话字节/token、diff/快照 47.8%、重复度曲线、实体与 58 个预设的宏和正则统计；26 个新测试，门禁通过
+- 2026-11-06 | S8 | M0-T07 | DONE | 实现 ST 聊天导入：主路径与 swipe 兄弟节点、MVU 快照 diff；11 个测试，真实快照 1222 层累加往返零差异，门禁通过
+- 2026-11-06 | S9 | M0-T08 | DONE | 实现体检报告 CLI 与统计版报告：对话字节/token、diff/快照 20.8%、重复度曲线、实体与 58 个预设的宏和正则统计；26 个新测试，门禁通过
 - 2026-11-06 | S10 | M0-T09 | DONE | 实现正则分类器（8 类、删除范围、四种升级策略）与报告章节；928 条正则中启用 637 条、可升级 300 条（47.1%），18 个新测试，门禁通过
-- 2026-11-06 | S11 | M0-T10 | DONE | 实现状态题生成器与 CLI（稳定区间、快照核对）；3 个对话共 236 题（71/65/100）全部核对一致；ADR-0006 把空对象快照视为没有更新，体检报告 diff/快照降到 20.8%；9 个新测试，门禁通过
+- 2026-11-06 | S11 | M0-T10 | DONE | 实现状态题生成器与 CLI（稳定区间、快照核对）；3 个对话共 236 题（71/65/100）全部核对一致；ADR-0006 把空对象快照视为没有更新，体检报告 diff/快照降到 20.8%；10 个新测试，门禁通过
 - 2026-11-06 | S12 | M0-T11 | DONE | 实现 core OpenAI 兼容客户端（限速、重试、请求级缓存、思考 token）与事件题生成器/CLI；3 个对话各 50 题，结构核对全部一致，抽查 30 题；antigravity 账号被停用后用 auto/deepseek-v4.1-flash 完成第三个对话（HUMAN-05）；15 个新测试，门禁通过
 - 2026-11-06 | S13 | M0-T12 | DONE | 实现固定窗口分块与 FTS5 trigram 块索引，按提问楼层之前检索并统计命中@5/10/20；386 题命中 126/143/153（事件题 113/128/137，状态题 13/15/16），报告写入私有版和统计版 health；16 个新测试，门禁通过
 - 2026-11-06 | S14 | M0-T13 | DONE | 实现 ACU 对照组：单元格历史配逐楼层 hash_sheets、整表数据、内存 SQLite 重放 SQL 更新三种来源，按提问楼层之前最近的表格内容做规范化包含判断；386 题覆盖 91（状态题 88/236、事件题 3/150），按答案长度分档报告；7 个新测试，门禁通过
@@ -27,3 +27,4 @@
 - 2026-11-07 | S23 | M0-FIX-8 | DONE | `hasRenderSibling` 跳过停用的兄弟脚本；`classifyCore` 删除不可达的兜底分支；`analyzeDuplication` 入口统一校验四个正整数参数并在错误里带参数名；token 估算补谚文五个区段；删除零调用的 `countMacros`，`REGEX_CATEGORY_ORDER` 取消导出；4 个新测试，两份报告重新生成（可升级 300/637 = 47.1%），门禁通过（202 个测试）
 - 2026-11-07 | S24 | M0-FIX-9 | DONE | `readQuestionFile` 重复 id 抛错并带文件与行号；事件题解析阶段的缺字段条目逐条计入失败记录；抽样改为 id 哈希的确定性函数；`EventQuestionStats` 删除三个无读取方字段；state CLI 拆出题量区间与 `summary.json` 写出；`event-cli --story` 只写故事专属抽查与汇总文件；`.env` 缺失错误带路径；evalset 内计分与 `requireNonEmpty` 合并到 `shared.ts`；19 个新测试，门禁通过（221 个测试）
 - 2026-11-07 | S25 | M0-FIX-10 | DONE | `health/manifest.ts` 新增 `openSnapshot` 作为读取 raw 的唯一入口：manifest 条目必须带 `size` 与 `sha256`，`resolveFile` 校验路径不越界、`stat` 大小一致、流式 sha256 一致，错误都带 `target`；`collectHealthReport`、`collectRetrievalBaseline`、`collectAcuBaseline`、`runStateQuestionsCli`、`evalset/event-cli.ts` 全部改走该入口，`report.ts` 的本地路径与角色过滤辅助删除；fixture manifest 补齐校验字段；4 个新测试，门禁通过（225 个测试），真实快照 67 个文件校验通过
+- 2026-11-07 | S26 | M0-FIX-11 | DONE | 两个 PNG 库声明为 st-compat 运行时依赖，DEPENDENCIES 增加声明位置列与工作区豁免；JSON 类型与 `isJsonObject` 合并到 core，删除 st-compat 的 `json.ts`；删除零消费者的 `MemoryEvent`；DESIGN §5 的 `state_diffs` 示例改用 `path`；ADR-0003 更新依赖位置；TASKS 与 LOG 的测试计数改为 11/10、diff/快照改为 20.8%；门禁通过（225 个测试）
