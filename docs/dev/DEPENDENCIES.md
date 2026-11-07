@@ -13,6 +13,8 @@
 | `better-sqlite3` | `packages/core` | runtime | SQLite 与 FTS5（ADR-0001） |
 | `better-sqlite3` | `packages/st-compat` | runtime | ACU 对照组在内存 SQLite 里重放表格更新 |
 | `@types/better-sqlite3` | `packages/core`、`packages/st-compat` | dev | 类型 |
+| `@earendil-works/pi-ai` | 根目录 | dev | M1-T01 验证统一模型层（流式、思考、函数调用、自定义 baseUrl）；M1-T02 采用后移到 `packages/core` 的运行时依赖（ADR-0009） |
+| `@earendil-works/pi-agent-core` | 根目录 | dev | M1-T01 验证无状态单轮执行器与 `prepareRequest`、`beforeToolCall`、`finishTurn` 钩子；M1-T02 采用后移到 `packages/core` 的运行时依赖（ADR-0009） |
 | `png-chunks-extract` | `packages/st-compat` | runtime | 解析角色卡 PNG 的块（ADR-0003） |
 | `png-chunks-extract` | 根目录 | dev | `scripts/snapshot-private-data.mjs` 从角色卡提取世界书引用（ADR-0003） |
 | `png-chunk-text` | `packages/st-compat` | runtime | 解码角色卡 PNG 的 tEXt 文本块（ADR-0003） |

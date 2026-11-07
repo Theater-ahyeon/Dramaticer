@@ -75,3 +75,23 @@
   - M2 的过关标准改为按题型分层；M3 的重复检测必须用 embedding 节拍与场景类型序列，字符 n-gram 只保留为离线基线。
   - M1-T01 先用 pnpm 安装并登记 `@earendil-works/pi-ai` 与 `@earendil-works/pi-agent-core`；M1-T02 把事件题生成器迁移到新的 `core/llm` 接口后再删除 M0 的最小客户端。
 - **影响**：不改“不做”清单，也不改里程碑顺序。§14 的存储目标从倍数改为单楼字节上限，验收时以 `docs/dev/reports/M0.md` 的实测口径为准。
+
+## ADR-0009 采用 pi-ai 与 pi-agent-core（2026-11-07）
+
+- **背景**：DESIGN §10 把 pi-ai 与 pi-agent-core 定为模型层，附录 A 标注“M1 验证后才最终确定”。M1-T01 需要在真实渠道上验证流式、思考内容、函数调用、abort 后续写，以及 agent-core 的三个钩子；验证脚本放在 `spikes/pi/`，Node 24.13.0，两个包都锁定为 `1.5.0`（根目录 devDependencies，M1-T02 采用后再移到 `packages/core` 的运行时依赖）。
+- **验证环境**：`.env` 的正文渠道 `DRAMATICER_MAIN_BASE_URL=http://127.0.0.1:3425/v1`，模型 `opendesign/deepseek-v4.1-flash`。用 `createProvider` 加 `openAICompletionsApi` 包装成单模型 provider，模型 id 原样透传（带斜杠的前缀不被解析）。
+- **结果**：
+  - **① openai-completions 流式、思考、函数调用：通过。** 同一请求收到 96 个 `thinking_delta`、24 个 `text_delta`；第一个事件在 1.65 秒到达，第一个正文增量在 3.54 秒，说明是增量流式；思考 348 字符、正文 87 字符，`stopReason` 为 `stop`；用量 input 43、output 303、reasoning 241。强制 `toolChoice` 后返回 `get_time` 调用，参数 `{"timezone":"Asia/Shanghai"}`，`stopReason` 为 `toolUse`，内容块为 `thinking` 加 `toolCall`。
+  - **② Gemini 原生自定义 baseUrl：部分通过，端到端跳过。** Google 适配器拒绝注入的 `fetch`（错误信息为 “Custom fetch is not supported by the Google Generative AI adapter”），因此渠道体检不能靠替换 fetch 抓请求。通过临时观察全局 `fetch` 确认请求地址是 `http://127.0.0.1:7861/models/gemini-2.5-flash:streamGenerateContent?alt=sse`，即 `model.baseUrl` 原样作为 Gemini API 的根路径。gcli2api 没有运行（端口 7861 连接被拒绝），所以没有验证它的响应是否兼容；HUMAN-04 保持待处理。
+  - **③ abort 后续写：通过。** 在收到 4 个正文增量后中止，`stopReason` 为 `aborted`，保留 21 个字符的部分正文（内容块含 `thinking` 与 `text`）；把部分消息放回上下文并追加“接着写”的用户消息后，续写 `stopReason` 为 `stop`、正文 2569 字符。中止后的 `usage` 全是 0，不能用于计费统计。
+  - **④ agent-core 三个钩子：通过。** `prepareRequest` 替换后的上下文真正进入请求（模型回复了注入的随机串，而不是原来的 prompt）；`beforeToolCall` 收到已经校验的参数 `{"text":"hello"}`，返回 `block` 后产生错误工具结果；`finishTurn` 在工具结果之后调用一次并返回 `{action:"end"}`，阻止了第二次请求（`onPayload` 只触发 1 次，`turn_end` 与 `agent_end` 各 1 次）。
+- **发现的行为**：
+  - 该渠道在 `reasoning:"off"` 时仍然输出思考内容并消耗输出 token；能否关闭思考取决于渠道，pi 只负责发参数。
+  - 中止时 `usage` 为全 0；需要计费或统计时以最后一次完整响应为准。
+  - gcli2api 必须把 Gemini API 的路径（`/models/<id>:streamGenerateContent`）挂在 baseUrl 根下。
+  - pnpm 忽略了 `@google/genai` 与 `protobufjs` 的构建脚本；OpenAI 兼容适配器不受影响，Gemini 适配器在 gcli2api 可用时需要重新验证。
+- **决定**：
+  - 采用 pi-ai 作为模型层：OpenAI 兼容 Chat Completions 优先，Gemini 原生第二；`core/llm` 只包一层薄接口（流式事件、用量、中止、切换、重试、截断续写），不把 pi 的类型泄漏到领域层。
+  - 采用 pi-agent-core，但只当作无状态单轮执行器：`prepareRequest` 注入组装好的上下文，`beforeToolCall` 做校验与拦截，`finishTurn` 用 `{action:"end"}` 把每轮请求数限制在 1 次；`identity` 设为 `{ attribution: null }`。
+  - 渠道配置保存 `baseUrl`、模型 id 字符串和 api key 的环境变量名；模型 id 不解析前缀。
+- **影响**：M1-T02 按此实现；渠道体检（M1-T03）不能依赖注入 fetch，需要从 `onPayload`、错误信息或服务端日志取请求地址；Gemini 端到端验收继续受 HUMAN-04 影响。
