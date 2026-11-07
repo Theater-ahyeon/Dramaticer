@@ -3,6 +3,7 @@ dist/
 *.tsbuildinfo
 data/
 eval-private/
+packages/*/test/.tmp-*/
 .env
 .env.*
 !.env.example

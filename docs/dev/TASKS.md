@@ -33,7 +33,8 @@
   做什么：实现**流式逐行**解析（单个文件可能有 35 MB，每行可能超过 100 KB）。解析出：头部信息（character_name、user_name、chat_metadata 原样保留）；每条消息的 `name`、`is_user`、`is_system`、`send_date`、`mes`（当前 swipe 的正文）、`swipes`、`swipe_id`、`extra.reasoning`、`variables`（MVU 变量）。不认识的字段放进 `raw` 里原样保留。
   验收：用合成的测试数据覆盖：swipe、system 消息、缺字段、超长行；类型完整。
 
-- [ ] **M0-T04 st-compat：角色卡解析** | 依赖：M0-T01
+- [x] **M0-T04 st-compat：角色卡解析** | 依赖：M0-T01
+  完成：2026-11-06 `packages/st-compat/src/character-card.ts` 解析 PNG（ccv3 优先，回退 chara）与 JSON 卡，兼容 V1/V2/V3，保留内嵌世界书与 extensions；13 个测试，真实快照 3 张卡解析通过
   做什么：解析 PNG（`tEXt` 块里的 `chara` 或 `ccv3`，base64 编码的 JSON）和 JSON 格式的卡；兼容 V2 和 V3；提取内嵌的 `character_book`；`extensions` 原样保留。
   验收：合成的 PNG 测试数据（在测试里用代码生成最小的 PNG）、V2 和 V3 的 JSON 测试数据都能解析通过。
 

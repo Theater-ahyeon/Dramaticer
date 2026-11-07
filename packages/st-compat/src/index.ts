@@ -1,5 +1,6 @@
 import { getCoreVersion } from "@dramaticer/core";
 
+export * from "./character-card.js";
 export * from "./chat-jsonl.js";
 export * from "./json.js";
 
