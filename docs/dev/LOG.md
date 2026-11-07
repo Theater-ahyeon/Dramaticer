@@ -93,3 +93,5 @@
 - 2026-11-07 | S65 | M3-T99 | MILESTONE_DONE | 门禁 567 个测试、live 570 个测试通过；M3-T01 至 T08 逐条核对；I1–I10 通过，I6、I7、I9 有代码与测试证据；重复度“显著低于”未证实（Jaccard 0.0915 对 0.0940、余弦 0.9018 对 0.9053，分对话方向不一致），线索回收率无样本（笔记 0/0），两项如实记为未达成；结论写入 `docs/dev/reports/M3.md`；ADR-0029 把效果目标保留为未证实并扩展 M4 自动试玩报告字段；M4-T00 确认可执行
 
 - 2026-11-07 | S66 | M4-T00 | DONE | M4 细化为 M4-T01 至 M4-T20 与 M4-T99：共享类型包、故事设置与模板持久化（迁移 v17）、重新生成、server 骨架与认证、故事导入、SSE 回合、后台任务、分支与面板接口、渠道管理、web 骨架与聊天、分支、面板、设置与模板、渠道面板、沙箱渲染、Playwright 端到端、自动试玩框架与真实 50 轮；ADR-0030 确定 `packages/protocol`、`node:http`、默认回环与局域网密码、角色卡提示词持久化、重新生成的生成入口、渠道脱敏与工具边界；兼容线段按 DESIGN §15 的表格移到 M4 之后；本次只改文档，门禁通过（567 个测试）
+
+- 2026-11-07 | S67 | M4-T01 | DONE | 新增 `@dramaticer/protocol`：`story.ts`（故事视图与请求、路径、树）、`settings.ts`（故事设置与模板记录）、`channels.ts`（脱敏渠道、模型、embedding 视图与整份配置替换请求）、`errors.ts`（8 个错误码与统一错误形状）、`turn.ts`（`TurnRequest`、`SSE_EVENT_NAMES` 的 7 个事件名、按事件名分发的联合类型）；领域类型全部用 `import type` 引用 core，协议包开启 `verbatimModuleSyntax`；根 `tsconfig.json` 增加项目引用，`pnpm-lock.yaml` 登记工作区依赖；3 个测试验证常量唯一性与 dist 的 JS 不含 core，门禁通过（570 个测试）

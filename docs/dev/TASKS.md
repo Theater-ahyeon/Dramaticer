@@ -456,7 +456,8 @@
   完成：2026-11-07 把 M4 细化为 M4-T01 至 M4-T20 与 M4-T99：共享类型包、故事设置与模板持久化、重新生成、server 骨架与认证、故事导入、SSE 回合、后台任务、分支与面板接口、渠道管理、web 骨架与聊天、分支、面板、设置与模板、渠道面板、沙箱渲染、Playwright 端到端、自动试玩框架与真实 50 轮。读取工具与 `state_update`、`plot_note` 已在 M2-T14 与 M2-T07 接入主循环，M4 改为端到端核对；`illustrate` 留到 M6。ST 预设转换留在兼容线。兼容线段按 DESIGN §15 的表格移到 M4 之后。ADR-0030。
   做什么：原条目：server（HTTP 加 SSE，默认只监听 127.0.0.1，局域网模式必须设密码）；web（移动端优先：聊天、分支、预设和模板编辑器、记忆面板、状态面板、导演面板、Trace 面板、渠道管理）；沙箱 iframe 渲染器；写入工具和读取工具接入主循环。**试玩验收按 ADR-0028：Playwright 端到端加 LLM 模拟用户至少 50 轮，产出私有报告与统计版报告，作者看统计版确认；不新增 HUMAN 阻塞项。统计版报告按 ADR-0029 增加 Director 机制命中次数、节奏阶段分布、新建与兑现的剧情笔记数、线索兑现率与兑现平均年龄。**
 
-- [ ] **M4-T01 共享 API 类型包** | 依赖：无 | DESIGN §13
+- [x] **M4-T01 共享 API 类型包** | 依赖：无 | DESIGN §13
+  完成：2026-11-07 新增 `@dramaticer/protocol`：`story.ts` 的故事视图、请求、路径与树，`settings.ts` 的故事设置与模板记录，`channels.ts` 的脱敏渠道视图与整份配置替换请求，`errors.ts` 的 8 个错误码与统一错误形状，`turn.ts` 的 `TurnRequest`、7 个 SSE 事件名与按事件名分发的联合类型；领域类型全部用 `import type` 引用 core，`verbatimModuleSyntax` 保证擦除；根 `tsconfig.json` 增加项目引用；3 个测试（事件名与错误码唯一性、dist 的 JS 不含 core），门禁通过（570 个测试）
   做什么：
   - 新增 `packages/protocol`（`@dramaticer/protocol`），只放 HTTP 与 SSE 的类型和常量：故事、楼层、路径、树、设置、模板、Trace、状态快照、事件、摘要、剧情笔记、导演决策、实体、lore、渠道脱敏视图、错误包装、SSE 事件联合类型与事件名。
   - 领域类型从 `@dramaticer/core` 只用 `import type` 引用，编译结果不包含 core 的运行时代码；导出 `SSE_EVENT_NAMES` 等常量。根 `tsconfig.json` 增加项目引用，`pnpm check` 覆盖。

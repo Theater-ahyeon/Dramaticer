@@ -3,18 +3,24 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：66
-- 任务：M4-T00 细化 M4 任务
+- 会话：67
+- 任务：M4-T01 共享 API 类型包
 - 结果：完成（`DONE`）。
-  - 把 M4 细化为 M4-T01 至 M4-T20 与 M4-T99，依赖关系与验收标准写入 `TASKS.md`。
-  - ADR-0030 记录 server 与 web 的边界：`packages/protocol` 共享类型、server 使用 `node:http`、迁移 v17 的 `story_settings` 与 `context_templates`、重新生成的生成入口、渠道脱敏与原子写回、后台任务调度、Playwright 假渠道与真实试玩分离。
-  - 读取工具与 `state_update`、`plot_note` 已在 M2-T14 与 M2-T07 接入主循环；M4 改为端到端核对，`illustrate` 留到 M6；ST 预设转换留在兼容线。
-  - 兼容线段按 DESIGN §15 的表格移到 M4 之后；C-T00 仍待做，不阻塞 M4。
-  - 门禁通过：invariants、`tsc -b`、biome、vitest 567 个测试；本次只改文档。
+  - 新增 `packages/protocol`（`@dramaticer/protocol`）：
+    - `story.ts`：`StoryView`、`CreateStoryRequest`、`UpdateStoryRequest`、`StoryPath`、`StoryTreeNode`、`StoryTree`。
+    - `settings.ts`：`StorySettings`、`StorySettingsUpdate`、`ContextTemplateRecord`、模板的创建与更新请求。
+    - `channels.ts`：`ChannelView`、`ModelView`、`EmbeddingView`、`ChannelsView`，以及整份 `channels.yaml` 的替换请求 `ChannelsUpdateRequest`；密钥只以环境变量名与是否设置出现。
+    - `errors.ts`：`API_ERROR_CODES`（8 个）与 `ApiErrorBody`、`ApiErrorResponse`。
+    - `turn.ts`：`TurnRequest`、`SSE_EVENT_NAMES`（7 个事件）、各事件负载与 `SseEvent` 联合类型。
+  - 领域类型全部用 `import type` 引用 `@dramaticer/core`；协议包开启 `verbatimModuleSyntax`，编译出的 `.js` 不含 core；`.d.ts` 里保留类型引用。
+  - 根 `tsconfig.json` 增加 `packages/protocol` 项目引用；`pnpm-lock.yaml` 登记工作区依赖。
+  - 3 个测试：事件名与错误码唯一、dist 的 JS 不含 `@dramaticer/core`（dist 不存在时跳过）。
+  - 门禁通过：invariants、`tsc -b`、biome、vitest 570 个测试。
 
 ## 当前状态
-- M0、M1、M2、M3 与 D-T01 至 D-T04 完成；M4-T00 完成，M4-T01 待做。
+- M0、M1、M2、M3、D-T01 至 D-T04、M4-T00、M4-T01 完成；M4-T02 待做。
 - 数据库 schema 版本 16；M4-T02 将升到 17。
+- `packages/server` 与 `packages/web` 尚未创建。server 应依赖 core、st-compat 与 protocol；web 只依赖 protocol 与浏览器 API。
 - 快照：`eval-private/raw/` 有 94 个文件；manifest 记录 `corpus` 与 `sourceMtime`。`eval-private/reference/` 有 5 部参照小说。
 - 事件表已在 v7 建立，但真实回放里没有事件；不要引用事件数字。
 - HUMAN-03（事件题抽查）仍未完成，不阻塞任何任务；其余 HUMAN 条目均已完成。
@@ -22,11 +28,13 @@
 - 兼容线 C-T00 排在 M4 之后，与 M4 的沙箱渲染器衔接。
 
 ## 下一步
-- **M4-T01 共享 API 类型包**，依赖无，可以直接执行。
-  - 新增 `packages/protocol`（`@dramaticer/protocol`），只放 HTTP 与 SSE 的类型和常量：故事、楼层、路径、树、设置、模板、Trace、状态快照、事件、摘要、剧情笔记、导演决策、实体、lore、渠道脱敏视图、错误包装、SSE 事件联合类型与事件名。
-  - 领域类型从 `@dramaticer/core` 只用 `import type` 引用，编译结果不包含 core 的运行时代码；根 `tsconfig.json` 增加项目引用。
-  - 验收：`pnpm check` 通过；`packages/protocol/dist` 里没有 core 的运行时 import。
-- 之后按 TASKS 顺序：M4-T02 故事设置与模板持久化（迁移 v17）、M4-T03 重新生成助手楼层、M4-T04 server 骨架与认证。
+- **M4-T02 故事运行配置与模板持久化**，依赖 M1-T07、M2-T01，可以直接执行。
+  - 迁移 v17：`story_settings` 与 `context_templates`；`template_id` 可空表示内置默认模板。
+  - `StoryStore`：`getStorySettings`（缺失时返回默认值）、`updateStorySettings`、模板 CRUD；校验枚举、数值范围、模板 JSON 与 `director_config`。
+  - core：`createCharacterSlotProvider(characterPrompt)` 与 `createStandardChatProviders({...})`；st-compat 的 `createChatProviders` 改为薄包装。
+  - `importCardContent` 返回 `{characterPrompt, cardName}`；`dramaticer chat` 导入后写入故事设置，之后优先读库里的提示词。
+  - protocol 里已有 `StorySettings` 与 `ContextTemplateRecord`，实现时保持字段一致；需要调整时同步修改协议包。
+- 之后按 TASKS 顺序：M4-T03 重新生成助手楼层、M4-T04 server 骨架与认证。
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
@@ -40,11 +48,11 @@
 - 预设从 58 个变为 74 个，其中一个旧预设被人类改过；不要假设预设哈希与 M0 一致。
 - 不要把 `eval-private/memory-cache/`、`eval-private/reports/`、临时数据库、`eval-private/raw/`、`eval-private/reference/` 加进提交。
 - 不要修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 下的文件。
-- 提交前跑 `pnpm check`；新增依赖要登记到 `docs/dev/DEPENDENCIES.md`。
+- 提交前跑 `pnpm check`；新增依赖要登记到 `docs/dev/DEPENDENCIES.md`，工作区内部依赖不需要登记。
 - 临时脚本放 `.devloop/scratch/`（已被 git 忽略），用完删除。
-- 安装依赖时用 `HTTP_PROXY= HTTPS_PROXY= pnpm install`。
+- 安装依赖时用 `HTTP_PROXY= HTTPS_PROXY= pnpm install`；新增工作区包后需要 `--no-frozen-lockfile` 更新锁文件。
 - 渠道行为（ADR-0009、ADR-0011）：`reasoning:"off"` 在该渠道仍会输出思考并消耗输出 token；abort 后 `usage` 全为 0；gcli2api 必须把 Gemini API 路径挂在 baseUrl 根下；该渠道不支持预填充。
 - live 测试用 `DRAMATICER_LIVE=1` 开启；`*.live.test.ts` 会被门禁的 I10 扫描排除。
 - Director 机制新增时同步更新既有测试里的机制列表断言：`director.test.ts`、`director-event-pool.test.ts`、`lore.test.ts`、`packages/st-compat/test/chat-cli.test.ts`。
-- M4 新增 `packages/protocol`、`packages/server`、`packages/web`；server 使用 `node:http`，默认只监听 127.0.0.1，绑定非回环地址必须设置 `DRAMATICER_SERVER_PASSWORD`。
+- M4 新增 `packages/server`、`packages/web`；server 使用 `node:http`，默认只监听 127.0.0.1，绑定非回环地址必须设置 `DRAMATICER_SERVER_PASSWORD`。
 - Playwright 浏览器与 `pnpm e2e` 不进入 `pnpm check`；端到端失败产物写 `.devloop/scratch/e2e/`。
