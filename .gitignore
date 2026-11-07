@@ -1,0 +1,9 @@
+node_modules/
+dist/
+data/
+eval-private/
+.env
+.env.*
+!.env.example
+.devloop/
+*.log
