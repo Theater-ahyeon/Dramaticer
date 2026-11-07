@@ -1,4 +1,5 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -80,17 +81,48 @@ describe("parseSnapshotManifest", () => {
 		).toThrow();
 	});
 
-	it("保留角色和字符名", () => {
+	it("保留角色、大小与 sha256", () => {
 		const manifest = parseSnapshotManifest({
 			generatedAt: "2026-01-01",
-			files: [{ role: "chat", character: "角色", target: "a.jsonl" }],
+			files: [
+				{
+					role: "chat",
+					character: "角色",
+					target: "a.jsonl",
+					size: 12,
+					sha256: "a".repeat(64),
+				},
+			],
 		});
 		expect(manifest.generatedAt).toBe("2026-01-01");
 		expect(manifest.files[0]).toEqual({
 			role: "chat",
 			character: "角色",
 			target: "a.jsonl",
+			size: 12,
+			sha256: "a".repeat(64),
 		});
+	});
+
+	it("拒绝缺少大小或 sha256 的条目", () => {
+		const base = { role: "chat", target: "a.jsonl" };
+		expect(() => parseSnapshotManifest({ files: [base] })).toThrow(
+			"manifest.files[0].size 必须是非负整数",
+		);
+		expect(() =>
+			parseSnapshotManifest({ files: [{ ...base, size: 1.5 }] }),
+		).toThrow("manifest.files[0].size 必须是非负整数");
+		expect(() =>
+			parseSnapshotManifest({ files: [{ ...base, size: -1 }] }),
+		).toThrow("manifest.files[0].size 必须是非负整数");
+		expect(() =>
+			parseSnapshotManifest({ files: [{ ...base, size: 10 }] }),
+		).toThrow("manifest.files[0].sha256 必须是 64 位小写十六进制");
+		expect(() =>
+			parseSnapshotManifest({
+				files: [{ ...base, size: 10, sha256: "A".repeat(64) }],
+			}),
+		).toThrow("manifest.files[0].sha256 必须是 64 位小写十六进制");
 	});
 });
 
@@ -157,7 +189,16 @@ describe("collectHealthReport", () => {
 		try {
 			await writeFile(
 				path.join(dir, "manifest.json"),
-				JSON.stringify({ files: [{ role: "card", target: "card.json" }] }),
+				JSON.stringify({
+					files: [
+						{
+							role: "card",
+							target: "card.json",
+							size: 0,
+							sha256: "0".repeat(64),
+						},
+					],
+				}),
 				"utf8",
 			);
 			await expect(collectHealthReport({ rawRoot: dir })).rejects.toThrow(
@@ -176,12 +217,117 @@ describe("collectHealthReport", () => {
 			await writeFile(
 				path.join(dir, "manifest.json"),
 				JSON.stringify({
-					files: [{ role: "chat", target: "../outside.jsonl" }],
+					files: [
+						{
+							role: "chat",
+							target: "../outside.jsonl",
+							size: 0,
+							sha256: "0".repeat(64),
+						},
+					],
 				}),
 				"utf8",
 			);
 			await expect(collectHealthReport({ rawRoot: dir })).rejects.toThrow(
 				"manifest 路径越界",
+			);
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("raw 文件大小与 manifest 不一致时抛错并指出 target", async () => {
+		const dir = await mkdtemp(
+			path.join(path.dirname(fileURLToPath(import.meta.url)), ".tmp-report-"),
+		);
+		try {
+			const target = "chat.jsonl";
+			const content = await readFile(
+				path.join(fixturesPath, "health-chat.jsonl"),
+				"utf8",
+			);
+			await writeFile(path.join(dir, target), content, "utf8");
+			await writeFile(
+				path.join(dir, "manifest.json"),
+				JSON.stringify({
+					files: [
+						{
+							role: "chat",
+							target,
+							size: Buffer.byteLength(content),
+							sha256: createHash("sha256").update(content).digest("hex"),
+						},
+					],
+				}),
+				"utf8",
+			);
+			await collectHealthReport({ rawRoot: dir });
+
+			await writeFile(path.join(dir, target), `${content} `, "utf8");
+			await expect(collectHealthReport({ rawRoot: dir })).rejects.toThrow(
+				`快照文件大小与 manifest 不一致：${target}`,
+			);
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("raw 文件 sha256 与 manifest 不一致时抛错并指出 target", async () => {
+		const dir = await mkdtemp(
+			path.join(path.dirname(fileURLToPath(import.meta.url)), ".tmp-report-"),
+		);
+		try {
+			const target = "chat.jsonl";
+			const content = await readFile(
+				path.join(fixturesPath, "health-chat.jsonl"),
+				"utf8",
+			);
+			await writeFile(path.join(dir, target), content, "utf8");
+			await writeFile(
+				path.join(dir, "manifest.json"),
+				JSON.stringify({
+					files: [
+						{
+							role: "chat",
+							target,
+							size: Buffer.byteLength(content),
+							sha256: createHash("sha256").update(content).digest("hex"),
+						},
+					],
+				}),
+				"utf8",
+			);
+			const tampered = `${content.slice(0, -1)}${content.endsWith("x") ? "y" : "x"}`;
+			await writeFile(path.join(dir, target), tampered, "utf8");
+			await expect(collectHealthReport({ rawRoot: dir })).rejects.toThrow(
+				`快照文件 sha256 与 manifest 不一致：${target}`,
+			);
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("raw 文件不存在时抛错并指出 target", async () => {
+		const dir = await mkdtemp(
+			path.join(path.dirname(fileURLToPath(import.meta.url)), ".tmp-report-"),
+		);
+		try {
+			await writeFile(
+				path.join(dir, "manifest.json"),
+				JSON.stringify({
+					files: [
+						{
+							role: "chat",
+							target: "missing.jsonl",
+							size: 0,
+							sha256: "0".repeat(64),
+						},
+					],
+				}),
+				"utf8",
+			);
+			await expect(collectHealthReport({ rawRoot: dir })).rejects.toThrow(
+				"快照文件不存在：missing.jsonl",
 			);
 		} finally {
 			await rm(dir, { recursive: true, force: true });

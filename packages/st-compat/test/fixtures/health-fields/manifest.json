@@ -1,7 +1,19 @@
 {
 	"generatedAt": "2026-01-05T00:00:00.000Z",
 	"files": [
-		{ "role": "chat", "character": "字段甲", "target": "chat-a.jsonl" },
-		{ "role": "chat", "character": "字段乙", "target": "chat-b.jsonl" }
+		{
+			"role": "chat",
+			"character": "字段甲",
+			"target": "chat-a.jsonl",
+			"size": 1341,
+			"sha256": "7355360f98b1ca88692de269ecaf2b1de79224e7118da0f62895ff8aefbc5cd5"
+		},
+		{
+			"role": "chat",
+			"character": "字段乙",
+			"target": "chat-b.jsonl",
+			"size": 1341,
+			"sha256": "567ac551257a11a5ba15818d2b8adbfb14609b9f010ff340ca1cdef9b252e8b9"
+		}
 	]
 }

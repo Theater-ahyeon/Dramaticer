@@ -1,13 +1,32 @@
 {
 	"generatedAt": "2026-01-01T00:00:00.000Z",
 	"files": [
-		{ "role": "chat", "character": "测试角色", "target": "health-chat.jsonl" },
-		{ "role": "card", "character": "测试角色", "target": "health-card.json" },
+		{
+			"role": "chat",
+			"character": "测试角色",
+			"target": "health-chat.jsonl",
+			"size": 904,
+			"sha256": "2501a076e57453e404f0272beb8e7f6053177aa087c8fbc7236b7fcad568bc6c"
+		},
+		{
+			"role": "card",
+			"character": "测试角色",
+			"target": "health-card.json",
+			"size": 613,
+			"sha256": "a349b51b35147ef59bf80112c45f2c478c56dec4883a342e152281adf1cc7994"
+		},
 		{
 			"role": "worldbook",
 			"character": "测试角色",
-			"target": "health-world.json"
+			"target": "health-world.json",
+			"size": 272,
+			"sha256": "4a2d4fb724586951b440693291f167c80dc26db06605f66375cc19c387256e50"
 		},
-		{ "role": "preset", "target": "health-preset.json" }
+		{
+			"role": "preset",
+			"target": "health-preset.json",
+			"size": 812,
+			"sha256": "c186a09296f78706090381051f5f47b6510628f411a63238479f189452dca487"
+		}
 	]
 }

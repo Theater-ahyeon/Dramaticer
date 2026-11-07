@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { OpenAiCompatibleClient } from "@dramaticer/core";
 import { parseChatJsonlFile } from "../chat-jsonl.js";
-import { readSnapshotManifest } from "../health/manifest.js";
+import { openSnapshot } from "../health/manifest.js";
 import { messageNodeId } from "../node-id.js";
 import { loadDotEnv } from "./env.js";
 import {
@@ -57,10 +57,8 @@ const client = new OpenAiCompatibleClient({
 	cacheDir,
 });
 
-const manifest = await readSnapshotManifest(
-	path.join(rawRoot, "manifest.json"),
-);
-const allChatFiles = manifest.files.filter((file) => file.role === "chat");
+const snapshot = await openSnapshot(rawRoot);
+const allChatFiles = snapshot.filesByRole("chat");
 const chatFiles =
 	onlyStory === undefined
 		? allChatFiles
@@ -101,7 +99,7 @@ for (const file of chatFiles) {
 		throw new Error(`manifest 里出现了重复的故事名 ${storyId}`);
 	}
 	seenStories.add(storyId);
-	const chatPath = path.resolve(rawRoot, file.target);
+	const chatPath = await snapshot.resolveFile(file);
 
 	const result = await buildEventQuestionsFromFile(chatPath, client, {
 		storyId,

@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { readSnapshotManifest } from "../health/manifest.js";
+import { openSnapshot } from "../health/manifest.js";
 import {
 	sampleDeterministic,
 	sanitizeFileName,
@@ -72,10 +72,8 @@ export async function runStateQuestionsCli(
 	options: RunStateQuestionsOptions,
 ): Promise<{ summaries: readonly StateStorySummary[]; summaryPath: string }> {
 	const log = options.log ?? ((message: string) => console.log(message));
-	const manifest = await readSnapshotManifest(
-		path.join(options.rawRoot, "manifest.json"),
-	);
-	const chatFiles = manifest.files.filter((file) => file.role === "chat");
+	const snapshot = await openSnapshot(options.rawRoot);
+	const chatFiles = snapshot.filesByRole("chat");
 	if (chatFiles.length === 0) {
 		throw new Error("manifest 里没有 chat");
 	}
@@ -88,7 +86,7 @@ export async function runStateQuestionsCli(
 			throw new Error(`manifest 里出现了重复的故事名 ${storyId}`);
 		}
 		seenStories.add(storyId);
-		const chatPath = path.join(options.rawRoot, file.target);
+		const chatPath = await snapshot.resolveFile(file);
 		const result = await buildStateQuestionsFromFile(chatPath, { storyId });
 		assertStateQuestionCount(storyId, result.questions.length);
 		const verification = await verifyStateQuestionsFromFile(

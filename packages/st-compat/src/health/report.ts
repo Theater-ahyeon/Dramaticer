@@ -1,4 +1,3 @@
-import path from "node:path";
 import type { AcuBaseline, AcuScore } from "../evalset/acu.js";
 import type {
 	RetrievalBaseline,
@@ -8,8 +7,7 @@ import type { ChatHealth } from "./chat-health.js";
 import { analyzeChat } from "./chat-health.js";
 import type { EntityHealth } from "./entity-health.js";
 import { analyzeEntityFiles } from "./entity-health.js";
-import type { SnapshotManifest, SnapshotManifestFile } from "./manifest.js";
-import { readSnapshotManifest } from "./manifest.js";
+import { openSnapshot } from "./manifest.js";
 import type { PresetHealth } from "./preset-health.js";
 import { analyzePresets, parsePresetFiles } from "./preset-health.js";
 import type { RegexHealth } from "./regex-health.js";
@@ -64,15 +62,12 @@ export interface CollectHealthReportOptions {
 export async function collectHealthReport(
 	options: CollectHealthReportOptions,
 ): Promise<HealthReport> {
-	const rawRoot = path.resolve(options.rawRoot);
-	const manifest = await readSnapshotManifest(
-		path.join(rawRoot, "manifest.json"),
-	);
+	const snapshot = await openSnapshot(options.rawRoot);
 	const tokenEstimator = options.tokenEstimator ?? createTokenEstimator();
-	const chatFiles = filesByRole(manifest, "chat");
-	const cardFiles = filesByRole(manifest, "card");
-	const worldFiles = filesByRole(manifest, "worldbook");
-	const presetFiles = filesByRole(manifest, "preset");
+	const chatFiles = snapshot.filesByRole("chat");
+	const cardFiles = snapshot.filesByRole("card");
+	const worldFiles = snapshot.filesByRole("worldbook");
+	const presetFiles = snapshot.filesByRole("preset");
 	if (chatFiles.length === 0) {
 		throw new Error("manifest 里没有 chat");
 	}
@@ -82,25 +77,25 @@ export async function collectHealthReport(
 		chats.push({
 			character: file.character ?? null,
 			fileName: file.target,
-			stats: await analyzeChat(resolveInside(rawRoot, file.target), {
+			stats: await analyzeChat(await snapshot.resolveFile(file), {
 				tokenEstimator,
 			}),
 		});
 	}
 
 	const entities = await analyzeEntityFiles(
-		cardFiles.map((file) => resolveInside(rawRoot, file.target)),
-		worldFiles.map((file) => resolveInside(rawRoot, file.target)),
+		await Promise.all(cardFiles.map((file) => snapshot.resolveFile(file))),
+		await Promise.all(worldFiles.map((file) => snapshot.resolveFile(file))),
 	);
 	const presetList = await parsePresetFiles(
-		presetFiles.map((file) => resolveInside(rawRoot, file.target)),
+		await Promise.all(presetFiles.map((file) => snapshot.resolveFile(file))),
 	);
 	const presets = analyzePresets(presetList, tokenEstimator);
 	const regex = analyzeRegexScripts(presetList);
 
 	return {
 		generatedAt: options.generatedAt ?? new Date().toISOString(),
-		manifestGeneratedAt: manifest.generatedAt,
+		manifestGeneratedAt: snapshot.manifest.generatedAt,
 		chats,
 		entities,
 		presets,
@@ -637,22 +632,6 @@ function renderRegexDetails(
 			lines.push(`| ${cell(item.tag)} | ${item.scriptCount} |`);
 		}
 	}
-}
-
-function filesByRole(
-	manifest: SnapshotManifest,
-	role: string,
-): readonly SnapshotManifestFile[] {
-	return manifest.files.filter((file) => file.role === role);
-}
-
-function resolveInside(rawRoot: string, target: string): string {
-	const resolved = path.resolve(rawRoot, target);
-	const relative = path.relative(rawRoot, resolved);
-	if (relative.startsWith("..") || path.isAbsolute(relative)) {
-		throw new Error(`manifest 路径越界：${target}`);
-	}
-	return resolved;
 }
 
 function sumChats(chats: readonly ChatReportEntry[]): HealthTotals {

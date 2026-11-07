@@ -137,7 +137,8 @@
   做什么：`readQuestionFile` 拒绝重复 `id` 并给出文件与行号；事件题解析阶段的结构校验失败计入失败记录；20% 抽查与状态题抽样改为确定性（固定种子或 id 哈希），连续两次运行样本一致；`event-cli` 的 `--story` 运行时按故事分别写文件、汇总时合并已有条目，不覆盖全局 `spotcheck.md` 与 `event-summary.json`；删除 `EventQuestionStats` 里没有读取方的三个字段；给 `*FromFile` 包装、`sanitizeFileName`、`storyIdOf`、`evalset/cli.ts` 的题量区间与 `summary.json` 写出、`event-cli` 的 `.env` 缺失错误补测试；合并 evalset 内重复的计分与 `requireNonEmpty` 辅助。
   验收：新增测试覆盖上述每一条；`.env` 缺失时错误信息包含文件路径；`pnpm check` 通过（不调用 LLM，使用注入的假客户端）。
 
-- [ ] **M0-FIX-10 manifest 完整性校验** | 依赖：M0-REVIEW-1
+- [x] **M0-FIX-10 manifest 完整性校验** | 依赖：M0-REVIEW-1
+  完成：2026-11-07 `health/manifest.ts` 的 `openSnapshot` 成为唯一入口：解析时要求 `size`（非负整数）与 `sha256`（64 位小写十六进制），`resolveFile` 先校验路径在 `rawRoot` 内，再用 `stat` 与流式 sha256 比对，错误都带 `target`；五个调用方改走同一入口，fixture manifest 补齐校验字段；新增 4 个测试，门禁通过（225 个测试）
   做什么：`health/manifest.ts` 保留 `size` 与 `sha256`；读取 raw 前用 `stat` 与流式哈希比对，不一致时指出 `target` 并抛错。调用方（`collectHealthReport`、`collectRetrievalBaseline`、`collectAcuBaseline`、`evalset/cli.ts`、`evalset/event-cli.ts`）统一走同一入口。
   验收：新增“篡改一个 raw 文件后 report 抛错并指出 target”的测试（在临时目录构造）；`pnpm check` 通过。
 

@@ -1,6 +1,12 @@
 {
 	"generatedAt": "2026-01-01T00:00:00.000Z",
 	"files": [
-		{ "role": "chat", "character": "数据库故事", "target": "chat.jsonl" }
+		{
+			"role": "chat",
+			"character": "数据库故事",
+			"target": "chat.jsonl",
+			"size": 1177,
+			"sha256": "94e91ebf3d2d5626a4abb5ed4c988d752c01ced73ac19f6648d63cd5d3c98382"
+		}
 	]
 }

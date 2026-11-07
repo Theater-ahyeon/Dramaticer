@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { parseChatJsonlFile } from "../chat-jsonl.js";
-import { readSnapshotManifest } from "../health/manifest.js";
+import { openSnapshot } from "../health/manifest.js";
 import { type JsonObject, type JsonValue, isJsonObject } from "../json.js";
 import { parseMessageIndex } from "../node-id.js";
 import type { QuestionKind, RetrievalQuestion } from "./question-files.js";
@@ -220,11 +220,8 @@ export async function evaluateAcuCoverage(
 export async function collectAcuBaseline(
 	options: CollectAcuBaselineOptions,
 ): Promise<AcuBaseline> {
-	const rawRoot = path.resolve(options.rawRoot);
-	const manifest = await readSnapshotManifest(
-		path.join(rawRoot, "manifest.json"),
-	);
-	const chatFiles = manifest.files.filter((file) => file.role === "chat");
+	const snapshot = await openSnapshot(options.rawRoot);
+	const chatFiles = snapshot.filesByRole("chat");
 	if (chatFiles.length === 0) {
 		throw new Error("manifest 里没有 chat");
 	}
@@ -249,7 +246,7 @@ export async function collectAcuBaseline(
 		}
 		stories.push(
 			await evaluateAcuCoverage({
-				chatPath: path.join(rawRoot, file.target),
+				chatPath: await snapshot.resolveFile(file),
 				storyId: story,
 				questions,
 			}),

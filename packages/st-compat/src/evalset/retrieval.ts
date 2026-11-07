@@ -7,7 +7,7 @@ import {
 	chunkText,
 } from "@dramaticer/core";
 import { parseChatJsonlFile } from "../chat-jsonl.js";
-import { readSnapshotManifest } from "../health/manifest.js";
+import { openSnapshot } from "../health/manifest.js";
 import { messageNodeId, parseMessageIndex } from "../node-id.js";
 import type { QuestionKind, RetrievalQuestion } from "./question-files.js";
 import {
@@ -162,11 +162,8 @@ export async function collectRetrievalBaseline(
 ): Promise<RetrievalBaseline> {
 	const maxChars = options.maxChars ?? DEFAULT_MAX_CHARS;
 	const overlapChars = options.overlapChars ?? DEFAULT_OVERLAP_CHARS;
-	const rawRoot = path.resolve(options.rawRoot);
-	const manifest = await readSnapshotManifest(
-		path.join(rawRoot, "manifest.json"),
-	);
-	const chatFiles = manifest.files.filter((file) => file.role === "chat");
+	const snapshot = await openSnapshot(options.rawRoot);
+	const chatFiles = snapshot.filesByRole("chat");
 	if (chatFiles.length === 0) {
 		throw new Error("manifest 里没有 chat");
 	}
@@ -191,7 +188,7 @@ export async function collectRetrievalBaseline(
 		}
 		stories.push(
 			await evaluateRetrieval({
-				chatPath: path.join(rawRoot, file.target),
+				chatPath: await snapshot.resolveFile(file),
 				storyId: story,
 				questions,
 				maxChars,
