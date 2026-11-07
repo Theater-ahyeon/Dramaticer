@@ -14,6 +14,10 @@ import {
 	createEmbeddingsHandler,
 } from "../memory/embed.js";
 import { createEventExtractionHandler } from "../memory/extract.js";
+import {
+	NPC_AGENDA_JOB_KIND,
+	createNpcAgendaHandler,
+} from "../memory/npc-agenda.js";
 import { createSummaryHandler } from "../memory/summarize.js";
 import { DEFAULT_EMBEDDING_DIMENSIONS } from "../store/migrations.js";
 import { StoryStore } from "../store/story-store.js";
@@ -87,6 +91,7 @@ export async function runWorkCli(
 		createBackgroundJobRegistry({
 			events: createEventExtractionHandler(),
 			summary: createSummaryHandler(),
+			[NPC_AGENDA_JOB_KIND]: createNpcAgendaHandler(),
 			...(embedder === null
 				? {}
 				: {

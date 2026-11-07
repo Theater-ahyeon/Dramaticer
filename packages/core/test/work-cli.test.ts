@@ -221,6 +221,22 @@ describe("dramaticer work", () => {
 		}
 	});
 
+	it("默认注册表包含 npc_agenda：没有议程时任务完成且不调用模型", async () => {
+		const dbPath = createTempDb();
+		const result = await runWorkCli(
+			["work", "--db", dbPath, "--kind", "npc_agenda"],
+			{
+				loadEnv: () => undefined,
+				loadConfig: async () => createConfig(true),
+				createClient: () => fakeClient,
+				log: () => undefined,
+			},
+		);
+		expect(result.runs.map((run) => run.kind)).toEqual(["npc_agenda"]);
+		expect(result.runs[0]?.status).toBe("done");
+		expect(result.runs[0]?.nodeId).toBe("n-a");
+	});
+
 	it("渠道配置里没有 background 模型时抛错", async () => {
 		const dbPath = createTempDb();
 		await expect(

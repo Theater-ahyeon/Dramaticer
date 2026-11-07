@@ -8,6 +8,7 @@ import type {
 import { parseContextCondition } from "../context/condition.js";
 import type { ContextCondition } from "../context/template.js";
 import type {
+	AdvanceNpcAgendasInput,
 	EventPoolEntry,
 	EventPoolUpsertResult,
 	NewEventPoolEntryInput,
@@ -30,9 +31,11 @@ import {
 import { type JsonObject, isJsonObject } from "../json.js";
 import {
 	DEFAULT_MEMORY_EVENT_LIMIT,
+	DEFAULT_MEMORY_EVENT_SOURCE,
 	type GetEventsForPathOptions,
 	MAX_MEMORY_EVENT_LIMIT,
 	type MemoryEvent,
+	NPC_AGENDA_EVENT_SOURCE,
 	type NewMemoryEventInput,
 } from "../memory/event.js";
 import type { LoreEntry, NewLoreEntryInput } from "../memory/lore.js";
@@ -157,6 +160,7 @@ interface MemoryEventRow {
 	readonly importance: number;
 	readonly knowers: string;
 	readonly text: string;
+	readonly source: string;
 	readonly created_at: string;
 }
 
@@ -182,6 +186,7 @@ interface NormalisedMemoryEvent {
 	readonly importance: number;
 	readonly knowers: readonly string[];
 	readonly text: string;
+	readonly source: string;
 	readonly createdAt: string;
 }
 
@@ -608,6 +613,7 @@ function rowToMemoryEvent(row: MemoryEventRow): MemoryEvent {
 		importance: row.importance,
 		knowers: parseStoredNameArray(row.knowers, `事件 ${row.id} 的知情者`),
 		text: row.text,
+		source: row.source,
 		createdAt: row.created_at,
 	};
 }
@@ -1429,8 +1435,8 @@ export class StoryStore {
 		const insert = this.#db.prepare(
 			`INSERT INTO memory_events
 				(id, story_id, source_node_id, ordinal, story_time, location,
-				 participants, importance, knowers, text, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				 participants, importance, knowers, text, source, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		);
 		const created: MemoryEvent[] = [];
 		this.#db.transaction(() => {
@@ -1446,6 +1452,7 @@ export class StoryStore {
 					event.importance,
 					JSON.stringify(event.knowers),
 					event.text,
+					event.source,
 					event.createdAt,
 				);
 				created.push({
@@ -1459,6 +1466,7 @@ export class StoryStore {
 					importance: event.importance,
 					knowers: [...event.knowers],
 					text: event.text,
+					source: event.source,
 					createdAt: event.createdAt,
 				});
 			}
@@ -1524,17 +1532,23 @@ export class StoryStore {
 		return rows.map(rowToMemoryEvent);
 	}
 
-	/** 统计某个楼层已经抽取的事件数；重复执行前用它判断是否已经处理过。 */
-	countEventsForNode(nodeId: string): number {
+	/** 统计某个楼层已经写入的事件数；可按来源过滤，重复执行前用它判断是否已经处理过。 */
+	countEventsForNode(nodeId: string, source?: string): number {
 		assertNonEmptyString(nodeId, "楼层节点 id");
 		if (!this.getNode(nodeId)) {
 			throw new Error(`楼层节点不存在：${nodeId}`);
 		}
-		const row = this.#db
-			.prepare(
-				"SELECT COUNT(*) AS count FROM memory_events WHERE source_node_id = ?",
-			)
-			.get(nodeId) as { readonly count: number };
+		if (source !== undefined) {
+			assertNonEmptyString(source, "事件来源");
+		}
+		const statement =
+			source === undefined
+				? "SELECT COUNT(*) AS count FROM memory_events WHERE source_node_id = ?"
+				: "SELECT COUNT(*) AS count FROM memory_events WHERE source_node_id = ? AND source = ?";
+		const params = source === undefined ? [nodeId] : [nodeId, source];
+		const row = this.#db.prepare(statement).get(...params) as {
+			readonly count: number;
+		};
 		return row.count;
 	}
 
@@ -1865,6 +1879,117 @@ export class StoryStore {
 			)
 			.all(storyId) as NpcAgendaRow[];
 		return rows.map(rowToNpcAgenda);
+	}
+
+	/**
+	 * 在一个事务里推进多条 NPC 议程：更新进度与推进楼层，并为每条写一条
+	 * “与此同时”事件。任一条非法时整批回滚。事件的 ordinal 接在该楼层已有
+	 * 事件之后，避免与事件抽取写入的行冲突。
+	 */
+	advanceNpcAgendas(input: AdvanceNpcAgendasInput): MemoryEvent[] {
+		assertNonEmptyString(input.storyId, "故事 id");
+		if (!this.getStory(input.storyId)) {
+			throw new Error(`故事不存在：${input.storyId}`);
+		}
+		assertNonEmptyString(input.nodeId, "楼层节点 id");
+		const node = this.getNode(input.nodeId);
+		if (!node) {
+			throw new Error(`楼层节点不存在：${input.nodeId}`);
+		}
+		if (node.storyId !== input.storyId) {
+			throw new Error(`楼层节点属于另一个故事：${input.nodeId}`);
+		}
+		if (!Array.isArray(input.advances)) {
+			throw new Error("NPC 议程推进必须是数组");
+		}
+		if (input.advances.length === 0) return [];
+		const selectAgenda = this.#db.prepare(
+			"SELECT * FROM npc_agendas WHERE story_id = ? AND entity_id = ?",
+		);
+		const seen = new Set<string>();
+		const prepared: {
+			readonly entityId: string;
+			readonly name: string;
+			readonly progress: string;
+			readonly importance: number;
+		}[] = [];
+		input.advances.forEach((advance, index) => {
+			const label = `NPC 议程推进[${index}]`;
+			if (
+				advance === null ||
+				typeof advance !== "object" ||
+				Array.isArray(advance)
+			) {
+				throw new Error(`${label} 必须是对象`);
+			}
+			assertNonEmptyString(advance.entityId, `${label} 的 entityId`);
+			if (seen.has(advance.entityId)) {
+				throw new Error(`${label} 的实体重复：${advance.entityId}`);
+			}
+			seen.add(advance.entityId);
+			if (
+				typeof advance.progress !== "string" ||
+				advance.progress.trim().length === 0
+			) {
+				throw new Error(`${label} 的 progress 必须是非空字符串`);
+			}
+			const row = selectAgenda.get(input.storyId, advance.entityId) as
+				| NpcAgendaRow
+				| undefined;
+			if (row === undefined) {
+				throw new Error(`${label} 找不到 NPC 议程：${advance.entityId}`);
+			}
+			const entity = this.getEntity(advance.entityId);
+			if (entity === null) {
+				throw new Error(`${label} 对应的实体不存在：${advance.entityId}`);
+			}
+			prepared.push({
+				entityId: advance.entityId,
+				name: entity.name,
+				progress: advance.progress.trim(),
+				importance: row.importance,
+			});
+		});
+		const countRow = this.#db
+			.prepare(
+				"SELECT COUNT(*) AS count FROM memory_events WHERE source_node_id = ?",
+			)
+			.get(input.nodeId) as { readonly count: number };
+		const ordinalBase = countRow.count;
+		const update = this.#db.prepare(
+			`UPDATE npc_agendas
+			SET progress = ?, last_advanced_node_id = ?, updated_at = ?
+			WHERE story_id = ? AND entity_id = ?`,
+		);
+		const now = new Date().toISOString();
+		let created: MemoryEvent[] = [];
+		this.#db.transaction(() => {
+			for (const item of prepared) {
+				const result = update.run(
+					item.progress,
+					input.nodeId,
+					now,
+					input.storyId,
+					item.entityId,
+				);
+				if (result.changes !== 1) {
+					throw new Error(`NPC 议程更新失败：${item.entityId}`);
+				}
+			}
+			created = this.insertMemoryEvents(
+				prepared.map((item, index) => ({
+					storyId: input.storyId,
+					sourceNodeId: input.nodeId,
+					ordinal: ordinalBase + index,
+					participants: [item.name],
+					knowers: [item.name],
+					importance: item.importance,
+					text: `与此同时：${item.progress}`,
+					source: NPC_AGENDA_EVENT_SOURCE,
+				})),
+			);
+		})();
+		return created;
 	}
 
 	/**
@@ -2800,6 +2925,8 @@ export class StoryStore {
 		);
 		const id = input.id ?? randomUUID();
 		assertNonEmptyString(id, `${label} 的 id`);
+		const source = input.source ?? DEFAULT_MEMORY_EVENT_SOURCE;
+		assertNonEmptyString(source, `${label} 的 source`);
 		const createdAt = input.createdAt ?? new Date().toISOString();
 		assertNonEmptyString(createdAt, `${label} 的 createdAt`);
 		return {
@@ -2816,6 +2943,7 @@ export class StoryStore {
 			importance: input.importance,
 			knowers: normaliseNameArray(input.knowers, `${label} 的 knowers`),
 			text: input.text,
+			source,
 			createdAt,
 		};
 	}

@@ -455,6 +455,13 @@ export function buildMigrations(
 				"ALTER TABLE event_pool ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1))",
 			],
 		},
+		{
+			version: 16,
+			description: "事件记忆来源：区分抽取事件与议程推进事件",
+			statements: [
+				"ALTER TABLE memory_events ADD COLUMN source TEXT NOT NULL DEFAULT 'events'",
+			],
+		},
 	];
 }
 

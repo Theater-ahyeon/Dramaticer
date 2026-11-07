@@ -1,7 +1,8 @@
 import type { BackgroundJobHandler } from "../background/types.js";
 import type { LlmMessage } from "../llm/types.js";
-import type { TimelineNode } from "../timeline.js";
-import { EVENT_WINDOW_FLOORS } from "./event.js";
+import { DEFAULT_MEMORY_EVENT_SOURCE, EVENT_WINDOW_FLOORS } from "./event.js";
+import { parseJsonOutputArray } from "./json-output.js";
+import { formatFloors } from "./window.js";
 
 export interface ExtractedEvent {
 	readonly text: string;
@@ -41,19 +42,7 @@ const SYSTEM_PROMPT = [
 ].join("\n");
 
 export function parseEventExtraction(text: string): ExtractedEvent[] {
-	if (typeof text !== "string") {
-		throw new Error("事件抽取结果必须是字符串");
-	}
-	const body = stripCodeFence(text.trim());
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(body);
-	} catch (error) {
-		throw new Error("事件抽取结果不是合法 JSON", { cause: error });
-	}
-	if (!Array.isArray(parsed)) {
-		throw new Error("事件抽取结果必须是 JSON 数组");
-	}
+	const parsed = parseJsonOutputArray(text, "事件抽取结果");
 	return parsed.map((item, index) => parseEvent(item, index));
 }
 
@@ -123,11 +112,6 @@ function optionalString(value: unknown, label: string): string | null {
 	return requireNonEmptyString(value, label);
 }
 
-function stripCodeFence(text: string): string {
-	const match = text.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-	return match?.[1] ?? text;
-}
-
 /** 生成事件抽取的后台任务处理器。 */
 export function createEventExtractionHandler(
 	options: EventExtractionOptions = {},
@@ -137,12 +121,14 @@ export function createEventExtractionHandler(
 		throw new Error("事件抽取窗口必须是不小于 0 的整数");
 	}
 	return async ({ store, client, job }) => {
-		if (store.countEventsForNode(job.nodeId) > 0) return;
+		if (store.countEventsForNode(job.nodeId, DEFAULT_MEMORY_EVENT_SOURCE) > 0) {
+			return;
+		}
 		const path = store.getPathToNode(job.nodeId);
 		const window = path.slice(-(windowSize + 1));
 		const messages: LlmMessage[] = [
 			{ role: "system", content: SYSTEM_PROMPT },
-			{ role: "user", content: formatWindow(window) },
+			{ role: "user", content: formatFloors(window) },
 		];
 		const result = await client.complete({
 			messages,
@@ -165,14 +151,4 @@ export function createEventExtractionHandler(
 			})),
 		);
 	};
-}
-
-function formatWindow(nodes: readonly TimelineNode[]): string {
-	const lines = ["以下是按时间顺序排列的楼层："];
-	for (const node of nodes) {
-		lines.push(`<楼层 id="${node.id}" role="${node.role}">`);
-		lines.push(node.raw);
-		lines.push("</楼层>");
-	}
-	return lines.join("\n");
 }

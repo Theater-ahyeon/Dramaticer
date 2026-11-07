@@ -1,12 +1,12 @@
 import type { BackgroundJobHandler } from "../background/types.js";
 import type { LlmClient, LlmMessage } from "../llm/types.js";
 import type { StoryStore } from "../store/story-store.js";
-import type { TimelineNode } from "../timeline.js";
 import {
 	DEFAULT_CHAPTER_SIZE,
 	DEFAULT_MAINLINE_SIZE,
 	type Summary,
 } from "./summary.js";
+import { formatFloors } from "./window.js";
 
 export interface SummaryHandlerOptions {
 	/** 章节摘要覆盖的已确认助手楼层数；默认 20。 */
@@ -192,16 +192,6 @@ function requireLast<T>(items: readonly T[]): T {
 		throw new Error("摘要窗口不能为空");
 	}
 	return last;
-}
-
-function formatFloors(nodes: readonly TimelineNode[]): string {
-	const lines = ["以下是按时间顺序排列的楼层："];
-	for (const node of nodes) {
-		lines.push(`<楼层 id="${node.id}" role="${node.role}">`);
-		lines.push(node.raw);
-		lines.push("</楼层>");
-	}
-	return lines.join("\n");
 }
 
 function formatChapters(chapters: readonly Summary[]): string {

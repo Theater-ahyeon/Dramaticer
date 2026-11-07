@@ -61,3 +61,16 @@ export interface NpcAgendaUpsertResult {
 	readonly inserted: number;
 	readonly updated: number;
 }
+
+/** 一次议程推进：实体与后台模型给出的进度。 */
+export interface NpcAgendaAdvance {
+	readonly entityId: string;
+	readonly progress: string;
+}
+
+export interface AdvanceNpcAgendasInput {
+	readonly storyId: string;
+	/** 推进发生的楼层；同时写入议程的 `lastAdvancedNodeId` 与事件来源。 */
+	readonly nodeId: string;
+	readonly advances: readonly NpcAgendaAdvance[];
+}

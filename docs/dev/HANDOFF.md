@@ -3,28 +3,29 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：60
-- 任务：M3-T04 事件池选择与停滞检测
+- 会话：61
+- 任务：M3-T05 NPC 议程后台任务
 - 结果：完成（`DONE`）。
-  - `StoryStore` 新增 `countPlotNotesForNode(nodeId)`，统计来源楼层新建的剧情笔记数，已兑现的同样计入。
-  - 迁移 v15 给 `event_pool` 增加 `enabled`（默认 1）；`EventPoolEntry` 与 `NewEventPoolEntryInput` 增加 `enabled`，重复导入会更新它；st-compat 的 `importDramaticerExtension` 把卡里的 `enabled` 写进事件池。
-  - core 新增 `director/event-pool.ts`：`createEventPoolMechanism()` 与 `stableUnitHash`。停滞判定为当前路径最近 `stallFloors`（默认 3）个已确认助手楼层都没有状态 diff、也没有新建笔记；楼层不足或事件池为空直接跳过。
-  - 事件选择：条件用当前楼层的 `getStateSnapshot` 与 `evaluateContextCondition`（switches 为空）；冷却读取当前路径 `director_decisions` 的 `signals.eventPool.selectedSourceId`，当前楼层自己的旧记录不算，距离小于等于 `cooldown` 视为仍在冷却；合格事件按上次使用位置升序、`source_id` 升序排序，再用 `(storyId, nodeId, sourceId)` 的 FNV-1a 哈希与 `surprise` 比较（0 永不触发，1 停滞即触发）；指令直接使用事件正文。
-  - `DirectorConfig` 增加 `stallFloors` 与 `surprise`（默认 3、1），`DEFAULT_DIRECTOR_MECHANISMS` 注册 `event_pool`，优先级 10（低于线索的 20/30）。决策 signals 以 `eventPool` 键记录检查过的楼层、候选、跳过原因与选中事件，不修改 `event_pool` 表，不调用模型。
-  - 测试：新增 `packages/core/test/director-event-pool.test.ts`（7）、`plot-notes.test.ts` 与 `event-pool.test.ts` 各 1 个存储用例、`dramaticer-extension.test.ts` 的停用事件用例（1），另有默认机制列表相关的既有断言更新；门禁 `pnpm check` 通过（66 个测试文件、531 个测试）。
+  - core 新增 `memory/npc-agenda.ts`：`NPC_AGENDA_JOB_KIND`、`parseNpcAgendaProgress`、`createNpcAgendaHandler`。章节边界沿用章节摘要的判定（当前路径已确认助手楼层数是 `chapterSize` 的整数倍，默认 20）；没有议程、没有到期议程、或同一楼层已经推进过时都不调用模型。
+  - 到期判定：章序号从 1 开始，`chapterNumber % everyChapters === 0` 且 `lastAdvancedNodeId !== job.nodeId`。输入只包含到期议程；章节内容优先取终点正好是当前楼层的章节摘要，没有时取上一章节终点之后的楼层原文（与章节摘要窗口一致）。
+  - 输出严格校验：JSON 数组，每项只有 `npc` 与 `progress`，都必须是非空字符串；按规范化名称/别名匹配议程，缺项、陌生名称、空进度、重复名称整批抛错，由后台框架按 M2-T03 重试。
+  - `StoryStore` 新增 `advanceNpcAgendas({storyId, nodeId, advances})`：一个事务里更新 `progress` 与 `last_advanced_node_id`，并写入 `与此同时：<progress>` 的 `memory_events`（参与者与知情者都是 NPC 名称，importance 取议程配置，ordinal 接在该楼层已有事件之后）。非法条目整批回滚。
+  - 迁移 v16 给 `memory_events` 增加 `source`（默认 `events`，NPC 议程写 `npc_agenda`）；`MemoryEvent`/`NewMemoryEventInput` 增加 `source`，`countEventsForNode(nodeId, source?)` 可按来源过滤。事件抽取的重复执行判定改为只看 `events` 来源，避免议程事件让抽取误判为已完成。
+  - `memory/json-output.ts`（`parseJsonOutputArray`）与 `memory/window.ts`（`formatFloors`）抽出共用实现，事件抽取与章节摘要改为复用；`dramaticer work` 默认注册 `npc_agenda`。
+  - 测试：新增 `packages/core/test/npc-agenda.test.ts`（11）与 `work-cli.test.ts` 的默认注册表用例（1）；门禁 `pnpm check` 通过（67 个测试文件、543 个测试）。
 
 ## 当前状态
-- M0、M1、M2、D-T01 至 D-T04、M3-T00 至 M3-T04 完成。
-- 门禁：`pnpm check` 通过（531 个测试）；live 测试需要 `DRAMATICER_LIVE=1`。
-- 数据库 schema 版本 15。
+- M0、M1、M2、D-T01 至 D-T04、M3-T00 至 M3-T05 完成。
+- 门禁：`pnpm check` 通过（543 个测试）；live 测试需要 `DRAMATICER_LIVE=1`。
+- 数据库 schema 版本 16。
 - 快照：`eval-private/raw/` 有 94 个文件；manifest 记录 `corpus` 与 `sourceMtime`。`eval-private/reference/` 有 5 部参照小说。
 - 事件表仍未建立；记忆评测的事件路记 0，M3 不要引用这组事件数字。
 - HUMAN-03（事件题抽查）仍未完成，不阻塞任何任务；其余 HUMAN 条目均已完成。
 
 ## 下一步
-- **M3-T05**（下一个会话）：新增后台任务类型 `npc_agenda`，只在章节边界执行（当前路径已确认助手楼层数是 `chapterSize` 的整数倍，默认 20）；没有议程时不调用模型；输入为该章节摘要或同窗口原文加全部 NPC 目标与上次进度，输出 `{npc, progress}` JSON 数组；严格校验后在一个事务里更新 `progress` 与 `last_advanced_node_id`，并写入 `与此同时：<progress>` 的 `memory_events`；按 `last_advanced_node_id` 跳过重复执行；`everyChapters` 决定推进的章节边界；`dramaticer work` 注册处理器。
-- 然后依次 M3-T06（重复检测）→ M3-T07（节奏状态机）→ M3-T08（开启与关闭导演的对比回放）。
-- 参照基线数字已经就位，M3-T06/T07 直接读 ADR-0025，不要重新从对话语料推导阈值。
+- **M3-T06**（下一个会话）：重复检测（embedding 版）。`StoryStore` 增加 `listChunkVectorsForNode(nodeId)`；节拍取已确认助手楼层，楼层向量为块向量平均值；相邻节拍余弦，窗口与上升规则复用 `health/duplication.ts`，阈值取 ADR-0025（窗口 20、步长 10、`riseWindows` 5、`riseDelta` 0.02、`riseMinimum` 0.03、绝对阈值 P99 = 0.73）；场景序列从可配置 `scenePath` 取状态值，取不到时用最近事件 `location`，连续同场景超过 `sceneRepeatThreshold`（默认 7）触发；两类信号只输出一条；不调用 LLM，缺失向量跳过并在信号里计数。
+- 然后依次 M3-T07（节奏状态机）→ M3-T08（开启与关闭导演的对比回放）。
+- ADR-0025 里有现成的参照基线数字，M3-T06/T07 直接读它，不要重新从对话语料推导阈值。
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
