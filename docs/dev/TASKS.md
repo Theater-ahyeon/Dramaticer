@@ -117,7 +117,8 @@
   - 与最近 `conflictWindowFloors`（默认 6）楼原文矛盾的结算事实不覆盖已有值，拒绝写入并记入 `repairs`；R1-T07.a 把这些记录转成待审变更卡。
   验收：不认识的名称两次出现后建档、只出现一次不建档；`knowledge` 按 `factId` 去重；与原文冲突的事实不覆盖并记入 `repairs`；`pnpm check` 通过。
 
-- [ ] **R1-T02.4 块格式说明段** | 依赖：M1-T04
+- [x] **R1-T02.4 块格式说明段** | 依赖：M1-T04
+  完成：2026-11-07 `createDefaultContextTemplate` 新增 `blockFormat` 选项（默认关闭），开启后在协议段之前插入静态段 `block_format`，按 `structuredOutput` 分别给出 `state_update` 与 `plot_note` 的标签形式或工具参数形式；关闭时模板与改动前逐字段一致；新增 3 个测试；门禁通过（769 个测试）
   做什么：
   - 原生模板新增可选的 `block_format` 段，说明 `state_update` 与 `plot_note` 的格式，默认关闭；开启后只说明格式，不要求模型输出（I13）。
   验收：`block_format` 关闭时模板与现在逐字节一致；开启后模板包含两种写入的格式说明且不出现强制输出要求；`pnpm check` 通过。

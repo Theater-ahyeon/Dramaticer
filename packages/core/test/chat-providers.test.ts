@@ -48,6 +48,57 @@ describe("createDefaultContextTemplate", () => {
 		expect(protocol.text).toContain("工具调用");
 		expect(protocol.text).not.toContain("<state_update>");
 	});
+
+	it("block_format 关闭时模板与默认模板完全一致", () => {
+		const plain = createDefaultContextTemplate({
+			structuredOutput: "text-tags",
+		});
+		const disabled = createDefaultContextTemplate({
+			structuredOutput: "text-tags",
+			blockFormat: false,
+		});
+		expect(disabled).toEqual(plain);
+		expect(
+			plain.segments.some((segment) => segment.id === "block_format"),
+		).toBe(false);
+	});
+
+	it("block_format 开启后说明两种写入的格式且不强制输出", () => {
+		const template = createDefaultContextTemplate({
+			structuredOutput: "text-tags",
+			blockFormat: true,
+		});
+		const index = template.segments.findIndex(
+			(segment) => segment.id === "block_format",
+		);
+		const segment = template.segments[index];
+		if (segment?.kind !== "static") throw new Error("缺少块格式段");
+		expect(index).toBe(
+			template.segments.findIndex((item) => item.id === "protocol") - 1,
+		);
+		expect(segment.text).toContain("<state_update>");
+		expect(segment.text).toContain("<plot_note>");
+		expect(segment.text).toContain('"path"');
+		expect(segment.text).toContain('"text"');
+		expect(segment.text).not.toMatch(/必须|务必|一律|一定要/);
+		expect(template.segments.at(-1)?.slot).toBe("history");
+	});
+
+	it("函数调用模式下的块格式段不提标签写法", () => {
+		const template = createDefaultContextTemplate({
+			structuredOutput: "function-call",
+			blockFormat: true,
+		});
+		const segment = template.segments.find(
+			(item) => item.id === "block_format",
+		);
+		if (segment?.kind !== "static") throw new Error("缺少块格式段");
+		expect(segment.text).toContain("state_update");
+		expect(segment.text).toContain("plot_note");
+		expect(segment.text).toContain('"path"');
+		expect(segment.text).not.toContain("<state_update>");
+		expect(segment.text).not.toMatch(/必须|务必|一律|一定要/);
+	});
 });
 
 describe("槽位提供者", () => {
