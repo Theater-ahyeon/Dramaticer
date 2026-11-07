@@ -481,7 +481,8 @@
   - `runChatTurn` 改为先追加用户楼层再调用 `generateAssistantTurn`，现有 CLI 行为不变。
   验收：重新生成产生兄弟节点、旧节点与旧 Trace 不变、head 正确；父节点不是用户楼层时抛错；函数调用模式仍只有一次主调用与最多 2 轮读取；状态 diff、笔记与新 Trace 写在新楼层；`pnpm check` 通过。
 
-- [ ] **M4-T04 server 骨架、认证与静态资源** | 依赖：M4-T01 | DESIGN §13
+- [x] **M4-T04 server 骨架、认证与静态资源** | 依赖：M4-T01 | DESIGN §13
+  完成：2026-11-07 新增 `packages/server`（`node:http`，无 Web 框架）与 `dramaticer-serve` 入口（`--db`、`--port`、`--host`、`--channels`、`--web`）；非回环无 `DRAMATICER_SERVER_PASSWORD` 拒绝启动，登录用 `timingSafeEqual` 校验并发放内存会话 cookie，除健康检查与登录外全部要求会话，非读取方法校验 `Origin`；JSON 上限 25 MB 返回 413，统一错误形状，日志不写正文与会话；静态资源按扩展名给 MIME，realpath 包含判断拒绝路径穿越与符号链接逃逸，找不到文件回退 `index.html`；21 个新测试与 CLI 冒烟，门禁通过（606 个测试）
   做什么：
   - 新增 `packages/server`（`@dramaticer/server`），使用 `node:http`，不引入 Web 框架；提供 `dramaticer-serve` 入口，参数 `--db`、`--port`（默认 8787）、`--host`（默认 127.0.0.1）、`--channels`、`--web`。
   - 绑定非回环地址且没有设置 `DRAMATICER_SERVER_PASSWORD` 时拒绝启动；设置密码后 `/api/login` 用 `timingSafeEqual` 校验，成功后发 `HttpOnly; SameSite=Strict` 会话 cookie（内存会话表），除 `/api/health` 与 `/api/login` 外全部要求会话；状态变更请求校验 `Origin`。

@@ -3,19 +3,23 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：69
-- 任务：M4-T03 重新生成助手楼层
+- 会话：70
+- 任务：M4-T04 server 骨架、认证与静态资源
 - 结果：完成（`DONE`）。
-  - `packages/core/src/chat/turn.ts` 从 `runChatTurn` 抽出 `generateAssistantTurn`：接收现有用户楼层 id，校验故事、楼层归属与角色，组装上下文、流式生成、解析块、写状态 diff、笔记与新 Trace，全部写在该用户楼层下新建的助手楼层上。
-  - 新增 `regenerateAssistantTurn`：接收 `assistantNodeId`，校验楼层存在、属于该故事、角色为 `assistant` 且存在父节点；用父用户楼层作为本轮输入，在父节点下追加助手兄弟节点并把 head 移过去。旧楼层原文、旧 diff 与旧 Trace 保持不变。
-  - `runChatTurn` 改为追加用户楼层后调用 `generateAssistantTurn`，CLI 行为不变。
-  - 新增 `packages/core/test/regenerate-turn.test.ts`：3 个测试覆盖文本标签模式的兄弟节点、head 与路径、旧楼层与旧 Trace 不变、新 diff 与新笔记归属；父楼层不是用户楼层、缺少父楼层、楼层不存在、`generateAssistantTurn` 收到非用户楼层时的抛错；函数调用模式下重新生成仍是一次主调用加一轮读取工具（2 次请求），写入类工具落在新楼层。
-  - 门禁通过：invariants、`tsc -b`、biome、vitest 585 个测试。
+  - 新增 `packages/server`（`@dramaticer/server`）：`node:http`，不引入 Web 框架；`dramaticer-serve` 入口与 `--db`、`--port`（默认 8787）、`--host`（默认 127.0.0.1）、`--channels`、`--web` 参数；根脚本为 `pnpm serve`。默认路径从仓库根目录解析：`data/dramaticer.db`、`data/channels.yaml`、`packages/web/dist`。
+  - 认证：绑定非回环地址且没有 `DRAMATICER_SERVER_PASSWORD` 时 `startServer` 先抛错，不会创建数据库；`/api/login` 对双方各取 sha256 摘要后用 `timingSafeEqual` 比较，成功后发 `dramaticer_session` cookie（`HttpOnly; SameSite=Strict; Path=/`，内存会话表）。除 `/api/health` 与 `/api/login` 外全部要求会话；非读取方法校验 `Origin` 的 host 与请求 `Host` 一致，缺少 `Origin` 的命令行请求放行。
+  - 请求与错误：JSON 请求体上限 25 MB（`MAX_JSON_BODY_BYTES`），超限部分不保留在内存，读完再返回 413；所有错误都是 `{error:{code,message,details?}}`；日志只有方法、路径、状态与耗时。
+  - 静态资源：`--web` 目录按扩展名给 MIME；先 realpath 再做目录包含判断，拒绝编码后的 `..`、反斜杠、NUL 与逃出目录的符号链接；找不到文件时回退 `index.html`。web 目录不存在时 API 外的请求返回 404。
+  - `startServer` 打开 `StoryStore`，健康检查返回核心版本与 `schemaVersion`；`close()` 先关闭 HTTP 连接再关闭数据库。
+  - 新增 `packages/server/test` 的 21 个测试（参数解析与回环判定、密码与 cookie、Origin、413、静态 MIME 与回退、路径穿越与符号链接、日志脱敏）。CLI 冒烟确认回环启动、健康检查 200、无密码时登录 400、静态 index 200，以及 `--host 0.0.0.0` 无密码时退出码 1。
+  - 门禁通过：606 个测试（新增 21 个）。
 
 ## 当前状态
-- M0、M1、M2、M3、D-T01 至 D-T04、M4-T00 至 M4-T03 完成；M4-T04 待做。
+- M0、M1、M2、M3、D-T01 至 D-T04、M4-T00 至 M4-T04 完成；M4-T05 待做。
 - 数据库 schema 版本 17。
-- `packages/server` 与 `packages/web` 尚未创建。server 应依赖 core、st-compat 与 protocol；web 只依赖 protocol 与浏览器 API。
+- `packages/server` 已经有请求处理骨架：`src/server.ts` 的 `startServer` 返回 `{origin, store, close}`，`src/http.ts` 提供 `HttpError`、`sendJson`、`sendError`、`readJsonBody`，`src/auth.ts` 提供会话与 Origin 判断，`src/static-files.ts` 提供静态资源解析与发送。`--channels` 已经解析并保存，路由还没使用它。
+- `packages/server` 的依赖是 `@dramaticer/core` 与 `@dramaticer/protocol`；M4-T05 导入接口需要再加 `@dramaticer/st-compat`（工作区依赖，不需要登记）。
+- `packages/web` 尚未创建；`packages/web/dist` 不存在时 server 的静态请求返回 404 JSON。
 - `story_settings` 默认值：`budgetTokens` 12000、`structuredOutput` `text-tags`、`temperature` 0.8、`maxTokens` 1024、`reasoning` `low`、导演使用默认配置。
 - 快照：`eval-private/raw/` 有 94 个文件；manifest 记录 `corpus` 与 `sourceMtime`。`eval-private/reference/` 有 5 部参照小说。
 - 事件表已在 v7 建立，但真实回放里没有事件；不要引用事件数字。
@@ -24,10 +28,11 @@
 - 兼容线 C-T00 排在 M4 之后，与 M4 的沙箱渲染器衔接。
 
 ## 下一步
-- **M4-T04 server 骨架、认证与静态资源**，依赖 M4-T01，可以直接执行。
-  - 新增 `packages/server`（`@dramaticer/server`），使用 `node:http`，不引入 Web 框架；提供 `dramaticer-serve` 入口，参数 `--db`、`--port`（默认 8787）、`--host`（默认 127.0.0.1）、`--channels`、`--web`。
-  - 绑定非回环地址且没有设置 `DRAMATICER_SERVER_PASSWORD` 时拒绝启动；设置密码后 `/api/login` 用 `timingSafeEqual` 校验，成功后发 `HttpOnly; SameSite=Strict` 会话 cookie（内存会话表），除 `/api/health` 与 `/api/login` 外全部要求会话；状态变更请求校验 `Origin`。
-- 之后按 TASKS 顺序：M4-T05 server 故事、导入与设置接口；M4-T06 server 运行时与 SSE 对话（会用到本会话的 `generateAssistantTurn` 与 M4-T03 的重新生成）。
+- **M4-T05 server 故事、导入与设置接口**，依赖 M4-T04、M4-T02，可以直接执行。
+  - 故事：`GET/POST /api/stories`、`GET/PATCH /api/stories/:id`；导入 `POST /api/stories/:id/import`（角色卡 PNG base64 或 JSON，可选世界书；走 st-compat 的解析与导入，重复导入只补缺失内容）。
+  - 设置与模板：`GET/PUT /api/stories/:id/settings`、模板 CRUD；删除仍被引用的模板 409；非法输入 400 带字段路径，未知故事 404。
+  - 在 `src/server.ts` 的路由里注册；复用 `HttpError`、`readJsonBody`、`hasSession` 的判断方式。响应类型从 `@dramaticer/protocol` 取，需要新类型时先加在 protocol。
+- 之后按 TASKS 顺序：M4-T06 server 运行时与 SSE 对话（用 `generateAssistantTurn` 与 `regenerateAssistantTurn`）。
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
@@ -48,6 +53,6 @@
 - live 测试用 `DRAMATICER_LIVE=1` 开启；`*.live.test.ts` 会被门禁的 I10 扫描排除。
 - Director 机制新增时同步更新既有测试里的机制列表断言：`director.test.ts`、`director-event-pool.test.ts`、`lore.test.ts`、`packages/st-compat/test/chat-cli.test.ts`。
 - 函数调用模式的读取工具列表会随 `READ_TOOLS` 变化；测试不要断言完整列表，只断言写入工具在前、包含用到的读取工具。
-- M4 新增 `packages/server`、`packages/web`；server 使用 `node:http`，默认只监听 127.0.0.1，绑定非回环地址必须设置 `DRAMATICER_SERVER_PASSWORD`。
+- server 测试使用 `packages/server/test/.tmp-server-*` 临时目录（已被 git 忽略），并且只监听 127.0.0.1 的随机端口；写测试时不要发送外部网络请求（I10 会扫描测试文件里的 URL 字面量）。
 - Playwright 浏览器与 `pnpm e2e` 不进入 `pnpm check`；端到端失败产物写 `.devloop/scratch/e2e/`。
 - 故事设置的更新时间由存储层用 `new Date().toISOString()` 写入；测试不要断言具体时间值。

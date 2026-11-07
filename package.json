@@ -15,6 +15,7 @@
 		"probe": "pnpm --filter @dramaticer/st-compat build && node packages/st-compat/dist/cli.js probe",
 		"chat": "pnpm --filter @dramaticer/st-compat build && node packages/st-compat/dist/cli.js chat",
 		"work": "pnpm --filter @dramaticer/st-compat build && node packages/st-compat/dist/cli.js work",
+		"serve": "pnpm --filter @dramaticer/server build && node packages/server/dist/cli.js",
 		"dramaticer": "pnpm --filter @dramaticer/st-compat build && node packages/st-compat/dist/cli.js",
 		"check": "pnpm run invariants && pnpm run typecheck && pnpm run lint && pnpm run test"
 	},
