@@ -4,6 +4,10 @@ import { fileURLToPath } from "node:url";
 import { loadDotEnv } from "../env.js";
 import { SETTLE_JOB_KIND, createSettleHandler } from "../ledger/settle.js";
 import {
+	USER_WILL_JOB_KIND,
+	createUserWillHandler,
+} from "../ledger/user-will.js";
+import {
 	type LlmChannelsConfig,
 	loadChannelsConfig,
 	resolveModelForRole,
@@ -102,6 +106,10 @@ export async function runWorkCli(
 			},
 			[SCENE_JOB_KIND]: {
 				handler: createSceneHandler(),
+				enqueue: "settled",
+			},
+			[USER_WILL_JOB_KIND]: {
+				handler: createUserWillHandler(),
 				enqueue: "settled",
 			},
 			...(embedder === null

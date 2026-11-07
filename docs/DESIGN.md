@@ -170,7 +170,7 @@ flowchart TB
 
 `validateLedgerDiff` 校验命名空间、路径段、值类型与范围，错误信息带完整路径；`readLedger` 与前缀读取复用楼层快照缓存；`listLedgerEntities` 返回人物、关系与未兑现线索。导入 MVU 时把原始变量路径加上 `mvu` 前缀；没有 MVU 的卡不产生 `mvu` 命名空间。
 
-每条事实还带两个元数据字段：`storyTime` 存为 `{start, end}`，起点与终点都可以为空，随 diff 进入 `state_diffs`；`source` 沿用 `StateDiff.source`，台账事实取 `model`、`settler`、`player`、`import`，正文模型经结构化输出写入的事实取 `model`。`readLedgerFacts` 沿路径回放，返回仍然成立的事实及其 `storyTime` 与 `source`；`readLedger` 仍是快照值视图。玩家用自然语言提出的修改先生成**变更卡**，可以批准、拒绝或回滚；批准后写成 `source` 为 `player` 的事实，同时记入用户意志，在预算取舍里优先级最高（ADR-0035）。
+每条事实还带两个元数据字段：`storyTime` 存为 `{start, end}`，起点与终点都可以为空，随 diff 进入 `state_diffs`；`source` 沿用 `StateDiff.source`，台账事实取 `model`、`settler`、`player`、`import`，正文模型经结构化输出写入的事实取 `model`。`readLedgerFacts` 沿路径回放，返回仍然成立的事实及其 `storyTime` 与 `source`；`readLedger` 仍是快照值视图。用户意志由间隙里的后台任务 `user_will` 捕获：读当前路径上最近的玩家消息，模型只返回明确表达的偏好、底线与纠正，`sourceQuote` 必须逐字来自窗口内的玩家楼层；程序按规范化正文的摘要生成稳定 id（`userWill.<id>`），同一正文不重复写入，只追加不删除，分支切换后只注入当前路径的条目。玩家用自然语言提出的修改先生成**变更卡**，可以批准、拒绝或回滚；批准后写成 `source` 为 `player` 的事实，同时记入用户意志，在预算取舍里优先级最高（ADR-0035）。
 
 ### 7.2 结算器
 
@@ -238,9 +238,9 @@ flowchart TB
 
 ## 9. Context Assembler：上下文组装
 
-- **原生上下文模板**：由一组有序的段落组成；段落可以是静态文本、条件段（按状态或开关决定是否出现，取代 setvar/getvar 拼装逻辑），或 harness 槽位（ledger、lore、character、persona、summary、memory、history、scene、director、beat、protocol）。模板是结构化数据，不是拼出来的字符串。
+- **原生上下文模板**：由一组有序的段落组成；段落可以是静态文本、条件段（按状态或开关决定是否出现，取代 setvar/getvar 拼装逻辑），或 harness 槽位（ledger、lore、character、persona、summary、memory、history、scene、director、user_will、beat、protocol）。模板是结构化数据，不是拼出来的字符串。
 - **写作契约**：原生主提示词的核心，保持精简。玩家输入是本轮演出指引，不是已经发生的剧情；玩家不是上帝，其他角色可以按人设拒绝、反对、打断；每轮都有剧情意义，不重复之前的正文；遵守台账里的用户意志。社区预设（破限、文风）叠加在上面，写作契约放在最靠近生成的位置。
-- **token 预算**：按 7.3 的取舍顺序裁剪；Trace 里标出每一段内容的来源和 token 数、被裁剪的段落与缺失的槽位。
+- **token 预算**：按 7.3 的取舍顺序裁剪；Trace 里标出每一段内容的来源和 token 数、被裁剪的段落与缺失的槽位。用户意志单独成段，优先级高于其它全部槽位与静态段，预算不足时它先保留。
 - **世界书由后台为下一轮预先筛选**：回合内只读取预筛结果，不额外调用模型。
 - **上下文包**：同一玩家楼层的检索结果、预筛世界书与现场分析打包缓存；swipe 与重新生成复用缓存，玩家编辑输入后按新节点重新计算。
 - **缓存**：在不违背预设顺序的前提下保持前缀稳定。只依赖隐式缓存，不在缓存统计上投入精力。

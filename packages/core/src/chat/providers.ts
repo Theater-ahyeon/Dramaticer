@@ -17,6 +17,9 @@ import {
 	type DirectorMechanism,
 } from "../director/types.js";
 import { normalizeEntityName } from "../entity.js";
+import { isJsonObject } from "../json.js";
+import { readLedger } from "../ledger/read.js";
+import { USER_WILL_KINDS, type UserWillKind } from "../ledger/schema.js";
 import type { EmbeddingClient } from "../llm/embeddings.js";
 import { MAX_MEMORY_EVENT_LIMIT } from "../memory/event.js";
 import {
@@ -144,6 +147,67 @@ export function createSceneSlotProvider(
 			return {
 				messages: [{ role: "system", content: `现场分析：\n${analysis.text}` }],
 				source: `scene:楼层 ${analysis.nodeId}，估算 ${analysis.tokenCount} token`,
+			};
+		},
+	};
+}
+
+/** 用户意志在提示词里的类别标签。 */
+const USER_WILL_LABELS: Readonly<Record<UserWillKind, string>> = {
+	preference: "偏好",
+	boundary: "底线",
+	correction: "纠正",
+};
+
+interface UserWillLine {
+	readonly id: string;
+	readonly kind: UserWillKind;
+	readonly text: string;
+	readonly createdAt: string;
+}
+
+/**
+ * 取当前路径上的用户意志条目；分支切换后只出现当前分支写入的条目。
+ * 没有条目时返回 null，由 Trace 记为缺失槽位。
+ */
+export function createUserWillSlotProvider(
+	store: StoryStore,
+): ContextSlotProvider {
+	return {
+		provide(request): ContextSlotContent | null {
+			if (request.nodeId === null) return null;
+			const value = readLedger(store, request.nodeId, ["userWill"]);
+			if (!isJsonObject(value)) return null;
+			const entries: UserWillLine[] = [];
+			for (const [id, entry] of Object.entries(value)) {
+				if (!isJsonObject(entry)) continue;
+				const kind = entry.kind;
+				const text = entry.text;
+				if (
+					typeof kind !== "string" ||
+					!(USER_WILL_KINDS as readonly string[]).includes(kind)
+				) {
+					continue;
+				}
+				if (typeof text !== "string" || text.trim().length === 0) continue;
+				const createdAt =
+					typeof entry.createdAt === "string" ? entry.createdAt : "";
+				entries.push({ id, kind: kind as UserWillKind, text, createdAt });
+			}
+			if (entries.length === 0) return null;
+			entries.sort(
+				(left, right) =>
+					left.createdAt.localeCompare(right.createdAt) ||
+					left.id.localeCompare(right.id),
+			);
+			const lines = entries.map(
+				(entry) => `- 【${USER_WILL_LABELS[entry.kind]}】${entry.text}`,
+			);
+			return {
+				messages: [
+					{ role: "system", content: `用户意志：\n${lines.join("\n")}` },
+				],
+				source: `userWill:${entries.length} 条`,
 			};
 		},
 	};
@@ -548,6 +612,7 @@ export function createStandardChatProviders(
 			policy: options.historyBlockPolicy,
 		}),
 		state: createStateSlotProvider(options.store),
+		user_will: createUserWillSlotProvider(options.store),
 		scene: createSceneSlotProvider(options.store),
 		summary: createSummarySlotProvider(options.store),
 		memory: createMemorySlotProvider(options.store, { embedder }),

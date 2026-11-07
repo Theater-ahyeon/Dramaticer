@@ -55,6 +55,7 @@ export function createDefaultContextTemplate(
 			{ id: "memory", kind: "slot", slot: "memory", priority: 60 },
 			{ id: "scene", kind: "slot", slot: "scene", priority: 55 },
 			{ id: "director", kind: "slot", slot: "director", priority: 50 },
+			{ id: "user_will", kind: "slot", slot: "user_will", priority: 110 },
 			...(options.blockFormat === true
 				? [
 						{

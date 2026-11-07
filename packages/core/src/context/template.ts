@@ -14,6 +14,7 @@ export const CONTEXT_SLOT_NAMES = [
 	"history",
 	"scene",
 	"director",
+	"user_will",
 	"protocol",
 ] as const;
 

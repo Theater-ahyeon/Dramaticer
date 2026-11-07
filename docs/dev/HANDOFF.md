@@ -3,31 +3,29 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：97
-- 任务：R1-T04.a 批量抽取管线与断点续跑
-- 结果：完成（`DONE`），门禁通过（794 个测试通过，3 个 live 跳过，共 797 个）。
-  - 新增 `packages/st-compat/src/evalset/events-backfill.ts`（`runEventsBackfill`）：读 manifest 里的 legacy 对话，导入持久数据库（`store.getStory` 已存在时跳过导入），导入卡牌实体、角色书与世界书 lore，补齐缺失的块向量，然后用 `createEventExtractionHandler` 逐窗口抽取事件。导入失败或写库失败直接抛错。
-  - 新增 `packages/st-compat/src/evalset/events-cli.ts`，入口 `pnpm --filter @dramaticer/st-compat events-backfill`；参数 `--story <id>`、`--limit <n>`（跨故事累计窗口数）、`--resume`、`--db <path>`、`--help`。默认数据库 `eval-private/memory-cache/eval.db`、事件缓存 `eval-private/memory-cache/events/`、向量缓存 `eval-private/memory-cache/embeddings/`。
-  - `--resume` 保留已有数据库并跳过已导入的故事与已抽取的窗口；不带 `--resume` 时先删除数据库文件（含 `-wal`、`-shm`）再从头导入。缓存目录始终保留，因此删除数据库后的重复运行由缓存提供相同回复。
-  - 窗口循环：每一轮先算当前路径上未抽取的已确认助手楼层，取第一个作为任务楼层；调用后对比 `listExtractedEventNodeIds` 的增量，增量必须非空，否则立即抛错，避免无限循环。单窗口连续失败 3 次才终止整批（与后台任务框架的重试次数一致）。
-  - 请求计数用包装客户端累计：`result.cached` 为 true 记缓存命中，否则记一次模型请求。每个窗口打印故事、全局窗口序号、本窗口楼层数、累计楼层、累计事件、累计请求与缓存命中。
-  - `memory-eval.ts` 的 `importStoryEntities`、`countStoryChunks`、`countStoryVectors`、`countStoryEvents` 改为导出，供回填复用；`buildStoryEvents` 仍是 memory-eval 自己的整轮循环。
-  - 新增 4 个测试：3 个窗口各 8 楼、每窗口一次请求且事件归属到正确助手楼层；续跑只处理剩余窗口且重复运行不新增事件与抽取记录；未知故事直接失败；CLI 把两个缓存目录交给注入的客户端工厂，并按 `--resume` 决定是否重建数据库。
+- 会话：98
+- 任务：R1-T07 用户意志捕获
+- 结果：完成（`DONE`），门禁通过（806 个测试通过，3 个 live 跳过，共 809 个）。
+  - 新增 `packages/core/src/ledger/user-will.ts`（`createUserWillHandler`、`parseUserWillResponse`、`normalizeUserWillText`、`userWillStableId`、`USER_WILL_JOB_KIND`、`USER_WILL_WINDOW_FLOORS`）：后台任务读当前路径上最近 6 条非空玩家消息，请求带已有用户意志正文，模型返回 `[{kind, text, sourceQuote}]`；`sourceQuote` 必须逐字出现在窗口内某条玩家消息里，由程序从新到旧定位 `sourceNodeId`，找不到就整次拒绝并指出条目序号。空窗口不调用模型。
+  - 稳定 id：`will-` 加规范化正文的 SHA-256 前 16 位；规范化做 NFKC、空白合并、去两端标点与空白、英文小写。同一 id 在同一回复里重复出现或当前路径上已存在时跳过；只追加不删除。台账事实写在任务所在的助手楼层，`source` 为 `settler`，值仍是 `{kind, text, sourceNodeId, createdAt}`。
+  - 注册槽位从十个变成十一个：`CONTEXT_SLOT_NAMES` 新增 `user_will`；默认模板放在 `director` 之后、`protocol` 之前，优先级 110（高于历史段的 100）。`createUserWillSlotProvider` 渲染成一条按 `createdAt` 与 id 排序的系统消息，类别写成偏好、底线、纠正；格式不合的条目跳过渲染，不抛错。
+  - `dramaticer work` 注册 `user_will`，入队条件 `settled`（每个助手楼层一个任务）。ADR-0051；DESIGN §7.1 与 §9 同步更新。
+  - 新增 `packages/core/test/user-will.test.ts` 12 个测试：三类意志的解析与来源楼层、角色台词与窗口外引文被拒、未知类别/空正文/未知字段被拒、三类意志写库、同一正文合并与重复执行不新增、空输出与空窗口不写、非法输出整条拒绝、分支隔离、`settled` 入队与空窗口零调用、槽位渲染、预算优先级、规范化与稳定 id。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a。完成记录与验收标准见 `docs/dev/TASKS-archive.md`，未完成任务见 `docs/dev/TASKS.md`。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07。完成记录与验收标准见 `docs/dev/TASKS-archive.md`，未完成任务见 `docs/dev/TASKS.md`。
 - **R1-T02 已拆成 R1-T02.1–R1-T02.4**（父任务是文字说明，不是可勾选任务）：四个子任务全部完成，R1-T02 的总验收由 R1-T99 逐条核对。
 - v3 阶段顺序：R1 最小集 → R3 快回合 → O 开局与方向 → R2 评测底座 → E → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045。
 - HUMAN-09 仍待处理（不阻塞）：ADR-0042 声明的 `bg-fallback`、`main-fallback`、`codex` 别名在 `data/channels.yaml` 里已经出现，`channels.example.yaml` 是否需要补上请人类确认；没有改这两个文件。
 - HUMAN-10 待处理（不阻塞）：插件不变量是否加进 AGENTS.md。
 - 数据库 schema 版本 23（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录）；后续编号：v24 变更卡、v25 开局包、v26 开场候选、v27 偏好记录、v28 父子分块、v29 章节压缩、v30 世界书预筛、v31 上下文包；插入新迁移时后续编号一起顺延。
-- 结算只有 `dramaticer work` 调度：server 的回合路径不补建也不执行后台任务，所以回合内后台客户端零调用是结构保证；要真正结算故事，跑 `pnpm work --db <path> --kind settle`，要生成现场分析跑 `pnpm work --db <path> --kind scene`，要回填事件跑 `pnpm work --db <path> --kind events`（单故事、逐窗口推进，适合小批量），批量回填三个 legacy 对话用 R1-T04.a 的 `events-backfill`。
+- 结算只有 `dramaticer work` 调度：server 的回合路径不补建也不执行后台任务，所以回合内后台客户端零调用是结构保证；要真正结算故事，跑 `pnpm work --db <path> --kind settle`，要生成现场分析跑 `pnpm work --db <path> --kind scene`，要捕获用户意志跑 `pnpm work --db <path> --kind user_will`，要回填事件跑 `pnpm work --db <path> --kind events`（单故事、逐窗口推进，适合小批量），批量回填三个 legacy 对话用 R1-T04.a 的 `events-backfill`。
 - 结算窗口以 head 为终点（ADR-0046），冲突检查窗口同样取 head 路径最后 `conflictWindowFloors` 楼。窗口内没有未结算楼层时不调用模型。
 - 现场分析以被分析的楼层为锚点：台账快照取该楼层的结算结果，原文窗口是该楼层路径上的最近 6 楼；没有结算记录时任务退回 pending（ADR-0048）。
 - 冲突检测依赖模型在同一个结算请求里返回 `conflicts`；程序不自行判断语义矛盾，只做事实级拒绝与记录。R1-T07.a 从 `repairs` 里筛 `action` 为 `conflict` 的记录生成待审变更卡。
 - 实体解析只处理 `character.<名称>`、`relation.<from>.<to>` 两端、`item.<名称>`、`scene.places.<地点>`；`clue`、`knowledge` 的知情者、`userWill` 不做实体映射。规范名称采用实体的 `name` 而不是 id。
-- 已注册的槽位是十个（`packages/core/src/context/template.ts` 的 `CONTEXT_SLOT_NAMES`：lore、character、persona、summary、state、memory、history、scene、director、protocol）；DESIGN §9 里的 `ledger` 对应实现的 `state`，`beat` 尚未注册。DESIGN §9 把 `scene` 排在 `history` 之后、`director` 之前，而默认模板里 `history` 是最后一段，所以模板段落放在 `memory` 与 `director` 之间（ADR-0048）。`block_format` 是模板里的可选静态段，不是槽位。
+- 已注册的槽位是十一个（`packages/core/src/context/template.ts` 的 `CONTEXT_SLOT_NAMES`：lore、character、persona、summary、state、memory、history、scene、director、user_will、protocol）；DESIGN §9 里的 `ledger` 对应实现的 `state`，`beat` 尚未注册。默认模板顺序：character、lore、state、summary、memory、scene、director、user_will、（可选的 block_format）、protocol、history。`block_format` 是模板里的可选静态段，不是槽位。
 - 原生块类型现在是 12 个（`thinking`、`选项`、`状态栏`、`变量更新`、`分析`、`图片`、`页眉`、`悄悄话`、`旁白`、`备忘`、`state_update`、`plot_note`）；其中 `thinking`、`变量更新`、`state_update`、`plot_note` 的上下文策略是删除。
 - 历史槽位的默认策略：更早楼层省略五个显示类块，最近 1 楼不套用这层省略；`full` 是改动前的行为，用于对照。设置项 `historyBlockPolicy` 存在 `story_settings.history_block_policy`（JSON）。
 - `packages/server` 已提供故事、导入、设置、模板、SSE 回合与后台运行时缓存；`packages/protocol` 已提供 HTTP 与 SSE 类型；`packages/web` 尚未创建。
@@ -40,8 +38,8 @@
 - 插件系统在 DESIGN §19 是唯一权威；P 阶段任务在 TASKS 的「P：插件内核」小节，C 线兼容插件任务已存在且依赖 P2。
 
 ## 下一步
-- **R1-T07 用户意志捕获**：新增后台任务 `user_will`，读最近若干条玩家消息识别偏好、底线与纠正，写入 `["userWill", <稳定 id>]`，按规范化正文去重、只追加；组装上下文时放在预算取舍第一位；分支切换后只注入当前路径条目。验收见 TASKS。
-- 之后是 R1-T07.a 自然语言修订记忆（变更卡迁移从 v24 开始）、R1-T07.b `gap_pass`、R1-T99 R1 最小集验收。
+- **R1-T07.a 自然语言修订记忆**：迁移 v24 新增 `ledger_change_cards`，新增后台任务 `memory_revision` 生成变更卡，结算冲突转成待审卡，批准写 `source` 为 `player` 的事实并记入用户意志，回滚恢复 `before`；CLI 提供 `cards`、`--approve`、`--reject`、`--rollback`。验收见 TASKS。
+- 之后是 R1-T07.b `gap_pass`（合并结算、现场分析、用户意志与修订候选，单段非法只拒绝该段）、R1-T99 R1 最小集验收。
 - R1 最小集之后是 R3 快回合（R3-T01 至 R3-T99）、O 开局与方向、R2 评测底座。
 
 ## 注意事项
@@ -63,6 +61,11 @@
 - st-compat 的 `buildStoryEvents` 只针对主路径上已确认的助手楼层；旧行为把事件写在任务所在楼层（可能是 system 或 user 楼层），批量窗口之后事件只写助手楼层。
 - `events-backfill` 不带 `--resume` 会删除数据库文件；跑长任务时必须带 `--resume`。`--limit` 是跨故事累计的窗口数，不是每故事一次。故事已导入时跳过导入，所以 manifest 里的对话改动后要删库重跑。
 - `events-backfill` 的请求数与缓存命中来自包装客户端检查 `LlmResult.cached`；真实渠道下缓存命中表示这次窗口没有发出网络请求。
+- 用户意志任务的窗口是“任务所在助手楼层的路径上最近 6 条玩家消息”；每个助手楼层一个 `settled` 任务，所以同一段玩家消息会被相邻的几个任务各送一次，重复条目由稳定 id 去掉。想减少请求数要等 R1-T07.b 的 `gap_pass`。
+- `sourceQuote` 必须逐字出现在玩家楼层原文里；模型改写引文会让整次输出被拒（任务失败并重试），不要放宽成模糊匹配，否则角色台词与旁白会被收进用户意志。
+- 用户意志的稳定 id 由正文决定：改写正文就是一条新事实；路径上已存在的 id 不会被覆盖，删除只能手动写 `delete`。
+- `userWill` 事实写在任务所在的助手楼层，所以分支切换后另一分支的条目不出现在快照里；槽位取 `readLedger(nodeId, ["userWill"])`，不要直接读 `getStateDiffs`。
+- `user_will` 槽位优先级 110，高于历史段 100；改动默认模板的优先级或插段时要同步 `core/test/user-will.test.ts` 的预算优先级断言。
 - 新迁移编号：v24 变更卡、v25 开局包、v26 开场候选、v27 偏好记录、v28 父子分块、v29 章节压缩、v30 世界书预筛、v31 上下文包。
 - 后台任务需要等待其它任务完成时抛 `BackgroundJobDeferredError`（`background/types.ts`），drain 会把任务退回 pending 且不消耗执行次数；不要用抛普通错误的方式等待，那会消耗重试次数。
 - `docs/dev/TASKS.md` 只保留未完成任务与当前阶段；查已完成任务的说明、验收与完成记录读 `docs/dev/TASKS-archive.md`。

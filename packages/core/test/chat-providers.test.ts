@@ -527,7 +527,7 @@ describe("角色与标准槽位", () => {
 		);
 	});
 
-	it("标准集合包含八个槽位，character 使用传入的提示词", async () => {
+	it("标准集合包含九个槽位，character 使用传入的提示词", async () => {
 		const { store } = openTempStore();
 		store.createStory({ id: "s1", title: "山神" });
 		const providers = createStandardChatProviders({
@@ -543,6 +543,7 @@ describe("角色与标准槽位", () => {
 			"scene",
 			"state",
 			"summary",
+			"user_will",
 		]);
 		const content = await providers.character?.provide(
 			request("s1", null, "character"),
