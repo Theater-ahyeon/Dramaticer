@@ -54,6 +54,22 @@ export interface RetrievalResult {
 	readonly filter: RetrievalFilterSummary;
 }
 
+/** 一路检索的原始名次，供评测与 Trace 单独观察每一路。 */
+export interface RetrievalRouteItem {
+	readonly kind: RetrievalKind;
+	readonly nodeId: string;
+}
+
+export interface RetrievalRouteRanking {
+	readonly route: RetrievalRoute;
+	readonly items: readonly RetrievalRouteItem[];
+}
+
+export interface MemoryRouteRankings {
+	readonly routes: readonly RetrievalRouteRanking[];
+	readonly filter: RetrievalFilterSummary;
+}
+
 const DEFAULT_RETRIEVAL_LIMIT = 8;
 const MAX_RETRIEVAL_LIMIT = 50;
 const RRF_K = 60;
@@ -89,6 +105,18 @@ interface EntityMatch {
 export async function retrieveMemory(
 	options: RetrieveMemoryOptions,
 ): Promise<RetrievalResult> {
+	const { routes, filter } = await rankMemoryRoutes(options);
+	const limit = options.limit ?? DEFAULT_RETRIEVAL_LIMIT;
+	return { hits: fuseRoutes(routes).slice(0, limit), filter };
+}
+
+/**
+ * 与 `retrieveMemory` 相同的候选收集与过滤，但返回每一路的原始名次，
+ * 不做融合。评测和 Trace 用它单独观察每一路。
+ */
+export async function rankMemoryRoutes(
+	options: RetrieveMemoryOptions,
+): Promise<MemoryRouteRankings> {
 	const { store, storyId } = options;
 	if (!store.getStory(storyId)) {
 		throw new Error(`故事不存在：${storyId}`);
@@ -229,7 +257,7 @@ export async function retrieveMemory(
 	}
 
 	return {
-		hits: fuseRoutes(routes).slice(0, limit),
+		routes,
 		filter: {
 			viewpoint,
 			eventsBeforeFilter: pathEvents.length,
@@ -290,7 +318,10 @@ function matchEntities(
 	matches.sort(
 		(left, right) =>
 			right.matchedLength - left.matchedLength ||
-			compareText(left.entity.id, right.entity.id),
+			compareText(
+				normalizeEntityName(left.entity.name),
+				normalizeEntityName(right.entity.name),
+			),
 	);
 	return matches;
 }
@@ -415,6 +446,13 @@ function dedupeNodes(items: readonly RouteItem[], limit: number): RouteItem[] {
 		if (deduped.length === limit) break;
 	}
 	return deduped;
+}
+
+/** 按 RRF 融合每一路的名次；同一楼层重复出现只保留一条。 */
+export function fuseRetrievalRoutes(
+	routes: readonly RetrievalRouteRanking[],
+): RetrievalHit[] {
+	return fuseRoutes(routes);
 }
 
 function fuseRoutes(routes: readonly RouteResult[]): RetrievalHit[] {

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
 	type EmbeddingClient,
 	type StoryStore,
+	fuseRetrievalRoutes,
+	rankMemoryRoutes,
 	retrieveMemory,
 } from "../src/index.js";
 import { openTempStore } from "./temp-store.js";
@@ -111,6 +113,64 @@ describe("多路融合检索", () => {
 		expect(hits[2]?.sources).toEqual([{ route: "event", rank: 2 }]);
 		expect(hits[0]?.score).toBeCloseTo(1 / 61);
 		expect(hits[2]?.score).toBeCloseTo(1 / 62);
+	});
+
+	it("每一路的原始名次可单独读取，融合结果与 retrieveMemory 一致", async () => {
+		const { store } = openTempStore();
+		store.createStory({ id: "s-routes", title: "名次" });
+		const root = store.appendNode({
+			id: "n-root",
+			storyId: "s-routes",
+			parentId: null,
+			role: "system",
+			raw: "青铜匕首藏在井底。",
+		});
+		const ask = store.appendNode({
+			id: "n-ask",
+			storyId: "s-routes",
+			parentId: root.id,
+			role: "user",
+			raw: "我去找匕首。",
+		});
+		store.insertMemoryEvents([
+			{
+				storyId: "s-routes",
+				sourceNodeId: root.id,
+				ordinal: 0,
+				participants: ["我"],
+				importance: 0.8,
+				knowers: [],
+				text: "匕首藏在井底",
+			},
+		]);
+
+		const rankings = await rankMemoryRoutes({
+			store,
+			storyId: "s-routes",
+			query: "青铜匕首",
+			beforeNodeId: ask.id,
+			limit: 20,
+		});
+		const bm25 = rankings.routes.find((route) => route.route === "bm25");
+		const events = rankings.routes.find((route) => route.route === "event");
+		expect(bm25?.items[0]).toEqual({ kind: "chunk", nodeId: root.id });
+		expect(events?.items[0]).toEqual({ kind: "event", nodeId: root.id });
+		expect(rankings.filter).toEqual({
+			viewpoint: null,
+			eventsBeforeFilter: 1,
+			eventsAfterFilter: 1,
+			chunksExcluded: false,
+		});
+
+		const fused = fuseRetrievalRoutes(rankings.routes).slice(0, 20);
+		const direct = await retrieveMemory({
+			store,
+			storyId: "s-routes",
+			query: "青铜匕首",
+			beforeNodeId: ask.id,
+			limit: 20,
+		});
+		expect(fused).toEqual([...direct.hits]);
 	});
 
 	it("实体别名把相关事件排到更重要的无关事件前面", async () => {
