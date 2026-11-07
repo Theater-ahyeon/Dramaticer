@@ -1,0 +1,6 @@
+{"user_name":"用户","character_name":"测试角色","chat_metadata":{}}
+{"name":"用户","is_user":true,"is_system":false,"send_date":1700000000,"mes":"hi"}
+{"name":"测试角色","is_user":false,"is_system":false,"send_date":1700000001,"mes":"alpha beta gamma","swipes":["alpha beta gamma"],"swipe_id":0,"variables":[{"hp":10}],"hash_sheets":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
+{"name":"用户","is_user":true,"is_system":false,"send_date":1700000002,"mes":"more","variables":[{"hp":10}]}
+{"name":"测试角色","is_user":false,"is_system":false,"send_date":1700000003,"mes":"alpha beta gamma","swipes":["alpha beta gamma"],"swipe_id":0,"variables":[{"hp":8}]}
+{"name":"测试角色","is_user":false,"is_system":false,"send_date":1700000004,"mes":"alpha beta gamma","swipes":["alpha beta gamma"],"swipe_id":0,"variables":[{"hp":6}]}

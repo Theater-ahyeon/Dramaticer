@@ -1,0 +1,44 @@
+{
+	"name": "测试预设",
+	"assistant_prefill": "预填充",
+	"prompts": [
+		{
+			"identifier": "a",
+			"name": "条目甲",
+			"content": "{{char}} {{setvar::x::1}} {{getvar::x}}",
+			"enabled": true,
+			"marker": false
+		},
+		{
+			"identifier": "b",
+			"name": "条目乙",
+			"content": "{{// 注释}}",
+			"enabled": false,
+			"marker": true
+		}
+	],
+	"extensions": {
+		"regex_scripts": [
+			{
+				"scriptName": "范围一",
+				"findRegex": "x",
+				"replaceString": "y",
+				"placement": [1, 2],
+				"disabled": false,
+				"markdownOnly": true,
+				"promptOnly": false,
+				"runOnEdit": true,
+				"minDepth": 2,
+				"maxDepth": null,
+				"substituteRegex": 1
+			},
+			{
+				"scriptName": "范围二",
+				"findRegex": "a",
+				"replaceString": "b",
+				"placement": [2],
+				"disabled": true
+			}
+		]
+	}
+}

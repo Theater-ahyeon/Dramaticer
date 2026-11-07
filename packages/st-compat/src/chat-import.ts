@@ -1,4 +1,3 @@
-import { isDeepStrictEqual } from "node:util";
 import type {
 	NewStateDiff,
 	Story,
@@ -7,8 +6,9 @@ import type {
 } from "@dramaticer/core";
 import type { StChatEntry, StChatMessage } from "./chat-jsonl.js";
 import { parseChatJsonlFile } from "./chat-jsonl.js";
-import type { JsonObject, JsonValue } from "./json.js";
-import { isJsonObject } from "./json.js";
+import type { JsonObject } from "./json.js";
+import type { SnapshotDiff } from "./state-diff.js";
+import { diffSnapshots, readSnapshot } from "./state-diff.js";
 
 export interface ImportChatOptions {
 	readonly storyId: string;
@@ -90,13 +90,13 @@ export async function importChatToStore(
 			message.variables,
 			`第 ${message.index} 条消息`,
 		);
-		collectSnapshotDiffs(
-			diffs,
-			storyId,
-			mainNodeId,
-			currentVariables,
-			mainVariables,
-			source,
+		diffs.push(
+			...toStateDiffs(
+				diffSnapshots(currentVariables, mainVariables),
+				storyId,
+				mainNodeId,
+				source,
+			),
 		);
 
 		for (let index = 0; index < message.swipes.length; index += 1) {
@@ -116,13 +116,13 @@ export async function importChatToStore(
 				swipe.variables,
 				`第 ${message.index} 条消息的第 ${index} 个 swipe`,
 			);
-			collectSnapshotDiffs(
-				diffs,
-				storyId,
-				siblingId,
-				currentVariables,
-				swipeVariables,
-				source,
+			diffs.push(
+				...toStateDiffs(
+					diffSnapshots(currentVariables, swipeVariables),
+					storyId,
+					siblingId,
+					source,
+				),
 			);
 		}
 
@@ -188,92 +188,22 @@ function createdAtFromSendDate(
 	return Number.isNaN(parsed) ? undefined : new Date(parsed).toISOString();
 }
 
-function readSnapshot(value: JsonValue, label: string): JsonObject | null {
-	if (value === null) return null;
-	if (!isJsonObject(value)) {
-		throw new Error(`${label}的 MVU 变量快照必须是对象或 null`);
-	}
-	return value;
-}
-
-function collectSnapshotDiffs(
-	diffs: NewStateDiff[],
+function toStateDiffs(
+	diffs: readonly SnapshotDiff[],
 	storyId: string,
 	nodeId: string,
-	base: JsonObject | null,
-	next: JsonObject | null,
 	source: string,
-): void {
-	if (next === null) return;
-	collectObjectDiffs(diffs, storyId, nodeId, base ?? {}, next, [], source);
-}
-
-function collectObjectDiffs(
-	diffs: NewStateDiff[],
-	storyId: string,
-	nodeId: string,
-	base: JsonObject,
-	next: JsonObject,
-	path: readonly string[],
-	source: string,
-): void {
-	for (const key of Object.keys(next)) {
-		const nextPath = [...path, key];
-		const nextValue = next[key];
-		if (Object.hasOwn(base, key)) {
-			collectValueDiff(
-				diffs,
-				storyId,
-				nodeId,
-				base[key],
-				nextValue,
-				nextPath,
-				source,
-			);
-		} else {
-			collectFreshValue(diffs, storyId, nodeId, nextValue, nextPath, source);
-		}
-	}
-	for (const key of Object.keys(base)) {
-		if (Object.hasOwn(next, key)) continue;
-		diffs.push({
-			storyId,
-			nodeId,
-			path: [...path, key],
-			op: "delete",
-			source,
-		});
-	}
-}
-
-function collectValueDiff(
-	diffs: NewStateDiff[],
-	storyId: string,
-	nodeId: string,
-	base: JsonValue,
-	next: JsonValue,
-	path: readonly string[],
-	source: string,
-): void {
-	if (isDeepStrictEqual(base, next)) return;
-	if (isJsonObject(base) && isJsonObject(next)) {
-		collectObjectDiffs(diffs, storyId, nodeId, base, next, path, source);
-		return;
-	}
-	diffs.push({ storyId, nodeId, path, op: "set", value: next, source });
-}
-
-function collectFreshValue(
-	diffs: NewStateDiff[],
-	storyId: string,
-	nodeId: string,
-	next: JsonValue,
-	path: readonly string[],
-	source: string,
-): void {
-	if (isJsonObject(next) && Object.keys(next).length > 0) {
-		collectObjectDiffs(diffs, storyId, nodeId, {}, next, path, source);
-		return;
-	}
-	diffs.push({ storyId, nodeId, path, op: "set", value: next, source });
+): NewStateDiff[] {
+	return diffs.map((diff) =>
+		diff.op === "set"
+			? {
+					storyId,
+					nodeId,
+					path: diff.path,
+					op: "set",
+					value: diff.value,
+					source,
+				}
+			: { storyId, nodeId, path: diff.path, op: "delete", source },
+	);
 }

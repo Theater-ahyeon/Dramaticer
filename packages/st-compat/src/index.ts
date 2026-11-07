@@ -5,6 +5,7 @@ export * from "./chat-import.js";
 export * from "./chat-jsonl.js";
 export * from "./json.js";
 export * from "./preset.js";
+export * from "./state-diff.js";
 export * from "./world-info.js";
 
 export interface CompatInfo {

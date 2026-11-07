@@ -56,7 +56,8 @@
   做什么：ST 对话 → 一条线性路径（当前 swipe 作为主路径上的节点，其余 swipe 作为兄弟节点）；**把相邻楼层的 MVU 变量做 diff，转成 StateDiff**，并验证按路径把 diff 依次累加之后能还原出原来的快照。
   验收：合成测试数据通过往返测试（快照 → diff → 快照）。
 
-- [ ] **M0-T08 体检报告** | 依赖：M0-T02、M0-T05、M0-T07
+- [x] **M0-T08 体检报告** | 依赖：M0-T02、M0-T05、M0-T07
+  完成：2026-11-06 `pnpm --filter @dramaticer/st-compat report` 生成私有报告与统计版 `docs/dev/reports/M0-health.md`；3 个对话 1222 层、diff/快照 47.8%、58 个预设的宏与正则统计；26 个新测试，门禁通过
   做什么：CLI 命令 `pnpm --filter @dramaticer/st-compat report`。对 eval-private 里的每个对话统计：楼层数；正文、变量、其他字段各占多少字节；估算的 token 数（估算函数做成可替换的，中文约 1.5 个字符算 1 个 token）；**原生 diff 存储和 ST 快照存储的体积比**；从卡和世界书里提取的实体数量；**重复度曲线**（相邻 AI 回复的字符 n-gram Jaccard 相似度，按楼层分窗口统计，标出从第几楼开始持续上升）。另外统计预设：宏的使用频率、正则作用范围和开关的分布。
   输出：详细报告写到 `eval-private/reports/health.md`（可以引用原文片段）；**只含统计数字的版本**写到 `docs/dev/reports/M0-health.md`（可以提交）。
   验收：两份报告都生成了；仓库版本里没有任何原文。

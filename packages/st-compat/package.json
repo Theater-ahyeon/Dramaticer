@@ -15,6 +15,7 @@
 		"@dramaticer/core": "workspace:*"
 	},
 	"scripts": {
-		"build": "tsc"
+		"build": "tsc",
+		"report": "tsc -b && node dist/health/cli.js"
 	}
 }

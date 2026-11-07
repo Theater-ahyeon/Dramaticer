@@ -1,0 +1,18 @@
+{
+	"entries": {
+		"0": {
+			"uid": 0,
+			"key": ["龙", " Dragon "],
+			"keysecondary": ["鳞"],
+			"content": "龙的内容",
+			"constant": true,
+			"disable": false
+		},
+		"1": {
+			"uid": 1,
+			"key": ["剑"],
+			"content": "剑的内容",
+			"disable": true
+		}
+	}
+}
