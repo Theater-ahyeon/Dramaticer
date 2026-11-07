@@ -167,7 +167,8 @@
   - 模糊的陈述、疑问与角色台词不捕获；单元测试用固定文本 fixture 验证正负例。
   验收：明确的偏好、底线与纠正各被捕获；模糊陈述与角色台词不产生条目；重复表达合并；注入优先级最高；分支隔离；非法输出整条拒绝并记录原因；`pnpm check` 通过。
 
-- [ ] **R1-T07.a 自然语言修订记忆** | 依赖：R1-T07、R1-T01.a | DESIGN §7.1
+- [x] **R1-T07.a 自然语言修订记忆** | 依赖：R1-T07、R1-T01.a | DESIGN §7.1
+  完成：2026-11-07 迁移 v24 新增 `ledger_change_cards`（任务给出的九个字段之外增加 `source` 与 `rejection_reason`，ADR-0052）；新增 `ledger/cards.ts`（修改校验、稳定 id、批准、拒绝、回滚）与 `ledger/revision.ts`（`memory_revision` 任务按引文定位玩家的明确修改要求，一条非法修改整卡拒绝并记录原因，重复执行不新增卡片）；结算器在同一个事务里把冲突提案转成来源为 `settler` 的待定卡；批准把修改写成 `source` 为 `player` 的事实、玩家卡片同时记入 `userWill`，回滚按原值追加反向 diff；新增 `dramaticer ledger cards/--approve/--reject/--rollback`；ADR-0052；新增 10 个测试；门禁通过（816 个测试）。后续迁移编号顺延从 v25 起
   做什么：
   - 迁移 v24 新增 `ledger_change_cards(id, story_id, source_node_id, text, diffs, before, status, created_at, decided_at)`，`status` 取 `pending`、`approved`、`rejected`、`rolled_back`；`diffs` 与 `before` 存 JSON，写入前用 `validateLedgerDiff` 校验。
   - 后台任务 `memory_revision`：读取最近的玩家消息，识别明确的修改要求，生成变更卡草案；模糊陈述、疑问与角色台词不生成。

@@ -47,6 +47,15 @@ import {
 	rejectUnknownKeys,
 } from "../json.js";
 import {
+	LEDGER_CHANGE_CARD_STATUSES,
+	type LedgerChangeCard,
+	type LedgerChangeCardStatus,
+	type NewLedgerChangeCardInput,
+	assertLedgerBeforeEntries,
+	assertLedgerChangeCardDiffs,
+	isLedgerChangeCardStatus,
+} from "../ledger/cards.js";
+import {
 	LEDGER_SOURCES,
 	type LedgerSource,
 	assertLedgerConfidence,
@@ -202,6 +211,20 @@ interface SceneAnalysisRow {
 	readonly text: string;
 	readonly token_count: number;
 	readonly created_at: string;
+}
+
+interface LedgerChangeCardRow {
+	readonly id: string;
+	readonly story_id: string;
+	readonly source: string;
+	readonly source_node_id: string;
+	readonly text: string;
+	readonly diffs: string;
+	readonly before: string;
+	readonly status: string;
+	readonly rejection_reason: string | null;
+	readonly created_at: string;
+	readonly decided_at: string | null;
 }
 
 interface NodeTextRow {
@@ -804,6 +827,36 @@ function rowToSceneAnalysis(row: SceneAnalysisRow): SceneAnalysis {
 		text: row.text,
 		tokenCount: row.token_count,
 		createdAt: row.created_at,
+	};
+}
+
+function rowToLedgerChangeCard(row: LedgerChangeCardRow): LedgerChangeCard {
+	if (!(LEDGER_SOURCES as readonly string[]).includes(row.source)) {
+		throw new Error(`变更卡 ${row.id} 的来源不合法：${row.source}`);
+	}
+	if (!isLedgerChangeCardStatus(row.status)) {
+		throw new Error(`变更卡 ${row.id} 的状态不合法：${row.status}`);
+	}
+	const diffs = assertLedgerChangeCardDiffs(
+		JSON.parse(row.diffs) as unknown,
+		`变更卡 ${row.id} 的 diffs`,
+	);
+	return {
+		id: row.id,
+		storyId: row.story_id,
+		source: row.source as LedgerSource,
+		sourceNodeId: row.source_node_id,
+		text: row.text,
+		diffs,
+		before: assertLedgerBeforeEntries(
+			JSON.parse(row.before) as unknown,
+			diffs,
+			`变更卡 ${row.id} 的 before`,
+		),
+		status: row.status,
+		rejectionReason: row.rejection_reason,
+		createdAt: row.created_at,
+		decidedAt: row.decided_at,
 	};
 }
 
@@ -2110,6 +2163,168 @@ export class StoryStore {
 			)
 			.all(head.id, limit) as { readonly node_id: string }[];
 		return rows.map((row) => row.node_id);
+	}
+
+	/** 写入一张变更卡；同一 id 只能写一次。 */
+	insertLedgerChangeCard(input: NewLedgerChangeCardInput): LedgerChangeCard {
+		assertNonEmptyString(input.id, "变更卡 id");
+		assertNonEmptyString(input.storyId, "变更卡的故事 id");
+		if (!this.getStory(input.storyId)) {
+			throw new Error(`故事不存在：${input.storyId}`);
+		}
+		if (!(LEDGER_SOURCES as readonly string[]).includes(input.source)) {
+			throw new Error(
+				`变更卡的来源只能是 ${LEDGER_SOURCES.join("、")}，收到 ${JSON.stringify(input.source)}`,
+			);
+		}
+		const node = this.getNode(input.sourceNodeId);
+		if (!node) {
+			throw new Error(`楼层节点不存在：${input.sourceNodeId}`);
+		}
+		if (node.storyId !== input.storyId) {
+			throw new Error(
+				`变更卡的 storyId 与来源楼层所属故事不一致：${input.storyId}`,
+			);
+		}
+		if (typeof input.text !== "string" || input.text.trim().length === 0) {
+			throw new Error("变更卡的说明必须是非空字符串");
+		}
+		if (!isLedgerChangeCardStatus(input.status)) {
+			throw new Error(
+				`变更卡的状态只能是 ${LEDGER_CHANGE_CARD_STATUSES.join("、")}，收到 ${String(input.status)}`,
+			);
+		}
+		const diffs = assertLedgerChangeCardDiffs(
+			input.diffs,
+			`变更卡 ${input.id}`,
+		);
+		if (diffs.length === 0 && input.status !== "rejected") {
+			throw new Error(`变更卡 ${input.id} 没有修改内容`);
+		}
+		const before = assertLedgerBeforeEntries(
+			input.before,
+			diffs,
+			`变更卡 ${input.id} 的 before`,
+		);
+		const rejectionReason = input.rejectionReason ?? null;
+		if (input.status === "rejected") {
+			if (rejectionReason === null || rejectionReason.trim().length === 0) {
+				throw new Error("被拒绝的变更卡必须写明原因");
+			}
+		} else if (rejectionReason !== null) {
+			throw new Error("只有被拒绝的变更卡可以带拒绝原因");
+		}
+		const createdAt = input.createdAt ?? new Date().toISOString();
+		assertNonEmptyString(createdAt, "变更卡的创建时间");
+		const decidedAt = input.decidedAt ?? null;
+		if (input.status === "pending") {
+			if (decidedAt !== null) {
+				throw new Error("待定变更卡不能有决定时间");
+			}
+		} else if (decidedAt === null) {
+			throw new Error("已决定的变更卡必须有决定时间");
+		}
+		if (this.getLedgerChangeCard(input.id) !== null) {
+			throw new Error(`变更卡已存在：${input.id}`);
+		}
+		this.#db
+			.prepare(
+				`INSERT INTO ledger_change_cards
+					(id, story_id, source, source_node_id, text, diffs, before, status, rejection_reason, created_at, decided_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			)
+			.run(
+				input.id,
+				input.storyId,
+				input.source,
+				input.sourceNodeId,
+				input.text,
+				JSON.stringify(diffs),
+				JSON.stringify(before),
+				input.status,
+				rejectionReason,
+				createdAt,
+				decidedAt,
+			);
+		const card = this.getLedgerChangeCard(input.id);
+		if (card === null) {
+			throw new Error(`变更卡 ${input.id} 写入后读取失败`);
+		}
+		return card;
+	}
+
+	/** 读取一张变更卡；不存在时返回 null。 */
+	getLedgerChangeCard(cardId: string): LedgerChangeCard | null {
+		assertNonEmptyString(cardId, "变更卡 id");
+		const row = this.#db
+			.prepare("SELECT * FROM ledger_change_cards WHERE id = ?")
+			.get(cardId) as LedgerChangeCardRow | undefined;
+		return row === undefined ? null : rowToLedgerChangeCard(row);
+	}
+
+	/** 按创建顺序列出故事的变更卡，可以按状态过滤。 */
+	listLedgerChangeCards(
+		storyId: string,
+		options: { readonly status?: LedgerChangeCardStatus } = {},
+	): LedgerChangeCard[] {
+		assertNonEmptyString(storyId, "变更卡的故事 id");
+		if (!this.getStory(storyId)) {
+			throw new Error(`故事不存在：${storyId}`);
+		}
+		const status = options.status;
+		if (status !== undefined && !isLedgerChangeCardStatus(status)) {
+			throw new Error(
+				`变更卡的状态只能是 ${LEDGER_CHANGE_CARD_STATUSES.join("、")}，收到 ${String(status)}`,
+			);
+		}
+		const rows =
+			status === undefined
+				? (this.#db
+						.prepare(
+							`SELECT * FROM ledger_change_cards
+							WHERE story_id = ?
+							ORDER BY created_at ASC, id ASC`,
+						)
+						.all(storyId) as LedgerChangeCardRow[])
+				: (this.#db
+						.prepare(
+							`SELECT * FROM ledger_change_cards
+							WHERE story_id = ? AND status = ?
+							ORDER BY created_at ASC, id ASC`,
+						)
+						.all(storyId, status) as LedgerChangeCardRow[]);
+		return rows.map(rowToLedgerChangeCard);
+	}
+
+	/** 更新变更卡的状态与决定时间；卡片不能退回待定。 */
+	updateLedgerChangeCardStatus(
+		cardId: string,
+		status: LedgerChangeCardStatus,
+		decidedAt: string,
+	): LedgerChangeCard {
+		assertNonEmptyString(cardId, "变更卡 id");
+		if (!isLedgerChangeCardStatus(status)) {
+			throw new Error(
+				`变更卡的状态只能是 ${LEDGER_CHANGE_CARD_STATUSES.join("、")}，收到 ${String(status)}`,
+			);
+		}
+		if (status === "pending") {
+			throw new Error("变更卡不能退回待定状态");
+		}
+		assertNonEmptyString(decidedAt, "变更卡的决定时间");
+		const info = this.#db
+			.prepare(
+				"UPDATE ledger_change_cards SET status = ?, decided_at = ? WHERE id = ?",
+			)
+			.run(status, decidedAt, cardId);
+		if (info.changes !== 1) {
+			throw new Error(`变更卡不存在：${cardId}`);
+		}
+		const card = this.getLedgerChangeCard(cardId);
+		if (card === null) {
+			throw new Error(`变更卡 ${cardId} 更新后读取失败`);
+		}
+		return card;
 	}
 
 	/** 写入一个楼层的现场分析；同一楼层重复执行覆盖同一行。 */

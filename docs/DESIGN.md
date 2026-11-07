@@ -170,7 +170,7 @@ flowchart TB
 
 `validateLedgerDiff` 校验命名空间、路径段、值类型与范围，错误信息带完整路径；`readLedger` 与前缀读取复用楼层快照缓存；`listLedgerEntities` 返回人物、关系与未兑现线索。导入 MVU 时把原始变量路径加上 `mvu` 前缀；没有 MVU 的卡不产生 `mvu` 命名空间。
 
-每条事实还带两个元数据字段：`storyTime` 存为 `{start, end}`，起点与终点都可以为空，随 diff 进入 `state_diffs`；`source` 沿用 `StateDiff.source`，台账事实取 `model`、`settler`、`player`、`import`，正文模型经结构化输出写入的事实取 `model`。`readLedgerFacts` 沿路径回放，返回仍然成立的事实及其 `storyTime` 与 `source`；`readLedger` 仍是快照值视图。用户意志由间隙里的后台任务 `user_will` 捕获：读当前路径上最近的玩家消息，模型只返回明确表达的偏好、底线与纠正，`sourceQuote` 必须逐字来自窗口内的玩家楼层；程序按规范化正文的摘要生成稳定 id（`userWill.<id>`），同一正文不重复写入，只追加不删除，分支切换后只注入当前路径的条目。玩家用自然语言提出的修改先生成**变更卡**，可以批准、拒绝或回滚；批准后写成 `source` 为 `player` 的事实，同时记入用户意志，在预算取舍里优先级最高（ADR-0035）。
+每条事实还带两个元数据字段：`storyTime` 存为 `{start, end}`，起点与终点都可以为空，随 diff 进入 `state_diffs`；`source` 沿用 `StateDiff.source`，台账事实取 `model`、`settler`、`player`、`import`，正文模型经结构化输出写入的事实取 `model`。`readLedgerFacts` 沿路径回放，返回仍然成立的事实及其 `storyTime` 与 `source`；`readLedger` 仍是快照值视图。用户意志由间隙里的后台任务 `user_will` 捕获：读当前路径上最近的玩家消息，模型只返回明确表达的偏好、底线与纠正，`sourceQuote` 必须逐字来自窗口内的玩家楼层；程序按规范化正文的摘要生成稳定 id（`userWill.<id>`），同一正文不重复写入，只追加不删除，分支切换后只注入当前路径的条目。玩家用自然语言提出的修改先生成**变更卡**（`ledger_change_cards`，迁移 v24）：间隙任务 `memory_revision` 读当前路径上最近的玩家消息，模型只对明确的修改要求返回 `{text, sourceQuote, diffs}`，草案至少一条台账修改；`sourceQuote` 必须逐字来自窗口内的玩家楼层，一条修改不合格就整卡拒绝并把原因记在卡片上。卡片状态取 `pending`、`approved`、`rejected`、`rolled_back`。批准把 `diffs` 写成 `source` 为 `player` 的事实，玩家提出的卡片同时把同一段话记入 `userWill`；拒绝只改状态；回滚按卡片记录的原值追加反向 diff 恢复，原事实保留在变更历史里。结算器记下的冲突（`repairs` 的 `conflict` 动作）在结算事务里转成来源为 `settler` 的待定卡，批准前台账不变。`dramaticer ledger cards <story>` 列出卡片，`--approve`、`--reject`、`--rollback` 执行决定，R5 面板复用同一接口（ADR-0052）。
 
 ### 7.2 结算器
 

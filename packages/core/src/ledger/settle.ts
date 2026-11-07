@@ -19,6 +19,7 @@ import type {
 	StoryTime,
 	TimelineNode,
 } from "../timeline.js";
+import { ledgerChangeCardId, readBeforeEntry } from "./cards.js";
 import {
 	CLUE_STATUSES,
 	type LedgerSource,
@@ -116,7 +117,15 @@ interface SettledFloor {
 	/** 本楼层已有的不合格台账写入，写入前删除。 */
 	readonly deleteIds: readonly number[];
 	readonly repairs: readonly LedgerRepair[];
+	/** 与最近原文冲突、没有写进台账的提案；逐条转成待审变更卡。 */
+	readonly conflictFacts: readonly ConflictFact[];
 	readonly source: LedgerSource;
+}
+
+interface ConflictFact {
+	readonly path: readonly string[];
+	readonly reason: string;
+	readonly diff: SettlerProposal["diff"];
 }
 
 interface InvalidExistingDiff {
@@ -227,6 +236,30 @@ export function createSettleHandler(
 					addedCount: plan.diffs.length,
 					repairs: plan.repairs,
 				});
+				for (const fact of plan.conflictFacts) {
+					store.insertLedgerChangeCard({
+						id: ledgerChangeCardId([
+							"settle",
+							plan.nodeId,
+							JSON.stringify(fact.path),
+						]),
+						storyId: job.storyId,
+						source: "settler",
+						sourceNodeId: plan.nodeId,
+						text: fact.reason,
+						diffs: [
+							fact.diff.op === "set"
+								? {
+										path: fact.diff.path,
+										op: "set",
+										value: fact.diff.value,
+									}
+								: { path: fact.diff.path, op: "delete" },
+						],
+						before: [readBeforeEntry(snapshot, fact.path)],
+						status: "pending",
+					});
+				}
 			}
 		});
 	};
@@ -585,6 +618,7 @@ function planFloor(
 	const conflictPaths = new Set(
 		conflictRepairs.map((repair) => JSON.stringify(repair.path)),
 	);
+	const conflicting = new Map<string, SettlerProposal["diff"]>();
 	const rewrites: LedgerRepair[] = [];
 	const rejections: LedgerRepair[] = [];
 	for (const [index, raw] of proposals.diffs.entries()) {
@@ -602,7 +636,7 @@ function planFloor(
 		}
 		const path = canonicalizePath(proposal.diff.path, canonical);
 		const key = JSON.stringify(path);
-		if (covered.has(key) || conflictPaths.has(key)) continue;
+		if (covered.has(key)) continue;
 		try {
 			const diff = rewriteClueStatus({ ...proposal.diff, path }, rewrites);
 			validateLedgerDiff({
@@ -613,6 +647,10 @@ function planFloor(
 				source: "settler",
 				confidence: diff.confidence,
 			});
+			if (conflictPaths.has(key)) {
+				conflicting.set(key, diff);
+				continue;
+			}
 			const knowledgeKey = knowledgeFactKey(diff);
 			if (knowledgeKey !== null) {
 				if (knowledgeFacts.has(knowledgeKey)) continue;
@@ -643,12 +681,18 @@ function planFloor(
 		}
 	}
 	const deleteIds = floor.invalid.map((item) => item.id);
+	const conflictFacts: ConflictFact[] = conflictRepairs.flatMap((repair) => {
+		const diff = conflicting.get(JSON.stringify(repair.path));
+		if (diff === undefined) return [];
+		return [{ path: repair.path, reason: repair.reason, diff }];
+	});
 	if (rejections.length > 0) {
 		return {
 			nodeId: floor.nodeId,
 			diffs: [],
 			deleteIds,
 			repairs: [...existingRepairs, ...conflictRepairs, ...rejections],
+			conflictFacts,
 			source: "settler",
 		};
 	}
@@ -663,6 +707,7 @@ function planFloor(
 		diffs: entries.map((entry) => entry.diff),
 		deleteIds,
 		repairs: [...existingRepairs, ...rewrites, ...conflictRepairs, ...fills],
+		conflictFacts,
 		source:
 			entries.length === 0 &&
 			rewrites.length === 0 &&

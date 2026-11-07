@@ -677,3 +677,21 @@
   - `dramaticer work` 注册 `user_will` 任务。
 - **影响**：注册槽位从十个变成十一个，`chat-providers`、`chat-turn` 与 st-compat 的 `chat-cli` 断言同步更新；文档模板的段落顺序随之多一段。R1-T07.b 的 `gap_pass` 合并调用复用同一套解析与写入路径，不另建存储。
 
+
+## ADR-0052 台账变更卡：草案、冲突转卡与决定（2026-11-07）
+
+- **背景**：R1-T07.a 要求玩家用自然语言提出的修改先生成变更卡，可以批准、拒绝或回滚；批准写成 `source` 为 `player` 的事实并记入用户意志，拒绝只改状态，回滚恢复批准前的值；结算器记下的冲突转成来源为 `settler` 的待审卡，批准前台账不变；非法 diff 整卡拒绝并记录原因；CLI 提供 `cards`、`--approve`、`--reject`、`--rollback`。任务给出的表结构只有 `(id, story_id, source_node_id, text, diffs, before, status, created_at, decided_at)`，没有记录卡片来源与拒绝原因的列，也没有规定批准写在哪个楼层、哪些卡片写入用户意志。
+- **选项**：
+  - 卡片来源用 `source_node_id` 或 `text` 推断：玩家提案与结算冲突的卡片在结构上完全一样，推断不可靠（排除）；新增 `source` 列，沿用 `LEDGER_SOURCES`（采纳）。
+  - 非法草案整次拒绝（与 `user_will` 一致）还是整卡拒绝：整次拒绝会连累同一回复里的合法卡片，单卡原因也没有归档位置（排除）；整卡拒绝并写入新增的 `rejection_reason` 列（采纳）。
+  - 冲突转卡在结算事务内完成还是由独立任务扫描 `ledger_settlements.repairs`：`repairs` 只存路径与原因，冲突提案的值不会保留，独立任务还须另建存储（排除）；结算事务内直接建档（采纳）。
+  - 批准写在卡片来源楼层还是当前 head：写回来源楼层会改动已结算楼层的快照与历史（排除）；写在当前 head，回滚同样写 head（采纳）。
+  - 所有批准都写入用户意志还是只写玩家提出的卡片：结算冲突卡的 `text` 是诊断原因，写进 `user_will` 会让诊断句进入下一轮上下文（排除）；只写 `source` 为 `player` 的卡片（采纳）。
+- **决定**：
+  - 迁移 v24 新增 `ledger_change_cards`，字段为任务给出的九个，另加 `source`（同 `LEDGER_SOURCES`）与 `rejection_reason`（只有被拒绝的卡片非空）；带同故事触发器，内容、归属与来源在 UPDATE 时不可改。
+  - `ledger/cards.ts` 负责校验与决定：`assertLedgerChangeCardDiff` 用 `validateLedgerDiff` 校验每条修改（来源按 `player`），`assertLedgerBeforeEntries` 要求 `before` 与 `diffs` 一一对应且路径相同；`ledgerChangeCardId(parts)` 取 SHA-256 前 16 位，保证同样的内容得到同一个 id。
+  - `ledger/revision.ts` 的后台任务 `memory_revision`（入队条件 `settled`，`dramaticer work` 注册）读任务楼层路径上最近 6 条非空玩家消息，请求带台账快照、已有用户意志与已有卡片；模型返回 `[{text, sourceQuote, diffs}]`，`sourceQuote` 必须逐字出现在窗口内的玩家楼层，否则整次拒绝。逐卡校验 `diffs`：任一条不合格就整卡以 `rejected` 入库并写入原因，其余卡片照常入库；合法卡片以 `pending` 入库，`before` 取任务楼层快照上的原值。id 由任务名、规范化正文与原始 `diffs` 组成，重复执行不新增卡片。
+  - 结算器在 `planFloor` 里保留与冲突路径对应的提案；冲突路径有提案时，在结算的同一个事务里为每条冲突创建一张 `pending` 卡：来源 `settler`、`source_node_id` 是该楼层、`text` 是修复原因、`diffs` 是该提案、`before` 取结算窗口最后一楼快照上的原值。冲突没有对应提案时不建卡，冲突修复记录保持原样。
+  - 批准只有 `pending` 卡可以做：在当前 head 上把 `diffs` 写成 `source` 为 `player` 的事实，`reason` 写卡片 id；`source` 为 `player` 的卡片把 `text` 作为 `correction` 写入 `userWill.<稳定 id>`，路径上已有同 id 时跳过。拒绝只把状态改成 `rejected`；回滚只对 `approved` 卡，按 `before` 追加反向 diff（原来不存在的路径写 delete），原事实保留在变更历史里。
+  - `ledger/cli.ts` 提供 `dramaticer ledger cards <story> --db <path> [--status <status>]` 与 `dramaticer ledger --approve|--reject|--rollback <id> --db <path>`；决定函数与 CLI 是同一套代码，R5 面板直接复用。
+- **影响**：schema 迁移编号顺延：开局包 v25、开场候选 v26、偏好记录 v27、父子分块 v28、章节压缩 v29、世界书预筛 v30、上下文包 v31。变更卡不进入上下文，只用于玩家复核；`dramaticer ledger` 不需要渠道配置。R1-T07.b 的 `gap_pass` 生成修订候选时复用 `revision.ts` 的解析与 `cards.ts` 的校验，不另建存储。

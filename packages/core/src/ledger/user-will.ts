@@ -106,7 +106,7 @@ export function parseUserWillResponse(
 			record.sourceQuote,
 			`${label}.sourceQuote`,
 		);
-		const sourceNode = locateQuote(playerNodes, sourceQuote);
+		const sourceNode = findQuoteNode(playerNodes, sourceQuote);
 		if (sourceNode === null) {
 			throw new Error(
 				`${label}.sourceQuote 不在本次窗口的玩家消息里：${sourceQuote}`,
@@ -220,8 +220,8 @@ function buildUserContent(
 	return lines.join("\n");
 }
 
-/** 从新到旧找第一条包含引文的玩家消息。 */
-function locateQuote(
+/** 从新到旧找第一条包含引文的玩家消息；找不到返回 null。 */
+export function findQuoteNode(
 	playerNodes: readonly TimelineNode[],
 	quote: string,
 ): TimelineNode | null {

@@ -602,6 +602,45 @@ export function buildMigrations(
 				END`,
 			],
 		},
+		{
+			version: 24,
+			description: "台账变更卡：玩家修订与结算冲突都先落成待审卡片",
+			statements: [
+				`CREATE TABLE ledger_change_cards (
+					id TEXT PRIMARY KEY,
+					story_id TEXT NOT NULL REFERENCES stories(id),
+					source TEXT NOT NULL CHECK (source IN ('model', 'settler', 'player', 'import')),
+					source_node_id TEXT NOT NULL REFERENCES nodes(id),
+					text TEXT NOT NULL,
+					diffs TEXT NOT NULL,
+					before TEXT NOT NULL,
+					status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'rejected', 'rolled_back')),
+					rejection_reason TEXT,
+					created_at TEXT NOT NULL,
+					decided_at TEXT
+				) STRICT`,
+				"CREATE INDEX ledger_change_cards_story_idx ON ledger_change_cards(story_id, status)",
+				`CREATE TRIGGER ledger_change_cards_story_matches_node
+				BEFORE INSERT ON ledger_change_cards
+				WHEN COALESCE((SELECT story_id FROM nodes WHERE id = NEW.source_node_id), '') <> NEW.story_id
+				BEGIN
+					SELECT RAISE(ABORT, '变更卡的 story_id 必须与来源楼层一致');
+				END`,
+				`CREATE TRIGGER ledger_change_cards_identity_immutable
+				BEFORE UPDATE ON ledger_change_cards
+				WHEN NEW.id <> OLD.id
+					OR NEW.story_id <> OLD.story_id
+					OR NEW.source <> OLD.source
+					OR NEW.source_node_id <> OLD.source_node_id
+					OR NEW.text <> OLD.text
+					OR NEW.diffs <> OLD.diffs
+					OR NEW.before <> OLD.before
+					OR NEW.created_at <> OLD.created_at
+				BEGIN
+					SELECT RAISE(ABORT, '变更卡的内容与归属不可修改');
+				END`,
+			],
+		},
 	];
 }
 

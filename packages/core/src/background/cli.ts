@@ -2,6 +2,10 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadDotEnv } from "../env.js";
+import {
+	MEMORY_REVISION_JOB_KIND,
+	createMemoryRevisionHandler,
+} from "../ledger/revision.js";
 import { SETTLE_JOB_KIND, createSettleHandler } from "../ledger/settle.js";
 import {
 	USER_WILL_JOB_KIND,
@@ -110,6 +114,10 @@ export async function runWorkCli(
 			},
 			[USER_WILL_JOB_KIND]: {
 				handler: createUserWillHandler(),
+				enqueue: "settled",
+			},
+			[MEMORY_REVISION_JOB_KIND]: {
+				handler: createMemoryRevisionHandler(),
 				enqueue: "settled",
 			},
 			...(embedder === null
