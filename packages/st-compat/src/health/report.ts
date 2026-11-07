@@ -6,7 +6,14 @@ import { analyzeChat } from "./chat-health.js";
 import type { EntityHealth } from "./entity-health.js";
 import { analyzeEntityFiles } from "./entity-health.js";
 import type { PresetHealth } from "./preset-health.js";
-import { analyzePresetFiles } from "./preset-health.js";
+import { analyzePresets, parsePresetFiles } from "./preset-health.js";
+import type { RegexHealth } from "./regex-health.js";
+import {
+	BLOCK_STRATEGY_LABELS,
+	DELETE_SCOPE_LABELS,
+	REGEX_CATEGORY_LABELS,
+	analyzeRegexScripts,
+} from "./regex-health.js";
 import type { TokenEstimator } from "./token-estimate.js";
 import { createTokenEstimator } from "./token-estimate.js";
 
@@ -50,6 +57,7 @@ export interface HealthReport {
 	readonly chats: readonly ChatReportEntry[];
 	readonly entities: EntityHealth;
 	readonly presets: PresetHealth;
+	readonly regex: RegexHealth;
 	readonly totals: HealthTotals;
 }
 
@@ -130,10 +138,11 @@ export async function collectHealthReport(
 		cardFiles.map((file) => resolveInside(rawRoot, file.target)),
 		worldFiles.map((file) => resolveInside(rawRoot, file.target)),
 	);
-	const presets = await analyzePresetFiles(
+	const presetList = await parsePresetFiles(
 		presetFiles.map((file) => resolveInside(rawRoot, file.target)),
-		tokenEstimator,
 	);
+	const presets = analyzePresets(presetList, tokenEstimator);
+	const regex = analyzeRegexScripts(presetList);
 
 	return {
 		generatedAt: options.generatedAt ?? new Date().toISOString(),
@@ -141,6 +150,7 @@ export async function collectHealthReport(
 		chats,
 		entities,
 		presets,
+		regex,
 		totals: sumChats(chats),
 	};
 }
@@ -259,6 +269,10 @@ export function renderPrivateReport(report: HealthReport): string {
 	lines.push("## 预设");
 	lines.push("");
 	renderPresetDetails(lines, report.presets);
+	lines.push("");
+	lines.push("## 正则分类");
+	lines.push("");
+	renderRegexDetails(lines, report.regex, true);
 	return `${lines.join("\n")}\n`;
 }
 
@@ -416,6 +430,10 @@ export function renderPublicReport(report: HealthReport): string {
 		lines.push(`| ${cell(substitute.label)} | ${substitute.scriptCount} |`);
 	}
 	lines.push("");
+	lines.push("## 正则分类");
+	lines.push("");
+	renderRegexDetails(lines, report.regex, false);
+	lines.push("");
 	lines.push("## 方法");
 	lines.push("");
 	lines.push(
@@ -429,6 +447,9 @@ export function renderPublicReport(report: HealthReport): string {
 	);
 	lines.push(
 		"- 宏名取 `{{...}}` 里 `::` 之前、空白之前的第一个词，只统计英文字母开头的标识符；`{{// ...}}` 统一记为 `//`，其余写法计入无法识别的次数。",
+	);
+	lines.push(
+		"- 正则分类按 findRegex 与 replaceString 的结构判定，判定顺序依次是流式版本、内联脚本、渲染 HTML、删除思考链、删除内容、重排捕获内容、文本替换。可升级指这条正则能改由块策略、渲染器或沙箱渲染器承担；比例按启用的脚本计算。",
 	);
 	return `${lines.join("\n")}\n`;
 }
@@ -474,6 +495,59 @@ function renderPresetDetails(lines: string[], presets: PresetHealth): void {
 		`- runOnEdit：${presets.runOnEditCount}`,
 		`- 带深度限制：${presets.depthLimitedCount}`,
 	);
+}
+
+function renderRegexDetails(
+	lines: string[],
+	regex: RegexHealth,
+	includeTags: boolean,
+): void {
+	lines.push("| 分类 | 脚本数 | 启用的脚本 | 可升级 |");
+	lines.push("|---|---|---|---|");
+	for (const item of regex.categories) {
+		lines.push(
+			`| ${REGEX_CATEGORY_LABELS[item.category]} | ${item.scriptCount} | ${item.enabledScriptCount} | ${item.upgradableScriptCount} |`,
+		);
+	}
+	lines.push(
+		`| 合计 | ${regex.scriptCount} | ${regex.enabledScriptCount} | ${regex.upgradableScriptCount} |`,
+	);
+	lines.push("");
+	lines.push(
+		`启用的脚本里可升级比例：${formatPercent(ratio(regex.upgradableScriptCount, regex.enabledScriptCount))}（${regex.upgradableScriptCount}/${regex.enabledScriptCount}）`,
+	);
+	lines.push("");
+	lines.push("删除类脚本的影响范围：");
+	lines.push("");
+	lines.push("| 影响范围 | 脚本数 |");
+	lines.push("|---|---|");
+	for (const item of regex.deleteScopes) {
+		lines.push(`| ${DELETE_SCOPE_LABELS[item.scope]} | ${item.scriptCount} |`);
+	}
+	lines.push("");
+	lines.push("升级策略：");
+	lines.push("");
+	lines.push("| 策略 | 脚本数 |");
+	lines.push("|---|---|");
+	for (const item of regex.strategies) {
+		lines.push(
+			`| ${BLOCK_STRATEGY_LABELS[item.strategy]} | ${item.scriptCount} |`,
+		);
+	}
+	lines.push("");
+	lines.push(`- 带深度限制：${regex.depthScopedScriptCount}`);
+	lines.push(`- 含内联脚本：${regex.inlineScriptCount}`);
+	lines.push(`- 流式版本：${regex.streamingScriptCount}`);
+	if (includeTags) {
+		lines.push("");
+		lines.push("目标标签前 20：");
+		lines.push("");
+		lines.push("| 标签 | 脚本数 |");
+		lines.push("|---|---|");
+		for (const item of regex.topTags) {
+			lines.push(`| ${cell(item.tag)} | ${item.scriptCount} |`);
+		}
+	}
 }
 
 function filesByRole(

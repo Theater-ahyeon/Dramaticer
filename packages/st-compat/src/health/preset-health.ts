@@ -199,15 +199,21 @@ export function analyzePresets(
 	};
 }
 
-export async function analyzePresetFiles(
+export async function parsePresetFiles(
 	paths: readonly string[],
-	tokenEstimator: TokenEstimator = createTokenEstimator(),
-): Promise<PresetHealth> {
+): Promise<StPreset[]> {
 	const presets: StPreset[] = [];
 	for (const path of paths) {
 		presets.push(await parsePresetFile(path));
 	}
-	return analyzePresets(presets, tokenEstimator);
+	return presets;
+}
+
+export async function analyzePresetFiles(
+	paths: readonly string[],
+	tokenEstimator: TokenEstimator = createTokenEstimator(),
+): Promise<PresetHealth> {
+	return analyzePresets(await parsePresetFiles(paths), tokenEstimator);
 }
 
 function macroName(raw: string): string | null {

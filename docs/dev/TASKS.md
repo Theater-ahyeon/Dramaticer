@@ -62,7 +62,8 @@
   输出：详细报告写到 `eval-private/reports/health.md`（可以引用原文片段）；**只含统计数字的版本**写到 `docs/dev/reports/M0-health.md`（可以提交）。
   验收：两份报告都生成了；仓库版本里没有任何原文。
 
-- [ ] **M0-T09 正则分类器** | 依赖：M0-T05
+- [x] **M0-T09 正则分类器** | 依赖：M0-T05
+  完成：2026-11-06 `packages/st-compat/src/regex-classifier.ts` 按结构分类 928 条正则（渲染 HTML 214、内联脚本 141、删除内容 319、删除思考链 76、重排捕获内容 99、文本替换 39、流式版本 34、无法分类 6），启用的 637 条里 300 条可自动升级（47.1%）；报告新增正则分类章节，17+1 个新测试，门禁通过
   做什么：在 st-compat 里实现分类器，分类与 DESIGN §6 对应：html_render、html_script、delete（区分只影响显示、只影响 prompt、带深度限制）、strip_cot、rewrite_capture、text_replace、streaming_variant。再判断每一条是否"可以自动升级"成块策略。对全部预设运行一遍，统计数字追加到 M0-health 报告里。
   验收：每个分类都有合成用例；报告里有可升级比例。
 

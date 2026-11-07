@@ -47,6 +47,12 @@ describe("collectHealthReport", () => {
 		expect(report.entities.totals.embeddedBookEntryCount).toBe(2);
 		expect(report.entities.totals.enabledWorldEntryCount).toBe(1);
 		expect(report.presets.presetCount).toBe(1);
+		expect(report.regex.scriptCount).toBe(2);
+		expect(report.regex.categories).toHaveLength(8);
+		expect(
+			report.regex.categories.find((item) => item.category === "text_replace")
+				?.scriptCount,
+		).toBe(2);
 	});
 });
 
@@ -60,6 +66,8 @@ describe("报告渲染", () => {
 		expect(text).toContain("# M0 体检报告（统计版）");
 		expect(text).toContain("对话 1");
 		expect(text).toContain("hash_sheets");
+		expect(text).toContain("## 正则分类");
+		expect(text).toContain("启用的脚本里可升级比例");
 		expect(text).not.toContain("测试角色");
 		expect(text).not.toContain("测试卡");
 		expect(text).not.toContain("测试预设");
@@ -77,6 +85,7 @@ describe("报告渲染", () => {
 		expect(text).toContain("health-chat.jsonl");
 		expect(text).toContain("测试卡");
 		expect(text).toContain("正则作用范围");
+		expect(text).toContain("目标标签前 20");
 		expect(text).toContain("diff/快照");
 	});
 });
