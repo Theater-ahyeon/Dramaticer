@@ -3,6 +3,13 @@ import { decode as decodeText } from "png-chunk-text";
 import type { DecodedText } from "png-chunk-text";
 import extractChunks from "png-chunks-extract";
 import type { PngChunk } from "png-chunks-extract";
+import {
+	optionalObject,
+	optionalString,
+	readObject,
+	readString,
+	readStringList,
+} from "./field-readers.js";
 import type { JsonObject } from "./json.js";
 import { isJsonObject } from "./json.js";
 
@@ -38,7 +45,7 @@ export interface StCharacterCard {
 
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 
-export function isPngData(data: Uint8Array): boolean {
+function isPngData(data: Uint8Array): boolean {
 	if (data.length < PNG_SIGNATURE.length) return false;
 	return PNG_SIGNATURE.every((byte, index) => data[index] === byte);
 }
@@ -83,9 +90,16 @@ export function parseCharacterCardPng(data: Uint8Array): StCharacterCard {
 	}
 	const entry = payloads.get("ccv3") ?? payloads.get("chara");
 	if (entry === undefined) throw new Error("PNG 里没有 chara 或 ccv3 文本块");
-	const jsonText = Buffer.from(entry, "base64").toString("utf8");
+	const compact = entry.replace(/\s+/g, "");
+	const payload = Buffer.from(compact, "base64");
+	if (
+		compact.length === 0 ||
+		payload.toString("base64").replace(/=+$/, "") !== compact.replace(/=+$/, "")
+	) {
+		throw new Error("PNG 里的角色卡数据不是合法 base64");
+	}
 	try {
-		return parseCharacterCardJson(jsonText);
+		return parseCharacterCardJson(payload.toString("utf8"));
 	} catch (error) {
 		throw new Error("PNG 里的角色卡数据解析失败", { cause: error });
 	}
@@ -115,84 +129,47 @@ function normalizeCharacterCard(value: unknown): StCharacterCard {
 	} else {
 		throw new Error(`不支持的角色卡版本：${String(value.spec)}`);
 	}
-	const data =
-		spec === "chara_card_v1" ? value : expectObject(dataNode, "data");
-	const extensions = readExtensions(data);
+	const data = spec === "chara_card_v1" ? value : readDataNode(value);
+	const extensions = readObject(data, "extensions", "角色卡");
 	return {
 		spec,
-		specVersion: optionalText(value, "spec_version"),
-		name: readText(data, "name"),
-		description: readText(data, "description"),
-		personality: readText(data, "personality"),
-		scenario: readText(data, "scenario"),
-		firstMessage: readText(data, "first_mes"),
-		messageExample: readText(data, "mes_example"),
+		specVersion: optionalString(value, "spec_version", "角色卡"),
+		name: readString(data, "name", "角色卡"),
+		description: readString(data, "description", "角色卡"),
+		personality: readString(data, "personality", "角色卡"),
+		scenario: readString(data, "scenario", "角色卡"),
+		firstMessage: readString(data, "first_mes", "角色卡"),
+		messageExample: readString(data, "mes_example", "角色卡"),
 		creatorNotes: readCreatorNotes(data),
-		systemPrompt: readText(data, "system_prompt"),
-		postHistoryInstructions: readText(data, "post_history_instructions"),
-		alternateGreetings: readTextList(data, "alternate_greetings"),
-		groupOnlyGreetings: readTextList(data, "group_only_greetings"),
-		nickname: optionalText(data, "nickname"),
-		tags: readTextList(data, "tags"),
-		creator: readText(data, "creator"),
-		characterVersion: readText(data, "character_version"),
-		characterBook: readCharacterBook(data),
+		systemPrompt: readString(data, "system_prompt", "角色卡"),
+		postHistoryInstructions: readString(
+			data,
+			"post_history_instructions",
+			"角色卡",
+		),
+		alternateGreetings: readStringList(data, "alternate_greetings", "角色卡"),
+		groupOnlyGreetings: readStringList(data, "group_only_greetings", "角色卡"),
+		nickname: optionalString(data, "nickname", "角色卡"),
+		tags: readStringList(data, "tags", "角色卡"),
+		creator: readString(data, "creator", "角色卡"),
+		characterVersion: readString(data, "character_version", "角色卡"),
+		characterBook: optionalObject(data, "character_book", "角色卡"),
 		extensions,
 		raw: value,
 	};
 }
 
-function expectObject(value: unknown, field: string): JsonObject {
-	if (!isJsonObject(value))
-		throw new Error(`角色卡字段 "${field}" 不是 JSON 对象`);
-	return value;
-}
-
-function readText(source: JsonObject, key: string): string {
-	const value = source[key];
-	if (value === undefined || value === null) return "";
-	if (typeof value !== "string")
-		throw new Error(`角色卡字段 "${key}" 不是字符串`);
-	return value;
-}
-
-function optionalText(source: JsonObject, key: string): string | null {
-	const value = source[key];
-	if (value === undefined || value === null) return null;
-	if (typeof value !== "string")
-		throw new Error(`角色卡字段 "${key}" 不是字符串`);
-	return value;
-}
-
-function readTextList(source: JsonObject, key: string): string[] {
-	const value = source[key];
-	if (value === undefined || value === null) return [];
-	if (!Array.isArray(value)) throw new Error(`角色卡字段 "${key}" 不是数组`);
-	return value.map((item, index) => {
-		if (typeof item !== "string") {
-			throw new Error(`角色卡字段 "${key}[${index}]" 不是字符串`);
-		}
-		return item;
-	});
+function readDataNode(value: JsonObject): JsonObject {
+	const data = optionalObject(value, "data", "角色卡");
+	if (data === null) throw new Error('角色卡缺少 "data" 节点');
+	return data;
 }
 
 /** V1 没有 data 节点，备注写在根节点的 creatorcomment 里 */
 function readCreatorNotes(source: JsonObject): string {
 	const notes = source.creator_notes;
 	if (notes !== undefined && notes !== null) {
-		return readText(source, "creator_notes");
+		return readString(source, "creator_notes", "角色卡");
 	}
-	return readText(source, "creatorcomment");
-}
-
-function readCharacterBook(source: JsonObject): JsonObject | null {
-	const book = source.character_book;
-	if (book === undefined || book === null) return null;
-	return expectObject(book, "character_book");
-}
-
-function readExtensions(source: JsonObject): JsonObject {
-	const value = source.extensions;
-	if (value === undefined || value === null) return {};
-	return expectObject(value, "extensions");
+	return readString(source, "creatorcomment", "角色卡");
 }

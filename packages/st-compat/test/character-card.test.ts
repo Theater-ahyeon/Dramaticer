@@ -194,6 +194,20 @@ describe("parseCharacterCardPng", () => {
 		const png = buildPngCard([{ keyword: "chara", value: "{" }]);
 		expect(() => parseCharacterCardPng(png)).toThrow(/角色卡数据解析失败/);
 	});
+
+	it("tEXt 块解码失败时报错", () => {
+		const png = buildPngCard([
+			{ keyword: "chara", value: "前半\0后半", raw: true },
+		]);
+		expect(() => parseCharacterCardPng(png)).toThrow(/tEXt 块解码失败/);
+	});
+
+	it("文本块里的数据不是合法 base64 时报错", () => {
+		const png = buildPngCard([
+			{ keyword: "chara", value: "not base64!!", raw: true },
+		]);
+		expect(() => parseCharacterCardPng(png)).toThrow(/不是合法 base64/);
+	});
 });
 
 describe("parseCharacterCardFile", () => {

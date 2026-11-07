@@ -97,7 +97,8 @@
   做什么：`packages/st-compat/src/chat-import.ts` 的整次导入放进一个事务，失败后库内不残留故事、楼层、diff 与 FTS 条目；`swipe_id` 越界或非整数时直接抛错，节点 id 与 MVU 快照取自同一个下标；`readSnapshot` 的嵌套空对象（`{"stat_data":{}}`）语义补测试；状态题测试改为先导入 store，再用 `getStateDiffsAlongPath` 回放并断言与题目答案一致。
   验收：新增“坏行在文件末尾时库内为空、修正后可以重新导入”“越界 swipe_id 抛错”“嵌套空对象生成删除 diff 且回放正确”“题目答案与 store 回放一致”四组测试；`pnpm check` 通过。
 
-- [ ] **M0-FIX-2 聊天与角色卡解析边界** | 依赖：M0-REVIEW-1
+- [x] **M0-FIX-2 聊天与角色卡解析边界** | 依赖：M0-REVIEW-1
+  完成：2026-11-06 聊天首行剥离 UTF-8 BOM，`splitChatLines` 复用 `stripCarriageReturn`；角色卡改用 `field-readers` 的读取函数并增加 base64 回环校验；四个无消费者的符号退出导出；PNG 失败路径测试补齐，门禁通过（166 个测试）
   做什么：`chat-jsonl.ts` 首行剥离 U+FEFF；删除没有调用的 `stripCarriageReturn`（或让 `splitChatLines` 的两处内联改为调用它）；`character-card.ts` 改用 `field-readers.ts` 的读取函数并删除本地重复实现；`src/index.ts` 不再公开 `SourceLine`、`splitChatLines`、`isPngData`、`SnapshotDiffOp` 等没有外部消费者的符号；给 `test/png-fixture.ts` 增加写入原始文本的选项，补 tEXt 解码失败与非法 base64 两条用例。
   验收：BOM 用例覆盖 `parseChatJsonl` 与 `parseChatJsonlFile`；角色卡错误文案与现有测试保持一致；新增两条 PNG 失败路径测试；`pnpm check` 通过。
 

@@ -19,7 +19,27 @@ function chunk(name: string, data: Uint8Array): Buffer {
 
 export interface PngTextFixture {
 	keyword: string;
+	/** 默认把 value 当成角色卡 JSON，写入前做 base64 编码；raw 为 true 时原样写入 */
 	value: string;
+	raw?: boolean;
+}
+
+function textChunk(item: PngTextFixture): Buffer {
+	if (!item.raw) {
+		const encoded = encodeText(
+			item.keyword,
+			Buffer.from(item.value, "utf8").toString("base64"),
+		);
+		return chunk(encoded.name, encoded.data);
+	}
+	return chunk(
+		"tEXt",
+		Buffer.concat([
+			Buffer.from(item.keyword, "latin1"),
+			Buffer.from([0]),
+			Buffer.from(item.value, "latin1"),
+		]),
+	);
 }
 
 /** 生成 1x1 的合法 PNG，把角色卡 JSON 的 base64 写进 tEXt 块 */
@@ -33,13 +53,7 @@ export function buildPngCard(textChunks: readonly PngTextFixture[]): Buffer {
 		PNG_SIGNATURE,
 		chunk("IHDR", ihdr),
 		chunk("IDAT", deflateSync(Buffer.from([0, 0, 0, 0, 255]))),
-		...textChunks.map((item) => {
-			const encoded = encodeText(
-				item.keyword,
-				Buffer.from(item.value, "utf8").toString("base64"),
-			);
-			return chunk(encoded.name, encoded.data);
-		}),
+		...textChunks.map(textChunk),
 		chunk("IEND", new Uint8Array(0)),
 	];
 	return Buffer.concat(parts);

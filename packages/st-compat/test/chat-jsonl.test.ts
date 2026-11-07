@@ -1,4 +1,5 @@
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { StChatEntry, StChatHeader, StChatMessage } from "../src/index.js";
@@ -121,6 +122,25 @@ describe("parseChatJsonl", () => {
 			parseChatJsonl(chunked(text.replaceAll("\r\n", "\n"), [64])),
 		);
 		expect(crlf).toEqual(lf);
+	});
+
+	it("首行的 UTF-8 BOM 会被剥离", async () => {
+		const text = await readFile(fixturePath, "utf8");
+		const expected = await collect(parseChatJsonl([text]));
+		expect(await collect(parseChatJsonl([`\uFEFF${text}`]))).toEqual(expected);
+		expect(
+			await collect(parseChatJsonl(chunked(`\uFEFF${text}`, [1, 2, 3]))),
+		).toEqual(expected);
+		const dir = await mkdtemp(
+			join(dirname(fileURLToPath(import.meta.url)), ".tmp-chat-"),
+		);
+		try {
+			const path = join(dir, "chat-bom.jsonl");
+			await writeFile(path, `\uFEFF${text}`);
+			expect(await collect(parseChatJsonlFile(path))).toEqual(expected);
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
 	});
 
 	it("解析超过 100 KB 的单行", async () => {

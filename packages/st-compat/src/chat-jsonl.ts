@@ -41,13 +41,13 @@ export type StChatEntry =
 	| { readonly kind: "header"; readonly header: StChatHeader }
 	| { readonly kind: "message"; readonly message: StChatMessage };
 
-export interface SourceLine {
+interface SourceLine {
 	readonly line: string;
 	readonly lineNumber: number;
 }
 
 /** 把任意切分的字符串块还原成行；跨块的换行和多字节序列都在这里处理 */
-export async function* splitChatLines(
+async function* splitChatLines(
 	chunks: AsyncIterable<string> | Iterable<string>,
 ): AsyncGenerator<SourceLine, void, undefined> {
 	let pending = "";
@@ -59,7 +59,7 @@ export async function* splitChatLines(
 			lineNumber += 1;
 			const rawLine = pending + chunk.slice(start, i);
 			yield {
-				line: rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine,
+				line: stripCarriageReturn(rawLine),
 				lineNumber,
 			};
 			pending = "";
@@ -70,7 +70,7 @@ export async function* splitChatLines(
 	if (pending.length > 0) {
 		lineNumber += 1;
 		yield {
-			line: pending.endsWith("\r") ? pending.slice(0, -1) : pending,
+			line: stripCarriageReturn(pending),
 			lineNumber,
 		};
 	}
@@ -86,7 +86,10 @@ export async function* parseChatJsonl(
 	let header: StChatHeader | null = null;
 	let messageIndex = 0;
 	for await (const { line, lineNumber } of splitChatLines(chunks)) {
-		const record = parseRecord(line, lineNumber);
+		const record = parseRecord(
+			lineNumber === 1 && line.charCodeAt(0) === 0xfeff ? line.slice(1) : line,
+			lineNumber,
+		);
 		if (header === null) {
 			header = toHeader(record);
 			yield { kind: "header", header };

@@ -2,8 +2,6 @@ import { isDeepStrictEqual } from "node:util";
 import type { JsonObject, JsonValue } from "./json.js";
 import { isJsonObject } from "./json.js";
 
-export type SnapshotDiffOp = "set" | "delete";
-
 export interface SnapshotDiffSet {
 	readonly path: readonly string[];
 	readonly op: "set";
