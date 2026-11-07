@@ -11,6 +11,7 @@ import {
 	sanitizeFileName,
 	storyIdOf,
 } from "./question-files.js";
+import { addCounts, emptyCounts, requireNonEmpty } from "./shared.js";
 
 const KIND_ORDER: readonly QuestionKind[] = ["state", "event"];
 const ANSWER_LENGTH_BUCKETS: readonly {
@@ -69,10 +70,9 @@ export interface CollectAcuBaselineOptions {
 	readonly generatedAt?: string;
 }
 
-interface MutableScore {
-	questionCount: number;
-	coveredCount: number;
-}
+const SCORE_KEYS = ["questionCount", "coveredCount"] as const;
+
+type MutableScore = Record<(typeof SCORE_KEYS)[number], number>;
 
 interface HashSheetSnapshot {
 	readonly rows: readonly (readonly string[])[];
@@ -124,7 +124,7 @@ export async function evaluateAcuCoverage(
 	const seenFloors = new Set<number>();
 	const byKind = new Map<QuestionKind, MutableScore>();
 	const byLength = new Map<string, MutableScore>();
-	const total = createScore();
+	const total = emptyCounts(SCORE_KEYS);
 
 	try {
 		for await (const entry of parseChatJsonlFile(options.chatPath)) {
@@ -153,14 +153,14 @@ export async function evaluateAcuCoverage(
 						tableValues.some((value) => value.includes(answerText));
 					let kindScore = byKind.get(question.kind);
 					if (!kindScore) {
-						kindScore = createScore();
+						kindScore = emptyCounts(SCORE_KEYS);
 						byKind.set(question.kind, kindScore);
 					}
 					recordCovered(kindScore, covered);
 					const bucket = answerLengthBucket(answerText.length);
 					let lengthScore = byLength.get(bucket);
 					if (!lengthScore) {
-						lengthScore = createScore();
+						lengthScore = emptyCounts(SCORE_KEYS);
 						byLength.set(bucket, lengthScore);
 					}
 					recordCovered(lengthScore, covered);
@@ -200,12 +200,12 @@ export async function evaluateAcuCoverage(
 	const kindScores: AcuKindScore[] = [];
 	for (const kind of KIND_ORDER) {
 		const score = byKind.get(kind);
-		if (score) kindScores.push({ kind, ...toScore(score) });
+		if (score) kindScores.push({ kind, ...score });
 	}
 	const lengthScores: AcuLengthScore[] = [];
 	for (const bucket of ANSWER_LENGTH_BUCKETS) {
 		const score = byLength.get(bucket.label);
-		if (score) lengthScores.push({ label: bucket.label, ...toScore(score) });
+		if (score) lengthScores.push({ label: bucket.label, ...score });
 	}
 	return {
 		story: storyId,
@@ -213,7 +213,7 @@ export async function evaluateAcuCoverage(
 		snapshotFloorCount,
 		byKind: kindScores,
 		byAnswerLength: lengthScores,
-		...toScore(total),
+		...total,
 	};
 }
 
@@ -256,38 +256,38 @@ export async function collectAcuBaseline(
 		);
 	}
 
-	const total = createScore();
+	const total = emptyCounts(SCORE_KEYS);
 	const byKind = new Map<QuestionKind, MutableScore>();
 	const byLength = new Map<string, MutableScore>();
 	for (const story of stories) {
 		if (!story.applicable) continue;
-		addScore(total, story);
+		addCounts(total, story);
 		for (const score of story.byKind) {
 			let target = byKind.get(score.kind);
 			if (!target) {
-				target = createScore();
+				target = emptyCounts(SCORE_KEYS);
 				byKind.set(score.kind, target);
 			}
-			addScore(target, score);
+			addCounts<(typeof SCORE_KEYS)[number]>(target, score);
 		}
 		for (const score of story.byAnswerLength) {
 			let target = byLength.get(score.label);
 			if (!target) {
-				target = createScore();
+				target = emptyCounts(SCORE_KEYS);
 				byLength.set(score.label, target);
 			}
-			addScore(target, score);
+			addCounts<(typeof SCORE_KEYS)[number]>(target, score);
 		}
 	}
 	const kindScores: AcuKindScore[] = [];
 	for (const kind of KIND_ORDER) {
 		const score = byKind.get(kind);
-		if (score) kindScores.push({ kind, ...toScore(score) });
+		if (score) kindScores.push({ kind, ...score });
 	}
 	const lengthScores: AcuLengthScore[] = [];
 	for (const bucket of ANSWER_LENGTH_BUCKETS) {
 		const score = byLength.get(bucket.label);
-		if (score) lengthScores.push({ label: bucket.label, ...toScore(score) });
+		if (score) lengthScores.push({ label: bucket.label, ...score });
 	}
 
 	return {
@@ -295,12 +295,8 @@ export async function collectAcuBaseline(
 		stories,
 		byKind: kindScores,
 		byAnswerLength: lengthScores,
-		total: toScore(total),
+		total,
 	};
-}
-
-function createScore(): MutableScore {
-	return { questionCount: 0, coveredCount: 0 };
 }
 
 function answerLengthBucket(length: number): string {
@@ -313,18 +309,6 @@ function answerLengthBucket(length: number): string {
 function recordCovered(score: MutableScore, covered: boolean): void {
 	score.questionCount += 1;
 	if (covered) score.coveredCount += 1;
-}
-
-function addScore(target: MutableScore, source: AcuScore): void {
-	target.questionCount += source.questionCount;
-	target.coveredCount += source.coveredCount;
-}
-
-function toScore(score: MutableScore): AcuScore {
-	return {
-		questionCount: score.questionCount,
-		coveredCount: score.coveredCount,
-	};
 }
 
 function collectSnapshotValues(
@@ -599,11 +583,4 @@ class AcuTableDatabase {
 
 function quoteIdentifier(name: string): string {
 	return `"${name.replaceAll('"', '""')}"`;
-}
-
-function requireNonEmpty(value: string, label: string): string {
-	if (typeof value !== "string" || value.length === 0) {
-		throw new Error(`${label} 必须是非空字符串`);
-	}
-	return value;
 }

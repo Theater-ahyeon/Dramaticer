@@ -132,7 +132,8 @@
   做什么：`hasRenderSibling` 跳过 `disabled` 的兄弟脚本；删除 `classifyCore` 里不可达的最后一个分支；`analyzeDuplication` 入口统一校验 `ngramSize`、`windowSize`、`step`、`riseWindows` 为正整数；`token-estimate` 补谚文区间；`countMacros` 取消导出（测试改用 `scanMacros`），`REGEX_CATEGORY_ORDER` 取消导出。
   验收：新增“启用流式 + 停用渲染 → 不可升级”“三个非法参数各抛错”“韩文 token 估算”用例；报告里的可升级比例随启发式修正重新生成；`pnpm check` 通过。
 
-- [ ] **M0-FIX-9 评测集 CLI 与题目文件** | 依赖：M0-REVIEW-1
+- [x] **M0-FIX-9 评测集 CLI 与题目文件** | 依赖：M0-REVIEW-1
+  完成：2026-11-07 `readQuestionFile` 拒绝重复 id 并给出两处文件与行号；事件题模型输出缺字段或类型不符的条目逐条计入失败记录，空数组窗口记“模型输出里没有题目”；抽样改为按 id 哈希的 `sampleDeterministic`，状态题与事件抽查连续运行样本一致；`EventQuestionStats` 删除 `messageCount`、`floorCount`、`questionCount`；state CLI 拆出可测试的 `assertStateQuestionCount` 与 `writeStateSummary`；`event-cli --story` 只写 `spotcheck-<故事>.md` 与 `event-summary-<故事>.json`，不覆盖全局产物；`.env` 缺失由 `loadDotEnv` 抛错并带路径；计分与 `requireNonEmpty` 合并到 `evalset/shared.ts`；新增 19 个测试，门禁通过（221 个测试）
   做什么：`readQuestionFile` 拒绝重复 `id` 并给出文件与行号；事件题解析阶段的结构校验失败计入失败记录；20% 抽查与状态题抽样改为确定性（固定种子或 id 哈希），连续两次运行样本一致；`event-cli` 的 `--story` 运行时按故事分别写文件、汇总时合并已有条目，不覆盖全局 `spotcheck.md` 与 `event-summary.json`；删除 `EventQuestionStats` 里没有读取方的三个字段；给 `*FromFile` 包装、`sanitizeFileName`、`storyIdOf`、`evalset/cli.ts` 的题量区间与 `summary.json` 写出、`event-cli` 的 `.env` 缺失错误补测试；合并 evalset 内重复的计分与 `requireNonEmpty` 辅助。
   验收：新增测试覆盖上述每一条；`.env` 缺失时错误信息包含文件路径；`pnpm check` 通过（不调用 LLM，使用注入的假客户端）。
 

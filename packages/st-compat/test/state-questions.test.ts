@@ -1,17 +1,23 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { StoryStore } from "@dramaticer/core";
 import { describe, expect, it, onTestFinished } from "vitest";
 import type { JsonObject, JsonValue } from "../src/index.js";
 import {
 	buildStateQuestions,
+	buildStateQuestionsFromFile,
 	importChatToStore,
 	isJsonObject,
 	parseChatJsonl,
 	readSnapshot,
 	verifyStateQuestions,
+	verifyStateQuestionsFromFile,
 } from "../src/index.js";
 import { snapshotAt } from "./store-replay.js";
 
 const storyId = "story-state";
+const testDir = path.dirname(fileURLToPath(import.meta.url));
 
 function buildLines(): string[] {
 	const lines = [JSON.stringify({ character_name: "测试角色" })];
@@ -133,6 +139,35 @@ describe("buildStateQuestions", () => {
 		const keys = result.questions.map((question) => question.path.join("."));
 		expect(new Set(keys).size).toBe(keys.length);
 		expect(result.questions).toHaveLength(4);
+	});
+
+	it("FromFile 包装与内存版本结果一致", async () => {
+		const lines = buildLines();
+		const dir = await mkdtemp(path.join(testDir, ".tmp-state-"));
+		try {
+			const filePath = path.join(dir, "chat.jsonl");
+			await writeFile(filePath, `${lines.join("\n")}\n`, "utf8");
+			const options = {
+				storyId,
+				minQuestions: 1,
+				maxQuestions: 20,
+			};
+			const fromFile = await buildStateQuestionsFromFile(filePath, options);
+			const fromMemory = await buildStateQuestions(
+				parseChatJsonl([lines.join("\n")]),
+				options,
+			);
+			expect(fromFile.questions).toEqual(fromMemory.questions);
+			const verification = await verifyStateQuestionsFromFile(
+				filePath,
+				fromFile.questions,
+				{ storyId },
+			);
+			expect(verification.checked).toBe(fromFile.questions.length);
+			expect(verification.failures).toEqual([]);
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
 	});
 });
 

@@ -10,6 +10,7 @@ import {
 	swipeNodeId,
 } from "../node-id.js";
 import { readSnapshot } from "../state-diff.js";
+import { requireNonEmpty } from "./shared.js";
 
 export type StateAnswer = string | number | boolean;
 
@@ -552,11 +553,4 @@ function scalarAnswer(value: JsonValue): StateAnswer | undefined {
 	}
 	if (typeof value === "boolean") return value;
 	return undefined;
-}
-
-function requireNonEmpty(value: string, label: string): string {
-	if (typeof value !== "string" || value.length === 0) {
-		throw new Error(`${label} 必须是非空字符串`);
-	}
-	return value;
 }

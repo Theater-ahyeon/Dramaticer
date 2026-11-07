@@ -1,12 +1,18 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { LlmClient, LlmRequest, LlmResult } from "@dramaticer/core";
 import { describe, expect, it } from "vitest";
 import {
 	buildEventQuestions,
+	buildEventQuestionsFromFile,
 	parseChatJsonl,
 	verifyEventQuestions,
+	verifyEventQuestionsFromFile,
 } from "../src/index.js";
 
 const storyId = "story-event";
+const testDir = path.dirname(fileURLToPath(import.meta.url));
 
 function buildLines(count = 64): string[] {
 	const lines = [JSON.stringify({ character_name: "测试角色" })];
@@ -244,6 +250,85 @@ describe("buildEventQuestions", () => {
 				options(),
 			),
 		).rejects.toThrow(/只生成了 0 道有效事件题/);
+	});
+
+	it("模型输出里缺字段的条目计入失败记录", async () => {
+		const { result } = await build((request, call) => {
+			const ids = promptFloorIds(userPrompt(request));
+			if (call === 1) {
+				return JSON.stringify([
+					{
+						question: "合法问题？",
+						answer: "合法答案",
+						evidenceNodes: [ids[0]],
+					},
+					{ question: "缺少答案", evidenceNodes: [ids[0]] },
+					"不是对象",
+				]);
+			}
+			return JSON.stringify([
+				{
+					question: `第 ${call} 次的问题？`,
+					answer: "答案",
+					evidenceNodes: [ids[0]],
+				},
+			]);
+		});
+		const reasons = result.failures.map((failure) => failure.reason);
+		expect(reasons).toContain(
+			"模型输出的第 2 条题目缺少 question、answer 或 evidenceNodes",
+		);
+		expect(reasons).toContain("模型输出的第 3 条题目不是对象");
+	});
+
+	it("模型返回空数组时每个窗口都记一条失败", async () => {
+		const client = fakeClient(() => "[]");
+		await expect(
+			buildEventQuestions(
+				parseChatJsonl([buildLines().join("\n")]),
+				client,
+				options(),
+			),
+		).rejects.toThrow(/模型输出里没有题目/);
+	});
+
+	it("FromFile 包装与内存版本结果一致", async () => {
+		const lines = buildLines();
+		const dir = await mkdtemp(path.join(testDir, ".tmp-event-"));
+		try {
+			const filePath = path.join(dir, "chat.jsonl");
+			await writeFile(filePath, `${lines.join("\n")}\n`, "utf8");
+			const client = fakeClient((request) => {
+				const ids = promptFloorIds(userPrompt(request));
+				return JSON.stringify([
+					{
+						question: `第 ${ids[0]} 楼发生了什么？`,
+						answer: "发生了事件",
+						evidenceNodes: [ids[0]],
+					},
+				]);
+			});
+			const fromFile = await buildEventQuestionsFromFile(
+				filePath,
+				client,
+				options(),
+			);
+			const fromMemory = await buildEventQuestions(
+				parseChatJsonl([lines.join("\n")]),
+				client,
+				options(),
+			);
+			expect(fromFile.questions).toEqual(fromMemory.questions);
+			const verification = await verifyEventQuestionsFromFile(
+				filePath,
+				fromFile.questions,
+				{ storyId, minEvidenceGap: 1 },
+			);
+			expect(verification.checked).toBe(fromFile.questions.length);
+			expect(verification.failures).toEqual([]);
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
 	});
 
 	it("没有足够窗口时直接报错", async () => {

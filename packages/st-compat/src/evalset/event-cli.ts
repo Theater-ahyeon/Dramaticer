@@ -1,5 +1,3 @@
-import { randomInt } from "node:crypto";
-import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,16 +5,27 @@ import { OpenAiCompatibleClient } from "@dramaticer/core";
 import { parseChatJsonlFile } from "../chat-jsonl.js";
 import { readSnapshotManifest } from "../health/manifest.js";
 import { messageNodeId } from "../node-id.js";
+import { loadDotEnv } from "./env.js";
+import {
+	type EvidenceExcerpt,
+	eventSpotcheckPath,
+	eventSummaryPath,
+	renderSpotcheck,
+} from "./event-output.js";
 import {
 	type EventQuestion,
 	buildEventQuestionsFromFile,
 	verifyEventQuestionsFromFile,
 } from "./event-questions.js";
-import { sanitizeFileName, storyIdOf } from "./question-files.js";
+import {
+	sampleDeterministic,
+	sanitizeFileName,
+	storyIdOf,
+} from "./question-files.js";
 
 const repoRoot = fileURLToPath(new URL("../../../../", import.meta.url));
 const envPath = path.join(repoRoot, ".env");
-if (existsSync(envPath)) process.loadEnvFile(envPath);
+loadDotEnv(envPath);
 
 const rawRoot = path.join(repoRoot, "eval-private", "raw");
 const outputRoot = path.join(repoRoot, "eval-private", "evalset");
@@ -161,21 +170,22 @@ for (const file of chatFiles) {
 	);
 }
 
+const generatedAt = new Date().toISOString();
 const spotcheckCount = Math.max(1, Math.round(allQuestions.length * 0.2));
-const spotcheck = sample(allQuestions, spotcheckCount);
+const spotcheck = sampleDeterministic(allQuestions, spotcheckCount);
+const spotcheckPath = eventSpotcheckPath(outputRoot, onlyStory);
+const summaryPath = eventSummaryPath(outputRoot, onlyStory);
 await mkdir(outputRoot, { recursive: true });
 await writeFile(
-	path.join(outputRoot, "spotcheck.md"),
-	renderSpotcheck(spotcheck, allQuestions.length, excerptsByNode),
+	spotcheckPath,
+	renderSpotcheck(spotcheck, allQuestions.length, excerptsByNode, generatedAt),
 	"utf8",
 );
-
-const summaryPath = path.join(outputRoot, "event-summary.json");
 await writeFile(
 	summaryPath,
 	`${JSON.stringify(
 		{
-			generatedAt: new Date().toISOString(),
+			generatedAt,
 			baseUrl,
 			model,
 			requestsPerMinute,
@@ -190,16 +200,8 @@ await writeFile(
 	"utf8",
 );
 console.log(`事件题已写入 ${outputRoot}`);
-console.log(
-	`抽查文件：${path.join(outputRoot, "spotcheck.md")}（${spotcheckCount} 题）`,
-);
+console.log(`抽查文件：${spotcheckPath}（${spotcheckCount} 题）`);
 console.log(`汇总：${summaryPath}`);
-
-interface EvidenceExcerpt {
-	readonly nodeId: string;
-	readonly name: string;
-	readonly text: string;
-}
 
 async function collectEvidenceExcerpts(
 	chatPath: string,
@@ -224,61 +226,6 @@ async function collectEvidenceExcerpts(
 		if (found.size === wanted.size) break;
 	}
 	return found;
-}
-
-function sample<T>(items: readonly T[], count: number): T[] {
-	const copy = [...items];
-	for (let index = copy.length - 1; index > 0; index -= 1) {
-		const swapIndex = randomInt(index + 1);
-		const current = copy[index];
-		const other = copy[swapIndex];
-		if (current === undefined || other === undefined) continue;
-		copy[index] = other;
-		copy[swapIndex] = current;
-	}
-	return copy.slice(0, Math.min(count, copy.length));
-}
-
-function renderSpotcheck(
-	questions: readonly EventQuestion[],
-	total: number,
-	excerpts: ReadonlyMap<string, EvidenceExcerpt>,
-): string {
-	const lines = [
-		"# 事件题抽查",
-		"",
-		`生成时间：${new Date().toISOString()}`,
-		`从 ${total} 道事件题里随机抽取 ${questions.length} 道（20%）。`,
-		"用途：对照 `eval-private/raw/` 里的对话原文，核对问题、答案和证据楼层是否一致。这一项是可选的，不阻塞任何任务。",
-		"",
-	];
-	for (const question of questions) {
-		lines.push(`## ${question.id}`, "");
-		lines.push(`- 故事：\`${question.story}\``);
-		lines.push(`- 提问楼层：\`${question.askAtNode}\``);
-		lines.push(`- 问题：${oneLine(question.question)}`);
-		lines.push(`- 标准答案：${oneLine(question.answer)}`);
-		lines.push(
-			`- 证据楼层：${question.evidenceNodes.map((nodeId) => `\`${nodeId}\``).join("、")}`,
-		);
-		lines.push("");
-		for (const nodeId of question.evidenceNodes) {
-			const excerpt = excerpts.get(nodeId);
-			if (!excerpt) {
-				lines.push(`> \`${nodeId}\`（没有找到原文）`, "");
-				continue;
-			}
-			lines.push(
-				`> \`${nodeId}\` ${oneLine(excerpt.name)}：${oneLine(excerpt.text).slice(0, 400)}`,
-				"",
-			);
-		}
-	}
-	return `${lines.join("\n")}\n`;
-}
-
-function oneLine(text: string): string {
-	return text.replace(/\s+/g, " ").trim();
 }
 
 /** 支持 `--story <id>` 与 `--story=<id>`，用于只重跑一个对话。 */

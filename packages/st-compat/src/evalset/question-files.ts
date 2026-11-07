@@ -32,19 +32,63 @@ export async function readQuestionFile(
 ): Promise<RetrievalQuestion[]> {
 	const text = await readFile(filePath, "utf8");
 	const questions: RetrievalQuestion[] = [];
+	const firstLineById = new Map<string, number>();
 	const lines = text.split(/\r?\n/);
 	lines.forEach((line, index) => {
 		if (line.trim() === "") return;
-		const label = `${filePath}:${index + 1}`;
+		const lineNumber = index + 1;
+		const label = `${filePath}:${lineNumber}`;
 		let value: unknown;
 		try {
 			value = JSON.parse(line);
 		} catch {
 			throw new Error(`${label} 不是合法的 JSON`);
 		}
-		questions.push(parseQuestion(value, label, kind));
+		const question = parseQuestion(value, label, kind);
+		const firstLine = firstLineById.get(question.id);
+		if (firstLine !== undefined) {
+			throw new Error(
+				`${label} 的 id ${question.id} 与 ${filePath}:${firstLine} 重复`,
+			);
+		}
+		firstLineById.set(question.id, lineNumber);
+		questions.push(question);
 	});
 	return questions;
+}
+
+/**
+ * 按题目 id 的哈希抽取固定数量的题目，顺序保持输入顺序。
+ * 同一份题目连续运行会得到相同的样本，便于复现人工抽查结果。
+ */
+export function sampleDeterministic<T extends { readonly id: string }>(
+	items: readonly T[],
+	count: number,
+): T[] {
+	if (count <= 0) return [];
+	if (count >= items.length) return [...items];
+	const ranked = items
+		.map((item, index) => ({
+			item,
+			index,
+			hash: hashQuestionId(item.id),
+		}))
+		.sort((left, right) => {
+			if (left.hash !== right.hash) return left.hash - right.hash;
+			const byId = left.item.id.localeCompare(right.item.id);
+			return byId !== 0 ? byId : left.index - right.index;
+		});
+	const chosen = new Set(ranked.slice(0, count).map((entry) => entry.index));
+	return items.filter((_, index) => chosen.has(index));
+}
+
+function hashQuestionId(value: string): number {
+	let hash = 0x811c9dc5;
+	for (let index = 0; index < value.length; index += 1) {
+		hash ^= value.charCodeAt(index);
+		hash = Math.imul(hash, 0x01000193) >>> 0;
+	}
+	return hash;
 }
 
 function parseQuestion(

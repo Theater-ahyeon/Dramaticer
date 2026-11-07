@@ -3,6 +3,7 @@ import type { StChatEntry, StChatMessage } from "../chat-jsonl.js";
 import { parseChatJsonlFile } from "../chat-jsonl.js";
 import { isJsonObject } from "../json.js";
 import { messageNodeId, parseMessageIndex } from "../node-id.js";
+import { requireNonEmpty } from "./shared.js";
 
 export interface EventQuestion {
 	readonly id: string;
@@ -45,8 +46,6 @@ export interface EventQuestionFailure {
 
 export interface EventQuestionStats {
 	readonly story: string;
-	readonly messageCount: number;
-	readonly floorCount: number;
 	readonly availableWindowCount: number;
 	readonly windowCount: number;
 	readonly requestCount: number;
@@ -56,7 +55,6 @@ export interface EventQuestionStats {
 	readonly completionTokens: number;
 	readonly reasoningTokens: number;
 	readonly candidateCount: number;
-	readonly questionCount: number;
 }
 
 export interface EventQuestionBuildResult {
@@ -191,9 +189,9 @@ export async function buildEventQuestions(
 		completionTokens += result.usage.completionTokens ?? 0;
 		reasoningTokens += result.usage.reasoningTokens ?? 0;
 
-		let items: readonly ModelQuestion[];
+		let parsed: ParsedModelQuestions;
 		try {
-			items = parseModelQuestions(result.text);
+			parsed = parseModelQuestions(result.text);
 		} catch (error) {
 			failedWindows += 1;
 			failures.push({
@@ -202,9 +200,18 @@ export async function buildEventQuestions(
 			});
 			continue;
 		}
+		for (const rejection of parsed.rejected) {
+			failures.push({ askAtNode: askFloor.nodeId, reason: rejection });
+		}
+		if (parsed.items.length === 0 && parsed.rejected.length === 0) {
+			failures.push({
+				askAtNode: askFloor.nodeId,
+				reason: "模型输出里没有题目",
+			});
+		}
 
 		const accepted: Candidate[] = [];
-		for (const item of items) {
+		for (const item of parsed.items) {
 			const candidate = validateCandidate(
 				item,
 				window,
@@ -273,8 +280,6 @@ export async function buildEventQuestions(
 		questions,
 		stats: {
 			story: resolved.storyId,
-			messageCount: chat.messageCount,
-			floorCount: chat.floors.length,
 			availableWindowCount: allWindows.length,
 			windowCount: windows.length,
 			requestCount,
@@ -284,7 +289,6 @@ export async function buildEventQuestions(
 			completionTokens,
 			reasoningTokens,
 			candidateCount,
-			questionCount: questions.length,
 		},
 		failures,
 	};
@@ -521,7 +525,12 @@ function truncateFloor(text: string, limit: number): string {
 	return `${text.slice(0, limit)}…（后续内容已截断）`;
 }
 
-function parseModelQuestions(text: string): readonly ModelQuestion[] {
+interface ParsedModelQuestions {
+	readonly items: readonly ModelQuestion[];
+	readonly rejected: readonly string[];
+}
+
+function parseModelQuestions(text: string): ParsedModelQuestions {
 	const body = stripCodeFence(text.trim());
 	const parsed = tryParseJson(body) ?? tryParseJson(extractJson(body));
 	if (parsed === undefined) {
@@ -536,22 +545,28 @@ function parseModelQuestions(text: string): readonly ModelQuestion[] {
 		throw new Error("模型输出的 JSON 不是数组，也没有 questions 数组");
 	}
 	const items: ModelQuestion[] = [];
-	for (const item of list) {
-		if (!isJsonObject(item)) continue;
+	const rejected: string[] = [];
+	list.forEach((item, index) => {
+		const label = `模型输出的第 ${index + 1} 条题目`;
+		if (!isJsonObject(item)) {
+			rejected.push(`${label}不是对象`);
+			return;
+		}
 		if (
 			typeof item.question !== "string" ||
 			typeof item.answer !== "string" ||
 			!isStringArray(item.evidenceNodes)
 		) {
-			continue;
+			rejected.push(`${label}缺少 question、answer 或 evidenceNodes`);
+			return;
 		}
 		items.push({
 			question: item.question.trim(),
 			answer: item.answer.trim(),
 			evidenceNodes: item.evidenceNodes.map((id) => id.trim()),
 		});
-	}
-	return items;
+	});
+	return { items, rejected };
 }
 
 function isStringArray(value: unknown): value is string[] {
@@ -706,11 +721,4 @@ function verifyQuestion(
 		}
 	}
 	return null;
-}
-
-function requireNonEmpty(value: string, label: string): string {
-	if (typeof value !== "string" || value.trim().length === 0) {
-		throw new Error(`${label} 必须是非空字符串`);
-	}
-	return value;
 }

@@ -15,6 +15,7 @@ import {
 	sanitizeFileName,
 	storyIdOf,
 } from "./question-files.js";
+import { addCounts, emptyCounts, requireNonEmpty } from "./shared.js";
 
 const DEFAULT_MAX_CHARS = 400;
 const DEFAULT_OVERLAP_CHARS = 80;
@@ -65,12 +66,9 @@ export interface CollectRetrievalBaselineOptions {
 	readonly generatedAt?: string;
 }
 
-interface MutableScore {
-	questionCount: number;
-	hitAt5: number;
-	hitAt10: number;
-	hitAt20: number;
-}
+const SCORE_KEYS = ["questionCount", "hitAt5", "hitAt10", "hitAt20"] as const;
+
+type MutableScore = Record<(typeof SCORE_KEYS)[number], number>;
 
 /**
  * 朴素 BM25 基线：把每个楼层按固定窗口切块写入 FTS5，题目只在提问楼层之前的楼层里检索。
@@ -106,7 +104,7 @@ export async function evaluateRetrieval(
 		}
 		index.add(chunks);
 
-		const total = createScore();
+		const total = emptyCounts(SCORE_KEYS);
 		const byKind = new Map<QuestionKind, MutableScore>();
 		for (const question of options.questions) {
 			if (question.story !== storyId) {
@@ -135,7 +133,7 @@ export async function evaluateRetrieval(
 			);
 			let score = byKind.get(question.kind);
 			if (!score) {
-				score = createScore();
+				score = emptyCounts(SCORE_KEYS);
 				byKind.set(question.kind, score);
 			}
 			recordHits(score, hits);
@@ -145,14 +143,14 @@ export async function evaluateRetrieval(
 		const kindScores: RetrievalKindScore[] = [];
 		for (const kind of KIND_ORDER) {
 			const score = byKind.get(kind);
-			if (score) kindScores.push({ kind, ...toScore(score) });
+			if (score) kindScores.push({ kind, ...score });
 		}
 		return {
 			story: storyId,
 			floorCount,
 			chunkCount: index.count(),
 			byKind: kindScores,
-			total: toScore(total),
+			total,
 		};
 	} finally {
 		index.close();
@@ -202,23 +200,23 @@ export async function collectRetrievalBaseline(
 		);
 	}
 
-	const total = createScore();
+	const total = emptyCounts(SCORE_KEYS);
 	const byKind = new Map<QuestionKind, MutableScore>();
 	for (const story of stories) {
-		addScore(total, story.total);
+		addCounts(total, story.total);
 		for (const score of story.byKind) {
 			let target = byKind.get(score.kind);
 			if (!target) {
-				target = createScore();
+				target = emptyCounts(SCORE_KEYS);
 				byKind.set(score.kind, target);
 			}
-			addScore(target, score);
+			addCounts<(typeof SCORE_KEYS)[number]>(target, score);
 		}
 	}
 	const kindScores: RetrievalKindScore[] = [];
 	for (const kind of KIND_ORDER) {
 		const score = byKind.get(kind);
-		if (score) kindScores.push({ kind, ...toScore(score) });
+		if (score) kindScores.push({ kind, ...score });
 	}
 
 	return {
@@ -227,7 +225,7 @@ export async function collectRetrievalBaseline(
 		overlapChars,
 		stories,
 		byKind: kindScores,
-		total: toScore(total),
+		total,
 	};
 }
 
@@ -242,36 +240,9 @@ function dedupeByNodeId(matches: readonly ChunkMatch[]): ChunkMatch[] {
 	return unique;
 }
 
-function createScore(): MutableScore {
-	return { questionCount: 0, hitAt5: 0, hitAt10: 0, hitAt20: 0 };
-}
-
 function recordHits(score: MutableScore, hits: readonly boolean[]): void {
 	score.questionCount += 1;
 	if (hits[0]) score.hitAt5 += 1;
 	if (hits[1]) score.hitAt10 += 1;
 	if (hits[2]) score.hitAt20 += 1;
-}
-
-function addScore(target: MutableScore, source: RetrievalScore): void {
-	target.questionCount += source.questionCount;
-	target.hitAt5 += source.hitAt5;
-	target.hitAt10 += source.hitAt10;
-	target.hitAt20 += source.hitAt20;
-}
-
-function toScore(score: MutableScore): RetrievalScore {
-	return {
-		questionCount: score.questionCount,
-		hitAt5: score.hitAt5,
-		hitAt10: score.hitAt10,
-		hitAt20: score.hitAt20,
-	};
-}
-
-function requireNonEmpty(value: string, label: string): string {
-	if (typeof value !== "string" || value.length === 0) {
-		throw new Error(`${label} 必须是非空字符串`);
-	}
-	return value;
 }
