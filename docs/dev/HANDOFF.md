@@ -14,11 +14,11 @@
   - 两类信号同时命中时按优先级只输出一条：文字重复 40、场景停滞 25（线索年龄 30、线索数量 20、事件池 10）。`signals.repetition` 保存节拍、相似度序列、窗口均值、上升段、场景序列、缺失计数与 `thresholdSource: "ADR-0025"`。
   - 配置新增 `similarityThreshold`、`similarityWindow`、`similarityStep`、`similarityRiseWindows`、`similarityRiseDelta`、`similarityRiseMinimum`、`scenePath`（可选）、`sceneRepeatThreshold`，默认值按 ADR-0025 写入 `DEFAULT_DIRECTOR_CONFIG`；非法窗口、阈值或场景配置在评估时抛错。
   - `readStateValue` 从 `tools/read-tools.ts` 抽到 `state.ts`，读取工具改用同一实现。
-  - 测试：新增 `packages/core/test/repetition.test.ts`（9 个，含块向量读取、平均向量与余弦、连续上升与单峰、缺失向量、状态与事件两种场景来源、两类信号只取一条、默认参数、非法配置）。既有导演测试与 `chat-cli` 的机制列表断言补上 `repetition`。门禁 `pnpm check` 通过（68 个测试文件、551 个测试；3 个 live 跳过）。
+  - 测试：新增 `packages/core/test/repetition.test.ts`（9 个，含块向量读取、平均向量与余弦、连续上升与单峰、缺失向量、状态与事件两种场景来源、两类信号只取一条、默认参数、非法配置）。既有导演测试与 `chat-cli` 的机制列表断言补上 `repetition`。门禁 `pnpm check` 通过（68 个测试文件、552 个测试；3 个 live 跳过）。
 
 ## 当前状态
 - M0、M1、M2、D-T01 至 D-T04、M3-T00 至 M3-T06 完成。
-- 门禁：`pnpm check` 通过（551 个测试）；live 测试需要 `DRAMATICER_LIVE=1`。
+- 门禁：`pnpm check` 通过（552 个测试）；live 测试需要 `DRAMATICER_LIVE=1`。
 - 数据库 schema 版本 16。
 - 快照：`eval-private/raw/` 有 94 个文件；manifest 记录 `corpus` 与 `sourceMtime`。`eval-private/reference/` 有 5 部参照小说。
 - 事件表仍未建立；记忆评测的事件路记 0，M3 不要引用这组事件数字。
