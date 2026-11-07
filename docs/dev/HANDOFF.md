@@ -3,20 +3,17 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：68
-- 任务：M4-T02 故事运行配置与模板持久化
+- 会话：69
+- 任务：M4-T03 重新生成助手楼层
 - 结果：完成（`DONE`）。
-  - 迁移 v17：`story_settings`（每个故事一行，`template_id` 可空）与 `context_templates`（`name` 唯一）。
-  - `packages/core/src/store/settings.ts`：`StorySettings`、`StorySettingsUpdate`、`ContextTemplateRecord`、创建与更新输入、默认值、校验函数。
-  - `StoryStore`：`getStorySettings`（缺失返回默认值，不写库）、`updateStorySettings`（合并更新，`null` 清空）、`createContextTemplate`、`getContextTemplate`、`listContextTemplates`、`updateContextTemplate`、`deleteContextTemplate`。校验枚举、数值范围、模板结构（至少一个片段）、`director_config` 与未知字段；`template_id` 可以指向内置模板 id，被故事引用的模板拒绝删除。
-  - core 新增 `createCharacterSlotProvider` 与 `createStandardChatProviders`；`DEFAULT_CONTEXT_TEMPLATE_ID` 移到 `context/template.ts`；`assertDirectorConfig` 从 `director/evaluate.ts` 导出。
-  - st-compat：`importCardContent` 返回 `{characterPrompt, cardName}`；`createChatProviders` 委托 `createStandardChatProviders`；`dramaticer chat` 的 `--card` 变为可选（首次运行必需），导入后把卡名与提示词写入故事设置，之后优先使用库里的提示词，故事设置里的模板优先于内置模板。
-  - protocol 的 `settings.ts` 改为从 core 复用类型，字段一致。
-  - 12 个新测试：6 个设置与模板存储、3 个槽位工厂、3 个 CLI（无卡运行、缺少卡报错、故事模板优先）。
-  - 门禁通过：invariants、`tsc -b`、biome、vitest 582 个测试。
+  - `packages/core/src/chat/turn.ts` 从 `runChatTurn` 抽出 `generateAssistantTurn`：接收现有用户楼层 id，校验故事、楼层归属与角色，组装上下文、流式生成、解析块、写状态 diff、笔记与新 Trace，全部写在该用户楼层下新建的助手楼层上。
+  - 新增 `regenerateAssistantTurn`：接收 `assistantNodeId`，校验楼层存在、属于该故事、角色为 `assistant` 且存在父节点；用父用户楼层作为本轮输入，在父节点下追加助手兄弟节点并把 head 移过去。旧楼层原文、旧 diff 与旧 Trace 保持不变。
+  - `runChatTurn` 改为追加用户楼层后调用 `generateAssistantTurn`，CLI 行为不变。
+  - 新增 `packages/core/test/regenerate-turn.test.ts`：3 个测试覆盖文本标签模式的兄弟节点、head 与路径、旧楼层与旧 Trace 不变、新 diff 与新笔记归属；父楼层不是用户楼层、缺少父楼层、楼层不存在、`generateAssistantTurn` 收到非用户楼层时的抛错；函数调用模式下重新生成仍是一次主调用加一轮读取工具（2 次请求），写入类工具落在新楼层。
+  - 门禁通过：invariants、`tsc -b`、biome、vitest 585 个测试。
 
 ## 当前状态
-- M0、M1、M2、M3、D-T01 至 D-T04、M4-T00 至 M4-T02 完成；M4-T03 待做。
+- M0、M1、M2、M3、D-T01 至 D-T04、M4-T00 至 M4-T03 完成；M4-T04 待做。
 - 数据库 schema 版本 17。
 - `packages/server` 与 `packages/web` 尚未创建。server 应依赖 core、st-compat 与 protocol；web 只依赖 protocol 与浏览器 API。
 - `story_settings` 默认值：`budgetTokens` 12000、`structuredOutput` `text-tags`、`temperature` 0.8、`maxTokens` 1024、`reasoning` `low`、导演使用默认配置。
@@ -27,12 +24,10 @@
 - 兼容线 C-T00 排在 M4 之后，与 M4 的沙箱渲染器衔接。
 
 ## 下一步
-- **M4-T03 重新生成助手楼层**，依赖 M1-T07、M2-T01，可以直接执行。
-  - 从 `runChatTurn` 抽出 `generateAssistantTurn`：接收现有用户楼层 id，不再追加用户楼层。
-  - `regenerateAssistantTurn(assistantNodeId)` 找到父用户楼层，用父楼层 raw 作为本轮输入，在父节点下新建助手兄弟节点并把 head 移过去。
-  - `runChatTurn` 改为先追加用户楼层再调用 `generateAssistantTurn`。
-  - 验收：兄弟节点、旧节点与旧 Trace 不变、head 正确；父节点不是用户楼层时抛错；函数调用模式仍只有一次主调用与最多 2 轮读取；状态 diff、笔记与新 Trace 写在新楼层。
-- 之后按 TASKS 顺序：M4-T04 server 骨架与认证、M4-T05 故事导入与设置接口。
+- **M4-T04 server 骨架、认证与静态资源**，依赖 M4-T01，可以直接执行。
+  - 新增 `packages/server`（`@dramaticer/server`），使用 `node:http`，不引入 Web 框架；提供 `dramaticer-serve` 入口，参数 `--db`、`--port`（默认 8787）、`--host`（默认 127.0.0.1）、`--channels`、`--web`。
+  - 绑定非回环地址且没有设置 `DRAMATICER_SERVER_PASSWORD` 时拒绝启动；设置密码后 `/api/login` 用 `timingSafeEqual` 校验，成功后发 `HttpOnly; SameSite=Strict` 会话 cookie（内存会话表），除 `/api/health` 与 `/api/login` 外全部要求会话；状态变更请求校验 `Origin`。
+- 之后按 TASKS 顺序：M4-T05 server 故事、导入与设置接口；M4-T06 server 运行时与 SSE 对话（会用到本会话的 `generateAssistantTurn` 与 M4-T03 的重新生成）。
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
@@ -52,6 +47,7 @@
 - 渠道行为（ADR-0009、ADR-0011）：`reasoning:"off"` 在该渠道仍会输出思考并消耗输出 token；abort 后 `usage` 全为 0；gcli2api 必须把 Gemini API 路径挂在 baseUrl 根下；该渠道不支持预填充。
 - live 测试用 `DRAMATICER_LIVE=1` 开启；`*.live.test.ts` 会被门禁的 I10 扫描排除。
 - Director 机制新增时同步更新既有测试里的机制列表断言：`director.test.ts`、`director-event-pool.test.ts`、`lore.test.ts`、`packages/st-compat/test/chat-cli.test.ts`。
+- 函数调用模式的读取工具列表会随 `READ_TOOLS` 变化；测试不要断言完整列表，只断言写入工具在前、包含用到的读取工具。
 - M4 新增 `packages/server`、`packages/web`；server 使用 `node:http`，默认只监听 127.0.0.1，绑定非回环地址必须设置 `DRAMATICER_SERVER_PASSWORD`。
 - Playwright 浏览器与 `pnpm e2e` 不进入 `pnpm check`；端到端失败产物写 `.devloop/scratch/e2e/`。
 - 故事设置的更新时间由存储层用 `new Date().toISOString()` 写入；测试不要断言具体时间值。

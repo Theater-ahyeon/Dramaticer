@@ -473,7 +473,8 @@
   - `importCardContent` 返回 `{characterPrompt, cardName}`；`dramaticer chat` 导入后写入故事设置，后续组装优先读库里的提示词；没有设置时回退到 `--card`。
   验收：重启数据库后设置与模板仍在；非法结构化输出模式、负预算、空模板抛错；内置默认模板可被故事引用；导入卡后不需要卡文件就能组装上下文（假客户端）；现有 chat 测试不回归；`pnpm check` 通过。
 
-- [ ] **M4-T03 重新生成助手楼层** | 依赖：M1-T07、M2-T01 | DESIGN §5
+- [x] **M4-T03 重新生成助手楼层** | 依赖：M1-T07、M2-T01 | DESIGN §5
+  完成：2026-11-07 从 `runChatTurn` 抽出 `generateAssistantTurn` 与 `regenerateAssistantTurn`；重新生成在父用户楼层下新建兄弟节点并移动 head，旧楼层与旧 Trace 不变；3 个新测试覆盖兄弟节点、父节点校验、函数调用模式工具轮次，门禁通过（585 个测试）
   做什么：
   - 从 `runChatTurn` 抽出 `generateAssistantTurn`：接收现有用户楼层 id，不再追加用户楼层；组装上下文、生成、解析块、写状态 diff 与笔记、写 Trace 都在新助手楼层上完成。
   - `regenerateAssistantTurn(assistantNodeId)` 找到父用户楼层，用父楼层 raw 作为本轮输入，在父节点下新建助手兄弟节点并把 head 移过去；旧节点原文不变。

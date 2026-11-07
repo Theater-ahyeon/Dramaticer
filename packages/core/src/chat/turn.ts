@@ -51,6 +51,16 @@ export interface ChatTurnOptions {
 	readonly now?: () => number;
 }
 
+export interface GenerateAssistantTurnOptions
+	extends Omit<ChatTurnOptions, "userText"> {
+	readonly userNodeId: string;
+}
+
+export interface RegenerateAssistantTurnOptions
+	extends Omit<ChatTurnOptions, "userText"> {
+	readonly assistantNodeId: string;
+}
+
 export interface ChatTurnResult {
 	readonly userNode: TimelineNode;
 	readonly node: TimelineNode;
@@ -78,7 +88,6 @@ export async function runChatTurn(
 	if (!options.store.getStory(options.storyId)) {
 		throw new Error(`故事不存在：${options.storyId}`);
 	}
-	const now = options.now ?? Date.now;
 	const head = options.store.getHead(options.storyId);
 
 	const userNode = options.store.appendNode({
@@ -87,6 +96,37 @@ export async function runChatTurn(
 		role: "user",
 		raw: options.userText,
 	});
+	return generateAssistantTurn({ ...options, userNodeId: userNode.id });
+}
+
+/**
+ * 基于一个已存在的用户楼层生成助手回复：不追加用户楼层，
+ * 新回复作为该用户楼层的子节点写入，并把 head 移过去。
+ */
+export async function generateAssistantTurn(
+	options: GenerateAssistantTurnOptions,
+): Promise<ChatTurnResult> {
+	if (!Number.isInteger(options.budgetTokens) || options.budgetTokens < 0) {
+		throw new Error("token 预算必须是非负整数");
+	}
+	if (!options.store.getStory(options.storyId)) {
+		throw new Error(`故事不存在：${options.storyId}`);
+	}
+	const userNode = options.store.getNode(options.userNodeId);
+	if (!userNode) {
+		throw new Error(`用户楼层不存在：${options.userNodeId}`);
+	}
+	if (userNode.storyId !== options.storyId) {
+		throw new Error(
+			`用户楼层 ${userNode.id} 属于另一个故事 ${userNode.storyId}`,
+		);
+	}
+	if (userNode.role !== "user") {
+		throw new Error(
+			`助手楼层需要以用户楼层为父节点：${userNode.id} 的角色是 ${userNode.role}`,
+		);
+	}
+	const now = options.now ?? Date.now;
 	const assembled = await assembleContext({
 		template: options.template,
 		budgetTokens: options.budgetTokens,
@@ -197,6 +237,39 @@ export async function runChatTurn(
 			reasoning: result.reasoning,
 			trace,
 		};
+	});
+}
+
+/**
+ * 重新生成一条助手回复：以原回复的父用户楼层为输入，
+ * 在父节点下新建助手兄弟节点并把 head 移过去；旧回复与旧 Trace 保持不变。
+ */
+export async function regenerateAssistantTurn(
+	options: RegenerateAssistantTurnOptions,
+): Promise<ChatTurnResult> {
+	if (!options.store.getStory(options.storyId)) {
+		throw new Error(`故事不存在：${options.storyId}`);
+	}
+	const assistantNode = options.store.getNode(options.assistantNodeId);
+	if (!assistantNode) {
+		throw new Error(`助手楼层不存在：${options.assistantNodeId}`);
+	}
+	if (assistantNode.storyId !== options.storyId) {
+		throw new Error(
+			`助手楼层 ${assistantNode.id} 属于另一个故事 ${assistantNode.storyId}`,
+		);
+	}
+	if (assistantNode.role !== "assistant") {
+		throw new Error(
+			`只能重新生成助手楼层：${assistantNode.id} 的角色是 ${assistantNode.role}`,
+		);
+	}
+	if (assistantNode.parentId === null) {
+		throw new Error(`助手楼层没有父用户楼层：${assistantNode.id}`);
+	}
+	return generateAssistantTurn({
+		...options,
+		userNodeId: assistantNode.parentId,
 	});
 }
 
