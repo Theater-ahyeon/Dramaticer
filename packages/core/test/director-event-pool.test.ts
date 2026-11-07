@@ -95,6 +95,7 @@ describe("事件池机制", () => {
 			expect.objectContaining({ name: "clue", triggered: false }),
 			expect.objectContaining({ name: "repetition", triggered: false }),
 			expect.objectContaining({ name: "event_pool", triggered: false }),
+			expect.objectContaining({ name: "pacing", triggered: false }),
 		]);
 		const signals = decision?.signals.eventPool as {
 			readonly stallFloors: number;

@@ -386,6 +386,7 @@ describe("createDirectorSlotProvider", () => {
 			},
 			expect.objectContaining({ name: "repetition", triggered: false }),
 			{ name: "event_pool", triggered: false, reason: "事件池为空" },
+			expect.objectContaining({ name: "pacing", triggered: false }),
 		]);
 
 		expect(

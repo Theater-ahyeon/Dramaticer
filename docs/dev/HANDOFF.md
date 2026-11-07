@@ -3,31 +3,29 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：62
-- 任务：M3-T06 重复检测（embedding 版）
+- 会话：63
+- 任务：M3-T07 节奏状态机
 - 结果：完成（`DONE`）。
-  - `StoryStore.listChunkVectorsForNode(nodeId)` 从 `chunk_vectors` 读出楼层的块向量（float32 小端 blob 解码），按块 `ordinal` 排序，返回 `{chunkId, ordinal, vector}`；楼层不存在直接抛错。
-  - core 新增 `director/repetition.ts`，机制名 `repetition`，默认注册在 `clue` 之后、`event_pool` 之前。
-  - 节拍只取当前路径上的已确认助手楼层；楼层向量是该楼层全部块向量的平均值；没有向量的楼层跳过，计入 `signals.repetition.missingVectors`。相邻节拍余弦构成相似度序列。
-  - 窗口与上升规则沿用 `health/duplication.ts` 的语义：窗口 20 对、步长 10、`riseWindows` 5、`riseDelta` 0.02、`riseMinimum` 0.03；最后一个上升窗口均值必须高于 0.73。单个高值不触发。
-  - 场景序列逐节拍读取：配置 `scenePath` 时读该楼层状态快照；取不到时用该楼层最后一条带地点的事件；两者都没有计为缺失并在缺失处中断连续段。最长连续段超过 `sceneRepeatThreshold`（默认 7）时建议换场景。
-  - 两类信号同时命中时按优先级只输出一条：文字重复 40、场景停滞 25（线索年龄 30、线索数量 20、事件池 10）。`signals.repetition` 保存节拍、相似度序列、窗口均值、上升段、场景序列、缺失计数与 `thresholdSource: "ADR-0025"`。
-  - 配置新增 `similarityThreshold`、`similarityWindow`、`similarityStep`、`similarityRiseWindows`、`similarityRiseDelta`、`similarityRiseMinimum`、`scenePath`（可选）、`sceneRepeatThreshold`，默认值按 ADR-0025 写入 `DEFAULT_DIRECTOR_CONFIG`；非法窗口、阈值或场景配置在评估时抛错。
-  - `readStateValue` 从 `tools/read-tools.ts` 抽到 `state.ts`，读取工具改用同一实现。
-  - 测试：新增 `packages/core/test/repetition.test.ts`（9 个，含块向量读取、平均向量与余弦、连续上升与单峰、缺失向量、状态与事件两种场景来源、两类信号只取一条、默认参数、非法配置）。既有导演测试与 `chat-cli` 的机制列表断言补上 `repetition`。门禁 `pnpm check` 通过（68 个测试文件、552 个测试；3 个 live 跳过）。
+  - core 新增 `director/pacing.ts`，机制名 `pacing`，注册在 `event_pool` 之后，优先级 5（低于事件池 10，有更具体的建议时让位）。
+  - 张力优先读配置 `tensionPath` 的状态快照值：必须是 0 到 1 之间的数字，越界或类型不符直接抛错；路径不存在时回退推导。
+  - 推导张力只看当前路径最近 3 个已确认助手楼层（`TENSION_WINDOW_FLOORS = 3`）：状态 diff 总数除以 `3 × tensionStateDiffsPerFloor`（默认 2）、新建笔记数除以 `3 × tensionNotesPerFloor`（默认 1）、这三个楼层里最后一个事件的重要度；权重 `tensionStateWeight = 0.4`、`tensionNoteWeight = 0.3`、`tensionEventWeight = 0.3`，三分量都截断到 0 到 1，加权和再截断。
+  - 阶段转移：`setup` 在张力 ≥ 0.33 且持续 `max(1, ceil(minSetupFloors / pace))` 楼后进入 `escalate`；`escalate` 在张力 ≥ 0.67 且持续 `max(1, ceil(minEscalateFloors / pace))` 楼后进入 `climax`；`climax` 持续 7 楼后进入 `breathe`；`breathe` 持续 6 楼后回到 `setup`。`minSetupFloors` 与 `minEscalateFloors` 默认 2，`pace` 默认 1。
+  - 只在阶段变化时触发建议，每个阶段一条固定指令（`setup` 在喘息结束后出现）；当前阶段、张力来源、分量、阈值、权重、`phaseStartNodeId` 与 `changed` 写入 `signals.pacing`。
+  - 状态恢复：按当前路径的决策记录取最近一条 `signals.pacing`，已持续楼层数等于当前位置减去 `phaseStartNodeId` 的位置；起点不在当前路径时按没有历史处理；分支切换只读当前路径。
+  - 配置新增 `tensionPath`（可选）、`tensionEscalate`、`tensionClimax`、三个张力权重、`tensionStateDiffsPerFloor`、`tensionNotesPerFloor`、`pace`、`minSetupFloors`、`minEscalateFloors`、`climaxFloors`、`breatheFloors`；非法路径、阈值、权重、`pace` 与楼层参数在评估时抛错。
+  - 测试：新增 `packages/core/test/pacing.test.ts`（6 个：无历史、四类转移、`pace` 快慢、分支隔离、推导张力、非法配置）；三个既有机制列表断言补 `pacing`；门禁 `pnpm check` 通过（72 个测试文件，558 个测试通过，3 个 live 跳过）；ADR-0026。
 
 ## 当前状态
-- M0、M1、M2、D-T01 至 D-T04、M3-T00 至 M3-T06 完成。
-- 门禁：`pnpm check` 通过（552 个测试）；live 测试需要 `DRAMATICER_LIVE=1`。
+- M0、M1、M2、D-T01 至 D-T04、M3-T00 至 M3-T07 完成。
+- 门禁：`pnpm check` 通过（558 个测试）；live 测试需要 `DRAMATICER_LIVE=1`。
 - 数据库 schema 版本 16。
 - 快照：`eval-private/raw/` 有 94 个文件；manifest 记录 `corpus` 与 `sourceMtime`。`eval-private/reference/` 有 5 部参照小说。
 - 事件表仍未建立；记忆评测的事件路记 0，M3 不要引用这组事件数字。
 - HUMAN-03（事件题抽查）仍未完成，不阻塞任何任务；其余 HUMAN 条目均已完成。
 
 ## 下一步
-- **M3-T07**（下一个会话）：节奏状态机。张力值优先读可配置 `tensionPath`（0 到 1）；取不到时用最近 3 个已确认助手楼层的状态 diff 数量、新建剧情笔记数量与最近事件重要度加权并截断到 0 到 1，公式与权重写入配置与 ADR。阶段取 `setup`、`escalate`、`climax`、`breathe`，按张力与距上次阶段变化的楼层数转移；`pace` 越大进入升级与高潮所需楼层越少；`climax` 最多 7 楼后进入 `breathe`，`breathe` 持续 6 楼后回到 `setup`。每个阶段固定一条指令，阶段与张力写进决策记录 `signals`，从当前路径的决策记录恢复状态，不新增表；没有历史时从 `setup` 开始；分支切换后只读当前路径。
-- 然后 M3-T08（开启与关闭导演的对比回放）。注意 T08 依赖 T07 与 T06，且需要真实渠道生成，报告写 `eval-private/reports/m3-director.md` 与 `docs/dev/reports/M3-director.md`。
-- ADR-0025 有全部参照阈值，M3-T07 直接读它，不要重新从语料推导。
+- **M3-T08**（下一个会话）：Director 开关对比评测。依赖已全部满足（T02、T04、T05、T06、T07、D-T04）。新增 `pnpm --filter @dramaticer/st-compat director-eval`：从 `eval-private/raw/` 读取评测对话，按固定间隔选分支点，用后续真实用户消息回放；同一分支点分别以导演开启与关闭生成，各运行 `pairs` 次（默认 3）。报告给出开启与关闭的相邻块 Jaccard、M3-T06 节拍余弦、线索回收率（新建与兑现笔记数、兑现时平均年龄）与每个机制的触发/被选中次数；单个分支点失败不中断整批；详细报告写 `eval-private/reports/m3-director.md`，统计版写 `docs/dev/reports/M3-director.md`（只含数字、模型别名与配置）。回放框架用注入的假生成器补单元测试，真实渠道运行记录写进报告与 HANDOFF。回放时注意 Director 只在阶段变化时输出节奏指令，`setup` 初始不输出。
+- 然后 M3-T99（M3 验收），重点复核 I6、I7、I9 与 T08 的重复度、线索回收率门槛。
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。

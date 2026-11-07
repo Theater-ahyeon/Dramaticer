@@ -2,6 +2,7 @@ import type { JsonObject } from "../json.js";
 import type { StoryStore } from "../store/story-store.js";
 import { createClueTrackingMechanism } from "./clue.js";
 import { createEventPoolMechanism } from "./event-pool.js";
+import { createPacingMechanism } from "./pacing.js";
 import { createRepetitionMechanism } from "./repetition.js";
 import type {
 	DirectorConfig,
@@ -23,6 +24,7 @@ export const DEFAULT_DIRECTOR_MECHANISMS: readonly DirectorMechanism[] = [
 	createClueTrackingMechanism(),
 	createRepetitionMechanism(),
 	createEventPoolMechanism(),
+	createPacingMechanism(),
 ];
 
 function assertDirectorConfig(config: DirectorConfig): void {
@@ -101,6 +103,77 @@ function assertDirectorConfig(config: DirectorConfig): void {
 		config.sceneRepeatThreshold < 1
 	) {
 		throw new Error("导演配置的 sceneRepeatThreshold 必须是正整数");
+	}
+	if (
+		config.tensionPath !== undefined &&
+		(!Array.isArray(config.tensionPath) ||
+			config.tensionPath.length === 0 ||
+			config.tensionPath.some(
+				(segment) => typeof segment !== "string" || segment.trim().length === 0,
+			))
+	) {
+		throw new Error("导演配置的 tensionPath 必须是非空的字符串数组");
+	}
+	for (const [name, value] of [
+		["tensionEscalate", config.tensionEscalate],
+		["tensionClimax", config.tensionClimax],
+	] as const) {
+		if (
+			typeof value !== "number" ||
+			!Number.isFinite(value) ||
+			value < 0 ||
+			value > 1
+		) {
+			throw new Error(`导演配置的 ${name} 必须是 0 到 1 之间的数字`);
+		}
+	}
+	if (config.tensionEscalate >= config.tensionClimax) {
+		throw new Error("导演配置的 tensionEscalate 必须小于 tensionClimax");
+	}
+	for (const [name, value] of [
+		["tensionStateWeight", config.tensionStateWeight],
+		["tensionNoteWeight", config.tensionNoteWeight],
+		["tensionEventWeight", config.tensionEventWeight],
+	] as const) {
+		if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+			throw new Error(`导演配置的 ${name} 必须是非负数字`);
+		}
+	}
+	const weightSum =
+		config.tensionStateWeight +
+		config.tensionNoteWeight +
+		config.tensionEventWeight;
+	if (weightSum <= 0) {
+		throw new Error("导演配置的张力权重之和必须大于 0");
+	}
+	if (
+		!Number.isInteger(config.tensionStateDiffsPerFloor) ||
+		config.tensionStateDiffsPerFloor < 1
+	) {
+		throw new Error("导演配置的 tensionStateDiffsPerFloor 必须是正整数");
+	}
+	if (
+		!Number.isInteger(config.tensionNotesPerFloor) ||
+		config.tensionNotesPerFloor < 1
+	) {
+		throw new Error("导演配置的 tensionNotesPerFloor 必须是正整数");
+	}
+	if (
+		typeof config.pace !== "number" ||
+		!Number.isFinite(config.pace) ||
+		config.pace <= 0
+	) {
+		throw new Error("导演配置的 pace 必须是正数");
+	}
+	for (const [name, value] of [
+		["minSetupFloors", config.minSetupFloors],
+		["minEscalateFloors", config.minEscalateFloors],
+		["climaxFloors", config.climaxFloors],
+		["breatheFloors", config.breatheFloors],
+	] as const) {
+		if (!Number.isInteger(value) || value < 1) {
+			throw new Error(`导演配置的 ${name} 必须是正整数`);
+		}
 	}
 }
 

@@ -27,8 +27,32 @@ export interface DirectorConfig {
 	readonly scenePath?: readonly string[];
 	/** 同一场景连续出现的节拍数超过这个值时建议换场景。 */
 	readonly sceneRepeatThreshold: number;
-	/** 留给节奏状态机的参数，当前任务不读取。 */
-	readonly pace?: number;
+	/** 读取张力值的当前状态路径；不设置或取不到时按最近楼层推导。 */
+	readonly tensionPath?: readonly string[];
+	/** 张力达到这个值时允许从铺垫进入升级。 */
+	readonly tensionEscalate: number;
+	/** 张力达到这个值时允许从升级进入高潮。 */
+	readonly tensionClimax: number;
+	/** 推导张力时状态 diff 分量的权重。 */
+	readonly tensionStateWeight: number;
+	/** 推导张力时新建剧情笔记分量的权重。 */
+	readonly tensionNoteWeight: number;
+	/** 推导张力时最近事件重要度的权重。 */
+	readonly tensionEventWeight: number;
+	/** 一个楼层多少个状态 diff 视为该分量达到 1。 */
+	readonly tensionStateDiffsPerFloor: number;
+	/** 一个楼层多少条新建剧情笔记视为该分量达到 1。 */
+	readonly tensionNotesPerFloor: number;
+	/** 节奏快慢：越大，进入升级与高潮所需的楼层数越少。 */
+	readonly pace: number;
+	/** 铺垫阶段进入升级所需的基础楼层数，实际需求按 pace 缩小。 */
+	readonly minSetupFloors: number;
+	/** 升级阶段进入高潮所需的基础楼层数，实际需求按 pace 缩小。 */
+	readonly minEscalateFloors: number;
+	/** 高潮阶段持续到这个楼层数后进入喘息。 */
+	readonly climaxFloors: number;
+	/** 喘息阶段持续到这个楼层数后回到铺垫。 */
+	readonly breatheFloors: number;
 }
 
 export const DEFAULT_DIRECTOR_CONFIG: DirectorConfig = {
@@ -44,6 +68,18 @@ export const DEFAULT_DIRECTOR_CONFIG: DirectorConfig = {
 	similarityRiseDelta: 0.02,
 	similarityRiseMinimum: 0.03,
 	sceneRepeatThreshold: 7,
+	tensionEscalate: 0.33,
+	tensionClimax: 0.67,
+	tensionStateWeight: 0.4,
+	tensionNoteWeight: 0.3,
+	tensionEventWeight: 0.3,
+	tensionStateDiffsPerFloor: 2,
+	tensionNotesPerFloor: 1,
+	pace: 1,
+	minSetupFloors: 2,
+	minEscalateFloors: 2,
+	climaxFloors: 7,
+	breatheFloors: 6,
 };
 
 export interface DirectorSuggestion {

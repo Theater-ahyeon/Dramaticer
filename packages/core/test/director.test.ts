@@ -84,6 +84,7 @@ describe("导演决策框架", () => {
 			},
 			expect.objectContaining({ name: "repetition", triggered: false }),
 			{ name: "event_pool", triggered: false, reason: "事件池为空" },
+			expect.objectContaining({ name: "pacing", triggered: false }),
 		]);
 		expect(decision?.signals).toMatchObject({
 			openClues: 1,

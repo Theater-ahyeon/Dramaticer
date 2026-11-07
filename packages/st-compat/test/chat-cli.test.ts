@@ -194,6 +194,7 @@ describe("dramaticer chat", () => {
 				"clue",
 				"repetition",
 				"event_pool",
+				"pacing",
 			]);
 			const entity = store.findEntityByName("s1", "山神");
 			expect(entity?.kind).toBe("character");

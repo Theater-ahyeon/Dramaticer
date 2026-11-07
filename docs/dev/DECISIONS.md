@@ -299,3 +299,24 @@
   - 余弦校准结果缓存在 `eval-private/reports/reference-cosine.json`，由 `pnpm --filter @dramaticer/st-compat reference:cosine` 生成；不运行校准时两份报告写明“未运行 embedding 余弦校准”。校准时按文本内容缓存 embedding，重复运行不重复调用渠道。
   - 统计版报告只出现“作品 1..N”与数字；私有版报告可以出现文件名与作品名。对话对照只出现“对话 1..N”，不出现角色名或对话名。
 - **影响**：M3-T06 直接使用上述窗口、上升规则与 0.73 余弦阈值，配置默认值写入 core 的 Director 配置；M3-T07 使用 7 与 6 的持续时间，张力阈值按本 ADR 的说明处理，T07 的任务描述同步修改。M3-T08 的重复度报告要同时给出词面 Jaccard 与余弦两组数字。Director 阈值不得从评测对话重新推导；参照文本仍然不进 prompt、不进评测集。
+
+## ADR-0026 节奏状态机的张力推导、转移规则与状态恢复（2026-11-07）
+
+- **背景**：M3-T07 需要把张力与阶段状态做成每轮可评估的纯程序机制，且不新增数据库表。ADR-0025 已给出 `climaxFloors = 7`、`breatheFloors = 6`、`tensionEscalate = 0.33`、`tensionClimax = 0.67` 与 `pace = 1.0`，但没有定义张力推导公式、楼层需求与状态恢复方式。
+- **决定**：
+  - 张力来源：配置 `tensionPath` 时先读当前楼层的状态快照；值必须是 0 到 1 之间的数字，越界或类型不符直接抛错。路径不存在时回退到推导值。
+  - 推导张力只看当前路径上最近 3 个已确认助手楼层（`TENSION_WINDOW_FLOORS = 3`）。三个分量都归一化到 0 到 1 后加权求和并截断：
+    - `stateDiffScore = min(1, 状态 diff 总数 / (3 × tensionStateDiffsPerFloor))`，默认每个楼层 2 条 diff 视为该分量达到 1。
+    - `plotNoteScore = min(1, 新建剧情笔记数 / (3 × tensionNotesPerFloor))`，默认每个楼层 1 条笔记视为该分量达到 1。
+    - `eventScore` 取这三个楼层里按路径顺序最后一个事件的重要度；没有事件时为 0。
+    - 权重默认 `tensionStateWeight = 0.4`、`tensionNoteWeight = 0.3`、`tensionEventWeight = 0.3`；权重不强制和为 1，总和必须大于 0，结果截断到 0 到 1。
+  - 分母固定使用 3 个楼层，而不是实际可用的楼层数，避免开局一两个楼层的高活动直接算出满张力。
+  - 转移规则：
+    - `setup` → `escalate`：张力不低于 `tensionEscalate`，且当前阶段已持续不少于 `max(1, ceil(minSetupFloors / pace))` 楼。
+    - `escalate` → `climax`：张力不低于 `tensionClimax`，且已持续不少于 `max(1, ceil(minEscalateFloors / pace))` 楼。
+    - `climax` → `breathe`：已持续 `climaxFloors` 楼后无条件转移。
+    - `breathe` → `setup`：已持续 `breatheFloors` 楼后无条件转移。
+  - `minSetupFloors` 与 `minEscalateFloors` 默认 2，`pace` 默认 1；`pace` 越大需求楼层越少。
+  - 只在阶段变化时触发建议，优先级 5，低于事件池（10）。没有历史时从 `setup` 开始，不额外输出指令；四个阶段各自有一条固定指令，`setup` 在 `breathe` 结束后出现。
+  - 状态恢复：每个楼层的决策记录在 `signals.pacing` 保存 `phase`、`previousPhase`、`changed`、`phaseStartNodeId`、`floorsInPhase`、`tension`、`tensionSource`、阈值、权重与各分量。下一轮按当前路径的决策记录取最近一条，阶段已持续楼层数等于当前位置减去 `phaseStartNodeId` 的位置。若最近记录的 `phaseStartNodeId` 不在当前路径上，按没有历史处理；其他分支的决策天然不进入路径查询。
+- **影响**：M3-T07 的配置项写入 `DirectorConfig` 与 `DEFAULT_DIRECTOR_CONFIG`；`DEFAULT_DIRECTOR_MECHANISMS` 在事件池之后注册 `pacing`。M3-T08 的回放报告要检查四个阶段是否可达，张力长期达不到阈值时调整权重与 `minSetupFloors`，沿用 ADR-0025 对张力阈值的说明，不把小说数字套到张力上。

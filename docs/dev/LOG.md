@@ -85,3 +85,5 @@
 - 2026-11-07 | S61 | M3-T05 | DONE | 新增 `npc_agenda` 后台任务：章节边界（已确认助手楼层数为 `chapterSize` 的整数倍）按 `everyChapters` 推进到期议程，章节输入优先取章节摘要、没有时用同窗口原文，名称与别名匹配后用严格 JSON 数组校验缺项/陌生名称/空进度/重复名称；`StoryStore.advanceNpcAgendas` 在一个事务里更新进度与 `last_advanced_node_id` 并写入 `与此同时：<progress>` 事件，事件序号接在已有事件之后；迁移 v16 给 `memory_events` 增加 `source`，`countEventsForNode` 可按来源过滤；`dramaticer work` 默认注册该处理器；12 个新测试，门禁通过（543 个测试）
 
 - 2026-11-07 | S62 | M3-T06 | DONE | `StoryStore.listChunkVectorsForNode` 按块序号返回 float32 向量；core 新增 `director/repetition.ts`：节拍取已确认助手楼层，楼层向量取块向量平均值，相邻余弦按 ADR-0025 的窗口 20、步长 10、`riseWindows` 5、`riseDelta` 0.02、`riseMinimum` 0.03 与阈值 0.73 判定连续上升，缺失向量跳过并计数；场景序列按 `scenePath` 状态值或该楼层最近事件地点读取，连续超过 7 个节拍时建议换场景；两类信号只输出优先级更高的一条（文字 40、场景 25），全部序列与阈值来源写进 `signals.repetition`；`readStateValue` 抽到 `state.ts` 共用；9 个新测试，门禁通过（552 个测试）
+
+- 2026-11-07 | S63 | M3-T07 | DONE | core 新增 `director/pacing.ts`：张力优先读 `tensionPath` 状态值，取不到时用最近 3 个已确认助手楼层的状态 diff、新建笔记与最近事件重要度按 0.4/0.3/0.3 加权并截断；阶段按张力与已持续楼层在 `setup`、`escalate`、`climax`、`breathe` 间转移，`pace` 越大需求楼层越少，高潮 7 楼后喘息、喘息 6 楼后回到铺垫；只在阶段变化时输出一条固定指令（优先级 5），阶段、张力与变化点写入 `signals.pacing`，按当前路径的决策记录恢复且不新增表；默认机制注册在事件池之后；6 个新测试，门禁通过（558 个测试）；ADR-0026
