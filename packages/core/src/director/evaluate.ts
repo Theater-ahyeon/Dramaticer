@@ -2,6 +2,7 @@ import type { JsonObject } from "../json.js";
 import type { StoryStore } from "../store/story-store.js";
 import { createClueTrackingMechanism } from "./clue.js";
 import { createEventPoolMechanism } from "./event-pool.js";
+import { createRepetitionMechanism } from "./repetition.js";
 import type {
 	DirectorConfig,
 	DirectorMechanism,
@@ -20,6 +21,7 @@ export interface EvaluateDirectorInput {
 
 export const DEFAULT_DIRECTOR_MECHANISMS: readonly DirectorMechanism[] = [
 	createClueTrackingMechanism(),
+	createRepetitionMechanism(),
 	createEventPoolMechanism(),
 ];
 
@@ -46,6 +48,59 @@ function assertDirectorConfig(config: DirectorConfig): void {
 		config.surprise > 1
 	) {
 		throw new Error("导演配置的 surprise 必须是 0 到 1 之间的数字");
+	}
+	if (
+		typeof config.similarityThreshold !== "number" ||
+		!Number.isFinite(config.similarityThreshold) ||
+		config.similarityThreshold < 0 ||
+		config.similarityThreshold > 1
+	) {
+		throw new Error("导演配置的 similarityThreshold 必须是 0 到 1 之间的数字");
+	}
+	if (
+		!Number.isInteger(config.similarityWindow) ||
+		config.similarityWindow < 2
+	) {
+		throw new Error("导演配置的 similarityWindow 必须是不小于 2 的整数");
+	}
+	if (!Number.isInteger(config.similarityStep) || config.similarityStep < 1) {
+		throw new Error("导演配置的 similarityStep 必须是正整数");
+	}
+	if (
+		!Number.isInteger(config.similarityRiseWindows) ||
+		config.similarityRiseWindows < 2
+	) {
+		throw new Error("导演配置的 similarityRiseWindows 必须是不小于 2 的整数");
+	}
+	if (
+		typeof config.similarityRiseDelta !== "number" ||
+		!Number.isFinite(config.similarityRiseDelta) ||
+		config.similarityRiseDelta < 0
+	) {
+		throw new Error("导演配置的 similarityRiseDelta 必须是非负数字");
+	}
+	if (
+		typeof config.similarityRiseMinimum !== "number" ||
+		!Number.isFinite(config.similarityRiseMinimum) ||
+		config.similarityRiseMinimum < 0
+	) {
+		throw new Error("导演配置的 similarityRiseMinimum 必须是非负数字");
+	}
+	if (
+		config.scenePath !== undefined &&
+		(!Array.isArray(config.scenePath) ||
+			config.scenePath.length === 0 ||
+			config.scenePath.some(
+				(segment) => typeof segment !== "string" || segment.trim().length === 0,
+			))
+	) {
+		throw new Error("导演配置的 scenePath 必须是非空的字符串数组");
+	}
+	if (
+		!Number.isInteger(config.sceneRepeatThreshold) ||
+		config.sceneRepeatThreshold < 1
+	) {
+		throw new Error("导演配置的 sceneRepeatThreshold 必须是正整数");
 	}
 }
 

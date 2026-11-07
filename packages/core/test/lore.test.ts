@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	type ContextSlotRequest,
+	DEFAULT_DIRECTOR_CONFIG,
 	type StoryStore,
 	createDirectorSlotProvider,
 	createLoreSlotProvider,
@@ -383,6 +384,7 @@ describe("createDirectorSlotProvider", () => {
 				triggered: true,
 				reason: expect.stringContaining("超过阈值 12"),
 			},
+			expect.objectContaining({ name: "repetition", triggered: false }),
 			{ name: "event_pool", triggered: false, reason: "事件池为空" },
 		]);
 
@@ -417,13 +419,7 @@ describe("createDirectorSlotProvider", () => {
 		]);
 		const current = appendChain(store, 13, "u1");
 		const provider = createDirectorSlotProvider(store, {
-			config: {
-				enabled: false,
-				clueAgeWarning: 12,
-				maxOpenClues: 5,
-				stallFloors: 3,
-				surprise: 1,
-			},
+			config: { ...DEFAULT_DIRECTOR_CONFIG, enabled: false },
 		});
 		expect(
 			await provider.provide(request("s1", current, "director")),
@@ -458,11 +454,9 @@ describe("createDirectorSlotProvider", () => {
 
 		const provider = createDirectorSlotProvider(store, {
 			config: {
+				...DEFAULT_DIRECTOR_CONFIG,
 				enabled: true,
 				clueAgeWarning: 0,
-				maxOpenClues: 5,
-				stallFloors: 3,
-				surprise: 1,
 			},
 		});
 		const content = await provider.provide(request("s1", "a2", "director"));

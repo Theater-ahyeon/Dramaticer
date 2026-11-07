@@ -225,6 +225,12 @@ interface ChunkVectorRow {
 	readonly distance: number;
 }
 
+interface NodeChunkVectorRow {
+	readonly chunk_id: number;
+	readonly ordinal: number;
+	readonly embedding: Buffer;
+}
+
 interface PlotNoteRow {
 	readonly id: string;
 	readonly story_id: string;
@@ -371,6 +377,12 @@ export interface ChunkWithoutVector {
 export interface ChunkVectorInput {
 	readonly chunkId: number;
 	readonly embedding: readonly number[];
+}
+
+export interface ChunkVectorForNode {
+	readonly chunkId: number;
+	readonly ordinal: number;
+	readonly vector: readonly number[];
 }
 
 export interface SearchVectorsOptions {
@@ -563,6 +575,22 @@ function rowToStateSnapshot(row: StateSnapshotRow): StateSnapshot {
 		state: parsed,
 		computedAt: row.computed_at,
 	};
+}
+
+/** vec0 以 float32 小端二进制返回向量。 */
+function decodeEmbedding(value: unknown, label: string): number[] {
+	if (!Buffer.isBuffer(value)) {
+		throw new Error(`${label} 的向量不是二进制数据`);
+	}
+	if (value.byteLength % 4 !== 0) {
+		throw new Error(`${label} 的向量字节数不是 4 的倍数：${value.byteLength}`);
+	}
+	const view = new DataView(value.buffer, value.byteOffset, value.byteLength);
+	const vector = new Array<number>(value.byteLength / 4);
+	for (let index = 0; index < vector.length; index += 1) {
+		vector[index] = view.getFloat32(index * 4, true);
+	}
+	return vector;
 }
 
 function isBackgroundJobStatus(value: unknown): value is BackgroundJobStatus {
@@ -2207,6 +2235,31 @@ export class StoryStore {
 			)
 			.all(nodeId) as ChunkTextRow[];
 		return rows.map((row) => ({ chunkId: row.chunk_id, text: row.text }));
+	}
+
+	/** 返回某个楼层已写入的块向量，按块序号排序。 */
+	listChunkVectorsForNode(nodeId: string): ChunkVectorForNode[] {
+		assertNonEmptyString(nodeId, "楼层节点 id");
+		if (!this.getNode(nodeId)) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
+		const rows = this.#db
+			.prepare(
+				`SELECT c.id AS chunk_id, c.ordinal, v.embedding
+				FROM chunks AS c
+				JOIN chunk_vectors AS v ON v.chunk_id = c.id
+				WHERE c.node_id = ?
+				ORDER BY c.ordinal ASC`,
+			)
+			.all(nodeId) as NodeChunkVectorRow[];
+		return rows.map((row) => ({
+			chunkId: row.chunk_id,
+			ordinal: row.ordinal,
+			vector: decodeEmbedding(
+				row.embedding,
+				`楼层 ${nodeId} 的块 ${row.chunk_id}`,
+			),
+		}));
 	}
 
 	/**

@@ -1,6 +1,20 @@
 import type { JsonObject, JsonValue } from "./json.js";
 import type { StateDiff } from "./timeline.js";
 
+/** 按路径读取状态值；路径不存在或中途不是对象时返回 undefined。 */
+export function readStateValue(
+	state: unknown,
+	path: readonly string[],
+): unknown {
+	let current: unknown = state;
+	for (const segment of path) {
+		if (typeof current !== "object" || current === null) return undefined;
+		if (!Object.hasOwn(current, segment)) return undefined;
+		current = (current as Record<string, unknown>)[segment];
+	}
+	return current;
+}
+
 /** 沿路径累加状态 diff，得到当前状态。删除不存在的路径按没有变化处理。 */
 export function applyStateDiffs(diffs: readonly StateDiff[]): JsonObject {
 	return applyStateDiffsTo({}, diffs);

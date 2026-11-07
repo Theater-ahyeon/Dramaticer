@@ -83,3 +83,5 @@
 - 2026-11-07 | S60 | M3-T04 | DONE | `StoryStore` 新增 `countPlotNotesForNode`；迁移 v15 给 `event_pool` 增加 `enabled` 并在导入时保留卡里的停用标记；core 新增 `director/event-pool.ts`：最近 3 个已确认助手楼层无状态 diff 与新建笔记时判定停滞，按条件、快照、冷却与 `surprise` 哈希选择事件，指令直接用事件正文，优先级 10；10 个新测试，门禁通过（531 个测试）
 
 - 2026-11-07 | S61 | M3-T05 | DONE | 新增 `npc_agenda` 后台任务：章节边界（已确认助手楼层数为 `chapterSize` 的整数倍）按 `everyChapters` 推进到期议程，章节输入优先取章节摘要、没有时用同窗口原文，名称与别名匹配后用严格 JSON 数组校验缺项/陌生名称/空进度/重复名称；`StoryStore.advanceNpcAgendas` 在一个事务里更新进度与 `last_advanced_node_id` 并写入 `与此同时：<progress>` 事件，事件序号接在已有事件之后；迁移 v16 给 `memory_events` 增加 `source`，`countEventsForNode` 可按来源过滤；`dramaticer work` 默认注册该处理器；12 个新测试，门禁通过（543 个测试）
+
+- 2026-11-07 | S62 | M3-T06 | DONE | `StoryStore.listChunkVectorsForNode` 按块序号返回 float32 向量；core 新增 `director/repetition.ts`：节拍取已确认助手楼层，楼层向量取块向量平均值，相邻余弦按 ADR-0025 的窗口 20、步长 10、`riseWindows` 5、`riseDelta` 0.02、`riseMinimum` 0.03 与阈值 0.73 判定连续上升，缺失向量跳过并计数；场景序列按 `scenePath` 状态值或该楼层最近事件地点读取，连续超过 7 个节拍时建议换场景；两类信号只输出优先级更高的一条（文字 40、场景 25），全部序列与阈值来源写进 `signals.repetition`；`readStateValue` 抽到 `state.ts` 共用；9 个新测试，门禁通过（551 个测试）

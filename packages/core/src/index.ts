@@ -25,6 +25,7 @@ export { LATEST_SCHEMA_VERSION } from "./store/migrations.js";
 export type {
 	AppendNodeInput,
 	ChunkSearchMatch,
+	ChunkVectorForNode,
 	CreateStoryInput,
 	ListEntitiesOptions,
 	ResolveEntitiesOptions,

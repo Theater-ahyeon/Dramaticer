@@ -5,6 +5,7 @@ import type { EmbeddingClient } from "../llm/embeddings.js";
 import type { LlmToolDefinition } from "../llm/types.js";
 import { loreEntryMatchScore } from "../memory/lore.js";
 import { retrieveMemory } from "../retrieval/hybrid.js";
+import { readStateValue } from "../state.js";
 import type { StoryStore } from "../store/story-store.js";
 
 export const READ_TOOL_NAMES = [
@@ -290,26 +291,13 @@ function runStateGet(
 	if (path === undefined) {
 		return fitResult(`当前状态：\n${JSON.stringify(snapshot.state, null, 2)}`);
 	}
-	const found = readPath(snapshot.state, path);
+	const found = readStateValue(snapshot.state, path);
 	if (found === undefined) {
 		return `路径 ${formatPath(path)} 不存在。`;
 	}
 	return fitResult(
 		`路径 ${formatPath(path)} 的值：\n${JSON.stringify(found, null, 2)}`,
 	);
-}
-
-function readPath(
-	state: unknown,
-	path: readonly string[],
-): unknown {
-	let current: unknown = state;
-	for (const segment of path) {
-		if (typeof current !== "object" || current === null) return undefined;
-		if (!Object.hasOwn(current, segment)) return undefined;
-		current = (current as Record<string, unknown>)[segment];
-	}
-	return current;
 }
 
 function formatPath(path: readonly string[]): string {

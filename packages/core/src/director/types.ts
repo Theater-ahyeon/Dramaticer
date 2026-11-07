@@ -11,6 +11,22 @@ export interface DirectorConfig {
 	readonly stallFloors: number;
 	/** 事件池的意外频率门槛，取值 0 到 1；0 表示永不触发，1 表示停滞就触发。 */
 	readonly surprise: number;
+	/** 相邻节拍余弦的绝对阈值，参照小说分布的 P99。 */
+	readonly similarityThreshold: number;
+	/** 重复度曲线的窗口大小（相邻节拍对的数量），至少为 2。 */
+	readonly similarityWindow: number;
+	/** 窗口前进的步长（节拍对的数量）。 */
+	readonly similarityStep: number;
+	/** 判定窗口均值持续上升所需的连续窗口数。 */
+	readonly similarityRiseWindows: number;
+	/** 连续窗口均值至少上涨这么多才算上升。 */
+	readonly similarityRiseDelta: number;
+	/** 上升起点的窗口均值下限。 */
+	readonly similarityRiseMinimum: number;
+	/** 读取场景类型的当前状态路径；不设置时用最近事件的地点。 */
+	readonly scenePath?: readonly string[];
+	/** 同一场景连续出现的节拍数超过这个值时建议换场景。 */
+	readonly sceneRepeatThreshold: number;
 	/** 留给节奏状态机的参数，当前任务不读取。 */
 	readonly pace?: number;
 }
@@ -21,6 +37,13 @@ export const DEFAULT_DIRECTOR_CONFIG: DirectorConfig = {
 	maxOpenClues: 5,
 	stallFloors: 3,
 	surprise: 1,
+	similarityThreshold: 0.73,
+	similarityWindow: 20,
+	similarityStep: 10,
+	similarityRiseWindows: 5,
+	similarityRiseDelta: 0.02,
+	similarityRiseMinimum: 0.03,
+	sceneRepeatThreshold: 7,
 };
 
 export interface DirectorSuggestion {

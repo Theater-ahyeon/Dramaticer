@@ -192,6 +192,7 @@ describe("dramaticer chat", () => {
 			expect(decision?.directive).toBeNull();
 			expect(decision?.mechanisms.map((item) => item.name)).toEqual([
 				"clue",
+				"repetition",
 				"event_pool",
 			]);
 			const entity = store.findEntityByName("s1", "山神");

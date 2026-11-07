@@ -416,7 +416,8 @@
   - `dramaticer work` 默认注册 `npc_agenda` 处理器；`everyChapters` 决定在哪些章节边界推进（默认每隔 1 章）。
   验收：非章节边界执行一次时不调用模型；没有议程时也不调用；合法 JSON 数组写入进度与事件；缺项或陌生 NPC 时整批不写入且任务失败；重复执行同一节点不产生重复事件；`everyChapters=2` 时只在对应边界推进；单元测试使用假客户端，`pnpm check` 通过。
 
-- [ ] **M3-T06 重复检测（embedding 版）** | 依赖：D-T04、M2-T09、M3-T01
+- [x] **M3-T06 重复检测（embedding 版）** | 依赖：D-T04、M2-T09、M3-T01
+  完成：2026-11-07 `StoryStore.listChunkVectorsForNode` 按块序号返回 float32 向量；core 新增 `director/repetition.ts`：节拍取已确认助手楼层，楼层向量取块向量平均值，相邻余弦按 ADR-0025 的窗口 20、步长 10、`riseWindows` 5、`riseDelta` 0.02、`riseMinimum` 0.03 与阈值 0.73 判定，缺失向量的楼层跳过并计数；场景序列按可配置 `scenePath` 的状态快照读取，取不到时回退该楼层最近事件的 `location`，连续超过 `sceneRepeatThreshold` 7 时建议换场景；两类信号同时命中时重复度优先（40 高于场景 25），只输出一条指令，所有序列、窗口均值、阈值来源写进 `signals.repetition`；`readStateValue` 从读取工具抽到 `state.ts` 共用；非法窗口、阈值与场景配置在评估时抛错；9 个新测试，门禁通过（551 个测试）
   做什么：
   - `StoryStore` 增加 `listChunkVectorsForNode(nodeId)`，返回每个块的序号与向量；节拍取已确认助手楼层，楼层向量取该楼层全部块向量的平均值，只使用已经生成向量的楼层，缺失向量的楼层跳过并在信号里计数。
   - 相邻节拍的相似度用余弦；窗口与上升规则沿用 `health/duplication.ts` 的语义（连续 `riseWindows` 个窗口均值上升）。窗口 20 对、步长 10、`riseWindows` 5、`riseDelta` 0.02、`riseMinimum` 0.03，绝对阈值取参照余弦 P99 = 0.73（ADR-0025），窗口均值高于阈值且连续上升才触发。

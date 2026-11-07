@@ -3,29 +3,31 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：61
-- 任务：M3-T05 NPC 议程后台任务
+- 会话：62
+- 任务：M3-T06 重复检测（embedding 版）
 - 结果：完成（`DONE`）。
-  - core 新增 `memory/npc-agenda.ts`：`NPC_AGENDA_JOB_KIND`、`parseNpcAgendaProgress`、`createNpcAgendaHandler`。章节边界沿用章节摘要的判定（当前路径已确认助手楼层数是 `chapterSize` 的整数倍，默认 20）；没有议程、没有到期议程、或同一楼层已经推进过时都不调用模型。
-  - 到期判定：章序号从 1 开始，`chapterNumber % everyChapters === 0` 且 `lastAdvancedNodeId !== job.nodeId`。输入只包含到期议程；章节内容优先取终点正好是当前楼层的章节摘要，没有时取上一章节终点之后的楼层原文（与章节摘要窗口一致）。
-  - 输出严格校验：JSON 数组，每项只有 `npc` 与 `progress`，都必须是非空字符串；按规范化名称/别名匹配议程，缺项、陌生名称、空进度、重复名称整批抛错，由后台框架按 M2-T03 重试。
-  - `StoryStore` 新增 `advanceNpcAgendas({storyId, nodeId, advances})`：一个事务里更新 `progress` 与 `last_advanced_node_id`，并写入 `与此同时：<progress>` 的 `memory_events`（参与者与知情者都是 NPC 名称，importance 取议程配置，ordinal 接在该楼层已有事件之后）。非法条目整批回滚。
-  - 迁移 v16 给 `memory_events` 增加 `source`（默认 `events`，NPC 议程写 `npc_agenda`）；`MemoryEvent`/`NewMemoryEventInput` 增加 `source`，`countEventsForNode(nodeId, source?)` 可按来源过滤。事件抽取的重复执行判定改为只看 `events` 来源，避免议程事件让抽取误判为已完成。
-  - `memory/json-output.ts`（`parseJsonOutputArray`）与 `memory/window.ts`（`formatFloors`）抽出共用实现，事件抽取与章节摘要改为复用；`dramaticer work` 默认注册 `npc_agenda`。
-  - 测试：新增 `packages/core/test/npc-agenda.test.ts`（11）与 `work-cli.test.ts` 的默认注册表用例（1）；门禁 `pnpm check` 通过（67 个测试文件、543 个测试）。
+  - `StoryStore.listChunkVectorsForNode(nodeId)` 从 `chunk_vectors` 读出楼层的块向量（float32 小端 blob 解码），按块 `ordinal` 排序，返回 `{chunkId, ordinal, vector}`；楼层不存在直接抛错。
+  - core 新增 `director/repetition.ts`，机制名 `repetition`，默认注册在 `clue` 之后、`event_pool` 之前。
+  - 节拍只取当前路径上的已确认助手楼层；楼层向量是该楼层全部块向量的平均值；没有向量的楼层跳过，计入 `signals.repetition.missingVectors`。相邻节拍余弦构成相似度序列。
+  - 窗口与上升规则沿用 `health/duplication.ts` 的语义：窗口 20 对、步长 10、`riseWindows` 5、`riseDelta` 0.02、`riseMinimum` 0.03；最后一个上升窗口均值必须高于 0.73。单个高值不触发。
+  - 场景序列逐节拍读取：配置 `scenePath` 时读该楼层状态快照；取不到时用该楼层最后一条带地点的事件；两者都没有计为缺失并在缺失处中断连续段。最长连续段超过 `sceneRepeatThreshold`（默认 7）时建议换场景。
+  - 两类信号同时命中时按优先级只输出一条：文字重复 40、场景停滞 25（线索年龄 30、线索数量 20、事件池 10）。`signals.repetition` 保存节拍、相似度序列、窗口均值、上升段、场景序列、缺失计数与 `thresholdSource: "ADR-0025"`。
+  - 配置新增 `similarityThreshold`、`similarityWindow`、`similarityStep`、`similarityRiseWindows`、`similarityRiseDelta`、`similarityRiseMinimum`、`scenePath`（可选）、`sceneRepeatThreshold`，默认值按 ADR-0025 写入 `DEFAULT_DIRECTOR_CONFIG`；非法窗口、阈值或场景配置在评估时抛错。
+  - `readStateValue` 从 `tools/read-tools.ts` 抽到 `state.ts`，读取工具改用同一实现。
+  - 测试：新增 `packages/core/test/repetition.test.ts`（9 个，含块向量读取、平均向量与余弦、连续上升与单峰、缺失向量、状态与事件两种场景来源、两类信号只取一条、默认参数、非法配置）。既有导演测试与 `chat-cli` 的机制列表断言补上 `repetition`。门禁 `pnpm check` 通过（68 个测试文件、551 个测试；3 个 live 跳过）。
 
 ## 当前状态
-- M0、M1、M2、D-T01 至 D-T04、M3-T00 至 M3-T05 完成。
-- 门禁：`pnpm check` 通过（543 个测试）；live 测试需要 `DRAMATICER_LIVE=1`。
+- M0、M1、M2、D-T01 至 D-T04、M3-T00 至 M3-T06 完成。
+- 门禁：`pnpm check` 通过（551 个测试）；live 测试需要 `DRAMATICER_LIVE=1`。
 - 数据库 schema 版本 16。
 - 快照：`eval-private/raw/` 有 94 个文件；manifest 记录 `corpus` 与 `sourceMtime`。`eval-private/reference/` 有 5 部参照小说。
 - 事件表仍未建立；记忆评测的事件路记 0，M3 不要引用这组事件数字。
 - HUMAN-03（事件题抽查）仍未完成，不阻塞任何任务；其余 HUMAN 条目均已完成。
 
 ## 下一步
-- **M3-T06**（下一个会话）：重复检测（embedding 版）。`StoryStore` 增加 `listChunkVectorsForNode(nodeId)`；节拍取已确认助手楼层，楼层向量为块向量平均值；相邻节拍余弦，窗口与上升规则复用 `health/duplication.ts`，阈值取 ADR-0025（窗口 20、步长 10、`riseWindows` 5、`riseDelta` 0.02、`riseMinimum` 0.03、绝对阈值 P99 = 0.73）；场景序列从可配置 `scenePath` 取状态值，取不到时用最近事件 `location`，连续同场景超过 `sceneRepeatThreshold`（默认 7）触发；两类信号只输出一条；不调用 LLM，缺失向量跳过并在信号里计数。
-- 然后依次 M3-T07（节奏状态机）→ M3-T08（开启与关闭导演的对比回放）。
-- ADR-0025 里有现成的参照基线数字，M3-T06/T07 直接读它，不要重新从对话语料推导阈值。
+- **M3-T07**（下一个会话）：节奏状态机。张力值优先读可配置 `tensionPath`（0 到 1）；取不到时用最近 3 个已确认助手楼层的状态 diff 数量、新建剧情笔记数量与最近事件重要度加权并截断到 0 到 1，公式与权重写入配置与 ADR。阶段取 `setup`、`escalate`、`climax`、`breathe`，按张力与距上次阶段变化的楼层数转移；`pace` 越大进入升级与高潮所需楼层越少；`climax` 最多 7 楼后进入 `breathe`，`breathe` 持续 6 楼后回到 `setup`。每个阶段固定一条指令，阶段与张力写进决策记录 `signals`，从当前路径的决策记录恢复状态，不新增表；没有历史时从 `setup` 开始；分支切换后只读当前路径。
+- 然后 M3-T08（开启与关闭导演的对比回放）。注意 T08 依赖 T07 与 T06，且需要真实渠道生成，报告写 `eval-private/reports/m3-director.md` 与 `docs/dev/reports/M3-director.md`。
+- ADR-0025 有全部参照阈值，M3-T07 直接读它，不要重新从语料推导。
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
@@ -43,3 +45,4 @@
 - 安装依赖时用 `HTTP_PROXY= HTTPS_PROXY= pnpm install`。
 - 渠道行为（ADR-0009、ADR-0011）：`reasoning:"off"` 在该渠道仍会输出思考并消耗输出 token；abort 后 `usage` 全为 0；gcli2api 必须把 Gemini API 路径挂在 baseUrl 根下；该渠道不支持预填充。
 - live 测试用 `DRAMATICER_LIVE=1` 开启；`*.live.test.ts` 会被门禁的 I10 扫描排除。
+- Director 机制新增时同步更新既有测试里的机制列表断言：`director.test.ts`、`director-event-pool.test.ts`、`lore.test.ts`、`packages/st-compat/test/chat-cli.test.ts`。

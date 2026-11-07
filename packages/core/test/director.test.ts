@@ -82,6 +82,7 @@ describe("导演决策框架", () => {
 				triggered: true,
 				reason: "最老线索搁置 13 楼，超过阈值 12",
 			},
+			expect.objectContaining({ name: "repetition", triggered: false }),
 			{ name: "event_pool", triggered: false, reason: "事件池为空" },
 		]);
 		expect(decision?.signals).toMatchObject({
