@@ -38,7 +38,8 @@
   做什么：解析 PNG（`tEXt` 块里的 `chara` 或 `ccv3`，base64 编码的 JSON）和 JSON 格式的卡；兼容 V2 和 V3；提取内嵌的 `character_book`；`extensions` 原样保留。
   验收：合成的 PNG 测试数据（在测试里用代码生成最小的 PNG）、V2 和 V3 的 JSON 测试数据都能解析通过。
 
-- [ ] **M0-T05 st-compat：世界书与预设解析** | 依赖：M0-T01
+- [x] **M0-T05 st-compat：世界书与预设解析** | 依赖：M0-T01
+  完成：2026-11-06 `packages/st-compat/src/world-info.ts` 与 `preset.ts` 解析 ST 世界书条目和 OpenAI 预设（prompts、prompt_order、采样参数、预填充、正则脚本），保留 raw；21 个测试，真实快照 3 个世界书与 58 个预设解析并逐文件结构往返通过
   做什么：
   - 世界书条目：主关键词、次关键词、constant、selective、position、depth、order、probability、禁用状态等
   - 预设：`prompts`、`prompt_order`、采样参数、`assistant_prefill`、`extensions.regex_scripts`；不认识的字段原样保留

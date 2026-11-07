@@ -1,0 +1,168 @@
+import { readFile } from "node:fs/promises";
+import { basename } from "node:path";
+import {
+	optionalBoolean,
+	optionalJsonArray,
+	optionalNumber,
+	optionalNumberOrBoolean,
+	optionalObject,
+	optionalString,
+	readBoolean,
+	readString,
+	readStringList,
+} from "./field-readers.js";
+import type { JsonObject, JsonValue } from "./json.js";
+import { isJsonObject } from "./json.js";
+
+/**
+ * ST 世界书条目。字段名与酒馆的 JSON 对齐（`key`、`keysecondary`、`disable`），
+ * 这里的视图用复数或可读名称。未识别的字段留在 `raw` 里。
+ */
+export interface StWorldInfoEntry {
+	/** 在 `entries` 对象里的键，通常是数字字符串 */
+	readonly sourceKey: string;
+	readonly uid: number | null;
+	readonly keys: readonly string[];
+	readonly secondaryKeys: readonly string[];
+	readonly comment: string;
+	readonly content: string;
+	readonly constant: boolean;
+	readonly selective: boolean;
+	readonly selectiveLogic: number | null;
+	/** JSON 里的 `order`，决定注入顺序 */
+	readonly insertionOrder: number | null;
+	/** 0 角色定义之前、1 角色定义之后、2 作者注释顶部、3 作者注释底部、4 按深度注入 */
+	readonly position: number | null;
+	readonly depth: number | null;
+	readonly probability: number | null;
+	readonly useProbability: boolean | null;
+	/** JSON 里的 `disable` */
+	readonly disabled: boolean;
+	readonly excludeRecursion: boolean | null;
+	readonly preventRecursion: boolean | null;
+	/** 酒馆里这个字段可能是布尔值也可能是数字 */
+	readonly delayUntilRecursion: number | boolean | null;
+	readonly group: string | null;
+	readonly groupOverride: boolean | null;
+	readonly groupWeight: number | null;
+	readonly scanDepth: number | null;
+	readonly caseSensitive: boolean | null;
+	readonly matchWholeWords: boolean | null;
+	readonly useGroupScoring: boolean | null;
+	readonly automationId: string | null;
+	readonly role: number | null;
+	readonly sticky: number | null;
+	readonly cooldown: number | null;
+	readonly delay: number | null;
+	readonly displayIndex: number | null;
+	readonly vectorized: boolean | null;
+	readonly ignoreBudget: boolean | null;
+	readonly outletName: string | null;
+	readonly triggers: readonly JsonValue[] | null;
+	readonly extensions: JsonObject | null;
+	/** 条目原始对象，导出时直接写回 */
+	readonly raw: JsonObject;
+}
+
+export interface StWorldInfo {
+	/** 从文件名得到的名字；直接解析文本时为 null */
+	readonly name: string | null;
+	readonly entries: readonly StWorldInfoEntry[];
+	/** 部分世界书带一份角色卡内嵌世界书格式的原始数据 */
+	readonly originalData: JsonObject | null;
+	/** 世界书原始对象，导出时直接写回 */
+	readonly raw: JsonObject;
+}
+
+export function parseWorldInfoJson(jsonText: string): StWorldInfo {
+	return parseWorldInfoText(jsonText, null);
+}
+
+export async function parseWorldInfoFile(path: string): Promise<StWorldInfo> {
+	try {
+		const text = await readFile(path, "utf8");
+		return parseWorldInfoText(text, basename(path).replace(/\.json$/i, ""));
+	} catch (error) {
+		throw new Error(`解析世界书失败：${path}`, { cause: error });
+	}
+}
+
+function parseWorldInfoText(
+	jsonText: string,
+	name: string | null,
+): StWorldInfo {
+	const body = jsonText.charCodeAt(0) === 0xfeff ? jsonText.slice(1) : jsonText;
+	let value: unknown;
+	try {
+		value = JSON.parse(body);
+	} catch (error) {
+		throw new Error("世界书不是合法 JSON", { cause: error });
+	}
+	if (!isJsonObject(value)) throw new Error("世界书必须是 JSON 对象");
+	const entriesNode = value.entries;
+	if (!isJsonObject(entriesNode)) {
+		throw new Error('世界书字段 "entries" 不是 JSON 对象');
+	}
+	const entries = Object.entries(entriesNode).map(([sourceKey, entry]) => {
+		if (!isJsonObject(entry)) {
+			throw new Error(`世界书条目 "${sourceKey}" 不是 JSON 对象`);
+		}
+		return normalizeWorldInfoEntry(sourceKey, entry);
+	});
+	return {
+		name,
+		entries,
+		originalData: optionalObject(value, "originalData", "世界书"),
+		raw: value,
+	};
+}
+
+function normalizeWorldInfoEntry(
+	sourceKey: string,
+	raw: JsonObject,
+): StWorldInfoEntry {
+	const context = `世界书条目 "${sourceKey}"`;
+	return {
+		sourceKey,
+		uid: optionalNumber(raw, "uid", context),
+		keys: readStringList(raw, "key", context),
+		secondaryKeys: readStringList(raw, "keysecondary", context),
+		comment: readString(raw, "comment", context),
+		content: readString(raw, "content", context),
+		constant: readBoolean(raw, "constant", context, false),
+		selective: readBoolean(raw, "selective", context, false),
+		selectiveLogic: optionalNumber(raw, "selectiveLogic", context),
+		insertionOrder: optionalNumber(raw, "order", context),
+		position: optionalNumber(raw, "position", context),
+		depth: optionalNumber(raw, "depth", context),
+		probability: optionalNumber(raw, "probability", context),
+		useProbability: optionalBoolean(raw, "useProbability", context),
+		disabled: readBoolean(raw, "disable", context, false),
+		excludeRecursion: optionalBoolean(raw, "excludeRecursion", context),
+		preventRecursion: optionalBoolean(raw, "preventRecursion", context),
+		delayUntilRecursion: optionalNumberOrBoolean(
+			raw,
+			"delayUntilRecursion",
+			context,
+		),
+		group: optionalString(raw, "group", context),
+		groupOverride: optionalBoolean(raw, "groupOverride", context),
+		groupWeight: optionalNumber(raw, "groupWeight", context),
+		scanDepth: optionalNumber(raw, "scanDepth", context),
+		caseSensitive: optionalBoolean(raw, "caseSensitive", context),
+		matchWholeWords: optionalBoolean(raw, "matchWholeWords", context),
+		useGroupScoring: optionalBoolean(raw, "useGroupScoring", context),
+		automationId: optionalString(raw, "automationId", context),
+		role: optionalNumber(raw, "role", context),
+		sticky: optionalNumber(raw, "sticky", context),
+		cooldown: optionalNumber(raw, "cooldown", context),
+		delay: optionalNumber(raw, "delay", context),
+		displayIndex: optionalNumber(raw, "displayIndex", context),
+		vectorized: optionalBoolean(raw, "vectorized", context),
+		ignoreBudget: optionalBoolean(raw, "ignoreBudget", context),
+		outletName: optionalString(raw, "outletName", context),
+		triggers: optionalJsonArray(raw, "triggers", context),
+		extensions: optionalObject(raw, "extensions", context),
+		raw,
+	};
+}
