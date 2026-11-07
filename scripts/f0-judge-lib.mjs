@@ -318,21 +318,24 @@ export function renderJudgeSection({ summary, meta }) {
 	lines.push("| 项目 | 数值 |", "|---|---|");
 	lines.push(`| 裁判模型 | \`${meta.modelId}\` |`);
 	lines.push(`| 已成功归因的配对 | ${meta.availablePairs} |`);
-	lines.push(`| 抽样配对 | ${summary.pairs} |`);
-	lines.push(`| 判断（两种顺序合计） | ${judgements.judgements} |`);
+	lines.push(`| 抽样配对 | ${meta.selectedPairs ?? summary.pairs} |`);
+	lines.push(`| 有判断的配对 | ${summary.pairs} |`);
+	lines.push(`| 成功判断 | ${judgements.judgements} |`);
 	lines.push(
-		`| 失败判断 | ${meta.failedJudgements}（没有计入一致率） |`,
+		`| 失败判断 | ${meta.failedJudgements}（没有计入一致率，下次运行会重试） |`,
 	);
-	lines.push(`| 本轮新增判断 | ${meta.runStats.calls} |`);
-	lines.push(`| 本轮网络请求 | ${meta.runStats.requests} |`);
-	lines.push(`| 本轮缓存命中 | ${meta.runStats.cacheHits} |`);
+	lines.push(`| 网络请求（成功判断） | ${meta.cost.requests} |`);
+	lines.push(`| 缓存命中（成功判断） | ${meta.cost.cacheHits} |`);
 	lines.push(
-		`| 本轮因输出为空或截断而重试的判断 | ${meta.runStats.retries} |`,
+		`| 因输出为空或截断而重试的判断 | ${meta.cost.retries} |`,
 	);
-	lines.push(`| 累计 prompt token | ${meta.usage.promptTokens} |`);
-	lines.push(`| 累计 completion token | ${meta.usage.completionTokens} |`);
-	lines.push(`| 累计 reasoning token | ${meta.usage.reasoningTokens} |`);
+	lines.push(`| 累计 prompt token | ${meta.cost.usage.promptTokens} |`);
+	lines.push(`| 累计 completion token | ${meta.cost.usage.completionTokens} |`);
+	lines.push(`| 累计 reasoning token | ${meta.cost.usage.reasoningTokens} |`);
 	lines.push("");
+	if (meta.routeNote) {
+		lines.push(meta.routeNote, "");
+	}
 	lines.push("按楼层深度的抽样与判断：", "");
 	lines.push(
 		"| 楼层深度 | 可用配对 | 每层目标 | 抽样配对 | 判断 |",

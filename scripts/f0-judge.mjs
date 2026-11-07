@@ -145,11 +145,24 @@ async function main() {
 	const maxTokens = readPositiveInt("DRAMATICER_F0_JUDGE_MAX_TOKENS", 2_048);
 
 	loadDotEnv(path.resolve(".env"));
-	const channels = await loadChannelsConfig(CHANNELS_PATH);
-	const model = channels.models.get(MODEL_ALIAS);
-	if (model === undefined) {
+	const modelOverride = (process.env.DRAMATICER_F0_JUDGE_MODEL ?? "").trim();
+	const rerun = process.env.DRAMATICER_F0_JUDGE_RERUN === "1";
+	const configured = await loadChannelsConfig(CHANNELS_PATH);
+	const configuredModel = configured.models.get(MODEL_ALIAS);
+	if (configuredModel === undefined) {
 		throw new Error(`channels.yaml 里没有模型 ${MODEL_ALIAS}`);
 	}
+	const model =
+		modelOverride === ""
+			? configuredModel
+			: { ...configuredModel, id: modelOverride };
+	const channels =
+		modelOverride === ""
+			? configured
+			: {
+					...configured,
+					models: new Map(configured.models).set(MODEL_ALIAS, model),
+				};
 	const client = createLlmClient(channels, {
 		defaultModel: MODEL_ALIAS,
 		cacheDir: CACHE_DIR,
@@ -177,7 +190,9 @@ async function main() {
 		})),
 	);
 	const existing = await readResults();
-	const pending = jobs.filter((job) => existing.get(job.key)?.ok !== true);
+	const pending = rerun
+		? jobs
+		: jobs.filter((job) => existing.get(job.key)?.ok !== true);
 	console.error(`判断：共 ${jobs.length} 次，已有 ${jobs.length - pending.length} 次，本次 ${pending.length} 次`);
 
 	await mkdir(OUT_DIR, { recursive: true });
@@ -274,6 +289,20 @@ async function main() {
 		(total, entry) => addUsage(total, entry.usage),
 		zeroUsage(),
 	);
+	const cost = {
+		requests: okEntries.reduce(
+			(total, entry) =>
+				total + (entry.cached === true ? 0 : Number(entry.attempts) || 0),
+			0,
+		),
+		cacheHits: okEntries.filter((entry) => entry.cached === true).length,
+		retries: okEntries.filter((entry) => entry.retried === true).length,
+		usage,
+	};
+	const routeNote =
+		modelOverride === ""
+			? null
+			: `裁判请求发往 magpie 的 \`${modelOverride}\`（DeepSeek V4.1 Flash 的 routing group）。配置里的 \`${configuredModel.id}\` 在 2026-11-07 返回上游 membership entitlement 错误，本次全部判断改用同一模型的路由组；\`eval-private/f0/judge.jsonl\` 里旧的判断被同键的新行覆盖。`;
 	const generatedAt = new Date().toISOString();
 	const result = {
 		generatedAt,
@@ -288,10 +317,8 @@ async function main() {
 		groups: summary.groups,
 		thresholds: summary.thresholds,
 		failedJudgements: selectedResults.length - okEntries.length,
-		calls: {
-			thisRun: runStats,
-			usageTotal: usage,
-		},
+		cost: { ...cost, thisRun: runStats },
+		routeNote,
 	};
 	await writeFile(SUMMARY_PATH, `${JSON.stringify(result, null, "\t")}\n`, "utf8");
 
@@ -301,9 +328,10 @@ async function main() {
 			generatedAt,
 			modelId: model.id,
 			availablePairs: eligible.length,
+			selectedPairs: picked.length,
 			sampleStats,
-			runStats,
-			usage,
+			cost,
+			routeNote,
 			failedJudgements: selectedResults.length - okEntries.length,
 		},
 	});

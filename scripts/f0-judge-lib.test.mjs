@@ -210,8 +210,12 @@ describe("renderJudgeSection", () => {
 			{ label: "11–50 楼", target: 60, available: 60, picked: 60 },
 			{ label: "51 楼以上", target: 70, available: 65, picked: 65 },
 		],
-		runStats: { calls: 390, requests: 380, cacheHits: 10, retries: 2 },
-		usage: { promptTokens: 1, completionTokens: 2, reasoningTokens: 3 },
+		cost: {
+			requests: 380,
+			cacheHits: 10,
+			retries: 2,
+			usage: { promptTokens: 1, completionTokens: 2, reasoningTokens: 3 },
+		},
 		failedJudgements: 2,
 	};
 
