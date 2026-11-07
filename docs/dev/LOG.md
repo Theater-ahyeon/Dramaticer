@@ -9,3 +9,4 @@
 - 2026-11-06 | S5 | M0-T04 | DONE | 实现角色卡解析（PNG 的 ccv3/chara、V1/V2/V3 JSON）与 13 个测试；真实快照 3 张卡解析通过，门禁通过
 - 2026-11-06 | S6 | M0-T05 | DONE | 实现世界书与预设解析（含 prompt_order、正则脚本、数字字符串额度）与 21 个测试；真实快照 3 个世界书、58 个预设解析并结构往返通过，门禁通过
 - 2026-11-06 | S7 | M0-T06 | DONE | 实现 core 领域类型与 SQLite 存储（stories/nodes/state_diffs/FTS5 node_text，trigram 分词，user_version 迁移，节点原文不可修改）与 13 个测试，门禁通过
+- 2026-11-06 | S8 | M0-T07 | DONE | 实现 ST 聊天导入：主路径与 swipe 兄弟节点、MVU 快照 diff；7 个测试，真实快照 1222 层累加往返零差异，门禁通过

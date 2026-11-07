@@ -51,7 +51,8 @@
   做什么：定义这些类型：Story、TimelineNode（含 parentId 和不可修改的 raw）、StateDiff、MemoryEvent（先只定义类型）；用 better-sqlite3 建表（nodes、state_diffs、带 FTS5 的 node_text）；写一个数据库迁移机制（schema 版本号）。**存储层不提供修改 raw 的接口**（不变量 I4），并写一个测试确保这一点。
   验收：能建库；能插入节点和 diff；能按路径（从根到某个节点）读出数据；FTS5 查询可用。
 
-- [ ] **M0-T07 st-compat：ST 对话导入为原生楼层树** | 依赖：M0-T03、M0-T06
+- [x] **M0-T07 st-compat：ST 对话导入为原生楼层树** | 依赖：M0-T03、M0-T06
+  完成：2026-11-06 `packages/st-compat/src/chat-import.ts`：当前 swipe 连成主路径、其他 swipe 建为兄弟节点，相邻楼层 MVU 快照生成 StateDiff；7 个测试，真实快照 1222 层往返零差异，门禁通过
   做什么：ST 对话 → 一条线性路径（当前 swipe 作为主路径上的节点，其余 swipe 作为兄弟节点）；**把相邻楼层的 MVU 变量做 diff，转成 StateDiff**，并验证按路径把 diff 依次累加之后能还原出原来的快照。
   验收：合成测试数据通过往返测试（快照 → diff → 快照）。
 

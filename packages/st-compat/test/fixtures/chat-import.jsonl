@@ -1,0 +1,6 @@
+{"user_name":"用户","character_name":"角色","chat_metadata":{"variables":{"hp":100}}}
+{"name":"角色","is_user":false,"is_system":false,"send_date":"2026-01-01T00:00:00.000Z","mes":"开场","variables":[{"stat_data":{"hp":100,"mood":"平静"},"flags":[]}]}
+{"name":"用户","is_user":true,"send_date":1767225600,"mes":"攻击","variables":[{"stat_data":{"hp":90},"flags":["战斗"]}]}
+{"name":"角色","is_user":false,"send_date":"2026-01-01T00:00:02.000Z","mes":"当前二","swipes":["分支一","当前二"],"swipe_id":1,"variables":[{"stat_data":{"hp":95},"flags":["战斗"]},{"stat_data":{"hp":80,"mood":"受伤"},"flags":["战斗"],"loot":{"item":"剑","n":2}}]}
+{"name":"角色","is_user":false,"mes":"无变量更新"}
+{"name":"角色","is_user":false,"send_date":"2026-01-01T00:00:04.000Z","mes":"收尾","variables":[{"stat_data":{"hp":70},"flags":[],"meta":{"turn":2,"tags":["a","b"]}}]}
