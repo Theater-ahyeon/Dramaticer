@@ -1,7 +1,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { loadDotEnv } from "@dramaticer/core";
 import { describe, expect, it } from "vitest";
-import { loadDotEnv } from "../src/evalset/env.js";
 import {
 	eventSpotcheckPath,
 	eventSummaryPath,

@@ -1,5 +1,6 @@
 import {
 	type LlmClient,
+	type LlmReasoningLevel,
 	type LlmRequest,
 	type LlmResult,
 	isJsonObject,
@@ -40,7 +41,7 @@ export interface EventQuestionOptions {
 	readonly temperature?: number;
 	readonly maxTokens?: number;
 	readonly model?: string;
-	readonly reasoningEffort?: string;
+	readonly reasoning?: LlmReasoningLevel;
 }
 
 export interface EventQuestionFailure {
@@ -103,7 +104,7 @@ interface ResolvedOptions {
 	readonly temperature: number;
 	readonly maxTokens: number;
 	readonly model: string | undefined;
-	readonly reasoningEffort: string | undefined;
+	readonly reasoning: LlmReasoningLevel | undefined;
 }
 
 interface Candidate {
@@ -402,7 +403,7 @@ function resolveOptions(options: EventQuestionOptions): ResolvedOptions {
 		temperature,
 		maxTokens,
 		model: options.model,
-		reasoningEffort: options.reasoningEffort,
+		reasoning: options.reasoning,
 	};
 }
 
@@ -518,9 +519,9 @@ function buildRequest(
 	return {
 		...request,
 		...(options.model === undefined ? {} : { model: options.model }),
-		...(options.reasoningEffort === undefined
+		...(options.reasoning === undefined
 			? {}
-			: { reasoningEffort: options.reasoningEffort }),
+			: { reasoning: options.reasoning }),
 	};
 }
 

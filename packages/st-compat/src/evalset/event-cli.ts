@@ -1,11 +1,15 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { OpenAiCompatibleClient } from "@dramaticer/core";
+import {
+	type LlmReasoningLevel,
+	createLlmClient,
+	loadChannelsConfig,
+	loadDotEnv,
+} from "@dramaticer/core";
 import { parseChatJsonlFile } from "../chat-jsonl.js";
 import { openSnapshot } from "../health/manifest.js";
 import { messageNodeId } from "../node-id.js";
-import { loadDotEnv } from "./env.js";
 import {
 	type EvidenceExcerpt,
 	eventSpotcheckPath,
@@ -30,14 +34,19 @@ loadDotEnv(envPath);
 const rawRoot = path.join(repoRoot, "eval-private", "raw");
 const outputRoot = path.join(repoRoot, "eval-private", "evalset");
 const cacheDir = path.join(repoRoot, "eval-private", "llm-cache");
+const channelsPath = path.join(repoRoot, "data", "channels.yaml");
+const modelAlias = "background";
 
-const baseUrl = requireEnv("DRAMATICER_BG_BASE_URL");
-const apiKey = process.env.DRAMATICER_BG_API_KEY ?? "";
-const model = requireEnv("DRAMATICER_BG_MODEL");
-const requestsPerMinute = optionalInt("DRAMATICER_BG_REQUESTS_PER_MINUTE", 20);
-const timeoutMs = optionalInt("DRAMATICER_BG_TIMEOUT_MS", 300_000);
-const maxRetries = optionalInt("DRAMATICER_BG_MAX_RETRIES", 1);
-const reasoningEffort = nonEmpty(process.env.DRAMATICER_BG_REASONING_EFFORT);
+const channels = await loadChannelsConfig(channelsPath);
+const background = channels.models.get(modelAlias);
+if (background === undefined) {
+	throw new Error(`渠道配置里没有模型 ${modelAlias}`);
+}
+const client = createLlmClient(channels, {
+	defaultModel: modelAlias,
+	cacheDir,
+});
+const reasoning = parseReasoning(process.env.DRAMATICER_BG_REASONING_EFFORT);
 const onlyStory = readStoryFilter(process.argv.slice(2));
 const questionsPerWindow = optionalInt(
 	"DRAMATICER_EVAL_QUESTIONS_PER_WINDOW",
@@ -46,16 +55,6 @@ const questionsPerWindow = optionalInt(
 const maxWindows = optionalInt("DRAMATICER_EVAL_MAX_WINDOWS", 24);
 const maxWindowChars = optionalInt("DRAMATICER_EVAL_MAX_WINDOW_CHARS", 24_000);
 const maxTokens = optionalInt("DRAMATICER_EVAL_MAX_TOKENS", 4_096);
-
-const client = new OpenAiCompatibleClient({
-	baseUrl,
-	apiKey,
-	model,
-	requestsPerMinute,
-	timeoutMs,
-	maxRetries,
-	cacheDir,
-});
 
 const snapshot = await openSnapshot(rawRoot);
 const allChatFiles = snapshot.filesByRole("chat");
@@ -114,7 +113,7 @@ for (const file of chatFiles) {
 		minEvidenceGap: 2,
 		temperature: 0.7,
 		maxTokens,
-		...(reasoningEffort === undefined ? {} : { reasoningEffort }),
+		...(reasoning === undefined ? {} : { reasoning }),
 	});
 	const verification = await verifyEventQuestionsFromFile(
 		chatPath,
@@ -184,10 +183,9 @@ await writeFile(
 	`${JSON.stringify(
 		{
 			generatedAt,
-			baseUrl,
-			model,
-			requestsPerMinute,
-			reasoningEffort: reasoningEffort ?? null,
+			model: background.id,
+			channels: background.channels,
+			reasoning: reasoning ?? null,
 			stories: summaries,
 			totalQuestions: allQuestions.length,
 			spotcheckCount,
@@ -244,14 +242,31 @@ function readStoryFilter(args: readonly string[]): string | undefined {
 	return undefined;
 }
 
-function requireEnv(name: string): string {
-	const value = process.env[name]?.trim();
-	if (!value) {
+const REASONING_LEVELS: readonly LlmReasoningLevel[] = [
+	"off",
+	"minimal",
+	"low",
+	"medium",
+	"high",
+	"xhigh",
+	"max",
+];
+
+function parseReasoning(
+	value: string | undefined,
+): LlmReasoningLevel | undefined {
+	const trimmed = value?.trim();
+	if (!trimmed) return undefined;
+	if (!isReasoningLevel(trimmed)) {
 		throw new Error(
-			`环境变量 ${name} 没有设置；请在仓库根目录的 .env 里填写后台渠道`,
+			`DRAMATICER_BG_REASONING_EFFORT 只能是 ${REASONING_LEVELS.join("、")}`,
 		);
 	}
-	return value;
+	return trimmed;
+}
+
+function isReasoningLevel(value: string): value is LlmReasoningLevel {
+	return REASONING_LEVELS.some((level) => level === value);
 }
 
 function optionalInt(name: string, fallback: number): number {
@@ -262,9 +277,4 @@ function optionalInt(name: string, fallback: number): number {
 		throw new Error(`${name} 必须是非负整数`);
 	}
 	return value;
-}
-
-function nonEmpty(value: string | undefined): string | undefined {
-	const trimmed = value?.trim();
-	return trimmed ? trimmed : undefined;
 }

@@ -33,7 +33,9 @@ function fakeResult(text: string, cached = false): LlmResult {
 		text,
 		reasoning: "",
 		finishReason: "stop",
+		stopReason: "stop",
 		model: "fake",
+		channel: "fake",
 		usage: {
 			promptTokens: 10,
 			completionTokens: 5,
@@ -44,6 +46,9 @@ function fakeResult(text: string, cached = false): LlmResult {
 		raw: {},
 		cached,
 		attempts: 1,
+		rounds: 1,
+		truncation: null,
+		continuation: null,
 	};
 }
 

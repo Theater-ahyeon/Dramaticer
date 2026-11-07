@@ -95,3 +95,16 @@
   - 采用 pi-agent-core，但只当作无状态单轮执行器：`prepareRequest` 注入组装好的上下文，`beforeToolCall` 做校验与拦截，`finishTurn` 用 `{action:"end"}` 把每轮请求数限制在 1 次；`identity` 设为 `{ attribution: null }`。
   - 渠道配置保存 `baseUrl`、模型 id 字符串和 api key 的环境变量名；模型 id 不解析前缀。
 - **影响**：M1-T02 按此实现；渠道体检（M1-T03）不能依赖注入 fetch，需要从 `onPayload`、错误信息或服务端日志取请求地址；Gemini 端到端验收继续受 HUMAN-04 影响。
+
+## ADR-0010 core/llm 的渠道、重试与续写（2026-11-07）
+
+- **背景**：M1-T02 要把 M0 的最小后台客户端换成正式的 `core/llm` 接口，同时保留已有评测缓存，避免重复调用渠道。设计要求多渠道按优先级切换、重试、截断检测与续写，但不希望 pi 的类型进入领域层。
+- **决定**：
+  - `core/llm` 暴露 `LlmClient.complete` 与 `LlmStreamingClient.stream`：流式事件只有 `text_delta` 和 `thinking_delta`，最终结果包含结束原因、用量、渠道 id、尝试次数、轮数与截断原因；中止通过 `AbortSignal`。
+  - 渠道配置放在 `data/channels.yaml`（被 git 忽略），仓库根目录提交 `channels.example.yaml`。所有字符串支持 `${VAR}`，从 `.env` 读取；`apiKey` 必须写成环境变量引用，不能写字面量。一个模型按顺序列出渠道，顺序就是优先级。
+  - 用 pi-ai 的 API 实现直接调用 `streamSimple`，按 `openai-completions` / `google-generative-ai` 分支；pi-agent-core 留到接入工具与单轮执行器时使用。pi 的 `AssistantMessage`、`Usage` 等类型只在适配器内部出现。
+  - 路由层负责限速、重试与切换：可重试错误（429、5xx、408/409/425、超时与网络错误）先在当前渠道按指数退避重试；没有内容时重试耗尽后切换渠道；已经输出内容后发生错误时，把已有正文作为续写上下文切换渠道。
+  - 截断检测：`stopReason === "length"` 一定判为截断；配置 `expectedTags` 时检查未闭合标签与被切断在标签中间的情况；`detectAbruptEnd` 显式开启后才按句尾字符判断突然中断。默认只对 `length` 自动续写，最多 1 轮。
+  - 缓存键与 M0 客户端完全一致（渠道 baseUrl、apiKey 摘要、模型 id 与请求体），读取时按渠道优先级逐个尝试，写入时用实际成功的渠道，因此 `eval-private/llm-cache` 里的旧结果仍可命中。
+  - `loadDotEnv` 改为用 `node:util` 的 `parseEnv` 读文件并覆盖 `process.env` 的同名变量：项目的 `.env` 是渠道配置的唯一来源，避免外部环境残留变量改变模型或密钥。
+- **影响**：事件题生成器改用 `data/channels.yaml` 的 `background` 模型并继续使用原缓存；旧的 `OpenAiCompatibleClient` 删除。后续 M1-T03 的渠道体检、M1-T06 的工具调用和 M1-T07 的单轮 CLI 都通过这个接口接入。

@@ -1,5 +1,12 @@
+export * from "./env.js";
 export * from "./json.js";
-export * from "./llm/client.js";
+export * from "./llm/channels.js";
+export * from "./llm/configure.js";
+export * from "./llm/event-stream.js";
+export * from "./llm/pi-channel.js";
+export * from "./llm/router.js";
+export * from "./llm/truncation.js";
+export * from "./llm/types.js";
 export * from "./retrieval/chunk-index.js";
 export * from "./retrieval/chunk-text.js";
 export { LATEST_SCHEMA_VERSION } from "./store/migrations.js";

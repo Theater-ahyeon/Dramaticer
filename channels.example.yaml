@@ -1,0 +1,35 @@
+# Dramaticer 渠道配置
+# 复制成 data/channels.yaml 后使用；字符串里的 ${VAR} 从 .env 读取。
+# 一个模型可以按优先级配置多个渠道，前面的渠道失败后自动切换。
+
+channels:
+  bg:
+    api: openai-completions
+    baseUrl: ${DRAMATICER_BG_BASE_URL}
+    apiKey: ${DRAMATICER_BG_API_KEY}
+    requestsPerMinute: 20
+    maxRetries: 2
+    retryBaseDelayMs: 1000
+    timeoutMs: 300000
+  main:
+    api: openai-completions
+    baseUrl: ${DRAMATICER_MAIN_BASE_URL}
+    apiKey: ${DRAMATICER_MAIN_API_KEY}
+    requestsPerMinute: 30
+    maxRetries: 2
+    retryBaseDelayMs: 1000
+    timeoutMs: 300000
+
+models:
+  background:
+    id: ${DRAMATICER_BG_MODEL}
+    contextWindow: 131072
+    maxTokens: 8192
+    reasoning: true
+    channels: [bg]
+  main:
+    id: ${DRAMATICER_MAIN_MODEL}
+    contextWindow: 131072
+    maxTokens: 8192
+    reasoning: true
+    channels: [main]
