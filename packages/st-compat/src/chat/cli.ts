@@ -7,9 +7,11 @@ import {
 	type LlmStreamingClient,
 	StoryStore,
 	createDefaultContextTemplate,
+	createDirectorSlotProvider,
 	createEmbeddingClient,
 	createHistorySlotProvider,
 	createLlmClient,
+	createLoreSlotProvider,
 	createMemorySlotProvider,
 	createStateSlotProvider,
 	createStaticSlotProvider,
@@ -24,6 +26,11 @@ import {
 	parseCharacterCardFile,
 } from "../character-card.js";
 import { importCharacterCardEntity } from "../entity-import.js";
+import {
+	importCharacterBookLore,
+	importWorldInfoLore,
+} from "../lore-import.js";
+import { type StWorldInfo, parseWorldInfoFile } from "../world-info.js";
 import { renderCharacterPrompt } from "./character.js";
 
 const repoRoot = fileURLToPath(new URL("../../../../", import.meta.url));
@@ -39,6 +46,7 @@ export interface ChatCliDependencies {
 		modelAlias: string,
 	) => LlmStreamingClient;
 	readonly loadCard?: (filePath: string) => Promise<StCharacterCard>;
+	readonly loadWorld?: (filePath: string) => Promise<StWorldInfo>;
 	readonly now?: () => number;
 	/** 状态信息，默认写到 stderr，避免和正文混在一起。 */
 	readonly log?: (message: string) => void;
@@ -47,11 +55,12 @@ export interface ChatCliDependencies {
 }
 
 const USAGE =
-	"用法：dramaticer chat --story <id> --card <path> --user <text> [--db <path>] [--model <alias>] [--budget <tokens>] [--max-tokens <n>] [--temperature <x>]";
+	"用法：dramaticer chat --story <id> --card <path> --user <text> [--world <path>] [--db <path>] [--model <alias>] [--budget <tokens>] [--max-tokens <n>] [--temperature <x>]";
 
 interface ChatArgs {
 	readonly storyId: string;
 	readonly cardPath: string;
+	readonly worldPaths: readonly string[];
 	readonly userText: string;
 	readonly dbPath: string | null;
 	readonly model: string | null;
@@ -72,6 +81,7 @@ export async function runChatCli(
 	const loadEnv = dependencies.loadEnv ?? loadDotEnv;
 	const loadConfig = dependencies.loadConfig ?? loadChannelsConfig;
 	const loadCard = dependencies.loadCard ?? parseCharacterCardFile;
+	const loadWorld = dependencies.loadWorld ?? parseWorldInfoFile;
 	const createClient =
 		dependencies.createClient ??
 		((config: LlmChannelsConfig, alias: string) =>
@@ -130,6 +140,18 @@ export async function runChatCli(
 			log(`已创建故事 ${parsed.storyId}`);
 		}
 		importCharacterCardEntity(store, parsed.storyId, card);
+		if (card.characterBook !== null) {
+			importCharacterBookLore(
+				store,
+				parsed.storyId,
+				card.characterBook,
+				card.name,
+			);
+		}
+		for (const worldPath of parsed.worldPaths) {
+			const worldInfo = await loadWorld(worldPath);
+			importWorldInfoLore(store, parsed.storyId, worldInfo);
+		}
 		const budgetTokens =
 			parsed.budgetTokens ?? model.contextWindow - model.maxTokens;
 		if (budgetTokens <= 0) {
@@ -152,6 +174,8 @@ export async function runChatCli(
 				state: createStateSlotProvider(store),
 				summary: createSummarySlotProvider(store),
 				memory: createMemorySlotProvider(store, { embedder }),
+				lore: createLoreSlotProvider(store),
+				director: createDirectorSlotProvider(store),
 			},
 			budgetTokens,
 			structuredOutput: mode,
@@ -200,6 +224,7 @@ function parseChatArgs(args: readonly string[]): ChatArgs {
 	const allowed: Readonly<Record<string, true>> = {
 		story: true,
 		card: true,
+		world: true,
 		user: true,
 		db: true,
 		model: true,
@@ -208,6 +233,7 @@ function parseChatArgs(args: readonly string[]): ChatArgs {
 		temperature: true,
 	};
 	const values = new Map<string, string>();
+	const worldPaths: string[] = [];
 	for (let index = 1; index < args.length; index += 1) {
 		const arg = args[index] as string;
 		if (!arg.startsWith("--")) {
@@ -218,7 +244,7 @@ function parseChatArgs(args: readonly string[]): ChatArgs {
 		if (allowed[key] !== true) {
 			throw new Error(`不认识的参数 --${key}；${USAGE}`);
 		}
-		if (values.has(key)) {
+		if (values.has(key) && key !== "world") {
 			throw new Error(`参数 --${key} 重复；${USAGE}`);
 		}
 		let value: string | undefined;
@@ -230,6 +256,10 @@ function parseChatArgs(args: readonly string[]): ChatArgs {
 		}
 		if (value === undefined) {
 			throw new Error(`--${key} 后面必须写值；${USAGE}`);
+		}
+		if (key === "world") {
+			worldPaths.push(requireText(value, "--world"));
+			continue;
 		}
 		values.set(key, value);
 	}
@@ -245,6 +275,7 @@ function parseChatArgs(args: readonly string[]): ChatArgs {
 	return {
 		storyId,
 		cardPath,
+		worldPaths,
 		userText,
 		dbPath,
 		model,

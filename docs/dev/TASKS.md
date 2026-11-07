@@ -305,7 +305,8 @@
   - 默认模板的 `memory` 与 `summary` 段接入这两个提供者；Trace 的来源写成 `memory:<条数>` 与 `summary:<级别>`。
   验收：槽位按 limit 取结果并按路径过滤；重复结果去重；分支切换后失效摘要不再出现；没有结果时记 `missing-slot`；token 上限裁剪生效；单元测试不调用模型；`pnpm check` 通过。
 
-- [ ] **M2-T13 世界书与导演的被动注入槽位** | 依赖：M2-T04、M2-T07、M2-T10 | DESIGN §7、§9
+- [x] **M2-T13 世界书与导演的被动注入槽位** | 依赖：M2-T04、M2-T07、M2-T10 | DESIGN §7、§9
+  完成：2026-11-07 迁移 v12 新增 `lore_entries`（`(story_id, source)` 唯一，重复导入跳过）；st-compat 新增 `importWorldInfoLore` 与 `importCharacterBookLore`，世界书条目与卡内嵌世界书都转成 lore 条目并关联实体；新增 `createLoreSlotProvider`（常驻必注入、其余按关键词与实体别名命中、同实体或同正文去重、超预算先裁靠后检索条目再裁常驻）与 `createDirectorSlotProvider`（当前分支未兑现笔记、按创建顺序、带楼层年龄）；`dramaticer chat` 支持可重复的 `--world` 并接入两个槽位；11 个新测试，门禁通过（442 个测试）；ADR-0021
   做什么：
   - 迁移 v12：新增 `lore_entries(id, story_id, entity_id, name, content, constant, keywords, source, created_at)`；`keywords` 存 JSON 数组。st-compat 把世界书条目导入为通用 lore 条目，`constant` 与主关键词保留。
   - `createLoreSlotProvider`：常驻条目始终注入；非恒常条目按当前对话做混合检索，只取命中的条目；同一实体或同一内容只出现一次。总 token 超过预算时先删除靠后的非恒常条目，常驻条目最后裁剪。

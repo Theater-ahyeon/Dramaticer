@@ -4,6 +4,7 @@ import { describe, expect, it, onTestFinished } from "vitest";
 import {
 	type BackgroundJob,
 	type EmbeddingClient,
+	LATEST_SCHEMA_VERSION,
 	StoryStore,
 	createBackgroundJobRegistry,
 	createEmbeddingsHandler,
@@ -218,7 +219,7 @@ describe("块向量索引", () => {
 			expect(store.searchVectors([0, 0, 0, 0], { storyId: "s1" })).toHaveLength(
 				1,
 			);
-			expect(store.getSchemaVersion()).toBe(11);
+			expect(store.getSchemaVersion()).toBe(LATEST_SCHEMA_VERSION);
 		} finally {
 			store.close();
 		}
@@ -227,7 +228,7 @@ describe("块向量索引", () => {
 		);
 		const reopened = StoryStore.open(dbPath, { embeddingDimensions: 4 });
 		try {
-			expect(reopened.getSchemaVersion()).toBe(11);
+			expect(reopened.getSchemaVersion()).toBe(LATEST_SCHEMA_VERSION);
 		} finally {
 			reopened.close();
 		}

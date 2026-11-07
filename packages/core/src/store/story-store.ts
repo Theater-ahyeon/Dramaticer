@@ -20,6 +20,7 @@ import {
 	type MemoryEvent,
 	type NewMemoryEventInput,
 } from "../memory/event.js";
+import type { LoreEntry, NewLoreEntryInput } from "../memory/lore.js";
 import {
 	type NewPlotNoteInput,
 	type PlotNote,
@@ -214,11 +215,35 @@ interface PlotNoteRow {
 	readonly fulfilled_at: string | null;
 }
 
+interface LoreEntryRow {
+	readonly id: string;
+	readonly story_id: string;
+	readonly entity_id: string | null;
+	readonly name: string;
+	readonly content: string;
+	readonly constant: number;
+	readonly keywords: string;
+	readonly source: string;
+	readonly created_at: string;
+}
+
 interface NormalisedPlotNote {
 	readonly id: string;
 	readonly storyId: string;
 	readonly sourceNodeId: string;
 	readonly text: string;
+	readonly createdAt: string;
+}
+
+interface NormalisedLoreEntry {
+	readonly id: string;
+	readonly storyId: string;
+	readonly entityId: string | null;
+	readonly name: string;
+	readonly content: string;
+	readonly constant: boolean;
+	readonly keywords: readonly string[];
+	readonly source: string;
 	readonly createdAt: string;
 }
 
@@ -552,6 +577,23 @@ function rowToPlotNote(row: PlotNoteRow): PlotNote {
 		status: row.status,
 		createdAt: row.created_at,
 		fulfilledAt: row.fulfilled_at,
+	};
+}
+
+function rowToLoreEntry(row: LoreEntryRow): LoreEntry {
+	return {
+		id: row.id,
+		storyId: row.story_id,
+		entityId: row.entity_id,
+		name: row.name,
+		content: row.content,
+		constant: row.constant === 1,
+		keywords: parseStoredNameArray(
+			row.keywords,
+			`世界书条目 ${row.id} 的关键词`,
+		),
+		source: row.source,
+		createdAt: row.created_at,
 	};
 }
 
@@ -1385,6 +1427,71 @@ export class StoryStore {
 			)
 			.run(at, noteId);
 		return { ...note, status: "fulfilled", fulfilledAt: at };
+	}
+
+	/**
+	 * 写入世界书条目。`(story_id, source)` 唯一：重复导入同一来源时跳过已有行，
+	 * 返回值只包含本次真正写入的条目。
+	 */
+	insertLoreEntries(inputs: readonly NewLoreEntryInput[]): LoreEntry[] {
+		if (!Array.isArray(inputs)) {
+			throw new Error("世界书条目必须是数组");
+		}
+		if (inputs.length === 0) return [];
+		const normalised = inputs.map((input, index) =>
+			this.#normaliseLoreEntry(input, index),
+		);
+		const insert = this.#db.prepare(
+			`INSERT INTO lore_entries
+				(id, story_id, entity_id, name, content, constant, keywords, source, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT DO NOTHING`,
+		);
+		const created: LoreEntry[] = [];
+		this.#db.transaction(() => {
+			for (const entry of normalised) {
+				const result = insert.run(
+					entry.id,
+					entry.storyId,
+					entry.entityId,
+					entry.name,
+					entry.content,
+					entry.constant ? 1 : 0,
+					JSON.stringify(entry.keywords),
+					entry.source,
+					entry.createdAt,
+				);
+				if (result.changes === 0) continue;
+				created.push({
+					id: entry.id,
+					storyId: entry.storyId,
+					entityId: entry.entityId,
+					name: entry.name,
+					content: entry.content,
+					constant: entry.constant,
+					keywords: entry.keywords,
+					source: entry.source,
+					createdAt: entry.createdAt,
+				});
+			}
+		})();
+		return created;
+	}
+
+	/** 按导入顺序列出故事里全部世界书条目。 */
+	listLoreEntries(storyId: string): LoreEntry[] {
+		assertNonEmptyString(storyId, "故事 id");
+		if (!this.getStory(storyId)) {
+			throw new Error(`故事不存在：${storyId}`);
+		}
+		const rows = this.#db
+			.prepare(
+				`SELECT * FROM lore_entries
+				WHERE story_id = ?
+				ORDER BY row_id ASC`,
+			)
+			.all(storyId) as LoreEntryRow[];
+		return rows.map(rowToLoreEntry);
 	}
 
 	/**
@@ -2313,6 +2420,80 @@ export class StoryStore {
 			storyId: input.storyId,
 			sourceNodeId: input.sourceNodeId,
 			text,
+			createdAt,
+		};
+	}
+
+	#normaliseLoreEntry(
+		input: NewLoreEntryInput,
+		index: number,
+	): NormalisedLoreEntry {
+		const label = `世界书条目[${index}]`;
+		if (input === null || typeof input !== "object" || Array.isArray(input)) {
+			throw new Error(`${label} 必须是对象`);
+		}
+		assertNonEmptyString(input.storyId, `${label} 的 storyId`);
+		if (!this.getStory(input.storyId)) {
+			throw new Error(`故事不存在：${input.storyId}`);
+		}
+		assertNonEmptyString(input.name, `${label} 的 name`);
+		const name = input.name.trim();
+		if (name.length === 0) {
+			throw new Error(`${label} 的 name 不能是空字符串`);
+		}
+		if (typeof input.content !== "string") {
+			throw new Error(`${label} 的 content 必须是字符串`);
+		}
+		const content = input.content.trim();
+		if (content.length === 0) {
+			throw new Error(`${label} 的 content 不能是空字符串`);
+		}
+		const constant = input.constant ?? false;
+		if (typeof constant !== "boolean") {
+			throw new Error(`${label} 的 constant 必须是布尔值`);
+		}
+		const keywords = input.keywords ?? [];
+		if (!Array.isArray(keywords)) {
+			throw new Error(`${label} 的 keywords 必须是字符串数组`);
+		}
+		const normalizedKeywords: string[] = [];
+		for (const keyword of keywords) {
+			if (typeof keyword !== "string") {
+				throw new Error(`${label} 的 keywords 必须是字符串数组`);
+			}
+			const trimmed = keyword.trim();
+			if (trimmed.length === 0) {
+				throw new Error(`${label} 的 keywords 不能包含空字符串`);
+			}
+			normalizedKeywords.push(trimmed);
+		}
+		const entityId = input.entityId ?? null;
+		if (entityId !== null) {
+			assertNonEmptyString(entityId, `${label} 的 entityId`);
+			const entity = this.getEntity(entityId);
+			if (!entity) {
+				throw new Error(`${label} 指向的实体不存在：${entityId}`);
+			}
+			if (entity.storyId !== input.storyId) {
+				throw new Error(
+					`${label} 的 storyId 与实体所属故事不一致：${input.storyId}`,
+				);
+			}
+		}
+		assertNonEmptyString(input.source, `${label} 的 source`);
+		const id = input.id ?? randomUUID();
+		assertNonEmptyString(id, `${label} 的 id`);
+		const createdAt = input.createdAt ?? new Date().toISOString();
+		assertNonEmptyString(createdAt, `${label} 的 createdAt`);
+		return {
+			id,
+			storyId: input.storyId,
+			entityId,
+			name,
+			content,
+			constant,
+			keywords: normalizedKeywords,
+			source: input.source,
 			createdAt,
 		};
 	}

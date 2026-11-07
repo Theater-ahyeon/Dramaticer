@@ -55,3 +55,5 @@
 - 2026-11-07 | S46 | M2-T11 | DONE | `retrieveMemory` 返回 `RetrievalResult`（`hits` 与 `filter`）；`viewpoint` 经实体别名归一化后过滤事件（公开与 `"*"` 保留），视角存在时跳过全部原文块路，新增 2 个测试，门禁通过（425 个测试）；INBOX 两条分拣为 D-T01 至 D-T04 并登记 HUMAN-07
 
 - 2026-11-07 | S47 | M2-T12 | DONE | core 的 `chat/providers.ts` 新增 `createMemorySlotProvider`：以当前楼层原文检索其祖先路径，默认 6 条，同一楼层跨事件与块只保留一条，事件正文按楼层分组读取，块正文用上下文视图渲染，来源写 `memory:<条数>`；新增 `createSummarySlotProvider`：取全部有效主线摘要与最近一条章节摘要，按 end 路径位置从新到旧装入 token 上限（默认 800），来源写 `summary:<级别>`；`dramaticer chat` 接入两个提供者并在有 embeddings 配置时启用向量路；`chat-providers.test.ts` 新增 5 个测试，门禁通过（430 个测试）
+
+- 2026-11-07 | S48 | M2-T13 | DONE | 迁移 v12 新增 `lore_entries`（`(story_id, source)` 唯一，幂等导入）；st-compat 新增 `worldInfoFromCharacterBook`、`importWorldInfoLore`、`importCharacterBookLore`，世界书与卡内嵌世界书条目转成 lore 条目并关联实体；core 新增 `createLoreSlotProvider`（常驻必注入、关键词与实体别名匹配、同实体或同正文去重、超预算先裁检索条目再裁常驻）与 `createDirectorSlotProvider`（当前分支未兑现笔记、按创建顺序、带楼层年龄）；`dramaticer chat` 新增可重复的 `--world` 并接入两个槽位；11 个新测试，门禁通过（442 个测试）；ADR-0021

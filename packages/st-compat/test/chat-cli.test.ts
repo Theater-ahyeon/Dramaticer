@@ -246,6 +246,52 @@ describe("dramaticer chat", () => {
 		}
 	});
 
+	it("导入世界书条目并让常驻条目进入上下文", async () => {
+		const dbPath = createTempDb();
+		const fake = createFakeClient();
+		const worldPath = join(
+			import.meta.dirname,
+			"fixtures",
+			"health-world.json",
+		);
+		const result = await runChatCli(
+			[
+				"chat",
+				"--story",
+				"s1",
+				"--card",
+				cardPath,
+				"--world",
+				worldPath,
+				"--user",
+				"我推开山门。",
+				"--db",
+				dbPath,
+			],
+			dependencies(fake, [], []),
+		);
+
+		expect(fake.requests).toHaveLength(1);
+		const store = StoryStore.open(dbPath);
+		try {
+			const entries = store.listLoreEntries("s1");
+			expect(entries).toHaveLength(1);
+			expect(entries[0]).toMatchObject({
+				name: "龙",
+				constant: true,
+				source: "world-info:health-world:0",
+			});
+			const trace = store.getTurnTrace(result.node.id);
+			const loreEntry = trace?.context.entries.find(
+				(entry) => entry.segmentId === "lore",
+			);
+			expect(loreEntry?.status).toBe("included");
+			expect(loreEntry?.source).toBe("lore:常驻 1 条、检索 0 条");
+		} finally {
+			store.close();
+		}
+	});
+
 	it("对话轮次只创建正文客户端，不触碰后台模型", async () => {
 		const dbPath = createTempDb();
 		const fake = createFakeClient();

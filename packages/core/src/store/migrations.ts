@@ -346,6 +346,33 @@ export function buildMigrations(
 				)`,
 			],
 		},
+		{
+			version: 12,
+			description: "世界书条目：常驻与关键词检索共用一张只读的 lore 表",
+			statements: [
+				`CREATE TABLE lore_entries (
+					row_id INTEGER PRIMARY KEY,
+					id TEXT NOT NULL UNIQUE,
+					story_id TEXT NOT NULL REFERENCES stories(id),
+					entity_id TEXT REFERENCES entities(id),
+					name TEXT NOT NULL,
+					content TEXT NOT NULL,
+					constant INTEGER NOT NULL CHECK (constant IN (0, 1)),
+					keywords TEXT NOT NULL,
+					source TEXT NOT NULL,
+					created_at TEXT NOT NULL,
+					UNIQUE (story_id, source)
+				) STRICT`,
+				"CREATE INDEX lore_entries_story_idx ON lore_entries(story_id, row_id)",
+				`CREATE TRIGGER lore_entries_story_matches_entity
+				BEFORE INSERT ON lore_entries
+				WHEN NEW.entity_id IS NOT NULL
+					AND COALESCE((SELECT story_id FROM entities WHERE id = NEW.entity_id), '') <> NEW.story_id
+				BEGIN
+					SELECT RAISE(ABORT, '世界书条目的 story_id 必须与实体一致');
+				END`,
+			],
+		},
 	];
 }
 

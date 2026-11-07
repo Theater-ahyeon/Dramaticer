@@ -5,8 +5,14 @@ import type {
 	ContextSlotProvider,
 } from "../context/assembler.js";
 import type { ContextMessage } from "../context/template.js";
+import { normalizeEntityName } from "../entity.js";
 import type { EmbeddingClient } from "../llm/embeddings.js";
 import { MAX_MEMORY_EVENT_LIMIT } from "../memory/event.js";
+import {
+	type LoreEntry,
+	loreEntryContentKey,
+	loreEntryMatchScore,
+} from "../memory/lore.js";
 import type { SummaryLevel } from "../memory/summary.js";
 import { retrieveMemory } from "../retrieval/hybrid.js";
 import type { StoryStore } from "../store/story-store.js";
@@ -206,7 +212,6 @@ export interface SummarySlotProviderOptions {
 	readonly tokenLimit?: number;
 	readonly tokenEstimator?: TokenEstimator;
 }
-
 export const DEFAULT_SUMMARY_TOKEN_LIMIT = 800;
 
 /**
@@ -272,6 +277,188 @@ export function createSummarySlotProvider(
 			return {
 				messages: [{ role: "system", content: lines.join("\n") }],
 				source: `summary:${levels.join("+")}`,
+			};
+		},
+	};
+}
+
+export interface LoreSlotProviderOptions {
+	/** 世界书段占用的 token 上限，默认 800。 */
+	readonly tokenLimit?: number;
+	readonly tokenEstimator?: TokenEstimator;
+}
+
+export const DEFAULT_LORE_TOKEN_LIMIT = 800;
+
+interface SelectedLoreLine {
+	readonly constant: boolean;
+	readonly line: string;
+	readonly tokens: number;
+}
+
+/**
+ * 常驻世界书条目每轮都注入；其余条目用当前楼层的原文匹配关键词与关联实体的
+ * 名称和别名，只有命中的条目才出现。超出 token 上限时先从后往前删除检索条目，
+ * 常驻条目最后才裁。
+ */
+export function createLoreSlotProvider(
+	store: StoryStore,
+	options: LoreSlotProviderOptions = {},
+): ContextSlotProvider {
+	const tokenLimit = options.tokenLimit ?? DEFAULT_LORE_TOKEN_LIMIT;
+	if (!Number.isInteger(tokenLimit) || tokenLimit < 1) {
+		throw new Error("世界书槽位的 token 上限必须是正整数");
+	}
+	const estimator = options.tokenEstimator ?? createTokenEstimator();
+	const header = "世界书条目：";
+	return {
+		provide(request): ContextSlotContent | null {
+			const nodeId = request.nodeId;
+			let normalizedQuery = "";
+			if (nodeId !== null) {
+				const node = store.getNode(nodeId);
+				if (!node) {
+					throw new Error(`楼层节点不存在：${nodeId}`);
+				}
+				if (node.storyId !== request.storyId) {
+					throw new Error(`楼层节点 ${nodeId} 属于另一个故事 ${node.storyId}`);
+				}
+				normalizedQuery = normalizeEntityName(node.raw);
+			}
+			const entries = store.listLoreEntries(request.storyId);
+			if (entries.length === 0) return null;
+
+			const orderedNonConstant: { entry: LoreEntry; score: number }[] = [];
+			for (const entry of entries) {
+				if (entry.constant) continue;
+				let entityAliases: readonly string[] = [];
+				if (entry.entityId !== null) {
+					const entity = store.getEntity(entry.entityId);
+					if (!entity) {
+						throw new Error(
+							`世界书条目 ${entry.id} 关联的实体不存在：${entry.entityId}`,
+						);
+					}
+					entityAliases = entity.aliases;
+				}
+				const score = loreEntryMatchScore(
+					entry,
+					normalizedQuery,
+					entityAliases,
+				);
+				if (score > 0) orderedNonConstant.push({ entry, score });
+			}
+			orderedNonConstant.sort((left, right) => right.score - left.score);
+
+			const candidates = [
+				...entries.filter((entry) => entry.constant),
+				...orderedNonConstant.map((match) => match.entry),
+			];
+			const seenEntities = new Set<string>();
+			const seenContents = new Set<string>();
+			const selected: SelectedLoreLine[] = [];
+			for (const entry of candidates) {
+				if (entry.entityId !== null) {
+					if (seenEntities.has(entry.entityId)) continue;
+					seenEntities.add(entry.entityId);
+				}
+				const contentKey = loreEntryContentKey(entry);
+				if (seenContents.has(contentKey)) continue;
+				seenContents.add(contentKey);
+				const prefix = entry.constant ? "【常驻】" : "【检索】";
+				const line = `${prefix}${entry.name}：${entry.content}`;
+				selected.push({
+					constant: entry.constant,
+					line,
+					tokens: estimator(line),
+				});
+			}
+			if (selected.length === 0) return null;
+
+			let total = estimator(header);
+			for (const item of selected) total += item.tokens;
+			while (total > tokenLimit) {
+				let index = lastIndexWhere(selected, (item) => !item.constant);
+				if (index < 0) index = selected.length - 1;
+				if (index < 0) break;
+				total -= selected[index]?.tokens ?? 0;
+				selected.splice(index, 1);
+			}
+			if (selected.length === 0) return null;
+
+			const constantsKept = selected.filter((item) => item.constant).length;
+			const retrievedKept = selected.length - constantsKept;
+			return {
+				messages: [
+					{
+						role: "system",
+						content: [header, ...selected.map((item) => item.line)].join("\n"),
+					},
+				],
+				source: `lore:常驻 ${constantsKept} 条、检索 ${retrievedKept} 条`,
+			};
+		},
+	};
+}
+
+function lastIndexWhere<T>(
+	items: readonly T[],
+	predicate: (item: T) => boolean,
+): number {
+	for (let index = items.length - 1; index >= 0; index -= 1) {
+		const item = items[index];
+		if (item !== undefined && predicate(item)) return index;
+	}
+	return -1;
+}
+
+/**
+ * 把当前分支上未兑现的剧情笔记按创建顺序渲染成一行一条。
+ * 刚创建在别的分支上的笔记不会出现，避免切换分支后泄露另一条分支的线索。
+ */
+export function createDirectorSlotProvider(
+	store: StoryStore,
+): ContextSlotProvider {
+	return {
+		provide(request): ContextSlotContent | null {
+			const nodeId =
+				request.nodeId ?? store.getHead(request.storyId)?.id ?? null;
+			if (nodeId === null) return null;
+			const node = store.getNode(nodeId);
+			if (!node) {
+				throw new Error(`楼层节点不存在：${nodeId}`);
+			}
+			if (node.storyId !== request.storyId) {
+				throw new Error(`楼层节点 ${nodeId} 属于另一个故事 ${node.storyId}`);
+			}
+			const positions = new Map(
+				store
+					.getPathToNode(nodeId)
+					.map((pathNode, index) => [pathNode.id, index] as const),
+			);
+			const currentPosition = positions.get(nodeId);
+			if (currentPosition === undefined) {
+				throw new Error(`楼层节点 ${nodeId} 不在自己的路径上`);
+			}
+			const notes = store
+				.getOpenPlotNotes(request.storyId)
+				.filter((note) => positions.has(note.sourceNodeId));
+			if (notes.length === 0) return null;
+			const lines = notes.map((note) => {
+				const createdPosition = positions.get(note.sourceNodeId);
+				if (createdPosition === undefined) {
+					throw new Error(`剧情笔记 ${note.id} 的来源楼层不在当前路径上`);
+				}
+				return `- ${note.text}（距创建 ${currentPosition - createdPosition} 楼）`;
+			});
+			return {
+				messages: [
+					{
+						role: "system",
+						content: `未兑现剧情笔记（按创建顺序）：\n${lines.join("\n")}`,
+					},
+				],
+				source: `director:${notes.length} 条未兑现`,
 			};
 		},
 	};

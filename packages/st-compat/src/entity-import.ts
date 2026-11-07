@@ -38,7 +38,7 @@ function emptyResult(): MutableImportResult {
 	return { created: 0, merged: 0, aliases: 0, skipped: 0 };
 }
 
-function usableAliases(aliases: readonly string[]): string[] {
+export function usableAliases(aliases: readonly string[]): string[] {
 	const seen = new Set<string>();
 	const result: string[] = [];
 	for (const alias of aliases) {
@@ -108,7 +108,7 @@ export function importCharacterCardEntity(
 	return result;
 }
 
-function worldEntryName(entry: StWorldInfoEntry): string | null {
+export function worldEntryName(entry: StWorldInfoEntry): string | null {
 	const comment = entry.comment.trim();
 	if (comment.length > 0) return comment;
 	for (const key of entry.keys) {

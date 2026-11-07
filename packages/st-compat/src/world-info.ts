@@ -90,6 +90,65 @@ export async function parseWorldInfoFile(path: string): Promise<StWorldInfo> {
 	}
 }
 
+/**
+ * 角色卡内嵌的 `character_book` 用数组存条目，字段名也与世界书文件不同
+ * （`keys`、`secondary_keys`、`enabled`）。转换成同一视图后可以直接走
+ * 世界书的实体导入与 lore 导入。
+ */
+export function worldInfoFromCharacterBook(
+	book: JsonObject,
+	name: string | null = null,
+): StWorldInfo {
+	const entriesNode = book.entries;
+	if (!Array.isArray(entriesNode)) {
+		throw new Error('角色卡内嵌世界书的字段 "entries" 不是数组');
+	}
+	const rawEntries: JsonObject = {};
+	entriesNode.forEach((value, index) => {
+		if (!isJsonObject(value)) {
+			throw new Error(`角色卡内嵌世界书条目 ${index} 不是 JSON 对象`);
+		}
+		const context = `角色卡内嵌世界书条目 ${index}`;
+		const keys = [
+			...readStringList(value, "keys", context),
+			...readStringList(value, "key", context),
+		];
+		const secondaryKeys = [
+			...readStringList(value, "secondary_keys", context),
+			...readStringList(value, "keysecondary", context),
+		];
+		const enabled = optionalBoolean(value, "enabled", context) ?? true;
+		const rawId = value.id;
+		const sourceKey =
+			typeof rawId === "number" || typeof rawId === "string"
+				? String(rawId)
+				: String(index);
+		const comment = readString(value, "comment", context);
+		const entryName = readString(value, "name", context);
+		rawEntries[sourceKey] = {
+			key: keys,
+			keysecondary: secondaryKeys,
+			comment: comment.length > 0 ? comment : entryName,
+			content: readString(value, "content", context),
+			constant: readBoolean(value, "constant", context, false),
+			disable: !enabled,
+			order: optionalNumber(value, "insertion_order", context),
+		};
+	});
+	const entries = Object.entries(rawEntries).map(([sourceKey, entry]) => {
+		if (!isJsonObject(entry)) {
+			throw new Error(`角色卡内嵌世界书条目 "${sourceKey}" 不是 JSON 对象`);
+		}
+		return normalizeWorldInfoEntry(sourceKey, entry);
+	});
+	return {
+		name,
+		entries,
+		originalData: book,
+		raw: { entries: rawEntries },
+	};
+}
+
 function parseWorldInfoText(
 	jsonText: string,
 	name: string | null,
