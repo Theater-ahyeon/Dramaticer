@@ -65,11 +65,23 @@ export interface GapPassSegmentRejection {
 	readonly reason: string;
 }
 
+/** 会按楼层逐条判定的段落：窗口外的条目丢弃，不连累同一段的其他条目。 */
+export const GAP_PASS_DROPPED_SEGMENTS = ["settlement", "events"] as const;
+export type GapPassDroppedSegment = (typeof GAP_PASS_DROPPED_SEGMENTS)[number];
+
+/** 合并调用里逐条丢弃的窗口外条目；只丢弃这一条，不整段拒绝。 */
+export interface GapPassDroppedEntry {
+	readonly segment: GapPassDroppedSegment;
+	readonly nodeId: string;
+	readonly reason: string;
+}
+
 /** 一个楼层的合并调用执行记录；同一楼层重复执行覆盖同一行。 */
 export interface GapPassRun {
 	readonly nodeId: string;
 	readonly storyId: string;
 	readonly rejectedSegments: readonly GapPassSegmentRejection[];
+	readonly droppedEntries: readonly GapPassDroppedEntry[];
 	readonly createdAt: string;
 }
 
@@ -77,6 +89,7 @@ export interface NewGapPassRun {
 	readonly nodeId: string;
 	readonly storyId: string;
 	readonly rejectedSegments: readonly GapPassSegmentRejection[];
+	readonly droppedEntries?: readonly GapPassDroppedEntry[];
 	readonly createdAt?: string;
 }
 
@@ -102,6 +115,42 @@ export function assertGapPassRejections(
 			throw new Error(`${entryLabel}.reason 必须是非空字符串`);
 		}
 		return { segment: record.segment, reason: reason.trim() };
+	});
+}
+
+/** 校验一组丢弃记录并返回去掉首尾空白的副本。 */
+export function assertGapPassDroppedEntries(
+	value: unknown,
+	label: string,
+): readonly GapPassDroppedEntry[] {
+	if (!Array.isArray(value)) {
+		throw new Error(`${label} 必须是数组`);
+	}
+	return value.map((item, index) => {
+		const entryLabel = `${label}[${index}]`;
+		const record = assertPlainObject(item, entryLabel);
+		rejectUnknownKeys(record, ["segment", "nodeId", "reason"], entryLabel);
+		if (
+			typeof record.segment !== "string" ||
+			!(GAP_PASS_DROPPED_SEGMENTS as readonly string[]).includes(record.segment)
+		) {
+			throw new Error(
+				`${entryLabel}.segment 只能是 ${GAP_PASS_DROPPED_SEGMENTS.join("、")}`,
+			);
+		}
+		const nodeId = record.nodeId;
+		if (typeof nodeId !== "string" || nodeId.trim().length === 0) {
+			throw new Error(`${entryLabel}.nodeId 必须是非空字符串`);
+		}
+		const reason = record.reason;
+		if (typeof reason !== "string" || reason.trim().length === 0) {
+			throw new Error(`${entryLabel}.reason 必须是非空字符串`);
+		}
+		return {
+			segment: record.segment as GapPassDroppedSegment,
+			nodeId: nodeId.trim(),
+			reason: reason.trim(),
+		};
 	});
 }
 
@@ -191,7 +240,15 @@ export function createGapPassHandler(
 			eventWindow,
 		};
 		const messages: LlmMessage[] = [
-			{ role: "system", content: buildSystemPrompt(eventWindow !== null) },
+			{
+				role: "system",
+				content: buildSystemPrompt({
+					settlement: window !== null,
+					userWill: players.length > 0,
+					revision: players.length > 0,
+					events: eventWindow !== null,
+				}),
+			},
 			{ role: "user", content: buildUserContent(inputs) },
 		];
 		const result = await client.complete({
@@ -201,21 +258,28 @@ export function createGapPassHandler(
 		});
 		const response = parseGapPassResponse(result.text);
 		const rejections: GapPassSegmentRejection[] = [];
-		if (response.settlement !== undefined) {
-			applySegment(rejections, "settlement", () => {
-				if (window === null) throw new Error("没有待结算的楼层");
-				applySettlementProposals(
-					store,
-					window,
-					parseSettleResponse(
-						JSON.stringify(response.settlement),
-						window.nodeIds,
-					),
+		const dropped: GapPassDroppedEntry[] = [];
+		// 没有结算窗口时这一段不在输入里；模型仍然输出时按空处理，不算拒绝。
+		if (response.settlement !== undefined && window !== null) {
+			applySegment(rejections, dropped, "settlement", () => {
+				const filtered = filterWindowEntries(
+					"settlement",
+					response.settlement,
+					window.nodeIds,
+					"结算段",
 				);
+				if (filtered.kept.length > 0) {
+					applySettlementProposals(
+						store,
+						window,
+						parseSettleResponse(JSON.stringify(filtered.kept), window.nodeIds),
+					);
+				}
+				return filtered.dropped;
 			});
 		}
 		if (response.scene !== undefined) {
-			applySegment(rejections, "scene", () => {
+			applySegment(rejections, dropped, "scene", () => {
 				if (typeof response.scene !== "string") {
 					throw new Error("scene 段必须是字符串");
 				}
@@ -223,19 +287,21 @@ export function createGapPassHandler(
 					throw new Error("楼层还没有结算记录，现场分析留到结算完成后再做");
 				}
 				saveSceneAnalysisText(store, job.storyId, job.nodeId, response.scene);
+				return [];
 			});
 		}
 		if (response.userWill !== undefined) {
-			applySegment(rejections, "userWill", () => {
+			applySegment(rejections, dropped, "userWill", () => {
 				const captured = parseUserWillResponse(
 					JSON.stringify(response.userWill),
 					players.slice(-userWillWindow),
 				);
 				applyCapturedUserWills(store, job.storyId, job.nodeId, captured);
+				return [];
 			});
 		}
 		if (response.revision !== undefined) {
-			applySegment(rejections, "revision", () => {
+			applySegment(rejections, dropped, "revision", () => {
 				const drafts = parseRevisionResponse(
 					JSON.stringify(response.revision),
 					players.slice(-revisionWindow),
@@ -247,37 +313,54 @@ export function createGapPassHandler(
 					drafts,
 					store.getStateSnapshot(job.nodeId).state,
 				);
+				return [];
 			});
 		}
-		if (response.events !== undefined) {
-			applySegment(rejections, "events", () => {
-				if (eventWindow === null) throw new Error("没有待抽取的事件楼层");
-				recordExtractedEvents(
-					store,
-					job.storyId,
-					eventWindow,
-					parseEventBatchExtraction(
-						JSON.stringify(response.events),
-						eventWindow.floors.map((node) => node.id),
-					),
+		if (response.events !== undefined && eventWindow !== null) {
+			applySegment(rejections, dropped, "events", () => {
+				const windowIds = eventWindow.floors.map((node) => node.id);
+				const filtered = filterWindowEntries(
+					"events",
+					response.events,
+					windowIds,
+					"事件段",
 				);
+				if (filtered.kept.length > 0) {
+					recordExtractedEvents(
+						store,
+						job.storyId,
+						eventWindow,
+						parseEventBatchExtraction(JSON.stringify(filtered.kept), windowIds),
+					);
+				}
+				return filtered.dropped;
 			});
 		}
 		store.saveGapPassRun({
 			nodeId: job.nodeId,
 			storyId: job.storyId,
 			rejectedSegments: rejections,
+			droppedEntries: dropped,
 		});
 	};
 }
 
+interface GapPassRequestedSegments {
+	readonly settlement: boolean;
+	readonly userWill: boolean;
+	readonly revision: boolean;
+	readonly events: boolean;
+}
+
 function applySegment(
 	rejections: GapPassSegmentRejection[],
+	dropped: GapPassDroppedEntry[],
 	segment: GapPassSegment,
-	action: () => void,
+	action: () => readonly GapPassDroppedEntry[] | undefined,
 ): void {
 	try {
-		action();
+		const entries = action();
+		if (entries !== undefined) dropped.push(...entries);
 	} catch (error) {
 		rejections.push({
 			segment,
@@ -286,22 +369,46 @@ function applySegment(
 	}
 }
 
-function buildSystemPrompt(withEvents: boolean): string {
+/**
+ * 只把本楼层有的段落写进提示词：没有结算窗口就不提 settlement，没有事件
+ * 窗口就不提 events，没有玩家消息就不提 userWill 与 revision。
+ */
+function buildSystemPrompt(requested: GapPassRequestedSegments): string {
+	const shape = [
+		...(requested.settlement ? ['"settlement":[…]'] : []),
+		'"scene":"…"',
+		...(requested.userWill ? ['"userWill":[…]'] : []),
+		...(requested.revision ? ['"revision":[…]'] : []),
+		...(requested.events ? ['"events":[…]'] : []),
+	];
 	return [
 		"你在替故事引擎完成一次后台记录。阅读输入，只输出一个 JSON 对象；没有内容可写的段落直接省略。",
-		'{"settlement":[…],"scene":"…","userWill":[…],"revision":[…],"events":[…]}',
+		`{${shape.join(",")}}`,
 		"- 只输出这个 JSON 对象，不要解释、前缀后缀或代码块标记。",
+		"- 只输出下面说明的段落；没有说明的段落一概不要输出。",
 		"- 每个段落都会被单独校验；某一段不合格只丢弃这一段，其余段落照常采用。",
-		"settlement：结算结果数组，每项形如：",
-		'{"nodeId":"结算窗口里的楼层 id","diffs":[{"path":["clue","c1","status"],"op":"set","value":"open","confidence":0.8,"reason":"一句话依据"}],"conflicts":[{"path":["character","凛","location"],"reason":"最近一楼明确写她还在教室"}]}',
-		"- nodeId 必须是结算窗口里的楼层，每个楼层最多出现一次；op 只能是 set 或 delete；confidence 是 0 到 1 的数字；楼层里已经写入的路径不要重复输出。",
-		"- 与冲突检查窗口的原文明确矛盾的事实不要写进 diffs，写进同一楼层的 conflicts。",
-		"scene：一段纯文本现场分析，写明在场人物各自此刻想要什么、各自知道什么、彼此之间的张力在哪里，控制在两百字以内。",
-		'userWill：用户意志数组，每项形如 {"kind":"preference","text":"剧情保持轻松","sourceQuote":"原文里的原句"}；kind 取 preference、boundary、correction；sourceQuote 必须逐字摘自玩家消息；已有的条目不要重复记录。',
-		'revision：变更卡草案数组，每项形如 {"text":"把凛的所在地改成屋顶","sourceQuote":"原文里的原句","diffs":[{"path":["character","凛","location"],"op":"set","value":"屋顶"}]}；只处理玩家明确要求修改事实的句子，sourceQuote 必须逐字摘自玩家消息；已有的变更卡不要重复生成。',
-		...(withEvents
+		...(requested.settlement
 			? [
-					'events：事件抽取数组，每项形如 {"nodeId":"事件窗口里的助手楼层 id","events":[{"text":"一句话描述","participants":["凛"],"knowers":["凛"],"importance":0.5,"storyTime":"故事内时间","location":"地点"}]}；只为事件窗口里的助手楼层输出，上下文楼层不要输出记录。',
+					"settlement：结算结果数组，每项形如：",
+					'{"nodeId":"结算窗口里的楼层 id","diffs":[{"path":["clue","c1","status"],"op":"set","value":"open","confidence":0.8,"reason":"一句话依据"}],"conflicts":[{"path":["character","凛","location"],"reason":"最近一楼明确写她还在教室"}]}',
+					"- nodeId 必须是结算窗口里的楼层，每个楼层最多出现一次；op 只能是 set 或 delete；confidence 是 0 到 1 的数字；楼层里已经写入的路径不要重复输出。",
+					"- 与冲突检查窗口的原文明确矛盾的事实不要写进 diffs，写进同一楼层的 conflicts。",
+				]
+			: []),
+		"scene：一段纯文本现场分析，写明在场人物各自此刻想要什么、各自知道什么、彼此之间的张力在哪里，控制在两百字以内。",
+		...(requested.userWill
+			? [
+					'userWill：用户意志数组，每项形如 {"kind":"preference","text":"剧情保持轻松","sourceQuote":"原文里的原句"}；kind 取 preference、boundary、correction；sourceQuote 必须逐字摘自玩家消息；已有的条目不要重复记录。',
+				]
+			: []),
+		...(requested.revision
+			? [
+					'revision：变更卡草案数组，每项形如 {"text":"把凛的所在地改成屋顶","sourceQuote":"原文里的原句","diffs":[{"path":["character","凛","location"],"op":"set","value":"屋顶"}]}；只处理玩家明确要求修改事实的句子，sourceQuote 必须逐字摘自玩家消息；已有的变更卡不要重复生成。',
+				]
+			: []),
+		...(requested.events
+			? [
+					'events：事件抽取数组，每项形如 {"nodeId":"事件窗口里的助手楼层 id","events":[{"text":"一句话描述","participants":["凛"],"knowers":["凛"],"importance":0.5,"storyTime":"故事内时间","location":"地点"}]}；只为事件窗口里有 id 的助手楼层输出，其余楼层不要输出记录。',
 				]
 			: []),
 		"命名空间与路径：",
@@ -313,21 +420,25 @@ function buildUserContent(inputs: GapPassInputs): string {
 	const lines: string[] = [];
 	const jobSnapshot = JSON.stringify(inputs.snapshot);
 	if (inputs.window === null) {
-		lines.push("当前台账快照（截至本楼层）：", jobSnapshot, "");
-		lines.push("没有待结算的楼层。");
+		lines.push(
+			"当前台账快照（截至本楼层）：",
+			jobSnapshot,
+			"",
+			"没有待结算的楼层，本轮不要输出 settlement 段。",
+		);
 	} else {
 		lines.push(
 			"当前台账快照（截至结算窗口最后一楼）：",
 			JSON.stringify(inputs.window.snapshot),
 			"",
-			"冲突检查窗口（最近楼层的原文）：",
+			"冲突检查窗口（最近楼层的原文，只用来核对冲突，不是可写入的楼层）：",
 		);
 		for (const node of inputs.window.conflictWindow) {
-			lines.push(`<最近楼层 id="${node.id}" 角色="${node.role}">`);
+			lines.push(`<最近楼层 角色="${node.role}">`);
 			lines.push(node.raw);
 			lines.push("</最近楼层>");
 		}
-		lines.push("", "结算窗口：");
+		lines.push("", "结算窗口（只有这里出现 id 的楼层可以写进结算段）：");
 		for (const floor of inputs.window.floors) {
 			lines.push(`<楼层 id="${floor.nodeId}">`);
 			lines.push("正文：");
@@ -346,9 +457,12 @@ function buildUserContent(inputs: GapPassInputs): string {
 			lines.push("", "本楼层的台账快照（截至要分析的楼层）：", jobSnapshot);
 		}
 	}
-	lines.push("", "最近楼层的原文：");
+	lines.push(
+		"",
+		"现场分析用的最近楼层（只作上下文，不能写进结算段与事件段）：",
+	);
 	for (const node of inputs.sceneFloors) {
-		lines.push(`<楼层 id="${node.id}" 角色="${node.role}">`);
+		lines.push(`<楼层 角色="${node.role}">`);
 		lines.push(node.raw);
 		lines.push("</楼层>");
 	}
@@ -358,10 +472,13 @@ function buildUserContent(inputs: GapPassInputs): string {
 	lines.push("", "已有的变更卡（不要重复生成）：");
 	if (inputs.existingCards.length === 0) lines.push("无。");
 	for (const text of inputs.existingCards) lines.push(`- ${text}`);
-	lines.push("", "最近的玩家消息：");
+	lines.push(
+		"",
+		"最近的玩家消息（只用来找 userWill 与 revision 的原句，不是可写入的楼层）：",
+	);
 	if (inputs.players.length === 0) lines.push("无。");
 	for (const node of inputs.players) {
-		lines.push(`<玩家消息 id="${node.id}">`);
+		lines.push("<玩家消息>");
 		lines.push(node.raw);
 		lines.push("</玩家消息>");
 	}
@@ -369,6 +486,59 @@ function buildUserContent(inputs: GapPassInputs): string {
 		lines.push("", "事件抽取窗口：", formatEventWindow(inputs.eventWindow));
 	}
 	return lines.join("\n");
+}
+
+/** 按楼层过滤一个段落的条目：窗口外的与重复的楼层逐条丢弃并给出原因。 */
+function filterWindowEntries(
+	segment: GapPassDroppedSegment,
+	value: unknown,
+	windowIds: readonly string[],
+	label: string,
+): {
+	readonly kept: readonly unknown[];
+	readonly dropped: readonly GapPassDroppedEntry[];
+} {
+	if (!Array.isArray(value)) {
+		throw new Error(`${label}必须是数组`);
+	}
+	const allowed = new Set(windowIds);
+	const seen = new Set<string>();
+	const kept: unknown[] = [];
+	const dropped: GapPassDroppedEntry[] = [];
+	for (const item of value) {
+		const nodeId = entryNodeId(item);
+		if (nodeId === null) {
+			kept.push(item);
+			continue;
+		}
+		if (!allowed.has(nodeId)) {
+			dropped.push({
+				segment,
+				nodeId,
+				reason: `${label}里的楼层 ${nodeId} 不在本次窗口内，已丢弃`,
+			});
+			continue;
+		}
+		if (seen.has(nodeId)) {
+			dropped.push({
+				segment,
+				nodeId,
+				reason: `${label}里的楼层 ${nodeId} 重复出现，只保留第一条`,
+			});
+			continue;
+		}
+		seen.add(nodeId);
+		kept.push(item);
+	}
+	return { kept, dropped };
+}
+
+function entryNodeId(value: unknown): string | null {
+	if (value === null || typeof value !== "object" || Array.isArray(value)) {
+		return null;
+	}
+	const nodeId = (value as Record<string, unknown>).nodeId;
+	return typeof nodeId === "string" ? nodeId : null;
 }
 
 function parseGapPassResponse(text: string): Record<string, unknown> {

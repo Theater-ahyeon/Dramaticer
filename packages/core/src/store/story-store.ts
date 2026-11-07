@@ -59,6 +59,7 @@ import {
 import {
 	type GapPassRun,
 	type NewGapPassRun,
+	assertGapPassDroppedEntries,
 	assertGapPassRejections,
 } from "../ledger/gap-pass.js";
 import {
@@ -225,6 +226,7 @@ interface GapPassRunRow {
 	readonly node_id: string;
 	readonly story_id: string;
 	readonly rejected_segments: string;
+	readonly dropped_entries: string;
 	readonly created_at: string;
 }
 
@@ -867,6 +869,10 @@ function rowToGapPassRun(row: GapPassRunRow): GapPassRun {
 		storyId: row.story_id,
 		rejectedSegments: assertGapPassRejections(
 			JSON.parse(row.rejected_segments) as unknown,
+			`楼层 ${row.node_id} 的合并调用记录`,
+		),
+		droppedEntries: assertGapPassDroppedEntries(
+			JSON.parse(row.dropped_entries) as unknown,
 			`楼层 ${row.node_id} 的合并调用记录`,
 		),
 		createdAt: row.created_at,
@@ -2483,26 +2489,33 @@ export class StoryStore {
 			input.rejectedSegments,
 			"合并调用记录的 rejectedSegments",
 		);
+		const droppedEntries = assertGapPassDroppedEntries(
+			input.droppedEntries ?? [],
+			"合并调用记录的 droppedEntries",
+		);
 		const createdAt = input.createdAt ?? new Date().toISOString();
 		assertNonEmptyString(createdAt, "合并调用记录的创建时间");
 		this.#db
 			.prepare(
-				`INSERT INTO gap_pass_runs (node_id, story_id, rejected_segments, created_at)
-				VALUES (?, ?, ?, ?)
+				`INSERT INTO gap_pass_runs (node_id, story_id, rejected_segments, dropped_entries, created_at)
+				VALUES (?, ?, ?, ?, ?)
 				ON CONFLICT (node_id) DO UPDATE SET
 					rejected_segments = excluded.rejected_segments,
+					dropped_entries = excluded.dropped_entries,
 					created_at = excluded.created_at`,
 			)
 			.run(
 				input.nodeId,
 				input.storyId,
 				JSON.stringify(rejectedSegments),
+				JSON.stringify(droppedEntries),
 				createdAt,
 			);
 		return {
 			nodeId: input.nodeId,
 			storyId: input.storyId,
 			rejectedSegments,
+			droppedEntries,
 			createdAt,
 		};
 	}

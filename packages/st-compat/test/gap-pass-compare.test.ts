@@ -77,10 +77,11 @@ function entries(floorCount: number): StChatEntry[] {
 type SettlementMode = "valid" | "invalid";
 
 function floorIdsInWindow(content: string): string[] {
-	const settlementStart = content.indexOf("结算窗口：");
-	if (settlementStart < 0) return [];
-	const tail = content.slice(settlementStart);
-	const boundary = tail.indexOf("最近楼层的原文：");
+	const header = /(?:^|\n)结算窗口[：（]/.exec(content);
+	if (header === null) return [];
+	const start = header.index + (header[0].startsWith("\n") ? 1 : 0);
+	const tail = content.slice(start);
+	const boundary = tail.indexOf("现场分析用的最近楼层");
 	const section = boundary < 0 ? tail : tail.slice(0, boundary);
 	return [...section.matchAll(/<楼层 id="([^"]+)"/g)].map(
 		(match) => match[1] as string,
@@ -204,6 +205,7 @@ describe("runGapPassCompareOnEntries", () => {
 		expect(report.merged.diffs).toBe(4);
 		expect(report.independent.invalidEntries).toBe(0);
 		expect(report.merged.invalidEntries).toBe(0);
+		expect(report.merged.droppedEntries).toBe(0);
 		expect(report.agreement.pathAgreement).toBe(1);
 		expect(report.agreement.factAgreement).toBe(1);
 		expect(report.agreement.floorsIdentical).toBe(4);

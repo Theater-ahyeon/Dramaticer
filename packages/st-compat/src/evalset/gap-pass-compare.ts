@@ -67,6 +67,8 @@ export interface CompareRegimeStats {
 	readonly conflictRepairs: number;
 	/** 合并调用里整段被拒绝的结算次数。 */
 	readonly settleSegmentRejections: number;
+	/** 合并调用里逐条丢弃的窗口外条目数。 */
+	readonly droppedEntries: number;
 	readonly settlerCards: number;
 	readonly deferredJobs: number;
 	readonly failedJobs: readonly {
@@ -398,7 +400,7 @@ export function formatCompareReport(report: GapPassCompareReport): string {
 	lines.push(`故事 ${report.story}，样本 ${report.floors} 个助手楼层`);
 	for (const regime of [report.independent, report.merged]) {
 		lines.push(
-			`${regime.label}：已结算 ${regime.settledFloors} 楼，diff ${regime.diffs}，修复 ${regime.repairCount}（其中非法与状态改写 ${regime.invalidEntries}，冲突 ${regime.conflictRepairs}），结算段整段拒绝 ${regime.settleSegmentRejections}，结算来源变更卡 ${regime.settlerCards}，延后 ${regime.deferredJobs}，失败 ${regime.failedJobs.length}，请求 ${regime.requests}（缓存命中 ${regime.cachedRequests}）`,
+			`${regime.label}：已结算 ${regime.settledFloors} 楼，diff ${regime.diffs}，修复 ${regime.repairCount}（其中非法与状态改写 ${regime.invalidEntries}，冲突 ${regime.conflictRepairs}），结算段整段拒绝 ${regime.settleSegmentRejections}，窗口外条目丢弃 ${regime.droppedEntries ?? 0}，结算来源变更卡 ${regime.settlerCards}，延后 ${regime.deferredJobs}，失败 ${regime.failedJobs.length}，请求 ${regime.requests}（缓存命中 ${regime.cachedRequests}）`,
 		);
 	}
 	const agreement = report.agreement;
@@ -628,6 +630,7 @@ function summarizeRegime(
 	let invalidEntries = 0;
 	let conflictRepairs = 0;
 	let settleSegmentRejections = 0;
+	let droppedEntries = 0;
 	for (const floor of floors) {
 		diffs += floor.paths.length;
 		repairCount += floor.repairs.length;
@@ -644,6 +647,7 @@ function summarizeRegime(
 			settleSegmentRejections += gapRun.rejectedSegments.filter(
 				(rejection) => rejection.segment === "settlement",
 			).length;
+			droppedEntries += gapRun.droppedEntries.length;
 		}
 	}
 	return {
@@ -654,6 +658,7 @@ function summarizeRegime(
 		invalidEntries,
 		conflictRepairs,
 		settleSegmentRejections,
+		droppedEntries,
 		settlerCards: store
 			.listLedgerChangeCards(storyId)
 			.filter((card) => card.source === "settler").length,

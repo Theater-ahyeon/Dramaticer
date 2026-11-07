@@ -637,11 +637,14 @@ describe("事件抽取任务", () => {
 		);
 		if (!userMessage) throw new Error("抽取请求里没有 user 消息");
 		expect(userMessage.content).toContain('<上下文 位置="前">');
-		expect(userMessage.content).toContain('id="s0"');
+		expect(userMessage.content).not.toContain('id="s0"');
 		expect(userMessage.content).toContain('<上下文 位置="后">');
-		expect(userMessage.content).toContain('id="u2"');
-		for (const id of ["a0", "u0", "a1", "u1", "a2"]) {
+		expect(userMessage.content).not.toContain('id="u2"');
+		for (const id of ["a0", "a1", "a2"]) {
 			expect(userMessage.content).toContain(`id="${id}"`);
+		}
+		for (const id of ["u0", "u1"]) {
+			expect(userMessage.content).not.toContain(`id="${id}"`);
 		}
 	});
 

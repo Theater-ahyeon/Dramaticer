@@ -274,6 +274,148 @@ describe("间隙合并调用任务", () => {
 		expect(store.getGapPassRun("a2")?.rejectedSegments).toEqual([]);
 	});
 
+	it("没有待结算楼层时不提 settlement，模型仍然输出也按空处理", async () => {
+		const { store } = openTempStore();
+		seedStory(store);
+		for (const nodeId of ["a1", "a2"]) {
+			store.recordLedgerSettlement({
+				nodeId,
+				storyId: "s1",
+				source: "settler",
+				addedCount: 0,
+				repairs: [],
+			});
+		}
+		const response = JSON.stringify({
+			settlement: [
+				{
+					nodeId: "a2",
+					diffs: [
+						{
+							path: ["time", "current"],
+							op: "set",
+							value: "夜晚",
+							confidence: 1,
+						},
+					],
+					conflicts: [],
+				},
+			],
+			scene: "凛在等你回答。",
+		});
+		const { client, requests } = createFakeClient([response]);
+		await createGapPassHandler()({ store, client, job: jobFor("a2") });
+
+		const system = requests[0]?.messages[0]?.content ?? "";
+		expect(system).not.toContain("settlement");
+		const run = store.getGapPassRun("a2");
+		expect(run?.rejectedSegments).toEqual([]);
+		expect(run?.droppedEntries).toEqual([]);
+		expect(readLedger(store, "a2", ["time", "current"])).toBeUndefined();
+		expect(store.getSceneAnalysis("a2")?.text).toBe("凛在等你回答。");
+	});
+
+	it("结算段窗口外与重复的楼层逐条丢弃，其余条目照常写入", async () => {
+		const { store } = openTempStore();
+		seedStory(store);
+		const entry = (nodeId: string, place: string) => ({
+			nodeId,
+			diffs: [
+				{
+					path: ["scene", "current", "place"],
+					op: "set",
+					value: place,
+					confidence: 0.8,
+				},
+			],
+			conflicts: [],
+		});
+		const response = JSON.stringify({
+			settlement: [
+				entry("a1", "教室"),
+				entry("u1", "走廊"),
+				entry("a1", "屋顶"),
+			],
+		});
+		const { client } = createFakeClient([response]);
+		await createGapPassHandler()({ store, client, job: jobFor("a2") });
+
+		expect(readLedger(store, "a1", ["scene", "current", "place"])).toBe("教室");
+		expect(store.getLedgerSettlement("a1")).not.toBeNull();
+		const run = store.getGapPassRun("a2");
+		expect(run?.rejectedSegments).toEqual([]);
+		expect(run?.droppedEntries.map((item) => item.nodeId)).toEqual([
+			"u1",
+			"a1",
+		]);
+		expect(run?.droppedEntries[0]?.reason).toContain("不在本次窗口内");
+		expect(run?.droppedEntries[1]?.reason).toContain("重复出现");
+	});
+
+	it("结算段全部条目都在窗口外时不写结算记录，只记丢弃", async () => {
+		const { store } = openTempStore();
+		seedStory(store);
+		const response = JSON.stringify({
+			settlement: [
+				{
+					nodeId: "u1",
+					diffs: [
+						{
+							path: ["time", "current"],
+							op: "set",
+							value: "清晨",
+							confidence: 1,
+						},
+					],
+					conflicts: [],
+				},
+			],
+		});
+		const { client } = createFakeClient([response]);
+		await createGapPassHandler()({ store, client, job: jobFor("a2") });
+
+		expect(store.getLedgerSettlement("a1")).toBeNull();
+		expect(store.getLedgerSettlement("a2")).toBeNull();
+		const run = store.getGapPassRun("a2");
+		expect(run?.rejectedSegments).toEqual([]);
+		expect(run?.droppedEntries).toHaveLength(1);
+		expect(run?.droppedEntries[0]).toMatchObject({
+			segment: "settlement",
+			nodeId: "u1",
+		});
+	});
+
+	it("事件段窗口外的楼层逐条丢弃，其余事件照常写入", async () => {
+		const { store } = openTempStore();
+		seedStory(store);
+		const event = (text: string) => ({
+			text,
+			participants: ["凛"],
+			knowers: ["凛"],
+			importance: 0.5,
+		});
+		const response = JSON.stringify({
+			events: [
+				{ nodeId: "u1", events: [event("玩家说的话被当成事件")] },
+				{ nodeId: "a1", events: [event("凛站在教室门口")] },
+			],
+		});
+		const { client } = createFakeClient([response]);
+		await createGapPassHandler()({ store, client, job: jobFor("a2") });
+
+		expect(store.getEventsForPath("a2").map((item) => item.text)).toEqual([
+			"凛站在教室门口",
+		]);
+		expect(store.getEventsForNode("u1")).toHaveLength(0);
+		const run = store.getGapPassRun("a2");
+		expect(run?.rejectedSegments).toEqual([]);
+		expect(run?.droppedEntries).toHaveLength(1);
+		expect(run?.droppedEntries[0]).toMatchObject({
+			segment: "events",
+			nodeId: "u1",
+		});
+	});
+
 	it("执行记录按楼层覆盖，故事不一致时拒绝", () => {
 		const { store } = openTempStore();
 		seedStory(store);

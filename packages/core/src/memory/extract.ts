@@ -281,23 +281,35 @@ export function selectEventWindow(
 }
 
 export function formatEventWindow(window: EventWindow): string {
+	const writable = new Set(window.floors.map((node) => node.id));
 	const lines = [
-		"以下是按时间顺序排列的楼层。只从 <窗口> 内的助手楼层抽取事件；<上下文> 里的楼层只用来理解前后经过，不要为它们输出记录。",
+		"以下是按时间顺序排列的楼层。只从 <窗口> 内带 id 的助手楼层抽取事件；其余楼层只用来理解前后经过，不要为它们输出记录。",
 	];
 	if (window.before !== null) {
-		lines.push('<上下文 位置="前">', formatFloor(window.before), "</上下文>");
+		lines.push(
+			'<上下文 位置="前">',
+			formatFloor(window.before, false),
+			"</上下文>",
+		);
 	}
 	lines.push("<窗口>");
 	for (const node of window.span) {
-		lines.push(formatFloor(node));
+		lines.push(formatFloor(node, writable.has(node.id)));
 	}
 	lines.push("</窗口>");
 	if (window.after !== null) {
-		lines.push('<上下文 位置="后">', formatFloor(window.after), "</上下文>");
+		lines.push(
+			'<上下文 位置="后">',
+			formatFloor(window.after, false),
+			"</上下文>",
+		);
 	}
 	return lines.join("\n");
 }
 
-function formatFloor(node: TimelineNode): string {
-	return `<楼层 id="${node.id}" role="${node.role}">\n${node.raw}\n</楼层>`;
+function formatFloor(node: TimelineNode, withId: boolean): string {
+	const attributes = withId
+		? ` id="${node.id}" role="${node.role}"`
+		: ` role="${node.role}"`;
+	return `<楼层${attributes}>\n${node.raw}\n</楼层>`;
 }

@@ -702,6 +702,13 @@ export function buildMigrations(
 				END`,
 			],
 		},
+		{
+			version: 27,
+			description: "间隙合并调用记录：逐条丢弃的窗口外条目",
+			statements: [
+				`ALTER TABLE gap_pass_runs ADD COLUMN dropped_entries TEXT NOT NULL DEFAULT '[]'`,
+			],
+		},
 	];
 }
 
