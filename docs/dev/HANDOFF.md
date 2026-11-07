@@ -20,7 +20,7 @@
 - 角色卡：PNG 文本块先做 base64 规范化回环校验，再做 JSON 解析。
 - LLM 客户端：`LlmRequest.signal` 贯穿请求、退避与限速等待。
 - TASKS：M0-FIX-1 到 M0-FIX-6 已标记 `[x]`；M0-FIX-7 到 M0-FIX-11 待做；M0-T99 依赖全部 M0 任务。
-- 工作区有一处**人类未提交的改动**：`scripts/check-invariants.mjs` 已按 HUMAN-06 修改（I1 关键词增加 `marker` 与 `worldInfo\w*`，I10 扫描 `test` 目录下全部文件），本次没有纳入提交，也没有修改该文件；HUMAN-06 的状态行仍由人类更新。
+- `scripts/check-invariants.mjs` 已由人类按 HUMAN-06 修改并提交（`ff2c835`：I1 关键词增加 `marker` 与 `worldInfo\w*`，I10 扫描 `test` 目录下全部文件）；HUMAN-06 的状态行仍待人类更新。
 
 ## 下一步
 - 执行 M0-FIX-7（体检报告口径与 CLI 入口）：`HealthTotals` 增加 `headerBytes` 并在统计版表中单列；字段字节统计保留全量、截断只放渲染层；`extraSwipeCount` 按每条消息累加 `max(0, swipes.length - 1)`（或删除字段）；`ratio` 对 `0/0` 返回 `null` 并显示 `—`；删除 `totals.rawBytes` 或纳入报告；合并 `health/report.ts` 对 `health/manifest.ts` 的再导出；把 `health/cli.ts` 抽成可注入路径的 `runHealthCli` 并测试，覆盖 `renderAcuSection` 与 `collectHealthReport` 的两条抛错分支。完成后重新生成两份报告并跑 `pnpm check`。
