@@ -3,22 +3,22 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：83
-- 任务：F0-T04 全文基线小样本与渠道上限探测
-- 结果：完成（`DONE`），门禁通过（712 个测试，3 个 live 跳过）。
-  - 新增 `scripts/f0-fulltext.mjs`（`pnpm f0:fulltext`）与 `scripts/f0-fulltext-lib.mjs`，分 `probe`、`generate`、`judge`、`report` 四个阶段；阶段用 `DRAMATICER_F0_FULLTEXT_STAGE` 选择，重跑用 `DRAMATICER_F0_FULLTEXT_RERUN=1`。19 个新测试覆盖分支点选择、裁判提示词与输出校验、胜负与换序统计、报告渲染。
-  - 上限探测：`main` 别名的 `opendesign/deepseek-v4.1-flash` 在最小级别返回 membership entitlement 错误，按 ADR-0042 改用 `main-fallback`（`auto/deepseek-v4.1-flash`）。32K、64K、128K、256K、512K、1M 六级全部被接受；1M 级别渠道报告输入 873,850 token、首字 9,688 毫秒、输出达到上限；没有探测到上限。配置里正文模型的 `contextWindow` 仍是 131072，只影响本地预算裁剪。
-  - 分支点：对话 128（62 楼、79,967 token、31 个助手楼）、132（48 楼、64,535）、10（143 楼、71,998、3 条摘要）、223（72 楼、82,751、306 条状态 diff）。全文组把协议段之外的全部原文按角色放进原生模板；记忆引擎组用状态快照、章节摘要、BM25+向量检索、最近 20 楼，导演与世界书关闭。8 次生成全部正常结束，首字 2.7–6.4 秒；首轮输出上限 2048 的截断组合用 4096 重跑。
-  - 裁判：两种顺序共 8 次判断，全文组胜 6 次、记忆引擎组胜 2 次；两种顺序结论一致的分支 2/4；合并选位置甲占比 50%，平均置信度 0.69。对话 128 与 132 各分裂一次，对话 10 与 223 全文组两次都胜。结论只作描述，注明同模型自评。
-  - 对话 95 的两组生成都被提供方 `content_filter` 拒绝（两组仍有部分正文），改用对话 128；第一次探测的 7 次调用被重跑覆盖，报告按 `previousCalls` 记入总调用数。正文渠道合计 27 次调用（上限 30），后台裁判 8 次。
-  - 报告新增 `<!-- F0-T04 -->` 标记之间的章节，写入 `docs/dev/reports/F0.md`。
+- 会话：84
+- 任务：F0-T99 取证报告与路线建议
+- 结果：完成（`MILESTONE_DONE`），门禁通过（712 个测试，3 个 live 跳过）。
+  - `docs/dev/reports/F0.md` 顶部新增 `<!-- F0-T99:begin -->` 到 `<!-- F0-T99:end -->` 之间的汇总结论，逐条回答 P1、P3、P4，并给出四条路线建议与中间层接入的处理方式。该节是手写的，由 F0-T02、F0-T03、F0-T04 脚本生成的章节各自的标记范围没有改动。
+  - P1：与上下文容量直接相关的「遗忘或前后矛盾」只占主因 5.6%、次因 2.1%；「不推进剧情」19.3% 与「没听用户的指示」18.2% 排前两位，且 1–10 楼各占 25.0%；「格式或状态栏」13.7%（次因 26.7%）与「截断」13.0% 属于输出形态与长度。开局 1–10 楼重 roll 率 24.9%，后面为 7.0%–10.3%；楼层 ≤ 10 的 180 个对话里 62 个（34.4%）以一次重 roll 结束。
+  - P3：95.1% 的对话整段正文放得下 128K，但楼层 ≥ 100 的 13 个里只有 1 个放得下 128K，≥ 200 的 6 个要到 1M；正文渠道 32K 到 1M 六级全部被接受（1M 级别渠道报告输入 873,850 token、首字 9,688 毫秒），配置的 `contextWindow` 仍是 131072。全文组 8 次判断胜 6 次，但只有 4 个分支点、2/4 分支换序不一致、同模型自评，记忆引擎组没有事件池、角色卡与世界书，因此全文只作对照基线与放得下时的兜底模式。
+  - P4：合并一致率 73.3%（门槛 65%）、位置偏差 4.1 个百分点（门槛 10）、换序一致率 81.5%，门槛达到；1–10 楼子集 61.4% 与玩家切回较早 swipe 的子集 55.2% 未达到。裁判只用于扩展聚合样本与有台账可对照的矛盾、遗忘判定；偏好以玩家重 roll、编辑、选择为准；R2 要换不同模型家族的裁判并重新校准。
+  - 主菜排序：开局与方向 → 输出形态 → 记忆与台账最小集 → 生图。ST 兼容全部做成可选插件，先 P-A 与 P-C。最小可玩版本顺序为 R1 最小集 → R3 快回合 → R5 最小界面 → 自动试玩加评测。偏好信号以重 roll、选择、变更卡批准为主，编辑只作弱信号。
+  - ADR-0043 记录上述结论，并确定中间层接入只作可选方式、不进入路线图、不做可行性论证。
 
 ## 当前状态
-- M0、M1、M2、M3、D-T01 至 D-T04、M4-T00 至 M4-T06、R0-T01 至 R0-T03、R1-T01、R1-T01.a、F0-T01 至 F0-T04 完成。
-- F0 的四个取证任务全部完成，下一步是 F0-T99 取证报告与路线建议，然后是 F0-T100 写 v3 并改写路线。
-- 人类已确认两条路线变更：ADR-0039（新增 F0-T100，F0-T99 不再请人类决定，人类试玩改为自动试玩加评测）与 ADR-0038（四个 ST 兼容插件取代兼容线 C-T00，落为 C-T01–C-T05）；ADR-0040 的共存规则写入 C-T01–C-T05 验收；ADR-0041 合并方案评审提案 A1–A11；ADR-0042 规定模型渠道不可用时的回退顺序（`opendesign/deepseek-v4.1-flash` → `auto/deepseek-v4.1-flash` → `opencode-go/deepseek-v4.1-flash`）。
-- TASKS 顶部的「F：取证」排在 R1 之前，F0 完成前不选 R1 及之后的任务；ADR-0037 记录插队、独立产品形态与固定模型。F0 的所有模型调用用 magpie 网关（`http://127.0.0.1:3425/v1`）上的 DeepSeek V4.1 Flash；三个 ST 数据目录的只读扫描已获授权。
-- HUMAN-09 仍待处理（不阻塞）：ADR-0042 声明的 `bg-fallback`、`main-fallback`、`codex` 别名在 `data/channels.yaml` 里已经出现（本会话实际用了 `main-fallback` 与 `bg-fallback`），但 `channels.example.yaml` 里有没有需要人类确认；本会话没有改这两个文件。
+- M0、M1、M2、M3、D-T01 至 D-T04、M4-T00 至 M4-T06、R0-T01 至 R0-T03、R1-T01、R1-T01.a、F0-T01 至 F0-T04、F0-T99 完成。
+- F 的取证任务全部完成。下一步只有 **F0-T100 写 v3 并改写路线**（依赖 F0-T99）。
+- F0-T100 之后：先做 **R0-T04 合并 v3 插件系统提案**（`docs/proposals/plugins.md`），再按新路线继续；**兼容插件线 C-T01–C-T05 排在插件内核改造 P2 之后**。R0-T05（归档已完成任务）随时可以插入。
+- 人类已确认的路线变更：ADR-0038（四个 ST 兼容插件取代兼容线 C-T00，成为 C-T01–C-T05）、ADR-0039（F0-T100 直接写 v3，F0-T99 不再请人类决定，人类试玩改为自动试玩加评测）、ADR-0040（共存规则写入 C-T01–C-T05 验收）、ADR-0041（方案评审提案 A1–A11）、ADR-0042（模型渠道回退顺序）、ADR-0043（F0 结论与取舍建议）。
+- HUMAN-09 仍待处理（不阻塞）：ADR-0042 声明的 `bg-fallback`、`main-fallback`、`codex` 别名在 `data/channels.yaml` 里已经出现（F0 实际用了 `main-fallback` 与 `bg-fallback`），`channels.example.yaml` 是否需要补上请人类确认；没有改这两个文件。
 - 数据库 schema 版本 18。迁移编号（ADR-0041 后）：v19 结算记录（R1-T02）、v20 实体候选与结算置信度（R1-T02）、v21 现场分析（R1-T02.a）、v22 父子分块（R1-T03.a）、v23 章节压缩（R1-T05）、v24 世界书预筛（R1-T06）、v25 变更卡（R1-T07.a）、v26 上下文包（R1-T08）。在已排定的任务之间插入新迁移时，后续编号要一起顺延。
 - 台账只有结构与读取，**没有写入校验的强制点**：`appendStateDiffs` 不调用 `validateLedgerDiff`；R1-T02 的结算器负责在写入前校验（I12）。现有结构化输出 `state_update` 仍可写任意路径，来源记为 `model`。
 - `readLedgerFacts` 不读取快照缓存，按 `getStateDiffsAlongPath` 回放，返回顺序是路径上首次出现的顺序。
@@ -27,37 +27,37 @@
 - `story_settings` 默认值：`budgetTokens` 12000、`structuredOutput` `text-tags`、`temperature` 0.8、`maxTokens` 1024（R1-T01.c 改为 4096 与渠道声明取小）、`reasoning` `low`、导演使用默认配置。
 - 快照：`eval-private/raw/` 有 94 个文件；manifest 记录 `corpus` 与 `sourceMtime`。`eval-private/reference/` 有 5 部参照小说。
 - 事件表已在 v7 建立，但真实回放里没有事件；R1-T03 改为批量窗口后由 R1-T04.a/.b 回填。
-- F0 的私有产物：`eval-private/f0/pairs.jsonl`（290 对）、`attribution.jsonl`、`judge.jsonl`（793 行）、`fulltext/work.db`（4 个对话共 250 个楼层节点）、`fulltext-probe.json`、`fulltext-branches.json`、`fulltext-generations.jsonl`、`fulltext-judgements.jsonl`、`fulltext-summary.json`、`llm-cache/`。
+- F0 的私有产物：`eval-private/f0/pairs.jsonl`（290 对）、`attribution.jsonl`、`judge.jsonl`（793 行）、`fulltext/work.db`（4 个对话共 250 个楼层节点）、`fulltext-probe.json`、`fulltext-branches.json`、`fulltext-generations.jsonl`、`fulltext-judgements.jsonl`、`fulltext-summary.json`、`llm-cache/`。`eval-private/reports/f0-corpus-map.json` 是对话编号到文件路径的映射。
 - HUMAN-03（事件题抽查）仍未完成，不阻塞任何任务；其余 HUMAN 条目均已完成。
 - M3 的两项效果目标按 ADR-0029 保留为未证实；v2 的门槛改由 R6 按 B0/B1 对比判定。
 
 ## 下一步
-- **F0-T99 取证报告与路线建议**：汇总 `docs/dev/reports/F0.md` 的四节，逐条回答 P1、P3、P4，并按 ADR-0039 直接给出 v3 建议与 ADR，不再请人类决定。引用全文基线时写明：上限探测没有找到上限、配置窗口仍是 131072；裁判只有 8 次判断、2/4 分支换序不一致；记忆引擎组没有事件池、角色卡与世界书。
-- 之后 F0-T100 写 v3 并改写路线（ADR-0039；阶段顺序按 v3-review 第三节，已写入任务）。
-- F0-T100 合并 v3 之后，先做 **R0-T04 合并 v3 插件系统提案**（`docs/proposals/plugins.md`），再按新路线继续；**兼容插件线 C-T01–C-T05 排在插件内核改造 P2 之后**。R0-T05（归档已完成任务）随时可以插入。
-- V3 路线确认之前仍按 TASKS 的 R1 顺序执行：R1-T01.b 渠道按岗位配置（比较模型家族）、R1-T01.c 生成长度默认值、R1-T02 台账结算器（v19/v20）、R1-T02.a 现场分析（v21）、R1-T03 批量事件抽取、R1-T03.a 父子分块（v22）、R1-T03.b 重排序、R1-T04.a/.b 回填与记忆评测、R1-T05 八段式压缩（v23）、R1-T06 世界书预筛（v24）、R1-T07 用户意志、R1-T07.a 自然语言修订记忆（v25）、R1-T07.b `gap_pass`（间隙合并调用）、R1-T08 上下文包复用（v26）、R1-T99；再到 R2、E-T01、X1/X2、R3、R4、R5、H-T00、R6、R7。
+- **F0-T100 写 v3 并改写路线**：按 `docs/dev/reports/F0.md` 的 F0-T99 节与 ADR-0043 写 `docs/proposals/v3.md` 与 ADR，覆盖主菜排序、ST 兼容全部进可选插件、插件系统按 `docs/proposals/plugins.md`、偏好信号收集与评测用法、人类试玩换成自动试玩加评测；合并进 DESIGN，重写 F 之后的全部阶段，最近两个阶段细化，其余由各自的 T00 细化。阶段顺序按 TASKS 里 F0-T100 的六条执行，只调整顺序、不缩小范围。结果写 `MILESTONE_DONE`。
+- F0-T100 合并 v3 之后，先做 R0-T04 合并 `docs/proposals/plugins.md`（DESIGN 插件章节、P1–P5、AGENTS.md 新不变量交人类确认），再做兼容插件线 C-T01–C-T05 与插件内核 P2。
+- v3 路线确认之前，TASKS 里 R1 的顺序仍作参考：R1-T01.b 渠道按岗位配置（比较模型家族）、R1-T01.c 生成长度默认值、R1-T02 台账结算器（v19/v20）、R1-T02.a 现场分析（v21）、R1-T03 批量事件抽取、R1-T03.a 父子分块（v22）、R1-T03.b 重排序、R1-T04.a/.b 回填与记忆评测、R1-T05 八段式压缩（v23）、R1-T06 世界书预筛（v24）、R1-T07 用户意志、R1-T07.a 自然语言修订记忆（v25）、R1-T07.b `gap_pass`（间隙合并调用）、R1-T08 上下文包复用（v26）、R1-T99；再到 R2、E-T01、X1/X2、R3、R4、R5、H-T00、R6、R7。
 - E-T01（`dramaticer explain`）排在 R2-T99 之后；H-T00（应用内助手）排在 R5-T99 之后并取代原 R7 的侧边 agent。
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
 - 不要修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 下的任何文件。不变量 I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账是唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖任何其他工作区包、ST 语义只在兼容插件里实现。
+- `docs/dev/reports/F0.md` 里只有 F0-T02、F0-T03、F0-T04、F0-T99 四个标记段；重跑脚本只会替换对应标记之间的内容，手写部分（F0-T03 的门槛、F0-T99 的汇总结论）不要放进标记之间。F0-T99 节里引用的数字必须与前面各节和 `docs/dev/reports/F0-corpus.md` 一致，改脚本重跑后要同步核对。
 - `pnpm f0:fulltext` 阶段与文件：`DRAMATICER_F0_FULLTEXT_STAGE=probe|generate|judge|report|all`（默认 all），`DRAMATICER_F0_FULLTEXT_RERUN=1` 忽略已有结果重跑。分支集合固定为对话 128、132、10、223；对话 95 因提供方 `content_filter` 被替换。生成阶段会复用 `fulltext/work.db` 里已导入的故事、摘要与向量，只有缺失时才补。
 - `fulltext-probe.json` 的 `previousCalls` 记录被重跑覆盖的探测调用数；报告用它把总调用数算进 30 次上限。重跑探测时这个字段会累加，不要手工清零。
-- 请求长度探测的输入是重复的合成中文段落，core 的 token 估算把中文按 1.5 字符/token 算，比渠道实际计数偏高约 20%；报告同时给估算值与渠道报告的输入合计（未缓存 + 缓存命中）。不要把「1M 级别」读成渠道真的处理了整整 1,048,576 个 token。
+- 请求长度探测的输入是重复的合成中文文本，core 的 token 估算把中文按 1.5 字符/token 算，比渠道实际计数高约 20%；报告同时给估算值与渠道报告的输入合计（未缓存 + 缓存命中）。「1M 级别」指目标 1,048,576 token 的探测级别，渠道报告的实际输入是 873,850 token，不要读成渠道真的处理了整整 1,048,576 个 token。
 - 生成阶段的输出上限首轮是 2048，`stopReason` 为 `length` 的组合用 4096 重跑；报告只保留最终记录。提供方报告的输入 token 是未命中前缀缓存的部分，重跑会大量命中缓存，比较上下文规模用组装估算。
 - 裁判用两种顺序各判一次；脚本按 `标签|顺序` 续跑，结果只追加，同一 key 取最后一行。裁判失败会按别名回退重试一次，仍失败记 `ok:false`，不参与统计。
 - `pnpm f0:corpus` 需要 `DRAMATICER_ST_ROOTS`（Windows 上用分号分隔三个 ST 数据目录），并保证 `packages/core/dist` 已构建；脚本会覆盖 `docs/dev/reports/F0-corpus.md` 与 `eval-private/reports/f0-corpus-map.json`。脚本先扫一遍语料发现标签名再统计，全程约 6 秒。
-- F0-corpus 的标签块占比是保守口径：只用闭合的无属性标签块，带属性的 HTML 按正文计，中位数 0%、合计 25.2%。**不要把它当成“历史里 2/3 是标签块”的证据**；F0-T99 若要引用标签占比，必须同时写明口径，或另做带属性标签的统计。
+- F0-corpus 的标签块占比是保守口径：只用闭合的无属性标签块，带属性的 HTML 按正文计，合计 25.2%（中位数 0%）。**不要把它当成“历史里 2/3 是标签块”的证据**；引用标签占比时必须同时写明口径。
 - 玩家思考间隙只统计相邻助手→用户对，间隔上限 30 分钟；生成耗时丢弃负值与超过 24 小时的值。
 - 编辑分类的门槛是公共前缀 ≥ 80% 且长度差 ≤ 120 字符；`只改标签块` 包含状态栏与变量块被整体改写的情况。
-- `pnpm f0:attribution` 需要先 `pnpm run typecheck` 构建 core 与 st-compat 的 `dist`，并读取 `eval-private/reports/f0-corpus-map.json`（由 `pnpm f0:corpus` 生成）。环境变量：`DRAMATICER_F0_PAIRS_PER_BUCKET` 默认 67（每层目标数），`DRAMATICER_F0_CONCURRENCY` 默认 4，`DRAMATICER_F0_MAX_TOKENS` 默认 2500；归因模型输出为空或 `stopReason` 为 `length` 时用至少 4096 重试一次。结果按 pair id 续跑；router 缓存目录是 `eval-private/f0/llm-cache`。
+- `pnpm f0:attribution` 需要先 `pnpm run typecheck` 构建 core 与 st-compat 的 `dist`，并读取 `eval-private/reports/f0-corpus-map.json`（由 `pnpm f0:corpus` 生成）。环境变量：`DRAMATICER_F0_PAIRS_PER_BUCKET` 默认 67（每层目标数）、`DRAMATICER_F0_CONCURRENCY` 默认 4、`DRAMATICER_F0_MAX_TOKENS` 默认 2500；归因模型输出为空或 `stopReason` 为 `length` 时用至少 4096 重试一次。结果按 pair id 续跑；router 缓存目录是 `eval-private/f0/llm-cache`。
 - 分层补齐的规则：`pairs.jsonl` 里已抽中的配对原样保留；某层已有配对超过目标就不再增补，可用配对不足目标的层全取。`pairs.jsonl` 里的配对 id 在当前语料里找不到时脚本会抛错，说明语料变了，需要重新生成映射并确认。
 - 失败的归因配对每次运行都会重试（目前 5 对）；成功之后不再重跑。`attribution.jsonl` 只追加，同一 pair 可能有多行。
 - 归因输出必须原样使用固定类别；模型写成「前后矛盾」会被拒绝并计入失败，不要放宽校验。失败配对的明细在 `eval-private/f0/attribution.jsonl`。
 - `pnpm f0:judge`：从已归因配对里按层抽 70 / 60 / 70（可用不足的层全取），每对两种顺序，结果按 `配对|顺序` 写 `eval-private/f0/judge.jsonl`，报告只替换 `<!-- F0-T03:begin -->` 到 `<!-- F0-T03:end -->` 之间。判定门槛那一段是手写的，**不要放进标记之间**，重跑时不能被脚本覆盖。
 - 判决输出必须同时有 `choice`（"A" 或 "B"）与 0 到 1 的 `confidence`；不合法一律记为失败，不放宽。失败过的判断用 `cacheDir: null` 的客户端重试，因为缓存里可能留着同一请求的不合法输出，命中缓存不算重试。
 - `DRAMATICER_F0_JUDGE_MODEL` 只覆盖 `background` 别名在内存里的模型 id，不改 `data/channels.yaml` 与 `.env`；`DRAMATICER_F0_JUDGE_RERUN=1` 会忽略已有结果重判全部判断（同一路由切换时用过一次）。报告的结果一节会按实际路由写一行说明。
-- 语料里有文件名不同、内容完全相同的对话副本：F0-T03 的 390 次判断里有 24 次请求内容重复（13 次命中缓存），独立判断 366 次。F0-T99 引用样本量时要说明这一点。
+- 语料里有文件名不同、内容完全相同的对话副本：F0-T03 的 390 次判断里有 24 次请求内容重复（13 次命中缓存），独立判断 366 次。引用样本量时要说明这一点。
 - 统计对话时按文件名去重，同名副本保留目录顺序靠前的那份（TauriTavern → data → luker）；报告只允许出现「对话 N」与数字，写完后用映射文件反向核对是否泄漏目录名。
 - `parseChatJsonl` 默认在 `swipe_id` 越界或非整数时抛错（导入语义）；只读分析用 `{ strictSwipeId: false }`。不要把这个选项用在导入路径上。
 - 服务端启动时提供 `channels` 就会加载渠道配置；配置缺失或环境变量没设置会让启动失败，这是有意的快速失败。测试里通过 `channels.load` 与 `createClient` 注入假客户端。
