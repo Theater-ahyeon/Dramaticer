@@ -12,6 +12,7 @@
 		"lint": "biome check .",
 		"test": "vitest run",
 		"snapshot": "node scripts/snapshot-private-data.mjs",
+		"f0:corpus": "node scripts/f0-corpus.mjs",
 		"probe": "pnpm --filter @dramaticer/st-compat build && node packages/st-compat/dist/cli.js probe",
 		"chat": "pnpm --filter @dramaticer/st-compat build && node packages/st-compat/dist/cli.js chat",
 		"work": "pnpm --filter @dramaticer/st-compat build && node packages/st-compat/dist/cli.js work",

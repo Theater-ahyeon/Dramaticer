@@ -4,7 +4,7 @@
 // before anything is installed and must not be weakened by dependency drift.
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative, sep } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 
 const root = process.cwd();
 const failures = [];
@@ -33,6 +33,15 @@ for (const f of coreSrc) {
 	const text = readFileSync(f, "utf8");
 	if (/from\s+["'][^"']*st-compat[^"']*["']|import\(\s*["'][^"']*st-compat/.test(text)) {
 		fail("I1", `${rel(f)} imports st-compat`);
+	}
+	// I15: core depends on no other workspace package (plugins depend on core, never the reverse).
+	const coreRoot = join(root, "packages", "core");
+	for (const m of text.matchAll(/(?:from\s+|import\(\s*)["']([^"']+)["']/g)) {
+		const spec = m[1];
+		const escapes = spec.startsWith(".") && !resolve(dirname(f), spec).startsWith(coreRoot + sep);
+		if (spec.startsWith("@dramaticer/") || escapes) {
+			fail("I15", `${rel(f)} imports "${spec}"; core must not depend on other workspace packages`);
+		}
 	}
 	const lines = text.split("\n");
 	lines.forEach((line, i) => {
