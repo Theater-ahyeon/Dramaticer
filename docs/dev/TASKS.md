@@ -372,7 +372,8 @@
   完成：2026-11-07 把 M3 细化为 M3-T01 至 M3-T08 与 M3-T99；T01–T05 不依赖参照基线，可以立即执行；T06 重复检测、T07 节奏状态机与 T08 开关对比评测依赖 D-T04（被 HUMAN-07 阻塞），排在其后；T01 的决策记录同时作为 T08 回放的输入。
   做什么：原条目：线索追踪；重复检测（embedding 版）；节奏状态机；NPC 议程（后台任务）；事件池和卡扩展字段 `extensions.dramaticer`；director 槽位；评测（重复度、伏笔回收率，开启和关闭 Director 的对比回放）。重复检测与节奏阈值的任务依赖 D-T04（小说参照基线），按 D-T04 的状态安排实现顺序。
 
-- [ ] **M3-T01 Director 决策框架与线索追踪** | 依赖：M2-T07、M2-T13
+- [x] **M3-T01 Director 决策框架与线索追踪** | 依赖：M2-T07、M2-T13
+  完成：2026-11-07 迁移 v13 新增 `director_decisions`（每楼层一行，触发器拒绝跨故事组合与归属修改）；`StoryStore` 新增 `saveDirectorDecision`（upsert）、`getDirectorDecision`、`getDirectorDecisionsAlongPath`；core 新增 `director/`（`DirectorConfig`、`DirectorSuggestion`、`DirectorMechanism`、`evaluateDirector`、默认线索追踪机制），年龄超过 12 楼或未兑现达到 5 条时输出一行建议，年龄优先，不调用 LLM；11 个新测试，门禁通过（497 个测试）
   做什么：
   - 迁移 v13 新增 `director_decisions(node_id PRIMARY KEY, story_id, directive, mechanisms, signals, created_at)`；同一节点重复评估时覆盖旧记录；数据库触发器拒绝跨故事的楼层与故事组合；`StoryStore` 增加 `saveDirectorDecision`、`getDirectorDecision`、`getDirectorDecisionsAlongPath`。
   - core 新增 `director/` 模块：`DirectorConfig`（`enabled`、`clueAgeWarning` 默认 12、`maxOpenClues` 默认 5、`pace` 与 `surprise` 留给后续机制）、`DirectorSuggestion {mechanism, priority, directive, signals}`、`DirectorMechanism {name, evaluate(input)}`；`evaluateDirector({store, storyId, nodeId, config})` 按注册顺序评估全部机制，只选优先级最高的一条建议作为输出，最多一行指令；不调用 LLM。

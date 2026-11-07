@@ -373,6 +373,32 @@ export function buildMigrations(
 				END`,
 			],
 		},
+		{
+			version: 13,
+			description: "导演决策：每个楼层最多一条评估记录，重复评估覆盖旧记录",
+			statements: [
+				`CREATE TABLE director_decisions (
+					node_id TEXT PRIMARY KEY REFERENCES nodes(id),
+					story_id TEXT NOT NULL REFERENCES stories(id),
+					directive TEXT,
+					mechanisms TEXT NOT NULL,
+					signals TEXT NOT NULL,
+					created_at TEXT NOT NULL
+				) STRICT`,
+				`CREATE TRIGGER director_decisions_story_matches_node
+				BEFORE INSERT ON director_decisions
+				WHEN COALESCE((SELECT story_id FROM nodes WHERE id = NEW.node_id), '') <> NEW.story_id
+				BEGIN
+					SELECT RAISE(ABORT, '导演决策的 story_id 必须与楼层节点一致');
+				END`,
+				`CREATE TRIGGER director_decisions_identity_immutable
+				BEFORE UPDATE ON director_decisions
+				WHEN NEW.node_id <> OLD.node_id OR NEW.story_id <> OLD.story_id
+				BEGIN
+					SELECT RAISE(ABORT, '导演决策的楼层与故事归属不可修改');
+				END`,
+			],
+		},
 	];
 }
 

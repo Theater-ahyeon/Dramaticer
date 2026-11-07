@@ -5,6 +5,11 @@ import type {
 	BackgroundJob,
 	BackgroundJobStatus,
 } from "../background/types.js";
+import type {
+	DirectorDecision,
+	DirectorMechanismRecord,
+	NewDirectorDecisionInput,
+} from "../director/types.js";
 import {
 	type Entity,
 	type EntityKind,
@@ -12,7 +17,7 @@ import {
 	isEntityKind,
 	normalizeEntityName,
 } from "../entity.js";
-import { isJsonObject } from "../json.js";
+import { type JsonObject, isJsonObject } from "../json.js";
 import {
 	DEFAULT_MEMORY_EVENT_LIMIT,
 	type GetEventsForPathOptions,
@@ -215,6 +220,15 @@ interface PlotNoteRow {
 	readonly fulfilled_at: string | null;
 }
 
+interface DirectorDecisionRow {
+	readonly node_id: string;
+	readonly story_id: string;
+	readonly directive: string | null;
+	readonly mechanisms: string;
+	readonly signals: string;
+	readonly created_at: string;
+}
+
 interface LoreEntryRow {
 	readonly id: string;
 	readonly story_id: string;
@@ -232,6 +246,15 @@ interface NormalisedPlotNote {
 	readonly storyId: string;
 	readonly sourceNodeId: string;
 	readonly text: string;
+	readonly createdAt: string;
+}
+
+interface NormalisedDirectorDecision {
+	readonly nodeId: string;
+	readonly storyId: string;
+	readonly directive: string | null;
+	readonly mechanisms: readonly DirectorMechanismRecord[];
+	readonly signals: JsonObject;
 	readonly createdAt: string;
 }
 
@@ -578,6 +601,56 @@ function rowToPlotNote(row: PlotNoteRow): PlotNote {
 		createdAt: row.created_at,
 		fulfilledAt: row.fulfilled_at,
 	};
+}
+
+function rowToDirectorDecision(row: DirectorDecisionRow): DirectorDecision {
+	const mechanisms = parseStoredMechanisms(row.mechanisms, row.node_id);
+	const parsedSignals: unknown = JSON.parse(row.signals);
+	if (!isJsonObject(parsedSignals)) {
+		throw new Error(`楼层 ${row.node_id} 的导演决策 signals 不是 JSON 对象`);
+	}
+	return {
+		nodeId: row.node_id,
+		storyId: row.story_id,
+		directive: row.directive,
+		mechanisms,
+		signals: parsedSignals,
+		createdAt: row.created_at,
+	};
+}
+
+function parseStoredMechanisms(
+	value: string,
+	nodeId: string,
+): DirectorMechanismRecord[] {
+	const parsed: unknown = JSON.parse(value);
+	if (!Array.isArray(parsed)) {
+		throw new Error(`楼层 ${nodeId} 的导演决策 mechanisms 不是数组`);
+	}
+	return parsed.map((entry, index) => {
+		if (!isJsonObject(entry)) {
+			throw new Error(
+				`楼层 ${nodeId} 的导演决策 mechanisms[${index}] 不是对象`,
+			);
+		}
+		const { name, triggered, reason } = entry;
+		if (typeof name !== "string" || name.length === 0) {
+			throw new Error(
+				`楼层 ${nodeId} 的导演决策 mechanisms[${index}].name 不合法`,
+			);
+		}
+		if (typeof triggered !== "boolean") {
+			throw new Error(
+				`楼层 ${nodeId} 的导演决策 mechanisms[${index}].triggered 不合法`,
+			);
+		}
+		if (typeof reason !== "string" || reason.length === 0) {
+			throw new Error(
+				`楼层 ${nodeId} 的导演决策 mechanisms[${index}].reason 不合法`,
+			);
+		}
+		return { name, triggered, reason };
+	});
 }
 
 function rowToLoreEntry(row: LoreEntryRow): LoreEntry {
@@ -1443,6 +1516,79 @@ export class StoryStore {
 			)
 			.run(at, noteId);
 		return { ...note, status: "fulfilled", fulfilledAt: at };
+	}
+
+	/** 写入某个楼层的导演决策；同一楼层重复评估时覆盖旧记录。 */
+	saveDirectorDecision(input: NewDirectorDecisionInput): DirectorDecision {
+		const normalised = this.#normaliseDirectorDecision(input);
+		this.#db
+			.prepare(
+				`INSERT INTO director_decisions
+					(node_id, story_id, directive, mechanisms, signals, created_at)
+				VALUES (?, ?, ?, ?, ?, ?)
+				ON CONFLICT(node_id) DO UPDATE SET
+					directive = excluded.directive,
+					mechanisms = excluded.mechanisms,
+					signals = excluded.signals,
+					created_at = excluded.created_at`,
+			)
+			.run(
+				normalised.nodeId,
+				normalised.storyId,
+				normalised.directive,
+				serializeJsonValue(normalised.mechanisms, "导演决策的 mechanisms"),
+				serializeJsonValue(normalised.signals, "导演决策的 signals"),
+				normalised.createdAt,
+			);
+		return {
+			nodeId: normalised.nodeId,
+			storyId: normalised.storyId,
+			directive: normalised.directive,
+			mechanisms: normalised.mechanisms,
+			signals: normalised.signals,
+			createdAt: normalised.createdAt,
+		};
+	}
+
+	/** 读取某个楼层的导演决策；没有评估过时返回 null。 */
+	getDirectorDecision(nodeId: string): DirectorDecision | null {
+		assertNonEmptyString(nodeId, "楼层节点 id");
+		const node = this.getNode(nodeId);
+		if (!node) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
+		const row = this.#db
+			.prepare("SELECT * FROM director_decisions WHERE node_id = ?")
+			.get(nodeId) as DirectorDecisionRow | undefined;
+		if (row === undefined) return null;
+		if (row.story_id !== node.storyId) {
+			throw new Error(`楼层 ${nodeId} 的导演决策与楼层所属故事不一致`);
+		}
+		return rowToDirectorDecision(row);
+	}
+
+	/** 按根到给定楼层的路径顺序返回决策记录，其他分支的记录不参与。 */
+	getDirectorDecisionsAlongPath(nodeId: string): DirectorDecision[] {
+		assertNonEmptyString(nodeId, "楼层节点 id");
+		if (!this.getNode(nodeId)) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
+		const rows = this.#db
+			.prepare(
+				`WITH RECURSIVE path(node_id, depth) AS (
+					SELECT id, 0 FROM nodes WHERE id = ?
+					UNION ALL
+					SELECT nodes.parent_id, path.depth + 1
+					FROM path JOIN nodes ON nodes.id = path.node_id
+					WHERE nodes.parent_id IS NOT NULL
+				)
+				SELECT d.*
+				FROM director_decisions AS d
+				JOIN path ON path.node_id = d.node_id
+				ORDER BY path.depth DESC`,
+			)
+			.all(nodeId) as DirectorDecisionRow[];
+		return rows.map(rowToDirectorDecision);
 	}
 
 	/**
@@ -2436,6 +2582,74 @@ export class StoryStore {
 			storyId: input.storyId,
 			sourceNodeId: input.sourceNodeId,
 			text,
+			createdAt,
+		};
+	}
+
+	#normaliseDirectorDecision(
+		input: NewDirectorDecisionInput,
+	): NormalisedDirectorDecision {
+		if (input === null || typeof input !== "object" || Array.isArray(input)) {
+			throw new Error("导演决策必须是对象");
+		}
+		assertNonEmptyString(input.nodeId, "导演决策的 nodeId");
+		assertNonEmptyString(input.storyId, "导演决策的 storyId");
+		if (!this.getStory(input.storyId)) {
+			throw new Error(`故事不存在：${input.storyId}`);
+		}
+		const node = this.getNode(input.nodeId);
+		if (!node) {
+			throw new Error(`楼层节点不存在：${input.nodeId}`);
+		}
+		if (node.storyId !== input.storyId) {
+			throw new Error(
+				`导演决策的 storyId 与楼层节点所属故事不一致：${input.storyId}`,
+			);
+		}
+		const directive =
+			input.directive === null
+				? null
+				: optionalTrimmedString(input.directive, "导演决策的 directive");
+		if (!Array.isArray(input.mechanisms) || input.mechanisms.length === 0) {
+			throw new Error("导演决策的 mechanisms 必须是非空数组");
+		}
+		const mechanisms: DirectorMechanismRecord[] = [];
+		for (const [index, entry] of input.mechanisms.entries()) {
+			const label = `导演决策的 mechanisms[${index}]`;
+			if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+				throw new Error(`${label} 必须是对象`);
+			}
+			if (typeof entry.name !== "string" || entry.name.trim().length === 0) {
+				throw new Error(`${label}.name 必须是非空字符串`);
+			}
+			const name = entry.name.trim();
+			if (mechanisms.some((record) => record.name === name)) {
+				throw new Error(`${label}.name 重复：${name}`);
+			}
+			if (typeof entry.triggered !== "boolean") {
+				throw new Error(`${label}.triggered 必须是布尔值`);
+			}
+			if (
+				typeof entry.reason !== "string" ||
+				entry.reason.trim().length === 0
+			) {
+				throw new Error(`${label}.reason 必须是非空字符串`);
+			}
+			const reason = entry.reason.trim();
+			mechanisms.push({ name, triggered: entry.triggered, reason });
+		}
+		if (!isJsonObject(input.signals)) {
+			throw new Error("导演决策的 signals 必须是 JSON 对象");
+		}
+		serializeJsonValue(input.signals, "导演决策的 signals");
+		const createdAt = input.createdAt ?? new Date().toISOString();
+		assertNonEmptyString(createdAt, "导演决策的 createdAt");
+		return {
+			nodeId: input.nodeId,
+			storyId: input.storyId,
+			directive,
+			mechanisms,
+			signals: input.signals,
 			createdAt,
 		};
 	}
