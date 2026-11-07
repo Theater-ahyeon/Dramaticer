@@ -383,6 +383,7 @@ describe("createDirectorSlotProvider", () => {
 				triggered: true,
 				reason: expect.stringContaining("超过阈值 12"),
 			},
+			{ name: "event_pool", triggered: false, reason: "事件池为空" },
 		]);
 
 		expect(
@@ -416,7 +417,13 @@ describe("createDirectorSlotProvider", () => {
 		]);
 		const current = appendChain(store, 13, "u1");
 		const provider = createDirectorSlotProvider(store, {
-			config: { enabled: false, clueAgeWarning: 12, maxOpenClues: 5 },
+			config: {
+				enabled: false,
+				clueAgeWarning: 12,
+				maxOpenClues: 5,
+				stallFloors: 3,
+				surprise: 1,
+			},
 		});
 		expect(
 			await provider.provide(request("s1", current, "director")),
@@ -450,7 +457,13 @@ describe("createDirectorSlotProvider", () => {
 		store.setHead("s1", "a2");
 
 		const provider = createDirectorSlotProvider(store, {
-			config: { enabled: true, clueAgeWarning: 0, maxOpenClues: 5 },
+			config: {
+				enabled: true,
+				clueAgeWarning: 0,
+				maxOpenClues: 5,
+				stallFloors: 3,
+				surprise: 1,
+			},
 		});
 		const content = await provider.provide(request("s1", "a2", "director"));
 		expect(content?.messages[0]?.content).toContain("主线伏笔");

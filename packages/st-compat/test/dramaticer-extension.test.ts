@@ -87,6 +87,18 @@ describe("extensions.dramaticer 导入", () => {
 		});
 	});
 
+	it("停用的事件保留在池里并标记为停用", () => {
+		const card = parseCharacterCardJson(
+			cardJson({ events: [{ id: "off", text: "隐藏事件", enabled: false }] }),
+		);
+		importCharacterCardEntity(store, "s1", card);
+		importDramaticerExtension(store, "s1", card);
+
+		const events = store.listEventPool("s1");
+		expect(events).toHaveLength(1);
+		expect(events[0]?.enabled).toBe(false);
+	});
+
 	it("重复导入不新增行，事件正文更新", () => {
 		const first = parseCharacterCardJson(cardJson(extension));
 		importCharacterCardEntity(store, "s1", first);

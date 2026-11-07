@@ -44,6 +44,7 @@ export function importDramaticerExtension(
 			text: event.text,
 			preconditions: event.preconditions,
 			cooldown: event.cooldown,
+			enabled: event.enabled,
 			source,
 		}),
 	);

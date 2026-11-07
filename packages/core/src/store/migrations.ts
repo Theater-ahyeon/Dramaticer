@@ -448,6 +448,13 @@ export function buildMigrations(
 				END`,
 			],
 		},
+		{
+			version: 15,
+			description: "事件池条目的启用开关",
+			statements: [
+				"ALTER TABLE event_pool ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1))",
+			],
+		},
 	];
 }
 

@@ -1,6 +1,7 @@
 import type { JsonObject } from "../json.js";
 import type { StoryStore } from "../store/story-store.js";
 import { createClueTrackingMechanism } from "./clue.js";
+import { createEventPoolMechanism } from "./event-pool.js";
 import type {
 	DirectorConfig,
 	DirectorMechanism,
@@ -19,6 +20,7 @@ export interface EvaluateDirectorInput {
 
 export const DEFAULT_DIRECTOR_MECHANISMS: readonly DirectorMechanism[] = [
 	createClueTrackingMechanism(),
+	createEventPoolMechanism(),
 ];
 
 function assertDirectorConfig(config: DirectorConfig): void {
@@ -33,6 +35,17 @@ function assertDirectorConfig(config: DirectorConfig): void {
 	}
 	if (!Number.isInteger(config.maxOpenClues) || config.maxOpenClues < 1) {
 		throw new Error("导演配置的 maxOpenClues 必须是正整数");
+	}
+	if (!Number.isInteger(config.stallFloors) || config.stallFloors < 1) {
+		throw new Error("导演配置的 stallFloors 必须是正整数");
+	}
+	if (
+		typeof config.surprise !== "number" ||
+		!Number.isFinite(config.surprise) ||
+		config.surprise < 0 ||
+		config.surprise > 1
+	) {
+		throw new Error("导演配置的 surprise 必须是 0 到 1 之间的数字");
 	}
 }
 

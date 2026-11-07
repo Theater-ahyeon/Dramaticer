@@ -65,6 +65,27 @@ describe("剧情笔记存储", () => {
 		expect(store.getOpenPlotNotes("s1")[1]).toEqual(second[0]);
 	});
 
+	it("按来源楼层统计新建笔记数，已兑现的也计入", () => {
+		const { store } = openTempStore();
+		seed(store);
+		insert(store, "n1", "井底有人跟踪");
+		insert(store, "n2", "裂缝在扩大");
+		store.fulfillPlotNote("n2", "2026-11-07T13:00:00.000Z");
+
+		expect(store.countPlotNotesForNode("a1")).toBe(2);
+		store.appendNode({
+			id: "a2",
+			storyId: "s1",
+			parentId: "a1",
+			role: "user",
+			raw: "继续",
+		});
+		expect(store.countPlotNotesForNode("a2")).toBe(0);
+		expect(() => store.countPlotNotesForNode("missing")).toThrow(
+			"楼层节点不存在：missing",
+		);
+	});
+
 	it("兑现后从 open 列表消失，再次兑现抛错", () => {
 		const { store } = openTempStore();
 		seed(store);

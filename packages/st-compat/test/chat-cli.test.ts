@@ -190,7 +190,10 @@ describe("dramaticer chat", () => {
 			expect(trace?.structured.acceptedStateUpdates).toBe(1);
 			const decision = store.getDirectorDecision(result.userNode.id);
 			expect(decision?.directive).toBeNull();
-			expect(decision?.mechanisms.map((item) => item.name)).toEqual(["clue"]);
+			expect(decision?.mechanisms.map((item) => item.name)).toEqual([
+				"clue",
+				"event_pool",
+			]);
 			const entity = store.findEntityByName("s1", "山神");
 			expect(entity?.kind).toBe("character");
 			expect(entity?.aliases).toEqual(["山神"]);

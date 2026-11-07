@@ -3,27 +3,27 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：59
-- 任务：M3-T03 卡扩展 extensions.dramaticer 与事件池存储
+- 会话：60
+- 任务：M3-T04 事件池选择与停滞检测
 - 结果：完成（`DONE`）。
-  - core 新增 `context/condition.ts` 的 `parseContextCondition`（`switch` 可关闭，`state` 的 `op` 与 `value` 严格校验），`json.ts` 新增 `assertJsonValue`、`assertPlainObject`、`rejectUnknownKeys`；`store/json-value.ts` 改为复用同一个 JSON 校验。
-  - core 新增 `director/card-extension.ts` 的 `DramaticerCardExtension` 与 `parseDramaticerCardExtension`：没有 `extensions.dramaticer` 时返回空扩展；有值时拒绝未知字段、空字符串、重复 `id`、负冷却、非正整数 `everyChapters`、越界 `importance` 与 `switch` 条件，错误信息带条目下标与字段路径。
-  - core 新增 `director/pool.ts` 的类型；迁移 v14 新增 `event_pool`（`PRIMARY KEY(story_id, source_id)`）与 `npc_agendas`（`PRIMARY KEY(story_id, entity_id)`，`progress` 默认空字符串），触发器拒绝跨故事实体与推进楼层，并禁止修改议程的故事与实体。
-  - `StoryStore` 新增 `upsertEventPool`（重复导入更新文本、条件、冷却与来源，保留 `created_at`）、`listEventPool`、`upsertNpcAgendas`（更新目标、章节间隔、重要度，保留 `progress` 与 `last_advanced_node_id`）、`listNpcAgendas`。
-  - st-compat 新增 `importDramaticerExtension(store, storyId, card)`：NPC 名称或别名解析为 `character` 实体，找不到或对应多个都抛错并指出条目；`dramaticer chat` 在导入卡与世界书之后调用它。
-  - 测试：新增 `packages/core/test/card-extension.test.ts`（7）、`event-pool.test.ts`（7）、`packages/st-compat/test/dramaticer-extension.test.ts`（6）与 `chat-cli.test.ts` 的扩展导入用例（1），共 21 个；门禁 `pnpm check` 通过（65 个测试文件、521 个测试）。
+  - `StoryStore` 新增 `countPlotNotesForNode(nodeId)`，统计来源楼层新建的剧情笔记数，已兑现的同样计入。
+  - 迁移 v15 给 `event_pool` 增加 `enabled`（默认 1）；`EventPoolEntry` 与 `NewEventPoolEntryInput` 增加 `enabled`，重复导入会更新它；st-compat 的 `importDramaticerExtension` 把卡里的 `enabled` 写进事件池。
+  - core 新增 `director/event-pool.ts`：`createEventPoolMechanism()` 与 `stableUnitHash`。停滞判定为当前路径最近 `stallFloors`（默认 3）个已确认助手楼层都没有状态 diff、也没有新建笔记；楼层不足或事件池为空直接跳过。
+  - 事件选择：条件用当前楼层的 `getStateSnapshot` 与 `evaluateContextCondition`（switches 为空）；冷却读取当前路径 `director_decisions` 的 `signals.eventPool.selectedSourceId`，当前楼层自己的旧记录不算，距离小于等于 `cooldown` 视为仍在冷却；合格事件按上次使用位置升序、`source_id` 升序排序，再用 `(storyId, nodeId, sourceId)` 的 FNV-1a 哈希与 `surprise` 比较（0 永不触发，1 停滞即触发）；指令直接使用事件正文。
+  - `DirectorConfig` 增加 `stallFloors` 与 `surprise`（默认 3、1），`DEFAULT_DIRECTOR_MECHANISMS` 注册 `event_pool`，优先级 10（低于线索的 20/30）。决策 signals 以 `eventPool` 键记录检查过的楼层、候选、跳过原因与选中事件，不修改 `event_pool` 表，不调用模型。
+  - 测试：新增 `packages/core/test/director-event-pool.test.ts`（7）、`plot-notes.test.ts` 与 `event-pool.test.ts` 各 1 个存储用例、`dramaticer-extension.test.ts` 的停用事件用例（1），另有默认机制列表相关的既有断言更新；门禁 `pnpm check` 通过（66 个测试文件、531 个测试）。
 
 ## 当前状态
-- M0、M1、M2、D-T01 至 D-T04、M3-T00 至 M3-T03 完成。
-- 门禁：`pnpm check` 通过（521 个测试）；live 测试需要 `DRAMATICER_LIVE=1`。
-- 数据库 schema 版本 14。
+- M0、M1、M2、D-T01 至 D-T04、M3-T00 至 M3-T04 完成。
+- 门禁：`pnpm check` 通过（531 个测试）；live 测试需要 `DRAMATICER_LIVE=1`。
+- 数据库 schema 版本 15。
 - 快照：`eval-private/raw/` 有 94 个文件；manifest 记录 `corpus` 与 `sourceMtime`。`eval-private/reference/` 有 5 部参照小说。
 - 事件表仍未建立；记忆评测的事件路记 0，M3 不要引用这组事件数字。
 - HUMAN-03（事件题抽查）仍未完成，不阻塞任何任务；其余 HUMAN 条目均已完成。
 
 ## 下一步
-- **M3-T04**（下一个会话）：`StoryStore` 增加 `countPlotNotesForNode(nodeId)`；core 新增事件池机制，停滞判定为当前路径最近 `stallFloors`（默认 3）个已确认助手楼层既没有状态 diff、也没有新建剧情笔记；条件用当前楼层的 `getStateSnapshot` 与 `evaluateContextCondition`；冷却读取当前路径的 `director_decisions`；合格事件按“上次使用位置升序、`source_id` 升序”取第一条；`surprise` 用 `(storyId, nodeId, source_id)` 稳定哈希做门槛。
-- 然后依次 M3-T05（NPC 议程后台任务，按 `everyChapters` 在章节边界推进并写 `memory_events`）→ M3-T06（重复检测）→ M3-T07（节奏状态机）→ M3-T08（开启与关闭导演的对比回放）。
+- **M3-T05**（下一个会话）：新增后台任务类型 `npc_agenda`，只在章节边界执行（当前路径已确认助手楼层数是 `chapterSize` 的整数倍，默认 20）；没有议程时不调用模型；输入为该章节摘要或同窗口原文加全部 NPC 目标与上次进度，输出 `{npc, progress}` JSON 数组；严格校验后在一个事务里更新 `progress` 与 `last_advanced_node_id`，并写入 `与此同时：<progress>` 的 `memory_events`；按 `last_advanced_node_id` 跳过重复执行；`everyChapters` 决定推进的章节边界；`dramaticer work` 注册处理器。
+- 然后依次 M3-T06（重复检测）→ M3-T07（节奏状态机）→ M3-T08（开启与关闭导演的对比回放）。
 - 参照基线数字已经就位，M3-T06/T07 直接读 ADR-0025，不要重新从对话语料推导阈值。
 
 ## 注意事项

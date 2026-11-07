@@ -245,6 +245,7 @@ interface EventPoolRow {
 	readonly text: string;
 	readonly preconditions: string | null;
 	readonly cooldown: number;
+	readonly enabled: number;
 	readonly source: string;
 	readonly created_at: string;
 }
@@ -296,6 +297,7 @@ interface NormalisedEventPoolEntry {
 	readonly text: string;
 	readonly preconditions: ContextCondition | null;
 	readonly cooldown: number;
+	readonly enabled: boolean;
 	readonly source: string;
 	readonly createdAt: string;
 }
@@ -744,6 +746,7 @@ function rowToEventPoolEntry(row: EventPoolRow): EventPoolEntry {
 						`事件池条目 ${row.source_id} 的 preconditions`,
 					),
 		cooldown: row.cooldown,
+		enabled: row.enabled === 1,
 		source: row.source,
 		createdAt: row.created_at,
 	};
@@ -1611,6 +1614,20 @@ export class StoryStore {
 		return { ...note, status: "fulfilled", fulfilledAt: at };
 	}
 
+	/** 统计某个楼层新建的剧情笔记数；已兑现的笔记同样计入。 */
+	countPlotNotesForNode(nodeId: string): number {
+		assertNonEmptyString(nodeId, "楼层节点 id");
+		if (!this.getNode(nodeId)) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
+		const row = this.#db
+			.prepare(
+				"SELECT COUNT(*) AS count FROM plot_notes WHERE source_node_id = ?",
+			)
+			.get(nodeId) as { readonly count: number };
+		return row.count;
+	}
+
 	/** 写入某个楼层的导演决策；同一楼层重复评估时覆盖旧记录。 */
 	saveDirectorDecision(input: NewDirectorDecisionInput): DirectorDecision {
 		const normalised = this.#normaliseDirectorDecision(input);
@@ -1713,12 +1730,13 @@ export class StoryStore {
 		);
 		const upsert = this.#db.prepare(
 			`INSERT INTO event_pool
-				(story_id, source_id, text, preconditions, cooldown, source, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?)
+				(story_id, source_id, text, preconditions, cooldown, enabled, source, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT (story_id, source_id) DO UPDATE SET
 				text = excluded.text,
 				preconditions = excluded.preconditions,
 				cooldown = excluded.cooldown,
+				enabled = excluded.enabled,
 				source = excluded.source`,
 		);
 		const result: { inserted: number; updated: number } = {
@@ -1740,6 +1758,7 @@ export class StoryStore {
 								`事件池条目 ${entry.sourceId} 的 preconditions`,
 							),
 					entry.cooldown,
+					entry.enabled ? 1 : 0,
 					entry.source,
 					entry.createdAt,
 				);
@@ -3023,6 +3042,10 @@ export class StoryStore {
 		) {
 			throw new Error(`${label} 的 cooldown 必须是非负整数`);
 		}
+		const enabled = input.enabled ?? true;
+		if (typeof enabled !== "boolean") {
+			throw new Error(`${label} 的 enabled 必须是布尔值`);
+		}
 		const source = input.source ?? "manual";
 		if (typeof source !== "string" || source.trim().length === 0) {
 			throw new Error(`${label} 的 source 必须是非空字符串`);
@@ -3035,6 +3058,7 @@ export class StoryStore {
 			text,
 			preconditions,
 			cooldown,
+			enabled,
 			source: source.trim(),
 			createdAt,
 		};

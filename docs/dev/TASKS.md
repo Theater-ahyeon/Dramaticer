@@ -398,7 +398,8 @@
   - st-compat 新增 `importDramaticerExtension(card, store, storyId)`：先解析扩展，再把 NPC 名称或别名解析为实体（找不到实体时抛错并指出 `npc`）；事件按 `(story_id, source_id)` 更新文本、条件与冷却；NPC 议程更新目标、章节间隔与重要度，保留已有 `progress` 与 `last_advanced_node_id`；重复导入不产生重复行。`dramaticer chat` 在导入角色卡之后调用它。
   验收：合法扩展解析出全部字段；未知字段、重复 id、负冷却、越界重要度、找不到实体各抛错并指出位置；重复导入后事件数不变且文本更新、NPC 进度保留；没有扩展时导入返回零计数；`pnpm check` 通过。
 
-- [ ] **M3-T04 事件池选择与停滞检测** | 依赖：M3-T01、M3-T03
+- [x] **M3-T04 事件池选择与停滞检测** | 依赖：M3-T01、M3-T03
+  完成：2026-11-07 `StoryStore` 新增 `countPlotNotesForNode`；迁移 v15 给 `event_pool` 增加 `enabled`，导入与读写都保留停用标记；core 新增 `director/event-pool.ts`：停滞判定为当前路径最近 3 个已确认助手楼层都没有状态 diff 与新建笔记，条件用当前楼层快照与 `evaluateContextCondition`，冷却读取当前路径决策记录里最近选中的事件，合格事件按上次使用位置与 `source_id` 升序取第一条并用 `(storyId, nodeId, sourceId)` 的 FNV-1a 哈希与 `surprise` 比较，指令直接使用事件正文；决策 signals 以 `eventPool` 键记录检查楼层、候选、跳过原因与选中事件；默认配置增加 `stallFloors=3` 与 `surprise=1`；10 个新测试，门禁通过（531 个测试）
   做什么：
   - `StoryStore` 增加 `countPlotNotesForNode(nodeId)`；core 新增事件池机制：停滞判定为当前路径上最近 `stallFloors`（默认 3）个已确认助手楼层既没有状态 diff，也没有新建剧情笔记；楼层不足或事件池为空时跳过。
   - 事件条件用当前楼层的状态快照与 `evaluateContextCondition` 判定；冷却判定读取当前路径上的 `director_decisions`，同一 `source_id` 在最近 `cooldown` 个楼层内出现过就不再选择。

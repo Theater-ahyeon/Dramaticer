@@ -9,6 +9,8 @@ export interface EventPoolEntry {
 	readonly preconditions: ContextCondition | null;
 	/** 同一事件两次使用之间至少要隔开的楼层数。 */
 	readonly cooldown: number;
+	/** 为 false 时保留在池里，但导演不会选择。 */
+	readonly enabled: boolean;
 	/** 来源标记，例如 `card-extension`。 */
 	readonly source: string;
 	readonly createdAt: string;
@@ -20,6 +22,7 @@ export interface NewEventPoolEntryInput {
 	readonly text: string;
 	readonly preconditions?: ContextCondition | null;
 	readonly cooldown?: number;
+	readonly enabled?: boolean;
 	readonly source?: string;
 	/** 只在首次插入时使用；重复导入保留原来的创建时间。 */
 	readonly createdAt?: string;

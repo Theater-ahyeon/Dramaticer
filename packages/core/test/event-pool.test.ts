@@ -68,6 +68,7 @@ describe("事件池存储", () => {
 			text: "夜里出现狼群",
 			preconditions: null,
 			cooldown: 2,
+			enabled: true,
 			source: "manual",
 			createdAt: "2026-11-07T12:00:00.000Z",
 		});
@@ -112,6 +113,26 @@ describe("事件池存储", () => {
 			createdAt: "2026-11-07T12:00:00.000Z",
 		});
 		expect(entries[0]?.preconditions).toEqual(condition);
+	});
+
+	it("启用开关往返保存，重复导入可以重新启用", () => {
+		const { store } = openTempStore();
+		seed(store);
+		store.upsertEventPool([
+			{ storyId: "s1", sourceId: "e1", text: "事件", enabled: false },
+		]);
+		expect(store.listEventPool("s1")[0]?.enabled).toBe(false);
+
+		store.upsertEventPool([
+			{ storyId: "s1", sourceId: "e1", text: "事件", enabled: true },
+		]);
+		expect(store.listEventPool("s1")[0]?.enabled).toBe(true);
+
+		expect(() =>
+			store.upsertEventPool([
+				{ storyId: "s1", sourceId: "e2", text: "事件", enabled: "no" as never },
+			]),
+		).toThrow("事件池条目[0] 的 enabled 必须是布尔值");
 	});
 
 	it("非法输入抛错且整批不写入", () => {
