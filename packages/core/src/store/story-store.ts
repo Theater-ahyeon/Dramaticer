@@ -253,17 +253,29 @@ export class StoryStore {
 			throw new Error(`楼层节点已存在：${id}`);
 		}
 		const createdAt = input.createdAt ?? new Date().toISOString();
-		this.#db
-			.prepare(
-				`INSERT INTO nodes (id, story_id, parent_id, role, raw, created_at)
-				VALUES (?, ?, ?, ?, ?, ?)`,
-			)
-			.run(id, input.storyId, input.parentId, input.role, input.raw, createdAt);
-		const node = this.getNode(id);
-		if (!node) {
-			throw new Error(`楼层节点写入后读取失败：${id}`);
-		}
-		return node;
+		const insertNode = this.#db.prepare(
+			`INSERT INTO nodes (id, story_id, parent_id, role, raw, created_at)
+			VALUES (?, ?, ?, ?, ?, ?)`,
+		);
+		const moveHead = this.#db.prepare(
+			"UPDATE stories SET head_node_id = ? WHERE id = ?",
+		);
+		return this.#db.transaction((): TimelineNode => {
+			insertNode.run(
+				id,
+				input.storyId,
+				input.parentId,
+				input.role,
+				input.raw,
+				createdAt,
+			);
+			moveHead.run(id, input.storyId);
+			const node = this.getNode(id);
+			if (!node) {
+				throw new Error(`楼层节点写入后读取失败：${id}`);
+			}
+			return node;
+		})();
 	}
 
 	getNode(id: string): TimelineNode | null {
@@ -294,16 +306,87 @@ export class StoryStore {
 		return path.reverse();
 	}
 
-	/** 返回故事里最后追加的楼层节点；单轮生成的 CLI 用它作为父节点。 */
-	getLatestNode(storyId: string): TimelineNode | null {
+	/** 返回故事的当前分支指针；故事还没有楼层时返回 null。 */
+	getHead(storyId: string): TimelineNode | null {
 		assertNonEmptyString(storyId, "故事 id");
 		const row = this.#db
-			.prepare(
-				`SELECT id, story_id, parent_id, role, raw, created_at
-				FROM nodes WHERE story_id = ? ORDER BY row_id DESC LIMIT 1`,
-			)
-			.get(storyId) as NodeRow | undefined;
-		return row ? rowToNode(row) : null;
+			.prepare("SELECT head_node_id FROM stories WHERE id = ?")
+			.get(storyId) as { readonly head_node_id: string | null } | undefined;
+		if (row === undefined) {
+			throw new Error(`故事不存在：${storyId}`);
+		}
+		if (row.head_node_id === null) return null;
+		const node = this.getNode(row.head_node_id);
+		if (!node) {
+			throw new Error(
+				`楼层树断裂：故事 ${storyId} 的 head 节点 ${row.head_node_id} 缺失`,
+			);
+		}
+		return node;
+	}
+
+	/** 把 head 指向指定楼层，用于切换分支。 */
+	setHead(storyId: string, nodeId: string): TimelineNode {
+		assertNonEmptyString(storyId, "故事 id");
+		assertNonEmptyString(nodeId, "楼层节点 id");
+		if (!this.getStory(storyId)) {
+			throw new Error(`故事不存在：${storyId}`);
+		}
+		const node = this.getNode(nodeId);
+		if (!node) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
+		if (node.storyId !== storyId) {
+			throw new Error(`楼层节点 ${nodeId} 属于另一个故事 ${node.storyId}`);
+		}
+		this.#db
+			.prepare("UPDATE stories SET head_node_id = ? WHERE id = ?")
+			.run(nodeId, storyId);
+		return node;
+	}
+
+	/** 返回从根到当前 head 的路径；没有 head 时返回空数组。 */
+	getPathToHead(storyId: string): TimelineNode[] {
+		const head = this.getHead(storyId);
+		return head === null ? [] : this.getPathToNode(head.id);
+	}
+
+	/** 以某个楼层为参照重新生成一条回复：新建兄弟节点，旧节点保留。 */
+	swipeNode(nodeId: string, raw: string): TimelineNode {
+		return this.#appendSibling(nodeId, raw);
+	}
+
+	/** 编辑某条回复：旧节点保留为兄弟节点，编辑后的内容写入新节点。 */
+	editNode(nodeId: string, raw: string): TimelineNode {
+		return this.#appendSibling(nodeId, raw);
+	}
+
+	/** 用户基于某个节点继续发言时，该节点即被确认；有子节点就是已确认。 */
+	isNodeConfirmed(nodeId: string): boolean {
+		if (!this.getNode(nodeId)) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
+		const row = this.#db
+			.prepare("SELECT 1 AS present FROM nodes WHERE parent_id = ? LIMIT 1")
+			.get(nodeId) as { readonly present: number } | undefined;
+		return row !== undefined;
+	}
+
+	#appendSibling(nodeId: string, raw: string): TimelineNode {
+		assertNonEmptyString(nodeId, "楼层节点 id");
+		if (typeof raw !== "string" || raw.length === 0) {
+			throw new Error("新建楼层的原文必须是非空字符串");
+		}
+		const original = this.getNode(nodeId);
+		if (!original) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
+		return this.appendNode({
+			storyId: original.storyId,
+			parentId: original.parentId,
+			role: original.role,
+			raw,
+		});
 	}
 
 	appendStateDiff(input: NewStateDiff): StateDiff {

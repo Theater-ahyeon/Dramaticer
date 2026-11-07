@@ -118,7 +118,6 @@ export async function runChatCli(
 			}
 			log(`已创建故事 ${parsed.storyId}`);
 		}
-		const parent = store.getLatestNode(parsed.storyId);
 		const budgetTokens =
 			parsed.budgetTokens ?? model.contextWindow - model.maxTokens;
 		if (budgetTokens <= 0) {
@@ -130,7 +129,6 @@ export async function runChatCli(
 			store,
 			client: createClient(config, modelAlias),
 			storyId: parsed.storyId,
-			parentNodeId: parent?.id ?? null,
 			userText: parsed.userText,
 			template: createDefaultContextTemplate({ structuredOutput: mode }),
 			providers: {

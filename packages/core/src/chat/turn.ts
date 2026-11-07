@@ -28,8 +28,6 @@ export interface ChatTurnOptions {
 	readonly store: StoryStore;
 	readonly client: LlmStreamingClient;
 	readonly storyId: string;
-	/** 用户消息追加到这个节点下面；null 表示故事还没有楼层。 */
-	readonly parentNodeId: string | null;
 	readonly userText: string;
 	readonly template: ContextTemplate;
 	readonly providers?: ContextSlotProviders;
@@ -75,10 +73,11 @@ export async function runChatTurn(
 		throw new Error(`故事不存在：${options.storyId}`);
 	}
 	const now = options.now ?? Date.now;
+	const head = options.store.getHead(options.storyId);
 
 	const userNode = options.store.appendNode({
 		storyId: options.storyId,
-		parentId: options.parentNodeId,
+		parentId: head?.id ?? null,
 		role: "user",
 		raw: options.userText,
 	});

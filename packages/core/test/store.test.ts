@@ -204,6 +204,160 @@ describe("楼层树", () => {
 	});
 });
 
+describe("分支指针与楼层确认", () => {
+	it("追加楼层把 head 指向新节点，重新打开数据库后仍保持", () => {
+		const { store, path } = openTempStore();
+		store.createStory({ id: "story-head", title: "分支故事" });
+		expect(store.getHead("story-head")).toBeNull();
+		expect(store.getPathToHead("story-head")).toEqual([]);
+
+		const first = store.appendNode({
+			storyId: "story-head",
+			parentId: null,
+			role: "assistant",
+			raw: "开场。",
+		});
+		expect(store.getHead("story-head")?.id).toBe(first.id);
+
+		const second = store.appendNode({
+			storyId: "story-head",
+			parentId: first.id,
+			role: "user",
+			raw: "我回应。",
+		});
+		expect(store.getHead("story-head")?.id).toBe(second.id);
+		expect(store.getPathToHead("story-head").map((node) => node.id)).toEqual([
+			first.id,
+			second.id,
+		]);
+
+		const reopened = StoryStore.open(path);
+		expect(reopened.getHead("story-head")?.id).toBe(second.id);
+		reopened.close();
+	});
+
+	it("swipe 与 edit 生成兄弟节点，旧原文不变，head 指向新节点", () => {
+		const { store } = openTempStore();
+		const { root, user, assistant, swipe } = seedStory(store);
+		expect(store.getHead("story-1")?.id).toBe(swipe.id);
+
+		const swiped = store.swipeNode(assistant.id, "门后是一阵风。");
+		expect(swiped.parentId).toBe(user.id);
+		expect(swiped.role).toBe("assistant");
+		expect(swiped.raw).toBe("门后是一阵风。");
+		expect(store.getNode(assistant.id)?.raw).toBe(
+			"银色的麒麟守着门后的 dragon 雕像。",
+		);
+		expect(store.getHead("story-1")?.id).toBe(swiped.id);
+		expect(store.getPathToHead("story-1").map((node) => node.id)).toEqual([
+			root.id,
+			user.id,
+			swiped.id,
+		]);
+		expect(store.getPathToHead("story-1")).not.toContainEqual(
+			expect.objectContaining({ id: assistant.id }),
+		);
+
+		const edited = store.editNode(assistant.id, "门后是一座空庭。");
+		expect(edited.parentId).toBe(user.id);
+		expect(edited.role).toBe("assistant");
+		expect(store.getNode(assistant.id)?.raw).toBe(
+			"银色的麒麟守着门后的 dragon 雕像。",
+		);
+		expect(store.getHead("story-1")?.id).toBe(edited.id);
+		expect(store.getPathToHead("story-1").map((node) => node.id)).toEqual([
+			root.id,
+			user.id,
+			edited.id,
+		]);
+
+		expect(() => store.swipeNode(assistant.id, "")).toThrow(/非空字符串/);
+		expect(() => store.swipeNode("missing", "正文")).toThrow(/楼层节点不存在/);
+		expect(() => store.editNode("missing", "正文")).toThrow(/楼层节点不存在/);
+	});
+
+	it("切到旧分支后路径只含该分支", () => {
+		const { store } = openTempStore();
+		const { root, user, assistant, swipe } = seedStory(store);
+
+		store.setHead("story-1", assistant.id);
+		expect(store.getPathToHead("story-1").map((node) => node.id)).toEqual([
+			root.id,
+			user.id,
+			assistant.id,
+		]);
+		expect(store.getPathToHead("story-1").map((node) => node.id)).not.toContain(
+			swipe.id,
+		);
+
+		const next = store.appendNode({
+			storyId: "story-1",
+			parentId: assistant.id,
+			role: "user",
+			raw: "我继续。",
+		});
+		expect(store.getHead("story-1")?.id).toBe(next.id);
+		expect(store.getPathToHead("story-1").map((node) => node.id)).toEqual([
+			root.id,
+			user.id,
+			assistant.id,
+			next.id,
+		]);
+	});
+
+	it("setHead 与 head 查询拒绝缺失故事、缺失节点和跨故事节点", () => {
+		const { store } = openTempStore();
+		const { assistant } = seedStory(store);
+		store.createStory({ id: "story-2", title: "另一个故事" });
+
+		expect(() => store.setHead("missing-story", assistant.id)).toThrow(
+			/故事不存在/,
+		);
+		expect(() => store.setHead("story-1", "missing-node")).toThrow(
+			/楼层节点不存在/,
+		);
+		expect(() => store.setHead("story-2", assistant.id)).toThrow(
+			/属于另一个故事/,
+		);
+		expect(() => store.getHead("missing-story")).toThrow(/故事不存在/);
+		expect(() => store.getPathToHead("missing-story")).toThrow(/故事不存在/);
+		expect(store.getHead("story-2")).toBeNull();
+	});
+
+	it("追加子节点后父节点变为已确认", () => {
+		const { store } = openTempStore();
+		const { root, user, assistant } = seedStory(store);
+
+		expect(store.isNodeConfirmed(root.id)).toBe(true);
+		expect(store.isNodeConfirmed(user.id)).toBe(true);
+		expect(store.isNodeConfirmed(assistant.id)).toBe(false);
+		expect(() => store.isNodeConfirmed("missing")).toThrow(/楼层节点不存在/);
+
+		store.appendNode({
+			storyId: "story-1",
+			parentId: assistant.id,
+			role: "user",
+			raw: "我推开另一扇门。",
+		});
+		expect(store.isNodeConfirmed(assistant.id)).toBe(true);
+	});
+
+	it("裸连接把 head 指向其他故事的节点时被触发器拒绝", () => {
+		const { store, path } = openTempStore();
+		const { assistant } = seedStory(store);
+		store.createStory({ id: "story-2", title: "另一个故事" });
+
+		const raw = new Database(path);
+		expect(() =>
+			raw
+				.prepare("UPDATE stories SET head_node_id = ? WHERE id = ?")
+				.run(assistant.id, "story-2"),
+		).toThrow(/head 节点必须存在且属于同一个故事/);
+		raw.close();
+		expect(store.getHead("story-2")).toBeNull();
+	});
+});
+
 describe("状态 diff", () => {
 	it("按路径顺序返回 diff，包含嵌套路径与删除操作", () => {
 		const { store } = openTempStore();

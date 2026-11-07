@@ -90,6 +90,20 @@ export const MIGRATIONS: readonly Migration[] = [
 			"CREATE INDEX traces_story_idx ON traces(story_id)",
 		],
 	},
+	{
+		version: 3,
+		description: "分支指针：故事的 head 指向当前分支的末端楼层",
+		statements: [
+			"ALTER TABLE stories ADD COLUMN head_node_id TEXT REFERENCES nodes(id)",
+			`CREATE TRIGGER stories_head_same_story
+			BEFORE UPDATE OF head_node_id ON stories
+			WHEN NEW.head_node_id IS NOT NULL
+				AND COALESCE((SELECT story_id FROM nodes WHERE id = NEW.head_node_id), '') <> NEW.id
+			BEGIN
+				SELECT RAISE(ABORT, 'head 节点必须存在且属于同一个故事');
+			END`,
+		],
+	},
 ];
 
 export const LATEST_SCHEMA_VERSION: number =

@@ -3,31 +3,33 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：35
-- 任务：M1-T99 M1 验收
-- 结果：完成（`MILESTONE_DONE`）。
-  - 门禁重跑：`pnpm check` 通过（41 个测试文件、328 个测试，另有 2 个 live 测试默认跳过）。
-  - live 门禁：`DRAMATICER_LIVE=1 pnpm vitest run` 通过（43 个文件、330 个测试）。真实渠道连续 3 轮对话：首字 1731、2202、1857 毫秒，总耗时 1989、2984、2653 毫秒；渠道体检首个正文增量 2045 毫秒。
-  - Trace 完整性抽查：模板、8 个上下文段的状态与 token、模型与渠道、结束原因、用量、结构化输出计数与问题、首字与总耗时全部存在。单次抽查接受 2 条状态变更与 1 条剧情笔记。
-  - 首字延迟对比与逐任务验收结论写入 `docs/dev/reports/M1.md`。结论：M1 的原生链路可用，没有违反 I1–I10。
-  - M2 的条目已细化为 `M2-T01` 至 `M2-T15` 与 `M2-T99`，替换掉原来的 `M2-T00`。
+- 会话：36
+- 任务：M2-T01 楼层树操作与分支指针
+- 结果：完成（`DONE`）。
+  - 迁移 v3：`stories` 增加可空列 `head_node_id`（引用 `nodes(id)`），并加触发器 `stories_head_same_story`，裸连接不能把 head 指向其他故事的节点。
+  - `appendNode` 在插入楼层与更新 head 的同一个事务里完成，嵌套在 `runInTransaction` 里时使用 savepoint。
+  - 新增 `setHead`、`getHead`、`getPathToHead`、`swipeNode`、`editNode`、`isNodeConfirmed`；`getLatestNode` 已删除。
+  - `runChatTurn` 不再接收 `parentNodeId`，父节点取自 `getHead`；`dramaticer chat` 同步去掉取最后插入楼层的逻辑。导入 ST 对话时，追加完兄弟 swipe 后把 head 设回主路径末端。
+  - 新增 6 个测试（head 跟随追加并在重开后保持、swipe/edit 生成兄弟节点、切到旧分支、跨故事与缺失节点抛错、子节点确认父节点、裸连接改 head 被触发器拒绝），删除过期的 `getLatestNode` 测试。
+  - 门禁：`pnpm check` 通过（41 个测试文件、333 个测试，2 个 live 测试默认跳过）。
 
 ## 当前状态
-- M1 全部完成；下一会话执行 M2-T01（楼层树操作与分支指针）。
+- M0、M1 完成；M2-T01 完成；下一会话执行 M2-T02（状态快照缓存）。
 - 门禁：`pnpm check` 通过；live 测试需要 `DRAMATICER_LIVE=1`。
-- 数据库 schema 版本 2（`stories`、`nodes`、`state_diffs`、`node_text`、`traces`）。M2-T01 会迁移到 v3。
+- 数据库 schema 版本 3（`stories`、`nodes`、`state_diffs`、`node_text`、`traces`，`stories.head_node_id`）。M2-T02 会迁移到 v4。
 - `packages/core` 的运行时依赖：`@earendil-works/pi-ai@1.5.0`、`better-sqlite3`、`yaml`。
 - `pi-agent-core` 仍只在根目录 devDependencies，运行时接入放在 M2-T14。
 - 结构化输出在真实渠道的体检结果是 `function-call`。live 三轮没有主动调用写入工具；单次验收抽查调用了。提示词强化留到 M2 的记忆任务。
 - M2 的分层过关门槛写在 `M2-T15` 与 `M2-T99`：状态题命中@20 ≥ 45%；事件题命中@5 ≥ 88%、命中@20 ≥ 97%；每个对话的同一题型不低于各自 BM25 基线的 2 个百分点以内。
 
 ## 下一步
-- 执行 M2-T01：
-  - 迁移 v3 给 `stories` 增加 `head_node_id`，`appendNode` 在同一事务里把 head 指向新节点。
-  - 增加 `setHead`、`getHead`、`getPathToHead`、`swipeNode`、`editNode`、`isNodeConfirmed`。
-  - `runChatTurn` 与 `dramaticer chat` 改用 head 作为父节点。
-  - 验收见 `docs/dev/TASKS.md` 的 M2-T01：兄弟节点、旧原文不变、分支切换、跨故事抛错、父节点确认、裸连接 UPDATE 被拒绝。
-- 之后按 M2-T02 到 M2-T15 的顺序执行；后台任务框架（M2-T03）是事件抽取、摘要、向量索引的共同前提。
+- 执行 M2-T02：
+  - 迁移 v4：`state_snapshots(node_id PRIMARY KEY, story_id, state, computed_at)`。
+  - `getStateSnapshot(nodeId)` 命中缓存直接返回，否则取父节点快照叠加本楼 diff 后写缓存；`getStateSnapshotAtHead(storyId)` 走同一逻辑。
+  - `appendStateDiffs` 写入后删除该楼层及全部后代的快照缓存。
+  - `createStateSlotProvider` 改用快照，输出格式不变。
+  - 验收见 `docs/dev/TASKS.md` 的 M2-T02。
+- 之后按 M2-T03 到 M2-T15 的顺序执行；后台任务框架（M2-T03）是事件抽取、摘要、向量索引的共同前提。
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**；`loadDotEnv` 会覆盖进程里已有的同名变量，这是有意行为（ADR-0010）。
@@ -36,7 +38,7 @@
 - `data/` 被 git 忽略；不要把 `data/channels.yaml`、`data/dramaticer.db`、`data/` 下的任何文件加进提交。`channels.example.yaml` 只放变量引用，不放密钥。
 - 不要修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 下的文件；需要改时写进 HUMAN.md。
 - 提交前跑 `pnpm check`；新增依赖要登记到 `docs/dev/DEPENDENCIES.md`。
-- 临时脚本放 `.devloop/scratch/`（已被 git 忽略），用完删除。本会话的验收数据库与脚本已删除。
+- 临时脚本放 `.devloop/scratch/`（已被 git 忽略），用完删除。
 - 安装依赖时环境变量 `HTTP_PROXY`/`HTTPS_PROXY` 指向 `127.0.0.1:7890`，该代理当前没有运行；pnpm 安装需要 `HTTP_PROXY= HTTPS_PROXY= pnpm install --no-frozen-lockfile`。
 - 渠道行为（ADR-0009、ADR-0011）：`reasoning:"off"` 在该渠道仍会输出思考并消耗输出 token；abort 后 `usage` 全为 0；gcli2api 必须把 Gemini API 路径挂在 baseUrl 根下；该渠道不支持预填充。
 - live 测试用 `DRAMATICER_LIVE=1` 开启；`*.live.test.ts` 会被门禁的 I10 扫描排除。

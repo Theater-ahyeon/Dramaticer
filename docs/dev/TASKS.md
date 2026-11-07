@@ -196,7 +196,8 @@
 
 ## M2：楼层树与记忆引擎（DESIGN §5、§7）
 
-- [ ] **M2-T01 楼层树操作与分支指针** | 依赖：M1-T07 | DESIGN §5
+- [x] **M2-T01 楼层树操作与分支指针** | 依赖：M1-T07 | DESIGN §5
+  完成：2026-11-07 迁移 v3 给 `stories` 增加 `head_node_id` 与同故事触发器；`appendNode` 在同一事务里移动 head，新增 `setHead`、`getHead`、`getPathToHead`、`swipeNode`、`editNode`、`isNodeConfirmed`；`runChatTurn` 与 `dramaticer chat` 以 head 为父节点，对话导入完成后 head 回到主路径末端；6 个新测试，门禁通过（333 个测试）
   做什么：
   - 迁移 v3：给 `stories` 增加 `head_node_id`（可空，引用 `nodes(id)`）；`appendNode` 在同一个事务里把 head 指向新节点。
   - `setHead(storyId, nodeId)`、`getHead(storyId)`、`getPathToHead(storyId)`。节点不存在、节点属于其他故事、故事不存在都直接抛错。

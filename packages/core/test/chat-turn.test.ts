@@ -129,7 +129,6 @@ describe("runChatTurn", () => {
 			store,
 			client,
 			storyId: "s1",
-			parentNodeId: "n-greeting",
 			userText: "我推开山门。",
 			template: createDefaultContextTemplate({ structuredOutput: "text-tags" }),
 			providers: providers(store),
@@ -235,7 +234,6 @@ describe("runChatTurn", () => {
 			store,
 			client,
 			storyId: "s1",
-			parentNodeId: "n-greeting",
 			userText: "我看向他。",
 			template: createDefaultContextTemplate({
 				structuredOutput: "function-call",
@@ -276,7 +274,6 @@ describe("runChatTurn", () => {
 			store,
 			client: first.client,
 			storyId: "s1",
-			parentNodeId: "n-greeting",
 			userText: "我推开山门。",
 			template: createDefaultContextTemplate({ structuredOutput: "text-tags" }),
 			providers: providers(store),
@@ -292,7 +289,6 @@ describe("runChatTurn", () => {
 			store,
 			client: second.client,
 			storyId: "s1",
-			parentNodeId: firstTurn.node.id,
 			userText: "我继续走。",
 			template: createDefaultContextTemplate({ structuredOutput: "text-tags" }),
 			providers: providers(store),
@@ -324,7 +320,6 @@ describe("runChatTurn", () => {
 				store,
 				client,
 				storyId: "s1",
-				parentNodeId: "n-greeting",
 				userText: "我推开山门。",
 				template: createDefaultContextTemplate({
 					structuredOutput: "text-tags",
@@ -334,6 +329,6 @@ describe("runChatTurn", () => {
 				structuredOutput: "text-tags",
 			}),
 		).rejects.toThrow("不一致");
-		expect(store.getLatestNode("s1")?.role).toBe("user");
+		expect(store.getHead("s1")?.role).toBe("user");
 	});
 });

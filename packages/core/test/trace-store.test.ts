@@ -107,13 +107,3 @@ describe("Trace 存储", () => {
 		expect(() => store.getTurnTrace("n-missing")).toThrow("楼层节点不存在");
 	});
 });
-
-describe("getLatestNode", () => {
-	it("返回最后追加的楼层，没有楼层时返回 null", () => {
-		const { store } = openTempStore();
-		seed(store);
-		expect(store.getLatestNode("s1")?.id).toBe("n-user");
-		store.createStory({ id: "s2", title: "空故事" });
-		expect(store.getLatestNode("s2")).toBeNull();
-	});
-});

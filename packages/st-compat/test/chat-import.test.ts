@@ -58,6 +58,7 @@ describe("importChatToStore", () => {
 			"story-import:m4:s0",
 		]);
 		expect(result.nodeCount).toBe(6);
+		expect(store.getHead("story-import")?.id).toBe("story-import:m4:s0");
 
 		expect(
 			store.getPathToNode("story-import:m2:s1").map((node) => node.id),

@@ -57,9 +57,7 @@ describe.skipIf(!enabled)("dramaticer chat（真实渠道）", () => {
 
 		const store = StoryStore.open(dbPath);
 		try {
-			const nodes = store.getPathToNode(
-				store.getLatestNode("live-s1")?.id ?? "",
-			);
+			const nodes = store.getPathToHead("live-s1");
 			expect(nodes.map((node) => node.role)).toEqual([
 				"assistant",
 				"user",

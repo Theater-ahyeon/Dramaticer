@@ -139,6 +139,11 @@ export async function importChatToStore(
 		if (!story) {
 			throw new Error("聊天记录为空：缺少头部");
 		}
+		// 其他 swipe 是后追加的兄弟节点，head 要回到主路径末端。
+		const lastMainNodeId = mainPathNodeIds[mainPathNodeIds.length - 1];
+		if (lastMainNodeId !== undefined) {
+			store.setHead(story.id, lastMainNodeId);
+		}
 		return { story, mainPathNodeIds, nodeCount, stateDiffCount };
 	};
 
