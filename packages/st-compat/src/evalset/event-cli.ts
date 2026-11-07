@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { OpenAiCompatibleClient } from "@dramaticer/core";
 import { parseChatJsonlFile } from "../chat-jsonl.js";
-import { readSnapshotManifest } from "../health/report.js";
+import { readSnapshotManifest } from "../health/manifest.js";
 import { messageNodeId } from "../node-id.js";
 import {
 	type EventQuestion,

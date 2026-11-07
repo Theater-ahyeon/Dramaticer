@@ -22,9 +22,6 @@ import {
 import type { TokenEstimator } from "./token-estimate.js";
 import { createTokenEstimator } from "./token-estimate.js";
 
-export type { SnapshotManifest, SnapshotManifestFile } from "./manifest.js";
-export { parseSnapshotManifest, readSnapshotManifest } from "./manifest.js";
-
 export interface ChatReportEntry {
 	readonly character: string | null;
 	readonly fileName: string;
@@ -36,7 +33,7 @@ export interface HealthTotals {
 	readonly messageCount: number;
 	readonly swipeCount: number;
 	readonly fileBytes: number;
-	readonly rawBytes: number;
+	readonly headerBytes: number;
 	readonly bodyBytes: number;
 	readonly variablesBytes: number;
 	readonly otherBytes: number;
@@ -258,23 +255,23 @@ export function renderPublicReport(
 	);
 	lines.push("");
 	lines.push(
-		"字节按 UTF-8 计算。正文是当前 swipe 的原文，变量是消息里物理存储的 `variables`（包含所有 swipe），其他是消息对象重新序列化之后减去前两项。token 估算按中文 1.5 个字符算 1 个 token、其余字符 4 个算 1 个。",
+		"字节按 UTF-8 计算。头部是对话第一行的序列化字节，正文是当前 swipe 的原文，变量是消息里物理存储的 `variables`（包含所有 swipe），其他是消息对象重新序列化之后减去前两项。文件字节与前三项之和的差额是行分隔符。token 估算按中文 1.5 个字符算 1 个 token、其余字符 4 个算 1 个。",
 	);
 	lines.push("");
 	lines.push("## 对话体量");
 	lines.push("");
 	lines.push(
-		"| 对话 | 楼层 | 用户 | 助手 | system | swipe | 文件字节 | 正文字节 | 变量字节 | 其他字节 | 正文 token | 变量 token | 其他 token |",
-		"|---|---|---|---|---|---|---|---|---|---|---|---|---|",
+		"| 对话 | 楼层 | 用户 | 助手 | system | swipe | 文件字节 | 头部字节 | 正文字节 | 变量字节 | 其他字节 | 正文 token | 变量 token | 其他 token |",
+		"|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
 	);
 	report.chats.forEach((chat, index) => {
 		const stats = chat.stats;
 		lines.push(
-			`| 对话 ${index + 1} | ${stats.messageCount} | ${stats.roleCounts.user} | ${stats.roleCounts.assistant} | ${stats.roleCounts.system} | ${stats.swipeCount} | ${stats.fileBytes} | ${stats.bodyBytes} | ${stats.variablesBytes} | ${stats.otherBytes} | ${stats.bodyTokens} | ${stats.variablesTokens} | ${stats.otherTokens} |`,
+			`| 对话 ${index + 1} | ${stats.messageCount} | ${stats.roleCounts.user} | ${stats.roleCounts.assistant} | ${stats.roleCounts.system} | ${stats.swipeCount} | ${stats.fileBytes} | ${stats.headerBytes} | ${stats.bodyBytes} | ${stats.variablesBytes} | ${stats.otherBytes} | ${stats.bodyTokens} | ${stats.variablesTokens} | ${stats.otherTokens} |`,
 		);
 	});
 	lines.push(
-		`| 合计 | ${report.totals.messageCount} | ${sumRole(report.chats, "user")} | ${sumRole(report.chats, "assistant")} | ${sumRole(report.chats, "system")} | ${report.totals.swipeCount} | ${report.totals.fileBytes} | ${report.totals.bodyBytes} | ${report.totals.variablesBytes} | ${report.totals.otherBytes} | ${report.totals.bodyTokens} | ${report.totals.variablesTokens} | ${report.totals.otherTokens} |`,
+		`| 合计 | ${report.totals.messageCount} | ${sumRole(report.chats, "user")} | ${sumRole(report.chats, "assistant")} | ${sumRole(report.chats, "system")} | ${report.totals.swipeCount} | ${report.totals.fileBytes} | ${report.totals.headerBytes} | ${report.totals.bodyBytes} | ${report.totals.variablesBytes} | ${report.totals.otherBytes} | ${report.totals.bodyTokens} | ${report.totals.variablesTokens} | ${report.totals.otherTokens} |`,
 	);
 	lines.push("");
 	lines.push("其他字段里占比最大的字段（全部对话合计，不含正文和变量）：");
@@ -664,7 +661,7 @@ function sumChats(chats: readonly ChatReportEntry[]): HealthTotals {
 		messageCount: 0,
 		swipeCount: 0,
 		fileBytes: 0,
-		rawBytes: 0,
+		headerBytes: 0,
 		bodyBytes: 0,
 		variablesBytes: 0,
 		otherBytes: 0,
@@ -680,7 +677,7 @@ function sumChats(chats: readonly ChatReportEntry[]): HealthTotals {
 		totals.messageCount += stats.messageCount;
 		totals.swipeCount += stats.swipeCount;
 		totals.fileBytes += stats.fileBytes;
-		totals.rawBytes += stats.rawBytes;
+		totals.headerBytes += stats.headerBytes;
 		totals.bodyBytes += stats.bodyBytes;
 		totals.variablesBytes += stats.variablesBytes;
 		totals.otherBytes += stats.otherBytes;
@@ -703,6 +700,7 @@ function aggregateFields(
 			totals.set(field.field, (totals.get(field.field) ?? 0) + field.bytes);
 		}
 	}
+	// 截断只发生在渲染层：先合计每个对话的全部字段，再取前 10。
 	return [...totals.entries()]
 		.map(([field, bytes]) => ({ field, bytes }))
 		.sort((left, right) => right.bytes - left.bytes)
@@ -732,12 +730,12 @@ function ngramDescription(report: HealthReport): string {
 		: [...sizes].map((size) => `${size}-gram`).join("、");
 }
 
-function ratio(numerator: number, denominator: number): number {
-	return denominator === 0 ? 0 : numerator / denominator;
+function ratio(numerator: number, denominator: number): number | null {
+	return denominator === 0 ? null : numerator / denominator;
 }
 
-function formatPercent(value: number): string {
-	return `${(value * 100).toFixed(1)}%`;
+function formatPercent(value: number | null): string {
+	return value === null ? "—" : `${(value * 100).toFixed(1)}%`;
 }
 
 function formatDecimal(value: number): string {

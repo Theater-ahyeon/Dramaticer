@@ -13,7 +13,6 @@ describe("analyzeChat", () => {
 		expect(stats.messageCount).toBe(5);
 		expect(stats.roleCounts).toEqual({ user: 2, assistant: 3, system: 0 });
 		expect(stats.swipeCount).toBe(3);
-		expect(stats.extraSwipeCount).toBe(0);
 		expect(stats.bodyBytes).toBe(2 + 16 + 4 + 16 + 16);
 		expect(stats.swipeBodyBytes).toBe(16 + 16 + 16);
 		expect(stats.variablesBytes).toBe(

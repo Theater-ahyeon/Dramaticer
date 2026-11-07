@@ -29,7 +29,6 @@ export interface ChatHealth {
 	readonly roleCounts: RoleCounts;
 	/** 所有消息的 swipes 数组长度之和。 */
 	readonly swipeCount: number;
-	readonly extraSwipeCount: number;
 	readonly bodyBytes: number;
 	readonly swipeBodyBytes: number;
 	readonly variablesBytes: number;
@@ -39,7 +38,7 @@ export interface ChatHealth {
 	readonly swipeBodyTokens: number;
 	readonly variablesTokens: number;
 	readonly otherTokens: number;
-	/** 其他字段按字节数从大到小，取前 10 个；不包含 `mes` 和 `variables`。 */
+	/** 其他字段按字节数从大到小全量列出；不包含 `mes` 和 `variables`。 */
 	readonly fieldBytes: readonly FieldBytes[];
 	/** 主路径上每个楼层的 MVU 快照序列化之后的字节数。 */
 	readonly snapshotBytes: number;
@@ -163,8 +162,7 @@ export async function analyzeChat(
 	const otherTokens = Math.max(0, totalTokens - bodyTokens - variablesTokens);
 	const sortedFields = [...fieldSizes.entries()]
 		.map(([field, bytes]) => ({ field, bytes }))
-		.sort((left, right) => right.bytes - left.bytes)
-		.slice(0, 10);
+		.sort((left, right) => right.bytes - left.bytes);
 
 	return {
 		characterName,
@@ -173,7 +171,6 @@ export async function analyzeChat(
 		messageCount,
 		roleCounts,
 		swipeCount,
-		extraSwipeCount: Math.max(0, swipeCount - messageCount),
 		bodyBytes,
 		swipeBodyBytes,
 		variablesBytes,

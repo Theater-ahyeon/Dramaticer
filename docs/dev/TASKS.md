@@ -122,7 +122,8 @@
   做什么：`getStateDiffs` 对不存在的楼层抛错；`applyMigrations` 入口校验 `MIGRATIONS[i].version === i + 1`；`rowToStateDiff` 校验 `path` 是非空字符串数组；删除 `getLatestSchemaVersion`；`store.test.ts` 的版本测试注册临时目录清理，并清理仓库里已积累的 `.tmp-store-*` 目录。
   验收：补齐对应测试（存在性抛错、乱序迁移列表抛错、非法 `path` 抛错）；重复运行测试后 `packages/core/test/` 下不再新增 `.tmp-store-*`；`pnpm check` 通过。
 
-- [ ] **M0-FIX-7 体检报告口径与 CLI 入口** | 依赖：M0-FIX-4、M0-FIX-5
+- [x] **M0-FIX-7 体检报告口径与 CLI 入口** | 依赖：M0-FIX-4、M0-FIX-5
+  完成：2026-11-07 合计增加 `headerBytes` 并在统计版单列（合计 66,397,069 字节，与分类之和的差额是 1,222 个行分隔符）；每对话字段统计改为全量、截断只在渲染层；删除零消费者的 `extraSwipeCount` 与 `totals.rawBytes`；`ratio` 对 0/0 返回 `null` 并显示 `—`；删除 `report.ts` 对 manifest 的再导出，两个评测 CLI 改走 `health/manifest.js`；`health/cli.ts` 抽出 `runHealthCli`（可注入路径与时间）并补测试；新增 7 个用例（含第 11 名字段 fixture、ACU 段、两条抛错分支、私有标识反向断言），门禁通过（200 个测试），两份报告已重新生成
   做什么：`HealthTotals` 增加 `headerBytes` 并在统计版表中单列；字段字节统计保留全量，截断只放在渲染层；`extraSwipeCount` 按每条消息累加 `max(0, swipes.length - 1)`（或删除字段）；`ratio` 对 `0/0` 返回 `null` 并显示 `—`；删除 `totals.rawBytes` 或把它加入报告；合并 `health/report.ts` 对 `health/manifest.ts` 的再导出；把 `health/cli.ts` 抽成可注入路径的 `runHealthCli` 并测试，覆盖 `renderAcuSection` 与 `collectHealthReport` 的两条抛错分支。
   验收：两份报告重新生成；新增合计差额小于 1% 的断言、每个对话第 11 名字段的 fixture、ACU 段落测试、statistics 版私有字段的整表反向断言；`pnpm check` 通过。
 

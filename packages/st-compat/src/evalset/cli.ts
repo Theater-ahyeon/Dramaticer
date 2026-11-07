@@ -2,7 +2,7 @@ import { randomInt } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { readSnapshotManifest } from "../health/report.js";
+import { readSnapshotManifest } from "../health/manifest.js";
 import { sanitizeFileName, storyIdOf } from "./question-files.js";
 import {
 	buildStateQuestionsFromFile,

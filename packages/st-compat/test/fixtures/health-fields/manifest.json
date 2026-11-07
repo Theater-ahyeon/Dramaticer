@@ -1,0 +1,7 @@
+{
+	"generatedAt": "2026-01-05T00:00:00.000Z",
+	"files": [
+		{ "role": "chat", "character": "字段甲", "target": "chat-a.jsonl" },
+		{ "role": "chat", "character": "字段乙", "target": "chat-b.jsonl" }
+	]
+}
