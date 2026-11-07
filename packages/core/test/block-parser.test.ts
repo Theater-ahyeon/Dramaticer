@@ -203,9 +203,13 @@ describe("BlockParser", () => {
 			"悄悄话",
 			"旁白",
 			"备忘",
+			"state_update",
+			"plot_note",
 		]);
 		expect(registry.get("thinking")?.display).toEqual({ kind: "hidden" });
 		expect(registry.get("thinking")?.context).toEqual({ kind: "drop" });
+		expect(registry.get("state_update")?.display).toEqual({ kind: "hidden" });
+		expect(registry.get("plot_note")?.context).toEqual({ kind: "drop" });
 		expect(registry.get("页眉")?.semantics).toEqual({ kind: "none" });
 		expect(registry.get("不存在")).toBeNull();
 	});

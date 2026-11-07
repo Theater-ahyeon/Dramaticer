@@ -143,5 +143,17 @@
   - 解析结果是有序树：文本节点与块节点交替出现。`ParsedBlock.raw` 是块内原文（不含自己的标签），`complete` 为 false 表示输入结束时仍未闭合；嵌套块按出现顺序放在父块的 `content` 里。
   - 推入内容只有在末尾恰好构成某个标签的前缀时才缓冲；`snapshot()` 不包含这段未确定的前缀，`finish()` 把它当作普通文本。结束后再推入直接抛错。
   - 块类型在 `createBlockTypeRegistry` 登记，重名、非法名称与非法策略在创建时抛错。三类策略用数据联合类型声明：显示为 `native` / `html` / `hidden`，上下文为 `keep` / `drop` / `keep-depth` / `compress`，语义为 `none` 或接收已闭合块、返回状态变更或剧情笔记的 `handler`。
-  - 默认注册表包含 DESIGN §6 的原生协议块：`thinking`（隐藏、不进入上下文）、`选项`、`页眉`、`悄悄话`、`旁白`、`备忘`。
+  - 默认注册表包含 DESIGN §6 的原生协议块：`thinking`（隐藏、不进入上下文）、`选项`、`页眉`、`悄悄话`、`旁白`、`备忘`；ADR-0014 增补了 `state_update` 与 `plot_note`。
 - **影响**：M1-T06 的文本标签模式直接读取 `complete` 的块并交给同一个校验器；M1-T07 按显示与上下文策略生成视图。语义处理器在接入状态与剧情笔记时实现，解析器本身不修改原文。
+
+## ADR-0014 结构化输出的负载与两种传输方式（2026-11-07）
+
+- **背景**：DESIGN §11 要求 `state_update` 与 `plot_note` 既能通过函数调用输出，也能通过文本标签输出，并且共用同一套校验。模型输出不可信，非法值必须被拒绝并留下原因；文本标签又必须与显示层共用同一个块解析器，否则未闭合块会被当成正常内容。
+- **决定**：
+  - 负载模型在 `packages/core/src/structured`。`state_update` 是单个状态变更：`path`（非空字符串数组，元素去掉两端空白）、`op`（`set` / `delete`）、`value`（`set` 时必须有，可以是 `null`；`delete` 时不能出现）、`reason`（可选字符串，空串归一化为 `null`）。`plot_note` 只有非空的 `text`。两者都拒绝未知字段，路径拒绝 `__proto__`、`constructor`、`prototype`，避免将来应用 diff 时污染原型链。
+  - 一次调用或一个标签只承载一条变更，多条变更就是多次工具调用或多个标签。这样某一条非法时其余条目仍然有效，拒绝粒度与记录原因一一对应。
+  - 函数调用模式直接读取 `LlmResult.toolCalls`，只认两个写入类工具，其他工具（将来的读取类工具）忽略。文本标签模式用 `BlockParser` 解析完整回复，只取 `complete` 的块；未闭合、空内容、非法 JSON 都记为一次拒绝并保留原文。
+  - 拒绝结果是数据而不是异常：`StructuredOutputCollection` 同时返回通过校验的 `stateUpdates`、`notes` 和被拒绝的 `issues`（负载、原文、原因）。调用方把 `issues` 写进 Trace，不中断生成。
+  - `state_update` 与 `plot_note` 登记进 `DEFAULT_BLOCK_TYPES`，显示策略为 `hidden`、上下文策略为 `drop`、语义策略为 `none`：显示层与上下文层自动忽略这两个标签，语义写入由收集器显式完成，解析器不修改原文。
+  - JSON Schema（`STATE_UPDATE_SCHEMA`、`PLOT_NOTE_SCHEMA`）与 `STRUCTURED_OUTPUT_TOOLS` 供函数调用模式使用；schema 只是给模型的说明，校验器才是权威，两者表达同一套约束。模式由 `resolveStructuredOutputMode(probe)` 决定：有体检结果用 `probe.structuredOutput`，否则回退到文本标签（不依赖渠道的工具能力）。
+- **影响**：M1-T07 按模式选择工具定义或提示词，把 `issues` 写进 Trace，把 `stateUpdates` 与 `notes` 写进楼层节点。`illustrate` 与其他读取类工具不在本模块范围内。

@@ -19,6 +19,7 @@ export type {
 	SearchNodeTextOptions,
 } from "./store/story-store.js";
 export { StoryStore } from "./store/story-store.js";
+export * from "./structured/index.js";
 export * from "./timeline.js";
 export * from "./tokens.js";
 

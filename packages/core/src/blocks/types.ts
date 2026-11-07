@@ -149,7 +149,7 @@ export function createBlockTypeRegistry(
 	};
 }
 
-/** DESIGN §6 的原生协议块类型。策略的处理器在后续任务里接入。 */
+/** DESIGN §6 的原生协议块与 §11 的写入类文本标签。策略的处理器在后续任务里接入。 */
 export const DEFAULT_BLOCK_TYPES: readonly BlockTypeDefinition[] = [
 	{
 		name: "thinking",
@@ -185,6 +185,18 @@ export const DEFAULT_BLOCK_TYPES: readonly BlockTypeDefinition[] = [
 		name: "备忘",
 		display: { kind: "native", component: "memo" },
 		context: { kind: "keep" },
+		semantics: { kind: "none" },
+	},
+	{
+		name: "state_update",
+		display: { kind: "hidden" },
+		context: { kind: "drop" },
+		semantics: { kind: "none" },
+	},
+	{
+		name: "plot_note",
+		display: { kind: "hidden" },
+		context: { kind: "drop" },
 		semantics: { kind: "none" },
 	},
 ];
