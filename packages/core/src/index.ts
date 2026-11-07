@@ -4,6 +4,7 @@ export * from "./llm/channels.js";
 export * from "./llm/configure.js";
 export * from "./llm/event-stream.js";
 export * from "./llm/pi-channel.js";
+export * from "./llm/probe.js";
 export * from "./llm/router.js";
 export * from "./llm/truncation.js";
 export * from "./llm/types.js";

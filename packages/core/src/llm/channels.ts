@@ -1,8 +1,28 @@
-import { readFile } from "node:fs/promises";
-import { parse as parseYaml } from "yaml";
+import { readFile, writeFile } from "node:fs/promises";
+import { parseDocument, parse as parseYaml } from "yaml";
 import { isJsonObject } from "../json.js";
 
 export type LlmChannelApi = "openai-completions" | "google-generative-ai";
+
+export type LlmProbeSupport = "supported" | "unsupported" | "unknown";
+
+export type LlmProbeStreaming = "streaming" | "buffered" | "unknown";
+
+/** 渠道体检的结果，写在模型配置的 probe 字段里。 */
+export interface LlmModelProbe {
+	readonly probedAt: string;
+	readonly channel: string;
+	readonly modelId: string;
+	readonly streaming: LlmProbeStreaming;
+	readonly functionCalling: LlmProbeSupport;
+	readonly thinking: LlmProbeSupport;
+	readonly prefill: LlmProbeSupport;
+	readonly usage: LlmProbeSupport;
+	readonly cacheStats: LlmProbeSupport;
+	/** 结构化输出优先使用的传输方式。 */
+	readonly structuredOutput: "function-call" | "text-tags";
+	readonly notes: readonly string[];
+}
 
 export interface LlmChannelConfig {
 	readonly id: string;
@@ -23,6 +43,8 @@ export interface LlmModelConfig {
 	readonly reasoning: boolean;
 	/** 渠道 id，按优先级从高到低。 */
 	readonly channels: readonly string[];
+	/** 上次渠道体检的结果；没有跑过时为 null。 */
+	readonly probe: LlmModelProbe | null;
 }
 
 export interface LlmChannelsConfig {
@@ -203,6 +225,7 @@ function parseModel(
 				? true
 				: requireBoolean(value.reasoning, `${label}.reasoning`),
 		channels: selected,
+		probe: parseProbe(value.probe, `${label}.probe`),
 	};
 }
 
@@ -280,4 +303,110 @@ function optionalInt(
 		throw new Error(`${label} 必须是不小于 ${minimum} 的整数`);
 	}
 	return value;
+}
+
+const PROBE_SUPPORT_VALUES = ["supported", "unsupported", "unknown"] as const;
+const PROBE_STREAMING_VALUES = ["streaming", "buffered", "unknown"] as const;
+const PROBE_STRUCTURED_OUTPUT_VALUES = ["function-call", "text-tags"] as const;
+
+function requireEnum<T extends string>(
+	value: unknown,
+	label: string,
+	allowed: readonly T[],
+): T {
+	if (typeof value !== "string" || !allowed.includes(value as T)) {
+		throw new Error(`${label} 只能是 ${allowed.join("、")}`);
+	}
+	return value as T;
+}
+
+function parseProbe(value: unknown, label: string): LlmModelProbe | null {
+	if (value === undefined) return null;
+	if (!isJsonObject(value)) {
+		throw new Error(`${label} 必须是对象`);
+	}
+	const rawNotes = value.notes;
+	if (!Array.isArray(rawNotes)) {
+		throw new Error(`${label}.notes 必须是字符串数组`);
+	}
+	const notes: string[] = [];
+	for (const note of rawNotes) {
+		if (typeof note !== "string") {
+			throw new Error(`${label}.notes 必须是字符串数组`);
+		}
+		notes.push(note);
+	}
+	return {
+		probedAt: requireString(value.probedAt, `${label}.probedAt`),
+		channel: requireString(value.channel, `${label}.channel`),
+		modelId: requireString(value.modelId, `${label}.modelId`),
+		streaming: requireEnum(
+			value.streaming,
+			`${label}.streaming`,
+			PROBE_STREAMING_VALUES,
+		),
+		functionCalling: requireEnum(
+			value.functionCalling,
+			`${label}.functionCalling`,
+			PROBE_SUPPORT_VALUES,
+		),
+		thinking: requireEnum(
+			value.thinking,
+			`${label}.thinking`,
+			PROBE_SUPPORT_VALUES,
+		),
+		prefill: requireEnum(
+			value.prefill,
+			`${label}.prefill`,
+			PROBE_SUPPORT_VALUES,
+		),
+		usage: requireEnum(value.usage, `${label}.usage`, PROBE_SUPPORT_VALUES),
+		cacheStats: requireEnum(
+			value.cacheStats,
+			`${label}.cacheStats`,
+			PROBE_SUPPORT_VALUES,
+		),
+		structuredOutput: requireEnum(
+			value.structuredOutput,
+			`${label}.structuredOutput`,
+			PROBE_STRUCTURED_OUTPUT_VALUES,
+		),
+		notes,
+	};
+}
+
+/**
+ * 把体检结果写回模型的 probe 字段。
+ *
+ * 用 YAML Document 修改，保留文件里的注释与 `${VAR}` 引用原文。
+ */
+export async function writeModelProbe(
+	filePath: string,
+	alias: string,
+	probe: LlmModelProbe,
+): Promise<void> {
+	const text = await readFile(filePath, "utf8");
+	const document = parseDocument(text);
+	if (document.errors.length > 0) {
+		throw new Error(
+			`${filePath} 不是合法的 YAML：${document.errors[0].message}`,
+		);
+	}
+	if (!document.hasIn(["models", alias])) {
+		throw new Error(`渠道配置里没有模型 ${alias}`);
+	}
+	document.setIn(["models", alias, "probe"], {
+		probedAt: probe.probedAt,
+		channel: probe.channel,
+		modelId: probe.modelId,
+		streaming: probe.streaming,
+		functionCalling: probe.functionCalling,
+		thinking: probe.thinking,
+		prefill: probe.prefill,
+		usage: probe.usage,
+		cacheStats: probe.cacheStats,
+		structuredOutput: probe.structuredOutput,
+		notes: [...probe.notes],
+	});
+	await writeFile(filePath, document.toString(), "utf8");
 }

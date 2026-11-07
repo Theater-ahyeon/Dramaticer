@@ -4,6 +4,9 @@
 	"type": "module",
 	"main": "./dist/index.js",
 	"types": "./dist/index.d.ts",
+	"bin": {
+		"dramaticer": "./dist/cli/index.js"
+	},
 	"exports": {
 		".": {
 			"types": "./dist/index.d.ts",
@@ -12,7 +15,8 @@
 		}
 	},
 	"scripts": {
-		"build": "tsc"
+		"build": "tsc",
+		"probe": "tsc -b && node dist/cli/index.js probe"
 	},
 	"dependencies": {
 		"@earendil-works/pi-ai": "1.5.0",

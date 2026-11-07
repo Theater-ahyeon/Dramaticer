@@ -190,6 +190,7 @@ export class LlmRouter implements LlmStreamingClient {
 		const final: LlmResult = {
 			text: generatedText,
 			reasoning: generatedReasoning,
+			toolCalls: last.result.toolCalls,
 			finishReason: last.result.finishReason,
 			stopReason: last.result.stopReason,
 			model: last.result.model,
@@ -253,6 +254,7 @@ export class LlmRouter implements LlmStreamingClient {
 				const providerRequest: LlmProviderRequest = {
 					model: input.route.model,
 					messages: input.request.messages,
+					tools: input.request.tools,
 					temperature: input.request.temperature,
 					maxTokens: input.request.maxTokens,
 					reasoning: input.request.reasoning,
@@ -446,6 +448,7 @@ function failedResult(
 	return {
 		text,
 		reasoning,
+		toolCalls: [],
 		finishReason: null,
 		stopReason: "error",
 		model,

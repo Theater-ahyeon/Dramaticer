@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { isJsonObject } from "../json.js";
-import type { LlmRequest, LlmResult, LlmUsage } from "./types.js";
+import type { LlmRequest, LlmResult, LlmToolCall, LlmUsage } from "./types.js";
 
 const CACHE_VERSION = 1;
 
@@ -41,6 +41,13 @@ export function requestCacheKey(
 	}
 	if (request.reasoning !== undefined) {
 		body.reasoning_effort = request.reasoning;
+	}
+	if (request.tools !== undefined && request.tools.length > 0) {
+		body.tools = request.tools.map((tool) => ({
+			name: tool.name,
+			description: tool.description,
+			parameters: tool.parameters,
+		}));
 	}
 	const keyDigest = createHash("sha256").update(identity.apiKey).digest("hex");
 	return createHash("sha256")
@@ -107,6 +114,7 @@ function parseCachedResult(value: unknown): LlmResult | null {
 	return {
 		text: value.text,
 		reasoning: value.reasoning,
+		toolCalls: readToolCalls(value.toolCalls),
 		finishReason:
 			typeof value.finishReason === "string" ? value.finishReason : null,
 		stopReason: isStopReason(value.stopReason) ? value.stopReason : "stop",
@@ -186,4 +194,20 @@ function isTruncationReason(
 
 function readNumber(value: unknown): number | null {
 	return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function readToolCalls(value: unknown): LlmToolCall[] {
+	if (!Array.isArray(value)) return [];
+	const calls: LlmToolCall[] = [];
+	for (const item of value) {
+		if (!isJsonObject(item)) continue;
+		if (typeof item.id !== "string" || typeof item.name !== "string") continue;
+		if (!isJsonObject(item.arguments)) continue;
+		calls.push({
+			id: item.id,
+			name: item.name,
+			arguments: item.arguments,
+		});
+	}
+	return calls;
 }

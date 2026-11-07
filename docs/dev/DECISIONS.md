@@ -108,3 +108,18 @@
   - 缓存键与 M0 客户端完全一致（渠道 baseUrl、apiKey 摘要、模型 id 与请求体），读取时按渠道优先级逐个尝试，写入时用实际成功的渠道，因此 `eval-private/llm-cache` 里的旧结果仍可命中。
   - `loadDotEnv` 改为用 `node:util` 的 `parseEnv` 读文件并覆盖 `process.env` 的同名变量：项目的 `.env` 是渠道配置的唯一来源，避免外部环境残留变量改变模型或密钥。
 - **影响**：事件题生成器改用 `data/channels.yaml` 的 `background` 模型并继续使用原缓存；旧的 `OpenAiCompatibleClient` 删除。后续 M1-T03 的渠道体检、M1-T06 的工具调用和 M1-T07 的单轮 CLI 都通过这个接口接入。
+
+## ADR-0011 渠道体检的实现与结果存放（2026-11-07）
+
+- **背景**：M1-T03 要在真实渠道上判断哪些能力可用，供结构化输出在函数调用与文本标签之间选择。渠道适配器对函数调用没有接口，旧的后台客户端也不能复用；体检结果需要一个稳定位置，后续任务直接读取，不用每次重新探测。
+- **决定**：
+  - `packages/core/src/llm/probe.ts` 的 `probeChannel` 直接对单个 `LlmChannel` 发请求，不走 `LlmRouter`、不走缓存，避免多渠道切换和缓存命中掩盖真实能力。四组请求分别是流式、函数调用、预填充、缓存统计。
+  - 流式：同一次请求同时判断思考与用量。正文增量不少于 2 个判为 `streaming`；只有 1 个或正文只在结束时出现判为 `buffered`；请求失败或没有正文判为 `unknown`。思考内容非空判为支持；输入与输出 token 都非空判为用量支持。
+  - 函数调用：带一个 `dramaticer_probe` 工具并明确要求调用；返回同名工具调用判为支持；返回成功但没有工具调用判为不支持；错误信息提到工具不受支持时判为不支持，其余错误判为未知。
+  - 预填充：消息末尾放一条助手消息 `{`，要求续写 JSON；返回内容能被 `{` 补齐并解析出预期字段判为支持，返回以 `{` 开头的完整对象判为不支持，其余判为未知。
+  - 缓存统计：用同一个较长的 system 前缀连续发两次请求；第二次的 `cachedTokens` 大于 0 判为支持，两次都为 0 判为不支持。
+  - `LlmRequest` 与 `LlmProviderRequest` 增加可选 `tools`，`LlmResult` 与 `LlmProviderResult` 增加 `toolCalls`。pi 适配器负责映射工具定义、提取工具调用；路由层透传，缓存键只在带工具时把工具定义并入请求体，原有缓存键不变。
+  - 结果写到 `models.<alias>.probe`：`probedAt`、`channel`、`modelId`、`streaming`、`functionCalling`、`thinking`、`prefill`、`usage`、`cacheStats`、`structuredOutput`、`notes`。写入用 YAML Document，保留注释与 `${ENV}` 引用原文。
+  - CLI：`dramaticer probe <channel> [--model <alias>]`。渠道被多个模型使用时必须指定模型，避免把某个模型的能力写到另一个模型上。
+- **实测（`main` 渠道，`opendesign/deepseek-v4.1-flash`）**：流式、函数调用、思考、用量、缓存统计均支持；预填充不支持，模型忽略末尾的助手消息并重新输出完整 JSON。第二次相同的大前缀请求命中缓存 5248 个 token。流式请求收到 7 个正文增量，首个增量 2093 毫秒，2173 毫秒完成。
+- **影响**：M1-T06 直接读取 `models.<alias>.probe.structuredOutput` 选择传输方式。探测本身不重试也不限速，渠道繁忙时可能把单项记为未知；重新运行 `pnpm dramaticer probe <channel> --model <alias>` 即可刷新结果。`data/channels.yaml` 被 git 忽略，体检结果不会提交。

@@ -165,7 +165,8 @@
   做什么：定义 `core/llm` 的薄接口（流式事件、用量、中止）；渠道配置（`data/channels.yaml`，密钥用 `${ENV}` 引用 `.env` 里的变量）；同一个模型可以配多个渠道，按优先级自动切换；重试；截断检测（以 length 结束、标签没闭合、内容突然中断）；续写。用 pi 实现这个接口（或者按 ADR 的结论自己实现）。替换掉 M0-T11 的最小客户端：`evalset/event-questions.ts` 迁移到新接口后删除 `packages/core/src/llm/client.ts`，迁移期间保留已有 `eval-private/llm-cache` 的读取，避免重复调用渠道。
   验收：用一个模拟的提供方测试切换、重试和续写的逻辑；事件题生成器的测试改用新接口的假客户端，`pnpm check` 通过。
 
-- [ ] **M1-T03 渠道体检** | 依赖：M1-T02
+- [x] **M1-T03 渠道体检** | 依赖：M1-T02
+  完成：2026-11-07 `probeChannel` 检测真流式/假流式、函数调用、思考输出、预填充、用量与缓存统计，结果写回 `models.<alias>.probe`；`LlmRequest` 增加工具定义与工具调用结果；`dramaticer probe <channel> [--model <alias>]` 在真实渠道验证（流式、函数调用、思考、用量、缓存统计支持，预填充不支持，缓存命中 5248 token），9 个模拟提供方测试与 1 个 live 测试，门禁通过（250 个测试）
   做什么：CLI 命令 `dramaticer probe <channel>`，检测真流式还是假流式、函数调用、思考输出、预填充、用量和缓存统计，结果写回渠道配置里，供结构化输出选择模式。
   验收：模拟提供方的测试通过；用真实渠道的测试放进 `*.live.test.ts`。
 

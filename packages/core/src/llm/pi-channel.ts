@@ -23,6 +23,8 @@ import {
 	type LlmProviderStream,
 	type LlmProviderStreamEvent,
 	type LlmStopReason,
+	type LlmToolCall,
+	type LlmToolDefinition,
 	type LlmUsage,
 } from "./types.js";
 
@@ -83,7 +85,12 @@ export class PiLlmChannel implements LlmChannel {
 			throw toProviderError(error, status, request.signal);
 		}
 		const context = normalizeContext(
-			this.buildContext(request.messages, request.continuation, piModel),
+			this.buildContext(
+				request.messages,
+				request.continuation,
+				piModel,
+				request.tools,
+			),
 		);
 		const options: SimpleStreamOptions = {
 			apiKey: this.apiKey.length > 0 ? this.apiKey : "unused",
@@ -145,6 +152,7 @@ export class PiLlmChannel implements LlmChannel {
 		messages: readonly LlmMessage[],
 		continuation: LlmContinuation | undefined,
 		model: Model<LlmChannelApi>,
+		tools: readonly LlmToolDefinition[] | undefined,
 	): PiContext {
 		const timestamp = Date.now();
 		const converted: PiMessage[] = messages.map((message, index) => {
@@ -172,7 +180,14 @@ export class PiLlmChannel implements LlmChannel {
 				timestamp: timestamp + messages.length + 1,
 			});
 		}
-		return { messages: converted };
+		return {
+			messages: converted,
+			tools: tools?.map((tool) => ({
+				name: tool.name,
+				description: tool.description,
+				parameters: tool.parameters,
+			})),
+		};
 	}
 }
 
@@ -217,9 +232,17 @@ function toProviderResult(
 ): LlmProviderResult {
 	let text = "";
 	let reasoning = "";
+	const toolCalls: LlmToolCall[] = [];
 	for (const block of message.content) {
 		if (block.type === "text") text += block.text;
 		else if (block.type === "thinking") reasoning += block.thinking;
+		else if (block.type === "toolCall") {
+			toolCalls.push({
+				id: block.id,
+				name: block.name,
+				arguments: block.arguments,
+			});
+		}
 	}
 	const stopReason = mapStopReason(message.stopReason);
 	const failed = stopReason === "error";
@@ -233,6 +256,7 @@ function toProviderResult(
 	return {
 		text,
 		reasoning,
+		toolCalls,
 		finishReason: message.rawStopReason ?? message.stopReason,
 		stopReason,
 		model: message.responseModel ?? message.model,

@@ -24,8 +24,23 @@ export interface LlmContinuation {
 	readonly reasoning: string;
 }
 
+export interface LlmToolDefinition {
+	readonly name: string;
+	readonly description: string;
+	/** JSON Schema 对象，描述工具参数的形状。 */
+	readonly parameters: Record<string, unknown>;
+}
+
+export interface LlmToolCall {
+	readonly id: string;
+	readonly name: string;
+	readonly arguments: Record<string, unknown>;
+}
+
 export interface LlmRequest {
 	readonly messages: readonly LlmMessage[];
+	/** 提供给模型的工具；不设置时不发送工具定义。 */
+	readonly tools?: readonly LlmToolDefinition[];
 	/** 模型别名，由渠道配置解析；不设置时使用客户端的默认模型。 */
 	readonly model?: string;
 	readonly temperature?: number;
@@ -48,6 +63,7 @@ export interface LlmUsage {
 export interface LlmResult {
 	readonly text: string;
 	readonly reasoning: string;
+	readonly toolCalls: readonly LlmToolCall[];
 	readonly finishReason: string | null;
 	readonly stopReason: LlmStopReason;
 	readonly model: string;
@@ -117,6 +133,7 @@ export interface LlmModelInfo {
 export interface LlmProviderRequest {
 	readonly model: LlmModelInfo;
 	readonly messages: readonly LlmMessage[];
+	readonly tools?: readonly LlmToolDefinition[];
 	readonly temperature?: number;
 	readonly maxTokens?: number;
 	readonly reasoning?: LlmReasoningLevel;
@@ -127,6 +144,7 @@ export interface LlmProviderRequest {
 export interface LlmProviderResult {
 	readonly text: string;
 	readonly reasoning: string;
+	readonly toolCalls: readonly LlmToolCall[];
 	readonly finishReason: string | null;
 	readonly stopReason: LlmStopReason;
 	readonly model: string;

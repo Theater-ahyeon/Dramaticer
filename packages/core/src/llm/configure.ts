@@ -1,4 +1,4 @@
-import type { LlmChannelsConfig } from "./channels.js";
+import type { LlmChannelConfig, LlmChannelsConfig } from "./channels.js";
 import { PiLlmChannel } from "./pi-channel.js";
 import { type LlmRoute, LlmRouter } from "./router.js";
 import type { LlmChannel, LlmStreamingClient } from "./types.js";
@@ -13,6 +13,20 @@ export interface CreateLlmClientOptions {
 	readonly now?: () => number;
 }
 
+/** 按单个渠道配置创建适配器，渠道体检与路由共用。 */
+export function createLlmChannel(config: LlmChannelConfig): LlmChannel {
+	return new PiLlmChannel({
+		id: config.id,
+		api: config.api,
+		baseUrl: config.baseUrl,
+		apiKey: config.apiKey,
+		requestsPerMinute: config.requestsPerMinute,
+		maxRetries: config.maxRetries,
+		retryBaseDelayMs: config.retryBaseDelayMs,
+		timeoutMs: config.timeoutMs,
+	});
+}
+
 /** 按渠道配置创建 pi 支持的模型客户端。 */
 export function createLlmClient(
 	config: LlmChannelsConfig,
@@ -20,19 +34,7 @@ export function createLlmClient(
 ): LlmStreamingClient {
 	const channels = new Map<string, LlmChannel>();
 	for (const channelConfig of config.channels.values()) {
-		channels.set(
-			channelConfig.id,
-			new PiLlmChannel({
-				id: channelConfig.id,
-				api: channelConfig.api,
-				baseUrl: channelConfig.baseUrl,
-				apiKey: channelConfig.apiKey,
-				requestsPerMinute: channelConfig.requestsPerMinute,
-				maxRetries: channelConfig.maxRetries,
-				retryBaseDelayMs: channelConfig.retryBaseDelayMs,
-				timeoutMs: channelConfig.timeoutMs,
-			}),
-		);
+		channels.set(channelConfig.id, createLlmChannel(channelConfig));
 	}
 	const routes = new Map<string, LlmRoute>();
 	for (const model of config.models.values()) {

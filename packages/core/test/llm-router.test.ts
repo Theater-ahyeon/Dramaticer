@@ -80,6 +80,7 @@ function fakeChannel(
 				return {
 					text,
 					reasoning,
+					toolCalls: [],
 					finishReason: stopReason,
 					stopReason,
 					model: model.id,
