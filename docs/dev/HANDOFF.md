@@ -31,7 +31,7 @@
 ## 下一步
 - **F0-T01 全量对话统计**（最高优先级；F0 完成前不选 R1 及之后的任务）：只读扫描 `D:\SillyTavern\TauriTavern\default-user\`、`D:\SillyTavern\data\default-user\`、`D:\SillyTavern\luker\Luker\data\default-user\` 的 `chats/`，按文件名去重（约 230 个对话），流式处理；统计楼层数分布（P50/P75/P90/最大）、当前 swipe 正文 token 估算、能整个放进 128K/200K/1M 的对话占比、重 roll 率、近期与早期对比；只把统计数字写到 `docs/dev/reports/F0-corpus.md`，用「对话 N」代替角色名。
 - 之后按 F0 顺序：F0-T02 拒绝与接受回复对的归因（约 200 次调用）、F0-T03 裁判校准（约 400 次）、F0-T04 全文基线与渠道上限探测（最多 30 次）、F0-T99 报告与路线建议。F0 的全部模型调用固定用 magpie 网关（`http://127.0.0.1:3425/v1`）上的 DeepSeek V4.1 Flash；不调用本地 ST（I14）。
-- F0-T99 给出建议并经人类确认后，再按 TASKS 的 R1 顺序继续：
+- F0-T99 给出建议并经人类确认后，先做 **R0-T04 合并 v3 插件系统提案**（`docs/proposals/plugins.md`，人类已确认，写入 DESIGN 插件章节、新增 P1–P5、在 HUMAN.md 请人类确认 AGENTS.md 的新不变量），再按 TASKS 的 R1 顺序继续：
 - **R1-T01.b 渠道按岗位配置**：`data/channels.yaml` 增加 `roles`（`writer`、`settler`、`planner`、`judge`）；缺省 `writer` 回落 `main`、其余回落 `background`；创建路由时校验 `judge` 与 `writer` 不是同一个 `baseUrl`；Trace 记录角色与渠道。
 - **R1-T02 台账结算器**：迁移 v19 新增 `ledger_settlements`；后台 `settle` 任务按窗口处理已确认、未结算的助手楼层；模型已写路径优先，结算器只补缺失路径；修复动作限定为补值、删除非法条目、改写线索状态；写入在一个事务里，重复结算不新增 diff，swipe 与编辑节点各自结算；回合内不等待。结算器写入前调用 `validateLedgerDiff`，来源用 `settler`。
 - **R1-T02.a 现场分析**：迁移 v20 新增 `scene_analyses`；后台 `scene` 任务读台账与最近 6 楼原文，输出一小段；新增 `scene` 槽位，取当前路径最近一条；回合内零调用。

@@ -117,3 +117,4 @@
 
 - 2026-11-07 | S77 | R1-T01.a | DONE | 迁移 v18 给 `state_diffs` 增加 `story_time_start`/`story_time_end`；`StateDiff` 增加 `storyTime`，起止都为空归一为 null；`validateLedgerDiff` 增加 `LEDGER_SOURCES`（model、settler、player、import）与 `storyTime` 形状校验；新增 `readLedgerFacts` 读回仍然成立的事实及其元数据，`readLedger`/`listLedgerEntities` 值视图不变；结构化输出写入来源改为 `model`；DESIGN §7.1 与后续 R1 迁移编号同步；4 个新测试，门禁通过（633 个测试）
 - 2026-11-07 | S77 | 分拣 | INBOX 的 F0 取证条目转为 TASKS 顶部的「F：取证」（F0-T01 统计、F0-T02 归因、F0-T03 裁判校准、F0-T04 全文基线、F0-T99 报告），ADR-0037 记录插队、独立产品形态与固定模型；R1 标题下标注 F0 完成前不选后续任务；INBOX 清空
+- 2026-11-07 | S77 | 分拣 | 人类在会话期间新增 `docs/proposals/plugins.md`（v3 插件系统，已确认）：新增 R0-T04 合并该提案（DESIGN 插件章节、P1–P5、AGENTS.md 新不变量交人类确认），排在全量任务序列中 F0 之后
