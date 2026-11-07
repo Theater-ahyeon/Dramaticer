@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { openSnapshot } from "../health/manifest.js";
+import { isLegacyCorpus, openSnapshot } from "../health/manifest.js";
 import {
 	sampleDeterministic,
 	sanitizeFileName,
@@ -73,7 +73,7 @@ export async function runStateQuestionsCli(
 ): Promise<{ summaries: readonly StateStorySummary[]; summaryPath: string }> {
 	const log = options.log ?? ((message: string) => console.log(message));
 	const snapshot = await openSnapshot(options.rawRoot);
-	const chatFiles = snapshot.filesByRole("chat");
+	const chatFiles = snapshot.filesByRole("chat").filter(isLegacyCorpus);
 	if (chatFiles.length === 0) {
 		throw new Error("manifest 里没有 chat");
 	}

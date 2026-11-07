@@ -7,7 +7,7 @@ import {
 	chunkText,
 } from "@dramaticer/core";
 import { parseChatJsonlFile } from "../chat-jsonl.js";
-import { openSnapshot } from "../health/manifest.js";
+import { isLegacyCorpus, openSnapshot } from "../health/manifest.js";
 import { messageNodeId, parseMessageIndex } from "../node-id.js";
 import type { QuestionKind, RetrievalQuestion } from "./question-files.js";
 import {
@@ -163,7 +163,7 @@ export async function collectRetrievalBaseline(
 	const maxChars = options.maxChars ?? DEFAULT_MAX_CHARS;
 	const overlapChars = options.overlapChars ?? DEFAULT_OVERLAP_CHARS;
 	const snapshot = await openSnapshot(options.rawRoot);
-	const chatFiles = snapshot.filesByRole("chat");
+	const chatFiles = snapshot.filesByRole("chat").filter(isLegacyCorpus);
 	if (chatFiles.length === 0) {
 		throw new Error("manifest 里没有 chat");
 	}

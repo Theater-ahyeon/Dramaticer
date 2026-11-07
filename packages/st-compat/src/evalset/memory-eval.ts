@@ -17,7 +17,11 @@ import {
 } from "../character-card.js";
 import { importChatFileToStore } from "../chat-import.js";
 import { importCharacterCardEntity } from "../entity-import.js";
-import { type Snapshot, openSnapshot } from "../health/manifest.js";
+import {
+	type Snapshot,
+	isLegacyCorpus,
+	openSnapshot,
+} from "../health/manifest.js";
 import {
 	importCharacterBookLore,
 	importWorldInfoLore,
@@ -386,7 +390,7 @@ export async function collectMemoryEval(
 	}
 	await mkdir(path.dirname(options.dbPath), { recursive: true });
 	const snapshot = await openSnapshot(options.rawRoot);
-	const chatFiles = snapshot.filesByRole("chat");
+	const chatFiles = snapshot.filesByRole("chat").filter(isLegacyCorpus);
 	if (chatFiles.length === 0) throw new Error("manifest 里没有 chat");
 	const storyFiles = chatFiles.map((file) => ({
 		file,

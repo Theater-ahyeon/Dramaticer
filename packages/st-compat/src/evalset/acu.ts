@@ -7,7 +7,7 @@ import {
 } from "@dramaticer/core";
 import Database from "better-sqlite3";
 import { parseChatJsonlFile } from "../chat-jsonl.js";
-import { openSnapshot } from "../health/manifest.js";
+import { isLegacyCorpus, openSnapshot } from "../health/manifest.js";
 import { parseMessageIndex } from "../node-id.js";
 import type { QuestionKind, RetrievalQuestion } from "./question-files.js";
 import {
@@ -225,7 +225,7 @@ export async function collectAcuBaseline(
 	options: CollectAcuBaselineOptions,
 ): Promise<AcuBaseline> {
 	const snapshot = await openSnapshot(options.rawRoot);
-	const chatFiles = snapshot.filesByRole("chat");
+	const chatFiles = snapshot.filesByRole("chat").filter(isLegacyCorpus);
 	if (chatFiles.length === 0) {
 		throw new Error("manifest 里没有 chat");
 	}

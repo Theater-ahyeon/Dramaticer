@@ -8,7 +8,7 @@ import {
 	loadDotEnv,
 } from "@dramaticer/core";
 import { parseChatJsonlFile } from "../chat-jsonl.js";
-import { openSnapshot } from "../health/manifest.js";
+import { isLegacyCorpus, openSnapshot } from "../health/manifest.js";
 import { messageNodeId } from "../node-id.js";
 import {
 	type EvidenceExcerpt,
@@ -57,7 +57,7 @@ const maxWindowChars = optionalInt("DRAMATICER_EVAL_MAX_WINDOW_CHARS", 24_000);
 const maxTokens = optionalInt("DRAMATICER_EVAL_MAX_TOKENS", 4_096);
 
 const snapshot = await openSnapshot(rawRoot);
-const allChatFiles = snapshot.filesByRole("chat");
+const allChatFiles = snapshot.filesByRole("chat").filter(isLegacyCorpus);
 const chatFiles =
 	onlyStory === undefined
 		? allChatFiles

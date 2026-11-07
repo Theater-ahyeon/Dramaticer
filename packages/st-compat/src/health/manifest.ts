@@ -5,9 +5,20 @@ import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { isJsonObject } from "@dramaticer/core";
 
+export type CorpusGroup = "legacy" | "latest" | "shared";
+
+const CORPUS_GROUPS: readonly CorpusGroup[] = ["legacy", "latest", "shared"];
+
+/** 旧清单没有 corpus 字段，这些条目属于 legacy 语料。 */
+export function isLegacyCorpus(file: SnapshotManifestFile): boolean {
+	return file.corpus === undefined || file.corpus === "legacy";
+}
+
 export interface SnapshotManifestFile {
 	readonly role: string;
 	readonly character?: string;
+	readonly corpus?: CorpusGroup;
+	readonly sourceMtime?: string;
 	readonly target: string;
 	readonly size: number;
 	readonly sha256: string;
@@ -73,6 +84,23 @@ export function parseSnapshotManifest(value: unknown): SnapshotManifest {
 			throw new Error(`manifest.files[${index}].character 必须是字符串`);
 		}
 		if (
+			file.corpus !== undefined &&
+			!CORPUS_GROUPS.includes(file.corpus as CorpusGroup)
+		) {
+			throw new Error(
+				`manifest.files[${index}].corpus 必须是 ${CORPUS_GROUPS.join("、")}`,
+			);
+		}
+		if (
+			file.sourceMtime !== undefined &&
+			(typeof file.sourceMtime !== "string" ||
+				Number.isNaN(Date.parse(file.sourceMtime)))
+		) {
+			throw new Error(
+				`manifest.files[${index}].sourceMtime 必须是 ISO 时间字符串`,
+			);
+		}
+		if (
 			typeof file.size !== "number" ||
 			!Number.isSafeInteger(file.size) ||
 			file.size < 0
@@ -90,6 +118,12 @@ export function parseSnapshotManifest(value: unknown): SnapshotManifest {
 		return {
 			role: file.role,
 			character: file.character,
+			...(file.corpus === undefined
+				? {}
+				: { corpus: file.corpus as CorpusGroup }),
+			...(file.sourceMtime === undefined
+				? {}
+				: { sourceMtime: file.sourceMtime as string }),
 			target: file.target,
 			size: file.size,
 			sha256: file.sha256,

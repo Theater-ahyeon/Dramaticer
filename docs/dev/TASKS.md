@@ -336,7 +336,8 @@
 
 ## D：参照语料与文笔基线（由 INBOX 分拣，排在 M3 之前）
 
-- [ ] **D-T01 快照脚本按修改时间取样最新对话** | 依赖：M0-T02
+- [x] **D-T01 快照脚本按修改时间取样最新对话** | 依赖：M0-T02
+  完成：2026-11-07 快照脚本按每个对话目录里最新的 jsonl 取样，排除 legacy 三个目录，`DRAMATICER_LATEST_CHATS` 默认 4、0 关闭；manifest 每条记录 `corpus`（legacy/latest，预设为 shared）与 `sourceMtime`，`parseSnapshotManifest` 校验并保留这两个字段；重复运行 94 条条目完全一致，legacy 对话、卡、世界书的路径与 sha256 不变；新增 2 个解析测试，评测 CLI 只读 legacy 语料，门禁通过（463 个测试）
   做什么：
   - `scripts/snapshot-private-data.mjs` 增加按文件修改时间取最新 N 个对话的取样方式（`DRAMATICER_LATEST_CHATS` 控制，默认 4，0 关闭），连同对应角色卡与世界书复制进 `eval-private/raw/`，与原有 3 个对话并存。
   - manifest 每条记录语料分组（`legacy` / `latest`）与源文件修改时间；原有 3 个对话的路径与哈希保持不变，重复运行不产生重复条目。

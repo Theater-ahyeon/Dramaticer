@@ -10,14 +10,24 @@ const DEFAULT_ST_ROOT = "D:\\SillyTavern\\TauriTavern\\default-user";
 const stRoot = path.resolve(process.env.DRAMATICER_ST_ROOT ?? DEFAULT_ST_ROOT);
 const outRoot = path.resolve("eval-private", "raw");
 
-const chatSpecs = [
+const legacyChatSpecs = [
 	{ label: "仙侠雌竞", matches: (name) => name.startsWith("仙侠雌竞") },
 	{ label: "银麒赎世", matches: (name) => name === "银麒赎世" },
 	{ label: "欲望世界-1600", matches: (name) => name === "欲望世界-1600" },
 ];
 
+const DEFAULT_LATEST_CHATS = 4;
+
 function relativeToRoot(absolutePath) {
 	return path.relative(stRoot, absolutePath).split(path.sep).join("/");
+}
+
+function readLatestChatCount(raw) {
+	if (raw === undefined || raw === "") return DEFAULT_LATEST_CHATS;
+	if (!/^\d+$/.test(raw)) {
+		throw new Error(`DRAMATICER_LATEST_CHATS 必须是非负整数：${raw}`);
+	}
+	return Number(raw);
 }
 
 async function findChatDir(spec) {
@@ -36,9 +46,7 @@ async function findChatDir(spec) {
 
 async function findLargestChatFile(chatDir) {
 	const dir = path.join(stRoot, "chats", chatDir);
-	const files = (await readdir(dir, { withFileTypes: true })).filter(
-		(entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".jsonl"),
-	);
+	const files = await fileEntries(dir, ".jsonl");
 	if (files.length === 0) {
 		throw new Error(`对话目录里没有 jsonl 文件：${chatDir}`);
 	}
@@ -50,6 +58,45 @@ async function findLargestChatFile(chatDir) {
 	);
 	sized.sort((a, b) => b.size - a.size);
 	return sized[0];
+}
+
+async function fileEntries(dir, extension) {
+	return (await readdir(dir, { withFileTypes: true })).filter(
+		(entry) => entry.isFile() && entry.name.toLowerCase().endsWith(extension),
+	);
+}
+
+async function listChatDirectories() {
+	const entries = await readdir(path.join(stRoot, "chats"), { withFileTypes: true });
+	return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
+}
+
+async function findNewestChatFile(chatDir) {
+	const dir = path.join(stRoot, "chats", chatDir);
+	const files = await fileEntries(dir, ".jsonl");
+	let newest = null;
+	for (const entry of files) {
+		const info = await stat(path.join(dir, entry.name));
+		if (newest === null || info.mtimeMs > newest.mtimeMs) {
+			newest = { name: entry.name, mtimeMs: info.mtimeMs };
+		}
+	}
+	return newest;
+}
+
+async function selectLatestChatDirs(count, excluded) {
+	if (count === 0) return [];
+	const rows = [];
+	for (const chatDir of await listChatDirectories()) {
+		if (excluded.has(chatDir)) continue;
+		const newest = await findNewestChatFile(chatDir);
+		if (newest === null) continue;
+		rows.push({ chatDir, fileName: newest.name, mtimeMs: newest.mtimeMs });
+	}
+	rows.sort(
+		(a, b) => b.mtimeMs - a.mtimeMs || a.chatDir.localeCompare(b.chatDir),
+	);
+	return rows.slice(0, count);
 }
 
 async function findCardFile(character) {
@@ -149,7 +196,8 @@ async function copyWithHash(source, target) {
 		size += chunk.length;
 	});
 	await pipeline(sourceStream, createWriteStream(target));
-	return { size, sha256: hash.digest("hex") };
+	const info = await stat(source);
+	return { size, sha256: hash.digest("hex"), sourceMtime: info.mtime.toISOString() };
 }
 
 async function main() {
@@ -158,23 +206,30 @@ async function main() {
 	}
 
 	const plan = new Map();
+	const targetOwners = new Map();
 	const add = (entry) => {
-		if (!plan.has(entry.source)) plan.set(entry.source, entry);
+		if (plan.has(entry.source)) return;
+		const owner = targetOwners.get(entry.target);
+		if (owner !== undefined && owner !== entry.source) {
+			throw new Error(`两个源文件映射到同一目标：${entry.target}`);
+		}
+		targetOwners.set(entry.target, entry.source);
+		plan.set(entry.source, entry);
 	};
 
-	for (const spec of chatSpecs) {
-		const chatDir = await findChatDir(spec);
-		const chatFile = await findLargestChatFile(chatDir);
+	const addCharacterFiles = async (corpus, chatDir, fileName) => {
 		add({
+			corpus,
 			role: "chat",
 			character: chatDir,
-			source: relativeToRoot(path.join(stRoot, "chats", chatDir, chatFile.name)),
-			target: path.join("chats", chatDir, chatFile.name),
+			source: relativeToRoot(path.join(stRoot, "chats", chatDir, fileName)),
+			target: path.join("chats", chatDir, fileName),
 		});
 
 		const cardFile = await findCardFile(chatDir);
 		const cardPath = path.join(stRoot, "characters", cardFile);
 		add({
+			corpus,
 			role: "card",
 			character: chatDir,
 			source: relativeToRoot(cardPath),
@@ -185,16 +240,32 @@ async function main() {
 		const worldFile = await findWorldFile(collectWorldRefs(card), chatDir);
 		const worldPath = path.join(stRoot, "worlds", worldFile);
 		add({
+			corpus,
 			role: "worldbook",
 			character: chatDir,
 			source: relativeToRoot(worldPath),
 			target: path.join("worlds", worldFile),
 		});
+	};
+
+	const legacyDirs = [];
+	for (const spec of legacyChatSpecs) {
+		const chatDir = await findChatDir(spec);
+		legacyDirs.push(chatDir);
+		const chatFile = await findLargestChatFile(chatDir);
+		await addCharacterFiles("legacy", chatDir, chatFile.name);
+	}
+
+	const latestCount = readLatestChatCount(process.env.DRAMATICER_LATEST_CHATS);
+	const latestChats = await selectLatestChatDirs(latestCount, new Set(legacyDirs));
+	for (const latest of latestChats) {
+		await addCharacterFiles("latest", latest.chatDir, latest.fileName);
 	}
 
 	const presetDir = path.join(stRoot, "OpenAI Settings");
 	for (const presetPath of await walkFiles(presetDir)) {
 		add({
+			corpus: "shared",
 			role: "preset",
 			source: relativeToRoot(presetPath),
 			target: path.join("presets", path.relative(presetDir, presetPath)),
@@ -208,14 +279,16 @@ async function main() {
 		if (!target.startsWith(`${outRoot}${path.sep}`)) {
 			throw new Error(`输出路径越界：${entry.target}`);
 		}
-		const { size, sha256 } = await copyWithHash(source, target);
+		const { size, sha256, sourceMtime } = await copyWithHash(source, target);
 		manifestFiles.push({
 			role: entry.role,
+			corpus: entry.corpus,
 			...(entry.character ? { character: entry.character } : {}),
 			source: entry.source,
 			target: entry.target.split(path.sep).join("/"),
 			size,
 			sha256,
+			sourceMtime,
 		});
 	}
 
@@ -236,10 +309,17 @@ async function main() {
 	for (const file of manifestFiles) {
 		counts.set(file.role, (counts.get(file.role) ?? 0) + 1);
 	}
+	const corpusCounts = new Map();
+	for (const file of manifestFiles) {
+		corpusCounts.set(file.corpus, (corpusCounts.get(file.corpus) ?? 0) + 1);
+	}
 	console.log(`源目录：${stRoot}`);
 	console.log(`输出目录：${outRoot}`);
 	console.log(
 		`复制 ${manifestFiles.length} 个文件，共 ${(totalBytes / 1024 / 1024).toFixed(2)} MB（${[...counts].map(([role, count]) => `${role} ${count}`).join("，")}）`,
+	);
+	console.log(
+		`语料分组：${[...corpusCounts].map(([corpus, count]) => `${corpus} ${count}`).join("，")}；新增对话 ${latestChats.length} 个`,
 	);
 	console.log(`清单：${path.join(outRoot, "manifest.json")}`);
 }

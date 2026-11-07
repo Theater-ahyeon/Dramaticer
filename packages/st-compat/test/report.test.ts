@@ -104,6 +104,39 @@ describe("parseSnapshotManifest", () => {
 		});
 	});
 
+	it("保留语料分组与源文件修改时间", () => {
+		const manifest = parseSnapshotManifest({
+			files: [
+				{
+					role: "chat",
+					character: "角色",
+					corpus: "latest",
+					sourceMtime: "2026-11-07T10:43:05.627Z",
+					target: "a.jsonl",
+					size: 12,
+					sha256: "a".repeat(64),
+				},
+			],
+		});
+		expect(manifest.files[0]?.corpus).toBe("latest");
+		expect(manifest.files[0]?.sourceMtime).toBe("2026-11-07T10:43:05.627Z");
+	});
+
+	it("拒绝未知语料分组与非法修改时间", () => {
+		const base = {
+			role: "chat",
+			target: "a.jsonl",
+			size: 10,
+			sha256: "a".repeat(64),
+		};
+		expect(() =>
+			parseSnapshotManifest({ files: [{ ...base, corpus: "other" }] }),
+		).toThrow("manifest.files[0].corpus 必须是 legacy、latest、shared");
+		expect(() =>
+			parseSnapshotManifest({ files: [{ ...base, sourceMtime: "昨天" }] }),
+		).toThrow("manifest.files[0].sourceMtime 必须是 ISO 时间字符串");
+	});
+
 	it("拒绝缺少大小或 sha256 的条目", () => {
 		const base = { role: "chat", target: "a.jsonl" };
 		expect(() => parseSnapshotManifest({ files: [base] })).toThrow(
