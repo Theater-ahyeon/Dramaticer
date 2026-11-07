@@ -1,6 +1,11 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { ChunkIndex, type ChunkInput, chunkText } from "@dramaticer/core";
+import {
+	ChunkIndex,
+	type ChunkInput,
+	type ChunkMatch,
+	chunkText,
+} from "@dramaticer/core";
 import { parseChatJsonlFile } from "../chat-jsonl.js";
 import { readSnapshotManifest } from "../health/manifest.js";
 import { messageNodeId, parseMessageIndex } from "../node-id.js";
@@ -110,12 +115,19 @@ export async function evaluateRetrieval(
 				);
 			}
 			const askIndex = parseMessageIndex(storyId, question.askAtNode);
+			if (nodeIdByIndex[askIndex] === undefined) {
+				throw new Error(
+					`题目 ${question.id} 的提问楼层 ${question.askAtNode} 超出故事 ${storyId} 的楼层范围`,
+				);
+			}
 			const allowed = nodeIdByIndex.slice(0, askIndex);
-			const matches = index.search(question.question, {
-				storyId,
-				nodeIds: allowed,
-				limit: MAX_DEPTH,
-			});
+			const matches = dedupeByNodeId(
+				index.search(question.question, {
+					storyId,
+					nodeIds: allowed,
+					limit: MAX_DEPTH,
+				}),
+			);
 			const hits = [5, 10, 20].map((depth) =>
 				matches
 					.slice(0, depth)
@@ -217,6 +229,17 @@ export async function collectRetrievalBaseline(
 		byKind: kindScores,
 		total: toScore(total),
 	};
+}
+
+function dedupeByNodeId(matches: readonly ChunkMatch[]): ChunkMatch[] {
+	const seen = new Set<string>();
+	const unique: ChunkMatch[] = [];
+	for (const match of matches) {
+		if (seen.has(match.nodeId)) continue;
+		seen.add(match.nodeId);
+		unique.push(match);
+	}
+	return unique;
 }
 
 function createScore(): MutableScore {

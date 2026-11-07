@@ -446,7 +446,7 @@ function renderRetrievalSection(
 	lines.push("## 检索基线（BM25）");
 	lines.push("");
 	lines.push(
-		`分块：固定窗口 ${retrieval.maxChars} 字符、重叠 ${retrieval.overlapChars} 字符，按 FTS5 trigram 建索引。每道题只在提问楼层之前的楼层里检索；证据楼层出现在前 K 个结果里算命中。`,
+		`分块：固定窗口 ${retrieval.maxChars} 字符、重叠 ${retrieval.overlapChars} 字符，按 FTS5 trigram 建索引。写入与查询都先做 NFKC 规范化并去掉标点、符号和空白；同一楼层的多个块只占一个位次。每道题只在提问楼层之前的楼层里检索；证据楼层出现在前 K 个结果里算命中。`,
 	);
 	lines.push("");
 	lines.push("| 对话 | 楼层 | 块数 |");

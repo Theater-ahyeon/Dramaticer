@@ -32,14 +32,22 @@ const DEFAULTS = {
 } as const;
 
 /**
- * 把检索文本转成 FTS5 trigram 查询：去掉标点和空白后取全部连续三字窗口，用 OR 连接。
+ * 写入索引和构造查询共用的规范化：先做 NFKC，再去掉标点、符号和空白。
+ * 两侧必须一致，否则全角字符与标点会把同一个词切成不同的三字窗口。
+ */
+export function normalizeRetrievalText(text: string): string {
+	if (typeof text !== "string") {
+		throw new Error("检索文本必须是字符串");
+	}
+	return text.normalize("NFKC").replace(/[\p{P}\p{S}\s]/gu, "");
+}
+
+/**
+ * 把检索文本转成 FTS5 trigram 查询：规范化后取全部连续三字窗口，用 OR 连接。
  * 少于三个字符时返回 null。
  */
 export function buildTrigramQuery(text: string): string | null {
-	if (typeof text !== "string") {
-		throw new Error("检索语句必须是字符串");
-	}
-	const chars = [...text.normalize("NFKC").replace(/[\p{P}\p{S}\s]/gu, "")];
+	const chars = [...normalizeRetrievalText(text)];
 	if (chars.length < DEFAULTS.minQueryChars) return null;
 	const grams = new Set<string>();
 	for (let start = 0; start + DEFAULTS.minQueryChars <= chars.length; start++) {
@@ -52,7 +60,8 @@ export function buildTrigramQuery(text: string): string | null {
 
 /**
  * 只存文本块的 FTS5 索引，充当记忆引擎的 BM25 基线。
- * 表格按 trigram 分词，因此中文不需要预先分词；查询侧由 buildTrigramQuery 生成三字窗口。
+ * 表格按 trigram 分词，因此中文不需要预先分词；写入和查询都先经过 normalizeRetrievalText。
+ * 规范化后没有可检索字符的块不写入索引。
  */
 export class ChunkIndex {
 	readonly #db: Database.Database;
@@ -94,7 +103,9 @@ export class ChunkIndex {
 				assertNonEmptyString(item.storyId, `${label} 的 storyId`);
 				assertNonEmptyString(item.nodeId, `${label} 的 nodeId`);
 				assertNonEmptyString(item.text, `${label} 的 text`);
-				insert.run(item.text, item.nodeId, item.storyId);
+				const normalized = normalizeRetrievalText(item.text);
+				if (normalized === "") continue;
+				insert.run(normalized, item.nodeId, item.storyId);
 			}
 		});
 		run(chunks);

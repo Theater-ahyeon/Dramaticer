@@ -85,6 +85,56 @@ describe("evaluateRetrieval", () => {
 		});
 	});
 
+	it("同一楼层的多个块只占一个位次", async () => {
+		const question: RetrievalQuestion = {
+			id: "dup",
+			story,
+			askAtNode: `${story}:m2:s0`,
+			question: "青铜匕",
+			answer: "青铜匕",
+			evidenceNodes: [`${story}:m1:s0`],
+			kind: "state",
+		};
+		const result = await evaluateRetrieval({
+			chatPath: `${fixturesPath}retrieval-dup-chat.jsonl`,
+			storyId: story,
+			questions: [question],
+			maxChars: 3,
+			overlapChars: 0,
+		});
+		expect(result.floorCount).toBe(3);
+		expect(result.chunkCount).toBe(8);
+		expect(result.total).toEqual({
+			questionCount: 1,
+			hitAt5: 1,
+			hitAt10: 1,
+			hitAt20: 1,
+		});
+	});
+
+	it("提问楼层超出范围时抛错并指出题目", async () => {
+		const question: RetrievalQuestion = {
+			id: "越界",
+			story,
+			askAtNode: `${story}:m9:s0`,
+			question: "青铜匕",
+			answer: "青铜匕",
+			evidenceNodes: [`${story}:m1:s0`],
+			kind: "state",
+		};
+		await expect(
+			evaluateRetrieval({
+				chatPath: `${fixturesPath}retrieval-dup-chat.jsonl`,
+				storyId: story,
+				questions: [question],
+				maxChars: 3,
+				overlapChars: 0,
+			}),
+		).rejects.toThrow(
+			`题目 ${question.id} 的提问楼层 ${question.askAtNode} 超出故事 ${story} 的楼层范围`,
+		);
+	});
+
 	it("拒绝没有题目的故事", async () => {
 		await expect(
 			evaluateRetrieval({

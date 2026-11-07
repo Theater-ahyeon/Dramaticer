@@ -107,7 +107,8 @@
   做什么：`packages/core/src/llm/client.ts` 只在响应体解析抛出 `SyntaxError` 时按“响应体不是 JSON”处理，其余读取错误原样抛出；2xx 且响应体非法时只发一次 HTTP 请求；等待（重试退避与限速）监听 `request.signal`，`Retry-After` 设上限；缓存键并入 `apiKey` 的摘要；`stableJson` 丢弃值为 `undefined` 的属性、`Date` 等按 `JSON.stringify` 处理；删除不可达的 `throw lastError` 与 `LlmResponseError` 重试分支。
   验收：新增用例覆盖 2xx 非 JSON 只请求一次、中止抛出 `AbortError`、`Retry-After` 上限、`undefined` 属性与 `apiKey` 影响缓存键、`parseCompletion` 四个错误分支、5xx 重试与错误体的 `status`/`body`；`pnpm check` 通过。
 
-- [ ] **M0-FIX-4 检索规范化与命中口径** | 依赖：M0-REVIEW-1
+- [x] **M0-FIX-4 检索规范化与命中口径** | 依赖：M0-REVIEW-1
+  完成：2026-11-06 `normalizeRetrievalText` 让写入与查询共用 NFKC 加去标点/符号/空白的规范化，规范化后无字符的块不写入；`evalset/retrieval.ts` 按 `nodeId` 保序去重，`askAtNode` 越界抛错并指出题目；新增分块、索引与检索边界测试，报告命中更新为 141/156/163（原 126/143/153），门禁通过（188 个测试）
   做什么：`ChunkIndex` 的写入与查询使用同一套规范化（NFKC、去掉标点/符号/空白中的一致处理）；`evalset/retrieval.ts` 按 `nodeId` 保序去重后取前 K；`askAtNode` 序号越界直接抛错；补分块与索引的边界测试（长度等于 `maxChars`、等于 `maxChars + 1`、末尾残片小于 `step`、`\r\n` 归一化、`limit` 上限、重复写入、`toThrow` 按消息断言）。
   验收：新增“全角文本写入后全角查询命中”“带标点查询命中”“同一楼层多个块只占一个位次”“越界 askAtNode 抛错”等用例；重新跑 `pnpm --filter @dramaticer/st-compat report` 并用新的命中数字更新 `docs/dev/reports/M0-health.md`；`pnpm check` 通过。
 
