@@ -641,6 +641,33 @@ export function buildMigrations(
 				END`,
 			],
 		},
+		{
+			version: 25,
+			description: "间隙合并调用：故事开关与每个楼层的执行记录",
+			statements: [
+				`ALTER TABLE story_settings ADD COLUMN gap_pass_enabled INTEGER NOT NULL DEFAULT 0
+					CHECK (gap_pass_enabled IN (0, 1))`,
+				`CREATE TABLE gap_pass_runs (
+					node_id TEXT PRIMARY KEY NOT NULL REFERENCES nodes(id),
+					story_id TEXT NOT NULL REFERENCES stories(id),
+					rejected_segments TEXT NOT NULL,
+					created_at TEXT NOT NULL
+				) STRICT`,
+				"CREATE INDEX gap_pass_runs_story_idx ON gap_pass_runs(story_id)",
+				`CREATE TRIGGER gap_pass_runs_story_matches_node
+				BEFORE INSERT ON gap_pass_runs
+				WHEN COALESCE((SELECT story_id FROM nodes WHERE id = NEW.node_id), '') <> NEW.story_id
+				BEGIN
+					SELECT RAISE(ABORT, '间隙合并调用记录的 story_id 必须与所在楼层一致');
+				END`,
+				`CREATE TRIGGER gap_pass_runs_identity_immutable
+				BEFORE UPDATE ON gap_pass_runs
+				WHEN NEW.node_id <> OLD.node_id OR NEW.story_id <> OLD.story_id
+				BEGIN
+					SELECT RAISE(ABORT, '间隙合并调用记录的楼层与故事归属不可修改');
+				END`,
+			],
+		},
 	];
 }
 

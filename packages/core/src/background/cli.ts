@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadDotEnv } from "../env.js";
+import { GAP_PASS_JOB_KIND, createGapPassHandler } from "../ledger/gap-pass.js";
 import {
 	MEMORY_REVISION_JOB_KIND,
 	createMemoryRevisionHandler,
@@ -120,6 +121,10 @@ export async function runWorkCli(
 				handler: createMemoryRevisionHandler(),
 				enqueue: "settled",
 			},
+			[GAP_PASS_JOB_KIND]: {
+				handler: createGapPassHandler(),
+				enqueue: "settled",
+			},
 			...(embedder === null
 				? {}
 				: {
@@ -136,12 +141,18 @@ export async function runWorkCli(
 		const runs: BackgroundJobRun[] = [];
 		let enqueued = 0;
 		for (const story of stories) {
+			const kinds = resolveStoryKinds(
+				registry,
+				store.getStorySettings(story.id).gapPassEnabled,
+				parsed.kind === null ? null : parsed.kind,
+			);
+			if (kinds.length === 0) continue;
 			const result = await drainBackgroundJobs({
 				store,
 				registry,
 				client,
 				storyId: story.id,
-				kinds: parsed.kind === null ? undefined : [parsed.kind],
+				kinds,
 				limit: parsed.limit ?? DEFAULT_BACKGROUND_JOB_LIMIT,
 				now: dependencies.now,
 			});
@@ -170,6 +181,20 @@ export async function runWorkCli(
 	} finally {
 		store.close();
 	}
+}
+
+/**
+ * 合并调用的开关按故事读取：关闭时这一类型既不建任务也不执行，其余类型
+ * 照常。不认识的类型留在列表里，交给 drain 报错。
+ */
+function resolveStoryKinds(
+	registry: BackgroundJobRegistry,
+	gapPassEnabled: boolean,
+	requested: string | null,
+): string[] {
+	const kinds = requested === null ? [...registry.keys()] : [requested];
+	if (gapPassEnabled) return kinds;
+	return kinds.filter((kind) => kind !== GAP_PASS_JOB_KIND);
 }
 
 interface WorkArgs {

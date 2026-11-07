@@ -38,6 +38,8 @@ export interface StorySettings {
 	readonly directorConfig: DirectorConfig;
 	/** 历史槽位的块 prompt 视图策略。 */
 	readonly historyBlockPolicy: HistoryBlockPolicy;
+	/** 间隙里用一次合并调用代替几个独立后台任务；默认关闭。 */
+	readonly gapPassEnabled: boolean;
 	readonly updatedAt: string;
 }
 
@@ -55,6 +57,7 @@ export interface StorySettingsUpdate {
 	readonly viewpoint?: string | null;
 	readonly directorConfig?: DirectorConfig;
 	readonly historyBlockPolicy?: HistoryBlockPolicy;
+	readonly gapPassEnabled?: boolean;
 }
 
 export const STORY_SETTINGS_UPDATE_KEYS: readonly (keyof StorySettingsUpdate)[] =
@@ -72,6 +75,7 @@ export const STORY_SETTINGS_UPDATE_KEYS: readonly (keyof StorySettingsUpdate)[] 
 		"viewpoint",
 		"directorConfig",
 		"historyBlockPolicy",
+		"gapPassEnabled",
 	];
 
 /** 尚未保存设置时使用的数值与枚举；故事 id 与更新时间由调用方补齐。 */
@@ -83,6 +87,7 @@ export const DEFAULT_STORY_SETTINGS_VALUES = {
 	reasoning: "low",
 	directorConfig: DEFAULT_DIRECTOR_CONFIG,
 	historyBlockPolicy: DEFAULT_HISTORY_BLOCK_POLICY,
+	gapPassEnabled: false,
 } as const;
 
 export interface ContextTemplateRecord {
@@ -207,6 +212,12 @@ export function assertStorySettingsUpdate(update: StorySettingsUpdate): void {
 			update.historyBlockPolicy,
 			"故事设置的 historyBlockPolicy",
 		);
+	}
+	if (
+		update.gapPassEnabled !== undefined &&
+		typeof update.gapPassEnabled !== "boolean"
+	) {
+		throw new Error("故事设置的 gapPassEnabled 必须是布尔值");
 	}
 }
 

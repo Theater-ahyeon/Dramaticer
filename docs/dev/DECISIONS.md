@@ -695,3 +695,22 @@
   - 批准只有 `pending` 卡可以做：在当前 head 上把 `diffs` 写成 `source` 为 `player` 的事实，`reason` 写卡片 id；`source` 为 `player` 的卡片把 `text` 作为 `correction` 写入 `userWill.<稳定 id>`，路径上已有同 id 时跳过。拒绝只把状态改成 `rejected`；回滚只对 `approved` 卡，按 `before` 追加反向 diff（原来不存在的路径写 delete），原事实保留在变更历史里。
   - `ledger/cli.ts` 提供 `dramaticer ledger cards <story> --db <path> [--status <status>]` 与 `dramaticer ledger --approve|--reject|--rollback <id> --db <path>`；决定函数与 CLI 是同一套代码，R5 面板直接复用。
 - **影响**：schema 迁移编号顺延：开局包 v25、开场候选 v26、偏好记录 v27、父子分块 v28、章节压缩 v29、世界书预筛 v30、上下文包 v31。变更卡不进入上下文，只用于玩家复核；`dramaticer ledger` 不需要渠道配置。R1-T07.b 的 `gap_pass` 生成修订候选时复用 `revision.ts` 的解析与 `cards.ts` 的校验，不另建存储。
+
+## ADR-0053 间隙合并调用的分段输出、拒绝记录与开关（2026-11-07）
+
+- **背景**：R1-T07.b.b 要求一次后台调用同时产出结算、现场分析、用户意志与修订候选，事件作为可选段；各段单独校验与写入；单段失败只拒绝该段并记录原因；调用前判断任务楼层的结算是否已经完成或在本次窗口里；故事设置增加开关且默认关闭。任务没有规定输出的顶层形状、拒绝原因存在哪里、开关怎样影响入队，以及 `gap_pass` 与四个独立任务的关系。
+- **选项**：
+  - 单段拒绝原因写 `background_jobs.last_error`：那会让任务看起来失败，并按重试语义累计执行次数（排除）；新增 `gap_pass_runs`，每个楼层一行、重复执行覆盖（采纳）。
+  - 顶层输出用数组还是对象：数组要为每项附带段落名，缺段要靠约定；对象让缺段自然省略，各段的值也能直接交给既有解析器（采纳对象）。
+  - 开关放进 `director_config` 或 `history_block_policy` 这类既有 JSON：读取方要解析语义无关的配置（排除）；`story_settings` 新增 `gap_pass_enabled` 列（采纳）。
+  - 单段失败时整次重试：会重复发出请求，写入虽然幂等但代价没有必要（排除）；只拒绝该段，任务算完成（采纳）。
+  - 没有待结算楼层时是否仍然调用：用户意志、修订草案与现场分析仍然要用这次请求，照常运行；只有任务楼层完全没有结算记录时才退回 pending（采纳）。
+- **决定**：
+  - 迁移 v25 给 `story_settings` 增加 `gap_pass_enabled`（默认 0），新增 `gap_pass_runs(node_id PRIMARY KEY, story_id, rejected_segments, created_at)`，带同故事触发器与归属不可改触发器；执行记录按楼层覆盖写入。
+  - 故事设置新增 `gapPassEnabled`（默认 `false`）；`dramaticer work` 按故事读设置，关闭时既不建 `gap_pass` 任务也不执行已存在的任务，其余任务类型照常。
+  - `ledger/gap-pass.ts` 的 `createGapPassHandler` 一次请求输出一个 JSON 对象，键取 `settlement`、`scene`、`userWill`、`revision`、`events`；出现未知键时整次拒绝，因为无法判断是哪一段的错。
+  - 输入合并成一条消息：结算窗口与冲突检查窗口、要分析楼层的台账快照（与结算窗口快照相同时省略）、最近楼层原文、已有用户意志、已有变更卡、最近的玩家消息，以及事件窗口（`selectEventWindow` 的结果，用 `formatEventWindow` 渲染）。台账命名空间说明从结算提示词提成 `LEDGER_PATH_GUIDE`，两条提示词共用。
+  - 写入顺序固定为结算、现场分析、用户意志、修订草案、事件；结算段先写，现场分析段随后能读到结算记录，仍然没有结算记录时只拒绝现场分析段。用户意志与修订草案各按自己的窗口条数校验引文。
+  - 每段的解析与写入包在同一个 try 里：任一步失败只把该段与错误信息记进 `rejected_segments`，其余段照常写入，任务以完成结束；整个回复不是 JSON 对象时任务失败并按任务框架重试。
+  - 调用模型前比较任务楼层的结算记录与本次待结算窗口：两者都没有时抛 `BackgroundJobDeferredError`，不发出请求。
+- **影响**：schema 迁移编号顺延：开局包 v26、开场候选 v27、偏好记录 v28、父子分块 v29、章节压缩 v30、世界书预筛 v31、上下文包 v32。`gap_pass` 默认关闭，是否改为默认开启由 R1-T07.b.d 的对比结论决定；`gap_pass_runs.rejected_segments` 给出各段的拒绝比例，可直接用于该对比。事件段复用 `recordExtractedEvents`，与独立的 `events` 任务写同一张事件表与同一份抽取记录，先后执行都不会重复抽取。

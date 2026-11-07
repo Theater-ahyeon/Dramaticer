@@ -56,6 +56,7 @@ describe("故事设置", () => {
 			viewpoint: null,
 			directorConfig: DEFAULT_DIRECTOR_CONFIG,
 			historyBlockPolicy: DEFAULT_HISTORY_BLOCK_POLICY,
+			gapPassEnabled: false,
 			updatedAt: createdAt,
 		});
 		close();
@@ -83,6 +84,7 @@ describe("故事设置", () => {
 				mode: "full",
 				overrides: { 选项: { kind: "drop" } },
 			},
+			gapPassEnabled: true,
 		});
 		store.updateStorySettings("s1", { temperature: 0.1 });
 		close();
@@ -107,6 +109,7 @@ describe("故事设置", () => {
 					mode: "full",
 					overrides: { 选项: { kind: "drop" } },
 				},
+				gapPassEnabled: true,
 			});
 		} finally {
 			reopened.close();
@@ -137,6 +140,7 @@ describe("故事设置", () => {
 				"未知字段",
 			],
 			[{ historyBlockPolicy: { mode: "huge" } as never }, "historyBlockPolicy"],
+			[{ gapPassEnabled: "yes" as never }, "gapPassEnabled"],
 			[
 				{
 					historyBlockPolicy: {

@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { describe, expect, it, onTestFinished } from "vitest";
 import {
 	type EmbeddingClient,
+	GAP_PASS_JOB_KIND,
 	type LlmChannelsConfig,
 	type LlmClient,
 	StoryStore,
@@ -236,6 +237,40 @@ describe("dramaticer work", () => {
 		expect(result.runs.map((run) => run.kind)).toEqual(["npc_agenda"]);
 		expect(result.runs[0]?.status).toBe("done");
 		expect(result.runs[0]?.nodeId).toBe("n-a");
+	});
+
+	it("合并调用开关关闭时不建任务，打开后建任务并执行", async () => {
+		const dbPath = createTempDb();
+		const executed: string[] = [];
+		const dependencies = {
+			loadEnv: () => undefined,
+			loadConfig: async () => createConfig(true),
+			createClient: () => fakeClient,
+			registry: createBackgroundJobRegistry({
+				[GAP_PASS_JOB_KIND]: (context) => {
+					executed.push(context.job.nodeId);
+				},
+			}),
+			now: () => FIXED_NOW,
+			log: () => undefined,
+		};
+		const disabled = await runWorkCli(["work", "--db", dbPath], dependencies);
+		expect(disabled.enqueued).toBe(0);
+		expect(disabled.runs).toEqual([]);
+		expect(executed).toEqual([]);
+
+		const store = StoryStore.open(dbPath);
+		try {
+			store.updateStorySettings("s1", { gapPassEnabled: true });
+		} finally {
+			store.close();
+		}
+		const enabled = await runWorkCli(["work", "--db", dbPath], dependencies);
+		expect(enabled.enqueued).toBe(1);
+		expect(enabled.runs.map((run) => `${run.nodeId}:${run.status}`)).toEqual([
+			"n-a:done",
+		]);
+		expect(executed).toEqual(["n-a"]);
 	});
 
 	it("渠道配置里没有 background 模型时抛错", async () => {

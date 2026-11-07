@@ -68,6 +68,22 @@ const DIFF_FIELDS = [
 	"storyTime",
 ];
 
+/**
+ * 台账命名空间与路径的说明；单独导出给合并调用复用，避免两处各写一份。
+ */
+export const LEDGER_PATH_GUIDE: readonly string[] = [
+	"- character.<人物 id>.<tier|identity|appearance|outfit|status|location>，tier 取 lead 或 minor",
+	'- relation.<from>.<to>.<type|stage|turningPoint|affectionInner|affectionOuter|inertia>，好感取 "敌对"、"冷淡"、"平常"、"亲近"、"倾心"，inertia 是 0 到 1',
+	"- item.<物品 id>.<holder|location|origin>；item.<物品 id>.log.<条目 id> 的值是 {text,nodeId,at}",
+	"- scene.places.<地点 id>.<name|description|parent>；scene.current.<place|posture|atmosphere|participants>",
+	"- time.current 的值是故事内时间",
+	"- clue.<线索 id>.<text|status|openedAt|updatedAt>，status 取 open、progress、fulfilled",
+	"- knowledge.<知情者>.<条目 id> 的值是 {factId,text}；factId 指向事件或线索的 id，同一个人对同一 factId 只写一次",
+	"- userWill.<id> 的值是 {kind,text,sourceNodeId,createdAt}",
+	"- mvu.<原始变量路径> 表示导入的 MVU 变量",
+	"- 人物、地点、物品的 id 直接写名称，程序会按实体表规范化。",
+];
+
 const SYSTEM_PROMPT = [
 	"你是故事台账的结算器。阅读结算窗口里的楼层正文、最近楼层的原文与当前台账快照，为每个楼层补齐正文已经确立、但楼层自己没有写入的台账事实。",
 	"只输出一个 JSON 数组，不要输出解释、前后缀或代码块标记。每一项形如：",
@@ -81,16 +97,7 @@ const SYSTEM_PROMPT = [
 	"- 不要写正文里没有依据的事实；没有需要补的楼层仍然输出一项，diffs 为空数组。",
 	"- 要写的事实如果与“冲突检查窗口”的原文明确矛盾，不要写进 diffs，写进同一楼层的 conflicts；conflicts 只写 path 与 reason，不写值。已有事实与最近原文一致时保留已有值。",
 	"命名空间与路径：",
-	"- character.<人物 id>.<tier|identity|appearance|outfit|status|location>，tier 取 lead 或 minor",
-	'- relation.<from>.<to>.<type|stage|turningPoint|affectionInner|affectionOuter|inertia>，好感取 "敌对"、"冷淡"、"平常"、"亲近"、"倾心"，inertia 是 0 到 1',
-	"- item.<物品 id>.<holder|location|origin>；item.<物品 id>.log.<条目 id> 的值是 {text,nodeId,at}",
-	"- scene.places.<地点 id>.<name|description|parent>；scene.current.<place|posture|atmosphere|participants>",
-	"- time.current 的值是故事内时间",
-	"- clue.<线索 id>.<text|status|openedAt|updatedAt>，status 取 open、progress、fulfilled",
-	"- knowledge.<知情者>.<条目 id> 的值是 {factId,text}；factId 指向事件或线索的 id，同一个人对同一 factId 只写一次",
-	"- userWill.<id> 的值是 {kind,text,sourceNodeId,createdAt}",
-	"- mvu.<原始变量路径> 表示导入的 MVU 变量",
-	"- 人物、地点、物品的 id 直接写名称，程序会按实体表规范化。",
+	...LEDGER_PATH_GUIDE,
 ].join("\n");
 
 interface SettlerProposal {

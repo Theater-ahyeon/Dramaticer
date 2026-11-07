@@ -191,31 +191,44 @@ export function createEventExtractionHandler(
 			result.text,
 			window.floors.map((node) => node.id),
 		);
-		const events: NewMemoryEventInput[] = [];
-		for (const batch of batches) {
-			batch.events.forEach((event, ordinal) => {
-				events.push({
-					storyId: job.storyId,
-					sourceNodeId: batch.nodeId,
-					ordinal,
-					storyTime: event.storyTime,
-					location: event.location,
-					participants: event.participants,
-					importance: event.importance,
-					knowers: event.knowers,
-					text: event.text,
-				});
-			});
-		}
-		store.recordEventExtractions({
-			storyId: job.storyId,
-			nodeIds: window.floors.map((node) => node.id),
-			events,
-		});
+		recordExtractedEvents(store, job.storyId, window, batches);
 	};
 }
 
-interface EventWindow {
+/**
+ * 把一批已解析的事件写进只追加的事件表，并给窗口内每个楼层写抽取记录；
+ * 没有事件的楼层也记一笔，重跑不再调用模型。
+ */
+export function recordExtractedEvents(
+	store: StoryStore,
+	storyId: string,
+	window: EventWindow,
+	batches: readonly BatchExtractedEvents[],
+): void {
+	const events: NewMemoryEventInput[] = [];
+	for (const batch of batches) {
+		batch.events.forEach((event, ordinal) => {
+			events.push({
+				storyId,
+				sourceNodeId: batch.nodeId,
+				ordinal,
+				storyTime: event.storyTime,
+				location: event.location,
+				participants: event.participants,
+				importance: event.importance,
+				knowers: event.knowers,
+				text: event.text,
+			});
+		});
+	}
+	store.recordEventExtractions({
+		storyId,
+		nodeIds: window.floors.map((node) => node.id),
+		events,
+	});
+}
+
+export interface EventWindow {
 	/** 需要抽取的助手楼层，按路径顺序排列。 */
 	readonly floors: readonly TimelineNode[];
 	/** 窗口内的全部楼层，含助手楼层之间的玩家楼层。 */
@@ -228,7 +241,7 @@ interface EventWindow {
  * 从当前路径上取最早的一段连续未抽取助手楼层，一次最多 `windowFloors` 个。
  * 已抽取的助手楼层会切断窗口，避免反复处理同一段。
  */
-function selectEventWindow(
+export function selectEventWindow(
 	store: StoryStore,
 	storyId: string,
 	windowFloors: number,
@@ -267,7 +280,7 @@ function selectEventWindow(
 	};
 }
 
-function formatEventWindow(window: EventWindow): string {
+export function formatEventWindow(window: EventWindow): string {
 	const lines = [
 		"以下是按时间顺序排列的楼层。只从 <窗口> 内的助手楼层抽取事件；<上下文> 里的楼层只用来理解前后经过，不要为它们输出记录。",
 	];

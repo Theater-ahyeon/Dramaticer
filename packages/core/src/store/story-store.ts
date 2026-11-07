@@ -56,6 +56,11 @@ import {
 	isLedgerChangeCardStatus,
 } from "../ledger/cards.js";
 import {
+	type GapPassRun,
+	type NewGapPassRun,
+	assertGapPassRejections,
+} from "../ledger/gap-pass.js";
+import {
 	LEDGER_SOURCES,
 	type LedgerSource,
 	assertLedgerConfidence,
@@ -151,6 +156,7 @@ interface StorySettingsRow {
 	readonly viewpoint: string | null;
 	readonly director_config: string;
 	readonly history_block_policy: string;
+	readonly gap_pass_enabled: number;
 	readonly updated_at: string;
 }
 
@@ -210,6 +216,13 @@ interface SceneAnalysisRow {
 	readonly story_id: string;
 	readonly text: string;
 	readonly token_count: number;
+	readonly created_at: string;
+}
+
+interface GapPassRunRow {
+	readonly node_id: string;
+	readonly story_id: string;
+	readonly rejected_segments: string;
 	readonly created_at: string;
 }
 
@@ -701,8 +714,18 @@ function rowToStorySettings(row: StorySettingsRow): StorySettings {
 		viewpoint: row.viewpoint,
 		directorConfig: parsedDirectorConfig,
 		historyBlockPolicy: parsedHistoryBlockPolicy,
+		gapPassEnabled: readBooleanColumn(
+			row.gap_pass_enabled,
+			`故事 ${row.story_id} 的 gap_pass_enabled`,
+		),
 		updatedAt: row.updated_at,
 	};
+}
+
+function readBooleanColumn(value: number, label: string): boolean {
+	if (value === 0) return false;
+	if (value === 1) return true;
+	throw new Error(`${label} 必须是 0 或 1：${String(value)}`);
 }
 
 function rowToContextTemplate(row: ContextTemplateRow): ContextTemplateRecord {
@@ -826,6 +849,18 @@ function rowToSceneAnalysis(row: SceneAnalysisRow): SceneAnalysis {
 		storyId: row.story_id,
 		text: row.text,
 		tokenCount: row.token_count,
+		createdAt: row.created_at,
+	};
+}
+
+function rowToGapPassRun(row: GapPassRunRow): GapPassRun {
+	return {
+		nodeId: row.node_id,
+		storyId: row.story_id,
+		rejectedSegments: assertGapPassRejections(
+			JSON.parse(row.rejected_segments) as unknown,
+			`楼层 ${row.node_id} 的合并调用记录`,
+		),
 		createdAt: row.created_at,
 	};
 }
@@ -1237,6 +1272,7 @@ export class StoryStore {
 			viewpoint: null,
 			directorConfig: DEFAULT_STORY_SETTINGS_VALUES.directorConfig,
 			historyBlockPolicy: DEFAULT_STORY_SETTINGS_VALUES.historyBlockPolicy,
+			gapPassEnabled: DEFAULT_STORY_SETTINGS_VALUES.gapPassEnabled,
 			updatedAt: story.createdAt,
 		};
 	}
@@ -1316,6 +1352,10 @@ export class StoryStore {
 				update.historyBlockPolicy !== undefined
 					? update.historyBlockPolicy
 					: current.historyBlockPolicy,
+			gapPassEnabled:
+				update.gapPassEnabled !== undefined
+					? update.gapPassEnabled
+					: current.gapPassEnabled,
 		};
 		const updatedAt = new Date().toISOString();
 		this.#db
@@ -1323,8 +1363,9 @@ export class StoryStore {
 				`INSERT INTO story_settings
 					(story_id, card_name, character_prompt, persona, template_id, model,
 					 budget_tokens, structured_output, temperature, max_tokens, reasoning,
-					 viewpoint, director_config, history_block_policy, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+					 viewpoint, director_config, history_block_policy, gap_pass_enabled,
+					 updated_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 				ON CONFLICT(story_id) DO UPDATE SET
 					card_name = excluded.card_name,
 					character_prompt = excluded.character_prompt,
@@ -1339,6 +1380,7 @@ export class StoryStore {
 					viewpoint = excluded.viewpoint,
 					director_config = excluded.director_config,
 					history_block_policy = excluded.history_block_policy,
+					gap_pass_enabled = excluded.gap_pass_enabled,
 					updated_at = excluded.updated_at`,
 			)
 			.run(
@@ -1356,6 +1398,7 @@ export class StoryStore {
 				next.viewpoint,
 				serializeDirectorConfig(next.directorConfig),
 				serializeHistoryBlockPolicy(next.historyBlockPolicy),
+				next.gapPassEnabled ? 1 : 0,
 				updatedAt,
 			);
 		const saved = this.getStorySettings(storyId);
@@ -2405,6 +2448,58 @@ export class StoryStore {
 			)
 			.get(nodeId) as SceneAnalysisRow | undefined;
 		return row === undefined ? null : rowToSceneAnalysis(row);
+	}
+
+	/** 写入一个楼层的合并调用执行记录；同一楼层重复执行覆盖同一行。 */
+	saveGapPassRun(input: NewGapPassRun): GapPassRun {
+		assertNonEmptyString(input.nodeId, "合并调用记录的楼层 id");
+		assertNonEmptyString(input.storyId, "合并调用记录的故事 id");
+		const node = this.getNode(input.nodeId);
+		if (!node) {
+			throw new Error(`楼层节点不存在：${input.nodeId}`);
+		}
+		if (node.storyId !== input.storyId) {
+			throw new Error(
+				`合并调用记录的 storyId 与楼层所属故事不一致：${input.storyId}`,
+			);
+		}
+		const rejectedSegments = assertGapPassRejections(
+			input.rejectedSegments,
+			"合并调用记录的 rejectedSegments",
+		);
+		const createdAt = input.createdAt ?? new Date().toISOString();
+		assertNonEmptyString(createdAt, "合并调用记录的创建时间");
+		this.#db
+			.prepare(
+				`INSERT INTO gap_pass_runs (node_id, story_id, rejected_segments, created_at)
+				VALUES (?, ?, ?, ?)
+				ON CONFLICT (node_id) DO UPDATE SET
+					rejected_segments = excluded.rejected_segments,
+					created_at = excluded.created_at`,
+			)
+			.run(
+				input.nodeId,
+				input.storyId,
+				JSON.stringify(rejectedSegments),
+				createdAt,
+			);
+		return {
+			nodeId: input.nodeId,
+			storyId: input.storyId,
+			rejectedSegments,
+			createdAt,
+		};
+	}
+
+	/** 读取一个楼层的合并调用执行记录；没有时返回 null。 */
+	getGapPassRun(nodeId: string): GapPassRun | null {
+		if (!this.getNode(nodeId)) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
+		const row = this.#db
+			.prepare("SELECT * FROM gap_pass_runs WHERE node_id = ?")
+			.get(nodeId) as GapPassRunRow | undefined;
+		return row === undefined ? null : rowToGapPassRun(row);
 	}
 
 	/**
