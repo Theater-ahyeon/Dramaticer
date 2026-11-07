@@ -3,26 +3,25 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：99
-- 任务：R1-T07.a 自然语言修订记忆
+- 会话：100
+- 任务：R1-T07.b.a 合并调用的共享准备与写入
 - 结果：完成（`DONE`），门禁通过（816 个测试通过，3 个 live 跳过，共 819 个）。
-  - 迁移 v24 新增 `ledger_change_cards`：任务给出的九个字段之外，另加 `source`（沿用 `LEDGER_SOURCES`）与 `rejection_reason`；带同故事触发器，内容、归属与来源在 UPDATE 时不可改（ADR-0052）。
-  - 新增 `packages/core/src/ledger/cards.ts`：`LEDGER_CHANGE_CARD_STATUSES`（pending、approved、rejected、rolled_back）、`assertLedgerChangeCardDiff(s)`（每条修改走 `validateLedgerDiff`，来源按 `player`）、`assertLedgerBeforeEntries`（与 diffs 一一对应、路径相同、不存在过的路径不能带 value）、`ledgerChangeCardId(parts)`（SHA-256 前 16 位）、`readBeforeEntry`、`approveLedgerChangeCard`、`rejectLedgerChangeCard`、`rollbackLedgerChangeCard`。批准把 diffs 写到当前 head、来源 `player`；`source` 为 `player` 的卡片把 `text` 作为 `correction` 写进 `userWill.<稳定 id>`，路径上已有同 id 时跳过；拒绝只改状态；回滚只对已批准卡，按 `before` 追加反向 diff（原来不存在的路径写 delete）。
-  - 新增 `packages/core/src/ledger/revision.ts`：后台任务 `memory_revision`（入队条件 `settled`）读任务楼层路径上最近 6 条非空玩家消息，请求带台账快照、已有用户意志与已有卡片；模型返回 `[{text, sourceQuote, diffs}]`，`sourceQuote` 必须逐字出现在窗口内的玩家楼层，否则整次拒绝；逐卡校验 diffs，任一条不合格就整卡以 `rejected` 入库并写入原因，其余卡片照常入库；合法卡以 `pending` 入库，`before` 取任务楼层快照的原值；id 由任务名、规范化正文与原始 diffs 组成，重复执行不新增卡片。
-  - `ledger/settle.ts` 的 `planFloor` 保留与冲突路径对应的提案；结算事务里为每条冲突创建 `pending` 卡（来源 `settler`、`source_node_id` 是该楼层、`text` 是修复原因、`diffs` 是提案、`before` 取结算窗口最后一楼快照的原值）。冲突没有对应提案时不建卡。
-  - 新增 `packages/core/src/ledger/cli.ts`（`runLedgerCli`）：`dramaticer ledger cards <story> --db <path> [--status <status>]` 与 `dramaticer ledger --approve|--reject|--rollback <id> --db <path>`；st-compat 的 `cli.ts` 增加 `ledger` 命令。R5 面板直接复用三个决定函数。
-  - `dramaticer work` 注册 `memory_revision`（条件 `settled`）。ADR-0052；DESIGN §7.1 同步更新。
-  - 新增 `packages/core/test/ledger-cards.test.ts` 10 个测试：草案生成待定卡与批准前台账不变、批准写成 player 事实并记入用户意志、重复批准抛错且不重复写入、拒绝不写台账、回滚恢复原值且不能再回滚、一条非法修改让整卡被拒绝并记录原因、引文不在玩家消息里整次拒绝、重复执行不新增卡片、空窗口不调用模型、结算冲突转待定卡并批准后覆盖、CLI 列出与批准。
+  - R1-T07.b 已分成四个子任务（R1-T07.b.a 至 R1-T07.b.d），见 TASKS；父任务保留总验收，由 R1-T99 逐条核对。本会话只做 .a。
+  - `ledger/settle.ts` 把结算拆成三步并导出：`prepareSettlement(store, storyId, {windowSize, conflictWindowFloors})` 返回 `SettlementWindow`（`nodeIds`、`floors`、`snapshot`、`conflictWindow`，没有待结算楼层时返回 `null`）；`buildSettlementMessages(window)` 给出结算请求的消息；`applySettlementProposals(store, window, proposals)` 完成实体候选、实体建档、逐楼层 diff 与冲突变更卡，全部在 `store.runInTransaction` 内。`parseSettleResponse` 同时导出。`createSettleHandler` 只剩准备、调用、解析、写入四步。
+  - `memory/scene.ts` 导出 `saveSceneAnalysisText(store, storyId, nodeId, text)`：去掉两端空白、空正文抛错、用模块级 token 估算器算 `tokenCount`；`createSceneHandler` 改为调用它。
+  - `ledger/user-will.ts` 导出 `readExistingWills`（`ExistingWills`：`ids` 与 `texts`）与 `applyCapturedUserWills(store, storyId, nodeId, captured)`，后者负责稳定 id 去重、校验与追加，返回新增条数；处理器改为调用它。
+  - `ledger/revision.ts` 导出 `applyRevisionDrafts(store, storyId, nodeId, drafts, snapshot)`：稳定 id 去重、逐卡校验、非法卡以 `rejected` 入库并带原因，返回新增卡片数；处理器改为调用它。
+  - 行为、校验规则与错误信息不变；四个任务的既有测试全部通过。新函数从 `@dramaticer/core` 导出（已用 `node -e` 从 `dist/index.js` 逐一确认）。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a。完成记录与验收标准见 `docs/dev/TASKS-archive.md`，未完成任务见 `docs/dev/TASKS.md`。
-- **R1-T02 已拆成 R1-T02.1–R1-T02.4**（父任务是文字说明，不是可勾选任务）：四个子任务全部完成，R1-T02 的总验收由 R1-T99 逐条核对。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a。完成记录与验收标准见 `docs/dev/TASKS-archive.md`，未完成任务见 `docs/dev/TASKS.md`。
+- **R1-T02 已分成 R1-T02.1–R1-T02.4**；**R1-T07.b 已分成 .a–.d**，父任务都是文字说明，不是可勾选任务。
 - v3 阶段顺序：R1 最小集 → R3 快回合 → O 开局与方向 → R2 评测底座 → E → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045。
 - HUMAN-09 仍待处理（不阻塞）：ADR-0042 声明的 `bg-fallback`、`main-fallback`、`codex` 别名在 `data/channels.yaml` 里已经出现，`channels.example.yaml` 是否需要补上请人类确认；没有改这两个文件。
 - HUMAN-10 待处理（不阻塞）：插件不变量是否加进 AGENTS.md。
 - 数据库 schema 版本 24（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡）；后续编号：v25 开局包、v26 开场候选、v27 偏好记录、v28 父子分块、v29 章节压缩、v30 世界书预筛、v31 上下文包；插入新迁移时后续编号一起顺延。
-- 结算只有 `dramaticer work` 调度：server 的回合路径不补建也不执行后台任务，所以回合内后台客户端零调用是结构保证；要真正结算故事，跑 `pnpm work --db <path> --kind settle`，要生成现场分析跑 `pnpm work --db <path> --kind scene`，要捕获用户意志跑 `pnpm work --db <path> --kind user_will`，要生成修订草案跑 `pnpm work --db <path> --kind memory_revision`，要回填事件跑 `pnpm work --db <path> --kind events`（单故事、逐窗口推进，适合小批量），批量回填三个 legacy 对话用 R1-T04.a 的 `events-backfill`。
+- 结算只有 `dramaticer work` 调度：server 的回合路径不补建也不执行后台任务，所以回合内后台客户端零调用是结构保证；要真正结算故事，跑 `pnpm work --db <path> --kind settle`，要生成现场分析跑 `--kind scene`，要捕获用户意志跑 `--kind user_will`，要生成修订草案跑 `--kind memory_revision`，要回填事件跑 `--kind events`（单故事、逐窗口推进，适合小批量），批量回填三个 legacy 对话用 R1-T04.a 的 `events-backfill`。
 - 结算窗口以 head 为终点（ADR-0046），冲突检查窗口同样取 head 路径最后 `conflictWindowFloors` 楼。窗口内没有未结算楼层时不调用模型。
 - 现场分析以被分析的楼层为锚点：台账快照取该楼层的结算结果，原文窗口是该楼层路径上的最近 6 楼；没有结算记录时任务退回 pending（ADR-0048）。
 - 冲突检测依赖模型在同一个结算请求里返回 `conflicts`；程序不自行判断语义矛盾，只做事实级拒绝与记录。冲突提案与同路径的 `diffs` 提案配对后转成待审变更卡；只有 `conflicts` 没有对应提案时不建卡。
@@ -33,15 +32,15 @@
 - `packages/server` 已提供故事、导入、设置、模板、SSE 回合与后台运行时缓存；`packages/protocol` 已提供 HTTP 与 SSE 类型；`packages/web` 尚未创建。
 - 故事设置缺省值：`budgetTokens` 12000、`structuredOutput` `text-tags`、`temperature` 0.8、`maxTokens` 4096（server 对没有保存过设置的故事改用 `min(4096, writer 模型声明)`）、`reasoning` `low`、`historyBlockPolicy` `{mode:"default",overrides:{}}`、导演使用默认配置。
 - 快照：`eval-private/raw/` 有 94 个文件；manifest 记录 `corpus` 与 `sourceMtime`。`eval-private/reference/` 有 5 部参照小说。
-- 事件表已在 v7 建立；批量抽取窗口与抽取记录在 R1-T03 落地；批量回填管线在 R1-T04.a 落地，真实回填由 R1-T04.b 执行。
+- 事件表已在 v7 建立；批量抽取窗口与抽取记录在 R1-T03 实现；批量回填管线在 R1-T04.a 实现，真实回填由 R1-T04.b 执行。
 - F0 的私有产物：`eval-private/f0/pairs.jsonl`（290 对）、`attribution.jsonl`、`judge.jsonl`（793 行）、`fulltext/work.db`、`fulltext-probe.json`、`fulltext-branches.json`、`fulltext-generations.jsonl`、`fulltext-judgements.jsonl`、`fulltext-summary.json`、`llm-cache/`。`eval-private/reports/f0-corpus-map.json` 是对话编号到文件路径的映射。
 - HUMAN-03（事件题抽查）仍未完成，不阻塞任何任务；其余 HUMAN 条目均已完成。
 - M3 的两项效果目标按 ADR-0029 保留为未证实；v2 的门槛改由 R6 按 B0/B1 对比判定。
 - 插件系统在 DESIGN §19 是唯一权威；P 阶段任务在 TASKS 的「P：插件内核」小节，C 线兼容插件任务已存在且依赖 P2。
 
 ## 下一步
-- **R1-T07.b 间隙合并调用 `gap_pass`**：每个回合一次结构化调用同时产出结算 diff、现场分析、用户意志与修订候选，各段复用对应校验器与写入路径；队列分两档、过期任务丢弃并计数、记录间隙未完成率，并在至少 20 个楼层上对比合并与拆开的准确率写入 ADR。验收见 TASKS。
-- 之后是 R1-T99 R1 最小集验收，再是 R3 快回合（R3-T01 至 R3-T99）、O 开局与方向、R2 评测底座。
+- **R1-T07.b.b `gap_pass` 处理器**：新增后台任务（入队条件 `settled`），一次结构化调用同时产出结算数组、现场分析、用户意志与修订候选，事件作为可选段；各段用 `JSON.stringify` 还原后交给 `parseSettleResponse`、`parseUserWillResponse`、`parseRevisionResponse`（事件用 `parseEventBatchExtraction`），写入调用 R1-T07.b.a 导出的函数。段落缺失按空处理；单段解析或校验失败只拒绝该段并记录原因，其余段落照常写入；结算段先写，现场分析段随后读得到结算记录。调用模型前先判断任务楼层的结算是否已经存在或在本次窗口里，否则抛 `BackgroundJobDeferredError`，避免白跑一次请求。在 `dramaticer work` 注册；故事设置增加开关，默认关闭，等 R1-T07.b.d 的对比结论再决定默认值。
+- 之后是 R1-T07.b.c（两档队列、过期丢弃、间隙未完成率）、R1-T07.b.d（20 楼准确率对比与 ADR）、R1-T99 R1 最小集验收，再是 R3 快回合（R3-T01 至 R3-T99）。
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
@@ -54,12 +53,12 @@
 - 历史槽位的 `full` 是“改动前的渲染”的对照口径；`default` 的最近一楼仍会省略思考块与写入块，不要再把“最近一楼”理解成返回完整原文。省略统计按整段标签文本计算。
 - `default` 下围栏代码块不受块策略影响；围栏未闭合时一直保留到楼层结尾。
 - `pnpm r1:history-view` 需要先构建 `packages/core/dist` 与 `packages/st-compat/dist`（`pnpm run typecheck` 即可）；脚本只读 `eval-private/raw/`，不写数据库，输出贴进 `docs/dev/reports/R1.md`。
-- 离线统计里“含标签映射”一列用的是 F0 的标签分类，不是 core 的原生块类型；st-compat 的标签映射落地后要复核 `DEFAULT_HISTORY_OMITTED_BLOCK_NAMES` 与原生块类型表。
+- 离线统计里“含标签映射”一列用的是 F0 的标签分类，不是 core 的原生块类型；st-compat 的标签映射实现后要复核 `DEFAULT_HISTORY_OMITTED_BLOCK_NAMES` 与原生块类型表。
 - 事件抽取窗口只看 head 路径，任务所在楼层不决定窗口；已抽取的助手楼层（有事件或抽取记录）会切断连续段，所以窗口按时间顺序推进。`eventWindowFloors` 在代码里是 `createEventExtractionHandler({ windowFloors })`。
 - 批量抽取的回复格式是 `[{nodeId, events: [...]}]`；`nodeId` 必须是本次窗口里 `role` 为 assistant 的楼层，窗口外或重复楼层整批拒绝。窗口正文里的玩家楼层只作上下文。head 上的助手楼层没有子节点时不算“已确认”，窗口不会包含它。
 - `event_extractions` 的 `event_count` 是窗口内该楼层抽到的事件数；抽取记录与事件在 `recordEventExtractions` 的同一个事务里提交，任一非法时一起回滚。
 - `listExtractedEventNodeIds` 同时看 `memory_events`（来源为事件抽取）与 `event_extractions`；直接调用处理器做回填时也要靠它跳过已处理楼层。
-- st-compat 的 `buildStoryEvents` 只针对主路径上已确认的助手楼层；旧行为把事件写在任务所在楼层（可能是 system 或 user 楼层），批量窗口之后事件只写助手楼层。
+- st-compat 的 `buildStoryEvents` 只针对主路径上已确认的助手楼层；批量窗口之后事件只写助手楼层。
 - `events-backfill` 不带 `--resume` 会删除数据库文件；跑长任务时必须带 `--resume`。`--limit` 是跨故事累计的窗口数，不是每故事一次。故事已导入时跳过导入，所以 manifest 里的对话改动后要删库重跑。
 - `events-backfill` 的请求数与缓存命中来自包装客户端检查 `LlmResult.cached`；真实渠道下缓存命中表示这次窗口没有发出网络请求。
 - 用户意志任务的窗口是“任务所在助手楼层的路径上最近 6 条玩家消息”；每个助手楼层一个 `settled` 任务，所以同一段玩家消息会被相邻的几个任务各送一次，重复条目由稳定 id 去掉。想减少请求数要等 R1-T07.b 的 `gap_pass`。
@@ -73,6 +72,7 @@
 - 只有 `source` 为 `player` 的卡片在批准时写入 `userWill`；结算冲突转来的卡片只写事实，避免把诊断原因塞进用户意志。
 - 非法草案以 `rejected` 状态入库并带 `rejection_reason`，不会让任务重试；要重试得先删掉那张卡或改模型输出。
 - `dramaticer ledger cards` 的 `--status` 只接受四个状态值；`--db` 必填，故事 id 是位置参数。`dramaticer ledger` 不加载渠道配置，也不调用模型。
+- R1-T07.b.a 导出的函数是合并调用的唯一写入路径：`prepareSettlement` 每次读 head 上的未结算窗口；`applySettlementProposals` 的 `window.snapshot` 是冲突卡片 `before` 的来源；`applyCapturedUserWills` 与 `applyRevisionDrafts` 自己按稳定 id 去重，重复调用安全；`saveSceneAnalysisText` 只校验空正文与 token 数，结算是否完成由调用方判断。合并调用不要重建这些逻辑。
 - 新迁移编号：v25 开局包、v26 开场候选、v27 偏好记录、v28 父子分块、v29 章节压缩、v30 世界书预筛、v31 上下文包。
 - 后台任务需要等待其它任务完成时抛 `BackgroundJobDeferredError`（`background/types.ts`），drain 会把任务退回 pending 且不消耗执行次数；不要用抛普通错误的方式等待，那会消耗重试次数。
 - `docs/dev/TASKS.md` 只保留未完成任务与当前阶段；查已完成任务的说明、验收与完成记录读 `docs/dev/TASKS-archive.md`。

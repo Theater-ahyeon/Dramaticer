@@ -138,59 +138,78 @@ export function createMemoryRevisionHandler(
 			temperature: 0,
 		});
 		const drafts = parseRevisionResponse(result.text, players);
-		const createdAt = new Date().toISOString();
-		for (const draft of drafts) {
-			const id = ledgerChangeCardId([
-				MEMORY_REVISION_JOB_KIND,
-				normalizeUserWillText(draft.text),
-				JSON.stringify(draft.rawDiffs),
-			]);
-			if (store.getLedgerChangeCard(id) !== null) continue;
-			const accepted: LedgerChangeCardDiff[] = [];
-			let rejection: string | null = null;
-			for (const [index, raw] of draft.rawDiffs.entries()) {
-				try {
-					accepted.push(
-						assertLedgerChangeCardDiff(
-							raw,
-							`变更卡 ${draft.text} 的 diffs[${index}]`,
-						),
-					);
-				} catch (error) {
-					rejection = error instanceof Error ? error.message : String(error);
-					break;
-				}
+		applyRevisionDrafts(store, job.storyId, job.nodeId, drafts, snapshot);
+	};
+}
+
+/**
+ * 把已经解析、并且引文已经定位到玩家楼层的变更卡草案写进卡片表：一张卡
+ * 只要有非法修改就整卡以 rejected 入库并记录原因，其余卡片照常写入；
+ * 稳定 id 已经存在的卡片跳过。返回值是实际新增的卡片数。
+ */
+export function applyRevisionDrafts(
+	store: StoryStore,
+	storyId: string,
+	nodeId: string,
+	drafts: readonly RevisionDraft[],
+	snapshot: JsonObject,
+): number {
+	const createdAt = new Date().toISOString();
+	let inserted = 0;
+	for (const draft of drafts) {
+		const id = ledgerChangeCardId([
+			MEMORY_REVISION_JOB_KIND,
+			normalizeUserWillText(draft.text),
+			JSON.stringify(draft.rawDiffs),
+		]);
+		if (store.getLedgerChangeCard(id) !== null) continue;
+		const accepted: LedgerChangeCardDiff[] = [];
+		let rejection: string | null = null;
+		for (const [index, raw] of draft.rawDiffs.entries()) {
+			try {
+				accepted.push(
+					assertLedgerChangeCardDiff(
+						raw,
+						`变更卡 ${draft.text} 的 diffs[${index}]`,
+					),
+				);
+			} catch (error) {
+				rejection = error instanceof Error ? error.message : String(error);
+				break;
 			}
-			if (rejection !== null) {
-				store.insertLedgerChangeCard({
-					id,
-					storyId: job.storyId,
-					source: "player",
-					sourceNodeId: draft.sourceNodeId,
-					text: draft.text,
-					diffs: [],
-					before: [],
-					status: "rejected",
-					rejectionReason: rejection,
-					createdAt,
-					decidedAt: createdAt,
-				});
-				continue;
-			}
+		}
+		if (rejection !== null) {
 			store.insertLedgerChangeCard({
 				id,
-				storyId: job.storyId,
+				storyId,
 				source: "player",
 				sourceNodeId: draft.sourceNodeId,
 				text: draft.text,
-				diffs: accepted,
-				before: accepted.map((diff) => readBeforeEntry(snapshot, diff.path)),
-				status: "pending",
+				diffs: [],
+				before: [],
+				status: "rejected",
+				rejectionReason: rejection,
 				createdAt,
-				decidedAt: null,
+				decidedAt: createdAt,
 			});
+			inserted += 1;
+			continue;
 		}
-	};
+		store.insertLedgerChangeCard({
+			id,
+			storyId,
+			source: "player",
+			sourceNodeId: draft.sourceNodeId,
+			text: draft.text,
+			diffs: accepted,
+			before: accepted.map((diff) => readBeforeEntry(snapshot, diff.path)),
+			status: "pending",
+			createdAt,
+			decidedAt: null,
+		});
+		inserted += 1;
+	}
+	return inserted;
 }
 
 function buildUserContent(

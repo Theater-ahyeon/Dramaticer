@@ -3,6 +3,7 @@ import {
 	type BackgroundJobHandler,
 } from "../background/types.js";
 import type { LlmMessage } from "../llm/types.js";
+import type { StoryStore } from "../store/story-store.js";
 import type { TimelineNode } from "../timeline.js";
 import { createTokenEstimator } from "../tokens.js";
 
@@ -48,6 +49,27 @@ const SYSTEM_PROMPT = [
 	"- 控制在两百字以内。",
 ].join("\n");
 
+const SCENE_TOKEN_ESTIMATOR = createTokenEstimator();
+
+/** 把一段现场分析正文写进楼层；空正文直接拒绝。 */
+export function saveSceneAnalysisText(
+	store: StoryStore,
+	storyId: string,
+	nodeId: string,
+	text: string,
+): void {
+	const trimmed = text.trim();
+	if (trimmed.length === 0) {
+		throw new Error("现场分析返回了空内容");
+	}
+	store.saveSceneAnalysis({
+		nodeId,
+		storyId,
+		text: trimmed,
+		tokenCount: SCENE_TOKEN_ESTIMATOR(trimmed),
+	});
+}
+
 /**
  * 现场分析的后台任务：处理一个已结算的助手楼层。
  * 楼层的台账结算还没完成时任务退回 pending，等结算完成后再执行。
@@ -63,7 +85,6 @@ export function createSceneHandler(
 	if (!Number.isInteger(maxTokens) || maxTokens < 1) {
 		throw new Error("现场分析的 token 上限必须是正整数");
 	}
-	const estimator = createTokenEstimator();
 	return async ({ store, client, job }) => {
 		if (store.getLedgerSettlement(job.nodeId) === null) {
 			throw new BackgroundJobDeferredError();
@@ -84,16 +105,7 @@ export function createSceneHandler(
 			temperature: 0,
 			maxTokens,
 		});
-		const text = result.text.trim();
-		if (text.length === 0) {
-			throw new Error("现场分析返回了空内容");
-		}
-		store.saveSceneAnalysis({
-			nodeId: job.nodeId,
-			storyId: job.storyId,
-			text,
-			tokenCount: estimator(text),
-		});
+		saveSceneAnalysisText(store, job.storyId, job.nodeId, result.text);
 	};
 }
 

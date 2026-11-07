@@ -33,11 +33,14 @@ export const SETTLE_JOB_KIND = "settle";
 export const SETTLE_WINDOW_FLOORS = 4;
 export const SETTLE_CONFLICT_WINDOW_FLOORS = 6;
 
-export interface SettleHandlerOptions {
+export interface PrepareSettlementOptions {
 	/** 一次结算请求最多覆盖的楼层数；默认 4。 */
 	readonly windowSize?: number;
 	/** 与结算事实对比的最近原文楼层数；默认 6。 */
 	readonly conflictWindowFloors?: number;
+}
+
+export interface SettleHandlerOptions extends PrepareSettlementOptions {
 	/** 覆盖客户端默认模型；不设置时使用客户端的默认模型。 */
 	readonly model?: string;
 }
@@ -101,12 +104,12 @@ interface SettlerProposal {
 	readonly reason: string | null;
 }
 
-interface SettlerConflict {
+export interface SettlerConflict {
 	readonly path: readonly string[];
 	readonly reason: string;
 }
 
-interface FloorProposals {
+export interface FloorProposals {
 	readonly diffs: readonly unknown[];
 	readonly conflicts: readonly SettlerConflict[];
 }
@@ -128,18 +131,18 @@ interface ConflictFact {
 	readonly diff: SettlerProposal["diff"];
 }
 
-interface InvalidExistingDiff {
+export interface InvalidExistingDiff {
 	readonly id: number;
 	readonly path: readonly string[];
 	readonly reason: string;
 }
 
-interface CoveredPath {
+export interface CoveredPath {
 	readonly path: readonly string[];
 	readonly op: StateDiffOp;
 }
 
-interface WindowFloor {
+export interface WindowFloor {
 	readonly nodeId: string;
 	readonly raw: string;
 	/** 已通过校验的台账路径：本楼层已有写入，结算器跳过。 */
@@ -158,10 +161,154 @@ interface EntityResolution {
 	readonly promoted: readonly NewEntityInput[];
 }
 
+/** 一次结算要处理的全部输入：窗口楼层、台账快照与冲突检查窗口。 */
+export interface SettlementWindow {
+	readonly storyId: string;
+	readonly nodeIds: readonly string[];
+	readonly floors: readonly WindowFloor[];
+	readonly snapshot: JsonObject;
+	readonly conflictWindow: readonly TimelineNode[];
+}
+
+/**
+ * 读取当前路径上待结算的窗口。没有待结算楼层时返回 null。
+ */
+export function prepareSettlement(
+	store: StoryStore,
+	storyId: string,
+	options: PrepareSettlementOptions = {},
+): SettlementWindow | null {
+	const { windowSize, conflictWindowFloors } =
+		resolveSettlementOptions(options);
+	const nodeIds = store.listUnsettledSettledAssistantNodes(storyId, windowSize);
+	if (nodeIds.length === 0) return null;
+	const floors = nodeIds.map((nodeId) => readWindowFloor(store, nodeId));
+	const snapshotNodeId = nodeIds[nodeIds.length - 1] as string;
+	const snapshot = store.getStateSnapshot(snapshotNodeId).state;
+	const conflictWindow = readConflictWindow(
+		store,
+		storyId,
+		snapshotNodeId,
+		conflictWindowFloors,
+	);
+	return { storyId, nodeIds, floors, snapshot, conflictWindow };
+}
+
+/** 结算请求的消息；合并调用自己组装提示词，但复用同一份窗口数据。 */
+export function buildSettlementMessages(
+	window: SettlementWindow,
+): LlmMessage[] {
+	return [
+		{ role: "system", content: SYSTEM_PROMPT },
+		{
+			role: "user",
+			content: buildUserContent(
+				window.floors,
+				window.snapshot,
+				window.conflictWindow,
+			),
+		},
+	];
+}
+
 /** 生成台账结算的后台任务处理器。 */
 export function createSettleHandler(
 	options: SettleHandlerOptions = {},
 ): BackgroundJobHandler {
+	const resolved = resolveSettlementOptions(options);
+	return async ({ store, client, job }) => {
+		const window = prepareSettlement(store, job.storyId, resolved);
+		if (window === null) return;
+		const result = await client.complete({
+			messages: buildSettlementMessages(window),
+			model: options.model,
+			temperature: 0,
+		});
+		applySettlementProposals(
+			store,
+			window,
+			parseSettleResponse(result.text, window.nodeIds),
+		);
+	};
+}
+
+/**
+ * 把整次结算输出写进台账：实体候选、实体建档、逐楼层的 diff 与变更卡在
+ * 同一个事务里提交。
+ */
+export function applySettlementProposals(
+	store: StoryStore,
+	window: SettlementWindow,
+	proposals: ReadonlyMap<string, FloorProposals>,
+): void {
+	const resolution = resolveWindowEntities(
+		store,
+		window.storyId,
+		window.floors,
+		proposals,
+	);
+	const knowledgeFacts = collectKnowledgeFacts(window.snapshot);
+	const plans = window.floors.map((floor) =>
+		planFloor(
+			floor,
+			proposals.get(floor.nodeId) ?? { diffs: [], conflicts: [] },
+			window.storyId,
+			resolution.canonical,
+			knowledgeFacts,
+		),
+	);
+	store.runInTransaction(() => {
+		for (const candidate of resolution.candidates) {
+			store.upsertEntityCandidate(candidate);
+		}
+		for (const entity of resolution.promoted) {
+			store.upsertEntity(entity);
+		}
+		for (const plan of plans) {
+			if (plan.deleteIds.length > 0) {
+				store.deleteStateDiffs(plan.nodeId, plan.deleteIds);
+			}
+			if (plan.diffs.length > 0) {
+				store.appendStateDiffs(plan.diffs);
+			}
+			store.recordLedgerSettlement({
+				nodeId: plan.nodeId,
+				storyId: window.storyId,
+				source: plan.source,
+				addedCount: plan.diffs.length,
+				repairs: plan.repairs,
+			});
+			for (const fact of plan.conflictFacts) {
+				store.insertLedgerChangeCard({
+					id: ledgerChangeCardId([
+						"settle",
+						plan.nodeId,
+						JSON.stringify(fact.path),
+					]),
+					storyId: window.storyId,
+					source: "settler",
+					sourceNodeId: plan.nodeId,
+					text: fact.reason,
+					diffs: [
+						fact.diff.op === "set"
+							? {
+									path: fact.diff.path,
+									op: "set",
+									value: fact.diff.value,
+								}
+							: { path: fact.diff.path, op: "delete" },
+					],
+					before: [readBeforeEntry(window.snapshot, fact.path)],
+					status: "pending",
+				});
+			}
+		}
+	});
+}
+
+function resolveSettlementOptions(
+	options: PrepareSettlementOptions,
+): Required<PrepareSettlementOptions> {
 	const windowSize = options.windowSize ?? SETTLE_WINDOW_FLOORS;
 	if (!Number.isInteger(windowSize) || windowSize < 1) {
 		throw new Error("结算窗口的楼层数必须是正整数");
@@ -171,98 +318,7 @@ export function createSettleHandler(
 	if (!Number.isInteger(conflictWindowFloors) || conflictWindowFloors < 1) {
 		throw new Error("冲突检查窗口的楼层数必须是正整数");
 	}
-	return async ({ store, client, job }) => {
-		const nodeIds = store.listUnsettledSettledAssistantNodes(
-			job.storyId,
-			windowSize,
-		);
-		if (nodeIds.length === 0) return;
-		const floors = nodeIds.map((nodeId) => readWindowFloor(store, nodeId));
-		const snapshotNodeId = nodeIds[nodeIds.length - 1] as string;
-		const snapshot = store.getStateSnapshot(snapshotNodeId).state;
-		const conflictWindow = readConflictWindow(
-			store,
-			job.storyId,
-			snapshotNodeId,
-			conflictWindowFloors,
-		);
-		const messages: LlmMessage[] = [
-			{ role: "system", content: SYSTEM_PROMPT },
-			{
-				role: "user",
-				content: buildUserContent(floors, snapshot, conflictWindow),
-			},
-		];
-		const result = await client.complete({
-			messages,
-			model: options.model,
-			temperature: 0,
-		});
-		const proposals = parseSettleResponse(result.text, nodeIds);
-		const resolution = resolveWindowEntities(
-			store,
-			job.storyId,
-			floors,
-			proposals,
-		);
-		const knowledgeFacts = collectKnowledgeFacts(snapshot);
-		const plans = floors.map((floor) =>
-			planFloor(
-				floor,
-				proposals.get(floor.nodeId) ?? { diffs: [], conflicts: [] },
-				job.storyId,
-				resolution.canonical,
-				knowledgeFacts,
-			),
-		);
-		await store.runInTransaction(() => {
-			for (const candidate of resolution.candidates) {
-				store.upsertEntityCandidate(candidate);
-			}
-			for (const entity of resolution.promoted) {
-				store.upsertEntity(entity);
-			}
-			for (const plan of plans) {
-				if (plan.deleteIds.length > 0) {
-					store.deleteStateDiffs(plan.nodeId, plan.deleteIds);
-				}
-				if (plan.diffs.length > 0) {
-					store.appendStateDiffs(plan.diffs);
-				}
-				store.recordLedgerSettlement({
-					nodeId: plan.nodeId,
-					storyId: job.storyId,
-					source: plan.source,
-					addedCount: plan.diffs.length,
-					repairs: plan.repairs,
-				});
-				for (const fact of plan.conflictFacts) {
-					store.insertLedgerChangeCard({
-						id: ledgerChangeCardId([
-							"settle",
-							plan.nodeId,
-							JSON.stringify(fact.path),
-						]),
-						storyId: job.storyId,
-						source: "settler",
-						sourceNodeId: plan.nodeId,
-						text: fact.reason,
-						diffs: [
-							fact.diff.op === "set"
-								? {
-										path: fact.diff.path,
-										op: "set",
-										value: fact.diff.value,
-									}
-								: { path: fact.diff.path, op: "delete" },
-						],
-						before: [readBeforeEntry(snapshot, fact.path)],
-						status: "pending",
-					});
-				}
-			}
-		});
-	};
+	return { windowSize, conflictWindowFloors };
 }
 
 function readWindowFloor(store: StoryStore, nodeId: string): WindowFloor {
@@ -333,7 +389,7 @@ function buildUserContent(
 }
 
 /** 解析整次请求：未知或重复的楼层 id 直接失败，窗口整体重试。 */
-function parseSettleResponse(
+export function parseSettleResponse(
 	text: string,
 	windowIds: readonly string[],
 ): Map<string, FloorProposals> {

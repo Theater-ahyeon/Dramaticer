@@ -150,40 +150,58 @@ export function createUserWillHandler(
 			temperature: 0,
 		});
 		const captured = parseUserWillResponse(result.text, players);
-		const createdAt = new Date().toISOString();
-		const seen = new Set(existing.ids);
-		const diffs: NewStateDiff[] = [];
-		for (const entry of captured) {
-			const id = userWillStableId(entry.text);
-			if (seen.has(id)) continue;
-			seen.add(id);
-			const path = [USER_WILL_NAMESPACE, id];
-			const value = {
-				kind: entry.kind,
-				text: entry.text,
-				sourceNodeId: entry.sourceNodeId,
-				createdAt,
-			};
-			validateLedgerDiff({ path, op: "set", value, source: "settler" });
-			diffs.push({
-				storyId: job.storyId,
-				nodeId: job.nodeId,
-				path,
-				op: "set",
-				value,
-				source: "settler",
-			});
-		}
-		if (diffs.length > 0) store.appendStateDiffs(diffs);
+		applyCapturedUserWills(store, job.storyId, job.nodeId, captured);
 	};
 }
 
-interface ExistingWills {
+/**
+ * 把已经解析、并且引文已经定位到玩家楼层的用户意志写进台账：同一稳定 id
+ * 在路径上已经存在时跳过，返回值是实际新增的条数。
+ */
+export function applyCapturedUserWills(
+	store: StoryStore,
+	storyId: string,
+	nodeId: string,
+	captured: readonly CapturedUserWill[],
+): number {
+	const existing = readExistingWills(store, nodeId);
+	const createdAt = new Date().toISOString();
+	const seen = new Set(existing.ids);
+	const diffs: NewStateDiff[] = [];
+	for (const entry of captured) {
+		const id = userWillStableId(entry.text);
+		if (seen.has(id)) continue;
+		seen.add(id);
+		const path = [USER_WILL_NAMESPACE, id];
+		const value = {
+			kind: entry.kind,
+			text: entry.text,
+			sourceNodeId: entry.sourceNodeId,
+			createdAt,
+		};
+		validateLedgerDiff({ path, op: "set", value, source: "settler" });
+		diffs.push({
+			storyId,
+			nodeId,
+			path,
+			op: "set",
+			value,
+			source: "settler",
+		});
+	}
+	if (diffs.length > 0) store.appendStateDiffs(diffs);
+	return diffs.length;
+}
+
+export interface ExistingWills {
 	readonly ids: readonly string[];
 	readonly texts: readonly string[];
 }
 
-function readExistingWills(store: StoryStore, nodeId: string): ExistingWills {
+export function readExistingWills(
+	store: StoryStore,
+	nodeId: string,
+): ExistingWills {
 	const value = readLedger(store, nodeId, [USER_WILL_NAMESPACE]);
 	if (value === undefined) return { ids: [], texts: [] };
 	if (!isJsonObject(value)) {
