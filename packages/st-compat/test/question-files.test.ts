@@ -19,6 +19,7 @@ const stateQuestion = JSON.stringify({
 	answer: "答案",
 	evidenceNodes: ["故事:m0:s0"],
 	kind: "state",
+	path: ["stat_data", "地点"],
 });
 
 describe("sanitizeFileName", () => {

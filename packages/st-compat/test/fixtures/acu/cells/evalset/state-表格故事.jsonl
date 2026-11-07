@@ -1,1 +1,1 @@
-{"id":"state:表格故事:5:[\"地点\"]","story":"表格故事","askAtNode":"表格故事:m4:s0","question":"地点是什么？","answer":"矿镇","evidenceNodes":["表格故事:m3:s0"],"kind":"state"}
+{"id":"state:表格故事:5:[\"地点\"]","story":"表格故事","askAtNode":"表格故事:m4:s0","question":"地点是什么？","answer":"矿镇","evidenceNodes":["表格故事:m3:s0"],"kind":"state","path":["stat_data","地点"]}

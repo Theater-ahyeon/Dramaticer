@@ -1,6 +1,7 @@
 import type {
 	MemoryEvalReport,
 	MemoryEvalScore,
+	MemoryEvalStateAccuracy,
 	MemoryEvalStoryScore,
 	MemoryEvalThreshold,
 } from "./memory-eval.js";
@@ -138,6 +139,24 @@ function renderMemoryReport(
 		}
 	});
 
+	lines.push("", "## 状态层答案正确率", "");
+	lines.push(
+		"提问楼层的 `getStateSnapshot` 按题目路径取值，与标准答案逐题比较。这些题不经过文本检索，结果反映状态链路本身是否正确。",
+	);
+	lines.push("");
+	lines.push("| 对话 | 题数 | 一致 | 路径缺失 | 正确率 |");
+	lines.push("|---|---|---|---|---|");
+	report.stories.forEach((story, index) => {
+		if (story.stateAccuracy.questionCount === 0) return;
+		lines.push(
+			accuracyRow(
+				storyLabel(index, story, includeStoryNames),
+				story.stateAccuracy,
+			),
+		);
+	});
+	lines.push(accuracyRow("合计", report.stateAccuracy));
+
 	lines.push("", "## 门槛核对", "");
 	lines.push("| 门槛 | 对话 | 题数 | 实际 | 基线 | 目标 | 结果 |");
 	lines.push("|---|---|---|---|---|---|---|");
@@ -213,4 +232,12 @@ function ratioTriplet(score: MemoryEvalScore): string {
 
 function percent(value: number): string {
 	return `${(value * 100).toFixed(1)}%`;
+}
+
+function accuracyRow(label: string, accuracy: MemoryEvalStateAccuracy): string {
+	const ratio =
+		accuracy.questionCount === 0
+			? "—"
+			: percent(accuracy.correct / accuracy.questionCount);
+	return `| ${label} | ${accuracy.questionCount} | ${accuracy.correct} | ${accuracy.missing} | ${ratio} |`;
 }

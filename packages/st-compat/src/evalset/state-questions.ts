@@ -552,6 +552,15 @@ function resolvePath(
 	return current;
 }
 
+/** 按完整状态路径取值，并按 MVU 二元组规则取出可以作为答案的标量。 */
+export function readStateAnswer(
+	root: JsonObject | null,
+	parts: readonly string[],
+): StateAnswer | undefined {
+	const value = resolvePath(root, parts);
+	return value === undefined ? undefined : normalizeAnswer(value);
+}
+
 /**
  * MVU 用 `["值", "说明"]` 这种二元数组保存变量，题目只问值本身。
  * 其他数组整份比较，无法作为简短答案。

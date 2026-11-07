@@ -1,2 +1,2 @@
-{"id":"retrieval:1","story":"测试故事","askAtNode":"测试故事:m9:s0","question":"苏禾在哪里练习青铜匕首的招式？","answer":"河边","evidenceNodes":["测试故事:m4:s0"],"kind":"state"}
-{"id":"retrieval:2","story":"测试故事","askAtNode":"测试故事:m9:s0","question":"商贩说匕首来自哪里？","answer":"北边的矿镇","evidenceNodes":["测试故事:m2:s0"],"kind":"state"}
+{"id":"retrieval:1","story":"测试故事","askAtNode":"测试故事:m9:s0","question":"苏禾在哪里练习青铜匕首的招式？","answer":"河边","evidenceNodes":["测试故事:m4:s0"],"kind":"state","path":["stat_data","地点"]}
+{"id":"retrieval:2","story":"测试故事","askAtNode":"测试故事:m9:s0","question":"商贩说匕首来自哪里？","answer":"北边的矿镇","evidenceNodes":["测试故事:m2:s0"],"kind":"state","path":["stat_data","地点"]}

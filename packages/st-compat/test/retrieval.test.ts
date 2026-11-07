@@ -209,6 +209,7 @@ describe("collectRetrievalBaseline", () => {
 					answer: "青铜匕",
 					evidenceNodes: ["旧故事:m3:s0"],
 					kind: "state",
+					path: ["stat_data", "装备"],
 				})}\n`,
 				"utf8",
 			);

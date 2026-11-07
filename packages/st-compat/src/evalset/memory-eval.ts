@@ -35,6 +35,7 @@ import {
 	storyIdOf,
 } from "./question-files.js";
 import { addCounts, emptyCounts } from "./shared.js";
+import { readStateAnswer } from "./state-questions.js";
 
 const DEPTHS = [5, 10, 20] as const;
 const MAX_DEPTH = 20;
@@ -75,6 +76,14 @@ export interface MemoryEvalFilterSummary {
 	readonly queriesWithExcludedChunks: number;
 }
 
+/** 状态层指标：提问楼层的快照值是否与题目标准答案一致。 */
+export interface MemoryEvalStateAccuracy {
+	readonly questionCount: number;
+	readonly correct: number;
+	/** 快照里取不到该路径的题数；这些题不计入正确。 */
+	readonly missing: number;
+}
+
 export interface MemoryEvalStoryScore {
 	readonly story: string;
 	readonly floorCount: number;
@@ -86,6 +95,7 @@ export interface MemoryEvalStoryScore {
 	readonly routes: readonly MemoryEvalRouteScore[];
 	readonly total: MemoryEvalScore;
 	readonly filter: MemoryEvalFilterSummary;
+	readonly stateAccuracy: MemoryEvalStateAccuracy;
 }
 
 export interface MemoryEvalThreshold {
@@ -108,6 +118,7 @@ export interface MemoryEvalReport {
 	readonly routes: readonly MemoryEvalRouteScore[];
 	readonly total: MemoryEvalScore;
 	readonly filter: MemoryEvalFilterSummary;
+	readonly stateAccuracy: MemoryEvalStateAccuracy;
 	readonly thresholds: readonly MemoryEvalThreshold[];
 }
 
@@ -286,7 +297,38 @@ export async function evaluateMemoryQuestions(
 			eventsAfterFilter: story.eventsAfterFilter,
 			queriesWithExcludedChunks: story.queriesWithExcludedChunks,
 		},
+		stateAccuracy: measureStateAccuracy(store, options.questions),
 	};
+}
+
+/**
+ * 状态层指标独立于文本检索：读取提问楼层的累计状态快照，
+ * 按题目路径取值并与标准答案比较。快照由状态层直接注入，
+ * 因此这个数字反映状态链路的正确性，不是检索成绩。
+ */
+function measureStateAccuracy(
+	store: StoryStore,
+	questions: readonly RetrievalQuestion[],
+): MemoryEvalStateAccuracy {
+	let questionCount = 0;
+	let correct = 0;
+	let missing = 0;
+	for (const question of questions) {
+		if (question.kind !== "state") continue;
+		const parts = question.path;
+		if (parts === undefined) {
+			throw new Error(`状态题 ${question.id} 缺少 path`);
+		}
+		questionCount += 1;
+		const snapshot = store.getStateSnapshot(question.askAtNode);
+		const answer = readStateAnswer(snapshot.state, parts);
+		if (answer === undefined) {
+			missing += 1;
+			continue;
+		}
+		if (String(answer) === question.answer) correct += 1;
+	}
+	return { questionCount, correct, missing };
 }
 
 /** 为祖先路径上的块生成向量；已经写入向量的块不会重复调用。 */
@@ -571,6 +613,15 @@ function buildReport(input: {
 			queriesWithExcludedChunks: 0,
 		},
 	);
+	const stateAccuracy = input.stories.reduce<MemoryEvalStateAccuracy>(
+		(accumulator, story) => ({
+			questionCount:
+				accumulator.questionCount + story.stateAccuracy.questionCount,
+			correct: accumulator.correct + story.stateAccuracy.correct,
+			missing: accumulator.missing + story.stateAccuracy.missing,
+		}),
+		{ questionCount: 0, correct: 0, missing: 0 },
+	);
 	const routeScores: MemoryEvalRouteScore[] = [];
 	for (const route of [...ROUTE_ORDER, "fused"] as MemoryEvalRoute[]) {
 		const score = routes.get(route);
@@ -590,6 +641,7 @@ function buildReport(input: {
 		routes: routeScores,
 		total: { ...total },
 		filter,
+		stateAccuracy,
 		thresholds: checkThresholds(input.stories),
 	};
 }

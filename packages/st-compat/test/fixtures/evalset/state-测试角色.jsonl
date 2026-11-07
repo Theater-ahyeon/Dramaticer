@@ -1,1 +1,1 @@
-{"id":"state:测试角色:4:[\"hp\"]","story":"测试角色","askAtNode":"测试角色:m4:s0","question":"alpha beta gamma","answer":"omega","evidenceNodes":["测试角色:m3:s0"],"kind":"state"}
+{"id":"state:测试角色:4:[\"hp\"]","story":"测试角色","askAtNode":"测试角色:m4:s0","question":"alpha beta gamma","answer":"omega","evidenceNodes":["测试角色:m3:s0"],"kind":"state","path":["stat_data","hp"]}

@@ -58,15 +58,18 @@ function question(input: {
 	evidenceNodes: readonly string[];
 	kind: "state" | "event";
 	question: string;
+	answer?: string;
+	path?: readonly string[];
 }): RetrievalQuestion {
 	return {
 		id: input.id,
 		story: "s-memory",
 		askAtNode: input.askAtNode,
 		question: input.question,
-		answer: "答案",
+		answer: input.answer ?? "答案",
 		evidenceNodes: input.evidenceNodes,
 		kind: input.kind,
+		...(input.path === undefined ? {} : { path: input.path }),
 	};
 }
 
@@ -94,6 +97,16 @@ function seedStory(): {
 		role: "assistant",
 		raw: "井底的青铜匕首被阿七收进木箱。",
 	});
+	store.appendStateDiffs([
+		{
+			storyId: "s-memory",
+			nodeId: first.id,
+			path: ["stat_data", "地点"],
+			op: "set",
+			value: ["井底", "匕首所在位置"],
+			source: "test",
+		},
+	]);
 	const ask = store.appendNode({
 		id: "n-ask",
 		storyId: "s-memory",
@@ -148,6 +161,8 @@ describe("记忆引擎评测", () => {
 					evidenceNodes: [first],
 					kind: "state",
 					question: "匕首在谁手里？",
+					answer: "井底",
+					path: ["stat_data", "地点"],
 				}),
 				question({
 					id: "q-event",
@@ -180,6 +195,11 @@ describe("记忆引擎评测", () => {
 			"state",
 			"event",
 		]);
+		expect(report.stateAccuracy).toEqual({
+			questionCount: 1,
+			correct: 1,
+			missing: 0,
+		});
 	});
 
 	it("视角排除原文块并统计过滤前后的事件数", async () => {
@@ -377,6 +397,11 @@ function sampleReport(): MemoryEvalReport {
 			eventsAfterFilter: 0,
 			queriesWithExcludedChunks: 0,
 		},
+		stateAccuracy: {
+			questionCount: 1,
+			correct: 0,
+			missing: 1,
+		},
 	};
 	return {
 		generatedAt: "2026-01-01T00:00:00.000Z",
@@ -387,6 +412,7 @@ function sampleReport(): MemoryEvalReport {
 		routes: story.routes.map((route) => ({ ...route })),
 		total: score,
 		filter: story.filter,
+		stateAccuracy: story.stateAccuracy,
 		thresholds: [],
 	};
 }

@@ -13,6 +13,8 @@ export interface RetrievalQuestion {
 	readonly answer: string;
 	readonly evidenceNodes: readonly string[];
 	readonly kind: QuestionKind;
+	/** 状态题的完整状态路径；事件题没有这个字段 */
+	readonly path?: readonly string[];
 }
 
 export function sanitizeFileName(value: string): string {
@@ -106,6 +108,8 @@ function parseQuestion(
 	if (!Array.isArray(value.evidenceNodes) || value.evidenceNodes.length === 0) {
 		throw new Error(`${label} 的 evidenceNodes 必须是非空数组`);
 	}
+	const path =
+		kind === "state" ? readPath(value.path, `${label} 的 path`) : undefined;
 	return {
 		id: requireString(value.id, `${label} 的 id`),
 		story: requireString(value.story, `${label} 的 story`),
@@ -116,7 +120,15 @@ function parseQuestion(
 			requireString(node, `${label} 的 evidenceNodes[${index}]`),
 		),
 		kind,
+		...(path === undefined ? {} : { path }),
 	};
+}
+
+function readPath(value: unknown, label: string): readonly string[] {
+	if (!Array.isArray(value) || value.length === 0) {
+		throw new Error(`${label} 必须是非空数组`);
+	}
+	return value.map((part, index) => requireString(part, `${label}[${index}]`));
 }
 
 function requireString(value: unknown, label: string): string {

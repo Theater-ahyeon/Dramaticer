@@ -1,2 +1,2 @@
-{"id":"typed:1","story":"表格故事","askAtNode":"表格故事:m0:s0","question":"数值是多少？","answer":42,"evidenceNodes":["表格故事:m0:s0"],"kind":"state"}
-{"id":"typed:2","story":"表格故事","askAtNode":"表格故事:m1:s0","question":"开关打开了吗？","answer":true,"evidenceNodes":["表格故事:m1:s0"],"kind":"state"}
+{"id":"typed:1","story":"表格故事","askAtNode":"表格故事:m0:s0","question":"数值是多少？","answer":42,"evidenceNodes":["表格故事:m0:s0"],"kind":"state","path":["stat_data","数值"]}
+{"id":"typed:2","story":"表格故事","askAtNode":"表格故事:m1:s0","question":"开关打开了吗？","answer":true,"evidenceNodes":["表格故事:m1:s0"],"kind":"state","path":["stat_data","开关"]}
