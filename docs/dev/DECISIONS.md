@@ -529,3 +529,14 @@
   - **B 路线顺序**：整段写入 F0-T100 的“做什么”，由它按 F0 数据定序，只调整顺序，不缩小范围。
   - 不修改 I1–I15。
 - **影响**：`docs/dev/TASKS.md` 新增 F0-T02.a、F0-T02.b、R0-T05、R1-T01.c、R1-T07.b；更新 F0-T03、F0-T04、F0-T99、F0-T100、R1-T01.b、R1-T02、R1-T02.a、R1-T07.a、R2-T02、R2-T05、R2-T06、R3-T00 与 C-T01–C-T05；数据库迁移改为 v20 实体候选与结算置信度、v21 现场分析、v22 父子分块、v23 章节压缩、v24 世界书预筛、v25 变更卡、v26 上下文包；`docs/DESIGN.md` §9 与 §16 加取代标注。本轮只改文档与任务清单，不新增依赖，门禁测试数不变。
+
+## ADR-0042 模型渠道不可用时的回退顺序（2026-11-07）
+
+- **背景**：`opendesign/deepseek-v4.1-flash` 是 magpie 网关上的一路上游账号；同类账号此前被上游停用过（`antigravity/gemini-3.8-flash`，HTTP 403）。人类 2026-11-07 指定：opendesign 不可用时可以用 magpie 的其他渠道，优先 DeepSeek V4.1 Flash；Codex 渠道用 GPT-6.1 Terra。
+- **决定**：
+  - 正文与后台的首选保持 `opendesign/deepseek-v4.1-flash`。
+  - 回退顺序：`auto/deepseek-v4.1-flash`（同一网关的自动路由，实测 200、0.87 秒）→ `opencode-go/deepseek-v4.1-flash`。两者在 `data/channels.yaml` 里分别落成 `main-fallback` 与 `bg-fallback` 别名。
+  - Codex 系列只用 `codex/gpt-6.1-terra`，落成 `codex` 别名；不选其他 codex 型号。
+  - 路由器只在同一个模型条目的 `channels` 列表内切换；跨模型 id 的回退由调用方显式选择别名（CLI 的 `--model` 或故事设置），不在路由器里隐式跨模型切换，避免评测把不同模型的数字混在一起。
+  - 开发循环本身用 omp 的 `-Model opendesign/deepseek-v4.1-flash`；该模型连续失败导致循环停止时，由操作者用 `-Model auto/deepseek-v4.1-flash` 重启，不在 `devloop.ps1` 里自动切换。
+- **影响**：`data/channels.yaml` 新增 `main-fallback`、`bg-fallback`、`codex` 三个别名；评测报告与 Trace 记录实际使用的别名，模型变化时在报告里注明。
