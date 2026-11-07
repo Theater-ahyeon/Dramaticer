@@ -41,3 +41,14 @@ export function replayDiffs(diffs: readonly StateDiff[]): JsonObject {
 export function snapshotAt(store: StoryStore, nodeId: string): JsonObject {
 	return replayDiffs(store.getStateDiffsAlongPath(nodeId));
 }
+
+/** 回放某个楼层的 MVU 变量快照；没有变量时返回空对象。 */
+export function mvuSnapshotAt(store: StoryStore, nodeId: string): JsonObject {
+	const root = snapshotAt(store, nodeId);
+	const value = root.mvu;
+	if (value === undefined) return {};
+	if (!isJsonObject(value)) {
+		throw new Error(`楼层 ${nodeId} 的 mvu 命名空间不是对象`);
+	}
+	return value;
+}

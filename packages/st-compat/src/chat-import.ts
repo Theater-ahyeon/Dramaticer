@@ -1,9 +1,10 @@
-import type {
-	JsonObject,
-	NewStateDiff,
-	Story,
-	StoryStore,
-	TimelineRole,
+import {
+	type JsonObject,
+	type NewStateDiff,
+	type Story,
+	type StoryStore,
+	type TimelineRole,
+	mvuLedgerPath,
 } from "@dramaticer/core";
 import type { StChatEntry, StChatMessage } from "./chat-jsonl.js";
 import { parseChatJsonlFile } from "./chat-jsonl.js";
@@ -195,11 +196,17 @@ function toStateDiffs(
 			? {
 					storyId,
 					nodeId,
-					path: diff.path,
+					path: mvuLedgerPath(diff.path),
 					op: "set",
 					value: diff.value,
 					source,
 				}
-			: { storyId, nodeId, path: diff.path, op: "delete", source },
+			: {
+					storyId,
+					nodeId,
+					path: mvuLedgerPath(diff.path),
+					op: "delete",
+					source,
+				},
 	);
 }

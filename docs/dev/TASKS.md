@@ -521,9 +521,18 @@
   - AGENTS.md 的不变量已由人类改好，不改。
   验收：ADR 入库；DESIGN 与提案一致且不再保留冲突内容；TASKS 可从 R1-T01 继续；INBOX 已清空；`pnpm check` 通过。
 
+- [ ] **R0-T02 合并 v2.1 补充提案** | 依赖：R1-T01
+  做什么：
+  - 写 ADR-0035，记录采纳 `docs/proposals/v2.1.md` 与“直接采纳 / 用评测决定 / 暂缓”的三分法。
+  - 把 A1–A9 合并进 `docs/DESIGN.md` 对应章节，并转成任务：A4 父子分块与 A5 重排序排在 R1-T04.b 之前；A7 深回合工具与 A8 运行中追加要求写进 R3-T00 的细化说明；A9 按岗位配置模型落到 R1-T02 或 R2 的配置层；A1 现场分析、A2 上下文包复用、A3 自然语言修订记忆、A6 评测补充各自建任务并写清依赖。
+  - 在 R2-T99 之后新增实验任务 X1（世界模型表示方式）与 X2（Director 组织方式），写清候选方案、评测指标与“只有显著胜出才切换”的规则。
+  - 第三节“暂缓”的内容写进 DESIGN 的“后续方向”，不建任务。
+  验收：ADR 入库；DESIGN 与 v2.1 一致；A1–A9 都有对应任务且 A4/A5 在 R1-T04.b 之前；X1 与 X2 在 R2-T99 之后；INBOX 条目清空；`pnpm check` 通过。
+
 ## R1：世界模型（台账与记忆）
 
-- [ ] **R1-T01 台账结构与 MVU 映射** | 依赖：M2-T02、M2-T04、M4-T02 | DESIGN §5、§7.1
+- [x] **R1-T01 台账结构与 MVU 映射** | 依赖：M2-T02、M2-T04、M4-T02 | DESIGN §5、§7.1
+  完成：2026-11-07 `packages/core/src/ledger` 定义九个命名空间与路径表，`validateLedgerDiff` 校验路径、类型、范围与线索状态，`readLedger` 与 `listLedgerEntities` 复用状态快照；st-compat 导入 MVU 时加 `mvu` 前缀；ADR-0034；门禁通过（629 个测试）
   做什么：
   - core 定义台账命名空间与类型：`character`（主演与龙套两级）、`relation`（有方向、类型、阶段、好感内在与外在五档、惯性）、`item`（持有者、位置、来历、变动日志）、`scene`（地点树与当前现场）、`time`（故事内时间锚点）、`clue`（开启、推进、兑现）、`knowledge`（谁知道什么）、`userWill`（偏好、底线、纠正）、`mvu`（MVU 命名空间）。全部用现有 `StateDiff.path` 表达，不新增第二套存储。
   - `validateLedgerDiff` 校验命名空间、路径段非空、值的类型与范围、线索状态（只允许开启、推进、兑现）；非法条目抛错并指出字段路径。
@@ -531,7 +540,14 @@
   - st-compat 导入 MVU 快照时把路径映射为 `["mvu", ...]`；没有 MVU 的卡不生成 `mvu` 命名空间；评测数据库由 raw 重建，不做旧库迁移。
   验收：九个命名空间各有一条通过校验的 diff；未知命名空间、空路径段、错误值类型、非法线索状态各抛错并指出位置；MVU 快照导入后沿路径回放与原文一致；`readLedger` 前缀读取与分支切换正确；`pnpm check` 通过。
 
-- [ ] **R1-T02 台账结算器** | 依赖：R1-T01、M2-T03、M4-T03 | DESIGN §7.2 | I12
+- [ ] **R1-T01.a 台账事实补 storyTime 与 source** | 依赖：R1-T01 | DESIGN §7.1、ADR-0035
+  做什么：
+  - 按 v2.1 第二节，把 `storyTime`（事实成立的故事时间段，起止都可空）与 `source`（`model`、`settler`、`player`、`import`）作为每条台账事实的元数据；`storyTime` 进入存储，`source` 与现有 `StateDiff.source` 的关系写清楚。
+  - `validateLedgerDiff` 校验两个字段的类型与来源取值；导入 MVU 的事实来源为 `import`。
+  - `readLedger` 与 `listLedgerEntities` 能读回这两个字段；已有 R1-T01 路径表与快照语义不变。
+  验收：九类台账事实都能带两个字段并读回；来源取值非法时抛错并指出位置；旧路径与快照回放结果不变；`pnpm check` 通过。
+
+- [ ] **R1-T02 台账结算器** | 依赖：R1-T01、R1-T01.a、M2-T03、M4-T03 | DESIGN §7.2 | I12
   做什么：
   - 迁移 v18 新增 `ledger_settlements(node_id PRIMARY KEY, story_id, source, added_count, repairs, created_at)`；`repairs` 存 JSON 数组 `{path, action, reason}`，同故事触发器与 M2-T02 的一致。
   - 后台任务类型 `settle`：沿当前路径取最多 `settleWindowFloors`（默认 4）个已确认、尚未结算的助手楼层；一次请求返回 `{nodeId, diffs}` 数组。窗口内有解析失败或校验失败的条目时，该楼层整条拒绝并记入 `repairs`，其余楼层照常写入；整次请求失败按 M2-T03 的规则重试。

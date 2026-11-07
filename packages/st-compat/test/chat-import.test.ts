@@ -84,15 +84,21 @@ describe("importChatToStore", () => {
 			storyId: "story-import",
 		});
 
-		expect(snapshotAt(store, "story-import:m0:s0")).toEqual(first);
-		expect(snapshotAt(store, "story-import:m1:s0")).toEqual(second);
-		expect(snapshotAt(store, "story-import:m2:s1")).toEqual(mainSwipe);
-		expect(snapshotAt(store, "story-import:m3:s0")).toEqual(mainSwipe);
-		expect(snapshotAt(store, "story-import:m4:s0")).toEqual(last);
-		expect(snapshotAt(store, "story-import:m2:s0")).toEqual(otherSwipe);
+		expect(snapshotAt(store, "story-import:m0:s0")).toEqual({ mvu: first });
+		expect(snapshotAt(store, "story-import:m1:s0")).toEqual({ mvu: second });
+		expect(snapshotAt(store, "story-import:m2:s1")).toEqual({
+			mvu: mainSwipe,
+		});
+		expect(snapshotAt(store, "story-import:m3:s0")).toEqual({
+			mvu: mainSwipe,
+		});
+		expect(snapshotAt(store, "story-import:m4:s0")).toEqual({ mvu: last });
+		expect(snapshotAt(store, "story-import:m2:s0")).toEqual({
+			mvu: otherSwipe,
+		});
 	});
 
-	it("diff 使用对象键路径，删除和整体替换都正确", async () => {
+	it("diff 使用 mvu 命名空间下的对象键路径，删除和整体替换都正确", async () => {
 		const store = openStore();
 		await importChatFileToStore(store, fixturePath, {
 			storyId: "story-import",
@@ -105,21 +111,21 @@ describe("importChatToStore", () => {
 				value: diff.value,
 			})),
 		).toEqual([
-			{ path: ["stat_data", "hp"], op: "set", value: 90 },
-			{ path: ["stat_data", "mood"], op: "delete", value: null },
-			{ path: ["flags"], op: "set", value: ["战斗"] },
+			{ path: ["mvu", "stat_data", "hp"], op: "set", value: 90 },
+			{ path: ["mvu", "stat_data", "mood"], op: "delete", value: null },
+			{ path: ["mvu", "flags"], op: "set", value: ["战斗"] },
 		]);
 		expect(
 			store
 				.getStateDiffs("story-import:m4:s0")
 				.map((diff) => [diff.path.join("."), diff.op]),
 		).toEqual([
-			["stat_data.hp", "set"],
-			["stat_data.mood", "delete"],
-			["flags", "set"],
-			["meta.turn", "set"],
-			["meta.tags", "set"],
-			["loot", "delete"],
+			["mvu.stat_data.hp", "set"],
+			["mvu.stat_data.mood", "delete"],
+			["mvu.flags", "set"],
+			["mvu.meta.turn", "set"],
+			["mvu.meta.tags", "set"],
+			["mvu.loot", "delete"],
 		]);
 		expect(
 			store
@@ -146,8 +152,8 @@ describe("importChatToStore", () => {
 		expect(result.mainPathNodeIds).toEqual(["edited:m0:s1"]);
 		expect(store.getNode("edited:m0:s1")?.raw).toBe("编辑后的正文");
 		expect(store.getNode("edited:m0:s0")?.raw).toBe("原始一");
-		expect(snapshotAt(store, "edited:m0:s1")).toEqual({ v: 2 });
-		expect(snapshotAt(store, "edited:m0:s0")).toEqual({ v: 1 });
+		expect(snapshotAt(store, "edited:m0:s1")).toEqual({ mvu: { v: 2 } });
+		expect(snapshotAt(store, "edited:m0:s0")).toEqual({ mvu: { v: 1 } });
 	});
 
 	it("显式标题、id 前缀和 system 角色", async () => {
@@ -165,6 +171,8 @@ describe("importChatToStore", () => {
 		expect(result.story.title).toBe("自定义标题");
 		expect(result.mainPathNodeIds).toEqual(["prefix:m0:s0"]);
 		expect(store.getNode("prefix:m0:s0")?.role).toBe("system");
+		expect(store.getStateDiffs("prefix:m0:s0")).toEqual([]);
+		expect(snapshotAt(store, "prefix:m0:s0")).toEqual({});
 	});
 
 	it("空对象快照表示没有变量更新，不会删除已有状态", async () => {
@@ -181,7 +189,7 @@ describe("importChatToStore", () => {
 
 		expect(store.getStateDiffs("empty:m1:s0")).toEqual([]);
 		expect(snapshotAt(store, "empty:m1:s0")).toEqual({
-			stat_data: { hp: 100 },
+			mvu: { stat_data: { hp: 100 } },
 		});
 		expect(
 			store.getStateDiffs("empty:m2:s0").map((diff) => ({
@@ -189,7 +197,7 @@ describe("importChatToStore", () => {
 				op: diff.op,
 				value: diff.value,
 			})),
-		).toEqual([{ path: ["stat_data", "hp"], op: "set", value: 90 }]);
+		).toEqual([{ path: ["mvu", "stat_data", "hp"], op: "set", value: 90 }]);
 	});
 
 	it("根快照不是对象时拒绝导入", async () => {
@@ -278,10 +286,12 @@ describe("importChatToStore", () => {
 				op: diff.op,
 			})),
 		).toEqual([
-			{ path: ["stat_data", "hp"], op: "delete" },
-			{ path: ["stat_data", "mood"], op: "delete" },
+			{ path: ["mvu", "stat_data", "hp"], op: "delete" },
+			{ path: ["mvu", "stat_data", "mood"], op: "delete" },
 		]);
-		expect(snapshotAt(store, "clear:m1:s0")).toEqual({ stat_data: {} });
+		expect(snapshotAt(store, "clear:m1:s0")).toEqual({
+			mvu: { stat_data: {} },
+		});
 	});
 
 	it("缺少头部时拒绝导入", async () => {

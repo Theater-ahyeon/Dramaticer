@@ -120,6 +120,28 @@ flowchart TB
 | 用户意志 | 玩家明确表达过的偏好、底线和纠正；永远有效 |
 | mvu | 有 MVU 的卡映射进来的变量命名空间 |
 
+台账路径（ADR-0034）：第一段是命名空间，后续段按实体与字段展开；所有写入都是现有 `StateDiff`，不新增存储。实体级路径只允许删除，字段必须逐项写入。
+
+| 路径 | 值 |
+|---|---|
+| `character.<id>.tier` / `.identity` / `.appearance` / `.outfit` / `.status` / `.location` | `tier` 取 `lead` 或 `minor`；其余为非空字符串 |
+| `relation.<from>.<to>.type` / `.stage` / `.turningPoint` | 非空字符串 |
+| `relation.<from>.<to>.affectionInner` / `.affectionOuter` | `敌对`、`冷淡`、`平常`、`亲近`、`倾心` 之一 |
+| `relation.<from>.<to>.inertia` | 0 到 1 的数字 |
+| `item.<id>.holder` / `.location` / `.origin` | 非空字符串 |
+| `item.<id>.log.<条目 id>` | `{text, nodeId, at}`，三者都是非空字符串 |
+| `scene.places.<地点 id>.parent` / `.name` / `.description` | `parent` 为非空字符串或 null；其余为非空字符串 |
+| `scene.current.place` / `.posture` / `.atmosphere` | 非空字符串 |
+| `scene.current.participants` | 非空字符串数组 |
+| `time.current` | 非空字符串 |
+| `clue.<id>.text` / `.openedAt` / `.updatedAt` | 非空字符串 |
+| `clue.<id>.status` | `open`、`progress`、`fulfilled` 之一 |
+| `knowledge.<知情者>.<事实>` | 非空字符串 |
+| `userWill.<id>` | `{kind, text, sourceNodeId, createdAt}`，`kind` 取 `preference`、`boundary`、`correction` |
+| `mvu.<原始变量路径…>` | 任意 JSON 值 |
+
+`validateLedgerDiff` 校验命名空间、路径段、值类型与范围，错误信息带完整路径；`readLedger` 与前缀读取复用楼层快照缓存；`listLedgerEntities` 返回人物、关系与未兑现线索。导入 MVU 时把原始变量路径加上 `mvu` 前缀；没有 MVU 的卡不产生 `mvu` 命名空间。
+
 ### 7.2 结算器
 
 - 每次回复落定后在间隙运行，不阻塞回合；可以一次处理多个楼层。

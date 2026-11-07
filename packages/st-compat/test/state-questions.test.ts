@@ -14,7 +14,7 @@ import {
 	verifyStateQuestions,
 	verifyStateQuestionsFromFile,
 } from "../src/index.js";
-import { snapshotAt } from "./store-replay.js";
+import { mvuSnapshotAt } from "./store-replay.js";
 
 const storyId = "story-state";
 const testDir = path.dirname(fileURLToPath(import.meta.url));
@@ -254,7 +254,7 @@ describe("状态题与导入后的状态一致", () => {
 		});
 
 		for (const question of result.questions) {
-			const snapshot = snapshotAt(store, question.askAtNode);
+			const snapshot = mvuSnapshotAt(store, question.askAtNode);
 			const actual = answerOf(resolvePath(snapshot, question.path));
 			expect(actual, question.id).toEqual(question.answer);
 		}
