@@ -75,3 +75,5 @@
 - 2026-11-07 | S56 | D-T04 | DONE | 参照基线：5 部小说 161.9 万字符、30,212 块，新增相邻相似度分位、连续含对白/无对白块长度与评测对话同口径对照；bge-m3 校准 500 对相邻块余弦（均值 0.5256、P99 0.7324），结果缓存 `eval-private/reports/reference-cosine.json`；ADR-0025 给出 Director 阈值（余弦 0.73、窗口 20、`riseWindows` 5、`climaxFloors` 7、`breatheFloors` 6）并说明张力阈值不来自小说文本；评测对话 Jaccard 均值 0.1176，约为小说的 40 倍；新增 8 个测试，两份报告重新生成，门禁通过（486 个测试）
 
 - 2026-11-07 | S57 | M3-T01 | DONE | 迁移 v13 新增 `director_decisions`（每楼层一行、覆盖写入、触发器拒绝跨故事归属），存储层新增保存与按路径读取；core 新增 `director/` 决策框架与线索追踪机制（年龄超过 12 楼或未兑现达到 5 条，年龄优先，只输出一行，不调用模型）；11 个新测试，门禁通过（497 个测试）
+
+- 2026-11-07 | S58 | M3-T02 | DONE | 导演槽位改为调用 `evaluateDirector`，有建议时只返回一条以 `【导演】` 开头的 system 消息、来源 `director:<mechanism>`，无建议或关闭时返回 null 并记为 `missing-slot`；组装时的决策写入 `director_decisions`，后续机制经 `mechanisms` 注入同一评估器；`dramaticer chat` 新增 `--director <on|off>`（默认 on，非法取值抛错）；4 个 provider 测试与 3 个 CLI 测试，门禁通过（500 个测试）

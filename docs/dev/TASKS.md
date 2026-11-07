@@ -381,7 +381,8 @@
   - 决策记录的 `signals` JSON 保存未兑现数量、最老年龄与被选中的笔记 id；`mechanisms` JSON 记录每个机制是否触发以及原因。`enabled` 为 true 时每次评估都写入一条记录，没有建议时 `directive` 为 null；`enabled` 为 false 时不评估也不写记录。
   验收：年龄与路径位置计算正确；切换分支后另一分支的笔记不参与；超过年龄与超过数量各产生一条建议；两个条件同时满足时只输出一行且取优先级更高的那条；没有笔记时 `evaluateDirector` 返回 null 且记录里 `directive` 为 null；同一节点重复评估不产生两行；裸连接写入跨故事记录被触发器拒绝；`pnpm check` 通过。
 
-- [ ] **M3-T02 导演槽位与用户控制** | 依赖：M3-T01
+- [x] **M3-T02 导演槽位与用户控制** | 依赖：M3-T01
+  完成：2026-11-07 `createDirectorSlotProvider` 改为调用 `evaluateDirector`，有建议时只返回一条以 `【导演】` 开头的 system 消息、来源写 `director:<mechanism>`，无建议或关闭时返回 null；`dramaticer chat` 新增 `--director <on|off>`（默认 on）并注入 `DirectorConfig`，非法取值抛错；默认配置下每次组装写一条决策记录，关闭时不写；4 个 provider 测试与 3 个 CLI 测试，门禁通过（500 个测试）
   做什么：
   - 重写 `createDirectorSlotProvider(store, options)`：调用 `evaluateDirector`，有建议时返回一条以 `【导演】` 开头的 system 消息，`source` 写成 `director:<mechanism>`；没有建议或 `config.enabled` 为 false 时返回 null，由组装器记为 `missing-slot`。
   - 组装上下文时产生的决策写入 `director_decisions`，与 Trace 的 `context` 来源一致；后续机制只注册到同一个评估器，槽位代码不再按机制分别修改。

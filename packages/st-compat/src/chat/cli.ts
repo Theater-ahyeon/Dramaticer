@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
 	type ChatTurnResult,
+	DEFAULT_DIRECTOR_CONFIG,
 	type LlmChannelsConfig,
 	type LlmStreamingClient,
 	StoryStore,
@@ -55,7 +56,7 @@ export interface ChatCliDependencies {
 }
 
 const USAGE =
-	"用法：dramaticer chat --story <id> --card <path> --user <text> [--world <path>] [--db <path>] [--model <alias>] [--budget <tokens>] [--max-tokens <n>] [--temperature <x>]";
+	"用法：dramaticer chat --story <id> --card <path> --user <text> [--world <path>] [--director <on|off>] [--db <path>] [--model <alias>] [--budget <tokens>] [--max-tokens <n>] [--temperature <x>]";
 
 interface ChatArgs {
 	readonly storyId: string;
@@ -67,6 +68,7 @@ interface ChatArgs {
 	readonly budgetTokens: number | null;
 	readonly maxTokens: number | null;
 	readonly temperature: number | null;
+	readonly directorEnabled: boolean;
 }
 
 /** `dramaticer chat` 的实现，依赖可注入。 */
@@ -175,7 +177,12 @@ export async function runChatCli(
 				summary: createSummarySlotProvider(store),
 				memory: createMemorySlotProvider(store, { embedder }),
 				lore: createLoreSlotProvider(store),
-				director: createDirectorSlotProvider(store),
+				director: createDirectorSlotProvider(store, {
+					config: {
+						...DEFAULT_DIRECTOR_CONFIG,
+						enabled: parsed.directorEnabled,
+					},
+				}),
 			},
 			budgetTokens,
 			structuredOutput: mode,
@@ -232,6 +239,7 @@ function parseChatArgs(args: readonly string[]): ChatArgs {
 		budget: true,
 		"max-tokens": true,
 		temperature: true,
+		director: true,
 	};
 	const values = new Map<string, string>();
 	const worldPaths: string[] = [];
@@ -273,6 +281,7 @@ function parseChatArgs(args: readonly string[]): ChatArgs {
 	const budget = values.get("budget");
 	const maxTokens = values.get("max-tokens");
 	const temperature = values.get("temperature");
+	const director = values.get("director");
 	return {
 		storyId,
 		cardPath,
@@ -288,6 +297,7 @@ function parseChatArgs(args: readonly string[]): ChatArgs {
 				: parseInteger(maxTokens, "--max-tokens", 1),
 		temperature:
 			temperature === undefined ? null : parseTemperature(temperature),
+		directorEnabled: director === undefined ? true : parseDirector(director),
 	};
 }
 
@@ -320,4 +330,10 @@ function parseTemperature(value: string): number {
 		throw new Error(`--temperature 必须是非负数字；${USAGE}`);
 	}
 	return parsed;
+}
+
+function parseDirector(value: string): boolean {
+	if (value === "on") return true;
+	if (value === "off") return false;
+	throw new Error(`--director 只接受 on 或 off，收到 ${value}；${USAGE}`);
 }

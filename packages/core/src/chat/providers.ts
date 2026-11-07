@@ -5,6 +5,12 @@ import type {
 	ContextSlotProvider,
 } from "../context/assembler.js";
 import type { ContextMessage } from "../context/template.js";
+import { evaluateDirector } from "../director/evaluate.js";
+import {
+	DEFAULT_DIRECTOR_CONFIG,
+	type DirectorConfig,
+	type DirectorMechanism,
+} from "../director/types.js";
 import { normalizeEntityName } from "../entity.js";
 import type { EmbeddingClient } from "../llm/embeddings.js";
 import { MAX_MEMORY_EVENT_LIMIT } from "../memory/event.js";
@@ -412,53 +418,40 @@ function lastIndexWhere<T>(
 	return -1;
 }
 
+export interface DirectorSlotProviderOptions {
+	/** 不设置时使用默认配置（开启、线索阈值 12 楼、上限 5 条）。 */
+	readonly config?: DirectorConfig;
+	/** 默认使用内置机制；后续机制统一从这里注册。 */
+	readonly mechanisms?: readonly DirectorMechanism[];
+}
+
 /**
- * 把当前分支上未兑现的剧情笔记按创建顺序渲染成一行一条。
- * 刚创建在别的分支上的笔记不会出现，避免切换分支后泄露另一条分支的线索。
+ * 评估全部导演机制，有建议时只返回一条以「【导演】」开头的系统消息。
+ * 评估结果写入该楼层的决策记录；导演关闭时既不出消息也不写记录。
  */
 export function createDirectorSlotProvider(
 	store: StoryStore,
+	options: DirectorSlotProviderOptions = {},
 ): ContextSlotProvider {
+	const config = options.config ?? DEFAULT_DIRECTOR_CONFIG;
 	return {
 		provide(request): ContextSlotContent | null {
 			const nodeId =
 				request.nodeId ?? store.getHead(request.storyId)?.id ?? null;
 			if (nodeId === null) return null;
-			const node = store.getNode(nodeId);
-			if (!node) {
-				throw new Error(`楼层节点不存在：${nodeId}`);
-			}
-			if (node.storyId !== request.storyId) {
-				throw new Error(`楼层节点 ${nodeId} 属于另一个故事 ${node.storyId}`);
-			}
-			const positions = new Map(
-				store
-					.getPathToNode(nodeId)
-					.map((pathNode, index) => [pathNode.id, index] as const),
-			);
-			const currentPosition = positions.get(nodeId);
-			if (currentPosition === undefined) {
-				throw new Error(`楼层节点 ${nodeId} 不在自己的路径上`);
-			}
-			const notes = store
-				.getOpenPlotNotes(request.storyId)
-				.filter((note) => positions.has(note.sourceNodeId));
-			if (notes.length === 0) return null;
-			const lines = notes.map((note) => {
-				const createdPosition = positions.get(note.sourceNodeId);
-				if (createdPosition === undefined) {
-					throw new Error(`剧情笔记 ${note.id} 的来源楼层不在当前路径上`);
-				}
-				return `- ${note.text}（距创建 ${currentPosition - createdPosition} 楼）`;
+			const suggestion = evaluateDirector({
+				store,
+				storyId: request.storyId,
+				nodeId,
+				config,
+				mechanisms: options.mechanisms,
 			});
+			if (suggestion === null) return null;
 			return {
 				messages: [
-					{
-						role: "system",
-						content: `未兑现剧情笔记（按创建顺序）：\n${lines.join("\n")}`,
-					},
+					{ role: "system", content: `【导演】${suggestion.directive}` },
 				],
-				source: `director:${notes.length} 条未兑现`,
+				source: `director:${suggestion.mechanism}`,
 			};
 		},
 	};
