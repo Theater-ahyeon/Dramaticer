@@ -190,13 +190,134 @@
   做什么：`dramaticer chat --story <id>`：导入一张卡（通过 st-compat），用一个默认的原生模板组装上下文，流式生成，解析块，处理结构化输出，保存为楼层节点，写入 Trace。
   验收：用真实渠道完成 3 轮对话（live 测试）；Trace 内容完整。
 
-- [ ] **M1-T99 M1 验收** | 依赖：M1 全部任务
-  做什么：同 M0-T99；另外做一次首字延迟对比（和直接调用渠道相比）；拆解 M2 的任务（M2-T00 的工作可以在这里一起完成）。
+- [x] **M1-T99 M1 验收** | 依赖：M1 全部任务
+  完成：2026-11-07 门禁与 live 测试重跑（330 个测试，含真实渠道 3 轮）；首字中位数 1857 毫秒，直连体检 2045 毫秒；Trace 抽查字段完整；结论写入 `docs/dev/reports/M1.md`；M2 条目细化为 `M2-T01` 至 `M2-T15` 与 `M2-T99`
+  做什么：同 M0-T99；另外做一次首字延迟对比（和直接调用渠道相比）；把 M2 的条目细化为可执行任务。
 
-## M2：楼层树与记忆引擎（DESIGN §5、§7）——由 M2-T00 细化
+## M2：楼层树与记忆引擎（DESIGN §5、§7）
 
-- [ ] **M2-T00 拆解 M2**：把下面的粗粒度条目拆成 M2-T01… 这样的任务，每个任务都要写清楚依赖和验收标准，然后在本文件里替换掉这一节。
-  粗粒度条目：楼层树操作（swipe、编辑、分支切换、确认）；状态快照缓存；后台任务框架（独立渠道池、限速、楼层确认后触发）；事件抽取；分层摘要（依赖路径）；剧情笔记；实体和别名表；bge-m3 embedding 加 sqlite-vec（需要 HUMAN-02）；多路融合检索；知情者过滤；被动注入的槽位提供者；读取工具（memory_search、lore_lookup、state_get）；评测运行器接入完整的记忆引擎；**过关标准按题型分层：状态题对照 ACU 37.3% 与 BM25 8.1%，事件题对照 BM25 83.3% @5（@20 96.0%），两者都要明显高于对照**。
+- [ ] **M2-T01 楼层树操作与分支指针** | 依赖：M1-T07 | DESIGN §5
+  做什么：
+  - 迁移 v3：给 `stories` 增加 `head_node_id`（可空，引用 `nodes(id)`）；`appendNode` 在同一个事务里把 head 指向新节点。
+  - `setHead(storyId, nodeId)`、`getHead(storyId)`、`getPathToHead(storyId)`。节点不存在、节点属于其他故事、故事不存在都直接抛错。
+  - `swipeNode(nodeId, raw)` 与 `editNode(nodeId, raw)`：在节点的父节点下新建同角色的兄弟节点，旧节点保留，新节点成为 head。`raw` 为空或节点不存在时抛错。
+  - `isNodeConfirmed(nodeId)`：节点有子节点即为已确认。`appendNode` 创建子节点时父节点自动确认。
+  - `runChatTurn` 与 `dramaticer chat` 改用 head 作为父节点，不再使用全局最后插入的楼层。
+  验收：swipe 与 edit 生成兄弟节点、旧节点原文不变、head 更新、`getPathToHead` 正确；切到旧分支后路径只含该分支；跨故事与缺失节点抛错；追加子节点后父节点变为已确认；裸连接 UPDATE 楼层原文仍被触发器拒绝；`pnpm check` 通过。
+
+- [ ] **M2-T02 状态快照缓存** | 依赖：M2-T01 | DESIGN §5
+  做什么：
+  - 迁移 v4：新增 `state_snapshots(node_id PRIMARY KEY, story_id, state, computed_at)`。
+  - `getStateSnapshot(nodeId)`：命中缓存直接返回；否则取父节点快照，叠加本楼层的 diff，用 `applyStateDiffs` 计算后写入缓存。`getStateSnapshotAtHead(storyId)` 是同一逻辑的入口。
+  - `appendStateDiffs` 在写入后删除该楼层及其全部后代楼层的快照缓存，避免后代使用过期结果。
+  - `createStateSlotProvider` 改用快照，不再每轮从根节点回放；输出格式保持不变。
+  验收：随机路径上快照与逐条 diff 回放完全一致；同一节点第二次读取不重新计算（`computed_at` 不变）；追加 diff 后该节点与后代缓存失效；不同分支的快照互不影响；删除型 diff 与 `__proto__` 路径的用例通过；`pnpm check` 通过。
+
+- [ ] **M2-T03 后台任务框架** | 依赖：M2-T01 | DESIGN §4、§7、§14
+  做什么：
+  - 迁移 v5：新增 `background_jobs(id, story_id, node_id, kind, status, attempts, last_error, created_at, started_at, finished_at, UNIQUE(node_id, kind))`，状态取 `pending`、`running`、`done`、`failed`。
+  - 任务类型注册表。`enqueueMissingJobs(storyId)` 扫描已确认节点，为每个尚未入队的类型补建任务；重复调用不产生重复行。
+  - `drainBackgroundJobs({storyId, client, kinds, limit, now})`：先补齐任务，再按创建顺序执行；处理器通过注入的注册表获得 `{store, client, job}`；失败时记录错误并按最多 3 次重试，超过后标为 `failed`。后台模型使用 `data/channels.yaml` 的 `background` 别名，限速由现有 `LlmRouter` 负责。
+  - `dramaticer work --db <path> [--limit <n>] [--kind <kind>]`：单次执行一轮任务并打印统计，不启动长期进程。
+  - `runChatTurn` 不调用后台模型；主循环与后台任务的客户端分开创建。
+  验收：已确认节点才会入队；同一节点同一类型只有一行；drain 执行一次处理器后标为 `done`；失败按次数重试后标为 `failed` 并保留最后错误；`--kind` 只执行指定类型；chat 轮次中后台客户端零调用；`pnpm check` 通过。
+
+- [ ] **M2-T04 实体与别名表** | 依赖：M2-T01 | DESIGN §7
+  做什么：
+  - 迁移 v6：新增 `entities(id, story_id, kind, name, description, source, created_at)` 与 `entity_aliases(entity_id, alias, normalized_alias)`；同一故事内 `normalized_alias` 唯一。
+  - core 定义 `EntityKind`（`character`、`location`、`item`、`faction`、`lore`、`unknown`）与实体读写接口；名称规范化复用 NFKC、大小写折叠、去空白与标点。
+  - `upsertEntity` 合并同名实体与别名；`resolveEntities(alias)` 按规范化后的别名返回实体列表。
+  - st-compat 新增角色卡与世界书的实体导入：角色卡的名字作为 `character`；世界书条目的名字或 `comment` 作为 `lore` 实体名，主关键词作为别名。core 不出现世界书、角色卡等 ST 类型。
+  验收：合成角色卡与世界书导入后实体数、别名数符合预期；重复名称与别名合并；全角、大小写、标点差异能命中同一实体；一个别名对应多个实体时返回全部；缺失字段的条目跳过并在导入结果里计数；`pnpm check` 通过。
+
+- [ ] **M2-T05 事件抽取** | 依赖：M2-T03、M2-T04 | DESIGN §7
+  做什么：
+  - 迁移 v7：新增只追加的 `memory_events(id, story_id, source_node_id, ordinal, story_time, location, participants, importance, knowers, text, created_at)`，`UNIQUE(source_node_id, ordinal)`；`participants` 与 `knowers` 存 JSON 数组；数据库触发器拒绝 UPDATE 与 DELETE。
+  - 后台任务类型 `events`：沿路径取已确认节点及其前面最多 8 楼作为窗口，用 `background` 模型输出 JSON 数组。每条包含 `text`（非空）、`participants`、`knowers`、`importance`（0 到 1）、可选的 `storyTime` 与 `location`。
+  - 严格校验：任一字段类型不符、`importance` 越界、数组里出现空字符串时整批不写入，任务记为失败并保留原因；成功后在一个事务里写入该楼层的全部事件。
+  - `getEventsForPath(nodeId, options)` 按楼层顺序返回事件；同一楼层重复执行不产生重复行。
+  验收：假客户端返回 3 条合法事件时全部写入；包含一条非法事件时整批不写入且任务有错误原因；重跑不重复；`getEventsForPath` 的分页与 limit 正确；触发器拒绝修改与删除事件；`pnpm check` 通过。
+
+- [ ] **M2-T06 分层摘要** | 依赖：M2-T03 | DESIGN §5、§7
+  做什么：
+  - 迁移 v8：新增 `summaries(id, story_id, level, start_node_id, end_node_id, text, token_count, created_at)`，`level` 取 `chapter` 或 `mainline`，同一故事、级别、起止节点唯一。
+  - `isSummaryValid(summary, headNodeId)`：起止节点都在 head 的路径上，且起点在终点之前。`getValidSummaries(storyId, headNodeId)` 只返回有效摘要。
+  - 后台任务类型 `summary`：每 20 个已确认的助手楼层生成一条章节摘要，覆盖上一章节结束之后的楼层；每 5 条章节摘要生成一条主线摘要。窗口大小做成可注入参数。
+  - 摘要请求只使用窗口内的楼层原文，不携带其他分支的内容；写入前校验 `text` 非空、`token_count` 由现有估算器重新计算。
+  验收：路径上的摘要有效，切到其他分支后旧摘要失效；章节与主线的唯一约束生效；重复执行不产生重复行；窗口参数变化时范围正确；空窗口不调用模型；`pnpm check` 通过。
+
+- [ ] **M2-T07 剧情笔记** | 依赖：M2-T01 | DESIGN §7、§11
+  做什么：
+  - 迁移 v9：新增 `plot_notes(id, story_id, source_node_id, text, status, created_at, fulfilled_at)`，`status` 取 `open` 或 `fulfilled`。
+  - `runChatTurn` 在写入助手楼层的事务里保存 `structured.notes`，每条笔记关联助手楼层；`note` 的文本不可修改，数据库触发器只允许更新 `status` 与 `fulfilled_at`。
+  - `fulfillPlotNote(noteId, at)` 只接受 `open` 笔记；`getOpenPlotNotes(storyId)` 按创建顺序返回。
+  - 两种结构化输出模式产生的笔记走同一写入路径。
+  验收：文本标签模式与函数调用模式各写入一条笔记；`fulfill` 后不再出现在 open 列表；对已兑现笔记再次 `fulfill` 抛错；裸连接修改笔记文本被触发器拒绝；事务失败时助手楼层与笔记一起回滚；`pnpm check` 通过。
+
+- [ ] **M2-T08 运行时分块与 BM25 索引** | 依赖：M2-T01 | DESIGN §7、§14
+  做什么：
+  - 迁移 v10：新增 `chunks(id INTEGER PRIMARY KEY, story_id, node_id, ordinal, text)` 与 FTS5 trigram 的 `chunks_fts`；`appendNode` 在同一个事务里用现有 `chunkText` 与 `normalizeRetrievalText` 写入该楼层的块。
+  - 迁移完成后对已有楼层做一次回填；回填可重复执行，不产生重复块。
+  - `searchChunks(query, {storyId, beforeNodeId, limit})`：`beforeNodeId` 只搜索该节点祖先路径上的楼层，排除该节点自身与其他分支；没有 `beforeNodeId` 时搜索整个故事。
+  - 现有离线 `ChunkIndex` 保留给 st-compat 的基线评测；运行时检索只读 `StoryStore` 内的索引。
+  验收：一楼的块数与 `chunkText` 一致；分支上的楼层不出现在当前路径的检索结果里；全角文本与带标点查询能命中；同一楼层多个块只占一个结果位次；回填重复运行后块数不变；`pnpm check` 通过。
+
+- [ ] **M2-T09 embedding 客户端与向量索引** | 依赖：M2-T03、M2-T08 | DESIGN §7、§13 | 需要 HUMAN-02（已完成）
+  做什么：
+  - 新增 `sqlite-vec` 与 `@types`（如果有）；在 `DEPENDENCIES.md` 登记。`StoryStore.open` 加载扩展。
+  - core 新增 `EmbeddingClient` 接口与 OpenAI 兼容实现：`/embeddings`、批量、限速、重试、维度校验；配置写进 `data/channels.yaml` 的 `embeddings` 段（`api: openai-embeddings`、`baseUrl`、`apiKey` 环境变量引用、`model`、`dimensions`），`channels.example.yaml` 增加 `bge-m3` 示例，密钥只从 `.env` 读取。
+  - 迁移 v11：新增 `chunk_vectors` 的 vec0 表，行号对应 `chunks.id`，维度来自配置（bge-m3 为 1024）。
+  - 后台任务类型 `embeddings`：为已确认楼层里还没有向量的块调用 embedding 并写入；同一块不重复调用。`searchVectors(vector, {storyId, beforeNodeId, limit})` 返回最近块。
+  验收：假 embedding 客户端下写入、查询与维度校验通过；同一块第二次执行不重复调用；维度不符直接抛错；后台任务失败后按 M2-T03 的规则重试；真实 `bge-m3` 的 live 测试只调用一次并验证 1024 维；默认单元测试零网络；`pnpm check` 通过。
+
+- [ ] **M2-T10 多路融合检索** | 依赖：M2-T04、M2-T05、M2-T08、M2-T09 | DESIGN §7
+  做什么：
+  - core 新增 `retrieval/hybrid.ts`：输入 `{store, embedder, storyId, query, beforeNodeId, viewpoint?, limit}`，同时取 BM25 块、向量块、实体命中、事件的重要性与新近度。
+  - 排名融合使用 RRF（常数 60），每一路先按自己的排序取前 K；实体命中先用别名解析，再召回该实体参与的事件与包含别名的块。
+  - 返回 `RetrievalHit`，带 `kind`（`chunk` 或 `event`）、`nodeId`、`score`、`sources`（每一路的排名）。没有向量或没有实体时自动跳过该路，其余路径照常工作。
+  - `limit` 默认 8，限制在 1 到 50；空查询返回最近的高重要度事件与最近块。
+  验收：固定输入下排序稳定；任意一路缺失时结果仍可用且来源标记正确；实体别名能把相关事件排到前面；`beforeNodeId` 的分支过滤生效；同一节点多个块只保留最高分；`pnpm check` 通过。
+
+- [ ] **M2-T11 知情者过滤** | 依赖：M2-T05、M2-T10 | DESIGN §7
+  做什么：
+  - `retrieveMemory` 接受可选 `viewpoint`。没有 `viewpoint` 时作为全知视图返回全部结果。
+  - 有 `viewpoint` 时只返回 `knowers` 为空（公开）、包含 `"*"`、或通过别名解析后包含该视角的事件；原文块在没有块级知情者信息时不注入，避免泄露秘密。
+  - `knowers` 与视角都先做实体别名归一化；`participants` 与 `knowers` 可以存实体名或别名，读取时解析到同一实体。
+  - 返回结果里保留被过滤前的计数，便于 Trace 观察过滤量。
+  验收：视角不在 `knowers` 里的事件被排除；公开事件与 `"*"` 事件保留；别名与全名互相匹配；有视角时不返回原文块；没有视角时结果与 M2-T10 一致；`pnpm check` 通过。
+
+- [ ] **M2-T12 记忆与摘要的被动注入槽位** | 依赖：M2-T02、M2-T06、M2-T10、M2-T11 | DESIGN §7、§9
+  做什么：
+  - `createMemorySlotProvider`：在组装上下文时用当前用户楼层之前的路径做 `retrieveMemory`，默认取 6 条，渲染成一条 system 消息；每条带来源楼层 id 与类型（事件或原文块），重复的楼层只保留一次。没有检索结果时返回 `null`，由组装器记为 `missing-slot`。
+  - `createSummarySlotProvider`：返回当前 head 下有效的主线摘要与最近一条章节摘要，超出 token 上限时按新近程度裁剪；没有有效摘要时返回 `null`。
+  - 默认模板的 `memory` 与 `summary` 段接入这两个提供者；Trace 的来源写成 `memory:<条数>` 与 `summary:<级别>`。
+  验收：槽位按 limit 取结果并按路径过滤；重复结果去重；分支切换后失效摘要不再出现；没有结果时记 `missing-slot`；token 上限裁剪生效；单元测试不调用模型；`pnpm check` 通过。
+
+- [ ] **M2-T13 世界书与导演的被动注入槽位** | 依赖：M2-T04、M2-T07、M2-T10 | DESIGN §7、§9
+  做什么：
+  - 迁移 v12：新增 `lore_entries(id, story_id, entity_id, name, content, constant, keywords, source, created_at)`；`keywords` 存 JSON 数组。st-compat 把世界书条目导入为通用 lore 条目，`constant` 与主关键词保留。
+  - `createLoreSlotProvider`：常驻条目始终注入；非恒常条目按当前对话做混合检索，只取命中的条目；同一实体或同一内容只出现一次。总 token 超过预算时先删除靠后的非恒常条目，常驻条目最后裁剪。
+  - `createDirectorSlotProvider`：把未兑现的剧情笔记按创建顺序渲染成一行一条，带“距创建经过的楼层数”；不调用模型，不做实时决策。没有未兑现笔记时返回 `null`。
+  验收：常驻条目每轮都出现；非恒常条目只在关键词或实体命中时出现；重复条目去重；已兑现笔记不出现；楼层年龄计算正确；预算裁剪顺序符合上述规则；`pnpm check` 通过。
+
+- [ ] **M2-T14 读取工具与单轮执行器** | 依赖：M2-T10、M2-T12、M2-T13 | DESIGN §10、§11
+  做什么：
+  - 新增 `memory_search`、`lore_lookup`、`state_get` 三个读取工具的定义、JSON Schema 与执行函数；`memory_search` 调用 `retrieveMemory`，`lore_lookup` 查 lore 条目与实体，`state_get` 读快照或按路径读值。
+  - 接入 pi-agent-core 的无状态单轮执行器：`prepareRequest` 注入已经组装好的上下文，`beforeToolCall` 只允许读取工具并校验参数，`finishTurn` 把工具往返限制在最多 2 轮，`identity` 设为 `{ attribution: null }`。如果 pi-agent-core 的流式接口与现有 `LlmStreamingClient` 无法共存，写 ADR 记录替代实现，验收标准不变。
+  - `runChatTurn` 在函数调用模式下执行读取工具循环；文本标签模式不暴露读取工具。`state_update` 与 `plot_note` 仍然只收集，不执行。Trace 增加工具轮数与每次调用的工具名。
+  验收：假客户端第一轮调用 `memory_search`、第二轮给出正文，最终正文正确且检索结果进入第二轮请求；最多 2 轮后停止；文本标签模式没有工具定义；写入工具不执行；中止信号在工具循环中生效；`pnpm check` 通过。
+
+- [ ] **M2-T15 记忆引擎评测** | 依赖：M2-T08、M2-T09、M2-T10、M2-T11、M2-T12、M2-T13、M2-T14 | DESIGN §14
+  做什么：
+  - 新增 `pnpm --filter @dramaticer/st-compat memory-eval`：把 3 个私有对话导入临时数据库，建立块索引、向量索引、实体表，按需要建立事件与摘要；对 386 道题使用 `retrieveMemory` 计算命中@5、@10、@20，按题型与对话分别统计。
+  - 向量生成结果缓存到 `eval-private/memory-cache/`；重复运行不重复调用 embedding 渠道。详细报告写 `eval-private/reports/m2-retrieval.md`，统计版写 `docs/dev/reports/M2-retrieval.md`（只含数字）。
+  - 报告同时列出 M0 的 BM25 与 ACU 基线、每一路的单独成绩、融合后的成绩、以及被知情者过滤掉的数量。
+  - 达标门槛：状态题命中@20 不低于 45%；事件题命中@5 不低于 88%，命中@20 不低于 97%；每个对话的同一题型不低于各自 BM25 基线减 2 个百分点。
+  验收：命令一条完成并生成两份报告；统计版不含原文；数字可由重复运行复现；达标门槛逐条核对并写进报告；`pnpm check` 通过。
+
+- [ ] **M2-T99 M2 验收** | 依赖：M2 全部任务
+  做什么：同 M0-T99；重跑门禁与 live 测试；逐条核对 M2-T15 的分层门槛；复核 I1–I10，重点检查 I5（快照只是缓存）、I6（主循环只有一次主模型调用加最多 2 轮读取工具）、I7、I8、I9；在 `docs/dev/reports/M2.md` 里总结哪些假设被证实、哪些需要调整；确认 M3 的任务清单。
+  结果写 `MILESTONE_DONE`。
 
 ## M3：Director（DESIGN §8）——由 M3-T00 细化
 
