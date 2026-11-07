@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
 	FAILURE_CATEGORIES,
+	PAIR_DEPTH_BUCKETS,
 	buildJudgeMessages,
 	clipText,
 	createPairCollector,
+	pairDepthBucketOf,
 	parseJudgement,
 	replaceMarkedSection,
 	sampleCandidates,
+	sampleStratified,
 } from "./f0-pairs.mjs";
 
 function message(index, overrides = {}) {
@@ -132,6 +135,135 @@ describe("createPairCollector", () => {
 			"回答一",
 			"问题二",
 		]);
+	});
+
+	it("按非 system 楼层记录深度，并标出重 roll 的最后一楼", () => {
+		const collector = createPairCollector("对话 1");
+		collector.push(message(0, { isSystem: true }));
+		collector.push(message(1, { isUser: true, text: "问题一" }));
+		collector.push(
+			message(2, { swipes: [{ text: "旧一" }, { text: "新一" }], swipeId: 1 }),
+		);
+		collector.push(
+			message(3, { isUser: true, text: "问题二" }),
+		);
+		collector.push(
+			message(4, { swipes: [{ text: "旧二" }, { text: "新二" }], swipeId: 0 }),
+		);
+		const { candidates } = collector.result();
+		expect(candidates.map((candidate) => candidate.depthFloor)).toEqual([2, 4]);
+		expect(candidates.map((candidate) => candidate.isLastFloor)).toEqual([
+			false,
+			true,
+		]);
+	});
+});
+
+describe("pairDepthBucketOf", () => {
+	it("按楼层深度分成三层", () => {
+		expect(pairDepthBucketOf(1)).toBe("1–10 楼");
+		expect(pairDepthBucketOf(10)).toBe("1–10 楼");
+		expect(pairDepthBucketOf(11)).toBe("11–50 楼");
+		expect(pairDepthBucketOf(50)).toBe("11–50 楼");
+		expect(pairDepthBucketOf(51)).toBe("51 楼以上");
+		expect(pairDepthBucketOf(900)).toBe("51 楼以上");
+		expect(PAIR_DEPTH_BUCKETS).toHaveLength(3);
+	});
+
+	it("拒绝非法楼层深度", () => {
+		expect(() => pairDepthBucketOf(0)).toThrow("楼层深度必须是正整数");
+		expect(() => pairDepthBucketOf(2.5)).toThrow("楼层深度必须是正整数");
+	});
+});
+
+describe("sampleStratified", () => {
+	function pool(entries) {
+		return entries.map(([label, depthFloor]) => ({
+			id: `${label}:${depthFloor}`,
+			chatLabel: label,
+			depthFloor,
+		}));
+	}
+
+	const targets = { "1–10 楼": 2, "11–50 楼": 2, "51 楼以上": 2 };
+
+	it("每层按目标数抽取，并报告可用数与实取数", () => {
+		const candidates = pool([
+			["对话 1", 3],
+			["对话 1", 12],
+			["对话 1", 60],
+			["对话 2", 5],
+			["对话 2", 20],
+			["对话 2", 80],
+			["对话 2", 90],
+		]);
+		const { picked, stats } = sampleStratified(candidates, targets, "seed");
+		expect(picked).toHaveLength(6);
+		expect(
+			picked.map((candidate) => pairDepthBucketOf(candidate.depthFloor)),
+		).toEqual([
+			"1–10 楼",
+			"1–10 楼",
+			"11–50 楼",
+			"11–50 楼",
+			"51 楼以上",
+			"51 楼以上",
+		]);
+		expect(stats).toEqual([
+			{ label: "1–10 楼", target: 2, available: 2, picked: 2 },
+			{ label: "11–50 楼", target: 2, available: 2, picked: 2 },
+			{ label: "51 楼以上", target: 2, available: 3, picked: 2 },
+		]);
+	});
+
+	it("某层不足时全取，目标为零的层不取", () => {
+		const candidates = pool([
+			["对话 1", 2],
+			["对话 1", 70],
+			["对话 1", 75],
+		]);
+		const { picked, stats } = sampleStratified(
+			candidates,
+			{ "1–10 楼": 5, "11–50 楼": 0, "51 楼以上": 1 },
+			"seed",
+		);
+		expect(picked).toHaveLength(2);
+		expect(pairDepthBucketOf(picked[1].depthFloor)).toBe("51 楼以上");
+		expect(stats[0]).toEqual({
+			label: "1–10 楼",
+			target: 5,
+			available: 1,
+			picked: 1,
+		});
+		expect(stats[1]).toEqual({
+			label: "11–50 楼",
+			target: 0,
+			available: 0,
+			picked: 0,
+		});
+	});
+
+	it("同一输入重复抽样结果一致", () => {
+		const candidates = pool([
+			["对话 1", 1],
+			["对话 1", 2],
+			["对话 2", 3],
+			["对话 2", 30],
+			["对话 2", 40],
+			["对话 1", 70],
+		]);
+		expect(sampleStratified(candidates, targets, "seed").picked).toEqual(
+			sampleStratified(candidates, targets, "seed").picked,
+		);
+	});
+
+	it("缺少楼层深度或目标非法时抛错", () => {
+		expect(() =>
+			sampleStratified([{ id: "对话 1:1", chatLabel: "对话 1" }], targets),
+		).toThrow("缺少楼层深度");
+		expect(() =>
+			sampleStratified([], { "1–10 楼": -1, "11–50 楼": 0, "51 楼以上": 0 }),
+		).toThrow("抽样目标必须是非负整数");
 	});
 });
 

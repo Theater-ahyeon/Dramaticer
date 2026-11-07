@@ -16,6 +16,23 @@ export const FAILURE_CATEGORIES = Object.freeze([
 
 const CATEGORY_SET = new Set(FAILURE_CATEGORIES);
 
+/** 抽样分层：按被拒绝回复所在的楼层深度分三层。楼层按非 system 楼层从 1 开始计。 */
+export const PAIR_DEPTH_BUCKETS = Object.freeze([
+	{ label: "1–10 楼", min: 1, max: 10 },
+	{ label: "11–50 楼", min: 11, max: 50 },
+	{ label: "51 楼以上", min: 51, max: Number.POSITIVE_INFINITY },
+]);
+
+export function pairDepthBucketOf(depthFloor) {
+	if (!Number.isInteger(depthFloor) || depthFloor < 1) {
+		throw new Error("楼层深度必须是正整数");
+	}
+	for (const bucket of PAIR_DEPTH_BUCKETS) {
+		if (depthFloor >= bucket.min && depthFloor <= bucket.max) return bucket.label;
+	}
+	throw new Error(`楼层深度超出分桶范围：${depthFloor}`);
+}
+
 export const DEFAULT_PAIR_OPTIONS = Object.freeze({
 	contextMessages: 8,
 	contextChars: 1_200,
@@ -53,10 +70,12 @@ export function createPairCollector(
 	const skipped = [];
 	const window = [];
 	let rerolledFloors = 0;
+	let depthFloor = 0;
 
 	return {
 		push(message) {
 			if (message.isSystem) return;
+			depthFloor += 1;
 			if (!message.isUser) {
 				const swipes = Array.isArray(message.swipes) ? message.swipes : [];
 				if (swipes.length >= 2) {
@@ -94,6 +113,7 @@ export function createPairCollector(
 								id: `${chatLabel}:${floor}`,
 								chatLabel,
 								floor,
+								depthFloor,
 								swipeCount: swipeList.length,
 								acceptedIndex,
 								rejectedIndex,
@@ -113,7 +133,14 @@ export function createPairCollector(
 			while (window.length > contextMessages) window.shift();
 		},
 		result() {
-			return { candidates, skipped, rerolledFloors };
+			return {
+				candidates: candidates.map((candidate) => ({
+					...candidate,
+					isLastFloor: candidate.depthFloor === depthFloor,
+				})),
+				skipped,
+				rerolledFloors,
+			};
 		},
 	};
 }
@@ -160,6 +187,57 @@ export function sampleCandidates(candidatesByChat, target, seed = "f0-t02-v1") {
 		round += 1;
 	}
 	return picked;
+}
+
+function groupCandidatesByChat(candidates) {
+	const grouped = new Map();
+	for (const candidate of candidates) {
+		const list = grouped.get(candidate.chatLabel);
+		if (list === undefined) grouped.set(candidate.chatLabel, [candidate]);
+		else list.push(candidate);
+	}
+	return grouped;
+}
+
+/**
+ * 按楼层深度分层抽样：每个桶内部沿用按对话分层的规则，目标数按桶给定。
+ * 返回每个桶的目标数、可用配对与实取数量，供报告写明某层不足的情况。
+ */
+export function sampleStratified(candidates, targets, seed = "f0-t02b-v1") {
+	const resolved = new Map();
+	for (const bucket of PAIR_DEPTH_BUCKETS) {
+		const raw = targets instanceof Map ? targets.get(bucket.label) : targets[bucket.label];
+		const target = raw ?? 0;
+		if (!Number.isInteger(target) || target < 0) {
+			throw new Error(`楼层 ${bucket.label} 的抽样目标必须是非负整数`);
+		}
+		resolved.set(bucket.label, target);
+	}
+	const pools = new Map(PAIR_DEPTH_BUCKETS.map((bucket) => [bucket.label, []]));
+	for (const candidate of candidates) {
+		if (!Number.isInteger(candidate?.depthFloor)) {
+			throw new Error(`配对 ${String(candidate?.id)} 缺少楼层深度`);
+		}
+		pools.get(pairDepthBucketOf(candidate.depthFloor)).push(candidate);
+	}
+	const picked = [];
+	const stats = [];
+	for (const bucket of PAIR_DEPTH_BUCKETS) {
+		const target = resolved.get(bucket.label);
+		const pool = pools.get(bucket.label);
+		const chosen =
+			target === 0
+				? []
+				: sampleCandidates(groupCandidatesByChat(pool), target, `${seed}|${bucket.label}`);
+		picked.push(...chosen);
+		stats.push({
+			label: bucket.label,
+			target,
+			available: pool.length,
+			picked: chosen.length,
+		});
+	}
+	return { picked, stats };
 }
 
 function contextBlock(context) {

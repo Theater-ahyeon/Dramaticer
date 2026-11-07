@@ -10,11 +10,13 @@ import {
 import { parseChatJsonlFile } from "../packages/st-compat/dist/index.js";
 import {
 	FAILURE_CATEGORIES,
+	PAIR_DEPTH_BUCKETS,
 	buildJudgeMessages,
 	createPairCollector,
+	pairDepthBucketOf,
 	parseJudgement,
 	replaceMarkedSection,
-	sampleCandidates,
+	sampleStratified,
 } from "./f0-pairs.mjs";
 
 const MARKER = "F0-T02";
@@ -83,6 +85,33 @@ async function readExistingResults() {
 	return results;
 }
 
+async function readExistingPairs() {
+	let raw;
+	try {
+		raw = await readFile(PAIRS_PATH, "utf8");
+	} catch (error) {
+		if (error?.code === "ENOENT") return [];
+		throw error;
+	}
+	const pairs = [];
+	raw.split("\n").forEach((line, index) => {
+		if (line.trim() === "") return;
+		let entry;
+		try {
+			entry = JSON.parse(line);
+		} catch (cause) {
+			throw new Error(`pairs.jsonl 第 ${index + 1} 行不是合法 JSON`, {
+				cause,
+			});
+		}
+		if (typeof entry?.id !== "string") {
+			throw new Error(`pairs.jsonl 第 ${index + 1} 行缺少 id`);
+		}
+		pairs.push(entry);
+	});
+	return pairs;
+}
+
 async function runPool(items, limit, worker) {
 	const results = new Array(items.length);
 	let next = 0;
@@ -142,7 +171,15 @@ function countBy(categories) {
 	return counts;
 }
 
-function renderSection({ sampled, scanned, results, runStats, modelId, generatedAt }) {
+function renderSection({
+	sampled,
+	scanned,
+	results,
+	runStats,
+	modelId,
+	generatedAt,
+	perBucketTarget,
+}) {
 	const successful = results.filter((entry) => entry.ok);
 	const failed = results.filter((entry) => !entry.ok);
 	const primaryCounts = countBy(successful.map((entry) => entry.primary));
@@ -176,6 +213,33 @@ function renderSection({ sampled, scanned, results, runStats, modelId, generated
 	const acceptedNotLast = sampled.filter((pair) => pair.acceptedNotLast);
 	const resultByPair = new Map(successful.map((entry) => [entry.pair, entry]));
 
+	const depthRows = PAIR_DEPTH_BUCKETS.map((bucket) => {
+		const pairs = sampled.filter(
+			(pair) => pairDepthBucketOf(pair.depthFloor) === bucket.label,
+		);
+		const ok = pairs
+			.map((pair) => resultByPair.get(pair.id))
+			.filter((entry) => entry !== undefined);
+		return {
+			label: bucket.label,
+			available: scanned.bucketAvailable.get(bucket.label) ?? 0,
+			pairs,
+			ok,
+			failed: pairs.length - ok.length,
+			primaryCounts: countBy(ok.map((entry) => entry.primary)),
+		};
+	});
+	const lastFloorPairs = sampled.filter((pair) => pair.isLastFloor === true);
+	const lastFloorOk = lastFloorPairs
+		.map((pair) => resultByPair.get(pair.id))
+		.filter((entry) => entry !== undefined);
+	const lastFloorPrimary = countBy(lastFloorOk.map((entry) => entry.primary));
+	const cumulativeRequests = successful.reduce(
+		(sum, entry) => sum + (entry.cached ? 0 : entry.attempts),
+		0,
+	);
+	const cumulativeCacheHits = successful.filter((entry) => entry.cached).length;
+
 	function groupPrimary(pairs) {
 		const entries = pairs
 			.map((pair) => resultByPair.get(pair.id))
@@ -196,13 +260,16 @@ function renderSection({ sampled, scanned, results, runStats, modelId, generated
 		"- 配对：同一个助手楼层里，`swipe_id` 指向的回复算被接受；被接受的是最后一条 swipe 时取前一条，否则取后一条作为被拒绝的尝试。",
 	);
 	lines.push(
-		"- 抽样：按对话分层，每个对话内部用固定种子打乱，逐轮从各对话各取一对，直到达到目标数；抽中的配对连同上下文写在 `eval-private/f0/pairs.jsonl`。",
+		`- 抽样：按被拒绝回复所在的楼层深度分三层（${PAIR_DEPTH_BUCKETS.map((bucket) => bucket.label).join("、")}，楼层按非 system 楼层从 1 开始计），每层目标 ${perBucketTarget} 对；上一轮已抽中的配对原样保留，只在不足的层补齐；某层可用配对不足时全取。每层内部仍按对话分层，用固定种子打乱后逐轮从各对话各取一对；抽中的配对连同上下文写在 \`eval-private/f0/pairs.jsonl\`。`,
 	);
 	lines.push(
 		"- 归因模型只看到最近 8 条非系统消息（每条截断到 1200 字符）、被拒绝与被接受的两次回复（每次截断到 4000 字符）；主因从固定类别里选一个，次因最多两个，并给出 0 到 1 的置信度。",
 	);
 	lines.push(
 		"- 偏差单独统计：`alternative_only` 表示模型认为被拒绝的回复只是另一种可行写法；被接受的回复不是最后一条 swipe 表示玩家可能切回较早版本。",
+	);
+	lines.push(
+		"- 「最后一楼被重 roll 后对话结束」：被重 roll 的助手回复本身就是对话里最后一个非 system 楼层。",
 	);
 	lines.push("- 报告只包含数字与「对话 N」，原文与角色名留在 `eval-private/f0/`。");
 	lines.push("");
@@ -222,6 +289,22 @@ function renderSection({ sampled, scanned, results, runStats, modelId, generated
 	lines.push(`| 抽样里被接受的不是最后一条 | ${acceptedNotLast.length} |`);
 	lines.push("");
 
+	lines.push("按楼层深度分层的抽样与归因：", "");
+	lines.push(
+		"| 楼层深度 | 可用配对 | 每层目标 | 抽样配对 | 成功归因 | 失败归因 |",
+		"|---|---|---|---|---|---|",
+	);
+	for (const row of depthRows) {
+		lines.push(
+			`| ${row.label} | ${row.available} | ${perBucketTarget} | ${row.pairs.length} | ${row.ok.length} | ${row.failed} |`,
+		);
+	}
+	lines.push("");
+	lines.push(
+		"已有的配对已经超过目标的层不再增补；可用配对不足目标的层全取，所以抽样数可能大于或小于每层目标。",
+		"",
+	);
+
 	lines.push("### 调用", "");
 	lines.push("| 项目 | 数值 |", "|---|---|");
 	lines.push(`| 归因模型 | \`${modelId}\` |`);
@@ -231,6 +314,8 @@ function renderSection({ sampled, scanned, results, runStats, modelId, generated
 	lines.push(`| 本轮发出的网络请求 | ${runStats.requests} |`);
 	lines.push(`| 本轮缓存命中 | ${runStats.cacheHits} |`);
 	lines.push(`| 本轮因输出为空或截断而重试的配对 | ${runStats.retries} |`);
+	lines.push(`| 累计网络请求（成功归因的配对） | ${cumulativeRequests} |`);
+	lines.push(`| 累计缓存命中（成功归因的配对） | ${cumulativeCacheHits} |`);
 	lines.push(`| 累计 prompt token | ${runStats.usage.promptTokens} |`);
 	lines.push(`| 累计 completion token | ${runStats.usage.completionTokens} |`);
 	lines.push(`| 累计 reasoning token | ${runStats.usage.reasoningTokens} |`);
@@ -261,6 +346,48 @@ function renderSection({ sampled, scanned, results, runStats, modelId, generated
 	}
 	if (sortedSecondary.length === 0) lines.push("| （没有次因） | 0 | — |");
 	lines.push("");
+
+	lines.push("### 按楼层深度分层的主因分布", "");
+	lines.push(
+		"每个格子是「该层成功归因里这个主因的次数（占该层成功归因的百分比）」；「—」表示该层没有这一主因。",
+		"",
+	);
+	lines.push(`| 主因 | ${depthRows.map((row) => row.label).join(" | ")} |`);
+	lines.push(`|---|${depthRows.map(() => "---").join("|")}|`);
+	for (const category of FAILURE_CATEGORIES) {
+		const cells = depthRows.map((row) => {
+			const count = row.primaryCounts.get(category) ?? 0;
+			return count === 0 ? "—" : `${count}（${pct(count, row.ok.length)}）`;
+		});
+		if (cells.every((cell) => cell === "—")) continue;
+		lines.push(`| ${category} | ${cells.join(" | ")} |`);
+	}
+	lines.push(`| 合计 | ${depthRows.map((row) => row.ok.length).join(" | ")} |`);
+	lines.push("");
+
+	lines.push("### 最后一楼被重 roll 后对话结束", "");
+	if (lastFloorPairs.length === 0) {
+		lines.push("抽样里没有这一子集。", "");
+	} else {
+		const lastFloorTop = topCategory(lastFloorPrimary);
+		lines.push("| 项目 | 数值 |", "|---|---|");
+		lines.push(`| 抽样配对 | ${lastFloorPairs.length} |`);
+		lines.push(`| 成功归因 | ${lastFloorOk.length} |`);
+		lines.push(
+			`| 标记为「另一种可行写法」 | ${lastFloorOk.filter((entry) => entry.alternativeOnly).length} |`,
+		);
+		lines.push(
+			`| 主因最高项 | ${lastFloorTop === null ? "—" : `${lastFloorTop.category}（${lastFloorTop.count}，${pct(lastFloorTop.count, lastFloorOk.length)}）`} |`,
+		);
+		lines.push("");
+		lines.push("| 主因 | 次数 | 占成功配对 |", "|---|---|---|");
+		for (const category of FAILURE_CATEGORIES) {
+			const count = lastFloorPrimary.get(category) ?? 0;
+			if (count === 0) continue;
+			lines.push(`| ${category} | ${count} | ${pct(count, lastFloorOk.length)} |`);
+		}
+		lines.push("");
+	}
 
 	lines.push("### 偏差与置信度", "");
 	lines.push("| 项目 | 数值 |", "|---|---|");
@@ -330,7 +457,7 @@ const REPORT_HEADER = [
 ].join("\n");
 
 async function main() {
-	const targetPairs = readPositiveInt("DRAMATICER_F0_PAIRS", 200);
+	const perBucketTarget = readPositiveInt("DRAMATICER_F0_PAIRS_PER_BUCKET", 67);
 	const concurrency = readPositiveInt("DRAMATICER_F0_CONCURRENCY", 4);
 	const maxTokens = readPositiveInt("DRAMATICER_F0_MAX_TOKENS", 2_500);
 
@@ -366,7 +493,48 @@ async function main() {
 		}
 	}
 
-	const sampled = sampleCandidates(candidatesByChat, targetPairs);
+	const allCandidates = [...candidatesByChat.values()].flat();
+	const bucketAvailable = new Map(PAIR_DEPTH_BUCKETS.map((bucket) => [bucket.label, 0]));
+	for (const candidate of allCandidates) {
+		const label = pairDepthBucketOf(candidate.depthFloor);
+		bucketAvailable.set(label, bucketAvailable.get(label) + 1);
+	}
+
+	const candidateIndex = new Map(
+		allCandidates.map((candidate) => [candidate.id, candidate]),
+	);
+	const previousPairs = await readExistingPairs();
+	const kept = previousPairs.map((pair) => {
+		const current = candidateIndex.get(pair.id);
+		if (current === undefined) {
+			throw new Error(
+				`pairs.jsonl 里的配对 ${pair.id} 在当前语料里找不到，语料可能已经变化`,
+			);
+		}
+		return current;
+	});
+	const keptIds = new Set(kept.map((pair) => pair.id));
+	const keptByBucket = new Map(PAIR_DEPTH_BUCKETS.map((bucket) => [bucket.label, 0]));
+	for (const pair of kept) {
+		const label = pairDepthBucketOf(pair.depthFloor);
+		keptByBucket.set(label, keptByBucket.get(label) + 1);
+	}
+	const remainingTargets = new Map(
+		PAIR_DEPTH_BUCKETS.map((bucket) => [
+			bucket.label,
+			Math.max(0, perBucketTarget - keptByBucket.get(bucket.label)),
+		]),
+	);
+	const { picked, stats: sampleStats } = sampleStratified(
+		allCandidates.filter((candidate) => !keptIds.has(candidate.id)),
+		remainingTargets,
+	);
+	const sampled = [...kept, ...picked];
+	console.error(
+		`抽样：已保留 ${kept.length} 对，新增 ${picked.length} 对；按层新增 ${sampleStats
+			.map((item) => `${item.label} ${item.picked}/${item.target}`)
+			.join("、")}`,
+	);
 	await mkdir(OUT_DIR, { recursive: true });
 	await writeFile(
 		PAIRS_PATH,
@@ -460,15 +628,42 @@ async function main() {
 		);
 	const reportRunStats = { ...runStats, usage };
 	const generatedAt = new Date().toISOString();
+	const resultByPair = new Map(successful.map((entry) => [entry.pair, entry]));
+	const byDepth = Object.fromEntries(
+		PAIR_DEPTH_BUCKETS.map((bucket) => {
+			const pairs = sampled.filter(
+				(pair) => pairDepthBucketOf(pair.depthFloor) === bucket.label,
+			);
+			const ok = pairs
+				.map((pair) => resultByPair.get(pair.id))
+				.filter((entry) => entry !== undefined);
+			return [
+				bucket.label,
+				{
+					available: bucketAvailable.get(bucket.label) ?? 0,
+					sampled: pairs.length,
+					successful: ok.length,
+					failed: pairs.length - ok.length,
+					primary: Object.fromEntries(countBy(ok.map((entry) => entry.primary))),
+				},
+			];
+		}),
+	);
+	const lastFloorPairs = sampled.filter((pair) => pair.isLastFloor === true);
+	const lastFloorOk = lastFloorPairs
+		.map((pair) => resultByPair.get(pair.id))
+		.filter((entry) => entry !== undefined);
 	const summary = {
 		generatedAt,
 		model: model.id,
-		targetPairs,
+		perBucketTarget,
+		sampleTargets: sampleStats,
 		scanned: {
 			chats: chats.length,
 			chatsWithPairs: candidatesByChat.size,
 			rerolledFloors,
 			candidates: candidateTotal,
+			candidatesByDepth: Object.fromEntries(bucketAvailable),
 			skippedByReason: Object.fromEntries(
 				[...skipped.reduce((map, item) => {
 					map.set(item.reason, (map.get(item.reason) ?? 0) + 1);
@@ -494,6 +689,15 @@ async function main() {
 					: successful.reduce((sum, entry) => sum + entry.confidence, 0) /
 						successful.length,
 		},
+		byDepth,
+		lastFloor: {
+			sampled: lastFloorPairs.length,
+			successful: lastFloorOk.length,
+			alternativeOnly: lastFloorOk.filter((entry) => entry.alternativeOnly).length,
+			primary: Object.fromEntries(
+				countBy(lastFloorOk.map((entry) => entry.primary)),
+			),
+		},
 		calls: {
 			thisRun: runStats.calls,
 			cacheHits: runStats.cacheHits,
@@ -511,12 +715,14 @@ async function main() {
 			chatsWithPairs: candidatesByChat.size,
 			rerolledFloors,
 			candidates: candidateTotal,
+			bucketAvailable,
 			skipped,
 		},
 		results,
 		runStats: reportRunStats,
 		modelId: model.id,
 		generatedAt,
+		perBucketTarget,
 	});
 	let existingReport;
 	try {
