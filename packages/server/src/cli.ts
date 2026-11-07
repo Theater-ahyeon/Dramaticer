@@ -16,6 +16,7 @@ async function main(args: readonly string[]): Promise<void> {
 		host: config.host,
 		port: config.port,
 		password: config.password,
+		channels: { path: config.channelsPath },
 	});
 	console.log(`服务已启动：${running.origin}`);
 	const shutdown = (): void => {

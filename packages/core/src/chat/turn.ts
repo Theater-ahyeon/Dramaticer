@@ -1,11 +1,17 @@
+import { parseBlocks } from "../blocks/parser.js";
 import type { ParsedContent } from "../blocks/types.js";
 import {
+	type AssembledContext,
 	type ContextSlotProviders,
 	assembleContext,
 } from "../context/assembler.js";
 import type { ContextTemplate } from "../context/template.js";
 import type { EmbeddingClient } from "../llm/embeddings.js";
-import type { LlmReasoningLevel, LlmStreamingClient } from "../llm/types.js";
+import type {
+	LlmReasoningLevel,
+	LlmStreamingClient,
+	LlmUsage,
+} from "../llm/types.js";
 import type { PlotNote } from "../memory/plot-note.js";
 import type { StoryStore } from "../store/story-store.js";
 import {
@@ -21,7 +27,12 @@ import type {
 import type { NewStateDiff, StateDiff, TimelineNode } from "../timeline.js";
 import { READ_TOOLS } from "../tools/read-tools.js";
 import type { TurnTrace } from "../trace.js";
-import { MAX_TOOL_ROUNDS, runModelTurns } from "./executor.js";
+import {
+	MAX_TOOL_ROUNDS,
+	type ModelTurnResult,
+	TurnAbortedError,
+	runModelTurns,
+} from "./executor.js";
 
 export interface ChatTurnOptions {
 	readonly store: StoryStore;
@@ -48,6 +59,11 @@ export interface ChatTurnOptions {
 		snapshot: readonly ParsedContent[],
 	) => void;
 	readonly onThinkingDelta?: (delta: string) => void;
+	/** 每次读取工具执行后回调，服务端用它转发 SSE 事件。 */
+	readonly onToolCall?: (call: {
+		readonly name: string;
+		readonly ok: boolean;
+	}) => void;
 	readonly now?: () => number;
 }
 
@@ -137,32 +153,51 @@ export async function generateAssistantTurn(
 
 	const startedAt = now();
 	const functionCall = options.structuredOutput === "function-call";
-	const turn = await runModelTurns({
-		client: options.client,
-		messages: assembled.messages,
-		structuredTools: functionCall ? STRUCTURED_OUTPUT_TOOLS : undefined,
-		readTools: functionCall ? READ_TOOLS : undefined,
-		toolContext: {
-			store: options.store,
-			storyId: options.storyId,
-			beforeNodeId: userNode.id,
-			embedder: options.embedder ?? null,
-			viewpoint: options.viewpoint ?? null,
-		},
-		maxToolRounds: options.maxToolRounds ?? MAX_TOOL_ROUNDS,
-		model: options.model,
-		maxTokens: options.maxTokens,
-		temperature: options.temperature,
-		reasoning: options.reasoning,
-		signal: options.signal,
-		continuation: {
-			expectedTags: ["state_update", "plot_note"],
-			continueOn: ["length", "unclosed_tag"],
-		},
-		onTextDelta: options.onTextDelta,
-		onThinkingDelta: options.onThinkingDelta,
-		now,
-	});
+	let turn: ModelTurnResult;
+	try {
+		turn = await runModelTurns({
+			client: options.client,
+			messages: assembled.messages,
+			structuredTools: functionCall ? STRUCTURED_OUTPUT_TOOLS : undefined,
+			readTools: functionCall ? READ_TOOLS : undefined,
+			toolContext: {
+				store: options.store,
+				storyId: options.storyId,
+				beforeNodeId: userNode.id,
+				embedder: options.embedder ?? null,
+				viewpoint: options.viewpoint ?? null,
+			},
+			maxToolRounds: options.maxToolRounds ?? MAX_TOOL_ROUNDS,
+			model: options.model,
+			maxTokens: options.maxTokens,
+			temperature: options.temperature,
+			reasoning: options.reasoning,
+			signal: options.signal,
+			continuation: {
+				expectedTags: ["state_update", "plot_note"],
+				continueOn: ["length", "unclosed_tag"],
+			},
+			onTextDelta: options.onTextDelta,
+			onThinkingDelta: options.onThinkingDelta,
+			onToolCall: options.onToolCall,
+			now,
+		});
+	} catch (error) {
+		if (
+			error instanceof TurnAbortedError &&
+			error.partialText.trim().length > 0
+		) {
+			return persistAbortedTurn({
+				options,
+				userNode,
+				assembled,
+				startedAt,
+				error,
+				now,
+			});
+		}
+		throw error;
+	}
 	const result = turn.result;
 	const completedAt = now();
 	const blocks = turn.blocks;
@@ -271,6 +306,83 @@ export async function regenerateAssistantTurn(
 		...options,
 		userNodeId: assistantNode.parentId,
 	});
+}
+
+/** 中止时保存已经生成的部分正文；没有正文时不创建楼层。 */
+async function persistAbortedTurn(input: {
+	readonly options: GenerateAssistantTurnOptions;
+	readonly userNode: TimelineNode;
+	readonly assembled: AssembledContext;
+	readonly startedAt: number;
+	readonly error: TurnAbortedError;
+	readonly now: () => number;
+}): Promise<ChatTurnResult> {
+	const { options, userNode, assembled, error } = input;
+	const completedAt = input.now();
+	return await options.store.runInTransaction(() => {
+		const node = options.store.appendNode({
+			storyId: options.storyId,
+			parentId: userNode.id,
+			role: "assistant",
+			raw: error.partialText,
+		});
+		const trace: TurnTrace = {
+			storyId: options.storyId,
+			nodeId: node.id,
+			parentNodeId: userNode.id,
+			templateId: options.template.id,
+			createdAt: node.createdAt,
+			context: assembled.trace,
+			llm: {
+				model: options.model ?? "unknown",
+				channel: null,
+				stopReason: "aborted",
+				finishReason: null,
+				truncation: null,
+				usage: emptyUsage(),
+				attempts: 0,
+				rounds: 0,
+				cached: false,
+			},
+			tools: { rounds: 0, calls: [] },
+			structured: {
+				mode: options.structuredOutput,
+				acceptedStateUpdates: 0,
+				acceptedNotes: 0,
+				issues: [],
+			},
+			timing: {
+				firstTokenMs: error.firstTokenMs,
+				durationMs: completedAt - input.startedAt,
+			},
+		};
+		options.store.saveTurnTrace(trace);
+		return {
+			userNode,
+			node,
+			stateDiffs: [],
+			plotNotes: [],
+			structured: {
+				mode: options.structuredOutput,
+				stateUpdates: [],
+				notes: [],
+				issues: [],
+			},
+			blocks: parseBlocks(error.partialText),
+			reasoning: error.partialReasoning,
+			trace,
+		};
+	});
+}
+
+function emptyUsage(): LlmUsage {
+	return {
+		promptTokens: null,
+		completionTokens: null,
+		totalTokens: null,
+		reasoningTokens: null,
+		cachedTokens: null,
+	};
 }
 
 function toNewStateDiffs(

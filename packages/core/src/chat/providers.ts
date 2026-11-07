@@ -480,7 +480,8 @@ export function createCharacterSlotProvider(
 
 export interface StandardChatProvidersOptions {
 	readonly store: StoryStore;
-	readonly characterPrompt: string;
+	/** 为空表示故事还没有导入角色卡，角色槽位记为缺失。 */
+	readonly characterPrompt: string | null;
 	readonly embedder?: EmbeddingClient | null;
 	readonly directorConfig?: DirectorConfig;
 	readonly mechanisms?: readonly DirectorMechanism[];
@@ -491,8 +492,13 @@ export function createStandardChatProviders(
 	options: StandardChatProvidersOptions,
 ): ContextSlotProviders {
 	const embedder = options.embedder ?? null;
+	const character =
+		options.characterPrompt === null ||
+		options.characterPrompt.trim().length === 0
+			? {}
+			: { character: createCharacterSlotProvider(options.characterPrompt) };
 	return {
-		character: createCharacterSlotProvider(options.characterPrompt),
+		...character,
 		history: createHistorySlotProvider(options.store),
 		state: createStateSlotProvider(options.store),
 		summary: createSummarySlotProvider(options.store),

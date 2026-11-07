@@ -16,6 +16,7 @@ import {
 	createStandardChatProviders,
 	loadChannelsConfig,
 	loadDotEnv,
+	pickDefaultModelAlias,
 	resolveStructuredOutputMode,
 	runChatTurn,
 } from "@dramaticer/core";
@@ -94,7 +95,7 @@ export async function runChatCli(
 
 	loadEnv(envPath);
 	const config = await loadConfig(channelsPath);
-	const modelAlias = parsed.model ?? pickDefaultModel(config);
+	const modelAlias = parsed.model ?? pickDefaultModelAlias(config);
 	const model = config.models.get(modelAlias);
 	if (model === undefined) {
 		throw new Error(
@@ -235,16 +236,6 @@ function resolveTemplate(
 		throw new Error(`故事引用的上下文模板不存在：${templateId}`);
 	}
 	return record.template;
-}
-
-function pickDefaultModel(config: LlmChannelsConfig): string {
-	if (config.models.has("main")) return "main";
-	if (config.models.size === 1) {
-		return [...config.models.keys()][0] as string;
-	}
-	throw new Error(
-		`渠道配置里有多个模型，请用 --model 指定：${[...config.models.keys()].join("、")}`,
-	);
 }
 
 function parseChatArgs(args: readonly string[]): ChatArgs {

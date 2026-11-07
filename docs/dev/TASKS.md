@@ -499,7 +499,8 @@
   - 所有输入错误返回 400 与字段路径，未知故事 404；响应使用 protocol 类型。
   验收：合成卡与世界书导入后实体、lore、设置正确；重复导入不重复；非法模板 JSON 与设置枚举 400；测试只用 fixture；`pnpm check` 通过。
 
-- [ ] **M4-T06 server 运行时与 SSE 对话** | 依赖：M4-T05、M4-T03、M4-T02 | DESIGN §10、§11
+- [x] **M4-T06 server 运行时与 SSE 对话** | 依赖：M4-T05、M4-T03、M4-T02 | DESIGN §10、§11
+  完成：2026-11-07 新增 `runtime.ts`：`StoryRuntimeManager` 按故事缓存正文、后台与 embedding 客户端、模板和槽位提供者，缓存键是设置 `updatedAt` 与渠道配置指纹；`sse.ts` 输出事件帧与心跳；`turns.ts` 提供按故事互斥的 `TurnCoordinator` 与 `POST /api/stories/:id/turns`，节流 `blocks.replace`；执行器中止时抛出带部分正文的 `TurnAbortedError`，聊天层保存部分助手楼层并写 `aborted` Trace；服务端关闭先中止回合并等待写完；7 个新测试（含心跳与日志不含正文），ADR-0032，门禁通过（623 个测试）
   做什么：
   - `StoryRuntime`：按故事设置建正文客户端、embedding 客户端、模板与槽位提供者；设置或渠道配置变化后失效；正文与后台客户端分开。
   - `POST /api/stories/:id/turns` 返回 `text/event-stream`：`turn.started`、`text.delta`、`thinking.delta`、`blocks.replace`（节流 100 毫秒与结束时各一次）、`tool.call`、`turn.completed`（用户与助手楼层、状态 diff、笔记、用量、Trace 摘要、首字毫秒）、`turn.error`；每 15 秒心跳注释。

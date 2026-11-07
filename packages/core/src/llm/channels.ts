@@ -104,6 +104,20 @@ export async function loadChannelsConfig(
 	return parseChannelsConfig(text, env, filePath);
 }
 
+/** 没有指定模型时选默认别名：优先 `main`，其次配置里唯一的模型。 */
+export function pickDefaultModelAlias(
+	config: LlmChannelsConfig,
+	preferred = "main",
+): string {
+	if (config.models.has(preferred)) return preferred;
+	if (config.models.size === 1) {
+		return [...config.models.keys()][0] as string;
+	}
+	throw new Error(
+		`渠道配置里有多个模型，请指定模型：${[...config.models.keys()].join("、")}`,
+	);
+}
+
 export function parseChannelsConfig(
 	text: string,
 	env: Readonly<Record<string, string | undefined>> = process.env,

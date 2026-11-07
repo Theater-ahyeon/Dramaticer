@@ -29,10 +29,17 @@ import {
 	parseWorldInfoJson,
 } from "@dramaticer/st-compat";
 import { HttpError, readJsonBody, sendEmpty, sendJson } from "./http.js";
+import type { StoryRuntimeManager } from "./runtime.js";
+import { type TurnCoordinator, handleTurnStream } from "./turns.js";
 
 export interface ApiRouteOptions {
 	readonly store: StoryStore;
 	readonly maxJsonBodyBytes: number;
+	readonly runtime: StoryRuntimeManager | null;
+	readonly turns: TurnCoordinator;
+	readonly log: (line: string) => void;
+	readonly heartbeatMs: number;
+	readonly now?: () => number;
 }
 
 /** 处理 `/api` 下的故事、导入、设置与模板接口；不认识的路径返回 404。 */
@@ -60,6 +67,11 @@ export async function handleApiRequest(
 		}
 		if (third === "import" && parts.length === 3) {
 			await handleImport(req, res, method, options, storyId);
+			return;
+		}
+		if (third === "turns" && parts.length === 3) {
+			requireMethod(method, ["POST"]);
+			await handleTurns(req, res, options, storyId);
 			return;
 		}
 		if (third === "settings" && parts.length === 3) {
@@ -200,6 +212,19 @@ async function handleImport(
 		},
 	};
 	sendJson(res, 200, result);
+}
+
+async function handleTurns(
+	req: IncomingMessage,
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	storyId: string,
+): Promise<void> {
+	requireStory(options.store, storyId);
+	const body = await readObjectBody(req, options.maxJsonBodyBytes);
+	assertKnownKeys(body, ["text"]);
+	const text = requireText(body.text, "text");
+	await handleTurnStream(res, storyId, text, options);
 }
 
 async function handleSettings(

@@ -392,4 +392,51 @@ describe("runChatTurn", () => {
 			"user",
 		]);
 	});
+
+	it("中止时保存已经生成的部分正文并把 Trace 记为中止", async () => {
+		const { store } = openTempStore();
+		seedStory(store);
+		const controller = new AbortController();
+		const emitted = Promise.withResolvers<void>();
+		const client: LlmStreamingClient = {
+			async complete() {
+				throw new Error("中止测试不使用 complete");
+			},
+			stream() {
+				return createEventStream(async (emit) => {
+					emit({ type: "text_delta", delta: "山门刚开" });
+					emitted.resolve();
+					const aborted = Promise.withResolvers<never>();
+					controller.signal.addEventListener(
+						"abort",
+						() => aborted.reject(controller.signal.reason),
+						{ once: true },
+					);
+					await aborted.promise;
+				});
+			},
+		};
+
+		const pending = runChatTurn({
+			store,
+			client,
+			storyId: "s1",
+			userText: "我推门。",
+			template: createDefaultContextTemplate({ structuredOutput: "text-tags" }),
+			providers: providers(store),
+			budgetTokens: 4_000,
+			structuredOutput: "text-tags",
+			signal: controller.signal,
+		});
+		await emitted.promise;
+		controller.abort(new Error("测试中止"));
+		const result = await pending;
+
+		expect(result.node.raw).toBe("山门刚开");
+		expect(result.trace.llm.stopReason).toBe("aborted");
+		expect(result.trace.timing.firstTokenMs).not.toBeNull();
+		expect(result.stateDiffs).toEqual([]);
+		expect(store.getPathToHead("s1").at(-1)?.id).toBe(result.node.id);
+		expect(store.getTurnTrace(result.node.id)?.llm.stopReason).toBe("aborted");
+	});
 });

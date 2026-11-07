@@ -1,6 +1,12 @@
 import http from "node:http";
 import type { AddressInfo } from "node:net";
-import { StoryStore, getCoreVersion, isJsonObject } from "@dramaticer/core";
+import {
+	type LlmChannelsConfig,
+	StoryStore,
+	getCoreVersion,
+	isJsonObject,
+	loadChannelsConfig,
+} from "@dramaticer/core";
 import {
 	type SessionStore,
 	assertBindAllowed,
@@ -19,10 +25,25 @@ import {
 	sendJson,
 } from "./http.js";
 import { handleApiRequest } from "./routes.js";
+import {
+	type RuntimeClientFactory,
+	type RuntimeEmbedderFactory,
+	StoryRuntimeManager,
+} from "./runtime.js";
+import { SSE_HEARTBEAT_MS } from "./sse.js";
 import { resolveStaticFile, serveStaticFile } from "./static-files.js";
+import { TurnCoordinator } from "./turns.js";
 
 /** 角色卡以 base64 JSON 上传，这个上限要能装下一张卡。 */
 export const MAX_JSON_BODY_BYTES = 25 * 1024 * 1024;
+
+/** 渠道配置来源；模型客户端与 embedding 客户端都可以在测试里替换。 */
+export interface ServerChannelsOptions {
+	readonly path?: string;
+	readonly load?: () => Promise<LlmChannelsConfig>;
+	readonly createClient?: RuntimeClientFactory;
+	readonly createEmbedder?: RuntimeEmbedderFactory;
+}
 
 export interface StartServerOptions {
 	readonly dbPath: string;
@@ -31,6 +52,10 @@ export interface StartServerOptions {
 	readonly port: number;
 	readonly password: string | null;
 	readonly maxJsonBodyBytes?: number;
+	/** 不设置时不提供对话接口。 */
+	readonly channels?: ServerChannelsOptions;
+	readonly heartbeatMs?: number;
+	readonly now?: () => number;
 	readonly log?: (line: string) => void;
 }
 
@@ -46,6 +71,10 @@ interface HandlerOptions {
 	readonly password: string | null;
 	readonly sessions: SessionStore;
 	readonly maxJsonBodyBytes: number;
+	readonly runtime: StoryRuntimeManager | null;
+	readonly turns: TurnCoordinator;
+	readonly heartbeatMs: number;
+	readonly now?: () => number;
 	readonly log: (line: string) => void;
 }
 
@@ -57,8 +86,26 @@ export async function startServer(
 			? null
 			: options.password;
 	assertBindAllowed(options.host, password);
-	const store = StoryStore.open(options.dbPath);
 	const log = options.log ?? ((line: string) => console.log(line));
+	const channels = options.channels ?? null;
+	const loadConfig = channels === null ? null : resolveChannelsLoader(channels);
+	const initialConfig = loadConfig === null ? null : await loadConfig();
+	const embeddingDimensions =
+		initialConfig?.embeddings.get("default")?.dimensions;
+	const store = StoryStore.open(
+		options.dbPath,
+		embeddingDimensions === undefined ? {} : { embeddingDimensions },
+	);
+	const runtime =
+		channels === null || loadConfig === null
+			? null
+			: new StoryRuntimeManager({
+					store,
+					loadConfig,
+					createClient: channels.createClient,
+					createEmbedder: channels.createEmbedder,
+				});
+	const turns = new TurnCoordinator();
 	const server = http.createServer(
 		createRequestHandler({
 			store,
@@ -66,6 +113,10 @@ export async function startServer(
 			password,
 			sessions: createSessionStore(),
 			maxJsonBodyBytes: options.maxJsonBodyBytes ?? MAX_JSON_BODY_BYTES,
+			runtime,
+			turns,
+			heartbeatMs: options.heartbeatMs ?? SSE_HEARTBEAT_MS,
+			now: options.now,
 			log,
 		}),
 	);
@@ -84,6 +135,7 @@ export async function startServer(
 		async close(): Promise<void> {
 			if (closed) return;
 			closed = true;
+			await turns.abortAll();
 			const finished = Promise.withResolvers<void>();
 			server.close((error) =>
 				error ? finished.reject(error) : finished.resolve(),
@@ -179,6 +231,11 @@ async function handleRequest(
 		await handleApiRequest(req, res, url, method, {
 			store: options.store,
 			maxJsonBodyBytes: options.maxJsonBodyBytes,
+			runtime: options.runtime,
+			turns: options.turns,
+			log: options.log,
+			heartbeatMs: options.heartbeatMs,
+			now: options.now,
 		});
 		return;
 	}
@@ -236,6 +293,17 @@ function listen(
 	server.once("listening", onListening);
 	server.listen(port, host);
 	return promise;
+}
+
+function resolveChannelsLoader(
+	options: ServerChannelsOptions,
+): () => Promise<LlmChannelsConfig> {
+	if (options.load !== undefined) return options.load;
+	const path = options.path;
+	if (path === undefined) {
+		throw new Error("channels 需要 path 或 load");
+	}
+	return () => loadChannelsConfig(path);
 }
 
 function formatHost(host: string): string {
