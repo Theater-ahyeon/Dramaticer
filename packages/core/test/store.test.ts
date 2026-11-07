@@ -7,6 +7,7 @@ import {
 	StoryStore,
 	type TimelineNode,
 } from "../src/index.js";
+import { applyMigrations } from "../src/store/migrations.js";
 
 function tempDbPath(): string {
 	return join(
@@ -86,10 +87,24 @@ describe("schema 与迁移", () => {
 
 	it("拒绝打开版本高于代码的数据库", () => {
 		const path = tempDbPath();
+		onTestFinished(() => removeDbDir(path));
 		const raw = new Database(path);
 		raw.pragma(`user_version = ${LATEST_SCHEMA_VERSION + 1}`);
 		raw.close();
 		expect(() => StoryStore.open(path)).toThrow(/高于当前代码支持的版本/);
+	});
+
+	it("迁移列表的版本号不是从 1 连续递增时抛错", () => {
+		const { store, path } = openTempStore();
+		const raw = new Database(path);
+		expect(() =>
+			applyMigrations(raw, [
+				{ version: 1, description: "第一版", statements: [] },
+				{ version: 3, description: "第三版", statements: [] },
+			]),
+		).toThrow(/第 2 项的版本号必须是 2，实际为 3/);
+		raw.close();
+		expect(store.getSchemaVersion()).toBe(LATEST_SCHEMA_VERSION);
 	});
 });
 
@@ -335,6 +350,35 @@ describe("状态 diff", () => {
 				source: "model",
 			}),
 		).toThrow(/楼层节点不存在/);
+	});
+
+	it("读取不存在的楼层的 diff 时抛错", () => {
+		const { store } = openTempStore();
+		seedStory(store);
+		expect(() => store.getStateDiffs("missing")).toThrow(
+			/楼层节点不存在：missing/,
+		);
+	});
+
+	it("存储里的 path 不是非空字符串数组时抛错", () => {
+		const { store, path } = openTempStore();
+		const { user } = seedStory(store);
+		const raw = new Database(path);
+		const insert = raw.prepare(
+			`INSERT INTO state_diffs (story_id, node_id, ordinal, path, op, value, source, created_at)
+			VALUES (?, ?, ?, ?, 'set', '1', 'import', '2026-11-06T00:00:00.000Z')`,
+		);
+		insert.run("story-1", user.id, 0, "[]");
+		expect(() => store.getStateDiffs(user.id)).toThrow(
+			/状态 diff 1 的 path 必须是非空字符串组成的非空数组/,
+		);
+
+		raw.prepare("DELETE FROM state_diffs").run();
+		insert.run("story-1", user.id, 0, '["生命", 3]');
+		expect(() => store.getStateDiffs(user.id)).toThrow(
+			/状态 diff 1 的 path 必须是非空字符串组成的非空数组/,
+		);
+		raw.close();
 	});
 });
 

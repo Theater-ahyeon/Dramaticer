@@ -117,7 +117,8 @@
   做什么：`evalset/acu.ts` 的快照改为返回值数组（单元格历史与 SQL 重放都返回值列表），逐值规范化后判断包含，不再把相邻单元格拼成一段文本；提问楼层在聊天里不存在时抛出并列出题目 id；补“负例”：表格里只有 `集市` 与 `时间` 两个单元格时，答案 `集市时间` 判为未命中，`集市` 仍命中。
   验收：fixture 上两种答案的判定符合上述预期；重新跑报告，更新私有版与统计版的 ACU 章节数字；`pnpm check` 通过。
 
-- [ ] **M0-FIX-6 存储层校验与测试资源清理** | 依赖：M0-REVIEW-1
+- [x] **M0-FIX-6 存储层校验与测试资源清理** | 依赖：M0-REVIEW-1
+  完成：2026-11-06 `getStateDiffs` 对不存在的楼层抛错；`applyMigrations` 入口校验版本号从 1 连续递增（可选注入迁移列表）；`rowToStateDiff` 与 `#normaliseStateDiff` 共用 `assertStateDiffPath` 校验非空字符串数组；删除 `getLatestSchemaVersion`；版本测试注册临时目录清理，仓库里 43 个 `.tmp-store-*` 目录已删除且重跑测试不再新增；3 个新测试，门禁通过（193 个测试）
   做什么：`getStateDiffs` 对不存在的楼层抛错；`applyMigrations` 入口校验 `MIGRATIONS[i].version === i + 1`；`rowToStateDiff` 校验 `path` 是非空字符串数组；删除 `getLatestSchemaVersion`；`store.test.ts` 的版本测试注册临时目录清理，并清理仓库里已积累的 `.tmp-store-*` 目录。
   验收：补齐对应测试（存在性抛错、乱序迁移列表抛错、非法 `path` 抛错）；重复运行测试后 `packages/core/test/` 下不再新增 `.tmp-store-*`；`pnpm check` 通过。
 

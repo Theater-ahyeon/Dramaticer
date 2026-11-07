@@ -82,14 +82,30 @@ export const MIGRATIONS: readonly Migration[] = [
 export const LATEST_SCHEMA_VERSION: number =
 	MIGRATIONS[MIGRATIONS.length - 1]?.version ?? 0;
 
-export function applyMigrations(db: Database.Database): void {
+function assertMigrationSequence(migrations: readonly Migration[]): void {
+	migrations.forEach((migration, index) => {
+		const expected = index + 1;
+		if (migration.version !== expected) {
+			throw new Error(
+				`迁移列表第 ${index + 1} 项的版本号必须是 ${expected}，实际为 ${migration.version}`,
+			);
+		}
+	});
+}
+
+export function applyMigrations(
+	db: Database.Database,
+	migrations: readonly Migration[] = MIGRATIONS,
+): void {
+	assertMigrationSequence(migrations);
+	const latestVersion = migrations[migrations.length - 1]?.version ?? 0;
 	const current = db.pragma("user_version", { simple: true }) as number;
-	if (current > LATEST_SCHEMA_VERSION) {
+	if (current > latestVersion) {
 		throw new Error(
-			`数据库 schema 版本 ${current} 高于当前代码支持的版本 ${LATEST_SCHEMA_VERSION}`,
+			`数据库 schema 版本 ${current} 高于当前代码支持的版本 ${latestVersion}`,
 		);
 	}
-	for (const migration of MIGRATIONS) {
+	for (const migration of migrations) {
 		if (migration.version <= current) continue;
 		db.transaction(() => {
 			for (const statement of migration.statements) {

@@ -10,7 +10,7 @@ import type {
 	TimelineRole,
 } from "../timeline.js";
 import { serializeJsonValue } from "./json-value.js";
-import { LATEST_SCHEMA_VERSION, applyMigrations } from "./migrations.js";
+import { applyMigrations } from "./migrations.js";
 
 interface StoryRow {
 	readonly id: string;
@@ -115,13 +115,28 @@ function rowToNode(row: NodeRow): TimelineNode {
 	};
 }
 
+function assertStateDiffPath(
+	value: unknown,
+	label: string,
+): asserts value is string[] {
+	if (
+		!Array.isArray(value) ||
+		value.length === 0 ||
+		value.some((segment) => typeof segment !== "string" || segment.length === 0)
+	) {
+		throw new Error(`${label} 的 path 必须是非空字符串组成的非空数组`);
+	}
+}
+
 function rowToStateDiff(row: StateDiffRow): StateDiff {
+	const path: unknown = JSON.parse(row.path);
+	assertStateDiffPath(path, `状态 diff ${row.id}`);
 	return {
 		id: row.id,
 		storyId: row.story_id,
 		nodeId: row.node_id,
 		ordinal: row.ordinal,
-		path: JSON.parse(row.path) as string[],
+		path,
 		op: row.op as StateDiffOp,
 		value: row.value === null ? null : JSON.parse(row.value),
 		reason: row.reason,
@@ -156,10 +171,6 @@ export class StoryStore {
 
 	getSchemaVersion(): number {
 		return this.#db.pragma("user_version", { simple: true }) as number;
-	}
-
-	getLatestSchemaVersion(): number {
-		return LATEST_SCHEMA_VERSION;
 	}
 
 	/**
@@ -346,6 +357,9 @@ export class StoryStore {
 
 	/** 读取某个楼层节点产生的状态 diff，按写入顺序排列。 */
 	getStateDiffs(nodeId: string): StateDiff[] {
+		if (!this.getNode(nodeId)) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
 		const rows = this.#db
 			.prepare(
 				"SELECT * FROM state_diffs WHERE node_id = ? ORDER BY ordinal ASC",
@@ -443,15 +457,7 @@ export class StoryStore {
 		if (op !== "set" && op !== "delete") {
 			throw new Error(`${label} 的 op 不合法：${op}`);
 		}
-		if (
-			!Array.isArray(input.path) ||
-			input.path.length === 0 ||
-			input.path.some(
-				(segment) => typeof segment !== "string" || segment.length === 0,
-			)
-		) {
-			throw new Error(`${label} 的 path 必须是非空字符串组成的非空数组`);
-		}
+		assertStateDiffPath(input.path, label);
 		const node = this.getNode(input.nodeId);
 		if (!node) {
 			throw new Error(`${label} 指向的楼层节点不存在：${input.nodeId}`);
