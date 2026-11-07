@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
 	type ContextSlotRequest,
+	assembleContext,
 	createDefaultContextTemplate,
 	createHistorySlotProvider,
+	createMemorySlotProvider,
 	createStateSlotProvider,
 	createStaticSlotProvider,
+	createSummarySlotProvider,
+	createTokenEstimator,
 } from "../src/index.js";
 import { openTempStore } from "./temp-store.js";
 
@@ -134,5 +138,267 @@ describe("槽位提供者", () => {
 			source: "card:测试",
 		});
 		expect(() => createStaticSlotProvider([], "card:空")).toThrow("至少");
+	});
+});
+
+describe("记忆与摘要槽位", () => {
+	it("记忆槽位只检索当前楼层之前的路径，同一楼层只出现一次", async () => {
+		const { store } = openTempStore();
+		store.createStory({ id: "s1", title: "测试" });
+		store.appendNode({
+			id: "n-greet",
+			storyId: "s1",
+			parentId: null,
+			role: "assistant",
+			raw: "山门口站着守卫，道路被拦住。",
+		});
+		store.appendNode({
+			id: "n-side",
+			storyId: "s1",
+			parentId: null,
+			role: "assistant",
+			raw: "山门口的岔路通向树林。",
+		});
+		store.appendNode({
+			id: "n-ask",
+			storyId: "s1",
+			parentId: "n-greet",
+			role: "user",
+			raw: "山门口",
+		});
+		store.insertMemoryEvents([
+			{
+				storyId: "s1",
+				sourceNodeId: "n-greet",
+				ordinal: 0,
+				participants: ["守卫"],
+				importance: 0.9,
+				knowers: [],
+				text: "守卫拦住了来客",
+			},
+		]);
+
+		const provider = createMemorySlotProvider(store, { limit: 2 });
+		const content = await provider.provide(request("s1", "n-ask", "memory"));
+		expect(content?.source).toBe("memory:1");
+		expect(content?.messages).toHaveLength(1);
+		expect(content?.messages[0]?.role).toBe("system");
+		const text = content?.messages[0]?.content ?? "";
+		expect(text).toContain("n-greet");
+		expect(text).toContain("（事件）");
+		expect(text).toContain("守卫拦住了来客");
+		expect(text.split("n-greet").length - 1).toBe(1);
+		expect(text).not.toContain("n-side");
+	});
+
+	it("记忆槽位在没有前置楼层或没有命中时返回 null", async () => {
+		const { store } = openTempStore();
+		store.createStory({ id: "s1", title: "测试" });
+		store.appendNode({
+			id: "n-open",
+			storyId: "s1",
+			parentId: null,
+			role: "assistant",
+			raw: "开场。",
+		});
+		store.appendNode({
+			id: "n-ask",
+			storyId: "s1",
+			parentId: "n-open",
+			role: "user",
+			raw: "无关内容",
+		});
+		const provider = createMemorySlotProvider(store);
+		expect(await provider.provide(request("s1", null, "memory"))).toBeNull();
+		expect(
+			await provider.provide(request("s1", "n-open", "memory")),
+		).toBeNull();
+		expect(await provider.provide(request("s1", "n-ask", "memory"))).toBeNull();
+	});
+
+	it("摘要槽位返回主线与最近一条章节，并按 token 上限从最久远的开始裁剪", async () => {
+		const { store } = openTempStore();
+		store.createStory({ id: "s1", title: "测试" });
+		const floors = [
+			["n0", null, "assistant"],
+			["n1", "n0", "user"],
+			["n2", "n1", "assistant"],
+			["n3", "n2", "user"],
+			["n4", "n3", "assistant"],
+		] as const;
+		for (const [id, parentId, role] of floors) {
+			store.appendNode({
+				id,
+				storyId: "s1",
+				parentId,
+				role,
+				raw: `[[${id}]]`,
+			});
+		}
+		store.insertSummary({
+			storyId: "s1",
+			level: "chapter",
+			startNodeId: "n0",
+			endNodeId: "n2",
+			text: "第一章旧",
+		});
+		store.insertSummary({
+			storyId: "s1",
+			level: "mainline",
+			startNodeId: "n0",
+			endNodeId: "n2",
+			text: "主线旧",
+		});
+		store.insertSummary({
+			storyId: "s1",
+			level: "chapter",
+			startNodeId: "n3",
+			endNodeId: "n4",
+			text: "第二章新",
+		});
+
+		const provider = createSummarySlotProvider(store);
+		const content = await provider.provide(request("s1", "n4", "summary"));
+		expect(content?.source).toBe("summary:mainline+chapter");
+		const text = content?.messages[0]?.content ?? "";
+		expect(text).toContain("【主线】主线旧");
+		expect(text).toContain("【章节】第二章新");
+		expect(text).not.toContain("第一章旧");
+
+		const estimator = createTokenEstimator();
+		const tokenLimit = estimator("故事摘要：") + estimator("第二章新");
+		const trimmed = createSummarySlotProvider(store, { tokenLimit });
+		const trimmedContent = await trimmed.provide(
+			request("s1", "n4", "summary"),
+		);
+		expect(trimmedContent?.source).toBe("summary:chapter");
+		const trimmedText = trimmedContent?.messages[0]?.content ?? "";
+		expect(trimmedText).toContain("第二章新");
+		expect(trimmedText).not.toContain("主线旧");
+	});
+
+	it("切换分支后失效摘要不再出现", async () => {
+		const { store } = openTempStore();
+		store.createStory({ id: "s1", title: "测试" });
+		const floors = [
+			["n0", null, "assistant"],
+			["n1", "n0", "user"],
+			["n2", "n1", "assistant"],
+		] as const;
+		for (const [id, parentId, role] of floors) {
+			store.appendNode({
+				id,
+				storyId: "s1",
+				parentId,
+				role,
+				raw: `[[${id}]]`,
+			});
+		}
+		store.insertSummary({
+			storyId: "s1",
+			level: "chapter",
+			startNodeId: "n0",
+			endNodeId: "n2",
+			text: "旧分支的章节",
+		});
+		store.appendNode({
+			id: "n-side",
+			storyId: "s1",
+			parentId: "n0",
+			role: "assistant",
+			raw: "另一条分支。",
+		});
+		store.setHead("s1", "n-side");
+
+		const provider = createSummarySlotProvider(store);
+		expect(
+			await provider.provide(request("s1", "n-side", "summary")),
+		).toBeNull();
+	});
+
+	it("默认模板把两个槽位接进组装器，没有结果时记为 missing-slot", async () => {
+		const { store } = openTempStore();
+		store.createStory({ id: "s1", title: "测试" });
+		store.appendNode({
+			id: "n0",
+			storyId: "s1",
+			parentId: null,
+			role: "assistant",
+			raw: "山门口站着守卫。",
+		});
+		store.appendNode({
+			id: "n1",
+			storyId: "s1",
+			parentId: "n0",
+			role: "user",
+			raw: "我上前。",
+		});
+		store.appendNode({
+			id: "n2",
+			storyId: "s1",
+			parentId: "n1",
+			role: "assistant",
+			raw: "守卫点头。",
+		});
+		store.appendNode({
+			id: "n-ask",
+			storyId: "s1",
+			parentId: "n2",
+			role: "user",
+			raw: "山门口",
+		});
+		store.insertSummary({
+			storyId: "s1",
+			level: "chapter",
+			startNodeId: "n0",
+			endNodeId: "n2",
+			text: "第一章",
+		});
+
+		const assembled = await assembleContext({
+			template: createDefaultContextTemplate({ structuredOutput: "text-tags" }),
+			budgetTokens: 4_000,
+			storyId: "s1",
+			nodeId: "n-ask",
+			providers: {
+				memory: createMemorySlotProvider(store),
+				summary: createSummarySlotProvider(store),
+			},
+		});
+		const memoryEntry = assembled.trace.entries.find(
+			(entry) => entry.segmentId === "memory",
+		);
+		expect(memoryEntry?.status).toBe("included");
+		expect(memoryEntry?.source).toBe("memory:1");
+		const summaryEntry = assembled.trace.entries.find(
+			(entry) => entry.segmentId === "summary",
+		);
+		expect(summaryEntry?.status).toBe("included");
+		expect(summaryEntry?.source).toBe("summary:chapter");
+
+		store.createStory({ id: "s2", title: "空故事" });
+		store.appendNode({
+			id: "m0",
+			storyId: "s2",
+			parentId: null,
+			role: "assistant",
+			raw: "开场。",
+		});
+		const empty = await assembleContext({
+			template: createDefaultContextTemplate({ structuredOutput: "text-tags" }),
+			budgetTokens: 4_000,
+			storyId: "s2",
+			nodeId: "m0",
+			providers: {
+				memory: createMemorySlotProvider(store),
+				summary: createSummarySlotProvider(store),
+			},
+		});
+		for (const segmentId of ["memory", "summary"]) {
+			const entry = empty.trace.entries.find(
+				(item) => item.segmentId === segmentId,
+			);
+			expect(entry?.status).toBe("missing-slot");
+		}
 	});
 });

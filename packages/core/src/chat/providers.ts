@@ -5,7 +5,12 @@ import type {
 	ContextSlotProvider,
 } from "../context/assembler.js";
 import type { ContextMessage } from "../context/template.js";
+import type { EmbeddingClient } from "../llm/embeddings.js";
+import { MAX_MEMORY_EVENT_LIMIT } from "../memory/event.js";
+import type { SummaryLevel } from "../memory/summary.js";
+import { retrieveMemory } from "../retrieval/hybrid.js";
 import type { StoryStore } from "../store/story-store.js";
+import { type TokenEstimator, createTokenEstimator } from "../tokens.js";
 
 export interface HistorySlotProviderOptions {
 	/** 最多带最近多少楼，默认 20。 */
@@ -83,6 +88,190 @@ export function createStateSlotProvider(
 					},
 				],
 				source: `state:${diffCount} 条 diff`,
+			};
+		},
+	};
+}
+
+export interface MemorySlotProviderOptions {
+	/** 最多注入多少条检索结果，默认 6。 */
+	readonly limit?: number;
+	/** 有 embedding 客户端时启用向量路；没有时只走其余各路。 */
+	readonly embedder?: EmbeddingClient | null;
+}
+
+export const DEFAULT_MEMORY_SLOT_LIMIT = 6;
+
+/**
+ * 以当前楼层之前的路径为范围做多路记忆检索，把命中结果渲染成一条系统消息。
+ * 当前楼层的原文作为检索语句，同一楼层只出现一次。
+ */
+export function createMemorySlotProvider(
+	store: StoryStore,
+	options: MemorySlotProviderOptions = {},
+): ContextSlotProvider {
+	const limit = options.limit ?? DEFAULT_MEMORY_SLOT_LIMIT;
+	if (!Number.isInteger(limit) || limit < 1) {
+		throw new Error("记忆槽位的检索条数必须是正整数");
+	}
+	const embedder = options.embedder ?? null;
+	return {
+		async provide(request): Promise<ContextSlotContent | null> {
+			if (request.nodeId === null) return null;
+			const current = store.getNode(request.nodeId);
+			if (!current) {
+				throw new Error(`楼层节点不存在：${request.nodeId}`);
+			}
+			if (current.storyId !== request.storyId) {
+				throw new Error(
+					`楼层节点 ${request.nodeId} 属于另一个故事 ${current.storyId}`,
+				);
+			}
+			const pathBefore = store.getPathToNode(request.nodeId).slice(0, -1);
+			if (pathBefore.length === 0) return null;
+			const lastBefore = pathBefore[pathBefore.length - 1];
+			if (lastBefore === undefined) return null;
+			const eventsByNode = new Map<string, string[]>();
+			for (const event of store.getEventsForPath(lastBefore.id, {
+				limit: MAX_MEMORY_EVENT_LIMIT,
+			})) {
+				const texts = eventsByNode.get(event.sourceNodeId);
+				if (texts === undefined) {
+					eventsByNode.set(event.sourceNodeId, [event.text]);
+				} else {
+					texts.push(event.text);
+				}
+			}
+
+			const result = await retrieveMemory({
+				store,
+				embedder,
+				storyId: request.storyId,
+				query: current.raw,
+				beforeNodeId: request.nodeId,
+				limit,
+			});
+
+			const positions = new Map(
+				pathBefore.map((node, index) => [node.id, index] as const),
+			);
+			const seen = new Set<string>();
+			const lines: string[] = [];
+			for (const hit of result.hits) {
+				if (seen.has(hit.nodeId)) continue;
+				seen.add(hit.nodeId);
+				const sourceNode = store.getNode(hit.nodeId);
+				if (!sourceNode) {
+					throw new Error(`检索结果引用了不存在的楼层：${hit.nodeId}`);
+				}
+				let text: string;
+				if (hit.kind === "event") {
+					const texts = eventsByNode.get(hit.nodeId);
+					if (texts === undefined) {
+						throw new Error(
+							`检索结果把楼层 ${hit.nodeId} 标为事件，但该楼层没有事件正文`,
+						);
+					}
+					text = texts.join("；");
+				} else {
+					const index = positions.get(hit.nodeId);
+					if (index === undefined) {
+						throw new Error(`检索结果里的楼层 ${hit.nodeId} 不在当前路径上`);
+					}
+					text = renderContextView(parseBlocks(sourceNode.raw), {
+						depth: pathBefore.length - 1 - index,
+					});
+				}
+				text = text.trim();
+				if (text.length === 0) continue;
+				const kind = hit.kind === "event" ? "事件" : "原文块";
+				lines.push(`- 楼层 ${hit.nodeId}（${kind}）：${text}`);
+			}
+			if (lines.length === 0) return null;
+			return {
+				messages: [
+					{
+						role: "system",
+						content: `相关记忆（按相关度排序）：\n${lines.join("\n")}`,
+					},
+				],
+				source: `memory:${lines.length}`,
+			};
+		},
+	};
+}
+
+export interface SummarySlotProviderOptions {
+	/** 摘要段占用的 token 上限，默认 800。 */
+	readonly tokenLimit?: number;
+	readonly tokenEstimator?: TokenEstimator;
+}
+
+export const DEFAULT_SUMMARY_TOKEN_LIMIT = 800;
+
+/**
+ * 返回当前分支下有效的主线摘要与最近一条章节摘要；超过 token 上限时
+ * 从最久远的摘要开始丢弃。
+ */
+export function createSummarySlotProvider(
+	store: StoryStore,
+	options: SummarySlotProviderOptions = {},
+): ContextSlotProvider {
+	const tokenLimit = options.tokenLimit ?? DEFAULT_SUMMARY_TOKEN_LIMIT;
+	if (!Number.isInteger(tokenLimit) || tokenLimit < 1) {
+		throw new Error("摘要槽位的 token 上限必须是正整数");
+	}
+	const estimator = options.tokenEstimator ?? createTokenEstimator();
+	const header = "故事摘要：";
+	return {
+		provide(request): ContextSlotContent | null {
+			const headNodeId =
+				request.nodeId ?? store.getHead(request.storyId)?.id ?? null;
+			if (headNodeId === null) return null;
+			const valid = store.getValidSummaries(request.storyId, headNodeId);
+			const latestChapter = valid
+				.filter((summary) => summary.level === "chapter")
+				.at(-1);
+			const mainlines = valid.filter((summary) => summary.level === "mainline");
+			const selected =
+				latestChapter === undefined ? mainlines : [...mainlines, latestChapter];
+			if (selected.length === 0) return null;
+
+			const path = store.getPathToNode(headNodeId);
+			const positions = new Map(
+				path.map((node, index) => [node.id, index] as const),
+			);
+			const byRecency = [...selected].sort(
+				(left, right) =>
+					(positions.get(right.endNodeId) ?? -1) -
+					(positions.get(left.endNodeId) ?? -1),
+			);
+			let used = estimator(header);
+			const kept = new Set<string>();
+			for (const summary of byRecency) {
+				const tokens = estimator(summary.text);
+				if (used + tokens > tokenLimit) continue;
+				used += tokens;
+				kept.add(summary.id);
+			}
+			if (kept.size === 0) return null;
+
+			const lines = [header];
+			const keptMainlines = mainlines.filter((summary) => kept.has(summary.id));
+			for (const summary of keptMainlines) {
+				lines.push(`【主线】${summary.text}`);
+			}
+			const chapterKept =
+				latestChapter !== undefined && kept.has(latestChapter.id);
+			if (chapterKept && latestChapter !== undefined) {
+				lines.push(`【章节】${latestChapter.text}`);
+			}
+			const levels: SummaryLevel[] = [];
+			if (keptMainlines.length > 0) levels.push("mainline");
+			if (chapterKept) levels.push("chapter");
+			return {
+				messages: [{ role: "system", content: lines.join("\n") }],
+				source: `summary:${levels.join("+")}`,
 			};
 		},
 	};

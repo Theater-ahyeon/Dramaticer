@@ -7,10 +7,13 @@ import {
 	type LlmStreamingClient,
 	StoryStore,
 	createDefaultContextTemplate,
+	createEmbeddingClient,
 	createHistorySlotProvider,
 	createLlmClient,
+	createMemorySlotProvider,
 	createStateSlotProvider,
 	createStaticSlotProvider,
+	createSummarySlotProvider,
 	loadChannelsConfig,
 	loadDotEnv,
 	resolveStructuredOutputMode,
@@ -102,6 +105,9 @@ export async function runChatCli(
 		path.join(repoRoot, "data", "dramaticer.db");
 	await mkdir(path.dirname(dbPath), { recursive: true });
 	const embeddingDimensions = config.embeddings.get("default")?.dimensions;
+	const embedder = config.embeddings.has("default")
+		? createEmbeddingClient(config)
+		: null;
 	const store = StoryStore.open(
 		dbPath,
 		embeddingDimensions === undefined ? {} : { embeddingDimensions },
@@ -144,6 +150,8 @@ export async function runChatCli(
 				),
 				history: createHistorySlotProvider(store),
 				state: createStateSlotProvider(store),
+				summary: createSummarySlotProvider(store),
+				memory: createMemorySlotProvider(store, { embedder }),
 			},
 			budgetTokens,
 			structuredOutput: mode,

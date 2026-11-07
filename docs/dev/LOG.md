@@ -53,3 +53,5 @@
 - 2026-11-07 | S45 | M2-T10 | DONE | core 新增 `retrieval/hybrid.ts` 的 `retrieveMemory`：BM25 块（`searchChunks`）、向量块（`searchVectors`，查询向量由 `EmbeddingClient` 生成，候选按楼层去重保留最近块）、实体命中（查询按规范化名称与别名匹配 `listEntities`，召回该实体参与的事件与包含别名的块）、事件重要度与新近度（沿路径取事件，按重要度、路径位置、楼层内序号排序）四路各取前 K，用 RRF（常数 60）融合；`RetrievalHit` 带 `kind`、`nodeId`、`score` 与 `sources`（每路名次，按固定路径顺序输出），平局依次按最好名次、事件优先、节点 id 排序；`beforeNodeId` 只检索祖先路径并排除自身，事件与最近块使用去掉该楼层后的路径；空查询跳过 BM25/向量/实体三路，返回事件路（重要度与新近度）与最近块路；`limit` 默认 8、限制 1 到 50，`viewpoint` 参数已接受并校验，知情者过滤留给 M2-T11；7 个新测试覆盖多路来源、别名召回、向量去重、分支过滤、空查询稳定性、条数与错误路径，门禁通过（423 个测试，3 个 live 默认跳过）
 
 - 2026-11-07 | S46 | M2-T11 | DONE | `retrieveMemory` 返回 `RetrievalResult`（`hits` 与 `filter`）；`viewpoint` 经实体别名归一化后过滤事件（公开与 `"*"` 保留），视角存在时跳过全部原文块路，新增 2 个测试，门禁通过（425 个测试）；INBOX 两条分拣为 D-T01 至 D-T04 并登记 HUMAN-07
+
+- 2026-11-07 | S47 | M2-T12 | DONE | core 的 `chat/providers.ts` 新增 `createMemorySlotProvider`：以当前楼层原文检索其祖先路径，默认 6 条，同一楼层跨事件与块只保留一条，事件正文按楼层分组读取，块正文用上下文视图渲染，来源写 `memory:<条数>`；新增 `createSummarySlotProvider`：取全部有效主线摘要与最近一条章节摘要，按 end 路径位置从新到旧装入 token 上限（默认 800），来源写 `summary:<级别>`；`dramaticer chat` 接入两个提供者并在有 embeddings 配置时启用向量路；`chat-providers.test.ts` 新增 5 个测试，门禁通过（430 个测试）

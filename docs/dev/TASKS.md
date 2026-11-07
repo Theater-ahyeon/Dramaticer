@@ -297,7 +297,8 @@
   - 返回结果里保留被过滤前的计数，便于 Trace 观察过滤量。
   验收：视角不在 `knowers` 里的事件被排除；公开事件与 `"*"` 事件保留；别名与全名互相匹配；有视角时不返回原文块；没有视角时结果与 M2-T10 一致；`pnpm check` 通过。
 
-- [ ] **M2-T12 记忆与摘要的被动注入槽位** | 依赖：M2-T02、M2-T06、M2-T10、M2-T11 | DESIGN §7、§9
+- [x] **M2-T12 记忆与摘要的被动注入槽位** | 依赖：M2-T02、M2-T06、M2-T10、M2-T11 | DESIGN §7、§9
+  完成：2026-11-07 `createMemorySlotProvider` 以当前楼层原文为查询、只检索其祖先路径，默认 6 条，同一楼层只出现一次，事件命中带事件正文、块命中带上下文视图，来源写 `memory:<条数>`；`createSummarySlotProvider` 取全部有效主线摘要与最近一条章节摘要，按 token 上限从最久远的开始裁剪，来源写 `summary:<级别>`；`dramaticer chat` 接入两个提供者并在配置了 embeddings 时启用向量路；5 个新测试，门禁通过（430 个测试）
   做什么：
   - `createMemorySlotProvider`：在组装上下文时用当前用户楼层之前的路径做 `retrieveMemory`，默认取 6 条，渲染成一条 system 消息；每条带来源楼层 id 与类型（事件或原文块），重复的楼层只保留一次。没有检索结果时返回 `null`，由组装器记为 `missing-slot`。
   - `createSummarySlotProvider`：返回当前 head 下有效的主线摘要与最近一条章节摘要，超出 token 上限时按新近程度裁剪；没有有效摘要时返回 `null`。
