@@ -1,13 +1,13 @@
 import { fileURLToPath } from "node:url";
-import { type StateDiff, StoryStore } from "@dramaticer/core";
+import { StoryStore } from "@dramaticer/core";
 import { describe, expect, it, onTestFinished } from "vitest";
-import type { JsonObject, JsonValue } from "../src/index.js";
+import type { JsonObject } from "../src/index.js";
 import {
 	importChatFileToStore,
 	importChatToStore,
-	isJsonObject,
 	parseChatJsonl,
 } from "../src/index.js";
+import { snapshotAt } from "./store-replay.js";
 
 const fixturePath = fileURLToPath(
 	new URL("./fixtures/chat-import.jsonl", import.meta.url),
@@ -40,40 +40,6 @@ function openStore(): StoryStore {
 	const store = StoryStore.open(":memory:");
 	onTestFinished(() => store.close());
 	return store;
-}
-
-function replay(diffs: readonly StateDiff[]): JsonObject {
-	const root: JsonObject = {};
-	for (const diff of diffs) {
-		let parent = root;
-		for (const key of diff.path.slice(0, -1)) {
-			const child = parent[key];
-			if (child === undefined) {
-				const created: JsonObject = {};
-				parent[key] = created;
-				parent = created;
-				continue;
-			}
-			if (!isJsonObject(child)) {
-				throw new Error(`路径 ${diff.path.join(".")} 的父级不是对象`);
-			}
-			parent = child;
-		}
-		const leaf = diff.path[diff.path.length - 1];
-		if (leaf === undefined) {
-			throw new Error("状态 diff 的路径为空");
-		}
-		if (diff.op === "set") {
-			parent[leaf] = diff.value as JsonValue;
-		} else {
-			delete parent[leaf];
-		}
-	}
-	return root;
-}
-
-function snapshotAt(store: StoryStore, nodeId: string): JsonObject {
-	return replay(store.getStateDiffsAlongPath(nodeId));
 }
 
 describe("importChatToStore", () => {
@@ -234,6 +200,87 @@ describe("importChatToStore", () => {
 		await expect(
 			importChatToStore(store, parseChatJsonl([lines]), { storyId: "bad" }),
 		).rejects.toThrow("必须是对象或 null");
+		expect(store.getStory("bad")).toBeNull();
+		expect(store.getNode("bad:m0:s0")).toBeNull();
+	});
+
+	it("文件末尾的坏行让整次导入回滚，修正后可以重新导入", async () => {
+		const store = openStore();
+		const header = JSON.stringify({ character_name: "角色" });
+		const firstFloor = JSON.stringify({
+			mes: "第一层正文",
+			variables: [{ stat_data: { hp: 1 } }],
+		});
+		const broken = `${header}\n${firstFloor}\n{oops}\n`;
+
+		await expect(
+			importChatToStore(store, parseChatJsonl([broken]), {
+				storyId: "atomic",
+			}),
+		).rejects.toThrow("第 3 行不是合法 JSON");
+
+		expect(store.getStory("atomic")).toBeNull();
+		expect(store.getNode("atomic:m0:s0")).toBeNull();
+		expect(store.searchNodeText("第一层正文", { storyId: "atomic" })).toEqual(
+			[],
+		);
+
+		const fixed = `${header}\n${firstFloor}\n${JSON.stringify({ mes: "第二层正文" })}\n`;
+		const result = await importChatToStore(store, parseChatJsonl([fixed]), {
+			storyId: "atomic",
+		});
+		expect(result.nodeCount).toBe(2);
+		expect(
+			store
+				.searchNodeText("第一层正文", { storyId: "atomic" })
+				.map((match) => match.nodeId),
+		).toEqual(["atomic:m0:s0"]);
+	});
+
+	it("swipe_id 越界时整次导入回滚", async () => {
+		const store = openStore();
+		const lines = [
+			JSON.stringify({ character_name: "角色" }),
+			JSON.stringify({
+				mes: "正文",
+				swipes: ["一", "二"],
+				swipe_id: 2,
+			}),
+		].join("\n");
+
+		await expect(
+			importChatToStore(store, parseChatJsonl([lines]), {
+				storyId: "bad-swipe",
+			}),
+		).rejects.toThrow("swipe_id 2 超出范围（共 2 个 swipe）");
+		expect(store.getStory("bad-swipe")).toBeNull();
+		expect(store.getNode("bad-swipe:m0:s0")).toBeNull();
+	});
+
+	it("嵌套空对象生成删除 diff，回放后状态被清空", async () => {
+		const store = openStore();
+		const lines = [
+			JSON.stringify({ character_name: "角色" }),
+			JSON.stringify({
+				mes: "开场",
+				variables: [{ stat_data: { hp: 100, mood: "平静" } }],
+			}),
+			JSON.stringify({ mes: "清空", variables: [{ stat_data: {} }] }),
+		];
+		await importChatToStore(store, parseChatJsonl([lines.join("\n")]), {
+			storyId: "clear",
+		});
+
+		expect(
+			store.getStateDiffs("clear:m1:s0").map((diff) => ({
+				path: diff.path,
+				op: diff.op,
+			})),
+		).toEqual([
+			{ path: ["stat_data", "hp"], op: "delete" },
+			{ path: ["stat_data", "mood"], op: "delete" },
+		]);
+		expect(snapshotAt(store, "clear:m1:s0")).toEqual({ stat_data: {} });
 	});
 
 	it("缺少头部时拒绝导入", async () => {

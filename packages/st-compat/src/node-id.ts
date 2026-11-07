@@ -1,18 +1,8 @@
 import type { StChatMessage } from "./chat-jsonl.js";
 
-/** 当前显示的 swipe 下标； swipe_id 非法时回退到 0。 */
+/** 当前显示的 swipe 下标；swipe_id 在解析阶段已校验，null 表示没有 swipe。 */
 export function currentSwipeIndex(message: StChatMessage): number {
-	if (message.swipes.length === 0) return 0;
-	const swipeId = message.swipeId;
-	if (
-		swipeId !== null &&
-		Number.isInteger(swipeId) &&
-		swipeId >= 0 &&
-		swipeId < message.swipes.length
-	) {
-		return swipeId;
-	}
-	return 0;
+	return message.swipeId ?? 0;
 }
 
 export function messageNodeId(

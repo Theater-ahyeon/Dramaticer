@@ -56,89 +56,93 @@ export async function importChatToStore(
 	let nodeCount = 0;
 	let stateDiffCount = 0;
 
-	for await (const entry of entries) {
-		if (entry.kind === "header") {
-			if (story) {
-				throw new Error("聊天记录里出现了第二个头部");
+	const write = async (): Promise<ChatImportResult> => {
+		for await (const entry of entries) {
+			if (entry.kind === "header") {
+				if (story) {
+					throw new Error("聊天记录里出现了第二个头部");
+				}
+				story = store.createStory({
+					id: storyId,
+					title: options.title ?? entry.header.characterName ?? storyId,
+				});
+				continue;
 			}
-			story = store.createStory({
-				id: storyId,
-				title: options.title ?? entry.header.characterName ?? storyId,
-			});
-			continue;
-		}
-		if (!story) {
-			throw new Error("聊天记录缺少头部");
-		}
-		const message = entry.message;
-		const role = roleOf(message);
-		const createdAt = createdAtFromSendDate(message.sendDate);
-		const mainNodeId = messageNodeId(idPrefix, message);
-		const currentSwipe = currentSwipeIndex(message);
+			if (!story) {
+				throw new Error("聊天记录缺少头部");
+			}
+			const message = entry.message;
+			const role = roleOf(message);
+			const createdAt = createdAtFromSendDate(message.sendDate);
+			const mainNodeId = messageNodeId(idPrefix, message);
+			const currentSwipe = currentSwipeIndex(message);
 
-		store.appendNode({
-			id: mainNodeId,
-			storyId,
-			parentId,
-			role,
-			raw: message.text,
-			createdAt,
-		});
-		nodeCount += 1;
-
-		const diffs: NewStateDiff[] = [];
-		const mainVariables = readSnapshot(
-			message.variables,
-			`第 ${message.index} 条消息`,
-		);
-		diffs.push(
-			...toStateDiffs(
-				diffSnapshots(currentVariables, mainVariables),
-				storyId,
-				mainNodeId,
-				source,
-			),
-		);
-
-		for (let index = 0; index < message.swipes.length; index += 1) {
-			if (index === currentSwipe) continue;
-			const swipe = message.swipes[index];
-			const siblingId = swipeNodeId(idPrefix, message.index, index);
 			store.appendNode({
-				id: siblingId,
+				id: mainNodeId,
 				storyId,
 				parentId,
 				role,
-				raw: swipe.text,
+				raw: message.text,
 				createdAt,
 			});
 			nodeCount += 1;
-			const swipeVariables = readSnapshot(
-				swipe.variables,
-				`第 ${message.index} 条消息的第 ${index} 个 swipe`,
+
+			const diffs: NewStateDiff[] = [];
+			const mainVariables = readSnapshot(
+				message.variables,
+				`第 ${message.index} 条消息`,
 			);
 			diffs.push(
 				...toStateDiffs(
-					diffSnapshots(currentVariables, swipeVariables),
+					diffSnapshots(currentVariables, mainVariables),
 					storyId,
-					siblingId,
+					mainNodeId,
 					source,
 				),
 			);
+
+			for (let index = 0; index < message.swipes.length; index += 1) {
+				if (index === currentSwipe) continue;
+				const swipe = message.swipes[index];
+				const siblingId = swipeNodeId(idPrefix, message.index, index);
+				store.appendNode({
+					id: siblingId,
+					storyId,
+					parentId,
+					role,
+					raw: swipe.text,
+					createdAt,
+				});
+				nodeCount += 1;
+				const swipeVariables = readSnapshot(
+					swipe.variables,
+					`第 ${message.index} 条消息的第 ${index} 个 swipe`,
+				);
+				diffs.push(
+					...toStateDiffs(
+						diffSnapshots(currentVariables, swipeVariables),
+						storyId,
+						siblingId,
+						source,
+					),
+				);
+			}
+
+			stateDiffCount += store.appendStateDiffs(diffs).length;
+			mainPathNodeIds.push(mainNodeId);
+			parentId = mainNodeId;
+			if (mainVariables !== null) {
+				currentVariables = mainVariables;
+			}
 		}
 
-		stateDiffCount += store.appendStateDiffs(diffs).length;
-		mainPathNodeIds.push(mainNodeId);
-		parentId = mainNodeId;
-		if (mainVariables !== null) {
-			currentVariables = mainVariables;
+		if (!story) {
+			throw new Error("聊天记录为空：缺少头部");
 		}
-	}
+		return { story, mainPathNodeIds, nodeCount, stateDiffCount };
+	};
 
-	if (!story) {
-		throw new Error("聊天记录为空：缺少头部");
-	}
-	return { story, mainPathNodeIds, nodeCount, stateDiffCount };
+	return store.runInTransaction(write);
 }
 
 /** 从文件导入，逐行流式读取，不把整个聊天记录载入内存。 */

@@ -1,10 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { StoryStore } from "@dramaticer/core";
+import { describe, expect, it, onTestFinished } from "vitest";
+import type { JsonObject, JsonValue } from "../src/index.js";
 import {
 	buildStateQuestions,
+	importChatToStore,
+	isJsonObject,
 	parseChatJsonl,
 	readSnapshot,
 	verifyStateQuestions,
 } from "../src/index.js";
+import { snapshotAt } from "./store-replay.js";
 
 const storyId = "story-state";
 
@@ -178,3 +183,46 @@ describe("verifyStateQuestions", () => {
 		expect(verification.failures[0]?.reason).toContain("证据楼层");
 	});
 });
+
+describe("状态题与导入后的状态一致", () => {
+	it("每道题的答案与 store 回放出的快照一致", async () => {
+		const { lines, result } = await generate();
+		const store = StoryStore.open(":memory:");
+		onTestFinished(() => store.close());
+		await importChatToStore(store, parseChatJsonl([lines.join("\n")]), {
+			storyId,
+		});
+
+		for (const question of result.questions) {
+			const snapshot = snapshotAt(store, question.askAtNode);
+			const actual = answerOf(resolvePath(snapshot, question.path));
+			expect(actual, question.id).toEqual(question.answer);
+		}
+	});
+});
+
+function resolvePath(
+	root: JsonObject,
+	path: readonly string[],
+): JsonValue | undefined {
+	let current: JsonValue = root;
+	for (const part of path) {
+		if (!isJsonObject(current) || !Object.hasOwn(current, part)) {
+			return undefined;
+		}
+		current = current[part];
+	}
+	return current;
+}
+
+/** MVU 的 `["值", "说明"]` 只比较值本身，与出题的答案口径一致。 */
+function answerOf(value: JsonValue | undefined): JsonValue | undefined {
+	if (
+		Array.isArray(value) &&
+		value.length === 2 &&
+		typeof value[1] === "string"
+	) {
+		return value[0];
+	}
+	return value;
+}

@@ -162,6 +162,22 @@ export class StoryStore {
 		return LATEST_SCHEMA_VERSION;
 	}
 
+	/**
+	 * 在单个事务里执行回调。回调可以跨越异步边界（例如流式读取文件），
+	 * 失败时回滚并原样抛出错误；事务未提交前其他调用方看不到写入。
+	 */
+	async runInTransaction<T>(fn: () => T | Promise<T>): Promise<T> {
+		this.#db.exec("BEGIN IMMEDIATE");
+		try {
+			const result = await fn();
+			this.#db.exec("COMMIT");
+			return result;
+		} catch (error) {
+			if (this.#db.inTransaction) this.#db.exec("ROLLBACK");
+			throw error;
+		}
+	}
+
 	createStory(input: CreateStoryInput): Story {
 		assertNonEmptyString(input.title, "故事标题");
 		const id = input.id ?? randomUUID();

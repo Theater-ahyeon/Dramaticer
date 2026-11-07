@@ -92,7 +92,8 @@
   做什么：审查 `packages/core`、`packages/st-compat`、`scripts/` 的代码质量（没有用到的代码、重复实现、错误处理、fast-fail）；逐条核对不变量 I1–I10，其中 I4、I5、I6、I8、I9 必须指出对应的测试；检查 TASKS、HANDOFF、DECISIONS、DESIGN、DEPENDENCIES 与代码是否同步；列出没有测试覆盖的导出模块和 CLI 路径。
   验收：结论写进 `docs/dev/reports/M0-review-1.md`；每个发现的问题转成 `M0-FIX-n` 修复任务插在本任务下面并写清验收标准；没有问题的条目也要写出判断依据。
 
-- [ ] **M0-FIX-1 导入原子性与状态快照** | 依赖：M0-REVIEW-1
+- [x] **M0-FIX-1 导入原子性与状态快照** | 依赖：M0-REVIEW-1
+  完成：2026-11-06 `StoryStore.runInTransaction` 让整次导入在一个事务里完成，失败回滚故事、楼层、diff 与 FTS 条目；`swipe_id` 越界或非整数在解析阶段抛错，节点 id 与 MVU 快照共用同一校验结果；嵌套空对象生成删除 diff 的用例、状态题答案与 store 回放交叉验证的用例已补；6 个新测试，门禁通过（163 个测试）
   做什么：`packages/st-compat/src/chat-import.ts` 的整次导入放进一个事务，失败后库内不残留故事、楼层、diff 与 FTS 条目；`swipe_id` 越界或非整数时直接抛错，节点 id 与 MVU 快照取自同一个下标；`readSnapshot` 的嵌套空对象（`{"stat_data":{}}`）语义补测试；状态题测试改为先导入 store，再用 `getStateDiffsAlongPath` 回放并断言与题目答案一致。
   验收：新增“坏行在文件末尾时库内为空、修正后可以重新导入”“越界 swipe_id 抛错”“嵌套空对象生成删除 diff 且回放正确”“题目答案与 store 回放一致”四组测试；`pnpm check` 通过。
 

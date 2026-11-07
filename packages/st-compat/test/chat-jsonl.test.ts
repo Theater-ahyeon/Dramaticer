@@ -160,6 +160,26 @@ describe("parseChatJsonl", () => {
 		);
 	});
 
+	it("swipe_id 越界或不是整数时拒绝解析", async () => {
+		const header = JSON.stringify({ character_name: "角色" });
+		const outOfRange = `${header}\n${JSON.stringify({
+			mes: "正文",
+			swipes: ["一", "二"],
+			swipe_id: 2,
+		})}`;
+		await expect(collect(parseChatJsonl([outOfRange]))).rejects.toThrow(
+			"swipe_id 2 超出范围（共 2 个 swipe）",
+		);
+		const fractional = `${header}\n${JSON.stringify({
+			mes: "正文",
+			swipes: ["一"],
+			swipe_id: 1.5,
+		})}`;
+		await expect(collect(parseChatJsonl([fractional]))).rejects.toThrow(
+			"swipe_id 必须是非负整数",
+		);
+	});
+
 	it("空输入被拒绝", async () => {
 		await expect(collect(parseChatJsonl([]))).rejects.toThrow("缺少头部");
 	});

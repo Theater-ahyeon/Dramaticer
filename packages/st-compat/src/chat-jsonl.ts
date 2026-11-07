@@ -92,7 +92,10 @@ export async function* parseChatJsonl(
 			yield { kind: "header", header };
 			continue;
 		}
-		yield { kind: "message", message: toMessage(record, messageIndex) };
+		yield {
+			kind: "message",
+			message: toMessage(record, messageIndex, lineNumber),
+		};
 		messageIndex += 1;
 	}
 	if (header === null) {
@@ -145,8 +148,13 @@ function toHeader(raw: JsonObject): StChatHeader {
 	};
 }
 
-function toMessage(raw: JsonObject, index: number): StChatMessage {
-	const swipeId = typeof raw.swipe_id === "number" ? raw.swipe_id : null;
+function toMessage(
+	raw: JsonObject,
+	index: number,
+	lineNumber: number,
+): StChatMessage {
+	const swipes = toSwipes(raw);
+	const swipeId = readSwipeId(raw.swipe_id, swipes.length, lineNumber);
 	const variables = Array.isArray(raw.variables) ? raw.variables : [];
 	return {
 		index,
@@ -158,12 +166,35 @@ function toMessage(raw: JsonObject, index: number): StChatMessage {
 				? raw.send_date
 				: null,
 		text: optionalString(raw.mes) ?? "",
-		swipes: toSwipes(raw),
+		swipes,
 		swipeId,
 		reasoning: readReasoning(raw.extra),
 		variables: variables[swipeId ?? 0] ?? null,
 		raw,
 	};
+}
+
+/**
+ * swipe_id 决定主路径节点 id 与 MVU 快照的下标，越界或非整数时无法可靠还原，
+ * 直接报错，避免静默丢弃某个 swipe 的状态。
+ */
+function readSwipeId(
+	value: JsonValue | undefined,
+	swipeCount: number,
+	lineNumber: number,
+): number | null {
+	if (value === undefined || value === null) return null;
+	if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+		throw new Error(
+			`第 ${lineNumber} 行的 swipe_id 必须是非负整数：${JSON.stringify(value)}`,
+		);
+	}
+	if (value >= Math.max(swipeCount, 1)) {
+		throw new Error(
+			`第 ${lineNumber} 行的 swipe_id ${value} 超出范围（共 ${swipeCount} 个 swipe）`,
+		);
+	}
+	return value;
 }
 
 function toSwipes(raw: JsonObject): StSwipe[] {

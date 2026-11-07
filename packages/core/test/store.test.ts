@@ -93,6 +93,26 @@ describe("schema 与迁移", () => {
 	});
 });
 
+describe("事务", () => {
+	it("回调跨越异步边界，失败时回滚，成功后写入可见", async () => {
+		const { store } = openTempStore();
+
+		await expect(
+			store.runInTransaction(async () => {
+				store.createStory({ id: "story-tx", title: "事务故事" });
+				await Promise.resolve();
+				throw new Error("中途失败");
+			}),
+		).rejects.toThrow("中途失败");
+		expect(store.getStory("story-tx")).toBeNull();
+
+		await store.runInTransaction(async () => {
+			store.createStory({ id: "story-tx", title: "事务故事" });
+		});
+		expect(store.getStory("story-tx")?.title).toBe("事务故事");
+	});
+});
+
 describe("楼层树", () => {
 	it("按路径从根读到节点，兄弟节点不在路径里", () => {
 		const { store } = openTempStore();
