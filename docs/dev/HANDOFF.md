@@ -3,45 +3,37 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加），按下面的模板填写。
 
 ## 最近一次会话
-- 会话：26
-- 任务：M0-FIX-11 依赖声明与文档同步
-- 结果：完成。
-  - `packages/st-compat/package.json` 把 `png-chunks-extract` 与 `png-chunk-text` 声明为运行时依赖；根目录的 devDependencies 保留给 `scripts/snapshot-private-data.mjs`。
-  - `docs/dev/DEPENDENCIES.md` 每行增加“位置”列，并说明 `workspace:*` 工作区依赖不登记。
-  - JSON 类型与守卫合并：`packages/core/src/json.ts` 定义 `JsonValue`、`JsonObject`、`isJsonObject`；删除 `packages/st-compat/src/json.ts`，st-compat 各模块从 `@dramaticer/core` 导入，`packages/st-compat/src/index.ts` 再导出同一组符号；`packages/core/src/llm/client.ts` 的 `isRecord` 改名为 `isJsonObject`。
-  - 删除零消费者的 `MemoryEvent`；`docs/DESIGN.md` §5 的 `state_diffs` 示例改为 `path`。
-  - ADR-0003 记录两个 PNG 库在 st-compat 的运行时声明。
-  - TASKS 与 LOG 的 M0-T07、M0-T10 测试数改为 11、10，M0-T08 的 diff/快照改为 20.8%。
-- 验证：`pnpm install --frozen-lockfile` 与 `pnpm check` 通过（225 个测试）；`packages/st-compat/node_modules` 里有两个 PNG 库的链接；源码里的裸 import 只有 `@dramaticer/core`、`better-sqlite3`、两个 PNG 库与 `node:` 内置模块。
+- 会话：27
+- 任务：M0-T99 M0 验收与 M1 准备
+- 结果：完成（`MILESTONE_DONE`）。
+  - 重跑 `pnpm --filter @dramaticer/st-compat report`（7.05 秒），体检、BM25 基线、ACU 对照三份结果与提交前一致，统计版报告只变了生成时间。
+  - 用编译后的模块做导入验收：3 个对话 1222 楼写成 1279 个节点（57 个其他 swipe 的兄弟节点）、2423 条 diff；沿主路径逐楼回放，与当前 swipe 的 MVU 快照深度比较，0 处差异。
+  - 写入 `docs/dev/reports/M0.md`：交付物核对、设计假设的证实与修正、I1–I10 逐条证据、M1 任务清单确认、遗留事项。
+  - ADR-0008 记录实测校准：DESIGN §2 的每楼体积与状态来源、§14 的存储目标（单楼不超过 10 KB）、分层召回目标、正则升级率 47.1%；M2 过关标准改为按题型分层；M1-T01 补 pi 安装前提，M1-T02 补事件题生成器的客户端迁移。
+- 验证：`pnpm check` 通过（27 个测试文件、225 个测试）；真实快照 67 个文件通过 manifest 校验；导入回放 0 处差异。
 
 ## 当前状态
+- M0 全部完成，M1 尚未开始。下一会话执行 M1-T01。
 - 门禁：`pnpm check` 通过（225 个测试）。
-- 快照读取：唯一入口是 `health/manifest.ts` 的 `openSnapshot`，校验路径、`size` 与 `sha256`；任何直接 `path.join(rawRoot, file.target)` 读 raw 的写法都违反完整性校验。
-- fixture 维护：修改 fixture 里的聊天、卡、世界书、预设文件后，必须同步更新对应 manifest 的 `size` 与 `sha256`。
-- JSON 守卫：只有 `packages/core/src/json.ts` 一份实现；st-compat 从 `@dramaticer/core` 导入，不要再建本地 `json.ts`。
-- 题目文件：`readQuestionFile` 拒绝重复 `id`；`sampleDeterministic` 的结果只由题目 `id` 集合决定。
-- 事件题：解析阶段的坏条目会进入 `failures`；`EventQuestionStats` 只保留 CLI 读取的字段。
-- 评测 CLI：`state-cli.ts` 承载状态题生成与 `summary.json` 写出；`event-cli.ts` 的 `--story` 不覆盖全局抽查与汇总。
-- 环境加载：`evalset/env.ts` 的 `loadDotEnv` 要求 `.env` 存在，错误信息包含绝对路径。
-- 体检报告：统计版单列头部字节；每对话字段统计是全量，合计表取前 10；比率为 0/0 时显示 `—`；`runHealthCli` 可注入路径与时间；token 估算把谚文计入 CJK。
-- 正则分类：升级判断只把启用的兄弟脚本视为渲染器；分类结果没有 `unclassified` 兜底分支。
-- 存储：schema 迁移列表版本号必须从 1 连续递增；`getStateDiffs` 与 `getStateDiffsAlongPath` 对不存在的楼层都抛错；diff 的 `path` 在写入与读取两侧都校验。
-- ACU 对照组：快照是单元格值列表，逐值规范化后判断包含；提问楼层不在对话里直接抛错。
-- 检索：写入与查询共用 `normalizeRetrievalText`；检索评测按 `nodeId` 去重；`askAtNode` 越界抛错。
-- 聊天解析：`parseChatJsonl` 只剥离首行的 BOM；`parseChatJsonlFile` 的错误包装为“解析聊天文件失败：<path>”。
-- 角色卡：PNG 文本块先做 base64 规范化回环校验，再做 JSON 解析。
-- LLM 客户端：`LlmRequest.signal` 贯穿请求、退避与限速等待；缓存键包含 `baseUrl` 与 api key 的 sha256 摘要。
-- 依赖：两个 PNG 库同时声明在 `packages/st-compat`（runtime）与根目录（dev，供快照脚本）；`DEPENDENCIES.md` 按声明位置分列登记。
-- TASKS：M0-FIX-1 到 M0-FIX-11 已标记 `[x]`；M0-T99 依赖全部 M0 任务。
+- M0 关键数字（以 `docs/dev/reports/M0.md` 与 `M0-health.md` 为准）：3 个对话 1222 楼、66,397,069 字节；状态 diff 是快照的 20.8%；原生存储估算 10,191,693 字节（ST 文件的 15.3%，6.5 倍），合计平均单楼约 8.3 KB。
+- 检索基线（@20）：状态题 BM25 8.1%、ACU 37.3%；事件题 BM25 96.0%（@5 83.3%）、ACU 2.0%。
+- 正则：928 条，启用 637 条，可自动升级 300 条（47.1%）。
+- 快照读取：唯一入口是 `health/manifest.ts` 的 `openSnapshot`，校验路径、`size` 与 `sha256`；不要直接 `path.join(rawRoot, file.target)`。
+- 导入回放：`SnapshotDiff` 的语义见 ADR-0005 与 ADR-0006；比较回放结果时用 `node:util` 的 `isDeepStrictEqual`，不要用 `JSON.stringify`（对象键顺序不同会产生假差异）。
+- 题目文件：`readQuestionFile` 拒绝重复 `id`；`sampleDeterministic` 只由题目 `id` 集合决定。
+- 评测 CLI：`state-cli.ts` 写 `summary.json`；`event-cli.ts` 的 `--story` 只写故事专属文件；事件题生成命中 `eval-private/llm-cache`，不会重复调用渠道。
+- 依赖：两个 PNG 库同时声明在 `packages/st-compat`（runtime）与根目录（dev，供快照脚本）；`pi-ai` 与 `pi-agent-core` **尚未安装**。
+- 文档：`docs/dev/reports/M0.md` 是 M0 的验收结论；ADR-0008 是设计数字的当前依据。
 
 ## 下一步
-- 执行 M0-T99（M0 验收）：运行所有报告；在 `docs/dev/reports/M0.md` 总结被数据证实或推翻的设计假设（推翻的写 ADR 并更新 DESIGN）；逐条审查不变量 I1–I10；确认 M1 任务清单还适用。结果写 `MILESTONE_DONE`。
+- 执行 M1-T01（pi 技术验证）：先用 pnpm 在根目录 devDependencies 安装并锁版本 `@earendil-works/pi-ai` 与 `@earendil-works/pi-agent-core`，登记到 `DEPENDENCIES.md`；读 `node_modules` 里的 README 与类型定义；在 `spikes/pi/` 验证流式、思考内容、函数调用、abort 后续写，以及 `prepareRequest`、`beforeToolCall`、`finishTurn` 三个钩子；Gemini 原生自定义 baseUrl 一项依赖 HUMAN-04 的 gcli2api（未启动就跳过并记录）。产出 ADR，写明是否采用 pi 与采用范围。
+- M1-T02 会把 `evalset/event-questions.ts` 迁移到新的 `core/llm` 接口，之后删除 `packages/core/src/llm/client.ts`；迁移期间保留 `eval-private/llm-cache` 的读取。
 
 ## 注意事项
-- 报告里的问题行号对应审查时的代码；修复任务会改动这些位置，引用报告时以报告里的文件与符号为准。
+- 报告里的问题行号对应审查时的代码；修复任务会改动这些位置，引用报告时以文件与符号为准。
 - `.env` 已由人类填写，**不要覆盖**；`.env.example` 只列变量名。M0 的审查与修复不需要调用 LLM。
-- `pnpm --filter @dramaticer/st-compat report` 会跑体检、检索基线、ACU 基线，耗时约 10 秒；需要 `eval-private/evalset/` 里已有状态题与事件题。单独重跑只改生成时间时不要把时间差异带进提交。
-- `health/cli.ts` 的入口判断是 `import.meta.url === pathToFileURL(process.argv[1]).href`；测试导入它不会执行 `main`。`evalset/event-cli.ts` 仍在导入时执行，只测试它拆出的 `env.ts` 与 `event-output.ts`。
+- `pnpm --filter @dramaticer/st-compat report` 会跑体检、检索基线、ACU 基线，耗时约 7 秒；需要 `eval-private/evalset/` 里已有状态题与事件题。单独重跑只改生成时间时不要把时间差异带进提交。
+- `health/cli.ts` 的入口判断是 `import.meta.url === pathToFileURL(process.argv[1]).href`；测试导入它不会执行 `main`。
 - `openSnapshot.resolveFile` 会对每个文件重新计算一次 sha256（真实快照合计约 100 MB），CLI 每跑一次都做；如果需要跳过校验，不要在调用侧绕过入口，先写 ADR。
 - 不要修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 下的文件；需要改时写进 HUMAN.md。
 - 提交前跑 `pnpm check`；新增依赖要登记到 `docs/dev/DEPENDENCIES.md`。

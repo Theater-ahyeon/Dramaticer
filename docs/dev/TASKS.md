@@ -147,20 +147,21 @@
   做什么：`packages/st-compat/package.json` 声明 `png-chunks-extract` 与 `png-chunk-text`（根目录保留给快照脚本的副本或删除），`DEPENDENCIES.md` 区分包内与根目录依赖并说明工作区依赖豁免；`core/src/json.ts` 与 `st-compat/src/json.ts` 只保留一份对象守卫；处理 `MemoryEvent`（删除或在 M2 任务里挂引用）；`DESIGN.md` §5 的 `state_diffs` 字段改为 `path`；ADR-0007 补缓存键包含 `baseUrl`；`HANDOFF.md` 删除未实现的 `sheet_replace` 描述；修正 `TASKS.md` 与 `LOG.md` 里过期的测试计数与 47.8%。
   验收：`pnpm install` 后 `pnpm check` 通过；`git diff` 里的文档数字与当前报告一致；不再有未声明的 import。
 
-- [ ] **M0-T99 M0 验收与 M1 准备** | 依赖：M0 全部任务（M0-T11 如果被 HUMAN-01 阻塞，可以跳过，在报告里注明"事件类题目缺失"，等 HUMAN-01 处理完后再补做）
+- [x] **M0-T99 M0 验收与 M1 准备** | 依赖：M0 全部任务（M0-T11 如果被 HUMAN-01 阻塞，可以跳过，在报告里注明"事件类题目缺失"，等 HUMAN-01 处理完后再补做）
+  完成：2026-11-07 全部报告重跑；3 个对话 1222 楼导入为 1279 个节点、2423 条 diff，沿主路径回放与原文快照 0 处差异；结论写入 `docs/dev/reports/M0.md`，ADR-0008 记录实测校准并同步 DESIGN §2、§14 与 M1、M2 任务
   做什么：运行所有报告；在 `docs/dev/reports/M0.md` 里总结：哪些设计假设被数据证实了，哪些被推翻了（推翻的写 ADR 并更新 DESIGN）；逐条审查不变量 I1–I10；确认 M1 的任务清单还适用（不适用就修改）。
   结果写 `MILESTONE_DONE`。
 
 ## M1：模型层与单轮生成（DESIGN §9、§10、§11）
 
 - [ ] **M1-T01 pi 技术验证** | 依赖：M0-T99 | 部分需要 HUMAN-04、HUMAN-05
-  做什么：在 `spikes/pi/` 里写最小脚本，验证 `@earendil-works/pi-ai`（先读 node_modules 里的 README 和类型定义）：① 用 openai-completions 加 `.env` 里的渠道：流式输出、思考内容、函数调用；② google-generative-ai 能不能用自定义 baseUrl 指到本地的 gcli2api（服务没运行就跳过，并记录下来）；③ abort 之后保留部分内容，再续写；④ pi-agent-core 的 `prepareRequest`、`beforeToolCall`、`finishTurn` 三个钩子。
+  做什么：先用 pnpm 在根目录 devDependencies 安装并锁版本 `@earendil-works/pi-ai` 与 `@earendil-works/pi-agent-core`（登记到 `DEPENDENCIES.md`，M1-T02 采用后再移到 `packages/core` 的运行时依赖），然后在 `spikes/pi/` 里写最小脚本（先读 node_modules 里的 README 和类型定义）：① 用 openai-completions 加 `.env` 里的渠道：流式输出、思考内容、函数调用；② google-generative-ai 能不能用自定义 baseUrl 指到本地的 gcli2api（服务没运行就跳过，并记录下来）；③ abort 之后保留部分内容，再续写；④ pi-agent-core 的 `prepareRequest`、`beforeToolCall`、`finishTurn` 三个钩子。
   产出：ADR，写明是否采用 pi，以及哪些部分采用。
   验收：每一项的结果都有记录（通过、失败或跳过，并附原因）。
 
 - [ ] **M1-T02 core/llm 接口与渠道** | 依赖：M1-T01
-  做什么：定义 `core/llm` 的薄接口（流式事件、用量、中止）；渠道配置（`data/channels.yaml`，密钥用 `${ENV}` 引用 `.env` 里的变量）；同一个模型可以配多个渠道，按优先级自动切换；重试；截断检测（以 length 结束、标签没闭合、内容突然中断）；续写。用 pi 实现这个接口（或者按 ADR 的结论自己实现）。替换掉 M0-T11 的最小客户端。
-  验收：用一个模拟的提供方测试切换、重试和续写的逻辑。
+  做什么：定义 `core/llm` 的薄接口（流式事件、用量、中止）；渠道配置（`data/channels.yaml`，密钥用 `${ENV}` 引用 `.env` 里的变量）；同一个模型可以配多个渠道，按优先级自动切换；重试；截断检测（以 length 结束、标签没闭合、内容突然中断）；续写。用 pi 实现这个接口（或者按 ADR 的结论自己实现）。替换掉 M0-T11 的最小客户端：`evalset/event-questions.ts` 迁移到新接口后删除 `packages/core/src/llm/client.ts`，迁移期间保留已有 `eval-private/llm-cache` 的读取，避免重复调用渠道。
+  验收：用一个模拟的提供方测试切换、重试和续写的逻辑；事件题生成器的测试改用新接口的假客户端，`pnpm check` 通过。
 
 - [ ] **M1-T03 渠道体检** | 依赖：M1-T02
   做什么：CLI 命令 `dramaticer probe <channel>`，检测真流式还是假流式、函数调用、思考输出、预填充、用量和缓存统计，结果写回渠道配置里，供结构化输出选择模式。
@@ -188,7 +189,7 @@
 ## M2：楼层树与记忆引擎（DESIGN §5、§7）——由 M2-T00 细化
 
 - [ ] **M2-T00 拆解 M2**：把下面的粗粒度条目拆成 M2-T01… 这样的任务，每个任务都要写清楚依赖和验收标准，然后在本文件里替换掉这一节。
-  粗粒度条目：楼层树操作（swipe、编辑、分支切换、确认）；状态快照缓存；后台任务框架（独立渠道池、限速、楼层确认后触发）；事件抽取；分层摘要（依赖路径）；剧情笔记；实体和别名表；bge-m3 embedding 加 sqlite-vec（需要 HUMAN-02）；多路融合检索；知情者过滤；被动注入的槽位提供者；读取工具（memory_search、lore_lookup、state_get）；评测运行器接入完整的记忆引擎；**过关标准：召回率明显高于 ACU 对照组和 BM25 基线**。
+  粗粒度条目：楼层树操作（swipe、编辑、分支切换、确认）；状态快照缓存；后台任务框架（独立渠道池、限速、楼层确认后触发）；事件抽取；分层摘要（依赖路径）；剧情笔记；实体和别名表；bge-m3 embedding 加 sqlite-vec（需要 HUMAN-02）；多路融合检索；知情者过滤；被动注入的槽位提供者；读取工具（memory_search、lore_lookup、state_get）；评测运行器接入完整的记忆引擎；**过关标准按题型分层：状态题对照 ACU 37.3% 与 BM25 8.1%，事件题对照 BM25 83.3% @5（@20 96.0%），两者都要明显高于对照**。
 
 ## M3：Director（DESIGN §8）——由 M3-T00 细化
 
