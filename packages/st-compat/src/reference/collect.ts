@@ -1,8 +1,19 @@
-import type { Dirent } from "node:fs";
-import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
-import type { ReferenceTextStats, SentenceLengthBucket } from "./text-stats.js";
-import { analyzeReferenceText } from "./text-stats.js";
+import type { ConversationProseStats } from "./conversations.js";
+import { collectConversationProse } from "./conversations.js";
+import type { CosineCalibration } from "./cosine.js";
+import { listReferenceFiles, readReferenceText } from "./files.js";
+import type {
+	ReferenceTextStats,
+	RunLengthStats,
+	SentenceLengthBucket,
+	SimilarityPercentiles,
+} from "./text-stats.js";
+import {
+	analyzeReferenceText,
+	runLengthStats,
+	similarityPercentiles,
+} from "./text-stats.js";
 
 export type ReferenceSource = "public" | "private";
 
@@ -26,6 +37,9 @@ export interface ReferenceAggregate {
 	readonly pairCount: number;
 	readonly meanAdjacentSimilarity: number;
 	readonly maxAdjacentSimilarity: number;
+	readonly similarityPercentiles: SimilarityPercentiles;
+	readonly dialogueRuns: RunLengthStats;
+	readonly narrationRuns: RunLengthStats;
 	readonly sentence: AggregateSentenceStats;
 	readonly dialogue: {
 		readonly quotedChars: number;
@@ -43,12 +57,17 @@ export interface ReferenceBaseline {
 	readonly generatedAt: string;
 	readonly publicFixture: ReferenceWork;
 	readonly privateWorks: readonly ReferenceWork[];
+	readonly conversations: readonly ConversationProseStats[];
+	readonly cosine: CosineCalibration | null;
 	readonly aggregate: ReferenceAggregate;
 }
 
 export interface CollectReferenceBaselineOptions {
 	readonly publicFixturePath: string;
 	readonly referenceRoot: string;
+	/** 快照根目录；提供时统计旧语料对话作为对照。 */
+	readonly chatRoot?: string;
+	readonly cosine?: CosineCalibration;
 	readonly generatedAt?: string;
 }
 
@@ -59,10 +78,16 @@ export async function collectReferenceBaseline(
 ): Promise<ReferenceBaseline> {
 	const publicFixture = await analyzeFile(options.publicFixturePath, "public");
 	const privateWorks = await collectPrivateWorks(options.referenceRoot);
+	const conversations =
+		options.chatRoot === undefined
+			? []
+			: await collectConversationProse(options.chatRoot);
 	return {
 		generatedAt: options.generatedAt ?? new Date().toISOString(),
 		publicFixture,
 		privateWorks,
+		conversations,
+		cosine: options.cosine ?? null,
 		aggregate: aggregateWorks([publicFixture, ...privateWorks]),
 	};
 }
@@ -75,39 +100,19 @@ async function analyzeFile(
 		name: path.parse(filePath).name,
 		fileName: path.basename(filePath),
 		source,
-		stats: analyzeReferenceText(await readTextFile(filePath)),
+		stats: analyzeReferenceText(await readReferenceText(filePath)),
 	};
 }
 
 async function collectPrivateWorks(
 	referenceRoot: string,
 ): Promise<readonly ReferenceWork[]> {
-	let entries: Dirent[];
-	try {
-		entries = await readdir(referenceRoot, { withFileTypes: true });
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
-		throw error;
-	}
-	const files = entries
-		.filter((entry) => entry.isFile() && TEXT_FILE.test(entry.name))
-		.sort((left, right) => {
-			if (left.name < right.name) return -1;
-			if (left.name > right.name) return 1;
-			return 0;
-		});
+	const files = await listReferenceFiles(referenceRoot);
 	const works: ReferenceWork[] = [];
 	for (const file of files) {
-		works.push(
-			await analyzeFile(path.join(referenceRoot, file.name), "private"),
-		);
+		works.push(await analyzeFile(file, "private"));
 	}
 	return works;
-}
-
-async function readTextFile(filePath: string): Promise<string> {
-	const text = await readFile(filePath, "utf8");
-	return text.startsWith("\uFEFF") ? text.slice(1) : text;
 }
 
 function aggregateWorks(works: readonly ReferenceWork[]): ReferenceAggregate {
@@ -124,6 +129,9 @@ function aggregateWorks(works: readonly ReferenceWork[]): ReferenceAggregate {
 	let weightedCharTtr = 0;
 	let weightedBigramTtr = 0;
 	let bigramCount = 0;
+	const similarities: number[] = [];
+	const dialogueRunLengths: number[] = [];
+	const narrationRunLengths: number[] = [];
 
 	for (const work of works) {
 		const stats = work.stats;
@@ -133,10 +141,13 @@ function aggregateWorks(works: readonly ReferenceWork[]): ReferenceAggregate {
 		similarityTotal +=
 			stats.meanAdjacentSimilarity * stats.duplication.pairs.length;
 		for (const pair of stats.duplication.pairs) {
+			similarities.push(pair.similarity);
 			if (pair.similarity > maxAdjacentSimilarity) {
 				maxAdjacentSimilarity = pair.similarity;
 			}
 		}
+		dialogueRunLengths.push(...stats.dialogueRuns.lengths);
+		narrationRunLengths.push(...stats.narrationRuns.lengths);
 		sentenceCount += stats.sentence.sentenceCount;
 		sentenceLengthTotal += stats.sentence.mean * stats.sentence.sentenceCount;
 		for (const [index, bucket] of stats.sentence.buckets.entries()) {
@@ -158,6 +169,9 @@ function aggregateWorks(works: readonly ReferenceWork[]): ReferenceAggregate {
 		pairCount,
 		meanAdjacentSimilarity: pairCount === 0 ? 0 : similarityTotal / pairCount,
 		maxAdjacentSimilarity,
+		similarityPercentiles: similarityPercentiles(similarities),
+		dialogueRuns: runLengthStats(dialogueRunLengths),
+		narrationRuns: runLengthStats(narrationRunLengths),
 		sentence: {
 			sentenceCount,
 			mean: sentenceCount === 0 ? 0 : sentenceLengthTotal / sentenceCount,
@@ -205,6 +219,8 @@ export function renderPrivateReferenceReport(
 			renderWorkDetails(lines, work, true);
 		}
 	}
+	renderCosineSection(lines, baseline, true);
+	renderConversationComparison(lines, baseline.conversations);
 	renderAggregate(lines, baseline, true);
 	return `${lines.join("\n")}\n`;
 }
@@ -225,6 +241,8 @@ export function renderPublicReferenceReport(
 	for (const [index, work] of works.entries()) {
 		renderWorkDetails(lines, work, index === 0, `作品 ${index + 1}`);
 	}
+	renderCosineSection(lines, baseline, false);
+	renderConversationComparison(lines, baseline.conversations);
 	renderAggregate(lines, baseline, false);
 	return `${lines.join("\n")}\n`;
 }
@@ -247,6 +265,15 @@ function renderWorkDetails(
 	lines.push(`- 文本块：${stats.blockCount}`);
 	lines.push(
 		`- 相邻块重复度：${duplication.pairs.length} 对，平均 ${decimal(stats.meanAdjacentSimilarity)}，峰值 ${decimal(maxSimilarity(stats))}`,
+	);
+	lines.push(
+		`- 相邻相似度分位：P50 ${decimal(stats.similarityPercentiles.p50)}，P90 ${decimal(stats.similarityPercentiles.p90)}，P95 ${decimal(stats.similarityPercentiles.p95)}，P99 ${decimal(stats.similarityPercentiles.p99)}`,
+	);
+	lines.push(
+		`- 连续含对白块：${stats.dialogueRuns.runCount} 段，中位数 ${number(stats.dialogueRuns.median, 2)}，P90 ${number(stats.dialogueRuns.p90, 2)}，最长 ${stats.dialogueRuns.max}`,
+	);
+	lines.push(
+		`- 连续无对白块：${stats.narrationRuns.runCount} 段，中位数 ${number(stats.narrationRuns.median, 2)}，P90 ${number(stats.narrationRuns.p90, 2)}，最长 ${stats.narrationRuns.max}`,
 	);
 	lines.push(
 		`- 持续上升起点：${duplication.riseStartFloor === null ? "无" : `第 ${duplication.riseStartFloor} 块`}`,
@@ -278,6 +305,101 @@ function renderWorkDetails(
 	lines.push("");
 }
 
+function renderCosineSection(
+	lines: string[],
+	baseline: ReferenceBaseline,
+	showNames: boolean,
+): void {
+	lines.push("## 参照 embedding 余弦");
+	lines.push("");
+	const cosine = baseline.cosine;
+	if (cosine === null) {
+		lines.push("未运行 embedding 余弦校准。");
+		lines.push("");
+		return;
+	}
+	lines.push(`模型：${cosine.modelLabel}`);
+	lines.push(
+		`取样：每个作品 ${cosine.pairsPerWork} 对相邻块，共 ${cosine.pairCount} 对、${cosine.blockCount} 段文本，其中重复文本 ${cosine.duplicatePairCount} 对。`,
+	);
+	lines.push(
+		`相邻块余弦：平均 ${decimal(cosine.meanCosine)}，P50 ${decimal(cosine.percentiles.p50)}，P90 ${decimal(cosine.percentiles.p90)}，P95 ${decimal(cosine.percentiles.p95)}，P99 ${decimal(cosine.percentiles.p99)}`,
+	);
+	lines.push("");
+	lines.push("| 作品 | 相邻对 | 余弦均值 | P95 余弦 |");
+	lines.push("|---|---|---|---|");
+	for (const [index, work] of cosine.works.entries()) {
+		const label = showNames ? work.name : `作品 ${index + 2}`;
+		lines.push(
+			`| ${label.replaceAll("|", "\\|")} | ${work.pairCount} | ${decimal(work.meanCosine)} | ${decimal(work.p95Cosine)} |`,
+		);
+	}
+	lines.push("");
+}
+
+function renderConversationComparison(
+	lines: string[],
+	conversations: readonly ConversationProseStats[],
+): void {
+	lines.push("## 评测对话对照");
+	lines.push("");
+	if (conversations.length === 0) {
+		lines.push("没有提供快照目录，未统计评测对话。");
+		lines.push("");
+		return;
+	}
+	lines.push(
+		"对话按固定顺序编号。重复度按相邻助手回复计算，句长、对话占比与词汇丰富度按全部助手回复计算。对话是互动文本，这组数字只用于说明与参照小说的差距，Director 阈值不从对话语料推导。",
+	);
+	lines.push("");
+	lines.push(
+		"| 对话 | 助手回复 | 相邻对 | 重复度均值 | P95 | 句长均值 | 对话占比 | 字符 TTR | 二元组 TTR |",
+	);
+	lines.push("|---|---|---|---|---|---|---|---|---|");
+	let replyCount = 0;
+	let pairCount = 0;
+	let similarityTotal = 0;
+	let sentenceCount = 0;
+	let sentenceLengthTotal = 0;
+	let quotedChars = 0;
+	let totalChars = 0;
+	let weightedCharTtr = 0;
+	let charCount = 0;
+	let weightedBigramTtr = 0;
+	let bigramCount = 0;
+	const similarities: number[] = [];
+	for (const conversation of conversations) {
+		const pairTotal = conversation.duplication.pairs.length;
+		replyCount += conversation.replyCount;
+		pairCount += pairTotal;
+		similarityTotal += conversation.meanAdjacentSimilarity * pairTotal;
+		for (const pair of conversation.duplication.pairs) {
+			similarities.push(pair.similarity);
+		}
+		sentenceCount += conversation.sentence.sentenceCount;
+		sentenceLengthTotal +=
+			conversation.sentence.mean * conversation.sentence.sentenceCount;
+		quotedChars += conversation.dialogue.quotedChars;
+		totalChars += conversation.dialogue.totalChars;
+		weightedCharTtr +=
+			conversation.vocabulary.charTypeTokenRatio *
+			conversation.vocabulary.charCount;
+		charCount += conversation.vocabulary.charCount;
+		weightedBigramTtr +=
+			conversation.vocabulary.bigramTypeTokenRatio *
+			conversation.vocabulary.bigramCount;
+		bigramCount += conversation.vocabulary.bigramCount;
+		lines.push(
+			`| ${conversation.label} | ${conversation.replyCount} | ${pairTotal} | ${decimal(conversation.meanAdjacentSimilarity)} | ${decimal(conversation.similarityPercentiles.p95)} | ${number(conversation.sentence.mean, 2)} | ${percent(conversation.dialogue.ratio)} | ${decimal(conversation.vocabulary.charTypeTokenRatio)} | ${decimal(conversation.vocabulary.bigramTypeTokenRatio)} |`,
+		);
+	}
+	const aggregatePercentiles = similarityPercentiles(similarities);
+	lines.push(
+		`| 合计 | ${replyCount} | ${pairCount} | ${decimal(pairCount === 0 ? 0 : similarityTotal / pairCount)} | ${decimal(aggregatePercentiles.p95)} | ${number(sentenceCount === 0 ? 0 : sentenceLengthTotal / sentenceCount, 2)} | ${percent(totalChars === 0 ? 0 : quotedChars / totalChars)} | ${decimal(charCount === 0 ? 0 : weightedCharTtr / charCount)} | ${decimal(bigramCount === 0 ? 0 : weightedBigramTtr / bigramCount)} |`,
+	);
+	lines.push("");
+}
+
 function renderAggregate(
 	lines: string[],
 	baseline: ReferenceBaseline,
@@ -293,6 +415,15 @@ function renderAggregate(
 	lines.push("");
 	lines.push(
 		`- 相邻块重复度：平均 ${decimal(aggregate.meanAdjacentSimilarity)}，峰值 ${decimal(aggregate.maxAdjacentSimilarity)}`,
+	);
+	lines.push(
+		`- 相邻相似度分位：P50 ${decimal(aggregate.similarityPercentiles.p50)}，P90 ${decimal(aggregate.similarityPercentiles.p90)}，P95 ${decimal(aggregate.similarityPercentiles.p95)}，P99 ${decimal(aggregate.similarityPercentiles.p99)}`,
+	);
+	lines.push(
+		`- 连续含对白块：${aggregate.dialogueRuns.runCount} 段，中位数 ${number(aggregate.dialogueRuns.median, 2)}，P90 ${number(aggregate.dialogueRuns.p90, 2)}，最长 ${aggregate.dialogueRuns.max}`,
+	);
+	lines.push(
+		`- 连续无对白块：${aggregate.narrationRuns.runCount} 段，中位数 ${number(aggregate.narrationRuns.median, 2)}，P90 ${number(aggregate.narrationRuns.p90, 2)}，最长 ${aggregate.narrationRuns.max}`,
 	);
 	lines.push(
 		`- 句子：${aggregate.sentence.sentenceCount} 句，平均 ${number(aggregate.sentence.mean, 2)} 字`,

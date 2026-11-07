@@ -39,6 +39,27 @@ export interface VocabularyStats {
 	readonly bigramTypeTokenRatio: number;
 }
 
+export interface SimilarityPercentiles {
+	readonly p50: number;
+	readonly p90: number;
+	readonly p95: number;
+	readonly p99: number;
+}
+
+/**
+ * 连续文本段的长度统计。
+ *
+ * 对白段是连续含引号对白的文本块；叙述段是连续不含引号对白的文本块。
+ * `lengths` 保留原始长度，汇总报告按全部作品合并后再算分位。
+ */
+export interface RunLengthStats {
+	readonly runCount: number;
+	readonly median: number;
+	readonly p90: number;
+	readonly max: number;
+	readonly lengths: readonly number[];
+}
+
 export interface ReferenceTextStats {
 	/** 去掉空白、标点与符号之后的字符数。 */
 	readonly charCount: number;
@@ -49,6 +70,10 @@ export interface ReferenceTextStats {
 	readonly duplication: DuplicationCurve;
 	/** 全部相邻块相似度的均值；没有相邻块时为 0。 */
 	readonly meanAdjacentSimilarity: number;
+	/** 相邻块相似度的分位；没有相邻块时全为 0。 */
+	readonly similarityPercentiles: SimilarityPercentiles;
+	readonly dialogueRuns: RunLengthStats;
+	readonly narrationRuns: RunLengthStats;
 }
 
 export interface AnalyzeReferenceTextOptions {
@@ -135,6 +160,79 @@ function sentenceLengthStats(lengths: readonly number[]): SentenceLengthStats {
 	};
 }
 
+/** 输入必须已经升序排列；分位取最近秩。 */
+function percentileOfSorted(
+	sorted: readonly number[],
+	quantile: number,
+): number {
+	if (sorted.length === 0) return 0;
+	const index = Math.min(
+		sorted.length - 1,
+		Math.max(0, Math.ceil(sorted.length * quantile) - 1),
+	);
+	return sorted[index];
+}
+
+function medianOfSorted(sorted: readonly number[]): number {
+	if (sorted.length === 0) return 0;
+	const middle = Math.floor(sorted.length / 2);
+	return sorted.length % 2 === 1
+		? sorted[middle]
+		: (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+export function similarityPercentiles(
+	similarities: readonly number[],
+): SimilarityPercentiles {
+	const sorted = [...similarities].sort((left, right) => left - right);
+	return {
+		p50: percentileOfSorted(sorted, 0.5),
+		p90: percentileOfSorted(sorted, 0.9),
+		p95: percentileOfSorted(sorted, 0.95),
+		p99: percentileOfSorted(sorted, 0.99),
+	};
+}
+
+export function runLengthStats(lengths: readonly number[]): RunLengthStats {
+	const sorted = [...lengths].sort((left, right) => left - right);
+	return {
+		runCount: sorted.length,
+		median: medianOfSorted(sorted),
+		p90: percentileOfSorted(sorted, 0.9),
+		max: sorted.length === 0 ? 0 : sorted[sorted.length - 1],
+		lengths: [...sorted],
+	};
+}
+
+function splitRunLengths(blocks: readonly string[]): {
+	dialogue: RunLengthStats;
+	narration: RunLengthStats;
+} {
+	const dialogue: number[] = [];
+	const narration: number[] = [];
+	let currentKind: boolean | null = null;
+	let currentLength = 0;
+	for (const block of blocks) {
+		const kind = block.match(DIALOGUE_SPAN) !== null;
+		if (kind === currentKind) {
+			currentLength += 1;
+			continue;
+		}
+		if (currentKind !== null) {
+			(currentKind ? dialogue : narration).push(currentLength);
+		}
+		currentKind = kind;
+		currentLength = 1;
+	}
+	if (currentKind !== null) {
+		(currentKind ? dialogue : narration).push(currentLength);
+	}
+	return {
+		dialogue: runLengthStats(dialogue),
+		narration: runLengthStats(narration),
+	};
+}
+
 function dialogueStats(text: string, totalChars: number): DialogueStats {
 	let spanCount = 0;
 	let quotedChars = 0;
@@ -185,6 +283,7 @@ export function analyzeReferenceText(
 		0,
 	);
 	const sentences = splitSentences(text);
+	const runs = splitRunLengths(blocks);
 	return {
 		charCount: chars.length,
 		blockCount: blocks.length,
@@ -195,5 +294,10 @@ export function analyzeReferenceText(
 		vocabulary: vocabularyStats(chars),
 		duplication,
 		meanAdjacentSimilarity: pairCount === 0 ? 0 : similarityTotal / pairCount,
+		similarityPercentiles: similarityPercentiles(
+			duplication.pairs.map((pair) => pair.similarity),
+		),
+		dialogueRuns: runs.dialogue,
+		narrationRuns: runs.narration,
 	};
 }

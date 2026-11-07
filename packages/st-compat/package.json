@@ -27,7 +27,8 @@
 		"evalset:events": "tsc -b && node dist/evalset/event-cli.js",
 		"memory-eval": "tsc -b && node dist/evalset/memory-cli.js",
 		"report": "tsc -b && node dist/health/cli.js",
-		"reference": "tsc -b && node dist/reference/cli.js"
+		"reference": "tsc -b && node dist/reference/cli.js",
+		"reference:cosine": "tsc -b && node dist/reference/cli.js --cosine"
 	},
 	"devDependencies": {
 		"@types/better-sqlite3": "^9.6.0"

@@ -64,6 +64,31 @@ describe("analyzeReferenceText", () => {
 		expect(stats.vocabulary.bigramTypeTokenRatio).toBe(1);
 	});
 
+	it("统计相邻相似度分位与对白、叙述连续块", () => {
+		const stats = analyzeReferenceText(
+			["“你好。”", "他走了。", "天黑了。", "“再见。”", "“路上小心。”"].join(
+				"\n",
+			),
+		);
+		expect(stats.similarityPercentiles.p50).toBe(0);
+		expect(stats.similarityPercentiles.p99).toBeGreaterThanOrEqual(0);
+		expect(stats.dialogueRuns.lengths).toEqual([1, 2]);
+		expect(stats.dialogueRuns.runCount).toBe(2);
+		expect(stats.dialogueRuns.median).toBe(1.5);
+		expect(stats.dialogueRuns.max).toBe(2);
+		expect(stats.narrationRuns.lengths).toEqual([2]);
+		expect(stats.narrationRuns.runCount).toBe(1);
+		expect(stats.narrationRuns.median).toBe(2);
+	});
+
+	it("空文本的连续块统计为 0", () => {
+		const stats = analyzeReferenceText("");
+		expect(stats.similarityPercentiles.p99).toBe(0);
+		expect(stats.dialogueRuns.runCount).toBe(0);
+		expect(stats.narrationRuns.runCount).toBe(0);
+		expect(stats.dialogueRuns.max).toBe(0);
+	});
+
 	it("在公有领域 fixture 上产出四项统计", async () => {
 		const text = await readFile(
 			`${fixturesPath}reference/public-domain.txt`,
