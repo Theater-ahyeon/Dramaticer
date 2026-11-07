@@ -364,9 +364,80 @@
   - 写 ADR：把上述分布作为 M3 Director 的重复检测阈值与节奏状态机的依据，与现有评测对话的同一组数字并列比较。
   验收：报告含每部作品与汇总的分布；阈值有明确数字来源；统计版不含原文与作品全文引文；`pnpm check` 通过。
 
-## M3：Director（DESIGN §8）——由 M3-T00 细化
+## M3：Director（DESIGN §8）——已由 M3-T00 细化
 
-- [ ] **M3-T00 拆解 M3**。粗粒度条目：线索追踪；重复检测（embedding 版）；节奏状态机；NPC 议程（后台任务）；事件池和卡扩展字段 `extensions.dramaticer`；director 槽位；评测（重复度、伏笔回收率，开启和关闭 Director 的对比回放）。拆解时，重复检测与节奏阈值的任务依赖 D-T04（小说参照基线），按 D-T04 的状态安排实现顺序。
+- [x] **M3-T00 细化 M3 任务** | 依赖：无
+  完成：2026-11-07 把 M3 细化为 M3-T01 至 M3-T08 与 M3-T99；T01–T05 不依赖参照基线，可以立即执行；T06 重复检测、T07 节奏状态机与 T08 开关对比评测依赖 D-T04（被 HUMAN-07 阻塞），排在其后；T01 的决策记录同时作为 T08 回放的输入。
+  做什么：原条目：线索追踪；重复检测（embedding 版）；节奏状态机；NPC 议程（后台任务）；事件池和卡扩展字段 `extensions.dramaticer`；director 槽位；评测（重复度、伏笔回收率，开启和关闭 Director 的对比回放）。重复检测与节奏阈值的任务依赖 D-T04（小说参照基线），按 D-T04 的状态安排实现顺序。
+
+- [ ] **M3-T01 Director 决策框架与线索追踪** | 依赖：M2-T07、M2-T13
+  做什么：
+  - 迁移 v13 新增 `director_decisions(node_id PRIMARY KEY, story_id, directive, mechanisms, signals, created_at)`；同一节点重复评估时覆盖旧记录；数据库触发器拒绝跨故事的楼层与故事组合；`StoryStore` 增加 `saveDirectorDecision`、`getDirectorDecision`、`getDirectorDecisionsAlongPath`。
+  - core 新增 `director/` 模块：`DirectorConfig`（`enabled`、`clueAgeWarning` 默认 12、`maxOpenClues` 默认 5、`pace` 与 `surprise` 留给后续机制）、`DirectorSuggestion {mechanism, priority, directive, signals}`、`DirectorMechanism {name, evaluate(input)}`；`evaluateDirector({store, storyId, nodeId, config})` 按注册顺序评估全部机制，只选优先级最高的一条建议作为输出，最多一行指令；不调用 LLM。
+  - 线索追踪机制只统计当前分支上的未兑现笔记；年龄等于当前路径位置减去笔记来源楼层的位置；最老笔记年龄超过 `clueAgeWarning` 时建议回收；未兑现数量达到 `maxOpenClues` 时建议先回收最老的笔记；没有未兑现笔记时不产生建议。
+  - 决策记录的 `signals` JSON 保存未兑现数量、最老年龄与被选中的笔记 id；`mechanisms` JSON 记录每个机制是否触发以及原因。`enabled` 为 true 时每次评估都写入一条记录，没有建议时 `directive` 为 null；`enabled` 为 false 时不评估也不写记录。
+  验收：年龄与路径位置计算正确；切换分支后另一分支的笔记不参与；超过年龄与超过数量各产生一条建议；两个条件同时满足时只输出一行且取优先级更高的那条；没有笔记时 `evaluateDirector` 返回 null 且记录里 `directive` 为 null；同一节点重复评估不产生两行；裸连接写入跨故事记录被触发器拒绝；`pnpm check` 通过。
+
+- [ ] **M3-T02 导演槽位与用户控制** | 依赖：M3-T01
+  做什么：
+  - 重写 `createDirectorSlotProvider(store, options)`：调用 `evaluateDirector`，有建议时返回一条以 `【导演】` 开头的 system 消息，`source` 写成 `director:<mechanism>`；没有建议或 `config.enabled` 为 false 时返回 null，由组装器记为 `missing-slot`。
+  - 组装上下文时产生的决策写入 `director_decisions`，与 Trace 的 `context` 来源一致；后续机制只注册到同一个评估器，槽位代码不再按机制分别修改。
+  - `dramaticer chat` 增加 `--director <on|off>`（默认 on），把 `DirectorConfig` 注入槽位；`runChatTurn` 不改主循环，不增加模型调用。
+  验收：开启时未兑现笔记按 M3-T01 的规则出现；关闭时槽位为 `missing-slot` 且没有决策记录；一次组装最多一条导演消息；`dramaticer chat --director off` 不产生导演指令；非法的 `--director` 取值抛错；`pnpm check` 通过。
+
+- [ ] **M3-T03 卡扩展 extensions.dramaticer 与事件池存储** | 依赖：M2-T04、M2-T07
+  做什么：
+  - core 定义原生扩展类型 `DramaticerCardExtension`，包含 `events` 与 `npcAgendas` 两个数组。事件字段：`id`（故事内唯一、非空）、`text`（非空）、`preconditions`（复用 `ContextCondition`，只允许 `state`、`all`、`any`、`not`）、`cooldown`（非负整数，默认 0）、`enabled`（默认 true）。NPC 议程字段：`npc`（非空名称或别名）、`goal`（非空）、`everyChapters`（正整数，默认 1）、`importance`（0 到 1，默认 0.5）。
+  - `parseDramaticerCardExtension(value)` 严格校验：未知字段、类型不符、空字符串、非法条件、重复 `id` 都抛错并指出条目下标与字段路径；没有 `extensions.dramaticer` 时返回空扩展。
+  - 迁移 v14 新增 `event_pool(story_id, source_id, text, preconditions, cooldown, source, created_at, PRIMARY KEY(story_id, source_id))` 与 `npc_agendas(story_id, entity_id, goal, every_chapters, importance, progress, last_advanced_node_id, created_at, updated_at, PRIMARY KEY(story_id, entity_id))`；`StoryStore` 增加 `upsertEventPool`、`listEventPool`、`upsertNpcAgendas`、`listNpcAgendas`。
+  - st-compat 新增 `importDramaticerExtension(card, store, storyId)`：先解析扩展，再把 NPC 名称或别名解析为实体（找不到实体时抛错并指出 `npc`）；事件按 `(story_id, source_id)` 更新文本、条件与冷却；NPC 议程更新目标、章节间隔与重要度，保留已有 `progress` 与 `last_advanced_node_id`；重复导入不产生重复行。`dramaticer chat` 在导入角色卡之后调用它。
+  验收：合法扩展解析出全部字段；未知字段、重复 id、负冷却、越界重要度、找不到实体各抛错并指出位置；重复导入后事件数不变且文本更新、NPC 进度保留；没有扩展时导入返回零计数；`pnpm check` 通过。
+
+- [ ] **M3-T04 事件池选择与停滞检测** | 依赖：M3-T01、M3-T03
+  做什么：
+  - `StoryStore` 增加 `countPlotNotesForNode(nodeId)`；core 新增事件池机制：停滞判定为当前路径上最近 `stallFloors`（默认 3）个已确认助手楼层既没有状态 diff，也没有新建剧情笔记；楼层不足或事件池为空时跳过。
+  - 事件条件用当前楼层的状态快照与 `evaluateContextCondition` 判定；冷却判定读取当前路径上的 `director_decisions`，同一 `source_id` 在最近 `cooldown` 个楼层内出现过就不再选择。
+  - 合格事件按“上次使用位置升序、`source_id` 升序”排序并取第一条；`surprise` 配置用 `(storyId, nodeId, source_id)` 的稳定哈希做门槛，0 表示永不触发，1 表示命中停滞就触发；选中的事件写入决策记录的 `signals`，导演指令直接使用事件正文。
+  - 不修改 `event_pool` 表，不调用 LLM；分支切换后另一分支的使用记录不参与冷却。
+  验收：最近三个楼层都有状态 diff 或新笔记时不触发；满足停滞后条件成立且冷却结束的事件被选中；条件不成立、冷却未结束、`enabled=false` 的事件被跳过；`surprise` 为 0 和 1 时行为正确；同一路径重复评估选择同一条；另一分支的决策不影响当前分支；`pnpm check` 通过。
+
+- [ ] **M3-T05 NPC 议程后台任务** | 依赖：M3-T03、M2-T03、M2-T06
+  做什么：
+  - 新增后台任务类型 `npc_agenda`：只在章节边界执行，判定与章节摘要一致（当前路径已确认助手楼层数是 `chapterSize` 的整数倍，默认 20）；没有 NPC 议程时不调用模型。
+  - 每次章节边界用 background 模型发起一次请求，输入为该章节的摘要（没有摘要时用同一窗口的楼层原文）、全部 NPC 的目标与上次进度，输出 JSON 数组，每项 `{npc, progress}`；`npc` 必须匹配一条议程，`progress` 必须非空；缺项、陌生名称、空正文、重复名称都抛错，整批不写入，并按 M2-T03 的规则重试。
+  - 成功时在一个事务里更新每条议程的 `progress` 与 `last_advanced_node_id`，并写入一条 `memory_events`，`text` 为 `与此同时：<progress>`，`participants` 写 NPC 名称，`knowers` 写 NPC 名称，`importance` 取议程配置；同一节点重复执行时不新增事件、不重复更新（按 `last_advanced_node_id` 跳过）。
+  - `dramaticer work` 默认注册 `npc_agenda` 处理器；`everyChapters` 决定在哪些章节边界推进（默认每隔 1 章）。
+  验收：非章节边界执行一次时不调用模型；没有议程时也不调用；合法 JSON 数组写入进度与事件；缺项或陌生 NPC 时整批不写入且任务失败；重复执行同一节点不产生重复事件；`everyChapters=2` 时只在对应边界推进；单元测试使用假客户端，`pnpm check` 通过。
+
+- [ ] **M3-T06 重复检测（embedding 版）** | 依赖：D-T04、M2-T09、M3-T01
+  做什么：
+  - `StoryStore` 增加 `listChunkVectorsForNode(nodeId)`，返回每个块的序号与向量；节拍取已确认助手楼层，楼层向量取该楼层全部块向量的平均值，只使用已经生成向量的楼层，缺失向量的楼层跳过并在信号里计数。
+  - 相邻节拍的相似度用余弦；窗口与上升规则沿用 `health/duplication.ts` 的语义（连续 `riseWindows` 个窗口均值上升），阈值、窗口大小与 `riseWindows` 取 D-T04 的参照分布，写进 ADR 并给出配置默认值。
+  - 场景类型序列：从可配置的 `scenePath` 读取当前状态值；没有配置或取不到值时，用该楼层最近事件的 `location` 代替；两者都没有时跳过场景检测。同一场景连续出现超过阈值时建议换场景。
+  - 两类信号同时命中时按优先级只输出一条指令，`signals` 记录相似度序列、窗口均值、场景序列与阈值来源；不调用 LLM。
+  - 向量或场景数据缺失时其余机制照常工作；配置非法（窗口小于 2、阈值不在 0 到 1 之间）在创建评估器时抛错。
+  验收：相邻节拍相似度与平均向量计算正确；连续上升超过阈值触发，单个高值不触发；缺失向量的楼层被跳过并计入信号；场景重复触发；两类信号只输出一条；另一分支的楼层不参与；`pnpm check` 通过。
+
+- [ ] **M3-T07 节奏状态机** | 依赖：D-T04、M3-T01
+  做什么：
+  - 张力值优先读取可配置的 `tensionPath` 状态值（0 到 1）；取不到时用最近 3 个已确认助手楼层推导：状态 diff 数量、新建剧情笔记数量与最近事件重要度的加权和，并截断到 0 到 1；公式与权重写进配置与 ADR。
+  - 阶段取 `setup`（铺垫）、`escalate`（升级）、`climax`（高潮）、`breathe`（喘息）。按张力和“距上次阶段变化的楼层数”转移；`pace` 越大，进入升级与高潮所需的楼层数越少；`climax` 持续不超过 `climaxFloors`，之后进入 `breathe`，`breathe` 持续 `breatheFloors` 后回到 `setup`。
+  - 每个阶段输出一条固定指令；当前阶段与张力写入决策记录的 `signals`，阶段变化点也记录在同一 JSON 里，后续轮次从当前路径的决策记录恢复状态，不新增表。
+  - 阈值、`climaxFloors`、`breatheFloors` 取 D-T04 的参照分布并写进 ADR；没有历史记录时从 `setup` 开始；分支切换后只读取当前路径上的记录。
+  验收：四类转移各有用例；`pace` 改变时进入高潮的楼层数按预期变化；`climax` 到期进入 `breathe`，`breathe` 到期回到 `setup`；没有历史时从 `setup` 开始；另一分支的阶段记录不参与；`pnpm check` 通过。
+
+- [ ] **M3-T08 Director 开关对比评测** | 依赖：M3-T02、M3-T04、M3-T05、M3-T06、M3-T07、D-T04
+  做什么：
+  - 新增 `pnpm --filter @dramaticer/st-compat director-eval`：从 `eval-private/raw/` 读取评测对话，按固定间隔选择分支点，用后续真实用户消息回放若干轮；同一分支点分别以导演开启与关闭生成，两种模式各运行 `pairs` 次（默认 3）。
+  - 重复度指标复用 `reference/text-stats.ts` 的相邻块统计与 M3-T06 的节拍余弦，分别报告开启与关闭的均值、中位数与分位数；线索回收率统计回放期间新建与兑现的剧情笔记数量、兑现时的平均年龄；同时统计每个机制的触发次数与被选中次数。
+  - 单个分支点失败不中断整批，记入失败列表；所有数字可由重复运行复现（生成内容本身不保证一致，报告注明样本数与模型名）。
+  - 详细报告写 `eval-private/reports/m3-director.md`，统计版写 `docs/dev/reports/M3-director.md`，只含数字、模型别名与配置，不含原文、角色名与对话名。
+  - 用注入的假生成器给回放框架补单元测试；真实渠道的运行记录写进报告与 HANDOFF。
+  验收：命令一条完成并生成两份报告；关闭导演时没有导演消息与决策记录；开启时机制触发次数非零；报告给出开启与关闭的重复度分布、线索回收率与机制触发统计；统计版不含原文与私有名称；回放框架的单元测试不访问网络；`pnpm check` 通过。
+
+- [ ] **M3-T99 M3 验收** | 依赖：M3 全部任务
+  做什么：同 M0-T99；重跑门禁与 live 测试；逐条核对 M3-T08 的重复度与线索回收率门槛；复核 I1–I10，重点检查 I6（主循环只有一次主模型调用加最多 2 轮读取工具，导演不增加调用）、I7、I9（导演实时决策不调用 LLM）；在 `docs/dev/reports/M3.md` 报告哪些假设被证实、哪些需要调整；确认 M4 的条目。
+  结果写 `MILESTONE_DONE`。
 
 ## 兼容线（DESIGN §6、§9）——由 C-T00 细化，排在 M3 之后
 

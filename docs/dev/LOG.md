@@ -67,3 +67,5 @@
 - 2026-11-07 | S52 | D-T02 | DONE | `manifest` 新增 `storyCorpus` 与 `STORY_CORPORA`；体检的对话体量、状态存储、重复度与 BM25、ACU 三节按 legacy/latest 分栏，旧语料数字保持不变；`state-cli` 按语料选择出题参数（legacy 50–100、gap 30；latest gap 3、最多 50、允许空结果），新增语料生成 101 道题，单楼对话跳过；`collectRetrievalBaseline` 对新增语料缺状态题时跳过并记录原因，`planEventQuestions` 按窗口给出事件题请求估算（新增语料 3 次）；两份报告重新生成，重复运行除生成时间外逐字节一致；新增 7 个测试，门禁通过（470 个测试）
 
 - 2026-11-07 | S53 | D-T03 | DONE | ADR-0024 分离记忆评测与文笔结构度量：状态/事件召回继续用对话，重复度、句长、对话占比、词汇丰富度改用小说参照文本；新增 `packages/st-compat/src/reference/` 的 `text-stats`、`collect`、`cli`，`pnpm --filter @dramaticer/st-compat reference` 输出私有版与统计版；公有领域 fixture（论语与唐诗选段，59 块、962 字符、96 句）产出四项统计，重复度均值 0.0136、对话占比 70.1%、字符 TTR 0.3680、二元组 TTR 0.8283；统计版用“作品 1..N”隐藏版权作品名且不含原文；HUMAN-07 补充文件格式；8 个新测试，门禁通过（478 个测试）
+
+- 2026-11-07 | S54 | M3-T00 | DONE | M3 细化为 M3-T01 至 M3-T08 与 M3-T99：T01 决策框架、迁移 v13 决策记录与线索追踪，T02 导演槽位与 `--director` 开关，T03 卡扩展 `extensions.dramaticer` 与迁移 v14 的事件池、NPC 议程存储，T04 停滞检测与事件选择，T05 NPC 议程后台任务；T06 重复检测、T07 节奏状态机、T08 开关对比评测依赖 D-T04，按 HUMAN-07 的状态排在后面；本次只改文档，门禁通过（478 个测试）
