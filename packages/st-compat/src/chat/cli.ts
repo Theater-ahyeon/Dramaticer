@@ -26,6 +26,7 @@ import {
 	type StCharacterCard,
 	parseCharacterCardFile,
 } from "../character-card.js";
+import { importDramaticerExtension } from "../dramaticer-extension.js";
 import { importCharacterCardEntity } from "../entity-import.js";
 import {
 	importCharacterBookLore,
@@ -154,6 +155,7 @@ export async function runChatCli(
 			const worldInfo = await loadWorld(worldPath);
 			importWorldInfoLore(store, parsed.storyId, worldInfo);
 		}
+		importDramaticerExtension(store, parsed.storyId, card);
 		const budgetTokens =
 			parsed.budgetTokens ?? model.contextWindow - model.maxTokens;
 		if (budgetTokens <= 0) {

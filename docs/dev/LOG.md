@@ -77,3 +77,5 @@
 - 2026-11-07 | S57 | M3-T01 | DONE | 迁移 v13 新增 `director_decisions`（每楼层一行、覆盖写入、触发器拒绝跨故事归属），存储层新增保存与按路径读取；core 新增 `director/` 决策框架与线索追踪机制（年龄超过 12 楼或未兑现达到 5 条，年龄优先，只输出一行，不调用模型）；11 个新测试，门禁通过（497 个测试）
 
 - 2026-11-07 | S58 | M3-T02 | DONE | 导演槽位改为调用 `evaluateDirector`，有建议时只返回一条以 `【导演】` 开头的 system 消息、来源 `director:<mechanism>`，无建议或关闭时返回 null 并记为 `missing-slot`；组装时的决策写入 `director_decisions`，后续机制经 `mechanisms` 注入同一评估器；`dramaticer chat` 新增 `--director <on|off>`（默认 on，非法取值抛错）；4 个 provider 测试与 3 个 CLI 测试，门禁通过（500 个测试）
+
+- 2026-11-07 | S59 | M3-T03 | DONE | 卡扩展 `extensions.dramaticer`：core 新增严格条件解析与 `parseDramaticerCardExtension`（未知字段、重复 id、负冷却、越界重要度、switch 条件都带路径抛错）；迁移 v14 新增 `event_pool` 与 `npc_agendas`，`StoryStore` 新增四组读写方法并在重复导入时保留事件创建时间与 NPC 进度；st-compat 新增 `importDramaticerExtension`，NPC 名称解析为角色实体，`dramaticer chat` 导入卡后调用；21 个新测试，门禁通过（521 个测试）

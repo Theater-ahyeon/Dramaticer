@@ -389,7 +389,8 @@
   - `dramaticer chat` 增加 `--director <on|off>`（默认 on），把 `DirectorConfig` 注入槽位；`runChatTurn` 不改主循环，不增加模型调用。
   验收：开启时未兑现笔记按 M3-T01 的规则出现；关闭时槽位为 `missing-slot` 且没有决策记录；一次组装最多一条导演消息；`dramaticer chat --director off` 不产生导演指令；非法的 `--director` 取值抛错；`pnpm check` 通过。
 
-- [ ] **M3-T03 卡扩展 extensions.dramaticer 与事件池存储** | 依赖：M2-T04、M2-T07
+- [x] **M3-T03 卡扩展 extensions.dramaticer 与事件池存储** | 依赖：M2-T04、M2-T07
+  完成：2026-11-07 core 新增 `parseContextCondition` 与严格的 `parseDramaticerCardExtension`（未知字段、重复 id、负冷却、越界重要度、非法条件都带字段路径抛错）；迁移 v14 新增 `event_pool` 与 `npc_agendas`（复合主键、跨故事触发器），`StoryStore` 新增四组读写方法与进度保留语义；st-compat 新增 `importDramaticerExtension` 并在 `dramaticer chat` 导入卡后调用；21 个新测试，门禁通过（521 个测试）
   做什么：
   - core 定义原生扩展类型 `DramaticerCardExtension`，包含 `events` 与 `npcAgendas` 两个数组。事件字段：`id`（故事内唯一、非空）、`text`（非空）、`preconditions`（复用 `ContextCondition`，只允许 `state`、`all`、`any`、`not`）、`cooldown`（非负整数，默认 0）、`enabled`（默认 true）。NPC 议程字段：`npc`（非空名称或别名）、`goal`（非空）、`everyChapters`（正整数，默认 1）、`importance`（0 到 1，默认 0.5）。
   - `parseDramaticerCardExtension(value)` 严格校验：未知字段、类型不符、空字符串、非法条件、重复 `id` 都抛错并指出条目下标与字段路径；没有 `extensions.dramaticer` 时返回空扩展。

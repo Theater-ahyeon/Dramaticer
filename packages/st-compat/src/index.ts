@@ -9,6 +9,7 @@ export * from "./character-card.js";
 export * from "./chat/character.js";
 export * from "./chat-import.js";
 export * from "./chat-jsonl.js";
+export * from "./dramaticer-extension.js";
 export * from "./entity-import.js";
 export * from "./lore-import.js";
 export * from "./evalset/acu.js";

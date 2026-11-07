@@ -5,6 +5,16 @@ import type {
 	BackgroundJob,
 	BackgroundJobStatus,
 } from "../background/types.js";
+import { parseContextCondition } from "../context/condition.js";
+import type { ContextCondition } from "../context/template.js";
+import type {
+	EventPoolEntry,
+	EventPoolUpsertResult,
+	NewEventPoolEntryInput,
+	NewNpcAgendaInput,
+	NpcAgenda,
+	NpcAgendaUpsertResult,
+} from "../director/pool.js";
 import type {
 	DirectorDecision,
 	DirectorMechanismRecord,
@@ -229,6 +239,28 @@ interface DirectorDecisionRow {
 	readonly created_at: string;
 }
 
+interface EventPoolRow {
+	readonly story_id: string;
+	readonly source_id: string;
+	readonly text: string;
+	readonly preconditions: string | null;
+	readonly cooldown: number;
+	readonly source: string;
+	readonly created_at: string;
+}
+
+interface NpcAgendaRow {
+	readonly story_id: string;
+	readonly entity_id: string;
+	readonly goal: string;
+	readonly every_chapters: number;
+	readonly importance: number;
+	readonly progress: string;
+	readonly last_advanced_node_id: string | null;
+	readonly created_at: string;
+	readonly updated_at: string;
+}
+
 interface LoreEntryRow {
 	readonly id: string;
 	readonly story_id: string;
@@ -255,6 +287,25 @@ interface NormalisedDirectorDecision {
 	readonly directive: string | null;
 	readonly mechanisms: readonly DirectorMechanismRecord[];
 	readonly signals: JsonObject;
+	readonly createdAt: string;
+}
+
+interface NormalisedEventPoolEntry {
+	readonly storyId: string;
+	readonly sourceId: string;
+	readonly text: string;
+	readonly preconditions: ContextCondition | null;
+	readonly cooldown: number;
+	readonly source: string;
+	readonly createdAt: string;
+}
+
+interface NormalisedNpcAgenda {
+	readonly storyId: string;
+	readonly entityId: string;
+	readonly goal: string;
+	readonly everyChapters: number;
+	readonly importance: number;
 	readonly createdAt: string;
 }
 
@@ -667,6 +718,48 @@ function rowToLoreEntry(row: LoreEntryRow): LoreEntry {
 		),
 		source: row.source,
 		createdAt: row.created_at,
+	};
+}
+
+function parseStoredCondition(value: string, label: string): ContextCondition {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(value);
+	} catch {
+		throw new Error(`${label}不是合法 JSON`);
+	}
+	return parseContextCondition(parsed, label);
+}
+
+function rowToEventPoolEntry(row: EventPoolRow): EventPoolEntry {
+	return {
+		storyId: row.story_id,
+		sourceId: row.source_id,
+		text: row.text,
+		preconditions:
+			row.preconditions === null
+				? null
+				: parseStoredCondition(
+						row.preconditions,
+						`事件池条目 ${row.source_id} 的 preconditions`,
+					),
+		cooldown: row.cooldown,
+		source: row.source,
+		createdAt: row.created_at,
+	};
+}
+
+function rowToNpcAgenda(row: NpcAgendaRow): NpcAgenda {
+	return {
+		storyId: row.story_id,
+		entityId: row.entity_id,
+		goal: row.goal,
+		everyChapters: row.every_chapters,
+		importance: row.importance,
+		progress: row.progress,
+		lastAdvancedNodeId: row.last_advanced_node_id,
+		createdAt: row.created_at,
+		updatedAt: row.updated_at,
 	};
 }
 
@@ -1589,6 +1682,170 @@ export class StoryStore {
 			)
 			.all(nodeId) as DirectorDecisionRow[];
 		return rows.map(rowToDirectorDecision);
+	}
+
+	/**
+	 * 写入事件池。`(story_id, source_id)` 唯一：同一事件的重复导入更新正文、
+	 * 条件与冷却，保留首次导入的创建时间。
+	 */
+	upsertEventPool(
+		inputs: readonly NewEventPoolEntryInput[],
+	): EventPoolUpsertResult {
+		if (!Array.isArray(inputs)) {
+			throw new Error("事件池必须是数组");
+		}
+		if (inputs.length === 0) return { inserted: 0, updated: 0 };
+		const normalised = inputs.map((input, index) =>
+			this.#normaliseEventPoolEntry(input, index),
+		);
+		const seen = new Set<string>();
+		for (const entry of normalised) {
+			const key = `${entry.storyId}\u0000${entry.sourceId}`;
+			if (seen.has(key)) {
+				throw new Error(
+					`同一次写入里事件池条目的 sourceId 重复：${entry.sourceId}`,
+				);
+			}
+			seen.add(key);
+		}
+		const exists = this.#db.prepare(
+			"SELECT 1 AS present FROM event_pool WHERE story_id = ? AND source_id = ?",
+		);
+		const upsert = this.#db.prepare(
+			`INSERT INTO event_pool
+				(story_id, source_id, text, preconditions, cooldown, source, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT (story_id, source_id) DO UPDATE SET
+				text = excluded.text,
+				preconditions = excluded.preconditions,
+				cooldown = excluded.cooldown,
+				source = excluded.source`,
+		);
+		const result: { inserted: number; updated: number } = {
+			inserted: 0,
+			updated: 0,
+		};
+		this.#db.transaction(() => {
+			for (const entry of normalised) {
+				const existing =
+					exists.get(entry.storyId, entry.sourceId) !== undefined;
+				upsert.run(
+					entry.storyId,
+					entry.sourceId,
+					entry.text,
+					entry.preconditions === null
+						? null
+						: serializeJsonValue(
+								entry.preconditions,
+								`事件池条目 ${entry.sourceId} 的 preconditions`,
+							),
+					entry.cooldown,
+					entry.source,
+					entry.createdAt,
+				);
+				if (existing) {
+					result.updated += 1;
+				} else {
+					result.inserted += 1;
+				}
+			}
+		})();
+		return result;
+	}
+
+	/** 按导入顺序列出故事里的事件池。 */
+	listEventPool(storyId: string): EventPoolEntry[] {
+		assertNonEmptyString(storyId, "故事 id");
+		if (!this.getStory(storyId)) {
+			throw new Error(`故事不存在：${storyId}`);
+		}
+		const rows = this.#db
+			.prepare(
+				`SELECT * FROM event_pool
+				WHERE story_id = ?
+				ORDER BY rowid ASC`,
+			)
+			.all(storyId) as EventPoolRow[];
+		return rows.map(rowToEventPoolEntry);
+	}
+
+	/**
+	 * 写入 NPC 议程。`(story_id, entity_id)` 唯一：重复导入更新目标、章节间隔与
+	 * 重要度，保留已有的进度与上次推进楼层。
+	 */
+	upsertNpcAgendas(
+		inputs: readonly NewNpcAgendaInput[],
+	): NpcAgendaUpsertResult {
+		if (!Array.isArray(inputs)) {
+			throw new Error("NPC 议程必须是数组");
+		}
+		if (inputs.length === 0) return { inserted: 0, updated: 0 };
+		const normalised = inputs.map((input, index) =>
+			this.#normaliseNpcAgenda(input, index),
+		);
+		const seen = new Set<string>();
+		for (const agenda of normalised) {
+			const key = `${agenda.storyId}\u0000${agenda.entityId}`;
+			if (seen.has(key)) {
+				throw new Error(`同一次写入里 NPC 议程的实体重复：${agenda.entityId}`);
+			}
+			seen.add(key);
+		}
+		const exists = this.#db.prepare(
+			"SELECT 1 AS present FROM npc_agendas WHERE story_id = ? AND entity_id = ?",
+		);
+		const upsert = this.#db.prepare(
+			`INSERT INTO npc_agendas
+				(story_id, entity_id, goal, every_chapters, importance, progress, last_advanced_node_id, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, '', NULL, ?, ?)
+			ON CONFLICT (story_id, entity_id) DO UPDATE SET
+				goal = excluded.goal,
+				every_chapters = excluded.every_chapters,
+				importance = excluded.importance,
+				updated_at = excluded.updated_at`,
+		);
+		const result: { inserted: number; updated: number } = {
+			inserted: 0,
+			updated: 0,
+		};
+		const now = new Date().toISOString();
+		this.#db.transaction(() => {
+			for (const agenda of normalised) {
+				const existing =
+					exists.get(agenda.storyId, agenda.entityId) !== undefined;
+				upsert.run(
+					agenda.storyId,
+					agenda.entityId,
+					agenda.goal,
+					agenda.everyChapters,
+					agenda.importance,
+					agenda.createdAt,
+					now,
+				);
+				if (existing) {
+					result.updated += 1;
+				} else {
+					result.inserted += 1;
+				}
+			}
+		})();
+		return result;
+	}
+
+	/** 按首次导入顺序列出故事里的 NPC 议程。 */
+	listNpcAgendas(storyId: string): NpcAgenda[] {
+		assertNonEmptyString(storyId, "故事 id");
+		if (!this.getStory(storyId)) {
+			throw new Error(`故事不存在：${storyId}`);
+		}
+		const rows = this.#db
+			.prepare(
+				`SELECT * FROM npc_agendas
+				WHERE story_id = ?
+				ORDER BY rowid ASC`,
+			)
+			.all(storyId) as NpcAgendaRow[];
+		return rows.map(rowToNpcAgenda);
 	}
 
 	/**
@@ -2724,6 +2981,119 @@ export class StoryStore {
 			constant,
 			keywords: normalizedKeywords,
 			source: input.source,
+			createdAt,
+		};
+	}
+
+	#normaliseEventPoolEntry(
+		input: NewEventPoolEntryInput,
+		index: number,
+	): NormalisedEventPoolEntry {
+		const label = `事件池条目[${index}]`;
+		if (input === null || typeof input !== "object" || Array.isArray(input)) {
+			throw new Error(`${label} 必须是对象`);
+		}
+		assertNonEmptyString(input.storyId, `${label} 的 storyId`);
+		if (!this.getStory(input.storyId)) {
+			throw new Error(`故事不存在：${input.storyId}`);
+		}
+		assertNonEmptyString(input.sourceId, `${label} 的 sourceId`);
+		const sourceId = input.sourceId.trim();
+		if (sourceId.length === 0) {
+			throw new Error(`${label} 的 sourceId 不能是空字符串`);
+		}
+		if (typeof input.text !== "string") {
+			throw new Error(`${label} 的 text 必须是字符串`);
+		}
+		const text = input.text.trim();
+		if (text.length === 0) {
+			throw new Error(`${label} 的 text 不能是空字符串`);
+		}
+		const preconditions = input.preconditions ?? null;
+		if (preconditions !== null) {
+			parseContextCondition(preconditions, `${label} 的 preconditions`, {
+				allowSwitch: false,
+			});
+		}
+		const cooldown = input.cooldown ?? 0;
+		if (
+			typeof cooldown !== "number" ||
+			!Number.isInteger(cooldown) ||
+			cooldown < 0
+		) {
+			throw new Error(`${label} 的 cooldown 必须是非负整数`);
+		}
+		const source = input.source ?? "manual";
+		if (typeof source !== "string" || source.trim().length === 0) {
+			throw new Error(`${label} 的 source 必须是非空字符串`);
+		}
+		const createdAt = input.createdAt ?? new Date().toISOString();
+		assertNonEmptyString(createdAt, `${label} 的 createdAt`);
+		return {
+			storyId: input.storyId,
+			sourceId,
+			text,
+			preconditions,
+			cooldown,
+			source: source.trim(),
+			createdAt,
+		};
+	}
+
+	#normaliseNpcAgenda(
+		input: NewNpcAgendaInput,
+		index: number,
+	): NormalisedNpcAgenda {
+		const label = `NPC 议程[${index}]`;
+		if (input === null || typeof input !== "object" || Array.isArray(input)) {
+			throw new Error(`${label} 必须是对象`);
+		}
+		assertNonEmptyString(input.storyId, `${label} 的 storyId`);
+		if (!this.getStory(input.storyId)) {
+			throw new Error(`故事不存在：${input.storyId}`);
+		}
+		assertNonEmptyString(input.entityId, `${label} 的 entityId`);
+		const entity = this.getEntity(input.entityId);
+		if (!entity) {
+			throw new Error(`${label} 指向的实体不存在：${input.entityId}`);
+		}
+		if (entity.storyId !== input.storyId) {
+			throw new Error(
+				`${label} 的 storyId 与实体所属故事不一致：${input.storyId}`,
+			);
+		}
+		if (typeof input.goal !== "string") {
+			throw new Error(`${label} 的 goal 必须是字符串`);
+		}
+		const goal = input.goal.trim();
+		if (goal.length === 0) {
+			throw new Error(`${label} 的 goal 不能是空字符串`);
+		}
+		const everyChapters = input.everyChapters ?? 1;
+		if (
+			typeof everyChapters !== "number" ||
+			!Number.isInteger(everyChapters) ||
+			everyChapters < 1
+		) {
+			throw new Error(`${label} 的 everyChapters 必须是正整数`);
+		}
+		const importance = input.importance ?? 0.5;
+		if (
+			typeof importance !== "number" ||
+			!Number.isFinite(importance) ||
+			importance < 0 ||
+			importance > 1
+		) {
+			throw new Error(`${label} 的 importance 必须是 0 到 1 之间的数字`);
+		}
+		const createdAt = input.createdAt ?? new Date().toISOString();
+		assertNonEmptyString(createdAt, `${label} 的 createdAt`);
+		return {
+			storyId: input.storyId,
+			entityId: entity.id,
+			goal,
+			everyChapters,
+			importance,
 			createdAt,
 		};
 	}

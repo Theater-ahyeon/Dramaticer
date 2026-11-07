@@ -399,6 +399,55 @@ export function buildMigrations(
 				END`,
 			],
 		},
+		{
+			version: 14,
+			description: "导演素材：事件池与 NPC 议程",
+			statements: [
+				`CREATE TABLE event_pool (
+					story_id TEXT NOT NULL REFERENCES stories(id),
+					source_id TEXT NOT NULL,
+					text TEXT NOT NULL,
+					preconditions TEXT,
+					cooldown INTEGER NOT NULL DEFAULT 0 CHECK (cooldown >= 0),
+					source TEXT NOT NULL,
+					created_at TEXT NOT NULL,
+					PRIMARY KEY (story_id, source_id)
+				) STRICT`,
+				`CREATE TABLE npc_agendas (
+					story_id TEXT NOT NULL REFERENCES stories(id),
+					entity_id TEXT NOT NULL REFERENCES entities(id),
+					goal TEXT NOT NULL,
+					every_chapters INTEGER NOT NULL DEFAULT 1 CHECK (every_chapters >= 1),
+					importance REAL NOT NULL DEFAULT 0.5 CHECK (importance >= 0 AND importance <= 1),
+					progress TEXT NOT NULL DEFAULT '',
+					last_advanced_node_id TEXT REFERENCES nodes(id),
+					created_at TEXT NOT NULL,
+					updated_at TEXT NOT NULL,
+					PRIMARY KEY (story_id, entity_id)
+				) STRICT`,
+				`CREATE TRIGGER npc_agendas_story_matches_entity
+				BEFORE INSERT ON npc_agendas
+				WHEN COALESCE((SELECT story_id FROM entities WHERE id = NEW.entity_id), '') <> NEW.story_id
+					OR (
+						NEW.last_advanced_node_id IS NOT NULL
+						AND COALESCE((SELECT story_id FROM nodes WHERE id = NEW.last_advanced_node_id), '') <> NEW.story_id
+					)
+				BEGIN
+					SELECT RAISE(ABORT, 'NPC 议程的故事必须与实体和推进楼层一致');
+				END`,
+				`CREATE TRIGGER npc_agendas_update_story_matches
+				BEFORE UPDATE ON npc_agendas
+				WHEN NEW.story_id <> OLD.story_id
+					OR NEW.entity_id <> OLD.entity_id
+					OR (
+						NEW.last_advanced_node_id IS NOT NULL
+						AND COALESCE((SELECT story_id FROM nodes WHERE id = NEW.last_advanced_node_id), '') <> NEW.story_id
+					)
+				BEGIN
+					SELECT RAISE(ABORT, 'NPC 议程的故事与实体不可修改，推进楼层必须属于同一故事');
+				END`,
+			],
+		},
 	];
 }
 

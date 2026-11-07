@@ -14,6 +14,11 @@ import { renderCharacterPrompt } from "../src/chat/character.js";
 import { type ChatCliDependencies, runChatCli } from "../src/chat/cli.js";
 
 const cardPath = join(import.meta.dirname, "fixtures", "chat-card.json");
+const extensionCardPath = join(
+	import.meta.dirname,
+	"fixtures",
+	"chat-card-extension.json",
+);
 const REPLY = `山门在你面前缓缓打开。
 <state_update>{"path":["场景","地点"],"op":"set","value":"山门"}</state_update>`;
 
@@ -417,6 +422,50 @@ describe("dramaticer chat", () => {
 		const store = StoryStore.open(dbPath);
 		try {
 			expect(store.getDirectorDecision(result.userNode.id)).toBeNull();
+		} finally {
+			store.close();
+		}
+	});
+
+	it("导入角色卡时同时写入 extensions.dramaticer 的事件池与 NPC 议程", async () => {
+		const dbPath = createTempDb();
+		const fake = createFakeClient();
+		await runChatCli(
+			[
+				"chat",
+				"--story",
+				"s1",
+				"--card",
+				extensionCardPath,
+				"--user",
+				"我推开山门。",
+				"--db",
+				dbPath,
+			],
+			dependencies(fake, [], []),
+		);
+
+		const store = StoryStore.open(dbPath);
+		try {
+			const events = store.listEventPool("s1");
+			expect(events.map((event) => event.sourceId)).toEqual([
+				"flood",
+				"wolves",
+			]);
+			expect(events[0]?.preconditions).toEqual({
+				kind: "state",
+				path: ["场景", "地点"],
+				op: "exists",
+			});
+			const entity = store.findEntityByName("s1", "山神");
+			const agendas = store.listNpcAgendas("s1");
+			expect(agendas).toHaveLength(1);
+			expect(agendas[0]).toMatchObject({
+				entityId: entity?.id,
+				goal: "在暗处引导来客走向山门",
+				everyChapters: 2,
+				importance: 0.7,
+			});
 		} finally {
 			store.close();
 		}
