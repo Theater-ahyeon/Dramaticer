@@ -3,17 +3,16 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：86
-- 任务：R0-T04 合并 v3 插件系统提案
+- 会话：87
+- 任务：R0-T05 归档已完成任务
 - 结果：完成（`DONE`），门禁通过（712 个测试，3 个 live 跳过）。
-  - ADR-0045 记录采纳 `docs/proposals/plugins.md`：参照 Cordis（MIT 上游）的五个概念（Context、插件生命周期、事件分发、服务、玩法包补丁层），对外只暴露 Dramaticer 自己定义的类型；内置模块也按插件实现；上游采用与否由 P1 验证。
-  - `docs/DESIGN.md` §19 由摘要补齐为完整章节：19.1 Context 与插件注册表（`name`、`Config`、`inject`、`provide`、生命周期回收、热重载、类型边界）、19.2 扩展点与五种分发模式、19.3 两档插件、19.4 清单与玩法包与卡片依赖与按故事启用、19.5 插件市场、19.6 P1–P5 执行顺序、19.7 三条插件不变量与 I4/I8/I9/I12/I13/I15 的约束。
-  - `docs/dev/TASKS.md` 的 P 阶段建立 P1–P5：P1 技术验证依赖 R5-T99；P2 内核改造依赖 P1 与 R5-T99；P3 依赖 P2；P4 依赖 P3；P5 依赖 P4 与 M5-T99；C 线依赖 P2。每个任务都有做什么与验收。
-  - `docs/dev/HUMAN.md` 新增 HUMAN-10（不阻塞）：三条插件不变量是否作为 I16–I18 加入 AGENTS.md 由人类确认，确认之前以 DESIGN §19.7 为准。
+  - 新建 `docs/dev/TASKS-archive.md`：F0、M0–M4、D、R0-T01 至 R0-T04 共 616 行原文整段移入，8 个章节的状态全部是完成，内容一字未改。
+  - `docs/dev/TASKS.md` 从 1227 行缩到 650 行：顶部保留状态标记与选任务规则，新增阶段目录（标明每个阶段在归档还是本文件）并指向归档；正文从 R0-T05 起，R1 及之后的未完成任务原样保留。
+  - 查询已完成任务的编号、完成记录与验收标准一律读 `docs/dev/TASKS-archive.md`；本文件不再复述这些细节。
 
 ## 当前状态
-- M0、M1、M2、M3、D-T01 至 D-T04、M4-T00 至 M4-T06、R0-T01 至 R0-T04、R1-T01、R1-T01.a、F0-T01 至 F0-T04、F0-T99、F0-T100 完成。
-- 下一步按文件顺序是 **R0-T05 归档已完成任务**，然后进入 **R1 最小集**（第一个未完成任务是 R1-T01.b 渠道按岗位配置）。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a。完成记录与验收标准见 `docs/dev/TASKS-archive.md`，未完成任务见 `docs/dev/TASKS.md`。
+- 下一步按文件顺序是 **R1-T01.b 渠道按岗位配置**；R1 的顺序是 T01.b、T01.c、T02、T02.a、T02.b、T03、T04.a、T07、T07.a、T07.b、T99。
 - v3 阶段顺序：R1 最小集 → R3 快回合 → O 开局与方向 → R2 评测底座 → E → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
 - 人类已确认的路线变更：ADR-0038（四个 ST 兼容插件取代兼容线 C-T00）、ADR-0039（F0-T100 直接写 v3，人类试玩改为自动试玩加评测）、ADR-0040（共存规则写入 C 线验收）、ADR-0041（方案评审提案 A1–A11）、ADR-0042（模型渠道回退顺序）、ADR-0043（F0 结论）、ADR-0044（v3 路线）、ADR-0045（插件系统）。
 - HUMAN-09 仍待处理（不阻塞）：ADR-0042 声明的 `bg-fallback`、`main-fallback`、`codex` 别名在 `data/channels.yaml` 里已经出现（F0 实际用了 `main-fallback` 与 `bg-fallback`），`channels.example.yaml` 是否需要补上请人类确认；没有改这两个文件。
@@ -32,14 +31,14 @@
 - 插件系统在 DESIGN §19 是唯一权威（Context 与注册表、扩展点与分发模式、两档插件、清单与玩法包、市场、三条插件不变量、P1–P5 顺序）；P 阶段任务在 TASKS 的「P：插件内核」小节，C 线兼容插件任务已存在且依赖 P2。
 
 ## 下一步
-- **R0-T05 归档已完成任务**：把 M0–M4、D、R0 已完成项与 F0 已完成项移到 `docs/dev/TASKS-archive.md`，TASKS.md 只保留未完成与当前阶段；顶部保留状态标记说明、选任务规则与指向归档文件的引用；HANDOFF 与 LOG 里对已完成任务细节的引用改成指向归档。
-- **R1-T01.b 渠道按岗位配置** 起继续 R1 最小集；R1 的顺序是 T01.b、T01.c、T02、T02.a、T02.b、T03、T04.a、T07、T07.a、T07.b、T99。
+- **R1-T01.b 渠道按岗位配置**：`data/channels.yaml` 增加 `roles` 段（`writer`、`settler`、`planner`、`judge`），core 提供按角色解析入口，缺省 `writer` 回落 `main`、其余回落 `background`，Trace 记录角色与实际渠道；创建路由时校验 `judge` 与 `writer` 模型家族不同（按模型名映射家族，不比 `baseUrl`），相同则直接失败并指出两个角色。
 - R1 最小集之后是 R3 快回合（R3-T01 至 R3-T99）、O 开局与方向、R2 评测底座。
 - 记忆增强（R1 续）排在 R5 与 60 轮自动试玩之后；R2-T09 的长对话遗忘报告是先后与默认开关的输入，四项都不删除。
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
 - 不要修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 下的任何文件。不变量 I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账是唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖任何其他工作区包、ST 语义只在兼容插件里实现。
+- `docs/dev/TASKS.md` 只保留未完成任务与当前阶段；查已完成任务（F0、M0–M4、D、R0-T01–T04）的说明、验收与完成记录读 `docs/dev/TASKS-archive.md`。
 - `docs/dev/reports/F0.md` 里只有 F0-T02、F0-T03、F0-T04、F0-T99 四个标记段；重跑脚本只会替换对应标记之间的内容，手写部分（F0-T03 的门槛、F0-T99 的汇总结论）不要放进标记之间。F0-T99 节里引用的数字必须与前面各节和 `docs/dev/reports/F0-corpus.md` 一致。
 - `pnpm f0:fulltext` 阶段与文件：`DRAMATICER_F0_FULLTEXT_STAGE=probe|generate|judge|report|all`（默认 all），`DRAMATICER_F0_FULLTEXT_RERUN=1` 忽略已有结果重跑。分支集合固定为对话 128、132、10、223；对话 95 因提供方 `content_filter` 被替换。
 - `fulltext-probe.json` 的 `previousCalls` 记录被重跑覆盖的探测调用数；重跑探测时这个字段会累加，不要手工清零。
