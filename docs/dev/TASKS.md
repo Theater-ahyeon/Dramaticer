@@ -279,7 +279,8 @@
   - 后台任务类型 `embeddings`：为已确认楼层里还没有向量的块调用 embedding 并写入；同一块不重复调用。`searchVectors(vector, {storyId, beforeNodeId, limit})` 返回最近块。
   验收：假 embedding 客户端下写入、查询与维度校验通过；同一块第二次执行不重复调用；维度不符直接抛错；后台任务失败后按 M2-T03 的规则重试；真实 `bge-m3` 的 live 测试只调用一次并验证 1024 维；默认单元测试零网络；`pnpm check` 通过。
 
-- [ ] **M2-T10 多路融合检索** | 依赖：M2-T04、M2-T05、M2-T08、M2-T09 | DESIGN §7
+- [x] **M2-T10 多路融合检索** | 依赖：M2-T04、M2-T05、M2-T08、M2-T09 | DESIGN §7
+  完成：2026-11-07 core 新增 `retrieval/hybrid.ts` 的 `retrieveMemory`：BM25、向量、实体命中、事件重要度与新近度四路各取前 K（向量路先按楼层去重），用 RRF（常数 60）融合；实体路匹配查询里的名称与别名，召回该实体参与的事件与包含别名的块；空查询返回重要事件与最近块；`limit` 默认 8、限制 1 到 50；7 个新测试，门禁通过（423 个测试）
   做什么：
   - core 新增 `retrieval/hybrid.ts`：输入 `{store, embedder, storyId, query, beforeNodeId, viewpoint?, limit}`，同时取 BM25 块、向量块、实体命中、事件的重要性与新近度。
   - 排名融合使用 RRF（常数 60），每一路先按自己的排序取前 K；实体命中先用别名解析，再召回该实体参与的事件与包含别名的块。

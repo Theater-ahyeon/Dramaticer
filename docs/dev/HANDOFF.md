@@ -3,23 +3,27 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：44
-- 任务：M2-T09 embedding 客户端与向量索引
+- 会话：45
+- 任务：M2-T10 多路融合检索
 - 结果：完成（`DONE`）。
-  - 安装 `sqlite-vec@0.1.9` 并在 `StoryStore.open` 里加载；迁移列表改为 `buildMigrations(embeddingDimensions)`，schema 版本 11 新增 `chunk_vectors USING vec0(chunk_id INTEGER PRIMARY KEY, story_id TEXT, node_id TEXT, embedding float[N])`，默认维度 1024。
-  - `StoryStore.open(path, { embeddingDimensions })` 在迁移后从 `sqlite_master` 解析实际维度，与本次配置不一致时抛错；`work` 与 `chat` 都传入 `embeddings.default.dimensions`。
-  - `chunk_vectors` 的 `story_id` 与 `node_id` 是 vec0 元数据列，KNN 查询直接按故事与祖先节点集合过滤，不需要超额取候选。`chunk_id` 必须用 BigInt 绑定（vec0 只接受整数类型的绑定值）。
-  - 新增 `EmbeddingClient` 接口与 `OpenAiEmbeddingClient`：`/embeddings`、按 `batchSize` 拆分、每分钟请求数限速、429/5xx 与网络错误退避重试、超时、按 `index` 还原顺序，缺少条目、重复 index、非有限数字与维度不符都直接抛错。
-  - `data/channels.yaml` 顶层新增 `embeddings` 段（与 `channels`、`models` 平级），`apiKey` 只能是 `${变量}` 引用；`channels.example.yaml` 增加 `bge-m3` 示例。`createEmbeddingClient(config, "default")` 创建客户端。
-  - `StoryStore` 新增 `listChunksMissingVectors`、`insertChunkVectors`、`countChunkVectorsForNode`、`searchVectors(vector, {storyId, beforeNodeId, limit})`；向量使用原始块文本，距离是 L2，结果不去重楼层。
-  - 后台任务类型 `embeddings`：只处理还没有向量的块，第二次执行不重复调用渠道；`dramaticer work` 只在配置了 `embeddings.default` 时把该类型加入默认注册表。
-  - 新增 17 个单元测试与 1 个真实 bge-m3 live 测试（一次调用、1024 维），门禁 `pnpm check` 通过（52 个测试文件、416 个测试，3 个 live 测试默认跳过）；live 测试已用 `DRAMATICER_LIVE=1` 实际运行通过。
+  - 新增 `packages/core/src/retrieval/hybrid.ts`，导出 `retrieveMemory(options)`、`RetrievalHit`、`RetrievalSource`、`RetrievalRoute`（`bm25`、`vector`、`entity`、`event`、`recent`）与 `RetrievalKind`（`chunk`、`event`）。`packages/core/src/index.ts` 一并导出。
+  - BM25 路：`store.searchChunks(query, {storyId, beforeNodeId?, limit})`，每个楼层只占一个位次。
+  - 向量路：只在传了 `embedder` 且查询非空时启用；查询向量由 `embedder.embed([query])` 生成，调用 `store.searchVectors` 时按 `limit × 4`（上限 1000）取块，再按楼层去重保留最近的块，截到 `limit`。
+  - 实体路：`matchEntities` 用 `listEntities` 的规范化名称与别名在规范化查询里做包含匹配，命中的实体按最长别名长度、实体 id 排序；随后召回 `participants` 命中这些实体别名集合的事件，以及用实体名称与别名调用 `searchChunks` 找到的块。事件先按重要度、路径位置、楼层内序号排序，块排在事件之后。
+  - 事件路：沿路径读取事件（`getEventsForPath`，最多 1000 条），按重要度降序、路径位置降序、ordinal 降序、id 升序排序，按楼层去重后取前 K。
+  - 最近块路：只在空查询启用；从路径末端往前找有块的楼层（`countChunksForNode`），取前 K。
+  - 融合：每一路先按自己的顺序去重取前 K，再用 RRF（常数 60，`1 / (60 + rank)`）累加分数；`sources` 记录每一路的名次并按固定路线顺序输出；最终排序依次比较分数降序、最好名次升序、事件优先、节点 id 字典序。
+  - 输入校验：故事不存在、`beforeNodeId` 不存在或属于其他故事、`limit` 不是 1 到 50 的整数、`viewpoint` 是空字符串都直接抛错。`limit` 默认 8。
+  - `beforeNodeId` 只检索它的祖先路径并排除自身；事件与最近块使用去掉 `beforeNodeId` 之后的路径（`getPathToNode(beforeNodeId).slice(0, -1)`），与 `searchChunks` 的「之前」语义一致。
+  - 空查询（规范化后没有可检索字符）跳过 BM25、向量、实体三路，只返回事件路与最近块路。
+  - `viewpoint` 目前只做参数校验，知情者过滤留给 M2-T11。
+  - 新增 7 个测试：多路来源与分数、实体别名把相关事件排到前面、向量距离排序与同楼层去重、分支过滤、空查询的稳定结果、`limit` 边界、错误路径。门禁 `pnpm check` 通过（53 个测试文件、423 个测试，3 个 live 测试默认跳过）。
 
 ## 当前状态
-- M0、M1 完成；M2-T01 至 M2-T09 完成；下一会话执行 M2-T10（多路融合检索）。
+- M0、M1 完成；M2-T01 至 M2-T10 完成；下一会话执行 M2-T11（知情者过滤）。
 - 门禁：`pnpm check` 通过；live 测试需要 `DRAMATICER_LIVE=1`。
 - 数据库 schema 版本 11（`stories`、`nodes`、`state_diffs`、`node_text`、`traces`、`stories.head_node_id`、`state_snapshots`、`background_jobs`、`entities`、`entity_aliases`、`memory_events`、`summaries`、`plot_notes`、`chunks`、`chunks_fts`、`chunk_vectors`）。
-- 运行时检索索引在 `StoryStore` 内：BM25 用 `searchChunks`，向量用 `searchVectors`；`ChunkIndex` 只留给 st-compat 的 M0 基线评测。
+- 运行时检索索引在 `StoryStore` 内：BM25 用 `searchChunks`，向量用 `searchVectors`；融合在 `retrieveMemory`。`ChunkIndex` 只留给 st-compat 的 M0 基线评测。
 - 后台任务注册表：`dramaticer work` 默认登记 `events`、`summary`，配置了 `embeddings.default` 时再登记 `embeddings`；其他类型由各任务自行登记进默认注册表。
 - 实体表目前只在 chat 启动时由角色卡填充；世界书的实体导入函数已就位，等 M2-T13 导入 lore 条目时调用。卡内嵌世界书（`character_book`）尚未转换。
 - `packages/core` 的运行时依赖：`@earendil-works/pi-ai@1.5.0`、`better-sqlite3`、`sqlite-vec`、`yaml`。
@@ -28,12 +32,12 @@
 - M2 的分层过关门槛写在 `M2-T15` 与 `M2-T99`：状态题命中@20 ≥ 45%；事件题命中@5 ≥ 88%、命中@20 ≥ 97%；每个对话的同一题型不低于各自 BM25 基线的 2 个百分点以内。
 
 ## 下一步
-- 执行 M2-T10（多路融合检索）：
-  - 新增 `packages/core/src/retrieval/hybrid.ts`：输入 `{store, embedder, storyId, query, beforeNodeId, viewpoint?, limit}`，同时取 BM25 块（`searchChunks`）、向量块（`searchVectors`）、实体命中（`resolveEntities` 与 `getEventsForPath`）与事件重要度/新近度。
-  - 每一路先按自己的排序取前 K，再用 RRF（常数 60）融合；实体命中先用别名解析，再召回该实体参与的事件与包含别名的块。任意一路缺失时跳过该路。
-  - `RetrievalHit` 带 `kind`（`chunk` 或 `event`）、`nodeId`、`score`、`sources`（每一路的排名）。`searchVectors` 返回块级结果，融合时要按楼层保留最高分。
-  - `limit` 默认 8，限制在 1 到 50；空查询返回最近的高重要度事件与最近块。
-- 之后按 M2-T11 到 M2-T15 的顺序执行。
+- 执行 M2-T11（知情者过滤）：
+  - 在 `retrieveMemory` 里启用已经接受的 `viewpoint` 参数：没有视角时保持现在的全知结果不变。
+  - 有视角时，事件只在 `knowers` 为空（公开）、包含 `"*"`、或经别名归一化后命中视角实体时保留；块在缺少块级知情者信息时全部不返回。
+  - 视角与 `knowers`、`participants` 都先过 `normalizeEntityName`，再与实体的名称和别名集合比较。
+  - 返回结果需要带过滤前的计数供 Trace 观察；现有调用方（M2-T12 之前没有别的调用方）要一起改。
+- 之后按 M2-T12 到 M2-T15 的顺序执行。
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**；`loadDotEnv` 会覆盖进程里已有的同名变量，这是有意行为（ADR-0010）。`SILICONFLOW_API_KEY` 已存在，`data/channels.yaml` 的 `embeddings.default` 引用它。
@@ -47,6 +51,9 @@
 - 实体按规范化名称合并是唯一入口；新增数据源请走 `upsertEntity`。别名不跨故事唯一是 ADR-0017 的决定，不要加故事内唯一约束。
 - 块只由 `appendNode` 或打开数据库时的回填写入；修改块索引逻辑时保持 `chunks.id` 与 `chunks_fts.rowid` 一致。向量只由 `insertChunkVectors` 写入，`chunk_vectors.chunk_id` 对应 `chunks.id`。
 - vec0 维度在创建后不能修改：更换 embedding 模型并改变维度时需要重建数据库或新增迁移，当前实现遇到维度不一致直接抛错。绑定 `chunk_vectors` 主键必须用 BigInt。
+- `retrieveMemory` 的实体匹配是规范化查询对名称与别名的子串包含；别名越长越优先。事件路不按查询文本过滤，只按重要度与新近度，这是设计里的独立一路。
+- RRF 名次在每一路内部去重之后重新编号，同一楼层多个块只保留最好的一块，不会占两个位次。
+- 检索的 `beforeNodeId` 语义是「该楼层之前」：块检索排除自身，事件与最近块也只使用去掉该楼层后的路径。
 - `data/` 被 git 忽略；不要把 `data/channels.yaml`、`data/dramaticer.db`、`data/` 下的任何文件加进提交。`channels.example.yaml` 只放变量引用，不放密钥。
 - 不要修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 下的文件；需要改时写进 HUMAN.md。
 - 提交前跑 `pnpm check`；新增依赖要登记到 `docs/dev/DEPENDENCIES.md`。
