@@ -206,7 +206,8 @@
   - `runChatTurn` 与 `dramaticer chat` 改用 head 作为父节点，不再使用全局最后插入的楼层。
   验收：swipe 与 edit 生成兄弟节点、旧节点原文不变、head 更新、`getPathToHead` 正确；切到旧分支后路径只含该分支；跨故事与缺失节点抛错；追加子节点后父节点变为已确认；裸连接 UPDATE 楼层原文仍被触发器拒绝；`pnpm check` 通过。
 
-- [ ] **M2-T02 状态快照缓存** | 依赖：M2-T01 | DESIGN §5
+- [x] **M2-T02 状态快照缓存** | 依赖：M2-T01 | DESIGN §5
+  完成：2026-11-07 迁移 v4 新增 `state_snapshots` 与同故事触发器；`getStateSnapshot` 由父快照叠加本楼层 diff 计算并缓存，`getStateSnapshotAtHead` 走同一入口；`appendStateDiffs` 在同一事务里删除该楼层与全部后代的缓存；`createStateSlotProvider` 改用快照，Trace 来源格式不变；8 个新测试，门禁通过（341 个测试）
   做什么：
   - 迁移 v4：新增 `state_snapshots(node_id PRIMARY KEY, story_id, state, computed_at)`。
   - `getStateSnapshot(nodeId)`：命中缓存直接返回；否则取父节点快照，叠加本楼层的 diff，用 `applyStateDiffs` 计算后写入缓存。`getStateSnapshotAtHead(storyId)` 是同一逻辑的入口。

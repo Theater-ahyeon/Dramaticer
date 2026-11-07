@@ -1,3 +1,5 @@
+import type { JsonObject } from "./json.js";
+
 export type TimelineRole = "system" | "user" | "assistant";
 
 export interface Story {
@@ -50,4 +52,12 @@ export interface NodeTextMatch {
 	/** bm25 分数，越小越相关。 */
 	readonly score: number;
 	readonly snippet: string;
+}
+
+/** 某个楼层末端的累计状态；缓存值，可随时由 diff 重算。 */
+export interface StateSnapshot {
+	readonly nodeId: string;
+	readonly storyId: string;
+	readonly state: JsonObject;
+	readonly computedAt: string;
 }

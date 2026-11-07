@@ -5,7 +5,6 @@ import type {
 	ContextSlotProvider,
 } from "../context/assembler.js";
 import type { ContextMessage } from "../context/template.js";
-import { applyStateDiffs } from "../state.js";
 import type { StoryStore } from "../store/story-store.js";
 
 export interface HistorySlotProviderOptions {
@@ -66,16 +65,16 @@ export function createHistorySlotProvider(
 	};
 }
 
-/** 沿路径回放状态 diff，把当前状态渲染成系统消息。 */
+/** 从状态快照读取当前状态，把结果渲染成系统消息。 */
 export function createStateSlotProvider(
 	store: StoryStore,
 ): ContextSlotProvider {
 	return {
 		provide(request): ContextSlotContent | null {
 			if (request.nodeId === null) return null;
-			const diffs = store.getStateDiffsAlongPath(request.nodeId);
-			const state = applyStateDiffs(diffs);
+			const { state } = store.getStateSnapshot(request.nodeId);
 			if (Object.keys(state).length === 0) return null;
+			const diffCount = store.countStateDiffsAlongPath(request.nodeId);
 			return {
 				messages: [
 					{
@@ -83,7 +82,7 @@ export function createStateSlotProvider(
 						content: `当前状态：\n${JSON.stringify(state, null, 2)}`,
 					},
 				],
-				source: `state:${diffs.length} 条 diff`,
+				source: `state:${diffCount} 条 diff`,
 			};
 		},
 	};

@@ -1,11 +1,13 @@
 import { randomUUID } from "node:crypto";
 import Database from "better-sqlite3";
 import { isJsonObject } from "../json.js";
+import { applyStateDiffsTo } from "../state.js";
 import type {
 	NewStateDiff,
 	NodeTextMatch,
 	StateDiff,
 	StateDiffOp,
+	StateSnapshot,
 	Story,
 	TimelineNode,
 	TimelineRole,
@@ -53,6 +55,13 @@ interface TraceRow {
 	readonly node_id: string;
 	readonly story_id: string;
 	readonly trace: string;
+}
+
+interface StateSnapshotRow {
+	readonly node_id: string;
+	readonly story_id: string;
+	readonly state: string;
+	readonly computed_at: string;
 }
 
 export interface CreateStoryInput {
@@ -150,6 +159,19 @@ function rowToStateDiff(row: StateDiffRow): StateDiff {
 		reason: row.reason,
 		source: row.source,
 		createdAt: row.created_at,
+	};
+}
+
+function rowToStateSnapshot(row: StateSnapshotRow): StateSnapshot {
+	const parsed: unknown = JSON.parse(row.state);
+	if (!isJsonObject(parsed)) {
+		throw new Error(`楼层 ${row.node_id} 的状态快照不是 JSON 对象`);
+	}
+	return {
+		nodeId: row.node_id,
+		storyId: row.story_id,
+		state: parsed,
+		computedAt: row.computed_at,
 	};
 }
 
@@ -415,6 +437,15 @@ export class StoryStore {
 		const nextOrdinal = this.#db.prepare(
 			"SELECT COALESCE(MAX(ordinal), -1) + 1 AS next_ordinal FROM state_diffs WHERE node_id = ?",
 		);
+		// 写入新的 diff 后，该楼层及其全部后代的快照都已过期。
+		const invalidateSnapshots = this.#db.prepare(
+			`WITH RECURSIVE affected(node_id) AS (
+				SELECT id FROM nodes WHERE id = ?
+				UNION ALL
+				SELECT nodes.id FROM nodes JOIN affected ON nodes.parent_id = affected.node_id
+			)
+			DELETE FROM state_snapshots WHERE node_id IN (SELECT node_id FROM affected)`,
+		);
 		const run = this.#db.transaction(
 			(diffs: readonly NormalisedStateDiff[]): StateDiff[] => {
 				const ordinals = new Map<string, number>();
@@ -451,6 +482,9 @@ export class StoryStore {
 						source: diff.source,
 						createdAt,
 					});
+				}
+				for (const nodeId of new Set(diffs.map((diff) => diff.nodeId))) {
+					invalidateSnapshots.run(nodeId);
 				}
 				return stored;
 			},
@@ -491,6 +525,75 @@ export class StoryStore {
 			)
 			.all(nodeId) as StateDiffRow[];
 		return rows.map(rowToStateDiff);
+	}
+
+	/** 统计路径上的 diff 条数，不读取 diff 内容。 */
+	countStateDiffsAlongPath(nodeId: string): number {
+		if (!this.getNode(nodeId)) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
+		const row = this.#db
+			.prepare(
+				`WITH RECURSIVE chain(node_id) AS (
+					SELECT id FROM nodes WHERE id = ?
+					UNION ALL
+					SELECT nodes.parent_id
+					FROM nodes JOIN chain ON nodes.id = chain.node_id
+					WHERE nodes.parent_id IS NOT NULL
+				)
+				SELECT COUNT(*) AS count
+				FROM state_diffs JOIN chain ON state_diffs.node_id = chain.node_id`,
+			)
+			.get(nodeId) as { readonly count: number };
+		return row.count;
+	}
+
+	/**
+	 * 读取某个楼层末端的累计状态。缓存未命中时从父楼层的快照叠加
+	 * 本楼层的 diff 计算，并把结果写入缓存；从根节点开始的路径只计算一次。
+	 */
+	getStateSnapshot(nodeId: string): StateSnapshot {
+		const node = this.getNode(nodeId);
+		if (!node) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
+		const cached = this.#db
+			.prepare(
+				`SELECT node_id, story_id, state, computed_at
+				FROM state_snapshots WHERE node_id = ?`,
+			)
+			.get(nodeId) as StateSnapshotRow | undefined;
+		if (cached !== undefined) {
+			const snapshot = rowToStateSnapshot(cached);
+			if (snapshot.storyId !== node.storyId) {
+				throw new Error(
+					`楼层 ${nodeId} 的状态快照与楼层所属故事不一致：${snapshot.storyId}`,
+				);
+			}
+			return snapshot;
+		}
+		const baseState =
+			node.parentId === null ? {} : this.getStateSnapshot(node.parentId).state;
+		const state = applyStateDiffsTo(baseState, this.getStateDiffs(nodeId));
+		const computedAt = new Date().toISOString();
+		this.#db
+			.prepare(
+				`INSERT INTO state_snapshots (node_id, story_id, state, computed_at)
+				VALUES (?, ?, ?, ?)`,
+			)
+			.run(nodeId, node.storyId, JSON.stringify(state), computedAt);
+		return {
+			nodeId,
+			storyId: node.storyId,
+			state,
+			computedAt,
+		};
+	}
+
+	/** 读取当前 head 的累计状态；故事还没有楼层时返回 null。 */
+	getStateSnapshotAtHead(storyId: string): StateSnapshot | null {
+		const head = this.getHead(storyId);
+		return head === null ? null : this.getStateSnapshot(head.id);
 	}
 
 	searchNodeText(

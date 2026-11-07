@@ -3,7 +3,15 @@ import type { StateDiff } from "./timeline.js";
 
 /** 沿路径累加状态 diff，得到当前状态。删除不存在的路径按没有变化处理。 */
 export function applyStateDiffs(diffs: readonly StateDiff[]): JsonObject {
-	const root: JsonObject = {};
+	return applyStateDiffsTo({}, diffs);
+}
+
+/** 在已有状态上累加 diff，返回新对象；不修改传入的状态。 */
+export function applyStateDiffsTo(
+	base: JsonObject,
+	diffs: readonly StateDiff[],
+): JsonObject {
+	const root = structuredClone(base);
 	for (const diff of diffs) {
 		validatePath(diff.path);
 		if (diff.op === "set") {

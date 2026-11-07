@@ -104,6 +104,24 @@ export const MIGRATIONS: readonly Migration[] = [
 			END`,
 		],
 	},
+	{
+		version: 4,
+		description: "状态快照缓存：按楼层保存沿路径累加 diff 的结果",
+		statements: [
+			`CREATE TABLE state_snapshots (
+				node_id TEXT PRIMARY KEY NOT NULL REFERENCES nodes(id),
+				story_id TEXT NOT NULL REFERENCES stories(id),
+				state TEXT NOT NULL,
+				computed_at TEXT NOT NULL
+			) STRICT`,
+			`CREATE TRIGGER state_snapshots_story_matches_node
+			BEFORE INSERT ON state_snapshots
+			WHEN COALESCE((SELECT story_id FROM nodes WHERE id = NEW.node_id), '') <> NEW.story_id
+			BEGIN
+				SELECT RAISE(ABORT, '状态快照的 story_id 必须与所在楼层一致');
+			END`,
+		],
+	},
 ];
 
 export const LATEST_SCHEMA_VERSION: number =
