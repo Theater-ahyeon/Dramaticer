@@ -217,3 +217,12 @@
   - 渠道配置在 `data/channels.yaml` 顶层的 `embeddings` 段，与 `channels`、`models` 平级；`apiKey` 同样必须写成 `${变量}` 引用。默认项名为 `default`，`channels.example.yaml` 给出 bge-m3 示例。
   - 后台任务类型 `embeddings` 只为任务楼层里还没有向量的块调用渠道；`dramaticer work` 只有在配置了 `embeddings.default` 时才把该类型加入默认注册表，避免没有 embedding 渠道时把任务标成失败。块文本使用原始块文本，不预先做检索规范化。
 - **影响**：M2-T10 的混合检索直接调用 `searchVectors`，得到块级距离后与 BM25、实体命中一起做 RRF 融合。更换 embedding 模型且维度变化时需要重建数据库或新增迁移；当前实现选择直接报错，不静默截断向量。
+
+## ADR-0020 取消 Gemini 原生协议的端到端验证（2026-11-07）
+
+- **背景**：M1-T01 的 Gemini 原生适配器只确认了请求地址（`/models/<id>:streamGenerateContent` 挂在 baseUrl 根下），gcli2api 没有运行，响应兼容性没有验证；HUMAN-04 把它记录为可选待处理。人类在 2026-11-07 决定不再验证。
+- **决定**：
+  - 关闭 HUMAN-04，取消 gcli2api 的端到端验证。
+  - ADR-0009 的适配器实现不动：Gemini 原生分支继续保留在 `core/llm` 里；OpenAI 兼容 Chat Completions 是唯一经过真实渠道验证的渠道类型。
+  - 之后要接 Gemini 原生渠道时另开任务，按当时的渠道重新验证，不再把这次验证列为遗留事项。
+- **影响**：M1 报告的遗留事项与 TASKS 里 M1-T01 的依赖标记同步更新；DESIGN §10 的适配器顺序不变，只标注 Gemini 原生未做端到端验证。

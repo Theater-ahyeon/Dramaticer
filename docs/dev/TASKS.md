@@ -154,7 +154,7 @@
 
 ## M1：模型层与单轮生成（DESIGN §9、§10、§11）
 
-- [x] **M1-T01 pi 技术验证** | 依赖：M0-T99 | 部分需要 HUMAN-04、HUMAN-05
+- [x] **M1-T01 pi 技术验证** | 依赖：M0-T99 | HUMAN-04 已取消，HUMAN-05 已完成
   完成：2026-11-07 安装并锁定 `pi-ai` 与 `pi-agent-core` 1.5.0；`spikes/pi/` 在真实渠道验证流式（96 个思考增量、24 个正文增量）、思考内容、函数调用、abort 后保留部分正文并续写、三个钩子；Gemini 自定义 baseUrl 确认请求地址，gcli2api 未运行故端到端跳过；结论写入 ADR-0009
   做什么：先用 pnpm 在根目录 devDependencies 安装并锁版本 `@earendil-works/pi-ai` 与 `@earendil-works/pi-agent-core`（登记到 `DEPENDENCIES.md`，M1-T02 采用后再移到 `packages/core` 的运行时依赖），然后在 `spikes/pi/` 里写最小脚本（先读 node_modules 里的 README 和类型定义）：① 用 openai-completions 加 `.env` 里的渠道：流式输出、思考内容、函数调用；② google-generative-ai 能不能用自定义 baseUrl 指到本地的 gcli2api（服务没运行就跳过，并记录下来）；③ abort 之后保留部分内容，再续写；④ pi-agent-core 的 `prepareRequest`、`beforeToolCall`、`finishTurn` 三个钩子。
   产出：ADR，写明是否采用 pi，以及哪些部分采用。
