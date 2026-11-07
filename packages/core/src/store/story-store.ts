@@ -12,6 +12,13 @@ import {
 	normalizeEntityName,
 } from "../entity.js";
 import { isJsonObject } from "../json.js";
+import {
+	DEFAULT_MEMORY_EVENT_LIMIT,
+	type GetEventsForPathOptions,
+	MAX_MEMORY_EVENT_LIMIT,
+	type MemoryEvent,
+	type NewMemoryEventInput,
+} from "../memory/event.js";
 import { applyStateDiffsTo } from "../state.js";
 import type {
 	NewStateDiff,
@@ -100,6 +107,34 @@ interface BackgroundJobRow {
 	readonly created_at: string;
 	readonly started_at: string | null;
 	readonly finished_at: string | null;
+}
+
+interface MemoryEventRow {
+	readonly id: string;
+	readonly story_id: string;
+	readonly source_node_id: string;
+	readonly ordinal: number;
+	readonly story_time: string | null;
+	readonly location: string | null;
+	readonly participants: string;
+	readonly importance: number;
+	readonly knowers: string;
+	readonly text: string;
+	readonly created_at: string;
+}
+
+interface NormalisedMemoryEvent {
+	readonly id: string;
+	readonly storyId: string;
+	readonly sourceNodeId: string;
+	readonly ordinal: number;
+	readonly storyTime: string | null;
+	readonly location: string | null;
+	readonly participants: readonly string[];
+	readonly importance: number;
+	readonly knowers: readonly string[];
+	readonly text: string;
+	readonly createdAt: string;
 }
 
 export interface CreateStoryInput {
@@ -196,6 +231,34 @@ function assertNonEmptyString(
 	if (typeof value !== "string" || value.length === 0) {
 		throw new Error(`${label} 必须是非空字符串`);
 	}
+}
+
+function optionalTrimmedString(value: unknown, label: string): string | null {
+	if (value === undefined || value === null) return null;
+	if (typeof value !== "string") {
+		throw new Error(`${label} 必须是字符串或 null`);
+	}
+	const trimmed = value.trim();
+	if (trimmed.length === 0) {
+		throw new Error(`${label} 不能是空字符串`);
+	}
+	return trimmed;
+}
+
+function normaliseNameArray(value: unknown, label: string): string[] {
+	if (!Array.isArray(value)) {
+		throw new Error(`${label} 必须是字符串数组`);
+	}
+	return value.map((item, index) => {
+		if (typeof item !== "string") {
+			throw new Error(`${label}[${index}] 必须是字符串`);
+		}
+		const trimmed = item.trim();
+		if (trimmed.length === 0) {
+			throw new Error(`${label}[${index}] 不能是空字符串`);
+		}
+		return trimmed;
+	});
 }
 
 function isTimelineRole(value: unknown): value is TimelineRole {
@@ -295,6 +358,38 @@ function rowToBackgroundJob(row: BackgroundJobRow): BackgroundJob {
 		startedAt: row.started_at,
 		finishedAt: row.finished_at,
 	};
+}
+
+function rowToMemoryEvent(row: MemoryEventRow): MemoryEvent {
+	return {
+		id: row.id,
+		storyId: row.story_id,
+		sourceNodeId: row.source_node_id,
+		ordinal: row.ordinal,
+		storyTime: row.story_time,
+		location: row.location,
+		participants: parseStoredNameArray(
+			row.participants,
+			`事件 ${row.id} 的参与者`,
+		),
+		importance: row.importance,
+		knowers: parseStoredNameArray(row.knowers, `事件 ${row.id} 的知情者`),
+		text: row.text,
+		createdAt: row.created_at,
+	};
+}
+
+function parseStoredNameArray(value: string, label: string): string[] {
+	const parsed: unknown = JSON.parse(value);
+	if (!Array.isArray(parsed)) {
+		throw new Error(`${label}不是字符串数组`);
+	}
+	return parsed.map((item) => {
+		if (typeof item !== "string" || item.length === 0) {
+			throw new Error(`${label}不是字符串数组`);
+		}
+		return item;
+	});
 }
 
 export class StoryStore {
@@ -933,6 +1028,113 @@ export class StoryStore {
 		return head === null ? null : this.getStateSnapshot(head.id);
 	}
 
+	/**
+	 * 在一个事务里写入某个楼层抽取出的全部事件。任一条非法时整批回滚。
+	 */
+	insertMemoryEvents(inputs: readonly NewMemoryEventInput[]): MemoryEvent[] {
+		if (!Array.isArray(inputs)) {
+			throw new Error("事件记忆必须是数组");
+		}
+		if (inputs.length === 0) return [];
+		const normalised = inputs.map((input, index) =>
+			this.#normaliseMemoryEvent(input, index),
+		);
+		const insert = this.#db.prepare(
+			`INSERT INTO memory_events
+				(id, story_id, source_node_id, ordinal, story_time, location,
+				 participants, importance, knowers, text, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		);
+		const created: MemoryEvent[] = [];
+		this.#db.transaction(() => {
+			for (const event of normalised) {
+				insert.run(
+					event.id,
+					event.storyId,
+					event.sourceNodeId,
+					event.ordinal,
+					event.storyTime,
+					event.location,
+					JSON.stringify(event.participants),
+					event.importance,
+					JSON.stringify(event.knowers),
+					event.text,
+					event.createdAt,
+				);
+				created.push({
+					id: event.id,
+					storyId: event.storyId,
+					sourceNodeId: event.sourceNodeId,
+					ordinal: event.ordinal,
+					storyTime: event.storyTime,
+					location: event.location,
+					participants: [...event.participants],
+					importance: event.importance,
+					knowers: [...event.knowers],
+					text: event.text,
+					createdAt: event.createdAt,
+				});
+			}
+		})();
+		return created;
+	}
+
+	/** 按路径顺序（根在前、楼层内按 ordinal）读取事件，支持分页。 */
+	getEventsForPath(
+		nodeId: string,
+		options: GetEventsForPathOptions = {},
+	): MemoryEvent[] {
+		assertNonEmptyString(nodeId, "楼层节点 id");
+		if (!this.getNode(nodeId)) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
+		const limit = options.limit ?? DEFAULT_MEMORY_EVENT_LIMIT;
+		if (
+			!Number.isInteger(limit) ||
+			limit < 1 ||
+			limit > MAX_MEMORY_EVENT_LIMIT
+		) {
+			throw new Error(
+				`事件条数必须是 1 到 ${MAX_MEMORY_EVENT_LIMIT} 之间的整数`,
+			);
+		}
+		const offset = options.offset ?? 0;
+		if (!Number.isInteger(offset) || offset < 0) {
+			throw new Error("事件分页偏移量必须是不小于 0 的整数");
+		}
+		const rows = this.#db
+			.prepare(
+				`WITH RECURSIVE path(node_id, depth) AS (
+					SELECT id, 0 FROM nodes WHERE id = ?
+					UNION ALL
+					SELECT nodes.parent_id, path.depth + 1
+					FROM path JOIN nodes ON nodes.id = path.node_id
+					WHERE nodes.parent_id IS NOT NULL
+				)
+				SELECT events.*
+				FROM memory_events AS events
+				JOIN path ON events.source_node_id = path.node_id
+				ORDER BY path.depth DESC, events.ordinal ASC
+				LIMIT ? OFFSET ?`,
+			)
+			.all(nodeId, limit, offset) as MemoryEventRow[];
+		return rows.map(rowToMemoryEvent);
+	}
+
+	/** 统计某个楼层已经抽取的事件数；重复执行前用它判断是否已经处理过。 */
+	countEventsForNode(nodeId: string): number {
+		assertNonEmptyString(nodeId, "楼层节点 id");
+		if (!this.getNode(nodeId)) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
+		const row = this.#db
+			.prepare(
+				"SELECT COUNT(*) AS count FROM memory_events WHERE source_node_id = ?",
+			)
+			.get(nodeId) as { readonly count: number };
+		return row.count;
+	}
+
 	searchNodeText(
 		query: string,
 		options: SearchNodeTextOptions = {},
@@ -1242,6 +1444,73 @@ export class StoryStore {
 			throw new Error(`后台任务不存在：${id}`);
 		}
 		return job;
+	}
+
+	#normaliseMemoryEvent(
+		input: NewMemoryEventInput,
+		index: number,
+	): NormalisedMemoryEvent {
+		const label = `事件记忆[${index}]`;
+		if (input === null || typeof input !== "object" || Array.isArray(input)) {
+			throw new Error(`${label} 必须是对象`);
+		}
+		assertNonEmptyString(input.storyId, `${label} 的 storyId`);
+		assertNonEmptyString(input.sourceNodeId, `${label} 的 sourceNodeId`);
+		const node = this.getNode(input.sourceNodeId);
+		if (!node) {
+			throw new Error(`${label} 指向的楼层节点不存在：${input.sourceNodeId}`);
+		}
+		if (node.storyId !== input.storyId) {
+			throw new Error(
+				`${label} 的 storyId 与楼层节点所属故事不一致：${input.storyId}`,
+			);
+		}
+		if (
+			typeof input.ordinal !== "number" ||
+			!Number.isInteger(input.ordinal) ||
+			input.ordinal < 0
+		) {
+			throw new Error(`${label} 的 ordinal 必须是不小于 0 的整数`);
+		}
+		if (typeof input.text !== "string" || input.text.trim().length === 0) {
+			throw new Error(`${label} 的 text 必须是非空字符串`);
+		}
+		if (
+			typeof input.importance !== "number" ||
+			!Number.isFinite(input.importance) ||
+			input.importance < 0 ||
+			input.importance > 1
+		) {
+			throw new Error(`${label} 的 importance 必须在 0 到 1 之间`);
+		}
+		const storyTime = optionalTrimmedString(
+			input.storyTime,
+			`${label} 的 storyTime`,
+		);
+		const location = optionalTrimmedString(
+			input.location,
+			`${label} 的 location`,
+		);
+		const id = input.id ?? randomUUID();
+		assertNonEmptyString(id, `${label} 的 id`);
+		const createdAt = input.createdAt ?? new Date().toISOString();
+		assertNonEmptyString(createdAt, `${label} 的 createdAt`);
+		return {
+			id,
+			storyId: input.storyId,
+			sourceNodeId: input.sourceNodeId,
+			ordinal: input.ordinal,
+			storyTime,
+			location,
+			participants: normaliseNameArray(
+				input.participants,
+				`${label} 的 participants`,
+			),
+			importance: input.importance,
+			knowers: normaliseNameArray(input.knowers, `${label} 的 knowers`),
+			text: input.text,
+			createdAt,
+		};
 	}
 
 	#normaliseStateDiff(input: NewStateDiff, index: number): NormalisedStateDiff {

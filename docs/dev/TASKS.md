@@ -234,7 +234,8 @@
   - st-compat 新增角色卡与世界书的实体导入：角色卡的名字作为 `character`，昵称作为别名；世界书条目的 `comment`（没有时用第一个可用主关键词）作为 `lore` 实体名，主关键词作为别名。core 不出现世界书、角色卡等 ST 类型。
   验收：合成角色卡与世界书导入后实体数、别名数符合预期；重复名称与别名合并；全角、大小写、标点差异能命中同一实体；一个别名对应多个实体时返回全部；缺失字段的条目跳过并在导入结果里计数；`pnpm check` 通过。
 
-- [ ] **M2-T05 事件抽取** | 依赖：M2-T03、M2-T04 | DESIGN §7
+- [x] **M2-T05 事件抽取** | 依赖：M2-T03、M2-T04 | DESIGN §7
+  完成：2026-11-07 迁移 v7 新增只追加的 `memory_events`（`UNIQUE(source_node_id, ordinal)`，触发器拒绝 UPDATE 与 DELETE）；`StoryStore` 新增 `insertMemoryEvents`（整批事务，任一非法回滚）、`getEventsForPath`（路径顺序、limit 与 offset）、`countEventsForNode`；core 新增 `memory` 模块：抽取窗口为任务楼层加前面最多 8 楼，严格校验 JSON 数组的字段、类型、空字符串与 importance 范围，重复执行先查已有事件不再调用模型；`dramaticer work` 默认注册 `events` 处理器；8 个新测试，门禁通过（378 个测试）
   做什么：
   - 迁移 v7：新增只追加的 `memory_events(id, story_id, source_node_id, ordinal, story_time, location, participants, importance, knowers, text, created_at)`，`UNIQUE(source_node_id, ordinal)`；`participants` 与 `knowers` 存 JSON 数组；数据库触发器拒绝 UPDATE 与 DELETE。
   - 后台任务类型 `events`：沿路径取已确认节点及其前面最多 8 楼作为窗口，用 `background` 模型输出 JSON 数组。每条包含 `text`（非空）、`participants`、`knowers`、`importance`（0 到 1）、可选的 `storyTime` 与 `location`。

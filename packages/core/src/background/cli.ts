@@ -5,12 +5,14 @@ import { loadDotEnv } from "../env.js";
 import { type LlmChannelsConfig, loadChannelsConfig } from "../llm/channels.js";
 import { createLlmClient } from "../llm/configure.js";
 import type { LlmClient } from "../llm/types.js";
+import { createEventExtractionHandler } from "../memory/extract.js";
 import { StoryStore } from "../store/story-store.js";
 import {
 	type BackgroundJobRun,
 	DEFAULT_BACKGROUND_JOB_LIMIT,
 	drainBackgroundJobs,
 } from "./drain.js";
+import { createBackgroundJobRegistry } from "./registry.js";
 import type { BackgroundJobRegistry } from "./types.js";
 
 const repoRoot = fileURLToPath(new URL("../../../../", import.meta.url));
@@ -54,7 +56,11 @@ export async function runWorkCli(
 				defaultModel: "background",
 				cacheDir: null,
 			}));
-	const registry: BackgroundJobRegistry = dependencies.registry ?? new Map();
+	const registry: BackgroundJobRegistry =
+		dependencies.registry ??
+		createBackgroundJobRegistry({
+			events: createEventExtractionHandler(),
+		});
 	const log = dependencies.log ?? console.log;
 
 	if (!existsSync(parsed.dbPath)) {

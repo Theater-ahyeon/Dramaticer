@@ -181,6 +181,45 @@ export const MIGRATIONS: readonly Migration[] = [
 			END`,
 		],
 	},
+	{
+		version: 7,
+		description: "事件记忆：按楼层只追加的事件、参与者、知情者与重要度",
+		statements: [
+			`CREATE TABLE memory_events (
+				row_id INTEGER PRIMARY KEY,
+				id TEXT NOT NULL UNIQUE,
+				story_id TEXT NOT NULL REFERENCES stories(id),
+				source_node_id TEXT NOT NULL REFERENCES nodes(id),
+				ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+				story_time TEXT,
+				location TEXT,
+				participants TEXT NOT NULL,
+				importance REAL NOT NULL CHECK (importance >= 0 AND importance <= 1),
+				knowers TEXT NOT NULL,
+				text TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				UNIQUE (source_node_id, ordinal)
+			) STRICT`,
+			"CREATE INDEX memory_events_story_idx ON memory_events(story_id)",
+			"CREATE INDEX memory_events_node_idx ON memory_events(source_node_id)",
+			`CREATE TRIGGER memory_events_story_matches_node
+			BEFORE INSERT ON memory_events
+			WHEN COALESCE((SELECT story_id FROM nodes WHERE id = NEW.source_node_id), '') <> NEW.story_id
+			BEGIN
+				SELECT RAISE(ABORT, '事件记忆的 story_id 必须与来源楼层一致');
+			END`,
+			`CREATE TRIGGER memory_events_immutable
+			BEFORE UPDATE ON memory_events
+			BEGIN
+				SELECT RAISE(ABORT, '事件记忆不可修改');
+			END`,
+			`CREATE TRIGGER memory_events_no_delete
+			BEFORE DELETE ON memory_events
+			BEGIN
+				SELECT RAISE(ABORT, '事件记忆不可删除');
+			END`,
+		],
+	},
 ];
 
 export const LATEST_SCHEMA_VERSION: number =
