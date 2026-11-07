@@ -9,7 +9,7 @@
   - `docs/dev/DECISIONS.md`：新增 ADR-0035，记录三分法：A1–A9 直接采纳、改变架构的只用评测决定、第三节暂缓项进 DESIGN §18 不建任务。
   - `docs/DESIGN.md`：§7.1 增加台账事实的 `storyTime` 与 `source` 元数据及变更卡；§7.3 增加现场分析行、父子分块、重排序、上下文包复用；§9 槽位表加 `scene` 与包复用；§10.1 加深回合“工具少而通用”和“运行中追加要求”；§10.2 增加按岗位配置；§14 增加编造回忆率、叙事质量、五类记忆题与裁判/写作不同渠道，新增 §14.4 实验表；§15 更新 R1/R2 并加 X 行；§17 增加两项待验证；新增 §18 后续方向；附录 A 加 Q37。
   - `docs/dev/TASKS.md`：新增 R1-T01.b（渠道按岗位配置）、R1-T02.a（现场分析）、R1-T03.a（父子分块）、R1-T03.b（重排序）、R1-T07.a（自然语言修订记忆）、R1-T08（上下文包复用）、R2-T03.a（五类记忆题与编造回忆率）、R2-T04.a（叙事质量评分表）、X1、X2；R1-T02 依赖加 R1-T01.b，R1-T04.b 依赖加 R1-T03.a/.b，R2-T03/R2-T04 依赖加 R1-T01.b，R2-T06 依赖加 R2-T03.a/R2-T04.a；R3-T00 细化说明写入 A7/A8；R1-T05、R1-T06 的迁移编号顺延为 v21、v22。
-  - `docs/dev/INBOX.md`：v2.1 条目记为已处理，未处理区为空。
+  - `docs/dev/INBOX.md`：v2.1 条目记为已处理，未处理区为空。会话期间人类追加 `docs/proposals/v2.2.md`，已分拣为 R0-T03。
 
 ## 当前状态
 - M0、M1、M2、M3、D-T01 至 D-T04、M4-T00 至 M4-T06、R0-T01、R0-T02、R1-T01 完成。
@@ -26,6 +26,7 @@
 - M3 的两项效果目标按 ADR-0029 保留为未证实；v2 的门槛改由 R6 按 B0/B1 对比判定。
 
 ## 下一步
+- **R0-T03 合并 v2.2 补充提案**（会话 75 期间人类追加 `docs/proposals/v2.2.md`，已分拣）：ADR-0036；D1–D5 深回合要点写进 DESIGN §10.1 与 R3-T00；D6 的 `SKILL.md` 格式与第三节三项写进 §18；应用内助手写入 DESIGN，排障命令行任务排在 R2 之后，完整助手排在 R5 之后并取代 R7 的侧边 agent。
 - **R1-T01.a 台账事实补 storyTime 与 source**：`storyTime` 进入存储（起止都可空），`source` 取值 `model`、`settler`、`player`、`import` 并沿用 `StateDiff.source`；`validateLedgerDiff` 校验类型与取值，读取能读回；R1-T01 的路径表与快照语义不变。
 - **R1-T01.b 渠道按岗位配置**：`data/channels.yaml` 增加 `roles`（`writer`、`settler`、`planner`、`judge`）；缺省 `writer` 回落 `main`、其余回落 `background`；创建路由时校验 `judge` 与 `writer` 不是同一个 `baseUrl`；Trace 记录角色与渠道。
 - **R1-T02 台账结算器**：迁移 v18 新增 `ledger_settlements`；后台 `settle` 任务按窗口处理已确认、未结算的助手楼层；模型已写路径优先，结算器只补缺失路径；修复动作限定为补值、删除非法条目、改写线索状态；写入在一个事务里，重复结算不新增 diff，swipe 与编辑节点各自结算；回合内不等待。

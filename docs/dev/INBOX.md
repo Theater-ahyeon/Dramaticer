@@ -15,3 +15,4 @@
 - 2026-11-07：采纳 v2 设计提案 `docs/proposals/v2.md`。已写入 ADR-0033，合并进 `docs/DESIGN.md` v0.2；TASKS 新增 R0–R7，R1、R2 已细化，M4-T07 起并入 R5。评测基线与 B2 的申请规则写入 DESIGN §14 与 AGENTS.md 的不变量（I14）。
 - 2026-11-07：采纳 v2.1 补充提案 `docs/proposals/v2.1.md`。已写入 ADR-0035，合并进 `docs/DESIGN.md` v0.2；TASKS 新增 R0–R7，R1、R2 已细化，M4-T07 起并入 R5。评测基线与 B2 的申请规则写入 DESIGN §14 与 AGENTS.md 的不变量（I14）。
 - 2026-11-07：v2.1 补充提案由 ADR-0035 按三分法合并：A1–A9 全部转成任务（A9 为 R1-T01.b），X1 与 X2 排在 R2-T99 之后，暂缓项写入 DESIGN §18。INBOX 已清空。
+- 2026-11-07：会话 75 期间人类追加 `docs/proposals/v2.2.md`，已分拣为 R0-T03（依赖 R0-T02）。
