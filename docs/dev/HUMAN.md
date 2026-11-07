@@ -10,3 +10,4 @@ agent 遇到只有人类才能做的事，就记在这里，并在 TASKS 里把�
 | HUMAN-04 | 已关闭（2026-11-07：人类决定不再验证 Gemini 原生协议与 gcli2api，见 ADR-0020；渠道验证以 openai-completions 为准） | 不阻塞 | 原事项：验证 Gemini 原生自定义 baseUrl 指向本机 gcli2api；已取消 | 无 |
 | HUMAN-05 | 已完成（2026-11-06：`.env` 的后台与正文模型都改成 `opendesign/deepseek-v4.1-flash`，经 magpie 网关实测 `/v1/chat/completions` 返回 200、2.5 秒） | 不阻塞 | 后台渠道 `antigravity/gemini-3.8-flash` 的账号已被上游停用（HTTP 403，违反服务条款）。M0-T11 的第三个对话已用环境变量临时改用 `auto/deepseek-v4.1-flash` 完成；请在 `.env` 里换一个可用的后台渠道和模型（也可以继续用 magpie 里的其他模型），不要提交 `.env` | 无 |
 | HUMAN-06 | 已完成（2026-11-06：I1 关键词补 `marker`、`worldInfo\w*`；I10 改为扫描 `packages/*/test/` 下全部文件，`*.live.test.*` 除外，共匹配 45 个测试文件；`node scripts/check-invariants.mjs` 通过，`.devloop/protected.sha` 已同步） | 不阻塞 | `scripts/check-invariants.mjs` 的两处检查缺口已补齐 | 无 |
+| HUMAN-07 | 待处理 | 阻塞 | 把参照小说放进 `eval-private/reference/`（《龙族》《诡秘之主》等，仅供本地统计；agent 不联网下载）。另请指定可用作仓库测试数据的公有领域作品（中短篇即可），或确认由 agent 从已有仓库文件里选样本。处理后把状态改为“已完成”，D-T04 才能执行 | D-T04 |

@@ -32,9 +32,26 @@ export interface RetrieveMemoryOptions {
 	readonly query?: string | null;
 	/** 只检索该楼层的祖先路径，不含该楼层自身 */
 	readonly beforeNodeId?: string | null;
-	/** 知情者过滤的视角；融合排名阶段不改变候选集合 */
+	/** 知情者过滤的视角；为空时返回全知结果 */
 	readonly viewpoint?: string | null;
 	readonly limit?: number;
+}
+
+/** 知情者过滤的统计，供 Trace 观察过滤量。 */
+export interface RetrievalFilterSummary {
+	/** null 表示全知视图 */
+	readonly viewpoint: string | null;
+	/** 知情者过滤前沿路径读取到的事件数 */
+	readonly eventsBeforeFilter: number;
+	/** 通过知情者过滤的事件数 */
+	readonly eventsAfterFilter: number;
+	/** 视角存在时原文块一律不注入 */
+	readonly chunksExcluded: boolean;
+}
+
+export interface RetrievalResult {
+	readonly hits: readonly RetrievalHit[];
+	readonly filter: RetrievalFilterSummary;
 }
 
 const DEFAULT_RETRIEVAL_LIMIT = 8;
@@ -71,7 +88,7 @@ interface EntityMatch {
  */
 export async function retrieveMemory(
 	options: RetrieveMemoryOptions,
-): Promise<RetrievalHit[]> {
+): Promise<RetrievalResult> {
 	const { store, storyId } = options;
 	if (!store.getStory(storyId)) {
 		throw new Error(`故事不存在：${storyId}`);
@@ -112,48 +129,61 @@ export async function retrieveMemory(
 			? store.getPathToHead(storyId)
 			: store.getPathToNode(beforeNodeId).slice(0, -1);
 	const lastPathNode = pathNodes[pathNodes.length - 1];
-	const events: MemoryEvent[] = lastPathNode
+	const pathEvents: MemoryEvent[] = lastPathNode
 		? store.getEventsForPath(lastPathNode.id, {
 				limit: MAX_MEMORY_EVENT_LIMIT,
 			})
 		: [];
+	const viewpointAliases =
+		viewpoint === null
+			? null
+			: collectViewpointAliases(store, storyId, viewpoint);
+	const events =
+		viewpointAliases === null
+			? pathEvents
+			: pathEvents.filter((event) =>
+					isVisibleToViewpoint(event, viewpointAliases),
+				);
+	const chunksExcluded = viewpointAliases !== null;
 
 	const emptyQuery = normalizeRetrievalText(query).length === 0;
 	const routes: RouteResult[] = [];
 	const branchOptions = beforeNodeId === null ? {} : { beforeNodeId };
 
 	if (!emptyQuery) {
-		const bm25 = store.searchChunks(query, {
-			storyId,
-			...branchOptions,
-			limit,
-		});
-		routes.push({
-			route: "bm25",
-			items: bm25.map((match) => ({ kind: "chunk", nodeId: match.nodeId })),
-		});
-
-		if (options.embedder) {
-			const embedder = options.embedder;
-			const [vector] = await embedder.embed([query]);
-			if (!vector) {
-				throw new Error("embedding 客户端没有返回查询向量");
-			}
-			const matches = store.searchVectors(vector, {
+		if (!chunksExcluded) {
+			const bm25 = store.searchChunks(query, {
 				storyId,
 				...branchOptions,
-				limit: Math.min(limit * VECTOR_CANDIDATE_FACTOR, 1_000),
+				limit,
 			});
 			routes.push({
-				route: "vector",
-				items: dedupeNodes(
-					matches.map((match) => ({
-						kind: "chunk" as const,
-						nodeId: match.nodeId,
-					})),
-					limit,
-				),
+				route: "bm25",
+				items: bm25.map((match) => ({ kind: "chunk", nodeId: match.nodeId })),
 			});
+
+			if (options.embedder) {
+				const embedder = options.embedder;
+				const [vector] = await embedder.embed([query]);
+				if (!vector) {
+					throw new Error("embedding 客户端没有返回查询向量");
+				}
+				const matches = store.searchVectors(vector, {
+					storyId,
+					...branchOptions,
+					limit: Math.min(limit * VECTOR_CANDIDATE_FACTOR, 1_000),
+				});
+				routes.push({
+					route: "vector",
+					items: dedupeNodes(
+						matches.map((match) => ({
+							kind: "chunk" as const,
+							nodeId: match.nodeId,
+						})),
+						limit,
+					),
+				});
+			}
 		}
 
 		const entityMatches = matchEntities(store, storyId, query);
@@ -168,6 +198,7 @@ export async function retrieveMemory(
 					matches: entityMatches,
 					events,
 					pathNodes,
+					includeChunks: !chunksExcluded,
 				}),
 			});
 		}
@@ -187,7 +218,7 @@ export async function retrieveMemory(
 		});
 	}
 
-	if (emptyQuery) {
+	if (emptyQuery && !chunksExcluded) {
 		const recent = dedupeNodes(
 			recentChunkItems(store, pathNodes, limit),
 			limit,
@@ -197,7 +228,43 @@ export async function retrieveMemory(
 		}
 	}
 
-	return fuseRoutes(routes).slice(0, limit);
+	return {
+		hits: fuseRoutes(routes).slice(0, limit),
+		filter: {
+			viewpoint,
+			eventsBeforeFilter: pathEvents.length,
+			eventsAfterFilter: events.length,
+			chunksExcluded,
+		},
+	};
+}
+
+/** 视角能识别出的全部名称：视角本身的规范化形式，加上解析到的实体的名称与别名。 */
+function collectViewpointAliases(
+	store: StoryStore,
+	storyId: string,
+	viewpoint: string,
+): Set<string> {
+	const aliases = new Set<string>();
+	const normalized = normalizeEntityName(viewpoint);
+	if (normalized.length === 0) return aliases;
+	aliases.add(normalized);
+	for (const entity of store.resolveEntities(viewpoint, { storyId })) {
+		for (const alias of normalizedAliases(entity)) aliases.add(alias);
+	}
+	return aliases;
+}
+
+function isVisibleToViewpoint(
+	event: MemoryEvent,
+	viewpointAliases: ReadonlySet<string>,
+): boolean {
+	if (event.knowers.length === 0) return true;
+	for (const knower of event.knowers) {
+		if (knower.trim() === "*") return true;
+		if (viewpointAliases.has(normalizeEntityName(knower))) return true;
+	}
+	return false;
 }
 
 function matchEntities(
@@ -236,6 +303,8 @@ function entityRouteItems(input: {
 	readonly matches: readonly EntityMatch[];
 	readonly events: readonly MemoryEvent[];
 	readonly pathNodes: readonly TimelineNode[];
+	/** 视角存在时为 false：原文块一律不注入 */
+	readonly includeChunks: boolean;
 }): RouteItem[] {
 	const aliasSets = input.matches.map(
 		(match) => new Set(normalizedAliases(match.entity)),
@@ -258,6 +327,7 @@ function entityRouteItems(input: {
 		items.push({ kind: "event", nodeId: event.sourceNodeId });
 		if (items.length === input.limit) break;
 	}
+	if (!input.includeChunks) return items;
 	const branchOptions =
 		input.beforeNodeId === null ? {} : { beforeNodeId: input.beforeNodeId };
 	outer: for (const match of input.matches) {

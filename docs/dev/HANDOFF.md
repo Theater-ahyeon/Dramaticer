@@ -3,27 +3,28 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：45
-- 任务：M2-T10 多路融合检索
+- 会话：46
+- 任务：M2-T11 知情者过滤
 - 结果：完成（`DONE`）。
-  - 新增 `packages/core/src/retrieval/hybrid.ts`，导出 `retrieveMemory(options)`、`RetrievalHit`、`RetrievalSource`、`RetrievalRoute`（`bm25`、`vector`、`entity`、`event`、`recent`）与 `RetrievalKind`（`chunk`、`event`）。`packages/core/src/index.ts` 一并导出。
-  - BM25 路：`store.searchChunks(query, {storyId, beforeNodeId?, limit})`，每个楼层只占一个位次。
-  - 向量路：只在传了 `embedder` 且查询非空时启用；查询向量由 `embedder.embed([query])` 生成，调用 `store.searchVectors` 时按 `limit × 4`（上限 1000）取块，再按楼层去重保留最近的块，截到 `limit`。
-  - 实体路：`matchEntities` 用 `listEntities` 的规范化名称与别名在规范化查询里做包含匹配，命中的实体按最长别名长度、实体 id 排序；随后召回 `participants` 命中这些实体别名集合的事件，以及用实体名称与别名调用 `searchChunks` 找到的块。事件先按重要度、路径位置、楼层内序号排序，块排在事件之后。
-  - 事件路：沿路径读取事件（`getEventsForPath`，最多 1000 条），按重要度降序、路径位置降序、ordinal 降序、id 升序排序，按楼层去重后取前 K。
-  - 最近块路：只在空查询启用；从路径末端往前找有块的楼层（`countChunksForNode`），取前 K。
-  - 融合：每一路先按自己的顺序去重取前 K，再用 RRF（常数 60，`1 / (60 + rank)`）累加分数；`sources` 记录每一路的名次并按固定路线顺序输出；最终排序依次比较分数降序、最好名次升序、事件优先、节点 id 字典序。
-  - 输入校验：故事不存在、`beforeNodeId` 不存在或属于其他故事、`limit` 不是 1 到 50 的整数、`viewpoint` 是空字符串都直接抛错。`limit` 默认 8。
-  - `beforeNodeId` 只检索它的祖先路径并排除自身；事件与最近块使用去掉 `beforeNodeId` 之后的路径（`getPathToNode(beforeNodeId).slice(0, -1)`），与 `searchChunks` 的「之前」语义一致。
-  - 空查询（规范化后没有可检索字符）跳过 BM25、向量、实体三路，只返回事件路与最近块路。
-  - `viewpoint` 目前只做参数校验，知情者过滤留给 M2-T11。
-  - 新增 7 个测试：多路来源与分数、实体别名把相关事件排到前面、向量距离排序与同楼层去重、分支过滤、空查询的稳定结果、`limit` 边界、错误路径。门禁 `pnpm check` 通过（53 个测试文件、423 个测试，3 个 live 测试默认跳过）。
+  - `packages/core/src/retrieval/hybrid.ts` 的 `retrieveMemory` 返回类型从 `RetrievalHit[]` 改为 `RetrievalResult`：`{ hits, filter }`。`filter` 是 `RetrievalFilterSummary`，字段为 `viewpoint`（`null` 表示全知）、`eventsBeforeFilter`、`eventsAfterFilter`、`chunksExcluded`。
+  - `viewpoint` 未传或为 `null` 时，代码路径与 M2-T10 完全相同，块路照常启用。
+  - 传入视角时，先 `collectViewpointAliases`：视角自身的规范化形式加上 `resolveEntities(viewpoint, {storyId})` 返回实体的名称与别名，全部走 `normalizeEntityName`。
+  - 事件可见性 `isVisibleToViewpoint`：`knowers` 为空（公开）直接可见；任一 knower 去两端空白后等于 `"*"` 可见；任一 knower 规范化后命中视角别名集合可见；其余排除。过滤发生在 `getEventsForPath` 之后、排序与各路生成之前，实体路也只从过滤后的事件里召回，因此只含秘密事件的楼层不会进入结果。
+  - 视角存在时 `chunksExcluded` 为 `true`：跳过 BM25 路、向量路（不调用 embedding 客户端）、实体路的块召回与空查询的最近块路，只保留事件来源。`RetrievalHit.kind` 在这种模式下只会是 `event`。
+  - 视角为全标点（规范化后为空）时别名集合为空，只有公开与 `"*"` 事件可见，不抛错。
+  - `hybrid-retrieval.test.ts` 原有 7 个用例改为解构 `{ hits }`，新增 2 个：公开/星号/知情者三种事件在视角下保留、秘密事件与全部原文块被排除且全知视图计数不变；视角与 knower 用全名、别名、带空格写法互相命中，陌生人只看到公开事件。
+  - 门禁 `pnpm check` 通过（53 个测试文件、425 个测试，3 个 live 测试默认跳过）。
+- INBOX 分拣：
+  - 「用小说作为文笔与结构的参照」转成 `D-T03`（ADR 与统计脚本，可立即执行）与 `D-T04`（对 `eval-private/reference/` 跑基线定 Director 阈值，被 HUMAN-07 阻塞）；需要人类提供电子书写进 HUMAN-07。
+  - 「评测与参照语料补入最新的聊天记录」转成 `D-T01`（快照脚本按修改时间取样最新对话）与 `D-T02`（体检、BM25、ACU 三项统计分栏）。
+  - `M3-T00` 补了一句：重复检测与节奏阈值任务依赖 `D-T04`。
+  - INBOX 已清空。
 
 ## 当前状态
-- M0、M1 完成；M2-T01 至 M2-T10 完成；下一会话执行 M2-T11（知情者过滤）。
+- M0、M1 完成；M2-T01 至 M2-T11 完成；下一会话执行 M2-T12（记忆与摘要的被动注入槽位）。
 - 门禁：`pnpm check` 通过；live 测试需要 `DRAMATICER_LIVE=1`。
 - 数据库 schema 版本 11（`stories`、`nodes`、`state_diffs`、`node_text`、`traces`、`stories.head_node_id`、`state_snapshots`、`background_jobs`、`entities`、`entity_aliases`、`memory_events`、`summaries`、`plot_notes`、`chunks`、`chunks_fts`、`chunk_vectors`）。
-- 运行时检索索引在 `StoryStore` 内：BM25 用 `searchChunks`，向量用 `searchVectors`；融合在 `retrieveMemory`。`ChunkIndex` 只留给 st-compat 的 M0 基线评测。
+- 运行时检索索引在 `StoryStore` 内：BM25 用 `searchChunks`，向量用 `searchVectors`；融合与知情者过滤在 `retrieveMemory`。`ChunkIndex` 只留给 st-compat 的 M0 基线评测。
 - 后台任务注册表：`dramaticer work` 默认登记 `events`、`summary`，配置了 `embeddings.default` 时再登记 `embeddings`；其他类型由各任务自行登记进默认注册表。
 - 实体表目前只在 chat 启动时由角色卡填充；世界书的实体导入函数已就位，等 M2-T13 导入 lore 条目时调用。卡内嵌世界书（`character_book`）尚未转换。
 - `packages/core` 的运行时依赖：`@earendil-works/pi-ai@1.5.0`、`better-sqlite3`、`sqlite-vec`、`yaml`。
@@ -32,12 +33,12 @@
 - M2 的分层过关门槛写在 `M2-T15` 与 `M2-T99`：状态题命中@20 ≥ 45%；事件题命中@5 ≥ 88%、命中@20 ≥ 97%；每个对话的同一题型不低于各自 BM25 基线的 2 个百分点以内。
 
 ## 下一步
-- 执行 M2-T11（知情者过滤）：
-  - 在 `retrieveMemory` 里启用已经接受的 `viewpoint` 参数：没有视角时保持现在的全知结果不变。
-  - 有视角时，事件只在 `knowers` 为空（公开）、包含 `"*"`、或经别名归一化后命中视角实体时保留；块在缺少块级知情者信息时全部不返回。
-  - 视角与 `knowers`、`participants` 都先过 `normalizeEntityName`，再与实体的名称和别名集合比较。
-  - 返回结果需要带过滤前的计数供 Trace 观察；现有调用方（M2-T12 之前没有别的调用方）要一起改。
-- 之后按 M2-T12 到 M2-T15 的顺序执行。
+- 执行 M2-T12（记忆与摘要的被动注入槽位）：
+  - `createMemorySlotProvider`：用当前用户楼层之前的路径调用 `retrieveMemory`，默认 6 条；注意返回值是 `RetrievalResult`，要取 `.hits`。每条的渲染带来源楼层 id 与类型；同一楼层只出现一次。没有结果返回 `null`，组装器记为 `missing-slot`。
+  - `createSummarySlotProvider`：`getValidSummaries` 取当前 head 下有效的主线摘要与最近一条章节摘要，超 token 上限按新近程度裁剪；没有摘要返回 `null`。
+  - 默认模板的 `memory` 与 `summary` 段接入两个提供者；Trace 来源写成 `memory:<条数>` 与 `summary:<级别>`。
+  - 视角参数在该任务里不传（缺省为全知），知情者过滤留给后续需要视角的入口。
+- 之后按 M2-T13、M2-T14、M2-T15、M2-T99 的顺序执行。
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**；`loadDotEnv` 会覆盖进程里已有的同名变量，这是有意行为（ADR-0010）。`SILICONFLOW_API_KEY` 已存在，`data/channels.yaml` 的 `embeddings.default` 引用它。
@@ -54,6 +55,8 @@
 - `retrieveMemory` 的实体匹配是规范化查询对名称与别名的子串包含；别名越长越优先。事件路不按查询文本过滤，只按重要度与新近度，这是设计里的独立一路。
 - RRF 名次在每一路内部去重之后重新编号，同一楼层多个块只保留最好的一块，不会占两个位次。
 - 检索的 `beforeNodeId` 语义是「该楼层之前」：块检索排除自身，事件与最近块也只使用去掉该楼层后的路径。
+- 知情者过滤在事件层判定：`knowers` 为空或含 `"*"` 或规范化后命中视角别名；视角存在时原文块一律不返回，`filter.chunksExcluded` 为 `true`。不要让调用方绕过这条规则直接用 BM25 结果。
+- 新任务 D-T01 至 D-T04 与 HUMAN-07 已登记；D-T04 未解除前不要开始 M3 的重复检测与节奏阈值实现。
 - `data/` 被 git 忽略；不要把 `data/channels.yaml`、`data/dramaticer.db`、`data/` 下的任何文件加进提交。`channels.example.yaml` 只放变量引用，不放密钥。
 - 不要修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 下的文件；需要改时写进 HUMAN.md。
 - 提交前跑 `pnpm check`；新增依赖要登记到 `docs/dev/DEPENDENCIES.md`。

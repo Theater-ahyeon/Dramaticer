@@ -94,7 +94,7 @@ describe("多路融合检索", () => {
 			},
 		]);
 
-		const hits = await retrieveMemory({
+		const { hits } = await retrieveMemory({
 			store,
 			storyId: "s1",
 			query: "青铜匕首",
@@ -165,7 +165,7 @@ describe("多路融合检索", () => {
 			},
 		]);
 
-		const hits = await retrieveMemory({
+		const { hits } = await retrieveMemory({
 			store,
 			storyId: "s2",
 			query: "赤霄的来历",
@@ -208,7 +208,7 @@ describe("多路融合检索", () => {
 		insertVectors(store, second.id, [scaled(0, 0)]);
 		insertVectors(store, multi.id, [scaled(0, 3), scaled(0, 1), scaled(0, 2)]);
 
-		const hits = await retrieveMemory({
+		const { hits } = await retrieveMemory({
 			store,
 			embedder: embedderReturning(oneHot(0)),
 			storyId: "s3",
@@ -287,7 +287,7 @@ describe("多路融合检索", () => {
 			},
 		]);
 
-		const hits = await retrieveMemory({
+		const { hits } = await retrieveMemory({
 			store,
 			storyId: "s4",
 			query: "青铜匕首",
@@ -301,7 +301,7 @@ describe("多路融合检索", () => {
 			query: "青铜匕首",
 			beforeNodeId: root.id,
 		});
-		expect(atRoot).toEqual([]);
+		expect(atRoot.hits).toEqual([]);
 	});
 
 	it("空查询返回重要事件与最近块，结果稳定", async () => {
@@ -349,7 +349,7 @@ describe("多路融合检索", () => {
 			},
 		]);
 
-		const hits = await retrieveMemory({ store, storyId: "s5", query: "" });
+		const { hits } = await retrieveMemory({ store, storyId: "s5", query: "" });
 		expect(hits.map((hit) => `${hit.kind}:${hit.nodeId}`)).toEqual([
 			"event:n-user",
 			"chunk:n-assistant",
@@ -361,7 +361,13 @@ describe("多路融合检索", () => {
 		expect(hits[1]?.sources).toEqual([{ route: "recent", rank: 1 }]);
 
 		const again = await retrieveMemory({ store, storyId: "s5", query: "" });
-		expect(again).toEqual(hits);
+		expect(again.hits).toEqual(hits);
+		expect(again.filter).toEqual({
+			viewpoint: null,
+			eventsBeforeFilter: 2,
+			eventsAfterFilter: 2,
+			chunksExcluded: false,
+		});
 	});
 
 	it("limit 默认 8 且限制在 1 到 50", async () => {
@@ -379,10 +385,11 @@ describe("多路融合检索", () => {
 			parentId = node.id;
 		}
 
-		const hits = await retrieveMemory({ store, storyId: "s6", query: "" });
+		const { hits } = await retrieveMemory({ store, storyId: "s6", query: "" });
 		expect(hits).toHaveLength(8);
 		expect(
-			await retrieveMemory({ store, storyId: "s6", query: "", limit: 1 }),
+			(await retrieveMemory({ store, storyId: "s6", query: "", limit: 1 }))
+				.hits,
 		).toHaveLength(1);
 		await expect(
 			retrieveMemory({ store, storyId: "s6", query: "", limit: 0 }),
@@ -393,6 +400,205 @@ describe("多路融合检索", () => {
 		await expect(
 			retrieveMemory({ store, storyId: "s6", query: "", limit: 1.5 }),
 		).rejects.toThrow("检索条数必须是 1 到 50 之间的整数");
+	});
+
+	it("视角过滤只保留公开、星号与知情者命中的事件", async () => {
+		const { store } = openTempStore();
+		store.createStory({ id: "s9", title: "视角" });
+		const root = store.appendNode({
+			id: "n-root",
+			storyId: "s9",
+			parentId: null,
+			role: "system",
+			raw: "青铜匕首藏在井底。",
+		});
+		const starred = store.appendNode({
+			id: "n-star",
+			storyId: "s9",
+			parentId: root.id,
+			role: "assistant",
+			raw: "青铜匕首泛着冷光。",
+		});
+		const secret = store.appendNode({
+			id: "n-secret",
+			storyId: "s9",
+			parentId: starred.id,
+			role: "assistant",
+			raw: "守卫把青铜匕首收走。",
+		});
+		const known = store.appendNode({
+			id: "n-known",
+			storyId: "s9",
+			parentId: secret.id,
+			role: "assistant",
+			raw: "阿七记下了青铜匕首。",
+		});
+		const ask = store.appendNode({
+			id: "n-ask",
+			storyId: "s9",
+			parentId: known.id,
+			role: "user",
+			raw: "我记得青铜匕首吗？",
+		});
+		store.upsertEntity({
+			storyId: "s9",
+			kind: "character",
+			name: "林七",
+			source: "测试",
+			aliases: ["阿七"],
+		});
+		store.insertMemoryEvents([
+			{
+				storyId: "s9",
+				sourceNodeId: root.id,
+				ordinal: 0,
+				participants: ["我"],
+				importance: 0.9,
+				knowers: ["林七"],
+				text: "匕首在井底",
+			},
+			{
+				storyId: "s9",
+				sourceNodeId: starred.id,
+				ordinal: 0,
+				participants: ["我"],
+				importance: 0.8,
+				knowers: ["*"],
+				text: "所有人看见匕首",
+			},
+			{
+				storyId: "s9",
+				sourceNodeId: secret.id,
+				ordinal: 0,
+				participants: ["守卫"],
+				importance: 0.99,
+				knowers: ["守卫"],
+				text: "守卫收走匕首",
+			},
+			{
+				storyId: "s9",
+				sourceNodeId: known.id,
+				ordinal: 0,
+				participants: ["我"],
+				importance: 0.7,
+				knowers: ["阿七"],
+				text: "阿七记下匕首",
+			},
+		]);
+
+		const { hits, filter } = await retrieveMemory({
+			store,
+			storyId: "s9",
+			query: "青铜匕首",
+			beforeNodeId: ask.id,
+			viewpoint: "阿七",
+		});
+		expect(hits.map((hit) => `${hit.kind}:${hit.nodeId}`)).toEqual([
+			"event:n-root",
+			"event:n-star",
+			"event:n-known",
+		]);
+		expect(filter).toEqual({
+			viewpoint: "阿七",
+			eventsBeforeFilter: 4,
+			eventsAfterFilter: 3,
+			chunksExcluded: true,
+		});
+
+		const omniscient = await retrieveMemory({
+			store,
+			storyId: "s9",
+			query: "青铜匕首",
+			beforeNodeId: ask.id,
+		});
+		expect(omniscient.filter).toEqual({
+			viewpoint: null,
+			eventsBeforeFilter: 4,
+			eventsAfterFilter: 4,
+			chunksExcluded: false,
+		});
+		expect(omniscient.hits.some((hit) => hit.kind === "chunk")).toBe(true);
+		expect(omniscient.hits.some((hit) => hit.nodeId === secret.id)).toBe(true);
+	});
+
+	it("视角与知情者按实体别名双向匹配", async () => {
+		const { store } = openTempStore();
+		store.createStory({ id: "s10", title: "别名" });
+		const root = store.appendNode({
+			id: "n-root",
+			storyId: "s10",
+			parentId: null,
+			role: "system",
+			raw: "开场。",
+		});
+		const tale = store.appendNode({
+			id: "n-tale",
+			storyId: "s10",
+			parentId: root.id,
+			role: "assistant",
+			raw: "只有阿七知道暗道。",
+		});
+		const ask = store.appendNode({
+			id: "n-ask",
+			storyId: "s10",
+			parentId: tale.id,
+			role: "user",
+			raw: "暗道在哪里？",
+		});
+		store.upsertEntity({
+			storyId: "s10",
+			kind: "character",
+			name: "林七",
+			source: "测试",
+			aliases: ["阿七"],
+		});
+		store.insertMemoryEvents([
+			{
+				storyId: "s10",
+				sourceNodeId: tale.id,
+				ordinal: 0,
+				participants: ["阿七"],
+				importance: 0.6,
+				knowers: ["阿七"],
+				text: "阿七知道暗道",
+			},
+			{
+				storyId: "s10",
+				sourceNodeId: root.id,
+				ordinal: 0,
+				participants: ["我"],
+				importance: 0.5,
+				knowers: [],
+				text: "开场",
+			},
+		]);
+
+		for (const viewpoint of ["林七", "阿七", "林 七"]) {
+			const result = await retrieveMemory({
+				store,
+				storyId: "s10",
+				query: "暗道",
+				beforeNodeId: ask.id,
+				viewpoint,
+			});
+			expect(result.hits.map((hit) => `${hit.kind}:${hit.nodeId}`)).toEqual([
+				"event:n-tale",
+				"event:n-root",
+			]);
+			expect(result.filter.eventsAfterFilter).toBe(2);
+		}
+
+		const outsider = await retrieveMemory({
+			store,
+			storyId: "s10",
+			query: "暗道",
+			beforeNodeId: ask.id,
+			viewpoint: "陌生人",
+		});
+		expect(outsider.hits.map((hit) => `${hit.kind}:${hit.nodeId}`)).toEqual([
+			"event:n-root",
+		]);
+		expect(outsider.filter.eventsAfterFilter).toBe(1);
 	});
 
 	it("缺失故事、缺失楼层与跨故事的 beforeNodeId 抛错", async () => {
