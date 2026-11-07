@@ -26,6 +26,7 @@
 		"evalset": "tsc -b && node dist/evalset/cli.js",
 		"evalset:events": "tsc -b && node dist/evalset/event-cli.js",
 		"memory-eval": "tsc -b && node dist/evalset/memory-cli.js",
+		"director-eval": "tsc -b && node dist/evalset/director-cli.js",
 		"report": "tsc -b && node dist/health/cli.js",
 		"reference": "tsc -b && node dist/reference/cli.js",
 		"reference:cosine": "tsc -b && node dist/reference/cli.js --cosine"

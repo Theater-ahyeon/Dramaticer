@@ -8,15 +8,8 @@ import {
 	type LlmStreamingClient,
 	StoryStore,
 	createDefaultContextTemplate,
-	createDirectorSlotProvider,
 	createEmbeddingClient,
-	createHistorySlotProvider,
 	createLlmClient,
-	createLoreSlotProvider,
-	createMemorySlotProvider,
-	createStateSlotProvider,
-	createStaticSlotProvider,
-	createSummarySlotProvider,
 	loadChannelsConfig,
 	loadDotEnv,
 	resolveStructuredOutputMode,
@@ -26,14 +19,8 @@ import {
 	type StCharacterCard,
 	parseCharacterCardFile,
 } from "../character-card.js";
-import { importDramaticerExtension } from "../dramaticer-extension.js";
-import { importCharacterCardEntity } from "../entity-import.js";
-import {
-	importCharacterBookLore,
-	importWorldInfoLore,
-} from "../lore-import.js";
 import { type StWorldInfo, parseWorldInfoFile } from "../world-info.js";
-import { renderCharacterPrompt } from "./character.js";
+import { createChatProviders, importCardContent } from "./session.js";
 
 const repoRoot = fileURLToPath(new URL("../../../../", import.meta.url));
 
@@ -142,20 +129,11 @@ export async function runChatCli(
 			}
 			log(`已创建故事 ${parsed.storyId}`);
 		}
-		importCharacterCardEntity(store, parsed.storyId, card);
-		if (card.characterBook !== null) {
-			importCharacterBookLore(
-				store,
-				parsed.storyId,
-				card.characterBook,
-				card.name,
-			);
-		}
+		const worlds: StWorldInfo[] = [];
 		for (const worldPath of parsed.worldPaths) {
-			const worldInfo = await loadWorld(worldPath);
-			importWorldInfoLore(store, parsed.storyId, worldInfo);
+			worlds.push(await loadWorld(worldPath));
 		}
-		importDramaticerExtension(store, parsed.storyId, card);
+		importCardContent(store, parsed.storyId, { card, worlds });
 		const budgetTokens =
 			parsed.budgetTokens ?? model.contextWindow - model.maxTokens;
 		if (budgetTokens <= 0) {
@@ -169,23 +147,14 @@ export async function runChatCli(
 			storyId: parsed.storyId,
 			userText: parsed.userText,
 			template: createDefaultContextTemplate({ structuredOutput: mode }),
-			providers: {
-				character: createStaticSlotProvider(
-					[{ role: "system", content: renderCharacterPrompt(card) }],
-					`card:${card.name}`,
-				),
-				history: createHistorySlotProvider(store),
-				state: createStateSlotProvider(store),
-				summary: createSummarySlotProvider(store),
-				memory: createMemorySlotProvider(store, { embedder }),
-				lore: createLoreSlotProvider(store),
-				director: createDirectorSlotProvider(store, {
-					config: {
-						...DEFAULT_DIRECTOR_CONFIG,
-						enabled: parsed.directorEnabled,
-					},
-				}),
-			},
+			providers: createChatProviders(store, {
+				card,
+				embedder,
+				directorConfig: {
+					...DEFAULT_DIRECTOR_CONFIG,
+					enabled: parsed.directorEnabled,
+				},
+			}),
 			budgetTokens,
 			structuredOutput: mode,
 			model: modelAlias,

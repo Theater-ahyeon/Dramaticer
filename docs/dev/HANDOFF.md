@@ -3,43 +3,48 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：63
-- 任务：M3-T07 节奏状态机
+- 会话：64
+- 任务：M3-T08 Director 开关对比评测
 - 结果：完成（`DONE`）。
-  - core 新增 `director/pacing.ts`，机制名 `pacing`，注册在 `event_pool` 之后，优先级 5（低于事件池 10，有更具体的建议时让位）。
-  - 张力优先读配置 `tensionPath` 的状态快照值：必须是 0 到 1 之间的数字，越界或类型不符直接抛错；路径不存在时回退推导。
-  - 推导张力只看当前路径最近 3 个已确认助手楼层（`TENSION_WINDOW_FLOORS = 3`）：状态 diff 总数除以 `3 × tensionStateDiffsPerFloor`（默认 2）、新建笔记数除以 `3 × tensionNotesPerFloor`（默认 1）、这三个楼层里最后一个事件的重要度；权重 `tensionStateWeight = 0.4`、`tensionNoteWeight = 0.3`、`tensionEventWeight = 0.3`，三分量都截断到 0 到 1，加权和再截断。
-  - 阶段转移：`setup` 在张力 ≥ 0.33 且持续 `max(1, ceil(minSetupFloors / pace))` 楼后进入 `escalate`；`escalate` 在张力 ≥ 0.67 且持续 `max(1, ceil(minEscalateFloors / pace))` 楼后进入 `climax`；`climax` 持续 7 楼后进入 `breathe`；`breathe` 持续 6 楼后回到 `setup`。`minSetupFloors` 与 `minEscalateFloors` 默认 2，`pace` 默认 1。
-  - 只在阶段变化时触发建议，每个阶段一条固定指令（`setup` 在喘息结束后出现）；当前阶段、张力来源、分量、阈值、权重、`phaseStartNodeId` 与 `changed` 写入 `signals.pacing`。
-  - 状态恢复：按当前路径的决策记录取最近一条 `signals.pacing`，已持续楼层数等于当前位置减去 `phaseStartNodeId` 的位置；起点不在当前路径时按没有历史处理；分支切换只读当前路径。
-  - 配置新增 `tensionPath`（可选）、`tensionEscalate`、`tensionClimax`、三个张力权重、`tensionStateDiffsPerFloor`、`tensionNotesPerFloor`、`pace`、`minSetupFloors`、`minEscalateFloors`、`climaxFloors`、`breatheFloors`；非法路径、阈值、权重、`pace` 与楼层参数在评估时抛错。
-  - 测试：新增 `packages/core/test/pacing.test.ts`（6 个：无历史、四类转移、`pace` 快慢、分支隔离、推导张力、非法配置）；三个既有机制列表断言补 `pacing`；门禁 `pnpm check` 通过（72 个测试文件，558 个测试通过，3 个 live 跳过）；ADR-0026。
+  - 新增 `pnpm --filter @dramaticer/st-compat director-eval`：从 `eval-private/raw/` 的 3 个 legacy 对话导入楼层树，沿主路径按 `interval`（默认 100）取已确认助手楼层作为分支点，要求后面还有至少 `rounds` 条真实用户消息；每个对话最多 `maxBranchPointsPerStory` 个（默认 2）。
+  - 回放：每个对话建一次种子数据库（对话、卡、世界书、实体、块与向量），每个回放复制种子库并把 head 指到分支点；只用后续真实用户消息，助手回复由当前模型重新生成。开启与关闭导演使用同一前缀、同一模型与同一结构化输出模式。种子库不建事件表与摘要；生成楼层的块向量在下一轮导演评估前写入。
+  - 度量：相邻块 Jaccard 复用参照文本统计（每行一个块、字符 4-gram），节拍余弦复用 M3-T06 的块向量平均与相邻余弦；线索兑现按后续回复包含笔记正文连续 4 个规范化字符判定，同一轮笔记不参与；机制触发来自决策记录，被选中来自 Trace 的 `director:<mechanism>`。
+  - 真实运行：`--interval 100 --rounds 5 --pairs 3 --max-points 1`，18 次回放、90 个生成楼层、0 失败。Jaccard 均值开启 0.0915、关闭 0.0940；余弦均值开启 0.9018、关闭 0.9053。每个对话的 Jaccard 方向不一致（对话 1、2 开启更高，对话 3 开启更低）。pacing 触发 9 次并且 9 次被选中；关闭模式 0 条决策记录、0 条导演消息。
+  - 模型在 90 轮里没有输出 `plot_note`，新建/兑现笔记为 0/0，兑现率按无样本记为 `—`；报告在限制里写明。线索回收率这次没有可用样本，M3-T99 不能据此确认“开启后线索回收率提高”。
+  - 新增 `chat/session.ts` 抽出卡内容导入与槽位组装，`dramaticer chat` 与回放共用；core 导出 `meanVector` 与 `cosineSimilarity` 供评测复用。新增 `director-replay.ts`、`director-eval.ts`、`director-report.ts`、`director-cli.ts` 与 9 个测试；ADR-0027。
+  - 两份报告：`eval-private/reports/m3-director.md`（逐次回放）与 `docs/dev/reports/M3-director.md`（只有数字、对话编号、模型别名与配置）；门禁 `pnpm check` 通过（70 个测试文件，567 个测试通过，3 个 live 跳过）。
 
 ## 当前状态
-- M0、M1、M2、D-T01 至 D-T04、M3-T00 至 M3-T07 完成。
-- 门禁：`pnpm check` 通过（558 个测试）；live 测试需要 `DRAMATICER_LIVE=1`。
+- M0、M1、M2、D-T01 至 D-T04、M3-T00 至 M3-T08 完成；M3-T99 待做。
+- 门禁：`pnpm check` 通过（567 个测试）；live 测试需要 `DRAMATICER_LIVE=1`。
 - 数据库 schema 版本 16。
 - 快照：`eval-private/raw/` 有 94 个文件；manifest 记录 `corpus` 与 `sourceMtime`。`eval-private/reference/` 有 5 部参照小说。
 - 事件表仍未建立；记忆评测的事件路记 0，M3 不要引用这组事件数字。
 - HUMAN-03（事件题抽查）仍未完成，不阻塞任何任务；其余 HUMAN 条目均已完成。
+- `director-eval` 的模型回复缓存已关闭，保证 `pairs` 是独立样本；embedding 内容缓存保留在 `eval-private/memory-cache/embeddings/`。一次完整运行（默认 2 个分支点）会明显长于本次的 18 次回放，注意时间。
 
 ## 下一步
-- **M3-T08**（下一个会话）：Director 开关对比评测。依赖已全部满足（T02、T04、T05、T06、T07、D-T04）。新增 `pnpm --filter @dramaticer/st-compat director-eval`：从 `eval-private/raw/` 读取评测对话，按固定间隔选分支点，用后续真实用户消息回放；同一分支点分别以导演开启与关闭生成，各运行 `pairs` 次（默认 3）。报告给出开启与关闭的相邻块 Jaccard、M3-T06 节拍余弦、线索回收率（新建与兑现笔记数、兑现时平均年龄）与每个机制的触发/被选中次数；单个分支点失败不中断整批；详细报告写 `eval-private/reports/m3-director.md`，统计版写 `docs/dev/reports/M3-director.md`（只含数字、模型别名与配置）。回放框架用注入的假生成器补单元测试，真实渠道运行记录写进报告与 HANDOFF。回放时注意 Director 只在阶段变化时输出节奏指令，`setup` 初始不输出。
-- 然后 M3-T99（M3 验收），重点复核 I6、I7、I9 与 T08 的重复度、线索回收率门槛。
+- **M3-T99**（下一个会话）：M3 验收。依赖 M3 全部任务。
+  - 重跑 `pnpm check` 与 live 测试；逐条核对 I1–I10，重点 I6（主循环只有一次主模型调用加最多 2 轮读取工具，导演不增加调用）、I7、I9（导演实时决策不调用 LLM）。
+  - 逐条核对 M3-T08 的门槛：统计版报告里 Jaccard 与余弦的开启/关闭分布、每个对话的方向、机制触发数；本次 Jaccard 与余弦的差距很小且分对话方向不一致，M3-T99 需要如实判断“显著低于”是否成立，不能把 0.0915 对 0.0940 写成显著下降。
+  - 线索回收率本次没有样本（模型没有输出 `plot_note`），报告为 0/0 与 `—`；M3-T99 要写明这一限制，不能据此声称线索回收率提高。
+  - 复核 `director-eval` 的失败处理、报告脱敏、缓存关闭与统计口径；确认 M4 的条目（M4-T00 拆解）。
+  - 结论写入 `docs/dev/reports/M3.md`，结果写 `MILESTONE_DONE`。
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
 - 事件抽取每次约 1,219 个请求；后台渠道实测约 2.7 次/分钟，不要在一个会话里等待它跑完。
 - `memory-eval` 默认删除临时库；`--db` 指定仓库内路径时同样在结束时删除。embedding 缓存保留。
+- `director-eval` 的 `workDir` 默认在 `eval-private/memory-cache/tmp/director-eval`，结束时整目录删除；种子库与每次回放库都在这里。
 - 状态题 JSONL 必须带 `path`（非空字符串数组）；事件题不要带这个字段。
-- 统计版报告不能出现私有故事名、原文或题目文本；参照统计版不能出现版权作品名、文件名或原文。写入前先检查。
+- 统计版报告不能出现私有故事名、原文或题目文本；参照统计版不能出现版权作品名、文件名或原文。写入前先检查。`director-eval` 的统计版只用“对话 N”，不写实际故事 id。
 - 参照报告默认读取 `eval-private/reports/reference-cosine.json` 里的余弦校准；更换 embedding 模型或维度后要重新运行 `reference:cosine`。
 - 新语料的两个对话共用一份世界书，manifest 只保留首次出现的 `character`；按卡里的 `extensions.world` / `character_book` 解析配对。
 - 预设从 58 个变为 74 个，其中一个旧预设被人类改过；不要假设预设哈希与 M0 一致。
 - 不要把 `eval-private/memory-cache/`、`eval-private/reports/`、临时数据库、`eval-private/raw/`、`eval-private/reference/` 加进提交。
 - 不要修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 下的文件。
 - 提交前跑 `pnpm check`；新增依赖要登记到 `docs/dev/DEPENDENCIES.md`。
-- 临时脚本放 `.devloop/scratch/`（已被 git 忽略），用完删除。
+- 临时脚本放 `.devloop/scratch/`（已被 git 忽略），用完删除（本次的 `director-eval.log` 已删除）。
 - 安装依赖时用 `HTTP_PROXY= HTTPS_PROXY= pnpm install`。
 - 渠道行为（ADR-0009、ADR-0011）：`reasoning:"off"` 在该渠道仍会输出思考并消耗输出 token；abort 后 `usage` 全为 0；gcli2api 必须把 Gemini API 路径挂在 baseUrl 根下；该渠道不支持预填充。
 - live 测试用 `DRAMATICER_LIVE=1` 开启；`*.live.test.ts` 会被门禁的 I10 扫描排除。

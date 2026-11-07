@@ -269,7 +269,8 @@ function describeIdle(
 	return parts.join("；");
 }
 
-function meanVector(
+/** 楼层向量取全部块向量的平均值；评测复用同一口径。 */
+export function meanVector(
 	vectors: readonly (readonly number[])[],
 	label: string,
 ): number[] {
@@ -298,7 +299,8 @@ function meanVector(
 	return total;
 }
 
-function cosineSimilarity(
+/** 相邻节拍相似度与重复度评测共用的余弦计算。 */
+export function cosineSimilarity(
 	left: readonly number[],
 	right: readonly number[],
 ): number {
