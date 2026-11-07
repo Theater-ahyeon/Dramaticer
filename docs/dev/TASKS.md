@@ -87,9 +87,54 @@
   做什么：解析 ACU 表格数据（`chat_metadata.sheets`，以及消息里的 `TavernDB_ACU_*`、`hash_sheets` 字段，先写探测代码弄清楚结构），在提问楼层时刻取出表格内容，判断答案是否出现在表格里（先用规范化字符串匹配；有 LLM 渠道时再加一个可选的 LLM 判定）。如果某个对话里没有 ACU 数据，就记为"不适用"。
   验收：报告里有"ACU 覆盖率"这个对照数字。
 
-- [ ] **M0-REVIEW-1 代码与不变量审查**（ADR-0002 要求累计推进 8 项任务后插入；M0-T11 完成时已到期） | 依赖：M0-T13
+- [x] **M0-REVIEW-1 代码与不变量审查**（ADR-0002 要求累计推进 8 项任务后插入；M0-T11 完成时已到期） | 依赖：M0-T13
+  完成：2026-11-06 结论写入 `docs/dev/reports/M0-review-1.md`（I1–I10 逐条判断依据；32 条代码问题、7 条文档不同步、测试覆盖缺口；门禁 157 个测试通过）；发现问题转成 M0-FIX-1 到 M0-FIX-11，门禁脚本的两处缺口写进 HUMAN-06
   做什么：审查 `packages/core`、`packages/st-compat`、`scripts/` 的代码质量（没有用到的代码、重复实现、错误处理、fast-fail）；逐条核对不变量 I1–I10，其中 I4、I5、I6、I8、I9 必须指出对应的测试；检查 TASKS、HANDOFF、DECISIONS、DESIGN、DEPENDENCIES 与代码是否同步；列出没有测试覆盖的导出模块和 CLI 路径。
   验收：结论写进 `docs/dev/reports/M0-review-1.md`；每个发现的问题转成 `M0-FIX-n` 修复任务插在本任务下面并写清验收标准；没有问题的条目也要写出判断依据。
+
+- [ ] **M0-FIX-1 导入原子性与状态快照** | 依赖：M0-REVIEW-1
+  做什么：`packages/st-compat/src/chat-import.ts` 的整次导入放进一个事务，失败后库内不残留故事、楼层、diff 与 FTS 条目；`swipe_id` 越界或非整数时直接抛错，节点 id 与 MVU 快照取自同一个下标；`readSnapshot` 的嵌套空对象（`{"stat_data":{}}`）语义补测试；状态题测试改为先导入 store，再用 `getStateDiffsAlongPath` 回放并断言与题目答案一致。
+  验收：新增“坏行在文件末尾时库内为空、修正后可以重新导入”“越界 swipe_id 抛错”“嵌套空对象生成删除 diff 且回放正确”“题目答案与 store 回放一致”四组测试；`pnpm check` 通过。
+
+- [ ] **M0-FIX-2 聊天与角色卡解析边界** | 依赖：M0-REVIEW-1
+  做什么：`chat-jsonl.ts` 首行剥离 U+FEFF；删除没有调用的 `stripCarriageReturn`（或让 `splitChatLines` 的两处内联改为调用它）；`character-card.ts` 改用 `field-readers.ts` 的读取函数并删除本地重复实现；`src/index.ts` 不再公开 `SourceLine`、`splitChatLines`、`isPngData`、`SnapshotDiffOp` 等没有外部消费者的符号；给 `test/png-fixture.ts` 增加写入原始文本的选项，补 tEXt 解码失败与非法 base64 两条用例。
+  验收：BOM 用例覆盖 `parseChatJsonl` 与 `parseChatJsonlFile`；角色卡错误文案与现有测试保持一致；新增两条 PNG 失败路径测试；`pnpm check` 通过。
+
+- [ ] **M0-FIX-3 后台 LLM 客户端重试与中止** | 依赖：M0-REVIEW-1
+  做什么：`packages/core/src/llm/client.ts` 只在响应体解析抛出 `SyntaxError` 时按“响应体不是 JSON”处理，其余读取错误原样抛出；2xx 且响应体非法时只发一次 HTTP 请求；等待（重试退避与限速）监听 `request.signal`，`Retry-After` 设上限；缓存键并入 `apiKey` 的摘要；`stableJson` 丢弃值为 `undefined` 的属性、`Date` 等按 `JSON.stringify` 处理；删除不可达的 `throw lastError` 与 `LlmResponseError` 重试分支。
+  验收：新增用例覆盖 2xx 非 JSON 只请求一次、中止抛出 `AbortError`、`Retry-After` 上限、`undefined` 属性与 `apiKey` 影响缓存键、`parseCompletion` 四个错误分支、5xx 重试与错误体的 `status`/`body`；`pnpm check` 通过。
+
+- [ ] **M0-FIX-4 检索规范化与命中口径** | 依赖：M0-REVIEW-1
+  做什么：`ChunkIndex` 的写入与查询使用同一套规范化（NFKC、去掉标点/符号/空白中的一致处理）；`evalset/retrieval.ts` 按 `nodeId` 保序去重后取前 K；`askAtNode` 序号越界直接抛错；补分块与索引的边界测试（长度等于 `maxChars`、等于 `maxChars + 1`、末尾残片小于 `step`、`\r\n` 归一化、`limit` 上限、重复写入、`toThrow` 按消息断言）。
+  验收：新增“全角文本写入后全角查询命中”“带标点查询命中”“同一楼层多个块只占一个位次”“越界 askAtNode 抛错”等用例；重新跑 `pnpm --filter @dramaticer/st-compat report` 并用新的命中数字更新 `docs/dev/reports/M0-health.md`；`pnpm check` 通过。
+
+- [ ] **M0-FIX-5 ACU 快照逐单元格判定** | 依赖：M0-FIX-4
+  做什么：`evalset/acu.ts` 的快照改为返回值数组（单元格历史与 SQL 重放都返回值列表），逐值规范化后判断包含，不再把相邻单元格拼成一段文本；提问楼层在聊天里不存在时抛出并列出题目 id；补“负例”：表格里只有 `集市` 与 `时间` 两个单元格时，答案 `集市时间` 判为未命中，`集市` 仍命中。
+  验收：fixture 上两种答案的判定符合上述预期；重新跑报告，更新私有版与统计版的 ACU 章节数字；`pnpm check` 通过。
+
+- [ ] **M0-FIX-6 存储层校验与测试资源清理** | 依赖：M0-REVIEW-1
+  做什么：`getStateDiffs` 对不存在的楼层抛错；`applyMigrations` 入口校验 `MIGRATIONS[i].version === i + 1`；`rowToStateDiff` 校验 `path` 是非空字符串数组；删除 `getLatestSchemaVersion`；`store.test.ts` 的版本测试注册临时目录清理，并清理仓库里已积累的 `.tmp-store-*` 目录。
+  验收：补齐对应测试（存在性抛错、乱序迁移列表抛错、非法 `path` 抛错）；重复运行测试后 `packages/core/test/` 下不再新增 `.tmp-store-*`；`pnpm check` 通过。
+
+- [ ] **M0-FIX-7 体检报告口径与 CLI 入口** | 依赖：M0-FIX-4、M0-FIX-5
+  做什么：`HealthTotals` 增加 `headerBytes` 并在统计版表中单列；字段字节统计保留全量，截断只放在渲染层；`extraSwipeCount` 按每条消息累加 `max(0, swipes.length - 1)`（或删除字段）；`ratio` 对 `0/0` 返回 `null` 并显示 `—`；删除 `totals.rawBytes` 或把它加入报告；合并 `health/report.ts` 对 `health/manifest.ts` 的再导出；把 `health/cli.ts` 抽成可注入路径的 `runHealthCli` 并测试，覆盖 `renderAcuSection` 与 `collectHealthReport` 的两条抛错分支。
+  验收：两份报告重新生成；新增合计差额小于 1% 的断言、每个对话第 11 名字段的 fixture、ACU 段落测试、statistics 版私有字段的整表反向断言；`pnpm check` 通过。
+
+- [ ] **M0-FIX-8 正则分类器与统计参数** | 依赖：M0-REVIEW-1
+  做什么：`hasRenderSibling` 跳过 `disabled` 的兄弟脚本；删除 `classifyCore` 里不可达的最后一个分支；`analyzeDuplication` 入口统一校验 `ngramSize`、`windowSize`、`step`、`riseWindows` 为正整数；`token-estimate` 补谚文区间；`countMacros` 取消导出（测试改用 `scanMacros`），`REGEX_CATEGORY_ORDER` 取消导出。
+  验收：新增“启用流式 + 停用渲染 → 不可升级”“三个非法参数各抛错”“韩文 token 估算”用例；报告里的可升级比例随启发式修正重新生成；`pnpm check` 通过。
+
+- [ ] **M0-FIX-9 评测集 CLI 与题目文件** | 依赖：M0-REVIEW-1
+  做什么：`readQuestionFile` 拒绝重复 `id` 并给出文件与行号；事件题解析阶段的结构校验失败计入失败记录；20% 抽查与状态题抽样改为确定性（固定种子或 id 哈希），连续两次运行样本一致；`event-cli` 的 `--story` 运行时按故事分别写文件、汇总时合并已有条目，不覆盖全局 `spotcheck.md` 与 `event-summary.json`；删除 `EventQuestionStats` 里没有读取方的三个字段；给 `*FromFile` 包装、`sanitizeFileName`、`storyIdOf`、`evalset/cli.ts` 的题量区间与 `summary.json` 写出、`event-cli` 的 `.env` 缺失错误补测试；合并 evalset 内重复的计分与 `requireNonEmpty` 辅助。
+  验收：新增测试覆盖上述每一条；`.env` 缺失时错误信息包含文件路径；`pnpm check` 通过（不调用 LLM，使用注入的假客户端）。
+
+- [ ] **M0-FIX-10 manifest 完整性校验** | 依赖：M0-REVIEW-1
+  做什么：`health/manifest.ts` 保留 `size` 与 `sha256`；读取 raw 前用 `stat` 与流式哈希比对，不一致时指出 `target` 并抛错。调用方（`collectHealthReport`、`collectRetrievalBaseline`、`collectAcuBaseline`、`evalset/cli.ts`、`evalset/event-cli.ts`）统一走同一入口。
+  验收：新增“篡改一个 raw 文件后 report 抛错并指出 target”的测试（在临时目录构造）；`pnpm check` 通过。
+
+- [ ] **M0-FIX-11 依赖声明与文档同步** | 依赖：M0-FIX-2、M0-FIX-7
+  做什么：`packages/st-compat/package.json` 声明 `png-chunks-extract` 与 `png-chunk-text`（根目录保留给快照脚本的副本或删除），`DEPENDENCIES.md` 区分包内与根目录依赖并说明工作区依赖豁免；`core/src/json.ts` 与 `st-compat/src/json.ts` 只保留一份对象守卫；处理 `MemoryEvent`（删除或在 M2 任务里挂引用）；`DESIGN.md` §5 的 `state_diffs` 字段改为 `path`；ADR-0007 补缓存键包含 `baseUrl`；`HANDOFF.md` 删除未实现的 `sheet_replace` 描述；修正 `TASKS.md` 与 `LOG.md` 里过期的测试计数与 47.8%。
+  验收：`pnpm install` 后 `pnpm check` 通过；`git diff` 里的文档数字与当前报告一致；不再有未声明的 import。
 
 - [ ] **M0-T99 M0 验收与 M1 准备** | 依赖：M0 全部任务（M0-T11 如果被 HUMAN-01 阻塞，可以跳过，在报告里注明"事件类题目缺失"，等 HUMAN-01 处理完后再补做）
   做什么：运行所有报告；在 `docs/dev/reports/M0.md` 里总结：哪些设计假设被数据证实了，哪些被推翻了（推翻的写 ADR 并更新 DESIGN）；逐条审查不变量 I1–I10；确认 M1 的任务清单还适用（不适用就修改）。
