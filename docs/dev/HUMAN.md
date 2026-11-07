@@ -10,5 +10,5 @@ agent 遇到只有人类才能做的事，就记在这里，并在 TASKS 里把�
 | HUMAN-04 | 已关闭（2026-11-07：人类决定不再验证 Gemini 原生协议与 gcli2api，见 ADR-0020；渠道验证以 openai-completions 为准） | 不阻塞 | 原事项：验证 Gemini 原生自定义 baseUrl 指向本机 gcli2api；已取消 | 无 |
 | HUMAN-05 | 已完成（2026-11-06：`.env` 的后台与正文模型都改成 `opendesign/deepseek-v4.1-flash`，经 magpie 网关实测 `/v1/chat/completions` 返回 200、2.5 秒） | 不阻塞 | 后台渠道 `antigravity/gemini-3.8-flash` 的账号已被上游停用（HTTP 403，违反服务条款）。M0-T11 的第三个对话已用环境变量临时改用 `auto/deepseek-v4.1-flash` 完成；请在 `.env` 里换一个可用的后台渠道和模型（也可以继续用 magpie 里的其他模型），不要提交 `.env` | 无 |
 | HUMAN-06 | 已完成（2026-11-06：I1 关键词补 `marker`、`worldInfo\w*`；I10 改为扫描 `packages/*/test/` 下全部文件，`*.live.test.*` 除外，共匹配 45 个测试文件；`node scripts/check-invariants.mjs` 通过，`.devloop/protected.sha` 已同步） | 不阻塞 | `scripts/check-invariants.mjs` 的两处检查缺口已补齐 | 无 |
-| HUMAN-07 | 待处理 | 阻塞 | 把参照小说放进 `eval-private/reference/`：《龙族》《诡秘之主》等 2–5 部完整作品，仅供本地统计，agent 不联网下载。格式为 UTF-8 的 `.txt` 或 `.md`，每行一个段落；文件名会作为私有报告里的作品名。D-T03 的统计脚本已完成，处理后在 `eval-private/reference/` 放好文件即可；仓库已有公有领域 fixture（论语与唐诗选段）用于脚本测试，不需要再指定。处理后把状态改为“已完成”，D-T04 才能执行 | D-T04 |
+| HUMAN-07 | 已完成（2026-11-07：目录里只有《龙族》系列，放了 5 部——Ⅰ、Ⅱ、Ⅳ、Ⅴ、前传；Ⅴ 原文件是 GB18030，已转成 UTF-8；5 部合计约 162 万内容字符、3 万个段落；全部在 `eval-private/reference/`，已被 git 忽略） | 不阻塞 | 参照小说已就位，D-T04 可以执行 | 无 |
 | HUMAN-08 | 已完成（2026-11-07：接受 ADR-0023 的状态层口径——状态题用提问楼层的快照值与标准答案的一致率衡量，文本召回 13.6% @20 原样保留在报告里，45% 只作为文本召回目标） | 不阻塞 | 已确认 | 无 |
