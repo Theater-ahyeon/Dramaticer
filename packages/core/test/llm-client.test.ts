@@ -4,6 +4,7 @@ import { describe, expect, it, onTestFinished } from "vitest";
 import {
 	type LlmFetch,
 	LlmHttpError,
+	LlmResponseError,
 	OpenAiCompatibleClient,
 } from "../src/index.js";
 
@@ -262,5 +263,260 @@ describe("OpenAiCompatibleClient", () => {
 		});
 		expect(result.text).toBe("第一段第二段");
 		expect(result.usage.promptTokens).toBeNull();
+	});
+
+	it("2xx 但响应体不是 JSON 时只请求一次", async () => {
+		let calls = 0;
+		const fetchFn: LlmFetch = async () => {
+			calls += 1;
+			return new Response("<html>网关错误页</html>", {
+				status: 200,
+				headers: { "content-type": "text/html" },
+			});
+		};
+		const client = new OpenAiCompatibleClient(baseOptions({ fetchFn }));
+
+		const error = await client
+			.complete({ messages: [{ role: "user", content: "问题" }] })
+			.catch((caught: unknown) => caught);
+
+		expect(error).toBeInstanceOf(LlmResponseError);
+		expect((error as Error).message).toContain("渠道返回的不是 JSON");
+		expect(calls).toBe(1);
+	});
+
+	it("响应体读取时的非语法错误原样抛出，不重试", async () => {
+		let calls = 0;
+		const bodyError = new TypeError("响应体读取失败");
+		const fetchFn: LlmFetch = async () => {
+			calls += 1;
+			const response = new Response("{}", { status: 200 });
+			response.json = async () => {
+				throw bodyError;
+			};
+			return response;
+		};
+		const client = new OpenAiCompatibleClient(baseOptions({ fetchFn }));
+
+		await expect(
+			client.complete({ messages: [{ role: "user", content: "问题" }] }),
+		).rejects.toBe(bodyError);
+		expect(calls).toBe(1);
+	});
+
+	it("重试等待期间响应中止信号并抛出 AbortError", async () => {
+		const controller = new AbortController();
+		let seenSignal: AbortSignal | undefined;
+		const client = new OpenAiCompatibleClient(
+			baseOptions({
+				maxRetries: 3,
+				fetchFn: async () =>
+					jsonResponse({ error: { message: "限流" } }, 429, {
+						"retry-after": "30",
+					}),
+				sleep: (_ms, signal) => {
+					seenSignal = signal;
+					const { promise, reject } = Promise.withResolvers<void>();
+					if (!signal) {
+						reject(new Error("等待时必须传中止信号"));
+					} else if (signal.aborted) {
+						reject(signal.reason);
+					} else {
+						signal.addEventListener("abort", () => reject(signal.reason), {
+							once: true,
+						});
+						queueMicrotask(() => controller.abort());
+					}
+					return promise;
+				},
+			}),
+		);
+
+		await expect(
+			client.complete({
+				messages: [{ role: "user", content: "问题" }],
+				signal: controller.signal,
+			}),
+		).rejects.toMatchObject({ name: "AbortError" });
+		expect(seenSignal).toBe(controller.signal);
+	});
+
+	it("已经中止的信号在发起请求前就抛出 AbortError", async () => {
+		const controller = new AbortController();
+		controller.abort();
+		let calls = 0;
+		const client = new OpenAiCompatibleClient(
+			baseOptions({
+				fetchFn: async () => {
+					calls += 1;
+					return jsonResponse(completionPayload("不应到达"));
+				},
+			}),
+		);
+
+		await expect(
+			client.complete({
+				messages: [{ role: "user", content: "问题" }],
+				signal: controller.signal,
+			}),
+		).rejects.toMatchObject({ name: "AbortError" });
+		expect(calls).toBe(0);
+	});
+
+	it("Retry-After 超过上限时按上限等待", async () => {
+		const sleeps: number[] = [];
+		let attempt = 0;
+		const fetchFn: LlmFetch = async () => {
+			attempt += 1;
+			if (attempt === 1) {
+				return jsonResponse({ error: { message: "限流" } }, 429, {
+					"retry-after": "3600",
+				});
+			}
+			return jsonResponse(completionPayload("成功"));
+		};
+		const client = new OpenAiCompatibleClient(
+			baseOptions({
+				fetchFn,
+				maxRetryAfterMs: 5_000,
+				sleep: async (ms) => {
+					sleeps.push(ms);
+				},
+			}),
+		);
+
+		await client.complete({ messages: [{ role: "user", content: "问题" }] });
+
+		expect(sleeps).toEqual([5_000]);
+	});
+
+	it("缓存键忽略 undefined 属性，Date 按 JSON 序列化", async () => {
+		const cacheDir = tempCacheDir();
+		let calls = 0;
+		const fetchFn: LlmFetch = async () => {
+			calls += 1;
+			return jsonResponse(completionPayload("缓存内容"));
+		};
+		const options = baseOptions({ fetchFn, cacheDir });
+		const request = (extraBody: Record<string, unknown>) => ({
+			messages: [{ role: "user" as const, content: "问题" }],
+			extraBody,
+		});
+
+		await new OpenAiCompatibleClient(options).complete(
+			request({
+				seed: 1,
+				tag: undefined,
+				at: new Date("2026-01-01T00:00:00.000Z"),
+			}),
+		);
+		const hit = await new OpenAiCompatibleClient(options).complete(
+			request({ seed: 1, at: new Date("2026-01-01T00:00:00.000Z") }),
+		);
+		expect(hit.cached).toBe(true);
+		expect(calls).toBe(1);
+
+		const miss = await new OpenAiCompatibleClient(options).complete(
+			request({ seed: 1, at: new Date("2026-01-02T00:00:00.000Z") }),
+		);
+		expect(miss.cached).toBe(false);
+		expect(calls).toBe(2);
+	});
+
+	it("缓存键包含 apiKey 的摘要", async () => {
+		const cacheDir = tempCacheDir();
+		let calls = 0;
+		const fetchFn: LlmFetch = async () => {
+			calls += 1;
+			return jsonResponse(completionPayload("内容"));
+		};
+		const request = {
+			messages: [{ role: "user" as const, content: "问题" }],
+		};
+
+		await new OpenAiCompatibleClient(
+			baseOptions({ fetchFn, cacheDir, apiKey: "key-a" }),
+		).complete(request);
+		await new OpenAiCompatibleClient(
+			baseOptions({ fetchFn, cacheDir, apiKey: "key-a" }),
+		).complete(request);
+		expect(calls).toBe(1);
+
+		await new OpenAiCompatibleClient(
+			baseOptions({ fetchFn, cacheDir, apiKey: "key-b" }),
+		).complete(request);
+		expect(calls).toBe(2);
+	});
+
+	it.each([
+		["响应不是对象", [1, 2, 3], "渠道响应不是对象"],
+		["响应里带错误", { error: { message: "配额不足" } }, "渠道响应里带错误"],
+		["缺少 choices", { model: "test-model" }, "渠道响应缺少 choices"],
+		["choices[0] 不是对象", { choices: ["文本"] }, "choices[0] 不是对象"],
+	] as const)("响应校验失败：%s", async (_label, payload, message) => {
+		let calls = 0;
+		const client = new OpenAiCompatibleClient(
+			baseOptions({
+				fetchFn: async () => {
+					calls += 1;
+					return jsonResponse(payload);
+				},
+			}),
+		);
+
+		const error = await client
+			.complete({ messages: [{ role: "user", content: "问题" }] })
+			.catch((caught: unknown) => caught);
+
+		expect(error).toBeInstanceOf(LlmResponseError);
+		expect((error as Error).message).toContain(message);
+		expect(calls).toBe(1);
+	});
+
+	it("5xx 会重试，并在成功后返回结果", async () => {
+		let attempt = 0;
+		const sleeps: number[] = [];
+		const fetchFn: LlmFetch = async () => {
+			attempt += 1;
+			if (attempt === 1) return new Response("上游不可用", { status: 503 });
+			return jsonResponse(completionPayload("恢复"));
+		};
+		const client = new OpenAiCompatibleClient(
+			baseOptions({
+				fetchFn,
+				sleep: async (ms) => {
+					sleeps.push(ms);
+				},
+			}),
+		);
+
+		const result = await client.complete({
+			messages: [{ role: "user", content: "问题" }],
+		});
+
+		expect(result.attempts).toBe(2);
+		expect(sleeps).toEqual([10]);
+	});
+
+	it("5xx 重试用尽后抛出带状态码与错误体的错误", async () => {
+		let calls = 0;
+		const client = new OpenAiCompatibleClient(
+			baseOptions({
+				maxRetries: 1,
+				fetchFn: async () => {
+					calls += 1;
+					return new Response("上游错误", { status: 500 });
+				},
+			}),
+		);
+
+		const error = await client
+			.complete({ messages: [{ role: "user", content: "问题" }] })
+			.catch((caught: unknown) => caught);
+
+		expect(error).toBeInstanceOf(LlmHttpError);
+		expect((error as LlmHttpError).status).toBe(500);
+		expect((error as LlmHttpError).body).toBe("上游错误");
+		expect(calls).toBe(2);
 	});
 });

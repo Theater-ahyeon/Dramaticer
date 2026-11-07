@@ -63,10 +63,15 @@ export interface OpenAiCompatibleClientOptions {
 	readonly maxRetries?: number;
 	readonly timeoutMs?: number;
 	readonly retryBaseDelayMs?: number;
+	/** 渠道给出的 Retry-After 超过这个毫秒数时按这个值等待，默认 60000。 */
+	readonly maxRetryAfterMs?: number;
 	/** 缓存目录；不设置就不缓存。 */
 	readonly cacheDir?: string | null;
 	readonly fetchFn?: LlmFetch;
-	readonly sleep?: (ms: number) => Promise<void>;
+	readonly sleep?: (
+		ms: number,
+		signal: AbortSignal | undefined,
+	) => Promise<void>;
 	readonly now?: () => number;
 }
 
@@ -99,9 +104,13 @@ interface ResolvedClientOptions {
 	readonly maxRetries: number;
 	readonly timeoutMs: number;
 	readonly retryBaseDelayMs: number;
+	readonly maxRetryAfterMs: number;
 	readonly cacheDir: string | null;
 	readonly fetchFn: LlmFetch;
-	readonly sleep: (ms: number) => Promise<void>;
+	readonly sleep: (
+		ms: number,
+		signal: AbortSignal | undefined,
+	) => Promise<void>;
 	readonly now: () => number;
 }
 
@@ -133,6 +142,7 @@ export class OpenAiCompatibleClient implements LlmClient {
 		const maxRetries = options.maxRetries ?? 4;
 		const timeoutMs = options.timeoutMs ?? 120_000;
 		const retryBaseDelayMs = options.retryBaseDelayMs ?? 1_000;
+		const maxRetryAfterMs = options.maxRetryAfterMs ?? 60_000;
 		if (!Number.isFinite(requestsPerMinute)) {
 			throw new Error("requestsPerMinute 必须是数字");
 		}
@@ -145,6 +155,9 @@ export class OpenAiCompatibleClient implements LlmClient {
 		if (!(retryBaseDelayMs >= 0)) {
 			throw new Error("retryBaseDelayMs 不能是负数");
 		}
+		if (!(maxRetryAfterMs > 0)) {
+			throw new Error("maxRetryAfterMs 必须是正数");
+		}
 		this.options = {
 			baseUrl,
 			apiKey: options.apiKey,
@@ -153,9 +166,11 @@ export class OpenAiCompatibleClient implements LlmClient {
 			maxRetries,
 			timeoutMs,
 			retryBaseDelayMs,
+			maxRetryAfterMs,
 			cacheDir: options.cacheDir ?? null,
 			fetchFn: options.fetchFn ?? ((url, init) => fetch(url, init)),
-			sleep: options.sleep ?? ((ms) => delay(ms)),
+			sleep:
+				options.sleep ?? ((ms, signal) => delay(ms, undefined, { signal })),
 			now: options.now ?? Date.now,
 		};
 	}
@@ -196,13 +211,8 @@ export class OpenAiCompatibleClient implements LlmClient {
 			headers.Authorization = `Bearer ${this.options.apiKey}`;
 		}
 
-		let lastError: unknown;
-		for (
-			let attempt = 1;
-			attempt <= this.options.maxRetries + 1;
-			attempt += 1
-		) {
-			await this.acquireSlot();
+		for (let attempt = 1; ; attempt += 1) {
+			await this.acquireSlot(request.signal);
 			let response: Response;
 			try {
 				response = await this.options.fetchFn(url, {
@@ -212,42 +222,42 @@ export class OpenAiCompatibleClient implements LlmClient {
 					signal: this.requestSignal(request.signal),
 				});
 			} catch (error) {
-				lastError = error;
+				throwIfAborted(request.signal);
 				if (!this.shouldRetry(error, attempt, request.signal)) throw error;
-				await this.backoff(attempt, null);
+				await this.backoff(attempt, null, request.signal);
 				continue;
 			}
 
 			if (!response.ok) {
 				const errorBody = await response.text();
+				throwIfAborted(request.signal);
 				const error = new LlmHttpError(response.status, errorBody);
-				lastError = error;
 				if (!this.shouldRetry(error, attempt, request.signal)) throw error;
-				await this.backoff(attempt, response.headers.get("retry-after"));
+				await this.backoff(
+					attempt,
+					response.headers.get("retry-after"),
+					request.signal,
+				);
 				continue;
 			}
 
-			let payload: unknown;
-			try {
-				payload = await response.json();
-			} catch (error) {
-				lastError = new LlmResponseError(
-					`渠道返回的不是 JSON：${error instanceof Error ? error.message : String(error)}`,
-				);
-				if (attempt <= this.options.maxRetries && !request.signal?.aborted) {
-					await this.backoff(attempt, null);
-					continue;
-				}
-				throw lastError;
-			}
-
+			const payload = await this.readPayload(response);
 			const result = parseCompletion(payload, model, attempt);
 			await this.writeCache(cacheKey, result);
 			return result;
 		}
-		throw lastError instanceof Error
-			? lastError
-			: new Error("LLM 请求在重试之后仍然失败");
+	}
+
+	/** 2xx 的响应体只读一次：JSON 语法错误包装成 LlmResponseError，中止与超时等读取错误原样抛出。 */
+	private async readPayload(response: Response): Promise<unknown> {
+		try {
+			return await response.json();
+		} catch (error) {
+			if (error instanceof SyntaxError) {
+				throw new LlmResponseError(`渠道返回的不是 JSON：${error.message}`);
+			}
+			throw error;
+		}
 	}
 
 	private requestSignal(signal: AbortSignal | undefined): AbortSignal {
@@ -265,13 +275,8 @@ export class OpenAiCompatibleClient implements LlmClient {
 		if (error instanceof LlmHttpError) {
 			return error.status === 429 || error.status >= 500;
 		}
-		if (error instanceof LlmResponseError) return true;
 		if (error instanceof Error) {
-			return (
-				error.name === "AbortError" ||
-				error.name === "TimeoutError" ||
-				error.name === "TypeError"
-			);
+			return error.name === "TimeoutError" || error.name === "TypeError";
 		}
 		return false;
 	}
@@ -279,19 +284,37 @@ export class OpenAiCompatibleClient implements LlmClient {
 	private async backoff(
 		attempt: number,
 		retryAfter: string | null,
+		signal: AbortSignal | undefined,
 	): Promise<void> {
-		const requested = parseRetryAfter(retryAfter);
+		const requested = parseRetryAfter(retryAfter, this.options.now());
 		const exponential = this.options.retryBaseDelayMs * 2 ** (attempt - 1);
-		await this.options.sleep(requested ?? exponential);
+		const ms =
+			requested === null
+				? exponential
+				: Math.min(requested, this.options.maxRetryAfterMs);
+		await this.wait(ms, signal);
+	}
+
+	private async wait(
+		ms: number,
+		signal: AbortSignal | undefined,
+	): Promise<void> {
+		throwIfAborted(signal);
+		if (ms <= 0) return;
+		await this.options.sleep(ms, signal);
 	}
 
 	/** 串行排队，保证相邻请求的起点至少间隔 60 秒除以每分钟请求数。 */
-	private acquireSlot(): Promise<void> {
-		if (this.options.requestsPerMinute <= 0) return Promise.resolve();
+	private acquireSlot(signal: AbortSignal | undefined): Promise<void> {
+		if (this.options.requestsPerMinute <= 0) {
+			throwIfAborted(signal);
+			return Promise.resolve();
+		}
 		const interval = 60_000 / this.options.requestsPerMinute;
 		const run = this.queue.then(async () => {
+			throwIfAborted(signal);
 			const wait = this.nextAllowedAt - this.options.now();
-			if (wait > 0) await this.options.sleep(wait);
+			await this.wait(wait, signal);
 			this.nextAllowedAt = this.options.now() + interval;
 		});
 		this.queue = run.catch(() => undefined);
@@ -299,10 +322,15 @@ export class OpenAiCompatibleClient implements LlmClient {
 	}
 
 	private cacheKey(body: Record<string, unknown>): string {
+		const keyDigest = createHash("sha256")
+			.update(this.options.apiKey)
+			.digest("hex");
 		return createHash("sha256")
 			.update(this.options.baseUrl)
 			.update("\n")
-			.update(stableJson(body))
+			.update(keyDigest)
+			.update("\n")
+			.update(stableJson(body) ?? "")
 			.digest("hex");
 	}
 
@@ -449,26 +477,47 @@ function parseCachedResult(value: unknown): LlmResult | null {
 	};
 }
 
-function stableJson(value: unknown): string {
+/**
+ * 与 JSON.stringify 语义一致：对象里值为 undefined 的属性被丢弃，数组里的空位与
+ * undefined 变成 null，Date 与带 toJSON 的对象交给 JSON.stringify。
+ */
+function stableJson(value: unknown): string | undefined {
 	if (Array.isArray(value)) {
-		return `[${value.map((item) => stableJson(item)).join(",")}]`;
+		const parts: string[] = [];
+		for (let index = 0; index < value.length; index += 1) {
+			parts.push(stableJson(value[index]) ?? "null");
+		}
+		return `[${parts.join(",")}]`;
 	}
-	if (isRecord(value)) {
-		const keys = Object.keys(value).sort();
-		return `{${keys
-			.map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`)
-			.join(",")}}`;
+	if (isPlainObject(value)) {
+		const parts: string[] = [];
+		for (const key of Object.keys(value).sort()) {
+			const item = stableJson(value[key]);
+			if (item === undefined) continue;
+			parts.push(`${JSON.stringify(key)}:${item}`);
+		}
+		return `{${parts.join(",")}}`;
 	}
-	return JSON.stringify(value) ?? "null";
+	return JSON.stringify(value);
 }
 
-function parseRetryAfter(value: string | null): number | null {
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+	if (typeof value !== "object" || value === null) return false;
+	const prototype = Object.getPrototypeOf(value);
+	return prototype === Object.prototype || prototype === null;
+}
+
+function parseRetryAfter(value: string | null, nowMs: number): number | null {
 	if (!value) return null;
 	const seconds = Number(value);
 	if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1_000;
 	const date = Date.parse(value);
-	if (Number.isFinite(date)) return Math.max(0, date - Date.now());
+	if (Number.isFinite(date)) return Math.max(0, date - nowMs);
 	return null;
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+	if (signal?.aborted) throw signal.reason;
 }
 
 function isMissingFile(error: unknown): boolean {

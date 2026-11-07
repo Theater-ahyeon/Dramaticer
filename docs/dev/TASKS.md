@@ -102,7 +102,8 @@
   做什么：`chat-jsonl.ts` 首行剥离 U+FEFF；删除没有调用的 `stripCarriageReturn`（或让 `splitChatLines` 的两处内联改为调用它）；`character-card.ts` 改用 `field-readers.ts` 的读取函数并删除本地重复实现；`src/index.ts` 不再公开 `SourceLine`、`splitChatLines`、`isPngData`、`SnapshotDiffOp` 等没有外部消费者的符号；给 `test/png-fixture.ts` 增加写入原始文本的选项，补 tEXt 解码失败与非法 base64 两条用例。
   验收：BOM 用例覆盖 `parseChatJsonl` 与 `parseChatJsonlFile`；角色卡错误文案与现有测试保持一致；新增两条 PNG 失败路径测试；`pnpm check` 通过。
 
-- [ ] **M0-FIX-3 后台 LLM 客户端重试与中止** | 依赖：M0-REVIEW-1
+- [x] **M0-FIX-3 后台 LLM 客户端重试与中止** | 依赖：M0-REVIEW-1
+  完成：2026-11-06 `packages/core/src/llm/client.ts` 只把响应体的 `SyntaxError` 判为“不是 JSON”并只发一次请求，其余读取错误与中止原样抛出；退避与限速等待都接收中止信号，`Retry-After` 增加 `maxRetryAfterMs`（默认 60 秒）；缓存键并入 apiKey 的 sha256 摘要，`stableJson` 与 `JSON.stringify` 语义一致；删除不可达的尾部抛出与 `LlmResponseError` 重试分支；新增 13 个用例，门禁通过（179 个测试）
   做什么：`packages/core/src/llm/client.ts` 只在响应体解析抛出 `SyntaxError` 时按“响应体不是 JSON”处理，其余读取错误原样抛出；2xx 且响应体非法时只发一次 HTTP 请求；等待（重试退避与限速）监听 `request.signal`，`Retry-After` 设上限；缓存键并入 `apiKey` 的摘要；`stableJson` 丢弃值为 `undefined` 的属性、`Date` 等按 `JSON.stringify` 处理；删除不可达的 `throw lastError` 与 `LlmResponseError` 重试分支。
   验收：新增用例覆盖 2xx 非 JSON 只请求一次、中止抛出 `AbortError`、`Retry-After` 上限、`undefined` 属性与 `apiKey` 影响缓存键、`parseCompletion` 四个错误分支、5xx 重试与错误体的 `status`/`body`；`pnpm check` 通过。
 

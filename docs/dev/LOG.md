@@ -19,3 +19,4 @@
 - 2026-11-06 | S15 | M0-REVIEW-1 | DONE | 完成代码与不变量审查：I1–I10 逐条判断，发现 32 条代码问题（ACU 拼接误报、导入非事务、检索按块计数等）、7 条文档不同步与测试覆盖缺口；转成 M0-FIX-1 到 M0-FIX-11，门禁脚本两处缺口写入 HUMAN-06；门禁通过（157 个测试）
 - 2026-11-06 | S16 | M0-FIX-1 | DONE | 导入放进单事务（新增 StoryStore.runInTransaction），失败回滚故事/楼层/diff/FTS；swipe_id 越界或非整数在解析层抛错，节点 id 与快照下标一致；补嵌套空对象与状态题-store 回放用例，6 个新测试，门禁通过（163 个测试）
 - 2026-11-06 | S17 | M0-FIX-2 | DONE | 聊天解析首行剥离 UTF-8 BOM（流式与文件两种入口都有用例）；`splitChatLines` 两处内联换行处理改用 `stripCarriageReturn`；角色卡改用 `field-readers.ts` 的读取函数并删除本地重复实现，PNG 载荷增加 base64 回环校验；`SourceLine`、`splitChatLines`、`isPngData`、`SnapshotDiffOp` 退出公开导出；PNG fixture 支持原样写入文本，补 tEXt 解码失败与非法 base64 两条用例；3 个新测试，门禁通过（166 个测试）
+- 2026-11-06 | S18 | M0-FIX-3 | DONE | 后台 LLM 客户端：2xx 非 JSON 只请求一次，中止与超时等读取错误原样抛出；退避与限速等待接收中止信号，Retry-After 上限 60000ms；缓存键并入 apiKey 摘要，stableJson 与 JSON.stringify 语义一致；删除不可达的尾部抛出与 LlmResponseError 重试分支；13 个新测试，门禁通过（179 个测试）
