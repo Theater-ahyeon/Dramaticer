@@ -188,6 +188,7 @@
 - **私有评测集**：从作者本人的对话中选 3 个（仙侠雌竞 579 楼、银麒赎世、欲望世界 412 楼），以 TauriTavern 那份数据为准，复制到被 git 忽略的目录里使用。
 - **公开基准**（为了"引领"）：另外构建一套可以公开的长线 RP 记忆与剧情基准（使用 SFW 或合成卡），和项目一起发布。
 - **文笔与结构基线**：记忆类指标继续用私有对话评测集；重复度、句长分布、对话占比与词汇丰富度改用小说参照文本统计（ADR-0024）。脚本为 `pnpm --filter @dramaticer/st-compat reference`，余弦校准用 `reference:cosine`，私有报告 `eval-private/reports/reference.md`，统计版 `docs/dev/reports/reference-baseline.md`。Director 的阈值由 D-T04 依据这些分布给出（ADR-0025：相邻节拍余弦阈值 0.73、窗口 20 对、`riseWindows` 5、`climaxFloors` 7、`breatheFloors` 6），不从对话语料直接推导。
+- **Director 开关对比**：`pnpm --filter @dramaticer/st-compat director-eval` 按固定间隔取分支点，用后续真实用户消息分别以导演开启与关闭回放，报告两种模式的相邻块 Jaccard、节拍余弦、线索兑现率与机制触发数（ADR-0027）。私有报告 `eval-private/reports/m3-director.md`，统计版 `docs/dev/reports/M3-director.md`。
 
 ## 15. 路线图
 
@@ -197,7 +198,7 @@
 | **M1** | pi 技术验证（公益站流式加工具调用、Gemini 原生自定义 baseUrl、abort 后续写）；**原生**上下文模板跑通单轮生成；块解析器 | 原生链路稳定可用 |
 | **M2** | 楼层树加记忆引擎 | 召回率超过 ACU 对照组 |
 | **M3** | Director v1：线索追踪、重复检测、节奏状态机 | 重复度下降，线索回收率提高 |
-| **M4** | 工具调用、渠道管理；最小 Web UI（聊天、预设编辑器、记忆面板、导演面板、Trace） | 作者本人改用 Dramaticer 玩 |
+| **M4** | 工具调用、渠道管理；最小 Web UI（聊天、预设编辑器、记忆面板、导演面板、Trace） | 自动试玩报告（Playwright 端到端加 LLM 模拟用户至少 50 轮）经作者确认（ADR-0028） |
 | **兼容线**（与 M2–M4 并行，不阻塞主线） | st-compat：预设条目、宏引擎、正则三层兼容、MVU/ACU 转换、沙箱 HTML | 58 个预设的可用率（目标值由 M0 数据决定，不追求 100%） |
 | **M5** | **公开 alpha**：ST 一键导入、Windows 一键启动、文档、公开基准 | 第一批外部用户能用起来 |
 | **M6** | 生图（ComfyUI，之后接 NovelAI 和 Grok） | |
