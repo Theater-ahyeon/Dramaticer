@@ -259,15 +259,22 @@ describe("记忆引擎评测", () => {
 			role: "system",
 			raw: "开场。",
 		});
-		store.appendNode({
+		const reply = store.appendNode({
 			id: "e-next",
 			storyId: "s-events",
 			parentId: root.id,
 			role: "assistant",
 			raw: "阿七收下匕首。",
 		});
+		store.appendNode({
+			id: "e-user",
+			storyId: "s-events",
+			parentId: reply.id,
+			role: "user",
+			raw: "他要去哪里？",
+		});
 		const client = fakeLlmClient(
-			'[{"text":"阿七收下匕首","participants":["阿七"],"knowers":["阿七"],"importance":0.7}]',
+			'[{"nodeId":"e-next","events":[{"text":"阿七收下匕首","participants":["阿七"],"knowers":["阿七"],"importance":0.7}]}]',
 		);
 		const result = await buildStoryEvents({
 			store,
@@ -275,7 +282,7 @@ describe("记忆引擎评测", () => {
 			client,
 		});
 		expect(result).toEqual({ nodeCount: 1, eventCount: 1 });
-		expect(store.countEventsForNode("e-root")).toBe(1);
+		expect(store.countEventsForNode("e-next")).toBe(1);
 	});
 
 	it("embedding 缓存按文本复用，中止后可以接着跑", async () => {

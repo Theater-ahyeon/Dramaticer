@@ -30,6 +30,7 @@ export type {
 	ChunkVectorForNode,
 	CreateStoryInput,
 	ListEntitiesOptions,
+	RecordEventExtractionsInput,
 	ResolveEntitiesOptions,
 	SearchChunksOptions,
 	SearchNodeTextOptions,

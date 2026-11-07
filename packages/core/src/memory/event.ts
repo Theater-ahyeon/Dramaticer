@@ -44,5 +44,5 @@ export const DEFAULT_MEMORY_EVENT_SOURCE = "events";
 /** NPC 议程推进写入的事件来源。 */
 export const NPC_AGENDA_EVENT_SOURCE = "npc_agenda";
 
-/** 抽取窗口：任务所在楼层加上沿路径往前的最多 8 楼。 */
+/** 一次事件抽取请求最多处理的助手楼层数。 */
 export const EVENT_WINDOW_FLOORS = 8;

@@ -577,6 +577,31 @@ export function buildMigrations(
 					DEFAULT '{"mode":"default","overrides":{}}'`,
 			],
 		},
+		{
+			version: 23,
+			description: "事件抽取记录：窗口内每个楼层一行，含没有抽到事件的楼层",
+			statements: [
+				`CREATE TABLE event_extractions (
+					node_id TEXT PRIMARY KEY NOT NULL REFERENCES nodes(id),
+					story_id TEXT NOT NULL REFERENCES stories(id),
+					event_count INTEGER NOT NULL CHECK (event_count >= 0),
+					created_at TEXT NOT NULL
+				) STRICT`,
+				"CREATE INDEX event_extractions_story_idx ON event_extractions(story_id)",
+				`CREATE TRIGGER event_extractions_story_matches_node
+				BEFORE INSERT ON event_extractions
+				WHEN COALESCE((SELECT story_id FROM nodes WHERE id = NEW.node_id), '') <> NEW.story_id
+				BEGIN
+					SELECT RAISE(ABORT, '事件抽取记录的 story_id 必须与所在楼层一致');
+				END`,
+				`CREATE TRIGGER event_extractions_identity_immutable
+				BEFORE UPDATE ON event_extractions
+				WHEN NEW.node_id <> OLD.node_id OR NEW.story_id <> OLD.story_id
+				BEGIN
+					SELECT RAISE(ABORT, '事件抽取记录的楼层与故事归属不可修改');
+				END`,
+			],
+		},
 	];
 }
 

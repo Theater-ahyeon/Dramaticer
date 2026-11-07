@@ -367,7 +367,7 @@ export async function buildStoryVectors(
 }
 
 /**
- * 用生产的事件抽取处理器给主路径上的已确认楼层建事件。
+ * 用生产的事件抽取处理器给主路径上的已确认助手楼层建事件。
  * 模型调用的磁盘缓存由注入的客户端负责，重复运行不会重复请求。
  */
 export async function buildStoryEvents(
@@ -375,12 +375,16 @@ export async function buildStoryEvents(
 ): Promise<{ readonly nodeCount: number; readonly eventCount: number }> {
 	const { store, storyId, client } = options;
 	const handler = createEventExtractionHandler();
-	const pathNodes = store.getPathToHead(storyId);
-	const targets = pathNodes.slice(0, Math.max(0, pathNodes.length - 1));
+	const targets = store
+		.getPathToHead(storyId)
+		.filter(
+			(node) => node.role === "assistant" && store.isNodeConfirmed(node.id),
+		);
 	let done = 0;
 	let events = 0;
 	for (const node of targets) {
-		if (store.countEventsForNode(node.id) === 0) {
+		const extracted = new Set(store.listExtractedEventNodeIds(storyId));
+		if (!extracted.has(node.id)) {
 			let lastError: unknown = null;
 			for (let attempt = 1; attempt <= 3; attempt += 1) {
 				try {

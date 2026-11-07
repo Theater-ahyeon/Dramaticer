@@ -515,6 +515,14 @@ export interface ResolveEntitiesOptions {
 	readonly storyId?: string;
 }
 
+export interface RecordEventExtractionsInput {
+	readonly storyId: string;
+	/** 本次窗口内的助手楼层；没有事件的楼层也要传。 */
+	readonly nodeIds: readonly string[];
+	readonly events: readonly NewMemoryEventInput[];
+	readonly createdAt?: string;
+}
+
 export interface EnqueueBackgroundJobsInput {
 	readonly storyId: string;
 	readonly kinds: readonly string[];
@@ -2349,6 +2357,116 @@ export class StoryStore {
 			}
 		})();
 		return created;
+	}
+
+	/**
+	 * 列出已经抽取过事件的楼层：已经写入事件或存在抽取记录。
+	 * 抽取记录包含没有抽到事件的楼层，用来避免重复抽取。
+	 */
+	listExtractedEventNodeIds(storyId: string): string[] {
+		assertNonEmptyString(storyId, "故事 id");
+		if (!this.getStory(storyId)) {
+			throw new Error(`故事不存在：${storyId}`);
+		}
+		const rows = this.#db
+			.prepare(
+				`SELECT source_node_id AS id FROM memory_events
+				WHERE story_id = ? AND source = ?
+				UNION
+				SELECT node_id AS id FROM event_extractions WHERE story_id = ?`,
+			)
+			.all(storyId, DEFAULT_MEMORY_EVENT_SOURCE, storyId) as {
+			readonly id: string;
+		}[];
+		return rows.map((row) => row.id);
+	}
+
+	/**
+	 * 在一个事务里写入窗口内的全部事件，并把窗口内每个楼层记为已抽取。
+	 * 没有事件的楼层同样写入记录，重跑不会再次抽取。
+	 */
+	recordEventExtractions(input: RecordEventExtractionsInput): void {
+		assertNonEmptyString(input.storyId, "故事 id");
+		if (!this.getStory(input.storyId)) {
+			throw new Error(`故事不存在：${input.storyId}`);
+		}
+		if (!Array.isArray(input.nodeIds) || input.nodeIds.length === 0) {
+			throw new Error("事件抽取窗口的楼层不能为空");
+		}
+		if (!Array.isArray(input.events)) {
+			throw new Error("事件记忆必须是数组");
+		}
+		const nodeIds = input.nodeIds.map((nodeId, index) => {
+			assertNonEmptyString(nodeId, `事件抽取窗口[${index}] 的楼层 id`);
+			return nodeId;
+		});
+		const unique = new Set(nodeIds);
+		if (unique.size !== nodeIds.length) {
+			throw new Error("事件抽取窗口的楼层重复");
+		}
+		for (const nodeId of nodeIds) {
+			const node = this.getNode(nodeId);
+			if (!node) {
+				throw new Error(`事件抽取窗口指向的楼层节点不存在：${nodeId}`);
+			}
+			if (node.storyId !== input.storyId) {
+				throw new Error(
+					`事件抽取窗口的 storyId 与楼层节点所属故事不一致：${input.storyId}`,
+				);
+			}
+			if (node.role !== "assistant") {
+				throw new Error(`事件抽取窗口只接受助手楼层：${nodeId}`);
+			}
+		}
+		const normalised = input.events.map((event, index) =>
+			this.#normaliseMemoryEvent(event, index),
+		);
+		const counts = new Map<string, number>(nodeIds.map((id) => [id, 0]));
+		for (const event of normalised) {
+			if (!unique.has(event.sourceNodeId)) {
+				throw new Error(`事件 ${event.sourceNodeId} 的来源楼层不在本次窗口内`);
+			}
+			counts.set(event.sourceNodeId, (counts.get(event.sourceNodeId) ?? 0) + 1);
+		}
+		const createdAt = input.createdAt ?? new Date().toISOString();
+		assertNonEmptyString(createdAt, "事件抽取记录的创建时间");
+		const insertEvent = this.#db.prepare(
+			`INSERT INTO memory_events
+				(id, story_id, source_node_id, ordinal, story_time, location,
+				 participants, importance, knowers, text, source, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		);
+		const insertExtraction = this.#db.prepare(
+			`INSERT INTO event_extractions (node_id, story_id, event_count, created_at)
+			VALUES (?, ?, ?, ?)
+			ON CONFLICT (node_id) DO UPDATE SET event_count = excluded.event_count`,
+		);
+		this.#db.transaction(() => {
+			for (const event of normalised) {
+				insertEvent.run(
+					event.id,
+					event.storyId,
+					event.sourceNodeId,
+					event.ordinal,
+					event.storyTime,
+					event.location,
+					JSON.stringify(event.participants),
+					event.importance,
+					JSON.stringify(event.knowers),
+					event.text,
+					event.source,
+					event.createdAt,
+				);
+			}
+			for (const nodeId of nodeIds) {
+				insertExtraction.run(
+					nodeId,
+					input.storyId,
+					counts.get(nodeId) ?? 0,
+					createdAt,
+				);
+			}
+		})();
 	}
 
 	/** 按路径顺序（根在前、楼层内按 ordinal）读取事件，支持分页。 */

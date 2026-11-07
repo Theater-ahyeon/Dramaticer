@@ -141,7 +141,8 @@
   - 在 3 个 legacy 对话的固定分支点上离线统计省略前后的 token（不调用模型），数字写进 `docs/dev/reports/R1.md`。
   验收：同一楼层在 `full` 下与现有渲染逐字节一致；显示类块在更早楼层被省略、最近一楼保留；未知块与未闭合块不被删除；Trace 的省略量与块类型可读；原文与 `getStateDiffs` 结果不变；离线统计给出省略前后 token；`pnpm check` 通过。
 
-- [ ] **R1-T03 批量事件抽取** | 依赖：R1-T02、M2-T05 | DESIGN §7.3
+- [x] **R1-T03 批量事件抽取** | 依赖：R1-T02、M2-T05 | DESIGN §7.3
+  完成：2026-11-07 事件任务改为批量窗口：每次沿当前路径取最早一段连续未抽取的已确认助手楼层（默认 8），输入带窗口前后各一楼作为边界，模型返回 `{nodeId, events}` 数组；窗口外或重复楼层整窗拒绝，任一楼层非法时整窗不写入并交给任务框架重试；迁移 v23 新增 `event_extractions`，窗口内没有事件的楼层也记为已抽取，重跑不再调用模型；`StoryStore` 新增 `listExtractedEventNodeIds` 与 `recordEventExtractions`（事件与抽取记录同一事务）；memory-eval 的事件回填改为按已确认助手楼层驱动；新增 7 个测试；门禁通过（790 个测试）。后续迁移编号顺延到 v24–v31
   做什么：
   - 把 `events` 任务从逐楼抽取改为批量窗口：一次请求处理最多 `eventWindowFloors`（默认 8）个沿当前路径连续、尚未抽取的已确认助手楼层；输入包含窗口内原文与前后各一楼作为边界上下文。
   - 模型返回 `{nodeId, events}` 数组，每条事件沿用 M2-T05 的字段与校验；`nodeId` 必须在窗口内，未知楼层或重复楼层整窗拒绝并记录原因。
@@ -166,7 +167,7 @@
 
 - [ ] **R1-T07.a 自然语言修订记忆** | 依赖：R1-T07、R1-T01.a | DESIGN §7.1
   做什么：
-  - 迁移 v23 新增 `ledger_change_cards(id, story_id, source_node_id, text, diffs, before, status, created_at, decided_at)`，`status` 取 `pending`、`approved`、`rejected`、`rolled_back`；`diffs` 与 `before` 存 JSON，写入前用 `validateLedgerDiff` 校验。
+  - 迁移 v24 新增 `ledger_change_cards(id, story_id, source_node_id, text, diffs, before, status, created_at, decided_at)`，`status` 取 `pending`、`approved`、`rejected`、`rolled_back`；`diffs` 与 `before` 存 JSON，写入前用 `validateLedgerDiff` 校验。
   - 后台任务 `memory_revision`：读取最近的玩家消息，识别明确的修改要求，生成变更卡草案；模糊陈述、疑问与角色台词不生成。
   - 批准时把 `diffs` 写成 `source` 为 `player` 的事实，同时把同一段话写进 `userWill`；拒绝只改状态；已批准的回滚写反向 diff 恢复 `before` 里的原值，保留原事实的变更历史。
   - 结算器记下的冲突（R1-T02 的 `repairs`）转成待审变更卡，卡片来源标为 `settler`；批准后才覆盖台账。
@@ -225,7 +226,7 @@
 
 - [ ] **O-T01 开局包** | 依赖：R1-T02、R1-T07、M4-T03 | DESIGN §8.4
   做什么：
-  - 迁移 v24 新增 `opening_packs(story_id PRIMARY KEY, payload, source_node_id, created_at)`；`payload` 含开场地点与时间、在场人物与各自当下想要什么、第一个可行动冲突、三条可选开场方向。
+  - 迁移 v25 新增 `opening_packs(story_id PRIMARY KEY, payload, source_node_id, created_at)`；`payload` 含开场地点与时间、在场人物与各自当下想要什么、第一个可行动冲突、三条可选开场方向。
   - 故事创建或导入后入队后台任务 `opening`：输入是角色卡、世界书常驻条目与玩家开场白（没有开场白时只用卡）。模型输出严格 JSON，缺字段、空字符串、未知人物整包拒绝并按任务框架重试；同一故事重复执行覆盖同一行，卡或模板变化后重新生成。
   - 玩家开场白在首次输入之后才存在时，以首条玩家消息为输入在间隙生成，下一轮开始前完成；首次输入之前只生成不含开场白的版本。
   - 开局包只作导演输入，不写台账事实（I12），回合内不调用模型（I11）。
@@ -240,7 +241,7 @@
 
 - [ ] **O-T03 首楼多候选** | 依赖：O-T01、M2-T01、M4-T03 | DESIGN §8.4
   做什么：
-  - 迁移 v25 新增 `opening_candidates(id, story_id, ordinal, raw, status, created_at)`，`status` 取 `pending`、`chosen`、`discarded`。
+  - 迁移 v26 新增 `opening_candidates(id, story_id, ordinal, raw, status, created_at)`，`status` 取 `pending`、`chosen`、`discarded`。
   - 后台任务 `opening_candidates`：一次调用生成 2–3 个开场候选（默认 3），每个是完整正文（可以含原生块）。玩家选中一个时在当前路径根部追加为首个助手楼层，状态改为 `chosen`，其余改为 `discarded`；重新生成追加新一批。
   - 候选不在回合内生成，未选中的候选不进入上下文；候选正文不改写，选中之后按普通楼层解析与结算。
   - CLI：`dramaticer open --story <id> [--generate <n>] [--list] [--pick <id>]`；R5 界面复用同一接口。
@@ -315,7 +316,7 @@
 
 - [ ] **R2-T07 偏好信号记录** | 依赖：M2-T01、R1-T07.a、M4-T03 | DESIGN §14.5 | ADR-0044
   做什么：
-  - 迁移 v26 新增只追加的 `preference_events(id, story_id, node_id, kind, payload, created_at)`；`kind` 取 `swipe`、`choice`、`card_decision`、`edit`；数据库触发器拒绝 UPDATE 与 DELETE。`payload` 存 JSON：swipe 记被放弃与被接受的节点 id，choice 记选项正文与所在楼层，card_decision 记卡片 id 与决定，edit 记改前改后的节点 id。
+  - 迁移 v27 新增只追加的 `preference_events(id, story_id, node_id, kind, payload, created_at)`；`kind` 取 `swipe`、`choice`、`card_decision`、`edit`；数据库触发器拒绝 UPDATE 与 DELETE。`payload` 存 JSON：swipe 记被放弃与被接受的节点 id，choice 记选项正文与所在楼层，card_decision 记卡片 id 与决定，edit 记改前改后的节点 id。
   - core 提供 `recordPreference(event)` 与按故事、按种类的读取接口；写入与对应操作在同一个事务里，失败则整个操作回滚。
   - 不进入剧情上下文，不参与预算、检索与导演；只用于评测与校准。
   验收：四种信号各写入一行且内容完整；重复操作产生新的行；UPDATE 与 DELETE 被触发器拒绝；事务失败时操作与记录一起回滚；偏好记录不出现在上下文组装结果里；`pnpm check` 通过。
@@ -485,7 +486,7 @@
 
 - [ ] **R1-T03.a 父子分块** | 依赖：M2-T08、M2-T10、R5-T99 | DESIGN §7.3 | ADR-0044
   做什么：
-  - 迁移 v27 给 `chunks` 增加父段字段（`parent_ordinal`、`parent_text`）：父段按段落边界切分，过长的段落退化为整楼；检索只匹配小块，命中后返回父段文本。
+  - 迁移 v28 给 `chunks` 增加父段字段（`parent_ordinal`、`parent_text`）：父段按段落边界切分，过长的段落退化为整楼；检索只匹配小块，命中后返回父段文本。
   - 打开数据库时按新规则重建块，旧块与对应向量一并删除；`embeddings` 任务随后补齐缺失向量。回填可重复执行，不产生重复块。
   - `searchChunks` 与 `searchVectors` 返回父段文本；多路融合按楼层去重时保留父段文本，Trace 记录注入的是整段还是整楼。先读 R2-T09 与 R5-T14 的报告，决定是否默认开启。
   验收：小块命中后返回父段；同一父段多个小块只占一个结果位次；回填重复运行后块数不变；旧向量被清理且不参与查询；开关关闭时与现状逐条一致；`pnpm check` 通过。
@@ -507,7 +508,7 @@
 
 - [ ] **R1-T05 八段式章节压缩** | 依赖：M2-T06、R1-T01、R1-T04.b | DESIGN §7.3 | ADR-0044
   做什么：
-  - 迁移 v28 新增 `chapter_compressions(id, story_id, level, start_node_id, end_node_id, sections, token_count, created_at)`，`level` 取 `chapter` 或 `mainline`，同一故事、级别、起止节点唯一；`sections` 存 JSON，键固定为 `剧情脉络`、`人物档案`、`关系网`、`世界与设定`、`物品与资源`、`伏笔与约定`、`当前情况`、`用户意志`。
+  - 迁移 v29 新增 `chapter_compressions(id, story_id, level, start_node_id, end_node_id, sections, token_count, created_at)`，`level` 取 `chapter` 或 `mainline`，同一故事、级别、起止节点唯一；`sections` 存 JSON，键固定为 `剧情脉络`、`人物档案`、`关系网`、`世界与设定`、`物品与资源`、`伏笔与约定`、`当前情况`、`用户意志`。
   - 后台任务 `compression`：每 `chapterSize`（默认 20）个已确认助手楼层生成一条章节压缩，输入为窗口原文与上一份压缩；每 5 条章节压缩生成一条主线压缩，输入为最近 5 条章节压缩。八个键必须齐全，值为字符串；缺键或类型不符整条拒绝并记录原因。
   - 有效性与 M2-T06 一致：起止节点都在当前路径上且起点在终点之前；重复执行不产生重复行；空窗口不调用模型。
   - 槽位提供者按预算注入主线与最近章节压缩，用户意志段永远保留；Trace 来源写 `compression:<level>`。
@@ -515,7 +516,7 @@
 
 - [ ] **R1-T06 后台预筛世界书** | 依赖：M2-T13、R1-T02、R1-T05 | DESIGN §7.3、§9 | ADR-0044
   做什么：
-  - 迁移 v29 新增 `lore_prefilter(node_id PRIMARY KEY, story_id, entry_ids, created_at)`；`entry_ids` 存 JSON 数组。
+  - 迁移 v30 新增 `lore_prefilter(node_id PRIMARY KEY, story_id, entry_ids, created_at)`；`entry_ids` 存 JSON 数组。
   - 后台任务 `lore_prefilter`：回合落定后，用本轮用户消息、最近一条压缩摘要与下一拍方案构造查询；先用 BM25 取前 `prefilterLimit`（默认 20）条非恒常 lore，再由后台模型判断相关性并写入当前 head 楼层的预筛结果；恒常条目永远保留。
   - 下一轮组装时 `createLoreSlotProvider` 优先读当前 head 的预筛结果，没有记录时退回关键词与实体命中；回合内不调用模型。
   - 重复执行覆盖同一 `node_id`，不新增行；分支切换后只使用当前路径上的预筛结果。
@@ -523,7 +524,7 @@
 
 - [ ] **R1-T08 上下文包复用** | 依赖：R1-T02.a、R1-T03.a、R1-T06、M2-T12 | DESIGN §7.3、§9 | ADR-0044
   做什么：
-  - 迁移 v30 新增 `context_packs(node_id PRIMARY KEY, story_id, payload, created_at)`；`payload` 存检索结果、预筛世界书条目 id、现场分析引用与台账快照版本。
+  - 迁移 v31 新增 `context_packs(node_id PRIMARY KEY, story_id, payload, created_at)`；`payload` 存检索结果、预筛世界书条目 id、现场分析引用与台账快照版本。
   - 第一次生成玩家楼层的回复时组装上下文并写入上下文包；swipe 与重新生成同一楼层直接读包，不重新检索、不重新调用 embedding 或预筛；包不存在时按现有路径组装并写入。
   - 玩家编辑输入产生新楼层，不继承旧包；包引用的条目被删或分析楼层不在当前路径时视为不存在，重新组装。
   - 包本身不触发模型调用；回合内只读，回合外只准备下一轮能提前准备的部分。
