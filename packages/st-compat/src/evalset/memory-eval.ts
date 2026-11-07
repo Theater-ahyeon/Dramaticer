@@ -538,7 +538,8 @@ async function readStoryQuestions(
 	return questions;
 }
 
-async function importStoryEntities(
+/** 导入对话对应的角色卡实体、角色书 lore 与世界书 lore；没有对应文件时跳过。 */
+export async function importStoryEntities(
 	store: StoryStore,
 	storyId: string,
 	snapshot: Snapshot,
@@ -770,7 +771,8 @@ function renderKindScores(
 	return scores;
 }
 
-function countStoryChunks(store: StoryStore, storyId: string): number {
+/** 故事主路径上的块数（含没有向量的块）。 */
+export function countStoryChunks(store: StoryStore, storyId: string): number {
 	let count = 0;
 	for (const node of store.getPathToHead(storyId)) {
 		count += store.countChunksForNode(node.id);
@@ -778,7 +780,8 @@ function countStoryChunks(store: StoryStore, storyId: string): number {
 	return count;
 }
 
-function countStoryVectors(store: StoryStore, storyId: string): number {
+/** 故事主路径上已写入向量的块数。 */
+export function countStoryVectors(store: StoryStore, storyId: string): number {
 	let count = 0;
 	for (const node of store.getPathToHead(storyId)) {
 		count += store.countChunkVectorsForNode(node.id);
@@ -786,7 +789,8 @@ function countStoryVectors(store: StoryStore, storyId: string): number {
 	return count;
 }
 
-function countStoryEvents(store: StoryStore, storyId: string): number {
+/** 故事主路径上的事件数。 */
+export function countStoryEvents(store: StoryStore, storyId: string): number {
 	const head = store.getHead(storyId);
 	if (!head) return 0;
 	let count = 0;

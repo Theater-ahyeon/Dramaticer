@@ -150,7 +150,8 @@
   - 事件窗口与结算窗口互不阻塞，两者都使用后台客户端与独立限速。
   验收：8 个楼层只发一次请求；事件归属到正确的楼层；未知或重复 `nodeId` 整窗拒绝；重跑无重复；窗口跨越分支时只取当前路径；单元测试用假客户端且零网络；`pnpm check` 通过。
 
-- [ ] **R1-T04.a 批量抽取管线与断点续跑** | 依赖：R1-T03
+- [x] **R1-T04.a 批量抽取管线与断点续跑** | 依赖：R1-T03
+  完成：2026-11-07 新增 `evalset/events-backfill.ts` 与 `evalset/events-cli.ts`（`pnpm --filter @dramaticer/st-compat events-backfill`）：把 manifest 里全部 legacy 对话导入持久数据库 `eval-private/memory-cache/eval.db`（已有故事跳过），导入卡牌实体与 lore、块向量，再用生产的批量窗口处理器逐窗口抽取事件；`--story`、`--limit`（跨故事累计窗口数）、`--resume`（保留数据库；不带时先删库重新导入）、`--db`；模型响应缓存目录固定为 `eval-private/memory-cache/events/`，向量缓存 `eval-private/memory-cache/embeddings/`；每个窗口打印进度、累计楼层、累计事件与累计请求数（缓存命中单列）；窗口连续失败 3 次才终止，窗口未写入抽取记录时立即抛错；导出 `selectTargets`、`importStoryEntities` 与三个故事计数函数；新增 4 个测试（3 窗口各 8 楼一次请求、续跑跳过已抽取窗口且事件不变、未知故事失败、CLI 缓存目录与 `--resume` 重建数据库）；门禁通过（794 个测试）
   做什么：
   - 新增 `pnpm --filter @dramaticer/st-compat events-backfill`：把 legacy 评测对话导入 `eval-private/memory-cache/eval.db`，建实体、lore、块与向量，然后按路径窗口批量抽取事件。
   - 支持 `--story <id>`、`--limit <windows>`、`--resume`、`--db <path>`；每处理一个窗口打印进度与累计请求数；模型响应按输入 hash 缓存到 `eval-private/memory-cache/events/`，中断后从缓存继续。
