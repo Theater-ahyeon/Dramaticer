@@ -21,6 +21,8 @@ export * from "./evalset/retrieval.js";
 export * from "./evalset/state-questions.js";
 export * from "./node-id.js";
 export * from "./preset.js";
+export * from "./reference/collect.js";
+export * from "./reference/text-stats.js";
 export * from "./regex-classifier.js";
 export * from "./state-diff.js";
 export * from "./world-info.js";

@@ -65,3 +65,5 @@
 - 2026-11-07 | S51 | D-T01 | DONE | 快照脚本新增 latest 取样：每个对话目录取最新 jsonl，排除 legacy 三个目录，按修改时间降序取 `DRAMATICER_LATEST_CHATS` 个（默认 4，0 关闭），连同角色卡与世界书复制；manifest 每条新增 `corpus`（legacy/latest，预设 shared）与 `sourceMtime`，解析层校验并保留；实测 94 个文件、legacy 9 条、latest 11 条、shared 74 条，重复运行 `files` 数组完全一致，legacy 对话与卡、世界书路径和 sha256 不变；五个评测入口只读 legacy 语料，避免新增语料缺题目文件时报错；2 个新测试，门禁通过（463 个测试）
 
 - 2026-11-07 | S52 | D-T02 | DONE | `manifest` 新增 `storyCorpus` 与 `STORY_CORPORA`；体检的对话体量、状态存储、重复度与 BM25、ACU 三节按 legacy/latest 分栏，旧语料数字保持不变；`state-cli` 按语料选择出题参数（legacy 50–100、gap 30；latest gap 3、最多 50、允许空结果），新增语料生成 101 道题，单楼对话跳过；`collectRetrievalBaseline` 对新增语料缺状态题时跳过并记录原因，`planEventQuestions` 按窗口给出事件题请求估算（新增语料 3 次）；两份报告重新生成，重复运行除生成时间外逐字节一致；新增 7 个测试，门禁通过（470 个测试）
+
+- 2026-11-07 | S53 | D-T03 | DONE | ADR-0024 分离记忆评测与文笔结构度量：状态/事件召回继续用对话，重复度、句长、对话占比、词汇丰富度改用小说参照文本；新增 `packages/st-compat/src/reference/` 的 `text-stats`、`collect`、`cli`，`pnpm --filter @dramaticer/st-compat reference` 输出私有版与统计版；公有领域 fixture（论语与唐诗选段，59 块、962 字符、96 句）产出四项统计，重复度均值 0.0136、对话占比 70.1%、字符 TTR 0.3680、二元组 TTR 0.8283；统计版用“作品 1..N”隐藏版权作品名且不含原文；HUMAN-07 补充文件格式；8 个新测试，门禁通过（478 个测试）

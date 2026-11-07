@@ -187,6 +187,7 @@
 
 - **私有评测集**：从作者本人的对话中选 3 个（仙侠雌竞 579 楼、银麒赎世、欲望世界 412 楼），以 TauriTavern 那份数据为准，复制到被 git 忽略的目录里使用。
 - **公开基准**（为了"引领"）：另外构建一套可以公开的长线 RP 记忆与剧情基准（使用 SFW 或合成卡），和项目一起发布。
+- **文笔与结构基线**：记忆类指标继续用私有对话评测集；重复度、句长分布、对话占比与词汇丰富度改用小说参照文本统计（ADR-0024）。脚本为 `pnpm --filter @dramaticer/st-compat reference`，私有报告 `eval-private/reports/reference.md`，统计版 `docs/dev/reports/reference-baseline.md`。Director 的阈值由 D-T04 依据这些分布给出，不从对话语料直接推导。
 
 ## 15. 路线图
 

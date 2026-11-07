@@ -350,7 +350,8 @@
   - 新语料补出状态题（规则生成，不调用模型）；事件题按评测覆盖需要评估，出题成本写进报告，本任务不调用 LLM 出题。
   验收：统计版报告只含数字、不含新的角色名与对话名；两组数字分别列出且重复运行可复现；`pnpm check` 通过。
 
-- [ ] **D-T03 参照小说统计脚本与 ADR** | 依赖：无
+- [x] **D-T03 参照小说统计脚本与 ADR** | 依赖：无
+  完成：2026-11-07 ADR-0024 分离记忆评测与文笔结构度量的数据来源；新增 `reference/text-stats.ts`、`reference/collect.ts`、`reference/cli.ts` 与 `pnpm --filter @dramaticer/st-compat reference`，输出相邻块重复度、句长分布、对话占比、字符与二元组 TTR；公有领域 fixture（论语与唐诗选段，59 块、962 字符）可测；私有报告与统计版已生成，统计版不含版权作品名与原文；8 个新测试，门禁通过（478 个测试）
   做什么：
   - 写 ADR：记忆类评测（状态、事件召回）继续用现有对话；文笔与结构类度量（重复度阈值、句长分布、对话占比、词汇丰富度、伏笔设置与回收）改用小说参照基线；公有领域作品可以进仓库测试数据，版权作品只能放 `eval-private/reference/`，不进提交、测试数据、文档或日志，agent 不联网下载。
   - 新增统计脚本：复用 `packages/st-compat/src/health/duplication.ts` 的重复度计算，输出相邻文本块的重复度曲线、句长分布、对话占比与词汇丰富度；输入为公有领域 fixture 与 `eval-private/reference/` 下人类提供的文件；私有报告写 `eval-private/reports/reference.md`，统计版写 `docs/dev/reports/reference-baseline.md`。
