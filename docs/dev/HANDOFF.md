@@ -13,7 +13,10 @@
 
 ## 下一步
 - 执行 M0-T01（仓库与工程骨架）
-
+  - 建立根目录配置文件与工作区配置（package.json、pnpm-workspace.yaml、tsconfig.base.json、biome.json、.env.example）
+  - 创建 packages/core 与 packages/st-compat 包结构及最小模块导出与单元测试用例
+  - 配置检查脚本命令并在 DEPENDENCIES.md 补全登记
+  - 运行 pnpm install 与 pnpm check 校验通过，并执行 setvar 失败测试验证不变量校验器
 ## 注意事项
 - 私有数据在 `D:\SillyTavern\TauriTavern\default-user\`，只读；单个文件可能有几十 MB，必须流式处理
 - 本机环境：Node 24、pnpm 10、Windows 11；shell 可以用 PowerShell 7 或 Git Bash

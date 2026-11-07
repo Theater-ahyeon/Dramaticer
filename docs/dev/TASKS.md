@@ -8,7 +8,7 @@
 
 ## M0：数据与度量（DESIGN §2、§14、§15）
 
-- [ ] **M0-T01 仓库与工程骨架** | 依赖：无
+- [~] **M0-T01 仓库与工程骨架** | 依赖：无
   做什么：
   - 如果还不是 git 仓库就执行 `git init -b main`
   - 根目录：`package.json`（`"type": "module"`，`engines.node >= 22.19`，`packageManager` 写成当前的 pnpm 版本）、`pnpm-workspace.yaml`、`tsconfig.base.json`（strict 模式，`NodeNext` 模块解析）、`biome.json`、`.gitignore`（忽略 `node_modules/ dist/ data/ eval-private/ .env .devloop/ *.log`）、`.env.example`（渠道相关的变量名，值留空）
