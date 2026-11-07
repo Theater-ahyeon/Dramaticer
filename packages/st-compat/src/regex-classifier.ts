@@ -463,10 +463,8 @@ function classifyCore(script: StRegexScript): CoreClassification {
 		category = "delete";
 	} else if (captureReferences.length > 0) {
 		category = "rewrite_capture";
-	} else if (trimmed !== "") {
-		category = "text_replace";
 	} else {
-		category = "unclassified";
+		category = "text_replace";
 	}
 
 	return {
@@ -495,7 +493,7 @@ function hasRenderSibling(
 ): boolean {
 	if (core.tagName === null) return false;
 	return siblings.some((sibling) => {
-		if (sibling === script) return false;
+		if (sibling === script || sibling.disabled) return false;
 		const other = classifyCore(sibling);
 		return other.category === "html_render" && other.tagName === core.tagName;
 	});

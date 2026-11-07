@@ -268,6 +268,16 @@ describe("classifyRegexScript 分类", () => {
 		});
 	});
 
+	it("streaming_variant：停用的渲染器不参与合并判断", () => {
+		const siblings = [{ ...draftRender, disabled: true }, draftStreaming];
+		const result = classifyRegexScript(draftStreaming, siblings);
+		expect(result.category).toBe("streaming_variant");
+		expect(result.upgrade).toEqual({
+			applicable: false,
+			strategy: "keep_regex",
+		});
+	});
+
 	it("streaming_variant：脚本名里的流式标记也算", () => {
 		const result = classifyRegexScript(
 			script({

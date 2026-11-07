@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-	analyzePresets,
-	countMacros,
-	scanMacros,
-} from "../src/health/preset-health.js";
+import { analyzePresets, scanMacros } from "../src/health/preset-health.js";
 import { parsePresetJson } from "../src/preset.js";
 
 const presetText = `{
@@ -21,12 +17,12 @@ const presetText = `{
 	}
 }`;
 
-describe("countMacros", () => {
+describe("scanMacros", () => {
 	it("宏名取 :: 或空白之前的第一个词，注释归为 //", () => {
-		const counts = countMacros(
+		const scan = scanMacros(
 			"{{char}} {{setvar::x::1}} {{getvar::x}} {{// 注释}} {{roll 1d100}} {{Roll: d6}}",
 		);
-		expect(Object.fromEntries(counts)).toEqual({
+		expect(Object.fromEntries(scan.counts)).toEqual({
 			char: 1,
 			setvar: 1,
 			getvar: 1,

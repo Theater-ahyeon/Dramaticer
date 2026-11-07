@@ -16,6 +16,12 @@ describe("createTokenEstimator", () => {
 		expect(estimate("你好abcd")).toBe(3);
 	});
 
+	it("谚文按 CJK 字符估算", () => {
+		const estimate = createTokenEstimator();
+		expect(estimate("안녕하세요")).toBe(4);
+		expect(estimate("ㄱ")).toBe(1);
+	});
+
 	it("换算比例可以替换", () => {
 		const estimate = createTokenEstimator({
 			cjkCharsPerToken: 1,

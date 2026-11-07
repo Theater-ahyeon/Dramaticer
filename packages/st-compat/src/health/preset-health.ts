@@ -78,10 +78,6 @@ export function scanMacros(text: string): MacroScan {
 	return { counts, unrecognized };
 }
 
-export function countMacros(text: string): ReadonlyMap<string, number> {
-	return scanMacros(text).counts;
-}
-
 export function analyzePresets(
 	presets: readonly StPreset[],
 	tokenEstimator: TokenEstimator = createTokenEstimator(),

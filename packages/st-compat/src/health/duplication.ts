@@ -48,6 +48,12 @@ const DEFAULT_RISE_WINDOWS = 5;
 const DEFAULT_RISE_DELTA = 0.02;
 const DEFAULT_RISE_MINIMUM = 0.03;
 
+function assertPositiveInteger(value: number, name: string): void {
+	if (!Number.isInteger(value) || value <= 0) {
+		throw new Error(`${name} 必须是正整数：${value}`);
+	}
+}
+
 /** 按 Unicode 码点切分文本，生成字符 n-gram 集合。 */
 export function charNgrams(text: string, size: number): Set<string> {
 	if (!Number.isInteger(size) || size <= 0) {
@@ -95,9 +101,10 @@ export function analyzeDuplication(
 	const riseWindows = options.riseWindows ?? DEFAULT_RISE_WINDOWS;
 	const riseDelta = options.riseDelta ?? DEFAULT_RISE_DELTA;
 	const riseMinimum = options.riseMinimum ?? DEFAULT_RISE_MINIMUM;
-	if (windowSize <= 0 || step <= 0) {
-		throw new Error("窗口大小和步长必须是正数");
-	}
+	assertPositiveInteger(ngramSize, "ngramSize");
+	assertPositiveInteger(windowSize, "windowSize");
+	assertPositiveInteger(step, "step");
+	assertPositiveInteger(riseWindows, "riseWindows");
 
 	const pairs: DuplicationPair[] = [];
 	let previous = replies[0];

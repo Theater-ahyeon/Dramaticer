@@ -91,8 +91,18 @@ describe("analyzeDuplication", () => {
 		expect(curve.peakWindow).toBeNull();
 	});
 
-	it("窗口参数非法时报错", () => {
-		expect(() => analyzeDuplication([], { windowSize: 0 })).toThrow();
-		expect(() => analyzeDuplication([], { step: 0 })).toThrow();
+	it("参数不是正整数时报错", () => {
+		expect(() => analyzeDuplication([], { ngramSize: 0 })).toThrow(
+			"ngramSize 必须是正整数",
+		);
+		expect(() => analyzeDuplication([], { windowSize: 2.5 })).toThrow(
+			"windowSize 必须是正整数",
+		);
+		expect(() => analyzeDuplication([], { step: -1 })).toThrow(
+			"step 必须是正整数",
+		);
+		expect(() => analyzeDuplication([], { riseWindows: 0 })).toThrow(
+			"riseWindows 必须是正整数",
+		);
 	});
 });

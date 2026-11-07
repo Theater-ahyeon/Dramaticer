@@ -54,7 +54,7 @@ export const REGEX_CATEGORY_LABELS: Readonly<Record<RegexCategory, string>> = {
 	unclassified: "无法分类",
 };
 
-export const REGEX_CATEGORY_ORDER: readonly RegexCategory[] = [
+const REGEX_CATEGORY_ORDER: readonly RegexCategory[] = [
 	"html_render",
 	"html_script",
 	"delete",

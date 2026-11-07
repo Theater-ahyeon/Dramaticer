@@ -37,12 +37,17 @@ export function createTokenEstimator(
 
 function isCjkCodePoint(codePoint: number): boolean {
 	return (
+		(codePoint >= 0x1100 && codePoint <= 0x11ff) ||
 		(codePoint >= 0x2e80 && codePoint <= 0x2fdf) ||
 		(codePoint >= 0x3000 && codePoint <= 0x303f) ||
 		(codePoint >= 0x3040 && codePoint <= 0x30ff) ||
 		(codePoint >= 0x3100 && codePoint <= 0x312f) ||
+		(codePoint >= 0x3130 && codePoint <= 0x318f) ||
 		(codePoint >= 0x3400 && codePoint <= 0x4dbf) ||
 		(codePoint >= 0x4e00 && codePoint <= 0x9fff) ||
+		(codePoint >= 0xa960 && codePoint <= 0xa97f) ||
+		(codePoint >= 0xac00 && codePoint <= 0xd7a3) ||
+		(codePoint >= 0xd7b0 && codePoint <= 0xd7ff) ||
 		(codePoint >= 0xf900 && codePoint <= 0xfaff) ||
 		(codePoint >= 0xfe30 && codePoint <= 0xfe4f) ||
 		(codePoint >= 0xff00 && codePoint <= 0xffef) ||

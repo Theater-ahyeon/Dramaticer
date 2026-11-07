@@ -127,7 +127,8 @@
   做什么：`HealthTotals` 增加 `headerBytes` 并在统计版表中单列；字段字节统计保留全量，截断只放在渲染层；`extraSwipeCount` 按每条消息累加 `max(0, swipes.length - 1)`（或删除字段）；`ratio` 对 `0/0` 返回 `null` 并显示 `—`；删除 `totals.rawBytes` 或把它加入报告；合并 `health/report.ts` 对 `health/manifest.ts` 的再导出；把 `health/cli.ts` 抽成可注入路径的 `runHealthCli` 并测试，覆盖 `renderAcuSection` 与 `collectHealthReport` 的两条抛错分支。
   验收：两份报告重新生成；新增合计差额小于 1% 的断言、每个对话第 11 名字段的 fixture、ACU 段落测试、statistics 版私有字段的整表反向断言；`pnpm check` 通过。
 
-- [ ] **M0-FIX-8 正则分类器与统计参数** | 依赖：M0-REVIEW-1
+- [x] **M0-FIX-8 正则分类器与统计参数** | 依赖：M0-REVIEW-1
+  完成：2026-11-07 `hasRenderSibling` 跳过 `disabled` 的兄弟脚本；`classifyCore` 的末尾不可达分支删除；`analyzeDuplication` 入口统一校验 `ngramSize`、`windowSize`、`step`、`riseWindows` 为正整数；`token-estimate` 补谚文五个区段；删除零调用的 `countMacros`（测试改用 `scanMacros`），`REGEX_CATEGORY_ORDER` 取消导出；新增 4 个用例，报告重新生成（可升级仍为 300/637 = 47.1%，token 估算因谚文略增），门禁通过（202 个测试）
   做什么：`hasRenderSibling` 跳过 `disabled` 的兄弟脚本；删除 `classifyCore` 里不可达的最后一个分支；`analyzeDuplication` 入口统一校验 `ngramSize`、`windowSize`、`step`、`riseWindows` 为正整数；`token-estimate` 补谚文区间；`countMacros` 取消导出（测试改用 `scanMacros`），`REGEX_CATEGORY_ORDER` 取消导出。
   验收：新增“启用流式 + 停用渲染 → 不可升级”“三个非法参数各抛错”“韩文 token 估算”用例；报告里的可升级比例随启发式修正重新生成；`pnpm check` 通过。
 
