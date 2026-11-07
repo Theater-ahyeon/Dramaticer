@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import Database from "better-sqlite3";
+import { isJsonObject } from "../json.js";
 import type {
 	NewStateDiff,
 	NodeTextMatch,
@@ -9,6 +10,7 @@ import type {
 	TimelineNode,
 	TimelineRole,
 } from "../timeline.js";
+import type { TurnTrace } from "../trace.js";
 import { serializeJsonValue } from "./json-value.js";
 import { applyMigrations } from "./migrations.js";
 
@@ -45,6 +47,12 @@ interface NodeTextRow {
 	readonly story_id: string;
 	readonly score: number;
 	readonly snippet: string;
+}
+
+interface TraceRow {
+	readonly node_id: string;
+	readonly story_id: string;
+	readonly trace: string;
 }
 
 export interface CreateStoryInput {
@@ -286,6 +294,18 @@ export class StoryStore {
 		return path.reverse();
 	}
 
+	/** 返回故事里最后追加的楼层节点；单轮生成的 CLI 用它作为父节点。 */
+	getLatestNode(storyId: string): TimelineNode | null {
+		assertNonEmptyString(storyId, "故事 id");
+		const row = this.#db
+			.prepare(
+				`SELECT id, story_id, parent_id, role, raw, created_at
+				FROM nodes WHERE story_id = ? ORDER BY row_id DESC LIMIT 1`,
+			)
+			.get(storyId) as NodeRow | undefined;
+		return row ? rowToNode(row) : null;
+	}
+
 	appendStateDiff(input: NewStateDiff): StateDiff {
 		const [stored] = this.appendStateDiffs([input]);
 		if (!stored) {
@@ -443,6 +463,58 @@ export class StoryStore {
 			score: row.score,
 			snippet: row.snippet,
 		}));
+	}
+
+	/** 保存一轮生成的 Trace；一个楼层只能写一次。 */
+	saveTurnTrace(trace: TurnTrace): void {
+		assertNonEmptyString(trace.nodeId, "Trace 的 nodeId");
+		assertNonEmptyString(trace.storyId, "Trace 的 storyId");
+		assertNonEmptyString(trace.createdAt, "Trace 的 createdAt");
+		const node = this.getNode(trace.nodeId);
+		if (!node) {
+			throw new Error(`Trace 指向的楼层节点不存在：${trace.nodeId}`);
+		}
+		if (node.storyId !== trace.storyId) {
+			throw new Error(
+				`Trace 的 storyId 与楼层节点所属故事不一致：${trace.storyId}`,
+			);
+		}
+		if (node.parentId !== trace.parentNodeId) {
+			throw new Error(
+				`Trace 的 parentNodeId 与楼层节点的父节点不一致：${trace.nodeId}`,
+			);
+		}
+		const existing = this.#db
+			.prepare("SELECT node_id FROM traces WHERE node_id = ?")
+			.get(trace.nodeId) as { node_id: string } | undefined;
+		if (existing) {
+			throw new Error(`楼层 ${trace.nodeId} 已经写过 Trace`);
+		}
+		this.#db
+			.prepare(
+				`INSERT INTO traces (node_id, story_id, trace, created_at)
+				VALUES (?, ?, ?, ?)`,
+			)
+			.run(trace.nodeId, trace.storyId, JSON.stringify(trace), trace.createdAt);
+	}
+
+	getTurnTrace(nodeId: string): TurnTrace | null {
+		if (!this.getNode(nodeId)) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
+		const row = this.#db
+			.prepare("SELECT node_id, story_id, trace FROM traces WHERE node_id = ?")
+			.get(nodeId) as TraceRow | undefined;
+		if (row === undefined) return null;
+		const parsed: unknown = JSON.parse(row.trace);
+		if (
+			!isJsonObject(parsed) ||
+			parsed.nodeId !== row.node_id ||
+			parsed.storyId !== row.story_id
+		) {
+			throw new Error(`楼层 ${nodeId} 的 Trace 记录与楼层不一致`);
+		}
+		return parsed as unknown as TurnTrace;
 	}
 
 	#normaliseStateDiff(input: NewStateDiff, index: number): NormalisedStateDiff {

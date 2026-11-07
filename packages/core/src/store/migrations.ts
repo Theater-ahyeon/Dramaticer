@@ -77,6 +77,19 @@ export const MIGRATIONS: readonly Migration[] = [
 			END`,
 		],
 	},
+	{
+		version: 2,
+		description: "楼层 Trace：每轮的上下文、渠道、用量与结构化输出记录",
+		statements: [
+			`CREATE TABLE traces (
+				node_id TEXT PRIMARY KEY NOT NULL REFERENCES nodes(id),
+				story_id TEXT NOT NULL REFERENCES stories(id),
+				trace TEXT NOT NULL,
+				created_at TEXT NOT NULL
+			) STRICT`,
+			"CREATE INDEX traces_story_idx ON traces(story_id)",
+		],
+	},
 ];
 
 export const LATEST_SCHEMA_VERSION: number =

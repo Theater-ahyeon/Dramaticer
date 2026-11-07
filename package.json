@@ -12,8 +12,9 @@
 		"lint": "biome check .",
 		"test": "vitest run",
 		"snapshot": "node scripts/snapshot-private-data.mjs",
-		"probe": "pnpm --filter @dramaticer/core probe",
-		"dramaticer": "pnpm --filter @dramaticer/core build && node packages/core/dist/cli/index.js",
+		"probe": "pnpm --filter @dramaticer/st-compat build && node packages/st-compat/dist/cli.js probe",
+		"chat": "pnpm --filter @dramaticer/st-compat build && node packages/st-compat/dist/cli.js chat",
+		"dramaticer": "pnpm --filter @dramaticer/st-compat build && node packages/st-compat/dist/cli.js",
 		"check": "pnpm run invariants && pnpm run typecheck && pnpm run lint && pnpm run test"
 	},
 	"devDependencies": {

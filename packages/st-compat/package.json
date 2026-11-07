@@ -4,6 +4,9 @@
 	"type": "module",
 	"main": "./dist/index.js",
 	"types": "./dist/index.d.ts",
+	"bin": {
+		"dramaticer": "./dist/cli.js"
+	},
 	"exports": {
 		".": {
 			"types": "./dist/index.d.ts",
@@ -19,6 +22,7 @@
 	},
 	"scripts": {
 		"build": "tsc",
+		"chat": "tsc -b && node dist/cli.js chat",
 		"evalset": "tsc -b && node dist/evalset/cli.js",
 		"evalset:events": "tsc -b && node dist/evalset/event-cli.js",
 		"report": "tsc -b && node dist/health/cli.js"

@@ -1,0 +1,24 @@
+import { runProbeCli } from "@dramaticer/core";
+import { runChatCli } from "./chat/cli.js";
+
+const USAGE = "用法：dramaticer <probe|chat> ...";
+
+async function main(args: readonly string[]): Promise<void> {
+	const command = args[0];
+	if (command === "probe") {
+		await runProbeCli(args);
+		return;
+	}
+	if (command === "chat") {
+		await runChatCli(args);
+		return;
+	}
+	throw new Error(USAGE);
+}
+
+try {
+	await main(process.argv.slice(2));
+} catch (error) {
+	console.error(error instanceof Error ? error.message : error);
+	process.exitCode = 1;
+}

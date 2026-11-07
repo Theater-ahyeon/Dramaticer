@@ -164,7 +164,7 @@
 
 ## 13. 技术栈与工程
 
-- **TypeScript 全栈，pnpm monorepo**：`packages/core`（纯库，含 CLI 和评测，不含任何 ST 概念）、`packages/st-compat`（ST 内容到原生模型的单向转换：卡、世界书、预设、宏、正则、对话、MVU、ACU）、`packages/server`（本地 HTTP 加 SSE）、`packages/web`（React 加 Vite，移动端优先，中文优先）。
+- **TypeScript 全栈，pnpm monorepo**：`packages/core`（纯库，含评测，不含任何 ST 概念）、`packages/st-compat`（ST 内容到原生模型的单向转换：卡、世界书、预设、宏、正则、对话、MVU、ACU；同时承载 `dramaticer` CLI 入口）、`packages/server`（本地 HTTP 加 SSE）、`packages/web`（React 加 Vite，移动端优先，中文优先）。
 - **Node 22.19+**（pi 的要求）。
 - **存储**：SQLite 加 FTS5 加 sqlite-vec，单文件。数据目录默认是 `data/`，可以配置到别处。
 - **网络**：默认只监听 127.0.0.1；开启局域网访问时必须设置访问密码；API key 只存在服务端。

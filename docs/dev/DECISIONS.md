@@ -157,3 +157,15 @@
   - `state_update` 与 `plot_note` 登记进 `DEFAULT_BLOCK_TYPES`，显示策略为 `hidden`、上下文策略为 `drop`、语义策略为 `none`：显示层与上下文层自动忽略这两个标签，语义写入由收集器显式完成，解析器不修改原文。
   - JSON Schema（`STATE_UPDATE_SCHEMA`、`PLOT_NOTE_SCHEMA`）与 `STRUCTURED_OUTPUT_TOOLS` 供函数调用模式使用；schema 只是给模型的说明，校验器才是权威，两者表达同一套约束。模式由 `resolveStructuredOutputMode(probe)` 决定：有体检结果用 `probe.structuredOutput`，否则回退到文本标签（不依赖渠道的工具能力）。
 - **影响**：M1-T07 按模式选择工具定义或提示词，把 `issues` 写进 Trace，把 `stateUpdates` 与 `notes` 写进楼层节点。`illustrate` 与其他读取类工具不在本模块范围内。
+
+## ADR-0015 单轮生成链路与 Trace 存储（2026-11-07）
+
+- **背景**：M1-T07 要求 `dramaticer chat --story <id>` 把导入的角色卡、默认原生模板、流式生成、块解析、结构化输出和楼层落库串起来，并留下完整 Trace。CLI 需要 st-compat 解析角色卡，而 core 不能依赖 st-compat（I1）；存储层此前只有楼层、状态 diff 与全文索引，没有 Trace 的位置。
+- **决定**：
+  - 生成链路放在 core 的 `chat` 模块。`createDefaultContextTemplate` 生成 DESIGN §9 的默认模板：character、lore、state、summary、memory、director、protocol、history 八段，protocol 段按结构化输出模式给出标签写法或工具说明，history 的裁剪优先级最高。
+  - `createHistorySlotProvider` 沿路径取最近 20 楼，用块上下文策略渲染：`drop` 删除、`keep` 保留块与标签、`keep-depth` 按距离尾部的深度裁剪；`compress` 尚未实现，遇到时直接抛错。`createStateSlotProvider` 回放路径上的状态 diff 渲染当前状态；`applyStateDiffs` 放在 core 顶层，用 defineProperty 写自身属性，避免 `__proto__` 路径段修改原型链，删除不存在的路径视为没有变化。
+  - `runChatTurn` 追加用户楼层、组装上下文、把正文增量推给 `BlockParser`、按模式收集结构化输出，然后在一个事务里写入助手楼层、状态 diff 与 Trace。流式增量拼接后的正文与 `LlmResult.text` 不一致时抛错，不写助手楼层，避免保存无法复现的原文。
+  - Trace 存在独立的 `traces` 表（schema 版本 2），以楼层 id 为主键，保存模板 id、上下文逐段状态与 token 数、实际模型与渠道、用量、截断与续写、结构化输出的接受与拒绝明细、首字与总耗时。一个楼层只写一次 Trace；楼层原文仍然不可修改。
+  - CLI 入口放在 st-compat（`packages/st-compat/src/cli.ts`），分发 `probe`（调用 core 的 `runProbeCli`）与 `chat`：`chat --story <id> --card <path> --user <text> [--db <path>] [--model <alias>] [--budget <tokens>] [--max-tokens <n>] [--temperature <x>]`。故事不存在时按卡名建立故事并把 `first_mes` 写成开场楼层；每次运行都用角色卡字段重建角色槽位，因此同一故事始终带同一张卡。模型别名默认取 `main`，配置里没有 `main` 时要求 `--model`。
+  - 结构化输出模式来自渠道体检（`resolveStructuredOutputMode(model.probe)`）：函数调用模式把 `STRUCTURED_OUTPUT_TOOLS` 放进请求，文本标签模式在 protocol 段说明标签写法。
+- **影响**：M1-T99 的首字延迟直接读 Trace 的 `timing.firstTokenMs`。M2 的状态快照缓存替换 `createStateSlotProvider` 里的即时回放即可，接口不变。显示视图与压缩策略仍未实现。

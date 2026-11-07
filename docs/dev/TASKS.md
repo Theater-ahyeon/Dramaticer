@@ -185,7 +185,8 @@
   做什么：`state_update` 和 `plot_note` 的 schema；函数调用模式（通过 pi）和文本标签模式（通过块解析器）共用同一个校验器；校验失败时的处理策略。
   验收：两种模式产出同样的结构；非法的值会被拒绝，并记录原因。
 
-- [ ] **M1-T07 单轮生成 CLI** | 依赖：M1-T03、M1-T04、M1-T06
+- [x] **M1-T07 单轮生成 CLI** | 依赖：M1-T03、M1-T04、M1-T06
+  完成：2026-11-07 core 新增 `chat` 模块（默认原生模板、历史与状态槽位、`runChatTurn`）、`applyStateDiffs` 与块上下文视图；存储层迁移 v2 增加 `traces` 表与按楼层的 Trace 读写；`dramaticer chat --story <id> --card <path> --user <text>` 走 st-compat 的统一入口（`probe` 委托 core），导入角色卡、组装上下文、流式解析块、按模式处理结构化输出，并把回复、状态 diff 与 Trace 写进楼层树；28 个新测试，真实渠道连续 3 轮对话通过（首字 1855–2529 毫秒），门禁通过（328 个测试）；ADR-0015
   做什么：`dramaticer chat --story <id>`：导入一张卡（通过 st-compat），用一个默认的原生模板组装上下文，流式生成，解析块，处理结构化输出，保存为楼层节点，写入 Trace。
   验收：用真实渠道完成 3 轮对话（live 测试）；Trace 内容完整。
 
