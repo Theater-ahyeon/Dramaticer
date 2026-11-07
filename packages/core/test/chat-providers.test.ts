@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
 	type ContextSlotRequest,
 	assembleContext,
+	createCharacterSlotProvider,
 	createDefaultContextTemplate,
 	createHistorySlotProvider,
 	createMemorySlotProvider,
+	createStandardChatProviders,
 	createStateSlotProvider,
 	createStaticSlotProvider,
 	createSummarySlotProvider,
@@ -400,5 +402,44 @@ describe("记忆与摘要槽位", () => {
 			);
 			expect(entry?.status).toBe("missing-slot");
 		}
+	});
+});
+
+describe("角色与标准槽位", () => {
+	it("角色槽位返回保存的提示词，来源只记录长度", async () => {
+		const provider = createCharacterSlotProvider("你扮演山神。");
+		const content = await provider.provide(request("s1", null, "character"));
+		expect(content?.messages).toEqual([
+			{ role: "system", content: "你扮演山神。" },
+		]);
+		expect(content?.source).toBe("character:6 字符");
+	});
+
+	it("空提示词直接抛错", () => {
+		expect(() => createCharacterSlotProvider("   ")).toThrow(
+			"角色提示词必须是非空字符串",
+		);
+	});
+
+	it("标准集合包含七个槽位，character 使用传入的提示词", async () => {
+		const { store } = openTempStore();
+		store.createStory({ id: "s1", title: "山神" });
+		const providers = createStandardChatProviders({
+			store,
+			characterPrompt: "你扮演山神。",
+		});
+		expect(Object.keys(providers).sort()).toEqual([
+			"character",
+			"director",
+			"history",
+			"lore",
+			"memory",
+			"state",
+			"summary",
+		]);
+		const content = await providers.character?.provide(
+			request("s1", null, "character"),
+		);
+		expect(content?.messages[0]?.content).toBe("你扮演山神。");
 	});
 });

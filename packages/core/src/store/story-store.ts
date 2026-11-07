@@ -6,7 +6,12 @@ import type {
 	BackgroundJobStatus,
 } from "../background/types.js";
 import { parseContextCondition } from "../context/condition.js";
-import type { ContextCondition } from "../context/template.js";
+import {
+	type ContextCondition,
+	type ContextTemplate,
+	DEFAULT_CONTEXT_TEMPLATE_ID,
+} from "../context/template.js";
+import { assertDirectorConfig } from "../director/evaluate.js";
 import type {
 	AdvanceNpcAgendasInput,
 	EventPoolEntry,
@@ -17,6 +22,7 @@ import type {
 	NpcAgendaUpsertResult,
 } from "../director/pool.js";
 import type {
+	DirectorConfig,
 	DirectorDecision,
 	DirectorMechanismRecord,
 	NewDirectorDecisionInput,
@@ -28,7 +34,8 @@ import {
 	isEntityKind,
 	normalizeEntityName,
 } from "../entity.js";
-import { type JsonObject, isJsonObject } from "../json.js";
+import { type JsonObject, isJsonObject, rejectUnknownKeys } from "../json.js";
+import { isLlmReasoningLevel } from "../llm/types.js";
 import {
 	DEFAULT_MEMORY_EVENT_LIMIT,
 	DEFAULT_MEMORY_EVENT_SOURCE,
@@ -55,6 +62,7 @@ import {
 } from "../retrieval/chunk-index.js";
 import { chunkText } from "../retrieval/chunk-text.js";
 import { applyStateDiffsTo } from "../state.js";
+import { isStructuredOutputMode } from "../structured/types.js";
 import type {
 	NewStateDiff,
 	NodeTextMatch,
@@ -73,11 +81,49 @@ import {
 	applyMigrations,
 	buildMigrations,
 } from "./migrations.js";
+import {
+	CONTEXT_TEMPLATE_UPDATE_KEYS,
+	type ContextTemplateRecord,
+	type CreateContextTemplateInput,
+	DEFAULT_STORY_SETTINGS_VALUES,
+	DIRECTOR_CONFIG_KEYS,
+	STORY_SETTINGS_UPDATE_KEYS,
+	type StorySettings,
+	type StorySettingsUpdate,
+	type UpdateContextTemplateInput,
+	assertStoredContextTemplate,
+	assertStorySettingsUpdate,
+} from "./settings.js";
 
 interface StoryRow {
 	readonly id: string;
 	readonly title: string;
 	readonly created_at: string;
+}
+
+interface StorySettingsRow {
+	readonly story_id: string;
+	readonly card_name: string | null;
+	readonly character_prompt: string | null;
+	readonly persona: string | null;
+	readonly template_id: string | null;
+	readonly model: string | null;
+	readonly budget_tokens: number;
+	readonly structured_output: string;
+	readonly temperature: number;
+	readonly max_tokens: number;
+	readonly reasoning: string;
+	readonly viewpoint: string | null;
+	readonly director_config: string;
+	readonly updated_at: string;
+}
+
+interface ContextTemplateRow {
+	readonly id: string;
+	readonly name: string;
+	readonly template: string;
+	readonly created_at: string;
+	readonly updated_at: string;
 }
 
 interface NodeRow {
@@ -483,6 +529,13 @@ function assertNonEmptyString(
 	}
 }
 
+function requireTemplateName(value: string): string {
+	if (typeof value !== "string" || value.trim().length === 0) {
+		throw new Error("上下文模板名称必须是非空字符串");
+	}
+	return value.trim();
+}
+
 function optionalTrimmedString(value: unknown, label: string): string | null {
 	if (value === undefined || value === null) return null;
 	if (typeof value !== "string") {
@@ -521,6 +574,64 @@ function rowToStory(row: StoryRow): Story {
 		title: row.title,
 		createdAt: row.created_at,
 	};
+}
+
+function rowToStorySettings(row: StorySettingsRow): StorySettings {
+	if (!isStructuredOutputMode(row.structured_output)) {
+		throw new Error(
+			`故事 ${row.story_id} 的 structured_output 不合法：${row.structured_output}`,
+		);
+	}
+	if (!isLlmReasoningLevel(row.reasoning)) {
+		throw new Error(
+			`故事 ${row.story_id} 的 reasoning 不合法：${row.reasoning}`,
+		);
+	}
+	const parsedDirectorConfig = JSON.parse(
+		row.director_config,
+	) as DirectorConfig;
+	assertDirectorConfig(parsedDirectorConfig);
+	return {
+		storyId: row.story_id,
+		cardName: row.card_name,
+		characterPrompt: row.character_prompt,
+		persona: row.persona,
+		templateId: row.template_id,
+		model: row.model,
+		budgetTokens: row.budget_tokens,
+		structuredOutput: row.structured_output,
+		temperature: row.temperature,
+		maxTokens: row.max_tokens,
+		reasoning: row.reasoning,
+		viewpoint: row.viewpoint,
+		directorConfig: parsedDirectorConfig,
+		updatedAt: row.updated_at,
+	};
+}
+
+function rowToContextTemplate(row: ContextTemplateRow): ContextTemplateRecord {
+	const parsed: unknown = JSON.parse(row.template);
+	assertStoredContextTemplate(parsed as ContextTemplateRecord["template"]);
+	return {
+		id: row.id,
+		name: row.name,
+		template: parsed as ContextTemplateRecord["template"],
+		createdAt: row.created_at,
+		updatedAt: row.updated_at,
+	};
+}
+
+function serializeDirectorConfig(config: DirectorConfig): string {
+	rejectUnknownKeys(
+		config as unknown as Record<string, unknown>,
+		DIRECTOR_CONFIG_KEYS,
+		"故事设置的 directorConfig",
+	);
+	const defined: Record<string, unknown> = {};
+	for (const [key, value] of Object.entries(config)) {
+		if (value !== undefined) defined[key] = value;
+	}
+	return serializeJsonValue(defined, "故事设置的 directorConfig");
 }
 
 function rowToNode(row: NodeRow): TimelineNode {
@@ -882,6 +993,257 @@ export class StoryStore {
 			.prepare("SELECT id, title, created_at FROM stories ORDER BY rowid ASC")
 			.all() as StoryRow[];
 		return rows.map(rowToStory);
+	}
+
+	/** 故事没有保存过设置时返回默认值，不写入数据库。 */
+	getStorySettings(storyId: string): StorySettings {
+		assertNonEmptyString(storyId, "故事 id");
+		const story = this.getStory(storyId);
+		if (!story) {
+			throw new Error(`故事不存在：${storyId}`);
+		}
+		const row = this.#db
+			.prepare("SELECT * FROM story_settings WHERE story_id = ?")
+			.get(storyId) as StorySettingsRow | undefined;
+		if (row) return rowToStorySettings(row);
+		return {
+			storyId,
+			cardName: null,
+			characterPrompt: null,
+			persona: null,
+			templateId: null,
+			model: null,
+			budgetTokens: DEFAULT_STORY_SETTINGS_VALUES.budgetTokens,
+			structuredOutput: DEFAULT_STORY_SETTINGS_VALUES.structuredOutput,
+			temperature: DEFAULT_STORY_SETTINGS_VALUES.temperature,
+			maxTokens: DEFAULT_STORY_SETTINGS_VALUES.maxTokens,
+			reasoning: DEFAULT_STORY_SETTINGS_VALUES.reasoning,
+			viewpoint: null,
+			directorConfig: DEFAULT_STORY_SETTINGS_VALUES.directorConfig,
+			updatedAt: story.createdAt,
+		};
+	}
+
+	/** 合并式更新；`null` 清空可空字段，未出现的字段保持原值。 */
+	updateStorySettings(
+		storyId: string,
+		update: StorySettingsUpdate,
+	): StorySettings {
+		assertNonEmptyString(storyId, "故事 id");
+		if (!this.getStory(storyId)) {
+			throw new Error(`故事不存在：${storyId}`);
+		}
+		rejectUnknownKeys(
+			update as unknown as Record<string, unknown>,
+			STORY_SETTINGS_UPDATE_KEYS,
+			"故事设置",
+		);
+		assertStorySettingsUpdate(update);
+		if (
+			update.templateId !== undefined &&
+			update.templateId !== null &&
+			update.templateId !== DEFAULT_CONTEXT_TEMPLATE_ID &&
+			!this.getContextTemplate(update.templateId)
+		) {
+			throw new Error(`上下文模板不存在：${update.templateId}`);
+		}
+		const current = this.getStorySettings(storyId);
+		const next = {
+			cardName:
+				update.cardName !== undefined ? update.cardName : current.cardName,
+			characterPrompt:
+				update.characterPrompt !== undefined
+					? update.characterPrompt
+					: current.characterPrompt,
+			persona: update.persona !== undefined ? update.persona : current.persona,
+			templateId:
+				update.templateId !== undefined
+					? update.templateId
+					: current.templateId,
+			model: update.model !== undefined ? update.model : current.model,
+			budgetTokens:
+				update.budgetTokens !== undefined
+					? update.budgetTokens
+					: current.budgetTokens,
+			structuredOutput:
+				update.structuredOutput !== undefined
+					? update.structuredOutput
+					: current.structuredOutput,
+			temperature:
+				update.temperature !== undefined
+					? update.temperature
+					: current.temperature,
+			maxTokens:
+				update.maxTokens !== undefined ? update.maxTokens : current.maxTokens,
+			reasoning:
+				update.reasoning !== undefined ? update.reasoning : current.reasoning,
+			viewpoint:
+				update.viewpoint !== undefined ? update.viewpoint : current.viewpoint,
+			directorConfig:
+				update.directorConfig !== undefined
+					? update.directorConfig
+					: current.directorConfig,
+		};
+		const updatedAt = new Date().toISOString();
+		this.#db
+			.prepare(
+				`INSERT INTO story_settings
+					(story_id, card_name, character_prompt, persona, template_id, model,
+					 budget_tokens, structured_output, temperature, max_tokens, reasoning,
+					 viewpoint, director_config, updated_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				ON CONFLICT(story_id) DO UPDATE SET
+					card_name = excluded.card_name,
+					character_prompt = excluded.character_prompt,
+					persona = excluded.persona,
+					template_id = excluded.template_id,
+					model = excluded.model,
+					budget_tokens = excluded.budget_tokens,
+					structured_output = excluded.structured_output,
+					temperature = excluded.temperature,
+					max_tokens = excluded.max_tokens,
+					reasoning = excluded.reasoning,
+					viewpoint = excluded.viewpoint,
+					director_config = excluded.director_config,
+					updated_at = excluded.updated_at`,
+			)
+			.run(
+				storyId,
+				next.cardName,
+				next.characterPrompt,
+				next.persona,
+				next.templateId,
+				next.model,
+				next.budgetTokens,
+				next.structuredOutput,
+				next.temperature,
+				next.maxTokens,
+				next.reasoning,
+				next.viewpoint,
+				serializeDirectorConfig(next.directorConfig),
+				updatedAt,
+			);
+		const saved = this.getStorySettings(storyId);
+		if (saved.updatedAt !== updatedAt) {
+			throw new Error(`故事设置写入后读取失败：${storyId}`);
+		}
+		return saved;
+	}
+
+	createContextTemplate(
+		input: CreateContextTemplateInput,
+	): ContextTemplateRecord {
+		const name = requireTemplateName(input.name);
+		assertStoredContextTemplate(input.template);
+		if (this.#findTemplateIdByName(name) !== null) {
+			throw new Error(`上下文模板名称已存在：${name}`);
+		}
+		const id = randomUUID();
+		const now = new Date().toISOString();
+		this.#db
+			.prepare(
+				`INSERT INTO context_templates (id, name, template, created_at, updated_at)
+				VALUES (?, ?, ?, ?, ?)`,
+			)
+			.run(
+				id,
+				name,
+				serializeJsonValue(input.template, "上下文模板"),
+				now,
+				now,
+			);
+		const saved = this.getContextTemplate(id);
+		if (!saved) {
+			throw new Error(`上下文模板写入后读取失败：${id}`);
+		}
+		return saved;
+	}
+
+	getContextTemplate(id: string): ContextTemplateRecord | null {
+		assertNonEmptyString(id, "上下文模板 id");
+		const row = this.#db
+			.prepare("SELECT * FROM context_templates WHERE id = ?")
+			.get(id) as ContextTemplateRow | undefined;
+		return row ? rowToContextTemplate(row) : null;
+	}
+
+	listContextTemplates(): ContextTemplateRecord[] {
+		const rows = this.#db
+			.prepare("SELECT * FROM context_templates ORDER BY rowid ASC")
+			.all() as ContextTemplateRow[];
+		return rows.map(rowToContextTemplate);
+	}
+
+	updateContextTemplate(
+		id: string,
+		update: UpdateContextTemplateInput,
+	): ContextTemplateRecord {
+		const current = this.getContextTemplate(id);
+		if (!current) {
+			throw new Error(`上下文模板不存在：${id}`);
+		}
+		rejectUnknownKeys(
+			update as unknown as Record<string, unknown>,
+			CONTEXT_TEMPLATE_UPDATE_KEYS,
+			"上下文模板更新",
+		);
+		if (update.name === undefined && update.template === undefined) {
+			throw new Error("上下文模板更新至少要包含 name 或 template");
+		}
+		const name =
+			update.name === undefined
+				? current.name
+				: requireTemplateName(update.name);
+		if (name !== current.name) {
+			const existingId = this.#findTemplateIdByName(name);
+			if (existingId !== null && existingId !== id) {
+				throw new Error(`上下文模板名称已存在：${name}`);
+			}
+		}
+		const template = update.template ?? current.template;
+		assertStoredContextTemplate(template);
+		this.#db
+			.prepare(
+				`UPDATE context_templates
+				SET name = ?, template = ?, updated_at = ?
+				WHERE id = ?`,
+			)
+			.run(
+				name,
+				serializeJsonValue(template, "上下文模板"),
+				new Date().toISOString(),
+				id,
+			);
+		const saved = this.getContextTemplate(id);
+		if (!saved) {
+			throw new Error(`上下文模板更新后读取失败：${id}`);
+		}
+		return saved;
+	}
+
+	/** 仍被故事设置引用的模板不能删除，否则运行时会找不到模板。 */
+	deleteContextTemplate(id: string): void {
+		if (!this.getContextTemplate(id)) {
+			throw new Error(`上下文模板不存在：${id}`);
+		}
+		const reference = this.#db
+			.prepare(
+				"SELECT story_id FROM story_settings WHERE template_id = ? LIMIT 1",
+			)
+			.get(id) as { readonly story_id: string } | undefined;
+		if (reference) {
+			throw new Error(
+				`上下文模板 ${id} 仍被故事 ${reference.story_id} 引用，不能删除`,
+			);
+		}
+		this.#db.prepare("DELETE FROM context_templates WHERE id = ?").run(id);
+	}
+
+	#findTemplateIdByName(name: string): string | null {
+		const row = this.#db
+			.prepare("SELECT id FROM context_templates WHERE name = ?")
+			.get(name) as { readonly id: string } | undefined;
+		return row ? row.id : null;
 	}
 
 	/**

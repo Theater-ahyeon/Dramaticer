@@ -3,6 +3,7 @@ import { renderContextView } from "../blocks/view.js";
 import type {
 	ContextSlotContent,
 	ContextSlotProvider,
+	ContextSlotProviders,
 } from "../context/assembler.js";
 import type { ContextMessage } from "../context/template.js";
 import { evaluateDirector } from "../director/evaluate.js";
@@ -454,5 +455,52 @@ export function createDirectorSlotProvider(
 				source: `director:${suggestion.mechanism}`,
 			};
 		},
+	};
+}
+
+/** 角色槽位使用导入时保存的卡提示词；来源只记录长度，不重复正文。 */
+export function createCharacterSlotProvider(
+	characterPrompt: string,
+): ContextSlotProvider {
+	if (
+		typeof characterPrompt !== "string" ||
+		characterPrompt.trim().length === 0
+	) {
+		throw new Error("角色提示词必须是非空字符串");
+	}
+	return {
+		provide(): ContextSlotContent {
+			return {
+				messages: [{ role: "system", content: characterPrompt }],
+				source: `character:${characterPrompt.length} 字符`,
+			};
+		},
+	};
+}
+
+export interface StandardChatProvidersOptions {
+	readonly store: StoryStore;
+	readonly characterPrompt: string;
+	readonly embedder?: EmbeddingClient | null;
+	readonly directorConfig?: DirectorConfig;
+	readonly mechanisms?: readonly DirectorMechanism[];
+}
+
+/** 生产对话与回放评测共用的七个槽位。 */
+export function createStandardChatProviders(
+	options: StandardChatProvidersOptions,
+): ContextSlotProviders {
+	const embedder = options.embedder ?? null;
+	return {
+		character: createCharacterSlotProvider(options.characterPrompt),
+		history: createHistorySlotProvider(options.store),
+		state: createStateSlotProvider(options.store),
+		summary: createSummarySlotProvider(options.store),
+		memory: createMemorySlotProvider(options.store, { embedder }),
+		lore: createLoreSlotProvider(options.store),
+		director: createDirectorSlotProvider(options.store, {
+			config: options.directorConfig,
+			mechanisms: options.mechanisms,
+		}),
 	};
 }

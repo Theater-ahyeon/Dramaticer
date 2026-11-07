@@ -1,7 +1,17 @@
 import type { StateDiffOp } from "../timeline.js";
 
 /** 结构化输出的传输方式：函数调用或文本标签。 */
-export type StructuredOutputMode = "function-call" | "text-tags";
+export const STRUCTURED_OUTPUT_MODES = ["function-call", "text-tags"] as const;
+
+export type StructuredOutputMode = (typeof STRUCTURED_OUTPUT_MODES)[number];
+
+const STRUCTURED_MODES: ReadonlySet<string> = new Set(STRUCTURED_OUTPUT_MODES);
+
+export function isStructuredOutputMode(
+	value: unknown,
+): value is StructuredOutputMode {
+	return typeof value === "string" && STRUCTURED_MODES.has(value);
+}
 
 /** 本模块负责校验的两类写入负载。 */
 export type StructuredPayloadName = "state_update" | "plot_note";

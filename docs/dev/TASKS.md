@@ -464,7 +464,8 @@
   - 工作区类型依赖按现有规则不登记到 `DEPENDENCIES.md`。
   验收：`pnpm check` 通过；`packages/protocol/dist` 里没有 core 的运行时 import；后续 server 与 web 任务可以直接引用这些类型，本任务先由 `tsc -b` 验证。
 
-- [ ] **M4-T02 故事运行配置与模板持久化** | 依赖：M1-T07、M2-T01 | DESIGN §5、§9
+- [x] **M4-T02 故事运行配置与模板持久化** | 依赖：M1-T07、M2-T01 | DESIGN §5、§9
+  完成：2026-11-07 迁移 v17 新增 `story_settings` 与 `context_templates`；`StoryStore` 新增设置读取（缺失返回默认值）、合并更新与模板 CRUD，校验枚举、数值范围、模板结构与 `director_config`，内置模板可直接引用、被引用的模板拒绝删除；core 新增 `createCharacterSlotProvider` 与 `createStandardChatProviders`，st-compat 的 `createChatProviders` 改为薄包装；`importCardContent` 返回 `{characterPrompt, cardName}`，`dramaticer chat` 导入后写入设置，之后的运行可省略 `--card`，故事设置里的模板优先于内置模板；protocol 的设置类型改为从 core 复用；12 个新测试，门禁通过（582 个测试）
   做什么：
   - 迁移 v17 新增 `story_settings(story_id PRIMARY KEY REFERENCES stories(id), card_name, character_prompt, persona, template_id, model, budget_tokens, structured_output, temperature, max_tokens, reasoning, viewpoint, director_config, updated_at)` 与 `context_templates(id PRIMARY KEY, name UNIQUE, template, created_at, updated_at)`；`template_id` 可空，空表示内置默认模板。
   - `StoryStore` 新增 `getStorySettings`（缺失时返回默认值）、`updateStorySettings` 与模板 CRUD；枚举、数值范围、模板 JSON 与 `director_config` 在这里校验。

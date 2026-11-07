@@ -462,6 +462,35 @@ export function buildMigrations(
 				"ALTER TABLE memory_events ADD COLUMN source TEXT NOT NULL DEFAULT 'events'",
 			],
 		},
+		{
+			version: 17,
+			description: "故事运行配置与原生上下文模板",
+			statements: [
+				`CREATE TABLE story_settings (
+					story_id TEXT PRIMARY KEY REFERENCES stories(id),
+					card_name TEXT,
+					character_prompt TEXT,
+					persona TEXT,
+					template_id TEXT,
+					model TEXT,
+					budget_tokens INTEGER NOT NULL CHECK (budget_tokens >= 0),
+					structured_output TEXT NOT NULL CHECK (structured_output IN ('function-call', 'text-tags')),
+					temperature REAL NOT NULL CHECK (temperature >= 0 AND temperature <= 2),
+					max_tokens INTEGER NOT NULL CHECK (max_tokens >= 1),
+					reasoning TEXT NOT NULL,
+					viewpoint TEXT,
+					director_config TEXT NOT NULL,
+					updated_at TEXT NOT NULL
+				) STRICT`,
+				`CREATE TABLE context_templates (
+					id TEXT PRIMARY KEY,
+					name TEXT NOT NULL UNIQUE,
+					template TEXT NOT NULL,
+					created_at TEXT NOT NULL,
+					updated_at TEXT NOT NULL
+				) STRICT`,
+			],
+		},
 	];
 }
 

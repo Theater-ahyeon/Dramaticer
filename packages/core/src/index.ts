@@ -22,6 +22,7 @@ export * from "./retrieval/chunk-text.js";
 export * from "./retrieval/hybrid.js";
 export * from "./state.js";
 export { LATEST_SCHEMA_VERSION } from "./store/migrations.js";
+export * from "./store/settings.js";
 export type {
 	AppendNodeInput,
 	ChunkSearchMatch,

@@ -476,6 +476,107 @@ describe("dramaticer chat", () => {
 		}
 	});
 
+	it("导入后把提示词写入故事设置，之后的运行不需要卡文件", async () => {
+		const dbPath = createTempDb();
+		const fake = createFakeClient();
+		const first = await runChatCli(
+			[
+				"chat",
+				"--story",
+				"s1",
+				"--card",
+				cardPath,
+				"--user",
+				"我推开山门。",
+				"--db",
+				dbPath,
+			],
+			dependencies(fake, [], []),
+		);
+		const card = await parseCharacterCardFile(cardPath);
+		const prompt = renderCharacterPrompt(card);
+
+		const store = StoryStore.open(dbPath);
+		try {
+			const settings = store.getStorySettings("s1");
+			expect(settings.cardName).toBe("山神");
+			expect(settings.characterPrompt).toBe(prompt);
+			const trace = store.getTurnTrace(first.node.id);
+			const characterEntry = trace?.context.entries.find(
+				(entry) => entry.segmentId === "character",
+			);
+			expect(characterEntry?.source).toBe(`character:${prompt.length} 字符`);
+		} finally {
+			store.close();
+		}
+
+		const second = await runChatCli(
+			["chat", "--story", "s1", "--user", "我往里走。", "--db", dbPath],
+			dependencies(fake, [], []),
+		);
+		expect(second.userNode.parentId).toBe(first.node.id);
+		expect(fake.requests).toHaveLength(2);
+		expect(
+			fake.requests[1]?.messages.some(
+				(message) => message.role === "system" && message.content === prompt,
+			),
+		).toBe(true);
+	});
+
+	it("首次运行没有角色卡时抛错", async () => {
+		const dbPath = createTempDb();
+		const fake = createFakeClient();
+		await expect(
+			runChatCli(
+				["chat", "--story", "s1", "--user", "你好", "--db", dbPath],
+				dependencies(fake, [], []),
+			),
+		).rejects.toThrow("首次运行需要用 --card");
+	});
+
+	it("故事设置指向的模板优先于内置模板", async () => {
+		const dbPath = createTempDb();
+		const seed = StoryStore.open(dbPath);
+		seed.createStory({ id: "s1", title: "山神" });
+		const created = seed.createContextTemplate({
+			name: "只有协议",
+			template: {
+				id: "custom",
+				segments: [
+					{ id: "protocol", kind: "static", text: "只按这个模板组装。" },
+				],
+			},
+		});
+		seed.updateStorySettings("s1", { templateId: created.id });
+		seed.close();
+
+		const fake = createFakeClient();
+		const result = await runChatCli(
+			[
+				"chat",
+				"--story",
+				"s1",
+				"--card",
+				cardPath,
+				"--user",
+				"我推开山门。",
+				"--db",
+				dbPath,
+			],
+			dependencies(fake, [], []),
+		);
+		const messages = fake.requests[0]?.messages ?? [];
+		expect(
+			messages.some((message) => message.content === "只按这个模板组装。"),
+		).toBe(true);
+		const store = StoryStore.open(dbPath);
+		try {
+			expect(store.getTurnTrace(result.node.id)?.templateId).toBe("custom");
+		} finally {
+			store.close();
+		}
+	});
+
 	it("参数错误给出用法", async () => {
 		const fake = createFakeClient();
 		const deps = dependencies(fake, [], []);

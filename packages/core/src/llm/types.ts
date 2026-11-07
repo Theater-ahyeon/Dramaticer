@@ -20,14 +20,25 @@ export type LlmMessage =
 			readonly isError?: boolean;
 	  };
 
-export type LlmReasoningLevel =
-	| "off"
-	| "minimal"
-	| "low"
-	| "medium"
-	| "high"
-	| "xhigh"
-	| "max";
+export const LLM_REASONING_LEVELS = [
+	"off",
+	"minimal",
+	"low",
+	"medium",
+	"high",
+	"xhigh",
+	"max",
+] as const;
+
+export type LlmReasoningLevel = (typeof LLM_REASONING_LEVELS)[number];
+
+const REASONING_LEVELS: ReadonlySet<string> = new Set(LLM_REASONING_LEVELS);
+
+export function isLlmReasoningLevel(
+	value: unknown,
+): value is LlmReasoningLevel {
+	return typeof value === "string" && REASONING_LEVELS.has(value);
+}
 
 export type LlmStopReason = "stop" | "length" | "toolUse" | "error" | "aborted";
 

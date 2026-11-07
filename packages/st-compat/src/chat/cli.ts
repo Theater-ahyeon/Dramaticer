@@ -3,13 +3,17 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
 	type ChatTurnResult,
+	type ContextTemplate,
+	DEFAULT_CONTEXT_TEMPLATE_ID,
 	DEFAULT_DIRECTOR_CONFIG,
 	type LlmChannelsConfig,
 	type LlmStreamingClient,
 	StoryStore,
+	type StructuredOutputMode,
 	createDefaultContextTemplate,
 	createEmbeddingClient,
 	createLlmClient,
+	createStandardChatProviders,
 	loadChannelsConfig,
 	loadDotEnv,
 	resolveStructuredOutputMode,
@@ -20,7 +24,7 @@ import {
 	parseCharacterCardFile,
 } from "../character-card.js";
 import { type StWorldInfo, parseWorldInfoFile } from "../world-info.js";
-import { createChatProviders, importCardContent } from "./session.js";
+import { importCardContent } from "./session.js";
 
 const repoRoot = fileURLToPath(new URL("../../../../", import.meta.url));
 
@@ -44,11 +48,12 @@ export interface ChatCliDependencies {
 }
 
 const USAGE =
-	"用法：dramaticer chat --story <id> --card <path> --user <text> [--world <path>] [--director <on|off>] [--db <path>] [--model <alias>] [--budget <tokens>] [--max-tokens <n>] [--temperature <x>]";
+	"用法：dramaticer chat --story <id> --user <text> [--card <path>] [--world <path>] [--director <on|off>] [--db <path>] [--model <alias>] [--budget <tokens>] [--max-tokens <n>] [--temperature <x>]";
 
 interface ChatArgs {
 	readonly storyId: string;
-	readonly cardPath: string;
+	/** 首次运行必须提供；之后可以只靠故事设置里的提示词。 */
+	readonly cardPath: string | null;
 	readonly worldPaths: readonly string[];
 	readonly userText: string;
 	readonly dbPath: string | null;
@@ -97,7 +102,6 @@ export async function runChatCli(
 		);
 	}
 	const mode = resolveStructuredOutputMode(model.probe);
-	const card = await loadCard(parsed.cardPath);
 
 	const dbPath =
 		parsed.dbPath ??
@@ -113,7 +117,14 @@ export async function runChatCli(
 		embeddingDimensions === undefined ? {} : { embeddingDimensions },
 	);
 	try {
+		const card =
+			parsed.cardPath === null ? null : await loadCard(parsed.cardPath);
 		if (store.getStory(parsed.storyId) === null) {
+			if (card === null) {
+				throw new Error(
+					`故事 ${parsed.storyId} 不存在，首次运行需要用 --card 导入角色卡`,
+				);
+			}
 			store.createStory({
 				id: parsed.storyId,
 				title: card.name.trim().length > 0 ? card.name : parsed.storyId,
@@ -129,11 +140,32 @@ export async function runChatCli(
 			}
 			log(`已创建故事 ${parsed.storyId}`);
 		}
+		if (card === null && parsed.worldPaths.length > 0) {
+			throw new Error("--world 需要同时提供 --card");
+		}
 		const worlds: StWorldInfo[] = [];
 		for (const worldPath of parsed.worldPaths) {
 			worlds.push(await loadWorld(worldPath));
 		}
-		importCardContent(store, parsed.storyId, { card, worlds });
+		const imported =
+			card === null
+				? null
+				: importCardContent(store, parsed.storyId, { card, worlds });
+		const settings = store.getStorySettings(parsed.storyId);
+		if (imported !== null) {
+			store.updateStorySettings(parsed.storyId, {
+				cardName: imported.cardName,
+				characterPrompt: imported.characterPrompt,
+			});
+		}
+		const characterPrompt =
+			imported === null ? settings.characterPrompt : imported.characterPrompt;
+		if (characterPrompt === null) {
+			throw new Error(
+				`故事 ${parsed.storyId} 没有保存角色提示词，请用 --card 导入角色卡`,
+			);
+		}
+		const template = resolveTemplate(store, settings.templateId, mode);
 		const budgetTokens =
 			parsed.budgetTokens ?? model.contextWindow - model.maxTokens;
 		if (budgetTokens <= 0) {
@@ -146,9 +178,10 @@ export async function runChatCli(
 			client: createClient(config, modelAlias),
 			storyId: parsed.storyId,
 			userText: parsed.userText,
-			template: createDefaultContextTemplate({ structuredOutput: mode }),
-			providers: createChatProviders(store, {
-				card,
+			template,
+			providers: createStandardChatProviders({
+				store,
+				characterPrompt,
 				embedder,
 				directorConfig: {
 					...DEFAULT_DIRECTOR_CONFIG,
@@ -186,6 +219,22 @@ export async function runChatCli(
 	} finally {
 		store.close();
 	}
+}
+
+/** 故事指向库里的模板时读取它；为空或指向内置模板时用默认模板。 */
+function resolveTemplate(
+	store: StoryStore,
+	templateId: string | null,
+	mode: StructuredOutputMode,
+): ContextTemplate {
+	if (templateId === null || templateId === DEFAULT_CONTEXT_TEMPLATE_ID) {
+		return createDefaultContextTemplate({ structuredOutput: mode });
+	}
+	const record = store.getContextTemplate(templateId);
+	if (record === null) {
+		throw new Error(`故事引用的上下文模板不存在：${templateId}`);
+	}
+	return record.template;
 }
 
 function pickDefaultModel(config: LlmChannelsConfig): string {
@@ -245,7 +294,9 @@ function parseChatArgs(args: readonly string[]): ChatArgs {
 	}
 
 	const storyId = requireText(values.get("story"), "--story");
-	const cardPath = requireText(values.get("card"), "--card");
+	const cardValue = values.get("card");
+	const cardPath =
+		cardValue === undefined ? null : requireText(cardValue, "--card");
 	const userText = requireText(values.get("user"), "--user");
 	const dbPath = optionalText(values.get("db"), "--db");
 	const model = optionalText(values.get("model"), "--model");

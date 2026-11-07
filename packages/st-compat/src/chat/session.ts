@@ -4,13 +4,7 @@ import {
 	type DirectorMechanism,
 	type EmbeddingClient,
 	type StoryStore,
-	createDirectorSlotProvider,
-	createHistorySlotProvider,
-	createLoreSlotProvider,
-	createMemorySlotProvider,
-	createStateSlotProvider,
-	createStaticSlotProvider,
-	createSummarySlotProvider,
+	createStandardChatProviders,
 } from "@dramaticer/core";
 import type { StCharacterCard } from "../character-card.js";
 import { importDramaticerExtension } from "../dramaticer-extension.js";
@@ -27,12 +21,17 @@ export interface ImportCardContentOptions {
 	readonly worlds?: readonly StWorldInfo[];
 }
 
+export interface ImportedCardContent {
+	readonly characterPrompt: string;
+	readonly cardName: string;
+}
+
 /** 把角色卡、卡内世界书、外部世界书与原生扩展导入故事。 */
 export function importCardContent(
 	store: StoryStore,
 	storyId: string,
 	options: ImportCardContentOptions,
-): void {
+): ImportedCardContent {
 	const { card } = options;
 	importCharacterCardEntity(store, storyId, card);
 	if (card.characterBook !== null) {
@@ -42,6 +41,7 @@ export function importCardContent(
 		importWorldInfoLore(store, storyId, worldInfo);
 	}
 	importDramaticerExtension(store, storyId, card);
+	return { characterPrompt: renderCharacterPrompt(card), cardName: card.name };
 }
 
 export interface CreateChatProvidersOptions {
@@ -51,25 +51,16 @@ export interface CreateChatProvidersOptions {
 	readonly mechanisms?: readonly DirectorMechanism[];
 }
 
-/** 生产对话与回放评测共用的槽位集合。 */
+/** 生产对话与回放评测共用的槽位集合：从角色卡渲染提示词后交给 core。 */
 export function createChatProviders(
 	store: StoryStore,
 	options: CreateChatProvidersOptions,
 ): ContextSlotProviders {
-	const embedder = options.embedder ?? null;
-	return {
-		character: createStaticSlotProvider(
-			[{ role: "system", content: renderCharacterPrompt(options.card) }],
-			`card:${options.card.name}`,
-		),
-		history: createHistorySlotProvider(store),
-		state: createStateSlotProvider(store),
-		summary: createSummarySlotProvider(store),
-		memory: createMemorySlotProvider(store, { embedder }),
-		lore: createLoreSlotProvider(store),
-		director: createDirectorSlotProvider(store, {
-			config: options.directorConfig,
-			mechanisms: options.mechanisms,
-		}),
-	};
+	return createStandardChatProviders({
+		store,
+		characterPrompt: renderCharacterPrompt(options.card),
+		embedder: options.embedder,
+		directorConfig: options.directorConfig,
+		mechanisms: options.mechanisms,
+	});
 }

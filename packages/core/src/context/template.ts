@@ -1,5 +1,8 @@
 import type { LlmRole } from "../llm/types.js";
 
+/** 内置默认模板的 id；故事设置把 templateId 指向它表示不使用库里的模板。 */
+export const DEFAULT_CONTEXT_TEMPLATE_ID = "dramaticer-default";
+
 /** DESIGN §9 的 harness 槽位。 */
 export const CONTEXT_SLOT_NAMES = [
 	"lore",

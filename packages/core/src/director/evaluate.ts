@@ -27,7 +27,7 @@ export const DEFAULT_DIRECTOR_MECHANISMS: readonly DirectorMechanism[] = [
 	createPacingMechanism(),
 ];
 
-function assertDirectorConfig(config: DirectorConfig): void {
+export function assertDirectorConfig(config: DirectorConfig): void {
 	if (typeof config !== "object" || config === null) {
 		throw new Error("导演配置必须是对象");
 	}

@@ -3,24 +3,23 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：67
-- 任务：M4-T01 共享 API 类型包
+- 会话：68
+- 任务：M4-T02 故事运行配置与模板持久化
 - 结果：完成（`DONE`）。
-  - 新增 `packages/protocol`（`@dramaticer/protocol`）：
-    - `story.ts`：`StoryView`、`CreateStoryRequest`、`UpdateStoryRequest`、`StoryPath`、`StoryTreeNode`、`StoryTree`。
-    - `settings.ts`：`StorySettings`、`StorySettingsUpdate`、`ContextTemplateRecord`、模板的创建与更新请求。
-    - `channels.ts`：`ChannelView`、`ModelView`、`EmbeddingView`、`ChannelsView`，以及整份 `channels.yaml` 的替换请求 `ChannelsUpdateRequest`；密钥只以环境变量名与是否设置出现。
-    - `errors.ts`：`API_ERROR_CODES`（8 个）与 `ApiErrorBody`、`ApiErrorResponse`。
-    - `turn.ts`：`TurnRequest`、`SSE_EVENT_NAMES`（7 个事件）、各事件负载与 `SseEvent` 联合类型。
-  - 领域类型全部用 `import type` 引用 `@dramaticer/core`；协议包开启 `verbatimModuleSyntax`，编译出的 `.js` 不含 core；`.d.ts` 里保留类型引用。
-  - 根 `tsconfig.json` 增加 `packages/protocol` 项目引用；`pnpm-lock.yaml` 登记工作区依赖。
-  - 3 个测试：事件名与错误码唯一、dist 的 JS 不含 `@dramaticer/core`（dist 不存在时跳过）。
-  - 门禁通过：invariants、`tsc -b`、biome、vitest 570 个测试。
+  - 迁移 v17：`story_settings`（每个故事一行，`template_id` 可空）与 `context_templates`（`name` 唯一）。
+  - `packages/core/src/store/settings.ts`：`StorySettings`、`StorySettingsUpdate`、`ContextTemplateRecord`、创建与更新输入、默认值、校验函数。
+  - `StoryStore`：`getStorySettings`（缺失返回默认值，不写库）、`updateStorySettings`（合并更新，`null` 清空）、`createContextTemplate`、`getContextTemplate`、`listContextTemplates`、`updateContextTemplate`、`deleteContextTemplate`。校验枚举、数值范围、模板结构（至少一个片段）、`director_config` 与未知字段；`template_id` 可以指向内置模板 id，被故事引用的模板拒绝删除。
+  - core 新增 `createCharacterSlotProvider` 与 `createStandardChatProviders`；`DEFAULT_CONTEXT_TEMPLATE_ID` 移到 `context/template.ts`；`assertDirectorConfig` 从 `director/evaluate.ts` 导出。
+  - st-compat：`importCardContent` 返回 `{characterPrompt, cardName}`；`createChatProviders` 委托 `createStandardChatProviders`；`dramaticer chat` 的 `--card` 变为可选（首次运行必需），导入后把卡名与提示词写入故事设置，之后优先使用库里的提示词，故事设置里的模板优先于内置模板。
+  - protocol 的 `settings.ts` 改为从 core 复用类型，字段一致。
+  - 12 个新测试：6 个设置与模板存储、3 个槽位工厂、3 个 CLI（无卡运行、缺少卡报错、故事模板优先）。
+  - 门禁通过：invariants、`tsc -b`、biome、vitest 582 个测试。
 
 ## 当前状态
-- M0、M1、M2、M3、D-T01 至 D-T04、M4-T00、M4-T01 完成；M4-T02 待做。
-- 数据库 schema 版本 16；M4-T02 将升到 17。
+- M0、M1、M2、M3、D-T01 至 D-T04、M4-T00 至 M4-T02 完成；M4-T03 待做。
+- 数据库 schema 版本 17。
 - `packages/server` 与 `packages/web` 尚未创建。server 应依赖 core、st-compat 与 protocol；web 只依赖 protocol 与浏览器 API。
+- `story_settings` 默认值：`budgetTokens` 12000、`structuredOutput` `text-tags`、`temperature` 0.8、`maxTokens` 1024、`reasoning` `low`、导演使用默认配置。
 - 快照：`eval-private/raw/` 有 94 个文件；manifest 记录 `corpus` 与 `sourceMtime`。`eval-private/reference/` 有 5 部参照小说。
 - 事件表已在 v7 建立，但真实回放里没有事件；不要引用事件数字。
 - HUMAN-03（事件题抽查）仍未完成，不阻塞任何任务；其余 HUMAN 条目均已完成。
@@ -28,13 +27,12 @@
 - 兼容线 C-T00 排在 M4 之后，与 M4 的沙箱渲染器衔接。
 
 ## 下一步
-- **M4-T02 故事运行配置与模板持久化**，依赖 M1-T07、M2-T01，可以直接执行。
-  - 迁移 v17：`story_settings` 与 `context_templates`；`template_id` 可空表示内置默认模板。
-  - `StoryStore`：`getStorySettings`（缺失时返回默认值）、`updateStorySettings`、模板 CRUD；校验枚举、数值范围、模板 JSON 与 `director_config`。
-  - core：`createCharacterSlotProvider(characterPrompt)` 与 `createStandardChatProviders({...})`；st-compat 的 `createChatProviders` 改为薄包装。
-  - `importCardContent` 返回 `{characterPrompt, cardName}`；`dramaticer chat` 导入后写入故事设置，之后优先读库里的提示词。
-  - protocol 里已有 `StorySettings` 与 `ContextTemplateRecord`，实现时保持字段一致；需要调整时同步修改协议包。
-- 之后按 TASKS 顺序：M4-T03 重新生成助手楼层、M4-T04 server 骨架与认证。
+- **M4-T03 重新生成助手楼层**，依赖 M1-T07、M2-T01，可以直接执行。
+  - 从 `runChatTurn` 抽出 `generateAssistantTurn`：接收现有用户楼层 id，不再追加用户楼层。
+  - `regenerateAssistantTurn(assistantNodeId)` 找到父用户楼层，用父楼层 raw 作为本轮输入，在父节点下新建助手兄弟节点并把 head 移过去。
+  - `runChatTurn` 改为先追加用户楼层再调用 `generateAssistantTurn`。
+  - 验收：兄弟节点、旧节点与旧 Trace 不变、head 正确；父节点不是用户楼层时抛错；函数调用模式仍只有一次主调用与最多 2 轮读取；状态 diff、笔记与新 Trace 写在新楼层。
+- 之后按 TASKS 顺序：M4-T04 server 骨架与认证、M4-T05 故事导入与设置接口。
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
@@ -56,3 +54,4 @@
 - Director 机制新增时同步更新既有测试里的机制列表断言：`director.test.ts`、`director-event-pool.test.ts`、`lore.test.ts`、`packages/st-compat/test/chat-cli.test.ts`。
 - M4 新增 `packages/server`、`packages/web`；server 使用 `node:http`，默认只监听 127.0.0.1，绑定非回环地址必须设置 `DRAMATICER_SERVER_PASSWORD`。
 - Playwright 浏览器与 `pnpm e2e` 不进入 `pnpm check`；端到端失败产物写 `.devloop/scratch/e2e/`。
+- 故事设置的更新时间由存储层用 `new Date().toISOString()` 写入；测试不要断言具体时间值。

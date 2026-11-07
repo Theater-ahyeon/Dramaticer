@@ -1,7 +1,8 @@
-import type { ContextTemplate } from "../context/template.js";
+import {
+	type ContextTemplate,
+	DEFAULT_CONTEXT_TEMPLATE_ID,
+} from "../context/template.js";
 import type { StructuredOutputMode } from "../structured/types.js";
-
-export const DEFAULT_CONTEXT_TEMPLATE_ID = "dramaticer-default";
 
 export interface DefaultContextTemplateOptions {
 	readonly structuredOutput: StructuredOutputMode;
