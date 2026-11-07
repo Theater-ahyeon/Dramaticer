@@ -106,6 +106,25 @@ export function createStateSlotProvider(
 	};
 }
 
+/**
+ * 取当前路径上最近一条现场分析；没有分析时返回 null，由 Trace 记为缺失槽位。
+ */
+export function createSceneSlotProvider(
+	store: StoryStore,
+): ContextSlotProvider {
+	return {
+		provide(request): ContextSlotContent | null {
+			if (request.nodeId === null) return null;
+			const analysis = store.getLatestSceneAnalysisOnPath(request.nodeId);
+			if (analysis === null) return null;
+			return {
+				messages: [{ role: "system", content: `现场分析：\n${analysis.text}` }],
+				source: `scene:楼层 ${analysis.nodeId}，估算 ${analysis.tokenCount} token`,
+			};
+		},
+	};
+}
+
 export interface MemorySlotProviderOptions {
 	/** 最多注入多少条检索结果，默认 6。 */
 	readonly limit?: number;
@@ -501,6 +520,7 @@ export function createStandardChatProviders(
 		...character,
 		history: createHistorySlotProvider(options.store),
 		state: createStateSlotProvider(options.store),
+		scene: createSceneSlotProvider(options.store),
 		summary: createSummarySlotProvider(options.store),
 		memory: createMemorySlotProvider(options.store, { embedder }),
 		lore: createLoreSlotProvider(options.store),

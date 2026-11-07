@@ -44,6 +44,16 @@ export interface BackgroundJobContext {
 	readonly job: BackgroundJob;
 }
 
+/**
+ * 处理器抛出它表示依赖的任务还没完成：任务退回 pending，并且不消耗执行次数。
+ */
+export class BackgroundJobDeferredError extends Error {
+	constructor(message = "后台任务的依赖还没有完成，下一轮再试") {
+		super(message);
+		this.name = "BackgroundJobDeferredError";
+	}
+}
+
 export type BackgroundJobHandler = (
 	context: BackgroundJobContext,
 ) => Promise<void> | void;

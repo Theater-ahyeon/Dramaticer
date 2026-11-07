@@ -123,7 +123,8 @@
   - 原生模板新增可选的 `block_format` 段，说明 `state_update` 与 `plot_note` 的格式，默认关闭；开启后只说明格式，不要求模型输出（I13）。
   验收：`block_format` 关闭时模板与现在逐字节一致；开启后模板包含两种写入的格式说明且不出现强制输出要求；`pnpm check` 通过。
 
-- [ ] **R1-T02.a 现场分析** | 依赖：R1-T02 | DESIGN §7.3、§9 | ADR-0041（A2）
+- [x] **R1-T02.a 现场分析** | 依赖：R1-T02 | DESIGN §7.3、§9 | ADR-0041（A2）
+  完成：2026-11-07 迁移 v21 新增 `scene_analyses`（楼层主键、同故事触发器、归属不可改）；后台任务 `scene` 读该楼层的结算快照与路径上最近 6 楼原文，由后台客户端（settler 角色）输出一段分析并以 token 估算器记录长度，同一楼层重跑覆盖同一行；结算记录缺失时抛 `BackgroundJobDeferredError`，`drain` 接住后退回 pending 并撤销执行计数（ADR-0048）；新增 `scene` 槽位与 `createSceneSlotProvider`，取当前路径上最近一条分析，没有时记为 `missing-slot`；默认模板把该段放在记忆之后、导演之前；新增 5 个测试与一次临时脚本冒烟（同一轮 drain 先结算再分析、槽位 `included`）；门禁通过（774 个测试）
   做什么：
   - 迁移 v21 新增 `scene_analyses(node_id PRIMARY KEY, story_id, text, token_count, created_at)`，同故事触发器与 M2-T02 一致。
   - 后台任务 `scene`：读投机结算后的台账快照与最近 `sceneWindowFloors`（默认 6）楼原文，由 `settler` 角色输出一小段，写明在场人物各自想要什么、知道什么、张力在哪里；长度按 token 估算器控制；同一楼层重复执行覆盖同一行。现场分析不落后一楼：读的是本楼层的结算结果，结算尚未完成时任务保持 pending。

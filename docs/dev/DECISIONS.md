@@ -610,3 +610,18 @@
   - 请求携带冲突检查窗口：当前 head 路径上最近的 `conflictWindowFloors`（默认 6）楼原文。模型把与这些原文明确矛盾的事实写进同一楼层的 `conflicts`（`path` 与 `reason`）；程序不写这些路径，已有值保持不变，并以 `{path, action: "conflict", reason}` 记入 `ledger_settlements.repairs`。`LEDGER_REPAIR_ACTIONS` 增加 `conflict`。
   - 冲突记录与其它修复一样只落在 `ledger_settlements.repairs`（ADR-0046），不再额外写 Trace。
 - **影响**：R1-T07.a 从 `repairs` 里筛 `action` 为 `conflict` 的记录生成待审变更卡；`docs/DESIGN.md` §7.1 的 knowledge 行与 §7.2 的结算规则同步更新；`knowledge` 的旧字符串值不再通过校验，评测数据库由 raw 重建，不做旧库迁移。
+
+## ADR-0048 现场分析的锚点、槽位位置与任务等待（2026-11-07）
+
+- **背景**：R1-T02.a 要求现场分析在台账结算之后生成、绑定助手楼层，结算尚未完成时任务保持 pending。DESIGN §9 的槽位枚举把 `scene` 排在 `history` 与 `director` 之间，而默认模板里 `history` 是最后一段；“任务保持 pending”也需要一个不把依赖未完成记成失败的机制。
+- **选项**：
+  - 分析锚点取 head 还是被分析的楼层：取 head 会让一个早先楼层的分析读到后来的原文，与它所绑定的结算快照不一致；锚定被分析的楼层（采纳）。
+  - 等待方式：处理器返回一个标记值（`void` 联合类型被 lint 判为易混淆）、把入队条件改成“已结算”（结算与分析的入队条件会重复表达同一件事）、抛出专用错误交给 drain 识别（采纳）。
+  - 槽位段落位置：严格按 DESIGN 枚举放在历史段之后（会出现在对话消息后面）、放在记忆段之后与导演段之前（采纳）。
+- **决定**：
+  - `createSceneHandler` 的输入是该楼层结算后的台账快照（`getStateSnapshot(job.nodeId)`）与路径上最近 `windowFloors`（默认 6）楼原文，请求 `maxTokens` 取 `maxTokens`（默认 200），保存的 `token_count` 是 token 估算器对白本的估算值。
+  - 该楼层没有 `ledger_settlements` 记录时抛 `BackgroundJobDeferredError`；`drainBackgroundJobs` 捕获后调用 `StoryStore.deferBackgroundJob`，把任务退回 pending、撤销本次执行计数、清空开始时间，其余错误照旧按重试规则处理。
+  - `scene` 任务与 `settle` 一样使用 `settled` 入队条件。同一轮 drain 里结算先执行时分析直接读到结果，顺序不保证时分析在下一轮执行。
+  - `scene_analyses` 以 `node_id` 为主键，重复执行覆盖同一行的文本、token 数与创建时间；槽位取当前路径上最近一条分析，跨分支不共享。
+  - `CONTEXT_SLOT_NAMES` 按 DESIGN §9 把 `scene` 放在 `history` 与 `director` 之间；`createDefaultContextTemplate` 的段落放在 `memory` 之后、`director` 之前。
+- **影响**：`dramaticer work` 注册 `scene`；`deferBackgroundJob` 之后其它需要等待依赖的后台任务可以复用它。R1-T07.b 的 `gap_pass` 合并调用会取代这一步的独立请求时，删除独立任务，不保留两套。

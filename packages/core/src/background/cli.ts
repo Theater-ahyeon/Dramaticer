@@ -23,6 +23,7 @@ import {
 	NPC_AGENDA_JOB_KIND,
 	createNpcAgendaHandler,
 } from "../memory/npc-agenda.js";
+import { SCENE_JOB_KIND, createSceneHandler } from "../memory/scene.js";
 import { createSummaryHandler } from "../memory/summarize.js";
 import { DEFAULT_EMBEDDING_DIMENSIONS } from "../store/migrations.js";
 import { StoryStore } from "../store/story-store.js";
@@ -97,6 +98,10 @@ export async function runWorkCli(
 			[NPC_AGENDA_JOB_KIND]: createNpcAgendaHandler(),
 			[SETTLE_JOB_KIND]: {
 				handler: createSettleHandler(),
+				enqueue: "settled",
+			},
+			[SCENE_JOB_KIND]: {
+				handler: createSceneHandler(),
 				enqueue: "settled",
 			},
 			...(embedder === null

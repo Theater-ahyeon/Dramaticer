@@ -4,5 +4,6 @@ export * from "./extract.js";
 export * from "./lore.js";
 export * from "./npc-agenda.js";
 export * from "./plot-note.js";
+export * from "./scene.js";
 export * from "./summarize.js";
 export * from "./summary.js";

@@ -184,6 +184,7 @@ describe("dramaticer chat", () => {
 				"state",
 				"summary",
 				"memory",
+				"scene",
 				"director",
 				"protocol",
 				"history",

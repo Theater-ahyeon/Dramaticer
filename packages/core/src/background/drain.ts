@@ -1,10 +1,11 @@
 import type { LlmClient } from "../llm/types.js";
 import type { StoryStore } from "../store/story-store.js";
-import type {
-	BackgroundJob,
-	BackgroundJobEnqueueCondition,
-	BackgroundJobRegistry,
-	BackgroundJobStatus,
+import {
+	type BackgroundJob,
+	BackgroundJobDeferredError,
+	type BackgroundJobEnqueueCondition,
+	type BackgroundJobRegistry,
+	type BackgroundJobStatus,
 } from "./types.js";
 
 export const MAX_BACKGROUND_JOB_ATTEMPTS = 3;
@@ -116,6 +117,18 @@ export async function drainBackgroundJobs(
 		try {
 			await type.handler({ store, client: options.client, job: running });
 		} catch (error) {
+			if (error instanceof BackgroundJobDeferredError) {
+				const deferred = store.deferBackgroundJob(job.id);
+				runs.push({
+					jobId: deferred.id,
+					nodeId: deferred.nodeId,
+					kind: deferred.kind,
+					status: deferred.status,
+					attempts: deferred.attempts,
+					error: deferred.lastError,
+				});
+				continue;
+			}
 			const message = error instanceof Error ? error.message : String(error);
 			const failed = store.failBackgroundJob(job.id, {
 				error: message.length > 0 ? message : "后台任务执行失败",

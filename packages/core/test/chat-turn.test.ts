@@ -215,6 +215,7 @@ describe("runChatTurn", () => {
 			["state", "missing-slot"],
 			["summary", "missing-slot"],
 			["memory", "missing-slot"],
+			["scene", "missing-slot"],
 			["director", "missing-slot"],
 			["protocol", "included"],
 			["history", "included"],

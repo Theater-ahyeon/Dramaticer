@@ -543,6 +543,32 @@ export function buildMigrations(
 				END`,
 			],
 		},
+		{
+			version: 21,
+			description: "现场分析：每个已结算的助手楼层一行，同一楼层重跑覆盖",
+			statements: [
+				`CREATE TABLE scene_analyses (
+					node_id TEXT PRIMARY KEY NOT NULL REFERENCES nodes(id),
+					story_id TEXT NOT NULL REFERENCES stories(id),
+					text TEXT NOT NULL,
+					token_count INTEGER NOT NULL CHECK (token_count >= 0),
+					created_at TEXT NOT NULL
+				) STRICT`,
+				"CREATE INDEX scene_analyses_story_idx ON scene_analyses(story_id)",
+				`CREATE TRIGGER scene_analyses_story_matches_node
+				BEFORE INSERT ON scene_analyses
+				WHEN COALESCE((SELECT story_id FROM nodes WHERE id = NEW.node_id), '') <> NEW.story_id
+				BEGIN
+					SELECT RAISE(ABORT, '现场分析的 story_id 必须与所在楼层一致');
+				END`,
+				`CREATE TRIGGER scene_analyses_identity_immutable
+				BEFORE UPDATE ON scene_analyses
+				WHEN NEW.node_id <> OLD.node_id OR NEW.story_id <> OLD.story_id
+				BEGIN
+					SELECT RAISE(ABORT, '现场分析的楼层与故事归属不可修改');
+				END`,
+			],
+		},
 	];
 }
 

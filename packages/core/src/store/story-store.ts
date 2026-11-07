@@ -71,6 +71,7 @@ import {
 	type PlotNote,
 	isPlotNoteStatus,
 } from "../memory/plot-note.js";
+import type { NewSceneAnalysis, SceneAnalysis } from "../memory/scene.js";
 import {
 	type NewSummaryInput,
 	type Summary,
@@ -187,6 +188,14 @@ interface EntityCandidateRow {
 	readonly kind: string;
 	readonly hits: number;
 	readonly first_node_id: string;
+	readonly created_at: string;
+}
+
+interface SceneAnalysisRow {
+	readonly node_id: string;
+	readonly story_id: string;
+	readonly text: string;
+	readonly token_count: number;
 	readonly created_at: string;
 }
 
@@ -761,6 +770,16 @@ function rowToLedgerSettlement(row: LedgerSettlementRow): LedgerSettlement {
 			JSON.parse(row.repairs) as unknown,
 			`楼层 ${row.node_id} 的结算记录`,
 		),
+		createdAt: row.created_at,
+	};
+}
+
+function rowToSceneAnalysis(row: SceneAnalysisRow): SceneAnalysis {
+	return {
+		nodeId: row.node_id,
+		storyId: row.story_id,
+		text: row.text,
+		tokenCount: row.token_count,
 		createdAt: row.created_at,
 	};
 }
@@ -2061,6 +2080,86 @@ export class StoryStore {
 			)
 			.all(head.id, limit) as { readonly node_id: string }[];
 		return rows.map((row) => row.node_id);
+	}
+
+	/** 写入一个楼层的现场分析；同一楼层重复执行覆盖同一行。 */
+	saveSceneAnalysis(input: NewSceneAnalysis): SceneAnalysis {
+		assertNonEmptyString(input.nodeId, "现场分析的楼层 id");
+		assertNonEmptyString(input.storyId, "现场分析的故事 id");
+		const node = this.getNode(input.nodeId);
+		if (!node) {
+			throw new Error(`楼层节点不存在：${input.nodeId}`);
+		}
+		if (node.storyId !== input.storyId) {
+			throw new Error(
+				`现场分析的 storyId 与楼层所属故事不一致：${input.storyId}`,
+			);
+		}
+		if (typeof input.text !== "string" || input.text.trim().length === 0) {
+			throw new Error("现场分析的正文必须是非空字符串");
+		}
+		if (!Number.isInteger(input.tokenCount) || input.tokenCount < 0) {
+			throw new Error("现场分析的 token 数必须是非负整数");
+		}
+		const createdAt = input.createdAt ?? new Date().toISOString();
+		assertNonEmptyString(createdAt, "现场分析的创建时间");
+		this.#db
+			.prepare(
+				`INSERT INTO scene_analyses (node_id, story_id, text, token_count, created_at)
+				VALUES (?, ?, ?, ?, ?)
+				ON CONFLICT (node_id) DO UPDATE SET
+					text = excluded.text,
+					token_count = excluded.token_count,
+					created_at = excluded.created_at`,
+			)
+			.run(
+				input.nodeId,
+				input.storyId,
+				input.text,
+				input.tokenCount,
+				createdAt,
+			);
+		return {
+			nodeId: input.nodeId,
+			storyId: input.storyId,
+			text: input.text,
+			tokenCount: input.tokenCount,
+			createdAt,
+		};
+	}
+
+	/** 读取一个楼层的现场分析；没有时返回 null。 */
+	getSceneAnalysis(nodeId: string): SceneAnalysis | null {
+		if (!this.getNode(nodeId)) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
+		const row = this.#db
+			.prepare("SELECT * FROM scene_analyses WHERE node_id = ?")
+			.get(nodeId) as SceneAnalysisRow | undefined;
+		return row === undefined ? null : rowToSceneAnalysis(row);
+	}
+
+	/** 沿节点所在的路径取最近一层的现场分析；没有时返回 null。 */
+	getLatestSceneAnalysisOnPath(nodeId: string): SceneAnalysis | null {
+		if (!this.getNode(nodeId)) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
+		const row = this.#db
+			.prepare(
+				`WITH RECURSIVE chain(node_id, depth) AS (
+					SELECT id, 0 FROM nodes WHERE id = ?
+					UNION ALL
+					SELECT nodes.parent_id, chain.depth + 1
+					FROM nodes JOIN chain ON nodes.id = chain.node_id
+					WHERE nodes.parent_id IS NOT NULL
+				)
+				SELECT scene_analyses.*
+				FROM scene_analyses JOIN chain ON scene_analyses.node_id = chain.node_id
+				ORDER BY chain.depth ASC
+				LIMIT 1`,
+			)
+			.get(nodeId) as SceneAnalysisRow | undefined;
+		return row === undefined ? null : rowToSceneAnalysis(row);
 	}
 
 	/**
@@ -3540,6 +3639,27 @@ export class StoryStore {
 				exhausted ? at : null,
 				id,
 			);
+		return this.#requireBackgroundJob(id);
+	}
+
+	/**
+	 * 把 running 任务退回 pending，并且不消耗执行次数：任务依赖的其它任务还没完成，
+	 * 下一轮再试。
+	 */
+	deferBackgroundJob(id: number): BackgroundJob {
+		const job = this.#requireBackgroundJob(id);
+		if (job.status !== "running") {
+			throw new Error(
+				`后台任务 ${id} 的状态是 ${job.status}，只有 running 可以退回等待`,
+			);
+		}
+		this.#db
+			.prepare(
+				`UPDATE background_jobs
+				SET status = 'pending', attempts = attempts - 1, started_at = NULL, finished_at = NULL
+				WHERE id = ?`,
+			)
+			.run(id);
 		return this.#requireBackgroundJob(id);
 	}
 

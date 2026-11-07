@@ -37,7 +37,7 @@ const FUNCTION_CALL_BLOCK_FORMAT = `块格式参考：状态变更与剧情笔�
 - plot_note：{"text":"尚未兑现的伏笔或线索"}；text 是一句话。
 要不要调用、调用几次，按剧情需要决定。`;
 
-/** 默认的原生上下文模板：角色、世界书、状态、摘要、记忆、导演、协议、历史。 */
+/** 默认的原生上下文模板：角色、世界书、状态、摘要、记忆、现场分析、导演、协议、历史。 */
 export function createDefaultContextTemplate(
 	options: DefaultContextTemplateOptions,
 ): ContextTemplate {
@@ -53,6 +53,7 @@ export function createDefaultContextTemplate(
 			{ id: "state", kind: "slot", slot: "state", priority: 85 },
 			{ id: "summary", kind: "slot", slot: "summary", priority: 70 },
 			{ id: "memory", kind: "slot", slot: "memory", priority: 60 },
+			{ id: "scene", kind: "slot", slot: "scene", priority: 55 },
 			{ id: "director", kind: "slot", slot: "director", priority: 50 },
 			...(options.blockFormat === true
 				? [
