@@ -200,6 +200,30 @@ describe("parseChatJsonl", () => {
 		);
 	});
 
+	it("只读分析模式把无法对应的 swipe_id 置为 null", async () => {
+		const header = JSON.stringify({ character_name: "角色" });
+		const outOfRange = `${header}\n${JSON.stringify({
+			mes: "正文",
+			swipes: ["一"],
+			swipe_id: 1,
+		})}`;
+		const entries = await collect(
+			parseChatJsonl([outOfRange], { strictSwipeId: false }),
+		);
+		const [message] = messagesOf(entries);
+		expect(message?.swipeId).toBeNull();
+		expect(message?.text).toBe("正文");
+		const fractional = `${header}\n${JSON.stringify({
+			mes: "正文",
+			swipes: ["一"],
+			swipe_id: 1.5,
+		})}`;
+		const [message2] = messagesOf(
+			await collect(parseChatJsonl([fractional], { strictSwipeId: false })),
+		);
+		expect(message2?.swipeId).toBeNull();
+	});
+
 	it("空输入被拒绝", async () => {
 		await expect(collect(parseChatJsonl([]))).rejects.toThrow("缺少头部");
 	});

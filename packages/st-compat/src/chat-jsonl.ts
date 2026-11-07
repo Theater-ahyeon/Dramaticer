@@ -44,6 +44,14 @@ export type StChatEntry =
 	| { readonly kind: "header"; readonly header: StChatHeader }
 	| { readonly kind: "message"; readonly message: StChatMessage };
 
+export interface ChatJsonlParseOptions {
+	/**
+	 * swipe_id 越界或不是非负整数时是否抛错。默认抛错，避免导入时静默丢弃状态；
+	 * 只读分析传 false，把无法对应的 swipe_id 记为 null。
+	 */
+	readonly strictSwipeId?: boolean;
+}
+
 interface SourceLine {
 	readonly line: string;
 	readonly lineNumber: number;
@@ -85,7 +93,9 @@ async function* splitChatLines(
  */
 export async function* parseChatJsonl(
 	chunks: AsyncIterable<string> | Iterable<string>,
+	options: ChatJsonlParseOptions = {},
 ): AsyncGenerator<StChatEntry, void, undefined> {
+	const strictSwipeId = options.strictSwipeId ?? true;
 	let header: StChatHeader | null = null;
 	let messageIndex = 0;
 	for await (const { line, lineNumber } of splitChatLines(chunks)) {
@@ -100,7 +110,7 @@ export async function* parseChatJsonl(
 		}
 		yield {
 			kind: "message",
-			message: toMessage(record, messageIndex, lineNumber),
+			message: toMessage(record, messageIndex, lineNumber, strictSwipeId),
 		};
 		messageIndex += 1;
 	}
@@ -111,9 +121,10 @@ export async function* parseChatJsonl(
 
 export async function* parseChatJsonlFile(
 	path: string,
+	options: ChatJsonlParseOptions = {},
 ): AsyncGenerator<StChatEntry, void, undefined> {
 	try {
-		yield* parseChatJsonl(readUtf8Chunks(path));
+		yield* parseChatJsonl(readUtf8Chunks(path), options);
 	} catch (error) {
 		throw new Error(`解析聊天文件失败：${path}`, { cause: error });
 	}
@@ -158,9 +169,15 @@ function toMessage(
 	raw: JsonObject,
 	index: number,
 	lineNumber: number,
+	strictSwipeId: boolean,
 ): StChatMessage {
 	const swipes = toSwipes(raw);
-	const swipeId = readSwipeId(raw.swipe_id, swipes.length, lineNumber);
+	const swipeId = readSwipeId(
+		raw.swipe_id,
+		swipes.length,
+		lineNumber,
+		strictSwipeId,
+	);
 	const variables = Array.isArray(raw.variables) ? raw.variables : [];
 	return {
 		index,
@@ -188,14 +205,17 @@ function readSwipeId(
 	value: JsonValue | undefined,
 	swipeCount: number,
 	lineNumber: number,
+	strict: boolean,
 ): number | null {
 	if (value === undefined || value === null) return null;
 	if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+		if (!strict) return null;
 		throw new Error(
 			`第 ${lineNumber} 行的 swipe_id 必须是非负整数：${JSON.stringify(value)}`,
 		);
 	}
 	if (value >= Math.max(swipeCount, 1)) {
+		if (!strict) return null;
 		throw new Error(
 			`第 ${lineNumber} 行的 swipe_id ${value} 超出范围（共 ${swipeCount} 个 swipe）`,
 		);

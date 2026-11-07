@@ -8,4 +8,5 @@ packages/*/test/.tmp-*/
 .env.*
 !.env.example
 .devloop/
+/.tmp-*
 *.log
