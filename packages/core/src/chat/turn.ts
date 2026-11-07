@@ -231,6 +231,7 @@ export async function generateAssistantTurn(
 			createdAt: node.createdAt,
 			context: assembled.trace,
 			llm: {
+				role: "writer",
 				model: result.model,
 				channel: result.channel,
 				stopReason: result.stopReason,
@@ -329,6 +330,7 @@ async function persistAbortedTurn(input: {
 			createdAt: node.createdAt,
 			context: assembled.trace,
 			llm: {
+				role: "writer",
 				model: options.model ?? "unknown",
 				channel: null,
 				stopReason: "aborted",

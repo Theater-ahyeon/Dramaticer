@@ -62,6 +62,7 @@ function createConfig(): LlmChannelsConfig {
 			["main", model("main")],
 			["background", model("background")],
 		]),
+		roles: new Map(),
 		embeddings: new Map(),
 	};
 }

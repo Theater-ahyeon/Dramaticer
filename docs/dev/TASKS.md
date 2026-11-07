@@ -69,7 +69,8 @@
   - `readLedger` 与 `listLedgerEntities` 能读回这两个字段；已有 R1-T01 路径表与快照语义不变。
   验收：九类台账事实都能带两个字段并读回；来源取值非法时抛错并指出位置；旧路径与快照回放结果不变；`pnpm check` 通过。
 
-- [ ] **R1-T01.b 渠道按岗位配置** | 依赖：M1-T02 | DESIGN §10.2
+- [x] **R1-T01.b 渠道按岗位配置** | 依赖：M1-T02 | DESIGN §10.2
+  完成：2026-11-07 `LlmChannelsConfig` 新增 `roles`（writer、settler、planner、judge），解析时校验角色名与模型别名；`resolveModelForRole` 按缺省 writer→main、其余→background 解析；`modelFamily` 由模型名映射家族，`createLlmClient` 对 judge 与 writer 同家族直接抛错；server 与 CLI 按 writer、settler 取模型，Trace 的 `llm.role` 记为 writer；`data/channels.yaml` 与示例补 roles；门禁通过（723 个测试）
   做什么：
   - `data/channels.yaml` 增加 `roles` 段：`writer`（正文）、`settler`（结算与抽取）、`planner`（导演与条件判断）、`judge`（评测裁判），每个角色指向一个已有模型别名；`channels.example.yaml` 补示例。
   - core 提供按角色解析的入口：`runChatTurn` 用 `writer`，结算与抽取用 `settler`，导演与条件判断用 `planner`，评测裁判用 `judge`；缺省时 `writer` 回落到 `main`，其余回落到 `background`。Trace 记录角色与实际渠道。

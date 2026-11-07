@@ -198,6 +198,7 @@ describe("runChatTurn", () => {
 		const trace = store.getTurnTrace(result.node.id);
 		expect(trace).toEqual(result.trace);
 		expect(trace?.llm).toMatchObject({
+			role: "writer",
 			model: "fake-model",
 			channel: "fake-channel",
 			usage: USAGE,

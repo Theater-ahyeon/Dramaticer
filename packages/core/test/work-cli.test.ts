@@ -68,6 +68,7 @@ function createConfig(
 	return {
 		channels,
 		models,
+		roles: new Map(),
 		embeddings: withEmbeddings ? embeddings : new Map(),
 	};
 }

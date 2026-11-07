@@ -2,7 +2,11 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadDotEnv } from "../env.js";
-import { type LlmChannelsConfig, loadChannelsConfig } from "../llm/channels.js";
+import {
+	type LlmChannelsConfig,
+	loadChannelsConfig,
+	resolveModelForRole,
+} from "../llm/channels.js";
 import { createLlmClient } from "../llm/configure.js";
 import {
 	type EmbeddingClient,
@@ -68,7 +72,7 @@ export async function runWorkCli(
 		dependencies.createClient ??
 		((config: LlmChannelsConfig) =>
 			createLlmClient(config, {
-				defaultModel: "background",
+				defaultModel: resolveModelForRole(config, "settler"),
 				cacheDir: null,
 			}));
 	const log = dependencies.log ?? console.log;
@@ -78,9 +82,7 @@ export async function runWorkCli(
 	}
 	loadEnv(envPath);
 	const config = await loadConfig(channelsPath);
-	if (!config.models.has("background")) {
-		throw new Error("渠道配置里没有 background 模型");
-	}
+	resolveModelForRole(config, "settler");
 	const client = createClient(config);
 	const embeddingConfig = config.embeddings.get("default");
 	const embedder = embeddingConfig

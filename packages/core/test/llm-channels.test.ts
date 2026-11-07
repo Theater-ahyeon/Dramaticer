@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { parseChannelsConfig } from "../src/index.js";
+import {
+	createLlmClient,
+	modelFamily,
+	parseChannelsConfig,
+	resolveModelForRole,
+} from "../src/index.js";
 
 const env = {
 	BG_URL: "http://127.0.0.1:3425/v1",
@@ -132,5 +137,144 @@ channels:
 models: {}
 `;
 		expect(() => parseChannelsConfig(text, env)).toThrow("models");
+	});
+});
+
+const roleEnv = {
+	URL: "http://127.0.0.1:3425/v1",
+	KEY: "secret",
+};
+
+interface RoleConfigOptions {
+	readonly roles?: string;
+	readonly backgroundId?: string;
+}
+
+function roleConfig(options: RoleConfigOptions = {}): string {
+	return `
+channels:
+  gateway:
+    baseUrl: \${URL}
+    apiKey: \${KEY}
+models:
+  main:
+    id: opendesign/deepseek-v4.1-flash
+    channels: [gateway]
+  background:
+    id: ${options.backgroundId ?? "agy-gemini-3.8-flash-medium"}
+    channels: [gateway]
+  planner:
+    id: codex/gpt-6.1-terra
+    channels: [gateway]
+${options.roles ?? ""}`;
+}
+
+describe("按岗位配置模型", () => {
+	it("四个角色各自解析到配置的模型别名", () => {
+		const config = parseChannelsConfig(
+			roleConfig({
+				roles: `roles:
+  writer: main
+  settler: background
+  planner: planner
+  judge: background
+`,
+			}),
+			roleEnv,
+		);
+		expect([...config.roles]).toEqual([
+			["writer", "main"],
+			["settler", "background"],
+			["planner", "planner"],
+			["judge", "background"],
+		]);
+		expect(resolveModelForRole(config, "writer")).toBe("main");
+		expect(resolveModelForRole(config, "settler")).toBe("background");
+		expect(resolveModelForRole(config, "planner")).toBe("planner");
+		expect(resolveModelForRole(config, "judge")).toBe("background");
+	});
+
+	it("没有配置角色时 writer 回落到 main、其余回落到 background", () => {
+		const config = parseChannelsConfig(roleConfig(), roleEnv);
+		expect(config.roles.size).toBe(0);
+		expect(resolveModelForRole(config, "writer")).toBe("main");
+		expect(resolveModelForRole(config, "settler")).toBe("background");
+		expect(resolveModelForRole(config, "planner")).toBe("background");
+		expect(resolveModelForRole(config, "judge")).toBe("background");
+	});
+
+	it("回落目标不存在时抛错并指出角色", () => {
+		const text = `
+channels:
+  only:
+    baseUrl: \${BG_URL}
+    apiKey: \${BG_KEY}
+models:
+  main:
+    id: opendesign/deepseek-v4.1-flash
+    channels: [only]
+`;
+		const config = parseChannelsConfig(text, env);
+		expect(() => resolveModelForRole(config, "settler")).toThrow(
+			"角色 settler",
+		);
+		expect(() => resolveModelForRole(config, "settler")).toThrow(
+			"background 模型",
+		);
+	});
+
+	it("未知角色与不存在的模型别名都被拒绝", () => {
+		expect(() =>
+			parseChannelsConfig(
+				roleConfig({ roles: "roles:\n  role: main\n" }),
+				roleEnv,
+			),
+		).toThrow("roles.role");
+		expect(() =>
+			parseChannelsConfig(
+				roleConfig({ roles: "roles:\n  writer: missing\n" }),
+				roleEnv,
+			),
+		).toThrow("不存在的模型 missing");
+	});
+
+	it("由模型名映射家族，映射不到时按完整模型名比较", () => {
+		expect(modelFamily("agy-gemini-3.8-flash-medium")).toBe("gemini");
+		expect(modelFamily("opendesign/deepseek-v4.1-flash")).toBe("deepseek");
+		expect(modelFamily("codex/gpt-6.1-terra")).toBe("gpt");
+		expect(modelFamily("vendor/model-x")).toBe("vendor/model-x");
+	});
+
+	it("裁判与写作属于同一模型家族时创建路由抛错并指出两个角色", () => {
+		const config = parseChannelsConfig(
+			roleConfig({
+				backgroundId: "auto/deepseek-v4.1-flash",
+				roles: "roles:\n  writer: main\n  judge: background\n",
+			}),
+			roleEnv,
+		);
+		expect(() => createLlmClient(config)).toThrow("judge 与 writer");
+		expect(() => createLlmClient(config)).toThrow("deepseek");
+	});
+
+	it("baseUrl 相同但模型不同家族的配置可以创建路由", () => {
+		const config = parseChannelsConfig(
+			roleConfig({
+				roles: "roles:\n  writer: main\n  judge: background\n",
+			}),
+			roleEnv,
+		);
+		expect(config.channels.get("gateway")?.baseUrl).toBe(roleEnv.URL);
+		expect(() =>
+			createLlmClient(config, { defaultModel: "main" }),
+		).not.toThrow();
+	});
+
+	it("没有配置角色时也按回落角色校验家族", () => {
+		const config = parseChannelsConfig(
+			roleConfig({ backgroundId: "auto/deepseek-v4.1-flash" }),
+			roleEnv,
+		);
+		expect(() => createLlmClient(config)).toThrow("judge 与 writer");
 	});
 });

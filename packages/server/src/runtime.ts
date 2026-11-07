@@ -11,7 +11,7 @@ import {
 	createEmbeddingClient,
 	createLlmClient,
 	createStandardChatProviders,
-	pickDefaultModelAlias,
+	resolveModelForRole,
 } from "@dramaticer/core";
 
 /** 按模型别名创建客户端；正文与后台任务各用一份，限速互不影响。 */
@@ -81,10 +81,15 @@ export class StoryRuntimeManager {
 	}
 
 	#build(settings: StorySettings, config: LlmChannelsConfig): StoryRuntime {
-		const modelAlias = settings.model ?? pickDefaultModelAlias(config, "main");
+		const modelAlias = settings.model ?? resolveModelForRole(config, "writer");
 		if (!config.models.has(modelAlias)) {
 			throw new Error(`故事设置的模型 ${modelAlias} 不在渠道配置里`);
 		}
+		const settlerAlias =
+			config.roles.get("settler") ??
+			(config.models.has(BACKGROUND_MODEL_ALIAS)
+				? BACKGROUND_MODEL_ALIAS
+				: null);
 		const template = resolveTemplate(
 			this.#store,
 			settings.templateId,
@@ -104,9 +109,8 @@ export class StoryRuntimeManager {
 				directorConfig: settings.directorConfig,
 			}),
 			chatClient: this.#createClient(config, modelAlias),
-			backgroundClient: config.models.has(BACKGROUND_MODEL_ALIAS)
-				? this.#createClient(config, BACKGROUND_MODEL_ALIAS)
-				: null,
+			backgroundClient:
+				settlerAlias === null ? null : this.#createClient(config, settlerAlias),
 			embedder,
 		};
 	}

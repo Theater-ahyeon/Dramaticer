@@ -16,7 +16,7 @@ import {
 	createStandardChatProviders,
 	loadChannelsConfig,
 	loadDotEnv,
-	pickDefaultModelAlias,
+	resolveModelForRole,
 	resolveStructuredOutputMode,
 	runChatTurn,
 } from "@dramaticer/core";
@@ -95,7 +95,7 @@ export async function runChatCli(
 
 	loadEnv(envPath);
 	const config = await loadConfig(channelsPath);
-	const modelAlias = parsed.model ?? pickDefaultModelAlias(config);
+	const modelAlias = parsed.model ?? resolveModelForRole(config, "writer");
 	const model = config.models.get(modelAlias);
 	if (model === undefined) {
 		throw new Error(

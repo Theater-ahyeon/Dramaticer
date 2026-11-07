@@ -62,6 +62,7 @@ function fakeConfig(modelId = "fake-model"): LlmChannelsConfig {
 				},
 			],
 		]),
+		roles: new Map(),
 		embeddings: new Map(),
 	};
 }

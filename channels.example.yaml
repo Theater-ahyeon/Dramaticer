@@ -34,6 +34,15 @@ models:
     reasoning: true
     channels: [main]
 
+# 按岗位配置模型。没有写出的角色回落到 main（writer）或 background（其余）。
+# 裁判（judge）必须与写作（writer）来自不同模型家族，按模型名判断，
+# 相同会导致启动直接失败；background 与 main 是同一家族时请另配一个模型并指向它。
+roles:
+  writer: main
+  settler: background
+  planner: background
+  judge: background
+
 embeddings:
   default:
     api: openai-embeddings

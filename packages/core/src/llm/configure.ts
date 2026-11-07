@@ -1,4 +1,8 @@
-import type { LlmChannelConfig, LlmChannelsConfig } from "./channels.js";
+import {
+	type LlmChannelConfig,
+	type LlmChannelsConfig,
+	validateRoleModelFamilies,
+} from "./channels.js";
 import { PiLlmChannel } from "./pi-channel.js";
 import { type LlmRoute, LlmRouter } from "./router.js";
 import type { LlmChannel, LlmStreamingClient } from "./types.js";
@@ -32,6 +36,7 @@ export function createLlmClient(
 	config: LlmChannelsConfig,
 	options: CreateLlmClientOptions = {},
 ): LlmStreamingClient {
+	validateRoleModelFamilies(config);
 	const channels = new Map<string, LlmChannel>();
 	for (const channelConfig of config.channels.values()) {
 		channels.set(channelConfig.id, createLlmChannel(channelConfig));

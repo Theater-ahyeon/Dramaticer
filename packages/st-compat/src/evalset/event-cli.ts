@@ -6,6 +6,7 @@ import {
 	createLlmClient,
 	loadChannelsConfig,
 	loadDotEnv,
+	resolveModelForRole,
 } from "@dramaticer/core";
 import { parseChatJsonlFile } from "../chat-jsonl.js";
 import { isLegacyCorpus, openSnapshot } from "../health/manifest.js";
@@ -35,11 +36,10 @@ const rawRoot = path.join(repoRoot, "eval-private", "raw");
 const outputRoot = path.join(repoRoot, "eval-private", "evalset");
 const cacheDir = path.join(repoRoot, "eval-private", "llm-cache");
 const channelsPath = path.join(repoRoot, "data", "channels.yaml");
-const modelAlias = "background";
-
 const channels = await loadChannelsConfig(channelsPath);
-const background = channels.models.get(modelAlias);
-if (background === undefined) {
+const modelAlias = resolveModelForRole(channels, "settler");
+const model = channels.models.get(modelAlias);
+if (model === undefined) {
 	throw new Error(`渠道配置里没有模型 ${modelAlias}`);
 }
 const client = createLlmClient(channels, {
@@ -183,8 +183,8 @@ await writeFile(
 	`${JSON.stringify(
 		{
 			generatedAt,
-			model: background.id,
-			channels: background.channels,
+			model: model.id,
+			channels: model.channels,
 			reasoning: reasoning ?? null,
 			stories: summaries,
 			totalQuestions: allQuestions.length,

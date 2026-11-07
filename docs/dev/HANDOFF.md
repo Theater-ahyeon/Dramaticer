@@ -3,16 +3,17 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：87
-- 任务：R0-T05 归档已完成任务
-- 结果：完成（`DONE`），门禁通过（712 个测试，3 个 live 跳过）。
-  - 新建 `docs/dev/TASKS-archive.md`：F0、M0–M4、D、R0-T01 至 R0-T04 共 616 行原文整段移入，8 个章节的状态全部是完成，内容一字未改。
-  - `docs/dev/TASKS.md` 从 1227 行缩到 650 行：顶部保留状态标记与选任务规则，新增阶段目录（标明每个阶段在归档还是本文件）并指向归档；正文从 R0-T05 起，R1 及之后的未完成任务原样保留。
-  - 查询已完成任务的编号、完成记录与验收标准一律读 `docs/dev/TASKS-archive.md`；本文件不再复述这些细节。
+- 会话：88
+- 任务：R1-T01.b 渠道按岗位配置
+- 结果：完成（`DONE`），门禁通过（723 个测试，3 个 live 跳过）。
+  - `LlmChannelsConfig` 新增 `roles`（`writer`、`settler`、`planner`、`judge`），`parseChannelsConfig` 校验角色名与模型别名；`channels.example.yaml` 补了示例，`data/channels.yaml` 写入 `writer: main`、`settler: background`、`planner: background`、`judge: codex`。
+  - 新增 `resolveModelForRole`（writer 缺省回落 `main`，其余回落 `background`，回落目标不存在时抛错）、`modelFamily`（按模型名映射 gemini、deepseek、gpt、claude 等，映射不到按完整模型名比较）、`validateRoleModelFamilies`（judge 与 writer 同家族时抛错并指出两个角色，`createLlmClient` 调用）。
+  - 接线：server 运行时的正文客户端取 `settings.model ?? writer`，后台客户端取 `settler`（没有 settler 与 background 时仍为空）；`dramaticer chat` 取 `writer`；`dramaticer work`、事件抽取与记忆评测取 `settler`。`TurnTrace.llm` 新增 `role`，正文生成记 `writer`，`channel` 仍是结果里的实际渠道。
+  - 新增 `packages/server/test/runtime.test.ts`（writer/settler 别名与无后台客户端的三种情况）与 `llm-channels.test.ts` 的角色、回落、家族校验测试。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a。完成记录与验收标准见 `docs/dev/TASKS-archive.md`，未完成任务见 `docs/dev/TASKS.md`。
-- 下一步按文件顺序是 **R1-T01.b 渠道按岗位配置**；R1 的顺序是 T01.b、T01.c、T02、T02.a、T02.b、T03、T04.a、T07、T07.a、T07.b、T99。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b。完成记录与验收标准见 `docs/dev/TASKS-archive.md`，未完成任务见 `docs/dev/TASKS.md`。
+- 下一步按文件顺序是 **R1-T01.c 生成长度默认值与截断统计**；R1 的顺序是 T01.c、T02、T02.a、T02.b、T03、T04.a、T07、T07.a、T07.b、T99。
 - v3 阶段顺序：R1 最小集 → R3 快回合 → O 开局与方向 → R2 评测底座 → E → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
 - 人类已确认的路线变更：ADR-0038（四个 ST 兼容插件取代兼容线 C-T00）、ADR-0039（F0-T100 直接写 v3，人类试玩改为自动试玩加评测）、ADR-0040（共存规则写入 C 线验收）、ADR-0041（方案评审提案 A1–A11）、ADR-0042（模型渠道回退顺序）、ADR-0043（F0 结论）、ADR-0044（v3 路线）、ADR-0045（插件系统）。
 - HUMAN-09 仍待处理（不阻塞）：ADR-0042 声明的 `bg-fallback`、`main-fallback`、`codex` 别名在 `data/channels.yaml` 里已经出现（F0 实际用了 `main-fallback` 与 `bg-fallback`），`channels.example.yaml` 是否需要补上请人类确认；没有改这两个文件。
@@ -31,13 +32,16 @@
 - 插件系统在 DESIGN §19 是唯一权威（Context 与注册表、扩展点与分发模式、两档插件、清单与玩法包、市场、三条插件不变量、P1–P5 顺序）；P 阶段任务在 TASKS 的「P：插件内核」小节，C 线兼容插件任务已存在且依赖 P2。
 
 ## 下一步
-- **R1-T01.b 渠道按岗位配置**：`data/channels.yaml` 增加 `roles` 段（`writer`、`settler`、`planner`、`judge`），core 提供按角色解析入口，缺省 `writer` 回落 `main`、其余回落 `background`，Trace 记录角色与实际渠道；创建路由时校验 `judge` 与 `writer` 模型家族不同（按模型名映射家族，不比 `baseUrl`），相同则直接失败并指出两个角色。
+- **R1-T01.c 生成长度默认值与截断统计**：故事设置 `maxTokens` 默认改为 `min(4096, writer 模型在渠道配置里声明的 maxTokens)`，已保存的设置不动；三种截断（以 length 结束、标签未闭合、正文突然中断）写进 Trace；R2-T02 的试玩记录与 R2-T06 的记分牌增加截断率。writer 模型用 R1-T01.b 的 `resolveModelForRole(config, "writer")` 解析。
 - R1 最小集之后是 R3 快回合（R3-T01 至 R3-T99）、O 开局与方向、R2 评测底座。
 - 记忆增强（R1 续）排在 R5 与 60 轮自动试玩之后；R2-T09 的长对话遗忘报告是先后与默认开关的输入，四项都不删除。
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
 - 不要修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 下的任何文件。不变量 I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账是唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖任何其他工作区包、ST 语义只在兼容插件里实现。
+- 渠道角色：角色类型叫 `LlmModelRole`（`writer`、`settler`、`planner`、`judge`），与表示消息角色的 `LlmRole`（system、user、assistant）不是一回事。`createLlmClient` 会校验 judge 与 writer 的模型家族，缺省回落也算在内：只要配置里同时有 `main` 与 `background` 且两者同家族，创建任何客户端都会抛错。`data/channels.yaml` 目前用 `judge: codex`（`codex/gpt-6.1-terra`，gpt 家族）与 writer 的 deepseek 区分；改 writer 或 judge 的模型时要保持家族不同。
+- `channels.example.yaml` 的 roles 示例里 judge 指向 background 并附了说明；复制示例时如果 background 与 main 是同一家族，启动会失败，需要另配一个家族的模型。
+- tests 目录不在 tsc 的 `include` 里（`packages/*/tsconfig.json` 只含 `src`），测试里的 `LlmChannelsConfig` 字面量漏字段不会被类型检查发现；新增字段时手动检查 `packages/*/test` 里的四个配置构造点（`core/test/work-cli.test.ts`、`server/test/turns.test.ts`、`server/test/runtime.test.ts`、`st-compat/test/chat-cli.test.ts`）。
 - `docs/dev/TASKS.md` 只保留未完成任务与当前阶段；查已完成任务（F0、M0–M4、D、R0-T01–T04）的说明、验收与完成记录读 `docs/dev/TASKS-archive.md`。
 - `docs/dev/reports/F0.md` 里只有 F0-T02、F0-T03、F0-T04、F0-T99 四个标记段；重跑脚本只会替换对应标记之间的内容，手写部分（F0-T03 的门槛、F0-T99 的汇总结论）不要放进标记之间。F0-T99 节里引用的数字必须与前面各节和 `docs/dev/reports/F0-corpus.md` 一致。
 - `pnpm f0:fulltext` 阶段与文件：`DRAMATICER_F0_FULLTEXT_STAGE=probe|generate|judge|report|all`（默认 all），`DRAMATICER_F0_FULLTEXT_RERUN=1` 忽略已有结果重跑。分支集合固定为对话 128、132、10、223；对话 95 因提供方 `content_filter` 被替换。
@@ -51,7 +55,7 @@
 - 统计对话时按文件名去重，同名副本保留目录顺序靠前的那份（TauriTavern → data → luker）；报告只允许出现「对话 N」与数字。
 - `parseChatJsonl` 默认在 `swipe_id` 越界或非整数时抛错（导入语义）；只读分析用 `{ strictSwipeId: false }`，不要用在导入路径上。
 - 服务端启动时提供 `channels` 就会加载渠道配置；配置缺失或环境变量没设置会让启动失败，这是有意的快速失败。测试里通过 `channels.load` 与 `createClient` 注入假客户端。
-- SSE 测试的临时目录用 `packages/server/test/.tmp-server-*`，已忽略；假渠道的 baseUrl 用 `127.0.0.1`，I10 允许。
+- SSE 测试的临时目录用 `packages/server/test/.tmp-server-*`，已忽略；假渠道的 baseUrl 用 `127.0.0.1`，I10 允许。`runtime.test.ts` 用 `.tmp-runtime-*`，临时文件用 `mkdtempSync` 创建，需按同样规则忽略（已被 test 目录通配）。
 - 中止保存的部分正文会写 Trace，`stopReason` 为 `aborted`，`usage` 全为 `null`；不要把它当成正常完成。
 - 事件抽取原来每轮约 1,219 个请求，后台渠道实测约 2.7 次/分钟；R1-T03 的批量窗口应显著减少请求数。长任务用 `--resume` 与缓存续跑，不要在单个会话里等整轮回填。
 - `memory-eval` 默认删除临时库；`--db` 指定仓库内路径时同样在结束时删除。embedding 缓存保留。

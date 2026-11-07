@@ -9,6 +9,7 @@ import {
 	createLlmClient,
 	loadChannelsConfig,
 	loadDotEnv,
+	resolveModelForRole,
 } from "@dramaticer/core";
 import { createCachedEmbeddingClient } from "./memory-cache.js";
 import { type MemoryEvalReport, collectMemoryEval } from "./memory-eval.js";
@@ -92,7 +93,7 @@ export async function runMemoryEvalCli(
 		} else {
 			const channels = await loadConfig();
 			eventClient = createLlmClient(channels, {
-				defaultModel: "background",
+				defaultModel: resolveModelForRole(channels, "settler"),
 				cacheDir: path.join(options.cacheDir, "llm"),
 			});
 		}

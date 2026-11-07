@@ -47,9 +47,21 @@ export interface LlmModelConfig {
 	readonly probe: LlmModelProbe | null;
 }
 
+/** 按岗位区分的模型角色。 */
+export const LLM_MODEL_ROLE_NAMES = [
+	"writer",
+	"settler",
+	"planner",
+	"judge",
+] as const;
+
+export type LlmModelRole = (typeof LLM_MODEL_ROLE_NAMES)[number];
+
 export interface LlmChannelsConfig {
 	readonly channels: ReadonlyMap<string, LlmChannelConfig>;
 	readonly models: ReadonlyMap<string, LlmModelConfig>;
+	/** 角色名到模型别名的映射；没有配置的角色走缺省回落。 */
+	readonly roles: ReadonlyMap<LlmModelRole, string>;
 	readonly embeddings: ReadonlyMap<string, EmbeddingProviderConfig>;
 }
 
@@ -118,6 +130,77 @@ export function pickDefaultModelAlias(
 	);
 }
 
+const ROLE_FALLBACK_ALIASES: Readonly<Record<LlmModelRole, string>> = {
+	writer: "main",
+	settler: "background",
+	planner: "background",
+	judge: "background",
+};
+
+/**
+ * 按角色取模型别名。没有配置的角色回落到 `main`（writer）或
+ * `background`（其余角色）；回落目标不存在时直接抛错。
+ */
+export function resolveModelForRole(
+	config: LlmChannelsConfig,
+	role: LlmModelRole,
+): string {
+	const configured = config.roles.get(role);
+	if (configured !== undefined) return configured;
+	const fallback = ROLE_FALLBACK_ALIASES[role];
+	if (config.models.has(fallback)) return fallback;
+	throw new Error(`角色 ${role} 没有配置模型，回落的 ${fallback} 模型也不存在`);
+}
+
+const MODEL_FAMILY_KEYWORDS: readonly (readonly [string, readonly string[]])[] =
+	[
+		["gemini", ["gemini", "gemma"]],
+		["deepseek", ["deepseek"]],
+		["gpt", ["gpt"]],
+		["claude", ["claude"]],
+		["qwen", ["qwen"]],
+		["kimi", ["kimi"]],
+		["glm", ["glm"]],
+		["llama", ["llama"]],
+		["mistral", ["mistral"]],
+		["grok", ["grok"]],
+	];
+
+/**
+ * 从模型名映射家族，用来判断裁判与写作是否来自同一家族。
+ * 映射不到时返回完整模型名，按名称逐字比较。
+ */
+export function modelFamily(modelId: string): string {
+	const lowered = modelId.toLowerCase();
+	for (const [family, keywords] of MODEL_FAMILY_KEYWORDS) {
+		if (keywords.some((keyword) => lowered.includes(keyword))) return family;
+	}
+	return modelId.trim();
+}
+
+/**
+ * 创建路由前校验：评测裁判与写作必须来自不同模型家族。
+ * 两个角色都取实际生效的模型（含缺省回落）；任一角色没有可用模型时跳过。
+ */
+export function validateRoleModelFamilies(config: LlmChannelsConfig): void {
+	const judgeAlias =
+		config.roles.get("judge") ??
+		(config.models.has("background") ? "background" : null);
+	const writerAlias =
+		config.roles.get("writer") ?? (config.models.has("main") ? "main" : null);
+	if (judgeAlias === null || writerAlias === null) return;
+	const judgeModel = config.models.get(judgeAlias);
+	const writerModel = config.models.get(writerAlias);
+	if (judgeModel === undefined || writerModel === undefined) {
+		throw new Error("渠道配置里的角色引用了不存在的模型");
+	}
+	const judgeFamily = modelFamily(judgeModel.id);
+	if (judgeFamily !== modelFamily(writerModel.id)) return;
+	throw new Error(
+		`角色 judge 与 writer 必须使用不同的模型家族：judge 用 ${judgeAlias}（${judgeModel.id}），writer 用 ${writerAlias}（${writerModel.id}），两者都属于 ${judgeFamily} 家族`,
+	);
+}
+
 export function parseChannelsConfig(
 	text: string,
 	env: Readonly<Record<string, string | undefined>> = process.env,
@@ -146,6 +229,7 @@ export function parseChannelsConfig(
 	if (models.size === 0) {
 		throw new Error(`${label}.models 不能为空`);
 	}
+	const roles = parseRoles(root.roles, models, label);
 	const rawEmbeddings =
 		root.embeddings === undefined
 			? {}
@@ -157,7 +241,32 @@ export function parseChannelsConfig(
 			parseEmbedding(alias, value, env, `${label}.embeddings.${alias}`),
 		);
 	}
-	return { channels, models, embeddings };
+	return { channels, models, roles, embeddings };
+}
+
+function parseRoles(
+	value: unknown,
+	models: ReadonlyMap<string, LlmModelConfig>,
+	label: string,
+): ReadonlyMap<LlmModelRole, string> {
+	if (value === undefined) return new Map();
+	const raw = requireObject(value, `${label}.roles`);
+	const roles = new Map<LlmModelRole, string>();
+	for (const [name, alias] of Object.entries(raw)) {
+		if (!LLM_MODEL_ROLE_NAMES.includes(name as LlmModelRole)) {
+			throw new Error(
+				`${label}.roles.${name} 不是已知角色，只能是 ${LLM_MODEL_ROLE_NAMES.join("、")}`,
+			);
+		}
+		const modelAlias = requireString(alias, `${label}.roles.${name}`);
+		if (!models.has(modelAlias)) {
+			throw new Error(
+				`${label}.roles.${name} 引用了不存在的模型 ${modelAlias}`,
+			);
+		}
+		roles.set(name as LlmModelRole, modelAlias);
+	}
+	return roles;
 }
 
 function parseChannel(

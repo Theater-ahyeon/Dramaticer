@@ -1,4 +1,5 @@
 import type { ContextTrace } from "./context/assembler.js";
+import type { LlmModelRole } from "./llm/channels.js";
 import type {
 	LlmStopReason,
 	LlmTruncationReason,
@@ -10,6 +11,8 @@ import type {
 } from "./structured/types.js";
 
 export interface TurnTraceLlm {
+	/** 这一轮使用的模型角色；正文生成为 writer。 */
+	readonly role: LlmModelRole;
 	readonly model: string;
 	readonly channel: string | null;
 	readonly stopReason: LlmStopReason;
