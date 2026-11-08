@@ -1,8 +1,28 @@
 import type { TurnMode } from "@dramaticer/core";
-import type { SseEvent, StoryPath } from "@dramaticer/protocol";
+import type {
+	NodeActionsView,
+	SseEvent,
+	StoryOpeningsView,
+	StoryPath,
+	StorySettings,
+} from "@dramaticer/protocol";
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api } from "../../api";
+import {
+	ACTION_POLL_INTERVAL_MS,
+	type CandidateActionItem,
+	shouldPollActions,
+} from "../../chat/candidate-actions";
+import {
+	OPENING_POLL_INTERVAL_MS,
+	type OpeningCandidateItem,
+	advanceOpeningPoll,
+	beginOpeningPoll,
+	maxOpeningOrdinal,
+	orderOpeningCandidates,
+	shouldPollOpenings,
+} from "../../chat/opening-candidates";
 import {
 	applyLatestPage,
 	applyOlderPage,
@@ -23,15 +43,17 @@ import {
 	summarizeTurn,
 } from "../../chat/turn-summary";
 import { ErrorNotice } from "../../components/ErrorNotice";
+import { CandidateActions } from "../../components/chat/CandidateActions";
 import { ChatFloorList } from "../../components/chat/ChatFloorList";
 import { Composer } from "../../components/chat/Composer";
+import { OpeningCandidates } from "../../components/chat/OpeningCandidates";
 
 const PAGE_SIZE = 60;
 const RETRY_ATTEMPTS = 8;
 const RETRY_DELAY_MS = 150;
 
-/** R3b 完成前只有快回合可玩；深回合不在界面上出现。 */
-const TURN_MODE: TurnMode = "fast";
+/** R3b 完成前只有快回合可运行；故事设置缺失时按它发送。 */
+const DEFAULT_TURN_MODE: TurnMode = "fast";
 
 interface FailedTurn {
 	readonly text: string;
@@ -42,6 +64,7 @@ interface FailedTurn {
 export function ChatPage() {
 	const { storyId } = useParams();
 	const [path, setPath] = useState(emptyPathState);
+	const [pathLoaded, setPathLoaded] = useState(false);
 	const [loadError, setLoadError] = useState<unknown>(null);
 	const [olderError, setOlderError] = useState<unknown>(null);
 	const [composerError, setComposerError] = useState<unknown>(null);
@@ -52,14 +75,36 @@ export function ChatPage() {
 	const [input, setInput] = useState("");
 	const [streaming, setStreaming] = useState(false);
 	const [bottomSignal, setBottomSignal] = useState(0);
+	const [settings, setSettings] = useState<StorySettings | null>(null);
+	const [settingsError, setSettingsError] = useState<unknown>(null);
+	const [modeSaving, setModeSaving] = useState(false);
+	const [actions, setActions] = useState<readonly CandidateActionItem[]>([]);
+	const [actionsError, setActionsError] = useState<unknown>(null);
+	const [openingCandidates, setOpeningCandidates] = useState<
+		readonly OpeningCandidateItem[]
+	>([]);
+	const [openingBaseline, setOpeningBaseline] = useState(0);
+	const [openingBusy, setOpeningBusy] = useState(false);
+	const [openingTimedOut, setOpeningTimedOut] = useState(false);
+	const [openingError, setOpeningError] = useState<unknown>(null);
 	const abortRef = useRef<AbortController | null>(null);
 	const streamingRef = useRef(false);
 	const loadingOlderRef = useRef(false);
+
+	const lastNode = path.nodes.at(-1);
+	const latestAssistantId =
+		lastNode !== undefined && lastNode.role === "assistant"
+			? lastNode.id
+			: null;
+	/** 开场候选只能成为首个楼层，故事有楼层时不再显示。 */
+	const storyEmpty = pathLoaded && path.nodes.length === 0;
+	const turnMode: TurnMode = settings?.turnMode ?? DEFAULT_TURN_MODE;
 
 	useEffect(() => {
 		if (storyId === undefined) return;
 		let active = true;
 		setPath(emptyPathState());
+		setPathLoaded(false);
 		setLoadError(null);
 		setOlderError(null);
 		setComposerError(null);
@@ -67,6 +112,15 @@ export function ChatPage() {
 		setFailed(null);
 		setDraft(null);
 		setInput("");
+		setSettings(null);
+		setSettingsError(null);
+		setActions([]);
+		setActionsError(null);
+		setOpeningCandidates([]);
+		setOpeningBaseline(0);
+		setOpeningBusy(false);
+		setOpeningTimedOut(false);
+		setOpeningError(null);
 		void (async () => {
 			try {
 				const page = await api.getPath(storyId, { limit: PAGE_SIZE });
@@ -75,6 +129,16 @@ export function ChatPage() {
 				setBottomSignal((value) => value + 1);
 			} catch (error) {
 				if (active) setLoadError(error);
+			} finally {
+				if (active) setPathLoaded(true);
+			}
+		})();
+		void (async () => {
+			try {
+				const value = await api.getSettings(storyId);
+				if (active) setSettings(value);
+			} catch (error) {
+				if (active) setSettingsError(error);
 			}
 		})();
 		return () => {
@@ -88,6 +152,68 @@ export function ChatPage() {
 		},
 		[],
 	);
+
+	// 候选行动由间隙里的后台任务写入；回合刚结束时可能还没有，按固定间隔重试。
+	useEffect(() => {
+		if (storyId === undefined || latestAssistantId === null) {
+			setActions([]);
+			return;
+		}
+		const nodeId = latestAssistantId;
+		let cancelled = false;
+		let attempt = 0;
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const poll = async (): Promise<void> => {
+			let view: NodeActionsView;
+			try {
+				view = await api.getActions(nodeId);
+			} catch (error) {
+				if (!cancelled) setActionsError(error);
+				return;
+			}
+			if (cancelled) return;
+			setActions(view.actions);
+			if (shouldPollActions(attempt, view.actions)) {
+				attempt += 1;
+				timer = setTimeout(() => {
+					void poll();
+				}, ACTION_POLL_INTERVAL_MS);
+			}
+		};
+		void poll();
+		return () => {
+			cancelled = true;
+			clearTimeout(timer);
+		};
+	}, [storyId, latestAssistantId]);
+
+	// 空故事的开场候选由后台任务生成，轮询到出现为止。
+	useEffect(() => {
+		if (storyId === undefined || !storyEmpty) return;
+		let cancelled = false;
+		let state = beginOpeningPoll([]);
+		void (async () => {
+			for (;;) {
+				let view: StoryOpeningsView;
+				try {
+					view = await api.getOpenings(storyId, "pending");
+				} catch (error) {
+					if (!cancelled) setOpeningError(error);
+					return;
+				}
+				if (cancelled) return;
+				setOpeningCandidates(orderOpeningCandidates(view.candidates));
+				const result = advanceOpeningPoll(state, view.candidates);
+				state = result.state;
+				if (!shouldPollOpenings(state)) return;
+				await delay(OPENING_POLL_INTERVAL_MS);
+				if (cancelled) return;
+			}
+		})();
+		return () => {
+			cancelled = true;
+		};
+	}, [storyId, storyEmpty]);
 
 	const refreshPath = async (
 		targetStoryId: string,
@@ -187,7 +313,7 @@ export function ChatPage() {
 		void runStream(
 			storyId,
 			(signal) =>
-				api.streamTurn(storyId, { text: trimmed, mode: TURN_MODE }, signal),
+				api.streamTurn(storyId, { text: trimmed, mode: turnMode }, signal),
 			trimmed,
 		);
 	};
@@ -236,6 +362,69 @@ export function ChatPage() {
 		}
 	};
 
+	/** 锁定为深回合时，玩家可以把故事改回唯一可运行的快回合。 */
+	const useFastMode = async () => {
+		if (storyId === undefined) return;
+		setModeSaving(true);
+		try {
+			const updated = await api.updateSettings(storyId, { turnMode: "fast" });
+			setSettings(updated);
+			setComposerError(null);
+		} catch (error) {
+			setComposerError(error);
+		} finally {
+			setModeSaving(false);
+		}
+	};
+
+	const generateOpenings = async () => {
+		if (storyId === undefined) return;
+		const baseline = maxOpeningOrdinal(openingCandidates);
+		setOpeningBusy(true);
+		setOpeningTimedOut(false);
+		setOpeningError(null);
+		try {
+			await api.generateOpenings(storyId);
+			let state = beginOpeningPoll(openingCandidates);
+			setOpeningBaseline(baseline);
+			for (;;) {
+				const view = await api.getOpenings(storyId, "pending");
+				const result = advanceOpeningPoll(state, view.candidates);
+				state = result.state;
+				if (result.fresh.length > 0) {
+					setOpeningCandidates(orderOpeningCandidates(view.candidates));
+					return;
+				}
+				if (!shouldPollOpenings(state)) {
+					setOpeningTimedOut(true);
+					return;
+				}
+				await delay(OPENING_POLL_INTERVAL_MS);
+			}
+		} catch (error) {
+			setOpeningError(error);
+		} finally {
+			setOpeningBusy(false);
+		}
+	};
+
+	const pickOpening = async (candidateId: string) => {
+		if (storyId === undefined) return;
+		setOpeningBusy(true);
+		setOpeningError(null);
+		try {
+			const result = await api.pickOpening(storyId, candidateId);
+			setPath((previous) => applyLatestPage(previous, result.path));
+			setBottomSignal((value) => value + 1);
+			setOpeningCandidates([]);
+			setOpeningBaseline(0);
+		} catch (error) {
+			setOpeningError(error);
+		} finally {
+			setOpeningBusy(false);
+		}
+	};
+
 	if (storyId === undefined) {
 		return (
 			<section className="panel">
@@ -244,11 +433,6 @@ export function ChatPage() {
 		);
 	}
 
-	const lastNode = path.nodes.at(-1);
-	const latestAssistantId =
-		lastNode !== undefined && lastNode.role === "assistant"
-			? lastNode.id
-			: null;
 	const retryAction =
 		failed === null
 			? null
@@ -260,7 +444,25 @@ export function ChatPage() {
 	return (
 		<section className="chat-panel" aria-label="聊天">
 			<ErrorNotice error={loadError} />
+			<ErrorNotice error={settingsError} />
 			<ErrorNotice error={olderError} />
+			{storyEmpty ? (
+				<>
+					<ErrorNotice error={openingError} />
+					<OpeningCandidates
+						candidates={openingCandidates}
+						baselineOrdinal={openingBaseline}
+						busy={openingBusy}
+						timedOut={openingTimedOut}
+						onPick={(candidateId) => {
+							void pickOpening(candidateId);
+						}}
+						onGenerate={() => {
+							void generateOpenings();
+						}}
+					/>
+				</>
+			) : null}
 			<ChatFloorList
 				nodes={path.nodes}
 				draft={draft}
@@ -277,6 +479,10 @@ export function ChatPage() {
 			{summary === null ? null : (
 				<p className="turn-summary">{describeTurnSummary(summary)}</p>
 			)}
+			{draft === null ? (
+				<CandidateActions actions={actions} onPick={setInput} />
+			) : null}
+			<ErrorNotice error={actionsError} />
 			{failed !== null && retryAction !== null ? (
 				<div className="retry-bar">
 					{retryAction.kind === "resend" ? (
@@ -301,6 +507,15 @@ export function ChatPage() {
 			<Composer
 				value={input}
 				streaming={streaming}
+				turnMode={turnMode}
+				modeSaving={modeSaving}
+				onUseFastMode={
+					settings !== null && settings.turnMode !== "fast"
+						? () => {
+								void useFastMode();
+							}
+						: null
+				}
 				onChange={setInput}
 				onSend={() => sendText(input)}
 				onStop={() => abortRef.current?.abort()}
@@ -311,4 +526,10 @@ export function ChatPage() {
 
 function isAbortError(error: unknown): boolean {
 	return error instanceof Error && error.name === "AbortError";
+}
+
+function delay(milliseconds: number): Promise<void> {
+	const { promise, resolve } = Promise.withResolvers<void>();
+	setTimeout(resolve, milliseconds);
+	return promise;
 }

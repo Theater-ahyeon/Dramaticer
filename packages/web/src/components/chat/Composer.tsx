@@ -1,8 +1,14 @@
+import type { TurnMode } from "@dramaticer/core";
 import type { KeyboardEvent } from "react";
 
 export interface ComposerProps {
 	readonly value: string;
 	readonly streaming: boolean;
+	/** 故事锁定的回合模式；深回合在 R3b 之前不可运行。 */
+	readonly turnMode: TurnMode;
+	readonly modeSaving: boolean;
+	/** 故事锁定为深回合时提供的“切回快回合”入口。 */
+	readonly onUseFastMode: (() => void) | null;
 	readonly onChange: (value: string) => void;
 	readonly onSend: () => void;
 	readonly onStop: () => void;
@@ -12,6 +18,9 @@ export interface ComposerProps {
 export function Composer({
 	value,
 	streaming,
+	turnMode,
+	modeSaving,
+	onUseFastMode,
 	onChange,
 	onSend,
 	onStop,
@@ -41,10 +50,23 @@ export function Composer({
 			<div className="composer-actions">
 				<label className="composer-mode" title="深回合在 R3b 之后提供">
 					<span>回合模式</span>
-					<select aria-label="回合模式" disabled value="fast">
+					<select aria-label="回合模式" disabled value={turnMode}>
 						<option value="fast">快回合</option>
+						{turnMode === "deep" ? (
+							<option value="deep">深回合（尚未实现）</option>
+						) : null}
 					</select>
 				</label>
+				{onUseFastMode === null ? null : (
+					<button
+						className="composer-mode-lock"
+						type="button"
+						disabled={modeSaving}
+						onClick={onUseFastMode}
+					>
+						切回快回合
+					</button>
+				)}
 				{streaming ? (
 					<button className="composer-stop" type="button" onClick={onStop}>
 						停止

@@ -3,25 +3,19 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：157
-- 任务：R5-T05.b 聊天对话：路径、虚拟列表、块渲染与流式回合
-- 结果：完成，门禁通过（132 个测试文件、1165 个测试通过，3 个 live 跳过，共 1168 个）。
-  - 按 `GET /api/stories/:id/path` 渲染当前路径；向上滚动触发 `before` 分页，服务端页以当前最早楼层结尾，客户端按 id 去重向前拼接；加页后按旧楼层的新偏移恢复视口。
-  - 虚拟列表每次渲染按 `ResizeObserver` 测量到的楼层高度（未测量按 200px 估算）算出可见区间，2000 楼夹具实测 DOM 里只有 9 个楼层；每次回合完成或 head 更新后重新取最新 60 楼并滚到底部，“回到底部”按钮只在离开底部时出现。
-  - SSE 归并写在 `packages/web/src/chat/stream-state.ts`：`turn.started` 记用户楼层 id，正文与思考分别累加，`blocks.replace` 替换块快照，`tool.call` 追加，`turn.completed` 保留已收到的正文并在为空时用楼层原文补齐，`turn.error` 只记消息。停止用 AbortController；服务端保存部分正文，客户端轮询路径直到新助手楼层出现。
-  - 失败后按 `resolveRetryAction` 三选一：没写用户楼层→重发；有用户楼层且有助手楼层→对该助手楼层重新生成；只有用户楼层→提示换一条行动，不提供会重复写楼层的按钮。
-  - 块组件在 `packages/web/src/components/chat/BlockContent.tsx`：选项、页眉、悄悄话、旁白、备忘、状态栏、分析、图片各有原生呈现；`thinking` 折叠；`变量更新`、`state_update`、`plot_note` 不显示；未闭合块显示带开标签的原文；未注册标签由解析器保留为文本。图片块内容为单个 `data:image/` 或 http 地址时渲染 `<img>`，其他内容显示原文。
-  - 选项行点击把该行原文填入输入框并调用 `recordChoice`（`POST /api/nodes/:id/choice`），不自动发送；实测写出一条 `choice` 记录，`nodeId` 为含该选项块的助手楼层。最新助手楼层（head 结尾）显示“重新生成”，实测走 SSE 后路径里旧楼层被新兄弟替换，并写出一条 `swipe` 记录。
-  - 回合统计条显示 `stateDiffs` 条数、按线索 id 去重的新建（`status` 为 `open`）与兑现（`fulfilled`）条数、首字延迟。
-  - 模式：输入框旁只有一个禁用的“快回合”下拉，单轮请求固定带 `mode: "fast"`；R3b 之前的深回合不在界面出现，任何服务端 400 都通过 `ErrorNotice` 显示原因。
-  - core 新增浏览器安全入口 `@dramaticer/core/blocks`（`dist/blocks/index.js`，只含块解析、类型与选项行读取，不引入 better-sqlite3）；`readOptionLines` 同时被 `packages/st-compat/src/preferences/export.ts` 复用，选项配对规则只有一处。
-  - `packages/web` 增加 `@dramaticer/core` 的 `workspace:*` 依赖（工作区依赖不登记 DEPENDENCIES）；`pnpm-lock.yaml` 已更新。
-  - 新增 5 个 web 测试文件共 22 个测试（路径分页 3、虚拟窗口 5、流式归并 7、回合统计 2、块呈现 5），全部纯逻辑、零网络。
-  - 冒烟：真实 server 加本地假 OpenAI 兼容渠道（`.devloop/scratch/`，已删除）跑通逐字流式、停止保留部分正文、失败提示、重新生成与选项点击；390×844 与 1280×900 无横向滚动。
+- 会话：158
+- 任务：R5-T05.c 聊天候选：候选行动与开场候选
+- 结果：完成，门禁通过（134 个测试文件、1174 个测试通过，3 个 live 跳过，共 1177 个）。
+  - 候选行动：聊天页在最新助手楼层确定后读 `GET /api/nodes/:id/actions`。候选由间隙里的 `candidate_actions` 任务写入，回合刚结束时可能为空，因此在空结果上按 2 秒间隔最多再取 15 次（`shouldPollActions`，`ACTION_POLL_ATTEMPTS` 15）。4 条行动与 1 条场景变化按 `ordinal` 分开渲染（`groupCandidateActions`），点击只把原文填进输入框，不发送。
+  - 开场候选：`pathLoaded && path.nodes.length === 0` 时显示 `OpeningCandidates`，读取 `GET /api/stories/:id/openings?status=pending`；首次进入时同样轮询到候选出现。选中走 `POST /api/stories/:id/openings/:id/pick`，响应的 `path` 直接替换聊天路径，面板消失。“重新生成”走 `POST /api/stories/:id/openings/generate`，响应只有任务 id，界面按 2 秒间隔轮询（`advanceOpeningPoll`，上限 15 次）直到出现编号大于基线的候选；旧批继续留在列表里，新批标“新一批”（`isFreshOpeningCandidate`，基线为 0 时不标）。
+  - 模式锁定：聊天页读 `GET /api/stories/:id/settings`，把 `turnMode` 作为下一回合请求的 `mode` 发送；故事锁定为深回合时下拉框显示不可选的“深回合（尚未实现）”，旁边提供“切回快回合”按钮，点击 `PUT settings` 写 `turnMode: "fast"` 并更新本地设置，下一回合即用快回合。深回合请求被服务端按 R3b 400 拒绝时 `ErrorNotice` 显示原因，楼层数不变。深回合本身仍不列为可选项（DESIGN §10.1）。
+  - 新文件：`packages/web/src/chat/candidate-actions.ts`、`packages/web/src/chat/opening-candidates.ts`（纯逻辑），`packages/web/src/components/chat/CandidateActions.tsx`、`OpeningCandidates.tsx`；`ChatPage.tsx` 接线，`Composer.tsx` 增加 `turnMode`、`modeSaving`、`onUseFastMode` 三个属性，`styles.css` 增加两块的样式（`max-height: 40vh` 内滚动）。
+  - 新增 2 个测试文件共 9 个测试：候选分组与轮询上限、开场候选批次归并、轮询状态机（等待、到达、超时）与旧批顺序；全部纯逻辑、零网络。
+  - 冒烟：用 `.devloop/scratch/chat-candidates/`（已删除）里从 `packages/{core,server}/dist` 引入的脚本建库，直接 `StoryStore` 造一个“两楼 + 5 条候选行动”的故事与一个“空故事 + 3 条开场候选”的故事，`startServer` 注入假 `LlmStreamingClient`（系统提示词含“开场作者”时返回 3 条候选）与假 embedding 客户端，`--web packages/web/dist` 起在 8799；Playwright 实测候选行动 5 个按钮、点击后输入框有文本且楼层数不变；重新生成后 6 条候选、3 条标“新一批”、旧批仍在；选中后成为唯一楼层、面板消失；`PUT settings` 深回合后发送得到“深回合尚未实现（阶段 R3b）…（字段：mode）”、楼层数不变，点“切回快回合”后设置读回 `fast`；390×844 `scrollWidth` 为 390。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09.a、R2-T09.b、R2-T09.c、R2-T99、R5-T01、R5-T02、R5-T02.a、R5-T02.b、R5-T02.c、R5-T04、R5-T05.a、R5-T05.b、E-T01、R4-T00、R4-T01、R4-T02、R4-T03、R4-T04、R4-T05、R4-T06、R4-T07、R4-T08、R4-T99、R5-T00。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- **下一个可做任务是 R5-T05.c（聊天候选：候选行动与开场候选）**：依赖 R5-T05.b、R5-T02.c、R5-T02，全部满足。执行顺序见 TASKS 的 R5 段落：R5-T05.c → R5-T06 → R5-T07 → R5-T11，然后第二段。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09.a、R2-T09.b、R2-T09.c、R2-T99、R5-T01、R5-T02、R5-T02.a、R5-T02.b、R5-T02.c、R5-T04、R5-T05.a、R5-T05.b、R5-T05.c、E-T01、R4-T00、R4-T01、R4-T02、R4-T03、R4-T04、R4-T05、R4-T06、R4-T07、R4-T08、R4-T99、R5-T00。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- **下一个可做任务是 R5-T06（web 分支视图）**：依赖 R5-T05、R5-T02，全部满足。之后按 TASKS 的 R5 段落：R5-T07（台账只读）→ R5-T11（沙箱块渲染）；再进入第二段 R5-T03、R5-T07.a、R5-T08、R5-T09、R5-T10。
 - R5 的已知接口缺口（R5-T00 定下的任务范围，尚未做的部分）：
   - 变更卡只有 `GET /api/stories/:id/proposals`，没有批准、拒绝与回滚接口（R5-T07.a）；CLI 用 `approveLedgerChangeCard`、`rejectLedgerChangeCard`、`rollbackLedgerChangeCard`。
   - 故事设置接口是 `GET`/`PUT /api/stories/:id/settings`（不是 PATCH）。
@@ -40,8 +34,9 @@
 - 开场候选自动入队只在有素材、无楼层且无待选候选时发生；生成处理器本身只检查“故事没有楼层”，手动任务与生成接口每次追加一批。
 - 分支与面板接口已可用。`GET /api/nodes/:id/ledger` 返回 `{state, facts, diffs}`，`facts` 来自 `readLedgerFacts`，`diffs` 只含该楼层自己的写入。
 - 路径接口：`GET /api/stories/:id/path?nodeId=&limit=&before=`，返回 `{storyId, headNodeId, nodes, hasMore}`。`nodeId` 是锚点、缺省 head，锚点节点包含在返回路径里；`before` 必须在本故事且在该锚点的路径上，返回它之前的 `limit` 楼；`hasMore` 只在返回页之前还有楼层时为真。响应里 `nodes` 一定是根到页末楼的连续顺序。
-- web 包结构：`src/api/{client,sse,index}.ts`；`src/chat/{path-state,virtual-window,stream-state,turn-summary,blocks}.ts`（纯逻辑）；`src/components/chat/{ChatFloorList,ChatFloorView,BlockContent,StreamingBubble,Composer}.tsx`；`src/pages/*`、`src/pages/story/*`、`src/components/ErrorNotice.tsx`、`src/styles.css`。`src/api/index.ts` 导出单例 `api`。开发用 `pnpm --filter @dramaticer/web dev`（Vite 默认 5173，`/api` 代理到 `http://127.0.0.1:8787`）；server 默认从 `packages/web/dist` 提供静态文件，找不到文件回退 `index.html`。
-- 聊天页每轮生成完成后重新取最新 60 楼并丢弃旧的向上分页；`PAGE_SIZE` 60、分页阈值 240px、自动贴底阈值 96px、楼层高度估算 200px、overscan 600px。
+- web 包结构：`src/api/{client,sse,index}.ts`；`src/chat/{path-state,virtual-window,stream-state,turn-summary,blocks,candidate-actions,opening-candidates}.ts`（纯逻辑）；`src/components/chat/{ChatFloorList,ChatFloorView,BlockContent,StreamingBubble,Composer,CandidateActions,OpeningCandidates}.tsx`；`src/pages/*`、`src/pages/story/*`、`src/components/ErrorNotice.tsx`、`src/styles.css`。`src/api/index.ts` 导出单例 `api`。开发用 `pnpm --filter @dramaticer/web dev`（Vite 默认 5173，`/api` 代理到 `http://127.0.0.1:8787`）；server 默认从 `packages/web/dist` 提供静态文件，找不到文件回退 `index.html`。
+- 聊天页每轮生成完成后重新取最新 60 楼并丢弃旧的向上分页；`PAGE_SIZE` 60、分页阈值 240px、自动贴底阈值 96px、楼层高度估算 200px、overscan 600px。候选行动与开场候选的轮询间隔都是 2 秒、上限 15 次；候选行动面板与开场候选面板在聊天面板里最高占 40vh、内部滚动。
+- 聊天页的回合模式取自 `GET settings` 的 `turnMode` 并作为 `mode` 发送；settings 尚未取到时按 `fast`。锁定为深回合时下拉框只显示当前值（不可选），旁边出现“切回快回合”按钮走 `PUT settings`。深回合仍不在可选项里（DESIGN §10.1）。
 - 偏好记录已闭环：记录写入（四种信号）→ `POST /api/nodes/:id/choice` → `preferences export` 产出回复对 → `pairwise` 盲测与评分 → `scoreboard` 汇总。重新生成与 `swipeNode` 都写 `swipe`；私有库目前没有任何 `preference_events`。
 - 排障命令：`dramaticer explain --node <id> --db <path> [--json]`。只读、零模型调用；导演决策从助手楼层的父楼层读（`director_decisions` 写在生成时的消息楼层上）。记忆槽位的 `retrieval` 只在槽位真正注入内容时写进 Trace；没有命中时该槽位记为 `missing-slot`。上下文分段行会显示 suffix 槽位的 `appendedTo`。`explain` 不受导演模式影响，盲盒下仍然显示完整指令与信号。第 7 段显示当前拍与 `director_beat_states` 记录（节拍 id、完成楼层、`completed`、是否已前进），只读。
 - 导演计划接口：`readDirectorPlan` 按 `ordinal` 还原弧线、序列、节拍；`--set` 与 `PUT /api/stories/:id/director/plan` 都整份替换并把所有行标为 `player`，`mergePlannedArcs` 只更新或追加 `model`/`import` 行，永不删除、不覆盖 `player` 行。`resolveCurrentBeat` 沿路径最近一条 `director_beat_states` 前进：完成则到下一拍（跨序列），未完成停在原地，无状态取第一拍，耗尽返回 null；记录指向已不存在的节拍时跳过该记录，仍无有效记录则回到第一拍。`readDirectorPlan` 与 `resolveCurrentBeat` 的入参是 `DirectorPlanReader`/`DirectorBeatResolver`（`Pick<StoryStore, …>`）。
@@ -54,8 +49,8 @@
 - R4 验收的链路证据在 `packages/core/test/director-acceptance.test.ts` 与 `docs/dev/reports/R4.md`。
 
 ## 下一步
-- **R5-T05.c 聊天候选**：回合完成后读 `GET /api/nodes/:id/actions`，按楼层显示 4 条行动与 1 条场景变化，点击只填输入框不自动发送；故事无助手楼层时读 `GET /api/stories/:id/openings?status=pending` 显示候选原文，选中走 `POST /api/stories/:id/openings/:id/pick` 后刷新路径，“重新生成”走 `POST /api/stories/:id/openings/generate` 并轮询到新一批；模式锁定写 `PUT /api/stories/:id/settings` 的 `turnMode`，只由玩家操作。聊天页插入候选区域的接线点在 `packages/web/src/pages/story/ChatPage.tsx`，`api.getActions`、`api.getOpenings`、`api.generateOpenings`、`api.pickOpening`、`api.updateSettings` 已存在于 `ApiClient`。
-- 之后按顺序做 R5-T06（分支视图，依赖 R5-T05 整段）、R5-T07（台账只读）、R5-T11（沙箱块渲染）；再进入第二段 R5-T03、R5-T07.a、R5-T08、R5-T09、R5-T10。
+- **R5-T06 分支视图**：`GET /api/stories/:id/tree` 画楼层树（缩进与折叠）、当前路径高亮，点击节点 `POST /api/stories/:id/head` 后刷新路径；树上任意助手楼层提供 swipe（`POST /api/nodes/:id/swipe`，玩家提供正文）与重新生成（SSE 外壳）；`POST /api/nodes/:id/edit` 编辑用户或助手正文，旧分支仍可切回；切换 head 前提示未确认楼层的后果。聊天页已有最新楼层的重新生成，本任务补齐树上入口。纯逻辑单测覆盖树构造与路径标记。接线点在 `packages/web/src/pages/story/BranchesPage.tsx`。
+- 之后 R5-T07（台账与记忆只读面板，数据来自 `GET /api/nodes/:id/ledger|events|compressions` 与故事级 `clues`、`entities`、`lore`），再 R5-T11（沙箱块渲染，需先把 `BlockDisplayStrategy` 带进 `blocks.replace` 与 `turn.completed` 载荷）；第二段 R5-T03、R5-T07.a、R5-T08、R5-T09、R5-T10。
 - R5-T08 只依赖 R5-T04、R5-T02、R4-T99，计划、决策、候选与线索接口已经可用。
 - 引用评测数字时：B1 必须同时说明同模型子集为空、每个对话每档只有 1 个样本；遗忘矛盾率必须同时说明失败题数与可判定样本数；偏好一致率当前没有样本。
 
@@ -82,7 +77,7 @@
 - 自动试玩的入口是 `pnpm --filter @dramaticer/st-compat playtest`：每轮顺序是读间隙积压 → 模拟用户 → `runChatTurn` → swipe/edit/branch → 间隙后台任务 → 一致性探针 → 每轮裁判 → 写记录。`--seed` 只决定模拟用户的提示顺序与探针事实选择。
 - 开场导演的楼层深度按当前路径助手楼层数计算；`openingFloors` 为 0 关闭；开局强度 `setup`、`natural`、`detonate` 的字段范围见 DESIGN §8.4。节拍机制的楼层深度用同一口径。
 - 故事设置缺省值：`budgetTokens` 12000、`structuredOutput` `text-tags`、`temperature` 0.8、`maxTokens` 4096、`reasoning` `low`、`turnMode` `fast`、`maxReadRounds` 3、`historyBlockPolicy` `{mode:"default",overrides:{}}`、`gapPassEnabled` `false`、`gapPlanSeconds` 212、导演默认配置（含 `mode` `transparent`、`openingFloors` 10、`openingIntensity` `natural` 与 `intensity` `natural`）。
-- 回合模式的解析口只有 core 的 `resolveTurnMode`（已导出）：单轮参数优先于故事设置，深回合直接抛错。server 在 `handleTurnStream` 里、建用户楼层之前先调用它，深回合按 400 返回，`details.path` 在请求给 `mode` 时是 `mode`，否则是 `turnMode`；`generateAssistantTurn` 收到解析后的模式并写进 Trace。web 聊天页目前固定发送 `mode: "fast"`，界面不展示深回合。
+- 回合模式的解析口只有 core 的 `resolveTurnMode`（已导出）：单轮参数优先于故事设置，深回合直接抛错。server 在 `handleTurnStream` 里、建用户楼层之前先调用它，深回合按 400 返回，`details.path` 在请求给 `mode` 时是 `mode`，否则是 `turnMode`；`generateAssistantTurn` 收到解析后的模式并写进 Trace。web 聊天页发送设置里的 `turnMode`，界面只列快回合。
 - 已注册的槽位是十一个：lore、character、persona、summary、state、memory、history、scene、director、user_will、protocol。默认模板顺序：character、lore、state、summary、memory、scene、director、user_will、history、（可选的 block_format）、protocol。`director` 槽位只返回 suffix，不产生 system 消息；不新增 `beat` 槽位。组装器的 suffix 用 `\n\n` 与玩家原文分隔；多个 suffix 之间用 `\n` 连接。
 - 原生块类型是 12 个（`thinking`、`选项`、`状态栏`、`变量更新`、`分析`、`图片`、`页眉`、`悄悄话`、`旁白`、`备忘`、`state_update`、`plot_note`）；`thinking`、`变量更新`、`state_update`、`plot_note` 的上下文策略是删除。
 - 历史槽位默认策略：更早楼层省略五个显示类块，最近 1 楼不套用这层省略；`full` 是改动前行为。设置项 `historyBlockPolicy` 存在 `story_settings.history_block_policy`。
@@ -107,4 +102,4 @@
 - web 的 `typecheck` 与 `build` 会先构建 core 与 protocol；单独跑 web 测试前同样需要这两个包的 `dist`（`packages/web` 通过 `@dramaticer/protocol` 与 `@dramaticer/core/blocks` 的 `dist` 解析）。
 - `@dramaticer/core/blocks` 是浏览器安全子路径，只导出块解析、类型、视图与选项行读取；web 不要从 `@dramaticer/core` 根入口导入运行时函数（会带进 better-sqlite3）。
 - web 的 Vite 开发服务器在当前环境只监听 `localhost`（IPv6 `::1`），用 `http://localhost:5173` 访问；`127.0.0.1` 会被拒绝连接。
-- 聊天页的冒烟方式：用 `StoryStore` 造一个 2000 楼的故事库，`node packages/server/dist/cli.js --db <库> --port 8799 --web packages/web/dist --channels <假渠道配置>`；假渠道配置的 `apiKey` 必须写成 `${环境变量名}`，启动时给环境变量。流式界面验证用本地 OpenAI 兼容假渠道，不访问真实模型。
+- 聊天页的冒烟方式：从 `packages/core/dist` 与 `packages/server/dist` 用 `pathToFileURL` 引入（Windows 上直接 `import("E:/…")` 会报 `ERR_UNSUPPORTED_ESM_URL_SCHEME`），用 `StoryStore` 造故事与候选、用 `startServer` 的 `channels.createClient`/`createEmbedder` 注入假客户端，`--host 127.0.0.1 --port <端口> --web packages/web/dist` 启动；浏览器用 `http://127.0.0.1:<端口>/stories/<id>/chat`。流式界面验证用本地 OpenAI 兼容假渠道，不访问真实模型。

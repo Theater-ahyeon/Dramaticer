@@ -621,7 +621,8 @@
   - 回合完成后显示台账 diff 数、`stateDiffs` 里新建与兑现的线索条数、首字延迟；自动滚动与“回到底部”。
   验收：增量逐字出现；思考默认折叠；停止后保留部分内容；错误重试不重复写楼层；选项点击只写一条 `choice` 偏好并填入输入框，不发送正文；重新生成写一条 `swipe` 偏好；深回合未实现时界面不展示该选项，服务端拒绝时显示原因；2000 楼夹具只渲染可见楼层、分页加载不重复不丢楼、head 变化后定位正确；键盘与触摸可用；纯逻辑单测覆盖 SSE 事件归并、分页合并、虚拟窗口、回合统计与选项行选择；`pnpm check` 通过。
 
-- [ ] **R5-T05.c 聊天候选：候选行动与开场候选** | 依赖：R5-T05.b、R5-T02.c、R5-T02 | DESIGN §8.3、§8.4
+- [x] **R5-T05.c 聊天候选：候选行动与开场候选** | 依赖：R5-T05.b、R5-T02.c、R5-T02 | DESIGN §8.3、§8.4
+  完成：2026-11-08 聊天页在最新助手楼层完成后读取 `GET /api/nodes/:id/actions`，候选由间隙任务写入，未出现时按 2 秒间隔最多取 15 次；4 条行动与 1 条场景变化按 `ordinal` 分开展示，点击只填入输入框不发送。故事为空时读取 `GET /api/stories/:id/openings?status=pending` 显示候选原文（首次进入同样轮询到出现），选中走 `pick` 后成为根楼层并刷新路径；“重新生成”走 `generate` 后按 2 秒间隔轮询新一批，旧批保留、新批标“新一批”。故事锁定的回合模式从 `GET settings` 读取并作为 `mode` 发送，锁定为深回合时输入框旁提供“切回快回合”按钮，经 `PUT settings` 写回并在下一回合生效；深回合发送被服务端 400 拒绝时 `ErrorNotice` 显示原因且不写楼层。新增 `src/chat/candidate-actions.ts` 与 `src/chat/opening-candidates.ts`（纯逻辑）、`CandidateActions.tsx` 与 `OpeningCandidates.tsx` 两个组件，以及 9 个测试；真实 server 加注入的假客户端冒烟：候选行动点击只填输入框、重新生成后 6 条候选里 3 条标新批、选中成为根楼层、深回合锁定被拒并显示原因、切回快回合写入设置、390×844 无横向滚动；门禁通过（134 个测试文件、1174 个测试通过，3 个 live 跳过，共 1177 个）
   做什么：
   - 回合完成后读取 `GET /api/nodes/:id/actions`，按楼层显示 4 条行动与 1 条场景变化；点击一条填入输入框，不自动发送。
   - 故事没有助手楼层时读取 `GET /api/stories/:id/openings?status=pending` 显示候选原文；选中调用 `POST /api/stories/:id/openings/:id/pick` 后刷新路径；“重新生成”调用 `POST /api/stories/:id/openings/generate`，轮询到新一批候选出现后显示。

@@ -570,6 +570,117 @@ span.option-line {
 	margin-left: auto;
 }
 
+/* 开场候选与候选行动都只把文本填进输入框，或者成为首个楼层。 */
+.opening-candidates,
+.candidate-actions {
+	flex: 0 1 auto;
+	max-height: 40vh;
+	overflow-y: auto;
+	padding: 10px 12px;
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: 12px;
+}
+
+.opening-head,
+.candidate-actions-head {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.opening-head h3,
+.candidate-actions-head h3 {
+	margin: 0;
+	font-size: 0.95rem;
+}
+
+.opening-list {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin: 8px 0 0;
+	padding: 0;
+	list-style: none;
+}
+
+.opening-candidate {
+	padding: 8px 10px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+}
+
+.opening-candidate-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.opening-candidate-head button {
+	margin-left: auto;
+	padding: 4px 10px;
+	font-size: 0.8rem;
+}
+
+.opening-new {
+	padding: 1px 8px;
+	border-radius: 999px;
+	background: var(--accent-soft);
+	color: var(--accent);
+	font-size: 0.75rem;
+}
+
+.opening-raw {
+	margin: 6px 0 0;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+.opening-actions {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex-wrap: wrap;
+	margin-top: 10px;
+}
+
+.candidate-action-buttons {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	margin-top: 6px;
+}
+
+button.candidate-action {
+	display: flex;
+	gap: 8px;
+	padding: 8px 10px;
+	background: var(--accent-soft);
+	border-color: #e4cdb8;
+	color: var(--text);
+	font-size: 0.85rem;
+	text-align: left;
+}
+
+button.candidate-scene-change {
+	background: var(--surface);
+	border-color: var(--border);
+}
+
+.candidate-kind {
+	color: var(--accent);
+	font-size: 0.8rem;
+}
+
+.composer-mode-lock {
+	padding: 4px 10px;
+	background: var(--surface);
+	border-color: var(--border);
+	color: var(--accent);
+	font-size: 0.8rem;
+}
+
 .composer-stop {
 	background: var(--danger);
 }
