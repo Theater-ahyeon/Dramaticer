@@ -243,4 +243,115 @@ describe("分支接口", () => {
 		]);
 		expect(running.store.getNode(alternative.id)?.raw).toBe("另一条分支");
 	});
+
+	it(
+		"路径接口按页向上加载，页与页之间不重复不丢楼",
+		{ timeout: 180_000 },
+		async () => {
+			const running = await startTestServer();
+			running.store.createStory({ id: "long", title: "长对话" });
+			const ids: string[] = [];
+			let parentId: string | null = null;
+			for (let i = 0; i < 2000; i += 1) {
+				const node = running.store.appendNode({
+					storyId: "long",
+					parentId,
+					role: i % 2 === 0 ? "assistant" : "user",
+					raw: `第 ${i + 1} 楼`,
+				});
+				ids.push(node.id);
+				parentId = node.id;
+			}
+
+			const first = (await (
+				await fetch(`${running.origin}/api/stories/long/path`)
+			).json()) as StoryPath;
+			expect(first.nodes).toHaveLength(60);
+			expect(first.hasMore).toBe(true);
+			expect(first.nodes.map((node) => node.id)).toEqual(ids.slice(-60));
+
+			const collected: string[] = [...first.nodes.map((node) => node.id)];
+			let before = collected[0];
+			let pages = 1;
+			for (;;) {
+				const response = await fetch(
+					`${running.origin}/api/stories/long/path?before=${before}`,
+				);
+				expect(response.status).toBe(200);
+				const page = (await response.json()) as StoryPath;
+				pages += 1;
+				collected.unshift(...page.nodes.map((node) => node.id));
+				if (!page.hasMore) {
+					expect(page.nodes).toHaveLength(ids.length - 60 * (pages - 1));
+					break;
+				}
+				expect(page.nodes).toHaveLength(60);
+				before = page.nodes[0]?.id as string;
+			}
+			expect(pages).toBe(34);
+			expect(collected).toEqual(ids);
+
+			const anchor = (await (
+				await fetch(
+					`${running.origin}/api/stories/long/path?nodeId=${ids[100]}&limit=60`,
+				)
+			).json()) as StoryPath;
+			expect(anchor.nodes.map((node) => node.id)).toEqual(ids.slice(41, 101));
+			expect(anchor.hasMore).toBe(true);
+
+			const earliest = (await (
+				await fetch(
+					`${running.origin}/api/stories/long/path?nodeId=${ids[100]}&limit=200&before=${ids[40]}`,
+				)
+			).json()) as StoryPath;
+			expect(earliest.nodes.map((node) => node.id)).toEqual(ids.slice(0, 40));
+			expect(earliest.hasMore).toBe(false);
+		},
+	);
+
+	it("路径分页参数越界与路径外 before 分别返回 400 与 404", async () => {
+		const running = await startTestServer();
+		const seeded = seedStory(running);
+		const alternative = running.store.appendNode({
+			storyId: "s1",
+			parentId: seeded.userId,
+			role: "assistant",
+			raw: "另一条分支",
+		});
+		running.store.setHead("s1", seeded.replyId);
+
+		for (const limit of ["0", "201", "abc"]) {
+			const response = await fetch(
+				`${running.origin}/api/stories/s1/path?limit=${limit}`,
+			);
+			expect(response.status).toBe(400);
+			expect((await errorBody(response)).error.details).toEqual({
+				path: "limit",
+			});
+		}
+
+		const offPath = await fetch(
+			`${running.origin}/api/stories/s1/path?before=${alternative.id}`,
+		);
+		expect(offPath.status).toBe(404);
+		expect((await errorBody(offPath)).error.code).toBe("not_found");
+
+		const belowAnchor = await fetch(
+			`${running.origin}/api/stories/s1/path?nodeId=${seeded.userId}&before=${seeded.replyId}`,
+		);
+		expect(belowAnchor.status).toBe(404);
+
+		const missing = await fetch(
+			`${running.origin}/api/stories/s1/path?before=n-missing`,
+		);
+		expect(missing.status).toBe(404);
+
+		running.store.createStory({ id: "empty", title: "空故事" });
+		const empty = (await (
+			await fetch(`${running.origin}/api/stories/empty/path`)
+		).json()) as StoryPath;
+		expect(empty.nodes).toEqual([]);
+		expect(empty.hasMore).toBe(false);
+		expect(empty.headNodeId).toBeNull();
+	});
 });

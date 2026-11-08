@@ -573,7 +573,8 @@
   - 深回合在 R3b 完成前由 `resolveTurnMode` 抛错；服务端把它转成 400 并指出 R3b，不写楼层。
   验收：请求带 `mode` 为 `fast` 时 Trace 的 `turnMode` 为 fast；省略 `mode` 时使用故事设置的值；请求 `deep` 返回 400、错误信息指出 R3b、楼层数不变；`intensity` 非法值 400 并指出字段；协议类型与实现字段一致；`pnpm check` 通过。
 
-- [ ] **R5-T02.b 路径分页** | 依赖：R5-T02、M4-T06 | DESIGN §13
+- [x] **R5-T02.b 路径分页** | 依赖：R5-T02、M4-T06 | DESIGN §13
+  完成：2026-11-08 `GET /api/stories/:id/path` 支持 `limit`（默认 60，范围 1–200，越界或非整数 400 且 `details.path` 为 `limit`）与 `before`（必须位于锚点路径上，否则 404；`nodeId` 仍是锚点、缺省 head）；`StoryPath` 增加 `hasMore`，页仍然是根到当前页末楼的顺序，只裁掉更早楼层；`buildPath` 给 swipe、edit、head、开场候选选中这些完整路径响应填 `hasMore: false`；新增 2 个 server 测试（2000 楼夹具 34 页连续向上加载不重复不丢楼、锚点与 `before` 组合、越界与路径外 `before`、空故事）；门禁通过（124 个测试文件、1121 个测试通过，3 个 live 跳过）
   做什么：
   - `GET /api/stories/:id/path` 增加 `limit`（默认 60，范围 1–200）与 `before`（节点 id）；`nodeId` 仍是锚点（缺省 head），`before` 是继续向上加载的起点，必须位于同一锚点的路径上。
   - `StoryPath` 增加 `hasMore`；`nodes` 仍按根到当前页最后一个节点的顺序，分页只裁掉更早的楼层。

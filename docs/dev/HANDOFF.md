@@ -3,19 +3,18 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：153
-- 任务：R5-T05.a 重新生成记录 swipe 偏好
-- 结果：完成，门禁通过（124 个测试文件、1119 个测试通过，3 个 live 跳过，共 1122 个）。
-  - `packages/core/src/chat/turn.ts` 的 `GenerateAssistantTurnOptions` 增加可选 `swipeFromNodeId`（重新生成时被放弃的助手楼层）；`regenerateAssistantTurn` 传入 `assistantNode.id`。
-  - 正常完成与中止保存部分正文两条路径都在写楼层的同一事务里调用 `recordRegeneratedSwipe` → `StoryStore.recordPreference`，`kind` 为 `swipe`，载荷 `{abandonedNodeId, acceptedNodeId}`，`nodeId` 是新楼层，`createdAt` 取新楼层时间；普通生成不传该字段，不写记录；生成失败且没有新楼层时事务不开始，不写记录。
-  - `StoryStore.swipeNode`、`editNode` 与变更卡路径不变。server 的 `POST /api/nodes/:id/regenerate` 与 `playtest` 都经 `regenerateAssistantTurn` 走到同一处。
-  - 新增 3 个测试（`regenerate-turn.test.ts`）：成功后一条 `swipe` 且两个节点 id 正确、中止保存部分正文同样记录、生成失败且 head 不变时零记录。
+- 会话：154
+- 任务：R5-T02.b 路径分页
+- 结果：完成，门禁通过（124 个测试文件、1121 个测试通过，3 个 live 跳过，共 1124 个）。
+  - `packages/protocol/src/story.ts` 的 `StoryPath` 增加 `hasMore`（注释改为“锚点楼层到根节点的路径，按根到当前页最后一个节点的顺序”）。
+  - `packages/server/src/routes.ts` 的 `handlePath` 支持 `limit`（默认 60，范围 1–200）与 `before`（节点 id）。`nodeId` 仍是锚点、缺省 head；`before` 先用 `requireStoryNode` 确认属于本故事（否则 404），再确认位于锚点路径上（否则 404）；返回路径是 `anchor.slice(max(0, index(before) - limit), index(before))`，`hasMore` 为 `pageStart > 0`。不带 `before` 时页末是锚点，即最近 `limit` 楼。锚点节点本身在页内。
+  - `buildPath` 仍然拼完整路径，`hasMore` 固定 `false`，用于 swipe、edit、head 切换与开场候选选中的响应。
+  - 新增 2 个 server 测试（`branches.test.ts`）：2000 楼链首屏 60 楼、用上一页最早楼层的 id 作为 `before` 连续取 34 页共 2000 楼不重复不丢楼（该用例显式 `timeout: 180_000`，单独运行约 15 秒，全门禁约 16 秒）；`limit` 为 `0`、`201`、`abc` 返回 400 且 `details.path` 为 `limit`；路径外、锚点下方、不存在的 `before` 返回 404；空故事的 `nodes` 为空、`hasMore` 为 false、`headNodeId` 为 null。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09.a、R2-T09.b、R2-T09.c、R2-T99、R5-T01、R5-T02、R5-T02.a、R5-T05.a、E-T01、R4-T00、R4-T01、R4-T02、R4-T03、R4-T04、R4-T05、R4-T06、R4-T07、R4-T08、R4-T99、R5-T00。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- **下一个可做任务是 R5-T02.b（路径分页）**：依赖 R5-T02、M4-T06，全部满足。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09.a、R2-T09.b、R2-T09.c、R2-T99、R5-T01、R5-T02、R5-T02.a、R5-T02.b、R5-T05.a、E-T01、R4-T00、R4-T01、R4-T02、R4-T03、R4-T04、R4-T05、R4-T06、R4-T07、R4-T08、R4-T99、R5-T00。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- **下一个可做任务是 R5-T02.c（开局任务入队与开场候选重新生成）**：依赖 R5-T01、R5-T02、O-T01、O-T03，全部满足。
 - R5 的已知接口缺口（R5-T00 定下的任务范围）：
-  - `GET /api/stories/:id/path` 返回完整路径与原文，没有 `limit`/`before`；`StoryPath` 没有 `hasMore`。
   - 创建故事与导入卡之后没有调用 `scheduler.schedule`；`createOpeningCandidatesHandler` 在已有待选候选时不生成（CLI `--generate` 直接调 `generateOpeningCandidates` 追加）；没有开场候选重新生成接口。
   - 变更卡只有 `GET /api/stories/:id/proposals`，没有批准、拒绝与回滚接口；CLI 用 `approveLedgerChangeCard`、`rejectLedgerChangeCard`、`rollbackLedgerChangeCard`。
   - 故事设置接口是 `GET`/`PUT /api/stories/:id/settings`（不是 PATCH）。
@@ -30,6 +29,7 @@
 - 数据库 schema 版本 33（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡、v25 合并调用开关与执行记录、v26 间隙档位阈值与丢弃状态、v27 合并调用丢弃条目、v28 回合模式与读取工具软上限、v29 开局包与故事级后台任务、v30 首楼开场候选、v31 偏好记录、v32 导演计划与拍状态、v33 导演候选行动）；R1 续原计划的 v32–v35 顺延为 v34–v37；插入新迁移时后续编号一起顺延。
 - server 的回合路径会补建并执行后台任务：`handleTurnStream` 在 `turn.completed` 之后调用 `BackgroundScheduler.schedule`，不等待 drain；同一时刻只有一个 drain，故事之间先来先做。`schedule` 的 drain 只跑 `resolveStoryBackgroundKinds` 过滤后的类型。
 - 分支与面板接口已可用；`packages/web` 尚未创建。`GET /api/nodes/:id/ledger` 返回 `{state, facts, diffs}`，`facts` 来自 `readLedgerFacts`，`diffs` 只含该楼层自己的写入。
+- 路径接口：`GET /api/stories/:id/path?nodeId=&limit=&before=`，返回 `{storyId, headNodeId, nodes, hasMore}`。`nodeId` 是锚点、缺省 head，锚点节点包含在返回路径里；`before` 必须在本故事且在该锚点的路径上，返回它之前的 `limit` 楼；`hasMore` 只在返回页之前还有楼层时为真。响应里 `nodes` 一定是根到页末楼的连续顺序。
 - 偏好记录已闭环：记录写入（四种信号）→ `POST /api/nodes/:id/choice` → `preferences export` 产出回复对 → `pairwise` 盲测与评分 → `scoreboard` 汇总。重新生成与 `swipeNode` 都写 `swipe`；私有库目前没有任何 `preference_events`。
 - 排障命令：`dramaticer explain --node <id> --db <path> [--json]`。只读、零模型调用；导演决策从助手楼层的父楼层读（`director_decisions` 写在生成时的消息楼层上）。记忆槽位的 `retrieval` 只在槽位真正注入内容时写进 Trace；没有命中时该槽位记为 `missing-slot`。上下文分段行会显示 suffix 槽位的 `appendedTo`。`explain` 不受导演模式影响，盲盒下仍然显示完整指令与信号。第 7 段显示当前拍与 `director_beat_states` 记录（节拍 id、完成楼层、`completed`、是否已前进），只读。
 - 导演计划接口：`readDirectorPlan` 按 `ordinal` 还原弧线、序列、节拍；`--set` 与 `PUT /api/stories/:id/director/plan` 都整份替换并把所有行标为 `player`，`mergePlannedArcs` 只更新或追加 `model`/`import` 行，永不删除、不覆盖 `player` 行。`resolveCurrentBeat` 沿路径最近一条 `director_beat_states` 前进：完成则到下一拍（跨序列），未完成停在原地，无状态取第一拍，耗尽返回 null；记录指向已不存在的节拍时跳过该记录，仍无有效记录则回到第一拍。`readDirectorPlan` 与 `resolveCurrentBeat` 的入参是 `DirectorPlanReader`/`DirectorBeatResolver`（`Pick<StoryStore, …>`）。
@@ -42,8 +42,8 @@
 - R4 验收的链路证据在 `packages/core/test/director-acceptance.test.ts` 与 `docs/dev/reports/R4.md`。
 
 ## 下一步
-- **R5-T02.b 路径分页**：`GET /api/stories/:id/path` 增加 `limit`（默认 60，范围 1–200）与 `before`；`StoryPath` 增加 `hasMore`；`before` 不在锚点路径上返回 404，`limit` 越界 400；2000 楼夹具验证连续分页不重复不丢楼。
-- 之后按顺序做 R5-T02.c（开局任务入队与开场候选重新生成）、R5-T04（web 骨架）、R5-T05（聊天）、R5-T07（台账只读）、R5-T11（沙箱块渲染）；再进入第二段 R5-T03、R5-T06、R5-T07.a、R5-T08、R5-T09、R5-T10。
+- **R5-T02.c 开局任务入队与开场候选重新生成**：创建故事与导入卡之后调用 `BackgroundScheduler.schedule(storyId)`，让 `opening` 与 `opening_candidates` 按各自 `needsRun` 入队且请求立即返回；新增 `POST /api/stories/:id/openings/generate`（没有助手楼层时入队一条 `opening_candidates` 任务、返回 202 与任务 id，已有楼层 409）；`createOpeningCandidatesHandler` 删掉“已有待选候选就不生成”的守卫，自动入队仍由 `openingCandidatesNeedRun` 控制；`StoryStore` 新增按种类入队的方法。
+- 之后按顺序做 R5-T04（web 骨架）、R5-T05（聊天）、R5-T07（台账只读）、R5-T11（沙箱块渲染）；再进入第二段 R5-T03、R5-T06、R5-T07.a、R5-T08、R5-T09、R5-T10。
 - R5-T05 依赖 R5-T02、R5-T02.a、R5-T02.b、R5-T02.c、R5-T05.a、R5-T04；R5-T08 只依赖 R5-T04、R5-T02、R4-T99，计划、决策、候选与线索接口已经可用。
 - 引用评测数字时：B1 必须同时说明同模型子集为空、每个对话每档只有 1 个样本；遗忘矛盾率必须同时说明失败题数与可判定样本数；偏好一致率当前没有样本。
 

@@ -483,6 +483,13 @@ function treePreview(raw: string): string {
 	return raw.replace(/\s+/g, " ").trim().slice(0, 80);
 }
 
+const PATH_DEFAULT_LIMIT = 60;
+const PATH_MAX_LIMIT = 200;
+
+/**
+ * 路径接口按页读取：`nodeId` 是锚点，缺省 head；只裁掉更早的楼层，
+ * `before` 指向上一页最早那层，取它之前的一页。
+ */
 function handlePath(
 	res: ServerResponse,
 	options: ApiRouteOptions,
@@ -490,14 +497,37 @@ function handlePath(
 	storyId: string,
 ): void {
 	requireStory(options.store, storyId);
+	const limit =
+		queryInteger(url, "limit", 1, PATH_MAX_LIMIT) ?? PATH_DEFAULT_LIMIT;
 	const nodeId = url.searchParams.get("nodeId");
-	const nodes =
+	const anchor =
 		nodeId === null
 			? options.store.getPathToHead(storyId)
 			: options.store.getPathToNode(
 					requireStoryNode(options.store, storyId, nodeId).id,
 				);
-	sendJson(res, 200, buildPath(options.store, storyId, nodes));
+	const before = url.searchParams.get("before");
+	let pageEnd = anchor.length;
+	if (before !== null) {
+		const beforeNode = requireStoryNode(options.store, storyId, before);
+		const index = anchor.findIndex((node) => node.id === beforeNode.id);
+		if (index < 0) {
+			throw new HttpError(
+				404,
+				"not_found",
+				`楼层节点不在锚点路径上：${before}`,
+			);
+		}
+		pageEnd = index;
+	}
+	const pageStart = Math.max(0, pageEnd - limit);
+	const view: StoryPath = {
+		storyId,
+		headNodeId: options.store.getHead(storyId)?.id ?? null,
+		nodes: anchor.slice(pageStart, pageEnd),
+		hasMore: pageStart > 0,
+	};
+	sendJson(res, 200, view);
 }
 
 async function handleHead(
@@ -913,6 +943,7 @@ function buildPath(
 		storyId,
 		headNodeId: store.getHead(storyId)?.id ?? null,
 		nodes: [...nodes],
+		hasMore: false,
 	};
 }
 

@@ -87,11 +87,13 @@ export interface ImportStoryResult {
 	readonly imported: ImportStoryCounts;
 }
 
-/** head 到根节点的完整路径，按根到 head 的顺序。 */
+/** 锚点楼层到根节点的路径，按根到当前页最后一个节点的顺序。 */
 export interface StoryPath {
 	readonly storyId: string;
 	readonly headNodeId: string | null;
 	readonly nodes: readonly TimelineNode[];
+	/** 当前页之外还有更早的楼层可以继续向上加载。 */
+	readonly hasMore: boolean;
 }
 
 /** 楼层树里的一个节点；原文只在路径接口里返回。 */
