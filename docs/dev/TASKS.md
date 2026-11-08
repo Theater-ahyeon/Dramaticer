@@ -478,7 +478,8 @@
   - 新增 `GET /api/stories/:id/jobs` 返回 pending/running/done/failed 计数与最近错误，供面板显示。
   验收：回合响应先于后台任务完成；结算、事件与压缩在任务完成后写入；失败重试到 `failed`；关闭服务不留下未结束的异步任务；测试用假处理器且零网络；`pnpm check` 通过。
 
-- [ ] **R5-T02 server 分支与面板接口**（原 M4-T08） | 依赖：M4-T06、M4-T03、R1-T01
+- [x] **R5-T02 server 分支与面板接口**（原 M4-T08） | 依赖：M4-T06、M4-T03、R1-T01
+  完成：2026-11-08 新增分支接口 `GET /api/stories/:id/tree`（`StoryStore.listStoryNodes` 按创建顺序读全树，节点只给 80 字预览）、`GET /api/stories/:id/path?nodeId=`、`POST /api/nodes/:id/swipe`、`POST /api/nodes/:id/edit`、`POST /api/stories/:id/head`、`POST /api/nodes/:id/regenerate`（SSE，复用 `regenerateAssistantTurn` 与回合的流式外壳）；面板 `GET /api/nodes/:id/trace|ledger|events|compressions|director`、故事级 `clues`（未兑现）、`POST /api/clues/:id/fulfill`（请求体带 `storyId`，走新增的 `core/ledger/clues.ts`，写入 `status` 与 `updatedAt` 两条 `source` 为 `player` 的 diff）、`entities`、`lore`、`proposals?status=`（默认 `pending`）、`openings?status=` 与 `openings/:id/pick`；`/compressions` 当前返回当前路径上有效的分层摘要（`getValidSummaries`），R1-T05 引入八段式压缩表后替换数据源；`packages/protocol/src/panels.ts` 提供全部响应类型；故事级接口里跨故事的节点与候选一律 404；新增 8 个 server 测试（分支 4、面板 4）与 1 个重新生成测试，零网络；门禁通过（113 个测试文件、989 个测试，3 个 live 跳过）
   做什么：
   - 分支：`GET /api/stories/:id/tree`、`GET /api/stories/:id/path?nodeId=`、`POST /api/nodes/:id/swipe`、`POST /api/nodes/:id/edit`、`POST /api/stories/:id/head`、`POST /api/nodes/:id/regenerate`。
   - 面板：`GET /api/nodes/:id/trace`、`/ledger`、`/events?limit&offset`、`/compressions`、`/director`；`GET /api/stories/:id/clues`、`POST /api/clues/:id/fulfill`；`GET /api/stories/:id/entities`、`/lore`、`/proposals`；开场候选 `GET /api/stories/:id/openings`、`POST /api/stories/:id/openings/:id/pick`。

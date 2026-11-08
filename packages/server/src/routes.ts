@@ -1,25 +1,54 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
+	type ChooseOpeningCandidateResult,
 	type ContextTemplate,
 	type ContextTemplateRecord,
 	DEFAULT_CONTEXT_TEMPLATE_ID,
+	DEFAULT_MEMORY_EVENT_LIMIT,
 	DIRECTOR_CONFIG_KEYS,
+	LEDGER_CHANGE_CARD_STATUSES,
+	MAX_MEMORY_EVENT_LIMIT,
+	OPENING_CANDIDATE_STATUSES,
 	STORY_SETTINGS_UPDATE_KEYS,
+	type StateDiff,
 	type Story,
 	type StorySettings,
 	type StorySettingsUpdate,
 	type StoryStore,
+	type TimelineNode,
 	type UpdateContextTemplateInput,
+	fulfillLedgerClue,
 	isJsonObject,
+	isLedgerChangeCardStatus,
+	isOpeningCandidateStatus,
+	listLedgerEntities,
+	readLedger,
+	readLedgerFacts,
 } from "@dramaticer/core";
 import type {
 	CreateContextTemplateRequest,
 	CreateStoryRequest,
+	FulfillClueResult,
 	ImportCharacterCard,
 	ImportStoryRequest,
 	ImportStoryResult,
+	NodeActionResult,
+	NodeCompressionsView,
+	NodeDirectorView,
+	NodeEventsView,
+	NodeLedgerView,
+	SetHeadRequest,
+	StoryCluesView,
+	StoryEntitiesView,
 	StoryJobErrorView,
 	StoryJobsView,
+	StoryLoreView,
+	StoryOpeningPickResult,
+	StoryOpeningsView,
+	StoryPath,
+	StoryProposalsView,
+	StoryTree,
+	StoryTreeNode,
 	StoryView,
 } from "@dramaticer/protocol";
 import {
@@ -33,7 +62,11 @@ import {
 import type { BackgroundScheduler } from "./background.js";
 import { HttpError, readJsonBody, sendEmpty, sendJson } from "./http.js";
 import type { StoryRuntimeManager } from "./runtime.js";
-import { type TurnCoordinator, handleTurnStream } from "./turns.js";
+import {
+	type TurnCoordinator,
+	handleRegenerateStream,
+	handleTurnStream,
+} from "./turns.js";
 
 export interface ApiRouteOptions {
 	readonly store: StoryStore;
@@ -69,22 +102,112 @@ export async function handleApiRequest(
 			await handleStory(req, res, method, options, storyId);
 			return;
 		}
-		if (third === "import" && parts.length === 3) {
-			await handleImport(req, res, method, options, storyId);
-			return;
+		if (parts.length === 3) {
+			switch (third) {
+				case "import":
+					await handleImport(req, res, method, options, storyId);
+					return;
+				case "turns":
+					requireMethod(method, ["POST"]);
+					await handleTurns(req, res, options, storyId);
+					return;
+				case "settings":
+					await handleSettings(req, res, method, options, storyId);
+					return;
+				case "jobs":
+					requireMethod(method, ["GET"]);
+					handleJobs(res, options, storyId);
+					return;
+				case "tree":
+					requireMethod(method, ["GET"]);
+					handleTree(res, options, storyId);
+					return;
+				case "path":
+					requireMethod(method, ["GET"]);
+					handlePath(res, options, url, storyId);
+					return;
+				case "head":
+					requireMethod(method, ["POST"]);
+					await handleHead(req, res, options, storyId);
+					return;
+				case "clues":
+					requireMethod(method, ["GET"]);
+					handleStoryClues(res, options, storyId);
+					return;
+				case "entities":
+					requireMethod(method, ["GET"]);
+					handleEntities(res, options, storyId);
+					return;
+				case "lore":
+					requireMethod(method, ["GET"]);
+					handleLore(res, options, storyId);
+					return;
+				case "proposals":
+					requireMethod(method, ["GET"]);
+					handleProposals(res, options, url, storyId);
+					return;
+				case "openings":
+					requireMethod(method, ["GET"]);
+					handleOpenings(res, options, url, storyId);
+					return;
+				default:
+					break;
+			}
 		}
-		if (third === "turns" && parts.length === 3) {
+		if (
+			third === "openings" &&
+			parts.length === 5 &&
+			parts[4] === "pick" &&
+			parts[3] !== undefined
+		) {
 			requireMethod(method, ["POST"]);
-			await handleTurns(req, res, options, storyId);
+			handleOpeningPick(res, options, storyId, parts[3]);
 			return;
 		}
-		if (third === "settings" && parts.length === 3) {
-			await handleSettings(req, res, method, options, storyId);
-			return;
+	}
+	if (first === "nodes" && second !== undefined && parts.length === 3) {
+		const nodeId = second;
+		switch (third) {
+			case "swipe":
+				requireMethod(method, ["POST"]);
+				await handleNodeText(req, res, options, nodeId, "swipe");
+				return;
+			case "edit":
+				requireMethod(method, ["POST"]);
+				await handleNodeText(req, res, options, nodeId, "edit");
+				return;
+			case "regenerate":
+				requireMethod(method, ["POST"]);
+				await handleRegenerate(res, options, nodeId);
+				return;
+			case "trace":
+				requireMethod(method, ["GET"]);
+				handleNodeTrace(res, options, nodeId);
+				return;
+			case "ledger":
+				requireMethod(method, ["GET"]);
+				handleNodeLedger(res, options, nodeId);
+				return;
+			case "events":
+				requireMethod(method, ["GET"]);
+				handleNodeEvents(res, options, url, nodeId);
+				return;
+			case "compressions":
+				requireMethod(method, ["GET"]);
+				handleNodeCompressions(res, options, nodeId);
+				return;
+			case "director":
+				requireMethod(method, ["GET"]);
+				handleNodeDirector(res, options, nodeId);
+				return;
+			default:
+				break;
 		}
-		if (third === "jobs" && parts.length === 3) {
-			requireMethod(method, ["GET"]);
-			handleJobs(res, options, storyId);
+	}
+	if (first === "clues" && second !== undefined && parts.length === 3) {
+		if (third === "fulfill") {
+			requireMethod(method, ["POST"]);
+			await handleClueFulfill(req, res, options, second);
 			return;
 		}
 	}
@@ -270,6 +393,419 @@ function errorTime(job: {
 	readonly finishedAt: string | null;
 }): string {
 	return job.finishedAt ?? job.startedAt ?? job.createdAt;
+}
+
+function handleTree(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	storyId: string,
+): void {
+	requireStory(options.store, storyId);
+	const nodes = options.store.listStoryNodes(storyId);
+	const childIds = new Map<string, string[]>();
+	const roots: string[] = [];
+	for (const node of nodes) {
+		if (node.parentId === null) {
+			roots.push(node.id);
+			continue;
+		}
+		const children = childIds.get(node.parentId);
+		if (children === undefined) childIds.set(node.parentId, [node.id]);
+		else children.push(node.id);
+	}
+	const view: StoryTree = {
+		storyId,
+		headNodeId: options.store.getHead(storyId)?.id ?? null,
+		roots,
+		nodes: nodes.map(
+			(node): StoryTreeNode => ({
+				id: node.id,
+				parentId: node.parentId,
+				role: node.role,
+				createdAt: node.createdAt,
+				preview: treePreview(node.raw),
+				childIds: childIds.get(node.id) ?? [],
+			}),
+		),
+	};
+	sendJson(res, 200, view);
+}
+
+/** 树里只显示一段可读的开头，完整原文从路径接口按需读取。 */
+function treePreview(raw: string): string {
+	return raw.replace(/\s+/g, " ").trim().slice(0, 80);
+}
+
+function handlePath(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	url: URL,
+	storyId: string,
+): void {
+	requireStory(options.store, storyId);
+	const nodeId = url.searchParams.get("nodeId");
+	const nodes =
+		nodeId === null
+			? options.store.getPathToHead(storyId)
+			: options.store.getPathToNode(
+					requireStoryNode(options.store, storyId, nodeId).id,
+				);
+	sendJson(res, 200, buildPath(options.store, storyId, nodes));
+}
+
+async function handleHead(
+	req: IncomingMessage,
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	storyId: string,
+): Promise<void> {
+	requireStory(options.store, storyId);
+	const body = await readObjectBody(req, options.maxJsonBodyBytes);
+	assertKnownKeys(body, ["nodeId"]);
+	const node = requireStoryNode(
+		options.store,
+		storyId,
+		requireText(body.nodeId, "nodeId"),
+	);
+	options.store.setHead(storyId, node.id);
+	sendJson(
+		res,
+		200,
+		buildPath(options.store, storyId, options.store.getPathToNode(node.id)),
+	);
+}
+
+async function handleNodeText(
+	req: IncomingMessage,
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	nodeId: string,
+	action: "swipe" | "edit",
+): Promise<void> {
+	const node = requireNode(options.store, nodeId);
+	const body = await readObjectBody(req, options.maxJsonBodyBytes);
+	assertKnownKeys(body, ["text"]);
+	const text = requireRawText(body.text, "text");
+	const created =
+		action === "swipe"
+			? options.store.swipeNode(node.id, text)
+			: options.store.editNode(node.id, text);
+	const view: NodeActionResult = {
+		node: created,
+		path: buildPath(
+			options.store,
+			created.storyId,
+			options.store.getPathToNode(created.id),
+		),
+	};
+	sendJson(res, 201, view);
+}
+
+async function handleRegenerate(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	nodeId: string,
+): Promise<void> {
+	const node = requireNode(options.store, nodeId);
+	if (node.role !== "assistant") {
+		throw fieldError("nodeId", `楼层 ${nodeId} 不是助手楼层，不能重新生成`);
+	}
+	await handleRegenerateStream(res, nodeId, options);
+}
+
+function handleNodeTrace(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	nodeId: string,
+): void {
+	requireNode(options.store, nodeId);
+	const trace = options.store.getTurnTrace(nodeId);
+	if (trace === null) {
+		throw new HttpError(404, "not_found", `楼层 ${nodeId} 没有 Trace`);
+	}
+	sendJson(res, 200, trace);
+}
+
+function handleNodeLedger(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	nodeId: string,
+): void {
+	const node = requireNode(options.store, nodeId);
+	const view: NodeLedgerView = {
+		nodeId,
+		storyId: node.storyId,
+		state: options.store.getStateSnapshot(nodeId).state,
+		facts: readLedgerFacts(options.store, nodeId),
+		diffs: options.store.getStateDiffs(nodeId),
+	};
+	sendJson(res, 200, view);
+}
+
+function handleNodeEvents(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	url: URL,
+	nodeId: string,
+): void {
+	requireNode(options.store, nodeId);
+	const limit = queryInteger(url, "limit", 1, MAX_MEMORY_EVENT_LIMIT);
+	const offset = queryInteger(url, "offset", 0, Number.MAX_SAFE_INTEGER);
+	const view: NodeEventsView = {
+		nodeId,
+		limit: limit ?? DEFAULT_MEMORY_EVENT_LIMIT,
+		offset: offset ?? 0,
+		events: options.store.getEventsForPath(nodeId, {
+			...(limit === undefined ? {} : { limit }),
+			...(offset === undefined ? {} : { offset }),
+		}),
+	};
+	sendJson(res, 200, view);
+}
+
+function handleNodeCompressions(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	nodeId: string,
+): void {
+	const node = requireNode(options.store, nodeId);
+	const view: NodeCompressionsView = {
+		nodeId,
+		compressions: options.store.getValidSummaries(node.storyId, nodeId),
+	};
+	sendJson(res, 200, view);
+}
+
+function handleNodeDirector(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	nodeId: string,
+): void {
+	const node = requireNode(options.store, nodeId);
+	const view: NodeDirectorView = {
+		nodeId,
+		decision: options.store.getDirectorDecision(node.id),
+	};
+	sendJson(res, 200, view);
+}
+
+function handleStoryClues(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	storyId: string,
+): void {
+	requireStory(options.store, storyId);
+	const head = options.store.getHead(storyId);
+	const view: StoryCluesView = {
+		storyId,
+		headNodeId: head?.id ?? null,
+		clues:
+			head === null ? [] : listLedgerEntities(options.store, head.id).openClues,
+	};
+	sendJson(res, 200, view);
+}
+
+async function handleClueFulfill(
+	req: IncomingMessage,
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	clueId: string,
+): Promise<void> {
+	const body = await readObjectBody(req, options.maxJsonBodyBytes);
+	assertKnownKeys(body, ["storyId"]);
+	const storyId = requireText(body.storyId, "storyId");
+	requireStory(options.store, storyId);
+	const head = options.store.getHead(storyId);
+	if (head === null) {
+		throw new HttpError(
+			409,
+			"conflict",
+			`故事 ${storyId} 还没有楼层，不能兑现线索`,
+		);
+	}
+	const clue = readLedger(options.store, head.id, ["clue", clueId]);
+	if (clue === undefined) {
+		throw new HttpError(404, "not_found", `线索不存在：${clueId}`);
+	}
+	if (isJsonObject(clue) && clue.status === "fulfilled") {
+		throw new HttpError(409, "conflict", `线索已经兑现：${clueId}`);
+	}
+	let diffs: StateDiff[];
+	try {
+		diffs = await fulfillLedgerClue(options.store, storyId, clueId);
+	} catch (error) {
+		if (error instanceof Error && error.message.includes("已经兑现")) {
+			throw new HttpError(409, "conflict", error.message);
+		}
+		throw toBadRequest(error, "clueId");
+	}
+	const view: FulfillClueResult = {
+		storyId,
+		clueId,
+		headNodeId: head.id,
+		diffs,
+	};
+	sendJson(res, 200, view);
+}
+
+function handleEntities(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	storyId: string,
+): void {
+	requireStory(options.store, storyId);
+	const view: StoryEntitiesView = {
+		storyId,
+		entities: options.store.listEntities(storyId),
+	};
+	sendJson(res, 200, view);
+}
+
+function handleLore(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	storyId: string,
+): void {
+	requireStory(options.store, storyId);
+	const view: StoryLoreView = {
+		storyId,
+		entries: options.store.listLoreEntries(storyId),
+	};
+	sendJson(res, 200, view);
+}
+
+function handleProposals(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	url: URL,
+	storyId: string,
+): void {
+	requireStory(options.store, storyId);
+	const status = url.searchParams.get("status") ?? "pending";
+	if (status !== "all" && !isLedgerChangeCardStatus(status)) {
+		throw fieldError(
+			"status",
+			`status 只能是 all 或 ${LEDGER_CHANGE_CARD_STATUSES.join("、")}`,
+		);
+	}
+	const view: StoryProposalsView = {
+		storyId,
+		status,
+		proposals: options.store.listLedgerChangeCards(
+			storyId,
+			status === "all" ? {} : { status },
+		),
+	};
+	sendJson(res, 200, view);
+}
+
+function handleOpenings(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	url: URL,
+	storyId: string,
+): void {
+	requireStory(options.store, storyId);
+	const status = url.searchParams.get("status") ?? "all";
+	if (status !== "all" && !isOpeningCandidateStatus(status)) {
+		throw fieldError(
+			"status",
+			`status 只能是 all 或 ${OPENING_CANDIDATE_STATUSES.join("、")}`,
+		);
+	}
+	const view: StoryOpeningsView = {
+		storyId,
+		status,
+		candidates: options.store.listOpeningCandidates(
+			storyId,
+			status === "all" ? {} : { status },
+		),
+	};
+	sendJson(res, 200, view);
+}
+
+function handleOpeningPick(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	storyId: string,
+	candidateId: string,
+): void {
+	requireStory(options.store, storyId);
+	const candidate = options.store.getOpeningCandidate(candidateId);
+	if (candidate === null || candidate.storyId !== storyId) {
+		throw new HttpError(404, "not_found", `开场候选不存在：${candidateId}`);
+	}
+	let result: ChooseOpeningCandidateResult;
+	try {
+		result = options.store.chooseOpeningCandidate(candidateId);
+	} catch (error) {
+		throw new HttpError(
+			409,
+			"conflict",
+			error instanceof Error ? error.message : String(error),
+		);
+	}
+	const view: StoryOpeningPickResult = {
+		candidate: result.candidate,
+		node: result.node,
+		path: buildPath(
+			options.store,
+			storyId,
+			options.store.getPathToNode(result.node.id),
+		),
+	};
+	sendJson(res, 200, view);
+}
+
+function buildPath(
+	store: StoryStore,
+	storyId: string,
+	nodes: readonly TimelineNode[],
+): StoryPath {
+	return {
+		storyId,
+		headNodeId: store.getHead(storyId)?.id ?? null,
+		nodes: [...nodes],
+	};
+}
+
+function requireNode(store: StoryStore, nodeId: string): TimelineNode {
+	const node = store.getNode(nodeId);
+	if (node === null) {
+		throw new HttpError(404, "not_found", `楼层节点不存在：${nodeId}`);
+	}
+	return node;
+}
+
+/** 故事级接口里的节点必须属于路径里的故事，跨故事一律按不存在处理。 */
+function requireStoryNode(
+	store: StoryStore,
+	storyId: string,
+	nodeId: string,
+): TimelineNode {
+	const node = store.getNode(nodeId);
+	if (node === null || node.storyId !== storyId) {
+		throw new HttpError(404, "not_found", `楼层节点不存在：${nodeId}`);
+	}
+	return node;
+}
+
+function queryInteger(
+	url: URL,
+	name: string,
+	min: number,
+	max: number,
+): number | undefined {
+	const raw = url.searchParams.get(name);
+	if (raw === null) return undefined;
+	if (!/^\d+$/.test(raw)) {
+		throw fieldError(name, `${name} 必须是非负整数`);
+	}
+	const value = Number(raw);
+	if (value < min || value > max) {
+		throw fieldError(name, `${name} 必须在 ${min} 到 ${max} 之间`);
+	}
+	return value;
 }
 
 async function handleSettings(
@@ -503,6 +1039,14 @@ function requireText(value: unknown, path: string): string {
 		throw fieldError(path, `${path} 必须是非空字符串`);
 	}
 	return value.trim();
+}
+
+/** 楼层原文可以带首尾空白，只要求去掉空白后不为空。 */
+function requireRawText(value: unknown, path: string): string {
+	if (typeof value !== "string" || value.trim().length === 0) {
+		throw fieldError(path, `${path} 必须是非空字符串`);
+	}
+	return value;
 }
 
 function fieldError(path: string, message: string): HttpError {

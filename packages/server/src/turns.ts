@@ -1,14 +1,18 @@
 import type { ServerResponse } from "node:http";
 import {
+	type ChatTurnResult,
+	type GenerateAssistantTurnOptions,
 	LlmAllChannelsFailedError,
 	LlmProviderError,
+	type ParsedContent,
 	type StoryStore,
 	generateAssistantTurn,
+	regenerateAssistantTurn,
 } from "@dramaticer/core";
 import type { ApiErrorBody } from "@dramaticer/protocol";
 import type { BackgroundScheduler } from "./background.js";
 import { HttpError } from "./http.js";
-import type { StoryRuntimeManager } from "./runtime.js";
+import type { StoryRuntime, StoryRuntimeManager } from "./runtime.js";
 import { type SseStream, createSseStream } from "./sse.js";
 
 /** 每个故事同一时间只允许一个回合；冲突的请求直接返回 409。 */
@@ -66,6 +70,36 @@ export interface TurnRouteOptions {
 	readonly now?: () => number;
 }
 
+interface GenerationHooks {
+	readonly onTextDelta: (
+		delta: string,
+		snapshot: readonly ParsedContent[],
+	) => void;
+	readonly onThinkingDelta: (delta: string) => void;
+	readonly onToolCall: (call: {
+		readonly name: string;
+		readonly ok: boolean;
+	}) => void;
+	readonly now: () => number;
+}
+
+interface StreamTurnOptions {
+	readonly res: ServerResponse;
+	readonly storyId: string;
+	readonly ticket: TurnTicket;
+	readonly options: TurnRouteOptions;
+	/** 流开始前准备楼层，返回 turn.started 里要带的用户楼层 id。 */
+	readonly prepare: (
+		runtime: StoryRuntime,
+		signal: AbortSignal,
+	) => Promise<string>;
+	readonly run: (
+		runtime: StoryRuntime,
+		signal: AbortSignal,
+		hooks: GenerationHooks,
+	) => Promise<ChatTurnResult>;
+}
+
 /**
  * `POST /api/stories/:id/turns` 的 SSE 实现：先建用户楼层，再流式生成；
  * 客户端断开时中止上游并保存已经生成的部分正文。
@@ -80,7 +114,113 @@ export async function handleTurnStream(
 	if (ticket === null) {
 		throw new HttpError(409, "conflict", "这个故事正在生成上一轮回复");
 	}
-	let stream: SseStream | null = null;
+	let userNodeId: string | null = null;
+	await streamTurn({
+		res,
+		storyId,
+		ticket,
+		options,
+		prepare: async () => {
+			const head = options.store.getHead(storyId);
+			const userNode = options.store.appendNode({
+				storyId,
+				parentId: head?.id ?? null,
+				role: "user",
+				raw: text,
+			});
+			userNodeId = userNode.id;
+			return userNode.id;
+		},
+		run: async (runtime, signal, hooks) => {
+			if (userNodeId === null) {
+				throw new Error("准备用户楼层失败");
+			}
+			return generateAssistantTurn({
+				...turnOptions(runtime, storyId, options),
+				userNodeId,
+				signal,
+				...hooks,
+			});
+		},
+	});
+}
+
+/**
+ * `POST /api/nodes/:id/regenerate` 的 SSE 实现：以旧助手楼层的父楼层为锚点
+ * 新建兄弟楼层，旧楼层与旧 Trace 保持不变。
+ */
+export async function handleRegenerateStream(
+	res: ServerResponse,
+	nodeId: string,
+	options: TurnRouteOptions,
+): Promise<void> {
+	const assistantNode = options.store.getNode(nodeId);
+	if (assistantNode === null) {
+		throw new HttpError(404, "not_found", `楼层节点不存在：${nodeId}`);
+	}
+	if (assistantNode.role !== "assistant") {
+		throw new HttpError(
+			400,
+			"bad_request",
+			`楼层 ${nodeId} 不是助手楼层，不能重新生成`,
+		);
+	}
+	const userNodeId = assistantNode.parentId;
+	if (userNodeId === null) {
+		throw new HttpError(
+			400,
+			"bad_request",
+			`助手楼层 ${nodeId} 没有父用户楼层`,
+		);
+	}
+	const storyId = assistantNode.storyId;
+	const ticket = options.turns.begin(storyId);
+	if (ticket === null) {
+		throw new HttpError(409, "conflict", "这个故事正在生成上一轮回复");
+	}
+	await streamTurn({
+		res,
+		storyId,
+		ticket,
+		options,
+		prepare: async () => userNodeId,
+		run: async (runtime, signal, hooks) =>
+			regenerateAssistantTurn({
+				...turnOptions(runtime, storyId, options),
+				assistantNodeId: nodeId,
+				signal,
+				...hooks,
+			}),
+	});
+}
+
+/** 两种流式回合共用的生成参数；模型、模板与预算都来自故事运行时。 */
+function turnOptions(
+	runtime: StoryRuntime,
+	storyId: string,
+	options: TurnRouteOptions,
+): Omit<GenerateAssistantTurnOptions, "userNodeId"> {
+	return {
+		store: options.store,
+		client: runtime.chatClient,
+		storyId,
+		template: runtime.template,
+		providers: runtime.providers,
+		budgetTokens: runtime.settings.budgetTokens,
+		structuredOutput: runtime.settings.structuredOutput,
+		toolTransport: runtime.toolTransport,
+		embedder: runtime.embedder,
+		viewpoint: runtime.settings.viewpoint,
+		model: runtime.modelAlias,
+		maxTokens: runtime.maxTokens,
+		temperature: runtime.settings.temperature,
+		reasoning: runtime.settings.reasoning,
+	};
+}
+
+async function streamTurn(stream: StreamTurnOptions): Promise<void> {
+	const { res, storyId, ticket, options } = stream;
+	let sse: SseStream | null = null;
 	let clientGone = false;
 	let heartbeat: NodeJS.Timeout | undefined;
 	const onClose = (): void => {
@@ -95,69 +235,48 @@ export async function handleTurnStream(
 		}
 		const runtime = await options.runtime.get(storyId);
 		if (clientGone || ticket.signal.aborted) return;
-		const head = options.store.getHead(storyId);
-		const userNode = options.store.appendNode({
-			storyId,
-			parentId: head?.id ?? null,
-			role: "user",
-			raw: text,
-		});
-		stream = createSseStream(res);
-		stream.send("turn.started", { storyId, userNodeId: userNode.id });
+		const userNodeId = await stream.prepare(runtime, ticket.signal);
+		if (clientGone || ticket.signal.aborted) return;
+		sse = createSseStream(res);
+		sse.send("turn.started", { storyId, userNodeId });
 		heartbeat = setInterval(
-			() => stream?.comment("ping"),
+			() => sse?.comment("ping"),
 			Math.max(1, options.heartbeatMs),
 		);
 		heartbeat.unref();
 		const now = options.now ?? Date.now;
 		let lastBlocksAt = Number.NEGATIVE_INFINITY;
-		const result = await generateAssistantTurn({
-			store: options.store,
-			client: runtime.chatClient,
-			storyId,
-			userNodeId: userNode.id,
-			template: runtime.template,
-			providers: runtime.providers,
-			budgetTokens: runtime.settings.budgetTokens,
-			structuredOutput: runtime.settings.structuredOutput,
-			toolTransport: runtime.toolTransport,
-			embedder: runtime.embedder,
-			viewpoint: runtime.settings.viewpoint,
-			model: runtime.modelAlias,
-			maxTokens: runtime.maxTokens,
-			temperature: runtime.settings.temperature,
-			reasoning: runtime.settings.reasoning,
-			signal: ticket.signal,
+		const result = await stream.run(runtime, ticket.signal, {
 			onTextDelta: (delta, snapshot) => {
-				if (clientGone || stream === null) return;
-				stream.send("text.delta", { delta });
+				if (clientGone || sse === null) return;
+				sse.send("text.delta", { delta });
 				const current = now();
 				if (current - lastBlocksAt >= 100) {
 					lastBlocksAt = current;
-					stream.send("blocks.replace", { blocks: snapshot });
+					sse.send("blocks.replace", { blocks: snapshot });
 				}
 			},
 			onThinkingDelta: (delta) => {
-				if (clientGone || stream === null) return;
-				stream.send("thinking.delta", { delta });
+				if (clientGone || sse === null) return;
+				sse.send("thinking.delta", { delta });
 			},
 			onToolCall: (call) => {
-				if (clientGone || stream === null) return;
-				stream.send("tool.call", { name: call.name, ok: call.ok });
+				if (clientGone || sse === null) return;
+				sse.send("tool.call", { name: call.name, ok: call.ok });
 			},
 			now,
 		});
-		if (clientGone || stream === null) return;
-		stream.send("blocks.replace", { blocks: result.blocks });
+		if (clientGone || sse === null) return;
+		sse.send("blocks.replace", { blocks: result.blocks });
 		if (result.trace.llm.stopReason === "aborted") {
-			stream.send("turn.error", {
+			sse.send("turn.error", {
 				code: "upstream_error",
 				message: "回合被中止，已经生成的内容已保存",
 			});
 			options.log("回合被中止：已保留部分正文");
 			return;
 		}
-		stream.send("turn.completed", {
+		sse.send("turn.completed", {
 			storyId,
 			userNode: result.userNode,
 			node: result.node,
@@ -169,9 +288,9 @@ export async function handleTurnStream(
 		});
 		options.scheduler?.schedule(storyId);
 	} catch (error) {
-		if (stream === null) throw error;
+		if (sse === null) throw error;
 		if (!clientGone) {
-			stream.send("turn.error", toTurnError(error));
+			sse.send("turn.error", toTurnError(error));
 			options.log(
 				`回合失败：${error instanceof Error ? error.name : "未知错误"}`,
 			);
@@ -180,7 +299,7 @@ export async function handleTurnStream(
 		clearInterval(heartbeat);
 		res.off("close", onClose);
 		ticket.release();
-		stream?.close();
+		sse?.close();
 	}
 }
 

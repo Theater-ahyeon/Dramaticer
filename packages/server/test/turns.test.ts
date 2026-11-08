@@ -548,6 +548,50 @@ describe("POST /api/stories/:id/turns", () => {
 		);
 	});
 
+	it("重新生成新建兄弟助手楼层，旧楼层与旧 Trace 保留", async () => {
+		const { running } = await startTurnServer([
+			{ text: "第一次回复" },
+			{ text: "第二次回复" },
+		]);
+		const firstFrames = await new FrameStream(
+			await postTurn(running.origin, "开始。"),
+		).readAll();
+		const first = frameData(firstFrames, "turn.completed");
+
+		const response = await fetch(
+			`${running.origin}/api/nodes/${first.node.id}/regenerate`,
+			{ method: "POST" },
+		);
+		expect(response.status).toBe(200);
+		expect(response.headers.get("content-type")).toContain("text/event-stream");
+		const frames = await new FrameStream(response).readAll();
+		expect(eventNames(frames)[0]).toBe("turn.started");
+		expect(eventNames(frames).at(-1)).toBe("turn.completed");
+		const regenerated = frameData(frames, "turn.completed");
+
+		expect(regenerated.userNode.id).toBe(first.userNode.id);
+		expect(regenerated.node.id).not.toBe(first.node.id);
+		expect(regenerated.node.parentId).toBe(first.userNode.id);
+		expect(regenerated.node.raw).toBe("第二次回复");
+		expect(running.store.getNode(first.node.id)?.raw).toBe("第一次回复");
+		expect(running.store.getTurnTrace(first.node.id)?.nodeId).toBe(
+			first.node.id,
+		);
+		expect(running.store.getHead("s1")?.id).toBe(regenerated.node.id);
+
+		const traceResponse = await fetch(
+			`${running.origin}/api/nodes/${regenerated.node.id}/trace`,
+		);
+		expect(traceResponse.status).toBe(200);
+		expect(await traceResponse.json()).toEqual(regenerated.trace);
+
+		const notAssistant = await fetch(
+			`${running.origin}/api/nodes/${first.userNode.id}/regenerate`,
+			{ method: "POST" },
+		);
+		expect(notAssistant.status).toBe(400);
+	});
+
 	it("设置或渠道配置变化后重建运行时", async () => {
 		const { running, clientBuilds, setConfig } = await startTurnServer([
 			{ text: "一" },

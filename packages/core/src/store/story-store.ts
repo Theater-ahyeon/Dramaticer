@@ -1946,6 +1946,23 @@ export class StoryStore {
 		return row ? rowToNode(row) : null;
 	}
 
+	/** 按创建顺序列出故事的楼层节点；用于构建分支树。 */
+	listStoryNodes(storyId: string): TimelineNode[] {
+		assertNonEmptyString(storyId, "故事 id");
+		if (!this.getStory(storyId)) {
+			throw new Error(`故事不存在：${storyId}`);
+		}
+		const rows = this.#db
+			.prepare(
+				`SELECT id, story_id, parent_id, role, raw, created_at
+				FROM nodes
+				WHERE story_id = ?
+				ORDER BY created_at ASC, row_id ASC`,
+			)
+			.all(storyId) as NodeRow[];
+		return rows.map(rowToNode);
+	}
+
 	/** 返回从根到指定节点的完整路径，顺序为根在前。 */
 	getPathToNode(nodeId: string): TimelineNode[] {
 		const start = this.getNode(nodeId);

@@ -1,5 +1,6 @@
 export * from "./cards.js";
 export * from "./cli.js";
+export * from "./clues.js";
 export * from "./gap-pass.js";
 export * from "./read.js";
 export * from "./revision.js";
