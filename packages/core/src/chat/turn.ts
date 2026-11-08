@@ -42,6 +42,11 @@ import {
 	assertMaxReadRounds,
 	assertTurnModeSupported,
 } from "./mode.js";
+import {
+	type ChatProfile,
+	DEFAULT_CHAT_PROFILE,
+	assertChatProfile,
+} from "./profile.js";
 
 export interface ChatTurnOptions {
 	readonly store: StoryStore;
@@ -60,6 +65,8 @@ export interface ChatTurnOptions {
 	readonly viewpoint?: string | null;
 	/** 单轮模式；不设置时使用故事设置里的锁定值。 */
 	readonly turnMode?: TurnMode | null;
+	/** 对话档位；不设置时是 native。naive 不提供读写工具，也不写台账。 */
+	readonly profile?: ChatProfile;
 	/** 读取工具软上限；不设置时使用故事设置。 */
 	readonly maxReadRounds?: number | null;
 	readonly model?: string;
@@ -208,6 +215,9 @@ export async function generateAssistantTurn(
 		options.turnMode,
 		options.maxReadRounds,
 	);
+	const profile = options.profile ?? DEFAULT_CHAT_PROFILE;
+	assertChatProfile(profile);
+	const writesLedger = profile === "native";
 	const now = options.now ?? Date.now;
 	const assembled = await assembleContext({
 		template: options.template,
@@ -218,7 +228,8 @@ export async function generateAssistantTurn(
 	});
 
 	const startedAt = now();
-	const functionCall = options.structuredOutput === "function-call";
+	const functionCall =
+		writesLedger && options.structuredOutput === "function-call";
 	const transport = assertToolTransport(options.toolTransport ?? "native");
 	let turn: ModelTurnResult;
 	try {
@@ -226,7 +237,10 @@ export async function generateAssistantTurn(
 			client: options.client,
 			messages: assembled.messages,
 			structuredTools: functionCall ? STRUCTURED_OUTPUT_TOOLS : undefined,
-			readTools: functionCall || transport === "text" ? READ_TOOLS : undefined,
+			readTools:
+				writesLedger && (functionCall || transport === "text")
+					? READ_TOOLS
+					: undefined,
 			toolTransport: transport,
 			toolContext: {
 				store: options.store,
@@ -263,6 +277,7 @@ export async function generateAssistantTurn(
 				error,
 				now,
 				mode: resolved,
+				profile,
 				transport,
 			});
 		}
@@ -276,9 +291,11 @@ export async function generateAssistantTurn(
 		TRUNCATION_OPTIONS,
 	);
 
-	const structured = functionCall
-		? collectStructuredOutputFromToolCalls(turn.toolCalls)
-		: collectStructuredOutputFromText(result.text);
+	const structured = !writesLedger
+		? emptyStructuredCollection(options.structuredOutput)
+		: functionCall
+			? collectStructuredOutputFromToolCalls(turn.toolCalls)
+			: collectStructuredOutputFromText(result.text);
 
 	return await options.store.runInTransaction(() => {
 		const node = options.store.appendNode({
@@ -287,22 +304,27 @@ export async function generateAssistantTurn(
 			role: "assistant",
 			raw: result.text,
 		});
-		const savedDiffs = options.store.appendStateDiffs(
-			toNewStateDiffs(options.storyId, node.id, structured.stateUpdates),
-		);
-		const plotNotes = options.store.insertPlotNotes(
-			structured.notes.map((note) => ({
-				storyId: options.storyId,
-				sourceNodeId: node.id,
-				text: note.text,
-			})),
-		);
+		const savedDiffs = writesLedger
+			? options.store.appendStateDiffs(
+					toNewStateDiffs(options.storyId, node.id, structured.stateUpdates),
+				)
+			: [];
+		const plotNotes = writesLedger
+			? options.store.insertPlotNotes(
+					structured.notes.map((note) => ({
+						storyId: options.storyId,
+						sourceNodeId: node.id,
+						text: note.text,
+					})),
+				)
+			: [];
 		const trace: TurnTrace = {
 			storyId: options.storyId,
 			nodeId: node.id,
 			parentNodeId: userNode.id,
 			templateId: options.template.id,
 			turnMode: resolved.mode,
+			profile,
 			createdAt: node.createdAt,
 			context: assembled.trace,
 			llm: {
@@ -399,6 +421,7 @@ async function persistAbortedTurn(input: {
 	readonly error: TurnAbortedError;
 	readonly now: () => number;
 	readonly mode: ResolvedTurnMode;
+	readonly profile: ChatProfile;
 	readonly transport: LlmToolTransport;
 }): Promise<ChatTurnResult> {
 	const { options, userNode, assembled, error } = input;
@@ -416,6 +439,7 @@ async function persistAbortedTurn(input: {
 			parentNodeId: userNode.id,
 			templateId: options.template.id,
 			turnMode: input.mode.mode,
+			profile: input.profile,
 			createdAt: node.createdAt,
 			context: assembled.trace,
 			llm: {
@@ -476,6 +500,13 @@ function emptyUsage(): LlmUsage {
 		reasoningTokens: null,
 		cachedTokens: null,
 	};
+}
+
+/** 朴素模式不收集结构化写入，返回与请求模式一致的空集合。 */
+function emptyStructuredCollection(
+	mode: StructuredOutputMode,
+): StructuredOutputCollection {
+	return { mode, stateUpdates: [], notes: [], issues: [] };
 }
 
 function toNewStateDiffs(

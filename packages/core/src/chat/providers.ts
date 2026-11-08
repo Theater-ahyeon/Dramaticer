@@ -110,6 +110,38 @@ export function createHistorySlotProvider(
 	};
 }
 
+export interface RawHistorySlotProviderOptions {
+	/** 最多带最近多少楼原文，默认 20。 */
+	readonly limit?: number;
+}
+
+/** 把路径上最近若干楼的原文直接交给历史槽位；不做块视图，只跳过空楼层。 */
+export function createRawHistorySlotProvider(
+	store: StoryStore,
+	options: RawHistorySlotProviderOptions = {},
+): ContextSlotProvider {
+	const limit = options.limit ?? DEFAULT_HISTORY_LIMIT;
+	if (!Number.isInteger(limit) || limit < 1) {
+		throw new Error("历史槽位的楼数上限必须是正整数");
+	}
+	return {
+		provide(request): ContextSlotContent | null {
+			if (request.nodeId === null) return null;
+			const path = store.getPathToNode(request.nodeId);
+			const messages: ContextMessage[] = [];
+			for (const node of path.slice(-limit)) {
+				if (node.raw.trim().length === 0) continue;
+				messages.push({ role: node.role, content: node.raw });
+			}
+			if (messages.length === 0) return null;
+			return {
+				messages,
+				source: `history:最近 ${messages.length} 楼原文`,
+			};
+		},
+	};
+}
+
 /** 从状态快照读取当前状态，把结果渲染成系统消息。 */
 export function createStateSlotProvider(
 	store: StoryStore,
@@ -582,6 +614,58 @@ export function createCharacterSlotProvider(
 				source: `character:${characterPrompt.length} 字符`,
 			};
 		},
+	};
+}
+
+export interface NaiveChatProvidersOptions {
+	readonly store: StoryStore;
+	/** 为空表示故事还没有导入角色卡，角色槽位记为缺失。 */
+	readonly characterPrompt: string | null;
+	/** 玩家人设；为空时 persona 槽位记为缺失。 */
+	readonly persona: string | null;
+	/** 最多带最近多少楼原文，默认 20。 */
+	readonly historyLimit?: number;
+}
+
+/** persona 槽位使用故事设置里的玩家人设；来源只记录长度，不重复正文。 */
+export function createPersonaSlotProvider(
+	persona: string,
+): ContextSlotProvider {
+	if (typeof persona !== "string" || persona.trim().length === 0) {
+		throw new Error("persona 必须是非空字符串");
+	}
+	return {
+		provide(): ContextSlotContent {
+			return {
+				messages: [{ role: "system", content: persona }],
+				source: `persona:${persona.length} 字符`,
+			};
+		},
+	};
+}
+
+/**
+ * 朴素模式（B0）的槽位集合：角色、persona 与最近若干楼原文。
+ * 不提供台账、记忆、lore、摘要、现场分析与导演槽位。
+ */
+export function createNaiveChatProviders(
+	options: NaiveChatProvidersOptions,
+): ContextSlotProviders {
+	const character =
+		options.characterPrompt === null ||
+		options.characterPrompt.trim().length === 0
+			? {}
+			: { character: createCharacterSlotProvider(options.characterPrompt) };
+	const persona =
+		options.persona === null || options.persona.trim().length === 0
+			? {}
+			: { persona: createPersonaSlotProvider(options.persona) };
+	return {
+		...character,
+		...persona,
+		history: createRawHistorySlotProvider(options.store, {
+			limit: options.historyLimit,
+		}),
 	};
 }
 

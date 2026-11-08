@@ -307,7 +307,8 @@
 
 ## R2：评测底座
 
-- [ ] **R2-T01 B0 朴素模式** | 依赖：M4-T02、R1-T01 | DESIGN §14.1
+- [x] **R2-T01 B0 朴素模式** | 依赖：M4-T02、R1-T01 | DESIGN §14.1
+  完成：2026-11-08 core 新增 `chat/profile.ts`（`ChatProfile` 取 `native`、`naive`，默认 `native`，`assertChatProfile`），`runChatTurn` 的 `profile` 是单轮参数并写进 `TurnTrace.profile`（中止楼层同样记录）；`createNaiveContextTemplate` 只有 `character`、`persona`、`history`、`protocol` 四段，`protocol` 文本只有写作契约；`createNaiveChatProviders` 提供角色卡、故事设置 `persona` 与最近 20 楼原文（`createRawHistorySlotProvider` 不做块视图），naive 回合不提供读写工具、不收集结构化输出、不写 `state_diffs` 与 `plot_notes`；`enqueueMissingBackgroundJobs` 的 `confirmed` 与 `settled` 条件和 `listUnsettledSettledAssistantNodes` 的结算窗口都跳过 naive 助手楼层（没有 Trace 时按 native）；`dramaticer chat --profile <native|naive>` 与 `--persona <text>`，naive 搭配显式 `--director on` 直接失败；ADR-0062；新增 7 个 core 测试与 3 个 CLI 测试；门禁通过（103 个测试文件、906 个测试，3 个 live 跳过）
   做什么：
   - core 增加 `ChatProfile`（`native`、`naive`）；`naive` 只提供角色、persona、写作契约与最近 N 楼原文，不提供台账、记忆、lore、摘要、现场分析与导演槽位；`dramaticer chat --profile naive` 可运行。
   - 朴素模式关闭后台任务与台账写入，Trace 里不出现 `memory:`、`summary:`、`ledger:`、`director:` 来源。

@@ -3,16 +3,20 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：115
-- 任务：门禁修复（会话 114 的 `pnpm check` 失败在 `packages/st-compat/test/gap-pass-compare.test.ts`）
-- 结果：完成（`DONE`），门禁通过（99 个测试文件、896 个测试通过，3 个 live 跳过，共 899 个）。
-  - 失败原因是 vitest 默认 5 秒超时：`runGapPassCompareOnEntries` 的第一个用例在整轮并行门禁里跑了 9,791 毫秒（单独跑约 680 毫秒），超时后测试仍在执行，`afterEach` 的 `rmSync` 撞上 Windows 文件占用报 EPERM，产生第二条失败。
-  - 三个各自跑两套数据库的用例显式设置 30 秒超时；`afterEach` 的 `rmSync` 加 `maxRetries: 5`、`retryDelay: 100`，处理 Windows 上文件句柄释放的短暂延迟。实现代码没有改动。
-  - 重跑门禁：99 个测试文件通过、896 个测试通过、3 个 live 跳过。
+- 会话：116
+- 任务：R2-T01 B0 朴素模式
+- 结果：完成（`DONE`），门禁通过（103 个测试文件、906 个测试通过，3 个 live 跳过，共 909 个）。
+  - core 新增 `chat/profile.ts`：`ChatProfile` 取 `native`、`naive`，默认 `native`，`assertChatProfile`；`runChatTurn` 的 `profile` 是单轮参数，写进 `TurnTrace.profile`（正常楼层与中止楼层都写）。
+  - 朴素模式模板 `createNaiveContextTemplate`（id `dramaticer-naive`）只有 `character`、`persona`、`history`、`protocol`；`protocol` 文本只有导出的 `WRITING_CONTRACT`，不含写入标签说明。朴素模式忽略故事指向的自定义模板。
+  - 朴素槽位 `createNaiveChatProviders`：角色卡、故事设置 `persona`、最近 20 楼原文（`createRawHistorySlotProvider`，不做块视图与省略）。新增 `createPersonaSlotProvider`、`createRawHistorySlotProvider`。
+  - 朴素回合不提供读取与写入工具、不收集结构化输出、不写 `state_diffs` 与 `plot_notes`；Trace 的 `structured` 计数为 0。
+  - 后台按楼层过滤：`enqueueMissingBackgroundJobs` 的 `confirmed` 与 `settled` 条件、`listUnsettledSettledAssistantNodes` 的结算窗口都跳过 `profile` 为 `naive` 的助手楼层；没有 Trace 的楼层按 `native` 处理。
+  - CLI：`dramaticer chat --profile <native|naive>`、`--persona <text>`（写进故事设置）；`--profile naive` 搭配显式 `--director on` 在参数解析阶段失败。
+  - ADR-0062；新增 7 个 core 测试（`chat-profile.test.ts`）与 3 个 CLI 测试。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`；未完成任务见 `docs/dev/TASKS.md`。
-- **O 阶段的实现任务已全部完成；O-T99 开局验收依赖 R2-T02、R2-T03，所以下一个可做任务是 R2-T01 B0 朴素模式**。v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、R2-T01。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`；未完成任务见 `docs/dev/TASKS.md`。
+- **下一个可做任务是 R2-T02 回放驱动与长程自动试玩命令行**。v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。O-T99 开局验收仍依赖 R2-T02、R2-T03。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045。
 - HUMAN-09 待处理（不阻塞）：`data/channels.yaml` 已有 `bg-fallback`、`main-fallback`、`codex`，`channels.example.yaml` 还没有这三个别名。
 - HUMAN-10 待处理（不阻塞）：插件不变量是否加进 AGENTS.md。
@@ -40,13 +44,20 @@
 - 插件系统在 DESIGN §19 是唯一权威；P 阶段任务在 TASKS 的「P：插件内核」小节，C 线兼容插件任务已存在且依赖 P2。
 
 ## 下一步
-- **R2-T01 B0 朴素模式**：core 增加 `ChatProfile`（`native`、`naive`）；`naive` 只提供角色、persona、写作契约与最近 N 楼原文，不提供台账、记忆、lore、摘要、现场分析与导演槽位；`dramaticer chat --profile naive` 可运行；朴素模式关闭后台任务与台账写入，Trace 里不出现 `memory:`、`summary:`、`ledger:`、`director:` 来源；与 `native` 共用同一条生成与楼层写入路径，只替换槽位提供者集合。先读 DESIGN §14.1。
-- R2-T01 之后是 R2-T02（回放驱动与长程自动试玩命令行）、R2-T03、R2-T04.a 与 R2-T99；O-T99 开局验收要等 R2-T02、R2-T03 完成后再做。
+- **R2-T02 回放驱动与长程自动试玩命令行**：新增 `pnpm --filter @dramaticer/st-compat playtest`（`--db`、`--story`、`--rounds` 默认 20、`--profile`、`--user-model`、`--model`、`--seed`、`--out`、`--resume`）；模拟用户由 `background` 模型生成，严格 JSON `{message}`，解析失败重试 3 次后终止；默认助手模型用 `rp`（catie 渠道的 Gemini 3.8 Flash，人类指定）；每轮记录序号、节点 id、用户输入与助手正文、首字毫秒、用量、台账 diff 数、线索、导演决策、Trace 摘要、截断与下一轮开始时关键间隙工作的完成情况，写私有 JSONL；`--resume` 从最后一个完成轮次继续，单轮失败记入失败列表。
+- R2-T02 的 `--profile` 直接传给 `runChatTurn` 的 `profile`（`native` 或 `naive`），并用 `createNaiveChatProviders` / `createNaiveContextTemplate` 或 `createStandardChatProviders` / 默认模板组装上下文；试玩记录里的档位取运行参数，不要从 Trace 反推（Trace 里也有 `profile`）。
+- R2-T02 之后是 R2-T03（一致性探针）、R2-T03.a、R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09、R2-T99；O-T99 开局验收要等 R2-T02、R2-T03 完成后再做。
 - 开局包的读取入口是 `readOpeningPack(store, storyId)`；需要自己校验时用 `validateOpeningPackPayload(value, knownNames)`。首楼候选的解析用 `parseOpeningCandidatesResponse(text, expectedCount)`，不要另写一套。
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
 - 不要修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 下的任何文件。不变量 I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账是唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖任何其他工作区包、ST 语义只在兼容插件里实现。
+- 对话档位（ADR-0062）：`ChatProfile` 取 `native`、`naive`，在 `core/src/chat/profile.ts`；`runChatTurn` 的 `profile` 单轮参数默认 `native`，没有按运行状况切换的代码路径。`TurnTrace.profile` 记录本轮档位；旧数据库里没有该字段的 Trace 按 `native` 处理（存储层查询用 `COALESCE(..., 'native')`）。
+- 朴素模式的工厂是 `createNaiveContextTemplate()`（id `dramaticer-naive`）与 `createNaiveChatProviders({store, characterPrompt, persona, historyLimit})`；它忽略故事指向的自定义模板，`protocol` 段只有导出的 `WRITING_CONTRACT`。原文历史用 `createRawHistorySlotProvider`（默认 20 楼，不做块视图），persona 用 `createPersonaSlotProvider`。
+- 朴素回合不提供读取与写入工具、不收集结构化输出、不写 `state_diffs` 与 `plot_notes`；测试 `chat-profile.test.ts` 锁住 Trace 只有四个片段、请求不带工具、不建后台任务、两种档位节点结构一致。
+- 后台入队与结算窗口按档位过滤：`enqueueMissingBackgroundJobs` 的 `confirmed` 与 `settled` 条件、`listUnsettledSettledAssistantNodes` 都跳过 `profile` 为 `naive` 的助手楼层；其它处理器（事件、现场分析等）只对已有任务执行，但同一路径上原生任务的窗口仍可能把朴素楼层当上下文读出，不写事件与结算。评测对比要两种档位各用一个数据库或故事。
+- `dramaticer chat` 新增 `--profile <native|naive>` 与 `--persona <text>`：`--persona` 写进故事设置 `persona`；`--profile naive` 搭配显式 `--director on` 在参数解析阶段失败。日志行首带 `（档位 native|naive）`。
+- `TurnTrace` 新增 `profile` 字段：`packages/core/test/trace-store.test.ts`、`ledger-settlement.test.ts`、`st-compat/test/director-eval.test.ts` 的 Trace 构造点已同步；新增构造点要补。
 - 导演现在有五个机制，注册顺序是 `clue`、`opening`、`repetition`、`event_pool`、`pacing`；`opening` 的优先级是 35（`OPENING_PRIORITY`），线索年龄 30、线索数量 20、事件池 10、节奏 5，重复度 40。新增或调整机制时同步更新 `director.test.ts`、`lore.test.ts`、`director-event-pool.test.ts` 与 `st-compat/test/chat-cli.test.ts` 的机制列表断言。
 - 开场导演的楼层深度按当前路径上的助手楼层数计算（含中止保存的楼层）；`openingFloors` 为 0 关闭机制，`enabled: false` 时整轮不评估也不写决策记录。强度 `setup` 只用场景、目标与冲突，`natural` 加人物行动，`detonate` 再加三条方向；`signals.opening.usedFields` 记录本条建议实际用到的字段。
 - `readOpeningPack` 用当前角色卡与角色实体的名称、别名校验存下来的开局包，不看 `inputHash`（首轮用的正是首次输入之前生成的包）；卡片改掉在场人物后旧包会校验失败，先跑 `dramaticer work --kind opening` 重新生成。
@@ -59,7 +70,7 @@
 - 没有体检记录的模型别名：`resolveStructuredOutputMode(null)` 返回 `text-tags`，而读取工具只在 `structuredOutput === "function-call"` 或工具传输为 `text` 时提供给模型（`chat/turn.ts` 的 `readTools`）。想实测读取工具路径，先对别名跑 `dramaticer probe <channel> --model <alias>`；这条规则也解释了为什么 `main-fallback` 第一次 20 轮的工具轮全为 0。`chat-tool-loop.test.ts` 有一条断言锁住“文本标签模式 + 原生传输不提供工具定义”，改动前先读那条用例。
 - 工具传输：`LlmToolTransport`、`LLM_TOOL_TRANSPORTS`、`isToolTransport`、`assertToolTransport`、`resolveToolTransport` 在 `core/src/llm/channels.ts`。显式 `models.<alias>.tools.transport` 优先；没有配置时 `probe.functionCalling === "unsupported"` 走 `text`，其余走 `native`。新增调用 `runChatTurn` 的入口要传 `toolTransport`（按模型解析），否则一律按原生函数调用。
 - 文本协议：`core/src/chat/tool-protocol.ts` 的 `extractTextToolCalls`、`renderToolProtocol`、`TextToolStreamFilter`。工具说明只插进发给模型的消息副本（开头几条 system 消息之后），不改组装好的上下文与 Trace 的 `context.entries`。文本传输下 `structuredOutput` 是 `text-tags` 也提供读取工具；写入工具只在 `function-call` 模式提供定义，写入仍然只收集、不执行（I12）。`<tool>` 片段不进入楼层原文，流式输出里也被隐藏；未闭合的 `<tool` 片段按正文保留。
-- 写作契约：`core/src/chat/template.ts` 的 `WRITING_CONTRACT` 是四条原则，接在两种协议文本之前；`context/template.ts` 的 `WRITING_CONTRACT_SEGMENT_ID` 固定为 `"protocol"`，`assertContextTemplate` 要求该 id 出现时是最后一个片段。`protocol` 是静态段，组装后是最后一条 system 消息（历史之后），故事模板可以改写它的文本。新增消息顺序断言时注意这一点：`core/test/chat-turn.test.ts` 的 `["system","assistant","user","system"]`、`st-compat/test/chat-cli.test.ts` 与 `core/test/writing-contract.test.ts`。
+- 写作契约：`core/src/chat/template.ts` 的 `WRITING_CONTRACT` 是四条原则（已导出，朴素模式直接复用），接在两种协议文本之前；`context/template.ts` 的 `WRITING_CONTRACT_SEGMENT_ID` 固定为 `"protocol"`，`assertContextTemplate` 要求该 id 出现时是最后一个片段。`protocol` 是静态段，组装后是最后一条 system 消息（历史之后），故事模板可以改写它的文本。新增消息顺序断言时注意这一点：`core/test/chat-turn.test.ts` 的 `["system","assistant","user","system"]`、`st-compat/test/chat-cli.test.ts` 与 `core/test/writing-contract.test.ts`。
 - Trace 的 `tools.calls` 是 `{name, ok, error}`，`tools.rejected` 只记文本协议里的未知工具。tests 目录不在 tsc 的 `include` 里，新增 Trace 字段时手动检查 `core/test/trace-store.test.ts`、`core/test/ledger-settlement.test.ts`、`st-compat/test/director-eval.test.ts` 的构造点与 `core/test/chat-tool-loop.test.ts`、`core/test/turn-mode.test.ts` 的严格相等断言。
 - `dramaticer chat` 的 `--mode` 只影响单轮；故事级锁定写在故事设置 `turnMode`。server 的回合路径目前不传单轮模式，读取故事设置；工具传输由 server 运行时按故事模型解析。
 - 渠道角色：角色类型叫 `LlmModelRole`（`writer`、`settler`、`planner`、`judge`），与表示消息角色的 `LlmRole`（system、user、assistant）不是一回事。`createLlmClient` 会校验 judge 与 writer 的模型家族，缺省回落也算在内：只要配置里同时有 `main` 与 `background` 且两者同家族，创建任何客户端都会抛错。`data/channels.yaml` 目前用 `judge: codex`（`codex/gpt-6.1-terra`，gpt 家族）与 writer 的 deepseek 区分。
@@ -143,4 +154,4 @@
 - 导入接口的角色卡图片与 JSON 都在请求体内，25 MB 上限覆盖；PNG base64 目前只接受无前缀的 base64，测试里用 `node:zlib` 构造最小 PNG。
 - `packages/st-compat` 的测试通过 workspace 依赖解析到 `packages/core/dist`；改了 core 的公开代码后先 `pnpm run typecheck` 或 `pnpm --filter @dramaticer/core build`，再单独跑 st-compat 测试。`pnpm check` 会先构建。
 - 任务编号映射（历史）：M4-T07→R5-T01、T08→R5-T02、T09→R5-T03、T10→R5-T04、T11→R5-T05、T12→R5-T06、T13→R5-T07、T14→R5-T08、T15→R5-T09、T16→R5-T10、T17→R5-T11、T18→R5-T12、T19→R5-T13、T20→R5-T14、T99→R5-T99。
-- 整轮门禁在 Windows 上并行跑 102 个测试文件时，单个测试的耗时可以比单独运行高十几倍（`gap-pass-compare.test.ts` 的第一个用例单独 680 毫秒、整轮 9.8 秒）。新建要跑数据库或文件系统的测试必须显式设置超时，vitest 默认的 5 秒不够；`afterEach` 删除临时目录用 `rmSync` 时带上 `maxRetries` 与 `retryDelay`，否则 Windows 上文件句柄未释放会报 EPERM 并掩盖真正失败的用例。
+- 整轮门禁在 Windows 上并行跑 103 个测试文件时，单个测试的耗时可以比单独运行高十几倍（`gap-pass-compare.test.ts` 的第一个用例单独 680 毫秒、整轮 9.8 秒）。新建要跑数据库或文件系统的测试必须显式设置超时，vitest 默认的 5 秒不够；`afterEach` 删除临时目录用 `rmSync` 时带上 `maxRetries` 与 `retryDelay`，否则 Windows 上文件句柄未释放会报 EPERM 并掩盖真正失败的用例。

@@ -260,6 +260,109 @@ describe("dramaticer chat", () => {
 		expect(fake.requests).toHaveLength(0);
 	});
 
+	it("不认识的档位在参数解析阶段就被拒绝", async () => {
+		const dbPath = createTempDb();
+		const fake = createFakeClient();
+
+		await expect(
+			runChatCli(
+				[
+					"chat",
+					"--story",
+					"s1",
+					"--card",
+					cardPath,
+					"--user",
+					"我推开山门。",
+					"--db",
+					dbPath,
+					"--profile",
+					"turbo",
+				],
+				dependencies(fake, [], []),
+			),
+		).rejects.toThrow("--profile 只接受 native 或 naive");
+		expect(fake.requests).toHaveLength(0);
+	});
+
+	it("朴素模式只带角色、persona、历史原文与写作契约，不写台账", async () => {
+		const dbPath = createTempDb();
+		const fake = createFakeClient();
+		const result = await runChatCli(
+			[
+				"chat",
+				"--story",
+				"s1",
+				"--card",
+				cardPath,
+				"--user",
+				"我推开山门。",
+				"--db",
+				dbPath,
+				"--model",
+				"main",
+				"--profile",
+				"naive",
+				"--persona",
+				"你是云游的剑客。",
+			],
+			dependencies(fake, [], []),
+		);
+
+		expect(fake.requests).toHaveLength(1);
+		expect(fake.requests[0]?.tools).toBeUndefined();
+		expect(result.trace.profile).toBe("naive");
+		expect(
+			result.trace.context.entries.map((entry) => entry.segmentId),
+		).toEqual(["character", "persona", "history", "protocol"]);
+		expect(result.stateDiffs).toEqual([]);
+		expect(result.trace.structured.acceptedStateUpdates).toBe(0);
+
+		const store = StoryStore.open(dbPath);
+		try {
+			expect(store.getStorySettings("s1").persona).toBe("你是云游的剑客。");
+			expect(store.getStateDiffs(result.node.id)).toEqual([]);
+			expect(store.getOpenPlotNotes("s1")).toEqual([]);
+			expect(store.getDirectorDecision(result.userNode.id)).toBeNull();
+			expect(store.countBackgroundJobs({ storyId: "s1" })).toEqual({
+				pending: 0,
+				running: 0,
+				done: 0,
+				failed: 0,
+				discarded: 0,
+			});
+		} finally {
+			store.close();
+		}
+	});
+
+	it("朴素模式不接受显式打开导演", async () => {
+		const dbPath = createTempDb();
+		const fake = createFakeClient();
+
+		await expect(
+			runChatCli(
+				[
+					"chat",
+					"--story",
+					"s1",
+					"--card",
+					cardPath,
+					"--user",
+					"我推开山门。",
+					"--db",
+					dbPath,
+					"--profile",
+					"naive",
+					"--director",
+					"on",
+				],
+				dependencies(fake, [], []),
+			),
+		).rejects.toThrow("朴素模式没有导演");
+		expect(fake.requests).toHaveLength(0);
+	});
+
 	it("单轮 --mode fast 覆盖故事锁定的深回合，Trace 记录快回合", async () => {
 		const dbPath = createTempDb();
 		const fake = createFakeClient();

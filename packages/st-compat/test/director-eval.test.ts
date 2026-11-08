@@ -52,6 +52,7 @@ function emptyTrace(nodeId: string): TurnTrace {
 		parentNodeId: null,
 		templateId: "test",
 		turnMode: "fast",
+		profile: "native",
 		createdAt: "2026-11-07T00:00:00.000Z",
 		context: { budgetTokens: 1000, totalTokens: 0, entries: [] },
 		llm: {

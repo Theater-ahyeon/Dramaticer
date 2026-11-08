@@ -859,3 +859,18 @@
   - 选中候选会把当时所有待选候选（包括旧批）改为 `discarded`，因为故事已经有首个楼层；旧批的 `chosen` 与已丢弃状态不再变化。
   - `opening_candidates` 不保存选中后生成的楼层 id，楼层树本身是唯一记录；需要追溯时按 `raw` 对照。
   - R5 界面复用同一条接口：列出、生成、选中都不需要另外实现。
+
+## ADR-0062 朴素模式（B0）的档位边界（2026-11-08）
+
+- **背景**：R2-T01 要在 Dramaticer 内部提供 B0 对照：同一张卡、同一个写作模型下，上下文只有角色、persona、最近若干楼原文与写作契约，没有台账、记忆、lore、摘要、现场分析与导演。评测还要在同一个数据库里分辨两种档位产生的楼层（R2-T04 会用同一分支点按两种档位重新生成），并保证朴素模式不写台账、不为它建后台任务。
+- **决定**：
+  - `ChatProfile` 取 `native` 与 `naive`，是单轮参数（`runChatTurn` 的 `profile`），默认 `native`，不写进故事设置；同一故事可以分别用两种档位生成兄弟楼层。`TurnTrace.profile` 记录本轮的档位，中止保存的楼层同样记录。
+  - 朴素模式的模板 id 是 `dramaticer-naive`，片段顺序为 `character`、`persona`、`history`、`protocol`；`protocol` 的文本只有 `WRITING_CONTRACT`（四条写作原则），不含 `state_update` 与 `plot_note` 的写法说明。朴素模式忽略故事指向的自定义模板，避免记忆与导演段被带回来。
+  - 槽位提供者是 `createNaiveChatProviders`：角色卡提示词、故事设置里的 `persona`、最近 `DEFAULT_HISTORY_LIMIT`（20）楼原文。原文用 `createRawHistorySlotProvider` 读取，不做块视图与省略；`persona` 为空时该槽位记为缺失。
+  - 朴素回合不提供读取工具与写入工具，不收集结构化输出，不写 `state_diffs` 与 `plot_notes`；Trace 的 `structured` 计数为 0。生成与楼层写入仍走 `generateAssistantTurn` 的同一条路径（同一个 `appendNode`、同一处 Trace 写入），只替换槽位提供者集合与写入开关。
+  - 后台侧按楼层档位过滤：`enqueueMissingBackgroundJobs` 的 `confirmed` 与 `settled` 条件、`listUnsettledSettledAssistantNodes` 的结算窗口都跳过 `profile` 为 `naive` 的助手楼层。没有 Trace 的楼层按 `native` 处理，旧数据与旧测试行为不变。
+  - CLI 是 `dramaticer chat --profile <native|naive>`；`--persona <text>` 写进故事设置；`--profile naive` 搭配显式 `--director on` 在参数解析阶段失败。
+- **影响**：
+  - 结算、现场分析、用户意志与修订这些处理器只对已有后台任务执行，任务不会为朴素楼层创建；同一路径上原生任务的窗口仍可能把朴素楼层当上下文读出，但不会为它写结算。评测对比应让两种档位各用一个数据库或故事。
+  - `TurnTrace` 新增 `profile` 字段。旧数据库里的 Trace 没有这个字段，存储层的查询用 `COALESCE(..., 'native')` 兜底，读取代码需要按 `native` 处理缺失值。
+  - 朴素模式不参与增益对比以外的功能；R2-T02 的试玩记录直接取运行参数里的档位，R2-T06 的记分牌按档位分组。

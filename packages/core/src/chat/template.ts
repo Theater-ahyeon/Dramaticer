@@ -11,7 +11,8 @@ export interface DefaultContextTemplateOptions {
 	readonly blockFormat?: boolean;
 }
 
-const WRITING_CONTRACT = `写作契约：
+/** 两种协议共用的写作契约；朴素模式只带这一段的文本。 */
+export const WRITING_CONTRACT = `写作契约：
 - 玩家输入是本轮演出的指引，不是已经发生的剧情；按指引编排接下来发生的事。
 - 玩家不是上帝：角色可以按人设拒绝、反对、打断，也可以有玩家没有预料的反应。
 - 每轮都让剧情有所推进，不重复之前的正文。
@@ -47,6 +48,30 @@ const FUNCTION_CALL_BLOCK_FORMAT = `块格式参考：状态变更与剧情笔�
 - state_update：{"path":["角色","卫宫","好感度"],"op":"set","value":12,"reason":"一句话说明原因"}；path 从宽到窄，op 取 set 或 delete，delete 时不带 value。
 - plot_note：{"text":"尚未兑现的伏笔或线索"}；text 是一句话。
 要不要调用、调用几次，按剧情需要决定。`;
+
+/** 朴素模式（B0）的模板 id：只有角色、persona、历史原文与写作契约。 */
+export const DEFAULT_NAIVE_CONTEXT_TEMPLATE_ID = "dramaticer-naive";
+
+/**
+ * 朴素模式（B0）的上下文模板。协议段只放写作契约的正文，
+ * 不要求模型输出结构化写入，因为朴素模式不写台账。
+ */
+export function createNaiveContextTemplate(): ContextTemplate {
+	return {
+		id: DEFAULT_NAIVE_CONTEXT_TEMPLATE_ID,
+		segments: [
+			{ id: "character", kind: "slot", slot: "character", priority: 90 },
+			{ id: "persona", kind: "slot", slot: "persona", priority: 95 },
+			{ id: "history", kind: "slot", slot: "history", priority: 100 },
+			{
+				id: WRITING_CONTRACT_SEGMENT_ID,
+				kind: "static",
+				text: WRITING_CONTRACT,
+				priority: 95,
+			},
+		],
+	};
+}
 
 /** 默认的原生上下文模板：角色、世界书、状态、摘要、记忆、现场分析、导演、历史。protocol 写作契约固定在最后。 */
 export function createDefaultContextTemplate(

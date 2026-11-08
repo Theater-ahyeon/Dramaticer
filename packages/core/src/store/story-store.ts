@@ -2298,6 +2298,7 @@ export class StoryStore {
 				LEFT JOIN traces ON traces.node_id = nodes.id
 				WHERE nodes.role = 'assistant'
 					AND COALESCE(json_extract(traces.trace, '$.llm.stopReason'), '') <> 'aborted'
+					AND COALESCE(json_extract(traces.trace, '$.profile'), 'native') <> 'naive'
 					AND NOT EXISTS (
 						SELECT 1 FROM ledger_settlements
 						WHERE ledger_settlements.node_id = nodes.id
@@ -4205,8 +4206,12 @@ export class StoryStore {
 					(
 						this.#db
 							.prepare(
-								`SELECT DISTINCT parent_id AS id FROM nodes
-								WHERE story_id = ? AND parent_id IS NOT NULL`,
+								`SELECT DISTINCT parent.id AS id
+								FROM nodes child
+								JOIN nodes parent ON parent.id = child.parent_id
+								LEFT JOIN traces ON traces.node_id = parent.id
+								WHERE child.story_id = ?
+									AND COALESCE(json_extract(traces.trace, '$.profile'), 'native') <> 'naive'`,
 							)
 							.all(input.storyId) as { readonly id: string }[]
 					).map((row) => row.id),
@@ -4222,7 +4227,8 @@ export class StoryStore {
 								LEFT JOIN traces ON traces.node_id = nodes.id
 								WHERE nodes.story_id = ?
 									AND nodes.role = 'assistant'
-									AND COALESCE(json_extract(traces.trace, '$.llm.stopReason'), '') <> 'aborted'`,
+									AND COALESCE(json_extract(traces.trace, '$.llm.stopReason'), '') <> 'aborted'
+									AND COALESCE(json_extract(traces.trace, '$.profile'), 'native') <> 'naive'`,
 							)
 							.all(input.storyId) as { readonly id: string }[]
 					).map((row) => row.id),

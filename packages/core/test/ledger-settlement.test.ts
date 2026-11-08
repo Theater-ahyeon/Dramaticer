@@ -18,6 +18,7 @@ function traceFor(
 		parentNodeId,
 		templateId: "dramaticer-default",
 		turnMode: "fast",
+		profile: "native",
 		createdAt: FIXED_ISO,
 		context: { budgetTokens: 1_000, totalTokens: 0, entries: [] },
 		llm: {

@@ -2,8 +2,10 @@ import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+	type ChatProfile,
 	type ChatTurnResult,
 	type ContextTemplate,
+	DEFAULT_CHAT_PROFILE,
 	DEFAULT_CONTEXT_TEMPLATE_ID,
 	DEFAULT_DIRECTOR_CONFIG,
 	type LlmChannelsConfig,
@@ -14,7 +16,10 @@ import {
 	createDefaultContextTemplate,
 	createEmbeddingClient,
 	createLlmClient,
+	createNaiveChatProviders,
+	createNaiveContextTemplate,
 	createStandardChatProviders,
+	isChatProfile,
 	isTurnMode,
 	loadChannelsConfig,
 	loadDotEnv,
@@ -52,7 +57,7 @@ export interface ChatCliDependencies {
 }
 
 const USAGE =
-	"用法：dramaticer chat --story <id> --user <text> [--card <path>] [--world <path>] [--director <on|off>] [--mode <fast|deep>] [--db <path>] [--model <alias>] [--budget <tokens>] [--max-tokens <n>] [--temperature <x>]";
+	"用法：dramaticer chat --story <id> --user <text> [--card <path>] [--world <path>] [--profile <native|naive>] [--persona <text>] [--director <on|off>] [--mode <fast|deep>] [--db <path>] [--model <alias>] [--budget <tokens>] [--max-tokens <n>] [--temperature <x>]";
 
 interface ChatArgs {
 	readonly storyId: string;
@@ -68,6 +73,9 @@ interface ChatArgs {
 	readonly directorEnabled: boolean;
 	/** 单轮模式；不传时用故事设置里的锁定值。 */
 	readonly turnMode: TurnMode | null;
+	readonly profile: ChatProfile;
+	/** 玩家人设；传了就写进故事设置。 */
+	readonly persona: string | null;
 }
 
 /** `dramaticer chat` 的实现，依赖可注入。 */
@@ -171,7 +179,14 @@ export async function runChatCli(
 				`故事 ${parsed.storyId} 没有保存角色提示词，请用 --card 导入角色卡`,
 			);
 		}
-		const template = resolveTemplate(store, settings.templateId, mode);
+		if (parsed.persona !== null) {
+			store.updateStorySettings(parsed.storyId, { persona: parsed.persona });
+		}
+		const persona = parsed.persona ?? settings.persona;
+		const template =
+			parsed.profile === "naive"
+				? createNaiveContextTemplate()
+				: resolveTemplate(store, settings.templateId, mode);
 		const budgetTokens =
 			parsed.budgetTokens ?? model.contextWindow - model.maxTokens;
 		if (budgetTokens <= 0) {
@@ -185,18 +200,22 @@ export async function runChatCli(
 			storyId: parsed.storyId,
 			userText: parsed.userText,
 			template,
-			providers: createStandardChatProviders({
-				store,
-				characterPrompt,
-				embedder,
-				directorConfig: {
-					...DEFAULT_DIRECTOR_CONFIG,
-					enabled: parsed.directorEnabled,
-				},
-				historyBlockPolicy: settings.historyBlockPolicy,
-			}),
+			providers:
+				parsed.profile === "naive"
+					? createNaiveChatProviders({ store, characterPrompt, persona })
+					: createStandardChatProviders({
+							store,
+							characterPrompt,
+							embedder,
+							directorConfig: {
+								...DEFAULT_DIRECTOR_CONFIG,
+								enabled: parsed.directorEnabled,
+							},
+							historyBlockPolicy: settings.historyBlockPolicy,
+						}),
 			budgetTokens,
 			structuredOutput: mode,
+			profile: parsed.profile,
 			toolTransport: resolveToolTransport(model),
 			turnMode: parsed.turnMode,
 			model: modelAlias,
@@ -212,7 +231,7 @@ export async function runChatCli(
 		write("\n");
 		const usage = result.trace.llm.usage;
 		log(
-			`楼层 ${result.node.id}：状态变更 ${result.stateDiffs.length} 条，剧情笔记 ${result.structured.notes.length} 条，拒绝 ${result.structured.issues.length} 条，读取工具 ${result.trace.tools.rounds} 轮`,
+			`楼层 ${result.node.id}（档位 ${result.trace.profile}）：状态变更 ${result.stateDiffs.length} 条，剧情笔记 ${result.structured.notes.length} 条，拒绝 ${result.structured.issues.length} 条，读取工具 ${result.trace.tools.rounds} 轮`,
 		);
 		log(
 			`模型 ${result.trace.llm.model}，渠道 ${result.trace.llm.channel ?? "缓存"}，首字 ${
@@ -260,6 +279,8 @@ function parseChatArgs(args: readonly string[]): ChatArgs {
 		temperature: true,
 		director: true,
 		mode: true,
+		profile: true,
+		persona: true,
 	};
 	const values = new Map<string, string>();
 	const worldPaths: string[] = [];
@@ -305,6 +326,17 @@ function parseChatArgs(args: readonly string[]): ChatArgs {
 	const temperature = values.get("temperature");
 	const director = values.get("director");
 	const turnModeValue = values.get("mode");
+	const profileValue = values.get("profile");
+	const personaValue = values.get("persona");
+	const profile =
+		profileValue === undefined
+			? DEFAULT_CHAT_PROFILE
+			: parseProfile(profileValue);
+	const directorEnabled =
+		director === undefined ? true : parseDirector(director);
+	if (profile === "naive" && director !== undefined && directorEnabled) {
+		throw new Error(`朴素模式没有导演，不要传 --director on；${USAGE}`);
+	}
 	return {
 		storyId,
 		cardPath,
@@ -320,8 +352,13 @@ function parseChatArgs(args: readonly string[]): ChatArgs {
 				: parseInteger(maxTokens, "--max-tokens", 1),
 		temperature:
 			temperature === undefined ? null : parseTemperature(temperature),
-		directorEnabled: director === undefined ? true : parseDirector(director),
+		directorEnabled,
 		turnMode: turnModeValue === undefined ? null : parseTurnMode(turnModeValue),
+		profile,
+		persona:
+			personaValue === undefined
+				? null
+				: requireText(personaValue, "--persona"),
 	};
 }
 
@@ -365,6 +402,15 @@ function parseDirector(value: string): boolean {
 function parseTurnMode(value: string): TurnMode {
 	if (!isTurnMode(value)) {
 		throw new Error(`--mode 只接受 fast 或 deep，收到 ${value}；${USAGE}`);
+	}
+	return value;
+}
+
+function parseProfile(value: string): ChatProfile {
+	if (!isChatProfile(value)) {
+		throw new Error(
+			`--profile 只接受 native 或 naive，收到 ${value}；${USAGE}`,
+		);
 	}
 	return value;
 }

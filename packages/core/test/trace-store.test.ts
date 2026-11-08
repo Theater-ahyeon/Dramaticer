@@ -13,6 +13,7 @@ function traceFor(
 		parentNodeId,
 		templateId: "dramaticer-default",
 		turnMode: "fast",
+		profile: "native",
 		createdAt: "2026-11-07T00:00:00.000Z",
 		context: {
 			budgetTokens: 1_000,

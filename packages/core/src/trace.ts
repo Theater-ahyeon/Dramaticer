@@ -1,4 +1,5 @@
 import type { TurnMode } from "./chat/mode.js";
+import type { ChatProfile } from "./chat/profile.js";
 import type { ContextTrace } from "./context/assembler.js";
 import type { LlmModelRole, LlmToolTransport } from "./llm/channels.js";
 import type {
@@ -75,6 +76,8 @@ export interface TurnTrace {
 	readonly templateId: string;
 	/** 本轮的回合模式；由玩家选择，程序不自动切换。 */
 	readonly turnMode: TurnMode;
+	/** 本轮的对话档位：native 使用全部槽位，naive 是 B0 基线。 */
+	readonly profile: ChatProfile;
 	readonly createdAt: string;
 	readonly context: ContextTrace;
 	readonly llm: TurnTraceLlm;
