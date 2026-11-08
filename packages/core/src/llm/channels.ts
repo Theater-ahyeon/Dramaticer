@@ -68,6 +68,8 @@ export interface LlmModelConfig {
 	readonly contextWindow: number;
 	readonly maxTokens: number;
 	readonly reasoning: boolean;
+	/** 停用的模型不能被选为故事模型或角色目标。 */
+	readonly enabled: boolean;
 	/** 渠道 id，按优先级从高到低。 */
 	readonly channels: readonly string[];
 	/** 显式配置的工具传输；没有配置时为 null，由体检结果决定。 */
@@ -145,17 +147,23 @@ export async function loadChannelsConfig(
 	return parseChannelsConfig(text, env, filePath);
 }
 
-/** 没有指定模型时选默认别名：优先 `main`，其次配置里唯一的模型。 */
+/** 没有指定模型时选默认别名：优先 `main`，其次配置里唯一启用的模型。 */
 export function pickDefaultModelAlias(
 	config: LlmChannelsConfig,
 	preferred = "main",
 ): string {
-	if (config.models.has(preferred)) return preferred;
-	if (config.models.size === 1) {
-		return [...config.models.keys()][0] as string;
+	const enabled = [...config.models.values()].filter((model) => model.enabled);
+	if (enabled.length === 0) {
+		throw new Error("渠道配置里没有启用的模型");
+	}
+	if (config.models.get(preferred)?.enabled === true) return preferred;
+	if (enabled.length === 1) {
+		return (enabled[0] as LlmModelConfig).alias;
 	}
 	throw new Error(
-		`渠道配置里有多个模型，请指定模型：${[...config.models.keys()].join("、")}`,
+		`渠道配置里有多个启用的模型，请指定模型：${enabled
+			.map((model) => model.alias)
+			.join("、")}`,
 	);
 }
 
@@ -168,17 +176,25 @@ const ROLE_FALLBACK_ALIASES: Readonly<Record<LlmModelRole, string>> = {
 
 /**
  * 按角色取模型别名。没有配置的角色回落到 `main`（writer）或
- * `background`（其余角色）；回落目标不存在时直接抛错。
+ * `background`（其余角色）；回落目标不存在或模型已停用时直接抛错。
  */
 export function resolveModelForRole(
 	config: LlmChannelsConfig,
 	role: LlmModelRole,
 ): string {
 	const configured = config.roles.get(role);
-	if (configured !== undefined) return configured;
-	const fallback = ROLE_FALLBACK_ALIASES[role];
-	if (config.models.has(fallback)) return fallback;
-	throw new Error(`角色 ${role} 没有配置模型，回落的 ${fallback} 模型也不存在`);
+	const alias = configured ?? ROLE_FALLBACK_ALIASES[role];
+	const model = config.models.get(alias);
+	if (model === undefined) {
+		if (configured !== undefined) {
+			throw new Error(`角色 ${role} 指向的模型 ${alias} 不存在`);
+		}
+		throw new Error(`角色 ${role} 没有配置模型，回落的 ${alias} 模型也不存在`);
+	}
+	if (!model.enabled) {
+		throw new Error(`角色 ${role} 指向的模型 ${alias} 已经被停用`);
+	}
+	return alias;
 }
 
 /**
@@ -499,6 +515,10 @@ function parseModel(
 			value.reasoning === undefined
 				? true
 				: requireBoolean(value.reasoning, `${label}.reasoning`),
+		enabled:
+			value.enabled === undefined
+				? true
+				: requireBoolean(value.enabled, `${label}.enabled`),
 		channels: selected,
 		tools: parseModelTools(value.tools, `${label}.tools`),
 		probe: parseProbe(value.probe, `${label}.probe`),
@@ -687,11 +707,23 @@ export async function writeModelProbe(
 	probe: LlmModelProbe,
 ): Promise<void> {
 	const text = await readFile(filePath, "utf8");
+	await writeFile(
+		filePath,
+		setModelProbeInText(text, alias, probe, filePath),
+		"utf8",
+	);
+}
+
+/** 在 YAML 文本里写入体检结果；文件读写留给调用方。 */
+export function setModelProbeInText(
+	text: string,
+	alias: string,
+	probe: LlmModelProbe,
+	label = "channels.yaml",
+): string {
 	const document = parseDocument(text);
 	if (document.errors.length > 0) {
-		throw new Error(
-			`${filePath} 不是合法的 YAML：${document.errors[0].message}`,
-		);
+		throw new Error(`${label} 不是合法的 YAML：${document.errors[0].message}`);
 	}
 	if (!document.hasIn(["models", alias])) {
 		throw new Error(`渠道配置里没有模型 ${alias}`);
@@ -709,5 +741,197 @@ export async function writeModelProbe(
 		structuredOutput: probe.structuredOutput,
 		notes: [...probe.notes],
 	});
-	await writeFile(filePath, document.toString(), "utf8");
+	return document.toString();
+}
+
+/** 渠道配置里 apiKey 引用的环境变量名，按渠道与 embedding 分开。 */
+export interface ChannelsKeyRefs {
+	readonly channels: ReadonlyMap<string, string | null>;
+	readonly embeddings: ReadonlyMap<string, string | null>;
+}
+
+/**
+ * 读出 `apiKey` 里 `${VAR}` 引用的变量名。
+ *
+ * 只有解析成功的配置才会走到这里；返回 null 表示没有写引用（空密钥）。
+ */
+export function readChannelsKeyRefs(
+	text: string,
+	label = "channels.yaml",
+): ChannelsKeyRefs {
+	const root = parseYaml(text);
+	if (!isJsonObject(root)) {
+		throw new Error(`${label} 的顶层必须是对象`);
+	}
+	const channels = new Map<string, string | null>();
+	if (root.channels !== undefined) {
+		const raw = requireObject(root.channels, `${label}.channels`);
+		for (const [id, value] of Object.entries(raw)) {
+			channels.set(id, keyRefOf(value, `${label}.channels.${id}`));
+		}
+	}
+	const embeddings = new Map<string, string | null>();
+	if (root.embeddings !== undefined) {
+		const raw = requireObject(root.embeddings, `${label}.embeddings`);
+		for (const [id, value] of Object.entries(raw)) {
+			embeddings.set(id, keyRefOf(value, `${label}.embeddings.${id}`));
+		}
+	}
+	return { channels, embeddings };
+}
+
+function keyRefOf(value: unknown, label: string): string | null {
+	if (!isJsonObject(value)) {
+		throw new Error(`${label} 必须是对象`);
+	}
+	const key = value.apiKey;
+	if (key === undefined) return null;
+	if (typeof key !== "string") {
+		throw new Error(`${label}.apiKey 必须是字符串`);
+	}
+	const trimmed = key.trim();
+	if (trimmed.length === 0) return null;
+	const match = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/.exec(trimmed);
+	return match === null ? null : (match[1] as string);
+}
+
+/** PUT /api/channels 写入的一个渠道。 */
+export interface ChannelYamlInput {
+	readonly api: LlmChannelApi;
+	readonly baseUrl: string;
+	/** 环境变量名；空字符串表示不需要密钥。保存时写成 `${变量名}`。 */
+	readonly apiKeyEnv: string;
+	readonly requestsPerMinute: number;
+	readonly maxRetries: number;
+	readonly retryBaseDelayMs: number;
+	readonly timeoutMs: number;
+}
+
+/** PUT /api/channels 写入的一个模型；`tools` 与 `probe` 保留原值。 */
+export interface ModelYamlInput {
+	readonly id: string;
+	readonly contextWindow: number;
+	readonly maxTokens: number;
+	readonly reasoning: boolean;
+	readonly enabled: boolean;
+	/** 渠道 id，按优先级从高到低。 */
+	readonly channels: readonly string[];
+}
+
+/** PUT /api/channels 写入的一个 embedding 提供方。 */
+export interface EmbeddingYamlInput {
+	readonly api: "openai-embeddings";
+	readonly baseUrl: string;
+	readonly apiKeyEnv: string;
+	readonly model: string;
+	readonly dimensions: number;
+	readonly batchSize: number;
+	readonly requestsPerMinute: number;
+	readonly maxRetries: number;
+	readonly retryBaseDelayMs: number;
+	readonly timeoutMs: number;
+}
+
+/** 渠道配置的整份替换；键是渠道 id、模型别名与 embedding id。 */
+export interface ChannelsYamlUpdate {
+	readonly channels: Readonly<Record<string, ChannelYamlInput>>;
+	readonly models: Readonly<Record<string, ModelYamlInput>>;
+	readonly embeddings: Readonly<Record<string, EmbeddingYamlInput>>;
+	readonly roles: Readonly<Partial<Record<LlmModelRole, string>>>;
+}
+
+/**
+ * 按更新内容改写渠道配置文本。
+ *
+ * 只改请求里出现的字段：模型的 `tools` 与 `probe`、其它未知字段、
+ * 以及未触及行的注释都保留。校验与写文件由调用方负责。
+ */
+export function applyChannelsUpdate(
+	text: string,
+	update: ChannelsYamlUpdate,
+	label = "channels.yaml",
+): string {
+	const document = parseDocument(text);
+	if (document.errors.length > 0) {
+		throw new Error(`${label} 不是合法的 YAML：${document.errors[0].message}`);
+	}
+	const root = document.toJS();
+	for (const id of yamlSectionKeys(root, "channels", label)) {
+		if (!(id in update.channels)) document.deleteIn(["channels", id]);
+	}
+	for (const [id, input] of Object.entries(update.channels)) {
+		document.setIn(["channels", id, "api"], input.api);
+		document.setIn(["channels", id, "baseUrl"], input.baseUrl);
+		document.setIn(["channels", id, "apiKey"], apiKeyRef(input.apiKeyEnv));
+		document.setIn(
+			["channels", id, "requestsPerMinute"],
+			input.requestsPerMinute,
+		);
+		document.setIn(["channels", id, "maxRetries"], input.maxRetries);
+		document.setIn(
+			["channels", id, "retryBaseDelayMs"],
+			input.retryBaseDelayMs,
+		);
+		document.setIn(["channels", id, "timeoutMs"], input.timeoutMs);
+	}
+	for (const alias of yamlSectionKeys(root, "models", label)) {
+		if (!(alias in update.models)) document.deleteIn(["models", alias]);
+	}
+	for (const [alias, input] of Object.entries(update.models)) {
+		document.setIn(["models", alias, "id"], input.id);
+		document.setIn(["models", alias, "contextWindow"], input.contextWindow);
+		document.setIn(["models", alias, "maxTokens"], input.maxTokens);
+		document.setIn(["models", alias, "reasoning"], input.reasoning);
+		document.setIn(["models", alias, "channels"], [...input.channels]);
+		if (input.enabled) {
+			document.deleteIn(["models", alias, "enabled"]);
+		} else {
+			document.setIn(["models", alias, "enabled"], false);
+		}
+	}
+	for (const id of yamlSectionKeys(root, "embeddings", label)) {
+		if (!(id in update.embeddings)) document.deleteIn(["embeddings", id]);
+	}
+	for (const [id, input] of Object.entries(update.embeddings)) {
+		document.setIn(["embeddings", id, "api"], input.api);
+		document.setIn(["embeddings", id, "baseUrl"], input.baseUrl);
+		document.setIn(["embeddings", id, "apiKey"], apiKeyRef(input.apiKeyEnv));
+		document.setIn(["embeddings", id, "model"], input.model);
+		document.setIn(["embeddings", id, "dimensions"], input.dimensions);
+		document.setIn(["embeddings", id, "batchSize"], input.batchSize);
+		document.setIn(
+			["embeddings", id, "requestsPerMinute"],
+			input.requestsPerMinute,
+		);
+		document.setIn(["embeddings", id, "maxRetries"], input.maxRetries);
+		document.setIn(
+			["embeddings", id, "retryBaseDelayMs"],
+			input.retryBaseDelayMs,
+		);
+		document.setIn(["embeddings", id, "timeoutMs"], input.timeoutMs);
+	}
+	for (const name of yamlSectionKeys(root, "roles", label)) {
+		if (!(name in update.roles)) document.deleteIn(["roles", name]);
+	}
+	for (const [name, alias] of Object.entries(update.roles)) {
+		document.setIn(["roles", name], alias);
+	}
+	return document.toString();
+}
+
+function yamlSectionKeys(
+	root: unknown,
+	section: string,
+	label: string,
+): string[] {
+	if (!isJsonObject(root)) {
+		throw new Error(`${label} 的顶层必须是对象`);
+	}
+	const value = root[section];
+	if (value === undefined) return [];
+	return Object.keys(requireObject(value, `${label}.${section}`));
+}
+
+function apiKeyRef(envName: string): string {
+	return envName.length === 0 ? "" : `\${${envName}}`;
 }

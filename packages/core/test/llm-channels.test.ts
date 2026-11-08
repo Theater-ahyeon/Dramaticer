@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+	applyChannelsUpdate,
 	createLlmClient,
 	modelFamily,
 	parseChannelsConfig,
+	readChannelsKeyRefs,
 	resolveDefaultMaxTokens,
 	resolveModelForRole,
 	resolveToolTransport,
@@ -62,6 +64,7 @@ describe("parseChannelsConfig", () => {
 			contextWindow: 65_536,
 			maxTokens: 4_096,
 			reasoning: false,
+			enabled: true,
 			channels: ["bg", "backup"],
 		});
 	});
@@ -225,6 +228,30 @@ models:
 		);
 	});
 
+	it("enabled: false 的模型不能担任角色", () => {
+		const text = `
+channels:
+  gateway:
+    baseUrl: \${URL}
+    apiKey: \${KEY}
+models:
+  main:
+    id: opendesign/deepseek-v4.1-flash
+    channels: [gateway]
+    enabled: false
+  background:
+    id: agy-gemini-3.8-flash-medium
+    channels: [gateway]
+roles:
+  writer: main
+`;
+		const config = parseChannelsConfig(text, roleEnv);
+		expect(config.models.get("main")?.enabled).toBe(false);
+		expect(() => resolveModelForRole(config, "writer")).toThrow(
+			"角色 writer 指向的模型 main 已经被停用",
+		);
+	});
+
 	it("未知角色与不存在的模型别名都被拒绝", () => {
 		expect(() =>
 			parseChannelsConfig(
@@ -383,5 +410,165 @@ ${modelExtra}${probe}
 				KEY: "k",
 			}),
 		).toThrow("models.main.tools.transport");
+	});
+});
+
+describe("改写渠道配置文本", () => {
+	const source = `
+# 顶部注释
+channels:
+  gateway:
+    baseUrl: \${URL}
+    apiKey: \${KEY}
+  backup:
+    baseUrl: \${URL}
+    apiKey: \${KEY}
+models:
+  main:
+    id: opendesign/deepseek-v4.1-flash
+    maxTokens: 4096
+    channels: [gateway, backup]
+    tools:
+      transport: text
+    probe:
+      probedAt: 2026-01-01T00:00:00.000Z
+      channel: gateway
+      modelId: old-model
+      streaming: streaming
+      functionCalling: supported
+      thinking: supported
+      prefill: unsupported
+      usage: supported
+      cacheStats: unsupported
+      structuredOutput: function-call
+      notes: []
+roles:
+  writer: main
+`;
+
+	it("编辑渠道、模型与角色，保留 probe、tools 与注释", () => {
+		const updated = applyChannelsUpdate(
+			source,
+			{
+				channels: {
+					gateway: {
+						api: "openai-completions",
+						baseUrl: "${URL}",
+						apiKeyEnv: "KEY",
+						requestsPerMinute: 5,
+						maxRetries: 1,
+						retryBaseDelayMs: 0,
+						timeoutMs: 1_000,
+					},
+				},
+				models: {
+					main: {
+						id: "auto/deepseek-v4.1-flash",
+						contextWindow: 65_536,
+						maxTokens: 2_048,
+						reasoning: false,
+						enabled: false,
+						channels: ["gateway"],
+					},
+				},
+				embeddings: {},
+				roles: { writer: "main", settler: "main" },
+			},
+			"channels.yaml",
+		);
+		expect(updated).toContain("# 顶部注释");
+		expect(updated).toContain("${KEY}");
+		expect(updated).not.toContain("secret");
+		const config = parseChannelsConfig(
+			updated,
+			{ URL: "http://127.0.0.1:9/v1", KEY: "secret" },
+			"channels.yaml",
+		);
+		expect([...config.channels.keys()]).toEqual(["gateway"]);
+		expect(config.channels.get("gateway")?.requestsPerMinute).toBe(5);
+		const model = config.models.get("main");
+		expect(model).toMatchObject({
+			id: "auto/deepseek-v4.1-flash",
+			contextWindow: 65_536,
+			maxTokens: 2_048,
+			reasoning: false,
+			enabled: false,
+			channels: ["gateway"],
+			tools: { transport: "text" },
+		});
+		expect(model?.probe?.modelId).toBe("old-model");
+		expect(config.roles.get("writer")).toBe("main");
+		expect(config.roles.get("settler")).toBe("main");
+	});
+
+	it("重新启用的模型不再写 enabled 字段", () => {
+		const disabled = applyChannelsUpdate(
+			source,
+			{
+				channels: {},
+				models: {
+					main: {
+						id: "auto/deepseek-v4.1-flash",
+						contextWindow: 65_536,
+						maxTokens: 2_048,
+						reasoning: true,
+						enabled: false,
+						channels: ["gateway", "backup"],
+					},
+				},
+				embeddings: {},
+				roles: {},
+			},
+			"channels.yaml",
+		);
+		expect(disabled).toContain("enabled: false");
+		const enabled = applyChannelsUpdate(
+			disabled,
+			{
+				channels: {},
+				models: {
+					main: {
+						id: "auto/deepseek-v4.1-flash",
+						contextWindow: 65_536,
+						maxTokens: 2_048,
+						reasoning: true,
+						enabled: true,
+						channels: ["gateway", "backup"],
+					},
+				},
+				embeddings: {},
+				roles: {},
+			},
+			"channels.yaml",
+		);
+		expect(enabled).not.toContain("enabled:");
+	});
+
+	it("非法 YAML 直接抛错", () => {
+		expect(() =>
+			applyChannelsUpdate(
+				"models: [",
+				{ channels: {}, models: {}, embeddings: {}, roles: {} },
+				"channels.yaml",
+			),
+		).toThrow("不是合法的 YAML");
+	});
+
+	it("读出密钥引用的环境变量名", () => {
+		const refs = readChannelsKeyRefs(source, "channels.yaml");
+		expect(refs.channels.get("gateway")).toBe("KEY");
+		expect(refs.channels.get("backup")).toBe("KEY");
+		expect(refs.embeddings.size).toBe(0);
+		const noKey = readChannelsKeyRefs(
+			`
+channels:
+  local:
+    baseUrl: http://127.0.0.1:9/v1
+    apiKey: ""
+models: {}
+`,
+			"channels.yaml",
+		);
+		expect(noKey.channels.get("local")).toBeNull();
 	});
 });

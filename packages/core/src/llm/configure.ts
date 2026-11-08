@@ -37,12 +37,20 @@ export function createLlmClient(
 	options: CreateLlmClientOptions = {},
 ): LlmStreamingClient {
 	validateRoleModelFamilies(config);
+	const defaultModel =
+		options.defaultModel === undefined
+			? undefined
+			: config.models.get(options.defaultModel);
+	if (defaultModel !== undefined && !defaultModel.enabled) {
+		throw new Error(`模型 ${defaultModel.alias} 已经被停用`);
+	}
 	const channels = new Map<string, LlmChannel>();
 	for (const channelConfig of config.channels.values()) {
 		channels.set(channelConfig.id, createLlmChannel(channelConfig));
 	}
 	const routes = new Map<string, LlmRoute>();
 	for (const model of config.models.values()) {
+		if (!model.enabled) continue;
 		routes.set(model.alias, {
 			model: {
 				id: model.id,

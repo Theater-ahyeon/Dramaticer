@@ -662,6 +662,7 @@ describe("命令与文件", () => {
 							contextWindow: 8_192,
 							maxTokens: 2_048,
 							reasoning: false,
+							enabled: true,
 							channels: ["fake"],
 							tools: null,
 							probe: null,

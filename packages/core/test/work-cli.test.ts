@@ -40,6 +40,7 @@ function createConfig(
 		contextWindow: 8_192,
 		maxTokens: 1_024,
 		reasoning: true,
+		enabled: true,
 		tools: null,
 		probe: null,
 	});

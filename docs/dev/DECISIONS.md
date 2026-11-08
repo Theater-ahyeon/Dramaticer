@@ -1147,3 +1147,17 @@
   - R4-T01 至 R4-T08 按此实现，R4-T99 逐条核对；M3 的机制、优先级与存储不变，只新增节拍机制。
   - R5-T08 面板复用计划、动作与决策接口；盲盒模式下面板只显示机制触发状态，透明模式显示全文。
   - 计划与拍状态只属于 core，不引入 ST 概念（I1）；候选行动与计划生成都在间隙执行（I11），实时选择不调用模型（I9）。
+
+## ADR-0078 渠道管理接口的脱敏、启用状态与写回（2026-11-08）
+
+- **背景**：R5-T03 要求 `GET`/`PUT /api/channels` 与 `POST /api/channels/probe`。任务提到“启用状态”，但渠道配置里没有对应字段；配置写入必须保留 `${ENV}` 引用、`tools`/`probe` 与注释，并且写完后下一回合生效。
+- **决定**：
+  - 模型配置新增可选 `enabled`，缺省为 true。停用的模型不能作为故事设置里的模型、角色目标或路由目标；显式指向停用模型的角色直接报错，后台角色缺省回落的 `background` 停用时后台客户端为空（不阻塞回合）。`pickDefaultModelAlias` 只在启用的模型里选择。
+  - `GET /api/channels` 返回渠道、模型、embedding 与 `roles` 的脱敏视图。渠道与 embedding 只给出 `apiKey` 引用的环境变量名和是否已设置；模型的 `channels` 数组顺序就是优先级；`roles` 返回四个岗位实际生效的模型别名（配置优先，缺省回落），无法解析时为 null。
+  - `PUT /api/channels` 是整份替换：请求给出 channels、models、embeddings 与 roles。服务端先按字段逐项校验（环境变量引用、整数范围、渠道引用、重复引用、角色别名与启用状态），再用 `parseChannelsConfig` 与 `validateRoleModelFamilies` 复验生成后的文本；失败统一 400 并带 `details.path`。写回用同目录临时文件加 rename。`applyChannelsUpdate` 只改请求覆盖的字段，保留模型的 `tools`、`probe`、未知字段与未触及行的注释；启用状态只写 `enabled: false`，恢复启用时删掉该键。
+  - 模型别名、渠道 id 与 embedding id 在请求里是对象的键，JSON 无法表达重复键，因此“重复别名”不会作为请求形状出现；同一模型重复引用同一个渠道按 400 处理。配置文件本身重复的 YAML 键由 YAML 解析器报告为非法并返回 400。
+  - `POST /api/channels/probe` 只在用户点击时联网：用 `createLlmChannel` 建适配器、`probeChannel` 跑一轮体检，再用 `setModelProbeInText` 把结果写回同一个文件。`channel` 缺省取模型优先级最高的渠道。接口接受 `createChannel` 注入，测试用假通道覆盖流式、函数调用、思考、预填充与缓存统计。
+  - 每次请求都重新读文件；运行时的缓存指纹包含 `roles`，写入后下一回合自然重建客户端。
+- **影响**：
+  - `LlmModelConfig` 新增必填的 `enabled`，程序化构造渠道配置的测试需要显式写 true。
+  - R5-T10 直接复用这三条接口；密钥值不出现在任何响应里。

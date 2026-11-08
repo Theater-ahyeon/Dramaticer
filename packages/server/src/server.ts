@@ -1,8 +1,11 @@
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import {
+	type LlmChannel,
+	type LlmChannelConfig,
 	type LlmChannelsConfig,
 	StoryStore,
+	createLlmChannel,
 	getCoreVersion,
 	isJsonObject,
 	loadChannelsConfig,
@@ -43,10 +46,15 @@ export const MAX_JSON_BODY_BYTES = 25 * 1024 * 1024;
 
 /** 渠道配置来源；模型客户端与 embedding 客户端都可以在测试里替换。 */
 export interface ServerChannelsOptions {
+	/** 渠道配置文件路径；渠道管理接口需要它才能读写。 */
 	readonly path?: string;
 	readonly load?: () => Promise<LlmChannelsConfig>;
+	/** 解析 `${VAR}` 与报告密钥是否已设置时使用的环境变量。 */
+	readonly env?: Readonly<Record<string, string | undefined>>;
 	readonly createClient?: RuntimeClientFactory;
 	readonly createEmbedder?: RuntimeEmbedderFactory;
+	/** 渠道体检用的适配器；测试注入假通道。 */
+	readonly createChannel?: (config: LlmChannelConfig) => LlmChannel;
 	readonly createBackgroundRegistry?: BackgroundRegistryFactory;
 }
 
@@ -79,6 +87,9 @@ interface HandlerOptions {
 	readonly runtime: StoryRuntimeManager | null;
 	readonly turns: TurnCoordinator;
 	readonly scheduler: BackgroundScheduler | null;
+	readonly channelsPath: string | null;
+	readonly channelsEnv: Readonly<Record<string, string | undefined>>;
+	readonly createChannel: (config: LlmChannelConfig) => LlmChannel;
 	readonly heartbeatMs: number;
 	readonly now?: () => number;
 	readonly log: (line: string) => void;
@@ -134,6 +145,9 @@ export async function startServer(
 			runtime,
 			turns,
 			scheduler,
+			channelsPath: channels?.path ?? null,
+			channelsEnv: channels?.env ?? process.env,
+			createChannel: channels?.createChannel ?? createLlmChannel,
 			heartbeatMs: options.heartbeatMs ?? SSE_HEARTBEAT_MS,
 			now: options.now,
 			log,
@@ -254,6 +268,9 @@ async function handleRequest(
 			runtime: options.runtime,
 			turns: options.turns,
 			scheduler: options.scheduler,
+			channelsPath: options.channelsPath,
+			channelsEnv: options.channelsEnv,
+			createChannel: options.createChannel,
 			log: options.log,
 			heartbeatMs: options.heartbeatMs,
 			now: options.now,
@@ -324,7 +341,8 @@ function resolveChannelsLoader(
 	if (path === undefined) {
 		throw new Error("channels 需要 path 或 load");
 	}
-	return () => loadChannelsConfig(path);
+	const env = options.env ?? process.env;
+	return () => loadChannelsConfig(path, env);
 }
 
 function formatHost(host: string): string {

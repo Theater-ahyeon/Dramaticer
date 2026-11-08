@@ -3,23 +3,22 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：162
-- 任务：R5-T11 沙箱 iframe 块渲染器
-- 结果：完成，门禁通过（138 个测试文件、1220 个测试通过，3 个 live 跳过，共 1223 个）。
-  - protocol：`turn.ts` 新增 `DisplayedText`、`DisplayedBlock`（`kind`、`name`、`complete`、`raw`、`content`、`display`）与 `DisplayedContent`，`display` 是 core 的 `BlockDisplayStrategy` 或 `null`；`toDisplayedBlocks` 把解析结果摊平，保留注册表给出的策略且不再带 `type`。`BlocksReplacePayload.blocks` 与新增的 `TurnCompletedPayload.blocks` 都用这个载荷。
-  - core：`blocks/templates.ts` 新增 `BLOCK_TEMPLATE_CONTENT_TOKEN`（`{{content}}`）与 `IMAGE_BLOCK_TEMPLATE`；`图片` 的默认显示策略从 native `image` 改为 html 模板；`options.ts` 抽出 `splitOptionLines`，`collectOptionLines` 与 web 共用同一处切分规则。
-  - server：`streamTurn` 在每次 `blocks.replace` 快照、最终 `blocks.replace` 与 `turn.completed` 里都调用 `toDisplayedBlocks`。
-  - web 纯逻辑：`chat/blocks.ts` 改用 `DisplayedContent`，`blockViewKind` 只读 `display`（`hidden` 隐藏、`html` 走沙箱、native 按组件名映射、`null` 或未知组件按原文），保留 `thinking` 的可折叠展示；`chat/sandbox.ts` 提供 `escapeHtml`、`renderBlockTemplate`、`buildSandboxDocument`、`imageSandboxDocument`、`clampSandboxHeight`、`parseSandboxMessage` 与 `sandboxAck`。消息白名单只接受 `ready`、`height`（0–10000，非有限数与非数字拒绝）与 `action`（`zoom`、`choice`、`scroll`）；`choice.text` 去空白后必须非空且不超过 2000 字符；父页面只回发 `{type:"ack", action}`。
-  - web 组件：新增 `components/chat/SandboxBlock.tsx`，`<iframe sandbox="allow-scripts">`（没有 `allow-same-origin`），`srcdoc` 带 `default-src 'none'; img-src data: blob: https:; style-src 'unsafe-inline'; script-src 'unsafe-inline'` 与高度上报脚本；只接受 `event.source === contentWindow` 且 `event.origin === "null"` 的消息；图片块渲染在沙箱里，点击发 `zoom` 后由父页面显示 `<dialog open>` 放大层，关闭按钮与 Escape 都可关闭。`BlockContent` 对 `html` 块做图片地址校验，地址不合法或 `display` 缺失时按原文显示。
-  - 新增 8 个沙箱纯逻辑测试、1 个协议显示载荷测试、web 块测试改写与 server 的 `turn.completed.blocks` / 最终快照断言。
-  - 冒烟：临时脚本在真实 server（`packages/web/dist` + `StoryStore` 造 2 层，助手楼层含图片、旁白与选项）上用 Playwright 实测 390×844：沙箱 `origin` 为 `null`，读父页面 DOM 与 `document.cookie` 都被拒绝；图片高度上报为 180px；从沙箱发 `height: -1`、`resize`、未知 action、从父页面伪造 `height` 都不改变高度；模板图片不在主文档；点击图片出现放大层且地址与块内容一致；选项正常渲染、无横向溢出、无页面错误与失败请求。临时目录与脚本已删除，`pnpm-lock.yaml` 与根 `package.json` 未改动。
+- 会话：163
+- 任务：R5-T03 server 渠道管理接口
+- 结果：完成，门禁通过（139 个测试文件、1237 个测试通过，3 个 live 跳过，共 1240 个）。
+  - core：`LlmModelConfig` 新增 `enabled`（YAML 可选，默认 true）。停用的模型不能作为故事设置、角色目标或路由目标：`resolveModelForRole` 与 `StoryRuntimeManager` 对显式指向停用的角色直接抛错，`createLlmClient` 跳过停用模型并拒绝停用的默认模型，`pickDefaultModelAlias` 只在启用的模型里选择；server 的后台角色缺省回落 `background` 停用时后台客户端为空。
+  - core：`readChannelsKeyRefs(text)` 读出 `apiKey` 里 `${VAR}` 的变量名（按 channels/embeddings 分开，空密钥为 null）；`applyChannelsUpdate(text, update)` 用 YAML Document 只改请求覆盖的字段，保留 `tools`、`probe`、未知字段与未触及行的注释，`enabled: true` 时删除该键；`setModelProbeInText` 从 `writeModelProbe` 里抽出，供 server 原子写回。
+  - protocol：`ModelView` 增加 `enabled`，`ChannelsView` 增加 `roles`（四个岗位实际生效的别名，可能为 null），`ModelUpdateInput` 增加 `enabled`，`ChannelsUpdateRequest` 增加 `roles`，新增 `ChannelProbeRequest` 与 `ChannelProbeResult`。
+  - server：`GET /api/channels` 每次重读文件，返回渠道与 embedding 的 `apiKeyEnv`/`apiKeySet`（不含密钥）、模型（别名、模型 id、优先级顺序、`enabled`、`probe`）与 `roles`；`PUT /api/channels` 整份替换，逐字段校验（环境变量引用、整数范围、渠道引用与重复引用、角色别名与启用状态），再用 `parseChannelsConfig` 与 `validateRoleModelFamilies` 复验，临时文件加 rename；`POST /api/channels/probe` 用 `createLlmChannel` + `probeChannel` 体检（`channel` 缺省取第一个渠道）并用 `setModelProbeInText` 写回。三条接口都需要 `channels.path`，没有时 404。
+  - `ServerChannelsOptions` 新增 `env`（解析 `${VAR}` 与报告是否已设置）与 `createChannel`（体检注入，测试用假通道）；`resolveChannelsLoader` 用同一个 `env` 读取文件。
+  - 运行时缓存指纹包含 `roles`，只改角色也会重建客户端；server 测试覆盖“PUT 后下一回合的 writer 变成新模型”。
+  - 新增 11 个 server 测试、4 个 core 配置测试与 1 个运行时测试；假通道按体检提示词返回流式、函数调用、预填充与缓存命中结果。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09.a、R2-T09.b、R2-T09.c、R2-T99、R5-T01、R5-T02、R5-T02.a、R5-T02.b、R5-T02.c、R5-T04、R5-T05.a、R5-T05.b、R5-T05.c、R5-T06、R5-T07、R5-T07.a、R5-T11、E-T01、R4-T00、R4-T01、R4-T02、R4-T03、R4-T04、R4-T05、R4-T06、R4-T07、R4-T08、R4-T99、R5-T00。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- **下一个可做任务是 R5-T03（server 渠道管理接口）**：依赖 M4-T04、M1-T03、R1-T01.b，全部满足。之后按 TASKS 顺序是 R5-T08、R5-T09、R5-T10、R5-T12、R5-T13、R5-T14、R5-T99。
-- R5 的已知接口缺口：渠道管理接口 `GET`/`PUT /api/channels` 与 `POST /api/channels/probe` 还没有（R5-T03）。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09.a、R2-T09.b、R2-T09.c、R2-T99、R5-T01、R5-T02、R5-T02.a、R5-T02.b、R5-T02.c、R5-T04、R5-T05.a、R5-T05.b、R5-T05.c、R5-T06、R5-T07、R5-T07.a、R5-T11、R5-T03、E-T01、R4-T00、R4-T01、R4-T02、R4-T03、R4-T04、R4-T05、R4-T06、R4-T07、R4-T08、R4-T99、R5-T00。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- **下一个可做任务是 R5-T08（web 导演与 Trace 面板）**：依赖 R5-T04、R5-T02、R4-T99，全部满足。之后按 TASKS 顺序是 R5-T09、R5-T10、R5-T12、R5-T13、R5-T14、R5-T99。
 - v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
-- 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045。
+- 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045、ADR-0078。
 - HUMAN-09 待处理（不阻塞）：`data/channels.yaml` 已有 `bg-fallback`、`main-fallback`、`codex`，`channels.example.yaml` 还没有这三个别名。
 - HUMAN-10 待处理（不阻塞）：插件不变量是否加进 AGENTS.md。
 - HUMAN-11 待处理（不阻塞）：`.env` 的正文模型 `opendesign/deepseek-v4.1-flash` 返回 membership entitlement 错误。
@@ -52,9 +51,9 @@
 - R4 验收的链路证据在 `packages/core/test/director-acceptance.test.ts` 与 `docs/dev/reports/R4.md`。
 
 ## 下一步
-- **R5-T03 server 渠道管理接口**：`GET /api/channels` 返回别名、模型、优先级、启用状态、`${ENV}` 变量名与是否已设置、最近体检结果与 `roles`，密钥值不出现；`PUT /api/channels` 编辑别名、模型、优先级、启用状态、`roles` 与新增渠道，密钥只接受环境变量引用，未知别名与 writer/judge 同家族 400，校验后临时文件加 rename 原子写回并让运行时缓存失效；`POST /api/channels/probe` 只在用户点击时联网，结果写回配置。
-- 之后 R5-T08（导演与 Trace 面板）、R5-T09（设置与模板编辑器）、R5-T10（渠道面板）、R5-T12（Playwright 端到端）、R5-T13、R5-T14、R5-T99。
-- R5-T08 只依赖 R5-T04、R5-T02、R4-T99，计划、决策、候选与线索接口已经可用。
+- **R5-T08 web 导演与 Trace 面板**：导演决策 `GET /api/nodes/:id/director`（透明模式显示当前拍、强度、信号与指令，盲盒只显示机制触发状态）、候选行动 `GET /api/nodes/:id/actions`、计划 `GET`/`PUT /api/stories/:id/director/plan`、Trace 面板。R5-T08 只依赖 R5-T04、R5-T02、R4-T99，接口都已可用。
+- 之后 R5-T09（设置与模板编辑器）、R5-T10（渠道面板，复用 R5-T03 的三条接口）、R5-T12（Playwright 端到端）、R5-T13、R5-T14、R5-T99。
+- 渠道面板可以直接用 `ChannelsView`/`ChannelsUpdateRequest`/`ChannelProbeResult`；`apiKeyEnv` 只给变量名，`apiKeySet` 为 false 时要在界面上醒目提示。
 - 引用评测数字时：B1 必须同时说明同模型子集为空、每个对话每档只有 1 个样本；遗忘矛盾率必须同时说明失败题数与可判定样本数；偏好一致率当前没有样本。
 
 ## 注意事项
@@ -91,6 +90,8 @@
 - 模型响应的磁盘缓存键包含 `max_tokens` **只在请求显式带 maxTokens 时**；改渠道配置的 `maxTokens` 后必须换一个 `--cache` 目录。后台 `background` 模型的输出上限是 32,768。
 - 后台路由现状（2026-11-08）：`main-fallback`（`auto/deepseek-v4.1-flash`）可用；`opendesign/deepseek-v4.1-flash` 曾返回 membership entitlement 错误；`catie` 的 `rp` 返回 503（HUMAN-13）。`data/channels.yaml` 现在是 `writer: rp`、`judge: judge`（`auto/glm-5.3`）；`roles.planner` 未配置，回退到 `background`。
 - 渠道角色（`writer`、`settler`、`planner`、`judge`）与消息角色不同；`createLlmClient` 校验 judge 与 writer 的模型家族不同。server 运行时为 writer、settler、planner 各建一个客户端；`dramaticer work` 建 settler 与 planner 两个客户端。
+- 渠道管理接口（R5-T03）：三条路由只在 `channels.path` 存在时可用。`GET` 每次重读文件；`PUT` 是整份替换，`models` 里不写 `tools`/`probe`（保留原值），`enabled: true` 不落盘；`POST /api/channels/probe` 的 `channel` 缺省取模型第一个渠道。`ServerChannelsOptions.env` 同时用于解析 `${VAR}` 与报告 `apiKeySet`；测试用 `createChannel` 注入假通道。运行时的缓存指纹包含 `roles`，写入后下一回合重建。
+- 模型 `enabled` 语义：默认 true；停用后不能作为故事模型、角色目标或路由，`resolveModelForRole` 与 `StoryRuntimeManager` 对显式指向停用的角色抛错；后台角色缺省回落的 `background` 停用时后台客户端为空。程序化构造 `LlmModelConfig` 时必须写 `enabled`。
 - 工具传输：`resolveToolTransport` 在未显式配置时按 `probe.functionCalling` 决定；文本协议是 `core/src/chat/tool-protocol.ts`，工具说明只插进发给模型的消息副本。
 - 写作规则：`WRITING_CONTRACT` 是四条原则；`protocol` 是固定 id 的静态段，`assertContextTemplate` 要求它是最后一个片段。
 - 快照：`eval-private/raw/` 有 94 个文件；`eval-private/reference/` 有 5 部参照小说。私有数据只写 `eval-private/`，报告不用原文。

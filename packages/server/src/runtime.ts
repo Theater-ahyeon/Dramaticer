@@ -98,17 +98,12 @@ export class StoryRuntimeManager {
 		if (model === undefined) {
 			throw new Error(`故事设置的模型 ${modelAlias} 不在渠道配置里`);
 		}
+		if (!model.enabled) {
+			throw new Error(`故事设置的模型 ${modelAlias} 已经被停用`);
+		}
 		const toolTransport = resolveToolTransport(model);
-		const settlerAlias =
-			config.roles.get("settler") ??
-			(config.models.has(BACKGROUND_MODEL_ALIAS)
-				? BACKGROUND_MODEL_ALIAS
-				: null);
-		const plannerAlias =
-			config.roles.get("planner") ??
-			(config.models.has(BACKGROUND_MODEL_ALIAS)
-				? BACKGROUND_MODEL_ALIAS
-				: null);
+		const settlerAlias = backgroundRoleAlias(config, "settler");
+		const plannerAlias = backgroundRoleAlias(config, "planner");
 		const template = resolveTemplate(
 			this.#store,
 			settings.templateId,
@@ -143,6 +138,29 @@ export class StoryRuntimeManager {
 	}
 }
 
+/**
+ * 后台角色取模型别名：显式配置的模型停用时直接报错，
+ * 缺省回落的 background 不存在或停用时返回 null（后台客户端不可用）。
+ */
+function backgroundRoleAlias(
+	config: LlmChannelsConfig,
+	role: "settler" | "planner",
+): string | null {
+	const configured = config.roles.get(role);
+	const alias =
+		configured ??
+		(config.models.has(BACKGROUND_MODEL_ALIAS) ? BACKGROUND_MODEL_ALIAS : null);
+	if (alias === null) return null;
+	const model = config.models.get(alias);
+	if (model === undefined || !model.enabled) {
+		if (configured !== undefined) {
+			throw new Error(`角色 ${role} 指向的模型 ${alias} 已经被停用`);
+		}
+		return null;
+	}
+	return alias;
+}
+
 function resolveTemplate(
 	store: StoryStore,
 	templateId: string | null,
@@ -163,6 +181,7 @@ function configFingerprint(config: LlmChannelsConfig): string {
 	return JSON.stringify({
 		channels: [...config.channels.values()],
 		models: [...config.models.values()],
+		roles: [...config.roles.entries()].sort(([a], [b]) => a.localeCompare(b)),
 		embeddings: [...config.embeddings.values()],
 	});
 }

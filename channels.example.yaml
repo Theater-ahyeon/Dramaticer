@@ -37,6 +37,8 @@ models:
     maxTokens: 8192
     reasoning: true
     channels: [main]
+    # 停用后不能选为故事模型或角色目标，也不参与路由；不写时默认启用。
+    # enabled: false
     # 工具调用传输：native 用原生函数调用，text 让模型把调用写在正文里
     # （<tool name="…">{json}</tool>，程序解析执行）。不写时按 probe.functionCalling
     # 决定：体检报告不支持函数调用就用 text，其余用 native。

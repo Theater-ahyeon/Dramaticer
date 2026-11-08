@@ -36,6 +36,7 @@ function model(alias: string, id: string, maxTokens = 1_024): LlmModelConfig {
 		contextWindow: 8_192,
 		maxTokens,
 		reasoning: true,
+		enabled: true,
 		channels: ["gateway"],
 		tools: null,
 		probe: null,
@@ -116,6 +117,30 @@ describe("StoryRuntimeManager 按角色创建客户端", () => {
 			]),
 		);
 		expect(aliases).toEqual(["main", "background", "background"]);
+	});
+
+	it("只改角色时也重建客户端", async () => {
+		const store = tempStore();
+		const models = [
+			model("main", "opendesign/deepseek-v4.1-flash"),
+			model("background", "agy-gemini-3.8-flash-medium"),
+		];
+		let config = configWith(models);
+		const aliases: string[] = [];
+		const manager = new StoryRuntimeManager({
+			store,
+			loadConfig: async () => config,
+			createClient: (_config, alias) => {
+				aliases.push(alias);
+				return unusedClient;
+			},
+		});
+		await manager.get("s1");
+		expect(aliases).toEqual(["main", "background", "background"]);
+		aliases.length = 0;
+		config = configWith(models, new Map([["writer", "background"]]));
+		await manager.get("s1");
+		expect(aliases).toEqual(["background", "background", "background"]);
 	});
 
 	it("没有 background 也没有 settler 时后台客户端为空", async () => {

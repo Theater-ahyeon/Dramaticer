@@ -672,7 +672,8 @@
   - 原生块继续用 React 组件；未知块显示原文；图片块在沙箱里渲染，点击可放大。
   验收：脚本无法读取父页面 DOM 与 cookie；高度自适应；非法消息被忽略；模板 HTML 不进入主文档；没有显示策略的块按原文显示；Playwright 用例覆盖隔离与高度；`pnpm check` 通过。
 
-- [ ] **R5-T03 server 渠道管理接口**（原 M4-T09） | 依赖：M4-T04、M1-T03、R1-T01.b
+- [x] **R5-T03 server 渠道管理接口**（原 M4-T09） | 依赖：M4-T04、M1-T03、R1-T01.b
+  完成：2026-11-08 `GET /api/channels` 返回渠道与 embedding 的脱敏视图（`apiKeyEnv` 与 `apiKeySet`，不含密钥）、模型（别名、模型 id、优先级顺序、`enabled`、最近体检结果）与四个岗位实际生效的 `roles`；`PUT /api/channels` 整份替换，逐字段校验环境变量引用、整数范围、渠道引用与重复引用、角色别名与启用状态，再用 `parseChannelsConfig` 与 `validateRoleModelFamilies` 复验，临时文件加 rename 原子写回；`POST /api/channels/probe` 用 `probeChannel` 体检并写回 `probe`；模型新增 `enabled`（默认 true，停用后不能作为故事模型、角色目标或路由目标），运行时缓存指纹包含 `roles`，写入后下一回合重建；新增 11 个 server 测试、4 个 core 配置测试与 1 个运行时测试，假通道覆盖体检；ADR-0078；门禁通过（139 个测试文件、1237 个测试通过，3 个 live 跳过）
   做什么：
   - `GET /api/channels`：别名、模型、优先级、启用状态、`${ENV}` 变量名与是否已设置、最近体检结果，以及 `roles`（writer、settler、planner、judge 各自的模型别名）；密钥值永远不出现在响应里。
   - `PUT /api/channels`：编辑别名、模型、优先级、启用状态、`roles` 与新增渠道；密钥字段只接受环境变量引用；`roles` 的每个值必须是已存在的模型别名，writer 与 judge 的模型家族相同时 400 并指出两个角色；校验后原子写回 `channels.yaml`（临时文件加 rename），运行时缓存失效。
