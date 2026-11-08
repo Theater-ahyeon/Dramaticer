@@ -1004,3 +1004,4 @@
   - 探针题目前是预注册的结构化题目，没有独立运行器；R2-T09 使用同一套判分接口时可以直接读取。记忆题由既有 `memory-eval --judged` 读取。
   - `benchmarks/` 是生成产物，加入 biome 忽略列表；格式由生成器与逐字节校验保证，不由格式化工具改写。
   - 私有 3 个对话继续作为对照，报告必须与公开基准分开列。
+- **补充（同一会话）**：`.gitattributes` 对 `benchmarks/**` 使用 `text eol=lf`，读取基准文件时把 CRLF 归一为 LF；Windows 上 `core.autocrlf=true` 的检出不会再让逐字节校验失败。

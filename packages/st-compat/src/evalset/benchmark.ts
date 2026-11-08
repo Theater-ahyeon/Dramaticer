@@ -749,7 +749,10 @@ async function readBenchmarkFiles(
 			}
 			files.set(
 				relativePath,
-				await readFile(path.join(rootDir, relativePath), "utf8"),
+				(await readFile(path.join(rootDir, relativePath), "utf8")).replace(
+					/\r\n/g,
+					"\n",
+				),
 			);
 		}
 	};
