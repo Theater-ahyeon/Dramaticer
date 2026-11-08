@@ -3,14 +3,12 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：114
-- 任务：O-T03 首楼多候选
+- 会话：115
+- 任务：门禁修复（会话 114 的 `pnpm check` 失败在 `packages/st-compat/test/gap-pass-compare.test.ts`）
 - 结果：完成（`DONE`），门禁通过（99 个测试文件、896 个测试通过，3 个 live 跳过，共 899 个）。
-  - 迁移 v30 新增 `opening_candidates(id, story_id, ordinal, raw, status, created_at)`，`(story_id, ordinal)` 唯一，`status` 取 `pending`、`chosen`、`discarded`；`ordinal` 是故事内递增序号，每批接着上一批编号。
-  - `StoryStore` 新增 `appendOpeningCandidates`（一批候选按给定顺序写入，已有候选状态不变）、`listOpeningCandidates`（按序号排序，可按状态过滤）、`getOpeningCandidate`、`chooseOpeningCandidate`：在同一个事务里把候选正文原样追加为根部的助手楼层（`parentId` 为 null），该条改为 `chosen`，同一故事其余 `pending` 改为 `discarded`；故事已有楼层或候选不是 `pending` 时直接失败。
-  - 新增 `core/src/opening/candidates.ts`：`OPENING_CANDIDATES_JOB_KIND`、`DEFAULT_OPENING_CANDIDATE_COUNT` 3、`MIN/MAX_OPENING_CANDIDATE_COUNT` 2/3、`assertOpeningCandidateCount`、`parseOpeningCandidatesResponse`（严格 `{"candidates":[...]}`，未知字段、条数不符、空正文整批拒绝）、`generateOpeningCandidates`、`openingCandidatesNeedRun`、`createOpeningCandidatesHandler`。后台任务入队条件 `story`，只在有素材、故事没有楼层且没有待选候选时生成；处理器重复检查，已有待选候选时不调用模型。生成输入复用 `collectOpeningInput` 与 `buildOpeningUserContent`（后者由 `opening.ts` 导出），温度 0.9。
-  - CLI 新增 `core/src/opening/cli.ts` 的 `runOpeningCli`，命令为 `dramaticer open --story <id> --db <path> [--generate <n>] [--list] [--pick <id>]`；不写动作时列出候选，`--generate` 用 `roles.settler` 解析的客户端直接调用生成函数，`--pick` 与 `--list` 不加载渠道配置。st-compat 的命令分发加入 `open`，`dramaticer work` 的注册表加入 `opening_candidates`。
-  - 新增 14 个测试（`core/test/opening-candidates.test.ts`：解析正负例、生成不产生楼层、已有待选候选不重复调用、非法输出整批拒绝、已有楼层不生成、选中成为首个助手楼层并丢弃其余、重新生成追加新批、选中后参与 `settled` 入队、已有楼层拒绝选中、CLI 生成/列出/选中与参数错误）；ADR-0061。
+  - 失败原因是 vitest 默认 5 秒超时：`runGapPassCompareOnEntries` 的第一个用例在整轮并行门禁里跑了 9,791 毫秒（单独跑约 680 毫秒），超时后测试仍在执行，`afterEach` 的 `rmSync` 撞上 Windows 文件占用报 EPERM，产生第二条失败。
+  - 三个各自跑两套数据库的用例显式设置 30 秒超时；`afterEach` 的 `rmSync` 加 `maxRetries: 5`、`retryDelay: 100`，处理 Windows 上文件句柄释放的短暂延迟。实现代码没有改动。
+  - 重跑门禁：99 个测试文件通过、896 个测试通过、3 个 live 跳过。
 
 ## 当前状态
 - 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`；未完成任务见 `docs/dev/TASKS.md`。
@@ -145,3 +143,4 @@
 - 导入接口的角色卡图片与 JSON 都在请求体内，25 MB 上限覆盖；PNG base64 目前只接受无前缀的 base64，测试里用 `node:zlib` 构造最小 PNG。
 - `packages/st-compat` 的测试通过 workspace 依赖解析到 `packages/core/dist`；改了 core 的公开代码后先 `pnpm run typecheck` 或 `pnpm --filter @dramaticer/core build`，再单独跑 st-compat 测试。`pnpm check` 会先构建。
 - 任务编号映射（历史）：M4-T07→R5-T01、T08→R5-T02、T09→R5-T03、T10→R5-T04、T11→R5-T05、T12→R5-T06、T13→R5-T07、T14→R5-T08、T15→R5-T09、T16→R5-T10、T17→R5-T11、T18→R5-T12、T19→R5-T13、T20→R5-T14、T99→R5-T99。
+- 整轮门禁在 Windows 上并行跑 102 个测试文件时，单个测试的耗时可以比单独运行高十几倍（`gap-pass-compare.test.ts` 的第一个用例单独 680 毫秒、整轮 9.8 秒）。新建要跑数据库或文件系统的测试必须显式设置超时，vitest 默认的 5 秒不够；`afterEach` 删除临时目录用 `rmSync` 时带上 `maxRetries` 与 `retryDelay`，否则 Windows 上文件句柄未释放会报 EPERM 并掩盖真正失败的用例。
