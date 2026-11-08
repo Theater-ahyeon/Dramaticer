@@ -1511,3 +1511,137 @@ button.branch-select:hover {
 		grid-template-columns: repeat(2, minmax(0, 1fr));
 	}
 }
+
+/* 故事设置与模板编辑器。 */
+.settings-page {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	min-width: 0;
+}
+
+.settings-page > .ledger-floor-head {
+	padding: 10px 12px;
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: 12px;
+}
+
+.settings-grid {
+	display: grid;
+	grid-template-columns: 1fr;
+	gap: 0 12px;
+}
+
+@media (min-width: 720px) {
+	.settings-grid {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
+.settings-check {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-top: 8px;
+	font-size: 0.85rem;
+}
+
+.settings-check input {
+	width: auto;
+}
+
+.settings-override {
+	margin-top: 8px;
+	padding: 8px 10px;
+	background: var(--bg);
+	border: 1px dashed var(--border);
+	border-radius: 8px;
+}
+
+.settings-override .plan-toolbar {
+	align-items: flex-end;
+}
+
+.settings-errors {
+	margin: 8px 0 0;
+	padding: 8px 10px 8px 26px;
+	background: var(--surface);
+	border: 1px solid var(--danger);
+	border-radius: 8px;
+	color: var(--danger);
+	font-size: 0.82rem;
+}
+
+.settings-summary {
+	margin: 8px 0 0;
+	padding: 0;
+	list-style: none;
+	color: var(--muted);
+	font-size: 0.8rem;
+}
+
+.template-editor {
+	margin-top: 12px;
+	padding-top: 10px;
+	border-top: 1px solid var(--border);
+}
+
+.template-segments {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	margin: 10px 0 0;
+	padding: 0;
+	list-style: none;
+}
+
+.template-segment {
+	padding: 10px;
+	background: var(--bg);
+	border: 1px solid var(--border);
+	border-radius: 10px;
+}
+
+.template-segment-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 6px;
+}
+
+.template-segment-head strong {
+	font-size: 0.86rem;
+}
+
+.condition-editor {
+	margin-top: 8px;
+	padding: 8px 10px;
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+}
+
+.condition-children {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin-top: 8px;
+}
+
+.condition-child {
+	padding-left: 8px;
+	border-left: 2px solid var(--border);
+}
+
+.template-preview {
+	margin: 6px 0 0;
+	padding-left: 20px;
+	font-size: 0.8rem;
+	color: var(--muted);
+}
+
+.template-preview li {
+	margin-top: 3px;
+	overflow-wrap: anywhere;
+}

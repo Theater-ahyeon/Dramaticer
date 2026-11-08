@@ -1,4 +1,5 @@
 import {
+	type ContextStaticSegment,
 	type ContextTemplate,
 	DEFAULT_CONTEXT_TEMPLATE_ID,
 	WRITING_CONTRACT_SEGMENT_ID,
@@ -73,6 +74,21 @@ export function createNaiveContextTemplate(): ContextTemplate {
 	};
 }
 
+/** `block_format` 段：说明原生块的写法；是否加入模板由玩家决定（I13）。 */
+export function createBlockFormatSegment(
+	structuredOutput: StructuredOutputMode,
+): ContextStaticSegment {
+	return {
+		id: "block_format",
+		kind: "static",
+		text:
+			structuredOutput === "function-call"
+				? FUNCTION_CALL_BLOCK_FORMAT
+				: TEXT_TAG_BLOCK_FORMAT,
+		priority: 95,
+	};
+}
+
 /** 默认的原生上下文模板：角色、世界书、状态、摘要、记忆、现场分析、导演、历史。protocol 写作契约固定在最后。 */
 export function createDefaultContextTemplate(
 	options: DefaultContextTemplateOptions,
@@ -94,17 +110,7 @@ export function createDefaultContextTemplate(
 			{ id: "user_will", kind: "slot", slot: "user_will", priority: 110 },
 			{ id: "history", kind: "slot", slot: "history", priority: 100 },
 			...(options.blockFormat === true
-				? [
-						{
-							id: "block_format",
-							kind: "static" as const,
-							text:
-								options.structuredOutput === "function-call"
-									? FUNCTION_CALL_BLOCK_FORMAT
-									: TEXT_TAG_BLOCK_FORMAT,
-							priority: 95,
-						},
-					]
+				? [createBlockFormatSegment(options.structuredOutput)]
 				: []),
 			{
 				id: WRITING_CONTRACT_SEGMENT_ID,

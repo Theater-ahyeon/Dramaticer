@@ -127,6 +127,9 @@ export function assertContextTemplate(template: ContextTemplate): void {
 				`上下文片段 ${segment.id} 的槽位不合法：${String(segment.slot)}`,
 			);
 		}
+		if (segment.when !== undefined) {
+			assertContextCondition(segment.when, `上下文片段 ${segment.id} 的 when`);
+		}
 	}
 	const protocolIndex = template.segments.findIndex(
 		(segment) => segment.id === WRITING_CONTRACT_SEGMENT_ID,
@@ -136,6 +139,69 @@ export function assertContextTemplate(template: ContextTemplate): void {
 		throw new Error(
 			`上下文模板 ${template.id} 的 protocol 写作契约片段必须是最后一个片段：当前在第 ${protocolIndex + 1} 个，后面还有 ${lastIndex - protocolIndex} 个片段`,
 		);
+	}
+}
+
+/** 校验模板里的条件；写错的条件在组装阶段才抛错，保存模板时提前拒绝。 */
+export function assertContextCondition(
+	condition: ContextCondition,
+	label = "上下文条件",
+): void {
+	if (typeof condition !== "object" || condition === null) {
+		throw new Error(`${label} 必须是对象`);
+	}
+	switch (condition.kind) {
+		case "switch": {
+			if (
+				typeof condition.name !== "string" ||
+				condition.name.trim().length === 0
+			) {
+				throw new Error(`${label} 的 switch.name 必须是非空字符串`);
+			}
+			if (
+				condition.equals !== undefined &&
+				typeof condition.equals !== "boolean"
+			) {
+				throw new Error(`${label} 的 switch.equals 必须是布尔值`);
+			}
+			return;
+		}
+		case "state": {
+			if (
+				!Array.isArray(condition.path) ||
+				condition.path.length === 0 ||
+				condition.path.some(
+					(segment) =>
+						typeof segment !== "string" || segment.trim().length === 0,
+				)
+			) {
+				throw new Error(`${label} 的 state.path 必须是非空的字符串数组`);
+			}
+			if (
+				condition.op !== "exists" &&
+				condition.op !== "equals" &&
+				condition.op !== "truthy"
+			) {
+				throw new Error(`${label} 的 state.op 必须是 exists、equals 或 truthy`);
+			}
+			return;
+		}
+		case "all":
+		case "any": {
+			if (!Array.isArray(condition.conditions)) {
+				throw new Error(`${label} 的 ${condition.kind}.conditions 必须是数组`);
+			}
+			condition.conditions.forEach((item, index) => {
+				assertContextCondition(item, `${label} 的第 ${index + 1} 个子条件`);
+			});
+			return;
+		}
+		case "not": {
+			assertContextCondition(condition.condition, `${label} 的 not 子条件`);
+			return;
+		}
+		default:
+			throw new Error(`未知的条件类型：${String(condition)}`);
 	}
 }
 

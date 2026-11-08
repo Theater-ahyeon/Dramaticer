@@ -691,7 +691,8 @@
   - Trace：`GET /api/nodes/:id/trace` 的分段（来源、token、裁剪、缺失槽位、`appendedTo`）、工具轮次与传输、回合模式、渠道与用量；块的 prompt 视图省略量按块类型单独显示。
   验收：导演开关与模式切换后下一回合行为不同，盲盒下界面不显示指令与信号；编辑弧线后刷新仍在；兑现后列表更新；候选行动按楼层显示且点击只填输入框；Trace 与核心记录一致；省略量与块类型可见；纯逻辑单测覆盖展示模型；`pnpm check` 通过。
 
-- [ ] **R5-T09 web 故事设置与模板编辑器**（原 M4-T15） | 依赖：R5-T04、M4-T05、M4-T02 | DESIGN §9
+- [x] **R5-T09 web 故事设置与模板编辑器**（原 M4-T15） | 依赖：R5-T04、M4-T05、M4-T02 | DESIGN §9
+  完成：2026-11-08 新增 `packages/web/src/chat/settings-form.ts`：`STORY_SETTINGS_UPDATE_KEYS` 全部字段的草稿与整份更新、与 core 一致的数值范围校验（含 `pace` 必须大于 0、`tensionEscalate < tensionClimax`、张力权重和大于 0、状态路径逐段非空）、历史块覆盖的块名/重复/深度校验、`details.path` 到中文表单名的映射；新增 `chat/template-form.ts`：段落草稿（静态/槽位/优先级/条件）、增删与上下移动、`block_format` 增删、五种条件草稿的递归转换与校验、组装顺序预览、与服务端同一套模板校验；core 的 `assertContextTemplate` 增加条件校验并导出 `assertContextCondition`、`createBlockFormatSegment`；server 新增 `GET /api/stories/:id/template`（故事实际使用的模板、来源与当前 `structuredOutput` 的 `block_format` 段）；`SettingsPage` 覆盖模型与生成、角色与视角、间隙后台、历史块策略、导演全部参数（含机制参数）与模板编辑，复制为新模板后自动设为故事默认，非法项列出字段路径；新增 2 个测试文件共 15 个测试；真实 server 加 Playwright 390×844 冒烟通过（设置保存后刷新仍在、越界温度字段错误、模板下移与保存、`block_format` 开关、空静态段与空开关名被拒绝、条件保存、复制为新模板并设为默认、历史覆盖与间隙开关、无横向溢出）；门禁通过（144 个测试文件、1275 个测试通过，3 个 live 跳过）
   做什么：
   - 故事设置覆盖 `STORY_SETTINGS_UPDATE_KEYS` 的全部字段：`model`、`budgetTokens`、`structuredOutput`、`temperature`、`maxTokens`、`reasoning`、`viewpoint`、`turnMode`、`maxReadRounds`、`directorConfig`（`mode`、`intensity`、`openingFloors`、`openingIntensity` 与既有机制参数）、`historyBlockPolicy`（`default`、`full` 与按块类型覆盖）、`gapPassEnabled` 与 `gapPlanSeconds`；保存前按核心的校验范围检查，服务端错误映射到字段。
   - 模板编辑器：段落列表（静态、槽位、条件）增删与上下移动、槽位选择、条件编辑；保存前由服务端 `assertContextTemplate` 校验；支持复制模板与设为故事默认；`block_format` 是可选段落，通过增删该段落开关，不设独立设置项。

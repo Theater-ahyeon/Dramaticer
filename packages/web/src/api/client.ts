@@ -36,6 +36,7 @@ import {
 	type StoryProposalsView,
 	type StorySettings,
 	type StorySettingsUpdate,
+	type StoryTemplateView,
 	type StoryTree,
 	type StoryView,
 	type TurnCompletedPayload,
@@ -169,6 +170,13 @@ export class ApiClient {
 			"PUT",
 			`${storyPath(storyId)}/settings`,
 			update,
+		);
+	}
+
+	async getStoryTemplate(storyId: string): Promise<StoryTemplateView> {
+		return this.json<StoryTemplateView>(
+			"GET",
+			`${storyPath(storyId)}/template`,
 		);
 	}
 

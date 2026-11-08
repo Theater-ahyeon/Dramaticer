@@ -34,6 +34,8 @@ import {
 	applyChannelsUpdate,
 	approveLedgerChangeCard,
 	assertDirectorIntensity,
+	createBlockFormatSegment,
+	createDefaultContextTemplate,
 	enqueueOpeningBackgroundJobs,
 	fulfillLedgerClue,
 	isJsonObject,
@@ -90,6 +92,7 @@ import {
 	type StoryOpeningsView,
 	type StoryPath,
 	type StoryProposalsView,
+	type StoryTemplateView,
 	type StoryTree,
 	type StoryTreeNode,
 	type StoryView,
@@ -162,6 +165,10 @@ export async function handleApiRequest(
 					return;
 				case "settings":
 					await handleSettings(req, res, method, options, storyId);
+					return;
+				case "template":
+					requireMethod(method, ["GET"]);
+					handleStoryTemplate(res, options, storyId);
 					return;
 				case "jobs":
 					requireMethod(method, ["GET"]);
@@ -1670,6 +1677,39 @@ async function handleSettings(
 		throw toBadRequest(error, inferSettingsPath(error));
 	}
 	sendJson(res, 200, settings);
+}
+
+/** 返回故事实际使用的上下文模板；故事使用内置默认模板时 source 为 default。 */
+function handleStoryTemplate(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	storyId: string,
+): void {
+	requireStory(options.store, storyId);
+	const settings = options.store.getStorySettings(storyId);
+	const storedId =
+		settings.templateId === null ||
+		settings.templateId === DEFAULT_CONTEXT_TEMPLATE_ID
+			? null
+			: settings.templateId;
+	const stored =
+		storedId === null ? null : options.store.getContextTemplate(storedId);
+	if (storedId !== null && stored === null) {
+		throw new Error(`故事引用的上下文模板不存在：${storedId}`);
+	}
+	const view: StoryTemplateView = {
+		storyId,
+		templateId: stored === null ? null : stored.id,
+		source: stored === null ? "default" : "stored",
+		template:
+			stored === null
+				? createDefaultContextTemplate({
+						structuredOutput: settings.structuredOutput,
+					})
+				: stored.template,
+		blockFormatSegment: createBlockFormatSegment(settings.structuredOutput),
+	};
+	sendJson(res, 200, view);
 }
 
 async function handleTemplates(

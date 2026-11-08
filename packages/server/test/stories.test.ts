@@ -411,6 +411,57 @@ describe("设置接口", () => {
 		const missing = await request(running.origin, "/api/stories/none/settings");
 		expect(missing.status).toBe(404);
 	});
+
+	it("返回故事实际使用的模板与 block_format 段", async () => {
+		const { running } = await startTestServer();
+		await post(running.origin, "/api/stories", {
+			id: "story-1",
+			title: "山门",
+		});
+		const initial = await request(
+			running.origin,
+			"/api/stories/story-1/template",
+		);
+		expect(initial.status).toBe(200);
+		const fallback = (await initial.json()) as {
+			source: string;
+			templateId: string | null;
+			template: { segments: readonly { id: string }[] };
+			blockFormatSegment: { id: string; text: string };
+		};
+		expect(fallback.source).toBe("default");
+		expect(fallback.templateId).toBeNull();
+		expect(fallback.template.segments.at(-1)?.id).toBe("protocol");
+		expect(fallback.blockFormatSegment.id).toBe("block_format");
+		expect(fallback.blockFormatSegment.text).toContain("<state_update>");
+
+		const created = await post(running.origin, "/api/templates", {
+			name: "模板甲",
+			template: validTemplate,
+		});
+		const record = (await created.json()) as { id: string };
+		await put(running.origin, "/api/stories/story-1/settings", {
+			templateId: record.id,
+			structuredOutput: "function-call",
+		});
+		const stored = await request(
+			running.origin,
+			"/api/stories/story-1/template",
+		);
+		const view = (await stored.json()) as {
+			source: string;
+			templateId: string;
+			template: { id: string };
+			blockFormatSegment: { text: string };
+		};
+		expect(view.source).toBe("stored");
+		expect(view.templateId).toBe(record.id);
+		expect(view.template.id).toBe(validTemplate.id);
+		expect(view.blockFormatSegment.text).not.toContain("<state_update>");
+
+		const missing = await request(running.origin, "/api/stories/none/template");
+		expect(missing.status).toBe(404);
+	});
 });
 
 describe("模板接口", () => {
@@ -453,6 +504,27 @@ describe("模板接口", () => {
 		});
 		expect(bad.status).toBe(400);
 		expect((await errorBody(bad)).error.details).toEqual({ path: "template" });
+
+		const badCondition = await post(running.origin, "/api/templates", {
+			name: "条件模板",
+			template: {
+				id: "bad-condition",
+				segments: [
+					{
+						id: "intro",
+						kind: "static",
+						text: "从这里开始。",
+						when: { kind: "switch", name: "" },
+					},
+				],
+			},
+		});
+		expect(badCondition.status).toBe(400);
+		const conditionBody = await errorBody(badCondition);
+		expect(conditionBody.error.details).toEqual({
+			path: "template",
+		});
+		expect(conditionBody.error.message).toContain("switch.name");
 
 		const created = await post(running.origin, "/api/templates", {
 			name: "模板甲",
