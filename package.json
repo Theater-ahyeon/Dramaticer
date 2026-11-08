@@ -8,9 +8,10 @@
 	"packageManager": "pnpm@10.32.1",
 	"scripts": {
 		"invariants": "node scripts/check-invariants.mjs",
-		"typecheck": "tsc -b",
+		"typecheck": "tsc -b && pnpm --filter @dramaticer/web typecheck",
 		"lint": "biome check .",
 		"test": "vitest run",
+		"build": "tsc -b && pnpm --filter @dramaticer/web build",
 		"snapshot": "node scripts/snapshot-private-data.mjs",
 		"f0:corpus": "node scripts/f0-corpus.mjs",
 		"f0:attribution": "node scripts/f0-attribution.mjs",

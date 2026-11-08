@@ -3,22 +3,25 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：155
-- 任务：R5-T02.c 开局任务入队与开场候选重新生成
-- 结果：完成，门禁通过（125 个测试文件、1127 个测试通过，3 个 live 跳过，共 1130 个）。
-  - `StoryStore` 新增 `enqueueStoryBackgroundJobs({storyId, kinds, createdAt?})`：按种类写入 `node_id` 为空的任务行；同一类型已有 `pending` 或 `running` 的行时原样返回，`done`、`failed`、`discarded` 的行翻回 `pending`（不重置 `attempts`、不清空其它任务）。表结构不变。
-  - 新增 `packages/core/src/opening/enqueue.ts` 的 `enqueueOpeningBackgroundJobs(store, storyId)`：按 `openingPackNeedsRun`、`openingCandidatesNeedRun` 过滤后调用上述方法；素材不足时两条都不入队。
-  - `POST /api/stories` 与 `POST /api/stories/:id/import` 在响应之前入队开局任务并调用 `BackgroundScheduler.schedule(storyId)`，模型调用只发生在后台 drain。
-  - 新增 `POST /api/stories/:id/openings/generate`：故事无楼层时通过 `enqueueStoryBackgroundJobs` 入队一条 `opening_candidates` 并返回 202 `{storyId, jobId, kind}`（协议类型 `StoryOpeningGenerateResult`），已有楼层 409；接口不调用模型。
-  - `createOpeningCandidatesHandler` 只保留“故事已有楼层就不生成”的守卫；自动入队仍由 `openingCandidatesNeedRun` 的待选判定控制，手动任务与生成接口每次追加一批。
-  - 新增 1 个 server 测试（`packages/server/test/openings.test.ts`，假客户端用闸门卡住 `complete`：导入响应内两条故事级任务已在库里而开局包与候选未生成；放行后开局包与 3 条候选入库；连续两次手动生成得到 9 条候选且第一批保持 `pending`；选中一条成为根楼层、其余 `discarded`；再次生成 409；故事不存在 404）与 4 个 core 测试（3 个 store 入队用例、1 个“已有待选候选时手动任务追加新一批”）。
+- 会话：156
+- 任务：R5-T04 web 骨架与 API 客户端
+- 结果：完成，门禁通过（127 个测试文件、1143 个测试通过，3 个 live 跳过，共 1146 个）。
+  - 新建 `packages/web`：React 19、Vite 8、TypeScript，中文界面，移动端优先；路由为 `/login`、`/`（故事列表）与 `/stories/:storyId/{chat,branches,ledger,director,settings,channels}`，六个面板只放占位组件，内容由 R5-T05 起的任务填充。
+  - `src/api/sse.ts` 的 `parseSseStream` 增量解析 SSE：分块边界可以落在事件名、JSON 或 `\r\n` 之间，支持多事件、注释、忽略的字段、多行 `data`；未知事件忽略，非法 JSON 抛 `SseParseError`。
+  - `src/api/client.ts` 的 `ApiClient` 对所有请求带 `credentials: "include"`；故事、分支、路径、面板、设置、模板、开场候选、导演计划与楼层操作都有类型化方法；错误统一转成 `ApiError`（状态码加 `ApiErrorBody`），界面用 `ErrorNotice` 显示消息与 `details.path`。
+  - `streamTurn` 与 `streamRegenerate` 用 fetch 与 ReadableStream：请求体带 `mode` 与 `intensity`，把 `signal` 传给 fetch，`turn.error` 事件转成 `ApiError`；中止错误原样上抛。
+  - 布局：移动端为底部六格导航加 `env(safe-area-inset-*)`，390×844 实测 `document.documentElement.scrollWidth` 为 390；桌面（≥900px）为 220px 侧栏加内容两栏。
+  - 根脚本：`typecheck` 追加 `pnpm --filter @dramaticer/web typecheck`，新增 `build`（`tsc -b` 加 web 构建）；web 的 build 先构建 core 与 protocol，再 `tsc --noEmit` 与 `vite build`。
+  - 依赖登记：`react`、`react-dom`、`react-router-dom`、`vite`、`@vitejs/plugin-react`、`@types/react`、`@types/react-dom` 写入 `docs/dev/DEPENDENCIES.md`。
+  - 新增 16 个测试（8 个 SSE、8 个 API 客户端，全部假 fetch，零网络）。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09.a、R2-T09.b、R2-T09.c、R2-T99、R5-T01、R5-T02、R5-T02.a、R5-T02.b、R5-T02.c、R5-T05.a、E-T01、R4-T00、R4-T01、R4-T02、R4-T03、R4-T04、R4-T05、R4-T06、R4-T07、R4-T08、R4-T99、R5-T00。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- **下一个可做任务是 R5-T04（web 骨架与 API 客户端）**：依赖 M4-T05、M4-T06、M4-T01、R5-T02.a，全部满足。执行顺序见 TASKS 的 R5 段落：R5-T04 → R5-T05 → R5-T07 → R5-T11，然后第二段。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09.a、R2-T09.b、R2-T09.c、R2-T99、R5-T01、R5-T02、R5-T02.a、R5-T02.b、R5-T02.c、R5-T04、R5-T05.a、E-T01、R4-T00、R4-T01、R4-T02、R4-T03、R4-T04、R4-T05、R4-T06、R4-T07、R4-T08、R4-T99、R5-T00。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- **下一个可做任务是 R5-T05（web 聊天界面）**：依赖 R5-T02、R5-T04、R5-T02.a、R5-T02.b、R5-T02.c、R5-T05.a、M4-T06、R3-T99，全部满足。执行顺序见 TASKS 的 R5 段落：R5-T05 → R5-T07 → R5-T11，然后第二段。
 - R5 的已知接口缺口（R5-T00 定下的任务范围，尚未做的部分）：
   - 变更卡只有 `GET /api/stories/:id/proposals`，没有批准、拒绝与回滚接口（R5-T07.a）；CLI 用 `approveLedgerChangeCard`、`rejectLedgerChangeCard`、`rollbackLedgerChangeCard`。
   - 故事设置接口是 `GET`/`PUT /api/stories/:id/settings`（不是 PATCH）。
+  - 渠道管理接口 `GET`/`PUT /api/channels` 还没有（R5-T03）。
   - `blocks.replace` 的 `ParsedContent` 不含块显示策略；`BlockDisplayStrategy` 在 core 的块注册表里。
 - v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045。
@@ -31,8 +34,9 @@
 - server 的回合路径会补建并执行后台任务：`handleTurnStream` 在 `turn.completed` 之后调用 `BackgroundScheduler.schedule`，不等待 drain；同一时刻只有一个 drain，故事之间先来先做。`schedule` 的 drain 只跑 `resolveStoryBackgroundKinds` 过滤后的类型。
 - 故事级任务入队：`StoryStore.enqueueStoryBackgroundJobs` 按种类写入 `node_id` 为空的 `background_jobs` 行；创建故事与导入卡的路由先调用 `enqueueOpeningBackgroundJobs`（按两个 `needsRun` 过滤）再 `schedule`。`POST /api/stories/:id/openings/generate` 无条件入队一条 `opening_candidates`（仅要求故事无楼层），同样的 `enqueueStoryBackgroundJobs` 在任务已完成时把同一行翻回 `pending`，所以连续手动生成的 `jobId` 相同。
 - 开场候选自动入队只在有素材、无楼层且无待选候选时发生；生成处理器本身只检查“故事没有楼层”，手动任务与生成接口每次追加一批。
-- 分支与面板接口已可用；`packages/web` 尚未创建。`GET /api/nodes/:id/ledger` 返回 `{state, facts, diffs}`，`facts` 来自 `readLedgerFacts`，`diffs` 只含该楼层自己的写入。
+- 分支与面板接口已可用。`GET /api/nodes/:id/ledger` 返回 `{state, facts, diffs}`，`facts` 来自 `readLedgerFacts`，`diffs` 只含该楼层自己的写入。
 - 路径接口：`GET /api/stories/:id/path?nodeId=&limit=&before=`，返回 `{storyId, headNodeId, nodes, hasMore}`。`nodeId` 是锚点、缺省 head，锚点节点包含在返回路径里；`before` 必须在本故事且在该锚点的路径上，返回它之前的 `limit` 楼；`hasMore` 只在返回页之前还有楼层时为真。响应里 `nodes` 一定是根到页末楼的连续顺序。
+- web 包结构：`src/api/{client,sse,index}.ts`、`src/pages/*`、`src/pages/story/*`、`src/components/ErrorNotice.tsx`、`src/styles.css`。`src/api/index.ts` 导出单例 `api`。开发用 `pnpm --filter @dramaticer/web dev`（Vite 默认 5173，`/api` 代理到 `http://127.0.0.1:8787`）；server 默认从 `packages/web/dist` 提供静态文件，找不到文件回退 `index.html`。
 - 偏好记录已闭环：记录写入（四种信号）→ `POST /api/nodes/:id/choice` → `preferences export` 产出回复对 → `pairwise` 盲测与评分 → `scoreboard` 汇总。重新生成与 `swipeNode` 都写 `swipe`；私有库目前没有任何 `preference_events`。
 - 排障命令：`dramaticer explain --node <id> --db <path> [--json]`。只读、零模型调用；导演决策从助手楼层的父楼层读（`director_decisions` 写在生成时的消息楼层上）。记忆槽位的 `retrieval` 只在槽位真正注入内容时写进 Trace；没有命中时该槽位记为 `missing-slot`。上下文分段行会显示 suffix 槽位的 `appendedTo`。`explain` 不受导演模式影响，盲盒下仍然显示完整指令与信号。第 7 段显示当前拍与 `director_beat_states` 记录（节拍 id、完成楼层、`completed`、是否已前进），只读。
 - 导演计划接口：`readDirectorPlan` 按 `ordinal` 还原弧线、序列、节拍；`--set` 与 `PUT /api/stories/:id/director/plan` 都整份替换并把所有行标为 `player`，`mergePlannedArcs` 只更新或追加 `model`/`import` 行，永不删除、不覆盖 `player` 行。`resolveCurrentBeat` 沿路径最近一条 `director_beat_states` 前进：完成则到下一拍（跨序列），未完成停在原地，无状态取第一拍，耗尽返回 null；记录指向已不存在的节拍时跳过该记录，仍无有效记录则回到第一拍。`readDirectorPlan` 与 `resolveCurrentBeat` 的入参是 `DirectorPlanReader`/`DirectorBeatResolver`（`Pick<StoryStore, …>`）。
@@ -45,9 +49,9 @@
 - R4 验收的链路证据在 `packages/core/test/director-acceptance.test.ts` 与 `docs/dev/reports/R4.md`。
 
 ## 下一步
-- **R5-T04 web 骨架与 API 客户端**：新建 `packages/web`（React、Vite、TypeScript，中文，移动端优先），路由包含登录、故事列表、故事页（聊天、分支、台账、导演、设置、渠道）；`api` 客户端用 cookie 凭据与 protocol 类型，`turn` 用 fetch 与 ReadableStream 解析 SSE 并支持 AbortController；本任务只建路由与布局。
-- 之后按顺序做 R5-T05（聊天）、R5-T07（台账只读）、R5-T11（沙箱块渲染）；再进入第二段 R5-T03、R5-T06、R5-T07.a、R5-T08、R5-T09、R5-T10。
-- R5-T05 依赖 R5-T02、R5-T02.a、R5-T02.b、R5-T02.c、R5-T05.a、R5-T04；R5-T08 只依赖 R5-T04、R5-T02、R4-T99，计划、决策、候选与线索接口已经可用。
+- **R5-T05 web 聊天界面**：按 `GET /api/stories/:id/path` 渲染当前路径，向上滚动用 `before` 分页，虚拟列表只渲染可见楼层；消费 `turn.started`、`text.delta`、`thinking.delta`、`blocks.replace`、`turn.completed`、`turn.error`，思考默认折叠，停止用 AbortController 并保留已经收到的正文；失败重试不重复写楼层。SSE 解析与 `streamTurn` 已在 `packages/web/src/api` 提供，直接复用。
+- 之后按顺序做 R5-T07（台账只读）、R5-T11（沙箱块渲染）；再进入第二段 R5-T03、R5-T06、R5-T07.a、R5-T08、R5-T09、R5-T10。
+- R5-T08 只依赖 R5-T04、R5-T02、R4-T99，计划、决策、候选与线索接口已经可用。
 - 引用评测数字时：B1 必须同时说明同模型子集为空、每个对话每档只有 1 个样本；遗忘矛盾率必须同时说明失败题数与可判定样本数；偏好一致率当前没有样本。
 
 ## 注意事项
@@ -95,3 +99,5 @@
 - 整轮门禁在 Windows 上并行跑 100 多个测试文件时，单个测试耗时可以比单独运行高十几倍。跑数据库或文件系统的测试必须显式设置超时（写 `it("…", { timeout: 30_000 }, async () => …)`，第三个参数的超时写法在 vitest 4 会报废弃），`afterEach` 删除临时目录用 `rmSync` 时带上 `maxRetries` 与 `retryDelay`。
 - `packages/core/test/` 与 `packages/st-compat/test/` 下的 `.tmp-*` 目录会被测试创建；它们在 gitignore 里，不要提交。
 - `packages/st-compat` 与 `packages/server` 在测试里通过 `@dramaticer/core` 的 `dist` 解析 core；只跑这两个包的测试前先执行 `pnpm run typecheck`（`tsc -b` 重新构建），否则会读到旧代码。
+- web 的 `typecheck` 与 `build` 会先构建 core 与 protocol；单独跑 web 测试前同样需要这两个包的 `dist`（`packages/web` 通过 `@dramaticer/protocol` 的 `dist` 解析）。
+- web 的 Vite 开发服务器在当前环境只监听 `localhost`（IPv6 `::1`），用 `http://localhost:5173` 访问；`127.0.0.1` 会被拒绝连接。

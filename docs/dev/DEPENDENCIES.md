@@ -22,3 +22,10 @@
 | `png-chunks-extract` | 根目录 | dev | `scripts/snapshot-private-data.mjs` 从角色卡提取世界书引用（ADR-0003） |
 | `png-chunk-text` | `packages/st-compat` | runtime | 解码角色卡 PNG 的 tEXt 文本块（ADR-0003） |
 | `png-chunk-text` | 根目录 | dev | 快照脚本读取角色卡 PNG（ADR-0003） |
+| `react` | `packages/web` | runtime | 界面组件（DESIGN §13） |
+| `react-dom` | `packages/web` | runtime | 浏览器渲染 |
+| `react-router-dom` | `packages/web` | runtime | 页面路由 |
+| `vite` | `packages/web` | dev | 开发服务器与前端构建（DESIGN §13） |
+| `@vitejs/plugin-react` | `packages/web` | dev | JSX 转换 |
+| `@types/react` | `packages/web` | dev | React 类型 |
+| `@types/react-dom` | `packages/web` | dev | React DOM 类型 |

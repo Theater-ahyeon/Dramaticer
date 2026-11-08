@@ -590,7 +590,8 @@
   - `StoryStore` 新增按种类入队的方法（不改表结构），故事创建、导入与生成接口共用它。
   验收：导入合成卡后响应不等待后台就出现 `opening` 与 `opening_candidates` 两条故事级任务，drain 之后开局包与 3 条候选入库；已有楼层时生成接口返回 409；连续两次手动生成得到两批候选，第一批在选中之前仍为 `pending`；选中一条后成为根楼层，其余待选变为 `discarded`；生成接口与创建流程的模型调用都在后台执行；`pnpm check` 通过。
 
-- [ ] **R5-T04 web 骨架与 API 客户端**（原 M4-T10） | 依赖：M4-T05、M4-T06、M4-T01、R5-T02.a | DESIGN §13
+- [x] **R5-T04 web 骨架与 API 客户端**（原 M4-T10） | 依赖：M4-T05、M4-T06、M4-T01、R5-T02.a | DESIGN §13
+  完成：2026-11-08 新建 `packages/web`（React 19、Vite 8、TypeScript，中文，移动端优先）：路由为登录、故事列表与故事页的六个面板（聊天、分支、台账、导演、设置、渠道），面板内容留占位；`api` 客户端带 cookie 凭据并把全部故事、分支、面板与设置接口包成类型化方法，统一抛 `ApiError` 并由 `ErrorNotice` 显示；`parseSseStream` 增量解析任意分块、多事件、注释、CRLF 与多行 data，`streamTurn` 与 `streamRegenerate` 用 fetch 与 ReadableStream 转发事件、`turn.error` 转成 `ApiError`、支持 AbortController，请求体带 `mode` 与 `intensity`；移动端底部导航含安全区，390×844 实测 `scrollWidth` 为 390，桌面宽屏为 220px 侧栏加内容两栏；根脚本接入 `typecheck` 与 `build`，七个依赖登记在 DEPENDENCIES；新增 16 个测试；门禁通过（127 个测试文件、1143 个测试通过，3 个 live 跳过，共 1146 个）
   做什么：
   - 新增 `packages/web`（React、Vite、TypeScript，中文，移动端优先）；路由使用 `react-router-dom`；页面骨架：登录、故事列表、故事页（聊天、分支、台账、导演、设置、渠道）。本任务只建路由与布局，聊天、台账、分支、导演、设置、渠道的内容由后续任务填充。
   - `api` 客户端使用 cookie 凭据与 protocol 类型；`turn` 用 fetch 与 ReadableStream 解析 SSE，支持 AbortController，请求体带 `mode` 与 `intensity`；故事、分支、面板与设置接口各有类型化方法；错误统一显示。
