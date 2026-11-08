@@ -3,19 +3,23 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：148
-- 任务：R4-T08 卡扩展弧线与序列
-- 结果：完成（`DONE`），门禁通过（123 个测试文件、1110 个测试通过，3 个 live 跳过，共 1113 个）。
-  - `DramaticerCardExtension` 增加 `arcs: readonly DirectorArc[]`；`EMPTY_EXTENSION` 的 `arcs` 为 `[]`；`rejectUnknownKeys` 允许 `events`、`npcAgendas`、`arcs` 三个键。
-  - `parseDramaticerCardExtension` 把 `{ arcs: root.arcs ?? [] }` 交给 `parseDirectorPlan(…, "extensions.dramaticer")`，弧线、序列、节拍的全部校验（未知字段、重复 id、空字符串、越界难度、空的 `entrySigns`/`fitPoints`）与错误路径 `extensions.dramaticer.arcs[...]` 都由它给出；没有 `arcs` 时返回空数组。
-  - `DramaticerExtensionImportResult` 增加 `arcs: DirectorPlanMergeResult`；`importDramaticerExtension` 调用 `mergePlannedArcs(store, storyId, { arcs: extension.arcs }, "import")`，同 id 更新、新 id 追加、不删除、不覆盖 `player` 行，重复导入不新增行；没有 `arcs` 时返回 `{inserted:0,updated:0,skipped:0}`。
-  - 新增 2 个 core 测试（解析弧线、字段校验路径）与 4 个 st-compat 测试（import 来源写入、重复导入更新且不新增、玩家行保留、没有 `arcs` 不写计划）；同步原有导入计数断言。
+- 会话：149
+- 任务：R4-T99 R4 验收
+- 结果：完成（`MILESTONE_DONE`），门禁通过（124 个测试文件、1115 个测试通过，3 个 live 跳过，共 1118 个）。
+  - 新增 `packages/core/test/director-acceptance.test.ts`（5 个测试）：
+    - 五轮链路：合法计划（1 弧线、2 序列、3 节拍）→ 每轮 `runChatTurn` 只有 1 次正文请求，导演评估零调用 → 最后一条 user 消息含 `【导演】` 指令与尾注 → 结算每次 1 次请求写入 `director_beat_states` 并前进 → 每轮候选行动 4 条行动加 1 条场景变化 → 25 条候选正文都不出现在任何正文请求里；第 3 拍完成后第 4、5 轮没有当前拍（`signals.beat.beatId` 为 null，结算不提 `beatCompleted`）。
+    - 关闭导演：没有决策记录、没有 `【导演】`、Trace 没有 `appendedTo`。
+    - 盲盒模式：决策与注入照常，指令出现在最后一条 user 消息里；面向玩家的接口隐藏由 server 测试覆盖。
+    - 玩家编辑：`replaceDirectorPlan` 全部行来源 `player`；`mergePlannedArcs` 追加新序列但不改玩家弧线。
+    - 只读评估：`evaluateDirector` 在零客户端调用下给出包含目标、起始迹象与契合点的建议。
+  - 逐条核对 R4-T01 至 R4-T08 的验收标准，复核 I9（实时选择与拍推进纯程序、后台预生成、只给建议）与 I13（`beatCompleted` 可选、没有固定输出要求、尾注写明玩家优先）。
+  - 确认 R5-T08 可复用 `GET/PUT /api/stories/:id/director/plan`、`GET /api/nodes/:id/director`、`GET /api/nodes/:id/actions`、`GET /api/stories/:id/clues` 与 `POST /api/clues/:id/fulfill`；响应类型在 `packages/protocol/src/panels.ts`。
+  - 报告：`docs/dev/reports/R4.md`。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09.a、R2-T09.b、R2-T09.c、R2-T99、R5-T01、R5-T02、E-T01、R4-T00、R4-T01、R4-T02、R4-T03、R4-T04、R4-T05、R4-T06、R4-T07、R4-T08。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- **下一个可做任务是 R4-T99 R4 验收**：依赖 R4 全部任务，已满足。之后是 R5-T00（依赖 R4-T99）。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09.a、R2-T09.b、R2-T09.c、R2-T99、R5-T01、R5-T02、E-T01、R4-T00、R4-T01、R4-T02、R4-T03、R4-T04、R4-T05、R4-T06、R4-T07、R4-T08、R4-T99。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- **下一个可做任务是 R5-T00（细化 R5 任务）**：依赖 R4-T99，已满足。R5-T00 之后按 ADR-0044 的最小界面顺序做 R5-T01、T02、T04、T05、T06、T07、T11，再做其余面板（T03、T08、T09、T10），最后 R5-T12 至 T14。
 - v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
-- R5-T04 依赖 M4-T05、M4-T06、M4-T01，可以排在 R5-T00 之后。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045。
 - HUMAN-09 待处理（不阻塞）：`data/channels.yaml` 已有 `bg-fallback`、`main-fallback`、`codex`，`channels.example.yaml` 还没有这三个别名。
 - HUMAN-10 待处理（不阻塞）：插件不变量是否加进 AGENTS.md。
@@ -34,10 +38,11 @@
 - 落拍检测（R4-T06）：结算窗口的 `beats` 按楼层父节点解析；提示词只在有当前拍时提 `beatCompleted` 且只说“可以判断”；`applySettlementProposals` 写 `director_beat_states` 的时机在结算记录之后、同一事务内。模型没有给该楼层条目、楼层被拒绝、或按路径解析出的拍与提示词里的拍不同时不写状态。`gap_pass` 的合并调用共用同一段提示词与同一套写入。
 - 候选行动（R4-T07）：`candidate_actions` 按 `settled` 为每个已落定助手楼层建任务，档位 `gap`，所以短间隙就执行；处理器优先使用注册表传入的 `plannerClient`。`parseCandidateActionsResponse` 是唯一校验口，五条正文按 `trim()` 后比较重复；写入顺序固定为 4 条 `action` 再 1 条 `scene_change`。`replaceDirectorCandidateActions` 的输入至少要有一条，且每条 `kind` 合法、`text` 非空。候选没有任何上下文槽位，`runChatTurn` 不会读到它们；服务端只按楼层读取，不跟随 head。
 - `extensions.dramaticer` 现在有三个键：`events`、`npcAgendas`、`arcs`；`arcs` 的校验全部复用 `parseDirectorPlan`（路径前缀 `extensions.dramaticer`），导入来源固定为 `import`，导入结果额外返回 `arcs` 的插入、更新与跳过计数。
+- R4 验收的链路证据在 `packages/core/test/director-acceptance.test.ts` 与 `docs/dev/reports/R4.md`。五轮链路里正文请求 5 次、候选请求 5 次、结算每轮 1 次；候选正文不进入上下文；拍完成后不再给节拍建议。
 
 ## 下一步
-- **R4-T99 R4 验收**：逐条核对短线层零模型调用、建议具体到人和事、玩家可编辑与关闭、落拍检测不额外调用、候选行动不进上下文；复核 I9（实时选择与翻页用程序实现，导演只给建议）与 I13（不强制模型输出结构，`beatCompleted` 可不输出）；用假客户端跑一次包含计划、节拍选择、注入、落拍与候选行动的 5 轮链路；写 `docs/dev/reports/R4.md`；确认 R5 任务（尤其 R5-T08 面板复用计划、动作与决策接口）。结果写 `MILESTONE_DONE`。
-- R4-T99 之后是 R5-T00（细化 R5 任务）。
+- **R5-T00 细化 R5 任务**：按 ADR-0044 的执行顺序排定最小界面与其余面板；把模式开关、台账读取接口、偏好信号接线、候选行动与开局候选的显示加入任务，删除被 R1–R4 取代的旧面板描述；确认 R5-T08 复用的计划、决策、候选与线索接口。验收是 R5-T01 至 R5-T14 的依赖与验收和 DESIGN §8、§10.1、§13 一致，且 `pnpm check` 通过。
+- R5-T00 之后按顺序做 R5-T04（web 骨架与 API 客户端）、R5-T05、R5-T06、R5-T07、R5-T11；R5-T08 依赖 R5-T04、R5-T02、R4-T99，现在只差 web 骨架。
 - 引用评测数字时：B1 必须同时说明同模型子集为空、每个对话每档只有 1 个样本；遗忘矛盾率必须同时说明失败题数与可判定样本数；偏好一致率当前没有样本。
 
 ## 注意事项
@@ -76,7 +81,7 @@
 - 工具传输：`resolveToolTransport` 在未显式配置时按 `probe.functionCalling` 决定；文本协议是 `core/src/chat/tool-protocol.ts`，工具说明只插进发给模型的消息副本。
 - 写作契约：`WRITING_CONTRACT` 是四条原则；`protocol` 是固定 id 的静态段，`assertContextTemplate` 要求它是最后一个片段。
 - 快照：`eval-private/raw/` 有 94 个文件；`eval-private/reference/` 有 5 部参照小说。私有数据只写 `eval-private/`，报告不用原文。
-- F0 的私有产物：`eval-private/f0/` 下的 pairs、attribution、judge、fulltext 系列与 `llm-cache/`；R3 的产物：`docs/dev/reports/R3.md`、`R3-fast.md`；O 的产物：`docs/dev/reports/O-opening.md`；R2 的产物：`docs/dev/reports/R2.md`、`R2-judge.md`、`R2-pairwise.md`、`R2-b1.md`、`R2-forgetting.md`、`docs/dev/SCOREBOARD.md`。
+- F0 的私有产物：`eval-private/f0/` 下的 pairs、attribution、judge、fulltext 系列与 `llm-cache/`；R3 的产物：`docs/dev/reports/R3.md`、`R3-fast.md`；O 的产物：`docs/dev/reports/O-opening.md`；R2 的产物：`docs/dev/reports/R2.md`、`R2-judge.md`、`R2-pairwise.md`、`R2-b1.md`、`R2-forgetting.md`、`docs/dev/SCOREBOARD.md`；R4 的产物：`docs/dev/reports/R4.md`。
 - HUMAN-03（事件题抽查）仍未完成，不阻塞。M3 的两项效果目标按 ADR-0029 保留为未证实；v2 的门槛改由 R6 按 B0/B1 对比判定。
 - 插件系统在 DESIGN §19 是唯一权威；C 线兼容插件任务依赖 P2。记忆增强任务（R1-T03.a、R1-T03.b、R1-T04.b、R1-T05、R1-T06、R1-T08）都依赖 R5-T99。
 - 不要修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 下的任何文件。不变量 I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账是唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖任何其他工作区包、ST 语义只在兼容插件里实现。
