@@ -22,8 +22,11 @@ import {
 	isLedgerChangeCardStatus,
 	isOpeningCandidateStatus,
 	listLedgerEntities,
+	parseDirectorPlan,
+	readDirectorPlan,
 	readLedger,
 	readLedgerFacts,
+	replaceDirectorPlan,
 } from "@dramaticer/core";
 import type {
 	CreateContextTemplateRequest,
@@ -40,6 +43,7 @@ import type {
 	NodeLedgerView,
 	SetHeadRequest,
 	StoryCluesView,
+	StoryDirectorPlanView,
 	StoryEntitiesView,
 	StoryJobErrorView,
 	StoryJobsView,
@@ -163,6 +167,10 @@ export async function handleApiRequest(
 		) {
 			requireMethod(method, ["POST"]);
 			handleOpeningPick(res, options, storyId, parts[3]);
+			return;
+		}
+		if (third === "director" && parts.length === 4 && parts[3] === "plan") {
+			await handleDirectorPlan(req, res, method, options, storyId);
 			return;
 		}
 	}
@@ -784,6 +792,47 @@ function handleOpeningPick(
 		),
 	};
 	sendJson(res, 200, view);
+}
+
+async function handleDirectorPlan(
+	req: IncomingMessage,
+	res: ServerResponse,
+	method: string,
+	options: ApiRouteOptions,
+	storyId: string,
+): Promise<void> {
+	requireMethod(method, ["GET", "PUT"]);
+	requireStory(options.store, storyId);
+	if (method === "GET") {
+		const view: StoryDirectorPlanView = {
+			storyId,
+			plan: readDirectorPlan(options.store, storyId),
+		};
+		sendJson(res, 200, view);
+		return;
+	}
+	const body = await readObjectBody(req, options.maxJsonBodyBytes);
+	assertKnownKeys(body, ["plan"]);
+	if (body.plan === undefined) {
+		throw fieldError("plan", "更新导演计划必须提供 plan");
+	}
+	let saved: StoryDirectorPlanView["plan"];
+	try {
+		replaceDirectorPlan(options.store, storyId, parseDirectorPlan(body.plan));
+		saved = readDirectorPlan(options.store, storyId);
+	} catch (error) {
+		throw toPlanFieldError(error);
+	}
+	const view: StoryDirectorPlanView = { storyId, plan: saved };
+	sendJson(res, 200, view);
+}
+
+function toPlanFieldError(error: unknown): HttpError {
+	if (error instanceof HttpError) return error;
+	const message = error instanceof Error ? error.message : String(error);
+	const first = message.split(" ")[0];
+	const path = first?.startsWith("plan") ? first : "plan";
+	return fieldError(path, message);
 }
 
 function buildPath(

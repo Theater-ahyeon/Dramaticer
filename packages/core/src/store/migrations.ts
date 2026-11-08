@@ -817,6 +817,133 @@ export function buildMigrations(
 				END`,
 			],
 		},
+		{
+			version: 32,
+			description: "导演计划：弧线、序列、节拍与楼层拍状态",
+			statements: [
+				`CREATE TABLE story_arcs (
+					story_id TEXT NOT NULL REFERENCES stories(id),
+					arc_id TEXT NOT NULL CHECK (length(arc_id) > 0),
+					title TEXT NOT NULL CHECK (length(title) > 0),
+					through_line TEXT NOT NULL CHECK (length(through_line) > 0),
+					difficulty REAL NOT NULL CHECK (difficulty >= 0 AND difficulty <= 1),
+					red_lines TEXT NOT NULL,
+					source TEXT NOT NULL CHECK (source IN ('player', 'model', 'import')),
+					ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+					created_at TEXT NOT NULL,
+					updated_at TEXT NOT NULL,
+					PRIMARY KEY (story_id, arc_id)
+				) STRICT`,
+				`CREATE INDEX story_arcs_story_ordinal_idx
+				ON story_arcs(story_id, ordinal)`,
+				`CREATE TABLE story_sequences (
+					story_id TEXT NOT NULL REFERENCES stories(id),
+					sequence_id TEXT NOT NULL CHECK (length(sequence_id) > 0),
+					arc_id TEXT NOT NULL,
+					ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+					title TEXT NOT NULL CHECK (length(title) > 0),
+					source TEXT NOT NULL CHECK (source IN ('player', 'model', 'import')),
+					created_at TEXT NOT NULL,
+					updated_at TEXT NOT NULL,
+					PRIMARY KEY (story_id, sequence_id)
+				) STRICT`,
+				`CREATE INDEX story_sequences_arc_ordinal_idx
+				ON story_sequences(story_id, arc_id, ordinal)`,
+				`CREATE TRIGGER story_sequences_arc_same_story
+				BEFORE INSERT ON story_sequences
+				WHEN COALESCE(
+					(SELECT story_id FROM story_arcs
+						WHERE story_id = NEW.story_id AND arc_id = NEW.arc_id),
+					''
+				) <> NEW.story_id
+				BEGIN
+					SELECT RAISE(ABORT, '序列的弧线必须存在且属于同一个故事');
+				END`,
+				`CREATE TRIGGER story_sequences_identity_immutable
+				BEFORE UPDATE ON story_sequences
+				WHEN NEW.story_id <> OLD.story_id
+					OR NEW.sequence_id <> OLD.sequence_id
+					OR NEW.arc_id <> OLD.arc_id
+				BEGIN
+					SELECT RAISE(ABORT, '序列的故事、id 与所属弧线不可修改');
+				END`,
+				`CREATE TABLE story_beats (
+					story_id TEXT NOT NULL REFERENCES stories(id),
+					beat_id TEXT NOT NULL CHECK (length(beat_id) > 0),
+					sequence_id TEXT NOT NULL,
+					ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+					goal TEXT NOT NULL CHECK (length(goal) > 0),
+					entry_signs TEXT NOT NULL,
+					fit_points TEXT NOT NULL,
+					source TEXT NOT NULL CHECK (source IN ('player', 'model', 'import')),
+					created_at TEXT NOT NULL,
+					updated_at TEXT NOT NULL,
+					PRIMARY KEY (story_id, beat_id)
+				) STRICT`,
+				`CREATE INDEX story_beats_sequence_ordinal_idx
+				ON story_beats(story_id, sequence_id, ordinal)`,
+				`CREATE TRIGGER story_beats_sequence_same_story
+				BEFORE INSERT ON story_beats
+				WHEN COALESCE(
+					(SELECT story_id FROM story_sequences
+						WHERE story_id = NEW.story_id AND sequence_id = NEW.sequence_id),
+					''
+				) <> NEW.story_id
+				BEGIN
+					SELECT RAISE(ABORT, '节拍的序列必须存在且属于同一个故事');
+				END`,
+				`CREATE TRIGGER story_beats_identity_immutable
+				BEFORE UPDATE ON story_beats
+				WHEN NEW.story_id <> OLD.story_id
+					OR NEW.beat_id <> OLD.beat_id
+					OR NEW.sequence_id <> OLD.sequence_id
+				BEGIN
+					SELECT RAISE(ABORT, '节拍的故事、id 与所属序列不可修改');
+				END`,
+				`CREATE TABLE director_beat_states (
+					node_id TEXT PRIMARY KEY REFERENCES nodes(id),
+					story_id TEXT NOT NULL REFERENCES stories(id),
+					beat_id TEXT NOT NULL,
+					completed INTEGER NOT NULL CHECK (completed IN (0, 1)),
+					created_at TEXT NOT NULL
+				) STRICT`,
+				`CREATE INDEX director_beat_states_story_beat_idx
+				ON director_beat_states(story_id, beat_id)`,
+				`CREATE TRIGGER director_beat_states_story_matches_node
+				BEFORE INSERT ON director_beat_states
+				WHEN COALESCE((SELECT story_id FROM nodes WHERE id = NEW.node_id), '') <> NEW.story_id
+				BEGIN
+					SELECT RAISE(ABORT, '拍状态的 story_id 必须与所在楼层一致');
+				END`,
+				`CREATE TRIGGER director_beat_states_beat_same_story
+				BEFORE INSERT ON director_beat_states
+				WHEN COALESCE(
+					(SELECT story_id FROM story_beats
+						WHERE story_id = NEW.story_id AND beat_id = NEW.beat_id),
+					''
+				) <> NEW.story_id
+				BEGIN
+					SELECT RAISE(ABORT, '拍状态的节拍必须存在且属于同一个故事');
+				END`,
+				`CREATE TRIGGER director_beat_states_identity_immutable
+				BEFORE UPDATE ON director_beat_states
+				WHEN NEW.node_id <> OLD.node_id OR NEW.story_id <> OLD.story_id
+				BEGIN
+					SELECT RAISE(ABORT, '拍状态的楼层与故事归属不可修改');
+				END`,
+				`CREATE TRIGGER director_beat_states_beat_same_story_update
+				BEFORE UPDATE ON director_beat_states
+				WHEN NEW.beat_id <> OLD.beat_id
+					AND COALESCE(
+						(SELECT story_id FROM story_beats
+							WHERE story_id = NEW.story_id AND beat_id = NEW.beat_id),
+						''
+					) <> NEW.story_id
+				BEGIN
+					SELECT RAISE(ABORT, '拍状态的节拍必须存在且属于同一个故事');
+				END`,
+			],
+		},
 	];
 }
 

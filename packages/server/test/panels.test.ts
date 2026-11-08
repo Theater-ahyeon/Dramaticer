@@ -8,6 +8,7 @@ import type {
 	NodeEventsView,
 	NodeLedgerView,
 	StoryCluesView,
+	StoryDirectorPlanView,
 	StoryEntitiesView,
 	StoryLoreView,
 	StoryOpeningPickResult,
@@ -370,5 +371,92 @@ describe("节点面板接口", () => {
 				.listOpeningCandidates("s2")
 				.filter((candidate) => candidate.status === "discarded"),
 		).toHaveLength(1);
+	});
+
+	it("导演计划可以读取与整份替换，非法计划指出路径", async () => {
+		const running = await startTestServer();
+		running.store.createStory({ id: "s1", title: "计划故事" });
+		const plan = {
+			arcs: [
+				{
+					id: "arc-1",
+					title: "开学",
+					throughLine: "凛必须说出真相",
+					difficulty: 0.4,
+					redLines: ["不能伤害凛"],
+					sequences: [
+						{
+							id: "seq-1",
+							title: "相遇",
+							beats: [
+								{
+									id: "beat-1",
+									goal: "确认来意",
+									entrySigns: ["凛堵在门口"],
+									fitPoints: ["凛盯着你"],
+								},
+							],
+						},
+					],
+				},
+			],
+		};
+
+		const empty = await getJson<StoryDirectorPlanView>(
+			running.origin,
+			"/api/stories/s1/director/plan",
+		);
+		expect(empty.plan).toEqual({ arcs: [] });
+
+		const put = await fetch(`${running.origin}/api/stories/s1/director/plan`, {
+			method: "PUT",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ plan }),
+		});
+		expect(put.status).toBe(200);
+		const saved = (await put.json()) as StoryDirectorPlanView;
+		expect(saved.storyId).toBe("s1");
+		expect(saved.plan).toEqual(plan);
+		expect(
+			running.store
+				.listDirectorPlanEntries("s1")
+				.arcs.every((arc) => arc.source === "player"),
+		).toBe(true);
+
+		const reread = await getJson<StoryDirectorPlanView>(
+			running.origin,
+			"/api/stories/s1/director/plan",
+		);
+		expect(reread.plan).toEqual(plan);
+
+		const bad = await fetch(`${running.origin}/api/stories/s1/director/plan`, {
+			method: "PUT",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				plan: {
+					arcs: [{ ...plan.arcs[0], difficulty: 2 }],
+				},
+			}),
+		});
+		expect(bad.status).toBe(400);
+		const badBody = await errorBody(bad);
+		expect(badBody.error.details).toEqual({
+			path: "plan.arcs[0].difficulty",
+		});
+
+		const unknownStory = await fetch(
+			`${running.origin}/api/stories/nope/director/plan`,
+		);
+		expect(unknownStory.status).toBe(404);
+
+		const missingPlan = await fetch(
+			`${running.origin}/api/stories/s1/director/plan`,
+			{
+				method: "PUT",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({}),
+			},
+		);
+		expect(missingPlan.status).toBe(400);
 	});
 });

@@ -1135,7 +1135,7 @@
 
 - **背景**：R4-T00 要把 DESIGN §8 的长线层、短线层、落拍检测、候选行动、注入玩家消息末尾、透明与盲盒模式与卡扩展拆成可执行任务。M3 已实现线索、事件池、NPC 议程、重复检测、节奏状态机与导演槽位；O 已实现开局包、开场导演与首楼候选。新机制还需要确定计划存储、当前拍解析、优先级、注入口与配置形状。
 - **决定**：
-  - 长线计划存三张表：`story_arcs`、`story_sequences`、`story_beats`，迁移 v32；每行带 `source`，取 `player`、`model`、`import`。玩家编辑用 `replaceDirectorPlan` 整份替换并全部标为 `player`；后台规划器与卡导入用 `mergePlannedArcs` 按 id 更新或追加，不删除任何行，不覆盖 `player` 行。
+  - 长线计划存三张表：`story_arcs`、`story_sequences`、`story_beats`，迁移 v32；每行带 `source`，取 `player`、`model`、`import`。`story_arcs` 与另两张表一样带 `ordinal`，因为“按原顺序读回”需要弧线自己的顺序。玩家编辑用 `replaceDirectorPlan` 整份替换并全部标为 `player`；后台规划器与卡导入用 `mergePlannedArcs` 按 id 更新或追加，不删除任何行，不覆盖 `player` 行。
   - 当前拍按路径解析：迁移 v32 新增 `director_beat_states(node_id PRIMARY KEY, story_id, beat_id, completed, created_at)`；生成时在用户楼层写当轮当前拍，结算时在助手楼层写该拍是否完成；`resolveCurrentBeat` 从节点沿路径向前找最近一条状态，完成则前进到下一拍，计划耗尽返回 null。分支切换只读当前路径，不建快照表。
   - 短线选择沿用 `evaluateDirector` 的优先级表：重复正文 40、开场 35、线索过老 30、场景重复 25、节拍 23、线索过多 20、事件池 10、节奏 5。节拍建议低于全部纠偏信号，高于线索数量与节奏提示；重复正文仍然压过一切。机制注册顺序与 M3 相同，节拍插在开场之后。
   - 强度配置拆成两个字段：`intensity` 作用于节拍建议，单轮参数优先；`openingIntensity` 继续只作用于开场导演。两者共用 `director/intensity.ts` 的渲染函数，类型统一为 `DirectorIntensity`。

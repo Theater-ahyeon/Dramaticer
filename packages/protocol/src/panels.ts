@@ -1,5 +1,6 @@
 import type {
 	DirectorDecision,
+	DirectorPlan,
 	Entity,
 	JsonValue,
 	LedgerChangeCard,
@@ -115,6 +116,17 @@ export interface StoryOpeningsView {
 	readonly storyId: string;
 	readonly status: OpeningCandidateStatus | "all";
 	readonly candidates: readonly OpeningCandidateRecord[];
+}
+
+/** `GET` 与 `PUT /api/stories/:id/director/plan` 的载荷。 */
+export interface StoryDirectorPlanView {
+	readonly storyId: string;
+	readonly plan: DirectorPlan;
+}
+
+/** `PUT /api/stories/:id/director/plan` 的请求体；整份替换，来源为玩家。 */
+export interface StoryDirectorPlanRequest {
+	readonly plan: DirectorPlan;
 }
 
 /** 选中开场候选后的结果；候选正文已经成为当前路径的根楼层。 */
