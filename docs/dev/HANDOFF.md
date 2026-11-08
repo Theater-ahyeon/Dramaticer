@@ -3,18 +3,19 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：110
-- 任务：R3-T04 快回合真实渠道验收
-- 结果：完成（`DONE`），门禁通过（96 个测试文件、865 个测试通过，3 个 live 跳过，共 868 个）。
-  - 用 `main-fallback`（模型 id `auto/deepseek-v4.1-flash`，Trace 记录 `group/auto-deepseek-v4-1-flash`，渠道 `main`）与合成卡 `packages/st-compat/test/fixtures/chat-card.json`、固定故事 `r3-fast` 连续跑 20 轮快回合。运行方式是直接调用 `runChatTurn`，单个数据库、单个客户端连续 20 轮，每轮一条固定玩家消息；临时脚本运行后已删除。
-  - 20/20 成功、0 失败。首字最小 838、P50 1,448、P90 3,435、最大 4,371 毫秒；生成最小 1,910、P50 2,666、P90 4,988、最大 5,841 毫秒。工具轮 0 轮 17 次、1 轮 3 次；`maxRounds` 全为 3，`capped` 全为 false；读取工具调用 5 次（第 1 轮 2 次、第 2 轮 1 次、第 9 轮 2 次）；模型请求 23 次；截断 0/20；结束原因 19 次 `stop`、第 20 轮 `toolUse`（模型在正文后调用写入类工具，写入只收集）。
-  - 与 F0 的 ST 基线（首字 P50 4.5 秒、生成 P50 50 秒）并列，但本次是短回复样本（输出 token P50 115、正文 P50 145 字符），报告写明两组数字只作量级并列。
-  - 第一次 20 轮在该别名没有体检记录时运行，`structuredOutput` 回落 `text-tags`，读取工具没有提供给模型，工具轮全为 0；随后用 `dramaticer probe main --model main-fallback` 补体检（2026-11-08T01:02:44Z，`functionCalling=supported`、`structuredOutput=function-call`）并重跑，才有上面的读取工具轮次。体检结果写在本地 `data/channels.yaml`（已被 git 忽略）。
-  - 私有报告 `eval-private/reports/R3-fast.md`，统计版 `docs/dev/reports/R3-fast.md`，原始逐轮数据 `eval-private/reports/R3-fast.json`。
+- 会话：111
+- 任务：R3-T99 R3 验收
+- 结果：完成（`MILESTONE_DONE`），门禁通过（96 个测试文件、865 个测试通过，3 个 live 跳过，共 868 个）。
+  - 逐条核对 R3-T01 至 R3-T04 的验收标准，写成 `docs/dev/reports/R3.md`。R3 目标测试单独重跑 41 个通过（`turn-mode` 8、`chat-tool-loop` 6、`tool-transport` 6、`writing-contract` 6、`chat-cli` 15）。
+  - I6 复核：`turnMode` 的写入只有存储层 `store.updateStorySettings`（玩家显式设置），读取只有 `chat/turn.ts` 的 `resolveTurnMode`；`packages/server/src` 没有 `turnMode` 引用；失败、重试与设置变化都不改模式；请求 deep 在追加用户楼层之前失败。
+  - I13 复核：读取工具可选、模型不调用时直接收束；结构化工具只在 `function-call` 提供；`block_format` 默认关闭且写明按需输出；写作契约是四条原则，没有剧本式命令。
+  - 真实渠道数字沿用 R3-T04：20/20 成功，首字 P50 1,448 毫秒，生成 P50 2,666 毫秒，工具轮最多 1，截断 0/20，请求 23 次。本会话没有重跑 live 测试。
+  - 确认 O 与 R2：依赖全部 `[x]`；schema v28，O-T01 占 v29、O-T03 占 v30、R2-T07 占 v31，都在预留区间内；O 与 R2 都按快回合路径编写，不依赖深回合。
+  - TASKS 的阶段目录把 R1、R3 标为完成，O 标为当前阶段。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`；未完成任务见 `docs/dev/TASKS.md`。
-- **R3 只剩 R3-T99 验收**。v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`；未完成任务见 `docs/dev/TASKS.md`。
+- **R3 已完成，下一个阶段是 O 开局与方向**。v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045。
 - HUMAN-09 待处理（不阻塞）：`data/channels.yaml` 已有 `bg-fallback`、`main-fallback`、`codex`，`channels.example.yaml` 还没有这三个别名。
 - HUMAN-10 待处理（不阻塞）：插件不变量是否加进 AGENTS.md。
@@ -36,22 +37,23 @@
 - 快照：`eval-private/raw/` 有 94 个文件；manifest 记录 `corpus` 与 `sourceMtime`。`eval-private/reference/` 有 5 部参照小说。
 - 事件表已在 v7 建立；批量抽取窗口与抽取记录在 R1-T03 实现；批量回填管线在 R1-T04.a 实现，真实回填由 R1-T04.b 执行。
 - F0 的私有产物：`eval-private/f0/pairs.jsonl`（290 对）、`attribution.jsonl`、`judge.jsonl`（793 行）、`fulltext/work.db`、`fulltext-probe.json`、`fulltext-branches.json`、`fulltext-generations.jsonl`、`fulltext-judgements.jsonl`、`fulltext-summary.json`、`llm-cache/`。`eval-private/reports/f0-corpus-map.json` 是对话编号到文件路径的映射。
-- R3-T04 的私有产物：`eval-private/reports/R3-fast.md` 与 `R3-fast.json`，以及统计版 `docs/dev/reports/R3-fast.md`。
+- R3 的产物：`docs/dev/reports/R3.md`（验收报告）、`docs/dev/reports/R3-fast.md` 与私有 `eval-private/reports/R3-fast.md`、`R3-fast.json`。
 - HUMAN-03（事件题抽查）仍未完成，不阻塞任何任务；其余 HUMAN 条目均已完成或明确不阻塞。
 - M3 的两项效果目标按 ADR-0029 保留为未证实；v2 的门槛改由 R6 按 B0/B1 对比判定。
 - 插件系统在 DESIGN §19 是唯一权威；P 阶段任务在 TASKS 的「P：插件内核」小节，C 线兼容插件任务已存在且依赖 P2。
 
 ## 下一步
-- **R3-T99 R3 验收**：逐条核对快回合、模式开关、文本协议与写作契约；复核 I6（程序不自动切换）与 I13；写 `docs/dev/reports/R3.md`；确认 O 与 R2 任务的依赖仍然成立。结果写 `MILESTONE_DONE`。
-- R3-T99 需要的证据：门禁；`docs/dev/reports/R3-fast.md` 的 20 轮数字；R3-T01 的模式测试（`turn-mode.test.ts`）、R3-T02 的传输测试（`chat-tool-loop.test.ts` 的文本协议用例）、R3-T03 的契约测试（`writing-contract.test.ts`）。live 测试不必重跑；正文路由问题记录在 HUMAN-11。
+- **O-T01 开局包**：迁移 v29 新增 `opening_packs`；新增后台任务 `opening`（故事创建或导入后入队，输入卡、世界书常驻条目与玩家开场白），严格 JSON 整包校验，重复执行覆盖同一行；开局包只作导演输入、不写台账，回合内不调用模型。先读 DESIGN §8.4 与 §7.3 的入队条件。
+- O-T01 之后是 O-T02（开场导演与前 10 楼强度）、O-T03（首楼多候选，迁移 v30），然后是 O-T99。O-T99 依赖 R2-T02、R2-T03，所以 O 阶段中途会等 R2 的试玩与探针。
+- O 阶段要用的既有能力：后台任务注册表（`background/registry`，`settled`/`confirmed` 入队条件）、`dramaticer work` 调度、故事导入路径 `importCardContent`、导演槽位与 `DirectorConfig`。
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
 - 不要修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 下的任何文件。不变量 I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账是唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖任何其他工作区包、ST 语义只在兼容插件里实现。
-- 没有体检记录的模型别名：`resolveStructuredOutputMode(null)` 返回 `text-tags`，而读取工具只在 `structuredOutput === "function-call"` 或工具传输为 `text` 时提供给模型（`chat/turn.ts` 的 `readTools`）。想实测读取工具路径，先对别名跑 `dramaticer probe <channel> --model <alias>`；这条规则也解释了为什么 `main-fallback` 第一次 20 轮的工具轮全为 0。`chat-tool-loop.test.ts` 有一条断言锁住“文本标签模式 + 原生传输不提供工具定义”，改动前先读那条用例。
-- 回合模式：`TurnMode`、`DEFAULT_MAX_READ_ROUNDS`、`isTurnMode`、`assertMaxReadRounds`、`assertTurnModeSupported` 都在 `core/src/chat/mode.ts`。模式与软上限只在 `chat/turn.ts` 的 `resolveTurnMode` 解析一次，单轮参数优先于故事设置；新增入口不要另写一套判断。程序没有任何按轮数、工具调用数、错误或预算切换模式的代码路径（I6）。
+- 回合模式：`TurnMode`、`DEFAULT_MAX_READ_ROUNDS`、`isTurnMode`、`assertTurnMode`、`assertMaxReadRounds`、`assertTurnModeSupported` 都在 `core/src/chat/mode.ts`。模式与软上限只在 `chat/turn.ts` 的 `resolveTurnMode` 解析一次，单轮参数优先于故事设置；新增入口不要另写一套判断。程序没有任何按轮数、工具调用数、错误或预算切换模式的代码路径（I6）。
 - 深回合在 R3b 实现前请求即失败；失败在 `runChatTurn` 追加用户楼层之前发生，所以不会留下只有用户楼层的分支。不要为了“能跑”把它降级成快回合。
 - 读取工具软上限是可配的软上限（默认 3），执行器没有上限常量。达到上限时若模型仍只请求工具且正文为空，执行器会抛错；有正文时正常收束并把 `tools.capped` 记为 true。
+- 没有体检记录的模型别名：`resolveStructuredOutputMode(null)` 返回 `text-tags`，而读取工具只在 `structuredOutput === "function-call"` 或工具传输为 `text` 时提供给模型（`chat/turn.ts` 的 `readTools`）。想实测读取工具路径，先对别名跑 `dramaticer probe <channel> --model <alias>`；这条规则也解释了为什么 `main-fallback` 第一次 20 轮的工具轮全为 0。`chat-tool-loop.test.ts` 有一条断言锁住“文本标签模式 + 原生传输不提供工具定义”，改动前先读那条用例。
 - 工具传输：`LlmToolTransport`、`LLM_TOOL_TRANSPORTS`、`isToolTransport`、`assertToolTransport`、`resolveToolTransport` 在 `core/src/llm/channels.ts`。显式 `models.<alias>.tools.transport` 优先；没有配置时 `probe.functionCalling === "unsupported"` 走 `text`，其余走 `native`。新增调用 `runChatTurn` 的入口要传 `toolTransport`（按模型解析），否则一律按原生函数调用。
 - 文本协议：`core/src/chat/tool-protocol.ts` 的 `extractTextToolCalls`、`renderToolProtocol`、`TextToolStreamFilter`。工具说明只插进发给模型的消息副本（开头几条 system 消息之后），不改组装好的上下文与 Trace 的 `context.entries`。文本传输下 `structuredOutput` 是 `text-tags` 也提供读取工具；写入工具只在 `function-call` 模式提供定义，写入仍然只收集、不执行（I12）。`<tool>` 片段不进入楼层原文，流式输出里也被隐藏；未闭合的 `<tool` 片段按正文保留。
 - 写作契约：`core/src/chat/template.ts` 的 `WRITING_CONTRACT` 是四条原则，接在两种协议文本之前；`context/template.ts` 的 `WRITING_CONTRACT_SEGMENT_ID` 固定为 `"protocol"`，`assertContextTemplate` 要求该 id 出现时是最后一个片段。`protocol` 是静态段，组装后是最后一条 system 消息（历史之后），故事模板可以改写它的文本。新增消息顺序断言时注意这一点：`core/test/chat-turn.test.ts` 的 `["system","assistant","user","system"]`、`st-compat/test/chat-cli.test.ts` 与 `core/test/writing-contract.test.ts`。
