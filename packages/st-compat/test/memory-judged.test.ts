@@ -257,11 +257,13 @@ async function run(
 	store: StoryStore,
 	items: readonly MemoryQuestion[],
 	judge: LlmClient,
+	askAtNode?: string,
 ): Promise<JudgedMemoryQuestionRecord[]> {
 	return runJudgedMemoryQuestions({
 		store,
 		storyId: STORY_ID,
 		questions: items,
+		askAtNode,
 		template: createDefaultContextTemplate({ structuredOutput: "text-tags" }),
 		providers: createStandardChatProviders({
 			store,
@@ -341,6 +343,27 @@ describe("五类记忆题判分", () => {
 		expect(fabricatedPrompt).toContain("参考答案：");
 		expect(fabricatedPrompt).toContain("证据楼层原文");
 		expect(fabricatedPrompt).toContain("楼层 seed-1");
+		store.close();
+	});
+
+	it("可以在指定楼层提问，并拒绝不在当前路径上的提问楼层", async () => {
+		const dir = makeDir();
+		const store = openStore(dir);
+		store.appendNode({
+			id: "off-path",
+			storyId: STORY_ID,
+			parentId: "seed-11",
+			role: "user",
+			raw: "旁支楼层。",
+		});
+		store.setHead(STORY_ID, "seed-11");
+		const items = [question({ id: "q-override", category: "extraction" })];
+		const records = await run(store, items, createJudge().client, "seed-3");
+		expect(records[0]?.askedAtNode).toBe("seed-3");
+		expect(records[0]?.verdict).toBe("consistent");
+		await expect(
+			run(store, items, createJudge().client, "off-path"),
+		).rejects.toThrow(/不在当前路径上/);
 		store.close();
 	});
 

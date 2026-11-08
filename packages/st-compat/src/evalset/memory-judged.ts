@@ -28,6 +28,8 @@ const MAX_EVIDENCE_CHARS = 5_000;
 export interface JudgedMemoryQuestionRecord {
 	readonly story: string;
 	readonly question: MemoryQuestion;
+	/** 实际提问楼层；没指定覆盖时与题目的 askAtNode 相同。 */
+	readonly askedAtNode: string;
 	readonly status: "done" | "failed";
 	readonly answer: string | null;
 	readonly verdict: ProbeVerdict | null;
@@ -55,6 +57,121 @@ export interface JudgedMemoryRunOptions {
 	};
 	readonly maxTokens?: number;
 	readonly temperature?: number;
+	/** 在指定楼层提问；缺省用每道题自己的 askAtNode。 */
+	readonly askAtNode?: string;
+}
+
+/** 提问只需题目文本、参考答案、证据与编造标记；记忆题与探针题共用。 */
+export interface JudgedQuestionSpec {
+	readonly id: string;
+	readonly question: string;
+	readonly answer: string;
+	readonly evidenceNodes: readonly string[];
+	readonly fabricated: boolean;
+}
+
+export interface JudgedQuestionAnswer {
+	readonly status: "done" | "failed";
+	readonly answer: string | null;
+	readonly verdict: ProbeVerdict | null;
+	/** 编造题判为矛盾才算编造。 */
+	readonly fabricated: boolean;
+	readonly reason: string | null;
+	readonly judgeAttempts: number;
+	readonly error: string | null;
+	readonly answerUsage: LlmUsage | null;
+	readonly judgeUsage: LlmUsage | null;
+}
+
+export interface AnswerJudgedQuestionInput {
+	readonly store: StoryStore;
+	readonly storyId: string;
+	readonly askAtNode: string;
+	readonly spec: JudgedQuestionSpec;
+	readonly template: ContextTemplate;
+	readonly providers: ContextSlotProviders;
+	readonly budgetTokens: number;
+	readonly assistant: { readonly client: LlmClient; readonly model: string };
+	readonly judge: {
+		readonly client: LlmClient;
+		readonly model: string;
+		readonly maxTokens?: number;
+	};
+	readonly maxTokens?: number;
+	readonly temperature?: number;
+}
+
+/**
+ * 在指定楼层组装上下文、生成回答，再交给与探针同一套的裁判。
+ * 不写楼层，也不改 head；调用方负责确认提问楼层在当前路径上。
+ */
+export async function answerJudgedQuestion(
+	input: AnswerJudgedQuestionInput,
+): Promise<JudgedQuestionAnswer> {
+	for (const evidence of input.spec.evidenceNodes) {
+		if (!input.store.getNode(evidence)) {
+			throw new Error(`题目 ${input.spec.id} 的证据楼层不存在：${evidence}`);
+		}
+	}
+	const evidenceText = renderEvidence(input.store, input.spec.evidenceNodes);
+	const assembled = await assembleContext({
+		template: input.template,
+		budgetTokens: input.budgetTokens,
+		storyId: input.storyId,
+		nodeId: input.askAtNode,
+		providers: input.providers,
+	});
+	let answer: string;
+	let answerUsage: LlmUsage | null;
+	try {
+		const result = await input.assistant.client.complete({
+			messages: [
+				...assembled.messages,
+				{
+					role: "user",
+					content: `${PROBE_INSTRUCTION}${input.spec.question}`,
+				},
+			],
+			model: input.assistant.model,
+			temperature: input.temperature ?? DEFAULT_JUDGED_MEMORY_TEMPERATURE,
+			maxTokens: input.maxTokens ?? DEFAULT_JUDGED_MEMORY_MAX_TOKENS,
+		});
+		answer = result.text.trim();
+		answerUsage = result.usage;
+		if (answer.length === 0) throw new Error("记忆题回答为空");
+	} catch (error) {
+		return {
+			status: "failed",
+			answer: null,
+			verdict: null,
+			fabricated: false,
+			reason: null,
+			judgeAttempts: 0,
+			error: error instanceof Error ? error.message : String(error),
+			answerUsage: null,
+			judgeUsage: null,
+		};
+	}
+	const judged = await judgeAnswerConsistency({
+		judge: input.judge,
+		question: input.spec.question,
+		answer,
+		snapshot: readLedger(input.store, input.askAtNode) ?? {},
+		referenceAnswer: input.spec.answer,
+		evidenceText,
+		fabricated: input.spec.fabricated,
+	});
+	return {
+		status: judged.status,
+		answer,
+		verdict: judged.verdict,
+		fabricated: input.spec.fabricated && judged.verdict === "contradicted",
+		reason: judged.reason,
+		judgeAttempts: judged.attempts,
+		error: judged.error,
+		answerUsage,
+		judgeUsage: judged.usage,
+	};
 }
 
 /**
@@ -76,79 +193,38 @@ export async function runJudgedMemoryQuestions(
 				`题目 ${question.id} 属于故事 ${question.story}，与 ${options.storyId} 不一致`,
 			);
 		}
-		if (!onPath.has(question.askAtNode)) {
+		const askedAtNode = options.askAtNode ?? question.askAtNode;
+		if (!onPath.has(askedAtNode)) {
 			throw new Error(
-				`题目 ${question.id} 的提问楼层不在当前路径上：${question.askAtNode}`,
+				`题目 ${question.id} 的提问楼层不在当前路径上：${askedAtNode}`,
 			);
 		}
-		for (const evidence of question.evidenceNodes) {
-			if (!options.store.getNode(evidence)) {
-				throw new Error(`题目 ${question.id} 的证据楼层不存在：${evidence}`);
-			}
-		}
-		const evidenceText = renderEvidence(options.store, question.evidenceNodes);
-		const assembled = await assembleContext({
-			template: options.template,
-			budgetTokens: options.budgetTokens,
+		const result = await answerJudgedQuestion({
+			store: options.store,
 			storyId: options.storyId,
-			nodeId: question.askAtNode,
+			askAtNode: askedAtNode,
+			spec: question,
+			template: options.template,
 			providers: options.providers,
-		});
-		let answer: string;
-		let answerUsage: LlmUsage | null;
-		try {
-			const result = await options.assistant.client.complete({
-				messages: [
-					...assembled.messages,
-					{
-						role: "user",
-						content: `${PROBE_INSTRUCTION}${question.question}`,
-					},
-				],
-				model: options.assistant.model,
-				temperature: options.temperature ?? DEFAULT_JUDGED_MEMORY_TEMPERATURE,
-				maxTokens: options.maxTokens ?? DEFAULT_JUDGED_MEMORY_MAX_TOKENS,
-			});
-			answer = result.text.trim();
-			answerUsage = result.usage;
-			if (answer.length === 0) throw new Error("记忆题回答为空");
-		} catch (error) {
-			records.push({
-				story: options.storyId,
-				question,
-				status: "failed",
-				answer: null,
-				verdict: null,
-				fabricated: false,
-				reason: null,
-				judgeAttempts: 0,
-				error: error instanceof Error ? error.message : String(error),
-				answerUsage: null,
-				judgeUsage: null,
-			});
-			continue;
-		}
-		const judged = await judgeAnswerConsistency({
+			budgetTokens: options.budgetTokens,
+			assistant: options.assistant,
 			judge: options.judge,
-			question: question.question,
-			answer,
-			snapshot: readLedger(options.store, question.askAtNode) ?? {},
-			referenceAnswer: question.answer,
-			evidenceText,
-			fabricated: question.fabricated,
+			maxTokens: options.maxTokens,
+			temperature: options.temperature,
 		});
 		records.push({
 			story: options.storyId,
 			question,
-			status: judged.status,
-			answer,
-			verdict: judged.verdict,
-			fabricated: question.fabricated && judged.verdict === "contradicted",
-			reason: judged.reason,
-			judgeAttempts: judged.attempts,
-			error: judged.error,
-			answerUsage,
-			judgeUsage: judged.usage,
+			askedAtNode,
+			status: result.status,
+			answer: result.answer,
+			verdict: result.verdict,
+			fabricated: result.fabricated,
+			reason: result.reason,
+			judgeAttempts: result.judgeAttempts,
+			error: result.error,
+			answerUsage: result.answerUsage,
+			judgeUsage: result.judgeUsage,
 		});
 	}
 	return records;
@@ -351,7 +427,7 @@ export function renderJudgedMemorySection(
 			`#### ${question.id}（${memoryQuestionCategoryLabel(question.category)}，${verdict}）`,
 			"",
 			`- 故事：${record.story}`,
-			`- 提问楼层：${question.askAtNode}`,
+			`- 提问楼层：${record.askedAtNode}`,
 			`- 证据楼层：${question.evidenceNodes.join("、")}`,
 			`- 问题：${cell(question.question)}`,
 			`- 参考答案：${cell(question.answer)}`,

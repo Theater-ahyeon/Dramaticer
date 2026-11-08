@@ -26,6 +26,12 @@ import {
 } from "@dramaticer/core";
 import { resolveStoryContextTemplate } from "../chat/session.js";
 import {
+	type ForgettingRunResult,
+	readForgettingQuestionFiles,
+	runForgettingQuestions,
+	summarizeInRunProbes,
+} from "./forgetting.js";
+import {
 	DEFAULT_PLAYTEST_MODEL,
 	DEFAULT_PLAYTEST_ROUNDS,
 	DEFAULT_PLAYTEST_USER_MODEL,
@@ -62,8 +68,12 @@ const USAGE = [
 	"  --branch-at <轮次> 在这些轮次之后新建并行分支并切过去，逗号分隔",
 	`  --probe-every <n> 每多少轮插入一次一致性探针，默认 ${DEFAULT_PROBE_EVERY}，0 表示关闭`,
 	`  --probe-min-age <n> 探针事实至少早于 head 多少楼，默认 ${DEFAULT_PROBE_MIN_AGE_FLOORS}`,
+	"  --head <nodeId>   从指定助手楼层继续生成，用于长对话分支点评测",
 	"  --judge-model <m> 裁判模型别名，默认按 roles.judge 解析",
 	"  --judge-turns     每轮让裁判判断是否重 roll 与是否遵循指令",
+	"  --memory-questions <path> 跑完后在最终 head 上提问的记忆题文件",
+	"  --probe-questions <path>  跑完后在最终 head 上提问的探针题文件",
+	"  --questions-out <path>    把跑后提问结果写成 JSON；汇报用 forgetting-report 读取",
 	"  --opening <on|off> 覆盖故事的开局导演开关；off 把 openingFloors 设为 0",
 	"  --no-background   不补建也不执行后台任务",
 	"  --channels <path> 渠道配置，默认 data/channels.yaml",
@@ -132,6 +142,24 @@ export async function runPlaytestCli(
 		if (store.getStory(parsed.storyId) === null) {
 			throw new Error(`故事不存在：${parsed.storyId}`);
 		}
+		if (parsed.headNodeId !== null) {
+			const head = store.getNode(parsed.headNodeId);
+			if (head === null) {
+				throw new Error(`--head 指向的楼层不存在：${parsed.headNodeId}`);
+			}
+			if (head.storyId !== parsed.storyId) {
+				throw new Error(
+					`--head 楼层 ${head.id} 属于故事 ${head.storyId}，不是 ${parsed.storyId}`,
+				);
+			}
+			if (head.role !== "assistant") {
+				throw new Error(`--head 必须是助手楼层，${head.id} 是 ${head.role}`);
+			}
+			store.setHead(parsed.storyId, head.id);
+			log(`从分支点继续：${head.id}`);
+		}
+		const startDepth = store.getPathToHead(parsed.storyId).length;
+		const startNodeId = store.getHead(parsed.storyId)?.id ?? null;
 		const settings = store.getStorySettings(parsed.storyId);
 		const characterPrompt = settings.characterPrompt;
 		if (characterPrompt === null || characterPrompt.trim().length === 0) {
@@ -199,28 +227,38 @@ export async function runPlaytestCli(
 							dependencies.registry ??
 							createDefaultBackgroundJobRegistry({ embedder }),
 					};
-		let probes: PlaytestProbeOptions | null = null;
-		let turnJudge: {
+		const judgeModel =
+			parsed.judgeModel ?? resolveModelForRole(config, "judge");
+		const needsJudge =
+			parsed.probeEvery > 0 ||
+			parsed.judgeTurns ||
+			parsed.questionsOutPath !== null;
+		let judge: {
 			readonly client: LlmStreamingClient;
 			readonly model: string;
 		} | null = null;
-		if (parsed.probeEvery > 0 || parsed.judgeTurns) {
-			const judgeModel =
-				parsed.judgeModel ?? resolveModelForRole(config, "judge");
+		if (needsJudge) {
 			if (!config.models.has(judgeModel)) {
 				throw new Error(
 					`没有裁判模型 ${judgeModel}；可用模型：${[...config.models.keys()].join("、")}`,
 				);
 			}
-			const judgeClient = createClient(config, judgeModel);
+			judge = { client: createClient(config, judgeModel), model: judgeModel };
+		}
+		let probes: PlaytestProbeOptions | null = null;
+		let turnJudge: {
+			readonly client: LlmStreamingClient;
+			readonly model: string;
+		} | null = null;
+		if (judge !== null) {
 			if (parsed.judgeTurns) {
-				turnJudge = { client: judgeClient, model: judgeModel };
+				turnJudge = { client: judge.client, model: judge.model };
 			}
 			if (parsed.probeEvery > 0) {
 				probes = {
 					every: parsed.probeEvery,
 					minAgeFloors: parsed.probeMinAge,
-					judge: { client: judgeClient, model: judgeModel },
+					judge: { client: judge.client, model: judge.model },
 				};
 			}
 		}
@@ -265,6 +303,67 @@ export async function runPlaytestCli(
 		log(
 			`试玩完成：${result.records.length} 轮，失败 ${result.failures} 轮，记录 ${parsed.outPath}`,
 		);
+		if (parsed.questionsOutPath !== null) {
+			if (judge === null) {
+				throw new Error("跑后提问没有裁判客户端");
+			}
+			const questions = await readForgettingQuestionFiles({
+				storyId: parsed.storyId,
+				memoryPath: parsed.memoryQuestionsPath,
+				probePath: parsed.probeQuestionsPath,
+			});
+			const finalHead = store.getHead(parsed.storyId);
+			if (finalHead === null) {
+				throw new Error("试玩结束后故事没有 head，无法提问");
+			}
+			const answers = await runForgettingQuestions({
+				store,
+				storyId: parsed.storyId,
+				askAtNode: finalHead.id,
+				questions,
+				template,
+				providers,
+				budgetTokens,
+				assistant: { client: assistantClient, model: parsed.model },
+				judge: { client: judge.client, model: judge.model },
+			});
+			const run: ForgettingRunResult = {
+				story: parsed.storyId,
+				headNodeId: startNodeId ?? finalHead.id,
+				profile: parsed.profile,
+				model: parsed.model,
+				userModel: parsed.userModel,
+				judgeModel: judge.model,
+				seed: parsed.seed,
+				startDepth,
+				endDepth: store.getPathToHead(parsed.storyId).length,
+				rounds: parsed.rounds,
+				completedRounds: result.records.length,
+				failedRounds: result.failures,
+				generatedAt: new Date(dependencies.now?.() ?? Date.now()).toISOString(),
+				playtestPath: parsed.outPath,
+				inRunProbes: summarizeInRunProbes(result.records),
+				questions: answers,
+			};
+			await mkdir(path.dirname(parsed.questionsOutPath), {
+				recursive: true,
+			});
+			await writeFile(
+				parsed.questionsOutPath,
+				`${JSON.stringify(run, null, 2)}\n`,
+				"utf8",
+			);
+			const judged = answers.filter(
+				(answer) =>
+					answer.verdict === "consistent" || answer.verdict === "contradicted",
+			);
+			const contradicted = judged.filter(
+				(answer) => answer.verdict === "contradicted",
+			);
+			log(
+				`跑后提问：${answers.length} 题，可判定 ${judged.length}，矛盾 ${contradicted.length}，结果 ${parsed.questionsOutPath}`,
+			);
+		}
 		return result;
 	} finally {
 		store.close();
@@ -299,6 +398,10 @@ interface PlaytestArgs {
 	readonly probeMinAge: number;
 	readonly judgeModel: string | null;
 	readonly judgeTurns: boolean;
+	readonly headNodeId: string | null;
+	readonly memoryQuestionsPath: string | null;
+	readonly probeQuestionsPath: string | null;
+	readonly questionsOutPath: string | null;
 	readonly opening: "on" | "off" | "settings";
 	readonly noBackground: boolean;
 	readonly outPath: string;
@@ -328,6 +431,10 @@ function parsePlaytestArgs(args: readonly string[]): PlaytestArgs {
 		"probe-every": true,
 		"probe-min-age": true,
 		"judge-model": true,
+		head: true,
+		"memory-questions": true,
+		"probe-questions": true,
+		"questions-out": true,
 		opening: true,
 		channels: true,
 	};
@@ -416,6 +523,40 @@ function parsePlaytestArgs(args: readonly string[]): PlaytestArgs {
 	const outPath =
 		values.get("out") ??
 		path.join(repoRoot, "eval-private", "reports", "playtest.jsonl");
+	const headNodeId = optionalText(values.get("head"), "--head");
+	const memoryQuestionsPath = optionalText(
+		values.get("memory-questions"),
+		"--memory-questions",
+	);
+	const probeQuestionsPath = optionalText(
+		values.get("probe-questions"),
+		"--probe-questions",
+	);
+	const questionsOutPath = optionalText(
+		values.get("questions-out"),
+		"--questions-out",
+	);
+	const resume = flags.has("resume");
+	if (headNodeId !== null && resume) {
+		throw new Error(`--head 不能与 --resume 同时使用；${USAGE}`);
+	}
+	if (
+		(memoryQuestionsPath !== null || probeQuestionsPath !== null) &&
+		questionsOutPath === null
+	) {
+		throw new Error(
+			`给了 --memory-questions 或 --probe-questions 就必须给 --questions-out；${USAGE}`,
+		);
+	}
+	if (
+		questionsOutPath !== null &&
+		memoryQuestionsPath === null &&
+		probeQuestionsPath === null
+	) {
+		throw new Error(
+			`--questions-out 至少需要 --memory-questions 或 --probe-questions 之一；${USAGE}`,
+		);
+	}
 	return {
 		dbPath,
 		storyId,
@@ -428,10 +569,14 @@ function parsePlaytestArgs(args: readonly string[]): PlaytestArgs {
 		probeMinAge,
 		judgeModel,
 		judgeTurns: flags.has("judge-turns"),
+		headNodeId,
+		memoryQuestionsPath,
+		probeQuestionsPath,
+		questionsOutPath,
 		opening,
 		noBackground: flags.has("no-background"),
 		outPath,
-		resume: flags.has("resume"),
+		resume,
 		operations: {
 			swipeAt: parseRoundList(values.get("swipe-at"), "--swipe-at"),
 			editAt: parseRoundList(values.get("edit-at"), "--edit-at"),
@@ -463,6 +608,14 @@ function parseInteger(value: string, label: string, minimum: number): number {
 function requireText(value: string | undefined, label: string): string {
 	if (value === undefined || value.trim().length === 0) {
 		throw new Error(`${label} 必须是非空字符串；${USAGE}`);
+	}
+	return value;
+}
+
+function optionalText(value: string | undefined, label: string): string | null {
+	if (value === undefined) return null;
+	if (value.trim().length === 0) {
+		throw new Error(`${label} 不能为空字符串；${USAGE}`);
 	}
 	return value;
 }

@@ -122,6 +122,12 @@ export function benchmarkProbeFileName(slug: string): string {
 	return `probe-${slug}.jsonl`;
 }
 
+export async function readProbeQuestionFile(
+	filePath: string,
+): Promise<BenchmarkProbeQuestion[]> {
+	return parseProbeQuestions(await readFile(filePath, "utf8"), filePath);
+}
+
 export function benchmarkStoryById(storyId: string): BenchmarkStorySpec {
 	const spec = BENCHMARK_STORIES.find((story) => story.storyId === storyId);
 	if (spec === undefined) {

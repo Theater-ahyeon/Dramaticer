@@ -3,18 +3,19 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：127
-- 任务：R2-T08 公开合成基准
-- 结果：完成（`DONE`），门禁通过（108 个测试文件、967 个测试通过，3 个 live 跳过，共 970 个）。
-  - 新增 `benchmarks/`：`cards/` 3 张 SFW 合成卡（内嵌世界书）、`templates/` 3 份原生模板、`chats/` 3 段各 480 条消息的长线对话、`questions/` 33 道记忆题与 14 道探针题、`branch-points.jsonl` 9 个分支点、`manifest.json` 文件哈希。
-  - `packages/st-compat/src/evalset/benchmark-data.ts` 保存公开内容表；`benchmark.ts` 用 `BENCHMARK_SEED = 1` 只影响填充文本选择，渲染不调用模型、不读时间，重复生成逐字节相同。
-  - 记忆题沿用 `memory-questions.ts` 的格式与校验；探针题是独立的 `kind: "probe"` 行；分支点记录 `story`、`nodeId`、`nextUserText` 与 `label`，每个故事至少一个 100 楼以上与一个 200 楼以上的点。
-  - `benchmark --generate/--validate/--import --db` 三个动作：校验先逐字节比对生成结果并拒绝多余文件，再解析卡、世界书、发言者顺序、模板收尾、五类记忆题、编造题、题目去重、证据楼层与提问顺序，最后导入临时库确认主路径与分支点；公开安全扫描拒绝私有目录标记、本地 ST 目录名、绝对路径、`.env` 与 NSFW 词。
-  - `benchmarks/` 加入 biome 忽略列表；新增 11 个测试（确定性、证据楼层、重复 id、提问顺序、分支点重复楼层、私有标记、导入后两轮试玩、命令行生成校验）。ADR-0070。
+- 会话：128
+- 任务：R2-T09.a 遗忘评测运行器与分层报告
+- 结果：完成（`DONE`），门禁通过（109 个测试文件、971 个测试通过，3 个 live 跳过，共 974 个）。
+  - `playtest` 新增 `--head <nodeId>`：从指定助手楼层继续生成，不能与 `--resume` 同用；楼层必须存在、属于该故事且是助手楼层。起点路径长度写入跑后结果的 `startDepth`。
+  - `playtest` 新增跑后批测：`--memory-questions <path>`、`--probe-questions <path>`、`--questions-out <json>`。试玩结束后在最终 head 上逐题组装上下文、回答并交裁判，结果写成一份 JSON；三个参数缺一组合会在参数解析阶段失败。
+  - `memory-judged.ts` 支持 `askAtNode` 覆盖并导出 `answerJudgedQuestion`；`JudgedMemoryQuestionRecord` 新增 `askedAtNode`，私有报告显示实际提问楼层。
+  - 新增 `evalset/forgetting.ts`：证据楼层不在当前路径的题目记 `skipped`；分层取 `100-199`、`200-299`、`300+`（另有 `<100`）；矛盾率分母是一致加矛盾；编造按「编造题且判为矛盾」计算；同题对照只取在每一层都被提问的题目，最深比最浅高 5 个百分点以上才判「上升」。
+  - 新增 `forgetting-report` 命令（`--input` 接受单个 JSON 或目录，`--private-out`、`--public-out`）：私有版含故事、楼层与逐题明细，统计版只有深度层、档位、数字与模型别名。
+  - 新增 4 个测试：指定 head 后端到端生成并提问、路径外证据跳过与编造计数、分层趋势聚合、报告命令读取目录；`memory-judged` 新增提问楼层覆盖与路径外提问拒绝。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T07、R2-T08。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`；未完成任务见 `docs/dev/TASKS.md`。
-- **下一个可做任务是 R2-T09 长对话遗忘评测**：在公开基准与 legacy 对话上取 100 楼以上与 200 楼以上的分支点，用 B0 与 native 各生成 20 轮，按楼层深度分层统计矛盾率、编造回忆率与遗忘趋势。R2-T04、R2-T04.a、R2-T05、R2-T06 依赖 R2-T04 或 R2-T07.a，R2-T07.a 需要 R5-T02（R5 阶段未开始），所以这些任务仍被阻塞；R2-T99 依赖 R2 全部任务。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T07、R2-T08、R2-T09.a。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`；未完成任务见 `docs/dev/TASKS.md`。
+- **下一个可做任务是 R2-T09.b 公开基准实跑与 ADR 结论**：把 `benchmarks/` 导入私有数据库，在每个故事的 119、299、439 楼分支点上各跑 20 轮，两个档位各一遍，再用 `playtest` 的跑后批测写运行 JSON，最后用 `forgetting-report` 生成两份报告并写 ADR。R2-T09.c 依赖 R2-T09.b；R2-T04、R2-T04.a、R2-T05、R2-T06 依赖 R2-T04 或 R2-T07.a，R2-T07.a 需要 R5-T02（R5 阶段未开始），所以这些任务仍被阻塞；R2-T99 依赖 R2 全部任务。
 - v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045。
 - HUMAN-09 待处理（不阻塞）：`data/channels.yaml` 已有 `bg-fallback`、`main-fallback`、`codex`，`channels.example.yaml` 还没有这三个别名。
@@ -46,13 +47,18 @@
 - 插件系统在 DESIGN §19 是唯一权威；P 阶段任务在 TASKS 的「P：插件内核」小节，C 线兼容插件任务已存在且依赖 P2。
 
 ## 下一步
-- **R2-T09 长对话遗忘评测**：公开基准的每个故事有 480 条消息、9 个分支点（每故事 119、299、439 楼各一个），私有 legacy 对话继续作对照。用 B0（`naive`）与 native 各生成 20 轮，按楼层深度分层统计矛盾率、编造回忆率与遗忘趋势。
+- **R2-T09.b 公开基准实跑**：先 `pnpm --filter @dramaticer/st-compat benchmark --import --db <绝对路径>/benchmark.db` 建库；每个故事用 `playtest --head <branch nodeId> --rounds 20 --profile native|naive --memory-questions benchmarks/questions/memory-<slug>.jsonl --probe-questions benchmarks/questions/probe-<slug>.jsonl --questions-out eval-private/reports/forgetting/<slug>-<depth>-<profile>.json --no-background --probe-every 0` 跑一轮；跑完用 `forgetting-report --input eval-private/reports/forgetting` 生成私有版与 `docs/dev/reports/R2-forgetting.md`；结论写 ADR。分支节点 id 是 `<storyId>:m<2*(turn-1)>:s0`（turn 60、150、220）。
 - R2-T04、R2-T04.a、R2-T05、R2-T06 仍被 R2-T07.a 阻塞，R2-T07.a 需要 R5-T02。
 - 基准的入口是 `pnpm --filter @dramaticer/st-compat benchmark --generate|--validate|--import --db <path>`，`--root` 指定基准目录；校验默认把临时库建在 `.devloop/scratch`，`--scratch` 可以改。
 - 开局包的读取入口是 `readOpeningPack(store, storyId)`；需要自己校验时用 `validateOpeningPackPayload(value, known)`，第二个参数是 `OpeningKnownNames`（`names` 与 `sourceText`），判定函数是 `isKnownOpeningName`。首楼候选的解析用 `parseOpeningCandidatesResponse(text, expectedCount)`，不要另写一套。
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
+- 遗忘评测（R2-T09.a）：`playtest --head` 只接受当前故事里存在的助手楼层，且不能与 `--resume` 同时使用；起点深度是设置 head 之后的 `getPathToHead` 长度。跑后批测必须同时给 `--questions-out` 与至少一个题目文件，题目文件里的 `story` 必须与 `--story` 一致。
+- 跑后批测在最终 head 上提问，不再使用题目自带的 `askAtNode`；证据楼层不在当前路径上的题目记 `skipped`，不进入矛盾率与编造率分母。`playtest --questions-out` 的 JSON 由 `parseForgettingRun` 读回，统计口径在 `evalset/forgetting.ts`。
+- 遗忘分层固定为 `<100`、`100-199`、`200-299`、`300+`，用起点深度而不是结束深度；同题对照只取在每一层都被实际提问的题目，最深比最浅高 5 个百分点以上才判「上升」。编造数按「编造题且裁判判为矛盾」计算，不信任记录里的 `fabricated` 字段。
+- `forgetting-report` 的 `--input` 可以是一个 JSON 或包含 JSON 的目录；私有版默认写 `eval-private/reports/R2-forgetting.md`，统计版默认写 `docs/dev/reports/R2-forgetting.md`，统计版不出现故事 id、题目与回答。
+- `memory-judged` 的 `JudgedMemoryQuestionRecord` 新增 `askedAtNode`；新增构造点要补这个字段，私有报告按它显示实际提问楼层。
 - 不要修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 下的任何文件。不变量 I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账是唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖任何其他工作区包、ST 语义只在兼容插件里实现。
 - 偏好记录（ADR-0069）：表 `preference_events` 只追加，触发器拒绝 UPDATE 与 DELETE；`node_id` 是锚点（swipe 记被接受的新楼层、edit 记编辑后的新楼层、choice 记选项所在楼层、card_decision 记卡片来源楼层）；载荷分别是 `{abandonedNodeId, acceptedNodeId}`、`{beforeNodeId, afterNodeId}`、`{choiceText}`、`{cardId, decision}`。`swipeNode`、`editNode` 与 `updateLedgerChangeCardStatus` 的 `approved`/`rejected` 已经自动记录，**不要在这三处再调用 `recordPreference`**；选项选择由调用方在同一个 `runInTransaction` 里调用。回滚变更卡不记偏好。读取用 `listPreferenceEvents(storyId, {kind})`。
 - 公开基准（ADR-0070）：`benchmarks/` 是生成产物，**不要手改**；改了任何文件都会被 `benchmark --validate` 的逐字节比对拒绝，正确做法是改 `benchmark-data.ts` 后跑 `benchmark --generate`。故事 id 是 `benchmark-mist-harbor`、`benchmark-valley-post`、`benchmark-star-museum`；楼层 id 是 `<storyId>:m<消息序号>:s0`，助手轮次 t 对应消息序号 `2*(t-1)`。记忆题沿用 `memory-questions.ts`；探针题是独立 `kind: "probe"` 行，目前只有基准校验在消费，没有单独运行器。
