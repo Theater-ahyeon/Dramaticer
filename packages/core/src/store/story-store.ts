@@ -130,7 +130,9 @@ import {
 	type CreateContextTemplateInput,
 	DEFAULT_STORY_SETTINGS_VALUES,
 	DIRECTOR_CONFIG_KEYS,
+	type OpeningPackRecord,
 	STORY_SETTINGS_UPDATE_KEYS,
+	type SaveOpeningPackInput,
 	type StorySettings,
 	type StorySettingsUpdate,
 	type UpdateContextTemplateInput,
@@ -233,6 +235,14 @@ interface GapPassRunRow {
 	readonly created_at: string;
 }
 
+interface OpeningPackRow {
+	readonly story_id: string;
+	readonly payload: string;
+	readonly input_hash: string;
+	readonly source_node_id: string | null;
+	readonly created_at: string;
+}
+
 interface LedgerChangeCardRow {
 	readonly id: string;
 	readonly story_id: string;
@@ -284,7 +294,7 @@ interface EntityAliasRow {
 interface BackgroundJobRow {
 	readonly id: number;
 	readonly story_id: string;
-	readonly node_id: string;
+	readonly node_id: string | null;
 	readonly kind: string;
 	readonly status: string;
 	readonly attempts: number;
@@ -885,6 +895,20 @@ function rowToGapPassRun(row: GapPassRunRow): GapPassRun {
 			JSON.parse(row.dropped_entries) as unknown,
 			`楼层 ${row.node_id} 的合并调用记录`,
 		),
+		createdAt: row.created_at,
+	};
+}
+
+function rowToOpeningPack(row: OpeningPackRow): OpeningPackRecord {
+	const payload = JSON.parse(row.payload) as unknown;
+	if (!isJsonObject(payload)) {
+		throw new Error(`故事 ${row.story_id} 的开局包内容必须是 JSON 对象`);
+	}
+	return {
+		storyId: row.story_id,
+		payload,
+		inputHash: row.input_hash,
+		sourceNodeId: row.source_node_id,
 		createdAt: row.created_at,
 	};
 }
@@ -2553,6 +2577,67 @@ export class StoryStore {
 		return row === undefined ? null : rowToGapPassRun(row);
 	}
 
+	/** 写入开局包；同一故事只保留一行，重复生成覆盖旧内容。 */
+	saveOpeningPack(input: SaveOpeningPackInput): OpeningPackRecord {
+		assertNonEmptyString(input.storyId, "开局包的故事 id");
+		if (!this.getStory(input.storyId)) {
+			throw new Error(`故事不存在：${input.storyId}`);
+		}
+		if (!isJsonObject(input.payload)) {
+			throw new Error("开局包的内容必须是 JSON 对象");
+		}
+		assertNonEmptyString(input.inputHash, "开局包的输入摘要");
+		if (input.sourceNodeId !== null) {
+			assertNonEmptyString(input.sourceNodeId, "开局包的来源楼层 id");
+			const node = this.getNode(input.sourceNodeId);
+			if (!node) {
+				throw new Error(`楼层节点不存在：${input.sourceNodeId}`);
+			}
+			if (node.storyId !== input.storyId) {
+				throw new Error(
+					`开局包的来源楼层 ${input.sourceNodeId} 属于另一个故事`,
+				);
+			}
+		}
+		const createdAt = input.createdAt ?? new Date().toISOString();
+		assertNonEmptyString(createdAt, "开局包的创建时间");
+		this.#db
+			.prepare(
+				`INSERT INTO opening_packs
+					(story_id, payload, input_hash, source_node_id, created_at)
+				VALUES (?, ?, ?, ?, ?)
+				ON CONFLICT (story_id) DO UPDATE SET
+					payload = excluded.payload,
+					input_hash = excluded.input_hash,
+					source_node_id = excluded.source_node_id,
+					created_at = excluded.created_at`,
+			)
+			.run(
+				input.storyId,
+				JSON.stringify(input.payload),
+				input.inputHash,
+				input.sourceNodeId,
+				createdAt,
+			);
+		const saved = this.getOpeningPack(input.storyId);
+		if (saved === null) {
+			throw new Error(`开局包写入后读取失败：${input.storyId}`);
+		}
+		return saved;
+	}
+
+	/** 读取故事的开局包；没有生成过时返回 null。 */
+	getOpeningPack(storyId: string): OpeningPackRecord | null {
+		assertNonEmptyString(storyId, "故事 id");
+		if (!this.getStory(storyId)) {
+			throw new Error(`故事不存在：${storyId}`);
+		}
+		const row = this.#db
+			.prepare("SELECT * FROM opening_packs WHERE story_id = ?")
+			.get(storyId) as OpeningPackRow | undefined;
+		return row === undefined ? null : rowToOpeningPack(row);
+	}
+
 	/**
 	 * 记录一次未知实体名称的出现；同一故事、同一规范化名称与类别只累加
 	 * 命中次数，首个楼层保持第一次出现的位置。
@@ -3987,12 +4072,26 @@ export class StoryStore {
 			WHERE background_jobs.status = 'discarded'
 			RETURNING id`,
 		);
+		const insertStoryJob = this.#db.prepare(
+			`INSERT INTO background_jobs
+				(story_id, node_id, kind, status, attempts, last_error, created_at, started_at, finished_at)
+			VALUES (?, NULL, ?, 'pending', 0, NULL, ?, NULL, NULL)
+			ON CONFLICT (story_id, kind) WHERE node_id IS NULL DO UPDATE SET
+				status = 'pending',
+				last_error = NULL,
+				started_at = NULL,
+				finished_at = NULL
+			WHERE background_jobs.status IN ('done', 'failed', 'discarded')
+			RETURNING id`,
+		);
 		const created: BackgroundJob[] = [];
 		this.#db.transaction(() => {
 			for (const node of nodes) {
 				for (const kind of kinds) {
+					const condition = conditionFor(kind);
+					if (condition === "story") continue;
 					const eligible =
-						conditionFor(kind) === "settled"
+						condition === "settled"
 							? settled.has(node.id)
 							: confirmed.has(node.id);
 					if (!eligible) continue;
@@ -4006,6 +4105,18 @@ export class StoryStore {
 					}
 					created.push(job);
 				}
+			}
+			for (const kind of kinds) {
+				if (conditionFor(kind) !== "story") continue;
+				const row = insertStoryJob.get(input.storyId, kind, createdAt) as
+					| { readonly id: number }
+					| undefined;
+				if (row === undefined) continue;
+				const job = this.getBackgroundJob(row.id);
+				if (!job) {
+					throw new Error(`后台任务写入后读取失败：${String(row.id)}`);
+				}
+				created.push(job);
 			}
 		})();
 		return created;

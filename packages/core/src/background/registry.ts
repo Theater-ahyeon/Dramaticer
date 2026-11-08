@@ -1,3 +1,4 @@
+import type { StoryStore } from "../store/story-store.js";
 import {
 	type BackgroundJobEnqueueCondition,
 	type BackgroundJobHandler,
@@ -13,6 +14,8 @@ export interface BackgroundJobDefinition {
 	readonly handler: BackgroundJobHandler;
 	readonly enqueue?: BackgroundJobEnqueueCondition;
 	readonly tier?: BackgroundJobTier;
+	/** 入队条件为 story 时必须提供；判断当前故事是否需要这个任务。 */
+	readonly needsRun?: (store: StoryStore, storyId: string) => boolean;
 }
 
 /** 处理器可以只写函数，也可以附带入队条件与档位。 */
@@ -50,9 +53,30 @@ function normaliseEntry(
 			`后台任务类型 ${kind} 的入队条件不合法：${String(enqueue)}`,
 		);
 	}
-	const tier = entry.tier ?? "gap";
-	if (!isBackgroundJobTier(tier)) {
-		throw new Error(`后台任务类型 ${kind} 的档位不合法：${String(tier)}`);
+	const resolvedTier = entry.tier ?? "gap";
+	if (!isBackgroundJobTier(resolvedTier)) {
+		throw new Error(`后台任务类型 ${kind} 的档位不合法：${String(entry.tier)}`);
 	}
-	return { handler: entry.handler, enqueue, tier };
+	const needsRun = entry.needsRun;
+	if (needsRun !== undefined) {
+		if (typeof needsRun !== "function") {
+			throw new Error(`后台任务类型 ${kind} 的 needsRun 必须是函数`);
+		}
+		if (enqueue !== "story") {
+			throw new Error(
+				`后台任务类型 ${kind} 只有在入队条件为 story 时才能提供 needsRun`,
+			);
+		}
+	}
+	if (enqueue === "story" && needsRun === undefined) {
+		throw new Error(
+			`后台任务类型 ${kind} 的入队条件是 story，必须提供 needsRun`,
+		);
+	}
+	return {
+		handler: entry.handler,
+		enqueue,
+		tier: resolvedTier,
+		...(needsRun === undefined ? {} : { needsRun }),
+	};
 }

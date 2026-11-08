@@ -1,5 +1,8 @@
 import { createHash } from "node:crypto";
-import type { BackgroundJobHandler } from "../background/types.js";
+import {
+	type BackgroundJobHandler,
+	requireJobNodeId,
+} from "../background/types.js";
 import { assertPlainObject, isJsonObject, rejectUnknownKeys } from "../json.js";
 import type { LlmMessage } from "../llm/types.js";
 import { parseJsonOutputArray } from "../memory/json-output.js";
@@ -134,12 +137,13 @@ export function createUserWillHandler(
 		throw new Error("用户意志的玩家消息窗口必须是正整数");
 	}
 	return async ({ store, client, job }) => {
-		const path = store.getPathToNode(job.nodeId);
+		const nodeId = requireJobNodeId(job);
+		const path = store.getPathToNode(nodeId);
 		const players = path
 			.filter((node) => node.role === "user" && node.raw.trim().length > 0)
 			.slice(-windowFloors);
 		if (players.length === 0) return;
-		const existing = readExistingWills(store, job.nodeId);
+		const existing = readExistingWills(store, nodeId);
 		const messages: LlmMessage[] = [
 			{ role: "system", content: SYSTEM_PROMPT },
 			{ role: "user", content: buildUserContent(existing.texts, players) },
@@ -150,7 +154,7 @@ export function createUserWillHandler(
 			temperature: 0,
 		});
 		const captured = parseUserWillResponse(result.text, players);
-		applyCapturedUserWills(store, job.storyId, job.nodeId, captured);
+		applyCapturedUserWills(store, job.storyId, nodeId, captured);
 	};
 }
 

@@ -1,4 +1,7 @@
-import type { BackgroundJobHandler } from "../background/types.js";
+import {
+	type BackgroundJobHandler,
+	requireJobNodeId,
+} from "../background/types.js";
 import type { EmbeddingClient } from "../llm/embeddings.js";
 
 export interface EmbeddingsHandlerOptions {
@@ -19,7 +22,8 @@ export function createEmbeddingsHandler(
 	}
 	const embedder = options.embedder;
 	return async ({ store, job }) => {
-		const chunks = store.listChunksMissingVectors(job.nodeId);
+		const nodeId = requireJobNodeId(job);
+		const chunks = store.listChunksMissingVectors(nodeId);
 		if (chunks.length === 0) return;
 		const vectors = await embedder.embed(chunks.map((chunk) => chunk.text));
 		if (vectors.length !== chunks.length) {

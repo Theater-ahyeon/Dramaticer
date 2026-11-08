@@ -1,4 +1,7 @@
-import type { BackgroundJobHandler } from "../background/types.js";
+import {
+	type BackgroundJobHandler,
+	requireJobNodeId,
+} from "../background/types.js";
 import {
 	type JsonObject,
 	assertPlainObject,
@@ -113,12 +116,13 @@ export function createMemoryRevisionHandler(
 		throw new Error("修订草案的玩家消息窗口必须是正整数");
 	}
 	return async ({ store, client, job }) => {
-		const path = store.getPathToNode(job.nodeId);
+		const nodeId = requireJobNodeId(job);
+		const path = store.getPathToNode(nodeId);
 		const players = path
 			.filter((node) => node.role === "user" && node.raw.trim().length > 0)
 			.slice(-windowFloors);
 		if (players.length === 0) return;
-		const snapshot = store.getStateSnapshot(job.nodeId).state;
+		const snapshot = store.getStateSnapshot(nodeId).state;
 		const messages: LlmMessage[] = [
 			{ role: "system", content: SYSTEM_PROMPT },
 			{
@@ -126,7 +130,7 @@ export function createMemoryRevisionHandler(
 				content: buildUserContent(
 					store,
 					job.storyId,
-					job.nodeId,
+					nodeId,
 					snapshot,
 					players,
 				),
@@ -138,7 +142,7 @@ export function createMemoryRevisionHandler(
 			temperature: 0,
 		});
 		const drafts = parseRevisionResponse(result.text, players);
-		applyRevisionDrafts(store, job.storyId, job.nodeId, drafts, snapshot);
+		applyRevisionDrafts(store, job.storyId, nodeId, drafts, snapshot);
 	};
 }
 

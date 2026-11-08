@@ -52,7 +52,7 @@ export interface DrainBackgroundJobsOptions {
 
 export interface BackgroundJobRun {
 	readonly jobId: number;
-	readonly nodeId: string;
+	readonly nodeId: string | null;
 	readonly kind: string;
 	readonly status: BackgroundJobStatus;
 	readonly attempts: number;
@@ -110,12 +110,28 @@ export async function drainBackgroundJobs(
 		? kinds
 		: kinds.filter((kind) => registry.get(kind)?.tier === "gap");
 
+	const storyKinds = kinds.filter(
+		(kind) => registry.get(kind)?.enqueue === "story",
+	);
+	const neededStoryKinds = storyKinds.filter((kind) => {
+		const type = registry.get(kind);
+		if (type?.needsRun === undefined) {
+			throw new Error(`故事级后台任务 ${kind} 没有提供 needsRun`);
+		}
+		return type.needsRun(store, storyId);
+	});
+	const nodeKinds = kinds.filter(
+		(kind) => registry.get(kind)?.enqueue !== "story",
+	);
 	const enqueued = enqueueMissingJobs({
 		store,
 		storyId,
-		kinds,
+		kinds: [...nodeKinds, ...neededStoryKinds],
 		conditions: Object.fromEntries(
-			kinds.map((kind) => [kind, registry.get(kind)?.enqueue ?? "confirmed"]),
+			[...nodeKinds, ...neededStoryKinds].map((kind) => [
+				kind,
+				registry.get(kind)?.enqueue ?? "confirmed",
+			]),
 		),
 		now,
 	});
@@ -135,7 +151,11 @@ export async function drainBackgroundJobs(
 		if (type === undefined) {
 			throw new Error(`没有注册后台任务类型 ${job.kind}`);
 		}
-		if (activeNodeIds !== null && !activeNodeIds.has(job.nodeId)) {
+		if (
+			job.nodeId !== null &&
+			activeNodeIds !== null &&
+			!activeNodeIds.has(job.nodeId)
+		) {
 			const dropped = store.discardBackgroundJob(
 				job.id,
 				new Date(now()).toISOString(),

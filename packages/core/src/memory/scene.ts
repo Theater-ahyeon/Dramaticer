@@ -1,6 +1,7 @@
 import {
 	BackgroundJobDeferredError,
 	type BackgroundJobHandler,
+	requireJobNodeId,
 } from "../background/types.js";
 import type { LlmMessage } from "../llm/types.js";
 import type { StoryStore } from "../store/story-store.js";
@@ -86,15 +87,16 @@ export function createSceneHandler(
 		throw new Error("现场分析的 token 上限必须是正整数");
 	}
 	return async ({ store, client, job }) => {
-		if (store.getLedgerSettlement(job.nodeId) === null) {
+		const nodeId = requireJobNodeId(job);
+		if (store.getLedgerSettlement(nodeId) === null) {
 			throw new BackgroundJobDeferredError();
 		}
-		const path = store.getPathToNode(job.nodeId);
+		const path = store.getPathToNode(nodeId);
 		const floors = path
 			.slice(-windowFloors)
 			.filter((node) => node.raw.trim().length > 0);
 		if (floors.length === 0) return;
-		const { state } = store.getStateSnapshot(job.nodeId);
+		const { state } = store.getStateSnapshot(nodeId);
 		const messages: LlmMessage[] = [
 			{ role: "system", content: SYSTEM_PROMPT },
 			{ role: "user", content: buildUserContent(state, floors) },
@@ -105,7 +107,7 @@ export function createSceneHandler(
 			temperature: 0,
 			maxTokens,
 		});
-		saveSceneAnalysisText(store, job.storyId, job.nodeId, result.text);
+		saveSceneAnalysisText(store, job.storyId, nodeId, result.text);
 	};
 }
 

@@ -34,6 +34,11 @@ import {
 } from "../memory/npc-agenda.js";
 import { SCENE_JOB_KIND, createSceneHandler } from "../memory/scene.js";
 import { createSummaryHandler } from "../memory/summarize.js";
+import {
+	OPENING_JOB_KIND,
+	createOpeningHandler,
+	openingPackNeedsRun,
+} from "../opening/opening.js";
 import { DEFAULT_EMBEDDING_DIMENSIONS } from "../store/migrations.js";
 import { StoryStore } from "../store/story-store.js";
 import { type GapWorkBacklog, readGapWorkBacklog } from "./backlog.js";
@@ -131,6 +136,11 @@ export async function runWorkCli(
 				handler: createGapPassHandler(),
 				enqueue: "settled",
 			},
+			[OPENING_JOB_KIND]: {
+				handler: createOpeningHandler(),
+				enqueue: "story",
+				needsRun: openingPackNeedsRun,
+			},
 			...(embedder === null
 				? {}
 				: {
@@ -204,7 +214,7 @@ export async function runWorkCli(
 		for (const run of runs) {
 			if (run.status === "failed") {
 				log(
-					`失败：${run.kind} 楼层 ${run.nodeId}（第 ${run.attempts} 次）：${run.error}`,
+					`失败：${run.kind} ${formatRunNode(run.nodeId)}（第 ${run.attempts} 次）：${run.error}`,
 				);
 			}
 		}
@@ -219,6 +229,10 @@ export async function runWorkCli(
 	} finally {
 		store.close();
 	}
+}
+
+function formatRunNode(nodeId: string | null): string {
+	return nodeId === null ? "故事级任务" : `楼层 ${nodeId}`;
 }
 
 /**

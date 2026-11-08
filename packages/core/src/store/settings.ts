@@ -18,6 +18,7 @@ import {
 	DEFAULT_DIRECTOR_CONFIG,
 	type DirectorConfig,
 } from "../director/types.js";
+import type { JsonObject } from "../json.js";
 import { type LlmReasoningLevel, isLlmReasoningLevel } from "../llm/types.js";
 import {
 	type StructuredOutputMode,
@@ -127,6 +128,25 @@ export interface CreateContextTemplateInput {
 export interface UpdateContextTemplateInput {
 	readonly name?: string;
 	readonly template?: ContextTemplate;
+}
+
+/** 开局包：故事级记录，只作导演输入，不写台账。 */
+export interface OpeningPackRecord {
+	readonly storyId: string;
+	readonly payload: JsonObject;
+	/** 生成时的输入摘要；输入变化后重新生成。 */
+	readonly inputHash: string;
+	/** 生成时使用的首条玩家消息楼层；首次输入之前为 null。 */
+	readonly sourceNodeId: string | null;
+	readonly createdAt: string;
+}
+
+export interface SaveOpeningPackInput {
+	readonly storyId: string;
+	readonly payload: JsonObject;
+	readonly inputHash: string;
+	readonly sourceNodeId: string | null;
+	readonly createdAt?: string;
 }
 
 export const CONTEXT_TEMPLATE_UPDATE_KEYS: readonly (keyof UpdateContextTemplateInput)[] =

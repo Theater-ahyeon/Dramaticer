@@ -1,4 +1,7 @@
-import type { BackgroundJobHandler } from "../background/types.js";
+import {
+	type BackgroundJobHandler,
+	requireJobNodeId,
+} from "../background/types.js";
 import type { NpcAgenda } from "../director/pool.js";
 import { normalizeEntityName } from "../entity.js";
 import type { LlmMessage } from "../llm/types.js";
@@ -81,7 +84,8 @@ export function createNpcAgendaHandler(
 		throw new Error("NPC 议程的章节窗口必须是不小于 2 的整数");
 	}
 	return async ({ store, client, job }) => {
-		const confirmed = store.countConfirmedAssistantNodesOnPath(job.nodeId);
+		const nodeId = requireJobNodeId(job);
+		const confirmed = store.countConfirmedAssistantNodesOnPath(nodeId);
 		if (confirmed === 0 || confirmed % chapterSize !== 0) return;
 		const agendas = store.listNpcAgendas(job.storyId);
 		if (agendas.length === 0) return;
@@ -89,7 +93,7 @@ export function createNpcAgendaHandler(
 		const due = agendas.filter(
 			(agenda) =>
 				chapterNumber % agenda.everyChapters === 0 &&
-				agenda.lastAdvancedNodeId !== job.nodeId,
+				agenda.lastAdvancedNodeId !== nodeId,
 		);
 		if (due.length === 0) return;
 		const entries = due.map((agenda) => {
@@ -101,7 +105,7 @@ export function createNpcAgendaHandler(
 		});
 		const lookup = buildNameLookup(entries);
 		const content = [
-			formatChapterContext(store, job.storyId, job.nodeId),
+			formatChapterContext(store, job.storyId, nodeId),
 			formatAgendas(entries),
 		].join("\n\n");
 		const messages: LlmMessage[] = [
@@ -120,7 +124,7 @@ export function createNpcAgendaHandler(
 		);
 		store.advanceNpcAgendas({
 			storyId: job.storyId,
-			nodeId: job.nodeId,
+			nodeId,
 			advances: due.map((agenda) => ({
 				entityId: agenda.entityId,
 				progress: requireProgress(progressByEntity, agenda.entityId),

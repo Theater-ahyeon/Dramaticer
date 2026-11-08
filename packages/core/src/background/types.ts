@@ -36,11 +36,13 @@ export function isBackgroundJobTier(
 
 /**
  * 入队条件：confirmed 要求楼层已有子节点（旧行为），settled 只要求助手楼层
- * 的正文已经生成完成，不要求玩家已经确认。
+ * 的正文已经生成完成，不要求玩家已经确认，story 是故事级任务（不属于任何
+ * 楼层，例如开局包），由任务定义自己的 needsRun 决定当前故事是否需要它。
  */
 export const BACKGROUND_JOB_ENQUEUE_CONDITIONS = [
 	"confirmed",
 	"settled",
+	"story",
 ] as const;
 export type BackgroundJobEnqueueCondition =
 	(typeof BACKGROUND_JOB_ENQUEUE_CONDITIONS)[number];
@@ -57,7 +59,8 @@ export function isBackgroundJobEnqueueCondition(
 export interface BackgroundJob {
 	readonly id: number;
 	readonly storyId: string;
-	readonly nodeId: string;
+	/** 故事级任务（入队条件 story）没有楼层，这里为 null。 */
+	readonly nodeId: string | null;
 	readonly kind: string;
 	readonly status: BackgroundJobStatus;
 	/** 已开始执行的次数；每次执行前加一。 */
@@ -94,6 +97,19 @@ export interface BackgroundJobType {
 	readonly handler: BackgroundJobHandler;
 	readonly enqueue: BackgroundJobEnqueueCondition;
 	readonly tier: BackgroundJobTier;
+	/**
+	 * 入队条件为 story 时，判断当前故事现在是否需要这个任务。
+	 * 只有返回 true 才补建任务；其余入队条件不允许提供它。
+	 */
+	readonly needsRun?: (store: StoryStore, storyId: string) => boolean;
+}
+
+/** 楼层级处理器读取任务楼层；故事级任务误用它时直接失败。 */
+export function requireJobNodeId(job: BackgroundJob): string {
+	if (job.nodeId === null) {
+		throw new Error(`后台任务 ${job.kind} 需要楼层，但它没有绑定楼层`);
+	}
+	return job.nodeId;
 }
 
 /** 任务类型到任务定义的映射；drain 按这里的类型补齐任务。 */

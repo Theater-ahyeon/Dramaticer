@@ -1,6 +1,7 @@
 import {
 	BackgroundJobDeferredError,
 	type BackgroundJobHandler,
+	requireJobNodeId,
 } from "../background/types.js";
 import {
 	type JsonObject,
@@ -208,13 +209,14 @@ export function createGapPassHandler(
 	const playerWindow = Math.max(userWillWindow, revisionWindow);
 
 	return async ({ store, client, job }) => {
+		const nodeId = requireJobNodeId(job);
 		const window = prepareSettlement(store, job.storyId, settlementOptions);
-		const inWindow = window?.nodeIds.includes(job.nodeId);
-		const hasSettlement = store.getLedgerSettlement(job.nodeId) !== null;
+		const inWindow = window?.nodeIds.includes(nodeId);
+		const hasSettlement = store.getLedgerSettlement(nodeId) !== null;
 		if (!inWindow && !hasSettlement) {
 			throw new BackgroundJobDeferredError();
 		}
-		const path = store.getPathToNode(job.nodeId);
+		const path = store.getPathToNode(nodeId);
 		const players = path
 			.filter((node) => node.role === "user" && node.raw.trim().length > 0)
 			.slice(-playerWindow);
@@ -225,11 +227,11 @@ export function createGapPassHandler(
 		);
 		const inputs: GapPassInputs = {
 			window,
-			snapshot: store.getStateSnapshot(job.nodeId).state,
+			snapshot: store.getStateSnapshot(nodeId).state,
 			sceneFloors: path
 				.slice(-sceneWindow)
 				.filter((node) => node.raw.trim().length > 0),
-			existingWills: readExistingWills(store, job.nodeId).texts,
+			existingWills: readExistingWills(store, nodeId).texts,
 			existingCards: store
 				.listLedgerChangeCards(job.storyId)
 				.filter(
@@ -283,10 +285,10 @@ export function createGapPassHandler(
 				if (typeof response.scene !== "string") {
 					throw new Error("scene 段必须是字符串");
 				}
-				if (store.getLedgerSettlement(job.nodeId) === null) {
+				if (store.getLedgerSettlement(nodeId) === null) {
 					throw new Error("楼层还没有结算记录，现场分析留到结算完成后再做");
 				}
-				saveSceneAnalysisText(store, job.storyId, job.nodeId, response.scene);
+				saveSceneAnalysisText(store, job.storyId, nodeId, response.scene);
 				return [];
 			});
 		}
@@ -296,7 +298,7 @@ export function createGapPassHandler(
 					JSON.stringify(response.userWill),
 					players.slice(-userWillWindow),
 				);
-				applyCapturedUserWills(store, job.storyId, job.nodeId, captured);
+				applyCapturedUserWills(store, job.storyId, nodeId, captured);
 				return [];
 			});
 		}
@@ -309,9 +311,9 @@ export function createGapPassHandler(
 				applyRevisionDrafts(
 					store,
 					job.storyId,
-					job.nodeId,
+					nodeId,
 					drafts,
-					store.getStateSnapshot(job.nodeId).state,
+					store.getStateSnapshot(nodeId).state,
 				);
 				return [];
 			});
@@ -337,7 +339,7 @@ export function createGapPassHandler(
 			});
 		}
 		store.saveGapPassRun({
-			nodeId: job.nodeId,
+			nodeId,
 			storyId: job.storyId,
 			rejectedSegments: rejections,
 			droppedEntries: dropped,

@@ -813,3 +813,17 @@
   - 组装后的消息里 `protocol` 是最后一条 system 消息，位于历史之后、紧贴生成；`chat-turn.test.ts` 与 `chat-cli.test.ts` 的消息角色与 Trace 顺序断言同步调整。
   - st-compat 将来把 ST 预设转换成原生模板时，凡是保留 `protocol` 段的模板都必须把它放在最后，否则保存与组装都抛错。
   - 编辑器要允许改写契约段文本，但不允许把其它片段放在后面；服务端把这类错误映射到 `template` 字段。
+
+## ADR-0059 故事级后台任务与开局包的输入摘要（2026-11-08）
+
+- **背景**：O-T01 要在故事创建或导入后生成开局包，而开局包不属于任何楼层，故事也可能还没有楼层；现有 `background_jobs.node_id` 是 `NOT NULL REFERENCES nodes(id)`，入队条件只按楼层判定（`confirmed`、`settled`）。开局包还会在玩家首次输入之后变化：第一次输入之前只有角色卡与世界书，之后才多出首条玩家消息；角色卡或模板改变后也要重新生成，而任务执行完成后不该在每次补建时重跑。
+- **决定**：
+  - 迁移 v29 重建 `background_jobs`，`node_id` 允许为 null，并新增部分唯一索引 `(story_id, kind) WHERE node_id IS NULL`；`opening_packs` 以 `story_id` 为主键，保存 `payload`、`input_hash`、`source_node_id` 与创建时间。
+  - 入队条件新增 `story`。这种任务定义必须提供 `needsRun(store, storyId)`，drain 在补建前逐个调用，只有返回 true 才写入一条 `node_id` 为 null 的任务；补建一条已存在的故事级任务时，只有 `done`、`failed`、`discarded` 会被翻回 `pending`，`pending` 与 `running` 保持不动。
+  - `BackgroundJob.nodeId` 类型改为 `string | null`；楼层级处理器经 `requireJobNodeId(job)` 读取楼层，故事级任务误用时直接抛错。drain 对 `node_id` 为 null 的任务跳过“楼层是否还在 head 路径上”的丢弃判断。
+  - 开局包的输入摘要覆盖角色卡提示词、常驻世界书条目、模板 id 与模板内容、首条玩家消息原文；`openingPackNeedsRun` 在素材（角色卡或常驻世界书）存在且摘要与已存包不同时返回 true。处理器再比较一次摘要，相同就跳过模型调用；写入按 `story_id` 覆盖同一行。模型输出严格校验字段、在场人物必须是角色卡或世界书实体里的名字，不合格整包失败并交给任务框架重试。
+  - 开局包只写 `opening_packs`，不写台账事实；任务只由 `dramaticer work` 执行，回合内不调用后台客户端（I11）。
+- **影响**：
+  - 新增故事级后台任务必须在注册表里提供 `needsRun`，否则创建注册表时抛错；非 `story` 条件提供 `needsRun` 同样抛错。
+  - `opening_packs` 的行按故事覆盖，不保留历史版本；O-T02 读取这份记录作为导演输入，O-T03 的候选另建表（迁移 v30）。
+  - 回合路径与 server 仍然不补建、不执行后台任务；故事创建或导入后的第一次 `dramaticer work` 负责补建开局任务。

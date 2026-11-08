@@ -18,6 +18,7 @@ export * from "./llm/router.js";
 export * from "./llm/truncation.js";
 export * from "./llm/types.js";
 export * from "./memory/index.js";
+export * from "./opening/index.js";
 export * from "./retrieval/chunk-index.js";
 export * from "./retrieval/chunk-text.js";
 export * from "./retrieval/hybrid.js";

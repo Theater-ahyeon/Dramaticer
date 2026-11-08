@@ -3,25 +3,26 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：111
-- 任务：R3-T99 R3 验收
-- 结果：完成（`MILESTONE_DONE`），门禁通过（96 个测试文件、865 个测试通过，3 个 live 跳过，共 868 个）。
-  - 逐条核对 R3-T01 至 R3-T04 的验收标准，写成 `docs/dev/reports/R3.md`。R3 目标测试单独重跑 41 个通过（`turn-mode` 8、`chat-tool-loop` 6、`tool-transport` 6、`writing-contract` 6、`chat-cli` 15）。
-  - I6 复核：`turnMode` 的写入只有存储层 `store.updateStorySettings`（玩家显式设置），读取只有 `chat/turn.ts` 的 `resolveTurnMode`；`packages/server/src` 没有 `turnMode` 引用；失败、重试与设置变化都不改模式；请求 deep 在追加用户楼层之前失败。
-  - I13 复核：读取工具可选、模型不调用时直接收束；结构化工具只在 `function-call` 提供；`block_format` 默认关闭且写明按需输出；写作契约是四条原则，没有剧本式命令。
-  - 真实渠道数字沿用 R3-T04：20/20 成功，首字 P50 1,448 毫秒，生成 P50 2,666 毫秒，工具轮最多 1，截断 0/20，请求 23 次。本会话没有重跑 live 测试。
-  - 确认 O 与 R2：依赖全部 `[x]`；schema v28，O-T01 占 v29、O-T03 占 v30、R2-T07 占 v31，都在预留区间内；O 与 R2 都按快回合路径编写，不依赖深回合。
-  - TASKS 的阶段目录把 R1、R3 标为完成，O 标为当前阶段。
+- 会话：112
+- 任务：O-T01 开局包
+- 结果：完成（`DONE`），门禁通过（97 个测试文件、874 个测试通过，3 个 live 跳过，共 877 个）。
+  - 迁移 v29：新增 `opening_packs(story_id PRIMARY KEY, payload, input_hash, source_node_id, created_at)`；重建 `background_jobs` 让 `node_id` 可以为 null，并用部分唯一索引 `(story_id, kind) WHERE node_id IS NULL` 保证故事级任务每故事每类型一行。
+  - 入队条件新增 `story`：注册表要求这种任务定义提供 `needsRun(store, storyId)`，非 story 条件提供它直接抛错；`drainBackgroundJobs` 补建前逐个求值，只有返回 true 才写任务；已存在的故事级任务只有 `done`、`failed`、`discarded` 会翻回 `pending`。
+  - `BackgroundJob.nodeId` 与 `BackgroundJobRun.nodeId` 改为 `string | null`；楼层级处理器统一用 `requireJobNodeId(job)`，故事级任务误用时抛错。drain 对 `node_id` 为 null 的任务跳过“楼层是否还在 head 路径上”的丢弃判断。
+  - 新增 `packages/core/src/opening/opening.ts`：`collectOpeningInput` 汇总角色卡提示词、常驻世界书条目、模板 id 与内容、当前 head 路径上首条玩家消息，生成 SHA-256 输入摘要；`openingPackNeedsRun` 在素材（角色卡或常驻世界书）存在且摘要与已存包不同时返回 true；`createOpeningHandler` 再比较一次摘要，不同才调用模型，严格校验 JSON（未知字段、缺字段、空字符串、未知人物、方向不是三条都整包拒绝）后按 `story_id` 覆盖同一行；`parseOpeningPackResponse` 与 `validateOpeningPackPayload` 导出供后续导演使用。
+  - `dramaticer work` 的默认注册表注册 `opening`（`enqueue: "story"`、`needsRun: openingPackNeedsRun`）。任务只由 `dramaticer work` 执行，回合内后台客户端零调用（I11）；开局包不写台账（I12）。
+  - ADR-0059 记录故事级任务与输入摘要；新增 9 个测试（`core/test/opening-pack.test.ts`）与一次 `runWorkCli` 冒烟（1 条故事级任务、1 次模型调用、开局包入库、`nodeId` 为 null）。
+  - 冒烟用 `.devloop/scratch/opening-smoke.mjs` 与 `../../packages/core/dist`，跑完已删除脚本与临时数据库。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`；未完成任务见 `docs/dev/TASKS.md`。
-- **R3 已完成，下一个阶段是 O 开局与方向**。v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`；未完成任务见 `docs/dev/TASKS.md`。
+- **O 阶段进行中，下一个任务是 O-T02 开场导演与前 10 楼强度**。v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045。
 - HUMAN-09 待处理（不阻塞）：`data/channels.yaml` 已有 `bg-fallback`、`main-fallback`、`codex`，`channels.example.yaml` 还没有这三个别名。
 - HUMAN-10 待处理（不阻塞）：插件不变量是否加进 AGENTS.md。
 - HUMAN-11 待处理（不阻塞）：`.env` 的正文模型 `opendesign/deepseek-v4.1-flash` 返回 membership entitlement 错误，是否换用 `auto/deepseek-v4.1-flash`；`.env` 由人类维护。
-- 数据库 schema 版本 28（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡、v25 合并调用开关与执行记录、v26 间隙档位阈值与丢弃状态、v27 合并调用丢弃条目、v28 回合模式与读取工具软上限）；后续编号：v29 开局包、v30 开场候选、v31 偏好记录、v32 父子分块、v33 章节压缩、v34 世界书预筛、v35 上下文包；插入新迁移时后续编号一起顺延。
-- 结算只有 `dramaticer work` 调度：server 的回合路径不补建也不执行后台任务，所以回合内后台客户端零调用是结构保证；要真正结算故事，跑 `pnpm work --db <path> --kind settle`，要生成现场分析跑 `--kind scene`，要捕获用户意志跑 `--kind user_will`，要生成修订草案跑 `--kind memory_revision`，要回填事件跑 `--kind events`（单故事、逐窗口推进，适合小批量），要合并调用跑 `--kind gap_pass`（先打开故事设置 `gapPassEnabled`），批量回填三个 legacy 对话用 R1-T04.a 的 `events-backfill`。
+- 数据库 schema 版本 29（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡、v25 合并调用开关与执行记录、v26 间隙档位阈值与丢弃状态、v27 合并调用丢弃条目、v28 回合模式与读取工具软上限、v29 开局包与故事级后台任务）；后续编号：v30 开场候选、v31 偏好记录、v32 父子分块、v33 章节压缩、v34 世界书预筛、v35 上下文包；插入新迁移时后续编号一起顺延。
+- 结算只有 `dramaticer work` 调度：server 的回合路径不补建也不执行后台任务，所以回合内后台客户端零调用是结构保证；要真正结算故事，跑 `pnpm work --db <path> --kind settle`，要生成现场分析跑 `--kind scene`，要捕获用户意志跑 `--kind user_will`，要生成修订草案跑 `--kind memory_revision`，要回填事件跑 `--kind events`（单故事、逐窗口推进，适合小批量），要生成开局包跑 `--kind opening`，要合并调用跑 `--kind gap_pass`（先打开故事设置 `gapPassEnabled`），批量回填三个 legacy 对话用 R1-T04.a 的 `events-backfill`。
 - 后台任务分两档：`gap` 档每次间隙都执行，`deferred` 档（`events`、`summary`、`npc_agenda`）只在会话结束或间隙达到 `gapPlanSeconds` 时执行。`dramaticer work` 不给 `--gap-seconds` 就按会话结束处理；要模拟回合中的短间隙就传 `--gap-seconds <秒数>`，短于阈值时延后档只入队不执行。
 - `gap_pass` 默认关闭；开关关着时 `dramaticer work` 既不为故事补建该任务也不执行它，`--kind gap_pass` 同样被跳过。ADR-0055、ADR-0056、ADR-0057 的结论都是保持默认关闭。
 - 结算窗口以 head 为终点（ADR-0046），窗口取**最旧的** N 个未结算助手楼层（`listUnsettledSettledAssistantNodes` 按路径深度降序）；`gap_pass` 的任务楼层比窗口新时会被退回 pending，等前面的楼层结算完再跑。
@@ -43,9 +44,9 @@
 - 插件系统在 DESIGN §19 是唯一权威；P 阶段任务在 TASKS 的「P：插件内核」小节，C 线兼容插件任务已存在且依赖 P2。
 
 ## 下一步
-- **O-T01 开局包**：迁移 v29 新增 `opening_packs`；新增后台任务 `opening`（故事创建或导入后入队，输入卡、世界书常驻条目与玩家开场白），严格 JSON 整包校验，重复执行覆盖同一行；开局包只作导演输入、不写台账，回合内不调用模型。先读 DESIGN §8.4 与 §7.3 的入队条件。
-- O-T01 之后是 O-T02（开场导演与前 10 楼强度）、O-T03（首楼多候选，迁移 v30），然后是 O-T99。O-T99 依赖 R2-T02、R2-T03，所以 O 阶段中途会等 R2 的试玩与探针。
-- O 阶段要用的既有能力：后台任务注册表（`background/registry`，`settled`/`confirmed` 入队条件）、`dramaticer work` 调度、故事导入路径 `importCardContent`、导演槽位与 `DirectorConfig`。
+- **O-T02 开场导演与前 10 楼强度**：`DirectorConfig` 增加 `openingFloors`（默认 10）与 `openingIntensity`；当前路径助手楼层数小于 `openingFloors` 时，新增的开局机制以 `store.getOpeningPack(storyId)` 为输入产生一条具体建议（本楼目标、在场人物各自的行动、可行动冲突），优先级高于线索年龄与节奏机制；机制是同步纯函数、不调用模型；没有开局包时退回现有机制；决策记录的 `signals` 写出发强度档位、使用的开局包字段与楼层深度。先读 DESIGN §8.4 与 M3-T02。
+- O-T02 之后是 O-T03（首楼多候选，迁移 v30），然后是 O-T99。O-T99 依赖 R2-T02、R2-T03，所以 O 阶段中途会等 R2 的试玩与探针。
+- 开局包读取入口：`store.getOpeningPack(storyId)`（返回 `payload: JsonObject`）与 `validateOpeningPackPayload(value, knownNames)`；导演机制只需要读取，不要再写一套校验。
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
@@ -61,7 +62,7 @@
 - `dramaticer chat` 的 `--mode` 只影响单轮；故事级锁定写在故事设置 `turnMode`。server 的回合路径目前不传单轮模式，读取故事设置；工具传输由 server 运行时按故事模型解析。
 - 渠道角色：角色类型叫 `LlmModelRole`（`writer`、`settler`、`planner`、`judge`），与表示消息角色的 `LlmRole`（system、user、assistant）不是一回事。`createLlmClient` 会校验 judge 与 writer 的模型家族，缺省回落也算在内：只要配置里同时有 `main` 与 `background` 且两者同家族，创建任何客户端都会抛错。`data/channels.yaml` 目前用 `judge: codex`（`codex/gpt-6.1-terra`，gpt 家族）与 writer 的 deepseek 区分。
 - `channels.example.yaml` 的 roles 示例里 judge 指向 background 并附了说明；复制示例时如果 background 与 main 是同一家族，启动会失败，需要另配一个家族的模型。
-- 后台模型的输出上限是 32,768（`channels.example.yaml` 与 `data/channels.yaml` 的 `background`）；`channels.ts` 的 `DEFAULT_MAX_TOKENS` 仍是 8,192，只在配置没写 `maxTokens` 时兜底。结算、事件、用户意志、修订与合并调用的处理器不传 `maxTokens`，路由使用模型声明值。不要把这些请求改回小上限：8,192 会被思考占满并把 JSON 截断。ADR-0057。
+- 后台模型的输出上限是 32,768（`channels.example.yaml` 与 `data/channels.yaml` 的 `background`）；`channels.ts` 的 `DEFAULT_MAX_TOKENS` 仍是 8,192，只在配置没写 `maxTokens` 时兜底。结算、事件、用户意志、修订、开局包与合并调用的处理器不传 `maxTokens`，路由使用模型声明值。不要把这些请求改回小上限：8,192 会被思考占满并把 JSON 截断。ADR-0057。
 - 现场分析任务显式传 200 token 上限（`DEFAULT_SCENE_MAX_TOKENS`），与模型声明上限无关；带思考的模型上这是请求级上限。ADR-0056 的缓存里 20 次现场分析有 1 次以 `length` 结束。
 - 后台路由现状（2026-11-08）：`opendesign/deepseek-v4.1-flash` 仍返回 membership entitlement 错误；可用的回退是 `auto/deepseek-v4.1-flash`（经本地网关，Trace 里模型写 `group/auto-deepseek-v4-1-flash`）；`main-fallback` 已补体检记录（`function-call`、`streaming`、`thinking` 支持），记录在本地 `data/channels.yaml`。catie 的 `rp` 路由对部分对话返回内容政策拒绝。做正文或后台实测时先确认路由可用，报告里记录实际路由。HUMAN-11。
 - 该网关在 `reasoning:"off"` 时仍输出思考并消耗输出 token；不要靠关闭思考给结构化请求省预算。
@@ -73,7 +74,7 @@
 - `gap_pass` 的提示词只描述本楼层实际能写的段落；没有结算窗口时 `settlement` 不在提示词里，模型仍然输出时按空处理，不能改成“整段拒绝”或“补写结算记录”。
 - `formatEventWindow` 只给可抽取的助手楼层加 id，玩家楼层与前后上下文只有角色；独立 `events` 任务仍按整窗校验 `nodeId`，合并调用才做逐条丢弃。
 - 每个后台任务连续失败 3 次才放弃；`attemptJob` 与生产 drain 的重试语义一致。`user_will` 的 `sourceQuote` 必须逐字出现在玩家楼层里，评测里有一次合法拒绝，不要当成程序错误。模型返回内容政策拒答文本时，合并调用会以“不是合法 JSON”失败并重试 3 次，这是模型行为，不是截断。
-- 自己搭 `drainBackgroundJobs` 做测量时，注册表条目必须写成对象并声明 `enqueue: "settled"`（缺省是 `confirmed`）；只传处理器函数会把玩家楼层也当成可入队楼层，任务数翻倍。R1-T99 的积压测量用的就是 `{handler, enqueue: "settled"}`。
+- 自己搭 `drainBackgroundJobs` 做测量时，注册表条目必须写成对象并声明 `enqueue`（缺省是 `confirmed`）；只传处理器函数会把玩家楼层也当成可入队楼层，任务数翻倍。R1-T99 的积压测量用的就是 `{handler, enqueue: "settled"}`。
 - 积压测量用 20 楼样本会得到 92 条关键间隙任务（23 个助手楼层 × 4 种，含 3 个 swipe 兄弟节点）；生产单轮上限是 20 条，所以一轮后仍有待办。兄弟楼层的任务在轮到时按“不在 head 路径上”丢弃，不计入未完成率分母。
 - 新增槽位或模板段落时同步更新既有断言：`core/test/chat-turn.test.ts` 的 Trace 顺序与消息角色、`core/test/chat-providers.test.ts` 的标准槽位集合、`st-compat/test/chat-cli.test.ts` 的槽位列表、`core/test/writing-contract.test.ts` 的默认模板顺序。
 - 新增或调整原生块类型时同步更新 `core/test/block-parser.test.ts` 的默认块类型列表断言。
@@ -104,9 +105,12 @@
 - `gap_pass` 的执行记录用 `store.saveGapPassRun` 与 `store.getGapPassRun` 读写，同一楼层覆盖；`rejectedSegments` 只记录整段被拒绝的段落，`droppedEntries` 记录逐条丢弃的窗口外条目，成功时都是空数组。
 - 后台任务档位写在 `createBackgroundJobRegistry` 的条目里（`tier: "deferred"`），缺省 `gap`。新增任务类型时先判断它是不是“下一轮要用”：不是就标 `deferred`，否则会挤占短间隙。
 - 延后档的阈值是故事设置 `gapPlanSeconds`（迁移 v26，默认 212）。`drainBackgroundJobs` 只接受调用方传入的 `gapSeconds` 与 `sessionEnded`，自己不看时间；`dramaticer work` 不给 `--gap-seconds` 时按会话结束处理。
-- 过期任务的丢弃在 `drainBackgroundJobs` 里做：只处理本轮会执行的类型，楼层不在 head 路径上就把 `pending` 标为 `discarded`；没有 head 时不做这项判断。`enqueueMissingJobs` 会把 `discarded` 行翻回 `pending`，所以切回旧分支后任务能重新跑，别在别处再写一套删除逻辑。
+- 过期任务的丢弃在 `drainBackgroundJobs` 里做：只处理本轮会执行的类型，楼层不在 head 路径上就把 `pending` 标为 `discarded`；没有 head 时不做这项判断，故事级任务（`nodeId` 为 null）也不做。`enqueueMissingJobs` 会把 `discarded` 行翻回 `pending`，所以切回旧分支后任务能重新跑，别在别处再写一套删除逻辑。
 - 间隙未完成率用 `readGapWorkBacklog(store, storyId, gapKinds)`：分母是 `pending`、`running`、`done`、`failed`，丢弃不计入，没有任务时为 0。R2-T02 的试玩记录直接复用这个函数。
 - 后台任务需要等待其它任务完成时抛 `BackgroundJobDeferredError`（`background/types.ts`），drain 会把任务退回 pending 且不消耗执行次数；不要用抛普通错误的方式等待，那会消耗重试次数。
+- 故事级后台任务的入队条件写 `enqueue: "story"` 并提供 `needsRun(store, storyId)`；drain 只在它返回 true 时补建一条 `nodeId` 为 null 的任务。楼层级处理器读楼层用 `requireJobNodeId(job)`。开局包的输入摘要与校验在 `core/src/opening/opening.ts`，不要另写一份。
+- 开局包的在场人物必须能在角色卡名或 `character` 实体的名称/别名里找到，否则整包拒绝；素材只有角色卡提示词或常驻世界书时才生成，玩家开场白只作补充。
+- 开局包按摘要覆盖，不保留历史版本；首条玩家消息来自当前 head 路径上最早的非空玩家楼层，所以分支切换后摘要会变化并触发重新生成。
 - `docs/dev/TASKS.md` 只保留未完成任务与当前阶段；查已完成任务的说明、验收与完成记录读 `docs/dev/TASKS-archive.md`。
 - `docs/dev/reports/F0.md` 里只有 F0-T02、F0-T03、F0-T04、F0-T99 四个标记段；重跑脚本只会替换对应标记之间的内容，手写部分不要放进标记之间。F0-T99 节里引用的数字必须与前面各节和 `docs/dev/reports/F0-corpus.md` 一致。
 - `pnpm f0:fulltext` 阶段与文件：`DRAMATICER_F0_FULLTEXT_STAGE=probe|generate|judge|report|all`（默认 all），`DRAMATICER_F0_FULLTEXT_RERUN=1` 忽略已有结果重跑。分支集合固定为对话 128、132、10、223；对话 95 因提供方 `content_filter` 被替换。

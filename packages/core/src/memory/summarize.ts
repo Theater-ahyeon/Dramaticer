@@ -1,4 +1,7 @@
-import type { BackgroundJobHandler } from "../background/types.js";
+import {
+	type BackgroundJobHandler,
+	requireJobNodeId,
+} from "../background/types.js";
 import type { LlmClient, LlmMessage } from "../llm/types.js";
 import type { StoryStore } from "../store/story-store.js";
 import {
@@ -61,13 +64,14 @@ export function createSummaryHandler(
 		throw new Error("主线摘要窗口必须是不小于 1 的整数");
 	}
 	return async ({ store, client, job }) => {
-		const confirmed = store.countConfirmedAssistantNodesOnPath(job.nodeId);
+		const nodeId = requireJobNodeId(job);
+		const confirmed = store.countConfirmedAssistantNodesOnPath(nodeId);
 		if (confirmed > 0 && confirmed % chapterSize === 0) {
 			await ensureChapterSummary({
 				store,
 				client,
 				storyId: job.storyId,
-				nodeId: job.nodeId,
+				nodeId,
 				model: options.model,
 			});
 		}
@@ -75,7 +79,7 @@ export function createSummaryHandler(
 			store,
 			client,
 			storyId: job.storyId,
-			nodeId: job.nodeId,
+			nodeId: nodeId,
 			mainlineSize,
 			model: options.model,
 		});

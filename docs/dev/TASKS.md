@@ -274,7 +274,8 @@
 
 > v3 主菜第一（ADR-0044）。依据：1–10 楼重 roll 率 24.9%，「不推进剧情」与「没听用户的指示」在 1–10 楼各占 25.0%。
 
-- [ ] **O-T01 开局包** | 依赖：R1-T02、R1-T07、M4-T03 | DESIGN §8.4
+- [x] **O-T01 开局包** | 依赖：R1-T02、R1-T07、M4-T03 | DESIGN §8.4
+  完成：2026-11-08 迁移 v29 新增 `opening_packs` 并把 `background_jobs.node_id` 改为可空；入队条件新增 `story`（必须提供 `needsRun`），drain 只在摘要变化时补建一条无楼层任务，`BackgroundJob.nodeId` 改为 `string | null`，楼层处理器经 `requireJobNodeId` 读取；新增 `core/src/opening`：`collectOpeningInput` 汇总角色卡提示词、常驻世界书、模板内容与首条玩家消息并生成摘要，`createOpeningHandler` 严格校验 JSON（字段、空字符串、未知人物）后按故事覆盖同一行，`openingPackNeedsRun` 输入不变时不重跑；`dramaticer work` 注册 `opening`；ADR-0059；新增 9 个测试与一次 `runWorkCli` 冒烟（故事级任务、1 次模型调用、开局包入库）；门禁通过（97 个测试文件、874 个测试，3 个 live 跳过）
   做什么：
   - 迁移 v29 新增 `opening_packs(story_id PRIMARY KEY, payload, source_node_id, created_at)`；`payload` 含开场地点与时间、在场人物与各自当下想要什么、第一个可行动冲突、三条可选开场方向。
   - 故事创建或导入后入队后台任务 `opening`：输入是角色卡、世界书常驻条目与玩家开场白（没有开场白时只用卡）。模型输出严格 JSON，缺字段、空字符串、未知人物整包拒绝并按任务框架重试；同一故事重复执行覆盖同一行，卡或模板变化后重新生成。
