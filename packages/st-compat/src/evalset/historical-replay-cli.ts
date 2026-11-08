@@ -286,8 +286,7 @@ export async function runHistoricalReplayCli(
 				);
 				const originalHeadNodeId =
 					existingForStory[0]?.originalHeadNodeId ??
-					store.getHead(storyId)?.id ??
-					null;
+					importedHeadNodeId(store, storyId);
 				const pathNodes =
 					originalHeadNodeId === null
 						? []
@@ -725,6 +724,22 @@ async function readHistoricalModels(
 
 function sanitizeName(value: string): string {
 	return value.replace(/[\\/:*?"<>|]/g, "_");
+}
+
+/** 分支点只取导入的历史楼层：生成出来的续写楼层没有消息序号，不能当分支点。 */
+function importedHeadNodeId(store: StoryStore, storyId: string): string | null {
+	const prefix = `${storyId}:m`;
+	let bestId: string | null = null;
+	let bestIndex = -1;
+	for (const node of store.listStoryNodes(storyId)) {
+		if (!node.id.startsWith(prefix)) continue;
+		const index = parseMessageIndex(storyId, node.id);
+		if (index > bestIndex) {
+			bestId = node.id;
+			bestIndex = index;
+		}
+	}
+	return bestId;
 }
 
 async function readSamples(

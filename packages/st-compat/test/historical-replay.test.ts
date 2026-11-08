@@ -549,6 +549,27 @@ describe("B1 命令行", () => {
 			const third = await runHistoricalReplayCli(args, dependencies);
 			expect(third.sampleCount).toBe(2);
 			expect(clients.writerRequests.length).toBeGreaterThan(requestsBefore);
+
+			const freshArgs = args.map((value) => {
+				if (value === outPath) return path.join(root, "records-2.jsonl");
+				if (value === samplesPath) return path.join(root, "samples-2.jsonl");
+				if (value === qualityPath) return path.join(root, "quality-2.jsonl");
+				return value;
+			});
+			const fourth = await runHistoricalReplayCli(freshArgs, dependencies);
+			expect(fourth.sampleCount).toBe(2);
+			const freshSamples = parseHistoricalReplaySamplesJsonl(
+				readFileSync(path.join(root, "samples-2.jsonl"), "utf8"),
+				"samples-2.jsonl",
+			);
+			expect(
+				freshSamples.every(
+					(sample) => sample.originalHeadNodeId === `${STORY_ID}:m3:s0`,
+				),
+			).toBe(true);
+			expect(freshSamples.map((sample) => sample.branchFloor).sort()).toEqual([
+				2, 2,
+			]);
 		},
 		{ timeout: 60_000 },
 	);

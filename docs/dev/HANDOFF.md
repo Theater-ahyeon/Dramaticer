@@ -3,36 +3,34 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：137
-- 任务：R2-T06 记分牌与报告口径
+- 会话：138
+- 任务：R2-T99 R2 验收
 - 结果：完成（`DONE`），门禁通过（117 个测试文件、1031 个测试通过，3 个 live 跳过，共 1034 个）。
-  - 新增 `packages/st-compat/src/evalset/scoreboard.ts`：`buildScoreboard`、`renderScoreboard`、`summarizePlaytests`。试玩按档位汇总故事数、完成与失败轮次、相邻回复 4-gram Jaccard 重复度、首字 P50/P95、截断率、间隙未完成率与输入/输出/合计 token 每轮；写作模型列同时给出渠道别名与 Trace 模型（`rp（gemini-3.8-flash-medium）`），别名来自同档位的遗忘运行。
-  - 偏好一致率直接调用 `summarizePreferenceComparisons`，总体、重 roll 全部/最新/切回较早与选项选择五组照原样输出；遗忘直接调用 `summarizeForgettingRuns`，按语料、深度层与档位给出矛盾率、编造回忆率与间隙探针矛盾率；叙事质量复用 `summarizeQuality`，偏好盲测与 B1 分开；B1 直接调用 `summarizeHistoricalReplay`，同模型子集为空时明确写只作参考。
-  - 日期取输入里最晚的时间戳（`startedAt`、`generatedAt`、`createdAt`），因此同一批输入在任何一天生成都逐字节相同；所有分组与排序显式确定。
-  - 新增 `packages/st-compat/src/evalset/scoreboard-cli.ts`（入口 `pnpm --filter @dramaticer/st-compat scoreboard`）：输入参数全部可重复，支持单文件或目录（试玩 `.jsonl`、遗忘 `.json`），可传 `--phase`、`--date`、`--conclusion`、`--next`、`--out`（默认 `docs/dev/SCOREBOARD.md`）。
-  - 真实数据生成 `docs/dev/SCOREBOARD.md`：600 轮试玩（naive 300、native 300，失败 0）、30 次遗忘运行（公开基准 18 次、legacy 12 次）、B1 6 个样本；用 6 个私有故事 id 反向扫描 0 命中。当前偏好判定与偏好评分记录为 0，记分牌明确写“没有偏好判定记录”；间隙未完成率为 0（试玩都关闭后台任务）；B1 同模型子集为空。
-  - 门槛规则写进生成文档：新方案必须赢过对应基线；没赢过就自动生成改进任务并重评，最多三轮；三轮仍未达标写 `docs/dev/HUMAN.md`。B1 只在同模型子集有样本时作门槛。
-  - 新增 6 个测试（试玩聚合、偏好子集、遗忘与质量、可重复与私有标识、输入顺序无关、命令行逐字节相同）。
+  - 新增 `docs/dev/reports/R2.md`：逐条核对 R2 验收项，记录 B0 与 B1 的口径、真实分支点验证、偏好信号、矛盾率与裁判校准、记分牌可复现性与不变量复核，并列出全部样本数与限制。
+  - 链路验证：假客户端 5 轮试玩通过（`playtest.test.ts` 的“假客户端下 5 轮跑通，记录字段齐全”）；真实分支点用第 401 楼、naive 档、写作 `main-fallback`、裁判 `judge`，生成 1 条续写、2 次盲测判定与 2 次评分，失败 0；`--report-only` 重算的私有与统计报告除“生成时间”外逐字节相同。
+  - 可复现性：`scoreboard` 用 R2-T06 的参数重新生成 `docs/dev/SCOREBOARD.md`，与仓库文件逐字节相同；`preferences export` 在种子库上重复导出逐字节相同（0 条记录）；R2 的 13 个测试文件、102 个测试单独重跑通过。
+  - 分支点规划改为从导入历史的末端取点（`importedHeadNodeId`）：种子库的 head 已被上一次续写移动时，仍然重复取到同一批分支点，不会再碰到生成楼层的 UUID。`historical-replay.test.ts` 的 CLI 用例新增第四次运行（换成新的样本与判定输出路径）作为回归断言。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09.a、R2-T09.b、R2-T09.c、R5-T01、R5-T02。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- **下一个可做任务是 R2-T99 R2 验收**：依赖 R2 全部任务，现已满足。之后是 E-T01。R5-T00 仍被 R4-T99 阻塞；R5-T04 排在 R2 之后。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09.a、R2-T09.b、R2-T09.c、R2-T99、R5-T01、R5-T02。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- **下一个可做任务是 E-T01 排障命令行 `dramaticer explain`**：依赖 R2-T99，现已满足。R4-T00 的依赖 R1-T99、R2-T99、R3-T99 也已满足，但 E 在 TASKS 里排在 R4 之前。
 - v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
+- R5-T00 仍被 R4-T99 阻塞；R5-T04 依赖 M4-T05、M4-T06、M4-T01，可以排在 R4 之后。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045。
 - HUMAN-09 待处理（不阻塞）：`data/channels.yaml` 已有 `bg-fallback`、`main-fallback`、`codex`，`channels.example.yaml` 还没有这三个别名。
 - HUMAN-10 待处理（不阻塞）：插件不变量是否加进 AGENTS.md。
 - HUMAN-11 待处理（不阻塞）：`.env` 的正文模型 `opendesign/deepseek-v4.1-flash` 返回 membership entitlement 错误。
 - HUMAN-12 待处理（不阻塞）：HUMAN.md 条目仍描述 `roles.judge` 指向 `codex`，实际配置已是 `judge`（`auto/glm-5.3`）。
-- HUMAN-13 待处理（不阻塞）：`catie` 的 `rp`（`agy-gemini-3.8-flash-medium`）返回 503「没有可用的 Antigravity 凭证」，影响 `roles.writer`；B1 实测改用 `main-fallback`。
+- HUMAN-13 待处理（不阻塞）：`catie` 的 `rp`（`agy-gemini-3.8-flash-medium`）返回 503「没有可用的 Antigravity 凭证」，影响 `roles.writer`；R2-T99 的真实分支点验证改用 `main-fallback`。凭证恢复后可用 `node scripts/r2-legacy-forgetting.mjs run-all --concurrency 3` 补齐 45 道失败题。
 - 数据库 schema 版本 31（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡、v25 合并调用开关与执行记录、v26 间隙档位阈值与丢弃状态、v27 合并调用丢弃条目、v28 回合模式与读取工具软上限、v29 开局包与故事级后台任务、v30 首楼开场候选、v31 偏好记录）；后续编号：v32 父子分块、v33 章节压缩、v34 世界书预筛、v35 上下文包；插入新迁移时后续编号一起顺延。
 - server 的回合路径会补建并执行后台任务：`handleTurnStream` 在 `turn.completed` 之后调用 `BackgroundScheduler.schedule`，不等待 drain；同一时刻只有一个 drain，故事之间先来先做。
 - 分支与面板接口已可用；`packages/web` 尚未创建。`GET /api/nodes/:id/ledger` 返回 `{state, facts, diffs}`，`facts` 来自 `readLedgerFacts`，`diffs` 只含该楼层自己的写入。
-- 偏好记录已闭环：记录写入（四种信号）→ `POST /api/nodes/:id/choice` → `preferences export` 产出回复对 → `pairwise` 盲测与评分 → `scoreboard` 汇总。
+- 偏好记录已闭环：记录写入（四种信号）→ `POST /api/nodes/:id/choice` → `preferences export` 产出回复对 → `pairwise` 盲测与评分 → `scoreboard` 汇总。私有库目前没有任何 `preference_events`。
 
 ## 下一步
-- **R2-T99 R2 验收**：重跑门禁；用 5 轮假试玩与 1 个真实分支点验证整条链路；核对 B0、B1 与偏好信号的口径与可复现性；在 `docs/dev/reports/R2.md` 记录样本数与限制；确认 R4 任务。结果写 `MILESTONE_DONE`。
-- 验收时直接用 `docs/dev/SCOREBOARD.md` 的数字，引用 B1 胜负必须同时说明“同模型子集为空”与每对话只有 1 个样本；引用遗忘矛盾率必须同时说明失败题数与可判定样本数。
-- R4-T00 依赖 R2-T99，验收完成后即可拆分 R4 任务。
+- **E-T01 排障命令行**：新增 `dramaticer explain --node <id> [--json]`，按固定顺序解释该楼层的 Trace、上下文分段来源与 token、被裁剪的段落与缺失槽位、检索分数、台账快照与本楼 diff、导演决策；每个结论带证据，缺失时写“没有记录”；只读、零模型调用。验收与 DESIGN §10.3 一致。
+- E-T01 之后是 R4-T00（细化 R4 任务），再之后 R5-T00。
+- 引用评测数字时：B1 必须同时说明同模型子集为空、每个对话每档只有 1 个样本；遗忘矛盾率必须同时说明失败题数与可判定样本数；偏好一致率当前没有样本。
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
@@ -40,18 +38,18 @@
   `node packages/st-compat/dist/evalset/scoreboard-cli.js --playtest eval-private/reports/forgetting/playtest --playtest eval-private/reports/forgetting/legacy/playtest --forgetting eval-private/reports/forgetting/runs --forgetting eval-private/reports/forgetting/legacy/runs --b1-samples eval-private/reports/R2-b1/samples.jsonl --b1-records eval-private/reports/R2-b1/records.jsonl --b1-quality eval-private/reports/R2-b1/quality.jsonl --out docs/dev/SCOREBOARD.md`
   或把同样参数交给 `pnpm --filter @dramaticer/st-compat scoreboard`；`pnpm --filter` 的工作目录是包目录，相对路径会按包目录解析，冒烟时用绝对路径。
 - 记分牌日期取输入最新时间戳；输入都无时间戳时必须显式传 `--date`。测试覆盖“不传 `--date` 时从输入推导”。
-- 试玩记录分组只按档位；模型列列出该档位全部 Trace 模型，失败轮次在档位行里计数。多档位多模型混跑会合并到同一行并在模型列用顿号分隔。
-- B1 的默认报告与数据路径：`eval-private/reports/R2-b1.md`、`docs/dev/reports/R2-b1.md`、`eval-private/reports/R2-b1/{samples,records,quality}.jsonl`、种子库 `eval-private/reports/R2-b1/db/`。`--report-only` 不读渠道与模型；`--resume` 复用元数据与已有判定（失败也算已记录）。
+- B1 历史回放的入口是 `pnpm --filter @dramaticer/st-compat replay-eval`（或直接跑 `packages/st-compat/dist/evalset/historical-replay-cli.js`）。分支点从导入历史的末端（消息序号最大的节点）取，不跟随已经生成的续写楼层，因此同一个种子库重复运行取到同样的分支点；续跑用 `--resume`，只重算报告用 `--report-only`。
+- 真实渠道实跑用 `--model main-fallback --judge-model judge`（`rp` 仍 503）；R2-T99 的分支点验证样本为第 401 楼、naive 档，数字见 `docs/dev/reports/R2.md`。
+- B1 的默认报告与数据路径：`eval-private/reports/R2-b1.md`、`docs/dev/reports/R2-b1.md`、`eval-private/reports/R2-b1/{samples,records,quality}.jsonl`、种子库 `eval-private/reports/R2-b1/db/`。
 - B1 的“同模型”是去掉 `auto/` 前缀后模型 id 逐字相同；“同家族”用 `modelFamily`。当前 3 个历史回复模型都与 `main-fallback` 不同名，同模型子集为空。
 - `pairwise` 的样本语境是两份续写的共同父楼层路径（最近 6 楼）；B1 用同一个 `formatPairwiseContext`。历史回放判定新增 `PairwiseTask` 的 `historical`。
 - 评分提示词的 system 段包含 `TTCW` 字样，测试里的假客户端靠它区分判定请求与评分请求；改提示词时同步 `pairwise.test.ts`、`historical-replay.test.ts` 与 `scoreboard.test.ts`。
 - 质量评分同样本同一侧有多行时取最后一行；失败记录只计数，不进入均值；统计版不含故事 id、样本 id、理由与原文。
-- `preferences export` 的 `--db` 是必填；私有库里目前没有任何 `preference_events`（48 个数据库都查过）。
-- 真实偏好与评分数字要等玩家操作产生记录后重新导出并跑 `pairwise`；`docs/dev/reports/R2-pairwise.md` 与 `R2-b1.md` 的数字来自小样本。
+- `preferences export` 的 `--db` 是必填；导出结果在同一数据库上逐字节相同；选项选择按所选正文与同一选项块里未选中的行配对，重 roll 按被放弃与被接受楼层配对。
 - 遗忘评测（R2-T09.a）：`playtest --head` 只接受当前故事里存在的助手楼层，且不能与 `--resume` 同时使用；起点深度是设置 head 之后的 `getPathToHead` 长度。跑后批测必须同时给 `--questions-out` 与至少一个题目文件，题目文件里的 `story` 必须与 `--story` 一致。
 - 跑后批测在最终 head 上提问；证据楼层不在当前路径上的题目记 `skipped`。遗忘分层固定为 `<100`、`100-199`、`200-299`、`300+`，用起点深度判定；编造数按「编造题且裁判判为矛盾」计算。
 - `forgetting-report` 的 `--input` 可以是一个 JSON 或包含 JSON 的目录；私有版默认写 `eval-private/reports/R2-forgetting.md`，统计版默认写 `docs/dev/reports/R2-forgetting.md`。
-- legacy 导入与运行驱动在 `scripts/r2-legacy-forgetting.mjs`：`import`、`branches`、`run`、`run-all`、`finalize`；续跑必须带 `--resume true`。R2-T09.c 的失败题里 84 道是作答返回空文本、45 道是 `catie` 的 `rp` 路由 503。
+- legacy 导入与运行驱动在 `scripts/r2-legacy-forgetting.mjs`：`import`、`branches`、`run`、`run-all`、`finalize`；续跑必须带 `--resume true`。
 - 基准的入口是 `pnpm --filter @dramaticer/st-compat benchmark --generate|--validate|--import --db <path>`，`--root` 指定基准目录；`benchmarks/` 是生成产物，**不要手改**。
 - 开局包的读取入口是 `readOpeningPack(store, storyId)`；校验用 `validateOpeningPackPayload(value, known)`；首楼候选解析用 `parseOpeningCandidatesResponse(text, expectedCount)`，不要另写一套。
 - 自动试玩的入口是 `pnpm --filter @dramaticer/st-compat playtest`：每轮顺序是读间隙积压 → 模拟用户 → `runChatTurn` → swipe/edit/branch → 间隙后台任务 → 一致性探针 → 每轮裁判 → 写记录。`--seed` 只决定模拟用户的提示顺序与探针事实选择。
@@ -69,7 +67,7 @@
 - 工具传输：`resolveToolTransport` 在未显式配置时按 `probe.functionCalling` 决定；文本协议是 `core/src/chat/tool-protocol.ts`，工具说明只插进发给模型的消息副本。
 - 写作契约：`WRITING_CONTRACT` 是四条原则；`protocol` 是固定 id 的静态段，`assertContextTemplate` 要求它是最后一个片段。
 - 快照：`eval-private/raw/` 有 94 个文件；`eval-private/reference/` 有 5 部参照小说。私有数据只写 `eval-private/`，报告不用原文。
-- F0 的私有产物：`eval-private/f0/` 下的 pairs、attribution、judge、fulltext 系列与 `llm-cache/`；R3 的产物：`docs/dev/reports/R3.md`、`R3-fast.md`；O 的产物：`docs/dev/reports/O-opening.md`；R2-T03.b 的私有产物：`eval-private/reports/r2-judge/`；R2-T09.b/c 的私有产物：`eval-private/reports/forgetting/`。
+- F0 的私有产物：`eval-private/f0/` 下的 pairs、attribution、judge、fulltext 系列与 `llm-cache/`；R3 的产物：`docs/dev/reports/R3.md`、`R3-fast.md`；O 的产物：`docs/dev/reports/O-opening.md`；R2 的产物：`docs/dev/reports/R2.md`、`R2-judge.md`、`R2-pairwise.md`、`R2-b1.md`、`R2-forgetting.md`、`docs/dev/SCOREBOARD.md`。
 - HUMAN-03（事件题抽查）仍未完成，不阻塞。M3 的两项效果目标按 ADR-0029 保留为未证实；v2 的门槛改由 R6 按 B0/B1 对比判定。
 - 插件系统在 DESIGN §19 是唯一权威；C 线兼容插件任务依赖 P2。记忆增强任务（R1-T03.a、R1-T03.b、R1-T04.b、R1-T05、R1-T06、R1-T08）都依赖 R5-T99。
 - 不要修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 下的任何文件。不变量 I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账是唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖任何其他工作区包、ST 语义只在兼容插件里实现。
