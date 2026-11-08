@@ -24,7 +24,11 @@ models:
   background:
     id: ${DRAMATICER_BG_MODEL}
     contextWindow: 131072
-    maxTokens: 8192
+    # 后台模型承担结算、事件抽取与合并调用，这些请求不单独声明输出上限。
+    # 带思考的模型每次请求的思考就占几千 token，输出上限必须同时容纳思考与
+    # JSON：四楼结算窗口实测需要约 2.4 万 token（含思考），8,192 会把 JSON
+    # 截断成无法解析的段落（ADR-0057）。
+    maxTokens: 32768
     reasoning: true
     channels: [bg]
   main:
