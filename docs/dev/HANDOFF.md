@@ -3,21 +3,21 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：133
-- 任务：R2-T07.a 偏好信号接线与导出
-- 结果：完成（`DONE`），门禁通过（114 个测试文件、995 个测试通过，3 个 live 跳过，共 998 个）。
-  - 选项选择接口：`POST /api/nodes/:id/choice`，请求体只有 `{text}`，故事与锚点楼层从节点推出，响应 `{event}`；服务端只做非空与未知字段校验，不检查正文是否真的出现在 `<选项>` 块里。协议类型是 `NodeChoiceRequest` 与 `NodeChoiceResult`。
-  - swipe、edit 与变更卡决定仍由核心操作在各自事务里自动记录（ADR-0069），接口不重复写。
-  - 导出：`packages/st-compat/src/preferences/export.ts` 与 `packages/st-compat/src/preferences/cli.ts`；命令 `pnpm --filter @dramaticer/st-compat preferences export --db <path> [--out <dir>] [--story <id>]`，默认目录 `eval-private/preferences/`。
-  - 每个有记录的故事写 `<故事>.events.jsonl`（原始记录，字段与 `PreferenceEvent` 相同）、`<故事>.pairs.jsonl`（接受与放弃的回复对）与顶层 `index.json`（故事、计数、四种 kind 的条数）。
-  - 回复对两类：`reroll` 的两侧是被放弃与被接受的助手楼层（带节点 id 与原文）；`choice` 的两侧是同一 `<选项>` 块里的行（选项块每行一个选项），选中行作接受侧，每个未选中行各一条，同一正文去重，节点 id 为 null。
-  - 选择正文不在锚点楼层的选项块里、或者块里没有别的行，记入 `unpairedChoices`，不生成样本；单条脏记录不中断导出。
-  - 文件名把 Windows 不允许的字符换成下划线并处理保留名；两个故事撞名直接抛错，不覆盖。同一数据库重复导出逐字节相同。
-  - 新增测试：`packages/st-compat/test/preferences-export.test.ts` 5 个（配对、逐字节重复与单故事过滤、未配对计数、撞名报错、命令行计数不打印原文），`packages/server/test/branches.test.ts` 新增选项选择 1 个（201、记录锚点、空正文 400、未知节点 404）；零网络。
+- 会话：134
+- 任务：R2-T04 盲测两两对比
+- 结果：完成（`DONE`），门禁通过（115 个测试文件、1009 个测试通过，3 个 live 跳过，共 1012 个）。
+  - 新增 `packages/st-compat/src/evalset/pairwise.ts`：`judgePairwise` 按两种顺序各判一次，严格 JSON `{winner:"A"|"B"|"tie", reason}`，温度 0、512 token、非法输出重试 3 次后记失败；两份文本完全相同时不调用模型直接判平局。`runPreferenceSample` 把接受侧在甲、在乙各跑一次，`summarizePreferenceComparisons` 输出分组统计，`renderPairwiseReport` 生成私有版与统计版。
+  - 统计分组：总体（不含切回较早 swipe）、重 roll 全部、重 roll 接受最新 swipe、重 roll 切回较早 swipe、选项选择。指标是接受胜率、平局率、位置偏差（两种顺序换回两侧身份后不一致的样本占比）与偏好一致率（双向结论都选中接受侧）。
+  - 偏好子集直接使用导出对的 `accepted.text` 与 `abandoned.text`，不重新生成；理由是重新生成会改变被判对象，使一致率不再对应玩家当时的真实选择（ADR-0074）。
+  - 样本 id 是 `<故事>:<事件>:<放弃侧短哈希>`；同一选项事件会拆成多个回复对，必须用放弃侧区分。
+  - 切回较早 swipe：接受侧助手楼层在同一父楼层下存在更晚创建的同类兄弟节点；该子集单列。
+  - 命令 `pnpm --filter @dramaticer/st-compat pairwise --db <path> [--pairs <dir>] [--story <id>] [--resume] [--report-only]`；记录写 `eval-private/reports/R2-pairwise/records.jsonl`，私有报告 `eval-private/reports/R2-pairwise.md`，统计版 `docs/dev/reports/R2-pairwise.md`。
+  - 真实 `judge`（`auto/glm-5.3`）对 3 组合成样本冒烟：6 次判定 0 失败，位置偏差 66.7%、偏好一致率 33.3%；样本是合成冒烟数据，不能当效果结论。
+  - 新增测试 14 个（解析、两种顺序的身份换算、相同文本平局、重试与失败、切回较早 swipe 分组、统计版脱敏、命令行写出与续跑），零网络。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T07、R2-T07.a、R2-T08、R2-T09.a、R2-T09.b、R2-T09.c、R5-T01、R5-T02。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- **下一个可做任务是 R2-T04 盲测两两对比**：依赖 R2-T02、R2-T07.a、R1-T01.b，均已满足。之后是 R2-T04.a、R2-T05、R2-T06，最后 R2-T99。R5-T00 仍被 R4-T99 阻塞，R5-T04 依赖已满足但排在 R2 任务之后（按 TASKS 从上往下规则，R2-T04 在前面）。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T04、R2-T07、R2-T07.a、R2-T08、R2-T09.a、R2-T09.b、R2-T09.c、R5-T01、R5-T02。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- **下一个可做任务是 R2-T04.a 叙事质量评分表**：依赖 R2-T04、R1-T01.b，均已满足。之后是 R2-T05、R2-T06，最后 R2-T99。R5-T00 仍被 R4-T99 阻塞；R5-T04 依赖已满足但排在 R2 任务之后（按 TASKS 从上往下规则，R2-T04.a 在前面）。
 - v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045。
 - HUMAN-09 待处理（不阻塞）：`data/channels.yaml` 已有 `bg-fallback`、`main-fallback`、`codex`，`channels.example.yaml` 还没有这三个别名。
@@ -28,12 +28,11 @@
 - 数据库 schema 版本 31（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡、v25 合并调用开关与执行记录、v26 间隙档位阈值与丢弃状态、v27 合并调用丢弃条目、v28 回合模式与读取工具软上限、v29 开局包与故事级后台任务、v30 首楼开场候选、v31 偏好记录）；后续编号：v32 父子分块、v33 章节压缩、v34 世界书预筛、v35 上下文包；插入新迁移时后续编号一起顺延。
 - server 的回合路径会补建并执行后台任务：`handleTurnStream` 在 `turn.completed` 之后调用 `BackgroundScheduler.schedule`，不等待 drain；同一时刻只有一个 drain，故事之间先来先做。
 - 分支与面板接口已可用；`packages/web` 尚未创建。`GET /api/nodes/:id/ledger` 返回 `{state, facts, diffs}`，`facts` 来自 `readLedgerFacts`，`diffs` 只含该楼层自己的写入。
-- 偏好记录已闭环：记录写入（四种信号）→ `POST /api/nodes/:id/choice` → `preferences export` 产出回复对；导出只写私有目录，命令行只打印计数。
+- 偏好记录已闭环：记录写入（四种信号）→ `POST /api/nodes/:id/choice` → `preferences export` 产出回复对 → `pairwise` 盲测与统计。
 
 ## 下一步
-- **R2-T04 盲测两两对比**：同一分支点的两份续写按 A、B 与 B、A 两种顺序交给 `roles.judge` 裁判，严格 JSON `{winner:"A"|"B"|"tie", reason}`；偏好子集直接读 `eval-private/preferences/<故事>.pairs.jsonl`，用 `accepted.text` 与 `abandoned.text` 作两份续写，让同一写作模型（`roles.writer`）重新生成后交给裁判；`reroll` 与 `choice` 两类分别统计，切回较早 swipe 的子集单列（按楼层 id 与当前路径自行判定，导出没有预先分类）。
-- 裁判判定尺度已被 R2-T03.b 校准（交换顺序一致率 81.3%、位置偏差 0.8）；判平局的条件要用两份相同文本验证。失败重试 3 次后记入失败列表。
-- 之后 R2-T04.a（四项评分）、R2-T05（B1 历史回放）、R2-T06（记分牌）、R2-T99。
+- **R2-T04.a 叙事质量评分表**：在同一批盲测样本上让 `judge` 额外输出 `{originality, character, pacing, dialogue, reason}`，四项各 1–5 分；非法 JSON 重试 3 次后记失败；报告按对话给出均值与分布，统计版只含分数与样本数。两两胜负与四项分数共用同一批样本，评分与裁判都使用 `judge` 角色。
+- 之后 R2-T05（B1 历史回放）复用 `judgePairwise` 与 `summarizePreferenceComparisons`，样本两侧必须由同一个 writer 别名生成；R2-T06 的记分牌读 `records.jsonl` 与统计函数，不再自行解释胜率；R2-T99。
 - 基准的入口是 `pnpm --filter @dramaticer/st-compat benchmark --generate|--validate|--import --db <path>`，`--root` 指定基准目录；校验默认把临时库建在 `.devloop/scratch`，`--scratch` 可以改。
 - 开局包的读取入口是 `readOpeningPack(store, storyId)`；需要自己校验时用 `validateOpeningPackPayload(value, known)`，第二个参数是 `OpeningKnownNames`（`names` 与 `sourceText`），判定函数是 `isKnownOpeningName`。首楼候选的解析用 `parseOpeningCandidatesResponse(text, expectedCount)`，不要另写一套。
 
@@ -41,6 +40,10 @@
 - `.env` 已由人类填写，**不要覆盖**。
 - `preferences export` 的 `--db` 是必填；`pnpm --filter` 的脚本工作目录是 `packages/st-compat`，相对路径会按包目录解析，冒烟时传绝对路径。
 - 偏好导出同一数据库重复执行逐字节相同；文件名来自故事 id（替换 `<>:"/\|?*`、控制字符与 Windows 保留名）。故事 id 撞名时导出报错，必须先改名。
+- `pairwise` 的 `--pairs` 可以是目录或单个 `.pairs.jsonl`；目录里没有回复对、或故事过滤后为空时直接报错。`--resume` 复用已有 `sampleId + order`，失败记录也算已记录；要重试失败项就不带 `--resume`。`--report-only` 只读 `--out` 指定的 JSONL，缺文件或空文件报错，不会加载渠道配置。
+- `pairwise` 的样本语境是两份续写的共同父楼层路径（最近 6 楼）；选项选择的语境包含选项所在楼层。偏好子集直接判定导出对原文，不重新生成（ADR-0074）。
+- 私有库里目前没有任何 `preference_events`（48 个数据库都查过）；真实偏好数字要等玩家操作产生记录后重新导出并跑 `pairwise`。`docs/dev/reports/R2-pairwise.md` 里的数字来自合成冒烟样本，不能作为效果结论。
+- 真实 `judge` 的冒烟命令示例（绝对路径）：`pnpm --filter @dramaticer/st-compat pairwise --db <db> --pairs <dir> --out <jsonl> --private-report <md> --public-report <md>`；`--report-only` 可以无模型重新生成报告。
 - 遗忘评测（R2-T09.a）：`playtest --head` 只接受当前故事里存在的助手楼层，且不能与 `--resume` 同时使用；起点深度是设置 head 之后的 `getPathToHead` 长度。跑后批测必须同时给 `--questions-out` 与至少一个题目文件，题目文件里的 `story` 必须与 `--story` 一致。
 - 跑后批测在最终 head 上提问，不再使用题目自带的 `askAtNode`；证据楼层不在当前路径上的题目记 `skipped`。`playtest --questions-out` 的 JSON 由 `parseForgettingRun` 读回，统计口径在 `evalset/forgetting.ts`。
 - 遗忘分层固定为 `<100`、`100-199`、`200-299`、`300+`，用起点深度判定；同题对照只取在每一层都被实际提问的题目，最深比最浅高 5 个百分点以上才判「上升」。编造数按「编造题且裁判判为矛盾」计算，不信任记录里的 `fabricated` 字段。
