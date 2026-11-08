@@ -291,7 +291,8 @@
   - 决策记录的 `signals` 写出发强度档位、使用的开局包字段与楼层深度。
   验收：前 10 楼使用开局建议，第 11 楼恢复常规机制；无开局包时行为与现状一致；实时选择零模型调用；关闭导演时不写决策记录；`pnpm check` 通过。
 
-- [ ] **O-T03 首楼多候选** | 依赖：O-T01、M2-T01、M4-T03 | DESIGN §8.4
+- [x] **O-T03 首楼多候选** | 依赖：O-T01、M2-T01、M4-T03 | DESIGN §8.4
+  完成：2026-11-08 迁移 v30 新增 `opening_candidates`（故事内递增 `ordinal`，状态 `pending`、`chosen`、`discarded`）；`StoryStore` 新增 `appendOpeningCandidates`、`listOpeningCandidates`、`getOpeningCandidate`、`chooseOpeningCandidate`（选中时在同一事务里把正文原样追加为根部首个助手楼层，其余待选改为丢弃，已有楼层或非待选状态直接失败）；后台任务 `opening_candidates` 入队条件 `story`，有素材、无楼层、无待选候选时才生成，模型输出 `{"candidates":[...]}` 严格校验 2–3 条，非法整批拒绝；`dramaticer open --story <id> --db <path> [--generate <n>] [--list] [--pick <id>]`；新增 14 个测试；ADR-0061；门禁通过
   做什么：
   - 迁移 v30 新增 `opening_candidates(id, story_id, ordinal, raw, status, created_at)`，`status` 取 `pending`、`chosen`、`discarded`。
   - 后台任务 `opening_candidates`：一次调用生成 2–3 个开场候选（默认 3），每个是完整正文（可以含原生块）。玩家选中一个时在当前路径根部追加为首个助手楼层，状态改为 `chosen`，其余改为 `discarded`；重新生成追加新一批。

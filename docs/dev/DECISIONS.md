@@ -843,3 +843,19 @@
   - 每次导演评估的决策记录多一条 `opening` 机制记录与 `signals.opening`；没有开局包或超出开场楼层时 `triggered` 为 false。
   - 新增导演配置字段不需要迁移，因为 `story_settings.director_config` 是 JSON 列；后续再加字段沿用同一合并方式。
   - `director-eval` 与 `chat-cli` 的机制列表断言需要包含 `opening`；手册里描述的注入位置暂时仍由槽位决定，不改成拼接玩家消息。
+
+## ADR-0061 首楼多候选的存储、选中与重新生成（2026-11-08）
+
+- **背景**：O-T03 要在玩家开始故事之前准备多个开场候选，让玩家选一个作为当前路径的首个助手楼层。候选不是楼层：生成阶段不能改动楼层树，未选中的候选不能进入上下文；候选正文要原样保留，选中后按普通楼层结算。候选可以在后台生成，也可以由玩家显式重新生成，同一故事会存在多批。
+- **决定**：
+  - 迁移 v30 新增 `opening_candidates(id, story_id, ordinal, raw, status, created_at)`，`status` 取 `pending`、`chosen`、`discarded`；`(story_id, ordinal)` 唯一，`ordinal` 是故事内的追加序号，每批接着上一批编号，靠它稳定排序并区分批次边界。
+  - 候选只有 `pending`、`chosen`、`discarded` 三种状态。选中一条时在同一个事务里把它的正文原样追加为根部的助手楼层（`parentId` 为 null，故事必须还没有任何楼层），该条改为 `chosen`，同一故事其余 `pending` 全部改为 `discarded`；重复选中或已有楼层时直接失败。选中后的楼层由既有入队条件 `settled` 参与结算，没有单独的解析或结算路径。
+  - 后台任务 `opening_candidates` 入队条件为 `story`，`needsRun` 要求素材存在、故事没有楼层且没有 `pending` 候选；处理器再做同样的检查，已有待选候选时不调用模型。已有待选候选时重新执行任务只会把任务标记完成，不追加新批。
+  - 一次生成 2 或 3 条候选，默认 3 条；模型输出 `{"candidates":[...]}`，未知字段、条数不符与空正文整批拒绝，校验通过后才在一个事务里写入，不会留下半批。显式重新生成走 `dramaticer open --generate <n>`，直接追加新一批，旧批状态不变。
+  - 未选中的候选只存在 `opening_candidates` 表里，不建楼层、不建文本索引、不进入 head 路径，因此不会进入上下文；生成阶段也不修改任何楼层原文。
+  - CLI 是 `dramaticer open --story <id> --db <path> [--generate <n>] [--list] [--pick <id>]`，不写动作时列出候选。`--generate` 用 `roles.settler` 解析的客户端，与 `dramaticer work` 执行后台任务用的默认模型一致。
+- **影响**：
+  - 故事创建或导入后的第一次 `dramaticer work` 会为没有楼层、有素材且没有待选候选的故事生成一批候选；导入的故事有楼层，不会触发。
+  - 选中候选会把当时所有待选候选（包括旧批）改为 `discarded`，因为故事已经有首个楼层；旧批的 `chosen` 与已丢弃状态不再变化。
+  - `opening_candidates` 不保存选中后生成的楼层 id，楼层树本身是唯一记录；需要追溯时按 `raw` 对照。
+  - R5 界面复用同一条接口：列出、生成、选中都不需要另外实现。

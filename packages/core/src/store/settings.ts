@@ -24,6 +24,7 @@ import {
 	type StructuredOutputMode,
 	isStructuredOutputMode,
 } from "../structured/types.js";
+import type { TimelineNode } from "../timeline.js";
 
 /** 每个故事独立保存的运行配置；字段与 `story_settings` 表一一对应。 */
 export interface StorySettings {
@@ -147,6 +148,52 @@ export interface SaveOpeningPackInput {
 	readonly inputHash: string;
 	readonly sourceNodeId: string | null;
 	readonly createdAt?: string;
+}
+
+export const OPENING_CANDIDATE_STATUSES = [
+	"pending",
+	"chosen",
+	"discarded",
+] as const;
+
+export type OpeningCandidateStatus =
+	(typeof OPENING_CANDIDATE_STATUSES)[number];
+
+export function isOpeningCandidateStatus(
+	value: unknown,
+): value is OpeningCandidateStatus {
+	return (
+		typeof value === "string" &&
+		(OPENING_CANDIDATE_STATUSES as readonly string[]).includes(value)
+	);
+}
+
+/** 开场候选：一段完整正文，选中之前不是楼层，也不进入上下文。 */
+export interface OpeningCandidateRecord {
+	readonly id: string;
+	readonly storyId: string;
+	/** 故事内的追加顺序；每批新候选接着上一批编号。 */
+	readonly ordinal: number;
+	readonly raw: string;
+	readonly status: OpeningCandidateStatus;
+	readonly createdAt: string;
+}
+
+export interface AppendOpeningCandidatesInput {
+	readonly storyId: string;
+	/** 一批候选的完整正文，按给定顺序编号。 */
+	readonly raws: readonly string[];
+	readonly createdAt?: string;
+}
+
+export interface ListOpeningCandidatesOptions {
+	readonly status?: OpeningCandidateStatus;
+}
+
+/** 选中一条候选后的结果：候选状态已改为 chosen，其余待选候选被丢弃。 */
+export interface ChooseOpeningCandidateResult {
+	readonly candidate: OpeningCandidateRecord;
+	readonly node: TimelineNode;
 }
 
 export const CONTEXT_TEMPLATE_UPDATE_KEYS: readonly (keyof UpdateContextTemplateInput)[] =

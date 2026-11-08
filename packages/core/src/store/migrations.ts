@@ -768,6 +768,23 @@ export function buildMigrations(
 				END`,
 			],
 		},
+		{
+			version: 30,
+			description: "首楼开场候选",
+			statements: [
+				`CREATE TABLE opening_candidates (
+					id TEXT PRIMARY KEY,
+					story_id TEXT NOT NULL REFERENCES stories(id),
+					ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+					raw TEXT NOT NULL CHECK (length(raw) > 0),
+					status TEXT NOT NULL CHECK (status IN ('pending', 'chosen', 'discarded')),
+					created_at TEXT NOT NULL,
+					UNIQUE (story_id, ordinal)
+				) STRICT`,
+				`CREATE INDEX opening_candidates_story_status_idx
+				ON opening_candidates(story_id, status)`,
+			],
+		},
 	];
 }
 

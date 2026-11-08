@@ -35,6 +35,11 @@ import {
 import { SCENE_JOB_KIND, createSceneHandler } from "../memory/scene.js";
 import { createSummaryHandler } from "../memory/summarize.js";
 import {
+	OPENING_CANDIDATES_JOB_KIND,
+	createOpeningCandidatesHandler,
+	openingCandidatesNeedRun,
+} from "../opening/candidates.js";
+import {
 	OPENING_JOB_KIND,
 	createOpeningHandler,
 	openingPackNeedsRun,
@@ -140,6 +145,11 @@ export async function runWorkCli(
 				handler: createOpeningHandler(),
 				enqueue: "story",
 				needsRun: openingPackNeedsRun,
+			},
+			[OPENING_CANDIDATES_JOB_KIND]: {
+				handler: createOpeningCandidatesHandler(),
+				enqueue: "story",
+				needsRun: openingCandidatesNeedRun,
 			},
 			...(embedder === null
 				? {}

@@ -1,7 +1,12 @@
-import { runLedgerCli, runProbeCli, runWorkCli } from "@dramaticer/core";
+import {
+	runLedgerCli,
+	runOpeningCli,
+	runProbeCli,
+	runWorkCli,
+} from "@dramaticer/core";
 import { runChatCli } from "./chat/cli.js";
 
-const USAGE = "用法：dramaticer <probe|chat|work|ledger> ...";
+const USAGE = "用法：dramaticer <probe|chat|work|ledger|open> ...";
 
 async function main(args: readonly string[]): Promise<void> {
 	const command = args[0];
@@ -19,6 +24,10 @@ async function main(args: readonly string[]): Promise<void> {
 	}
 	if (command === "ledger") {
 		await runLedgerCli(args);
+		return;
+	}
+	if (command === "open") {
+		await runOpeningCli(args);
 		return;
 	}
 	throw new Error(USAGE);

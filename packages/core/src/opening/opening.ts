@@ -241,7 +241,7 @@ export function createOpeningHandler(
 		if (existing !== null && existing.inputHash === input.hash) return;
 		const messages: LlmMessage[] = [
 			{ role: "system", content: SYSTEM_PROMPT },
-			{ role: "user", content: buildUserContent(input) },
+			{ role: "user", content: buildOpeningUserContent(input) },
 		];
 		const result = await client.complete({
 			messages,
@@ -258,7 +258,8 @@ export function createOpeningHandler(
 	};
 }
 
-function buildUserContent(input: OpeningInput): string {
+/** 把角色卡、常驻世界书与玩家开场白拼成生成开局内容共用的用户消息。 */
+export function buildOpeningUserContent(input: OpeningInput): string {
 	const lines: string[] = [];
 	lines.push("角色卡：");
 	if (input.cardName !== null) lines.push(`名称：${input.cardName}`);

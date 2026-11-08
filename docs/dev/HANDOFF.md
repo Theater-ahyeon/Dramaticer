@@ -3,24 +3,24 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：113
-- 任务：O-T02 开场导演与前 10 楼强度
-- 结果：完成（`DONE`），门禁通过（98 个测试文件、882 个测试通过，3 个 live 跳过，共 885 个）。
-  - `DirectorConfig` 增加 `openingFloors`（默认 10，非负整数，0 表示关闭）与 `openingIntensity`（`setup`、`natural`、`detonate`，默认 `natural`）；`assertDirectorConfig` 校验两个字段，`DIRECTOR_CONFIG_KEYS` 同步；故事设置读取时把已保存的 `directorConfig` 与 `DEFAULT_DIRECTOR_CONFIG` 合并再校验，旧行缺字段时得到默认值（ADR-0060）。
-  - 新增 `core/src/director/opening.ts` 的开局机制（`name: "opening"`，`OPENING_PRIORITY = 35`）：楼层深度取当前路径上的助手楼层数，深度不小于 `openingFloors` 时不触发；深度够时用 `readOpeningPack` 读开局包，按强度拼出本楼目标、在场人物各自的行动（`natural` 起）与三条可选方向（`detonate`）；`signals.opening` 写 `floorDepth`、`openingFloors`、`intensity`、`usedFields`。机制只读数据库与配置，不调用模型（I9）。
-  - 注册顺序为线索、开局、重复度、事件池、节奏；优先级 35 高于线索年龄 30 与节奏 5，低于重复度 40。
-  - `core/src/opening/opening.ts` 抽出 `collectKnownNames` 并新增 `readOpeningPack(store, storyId)`：没有开局包返回 null，有则用当前角色卡与角色实体的名称、别名调用 `validateOpeningPackPayload` 校验。读取不看 `inputHash`，首次输入之前生成的包直接服务于第一轮；卡片改掉在场人物后旧包校验失败，需要重新生成。
-  - 新增 7 个测试（`core/test/director-opening.test.ts`，含楼层边界、三种强度、无包回退、`openingFloors` 为 0、非法配置、导演槽位输出）与故事设置的旧配置兼容测试；`director.test.ts`、`lore.test.ts`、`director-event-pool.test.ts`、`st-compat/test/chat-cli.test.ts` 的机制列表断言加入 `opening`。
+- 会话：114
+- 任务：O-T03 首楼多候选
+- 结果：完成（`DONE`），门禁通过（99 个测试文件、896 个测试通过，3 个 live 跳过，共 899 个）。
+  - 迁移 v30 新增 `opening_candidates(id, story_id, ordinal, raw, status, created_at)`，`(story_id, ordinal)` 唯一，`status` 取 `pending`、`chosen`、`discarded`；`ordinal` 是故事内递增序号，每批接着上一批编号。
+  - `StoryStore` 新增 `appendOpeningCandidates`（一批候选按给定顺序写入，已有候选状态不变）、`listOpeningCandidates`（按序号排序，可按状态过滤）、`getOpeningCandidate`、`chooseOpeningCandidate`：在同一个事务里把候选正文原样追加为根部的助手楼层（`parentId` 为 null），该条改为 `chosen`，同一故事其余 `pending` 改为 `discarded`；故事已有楼层或候选不是 `pending` 时直接失败。
+  - 新增 `core/src/opening/candidates.ts`：`OPENING_CANDIDATES_JOB_KIND`、`DEFAULT_OPENING_CANDIDATE_COUNT` 3、`MIN/MAX_OPENING_CANDIDATE_COUNT` 2/3、`assertOpeningCandidateCount`、`parseOpeningCandidatesResponse`（严格 `{"candidates":[...]}`，未知字段、条数不符、空正文整批拒绝）、`generateOpeningCandidates`、`openingCandidatesNeedRun`、`createOpeningCandidatesHandler`。后台任务入队条件 `story`，只在有素材、故事没有楼层且没有待选候选时生成；处理器重复检查，已有待选候选时不调用模型。生成输入复用 `collectOpeningInput` 与 `buildOpeningUserContent`（后者由 `opening.ts` 导出），温度 0.9。
+  - CLI 新增 `core/src/opening/cli.ts` 的 `runOpeningCli`，命令为 `dramaticer open --story <id> --db <path> [--generate <n>] [--list] [--pick <id>]`；不写动作时列出候选，`--generate` 用 `roles.settler` 解析的客户端直接调用生成函数，`--pick` 与 `--list` 不加载渠道配置。st-compat 的命令分发加入 `open`，`dramaticer work` 的注册表加入 `opening_candidates`。
+  - 新增 14 个测试（`core/test/opening-candidates.test.ts`：解析正负例、生成不产生楼层、已有待选候选不重复调用、非法输出整批拒绝、已有楼层不生成、选中成为首个助手楼层并丢弃其余、重新生成追加新批、选中后参与 `settled` 入队、已有楼层拒绝选中、CLI 生成/列出/选中与参数错误）；ADR-0061。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`；未完成任务见 `docs/dev/TASKS.md`。
-- **O 阶段进行中，下一个任务是 O-T03 首楼多候选**。v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`；未完成任务见 `docs/dev/TASKS.md`。
+- **O 阶段的实现任务已全部完成；O-T99 开局验收依赖 R2-T02、R2-T03，所以下一个可做任务是 R2-T01 B0 朴素模式**。v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045。
 - HUMAN-09 待处理（不阻塞）：`data/channels.yaml` 已有 `bg-fallback`、`main-fallback`、`codex`，`channels.example.yaml` 还没有这三个别名。
 - HUMAN-10 待处理（不阻塞）：插件不变量是否加进 AGENTS.md。
 - HUMAN-11 待处理（不阻塞）：`.env` 的正文模型 `opendesign/deepseek-v4.1-flash` 返回 membership entitlement 错误，是否换用 `auto/deepseek-v4.1-flash`；`.env` 由人类维护。
-- 数据库 schema 版本 29（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡、v25 合并调用开关与执行记录、v26 间隙档位阈值与丢弃状态、v27 合并调用丢弃条目、v28 回合模式与读取工具软上限、v29 开局包与故事级后台任务）；后续编号：v30 开场候选、v31 偏好记录、v32 父子分块、v33 章节压缩、v34 世界书预筛、v35 上下文包；插入新迁移时后续编号一起顺延。
-- 结算只有 `dramaticer work` 调度：server 的回合路径不补建也不执行后台任务，所以回合内后台客户端零调用是结构保证；要真正结算故事，跑 `pnpm work --db <path> --kind settle`，要生成现场分析跑 `--kind scene`，要捕获用户意志跑 `--kind user_will`，要生成修订草案跑 `--kind memory_revision`，要回填事件跑 `--kind events`（单故事、逐窗口推进，适合小批量），要生成开局包跑 `--kind opening`，要合并调用跑 `--kind gap_pass`（先打开故事设置 `gapPassEnabled`），批量回填三个 legacy 对话用 R1-T04.a 的 `events-backfill`。
+- 数据库 schema 版本 30（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡、v25 合并调用开关与执行记录、v26 间隙档位阈值与丢弃状态、v27 合并调用丢弃条目、v28 回合模式与读取工具软上限、v29 开局包与故事级后台任务、v30 首楼开场候选）；后续编号：v31 偏好记录、v32 父子分块、v33 章节压缩、v34 世界书预筛、v35 上下文包；插入新迁移时后续编号一起顺延。
+- 结算只有 `dramaticer work` 调度：server 的回合路径不补建也不执行后台任务，所以回合内后台客户端零调用是结构保证；要真正结算故事，跑 `pnpm work --db <path> --kind settle`，要生成现场分析跑 `--kind scene`，要捕获用户意志跑 `--kind user_will`，要生成修订草案跑 `--kind memory_revision`，要回填事件跑 `--kind events`（单故事、逐窗口推进，适合小批量），要生成开局包跑 `--kind opening`，要生成首楼候选跑 `--kind opening_candidates`，要合并调用跑 `--kind gap_pass`（先打开故事设置 `gapPassEnabled`），批量回填三个 legacy 对话用 R1-T04.a 的 `events-backfill`。
 - 后台任务分两档：`gap` 档每次间隙都执行，`deferred` 档（`events`、`summary`、`npc_agenda`）只在会话结束或间隙达到 `gapPlanSeconds` 时执行。`dramaticer work` 不给 `--gap-seconds` 就按会话结束处理；要模拟回合中的短间隙就传 `--gap-seconds <秒数>`，短于阈值时延后档只入队不执行。
 - `gap_pass` 默认关闭；开关关着时 `dramaticer work` 既不为故事补建该任务也不执行它，`--kind gap_pass` 同样被跳过。ADR-0055、ADR-0056、ADR-0057 的结论都是保持默认关闭。
 - 结算窗口以 head 为终点（ADR-0046），窗口取**最旧的** N 个未结算助手楼层（`listUnsettledSettledAssistantNodes` 按路径深度降序）；`gap_pass` 的任务楼层比窗口新时会被退回 pending，等前面的楼层结算完再跑。
@@ -42,9 +42,9 @@
 - 插件系统在 DESIGN §19 是唯一权威；P 阶段任务在 TASKS 的「P：插件内核」小节，C 线兼容插件任务已存在且依赖 P2。
 
 ## 下一步
-- **O-T03 首楼多候选**：迁移 v30 新增 `opening_candidates(id, story_id, ordinal, raw, status, created_at)`，`status` 取 `pending`、`chosen`、`discarded`；后台任务 `opening_candidates` 一次生成 2–3 个完整正文候选（默认 3），选中一个后在当前路径根部追加为首个助手楼层，其余标为 `discarded`，重新生成追加新一批且旧批状态不变；未选候选不进上下文；CLI 为 `dramaticer open --story <id> [--generate <n>] [--list] [--pick <id>]`。先读 DESIGN §8.4。
-- O-T03 之后是 O-T99；O-T99 依赖 R2-T02、R2-T03，所以 O 阶段收尾会等 R2 的试玩与探针。
-- 开局包的读取入口是 `readOpeningPack(store, storyId)`；需要自己校验时用 `validateOpeningPackPayload(value, knownNames)`，不要另写一套。
+- **R2-T01 B0 朴素模式**：core 增加 `ChatProfile`（`native`、`naive`）；`naive` 只提供角色、persona、写作契约与最近 N 楼原文，不提供台账、记忆、lore、摘要、现场分析与导演槽位；`dramaticer chat --profile naive` 可运行；朴素模式关闭后台任务与台账写入，Trace 里不出现 `memory:`、`summary:`、`ledger:`、`director:` 来源；与 `native` 共用同一条生成与楼层写入路径，只替换槽位提供者集合。先读 DESIGN §14.1。
+- R2-T01 之后是 R2-T02（回放驱动与长程自动试玩命令行）、R2-T03、R2-T04.a 与 R2-T99；O-T99 开局验收要等 R2-T02、R2-T03 完成后再做。
+- 开局包的读取入口是 `readOpeningPack(store, storyId)`；需要自己校验时用 `validateOpeningPackPayload(value, knownNames)`。首楼候选的解析用 `parseOpeningCandidatesResponse(text, expectedCount)`，不要另写一套。
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
@@ -52,6 +52,8 @@
 - 导演现在有五个机制，注册顺序是 `clue`、`opening`、`repetition`、`event_pool`、`pacing`；`opening` 的优先级是 35（`OPENING_PRIORITY`），线索年龄 30、线索数量 20、事件池 10、节奏 5，重复度 40。新增或调整机制时同步更新 `director.test.ts`、`lore.test.ts`、`director-event-pool.test.ts` 与 `st-compat/test/chat-cli.test.ts` 的机制列表断言。
 - 开场导演的楼层深度按当前路径上的助手楼层数计算（含中止保存的楼层）；`openingFloors` 为 0 关闭机制，`enabled: false` 时整轮不评估也不写决策记录。强度 `setup` 只用场景、目标与冲突，`natural` 加人物行动，`detonate` 再加三条方向；`signals.opening.usedFields` 记录本条建议实际用到的字段。
 - `readOpeningPack` 用当前角色卡与角色实体的名称、别名校验存下来的开局包，不看 `inputHash`（首轮用的正是首次输入之前生成的包）；卡片改掉在场人物后旧包会校验失败，先跑 `dramaticer work --kind opening` 重新生成。
+- 首楼候选只在故事还没有任何楼层时生成与选中；`chooseOpeningCandidate` 要求候选是 `pending` 且 `getHead` 为 null，选中会把同一故事所有待选候选（包括旧批）改为 `discarded`。候选不是楼层、不建文本索引，未选中之前不进入上下文；`openingCandidatesNeedRun` 只在有素材、无楼层、无待选候选时为真，重新生成走 `dramaticer open --generate <n>`。
+- `dramaticer open` 的用法是 `--story <id> --db <path> [--generate <n>] [--list] [--pick <id>]`；不写动作时列出。`--generate` 的 `n` 只接受 2 或 3，生成结果追加为新的 `pending` 批，旧批状态不变；`--list` 与 `--pick` 不加载渠道配置，`--generate` 用 `roles.settler` 解析的客户端。
 - 故事设置里的 `directorConfig` 读取时与 `DEFAULT_DIRECTOR_CONFIG` 合并再校验，旧数据库行缺少新增字段时得到默认值；新增导演配置字段不需要迁移。写入仍然拒绝未知字段。
 - 回合模式：`TurnMode`、`DEFAULT_MAX_READ_ROUNDS`、`isTurnMode`、`assertTurnMode`、`assertMaxReadRounds`、`assertTurnModeSupported` 都在 `core/src/chat/mode.ts`。模式与软上限只在 `chat/turn.ts` 的 `resolveTurnMode` 解析一次，单轮参数优先于故事设置；新增入口不要另写一套判断。程序没有任何按轮数、工具调用数、错误或预算切换模式的代码路径（I6）。
 - 深回合在 R3b 实现前请求即失败；失败在 `runChatTurn` 追加用户楼层之前发生，所以不会留下只有用户楼层的分支。不要为了“能跑”把它降级成快回合。
