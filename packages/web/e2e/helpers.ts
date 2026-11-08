@@ -38,9 +38,12 @@ const CARD = {
 	},
 };
 
-export async function login(page: Page): Promise<void> {
+export async function login(
+	page: Page,
+	password: string = PASSWORD,
+): Promise<void> {
 	await page.goto("/login");
-	await page.getByLabel("访问密码").fill(PASSWORD);
+	await page.getByLabel("访问密码").fill(password);
 	await page.getByRole("button", { name: "登录" }).click();
 	await page.waitForURL("**/");
 }

@@ -714,7 +714,8 @@
   - 默认不进入 `pnpm check`（浏览器体积），`pnpm e2e` 单独运行并写进文档。
   验收：`pnpm e2e` 全部通过；不访问外网、不使用私有数据；失败截图与 trace 写进 `.devloop/scratch/e2e/`（git 忽略）；`pnpm check` 通过。
 
-- [ ] **R5-T13 自动试玩框架**（原 M4-T19） | 依赖：R5-T12、R5-T01、R2-T02、R2-T07
+- [x] **R5-T13 自动试玩框架**（原 M4-T19） | 依赖：R5-T12、R5-T01、R2-T02、R2-T07
+  完成：2026-11-08 新增 `packages/web/e2e/playtest/`：`config.ts` 解析 `PLAYTEST_*`（轮数与五类排期，60 轮强制 swipe/edit/branch 各两次、分支切换必须在编辑之后），`runner.ts` 用 Playwright 驱动聊天发送、候选行动与选项点击（只填入不发送）、重新生成、编辑与分支切换，`session.ts` 读路径/树/Trace/台账/导演决策/候选行动/线索/后台任务与 SQLite 的 `preference_events`；模拟用户走 `roles.settler`（background）模型，严格 `{message}`，连续 3 次非法即终止并记录；`playtest.spec.ts` 默认跳过，`pnpm playtest` 由 `cli.mjs` 以 mobile 视口运行，`PLAYTEST_LIVE=1` 关闭假 server 并改指 `data/` 与 8787。记录类型、统计、报告与模拟用户放在 `packages/web/src/playtest/`，新增 7 个单元测试。假渠道 5 轮冒烟 14 秒通过：5 轮全部成功，swipe/edit/choice 各 1 次、分支切换 1 次，开场候选 3 条，候选行动显示并填入；私有报告含逐轮原文与截图，统计版覆盖 ADR-0033 §九全部字段且私有标识反向扫描 0 处；`pnpm e2e` 20 个用例通过（自动试玩用例跳过）；门禁通过（147 个测试文件、1296 个测试，3 个 live 跳过，共 1299 个）
   做什么：
   - `packages/web/e2e/playtest/`：用 Playwright 驱动真实界面；模拟用户由 `background` 模型生成，严格 JSON `{message}`，失败重试 3 次后终止并记录；60 轮内至少执行 2 次重新生成、2 次编辑、2 次分支切换，并按配置点击候选行动与选项块（只填入输入框，不发送），轮次位置可配置。
   - 每轮记录序号、节点 id、用户与助手原文、回合模式、首字毫秒、用量、台账 diff 数、新建与兑现线索、导演决策、候选行动与开场候选的显示结果、截图路径；报告头写模型别名、配置与样本数。

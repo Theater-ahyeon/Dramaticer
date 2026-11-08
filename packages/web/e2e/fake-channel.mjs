@@ -161,6 +161,27 @@ function openingPack() {
 	});
 }
 
+const SIMULATED_USER_MESSAGES = [
+	"我沿着走廊慢慢往前走，在第二扇门前停下。",
+	"我问他：你在这栋房子里住了多久？",
+	"我不太相信他的话，盯着他的眼睛看。",
+	"我转身回到门厅，把灯芯拨亮一些。",
+	"我提起昨晚的雨声，问他有没有听见。",
+	"我把手按在门把上，决定先不开门。",
+];
+
+let simulatedUserTurns = 0;
+
+function simulatedUserReply() {
+	simulatedUserTurns += 1;
+	return JSON.stringify({
+		message:
+			SIMULATED_USER_MESSAGES[
+				(simulatedUserTurns - 1) % SIMULATED_USER_MESSAGES.length
+			],
+	});
+}
+
 function directorPlan() {
 	return JSON.stringify({
 		arcs: [
@@ -238,6 +259,9 @@ function backgroundResponse(body) {
 		return openingCandidates(lastUserText(body));
 	}
 	if (system.includes("你是故事的开局导演")) return openingPack();
+	if (system.includes("你在模拟一位玩文字角色扮演游戏的玩家")) {
+		return simulatedUserReply();
+	}
 	return "[]";
 }
 

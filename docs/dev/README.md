@@ -64,6 +64,8 @@ devloop.ps1（新窗口里）
 
 `pnpm e2e` 单独运行，不进入 `pnpm check`（浏览器体积大）。它会先构建 server 与 web，再启动一个本地假 OpenAI 兼容渠道和 Dramaticer server，最后用 Playwright 跑 `packages/web/e2e/` 下的用例，覆盖登录、聊天、分支、台账、导演、设置、渠道、开场候选与路径分页，移动端 390×844 与桌面 1440×900 两种视口。失败截图与 trace 写在 `.devloop/scratch/e2e/`（已被 git 忽略）。测试用的数据库与渠道配置每次运行都会重新生成。
 
+`pnpm playtest` 运行界面自动试玩：同一个假渠道与 server 下，`background`（`roles.settler`）模型模拟玩家发言，Playwright 驱动聊天输入、重新生成、编辑与分支切换，并在排期轮次点击候选行动与选项块（只填入输入框，不发送）。默认 5 轮冒烟，报告写到 `.devloop/scratch/e2e/playtest/`；`PLAYTEST_ROUNDS=60`、`PLAYTEST_LIVE=1` 时不再启动假 server，改用 `data/` 下的真实库与渠道（`PLAYTEST_BASE_URL` 默认 8787 端口，密码取 `DRAMATICER_SERVER_PASSWORD`），报告写到 `eval-private/reports/r5-playtest.md`（私有，逐轮原文与截图）与 `docs/dev/reports/R5-playtest.md`（统计版）。排期可以用 `PLAYTEST_SWIPE_AT`、`PLAYTEST_EDIT_AT`、`PLAYTEST_BRANCH_AT`、`PLAYTEST_CANDIDATE_AT`、`PLAYTEST_OPTION_AT` 覆盖，逗号分隔轮次。`pnpm e2e` 不会运行自动试玩用例。
+
 ## 可选参数
 
 ```powershell
