@@ -42,6 +42,29 @@ const PAYLOAD_FIELDS = [
 
 const PARTICIPANT_FIELDS = ["name", "wants"] as const;
 
+/** 名称至少两个字符才按“正文里出现过”判定，单字名在任何句子里都会偶然命中。 */
+const MIN_INLINE_NAME_CHARS = 2;
+
+/** 校验开局包在场人物的依据：角色卡名、实体名称与别名，以及角色卡与常驻世界书正文。 */
+export interface OpeningKnownNames {
+	/** 规范化后的名称与别名。 */
+	readonly names: ReadonlySet<string>;
+	/** 角色卡正文与常驻世界书正文，里面写到的其他人物也算已知。 */
+	readonly sourceText: string;
+}
+
+/** 人物名来自实体表，或者出现在角色卡与常驻世界书正文里，就算已知。 */
+export function isKnownOpeningName(
+	known: OpeningKnownNames,
+	name: string,
+): boolean {
+	const normalized = normalizeEntityName(name);
+	if (normalized.length === 0) return false;
+	if (known.names.has(normalized)) return true;
+	if ([...normalized].length < MIN_INLINE_NAME_CHARS) return false;
+	return normalizeEntityName(known.sourceText).includes(normalized);
+}
+
 export interface OpeningHandlerOptions {
 	/** 覆盖客户端默认模型；不设置时使用客户端的默认模型。 */
 	readonly model?: string;
@@ -51,7 +74,7 @@ const SYSTEM_PROMPT = [
 	"你是故事的开局导演。根据角色卡、世界书常驻设定与玩家的开场白，设计这一场故事的开场。",
 	"- place：开场地点，一句话。",
 	"- time：开场的故事内时间，一句话。",
-	'- participants：在场人物数组，每项是 {"name": 人物名, "wants": 这个人物此刻最想要什么}。人物名必须来自角色卡或世界书里已有的名字，不要临时编造。',
+	'- participants：在场人物数组，每项是 {"name": 人物名, "wants": 这个人物此刻最想要什么}。人物名必须是角色卡或世界书里出现过的名字，包括角色卡描述里提到的其他人物，不要临时编造。',
 	"- conflict：第一个可以行动的冲突，一句话，具体到人和事。",
 	"- directions：三条可选的开场方向，每条一句话，彼此要有明显区别。",
 	"- 只输出一个 JSON 对象，不要解释、前后缀或代码块标记；形如：",
@@ -61,7 +84,7 @@ const SYSTEM_PROMPT = [
 /** 校验模型或存储给出的开局包；任何字段不合格都整包拒绝。 */
 export function validateOpeningPackPayload(
 	value: unknown,
-	knownNames: ReadonlySet<string>,
+	knownNames: OpeningKnownNames,
 	label = "开局包",
 ): OpeningPackPayload {
 	const record = assertPlainObject(value, label);
@@ -78,8 +101,7 @@ export function validateOpeningPackPayload(
 			const fields = assertPlainObject(item, entryLabel);
 			rejectUnknownKeys(fields, PARTICIPANT_FIELDS, entryLabel);
 			const name = requireText(fields.name, `${entryLabel}.name`);
-			const normalized = normalizeEntityName(name);
-			if (normalized.length === 0 || !knownNames.has(normalized)) {
+			if (!isKnownOpeningName(knownNames, name)) {
 				throw new Error(
 					`${entryLabel}.name 不是角色卡或世界书里的人物：${name}`,
 				);
@@ -107,7 +129,7 @@ export function validateOpeningPackPayload(
 /** 解析模型返回的开局包；未知字段、缺字段与未知人物都整包拒绝。 */
 export function parseOpeningPackResponse(
 	text: string,
-	knownNames: ReadonlySet<string>,
+	knownNames: OpeningKnownNames,
 ): OpeningPackPayload {
 	return validateOpeningPackPayload(
 		parseJsonOutputObject(text, "开局包"),
@@ -122,7 +144,7 @@ export interface OpeningInput {
 	readonly characterPrompt: string;
 	readonly loreEntries: readonly LoreEntry[];
 	readonly openingNode: TimelineNode | null;
-	readonly knownNames: ReadonlySet<string>;
+	readonly knownNames: OpeningKnownNames;
 }
 
 /**
@@ -153,7 +175,13 @@ export function collectOpeningInput(
 	const openingNode =
 		path.find((node) => node.role === "user" && node.raw.trim().length > 0) ??
 		null;
-	const knownNames = collectKnownNames(store, storyId, settings.cardName);
+	const knownNames = collectKnownNames(
+		store,
+		storyId,
+		settings.cardName,
+		characterPrompt,
+		loreEntries,
+	);
 	const hash = createHash("sha256")
 		.update(
 			JSON.stringify({
@@ -176,28 +204,37 @@ export function collectOpeningInput(
 	};
 }
 
-/** 角色卡名与角色实体的名称、别名，用来校验开局包里的在场人物。 */
+/**
+ * 角色卡名、角色实体的名称与别名，再加上角色卡与常驻世界书正文，
+ * 用来校验开局包里的在场人物。
+ */
 function collectKnownNames(
 	store: StoryStore,
 	storyId: string,
 	cardName: string | null,
-): ReadonlySet<string> {
-	const knownNames = new Set<string>();
+	characterPrompt: string,
+	loreEntries: readonly LoreEntry[],
+): OpeningKnownNames {
+	const names = new Set<string>();
 	if (cardName !== null) {
-		knownNames.add(normalizeEntityName(cardName));
+		names.add(normalizeEntityName(cardName));
 	}
 	for (const entity of store.listEntities(storyId, { kind: "character" })) {
-		knownNames.add(normalizeEntityName(entity.name));
+		names.add(normalizeEntityName(entity.name));
 		for (const alias of entity.aliases) {
-			knownNames.add(normalizeEntityName(alias));
+			names.add(normalizeEntityName(alias));
 		}
 	}
-	return knownNames;
+	const sourceText = [
+		characterPrompt,
+		...loreEntries.map((entry) => entry.content),
+	].join("\n");
+	return { names, sourceText };
 }
 
 /**
- * 导演读开局包；没有时返回 null。存下来的包用当前的角色卡与实体校验，
- * 不在卡里的人物会让读取失败，需要重新生成开局包。
+ * 导演读开局包；没有时返回 null。存下来的包用当前的角色卡、实体与常驻世界书校验，
+ * 卡里改掉人物的名字会让读取失败，需要重新生成开局包。
  */
 export function readOpeningPack(
 	store: StoryStore,
@@ -206,9 +243,18 @@ export function readOpeningPack(
 	const record = store.getOpeningPack(storyId);
 	if (record === null) return null;
 	const settings = store.getStorySettings(storyId);
+	const loreEntries = store
+		.listLoreEntries(storyId)
+		.filter((entry) => entry.constant);
 	return validateOpeningPackPayload(
 		record.payload,
-		collectKnownNames(store, storyId, settings.cardName),
+		collectKnownNames(
+			store,
+			storyId,
+			settings.cardName,
+			settings.characterPrompt ?? "",
+			loreEntries,
+		),
 		`故事 ${storyId} 的开局包`,
 	);
 }

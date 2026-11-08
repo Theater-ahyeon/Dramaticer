@@ -3,19 +3,18 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：119
-- 任务：O-T99 开局验收
-- 结果：完成（`MILESTONE_DONE`），门禁通过（103 个测试文件、930 个测试通过，3 个 live 跳过，共 933 个）。
-  - 新增 `packages/st-compat/src/evalset/turn-judge.ts`：每轮把角色卡摘要、玩家人设、最近 6 楼、玩家输入与最终助手正文交给裁判，严格 JSON `{reroll: boolean, followed: boolean, reason: string}`；非法重试 3 次，调用失败或连续非法只记该轮 `failed`，不中断试玩，不改楼层与 head。
-  - `runPlaytest` 的记录基类新增 `verdict`；`playtest` CLI 新增 `--judge-turns`（默认关闭）、`--opening <on|off>`（off 把 `openingFloors` 设为 0，on 用默认 10）与 `--no-background`。
-  - 新增 `packages/st-compat/src/evalset/opening-eval.ts` 与 `opening-eval-cli.ts`，入口 `pnpm --filter @dramaticer/st-compat opening-eval`：每张卡建开启、关闭与候选三个故事；开启侧在首轮前用 `opening` 后台任务生成开局包；候选故事不追加开场白，生成 3 条候选后让模拟用户模型在三条候选与 `none` 之间选择；逐卡跑固定种子 10 轮；`--report-only` 从 manifest 与逐轮 JSONL 重算报告，同一输入逐字节相同。
-  - 本次运行：3 张仓库内合成卡、种子 1、助手 `main-fallback`、模拟用户 `background`、裁判 `rp`。开局开启 1/30 重 roll（3.3%）、关闭 3/30（10.0%）；前 5 轮 0/15 与 2/15（13.3%）；指令遵循各 29/30（96.7%）；候选采用 3/3（没有区分度）；首字 P50/P90 开启 3,455/7,161 毫秒、关闭 3,359/7,513 毫秒；截断 0、运行失败 0、裁判失败 0。1–10 轮重 roll 率低于 F0 的 24.9%。
-  - 私有报告 `eval-private/reports/O-opening.md`，统计版 `docs/dev/reports/O-opening.md`，运行产物在 `eval-private/reports/opening-eval/`（manifest 与 6 个 JSONL）。
-  - ADR-0065；新增 6 个测试（每轮裁判记录与不改 head、裁判连续非法后继续、严格解析、按配置聚合、候选采用率、统计版脱敏与可重复生成）；`pnpm check` 通过。
+- 会话：120
+- 任务：O-T01.a 开局包的在场人物覆盖角色卡里的其他人物
+- 结果：完成（`DONE`），门禁通过（103 个测试文件、934 个测试通过，3 个 live 跳过，共 937 个）。
+  - `validateOpeningPackPayload` 与 `parseOpeningPackResponse` 的第二个参数从名称集合改为 `OpeningKnownNames`（`names` 加 `sourceText`）；`isKnownOpeningName` 先查实体表，再把名字规范化后到角色卡正文与常驻世界书正文里做子串判定。规范化后少于两个字符的名字只按实体表判定，避免单字名偶然命中。
+  - `collectKnownNames` 现在接收角色卡正文与常驻世界书条目；`collectOpeningInput` 与 `readOpeningPack` 用同一份依据，开局包字段、存储与输入摘要不变。生成提示词同步说明可以使用角色卡描述里提到的其他人物。
+  - 新增 4 个测试：卡描述里的人物通过校验、卡里没有的名字仍然整包拒绝并指出 `participants[0].name`、单字名不按正文命中、真实卡描述人物不建实体也能生成并读回开局包。
+  - 真实卡冒烟：仓库外只读的真实角色卡各跑一次 `opening` 任务（`main-fallback`），角色卡正文 20 字符与 163 字符的两张卡都生成成功，在场人物 1 人与 3 人，全部只出现在角色卡正文、没有对应的 `character` 实体（数字只记进 ADR-0066，不写仓库里的报告）。
+  - `opening-eval` 报告里已不成立的“在场人物只认实体”限制段已从两个渲染分支删掉，私有版与统计版用 `--report-only` 重新生成；ADR-0066；`pnpm check` 通过。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、R2-T01、R2-T02、R2-T03。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`；未完成任务见 `docs/dev/TASKS.md`。
-- **下一个可做任务是 O-T01.a 开局包的在场人物覆盖角色卡里的其他人物**。它排在 O 小节末尾、R2 之前：开局包的在场人物校验目前只认角色卡名与已导入的 `character` 实体，角色卡描述里写到的其他人物会让整包拒绝；O-T99 用真实卡验证时因此无法生成开局包。之后是 R2-T03.a 五类记忆题与编造回忆率。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、R2-T01、R2-T02、R2-T03。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`；未完成任务见 `docs/dev/TASKS.md`。
+- **下一个可做任务是 R2-T03.a 五类记忆题与编造回忆率**。O 小节只剩已完成的 O-T01.a。R2-T03.a 之后是 R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09、R2-T99。
 - v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045。
 - HUMAN-09 待处理（不阻塞）：`data/channels.yaml` 已有 `bg-fallback`、`main-fallback`、`codex`，`channels.example.yaml` 还没有这三个别名。
@@ -46,10 +45,9 @@
 - 插件系统在 DESIGN §19 是唯一权威；P 阶段任务在 TASKS 的「P：插件内核」小节，C 线兼容插件任务已存在且依赖 P2。
 
 ## 下一步
-- **O-T01.a**：让开局包的在场人物校验认识角色卡描述里出现的其他人物。当前 `collectKnownNames` 只收角色卡名与 `character` 实体的名称、别名；真实卡里主角之外的人物只写在描述里，模型按提示选出这些名字后会被 `validateOpeningPackPayload` 整包拒绝。改导入流程或校验入口，未知名字仍然拒绝，字段与存储不变。
-- O-T01.a 之后是 **R2-T03.a 五类记忆题与编造回忆率**：按 LongMemEval 五类（信息抽取、跨段推理、时间推理、知识更新、拒答）扩充记忆题，每道题标注类别与证据楼层；新增编造回忆题（问从未发生的人、事、物，肯定描述即计为编造）；一致性探针与记忆评测共用同一套判分，报告按类别给出命中与编造率、`unknown` 单列。复用 R2-T03 的 `parseProbeJudgeOutput` 与裁判调用约定，不要另写判分口径。
+- **R2-T03.a 五类记忆题与编造回忆率**：按 LongMemEval 五类（信息抽取、跨段推理、时间推理、知识更新、拒答）扩充记忆题，每道题标注类别与证据楼层；新增编造回忆题（问从未发生的人、事、物，肯定描述即计为编造）；一致性探针与记忆评测共用同一套判分，报告按类别给出命中与编造率、`unknown` 单列。复用 R2-T03 的 `parseProbeJudgeOutput` 与裁判调用约定，不要另写判分口径。
 - 之后是 R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09、R2-T99。
-- 开局包的读取入口是 `readOpeningPack(store, storyId)`；需要自己校验时用 `validateOpeningPackPayload(value, knownNames)`。首楼候选的解析用 `parseOpeningCandidatesResponse(text, expectedCount)`，不要另写一套。
+- 开局包的读取入口是 `readOpeningPack(store, storyId)`；需要自己校验时用 `validateOpeningPackPayload(value, known)`，第二个参数是 `OpeningKnownNames`（`names` 与 `sourceText`），判定函数是 `isKnownOpeningName`。首楼候选的解析用 `parseOpeningCandidatesResponse(text, expectedCount)`，不要另写一套。
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
@@ -69,7 +67,7 @@
 - `opening-eval` 的 `--no-background` 由评测内部固定传给 playtest，用来隔离开局机制；本轮没有结算、现场分析与用户意志写入。要测完整链路应去掉该开关并换用足够长的试玩。
 - `opening-eval` 的统计版只含模型别名、样本数、聚合数字与轮次级判定；私有版含卡名、故事 id、逐轮理由与候选正文。`--out-dir` 默认 `eval-private/reports/opening-eval`，私有报告默认 `eval-private/reports/O-opening.md`，统计版默认 `docs/dev/reports/O-opening.md`。
 - `opening-eval` 的候选选择用 `--user-model`（默认 `background`）；候选生成与开局包用 `roles.settler`。本次 3 张卡全部选择候选，采用率没有区分度；不要把 100% 当成候选质量结论。
-- 真实卡的开局包可能因为 `validateOpeningPackPayload` 只认角色卡名与 `character` 实体而整包拒绝；这是 O-T01.a 要修的问题。评测报告的限制段已写明。
+- 开局包的在场人物必须命中角色卡名、`character` 实体的名称/别名，或者出现在角色卡与常驻世界书正文里；正文判定用与实体名称同一套规范化，规范化后少于两个字符的名字只按实体表判定。都不命中时整包拒绝并指出 `participants[i].name`。素材只有角色卡提示词或常驻世界书时才生成，玩家开场白只作补充。
 - 当前 `roles.judge` 指向 `codex`，本机连接 `chatgpt.com` 超时；评测用 `--judge-model rp`（catie 渠道的 Gemini 3.8 Flash）。`createLlmClient` 仍按配置里的 `roles.judge`（codex）与 `roles.writer`（main）校验家族，所以显式覆盖裁判别名不会触发家族错误。HUMAN-12。
 - 后台注册表工厂在 `core/src/background/defaults.ts` 的 `createDefaultBackgroundJobRegistry`，`gap_pass` 开关过滤在 `resolveStoryBackgroundKinds`；新增后台任务类型时改这两个函数和 `dramaticer work`/试玩都会同步。
 - `dramaticer chat` 与试玩共用 `resolveStoryContextTemplate`（`st-compat/src/chat/session.ts`）：故事模板为空或指向内置模板时用默认模板。
@@ -81,7 +79,7 @@
 - `TurnTrace` 新增 `profile` 字段：`packages/core/test/trace-store.test.ts`、`ledger-settlement.test.ts`、`st-compat/test/director-eval.test.ts` 的 Trace 构造点已同步；新增构造点要补。
 - 导演现在有五个机制，注册顺序是 `clue`、`opening`、`repetition`、`event_pool`、`pacing`；`opening` 的优先级是 35（`OPENING_PRIORITY`），线索年龄 30、线索数量 20、事件池 10、节奏 5，重复度 40。新增或调整机制时同步更新 `director.test.ts`、`lore.test.ts`、`director-event-pool.test.ts` 与 `st-compat/test/chat-cli.test.ts` 的机制列表断言。
 - 开场导演的楼层深度按当前路径上的助手楼层数计算（含中止保存的楼层）；`openingFloors` 为 0 关闭机制，`enabled: false` 时整轮不评估也不写决策记录。强度 `setup` 只用场景、目标与冲突，`natural` 加人物行动，`detonate` 再加三条方向；`signals.opening.usedFields` 记录本条建议实际用到的字段。
-- `readOpeningPack` 用当前角色卡与角色实体的名称、别名校验存下来的开局包，不看 `inputHash`（首轮用的正是首次输入之前生成的包）；卡片改掉在场人物后旧包会校验失败，先跑 `dramaticer work --kind opening` 重新生成。
+- `readOpeningPack` 用当前角色卡、角色实体与常驻世界书校验存下来的开局包，不看 `inputHash`（首轮用的正是首次输入之前生成的包）；卡片改掉在场人物后旧包会校验失败，先跑 `dramaticer work --kind opening` 重新生成。
 - 首楼候选只在故事还没有任何楼层时生成与选中；`chooseOpeningCandidate` 要求候选是 `pending` 且 `getHead` 为 null，选中会把同一故事所有待选候选（包括旧批）改为 `discarded`。候选不是楼层、不建文本索引，未选中之前不进入上下文；`openingCandidatesNeedRun` 只在有素材、无楼层、无待选候选时为真，重新生成走 `dramaticer open --generate <n>`。
 - `dramaticer open` 的用法是 `--story <id> --db <path> [--generate <n>] [--list] [--pick <id>]`；不写动作时列出。`--generate` 的 `n` 只接受 2 或 3，生成结果追加为新的 `pending` 批，旧批状态不变；`--list` 与 `--pick` 不加载渠道配置，`--generate` 用 `roles.settler` 解析的客户端。
 - 故事设置里的 `directorConfig` 读取时与 `DEFAULT_DIRECTOR_CONFIG` 合并再校验，旧数据库行缺少新增字段时得到默认值；新增导演配置字段不需要迁移。写入仍然拒绝未知字段。
@@ -138,12 +136,11 @@
 - `gap_pass` 的输出顶层是对象，未知键整次拒绝；五个段落的解析器都要求数组或字符串，所以段落值原样 `JSON.stringify` 后传进去即可。段落写入顺序固定：结算 → 现场分析 → 用户意志 → 修订 → 事件。
 - `gap_pass` 的执行记录用 `store.saveGapPassRun` 与 `store.getGapPassRun` 读写，同一楼层覆盖；`rejectedSegments` 只记录整段被拒绝的段落，`droppedEntries` 记录逐条丢弃的窗口外条目，成功时都是空数组。
 - 后台任务档位写在 `createBackgroundJobRegistry` 的条目里（`tier: "deferred"`），缺省 `gap`。新增任务类型时先判断它是不是“下一轮要用”：不是就标 `deferred`，否则会挤占短间隙。
-- 延后档的阈值是故事设置 `gapPlanSeconds`（迁移 v26，默认 212）。`drainBackgroundJobs` 只接受调用方传入的 `gapSeconds` 与 `sessionEnded`，自己不看时间；`dramaticer work` 不给 `--gap-seconds` 时按会话结束处理。
+- 延后档的阈值是故事设置 `gapPlanSeconds`（迁移 v26，默认 212）。`drainBackgroundJobs` 只接受调用方传入的 `gapSeconds` 与 `sessionEnded`，自己不看时间；`dramaticer work` 不给 `--gap-seconds` 就按会话结束处理。
 - 过期任务的丢弃在 `drainBackgroundJobs` 里做：只处理本轮会执行的类型，楼层不在 head 路径上就把 `pending` 标为 `discarded`；没有 head 时不做这项判断，故事级任务（`nodeId` 为 null）也不做。`enqueueMissingJobs` 会把 `discarded` 行翻回 `pending`，所以切回旧分支后任务能重新跑，别在别处再写一套删除逻辑。
 - 间隙未完成率用 `readGapWorkBacklog(store, storyId, gapKinds)`：分母是 `pending`、`running`、`done`、`failed`，丢弃不计入，没有任务时为 0。R2-T02 的试玩记录直接复用这个函数。
 - 后台任务需要等待其它任务完成时抛 `BackgroundJobDeferredError`（`background/types.ts`），drain 会把任务退回 pending 且不消耗执行次数；不要用抛普通错误的方式等待，那会消耗重试次数。
 - 故事级后台任务的入队条件写 `enqueue: "story"` 并提供 `needsRun(store, storyId)`；drain 只在它返回 true 时补建一条 `nodeId` 为 null 的任务。楼层级处理器读楼层用 `requireJobNodeId(job)`。开局包的输入摘要与校验在 `core/src/opening/opening.ts`，不要另写一份。
-- 开局包的在场人物必须能在角色卡名或 `character` 实体的名称/别名里找到，否则整包拒绝；素材只有角色卡提示词或常驻世界书时才生成，玩家开场白只作补充。
 - 开局包按摘要覆盖，不保留历史版本；首条玩家消息来自当前 head 路径上最早的非空玩家楼层，所以分支切换后摘要会变化并触发重新生成。
 - `docs/dev/TASKS.md` 只保留未完成任务与当前阶段；查已完成任务的说明、验收与完成记录读 `docs/dev/TASKS-archive.md`。
 - `docs/dev/reports/F0.md` 里只有 F0-T02、F0-T03、F0-T04、F0-T99 四个标记段；重跑脚本只会替换对应标记之间的内容，手写部分不要放进标记之间。F0-T99 节里引用的数字必须与前面各节和 `docs/dev/reports/F0-corpus.md` 一致。

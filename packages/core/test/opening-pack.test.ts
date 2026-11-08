@@ -13,6 +13,7 @@ import {
 	drainBackgroundJobs,
 	openingPackNeedsRun,
 	parseOpeningPackResponse,
+	readOpeningPack,
 	validateOpeningPackPayload,
 } from "../src/index.js";
 import { openTempStore } from "./temp-store.js";
@@ -121,7 +122,10 @@ async function drain(
 }
 
 describe("开局包校验", () => {
-	const known = new Set(["凛"]);
+	const known = {
+		names: new Set(["凛"]),
+		sourceText: "凛是图书委员，性格冷淡。",
+	};
 
 	it("接受完整开局包", () => {
 		const payload = parseOpeningPackResponse(packJson("第一版"), known);
@@ -177,6 +181,57 @@ describe("开局包校验", () => {
 			),
 		).toThrow("3 条");
 	});
+
+	it("角色卡正文里出现的其他人物可以通过校验", () => {
+		const payload = validateOpeningPackPayload(
+			{
+				place: "走廊",
+				time: "清晨",
+				participants: [{ name: "阿岚", wants: "确认凛的去向" }],
+				conflict: "阿岚拦住你",
+				directions: ["甲", "乙", "丙"],
+			},
+			{
+				names: known.names,
+				sourceText: "凛是图书委员。她的搭档阿岚总在走廊尽头抽烟。",
+			},
+		);
+
+		expect(payload.participants.map((item) => item.name)).toEqual(["阿岚"]);
+	});
+
+	it("卡里没有的名字仍然整包拒绝并指出字段", () => {
+		expect(() =>
+			validateOpeningPackPayload(
+				{
+					place: "走廊",
+					time: "清晨",
+					participants: [{ name: "赵六", wants: "路过" }],
+					conflict: "有人拦住你",
+					directions: ["甲", "乙", "丙"],
+				},
+				{
+					names: known.names,
+					sourceText: "凛是图书委员。她的搭档阿岚总在走廊尽头抽烟。",
+				},
+			),
+		).toThrow("participants[0].name");
+	});
+
+	it("单字名不按正文出现判定", () => {
+		expect(() =>
+			validateOpeningPackPayload(
+				{
+					place: "走廊",
+					time: "清晨",
+					participants: [{ name: "雨", wants: "下个不停" }],
+					conflict: "雨越下越大",
+					directions: ["甲", "乙", "丙"],
+				},
+				{ names: new Set(), sourceText: "外面在下雨。" },
+			),
+		).toThrow("不是角色卡或世界书里的人物");
+	});
 });
 
 describe("开局包任务", () => {
@@ -198,6 +253,30 @@ describe("开局包任务", () => {
 		expect(content).toContain("凛是图书委员");
 		expect(content).toContain("学校在冬天仍然开放");
 		expect(content).toContain("还没有开场白");
+	});
+
+	it("角色卡描述里的其他人物不建实体也能生成与读取开局包", async () => {
+		const { store } = openTempStore();
+		store.createStory({ id: "s1", title: "开局" });
+		store.updateStorySettings("s1", {
+			cardName: "凛",
+			characterPrompt: "凛是图书委员。她的搭档阿岚总在走廊尽头抽烟。",
+		});
+		const { client } = createFakeClient([
+			JSON.stringify({
+				place: "走廊",
+				time: "清晨",
+				participants: [{ name: "阿岚", wants: "确认凛的去向" }],
+				conflict: "阿岚拦住你",
+				directions: ["甲", "乙", "丙"],
+			}),
+		]);
+
+		const result = await drain(store, client);
+
+		expect(result.runs.map((run) => run.status)).toEqual(["done"]);
+		const pack = readOpeningPack(store, "s1");
+		expect(pack?.participants.map((item) => item.name)).toEqual(["阿岚"]);
 	});
 
 	it("没有角色卡与常驻世界书时不建任务也不调用模型", async () => {
