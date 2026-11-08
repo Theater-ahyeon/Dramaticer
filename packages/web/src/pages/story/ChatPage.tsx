@@ -15,6 +15,10 @@ import {
 	shouldPollActions,
 } from "../../chat/candidate-actions";
 import {
+	clearComposerDraft,
+	readComposerDraft,
+} from "../../chat/composer-draft";
+import {
 	OPENING_POLL_INTERVAL_MS,
 	type OpeningCandidateItem,
 	advanceOpeningPoll,
@@ -90,6 +94,8 @@ export function ChatPage() {
 	const abortRef = useRef<AbortController | null>(null);
 	const streamingRef = useRef(false);
 	const loadingOlderRef = useRef(false);
+	/** 同一个故事只取一次草稿，避免 StrictMode 的重复 effect 把输入框清空。 */
+	const composerStoryRef = useRef<string | null>(null);
 
 	const lastNode = path.nodes.at(-1);
 	const latestAssistantId =
@@ -111,7 +117,12 @@ export function ChatPage() {
 		setSummary(null);
 		setFailed(null);
 		setDraft(null);
-		setInput("");
+		if (composerStoryRef.current !== storyId) {
+			composerStoryRef.current = storyId;
+			const draft = readComposerDraft(storyId);
+			setInput(draft ?? "");
+			clearComposerDraft(storyId);
+		}
 		setSettings(null);
 		setSettingsError(null);
 		setActions([]);

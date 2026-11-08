@@ -680,7 +680,8 @@
   - `POST /api/channels/probe`：调用 `probeChannel`，只在用户点击时联网，结果写回配置。
   验收：脱敏响应里没有密钥；非法 YAML、重复别名、缺失环境变量与 `roles` 指向未知别名 400；writer 与 judge 同家族 400；写入后下一回合使用新配置；probe 用假提供方测试；真实渠道测试放 `*.live.test.ts`；`pnpm check` 通过。
 
-- [ ] **R5-T08 web 导演与 Trace 面板**（原 M4-T14） | 依赖：R5-T04、R5-T02、R4-T99
+- [x] **R5-T08 web 导演与 Trace 面板**（原 M4-T14） | 依赖：R5-T04、R5-T02、R4-T99
+  完成：2026-11-08 新增 `packages/web/src/chat/director-view.ts`（导演决策与信号展开、计划增删改、Trace 视图模型）与 `chat/composer-draft.ts`；导演页复用楼层树选楼，并行读取 `GET director`/`actions`/`trace` 与故事级设置、计划、线索：透明模式显示指令、当前拍（`signals.beat` 与计划里的弧线/序列/目标）、强度、纠偏信号与机制触发状态，盲盒只显示机制，决策为空显示“本楼没有评估”；候选行动按 `ordinal` 分成 4 条行动与 1 条场景变化，点击写入跨面板草稿并转到聊天页，聊天页挂载时取出填入输入框（StrictMode 下只取一次），不自动发送；计划用结构化编辑器增删改弧线、序列与拍（id 自动递增），整份 `PUT` 并显示服务端字段路径；设置表单保存 `directorConfig.mode`、`intensity`、`openingIntensity` 与 `openingFloors`，保存后重取当前楼决策；兑现线索后刷新列表；Trace 展示回合模式、模型/渠道/用量、工具轮次与传输、上下文分段状态、`appendedTo`、预算裁剪与缺失槽位，历史块省略量按块类型逐条显示；新增 2 个测试文件共 15 个测试；真实 server 加 Playwright 390×844 冒烟通过（候选 5 条、透明决策、草稿填入、计划刷新仍在、线索兑现、盲盒隐藏指令与信号、无横向溢出）；门禁通过（141 个测试文件、1252 个测试通过，3 个 live 跳过）
   做什么：
   - 导演决策：`GET /api/nodes/:id/director` 返回 `{nodeId, mode, decision}`；透明模式显示当前拍、强度、纠偏信号与指令，盲盒模式只显示机制触发状态；决策为空时显示“本楼没有评估”。
   - 候选行动：`GET /api/nodes/:id/actions` 按楼层显示 4 条行动与 1 条场景变化，点击一条填入聊天输入框，不自动发送。
