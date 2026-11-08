@@ -6,6 +6,7 @@ import {
 	type BackgroundJobRegistry,
 	type ChatProfile,
 	DEFAULT_CHAT_PROFILE,
+	DEFAULT_DIRECTOR_CONFIG,
 	type LlmChannelsConfig,
 	type LlmStreamingClient,
 	StoryStore,
@@ -62,6 +63,9 @@ const USAGE = [
 	`  --probe-every <n> 每多少轮插入一次一致性探针，默认 ${DEFAULT_PROBE_EVERY}，0 表示关闭`,
 	`  --probe-min-age <n> 探针事实至少早于 head 多少楼，默认 ${DEFAULT_PROBE_MIN_AGE_FLOORS}`,
 	"  --judge-model <m> 裁判模型别名，默认按 roles.judge 解析",
+	"  --judge-turns     每轮让裁判判断是否重 roll 与是否遵循指令",
+	"  --opening <on|off> 覆盖故事的开局导演开关；off 把 openingFloors 设为 0",
+	"  --no-background   不补建也不执行后台任务",
 	"  --channels <path> 渠道配置，默认 data/channels.yaml",
 	"  --help            显示本说明",
 ].join("\n");
@@ -148,6 +152,15 @@ export async function runPlaytestCli(
 			parsed.profile === "naive"
 				? createNaiveContextTemplate()
 				: resolveStoryContextTemplate(store, settings.templateId, mode);
+		const directorConfig =
+			parsed.opening === "off"
+				? { ...settings.directorConfig, openingFloors: 0 }
+				: parsed.opening === "on"
+					? {
+							...settings.directorConfig,
+							openingFloors: DEFAULT_DIRECTOR_CONFIG.openingFloors,
+						}
+					: settings.directorConfig;
 		const providers =
 			parsed.profile === "naive"
 				? createNaiveChatProviders({
@@ -159,7 +172,7 @@ export async function runPlaytestCli(
 						store,
 						characterPrompt,
 						embedder,
-						directorConfig: settings.directorConfig,
+						directorConfig,
 						historyBlockPolicy: settings.historyBlockPolicy,
 					});
 		await mkdir(path.dirname(parsed.outPath), { recursive: true });
@@ -175,7 +188,7 @@ export async function runPlaytestCli(
 		const assistantClient = createClient(config, parsed.model);
 		const userClient = createClient(config, parsed.userModel);
 		const background =
-			parsed.profile === "naive"
+			parsed.profile === "naive" || parsed.noBackground
 				? null
 				: {
 						client: createClient(
@@ -187,7 +200,11 @@ export async function runPlaytestCli(
 							createDefaultBackgroundJobRegistry({ embedder }),
 					};
 		let probes: PlaytestProbeOptions | null = null;
-		if (parsed.probeEvery > 0) {
+		let turnJudge: {
+			readonly client: LlmStreamingClient;
+			readonly model: string;
+		} | null = null;
+		if (parsed.probeEvery > 0 || parsed.judgeTurns) {
 			const judgeModel =
 				parsed.judgeModel ?? resolveModelForRole(config, "judge");
 			if (!config.models.has(judgeModel)) {
@@ -195,14 +212,20 @@ export async function runPlaytestCli(
 					`没有裁判模型 ${judgeModel}；可用模型：${[...config.models.keys()].join("、")}`,
 				);
 			}
-			probes = {
-				every: parsed.probeEvery,
-				minAgeFloors: parsed.probeMinAge,
-				judge: { client: createClient(config, judgeModel), model: judgeModel },
-			};
+			const judgeClient = createClient(config, judgeModel);
+			if (parsed.judgeTurns) {
+				turnJudge = { client: judgeClient, model: judgeModel };
+			}
+			if (parsed.probeEvery > 0) {
+				probes = {
+					every: parsed.probeEvery,
+					minAgeFloors: parsed.probeMinAge,
+					judge: { client: judgeClient, model: judgeModel },
+				};
+			}
 		}
 		log(
-			`试玩：故事 ${parsed.storyId}，档位 ${parsed.profile}，第 ${startRound} 到 ${parsed.rounds} 轮，助手模型 ${parsed.model}，模拟用户模型 ${parsed.userModel}`,
+			`试玩：故事 ${parsed.storyId}，档位 ${parsed.profile}，第 ${startRound} 到 ${parsed.rounds} 轮，助手模型 ${parsed.model}，模拟用户模型 ${parsed.userModel}，开局 ${parsed.opening}，后台任务 ${background === null ? "关闭" : "开启"}，每轮裁判 ${turnJudge === null ? "关闭" : "开启"}`,
 		);
 		const result = await runPlaytest({
 			store,
@@ -227,6 +250,7 @@ export async function runPlaytestCli(
 			},
 			background,
 			probes,
+			turnJudge,
 			operations: parsed.operations,
 			onRecord: async (record) => {
 				await appendFile(
@@ -274,6 +298,9 @@ interface PlaytestArgs {
 	readonly probeEvery: number;
 	readonly probeMinAge: number;
 	readonly judgeModel: string | null;
+	readonly judgeTurns: boolean;
+	readonly opening: "on" | "off" | "settings";
+	readonly noBackground: boolean;
 	readonly outPath: string;
 	readonly resume: boolean;
 	readonly operations: {
@@ -301,10 +328,13 @@ function parsePlaytestArgs(args: readonly string[]): PlaytestArgs {
 		"probe-every": true,
 		"probe-min-age": true,
 		"judge-model": true,
+		opening: true,
 		channels: true,
 	};
 	const allowedFlags: Readonly<Record<string, true>> = {
 		resume: true,
+		"judge-turns": true,
+		"no-background": true,
 	};
 	for (let index = 0; index < args.length; index += 1) {
 		const arg = args[index] as string;
@@ -374,6 +404,15 @@ function parsePlaytestArgs(args: readonly string[]): PlaytestArgs {
 		judgeModelValue === undefined
 			? null
 			: requireText(judgeModelValue, "--judge-model");
+	const openingValue = values.get("opening");
+	if (
+		openingValue !== undefined &&
+		openingValue !== "on" &&
+		openingValue !== "off"
+	) {
+		throw new Error(`--opening 只接受 on 或 off，收到 ${openingValue}`);
+	}
+	const opening = openingValue ?? "settings";
 	const outPath =
 		values.get("out") ??
 		path.join(repoRoot, "eval-private", "reports", "playtest.jsonl");
@@ -388,6 +427,9 @@ function parsePlaytestArgs(args: readonly string[]): PlaytestArgs {
 		probeEvery,
 		probeMinAge,
 		judgeModel,
+		judgeTurns: flags.has("judge-turns"),
+		opening,
+		noBackground: flags.has("no-background"),
 		outPath,
 		resume: flags.has("resume"),
 		operations: {

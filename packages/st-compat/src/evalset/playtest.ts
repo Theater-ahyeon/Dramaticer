@@ -31,6 +31,7 @@ import {
 	type PlaytestProbeRecord,
 	runPlaytestProbe,
 } from "./probe.js";
+import { type TurnJudgeRecord, judgePlaytestTurn } from "./turn-judge.js";
 
 export const DEFAULT_PLAYTEST_ROUNDS = 20;
 export const DEFAULT_PLAYTEST_MODEL = "rp";
@@ -147,6 +148,8 @@ interface PlaytestRecordBase {
 	readonly operations: readonly PlaytestOperationRecord[];
 	/** 本轮之后的一致性探针结果；不到探针轮次或失败轮次为 null。 */
 	readonly probe: PlaytestProbeRecord | null;
+	/** 本轮回复的玩家侧评价；未开启裁判或失败轮次为 null。 */
+	readonly verdict: TurnJudgeRecord | null;
 }
 
 export interface PlaytestRoundRecord extends PlaytestRecordBase {
@@ -221,6 +224,12 @@ export interface PlaytestOptions {
 	readonly background?: PlaytestBackgroundOptions | null;
 	/** 一致性探针；不提供或每轮数为 0 时不插探针。 */
 	readonly probes?: PlaytestProbeOptions | null;
+	/** 玩家侧裁判：每轮判断是否重 roll 与是否遵循指令；不提供时不调用。 */
+	readonly turnJudge?: {
+		readonly client: LlmClient;
+		readonly model: string;
+		readonly maxTokens?: number;
+	} | null;
 	readonly operations?: PlaytestOperationSchedule;
 	/** 每完成一轮调用一次；失败轮次也写。 */
 	readonly onRecord: (record: PlaytestRecord) => void | Promise<void>;
@@ -329,6 +338,7 @@ export async function runPlaytest(
 				gapWork,
 				operations: [],
 				probe: null,
+				verdict: null,
 				user: userMessage,
 				userHint,
 				error: error instanceof Error ? error.message : String(error),
@@ -413,6 +423,23 @@ export async function runPlaytest(
 			finalNode !== null && finalNode.role === "assistant"
 				? finalNode
 				: result.node;
+		const verdict =
+			options.turnJudge === null || options.turnJudge === undefined
+				? null
+				: await judgePlaytestTurn({
+						store: options.store,
+						storyId: options.storyId,
+						round,
+						userText: result.userNode.raw,
+						assistantText: assistantNode.raw,
+						assistantNodeId: assistantNode.id,
+						judge: options.turnJudge,
+					});
+		if (verdict !== null) {
+			log(
+				`第 ${round} 轮裁判：${verdict.status === "done" ? (verdict.reroll ? "会重 roll" : "不重 roll") : "失败"}`,
+			);
+		}
 		const diffs = options.store.getStateDiffs(assistantNode.id);
 		const trace = options.store.getTurnTrace(result.node.id);
 		if (trace === null) {
@@ -429,6 +456,7 @@ export async function runPlaytest(
 			gapWork,
 			operations,
 			probe,
+			verdict,
 			userNodeId: result.userNode.id,
 			nodeId: assistantNode.id,
 			traceNodeId: result.node.id,

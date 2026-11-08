@@ -24,6 +24,7 @@ import {
 	runPlaytest,
 	serializePlaytestRecord,
 } from "../src/evalset/playtest.js";
+import { parseTurnJudgeOutput } from "../src/evalset/turn-judge.js";
 
 const STORY_ID = "playtest-story";
 const CARD_PROMPT = "你扮演山神，用冷静的旁观者口吻叙述。";
@@ -409,6 +410,111 @@ describe("自动试玩", () => {
 		}
 		store.close();
 	}, 30_000);
+
+	it("每轮裁判记录重 roll 与指令遵循，且不改 head", async () => {
+		const dir = makeDir();
+		const store = openStore(dir);
+		const writer = createWriter();
+		const user = createUser((round) =>
+			JSON.stringify({ message: `第 ${round} 轮：我环视四周。` }),
+		);
+		const judge = createUser((round) =>
+			JSON.stringify({
+				reroll: round === 2,
+				followed: round !== 2,
+				reason: `第 ${round} 轮理由`,
+			}),
+		);
+		const records: PlaytestRecord[] = [];
+		const options = playtestOptions(store, {
+			rounds: 2,
+			assistant: { client: writer.client, model: "main" },
+			user: { client: user.client, model: "background" },
+			turnJudge: { client: judge.client, model: "judge" },
+			onRecord: (record) => {
+				records.push(record);
+			},
+		});
+		const headBefore = store.getHead(STORY_ID);
+		await runPlaytest(options);
+		const first = records[0];
+		const second = records[1];
+		if (first?.status !== "done" || second?.status !== "done") {
+			throw new Error("轮次失败");
+		}
+		expect(first.verdict).toMatchObject({
+			status: "done",
+			reroll: false,
+			followed: true,
+			reason: "第 1 轮理由",
+			attempts: 1,
+		});
+		expect(second.verdict).toMatchObject({
+			status: "done",
+			reroll: true,
+			followed: false,
+			reason: "第 2 轮理由",
+		});
+		expect(judge.requests).toHaveLength(2);
+		expect(headBefore).not.toBeNull();
+		expect(store.getHead(STORY_ID)?.id).toBe(second.nodeId);
+		store.close();
+	}, 30_000);
+
+	it("裁判连续非法时记录失败但试玩继续", async () => {
+		const dir = makeDir();
+		const store = openStore(dir);
+		const writer = createWriter();
+		const user = createUser(() => JSON.stringify({ message: "我继续走。" }));
+		const judge = createUser(() => "不是 JSON");
+		const records: PlaytestRecord[] = [];
+		const options = playtestOptions(store, {
+			rounds: 2,
+			assistant: { client: writer.client, model: "main" },
+			user: { client: user.client, model: "background" },
+			turnJudge: { client: judge.client, model: "judge" },
+			onRecord: (record) => {
+				records.push(record);
+			},
+		});
+		const result = await runPlaytest(options);
+		expect(result.failures).toBe(0);
+		expect(records).toHaveLength(2);
+		for (const record of records) {
+			if (record.status !== "done") throw new Error("轮次失败");
+			expect(record.verdict).toMatchObject({
+				status: "failed",
+				attempts: 3,
+				reroll: null,
+				followed: null,
+			});
+		}
+		expect(judge.requests).toHaveLength(6);
+		store.close();
+	}, 30_000);
+
+	it("严格解析每轮裁判输出", () => {
+		expect(
+			parseTurnJudgeOutput(
+				'{"reroll":true,"followed":false,"reason":"没听指令"}',
+			),
+		).toEqual({ reroll: true, followed: false, reason: "没听指令" });
+		expect(
+			parseTurnJudgeOutput('{"reroll":false,"followed":true,"reason":"好"}'),
+		).toEqual({ reroll: false, followed: true, reason: "好" });
+		expect(
+			parseTurnJudgeOutput(
+				'{"reroll":false,"followed":true,"reason":"好","extra":1}',
+			),
+		).toBeNull();
+		expect(
+			parseTurnJudgeOutput('{"reroll":"no","followed":true,"reason":"好"}'),
+		).toBeNull();
+		expect(
+			parseTurnJudgeOutput('{"reroll":false,"followed":true,"reason":""}'),
+		).toBeNull();
+		expect(parseTurnJudgeOutput("[]")).toBeNull();
+	});
 
 	it("CLI 续跑不重复轮次，不带 --resume 时重写记录", async () => {
 		const dir = makeDir();
