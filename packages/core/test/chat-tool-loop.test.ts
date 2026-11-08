@@ -166,10 +166,12 @@ describe("单轮执行器的读取工具循环", () => {
 
 		expect(result.node.raw).toBe("我想起了井底的匕首。");
 		expect(result.trace.tools).toEqual({
+			transport: "native",
 			rounds: 1,
 			maxRounds: 3,
 			capped: false,
-			calls: ["memory_search"],
+			calls: [{ name: "memory_search", ok: true, error: null }],
+			rejected: [],
 		});
 		expect(result.trace.llm).toMatchObject({
 			usage: {
@@ -214,10 +216,16 @@ describe("单轮执行器的读取工具循环", () => {
 		expect(requests).toHaveLength(4);
 		expect(result.node.raw).toBe("井底传来回声。");
 		expect(result.trace.tools).toEqual({
+			transport: "native",
 			rounds: 3,
 			maxRounds: 3,
 			capped: true,
-			calls: ["state_get", "state_get", "state_get"],
+			calls: [
+				{ name: "state_get", ok: true, error: null },
+				{ name: "state_get", ok: true, error: null },
+				{ name: "state_get", ok: true, error: null },
+			],
+			rejected: [],
 		});
 	});
 
@@ -261,10 +269,20 @@ describe("单轮执行器的读取工具循环", () => {
 			"memory_search.limit 必须是 1 到 12 之间的整数",
 		);
 		expect(result.trace.tools).toEqual({
+			transport: "native",
 			rounds: 1,
 			maxRounds: 3,
 			capped: false,
-			calls: ["memory_search"],
+			calls: [
+				{
+					name: "memory_search",
+					ok: false,
+					error: expect.stringContaining(
+						"memory_search.limit 必须是 1 到 12 之间的整数",
+					),
+				},
+			],
+			rejected: [],
 		});
 	});
 
@@ -327,10 +345,12 @@ describe("单轮执行器的读取工具循环", () => {
 			"井底的回声来自另一个人",
 		]);
 		expect(result.trace.tools).toEqual({
+			transport: "native",
 			rounds: 1,
 			maxRounds: 3,
 			capped: false,
-			calls: ["state_get"],
+			calls: [{ name: "state_get", ok: true, error: null }],
+			rejected: [],
 		});
 	});
 
@@ -392,10 +412,12 @@ describe("单轮执行器的读取工具循环", () => {
 
 		expect(requests[0]?.tools).toBeUndefined();
 		expect(result.trace.tools).toEqual({
+			transport: "native",
 			rounds: 0,
 			maxRounds: 3,
 			capped: false,
 			calls: [],
+			rejected: [],
 		});
 	});
 });

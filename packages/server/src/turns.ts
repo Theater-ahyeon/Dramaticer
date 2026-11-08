@@ -118,6 +118,7 @@ export async function handleTurnStream(
 			providers: runtime.providers,
 			budgetTokens: runtime.settings.budgetTokens,
 			structuredOutput: runtime.settings.structuredOutput,
+			toolTransport: runtime.toolTransport,
 			embedder: runtime.embedder,
 			viewpoint: runtime.settings.viewpoint,
 			model: runtime.modelAlias,

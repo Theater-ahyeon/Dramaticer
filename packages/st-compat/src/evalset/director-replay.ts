@@ -5,6 +5,7 @@ import {
 	type EmbeddingClient,
 	type LlmReasoningLevel,
 	type LlmStreamingClient,
+	type LlmToolTransport,
 	type PlotNote,
 	type StoryStore,
 	type TurnTrace,
@@ -154,6 +155,8 @@ export interface ChatReplayGeneratorOptions {
 	readonly client: LlmStreamingClient;
 	readonly template: ContextTemplate;
 	readonly structuredOutput: "text-tags" | "function-call";
+	/** 工具传输；不设置时走原生函数调用。 */
+	readonly toolTransport?: LlmToolTransport;
 	readonly budgetTokens: number;
 	readonly directorConfig: DirectorConfig;
 	readonly mechanisms?: readonly DirectorMechanism[];
@@ -185,6 +188,7 @@ export function createChatReplayGenerator(
 			}),
 			budgetTokens: options.budgetTokens,
 			structuredOutput: options.structuredOutput,
+			toolTransport: options.toolTransport,
 			model: options.model,
 			embedder: options.embedder ?? null,
 			maxTokens: options.maxTokens,

@@ -5,6 +5,7 @@ import {
 	parseChannelsConfig,
 	resolveDefaultMaxTokens,
 	resolveModelForRole,
+	resolveToolTransport,
 } from "../src/index.js";
 
 const env = {
@@ -312,5 +313,75 @@ models:
 		expect(() => resolveDefaultMaxTokens(config, "missing")).toThrow(
 			"没有配置模型 missing",
 		);
+	});
+});
+
+describe("工具传输", () => {
+	const text = (modelExtra: string, probe = "") => `
+channels:
+  gateway:
+    baseUrl: \${URL}
+    apiKey: \${KEY}
+models:
+  main:
+    id: vendor/model-x
+    channels: [gateway]
+${modelExtra}${probe}
+`;
+
+	it("显式配置 tools.transport 时按配置解析", () => {
+		const config = parseChannelsConfig(
+			text("    tools:\n      transport: text\n"),
+			{ URL: "u", KEY: "k" },
+		);
+		const model = config.models.get("main");
+		expect(model?.tools).toEqual({ transport: "text" });
+		expect(model === undefined ? null : resolveToolTransport(model)).toBe(
+			"text",
+		);
+	});
+
+	it("没有配置工具传输时按体检结果决定默认值", () => {
+		const config = parseChannelsConfig(
+			text(
+				"",
+				`    probe:
+      probedAt: 2026-11-07T00:00:00.000Z
+      channel: gateway
+      modelId: vendor/model-x
+      streaming: streaming
+      functionCalling: unsupported
+      thinking: unknown
+      prefill: unknown
+      usage: supported
+      cacheStats: unknown
+      structuredOutput: text-tags
+      notes: []
+`,
+			),
+			{ URL: "u", KEY: "k" },
+		);
+		const model = config.models.get("main");
+		expect(model?.tools).toBeNull();
+		expect(model === undefined ? null : resolveToolTransport(model)).toBe(
+			"text",
+		);
+	});
+
+	it("没有体检结果时默认走原生函数调用", () => {
+		const config = parseChannelsConfig(text(""), { URL: "u", KEY: "k" });
+		const model = config.models.get("main");
+		expect(model === undefined ? null : resolveToolTransport(model)).toBe(
+			"native",
+		);
+	});
+
+	it("非法的 tools.transport 抛错并指出字段", () => {
+		expect(() =>
+			parseChannelsConfig(text("    tools:\n      transport: grpc\n"), {
+				URL: "u",
+				KEY: "k",
+			}),
+		).toThrow("models.main.tools.transport");
 	});
 });

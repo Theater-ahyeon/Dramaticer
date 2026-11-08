@@ -35,6 +35,33 @@ export interface LlmChannelConfig {
 	readonly timeoutMs: number;
 }
 
+/** 工具调用的传输方式：原生函数调用，或正文里的 `<tool>` 文本协议。 */
+export const LLM_TOOL_TRANSPORTS = ["native", "text"] as const;
+
+export type LlmToolTransport = (typeof LLM_TOOL_TRANSPORTS)[number];
+
+export function isToolTransport(value: unknown): value is LlmToolTransport {
+	return (
+		typeof value === "string" &&
+		(LLM_TOOL_TRANSPORTS as readonly string[]).includes(value)
+	);
+}
+
+export function assertToolTransport(
+	value: unknown,
+	label = "工具传输方式",
+): LlmToolTransport {
+	if (!isToolTransport(value)) {
+		throw new Error(`${label}只能是 native、text：${String(value)}`);
+	}
+	return value;
+}
+
+/** 模型对工具调用传输的显式配置；没有配置时按体检结果选择默认值。 */
+export interface LlmModelToolsConfig {
+	readonly transport: LlmToolTransport;
+}
+
 export interface LlmModelConfig {
 	readonly alias: string;
 	readonly id: string;
@@ -43,6 +70,8 @@ export interface LlmModelConfig {
 	readonly reasoning: boolean;
 	/** 渠道 id，按优先级从高到低。 */
 	readonly channels: readonly string[];
+	/** 显式配置的工具传输；没有配置时为 null，由体检结果决定。 */
+	readonly tools: LlmModelToolsConfig | null;
 	/** 上次渠道体检的结果；没有跑过时为 null。 */
 	readonly probe: LlmModelProbe | null;
 }
@@ -150,6 +179,15 @@ export function resolveModelForRole(
 	const fallback = ROLE_FALLBACK_ALIASES[role];
 	if (config.models.has(fallback)) return fallback;
 	throw new Error(`角色 ${role} 没有配置模型，回落的 ${fallback} 模型也不存在`);
+}
+
+/**
+ * 工具传输的生效值：显式配置优先；没有配置时由渠道体检决定，
+ * 体检报告函数调用不支持就走文本协议，其余（含没跑过体检）走原生函数调用。
+ */
+export function resolveToolTransport(model: LlmModelConfig): LlmToolTransport {
+	if (model.tools !== null) return model.tools.transport;
+	return model.probe?.functionCalling === "unsupported" ? "text" : "native";
 }
 
 /** 故事设置没有保存过时使用的输出上限：不超过 4,096 token。 */
@@ -462,7 +500,26 @@ function parseModel(
 				? true
 				: requireBoolean(value.reasoning, `${label}.reasoning`),
 		channels: selected,
+		tools: parseModelTools(value.tools, `${label}.tools`),
 		probe: parseProbe(value.probe, `${label}.probe`),
+	};
+}
+
+function parseModelTools(
+	value: unknown,
+	label: string,
+): LlmModelToolsConfig | null {
+	if (value === undefined) return null;
+	const raw = requireObject(value, label);
+	if (raw.transport === undefined) {
+		throw new Error(`${label}.transport 只能是 native、text`);
+	}
+	return {
+		transport: requireEnum(
+			raw.transport,
+			`${label}.transport`,
+			LLM_TOOL_TRANSPORTS,
+		),
 	};
 }
 

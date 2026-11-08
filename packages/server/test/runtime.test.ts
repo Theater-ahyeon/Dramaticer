@@ -37,6 +37,7 @@ function model(alias: string, id: string, maxTokens = 1_024): LlmModelConfig {
 		maxTokens,
 		reasoning: true,
 		channels: ["gateway"],
+		tools: null,
 		probe: null,
 	};
 }

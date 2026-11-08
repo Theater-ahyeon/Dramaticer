@@ -46,7 +46,14 @@ function traceFor(
 			rounds: 1,
 			cached: false,
 		},
-		tools: { rounds: 0, maxRounds: 3, capped: false, calls: [] },
+		tools: {
+			transport: "native",
+			rounds: 0,
+			maxRounds: 3,
+			capped: false,
+			calls: [],
+			rejected: [],
+		},
 		structured: {
 			mode: "text-tags",
 			acceptedStateUpdates: 0,

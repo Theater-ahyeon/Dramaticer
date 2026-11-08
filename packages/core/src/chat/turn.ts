@@ -6,6 +6,7 @@ import {
 	assembleContext,
 } from "../context/assembler.js";
 import type { ContextTemplate } from "../context/template.js";
+import { type LlmToolTransport, assertToolTransport } from "../llm/channels.js";
 import type { EmbeddingClient } from "../llm/embeddings.js";
 import {
 	DEFAULT_TRUNCATION_TERMINATORS,
@@ -51,6 +52,8 @@ export interface ChatTurnOptions {
 	readonly providers?: ContextSlotProviders;
 	readonly budgetTokens: number;
 	readonly structuredOutput: StructuredOutputMode;
+	/** 工具调用传输；不设置时走原生函数调用。 */
+	readonly toolTransport?: LlmToolTransport | null;
 	/** 有 embedding 客户端时 memory_search 启用向量路。 */
 	readonly embedder?: EmbeddingClient | null;
 	/** 知情者视角；不设置时读取工具返回全知结果。 */
@@ -216,13 +219,15 @@ export async function generateAssistantTurn(
 
 	const startedAt = now();
 	const functionCall = options.structuredOutput === "function-call";
+	const transport = assertToolTransport(options.toolTransport ?? "native");
 	let turn: ModelTurnResult;
 	try {
 		turn = await runModelTurns({
 			client: options.client,
 			messages: assembled.messages,
 			structuredTools: functionCall ? STRUCTURED_OUTPUT_TOOLS : undefined,
-			readTools: functionCall ? READ_TOOLS : undefined,
+			readTools: functionCall || transport === "text" ? READ_TOOLS : undefined,
+			toolTransport: transport,
 			toolContext: {
 				store: options.store,
 				storyId: options.storyId,
@@ -258,6 +263,7 @@ export async function generateAssistantTurn(
 				error,
 				now,
 				mode: resolved,
+				transport,
 			});
 		}
 		throw error;
@@ -312,10 +318,19 @@ export async function generateAssistantTurn(
 				cached: turn.cached,
 			},
 			tools: {
+				transport,
 				rounds: turn.rounds,
 				maxRounds: resolved.maxReadRounds,
 				capped: turn.capped,
-				calls: turn.calls.map((call) => call.name),
+				calls: turn.calls.map((call) => ({
+					name: call.name,
+					ok: call.ok,
+					error: call.error,
+				})),
+				rejected: turn.rejected.map((rejection) => ({
+					name: rejection.name,
+					reason: rejection.reason,
+				})),
 			},
 			structured: {
 				mode: structured.mode,
@@ -384,6 +399,7 @@ async function persistAbortedTurn(input: {
 	readonly error: TurnAbortedError;
 	readonly now: () => number;
 	readonly mode: ResolvedTurnMode;
+	readonly transport: LlmToolTransport;
 }): Promise<ChatTurnResult> {
 	const { options, userNode, assembled, error } = input;
 	const completedAt = input.now();
@@ -415,10 +431,12 @@ async function persistAbortedTurn(input: {
 				cached: false,
 			},
 			tools: {
+				transport: input.transport,
 				rounds: 0,
 				maxRounds: input.mode.maxReadRounds,
 				capped: false,
 				calls: [],
+				rejected: [],
 			},
 			structured: {
 				mode: options.structuredOutput,

@@ -58,6 +58,7 @@ function fakeConfig(modelId = "fake-model"): LlmChannelsConfig {
 					maxTokens: 1_024,
 					reasoning: true,
 					channels: ["fake"],
+					tools: null,
 					probe: null,
 				},
 			],

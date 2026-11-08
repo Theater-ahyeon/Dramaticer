@@ -243,7 +243,8 @@
   - Trace 记录模式、工具轮数、软上限与是否因上限收束；`dramaticer chat --mode fast|deep` 与故事级锁定都走同一处校验。
   验收：快回合只发一次主调用加不超过软上限的读取工具轮；设置变化、工具失败与重试都不改变模式（逐个用例）；请求 deep 时抛错并指出 R3b；Trace 字段可读；`pnpm check` 通过。
 
-- [ ] **R3-T02 文本协议工具传输** | 依赖：R3-T01、M1-T03 | DESIGN §10.2
+- [x] **R3-T02 文本协议工具传输** | 依赖：R3-T01、M1-T03 | DESIGN §10.2
+  完成：2026-11-07 模型配置新增 `tools.transport`（`native` 或 `text`），`resolveToolTransport` 在没有显式配置时按 `probe.functionCalling` 决定（不支持就 `text`，其余 `native`）；`chat/tool-protocol.ts` 解析 `<tool name="…">{json}</tool>`、生成发给模型的工具说明、流式输出里隐藏调用片段；执行器两种传输共用参数校验、执行器、软上限与写入收集，文本协议的非法 JSON、未知工具与写入工具都作为工具结果返回；Trace 的 `tools` 增加 `transport`、`calls` 改为 `{name, ok, error}` 并新增 `rejected`；server 运行时与 `dramaticer chat` 按模型配置传入传输方式；新增 6 个传输测试与 4 个配置测试；门禁通过（859 个测试）
   做什么：
   - 按渠道体检结果选择工具传输方式：`tools.transport` 取 `native` 或 `text`（写在 `data/channels.yaml`，体检可以建议默认值）；文本协议解析 `<tool name="…">{json}</tool>`，与函数调用共用同一套 JSON Schema 校验与执行器。
   - 文本协议下的非法 JSON、未知工具、只写工具与超参数上限都作为工具结果返回给模型并记录 Trace，不中断正文；达到软上限时停止执行工具。

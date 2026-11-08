@@ -1,6 +1,6 @@
 import type { TurnMode } from "./chat/mode.js";
 import type { ContextTrace } from "./context/assembler.js";
-import type { LlmModelRole } from "./llm/channels.js";
+import type { LlmModelRole, LlmToolTransport } from "./llm/channels.js";
 import type {
 	LlmStopReason,
 	LlmTruncationReason,
@@ -33,15 +33,32 @@ export interface TurnTraceStructuredOutput {
 	readonly issues: readonly StructuredOutputIssue[];
 }
 
+export interface TurnTraceToolCall {
+	readonly name: string;
+	readonly ok: boolean;
+	/** 失败原因；成功时为 null。 */
+	readonly error: string | null;
+}
+
+/** 文本协议里被拒绝、没有执行的工具调用。 */
+export interface TurnTraceToolRejection {
+	readonly name: string;
+	readonly reason: string;
+}
+
 export interface TurnTraceTools {
+	/** 工具调用使用的传输方式：原生函数调用或文本协议。 */
+	readonly transport: LlmToolTransport;
 	/** 实际执行的读取工具轮数。 */
 	readonly rounds: number;
 	/** 每轮读取工具的软上限；快回合默认 3。 */
 	readonly maxRounds: number;
 	/** 模型在软上限处仍请求读取工具，本轮按上限收束。 */
 	readonly capped: boolean;
-	/** 每次读取工具调用的工具名，按调用顺序；参数非法的调用也记录。 */
-	readonly calls: readonly string[];
+	/** 每次读取工具调用的结果，按调用顺序；参数非法的调用也记录。 */
+	readonly calls: readonly TurnTraceToolCall[];
+	/** 文本协议里被拒绝的工具调用；原生传输下为空数组。 */
+	readonly rejected: readonly TurnTraceToolRejection[];
 }
 
 export interface TurnTraceTiming {

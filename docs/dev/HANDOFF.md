@@ -3,20 +3,19 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：107
-- 任务：R3-T01 快回合循环与模式开关
-- 结果：完成（`DONE`），门禁通过（94 个测试文件、849 个测试通过，3 个 live 跳过，共 852 个）。
-  - 新增 `packages/core/src/chat/mode.ts`：`TurnMode = "fast" | "deep"`、`DEFAULT_MAX_READ_ROUNDS = 3`、`isTurnMode`、`assertMaxReadRounds`、`assertTurnModeSupported`。请求深回合时抛错并指出阶段 R3b，没有降级路径。
-  - 故事设置新增 `turnMode`（默认 `fast`）与 `maxReadRounds`（默认 3），迁移 v28 给 `story_settings` 增加 `turn_mode`、`max_read_rounds`；后续计划迁移编号顺延：开局包 v29、开场候选 v30、偏好记录 v31、父子分块 v32、章节压缩 v33、世界书预筛 v34、上下文包 v35。
-  - 模式与软上限只有一个解析入口（`chat/turn.ts` 的 `resolveTurnMode`）：单轮参数优先于故事设置。`runChatTurn` 在追加用户楼层**之前**校验，`generateAssistantTurn` 再次校验；请求 deep 不会留下半个楼层。
-  - 执行器 `runModelTurns` 的读取工具轮数从硬上限 2 改为可配软上限（默认 3），选项名改为 `maxReadRounds`；达到上限后正常收束并返回 `capped`。写入工具仍然只收集。
-  - Trace 新增 `turnMode` 与 `tools.maxRounds`、`tools.capped`；`llm.rounds` 仍是模型请求轮数。
-  - `dramaticer chat --mode fast|deep`；参数解析阶段拒绝其他值，运行阶段与故事级锁定共用同一处校验。
-  - 新增 `core/test/turn-mode.test.ts`（9 个测试）与 3 个 CLI 测试；`chat-tool-loop.test.ts` 的软上限断言改为 3 轮并在达到上限时 `capped: true`；三个 Trace 构造点补 `turnMode` 与新的 `tools` 字段。
+- 会话：108
+- 任务：R3-T02 文本协议工具传输
+- 结果：完成（`DONE`），门禁通过（95 个测试文件、859 个测试通过，3 个 live 跳过，共 862 个）。
+  - 模型配置新增 `tools.transport`（`native` 或 `text`）。`resolveToolTransport` 在没有显式配置时按 `probe.functionCalling` 决定：体检报告 `unsupported` 走 `text`，其余（含没跑过体检）走 `native`。`data/channels.yaml` 的 `rp`、`rp-抗截断`、`main` 写了 `tools: transport: native`；`channels.example.yaml` 有注释示例。
+  - 新增 `packages/core/src/chat/tool-protocol.ts`：`extractTextToolCalls` 解析 `<tool name="…">{json}</tool>` 并返回去掉调用片段后的正文；`renderToolProtocol` 生成插在开头几条 system 消息之后的工具说明（含每个工具的 JSON Schema，明确可以不调用）；`TextToolStreamFilter` 在流式增量里隐藏调用片段，末尾可能是 `<tool` 开头的片段先留住。
+  - `runModelTurns` 按 `toolTransport` 分支：原生传输发送函数定义；文本传输不发 `tools`，改为在消息里说明协议并从正文解析调用。两种传输共用 `validateReadToolArguments`、`executeReadTool`、`maxReadRounds` 与写入收集。文本协议的非法 JSON、未知工具、写入工具都作为工具结果返回，正文继续；达到软上限时不再执行。
+  - Trace 的 `tools` 增加 `transport`；`calls` 从工具名数组改为 `{name, ok, error}`；新增 `rejected`（文本协议里未知工具的记录，原生传输为空数组）。`TurnTraceTools`、`ToolCallTrace`、`ModelTurnResult` 同步调整。
+  - `ChatTurnOptions.toolTransport` 由调用方传入：server 运行时的 `StoryRuntime.toolTransport`、`dramaticer chat`、导演回放的 `ChatReplayGeneratorOptions.toolTransport`；缺省 `native`。文本传输下即使 `structuredOutput` 是 `text-tags` 也提供读取工具（否则文本协议没有工具可用）。
+  - 新增 `core/test/tool-transport.test.ts`（6 个测试）与 `llm-channels.test.ts` 的 4 个工具传输配置测试；`chat-tool-loop.test.ts`、`turn-mode.test.ts`、`trace-store.test.ts`、`ledger-settlement.test.ts`、`st-compat/test/director-eval.test.ts` 的 Trace 构造点与严格相等断言同步更新。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`；未完成任务见 `docs/dev/TASKS.md`。
-- **R3 快回合进行中**（R3-T01 完成）。v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`；未完成任务见 `docs/dev/TASKS.md`。
+- **R3 快回合进行中**（R3-T01、R3-T02 完成，下一步 R3-T03 写作契约）。v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045。
 - HUMAN-09 待处理（不阻塞）：`data/channels.yaml` 已有 `bg-fallback`、`main-fallback`、`codex`，`channels.example.yaml` 还没有这三个别名。
 - HUMAN-10 待处理（不阻塞）：插件不变量是否加进 AGENTS.md。
@@ -43,16 +42,18 @@
 - 插件系统在 DESIGN §19 是唯一权威；P 阶段任务在 TASKS 的「P：插件内核」小节，C 线兼容插件任务已存在且依赖 P2。
 
 ## 下一步
-- **R3-T02 文本协议工具传输**：按渠道体检结果选择 `tools.transport`（`native` 或 `text`，写在 `data/channels.yaml`），文本协议解析 `<tool name="…">{json}</tool>`，与函数调用共用同一套 JSON Schema 校验与执行器；非法 JSON、未知工具、只写工具与超参数都作为工具结果返回并记录 Trace；软上限对两种传输相同，写入工具仍然只收集不执行。实现前先读 DESIGN §10.2 与 `core/src/chat/executor.ts` 的现有工具循环。
+- **R3-T03 写作契约与默认模板**：默认原生模板末尾（最靠近生成的位置）增加 `protocol` 写作契约段——玩家输入是本轮演出指引、不是已经发生的剧情；玩家不是上帝，角色可以按人设拒绝、反对、打断；每轮有剧情意义，不重复之前的正文；遵守台账里的用户意志。契约段是静态段，可以被故事模板覆盖；模板校验保证 `protocol` 始终是最后一个段落。`block_format` 保持可选、默认关闭（I13）。实现前先读 DESIGN §9 与 `core/src/chat/template.ts` 的 `createDefaultContextTemplate`，以及 `core/test/chat-turn.test.ts`、`core/test/chat-providers.test.ts`、`st-compat/test/chat-cli.test.ts` 里的槽位与顺序断言。
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
 - 不要修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 下的任何文件。不变量 I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账是唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖任何其他工作区包、ST 语义只在兼容插件里实现。
 - 回合模式：`TurnMode`、`DEFAULT_MAX_READ_ROUNDS`、`isTurnMode`、`assertMaxReadRounds`、`assertTurnModeSupported` 都在 `core/src/chat/mode.ts`。模式与软上限只在 `chat/turn.ts` 的 `resolveTurnMode` 解析一次，单轮参数优先于故事设置；新增入口不要另写一套判断。程序没有任何按轮数、工具调用数、错误或预算切换模式的代码路径（I6）。
 - 深回合在 R3b 实现前请求即失败；失败在 `runChatTurn` 追加用户楼层之前发生，所以不会留下只有用户楼层的分支。不要为了“能跑”把它降级成快回合。
-- 读取工具软上限现在是可配的软上限（默认 3），执行器不再有 `MAX_TOOL_ROUNDS` 常量。达到上限时若模型仍只请求工具且正文为空，执行器会抛错；有正文时正常收束并把 `tools.capped` 记为 true。
-- `TurnTrace` 新增 `turnMode`，`tools` 增加 `maxRounds` 与 `capped`；tests 目录不在 tsc 的 `include` 里，新增 Trace 字段时手动检查 `core/test/trace-store.test.ts`、`core/test/ledger-settlement.test.ts`、`st-compat/test/director-eval.test.ts` 的构造点与 `core/test/chat-tool-loop.test.ts` 的严格相等断言。
-- `dramaticer chat` 的 `--mode` 只影响单轮；故事级锁定写在故事设置 `turnMode`。server 的回合路径目前不传单轮模式，读取故事设置。
+- 读取工具软上限是可配的软上限（默认 3），执行器没有上限常量。达到上限时若模型仍只请求工具且正文为空，执行器会抛错；有正文时正常收束并把 `tools.capped` 记为 true。
+- 工具传输：`LlmToolTransport`、`LLM_TOOL_TRANSPORTS`、`isToolTransport`、`assertToolTransport`、`resolveToolTransport` 在 `core/src/llm/channels.ts`。显式 `models.<alias>.tools.transport` 优先；没有配置时 `probe.functionCalling === "unsupported"` 走 `text`，其余走 `native`。新增调用 `runChatTurn` 的入口要传 `toolTransport`（按模型解析），否则一律按原生函数调用。
+- 文本协议：`core/src/chat/tool-protocol.ts` 的 `extractTextToolCalls`、`renderToolProtocol`、`TextToolStreamFilter`。工具说明只插进发给模型的消息副本（开头几条 system 消息之后），不改组装好的上下文与 Trace 的 `context.entries`。文本传输下 `structuredOutput` 是 `text-tags` 也提供读取工具；写入工具只在 `function-call` 模式提供定义，写入仍然只收集、不执行（I12）。`<tool>` 片段不进入楼层原文，流式输出里也被隐藏；未闭合的 `<tool` 片段按正文保留。
+- Trace 的 `tools.calls` 是 `{name, ok, error}`，`tools.rejected` 只记文本协议里的未知工具。tests 目录不在 tsc 的 `include` 里，新增 Trace 字段时手动检查 `core/test/trace-store.test.ts`、`core/test/ledger-settlement.test.ts`、`st-compat/test/director-eval.test.ts` 的构造点与 `core/test/chat-tool-loop.test.ts`、`core/test/turn-mode.test.ts` 的严格相等断言。
+- `dramaticer chat` 的 `--mode` 只影响单轮；故事级锁定写在故事设置 `turnMode`。server 的回合路径目前不传单轮模式，读取故事设置；工具传输由 server 运行时按故事模型解析。
 - 渠道角色：角色类型叫 `LlmModelRole`（`writer`、`settler`、`planner`、`judge`），与表示消息角色的 `LlmRole`（system、user、assistant）不是一回事。`createLlmClient` 会校验 judge 与 writer 的模型家族，缺省回落也算在内：只要配置里同时有 `main` 与 `background` 且两者同家族，创建任何客户端都会抛错。`data/channels.yaml` 目前用 `judge: codex`（`codex/gpt-6.1-terra`，gpt 家族）与 writer 的 deepseek 区分。
 - `channels.example.yaml` 的 roles 示例里 judge 指向 background 并附了说明；复制示例时如果 background 与 main 是同一家族，启动会失败，需要另配一个家族的模型。
 - 后台模型的输出上限是 32,768（`channels.example.yaml` 与 `data/channels.yaml` 的 `background`）；`channels.ts` 的 `DEFAULT_MAX_TOKENS` 仍是 8,192，只在配置没写 `maxTokens` 时兜底。结算、事件、用户意志、修订与合并调用的处理器不传 `maxTokens`，路由使用模型声明值。不要把这些请求改回小上限：8,192 会被思考占满并把 JSON 截断。ADR-0057。

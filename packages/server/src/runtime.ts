@@ -5,6 +5,7 @@ import {
 	type EmbeddingClient,
 	type LlmChannelsConfig,
 	type LlmStreamingClient,
+	type LlmToolTransport,
 	type StorySettings,
 	type StoryStore,
 	createDefaultContextTemplate,
@@ -13,6 +14,7 @@ import {
 	createStandardChatProviders,
 	resolveDefaultMaxTokens,
 	resolveModelForRole,
+	resolveToolTransport,
 } from "@dramaticer/core";
 
 /** 按模型别名创建客户端；正文与后台任务各用一份，限速互不影响。 */
@@ -32,6 +34,8 @@ export const DEFAULT_EMBEDDING_ALIAS = "default";
 export interface StoryRuntime {
 	readonly settings: StorySettings;
 	readonly modelAlias: string;
+	/** 正文模型的工具传输方式，来自模型配置或体检结果。 */
+	readonly toolTransport: LlmToolTransport;
 	/** 本轮生成的输出上限：保存过设置时用设置值，否则按 writer 模型声明计算。 */
 	readonly maxTokens: number;
 	readonly template: ContextTemplate;
@@ -89,9 +93,11 @@ export class StoryRuntimeManager {
 		config: LlmChannelsConfig,
 	): StoryRuntime {
 		const modelAlias = settings.model ?? resolveModelForRole(config, "writer");
-		if (!config.models.has(modelAlias)) {
+		const model = config.models.get(modelAlias);
+		if (model === undefined) {
 			throw new Error(`故事设置的模型 ${modelAlias} 不在渠道配置里`);
 		}
+		const toolTransport = resolveToolTransport(model);
 		const settlerAlias =
 			config.roles.get("settler") ??
 			(config.models.has(BACKGROUND_MODEL_ALIAS)
@@ -111,6 +117,7 @@ export class StoryRuntimeManager {
 		return {
 			settings,
 			modelAlias,
+			toolTransport,
 			maxTokens,
 			template,
 			providers: createStandardChatProviders({

@@ -123,10 +123,12 @@ describe("回合模式与读取工具软上限", () => {
 		expect(requests.length).toBe(1);
 		expect(result.trace.turnMode).toBe("fast");
 		expect(result.trace.tools).toEqual({
+			transport: "native",
 			rounds: 0,
 			maxRounds: 3,
 			capped: false,
 			calls: [],
+			rejected: [],
 		});
 	});
 
@@ -233,10 +235,12 @@ describe("回合模式与读取工具软上限", () => {
 		expect(requests.length).toBe(2);
 		expect(result.trace.turnMode).toBe("fast");
 		expect(result.trace.tools).toEqual({
+			transport: "native",
 			rounds: 1,
 			maxRounds: 1,
 			capped: true,
-			calls: ["state_get"],
+			calls: [{ name: "state_get", ok: true, error: null }],
+			rejected: [],
 		});
 	});
 
@@ -264,10 +268,12 @@ describe("回合模式与读取工具软上限", () => {
 		expect(requests.length).toBe(1);
 		expect(result.trace.turnMode).toBe("fast");
 		expect(result.trace.tools).toEqual({
+			transport: "native",
 			rounds: 0,
 			maxRounds: 0,
 			capped: true,
 			calls: [],
+			rejected: [],
 		});
 	});
 
@@ -300,7 +306,13 @@ describe("回合模式与读取工具软上限", () => {
 		expect(result.trace.turnMode).toBe("fast");
 		expect(result.trace.llm.attempts).toBe(3);
 		expect(result.trace.tools.capped).toBe(false);
-		expect(result.trace.tools.calls).toEqual(["state_get"]);
+		expect(result.trace.tools.calls).toEqual([
+			{
+				name: "state_get",
+				ok: false,
+				error: expect.stringContaining("state_get.path"),
+			},
+		]);
 	});
 
 	it("故事设置变化不改变模式，只改变下一轮的软上限", async () => {

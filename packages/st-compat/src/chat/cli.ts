@@ -20,6 +20,7 @@ import {
 	loadDotEnv,
 	resolveModelForRole,
 	resolveStructuredOutputMode,
+	resolveToolTransport,
 	runChatTurn,
 } from "@dramaticer/core";
 import {
@@ -196,6 +197,7 @@ export async function runChatCli(
 			}),
 			budgetTokens,
 			structuredOutput: mode,
+			toolTransport: resolveToolTransport(model),
 			turnMode: parsed.turnMode,
 			model: modelAlias,
 			embedder,
