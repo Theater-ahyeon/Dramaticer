@@ -1,5 +1,6 @@
 import type {
 	Entity,
+	LedgerChangeCard,
 	LedgerClue,
 	LedgerFact,
 	LoreEntry,
@@ -8,6 +9,7 @@ import type {
 } from "@dramaticer/core";
 import type {
 	NodeLedgerView,
+	ProposalDecisionAction,
 	StoryPath,
 	StoryTree,
 	StoryTreeNode,
@@ -37,9 +39,11 @@ import {
 	nextEventRequest,
 	pathKey,
 } from "../../chat/ledger-view";
+import { replaceProposalCard } from "../../chat/proposal-view";
 import { ErrorNotice } from "../../components/ErrorNotice";
 import { BranchTree } from "../../components/branches/BranchTree";
 import { LedgerValue } from "../../components/ledger/LedgerValue";
+import { ProposalList } from "../../components/ledger/ProposalList";
 import { StateTree } from "../../components/ledger/StateTree";
 
 export function LedgerPage() {
@@ -59,11 +63,17 @@ export function LedgerPage() {
 	const [nodeLoading, setNodeLoading] = useState(false);
 	const [loadError, setLoadError] = useState<unknown>(null);
 	const [nodeError, setNodeError] = useState<unknown>(null);
+	const [cards, setCards] = useState<readonly LedgerChangeCard[]>([]);
+	const [cardBusyId, setCardBusyId] = useState<string | null>(null);
+	const [cardError, setCardError] = useState<unknown>(null);
 	const requestRef = useRef(0);
+	const storyEpoch = useRef(0);
+	const selectedIdRef = useRef<string | null>(null);
 
 	useEffect(() => {
 		if (storyId === undefined) return;
 		let active = true;
+		storyEpoch.current += 1;
 		requestRef.current += 1;
 		setTree(null);
 		setPathNodeIds([]);
@@ -76,17 +86,21 @@ export function LedgerPage() {
 		setClues([]);
 		setEntities([]);
 		setLore([]);
+		setCards([]);
+		setCardBusyId(null);
+		setCardError(null);
 		setNodeError(null);
 		setLoadError(null);
 		void (async () => {
 			try {
-				const [loadedTree, ids, clueView, entityView, loreView] =
+				const [loadedTree, ids, clueView, entityView, loreView, proposalView] =
 					await Promise.all([
 						api.getTree(storyId),
 						collectPathNodeIds((before) => fetchPathPage(storyId, before)),
 						api.getClues(storyId),
 						api.getEntities(storyId),
 						api.getLore(storyId),
+						api.getProposals(storyId, "all"),
 					]);
 				if (!active) return;
 				setTree(loadedTree);
@@ -94,6 +108,7 @@ export function LedgerPage() {
 				setClues(clueView.clues);
 				setEntities(entityView.entities);
 				setLore(loreView.entries);
+				setCards(proposalView.proposals);
 				setSelectedId(loadedTree.headNodeId);
 			} catch (error) {
 				if (active) setLoadError(error);
@@ -103,6 +118,10 @@ export function LedgerPage() {
 			active = false;
 		};
 	}, [storyId]);
+
+	useEffect(() => {
+		selectedIdRef.current = selectedId;
+	}, [selectedId]);
 
 	useEffect(() => {
 		if (
@@ -190,6 +209,33 @@ export function LedgerPage() {
 			});
 	};
 
+	const decideCard = (cardId: string, action: ProposalDecisionAction) => {
+		if (storyId === undefined || cardBusyId !== null) return;
+		const epoch = storyEpoch.current;
+		setCardBusyId(cardId);
+		setCardError(null);
+		void api
+			.decideProposal(cardId, action)
+			.then(async (result) => {
+				if (storyEpoch.current !== epoch) return;
+				setCards((previous) => replaceProposalCard(previous, result.card));
+				if (
+					result.ledger !== null &&
+					result.ledger.nodeId === selectedIdRef.current
+				) {
+					setLedger(result.ledger);
+				}
+				const clueView = await api.getClues(storyId);
+				if (storyEpoch.current === epoch) setClues(clueView.clues);
+			})
+			.catch((error: unknown) => {
+				if (storyEpoch.current === epoch) setCardError(error);
+			})
+			.finally(() => {
+				if (storyEpoch.current === epoch) setCardBusyId(null);
+			});
+	};
+
 	return (
 		<div className="ledger-layout">
 			<aside className="ledger-tree-pane">
@@ -227,6 +273,12 @@ export function LedgerPage() {
 						</header>
 						<ErrorNotice error={nodeError} />
 						{nodeLoading ? <p className="muted">正在读取台账…</p> : null}
+						<ErrorNotice error={cardError} />
+						<ProposalList
+							cards={cards}
+							busyId={cardBusyId}
+							onDecide={decideCard}
+						/>
 						{ledger === null ? null : (
 							<>
 								<section className="ledger-section">

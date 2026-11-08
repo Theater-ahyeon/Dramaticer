@@ -1034,6 +1034,56 @@ button.branch-select:hover {
 	background: #fbeeeb;
 }
 
+.ledger-proposal-group + .ledger-proposal-group {
+	margin-top: 12px;
+}
+
+.ledger-proposal-list,
+.ledger-proposal-diffs {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.ledger-proposal {
+	padding: 8px 10px;
+	background: var(--bg);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+}
+
+.ledger-proposal-text {
+	margin: 6px 0 0;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+.ledger-proposal-diffs {
+	margin-top: 8px;
+}
+
+.ledger-proposal-diffs > li {
+	padding: 6px 8px;
+	border: 1px dashed var(--border);
+	border-radius: 6px;
+}
+
+.ledger-proposal-rejection {
+	margin: 6px 0 0;
+	color: var(--danger);
+	font-size: 0.82rem;
+}
+
+.ledger-proposal-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin-top: 8px;
+}
+
 .ledger-diff-head,
 .ledger-fact-head {
 	display: flex;

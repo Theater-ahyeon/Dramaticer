@@ -22,6 +22,19 @@ export const LEDGER_CHANGE_CARD_STATUSES = [
 export type LedgerChangeCardStatus =
 	(typeof LEDGER_CHANGE_CARD_STATUSES)[number];
 
+/** 变更卡操作失败的原因；调用方据此区分“不存在”和“状态不允许”。 */
+export type LedgerChangeCardErrorCode = "not_found" | "invalid_status";
+
+export class LedgerChangeCardError extends Error {
+	readonly code: LedgerChangeCardErrorCode;
+
+	constructor(code: LedgerChangeCardErrorCode, message: string) {
+		super(message);
+		this.name = "LedgerChangeCardError";
+		this.code = code;
+	}
+}
+
 /** `userWill` 台账路径的第一段。 */
 const USER_WILL_NAMESPACE = "userWill";
 
@@ -266,7 +279,8 @@ export async function rollbackLedgerChangeCard(
 	return store.runInTransaction(() => {
 		const card = requireCard(store, cardId);
 		if (card.status !== "approved") {
-			throw new Error(
+			throw new LedgerChangeCardError(
+				"invalid_status",
 				`变更卡 ${cardId} 的状态是 ${card.status}，只有已批准的卡片可以回滚`,
 			);
 		}
@@ -303,7 +317,9 @@ export function requireCard(
 	cardId: string,
 ): LedgerChangeCard {
 	const card = store.getLedgerChangeCard(cardId);
-	if (card === null) throw new Error(`变更卡不存在：${cardId}`);
+	if (card === null) {
+		throw new LedgerChangeCardError("not_found", `变更卡不存在：${cardId}`);
+	}
 	return card;
 }
 
@@ -314,7 +330,8 @@ function requirePendingCard(
 ): LedgerChangeCard {
 	const card = requireCard(store, cardId);
 	if (card.status !== "pending") {
-		throw new Error(
+		throw new LedgerChangeCardError(
+			"invalid_status",
 			`变更卡 ${cardId} 的状态是 ${card.status}，只有待定卡可以${action}`,
 		);
 	}

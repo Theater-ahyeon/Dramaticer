@@ -73,6 +73,15 @@ describe("ApiClient", () => {
 		);
 	});
 
+	it("变更卡动作对 id 编码并使用 POST", async () => {
+		const { client, calls } = clientFor(() => jsonResponse({}));
+		await client.decideProposal("card/1", "rollback");
+		const call = calls[0];
+		if (call === undefined) throw new Error("缺少请求");
+		expect(call.url).toBe("/api/proposals/card%2F1/rollback");
+		expect(call.init.method).toBe("POST");
+	});
+
 	it("服务端错误转成 ApiError 并保留字段路径", async () => {
 		const { client } = clientFor(() =>
 			jsonResponse(

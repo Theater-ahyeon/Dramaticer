@@ -9,6 +9,8 @@ import {
 	type DirectorDecision,
 	type DirectorIntensity,
 	LEDGER_CHANGE_CARD_STATUSES,
+	type LedgerChangeCard,
+	LedgerChangeCardError,
 	MAX_MEMORY_EVENT_LIMIT,
 	OPENING_CANDIDATES_JOB_KIND,
 	OPENING_CANDIDATE_STATUSES,
@@ -21,6 +23,7 @@ import {
 	type TimelineNode,
 	type TurnMode,
 	type UpdateContextTemplateInput,
+	approveLedgerChangeCard,
 	assertDirectorIntensity,
 	enqueueOpeningBackgroundJobs,
 	fulfillLedgerClue,
@@ -33,38 +36,43 @@ import {
 	readDirectorPlan,
 	readLedger,
 	readLedgerFacts,
+	rejectLedgerChangeCard,
 	replaceDirectorPlan,
+	rollbackLedgerChangeCard,
 } from "@dramaticer/core";
-import type {
-	CreateContextTemplateRequest,
-	CreateStoryRequest,
-	DirectorDecisionView,
-	FulfillClueResult,
-	ImportCharacterCard,
-	ImportStoryRequest,
-	ImportStoryResult,
-	NodeActionResult,
-	NodeActionsView,
-	NodeChoiceResult,
-	NodeCompressionsView,
-	NodeDirectorView,
-	NodeEventsView,
-	NodeLedgerView,
-	SetHeadRequest,
-	StoryCluesView,
-	StoryDirectorPlanView,
-	StoryEntitiesView,
-	StoryJobErrorView,
-	StoryJobsView,
-	StoryLoreView,
-	StoryOpeningGenerateResult,
-	StoryOpeningPickResult,
-	StoryOpeningsView,
-	StoryPath,
-	StoryProposalsView,
-	StoryTree,
-	StoryTreeNode,
-	StoryView,
+import {
+	type CreateContextTemplateRequest,
+	type CreateStoryRequest,
+	type DirectorDecisionView,
+	type FulfillClueResult,
+	type ImportCharacterCard,
+	type ImportStoryRequest,
+	type ImportStoryResult,
+	type NodeActionResult,
+	type NodeActionsView,
+	type NodeChoiceResult,
+	type NodeCompressionsView,
+	type NodeDirectorView,
+	type NodeEventsView,
+	type NodeLedgerView,
+	type ProposalDecisionAction,
+	type ProposalDecisionResult,
+	type SetHeadRequest,
+	type StoryCluesView,
+	type StoryDirectorPlanView,
+	type StoryEntitiesView,
+	type StoryJobErrorView,
+	type StoryJobsView,
+	type StoryLoreView,
+	type StoryOpeningGenerateResult,
+	type StoryOpeningPickResult,
+	type StoryOpeningsView,
+	type StoryPath,
+	type StoryProposalsView,
+	type StoryTree,
+	type StoryTreeNode,
+	type StoryView,
+	isProposalDecisionAction,
 } from "@dramaticer/protocol";
 import {
 	type ImportedCardContent,
@@ -186,6 +194,14 @@ export async function handleApiRequest(
 		}
 		if (third === "director" && parts.length === 4 && parts[3] === "plan") {
 			await handleDirectorPlan(req, res, method, options, storyId);
+			return;
+		}
+	}
+	if (first === "proposals" && second !== undefined && parts.length === 3) {
+		const action = third;
+		if (isProposalDecisionAction(action)) {
+			requireMethod(method, ["POST"]);
+			await handleProposalDecision(res, options, second, action);
 			return;
 		}
 	}
@@ -644,15 +660,21 @@ function handleNodeLedger(
 	options: ApiRouteOptions,
 	nodeId: string,
 ): void {
-	const node = requireNode(options.store, nodeId);
-	const view: NodeLedgerView = {
+	sendJson(res, 200, buildNodeLedgerView(options.store, nodeId));
+}
+
+function buildNodeLedgerView(
+	store: StoryStore,
+	nodeId: string,
+): NodeLedgerView {
+	const node = requireNode(store, nodeId);
+	return {
 		nodeId,
 		storyId: node.storyId,
-		state: options.store.getStateSnapshot(nodeId).state,
-		facts: readLedgerFacts(options.store, nodeId),
-		diffs: options.store.getStateDiffs(nodeId),
+		state: store.getStateSnapshot(nodeId).state,
+		facts: readLedgerFacts(store, nodeId),
+		diffs: store.getStateDiffs(nodeId),
 	};
-	sendJson(res, 200, view);
 }
 
 function handleNodeEvents(
@@ -820,6 +842,50 @@ function handleLore(
 		entries: options.store.listLoreEntries(storyId),
 	};
 	sendJson(res, 200, view);
+}
+
+async function handleProposalDecision(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	cardId: string,
+	action: ProposalDecisionAction,
+): Promise<void> {
+	let card: LedgerChangeCard;
+	try {
+		card = await decideLedgerChangeCard(options.store, cardId, action);
+	} catch (error) {
+		throw toProposalDecisionError(error);
+	}
+	const head = options.store.getHead(card.storyId);
+	const view: ProposalDecisionResult = {
+		card,
+		ledger: head === null ? null : buildNodeLedgerView(options.store, head.id),
+	};
+	sendJson(res, 200, view);
+}
+
+function decideLedgerChangeCard(
+	store: StoryStore,
+	cardId: string,
+	action: ProposalDecisionAction,
+): Promise<LedgerChangeCard> {
+	switch (action) {
+		case "approve":
+			return approveLedgerChangeCard(store, cardId);
+		case "reject":
+			return rejectLedgerChangeCard(store, cardId);
+		case "rollback":
+			return rollbackLedgerChangeCard(store, cardId);
+	}
+}
+
+/** 卡片不存在映射 404，状态不允许映射 409；其余错误原样上抛。 */
+function toProposalDecisionError(error: unknown): HttpError {
+	if (!(error instanceof LedgerChangeCardError)) throw error;
+	if (error.code === "not_found") {
+		return new HttpError(404, "not_found", error.message);
+	}
+	return new HttpError(409, "conflict", error.message);
 }
 
 function handleProposals(

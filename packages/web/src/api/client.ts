@@ -18,6 +18,8 @@ import {
 	type NodeEventsView,
 	type NodeLedgerView,
 	type NodeTextRequest,
+	type ProposalDecisionAction,
+	type ProposalDecisionResult,
 	SSE_EVENT_NAMES,
 	type SetHeadRequest,
 	type SseEvent,
@@ -240,6 +242,16 @@ export class ApiClient {
 		return this.json<StoryProposalsView>(
 			"GET",
 			`${storyPath(storyId)}/proposals${queryText(query)}`,
+		);
+	}
+
+	async decideProposal(
+		cardId: string,
+		action: ProposalDecisionAction,
+	): Promise<ProposalDecisionResult> {
+		return this.json<ProposalDecisionResult>(
+			"POST",
+			`/api/proposals/${encodeURIComponent(cardId)}/${action}`,
 		);
 	}
 

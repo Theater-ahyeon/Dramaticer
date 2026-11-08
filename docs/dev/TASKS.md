@@ -655,7 +655,8 @@
   - 只读：不提供编辑、批复或兑现入口；变更卡的操作在 R5-T07.a，线索兑现按钮在 R5-T08。
   验收：面板数据与接口一致；本楼 diff 高亮只标该楼层自己的写入；长值可展开；空状态清楚；事件分页游标正确、切换楼层后重新取数；面板没有任何写接口调用；纯逻辑单测覆盖格式化与分页；`pnpm check` 通过。
 
-- [ ] **R5-T07.a web 变更卡审批与回滚** | 依赖：R5-T07、R1-T07.a、R5-T02
+- [x] **R5-T07.a web 变更卡审批与回滚** | 依赖：R5-T07、R1-T07.a、R5-T02
+  完成：2026-11-08 core 新增 `LedgerChangeCardError`（`not_found`、`invalid_status`），批准、拒绝与回滚在原因可区分处抛出该错误；server 新增 `POST /api/proposals/:id/approve|reject|rollback`，复用三个核心函数，卡片不存在 404、状态不允许 409，响应返回更新后的卡片与卡片所属故事 head 的台账快照（`ProposalDecisionResult`，没有楼层时为 null）；web 台账页新增变更卡分组列表（待审、已批准、已拒绝、已回滚），显示来源、来源楼层、路径、值与拒绝原因，批准、拒绝与回滚成功后用返回卡片替换、head 被选中时直接刷新台账并重取线索；`card_decision` 仍由核心在事务里写，界面不重复记录；新增 1 个 server 测试、5 个纯逻辑测试与 1 个客户端测试；真实 server 加 Playwright 冒烟通过（390×844 批准后状态树出现 `mvu.time`、回滚后消失、拒绝不改台账、2 条 `card_decision`、无横向溢出）；门禁通过（137 个测试文件、1210 个测试通过，3 个 live 跳过）
   做什么：
   - server 新增 `POST /api/proposals/:id/approve`、`/reject`、`/rollback`：复用 `approveLedgerChangeCard`、`rejectLedgerChangeCard`、`rollbackLedgerChangeCard`，不另写规则；卡片不存在 404，状态不允许时 409；响应返回更新后的卡片与台账快照。
   - web 在台账面板增加待审变更卡列表：数据来自 `GET /api/stories/:id/proposals?status=pending`，显示路径、值、来源（`model`、`settler`、`player`）与拒绝原因；批准、拒绝与回滚调用上述接口，成功后刷新台账。

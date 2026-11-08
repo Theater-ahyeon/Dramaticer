@@ -139,6 +139,32 @@ export interface StoryProposalsView {
 	readonly proposals: readonly LedgerChangeCard[];
 }
 
+/** 变更卡可以执行的三个动作。 */
+export const PROPOSAL_DECISION_ACTIONS = [
+	"approve",
+	"reject",
+	"rollback",
+] as const;
+export type ProposalDecisionAction = (typeof PROPOSAL_DECISION_ACTIONS)[number];
+
+export function isProposalDecisionAction(
+	value: unknown,
+): value is ProposalDecisionAction {
+	return (
+		typeof value === "string" &&
+		(PROPOSAL_DECISION_ACTIONS as readonly string[]).includes(value)
+	);
+}
+
+/**
+ * `POST /api/proposals/:id/approve|reject|rollback` 的结果：更新后的卡片，
+ * 以及卡片所属故事当前 head 的台账快照；故事没有楼层时为 null。
+ */
+export interface ProposalDecisionResult {
+	readonly card: LedgerChangeCard;
+	readonly ledger: NodeLedgerView | null;
+}
+
 export interface StoryOpeningsView {
 	readonly storyId: string;
 	readonly status: OpeningCandidateStatus | "all";

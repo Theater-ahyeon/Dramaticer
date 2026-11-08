@@ -9,6 +9,7 @@ import type {
 	NodeDirectorView,
 	NodeEventsView,
 	NodeLedgerView,
+	ProposalDecisionResult,
 	StoryCluesView,
 	StoryDirectorPlanView,
 	StoryEntitiesView,
@@ -393,6 +394,105 @@ describe("节点面板接口", () => {
 			`${running.origin}/api/stories/s1/proposals?status=nope`,
 		);
 		expect(badStatus.status).toBe(400);
+	});
+
+	it("变更卡可以批准、拒绝与回滚，重复操作 409，不存在 404", async () => {
+		const running = await startTestServer();
+		const seeded = seedStory(running);
+		running.store.insertLedgerChangeCard({
+			id: "card-1",
+			storyId: "s1",
+			source: "player",
+			sourceNodeId: seeded.userId,
+			text: "把时间改成夜晚",
+			diffs: [{ path: ["mvu", "time"], op: "set", value: "夜晚" }],
+			before: [{ path: ["mvu", "time"], existed: false }],
+			status: "pending",
+		});
+		running.store.insertLedgerChangeCard({
+			id: "card-2",
+			storyId: "s1",
+			source: "settler",
+			sourceNodeId: seeded.userId,
+			text: "把地点改成山顶",
+			diffs: [
+				{ path: ["scene", "current", "place"], op: "set", value: "山顶" },
+			],
+			before: [{ path: ["scene", "current", "place"], existed: false }],
+			status: "pending",
+		});
+
+		const approved = await post(
+			running.origin,
+			"/api/proposals/card-1/approve",
+			{},
+		);
+		expect(approved.status).toBe(200);
+		const approvedBody = (await approved.json()) as ProposalDecisionResult;
+		expect(approvedBody.card).toMatchObject({
+			id: "card-1",
+			status: "approved",
+		});
+		expect(approvedBody.ledger?.nodeId).toBe(seeded.replyId);
+		expect(approvedBody.ledger?.state).toMatchObject({ mvu: { time: "夜晚" } });
+
+		const again = await post(
+			running.origin,
+			"/api/proposals/card-1/approve",
+			{},
+		);
+		expect(again.status).toBe(409);
+		expect((await errorBody(again)).error.code).toBe("conflict");
+
+		const missing = await post(
+			running.origin,
+			"/api/proposals/没有这张卡/approve",
+			{},
+		);
+		expect(missing.status).toBe(404);
+		expect((await errorBody(missing)).error.code).toBe("not_found");
+
+		const rejected = await post(
+			running.origin,
+			"/api/proposals/card-2/reject",
+			{},
+		);
+		expect(rejected.status).toBe(200);
+		const rejectedBody = (await rejected.json()) as ProposalDecisionResult;
+		expect(rejectedBody.card).toMatchObject({
+			id: "card-2",
+			status: "rejected",
+		});
+		expect(rejectedBody.ledger?.state).not.toHaveProperty("scene");
+
+		const approvedRollback = await post(
+			running.origin,
+			"/api/proposals/card-1/rollback",
+			{},
+		);
+		expect(approvedRollback.status).toBe(200);
+		const rollbackBody =
+			(await approvedRollback.json()) as ProposalDecisionResult;
+		expect(rollbackBody.card).toMatchObject({
+			id: "card-1",
+			status: "rolled_back",
+		});
+		expect(rollbackBody.ledger?.state).not.toHaveProperty("mvu.time");
+
+		const rollbackAgain = await post(
+			running.origin,
+			"/api/proposals/card-1/rollback",
+			{},
+		);
+		expect(rollbackAgain.status).toBe(409);
+
+		const decisions = running.store.listPreferenceEvents("s1", {
+			kind: "card_decision",
+		});
+		expect(decisions.map((event) => event.payload)).toEqual([
+			{ cardId: "card-1", decision: "approved" },
+			{ cardId: "card-2", decision: "rejected" },
+		]);
 	});
 
 	it("开场候选可以列出、选中，跨故事选中返回 404", async () => {
