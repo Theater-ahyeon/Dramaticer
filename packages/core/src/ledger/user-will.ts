@@ -136,7 +136,7 @@ export function createUserWillHandler(
 	if (!Number.isInteger(windowFloors) || windowFloors < 1) {
 		throw new Error("用户意志的玩家消息窗口必须是正整数");
 	}
-	return async ({ store, client, job }) => {
+	return async ({ store, client, job, signal }) => {
 		const nodeId = requireJobNodeId(job);
 		const path = store.getPathToNode(nodeId);
 		const players = path
@@ -152,6 +152,7 @@ export function createUserWillHandler(
 			messages,
 			model: options.model,
 			temperature: 0,
+			signal,
 		});
 		const captured = parseUserWillResponse(result.text, players);
 		applyCapturedUserWills(store, job.storyId, nodeId, captured);

@@ -6,6 +6,7 @@ import {
 	generateAssistantTurn,
 } from "@dramaticer/core";
 import type { ApiErrorBody } from "@dramaticer/protocol";
+import type { BackgroundScheduler } from "./background.js";
 import { HttpError } from "./http.js";
 import type { StoryRuntimeManager } from "./runtime.js";
 import { type SseStream, createSseStream } from "./sse.js";
@@ -61,6 +62,7 @@ export interface TurnRouteOptions {
 	readonly turns: TurnCoordinator;
 	readonly log: (line: string) => void;
 	readonly heartbeatMs: number;
+	readonly scheduler?: BackgroundScheduler | null;
 	readonly now?: () => number;
 }
 
@@ -165,6 +167,7 @@ export async function handleTurnStream(
 			trace: result.trace,
 			firstTokenMs: result.trace.timing.firstTokenMs,
 		});
+		options.scheduler?.schedule(storyId);
 	} catch (error) {
 		if (stream === null) throw error;
 		if (!clientGone) {

@@ -223,13 +223,14 @@ export function createSettleHandler(
 	options: SettleHandlerOptions = {},
 ): BackgroundJobHandler {
 	const resolved = resolveSettlementOptions(options);
-	return async ({ store, client, job }) => {
+	return async ({ store, client, job, signal }) => {
 		const window = prepareSettlement(store, job.storyId, resolved);
 		if (window === null) return;
 		const result = await client.complete({
 			messages: buildSettlementMessages(window),
 			model: options.model,
 			temperature: 0,
+			signal,
 		});
 		applySettlementProposals(
 			store,

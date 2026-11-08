@@ -1,4 +1,6 @@
 import type {
+	BackgroundJobCounts,
+	BackgroundJobStatus,
 	StorySettings,
 	TimelineNode,
 	TimelineRole,
@@ -10,6 +12,26 @@ export interface StoryView {
 	readonly title: string;
 	readonly createdAt: string;
 	readonly headNodeId: string | null;
+}
+
+/** 后台任务最近一次失败；重试中的任务也会出现在这里。 */
+export interface StoryJobErrorView {
+	readonly jobId: number;
+	readonly nodeId: string | null;
+	readonly kind: string;
+	readonly status: BackgroundJobStatus;
+	readonly attempts: number;
+	readonly error: string;
+	/** 失败时间；重试中的任务还没有最终失败时间时用开始时间或创建时间。 */
+	readonly recordedAt: string;
+}
+
+/** `GET /api/stories/:id/jobs` 的响应。 */
+export interface StoryJobsView {
+	readonly storyId: string;
+	readonly counts: BackgroundJobCounts;
+	/** 按最近一次错误时间倒序，最多 5 条。 */
+	readonly recentErrors: readonly StoryJobErrorView[];
 }
 
 export interface CreateStoryRequest {

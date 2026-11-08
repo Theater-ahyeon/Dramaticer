@@ -78,6 +78,7 @@ export interface GenerateOpeningCandidatesOptions {
 	/** 覆盖客户端默认模型；不设置时使用客户端的默认模型。 */
 	readonly model?: string;
 	readonly createdAt?: string;
+	readonly signal?: AbortSignal;
 }
 
 /**
@@ -104,6 +105,7 @@ export async function generateOpeningCandidates(
 		messages,
 		model: options.model,
 		temperature: 0.9,
+		signal: options.signal,
 	});
 	const raws = parseOpeningCandidatesResponse(result.text, count);
 	return options.store.appendOpeningCandidates({
@@ -145,7 +147,7 @@ export function createOpeningCandidatesHandler(
 	const count = assertOpeningCandidateCount(
 		options.count ?? DEFAULT_OPENING_CANDIDATE_COUNT,
 	);
-	return async ({ store, client, job }) => {
+	return async ({ store, client, job, signal }) => {
 		if (store.getHead(job.storyId) !== null) return;
 		if (
 			store.listOpeningCandidates(job.storyId, { status: "pending" }).length > 0
@@ -159,6 +161,7 @@ export function createOpeningCandidatesHandler(
 			client,
 			storyId: job.storyId,
 			count,
+			signal,
 			...(options.model === undefined ? {} : { model: options.model }),
 		});
 	};

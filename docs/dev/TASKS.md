@@ -470,7 +470,8 @@
   做什么：在并入的 M4 剩余任务基础上按上面的执行顺序排定：最小界面只做聊天、swipe、台账只读面板、图片与选项块、模式开关；其余面板（分支树、导演与 Trace、设置与模板、渠道）在最小界面通过后做；Playwright 与 60 轮自动试玩放在最后。把模式开关、台账读取接口、偏好信号接线、候选行动与开局候选的显示加入任务，删除已被 R1–R4 取代的旧面板描述。
   验收：R5-T01 至 R5-T14 的依赖与验收与 DESIGN §8、§10.1、§13 一致；最小界面的验收不依赖后续面板；`pnpm check` 通过。
 
-- [ ] **R5-T01 server 后台任务调度**（原 M4-T07） | 依赖：M4-T06、M2-T03、R1-T02 | DESIGN §4、§7
+- [x] **R5-T01 server 后台任务调度**（原 M4-T07） | 依赖：M4-T06、M2-T03、R1-T02 | DESIGN §4、§7
+  完成：2026-11-08 新增 `packages/server/src/background.ts` 的 `BackgroundScheduler`：回合成功并发出 `turn.completed` 后按故事排入队列，服务端同一时刻只跑一个 drain，故事之间先来先做、任务按创建顺序执行；后台使用运行时里的独立 `backgroundClient`（单独创建的客户端，限速互不影响）与 `createDefaultBackgroundJobRegistry`（带 embedding 客户端），`gap_pass` 按故事开关过滤；drain 新增 `signal`，处理器上下文带上中止信号，11 个后台任务处理器把信号传给模型请求，关闭服务时取消本轮并把 running 任务退回 pending、不消耗执行次数；新增 `GET /api/stories/:id/jobs` 返回五个状态计数与最多 5 条最近错误；新增 4 个调度测试、2 个接口测试与 1 个回合先后顺序测试，全部使用假处理器与假客户端；门禁通过（111 个测试文件、980 个测试，3 个 live 跳过）
   做什么：
   - 回合成功后在后台执行 `enqueueMissingJobs` 与 `drainBackgroundJobs`，不阻塞 SSE 结束；服务端同一时间只跑一个后台任务，按创建顺序；使用独立的 `background` 客户端与限速。
   - 失败按任务框架的规则记录，超过重试次数后标为 `failed` 并保留最后错误；服务端关闭时中止正在执行的处理器。

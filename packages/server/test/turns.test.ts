@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+	type BackgroundJobRegistry,
 	type LlmCallOptions,
 	type LlmChannelsConfig,
 	type LlmRequest,
@@ -10,6 +11,7 @@ import {
 	type LlmStreamingClient,
 	type LlmToolCall,
 	StoryStore,
+	createBackgroundJobRegistry,
 } from "@dramaticer/core";
 import type { SseEventMap, SseEventName } from "@dramaticer/protocol";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
@@ -66,6 +68,22 @@ function fakeConfig(modelId = "fake-model"): LlmChannelsConfig {
 		roles: new Map(),
 		embeddings: new Map(),
 	};
+}
+
+function configWithBackground(): LlmChannelsConfig {
+	const config = fakeConfig();
+	const models = new Map(config.models);
+	models.set("background", {
+		alias: "background",
+		id: "background-model",
+		contextWindow: 8_192,
+		maxTokens: 1_024,
+		reasoning: true,
+		channels: ["fake"],
+		tools: null,
+		probe: null,
+	});
+	return { ...config, models };
 }
 
 interface FakeReply {
@@ -240,6 +258,8 @@ interface TurnServer {
 async function startTurnServer(
 	replies: readonly FakeReply[],
 	onStream?: () => void,
+	backgroundRegistry?: BackgroundJobRegistry,
+	initialConfig?: LlmChannelsConfig,
 ): Promise<TurnServer> {
 	const dir = tempDir();
 	const webRoot = join(dir, "web");
@@ -251,7 +271,7 @@ async function startTurnServer(
 	const dbPath = join(dir, "story.db");
 	const client = new ScriptedClient(replies, onStream);
 	const logs: string[] = [];
-	let config = fakeConfig();
+	let config = initialConfig ?? fakeConfig();
 	let builds = 0;
 	const running = await startServer({
 		dbPath,
@@ -269,6 +289,9 @@ async function startTurnServer(
 				builds += 1;
 				return client;
 			},
+			...(backgroundRegistry === undefined
+				? {}
+				: { createBackgroundRegistry: () => backgroundRegistry }),
 		},
 	});
 	onTestFinished(() => running.close());
@@ -480,6 +503,49 @@ describe("POST /api/stories/:id/turns", () => {
 		const completed = frameData(frames, "turn.completed");
 		expect(completed.trace.tools.rounds).toBe(1);
 		expect(completed.node.raw).toBe("山门在山顶。");
+	});
+
+	it("回合完成事件先返回，后台任务随后执行", async () => {
+		const gate = Promise.withResolvers<void>();
+		const ran: string[] = [];
+		const registry = createBackgroundJobRegistry({
+			settle: {
+				enqueue: "settled",
+				handler: async ({ job }) => {
+					ran.push(`settle:${job.nodeId ?? ""}`);
+					await gate.promise;
+				},
+			},
+			events: {
+				enqueue: "settled",
+				handler: async ({ job }) => {
+					ran.push(`events:${job.nodeId ?? ""}`);
+					await gate.promise;
+				},
+			},
+			summary: {
+				enqueue: "settled",
+				handler: async ({ job }) => {
+					ran.push(`summary:${job.nodeId ?? ""}`);
+					await gate.promise;
+				},
+			},
+		});
+		const { running } = await startTurnServer(
+			[{ text: "正文" }],
+			undefined,
+			registry,
+			configWithBackground(),
+		);
+		const response = await postTurn(running.origin, "开始。");
+		const frames = await new FrameStream(response).readAll();
+		expect(eventNames(frames).at(-1)).toBe("turn.completed");
+		await vi.waitFor(() => expect(ran.length).toBeGreaterThan(0));
+		expect(ran[0]).toMatch(/^settle:/);
+		gate.resolve();
+		await vi.waitFor(() =>
+			expect(running.store.countBackgroundJobs({ storyId: "s1" }).done).toBe(3),
+		);
 	});
 
 	it("设置或渠道配置变化后重建运行时", async () => {

@@ -76,6 +76,8 @@ export interface BackgroundJobContext {
 	readonly store: StoryStore;
 	readonly client: LlmClient;
 	readonly job: BackgroundJob;
+	/** 调用方取消本轮执行时通知处理器；处理器要把它传给模型请求。 */
+	readonly signal?: AbortSignal;
 }
 
 /**

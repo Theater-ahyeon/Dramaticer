@@ -115,7 +115,7 @@ export function createMemoryRevisionHandler(
 	if (!Number.isInteger(windowFloors) || windowFloors < 1) {
 		throw new Error("修订草案的玩家消息窗口必须是正整数");
 	}
-	return async ({ store, client, job }) => {
+	return async ({ store, client, job, signal }) => {
 		const nodeId = requireJobNodeId(job);
 		const path = store.getPathToNode(nodeId);
 		const players = path
@@ -140,6 +140,7 @@ export function createMemoryRevisionHandler(
 			messages,
 			model: options.model,
 			temperature: 0,
+			signal,
 		});
 		const drafts = parseRevisionResponse(result.text, players);
 		applyRevisionDrafts(store, job.storyId, nodeId, drafts, snapshot);

@@ -175,7 +175,7 @@ export function createEventExtractionHandler(
 	if (!Number.isInteger(windowFloors) || windowFloors < 1) {
 		throw new Error("事件抽取窗口必须是不小于 1 的整数");
 	}
-	return async ({ store, client, job }) => {
+	return async ({ store, client, job, signal }) => {
 		const window = selectEventWindow(store, job.storyId, windowFloors);
 		if (window === null) return;
 		const messages: LlmMessage[] = [
@@ -186,6 +186,7 @@ export function createEventExtractionHandler(
 			messages,
 			model: options.model,
 			temperature: 0,
+			signal,
 		});
 		const batches = parseEventBatchExtraction(
 			result.text,

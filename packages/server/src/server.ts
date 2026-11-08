@@ -18,6 +18,10 @@ import {
 	verifyPassword,
 } from "./auth.js";
 import {
+	type BackgroundRegistryFactory,
+	BackgroundScheduler,
+} from "./background.js";
+import {
 	HttpError,
 	readJsonBody,
 	sendEmpty,
@@ -43,6 +47,7 @@ export interface ServerChannelsOptions {
 	readonly load?: () => Promise<LlmChannelsConfig>;
 	readonly createClient?: RuntimeClientFactory;
 	readonly createEmbedder?: RuntimeEmbedderFactory;
+	readonly createBackgroundRegistry?: BackgroundRegistryFactory;
 }
 
 export interface StartServerOptions {
@@ -73,6 +78,7 @@ interface HandlerOptions {
 	readonly maxJsonBodyBytes: number;
 	readonly runtime: StoryRuntimeManager | null;
 	readonly turns: TurnCoordinator;
+	readonly scheduler: BackgroundScheduler | null;
 	readonly heartbeatMs: number;
 	readonly now?: () => number;
 	readonly log: (line: string) => void;
@@ -106,6 +112,18 @@ export async function startServer(
 					createEmbedder: channels.createEmbedder,
 				});
 	const turns = new TurnCoordinator();
+	const scheduler =
+		runtime === null
+			? null
+			: new BackgroundScheduler({
+					store,
+					runtime,
+					...(channels?.createBackgroundRegistry === undefined
+						? {}
+						: { createRegistry: channels.createBackgroundRegistry }),
+					log,
+					...(options.now === undefined ? {} : { now: options.now }),
+				});
 	const server = http.createServer(
 		createRequestHandler({
 			store,
@@ -115,6 +133,7 @@ export async function startServer(
 			maxJsonBodyBytes: options.maxJsonBodyBytes ?? MAX_JSON_BODY_BYTES,
 			runtime,
 			turns,
+			scheduler,
 			heartbeatMs: options.heartbeatMs ?? SSE_HEARTBEAT_MS,
 			now: options.now,
 			log,
@@ -136,6 +155,7 @@ export async function startServer(
 			if (closed) return;
 			closed = true;
 			await turns.abortAll();
+			await scheduler?.close();
 			const finished = Promise.withResolvers<void>();
 			server.close((error) =>
 				error ? finished.reject(error) : finished.resolve(),
@@ -233,6 +253,7 @@ async function handleRequest(
 			maxJsonBodyBytes: options.maxJsonBodyBytes,
 			runtime: options.runtime,
 			turns: options.turns,
+			scheduler: options.scheduler,
 			log: options.log,
 			heartbeatMs: options.heartbeatMs,
 			now: options.now,

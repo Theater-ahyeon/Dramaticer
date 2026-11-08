@@ -208,7 +208,7 @@ export function createGapPassHandler(
 	);
 	const playerWindow = Math.max(userWillWindow, revisionWindow);
 
-	return async ({ store, client, job }) => {
+	return async ({ store, client, job, signal }) => {
 		const nodeId = requireJobNodeId(job);
 		const window = prepareSettlement(store, job.storyId, settlementOptions);
 		const inWindow = window?.nodeIds.includes(nodeId);
@@ -257,6 +257,7 @@ export function createGapPassHandler(
 			messages,
 			model: options.model,
 			temperature: 0,
+			signal,
 		});
 		const response = parseGapPassResponse(result.text);
 		const rejections: GapPassSegmentRejection[] = [];

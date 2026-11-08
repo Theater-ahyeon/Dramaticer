@@ -83,7 +83,7 @@ export function createNpcAgendaHandler(
 	if (!Number.isInteger(chapterSize) || chapterSize < 2) {
 		throw new Error("NPC 议程的章节窗口必须是不小于 2 的整数");
 	}
-	return async ({ store, client, job }) => {
+	return async ({ store, client, job, signal }) => {
 		const nodeId = requireJobNodeId(job);
 		const confirmed = store.countConfirmedAssistantNodesOnPath(nodeId);
 		if (confirmed === 0 || confirmed % chapterSize !== 0) return;
@@ -116,6 +116,7 @@ export function createNpcAgendaHandler(
 			messages,
 			model: options.model,
 			temperature: 0,
+			signal,
 		});
 		const progressByEntity = resolveProgress(
 			parseNpcAgendaProgress(result.text),

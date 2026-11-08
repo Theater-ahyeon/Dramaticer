@@ -3,22 +3,20 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：130
-- 任务：R2-T09.c legacy 对话对照
-- 结果：完成（`DONE`），门禁通过（109 个测试文件、972 个测试通过，3 个 live 跳过，共 975 个）。
-  - 把 3 个 legacy 对话（`仙侠雌竞：什么叫我是炉鼎体质？`、`欲望世界-1600`、`银麒赎世`）连同角色卡、卡内世界书与外部世界书导入独立数据库；主路径上取第一个达到 119 与 219 的助手楼层作为分支点，实际深度 119/220、120/220、119/219。
-  - 每个分支点用 `naive` 与 `native` 各跑 20 轮，写作 `rp`、模拟用户 `background`、裁判 `judge`、种子 1、`--probe-every 0`、`--no-background`，共 12 次运行、240 轮、失败轮次 0；18 轮被截断检测记为 `abrupt_end`。
-  - 记忆题由 `eval-private/evalset/event-<故事>.jsonl` 的既有事件题转换而来，统一归入 `extraction`，没有编造题；每个故事 50 道，跑后在最终 head 上提问。
-  - 600 道题：一致 12、矛盾 115、无法判断 30、跳过 314、失败 129；可判定 127，矛盾率 90.6%。naive 可判定 94（95.7%），native 可判定 33（75.8%）。分层矛盾率（naive/native）：`100-199` 97.6%（40/41）与 68.4%（13/19），`200-299` 94.3%（50/53）与 85.7%（12/14）。
-  - 同题对照：naive 47 道同题，97.5% → 97.4%，未上升；native 9 道同题，66.7% → 100.0%，按规则记为「上升」，但每层只有 7–9 道可判定回答，不作为深度效应证据。
-  - 公开基准同一口径：18 次运行、360 轮、0 失败，可判定 63、矛盾率 81.0%；`100-199` 与 `200-299` 分别为 100.0%（5/5）与 90.9%（20/22）。
-  - 失败题里 84 道是作答返回空文本，45 道是 `catie` 渠道 503「没有可用的 Antigravity 凭证」，集中在 `银麒赎世` 深度 220 的两次运行；会话结束前 `rp` 路由仍不可用，失败批次没有重试（HUMAN-13）。
-  - `forgetting-report` 新增 `corpus` 维度，公开基准与 legacy 对话分表并列；统计版 `docs/dev/reports/R2-forgetting.md`，私有版 `eval-private/reports/R2-forgetting.md`；结论与限制写入 ADR-0072。
+- 会话：131
+- 任务：R5-T01 server 后台任务调度
+- 结果：完成（`DONE`），门禁通过（111 个测试文件、980 个测试通过，3 个 live 跳过，共 983 个）。
+  - 新增 `packages/server/src/background.ts` 的 `BackgroundScheduler`：回合成功并发出 `turn.completed` 后调用 `schedule(storyId)`，队列按故事先来先做，同一时刻只有一个 drain 在跑；每个 drain 内部按任务创建顺序逐个执行。
+  - 后台使用运行时里的 `backgroundClient`（独立创建的客户端，与正文客户端限速互不影响）和 `createDefaultBackgroundJobRegistry({ embedder })`；`gap_pass` 按故事设置过滤。服务端每个回合结束后按“间隙已经耗尽”调用 drain（`sessionEnded: true`），因此延后档的事件抽取与摘要也会执行。
+  - `drainBackgroundJobs` 新增 `signal`；`BackgroundJobContext.signal` 传进 11 个后台任务处理器，所有模型请求都带上它。服务端关闭时 `scheduler.close()` 中止本轮，正在执行的任务由 `store.deferBackgroundJob` 退回 pending，不消耗执行次数。
+  - 新增 `GET /api/stories/:id/jobs`：五个状态计数（含 `discarded`）与最多 5 条最近错误（失败与重试中的任务都算，按错误时间倒序），响应类型是 protocol 的 `StoryJobsView`。
+  - 新增测试：`packages/server/test/background.test.ts` 4 个（执行、串行与单并发、失败到上限、关闭中止），`packages/server/test/jobs.test.ts` 2 个（计数与最近错误、404/405），`turns.test.ts` 1 个（`turn.completed` 先返回，处理器随后才跑），core 的 `background-jobs.test.ts` 1 个（取消后任务退回 pending 且 attempts 为 0）。全部使用假处理器与假客户端，零网络。
+  - `ServerChannelsOptions.createBackgroundRegistry` 与 `StartServerOptions.channels` 允许测试注入任务注册表；生产不传时用默认注册表。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T07、R2-T08、R2-T09.a、R2-T09.b、R2-T09.c。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`；未完成任务见 `docs/dev/TASKS.md`。
-- **下一个可做任务是 R5-T01 server 后台任务调度**（原 M4-T07）：依赖 M4-T06、M2-T03、R1-T02 都已满足。R5-T00 细化任务被 R4-T99 阻塞，但 R5-T01 及之后的编号任务自身依赖已满足，按从上往下的规则选 R5-T01。
-- R2-T04、R2-T04.a、R2-T05、R2-T06 仍被 R2-T07.a 阻塞；R2-T07.a 需要 R5-T02，所以做完 R5-T01 后做 R5-T02。R2-T99 依赖 R2 全部任务，仍不可做。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T07、R2-T08、R2-T09.a、R2-T09.b、R2-T09.c、R5-T01。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`；未完成任务见 `docs/dev/TASKS.md`。
+- **下一个可做任务是 R5-T02 server 分支与面板接口**（原 M4-T08）：依赖 M4-T06、M4-T03、R1-T01 都已满足。R5-T00 仍被 R4-T99 阻塞，按从上往下的规则跳过它选 R5-T02。
+- R2-T04、R2-T04.a、R2-T05、R2-T06 仍被 R2-T07.a 阻塞；R2-T07.a 需要 R5-T02，所以做完 R5-T02 后做 R2-T07.a。R2-T99 依赖 R2 全部任务，仍不可做。
 - v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045。
 - HUMAN-09 待处理（不阻塞）：`data/channels.yaml` 已有 `bg-fallback`、`main-fallback`、`codex`，`channels.example.yaml` 还没有这三个别名。
@@ -27,9 +25,9 @@
 - HUMAN-12 待处理（不阻塞）：HUMAN.md 条目仍描述 `roles.judge` 指向 `codex`，实际配置已是 `judge`（`auto/glm-5.3`）且 R2-T03.b 已用它跑通校准；由人类确认后关闭。
 - HUMAN-13 待处理（不阻塞）：`catie` 的 `rp`（`agy-gemini-3.8-flash-medium`）返回 503「没有可用的 Antigravity 凭证」，同时影响 `roles.writer`；恢复后可用 `node scripts/r2-legacy-forgetting.mjs run-all --concurrency 3` 补齐失败的提问（已完成的运行会被跳过）。
 - 数据库 schema 版本 31（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡、v25 合并调用开关与执行记录、v26 间隙档位阈值与丢弃状态、v27 合并调用丢弃条目、v28 回合模式与读取工具软上限、v29 开局包与故事级后台任务、v30 首楼开场候选、v31 偏好记录）；后续编号：v32 父子分块、v33 章节压缩、v34 世界书预筛、v35 上下文包；插入新迁移时后续编号一起顺延。
-- 结算只有 `dramaticer work` 调度：server 的回合路径不补建也不执行后台任务，所以回合内后台客户端零调用是结构保证；要真正结算故事，跑 `pnpm work --db <path> --kind settle`，要生成现场分析跑 `--kind scene`，要捕获用户意志跑 `--kind user_will`，要生成修订草案跑 `--kind memory_revision`，要回填事件跑 `--kind events`（单故事、逐窗口推进，适合小批量），要生成开局包跑 `--kind opening`，要生成首楼候选跑 `--kind opening_candidates`，要合并调用跑 `--kind gap_pass`（先打开故事设置 `gapPassEnabled`），批量回填三个 legacy 对话用 R1-T04.a 的 `events-backfill`。
-- 后台任务分两档：`gap` 档每次间隙都执行，`deferred` 档（`events`、`summary`、`npc_agenda`）只在会话结束或间隙达到 `gapPlanSeconds` 时执行。`dramaticer work` 不给 `--gap-seconds` 就按会话结束处理；要模拟回合中的短间隙就传 `--gap-seconds <秒数>`，短于阈值时延后档只入队不执行。
-- `gap_pass` 默认关闭；开关关着时 `dramaticer work` 既不为故事补建该任务也不执行它，`--kind gap_pass` 同样被跳过。ADR-0055、ADR-0056、ADR-0057 的结论都是保持默认关闭。
+- server 的回合路径现在会补建并执行后台任务：`handleTurnStream` 在 `turn.completed` 之后调用 `BackgroundScheduler.schedule`，不等待 drain；同一时刻只有一个 drain，故事之间先来先做。要离线批量结算故事仍可跑 `pnpm work --db <path> --kind settle`（`--kind scene`、`--kind user_will`、`--kind memory_revision`、`--kind events`、`--kind opening`、`--kind opening_candidates`、`--kind gap_pass` 同理；`gap_pass` 先打开故事设置 `gapPassEnabled`），批量回填三个 legacy 对话用 R1-T04.a 的 `events-backfill`。
+- 后台任务分两档：`gap` 档每次间隙都执行，`deferred` 档（`events`、`summary`、`npc_agenda`）只在会话结束或间隙达到 `gapPlanSeconds` 时执行。server 每回合结束按会话结束处理，所以两档都会执行；`dramaticer work` 不给 `--gap-seconds` 也按会话结束处理，要模拟回合中的短间隙就传 `--gap-seconds <秒数>`，短于阈值时延后档只入队不执行。
+- `gap_pass` 默认关闭；开关关着时 `dramaticer work` 与 server 调度都不为故事补建该任务，`--kind gap_pass` 同样被跳过。ADR-0055、ADR-0056、ADR-0057 的结论都是保持默认关闭。
 - 结算窗口以 head 为终点（ADR-0046），窗口取**最旧的** N 个未结算助手楼层（`listUnsettledSettledAssistantNodes` 按路径深度降序）；`gap_pass` 的任务楼层比窗口新时会被退回 pending，等前面的楼层结算完再跑。
 - 冲突检查窗口同样取 head 路径最后 `conflictWindowFloors` 楼。窗口内没有未结算楼层时不调用模型。
 - 现场分析以被分析的楼层为锚点：台账快照取该楼层的结算结果，原文窗口是该楼层路径上的最近 6 楼；没有结算记录时任务退回 pending（ADR-0048）。`gap_pass` 里现场分析段同样要求任务楼层已有结算记录。
@@ -38,7 +36,7 @@
 - 已注册的槽位是十一个（`packages/core/src/context/template.ts` 的 `CONTEXT_SLOT_NAMES`：lore、character、persona、summary、state、memory、history、scene、director、user_will、protocol）；DESIGN §9 里的 `ledger` 对应实现的 `state`，`beat` 尚未注册。默认模板顺序：character、lore、state、summary、memory、scene、director、user_will、history、（可选的 block_format）、protocol。`block_format` 是模板里的可选静态段，不是槽位；`protocol` 是固定 id 的静态段，始终在最后。
 - 原生块类型现在是 12 个（`thinking`、`选项`、`状态栏`、`变量更新`、`分析`、`图片`、`页眉`、`悄悄话`、`旁白`、`备忘`、`state_update`、`plot_note`）；其中 `thinking`、`变量更新`、`state_update`、`plot_note` 的上下文策略是删除。
 - 历史槽位的默认策略：更早楼层省略五个显示类块，最近 1 楼不套用这层省略；`full` 是改动前的行为，用于对照。设置项 `historyBlockPolicy` 存在 `story_settings.history_block_policy`（JSON）。
-- `packages/server` 已提供故事、导入、设置、模板、SSE 回合与后台运行时缓存；`packages/protocol` 已提供 HTTP 与 SSE 类型；`packages/web` 尚未创建。
+- `packages/server` 已提供故事、导入、设置、模板、SSE 回合、后台任务调度与 `GET /api/stories/:id/jobs`；`packages/protocol` 已提供 HTTP 与 SSE 类型；`packages/web` 尚未创建。
 - 故事设置缺省值：`budgetTokens` 12000、`structuredOutput` `text-tags`、`temperature` 0.8、`maxTokens` 4096（server 对没有保存过设置的故事改用 `min(4096, writer 模型声明)`）、`reasoning` `low`、`turnMode` `fast`、`maxReadRounds` 3、`historyBlockPolicy` `{mode:"default",overrides:{}}`、`gapPassEnabled` `false`、`gapPlanSeconds` 212、导演使用默认配置（含 `openingFloors` 10 与 `openingIntensity` `natural`）。
 - 快照：`eval-private/raw/` 有 94 个文件；manifest 记录 `corpus` 与 `sourceMtime`。`eval-private/reference/` 有 5 部参照小说。
 - 事件表已在 v7 建立；批量抽取窗口与抽取记录在 R1-T03 实现；批量回填管线在 R1-T04.a 实现，真实回填由 R1-T04.b 执行。
@@ -53,8 +51,8 @@
 - 插件系统在 DESIGN §19 是唯一权威；P 阶段任务在 TASKS 的「P：插件内核」小节，C 线兼容插件任务已存在且依赖 P2。
 
 ## 下一步
-- **R5-T01 server 后台任务调度**（原 M4-T07）：回合成功后在后台执行 `enqueueMissingJobs` 与 `drainBackgroundJobs`，不阻塞 SSE；服务端同一时间只跑一个后台任务；新增 `GET /api/stories/:id/jobs`。依赖 M4-T06、M2-T03、R1-T02 已满足。
-- 之后做 R5-T02（server 分支与面板接口），它解除 R2-T07.a 的阻塞；R2-T04、R2-T04.a、R2-T05、R2-T06 依赖 R2-T07.a，仍排在其后。
+- **R5-T02 server 分支与面板接口**（原 M4-T08）：分支 `GET /api/stories/:id/tree`、`GET /api/stories/:id/path?nodeId=`、swipe/edit/head/regenerate；面板 `GET /api/nodes/:id/trace`、`/ledger`、`/events`、`/compressions`、`/director`，故事级 `clues`、`entities`、`lore`、`proposals`、`openings` 与选中接口；节点必须属于路径里的故事，否则 404。
+- 之后做 R2-T07.a（偏好信号接线与导出），它需要 R5-T02 的选项选择接口；R2-T04、R2-T04.a、R2-T05、R2-T06 依赖 R2-T07.a。
 - 基准的入口是 `pnpm --filter @dramaticer/st-compat benchmark --generate|--validate|--import --db <path>`，`--root` 指定基准目录；校验默认把临时库建在 `.devloop/scratch`，`--scratch` 可以改。
 - 开局包的读取入口是 `readOpeningPack(store, storyId)`；需要自己校验时用 `validateOpeningPackPayload(value, known)`，第二个参数是 `OpeningKnownNames`（`names` 与 `sourceText`），判定函数是 `isKnownOpeningName`。首楼候选的解析用 `parseOpeningCandidatesResponse(text, expectedCount)`，不要另写一套。
 
@@ -107,7 +105,7 @@
 - 开局包的在场人物必须命中角色卡名、`character` 实体的名称/别名，或者出现在角色卡与常驻世界书正文里；正文判定用与实体名称同一套规范化，规范化后少于两个字符的名字只按实体表判定。都不命中时整包拒绝并指出 `participants[i].name`。素材只有角色卡提示词或常驻世界书时才生成，玩家开场白只作补充。
 - 当前 `data/channels.yaml` 的 roles 是 `writer: rp`、`settler: background`、`planner: background`、`judge: judge`（`auto/glm-5.3`）；评测用 `--model rp --judge-model judge`。`createLlmClient` 按配置里的 `roles.judge` 与 `roles.writer` 校验模型家族，显式覆盖别名不参与校验。HUMAN-12。
 - 开局验收的重 roll 指标在 O-T99.a 已经饱和（60/60 判不重 roll、全部遵循指令，开启与关闭一致）；后续引用这两个配置时必须同时引用这一限制，不能据此宣称开局机制有效或无效。
-- 后台注册表工厂在 `core/src/background/defaults.ts` 的 `createDefaultBackgroundJobRegistry`，`gap_pass` 开关过滤在 `resolveStoryBackgroundKinds`；新增后台任务类型时改这两个函数和 `dramaticer work`/试玩都会同步。
+- 后台注册表工厂在 `core/src/background/defaults.ts` 的 `createDefaultBackgroundJobRegistry`，`gap_pass` 开关过滤在 `resolveStoryBackgroundKinds`；新增后台任务类型时改这两个函数和 `dramaticer work`/server 调度/试玩都会同步。
 - `dramaticer chat` 与试玩共用 `resolveStoryContextTemplate`（`st-compat/src/chat/session.ts`）：故事模板为空或指向内置模板时用默认模板。
 - 对话档位（ADR-0062）：`ChatProfile` 取 `native`、`naive`，在 `core/src/chat/profile.ts`；`runChatTurn` 的 `profile` 单轮参数默认 `native`，没有按运行状况切换的代码路径。`TurnTrace.profile` 记录本轮档位；旧数据库里没有该字段的 Trace 按 `native` 处理（存储层查询用 `COALESCE(..., 'native')`）。
 - 朴素模式的工厂是 `createNaiveContextTemplate()`（id `dramaticer-naive`）与 `createNaiveChatProviders({store, characterPrompt, persona, historyLimit})`；它忽略故事指向的自定义模板，`protocol` 段只有导出的 `WRITING_CONTRACT`。原文历史用 `createRawHistorySlotProvider`（默认 20 楼，不做块视图），persona 用 `createPersonaSlotProvider`。
@@ -177,7 +175,7 @@
 - 延后档的阈值是故事设置 `gapPlanSeconds`（迁移 v26，默认 212）。`drainBackgroundJobs` 只接受调用方传入的 `gapSeconds` 与 `sessionEnded`，自己不看时间；`dramaticer work` 不给 `--gap-seconds` 就按会话结束处理。
 - 过期任务的丢弃在 `drainBackgroundJobs` 里做：只处理本轮会执行的类型，楼层不在 head 路径上就把 `pending` 标为 `discarded`；没有 head 时不做这项判断，故事级任务（`nodeId` 为 null）也不做。`enqueueMissingJobs` 会把 `discarded` 行翻回 `pending`，所以切回旧分支后任务能重新跑，别在别处再写一套删除逻辑。
 - 间隙未完成率用 `readGapWorkBacklog(store, storyId, gapKinds)`：分母是 `pending`、`running`、`done`、`failed`，丢弃不计入，没有任务时为 0。R2-T02 的试玩记录直接复用这个函数。
-- 后台任务需要等待其它任务完成时抛 `BackgroundJobDeferredError`（`background/types.ts`），drain 会把任务退回 pending 且不消耗执行次数；不要用抛普通错误的方式等待，那会消耗重试次数。
+- 后台任务需要等待其它任务完成时抛 `BackgroundJobDeferredError`（`background/types.ts`），drain 会把任务退回 pending 且不消耗执行次数；不要用抛普通错误的方式等待，那会消耗重试次数。调用方取消本轮时 drain 用 `options.signal`，处理器收到 `context.signal`，模型请求必须带上它。
 - 故事级后台任务的入队条件写 `enqueue: "story"` 并提供 `needsRun(store, storyId)`；drain 只在它返回 true 时补建一条 `nodeId` 为 null 的任务。楼层级处理器读楼层用 `requireJobNodeId(job)`。开局包的输入摘要与校验在 `core/src/opening/opening.ts`，不要另写一份。
 - 开局包按摘要覆盖，不保留历史版本；首条玩家消息来自当前 head 路径上最早的非空玩家楼层，所以分支切换后摘要会变化并触发重新生成。
 - `docs/dev/TASKS.md` 只保留未完成任务与当前阶段；查已完成任务的说明、验收与完成记录读 `docs/dev/TASKS-archive.md`。
@@ -192,8 +190,8 @@
 - 语料里有文件名不同、内容完全相同的对话副本：F0-T03 的 390 次判断里有 24 次请求内容重复（13 次命中缓存），独立判断 366 次。引用样本量时要说明。
 - 统计对话时按文件名去重，同名副本保留目录顺序靠前的那份（TauriTavern → data → luker）；报告只允许出现「对话 N」与数字。
 - `parseChatJsonl` 默认在 `swipe_id` 越界或非整数时抛错（导入语义）；只读分析用 `{ strictSwipeId: false }`，不要用在导入路径上。
-- 服务端启动时提供 `channels` 就会加载渠道配置；配置缺失或环境变量没设置会让启动失败，这是有意的快速失败。测试里通过 `channels.load` 与 `createClient` 注入假客户端。
-- SSE 测试的临时目录用 `packages/server/test/.tmp-server-*`，已忽略；假渠道的 baseUrl 用 `127.0.0.1`，I10 允许。`runtime.test.ts` 用 `.tmp-runtime-*`，临时文件用 `mkdtempSync` 创建，需按同样规则忽略（已被 test 目录通配）。
+- 服务端启动时提供 `channels` 就会加载渠道配置；配置缺失或环境变量没设置会让启动失败，这是有意的快速失败。测试里通过 `channels.load` 与 `createClient` 注入假客户端；`channels.createBackgroundRegistry` 可以注入后台任务注册表。
+- SSE 测试的临时目录用 `packages/server/test/.tmp-server-*`，已忽略；假渠道的 baseUrl 用 `127.0.0.1`，I10 允许。`runtime.test.ts` 用 `.tmp-runtime-*`，`background.test.ts` 用 `.tmp-background-*`，`jobs.test.ts` 用 `.tmp-jobs-*`；临时文件用 `mkdtempSync` 创建，需按同样规则忽略（已被 test 目录通配）。
 - 中止保存的部分正文会写 Trace，`stopReason` 为 `aborted`，`usage` 全为 `null`、`truncations` 为空数组；不要把它当成正常完成，结算窗口与入队都会排除它。
 - `memory-eval` 默认删除临时库；`--db` 指定仓库内路径时同样在结束时删除。embedding 缓存保留。
 - `director-eval` 的 `workDir` 默认在 `eval-private/memory-cache/tmp/director-eval`，结束时整目录删除。

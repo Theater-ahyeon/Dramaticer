@@ -63,7 +63,7 @@ export function createSummaryHandler(
 	if (!Number.isInteger(mainlineSize) || mainlineSize < 1) {
 		throw new Error("主线摘要窗口必须是不小于 1 的整数");
 	}
-	return async ({ store, client, job }) => {
+	return async ({ store, client, job, signal }) => {
 		const nodeId = requireJobNodeId(job);
 		const confirmed = store.countConfirmedAssistantNodesOnPath(nodeId);
 		if (confirmed > 0 && confirmed % chapterSize === 0) {
@@ -73,6 +73,7 @@ export function createSummaryHandler(
 				storyId: job.storyId,
 				nodeId,
 				model: options.model,
+				signal,
 			});
 		}
 		await ensureMainlineSummary({
@@ -82,6 +83,7 @@ export function createSummaryHandler(
 			nodeId: nodeId,
 			mainlineSize,
 			model: options.model,
+			signal,
 		});
 	};
 }
@@ -92,6 +94,7 @@ interface SummaryStepContext {
 	readonly storyId: string;
 	readonly nodeId: string;
 	readonly model: string | undefined;
+	readonly signal: AbortSignal | undefined;
 }
 
 async function ensureChapterSummary(
@@ -114,6 +117,7 @@ async function ensureChapterSummary(
 		model: context.model,
 		prompt: CHAPTER_PROMPT,
 		content: formatFloors(window),
+		signal: context.signal,
 	});
 	store.insertSummary({
 		storyId,
@@ -141,6 +145,7 @@ async function ensureMainlineSummary(
 		model: context.model,
 		prompt: MAINLINE_PROMPT,
 		content: formatChapters(window),
+		signal: context.signal,
 	});
 	store.insertSummary({
 		storyId,
@@ -167,6 +172,7 @@ interface SummaryRequest {
 	readonly model: string | undefined;
 	readonly prompt: string;
 	readonly content: string;
+	readonly signal: AbortSignal | undefined;
 }
 
 async function requestSummary(request: SummaryRequest): Promise<string> {
@@ -178,6 +184,7 @@ async function requestSummary(request: SummaryRequest): Promise<string> {
 		messages,
 		model: request.model,
 		temperature: 0,
+		signal: request.signal,
 	});
 	return parseSummaryText(result.text);
 }

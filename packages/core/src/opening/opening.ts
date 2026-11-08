@@ -280,7 +280,7 @@ export function openingPackNeedsRun(
 export function createOpeningHandler(
 	options: OpeningHandlerOptions = {},
 ): BackgroundJobHandler {
-	return async ({ store, client, job }) => {
+	return async ({ store, client, job, signal }) => {
 		const input = collectOpeningInput(store, job.storyId);
 		if (input === null) return;
 		const existing = store.getOpeningPack(job.storyId);
@@ -293,6 +293,7 @@ export function createOpeningHandler(
 			messages,
 			model: options.model,
 			temperature: 0,
+			signal,
 		});
 		const payload = parseOpeningPackResponse(result.text, input.knownNames);
 		store.saveOpeningPack({

@@ -86,7 +86,7 @@ export function createSceneHandler(
 	if (!Number.isInteger(maxTokens) || maxTokens < 1) {
 		throw new Error("现场分析的 token 上限必须是正整数");
 	}
-	return async ({ store, client, job }) => {
+	return async ({ store, client, job, signal }) => {
 		const nodeId = requireJobNodeId(job);
 		if (store.getLedgerSettlement(nodeId) === null) {
 			throw new BackgroundJobDeferredError();
@@ -106,6 +106,7 @@ export function createSceneHandler(
 			model: options.model,
 			temperature: 0,
 			maxTokens,
+			signal,
 		});
 		saveSceneAnalysisText(store, job.storyId, nodeId, result.text);
 	};

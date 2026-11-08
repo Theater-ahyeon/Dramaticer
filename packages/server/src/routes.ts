@@ -18,6 +18,8 @@ import type {
 	ImportCharacterCard,
 	ImportStoryRequest,
 	ImportStoryResult,
+	StoryJobErrorView,
+	StoryJobsView,
 	StoryView,
 } from "@dramaticer/protocol";
 import {
@@ -28,6 +30,7 @@ import {
 	parseCharacterCardPng,
 	parseWorldInfoJson,
 } from "@dramaticer/st-compat";
+import type { BackgroundScheduler } from "./background.js";
 import { HttpError, readJsonBody, sendEmpty, sendJson } from "./http.js";
 import type { StoryRuntimeManager } from "./runtime.js";
 import { type TurnCoordinator, handleTurnStream } from "./turns.js";
@@ -37,6 +40,7 @@ export interface ApiRouteOptions {
 	readonly maxJsonBodyBytes: number;
 	readonly runtime: StoryRuntimeManager | null;
 	readonly turns: TurnCoordinator;
+	readonly scheduler?: BackgroundScheduler | null;
 	readonly log: (line: string) => void;
 	readonly heartbeatMs: number;
 	readonly now?: () => number;
@@ -76,6 +80,11 @@ export async function handleApiRequest(
 		}
 		if (third === "settings" && parts.length === 3) {
 			await handleSettings(req, res, method, options, storyId);
+			return;
+		}
+		if (third === "jobs" && parts.length === 3) {
+			requireMethod(method, ["GET"]);
+			handleJobs(res, options, storyId);
 			return;
 		}
 	}
@@ -225,6 +234,42 @@ async function handleTurns(
 	assertKnownKeys(body, ["text"]);
 	const text = requireText(body.text, "text");
 	await handleTurnStream(res, storyId, text, options);
+}
+
+function handleJobs(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	storyId: string,
+): void {
+	requireStory(options.store, storyId);
+	const counts = options.store.countBackgroundJobs({ storyId });
+	const recentErrors: StoryJobErrorView[] = options.store
+		.listBackgroundJobs({ storyId })
+		.filter((job) => job.lastError !== null)
+		.sort((left, right) => {
+			const byTime = errorTime(right).localeCompare(errorTime(left));
+			return byTime === 0 ? right.id - left.id : byTime;
+		})
+		.slice(0, 5)
+		.map((job) => ({
+			jobId: job.id,
+			nodeId: job.nodeId,
+			kind: job.kind,
+			status: job.status,
+			attempts: job.attempts,
+			error: job.lastError ?? "",
+			recordedAt: errorTime(job),
+		}));
+	const view: StoryJobsView = { storyId, counts, recentErrors };
+	sendJson(res, 200, view);
+}
+
+function errorTime(job: {
+	readonly createdAt: string;
+	readonly startedAt: string | null;
+	readonly finishedAt: string | null;
+}): string {
+	return job.finishedAt ?? job.startedAt ?? job.createdAt;
 }
 
 async function handleSettings(

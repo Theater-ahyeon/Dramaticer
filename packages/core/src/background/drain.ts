@@ -47,6 +47,8 @@ export interface DrainBackgroundJobsOptions {
 	readonly gapSeconds?: number;
 	/** 会话已经结束：不看间隙长短，可延后档同样执行。 */
 	readonly sessionEnded?: boolean;
+	/** 取消本轮执行；正在跑的任务退回 pending，不消耗执行次数。 */
+	readonly signal?: AbortSignal;
 	readonly now?: () => number;
 }
 
@@ -147,6 +149,7 @@ export async function drainBackgroundJobs(
 	const runs: BackgroundJobRun[] = [];
 	let discarded = 0;
 	for (const job of pending) {
+		if (options.signal?.aborted) break;
 		const type = registry.get(job.kind);
 		if (type === undefined) {
 			throw new Error(`没有注册后台任务类型 ${job.kind}`);
@@ -176,7 +179,12 @@ export async function drainBackgroundJobs(
 			new Date(now()).toISOString(),
 		);
 		try {
-			await type.handler({ store, client: options.client, job: running });
+			await type.handler({
+				store,
+				client: options.client,
+				job: running,
+				...(options.signal === undefined ? {} : { signal: options.signal }),
+			});
 		} catch (error) {
 			if (error instanceof BackgroundJobDeferredError) {
 				const deferred = store.deferBackgroundJob(job.id);
@@ -189,6 +197,18 @@ export async function drainBackgroundJobs(
 					error: deferred.lastError,
 				});
 				continue;
+			}
+			if (options.signal?.aborted) {
+				const deferred = store.deferBackgroundJob(job.id);
+				runs.push({
+					jobId: deferred.id,
+					nodeId: deferred.nodeId,
+					kind: deferred.kind,
+					status: deferred.status,
+					attempts: deferred.attempts,
+					error: "本轮执行被取消，任务退回待办",
+				});
+				break;
 			}
 			const message = error instanceof Error ? error.message : String(error);
 			const failed = store.failBackgroundJob(job.id, {

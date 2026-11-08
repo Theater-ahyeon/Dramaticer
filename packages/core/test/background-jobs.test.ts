@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import Database from "better-sqlite3";
 import * as sqliteVec from "sqlite-vec";
-import { describe, expect, it, onTestFinished } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import {
 	type BackgroundJob,
 	type BackgroundJobContext,
@@ -291,6 +291,50 @@ describe("后台任务执行", () => {
 			error: null,
 		});
 		expect(store.getBackgroundJob(1)?.lastError).toBeNull();
+	});
+
+	it("取消本轮时正在执行的任务退回 pending，不消耗执行次数", async () => {
+		const { store } = openTempStore();
+		seedStory(store);
+		const controller = new AbortController();
+		let started = false;
+		const registry = createBackgroundJobRegistry({
+			events: async ({ signal }) => {
+				started = true;
+				const aborted = Promise.withResolvers<void>();
+				if (signal?.aborted === true) {
+					aborted.resolve();
+				} else {
+					signal?.addEventListener("abort", () => aborted.resolve(), {
+						once: true,
+					});
+				}
+				await aborted.promise;
+				throw signal?.reason ?? new Error("取消");
+			},
+		});
+		const drain = drainBackgroundJobs({
+			store,
+			registry,
+			client: unusedClient,
+			storyId: "s1",
+			signal: controller.signal,
+			now: () => FIXED_NOW,
+		});
+		await vi.waitFor(() => expect(started).toBe(true));
+		controller.abort(new Error("服务端关闭"));
+
+		const result = await drain;
+		expect(result.runs).toHaveLength(1);
+		expect(result.runs[0]).toMatchObject({
+			status: "pending",
+			attempts: 0,
+			error: "本轮执行被取消，任务退回待办",
+		});
+		const jobs = store.listBackgroundJobs({ storyId: "s1" });
+		expect(jobs).toHaveLength(2);
+		expect(jobs.every((job) => job.status === "pending")).toBe(true);
+		expect(jobs.every((job) => job.attempts === 0)).toBe(true);
 	});
 
 	it("--kind 对应的 kinds 只补建并执行指定类型", async () => {
