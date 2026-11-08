@@ -3,27 +3,25 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：122
-- 任务：R2-T03.a 五类记忆题与编造回忆率
-- 结果：完成（`DONE`），门禁通过（105 个测试文件、942 个测试通过，3 个 live 跳过，共 945 个）。
-  - 新增 `evalset/memory-questions.ts`：`eval-private/evalset/memory-<故事>.jsonl` 的严格格式。字段 `id`、`story`、`askAtNode`、`question`、`answer`、`evidenceNodes`、`kind: "memory"`、`category`、可选 `fabricated`；`category` 只接受 `extraction`（信息抽取）、`cross_segment`（跨段推理）、`temporal`（时间推理）、`update`（知识更新）、`abstention`（拒答）。未知字段、非法类别、重复 id、空文件、空证据直接失败。
-  - 新增 `evalset/memory-judged.ts`：在每道题的 `askAtNode` 用默认原生模板与标准槽位提供者组装上下文，由 `writer` 角色回答；答案交给与一致性探针同一套的 `judgeAnswerConsistency` 判分；不写楼层、不改 head。编造题是 `fabricated: true`，裁判提示词明确「明确否认或拒答算一致；肯定描述不存在的人、事、物算不一致」，判为矛盾时记一次编造。
-  - `probe.ts` 的裁判循环提成导出的 `judgeAnswerConsistency`（同一 `JUDGE_SYSTEM_PROMPT`、`parseProbeJudgeOutput`、3 次重试与失败语义），探针改为调用它；`PROBE_INSTRUCTION` 一并导出给记忆题复用。
-  - `memory-eval` 新增 `--judged`：按 `roles.writer` 回答、`roles.judge` 判分，读取 `eval-private/evalset/` 下的 `memory-<故事>.jsonl`；某故事没有文件时只记录跳过。默认关闭，既有检索评测不增加模型调用。
-  - 报告新增「五类记忆题与编造回忆率」段，固定分五类，字段为题数、命中、矛盾、`unknown`、失败、命中率、编造题数、编造数、编造率。命中率分母是一致加矛盾；编造率分母是编造题里裁判可判定的数量（一致加矛盾）；`unknown` 与失败不进入任何分母。统计版只有类别与数字，私有版附逐题明细。
-  - 新增 6 个测试（`memory-questions.test.ts` 3 个、`memory-judged.test.ts` 3 个）：五类解析与编造标注、非法字段与重复 id、五类判分、肯定描述算编造、明确否认算通过、裁判连续非法重试 3 次后记失败、统计版不含题目与原文、head 与楼层数不变。
-  - ADR-0067 记录格式、判分口径、分母与影响。题目数据由 R2-T08 的公开合成基准与私有评测集补齐；本任务没有生成真实题目文件。
+- 会话：125
+- 任务：R2-T03.b 裁判校准（judge，GLM）
+- 结果：完成（`DONE`），门禁通过（106 个测试文件、950 个测试通过，3 个 live 跳过，共 953 个）。
+  - 新增 `scripts/r2-judge.mjs`（`pnpm r2:judge`）与纯函数库 `scripts/r2-judge-lib.mjs`：第一部分复用 F0-T03 的分层抽样（同步种子 `f0-t03-v1`，目标 1–10 楼 70、11–50 楼 60、51 楼以上 70）、同一提示词、严格 `{choice, confidence}` 解析与两种顺序各判一次的实现，对 `judge`（`auto/glm-5.3`）重跑；第二部分取一轮 100 轮自动试玩的 100 条助手回复，把 `judgePlaytestTurn` 的同一输入同时交给 `judge` 与模拟用户模型，逐条配对。
+  - 结果：195 对里 194 对至少一次成功，386 次成功判断（4 次三次重试后仍没有 JSON 输出，未计入分母），合并一致率 71.5%（95% 置信区间 66.8%–75.8%）、位置偏差 0.8 个百分点、换序一致率 81.3%（192 对）；两项门槛都达到。1–10 楼子集 55.0%、切回较早 swipe 子集 47.9% 低于门槛，按预注册规则这两类只用玩家数据，不用裁判外推。
+  - 第二部分：100 轮试玩 0 失败、2 轮截断；99 条可判定回复上裁判与模拟用户模型的重 roll 率都是 1.0%（各 1 条），重 roll 与跟随指令判定各一致 97/99（98.0%），没有宽松证据。
+  - 报告 `docs/dev/reports/R2-judge.md`（预注册门槛在运行前写入文件顶部，自动生成段在 `<!-- R2-T03.b:begin -->` 与 `:end` 之间）；结论写入 ADR-0068。
+  - 新增 8 个纯函数测试（`scripts/r2-judge-lib.test.mjs`，覆盖配对汇总、失败剔除、宽松界、报告渲染与阈值判定）。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`；未完成任务见 `docs/dev/TASKS.md`。
-- **下一个可做任务是 R2-T04 盲测两两对比**：同一分支点的两份续写分别以 A、B 与 B、A 两种顺序交给 `judge`，严格 JSON `{winner:"A"|"B"|"tie", reason}`；偏好子集用 R2-T07.a 导出的接受与放弃回复对，切回较早 swipe 的子集单列；汇总胜率、平局率与位置偏差。它之后是 R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09、R2-T99。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`；未完成任务见 `docs/dev/TASKS.md`。
+- **下一个可做任务是 R2-T07 偏好信号记录**：迁移 v31 新增只追加的 `preference_events`，`kind` 取 `swipe`、`choice`、`card_decision`、`edit`，触发器拒绝 UPDATE 与 DELETE；写入与对应操作同一事务；不进入上下文。它之后的 R2-T07.a 需要 R5-T02（R5 阶段未开始），所以 R2-T04 盲测两两对比仍被阻塞；R2-T08 公开合成基准与 R2-T09 长对话遗忘评测的依赖已满足，可在 R2-T07 之后按顺序做。
 - v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045。
 - HUMAN-09 待处理（不阻塞）：`data/channels.yaml` 已有 `bg-fallback`、`main-fallback`、`codex`，`channels.example.yaml` 还没有这三个别名。
 - HUMAN-10 待处理（不阻塞）：插件不变量是否加进 AGENTS.md。
 - HUMAN-11 待处理（不阻塞）：`.env` 的正文模型 `opendesign/deepseek-v4.1-flash` 返回 membership entitlement 错误，是否换用 `auto/deepseek-v4.1-flash`；`.env` 由人类维护。
-- HUMAN-12 待处理（不阻塞）：`roles.judge` 已是 `judge`（`auto/glm-5.3`），HUMAN.md 条目仍描述成 `codex`，由人类确认后关闭。
-- 数据库 schema 版本 30（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡、v25 合并调用开关与执行记录、v26 间隙档位阈值与丢弃状态、v27 合并调用丢弃条目、v28 回合模式与读取工具软上限、v29 开局包与故事级后台任务、v30 首楼开场候选）；后续编号：v31 偏好记录、v32 父子分块、v33 章节压缩、v34 世界书预筛、v35 上下文包；插入新迁移时后续编号一起顺延。R2-T03.a 没有迁移。
+- HUMAN-12 待处理（不阻塞）：HUMAN.md 条目仍描述 `roles.judge` 指向 `codex`，实际配置已是 `judge`（`auto/glm-5.3`）且 R2-T03.b 已用它跑通校准；由人类确认后关闭。
+- 数据库 schema 版本 30（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡、v25 合并调用开关与执行记录、v26 间隙档位阈值与丢弃状态、v27 合并调用丢弃条目、v28 回合模式与读取工具软上限、v29 开局包与故事级后台任务、v30 首楼开场候选）；后续编号：v31 偏好记录、v32 父子分块、v33 章节压缩、v34 世界书预筛、v35 上下文包；插入新迁移时后续编号一起顺延。R2-T03.b 没有迁移。
 - 结算只有 `dramaticer work` 调度：server 的回合路径不补建也不执行后台任务，所以回合内后台客户端零调用是结构保证；要真正结算故事，跑 `pnpm work --db <path> --kind settle`，要生成现场分析跑 `--kind scene`，要捕获用户意志跑 `--kind user_will`，要生成修订草案跑 `--kind memory_revision`，要回填事件跑 `--kind events`（单故事、逐窗口推进，适合小批量），要生成开局包跑 `--kind opening`，要生成首楼候选跑 `--kind opening_candidates`，要合并调用跑 `--kind gap_pass`（先打开故事设置 `gapPassEnabled`），批量回填三个 legacy 对话用 R1-T04.a 的 `events-backfill`。
 - 后台任务分两档：`gap` 档每次间隙都执行，`deferred` 档（`events`、`summary`、`npc_agenda`）只在会话结束或间隙达到 `gapPlanSeconds` 时执行。`dramaticer work` 不给 `--gap-seconds` 就按会话结束处理；要模拟回合中的短间隙就传 `--gap-seconds <秒数>`，短于阈值时延后档只入队不执行。
 - `gap_pass` 默认关闭；开关关着时 `dramaticer work` 既不为故事补建该任务也不执行它，`--kind gap_pass` 同样被跳过。ADR-0055、ADR-0056、ADR-0057 的结论都是保持默认关闭。
@@ -42,18 +40,23 @@
 - F0 的私有产物：`eval-private/f0/pairs.jsonl`（290 对）、`attribution.jsonl`、`judge.jsonl`（793 行）、`fulltext/work.db`、`fulltext-probe.json`、`fulltext-branches.json`、`fulltext-generations.jsonl`、`fulltext-judgements.jsonl`、`fulltext-summary.json`、`llm-cache/`。`eval-private/reports/f0-corpus-map.json` 是对话编号到文件路径的映射。
 - R3 的产物：`docs/dev/reports/R3.md`（验收报告）、`docs/dev/reports/R3-fast.md` 与私有 `eval-private/reports/R3-fast.md`、`R3-fast.json`。
 - O 的产物：`docs/dev/reports/O-opening.md`（统计版）、`eval-private/reports/O-opening.md`（私有版）、`eval-private/reports/opening-eval/`（manifest 与逐轮 JSONL，当前是 O-T99.a 的重跑结果，manifest 用 `previousRuns` 保留 O-T99 首次运行的聚合数字）。
+- R2-T03.b 的私有产物：`eval-private/reports/r2-judge/calibration.jsonl`（逐次判断，按 `key` 去重、最后一行生效）、`turn-verdicts.jsonl`（逐轮两个评审的判定）、`playtest.jsonl`（100 轮试玩记录）、`playtest.db`（试玩用的故事与楼层）、`llm-cache/`。
 - HUMAN-03（事件题抽查）仍未完成，不阻塞任何任务；其余 HUMAN 条目均已完成或明确不阻塞。
 - M3 的两项效果目标按 ADR-0029 保留为未证实；v2 的门槛改由 R6 按 B0/B1 对比判定。
 - 插件系统在 DESIGN §19 是唯一权威；P 阶段任务在 TASKS 的「P：插件内核」小节，C 线兼容插件任务已存在且依赖 P2。
 
 ## 下一步
-- **R2-T04 盲测两两对比**：同一分支点的两份续写以 A、B 与 B、A 两种顺序交给 `judge`，严格 JSON `{winner:"A"|"B"|"tie", reason}`；完全相同或高度接近的两份续写应判平局；偏好子集等 R2-T07.a 导出后接入，切回较早 swipe 的子集单列。裁判失败重试 3 次后记入失败列表，不中断整批。
-- 之后是 R2-T04.a 叙事质量评分表、R2-T05 B1 历史回放基线、R2-T06 记分牌、R2-T07、R2-T07.a、R2-T08 公开合成基准、R2-T09、R2-T99。R2-T08 负责补齐五类记忆题的公开题目集，R2-T09 用它做长对话遗忘评测。
+- **R2-T07 偏好信号记录**：迁移 v31 的 `preference_events`（只追加，`kind` 取 `swipe`、`choice`、`card_decision`、`edit`，触发器拒绝 UPDATE 与 DELETE）；core 提供 `recordPreference` 与按故事、按种类的读取；与对应操作同一事务；不进入剧情上下文、预算、检索与导演。
+- 之后 R2-T07.a 需要 R5-T02（未开始），所以 R2-T04 的偏好子集要等 R5 的分支接口；R2-T08（公开合成基准，题目结构校验）与 R2-T09（长对话遗忘评测）依赖已满足。
 - 开局包的读取入口是 `readOpeningPack(store, storyId)`；需要自己校验时用 `validateOpeningPackPayload(value, known)`，第二个参数是 `OpeningKnownNames`（`names` 与 `sourceText`），判定函数是 `isKnownOpeningName`。首楼候选的解析用 `parseOpeningCandidatesResponse(text, expectedCount)`，不要另写一套。
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
 - 不要修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 下的任何文件。不变量 I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账是唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖任何其他工作区包、ST 语义只在兼容插件里实现。
+- 裁判校准的入口是 `pnpm r2:judge`：每次运行先补齐缺少的判断，再补齐试玩判定，最后用 `replaceMarkedSection` 重写 `docs/dev/reports/R2-judge.md` 的 `<!-- R2-T03.b:begin -->` 段；已有成功结果不会重跑，`DRAMATICER_R2_JUDGE_RERUN=1` 忽略已有结果。报告顶部（标记之外）是预注册门槛，运行后不要再改。
+- 校准第一部分失败重试：第二次运行用不带缓存的客户端重试失败键，第三次仍失败的键就留在失败列表；当前有 4 次判断（对话 85:16 两种顺序、72:20 与 129:97/129:220 的 accepted-first）与 1 次模拟用户判定（第 100 轮）三次重试后仍无合法 JSON。不要为了凑满分母反复重跑整批。
+- 校准第二部分的一轮试玩在 `eval-private/reports/r2-judge/playtest.jsonl`：`naive` 档、写作 `rp`、模拟用户 `background`、种子 1、`--no-background`、`--probe-every 0`、100 轮；试玩故事是 `opening-eval-1-candidates`（试玩库 `eval-private/reports/r2-judge/playtest.db`），复跑用 `--resume`。
+- `pnpm --filter <pkg> <script>` 里脚本的 cwd 是包目录，相对路径会按包目录解析；传给 CLI 的 `--db`、`--out` 要用绝对路径或从包目录出发的相对路径。
 - 五类记忆题的格式与判分在 `st-compat/src/evalset/memory-questions.ts` 与 `memory-judged.ts`。题目文件是 `eval-private/evalset/memory-<故事>.jsonl`，`kind` 必须是 `memory`，`category` 取 `extraction`、`cross_segment`、`temporal`、`update`、`abstention`，`fabricated: true` 表示编造题。不要另写一套题目格式或判分。
 - 记忆题与探针共用 `judgeAnswerConsistency`（`probe.ts`）：同一裁判提示词、`parseProbeJudgeOutput`、3 次重试与失败语义。记忆题额外传 `referenceAnswer`、`evidenceText` 与 `fabricated`；探针不要改成另一套提示词。
 - 记忆题命中率 = 一致 /（一致 + 矛盾）；编造率 = 编造数 / 编造题里裁判可判定的数量；`unknown` 与失败都单列，不进入分母。改分母口径时同步 `memory-judged.test.ts`。

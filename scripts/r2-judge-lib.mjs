@@ -267,11 +267,11 @@ function playtestSection(playtest, meta) {
 		);
 	} else if (playtest.lenient) {
 		lines.push(
-			`- 裁判的重 roll 率比模拟用户模型低 ${points(Math.abs(playtest.rerollDifference))}，超过 ${points(LENIENCY_MARGIN)} 的宽松界：判定尺度偏宽松，\`judge\` 不用于重 roll 判定；R2-T04 改用确定性指标加配对统计。`,
+			`- 裁判的重 roll 率比模拟用户模型低 ${points(Math.abs(playtest.rerollDifference))}，超过 ${points(LENIENCY_MARGIN)}的宽松界：判定尺度偏宽松，\`judge\` 不用于重 roll 判定；R2-T04 改用确定性指标加配对统计。`,
 		);
 	} else {
 		lines.push(
-			`- 裁判的重 roll 率与模拟用户模型的差没有超过 ${points(LENIENCY_MARGIN)} 的宽松界：没有证据显示判定尺度偏宽松。`,
+			`- 裁判的重 roll 率与模拟用户模型的差没有超过 ${points(LENIENCY_MARGIN)}的宽松界：没有证据显示判定尺度偏宽松。`,
 		);
 	}
 	lines.push(
