@@ -12,7 +12,7 @@ import {
 	regenerateAssistantTurn,
 	resolveTurnMode,
 } from "@dramaticer/core";
-import type { ApiErrorBody } from "@dramaticer/protocol";
+import { type ApiErrorBody, toDisplayedBlocks } from "@dramaticer/protocol";
 import type { BackgroundScheduler } from "./background.js";
 import { HttpError } from "./http.js";
 import type { StoryRuntime, StoryRuntimeManager } from "./runtime.js";
@@ -271,7 +271,9 @@ async function streamTurn(stream: StreamTurnOptions): Promise<void> {
 				const current = now();
 				if (current - lastBlocksAt >= 100) {
 					lastBlocksAt = current;
-					sse.send("blocks.replace", { blocks: snapshot });
+					sse.send("blocks.replace", {
+						blocks: toDisplayedBlocks(snapshot),
+					});
 				}
 			},
 			onThinkingDelta: (delta) => {
@@ -285,7 +287,7 @@ async function streamTurn(stream: StreamTurnOptions): Promise<void> {
 			now,
 		});
 		if (clientGone || sse === null) return;
-		sse.send("blocks.replace", { blocks: result.blocks });
+		sse.send("blocks.replace", { blocks: toDisplayedBlocks(result.blocks) });
 		if (result.trace.llm.stopReason === "aborted") {
 			sse.send("turn.error", {
 				code: "upstream_error",
@@ -298,6 +300,7 @@ async function streamTurn(stream: StreamTurnOptions): Promise<void> {
 			storyId,
 			userNode: result.userNode,
 			node: result.node,
+			blocks: toDisplayedBlocks(result.blocks),
 			stateDiffs: result.stateDiffs,
 			plotNotes: result.plotNotes,
 			usage: result.trace.llm.usage,

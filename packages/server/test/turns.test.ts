@@ -380,6 +380,14 @@ describe("POST /api/stories/:id/turns", () => {
 		expect(completed.userNode.raw).toBe("我推开山门。");
 		expect(completed.node.role).toBe("assistant");
 		expect(completed.node.raw).toBe(reply);
+		const finalBlocks = frameDatas(frames, "blocks.replace").at(-1)?.blocks;
+		expect(finalBlocks).toEqual(completed.blocks);
+		const stateUpdate = completed.blocks.find(
+			(item) => item.kind === "block" && item.name === "state_update",
+		);
+		expect(stateUpdate?.kind === "block" ? stateUpdate.display : null).toEqual({
+			kind: "hidden",
+		});
 		expect(completed.stateDiffs).toHaveLength(1);
 		expect(completed.stateDiffs[0]?.path).toEqual(["场景", "地点"]);
 		expect(completed.plotNotes.map((note) => note.text)).toEqual([

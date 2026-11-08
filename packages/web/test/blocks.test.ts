@@ -1,4 +1,5 @@
 import { parseBlocks } from "@dramaticer/core/blocks";
+import { toDisplayedBlocks } from "@dramaticer/protocol";
 import { describe, expect, it } from "vitest";
 import {
 	blockViewKind,
@@ -8,7 +9,7 @@ import {
 } from "../src/chat/blocks";
 
 function findBlock(raw: string, name: string) {
-	const block = parseBlocks(raw).find(
+	const block = toDisplayedBlocks(parseBlocks(raw)).find(
 		(item) => item.kind === "block" && item.name === name,
 	);
 	if (block === undefined || block.kind !== "block") {
@@ -18,7 +19,7 @@ function findBlock(raw: string, name: string) {
 }
 
 describe("块的界面呈现", () => {
-	it("原生块映射到各自组件，写入类块隐藏", () => {
+	it("原生块映射到各自组件，图片块走沙箱，写入类块隐藏", () => {
 		expect(blockViewKind(findBlock("<选项>走</选项>", "选项"))).toBe("options");
 		expect(blockViewKind(findBlock("<页眉>序章</页眉>", "页眉"))).toBe(
 			"header",
@@ -40,7 +41,7 @@ describe("块的界面呈现", () => {
 			blockViewKind(
 				findBlock("<图片>data:image/png;base64,AAA</图片>", "图片"),
 			),
-		).toBe("image");
+		).toBe("html");
 		expect(
 			blockViewKind(findBlock("<thinking>想一想</thinking>", "thinking")),
 		).toBe("thinking");
@@ -49,24 +50,20 @@ describe("块的界面呈现", () => {
 		).toBe("hidden");
 	});
 
+	it("没有显示策略的块与未知原生组件按原文显示", () => {
+		const option = findBlock("<选项>走</选项>", "选项");
+		expect(blockViewKind({ ...option, display: null })).toBe("raw");
+		expect(
+			blockViewKind({
+				...option,
+				display: { kind: "native", component: "unknown" },
+			}),
+		).toBe("raw");
+	});
+
 	it("未注册的标签保持为原文，未闭合块显示原文", () => {
 		const content = parseBlocks("<未知>内容</未知>");
 		expect(content).toEqual([{ kind: "text", text: "<未知>内容</未知>" }]);
-		expect(
-			blockViewKind({
-				kind: "block",
-				name: "未知",
-				type: {
-					name: "未知",
-					display: { kind: "hidden" },
-					context: { kind: "keep" },
-					semantics: { kind: "none" },
-				},
-				complete: true,
-				content: [],
-				raw: "内容",
-			}),
-		).toBe("raw");
 		const incomplete = findBlock("<旁白>还在写", "旁白");
 		expect(incomplete.complete).toBe(false);
 		expect(blockViewKind(incomplete)).toBe("raw");
@@ -81,7 +78,9 @@ describe("块的界面呈现", () => {
 	});
 
 	it("嵌套块的文字可以拼成纯文本", () => {
-		const content = parseBlocks("开头<旁白>中间<备忘>最后</备忘></旁白>结尾");
+		const content = toDisplayedBlocks(
+			parseBlocks("开头<旁白>中间<备忘>最后</备忘></旁白>结尾"),
+		);
 		expect(plainTextOf(content)).toBe("开头中间最后结尾");
 	});
 

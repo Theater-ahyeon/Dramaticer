@@ -71,6 +71,7 @@ describe("流式回合归并", () => {
 				storyId: "s",
 				userNode: { ...node, id: "u1", role: "user", raw: "行动" },
 				node,
+				blocks: [],
 				stateDiffs: [],
 				plotNotes: [],
 				usage: {
@@ -112,6 +113,7 @@ describe("流式回合归并", () => {
 					raw: "完成时才拿到的正文",
 					createdAt: "2026-01-01T00:00:01.000Z",
 				},
+				blocks: [],
 				stateDiffs: [],
 				plotNotes: [],
 				usage: {

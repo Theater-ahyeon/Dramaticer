@@ -1,7 +1,12 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { parseBlocks } from "@dramaticer/core/blocks";
 import { describe, expect, it } from "vitest";
-import { API_ERROR_CODES, SSE_EVENT_NAMES } from "../src/index.js";
+import {
+	API_ERROR_CODES,
+	SSE_EVENT_NAMES,
+	toDisplayedBlocks,
+} from "../src/index.js";
 
 const distDir = join(import.meta.dirname, "..", "dist");
 
@@ -25,6 +30,28 @@ describe("协议常量", () => {
 
 	it("错误码互不重复", () => {
 		expect(new Set(API_ERROR_CODES).size).toBe(API_ERROR_CODES.length);
+	});
+});
+
+describe("显示载荷", () => {
+	it("保留块注册表给出的显示策略，不带注册表定义", () => {
+		const [block] = toDisplayedBlocks(
+			parseBlocks("<旁白>风<备忘>钥匙</备忘></旁白>"),
+		);
+		expect(block).toMatchObject({
+			kind: "block",
+			name: "旁白",
+			complete: true,
+			raw: "风钥匙",
+			display: { kind: "native", component: "narration" },
+		});
+		expect(block).not.toHaveProperty("type");
+		if (block?.kind !== "block") throw new Error("没有解析出块");
+		expect(block.content[1]).toMatchObject({
+			kind: "block",
+			name: "备忘",
+			display: { kind: "native", component: "memo" },
+		});
 	});
 });
 

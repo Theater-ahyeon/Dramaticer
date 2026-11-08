@@ -1,13 +1,14 @@
-import type { ParsedBlock, ParsedContent } from "@dramaticer/core/blocks";
+import type { DisplayedBlock, DisplayedContent } from "@dramaticer/protocol";
 import {
 	blockViewKind,
 	imageSourceOf,
 	optionLinesOf,
 	plainTextOf,
 } from "../../chat/blocks";
+import { SandboxBlock } from "./SandboxBlock";
 
 export interface BlockContentProps {
-	readonly items: readonly ParsedContent[];
+	readonly items: readonly DisplayedContent[];
 	/** 选项所属的助手楼层；流式生成时还不知道楼层 id，传 null 时选项只显示不可点。 */
 	readonly nodeId: string | null;
 	readonly onChooseOption: (nodeId: string, text: string) => void;
@@ -45,7 +46,7 @@ function BlockView({
 	nodeId,
 	onChooseOption,
 }: {
-	readonly block: ParsedBlock;
+	readonly block: DisplayedBlock;
 	readonly nodeId: string | null;
 	readonly onChooseOption: (nodeId: string, text: string) => void;
 }) {
@@ -93,17 +94,6 @@ function BlockView({
 						),
 					)}
 				</div>
-			);
-		}
-		case "image": {
-			const source = imageSourceOf(block.raw);
-			if (source === null) {
-				return <pre className="block block-raw">{block.raw}</pre>;
-			}
-			return (
-				<figure className="block block-image">
-					<img alt={plainTextOf(block.content) || "剧情插图"} src={source} />
-				</figure>
 			);
 		}
 		case "header":
@@ -156,15 +146,37 @@ function BlockView({
 					/>
 				</div>
 			);
-		case "raw":
+		case "html": {
+			if (block.display?.kind !== "html") {
+				return <RawBlock block={block} />;
+			}
+			const imageSource =
+				block.name === "图片" ? imageSourceOf(block.raw) : null;
+			if (block.name === "图片" && imageSource === null) {
+				return <RawBlock block={block} />;
+			}
 			return (
-				<pre className="block block-raw">
-					{`<${block.name}>`}
-					{block.raw}
-					{block.complete ? `</${block.name}>` : ""}
-				</pre>
+				<SandboxBlock
+					blockName={block.name}
+					template={block.display.template}
+					content={block.raw}
+					imageSource={imageSource}
+					nodeId={nodeId}
+					onChooseOption={onChooseOption}
+				/>
 			);
-		case "text":
-			return <span className="text-segment">{block.raw}</span>;
+		}
+		case "raw":
+			return <RawBlock block={block} />;
 	}
+}
+
+function RawBlock({ block }: { readonly block: DisplayedBlock }) {
+	return (
+		<pre className="block block-raw">
+			{`<${block.name}>`}
+			{block.raw}
+			{block.complete ? `</${block.name}>` : ""}
+		</pre>
+	);
 }

@@ -448,10 +448,46 @@ span.option-line {
 	border-top: 1px dashed var(--border);
 }
 
-.block-image img {
+.block-sandbox iframe {
 	display: block;
-	max-width: 100%;
+	width: 100%;
+	border: 0;
+	background: transparent;
+}
+
+.image-zoom {
+	position: fixed;
+	inset: 0;
+	z-index: 40;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: auto;
+	height: auto;
+	max-width: none;
+	max-height: none;
+	margin: 0;
+	padding: 16px;
+	border: 0;
+	background: rgba(10, 12, 14, 0.86);
+}
+
+.image-zoom img {
+	max-width: 96vw;
+	max-height: 90vh;
 	border-radius: 8px;
+}
+
+.image-zoom-close {
+	position: fixed;
+	top: 14px;
+	right: 14px;
+	padding: 6px 12px;
+	border: 1px solid #cfd6dd;
+	border-radius: 8px;
+	background: #f7f9fb;
+	color: #20262c;
+	font-size: 0.85rem;
 }
 
 .block-raw {

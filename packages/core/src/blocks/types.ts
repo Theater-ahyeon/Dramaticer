@@ -1,4 +1,5 @@
 import type { StateDiffOp } from "../timeline.js";
+import { IMAGE_BLOCK_TEMPLATE } from "./templates.js";
 
 /** 显示策略：原生组件、沙箱 iframe 里的 HTML 模板，或者不显示。 */
 export type BlockDisplayStrategy =
@@ -183,7 +184,7 @@ export const DEFAULT_BLOCK_TYPES: readonly BlockTypeDefinition[] = [
 	},
 	{
 		name: "图片",
-		display: { kind: "native", component: "image" },
+		display: { kind: "html", template: IMAGE_BLOCK_TEMPLATE },
 		context: { kind: "keep" },
 		semantics: { kind: "none" },
 	},

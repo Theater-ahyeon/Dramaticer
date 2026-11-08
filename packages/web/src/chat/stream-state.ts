@@ -1,5 +1,8 @@
-import type { ParsedContent } from "@dramaticer/core/blocks";
-import type { SseEvent, TurnCompletedPayload } from "@dramaticer/protocol";
+import type {
+	DisplayedContent,
+	SseEvent,
+	TurnCompletedPayload,
+} from "@dramaticer/protocol";
 
 export interface ToolCallRecord {
 	readonly name: string;
@@ -12,7 +15,7 @@ export interface TurnDraft {
 	readonly userNodeId: string | null;
 	readonly text: string;
 	readonly thinking: string;
-	readonly blocks: readonly ParsedContent[];
+	readonly blocks: readonly DisplayedContent[];
 	readonly tools: readonly ToolCallRecord[];
 	readonly completed: TurnCompletedPayload | null;
 	readonly errorMessage: string | null;

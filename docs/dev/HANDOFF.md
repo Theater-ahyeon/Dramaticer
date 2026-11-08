@@ -3,24 +3,21 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：161
-- 任务：R5-T07.a web 变更卡审批与回滚
-- 结果：完成，门禁通过（137 个测试文件、1210 个测试通过，3 个 live 跳过，共 1213 个）。
-  - core：`ledger/cards.ts` 新增 `LedgerChangeCardError`（`not_found`、`invalid_status`）。`requireCard` 抛 `not_found`，`requirePendingCard` 与回滚状态检查抛 `invalid_status`；批准、拒绝与回滚仍复用原函数，规则没有另写。
-  - protocol：新增 `PROPOSAL_DECISION_ACTIONS`、`ProposalDecisionAction`、`isProposalDecisionAction` 与 `ProposalDecisionResult { card, ledger }`；`ledger` 是卡片所属故事 head 的 `NodeLedgerView`，故事没有楼层时为 null。
-  - server：新增 `POST /api/proposals/:id/approve|reject|rollback`。卡片不存在 404，状态不允许 409，其余错误原样上抛；成功返回 200、更新后的卡片与 head 台账快照。`handleNodeLedger` 抽出 `buildNodeLedgerView` 供两处共用。
-  - web 纯逻辑：`chat/proposal-view.ts` 的 `groupProposalCards` 固定按待审、已批准、已拒绝、已回滚分组并丢掉空组，组内保持服务端顺序；`proposalActions` 给出 `pending → approve/reject`、`approved → rollback`，其余为空；`describeProposalDiffs` 给出路径与原始值；`replaceProposalCard` 按 id 替换、未知卡片追加。
-  - web 组件：`components/ledger/ProposalList.tsx` 渲染分组、来源、来源楼层、创建时间、正文、每条修改的路径与值、拒绝原因，按钮文案来自 `PROPOSAL_ACTION_LABELS`，操作进行中禁用全部按钮。
-  - 台账页：故事加载时并行取 `GET /api/stories/:id/proposals?status=all`；批准、拒绝与回滚成功后按返回卡片替换列表，若返回的 head 正好是当前选中楼层就直接用响应里的台账快照刷新，并重取故事级线索；`storyEpoch` 防止切故事后的旧响应覆盖；`card_decision` 只由核心写，界面不发第二遍。
-  - 新增 1 个 server 测试（批准写 `mvu.time`、重复批准 409、不存在 404、拒绝不改台账、回滚删除、回滚再次 409、两条 `card_decision`）、5 个纯逻辑测试与 1 个客户端 URL 编码测试。
-  - 冒烟：临时脚本在真实 server（`packages/web/dist` + `StoryStore` 造 3 层、3 张卡：2 张待审与 1 张带拒绝原因）上用 Playwright 实测 390×844：待审（2）与已拒绝（1）出现、拒绝原因可见；批准后分组变为已批准（1）且 MVU 状态树出现“夜晚”；回滚后分组变为已回滚（1）且状态树中的“夜晚”消失；拒绝第二张后台账没有 `scene.current.place`；最终 2 条 `card_decision`、无横向溢出、无页面错误与失败请求。临时目录与脚本已删除，`pnpm-lock.yaml` 与根 `package.json` 未改动。
+- 会话：162
+- 任务：R5-T11 沙箱 iframe 块渲染器
+- 结果：完成，门禁通过（138 个测试文件、1220 个测试通过，3 个 live 跳过，共 1223 个）。
+  - protocol：`turn.ts` 新增 `DisplayedText`、`DisplayedBlock`（`kind`、`name`、`complete`、`raw`、`content`、`display`）与 `DisplayedContent`，`display` 是 core 的 `BlockDisplayStrategy` 或 `null`；`toDisplayedBlocks` 把解析结果摊平，保留注册表给出的策略且不再带 `type`。`BlocksReplacePayload.blocks` 与新增的 `TurnCompletedPayload.blocks` 都用这个载荷。
+  - core：`blocks/templates.ts` 新增 `BLOCK_TEMPLATE_CONTENT_TOKEN`（`{{content}}`）与 `IMAGE_BLOCK_TEMPLATE`；`图片` 的默认显示策略从 native `image` 改为 html 模板；`options.ts` 抽出 `splitOptionLines`，`collectOptionLines` 与 web 共用同一处切分规则。
+  - server：`streamTurn` 在每次 `blocks.replace` 快照、最终 `blocks.replace` 与 `turn.completed` 里都调用 `toDisplayedBlocks`。
+  - web 纯逻辑：`chat/blocks.ts` 改用 `DisplayedContent`，`blockViewKind` 只读 `display`（`hidden` 隐藏、`html` 走沙箱、native 按组件名映射、`null` 或未知组件按原文），保留 `thinking` 的可折叠展示；`chat/sandbox.ts` 提供 `escapeHtml`、`renderBlockTemplate`、`buildSandboxDocument`、`imageSandboxDocument`、`clampSandboxHeight`、`parseSandboxMessage` 与 `sandboxAck`。消息白名单只接受 `ready`、`height`（0–10000，非有限数与非数字拒绝）与 `action`（`zoom`、`choice`、`scroll`）；`choice.text` 去空白后必须非空且不超过 2000 字符；父页面只回发 `{type:"ack", action}`。
+  - web 组件：新增 `components/chat/SandboxBlock.tsx`，`<iframe sandbox="allow-scripts">`（没有 `allow-same-origin`），`srcdoc` 带 `default-src 'none'; img-src data: blob: https:; style-src 'unsafe-inline'; script-src 'unsafe-inline'` 与高度上报脚本；只接受 `event.source === contentWindow` 且 `event.origin === "null"` 的消息；图片块渲染在沙箱里，点击发 `zoom` 后由父页面显示 `<dialog open>` 放大层，关闭按钮与 Escape 都可关闭。`BlockContent` 对 `html` 块做图片地址校验，地址不合法或 `display` 缺失时按原文显示。
+  - 新增 8 个沙箱纯逻辑测试、1 个协议显示载荷测试、web 块测试改写与 server 的 `turn.completed.blocks` / 最终快照断言。
+  - 冒烟：临时脚本在真实 server（`packages/web/dist` + `StoryStore` 造 2 层，助手楼层含图片、旁白与选项）上用 Playwright 实测 390×844：沙箱 `origin` 为 `null`，读父页面 DOM 与 `document.cookie` 都被拒绝；图片高度上报为 180px；从沙箱发 `height: -1`、`resize`、未知 action、从父页面伪造 `height` 都不改变高度；模板图片不在主文档；点击图片出现放大层且地址与块内容一致；选项正常渲染、无横向溢出、无页面错误与失败请求。临时目录与脚本已删除，`pnpm-lock.yaml` 与根 `package.json` 未改动。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09.a、R2-T09.b、R2-T09.c、R2-T99、R5-T01、R5-T02、R5-T02.a、R5-T02.b、R5-T02.c、R5-T04、R5-T05.a、R5-T05.b、R5-T05.c、R5-T06、R5-T07、R5-T07.a、E-T01、R4-T00、R4-T01、R4-T02、R4-T03、R4-T04、R4-T05、R4-T06、R4-T07、R4-T08、R4-T99、R5-T00。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- **下一个可做任务是 R5-T11（沙箱 iframe 块渲染器）**：依赖 R5-T05、M1-T05、M4-T06，全部满足。之后按 TASKS 顺序是 R5-T03、R5-T08、R5-T09、R5-T10。
-- R5 的已知接口缺口（R5-T00 定下的任务范围，尚未做的部分）：
-  - 渠道管理接口 `GET`/`PUT /api/channels` 与 `POST /api/channels/probe` 还没有（R5-T03）。
-  - `blocks.replace` 的 `ParsedContent` 不含块显示策略；`BlockDisplayStrategy` 在 core 的块注册表里，R5-T11 负责把它带进事件载荷。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09.a、R2-T09.b、R2-T09.c、R2-T99、R5-T01、R5-T02、R5-T02.a、R5-T02.b、R5-T02.c、R5-T04、R5-T05.a、R5-T05.b、R5-T05.c、R5-T06、R5-T07、R5-T07.a、R5-T11、E-T01、R4-T00、R4-T01、R4-T02、R4-T03、R4-T04、R4-T05、R4-T06、R4-T07、R4-T08、R4-T99、R5-T00。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- **下一个可做任务是 R5-T03（server 渠道管理接口）**：依赖 M4-T04、M1-T03、R1-T01.b，全部满足。之后按 TASKS 顺序是 R5-T08、R5-T09、R5-T10、R5-T12、R5-T13、R5-T14、R5-T99。
+- R5 的已知接口缺口：渠道管理接口 `GET`/`PUT /api/channels` 与 `POST /api/channels/probe` 还没有（R5-T03）。
 - v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045。
 - HUMAN-09 待处理（不阻塞）：`data/channels.yaml` 已有 `bg-fallback`、`main-fallback`、`codex`，`channels.example.yaml` 还没有这三个别名。
@@ -36,7 +33,8 @@
 - 变更卡接口：`GET /api/stories/:id/proposals?status=` 默认 `pending`，接受 `all` 与四个状态；`POST /api/proposals/:id/approve|reject|rollback` 复用 core 的三个函数，返回 `{card, ledger}`。`LedgerChangeCardError` 的 `not_found` 映射 404、`invalid_status` 映射 409；其余错误仍走 500。批准玩家来源卡片会同时写 `userWill`；回滚只恢复 `before` 里的路径，不会撤销那条 `userWill`（core 既有行为）。
 - 路径接口：`GET /api/stories/:id/path?nodeId=&limit=&before=`，返回 `{storyId, headNodeId, nodes, hasMore}`。`nodeId` 是锚点、缺省 head，锚点节点包含在返回路径里；`before` 必须在本故事且在该锚点的路径上，返回它之前的 `limit` 楼；`hasMore` 只在返回页之前还有楼层时为真。响应里 `nodes` 一定是根到页末楼的连续顺序。`limit=1` 且带 `nodeId` 时只返回锚点自己，分支页用它读任意楼层原文。
 - 分支接口的 head 语义：`appendNode` 自带把 head 移到新节点，所以 `swipeNode`、`editNode`、重新生成写完楼层后 head 已经是新楼层，不需要再调用 `POST /head`；`setHead` 只在树里主动切分支时使用。
-- web 包结构：`src/api/{client,sse,index}.ts`；`src/chat/{path-state,virtual-window,stream-state,turn-summary,blocks,candidate-actions,opening-candidates,branch-tree,ledger-view,proposal-view,format}.ts`（纯逻辑）；`src/components/chat/{ChatFloorList,ChatFloorView,BlockContent,StreamingBubble,Composer,CandidateActions,OpeningCandidates}.tsx`、`src/components/branches/BranchTree.tsx`、`src/components/ledger/{LedgerValue,StateTree,ProposalList}.tsx`、`src/components/ErrorNotice.tsx`；`src/pages/*`、`src/pages/story/*`、`src/styles.css`。`src/api/index.ts` 导出单例 `api`。开发用 `pnpm --filter @dramaticer/web dev`（Vite 默认 5173，`/api` 代理到 `http://127.0.0.1:8787`）；server 默认从 `packages/web/dist` 提供静态文件，找不到文件回退 `index.html`。
+- 块载荷：`DisplayedContent` 是协议层的渲染载荷，`display` 为 `null` 表示没有显示策略、按原文显示；`html` 模板的 `{{content}}` 由 web 用 `escapeHtml` 替换，模板字符串只进入 iframe 的 `srcdoc`。本地历史楼层仍然在客户端用 `parseBlocks(node.raw)` 再 `toDisplayedBlocks`，因此与流式载荷共用同一套渲染类型。协议测试会扫描 `dist`，`turn.js` 不能引用 core 的运行时代码。
+- web 包结构：`src/api/{client,sse,index}.ts`；`src/chat/{path-state,virtual-window,stream-state,turn-summary,blocks,sandbox,candidate-actions,opening-candidates,branch-tree,ledger-view,proposal-view,format}.ts`（纯逻辑）；`src/components/chat/{ChatFloorList,ChatFloorView,BlockContent,SandboxBlock,StreamingBubble,Composer,CandidateActions,OpeningCandidates}.tsx`、`src/components/branches/BranchTree.tsx`、`src/components/ledger/{LedgerValue,StateTree,ProposalList}.tsx`、`src/components/ErrorNotice.tsx`；`src/pages/*`、`src/pages/story/*`、`src/styles.css`。`src/api/index.ts` 导出单例 `api`。开发用 `pnpm --filter @dramaticer/web dev`（Vite 默认 5173，`/api` 代理到 `http://127.0.0.1:8787`）；server 默认从 `packages/web/dist` 提供静态文件，找不到文件回退 `index.html`。
 - 聊天页每轮生成完成后重新取最新 60 楼并丢弃旧的向上分页；`PAGE_SIZE` 60、分页阈值 240px、自动贴底阈值 96px、楼层高度估算 200px、overscan 600px。候选行动与开场候选的轮询间隔都是 2 秒、上限 15 次；候选行动面板与开场候选面板在聊天面板里最高占 40vh、内部滚动。
 - 聊天页的回合模式取自 `GET settings` 的 `turnMode` 并作为 `mode` 发送；settings 尚未取到时按 `fast`。锁定为深回合时下拉框只显示当前值（不可选），旁边出现“切回快回合”按钮走 `PUT settings`。深回合仍不在可选项里（DESIGN §10.1）。
 - 分支页：路径高亮按完整路径 id 集合；head 行用 `focusSignal` 触发 `scrollIntoView`（0 表示还没加载）。树里只有 `childIds.length > 0` 才能折叠；`describeHeadSwitch` 是切换提示的唯一文案来源。
@@ -54,8 +52,8 @@
 - R4 验收的链路证据在 `packages/core/test/director-acceptance.test.ts` 与 `docs/dev/reports/R4.md`。
 
 ## 下一步
-- **R5-T11 沙箱 iframe 块渲染器**：`packages/protocol/src/turn.ts` 的 `BlocksReplacePayload` 增加块显示策略（`native` 组件名、`html` 模板或 `hidden`），服务端在 `blocks.replace` 里按块注册表填上；`TurnCompletedPayload` 的 `blocks` 同样带策略。web 新增 `<iframe sandbox="allow-scripts">`（不加 `allow-same-origin`）、`srcdoc` 最小 CSP、postMessage 白名单（只接受 `ready`、`height`、`action` 的固定类型，校验 `event.source` 与 `event.origin === "null"`），图片块在沙箱里渲染并可放大，没有显示策略的块按原文显示。
-- 之后 R5-T03（渠道管理接口）、R5-T08（导演与 Trace 面板）、R5-T09（设置与模板编辑器）、R5-T10（渠道面板）。
+- **R5-T03 server 渠道管理接口**：`GET /api/channels` 返回别名、模型、优先级、启用状态、`${ENV}` 变量名与是否已设置、最近体检结果与 `roles`，密钥值不出现；`PUT /api/channels` 编辑别名、模型、优先级、启用状态、`roles` 与新增渠道，密钥只接受环境变量引用，未知别名与 writer/judge 同家族 400，校验后临时文件加 rename 原子写回并让运行时缓存失效；`POST /api/channels/probe` 只在用户点击时联网，结果写回配置。
+- 之后 R5-T08（导演与 Trace 面板）、R5-T09（设置与模板编辑器）、R5-T10（渠道面板）、R5-T12（Playwright 端到端）、R5-T13、R5-T14、R5-T99。
 - R5-T08 只依赖 R5-T04、R5-T02、R4-T99，计划、决策、候选与线索接口已经可用。
 - 引用评测数字时：B1 必须同时说明同模型子集为空、每个对话每档只有 1 个样本；遗忘矛盾率必须同时说明失败题数与可判定样本数；偏好一致率当前没有样本。
 
@@ -84,7 +82,7 @@
 - 故事设置缺省值：`budgetTokens` 12000、`structuredOutput` `text-tags`、`temperature` 0.8、`maxTokens` 4096、`reasoning` `low`、`turnMode` `fast`、`maxReadRounds` 3、`historyBlockPolicy` `{mode:"default",overrides:{}}`、`gapPassEnabled` `false`、`gapPlanSeconds` 212、导演默认配置（含 `mode` `transparent`、`openingFloors` 10、`openingIntensity` `natural` 与 `intensity` `natural`）。
 - 回合模式的解析口只有 core 的 `resolveTurnMode`（已导出）：单轮参数优先于故事设置，深回合直接抛错。server 在 `handleTurnStream` 里、建用户楼层之前先调用它，深回合按 400 返回，`details.path` 在请求给 `mode` 时是 `mode`，否则是 `turnMode`；`generateAssistantTurn` 收到解析后的模式并写进 Trace。web 聊天页发送设置里的 `turnMode`，界面只列快回合。
 - 已注册的槽位是十一个：lore、character、persona、summary、state、memory、history、scene、director、user_will、protocol。默认模板顺序：character、lore、state、summary、memory、scene、director、user_will、history、（可选的 block_format）、protocol。`director` 槽位只返回 suffix，不产生 system 消息；不新增 `beat` 槽位。组装器的 suffix 用 `\n\n` 与玩家原文分隔；多个 suffix 之间用 `\n` 连接。
-- 原生块类型是 12 个（`thinking`、`选项`、`状态栏`、`变量更新`、`分析`、`图片`、`页眉`、`悄悄话`、`旁白`、`备忘`、`state_update`、`plot_note`）；`thinking`、`变量更新`、`state_update`、`plot_note` 的上下文策略是删除。
+- 原生块类型是 12 个（`thinking`、`选项`、`状态栏`、`变量更新`、`分析`、`图片`、`页眉`、`悄悄话`、`旁白`、`备忘`、`state_update`、`plot_note`）；`thinking`、`变量更新`、`state_update`、`plot_note` 的上下文策略是删除。`图片` 的显示策略是沙箱 HTML 模板，其余原生块用 React 组件；`thinking` 在界面里仍可折叠查看。
 - 历史槽位默认策略：更早楼层省略五个显示类块，最近 1 楼不套用这层省略；`full` 是改动前行为。设置项 `historyBlockPolicy` 存在 `story_settings.history_block_policy`。
 - 结算窗口以 head 为终点（ADR-0046），取**最旧的** N 个未结算助手楼层；冲突检查窗口取 head 路径最后 `conflictWindowFloors` 楼。现场分析以被分析的楼层为锚点。`scene` 任务显式传 200 token 上限。
 - 结算提示词只在 `SettlementWindow.beats` 非空时提 `beatCompleted`；`beatCompleted` 非布尔时该楼层整条拒绝，修复记录的 `path` 是 `["-"]`。`applySettlementProposals` 写拍状态的条件：该楼层出现在模型产出里、没有被拒绝、父节点处解析出的拍与提示词里的拍相同。
@@ -106,6 +104,9 @@
 - `packages/st-compat` 与 `packages/server` 在测试里通过 `@dramaticer/core` 的 `dist` 解析 core；只跑这两个包的测试前先执行 `pnpm run typecheck`（`tsc -b` 重新构建），否则会读到旧代码。
 - web 的 `typecheck` 与 `build` 会先构建 core 与 protocol；单独跑 web 测试前同样需要这两个包的 `dist`（`packages/web` 通过 `@dramaticer/protocol` 与 `@dramaticer/core/blocks` 的 `dist` 解析）。
 - `@dramaticer/core/blocks` 是浏览器安全子路径，只导出块解析、类型、视图与选项行读取；web 不要从 `@dramaticer/core` 根入口导入运行时函数（会带进 better-sqlite3）。只用 `import type` 从根入口取类型是允许的（`Composer.tsx`、`LedgerPage.tsx` 都这么做）。
+- `@dramaticer/protocol` 的运行时入口可以给 web 与 server 共用（`toDisplayedBlocks`、`SSE_EVENT_NAMES`），它只引用 core 的类型；protocol 测试会扫描 `dist`，确认 JavaScript 里没有 `@dramaticer/core`。
+- `TurnCompletedPayload` 现在有必填的 `blocks`，构造完整事件夹具时要带上；`TurnDraft.blocks` 的类型是 `DisplayedContent[]`。
+- 沙箱消息的浏览器约束：srcdoc 沙箱在不带 `allow-same-origin` 时 `event.origin` 是字符串 `"null"`，读 `document.cookie` 会直接抛 `SecurityError`；Playwright 的 `frame.evaluate` 里要捕获这个异常，不能当成空字符串。
 - web 的 Vite 开发服务器在当前环境只监听 `localhost`（IPv6 `::1`），用 `http://localhost:5173` 访问；`127.0.0.1` 会被拒绝连接。
 - 聊天页、分支页与台账页的冒烟方式：从 `packages/core/dist` 与 `packages/server/dist` 用 `pathToFileURL` 引入（Windows 上直接 `import("E:/…")` 会报 `ERR_UNSUPPORTED_ESM_URL_SCHEME`），用 `StoryStore` 造故事与楼层、按需写入状态 diff、事件、摘要、实体、世界书与变更卡；`startServer` 不传 `channels` 即可只提供只读接口，需要对话时用 `channels.createClient`/`createEmbedder` 注入假客户端、`createBackgroundRegistry: () => createBackgroundJobRegistry([])` 关掉后台任务，`--web` 指向 `packages/web/dist` 后浏览器用 `http://127.0.0.1:<端口>/stories/<id>/ledger` 等路径。`playwright-core` 需要临时装进 `.devloop/scratch/<任务>/` 并删掉，安装会往根 `pnpm-lock.yaml` 与 `package.json` 加 importer，收尾时把这两处都改回去；可用 `LOCALAPPDATA/ms-playwright/chromium-1243/chrome-win64/chrome.exe` 作为 `executablePath`。
 - 本次冒烟用的 `playwright-core` 已在根 `node_modules` 里可解析，未改动根 `package.json` 与 `pnpm-lock.yaml`。

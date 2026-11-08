@@ -1,4 +1,5 @@
 import { parseBlocks } from "@dramaticer/core/blocks";
+import { toDisplayedBlocks } from "@dramaticer/protocol";
 import { useMemo } from "react";
 import { formatFloorTime } from "../../chat/format";
 import type { ChatFloor } from "../../chat/path-state";
@@ -21,7 +22,10 @@ export function ChatFloorView({
 	registerRow,
 }: ChatFloorViewProps) {
 	const items = useMemo(
-		() => (node.role === "assistant" ? parseBlocks(node.raw) : null),
+		() =>
+			node.role === "assistant"
+				? toDisplayedBlocks(parseBlocks(node.raw))
+				: null,
 		[node.role, node.raw],
 	);
 	const setRow = useMemo(

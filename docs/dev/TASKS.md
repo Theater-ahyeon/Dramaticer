@@ -663,7 +663,8 @@
   - 批准与拒绝由核心在事务里写入 `card_decision` 偏好，界面不重复记录。
   验收：批准后台账出现 `source` 为 `player` 的事实；拒绝不改台账；回滚恢复批准前的值；非待定卡片再次批准返回 409；不存在或跨故事的卡片返回 404；一次操作只产生一条 `card_decision`；`pnpm check` 通过。
 
-- [ ] **R5-T11 沙箱 iframe 块渲染器**（原 M4-T17） | 依赖：R5-T05、M1-T05、M4-T06 | DESIGN §6
+- [x] **R5-T11 沙箱 iframe 块渲染器**（原 M4-T17） | 依赖：R5-T05、M1-T05、M4-T06 | DESIGN §6
+  完成：2026-11-08 `packages/protocol/src/turn.ts` 新增 `DisplayedContent` 与 `toDisplayedBlocks`（块只带 `display` 策略，没有注册表定义时为 null），`BlocksReplacePayload` 与 `TurnCompletedPayload.blocks` 都改成该载荷，流式快照、最终块与完成事件由 server 统一转换；`图片` 块默认显示改为 `html` 模板（`packages/core/src/blocks/templates.ts`，占位符 `{{content}}` 按文本转义）；web 新增 `components/chat/SandboxBlock.tsx`（`sandbox="allow-scripts"`、不设 `allow-same-origin`、srcdoc 带 `default-src 'none'` 的最小 CSP 与高度上报脚本）与 `chat/sandbox.ts`（只接受 `ready`、`height`、固定类型的 `action`，校验 `event.source` 与 `event.origin === "null"`，父页面只回发 `{type:"ack", action}`）；原生块继续用 React 组件，没有显示策略的块与未知原生组件按原文显示，图片在沙箱里点击放大；新增 8 个沙箱纯逻辑测试、1 个协议载荷测试与 server 断言；真实 server 加 Playwright 冒烟通过（父 DOM 与 cookie 均不可读、沙箱 origin 为 `null`、高度随图片变为 180px、非法消息不改变高度、模板图片不在主文档、390×844 放大正常且无横向溢出）；门禁通过（138 个测试文件、1220 个测试通过，3 个 live 跳过）
   做什么：
   - `packages/protocol/src/turn.ts` 的 `BlocksReplacePayload` 增加块类型的显示策略（`native` 组件名、`html` 模板或 `hidden`），服务端在 `blocks.replace` 里按块注册表填上；`TurnCompletedPayload` 的 `blocks` 同样带显示策略。`html` 模板只发给沙箱，不进入主文档。
   - web 新增沙箱渲染组件：`<iframe sandbox="allow-scripts">`，不添加 `allow-same-origin`；`srcdoc` 注入块 HTML 与最小 CSP。

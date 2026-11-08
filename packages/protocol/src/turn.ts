@@ -1,4 +1,5 @@
 import type {
+	BlockDisplayStrategy,
 	DirectorIntensity,
 	LlmUsage,
 	ParsedContent,
@@ -45,8 +46,43 @@ export interface ThinkingDeltaPayload {
 	readonly delta: string;
 }
 
+export interface DisplayedText {
+	readonly kind: "text";
+	readonly text: string;
+}
+
+/** 可以 JSON 传输的块：解析时的注册表定义换成只看显示的字段。 */
+export interface DisplayedBlock {
+	readonly kind: "block";
+	readonly name: string;
+	readonly complete: boolean;
+	readonly raw: string;
+	readonly content: readonly DisplayedContent[];
+	/** 块注册表给出的显示策略；没有策略时为 null，界面按原文显示。 */
+	readonly display: BlockDisplayStrategy | null;
+}
+
+export type DisplayedContent = DisplayedText | DisplayedBlock;
+
+/** 把解析结果摊平成显示载荷；块注册表在解析时已经挂到 `type` 上。 */
+export function toDisplayedBlocks(
+	items: readonly ParsedContent[],
+): readonly DisplayedContent[] {
+	return items.map((item): DisplayedContent => {
+		if (item.kind === "text") return { kind: "text", text: item.text };
+		return {
+			kind: "block",
+			name: item.name,
+			complete: item.complete,
+			raw: item.raw,
+			content: toDisplayedBlocks(item.content),
+			display: item.type.display,
+		};
+	});
+}
+
 export interface BlocksReplacePayload {
-	readonly blocks: readonly ParsedContent[];
+	readonly blocks: readonly DisplayedContent[];
 }
 
 export interface ToolCallPayload {
@@ -58,6 +94,7 @@ export interface TurnCompletedPayload {
 	readonly storyId: string;
 	readonly userNode: TimelineNode;
 	readonly node: TimelineNode;
+	readonly blocks: readonly DisplayedContent[];
 	readonly stateDiffs: readonly StateDiff[];
 	readonly plotNotes: readonly PlotNote[];
 	readonly usage: LlmUsage;
