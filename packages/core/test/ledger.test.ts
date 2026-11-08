@@ -359,12 +359,14 @@ describe("台账读取", () => {
 				value: "第三天黄昏",
 				storyTime: { start: "第三天黄昏", end: null },
 				source: "model",
+				nodeId: "n-root",
 			},
 			{
 				path: ["mvu", "stat_data", "hp"],
 				value: 100,
 				storyTime: { start: "第一天", end: "第二天" },
 				source: "import",
+				nodeId: "n-root",
 			},
 		]);
 		expect(readLedgerFacts(store, "n-root", ["mvu"])).toHaveLength(1);

@@ -29,6 +29,7 @@
 		"gap-pass-compare": "tsc -b && node dist/evalset/gap-pass-compare-cli.js",
 		"memory-eval": "tsc -b && node dist/evalset/memory-cli.js",
 		"playtest": "tsc -b && node dist/evalset/playtest-cli.js",
+		"probe-report": "tsc -b && node dist/evalset/probe-report-cli.js",
 		"director-eval": "tsc -b && node dist/evalset/director-cli.js",
 		"report": "tsc -b && node dist/health/cli.js",
 		"reference": "tsc -b && node dist/reference/cli.js",

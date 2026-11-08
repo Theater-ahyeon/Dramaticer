@@ -23,6 +23,14 @@ import {
 	resolveStoryBackgroundKinds,
 	runChatTurn,
 } from "@dramaticer/core";
+import {
+	DEFAULT_PROBE_MAX_TOKENS,
+	DEFAULT_PROBE_MIN_AGE_FLOORS,
+	DEFAULT_PROBE_TEMPERATURE,
+	type PlaytestProbeOptions,
+	type PlaytestProbeRecord,
+	runPlaytestProbe,
+} from "./probe.js";
 
 export const DEFAULT_PLAYTEST_ROUNDS = 20;
 export const DEFAULT_PLAYTEST_MODEL = "rp";
@@ -129,12 +137,16 @@ export interface PlaytestDrainRecord {
 interface PlaytestRecordBase {
 	/** 轮次；从 1 开始。 */
 	readonly round: number;
+	/** 记录所属故事；报告按它分组。 */
+	readonly storyId: string;
 	readonly profile: ChatProfile;
 	readonly seed: number;
 	readonly startedAt: string;
 	/** 本轮开始时（上一轮结束后的间隙）关键间隙工作的完成情况。 */
 	readonly gapWork: PlaytestGapRecord;
 	readonly operations: readonly PlaytestOperationRecord[];
+	/** 本轮之后的一致性探针结果；不到探针轮次或失败轮次为 null。 */
+	readonly probe: PlaytestProbeRecord | null;
 }
 
 export interface PlaytestRoundRecord extends PlaytestRecordBase {
@@ -207,6 +219,8 @@ export interface PlaytestOptions {
 	readonly turn: PlaytestTurnConfig;
 	/** 不提供时既不补建也不执行后台任务，间隙记录全为零。 */
 	readonly background?: PlaytestBackgroundOptions | null;
+	/** 一致性探针；不提供或每轮数为 0 时不插探针。 */
+	readonly probes?: PlaytestProbeOptions | null;
 	readonly operations?: PlaytestOperationSchedule;
 	/** 每完成一轮调用一次；失败轮次也写。 */
 	readonly onRecord: (record: PlaytestRecord) => void | Promise<void>;
@@ -255,6 +269,18 @@ export async function runPlaytest(
 		throw new Error("随机种子必须是非负整数");
 	}
 	validateSchedule(options.operations);
+	const probes = options.probes ?? null;
+	if (probes !== null) {
+		if (!Number.isInteger(probes.every) || probes.every < 1) {
+			throw new Error(`探针间隔必须是正整数，收到 ${probes.every}`);
+		}
+		const minAgeFloors = probes.minAgeFloors ?? DEFAULT_PROBE_MIN_AGE_FLOORS;
+		if (!Number.isInteger(minAgeFloors) || minAgeFloors < 1) {
+			throw new Error(
+				`探针事实的最小楼层年龄必须是正整数，收到 ${minAgeFloors}`,
+			);
+		}
+	}
 	if (!options.store.getStory(options.storyId)) {
 		throw new Error(`故事不存在：${options.storyId}`);
 	}
@@ -296,11 +322,13 @@ export async function runPlaytest(
 			const record: PlaytestFailureRecord = {
 				status: "failed",
 				round,
+				storyId: options.storyId,
 				profile: options.profile,
 				seed: options.seed,
 				startedAt,
 				gapWork,
 				operations: [],
+				probe: null,
 				user: userMessage,
 				userHint,
 				error: error instanceof Error ? error.message : String(error),
@@ -358,6 +386,29 @@ export async function runPlaytest(
 		}
 		const drained = await runGapDrain(options, now);
 		const finalNode = options.store.getHead(options.storyId);
+		const probe =
+			probes !== null && round % probes.every === 0 && finalNode !== null
+				? await runPlaytestProbe({
+						store: options.store,
+						storyId: options.storyId,
+						round,
+						headNodeId: finalNode.id,
+						minAgeFloors: probes.minAgeFloors ?? DEFAULT_PROBE_MIN_AGE_FLOORS,
+						random,
+						template: options.turn.template,
+						providers: options.turn.providers,
+						budgetTokens: options.turn.budgetTokens,
+						assistant: options.assistant,
+						judge: probes.judge,
+						maxTokens: probes.maxTokens ?? DEFAULT_PROBE_MAX_TOKENS,
+						temperature: probes.temperature ?? DEFAULT_PROBE_TEMPERATURE,
+					})
+				: null;
+		if (probe !== null) {
+			log(
+				`第 ${round} 轮探针：${probe.status === "done" ? (probe.verdict ?? "未知") : probe.status}`,
+			);
+		}
 		const assistantNode =
 			finalNode !== null && finalNode.role === "assistant"
 				? finalNode
@@ -371,11 +422,13 @@ export async function runPlaytest(
 		const record: PlaytestRoundRecord = {
 			status: "done",
 			round,
+			storyId: options.storyId,
 			profile: options.profile,
 			seed: options.seed,
 			startedAt,
 			gapWork,
 			operations,
+			probe,
 			userNodeId: result.userNode.id,
 			nodeId: assistantNode.id,
 			traceNodeId: result.node.id,

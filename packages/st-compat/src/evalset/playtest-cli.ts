@@ -33,6 +33,11 @@ import {
 	runPlaytest,
 	serializePlaytestRecord,
 } from "./playtest.js";
+import {
+	DEFAULT_PROBE_EVERY,
+	DEFAULT_PROBE_MIN_AGE_FLOORS,
+	type PlaytestProbeOptions,
+} from "./probe.js";
 
 const repoRoot = fileURLToPath(new URL("../../../../", import.meta.url));
 
@@ -54,6 +59,9 @@ const USAGE = [
 	"  --swipe-at <轮次> 在这些轮次之后重新生成回复，逗号分隔",
 	"  --edit-at <轮次>  在这些轮次之后编辑玩家输入并重新生成，逗号分隔",
 	"  --branch-at <轮次> 在这些轮次之后新建并行分支并切过去，逗号分隔",
+	`  --probe-every <n> 每多少轮插入一次一致性探针，默认 ${DEFAULT_PROBE_EVERY}，0 表示关闭`,
+	`  --probe-min-age <n> 探针事实至少早于 head 多少楼，默认 ${DEFAULT_PROBE_MIN_AGE_FLOORS}`,
+	"  --judge-model <m> 裁判模型别名，默认按 roles.judge 解析",
 	"  --channels <path> 渠道配置，默认 data/channels.yaml",
 	"  --help            显示本说明",
 ].join("\n");
@@ -178,6 +186,21 @@ export async function runPlaytestCli(
 							dependencies.registry ??
 							createDefaultBackgroundJobRegistry({ embedder }),
 					};
+		let probes: PlaytestProbeOptions | null = null;
+		if (parsed.probeEvery > 0) {
+			const judgeModel =
+				parsed.judgeModel ?? resolveModelForRole(config, "judge");
+			if (!config.models.has(judgeModel)) {
+				throw new Error(
+					`没有裁判模型 ${judgeModel}；可用模型：${[...config.models.keys()].join("、")}`,
+				);
+			}
+			probes = {
+				every: parsed.probeEvery,
+				minAgeFloors: parsed.probeMinAge,
+				judge: { client: createClient(config, judgeModel), model: judgeModel },
+			};
+		}
 		log(
 			`试玩：故事 ${parsed.storyId}，档位 ${parsed.profile}，第 ${startRound} 到 ${parsed.rounds} 轮，助手模型 ${parsed.model}，模拟用户模型 ${parsed.userModel}`,
 		);
@@ -203,6 +226,7 @@ export async function runPlaytestCli(
 				reasoning: settings.reasoning,
 			},
 			background,
+			probes,
 			operations: parsed.operations,
 			onRecord: async (record) => {
 				await appendFile(
@@ -247,6 +271,9 @@ interface PlaytestArgs {
 	readonly userModel: string;
 	readonly model: string;
 	readonly seed: number;
+	readonly probeEvery: number;
+	readonly probeMinAge: number;
+	readonly judgeModel: string | null;
 	readonly outPath: string;
 	readonly resume: boolean;
 	readonly operations: {
@@ -271,6 +298,9 @@ function parsePlaytestArgs(args: readonly string[]): PlaytestArgs {
 		"swipe-at": true,
 		"edit-at": true,
 		"branch-at": true,
+		"probe-every": true,
+		"probe-min-age": true,
+		"judge-model": true,
 		channels: true,
 	};
 	const allowedFlags: Readonly<Record<string, true>> = {
@@ -329,6 +359,21 @@ function parsePlaytestArgs(args: readonly string[]): PlaytestArgs {
 	const seedValue = values.get("seed");
 	const seed =
 		seedValue === undefined ? 1 : parseInteger(seedValue, "--seed", 0);
+	const probeEveryValue = values.get("probe-every");
+	const probeEvery =
+		probeEveryValue === undefined
+			? DEFAULT_PROBE_EVERY
+			: parseInteger(probeEveryValue, "--probe-every", 0);
+	const probeMinAgeValue = values.get("probe-min-age");
+	const probeMinAge =
+		probeMinAgeValue === undefined
+			? DEFAULT_PROBE_MIN_AGE_FLOORS
+			: parseInteger(probeMinAgeValue, "--probe-min-age", 1);
+	const judgeModelValue = values.get("judge-model");
+	const judgeModel =
+		judgeModelValue === undefined
+			? null
+			: requireText(judgeModelValue, "--judge-model");
 	const outPath =
 		values.get("out") ??
 		path.join(repoRoot, "eval-private", "reports", "playtest.jsonl");
@@ -340,6 +385,9 @@ function parsePlaytestArgs(args: readonly string[]): PlaytestArgs {
 		userModel,
 		model,
 		seed,
+		probeEvery,
+		probeMinAge,
+		judgeModel,
 		outPath,
 		resume: flags.has("resume"),
 		operations: {

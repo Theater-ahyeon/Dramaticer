@@ -49,12 +49,14 @@ export interface LedgerEntities {
 	readonly openClues: readonly LedgerClue[];
 }
 
-/** 一条仍然成立的台账事实，带来源与故事时间。 */
+/** 一条仍然成立的台账事实，带来源、故事时间与写入楼层。 */
 export interface LedgerFact {
 	readonly path: readonly string[];
 	readonly value: JsonValue;
 	readonly storyTime: StoryTime | null;
 	readonly source: LedgerSource;
+	/** 最后写入这条事实的楼层；一致性探针按它计算事实的楼层年龄。 */
+	readonly nodeId: string;
 }
 
 type LedgerStore = Pick<
@@ -107,6 +109,7 @@ export function readLedgerFacts(
 			value: diff.value as JsonValue,
 			storyTime: diff.storyTime,
 			source: ledgerSourceOf(diff),
+			nodeId: diff.nodeId,
 		});
 	}
 	return [...facts.values()];

@@ -3,21 +3,19 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：117
-- 任务：R2-T02 回放驱动与长程自动试玩命令行
-- 结果：完成（`DONE`），门禁通过（104 个测试文件、913 个测试通过，3 个 live 跳过，共 916 个）。
-  - 新增 `pnpm --filter @dramaticer/st-compat playtest`（`evalset/playtest-cli.ts`、`evalset/playtest.ts`）：参数 `--db`、`--story`、`--rounds` 默认 20、`--profile`、`--user-model` 默认 `background`、`--model` 默认 `rp`、`--seed` 默认 1、`--out`、`--resume`，另有按轮次配置的 `--swipe-at`、`--edit-at`、`--branch-at`。
-  - 模拟用户由 `background` 模型生成，严格 JSON 唯一键 `message`；连续 3 次非法抛 `PlaytestUserOutputError` 终止整批。
-  - 每轮走 `runChatTurn`；`native` 用故事模板与 `createStandardChatProviders`，`naive` 用 `createNaiveContextTemplate` 与 `createNaiveChatProviders`。生成参数取故事设置；输入预算等于模型上下文窗口减输出上限。
-  - `native` 每轮结束跑一次 `drainBackgroundJobs`（`gapSeconds` 0、`sessionEnded` false，只执行 `gap` 档），`gap_pass` 按故事开关过滤；`naive` 不建也不跑后台任务。记录里的 `gapWork` 是下一轮开始时的 `readGapWorkBacklog`。
-  - 记录字段：轮次、档位、种子、开始时间、间隙积压、用户输入与写作提示、助手正文、用户与助手楼层 id、`traceNodeId`、首字与总耗时、用量、台账事实条数（含间隙结算）、新建与兑现线索、导演决策、Trace 摘要、截断、间隙执行计数；失败轮次写 `status:"failed"` 与错误，不中断整批。
-  - `--resume` 从已有记录的最大轮次加一继续；不带 `--resume` 先清空输出文件。坏行直接失败。
-  - 后台注册表与 `gap_pass` 过滤提取成 core 的 `createDefaultBackgroundJobRegistry`、`resolveStoryBackgroundKinds`，`dramaticer work` 与试玩共用；st-compat 的模板解析提取成 `resolveStoryContextTemplate`。
-  - ADR-0063；新增 7 个测试（`playtest.test.ts`）：5 轮记录字段、模拟用户重试与终止、严格解析、三种操作、朴素档位、CLI 续跑与重写。
+- 会话：118
+- 任务：R2-T03 一致性探针
+- 结果：完成（`DONE`），门禁通过（105 个测试文件、922 个测试通过，3 个 live 跳过，共 925 个）。
+  - 新增 `packages/st-compat/src/evalset/probe.ts`：`selectProbeFact`、`buildProbeQuestion`、`parseProbeJudgeOutput`、`runPlaytestProbe`、`summarizePlaytestProbes`、`renderProbeReport`。`readLedgerFacts` 的 `LedgerFact` 增加 `nodeId`（最后写入楼层），探针用它计算事实年龄。
+  - 试玩每 `--probe-every`（默认 10）轮在间隙后台任务之后跑一次探针，结果写进轮次记录的 `probe` 字段；记录基类新增 `storyId`。探针用与回合相同的模板、槽位与预算在 head 上组装上下文，只读，不写楼层、不写 Trace、不改 head（执行前后都校验）。
+  - 事实只取年龄不小于 `--probe-min-age`（默认 20）的字符串台账事实，排除 `userWill` 与 `mvu`，跳过无法出题的路径形状；题目按路径与字段拼中文，不含答案，选择用试玩种子。
+  - 回答交给 `roles.judge` 的裁判（`--judge-model` 可覆盖）；严格 JSON `{consistent: true|false|"unknown", reason}`，非法重试 3 次，仍非法或调用失败记 `failed`，试玩继续。
+  - 矛盾率 = 矛盾 /（一致 + 矛盾）；`unknown`、`failed`、`skipped` 不进分母。新增 `pnpm --filter @dramaticer/st-compat probe-report --input <jsonl> [--private-out] [--public-out]`，私有版含事实路径、问题、回答与理由，统计版只有故事编号、轮次、样例编号与判定；同一输入重复生成逐字节相同。
+  - ADR-0064；新增 9 个测试（`probe.test.ts`）：事实选取与出题、严格判分解析、探针不改楼层与 head、裁判重试、连续非法后失败但试玩继续、无事实跳过、矛盾率与 unknown/失败分列、报告私有版与统计版及可重复性、CLI 参数接线。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、R2-T01、R2-T02。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`；未完成任务见 `docs/dev/TASKS.md`。
-- **下一个可做任务是 R2-T03 一致性探针**。v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。O-T99 开局验收仍依赖 R2-T02（已完成）与 R2-T03。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、R2-T01、R2-T02、R2-T03。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`；未完成任务见 `docs/dev/TASKS.md`。
+- **下一个可做任务是 R2-T03.a 五类记忆题与编造回忆率**。v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。O-T99 开局验收仍依赖 R2-T02、R2-T03（均已完成）。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045。
 - HUMAN-09 待处理（不阻塞）：`data/channels.yaml` 已有 `bg-fallback`、`main-fallback`、`codex`，`channels.example.yaml` 还没有这三个别名。
 - HUMAN-10 待处理（不阻塞）：插件不变量是否加进 AGENTS.md。
@@ -45,19 +43,25 @@
 - 插件系统在 DESIGN §19 是唯一权威；P 阶段任务在 TASKS 的「P：插件内核」小节，C 线兼容插件任务已存在且依赖 P2。
 
 ## 下一步
-- **R2-T03 一致性探针**：在试玩中每 `probeEvery`（默认 10）轮插入一次回忆型探针，从台账里取至少 20 楼之前的事实生成问题；探针调用不写楼层树、不改 head；回答与当前台账快照交给 `judge` 角色的模型，严格 JSON `{consistent: boolean, reason}`，无法判断记 `unknown` 且不并入矛盾率；报告按对话与轮次给出矛盾率、`unknown` 数与样例编号（私有版可含原文，统计版只含数字）。探针逻辑应复用 R2-T02 的 `runPlaytest` 记录点，不要在 CLI 外再写一套循环。
-- R2-T03 之后是 R2-T03.a、R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09、R2-T99；O-T99 开局验收要等 R2-T03 完成后再做。
+- **O-T99 开局验收**：依赖 O-T01、O-T02、O-T03、R2-T02、R2-T03 已全部完成，是 TASKS 里第一个可做的任务。用 `playtest` 在同一批卡与固定种子上对比开启与关闭开局机制，统计 1–10 楼重 roll 率（对照 F0 的 24.9%）、指令遵循率与候选采用率，记录首字延迟；私有报告与统计版各一份，结果写 `MILESTONE_DONE`。
+- O-T99 之后是 **R2-T03.a 五类记忆题与编造回忆率**：按 LongMemEval 五类（信息抽取、跨段推理、时间推理、知识更新、拒答）扩充记忆题，每道题标注类别与证据楼层；新增编造回忆题（问从未发生的人、事、物，肯定描述即计为编造）；一致性探针与记忆评测共用同一套判分，报告按类别给出命中与编造率、`unknown` 单列。复用 R2-T03 的 `parseProbeJudgeOutput` 与裁判调用约定，不要另写判分口径。
+- R2-T03.a 之后是 R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09、R2-T99。
 - 开局包的读取入口是 `readOpeningPack(store, storyId)`；需要自己校验时用 `validateOpeningPackPayload(value, knownNames)`。首楼候选的解析用 `parseOpeningCandidatesResponse(text, expectedCount)`，不要另写一套。
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
 - 不要修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 下的任何文件。不变量 I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账是唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖任何其他工作区包、ST 语义只在兼容插件里实现。
-- 自动试玩的入口是 `pnpm --filter @dramaticer/st-compat playtest`，实现分两层：`evalset/playtest.ts` 只管轮次循环、模拟用户、记录与间隙，`evalset/playtest-cli.ts` 负责参数、渠道、模板、槽位与文件续跑。新增试玩选项改 CLI，不要改 `runPlaytest` 的轮次语义。
+- 自动试玩的入口是 `pnpm --filter @dramaticer/st-compat playtest`，实现分两层：`evalset/playtest.ts` 只管轮次循环、模拟用户、探针、记录与间隙，`evalset/playtest-cli.ts` 负责参数、渠道、模板、槽位与文件续跑。新增试玩选项改 CLI，不要改 `runPlaytest` 的轮次语义。
 - 试玩默认写 `eval-private/reports/playtest.jsonl`；`--resume` 从已有记录的最大轮次加一继续，失败轮次也算已记录，不会被重跑；不带 `--resume` 会先清空文件。坏行直接抛错。
-- 试玩每轮的顺序是：读间隙积压 → 模拟用户生成 → `runChatTurn` → 按 `--swipe-at`/`--edit-at`/`--branch-at` 执行操作 → 间隙后台任务 → 写记录。`gapWork` 因此描述的是本轮开始前（上一轮间隙之后）的状态。
-- 试玩里 `--seed` 只决定模拟用户的写作提示顺序（固定五行），模型请求不带 seed；不要声称它控制模型采样。记录里 `userHint` 就是当轮提示。
-- `--swipe-at` 用 `regenerateAssistantTurn`；`--edit-at` 给玩家输入追加「（我想补充一句。）」后建新用户楼层并 `generateAssistantTurn`；`--branch-at` 用 `store.swipeNode` 建同文兄弟节点并切 head。三种操作都会增加正文请求（branch 不增加），旧节点保留（I4）。
-- 试玩的 `native` 档每轮跑 `drainBackgroundJobs`，`gapSeconds` 固定 0，所以只执行 `gap` 档；`naive` 档完全不建也不跑后台任务。需要暂停档任务时在记录外另跑 `dramaticer work`。
+- 试玩每轮的顺序是：读间隙积压 → 模拟用户生成 → `runChatTurn` → 按 `--swipe-at`/`--edit-at`/`--branch-at` 执行操作 → 间隙后台任务 → 一致性探针（到轮次时）→ 写记录。`gapWork` 描述本轮开始前（上一轮间隙之后）的状态。
+- 试玩里 `--seed` 只决定模拟用户的写作提示顺序与探针事实选择（固定五行提示）；模型请求不带 seed；不要声称它控制模型采样。记录里 `userHint` 就是当轮提示。
+- 一致性探针（ADR-0064）：`--probe-every` 默认 10、0 关闭；`--probe-min-age` 默认 20。探针结果在轮次记录的 `probe` 字段，`status` 取 `done`、`failed`、`skipped`。探针不写楼层、不写 Trace、不改 head。事实只取字符串、≤300 字符、年龄够、且能按路径出题的台账事实；`userWill` 与 `mvu` 排除。
+- 探针的事实年龄按 `LedgerFact.nodeId` 在 head 路径上的位次差计算。`LedgerFact` 现在带 `nodeId`；新增精确相等断言时要补这个字段。
+- 探针回答复用回合的 `assembleContext`（同一模板、槽位与预算）并追加问题，默认 `maxTokens` 1024、温度 0.3；裁判默认 512 token、温度 0。answer 或裁判调用失败只让该探针记 `failed`，不中断整批。
+- 裁判严格 JSON 的 `consistent` 只接受 `true`、`false`、`"unknown"`；`unknown` 不进矛盾率分母。矛盾率 = 矛盾 /（一致 + 矛盾），没有可判定样本时为 0（报告显示 `—`）。
+- 默认 20 轮的新故事在第一个探针轮次常因没有 20 楼之前的事实记 `skipped`；要样本需要更长的试玩或已有历史的数据库。
+- 报告入口是 `pnpm --filter @dramaticer/st-compat probe-report --input <jsonl>`，默认私有版 `eval-private/reports/playtest-probe.md`、统计版 `docs/dev/reports/R2-probe.md`；不传 `--private-out`/`--public-out` 会在仓库里写这两个路径，试跑时显式指到 `.devloop/scratch/`。统计版只有故事编号、轮次、样例编号与判定，不含故事 id、题目、回答与台账路径。
+- 朴素档位（B0）没有台账写入，探针通常记 `skipped`；同一数据库若先前有原生楼层，`readLedgerFacts` 仍会读到那些事实，探针照常出题。
 - 后台注册表工厂在 `core/src/background/defaults.ts` 的 `createDefaultBackgroundJobRegistry`，`gap_pass` 开关过滤在 `resolveStoryBackgroundKinds`；新增后台任务类型时改这两个函数和 `dramaticer work`/试玩都会同步。
 - `dramaticer chat` 与试玩共用 `resolveStoryContextTemplate`（`st-compat/src/chat/session.ts`）：故事模板为空或指向内置模板时用默认模板。
 - 对话档位（ADR-0062）：`ChatProfile` 取 `native`、`naive`，在 `core/src/chat/profile.ts`；`runChatTurn` 的 `profile` 单轮参数默认 `native`，没有按运行状况切换的代码路径。`TurnTrace.profile` 记录本轮档位；旧数据库里没有该字段的 Trace 按 `native` 处理（存储层查询用 `COALESCE(..., 'native')`）。

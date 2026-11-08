@@ -325,7 +325,8 @@
   - 断点续跑从最后一个完成轮次继续；单轮失败不中断整批，记入失败列表。
   验收：假客户端下 5 轮跑通且零网络；模拟用户输出非法 JSON 时重试 3 次后终止；`--resume` 不重复轮次；记录字段齐全；`pnpm check` 通过。
 
-- [ ] **R2-T03 一致性探针** | 依赖：R2-T02、R1-T01、R1-T01.b
+- [x] **R2-T03 一致性探针** | 依赖：R2-T02、R1-T01、R1-T01.b
+  完成：2026-11-08 新增 `evalset/probe.ts`：从 `readLedgerFacts` 取至少 20 楼之前（`--probe-min-age`，默认 20）的字符串台账事实出回忆题，排除 `userWill` 与 `mvu`；`LedgerFact` 增加写入楼层 `nodeId`；探针在每轮间隙任务之后按 `--probe-every`（默认 10）执行，用与回合相同的模板、槽位和预算在 head 上组装上下文，只读、不写楼层、不改 head；回答交给 `roles.judge` 的裁判，严格 JSON `{consistent: boolean|"unknown", reason}`，非法重试 3 次，失败记进探针记录且试玩继续；`probe-report` 命令按故事与轮次输出矛盾率（分母为一致加矛盾）、`unknown` 与失败数，私有版含题目与回答，统计版只有数字；ADR-0064；新增 9 个测试；门禁通过（105 个测试文件、922 个测试，3 个 live 跳过）
   做什么：
   - 在试玩中每 `probeEvery`（默认 10）轮插入一次回忆型探针：从台账里取至少 20 楼之前的事实，生成问题；探针调用不写入楼层树，也不改变当前 head。
   - 回答与当前台账快照交给 `judge` 角色的模型裁判，严格 JSON `{consistent: boolean, reason}`；无法判断记为 `unknown`，不并入矛盾率。
