@@ -22,6 +22,7 @@ export * from "./evalset/question-files.js";
 export * from "./evalset/retrieval.js";
 export * from "./evalset/state-questions.js";
 export * from "./node-id.js";
+export * from "./preferences/export.js";
 export * from "./preset.js";
 export * from "./reference/collect.js";
 export * from "./reference/text-stats.js";

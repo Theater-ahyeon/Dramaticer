@@ -9,6 +9,7 @@ import type {
 	MemoryEvent,
 	OpeningCandidateRecord,
 	OpeningCandidateStatus,
+	PreferenceEvent,
 	StateDiff,
 	Summary,
 	TimelineNode,
@@ -25,6 +26,19 @@ export interface NodeActionResult {
 /** `POST /api/nodes/:id/swipe` 与 `POST /api/nodes/:id/edit` 的请求体。 */
 export interface NodeTextRequest {
 	readonly text: string;
+}
+
+/**
+ * `POST /api/nodes/:id/choice` 的请求体：只带玩家选中的选项正文。
+ * 界面按选项块里的原始行文本发送，不做改写。
+ */
+export interface NodeChoiceRequest {
+	readonly text: string;
+}
+
+/** `POST /api/nodes/:id/choice` 的响应：写入后的偏好记录。 */
+export interface NodeChoiceResult {
+	readonly event: PreferenceEvent;
 }
 
 /** `POST /api/stories/:id/head` 的请求体。 */

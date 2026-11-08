@@ -33,6 +33,7 @@ import type {
 	ImportStoryRequest,
 	ImportStoryResult,
 	NodeActionResult,
+	NodeChoiceResult,
 	NodeCompressionsView,
 	NodeDirectorView,
 	NodeEventsView,
@@ -175,6 +176,10 @@ export async function handleApiRequest(
 			case "edit":
 				requireMethod(method, ["POST"]);
 				await handleNodeText(req, res, options, nodeId, "edit");
+				return;
+			case "choice":
+				requireMethod(method, ["POST"]);
+				await handleNodeChoice(req, res, options, nodeId);
 				return;
 			case "regenerate":
 				requireMethod(method, ["POST"]);
@@ -498,6 +503,30 @@ async function handleNodeText(
 			options.store.getPathToNode(created.id),
 		),
 	};
+	sendJson(res, 201, view);
+}
+
+/**
+ * 记录一次选项块的选择。界面只发送选中的正文，故事与楼层从节点推出；
+ * 载荷校验与非空判断在 `recordPreference` 里完成。
+ */
+async function handleNodeChoice(
+	req: IncomingMessage,
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	nodeId: string,
+): Promise<void> {
+	const node = requireNode(options.store, nodeId);
+	const body = await readObjectBody(req, options.maxJsonBodyBytes);
+	assertKnownKeys(body, ["text"]);
+	const text = requireText(body.text, "text");
+	const event = options.store.recordPreference({
+		storyId: node.storyId,
+		nodeId: node.id,
+		kind: "choice",
+		payload: { choiceText: text },
+	});
+	const view: NodeChoiceResult = { event };
 	sendJson(res, 201, view);
 }
 

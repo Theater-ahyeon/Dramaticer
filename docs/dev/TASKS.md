@@ -399,7 +399,8 @@
   - 不进入剧情上下文，不参与预算、检索与导演；只用于评测与校准。
   验收：四种信号各写入一行且内容完整；重复操作产生新的行；UPDATE 与 DELETE 被触发器拒绝；事务失败时操作与记录一起回滚；偏好记录不出现在上下文组装结果里；`pnpm check` 通过。
 
-- [ ] **R2-T07.a 偏好信号接线与导出** | 依赖：R2-T07、R5-T02 | DESIGN §14.5
+- [x] **R2-T07.a 偏好信号接线与导出** | 依赖：R2-T07、R5-T02 | DESIGN §14.5
+  完成：2026-11-08 server 新增 `POST /api/nodes/:id/choice`（请求体 `{text}`，故事与楼层从节点推出，响应 `{event}`，协议类型 `NodeChoiceRequest`、`NodeChoiceResult`）；swipe、edit 与变更卡决定继续由核心操作在各自事务里记录，接口不重复写；新增 `packages/st-compat/src/preferences/export.ts` 与 `pnpm --filter @dramaticer/st-compat preferences export --db <path> [--out <dir>] [--story <id>]`，按故事写 `<故事>.events.jsonl`、`<故事>.pairs.jsonl` 与 `index.json`，选项选择按所选正文与同一选项块里未选中的行配对，重 roll 按被放弃与被接受楼层配对，未配对的选择计数；文件名替换 Windows 不允许的字符，撞名直接报错；同一数据库重复导出逐字节相同；ADR-0073；新增 6 个测试（导出 4、命令行 1、服务端选择 1）；门禁通过
   做什么：
   - 选项块的选择由界面发送一个只含选择内容的接口调用，接口用 `recordPreference` 记录。swipe、edit 与变更卡决定由核心操作在各自事务里写入（ADR-0069），这三个接口不再重复记录。CLI 的 swipe、edit 与变更卡命令走同一处。
   - 新增 `pnpm --filter @dramaticer/st-compat preferences export`：按故事导出 JSONL 到 `eval-private/preferences/`，并生成接受与放弃的回复对清单（重 roll 与选择两类），供 R2-T04 的偏好子集使用。

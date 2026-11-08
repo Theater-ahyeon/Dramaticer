@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type {
 	ApiErrorResponse,
 	NodeActionResult,
+	NodeChoiceResult,
 	StoryPath,
 	StoryTree,
 } from "@dramaticer/protocol";
@@ -178,6 +179,45 @@ describe("分支接口", () => {
 			running.store.listPreferenceEvents("s1", { kind: "edit" }),
 		).toHaveLength(1);
 		expect(running.store.getHead("s1")?.id).toBe(edited.node.id);
+	});
+
+	it("选项选择写入锚定楼层的偏好记录", async () => {
+		const running = await startTestServer();
+		const seeded = seedStory(running);
+		const reply = running.store.appendNode({
+			storyId: "s1",
+			parentId: seeded.userId,
+			role: "assistant",
+			raw: "门后传来脚步声。\n<选项>推门\n后退</选项>",
+		});
+
+		const response = await post(
+			`${running.origin}/api/nodes/${reply.id}/choice`,
+			{ text: "推门" },
+		);
+		expect(response.status).toBe(201);
+		const result = (await response.json()) as NodeChoiceResult;
+		expect(result.event.kind).toBe("choice");
+		expect(result.event.storyId).toBe("s1");
+		expect(result.event.nodeId).toBe(reply.id);
+		expect(result.event.payload).toEqual({ choiceText: "推门" });
+		expect(
+			running.store.listPreferenceEvents("s1", { kind: "choice" }),
+		).toHaveLength(1);
+
+		const empty = await post(`${running.origin}/api/nodes/${reply.id}/choice`, {
+			text: "  ",
+		});
+		expect(empty.status).toBe(400);
+		expect((await errorBody(empty)).error.details).toEqual({ path: "text" });
+
+		const unknown = await post(`${running.origin}/api/nodes/n-missing/choice`, {
+			text: "推门",
+		});
+		expect(unknown.status).toBe(404);
+		expect(
+			running.store.listPreferenceEvents("s1", { kind: "choice" }),
+		).toHaveLength(1);
 	});
 
 	it("切换 head 后路径按新分支返回", async () => {
