@@ -7,8 +7,10 @@ import {
 	LlmProviderError,
 	type ParsedContent,
 	type StoryStore,
+	type TurnMode,
 	generateAssistantTurn,
 	regenerateAssistantTurn,
+	resolveTurnMode,
 } from "@dramaticer/core";
 import type { ApiErrorBody } from "@dramaticer/protocol";
 import type { BackgroundScheduler } from "./background.js";
@@ -104,6 +106,8 @@ interface StreamTurnOptions {
 export interface TurnRequestInputs {
 	/** 单轮导演强度；请求没给时为 null。 */
 	readonly directorIntensity?: DirectorIntensity | null;
+	/** 单轮模式；请求没给时为 null，使用故事设置。 */
+	readonly turnMode?: TurnMode | null;
 }
 
 /**
@@ -117,6 +121,11 @@ export async function handleTurnStream(
 	options: TurnRouteOptions,
 	inputs: TurnRequestInputs = {},
 ): Promise<void> {
+	const turnMode = resolveRequestedTurnMode(
+		options.store,
+		storyId,
+		inputs.turnMode ?? null,
+	);
 	const ticket = options.turns.begin(storyId);
 	if (ticket === null) {
 		throw new HttpError(409, "conflict", "这个故事正在生成上一轮回复");
@@ -145,6 +154,7 @@ export async function handleTurnStream(
 			return generateAssistantTurn({
 				...turnOptions(runtime, storyId, options),
 				userNodeId,
+				turnMode,
 				directorIntensity: inputs.directorIntensity ?? null,
 				signal,
 				...hooks,
@@ -308,6 +318,24 @@ async function streamTurn(stream: StreamTurnOptions): Promise<void> {
 		res.off("close", onClose);
 		ticket.release();
 		sse?.close();
+	}
+}
+
+/** 写任何楼层之前先解析模式：深回合在 R3b 完成前按 400 拒绝。 */
+function resolveRequestedTurnMode(
+	store: StoryStore,
+	storyId: string,
+	requested: TurnMode | null,
+): TurnMode {
+	try {
+		return resolveTurnMode(store, storyId, requested, null).mode;
+	} catch (error) {
+		throw new HttpError(
+			400,
+			"bad_request",
+			error instanceof Error ? error.message : "回合模式不可用",
+			{ path: requested === null ? "turnMode" : "mode" },
+		);
 	}
 }
 

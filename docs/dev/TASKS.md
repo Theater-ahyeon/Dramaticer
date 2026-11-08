@@ -565,7 +565,8 @@
   - 节点必须属于请求路径里的故事，否则 404；响应使用 protocol 类型；不返回密钥。
   验收：swipe 与 edit 生成兄弟且旧节点不变；head 切换后路径正确；regenerate 走 M4-T03；面板数据与 store 一致；跨故事节点 404；`pnpm check` 通过。
 
-- [ ] **R5-T02.a 回合参数：单轮模式与强度** | 依赖：R5-T02、R3-T01、R4-T03 | DESIGN §10.1
+- [x] **R5-T02.a 回合参数：单轮模式与强度** | 依赖：R5-T02、R3-T01、R4-T03 | DESIGN §10.1
+  完成：2026-11-08 `TurnRequest` 补 `mode` 与 `intensity`；`POST /api/stories/:id/turns` 接受 `mode` 并在写楼层之前用 `resolveTurnMode`（core 导出）校验，深回合转 400 并指出 R3b、`details.path` 区分 `mode` 与 `turnMode`，楼层数不变；`handleTurnStream` 把模式传给 `generateAssistantTurn`，Trace 记录 `turnMode`；非法 `mode` 返回 400 并指出字段；新增 1 个 server 测试；门禁通过（124 个测试文件、1116 个测试）
   做什么：
   - `packages/protocol/src/turn.ts` 的 `TurnRequest` 补齐 `text`、`mode`（可选，`fast` 或 `deep`）与 `intensity`（可选，`setup`、`natural`、`detonate`）；未知字段仍然 400。
   - `POST /api/stories/:id/turns` 把 `mode` 交给 `handleTurnStream` 与 `runChatTurn` 的 `turnMode` 参数；`intensity` 继续走 `readOptionalIntensity`。缺省值取故事设置 `turnMode`。

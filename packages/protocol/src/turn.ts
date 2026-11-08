@@ -1,15 +1,21 @@
 import type {
+	DirectorIntensity,
 	LlmUsage,
 	ParsedContent,
 	PlotNote,
 	StateDiff,
 	TimelineNode,
+	TurnMode,
 	TurnTrace,
 } from "@dramaticer/core";
 import type { ApiErrorBody } from "./errors.js";
 
 export interface TurnRequest {
 	readonly text: string;
+	/** 单轮模式；省略时使用故事设置的 `turnMode`。 */
+	readonly mode?: TurnMode;
+	/** 单轮导演强度；省略时使用导演配置的强度。 */
+	readonly intensity?: DirectorIntensity;
 }
 
 /** SSE 的 event 字段取值；客户端按这些名字分发。 */

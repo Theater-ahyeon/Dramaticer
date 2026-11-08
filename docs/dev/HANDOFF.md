@@ -3,18 +3,18 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：151
-- 任务：修复门禁（提示词声明门禁失败，本会话不选任务）
-- 结果：完成，门禁通过（124 个测试文件、1115 个测试通过，3 个 live 跳过，共 1118 个）。
-  - 失败原因：`packages/st-compat/test/events-backfill.test.ts` 的「续跑跳过已抽取的窗口，重复运行不新增事件」在并行门禁里耗时 5,892ms，超过 vitest 默认 5,000ms 上限而超时；单独运行时 920ms 通过，属于并行负载下的耗时抖动，代码逻辑没有失败。
-  - 修复：给该文件四个测试（三轮批量抽取、续跑、未知故事、CLI 缓存目录与 `--resume`）各加 `{ timeout: 30_000 }` 的第二个参数，与 `gap-pass-compare.test.ts`、`pairwise.test.ts`、`historical-replay.test.ts` 的既有写法一致。门禁里该文件的关键用例耗时 1.7–2.7 秒。
-  - 未改任何逻辑、未改 `TASKS.md` 的任务状态。
+- 会话：152
+- 任务：R5-T02.a 回合参数：单轮模式与强度
+- 结果：完成，门禁通过（124 个测试文件、1116 个测试通过，3 个 live 跳过，共 1119 个）。
+  - `packages/protocol/src/turn.ts` 的 `TurnRequest` 补 `mode`（`fast` 或 `deep`）与 `intensity`（三档强度）；解析继续用 core 的类型。
+  - core 导出 `resolveTurnMode` 与 `ResolvedTurnMode`；服务端在 `handleTurnStream` 里、**任何楼层写入之前**调用它，深回合（请求参数或故事设置）转成 400 并指出 R3b，`details.path` 在请求显式给 `mode` 时是 `mode`、否则是 `turnMode`；用户楼层因此不会留下。
+  - `POST /api/stories/:id/turns` 的 `assertKnownKeys` 增加 `mode`；非法 `mode` 返回 400 并指出字段；`intensity` 仍走 `readOptionalIntensity`；`handleTurnStream` 把解析出的模式传给 `generateAssistantTurn`，Trace 的 `turnMode` 记录该值。
+  - 新增 1 个 server 测试（`turns.test.ts`）覆盖：故事设置 deep 且省略 `mode` 时 400 且楼层数不变、请求 `mode: "fast"` 覆盖设置且 Trace 为 fast、请求 `mode: "deep"` 400 并指出 R3b、`mode: "slow"` 400 指出字段、未知字段 400；`intensity` 的既有测试继续通过。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09.a、R2-T09.b、R2-T09.c、R2-T99、R5-T01、R5-T02、E-T01、R4-T00、R4-T01、R4-T02、R4-T03、R4-T04、R4-T05、R4-T06、R4-T07、R4-T08、R4-T99、R5-T00。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- **下一个可做任务是 R5-T02.a（回合参数：单轮模式与强度）**：依赖 R5-T02、R3-T01、R4-T03，全部满足。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09.a、R2-T09.b、R2-T09.c、R2-T99、R5-T01、R5-T02、R5-T02.a、E-T01、R4-T00、R4-T01、R4-T02、R4-T03、R4-T04、R4-T05、R4-T06、R4-T07、R4-T08、R4-T99、R5-T00。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- **下一个可做任务是 R5-T05.a（重新生成记录 swipe 偏好）**：依赖 R2-T07、R5-T02.a，全部满足。
 - R5 的已知接口缺口（R5-T00 定下的任务范围）：
-  - `packages/protocol/src/turn.ts` 的 `TurnRequest` 目前只有 `text`；`POST /api/stories/:id/turns` 已经接受 `intensity`（`assertKnownKeys(body, ["text", "intensity"])`），但协议类型没有；单轮 `mode` 尚未接入。`runChatTurn` 已经支持 `turnMode` 参数，`resolveTurnMode` 在深回合时抛错。
   - `GET /api/stories/:id/path` 返回完整路径与原文，没有 `limit`/`before`；`StoryPath` 没有 `hasMore`。
   - 创建故事与导入卡之后没有调用 `scheduler.schedule`；`createOpeningCandidatesHandler` 在已有待选候选时不生成（CLI `--generate` 直接调 `generateOpeningCandidates` 追加）；没有开场候选重新生成接口。
   - `regenerateAssistantTurn` 不记录 `swipe` 偏好；只有 `StoryStore.swipeNode`、`editNode` 与变更卡状态更新记录偏好。
@@ -43,8 +43,8 @@
 - R4 验收的链路证据在 `packages/core/test/director-acceptance.test.ts` 与 `docs/dev/reports/R4.md`。
 
 ## 下一步
-- **R5-T02.a 回合参数：单轮模式与强度**：`TurnRequest` 补 `mode` 与 `intensity`；`POST /api/stories/:id/turns` 把 `mode` 传给 `handleTurnStream` 与 `runChatTurn`；`deep` 由 `resolveTurnMode` 抛错，服务端转 400 并指出 R3b；验收包含 Trace 的 `turnMode`、400 与楼层数不变。
-- 之后按顺序做 R5-T05.a（核心记录 `swipe`）、R5-T02.b（路径分页）、R5-T02.c（开局任务入队与开场候选重新生成）、R5-T04（web 骨架）、R5-T05（聊天）、R5-T07（台账只读）、R5-T11（沙箱块渲染）；再进入第二段 R5-T03、R5-T06、R5-T07.a、R5-T08、R5-T09、R5-T10。
+- **R5-T05.a 重新生成记录 `swipe` 偏好**：`regenerateAssistantTurn` 在写入新助手楼层时、同一事务里调用 `recordPreference`，被放弃的是原助手楼层、被接受的是新楼层；中止但保存了部分正文时同样记录，生成失败且没有新楼层时不记录；一次重新生成只写一条，server 与 CLI 共用。
+- 之后按顺序做 R5-T02.b（路径分页）、R5-T02.c（开局任务入队与开场候选重新生成）、R5-T04（web 骨架）、R5-T05（聊天）、R5-T07（台账只读）、R5-T11（沙箱块渲染）；再进入第二段 R5-T03、R5-T06、R5-T07.a、R5-T08、R5-T09、R5-T10。
 - R5-T05 依赖 R5-T02、R5-T02.a、R5-T02.b、R5-T02.c、R5-T05.a、R5-T04；R5-T08 只依赖 R5-T04、R5-T02、R4-T99，计划、决策、候选与线索接口已经可用。
 - 引用评测数字时：B1 必须同时说明同模型子集为空、每个对话每档只有 1 个样本；遗忘矛盾率必须同时说明失败题数与可判定样本数；偏好一致率当前没有样本。
 
@@ -71,6 +71,7 @@
 - 自动试玩的入口是 `pnpm --filter @dramaticer/st-compat playtest`：每轮顺序是读间隙积压 → 模拟用户 → `runChatTurn` → swipe/edit/branch → 间隙后台任务 → 一致性探针 → 每轮裁判 → 写记录。`--seed` 只决定模拟用户的提示顺序与探针事实选择。
 - 开场导演的楼层深度按当前路径助手楼层数计算；`openingFloors` 为 0 关闭；开局强度 `setup`、`natural`、`detonate` 的字段范围见 DESIGN §8.4。节拍机制的楼层深度用同一口径。
 - 故事设置缺省值：`budgetTokens` 12000、`structuredOutput` `text-tags`、`temperature` 0.8、`maxTokens` 4096、`reasoning` `low`、`turnMode` `fast`、`maxReadRounds` 3、`historyBlockPolicy` `{mode:"default",overrides:{}}`、`gapPassEnabled` `false`、`gapPlanSeconds` 212、导演默认配置（含 `mode` `transparent`、`openingFloors` 10、`openingIntensity` `natural` 与 `intensity` `natural`）。
+- 回合模式的解析口只有 core 的 `resolveTurnMode`（已导出）：单轮参数优先于故事设置，深回合直接抛错。server 在 `handleTurnStream` 里、建用户楼层之前先调用它，深回合按 400 返回，`details.path` 在请求给 `mode` 时是 `mode`，否则是 `turnMode`；`generateAssistantTurn` 收到解析后的模式并写进 Trace。
 - 已注册的槽位是十一个：lore、character、persona、summary、state、memory、history、scene、director、user_will、protocol。默认模板顺序：character、lore、state、summary、memory、scene、director、user_will、history、（可选的 block_format）、protocol。`director` 槽位只返回 suffix，不产生 system 消息；不新增 `beat` 槽位。组装器的 suffix 用 `\n\n` 与玩家原文分隔；多个 suffix 之间用 `\n` 连接。
 - 原生块类型是 12 个（`thinking`、`选项`、`状态栏`、`变量更新`、`分析`、`图片`、`页眉`、`悄悄话`、`旁白`、`备忘`、`state_update`、`plot_note`）；`thinking`、`变量更新`、`state_update`、`plot_note` 的上下文策略是删除。
 - 历史槽位默认策略：更早楼层省略五个显示类块，最近 1 楼不套用这层省略；`full` 是改动前行为。设置项 `historyBlockPolicy` 存在 `story_settings.history_block_policy`。

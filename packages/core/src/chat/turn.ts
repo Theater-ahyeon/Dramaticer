@@ -131,7 +131,7 @@ const TRUNCATION_OPTIONS = {
 	detectAbruptEnd: true,
 } as const;
 
-interface ResolvedTurnMode {
+export interface ResolvedTurnMode {
 	readonly mode: TurnMode;
 	readonly maxReadRounds: number;
 }
@@ -139,8 +139,9 @@ interface ResolvedTurnMode {
 /**
  * 模式与读取工具软上限的唯一解析口：单轮参数优先于故事设置。
  * 深回合未实现时在这里直接失败；没有按任何运行状况切换模式的路径。
+ * 服务端在写楼层之前调用它，深回合请求因此不会留下用户楼层。
  */
-function resolveTurnMode(
+export function resolveTurnMode(
 	store: StoryStore,
 	storyId: string,
 	requestedMode: TurnMode | null | undefined,

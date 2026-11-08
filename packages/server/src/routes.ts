@@ -18,12 +18,14 @@ import {
 	type StorySettingsUpdate,
 	type StoryStore,
 	type TimelineNode,
+	type TurnMode,
 	type UpdateContextTemplateInput,
 	assertDirectorIntensity,
 	fulfillLedgerClue,
 	isJsonObject,
 	isLedgerChangeCardStatus,
 	isOpeningCandidateStatus,
+	isTurnMode,
 	listLedgerEntities,
 	parseDirectorPlan,
 	readDirectorPlan,
@@ -376,11 +378,20 @@ async function handleTurns(
 ): Promise<void> {
 	requireStory(options.store, storyId);
 	const body = await readObjectBody(req, options.maxJsonBodyBytes);
-	assertKnownKeys(body, ["text", "intensity"]);
+	assertKnownKeys(body, ["text", "mode", "intensity"]);
 	const text = requireText(body.text, "text");
 	await handleTurnStream(res, storyId, text, options, {
 		directorIntensity: readOptionalIntensity(body.intensity),
+		turnMode: readOptionalMode(body.mode),
 	});
+}
+
+function readOptionalMode(value: unknown): TurnMode | null {
+	if (value === undefined) return null;
+	if (!isTurnMode(value)) {
+		throw fieldError("mode", "回合的 mode 只接受 fast 或 deep");
+	}
+	return value;
 }
 
 function readOptionalIntensity(value: unknown): DirectorIntensity | null {
