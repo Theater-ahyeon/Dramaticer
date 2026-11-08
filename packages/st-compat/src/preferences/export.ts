@@ -2,15 +2,11 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import {
 	PREFERENCE_EVENT_KINDS,
-	type ParsedContent,
 	type PreferenceEvent,
 	type PreferenceEventKind,
 	type StoryStore,
-	parseBlocks,
+	readOptionLines,
 } from "@dramaticer/core";
-
-/** 选项块每行一个选项；导出时按行切分，并与记录里的选择正文逐字比对。 */
-const OPTION_BLOCK_NAME = "选项";
 
 /** 接受与放弃的两侧；选项没有独立楼层，`nodeId` 为 null。 */
 export interface PreferencePairSide {
@@ -197,7 +193,7 @@ export function buildPreferencePairs(
 					`偏好记录 ${event.id} 引用的楼层不存在：${event.nodeId}`,
 				);
 			}
-			const options = readChoiceOptions(anchor.raw);
+			const options = readOptionLines(anchor.raw);
 			if (!options.includes(payload.choiceText)) {
 				unpairedChoices += 1;
 				continue;
@@ -241,29 +237,6 @@ export function preferencesFileBase(storyId: string): string {
 		: /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i.test(base)
 			? `_${base}`
 			: base;
-}
-
-function readChoiceOptions(raw: string): readonly string[] {
-	const options: string[] = [];
-	collectOptionLines(parseBlocks(raw), options);
-	return options;
-}
-
-function collectOptionLines(
-	items: readonly ParsedContent[],
-	out: string[],
-): void {
-	for (const item of items) {
-		if (item.kind === "text") continue;
-		if (item.name === OPTION_BLOCK_NAME) {
-			for (const line of item.raw.split("\n")) {
-				const trimmed = line.trim();
-				if (trimmed.length > 0) out.push(trimmed);
-			}
-			continue;
-		}
-		collectOptionLines(item.content, out);
-	}
 }
 
 function countKinds(

@@ -289,3 +289,293 @@ button:disabled {
 		padding-bottom: 24px;
 	}
 }
+
+/* 聊天面板：移动端给底部导航与安全区留出高度，桌面跟随视口。 */
+.chat-panel {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	height: calc(100dvh - 290px);
+	min-height: 360px;
+}
+
+.chat-list-wrap {
+	position: relative;
+	display: flex;
+	flex: 1;
+	min-height: 0;
+}
+
+.chat-scroll {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	gap: 10px;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	padding: 4px 2px 12px;
+}
+
+.chat-spacer {
+	flex: 0 0 auto;
+}
+
+.floor {
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: 12px;
+	padding: 10px 12px;
+}
+
+.floor-user {
+	background: var(--accent-soft);
+	border-color: #e4cdb8;
+}
+
+.floor-pending {
+	opacity: 0.75;
+}
+
+.floor-meta {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 4px;
+	font-size: 0.78rem;
+	color: var(--muted);
+}
+
+.floor-speaker {
+	font-weight: 600;
+	color: var(--text);
+}
+
+.floor-action {
+	margin-left: auto;
+	padding: 2px 8px;
+	font-size: 0.75rem;
+	background: transparent;
+	color: var(--accent);
+	border-color: var(--border);
+}
+
+.floor-body {
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+.text-segment {
+	white-space: pre-wrap;
+}
+
+.block {
+	margin: 8px 0;
+}
+
+.block-options {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.option-line {
+	display: block;
+	width: 100%;
+	padding: 8px 10px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--bg);
+	color: var(--text);
+	font-size: 0.92rem;
+	text-align: left;
+}
+
+span.option-line {
+	cursor: default;
+}
+
+.block-thinking summary,
+.block-analysis summary {
+	cursor: pointer;
+	color: var(--muted);
+	font-size: 0.85rem;
+}
+
+.block-thinking .block-body {
+	padding-left: 8px;
+	border-left: 2px solid var(--border);
+	color: var(--muted);
+	font-size: 0.88rem;
+	white-space: pre-wrap;
+}
+
+.block-header {
+	margin: 10px 0 4px;
+	font-size: 1.05rem;
+}
+
+.block-whisper {
+	padding-left: 10px;
+	border-left: 3px solid #b9a892;
+	color: #4a4136;
+	font-style: italic;
+}
+
+.block-narration {
+	color: var(--muted);
+}
+
+.block-memo {
+	padding: 6px 10px;
+	border-radius: 8px;
+	background: #f6f2e8;
+	color: #5c5348;
+	font-size: 0.85rem;
+}
+
+.block-status {
+	padding: 8px 10px;
+	border-radius: 8px;
+	background: #101418;
+	color: #dfe7ef;
+	font-family: ui-monospace, Consolas, monospace;
+	font-size: 0.85rem;
+	white-space: pre-wrap;
+}
+
+.block-analysis {
+	padding-top: 6px;
+	border-top: 1px dashed var(--border);
+}
+
+.block-image img {
+	display: block;
+	max-width: 100%;
+	border-radius: 8px;
+}
+
+.block-raw {
+	padding: 8px;
+	border-radius: 8px;
+	background: #f4f1ec;
+	font-size: 0.82rem;
+	overflow-wrap: anywhere;
+	white-space: pre-wrap;
+}
+
+.turn-summary {
+	margin: 0;
+	color: var(--muted);
+	font-size: 0.8rem;
+}
+
+.retry-bar {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	color: var(--danger);
+	font-size: 0.85rem;
+}
+
+.chat-to-bottom {
+	position: absolute;
+	right: 8px;
+	bottom: 10px;
+	padding: 6px 12px;
+	border-radius: 999px;
+	font-size: 0.8rem;
+	box-shadow: 0 2px 8px rgb(0 0 0 / 15%);
+}
+
+.chat-load-older {
+	align-self: center;
+	padding: 4px 10px;
+	background: var(--surface);
+	border-color: var(--border);
+	color: var(--accent);
+	font-size: 0.78rem;
+}
+
+.chat-empty {
+	margin: 24px 0;
+	color: var(--muted);
+	text-align: center;
+}
+
+.stream-cursor {
+	display: inline-block;
+	width: 8px;
+	height: 1em;
+	background: var(--accent);
+	vertical-align: text-bottom;
+	animation: stream-blink 1s steps(2) infinite;
+}
+
+@keyframes stream-blink {
+	50% {
+		opacity: 0;
+	}
+}
+
+.stream-error {
+	margin: 6px 0 0;
+	color: var(--danger);
+	font-size: 0.85rem;
+}
+
+.composer {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.composer textarea {
+	width: 100%;
+	min-height: 64px;
+	padding: 10px 12px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--surface);
+	color: var(--text);
+	font: inherit;
+	resize: vertical;
+}
+
+.composer-actions {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.composer-mode {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	color: var(--muted);
+	font-size: 0.8rem;
+}
+
+.composer-mode select {
+	padding: 4px 6px;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: var(--surface);
+	color: var(--muted);
+	font: inherit;
+	font-size: 0.8rem;
+}
+
+.composer-send,
+.composer-stop {
+	margin-left: auto;
+}
+
+.composer-stop {
+	background: var(--danger);
+}
+
+@media (min-width: 900px) {
+	.chat-panel {
+		height: calc(100dvh - 180px);
+	}
+}

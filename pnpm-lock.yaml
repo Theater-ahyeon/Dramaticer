@@ -91,6 +91,9 @@ importers:
 
   packages/web:
     dependencies:
+      '@dramaticer/core':
+        specifier: workspace:*
+        version: link:../core
       '@dramaticer/protocol':
         specifier: workspace:*
         version: link:../protocol
