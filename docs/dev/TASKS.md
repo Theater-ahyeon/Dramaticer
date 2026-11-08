@@ -637,7 +637,8 @@
   - 已有的 `swipeNode` 路径不改，仍然按传入正文写兄弟节点并记录偏好。
   验收：重新生成成功后新增一条 `swipe` 记录且两个节点 id 正确；中止保存部分正文时也记录；失败且没有楼层时不记录；一次操作只有一条记录；服务端与 `dramaticer` CLI 的行为一致；`pnpm check` 通过。
 
-- [ ] **R5-T06 web 分支视图**（原 M4-T12） | 依赖：R5-T05、R5-T02
+- [x] **R5-T06 web 分支视图**（原 M4-T12） | 依赖：R5-T05、R5-T02
+  完成：2026-11-08 新增 `packages/web/src/chat/branch-tree.ts`（`buildBranchRows`、`toggleCollapsed`、`pruneCollapsed`、`collectPathNodeIds`、`describeHeadSwitch`）：`GET /api/stories/:id/tree` 按深度优先展开成行，只有分叉之后的子树缩进一层（线性楼层平齐，缩进上限 8 层），当前 head 路径高亮、head 单独标记、折叠行显示被藏起来的子孙数；完整路径用 `GET /api/stories/:id/path` 按 200 楼分页从最新页向上取完，按根到 head 的顺序合并；切换 head 前给出提示文本，写明其他分支保留、所选楼层是否已有后续、当前末端是否未确认。新增 `packages/web/src/components/branches/BranchTree.tsx` 与重写的 `BranchesPage.tsx`：选楼后按 `GET /api/stories/:id/path?nodeId=&limit=1` 取原文；切换 head 为两步确认，`POST /api/stories/:id/head` 后重取树与路径；编辑走 `POST /api/nodes/:id/edit`（预填原文，保存新建兄弟楼层，旧楼层保留）；swipe 走 `POST /api/nodes/:id/swipe`（玩家填写正文）；重新生成走 `POST /api/nodes/:id/regenerate` 的 SSE，用既有 `TurnDraft` 归并事件，结束后重取树与路径并选中新楼层。`formatFloorTime` 提到 `chat/format.ts` 供聊天页与分支页共用；`styles.css` 增加树与详情面板样式（宽屏左右分栏，390×844 无横向滚动）。新增 14 个纯逻辑测试（展开顺序、路径标记、折叠计数、嵌套缩进上限、缺失节点与环直接失败、分页合并与上限、切换提示）。真实 server 加注入假客户端冒烟：8 层楼与 6 层路径高亮、收起 a1 计 6 楼、带提示的 head 切换与高亮变化、编辑与 swipe 各新增一层且旧分支可切回且原文不变、重新生成流式写入并成为 head、移动端无横向滚动。
   做什么：
   - 楼层树（缩进与折叠）、当前路径高亮、点击切换 head（`POST /api/stories/:id/head`）；树的数据来自 `GET /api/stories/:id/tree`，节点用预览文本显示。
   - 编辑用户或助手正文（`POST /api/nodes/:id/edit`）；在树上任意助手楼层上 swipe（`POST /api/nodes/:id/swipe`，正文由玩家提供）与重新生成（`POST /api/nodes/:id/regenerate`）；切换前提示未确认楼层的后果。

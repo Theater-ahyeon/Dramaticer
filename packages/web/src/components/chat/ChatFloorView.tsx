@@ -1,5 +1,6 @@
 import { parseBlocks } from "@dramaticer/core/blocks";
 import { useMemo } from "react";
+import { formatFloorTime } from "../../chat/format";
 import type { ChatFloor } from "../../chat/path-state";
 import { BlockContent } from "./BlockContent";
 
@@ -60,14 +61,4 @@ export function ChatFloorView({
 			</div>
 		</article>
 	);
-}
-
-function formatFloorTime(createdAt: string): string {
-	const date = new Date(createdAt);
-	if (Number.isNaN(date.getTime())) return createdAt;
-	const month = String(date.getMonth() + 1).padStart(2, "0");
-	const day = String(date.getDate()).padStart(2, "0");
-	const hour = String(date.getHours()).padStart(2, "0");
-	const minute = String(date.getMinutes()).padStart(2, "0");
-	return `${month}-${day} ${hour}:${minute}`;
 }

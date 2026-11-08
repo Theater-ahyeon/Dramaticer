@@ -690,3 +690,223 @@ button.candidate-scene-change {
 		height: calc(100dvh - 180px);
 	}
 }
+
+/* 分支页：左侧楼层树，右侧选中楼层的原文与操作。 */
+.branches-layout {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.branches-tree-pane,
+.branches-detail-pane {
+	padding: 10px 12px;
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: 12px;
+}
+
+.branches-tree-pane h2 {
+	margin: 0 0 8px;
+	font-size: 1rem;
+}
+
+.branch-tree {
+	max-height: 60vh;
+	margin: 0;
+	padding: 0;
+	overflow-y: auto;
+	list-style: none;
+}
+
+.branch-row-inner {
+	display: flex;
+	align-items: flex-start;
+	gap: 2px;
+	border-radius: 8px;
+}
+
+.branch-row-on-path > .branch-row-inner {
+	background: #faf7f2;
+}
+
+.branch-row-head > .branch-row-inner {
+	box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.branch-row-selected > .branch-row-inner {
+	outline: 2px solid var(--accent);
+	outline-offset: -2px;
+}
+
+button.branch-toggle {
+	flex: 0 0 auto;
+	width: 26px;
+	min-height: 26px;
+	padding: 0;
+	background: transparent;
+	border-color: transparent;
+	color: var(--muted);
+	font-size: 0.8rem;
+	line-height: 1;
+}
+
+button.branch-toggle:hover {
+	border-color: var(--border);
+}
+
+button.branch-select {
+	display: flex;
+	flex: 1 1 auto;
+	align-items: baseline;
+	gap: 8px;
+	padding: 4px 8px;
+	background: transparent;
+	border-color: transparent;
+	color: var(--text);
+	font-size: 0.85rem;
+	text-align: left;
+}
+
+button.branch-select:hover {
+	background: var(--accent-soft);
+}
+
+.branch-role {
+	flex: 0 0 auto;
+	padding: 0 6px;
+	border-radius: 999px;
+	background: var(--accent-soft);
+	color: var(--accent);
+	font-size: 0.72rem;
+}
+
+.branch-role-assistant {
+	background: #eef2f6;
+	color: #42566b;
+}
+
+.branch-preview {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.branch-time {
+	flex: 0 0 auto;
+	color: var(--muted);
+	font-size: 0.72rem;
+}
+
+.branch-badge {
+	flex: 0 0 auto;
+	padding: 0 6px;
+	border-radius: 999px;
+	background: var(--accent);
+	color: #fff;
+	font-size: 0.7rem;
+}
+
+.branch-badge-muted {
+	background: var(--bg);
+	border: 1px solid var(--border);
+	color: var(--muted);
+}
+
+.branch-detail-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 8px;
+	color: var(--muted);
+	font-size: 0.78rem;
+}
+
+.branch-node-id {
+	font-family: ui-monospace, Consolas, monospace;
+	font-size: 0.7rem;
+	overflow-wrap: anywhere;
+}
+
+.branch-detail-raw {
+	max-height: 40vh;
+	margin: 8px 0;
+	overflow: auto;
+	font: inherit;
+	font-size: 0.9rem;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+.branch-detail-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.branch-detail-actions button {
+	font-size: 0.82rem;
+}
+
+.branch-confirm {
+	margin: 8px 0;
+	padding: 8px 10px;
+	background: #fdf3f1;
+	border: 1px solid var(--danger);
+	border-radius: 8px;
+}
+
+.branch-confirm p {
+	margin: 0 0 8px;
+	color: var(--danger);
+	font-size: 0.85rem;
+}
+
+.branch-editor {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin-top: 10px;
+}
+
+.branch-editor label {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	color: var(--muted);
+	font-size: 0.85rem;
+}
+
+.branch-editor textarea {
+	min-height: 120px;
+	padding: 10px 12px;
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	color: var(--text);
+	font: inherit;
+	resize: vertical;
+}
+
+.branch-editor p {
+	margin: 0;
+}
+
+@media (min-width: 900px) {
+	.branches-layout {
+		flex-direction: row;
+		align-items: flex-start;
+	}
+
+	.branches-tree-pane {
+		flex: 1 1 55%;
+	}
+
+	.branches-detail-pane {
+		position: sticky;
+		top: 12px;
+		flex: 1 1 45%;
+	}
+}
