@@ -24,8 +24,8 @@
 | O 开局与方向 | 完成 | 本文件 |
 | R2 评测底座 | 完成 | 本文件 |
 | E 排障命令行 | 完成 | 本文件 |
-| R4 Director v2 | 当前阶段 | 本文件 |
-| R5 能玩的界面 | 待做 | 本文件 |
+| R4 Director v2 | 完成 | 本文件 |
+| R5 能玩的界面 | 当前阶段 | 本文件 |
 | M6 生图第一批 | 待做 | 本文件 |
 | R1 续 记忆增强 | 待做 | 本文件 |
 | R3b 深回合 | 待做 | 本文件 |
@@ -542,10 +542,11 @@
 
 ## R5：能玩的界面
 
-> 执行顺序（ADR-0044）：先做最小界面（T01、T02、T04、T05、T06、T07、T11），再做其余面板（T03、T08、T09、T10），最后是 Playwright 与自动试玩（T12、T13、T14）。任务编号保持原样。
+> 执行顺序（ADR-0044）：第一段是最小界面，按 R5-T02.a、R5-T05.a、R5-T02.b、R5-T02.c（服务端与核心接口）→ R5-T04（web 骨架）→ R5-T05（聊天）→ R5-T07（台账只读）→ R5-T11（沙箱块渲染）执行；第二段是其余面板与接口（R5-T03、R5-T06、R5-T07.a、R5-T08、R5-T09、R5-T10）；第三段是 R5-T12、R5-T13、R5-T14 与 R5-T99。任务编号保持原样。
 
-- [ ] **R5-T00 细化 R5 任务** | 依赖：R4-T99
-  做什么：在并入的 M4 剩余任务基础上按上面的执行顺序排定：最小界面只做聊天、swipe、台账只读面板、图片与选项块、模式开关；其余面板（分支树、导演与 Trace、设置与模板、渠道）在最小界面通过后做；Playwright 与 60 轮自动试玩放在最后。把模式开关、台账读取接口、偏好信号接线、候选行动与开局候选的显示加入任务，删除已被 R1–R4 取代的旧面板描述。
+- [x] **R5-T00 细化 R5 任务** | 依赖：R4-T99
+  完成：2026-11-08 按 ADR-0044 排定最小界面路径（T02.a → T05.a → T02.b → T02.c → T04 → T05 → T07 → T11），新增五个子任务：回合参数（单轮模式与强度）、路径分页、开局任务入队与开场候选重新生成、重新生成记录 `swipe` 偏好、变更卡审批与回滚；T05 补齐选项 `choice` 偏好、候选行动与开场候选、分页与模式开关；T07 改为只读并写入 `{state, facts, diffs}`；T08 按导演决策、候选行动、计划、线索、模式与 Trace 分开接口；T09 覆盖全部设置字段并把 `block_format` 改为模板段落；T03 与 T10 补 `roles`；T11 补显示策略载荷；T12 至 T14 补偏好与变更卡用例；门禁通过（124 个测试文件、1115 个测试，3 个 live 跳过）
+  做什么：在并入的 M4 剩余任务基础上按上面的执行顺序排定：最小界面只做聊天、swipe（重 roll 与重新生成）、台账只读面板、图片与选项块、模式开关、候选行动与开场候选的显示；其余面板（分支树、变更卡、导演与 Trace、设置与模板、渠道）在最小界面通过后做；Playwright 与 60 轮自动试玩放在最后。把模式开关、台账读取接口、偏好信号接线、候选行动与开局候选的显示加入任务，删除已被 R1–R4 取代的旧面板描述。
   验收：R5-T01 至 R5-T14 的依赖与验收与 DESIGN §8、§10.1、§13 一致；最小界面的验收不依赖后续面板；`pnpm check` 通过。
 
 - [x] **R5-T01 server 后台任务调度**（原 M4-T07） | 依赖：M4-T06、M2-T03、R1-T02 | DESIGN §4、§7
@@ -564,85 +565,136 @@
   - 节点必须属于请求路径里的故事，否则 404；响应使用 protocol 类型；不返回密钥。
   验收：swipe 与 edit 生成兄弟且旧节点不变；head 切换后路径正确；regenerate 走 M4-T03；面板数据与 store 一致；跨故事节点 404；`pnpm check` 通过。
 
-- [ ] **R5-T04 web 骨架与 API 客户端**（原 M4-T10） | 依赖：M4-T05、M4-T06、M4-T01 | DESIGN §13
+- [ ] **R5-T02.a 回合参数：单轮模式与强度** | 依赖：R5-T02、R3-T01、R4-T03 | DESIGN §10.1
   做什么：
-  - 新增 `packages/web`（React、Vite、TypeScript，中文，移动端优先）；路由使用 `react-router-dom`；页面：登录、故事列表、故事页（聊天、分支、台账、导演、设置、渠道）。
-  - `api` 客户端使用 cookie 凭据与 protocol 类型；`streamTurn` 用 fetch 与 ReadableStream 解析 SSE，支持 AbortController；错误统一显示。
+  - `packages/protocol/src/turn.ts` 的 `TurnRequest` 补齐 `text`、`mode`（可选，`fast` 或 `deep`）与 `intensity`（可选，`setup`、`natural`、`detonate`）；未知字段仍然 400。
+  - `POST /api/stories/:id/turns` 把 `mode` 交给 `handleTurnStream` 与 `runChatTurn` 的 `turnMode` 参数；`intensity` 继续走 `readOptionalIntensity`。缺省值取故事设置 `turnMode`。
+  - 深回合在 R3b 完成前由 `resolveTurnMode` 抛错；服务端把它转成 400 并指出 R3b，不写楼层。
+  验收：请求带 `mode` 为 `fast` 时 Trace 的 `turnMode` 为 fast；省略 `mode` 时使用故事设置的值；请求 `deep` 返回 400、错误信息指出 R3b、楼层数不变；`intensity` 非法值 400 并指出字段；协议类型与实现字段一致；`pnpm check` 通过。
+
+- [ ] **R5-T02.b 路径分页** | 依赖：R5-T02、M4-T06 | DESIGN §13
+  做什么：
+  - `GET /api/stories/:id/path` 增加 `limit`（默认 60，范围 1–200）与 `before`（节点 id）；`nodeId` 仍是锚点（缺省 head），`before` 是继续向上加载的起点，必须位于同一锚点的路径上。
+  - `StoryPath` 增加 `hasMore`；`nodes` 仍按根到当前页最后一个节点的顺序，分页只裁掉更早的楼层。
+  - `before` 不在该故事或不在锚点路径上时 404；`limit` 越界 400 并指出字段；故事没有楼层时 `nodes` 为空、`hasMore` 为 false。
+  验收：2000 楼夹具首屏返回 60 楼且 `hasMore` 为真；用上一页最早楼层的 id 作为 `before` 连续取页，页与页之间不重复不丢楼，取完后 `hasMore` 为假；不带分页参数时返回锚点侧最近 60 楼；越界 `limit` 返回 400、路径外 `before` 返回 404；`pnpm check` 通过。
+
+- [ ] **R5-T02.c 开局任务入队与开场候选重新生成** | 依赖：R5-T01、R5-T02、O-T01、O-T03 | DESIGN §8.4
+  做什么：
+  - 创建故事与导入卡之后调用 `BackgroundScheduler.schedule(storyId)`，让 `opening` 与 `opening_candidates` 两条故事级任务按各自的 `needsRun` 入队；请求立即返回，不等待生成（I11）。
+  - 新增 `POST /api/stories/:id/openings/generate`：故事还没有助手楼层时入队一条 `opening_candidates` 任务，返回 202 与任务 id；已有楼层时 409。接口本身不调用模型。
+  - `createOpeningCandidatesHandler` 只保留“故事已有楼层就不生成”的守卫，删掉“已有待选候选就不生成”的守卫：自动入队仍由 `openingCandidatesNeedRun` 的待选判定控制，手动任务每次追加新一批。
+  - `StoryStore` 新增按种类入队的方法（不改表结构），故事创建、导入与生成接口共用它。
+  验收：导入合成卡后响应不等待后台就出现 `opening` 与 `opening_candidates` 两条故事级任务，drain 之后开局包与 3 条候选入库；已有楼层时生成接口返回 409；连续两次手动生成得到两批候选，第一批在选中之前仍为 `pending`；选中一条后成为根楼层，其余待选变为 `discarded`；生成接口与创建流程的模型调用都在后台执行；`pnpm check` 通过。
+
+- [ ] **R5-T04 web 骨架与 API 客户端**（原 M4-T10） | 依赖：M4-T05、M4-T06、M4-T01、R5-T02.a | DESIGN §13
+  做什么：
+  - 新增 `packages/web`（React、Vite、TypeScript，中文，移动端优先）；路由使用 `react-router-dom`；页面骨架：登录、故事列表、故事页（聊天、分支、台账、导演、设置、渠道）。本任务只建路由与布局，聊天、台账、分支、导演、设置、渠道的内容由后续任务填充。
+  - `api` 客户端使用 cookie 凭据与 protocol 类型；`turn` 用 fetch 与 ReadableStream 解析 SSE，支持 AbortController，请求体带 `mode` 与 `intensity`；故事、分支、面板与设置接口各有类型化方法；错误统一显示。
   - 移动端布局：底部导航、安全区、390×844 无横向滚动；桌面宽屏两栏。
   - 根脚本接入 `typecheck` 与 `build`；登记 `react`、`react-dom`、`react-router-dom`、`vite`、`@vitejs/plugin-react`、`@types/react`、`@types/react-dom`。
   验收：`pnpm check` 与 `pnpm --filter @dramaticer/web build` 通过；SSE 解析器单测覆盖分块、多事件、注释与错误事件；API 客户端用假 fetch 测试；390×844 截图无横向滚动。
 
-- [ ] **R5-T05 web 聊天界面**（原 M4-T11） | 依赖：R5-T04、M4-T06、R3-T99
+- [ ] **R5-T05 web 聊天界面**（原 M4-T11） | 依赖：R5-T02、R5-T04、R5-T02.a、R5-T02.b、R5-T02.c、R5-T05.a、M4-T06、R3-T99
   做什么：
-  - 按当前路径渲染消息；流式正文、思考折叠；快深模式开关（单轮与故事锁定；深回合在 R3b 完成前不展示）。原生块组件（选项、页眉、悄悄话、旁白、备忘）；未知块显示原文。选项块点击后填入输入框，不自动发送。
-  - 开场候选：首个助手楼层之前显示 O 的候选列表，选中一个填入路径，可以重新生成。
-  - 上千楼的路径必须可用：虚拟列表只渲染可见楼层，历史按页读取（向上滚动加载更早的页），切换分支后定位到 head 且不重排全部楼层。
-  - 发送、停止、失败重试；回合完成后显示台账 diff 数、新线索与首字延迟；自动滚动与“回到底部”。
-  验收：增量逐字出现；思考默认折叠；停止后保留部分内容；错误重试不重复写楼层；模式只能手动切换且深回合未实现时不展示；候选行动与开场候选都不自动发送；2000 楼夹具下滚动流畅、可见楼层数量有上限、分页加载不重复不丢楼；键盘与触摸可用；纯逻辑单测覆盖 SSE 事件归并与块选择；`pnpm check` 通过。
+  - 按 `GET /api/stories/:id/path` 渲染当前路径；向上滚动用 `before` 分页加载更早楼层；虚拟列表只渲染可见楼层；head 变化后重新取路径并定位到 head。
+  - 流式正文：`turn.started`、`text.delta`、`thinking.delta`、`blocks.replace`、`turn.completed`、`turn.error`；思考默认折叠；停止用 AbortController 并保留已经收到的正文；失败重试不重复写楼层。
+  - 原生块组件：选项、页眉、悄悄话、旁白、备忘、状态栏、分析；未知块显示原文。选项块里的每一行可点击：点击后把该行原文填入输入框，并调用 `POST /api/nodes/:id/choice`（`nodeId` 是含该选项块的助手楼层，正文按原行文本发送），不自动发送。
+  - 模式开关：输入框旁的“快 / 深”切换；单轮值通过 `POST /api/stories/:id/turns` 的 `mode` 发送；可以锁定故事（`PUT /api/stories/:id/settings` 的 `turnMode`）；R3b 完成前不展示深回合选项，服务端返回 400 时显示原因。
+  - 最新助手楼层可以重新生成（`POST /api/nodes/:id/regenerate`，走 SSE 外壳）；候选行动：回合完成后读取 `GET /api/nodes/:id/actions`，点击一条填入输入框，不自动发送。
+  - 开场候选：故事没有助手楼层时读取 `GET /api/stories/:id/openings?status=pending` 显示候选；选中调用 `POST /api/stories/:id/openings/:id/pick` 后刷新路径；“重新生成”调用 `POST /api/stories/:id/openings/generate` 并显示新一批候选。
+  - 发送、停止、失败重试；回合完成后显示 `turn.completed` 的台账 diff 数、从 `stateDiffs` 统计的新建与兑现线索条数、首字延迟；自动滚动与“回到底部”。
+  验收：增量逐字出现；思考默认折叠；停止后保留部分内容；错误重试不重复写楼层；选项点击只写一条 `choice` 偏好并填入输入框，不发送正文；重新生成写一条 `swipe` 偏好；候选行动与开场候选都不自动发送；模式只能由玩家手动切换，深回合未实现时界面不展示该选项，服务端拒绝时显示原因；2000 楼夹具只渲染可见楼层、分页加载不重复不丢楼、head 变化后定位正确；键盘与触摸可用；纯逻辑单测覆盖 SSE 事件归并、分页合并与选项行选择；`pnpm check` 通过。
+
+- [ ] **R5-T05.a 重新生成记录 swipe 偏好** | 依赖：R2-T07、R5-T02.a | DESIGN §14.5
+  做什么：
+  - `regenerateAssistantTurn` 在写入新助手楼层时，与楼层写入同一个事务里记录一条 `swipe` 偏好：被放弃的原助手楼层、被接受的新楼层。
+  - 中止但已保存部分正文时同样记录；生成失败且没有产生楼层时不记录；一次重新生成只写一条，客户端与 CLI 都走同一处。
+  - 已有的 `swipeNode` 路径不改，仍然按传入正文写兄弟节点并记录偏好。
+  验收：重新生成成功后新增一条 `swipe` 记录且两个节点 id 正确；中止保存部分正文时也记录；失败且没有楼层时不记录；一次操作只有一条记录；服务端与 `dramaticer` CLI 的行为一致；`pnpm check` 通过。
 
 - [ ] **R5-T06 web 分支视图**（原 M4-T12） | 依赖：R5-T05、R5-T02
   做什么：
-  - 楼层树（缩进与折叠）、当前路径高亮、点击切换 head；swipe、编辑用户或助手文本、重新生成；切换前提示未确认楼层的后果。
+  - 楼层树（缩进与折叠）、当前路径高亮、点击切换 head（`POST /api/stories/:id/head`）；树的数据来自 `GET /api/stories/:id/tree`，节点用预览文本显示。
+  - 编辑用户或助手正文（`POST /api/nodes/:id/edit`）；在树上任意助手楼层上 swipe（`POST /api/nodes/:id/swipe`，正文由玩家提供）与重新生成（`POST /api/nodes/:id/regenerate`）；切换前提示未确认楼层的后果。
+  - 聊天页已经提供最新楼层的重新生成；本任务补齐树上任意楼层的入口。
   验收：swipe 与 edit 后旧分支仍可切回；编辑后原文不变；head 切换与路径刷新正确；移动端可操作；纯逻辑单测覆盖树构造与路径标记；`pnpm check` 通过。
 
 - [ ] **R5-T07 web 台账与记忆面板**（原 M4-T13） | 依赖：R5-T04、R5-T02、R1-T01
   做什么：
-  - 台账按命名空间树形展示、本楼 diff 高亮；人物、关系、物品、场景、线索与知情表分栏；事件列表（时间、地点、参与者、重要度、知情者、来源楼层）；压缩列表与覆盖区间；分页与空状态。最小界面只要求只读展示，编辑留到后续面板。
-  验收：面板数据与接口一致；长值可展开；空状态清楚；线索状态变更后刷新正确；纯逻辑单测覆盖格式化与分页；`pnpm check` 通过。
+  - 本楼台账：`GET /api/nodes/:id/ledger` 返回 `{state, facts, diffs}`；按命名空间树展示 `state`，本楼 `diffs` 高亮（路径、值、`source`、`confidence`、`storyTime`），`facts` 显示来源楼层与写入时间。
+  - 分栏：人物与关系（`character`、`relation`）、物品（`item`）、场景（`scene`）、时间（`time`）、线索（`clue`）、知情表（`knowledge`）、用户意志（`userWill`）；`mvu` 按原路径展示。
+  - 故事级列表：`GET /api/stories/:id/clues`（未兑现线索）、`/entities`（实体与别名）、`/lore`（世界书条目）。
+  - 事件与摘要：`GET /api/nodes/:id/events?limit&offset` 分页展示时间、地点、参与者、重要度、知情者与来源楼层；`GET /api/nodes/:id/compressions` 展示当前生效的分层摘要与覆盖区间。
+  - 只读：不提供编辑、批复或兑现入口；变更卡的操作在 R5-T07.a，线索兑现按钮在 R5-T08。
+  验收：面板数据与接口一致；本楼 diff 高亮只标该楼层自己的写入；长值可展开；空状态清楚；事件分页游标正确、切换楼层后重新取数；面板没有任何写接口调用；纯逻辑单测覆盖格式化与分页；`pnpm check` 通过。
 
-- [ ] **R5-T11 沙箱 iframe 块渲染器**（原 M4-T17） | 依赖：R5-T05、M1-T05 | DESIGN §6
+- [ ] **R5-T07.a web 变更卡审批与回滚** | 依赖：R5-T07、R1-T07.a、R5-T02
   做什么：
-  - web 新增沙箱渲染组件：`<iframe sandbox="allow-scripts">`，不添加 `allow-same-origin`；`srcdoc` 注入块 HTML 与最小 CSP；模板来自块注册表的 `html` 显示策略，服务端在 `blocks.replace` 里带上显示策略与模板。
+  - server 新增 `POST /api/proposals/:id/approve`、`/reject`、`/rollback`：复用 `approveLedgerChangeCard`、`rejectLedgerChangeCard`、`rollbackLedgerChangeCard`，不另写规则；卡片不存在 404，状态不允许时 409；响应返回更新后的卡片与台账快照。
+  - web 在台账面板增加待审变更卡列表：数据来自 `GET /api/stories/:id/proposals?status=pending`，显示路径、值、来源（`model`、`settler`、`player`）与拒绝原因；批准、拒绝与回滚调用上述接口，成功后刷新台账。
+  - 批准与拒绝由核心在事务里写入 `card_decision` 偏好，界面不重复记录。
+  验收：批准后台账出现 `source` 为 `player` 的事实；拒绝不改台账；回滚恢复批准前的值；非待定卡片再次批准返回 409；不存在或跨故事的卡片返回 404；一次操作只产生一条 `card_decision`；`pnpm check` 通过。
+
+- [ ] **R5-T11 沙箱 iframe 块渲染器**（原 M4-T17） | 依赖：R5-T05、M1-T05、M4-T06 | DESIGN §6
+  做什么：
+  - `packages/protocol/src/turn.ts` 的 `BlocksReplacePayload` 增加块类型的显示策略（`native` 组件名、`html` 模板或 `hidden`），服务端在 `blocks.replace` 里按块注册表填上；`TurnCompletedPayload` 的 `blocks` 同样带显示策略。`html` 模板只发给沙箱，不进入主文档。
+  - web 新增沙箱渲染组件：`<iframe sandbox="allow-scripts">`，不添加 `allow-same-origin`；`srcdoc` 注入块 HTML 与最小 CSP。
   - postMessage 白名单：只接受 `ready`、`height`、`action`（`choice`、`scroll` 等固定类型）；校验 `event.source` 与 `event.origin === "null"`；父页面只回发固定字段。
   - 原生块继续用 React 组件；未知块显示原文；图片块在沙箱里渲染，点击可放大。
-  验收：脚本无法读取父页面 DOM 与 cookie；高度自适应；非法消息被忽略；模板 HTML 不进入主文档；Playwright 用例覆盖隔离与高度；`pnpm check` 通过。
+  验收：脚本无法读取父页面 DOM 与 cookie；高度自适应；非法消息被忽略；模板 HTML 不进入主文档；没有显示策略的块按原文显示；Playwright 用例覆盖隔离与高度；`pnpm check` 通过。
 
-- [ ] **R5-T03 server 渠道管理接口**（原 M4-T09） | 依赖：M4-T04、M1-T03
+- [ ] **R5-T03 server 渠道管理接口**（原 M4-T09） | 依赖：M4-T04、M1-T03、R1-T01.b
   做什么：
-  - `GET /api/channels`：别名、模型、优先级、启用状态、`${ENV}` 变量名与是否已设置、最近体检结果；密钥值永远不出现在响应里。
-  - `PUT /api/channels`：编辑别名、模型、优先级、启用状态与新增渠道；密钥字段只接受环境变量引用；校验后原子写回 `channels.yaml`（临时文件加 rename），运行时缓存失效。
+  - `GET /api/channels`：别名、模型、优先级、启用状态、`${ENV}` 变量名与是否已设置、最近体检结果，以及 `roles`（writer、settler、planner、judge 各自的模型别名）；密钥值永远不出现在响应里。
+  - `PUT /api/channels`：编辑别名、模型、优先级、启用状态、`roles` 与新增渠道；密钥字段只接受环境变量引用；`roles` 的每个值必须是已存在的模型别名，writer 与 judge 的模型家族相同时 400 并指出两个角色；校验后原子写回 `channels.yaml`（临时文件加 rename），运行时缓存失效。
   - `POST /api/channels/probe`：调用 `probeChannel`，只在用户点击时联网，结果写回配置。
-  验收：脱敏响应里没有密钥；非法 YAML、重复别名与缺失环境变量 400；写入后下一回合使用新配置；probe 用假提供方测试；真实渠道测试放 `*.live.test.ts`；`pnpm check` 通过。
+  验收：脱敏响应里没有密钥；非法 YAML、重复别名、缺失环境变量与 `roles` 指向未知别名 400；writer 与 judge 同家族 400；写入后下一回合使用新配置；probe 用假提供方测试；真实渠道测试放 `*.live.test.ts`；`pnpm check` 通过。
 
 - [ ] **R5-T08 web 导演与 Trace 面板**（原 M4-T14） | 依赖：R5-T04、R5-T02、R4-T99
   做什么：
-  - 导演决策（当前拍、强度、纠偏信号、指令、候选行动）、弧线与序列查看与编辑、未兑现线索与兑现按钮；透明与盲盒模式切换。
-  - Trace 分段（来源、token、裁剪、缺失槽位）、工具轮次、回合模式、渠道与用量；块的 prompt 视图省略量单独显示。
-  验收：导演开关与模式切换后下一回合行为不同；编辑弧线后刷新仍在；兑现后列表更新；Trace 与核心记录一致；省略量与块类型可见；纯逻辑单测覆盖展示模型；`pnpm check` 通过。
+  - 导演决策：`GET /api/nodes/:id/director` 返回 `{nodeId, mode, decision}`；透明模式显示当前拍、强度、纠偏信号与指令，盲盒模式只显示机制触发状态；决策为空时显示“本楼没有评估”。
+  - 候选行动：`GET /api/nodes/:id/actions` 按楼层显示 4 条行动与 1 条场景变化，点击一条填入聊天输入框，不自动发送。
+  - 计划：`GET` 与 `PUT /api/stories/:id/director/plan` 查看与编辑弧线、序列、节拍（整份替换，来源为 `player`，保存前显示服务端字段错误）。
+  - 线索：`GET /api/stories/:id/clues` 列出未兑现线索，`POST /api/clues/:id/fulfill` 兑现后刷新列表。
+  - 模式与强度：`PUT /api/stories/:id/settings` 的 `directorConfig.mode`（`off`、`transparent`、`blind`）、`intensity`、`openingIntensity` 与 `openingFloors`。
+  - Trace：`GET /api/nodes/:id/trace` 的分段（来源、token、裁剪、缺失槽位、`appendedTo`）、工具轮次与传输、回合模式、渠道与用量；块的 prompt 视图省略量按块类型单独显示。
+  验收：导演开关与模式切换后下一回合行为不同，盲盒下界面不显示指令与信号；编辑弧线后刷新仍在；兑现后列表更新；候选行动按楼层显示且点击只填输入框；Trace 与核心记录一致；省略量与块类型可见；纯逻辑单测覆盖展示模型；`pnpm check` 通过。
 
 - [ ] **R5-T09 web 故事设置与模板编辑器**（原 M4-T15） | 依赖：R5-T04、M4-T05、M4-T02 | DESIGN §9
   做什么：
-  - 故事设置：模型别名、预算、结构化输出模式、温度、最大 token、思考档位、视角、回合模式锁定、导演开关与参数、`historyBlockPolicy` 与 `block_format` 开关；保存前做范围校验。
-  - 模板编辑器：段落列表（静态、槽位、条件）增删与上下移动、槽位选择、条件编辑；保存前由服务端 `assertContextTemplate` 校验；支持复制模板与设为故事默认。
+  - 故事设置覆盖 `STORY_SETTINGS_UPDATE_KEYS` 的全部字段：`model`、`budgetTokens`、`structuredOutput`、`temperature`、`maxTokens`、`reasoning`、`viewpoint`、`turnMode`、`maxReadRounds`、`directorConfig`（`mode`、`intensity`、`openingFloors`、`openingIntensity` 与既有机制参数）、`historyBlockPolicy`（`default`、`full` 与按块类型覆盖）、`gapPassEnabled` 与 `gapPlanSeconds`；保存前按核心的校验范围检查，服务端错误映射到字段。
+  - 模板编辑器：段落列表（静态、槽位、条件）增删与上下移动、槽位选择、条件编辑；保存前由服务端 `assertContextTemplate` 校验；支持复制模板与设为故事默认；`block_format` 是可选段落，通过增删该段落开关，不设独立设置项。
   - ST 预设转换由兼容插件（C 线）提供，本任务不做，界面不放置未实现的导入入口。
-  验收：模板增删移动后组装顺序与预览一致；非法条件与空静态段被拒绝并显示字段错误；设置保存后下一回合生效；刷新后仍在；纯逻辑单测覆盖编辑状态与校验映射；`pnpm check` 通过。
+  验收：模板增删移动后组装顺序与预览一致；非法条件、空静态段与 `protocol` 不在最后都被拒绝并显示字段错误；设置保存后下一回合生效；刷新后仍在；`block_format` 段落增删与 `structuredOutput` 的取值无关；纯逻辑单测覆盖编辑状态与校验映射；`pnpm check` 通过。
 
-- [ ] **R5-T10 web 渠道管理面板**（原 M4-T16） | 依赖：R5-T04、R5-T03
+- [ ] **R5-T10 web 渠道管理面板**（原 M4-T16） | 依赖：R5-T04、R5-T03、R1-T01.b
   做什么：
-  - 渠道列表（别名、模型、优先级、启用、密钥变量是否设置、体检结果）；编辑与新增；体检按钮显示流式、函数调用、思考、预填充、用量结果；密钥只显示变量名与是否设置；角色（writer、settler、planner、judge）可以在这里指定。
-  验收：界面不出现密钥值；保存后服务端配置更新；未设置的变量有醒目提示；体检失败显示错误；纯逻辑单测覆盖表单校验；`pnpm check` 通过。
+  - 渠道列表（别名、模型、优先级、启用、密钥变量是否设置、体检结果）；编辑与新增；体检按钮显示流式、函数调用、思考、预填充、用量结果；密钥只显示变量名与是否设置。
+  - 角色分工：显示 `roles` 的四个岗位（writer、settler、planner、judge）当前指向的模型别名，可以在这里改；保存前提示 writer 与 judge 必须来自不同模型家族。
+  验收：界面不出现密钥值；保存后服务端配置更新；未设置的变量有醒目提示；体检失败显示错误；角色指向未知别名或 writer 与 judge 同家族时显示字段错误；纯逻辑单测覆盖表单校验；`pnpm check` 通过。
 
-- [ ] **R5-T12 Playwright 端到端**（原 M4-T18） | 依赖：R5-T01 至 R5-T11
+- [ ] **R5-T12 Playwright 端到端**（原 M4-T18） | 依赖：R5-T01 至 R5-T11 以及 R5-T02.a、R5-T02.b、R5-T02.c、R5-T05.a、R5-T07.a 子任务
   做什么：
-  - 安装 `@playwright/test` 与 Chromium；`packages/web/e2e/` 配置 `pnpm e2e`：先构建 server 与 web，再启动本地假 OpenAI 兼容渠道与 server；假渠道返回固定 SSE，覆盖思考、块、台账写入、线索与读取工具调用。
-  - 用例覆盖：密码登录、创建故事、导入合成卡、两轮对话、模式开关、swipe、编辑、分支切换、台账与记忆面板、导演与 Trace 面板、模板编辑、渠道编辑、开场候选；390×844 与桌面两种视口。
+  - 安装 `@playwright/test` 与 Chromium；`packages/web/e2e/` 配置 `pnpm e2e`：先构建 server 与 web，再启动本地假 OpenAI 兼容渠道与 server；假渠道返回固定 SSE，覆盖思考、块、台账写入、线索、候选行动、开场候选与读取工具调用。
+  - 用例覆盖：密码登录、创建故事、导入合成卡、两轮对话、模式开关、选项点击记录偏好、重新生成、swipe、编辑、分支切换、台账与记忆面板、变更卡批准与拒绝、导演与 Trace 面板、模板编辑、渠道编辑、开场候选选取与重新生成、路径分页；390×844 与桌面两种视口。
   - 默认不进入 `pnpm check`（浏览器体积），`pnpm e2e` 单独运行并写进文档。
   验收：`pnpm e2e` 全部通过；不访问外网、不使用私有数据；失败截图与 trace 写进 `.devloop/scratch/e2e/`（git 忽略）；`pnpm check` 通过。
 
-- [ ] **R5-T13 自动试玩框架**（原 M4-T19） | 依赖：R5-T12、R5-T01、R2-T02
+- [ ] **R5-T13 自动试玩框架**（原 M4-T19） | 依赖：R5-T12、R5-T01、R2-T02、R2-T07
   做什么：
-  - `packages/web/e2e/playtest/`：用 Playwright 驱动真实界面；模拟用户由 `background` 模型生成，严格 JSON `{message}`，失败重试 3 次后终止并记录；60 轮内至少执行 2 次 swipe、2 次编辑、2 次分支切换，轮次位置可配置。
-  - 每轮记录序号、节点 id、用户与助手原文、回合模式、首字毫秒、用量、台账 diff 数、新建与兑现线索、导演决策、截图路径；报告头写模型别名、配置与样本数。
-  - 私有报告写 `eval-private/reports/r5-playtest.md`；统计版写 `docs/dev/reports/R5-playtest.md`，字段按 ADR-0033 §九：轮数、对比胜率、矛盾率、相邻块 Jaccard 与节拍余弦、首字延迟、token、导演机制命中、新建与兑现线索、兑现率与平均年龄、错误数与复现步骤编号。
+  - `packages/web/e2e/playtest/`：用 Playwright 驱动真实界面；模拟用户由 `background` 模型生成，严格 JSON `{message}`，失败重试 3 次后终止并记录；60 轮内至少执行 2 次重新生成、2 次编辑、2 次分支切换，并按配置点击候选行动与选项块（只填入输入框，不发送），轮次位置可配置。
+  - 每轮记录序号、节点 id、用户与助手原文、回合模式、首字毫秒、用量、台账 diff 数、新建与兑现线索、导演决策、候选行动与开场候选的显示结果、截图路径；报告头写模型别名、配置与样本数。
+  - 私有报告写 `eval-private/reports/r5-playtest.md`；统计版写 `docs/dev/reports/R5-playtest.md`，字段按 ADR-0033 §九：轮数、对比胜率、矛盾率、相邻块 Jaccard 与节拍余弦、首字延迟、token、导演机制命中、新建与兑现线索、兑现率与平均年龄、错误数与复现步骤编号；另加 `swipe`、`choice`、`edit`、`card_decision` 四种偏好信号的条数。
   - 统计版不出现故事名、角色名、原文与题目文本；失败可整批重跑并注明。
-  验收：假渠道下 5 轮冒烟跑通且不联网；私有报告含逐轮记录与截图路径；统计版字段齐全并通过私有标识反向扫描；`pnpm check` 通过。
+  验收：假渠道下 5 轮冒烟跑通且不联网；私有报告含逐轮记录与截图路径；统计版字段齐全并通过私有标识反向扫描；四种偏好信号的条数来自 `preference_events`；`pnpm check` 通过。
 
 - [ ] **R5-T14 真实 60 轮试玩与报告**（原 M4-T20） | 依赖：R5-T13 | 使用 `.env` 里的真实渠道
-  做什么：用真实正文与后台渠道运行至少 60 轮，执行规定次数的 swipe、编辑与分支切换；生成两份报告；统计版写入 `docs/dev/reports/R5-playtest.md` 并在 `docs/dev/reports/R5.md` 引用；效果指标按 ADR-0033 原样报告，没有信号就写未证实。
-  验收：60 轮完成，失败轮次有原因；两份报告生成；统计版无私有信息；报告给出导演机制命中与线索兑现数字；`pnpm check` 通过。
+  做什么：用真实正文与后台渠道运行至少 60 轮，执行规定次数的重新生成、编辑与分支切换；生成两份报告；统计版写入 `docs/dev/reports/R5-playtest.md` 并在 `docs/dev/reports/R5.md` 引用；效果指标按 ADR-0033 原样报告，没有信号就写未证实。
+  验收：60 轮完成，失败轮次有原因；两份报告生成；统计版无私有信息；报告给出导演机制命中、线索兑现与四种偏好信号的数字；`pnpm check` 通过。
 
-- [ ] **R5-T99 R5 验收** | 依赖：R5 全部任务
-  做什么：同 M0-T99；重跑 `pnpm check`、`pnpm e2e` 与 60 轮试玩报告；逐条核对 R5-T01 至 R5-T14；复核 I6、I11–I14，以及 server 不绕过 core 直接写库；检查默认回环监听与局域网密码；在 `docs/dev/reports/R5.md` 总结；确认 M6、R1 续与 R3b 任务。
+- [ ] **R5-T99 R5 验收** | 依赖：R5 全部任务（含 R5-T02.a、R5-T02.b、R5-T02.c、R5-T05.a、R5-T07.a）
+  做什么：同 M0-T99；重跑 `pnpm check`、`pnpm e2e` 与 60 轮试玩报告；逐条核对 R5-T01 至 R5-T14 与全部子任务；复核 I6（模式只由玩家切换）、I9（导演实时选择零模型调用）、I11–I14，以及 server 不绕过 core 直接写库；检查默认回环监听与局域网密码；在 `docs/dev/reports/R5.md` 总结；确认 M6、R1 续与 R3b 任务。
   结果写 `MILESTONE_DONE`；报告缺失时写 `PARTIAL`。
 
 ## M6：生图第一批（ComfyUI 优先）
