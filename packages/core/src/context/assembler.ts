@@ -1,4 +1,8 @@
 import type { HistoryViewTrace } from "../blocks/history.js";
+import type {
+	RetrievalHit,
+	RetrievalRouteRanking,
+} from "../retrieval/hybrid.js";
 import { type TokenEstimator, createTokenEstimator } from "../tokens.js";
 import {
 	type ContextConditionFacts,
@@ -24,6 +28,16 @@ export interface ContextSlotContent {
 	readonly source: string;
 	/** 历史槽位的块视图统计；其它槽位不产生这个字段。 */
 	readonly history?: HistoryViewTrace;
+	/** 记忆检索的每一路名次、融合结果与实际注入的楼层。 */
+	readonly retrieval?: ContextRetrievalTrace;
+}
+
+/** 记忆槽位的检索记录：每一路的原始名次、RRF 融合结果与最终进入上下文的楼层。 */
+export interface ContextRetrievalTrace {
+	readonly routes: readonly RetrievalRouteRanking[];
+	readonly hits: readonly RetrievalHit[];
+	/** 实际写进上下文消息的楼层 id，按注入顺序；可能少于 `hits`。 */
+	readonly injectedNodeIds: readonly string[];
 }
 
 export interface ContextSlotProvider {
@@ -63,6 +77,8 @@ export interface ContextTraceEntry {
 	readonly status: ContextTraceStatus;
 	/** 历史槽位生效的块视图策略与省略量；没有省略时 omitted 为空。 */
 	readonly history?: HistoryViewTrace;
+	/** 记忆槽位的检索名次与融合结果；其它槽位不产生这个字段。 */
+	readonly retrieval?: ContextRetrievalTrace;
 }
 
 export interface ContextTrace {
@@ -101,6 +117,7 @@ interface ResolvedSegment {
 	readonly source: string;
 	readonly status: "candidate" | "condition-false" | "missing-slot";
 	readonly history?: HistoryViewTrace;
+	readonly retrieval?: ContextRetrievalTrace;
 }
 
 /**
@@ -168,6 +185,7 @@ export async function assembleContext(
 			tokens,
 			status,
 			...(item.history === undefined ? {} : { history: item.history }),
+			...(item.retrieval === undefined ? {} : { retrieval: item.retrieval }),
 		});
 		if (status === "included") {
 			const included = item.messages as readonly ContextMessage[];
@@ -262,6 +280,9 @@ async function resolveSegment(
 		source: content.source,
 		status: "candidate",
 		...(content.history === undefined ? {} : { history: content.history }),
+		...(content.retrieval === undefined
+			? {}
+			: { retrieval: content.retrieval }),
 	};
 }
 

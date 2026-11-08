@@ -304,6 +304,11 @@ describe("记忆与摘要槽位", () => {
 		expect(text).toContain("守卫拦住了来客");
 		expect(text.split("n-greet").length - 1).toBe(1);
 		expect(text).not.toContain("n-side");
+		expect(content?.retrieval?.routes.map((route) => route.route)).toContain(
+			"bm25",
+		);
+		expect(content?.retrieval?.hits[0]?.nodeId).toBe("n-greet");
+		expect(content?.retrieval?.injectedNodeIds).toEqual(["n-greet"]);
 	});
 
 	it("记忆槽位在没有前置楼层或没有命中时返回 null", async () => {

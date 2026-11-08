@@ -52,6 +52,8 @@ export interface RetrievalFilterSummary {
 export interface RetrievalResult {
 	readonly hits: readonly RetrievalHit[];
 	readonly filter: RetrievalFilterSummary;
+	/** 每一路的原始名次，供 Trace 与排障命令单独观察。 */
+	readonly routes: readonly RetrievalRouteRanking[];
 }
 
 /** 一路检索的原始名次，供评测与 Trace 单独观察每一路。 */
@@ -107,7 +109,7 @@ export async function retrieveMemory(
 ): Promise<RetrievalResult> {
 	const { routes, filter } = await rankMemoryRoutes(options);
 	const limit = options.limit ?? DEFAULT_RETRIEVAL_LIMIT;
-	return { hits: fuseRoutes(routes).slice(0, limit), filter };
+	return { hits: fuseRoutes(routes).slice(0, limit), filter, routes };
 }
 
 /**

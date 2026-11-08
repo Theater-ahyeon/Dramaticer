@@ -3,17 +3,16 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：138
-- 任务：R2-T99 R2 验收
-- 结果：完成（`DONE`），门禁通过（117 个测试文件、1031 个测试通过，3 个 live 跳过，共 1034 个）。
-  - 新增 `docs/dev/reports/R2.md`：逐条核对 R2 验收项，记录 B0 与 B1 的口径、真实分支点验证、偏好信号、矛盾率与裁判校准、记分牌可复现性与不变量复核，并列出全部样本数与限制。
-  - 链路验证：假客户端 5 轮试玩通过（`playtest.test.ts` 的“假客户端下 5 轮跑通，记录字段齐全”）；真实分支点用第 401 楼、naive 档、写作 `main-fallback`、裁判 `judge`，生成 1 条续写、2 次盲测判定与 2 次评分，失败 0；`--report-only` 重算的私有与统计报告除“生成时间”外逐字节相同。
-  - 可复现性：`scoreboard` 用 R2-T06 的参数重新生成 `docs/dev/SCOREBOARD.md`，与仓库文件逐字节相同；`preferences export` 在种子库上重复导出逐字节相同（0 条记录）；R2 的 13 个测试文件、102 个测试单独重跑通过。
-  - 分支点规划改为从导入历史的末端取点（`importedHeadNodeId`）：种子库的 head 已被上一次续写移动时，仍然重复取到同一批分支点，不会再碰到生成楼层的 UUID。`historical-replay.test.ts` 的 CLI 用例新增第四次运行（换成新的样本与判定输出路径）作为回归断言。
+- 会话：139
+- 任务：E-T01 排障命令行 `dramaticer explain`
+- 结果：完成（`DONE`），门禁通过（118 个测试文件、1038 个测试通过，3 个 live 跳过，共 1041 个）。
+  - 新增 `packages/core/src/explain`：`explainNode` 同步只读地读出楼层的 Trace、上下文分段、预算裁剪与缺失槽位、记忆检索各路名次与 RRF 融合分数、台账快照与本楼写入、导演决策，并给出逐条带证据的修正建议；`renderExplainReport` 输出中文文本，`runExplainCli` 实现 `dramaticer explain --node <id> --db <path> [--json]`，接入 `packages/st-compat/src/cli.ts`。
+  - 记忆槽位现在把检索细节写进 Trace：`ContextTraceEntry.retrieval` 记录 `routes`（每一路原始名次）、`hits`（融合分数与来源路）与 `injectedNodeIds`；`RetrieveMemory` 的返回值新增 `routes`。旧的 Trace 没有这个字段时 explain 写“没有记录”。
+  - 冒烟：用真实 `runChatTurn` 加假客户端生成楼层，记忆分段 `memory:1`、`bm25` 第 1 名、融合分数 0.0164、注入 `n-root`；CLI 文本与 `--json` 都从磁盘数据库读出同一结果。新增 7 个测试（固定顺序、缺少 Trace、消息楼层、只读性、CLI 参数）。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09.a、R2-T09.b、R2-T09.c、R2-T99、R5-T01、R5-T02。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- **下一个可做任务是 E-T01 排障命令行 `dramaticer explain`**：依赖 R2-T99，现已满足。R4-T00 的依赖 R1-T99、R2-T99、R3-T99 也已满足，但 E 在 TASKS 里排在 R4 之前。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09.a、R2-T09.b、R2-T09.c、R2-T99、R5-T01、R5-T02、E-T01。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- **下一个可做任务是 R4-T00 细化 R4 任务**：依赖 R1-T99、R2-T99、R3-T99 均已满足。E 阶段没有 E-T99，E-T01 即该阶段唯一任务。
 - v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
 - R5-T00 仍被 R4-T99 阻塞；R5-T04 依赖 M4-T05、M4-T06、M4-T01，可以排在 R4 之后。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045。
@@ -26,10 +25,11 @@
 - server 的回合路径会补建并执行后台任务：`handleTurnStream` 在 `turn.completed` 之后调用 `BackgroundScheduler.schedule`，不等待 drain；同一时刻只有一个 drain，故事之间先来先做。
 - 分支与面板接口已可用；`packages/web` 尚未创建。`GET /api/nodes/:id/ledger` 返回 `{state, facts, diffs}`，`facts` 来自 `readLedgerFacts`，`diffs` 只含该楼层自己的写入。
 - 偏好记录已闭环：记录写入（四种信号）→ `POST /api/nodes/:id/choice` → `preferences export` 产出回复对 → `pairwise` 盲测与评分 → `scoreboard` 汇总。私有库目前没有任何 `preference_events`。
+- 排障命令：`dramaticer explain --node <id> --db <path> [--json]`。只读、零模型调用；导演决策从助手楼层的父楼层读（`director_decisions` 写在生成时的消息楼层上）。记忆槽位的 `retrieval` 只在槽位真正注入内容时写进 Trace；没有命中时该槽位记为 `missing-slot`。
 
 ## 下一步
-- **E-T01 排障命令行**：新增 `dramaticer explain --node <id> [--json]`，按固定顺序解释该楼层的 Trace、上下文分段来源与 token、被裁剪的段落与缺失槽位、检索分数、台账快照与本楼 diff、导演决策；每个结论带证据，缺失时写“没有记录”；只读、零模型调用。验收与 DESIGN §10.3 一致。
-- E-T01 之后是 R4-T00（细化 R4 任务），再之后 R5-T00。
+- **R4-T00 细化 R4 任务**：把长线层（弧线、序列、后台规划器、玩家编辑）、短线层（当前拍、强度、纠偏信号、程序选择）、落拍检测、候选行动、注入玩家消息末尾、透明与盲盒模式、`extensions.dramaticer` 扩展拆成任务，写清依赖与验收；开局导演（O）已实现的机制不重复建任务。参考 DESIGN §8。
+- R4-T00 之后依次 R4-T01 起的任务，最后 R4-T99，然后 R5-T00。
 - 引用评测数字时：B1 必须同时说明同模型子集为空、每个对话每档只有 1 个样本；遗忘矛盾率必须同时说明失败题数与可判定样本数；偏好一致率当前没有样本。
 
 ## 注意事项
@@ -73,3 +73,4 @@
 - 不要修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 下的任何文件。不变量 I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账是唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖任何其他工作区包、ST 语义只在兼容插件里实现。
 - I10 的扫描会把测试文件里出现的 `privatePath` 字样当成私有数据路径；测试变量不要用这个名字。
 - 整轮门禁在 Windows 上并行跑 100 多个测试文件时，单个测试耗时可以比单独运行高十几倍。新建要跑数据库或文件系统的测试必须显式设置超时；`afterEach` 删除临时目录用 `rmSync` 时带上 `maxRetries` 与 `retryDelay`。
+- `packages/core/test/` 与 `packages/st-compat/test/` 下的 `.tmp-*` 目录会被测试创建；它们在 gitignore 里，不要提交。

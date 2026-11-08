@@ -450,7 +450,8 @@
 
 ## E：排障命令行（排在 R2 之后）
 
-- [ ] **E-T01 排障命令行 `dramaticer explain`** | 依赖：R2-T99 | DESIGN §10.3
+- [x] **E-T01 排障命令行 `dramaticer explain`** | 依赖：R2-T99 | DESIGN §10.3
+  完成：2026-11-08 新增 `packages/core/src/explain`（`explainNode` 同步只读、`renderExplainReport` 中文文本、`runExplainCli`）与 `dramaticer explain --node <id> --db <path> [--json]`：按固定顺序输出模型与结果、上下文分段与 token、预算裁剪与缺失槽位、记忆检索每一路名次与 RRF 融合分数、台账快照与本楼写入、导演决策与逐条证据的修正建议；记忆槽位改为把每一路名次、融合结果与实际注入楼层写进 `ContextTraceEntry.retrieval`（`RetrieveMemory` 的 `routes` 一并返回），naive 档不给出补齐后台任务的建议；缺 Trace 时明确写“没有记录”并仍读出台账与导演记录；冒烟脚本在真实 `runChatTurn` 生成的楼层上跑通文本与 JSON 输出，检索分段为 `memory:1`、`bm25` 第 1 名、融合分数 0.0164；新增 7 个测试（覆盖顺序、缺少 Trace、消息楼层、只读性与 CLI 参数）；门禁通过
   做什么：
   - 新增 `dramaticer explain --node <id> [--json]`：读取该楼层的 Trace、上下文分段来源与 token、被裁剪的段落与缺失槽位、检索各路分数与融合排名、台账快照与本楼 diff、导演决策，按固定顺序解释“这一轮为什么这么写、为什么忘了某件事”，并给出可以操作的修正建议（置顶某条记忆、修订台账）。
   - 每个结论都带证据（Trace 分段、检索条目与楼层 id、台账路径、导演方案 id）；证据缺失时明确写“没有记录”，不推断。

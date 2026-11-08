@@ -308,6 +308,7 @@ export function createMemorySlotProvider(
 				pathBefore.map((node, index) => [node.id, index] as const),
 			);
 			const seen = new Set<string>();
+			const injectedNodeIds: string[] = [];
 			const lines: string[] = [];
 			for (const hit of result.hits) {
 				if (seen.has(hit.nodeId)) continue;
@@ -336,6 +337,7 @@ export function createMemorySlotProvider(
 				}
 				text = text.trim();
 				if (text.length === 0) continue;
+				injectedNodeIds.push(hit.nodeId);
 				const kind = hit.kind === "event" ? "事件" : "原文块";
 				lines.push(`- 楼层 ${hit.nodeId}（${kind}）：${text}`);
 			}
@@ -348,6 +350,11 @@ export function createMemorySlotProvider(
 					},
 				],
 				source: `memory:${lines.length}`,
+				retrieval: {
+					routes: result.routes,
+					hits: result.hits,
+					injectedNodeIds,
+				},
 			};
 		},
 	};
