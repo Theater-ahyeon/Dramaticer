@@ -202,7 +202,7 @@ describe("导演决策框架", () => {
 			store,
 			storyId: "s1",
 			nodeId,
-			config: config({ enabled: false }),
+			config: config({ mode: "off" }),
 		});
 		expect(second).toBeNull();
 		expect(store.getDirectorDecision(nodeId)?.directive).toBe(
@@ -287,11 +287,40 @@ describe("导演决策框架", () => {
 			store,
 			storyId: "s1",
 			nodeId: chain[1] as string,
-			config: config({ enabled: false }),
+			config: config({ mode: "off" }),
 		});
 
 		expect(suggestion).toBeNull();
 		expect(store.getDirectorDecision(chain[1] as string)).toBeNull();
+	});
+
+	it("透明与盲盒都评估并写出逐字段相同的决策记录", () => {
+		const decisions = (["transparent", "blind"] as const).map((mode) => {
+			const { store } = openTempStore();
+			seed(store);
+			const chain = buildChain(store, 14);
+			addNote(store, "clue1", "n0", "井底的人影");
+			const suggestion = evaluateDirector({
+				store,
+				storyId: "s1",
+				nodeId: chain[13] as string,
+				config: config({ mode }),
+			});
+			return {
+				suggestion,
+				decision: store.getDirectorDecision(chain[13] as string),
+			};
+		});
+		const transparent = decisions[0];
+		const blind = decisions[1];
+		expect(transparent?.suggestion).not.toBeNull();
+		expect(blind?.suggestion).toEqual(transparent?.suggestion);
+		expect(blind?.decision?.directive).toBe(transparent?.decision?.directive);
+		expect(blind?.decision?.directive).not.toBeNull();
+		expect(blind?.decision?.mechanisms).toEqual(
+			transparent?.decision?.mechanisms,
+		);
+		expect(blind?.decision?.signals).toEqual(transparent?.decision?.signals);
 	});
 
 	it("已兑现笔记不参与评估", () => {

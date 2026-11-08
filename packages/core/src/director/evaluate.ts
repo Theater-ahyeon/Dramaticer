@@ -13,6 +13,7 @@ import type {
 	DirectorMechanismRecord,
 	DirectorSuggestion,
 } from "./types.js";
+import { isDirectorMode } from "./types.js";
 
 export interface EvaluateDirectorInput {
 	readonly store: StoryStore;
@@ -36,8 +37,8 @@ export function assertDirectorConfig(config: DirectorConfig): void {
 	if (typeof config !== "object" || config === null) {
 		throw new Error("导演配置必须是对象");
 	}
-	if (typeof config.enabled !== "boolean") {
-		throw new Error("导演配置的 enabled 必须是布尔值");
+	if (!isDirectorMode(config.mode)) {
+		throw new Error("导演配置的 mode 必须是 off、transparent 或 blind");
 	}
 	if (!Number.isInteger(config.clueAgeWarning) || config.clueAgeWarning < 0) {
 		throw new Error("导演配置的 clueAgeWarning 必须是非负整数");
@@ -212,7 +213,7 @@ export function evaluateDirector(
 	if (node.storyId !== storyId) {
 		throw new Error(`楼层节点 ${nodeId} 属于另一个故事 ${node.storyId}`);
 	}
-	if (!config.enabled) return null;
+	if (config.mode === "off") return null;
 
 	const mechanisms = input.mechanisms ?? DEFAULT_DIRECTOR_MECHANISMS;
 	const records: DirectorMechanismRecord[] = [];

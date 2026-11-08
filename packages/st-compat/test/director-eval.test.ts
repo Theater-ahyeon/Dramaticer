@@ -363,7 +363,7 @@ describe("createChatReplayGenerator 与导演开关", () => {
 			budgetTokens: 8_000,
 			directorConfig: {
 				...DEFAULT_DIRECTOR_CONFIG,
-				enabled: false,
+				mode: "off",
 				clueAgeWarning: 0,
 			},
 			model: "fake",

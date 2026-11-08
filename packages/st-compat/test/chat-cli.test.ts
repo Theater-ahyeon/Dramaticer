@@ -136,6 +136,30 @@ function dependencies(
 	};
 }
 
+/** 建一条 14 楼的主分支并在第一楼放一条老线索，让线索机制必然触发。 */
+function seedClueChain(dbPath: string): void {
+	const seed = StoryStore.open(dbPath);
+	seed.createStory({ id: "s1", title: "山神" });
+	let parentId: string | null = seed.appendNode({
+		storyId: "s1",
+		parentId: null,
+		role: "assistant",
+		raw: "山门在夜里开着。",
+	}).id;
+	seed.insertPlotNotes([
+		{ storyId: "s1", sourceNodeId: parentId, text: "井底的脚步声" },
+	]);
+	for (let index = 0; index < 13; index += 1) {
+		parentId = seed.appendNode({
+			storyId: "s1",
+			parentId,
+			role: "assistant",
+			raw: `第 ${index} 楼。`,
+		}).id;
+	}
+	seed.close();
+}
+
 describe("dramaticer chat", () => {
 	it("首次运行导入角色卡、生成一层并把 Trace 写进数据库", async () => {
 		const dbPath = createTempDb();
@@ -358,7 +382,7 @@ describe("dramaticer chat", () => {
 					"--profile",
 					"naive",
 					"--director",
-					"on",
+					"transparent",
 				],
 				dependencies(fake, [], []),
 			),
@@ -540,28 +564,9 @@ describe("dramaticer chat", () => {
 		expect(fake.requests).toHaveLength(1);
 	});
 
-	it("导演开启时线索到期给出【导演】消息并写入决策记录", async () => {
+	it("透明模式下线索到期注入导演尾注并写入决策记录", async () => {
 		const dbPath = createTempDb();
-		const seed = StoryStore.open(dbPath);
-		seed.createStory({ id: "s1", title: "山神" });
-		let parentId: string | null = seed.appendNode({
-			storyId: "s1",
-			parentId: null,
-			role: "assistant",
-			raw: "山门在夜里开着。",
-		}).id;
-		seed.insertPlotNotes([
-			{ storyId: "s1", sourceNodeId: parentId, text: "井底的脚步声" },
-		]);
-		for (let index = 0; index < 13; index += 1) {
-			parentId = seed.appendNode({
-				storyId: "s1",
-				parentId,
-				role: "assistant",
-				raw: `第 ${index} 楼。`,
-			}).id;
-		}
-		seed.close();
+		seedClueChain(dbPath);
 
 		const fake = createFakeClient();
 		const result = await runChatCli(
@@ -609,8 +614,53 @@ describe("dramaticer chat", () => {
 		}
 	});
 
+	it("--director blind 同样注入并写决策记录", async () => {
+		const dbPath = createTempDb();
+		seedClueChain(dbPath);
+		const fake = createFakeClient();
+		const result = await runChatCli(
+			[
+				"chat",
+				"--story",
+				"s1",
+				"--card",
+				cardPath,
+				"--user",
+				"我推开山门。",
+				"--db",
+				dbPath,
+				"--director",
+				"blind",
+			],
+			dependencies(fake, [], []),
+		);
+
+		const directorEntry = result.trace.context.entries.find(
+			(entry) => entry.segmentId === "director",
+		);
+		expect(directorEntry?.status).toBe("included");
+		expect(directorEntry?.source).toBe("director:clue");
+		expect(directorEntry?.appendedTo).toBe("last-user");
+		const lastUser = (fake.requests[0]?.messages ?? [])
+			.filter((message) => message.role === "user")
+			.at(-1)?.content as string;
+		expect(lastUser.endsWith(DIRECTOR_SUFFIX_NOTE)).toBe(true);
+		expect(lastUser).toContain("井底的脚步声");
+
+		const store = StoryStore.open(dbPath);
+		try {
+			const decision = store.getDirectorDecision(result.userNode.id);
+			expect(decision?.directive).not.toBeNull();
+			expect(decision?.mechanisms[0]?.name).toBe("clue");
+			expect(decision?.signals).toMatchObject({ openClues: 1 });
+		} finally {
+			store.close();
+		}
+	});
+
 	it("--director off 时导演槽位缺失且没有决策记录", async () => {
 		const dbPath = createTempDb();
+		seedClueChain(dbPath);
 		const fake = createFakeClient();
 		const result = await runChatCli(
 			[
@@ -949,7 +999,7 @@ describe("dramaticer chat", () => {
 				],
 				deps,
 			),
-		).rejects.toThrow("--director 只接受 on 或 off");
+		).rejects.toThrow("--director 只接受 off、transparent 或 blind");
 		await expect(
 			runChatCli(
 				[

@@ -3,17 +3,19 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：144
-- 任务：R4-T04 导演建议并入玩家消息末尾
-- 结果：完成（`DONE`），门禁通过（121 个测试文件、1080 个测试通过，3 个 live 跳过，共 1083 个）。
-  - `ContextSlotContent` 新增 `suffix?: string`，`ContextTraceEntry` 新增 `appendedTo?: "last-user"`；组装器把 suffix 的 token 计入片段与总量，预算裁剪之后按模板顺序拼接保留下来的消息，再把所有保留下来的 suffix 用 `\n\n` 接在最后一条 `user` 消息末尾；原文消息对象不被修改。没有 `user` 消息时该片段记为 `missing-slot`、token 记 0；预算不足时整段记为 `budget-dropped`，token 保留在 Trace 里。
-  - `createDirectorSlotProvider` 不再产生 system 消息，改为 `messages: []` 加 `suffix: "【导演】<directive>\n玩家行动优先，你可以按剧情需要调整。"`；尾注导出为 `DIRECTOR_SUFFIX_NOTE`。
-  - `explain` 的上下文分段行显示 `拼接到最后一条 user 消息（appendedTo: last-user）`。
-  - 新增 `context-assembler.test.ts` 的 4 个 suffix 用例；`lore.test.ts`、`director-opening.test.ts` 的槽位断言改为 suffix；`director-beat.test.ts` 新增单轮注入用例（无独立 `【导演】` 消息、最后一条 user 消息以尾注结束、玩家楼层原文与库中原文不变、Trace 带 `appendedTo`）；`chat-cli.test.ts` 的导演用例改为检查拼接结果与玩家楼层原文，`--director off` 用例增加「没有尾注」断言；`explain.test.ts` 增加 `appendedTo` 渲染断言。
+- 会话：145
+- 任务：R4-T05 透明与盲盒模式
+- 结果：完成（`DONE`），门禁通过（121 个测试文件、1085 个测试通过，3 个 live 跳过，共 1088 个）。
+  - `DirectorConfig.enabled` 换成 `mode`，取值 `off`、`transparent`、`blind`；新增 `DIRECTOR_MODES`、`DirectorMode`、`isDirectorMode`，`assertDirectorConfig` 校验取值，`DIRECTOR_CONFIG_KEYS` 同步。
+  - `evaluateDirector` 在 `mode: "off"` 时直接返回 null，不评估、不写决策；槽位提供者因此不产出 suffix。`transparent` 与 `blind` 的评估、决策记录与 suffix 完全相同。
+  - 读取旧故事设置时把 `enabled: true` 映射为 `transparent`、`false` 映射为 `off`，并从对象里去掉 `enabled`；`updateStorySettings` 整份重写时序列化只含 `mode`（`readStoredDirectorConfig`）。
+  - `NodeDirectorView` 增加 `mode`（故事当前设置），`decision` 改为协议里的 `DirectorDecisionView`；`blind` 下 `directive` 为 null、不返回 `signals`，只保留 `mechanisms`（机制触发状态）。`GET /api/nodes/:id/director` 用 `redactDirectorDecision` 做面向玩家的脱敏；`explain` 直接读 store，两种模式都显示全文。
+  - CLI `--director <off|transparent|blind>`（默认 `transparent`），非法值报 `--director 只接受 off、transparent 或 blind`；朴素模式仍只允许 `off`。故事设置接口的非法 mode 报 `directorConfig.mode`。
+  - 新增 5 个测试：透明与盲盒的评估结果与决策记录一致（core）、旧 `enabled` 映射与再次保存只写 `mode`（core）、盲盒下 `explain` 仍显示全文（core）、盲盒接口脱敏与透明接口全文（server）、`--director blind` 注入与写记录（CLI）；`chat-cli` 的 off 用例改用 `seedClueChain`，让「没有注入」成为真实验证。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09.a、R2-T09.b、R2-T09.c、R2-T99、R5-T01、R5-T02、E-T01、R4-T00、R4-T01、R4-T02、R4-T03、R4-T04。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- **下一个可做任务是 R4-T05 透明与盲盒模式**：依赖 R4-T04、M3-T02、M4-T03 均已满足。之后依次 R4-T06、R4-T07、R4-T08、R4-T99，然后 R5-T00。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09.a、R2-T09.b、R2-T09.c、R2-T99、R5-T01、R5-T02、E-T01、R4-T00、R4-T01、R4-T02、R4-T03、R4-T04、R4-T05。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- **下一个可做任务是 R4-T06 落拍检测与拍推进**：依赖 R4-T01、R4-T03、R1-T02.2 均已满足。之后依次 R4-T07、R4-T08、R4-T99，然后 R5-T00。
 - v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
 - R5-T00 仍被 R4-T99 阻塞；R5-T04 依赖 M4-T05、M4-T06、M4-T01，可以排在 R4 之后。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045。
@@ -26,15 +28,16 @@
 - server 的回合路径会补建并执行后台任务：`handleTurnStream` 在 `turn.completed` 之后调用 `BackgroundScheduler.schedule`，不等待 drain；同一时刻只有一个 drain，故事之间先来先做。
 - 分支与面板接口已可用；`packages/web` 尚未创建。`GET /api/nodes/:id/ledger` 返回 `{state, facts, diffs}`，`facts` 来自 `readLedgerFacts`，`diffs` 只含该楼层自己的写入。
 - 偏好记录已闭环：记录写入（四种信号）→ `POST /api/nodes/:id/choice` → `preferences export` 产出回复对 → `pairwise` 盲测与评分 → `scoreboard` 汇总。私有库目前没有任何 `preference_events`。
-- 排障命令：`dramaticer explain --node <id> --db <path> [--json]`。只读、零模型调用；导演决策从助手楼层的父楼层读（`director_decisions` 写在生成时的消息楼层上）。记忆槽位的 `retrieval` 只在槽位真正注入内容时写进 Trace；没有命中时该槽位记为 `missing-slot`。上下文分段行会显示 suffix 槽位的 `appendedTo`。
+- 排障命令：`dramaticer explain --node <id> --db <path> [--json]`。只读、零模型调用；导演决策从助手楼层的父楼层读（`director_decisions` 写在生成时的消息楼层上）。记忆槽位的 `retrieval` 只在槽位真正注入内容时写进 Trace；没有命中时该槽位记为 `missing-slot`。上下文分段行会显示 suffix 槽位的 `appendedTo`。`explain` 不受导演模式影响，盲盒下仍然显示完整指令与信号。
 - 导演计划接口：`readDirectorPlan` 按 `ordinal` 还原弧线、序列、节拍；`--set` 与 `PUT /api/stories/:id/director/plan` 都整份替换并把所有行标为 `player`，`mergePlannedArcs` 只更新或追加 `model`/`import` 行，永不删除、不覆盖 `player` 行。`resolveCurrentBeat` 沿路径最近一条 `director_beat_states` 前进：完成则到下一拍（跨序列），未完成停在原地，无状态取第一拍，耗尽返回 null；记录指向已不存在的节拍时跳过该记录，仍无有效记录则回到第一拍。
 - 导演规划器（R4-T02）：`directorPlanNeedsRun` 需要角色卡或台账素材；计划为空时补建，head 上 `resolveCurrentBeat` 返回 null 时补建，head 为空或当前拍仍可解析时不补建。输入读取 `head` 处的 `listLedgerEntities`、`item` 与 `userWill` 子树及 `getValidSummaries` 的第一条（有章节摘要时取最近章节，否则最近主线）。`plannerClient` 在 `dramaticer work` 与 server 里用 `roles.planner` 建立，缺省回落到 `background`；注册表未收到 `plannerClient` 时使用任务上下文的后台客户端。`--generate` 与后台任务走同一个 `generateDirectorPlan`，写入的行来源都是 `model`。
-- 导演强度与注入（R4-T03、R4-T04）：`DirectorConfig.intensity` 与 `openingIntensity` 共用 `DirectorIntensity`（`setup`、`natural`、`detonate`），前者只作用于节拍建议，后者只作用于开场导演；`resolveDirectorIntensity` 让单轮参数覆盖配置。机制优先级固定为重复正文 40、开场 35、线索过老 30、场景重复 25、节拍 23、线索过多 20、事件池 10、节奏 5；默认机制注册顺序是 clue、opening、beat、repetition、event_pool、pacing。`createDirectorSlotProvider` 返回带 `config`、`mechanisms` 的 `DirectorSlotProvider`，`provide` 返回空的 `messages` 与 `suffix`（`【导演】` 加指令与 `DIRECTOR_SUFFIX_NOTE`）；组装器在预算裁剪后把 suffix 接在最后一条 user 消息末尾，Trace 记 `appendedTo: "last-user"`。`GET /api/nodes/:id/director` 直接返回完整决策。
+- 导演强度与注入（R4-T03、R4-T04）：`DirectorConfig.intensity` 与 `openingIntensity` 共用 `DirectorIntensity`（`setup`、`natural`、`detonate`），前者只作用于节拍建议，后者只作用于开场导演；`resolveDirectorIntensity` 让单轮参数覆盖配置。机制优先级固定为重复正文 40、开场 35、线索过老 30、场景重复 25、节拍 23、线索过多 20、事件池 10、节奏 5；默认机制注册顺序是 clue、opening、beat、repetition、event_pool、pacing。`createDirectorSlotProvider` 返回带 `config`、`mechanisms` 的 `DirectorSlotProvider`，`provide` 返回空的 `messages` 与 `suffix`（`【导演】` 加指令与 `DIRECTOR_SUFFIX_NOTE`）；组装器在预算裁剪后把 suffix 接在最后一条 user 消息末尾，Trace 记 `appendedTo: "last-user"`。
+- 导演模式（R4-T05）：`DirectorConfig.mode` 取 `off`、`transparent`、`blind`，默认 `transparent`；旧配置的 `enabled` 在读取时映射后丢弃。`off` 没有决策记录也没有 suffix；`transparent` 与 `blind` 的评估、记录、注入完全相同。`GET /api/nodes/:id/director` 返回 `{nodeId, mode, decision}`，盲盒下 `decision.directive` 为 null 且没有 `signals`，只保留 `mechanisms`；`decision` 为空时 `mode` 仍返回。CLI `--director` 与故事设置 `directorConfig.mode` 接受同一取值。
 - `extensions.dramaticer` 目前只有 `events` 与 `npcAgendas` 两个键；R4-T08 新增 `arcs` 时必须同步更新严格校验与 st-compat 的导入测试。
 
 ## 下一步
-- **R4-T05 透明与盲盒模式**：`DirectorConfig.enabled` 改为 `mode`（`off`、`transparent`、`blind`）；读取旧故事设置时把 `enabled` 映射成 `mode` 并从对象去掉，之后写回只保存 `mode`。`off` 不评估、不写决策、不注入；`transparent` 与 `blind` 都评估、写决策、注入 suffix；`GET /api/nodes/:id/director` 在 `blind` 下只返回 `mode` 与机制触发状态，`decision.directive` 为 null 且不返回 `signals`；`explain` 两种模式都显示全文。CLI `--director` 与故事设置接口接受同一取值，非法值指出字段。依赖与验收见 TASKS。
-- R4-T05 之后依次 R4-T06（落拍）、R4-T07（候选行动，v33）、R4-T08（卡扩展）、R4-T99，然后 R5-T00。
+- **R4-T06 落拍检测与拍推进**：结算提示词在有当前拍时为每层加可选 `beatCompleted`（布尔，不强制输出，I13）；缺少按 false，非法类型整楼层拒绝并记入 `repairs`。结算写入后按路径顺序读取该楼层父节点处的当前拍，把 `beat_id` 与 `completed` 写进 `director_beat_states`，程序据此推进到下一拍，不额外调用模型；没有计划或当前拍耗尽时不提该字段也不写状态；`explain` 增加当前拍与完成记录（节拍 id、完成楼层、是否已前进），仍然只读。验收见 TASKS。
+- R4-T06 之后依次 R4-T07（候选行动，v33）、R4-T08（卡扩展）、R4-T99，然后 R5-T00。
 - 引用评测数字时：B1 必须同时说明同模型子集为空、每个对话每档只有 1 个样本；遗忘矛盾率必须同时说明失败题数与可判定样本数；偏好一致率当前没有样本。
 
 ## 注意事项
@@ -59,7 +62,7 @@
 - 开局包的读取入口是 `readOpeningPack(store, storyId)`；校验用 `validateOpeningPackPayload(value, known)`；首楼候选解析用 `parseOpeningCandidatesResponse(text, expectedCount)`，不要另写一套。
 - 自动试玩的入口是 `pnpm --filter @dramaticer/st-compat playtest`：每轮顺序是读间隙积压 → 模拟用户 → `runChatTurn` → swipe/edit/branch → 间隙后台任务 → 一致性探针 → 每轮裁判 → 写记录。`--seed` 只决定模拟用户的提示顺序与探针事实选择。
 - 开场导演的楼层深度按当前路径助手楼层数计算；`openingFloors` 为 0 关闭；开局强度 `setup`、`natural`、`detonate` 的字段范围见 DESIGN §8.4。节拍机制的楼层深度用同一口径。
-- 故事设置缺省值：`budgetTokens` 12000、`structuredOutput` `text-tags`、`temperature` 0.8、`maxTokens` 4096、`reasoning` `low`、`turnMode` `fast`、`maxReadRounds` 3、`historyBlockPolicy` `{mode:"default",overrides:{}}`、`gapPassEnabled` `false`、`gapPlanSeconds` 212、导演默认配置（含 `openingFloors` 10、`openingIntensity` `natural` 与 `intensity` `natural`）。
+- 故事设置缺省值：`budgetTokens` 12000、`structuredOutput` `text-tags`、`temperature` 0.8、`maxTokens` 4096、`reasoning` `low`、`turnMode` `fast`、`maxReadRounds` 3、`historyBlockPolicy` `{mode:"default",overrides:{}}`、`gapPassEnabled` `false`、`gapPlanSeconds` 212、导演默认配置（含 `mode` `transparent`、`openingFloors` 10、`openingIntensity` `natural` 与 `intensity` `natural`）。
 - 已注册的槽位是十一个：lore、character、persona、summary、state、memory、history、scene、director、user_will、protocol。默认模板顺序：character、lore、state、summary、memory、scene、director、user_will、history、（可选的 block_format）、protocol。`director` 槽位只返回 suffix，不产生 system 消息；不新增 `beat` 槽位。组装器的 suffix 用 `\n\n` 与玩家原文分隔；多个 suffix 之间用 `\n` 连接。
 - 原生块类型是 12 个（`thinking`、`选项`、`状态栏`、`变量更新`、`分析`、`图片`、`页眉`、`悄悄话`、`旁白`、`备忘`、`state_update`、`plot_note`）；`thinking`、`变量更新`、`state_update`、`plot_note` 的上下文策略是删除。
 - 历史槽位默认策略：更早楼层省略五个显示类块，最近 1 楼不套用这层省略；`full` 是改动前行为。设置项 `historyBlockPolicy` 存在 `story_settings.history_block_policy`。

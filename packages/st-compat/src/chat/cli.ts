@@ -7,6 +7,7 @@ import {
 	DEFAULT_CHAT_PROFILE,
 	DEFAULT_DIRECTOR_CONFIG,
 	type DirectorIntensity,
+	type DirectorMode,
 	type LlmChannelsConfig,
 	type LlmStreamingClient,
 	StoryStore,
@@ -18,6 +19,7 @@ import {
 	createStandardChatProviders,
 	isChatProfile,
 	isDirectorIntensity,
+	isDirectorMode,
 	isTurnMode,
 	loadChannelsConfig,
 	loadDotEnv,
@@ -55,7 +57,7 @@ export interface ChatCliDependencies {
 }
 
 const USAGE =
-	"用法：dramaticer chat --story <id> --user <text> [--card <path>] [--world <path>] [--profile <native|naive>] [--persona <text>] [--director <on|off>] [--intensity <setup|natural|detonate>] [--mode <fast|deep>] [--db <path>] [--model <alias>] [--budget <tokens>] [--max-tokens <n>] [--temperature <x>]";
+	"用法：dramaticer chat --story <id> --user <text> [--card <path>] [--world <path>] [--profile <native|naive>] [--persona <text>] [--director <off|transparent|blind>] [--intensity <setup|natural|detonate>] [--mode <fast|deep>] [--db <path>] [--model <alias>] [--budget <tokens>] [--max-tokens <n>] [--temperature <x>]";
 
 interface ChatArgs {
 	readonly storyId: string;
@@ -68,7 +70,7 @@ interface ChatArgs {
 	readonly budgetTokens: number | null;
 	readonly maxTokens: number | null;
 	readonly temperature: number | null;
-	readonly directorEnabled: boolean;
+	readonly directorMode: DirectorMode;
 	/** 单轮导演强度；不传时用导演配置里的值。 */
 	readonly directorIntensity: DirectorIntensity | null;
 	/** 单轮模式；不传时用故事设置里的锁定值。 */
@@ -209,7 +211,7 @@ export async function runChatCli(
 							embedder,
 							directorConfig: {
 								...DEFAULT_DIRECTOR_CONFIG,
-								enabled: parsed.directorEnabled,
+								mode: parsed.directorMode,
 							},
 							historyBlockPolicy: settings.historyBlockPolicy,
 						}),
@@ -319,12 +321,14 @@ function parseChatArgs(args: readonly string[]): ChatArgs {
 		profileValue === undefined
 			? DEFAULT_CHAT_PROFILE
 			: parseProfile(profileValue);
-	const directorEnabled =
-		director === undefined ? true : parseDirector(director);
+	const directorMode =
+		director === undefined
+			? DEFAULT_DIRECTOR_CONFIG.mode
+			: parseDirector(director);
 	const directorIntensity =
 		intensity === undefined ? null : parseIntensity(intensity);
-	if (profile === "naive" && director !== undefined && directorEnabled) {
-		throw new Error(`朴素模式没有导演，不要传 --director on；${USAGE}`);
+	if (profile === "naive" && director !== undefined && directorMode !== "off") {
+		throw new Error(`朴素模式没有导演，--director 只能是 off；${USAGE}`);
 	}
 	if (profile === "naive" && directorIntensity !== null) {
 		throw new Error(`朴素模式没有导演，不要传 --intensity；${USAGE}`);
@@ -344,7 +348,7 @@ function parseChatArgs(args: readonly string[]): ChatArgs {
 				: parseInteger(maxTokens, "--max-tokens", 1),
 		temperature:
 			temperature === undefined ? null : parseTemperature(temperature),
-		directorEnabled,
+		directorMode,
 		directorIntensity,
 		turnMode: turnModeValue === undefined ? null : parseTurnMode(turnModeValue),
 		profile,
@@ -386,10 +390,13 @@ function parseTemperature(value: string): number {
 	return parsed;
 }
 
-function parseDirector(value: string): boolean {
-	if (value === "on") return true;
-	if (value === "off") return false;
-	throw new Error(`--director 只接受 on 或 off，收到 ${value}；${USAGE}`);
+function parseDirector(value: string): DirectorMode {
+	if (!isDirectorMode(value)) {
+		throw new Error(
+			`--director 只接受 off、transparent 或 blind，收到 ${value}；${USAGE}`,
+		);
+	}
+	return value;
 }
 
 function parseIntensity(value: string): DirectorIntensity {

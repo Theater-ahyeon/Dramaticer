@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { crc32, deflateSync } from "node:zlib";
+import { DEFAULT_DIRECTOR_CONFIG } from "@dramaticer/core";
 import type {
 	ApiErrorResponse,
 	ImportStoryResult,
@@ -365,6 +366,16 @@ describe("设置接口", () => {
 		expect(badMode.status).toBe(400);
 		expect((await errorBody(badMode)).error.details).toEqual({
 			path: "structuredOutput",
+		});
+
+		const badDirectorMode = await put(
+			running.origin,
+			"/api/stories/story-1/settings",
+			{ directorConfig: { ...DEFAULT_DIRECTOR_CONFIG, mode: "maybe" } },
+		);
+		expect(badDirectorMode.status).toBe(400);
+		expect((await errorBody(badDirectorMode)).error.details).toEqual({
+			path: "directorConfig.mode",
 		});
 
 		const badTemperature = await put(

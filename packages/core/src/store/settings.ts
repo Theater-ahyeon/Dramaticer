@@ -200,7 +200,7 @@ export const CONTEXT_TEMPLATE_UPDATE_KEYS: readonly (keyof UpdateContextTemplate
 	["name", "template"];
 
 export const DIRECTOR_CONFIG_KEYS: readonly (keyof DirectorConfig)[] = [
-	"enabled",
+	"mode",
 	"clueAgeWarning",
 	"maxOpenClues",
 	"stallFloors",

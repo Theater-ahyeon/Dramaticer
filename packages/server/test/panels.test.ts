@@ -1,5 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { DEFAULT_DIRECTOR_CONFIG } from "@dramaticer/core";
 import type {
 	ApiErrorResponse,
 	FulfillClueResult,
@@ -199,6 +200,7 @@ describe("节点面板接口", () => {
 			running.origin,
 			`/api/nodes/${seeded.replyId}/director`,
 		);
+		expect(director.mode).toBe("transparent");
 		expect(director.decision?.directive).toBe("让脚步声逼近");
 		const noDecision = await getJson<NodeDirectorView>(
 			running.origin,
@@ -210,6 +212,46 @@ describe("节点面板接口", () => {
 			`${running.origin}/api/nodes/${seeded.replyId}/trace`,
 		);
 		expect(trace.status).toBe(404);
+	});
+
+	it("盲盒模式只返回机制触发状态，透明模式返回完整决策", async () => {
+		const running = await startTestServer();
+		const seeded = seedStory(running);
+		const mechanisms = [
+			{ name: "pacing", triggered: true, reason: "铺垫够久" },
+		];
+		running.store.saveDirectorDecision({
+			nodeId: seeded.replyId,
+			storyId: "s1",
+			directive: "让脚步声逼近",
+			mechanisms,
+			signals: { pacing: { phase: "setup" } },
+		});
+
+		running.store.updateStorySettings("s1", {
+			directorConfig: { ...DEFAULT_DIRECTOR_CONFIG, mode: "blind" },
+		});
+		const blind = await getJson<NodeDirectorView>(
+			running.origin,
+			`/api/nodes/${seeded.replyId}/director`,
+		);
+		expect(blind.mode).toBe("blind");
+		expect(blind.decision?.directive).toBeNull();
+		expect(blind.decision?.mechanisms).toEqual(mechanisms);
+		expect(blind.decision !== null && "signals" in blind.decision).toBe(false);
+
+		running.store.updateStorySettings("s1", {
+			directorConfig: { ...DEFAULT_DIRECTOR_CONFIG, mode: "transparent" },
+		});
+		const transparent = await getJson<NodeDirectorView>(
+			running.origin,
+			`/api/nodes/${seeded.replyId}/director`,
+		);
+		expect(transparent.mode).toBe("transparent");
+		expect(transparent.decision?.directive).toBe("让脚步声逼近");
+		expect(transparent.decision?.signals).toEqual({
+			pacing: { phase: "setup" },
+		});
 	});
 
 	it("线索列表只含未兑现线索，兑现后消失且状态写入台账", async () => {

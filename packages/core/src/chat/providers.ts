@@ -566,7 +566,7 @@ function lastIndexWhere<T>(
 }
 
 export interface DirectorSlotProviderOptions {
-	/** 不设置时使用默认配置（开启、线索阈值 12 楼、上限 5 条）。 */
+	/** 不设置时使用默认配置（透明模式、线索阈值 12 楼、上限 5 条）。 */
 	readonly config?: DirectorConfig;
 	/** 默认使用内置机制；后续机制统一从这里注册。 */
 	readonly mechanisms?: readonly DirectorMechanism[];
@@ -590,7 +590,7 @@ export const DIRECTOR_SUFFIX_NOTE = "玩家行动优先，你可以按剧情需�
 
 /**
  * 评估全部导演机制，有建议时返回一段拼接到本轮最后一条玩家消息末尾的 suffix。
- * 评估结果写入该楼层的决策记录；导演关闭时既不产出 suffix 也不写记录。
+ * 评估结果写入该楼层的决策记录；mode 为 off 时既不产出 suffix 也不写记录。
  */
 export function createDirectorSlotProvider(
 	store: StoryStore,

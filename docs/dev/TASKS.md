@@ -501,12 +501,13 @@
   验收：组装结果里没有以 `【导演】` 开头的独立消息，最后一条 `user` 消息以指令与尾注结束；楼层原文与数据库中的玩家楼层不变；Trace 的来源、token 与 `appendedTo` 可读；导演关闭时没有 suffix；`protocol` 仍是最后一个模板段落；预算不足时 suffix 被裁剪并标记；没有玩家消息时记 `missing-slot`；`pnpm check` 通过。
   完成：2026-11-08 组装器支持 suffix 并在预算裁剪后拼接到最后一条 user 消息，导演槽位改为 suffix 注入，Trace 与 explain 记录 appendedTo
 
-- [ ] **R4-T05 透明与盲盒模式** | 依赖：R4-T04、M3-T02、M4-T03 | DESIGN §8.2 | ADR-0077
+- [x] **R4-T05 透明与盲盒模式** | 依赖：R4-T04、M3-T02、M4-T03 | DESIGN §8.2 | ADR-0077
   做什么：
   - `DirectorConfig.enabled` 改为 `mode`，取值 `off`、`transparent`、`blind`，`assertDirectorConfig` 校验；读取旧故事设置时把 `enabled: true` 映射为 `transparent`、`false` 映射为 `off` 并从对象里去掉 `enabled`，之后写回只保存 `mode`。
   - `off` 不评估、不写决策、不注入；`transparent` 与 `blind` 都评估、写决策、注入 suffix，差别只在面向玩家的展示：`GET /api/nodes/:id/director` 在 `blind` 下返回 `mode` 与机制触发状态，`decision.directive` 为 null 且不返回 `signals`；`transparent` 返回完整决策。`explain` 是排障工具，两种模式都显示全文。
   - CLI 的 `--director` 取值改为 `off|transparent|blind`；故事设置接口接受同一取值，非法值指出字段。
   验收：三种模式各有用例；`off` 没有决策记录与 suffix；`transparent` 与 `blind` 都注入且决策记录逐字段相同；`blind` 的接口响应不含指令与信号；`explain` 在 `blind` 下仍显示全文；旧配置读取后 `mode` 正确且再次保存不出现 `enabled`；非法取值抛错并指出字段；`pnpm check` 通过。
+  完成：2026-11-08 `DirectorConfig.enabled` 换成 `mode`（`off`、`transparent`、`blind`），旧配置读取时把 `enabled` 映射成 `mode` 并丢弃；`evaluateDirector` 在 `off` 下直接返回；`GET /api/nodes/:id/director` 增加 `mode`，盲盒下隐去指令与信号只留机制触发状态；CLI 与故事设置接口接受三种取值；新增 5 个测试
 
 - [ ] **R4-T06 落拍检测与拍推进** | 依赖：R4-T01、R4-T03、R1-T02.2 | DESIGN §8.3 | ADR-0077
   做什么：

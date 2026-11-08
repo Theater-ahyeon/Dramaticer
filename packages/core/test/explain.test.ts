@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	DEFAULT_DIRECTOR_CONFIG,
 	type ExplainReport,
 	type StoryStore,
 	type TurnTrace,
@@ -232,6 +233,26 @@ describe("explainNode", () => {
 		expect(text).toContain("拼接到最后一条 user 消息（appendedTo: last-user）");
 		expect(text).toContain("character.卫宫.mood");
 		expect(text).toContain("让卫宫说出一个具体理由");
+	});
+
+	it("盲盒模式下 explain 仍显示完整导演决策", () => {
+		const { store } = openTempStore();
+		seed(store);
+		store.updateStorySettings("s1", {
+			directorConfig: { ...DEFAULT_DIRECTOR_CONFIG, mode: "blind" },
+		});
+		store.saveDirectorDecision({
+			nodeId: "u1",
+			storyId: "s1",
+			directive: "让卫宫说出一个具体理由",
+			mechanisms: [{ name: "clue", triggered: true, reason: "线索过老" }],
+			signals: { openClues: 1 },
+		});
+
+		const report = explainNode(store, "a1");
+
+		expect(report.director?.decision.directive).toBe("让卫宫说出一个具体理由");
+		expect(renderExplainReport(report)).toContain("让卫宫说出一个具体理由");
 	});
 
 	it("没有 Trace 的楼层明确写没有记录，仍然读出台账与导演决策", () => {

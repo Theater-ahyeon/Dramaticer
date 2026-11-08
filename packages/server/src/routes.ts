@@ -6,6 +6,7 @@ import {
 	DEFAULT_CONTEXT_TEMPLATE_ID,
 	DEFAULT_MEMORY_EVENT_LIMIT,
 	DIRECTOR_CONFIG_KEYS,
+	type DirectorDecision,
 	type DirectorIntensity,
 	LEDGER_CHANGE_CARD_STATUSES,
 	MAX_MEMORY_EVENT_LIMIT,
@@ -33,6 +34,7 @@ import {
 import type {
 	CreateContextTemplateRequest,
 	CreateStoryRequest,
+	DirectorDecisionView,
 	FulfillClueResult,
 	ImportCharacterCard,
 	ImportStoryRequest,
@@ -635,11 +637,32 @@ function handleNodeDirector(
 	nodeId: string,
 ): void {
 	const node = requireNode(options.store, nodeId);
+	const mode = options.store.getStorySettings(node.storyId).directorConfig.mode;
+	const decision = options.store.getDirectorDecision(node.id);
 	const view: NodeDirectorView = {
-		nodeId,
-		decision: options.store.getDirectorDecision(node.id),
+		nodeId: node.id,
+		mode,
+		decision:
+			decision === null
+				? null
+				: mode === "blind"
+					? redactDirectorDecision(decision)
+					: decision,
 	};
 	sendJson(res, 200, view);
+}
+
+/** 盲盒模式下面向玩家只保留机制触发状态，隐去指令与信号。 */
+function redactDirectorDecision(
+	decision: DirectorDecision,
+): DirectorDecisionView {
+	return {
+		nodeId: decision.nodeId,
+		storyId: decision.storyId,
+		directive: null,
+		mechanisms: decision.mechanisms,
+		createdAt: decision.createdAt,
+	};
 }
 
 function handleStoryClues(

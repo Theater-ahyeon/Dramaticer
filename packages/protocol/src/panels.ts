@@ -1,7 +1,9 @@
 import type {
-	DirectorDecision,
+	DirectorMechanismRecord,
+	DirectorMode,
 	DirectorPlan,
 	Entity,
+	JsonObject,
 	JsonValue,
 	LedgerChangeCard,
 	LedgerClue,
@@ -70,10 +72,25 @@ export interface NodeCompressionsView {
 	readonly compressions: readonly Summary[];
 }
 
-/** `GET /api/nodes/:id/director`：该楼层的导演决策，没有评估过时为 null。 */
+/** 盲盒模式下隐去指令与信号之后的导演决策；透明模式就是完整决策。 */
+export interface DirectorDecisionView {
+	readonly nodeId: string;
+	readonly storyId: string;
+	readonly directive: string | null;
+	readonly mechanisms: readonly DirectorMechanismRecord[];
+	/** 盲盒模式不返回。 */
+	readonly signals?: JsonObject;
+	readonly createdAt: string;
+}
+
+/**
+ * `GET /api/nodes/:id/director`：该楼层的导演决策，没有评估过时为 null。
+ * `mode` 是故事当前的导演模式；盲盒只返回机制触发状态。
+ */
 export interface NodeDirectorView {
 	readonly nodeId: string;
-	readonly decision: DirectorDecision | null;
+	readonly mode: DirectorMode;
+	readonly decision: DirectorDecisionView | null;
 }
 
 /** `GET /api/stories/:id/clues`：当前 head 路径上尚未兑现的线索。 */

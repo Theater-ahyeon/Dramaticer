@@ -2,8 +2,20 @@ import type { JsonObject } from "../json.js";
 import type { StoryStore } from "../store/story-store.js";
 import type { DirectorIntensity } from "./intensity.js";
 
+/** 导演对玩家的可见程度；`off` 完全不评估、不注入。 */
+export const DIRECTOR_MODES = ["off", "transparent", "blind"] as const;
+
+export type DirectorMode = (typeof DIRECTOR_MODES)[number];
+
+export function isDirectorMode(value: unknown): value is DirectorMode {
+	return (
+		typeof value === "string" &&
+		(DIRECTOR_MODES as readonly string[]).includes(value)
+	);
+}
+
 export interface DirectorConfig {
-	readonly enabled: boolean;
+	readonly mode: DirectorMode;
 	/** 未兑现线索的最老年龄超过这个楼层数时建议回收。 */
 	readonly clueAgeWarning: number;
 	/** 当前分支上同时打开的线索达到这个数量时建议先回收最老的一条。 */
@@ -63,7 +75,7 @@ export interface DirectorConfig {
 }
 
 export const DEFAULT_DIRECTOR_CONFIG: DirectorConfig = {
-	enabled: true,
+	mode: "transparent",
 	clueAgeWarning: 12,
 	maxOpenClues: 5,
 	stallFloors: 3,

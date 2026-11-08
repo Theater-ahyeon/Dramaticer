@@ -813,12 +813,11 @@ function rowToStorySettings(row: StorySettingsRow): StorySettings {
 			`故事 ${row.story_id} 的 turn_mode 不合法：${row.turn_mode}`,
 		);
 	}
-	// 旧版本保存的配置没有后来新增的字段，读取时用默认值补齐。
-	const parsedDirectorConfig: DirectorConfig = {
-		...DEFAULT_DIRECTOR_CONFIG,
-		...(JSON.parse(row.director_config) as Partial<DirectorConfig>),
-	};
-	assertDirectorConfig(parsedDirectorConfig);
+	// 旧版本保存的配置没有后来新增的字段，读取时用默认值补齐；
+	// 更早的版本用 enabled 布尔值表示开关，读取时换成 mode 并丢掉 enabled。
+	const parsedDirectorConfig = readStoredDirectorConfig(
+		JSON.parse(row.director_config) as unknown,
+	);
 	const parsedHistoryBlockPolicy: unknown = JSON.parse(
 		row.history_block_policy,
 	);
@@ -865,6 +864,25 @@ function rowToContextTemplate(row: ContextTemplateRow): ContextTemplateRecord {
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 	};
+}
+
+function readStoredDirectorConfig(value: unknown): DirectorConfig {
+	if (typeof value !== "object" || value === null || Array.isArray(value)) {
+		throw new Error("故事设置的 director_config 必须是对象");
+	}
+	const { enabled, ...stored } = value as Record<string, unknown>;
+	if (stored.mode === undefined && enabled !== undefined) {
+		if (typeof enabled !== "boolean") {
+			throw new Error("旧导演配置的 enabled 必须是布尔值");
+		}
+		stored.mode = enabled ? "transparent" : "off";
+	}
+	const config: DirectorConfig = {
+		...DEFAULT_DIRECTOR_CONFIG,
+		...(stored as Partial<DirectorConfig>),
+	};
+	assertDirectorConfig(config);
+	return config;
 }
 
 function serializeDirectorConfig(config: DirectorConfig): string {

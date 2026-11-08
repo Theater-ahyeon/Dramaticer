@@ -85,7 +85,7 @@ describe("故事设置", () => {
 			turnMode: "deep",
 			maxReadRounds: 5,
 			viewpoint: "山神",
-			directorConfig: { ...DEFAULT_DIRECTOR_CONFIG, enabled: false },
+			directorConfig: { ...DEFAULT_DIRECTOR_CONFIG, mode: "off" },
 			historyBlockPolicy: {
 				mode: "full",
 				overrides: { 选项: { kind: "drop" } },
@@ -113,7 +113,7 @@ describe("故事设置", () => {
 				turnMode: "deep",
 				maxReadRounds: 5,
 				viewpoint: "山神",
-				directorConfig: { enabled: false },
+				directorConfig: { mode: "off" },
 				historyBlockPolicy: {
 					mode: "full",
 					overrides: { 选项: { kind: "drop" } },
@@ -169,6 +169,65 @@ describe("故事设置", () => {
 		}
 	});
 
+	it("旧导演配置的 enabled 读取时换成 mode，再次保存只写 mode", () => {
+		for (const [enabled, expected] of [
+			[false, "off"],
+			[true, "transparent"],
+		] as const) {
+			const { store, close, path } = openStory();
+			store.updateStorySettings("s1", {
+				directorConfig: { ...DEFAULT_DIRECTOR_CONFIG, mode: "transparent" },
+			});
+			close();
+
+			const db = new Database(path);
+			try {
+				const row = db
+					.prepare(
+						"SELECT director_config FROM story_settings WHERE story_id = 's1'",
+					)
+					.pluck()
+					.get() as string;
+				const legacy = Object.fromEntries(
+					Object.entries(JSON.parse(row) as Record<string, unknown>).filter(
+						([key]) => key !== "mode",
+					),
+				);
+				db.prepare(
+					"UPDATE story_settings SET director_config = ? WHERE story_id = 's1'",
+				).run(JSON.stringify({ ...legacy, enabled }));
+			} finally {
+				db.close();
+			}
+
+			const reopened = StoryStore.open(path);
+			try {
+				expect(reopened.getStorySettings("s1").directorConfig.mode).toBe(
+					expected,
+				);
+				reopened.updateStorySettings("s1", { temperature: 0.5 });
+			} finally {
+				reopened.close();
+			}
+
+			const verify = new Database(path);
+			try {
+				const saved = JSON.parse(
+					verify
+						.prepare(
+							"SELECT director_config FROM story_settings WHERE story_id = 's1'",
+						)
+						.pluck()
+						.get() as string,
+				) as Record<string, unknown>;
+				expect(saved.mode).toBe(expected);
+				expect(saved.enabled).toBeUndefined();
+			} finally {
+				verify.close();
+			}
+		}
+	});
+
 	it("非法枚举、数值范围、模板引用与字段名都抛错", () => {
 		const { store } = openStory();
 		const cases: readonly [StorySettingsUpdate, string][] = [
@@ -216,6 +275,15 @@ describe("故事设置", () => {
 					} as never,
 				},
 				"未知字段",
+			],
+			[
+				{
+					directorConfig: {
+						...DEFAULT_DIRECTOR_CONFIG,
+						mode: "maybe" as never,
+					},
+				},
+				"mode",
 			],
 			[{ historyBlockPolicy: { mode: "huge" } as never }, "historyBlockPolicy"],
 			[{ gapPassEnabled: "yes" as never }, "gapPassEnabled"],

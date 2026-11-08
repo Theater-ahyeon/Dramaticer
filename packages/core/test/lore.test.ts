@@ -429,7 +429,7 @@ describe("createDirectorSlotProvider", () => {
 		]);
 		const current = appendChain(store, 13, "u1");
 		const provider = createDirectorSlotProvider(store, {
-			config: { ...DEFAULT_DIRECTOR_CONFIG, enabled: false },
+			config: { ...DEFAULT_DIRECTOR_CONFIG, mode: "off" },
 		});
 		expect(
 			await provider.provide(request("s1", current, "director")),
@@ -465,7 +465,6 @@ describe("createDirectorSlotProvider", () => {
 		const provider = createDirectorSlotProvider(store, {
 			config: {
 				...DEFAULT_DIRECTOR_CONFIG,
-				enabled: true,
 				clueAgeWarning: 0,
 			},
 		});

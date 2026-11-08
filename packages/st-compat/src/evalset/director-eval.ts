@@ -339,7 +339,7 @@ async function runOneReplay(input: RunOneReplayOptions): Promise<MeasuredRun> {
 		store.setHead(input.storyId, input.branch.nodeId);
 		const config: DirectorConfig = {
 			...input.directorConfig,
-			enabled: input.mode === "on",
+			mode: input.mode === "on" ? "transparent" : "off",
 		};
 		const generator = createChatReplayGenerator({
 			card: input.card,
