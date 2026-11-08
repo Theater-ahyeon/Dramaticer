@@ -156,110 +156,122 @@ async function writeRawRoot(): Promise<string> {
 }
 
 describe("runEventsBackfill", () => {
-	it("按路径窗口批量抽取，每 8 个楼层一次请求", async () => {
-		const root = await writeRawRoot();
-		const client = fakeClient();
-		const progress: number[] = [];
-		const result = await runEventsBackfill({
-			rawRoot: root,
-			dbPath: path.join(root, "eval.db"),
-			client,
-			embedder: fakeEmbedder(),
-			onProgress: (entry) => progress.push(entry.requests),
-		});
+	it(
+		"按路径窗口批量抽取，每 8 个楼层一次请求",
+		{ timeout: 30_000 },
+		async () => {
+			const root = await writeRawRoot();
+			const client = fakeClient();
+			const progress: number[] = [];
+			const result = await runEventsBackfill({
+				rawRoot: root,
+				dbPath: path.join(root, "eval.db"),
+				client,
+				embedder: fakeEmbedder(),
+				onProgress: (entry) => progress.push(entry.requests),
+			});
 
-		expect(result.stories).toHaveLength(1);
-		const story = result.stories[0];
-		expect(story?.story).toBe(CHARACTER);
-		expect(story?.imported).toBe(true);
-		expect(story?.windowCount).toBe(3);
-		expect(story?.extractedFloors).toBe(ASSISTANT_FLOORS);
-		expect(story?.eventCount).toBe(ASSISTANT_FLOORS);
-		expect(story?.vectorCount).toBe(story?.chunkCount);
-		expect(result.requests).toBe(3);
-		expect(progress).toEqual([1, 2, 3]);
-		expect(client.windows.map((window) => window.length)).toEqual([8, 8, 8]);
+			expect(result.stories).toHaveLength(1);
+			const story = result.stories[0];
+			expect(story?.story).toBe(CHARACTER);
+			expect(story?.imported).toBe(true);
+			expect(story?.windowCount).toBe(3);
+			expect(story?.extractedFloors).toBe(ASSISTANT_FLOORS);
+			expect(story?.eventCount).toBe(ASSISTANT_FLOORS);
+			expect(story?.vectorCount).toBe(story?.chunkCount);
+			expect(result.requests).toBe(3);
+			expect(progress).toEqual([1, 2, 3]);
+			expect(client.windows.map((window) => window.length)).toEqual([8, 8, 8]);
 
-		const store = StoryStore.open(path.join(root, "eval.db"), {
-			embeddingDimensions: DIMENSIONS,
-		});
-		onTestFinished(() => store.close());
-		expect(store.listExtractedEventNodeIds(CHARACTER)).toHaveLength(
-			ASSISTANT_FLOORS,
-		);
-		const head = store.getHead(CHARACTER)?.id ?? "";
-		const events = store.getEventsForPath(head, { limit: 100 });
-		expect(events).toHaveLength(ASSISTANT_FLOORS);
-		expect(new Set(events.map((event) => event.sourceNodeId)).size).toBe(
-			ASSISTANT_FLOORS,
-		);
-		for (const event of events) {
-			const source = store.getNode(event.sourceNodeId);
-			expect(source?.role).toBe("assistant");
-			expect(source?.raw).toBe(event.text);
-		}
-	});
+			const store = StoryStore.open(path.join(root, "eval.db"), {
+				embeddingDimensions: DIMENSIONS,
+			});
+			onTestFinished(() => store.close());
+			expect(store.listExtractedEventNodeIds(CHARACTER)).toHaveLength(
+				ASSISTANT_FLOORS,
+			);
+			const head = store.getHead(CHARACTER)?.id ?? "";
+			const events = store.getEventsForPath(head, { limit: 100 });
+			expect(events).toHaveLength(ASSISTANT_FLOORS);
+			expect(new Set(events.map((event) => event.sourceNodeId)).size).toBe(
+				ASSISTANT_FLOORS,
+			);
+			for (const event of events) {
+				const source = store.getNode(event.sourceNodeId);
+				expect(source?.role).toBe("assistant");
+				expect(source?.raw).toBe(event.text);
+			}
+		},
+	);
 
-	it("续跑跳过已抽取的窗口，重复运行不新增事件", async () => {
-		const root = await writeRawRoot();
-		const dbPath = path.join(root, "eval.db");
-		const first = fakeClient();
-		const firstRun = await runEventsBackfill({
-			rawRoot: root,
-			dbPath,
-			client: first,
-			embedder: fakeEmbedder(),
-			maxWindows: 1,
-		});
-		expect(firstRun.windowCount).toBe(1);
-		expect(firstRun.stoppedEarly).toBe(true);
-		expect(first.calls).toBe(1);
+	it(
+		"续跑跳过已抽取的窗口，重复运行不新增事件",
+		{ timeout: 30_000 },
+		async () => {
+			const root = await writeRawRoot();
+			const dbPath = path.join(root, "eval.db");
+			const first = fakeClient();
+			const firstRun = await runEventsBackfill({
+				rawRoot: root,
+				dbPath,
+				client: first,
+				embedder: fakeEmbedder(),
+				maxWindows: 1,
+			});
+			expect(firstRun.windowCount).toBe(1);
+			expect(firstRun.stoppedEarly).toBe(true);
+			expect(first.calls).toBe(1);
 
-		const second = fakeClient();
-		const secondRun = await runEventsBackfill({
-			rawRoot: root,
-			dbPath,
-			client: second,
-			embedder: fakeEmbedder(),
-		});
-		expect(secondRun.stories[0]?.imported).toBe(false);
-		expect(secondRun.windowCount).toBe(2);
-		expect(secondRun.stoppedEarly).toBe(false);
-		expect(second.calls).toBe(2);
-		expect(secondRun.extractedFloors).toBe(ASSISTANT_FLOORS - 8);
-		const resumed = second.windows.flat();
-		expect(new Set(resumed).size).toBe(ASSISTANT_FLOORS - 8);
-		expect(resumed.some((id) => first.windows[0]?.includes(id))).toBe(false);
+			const second = fakeClient();
+			const secondRun = await runEventsBackfill({
+				rawRoot: root,
+				dbPath,
+				client: second,
+				embedder: fakeEmbedder(),
+			});
+			expect(secondRun.stories[0]?.imported).toBe(false);
+			expect(secondRun.windowCount).toBe(2);
+			expect(secondRun.stoppedEarly).toBe(false);
+			expect(second.calls).toBe(2);
+			expect(secondRun.extractedFloors).toBe(ASSISTANT_FLOORS - 8);
+			const resumed = second.windows.flat();
+			expect(new Set(resumed).size).toBe(ASSISTANT_FLOORS - 8);
+			expect(resumed.some((id) => first.windows[0]?.includes(id))).toBe(false);
 
-		const store = StoryStore.open(dbPath, { embeddingDimensions: DIMENSIONS });
-		onTestFinished(() => store.close());
-		const head = store.getHead(CHARACTER)?.id ?? "";
-		const eventsBefore = store
-			.getEventsForPath(head, { limit: 100 })
-			.map((event) => event.text);
+			const store = StoryStore.open(dbPath, {
+				embeddingDimensions: DIMENSIONS,
+			});
+			onTestFinished(() => store.close());
+			const head = store.getHead(CHARACTER)?.id ?? "";
+			const eventsBefore = store
+				.getEventsForPath(head, { limit: 100 })
+				.map((event) => event.text);
 
-		const third = fakeClient();
-		const thirdRun = await runEventsBackfill({
-			rawRoot: root,
-			dbPath,
-			client: third,
-			embedder: fakeEmbedder(),
-		});
-		expect(thirdRun.windowCount).toBe(0);
-		expect(thirdRun.eventCount).toBe(ASSISTANT_FLOORS);
-		expect(third.calls).toBe(0);
+			const third = fakeClient();
+			const thirdRun = await runEventsBackfill({
+				rawRoot: root,
+				dbPath,
+				client: third,
+				embedder: fakeEmbedder(),
+			});
+			expect(thirdRun.windowCount).toBe(0);
+			expect(thirdRun.eventCount).toBe(ASSISTANT_FLOORS);
+			expect(third.calls).toBe(0);
 
-		const after = StoryStore.open(dbPath, { embeddingDimensions: DIMENSIONS });
-		onTestFinished(() => after.close());
-		expect(
-			after.getEventsForPath(head, { limit: 100 }).map((event) => event.text),
-		).toEqual(eventsBefore);
-		expect(after.listExtractedEventNodeIds(CHARACTER)).toHaveLength(
-			ASSISTANT_FLOORS,
-		);
-	});
+			const after = StoryStore.open(dbPath, {
+				embeddingDimensions: DIMENSIONS,
+			});
+			onTestFinished(() => after.close());
+			expect(
+				after.getEventsForPath(head, { limit: 100 }).map((event) => event.text),
+			).toEqual(eventsBefore);
+			expect(after.listExtractedEventNodeIds(CHARACTER)).toHaveLength(
+				ASSISTANT_FLOORS,
+			);
+		},
+	);
 
-	it("未知故事直接失败", async () => {
+	it("未知故事直接失败", { timeout: 30_000 }, async () => {
 		const root = await writeRawRoot();
 		await expect(
 			runEventsBackfill({
@@ -274,64 +286,68 @@ describe("runEventsBackfill", () => {
 });
 
 describe("runEventsBackfillCli", () => {
-	it("把两个缓存目录交给客户端，并根据 --resume 决定是否重建数据库", async () => {
-		const root = await writeRawRoot();
-		const dbPath = path.join(root, "eval.db");
-		const eventCacheDirs: string[] = [];
-		const embeddingCacheDirs: string[] = [];
-		const clients: FakeClient[] = [];
-		const run = async (options: {
-			readonly resume: boolean;
-			readonly maxWindows?: number;
-		}) => {
-			const client = fakeClient();
-			clients.push(client);
-			return runEventsBackfillCli({
-				rawRoot: root,
-				dbPath,
-				eventsCacheDir: path.join(root, "events"),
-				embeddingsCacheDir: path.join(root, "embeddings"),
-				channelsPath: path.join(root, "channels.yaml"),
-				envPath: path.join(root, ".env"),
-				story: null,
-				maxWindows: options.maxWindows ?? null,
-				resume: options.resume,
-				log: () => undefined,
-				createEventClient: async (cacheDir) => {
-					eventCacheDirs.push(cacheDir);
-					return client;
-				},
-				createEmbedder: async (cacheDir) => {
-					embeddingCacheDirs.push(cacheDir);
-					return fakeEmbedder();
-				},
-			});
-		};
+	it(
+		"把两个缓存目录交给客户端，并根据 --resume 决定是否重建数据库",
+		{ timeout: 30_000 },
+		async () => {
+			const root = await writeRawRoot();
+			const dbPath = path.join(root, "eval.db");
+			const eventCacheDirs: string[] = [];
+			const embeddingCacheDirs: string[] = [];
+			const clients: FakeClient[] = [];
+			const run = async (options: {
+				readonly resume: boolean;
+				readonly maxWindows?: number;
+			}) => {
+				const client = fakeClient();
+				clients.push(client);
+				return runEventsBackfillCli({
+					rawRoot: root,
+					dbPath,
+					eventsCacheDir: path.join(root, "events"),
+					embeddingsCacheDir: path.join(root, "embeddings"),
+					channelsPath: path.join(root, "channels.yaml"),
+					envPath: path.join(root, ".env"),
+					story: null,
+					maxWindows: options.maxWindows ?? null,
+					resume: options.resume,
+					log: () => undefined,
+					createEventClient: async (cacheDir) => {
+						eventCacheDirs.push(cacheDir);
+						return client;
+					},
+					createEmbedder: async (cacheDir) => {
+						embeddingCacheDirs.push(cacheDir);
+						return fakeEmbedder();
+					},
+				});
+			};
 
-		const first = await run({ resume: false, maxWindows: 1 });
-		expect(first.windowCount).toBe(1);
-		expect(first.stories[0]?.imported).toBe(true);
+			const first = await run({ resume: false, maxWindows: 1 });
+			expect(first.windowCount).toBe(1);
+			expect(first.stories[0]?.imported).toBe(true);
 
-		const second = await run({ resume: true });
-		expect(second.stories[0]?.imported).toBe(false);
-		expect(second.windowCount).toBe(2);
-		expect(clients[1]?.calls).toBe(2);
+			const second = await run({ resume: true });
+			expect(second.stories[0]?.imported).toBe(false);
+			expect(second.windowCount).toBe(2);
+			expect(clients[1]?.calls).toBe(2);
 
-		const third = await run({ resume: false, maxWindows: 1 });
-		expect(third.stories[0]?.imported).toBe(true);
-		expect(clients[2]?.calls).toBe(1);
+			const third = await run({ resume: false, maxWindows: 1 });
+			expect(third.stories[0]?.imported).toBe(true);
+			expect(clients[2]?.calls).toBe(1);
 
-		const expectedEvents = path.join(root, "events");
-		const expectedEmbeddings = path.join(root, "embeddings");
-		expect(eventCacheDirs).toEqual([
-			expectedEvents,
-			expectedEvents,
-			expectedEvents,
-		]);
-		expect(embeddingCacheDirs).toEqual([
-			expectedEmbeddings,
-			expectedEmbeddings,
-			expectedEmbeddings,
-		]);
-	});
+			const expectedEvents = path.join(root, "events");
+			const expectedEmbeddings = path.join(root, "embeddings");
+			expect(eventCacheDirs).toEqual([
+				expectedEvents,
+				expectedEvents,
+				expectedEvents,
+			]);
+			expect(embeddingCacheDirs).toEqual([
+				expectedEmbeddings,
+				expectedEmbeddings,
+				expectedEmbeddings,
+			]);
+		},
+	);
 });

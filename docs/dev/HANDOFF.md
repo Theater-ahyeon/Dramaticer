@@ -3,18 +3,12 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：150
-- 任务：R5-T00 细化 R5 任务
-- 结果：完成（`DONE`），门禁通过（124 个测试文件、1115 个测试通过，3 个 live 跳过，共 1118 个）。
-  - 按 ADR-0044 排定 R5 执行顺序：第一段最小界面 R5-T02.a → R5-T05.a → R5-T02.b → R5-T02.c → R5-T04 → R5-T05 → R5-T07 → R5-T11；第二段其余面板 R5-T03、R5-T06、R5-T07.a、R5-T08、R5-T09、R5-T10；第三段 R5-T12 至 R5-T14 与 R5-T99。
-  - 新增五个子任务：
-    - `R5-T02.a` 回合参数：`TurnRequest` 补 `mode` 与 `intensity`，服务端把 `mode` 传给 `runChatTurn`，深回合在 R3b 前返回 400。
-    - `R5-T02.b` 路径分页：`GET /api/stories/:id/path` 增加 `limit` 与 `before`，`StoryPath` 增加 `hasMore`。
-    - `R5-T02.c` 开局任务入队与开场候选重新生成：创建与导入后调用 `BackgroundScheduler.schedule`，新增 `POST /api/stories/:id/openings/generate`，`createOpeningCandidatesHandler` 去掉“已有待选候选就不生成”的守卫。
-    - `R5-T05.a` 重新生成记录 `swipe` 偏好：`regenerateAssistantTurn` 在写入新楼层时与写入同一事务记录被放弃与被接受的节点。
-    - `R5-T07.a` 变更卡审批与回滚：server 新增 `POST /api/proposals/:id/approve|reject|rollback`，web 在台账面板操作，偏好由核心写入。
-  - R5-T05 补齐选项块的 `POST /api/nodes/:id/choice` 接线、候选行动与开场候选显示、`before` 分页、单轮与故事级模式开关；R5-T07 改为只读并写明使用 `GET /api/nodes/:id/ledger` 的 `{state, facts, diffs}`；R5-T08 按导演决策、候选行动、计划、线索、模式与 Trace 分开接口；R5-T09 覆盖全部 `STORY_SETTINGS_UPDATE_KEYS` 并把 `block_format` 改为模板段落；R5-T03 与 R5-T10 补 `roles`；R5-T11 补块显示策略载荷；R5-T12 至 R5-T14 补偏好与变更卡用例。
-  - 本轮只改文档与任务清单，未改代码。
+- 会话：151
+- 任务：修复门禁（提示词声明门禁失败，本会话不选任务）
+- 结果：完成，门禁通过（124 个测试文件、1115 个测试通过，3 个 live 跳过，共 1118 个）。
+  - 失败原因：`packages/st-compat/test/events-backfill.test.ts` 的「续跑跳过已抽取的窗口，重复运行不新增事件」在并行门禁里耗时 5,892ms，超过 vitest 默认 5,000ms 上限而超时；单独运行时 920ms 通过，属于并行负载下的耗时抖动，代码逻辑没有失败。
+  - 修复：给该文件四个测试（三轮批量抽取、续跑、未知故事、CLI 缓存目录与 `--resume`）各加 `{ timeout: 30_000 }` 的第二个参数，与 `gap-pass-compare.test.ts`、`pairwise.test.ts`、`historical-replay.test.ts` 的既有写法一致。门禁里该文件的关键用例耗时 1.7–2.7 秒。
+  - 未改任何逻辑、未改 `TASKS.md` 的任务状态。
 
 ## 当前状态
 - 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09.a、R2-T09.b、R2-T09.c、R2-T99、R5-T01、R5-T02、E-T01、R4-T00、R4-T01、R4-T02、R4-T03、R4-T04、R4-T05、R4-T06、R4-T07、R4-T08、R4-T99、R5-T00。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
@@ -95,6 +89,6 @@
 - 插件系统在 DESIGN §19 是唯一权威；C 线兼容插件任务依赖 P2。记忆增强任务（R1-T03.a、R1-T03.b、R1-T04.b、R1-T05、R1-T06、R1-T08）都依赖 R5-T99。
 - 不要修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 下的任何文件。不变量 I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账是唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖任何其他工作区包、ST 语义只在兼容插件里实现。
 - I10 的扫描会把测试文件里出现的 `privatePath` 字样当成私有数据路径；测试变量不要用这个名字。
-- 整轮门禁在 Windows 上并行跑 100 多个测试文件时，单个测试耗时可以比单独运行高十几倍。新建要跑数据库或文件系统的测试必须显式设置超时；`afterEach` 删除临时目录用 `rmSync` 时带上 `maxRetries` 与 `retryDelay`。
+- 整轮门禁在 Windows 上并行跑 100 多个测试文件时，单个测试耗时可以比单独运行高十几倍。跑数据库或文件系统的测试必须显式设置超时（写 `it("…", { timeout: 30_000 }, async () => …)`，第三个参数的超时写法在 vitest 4 会报废弃），`afterEach` 删除临时目录用 `rmSync` 时带上 `maxRetries` 与 `retryDelay`。
 - `packages/core/test/` 与 `packages/st-compat/test/` 下的 `.tmp-*` 目录会被测试创建；它们在 gitignore 里，不要提交。
 - `packages/st-compat` 与 `packages/server` 在测试里通过 `@dramaticer/core` 的 `dist` 解析 core；只跑这两个包的测试前先执行 `pnpm run typecheck`（`tsc -b` 重新构建），否则会读到旧代码。
