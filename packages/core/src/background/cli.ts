@@ -38,6 +38,7 @@ export interface WorkCliDependencies {
 	readonly loadEnv?: (filePath: string) => void;
 	readonly loadConfig?: (filePath: string) => Promise<LlmChannelsConfig>;
 	readonly createClient?: (config: LlmChannelsConfig) => LlmClient;
+	readonly createPlannerClient?: (config: LlmChannelsConfig) => LlmClient;
 	readonly createEmbedder?: (config: LlmChannelsConfig) => EmbeddingClient;
 	readonly registry?: BackgroundJobRegistry;
 	readonly now?: () => number;
@@ -71,6 +72,13 @@ export async function runWorkCli(
 				defaultModel: resolveModelForRole(config, "settler"),
 				cacheDir: null,
 			}));
+	const createPlannerClient =
+		dependencies.createPlannerClient ??
+		((config: LlmChannelsConfig) =>
+			createLlmClient(config, {
+				defaultModel: resolveModelForRole(config, "planner"),
+				cacheDir: null,
+			}));
 	const log = dependencies.log ?? console.log;
 
 	if (!existsSync(parsed.dbPath)) {
@@ -85,7 +93,11 @@ export async function runWorkCli(
 		? (dependencies.createEmbedder ?? createEmbeddingClient)(config)
 		: null;
 	const registry: BackgroundJobRegistry =
-		dependencies.registry ?? createDefaultBackgroundJobRegistry({ embedder });
+		dependencies.registry ??
+		createDefaultBackgroundJobRegistry({
+			embedder,
+			plannerClient: createPlannerClient(config),
+		});
 
 	const store = StoryStore.open(parsed.dbPath, {
 		embeddingDimensions:

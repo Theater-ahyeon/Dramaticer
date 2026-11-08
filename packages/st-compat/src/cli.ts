@@ -34,7 +34,7 @@ async function main(args: readonly string[]): Promise<void> {
 		return;
 	}
 	if (command === "director") {
-		runDirectorCli(args);
+		await runDirectorCli(args);
 		return;
 	}
 	if (command === "explain") {

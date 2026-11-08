@@ -32,7 +32,11 @@ function tempStore(): StoryStore {
 function runtimeSource(): BackgroundRuntimeSource {
 	return {
 		async get() {
-			return { backgroundClient: unusedClient, embedder: null };
+			return {
+				backgroundClient: unusedClient,
+				plannerClient: null,
+				embedder: null,
+			};
 		},
 	};
 }

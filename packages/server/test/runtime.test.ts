@@ -88,7 +88,7 @@ async function aliasesFor(config: LlmChannelsConfig): Promise<string[]> {
 }
 
 describe("StoryRuntimeManager 按角色创建客户端", () => {
-	it("正文用 writer、后台任务用 settler 配置的模型", async () => {
+	it("正文用 writer、后台任务用 settler、规划用 planner 配置的模型", async () => {
 		const aliases = await aliasesFor(
 			configWith(
 				[
@@ -105,17 +105,17 @@ describe("StoryRuntimeManager 按角色创建客户端", () => {
 				]),
 			),
 		);
-		expect(aliases).toEqual(["rp", "background"]);
+		expect(aliases).toEqual(["rp", "background", "judge"]);
 	});
 
-	it("没有配置角色时正文回落到 main、后台回落到 background", async () => {
+	it("没有配置角色时正文回落到 main、后台与规划回落到 background", async () => {
 		const aliases = await aliasesFor(
 			configWith([
 				model("main", "opendesign/deepseek-v4.1-flash"),
 				model("background", "agy-gemini-3.8-flash-medium"),
 			]),
 		);
-		expect(aliases).toEqual(["main", "background"]);
+		expect(aliases).toEqual(["main", "background", "background"]);
 	});
 
 	it("没有 background 也没有 settler 时后台客户端为空", async () => {

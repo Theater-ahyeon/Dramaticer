@@ -42,6 +42,7 @@ export interface StoryRuntime {
 	readonly providers: ContextSlotProviders;
 	readonly chatClient: LlmStreamingClient;
 	readonly backgroundClient: LlmStreamingClient | null;
+	readonly plannerClient: LlmStreamingClient | null;
 	readonly embedder: EmbeddingClient | null;
 }
 
@@ -103,6 +104,11 @@ export class StoryRuntimeManager {
 			(config.models.has(BACKGROUND_MODEL_ALIAS)
 				? BACKGROUND_MODEL_ALIAS
 				: null);
+		const plannerAlias =
+			config.roles.get("planner") ??
+			(config.models.has(BACKGROUND_MODEL_ALIAS)
+				? BACKGROUND_MODEL_ALIAS
+				: null);
 		const template = resolveTemplate(
 			this.#store,
 			settings.templateId,
@@ -130,6 +136,8 @@ export class StoryRuntimeManager {
 			chatClient: this.#createClient(config, modelAlias),
 			backgroundClient:
 				settlerAlias === null ? null : this.#createClient(config, settlerAlias),
+			plannerClient:
+				plannerAlias === null ? null : this.#createClient(config, plannerAlias),
 			embedder,
 		};
 	}

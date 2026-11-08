@@ -3,17 +3,18 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：141
-- 任务：R4-T01 导演计划存储与玩家编辑
-- 结果：完成（`DONE`），门禁通过（119 个测试文件、1053 个测试通过，3 个 live 跳过，共 1056 个）。
-  - 迁移 v32 新增 `story_arcs`、`story_sequences`、`story_beats` 与 `director_beat_states`；跨故事引用、行身份与 `player` 归属限制由触发器与 `source` 校验守住，弧线也带 `ordinal` 以保留读取顺序。
-  - 新增 `packages/core/src/director/plan.ts`：`DirectorPlan` 类型、`parseDirectorPlan`、`readDirectorPlan`、`replaceDirectorPlan`、`mergePlannedArcs`、`resolveCurrentBeat`；`StoryStore` 新增计划行读写、合并与拍状态读写（`listDirectorPlanEntries`、`replaceDirectorPlan`、`mergeDirectorPlan`、`getDirectorBeatState`、`saveDirectorBeatState`、`listDirectorBeatStatesAlongPath`）。
-  - CLI 新增 `dramaticer director plan --story <id> --db <path> [--json] [--set <file>]`；`--set` 用玩家身份整份替换，其余动作只读。server 新增 `GET/PUT /api/stories/:id/director/plan`，载荷是 `{ storyId, plan }`，`PUT` 请求体是 `{ plan }`。
-  - 新增 `packages/core/test/director-plan.test.ts`（14 个测试）与 server 面板测试里的计划接口用例（1 个）；真实 CLI 在临时库上跑过 `--set` 与 `--json` 冒烟。
+- 会话：142
+- 任务：R4-T02 后台规划器
+- 结果：完成（`DONE`），门禁通过（120 个测试文件、1065 个测试通过，3 个 live 跳过，共 1068 个）。
+  - 新增 `packages/core/src/director/planner.ts`：`DIRECTOR_PLAN_JOB_KIND`、`collectDirectorPlanInput`、`directorPlanNeedsRun`、`buildDirectorPlanUserContent`、`generateDirectorPlan`、`createDirectorPlanHandler`。输入汇总角色卡、台账人物与关系、未兑现线索、物品、用户意志、最近章节摘要与现有计划（含 `player` 行）；输出交给 `parseJsonOutputObject` 与 `parseDirectorPlan`，合法时 `mergePlannedArcs(..., "model")`。
+  - 入队条件 `story`、档位 `deferred`：计划为空或 head 上当前拍耗尽时补建；当前拍仍可解析时不补建；没有角色卡与台账素材时不补建也不调用模型。
+  - `createDefaultBackgroundJobRegistry` 新增 `plannerClient` 选项并注册 `director_plan`；`dramaticer work` 用 `roles.planner` 创建独立客户端；server 的 `StoryRuntime` 与 `BackgroundRuntime` 新增 `plannerClient`，由调度器传给注册表。
+  - CLI `dramaticer director plan --story <id> --db <path> [--json] [--set <file> | --generate]`；`--generate` 与后台任务共用 `generateDirectorPlan`，与 `--set` 互斥。`runDirectorCli` 改为异步，st-compat 的命令分发已 `await`。
+  - 新增 `packages/core/test/director-planner.test.ts`（12 个测试）；更新 `director-plan.test.ts` 的 CLI 用例、`work-cli.test.ts` 的假渠道配置、server 的 `runtime.test.ts` 与 `background.test.ts`。真实 CLI 在临时库上跑过列表命令。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09.a、R2-T09.b、R2-T09.c、R2-T99、R5-T01、R5-T02、E-T01、R4-T00、R4-T01。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- **下一个可做任务是 R4-T02 后台规划器**：依赖 R4-T01 与 R1-T02.2 均已满足。之后依次 R4-T03、R4-T04、R4-T05、R4-T06、R4-T07、R4-T08、R4-T99，然后 R5-T00。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09.a、R2-T09.b、R2-T09.c、R2-T99、R5-T01、R5-T02、E-T01、R4-T00、R4-T01、R4-T02。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- **下一个可做任务是 R4-T03 短线层**：依赖 R4-T01、R4-T02、M3-T01、M3-T06、M3-T07、O-T02 均已满足。之后依次 R4-T04、R4-T05、R4-T06、R4-T07、R4-T08、R4-T99，然后 R5-T00。
 - v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
 - R5-T00 仍被 R4-T99 阻塞；R5-T04 依赖 M4-T05、M4-T06、M4-T01，可以排在 R4 之后。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045。
@@ -27,13 +28,14 @@
 - 分支与面板接口已可用；`packages/web` 尚未创建。`GET /api/nodes/:id/ledger` 返回 `{state, facts, diffs}`，`facts` 来自 `readLedgerFacts`，`diffs` 只含该楼层自己的写入。
 - 偏好记录已闭环：记录写入（四种信号）→ `POST /api/nodes/:id/choice` → `preferences export` 产出回复对 → `pairwise` 盲测与评分 → `scoreboard` 汇总。私有库目前没有任何 `preference_events`。
 - 排障命令：`dramaticer explain --node <id> --db <path> [--json]`。只读、零模型调用；导演决策从助手楼层的父楼层读（`director_decisions` 写在生成时的消息楼层上）。记忆槽位的 `retrieval` 只在槽位真正注入内容时写进 Trace；没有命中时该槽位记为 `missing-slot`。
-- 导演计划接口已可用：`readDirectorPlan` 按 `ordinal` 还原弧线、序列、节拍；`--set` 与 `PUT /api/stories/:id/director/plan` 都整份替换并把所有行标为 `player`，`mergePlannedArcs` 只更新或追加 `model`/`import` 行，永不删除、不覆盖 `player` 行。`resolveCurrentBeat` 沿路径最近一条 `director_beat_states` 前进：完成则到下一拍（跨序列），未完成停在原地，无状态取第一拍，耗尽返回 null；记录指向已不存在的节拍时跳过该记录，仍无有效记录则回到第一拍。
+- 导演计划接口：`readDirectorPlan` 按 `ordinal` 还原弧线、序列、节拍；`--set` 与 `PUT /api/stories/:id/director/plan` 都整份替换并把所有行标为 `player`，`mergePlannedArcs` 只更新或追加 `model`/`import` 行，永不删除、不覆盖 `player` 行。`resolveCurrentBeat` 沿路径最近一条 `director_beat_states` 前进：完成则到下一拍（跨序列），未完成停在原地，无状态取第一拍，耗尽返回 null；记录指向已不存在的节拍时跳过该记录，仍无有效记录则回到第一拍。
+- 导演规划器（R4-T02）：`directorPlanNeedsRun` 需要角色卡或台账素材；计划为空时补建，head 上 `resolveCurrentBeat` 返回 null 时补建，head 为空或当前拍仍可解析时不补建。输入读取 `head` 处的 `listLedgerEntities`、`item` 与 `userWill` 子树及 `getValidSummaries` 的第一条（有章节摘要时取最近章节，否则最近主线）。`plannerClient` 在 `dramaticer work` 与 server 里用 `roles.planner` 建立，缺省回落到 `background`；注册表未收到 `plannerClient` 时使用任务上下文的后台客户端。`--generate` 与后台任务走同一个 `generateDirectorPlan`，写入的行来源都是 `model`。
 - 当前导演机制（R4-T01 之后、R4-T03 之前）：`DirectorConfig.enabled` 仍是布尔开关；机制优先级固定为重复正文 40、开场 35、线索过老 30、场景重复 25、线索过多 20、事件池 10、节奏 5；`createDirectorSlotProvider` 仍产生一条以 `【导演】` 开头的 system 消息；`GET /api/nodes/:id/director` 直接返回完整决策。
 - `extensions.dramaticer` 目前只有 `events` 与 `npcAgendas` 两个键；R4-T08 新增 `arcs` 时必须同步更新严格校验与 st-compat 的导入测试。
 
 ## 下一步
-- **R4-T02 后台规划器**：新增后台任务 `director_plan`（`director/planner.ts`，入队条件 `story`，档位 `deferred`），没有计划或当前拍耗尽时补建；使用 `roles.planner` 与独立客户端；输入卡提示词、台账人物关系、未兑现线索、物品、用户意志、最近摘要与现有计划；输出严格 JSON 交给 `parseDirectorPlan`，合法时走 `mergePlannedArcs(..., "model")`；CLI `dramaticer director plan --story <id> --db <path> --generate` 与后台任务共用处理器。依赖与验收见 TASKS。
-- R4-T02 之后依次 R4-T03（短线层）、R4-T04（注入口）、R4-T05（模式）、R4-T06（落拍）、R4-T07（候选行动，v33）、R4-T08（卡扩展）、R4-T99，然后 R5-T00。
+- **R4-T03 短线层**：把 `director/opening.ts` 的强度渲染提取到 `director/intensity.ts` 并把 `OpeningIntensity` 改名为 `DirectorIntensity`；`DirectorConfig` 增加 `intensity`（默认 `natural`），单轮参数 `directorIntensity` 优先；新增 `director/beat.ts` 的 `createBeatMechanism`（优先级 23，注册在开场之后），用 `resolveCurrentBeat` 拼出当前拍指令；`signals.beat` 写弧线、序列、节拍 id、强度、难度、契合点与楼层深度；`dramaticer chat --intensity` 与回合请求体 `intensity` 走同一处解析。依赖与验收见 TASKS。
+- R4-T03 之后依次 R4-T04（注入口）、R4-T05（模式）、R4-T06（落拍）、R4-T07（候选行动，v33）、R4-T08（卡扩展）、R4-T99，然后 R5-T00。
 - 引用评测数字时：B1 必须同时说明同模型子集为空、每个对话每档只有 1 个样本；遗忘矛盾率必须同时说明失败题数与可判定样本数；偏好一致率当前没有样本。
 
 ## 注意事项
@@ -63,11 +65,11 @@
 - 原生块类型是 12 个（`thinking`、`选项`、`状态栏`、`变量更新`、`分析`、`图片`、`页眉`、`悄悄话`、`旁白`、`备忘`、`state_update`、`plot_note`）；`thinking`、`变量更新`、`state_update`、`plot_note` 的上下文策略是删除。
 - 历史槽位默认策略：更早楼层省略五个显示类块，最近 1 楼不套用这层省略；`full` 是改动前行为。设置项 `historyBlockPolicy` 存在 `story_settings.history_block_policy`。
 - 结算窗口以 head 为终点（ADR-0046），取**最旧的** N 个未结算助手楼层；冲突检查窗口取 head 路径最后 `conflictWindowFloors` 楼。现场分析以被分析的楼层为锚点。`scene` 任务显式传 200 token 上限。
-- 后台任务分两档：`gap` 每次间隙执行，`deferred`（`events`、`summary`、`npc_agenda`）只在会话结束或间隙达到 `gapPlanSeconds` 时执行。`gap_pass` 默认关闭；`dramaticer work` 与 server 调度都不为关闭的故事补建。
+- 后台任务分两档：`gap` 每次间隙执行，`deferred`（`events`、`summary`、`npc_agenda`、`director_plan`）只在会话结束或间隙达到 `gapPlanSeconds` 时执行。`gap_pass` 默认关闭；`dramaticer work` 与 server 调度都不为关闭的故事补建。
 - 后台任务连续失败 3 次才放弃；`user_will` 的 `sourceQuote` 必须逐字出现在玩家楼层里。后台任务需要等待其它任务时抛 `BackgroundJobDeferredError`；取消本轮时 `drain` 用 `options.signal`。
 - 模型响应的磁盘缓存键包含 `max_tokens` **只在请求显式带 maxTokens 时**；改渠道配置的 `maxTokens` 后必须换一个 `--cache` 目录。后台 `background` 模型的输出上限是 32,768。
-- 后台路由现状（2026-11-08）：`main-fallback`（`auto/deepseek-v4.1-flash`）可用；`opendesign/deepseek-v4.1-flash` 曾返回 membership entitlement 错误；`catie` 的 `rp` 返回 503（HUMAN-13）。`data/channels.yaml` 现在是 `writer: rp`、`judge: judge`（`auto/glm-5.3`）。
-- 渠道角色（`writer`、`settler`、`planner`、`judge`）与消息角色不同；`createLlmClient` 校验 judge 与 writer 的模型家族不同。
+- 后台路由现状（2026-11-08）：`main-fallback`（`auto/deepseek-v4.1-flash`）可用；`opendesign/deepseek-v4.1-flash` 曾返回 membership entitlement 错误；`catie` 的 `rp` 返回 503（HUMAN-13）。`data/channels.yaml` 现在是 `writer: rp`、`judge: judge`（`auto/glm-5.3`）；`roles.planner` 未配置，回落到 `background`。
+- 渠道角色（`writer`、`settler`、`planner`、`judge`）与消息角色不同；`createLlmClient` 校验 judge 与 writer 的模型家族不同。server 运行时为 writer、settler、planner 各建一个客户端；`dramaticer work` 建 settler 与 planner 两个客户端。
 - 工具传输：`resolveToolTransport` 在未显式配置时按 `probe.functionCalling` 决定；文本协议是 `core/src/chat/tool-protocol.ts`，工具说明只插进发给模型的消息副本。
 - 写作契约：`WRITING_CONTRACT` 是四条原则；`protocol` 是固定 id 的静态段，`assertContextTemplate` 要求它是最后一个片段。
 - 快照：`eval-private/raw/` 有 94 个文件；`eval-private/reference/` 有 5 部参照小说。私有数据只写 `eval-private/`，报告不用原文。

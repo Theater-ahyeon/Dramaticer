@@ -1,3 +1,8 @@
+import {
+	DIRECTOR_PLAN_JOB_KIND,
+	createDirectorPlanHandler,
+	directorPlanNeedsRun,
+} from "../director/planner.js";
 import { GAP_PASS_JOB_KIND, createGapPassHandler } from "../ledger/gap-pass.js";
 import {
 	MEMORY_REVISION_JOB_KIND,
@@ -9,6 +14,7 @@ import {
 	createUserWillHandler,
 } from "../ledger/user-will.js";
 import type { EmbeddingClient } from "../llm/embeddings.js";
+import type { LlmClient } from "../llm/types.js";
 import {
 	EMBEDDINGS_JOB_KIND,
 	createEmbeddingsHandler,
@@ -36,6 +42,8 @@ import type { BackgroundJobRegistry } from "./types.js";
 export interface DefaultBackgroundRegistryOptions {
 	/** 没有 embedding 客户端时不注册向量任务。 */
 	readonly embedder?: EmbeddingClient | null;
+	/** 规划器专用客户端；不设置时规划任务使用任务上下文里的后台客户端。 */
+	readonly plannerClient?: LlmClient | null;
 }
 
 /** 生产环境与自动试玩共用的任务注册表。 */
@@ -43,6 +51,7 @@ export function createDefaultBackgroundJobRegistry(
 	options: DefaultBackgroundRegistryOptions = {},
 ): BackgroundJobRegistry {
 	const embedder = options.embedder ?? null;
+	const plannerClient = options.plannerClient ?? null;
 	return createBackgroundJobRegistry({
 		events: { handler: createEventExtractionHandler(), tier: "deferred" },
 		summary: { handler: createSummaryHandler(), tier: "deferred" },
@@ -79,6 +88,14 @@ export function createDefaultBackgroundJobRegistry(
 			handler: createOpeningCandidatesHandler(),
 			enqueue: "story",
 			needsRun: openingCandidatesNeedRun,
+		},
+		[DIRECTOR_PLAN_JOB_KIND]: {
+			handler: createDirectorPlanHandler({
+				...(plannerClient === null ? {} : { client: plannerClient }),
+			}),
+			enqueue: "story",
+			tier: "deferred",
+			needsRun: directorPlanNeedsRun,
 		},
 		...(embedder === null
 			? {}

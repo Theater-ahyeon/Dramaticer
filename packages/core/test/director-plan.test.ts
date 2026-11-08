@@ -560,14 +560,14 @@ describe("resolveCurrentBeat", () => {
 });
 
 describe("runDirectorCli", () => {
-	it("--set 用玩家身份整份替换，--json 输出计划", () => {
+	it("--set 用玩家身份整份替换，--json 输出计划", async () => {
 		const { store, path } = openTempStore();
 		seedStory(store);
 		const dir = dirname(path);
 		const setPath = join(dir, "plan.json");
 		writeFileSync(setPath, JSON.stringify(VALID_PLAN), "utf8");
 		const lines: string[] = [];
-		const result = runDirectorCli(
+		const result = await runDirectorCli(
 			[
 				"director",
 				"plan",
@@ -590,13 +590,13 @@ describe("runDirectorCli", () => {
 		).toBe(true);
 	});
 
-	it("列表只读，缺参数与不认识的参数都报错", () => {
+	it("列表只读，缺参数与不认识的参数都报错", async () => {
 		const { store, path } = openTempStore();
 		seedStory(store);
 		replaceDirectorPlan(store, "s1", VALID_PLAN);
 		const before = store.listDirectorPlanEntries("s1");
 		const lines: string[] = [];
-		const result = runDirectorCli(
+		const result = await runDirectorCli(
 			["director", "plan", "--story", "s1", "--db", path],
 			{ log: (message) => lines.push(message) },
 		);
@@ -605,20 +605,20 @@ describe("runDirectorCli", () => {
 		expect(lines.join("\n")).toContain("beat-3：逼出真相");
 		expect(store.listDirectorPlanEntries("s1")).toEqual(before);
 
-		expect(() =>
+		await expect(
 			runDirectorCli(["director", "plan", "--db", path], { log: () => {} }),
-		).toThrow("--story");
-		expect(() =>
+		).rejects.toThrow("--story");
+		await expect(
 			runDirectorCli(
 				["director", "plan", "--story", "s1", "--db", path, "--yaml"],
 				{
 					log: () => {},
 				},
 			),
-		).toThrow("不认识的参数 --yaml");
+		).rejects.toThrow("不认识的参数 --yaml");
 	});
 
-	it("计划文件不合法时指出路径", () => {
+	it("计划文件不合法时指出路径", async () => {
 		const { store, path } = openTempStore();
 		seedStory(store);
 		const dir = mkdtempSync(join(import.meta.dirname, ".tmp-plan-cli-"));
@@ -627,11 +627,11 @@ describe("runDirectorCli", () => {
 		});
 		const setPath = join(dir, "bad.json");
 		writeFileSync(setPath, JSON.stringify({ arcs: [{ id: "a" }] }), "utf8");
-		expect(() =>
+		await expect(
 			runDirectorCli(
 				["director", "plan", "--story", "s1", "--db", path, "--set", setPath],
 				{ log: () => {} },
 			),
-		).toThrow("plan.arcs[0].title");
+		).rejects.toThrow("plan.arcs[0].title");
 	});
 });

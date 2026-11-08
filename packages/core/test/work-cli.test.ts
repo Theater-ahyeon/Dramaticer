@@ -35,7 +35,7 @@ function createConfig(
 	});
 	const model = (alias: string) => ({
 		alias,
-		id: "fake-model",
+		id: `fake-model-${alias}`,
 		channels: [alias],
 		contextWindow: 8_192,
 		maxTokens: 1_024,
@@ -46,7 +46,7 @@ function createConfig(
 	const channels = new Map([["main", channel("main")]]);
 	const models = new Map([["main", model("main")]]);
 	if (withBackground) {
-		channels.set("bg", channel("bg"));
+		channels.set("background", channel("background"));
 		models.set("background", model("background"));
 	}
 	const embeddings = new Map([

@@ -475,7 +475,8 @@
   - `StoryStore` 提供计划的读写方法与拍状态读写；CLI 新增 `dramaticer director plan --story <id> --db <path> [--json] [--set <file>]`（`--set` 用玩家身份整份替换）；server 新增 `GET /api/stories/:id/director/plan` 与 `PUT`（同一套校验与替换语义）。
   验收：合法计划写入后能按原顺序读回；未知字段、重复 id、空字符串、越界难度与空契合点各抛错并指出路径；`--set` 写入的行来源为 `player`；`mergePlannedArcs` 不删除行、不改 `player` 行、同 id 更新；当前拍在无状态时取第一拍，完成后前进，计划耗尽返回 null，另一分支的状态不参与；列表命令只读；`pnpm check` 通过。
 
-- [ ] **R4-T02 后台规划器** | 依赖：R4-T01、R1-T02.2 | DESIGN §8.1 | ADR-0077
+- [x] **R4-T02 后台规划器** | 依赖：R4-T01、R1-T02.2 | DESIGN §8.1 | ADR-0077
+  完成：2026-11-08 新增 `director/planner.ts`（`DIRECTOR_PLAN_JOB_KIND`、`collectDirectorPlanInput`、`directorPlanNeedsRun`、`buildDirectorPlanUserContent`、`generateDirectorPlan`、`createDirectorPlanHandler`）：输入汇总角色卡、台账人物与关系、未兑现线索、物品、用户意志、最近章节摘要与现有计划（含 `player` 行）；模型输出交给 `parseJsonOutputObject` 与 `parseDirectorPlan` 严格校验后走 `mergePlannedArcs(..., "model")`；无素材时返回 null，不调用模型；计划为空或 head 上当前拍耗尽时补建任务，当前拍仍可解析时不补建。`createDefaultBackgroundJobRegistry` 注册 `director_plan`（入队条件 `story`、档位 `deferred`），新增 `plannerClient` 选项；`dramaticer work` 用 `roles.planner` 创建独立客户端，server 运行时新增 `plannerClient` 并传入调度器。CLI 改为异步，新增 `dramaticer director plan --story <id> --db <path> --generate`，与后台任务共用 `generateDirectorPlan`。新增 `director-planner.test.ts`（12 个测试）；门禁通过（120 个测试文件、1065 个测试通过，3 个 live 跳过，共 1068 个）
   做什么：
   - 新增后台任务 `director_plan`（`director/planner.ts`，入队条件 `story`，档位 `deferred`）：没有计划，或当前拍已耗尽时补建；使用 `roles.planner` 角色与独立客户端，回合内不调用模型。
   - 输入：角色卡提示词、台账里的人物关系、未兑现线索、物品与用户意志、最近章节摘要（存在时）、现有计划（含玩家编辑的行）。模型严格输出 `{arcs:[{id,title,throughLine,difficulty,redLines,sequences:[{id,title,beats:[{id,goal,entrySigns,fitPoints}]}]}]}`，字段、类型、非空、难度范围与 id 唯一性全部复用 `parseDirectorPlan`。

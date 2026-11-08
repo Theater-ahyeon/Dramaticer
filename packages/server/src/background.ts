@@ -11,6 +11,7 @@ import {
 /** 调度只用运行时里的后台客户端与 embedding 客户端；测试可以给别的实现。 */
 export interface BackgroundRuntime {
 	readonly backgroundClient: LlmClient | null;
+	readonly plannerClient: LlmClient | null;
 	readonly embedder: EmbeddingClient | null;
 }
 
@@ -53,7 +54,10 @@ export class BackgroundScheduler {
 		this.#createRegistry =
 			options.createRegistry ??
 			((runtime) =>
-				createDefaultBackgroundJobRegistry({ embedder: runtime.embedder }));
+				createDefaultBackgroundJobRegistry({
+					embedder: runtime.embedder,
+					plannerClient: runtime.plannerClient,
+				}));
 		this.#log = options.log;
 		this.#limit = options.limit;
 		this.#now = options.now;

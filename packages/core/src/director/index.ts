@@ -6,6 +6,7 @@ export * from "./event-pool.js";
 export * from "./opening.js";
 export * from "./pacing.js";
 export * from "./plan.js";
+export * from "./planner.js";
 export * from "./pool.js";
 export * from "./repetition.js";
 export * from "./types.js";
