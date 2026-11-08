@@ -518,7 +518,8 @@
   - `explain` 增加当前拍与完成记录（节拍 id、完成楼层、是否已前进），仍然只读。
   验收：模型输出完成的楼层写入拍状态并在下一轮解析出下一拍；缺省字段不推进；非法类型整楼层拒绝并记录原因；结算请求次数与改动前相同；没有计划时不写状态也不提该字段；另一分支的完成记录不参与；`explain` 能读回拍 id 与完成楼层；`pnpm check` 通过。
 
-- [ ] **R4-T07 候选行动** | 依赖：R4-T01、R4-T02、R5-T01、R1-T02.2 | DESIGN §8.3 | ADR-0077
+- [x] **R4-T07 候选行动** | 依赖：R4-T01、R4-T02、R5-T01、R1-T02.2 | DESIGN §8.3 | ADR-0077
+  完成：2026-11-08 迁移 v33 新增 `director_candidate_actions`（按 `ordinal` 排序、同楼层唯一，跨故事写入由触发器拒绝）；新增 `director/candidates.ts`（`CANDIDATE_ACTIONS_JOB_KIND`、`parseCandidateActionsResponse`、`collectCandidateActionsInput`、`buildCandidateActionsUserContent`、`generateCandidateActions`、`createCandidateActionsHandler`）：输入取当前拍与强度、最近 3 楼原文、未兑现线索与人物关系，输出必须正好 4 条行动加 1 条场景变化且五条互不重复，未知字段、数量不符、空字符串与重复正文整批拒绝；`StoryStore.replaceDirectorCandidateActions` 在同一事务里替换该楼层旧候选，`listDirectorCandidateActions` 按楼层读取；默认注册表注册 `candidate_actions`（档位 `gap`、入队条件 `settled`、使用 `plannerClient`）；CLI `dramaticer actions --node <id> --db <path> [--json]`；server `GET /api/nodes/:id/actions`（`NodeActionsView`）；新增 11 个 core 测试与 1 个 server 测试，覆盖上下文隔离与回合内单次调用；门禁通过（123 个测试文件、1104 个测试通过，3 个 live 跳过，共 1107 个）
   做什么：
   - 迁移 v33 新增 `director_candidate_actions(id, story_id, node_id, ordinal, kind, text, created_at)`，`kind` 取 `action`、`scene_change`。
   - 后台任务 `candidate_actions`（档位 `gap`，入队条件 `settled`）：一次调用产出 4 条行动与 1 条场景变化；严格 JSON `{actions:[...],"sceneChange":"..."}`，必须正好 4 条且与场景变化互不重复、全部非空，未知字段与数量不符整批拒绝并重试。输入为当前拍与强度、最近 3 楼原文、未兑现线索与人物关系；使用 `roles.planner`。

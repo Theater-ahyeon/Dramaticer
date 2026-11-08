@@ -944,6 +944,30 @@ export function buildMigrations(
 				END`,
 			],
 		},
+		{
+			version: 33,
+			description: "导演候选行动：每个楼层 4 条行动与 1 条场景变化",
+			statements: [
+				`CREATE TABLE director_candidate_actions (
+					id TEXT PRIMARY KEY,
+					story_id TEXT NOT NULL REFERENCES stories(id),
+					node_id TEXT NOT NULL REFERENCES nodes(id),
+					ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+					kind TEXT NOT NULL CHECK (kind IN ('action', 'scene_change')),
+					text TEXT NOT NULL CHECK (length(text) > 0),
+					created_at TEXT NOT NULL,
+					UNIQUE (node_id, ordinal)
+				) STRICT`,
+				`CREATE INDEX director_candidate_actions_story_idx
+				ON director_candidate_actions(story_id)`,
+				`CREATE TRIGGER director_candidate_actions_story_matches_node
+				BEFORE INSERT ON director_candidate_actions
+				WHEN COALESCE((SELECT story_id FROM nodes WHERE id = NEW.node_id), '') <> NEW.story_id
+				BEGIN
+					SELECT RAISE(ABORT, '候选行动的 story_id 必须与所在楼层一致');
+				END`,
+			],
+		},
 	];
 }
 

@@ -1,4 +1,5 @@
 import {
+	runActionsCli,
 	runDirectorCli,
 	runExplainCli,
 	runLedgerCli,
@@ -9,7 +10,7 @@ import {
 import { runChatCli } from "./chat/cli.js";
 
 const USAGE =
-	"用法：dramaticer <probe|chat|work|ledger|open|director|explain> ...";
+	"用法：dramaticer <probe|chat|work|ledger|open|director|actions|explain> ...";
 
 async function main(args: readonly string[]): Promise<void> {
 	const command = args[0];
@@ -35,6 +36,10 @@ async function main(args: readonly string[]): Promise<void> {
 	}
 	if (command === "director") {
 		await runDirectorCli(args);
+		return;
+	}
+	if (command === "actions") {
+		runActionsCli(args);
 		return;
 	}
 	if (command === "explain") {

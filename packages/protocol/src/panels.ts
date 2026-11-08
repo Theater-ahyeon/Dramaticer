@@ -1,4 +1,5 @@
 import type {
+	DirectorCandidateAction,
 	DirectorMechanismRecord,
 	DirectorMode,
 	DirectorPlan,
@@ -91,6 +92,15 @@ export interface NodeDirectorView {
 	readonly nodeId: string;
 	readonly mode: DirectorMode;
 	readonly decision: DirectorDecisionView | null;
+}
+
+/**
+ * `GET /api/nodes/:id/actions`：该楼层在间隙里准备好的候选行动。
+ * 4 条行动在前、1 条场景变化在后；候选只供读取，不自动发送。
+ */
+export interface NodeActionsView {
+	readonly nodeId: string;
+	readonly actions: readonly DirectorCandidateAction[];
 }
 
 /** `GET /api/stories/:id/clues`：当前 head 路径上尚未兑现的线索。 */

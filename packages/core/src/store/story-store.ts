@@ -19,6 +19,11 @@ import {
 	type ContextTemplate,
 	DEFAULT_CONTEXT_TEMPLATE_ID,
 } from "../context/template.js";
+import {
+	type DirectorCandidateAction,
+	type ReplaceDirectorCandidateActionsOptions,
+	isDirectorCandidateKind,
+} from "../director/candidates.js";
 import { assertDirectorConfig } from "../director/evaluate.js";
 import {
 	type DirectorBeatState,
@@ -497,6 +502,16 @@ interface DirectorBeatStateRow {
 	readonly story_id: string;
 	readonly beat_id: string;
 	readonly completed: number;
+	readonly created_at: string;
+}
+
+interface DirectorCandidateActionRow {
+	readonly id: string;
+	readonly story_id: string;
+	readonly node_id: string;
+	readonly ordinal: number;
+	readonly kind: string;
+	readonly text: string;
 	readonly created_at: string;
 }
 
@@ -1333,6 +1348,23 @@ function rowToDirectorBeatState(row: DirectorBeatStateRow): DirectorBeatState {
 		storyId: row.story_id,
 		beatId: row.beat_id,
 		completed: row.completed === 1,
+		createdAt: row.created_at,
+	};
+}
+
+function rowToDirectorCandidateAction(
+	row: DirectorCandidateActionRow,
+): DirectorCandidateAction {
+	if (!isDirectorCandidateKind(row.kind)) {
+		throw new Error(`候选行动 ${row.id} 的 kind 不合法：${row.kind}`);
+	}
+	return {
+		id: row.id,
+		storyId: row.story_id,
+		nodeId: row.node_id,
+		ordinal: row.ordinal,
+		kind: row.kind,
+		text: row.text,
 		createdAt: row.created_at,
 	};
 }
@@ -4064,6 +4096,75 @@ export class StoryStore {
 			)
 			.all(nodeId) as DirectorBeatStateRow[];
 		return rows.map(rowToDirectorBeatState);
+	}
+
+	/**
+	 * 整批替换某个楼层的候选行动：同一事务里删除旧行再按给定顺序写入，
+	 * 重复执行不新增行。
+	 */
+	replaceDirectorCandidateActions(
+		input: ReplaceDirectorCandidateActionsOptions,
+	): DirectorCandidateAction[] {
+		assertNonEmptyString(input.storyId, "候选行动的故事 id");
+		assertNonEmptyString(input.nodeId, "候选行动的楼层 id");
+		const node = this.getNode(input.nodeId);
+		if (node === null) {
+			throw new Error(`楼层节点不存在：${input.nodeId}`);
+		}
+		if (node.storyId !== input.storyId) {
+			throw new Error(
+				`候选行动的 storyId 与楼层所属故事不一致：${input.storyId}`,
+			);
+		}
+		if (!Array.isArray(input.actions) || input.actions.length === 0) {
+			throw new Error("候选行动至少需要一条");
+		}
+		for (const action of input.actions) {
+			if (!isDirectorCandidateKind(action.kind)) {
+				throw new Error(`候选行动的 kind 不合法：${String(action.kind)}`);
+			}
+			if (typeof action.text !== "string" || action.text.trim().length === 0) {
+				throw new Error("候选行动的正文必须是非空字符串");
+			}
+		}
+		const createdAt = input.createdAt ?? new Date().toISOString();
+		assertNonEmptyString(createdAt, "候选行动的创建时间");
+		const insert = this.#db.prepare(
+			`INSERT INTO director_candidate_actions
+				(id, story_id, node_id, ordinal, kind, text, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		);
+		return this.#db.transaction((): DirectorCandidateAction[] => {
+			this.#db
+				.prepare("DELETE FROM director_candidate_actions WHERE node_id = ?")
+				.run(input.nodeId);
+			input.actions.forEach((action, ordinal) => {
+				insert.run(
+					randomUUID(),
+					input.storyId,
+					input.nodeId,
+					ordinal,
+					action.kind,
+					action.text.trim(),
+					createdAt,
+				);
+			});
+			return this.listDirectorCandidateActions(input.nodeId);
+		})();
+	}
+
+	/** 按 `ordinal` 读出某个楼层的候选行动；没有时返回空数组。 */
+	listDirectorCandidateActions(nodeId: string): DirectorCandidateAction[] {
+		assertNonEmptyString(nodeId, "楼层节点 id");
+		if (!this.getNode(nodeId)) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
+		const rows = this.#db
+			.prepare(
+				"SELECT * FROM director_candidate_actions WHERE node_id = ? ORDER BY ordinal ASC",
+			)
+			.all(nodeId) as DirectorCandidateActionRow[];
+		return rows.map(rowToDirectorCandidateAction);
 	}
 
 	/** 写入某个楼层的导演决策；同一楼层重复评估时覆盖旧记录。 */

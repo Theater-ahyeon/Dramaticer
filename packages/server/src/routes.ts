@@ -40,6 +40,7 @@ import type {
 	ImportStoryRequest,
 	ImportStoryResult,
 	NodeActionResult,
+	NodeActionsView,
 	NodeChoiceResult,
 	NodeCompressionsView,
 	NodeDirectorView,
@@ -216,6 +217,10 @@ export async function handleApiRequest(
 			case "director":
 				requireMethod(method, ["GET"]);
 				handleNodeDirector(res, options, nodeId);
+				return;
+			case "actions":
+				requireMethod(method, ["GET"]);
+				handleNodeActions(res, options, nodeId);
 				return;
 			default:
 				break;
@@ -648,6 +653,20 @@ function handleNodeDirector(
 				: mode === "blind"
 					? redactDirectorDecision(decision)
 					: decision,
+	};
+	sendJson(res, 200, view);
+}
+
+/** 该楼层在间隙里生成的候选行动；没有时返回空数组。 */
+function handleNodeActions(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	nodeId: string,
+): void {
+	const node = requireNode(options.store, nodeId);
+	const view: NodeActionsView = {
+		nodeId: node.id,
+		actions: options.store.listDirectorCandidateActions(node.id),
 	};
 	sendJson(res, 200, view);
 }

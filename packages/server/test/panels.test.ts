@@ -4,6 +4,7 @@ import { DEFAULT_DIRECTOR_CONFIG } from "@dramaticer/core";
 import type {
 	ApiErrorResponse,
 	FulfillClueResult,
+	NodeActionsView,
 	NodeCompressionsView,
 	NodeDirectorView,
 	NodeEventsView,
@@ -252,6 +253,41 @@ describe("节点面板接口", () => {
 		expect(transparent.decision?.signals).toEqual({
 			pacing: { phase: "setup" },
 		});
+	});
+
+	it("候选行动按楼层返回 4 条行动与 1 条场景变化", async () => {
+		const running = await startTestServer();
+		const seeded = seedStory(running);
+		running.store.replaceDirectorCandidateActions({
+			storyId: "s1",
+			nodeId: seeded.replyId,
+			actions: [
+				{ kind: "action", text: "行动一" },
+				{ kind: "action", text: "行动二" },
+				{ kind: "action", text: "行动三" },
+				{ kind: "action", text: "行动四" },
+				{ kind: "scene_change", text: "场景变化" },
+			],
+		});
+		const view = await getJson<NodeActionsView>(
+			running.origin,
+			`/api/nodes/${seeded.replyId}/actions`,
+		);
+		expect(view.nodeId).toBe(seeded.replyId);
+		expect(view.actions.map((action) => action.kind)).toEqual([
+			"action",
+			"action",
+			"action",
+			"action",
+			"scene_change",
+		]);
+		const empty = await getJson<NodeActionsView>(
+			running.origin,
+			`/api/nodes/${seeded.userId}/actions`,
+		);
+		expect(empty.actions).toEqual([]);
+		const missing = await fetch(`${running.origin}/api/nodes/nope/actions`);
+		expect(missing.status).toBe(404);
 	});
 
 	it("线索列表只含未兑现线索，兑现后消失且状态写入台账", async () => {

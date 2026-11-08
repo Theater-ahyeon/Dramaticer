@@ -236,7 +236,7 @@ function formatCharacter(character: LedgerCharacter): string {
 		: `- ${character.id}：${details.join("，")}`;
 }
 
-function formatRelation(relation: LedgerRelation): string {
+export function formatRelation(relation: LedgerRelation): string {
 	const details = [
 		relation.type === undefined ? null : `类型 ${relation.type}`,
 		relation.stage === undefined ? null : `阶段 ${relation.stage}`,
@@ -252,7 +252,7 @@ function formatRelation(relation: LedgerRelation): string {
 		: `- ${relation.from} → ${relation.to}：${details.join("，")}`;
 }
 
-function formatClue(clue: LedgerClue): string {
+export function formatClue(clue: LedgerClue): string {
 	const status = clue.status === undefined ? "" : `（${clue.status}）`;
 	return clue.text === undefined
 		? `- ${clue.id}${status}`

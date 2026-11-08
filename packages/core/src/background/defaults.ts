@@ -1,4 +1,8 @@
 import {
+	CANDIDATE_ACTIONS_JOB_KIND,
+	createCandidateActionsHandler,
+} from "../director/candidates.js";
+import {
 	DIRECTOR_PLAN_JOB_KIND,
 	createDirectorPlanHandler,
 	directorPlanNeedsRun,
@@ -96,6 +100,13 @@ export function createDefaultBackgroundJobRegistry(
 			enqueue: "story",
 			tier: "deferred",
 			needsRun: directorPlanNeedsRun,
+		},
+		[CANDIDATE_ACTIONS_JOB_KIND]: {
+			handler: createCandidateActionsHandler({
+				...(plannerClient === null ? {} : { client: plannerClient }),
+			}),
+			enqueue: "settled",
+			tier: "gap",
 		},
 		...(embedder === null
 			? {}
