@@ -11,16 +11,17 @@
   - 新增 4 个测试：卡描述里的人物通过校验、卡里没有的名字仍然整包拒绝并指出 `participants[0].name`、单字名不按正文命中、真实卡描述人物不建实体也能生成并读回开局包。
   - 真实卡冒烟：仓库外只读的真实角色卡各跑一次 `opening` 任务（`main-fallback`），角色卡正文 20 字符与 163 字符的两张卡都生成成功，在场人物 1 人与 3 人，全部只出现在角色卡正文、没有对应的 `character` 实体（数字只记进 ADR-0066，不写仓库里的报告）。
   - `opening-eval` 报告里已不成立的“在场人物只认实体”限制段已从两个渲染分支删掉，私有版与统计版用 `--report-only` 重新生成；ADR-0066；`pnpm check` 通过。
+  - 会话期间人类提交了 c33fe22：把本任务的完成记录与报告的限制段改动一并提交，新增任务 O-T99.a（用 `--model rp --judge-model judge` 重跑开局验收），并在 `docs/dev/reports/O-opening.md` 报告头注明上一次运行的模型配置缺陷。`data/channels.yaml` 的 roles 现在是 `writer: rp`、`judge: judge`（`auto/glm-5.3`）。
 
 ## 当前状态
 - 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、R2-T01、R2-T02、R2-T03。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`；未完成任务见 `docs/dev/TASKS.md`。
-- **下一个可做任务是 R2-T03.a 五类记忆题与编造回忆率**。O 小节只剩已完成的 O-T01.a。R2-T03.a 之后是 R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09、R2-T99。
+- **下一个可做任务是 O-T99.a 用正确的写作模型与独立裁判重跑开局验收**：`--model rp --judge-model judge`，覆盖两份 O-opening 报告并在报告头写明三个模型。它之后是 R2-T03.a 五类记忆题与编造回忆率，再往后是 R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09、R2-T99。
 - v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045。
 - HUMAN-09 待处理（不阻塞）：`data/channels.yaml` 已有 `bg-fallback`、`main-fallback`、`codex`，`channels.example.yaml` 还没有这三个别名。
 - HUMAN-10 待处理（不阻塞）：插件不变量是否加进 AGENTS.md。
 - HUMAN-11 待处理（不阻塞）：`.env` 的正文模型 `opendesign/deepseek-v4.1-flash` 返回 membership entitlement 错误，是否换用 `auto/deepseek-v4.1-flash`；`.env` 由人类维护。
-- HUMAN-12 待处理（不阻塞）：`roles.judge` 指向 `codex`，本机连接 `chatgpt.com` 持续超时；评测实际改用 `--judge-model rp`。是否换裁判渠道由人类确认。
+- HUMAN-12 待处理（不阻塞）：`roles.judge` 已从 `codex` 改为 `judge`（`auto/glm-5.3`），HUMAN.md 条目本身仍标待处理，由人类确认后关闭。
 - 数据库 schema 版本 30（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡、v25 合并调用开关与执行记录、v26 间隙档位阈值与丢弃状态、v27 合并调用丢弃条目、v28 回合模式与读取工具软上限、v29 开局包与故事级后台任务、v30 首楼开场候选）；后续编号：v31 偏好记录、v32 父子分块、v33 章节压缩、v34 世界书预筛、v35 上下文包；插入新迁移时后续编号一起顺延。
 - 结算只有 `dramaticer work` 调度：server 的回合路径不补建也不执行后台任务，所以回合内后台客户端零调用是结构保证；要真正结算故事，跑 `pnpm work --db <path> --kind settle`，要生成现场分析跑 `--kind scene`，要捕获用户意志跑 `--kind user_will`，要生成修订草案跑 `--kind memory_revision`，要回填事件跑 `--kind events`（单故事、逐窗口推进，适合小批量），要生成开局包跑 `--kind opening`，要生成首楼候选跑 `--kind opening_candidates`，要合并调用跑 `--kind gap_pass`（先打开故事设置 `gapPassEnabled`），批量回填三个 legacy 对话用 R1-T04.a 的 `events-backfill`。
 - 后台任务分两档：`gap` 档每次间隙都执行，`deferred` 档（`events`、`summary`、`npc_agenda`）只在会话结束或间隙达到 `gapPlanSeconds` 时执行。`dramaticer work` 不给 `--gap-seconds` 就按会话结束处理；要模拟回合中的短间隙就传 `--gap-seconds <秒数>`，短于阈值时延后档只入队不执行。
@@ -45,6 +46,7 @@
 - 插件系统在 DESIGN §19 是唯一权威；P 阶段任务在 TASKS 的「P：插件内核」小节，C 线兼容插件任务已存在且依赖 P2。
 
 ## 下一步
+- **O-T99.a 用正确的写作模型与独立裁判重跑开局验收**：O-T99 的实跑把写作模型设成 `main-fallback`（DeepSeek）、裁判设成 `rp`（Gemini），与 ADR-0041 A7 和人类指定的方向相反。`data/channels.yaml` 的 roles 现在是 `writer: rp`、`judge: judge`（`auto/glm-5.3`）。用 `--model rp --judge-model judge` 重跑同一批卡与种子，覆盖 `docs/dev/reports/O-opening.md` 与私有报告；报告头写明写作、模拟用户、裁判三个模型与和上一次运行的配置差异；数字变化超过 5 个百分点时说明可能原因；同一输入重跑数字可复现。
 - **R2-T03.a 五类记忆题与编造回忆率**：按 LongMemEval 五类（信息抽取、跨段推理、时间推理、知识更新、拒答）扩充记忆题，每道题标注类别与证据楼层；新增编造回忆题（问从未发生的人、事、物，肯定描述即计为编造）；一致性探针与记忆评测共用同一套判分，报告按类别给出命中与编造率、`unknown` 单列。复用 R2-T03 的 `parseProbeJudgeOutput` 与裁判调用约定，不要另写判分口径。
 - 之后是 R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09、R2-T99。
 - 开局包的读取入口是 `readOpeningPack(store, storyId)`；需要自己校验时用 `validateOpeningPackPayload(value, known)`，第二个参数是 `OpeningKnownNames`（`names` 与 `sourceText`），判定函数是 `isKnownOpeningName`。首楼候选的解析用 `parseOpeningCandidatesResponse(text, expectedCount)`，不要另写一套。
@@ -63,12 +65,12 @@
 - 默认 20 轮的新故事在第一个探针轮次常因没有 20 楼之前的事实记 `skipped`；要样本需要更长的试玩或已有历史的数据库。
 - 报告入口是 `pnpm --filter @dramaticer/st-compat probe-report --input <jsonl>`，默认私有版 `eval-private/reports/playtest-probe.md`、统计版 `docs/dev/reports/R2-probe.md`；不传 `--private-out`/`--public-out` 会在仓库里写这两个路径，试跑时显式指到 `.devloop/scratch/`。统计版只有故事编号、轮次、样例编号与判定，不含故事 id、题目、回答与台账路径。
 - 每轮裁判（ADR-0065）：`--judge-turns` 开启，默认关闭；严格 JSON `{reroll, followed, reason}`，非法重试 3 次，调用失败或连续非法只记该轮 `verdict.status` 为 `failed`，试玩继续。裁判看角色卡摘要、人设、最近 6 楼、玩家输入与最终助手正文；swipe/edit/branch 之后取最终节点。`verdict` 字段在失败轮次为 null。
-- 开局评测入口是 `pnpm --filter @dramaticer/st-compat opening-eval --card <path> [--card <path> ...]`，默认每卡每种配置 10 轮、种子 1、助手 `rp`；实际验收用 `--model main-fallback --judge-model rp`。每张卡建三个故事（`opening-eval-<n>-on`、`-off`、`-candidates`），开启侧先生成开局包，候选故事生成 3 条候选并让模拟用户选择。`--report-only` 只读 `--out-dir/manifest.json` 与逐轮 JSONL 重算报告。
+- 开局评测入口是 `pnpm --filter @dramaticer/st-compat opening-eval --card <path> [--card <path> ...]`，默认每卡每种配置 10 轮、种子 1、助手 `rp`；当前验收口径是 `--model rp --judge-model judge`。每张卡建三个故事（`opening-eval-<n>-on`、`-off`、`-candidates`），开启侧先生成开局包，候选故事生成 3 条候选并让模拟用户选择。`--report-only` 只读 `--out-dir/manifest.json` 与逐轮 JSONL 重算报告。
 - `opening-eval` 的 `--no-background` 由评测内部固定传给 playtest，用来隔离开局机制；本轮没有结算、现场分析与用户意志写入。要测完整链路应去掉该开关并换用足够长的试玩。
 - `opening-eval` 的统计版只含模型别名、样本数、聚合数字与轮次级判定；私有版含卡名、故事 id、逐轮理由与候选正文。`--out-dir` 默认 `eval-private/reports/opening-eval`，私有报告默认 `eval-private/reports/O-opening.md`，统计版默认 `docs/dev/reports/O-opening.md`。
 - `opening-eval` 的候选选择用 `--user-model`（默认 `background`）；候选生成与开局包用 `roles.settler`。本次 3 张卡全部选择候选，采用率没有区分度；不要把 100% 当成候选质量结论。
 - 开局包的在场人物必须命中角色卡名、`character` 实体的名称/别名，或者出现在角色卡与常驻世界书正文里；正文判定用与实体名称同一套规范化，规范化后少于两个字符的名字只按实体表判定。都不命中时整包拒绝并指出 `participants[i].name`。素材只有角色卡提示词或常驻世界书时才生成，玩家开场白只作补充。
-- 当前 `roles.judge` 指向 `codex`，本机连接 `chatgpt.com` 超时；评测用 `--judge-model rp`（catie 渠道的 Gemini 3.8 Flash）。`createLlmClient` 仍按配置里的 `roles.judge`（codex）与 `roles.writer`（main）校验家族，所以显式覆盖裁判别名不会触发家族错误。HUMAN-12。
+- 当前 `data/channels.yaml` 的 roles 是 `writer: rp`、`settler: background`、`planner: background`、`judge: judge`（`auto/glm-5.3`）；评测用 `--model rp --judge-model judge`。`createLlmClient` 按配置里的 `roles.judge` 与 `roles.writer` 校验模型家族，显式覆盖别名不参与校验。HUMAN-12。
 - 后台注册表工厂在 `core/src/background/defaults.ts` 的 `createDefaultBackgroundJobRegistry`，`gap_pass` 开关过滤在 `resolveStoryBackgroundKinds`；新增后台任务类型时改这两个函数和 `dramaticer work`/试玩都会同步。
 - `dramaticer chat` 与试玩共用 `resolveStoryContextTemplate`（`st-compat/src/chat/session.ts`）：故事模板为空或指向内置模板时用默认模板。
 - 对话档位（ADR-0062）：`ChatProfile` 取 `native`、`naive`，在 `core/src/chat/profile.ts`；`runChatTurn` 的 `profile` 单轮参数默认 `native`，没有按运行状况切换的代码路径。`TurnTrace.profile` 记录本轮档位；旧数据库里没有该字段的 Trace 按 `native` 处理（存储层查询用 `COALESCE(..., 'native')`）。
@@ -92,7 +94,7 @@
 - 写作契约：`core/src/chat/template.ts` 的 `WRITING_CONTRACT` 是四条原则（已导出，朴素模式直接复用），接在两种协议文本之前；`context/template.ts` 的 `WRITING_CONTRACT_SEGMENT_ID` 固定为 `"protocol"`，`assertContextTemplate` 要求该 id 出现时是最后一个片段。`protocol` 是静态段，组装后是最后一条 system 消息（历史之后），故事模板可以改写它的文本。新增消息顺序断言时注意这一点：`core/test/chat-turn.test.ts` 的 `["system","assistant","user","system"]`、`st-compat/test/chat-cli.test.ts` 与 `core/test/writing-contract.test.ts`。
 - Trace 的 `tools.calls` 是 `{name, ok, error}`，`tools.rejected` 只记文本协议里的未知工具。tests 目录不在 tsc 的 `include` 里，新增 Trace 字段时手动检查 `core/test/trace-store.test.ts`、`core/test/ledger-settlement.test.ts`、`st-compat/test/director-eval.test.ts` 的构造点与 `core/test/chat-tool-loop.test.ts`、`core/test/turn-mode.test.ts` 的严格相等断言。
 - `dramaticer chat` 的 `--mode` 只影响单轮；故事级锁定写在故事设置 `turnMode`。server 的回合路径目前不传单轮模式，读取故事设置；工具传输由 server 运行时按故事模型解析。
-- 渠道角色：角色类型叫 `LlmModelRole`（`writer`、`settler`、`planner`、`judge`），与表示消息角色的 `LlmRole`（system、user、assistant）不是一回事。`createLlmClient` 会校验 judge 与 writer 的模型家族，缺省回落也算在内：只要配置里同时有 `main` 与 `background` 且两者同家族，创建任何客户端都会抛错。`data/channels.yaml` 目前用 `judge: codex`（`codex/gpt-6.1-terra`，gpt 家族）与 writer 的 deepseek 区分。
+- 渠道角色：角色类型叫 `LlmModelRole`（`writer`、`settler`、`planner`、`judge`），与表示消息角色的 `LlmRole`（system、user、assistant）不是一回事。`createLlmClient` 会校验 judge 与 writer 的模型家族，缺省回落也算在内：只要配置里同时有 `main` 与 `background` 且两者同家族，创建任何客户端都会抛错。`data/channels.yaml` 现在用 `writer: rp`（Gemini）与 `judge: judge`（`auto/glm-5.3`）区分家族。
 - `channels.example.yaml` 的 roles 示例里 judge 指向 background 并附了说明；复制示例时如果 background 与 main 是同一家族，启动会失败，需要另配一个家族的模型。
 - 后台模型的输出上限是 32,768（`channels.example.yaml` 与 `data/channels.yaml` 的 `background`）；`channels.ts` 的 `DEFAULT_MAX_TOKENS` 仍是 8,192，只在配置没写 `maxTokens` 时兜底。结算、事件、用户意志、修订、开局包与合并调用的处理器不传 `maxTokens`，路由使用模型声明值。不要把这些请求改回小上限：8,192 会被思考占满并把 JSON 截断。ADR-0057。
 - 现场分析任务显式传 200 token 上限（`DEFAULT_SCENE_MAX_TOKENS`），与模型声明上限无关；带思考的模型上这是请求级上限。ADR-0056 的缓存里 20 次现场分析有 1 次以 `length` 结束。
