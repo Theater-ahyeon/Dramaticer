@@ -493,12 +493,13 @@
   - 决策的 `signals.beat` 写弧线、序列、节拍 id、强度、难度、使用到的契合点与当前楼层深度。纠偏信号沿用现有机制的优先级：重复正文 40、开场 35、线索过老 30、场景重复 25 都压过节拍 23；节拍压过线索过多 20、事件池 10 与节奏 5。评估全程只读数据库，不调用模型。
   验收：计划存在时指令包含当前拍的目标、起始迹象与至少一条契合点；三档强度的指令不同，`detonate` 出现可见变化要求；没有计划或拍耗尽时行为与改动前一致；单轮强度覆盖故事设置，非法值抛错；重复正文、线索过老与场景重复压过节拍；节拍压过线索过多与节奏；另一分支的拍状态不参与；导演评估的模型调用次数为零；`pnpm check` 通过。
 
-- [ ] **R4-T04 导演建议并入玩家消息末尾** | 依赖：R4-T03、R3-T03、M1-T04 | DESIGN §8.2、§9 | ADR-0077
+- [x] **R4-T04 导演建议并入玩家消息末尾** | 依赖：R4-T03、R3-T03、M1-T04 | DESIGN §8.2、§9 | ADR-0077
   做什么：
   - `ContextSlotContent` 增加 `suffix?: string`，`ContextTraceEntry` 增加 `appendedTo?: "last-user"`；组装器在预算裁剪之后把 `suffix` 接在最后一条 `user` 消息的末尾，Trace 记来源、token 与 `appendedTo`；没有 `user` 消息时该槽位记 `missing-slot`，不产生独立消息。
   - `createDirectorSlotProvider` 改为返回 `suffix`：`【导演】<directive>` 加固定尾注 `玩家行动优先，你可以按剧情需要调整。`，不再返回 system 消息；尾注定义成导出的常量，测试直接引用。
   - 预算不足时整个 suffix 随该片段一起被标记 `budget-dropped`；原文不改写，Trace 的 token 计入总量；`dramaticer explain` 在上下文分段里显示 `appendedTo`。
   验收：组装结果里没有以 `【导演】` 开头的独立消息，最后一条 `user` 消息以指令与尾注结束；楼层原文与数据库中的玩家楼层不变；Trace 的来源、token 与 `appendedTo` 可读；导演关闭时没有 suffix；`protocol` 仍是最后一个模板段落；预算不足时 suffix 被裁剪并标记；没有玩家消息时记 `missing-slot`；`pnpm check` 通过。
+  完成：2026-11-08 组装器支持 suffix 并在预算裁剪后拼接到最后一条 user 消息，导演槽位改为 suffix 注入，Trace 与 explain 记录 appendedTo
 
 - [ ] **R4-T05 透明与盲盒模式** | 依赖：R4-T04、M3-T02、M4-T03 | DESIGN §8.2 | ADR-0077
   做什么：

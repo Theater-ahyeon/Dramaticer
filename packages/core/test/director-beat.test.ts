@@ -3,13 +3,16 @@ import {
 	BEAT_PRIORITY,
 	CLUE_AGE_PRIORITY,
 	DEFAULT_DIRECTOR_CONFIG,
+	DIRECTOR_SUFFIX_NOTE,
 	type DirectorPlan,
+	type LlmRequest,
 	REPETITION_SCENE_PRIORITY,
 	REPETITION_TEXT_PRIORITY,
 	type StoryStore,
 	createDefaultContextTemplate,
 	createDirectorSlotProvider,
 	createEventStream,
+	createHistorySlotProvider,
 	evaluateDirector,
 	mergePlannedArcs,
 	runChatTurn,
@@ -519,5 +522,65 @@ describe("短线层拍建议", () => {
 			}),
 		).rejects.toThrow("单轮导演强度");
 		expect(store.listStoryNodes("s1")).toHaveLength(before);
+	}, 30_000);
+
+	it("导演建议拼进玩家消息末尾，不产生独立消息也不改楼层原文", async () => {
+		const { store } = openTempStore();
+		seed(store);
+		appendChain(store, 1);
+		const template = createDefaultContextTemplate({
+			structuredOutput: "text-tags",
+		});
+		const fake = createFakeClient("继续。");
+		const requests: LlmRequest[] = [];
+		const client = {
+			async complete(request: LlmRequest) {
+				requests.push(request);
+				return fake.complete();
+			},
+			stream(request: LlmRequest) {
+				requests.push(request);
+				return fake.stream();
+			},
+		};
+
+		const result = await runChatTurn({
+			store,
+			client,
+			storyId: "s1",
+			userText: "我看着他。",
+			template,
+			providers: {
+				history: createHistorySlotProvider(store),
+				director: createDirectorSlotProvider(store),
+			},
+			budgetTokens: 4_096,
+			structuredOutput: "text-tags",
+		});
+
+		const messages = requests[0]?.messages ?? [];
+		expect(
+			messages.some(
+				(message) =>
+					message.role === "system" && message.content.startsWith("【导演】"),
+			),
+		).toBe(false);
+		const users = messages.filter((message) => message.role === "user");
+		const lastUser = users.at(-1)?.content ?? "";
+		const directive = store.getDirectorDecision(result.userNode.id)?.directive;
+		expect(directive).not.toBeNull();
+		expect(lastUser.startsWith("我看着他。")).toBe(true);
+		expect(lastUser).toContain(directive as string);
+		expect(lastUser.endsWith(DIRECTOR_SUFFIX_NOTE)).toBe(true);
+		expect(result.userNode.raw).toBe("我看着他。");
+		expect(store.getNode(result.userNode.id)?.raw).toBe("我看着他。");
+		const entry = result.trace.context.entries.find(
+			(item) => item.segmentId === "director",
+		);
+		expect(entry).toMatchObject({
+			status: "included",
+			appendedTo: "last-user",
+		});
+		expect(entry?.tokens).toBeGreaterThan(0);
 	}, 30_000);
 });

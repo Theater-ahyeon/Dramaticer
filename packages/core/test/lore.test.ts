@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	type ContextSlotRequest,
 	DEFAULT_DIRECTOR_CONFIG,
+	DIRECTOR_SUFFIX_NOTE,
 	type StoryStore,
 	createDirectorSlotProvider,
 	createLoreSlotProvider,
@@ -371,13 +372,19 @@ describe("createDirectorSlotProvider", () => {
 		const provider = createDirectorSlotProvider(store);
 		const content = await provider.provide(request("s1", current, "director"));
 		expect(content?.source).toBe("director:clue");
-		expect(content?.messages).toHaveLength(1);
-		const text = content?.messages[0]?.content as string;
-		expect(text.startsWith("【导演】")).toBe(true);
-		expect(text).toContain("井底的脚步声");
+		expect(content?.messages).toHaveLength(0);
+		const suffix = content?.suffix as string;
+		expect(suffix.startsWith("【导演】")).toBe(true);
+		expect(suffix).toContain("井底的脚步声");
+		expect(suffix.endsWith(DIRECTOR_SUFFIX_NOTE)).toBe(true);
 
 		const decision = store.getDirectorDecision(current);
-		expect(decision?.directive).toBe(text.slice("【导演】".length));
+		expect(decision?.directive).toBe(
+			suffix.slice(
+				"【导演】".length,
+				suffix.length - DIRECTOR_SUFFIX_NOTE.length - 1,
+			),
+		);
 		expect(decision?.mechanisms).toEqual([
 			{
 				name: "clue",
@@ -463,8 +470,8 @@ describe("createDirectorSlotProvider", () => {
 			},
 		});
 		const content = await provider.provide(request("s1", "a2", "director"));
-		expect(content?.messages[0]?.content).toContain("主线伏笔");
-		expect(content?.messages[0]?.content).not.toContain("分支伏笔");
+		expect(content?.suffix).toContain("主线伏笔");
+		expect(content?.suffix).not.toContain("分支伏笔");
 		expect(store.getDirectorDecision("a2")?.signals).toMatchObject({
 			openClues: 1,
 			selectedNoteId: mainNotes[0]?.id,

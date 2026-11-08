@@ -24,6 +24,11 @@ export interface ContextSlotRequest {
 
 export interface ContextSlotContent {
 	readonly messages: readonly ContextMessage[];
+	/**
+	 * 追加到最后一条 user 消息末尾的文本，不产生独立消息。
+	 * 预算按 suffix 自己的 token 计算，裁剪时整段一起丢弃；原文不改写。
+	 */
+	readonly suffix?: string;
 	/** 写进 Trace 的来源描述，例如"世界书：2 条常驻、3 条检索"。 */
 	readonly source: string;
 	/** 历史槽位的块视图统计；其它槽位不产生这个字段。 */
@@ -75,6 +80,8 @@ export interface ContextTraceEntry {
 	readonly priority: number;
 	readonly tokens: number;
 	readonly status: ContextTraceStatus;
+	/** suffix 实际拼接到最后一条 user 消息时记录；没有玩家消息时槽位记为 missing-slot。 */
+	readonly appendedTo?: "last-user";
 	/** 历史槽位生效的块视图策略与省略量；没有省略时 omitted 为空。 */
 	readonly history?: HistoryViewTrace;
 	/** 记忆槽位的检索名次与融合结果；其它槽位不产生这个字段。 */
@@ -116,6 +123,8 @@ interface ResolvedSegment {
 	readonly messages: readonly ContextMessage[] | null;
 	readonly source: string;
 	readonly status: "candidate" | "condition-false" | "missing-slot";
+	/** 拼接到最后一条 user 消息末尾的文本。 */
+	readonly suffix?: string;
 	readonly history?: HistoryViewTrace;
 	readonly retrieval?: ContextRetrievalTrace;
 }
@@ -152,7 +161,7 @@ export async function assembleContext(
 	);
 
 	const tokenCounts = resolved.map((item) =>
-		item.messages === null ? 0 : countMessageTokens(item.messages, estimator),
+		countSegmentTokens(item, estimator),
 	);
 
 	const keptIndexes = selectWithinBudget(
@@ -160,43 +169,75 @@ export async function assembleContext(
 		tokenCounts,
 		input.budgetTokens,
 	);
-	const totalTokens = [...keptIndexes].reduce(
-		(total, index) => total + (tokenCounts[index] as number),
-		0,
-	);
 
+	// 先把保留下来的消息按模板顺序拼起来，再决定 suffix 落到哪一条 user 消息上。
 	const messages: ContextMessage[] = [];
+	const suffixIndexes: number[] = [];
+	const suffixes: string[] = [];
+	resolved.forEach((item, index) => {
+		if (item.status !== "candidate" || !keptIndexes.has(index)) return;
+		messages.push(...(item.messages ?? []));
+		if (item.suffix !== undefined) {
+			suffixIndexes.push(index);
+			suffixes.push(item.suffix);
+		}
+	});
+	let lastUserIndex = -1;
+	for (let index = messages.length - 1; index >= 0; index -= 1) {
+		if (messages[index]?.role === "user") {
+			lastUserIndex = index;
+			break;
+		}
+	}
+	const suffixLanded = suffixIndexes.length > 0 && lastUserIndex >= 0;
+	if (suffixLanded) {
+		const target = messages[lastUserIndex] as ContextMessage;
+		messages[lastUserIndex] = {
+			role: "user",
+			content: `${target.content}${SUFFIX_SEPARATOR}${suffixes.join("\n")}`,
+		};
+	}
+
 	const segments: AssembledContextSegment[] = [];
 	const entries: ContextTraceEntry[] = [];
+	let totalTokens = 0;
 	resolved.forEach((item, index) => {
+		const hasSuffix = suffixIndexes.includes(index);
 		const tokens = tokenCounts[index] as number;
-		const status: ContextTraceStatus =
+		let status: ContextTraceStatus =
 			item.status === "candidate"
 				? keptIndexes.has(index)
 					? "included"
 					: "budget-dropped"
 				: item.status;
+		// 没有玩家消息时 suffix 无处拼接，整个片段记为缺失且不占预算。
+		if (status === "included" && hasSuffix && !suffixLanded) {
+			status = "missing-slot";
+		}
+		const entryTokens = status === "missing-slot" ? 0 : tokens;
+		if (status === "included") totalTokens += entryTokens;
 		entries.push({
 			segmentId: item.segment.id,
 			kind: item.segment.kind,
 			slot: item.segment.kind === "slot" ? item.segment.slot : null,
 			source: item.source,
 			priority: item.segment.priority ?? 0,
-			tokens,
+			tokens: entryTokens,
 			status,
+			...(status === "included" && hasSuffix
+				? { appendedTo: "last-user" as const }
+				: {}),
 			...(item.history === undefined ? {} : { history: item.history }),
 			...(item.retrieval === undefined ? {} : { retrieval: item.retrieval }),
 		});
 		if (status === "included") {
-			const included = item.messages as readonly ContextMessage[];
-			messages.push(...included);
 			segments.push({
 				segmentId: item.segment.id,
 				kind: item.segment.kind,
 				slot: item.segment.kind === "slot" ? item.segment.slot : null,
 				source: item.source,
 				tokens,
-				messages: included,
+				messages: item.messages ?? [],
 			});
 		}
 	});
@@ -266,7 +307,7 @@ async function resolveSegment(
 		};
 	}
 	assertSlotContent(content, segment.slot);
-	if (content.messages.length === 0) {
+	if (content.messages.length === 0 && content.suffix === undefined) {
 		return {
 			segment,
 			messages: null,
@@ -279,6 +320,7 @@ async function resolveSegment(
 		messages: content.messages,
 		source: content.source,
 		status: "candidate",
+		...(content.suffix === undefined ? {} : { suffix: content.suffix }),
 		...(content.history === undefined ? {} : { history: content.history }),
 		...(content.retrieval === undefined
 			? {}
@@ -306,6 +348,33 @@ function assertSlotContent(
 			throw new Error(`槽位 ${slot} 返回的消息内容必须是非空字符串`);
 		}
 	}
+	if (content.suffix !== undefined) {
+		if (typeof content.suffix !== "string" || content.suffix.length === 0) {
+			throw new Error(`槽位 ${slot} 的 suffix 必须是非空字符串`);
+		}
+	}
+}
+
+/** 拼接到玩家原文与多段 suffix 之间的分隔符。 */
+const SUFFIX_SEPARATOR = "\n\n";
+
+function estimateTokens(text: string, estimator: TokenEstimator): number {
+	const tokens = estimator(text);
+	if (!Number.isFinite(tokens) || tokens < 0) {
+		throw new Error("token 估算必须返回非负有限数字");
+	}
+	return tokens;
+}
+
+function countSegmentTokens(
+	item: ResolvedSegment,
+	estimator: TokenEstimator,
+): number {
+	let total =
+		item.messages === null ? 0 : countMessageTokens(item.messages, estimator);
+	if (item.suffix !== undefined)
+		total += estimateTokens(item.suffix, estimator);
+	return total;
 }
 
 function countMessageTokens(

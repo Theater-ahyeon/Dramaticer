@@ -331,8 +331,12 @@ export function renderExplainReport(report: ExplainReport): string {
 				entry.history === undefined
 					? ""
 					: `；块视图 ${entry.history.policy}，最近 ${entry.history.recentRawFloors} 楼保留原文，省略 ${entry.history.omitted.length} 类块`;
+			const appended =
+				entry.appendedTo === undefined
+					? ""
+					: `；拼接到最后一条 user 消息（appendedTo: ${entry.appendedTo}）`;
 			lines.push(
-				`   - ${entry.segmentId}（${kindLabel}）${entry.tokens} token，${statusLabel(entry.status)}，来源 ${entry.source}${history}`,
+				`   - ${entry.segmentId}（${kindLabel}）${entry.tokens} token，${statusLabel(entry.status)}，来源 ${entry.source}${appended}${history}`,
 			);
 			if (entry.history !== undefined) {
 				for (const omission of entry.history.omitted) {

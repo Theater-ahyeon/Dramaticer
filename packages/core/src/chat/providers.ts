@@ -585,9 +585,12 @@ export function isDirectorSlotProvider(
 	return value.config !== undefined;
 }
 
+/** 导演建议拼进玩家消息末尾时统一附上的尾注。 */
+export const DIRECTOR_SUFFIX_NOTE = "玩家行动优先，你可以按剧情需要调整。";
+
 /**
- * 评估全部导演机制，有建议时只返回一条以「【导演】」开头的系统消息。
- * 评估结果写入该楼层的决策记录；导演关闭时既不出消息也不写记录。
+ * 评估全部导演机制，有建议时返回一段拼接到本轮最后一条玩家消息末尾的 suffix。
+ * 评估结果写入该楼层的决策记录；导演关闭时既不产出 suffix 也不写记录。
  */
 export function createDirectorSlotProvider(
 	store: StoryStore,
@@ -610,9 +613,8 @@ export function createDirectorSlotProvider(
 			});
 			if (suggestion === null) return null;
 			return {
-				messages: [
-					{ role: "system", content: `【导演】${suggestion.directive}` },
-				],
+				messages: [],
+				suffix: `【导演】${suggestion.directive}\n${DIRECTOR_SUFFIX_NOTE}`,
 				source: `director:${suggestion.mechanism}`,
 			};
 		},

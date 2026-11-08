@@ -77,6 +77,16 @@ function traceFor(nodeId: string, parentNodeId: string): TurnTrace {
 					},
 				},
 				{
+					segmentId: "director",
+					kind: "slot",
+					slot: "director",
+					source: "director:clue",
+					priority: 23,
+					tokens: 12,
+					status: "included",
+					appendedTo: "last-user",
+				},
+				{
 					segmentId: "summary",
 					kind: "slot",
 					slot: "summary",
@@ -169,6 +179,7 @@ describe("explainNode", () => {
 		expect(report.context?.entries.map((entry) => entry.segmentId)).toEqual([
 			"character",
 			"memory",
+			"director",
 			"summary",
 			"scene",
 		]);
@@ -218,6 +229,7 @@ describe("explainNode", () => {
 		expect([...order].sort((left, right) => left - right)).toEqual(order);
 		expect(text).toContain("路 bm25：u1（chunk，第 1）");
 		expect(text).toContain("分数 0.5000");
+		expect(text).toContain("拼接到最后一条 user 消息（appendedTo: last-user）");
 		expect(text).toContain("character.卫宫.mood");
 		expect(text).toContain("让卫宫说出一个具体理由");
 	});

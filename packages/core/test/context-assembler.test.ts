@@ -335,6 +335,148 @@ describe("assembleContext", () => {
 		expect(result.trace.totalTokens).toBe(0);
 	});
 
+	describe("suffix 拼接到最后一条 user 消息", () => {
+		const suffixTemplate: ContextTemplate = {
+			id: "suffix",
+			segments: [
+				{ kind: "slot", id: "director", slot: "director", priority: 10 },
+				{ kind: "slot", id: "history", slot: "history", priority: 1 },
+			],
+		};
+
+		it("预算裁剪后接在最后一条 user 消息末尾，并在 Trace 记 appendedTo 与 token", async () => {
+			const provided = [
+				{ role: "user" as const, content: "我看着他" },
+				{ role: "assistant" as const, content: "他没说话" },
+				{ role: "user" as const, content: "我再问" },
+			];
+			const result = await assembleContext({
+				template: suffixTemplate,
+				budgetTokens: 1_000,
+				storyId: "story-1",
+				tokenEstimator: lengthTokens,
+				providers: {
+					director: {
+						provide: () => ({
+							messages: [],
+							suffix: "【导演】走近井口",
+							source: "director:clue",
+						}),
+					},
+					history: {
+						provide: () => ({ messages: provided, source: "最近 3 楼" }),
+					},
+				},
+			});
+
+			expect(result.messages).toEqual([
+				{ role: "user", content: "我看着他" },
+				{ role: "assistant", content: "他没说话" },
+				{ role: "user", content: "我再问\n\n【导演】走近井口" },
+			]);
+			// 原文对象不被修改
+			expect(provided.at(-1)?.content).toBe("我再问");
+			const entry = result.trace.entries.find(
+				(item) => item.segmentId === "director",
+			);
+			expect(entry).toMatchObject({
+				status: "included",
+				tokens: "【导演】走近井口".length,
+				appendedTo: "last-user",
+			});
+			expect(result.trace.totalTokens).toBe(
+				provided.reduce((total, message) => total + message.content.length, 0) +
+					"【导演】走近井口".length,
+			);
+		});
+
+		it("预算不足时整个 suffix 片段被标记 budget-dropped，消息保持原样", async () => {
+			const result = await assembleContext({
+				template: suffixTemplate,
+				budgetTokens: 4,
+				storyId: "story-1",
+				tokenEstimator: lengthTokens,
+				providers: {
+					director: {
+						provide: () => ({
+							messages: [],
+							suffix: "【导演】走近井口",
+							source: "director:clue",
+						}),
+					},
+					history: slot([{ role: "user", content: "我再问" }]),
+				},
+			});
+
+			expect(result.messages).toEqual([{ role: "user", content: "我再问" }]);
+			expect(result.trace.entries[0]).toMatchObject({
+				status: "budget-dropped",
+				tokens: "【导演】走近井口".length,
+			});
+			expect(result.trace.entries[0]?.appendedTo).toBeUndefined();
+			expect(result.trace.totalTokens).toBe(3);
+		});
+
+		it("没有 user 消息时记为 missing-slot 且不占预算", async () => {
+			const result = await assembleContext({
+				template: suffixTemplate,
+				budgetTokens: 1_000,
+				storyId: "story-1",
+				tokenEstimator: lengthTokens,
+				providers: {
+					director: {
+						provide: () => ({
+							messages: [],
+							suffix: "【导演】走近井口",
+							source: "director:clue",
+						}),
+					},
+					history: slot([{ role: "assistant", content: "他没说话" }]),
+				},
+			});
+
+			expect(result.messages).toEqual([
+				{ role: "assistant", content: "他没说话" },
+			]);
+			expect(result.trace.entries[0]).toMatchObject({
+				status: "missing-slot",
+				tokens: 0,
+			});
+			expect(result.trace.entries[0]?.appendedTo).toBeUndefined();
+			expect(result.trace.totalTokens).toBe(4);
+		});
+
+		it("拒绝空的或非字符串的 suffix", async () => {
+			const build = (suffix: unknown) =>
+				assembleContext({
+					template: {
+						id: "bad",
+						segments: [{ kind: "slot", id: "director", slot: "director" }],
+					},
+					budgetTokens: 100,
+					storyId: "story-1",
+					tokenEstimator: lengthTokens,
+					providers: {
+						director: {
+							provide: () =>
+								({
+									messages: [],
+									suffix,
+									source: "导演",
+								}) as ContextSlotContent,
+						},
+					},
+				});
+
+			await expect(build("")).rejects.toThrow(
+				"槽位 director 的 suffix 必须是非空字符串",
+			);
+			await expect(build(42)).rejects.toThrow(
+				"槽位 director 的 suffix 必须是非空字符串",
+			);
+		});
+	});
+
 	it("拒绝重复的片段 id、空静态文本与非法预算", async () => {
 		await expect(
 			assembleContext({

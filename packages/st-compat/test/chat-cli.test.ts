@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
+	DIRECTOR_SUFFIX_NOTE,
 	type LlmChannelsConfig,
 	type LlmRequest,
 	type LlmResult,
@@ -583,14 +584,23 @@ describe("dramaticer chat", () => {
 		);
 		expect(directorEntry?.status).toBe("included");
 		expect(directorEntry?.source).toBe("director:clue");
-		const directorMessage = fake.requests[0]?.messages.find(
-			(message) =>
-				message.role === "system" && message.content.startsWith("【导演】"),
-		);
-		expect(directorMessage?.content).toContain("井底的脚步声");
+		expect(directorEntry?.appendedTo).toBe("last-user");
+		const messages = fake.requests[0]?.messages ?? [];
+		expect(
+			messages.some(
+				(message) =>
+					message.role === "system" && message.content.startsWith("【导演】"),
+			),
+		).toBe(false);
+		const userMessages = messages.filter((message) => message.role === "user");
+		const lastUser = userMessages.at(-1)?.content as string;
+		expect(lastUser.startsWith("我推开山门。")).toBe(true);
+		expect(lastUser).toContain("井底的脚步声");
+		expect(lastUser.endsWith(DIRECTOR_SUFFIX_NOTE)).toBe(true);
 
 		const store = StoryStore.open(dbPath);
 		try {
+			expect(store.getNode(result.userNode.id)?.raw).toBe("我推开山门。");
 			const decision = store.getDirectorDecision(result.userNode.id);
 			expect(decision?.directive).not.toBeNull();
 			expect(decision?.mechanisms[0]?.name).toBe("clue");
@@ -626,6 +636,11 @@ describe("dramaticer chat", () => {
 		expect(
 			fake.requests[0]?.messages.some((message) =>
 				message.content.includes("【导演】"),
+			),
+		).toBe(false);
+		expect(
+			fake.requests[0]?.messages.some((message) =>
+				message.content.includes(DIRECTOR_SUFFIX_NOTE),
 			),
 		).toBe(false);
 

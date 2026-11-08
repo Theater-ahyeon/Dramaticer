@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	DEFAULT_DIRECTOR_CONFIG,
+	DIRECTOR_SUFFIX_NOTE,
 	type JsonObject,
 	OPENING_PRIORITY,
 	type StoryStore,
@@ -153,7 +154,7 @@ describe("开场导演", () => {
 		});
 	});
 
-	it("导演槽位把开局建议作为一条【导演】消息注入", async () => {
+	it("导演槽位把开局建议作为 suffix 返回，并带固定尾注", async () => {
 		const { store } = openTempStore();
 		seed(store);
 		savePack(store);
@@ -169,11 +170,12 @@ describe("开场导演", () => {
 		});
 
 		expect(content?.source).toBe("director:opening");
-		const text = content?.messages[0]?.content as string;
+		expect(content?.messages).toHaveLength(0);
+		const text = content?.suffix as string;
 		expect(text.startsWith("【导演】")).toBe(true);
 		expect(text).toContain("凛堵在门口，不让你进教室");
 		expect(store.getDirectorDecision(nodeId)?.directive).toBe(
-			text.slice("【导演】".length),
+			text.slice("【导演】".length, -DIRECTOR_SUFFIX_NOTE.length - 1),
 		);
 	});
 
