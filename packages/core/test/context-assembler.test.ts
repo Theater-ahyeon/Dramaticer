@@ -13,7 +13,7 @@ const lengthTokens = (text: string): number => text.length;
 const baseTemplate: ContextTemplate = {
 	id: "native",
 	segments: [
-		{ kind: "static", id: "protocol", text: "协议", priority: 100 },
+		{ kind: "static", id: "base", text: "基础", priority: 100 },
 		{ kind: "slot", id: "character", slot: "character", priority: 50 },
 		{ kind: "slot", id: "history", slot: "history", priority: 1 },
 	],
@@ -52,7 +52,7 @@ describe("assembleContext", () => {
 		});
 
 		expect(result.messages).toEqual([
-			{ role: "system", content: "协议" },
+			{ role: "system", content: "基础" },
 			{ role: "system", content: "角色卡" },
 			{ role: "user", content: "你好" },
 			{ role: "assistant", content: "晚上好" },
@@ -60,10 +60,10 @@ describe("assembleContext", () => {
 		expect(result.trace.totalTokens).toBe(2 + 3 + 2 + 3);
 		expect(result.trace.entries).toEqual([
 			{
-				segmentId: "protocol",
+				segmentId: "base",
 				kind: "static",
 				slot: null,
-				source: "template:native/protocol",
+				source: "template:native/base",
 				priority: 100,
 				tokens: 2,
 				status: "included",
@@ -88,7 +88,7 @@ describe("assembleContext", () => {
 			},
 		]);
 		expect(result.segments.map((segment) => segment.segmentId)).toEqual([
-			"protocol",
+			"base",
 			"character",
 			"history",
 		]);
@@ -179,7 +179,7 @@ describe("assembleContext", () => {
 		});
 
 		expect(result.messages).toEqual([
-			{ role: "system", content: "协议" },
+			{ role: "system", content: "基础" },
 			{ role: "system", content: "角色卡" },
 		]);
 		const history = result.trace.entries.find(

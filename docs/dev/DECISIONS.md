@@ -799,3 +799,17 @@
   - 后台模型的声明上限提高后，`channels.example.yaml` 与 `data/channels.yaml` 需要同步；没写 `maxTokens` 的配置仍得到 8,192，大窗口结算会截断。
   - 模型响应的磁盘缓存键不含模型声明的 `maxTokens`（处理器不传这个字段），换上限后必须换 `--cache` 目录，否则会读到旧上限下保存的结果。
   - R1-T99 的报告引用本 ADR 的完成 token、拒绝次数与失败原因。
+
+## ADR-0058 写作契约段的位置与模板校验（2026-11-07）
+
+- **背景**：R3-T03 要求默认原生模板末尾增加 `protocol` 写作契约段，玩家输入是本轮演出指引、玩家不是上帝、每轮有剧情意义、遵守用户意志；契约可以被故事模板覆盖，模板校验要保证 `protocol` 始终是最后一个段落，违反时保存被拒绝并指出字段。改动前 `protocol` 是静态段，但排在 `history` 槽位之前，离生成位置还隔着整段历史。
+- **决定**：
+  - `createDefaultContextTemplate` 把 `protocol` 移到模板最后、`history` 之后；`block_format` 开启时插在 `history` 与 `protocol` 之间，两个静态段按“格式参考 → 写作契约”的顺序收尾。
+  - 契约文本是四条原则，两种结构化输出模式共用；标签写法与工具调用的说明接在契约之后，仍在同一个 `protocol` 段里。
+  - `WRITING_CONTRACT_SEGMENT_ID` 是契约段的固定 id。`assertContextTemplate` 在该 id 出现时要求它是最后一个片段，错误信息写出模板 id、当前位次与它后面的片段数；没有这个片段的模板不拒绝，因为组装器的单元测试与嵌入方会构造不含契约的最小模板，保存路径 `assertStoredContextTemplate` 走的也是同一条校验。
+  - Trace 增加契约段不需要新字段：静态段的条目已经带 `source`（`template:<模板 id>/protocol`）与 `tokens`，条目顺序就是模板顺序。
+  - `block_format` 保持可选、默认关闭（I13）；关闭时模板与改动前的差异只有 `protocol` 段本身的文本与它移到末尾。
+- **影响**：
+  - 组装后的消息里 `protocol` 是最后一条 system 消息，位于历史之后、紧贴生成；`chat-turn.test.ts` 与 `chat-cli.test.ts` 的消息角色与 Trace 顺序断言同步调整。
+  - st-compat 将来把 ST 预设转换成原生模板时，凡是保留 `protocol` 段的模板都必须把它放在最后，否则保存与组装都抛错。
+  - 编辑器要允许改写契约段文本，但不允许把其它片段放在后面；服务端把这类错误映射到 `template` 字段。

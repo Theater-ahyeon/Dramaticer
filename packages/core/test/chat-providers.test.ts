@@ -34,7 +34,14 @@ describe("createDefaultContextTemplate", () => {
 		if (protocol?.kind !== "static") throw new Error("缺少协议段");
 		expect(protocol.text).toContain("<state_update>");
 		expect(protocol.text).toContain("<plot_note>");
-		expect(template.segments.at(-1)?.slot).toBe("history");
+		expect(template.segments.at(-1)?.id).toBe("protocol");
+		expect(protocol.text).toContain("写作契约");
+		expect(protocol.text).toContain(
+			"玩家输入是本轮演出的指引，不是已经发生的剧情",
+		);
+		expect(protocol.text).toContain("玩家不是上帝");
+		expect(protocol.text).toContain("不重复之前的正文");
+		expect(protocol.text).toContain("遵守用户意志");
 	});
 
 	it("函数调用模式不在协议段写标签", () => {
@@ -81,7 +88,7 @@ describe("createDefaultContextTemplate", () => {
 		expect(segment.text).toContain('"path"');
 		expect(segment.text).toContain('"text"');
 		expect(segment.text).not.toMatch(/必须|务必|一律|一定要/);
-		expect(template.segments.at(-1)?.slot).toBe("history");
+		expect(template.segments.at(-1)?.id).toBe("protocol");
 	});
 
 	it("函数调用模式下的块格式段不提标签写法", () => {

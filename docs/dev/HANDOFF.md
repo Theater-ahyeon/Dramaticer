@@ -3,23 +3,22 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：108
-- 任务：R3-T02 文本协议工具传输
-- 结果：完成（`DONE`），门禁通过（95 个测试文件、859 个测试通过，3 个 live 跳过，共 862 个）。
-  - 模型配置新增 `tools.transport`（`native` 或 `text`）。`resolveToolTransport` 在没有显式配置时按 `probe.functionCalling` 决定：体检报告 `unsupported` 走 `text`，其余（含没跑过体检）走 `native`。`data/channels.yaml` 的 `rp`、`rp-抗截断`、`main` 写了 `tools: transport: native`；`channels.example.yaml` 有注释示例。
-  - 新增 `packages/core/src/chat/tool-protocol.ts`：`extractTextToolCalls` 解析 `<tool name="…">{json}</tool>` 并返回去掉调用片段后的正文；`renderToolProtocol` 生成插在开头几条 system 消息之后的工具说明（含每个工具的 JSON Schema，明确可以不调用）；`TextToolStreamFilter` 在流式增量里隐藏调用片段，末尾可能是 `<tool` 开头的片段先留住。
-  - `runModelTurns` 按 `toolTransport` 分支：原生传输发送函数定义；文本传输不发 `tools`，改为在消息里说明协议并从正文解析调用。两种传输共用 `validateReadToolArguments`、`executeReadTool`、`maxReadRounds` 与写入收集。文本协议的非法 JSON、未知工具、写入工具都作为工具结果返回，正文继续；达到软上限时不再执行。
-  - Trace 的 `tools` 增加 `transport`；`calls` 从工具名数组改为 `{name, ok, error}`；新增 `rejected`（文本协议里未知工具的记录，原生传输为空数组）。`TurnTraceTools`、`ToolCallTrace`、`ModelTurnResult` 同步调整。
-  - `ChatTurnOptions.toolTransport` 由调用方传入：server 运行时的 `StoryRuntime.toolTransport`、`dramaticer chat`、导演回放的 `ChatReplayGeneratorOptions.toolTransport`；缺省 `native`。文本传输下即使 `structuredOutput` 是 `text-tags` 也提供读取工具（否则文本协议没有工具可用）。
-  - 新增 `core/test/tool-transport.test.ts`（6 个测试）与 `llm-channels.test.ts` 的 4 个工具传输配置测试；`chat-tool-loop.test.ts`、`turn-mode.test.ts`、`trace-store.test.ts`、`ledger-settlement.test.ts`、`st-compat/test/director-eval.test.ts` 的 Trace 构造点与严格相等断言同步更新。
+- 会话：109
+- 任务：R3-T03 写作契约与默认模板
+- 结果：完成（`DONE`），门禁通过（96 个测试文件、865 个测试通过，3 个 live 跳过，共 868 个）。
+  - 默认原生模板的 `protocol` 段移到最后一个段落（`history` 之后）。契约文本在两种结构化输出模式下共用四条原则：玩家输入是本轮演出的指引、不是已经发生的剧情；玩家不是上帝，角色可以按人设拒绝、反对、打断；每轮让剧情有所推进、不重复之前的正文；遵守用户意志里的偏好、底线与纠正。标签写法与工具说明接在契约之后，仍在同一个 `protocol` 段。
+  - `block_format` 开启时插在 `history` 与 `protocol` 之间（`protocol` 仍是最后）；关闭时除 `protocol` 段之外与改动前逐字段一致。
+  - `context/template.ts` 新增 `WRITING_CONTRACT_SEGMENT_ID = "protocol"`。`assertContextTemplate` 在该 id 出现时要求它是最后一个片段，错误写模板 id、当前位次与后面还有几个片段；没有该片段的模板不拒绝（组装器单元测试与嵌入方会构造最小模板）。保存路径 `assertStoredContextTemplate` 复用同一校验，服务端把错误映射到 `template` 字段。
+  - 组装后的消息顺序变化：`protocol` 成为历史之后的最后一条 system 消息；Trace 条目的顺序同步，静态段本来就有 `source`（`template:dramaticer-default/protocol`）与 `tokens`。
+  - 新增 `core/test/writing-contract.test.ts`（6 个测试）；`chat-providers.test.ts`、`chat-turn.test.ts`、`context-assembler.test.ts`、`st-compat/test/chat-cli.test.ts` 的顺序与消息断言同步更新；DESIGN §9 补一句“`protocol` 段是模板的最后一个段落”；ADR-0058。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`；未完成任务见 `docs/dev/TASKS.md`。
-- **R3 快回合进行中**（R3-T01、R3-T02 完成，下一步 R3-T03 写作契约）。v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`；未完成任务见 `docs/dev/TASKS.md`。
+- **R3 快回合进行中**（R3-T01、R3-T02、R3-T03 完成，下一步 R3-T04 真实渠道验收）。v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045。
 - HUMAN-09 待处理（不阻塞）：`data/channels.yaml` 已有 `bg-fallback`、`main-fallback`、`codex`，`channels.example.yaml` 还没有这三个别名。
 - HUMAN-10 待处理（不阻塞）：插件不变量是否加进 AGENTS.md。
-- HUMAN-11 待处理（不阻塞）：`.env` 的正文模型 `opendesign/deepseek-v4.1-flash` 返回 membership entitlement 错误，是否换用 `auto/deepseek-v4.1-flash`；`.env` 由人类维护。
+- HUMAN-11 待处理（不阻塞）：`.env` 的正文模型 `opendesign/deepseek-v4.1-flash` 返回 membership entitlement 错误，是否换用 `auto/deepseek-v4.1-flash`；`.env` 由人类维护。R3-T04 要用真实渠道，可以先用 `main-fallback` 跑并在报告里记录实际路由。
 - 数据库 schema 版本 28（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡、v25 合并调用开关与执行记录、v26 间隙档位阈值与丢弃状态、v27 合并调用丢弃条目、v28 回合模式与读取工具软上限）；后续编号：v29 开局包、v30 开场候选、v31 偏好记录、v32 父子分块、v33 章节压缩、v34 世界书预筛、v35 上下文包；插入新迁移时后续编号一起顺延。
 - 结算只有 `dramaticer work` 调度：server 的回合路径不补建也不执行后台任务，所以回合内后台客户端零调用是结构保证；要真正结算故事，跑 `pnpm work --db <path> --kind settle`，要生成现场分析跑 `--kind scene`，要捕获用户意志跑 `--kind user_will`，要生成修订草案跑 `--kind memory_revision`，要回填事件跑 `--kind events`（单故事、逐窗口推进，适合小批量），要合并调用跑 `--kind gap_pass`（先打开故事设置 `gapPassEnabled`），批量回填三个 legacy 对话用 R1-T04.a 的 `events-backfill`。
 - 后台任务分两档：`gap` 档每次间隙都执行，`deferred` 档（`events`、`summary`、`npc_agenda`）只在会话结束或间隙达到 `gapPlanSeconds` 时执行。`dramaticer work` 不给 `--gap-seconds` 就按会话结束处理；要模拟回合中的短间隙就传 `--gap-seconds <秒数>`，短于阈值时延后档只入队不执行。
@@ -29,7 +28,7 @@
 - 现场分析以被分析的楼层为锚点：台账快照取该楼层的结算结果，原文窗口是该楼层路径上的最近 6 楼；没有结算记录时任务退回 pending（ADR-0048）。`gap_pass` 里现场分析段同样要求任务楼层已有结算记录。
 - 冲突检测依赖模型在同一个结算请求里返回 `conflicts`；程序不自行判断语义矛盾，只做事实级拒绝与记录。冲突提案与同路径的 `diffs` 提案配对后转成待审变更卡；只有 `conflicts` 没有对应提案时不建卡。
 - 实体解析只处理 `character.<名称>`、`relation.<from>.<to>` 两端、`item.<名称>`、`scene.places.<地点>`；`clue`、`knowledge` 的知情者、`userWill` 不做实体映射。规范名称采用实体的 `name` 而不是 id。
-- 已注册的槽位是十一个（`packages/core/src/context/template.ts` 的 `CONTEXT_SLOT_NAMES`：lore、character、persona、summary、state、memory、history、scene、director、user_will、protocol）；DESIGN §9 里的 `ledger` 对应实现的 `state`，`beat` 尚未注册。默认模板顺序：character、lore、state、summary、memory、scene、director、user_will、（可选的 block_format）、protocol、history。`block_format` 是模板里的可选静态段，不是槽位。
+- 已注册的槽位是十一个（`packages/core/src/context/template.ts` 的 `CONTEXT_SLOT_NAMES`：lore、character、persona、summary、state、memory、history、scene、director、user_will、protocol）；DESIGN §9 里的 `ledger` 对应实现的 `state`，`beat` 尚未注册。默认模板顺序：character、lore、state、summary、memory、scene、director、user_will、history、（可选的 block_format）、protocol。`block_format` 是模板里的可选静态段，不是槽位；`protocol` 是固定 id 的静态段，始终在最后。
 - 原生块类型现在是 12 个（`thinking`、`选项`、`状态栏`、`变量更新`、`分析`、`图片`、`页眉`、`悄悄话`、`旁白`、`备忘`、`state_update`、`plot_note`）；其中 `thinking`、`变量更新`、`state_update`、`plot_note` 的上下文策略是删除。
 - 历史槽位的默认策略：更早楼层省略五个显示类块，最近 1 楼不套用这层省略；`full` 是改动前的行为，用于对照。设置项 `historyBlockPolicy` 存在 `story_settings.history_block_policy`（JSON）。
 - `packages/server` 已提供故事、导入、设置、模板、SSE 回合与后台运行时缓存；`packages/protocol` 已提供 HTTP 与 SSE 类型；`packages/web` 尚未创建。
@@ -37,12 +36,12 @@
 - 快照：`eval-private/raw/` 有 94 个文件；manifest 记录 `corpus` 与 `sourceMtime`。`eval-private/reference/` 有 5 部参照小说。
 - 事件表已在 v7 建立；批量抽取窗口与抽取记录在 R1-T03 实现；批量回填管线在 R1-T04.a 实现，真实回填由 R1-T04.b 执行。
 - F0 的私有产物：`eval-private/f0/pairs.jsonl`（290 对）、`attribution.jsonl`、`judge.jsonl`（793 行）、`fulltext/work.db`、`fulltext-probe.json`、`fulltext-branches.json`、`fulltext-generations.jsonl`、`fulltext-judgements.jsonl`、`fulltext-summary.json`、`llm-cache/`。`eval-private/reports/f0-corpus-map.json` 是对话编号到文件路径的映射。
-- HUMAN-03（事件题抽查）仍未完成，不阻塞任何任务；其余 HUMAN 条目均已完成。
+- HUMAN-03（事件题抽查）仍未完成，不阻塞任何任务；其余 HUMAN 条目均已完成或明确不阻塞。
 - M3 的两项效果目标按 ADR-0029 保留为未证实；v2 的门槛改由 R6 按 B0/B1 对比判定。
 - 插件系统在 DESIGN §19 是唯一权威；P 阶段任务在 TASKS 的「P：插件内核」小节，C 线兼容插件任务已存在且依赖 P2。
 
 ## 下一步
-- **R3-T03 写作契约与默认模板**：默认原生模板末尾（最靠近生成的位置）增加 `protocol` 写作契约段——玩家输入是本轮演出指引、不是已经发生的剧情；玩家不是上帝，角色可以按人设拒绝、反对、打断；每轮有剧情意义，不重复之前的正文；遵守台账里的用户意志。契约段是静态段，可以被故事模板覆盖；模板校验保证 `protocol` 始终是最后一个段落。`block_format` 保持可选、默认关闭（I13）。实现前先读 DESIGN §9 与 `core/src/chat/template.ts` 的 `createDefaultContextTemplate`，以及 `core/test/chat-turn.test.ts`、`core/test/chat-providers.test.ts`、`st-compat/test/chat-cli.test.ts` 里的槽位与顺序断言。
+- **R3-T04 快回合真实渠道验收**：用 `.env` 里的真实渠道连续跑 20 轮快回合（固定卡与故事），记录首字延迟、生成耗时、工具轮数分布、截断率与请求数，与 F0 的 ST 基线（首字 P50 4.5 秒、生成 P50 50 秒）并列。私有报告写 `eval-private/reports/R3-fast.md`，统计版写 `docs/dev/reports/R3-fast.md`，只含数字与模型别名。正文路由 `opendesign/deepseek-v4.1-flash` 目前返回 entitlement 错误，用 `main-fallback`（`auto/deepseek-v4.1-flash`）跑，报告里记录实际路由；工具轮数不超过软上限（默认 3）。写脚本时不要调用网络之外的资源，脚本放 `.devloop/scratch/`（已忽略）并在结束后删除。
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
@@ -52,6 +51,7 @@
 - 读取工具软上限是可配的软上限（默认 3），执行器没有上限常量。达到上限时若模型仍只请求工具且正文为空，执行器会抛错；有正文时正常收束并把 `tools.capped` 记为 true。
 - 工具传输：`LlmToolTransport`、`LLM_TOOL_TRANSPORTS`、`isToolTransport`、`assertToolTransport`、`resolveToolTransport` 在 `core/src/llm/channels.ts`。显式 `models.<alias>.tools.transport` 优先；没有配置时 `probe.functionCalling === "unsupported"` 走 `text`，其余走 `native`。新增调用 `runChatTurn` 的入口要传 `toolTransport`（按模型解析），否则一律按原生函数调用。
 - 文本协议：`core/src/chat/tool-protocol.ts` 的 `extractTextToolCalls`、`renderToolProtocol`、`TextToolStreamFilter`。工具说明只插进发给模型的消息副本（开头几条 system 消息之后），不改组装好的上下文与 Trace 的 `context.entries`。文本传输下 `structuredOutput` 是 `text-tags` 也提供读取工具；写入工具只在 `function-call` 模式提供定义，写入仍然只收集、不执行（I12）。`<tool>` 片段不进入楼层原文，流式输出里也被隐藏；未闭合的 `<tool` 片段按正文保留。
+- 写作契约：`core/src/chat/template.ts` 的 `WRITING_CONTRACT` 是四条原则，接在两种协议文本之前；`context/template.ts` 的 `WRITING_CONTRACT_SEGMENT_ID` 固定为 `"protocol"`，`assertContextTemplate` 要求该 id 出现时是最后一个片段。`protocol` 是静态段，组装后是最后一条 system 消息（历史之后），故事模板可以改写它的文本。新增消息顺序断言时注意这一点：`core/test/chat-turn.test.ts` 的 `["system","assistant","user","system"]`、`st-compat/test/chat-cli.test.ts` 与 `core/test/writing-contract.test.ts`。
 - Trace 的 `tools.calls` 是 `{name, ok, error}`，`tools.rejected` 只记文本协议里的未知工具。tests 目录不在 tsc 的 `include` 里，新增 Trace 字段时手动检查 `core/test/trace-store.test.ts`、`core/test/ledger-settlement.test.ts`、`st-compat/test/director-eval.test.ts` 的构造点与 `core/test/chat-tool-loop.test.ts`、`core/test/turn-mode.test.ts` 的严格相等断言。
 - `dramaticer chat` 的 `--mode` 只影响单轮；故事级锁定写在故事设置 `turnMode`。server 的回合路径目前不传单轮模式，读取故事设置；工具传输由 server 运行时按故事模型解析。
 - 渠道角色：角色类型叫 `LlmModelRole`（`writer`、`settler`、`planner`、`judge`），与表示消息角色的 `LlmRole`（system、user、assistant）不是一回事。`createLlmClient` 会校验 judge 与 writer 的模型家族，缺省回落也算在内：只要配置里同时有 `main` 与 `background` 且两者同家族，创建任何客户端都会抛错。`data/channels.yaml` 目前用 `judge: codex`（`codex/gpt-6.1-terra`，gpt 家族）与 writer 的 deepseek 区分。
@@ -70,10 +70,11 @@
 - 每个后台任务连续失败 3 次才放弃；`attemptJob` 与生产 drain 的重试语义一致。`user_will` 的 `sourceQuote` 必须逐字出现在玩家楼层里，评测里有一次合法拒绝，不要当成程序错误。模型返回内容政策拒答文本时，合并调用会以“不是合法 JSON”失败并重试 3 次，这是模型行为，不是截断。
 - 自己搭 `drainBackgroundJobs` 做测量时，注册表条目必须写成对象并声明 `enqueue: "settled"`（缺省是 `confirmed`）；只传处理器函数会把玩家楼层也当成可入队楼层，任务数翻倍。R1-T99 的积压测量用的就是 `{handler, enqueue: "settled"}`。
 - 积压测量用 20 楼样本会得到 92 条关键间隙任务（23 个助手楼层 × 4 种，含 3 个 swipe 兄弟节点）；生产单轮上限是 20 条，所以一轮后仍有待办。兄弟楼层的任务在轮到时按“不在 head 路径上”丢弃，不计入未完成率分母。
-- 新增槽位或模板段落时同步更新既有断言：`core/test/chat-turn.test.ts` 的 Trace 顺序、`core/test/chat-providers.test.ts` 的标准槽位集合、`st-compat/test/chat-cli.test.ts` 的槽位列表。
+- 新增槽位或模板段落时同步更新既有断言：`core/test/chat-turn.test.ts` 的 Trace 顺序与消息角色、`core/test/chat-providers.test.ts` 的标准槽位集合、`st-compat/test/chat-cli.test.ts` 的槽位列表、`core/test/writing-contract.test.ts` 的默认模板顺序。
 - 新增或调整原生块类型时同步更新 `core/test/block-parser.test.ts` 的默认块类型列表断言。
 - 历史槽位的 `full` 是“改动前的渲染”的对照口径；`default` 的最近一楼仍会省略思考块与写入块，不要再把“最近一楼”理解成返回完整原文。省略统计按整段标签文本计算。
 - `default` 下围栏代码块不受块策略影响；围栏未闭合时一直保留到楼层结尾。
+- `user_will` 槽位优先级 110，高于历史段 100；改动默认模板的优先级或插段时要同步 `core/test/user-will.test.ts` 的预算优先级断言。
 - `pnpm r1:history-view` 需要先构建 `packages/core/dist` 与 `packages/st-compat/dist`（`pnpm run typecheck` 即可）；脚本只读 `eval-private/raw/`，不写数据库，输出贴进 `docs/dev/reports/R1.md`。
 - 离线统计里“含标签映射”一列用的是 F0 的标签分类，不是 core 的原生块类型；st-compat 的标签映射实现后要复核 `DEFAULT_HISTORY_OMITTED_BLOCK_NAMES` 与原生块类型表。
 - 事件抽取窗口只看 head 路径，任务所在楼层不决定窗口；已抽取的助手楼层（有事件或抽取记录）会切断连续段，所以窗口按时间顺序推进。`eventWindowFloors` 在代码里是 `createEventExtractionHandler({ windowFloors })`，合并调用里是 `createGapPassHandler({ eventWindowFloors })`。
@@ -87,7 +88,6 @@
 - `sourceQuote` 必须逐字出现在玩家楼层原文里；模型改写引文会让整次输出被拒（`gap_pass` 里只拒该段并记原因，独立任务失败并重试），不要放宽成模糊匹配。
 - 用户意志的稳定 id 由正文决定：改写正文就是一条新事实；路径上已存在的 id 不会被覆盖，删除只能手动写 `delete`。
 - `userWill` 事实写在任务所在的助手楼层，所以分支切换后另一分支的条目不出现在快照里；槽位取 `readLedger(nodeId, ["userWill"])`，不要直接读 `getStateDiffs`。
-- `user_will` 槽位优先级 110，高于历史段 100；改动默认模板的优先级或插段时要同步 `core/test/user-will.test.ts` 的预算优先级断言。
 - 变更卡的草案只在 `memory_revision` 任务里生成，入队条件 `settled`；任务楼层只提供窗口与快照锚点，批准与回滚都写在**当前 head**，所以分支切换后批准卡片会作用于新分支。
 - 变更卡的 `before` 记录创建卡片时台账上的原值；同一窗口里有别的楼层改过同一路径时，回滚恢复的是卡片创建时的值。
 - 变更卡的稳定 id 由任务名、规范化正文与原始 diffs 组成；模型改写正文或修改任意一条 diff 就是一张新卡。被拒绝的卡片也占用 id，重跑不会反复插入。

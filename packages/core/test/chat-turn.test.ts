@@ -148,13 +148,15 @@ describe("runChatTurn", () => {
 		expect(request.model).toBe("fake");
 		expect(request.messages.map((message) => message.role)).toEqual([
 			"system",
-			"system",
 			"assistant",
 			"user",
+			"system",
 		]);
 		expect(request.messages[0]?.content).toBe("你扮演山神。");
-		expect(request.messages[1]?.content).toContain("<state_update>");
-		expect(request.messages[3]?.content).toBe("我推开山门。");
+		expect(request.messages[1]?.content).toBe("你好，旅人。");
+		expect(request.messages[2]?.content).toBe("我推开山门。");
+		expect(request.messages[3]?.content).toContain("写作契约");
+		expect(request.messages[3]?.content).toContain("<state_update>");
 		expect(options[0]?.continuation?.expectedTags).toEqual([
 			"state_update",
 			"plot_note",
@@ -218,9 +220,17 @@ describe("runChatTurn", () => {
 			["scene", "missing-slot"],
 			["director", "missing-slot"],
 			["user_will", "missing-slot"],
-			["protocol", "included"],
 			["history", "included"],
+			["protocol", "included"],
 		]);
+		const protocolEntry = trace?.context.entries.at(-1);
+		expect(protocolEntry).toMatchObject({
+			segmentId: "protocol",
+			kind: "static",
+			source: "template:dramaticer-default/protocol",
+			status: "included",
+		});
+		expect(protocolEntry?.tokens).toBeGreaterThan(0);
 	});
 
 	it("Trace 记录 length、未闭合标签与突然中断", async () => {
@@ -358,7 +368,9 @@ describe("runChatTurn", () => {
 		});
 
 		const messages = second.requests[0]?.messages ?? [];
-		const historyRoles = messages.slice(-4).map((message) => message.role);
+		expect(messages.at(-1)?.role).toBe("system");
+		expect(messages.at(-1)?.content).toContain("写作契约");
+		const historyRoles = messages.slice(-5, -1).map((message) => message.role);
 		expect(historyRoles).toEqual(["assistant", "user", "assistant", "user"]);
 		const previousReply = messages.find(
 			(message) =>

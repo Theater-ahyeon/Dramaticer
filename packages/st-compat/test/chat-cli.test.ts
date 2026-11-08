@@ -188,8 +188,8 @@ describe("dramaticer chat", () => {
 				"scene",
 				"director",
 				"user_will",
-				"protocol",
 				"history",
+				"protocol",
 			]);
 			expect(trace?.structured.acceptedStateUpdates).toBe(1);
 			const decision = store.getDirectorDecision(result.userNode.id);

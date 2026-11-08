@@ -1,6 +1,7 @@
 import {
 	type ContextTemplate,
 	DEFAULT_CONTEXT_TEMPLATE_ID,
+	WRITING_CONTRACT_SEGMENT_ID,
 } from "../context/template.js";
 import type { StructuredOutputMode } from "../structured/types.js";
 
@@ -10,7 +11,15 @@ export interface DefaultContextTemplateOptions {
 	readonly blockFormat?: boolean;
 }
 
-const TEXT_TAG_PROTOCOL = `你在扮演故事里的角色，用正文推进故事。正文结束后，用标签提交本轮产生的状态变更与剧情笔记。
+const WRITING_CONTRACT = `写作契约：
+- 玩家输入是本轮演出的指引，不是已经发生的剧情；按指引编排接下来发生的事。
+- 玩家不是上帝：角色可以按人设拒绝、反对、打断，也可以有玩家没有预料的反应。
+- 每轮都让剧情有所推进，不重复之前的正文。
+- 遵守用户意志里的偏好、底线与纠正。`;
+
+const TEXT_TAG_PROTOCOL = `${WRITING_CONTRACT}
+
+你扮演故事里的角色，用正文推进故事。正文结束后，用标签提交本轮产生的状态变更与剧情笔记。
 
 标签规则：
 - 一个标签只写一条，内容是 JSON 对象，写在正文之后。
@@ -19,7 +28,9 @@ const TEXT_TAG_PROTOCOL = `你在扮演故事里的角色，用正文推进故�
 - 记录剧情笔记：<plot_note>{"text":"尚未兑现的伏笔或线索"}</plot_note>
 - path 从宽到窄，不能为空；没有变化的字段不要提交。`;
 
-const FUNCTION_CALL_PROTOCOL = `你在扮演故事里的角色，用正文推进故事。正文结束后，通过工具调用提交本轮产生的状态变更与剧情笔记。
+const FUNCTION_CALL_PROTOCOL = `${WRITING_CONTRACT}
+
+你扮演故事里的角色，用正文推进故事。正文结束后，通过工具调用提交本轮产生的状态变更与剧情笔记。
 
 工具规则：
 - 需要回忆过去的原文或事件时，可以调用 memory_search；需要世界书资料或实体档案时，调用 lore_lookup；需要核对状态值时，调用 state_get。读取工具返回结果后继续写正文。
@@ -37,7 +48,7 @@ const FUNCTION_CALL_BLOCK_FORMAT = `块格式参考：状态变更与剧情笔�
 - plot_note：{"text":"尚未兑现的伏笔或线索"}；text 是一句话。
 要不要调用、调用几次，按剧情需要决定。`;
 
-/** 默认的原生上下文模板：角色、世界书、状态、摘要、记忆、现场分析、导演、协议、历史。 */
+/** 默认的原生上下文模板：角色、世界书、状态、摘要、记忆、现场分析、导演、历史。protocol 写作契约固定在最后。 */
 export function createDefaultContextTemplate(
 	options: DefaultContextTemplateOptions,
 ): ContextTemplate {
@@ -56,6 +67,7 @@ export function createDefaultContextTemplate(
 			{ id: "scene", kind: "slot", slot: "scene", priority: 55 },
 			{ id: "director", kind: "slot", slot: "director", priority: 50 },
 			{ id: "user_will", kind: "slot", slot: "user_will", priority: 110 },
+			{ id: "history", kind: "slot", slot: "history", priority: 100 },
 			...(options.blockFormat === true
 				? [
 						{
@@ -70,12 +82,11 @@ export function createDefaultContextTemplate(
 					]
 				: []),
 			{
-				id: "protocol",
+				id: WRITING_CONTRACT_SEGMENT_ID,
 				kind: "static",
 				text: protocol,
 				priority: 95,
 			},
-			{ id: "history", kind: "slot", slot: "history", priority: 100 },
 		],
 	};
 }

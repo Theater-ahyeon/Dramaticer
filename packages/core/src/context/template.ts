@@ -94,6 +94,9 @@ export interface ContextTemplate {
 	readonly segments: readonly ContextSegment[];
 }
 
+/** 写作契约片段固定使用的 id；契约始终是模板最后一个段落。 */
+export const WRITING_CONTRACT_SEGMENT_ID = "protocol";
+
 export function assertContextTemplate(template: ContextTemplate): void {
 	if (typeof template.id !== "string" || template.id.length === 0) {
 		throw new Error("上下文模板的 id 必须是非空字符串");
@@ -124,6 +127,15 @@ export function assertContextTemplate(template: ContextTemplate): void {
 				`上下文片段 ${segment.id} 的槽位不合法：${String(segment.slot)}`,
 			);
 		}
+	}
+	const protocolIndex = template.segments.findIndex(
+		(segment) => segment.id === WRITING_CONTRACT_SEGMENT_ID,
+	);
+	const lastIndex = template.segments.length - 1;
+	if (protocolIndex !== -1 && protocolIndex !== lastIndex) {
+		throw new Error(
+			`上下文模板 ${template.id} 的 protocol 写作契约片段必须是最后一个片段：当前在第 ${protocolIndex + 1} 个，后面还有 ${lastIndex - protocolIndex} 个片段`,
+		);
 	}
 }
 
