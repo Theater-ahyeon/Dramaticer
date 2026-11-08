@@ -10,6 +10,7 @@ import {
 	type DirectorIntensity,
 	LEDGER_CHANGE_CARD_STATUSES,
 	MAX_MEMORY_EVENT_LIMIT,
+	OPENING_CANDIDATES_JOB_KIND,
 	OPENING_CANDIDATE_STATUSES,
 	STORY_SETTINGS_UPDATE_KEYS,
 	type StateDiff,
@@ -21,6 +22,7 @@ import {
 	type TurnMode,
 	type UpdateContextTemplateInput,
 	assertDirectorIntensity,
+	enqueueOpeningBackgroundJobs,
 	fulfillLedgerClue,
 	isJsonObject,
 	isLedgerChangeCardStatus,
@@ -55,6 +57,7 @@ import type {
 	StoryJobErrorView,
 	StoryJobsView,
 	StoryLoreView,
+	StoryOpeningGenerateResult,
 	StoryOpeningPickResult,
 	StoryOpeningsView,
 	StoryPath,
@@ -165,6 +168,11 @@ export async function handleApiRequest(
 				default:
 					break;
 			}
+		}
+		if (third === "openings" && parts.length === 4 && parts[3] === "generate") {
+			requireMethod(method, ["POST"]);
+			handleOpeningGenerate(res, options, storyId);
+			return;
 		}
 		if (
 			third === "openings" &&
@@ -282,6 +290,8 @@ async function handleStories(
 		title: requireText(body.title, "title"),
 	};
 	const story = options.store.createStory(request);
+	enqueueOpeningBackgroundJobs(options.store, story.id);
+	options.scheduler?.schedule(story.id);
 	sendJson(res, 201, toStoryView(story, options.store));
 }
 
@@ -356,6 +366,8 @@ async function handleImport(
 		throw toBadRequest(error, "card");
 	}
 
+	enqueueOpeningBackgroundJobs(options.store, storyId);
+	options.scheduler?.schedule(storyId);
 	const result: ImportStoryResult = {
 		story: toStoryView(requireStory(options.store, storyId), options.store),
 		cardName: imported.cardName,
@@ -858,6 +870,35 @@ function handleOpenings(
 		),
 	};
 	sendJson(res, 200, view);
+}
+
+function handleOpeningGenerate(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	storyId: string,
+): void {
+	requireStory(options.store, storyId);
+	if (options.store.getHead(storyId) !== null) {
+		throw new HttpError(
+			409,
+			"conflict",
+			`故事 ${storyId} 已经有楼层，不能再重新生成开场候选`,
+		);
+	}
+	const [job] = options.store.enqueueStoryBackgroundJobs({
+		storyId,
+		kinds: [OPENING_CANDIDATES_JOB_KIND],
+	});
+	if (job === undefined) {
+		throw new Error(`故事 ${storyId} 的开场候选任务没有入队`);
+	}
+	options.scheduler?.schedule(storyId);
+	const view: StoryOpeningGenerateResult = {
+		storyId,
+		jobId: job.id,
+		kind: job.kind,
+	};
+	sendJson(res, 202, view);
 }
 
 function handleOpeningPick(

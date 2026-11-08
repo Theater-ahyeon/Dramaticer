@@ -145,6 +145,13 @@ export interface StoryOpeningsView {
 	readonly candidates: readonly OpeningCandidateRecord[];
 }
 
+/** `POST /api/stories/:id/openings/generate` 的结果；任务立即返回，生成在后台执行。 */
+export interface StoryOpeningGenerateResult {
+	readonly storyId: string;
+	readonly jobId: number;
+	readonly kind: string;
+}
+
 /** `GET` 与 `PUT /api/stories/:id/director/plan` 的载荷。 */
 export interface StoryDirectorPlanView {
 	readonly storyId: string;

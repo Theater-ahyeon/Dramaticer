@@ -3,20 +3,21 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：154
-- 任务：R5-T02.b 路径分页
-- 结果：完成，门禁通过（124 个测试文件、1121 个测试通过，3 个 live 跳过，共 1124 个）。
-  - `packages/protocol/src/story.ts` 的 `StoryPath` 增加 `hasMore`（注释改为“锚点楼层到根节点的路径，按根到当前页最后一个节点的顺序”）。
-  - `packages/server/src/routes.ts` 的 `handlePath` 支持 `limit`（默认 60，范围 1–200）与 `before`（节点 id）。`nodeId` 仍是锚点、缺省 head；`before` 先用 `requireStoryNode` 确认属于本故事（否则 404），再确认位于锚点路径上（否则 404）；返回路径是 `anchor.slice(max(0, index(before) - limit), index(before))`，`hasMore` 为 `pageStart > 0`。不带 `before` 时页末是锚点，即最近 `limit` 楼。锚点节点本身在页内。
-  - `buildPath` 仍然拼完整路径，`hasMore` 固定 `false`，用于 swipe、edit、head 切换与开场候选选中的响应。
-  - 新增 2 个 server 测试（`branches.test.ts`）：2000 楼链首屏 60 楼、用上一页最早楼层的 id 作为 `before` 连续取 34 页共 2000 楼不重复不丢楼（该用例显式 `timeout: 180_000`，单独运行约 15 秒，全门禁约 16 秒）；`limit` 为 `0`、`201`、`abc` 返回 400 且 `details.path` 为 `limit`；路径外、锚点下方、不存在的 `before` 返回 404；空故事的 `nodes` 为空、`hasMore` 为 false、`headNodeId` 为 null。
+- 会话：155
+- 任务：R5-T02.c 开局任务入队与开场候选重新生成
+- 结果：完成，门禁通过（125 个测试文件、1127 个测试通过，3 个 live 跳过，共 1130 个）。
+  - `StoryStore` 新增 `enqueueStoryBackgroundJobs({storyId, kinds, createdAt?})`：按种类写入 `node_id` 为空的任务行；同一类型已有 `pending` 或 `running` 的行时原样返回，`done`、`failed`、`discarded` 的行翻回 `pending`（不重置 `attempts`、不清空其它任务）。表结构不变。
+  - 新增 `packages/core/src/opening/enqueue.ts` 的 `enqueueOpeningBackgroundJobs(store, storyId)`：按 `openingPackNeedsRun`、`openingCandidatesNeedRun` 过滤后调用上述方法；素材不足时两条都不入队。
+  - `POST /api/stories` 与 `POST /api/stories/:id/import` 在响应之前入队开局任务并调用 `BackgroundScheduler.schedule(storyId)`，模型调用只发生在后台 drain。
+  - 新增 `POST /api/stories/:id/openings/generate`：故事无楼层时通过 `enqueueStoryBackgroundJobs` 入队一条 `opening_candidates` 并返回 202 `{storyId, jobId, kind}`（协议类型 `StoryOpeningGenerateResult`），已有楼层 409；接口不调用模型。
+  - `createOpeningCandidatesHandler` 只保留“故事已有楼层就不生成”的守卫；自动入队仍由 `openingCandidatesNeedRun` 的待选判定控制，手动任务与生成接口每次追加一批。
+  - 新增 1 个 server 测试（`packages/server/test/openings.test.ts`，假客户端用闸门卡住 `complete`：导入响应内两条故事级任务已在库里而开局包与候选未生成；放行后开局包与 3 条候选入库；连续两次手动生成得到 9 条候选且第一批保持 `pending`；选中一条成为根楼层、其余 `discarded`；再次生成 409；故事不存在 404）与 4 个 core 测试（3 个 store 入队用例、1 个“已有待选候选时手动任务追加新一批”）。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09.a、R2-T09.b、R2-T09.c、R2-T99、R5-T01、R5-T02、R5-T02.a、R5-T02.b、R5-T05.a、E-T01、R4-T00、R4-T01、R4-T02、R4-T03、R4-T04、R4-T05、R4-T06、R4-T07、R4-T08、R4-T99、R5-T00。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- **下一个可做任务是 R5-T02.c（开局任务入队与开场候选重新生成）**：依赖 R5-T01、R5-T02、O-T01、O-T03，全部满足。
-- R5 的已知接口缺口（R5-T00 定下的任务范围）：
-  - 创建故事与导入卡之后没有调用 `scheduler.schedule`；`createOpeningCandidatesHandler` 在已有待选候选时不生成（CLI `--generate` 直接调 `generateOpeningCandidates` 追加）；没有开场候选重新生成接口。
-  - 变更卡只有 `GET /api/stories/:id/proposals`，没有批准、拒绝与回滚接口；CLI 用 `approveLedgerChangeCard`、`rejectLedgerChangeCard`、`rollbackLedgerChangeCard`。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09.a、R2-T09.b、R2-T09.c、R2-T99、R5-T01、R5-T02、R5-T02.a、R5-T02.b、R5-T02.c、R5-T05.a、E-T01、R4-T00、R4-T01、R4-T02、R4-T03、R4-T04、R4-T05、R4-T06、R4-T07、R4-T08、R4-T99、R5-T00。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- **下一个可做任务是 R5-T04（web 骨架与 API 客户端）**：依赖 M4-T05、M4-T06、M4-T01、R5-T02.a，全部满足。执行顺序见 TASKS 的 R5 段落：R5-T04 → R5-T05 → R5-T07 → R5-T11，然后第二段。
+- R5 的已知接口缺口（R5-T00 定下的任务范围，尚未做的部分）：
+  - 变更卡只有 `GET /api/stories/:id/proposals`，没有批准、拒绝与回滚接口（R5-T07.a）；CLI 用 `approveLedgerChangeCard`、`rejectLedgerChangeCard`、`rollbackLedgerChangeCard`。
   - 故事设置接口是 `GET`/`PUT /api/stories/:id/settings`（不是 PATCH）。
   - `blocks.replace` 的 `ParsedContent` 不含块显示策略；`BlockDisplayStrategy` 在 core 的块注册表里。
 - v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
@@ -28,6 +29,8 @@
 - HUMAN-13 待处理（不阻塞）：`catie` 的 `rp`（`agy-gemini-3.8-flash-medium`）返回 503「没有可用的 Antigravity 凭证」，影响 `roles.writer`；R2-T99 的真实分支点验证改用 `main-fallback`。凭证恢复后可用 `node scripts/r2-legacy-forgetting.mjs run-all --concurrency 3` 补齐 45 道失败题。
 - 数据库 schema 版本 33（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡、v25 合并调用开关与执行记录、v26 间隙档位阈值与丢弃状态、v27 合并调用丢弃条目、v28 回合模式与读取工具软上限、v29 开局包与故事级后台任务、v30 首楼开场候选、v31 偏好记录、v32 导演计划与拍状态、v33 导演候选行动）；R1 续原计划的 v32–v35 顺延为 v34–v37；插入新迁移时后续编号一起顺延。
 - server 的回合路径会补建并执行后台任务：`handleTurnStream` 在 `turn.completed` 之后调用 `BackgroundScheduler.schedule`，不等待 drain；同一时刻只有一个 drain，故事之间先来先做。`schedule` 的 drain 只跑 `resolveStoryBackgroundKinds` 过滤后的类型。
+- 故事级任务入队：`StoryStore.enqueueStoryBackgroundJobs` 按种类写入 `node_id` 为空的 `background_jobs` 行；创建故事与导入卡的路由先调用 `enqueueOpeningBackgroundJobs`（按两个 `needsRun` 过滤）再 `schedule`。`POST /api/stories/:id/openings/generate` 无条件入队一条 `opening_candidates`（仅要求故事无楼层），同样的 `enqueueStoryBackgroundJobs` 在任务已完成时把同一行翻回 `pending`，所以连续手动生成的 `jobId` 相同。
+- 开场候选自动入队只在有素材、无楼层且无待选候选时发生；生成处理器本身只检查“故事没有楼层”，手动任务与生成接口每次追加一批。
 - 分支与面板接口已可用；`packages/web` 尚未创建。`GET /api/nodes/:id/ledger` 返回 `{state, facts, diffs}`，`facts` 来自 `readLedgerFacts`，`diffs` 只含该楼层自己的写入。
 - 路径接口：`GET /api/stories/:id/path?nodeId=&limit=&before=`，返回 `{storyId, headNodeId, nodes, hasMore}`。`nodeId` 是锚点、缺省 head，锚点节点包含在返回路径里；`before` 必须在本故事且在该锚点的路径上，返回它之前的 `limit` 楼；`hasMore` 只在返回页之前还有楼层时为真。响应里 `nodes` 一定是根到页末楼的连续顺序。
 - 偏好记录已闭环：记录写入（四种信号）→ `POST /api/nodes/:id/choice` → `preferences export` 产出回复对 → `pairwise` 盲测与评分 → `scoreboard` 汇总。重新生成与 `swipeNode` 都写 `swipe`；私有库目前没有任何 `preference_events`。
@@ -42,8 +45,8 @@
 - R4 验收的链路证据在 `packages/core/test/director-acceptance.test.ts` 与 `docs/dev/reports/R4.md`。
 
 ## 下一步
-- **R5-T02.c 开局任务入队与开场候选重新生成**：创建故事与导入卡之后调用 `BackgroundScheduler.schedule(storyId)`，让 `opening` 与 `opening_candidates` 按各自 `needsRun` 入队且请求立即返回；新增 `POST /api/stories/:id/openings/generate`（没有助手楼层时入队一条 `opening_candidates` 任务、返回 202 与任务 id，已有楼层 409）；`createOpeningCandidatesHandler` 删掉“已有待选候选就不生成”的守卫，自动入队仍由 `openingCandidatesNeedRun` 控制；`StoryStore` 新增按种类入队的方法。
-- 之后按顺序做 R5-T04（web 骨架）、R5-T05（聊天）、R5-T07（台账只读）、R5-T11（沙箱块渲染）；再进入第二段 R5-T03、R5-T06、R5-T07.a、R5-T08、R5-T09、R5-T10。
+- **R5-T04 web 骨架与 API 客户端**：新建 `packages/web`（React、Vite、TypeScript，中文，移动端优先），路由包含登录、故事列表、故事页（聊天、分支、台账、导演、设置、渠道）；`api` 客户端用 cookie 凭据与 protocol 类型，`turn` 用 fetch 与 ReadableStream 解析 SSE 并支持 AbortController；本任务只建路由与布局。
+- 之后按顺序做 R5-T05（聊天）、R5-T07（台账只读）、R5-T11（沙箱块渲染）；再进入第二段 R5-T03、R5-T06、R5-T07.a、R5-T08、R5-T09、R5-T10。
 - R5-T05 依赖 R5-T02、R5-T02.a、R5-T02.b、R5-T02.c、R5-T05.a、R5-T04；R5-T08 只依赖 R5-T04、R5-T02、R4-T99，计划、决策、候选与线索接口已经可用。
 - 引用评测数字时：B1 必须同时说明同模型子集为空、每个对话每档只有 1 个样本；遗忘矛盾率必须同时说明失败题数与可判定样本数；偏好一致率当前没有样本。
 

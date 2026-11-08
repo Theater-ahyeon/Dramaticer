@@ -125,6 +125,80 @@ describe("后台任务入队", () => {
 	});
 });
 
+describe("故事级任务按种类入队", () => {
+	it("写入 node_id 为空的任务，重复调用返回同一行", () => {
+		const { store } = openTempStore();
+		store.createStory({ id: "s1", title: "测试" });
+
+		const [opening] = store.enqueueStoryBackgroundJobs({
+			storyId: "s1",
+			kinds: ["opening"],
+			createdAt: FIXED_ISO,
+		});
+		expect(opening?.nodeId).toBeNull();
+		expect(opening?.kind).toBe("opening");
+		expect(opening?.status).toBe("pending");
+		expect(opening?.attempts).toBe(0);
+		expect(opening?.createdAt).toBe(FIXED_ISO);
+
+		const again = store.enqueueStoryBackgroundJobs({
+			storyId: "s1",
+			kinds: ["opening"],
+		});
+		expect(again.map((job) => job.id)).toEqual([opening?.id]);
+		expect(store.listBackgroundJobs({ storyId: "s1" })).toHaveLength(1);
+	});
+
+	it("已完成的任务翻回待办，执行中的任务保持不动", () => {
+		const { store } = openTempStore();
+		store.createStory({ id: "s1", title: "测试" });
+		const [job] = store.enqueueStoryBackgroundJobs({
+			storyId: "s1",
+			kinds: ["opening"],
+		});
+		if (job === undefined) throw new Error("测试任务没有入队");
+		store.startBackgroundJob(job.id);
+		const running = store.enqueueStoryBackgroundJobs({
+			storyId: "s1",
+			kinds: ["opening"],
+		});
+		expect(running[0]?.status).toBe("running");
+
+		store.finishBackgroundJob(job.id);
+		const reopened = store.enqueueStoryBackgroundJobs({
+			storyId: "s1",
+			kinds: ["opening"],
+		});
+		expect(reopened[0]?.id).toBe(job.id);
+		expect(reopened[0]?.status).toBe("pending");
+		expect(reopened[0]?.finishedAt).toBeNull();
+	});
+
+	it("类型列表为空时不建任务，重复类型与空类型直接抛错", () => {
+		const { store } = openTempStore();
+		store.createStory({ id: "s1", title: "测试" });
+
+		expect(
+			store.enqueueStoryBackgroundJobs({ storyId: "s1", kinds: [] }),
+		).toEqual([]);
+		expect(() =>
+			store.enqueueStoryBackgroundJobs({
+				storyId: "s1",
+				kinds: ["opening", "opening"],
+			}),
+		).toThrow("重复");
+		expect(() =>
+			store.enqueueStoryBackgroundJobs({ storyId: "s1", kinds: [""] }),
+		).toThrow("非空字符串");
+		expect(() =>
+			store.enqueueStoryBackgroundJobs({
+				storyId: "missing",
+				kinds: ["opening"],
+			}),
+		).toThrow("故事不存在");
+	});
+});
+
 describe("后台任务执行", () => {
 	it("执行一次处理器后标为 done，并把任务与依赖一起交给处理器", async () => {
 		const { store } = openTempStore();

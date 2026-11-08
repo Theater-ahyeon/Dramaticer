@@ -225,6 +225,29 @@ describe("开场候选任务", () => {
 		expect(store.listOpeningCandidates("s1")).toHaveLength(3);
 	});
 
+	it("手动入队的任务在已有待选候选时追加新一批", async () => {
+		const { store } = openTempStore();
+		seedStory(store);
+		const { client, requests } = createFakeClient([
+			batchJson(3, "第一批"),
+			batchJson(3, "第二批"),
+		]);
+		await drain(store, client);
+		const [job] = store.enqueueStoryBackgroundJobs({
+			storyId: "s1",
+			kinds: [OPENING_CANDIDATES_JOB_KIND],
+		});
+		expect(job?.status).toBe("pending");
+
+		await drain(store, client);
+		expect(requests).toHaveLength(2);
+		const candidates = store.listOpeningCandidates("s1");
+		expect(candidates).toHaveLength(6);
+		expect(candidates.map((item) => item.ordinal)).toEqual([0, 1, 2, 3, 4, 5]);
+		expect(candidates.every((item) => item.status === "pending")).toBe(true);
+		expect(candidates[3]?.raw).toContain("第二批");
+	});
+
 	it("非法输出整批拒绝并保留原因", async () => {
 		const { store } = openTempStore();
 		seedStory(store);

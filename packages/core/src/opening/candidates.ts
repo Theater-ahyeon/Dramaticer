@@ -119,7 +119,7 @@ export async function generateOpeningCandidates(
 
 /**
  * 入队条件为 story 的判定：有素材、故事还没有任何楼层，并且没有待选候选。
- * 选中或重新生成后不再自动建任务；重新生成走 CLI。
+ * 已经有待选候选时不再自动建任务；手动重新生成走生成接口或 CLI。
  */
 export function openingCandidatesNeedRun(
 	store: StoryStore,
@@ -138,8 +138,8 @@ export interface OpeningCandidatesHandlerOptions {
 }
 
 /**
- * 开场候选的后台任务：故事还没有楼层时生成一批候选。已经存在待选候选、
- * 或者玩家已经开了头，就不调用模型。
+ * 开场候选的后台任务：玩家还没开头的故事每次执行都生成一批候选。
+ * 自动入队由 `openingCandidatesNeedRun` 的待选判定控制，手动重新生成每次追加一批。
  */
 export function createOpeningCandidatesHandler(
 	options: OpeningCandidatesHandlerOptions = {},
@@ -149,11 +149,6 @@ export function createOpeningCandidatesHandler(
 	);
 	return async ({ store, client, job, signal }) => {
 		if (store.getHead(job.storyId) !== null) return;
-		if (
-			store.listOpeningCandidates(job.storyId, { status: "pending" }).length > 0
-		) {
-			return;
-		}
 		const input = collectOpeningInput(store, job.storyId);
 		if (input === null) return;
 		await generateOpeningCandidates({

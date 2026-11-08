@@ -581,7 +581,8 @@
   - `before` 不在该故事或不在锚点路径上时 404；`limit` 越界 400 并指出字段；故事没有楼层时 `nodes` 为空、`hasMore` 为 false。
   验收：2000 楼夹具首屏返回 60 楼且 `hasMore` 为真；用上一页最早楼层的 id 作为 `before` 连续取页，页与页之间不重复不丢楼，取完后 `hasMore` 为假；不带分页参数时返回锚点侧最近 60 楼；越界 `limit` 返回 400、路径外 `before` 返回 404；`pnpm check` 通过。
 
-- [ ] **R5-T02.c 开局任务入队与开场候选重新生成** | 依赖：R5-T01、R5-T02、O-T01、O-T03 | DESIGN §8.4
+- [x] **R5-T02.c 开局任务入队与开场候选重新生成** | 依赖：R5-T01、R5-T02、O-T01、O-T03 | DESIGN §8.4
+  完成：2026-11-08 `StoryStore.enqueueStoryBackgroundJobs` 按种类入队故事级任务（`node_id` 为空；已有待办或执行中的行原样返回，已完成、失败、丢弃的行翻回 `pending`）；`enqueueOpeningBackgroundJobs` 按 `openingPackNeedsRun` 与 `openingCandidatesNeedRun` 过滤后调用它；创建故事与导入卡的路由在响应之前入队并调用 `BackgroundScheduler.schedule`，模型调用只在后台 drain 里发生；新增 `POST /api/stories/:id/openings/generate`（无楼层时入队 `opening_candidates` 并返回 202 与任务 id，已有楼层 409，`StoryOpeningGenerateResult`）；`createOpeningCandidatesHandler` 删掉待选候选守卫，自动入队仍由 `openingCandidatesNeedRun` 控制；新增 1 个 server 测试（闸门卡住模型调用，验证导入响应内两条任务已入队、开局包与候选未生成；连续两次手动生成得到两批 9 条候选且第一批保持 `pending`；选中后成为根楼层且其余丢弃；再生成 409）与 4 个 core 测试；门禁通过（125 个测试文件、1127 个测试，3 个 live 跳过，共 1130 个）
   做什么：
   - 创建故事与导入卡之后调用 `BackgroundScheduler.schedule(storyId)`，让 `opening` 与 `opening_candidates` 两条故事级任务按各自的 `needsRun` 入队；请求立即返回，不等待生成（I11）。
   - 新增 `POST /api/stories/:id/openings/generate`：故事还没有助手楼层时入队一条 `opening_candidates` 任务，返回 202 与任务 id；已有楼层时 409。接口本身不调用模型。

@@ -694,6 +694,12 @@ export interface EnqueueBackgroundJobsInput {
 	readonly createdAt?: string;
 }
 
+export interface EnqueueStoryBackgroundJobsInput {
+	readonly storyId: string;
+	readonly kinds: readonly string[];
+	readonly createdAt?: string;
+}
+
 export interface ListBackgroundJobsOptions {
 	readonly storyId?: string;
 	readonly status?: BackgroundJobStatus;
@@ -5209,6 +5215,70 @@ export class StoryStore {
 			}
 		})();
 		return created;
+	}
+
+	/**
+	 * 按任务类型入队故事级任务（node_id 为空），不判断这是不是当前需要的任务；
+	 * 同一类型已经有待办或执行中的行时原样返回，已完成、失败或丢弃的行翻回 pending。
+	 */
+	enqueueStoryBackgroundJobs(
+		input: EnqueueStoryBackgroundJobsInput,
+	): BackgroundJob[] {
+		assertNonEmptyString(input.storyId, "故事 id");
+		if (!Array.isArray(input.kinds)) {
+			throw new Error("后台任务类型必须是数组");
+		}
+		if (!this.getStory(input.storyId)) {
+			throw new Error(`故事不存在：${input.storyId}`);
+		}
+		const kinds: string[] = [];
+		for (const kind of input.kinds) {
+			assertNonEmptyString(kind, "后台任务类型");
+			if (kind !== kind.trim()) {
+				throw new Error(`后台任务类型不能包含首尾空白：${kind}`);
+			}
+			if (kinds.includes(kind)) {
+				throw new Error(`后台任务类型重复：${kind}`);
+			}
+			kinds.push(kind);
+		}
+		if (kinds.length === 0) return [];
+		const createdAt = input.createdAt ?? new Date().toISOString();
+		assertNonEmptyString(createdAt, "后台任务的创建时间");
+		const select = this.#db.prepare(
+			`SELECT * FROM background_jobs
+			WHERE story_id = ? AND node_id IS NULL AND kind = ?`,
+		);
+		const insert = this.#db.prepare(
+			`INSERT INTO background_jobs
+				(story_id, node_id, kind, status, attempts, last_error, created_at, started_at, finished_at)
+			VALUES (?, NULL, ?, 'pending', 0, NULL, ?, NULL, NULL)`,
+		);
+		const reopen = this.#db.prepare(
+			`UPDATE background_jobs
+			SET status = 'pending', last_error = NULL, started_at = NULL, finished_at = NULL
+			WHERE id = ? AND status IN ('done', 'failed', 'discarded')`,
+		);
+		const jobs: BackgroundJob[] = [];
+		this.#db.transaction(() => {
+			for (const kind of kinds) {
+				const existing = select.get(input.storyId, kind) as
+					| BackgroundJobRow
+					| undefined;
+				if (existing === undefined) {
+					insert.run(input.storyId, kind, createdAt);
+				} else if (
+					existing.status === "done" ||
+					existing.status === "failed" ||
+					existing.status === "discarded"
+				) {
+					reopen.run(existing.id);
+				}
+				const row = select.get(input.storyId, kind) as BackgroundJobRow;
+				jobs.push(rowToBackgroundJob(row));
+			}
+		})();
+		return jobs;
 	}
 
 	/** 每个状态的任务条数；可以只看指定的任务类型。 */
