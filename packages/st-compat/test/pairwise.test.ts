@@ -24,6 +24,15 @@ import {
 	runPreferenceSample,
 	summarizePreferenceComparisons,
 } from "../src/evalset/pairwise.js";
+import {
+	type QualityRecord,
+	judgeQuality,
+	parseQualityOutput,
+	parseQualityRecordsJsonl,
+	renderQualitySection,
+	runQualitySample,
+	summarizeQuality,
+} from "../src/evalset/quality.js";
 import { buildPreferencePairs } from "../src/preferences/export.js";
 import type { PreferencePair } from "../src/preferences/export.js";
 
@@ -99,6 +108,18 @@ function alternatingWinners(): FakeJudge {
 		client: {
 			async complete(request) {
 				requests.push(request);
+				const system = request.messages[0]?.content ?? "";
+				if (system.includes("TTCW")) {
+					return makeResult(
+						JSON.stringify({
+							originality: 4,
+							character: 3,
+							pacing: 4,
+							dialogue: 2,
+							reason: "按固定评分返回",
+						}),
+					);
+				}
 				calls += 1;
 				const winner = calls % 2 === 1 ? "A" : "B";
 				return makeResult(JSON.stringify({ winner, reason: "按调用顺序返回" }));
@@ -276,6 +297,190 @@ describe("裁判调用", () => {
 	});
 });
 
+describe("叙事质量评分", () => {
+	it("严格解析四项分数", () => {
+		const valid =
+			'{"originality":4,"character":3,"pacing":4,"dialogue":2,"reason":"细节新鲜，但台词偏说明"}';
+		expect(parseQualityOutput(valid)).toEqual({
+			scores: { originality: 4, character: 3, pacing: 4, dialogue: 2 },
+			reason: "细节新鲜，但台词偏说明",
+		});
+		expect(
+			parseQualityOutput(valid.replace('"dialogue":2', '"dialogue":6')),
+		).toBeNull();
+		expect(
+			parseQualityOutput(valid.replace('"dialogue":2', '"dialogue":2.5')),
+		).toBeNull();
+		expect(parseQualityOutput(valid.replace('"pacing":4,', ""))).toBeNull();
+		expect(parseQualityOutput(`${valid.slice(0, -1)},"extra":1}`)).toBeNull();
+		expect(
+			parseQualityOutput(
+				'{"originality":4,"character":3,"pacing":4,"dialogue":2,"reason":""}',
+			),
+		).toBeNull();
+		expect(parseQualityOutput("原创性 4 分")).toBeNull();
+	});
+
+	it("非法输出重试三次，成功时记录尝试次数", async () => {
+		const fake = createOutputs([
+			"不是 JSON",
+			'{"originality":6,"character":3,"pacing":4,"dialogue":2,"reason":"越界"}',
+			'{"originality":5,"character":4,"pacing":3,"dialogue":4,"reason":"第三份"}',
+		]);
+		const result = await judgeQuality({
+			task: "reroll",
+			context: "",
+			text: "门后有一盏灯。",
+			judge: { client: fake.client, model: "fake-judge" },
+		});
+		expect(result.status).toBe("done");
+		expect(result.attempts).toBe(3);
+		expect(result.scores).toEqual({
+			originality: 5,
+			character: 4,
+			pacing: 3,
+			dialogue: 4,
+		});
+		expect(fake.requests).toHaveLength(3);
+		expect(fake.requests[2]?.messages.at(-1)?.content).toContain(
+			"上一次输出不是合法的评分 JSON",
+		);
+	});
+
+	it("连续三次非法输出记为失败", async () => {
+		const fake = createOutputs(["x", "y", "z"]);
+		const result = await judgeQuality({
+			task: "choice",
+			context: "",
+			text: "点火把",
+			judge: { client: fake.client, model: "fake-judge" },
+		});
+		expect(result.status).toBe("failed");
+		expect(result.error).toContain("连续 3 次");
+	});
+
+	it("接受侧与放弃侧各评一次", async () => {
+		const fake = createOutputs([
+			'{"originality":5,"character":4,"pacing":3,"dialogue":4,"reason":"接受侧"}',
+			'{"originality":2,"character":3,"pacing":2,"dialogue":3,"reason":"放弃侧"}',
+		]);
+		const records = await runQualitySample(
+			{
+				sampleId: "s:1",
+				storyId: "s",
+				kind: "reroll",
+				context: "玩家：我推开门。",
+				acceptedText: "门后有一盏灯。",
+				abandonedText: "门后是一座石像。",
+			},
+			{ client: fake.client, model: "fake-judge" },
+			{ now: () => "2026-01-01T00:00:00.000Z" },
+		);
+		expect(fake.requests).toHaveLength(2);
+		expect(fake.requests[0]?.messages[1]?.content).toContain("门后有一盏灯。");
+		expect(fake.requests[1]?.messages[1]?.content).toContain(
+			"门后是一座石像。",
+		);
+		expect(records.map((record) => record.side)).toEqual([
+			"accepted",
+			"abandoned",
+		]);
+		expect(records[0]?.status).toBe("done");
+		expect(records[1]?.status).toBe("done");
+	});
+
+	it("按故事与侧汇总均值、分布与失败数", () => {
+		const records: QualityRecord[] = [
+			makeQualityRecord("story-a:1", "accepted", {
+				originality: 4,
+				character: 3,
+				pacing: 4,
+				dialogue: 2,
+			}),
+			makeQualityRecord("story-a:1", "abandoned", {
+				originality: 2,
+				character: 2,
+				pacing: 2,
+				dialogue: 2,
+			}),
+			makeQualityRecord("story-a:2", "accepted", {
+				originality: 3,
+				character: 5,
+				pacing: 4,
+				dialogue: 4,
+			}),
+			makeQualityRecord("story-a:2", "abandoned", null),
+		];
+		const summary = summarizeQuality(records);
+		const accepted = summary.byStory.find(
+			(group) => group.storyId === "story-a" && group.side === "accepted",
+		);
+		const abandoned = summary.byStory.find(
+			(group) => group.storyId === "story-a" && group.side === "abandoned",
+		);
+		expect(accepted?.samples).toBe(2);
+		expect(accepted?.scored).toBe(2);
+		const originality = accepted?.dimensions.find(
+			(entry) => entry.dimension === "originality",
+		);
+		expect(originality?.mean).toBe(3.5);
+		expect(originality?.distribution).toEqual([0, 0, 1, 1, 0]);
+		expect(abandoned?.samples).toBe(2);
+		expect(abandoned?.scored).toBe(1);
+		expect(abandoned?.failures).toBe(1);
+		expect(summary.failures).toHaveLength(1);
+		expect(summary.failures[0]?.sampleId).toBe("story-a:2");
+		expect(summary.records).toBe(4);
+	});
+
+	it("统计版报告只含分数与样本数", () => {
+		const records: QualityRecord[] = [
+			makeQualityRecord("story-secret:1", "accepted", {
+				originality: 4,
+				character: 3,
+				pacing: 4,
+				dialogue: 2,
+			}),
+			makeQualityRecord("story-secret:1", "abandoned", null),
+		];
+		const summary = summarizeQuality(records);
+		const publicText = renderQualitySection(summary, {
+			privateDetails: false,
+		});
+		expect(publicText).toContain("叙事质量评分");
+		expect(publicText).toContain("接受侧");
+		expect(publicText).toContain("4.00");
+		expect(publicText).not.toContain("story-secret");
+		expect(publicText).not.toContain("测试理由");
+		const privateText = renderQualitySection(summary, {
+			privateDetails: true,
+		});
+		expect(privateText).toContain("story-secret");
+		expect(privateText).toContain("共 1 条");
+	});
+
+	it("解析评分 JSONL 并拒绝越界分数", () => {
+		const record = makeQualityRecord("s:1", "accepted", {
+			originality: 4,
+			character: 3,
+			pacing: 4,
+			dialogue: 2,
+		});
+		expect(
+			parseQualityRecordsJsonl(`${JSON.stringify(record)}\n`, "quality.jsonl"),
+		).toEqual([record]);
+		expect(() =>
+			parseQualityRecordsJsonl(
+				`${JSON.stringify({
+					...record,
+					scores: { ...record.scores, pacing: 0 },
+				})}\n`,
+				"quality.jsonl",
+			),
+		).toThrow(/1 到 5/);
+	});
+});
+
 describe("偏好样本与统计", () => {
 	it("从导出对构造样本并识别切回较早 swipe", () => {
 		const { store } = openStore();
@@ -443,6 +648,7 @@ describe("命令与文件", () => {
 			);
 			store.close();
 			const outPath = path.join(root, "records.jsonl");
+			const qualityPath = path.join(root, "quality.jsonl");
 			const verbosePath = path.join(root, "verbose.md");
 			const publicPath = path.join(root, "public.md");
 			const config: LlmChannelsConfig = {
@@ -481,6 +687,8 @@ describe("命令与文件", () => {
 					pairsDir,
 					"--out",
 					outPath,
+					"--quality-out",
+					qualityPath,
 					"--private-report",
 					verbosePath,
 					"--public-report",
@@ -491,11 +699,21 @@ describe("命令与文件", () => {
 			expect(first.sampleCount).toBe(4);
 			expect(first.judgedOrders).toBe(8);
 			expect(first.failures).toBe(0);
+			expect(first.qualityScores).toBe(8);
+			expect(first.qualityFailures).toBe(0);
 			const records = parseComparisonRecordsJsonl(
 				readFileSync(outPath, "utf8"),
 				outPath,
 			);
 			expect(records).toHaveLength(8);
+			const qualityRecords = parseQualityRecordsJsonl(
+				readFileSync(qualityPath, "utf8"),
+				qualityPath,
+			);
+			expect(qualityRecords).toHaveLength(8);
+			expect(new Set(qualityRecords.map((record) => record.side))).toEqual(
+				new Set(["accepted", "abandoned"]),
+			);
 			const summary = summarizePreferenceComparisons(records);
 			const overall = summary.groups.find(
 				(group) => group.group === "总体（不含切回较早 swipe）",
@@ -505,8 +723,10 @@ describe("命令与文件", () => {
 			expect(publicText).not.toContain("story-secret");
 			expect(publicText).not.toContain("第二次回复");
 			expect(publicText).toContain("judge-fake");
+			expect(publicText).toContain("叙事质量评分");
 			const verboseText = readFileSync(verbosePath, "utf8");
 			expect(verboseText).toContain("story-secret");
+			expect(verboseText).toContain("叙事质量评分");
 
 			const second = await runPairwiseCli(
 				[
@@ -516,6 +736,8 @@ describe("命令与文件", () => {
 					pairsDir,
 					"--out",
 					outPath,
+					"--quality-out",
+					qualityPath,
 					"--private-report",
 					verbosePath,
 					"--public-report",
@@ -525,13 +747,58 @@ describe("命令与文件", () => {
 				dependencies,
 			);
 			expect(second.judgedOrders).toBe(0);
+			expect(second.qualityScores).toBe(0);
 			expect(
 				parseComparisonRecordsJsonl(readFileSync(outPath, "utf8"), outPath),
+			).toHaveLength(8);
+			expect(
+				parseQualityRecordsJsonl(
+					readFileSync(qualityPath, "utf8"),
+					qualityPath,
+				),
 			).toHaveLength(8);
 		},
 		{ timeout: 30_000 },
 	);
 });
+
+function makeQualityRecord(
+	sampleId: string,
+	side: "accepted" | "abandoned",
+	scores: {
+		readonly originality: number;
+		readonly character: number;
+		readonly pacing: number;
+		readonly dialogue: number;
+	} | null,
+): QualityRecord {
+	const base = {
+		sampleId,
+		storyId: sampleId.split(":")[0] as string,
+		kind: "reroll" as const,
+		side,
+		attempts: 1,
+		usage: null,
+		model: "judge-fake",
+		createdAt: "2026-01-01T00:00:00.000Z",
+	};
+	if (scores === null) {
+		return {
+			...base,
+			status: "failed",
+			scores: null,
+			reason: null,
+			error: "连续 3 次没有输出合法评分",
+		};
+	}
+	return {
+		...base,
+		status: "done",
+		scores,
+		reason: "测试理由",
+		error: null,
+	};
+}
 
 function makeRecord(
 	sampleId: string,

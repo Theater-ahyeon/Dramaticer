@@ -24,6 +24,14 @@ import {
 	runPreferenceSample,
 	summarizePreferenceComparisons,
 } from "./pairwise.js";
+import {
+	QUALITY_SIDES,
+	type QualityRecord,
+	parseQualityRecordsJsonl,
+	renderQualitySection,
+	runQualitySample,
+	summarizeQuality,
+} from "./quality.js";
 
 const repoRoot = fileURLToPath(new URL("../../../../", import.meta.url));
 
@@ -37,6 +45,7 @@ const USAGE = [
 	"  --pairs <path>         导出目录或单个 .pairs.jsonl，默认 eval-private/preferences",
 	"  --story <id>           只评判这个故事的回复对",
 	"  --out <path>           逐条判定的 JSONL，默认 eval-private/reports/R2-pairwise/records.jsonl",
+	"  --quality-out <path>   逐条评分的 JSONL，默认 eval-private/reports/R2-pairwise/quality.jsonl",
 	"  --private-report <p>   私有版报告，默认 eval-private/reports/R2-pairwise.md",
 	"  --public-report <p>    统计版报告，默认 docs/dev/reports/R2-pairwise.md",
 	"  --judge-model <m>      裁判模型别名，默认按 roles.judge 解析",
@@ -65,7 +74,10 @@ export interface PairwiseCliResult {
 	readonly sampleCount: number;
 	readonly judgedOrders: number;
 	readonly failures: number;
+	readonly qualityScores: number;
+	readonly qualityFailures: number;
 	readonly recordsPath: string;
+	readonly qualityRecordsPath: string;
 	readonly privateReportPath: string;
 	readonly publicReportPath: string;
 }
@@ -75,6 +87,7 @@ interface ParsedArgs {
 	readonly pairsPath: string;
 	readonly story: string | null;
 	readonly outPath: string;
+	readonly qualityOutPath: string;
 	readonly privateReportPath: string;
 	readonly publicReportPath: string;
 	readonly judgeModel: string | null;
@@ -97,7 +110,10 @@ export async function runPairwiseCli(
 			sampleCount: 0,
 			judgedOrders: 0,
 			failures: 0,
+			qualityScores: 0,
+			qualityFailures: 0,
 			recordsPath: "",
+			qualityRecordsPath: "",
 			privateReportPath: "",
 			publicReportPath: "",
 		};
@@ -109,10 +125,16 @@ export async function runPairwiseCli(
 		parsed.resume || parsed.reportOnly
 			? await readExistingRecords(parsed.outPath)
 			: [];
+	const existingQuality =
+		parsed.resume || parsed.reportOnly
+			? await readExistingQualityRecords(parsed.qualityOutPath)
+			: [];
 	let sampleCount = 0;
 	let judgedOrders = 0;
+	let qualityScores = 0;
 	let sampleSources: string[] = [];
 	const newRecords: PreferenceComparisonRecord[] = [];
+	const newQualityRecords: QualityRecord[] = [];
 	if (!parsed.reportOnly) {
 		if (parsed.dbPath === null) {
 			throw new Error(`--db 必填；${USAGE}`);
@@ -151,7 +173,17 @@ export async function runPairwiseCli(
 					(order) => !recorded.has(`${sample.sampleId}\u0000${order}`),
 				),
 			);
-			if (pending.length > 0) {
+			const recordedQuality = new Set(
+				existingQuality.map(
+					(record) => `${record.sampleId}\u0000${record.side}`,
+				),
+			);
+			const pendingQuality = samples.filter((sample) =>
+				QUALITY_SIDES.some(
+					(side) => !recordedQuality.has(`${sample.sampleId}\u0000${side}`),
+				),
+			);
+			if (pending.length > 0 || pendingQuality.length > 0) {
 				const envPath = dependencies.envPath ?? path.join(repoRoot, ".env");
 				const channelsPath =
 					parsed.channelsPath ??
@@ -196,6 +228,24 @@ export async function runPairwiseCli(
 							.join("，")}`,
 					);
 				}
+				for (const sample of pendingQuality) {
+					const records = await runQualitySample(sample, judge, {
+						now: () => now().toISOString(),
+					});
+					newQualityRecords.push(...records);
+					qualityScores += records.filter(
+						(record) => record.status === "done",
+					).length;
+					log(
+						`评分 ${sample.sampleId}：${records
+							.map((record) =>
+								record.status === "done"
+									? `${record.side} ${describeScores(record.scores)}`
+									: `${record.side} 失败`,
+							)
+							.join("，")}`,
+					);
+				}
 			}
 		} finally {
 			store.close();
@@ -211,37 +261,63 @@ export async function runPairwiseCli(
 		merged.map((record) => `${JSON.stringify(record)}\n`).join(""),
 		"utf8",
 	);
+	const mergedQuality = mergeQualityRecords(existingQuality, newQualityRecords);
+	if (!parsed.reportOnly) {
+		await mkdir(path.dirname(parsed.qualityOutPath), { recursive: true });
+		await writeFile(
+			parsed.qualityOutPath,
+			mergedQuality.map((record) => `${JSON.stringify(record)}\n`).join(""),
+			"utf8",
+		);
+	}
 	const summary = summarizePreferenceComparisons(merged);
+	const qualitySummary = summarizeQuality(mergedQuality);
 	if (parsed.reportOnly) sampleCount = summary.groups[0]?.samples ?? 0;
 	const model =
 		parsed.judgeModel ??
-		([...new Set(merged.map((record) => record.model))].sort().join("、") ||
+		([
+			...new Set([
+				...merged.map((record) => record.model),
+				...mergedQuality.map((record) => record.model),
+			]),
+		]
+			.sort()
+			.join("、") ||
 			"未记录");
-	const privateText = renderPairwiseReport(summary, {
-		privateDetails: true,
-		model,
-		generatedAt,
-		sampleSources,
-	});
-	const publicText = renderPairwiseReport(summary, {
-		privateDetails: false,
-		model,
-		generatedAt,
-	});
+	const privateText = [
+		renderPairwiseReport(summary, {
+			privateDetails: true,
+			model,
+			generatedAt,
+			sampleSources,
+		}),
+		renderQualitySection(qualitySummary, { privateDetails: true }),
+	].join("\n");
+	const publicText = [
+		renderPairwiseReport(summary, {
+			privateDetails: false,
+			model,
+			generatedAt,
+		}),
+		renderQualitySection(qualitySummary, { privateDetails: false }),
+	].join("\n");
 	await mkdir(path.dirname(parsed.privateReportPath), { recursive: true });
 	await mkdir(path.dirname(parsed.publicReportPath), { recursive: true });
 	await writeFile(parsed.privateReportPath, privateText, "utf8");
 	await writeFile(parsed.publicReportPath, publicText, "utf8");
 	log(
 		parsed.reportOnly
-			? `盲测报告：${sampleCount} 个样本，${merged.length} 条已有判定；报告 ${parsed.publicReportPath}`
-			: `盲测：${sampleCount} 个样本，${judgedOrders} 次判定，失败 ${summary.failures.length}；记录 ${parsed.outPath}`,
+			? `盲测报告：${sampleCount} 个样本，${merged.length} 条已有判定，${mergedQuality.length} 条已有评分；报告 ${parsed.publicReportPath}`
+			: `盲测：${sampleCount} 个样本，${judgedOrders} 次判定（失败 ${summary.failures.length}），${qualityScores} 次评分（失败 ${qualitySummary.failures.length}）；记录 ${parsed.outPath} 与 ${parsed.qualityOutPath}`,
 	);
 	return {
 		sampleCount,
 		judgedOrders,
 		failures: summary.failures.length,
+		qualityScores,
+		qualityFailures: qualitySummary.failures.length,
 		recordsPath: parsed.outPath,
+		qualityRecordsPath: parsed.qualityOutPath,
 		privateReportPath: parsed.privateReportPath,
 		publicReportPath: parsed.publicReportPath,
 	};
@@ -295,6 +371,42 @@ function mergeRecords(
 	});
 }
 
+async function readExistingQualityRecords(
+	outPath: string,
+): Promise<QualityRecord[]> {
+	if (!existsSync(outPath)) return [];
+	return parseQualityRecordsJsonl(await readFile(outPath, "utf8"), outPath);
+}
+
+function mergeQualityRecords(
+	existing: readonly QualityRecord[],
+	fresh: readonly QualityRecord[],
+): QualityRecord[] {
+	const merged = new Map<string, QualityRecord>();
+	for (const record of [...existing, ...fresh]) {
+		merged.set(`${record.sampleId}\u0000${record.side}`, record);
+	}
+	return [...merged.values()].sort((left, right) => {
+		const bySample =
+			left.sampleId < right.sampleId
+				? -1
+				: left.sampleId > right.sampleId
+					? 1
+					: 0;
+		if (bySample !== 0) return bySample;
+		return QUALITY_SIDES.indexOf(left.side) - QUALITY_SIDES.indexOf(right.side);
+	});
+}
+
+function describeScores(scores: {
+	readonly originality: number;
+	readonly character: number;
+	readonly pacing: number;
+	readonly dialogue: number;
+}): string {
+	return `原创 ${scores.originality}、人物 ${scores.character}、节奏 ${scores.pacing}、对话 ${scores.dialogue}`;
+}
+
 function parseArgs(args: readonly string[]): ParsedArgs {
 	const values = new Map<string, string>();
 	const flags = new Set<string>();
@@ -320,6 +432,7 @@ function parseArgs(args: readonly string[]): ParsedArgs {
 			key !== "pairs" &&
 			key !== "story" &&
 			key !== "out" &&
+			key !== "quality-out" &&
 			key !== "private-report" &&
 			key !== "public-report" &&
 			key !== "judge-model" &&
@@ -360,6 +473,15 @@ function parseArgs(args: readonly string[]): ParsedArgs {
 				"reports",
 				"R2-pairwise",
 				"records.jsonl",
+			),
+		qualityOutPath:
+			values.get("quality-out") ??
+			path.join(
+				repoRoot,
+				"eval-private",
+				"reports",
+				"R2-pairwise",
+				"quality.jsonl",
 			),
 		privateReportPath:
 			values.get("private-report") ??
