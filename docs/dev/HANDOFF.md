@@ -3,22 +3,22 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：109
-- 任务：R3-T03 写作契约与默认模板
+- 会话：110
+- 任务：R3-T04 快回合真实渠道验收
 - 结果：完成（`DONE`），门禁通过（96 个测试文件、865 个测试通过，3 个 live 跳过，共 868 个）。
-  - 默认原生模板的 `protocol` 段移到最后一个段落（`history` 之后）。契约文本在两种结构化输出模式下共用四条原则：玩家输入是本轮演出的指引、不是已经发生的剧情；玩家不是上帝，角色可以按人设拒绝、反对、打断；每轮让剧情有所推进、不重复之前的正文；遵守用户意志里的偏好、底线与纠正。标签写法与工具说明接在契约之后，仍在同一个 `protocol` 段。
-  - `block_format` 开启时插在 `history` 与 `protocol` 之间（`protocol` 仍是最后）；关闭时除 `protocol` 段之外与改动前逐字段一致。
-  - `context/template.ts` 新增 `WRITING_CONTRACT_SEGMENT_ID = "protocol"`。`assertContextTemplate` 在该 id 出现时要求它是最后一个片段，错误写模板 id、当前位次与后面还有几个片段；没有该片段的模板不拒绝（组装器单元测试与嵌入方会构造最小模板）。保存路径 `assertStoredContextTemplate` 复用同一校验，服务端把错误映射到 `template` 字段。
-  - 组装后的消息顺序变化：`protocol` 成为历史之后的最后一条 system 消息；Trace 条目的顺序同步，静态段本来就有 `source`（`template:dramaticer-default/protocol`）与 `tokens`。
-  - 新增 `core/test/writing-contract.test.ts`（6 个测试）；`chat-providers.test.ts`、`chat-turn.test.ts`、`context-assembler.test.ts`、`st-compat/test/chat-cli.test.ts` 的顺序与消息断言同步更新；DESIGN §9 补一句“`protocol` 段是模板的最后一个段落”；ADR-0058。
+  - 用 `main-fallback`（模型 id `auto/deepseek-v4.1-flash`，Trace 记录 `group/auto-deepseek-v4-1-flash`，渠道 `main`）与合成卡 `packages/st-compat/test/fixtures/chat-card.json`、固定故事 `r3-fast` 连续跑 20 轮快回合。运行方式是直接调用 `runChatTurn`，单个数据库、单个客户端连续 20 轮，每轮一条固定玩家消息；临时脚本运行后已删除。
+  - 20/20 成功、0 失败。首字最小 838、P50 1,448、P90 3,435、最大 4,371 毫秒；生成最小 1,910、P50 2,666、P90 4,988、最大 5,841 毫秒。工具轮 0 轮 17 次、1 轮 3 次；`maxRounds` 全为 3，`capped` 全为 false；读取工具调用 5 次（第 1 轮 2 次、第 2 轮 1 次、第 9 轮 2 次）；模型请求 23 次；截断 0/20；结束原因 19 次 `stop`、第 20 轮 `toolUse`（模型在正文后调用写入类工具，写入只收集）。
+  - 与 F0 的 ST 基线（首字 P50 4.5 秒、生成 P50 50 秒）并列，但本次是短回复样本（输出 token P50 115、正文 P50 145 字符），报告写明两组数字只作量级并列。
+  - 第一次 20 轮在该别名没有体检记录时运行，`structuredOutput` 回落 `text-tags`，读取工具没有提供给模型，工具轮全为 0；随后用 `dramaticer probe main --model main-fallback` 补体检（2026-11-08T01:02:44Z，`functionCalling=supported`、`structuredOutput=function-call`）并重跑，才有上面的读取工具轮次。体检结果写在本地 `data/channels.yaml`（已被 git 忽略）。
+  - 私有报告 `eval-private/reports/R3-fast.md`，统计版 `docs/dev/reports/R3-fast.md`，原始逐轮数据 `eval-private/reports/R3-fast.json`。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`；未完成任务见 `docs/dev/TASKS.md`。
-- **R3 快回合进行中**（R3-T01、R3-T02、R3-T03 完成，下一步 R3-T04 真实渠道验收）。v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`；未完成任务见 `docs/dev/TASKS.md`。
+- **R3 只剩 R3-T99 验收**。v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045。
 - HUMAN-09 待处理（不阻塞）：`data/channels.yaml` 已有 `bg-fallback`、`main-fallback`、`codex`，`channels.example.yaml` 还没有这三个别名。
 - HUMAN-10 待处理（不阻塞）：插件不变量是否加进 AGENTS.md。
-- HUMAN-11 待处理（不阻塞）：`.env` 的正文模型 `opendesign/deepseek-v4.1-flash` 返回 membership entitlement 错误，是否换用 `auto/deepseek-v4.1-flash`；`.env` 由人类维护。R3-T04 要用真实渠道，可以先用 `main-fallback` 跑并在报告里记录实际路由。
+- HUMAN-11 待处理（不阻塞）：`.env` 的正文模型 `opendesign/deepseek-v4.1-flash` 返回 membership entitlement 错误，是否换用 `auto/deepseek-v4.1-flash`；`.env` 由人类维护。
 - 数据库 schema 版本 28（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡、v25 合并调用开关与执行记录、v26 间隙档位阈值与丢弃状态、v27 合并调用丢弃条目、v28 回合模式与读取工具软上限）；后续编号：v29 开局包、v30 开场候选、v31 偏好记录、v32 父子分块、v33 章节压缩、v34 世界书预筛、v35 上下文包；插入新迁移时后续编号一起顺延。
 - 结算只有 `dramaticer work` 调度：server 的回合路径不补建也不执行后台任务，所以回合内后台客户端零调用是结构保证；要真正结算故事，跑 `pnpm work --db <path> --kind settle`，要生成现场分析跑 `--kind scene`，要捕获用户意志跑 `--kind user_will`，要生成修订草案跑 `--kind memory_revision`，要回填事件跑 `--kind events`（单故事、逐窗口推进，适合小批量），要合并调用跑 `--kind gap_pass`（先打开故事设置 `gapPassEnabled`），批量回填三个 legacy 对话用 R1-T04.a 的 `events-backfill`。
 - 后台任务分两档：`gap` 档每次间隙都执行，`deferred` 档（`events`、`summary`、`npc_agenda`）只在会话结束或间隙达到 `gapPlanSeconds` 时执行。`dramaticer work` 不给 `--gap-seconds` 就按会话结束处理；要模拟回合中的短间隙就传 `--gap-seconds <秒数>`，短于阈值时延后档只入队不执行。
@@ -36,16 +36,19 @@
 - 快照：`eval-private/raw/` 有 94 个文件；manifest 记录 `corpus` 与 `sourceMtime`。`eval-private/reference/` 有 5 部参照小说。
 - 事件表已在 v7 建立；批量抽取窗口与抽取记录在 R1-T03 实现；批量回填管线在 R1-T04.a 实现，真实回填由 R1-T04.b 执行。
 - F0 的私有产物：`eval-private/f0/pairs.jsonl`（290 对）、`attribution.jsonl`、`judge.jsonl`（793 行）、`fulltext/work.db`、`fulltext-probe.json`、`fulltext-branches.json`、`fulltext-generations.jsonl`、`fulltext-judgements.jsonl`、`fulltext-summary.json`、`llm-cache/`。`eval-private/reports/f0-corpus-map.json` 是对话编号到文件路径的映射。
+- R3-T04 的私有产物：`eval-private/reports/R3-fast.md` 与 `R3-fast.json`，以及统计版 `docs/dev/reports/R3-fast.md`。
 - HUMAN-03（事件题抽查）仍未完成，不阻塞任何任务；其余 HUMAN 条目均已完成或明确不阻塞。
 - M3 的两项效果目标按 ADR-0029 保留为未证实；v2 的门槛改由 R6 按 B0/B1 对比判定。
 - 插件系统在 DESIGN §19 是唯一权威；P 阶段任务在 TASKS 的「P：插件内核」小节，C 线兼容插件任务已存在且依赖 P2。
 
 ## 下一步
-- **R3-T04 快回合真实渠道验收**：用 `.env` 里的真实渠道连续跑 20 轮快回合（固定卡与故事），记录首字延迟、生成耗时、工具轮数分布、截断率与请求数，与 F0 的 ST 基线（首字 P50 4.5 秒、生成 P50 50 秒）并列。私有报告写 `eval-private/reports/R3-fast.md`，统计版写 `docs/dev/reports/R3-fast.md`，只含数字与模型别名。正文路由 `opendesign/deepseek-v4.1-flash` 目前返回 entitlement 错误，用 `main-fallback`（`auto/deepseek-v4.1-flash`）跑，报告里记录实际路由；工具轮数不超过软上限（默认 3）。写脚本时不要调用网络之外的资源，脚本放 `.devloop/scratch/`（已忽略）并在结束后删除。
+- **R3-T99 R3 验收**：逐条核对快回合、模式开关、文本协议与写作契约；复核 I6（程序不自动切换）与 I13；写 `docs/dev/reports/R3.md`；确认 O 与 R2 任务的依赖仍然成立。结果写 `MILESTONE_DONE`。
+- R3-T99 需要的证据：门禁；`docs/dev/reports/R3-fast.md` 的 20 轮数字；R3-T01 的模式测试（`turn-mode.test.ts`）、R3-T02 的传输测试（`chat-tool-loop.test.ts` 的文本协议用例）、R3-T03 的契约测试（`writing-contract.test.ts`）。live 测试不必重跑；正文路由问题记录在 HUMAN-11。
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
 - 不要修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 下的任何文件。不变量 I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账是唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖任何其他工作区包、ST 语义只在兼容插件里实现。
+- 没有体检记录的模型别名：`resolveStructuredOutputMode(null)` 返回 `text-tags`，而读取工具只在 `structuredOutput === "function-call"` 或工具传输为 `text` 时提供给模型（`chat/turn.ts` 的 `readTools`）。想实测读取工具路径，先对别名跑 `dramaticer probe <channel> --model <alias>`；这条规则也解释了为什么 `main-fallback` 第一次 20 轮的工具轮全为 0。`chat-tool-loop.test.ts` 有一条断言锁住“文本标签模式 + 原生传输不提供工具定义”，改动前先读那条用例。
 - 回合模式：`TurnMode`、`DEFAULT_MAX_READ_ROUNDS`、`isTurnMode`、`assertMaxReadRounds`、`assertTurnModeSupported` 都在 `core/src/chat/mode.ts`。模式与软上限只在 `chat/turn.ts` 的 `resolveTurnMode` 解析一次，单轮参数优先于故事设置；新增入口不要另写一套判断。程序没有任何按轮数、工具调用数、错误或预算切换模式的代码路径（I6）。
 - 深回合在 R3b 实现前请求即失败；失败在 `runChatTurn` 追加用户楼层之前发生，所以不会留下只有用户楼层的分支。不要为了“能跑”把它降级成快回合。
 - 读取工具软上限是可配的软上限（默认 3），执行器没有上限常量。达到上限时若模型仍只请求工具且正文为空，执行器会抛错；有正文时正常收束并把 `tools.capped` 记为 true。
@@ -58,7 +61,7 @@
 - `channels.example.yaml` 的 roles 示例里 judge 指向 background 并附了说明；复制示例时如果 background 与 main 是同一家族，启动会失败，需要另配一个家族的模型。
 - 后台模型的输出上限是 32,768（`channels.example.yaml` 与 `data/channels.yaml` 的 `background`）；`channels.ts` 的 `DEFAULT_MAX_TOKENS` 仍是 8,192，只在配置没写 `maxTokens` 时兜底。结算、事件、用户意志、修订与合并调用的处理器不传 `maxTokens`，路由使用模型声明值。不要把这些请求改回小上限：8,192 会被思考占满并把 JSON 截断。ADR-0057。
 - 现场分析任务显式传 200 token 上限（`DEFAULT_SCENE_MAX_TOKENS`），与模型声明上限无关；带思考的模型上这是请求级上限。ADR-0056 的缓存里 20 次现场分析有 1 次以 `length` 结束。
-- 后台路由现状（2026-11-07）：`opendesign/deepseek-v4.1-flash` 直接返回 membership entitlement 错误（live 测试因此失败）；可用的回退是 `auto/deepseek-v4.1-flash`（经本地网关，Trace 里模型写 `group/auto-deepseek-v4-1-flash`），单次结算请求约 30 到 150 秒；catie 的 `rp` 路由对部分对话返回内容政策拒绝。做正文或后台实测时先确认路由可用，报告里记录实际路由。HUMAN-11。
+- 后台路由现状（2026-11-08）：`opendesign/deepseek-v4.1-flash` 仍返回 membership entitlement 错误；可用的回退是 `auto/deepseek-v4.1-flash`（经本地网关，Trace 里模型写 `group/auto-deepseek-v4-1-flash`）；`main-fallback` 已补体检记录（`function-call`、`streaming`、`thinking` 支持），记录在本地 `data/channels.yaml`。catie 的 `rp` 路由对部分对话返回内容政策拒绝。做正文或后台实测时先确认路由可用，报告里记录实际路由。HUMAN-11。
 - 该网关在 `reasoning:"off"` 时仍输出思考并消耗输出 token；不要靠关闭思考给结构化请求省预算。
 - 模型响应的磁盘缓存键包含 `max_tokens` **只在请求显式带 maxTokens 时**；处理器不传 maxTokens，键里就没有它，因此改渠道配置的 `maxTokens` 后必须换一个 `--cache` 目录，否则会复用旧上限的结果。
 - 对比 CLI：`pnpm --filter @dramaticer/st-compat gap-pass-compare --story <id> --floors 20 --channels <绝对路径> --cache <绝对路径>`；不传 `--model` 时按 `roles.settler` 解析。`--dir` 决定两个数据库与 sidecar 的位置，默认 `eval-private/memory-cache/gap-pass-compare/db`。sidecar 记录故事与样本楼层数，换故事或换楼层数必须先删掉它们；改提示词或换模型配置后要删掉对应档位的 sidecar 与数据库、换缓存目录再重跑。私有报告在 `eval-private/reports/gap-pass-compare.json`。

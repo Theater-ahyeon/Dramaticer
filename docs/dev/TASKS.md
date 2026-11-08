@@ -258,7 +258,8 @@
   - 契约段是静态段，可以被故事模板覆盖；模板校验保证 `protocol` 始终是最后一个段落。`block_format` 保持可选、默认关闭（I13）。
   验收：默认模板最后一个段落是 `protocol`；编辑模板后仍保证契约在最后，违反时保存被拒绝并指出字段；Trace 里契约段来源与 token 可读；关闭 `block_format` 时模板与现状的差异只有契约段；`pnpm check` 通过。
 
-- [ ] **R3-T04 快回合真实渠道验收** | 依赖：R3-T01、R3-T02、R3-T03 | 使用 `.env` 里的真实渠道
+- [x] **R3-T04 快回合真实渠道验收** | 依赖：R3-T01、R3-T02、R3-T03 | 使用 `.env` 里的真实渠道
+  完成：2026-11-08 用 `main-fallback`（`auto/deepseek-v4.1-flash`，Trace 为 `group/auto-deepseek-v4-1-flash`）与固定合成卡连续跑 20 轮快回合：20/20 成功，首字 P50 1,448 毫秒、P90 3,435 毫秒，生成 P50 2,666 毫秒、P90 4,988 毫秒；工具轮 0 轮 17 次、1 轮 3 次，最大 1 未达软上限 3，读取调用 5 次；模型请求 23 次，截断 0/20；私有报告 `eval-private/reports/R3-fast.md`，统计版 `docs/dev/reports/R3-fast.md`，原始数据 `eval-private/reports/R3-fast.json`；门禁通过（96 个测试文件、865 个测试）
   做什么：
   - 用真实渠道连续跑 20 轮快回合（固定卡与故事），记录首字延迟、生成耗时、工具轮数分布、截断率与请求数，与 F0 的 ST 基线（首字 P50 4.5 秒、生成 P50 50 秒）并列。
   - 私有报告写 `eval-private/reports/R3-fast.md`，统计版写 `docs/dev/reports/R3-fast.md`，只含数字与模型别名。
