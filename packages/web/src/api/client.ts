@@ -2,6 +2,10 @@ import {
 	API_ERROR_CODES,
 	type ApiErrorBody,
 	type ApiErrorResponse,
+	type ChannelProbeRequest,
+	type ChannelProbeResult,
+	type ChannelsUpdateRequest,
+	type ChannelsView,
 	type ContextTemplateRecord,
 	type CreateContextTemplateRequest,
 	type CreateStoryRequest,
@@ -382,6 +386,24 @@ export class ApiClient {
 
 	async getActions(nodeId: string): Promise<NodeActionsView> {
 		return this.json<NodeActionsView>("GET", `${nodePath(nodeId)}/actions`);
+	}
+
+	async getChannels(): Promise<ChannelsView> {
+		return this.json<ChannelsView>("GET", "/api/channels");
+	}
+
+	async updateChannels(request: ChannelsUpdateRequest): Promise<ChannelsView> {
+		return this.json<ChannelsView>("PUT", "/api/channels", request);
+	}
+
+	async probeChannel(
+		request: ChannelProbeRequest,
+	): Promise<ChannelProbeResult> {
+		return this.json<ChannelProbeResult>(
+			"POST",
+			"/api/channels/probe",
+			request,
+		);
 	}
 
 	async *streamTurn(

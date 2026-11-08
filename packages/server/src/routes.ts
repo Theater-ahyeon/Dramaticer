@@ -18,6 +18,7 @@ import {
 	type LlmChannelApi,
 	type LlmChannelConfig,
 	type LlmChannelsConfig,
+	type LlmModelProbe,
 	type LlmModelRole,
 	MAX_MEMORY_EVENT_LIMIT,
 	OPENING_CANDIDATES_JOB_KIND,
@@ -1209,16 +1210,26 @@ async function handleChannelProbe(
 	if (channelConfig === undefined) {
 		throw fieldError("channel", `没有渠道 ${channelId}`);
 	}
-	const probe = await probeChannel({
-		channel: options.createChannel(channelConfig),
-		model: {
-			id: model.id,
-			contextWindow: model.contextWindow,
-			maxTokens: model.maxTokens,
-			reasoning: model.reasoning,
-		},
-		...(options.now === undefined ? {} : { now: options.now }),
-	});
+	let probe: LlmModelProbe;
+	try {
+		probe = await probeChannel({
+			channel: options.createChannel(channelConfig),
+			model: {
+				id: model.id,
+				contextWindow: model.contextWindow,
+				maxTokens: model.maxTokens,
+				reasoning: model.reasoning,
+			},
+			...(options.now === undefined ? {} : { now: options.now }),
+		});
+	} catch (error) {
+		throw new HttpError(
+			400,
+			"bad_request",
+			`渠道体检失败：${error instanceof Error ? error.message : String(error)}`,
+			{ path: "alias" },
+		);
+	}
 	let candidate: string;
 	try {
 		candidate = setModelProbeInText(text, alias, probe, filePath);
@@ -1370,6 +1381,9 @@ function buildChannelsView(
 				}
 			}),
 		) as Record<LlmModelRole, string | null>,
+		configuredRoles: Object.fromEntries(config.roles.entries()) as Partial<
+			Record<LlmModelRole, string>
+		>,
 	};
 }
 

@@ -191,6 +191,7 @@ function tempDir(): string {
 
 async function startChannelsServer(
 	client?: LlmStreamingClient,
+	createChannel: (config: LlmChannelConfig) => LlmChannel = fakeChannel,
 ): Promise<TestServer> {
 	const dir = tempDir();
 	const file = join(dir, "channels.yaml");
@@ -206,7 +207,7 @@ async function startChannelsServer(
 		channels: {
 			path: file,
 			env: ENV,
-			createChannel: fakeChannel,
+			createChannel,
 			...(client === undefined
 				? {}
 				: {
@@ -335,6 +336,7 @@ describe("GET /api/channels", () => {
 			planner: "background",
 			judge: "judge",
 		});
+		expect(view.configuredRoles).toEqual({ writer: "main", judge: "judge" });
 	});
 
 	it("现有配置引用未设置的环境变量时返回 400", async () => {
@@ -558,5 +560,18 @@ describe("POST /api/channels/probe", () => {
 			{ alias: "main", channel: "missing" },
 		);
 		expect(unknownChannel.status).toBe(400);
+	});
+
+	it("体检通道创建失败时返回具体原因", async () => {
+		const { running } = await startChannelsServer(undefined, () => {
+			throw new Error("体检通道不可用：连接被拒绝");
+		});
+		const response = await send(running.origin, "/api/channels/probe", "POST", {
+			alias: "main",
+		});
+		expect(response.status).toBe(400);
+		const error = await errorOf(response);
+		expect(error.message).toBe("渠道体检失败：体检通道不可用：连接被拒绝");
+		expect(error.details).toEqual({ path: "alias" });
 	});
 });

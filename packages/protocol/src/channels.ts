@@ -53,6 +53,8 @@ export interface ChannelsView {
 	readonly embeddings: readonly EmbeddingView[];
 	/** 四个岗位实际生效的模型别名；没有可用模型时为 null。 */
 	readonly roles: Readonly<Record<LlmModelRole, string | null>>;
+	/** 显式配置的岗位指向；没有列出的岗位按缺省回落。 */
+	readonly configuredRoles: Readonly<Partial<Record<LlmModelRole, string>>>;
 }
 
 export interface ChannelUpdateInput {

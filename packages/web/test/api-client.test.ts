@@ -174,6 +174,35 @@ describe("ApiClient", () => {
 		expect(call.init.body).toBeUndefined();
 	});
 
+	it("渠道接口读取、整份更新与体检走固定路径", async () => {
+		const { client, calls } = clientFor(() => jsonResponse({}));
+		await client.getChannels();
+		await client.updateChannels({
+			channels: {},
+			models: {},
+			embeddings: {},
+			roles: { writer: "main" },
+		});
+		await client.probeChannel({ alias: "main" });
+		expect(calls.map((call) => [call.init.method, call.url])).toEqual([
+			["GET", "/api/channels"],
+			["PUT", "/api/channels"],
+			["POST", "/api/channels/probe"],
+		]);
+		const updateCall = calls[1];
+		const probeCall = calls[2];
+		if (updateCall === undefined || probeCall === undefined) {
+			throw new Error("缺少渠道请求");
+		}
+		expect(readBody(updateCall.init)).toEqual({
+			channels: {},
+			models: {},
+			embeddings: {},
+			roles: { writer: "main" },
+		});
+		expect(readBody(probeCall.init)).toEqual({ alias: "main" });
+	});
+
 	it("中止信号按原样向上传递", async () => {
 		const controller = new AbortController();
 		const client = new ApiClient({

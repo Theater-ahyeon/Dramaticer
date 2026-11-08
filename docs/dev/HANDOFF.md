@@ -3,19 +3,18 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：165
-- 任务：R5-T09 web 故事设置与模板编辑器
-- 结果：完成，门禁通过（144 个测试文件、1275 个测试通过，3 个 live 跳过，共 1278 个）。
-  - 新增 `packages/web/src/chat/settings-form.ts`：`STORY_SETTINGS_UPDATE_KEYS` 全部字段的草稿与整份更新；数值范围与 core 一致（`budgetTokens`、`maxTokens`、`temperature`、`maxReadRounds`、`gapPlanSeconds`、导演的全部机制参数，`pace` 必须大于 0）；跨字段检查 `tensionEscalate < tensionClimax` 与三个张力权重之和大于 0；`scenePath`、`tensionPath` 用英文句点分隔且每段非空；空文本转 null；`historyBlockPolicy` 覆盖的块名、重复与 `keep-depth` 深度；`settingsErrorsFromFailure` 把 `details.path` 映射到中文表单名。
-  - 新增 `packages/web/src/chat/template-form.ts`：段落草稿（静态/槽位/优先级/条件）、增删与上下移动、`block_format` 增删、五种条件草稿（开关、状态、全部、任一、取反）的递归转换与校验、`describeTemplateSegments` 组装顺序预览、与服务端同一套模板校验（重复 id、空静态文本、protocol 必须在最后、空模板）。
-  - core：`assertContextTemplate` 现在校验每个片段的 `when`，并导出 `assertContextCondition`；`chat/template.ts` 导出 `createBlockFormatSegment(structuredOutput)`，默认模板复用该函数。非法条件（空开关名、空状态路径、未知操作符、未知类型）在保存模板时被拒绝。
-  - server：新增 `GET /api/stories/:id/template`，返回 `{storyId, templateId, source, template, blockFormatSegment}`；故事使用内置默认模板时 `templateId` 为 null、`source` 为 `default`，`template` 由故事当前的 `structuredOutput` 生成；协议类型 `StoryTemplateView` 在 `packages/protocol/src/settings.ts`。
-  - web 界面：`SettingsPage` 改为完整设置表单（模型与生成、角色与视角、间隙后台、历史块策略、导演全部参数与模板编辑）；`components/settings/TemplateEditor.tsx` 与 `ConditionEditor.tsx`；复制为新模板后自动 `PUT settings.templateId`，可单独“设为故事默认”；内置默认模板不能直接保存；客户端校验失败不发请求，服务端错误按字段路径列出。
-  - 新增 2 个测试文件共 15 个测试；core 与 server 各补测试（条件校验、模板视图）。真实 server 加 Playwright 390×844 冒烟通过：设置保存后刷新仍在、越界温度字段错误、模板下移与保存、`block_format` 开关、空静态段与空开关名被拒绝、条件保存后刷新仍在、复制为新模板并设为默认、历史块覆盖与间隙开关、`scrollWidth` 为 390。
+- 会话：166
+- 任务：R5-T10 web 渠道管理面板
+- 结果：完成，门禁通过（145 个测试文件、1289 个测试通过，3 个 live 跳过，共 1292 个）。
+  - 新增 `packages/web/src/chat/channels-form.ts`：渠道、模型、嵌入提供方与四个岗位的草稿与整份更新；渠道 id、模型别名、嵌入 id 非空且唯一；服务地址非空；密钥字段只接受环境变量名（疑似密钥值直接被拒）；全部数值字段按服务端范围校验；模型渠道优先级按中英文逗号、顿号与空白拆分，引用必须存在且不重复；岗位别名必须存在且启用；writer 与 judge 用与服务端同一张关键词表检查模型家族；`describeChannelsPath` 把 `channels.*`、`models.*`、`embeddings.*`、`roles.*` 翻成中文；`describeProbe` 把体检的流式、函数调用、思考、预填充、用量、缓存统计与结构化输出翻成中文。
+  - 协议 `ChannelsView` 新增 `configuredRoles`（显式配置的岗位），server 从 `config.roles` 直接读出。界面用它初始化岗位下拉：未配置的岗位保持空值，保存时不写回，缺省回落语义不被固定；`roles` 仍是实际生效别名，用于显示缺省回落。
+  - `packages/web/src/api/client.ts` 新增 `getChannels`、`updateChannels`、`probeChannel`。`ChannelsPage` 重写：模型岗位四个下拉、模型卡片（别名、id、上下文、输出上限、渠道优先级、启用与思考开关、体检按钮与结果、删除）、渠道卡片（id、接口、地址、密钥变量名、四个限流参数、删除、密钥未设置的醒目提示）、只读嵌入提供方列表与保存/重置；保存前本地校验，服务端错误按字段路径显示；新增渠道与模型在保存后才能体检。
+  - server 的 `POST /api/channels/probe` 现在把通道创建与体检抛出的错误转成 400，消息为 `渠道体检失败：<原因>`，`details.path` 为 `alias`；之前会落到 500「服务器内部错误」。
+  - 新增 12 个 `channels-form` 测试、1 个 API 客户端测试与 1 个 server 体检失败测试。真实 server 加假通道与 Playwright 390×844 冒烟通过：未设置密钥提示、五项体检结果、体检失败原因、渠道修改保存后刷新仍在、新增渠道与新增模型、岗位显式值与缺省回落、writer 与 judge 同家族字段错误、`scrollWidth` 为 390。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09.a、R2-T09.b、R2-T09.c、R2-T99、R5-T01、R5-T02、R5-T02.a、R5-T02.b、R5-T02.c、R5-T04、R5-T05.a、R5-T05.b、R5-T05.c、R5-T06、R5-T07、R5-T07.a、R5-T11、R5-T03、R5-T08、R5-T09、E-T01、R4-T00、R4-T01、R4-T02、R4-T03、R4-T04、R4-T05、R4-T06、R4-T07、R4-T08、R4-T99、R5-T00。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- **下一个可做任务是 R5-T10（web 渠道管理面板）**：依赖 R5-T04、R5-T03、R1-T01.b，全部满足。之后按 TASKS 顺序是 R5-T12、R5-T13、R5-T14、R5-T99。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09.a、R2-T09.b、R2-T09.c、R2-T99、R5-T01、R5-T02、R5-T02.a、R5-T02.b、R5-T02.c、R5-T04、R5-T05.a、R5-T05.b、R5-T05.c、R5-T06、R5-T07、R5-T07.a、R5-T11、R5-T03、R5-T08、R5-T09、R5-T10、E-T01、R4-T00、R4-T01、R4-T02、R4-T03、R4-T04、R4-T05、R4-T06、R4-T07、R4-T08、R4-T99、R5-T00。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- **下一个可做任务是 R5-T12（Playwright 端到端）**：依赖 R5-T01 至 R5-T11 与 R5-T02.a、R5-T02.b、R5-T02.c、R5-T05.a、R5-T07.a 子任务，全部满足。之后按 TASKS 顺序是 R5-T13、R5-T14、R5-T99。
 - v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045、ADR-0078。
 - HUMAN-09 待处理（不阻塞）：`data/channels.yaml` 已有 `bg-fallback`、`main-fallback`、`codex`，`channels.example.yaml` 还没有这三个别名。
@@ -32,7 +31,8 @@
 - 路径接口：`GET /api/stories/:id/path?nodeId=&limit=&before=`，返回 `{storyId, headNodeId, nodes, hasMore}`。`nodeId` 是锚点、缺省 head，锚点节点包含在返回路径里；`before` 必须在本故事且在该锚点的路径上，返回它之前的 `limit` 楼；`hasMore` 只在返回页之前还有楼层时为真。响应里 `nodes` 一定是根到页末楼的连续顺序。`limit=1` 且带 `nodeId` 时只返回锚点自己，分支页用它读任意楼层原文。
 - 分支接口的 head 语义：`appendNode` 自带把 head 移到新节点，所以 `swipeNode`、`editNode`、重新生成写完楼层后 head 已经是新楼层，不需要再调用 `POST /head`；`setHead` 只在树里主动切分支时使用。
 - 块载荷：`DisplayedContent` 是协议层的渲染载荷，`display` 为 `null` 表示没有显示策略、按原文显示；`html` 模板的 `{{content}}` 由 web 用 `escapeHtml` 替换，模板字符串只进入 iframe 的 `srcdoc`。本地历史楼层仍然在客户端用 `parseBlocks(node.raw)` 再 `toDisplayedBlocks`，因此与流式载荷共用同一套渲染类型。协议测试会扫描 `dist`，`turn.js` 不能引用 core 的运行时代码。
-- web 包结构：`src/api/{client,sse,index}.ts`；`src/chat/{path-state,virtual-window,stream-state,turn-summary,blocks,sandbox,candidate-actions,opening-candidates,branch-tree,ledger-view,proposal-view,director-view,composer-draft,settings-form,template-form,format}.ts`（纯逻辑）；`src/components/chat/{ChatFloorList,ChatFloorView,BlockContent,SandboxBlock,StreamingBubble,Composer,CandidateActions,OpeningCandidates}.tsx`、`src/components/branches/BranchTree.tsx`、`src/components/ledger/{LedgerValue,StateTree,ProposalList}.tsx`、`src/components/director/{DirectorDecision,PlanEditor,TracePanel}.tsx`、`src/components/settings/{TemplateEditor,ConditionEditor}.tsx`、`src/components/ErrorNotice.tsx`；`src/pages/*`、`src/pages/story/*`、`src/styles.css`。`src/api/index.ts` 导出单例 `api`。开发用 `pnpm --filter @dramaticer/web dev`（Vite 默认 5173，`/api` 代理到 `http://127.0.0.1:8787`）。
+- web 包结构：`src/api/{client,sse,index}.ts`；`src/chat/{path-state,virtual-window,stream-state,turn-summary,blocks,sandbox,candidate-actions,opening-candidates,branch-tree,ledger-view,proposal-view,director-view,composer-draft,settings-form,template-form,channels-form,format}.ts`（纯逻辑）；`src/components/chat/{ChatFloorList,ChatFloorView,BlockContent,SandboxBlock,StreamingBubble,Composer,CandidateActions,OpeningCandidates}.tsx`、`src/components/branches/BranchTree.tsx`、`src/components/ledger/{LedgerValue,StateTree,ProposalList}.tsx`、`src/components/director/{DirectorDecision,PlanEditor,TracePanel}.tsx`、`src/components/settings/{TemplateEditor,ConditionEditor}.tsx`、`src/components/ErrorNotice.tsx`；`src/pages/*`、`src/pages/story/*`、`src/styles.css`。`src/api/index.ts` 导出单例 `api`。开发用 Vite（`pnpm --filter @dramaticer/web dev`）。
+- 渠道页（R5-T10）：`ChannelsFormDraft` 的渠道/模型带不写入配置的 `key`，供 React 列表稳定身份；`buildChannelsDraft` 从 `ChannelsView` 生成，`newChannelDraft`/`newModelDraft` 提供默认值。保存是整份替换，`parseChannelsDraft` 始终带上现有的嵌入提供方，避免 `applyChannelsUpdate` 把它们删掉。`configuredRoles` 为空表示缺省回落；界面显示生效别名但不写回。未设置密钥的提示只在视图里 `apiKeySet` 为 false 时出现；环境变量完全不存在时 `GET /api/channels` 会直接 400，不会返回视图。体检按钮只对已保存的模型可用。
 - 聊天页每轮生成完成后重新取最新 60 楼并丢弃旧的向上分页；`PAGE_SIZE` 60、分页阈值 240px、自动贴底阈值 96px、楼层高度估算 200px、overscan 600px。候选行动与开场候选的轮询间隔都是 2 秒、上限 15 次；候选行动面板与开场候选面板在聊天面板里最高占 40vh、内部滚动。
 - 聊天页的回合模式取自 `GET settings` 的 `turnMode` 并作为 `mode` 发送；settings 尚未取到时按 `fast`。锁定为深回合时下拉框只显示当前值（不可选），旁边出现“切回快回合”按钮走 `PUT settings`。深回合仍不在可选项里（DESIGN §10.1）。
 - 分支页：路径高亮按完整路径 id 集合；head 行用 `focusSignal` 触发 `scrollIntoView`（0 表示还没加载）。树里只有 `childIds.length > 0` 才能折叠；`describeHeadSwitch` 是切换提示的唯一文案来源。
@@ -57,8 +57,8 @@
 - 设置页的深回合选项只在故事当前已锁定为 `deep` 时出现（DESIGN §10.1）；快回合是唯一可选的新值。
 
 ## 下一步
-- **R5-T10 web 渠道管理面板**：渠道列表（别名、模型、优先级、启用、密钥变量是否设置、体检结果）、新增与编辑、体检按钮显示流式/函数调用/思考/预填充/用量、`roles` 四个岗位的模型别名编辑与 writer/judge 同家族提示。`api` 已有 `getChannels`/`updateChannels`/`probeChannel`；`ChannelsView`、`ChannelsUpdateRequest`、`ChannelProbeResult` 可直接复用；`apiKeyEnv` 只给变量名，`apiKeySet` 为 false 时醒目提示；`ChannelsPage` 目前还是占位。
-- 之后 R5-T12（Playwright 端到端）、R5-T13、R5-T14、R5-T99。
+- **R5-T12 Playwright 端到端**：安装 `@playwright/test` 与 Chromium；`packages/web/e2e/` 配置 `pnpm e2e`，先构建 server 与 web，再启动本地假 OpenAI 兼容渠道与 server，覆盖思考、块、台账写入、线索、候选行动、开场候选与读取工具调用；用例含密码登录、创建故事、导入合成卡、两轮对话、模式开关、选项点击记录偏好、重新生成、swipe、编辑、分支切换、台账与记忆面板、变更卡批准与拒绝、导演与 Trace 面板、模板编辑、渠道编辑、开场候选选取与重新生成、路径分页；390×844 与桌面两种视口；失败截图与 trace 写进 `.devloop/scratch/e2e/`。
+- 之后 R5-T13（自动试玩框架）、R5-T14（真实 60 轮试玩与报告）、R5-T99（R5 验收）。
 - 引用评测数字时：B1 必须同时说明同模型子集为空、每个对话每档只有 1 个样本；遗忘矛盾率必须同时说明失败题数与可判定样本数；偏好一致率当前没有样本。
 
 ## 注意事项
@@ -95,7 +95,7 @@
 - 模型响应的磁盘缓存键包含 `max_tokens` **只在请求显式带 maxTokens 时**；改渠道配置的 `maxTokens` 后必须换一个 `--cache` 目录。后台 `background` 模型的输出上限是 32,768。
 - 后台路由现状（2026-11-08）：`main-fallback`（`auto/deepseek-v4.1-flash`）可用；`opendesign/deepseek-v4.1-flash` 曾返回 membership entitlement 错误；`catie` 的 `rp` 返回 503（HUMAN-13）。`data/channels.yaml` 现在是 `writer: rp`、`judge: judge`（`auto/glm-5.3`）；`roles.planner` 未配置，回退到 `background`。
 - 渠道角色（`writer`、`settler`、`planner`、`judge`）与消息角色不同；`createLlmClient` 校验 judge 与 writer 的模型家族不同。server 运行时为 writer、settler、planner 各建一个客户端；`dramaticer work` 建 settler 与 planner 两个客户端。
-- 渠道管理接口（R5-T03）：三条路由只在 `channels.path` 存在时可用。`GET` 每次重读文件；`PUT` 是整份替换，`models` 里不写 `tools`/`probe`（保留原值），`enabled: true` 不落盘；`POST /api/channels/probe` 的 `channel` 缺省取模型第一个渠道。`ServerChannelsOptions.env` 同时用于解析 `${VAR}` 与报告 `apiKeySet`；测试用 `createChannel` 注入假通道。运行时的缓存指纹包含 `roles`，写入后下一回合重建。
+- 渠道管理接口（R5-T03、R5-T10）：三条路由只在 `channels.path` 存在时可用。`GET` 每次重读文件；`PUT` 是整份替换，请求里没出现的渠道、模型、嵌入提供方与岗位都会被删除；`models` 里不写 `tools`/`probe`（保留原值），`enabled: true` 不落盘。`POST /api/channels/probe` 的 `channel` 缺省取模型第一个渠道；通道创建或体检抛错时返回 400 `渠道体检失败：<原因>`，`details.path` 为 `alias`。`ServerChannelsOptions.env` 同时用于解析 `${VAR}` 与报告 `apiKeySet`；`apiKeySet` 只在变量存在但为空串时为 false——变量完全不存在时 `GET` 直接 400。运行时的缓存指纹包含 `roles`，写入后下一回合重建。
 - 模型 `enabled` 语义：默认 true；停用后不能作为故事模型、角色目标或路由，`resolveModelForRole` 与 `StoryRuntimeManager` 对显式指向停用的角色抛错；后台角色缺省回落的 `background` 停用时后台客户端为空。程序化构造 `LlmModelConfig` 时必须写 `enabled`。
 - 工具传输：`resolveToolTransport` 在未显式配置时按 `probe.functionCalling` 决定；文本协议是 `core/src/chat/tool-protocol.ts`，工具说明只插进发给模型的消息副本。
 - 写作规则：`WRITING_CONTRACT` 是四条原则；`protocol` 是固定 id 的静态段，`assertContextTemplate` 要求它是最后一个片段。
@@ -109,10 +109,10 @@
 - `packages/core/test/` 与 `packages/st-compat/test/` 下的 `.tmp-*` 目录会被测试创建；它们在 gitignore 里，不要提交。
 - `packages/st-compat` 与 `packages/server` 在测试里通过 `@dramaticer/core` 的 `dist` 解析 core；只跑这两个包的测试前先执行 `pnpm run typecheck`（`tsc -b` 重新构建），否则会读到旧代码。
 - web 的 `typecheck` 与 `build` 会先构建 core 与 protocol；单独跑 web 测试前同样需要这两个包的 `dist`（`packages/web` 通过 `@dramaticer/protocol` 与 `@dramaticer/core/blocks` 的 `dist` 解析）。
-- `@dramaticer/core/blocks` 是浏览器安全子路径，只导出块解析、类型、视图与选项行读取；web 不要从 `@dramaticer/core` 根入口导入运行时函数（会带进 better-sqlite3）。只用 `import type` 从根入口取类型是允许的（`Composer.tsx`、`LedgerPage.tsx`、`DirectorPage.tsx`、`settings-form.ts`、`template-form.ts` 都这么做）。web 侧的槽位名与 `protocol`、`block_format` id 在 `template-form.ts` 里本地声明，避免引入 core 运行时。
+- `@dramaticer/core/blocks` 是浏览器安全子路径，只导出块解析、类型、视图与选项行读取；web 不要从 `@dramaticer/core` 根入口导入运行时函数（会带进 better-sqlite3）。只用 `import type` 从根入口取类型是允许的（`Composer.tsx`、`LedgerPage.tsx`、`DirectorPage.tsx`、`settings-form.ts`、`template-form.ts`、`channels-form.ts` 都这么做）。web 侧的槽位名与 `protocol`、`block_format` id 在 `template-form.ts` 里本地声明，避免引入 core 运行时。
 - `@dramaticer/protocol` 的运行时入口可以给 web 与 server 共用（`toDisplayedBlocks`、`SSE_EVENT_NAMES`），它只引用 core 的类型；protocol 测试会扫描 `dist`，确认 JavaScript 里没有 `@dramaticer/core`。
 - `TurnCompletedPayload` 现在有必填的 `blocks`，构造完整事件夹具时要带上；`TurnDraft.blocks` 的类型是 `DisplayedContent[]`。
 - 沙箱消息的浏览器约束：srcdoc 沙箱在不带 `allow-same-origin` 时 `event.origin` 是字符串 `"null"`，读 `document.cookie` 会直接抛 `SecurityError`；Playwright 的 `frame.evaluate` 里要捕获这个异常，不能当成空字符串。
 - web 的 Vite 开发服务器在当前环境只监听 `localhost`（IPv6 `::1`），用 `http://localhost:5173` 访问；`127.0.0.1` 会被拒绝连接。
-- 聊天页、分支页、台账页、导演页与设置页的冒烟方式：从 `packages/core/dist` 与 `packages/server/dist` 用 `pathToFileURL` 引入（Windows 上直接 `import("E:/…")` 会报 `ERR_UNSUPPORTED_ESM_URL_SCHEME`），用 `StoryStore` 造故事与楼层、按需写入状态 diff、事件、摘要、实体、世界书、变更卡、导演决策、Trace、候选行动、计划与上下文模板；`startServer` 不传 `channels` 即可只提供只读接口（设置与模板界面只读写的路由都能用），`--web` 指向 `packages/web/dist` 后浏览器用 `http://127.0.0.1:<端口>/stories/<id>/settings` 等路径。`playwright-core` 已在根 `node_modules` 里可解析，未改动根 `package.json` 与 `pnpm-lock.yaml`；可用 `LOCALAPPDATA/ms-playwright/chromium-1243/chrome-win64/chrome.exe` 作为 `executablePath`。
-- R5-T09 的冒烟脚本在 `.devloop/scratch/R5-T09/smoke.mjs`（git 忽略），可直接重跑。
+- 聊天页、分支页、台账页、导演页、设置页与渠道页的冒烟方式：从 `packages/core/dist` 与 `packages/server/dist` 用 `pathToFileURL` 引入（Windows 上直接 `import("E:/…")` 会报 `ERR_UNSUPPORTED_ESM_URL_SCHEME`），用 `StoryStore` 造故事与楼层、按需写入状态 diff、事件、摘要、实体、世界书、变更卡、导演决策、Trace、候选行动、计划与上下文模板；渠道页需要给 `startServer` 传 `channels: { path, env, createChannel }`，用假通道提供体检结果，并把 `env` 的密钥变量设成空串来触发“变量存在但未设置”的提示（变量完全不存在会让 `GET` 直接 400）。`--web` 指向 `packages/web/dist` 后浏览器用 `http://127.0.0.1:<端口>/stories/<id>/settings` 等路径。`playwright-core` 已在根 `node_modules` 里可解析，未改动根 `package.json` 与 `pnpm-lock.yaml`；可用 `LOCALAPPDATA/ms-playwright/chromium-1243/chrome-win64/chrome.exe` 作为 `executablePath`。
+- R5-T09 的冒烟脚本在 `.devloop/scratch/R5-T09/smoke.mjs`，R5-T10 的冒烟脚本在 `.devloop/scratch/R5-T10/smoke.mjs`（都在 git 忽略的 `scratch` 下）；R5-T10 的脚本把临时文件放在同目录的 `work/`，不要像它第一版那样删掉自己所在的目录。
