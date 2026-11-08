@@ -100,6 +100,8 @@ export interface ChatTurnOptions {
 export interface GenerateAssistantTurnOptions
 	extends Omit<ChatTurnOptions, "userText"> {
 	readonly userNodeId: string;
+	/** 重新生成时被放弃的助手楼层；不设置时是普通生成，不写偏好记录。 */
+	readonly swipeFromNodeId?: string | null;
 }
 
 export interface RegenerateAssistantTurnOptions
@@ -345,6 +347,7 @@ export async function generateAssistantTurn(
 			role: "assistant",
 			raw: result.text,
 		});
+		recordRegeneratedSwipe(options, node);
 		const savedDiffs = writesLedger
 			? options.store.appendStateDiffs(
 					toNewStateDiffs(options.storyId, node.id, structured.stateUpdates),
@@ -450,6 +453,26 @@ export async function regenerateAssistantTurn(
 	return generateAssistantTurn({
 		...options,
 		userNodeId: assistantNode.parentId,
+		swipeFromNodeId: assistantNode.id,
+	});
+}
+
+/**
+ * 重新生成写出新楼层时补一条 swipe 偏好；与楼层写入同一事务，
+ * 中止后保存了部分正文的楼层同样记录。普通生成不传来源，只写楼层。
+ */
+function recordRegeneratedSwipe(
+	options: GenerateAssistantTurnOptions,
+	node: TimelineNode,
+): void {
+	const abandonedNodeId = options.swipeFromNodeId;
+	if (abandonedNodeId === undefined || abandonedNodeId === null) return;
+	options.store.recordPreference({
+		storyId: options.storyId,
+		nodeId: node.id,
+		kind: "swipe",
+		payload: { abandonedNodeId, acceptedNodeId: node.id },
+		createdAt: node.createdAt,
 	});
 }
 
@@ -474,6 +497,7 @@ async function persistAbortedTurn(input: {
 			role: "assistant",
 			raw: error.partialText,
 		});
+		recordRegeneratedSwipe(options, node);
 		const trace: TurnTrace = {
 			storyId: options.storyId,
 			nodeId: node.id,

@@ -221,6 +221,143 @@ describe("regenerateAssistantTurn", () => {
 		).rejects.toThrow(/角色是 assistant/);
 	});
 
+	it("重新生成成功后写一条 swipe 偏好，普通生成不写", async () => {
+		const { store } = openTempStore();
+		seedStory(store);
+		const first = await runChatTurn({
+			store,
+			client: createScriptedClient([{ text: FIRST_REPLY }]).client,
+			storyId: "s1",
+			userText: "我推开山门。",
+			template: createDefaultContextTemplate({ structuredOutput: "text-tags" }),
+			providers: providers(store),
+			budgetTokens: 4_000,
+			structuredOutput: "text-tags",
+			model: "fake",
+		});
+		expect(store.listPreferenceEvents("s1")).toEqual([]);
+
+		const regenerated = await regenerateAssistantTurn({
+			store,
+			client: createScriptedClient([{ text: SECOND_REPLY }]).client,
+			storyId: "s1",
+			assistantNodeId: first.node.id,
+			template: createDefaultContextTemplate({ structuredOutput: "text-tags" }),
+			providers: providers(store),
+			budgetTokens: 4_000,
+			structuredOutput: "text-tags",
+			model: "fake",
+		});
+
+		const events = store.listPreferenceEvents("s1", { kind: "swipe" });
+		expect(events).toHaveLength(1);
+		expect(events[0]).toMatchObject({
+			storyId: "s1",
+			nodeId: regenerated.node.id,
+			kind: "swipe",
+			payload: {
+				abandonedNodeId: first.node.id,
+				acceptedNodeId: regenerated.node.id,
+			},
+		});
+	});
+
+	it("中止但保存了部分正文时同样记录 swipe", async () => {
+		const { store } = openTempStore();
+		seedStory(store);
+		const first = await runChatTurn({
+			store,
+			client: createScriptedClient([{ text: FIRST_REPLY }]).client,
+			storyId: "s1",
+			userText: "我推开山门。",
+			template: createDefaultContextTemplate({ structuredOutput: "text-tags" }),
+			providers: providers(store),
+			budgetTokens: 4_000,
+			structuredOutput: "text-tags",
+			model: "fake",
+		});
+
+		const controller = new AbortController();
+		const emitted = Promise.withResolvers<void>();
+		const client: LlmStreamingClient = {
+			async complete() {
+				throw new Error("中止测试不使用 complete");
+			},
+			stream() {
+				return createEventStream(async (emit) => {
+					emit({ type: "text_delta", delta: "山门刚开" });
+					emitted.resolve();
+					const aborted = Promise.withResolvers<never>();
+					controller.signal.addEventListener(
+						"abort",
+						() => aborted.reject(controller.signal.reason),
+						{ once: true },
+					);
+					await aborted.promise;
+				});
+			},
+		};
+
+		const pending = regenerateAssistantTurn({
+			store,
+			client,
+			storyId: "s1",
+			assistantNodeId: first.node.id,
+			template: createDefaultContextTemplate({ structuredOutput: "text-tags" }),
+			providers: providers(store),
+			budgetTokens: 4_000,
+			structuredOutput: "text-tags",
+			signal: controller.signal,
+		});
+		await emitted.promise;
+		controller.abort(new Error("测试中止"));
+		const result = await pending;
+
+		expect(result.node.raw).toBe("山门刚开");
+		const events = store.listPreferenceEvents("s1", { kind: "swipe" });
+		expect(events).toHaveLength(1);
+		expect(events[0]?.payload).toEqual({
+			abandonedNodeId: first.node.id,
+			acceptedNodeId: result.node.id,
+		});
+	});
+
+	it("生成失败且没有产生楼层时不记录 swipe", async () => {
+		const { store } = openTempStore();
+		seedStory(store);
+		const first = await runChatTurn({
+			store,
+			client: createScriptedClient([{ text: FIRST_REPLY }]).client,
+			storyId: "s1",
+			userText: "我推开山门。",
+			template: createDefaultContextTemplate({ structuredOutput: "text-tags" }),
+			providers: providers(store),
+			budgetTokens: 4_000,
+			structuredOutput: "text-tags",
+			model: "fake",
+		});
+		const headBefore = store.getHead("s1")?.id;
+
+		await expect(
+			regenerateAssistantTurn({
+				store,
+				client: createScriptedClient([]).client,
+				storyId: "s1",
+				assistantNodeId: first.node.id,
+				template: createDefaultContextTemplate({
+					structuredOutput: "text-tags",
+				}),
+				providers: providers(store),
+				budgetTokens: 4_000,
+				structuredOutput: "text-tags",
+				model: "fake",
+			}),
+		).rejects.toThrow(/没有为第 1 次请求准备回复/);
+
+		expect(store.listPreferenceEvents("s1")).toEqual([]);
+		expect(store.getHead("s1")?.id).toBe(headBefore);
+	});
+
 	it("函数调用模式仍只有一次主调用与最多 2 轮读取工具", async () => {
 		const { store } = openTempStore();
 		seedStory(store);
