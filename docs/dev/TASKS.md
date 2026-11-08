@@ -645,7 +645,8 @@
   - 聊天页已经提供最新楼层的重新生成；本任务补齐树上任意楼层的入口。
   验收：swipe 与 edit 后旧分支仍可切回；编辑后原文不变；head 切换与路径刷新正确；移动端可操作；纯逻辑单测覆盖树构造与路径标记；`pnpm check` 通过。
 
-- [ ] **R5-T07 web 台账与记忆面板**（原 M4-T13） | 依赖：R5-T04、R5-T02、R1-T01
+- [x] **R5-T07 web 台账与记忆面板**（原 M4-T13） | 依赖：R5-T04、R5-T02、R1-T01
+  完成：2026-11-08 新增 `packages/web/src/chat/ledger-view.ts`（命名空间切分、完整路径高亮、值格式化与展开阈值、故事时间/来源/置信度格式化、事件元数据、offset 分页与按 id 去重）与 `components/ledger/{LedgerValue,StateTree}.tsx`；`LedgerPage` 左侧复用楼层树选择任意楼层，右侧展示本楼 `diffs`（路径、值、`source`、`confidence`、`storyTime`、删除标记，状态树按完整路径高亮并自动展开被写入的子树）、九个命名空间分区的 `state` 与 `facts`（来源楼层、写入时间）、事件分页（每页 20，按 offset 续取并在切换楼层后重取）、分层摘要与覆盖区间、故事级未兑现线索/实体与别名/世界书；全程只调用 `GET` 接口；新增 15 个纯逻辑测试；真实 server 加 Playwright 冒烟通过（默认 head、8 条写入、7 行高亮、长值展开、20→25 条事件、切换楼层后 16 条写入与 12 条事件、只读请求、390×844 无横向溢出）；门禁通过（136 个测试文件、1203 个测试通过，3 个 live 跳过）
   做什么：
   - 本楼台账：`GET /api/nodes/:id/ledger` 返回 `{state, facts, diffs}`；按命名空间树展示 `state`，本楼 `diffs` 高亮（路径、值、`source`、`confidence`、`storyTime`），`facts` 显示来源楼层与写入时间。
   - 分栏：人物与关系（`character`、`relation`）、物品（`item`）、场景（`scene`）、时间（`time`）、线索（`clue`）、知情表（`knowledge`）、用户意志（`userWill`）；`mvu` 按原路径展示。

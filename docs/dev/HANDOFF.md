@@ -3,22 +3,19 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：159
-- 任务：R5-T06 web 分支视图
-- 结果：完成，门禁通过（135 个测试文件、1188 个测试通过，3 个 live 跳过，共 1191 个）。
-  - 楼层树：`GET /api/stories/:id/tree` 由 `buildBranchRows`（`packages/web/src/chat/branch-tree.ts`）按深度优先展开。只有“子节点多于一个”的楼层之后的子树缩进一层，线性长对话保持平齐；缩进上限 `MAX_BRANCH_INDENT = 8`。当前 head 路径用 `GET /api/stories/:id/path` 按 `PATH_PAGE_LIMIT = 200` 从最新页向上取完（`collectPathNodeIds`），按根到 head 顺序合并；`hasMore` 为真但返回空页、分页不前进、超过 `MAX_PATH_PAGES = 500` 都在纯逻辑层直接抛错。行上标记 `onPath`、`isHead`、`collapsed`、`hiddenDescendants`（折叠时被藏起来的子孙数）。
-  - 折叠：`toggleCollapsed` 返回新集合；`pruneCollapsed` 在树刷新后丢掉已经没有子节点的折叠状态。折叠按钮与选择按钮是两个独立按钮，行内左侧缩进按 `depth * 14px`。
-  - 切换 head：`describeHeadSwitch` 生成提示文本（目标就是 head 返回 null；其余写明其他分支保留、所选楼层是否已有后续、当前末端是否未确认），界面点击“切换到此楼层”先显示提示，确认后才 `POST /api/stories/:id/head`，随后重取树与完整路径。未确认按 `childIds.length === 0` 判定，与 `StoryStore.isNodeConfirmed` 的口径一致。
-  - 原文读取：树只给 80 字预览，选中楼层用 `GET /api/stories/:id/path?nodeId=<id>&limit=1` 取最后一层（即锚点）的 `raw`；请求用 `rawRequestRef` 序号防止旧响应覆盖新选择。
-  - 编辑：`POST /api/nodes/:id/edit`，编辑框预填完整原文；保存后新楼层成为 head，旧楼层保留为兄弟分支，原文不变。swipe：`POST /api/nodes/:id/swipe`，玩家填写新正文，新建同角色兄弟楼层，同样成为 head。两者返回的 `path` 已是完整路径（`buildPath`），界面仍统一重取树与路径并选中新节点。
-  - 重新生成：`POST /api/nodes/:id/regenerate` 的 SSE 用既有 `TurnDraft`/`applyTurnEvent` 归并，流式期间在详情面板里显示 `StreamingBubble`；成功、中止与失败都可能已经写楼层，完成后统一重取树与路径，成功时选中 `turn.completed.node.id`。根楼层（`parentId === null`）与玩家楼层不显示重新生成按钮。
-  - 新文件：`packages/web/src/chat/branch-tree.ts`（纯逻辑）、`packages/web/src/chat/format.ts`（`formatFloorTime`，聊天楼层与分支页共用）、`packages/web/src/components/branches/BranchTree.tsx`；`BranchesPage.tsx` 重写；`ChatFloorView.tsx` 改为引用共享的时间格式化；`styles.css` 增加 `.branch-*` 样式（宽屏左右分栏、移动端单栏，详情面板 sticky）。
-  - 新增 14 个纯逻辑测试：展开顺序、线性不缩进与分叉缩进、路径与 head 标记、两处折叠计数、嵌套分支缩进上限、缺失子节点与环直接失败、折叠集合不可变与清理、分页合并顺序与空页/上限报错、三种切换提示。
-  - 冒烟：`.devloop/scratch/branches/`（已删除，注意 `pnpm add` 在这个目录会往根 `pnpm-lock.yaml` 加 importer，删目录后要把 lockfile 改回去）里用 `pathToFileURL` 引入 `packages/{core,server}/dist`，`StoryStore` 造 8 层楼的分叉故事（head 在深处），`startServer` 注入固定正文的假 `LlmStreamingClient` 与空后台注册表，`--web packages/web/dist` 起在 8791；Playwright（`playwright-core` + `chromium-1243/chrome-win64/chrome.exe`）实测：8 行、路径 6 行高亮、head 标记、收起 a1 后 2 行且显示“已收起 6 楼”、展开恢复、带提示的 head 切换与路径高亮变化、编辑新增一层且旧分支可切回且原文不变、swipe 新增一层、重新生成出现“全新生成的正文”并成为 head、head 的切换按钮禁用、390×844 `scrollWidth` 为 390。
+- 会话：160
+- 任务：R5-T07 web 台账与记忆面板
+- 结果：完成，门禁通过（136 个测试文件、1203 个测试通过，3 个 live 跳过，共 1206 个）。
+  - 纯逻辑：`packages/web/src/chat/ledger-view.ts`。`buildNamespaceSlices` 按固定顺序切出九个命名空间（character、relation、item、scene、time、clue、knowledge、userWill，再加未知命名空间；`mvu` 显示为 MVU），已知命名空间即使为空也保留。`highlightPaths` 与 `isPathHighlighted` 只按完整路径匹配，父路径不会被标成本楼写入；`hasHighlightedDescendant` 用完整路径段判断子树是否含写入，供状态树自动展开。`describeLedgerValue` 在 120 字符处折叠长字符串与对象（`full` 保留多行 JSON），`formatStoryTime`、`formatLedgerSource`、`formatConfidence`、`formatNodeRef`、`formatSummaryLevel`、`formatLedgerPath`、`pathKey` 是唯一格式化入口。事件分页 `nextEventRequest` 以已收到条数为 offset、`hasMoreEventPage` 只在返回满一页时为真、`appendEventPage` 按事件 id 去重。
+  - 组件：`components/ledger/LedgerValue.tsx` 用 `<details>` 展示长值；`StateTree.tsx` 递归渲染快照，对象可展开、本楼写入行加 `ledger-node-diff` 高亮。
+  - 页面：`pages/story/LedgerPage.tsx` 左侧复用 `BranchTree` 选择任意楼层（无 head 切换、无写操作），右侧依次是本楼写入（路径、值、source、confidence、storyTime、删除标记、原因）、九个命名空间卡片（状态树 + facts，facts 写来源楼层与楼层写入时间）、事件（20 条一页，加载更多按 offset 续取，切换楼层后从第一页重取）、记忆摘要（层级、token 数、覆盖区间）、故事级未兑现线索、实体与别名、世界书。故事级数据在 storyId 变化时一次取齐；楼层数据在 selectedId 变化时并行取 ledger、events、compressions，用 `requestRef` 序号丢弃旧响应。
+  - 只读：页面只调用 `GET` 接口；批准与拒绝留给 R5-T07.a，线索兑现留给 R5-T08。
+  - 新增 15 个纯逻辑测试（命名空间切分与未知命名空间排序、完整路径高亮与子树判断、长值与对象格式化、故事时间/来源/置信度、事件元数据、分页偏移/满页判断/去重）。
+  - 冒烟：临时脚本在真实 server（`packages/web/dist` + `StoryStore` 造 4 楼、跨命名空间 diff、25 条事件、两条摘要、实体、世界书）上用 Playwright 实测：默认选中 head、8 条本楼写入、1 条删除、7 行状态高亮、长值展开为完整正文、事实显示来源楼层与写入时间、事件 20 条 → 加载更多到 25、切换楼层后 16 条写入与 12 条事件且没有更多按钮、未兑现线索与已兑现过滤、实体别名、世界书、全部 API 请求为 GET、390×844 无横向溢出。临时目录已删除，`pnpm-lock.yaml` 与根 `package.json` 已还原。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09.a、R2-T09.b、R2-T09.c、R2-T99、R5-T01、R5-T02、R5-T02.a、R5-T02.b、R5-T02.c、R5-T04、R5-T05.a、R5-T05.b、R5-T05.c、R5-T06、E-T01、R4-T00、R4-T01、R4-T02、R4-T03、R4-T04、R4-T05、R4-T06、R4-T07、R4-T08、R4-T99、R5-T00。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- **下一个可做任务是 R5-T07（web 台账与记忆面板，只读）**：依赖 R5-T04、R5-T02、R1-T01，全部满足。之后按 TASKS 的 R5 段落：R5-T11（沙箱块渲染）；再进入第二段 R5-T03、R5-T07.a、R5-T08、R5-T09、R5-T10。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09.a、R2-T09.b、R2-T09.c、R2-T99、R5-T01、R5-T02、R5-T02.a、R5-T02.b、R5-T02.c、R5-T04、R5-T05.a、R5-T05.b、R5-T05.c、R5-T06、R5-T07、E-T01、R4-T00、R4-T01、R4-T02、R4-T03、R4-T04、R4-T05、R4-T06、R4-T07、R4-T08、R4-T99、R5-T00。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- **下一个可做任务是 R5-T07.a（web 变更卡审批与回滚）**：依赖 R5-T07、R1-T07.a、R5-T02，全部满足。之后按 TASKS 顺序是 R5-T11（沙箱块渲染）、R5-T03、R5-T08、R5-T09、R5-T10。
 - R5 的已知接口缺口（R5-T00 定下的任务范围，尚未做的部分）：
   - 变更卡只有 `GET /api/stories/:id/proposals`，没有批准、拒绝与回滚接口（R5-T07.a）；CLI 用 `approveLedgerChangeCard`、`rejectLedgerChangeCard`、`rollbackLedgerChangeCard`。
   - 故事设置接口是 `GET`/`PUT /api/stories/:id/settings`（不是 PATCH）。
@@ -35,13 +32,14 @@
 - server 的回合路径会补建并执行后台任务：`handleTurnStream` 在 `turn.completed` 之后调用 `BackgroundScheduler.schedule`，不等待 drain；同一时刻只有一个 drain，故事之间先来先做。`schedule` 的 drain 只跑 `resolveStoryBackgroundKinds` 过滤后的类型。
 - 故事级任务入队：`StoryStore.enqueueStoryBackgroundJobs` 按种类写入 `node_id` 为空的 `background_jobs` 行；创建故事与导入卡的路由先调用 `enqueueOpeningBackgroundJobs`（按两个 `needsRun` 过滤）再 `schedule`。`POST /api/stories/:id/openings/generate` 无条件入队一条 `opening_candidates`（仅要求故事无楼层），同样的 `enqueueStoryBackgroundJobs` 在任务已完成时把同一行翻回 `pending`，所以连续手动生成的 `jobId` 相同。
 - 开场候选自动入队只在有素材、无楼层且无待选候选时发生；生成处理器本身只检查“故事没有楼层”，手动任务与生成接口每次追加一批。
-- 分支与面板接口已可用。`GET /api/nodes/:id/ledger` 返回 `{state, facts, diffs}`，`facts` 来自 `readLedgerFacts`，`diffs` 只含该楼层自己的写入。
+- 分支与面板接口已可用。`GET /api/nodes/:id/ledger` 返回 `{state, facts, diffs}`，`facts` 来自 `readLedgerFacts`，`diffs` 只含该楼层自己的写入。`GET /api/nodes/:id/events` 的 `limit` 默认 100、返回体回显实际 `limit` 与 `offset`；`GET /api/nodes/:id/compressions` 返回 `{nodeId, compressions}`。
 - 路径接口：`GET /api/stories/:id/path?nodeId=&limit=&before=`，返回 `{storyId, headNodeId, nodes, hasMore}`。`nodeId` 是锚点、缺省 head，锚点节点包含在返回路径里；`before` 必须在本故事且在该锚点的路径上，返回它之前的 `limit` 楼；`hasMore` 只在返回页之前还有楼层时为真。响应里 `nodes` 一定是根到页末楼的连续顺序。`limit=1` 且带 `nodeId` 时只返回锚点自己，分支页用它读任意楼层原文。
 - 分支接口的 head 语义：`appendNode` 自带把 head 移到新节点，所以 `swipeNode`、`editNode`、重新生成写完楼层后 head 已经是新楼层，不需要再调用 `POST /head`；`setHead` 只在树里主动切分支时使用。
-- web 包结构：`src/api/{client,sse,index}.ts`；`src/chat/{path-state,virtual-window,stream-state,turn-summary,blocks,candidate-actions,opening-candidates,branch-tree,format}.ts`（纯逻辑）；`src/components/chat/{ChatFloorList,ChatFloorView,BlockContent,StreamingBubble,Composer,CandidateActions,OpeningCandidates}.tsx`、`src/components/branches/BranchTree.tsx`、`src/components/ErrorNotice.tsx`；`src/pages/*`、`src/pages/story/*`、`src/styles.css`。`src/api/index.ts` 导出单例 `api`。开发用 `pnpm --filter @dramaticer/web dev`（Vite 默认 5173，`/api` 代理到 `http://127.0.0.1:8787`）；server 默认从 `packages/web/dist` 提供静态文件，找不到文件回退 `index.html`。
+- web 包结构：`src/api/{client,sse,index}.ts`；`src/chat/{path-state,virtual-window,stream-state,turn-summary,blocks,candidate-actions,opening-candidates,branch-tree,ledger-view,format}.ts`（纯逻辑）；`src/components/chat/{ChatFloorList,ChatFloorView,BlockContent,StreamingBubble,Composer,CandidateActions,OpeningCandidates}.tsx`、`src/components/branches/BranchTree.tsx`、`src/components/ledger/{LedgerValue,StateTree}.tsx`、`src/components/ErrorNotice.tsx`；`src/pages/*`、`src/pages/story/*`、`src/styles.css`。`src/api/index.ts` 导出单例 `api`。开发用 `pnpm --filter @dramaticer/web dev`（Vite 默认 5173，`/api` 代理到 `http://127.0.0.1:8787`）；server 默认从 `packages/web/dist` 提供静态文件，找不到文件回退 `index.html`。
 - 聊天页每轮生成完成后重新取最新 60 楼并丢弃旧的向上分页；`PAGE_SIZE` 60、分页阈值 240px、自动贴底阈值 96px、楼层高度估算 200px、overscan 600px。候选行动与开场候选的轮询间隔都是 2 秒、上限 15 次；候选行动面板与开场候选面板在聊天面板里最高占 40vh、内部滚动。
 - 聊天页的回合模式取自 `GET settings` 的 `turnMode` 并作为 `mode` 发送；settings 尚未取到时按 `fast`。锁定为深回合时下拉框只显示当前值（不可选），旁边出现“切回快回合”按钮走 `PUT settings`。深回合仍不在可选项里（DESIGN §10.1）。
 - 分支页：路径高亮按完整路径 id 集合；head 行用 `focusSignal` 触发 `scrollIntoView`（0 表示还没加载）。树里只有 `childIds.length > 0` 才能折叠；`describeHeadSwitch` 是切换提示的唯一文案来源。
+- 台账页：楼层选择复用 `BranchTree`，`focusSignal` 固定 0；`selectedId` 变化时并行取 ledger、events 第一页与 compressions，`requestRef` 序号防止旧响应覆盖；故事级 clues/entities/lore 只在 storyId 变化时取一次。状态树只按完整路径高亮本楼写入，`hasHighlightedDescendant` 决定子树默认展开。事件每页 20，下一页 offset 等于已收到条数，`appendEventPage` 按 id 去重。facts 的“写入时间”取树节点的 `createdAt`（`LedgerFact` 本身没有 createdAt）。
 - 偏好记录已闭环：记录写入（四种信号）→ `POST /api/nodes/:id/choice` → `preferences export` 产出回复对 → `pairwise` 盲测与评分 → `scoreboard` 汇总。重新生成与 `swipeNode` 都写 `swipe`；私有库目前没有任何 `preference_events`。
 - 排障命令：`dramaticer explain --node <id> --db <path> [--json]`。只读、零模型调用；导演决策从助手楼层的父楼层读（`director_decisions` 写在生成时的消息楼层上）。记忆槽位的 `retrieval` 只在槽位真正注入内容时写进 Trace；没有命中时该槽位记为 `missing-slot`。上下文分段行会显示 suffix 槽位的 `appendedTo`。`explain` 不受导演模式影响，盲盒下仍然显示完整指令与信号。第 7 段显示当前拍与 `director_beat_states` 记录（节拍 id、完成楼层、`completed`、是否已前进），只读。
 - 导演计划接口：`readDirectorPlan` 按 `ordinal` 还原弧线、序列、节拍；`--set` 与 `PUT /api/stories/:id/director/plan` 都整份替换并把所有行标为 `player`，`mergePlannedArcs` 只更新或追加 `model`/`import` 行，永不删除、不覆盖 `player` 行。`resolveCurrentBeat` 沿路径最近一条 `director_beat_states` 前进：完成则到下一拍（跨序列），未完成停在原地，无状态取第一拍，耗尽返回 null；记录指向已不存在的节拍时跳过该记录，仍无有效记录则回到第一拍。`readDirectorPlan` 与 `resolveCurrentBeat` 的入参是 `DirectorPlanReader`/`DirectorBeatResolver`（`Pick<StoryStore, …>`）。
@@ -54,8 +52,8 @@
 - R4 验收的链路证据在 `packages/core/test/director-acceptance.test.ts` 与 `docs/dev/reports/R4.md`。
 
 ## 下一步
-- **R5-T07 台账与记忆只读面板**：本楼 `GET /api/nodes/:id/ledger` 的 `{state, facts, diffs}` 按命名空间展示并高亮本楼 diff；故事级 `GET /api/stories/:id/clues|entities|lore`；事件 `GET /api/nodes/:id/events?limit&offset` 与摘要 `GET /api/nodes/:id/compressions`；只读，不提供编辑、批复或兑现入口。接线点在 `packages/web/src/pages/story/LedgerPage.tsx`，纯逻辑放 `packages/web/src/chat/` 下并配单测（格式化与分页）。
-- 之后 R5-T11（沙箱块渲染，需先把 `BlockDisplayStrategy` 带进 `blocks.replace` 与 `turn.completed` 载荷）；第二段 R5-T03、R5-T07.a、R5-T08、R5-T09、R5-T10。
+- **R5-T07.a 变更卡审批与回滚**：server 新增 `POST /api/proposals/:id/approve|reject|rollback`，复用 `approveLedgerChangeCard`、`rejectLedgerChangeCard`、`rollbackLedgerChangeCard`；卡片不存在 404、状态不允许 409；响应返回更新后的卡片与台账快照。web 在台账面板加待审卡列表（`GET /api/stories/:id/proposals?status=pending`），显示路径、值、来源与拒绝原因，操作成功后刷新台账。
+- 之后 R5-T11（沙箱块渲染，需先把 `BlockDisplayStrategy` 带进 `blocks.replace` 与 `turn.completed` 载荷）；再按 TASKS 顺序 R5-T03、R5-T08、R5-T09、R5-T10。
 - R5-T08 只依赖 R5-T04、R5-T02、R4-T99，计划、决策、候选与线索接口已经可用。
 - 引用评测数字时：B1 必须同时说明同模型子集为空、每个对话每档只有 1 个样本；遗忘矛盾率必须同时说明失败题数与可判定样本数；偏好一致率当前没有样本。
 
@@ -105,6 +103,6 @@
 - `packages/core/test/` 与 `packages/st-compat/test/` 下的 `.tmp-*` 目录会被测试创建；它们在 gitignore 里，不要提交。
 - `packages/st-compat` 与 `packages/server` 在测试里通过 `@dramaticer/core` 的 `dist` 解析 core；只跑这两个包的测试前先执行 `pnpm run typecheck`（`tsc -b` 重新构建），否则会读到旧代码。
 - web 的 `typecheck` 与 `build` 会先构建 core 与 protocol；单独跑 web 测试前同样需要这两个包的 `dist`（`packages/web` 通过 `@dramaticer/protocol` 与 `@dramaticer/core/blocks` 的 `dist` 解析）。
-- `@dramaticer/core/blocks` 是浏览器安全子路径，只导出块解析、类型、视图与选项行读取；web 不要从 `@dramaticer/core` 根入口导入运行时函数（会带进 better-sqlite3）。
+- `@dramaticer/core/blocks` 是浏览器安全子路径，只导出块解析、类型、视图与选项行读取；web 不要从 `@dramaticer/core` 根入口导入运行时函数（会带进 better-sqlite3）。只用 `import type` 从根入口取类型是允许的（`Composer.tsx`、`LedgerPage.tsx` 都这么做）。
 - web 的 Vite 开发服务器在当前环境只监听 `localhost`（IPv6 `::1`），用 `http://localhost:5173` 访问；`127.0.0.1` 会被拒绝连接。
-- 聊天页与分支页的冒烟方式：从 `packages/core/dist` 与 `packages/server/dist` 用 `pathToFileURL` 引入（Windows 上直接 `import("E:/…")` 会报 `ERR_UNSUPPORTED_ESM_URL_SCHEME`），用 `StoryStore` 造故事与楼层、用 `startServer` 的 `channels.createClient`/`createEmbedder` 注入假客户端、`createBackgroundRegistry: () => createBackgroundJobRegistry([])` 关掉后台任务，`--web packages/web/dist` 启动；浏览器用 `http://127.0.0.1:<端口>/stories/<id>/chat` 或 `/branches`。流式界面验证用假客户端，不访问真实模型。`playwright-core` 需要临时装进 `.devloop/scratch/<任务>/` 并删掉，安装会往根 `pnpm-lock.yaml` 加 importer，收尾时把那段删掉；可用 `LOCALAPPDATA/ms-playwright/chromium-1243/chrome-win64/chrome.exe` 作为 `executablePath`。
+- 聊天页、分支页与台账页的冒烟方式：从 `packages/core/dist` 与 `packages/server/dist` 用 `pathToFileURL` 引入（Windows 上直接 `import("E:/…")` 会报 `ERR_UNSUPPORTED_ESM_URL_SCHEME`），用 `StoryStore` 造故事与楼层、按需写入状态 diff、事件、摘要、实体与世界书；`startServer` 不传 `channels` 即可只提供只读接口，需要对话时用 `channels.createClient`/`createEmbedder` 注入假客户端、`createBackgroundRegistry: () => createBackgroundJobRegistry([])` 关掉后台任务，`--web packages/web/dist` 启动；浏览器用 `http://127.0.0.1:<端口>/stories/<id>/ledger` 等路径。`playwright-core` 需要临时装进 `.devloop/scratch/<任务>/` 并删掉，安装会往根 `pnpm-lock.yaml` 与 `package.json` 加 importer，收尾时把这两处都改回去；可用 `LOCALAPPDATA/ms-playwright/chromium-1243/chrome-win64/chrome.exe` 作为 `executablePath`。

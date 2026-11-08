@@ -910,3 +910,274 @@ button.branch-select:hover {
 		flex: 1 1 45%;
 	}
 }
+
+/* 台账页：左侧楼层选择，右侧只读面板。 */
+.ledger-layout {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.ledger-tree-pane,
+.ledger-detail-pane {
+	min-width: 0;
+	padding: 10px 12px;
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: 12px;
+}
+
+.ledger-tree-pane h2 {
+	margin: 0 0 4px;
+	font-size: 1rem;
+}
+
+.ledger-floor-head h1 {
+	font-size: 1.2rem;
+}
+
+.ledger-meta {
+	margin: 2px 0 0;
+	color: var(--muted);
+	font-size: 0.78rem;
+	overflow-wrap: anywhere;
+}
+
+.ledger-section,
+.ledger-card {
+	margin-top: 12px;
+	padding: 10px 12px;
+	border: 1px solid var(--border);
+	border-radius: 10px;
+}
+
+.ledger-section h2,
+.ledger-card h2 {
+	margin: 0 0 8px;
+	font-size: 1rem;
+}
+
+.ledger-section h3 {
+	margin: 12px 0 4px;
+	font-size: 0.9rem;
+}
+
+.ledger-cards {
+	display: grid;
+	grid-template-columns: 1fr;
+	gap: 10px;
+	margin-top: 12px;
+}
+
+.ledger-card-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 6px;
+}
+
+.ledger-card-head h2 {
+	margin: 0;
+}
+
+.ledger-namespace {
+	color: var(--muted);
+	font-family: ui-monospace, Consolas, monospace;
+	font-size: 0.72rem;
+}
+
+.ledger-badge,
+.ledger-tag {
+	flex: 0 0 auto;
+	padding: 0 6px;
+	border-radius: 999px;
+	font-size: 0.72rem;
+}
+
+.ledger-badge {
+	background: var(--accent);
+	color: #fff;
+}
+
+.ledger-tag {
+	background: var(--bg);
+	border: 1px solid var(--border);
+	color: var(--muted);
+}
+
+.ledger-diff-list,
+.ledger-fact-list,
+.ledger-event-list,
+.ledger-summary-list,
+.ledger-story-list {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.ledger-diff,
+.ledger-fact,
+.ledger-event,
+.ledger-summary,
+.ledger-story-item {
+	padding: 8px 10px;
+	background: var(--bg);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+}
+
+.ledger-diff-delete {
+	border-color: var(--danger);
+	background: #fbeeeb;
+}
+
+.ledger-diff-head,
+.ledger-fact-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 6px;
+}
+
+.ledger-path {
+	font-family: ui-monospace, Consolas, monospace;
+	font-size: 0.78rem;
+	overflow-wrap: anywhere;
+}
+
+.ledger-value {
+	display: block;
+	margin-top: 4px;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	font-size: 0.85rem;
+}
+
+.ledger-value-long > summary {
+	margin-top: 4px;
+	cursor: pointer;
+}
+
+.ledger-value-full {
+	max-height: 40vh;
+	margin: 6px 0 0;
+	padding: 8px;
+	overflow: auto;
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	font-size: 0.78rem;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+.ledger-children {
+	margin-top: 2px;
+}
+
+.ledger-children .ledger-children {
+	margin-left: 12px;
+	padding-left: 8px;
+	border-left: 1px solid var(--border);
+}
+
+.ledger-key {
+	font-family: ui-monospace, Consolas, monospace;
+	font-size: 0.8rem;
+	overflow-wrap: anywhere;
+}
+
+.ledger-node-diff {
+	background: var(--accent-soft);
+	box-shadow: inset 3px 0 0 var(--accent);
+	border-radius: 4px;
+}
+
+.ledger-leaf {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 6px;
+	padding: 1px 4px;
+}
+
+.ledger-leaf .ledger-value {
+	margin-top: 0;
+}
+
+.ledger-facts {
+	margin-top: 8px;
+}
+
+.ledger-facts > summary {
+	cursor: pointer;
+	color: var(--muted);
+	font-size: 0.8rem;
+}
+
+.ledger-fact-list {
+	margin-top: 8px;
+}
+
+.ledger-event-text {
+	margin: 0 0 6px;
+	font-size: 0.9rem;
+	overflow-wrap: anywhere;
+}
+
+.ledger-meta-list {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+	gap: 4px 10px;
+	margin: 0;
+	font-size: 0.78rem;
+}
+
+.ledger-meta-list div {
+	display: flex;
+	gap: 4px;
+	min-width: 0;
+}
+
+.ledger-meta-list dt {
+	color: var(--muted);
+	white-space: nowrap;
+}
+
+.ledger-meta-list dd {
+	margin: 0;
+	overflow-wrap: anywhere;
+}
+
+.ledger-more {
+	margin-top: 10px;
+	font-size: 0.82rem;
+}
+
+.ledger-summary header {
+	margin-bottom: 2px;
+}
+
+@media (min-width: 900px) {
+	.ledger-layout {
+		flex-direction: row;
+		align-items: flex-start;
+	}
+
+	.ledger-tree-pane {
+		position: sticky;
+		top: 12px;
+		flex: 1 1 40%;
+	}
+
+	.ledger-detail-pane {
+		flex: 1 1 60%;
+	}
+
+	.ledger-cards {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
