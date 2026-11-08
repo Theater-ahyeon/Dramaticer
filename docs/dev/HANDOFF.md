@@ -3,24 +3,25 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：128
-- 任务：R2-T09.a 遗忘评测运行器与分层报告
+- 会话：129
+- 任务：R2-T09.b 公开基准实跑与 ADR 结论
 - 结果：完成（`DONE`），门禁通过（109 个测试文件、971 个测试通过，3 个 live 跳过，共 974 个）。
-  - `playtest` 新增 `--head <nodeId>`：从指定助手楼层继续生成，不能与 `--resume` 同用；楼层必须存在、属于该故事且是助手楼层。起点路径长度写入跑后结果的 `startDepth`。
-  - `playtest` 新增跑后批测：`--memory-questions <path>`、`--probe-questions <path>`、`--questions-out <json>`。试玩结束后在最终 head 上逐题组装上下文、回答并交裁判，结果写成一份 JSON；三个参数缺一组合会在参数解析阶段失败。
-  - `memory-judged.ts` 支持 `askAtNode` 覆盖并导出 `answerJudgedQuestion`；`JudgedMemoryQuestionRecord` 新增 `askedAtNode`，私有报告显示实际提问楼层。
-  - 新增 `evalset/forgetting.ts`：证据楼层不在当前路径的题目记 `skipped`；分层取 `100-199`、`200-299`、`300+`（另有 `<100`）；矛盾率分母是一致加矛盾；编造按「编造题且判为矛盾」计算；同题对照只取在每一层都被提问的题目，最深比最浅高 5 个百分点以上才判「上升」。
-  - 新增 `forgetting-report` 命令（`--input` 接受单个 JSON 或目录，`--private-out`、`--public-out`）：私有版含故事、楼层与逐题明细，统计版只有深度层、档位、数字与模型别名。
-  - 新增 4 个测试：指定 head 后端到端生成并提问、路径外证据跳过与编造计数、分层趋势聚合、报告命令读取目录；`memory-judged` 新增提问楼层覆盖与路径外提问拒绝。
+  - 把公开基准导入 18 个独立数据库副本：3 个故事 × 3 个分支点（路径深度 119、299、439）× naive 与 native。每个副本从分支点继续生成 20 轮，结束后在最终 head 上用该故事的记忆题与探针题提问。
+  - 18 次运行、360 轮全部完成、失败 0；282 道题：一致 12、矛盾 51、无法判断 105、跳过 114、失败 0，可判定 63，矛盾率 81.0%。
+  - naive 可判定 26（一致 6、矛盾 20，矛盾率 76.9%、命中率 23.1%）；native 可判定 37（一致 6、矛盾 31，矛盾率 83.8%、命中率 16.2%）。
+  - 分层矛盾率（naive / native）：`100-199` 100.0%（2/2）与 100.0%（3/3）；`200-299` 90.0%（9/10）与 91.7%（11/12）；`300+` 64.3%（9/14）与 77.3%（17/22）。同题对照三层都未上升（naive 100%/100%/100%，native 100%/100%/75%），但每层可判定样本只有 2–4 个。
+  - 两个档位都传 `--no-background`：基准导入后每个故事有 119–439 个未结算助手楼层，打开后台任务会先补建并执行数百个结算、现场分析、用户意志与修订任务，并且结算的是基准自带原文。关闭后 native 只用到历史窗口、检索与导演，台账、摘要与现场分析不参与本轮。
+  - 编造题每个档位 18 道，13 道因证据不在路径上跳过，可判定 5 道，判为编造 0 道；`100-199` 层没有可判定编造题。
+  - 私有版 `eval-private/reports/R2-forgetting.md`，统计版 `docs/dev/reports/R2-forgetting.md`；原始逐题 JSON 与 18 个数据库副本在 `eval-private/reports/forgetting/`，已被 git 忽略；结论与限制写入 ADR-0071。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T07、R2-T08、R2-T09.a。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`；未完成任务见 `docs/dev/TASKS.md`。
-- **下一个可做任务是 R2-T09.b 公开基准实跑与 ADR 结论**：把 `benchmarks/` 导入私有数据库，在每个故事的 119、299、439 楼分支点上各跑 20 轮，两个档位各一遍，再用 `playtest` 的跑后批测写运行 JSON，最后用 `forgetting-report` 生成两份报告并写 ADR。R2-T09.c 依赖 R2-T09.b；R2-T04、R2-T04.a、R2-T05、R2-T06 依赖 R2-T04 或 R2-T07.a，R2-T07.a 需要 R5-T02（R5 阶段未开始），所以这些任务仍被阻塞；R2-T99 依赖 R2 全部任务。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T07、R2-T08、R2-T09.a、R2-T09.b。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`；未完成任务见 `docs/dev/TASKS.md`。
+- **下一个可做任务是 R2-T09.c legacy 对话对照**：在 legacy 评测对话上取 100 楼以上与 200 楼以上的分支点，按 R2-T09.b 的同一口径重复生成与提问，与公开基准的报告并列；私有数据只写 `eval-private/`。R2-T09.c 完成后才能做 R2-T99；R2-T04、R2-T04.a、R2-T05、R2-T06 仍被 R2-T07.a 阻塞，R2-T07.a 需要 R5-T02（R5 阶段未开始）。
 - v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045。
 - HUMAN-09 待处理（不阻塞）：`data/channels.yaml` 已有 `bg-fallback`、`main-fallback`、`codex`，`channels.example.yaml` 还没有这三个别名。
 - HUMAN-10 待处理（不阻塞）：插件不变量是否加进 AGENTS.md。
-- HUMAN-11 待处理（不阻塞）：`.env` 的正文模型 `opendesign/deepseek-v4.1-flash` 返回 membership entitlement 错误，是否换用 `auto/deepseek-v4.1-flash`；`.env` 由人类维护。
+- HUMAN-11 待处理（不阻塞）：`.env` 的正文模型 `opendesign/deepseek-v4.1-flash` 返回 membership entitlement 错误，是否换用 `auto/deepseek-v4.1-flash`；`.env` 由人类维护。会话 129 实测 `background` 别名（同一个 `opendesign` 模型）体检可通。
 - HUMAN-12 待处理（不阻塞）：HUMAN.md 条目仍描述 `roles.judge` 指向 `codex`，实际配置已是 `judge`（`auto/glm-5.3`）且 R2-T03.b 已用它跑通校准；由人类确认后关闭。
 - 数据库 schema 版本 31（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡、v25 合并调用开关与执行记录、v26 间隙档位阈值与丢弃状态、v27 合并调用丢弃条目、v28 回合模式与读取工具软上限、v29 开局包与故事级后台任务、v30 首楼开场候选、v31 偏好记录）；后续编号：v32 父子分块、v33 章节压缩、v34 世界书预筛、v35 上下文包；插入新迁移时后续编号一起顺延。
 - 结算只有 `dramaticer work` 调度：server 的回合路径不补建也不执行后台任务，所以回合内后台客户端零调用是结构保证；要真正结算故事，跑 `pnpm work --db <path> --kind settle`，要生成现场分析跑 `--kind scene`，要捕获用户意志跑 `--kind user_will`，要生成修订草案跑 `--kind memory_revision`，要回填事件跑 `--kind events`（单故事、逐窗口推进，适合小批量），要生成开局包跑 `--kind opening`，要生成首楼候选跑 `--kind opening_candidates`，要合并调用跑 `--kind gap_pass`（先打开故事设置 `gapPassEnabled`），批量回填三个 legacy 对话用 R1-T04.a 的 `events-backfill`。
@@ -42,12 +43,13 @@
 - R3 的产物：`docs/dev/reports/R3.md`（验收报告）、`docs/dev/reports/R3-fast.md` 与私有 `eval-private/reports/R3-fast.md`、`R3-fast.json`。
 - O 的产物：`docs/dev/reports/O-opening.md`（统计版）、`eval-private/reports/O-opening.md`（私有版）、`eval-private/reports/opening-eval/`（manifest 与逐轮 JSONL，当前是 O-T99.a 的重跑结果，manifest 用 `previousRuns` 保留 O-T99 首次运行的聚合数字）。
 - R2-T03.b 的私有产物：`eval-private/reports/r2-judge/calibration.jsonl`（逐次判断，按 `key` 去重、最后一行生效）、`turn-verdicts.jsonl`（逐轮两个评审的判定）、`playtest.jsonl`（100 轮试玩记录）、`playtest.db`（试玩用的故事与楼层）、`llm-cache/`。
+- R2-T09.b 的私有产物：`eval-private/reports/forgetting/` 下的 `db/`（18 个运行库加 3 个基准库）、`playtest/`（18 份逐轮 JSONL）、`runs/`（18 份遗忘评测 JSON）、`logs/`；私有报告 `eval-private/reports/R2-forgetting.md`，统计版 `docs/dev/reports/R2-forgetting.md`。
 - HUMAN-03（事件题抽查）仍未完成，不阻塞任何任务；其余 HUMAN 条目均已完成或明确不阻塞。
 - M3 的两项效果目标按 ADR-0029 保留为未证实；v2 的门槛改由 R6 按 B0/B1 对比判定。
 - 插件系统在 DESIGN §19 是唯一权威；P 阶段任务在 TASKS 的「P：插件内核」小节，C 线兼容插件任务已存在且依赖 P2。
 
 ## 下一步
-- **R2-T09.b 公开基准实跑**：先 `pnpm --filter @dramaticer/st-compat benchmark --import --db <绝对路径>/benchmark.db` 建库；每个故事用 `playtest --head <branch nodeId> --rounds 20 --profile native|naive --memory-questions benchmarks/questions/memory-<slug>.jsonl --probe-questions benchmarks/questions/probe-<slug>.jsonl --questions-out eval-private/reports/forgetting/<slug>-<depth>-<profile>.json --no-background --probe-every 0` 跑一轮；跑完用 `forgetting-report --input eval-private/reports/forgetting` 生成私有版与 `docs/dev/reports/R2-forgetting.md`；结论写 ADR。分支节点 id 是 `<storyId>:m<2*(turn-1)>:s0`（turn 60、150、220）。
+- **R2-T09.c legacy 对话对照**：在 legacy 评测对话上取 100 楼以上与 200 楼以上的分支点，按与 R2-T09.b 相同的参数（`--rounds 20`、`--model rp`、`--user-model background`、`--judge-model judge`、`--probe-every 0`、`--no-background`、跑后记忆题与探针题）重复生成与提问，再用 `forgetting-report` 生成与公开基准并列的报告。legacy 题目可以使用既有的 `eval-private/evalset/memory-<故事>.jsonl`，探针题没有现成文件时只跑记忆题（`--questions-out` 至少需要一个题目文件）。
 - R2-T04、R2-T04.a、R2-T05、R2-T06 仍被 R2-T07.a 阻塞，R2-T07.a 需要 R5-T02。
 - 基准的入口是 `pnpm --filter @dramaticer/st-compat benchmark --generate|--validate|--import --db <path>`，`--root` 指定基准目录；校验默认把临时库建在 `.devloop/scratch`，`--scratch` 可以改。
 - 开局包的读取入口是 `readOpeningPack(store, storyId)`；需要自己校验时用 `validateOpeningPackPayload(value, known)`，第二个参数是 `OpeningKnownNames`（`names` 与 `sourceText`），判定函数是 `isKnownOpeningName`。首楼候选的解析用 `parseOpeningCandidatesResponse(text, expectedCount)`，不要另写一套。
@@ -58,6 +60,11 @@
 - 跑后批测在最终 head 上提问，不再使用题目自带的 `askAtNode`；证据楼层不在当前路径上的题目记 `skipped`，不进入矛盾率与编造率分母。`playtest --questions-out` 的 JSON 由 `parseForgettingRun` 读回，统计口径在 `evalset/forgetting.ts`。
 - 遗忘分层固定为 `<100`、`100-199`、`200-299`、`300+`，用起点深度而不是结束深度；同题对照只取在每一层都被实际提问的题目，最深比最浅高 5 个百分点以上才判「上升」。编造数按「编造题且裁判判为矛盾」计算，不信任记录里的 `fabricated` 字段。
 - `forgetting-report` 的 `--input` 可以是一个 JSON 或包含 JSON 的目录；私有版默认写 `eval-private/reports/R2-forgetting.md`，统计版默认写 `docs/dev/reports/R2-forgetting.md`，统计版不出现故事 id、题目与回答。
+- 遗忘评测的上下文在最终 head 上组装，记忆槽位的检索查询是最后一楼助手正文，题目在组装之后才追加；题目本身不参与检索。要测“提问驱动检索”需要另加口径，不要直接改 `runForgettingQuestions` 的现有语义。
+- `playtest` 的 `--channels` 会被参数解析接受但没有传给 `runPlaytestCli` 的依赖；当前要用别的渠道配置只能改默认路径或通过依赖注入。R2-T09.b 用的是默认 `data/channels.yaml`。
+- 基准导入不预置结算记录；对基准跑 native 且打开后台任务时，间隙队列会先补建并结算 119–439 个导入楼层。要测“台账参与的 native 记忆”，需要先给导入路径提供预结算或只结算本次生成楼层的入口，不能靠调整 `--rounds` 绕过。
+- R2-T09.b 的分支节点是 `<storyId>:m118:s0`、`:m298:s0`、`:m438:s0`（助手轮次 60、150、220），起点路径深度分别是 119、299、439；每次运行结束深度加 40（20 轮各一玩家一助手楼层）。
+- R2-T09.b 的裁判有 105/282 道题落到无法判断（37.2%），浅层可判定样本只有 2–3 个；引用矛盾率时必须同时引用可判定样本数，不能把「无法判断」并入分母。
 - `memory-judged` 的 `JudgedMemoryQuestionRecord` 新增 `askedAtNode`；新增构造点要补这个字段，私有报告按它显示实际提问楼层。
 - 不要修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 下的任何文件。不变量 I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账是唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖任何其他工作区包、ST 语义只在兼容插件里实现。
 - 偏好记录（ADR-0069）：表 `preference_events` 只追加，触发器拒绝 UPDATE 与 DELETE；`node_id` 是锚点（swipe 记被接受的新楼层、edit 记编辑后的新楼层、choice 记选项所在楼层、card_decision 记卡片来源楼层）；载荷分别是 `{abandonedNodeId, acceptedNodeId}`、`{beforeNodeId, afterNodeId}`、`{choiceText}`、`{cardId, decision}`。`swipeNode`、`editNode` 与 `updateLedgerChangeCardStatus` 的 `approved`/`rejected` 已经自动记录，**不要在这三处再调用 `recordPreference`**；选项选择由调用方在同一个 `runInTransaction` 里调用。回滚变更卡不记偏好。读取用 `listPreferenceEvents(storyId, {kind})`。
@@ -118,7 +125,7 @@
 - `channels.example.yaml` 的 roles 示例里 judge 指向 background 并附了说明；复制示例时如果 background 与 main 是同一家族，启动会失败，需要另配一个家族的模型。
 - 后台模型的输出上限是 32,768（`channels.example.yaml` 与 `data/channels.yaml` 的 `background`）；`channels.ts` 的 `DEFAULT_MAX_TOKENS` 仍是 8,192，只在配置没写 `maxTokens` 时兜底。结算、事件、用户意志、修订、开局包与合并调用的处理器不传 `maxTokens`，路由使用模型声明值。不要把这些请求改回小上限：8,192 会被思考占满并把 JSON 截断。ADR-0057。
 - 现场分析任务显式传 200 token 上限（`DEFAULT_SCENE_MAX_TOKENS`），与模型声明上限无关；带思考的模型上这是请求级上限。ADR-0056 的缓存里 20 次现场分析有 1 次以 `length` 结束。
-- 后台路由现状（2026-11-08）：`opendesign/deepseek-v4.1-flash` 仍返回 membership entitlement 错误；可用的回退是 `auto/deepseek-v4.1-flash`（经本地网关，Trace 里模型写 `group/auto-deepseek-v4-1-flash`）；`main-fallback` 已补体检记录（`function-call`、`streaming`、`thinking` 支持），记录在本地 `data/channels.yaml`。catie 的 `rp` 路由对部分对话返回内容政策拒绝。做正文或后台实测时先确认路由可用，报告里记录实际路由。HUMAN-11。
+- 后台路由现状（2026-11-08）：`opendesign/deepseek-v4.1-flash` 曾返回 membership entitlement 错误；会话 129 对 `background`（同一个模型）跑 `pnpm probe bg --model background` 成功，正文与工具调用可用。可用的回退是 `auto/deepseek-v4.1-flash`（经本地网关，Trace 里模型写 `group/auto-deepseek-v4-1-flash`）；`main-fallback` 已补体检记录（`function-call`、`streaming`、`thinking` 支持），记录在本地 `data/channels.yaml`。catie 的 `rp` 路由对部分对话返回内容政策拒绝。做正文或后台实测时先确认路由可用，报告里记录实际路由。HUMAN-11。
 - 该网关在 `reasoning:"off"` 时仍输出思考并消耗输出 token；不要靠关闭思考给结构化请求省预算。
 - 模型响应的磁盘缓存键包含 `max_tokens` **只在请求显式带 maxTokens 时**；处理器不传 maxTokens，键里就没有它，因此改渠道配置的 `maxTokens` 后必须换一个 `--cache` 目录，否则会复用旧上限的结果。
 - 对比 CLI：`pnpm --filter @dramaticer/st-compat gap-pass-compare --story <id> --floors 20 --channels <绝对路径> --cache <绝对路径>`；不传 `--model` 时按 `roles.settler` 解析。`--dir` 决定两个数据库与 sidecar 的位置，默认 `eval-private/memory-cache/gap-pass-compare/db`。sidecar 记录故事与样本楼层数，换故事或换楼层数必须先删掉它们；改提示词或换模型配置后要删掉对应档位的 sidecar 与数据库、换缓存目录再重跑。私有报告在 `eval-private/reports/gap-pass-compare.json`。
