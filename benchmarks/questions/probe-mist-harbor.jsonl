@@ -1,0 +1,4 @@
+{"id":"mist-probe-key","story":"benchmark-mist-harbor","askAtNode":"benchmark-mist-harbor:m238:s0","question":"在换到储物间铁盒之前，备用钥匙挂在哪里？","answer":"厨房门后的第三枚铜钉上。","evidenceNodes":["benchmark-mist-harbor:m6:s0","benchmark-mist-harbor:m234:s0"],"kind":"probe"}
+{"id":"mist-probe-captain","story":"benchmark-mist-harbor","askAtNode":"benchmark-mist-harbor:m198:s0","question":"老船长姓什么？","answer":"姓闻。","evidenceNodes":["benchmark-mist-harbor:m190:s0"],"kind":"probe"}
+{"id":"mist-probe-echo","story":"benchmark-mist-harbor","askAtNode":"benchmark-mist-harbor:m338:s0","question":"雾中的呼唤来自哪里？","answer":"礁石下的回声。","evidenceNodes":["benchmark-mist-harbor:m322:s0"],"kind":"probe"}
+{"id":"mist-probe-tide-note","story":"benchmark-mist-harbor","askAtNode":"benchmark-mist-harbor:m428:s0","question":"潮汐笔记是谁留下的？","answer":"阿澜的母亲。","evidenceNodes":["benchmark-mist-harbor:m412:s0"],"kind":"probe"}

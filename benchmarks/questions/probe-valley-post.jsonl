@@ -1,0 +1,5 @@
+{"id":"valley-probe-strap","story":"benchmark-valley-post","askAtNode":"benchmark-valley-post:m118:s0","question":"岑野的邮包左肩带补过几次？","answer":"两次。","evidenceNodes":["benchmark-valley-post:m8:s0"],"kind":"probe"}
+{"id":"valley-probe-keeper","story":"benchmark-valley-post","askAtNode":"benchmark-valley-post:m258:s0","question":"守亭人姓什么？","answer":"姓柳。","evidenceNodes":["benchmark-valley-post:m214:s0"],"kind":"probe"}
+{"id":"valley-probe-postbox","story":"benchmark-valley-post","askAtNode":"benchmark-valley-post:m418:s0","question":"回声邮筒为什么不见了？","answer":"去年冬天被一场山洪冲走了。","evidenceNodes":["benchmark-valley-post:m386:s0"],"kind":"probe"}
+{"id":"valley-probe-bell","story":"benchmark-valley-post","askAtNode":"benchmark-valley-post:m474:s0","question":"铜铃挂在哪里？","answer":"岑芽的药铺里。","evidenceNodes":["benchmark-valley-post:m462:s0"],"kind":"probe"}
+{"id":"valley-probe-sister","story":"benchmark-valley-post","askAtNode":"benchmark-valley-post:m238:s0","question":"岑芽住在哪里？","answer":"南坡的药铺。","evidenceNodes":["benchmark-valley-post:m112:s0"],"kind":"probe"}

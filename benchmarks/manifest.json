@@ -1,0 +1,202 @@
+{
+	"version": 1,
+	"seed": 1,
+	"turns": 240,
+	"stories": [
+		{
+			"storyId": "benchmark-mist-harbor",
+			"slug": "mist-harbor",
+			"title": "雾港灯塔",
+			"card": "cards/mist-harbor.json",
+			"chat": "chats/mist-harbor.jsonl",
+			"template": "templates/mist-harbor.json",
+			"memoryQuestions": "questions/memory-mist-harbor.jsonl",
+			"probeQuestions": "questions/probe-mist-harbor.jsonl",
+			"messages": 480,
+			"assistantFloors": 240,
+			"memoryQuestionCount": 11,
+			"probeQuestionCount": 4,
+			"branchPoints": [
+				{
+					"id": "mist-branch-60",
+					"turn": 60,
+					"nextUserText": "我把潮汐钟的指针拨回标准时间，看看会发生什么。",
+					"label": "在潮汐钟走慢十一分钟之后介入，检验时间设定是否被记住。",
+					"story": "benchmark-mist-harbor",
+					"nodeId": "benchmark-mist-harbor:m118:s0",
+					"depth": 119
+				},
+				{
+					"id": "mist-branch-150",
+					"turn": 150,
+					"nextUserText": "我打开抽屉，把灯罩上的坠饰取下来放在桌上。",
+					"label": "在浮标变成坠饰之后介入，检验物品来源是否被记住。",
+					"story": "benchmark-mist-harbor",
+					"nodeId": "benchmark-mist-harbor:m298:s0",
+					"depth": 299
+				},
+				{
+					"id": "mist-branch-220",
+					"turn": 220,
+					"nextUserText": "我翻到潮汐笔记的最后一页，念出上面的字。",
+					"label": "在长篇之后的深楼层介入，检验早期细节是否仍可回忆。",
+					"story": "benchmark-mist-harbor",
+					"nodeId": "benchmark-mist-harbor:m438:s0",
+					"depth": 439
+				}
+			]
+		},
+		{
+			"storyId": "benchmark-valley-post",
+			"slug": "valley-post",
+			"title": "山谷邮差",
+			"card": "cards/valley-post.json",
+			"chat": "chats/valley-post.jsonl",
+			"template": "templates/valley-post.json",
+			"memoryQuestions": "questions/memory-valley-post.jsonl",
+			"probeQuestions": "questions/probe-valley-post.jsonl",
+			"messages": 480,
+			"assistantFloors": 240,
+			"memoryQuestionCount": 11,
+			"probeQuestionCount": 5,
+			"branchPoints": [
+				{
+					"id": "valley-branch-60",
+					"turn": 60,
+					"nextUserText": "我把邮包翻过来，检查左肩带上补过的两处。",
+					"label": "在邮包与妹妹的背景之后介入，检验人物设定是否被记住。",
+					"story": "benchmark-valley-post",
+					"nodeId": "benchmark-valley-post:m118:s0",
+					"depth": 119
+				},
+				{
+					"id": "valley-branch-150",
+					"turn": 150,
+					"nextUserText": "我沿着北线走到第七道弯，看看回声邮筒还在不在。",
+					"label": "在邮筒被冲走之前介入，检验地点与规则是否被记住。",
+					"story": "benchmark-valley-post",
+					"nodeId": "benchmark-valley-post:m298:s0",
+					"depth": 299
+				},
+				{
+					"id": "valley-branch-220",
+					"turn": 220,
+					"nextUserText": "我问岑野，山洪之后那些信都去了哪里。",
+					"label": "在深楼层介入，检验早期邮筒事实是否仍可回忆。",
+					"story": "benchmark-valley-post",
+					"nodeId": "benchmark-valley-post:m438:s0",
+					"depth": 439
+				}
+			]
+		},
+		{
+			"storyId": "benchmark-star-museum",
+			"slug": "star-museum",
+			"title": "星轨博物馆",
+			"card": "cards/star-museum.json",
+			"chat": "chats/star-museum.jsonl",
+			"template": "templates/star-museum.json",
+			"memoryQuestions": "questions/memory-star-museum.jsonl",
+			"probeQuestions": "questions/probe-star-museum.jsonl",
+			"messages": 480,
+			"assistantFloors": 240,
+			"memoryQuestionCount": 11,
+			"probeQuestionCount": 5,
+			"branchPoints": [
+				{
+					"id": "museum-branch-60",
+					"turn": 60,
+					"nextUserText": "我走到第七展柜前，记下陨石铭牌上的编号。",
+					"label": "在编号与运来地点之后介入，检验展品事实是否被记住。",
+					"story": "benchmark-star-museum",
+					"nodeId": "benchmark-star-museum:m118:s0",
+					"depth": 119
+				},
+				{
+					"id": "museum-branch-150",
+					"turn": 150,
+					"nextUserText": "我关掉东厅的灯，站在原地听地板下面的声音。",
+					"label": "在夜班守则与地板回声之后介入，检验规则是否被遵守。",
+					"story": "benchmark-star-museum",
+					"nodeId": "benchmark-star-museum:m298:s0",
+					"depth": 299
+				},
+				{
+					"id": "museum-branch-220",
+					"turn": 220,
+					"nextUserText": "我向许星借那把黄铜尺，量一量星盘缺铆钉的位置。",
+					"label": "在深楼层介入，检验早期展品细节是否仍可回忆。",
+					"story": "benchmark-star-museum",
+					"nodeId": "benchmark-star-museum:m438:s0",
+					"depth": 439
+				}
+			]
+		}
+	],
+	"files": [
+		{
+			"path": "branch-points.jsonl",
+			"sha256": "efccdb5947f275c061e0bd7ce08ee85da271d397a660b7cbc6b7cb6d6ee40603"
+		},
+		{
+			"path": "cards/mist-harbor.json",
+			"sha256": "83e3a672ff6eb6f794b96dea61c63c5c07a79e4a798d5d472188f1bfe852fa0e"
+		},
+		{
+			"path": "cards/star-museum.json",
+			"sha256": "738ea9c780721189ed2e37d7d1e156cdabeafd3097341ad272d18083a3d4b0d3"
+		},
+		{
+			"path": "cards/valley-post.json",
+			"sha256": "a00a4e232e9b6d7f0ddb9805d51ac8e73d1bdb64b3421ee778ec430390819305"
+		},
+		{
+			"path": "chats/mist-harbor.jsonl",
+			"sha256": "eed5f59497b323a39873701c52b52f7889e1acc5bfdddb5e25f9dee2ff51fb9a"
+		},
+		{
+			"path": "chats/star-museum.jsonl",
+			"sha256": "7863ae544702637dbcc815b319ec514a4fe727141322e678928f0266c2a9d90a"
+		},
+		{
+			"path": "chats/valley-post.jsonl",
+			"sha256": "7454da9a5a43c8a65ac2b9b02a43dd667b8f365ac287945f014aba4cb10d47b6"
+		},
+		{
+			"path": "questions/memory-mist-harbor.jsonl",
+			"sha256": "8edcdb51caf5c76e0d7c1f8ee5a9cd2816676127dd29d27800aa72b98851b48d"
+		},
+		{
+			"path": "questions/memory-star-museum.jsonl",
+			"sha256": "5607570b4c29f57fa82dfd14adffa847b54788cf90229c8cd9c50aedb5e6062b"
+		},
+		{
+			"path": "questions/memory-valley-post.jsonl",
+			"sha256": "64b6e75019a14d8787c41bc5b345f73317e6ae3ef959819b2fcefd3a3e283c79"
+		},
+		{
+			"path": "questions/probe-mist-harbor.jsonl",
+			"sha256": "a159ad98326bb84f6688f162091b177d842271e0f70ceab827313f7dbecf37d6"
+		},
+		{
+			"path": "questions/probe-star-museum.jsonl",
+			"sha256": "e07e6bc90707a595cbba8225a79c98f4a9424c72ed0f99ea611eaa9272dd1bdd"
+		},
+		{
+			"path": "questions/probe-valley-post.jsonl",
+			"sha256": "4ba75d4a5b80a465696c37fb3da9ba4459a9ac94440a612c993b7d6bf9aa1e16"
+		},
+		{
+			"path": "templates/mist-harbor.json",
+			"sha256": "8d0a73c0ce00107cd8874713f950cab509a09cd15acd64ef6746dcdf65e5b98a"
+		},
+		{
+			"path": "templates/star-museum.json",
+			"sha256": "288bc3025c2ffdb89bb4c368cf7574336c40cb10d5155bddbaed6df5ccd44a65"
+		},
+		{
+			"path": "templates/valley-post.json",
+			"sha256": "dcb80a2c58c3e4e4c11776da6b61037aaef2ddb9e0b25b96b3b24c56f7bc3bbb"
+		}
+	]
+}

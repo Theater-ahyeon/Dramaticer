@@ -987,3 +987,20 @@
 - **影响**：
   - R2-T07.a 只需要接入选项选择的 `recordPreference`，swipe、edit 与变更卡的记录已由核心操作产生，不能再写第二行。
   - 记录只用于评测与校准：不进入上下文组装、预算、检索与导演；测试用 `assembleContext`、`searchNodeText` 与事务回滚覆盖。
+
+## ADR-0070 公开合成基准的布局与校验口径（2026-11-08）
+
+- **背景**：DESIGN §14.3 要求 R2 建立一套可以公开的长线 RP 基准，3 个私有对话不足以支撑门槛判断。R2-T08 需要给出可导入、可校验、可重复生成的基准文件；基准必须与私有数据完全隔离，并且能在不调用模型的情况下判断题目结构与证据楼层是否可信。
+- **决定**：
+  - 基准放在仓库根目录的 `benchmarks/`：`cards/`、`chats/`、`templates/`、`questions/` 与 `branch-points.jsonl`，加一个 `manifest.json`。3 个故事分别是 `benchmark-mist-harbor`、`benchmark-valley-post`、`benchmark-star-museum`，各 240 个助手轮次与 240 个玩家轮次（480 条消息），支持 100 楼与 200 楼以上的分支点。
+  - 内容由 `packages/st-compat/src/evalset/benchmark-data.ts` 的公开数据表确定性地渲染。固定种子 `BENCHMARK_SEED = 1` 只决定填充文本的选择；渲染不使用模型、时间或随机数，因此同一版本重复生成逐字节相同。`manifest.json` 记录每个文件的 SHA-256，不含生成时间。
+  - 记忆题沿用 `memory-questions.ts` 的格式与校验（`kind: "memory"`、五类 `category`、非空且不重复的 `evidenceNodes`、`fabricated` 标记），因此 `memory-eval --judged` 与后续评测可以直接读这一套结构。探针题是独立的 `kind: "probe"` 行，字段为 `id`、`story`、`askAtNode`、`question`、`answer`、`evidenceNodes`；分支点记录 `story`、`nodeId`、`nextUserText` 与 `label`。
+  - `benchmark --generate` 重写全部文件；`benchmark --validate` 先逐字节比对生成结果并拒绝多余文件，再解析结构：卡与内嵌世界书、480 条消息的发言者顺序与正文、原生模板的 `protocol` 收尾、五类记忆题与编造题、题目 id 全局唯一、探针题与分支点结构。
+  - 结构校验把基准导入一个临时数据库，逐条确认提问楼层与证据楼层都在主路径上、提问晚于证据，分支点楼层是助手楼层且每个故事至少有一个 100 楼以上和一个 200 楼以上的分支点；临时库建在 `.devloop/scratch` 并在结束时删除。
+  - 公开安全扫描拒绝私有目录标记、本地 ST 目录名、绝对路径、`.env` 与一组 NSFW 词。由于校验同时要求逐字节等于生成结果，任何从私有语料抄进来的文本都会失败，而不只是命中词表的内容。
+  - `benchmark --import --db <path>` 把卡、世界书、原生模板与对话导入数据库；故事设置写入角色提示词、persona 与模板 id，之后用 `playtest` 直接跑。
+- **影响**：
+  - 生成与校验不调用模型，属于门禁内的离线检查；测试覆盖确定性、证据楼层、重复 id、提问顺序、分支点重复楼层、私有标记、导入后试玩与命令行生成校验。
+  - 探针题目前是预注册的结构化题目，没有独立运行器；R2-T09 使用同一套判分接口时可以直接读取。记忆题由既有 `memory-eval --judged` 读取。
+  - `benchmarks/` 是生成产物，加入 biome 忽略列表；格式由生成器与逐字节校验保证，不由格式化工具改写。
+  - 私有 3 个对话继续作为对照，报告必须与公开基准分开列。

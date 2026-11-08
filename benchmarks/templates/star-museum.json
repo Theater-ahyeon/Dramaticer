@@ -1,0 +1,36 @@
+{
+	"id": "benchmark-star-museum-template",
+	"segments": [
+		{
+			"id": "premise",
+			"kind": "static",
+			"text": "星轨博物馆的故事按时间顺序推进。人物只知道自己在馆里看到的事，不会知道闭馆后的别处消息。"
+		},
+		{
+			"id": "character",
+			"kind": "slot",
+			"slot": "character",
+			"priority": 100
+		},
+		{
+			"id": "lore",
+			"kind": "slot",
+			"slot": "lore"
+		},
+		{
+			"id": "state",
+			"kind": "slot",
+			"slot": "state"
+		},
+		{
+			"id": "history",
+			"kind": "slot",
+			"slot": "history"
+		},
+		{
+			"id": "protocol",
+			"kind": "static",
+			"text": "只描写本轮发生的事，保持人物口吻，不替玩家决定行动。"
+		}
+	]
+}

@@ -1,0 +1,9 @@
+{"id":"mist-branch-60","story":"benchmark-mist-harbor","nodeId":"benchmark-mist-harbor:m118:s0","nextUserText":"我把潮汐钟的指针拨回标准时间，看看会发生什么。","label":"在潮汐钟走慢十一分钟之后介入，检验时间设定是否被记住。"}
+{"id":"mist-branch-150","story":"benchmark-mist-harbor","nodeId":"benchmark-mist-harbor:m298:s0","nextUserText":"我打开抽屉，把灯罩上的坠饰取下来放在桌上。","label":"在浮标变成坠饰之后介入，检验物品来源是否被记住。"}
+{"id":"mist-branch-220","story":"benchmark-mist-harbor","nodeId":"benchmark-mist-harbor:m438:s0","nextUserText":"我翻到潮汐笔记的最后一页，念出上面的字。","label":"在长篇之后的深楼层介入，检验早期细节是否仍可回忆。"}
+{"id":"valley-branch-60","story":"benchmark-valley-post","nodeId":"benchmark-valley-post:m118:s0","nextUserText":"我把邮包翻过来，检查左肩带上补过的两处。","label":"在邮包与妹妹的背景之后介入，检验人物设定是否被记住。"}
+{"id":"valley-branch-150","story":"benchmark-valley-post","nodeId":"benchmark-valley-post:m298:s0","nextUserText":"我沿着北线走到第七道弯，看看回声邮筒还在不在。","label":"在邮筒被冲走之前介入，检验地点与规则是否被记住。"}
+{"id":"valley-branch-220","story":"benchmark-valley-post","nodeId":"benchmark-valley-post:m438:s0","nextUserText":"我问岑野，山洪之后那些信都去了哪里。","label":"在深楼层介入，检验早期邮筒事实是否仍可回忆。"}
+{"id":"museum-branch-60","story":"benchmark-star-museum","nodeId":"benchmark-star-museum:m118:s0","nextUserText":"我走到第七展柜前，记下陨石铭牌上的编号。","label":"在编号与运来地点之后介入，检验展品事实是否被记住。"}
+{"id":"museum-branch-150","story":"benchmark-star-museum","nodeId":"benchmark-star-museum:m298:s0","nextUserText":"我关掉东厅的灯，站在原地听地板下面的声音。","label":"在夜班守则与地板回声之后介入，检验规则是否被遵守。"}
+{"id":"museum-branch-220","story":"benchmark-star-museum","nodeId":"benchmark-star-museum:m438:s0","nextUserText":"我向许星借那把黄铜尺，量一量星盘缺铆钉的位置。","label":"在深楼层介入，检验早期展品细节是否仍可回忆。"}

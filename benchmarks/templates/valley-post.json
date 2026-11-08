@@ -1,0 +1,36 @@
+{
+	"id": "benchmark-valley-post-template",
+	"segments": [
+		{
+			"id": "premise",
+			"kind": "static",
+			"text": "山谷邮差的故事按时间顺序推进。人物只知道自己送过的信，不会知道别的邮路。"
+		},
+		{
+			"id": "character",
+			"kind": "slot",
+			"slot": "character",
+			"priority": 100
+		},
+		{
+			"id": "lore",
+			"kind": "slot",
+			"slot": "lore"
+		},
+		{
+			"id": "state",
+			"kind": "slot",
+			"slot": "state"
+		},
+		{
+			"id": "history",
+			"kind": "slot",
+			"slot": "history"
+		},
+		{
+			"id": "protocol",
+			"kind": "static",
+			"text": "只描写本轮发生的事，保持人物口吻，不替玩家决定行动。"
+		}
+	]
+}

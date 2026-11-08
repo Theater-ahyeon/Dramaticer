@@ -12,6 +12,7 @@
 			"**/dist/**",
 			"**/data/**",
 			"**/eval-private/**",
+			"benchmarks/**",
 			"**/.devloop/**",
 			"scripts/**",
 			"tools/**"

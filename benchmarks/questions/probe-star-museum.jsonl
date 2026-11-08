@@ -1,0 +1,5 @@
+{"id":"museum-probe-origin","story":"benchmark-star-museum","askAtNode":"benchmark-star-museum:m118:s0","question":"陨石 K-27 是从哪里运来的？","answer":"北岭。","evidenceNodes":["benchmark-star-museum:m88:s0"],"kind":"probe"}
+{"id":"museum-probe-cabinet","story":"benchmark-star-museum","askAtNode":"benchmark-star-museum:m78:s0","question":"第七展柜里放的是什么？","answer":"一块编号 K-27 的陨石。","evidenceNodes":["benchmark-star-museum:m28:s0"],"kind":"probe"}
+{"id":"museum-probe-floor","story":"benchmark-star-museum","askAtNode":"benchmark-star-museum:m358:s0","question":"东厅哪一块地板会发出回声？","answer":"第七块。","evidenceNodes":["benchmark-star-museum:m310:s0"],"kind":"probe"}
+{"id":"museum-probe-skylight","story":"benchmark-star-museum","askAtNode":"benchmark-star-museum:m478:s0","question":"天窗每年开几次？","answer":"两次。","evidenceNodes":["benchmark-star-museum:m400:s0"],"kind":"probe"}
+{"id":"museum-probe-music","story":"benchmark-star-museum","askAtNode":"benchmark-star-museum:m98:s0","question":"闭馆音乐是什么乐器演奏的？","answer":"钢琴。","evidenceNodes":["benchmark-star-museum:m10:s0"],"kind":"probe"}
