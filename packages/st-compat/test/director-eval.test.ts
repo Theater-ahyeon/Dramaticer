@@ -51,6 +51,7 @@ function emptyTrace(nodeId: string): TurnTrace {
 		nodeId,
 		parentNodeId: null,
 		templateId: "test",
+		turnMode: "fast",
 		createdAt: "2026-11-07T00:00:00.000Z",
 		context: { budgetTokens: 1000, totalTokens: 0, entries: [] },
 		llm: {
@@ -70,7 +71,7 @@ function emptyTrace(nodeId: string): TurnTrace {
 			rounds: 1,
 			cached: false,
 		},
-		tools: { rounds: 0, calls: [] },
+		tools: { rounds: 0, maxRounds: 3, capped: false, calls: [] },
 		structured: {
 			mode: "text-tags",
 			acceptedStateUpdates: 0,

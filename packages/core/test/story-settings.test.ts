@@ -53,6 +53,8 @@ describe("故事设置", () => {
 			temperature: 0.8,
 			maxTokens: 4_096,
 			reasoning: "low",
+			turnMode: "fast",
+			maxReadRounds: 3,
 			viewpoint: null,
 			directorConfig: DEFAULT_DIRECTOR_CONFIG,
 			historyBlockPolicy: DEFAULT_HISTORY_BLOCK_POLICY,
@@ -79,6 +81,8 @@ describe("故事设置", () => {
 			temperature: 0.3,
 			maxTokens: 512,
 			reasoning: "high",
+			turnMode: "deep",
+			maxReadRounds: 5,
 			viewpoint: "山神",
 			directorConfig: { ...DEFAULT_DIRECTOR_CONFIG, enabled: false },
 			historyBlockPolicy: {
@@ -105,6 +109,8 @@ describe("故事设置", () => {
 				temperature: 0.1,
 				maxTokens: 512,
 				reasoning: "high",
+				turnMode: "deep",
+				maxReadRounds: 5,
 				viewpoint: "山神",
 				directorConfig: { enabled: false },
 				historyBlockPolicy: {
@@ -124,6 +130,9 @@ describe("故事设置", () => {
 		const cases: readonly [StorySettingsUpdate, string][] = [
 			[{ structuredOutput: "json" as never }, "structuredOutput"],
 			[{ reasoning: "huge" as never }, "reasoning"],
+			[{ turnMode: "turbo" as never }, "turnMode"],
+			[{ maxReadRounds: -1 }, "maxReadRounds"],
+			[{ maxReadRounds: 1.5 }, "maxReadRounds"],
 			[{ budgetTokens: -1 }, "budgetTokens"],
 			[{ maxTokens: 0 }, "maxTokens"],
 			[{ temperature: 2.5 }, "temperature"],

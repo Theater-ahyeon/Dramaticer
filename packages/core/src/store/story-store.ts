@@ -12,6 +12,7 @@ import {
 	type HistoryBlockPolicy,
 	assertHistoryBlockPolicy,
 } from "../blocks/history.js";
+import { isTurnMode } from "../chat/mode.js";
 import { parseContextCondition } from "../context/condition.js";
 import {
 	type ContextCondition,
@@ -155,6 +156,8 @@ interface StorySettingsRow {
 	readonly temperature: number;
 	readonly max_tokens: number;
 	readonly reasoning: string;
+	readonly turn_mode: string;
+	readonly max_read_rounds: number;
 	readonly viewpoint: string | null;
 	readonly director_config: string;
 	readonly history_block_policy: string;
@@ -700,6 +703,11 @@ function rowToStorySettings(row: StorySettingsRow): StorySettings {
 			`故事 ${row.story_id} 的 reasoning 不合法：${row.reasoning}`,
 		);
 	}
+	if (!isTurnMode(row.turn_mode)) {
+		throw new Error(
+			`故事 ${row.story_id} 的 turn_mode 不合法：${row.turn_mode}`,
+		);
+	}
 	const parsedDirectorConfig = JSON.parse(
 		row.director_config,
 	) as DirectorConfig;
@@ -720,6 +728,8 @@ function rowToStorySettings(row: StorySettingsRow): StorySettings {
 		temperature: row.temperature,
 		maxTokens: row.max_tokens,
 		reasoning: row.reasoning,
+		turnMode: row.turn_mode,
+		maxReadRounds: row.max_read_rounds,
 		viewpoint: row.viewpoint,
 		directorConfig: parsedDirectorConfig,
 		historyBlockPolicy: parsedHistoryBlockPolicy,
@@ -1284,6 +1294,8 @@ export class StoryStore {
 			temperature: DEFAULT_STORY_SETTINGS_VALUES.temperature,
 			maxTokens: DEFAULT_STORY_SETTINGS_VALUES.maxTokens,
 			reasoning: DEFAULT_STORY_SETTINGS_VALUES.reasoning,
+			turnMode: DEFAULT_STORY_SETTINGS_VALUES.turnMode,
+			maxReadRounds: DEFAULT_STORY_SETTINGS_VALUES.maxReadRounds,
 			viewpoint: null,
 			directorConfig: DEFAULT_STORY_SETTINGS_VALUES.directorConfig,
 			historyBlockPolicy: DEFAULT_STORY_SETTINGS_VALUES.historyBlockPolicy,
@@ -1358,6 +1370,12 @@ export class StoryStore {
 				update.maxTokens !== undefined ? update.maxTokens : current.maxTokens,
 			reasoning:
 				update.reasoning !== undefined ? update.reasoning : current.reasoning,
+			turnMode:
+				update.turnMode !== undefined ? update.turnMode : current.turnMode,
+			maxReadRounds:
+				update.maxReadRounds !== undefined
+					? update.maxReadRounds
+					: current.maxReadRounds,
 			viewpoint:
 				update.viewpoint !== undefined ? update.viewpoint : current.viewpoint,
 			directorConfig:
@@ -1383,9 +1401,9 @@ export class StoryStore {
 				`INSERT INTO story_settings
 					(story_id, card_name, character_prompt, persona, template_id, model,
 					 budget_tokens, structured_output, temperature, max_tokens, reasoning,
-					 viewpoint, director_config, history_block_policy, gap_pass_enabled,
-					 gap_plan_seconds, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+					 turn_mode, max_read_rounds, viewpoint, director_config,
+					 history_block_policy, gap_pass_enabled, gap_plan_seconds, updated_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 				ON CONFLICT(story_id) DO UPDATE SET
 					card_name = excluded.card_name,
 					character_prompt = excluded.character_prompt,
@@ -1397,6 +1415,8 @@ export class StoryStore {
 					temperature = excluded.temperature,
 					max_tokens = excluded.max_tokens,
 					reasoning = excluded.reasoning,
+					turn_mode = excluded.turn_mode,
+					max_read_rounds = excluded.max_read_rounds,
 					viewpoint = excluded.viewpoint,
 					director_config = excluded.director_config,
 					history_block_policy = excluded.history_block_policy,
@@ -1416,6 +1436,8 @@ export class StoryStore {
 				next.temperature,
 				next.maxTokens,
 				next.reasoning,
+				next.turnMode,
+				next.maxReadRounds,
 				next.viewpoint,
 				serializeDirectorConfig(next.directorConfig),
 				serializeHistoryBlockPolicy(next.historyBlockPolicy),

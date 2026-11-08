@@ -709,6 +709,16 @@ export function buildMigrations(
 				`ALTER TABLE gap_pass_runs ADD COLUMN dropped_entries TEXT NOT NULL DEFAULT '[]'`,
 			],
 		},
+		{
+			version: 28,
+			description: "回合模式与读取工具软上限",
+			statements: [
+				`ALTER TABLE story_settings ADD COLUMN turn_mode TEXT NOT NULL DEFAULT 'fast'
+					CHECK (turn_mode IN ('fast', 'deep'))`,
+				`ALTER TABLE story_settings ADD COLUMN max_read_rounds INTEGER NOT NULL
+					DEFAULT 3 CHECK (max_read_rounds >= 0)`,
+			],
+		},
 	];
 }
 

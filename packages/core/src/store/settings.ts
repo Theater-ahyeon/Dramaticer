@@ -4,6 +4,12 @@ import {
 	assertHistoryBlockPolicy,
 } from "../blocks/history.js";
 import {
+	DEFAULT_MAX_READ_ROUNDS,
+	type TurnMode,
+	assertMaxReadRounds,
+	isTurnMode,
+} from "../chat/mode.js";
+import {
 	type ContextTemplate,
 	assertContextTemplate,
 } from "../context/template.js";
@@ -33,6 +39,10 @@ export interface StorySettings {
 	readonly temperature: number;
 	readonly maxTokens: number;
 	readonly reasoning: LlmReasoningLevel;
+	/** 故事锁定的回合模式；单轮参数可以覆盖。 */
+	readonly turnMode: TurnMode;
+	/** 快回合里读取工具的软上限。 */
+	readonly maxReadRounds: number;
 	/** 知情者视角；为空表示全知。 */
 	readonly viewpoint: string | null;
 	readonly directorConfig: DirectorConfig;
@@ -56,6 +66,8 @@ export interface StorySettingsUpdate {
 	readonly temperature?: number;
 	readonly maxTokens?: number;
 	readonly reasoning?: LlmReasoningLevel;
+	readonly turnMode?: TurnMode;
+	readonly maxReadRounds?: number;
 	readonly viewpoint?: string | null;
 	readonly directorConfig?: DirectorConfig;
 	readonly historyBlockPolicy?: HistoryBlockPolicy;
@@ -75,6 +87,8 @@ export const STORY_SETTINGS_UPDATE_KEYS: readonly (keyof StorySettingsUpdate)[] 
 		"temperature",
 		"maxTokens",
 		"reasoning",
+		"turnMode",
+		"maxReadRounds",
 		"viewpoint",
 		"directorConfig",
 		"historyBlockPolicy",
@@ -89,6 +103,8 @@ export const DEFAULT_STORY_SETTINGS_VALUES = {
 	temperature: 0.8,
 	maxTokens: 4_096,
 	reasoning: "low",
+	turnMode: "fast",
+	maxReadRounds: DEFAULT_MAX_READ_ROUNDS,
 	directorConfig: DEFAULT_DIRECTOR_CONFIG,
 	historyBlockPolicy: DEFAULT_HISTORY_BLOCK_POLICY,
 	gapPassEnabled: false,
@@ -208,6 +224,12 @@ export function assertStorySettingsUpdate(update: StorySettingsUpdate): void {
 		!isLlmReasoningLevel(update.reasoning)
 	) {
 		throw new Error(`故事设置的 reasoning 不合法：${String(update.reasoning)}`);
+	}
+	if (update.turnMode !== undefined && !isTurnMode(update.turnMode)) {
+		throw new Error(`故事设置的 turnMode 不合法：${String(update.turnMode)}`);
+	}
+	if (update.maxReadRounds !== undefined) {
+		assertMaxReadRounds(update.maxReadRounds, "故事设置的 maxReadRounds");
 	}
 	if (update.directorConfig !== undefined) {
 		assertDirectorConfig(update.directorConfig);

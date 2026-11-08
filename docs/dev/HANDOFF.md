@@ -3,26 +3,25 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：106
-- 任务：R1-T99 R1 最小集验收
-- 结果：完成（`MILESTONE_DONE`），门禁通过（93 个测试文件、838 个测试通过，3 个 live 跳过，共 841 个）。
-  - live 测试：embedding 渠道通过；渠道体检与三轮对话两项失败，原因都是正文路由 `opendesign/deepseek-v4.1-flash` 返回 `failed to evaluate membership entitlement`。同一轮把模型换成 `main-fallback`（`auto/deepseek-v4.1-flash`）手工跑 3 轮正文，3 个助手楼层落盘并有 Trace，首字 1,685–2,017 毫秒、整轮 2,029–2,666 毫秒、截断 0。正文路由是否换回退路由由人类决定（HUMAN-11）。
-  - 逐条核对 R1-T01 至 R1-T04.a 与 R1-T02.b：108 个目标测试单独重跑通过；验收表与证据写在 `docs/dev/reports/R1.md`。
-  - 实测数字（引用 ADR-0055、ADR-0056、ADR-0057）：四个独立任务 20 楼 234 条 diff、非法 0、冲突 1、失败 1、请求 63；合并调用 175 条 diff、非法 0、冲突 0、失败 1（内容政策拒答文本）、请求 20；路径一致率 13.3%、事实一致率 3.0%；`gap_pass` 的 19 条执行记录 `rejected_segments` 全空、`dropped_entries` 4 条；合并调用 20 个响应全部 `stop`，最大完成 token 24,065（思考 16,587）。
-  - 块的 prompt 视图重跑：60 楼窗口 100,776 → 78,910 token（21.7%），数字与 R1-T02.b 一致。
-  - 事件抽取请求数：3 个 legacy 对话 584 个已确认助手楼层，8 楼一窗共 75 次请求，比逐楼少 87.2%。
-  - 间隙未完成率：20 楼样本重新导入后 92 条关键间隙任务（23 个助手楼层 × 4 种），一轮 `drainBackgroundJobs`（`sessionEnded`、上限 20）执行 20 条、待办 72 条，`readGapWorkBacklog` 读出 78.3%；丢弃 0、失败 0。
-  - 截断率：后台合并调用 0/20，正文回退路由 0/3；早期对比缓存与中间复跑缓存里仍有 `length` 响应（109 个里 4 个、103 个里 1 个），只作历史记录。
-  - I8、I11、I12、I13、I15 复核通过；R3-T01 至 R3-T99 与 DESIGN 一致，不需要改写。
+- 会话：107
+- 任务：R3-T01 快回合循环与模式开关
+- 结果：完成（`DONE`），门禁通过（94 个测试文件、849 个测试通过，3 个 live 跳过，共 852 个）。
+  - 新增 `packages/core/src/chat/mode.ts`：`TurnMode = "fast" | "deep"`、`DEFAULT_MAX_READ_ROUNDS = 3`、`isTurnMode`、`assertMaxReadRounds`、`assertTurnModeSupported`。请求深回合时抛错并指出阶段 R3b，没有降级路径。
+  - 故事设置新增 `turnMode`（默认 `fast`）与 `maxReadRounds`（默认 3），迁移 v28 给 `story_settings` 增加 `turn_mode`、`max_read_rounds`；后续计划迁移编号顺延：开局包 v29、开场候选 v30、偏好记录 v31、父子分块 v32、章节压缩 v33、世界书预筛 v34、上下文包 v35。
+  - 模式与软上限只有一个解析入口（`chat/turn.ts` 的 `resolveTurnMode`）：单轮参数优先于故事设置。`runChatTurn` 在追加用户楼层**之前**校验，`generateAssistantTurn` 再次校验；请求 deep 不会留下半个楼层。
+  - 执行器 `runModelTurns` 的读取工具轮数从硬上限 2 改为可配软上限（默认 3），选项名改为 `maxReadRounds`；达到上限后正常收束并返回 `capped`。写入工具仍然只收集。
+  - Trace 新增 `turnMode` 与 `tools.maxRounds`、`tools.capped`；`llm.rounds` 仍是模型请求轮数。
+  - `dramaticer chat --mode fast|deep`；参数解析阶段拒绝其他值，运行阶段与故事级锁定共用同一处校验。
+  - 新增 `core/test/turn-mode.test.ts`（9 个测试）与 3 个 CLI 测试；`chat-tool-loop.test.ts` 的软上限断言改为 3 轮并在达到上限时 `capped: true`；三个 Trace 构造点补 `turnMode` 与新的 `tools` 字段。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`；未完成任务见 `docs/dev/TASKS.md`。
-- **R1 阶段完成**，下一步是 R3 快回合。v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`；未完成任务见 `docs/dev/TASKS.md`。
+- **R3 快回合进行中**（R3-T01 完成）。v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045。
 - HUMAN-09 待处理（不阻塞）：`data/channels.yaml` 已有 `bg-fallback`、`main-fallback`、`codex`，`channels.example.yaml` 还没有这三个别名。
 - HUMAN-10 待处理（不阻塞）：插件不变量是否加进 AGENTS.md。
 - HUMAN-11 待处理（不阻塞）：`.env` 的正文模型 `opendesign/deepseek-v4.1-flash` 返回 membership entitlement 错误，是否换用 `auto/deepseek-v4.1-flash`；`.env` 由人类维护。
-- 数据库 schema 版本 27（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡、v25 合并调用开关与执行记录、v26 间隙档位阈值与丢弃状态、v27 合并调用丢弃条目）；后续编号：v28 开局包、v29 开场候选、v30 偏好记录、v31 父子分块、v32 章节压缩、v33 世界书预筛、v34 上下文包；插入新迁移时后续编号一起顺延。
+- 数据库 schema 版本 28（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡、v25 合并调用开关与执行记录、v26 间隙档位阈值与丢弃状态、v27 合并调用丢弃条目、v28 回合模式与读取工具软上限）；后续编号：v29 开局包、v30 开场候选、v31 偏好记录、v32 父子分块、v33 章节压缩、v34 世界书预筛、v35 上下文包；插入新迁移时后续编号一起顺延。
 - 结算只有 `dramaticer work` 调度：server 的回合路径不补建也不执行后台任务，所以回合内后台客户端零调用是结构保证；要真正结算故事，跑 `pnpm work --db <path> --kind settle`，要生成现场分析跑 `--kind scene`，要捕获用户意志跑 `--kind user_will`，要生成修订草案跑 `--kind memory_revision`，要回填事件跑 `--kind events`（单故事、逐窗口推进，适合小批量），要合并调用跑 `--kind gap_pass`（先打开故事设置 `gapPassEnabled`），批量回填三个 legacy 对话用 R1-T04.a 的 `events-backfill`。
 - 后台任务分两档：`gap` 档每次间隙都执行，`deferred` 档（`events`、`summary`、`npc_agenda`）只在会话结束或间隙达到 `gapPlanSeconds` 时执行。`dramaticer work` 不给 `--gap-seconds` 就按会话结束处理；要模拟回合中的短间隙就传 `--gap-seconds <秒数>`，短于阈值时延后档只入队不执行。
 - `gap_pass` 默认关闭；开关关着时 `dramaticer work` 既不为故事补建该任务也不执行它，`--kind gap_pass` 同样被跳过。ADR-0055、ADR-0056、ADR-0057 的结论都是保持默认关闭。
@@ -35,7 +34,7 @@
 - 原生块类型现在是 12 个（`thinking`、`选项`、`状态栏`、`变量更新`、`分析`、`图片`、`页眉`、`悄悄话`、`旁白`、`备忘`、`state_update`、`plot_note`）；其中 `thinking`、`变量更新`、`state_update`、`plot_note` 的上下文策略是删除。
 - 历史槽位的默认策略：更早楼层省略五个显示类块，最近 1 楼不套用这层省略；`full` 是改动前的行为，用于对照。设置项 `historyBlockPolicy` 存在 `story_settings.history_block_policy`（JSON）。
 - `packages/server` 已提供故事、导入、设置、模板、SSE 回合与后台运行时缓存；`packages/protocol` 已提供 HTTP 与 SSE 类型；`packages/web` 尚未创建。
-- 故事设置缺省值：`budgetTokens` 12000、`structuredOutput` `text-tags`、`temperature` 0.8、`maxTokens` 4096（server 对没有保存过设置的故事改用 `min(4096, writer 模型声明)`）、`reasoning` `low`、`historyBlockPolicy` `{mode:"default",overrides:{}}`、`gapPassEnabled` `false`、`gapPlanSeconds` 212、导演使用默认配置。
+- 故事设置缺省值：`budgetTokens` 12000、`structuredOutput` `text-tags`、`temperature` 0.8、`maxTokens` 4096（server 对没有保存过设置的故事改用 `min(4096, writer 模型声明)`）、`reasoning` `low`、`turnMode` `fast`、`maxReadRounds` 3、`historyBlockPolicy` `{mode:"default",overrides:{}}`、`gapPassEnabled` `false`、`gapPlanSeconds` 212、导演使用默认配置。
 - 快照：`eval-private/raw/` 有 94 个文件；manifest 记录 `corpus` 与 `sourceMtime`。`eval-private/reference/` 有 5 部参照小说。
 - 事件表已在 v7 建立；批量抽取窗口与抽取记录在 R1-T03 实现；批量回填管线在 R1-T04.a 实现，真实回填由 R1-T04.b 执行。
 - F0 的私有产物：`eval-private/f0/pairs.jsonl`（290 对）、`attribution.jsonl`、`judge.jsonl`（793 行）、`fulltext/work.db`、`fulltext-probe.json`、`fulltext-branches.json`、`fulltext-generations.jsonl`、`fulltext-judgements.jsonl`、`fulltext-summary.json`、`llm-cache/`。`eval-private/reports/f0-corpus-map.json` 是对话编号到文件路径的映射。
@@ -44,11 +43,16 @@
 - 插件系统在 DESIGN §19 是唯一权威；P 阶段任务在 TASKS 的「P：插件内核」小节，C 线兼容插件任务已存在且依赖 P2。
 
 ## 下一步
-- **R3-T01 快回合循环与模式开关**：core 定义 `TurnMode = "fast" | "deep"`、故事设置 `turnMode` 与单轮参数；快回合一次主调用加读取工具软上限 `maxReadRounds`（默认 3）；请求 `deep` 时直接抛错并指出 R3b；Trace 记录模式、工具轮数、软上限与是否因上限收束；`dramaticer chat --mode fast|deep` 与故事级锁定共用同一处校验。实现前先读 DESIGN §10.1，并确认 `M2-T14` 的读取工具执行器接口。
+- **R3-T02 文本协议工具传输**：按渠道体检结果选择 `tools.transport`（`native` 或 `text`，写在 `data/channels.yaml`），文本协议解析 `<tool name="…">{json}</tool>`，与函数调用共用同一套 JSON Schema 校验与执行器；非法 JSON、未知工具、只写工具与超参数都作为工具结果返回并记录 Trace；软上限对两种传输相同，写入工具仍然只收集不执行。实现前先读 DESIGN §10.2 与 `core/src/chat/executor.ts` 的现有工具循环。
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
 - 不要修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 下的任何文件。不变量 I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账是唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖任何其他工作区包、ST 语义只在兼容插件里实现。
+- 回合模式：`TurnMode`、`DEFAULT_MAX_READ_ROUNDS`、`isTurnMode`、`assertMaxReadRounds`、`assertTurnModeSupported` 都在 `core/src/chat/mode.ts`。模式与软上限只在 `chat/turn.ts` 的 `resolveTurnMode` 解析一次，单轮参数优先于故事设置；新增入口不要另写一套判断。程序没有任何按轮数、工具调用数、错误或预算切换模式的代码路径（I6）。
+- 深回合在 R3b 实现前请求即失败；失败在 `runChatTurn` 追加用户楼层之前发生，所以不会留下只有用户楼层的分支。不要为了“能跑”把它降级成快回合。
+- 读取工具软上限现在是可配的软上限（默认 3），执行器不再有 `MAX_TOOL_ROUNDS` 常量。达到上限时若模型仍只请求工具且正文为空，执行器会抛错；有正文时正常收束并把 `tools.capped` 记为 true。
+- `TurnTrace` 新增 `turnMode`，`tools` 增加 `maxRounds` 与 `capped`；tests 目录不在 tsc 的 `include` 里，新增 Trace 字段时手动检查 `core/test/trace-store.test.ts`、`core/test/ledger-settlement.test.ts`、`st-compat/test/director-eval.test.ts` 的构造点与 `core/test/chat-tool-loop.test.ts` 的严格相等断言。
+- `dramaticer chat` 的 `--mode` 只影响单轮；故事级锁定写在故事设置 `turnMode`。server 的回合路径目前不传单轮模式，读取故事设置。
 - 渠道角色：角色类型叫 `LlmModelRole`（`writer`、`settler`、`planner`、`judge`），与表示消息角色的 `LlmRole`（system、user、assistant）不是一回事。`createLlmClient` 会校验 judge 与 writer 的模型家族，缺省回落也算在内：只要配置里同时有 `main` 与 `background` 且两者同家族，创建任何客户端都会抛错。`data/channels.yaml` 目前用 `judge: codex`（`codex/gpt-6.1-terra`，gpt 家族）与 writer 的 deepseek 区分。
 - `channels.example.yaml` 的 roles 示例里 judge 指向 background 并附了说明；复制示例时如果 background 与 main 是同一家族，启动会失败，需要另配一个家族的模型。
 - 后台模型的输出上限是 32,768（`channels.example.yaml` 与 `data/channels.yaml` 的 `background`）；`channels.ts` 的 `DEFAULT_MAX_TOKENS` 仍是 8,192，只在配置没写 `maxTokens` 时兜底。结算、事件、用户意志、修订与合并调用的处理器不传 `maxTokens`，路由使用模型声明值。不要把这些请求改回小上限：8,192 会被思考占满并把 JSON 截断。ADR-0057。
@@ -65,7 +69,6 @@
 - 每个后台任务连续失败 3 次才放弃；`attemptJob` 与生产 drain 的重试语义一致。`user_will` 的 `sourceQuote` 必须逐字出现在玩家楼层里，评测里有一次合法拒绝，不要当成程序错误。模型返回内容政策拒答文本时，合并调用会以“不是合法 JSON”失败并重试 3 次，这是模型行为，不是截断。
 - 自己搭 `drainBackgroundJobs` 做测量时，注册表条目必须写成对象并声明 `enqueue: "settled"`（缺省是 `confirmed`）；只传处理器函数会把玩家楼层也当成可入队楼层，任务数翻倍。R1-T99 的积压测量用的就是 `{handler, enqueue: "settled"}`。
 - 积压测量用 20 楼样本会得到 92 条关键间隙任务（23 个助手楼层 × 4 种，含 3 个 swipe 兄弟节点）；生产单轮上限是 20 条，所以一轮后仍有待办。兄弟楼层的任务在轮到时按“不在 head 路径上”丢弃，不计入未完成率分母。
-- tests 目录不在 tsc 的 `include` 里（`packages/*/tsconfig.json` 只含 `src`），测试里的 `TurnTrace` 字面量漏字段不会被类型检查发现；新增 Trace 字段时手动检查测试构造点（`core/test/trace-store.test.ts`、`core/test/ledger-settlement.test.ts`、`st-compat/test/director-eval.test.ts` 的 `emptyTrace`）。
 - 新增槽位或模板段落时同步更新既有断言：`core/test/chat-turn.test.ts` 的 Trace 顺序、`core/test/chat-providers.test.ts` 的标准槽位集合、`st-compat/test/chat-cli.test.ts` 的槽位列表。
 - 新增或调整原生块类型时同步更新 `core/test/block-parser.test.ts` 的默认块类型列表断言。
 - 历史槽位的 `full` 是“改动前的渲染”的对照口径；`default` 的最近一楼仍会省略思考块与写入块，不要再把“最近一楼”理解成返回完整原文。省略统计按整段标签文本计算。

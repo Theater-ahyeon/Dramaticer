@@ -17,6 +17,7 @@ function traceFor(
 		nodeId,
 		parentNodeId,
 		templateId: "dramaticer-default",
+		turnMode: "fast",
 		createdAt: FIXED_ISO,
 		context: { budgetTokens: 1_000, totalTokens: 0, entries: [] },
 		llm: {
@@ -37,6 +38,7 @@ function traceFor(
 			rounds: 1,
 			cached: false,
 		},
+		tools: { rounds: 0, maxRounds: 3, capped: false, calls: [] },
 		structured: {
 			mode: "text-tags",
 			acceptedStateUpdates: 0,

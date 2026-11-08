@@ -10,10 +10,12 @@ import {
 	type LlmStreamingClient,
 	StoryStore,
 	type StructuredOutputMode,
+	type TurnMode,
 	createDefaultContextTemplate,
 	createEmbeddingClient,
 	createLlmClient,
 	createStandardChatProviders,
+	isTurnMode,
 	loadChannelsConfig,
 	loadDotEnv,
 	resolveModelForRole,
@@ -49,7 +51,7 @@ export interface ChatCliDependencies {
 }
 
 const USAGE =
-	"用法：dramaticer chat --story <id> --user <text> [--card <path>] [--world <path>] [--director <on|off>] [--db <path>] [--model <alias>] [--budget <tokens>] [--max-tokens <n>] [--temperature <x>]";
+	"用法：dramaticer chat --story <id> --user <text> [--card <path>] [--world <path>] [--director <on|off>] [--mode <fast|deep>] [--db <path>] [--model <alias>] [--budget <tokens>] [--max-tokens <n>] [--temperature <x>]";
 
 interface ChatArgs {
 	readonly storyId: string;
@@ -63,6 +65,8 @@ interface ChatArgs {
 	readonly maxTokens: number | null;
 	readonly temperature: number | null;
 	readonly directorEnabled: boolean;
+	/** 单轮模式；不传时用故事设置里的锁定值。 */
+	readonly turnMode: TurnMode | null;
 }
 
 /** `dramaticer chat` 的实现，依赖可注入。 */
@@ -192,6 +196,7 @@ export async function runChatCli(
 			}),
 			budgetTokens,
 			structuredOutput: mode,
+			turnMode: parsed.turnMode,
 			model: modelAlias,
 			embedder,
 			maxTokens: parsed.maxTokens ?? undefined,
@@ -252,6 +257,7 @@ function parseChatArgs(args: readonly string[]): ChatArgs {
 		"max-tokens": true,
 		temperature: true,
 		director: true,
+		mode: true,
 	};
 	const values = new Map<string, string>();
 	const worldPaths: string[] = [];
@@ -296,6 +302,7 @@ function parseChatArgs(args: readonly string[]): ChatArgs {
 	const maxTokens = values.get("max-tokens");
 	const temperature = values.get("temperature");
 	const director = values.get("director");
+	const turnModeValue = values.get("mode");
 	return {
 		storyId,
 		cardPath,
@@ -312,6 +319,7 @@ function parseChatArgs(args: readonly string[]): ChatArgs {
 		temperature:
 			temperature === undefined ? null : parseTemperature(temperature),
 		directorEnabled: director === undefined ? true : parseDirector(director),
+		turnMode: turnModeValue === undefined ? null : parseTurnMode(turnModeValue),
 	};
 }
 
@@ -350,4 +358,11 @@ function parseDirector(value: string): boolean {
 	if (value === "on") return true;
 	if (value === "off") return false;
 	throw new Error(`--director 只接受 on 或 off，收到 ${value}；${USAGE}`);
+}
+
+function parseTurnMode(value: string): TurnMode {
+	if (!isTurnMode(value)) {
+		throw new Error(`--mode 只接受 fast 或 deep，收到 ${value}；${USAGE}`);
+	}
+	return value;
 }

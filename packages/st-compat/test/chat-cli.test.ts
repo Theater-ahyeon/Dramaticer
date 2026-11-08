@@ -207,6 +207,101 @@ describe("dramaticer chat", () => {
 		}
 	});
 
+	it("请求深回合时直接失败并指出 R3b，不发出请求", async () => {
+		const dbPath = createTempDb();
+		const fake = createFakeClient();
+		const logs: string[] = [];
+
+		await expect(
+			runChatCli(
+				[
+					"chat",
+					"--story",
+					"s1",
+					"--card",
+					cardPath,
+					"--user",
+					"我推开山门。",
+					"--db",
+					dbPath,
+					"--mode",
+					"deep",
+				],
+				dependencies(fake, logs, []),
+			),
+		).rejects.toThrow("R3b");
+		expect(fake.requests).toHaveLength(0);
+	});
+
+	it("不认识的模式在参数解析阶段就被拒绝", async () => {
+		const dbPath = createTempDb();
+		const fake = createFakeClient();
+
+		await expect(
+			runChatCli(
+				[
+					"chat",
+					"--story",
+					"s1",
+					"--card",
+					cardPath,
+					"--user",
+					"我推开山门。",
+					"--db",
+					dbPath,
+					"--mode",
+					"turbo",
+				],
+				dependencies(fake, [], []),
+			),
+		).rejects.toThrow("--mode 只接受 fast 或 deep");
+		expect(fake.requests).toHaveLength(0);
+	});
+
+	it("单轮 --mode fast 覆盖故事锁定的深回合，Trace 记录快回合", async () => {
+		const dbPath = createTempDb();
+		const fake = createFakeClient();
+		const first = await runChatCli(
+			[
+				"chat",
+				"--story",
+				"s1",
+				"--card",
+				cardPath,
+				"--user",
+				"我推开山门。",
+				"--db",
+				dbPath,
+			],
+			dependencies(fake, [], []),
+		);
+		const store = StoryStore.open(dbPath);
+		try {
+			store.updateStorySettings("s1", { turnMode: "deep" });
+		} finally {
+			store.close();
+		}
+
+		const second = await runChatCli(
+			[
+				"chat",
+				"--story",
+				"s1",
+				"--user",
+				"我往里走。",
+				"--db",
+				dbPath,
+				"--mode",
+				"fast",
+			],
+			dependencies(fake, [], []),
+		);
+
+		expect(second.trace.turnMode).toBe("fast");
+		expect(second.trace.tools).toMatchObject({ maxRounds: 3, capped: false });
+		expect(second.userNode.parentId).toBe(first.node.id);
+	});
+
 	it("第二次运行接在已有楼层后面，并在上下文里带上状态", async () => {
 		const dbPath = createTempDb();
 		const fake = createFakeClient();

@@ -1,3 +1,4 @@
+import type { TurnMode } from "./chat/mode.js";
 import type { ContextTrace } from "./context/assembler.js";
 import type { LlmModelRole } from "./llm/channels.js";
 import type {
@@ -35,6 +36,10 @@ export interface TurnTraceStructuredOutput {
 export interface TurnTraceTools {
 	/** 实际执行的读取工具轮数。 */
 	readonly rounds: number;
+	/** 每轮读取工具的软上限；快回合默认 3。 */
+	readonly maxRounds: number;
+	/** 模型在软上限处仍请求读取工具，本轮按上限收束。 */
+	readonly capped: boolean;
 	/** 每次读取工具调用的工具名，按调用顺序；参数非法的调用也记录。 */
 	readonly calls: readonly string[];
 }
@@ -51,6 +56,8 @@ export interface TurnTrace {
 	readonly nodeId: string;
 	readonly parentNodeId: string | null;
 	readonly templateId: string;
+	/** 本轮的回合模式；由玩家选择，程序不自动切换。 */
+	readonly turnMode: TurnMode;
 	readonly createdAt: string;
 	readonly context: ContextTrace;
 	readonly llm: TurnTraceLlm;

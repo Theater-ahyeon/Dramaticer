@@ -32,11 +32,15 @@ import type { NewStateDiff, StateDiff, TimelineNode } from "../timeline.js";
 import { READ_TOOLS } from "../tools/read-tools.js";
 import type { TurnTrace } from "../trace.js";
 import {
-	MAX_TOOL_ROUNDS,
 	type ModelTurnResult,
 	TurnAbortedError,
 	runModelTurns,
 } from "./executor.js";
+import {
+	type TurnMode,
+	assertMaxReadRounds,
+	assertTurnModeSupported,
+} from "./mode.js";
 
 export interface ChatTurnOptions {
 	readonly store: StoryStore;
@@ -51,8 +55,10 @@ export interface ChatTurnOptions {
 	readonly embedder?: EmbeddingClient | null;
 	/** 知情者视角；不设置时读取工具返回全知结果。 */
 	readonly viewpoint?: string | null;
-	/** 最多执行多少轮读取工具，默认 2，上限由执行器强制。 */
-	readonly maxToolRounds?: number;
+	/** 单轮模式；不设置时使用故事设置里的锁定值。 */
+	readonly turnMode?: TurnMode | null;
+	/** 读取工具软上限；不设置时使用故事设置。 */
+	readonly maxReadRounds?: number | null;
 	readonly model?: string;
 	readonly maxTokens?: number;
 	readonly temperature?: number;
@@ -105,6 +111,29 @@ const TRUNCATION_OPTIONS = {
 	detectAbruptEnd: true,
 } as const;
 
+interface ResolvedTurnMode {
+	readonly mode: TurnMode;
+	readonly maxReadRounds: number;
+}
+
+/**
+ * 模式与读取工具软上限的唯一解析口：单轮参数优先于故事设置。
+ * 深回合未实现时在这里直接失败；没有按任何运行状况切换模式的路径。
+ */
+function resolveTurnMode(
+	store: StoryStore,
+	storyId: string,
+	requestedMode: TurnMode | null | undefined,
+	requestedRounds: number | null | undefined,
+): ResolvedTurnMode {
+	const settings = store.getStorySettings(storyId);
+	const mode = requestedMode ?? settings.turnMode;
+	assertTurnModeSupported(mode);
+	const maxReadRounds = requestedRounds ?? settings.maxReadRounds;
+	assertMaxReadRounds(maxReadRounds, "读取工具软上限");
+	return { mode, maxReadRounds };
+}
+
 /**
  * 单轮生成：追加用户楼层，组装上下文，流式生成并解析块，
  * 把回复、状态 diff 与 Trace 一起写进楼层树。
@@ -121,6 +150,12 @@ export async function runChatTurn(
 	if (!options.store.getStory(options.storyId)) {
 		throw new Error(`故事不存在：${options.storyId}`);
 	}
+	const resolved = resolveTurnMode(
+		options.store,
+		options.storyId,
+		options.turnMode,
+		options.maxReadRounds,
+	);
 	const head = options.store.getHead(options.storyId);
 
 	const userNode = options.store.appendNode({
@@ -129,7 +164,12 @@ export async function runChatTurn(
 		role: "user",
 		raw: options.userText,
 	});
-	return generateAssistantTurn({ ...options, userNodeId: userNode.id });
+	return generateAssistantTurn({
+		...options,
+		userNodeId: userNode.id,
+		turnMode: resolved.mode,
+		maxReadRounds: resolved.maxReadRounds,
+	});
 }
 
 /**
@@ -159,6 +199,12 @@ export async function generateAssistantTurn(
 			`助手楼层需要以用户楼层为父节点：${userNode.id} 的角色是 ${userNode.role}`,
 		);
 	}
+	const resolved = resolveTurnMode(
+		options.store,
+		options.storyId,
+		options.turnMode,
+		options.maxReadRounds,
+	);
 	const now = options.now ?? Date.now;
 	const assembled = await assembleContext({
 		template: options.template,
@@ -184,7 +230,7 @@ export async function generateAssistantTurn(
 				embedder: options.embedder ?? null,
 				viewpoint: options.viewpoint ?? null,
 			},
-			maxToolRounds: options.maxToolRounds ?? MAX_TOOL_ROUNDS,
+			maxReadRounds: resolved.maxReadRounds,
 			model: options.model,
 			maxTokens: options.maxTokens,
 			temperature: options.temperature,
@@ -211,6 +257,7 @@ export async function generateAssistantTurn(
 				startedAt,
 				error,
 				now,
+				mode: resolved,
 			});
 		}
 		throw error;
@@ -249,6 +296,7 @@ export async function generateAssistantTurn(
 			nodeId: node.id,
 			parentNodeId: userNode.id,
 			templateId: options.template.id,
+			turnMode: resolved.mode,
 			createdAt: node.createdAt,
 			context: assembled.trace,
 			llm: {
@@ -265,6 +313,8 @@ export async function generateAssistantTurn(
 			},
 			tools: {
 				rounds: turn.rounds,
+				maxRounds: resolved.maxReadRounds,
+				capped: turn.capped,
 				calls: turn.calls.map((call) => call.name),
 			},
 			structured: {
@@ -333,6 +383,7 @@ async function persistAbortedTurn(input: {
 	readonly startedAt: number;
 	readonly error: TurnAbortedError;
 	readonly now: () => number;
+	readonly mode: ResolvedTurnMode;
 }): Promise<ChatTurnResult> {
 	const { options, userNode, assembled, error } = input;
 	const completedAt = input.now();
@@ -348,6 +399,7 @@ async function persistAbortedTurn(input: {
 			nodeId: node.id,
 			parentNodeId: userNode.id,
 			templateId: options.template.id,
+			turnMode: input.mode.mode,
 			createdAt: node.createdAt,
 			context: assembled.trace,
 			llm: {
@@ -362,7 +414,12 @@ async function persistAbortedTurn(input: {
 				rounds: 0,
 				cached: false,
 			},
-			tools: { rounds: 0, calls: [] },
+			tools: {
+				rounds: 0,
+				maxRounds: input.mode.maxReadRounds,
+				capped: false,
+				calls: [],
+			},
 			structured: {
 				mode: options.structuredOutput,
 				acceptedStateUpdates: 0,

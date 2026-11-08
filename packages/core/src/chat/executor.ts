@@ -16,9 +16,7 @@ import {
 	isReadToolName,
 	validateReadToolArguments,
 } from "../tools/read-tools.js";
-
-/** DESIGN §11：主模型调用之后最多再有 2 轮读取工具往返。 */
-export const MAX_TOOL_ROUNDS = 2;
+import { DEFAULT_MAX_READ_ROUNDS, assertMaxReadRounds } from "./mode.js";
 
 /** 中止时把已经生成的部分正文交给调用方，便于保存不完整回复。 */
 export class TurnAbortedError extends Error {
@@ -55,7 +53,8 @@ export interface ModelTurnOptions {
 	/** 本模式允许的读取工具；为空时不执行任何工具。 */
 	readonly readTools?: readonly LlmToolDefinition[];
 	readonly toolContext: ReadToolContext;
-	readonly maxToolRounds?: number;
+	/** 读取工具软上限；达到后正常收束。 */
+	readonly maxReadRounds?: number;
 	readonly model?: string;
 	readonly maxTokens?: number;
 	readonly temperature?: number;
@@ -84,6 +83,8 @@ export interface ModelTurnResult {
 	readonly blocks: readonly ParsedContent[];
 	/** 实际执行的读取工具轮数。 */
 	readonly rounds: number;
+	/** 模型在软上限处仍请求读取工具，本轮按上限收束。 */
+	readonly capped: boolean;
 	readonly calls: readonly ToolCallTrace[];
 	readonly usage: LlmUsage;
 	readonly attempts: number;
@@ -94,20 +95,14 @@ export interface ModelTurnResult {
 
 /**
  * 无状态单轮执行器：组装好的上下文先发一次主请求；模型请求读取工具时，
- * 校验参数、执行工具，把结果作为工具消息发回去，最多往返 `MAX_TOOL_ROUNDS` 轮。
+ * 校验参数、执行工具，把结果作为工具消息发回去，最多往返 `maxReadRounds` 轮。
  * 写入类工具只收集、不执行。
  */
 export async function runModelTurns(
 	options: ModelTurnOptions,
 ): Promise<ModelTurnResult> {
-	const maxToolRounds = options.maxToolRounds ?? MAX_TOOL_ROUNDS;
-	if (
-		!Number.isInteger(maxToolRounds) ||
-		maxToolRounds < 0 ||
-		maxToolRounds > MAX_TOOL_ROUNDS
-	) {
-		throw new Error(`工具轮数必须是 0 到 ${MAX_TOOL_ROUNDS} 之间的整数`);
-	}
+	const maxReadRounds = options.maxReadRounds ?? DEFAULT_MAX_READ_ROUNDS;
+	assertMaxReadRounds(maxReadRounds, "读取工具软上限");
 	if (options.messages.length === 0) {
 		throw new Error("上下文消息不能为空");
 	}
@@ -124,6 +119,7 @@ export async function runModelTurns(
 	const allToolCalls: LlmToolCall[] = [];
 	const calls: ToolCallTrace[] = [];
 	let rounds = 0;
+	let capped = false;
 	let firstTokenMs: number | null = null;
 	let blocks: readonly ParsedContent[] = [];
 	let last: LlmResult | null = null;
@@ -186,10 +182,11 @@ export async function runModelTurns(
 				blocks = parser.finish();
 				break;
 			}
-			if (rounds >= maxToolRounds) {
+			if (rounds >= maxReadRounds) {
 				if (result.text.trim().length === 0) {
 					throw new Error("模型在工具轮数用完后仍只请求读取工具，没有生成正文");
 				}
+				capped = true;
 				blocks = parser.finish();
 				break;
 			}
@@ -246,6 +243,7 @@ export async function runModelTurns(
 		toolCalls: allToolCalls,
 		blocks,
 		rounds,
+		capped,
 		calls,
 		usage,
 		attempts,

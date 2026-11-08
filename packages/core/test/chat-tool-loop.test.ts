@@ -167,6 +167,8 @@ describe("单轮执行器的读取工具循环", () => {
 		expect(result.node.raw).toBe("我想起了井底的匕首。");
 		expect(result.trace.tools).toEqual({
 			rounds: 1,
+			maxRounds: 3,
+			capped: false,
 			calls: ["memory_search"],
 		});
 		expect(result.trace.llm).toMatchObject({
@@ -183,7 +185,7 @@ describe("单轮执行器的读取工具循环", () => {
 		]);
 	});
 
-	it("连续请求工具时在 2 轮后停止，保留最后一轮的正文", async () => {
+	it("连续请求工具时在软上限 3 轮后收束，保留最后一轮的正文", async () => {
 		const { store } = openTempStore();
 		seedStory(store);
 		const search: LlmToolCall = {
@@ -194,6 +196,7 @@ describe("单轮执行器的读取工具循环", () => {
 		const { client, requests } = createScriptedClient([
 			{ text: "", toolCalls: [search] },
 			{ text: "", toolCalls: [{ ...search, id: "call-y" }] },
+			{ text: "", toolCalls: [{ ...search, id: "call-w" }] },
 			{ text: "井底传来回声。", toolCalls: [{ ...search, id: "call-z" }] },
 		]);
 
@@ -208,11 +211,13 @@ describe("单轮执行器的读取工具循环", () => {
 			structuredOutput: "function-call",
 		});
 
-		expect(requests).toHaveLength(3);
+		expect(requests).toHaveLength(4);
 		expect(result.node.raw).toBe("井底传来回声。");
 		expect(result.trace.tools).toEqual({
-			rounds: 2,
-			calls: ["state_get", "state_get"],
+			rounds: 3,
+			maxRounds: 3,
+			capped: true,
+			calls: ["state_get", "state_get", "state_get"],
 		});
 	});
 
@@ -257,6 +262,8 @@ describe("单轮执行器的读取工具循环", () => {
 		);
 		expect(result.trace.tools).toEqual({
 			rounds: 1,
+			maxRounds: 3,
+			capped: false,
 			calls: ["memory_search"],
 		});
 	});
@@ -321,6 +328,8 @@ describe("单轮执行器的读取工具循环", () => {
 		]);
 		expect(result.trace.tools).toEqual({
 			rounds: 1,
+			maxRounds: 3,
+			capped: false,
 			calls: ["state_get"],
 		});
 	});
@@ -382,6 +391,11 @@ describe("单轮执行器的读取工具循环", () => {
 		});
 
 		expect(requests[0]?.tools).toBeUndefined();
-		expect(result.trace.tools).toEqual({ rounds: 0, calls: [] });
+		expect(result.trace.tools).toEqual({
+			rounds: 0,
+			maxRounds: 3,
+			capped: false,
+			calls: [],
+		});
 	});
 });
