@@ -3,23 +3,19 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：147
-- 任务：R4-T07 候选行动
-- 结果：完成（`DONE`），门禁通过（123 个测试文件、1104 个测试通过，3 个 live 跳过，共 1107 个）。
-  - 迁移 v33 新增 `director_candidate_actions(id, story_id, node_id, ordinal, kind, text, created_at)`；`kind` 取 `action`、`scene_change`，同一楼层 `ordinal` 唯一，跨故事写入由触发器 `director_candidate_actions_story_matches_node` 拒绝。
-  - 新增 `packages/core/src/director/candidates.ts`：`CANDIDATE_ACTIONS_JOB_KIND = "candidate_actions"`、`CANDIDATE_ACTION_COUNT = 4`、`CANDIDATE_WINDOW_FLOORS = 3`、`DIRECTOR_CANDIDATE_KINDS`、`isDirectorCandidateKind`、`DirectorCandidateAction`、`NewDirectorCandidateActionInput`、`ReplaceDirectorCandidateActionsOptions`、`CandidateActions`、`collectCandidateActionsInput`、`buildCandidateActionsUserContent`、`parseCandidateActionsResponse`、`generateCandidateActions`、`createCandidateActionsHandler`。
-  - 输入：任务楼层处 `resolveCurrentBeat` 的当前拍、故事设置 `directorConfig.intensity`、沿路径最近 3 个非空原文楼层、`listLedgerEntities` 的未兑现线索与人物关系。楼层没有可读原文时返回 null，不调用模型。没有计划/拍时不提当前拍，仍然生成。
-  - 输出必须是 `{actions:[4 条],"sceneChange":"…"}`；未知字段、数量不符、非字符串、空字符串与五条之间的重复正文整批拒绝，抛出后由任务框架退回 pending 重试，不写入任何行。写入按「4 条行动在前、场景变化最后」固定顺序。
-  - `StoryStore.replaceDirectorCandidateActions` 在同一事务里删除该楼层旧行再按给定顺序插入（`randomUUID` 生成 id），重复执行行数不变；`listDirectorCandidateActions` 按 `ordinal` 读取。
-  - 默认注册表注册 `candidate_actions`：档位 `gap`、入队条件 `settled`、处理器使用 `plannerClient`（`roles.planner`）。候选不进入任何上下文槽位、不改变 head、不自动发送。
-  - CLI `dramaticer actions --node <id> --db <path> [--json]`（`runActionsCli`，只读）；server `GET /api/nodes/:id/actions` 返回 `NodeActionsView {nodeId, actions}`。
-  - 新增 11 个 core 测试 `candidate-actions.test.ts`（解析校验、窗口与内容、写入顺序、重复执行替换、非法整批拒绝与重试、短间隙执行且使用规划器客户端、分支隔离、上下文隔离与回合内单次调用、CLI 文本与 JSON）与 1 个 server 测试（接口返回 5 条、空楼层、缺失楼层 404）。
+- 会话：148
+- 任务：R4-T08 卡扩展弧线与序列
+- 结果：完成（`DONE`），门禁通过（123 个测试文件、1110 个测试通过，3 个 live 跳过，共 1113 个）。
+  - `DramaticerCardExtension` 增加 `arcs: readonly DirectorArc[]`；`EMPTY_EXTENSION` 的 `arcs` 为 `[]`；`rejectUnknownKeys` 允许 `events`、`npcAgendas`、`arcs` 三个键。
+  - `parseDramaticerCardExtension` 把 `{ arcs: root.arcs ?? [] }` 交给 `parseDirectorPlan(…, "extensions.dramaticer")`，弧线、序列、节拍的全部校验（未知字段、重复 id、空字符串、越界难度、空的 `entrySigns`/`fitPoints`）与错误路径 `extensions.dramaticer.arcs[...]` 都由它给出；没有 `arcs` 时返回空数组。
+  - `DramaticerExtensionImportResult` 增加 `arcs: DirectorPlanMergeResult`；`importDramaticerExtension` 调用 `mergePlannedArcs(store, storyId, { arcs: extension.arcs }, "import")`，同 id 更新、新 id 追加、不删除、不覆盖 `player` 行，重复导入不新增行；没有 `arcs` 时返回 `{inserted:0,updated:0,skipped:0}`。
+  - 新增 2 个 core 测试（解析弧线、字段校验路径）与 4 个 st-compat 测试（import 来源写入、重复导入更新且不新增、玩家行保留、没有 `arcs` 不写计划）；同步原有导入计数断言。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09.a、R2-T09.b、R2-T09.c、R2-T99、R5-T01、R5-T02、E-T01、R4-T00、R4-T01、R4-T02、R4-T03、R4-T04、R4-T05、R4-T06、R4-T07。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- **下一个可做任务是 R4-T08 卡扩展弧线与序列**：依赖 R4-T01、M3-T03 均已满足。之后依次 R4-T99，然后 R5-T00。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09.a、R2-T09.b、R2-T09.c、R2-T99、R5-T01、R5-T02、E-T01、R4-T00、R4-T01、R4-T02、R4-T03、R4-T04、R4-T05、R4-T06、R4-T07、R4-T08。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- **下一个可做任务是 R4-T99 R4 验收**：依赖 R4 全部任务，已满足。之后是 R5-T00（依赖 R4-T99）。
 - v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
-- R5-T00 仍被 R4-T99 阻塞；R5-T04 依赖 M4-T05、M4-T06、M4-T01，可以排在 R4 之后。
+- R5-T04 依赖 M4-T05、M4-T06、M4-T01，可以排在 R5-T00 之后。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045。
 - HUMAN-09 待处理（不阻塞）：`data/channels.yaml` 已有 `bg-fallback`、`main-fallback`、`codex`，`channels.example.yaml` 还没有这三个别名。
 - HUMAN-10 待处理（不阻塞）：插件不变量是否加进 AGENTS.md。
@@ -37,11 +33,11 @@
 - 导演模式（R4-T05）：`DirectorConfig.mode` 取 `off`、`transparent`、`blind`，默认 `transparent`；旧配置的 `enabled` 在读取时映射后丢弃。`off` 没有决策记录也没有 suffix；`transparent` 与 `blind` 的评估、记录、注入完全相同。`GET /api/nodes/:id/director` 返回 `{nodeId, mode, decision}`，盲盒下 `decision.directive` 为 null 且没有 `signals`，只保留 `mechanisms`；`decision` 为空时 `mode` 仍返回。CLI `--director` 与故事设置 `directorConfig.mode` 接受同一取值。
 - 落拍检测（R4-T06）：结算窗口的 `beats` 按楼层父节点解析；提示词只在有当前拍时提 `beatCompleted` 且只说“可以判断”；`applySettlementProposals` 写 `director_beat_states` 的时机在结算记录之后、同一事务内。模型没有给该楼层条目、楼层被拒绝、或按路径解析出的拍与提示词里的拍不同时不写状态。`gap_pass` 的合并调用共用同一段提示词与同一套写入。
 - 候选行动（R4-T07）：`candidate_actions` 按 `settled` 为每个已落定助手楼层建任务，档位 `gap`，所以短间隙就执行；处理器优先使用注册表传入的 `plannerClient`。`parseCandidateActionsResponse` 是唯一校验口，五条正文按 `trim()` 后比较重复；写入顺序固定为 4 条 `action` 再 1 条 `scene_change`。`replaceDirectorCandidateActions` 的输入至少要有一条，且每条 `kind` 合法、`text` 非空。候选没有任何上下文槽位，`runChatTurn` 不会读到它们；服务端只按楼层读取，不跟随 head。
-- `extensions.dramaticer` 目前只有 `events` 与 `npcAgendas` 两个键；R4-T08 新增 `arcs` 时必须同步更新严格校验与 st-compat 的导入测试。
+- `extensions.dramaticer` 现在有三个键：`events`、`npcAgendas`、`arcs`；`arcs` 的校验全部复用 `parseDirectorPlan`（路径前缀 `extensions.dramaticer`），导入来源固定为 `import`，导入结果额外返回 `arcs` 的插入、更新与跳过计数。
 
 ## 下一步
-- **R4-T08 卡扩展弧线与序列**：`DramaticerCardExtension` 增加 `arcs`（`id`、`title`、`throughLine`、`difficulty`、`redLines`、`sequences`，序列与节拍字段同 `DirectorPlan`）；`parseDramaticerCardExtension` 接受 `arcs` 并复用 `parseDirectorPlan` 的校验，错误路径写成 `extensions.dramaticer.arcs[...]`；`importDramaticerExtension` 用 `mergePlannedArcs(..., "import")` 写入，同 id 更新、新 id 追加、不删除、不覆盖 `player` 行，重复导入不产生重复行；没有 `arcs` 时行为不变。同步更新卡扩展的严格校验测试与 st-compat 导入测试。
-- R4-T08 之后 R4-T99（R4 验收：逐条核对短线层零模型调用、建议具体到人和事、玩家可编辑与关闭、落拍检测不额外调用、候选行动不进上下文，复核 I9 与 I13，用假客户端跑 5 轮链路，写 `docs/dev/reports/R4.md`），然后 R5-T00。
+- **R4-T99 R4 验收**：逐条核对短线层零模型调用、建议具体到人和事、玩家可编辑与关闭、落拍检测不额外调用、候选行动不进上下文；复核 I9（实时选择与翻页用程序实现，导演只给建议）与 I13（不强制模型输出结构，`beatCompleted` 可不输出）；用假客户端跑一次包含计划、节拍选择、注入、落拍与候选行动的 5 轮链路；写 `docs/dev/reports/R4.md`；确认 R5 任务（尤其 R5-T08 面板复用计划、动作与决策接口）。结果写 `MILESTONE_DONE`。
+- R4-T99 之后是 R5-T00（细化 R5 任务）。
 - 引用评测数字时：B1 必须同时说明同模型子集为空、每个对话每档只有 1 个样本；遗忘矛盾率必须同时说明失败题数与可判定样本数；偏好一致率当前没有样本。
 
 ## 注意事项

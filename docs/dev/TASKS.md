@@ -527,7 +527,8 @@
   - CLI 新增 `dramaticer actions --node <id> --db <path> [--json]`；server 新增 `GET /api/nodes/:id/actions`，返回 5 条与各自 `kind`。
   验收：合法输出写入 4 条行动与 1 条场景变化，顺序固定为行动在前；重复执行行数不变；非法数量、空字符串与重复正文整批拒绝且不写入；候选不出现在下一次组装的上下文里；不是 `gap` 档时不执行；读取接口按楼层返回，切换分支后另一楼层的候选不参与；回合内零模型调用；`pnpm check` 通过。
 
-- [ ] **R4-T08 卡扩展弧线与序列** | 依赖：R4-T01、M3-T03 | DESIGN §8.3 | ADR-0077
+- [x] **R4-T08 卡扩展弧线与序列** | 依赖：R4-T01、M3-T03 | DESIGN §8.3 | ADR-0077
+  完成：2026-11-08 `DramaticerCardExtension` 增加 `arcs`（结构与 `DirectorPlan` 相同），`parseDramaticerCardExtension` 把 `arcs ?? []` 交给 `parseDirectorPlan(…, "extensions.dramaticer")`，未知字段、重复 id、空字符串、越界难度与空契合点都指出 `extensions.dramaticer.arcs[...]` 路径；`importDramaticerExtension` 用 `mergePlannedArcs(…, "import")` 写入并返回 `arcs` 计数，同 id 更新、新 id 追加、不删除、不覆盖 `player` 行；新增 2 个 core 测试与 4 个 st-compat 测试；门禁通过（123 个测试文件、1110 个测试，3 个 live 跳过）
   做什么：
   - `DramaticerCardExtension` 增加 `arcs`：每个弧线含 `id`、`title`、`throughLine`、`difficulty`、`redLines`、`sequences`，序列与节拍字段与 `DirectorPlan` 相同；`parseDramaticerCardExtension` 接受 `arcs` 键并复用 `parseDirectorPlan` 的校验，未知字段、重复 id、空字符串与越界难度都抛错并指出 `extensions.dramaticer.arcs[...]` 路径。
   - `importDramaticerExtension` 把弧线与序列用 `mergePlannedArcs` 写入，来源 `import`：同 id 更新，新 id 追加，不删除既有行，不覆盖 `player` 行；重复导入不产生重复行。没有 `arcs` 时行为与现状一致。

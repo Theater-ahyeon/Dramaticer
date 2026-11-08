@@ -2,6 +2,7 @@ import { parseContextCondition } from "../context/condition.js";
 import type { ContextCondition } from "../context/template.js";
 import { normalizeEntityName } from "../entity.js";
 import { assertPlainObject, rejectUnknownKeys } from "../json.js";
+import { type DirectorArc, parseDirectorPlan } from "./plan.js";
 
 export interface DramaticerEventDefinition {
 	/** 故事内唯一；事件池以它作为 `source_id`。 */
@@ -23,11 +24,14 @@ export interface DramaticerNpcAgendaDefinition {
 export interface DramaticerCardExtension {
 	readonly events: readonly DramaticerEventDefinition[];
 	readonly npcAgendas: readonly DramaticerNpcAgendaDefinition[];
+	/** 弧线、序列与节拍，字段与 `DirectorPlan` 相同。 */
+	readonly arcs: readonly DirectorArc[];
 }
 
 const EMPTY_EXTENSION: DramaticerCardExtension = {
 	events: [],
 	npcAgendas: [],
+	arcs: [],
 };
 
 const EVENT_KEYS = ["id", "text", "preconditions", "cooldown", "enabled"];
@@ -42,7 +46,11 @@ export function parseDramaticerCardExtension(
 ): DramaticerCardExtension {
 	if (value === undefined || value === null) return EMPTY_EXTENSION;
 	const root = assertPlainObject(value, "extensions.dramaticer");
-	rejectUnknownKeys(root, ["events", "npcAgendas"], "extensions.dramaticer");
+	rejectUnknownKeys(
+		root,
+		["events", "npcAgendas", "arcs"],
+		"extensions.dramaticer",
+	);
 
 	const events = parseArray(
 		root.events,
@@ -63,7 +71,11 @@ export function parseDramaticerCardExtension(
 		"extensions.dramaticer.npcAgendas",
 		(item, path) => parseAgenda(item, path),
 	);
-	return { events, npcAgendas };
+	const { arcs } = parseDirectorPlan(
+		{ arcs: root.arcs ?? [] },
+		"extensions.dramaticer",
+	);
+	return { events, npcAgendas, arcs };
 }
 
 function parseArray<T>(

@@ -1,4 +1,5 @@
 import type {
+	DirectorPlanMergeResult,
 	EventPoolUpsertResult,
 	NewEventPoolEntryInput,
 	NewNpcAgendaInput,
@@ -6,6 +7,7 @@ import type {
 	StoryStore,
 } from "@dramaticer/core";
 import {
+	mergePlannedArcs,
 	normalizeEntityName,
 	parseDramaticerCardExtension,
 } from "@dramaticer/core";
@@ -19,11 +21,12 @@ export interface DramaticerExtensionImportOptions {
 export interface DramaticerExtensionImportResult {
 	readonly events: EventPoolUpsertResult;
 	readonly npcAgendas: NpcAgendaUpsertResult;
+	readonly arcs: DirectorPlanMergeResult;
 }
 
 /**
- * 把卡的 `extensions.dramaticer` 导入事件池与 NPC 议程。NPC 名称或别名先解析成
- * 角色实体，找不到或对应多个实体都抛错；重复导入只更新内容，不产生重复行。
+ * 把卡的 `extensions.dramaticer` 导入事件池、NPC 议程与导演计划。NPC 名称或别名先
+ * 解析成角色实体，找不到或对应多个实体都抛错；重复导入只更新内容，不产生重复行。
  */
 export function importDramaticerExtension(
 	store: StoryStore,
@@ -82,5 +85,6 @@ export function importDramaticerExtension(
 	return {
 		events: store.upsertEventPool(eventInputs),
 		npcAgendas: store.upsertNpcAgendas(agendaInputs),
+		arcs: mergePlannedArcs(store, storyId, { arcs: extension.arcs }, "import"),
 	};
 }

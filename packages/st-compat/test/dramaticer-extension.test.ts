@@ -1,4 +1,9 @@
-import { StoryStore as CoreStore } from "@dramaticer/core";
+import {
+	StoryStore as CoreStore,
+	type DirectorPlan,
+	readDirectorPlan,
+	replaceDirectorPlan,
+} from "@dramaticer/core";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
 	importCharacterCardEntity,
@@ -61,6 +66,7 @@ describe("extensions.dramaticer 导入", () => {
 		expect(result).toEqual({
 			events: { inserted: 2, updated: 0 },
 			npcAgendas: { inserted: 1, updated: 0 },
+			arcs: { inserted: 0, updated: 0, skipped: 0 },
 		});
 
 		const events = store.listEventPool("s1");
@@ -116,6 +122,7 @@ describe("extensions.dramaticer 导入", () => {
 		expect(result).toEqual({
 			events: { inserted: 0, updated: 2 },
 			npcAgendas: { inserted: 0, updated: 1 },
+			arcs: { inserted: 0, updated: 0, skipped: 0 },
 		});
 
 		const events = store.listEventPool("s1");
@@ -136,9 +143,11 @@ describe("extensions.dramaticer 导入", () => {
 		expect(importDramaticerExtension(store, "s1", card)).toEqual({
 			events: { inserted: 0, updated: 0 },
 			npcAgendas: { inserted: 0, updated: 0 },
+			arcs: { inserted: 0, updated: 0, skipped: 0 },
 		});
 		expect(store.listEventPool("s1")).toEqual([]);
 		expect(store.listNpcAgendas("s1")).toEqual([]);
+		expect(readDirectorPlan(store, "s1")).toEqual({ arcs: [] });
 	});
 
 	it("找不到 NPC 实体时抛错并指出条目", () => {
@@ -174,5 +183,135 @@ describe("extensions.dramaticer 导入", () => {
 		expect(() => importDramaticerExtension(store, "missing", card)).toThrow(
 			"故事不存在：missing",
 		);
+	});
+});
+
+const arcsExtension = {
+	events: [{ id: "bridge", text: "山洪冲垮石桥" }],
+	arcs: [
+		{
+			id: "arc-1",
+			title: "山门危机",
+			throughLine: "守住山门直到援军到来",
+			difficulty: 0.5,
+			redLines: ["不能揭露掌门旧事"],
+			sequences: [
+				{
+					id: "seq-1",
+					title: "试探",
+					beats: [
+						{
+							id: "beat-1",
+							goal: "确认敌人来意",
+							entrySigns: ["山门外出现马蹄声"],
+							fitPoints: ["阿裳提到旧伤"],
+						},
+					],
+				},
+			],
+		},
+	],
+};
+
+function importArcs(extensionValue: unknown) {
+	const card = parseCharacterCardJson(cardJson(extensionValue));
+	importCharacterCardEntity(store, "s1", card);
+	return { card, result: importDramaticerExtension(store, "s1", card) };
+}
+
+describe("extensions.dramaticer 弧线导入", () => {
+	it("弧线、序列与节拍以 import 来源写入导演计划", () => {
+		const { result } = importArcs(arcsExtension);
+		expect(result.arcs).toEqual({ inserted: 3, updated: 0, skipped: 0 });
+		expect(result.events).toEqual({ inserted: 1, updated: 0 });
+
+		expect(readDirectorPlan(store, "s1")).toEqual({
+			arcs: arcsExtension.arcs,
+		});
+		const entries = store.listDirectorPlanEntries("s1");
+		expect(entries.arcs.map((arc) => arc.source)).toEqual(["import"]);
+		expect(entries.sequences.map((sequence) => sequence.source)).toEqual([
+			"import",
+		]);
+		expect(entries.beats.map((beat) => beat.source)).toEqual(["import"]);
+	});
+
+	it("重复导入更新弧线正文且不新增行", () => {
+		importArcs(arcsExtension);
+		const changed = {
+			arcs: [
+				{
+					...arcsExtension.arcs[0],
+					title: "山门失守",
+					sequences: [
+						{
+							id: "seq-1",
+							title: "强攻",
+							beats: [
+								{
+									id: "beat-1",
+									goal: "挡住第一波冲击",
+									entrySigns: ["山门开始开裂"],
+									fitPoints: ["阿裳握紧了剑"],
+								},
+							],
+						},
+					],
+				},
+			],
+		};
+		const { result } = importArcs(changed);
+		expect(result.arcs).toEqual({ inserted: 0, updated: 3, skipped: 0 });
+
+		const entries = store.listDirectorPlanEntries("s1");
+		expect(entries.arcs).toHaveLength(1);
+		expect(entries.sequences).toHaveLength(1);
+		expect(entries.beats).toHaveLength(1);
+		const plan = readDirectorPlan(store, "s1");
+		expect(plan.arcs[0]?.title).toBe("山门失守");
+		expect(plan.arcs[0]?.sequences[0]?.title).toBe("强攻");
+		expect(plan.arcs[0]?.sequences[0]?.beats[0]?.goal).toBe("挡住第一波冲击");
+	});
+
+	it("玩家编辑的行不被导入覆盖", () => {
+		importArcs(arcsExtension);
+		const playerPlan: DirectorPlan = {
+			arcs: [
+				{
+					id: "arc-1",
+					title: "玩家改过的标题",
+					throughLine: "玩家改过的贯穿线",
+					difficulty: 0.5,
+					redLines: [],
+					sequences: [
+						{
+							id: "seq-1",
+							title: "玩家改过的序列",
+							beats: [
+								{
+									id: "beat-1",
+									goal: "玩家改过的目标",
+									entrySigns: ["玩家写的迹象"],
+									fitPoints: ["玩家写的契合点"],
+								},
+							],
+						},
+					],
+				},
+			],
+		};
+		replaceDirectorPlan(store, "s1", playerPlan);
+
+		const { result } = importArcs(arcsExtension);
+		expect(result.arcs).toEqual({ inserted: 0, updated: 0, skipped: 3 });
+		expect(readDirectorPlan(store, "s1")).toEqual(playerPlan);
+	});
+
+	it("没有 arcs 时不写计划", () => {
+		const { result } = importArcs({
+			events: [{ id: "wolves", text: "夜里出现狼群" }],
+		});
+		expect(result.arcs).toEqual({ inserted: 0, updated: 0, skipped: 0 });
+		expect(readDirectorPlan(store, "s1")).toEqual({ arcs: [] });
 	});
 });

@@ -6,10 +6,12 @@ describe("extensions.dramaticer 解析", () => {
 		expect(parseDramaticerCardExtension(undefined)).toEqual({
 			events: [],
 			npcAgendas: [],
+			arcs: [],
 		});
 		expect(parseDramaticerCardExtension(null)).toEqual({
 			events: [],
 			npcAgendas: [],
+			arcs: [],
 		});
 	});
 
@@ -62,6 +64,175 @@ describe("extensions.dramaticer 解析", () => {
 			everyChapters: 1,
 			importance: 0.5,
 		});
+	});
+
+	it("解析弧线、序列与节拍", () => {
+		const extension = parseDramaticerCardExtension({
+			arcs: [
+				{
+					id: "arc-1",
+					title: "开学",
+					throughLine: "凛必须说出真相",
+					difficulty: 0.4,
+					redLines: ["不能伤害凛"],
+					sequences: [
+						{
+							id: "seq-1",
+							title: "相遇",
+							beats: [
+								{
+									id: "beat-1",
+									goal: "确认来意",
+									entrySigns: ["凛堵在门口"],
+									fitPoints: ["凛盯着你"],
+								},
+							],
+						},
+					],
+				},
+			],
+		});
+
+		expect(extension.arcs).toEqual([
+			{
+				id: "arc-1",
+				title: "开学",
+				throughLine: "凛必须说出真相",
+				difficulty: 0.4,
+				redLines: ["不能伤害凛"],
+				sequences: [
+					{
+						id: "seq-1",
+						title: "相遇",
+						beats: [
+							{
+								id: "beat-1",
+								goal: "确认来意",
+								entrySigns: ["凛堵在门口"],
+								fitPoints: ["凛盯着你"],
+							},
+						],
+					},
+				],
+			},
+		]);
+		expect(extension.events).toEqual([]);
+		expect(extension.npcAgendas).toEqual([]);
+	});
+
+	it("弧线沿用导演计划的字段校验并指出路径", () => {
+		expect(() =>
+			parseDramaticerCardExtension({ arcs: { id: "arc-1" } }),
+		).toThrow("extensions.dramaticer.arcs 必须是数组");
+		expect(() =>
+			parseDramaticerCardExtension({
+				arcs: [
+					{
+						id: "arc-1",
+						title: "开学",
+						throughLine: "贯穿线",
+						difficulty: 0.4,
+						redLines: [],
+						sequences: [],
+						mood: "紧张",
+					},
+				],
+			}),
+		).toThrow("extensions.dramaticer.arcs[0].mood 是未知字段");
+		expect(() =>
+			parseDramaticerCardExtension({
+				arcs: [
+					{
+						id: "arc-1",
+						title: "开学",
+						throughLine: "贯穿线",
+						difficulty: 1.4,
+						redLines: [],
+						sequences: [],
+					},
+				],
+			}),
+		).toThrow(
+			"extensions.dramaticer.arcs[0].difficulty 必须是 0 到 1 之间的数字",
+		);
+		expect(() =>
+			parseDramaticerCardExtension({
+				arcs: [
+					{
+						id: "arc-1",
+						title: " ",
+						throughLine: "贯穿线",
+						difficulty: 0.4,
+						redLines: [],
+						sequences: [],
+					},
+				],
+			}),
+		).toThrow("extensions.dramaticer.arcs[0].title 不能是空字符串");
+		expect(() =>
+			parseDramaticerCardExtension({
+				arcs: [
+					{
+						id: "arc-1",
+						title: "开学",
+						throughLine: "贯穿线",
+						difficulty: 0.4,
+						redLines: [],
+						sequences: [
+							{
+								id: "seq-1",
+								title: "相遇",
+								beats: [
+									{
+										id: "beat-1",
+										goal: "确认来意",
+										entrySigns: ["迹象"],
+										fitPoints: [],
+									},
+								],
+							},
+						],
+					},
+				],
+			}),
+		).toThrow(
+			"extensions.dramaticer.arcs[0].sequences[0].beats[0].fitPoints 至少要有一条",
+		);
+		expect(() =>
+			parseDramaticerCardExtension({
+				arcs: [
+					{
+						id: "arc-1",
+						title: "开学",
+						throughLine: "贯穿线",
+						difficulty: 0.4,
+						redLines: [],
+						sequences: [
+							{
+								id: "seq-1",
+								title: "相遇",
+								beats: [
+									{
+										id: "beat-1",
+										goal: "确认来意",
+										entrySigns: ["迹象"],
+										fitPoints: ["契合点"],
+									},
+									{
+										id: "beat-1",
+										goal: "重复 id",
+										entrySigns: ["迹象"],
+										fitPoints: ["契合点"],
+									},
+								],
+							},
+						],
+					},
+				],
+			}),
+		).toThrow(
+			"extensions.dramaticer.arcs[0].sequences[0].beats[1].id 重复：beat-1",
+		);
 	});
 
 	it("未知字段指出字段路径", () => {
