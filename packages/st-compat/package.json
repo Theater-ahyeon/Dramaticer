@@ -31,6 +31,7 @@
 		"playtest": "tsc -b && node dist/evalset/playtest-cli.js",
 		"pairwise": "tsc -b && node dist/evalset/pairwise-cli.js",
 		"replay-eval": "tsc -b && node dist/evalset/historical-replay-cli.js",
+		"scoreboard": "tsc -b && node dist/evalset/scoreboard-cli.js",
 		"preferences": "tsc -b && node dist/preferences/cli.js",
 		"opening-eval": "tsc -b && node dist/evalset/opening-eval-cli.js",
 		"benchmark": "tsc -b && node dist/evalset/benchmark-cli.js",

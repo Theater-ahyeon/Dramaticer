@@ -22,6 +22,7 @@ export * from "./evalset/memory-report.js";
 export * from "./evalset/pairwise.js";
 export * from "./evalset/quality.js";
 export * from "./evalset/question-files.js";
+export * from "./evalset/scoreboard.js";
 export * from "./evalset/retrieval.js";
 export * from "./evalset/state-questions.js";
 export * from "./node-id.js";

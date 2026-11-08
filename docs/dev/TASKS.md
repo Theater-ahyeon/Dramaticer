@@ -387,7 +387,8 @@
   - 主对照是同一写作模型下的 B0 与 native。能找到同模型样本时用同模型子集比较；找不到时 B1 只作为“相对现状”的参考，不作门槛。
   验收：3 个对话都有样本；对比不访问本地 ST；报告给出上下文差异与历史回复模型；同模型子集与参考口径分开列出；统计版不含私有名称与原文；`pnpm check` 通过。
 
-- [ ] **R2-T06 记分牌与报告口径** | 依赖：R2-T03、R2-T03.a、R2-T04、R2-T04.a、R2-T05
+- [x] **R2-T06 记分牌与报告口径** | 依赖：R2-T03、R2-T03.a、R2-T04、R2-T04.a、R2-T05
+  完成：2026-11-08 新增 `evalset/scoreboard.ts`（`buildScoreboard`、`renderScoreboard`、`summarizePlaytests`）与 `scoreboard` 命令行（`pnpm --filter @dramaticer/st-compat scoreboard`）：试玩按档位汇总完成轮次、失败轮次、相邻回复 4-gram Jaccard 重复度、首字 P50/P95、截断率、间隙未完成率与输入/输出/合计 token 每轮，写作模型同时给出别名与 Trace 模型；偏好一致率直接调用 `summarizePreferenceComparisons`，切回较早 swipe 子集单列；遗忘直接调用 `summarizeForgettingRuns`，按语料、深度层与档位给出矛盾率、编造回忆率与间隙探针矛盾率；叙事质量复用 `summarizeQuality`，偏好盲测与 B1 分开；B1 直接调用 `summarizeHistoricalReplay`，同模型子集为空时写明只作参考。日期取输入里最晚时间戳，输入顺序不影响输出；只含聚合数字，不含故事 id、样本 id、正文与理由；门槛规则（未赢过基线最多重评三轮后写 HUMAN.md）写进生成文档。真实数据生成 `docs/dev/SCOREBOARD.md`：600 轮试玩、30 次遗忘运行、6 个 B1 回放，6 个故事 id 反向扫描 0 命中；新增 6 个测试；门禁通过（117 个测试文件、1031 个测试，3 个 live 跳过）
   做什么：
   - 新增 `docs/dev/SCOREBOARD.md`，由 CLI `pnpm --filter @dramaticer/st-compat scoreboard` 从私有 JSONL 生成：日期、阶段、profile、模型别名、样本数、对比胜率、矛盾率、编造回忆率、偏好一致率（接受与放弃的回复对，单列切回较早 swipe 的子集）、叙事质量四项分数、重复度、首字延迟 P50/P95、截断率、间隙未完成率、每轮成本、结论与下一步。
   - 记分牌只含聚合数字；同一批输入重复生成逐字节相同。
