@@ -12,7 +12,11 @@ import {
 	resolveModelForRole,
 } from "@dramaticer/core";
 import { createCachedEmbeddingClient } from "./memory-cache.js";
-import { type MemoryEvalReport, collectMemoryEval } from "./memory-eval.js";
+import {
+	type JudgedMemoryEvalOptions,
+	type MemoryEvalReport,
+	collectMemoryEval,
+} from "./memory-eval.js";
 import {
 	renderPrivateMemoryReport,
 	renderPublicMemoryReport,
@@ -31,6 +35,10 @@ export interface MemoryEvalCliOptions {
 	readonly viewpoint?: string | null;
 	readonly generatedAt?: string;
 	readonly log?: (message: string) => void;
+	/** 设置后运行五类记忆题与编造回忆判分；测试可以注入客户端 */
+	readonly judged?: JudgedMemoryEvalOptions | null;
+	/** 从渠道配置按 writer 与 judge 角色创建判分客户端 */
+	readonly judgedEnabled?: boolean;
 	/** 测试注入；不提供时从渠道配置创建 */
 	readonly embedder?: EmbeddingClient | null;
 	readonly eventClient?: LlmStreamingClient | null;
@@ -99,6 +107,29 @@ export async function runMemoryEvalCli(
 		}
 	}
 
+	let judged = options.judged ?? null;
+	if (judged === null && options.judgedEnabled === true) {
+		const channels = await loadConfig();
+		const answerModel = resolveModelForRole(channels, "writer");
+		const judgeModel = resolveModelForRole(channels, "judge");
+		judged = {
+			answer: {
+				client: createLlmClient(channels, {
+					defaultModel: answerModel,
+					cacheDir: path.join(options.cacheDir, "judged-answer"),
+				}),
+				model: answerModel,
+			},
+			judge: {
+				client: createLlmClient(channels, {
+					defaultModel: judgeModel,
+					cacheDir: path.join(options.cacheDir, "judged"),
+				}),
+				model: judgeModel,
+			},
+		};
+	}
+
 	await mkdir(path.dirname(options.dbPath), { recursive: true });
 	await mkdir(path.dirname(options.privateReportPath), { recursive: true });
 	await mkdir(path.dirname(options.publicReportPath), { recursive: true });
@@ -110,6 +141,7 @@ export async function runMemoryEvalCli(
 			embedder,
 			embeddingLabel,
 			eventClient,
+			judged,
 			viewpoint: options.viewpoint ?? null,
 			generatedAt: options.generatedAt,
 			log,
@@ -148,18 +180,24 @@ export async function runMemoryEvalCli(
 
 interface CliArgs {
 	readonly buildEvents: boolean;
+	readonly judged: boolean;
 	readonly viewpoint: string | null;
 	readonly dbPath: string | null;
 }
 
 function parseArgs(args: readonly string[]): CliArgs {
 	let buildEvents = false;
+	let judged = false;
 	let viewpoint: string | null = null;
 	let dbPath: string | null = null;
 	for (let index = 0; index < args.length; index += 1) {
 		const arg = args[index];
 		if (arg === "--events") {
 			buildEvents = true;
+			continue;
+		}
+		if (arg === "--judged") {
+			judged = true;
 			continue;
 		}
 		if (arg === "--viewpoint") {
@@ -182,7 +220,7 @@ function parseArgs(args: readonly string[]): CliArgs {
 		}
 		throw new Error(`未知参数：${arg}`);
 	}
-	return { buildEvents, viewpoint, dbPath };
+	return { buildEvents, judged, viewpoint, dbPath };
 }
 
 async function main(): Promise<void> {
@@ -210,6 +248,7 @@ async function main(): Promise<void> {
 			"M2-retrieval.md",
 		),
 		buildEvents: parsed.buildEvents,
+		judgedEnabled: parsed.judged,
 		viewpoint: parsed.viewpoint,
 	});
 }

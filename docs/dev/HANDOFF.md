@@ -3,27 +3,27 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：121
-- 任务：O-T99.a 用正确的写作模型与独立裁判重跑开局验收
-- 结果：完成（`DONE`），门禁通过（103 个测试文件、936 个测试通过，3 个 live 跳过，共 939 个）。
-  - 用 `--model rp --judge-model judge` 重跑同一批 3 张合成卡与种子 1，每卡开启与关闭各 10 轮：开局开启与关闭都是 0/30 重 roll（0.0%），前 5 轮都是 0/15，指令遵循各 30/30（100.0%），候选生成 2/3（第一张卡首批输出不是合法 JSON）、采用 2/2，首字 P50/P90 开启 7,501/10,432 毫秒、关闭 7,423/11,581 毫秒，截断 0、运行失败 0、裁判失败 0。
-  - 两份 `O-opening` 报告已覆盖；报告头写明写作 `rp`、模拟用户 `background`、裁判 `judge` 与配置差异，并说明超过 5 个百分点的变化（旧开启 3.3% / 关闭 10.0% → 0.0%，指令遵循 96.7% → 100.0%）的可能原因：裁判换模型家族后的判定尺度、写作模型更换、样本只有 30 轮。
-  - O-T99 首次运行的数字没有删除：manifest 新增 `previousRuns`，报告在「一、汇总」下用 `### O-T99 首次运行（写作 main-fallback、裁判 rp）` 并列保留（开启 1/30、关闭 3/30、前 5 轮 0/15 与 2/15、指令遵循各 29/30、候选 3/3、首字 3,455/7,161 与 3,359/7,513 毫秒）。
-  - `opening-eval` 新增 `--note <text>`；manifest 的 `previousRuns` 是可选的聚合数字（`OpeningEvalPriorConfig`），报告用 `configTableRow` 同一套表格渲染。`--report-only` 对同一份 manifest 与 JSONL 两次生成逐字节相同。
-  - 新增夹具 `packages/st-compat/test/fixtures/opening-card-shanshen.json`（与上一批卡内容一致）；完整重跑命令：`pnpm --filter @dramaticer/st-compat opening-eval --card packages/st-compat/test/fixtures/opening-card-shanshen.json --card packages/st-compat/test/fixtures/opening-card-shanshen.json --card packages/st-compat/test/fixtures/health-card.json --rounds 10 --seed 1 --model rp --judge-model judge`。
-  - ADR-0065 已把两次运行并列，并记录重 roll 指标饱和：60 次判定没有一次重 roll、全部判为遵循指令，开局开启与关闭完全一致，裁判区分度不足与写作模型确实稳定无法从这批样本区分。后续要么换更严格的裁判，要么用真实玩家的 swipe（R2-T07 偏好记录）。
-  - 新增 2 个测试（配置差异说明进报告头且缺省不出现、历史运行聚合数字并列渲染），`opening-eval.test.ts` 共 7 个用例。
+- 会话：122
+- 任务：R2-T03.a 五类记忆题与编造回忆率
+- 结果：完成（`DONE`），门禁通过（105 个测试文件、942 个测试通过，3 个 live 跳过，共 945 个）。
+  - 新增 `evalset/memory-questions.ts`：`eval-private/evalset/memory-<故事>.jsonl` 的严格格式。字段 `id`、`story`、`askAtNode`、`question`、`answer`、`evidenceNodes`、`kind: "memory"`、`category`、可选 `fabricated`；`category` 只接受 `extraction`（信息抽取）、`cross_segment`（跨段推理）、`temporal`（时间推理）、`update`（知识更新）、`abstention`（拒答）。未知字段、非法类别、重复 id、空文件、空证据直接失败。
+  - 新增 `evalset/memory-judged.ts`：在每道题的 `askAtNode` 用默认原生模板与标准槽位提供者组装上下文，由 `writer` 角色回答；答案交给与一致性探针同一套的 `judgeAnswerConsistency` 判分；不写楼层、不改 head。编造题是 `fabricated: true`，裁判提示词明确「明确否认或拒答算一致；肯定描述不存在的人、事、物算不一致」，判为矛盾时记一次编造。
+  - `probe.ts` 的裁判循环提成导出的 `judgeAnswerConsistency`（同一 `JUDGE_SYSTEM_PROMPT`、`parseProbeJudgeOutput`、3 次重试与失败语义），探针改为调用它；`PROBE_INSTRUCTION` 一并导出给记忆题复用。
+  - `memory-eval` 新增 `--judged`：按 `roles.writer` 回答、`roles.judge` 判分，读取 `eval-private/evalset/` 下的 `memory-<故事>.jsonl`；某故事没有文件时只记录跳过。默认关闭，既有检索评测不增加模型调用。
+  - 报告新增「五类记忆题与编造回忆率」段，固定分五类，字段为题数、命中、矛盾、`unknown`、失败、命中率、编造题数、编造数、编造率。命中率分母是一致加矛盾；编造率分母是编造题里裁判可判定的数量（一致加矛盾）；`unknown` 与失败不进入任何分母。统计版只有类别与数字，私有版附逐题明细。
+  - 新增 6 个测试（`memory-questions.test.ts` 3 个、`memory-judged.test.ts` 3 个）：五类解析与编造标注、非法字段与重复 id、五类判分、肯定描述算编造、明确否认算通过、裁判连续非法重试 3 次后记失败、统计版不含题目与原文、head 与楼层数不变。
+  - ADR-0067 记录格式、判分口径、分母与影响。题目数据由 R2-T08 的公开合成基准与私有评测集补齐；本任务没有生成真实题目文件。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`；未完成任务见 `docs/dev/TASKS.md`。
-- **下一个可做任务是 R2-T03.a 五类记忆题与编造回忆率**：按 LongMemEval 五类（信息抽取、跨段推理、时间推理、知识更新、拒答）扩充记忆题，每道题标注类别与证据楼层；新增编造回忆题（问从未发生的人、事、物，肯定描述即计为编造）；一致性探针与记忆评测共用同一套判分，报告按类别给出命中与编造率、`unknown` 单列。复用 R2-T03 的 `parseProbeJudgeOutput` 与裁判调用约定，不要另写判分口径。它之后是 R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09、R2-T99。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`；未完成任务见 `docs/dev/TASKS.md`。
+- **下一个可做任务是 R2-T04 盲测两两对比**：同一分支点的两份续写分别以 A、B 与 B、A 两种顺序交给 `judge`，严格 JSON `{winner:"A"|"B"|"tie", reason}`；偏好子集用 R2-T07.a 导出的接受与放弃回复对，切回较早 swipe 的子集单列；汇总胜率、平局率与位置偏差。它之后是 R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09、R2-T99。
 - v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045。
 - HUMAN-09 待处理（不阻塞）：`data/channels.yaml` 已有 `bg-fallback`、`main-fallback`、`codex`，`channels.example.yaml` 还没有这三个别名。
 - HUMAN-10 待处理（不阻塞）：插件不变量是否加进 AGENTS.md。
 - HUMAN-11 待处理（不阻塞）：`.env` 的正文模型 `opendesign/deepseek-v4.1-flash` 返回 membership entitlement 错误，是否换用 `auto/deepseek-v4.1-flash`；`.env` 由人类维护。
 - HUMAN-12 待处理（不阻塞）：`roles.judge` 已是 `judge`（`auto/glm-5.3`），HUMAN.md 条目仍描述成 `codex`，由人类确认后关闭。
-- 数据库 schema 版本 30（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡、v25 合并调用开关与执行记录、v26 间隙档位阈值与丢弃状态、v27 合并调用丢弃条目、v28 回合模式与读取工具软上限、v29 开局包与故事级后台任务、v30 首楼开场候选）；后续编号：v31 偏好记录、v32 父子分块、v33 章节压缩、v34 世界书预筛、v35 上下文包；插入新迁移时后续编号一起顺延。
+- 数据库 schema 版本 30（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡、v25 合并调用开关与执行记录、v26 间隙档位阈值与丢弃状态、v27 合并调用丢弃条目、v28 回合模式与读取工具软上限、v29 开局包与故事级后台任务、v30 首楼开场候选）；后续编号：v31 偏好记录、v32 父子分块、v33 章节压缩、v34 世界书预筛、v35 上下文包；插入新迁移时后续编号一起顺延。R2-T03.a 没有迁移。
 - 结算只有 `dramaticer work` 调度：server 的回合路径不补建也不执行后台任务，所以回合内后台客户端零调用是结构保证；要真正结算故事，跑 `pnpm work --db <path> --kind settle`，要生成现场分析跑 `--kind scene`，要捕获用户意志跑 `--kind user_will`，要生成修订草案跑 `--kind memory_revision`，要回填事件跑 `--kind events`（单故事、逐窗口推进，适合小批量），要生成开局包跑 `--kind opening`，要生成首楼候选跑 `--kind opening_candidates`，要合并调用跑 `--kind gap_pass`（先打开故事设置 `gapPassEnabled`），批量回填三个 legacy 对话用 R1-T04.a 的 `events-backfill`。
 - 后台任务分两档：`gap` 档每次间隙都执行，`deferred` 档（`events`、`summary`、`npc_agenda`）只在会话结束或间隙达到 `gapPlanSeconds` 时执行。`dramaticer work` 不给 `--gap-seconds` 就按会话结束处理；要模拟回合中的短间隙就传 `--gap-seconds <秒数>`，短于阈值时延后档只入队不执行。
 - `gap_pass` 默认关闭；开关关着时 `dramaticer work` 既不为故事补建该任务也不执行它，`--kind gap_pass` 同样被跳过。ADR-0055、ADR-0056、ADR-0057 的结论都是保持默认关闭。
@@ -47,23 +47,28 @@
 - 插件系统在 DESIGN §19 是唯一权威；P 阶段任务在 TASKS 的「P：插件内核」小节，C 线兼容插件任务已存在且依赖 P2。
 
 ## 下一步
-- **R2-T03.a 五类记忆题与编造回忆率**：按 LongMemEval 五类（信息抽取、跨段推理、时间推理、知识更新、拒答）扩充记忆题，每道题标注类别与证据楼层；新增编造回忆题（问从未发生的人、事、物，肯定描述即计为编造）；一致性探针与记忆评测共用同一套判分，报告按类别给出命中与编造率、`unknown` 单列。复用 R2-T03 的 `parseProbeJudgeOutput` 与裁判调用约定，不要另写判分口径。
-- 之后是 R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09、R2-T99。
+- **R2-T04 盲测两两对比**：同一分支点的两份续写以 A、B 与 B、A 两种顺序交给 `judge`，严格 JSON `{winner:"A"|"B"|"tie", reason}`；完全相同或高度接近的两份续写应判平局；偏好子集等 R2-T07.a 导出后接入，切回较早 swipe 的子集单列。裁判失败重试 3 次后记入失败列表，不中断整批。
+- 之后是 R2-T04.a 叙事质量评分表、R2-T05 B1 历史回放基线、R2-T06 记分牌、R2-T07、R2-T07.a、R2-T08 公开合成基准、R2-T09、R2-T99。R2-T08 负责补齐五类记忆题的公开题目集，R2-T09 用它做长对话遗忘评测。
 - 开局包的读取入口是 `readOpeningPack(store, storyId)`；需要自己校验时用 `validateOpeningPackPayload(value, known)`，第二个参数是 `OpeningKnownNames`（`names` 与 `sourceText`），判定函数是 `isKnownOpeningName`。首楼候选的解析用 `parseOpeningCandidatesResponse(text, expectedCount)`，不要另写一套。
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
 - 不要修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 下的任何文件。不变量 I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账是唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖任何其他工作区包、ST 语义只在兼容插件里实现。
-- 自动试玩的入口是 `pnpm --filter @dramaticer/st-compat playtest`，实现分两层：`evalset/playtest.ts` 只管轮次循环、模拟用户、探针、裁判、记录与间隙，`evalset/playtest-cli.ts` 负责参数、渠道、模板、槽位与文件续跑。新增试玩选项改 CLI，不要改 `runPlaytest` 的轮次语义。
-- 试玩默认写 `eval-private/reports/playtest.jsonl`；`--resume` 从已有记录的最大轮次加一继续，失败轮次也算已记录，不会被重跑；不带 `--resume` 会先清空文件。坏行直接抛错。
-- 试玩每轮的顺序是：读间隙积压 → 模拟用户生成 → `runChatTurn` → 按 `--swipe-at`/`--edit-at`/`--branch-at` 执行操作 → 间隙后台任务 → 一致性探针（到轮次时）→ 每轮裁判（开启时）→ 写记录。`gapWork` 描述本轮开始前（上一轮间隙之后）的状态。
-- 试玩里 `--seed` 只决定模拟用户的写作提示顺序与探针事实选择（固定五行提示）；模型请求不带 seed；不要声称它控制模型采样。记录里 `userHint` 就是当轮提示。
-- 一致性探针（ADR-0064）：`--probe-every` 默认 10、0 关闭；`--probe-min-age` 默认 20。探针结果在轮次记录的 `probe` 字段，`status` 取 `done`、`failed`、`skipped`。探针不写楼层、不写 Trace、不改 head。事实只取字符串、≤300 字符、年龄够、且能按路径出题的台账事实；`userWill` 与 `mvu` 排除。
+- 五类记忆题的格式与判分在 `st-compat/src/evalset/memory-questions.ts` 与 `memory-judged.ts`。题目文件是 `eval-private/evalset/memory-<故事>.jsonl`，`kind` 必须是 `memory`，`category` 取 `extraction`、`cross_segment`、`temporal`、`update`、`abstention`，`fabricated: true` 表示编造题。不要另写一套题目格式或判分。
+- 记忆题与探针共用 `judgeAnswerConsistency`（`probe.ts`）：同一裁判提示词、`parseProbeJudgeOutput`、3 次重试与失败语义。记忆题额外传 `referenceAnswer`、`evidenceText` 与 `fabricated`；探针不要改成另一套提示词。
+- 记忆题命中率 = 一致 /（一致 + 矛盾）；编造率 = 编造数 / 编造题里裁判可判定的数量；`unknown` 与失败都单列，不进入分母。改分母口径时同步 `memory-judged.test.ts`。
+- `memory-eval --judged` 按 `roles.writer` 回答、`roles.judge` 判分；没有记忆题文件的故事只记录跳过，不报错。默认关闭，跑全量评测时不会额外调用模型。
+- 编造题的证据楼层原文按单楼 1,500 字符、合计 5,000 字符截断；证据要拆到多个楼层，不能指望裁判读完整楼。
 - 探针的事实年龄按 `LedgerFact.nodeId` 在 head 路径上的位次差计算。`LedgerFact` 现在带 `nodeId`；新增精确相等断言时要补这个字段。
 - 探针回答复用回合的 `assembleContext`（同一模板、槽位与预算）并追加问题，默认 `maxTokens` 1024、温度 0.3；裁判默认 512 token、温度 0。answer 或裁判调用失败只让该探针记 `failed`，不中断整批。
 - 裁判严格 JSON 的 `consistent` 只接受 `true`、`false`、`"unknown"`；`unknown` 不进矛盾率分母。矛盾率 = 矛盾 /（一致 + 矛盾），没有可判定样本时为 0（报告显示 `—`）。
 - 默认 20 轮的新故事在第一个探针轮次常因没有 20 楼之前的事实记 `skipped`；要样本需要更长的试玩或已有历史的数据库。
 - 报告入口是 `pnpm --filter @dramaticer/st-compat probe-report --input <jsonl>`，默认私有版 `eval-private/reports/playtest-probe.md`、统计版 `docs/dev/reports/R2-probe.md`；不传 `--private-out`/`--public-out` 会在仓库里写这两个路径，试跑时显式指到 `.devloop/scratch/`。统计版只有故事编号、轮次、样例编号与判定，不含故事 id、题目、回答与台账路径。
+- 自动试玩的入口是 `pnpm --filter @dramaticer/st-compat playtest`，实现分两层：`evalset/playtest.ts` 只管轮次循环、模拟用户、探针、裁判、记录与间隙，`evalset/playtest-cli.ts` 负责参数、渠道、模板、槽位与文件续跑。新增试玩选项改 CLI，不要改 `runPlaytest` 的轮次语义。
+- 试玩默认写 `eval-private/reports/playtest.jsonl`；`--resume` 从已有记录的最大轮次加一继续，失败轮次也算已记录，不会被重跑；不带 `--resume` 会先清空文件。坏行直接抛错。
+- 试玩每轮的顺序是：读间隙积压 → 模拟用户生成 → `runChatTurn` → 按 `--swipe-at`/`--edit-at`/`--branch-at` 执行操作 → 间隙后台任务 → 一致性探针（到轮次时）→ 每轮裁判（开启时）→ 写记录。`gapWork` 描述本轮开始前（上一轮间隙之后）的状态。
+- 试玩里 `--seed` 只决定模拟用户的写作提示顺序与探针事实选择（固定五行提示）；模型请求不带 seed；不要声称它控制模型采样。记录里 `userHint` 就是当轮提示。
+- 一致性探针（ADR-0064）：`--probe-every` 默认 10、0 关闭；`--probe-min-age` 默认 20。探针结果在轮次记录的 `probe` 字段，`status` 取 `done`、`failed`、`skipped`。探针不写楼层、不写 Trace、不改 head。事实只取字符串、≤300 字符、年龄够、且能按路径出题的台账事实；`userWill` 与 `mvu` 排除。
 - 每轮裁判（ADR-0065）：`--judge-turns` 开启，默认关闭；严格 JSON `{reroll, followed, reason}`，非法重试 3 次，调用失败或连续非法只记该轮 `verdict.status` 为 `failed`，试玩继续。裁判看角色卡摘要、人设、最近 6 楼、玩家输入与最终助手正文；swipe/edit/branch 之后取最终节点。`verdict` 字段在失败轮次为 null。
 - 开局评测入口是 `pnpm --filter @dramaticer/st-compat opening-eval --card <path> [--card <path> ...]`，默认每卡每种配置 10 轮、种子 1、助手 `rp`；当前验收口径是 `--model rp --judge-model judge`。每张卡建三个故事（`opening-eval-<n>-on`、`-off`、`-candidates`），开启侧先生成开局包，候选故事生成 3 条候选并让模拟用户选择。`--report-only` 只读 `--out-dir/manifest.json` 与逐轮 JSONL 重算报告。
 - `opening-eval` 的 `--no-background` 由评测内部固定传给 playtest，用来隔离开局机制；本轮没有结算、现场分析与用户意志写入。要测完整链路应去掉该开关并换用足够长的试玩。

@@ -230,7 +230,7 @@ export function buildProbeQuestion(fact: ProbeFact): string | null {
 	}
 }
 
-const PROBE_INSTRUCTION = `下面这个问题用来检验你对这段故事的记忆。请不要写后续情节，也不要解释你在做什么。
+export const PROBE_INSTRUCTION = `下面这个问题用来检验你对这段故事的记忆。请不要写后续情节，也不要解释你在做什么。
 
 `;
 
@@ -263,6 +263,114 @@ const JUDGE_SYSTEM_PROMPT = `你是剧情一致性裁判。你会看到一道回
 - 回答与台账矛盾，或捏造了台账里没有的具体事实：consistent 写 false。
 - 台账不足以判断（问题无关、回答含糊、台账里没有对应信息）：consistent 写 "unknown"。
 只输出一个 JSON 对象，键为 consistent 与 reason，例如 {"consistent":true,"reason":"台账写明……"}。reason 用一句话说明依据。不要输出代码块。`;
+
+export interface AnswerJudgeInput {
+	readonly judge: {
+		readonly client: LlmClient;
+		readonly model: string;
+		readonly maxTokens?: number;
+	};
+	readonly question: string;
+	readonly answer: string;
+	readonly snapshot: JsonValue;
+	/** 记忆题的标准答案；探针没有这一项。 */
+	readonly referenceAnswer?: string;
+	/** 记忆题的证据楼层原文；探针没有这一项。 */
+	readonly evidenceText?: string;
+	/** 编造回忆题：问题问的是从未发生的人、事、物。 */
+	readonly fabricated?: boolean;
+}
+
+export interface AnswerJudgeResult {
+	readonly status: "done" | "failed";
+	readonly verdict: ProbeVerdict | null;
+	readonly reason: string | null;
+	readonly attempts: number;
+	readonly error: string | null;
+	readonly usage: LlmUsage | null;
+}
+
+/**
+ * 一致性探针与记忆评测共用的判分：同一套裁判提示词、严格 JSON 解析与
+ * 重试语义。`referenceAnswer`、`evidenceText`、`fabricated` 只给记忆题补充依据。
+ */
+export async function judgeAnswerConsistency(
+	input: AnswerJudgeInput,
+): Promise<AnswerJudgeResult> {
+	const parts = [
+		`问题：${input.question}`,
+		`模型回答：${input.answer}`,
+		`台账快照（JSON）：\n${JSON.stringify(input.snapshot)}`,
+	];
+	if (input.referenceAnswer !== undefined) {
+		parts.push(`参考答案：${input.referenceAnswer}`);
+	}
+	if (input.evidenceText !== undefined && input.evidenceText.length > 0) {
+		parts.push(`证据楼层原文：\n${input.evidenceText}`);
+	}
+	if (input.fabricated === true) {
+		parts.push(
+			"这是编造回忆题：问题问的是从未发生的人、事、物。明确否认或拒答算一致；肯定描述不存在的人、事、物算不一致。",
+		);
+	}
+	const baseMessages: LlmMessage[] = [
+		{ role: "system", content: JUDGE_SYSTEM_PROMPT },
+		{ role: "user", content: parts.join("\n\n") },
+	];
+	let usage: LlmUsage | null = null;
+	let lastProblem = "";
+	for (let attempt = 1; attempt <= MAX_PROBE_JUDGE_ATTEMPTS; attempt += 1) {
+		const messages: LlmMessage[] =
+			attempt === 1
+				? baseMessages
+				: [
+						...baseMessages,
+						{
+							role: "user",
+							content: `上一次输出不是合法的判定 JSON（${lastProblem}）。只输出 {"consistent":true|false|"unknown","reason":"…"}，不要代码块。`,
+						},
+					];
+		let result: LlmResult;
+		try {
+			result = await input.judge.client.complete({
+				messages,
+				model: input.judge.model,
+				temperature: 0,
+				maxTokens: input.judge.maxTokens ?? 512,
+			});
+		} catch (error) {
+			return {
+				status: "failed",
+				verdict: null,
+				reason: null,
+				attempts: attempt,
+				error: `裁判调用失败：${error instanceof Error ? error.message : String(error)}`,
+				usage,
+			};
+		}
+		usage = result.usage;
+		const verdict = parseProbeJudgeOutput(result.text);
+		if (verdict !== null) {
+			return {
+				status: "done",
+				verdict: verdict.verdict,
+				reason: verdict.reason,
+				attempts: attempt,
+				error: null,
+				usage,
+			};
+		}
+		lastProblem = "缺少 consistent 或 reason，或包含多余字段";
+	}
+	return {
+		status: "failed",
+		verdict: null,
+		reason: null,
+		attempts: MAX_PROBE_JUDGE_ATTEMPTS,
+		error: `裁判连续 ${MAX_PROBE_JUDGE_ATTEMPTS} 次没有输出合法的 {consistent, reason}`,
+		usage,
+	};
+}
 
 /** 执行一次探针：出题、生成回答、交裁判判定；不写楼层，也不改 head。 */
 export async function runPlaytestProbe(
@@ -344,87 +452,29 @@ export async function runPlaytestProbe(
 	}
 
 	const snapshot = readLedger(input.store, input.headNodeId) ?? {};
-	const baseMessages: LlmMessage[] = [
-		{ role: "system", content: JUDGE_SYSTEM_PROMPT },
-		{
-			role: "user",
-			content: `问题：${question}\n\n模型回答：${answer}\n\n台账快照（JSON）：\n${JSON.stringify(snapshot)}`,
-		},
-	];
-	let judgeUsage: LlmUsage | null = null;
-	let lastProblem = "";
-	for (let attempt = 1; attempt <= MAX_PROBE_JUDGE_ATTEMPTS; attempt += 1) {
-		const messages: LlmMessage[] =
-			attempt === 1
-				? baseMessages
-				: [
-						...baseMessages,
-						{
-							role: "user",
-							content: `上一次输出不是合法的判定 JSON（${lastProblem}）。只输出 {"consistent":true|false|"unknown","reason":"…"}，不要代码块。`,
-						},
-					];
-		let result: LlmResult;
-		try {
-			result = await input.judge.client.complete({
-				messages,
-				model: input.judge.model,
-				temperature: 0,
-				maxTokens: input.judge.maxTokens ?? 512,
-			});
-		} catch (error) {
-			return {
-				status: "failed",
-				round: input.round,
-				nodeId: input.headNodeId,
-				fact,
-				question,
-				answer,
-				verdict: null,
-				reason: null,
-				judgeAttempts: attempt,
-				error: `裁判调用失败：${error instanceof Error ? error.message : String(error)}`,
-				answerUsage,
-				judgeUsage,
-			};
-		}
-		judgeUsage = result.usage;
-		const verdict = parseProbeJudgeOutput(result.text);
-		const headAfter = input.store.getHead(input.storyId);
-		if (headAfter?.id !== headBefore.id) {
-			throw new Error("探针修改了 head");
-		}
-		if (verdict !== null) {
-			return {
-				status: "done",
-				round: input.round,
-				nodeId: input.headNodeId,
-				fact,
-				question,
-				answer,
-				verdict: verdict.verdict,
-				reason: verdict.reason,
-				judgeAttempts: attempt,
-				error: null,
-				answerUsage,
-				judgeUsage,
-			};
-		}
-		lastProblem = "缺少 consistent 或 reason，或包含多余字段";
+	const judged = await judgeAnswerConsistency({
+		judge: input.judge,
+		question,
+		answer,
+		snapshot,
+	});
+	const headAfter = input.store.getHead(input.storyId);
+	if (headAfter?.id !== headBefore.id) {
+		throw new Error("探针修改了 head");
 	}
 	return {
-		status: "failed",
+		status: judged.status,
 		round: input.round,
 		nodeId: input.headNodeId,
 		fact,
 		question,
 		answer,
-		verdict: null,
-		reason: null,
-		judgeAttempts: MAX_PROBE_JUDGE_ATTEMPTS,
-		error: `裁判连续 ${MAX_PROBE_JUDGE_ATTEMPTS} 次没有输出合法的 {consistent, reason}`,
+		verdict: judged.verdict,
+		reason: judged.reason,
+		judgeAttempts: judged.attempts,
+		error: judged.error,
 		answerUsage,
-		judgeUsage,
+		judgeUsage: judged.usage,
 	};
 }
 

@@ -2,12 +2,16 @@ import { existsSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import {
+	DEFAULT_DIRECTOR_CONFIG,
 	type EmbeddingClient,
+	type LlmClient,
 	type LlmStreamingClient,
 	type RetrievalRoute,
 	type StoryStore,
 	StoryStore as StoryStoreClass,
+	createDefaultContextTemplate,
 	createEventExtractionHandler,
+	createStandardChatProviders,
 	fuseRetrievalRoutes,
 	rankMemoryRoutes,
 } from "@dramaticer/core";
@@ -27,6 +31,16 @@ import {
 	importWorldInfoLore,
 } from "../lore-import.js";
 import { parseWorldInfoFile } from "../world-info.js";
+import {
+	type JudgedMemoryQuestionRecord,
+	type JudgedMemorySummary,
+	runJudgedMemoryQuestions,
+	summarizeJudgedMemoryQuestions,
+} from "./memory-judged.js";
+import {
+	memoryQuestionFileName,
+	readMemoryQuestionFile,
+} from "./memory-questions.js";
 import {
 	type QuestionKind,
 	type RetrievalQuestion,
@@ -120,6 +134,8 @@ export interface MemoryEvalReport {
 	readonly filter: MemoryEvalFilterSummary;
 	readonly stateAccuracy: MemoryEvalStateAccuracy;
 	readonly thresholds: readonly MemoryEvalThreshold[];
+	/** 没有运行五类记忆题时为 null。 */
+	readonly judged: JudgedMemorySummary | null;
 }
 
 export interface EvaluateMemoryQuestionsOptions {
@@ -153,6 +169,18 @@ export interface BuildEventsOptions {
 	}) => void;
 }
 
+export interface JudgedMemoryEvalOptions {
+	readonly answer: { readonly client: LlmClient; readonly model: string };
+	readonly judge: {
+		readonly client: LlmClient;
+		readonly model: string;
+		readonly maxTokens?: number;
+	};
+	readonly budgetTokens?: number;
+	readonly maxTokens?: number;
+	readonly temperature?: number;
+}
+
 export interface CollectMemoryEvalOptions {
 	readonly rawRoot: string;
 	readonly evalsetRoot: string;
@@ -161,6 +189,8 @@ export interface CollectMemoryEvalOptions {
 	readonly embeddingLabel?: string | null;
 	/** 设置后为已确认的主路径楼层抽取事件；不设置时事件路为空 */
 	readonly eventClient?: LlmStreamingClient | null;
+	/** 设置后读取 `memory-<故事>.jsonl`，用裁判判分五类记忆题 */
+	readonly judged?: JudgedMemoryEvalOptions | null;
 	readonly viewpoint?: string | null;
 	readonly generatedAt?: string;
 	readonly log?: (message: string) => void;
@@ -449,6 +479,7 @@ export async function collectMemoryEval(
 	);
 	try {
 		const stories: MemoryEvalStoryScore[] = [];
+		const judgedRecords: JudgedMemoryQuestionRecord[] = [];
 		for (const entry of storyFiles) {
 			log(`导入 ${entry.story}`);
 			const chatPath = await snapshot.resolveFile(entry.file);
@@ -506,6 +537,43 @@ export async function collectMemoryEval(
 					viewpoint: options.viewpoint ?? null,
 				}),
 			);
+			if (options.judged) {
+				const memoryPath = path.join(
+					options.evalsetRoot,
+					memoryQuestionFileName(entry.story),
+				);
+				if (!existsSync(memoryPath)) {
+					log(`五类记忆题：${entry.story} 没有 ${memoryPath}，跳过`);
+					continue;
+				}
+				const memoryQuestions = await readMemoryQuestionFile(memoryPath);
+				log(
+					`五类记忆题 ${entry.story}：${memoryQuestions.length} 道，开始判分`,
+				);
+				const settings = store.getStorySettings(entry.story);
+				const template = createDefaultContextTemplate({
+					structuredOutput: "text-tags",
+				});
+				const providers = createStandardChatProviders({
+					store,
+					characterPrompt: settings.characterPrompt,
+					directorConfig: DEFAULT_DIRECTOR_CONFIG,
+				});
+				judgedRecords.push(
+					...(await runJudgedMemoryQuestions({
+						store,
+						storyId: entry.story,
+						questions: memoryQuestions,
+						template,
+						providers,
+						budgetTokens: options.judged.budgetTokens ?? 12_000,
+						assistant: options.judged.answer,
+						judge: options.judged.judge,
+						maxTokens: options.judged.maxTokens,
+						temperature: options.judged.temperature,
+					})),
+				);
+			}
 		}
 		return buildReport({
 			stories,
@@ -513,6 +581,10 @@ export async function collectMemoryEval(
 			eventsBuilt:
 				options.eventClient !== null && options.eventClient !== undefined,
 			generatedAt: options.generatedAt ?? new Date().toISOString(),
+			judged:
+				judgedRecords.length === 0
+					? null
+					: summarizeJudgedMemoryQuestions(judgedRecords),
 		});
 	} finally {
 		store.close();
@@ -573,6 +645,7 @@ function buildReport(input: {
 	readonly embeddingLabel: string | null;
 	readonly eventsBuilt: boolean;
 	readonly generatedAt: string;
+	readonly judged: JudgedMemorySummary | null;
 }): MemoryEvalReport {
 	const total = emptyCounts(SCORE_KEYS);
 	const byKind = new Map<QuestionKind, MutableScore>();
@@ -648,6 +721,7 @@ function buildReport(input: {
 		filter,
 		stateAccuracy,
 		thresholds: checkThresholds(input.stories),
+		judged: input.judged,
 	};
 }
 

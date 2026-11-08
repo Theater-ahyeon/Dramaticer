@@ -6,6 +6,7 @@ import type {
 	MemoryEvalThreshold,
 } from "./memory-eval.js";
 import { kindLabel } from "./memory-eval.js";
+import { renderJudgedMemorySection } from "./memory-judged.js";
 import type { QuestionKind } from "./question-files.js";
 
 const ROUTE_LABELS: Readonly<Record<string, string>> = {
@@ -39,6 +40,7 @@ function renderMemoryReport(
 	report: MemoryEvalReport,
 	includeStoryNames: boolean,
 ): string {
+	const judged = report.judged ?? null;
 	const lines: string[] = [
 		"# M2 记忆引擎检索评测",
 		"",
@@ -54,6 +56,11 @@ function renderMemoryReport(
 		"- 每道题用 `retrieveMemory` 的同一套候选收集与 RRF 融合；只在提问楼层的祖先路径上检索，证据楼层出现在前 K 个结果里算命中。",
 		"- 每一路按自己的原始名次单独计分；路缺失时该路记 0 命中，题数保持一致。",
 		"- 状态题的标准答案来自 MVU 快照，证据楼层是产生该状态变更的楼层；原文检索不读取状态层，这一题型的结果只反映文本召回。",
+		...(judged === null
+			? []
+			: [
+					"- 五类记忆题在各自的提问楼层组装上下文生成回答，再交与一致性探针同一套的裁判判分；编造回忆题是拒答题里用 `fabricated` 标注的子集。",
+				]),
 		"",
 		"## 语料与索引",
 		"",
@@ -162,6 +169,14 @@ function renderMemoryReport(
 	lines.push("|---|---|---|---|---|---|---|");
 	for (const threshold of report.thresholds) {
 		lines.push(thresholdRow(threshold, report, includeStoryNames));
+	}
+	if (judged !== null) {
+		lines.push(
+			"",
+			renderJudgedMemorySection(judged, {
+				privateDetails: includeStoryNames,
+			}).trimEnd(),
+		);
 	}
 	return `${lines.join("\n")}\n`;
 }
