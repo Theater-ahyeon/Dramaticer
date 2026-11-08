@@ -8,6 +8,8 @@ import {
 	type StoryStore,
 	createGapPassHandler,
 	readLedger,
+	replaceDirectorPlan,
+	resolveCurrentBeat,
 	userWillStableId,
 } from "../src/index.js";
 import { openTempStore } from "./temp-store.js";
@@ -145,6 +147,38 @@ const FULL_RESPONSE = JSON.stringify({
 		},
 	],
 });
+
+const PLAN = {
+	arcs: [
+		{
+			id: "arc-1",
+			title: "开学",
+			throughLine: "凛必须说出真相",
+			difficulty: 0.4,
+			redLines: [],
+			sequences: [
+				{
+					id: "seq-1",
+					title: "相遇",
+					beats: [
+						{
+							id: "beat-1",
+							goal: "确认来意",
+							entrySigns: ["凛堵在门口"],
+							fitPoints: ["凛盯着你"],
+						},
+						{
+							id: "beat-2",
+							goal: "让凛松口",
+							entrySigns: ["凛移开视线"],
+							fitPoints: ["你提到旧事"],
+						},
+					],
+				},
+			],
+		},
+	],
+};
 
 describe("间隙合并调用任务", () => {
 	it("一次调用产出四段：结算、现场分析、用户意志与修订草案各自入库", async () => {
@@ -383,6 +417,35 @@ describe("间隙合并调用任务", () => {
 			segment: "settlement",
 			nodeId: "u1",
 		});
+	});
+
+	it("有当前拍时结算段一并检测落拍并写拍状态", async () => {
+		const { store } = openTempStore();
+		seedStory(store);
+		replaceDirectorPlan(store, "s1", PLAN);
+		const response = JSON.stringify({
+			settlement: [
+				{
+					nodeId: "a2",
+					diffs: [],
+					conflicts: [],
+					beatCompleted: true,
+				},
+			],
+			scene: "凛在等你回答。",
+		});
+		const { client, requests } = createFakeClient([response]);
+		await createGapPassHandler()({ store, client, job: jobFor("a2") });
+
+		const system = requests[0]?.messages[0]?.content ?? "";
+		const user = requests[0]?.messages[1]?.content ?? "";
+		expect(system).toContain("beatCompleted");
+		expect(user).toContain("当前拍：beat-1（目标：确认来意）");
+		expect(store.getDirectorBeatState("a2")).toMatchObject({
+			beatId: "beat-1",
+			completed: true,
+		});
+		expect(resolveCurrentBeat(store, "s1", "a2")?.beat.id).toBe("beat-2");
 	});
 
 	it("事件段窗口外的楼层逐条丢弃，其余事件照常写入", async () => {

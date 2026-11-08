@@ -224,7 +224,8 @@ describe("explainNode", () => {
 			"4. 记忆检索的每一路名次与融合结果",
 			"5. 台账快照与本楼写入",
 			"6. 导演决策",
-			"7. 修正建议",
+			"7. 当前拍与落拍记录",
+			"8. 修正建议",
 		].map((heading) => text.indexOf(heading));
 		expect(order.every((index) => index >= 0)).toBe(true);
 		expect([...order].sort((left, right) => left - right)).toEqual(order);

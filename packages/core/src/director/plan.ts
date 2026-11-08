@@ -111,6 +111,13 @@ export interface ResolvedDirectorBeat {
 	readonly beat: DirectorBeat;
 }
 
+/** 只读还原计划需要的存储方法；排障与结算各自只拿得到一部分。 */
+export type DirectorPlanReader = Pick<StoryStore, "listDirectorPlanEntries">;
+
+/** 解析当前拍需要的存储方法。 */
+export type DirectorBeatResolver = DirectorPlanReader &
+	Pick<StoryStore, "getNode" | "listDirectorBeatStatesAlongPath">;
+
 const ARC_KEYS = [
 	"id",
 	"title",
@@ -254,7 +261,7 @@ function readStringArray(
 
 /** 按弧线、序列、节拍各自的 `ordinal` 还原嵌套结构。 */
 export function readDirectorPlan(
-	store: StoryStore,
+	store: DirectorPlanReader,
 	storyId: string,
 ): DirectorPlan {
 	const entries = store.listDirectorPlanEntries(storyId);
@@ -329,7 +336,7 @@ export function mergePlannedArcs(
  * 没有状态时从第一拍开始，计划耗尽返回 null。其他分支的状态不参与。
  */
 export function resolveCurrentBeat(
-	store: StoryStore,
+	store: DirectorBeatResolver,
 	storyId: string,
 	nodeId: string,
 ): ResolvedDirectorBeat | null {

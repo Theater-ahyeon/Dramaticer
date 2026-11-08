@@ -29,6 +29,7 @@ import {
 import {
 	LEDGER_PATH_GUIDE,
 	type PrepareSettlementOptions,
+	SETTLEMENT_BEAT_PROMPT,
 	type SettlementWindow,
 	applySettlementProposals,
 	parseSettleResponse,
@@ -246,6 +247,7 @@ export function createGapPassHandler(
 				role: "system",
 				content: buildSystemPrompt({
 					settlement: window !== null,
+					settlementBeats: window?.beats != null,
 					userWill: players.length > 0,
 					revision: players.length > 0,
 					events: eventWindow !== null,
@@ -350,6 +352,7 @@ export function createGapPassHandler(
 
 interface GapPassRequestedSegments {
 	readonly settlement: boolean;
+	readonly settlementBeats: boolean;
 	readonly userWill: boolean;
 	readonly revision: boolean;
 	readonly events: boolean;
@@ -396,6 +399,7 @@ function buildSystemPrompt(requested: GapPassRequestedSegments): string {
 					'{"nodeId":"结算窗口里的楼层 id","diffs":[{"path":["clue","c1","status"],"op":"set","value":"open","confidence":0.8,"reason":"一句话依据"}],"conflicts":[{"path":["character","凛","location"],"reason":"最近一楼明确写她还在教室"}]}',
 					"- nodeId 必须是结算窗口里的楼层，每个楼层最多出现一次；op 只能是 set 或 delete；confidence 是 0 到 1 的数字；楼层里已经写入的路径不要重复输出。",
 					"- 与冲突检查窗口的原文明确矛盾的事实不要写进 diffs，写进同一楼层的 conflicts。",
+					...(requested.settlementBeats ? [SETTLEMENT_BEAT_PROMPT] : []),
 				]
 			: []),
 		"scene：一段纯文本现场分析，写明在场人物各自此刻想要什么、各自知道什么、彼此之间的张力在哪里，控制在两百字以内。",
@@ -442,8 +446,15 @@ function buildUserContent(inputs: GapPassInputs): string {
 			lines.push("</最近楼层>");
 		}
 		lines.push("", "结算窗口（只有这里出现 id 的楼层可以写进结算段）：");
+		const beatByNode = new Map(
+			(inputs.window.beats ?? []).map((beat) => [beat.nodeId, beat]),
+		);
 		for (const floor of inputs.window.floors) {
 			lines.push(`<楼层 id="${floor.nodeId}">`);
+			const beat = beatByNode.get(floor.nodeId);
+			if (beat !== undefined) {
+				lines.push(`当前拍：${beat.beatId}（目标：${beat.goal}）`);
+			}
 			lines.push("正文：");
 			lines.push(floor.raw);
 			if (floor.covered.length === 0) {

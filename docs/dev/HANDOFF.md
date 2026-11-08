@@ -3,19 +3,19 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：145
-- 任务：R4-T05 透明与盲盒模式
-- 结果：完成（`DONE`），门禁通过（121 个测试文件、1085 个测试通过，3 个 live 跳过，共 1088 个）。
-  - `DirectorConfig.enabled` 换成 `mode`，取值 `off`、`transparent`、`blind`；新增 `DIRECTOR_MODES`、`DirectorMode`、`isDirectorMode`，`assertDirectorConfig` 校验取值，`DIRECTOR_CONFIG_KEYS` 同步。
-  - `evaluateDirector` 在 `mode: "off"` 时直接返回 null，不评估、不写决策；槽位提供者因此不产出 suffix。`transparent` 与 `blind` 的评估、决策记录与 suffix 完全相同。
-  - 读取旧故事设置时把 `enabled: true` 映射为 `transparent`、`false` 映射为 `off`，并从对象里去掉 `enabled`；`updateStorySettings` 整份重写时序列化只含 `mode`（`readStoredDirectorConfig`）。
-  - `NodeDirectorView` 增加 `mode`（故事当前设置），`decision` 改为协议里的 `DirectorDecisionView`；`blind` 下 `directive` 为 null、不返回 `signals`，只保留 `mechanisms`（机制触发状态）。`GET /api/nodes/:id/director` 用 `redactDirectorDecision` 做面向玩家的脱敏；`explain` 直接读 store，两种模式都显示全文。
-  - CLI `--director <off|transparent|blind>`（默认 `transparent`），非法值报 `--director 只接受 off、transparent 或 blind`；朴素模式仍只允许 `off`。故事设置接口的非法 mode 报 `directorConfig.mode`。
-  - 新增 5 个测试：透明与盲盒的评估结果与决策记录一致（core）、旧 `enabled` 映射与再次保存只写 `mode`（core）、盲盒下 `explain` 仍显示全文（core）、盲盒接口脱敏与透明接口全文（server）、`--director blind` 注入与写记录（CLI）；`chat-cli` 的 off 用例改用 `seedClueChain`，让「没有注入」成为真实验证。
+- 会话：146
+- 任务：R4-T06 落拍检测与拍推进
+- 结果：完成（`DONE`），门禁通过（122 个测试文件、1092 个测试通过，3 个 live 跳过，共 1095 个）。
+  - `prepareSettlement` 新增 `SettlementWindow.beats`（`WindowBeat`）：逐楼层在**父节点**处用 `resolveCurrentBeat` 解析当前拍，没有计划、拍已耗尽或根楼层没有父节点时不产出条目，整份为 null。`WindowFloor` 增加 `parentId`。
+  - 结算提示词拆成 `BASE_SYSTEM_PROMPT` 与导出的 `SETTLEMENT_BEAT_PROMPT`：有当前拍时才追加“可以判断该拍是否完成”的说明，不要求每层回答（I13）；结算窗口里每个有拍的楼层多一行 `当前拍：<节拍 id>（目标：…）`。`gap_pass` 的合并调用用同一个 `SETTLEMENT_BEAT_PROMPT`，并在结算窗口里列出同样的行。
+  - `parseSettleResponse` 接受 `beatCompleted`：缺少按 false；非布尔让该楼层整条拒绝并写入 `repairs`（`path` 为 `["-"]`）。
+  - `applySettlementProposals` 在同一事务里按路径顺序处理窗口楼层：读取该楼层父节点处的当前拍，把 `beat_id` 与 `completed` 写进 `director_beat_states`；模型没有产出该楼层条目、楼层被拒绝、解析出的拍与提示词里的拍不同时跳过，不写状态。没有额外模型调用。
+  - `explain` 新增第 7 段「当前拍与落拍记录」（节拍 id、完成楼层、已完成/已前进、写下时间），修正建议顺延为第 8 段；仍然只读。`explainNode` 的存储参数扩到 `listDirectorPlanEntries` 与 `listDirectorBeatStatesAlongPath`，`readDirectorPlan`/`resolveCurrentBeat` 的入参改成分方法 `Pick` 类型。
+  - 新增 6 个 core 测试 `settle-beats.test.ts`（完成推进、缺省不推进、非法类型整层拒绝、没有计划不提字段也不写状态、另一分支不参与、`explain` 读回）与 1 个 `gap-pass` 测试（合并调用落拍）。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09.a、R2-T09.b、R2-T09.c、R2-T99、R5-T01、R5-T02、E-T01、R4-T00、R4-T01、R4-T02、R4-T03、R4-T04、R4-T05。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- **下一个可做任务是 R4-T06 落拍检测与拍推进**：依赖 R4-T01、R4-T03、R1-T02.2 均已满足。之后依次 R4-T07、R4-T08、R4-T99，然后 R5-T00。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09.a、R2-T09.b、R2-T09.c、R2-T99、R5-T01、R5-T02、E-T01、R4-T00、R4-T01、R4-T02、R4-T03、R4-T04、R4-T05、R4-T06。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- **下一个可做任务是 R4-T07 候选行动**：依赖 R4-T01、R4-T02、R5-T01、R1-T02.2 均已满足。之后依次 R4-T08、R4-T99，然后 R5-T00。
 - v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
 - R5-T00 仍被 R4-T99 阻塞；R5-T04 依赖 M4-T05、M4-T06、M4-T01，可以排在 R4 之后。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045。
@@ -28,16 +28,17 @@
 - server 的回合路径会补建并执行后台任务：`handleTurnStream` 在 `turn.completed` 之后调用 `BackgroundScheduler.schedule`，不等待 drain；同一时刻只有一个 drain，故事之间先来先做。
 - 分支与面板接口已可用；`packages/web` 尚未创建。`GET /api/nodes/:id/ledger` 返回 `{state, facts, diffs}`，`facts` 来自 `readLedgerFacts`，`diffs` 只含该楼层自己的写入。
 - 偏好记录已闭环：记录写入（四种信号）→ `POST /api/nodes/:id/choice` → `preferences export` 产出回复对 → `pairwise` 盲测与评分 → `scoreboard` 汇总。私有库目前没有任何 `preference_events`。
-- 排障命令：`dramaticer explain --node <id> --db <path> [--json]`。只读、零模型调用；导演决策从助手楼层的父楼层读（`director_decisions` 写在生成时的消息楼层上）。记忆槽位的 `retrieval` 只在槽位真正注入内容时写进 Trace；没有命中时该槽位记为 `missing-slot`。上下文分段行会显示 suffix 槽位的 `appendedTo`。`explain` 不受导演模式影响，盲盒下仍然显示完整指令与信号。
-- 导演计划接口：`readDirectorPlan` 按 `ordinal` 还原弧线、序列、节拍；`--set` 与 `PUT /api/stories/:id/director/plan` 都整份替换并把所有行标为 `player`，`mergePlannedArcs` 只更新或追加 `model`/`import` 行，永不删除、不覆盖 `player` 行。`resolveCurrentBeat` 沿路径最近一条 `director_beat_states` 前进：完成则到下一拍（跨序列），未完成停在原地，无状态取第一拍，耗尽返回 null；记录指向已不存在的节拍时跳过该记录，仍无有效记录则回到第一拍。
+- 排障命令：`dramaticer explain --node <id> --db <path> [--json]`。只读、零模型调用；导演决策从助手楼层的父楼层读（`director_decisions` 写在生成时的消息楼层上）。记忆槽位的 `retrieval` 只在槽位真正注入内容时写进 Trace；没有命中时该槽位记为 `missing-slot`。上下文分段行会显示 suffix 槽位的 `appendedTo`。`explain` 不受导演模式影响，盲盒下仍然显示完整指令与信号。第 7 段显示当前拍与 `director_beat_states` 记录（节拍 id、完成楼层、`completed`、是否已前进），只读。
+- 导演计划接口：`readDirectorPlan` 按 `ordinal` 还原弧线、序列、节拍；`--set` 与 `PUT /api/stories/:id/director/plan` 都整份替换并把所有行标为 `player`，`mergePlannedArcs` 只更新或追加 `model`/`import` 行，永不删除、不覆盖 `player` 行。`resolveCurrentBeat` 沿路径最近一条 `director_beat_states` 前进：完成则到下一拍（跨序列），未完成停在原地，无状态取第一拍，耗尽返回 null；记录指向已不存在的节拍时跳过该记录，仍无有效记录则回到第一拍。`readDirectorPlan` 与 `resolveCurrentBeat` 的入参是 `DirectorPlanReader`/`DirectorBeatResolver`（`Pick<StoryStore, …>`），排障与结算可以只拿需要的存储方法。
 - 导演规划器（R4-T02）：`directorPlanNeedsRun` 需要角色卡或台账素材；计划为空时补建，head 上 `resolveCurrentBeat` 返回 null 时补建，head 为空或当前拍仍可解析时不补建。输入读取 `head` 处的 `listLedgerEntities`、`item` 与 `userWill` 子树及 `getValidSummaries` 的第一条（有章节摘要时取最近章节，否则最近主线）。`plannerClient` 在 `dramaticer work` 与 server 里用 `roles.planner` 建立，缺省回落到 `background`；注册表未收到 `plannerClient` 时使用任务上下文的后台客户端。`--generate` 与后台任务走同一个 `generateDirectorPlan`，写入的行来源都是 `model`。
 - 导演强度与注入（R4-T03、R4-T04）：`DirectorConfig.intensity` 与 `openingIntensity` 共用 `DirectorIntensity`（`setup`、`natural`、`detonate`），前者只作用于节拍建议，后者只作用于开场导演；`resolveDirectorIntensity` 让单轮参数覆盖配置。机制优先级固定为重复正文 40、开场 35、线索过老 30、场景重复 25、节拍 23、线索过多 20、事件池 10、节奏 5；默认机制注册顺序是 clue、opening、beat、repetition、event_pool、pacing。`createDirectorSlotProvider` 返回带 `config`、`mechanisms` 的 `DirectorSlotProvider`，`provide` 返回空的 `messages` 与 `suffix`（`【导演】` 加指令与 `DIRECTOR_SUFFIX_NOTE`）；组装器在预算裁剪后把 suffix 接在最后一条 user 消息末尾，Trace 记 `appendedTo: "last-user"`。
 - 导演模式（R4-T05）：`DirectorConfig.mode` 取 `off`、`transparent`、`blind`，默认 `transparent`；旧配置的 `enabled` 在读取时映射后丢弃。`off` 没有决策记录也没有 suffix；`transparent` 与 `blind` 的评估、记录、注入完全相同。`GET /api/nodes/:id/director` 返回 `{nodeId, mode, decision}`，盲盒下 `decision.directive` 为 null 且没有 `signals`，只保留 `mechanisms`；`decision` 为空时 `mode` 仍返回。CLI `--director` 与故事设置 `directorConfig.mode` 接受同一取值。
+- 落拍检测（R4-T06）：结算窗口的 `beats` 按楼层父节点解析；提示词只在有当前拍时提 `beatCompleted` 且只说“可以判断”；`applySettlementProposals` 写 `director_beat_states` 的时机在结算记录之后、同一事务内。模型没有给该楼层条目、楼层被拒绝、或按路径解析出的拍与提示词里的拍不同时不写状态。`gap_pass` 的合并调用共用同一段提示词与同一套写入。
 - `extensions.dramaticer` 目前只有 `events` 与 `npcAgendas` 两个键；R4-T08 新增 `arcs` 时必须同步更新严格校验与 st-compat 的导入测试。
 
 ## 下一步
-- **R4-T06 落拍检测与拍推进**：结算提示词在有当前拍时为每层加可选 `beatCompleted`（布尔，不强制输出，I13）；缺少按 false，非法类型整楼层拒绝并记入 `repairs`。结算写入后按路径顺序读取该楼层父节点处的当前拍，把 `beat_id` 与 `completed` 写进 `director_beat_states`，程序据此推进到下一拍，不额外调用模型；没有计划或当前拍耗尽时不提该字段也不写状态；`explain` 增加当前拍与完成记录（节拍 id、完成楼层、是否已前进），仍然只读。验收见 TASKS。
-- R4-T06 之后依次 R4-T07（候选行动，v33）、R4-T08（卡扩展）、R4-T99，然后 R5-T00。
+- **R4-T07 候选行动**：迁移 v33 新增 `director_candidate_actions(id, story_id, node_id, ordinal, kind, text, created_at)`，`kind` 取 `action`、`scene_change`；后台任务 `candidate_actions`（档位 `gap`，入队条件 `settled`，`roles.planner`）一次产出 4 条行动与 1 条场景变化，严格 JSON `{actions:[...],"sceneChange":"..."}`，数量不符、空字符串、重复正文整批拒绝；同一事务里替换该楼层旧候选，重复执行不新增行；候选不进入上下文、不改变 head、不自动发送；CLI `dramaticer actions --node <id> --db <path> [--json]`；server `GET /api/nodes/:id/actions`。验收见 TASKS。
+- R4-T07 之后依次 R4-T08（`extensions.dramaticer` 的 `arcs` 卡扩展）、R4-T99，然后 R5-T00。
 - 引用评测数字时：B1 必须同时说明同模型子集为空、每个对话每档只有 1 个样本；遗忘矛盾率必须同时说明失败题数与可判定样本数；偏好一致率当前没有样本。
 
 ## 注意事项
@@ -67,6 +68,7 @@
 - 原生块类型是 12 个（`thinking`、`选项`、`状态栏`、`变量更新`、`分析`、`图片`、`页眉`、`悄悄话`、`旁白`、`备忘`、`state_update`、`plot_note`）；`thinking`、`变量更新`、`state_update`、`plot_note` 的上下文策略是删除。
 - 历史槽位默认策略：更早楼层省略五个显示类块，最近 1 楼不套用这层省略；`full` 是改动前行为。设置项 `historyBlockPolicy` 存在 `story_settings.history_block_policy`。
 - 结算窗口以 head 为终点（ADR-0046），取**最旧的** N 个未结算助手楼层；冲突检查窗口取 head 路径最后 `conflictWindowFloors` 楼。现场分析以被分析的楼层为锚点。`scene` 任务显式传 200 token 上限。
+- 结算提示词只在 `SettlementWindow.beats` 非空时提 `beatCompleted`；`beatCompleted` 非布尔时该楼层整条拒绝，修复记录的 `path` 是 `["-"]`。`applySettlementProposals` 写拍状态的条件：该楼层出现在模型产出里、没有被拒绝、父节点处解析出的拍与提示词里的拍相同。
 - 后台任务分两档：`gap` 每次间隙执行，`deferred`（`events`、`summary`、`npc_agenda`、`director_plan`）只在会话结束或间隙达到 `gapPlanSeconds` 时执行。`gap_pass` 默认关闭；`dramaticer work` 与 server 调度都不为关闭的故事补建。
 - 后台任务连续失败 3 次才放弃；`user_will` 的 `sourceQuote` 必须逐字出现在玩家楼层里。后台任务需要等待其它任务时抛 `BackgroundJobDeferredError`；取消本轮时 `drain` 用 `options.signal`。
 - 模型响应的磁盘缓存键包含 `max_tokens` **只在请求显式带 maxTokens 时**；改渠道配置的 `maxTokens` 后必须换一个 `--cache` 目录。后台 `background` 模型的输出上限是 32,768。

@@ -1,5 +1,9 @@
 import type { BackgroundJobHandler } from "../background/types.js";
 import {
+	type ResolvedDirectorBeat,
+	resolveCurrentBeat,
+} from "../director/plan.js";
+import {
 	type EntityKind,
 	type NewEntityInput,
 	normalizeEntityName,
@@ -84,7 +88,7 @@ export const LEDGER_PATH_GUIDE: readonly string[] = [
 	"- 人物、地点、物品的 id 直接写名称，程序会按实体表规范化。",
 ];
 
-const SYSTEM_PROMPT = [
+const BASE_SYSTEM_PROMPT = [
 	"你是故事台账的结算器。阅读结算窗口里的楼层正文、最近楼层的原文与当前台账快照，为每个楼层补齐正文已经确立、但楼层自己没有写入的台账事实。",
 	"只输出一个 JSON 数组，不要输出解释、前后缀或代码块标记。每一项形如：",
 	'{"nodeId":"楼层 id","diffs":[{"path":["clue","c1","status"],"op":"set","value":"open","confidence":0.8,"reason":"一句话依据"}],"conflicts":[{"path":["character","凛","location"],"reason":"最近一楼明确写她还在教室"}]}',
@@ -96,9 +100,20 @@ const SYSTEM_PROMPT = [
 	"- 楼层里已经写入的路径不要重复输出。",
 	"- 不要写正文里没有依据的事实；没有需要补的楼层仍然输出一项，diffs 为空数组。",
 	"- 要写的事实如果与“冲突检查窗口”的原文明确矛盾，不要写进 diffs，写进同一楼层的 conflicts；conflicts 只写 path 与 reason，不写值。已有事实与最近原文一致时保留已有值。",
-	"命名空间与路径：",
-	...LEDGER_PATH_GUIDE,
-].join("\n");
+];
+
+/** 存在当前拍时才出现的说明：完成判断是可选的，不要求模型每层都回答。 */
+export const SETTLEMENT_BEAT_PROMPT =
+	"- 楼层里给出“当前拍”时，如果你确信这一层的正文让该拍完成，可以把这一项的 beatCompleted 设为 true；没有完成、判断不了或者与这一层无关，就省略这个字段，不要为了填满字段而猜测。";
+
+function buildSettlementSystemPrompt(hasBeats: boolean): string {
+	return [
+		...BASE_SYSTEM_PROMPT,
+		...(hasBeats ? [SETTLEMENT_BEAT_PROMPT] : []),
+		"命名空间与路径：",
+		...LEDGER_PATH_GUIDE,
+	].join("\n");
+}
 
 interface SettlerProposal {
 	readonly diff: {
@@ -119,6 +134,10 @@ export interface SettlerConflict {
 export interface FloorProposals {
 	readonly diffs: readonly unknown[];
 	readonly conflicts: readonly SettlerConflict[];
+	/** 模型判断这一层是否让当前拍完成；缺少该字段时为 false。 */
+	readonly beatCompleted: boolean;
+	/** beatCompleted 类型非法时的原因；非空时该楼层整条拒绝。 */
+	readonly beatCompletedError: string | null;
 }
 
 interface SettledFloor {
@@ -130,6 +149,10 @@ interface SettledFloor {
 	/** 与最近原文冲突、没有写进台账的提案；逐条转成待审变更卡。 */
 	readonly conflictFacts: readonly ConflictFact[];
 	readonly source: LedgerSource;
+	/** 本楼层整条被拒绝时不写拍状态。 */
+	readonly rejected: boolean;
+	/** 没有模型条目时为 null，此时也不写拍状态。 */
+	readonly beatCompleted: boolean | null;
 }
 
 interface ConflictFact {
@@ -151,10 +174,20 @@ export interface CoveredPath {
 
 export interface WindowFloor {
 	readonly nodeId: string;
+	readonly parentId: string | null;
 	readonly raw: string;
 	/** 已通过校验的台账路径：本楼层已有写入，结算器跳过。 */
 	readonly covered: readonly CoveredPath[];
 	readonly invalid: readonly InvalidExistingDiff[];
+}
+
+/** 某个楼层在结算时对应的当前拍；没有计划或拍已耗尽时整份为 null。 */
+export interface WindowBeat {
+	readonly nodeId: string;
+	readonly arcId: string;
+	readonly sequenceId: string;
+	readonly beatId: string;
+	readonly goal: string;
 }
 
 /** 人物、地点、物品名称的规范写法；键是类别与规范化名称。 */
@@ -175,6 +208,8 @@ export interface SettlementWindow {
 	readonly floors: readonly WindowFloor[];
 	readonly snapshot: JsonObject;
 	readonly conflictWindow: readonly TimelineNode[];
+	/** 每个楼层对应的当前拍；没有计划或拍已耗尽时为 null。 */
+	readonly beats: readonly WindowBeat[] | null;
 }
 
 /**
@@ -198,21 +233,24 @@ export function prepareSettlement(
 		snapshotNodeId,
 		conflictWindowFloors,
 	);
-	return { storyId, nodeIds, floors, snapshot, conflictWindow };
+	const beats = readWindowBeats(store, storyId, floors);
+	return { storyId, nodeIds, floors, snapshot, conflictWindow, beats };
 }
 
 /** 结算请求的消息；合并调用自己组装提示词，但复用同一份窗口数据。 */
 export function buildSettlementMessages(
 	window: SettlementWindow,
 ): LlmMessage[] {
+	const hasBeats = window.beats !== null;
 	return [
-		{ role: "system", content: SYSTEM_PROMPT },
+		{ role: "system", content: buildSettlementSystemPrompt(hasBeats) },
 		{
 			role: "user",
 			content: buildUserContent(
 				window.floors,
 				window.snapshot,
 				window.conflictWindow,
+				window.beats,
 			),
 		},
 	];
@@ -259,13 +297,19 @@ export function applySettlementProposals(
 	const plans = window.floors.map((floor) =>
 		planFloor(
 			floor,
-			proposals.get(floor.nodeId) ?? { diffs: [], conflicts: [] },
+			proposals.get(floor.nodeId) ?? null,
 			window.storyId,
 			resolution.canonical,
 			knowledgeFacts,
 		),
 	);
 	store.runInTransaction(() => {
+		const beatByNode = new Map(
+			(window.beats ?? []).map((beat) => [beat.nodeId, beat]),
+		);
+		const floorByNode = new Map(
+			window.floors.map((floor) => [floor.nodeId, floor]),
+		);
 		for (const candidate of resolution.candidates) {
 			store.upsertEntityCandidate(candidate);
 		}
@@ -286,6 +330,26 @@ export function applySettlementProposals(
 				addedCount: plan.diffs.length,
 				repairs: plan.repairs,
 			});
+			const beat = beatByNode.get(plan.nodeId);
+			const parentId = floorByNode.get(plan.nodeId)?.parentId ?? null;
+			if (
+				beat !== undefined &&
+				parentId !== null &&
+				!plan.rejected &&
+				plan.beatCompleted !== null
+			) {
+				// 结算窗口里的楼层按路径顺序处理；上一楼写下的完成记录会改变
+				// 下一楼父节点处解析出的当前拍。
+				const resolved = resolveCurrentBeat(store, window.storyId, parentId);
+				if (resolved !== null && resolved.beat.id === beat.beatId) {
+					store.saveDirectorBeatState({
+						nodeId: plan.nodeId,
+						storyId: window.storyId,
+						beatId: beat.beatId,
+						completed: plan.beatCompleted,
+					});
+				}
+			}
 			for (const fact of plan.conflictFacts) {
 				store.insertLedgerChangeCard({
 					id: ledgerChangeCardId([
@@ -359,14 +423,16 @@ function readWindowFloor(store: StoryStore, nodeId: string): WindowFloor {
 			});
 		}
 	}
-	return { nodeId, raw: node.raw, covered, invalid };
+	return { nodeId, parentId: node.parentId, raw: node.raw, covered, invalid };
 }
 
 function buildUserContent(
 	floors: readonly WindowFloor[],
 	snapshot: JsonObject,
 	conflictWindow: readonly TimelineNode[],
+	beats: readonly WindowBeat[] | null,
 ): string {
+	const beatByNode = new Map((beats ?? []).map((beat) => [beat.nodeId, beat]));
 	const lines = [
 		"当前台账快照（截至窗口最后一楼）：",
 		JSON.stringify(snapshot),
@@ -381,6 +447,10 @@ function buildUserContent(
 	lines.push("", "结算窗口：");
 	for (const floor of floors) {
 		lines.push(`<楼层 id="${floor.nodeId}">`);
+		const beat = beatByNode.get(floor.nodeId);
+		if (beat !== undefined) {
+			lines.push(`当前拍：${beat.beatId}（目标：${beat.goal}）`);
+		}
 		lines.push("正文：");
 		lines.push(floor.raw);
 		if (floor.covered.length === 0) {
@@ -396,6 +466,32 @@ function buildUserContent(
 	return lines.join("\n");
 }
 
+/** 每个楼层在它父节点处的当前拍；没有计划、拍已耗尽或根楼层时不写。 */
+function readWindowBeats(
+	store: StoryStore,
+	storyId: string,
+	floors: readonly WindowFloor[],
+): WindowBeat[] | null {
+	const beats: WindowBeat[] = [];
+	for (const floor of floors) {
+		if (floor.parentId === null) continue;
+		const resolved = resolveCurrentBeat(store, storyId, floor.parentId);
+		if (resolved === null) continue;
+		beats.push(beatOf(floor.nodeId, resolved));
+	}
+	return beats.length === 0 ? null : beats;
+}
+
+function beatOf(nodeId: string, resolved: ResolvedDirectorBeat): WindowBeat {
+	return {
+		nodeId,
+		arcId: resolved.arc.id,
+		sequenceId: resolved.sequence.id,
+		beatId: resolved.beat.id,
+		goal: resolved.beat.goal,
+	};
+}
+
 /** 解析整次请求：未知或重复的楼层 id 直接失败，窗口整体重试。 */
 export function parseSettleResponse(
 	text: string,
@@ -406,7 +502,11 @@ export function parseSettleResponse(
 	for (const [index, item] of parsed.entries()) {
 		const label = `结算结果[${index}]`;
 		const record = assertPlainObject(item, label);
-		rejectUnknownKeys(record, ["nodeId", "diffs", "conflicts"], label);
+		rejectUnknownKeys(
+			record,
+			["nodeId", "diffs", "conflicts", "beatCompleted"],
+			label,
+		);
 		const nodeId = record.nodeId;
 		if (typeof nodeId !== "string" || !windowIds.includes(nodeId)) {
 			throw new Error(`${label} 的 nodeId 不在结算窗口里：${String(nodeId)}`);
@@ -421,11 +521,22 @@ export function parseSettleResponse(
 		if (!Array.isArray(conflicts)) {
 			throw new Error(`${label} 的 conflicts 必须是数组`);
 		}
+		let beatCompleted = false;
+		let beatCompletedError: string | null = null;
+		if (Object.hasOwn(record, "beatCompleted")) {
+			if (typeof record.beatCompleted === "boolean") {
+				beatCompleted = record.beatCompleted;
+			} else {
+				beatCompletedError = `${label}.beatCompleted 必须是布尔值，收到 ${JSON.stringify(record.beatCompleted)}`;
+			}
+		}
 		byNode.set(nodeId, {
 			diffs: record.diffs,
 			conflicts: conflicts.map((conflict, conflictIndex) =>
 				readConflict(conflict, `${label}.conflicts[${conflictIndex}]`),
 			),
+			beatCompleted,
+			beatCompletedError,
 		});
 	}
 	return byNode;
@@ -650,11 +761,12 @@ function knowledgeKey(knower: string, factId: string): string {
  */
 function planFloor(
 	floor: WindowFloor,
-	proposals: FloorProposals,
+	proposals: FloorProposals | null,
 	storyId: string,
 	canonical: EntityCanonicalNames,
 	knowledgeFacts: Set<string>,
 ): SettledFloor {
+	const diffs = proposals?.diffs ?? [];
 	const covered = new Set(
 		floor.covered.map((item) =>
 			JSON.stringify(canonicalizePath(item.path, canonical)),
@@ -669,7 +781,7 @@ function planFloor(
 		action: "delete",
 		reason: `本楼层已有的台账写入不合格：${item.reason}`,
 	}));
-	const conflictRepairs: LedgerRepair[] = proposals.conflicts.map(
+	const conflictRepairs: LedgerRepair[] = (proposals?.conflicts ?? []).map(
 		(conflict) => {
 			const path = canonicalizePath(conflict.path, canonical);
 			return {
@@ -685,7 +797,14 @@ function planFloor(
 	const conflicting = new Map<string, SettlerProposal["diff"]>();
 	const rewrites: LedgerRepair[] = [];
 	const rejections: LedgerRepair[] = [];
-	for (const [index, raw] of proposals.diffs.entries()) {
+	if (proposals?.beatCompletedError != null) {
+		rejections.push({
+			path: ["-"],
+			action: "delete",
+			reason: proposals.beatCompletedError,
+		});
+	}
+	for (const [index, raw] of diffs.entries()) {
 		const label = `楼层 ${floor.nodeId} 的 diffs[${index}]`;
 		let proposal: SettlerProposal;
 		try {
@@ -750,6 +869,7 @@ function planFloor(
 		if (diff === undefined) return [];
 		return [{ path: repair.path, reason: repair.reason, diff }];
 	});
+	const beatCompleted = proposals === null ? null : proposals.beatCompleted;
 	if (rejections.length > 0) {
 		return {
 			nodeId: floor.nodeId,
@@ -758,6 +878,8 @@ function planFloor(
 			repairs: [...existingRepairs, ...conflictRepairs, ...rejections],
 			conflictFacts,
 			source: "settler",
+			rejected: true,
+			beatCompleted,
 		};
 	}
 	const entries = [...accepted.values()];
@@ -779,6 +901,8 @@ function planFloor(
 			conflictRepairs.length === 0
 				? "model"
 				: "settler",
+		rejected: false,
+		beatCompleted,
 	};
 }
 

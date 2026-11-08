@@ -1,4 +1,9 @@
 import type { ContextTraceEntry } from "../context/assembler.js";
+import {
+	type ResolvedDirectorBeat,
+	readDirectorPlan,
+	resolveCurrentBeat,
+} from "../director/plan.js";
 import type { DirectorDecision } from "../director/types.js";
 import type { LedgerFact } from "../ledger/read.js";
 import { readLedgerFacts } from "../ledger/read.js";
@@ -35,6 +40,23 @@ export interface ExplainDirectorSection {
 	readonly decision: DirectorDecision;
 }
 
+/** 一条落拍记录：结算时写下的节拍、所在楼层与程序是否已经前进。 */
+export interface ExplainBeatRecord {
+	readonly nodeId: string;
+	readonly beatId: string;
+	readonly completed: boolean;
+	readonly createdAt: string;
+	readonly advanced: boolean;
+}
+
+/** 当前拍与沿路径的落拍记录；没有计划时 `current` 为 null 且记录为空。 */
+export interface ExplainBeatSection {
+	readonly current: ResolvedDirectorBeat | null;
+	readonly planBeats: number;
+	readonly exhausted: boolean;
+	readonly records: readonly ExplainBeatRecord[];
+}
+
 /** 一条可以照着做的修正建议，附带它依据的记录。 */
 export interface ExplainSuggestion {
 	readonly advice: string;
@@ -50,6 +72,7 @@ export interface ExplainReport {
 	readonly retrieval: readonly ExplainRetrievalSection[];
 	readonly ledger: ExplainLedgerSection;
 	readonly director: ExplainDirectorSection | null;
+	readonly beats: ExplainBeatSection;
 	/** 某一部分没有记录时的明确说明。 */
 	readonly notes: readonly string[];
 	readonly suggestions: readonly ExplainSuggestion[];
@@ -68,6 +91,8 @@ export function explainNode(
 		| "getDirectorDecision"
 		| "getStateSnapshot"
 		| "getStateDiffsAlongPath"
+		| "listDirectorPlanEntries"
+		| "listDirectorBeatStatesAlongPath"
 	>,
 	nodeId: string,
 ): ExplainReport {
@@ -122,10 +147,60 @@ export function explainNode(
 			diffs: store.getStateDiffs(nodeId),
 		},
 		director: decision === null ? null : { nodeId: decisionNodeId, decision },
+		beats: buildBeatSection(store, node.storyId, nodeId),
 		notes,
 		suggestions: [],
 	};
 	return { ...report, suggestions: buildSuggestions(report) };
+}
+
+function buildBeatSection(
+	store: Pick<
+		StoryStore,
+		"getNode" | "listDirectorPlanEntries" | "listDirectorBeatStatesAlongPath"
+	>,
+	storyId: string,
+	nodeId: string,
+): ExplainBeatSection {
+	const plan = readDirectorPlan(store, storyId);
+	const order: string[] = [];
+	for (const arc of plan.arcs) {
+		for (const sequence of arc.sequences) {
+			for (const beat of sequence.beats) {
+				order.push(beat.id);
+			}
+		}
+	}
+	if (order.length === 0) {
+		return { current: null, planBeats: 0, exhausted: false, records: [] };
+	}
+	const current = resolveCurrentBeat(store, storyId, nodeId);
+	const currentIndex = current === null ? null : order.indexOf(current.beat.id);
+	const rows = [...store.listDirectorBeatStatesAlongPath(nodeId)].reverse();
+	const records = rows.map((row, index): ExplainBeatRecord => {
+		const beatIndex = order.indexOf(row.beatId);
+		const laterBeats = rows
+			.slice(index + 1)
+			.map((later) => order.indexOf(later.beatId));
+		const advanced =
+			beatIndex !== -1 &&
+			((currentIndex !== null && currentIndex > beatIndex) ||
+				laterBeats.some((later) => later > beatIndex) ||
+				(current === null && index === rows.length - 1 && row.completed));
+		return {
+			nodeId: row.nodeId,
+			beatId: row.beatId,
+			completed: row.completed,
+			createdAt: row.createdAt,
+			advanced,
+		};
+	});
+	return {
+		current,
+		planBeats: order.length,
+		exhausted: current === null,
+		records,
+	};
 }
 
 function buildContextSection(trace: TurnTrace): ExplainContextSection {
@@ -441,7 +516,33 @@ export function renderExplainReport(report: ExplainReport): string {
 	}
 
 	lines.push("");
-	lines.push("7. 修正建议");
+	lines.push("7. 当前拍与落拍记录");
+	const beats = report.beats;
+	if (beats.planBeats === 0) {
+		lines.push("   没有记录（故事还没有导演计划）。");
+	} else if (beats.current === null) {
+		lines.push(`   当前拍：没有（计划里的 ${beats.planBeats} 拍已经走完）。`);
+	} else {
+		lines.push(
+			`   当前拍：${beats.current.beat.id}（弧线 ${beats.current.arc.id}，序列 ${beats.current.sequence.id}）目标：${beats.current.beat.goal}`,
+		);
+		lines.push(
+			`   计划里共 ${beats.planBeats} 拍，已完成 ${beats.records.filter((record) => record.completed).length} 条记录。`,
+		);
+	}
+	if (beats.records.length === 0) {
+		lines.push("   落拍记录：没有记录。");
+	} else {
+		lines.push("   落拍记录：");
+		for (const record of beats.records) {
+			lines.push(
+				`     - 楼层 ${record.nodeId}，节拍 ${record.beatId}，${record.completed ? "已完成" : "未完成"}，${record.advanced ? "已前进到下一拍" : "停在原地"}（写下于 ${record.createdAt}）`,
+			);
+		}
+	}
+
+	lines.push("");
+	lines.push("8. 修正建议");
 	if (report.suggestions.length === 0) {
 		lines.push("   没有需要修正的地方。");
 	}

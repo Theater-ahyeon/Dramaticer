@@ -509,7 +509,8 @@
   验收：三种模式各有用例；`off` 没有决策记录与 suffix；`transparent` 与 `blind` 都注入且决策记录逐字段相同；`blind` 的接口响应不含指令与信号；`explain` 在 `blind` 下仍显示全文；旧配置读取后 `mode` 正确且再次保存不出现 `enabled`；非法取值抛错并指出字段；`pnpm check` 通过。
   完成：2026-11-08 `DirectorConfig.enabled` 换成 `mode`（`off`、`transparent`、`blind`），旧配置读取时把 `enabled` 映射成 `mode` 并丢弃；`evaluateDirector` 在 `off` 下直接返回；`GET /api/nodes/:id/director` 增加 `mode`，盲盒下隐去指令与信号只留机制触发状态；CLI 与故事设置接口接受三种取值；新增 5 个测试
 
-- [ ] **R4-T06 落拍检测与拍推进** | 依赖：R4-T01、R4-T03、R1-T02.2 | DESIGN §8.3 | ADR-0077
+- [x] **R4-T06 落拍检测与拍推进** | 依赖：R4-T01、R4-T03、R1-T02.2 | DESIGN §8.3 | ADR-0077
+  完成：2026-11-08 `prepareSettlement` 为每个楼层解析父节点处的当前拍（`SettlementWindow.beats`，没有计划或拍耗尽时为 null），结算与 `gap_pass` 的提示词只在存在当前拍时列出“当前拍”并给出可选的 `beatCompleted` 说明；`parseSettleResponse` 接受该字段（缺少按 false，非布尔让该楼层整条拒绝并记入 `repairs`）；`applySettlementProposals` 在同一事务里按路径顺序读取父节点当前拍并写入 `director_beat_states`，模型条目缺失、楼层被拒绝或解析出的拍已前进时跳过；`explain` 新增“当前拍与落拍记录”段（节拍 id、完成楼层、是否已前进），仍然只读；新增 7 个测试
   做什么：
   - 结算提示词在存在当前拍时为每层增加可选字段 `beatCompleted`（布尔），与结算数组一起返回；提示词只说明可以判断，不要求必须输出（I13）。缺少该字段按 false 处理，非法类型让该楼层整条拒绝并记入 `repairs`。
   - 结算写入后按路径顺序处理窗口内楼层：读取该楼层父节点处的当前拍，把 `beat_id` 与该楼层是否完成写入 `director_beat_states`（`completed`）；程序据此推进到下一拍，不额外调用模型、不新增请求。
