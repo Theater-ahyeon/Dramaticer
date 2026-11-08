@@ -1,9 +1,9 @@
+import { IMAGE_BLOCK_TEMPLATE } from "@dramaticer/core/blocks";
 import { describe, expect, it } from "vitest";
 import {
 	MAX_SANDBOX_HEIGHT,
 	buildSandboxDocument,
 	escapeHtml,
-	imageSandboxDocument,
 	parseSandboxMessage,
 	renderBlockTemplate,
 	sandboxAck,
@@ -36,7 +36,10 @@ describe("沙箱文档", () => {
 	});
 
 	it("图片文档把地址写进图片模板", () => {
-		const document = imageSandboxDocument("data:image/png;base64,AAA");
+		const document = buildSandboxDocument(
+			IMAGE_BLOCK_TEMPLATE,
+			"data:image/png;base64,AAA",
+		);
 		expect(document).toContain('src="data:image/png;base64,AAA"');
 		expect(document).toContain('type: "action"');
 		expect(document).toContain('kind: "zoom"');

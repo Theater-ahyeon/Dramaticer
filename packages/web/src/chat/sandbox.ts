@@ -1,7 +1,4 @@
-import {
-	BLOCK_TEMPLATE_CONTENT_TOKEN,
-	IMAGE_BLOCK_TEMPLATE,
-} from "@dramaticer/core/blocks";
+import { BLOCK_TEMPLATE_CONTENT_TOKEN } from "@dramaticer/core/blocks";
 
 /**
  * 沙箱文档的最小 CSP：不加载任何外部资源，只允许模板自己的内联脚本与样式，
@@ -92,11 +89,6 @@ ${renderBlockTemplate(template, content)}
 ${HEIGHT_SCRIPT}
 </body>
 </html>`;
-}
-
-/** 图片块的沙箱文档；地址不合法时返回 null，界面按原文显示。 */
-export function imageSandboxDocument(imageSource: string): string {
-	return buildSandboxDocument(IMAGE_BLOCK_TEMPLATE, imageSource);
 }
 
 export function clampSandboxHeight(height: number): number {
