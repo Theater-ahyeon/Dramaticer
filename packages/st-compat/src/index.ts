@@ -15,6 +15,7 @@ export * from "./entity-import.js";
 export * from "./lore-import.js";
 export * from "./evalset/acu.js";
 export * from "./evalset/event-questions.js";
+export * from "./evalset/historical-replay.js";
 export * from "./evalset/memory-cache.js";
 export * from "./evalset/memory-eval.js";
 export * from "./evalset/memory-report.js";

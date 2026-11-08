@@ -1106,3 +1106,27 @@
 - **影响**：
   - R2-T05 的历史回放样本可以复用 `runQualitySample` 与 `summarizeQuality`；R2-T06 的记分牌直接读 `quality.jsonl`，不自行解释分数。
   - 评分只作为质量描述与后续对照，不参与偏好一致率的计算，也不改变盲测胜负口径。
+
+## ADR-0076 B1 历史回放的取点、配对与报告口径（2026-11-08）
+
+- **背景**：R2-T05 要把玩家真实的 ST 对话当作 B1 基线：在同一分支点让 Dramaticer 续写，再与当时 ST 的真实回复做两两对比。B1 不调用本地 ST，历史回复直接来自已导入的对话记录，因此需要固定取点、配对、统计与报告口径，否则数字不可比较。
+- **决定**：
+  - 取点直接复用 ADR-0027 的 `selectBranchPoints`：沿主路径每隔 `interval`（默认 100）楼取一个已确认助手楼层，要求后面还有至少 `rounds`（默认 1）条非空真实玩家消息，每个对话最多 `maxBranchPointsPerStory`（默认 2）个。分支点之后第一条非空玩家消息的下一层助手楼层就是历史回复。
+  - 每个分支点分别以 `native` 与 `naive`（B0）两个档位回放：把 head 指到分支点，按真实玩家消息逐轮调用 `runChatTurn`，只生成 `rounds` 轮，只把第一段续写与历史回复配对。两个档位使用同一个 writer 别名；B0 使用朴素模板与朴素槽位，native 使用故事模板、记忆、导演与工具。
+  - 两侧文本都取显示视图：`renderContextView(parseBlocks(raw))`，渲染为空时退回原文；上下文取分支点前缀的最近 6 楼，与 R2-T04 共用 `formatPairwiseContext`。
+  - 两两判定新增 `PairwiseTask` 的 `historical`：提示词只说“同一分支点有两个续写版本，判断哪个更好”，不告诉裁判哪一侧是历史回复；同一对按 `generated-first` 与 `historical-first` 两种顺序各判一次，严格 JSON `{winner, reason}`，非法输出最多重试 3 次。裁判输出上限默认 2048 token：历史回放的语境长，512 常被思考占满而没有正文。
+  - 样本元数据逐条写 `samples.jsonl`：样本 id 是 `<故事>:<分支楼层>:<档位>`，包含生成楼层与历史楼层 id、首次规划时的原始 head、写作模型别名与模型 id、历史回复模型、同模型与同家族标记、前缀楼层数、轮数、采样参数与是否有记忆与导演。历史回复模型取聊天记录里该消息的 `extra.model`；同模型按去掉 `auto/` 前缀后的模型 id 逐字比较，同家族按 `modelFamily`。
+  - 判定逐条写 `records.jsonl`；评分复用 R2-T04.a 的 `runQualitySample` 与 `summarizeQuality`，续写在接受侧、历史回复在放弃侧，写 `quality.jsonl`。同样本同一顺序或同一侧有多行时取最后一行；失败记录只计数，不进入胜率与均值。
+  - 统计按档位给出总体与每个对话的样本数、双向完成数、顺序判定数、续写胜、历史胜、平局、续写胜率、平局率、位置偏差与失败数；位置偏差是两种顺序结论不一致的样本占双向完成样本的比例。同模型子集单列；没有同模型样本时写明 B1 只作参考、不作门槛。
+  - 入口是 `pnpm --filter @dramaticer/st-compat replay-eval`，`--model`、`--judge-model`、`--interval`、`--rounds`、`--max-branch-points`、`--profiles`、`--limit-samples`、`--resume`、`--report-only`。`--resume` 复用元数据与已有判定；不带 `--resume` 时仍从 `samples.jsonl` 读取原始 head，避免在已回放的数据库上把生成楼层当成主路径；要完全重建就从新的 `--db-dir` 开始。
+  - 私有报告写 `eval-private/reports/R2-b1.md`，统计版写 `docs/dev/reports/R2-b1.md`。统计版把故事 id 换成“对话 N”，不出现样本 id、判定理由与原文；模型别名与历史回复模型保留。
+- **结果（2026-11-08）**：
+  - 3 个 legacy 对话各取 1 个分支点（间隔 100、每对话上限 1），native 与 naive 各回放 1 轮，共 6 个样本；12 次两两判定与 12 次评分全部成功，0 失败。
+  - 续写侧模型 `main-fallback`（`auto/deepseek-v4.1-flash`），裁判 `judge`（`auto/glm-5.3`）。历史回复模型分别为 `gcli-假流/gemini-2.5-pro`、`gcli-gemini-2.5-pro`、`deepseek-v4-pro`；没有与续写模型同名的样本，只有一个对话的历史回复与续写同家族，因此 B1 只作参考。
+  - 总体 naive 3/6（50.0%）续写胜、native 1/6（16.7%）；平局 0；位置偏差 33.3%。分对话各只有 1 个样本，方向不一致。
+  - 四项评分均值：续写原创 3.33、人物 4.00、节奏 3.67、对话 3.67；历史回复 3.17、3.67、3.83、3.17。
+  - 样本数很小，不能当作效果结论；同模型子集为空与位置偏差已写进两份报告。
+- **影响**：
+  - R2-T06 的记分牌读取 `records.jsonl` 与 `quality.jsonl`，不自行解释胜率或评分。
+  - `writer` 角色仍指向 `rp`（HUMAN-13 的 503），本次实测用 `main-fallback`；报告里的历史回复模型与同模型标记按实际记录写，不因为换了 writer 而假定同模型。
+  - B1 只导入 `eval-private/raw/` 的快照，不读取也不调用本地 ST，额度为零（I14）。

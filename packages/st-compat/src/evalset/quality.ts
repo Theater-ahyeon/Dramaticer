@@ -1,5 +1,9 @@
 import type { LlmMessage, LlmUsage } from "@dramaticer/core";
-import type { PairwiseJudge, PairwiseTask } from "./pairwise.js";
+import {
+	type PairwiseJudge,
+	type PairwiseTask,
+	isPairwiseTask,
+} from "./pairwise.js";
 
 export const MAX_QUALITY_ATTEMPTS = 3;
 export const DEFAULT_QUALITY_MAX_TOKENS = 512;
@@ -435,10 +439,10 @@ function parseQualityRecord(value: unknown, where: string): QualityRecord {
 			`${where} 的字段必须是 ${expected.join("、")}，收到 ${keys.join("、")}`,
 		);
 	}
-	if (record.kind !== "reroll" && record.kind !== "choice") {
-		throw new Error(`${where} 的 kind 必须是 reroll 或 choice`);
+	if (!isPairwiseTask(record.kind)) {
+		throw new Error(`${where} 的 kind 必须是 reroll、choice 或 historical`);
 	}
-	const kind: PairwiseTask = record.kind === "choice" ? "choice" : "reroll";
+	const kind: PairwiseTask = record.kind;
 	if (!QUALITY_SIDES.includes(record.side as QualitySide)) {
 		throw new Error(`${where} 的 side 必须是 accepted 或 abandoned`);
 	}

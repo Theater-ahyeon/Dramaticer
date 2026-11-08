@@ -16,7 +16,7 @@ export const DEFAULT_PAIRWISE_CONTEXT_FLOORS = 6;
 export const PAIRWISE_ORDERS = ["accepted-first", "abandoned-first"] as const;
 export type PairwiseOrder = (typeof PAIRWISE_ORDERS)[number];
 
-export type PairwiseTask = "reroll" | "choice";
+export type PairwiseTask = "reroll" | "choice" | "historical";
 export type PairwiseWinner = "A" | "B" | "tie";
 /** 把位置结论换回接受/放弃两侧后的结果。 */
 export type NormalizedWinner = "accepted" | "abandoned" | "tie";
@@ -71,6 +71,11 @@ const SYSTEM_PROMPTS: Readonly<Record<PairwiseTask, string>> = {
 两个选项的位置与质量无关：不要因为某个选项排在前面或后面就偏向它。
 只有两个选项无法区分时才判平局。
 只输出一个 JSON 对象，键为 winner 与 reason，例如 {"winner":"A","reason":"选项甲更符合玩家前面的意图"}。winner 取 "A"、"B" 或 "tie"。reason 用一句话说明依据。不要输出代码块。`,
+	historical: `你是故事编辑，正在做盲评。同一分支点之后，玩家给出同一条消息，助手回复有两个版本。
+请只根据最近的对话与两个版本的内容，判断哪一个版本更好。
+两个版本的位置与质量无关：不要因为某个版本排在前面或后面就偏向它。
+只有两个版本无法区分时才判平局。
+只输出一个 JSON 对象，键为 winner 与 reason，例如 {"winner":"A","reason":"回复甲更贴合当前的冲突"}。winner 取 "A"、"B" 或 "tie"。reason 用一句话说明依据。不要输出代码块。`,
 };
 
 const CANDIDATE_LABELS: Readonly<
@@ -78,6 +83,7 @@ const CANDIDATE_LABELS: Readonly<
 > = {
 	reroll: ["回复甲", "回复乙"],
 	choice: ["选项甲", "选项乙"],
+	historical: ["续写甲", "续写乙"],
 };
 
 /** 严格解析裁判输出：只接受 {winner:"A"|"B"|"tie", reason:string}。 */
@@ -364,7 +370,7 @@ export function buildPreferenceSample(
 			kind: "reroll",
 			sourceEventId: pair.sourceEventId,
 			earlierSwipe: hasLaterSibling(store, accepted),
-			context: formatContext(path),
+			context: formatPairwiseContext(path),
 			acceptedText: pair.accepted.text,
 			abandonedText: pair.abandoned.text,
 		};
@@ -381,7 +387,7 @@ export function buildPreferenceSample(
 		kind: "choice",
 		sourceEventId: pair.sourceEventId,
 		earlierSwipe: false,
-		context: formatContext(store.getPathToNode(anchor.id)),
+		context: formatPairwiseContext(store.getPathToNode(anchor.id)),
 		acceptedText: pair.accepted.text,
 		abandonedText: pair.abandoned.text,
 	};
@@ -411,7 +417,8 @@ function requireNode(
 	return node;
 }
 
-function formatContext(nodes: readonly TimelineNode[]): string {
+/** 两份续写共用的最近对话；R2-T05 也用它格式化分支点前缀。 */
+export function formatPairwiseContext(nodes: readonly TimelineNode[]): string {
 	return nodes
 		.slice(-DEFAULT_PAIRWISE_CONTEXT_FLOORS)
 		.map((node) => `${node.role === "user" ? "玩家" : "角色"}：${node.raw}`)
@@ -735,8 +742,8 @@ function parseComparisonRecord(
 			`${where} 的字段必须是 ${expected.join("、")}，收到 ${keys.join("、")}`,
 		);
 	}
-	if (record.kind !== "reroll" && record.kind !== "choice") {
-		throw new Error(`${where} 的 kind 必须是 reroll 或 choice`);
+	if (!isPairwiseTask(record.kind)) {
+		throw new Error(`${where} 的 kind 必须是 reroll、choice 或 historical`);
 	}
 	const kind: PairwiseTask = record.kind;
 	if (!PAIRWISE_ORDERS.includes(record.order as PairwiseOrder)) {
@@ -798,6 +805,10 @@ function parseComparisonRecord(
 
 function isPairwiseWinner(value: unknown): value is PairwiseWinner {
 	return value === "A" || value === "B" || value === "tie";
+}
+
+export function isPairwiseTask(value: unknown): value is PairwiseTask {
+	return value === "reroll" || value === "choice" || value === "historical";
 }
 
 export interface PairwiseReportOptions {
