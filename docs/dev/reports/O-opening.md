@@ -6,7 +6,7 @@
 - 助手模型：main-fallback
 - 模拟用户模型：background
 - 裁判模型：rp
-- 配置缺陷：本次把写作模型设成了 `main-fallback`、裁判设成了 `rp`（Gemini 是写作模型），不符合 ADR-0041 A7 与人类的模型指定；数字待 O-T99.a 用 `--model rp --judge-model judge` 重跑后替换。
+- 配置说明：本次配对是写作 `main-fallback`（DeepSeek）、裁判 `rp`（Gemini）。两臂共用同一裁判，组间对照成立，方向性结论可留作参考；它不代表目标配对（写作 `rp`、裁判 `judge`）的结果，也未达到 ADR-0041 A7 要求的独立裁判。O-T99.a 会重跑目标配对，两次运行的数字并列保留，不删除。
 - 对照：F0 的 1–10 楼重 roll 率 24.9%
 
 ## 一、汇总
