@@ -26,7 +26,9 @@ import {
 } from "@dramaticer/core";
 import { resolveStoryContextTemplate } from "../chat/session.js";
 import {
+	type ForgettingCorpus,
 	type ForgettingRunResult,
+	isForgettingCorpus,
 	readForgettingQuestionFiles,
 	runForgettingQuestions,
 	summarizeInRunProbes,
@@ -74,6 +76,7 @@ const USAGE = [
 	"  --memory-questions <path> 跑完后在最终 head 上提问的记忆题文件",
 	"  --probe-questions <path>  跑完后在最终 head 上提问的探针题文件",
 	"  --questions-out <path>    把跑后提问结果写成 JSON；汇报用 forgetting-report 读取",
+	"  --corpus <c>      跑后提问的来源标签 benchmark 或 legacy，默认 benchmark",
 	"  --opening <on|off> 覆盖故事的开局导演开关；off 把 openingFloors 设为 0",
 	"  --no-background   不补建也不执行后台任务",
 	"  --channels <path> 渠道配置，默认 data/channels.yaml",
@@ -329,6 +332,7 @@ export async function runPlaytestCli(
 			});
 			const run: ForgettingRunResult = {
 				story: parsed.storyId,
+				corpus: parsed.corpus,
 				headNodeId: startNodeId ?? finalHead.id,
 				profile: parsed.profile,
 				model: parsed.model,
@@ -402,6 +406,7 @@ interface PlaytestArgs {
 	readonly memoryQuestionsPath: string | null;
 	readonly probeQuestionsPath: string | null;
 	readonly questionsOutPath: string | null;
+	readonly corpus: ForgettingCorpus;
 	readonly opening: "on" | "off" | "settings";
 	readonly noBackground: boolean;
 	readonly outPath: string;
@@ -435,6 +440,7 @@ function parsePlaytestArgs(args: readonly string[]): PlaytestArgs {
 		"memory-questions": true,
 		"probe-questions": true,
 		"questions-out": true,
+		corpus: true,
 		opening: true,
 		channels: true,
 	};
@@ -536,6 +542,11 @@ function parsePlaytestArgs(args: readonly string[]): PlaytestArgs {
 		values.get("questions-out"),
 		"--questions-out",
 	);
+	const corpusValue = values.get("corpus") ?? "benchmark";
+	if (!isForgettingCorpus(corpusValue)) {
+		throw new Error(`--corpus 只接受 benchmark 或 legacy，收到 ${corpusValue}`);
+	}
+	const corpus: ForgettingCorpus = corpusValue;
 	const resume = flags.has("resume");
 	if (headNodeId !== null && resume) {
 		throw new Error(`--head 不能与 --resume 同时使用；${USAGE}`);
@@ -573,6 +584,7 @@ function parsePlaytestArgs(args: readonly string[]): PlaytestArgs {
 		memoryQuestionsPath,
 		probeQuestionsPath,
 		questionsOutPath,
+		corpus,
 		opening,
 		noBackground: flags.has("no-background"),
 		outPath,

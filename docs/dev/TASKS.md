@@ -433,7 +433,8 @@
   - 按深度层与档位生成私有报告与统计版 `docs/dev/reports/R2-forgetting.md`，判断遗忘是否随楼层加深而上升；结论写 ADR。
   验收：两个深度层各有样本；分层数字齐全；结论写 ADR；统计版不含私有信息；`pnpm check` 通过。
 
-- [ ] **R2-T09.c legacy 对话对照** | 依赖：R2-T09.b
+- [x] **R2-T09.c legacy 对话对照** | 依赖：R2-T09.b
+  完成：2026-11-08 导入 3 个 legacy 对话（同时导入角色卡与世界书），在主路径 119/120 与 219/220 楼取分支点，naive 与 native 各跑 20 轮并跑后提问，共 12 次运行、240 轮、失败轮次 0；600 道题里一致 12、矛盾 115、无法判断 30、跳过 314、失败 129，可判定 127、矛盾率 90.6%（naive 95.7%、native 75.8%）；同题对照 naive 未上升（97.5% → 97.4%），native 记为上升（66.7% → 100.0%）但每层只有 7–9 道可判定回答，不作为深度效应证据；报告新增 `corpus` 来源维度，公开基准与 legacy 对话并列，统计版在 `docs/dev/reports/R2-forgetting.md`，私有版在 `eval-private/reports/R2-forgetting.md`；事件题转记忆题的脚本与运行驱动在 `scripts/r2-legacy-questions.mjs`、`scripts/r2-legacy-forgetting.mjs`；`catie` 的 `rp` 路由在最后两次运行期间返回 503，45 道题失败且未能重试（HUMAN-13）；结论与限制写入 ADR-0072；门禁通过（109 个测试文件、972 个测试通过，3 个 live 跳过，共 975 个）
   做什么：
   - 在 legacy 评测对话上取 100 楼以上与 200 楼以上的分支点，重复 R2-T09.b 的生成与提问，与公开基准并列报告；私有数据只写 `eval-private/`。
   验收：legacy 两个深度层各有样本；与基准并列给出数字；统计版不含私有信息；`pnpm check` 通过。

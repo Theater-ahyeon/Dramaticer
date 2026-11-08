@@ -32,6 +32,27 @@ export type ForgettingDepthLayer =
 	| (typeof FORGETTING_DEPTH_LAYERS)[number]
 	| "<100";
 
+/** 报告把公开基准与 legacy 对话分开成表，口径与门槛相同。 */
+export type ForgettingCorpus = "benchmark" | "legacy";
+
+export const FORGETTING_CORPORA: readonly ForgettingCorpus[] = [
+	"benchmark",
+	"legacy",
+];
+
+const CORPUS_LABELS: Readonly<Record<ForgettingCorpus, string>> = {
+	benchmark: "公开基准",
+	legacy: "legacy 对话",
+};
+
+export function isForgettingCorpus(value: string): value is ForgettingCorpus {
+	return (FORGETTING_CORPORA as readonly string[]).includes(value);
+}
+
+export function forgettingCorpusLabel(corpus: ForgettingCorpus): string {
+	return CORPUS_LABELS[corpus];
+}
+
 /** 跑后提问的题目；记忆题来自 question 文件，探针题来自 benchmark 的 probe 文件。 */
 export interface ForgettingStaticQuestion extends JudgedQuestionSpec {
 	readonly story: string;
@@ -70,6 +91,7 @@ export interface ForgettingInRunProbes {
 /** 一次运行写成的 JSON；事实来源是最终 head 与逐题判定。 */
 export interface ForgettingRunResult {
 	readonly story: string;
+	readonly corpus: ForgettingCorpus;
 	readonly headNodeId: string;
 	readonly profile: ChatProfile;
 	readonly model: string;
@@ -317,6 +339,7 @@ export interface ForgettingQuestionCounts {
 }
 
 export interface ForgettingLayerScore extends ForgettingQuestionCounts {
+	readonly corpus: ForgettingCorpus;
 	readonly depthLayer: ForgettingDepthLayer;
 	readonly profile: ChatProfile;
 	readonly runCount: number;
@@ -338,6 +361,7 @@ export interface ForgettingTrendLayer {
 }
 
 export interface ForgettingTrend {
+	readonly corpus: ForgettingCorpus;
 	readonly profile: ChatProfile;
 	readonly layers: readonly ForgettingTrendLayer[];
 	/** 同题对照里最深层比最浅层高出的百分点比例；样本不足时为 null。 */
@@ -415,6 +439,7 @@ export function summarizeForgettingRuns(
 	const groups = new Map<
 		string,
 		{
+			readonly corpus: ForgettingCorpus;
 			readonly depthLayer: ForgettingDepthLayer;
 			readonly profile: ChatProfile;
 			runCount: number;
@@ -427,10 +452,11 @@ export function summarizeForgettingRuns(
 	>();
 	for (const run of runs) {
 		const depthLayer = forgettingDepthLayer(run.startDepth);
-		const key = `${depthLayer}|${run.profile}`;
+		const key = `${run.corpus}|${depthLayer}|${run.profile}`;
 		let group = groups.get(key);
 		if (group === undefined) {
 			group = {
+				corpus: run.corpus,
 				depthLayer,
 				profile: run.profile,
 				runCount: 0,
@@ -457,6 +483,7 @@ export function summarizeForgettingRuns(
 		const counts = group.counts;
 		layers.push({
 			...counts,
+			corpus: group.corpus,
 			depthLayer: group.depthLayer,
 			profile: group.profile,
 			runCount: group.runCount,
@@ -477,6 +504,7 @@ export function summarizeForgettingRuns(
 	}
 	layers.sort(
 		(left, right) =>
+			corpusOrder(left.corpus) - corpusOrder(right.corpus) ||
 			depthOrder(left.depthLayer) - depthOrder(right.depthLayer) ||
 			left.profile.localeCompare(right.profile),
 	);
@@ -494,32 +522,50 @@ function depthOrder(layer: ForgettingDepthLayer): number {
 	return 3;
 }
 
+function corpusOrder(corpus: ForgettingCorpus): number {
+	return FORGETTING_CORPORA.indexOf(corpus);
+}
+
 function computeTrends(
 	groups: ReadonlyMap<
 		string,
 		{
+			readonly corpus: ForgettingCorpus;
 			readonly depthLayer: ForgettingDepthLayer;
 			readonly profile: ChatProfile;
 			readonly records: readonly ForgettingQuestionRecord[];
 		}
 	>,
 ): ForgettingTrend[] {
-	const byProfile = new Map<
-		ChatProfile,
-		Map<ForgettingDepthLayer, ForgettingQuestionRecord[]>
+	const byCorpusProfile = new Map<
+		string,
+		{
+			readonly corpus: ForgettingCorpus;
+			readonly profile: ChatProfile;
+			readonly layers: Map<ForgettingDepthLayer, ForgettingQuestionRecord[]>;
+		}
 	>();
 	for (const group of groups.values()) {
-		let layers = byProfile.get(group.profile);
-		if (layers === undefined) {
-			layers = new Map();
-			byProfile.set(group.profile, layers);
+		const key = `${group.corpus}|${group.profile}`;
+		let entry = byCorpusProfile.get(key);
+		if (entry === undefined) {
+			entry = {
+				corpus: group.corpus,
+				profile: group.profile,
+				layers: new Map(),
+			};
+			byCorpusProfile.set(key, entry);
 		}
-		const existing = layers.get(group.depthLayer) ?? [];
+		const existing = entry.layers.get(group.depthLayer) ?? [];
 		existing.push(...group.records);
-		layers.set(group.depthLayer, existing);
+		entry.layers.set(group.depthLayer, existing);
 	}
 	const trends: ForgettingTrend[] = [];
-	for (const [profile, layersByName] of byProfile) {
+	for (const {
+		corpus,
+		profile,
+		layers: layersByName,
+	} of byCorpusProfile.values()) {
 		const askedByLayer = new Map<ForgettingDepthLayer, Set<string>>();
 		for (const [layer, records] of layersByName) {
 			askedByLayer.set(
@@ -536,6 +582,7 @@ function computeTrends(
 		);
 		if (ordered.length < 2) {
 			trends.push({
+				corpus,
 				profile,
 				layers: [],
 				margin: null,
@@ -586,6 +633,7 @@ function computeTrends(
 				? null
 				: deepest.contradictionRate - shallowest.contradictionRate;
 		trends.push({
+			corpus,
 			profile,
 			layers: trendLayers,
 			margin: judgedShallow === 0 || judgedDeep === 0 ? null : margin,
@@ -595,7 +643,11 @@ function computeTrends(
 					: margin > FORGETTING_RISE_MARGIN,
 		});
 	}
-	trends.sort((left, right) => left.profile.localeCompare(right.profile));
+	trends.sort(
+		(left, right) =>
+			corpusOrder(left.corpus) - corpusOrder(right.corpus) ||
+			left.profile.localeCompare(right.profile),
+	);
 	return trends;
 }
 
@@ -626,12 +678,12 @@ export function renderForgettingReport(
 		"",
 		"## 分层结果",
 		"",
-		"| 深度层 | 档位 | 运行 | 轮数 | 静态题 | 一致 | 矛盾 | 无法判断 | 跳过 | 失败 | 矛盾率 | 命中率 | 编造题 | 编造 | 编造率 | 运行内探针矛盾率 |",
-		"| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+		"| 来源 | 深度层 | 档位 | 运行 | 轮数 | 静态题 | 一致 | 矛盾 | 无法判断 | 跳过 | 失败 | 矛盾率 | 命中率 | 编造题 | 编造 | 编造率 | 运行内探针矛盾率 |",
+		"| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
 	];
 	for (const layer of summary.layers) {
 		lines.push(
-			`| ${layer.depthLayer} | ${layer.profile} | ${layer.runCount} | ${layer.rounds} | ${layer.questions} | ${layer.consistent} | ${layer.contradicted} | ${layer.unknown} | ${layer.skipped} | ${layer.failed} | ${percent(layer.contradicted, layer.consistent + layer.contradicted)} | ${percent(layer.consistent, layer.consistent + layer.contradicted)} | ${layer.fabricatedQuestions} | ${layer.fabricated} | ${percent(layer.fabricated, layer.fabricatedJudged)} | ${percent(layer.inRunProbeContradicted, layer.inRunProbeJudged)} |`,
+			`| ${forgettingCorpusLabel(layer.corpus)} | ${layer.depthLayer} | ${layer.profile} | ${layer.runCount} | ${layer.rounds} | ${layer.questions} | ${layer.consistent} | ${layer.contradicted} | ${layer.unknown} | ${layer.skipped} | ${layer.failed} | ${percent(layer.contradicted, layer.consistent + layer.contradicted)} | ${percent(layer.consistent, layer.consistent + layer.contradicted)} | ${layer.fabricatedQuestions} | ${layer.fabricated} | ${percent(layer.fabricated, layer.fabricatedJudged)} | ${percent(layer.inRunProbeContradicted, layer.inRunProbeJudged)} |`,
 		);
 	}
 	lines.push("", "## 遗忘趋势（同题对照）", "");
@@ -642,7 +694,9 @@ export function renderForgettingReport(
 			trend.margin === null
 				? "—"
 				: `${(trend.margin * 100).toFixed(1)} 个百分点`;
-		lines.push(`- ${trend.profile}：${verdict}（最深层减最浅层 ${margin}）`);
+		lines.push(
+			`- ${forgettingCorpusLabel(trend.corpus)} · ${trend.profile}：${verdict}（最深层减最浅层 ${margin}）`,
+		);
 		for (const layer of trend.layers) {
 			lines.push(
 				`  - ${layer.depthLayer}：同题 ${layer.questionCount}，矛盾率 ${percent(layer.contradicted, layer.consistent + layer.contradicted)}`,
@@ -653,7 +707,7 @@ export function renderForgettingReport(
 	lines.push("", "## 运行明细", "");
 	for (const run of options.runs ?? []) {
 		lines.push(
-			`### ${run.story} · ${run.profile} · 深度 ${forgettingDepthLayer(run.startDepth)}`,
+			`### ${forgettingCorpusLabel(run.corpus)} · ${run.story} · ${run.profile} · 深度 ${forgettingDepthLayer(run.startDepth)}`,
 			"",
 			`- 起点楼层：${run.headNodeId}`,
 			`- 起止深度：${run.startDepth} → ${run.endDepth}`,
@@ -700,6 +754,16 @@ export function parseForgettingRun(value: unknown): ForgettingRunResult {
 		throw new Error("遗忘评测结果必须是对象");
 	}
 	const story = requireString(value.story, "story");
+	// 旧运行结果没有 corpus 字段，全部来自公开基准。
+	let corpus: ForgettingCorpus = "benchmark";
+	if (value.corpus !== undefined) {
+		if (typeof value.corpus !== "string" || !isForgettingCorpus(value.corpus)) {
+			throw new Error(
+				`corpus 只接受 benchmark 或 legacy，收到 ${String(value.corpus)}`,
+			);
+		}
+		corpus = value.corpus;
+	}
 	const headNodeId = requireString(value.headNodeId, "headNodeId");
 	const profile = value.profile;
 	if (typeof profile !== "string" || !isChatProfile(profile)) {
@@ -747,6 +811,7 @@ export function parseForgettingRun(value: unknown): ForgettingRunResult {
 	);
 	return {
 		story,
+		corpus,
 		headNodeId,
 		profile,
 		model,

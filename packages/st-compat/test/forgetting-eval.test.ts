@@ -13,6 +13,7 @@ import {
 import { afterEach, describe, expect, it } from "vitest";
 import { runForgettingReportCli } from "../src/evalset/forgetting-report-cli.js";
 import {
+	type ForgettingCorpus,
 	type ForgettingRunResult,
 	parseForgettingRun,
 	renderForgettingReport,
@@ -427,6 +428,36 @@ describe("长对话遗忘评测", () => {
 		expect(privateReport).toContain("q1");
 	});
 
+	it("两种来源在报告里分开成行，统计版只出现来源标签", () => {
+		const benchmark = syntheticRun({
+			story: "benchmark-story",
+			startDepth: 150,
+			records: [questionRecord("q1", "contradicted")],
+			corpus: "benchmark",
+		});
+		const legacy = syntheticRun({
+			story: "private-legacy-story",
+			startDepth: 250,
+			records: [questionRecord("q1", "consistent")],
+			corpus: "legacy",
+		});
+		const summary = summarizeForgettingRuns([benchmark, legacy]);
+		expect(
+			summary.layers.map((layer) => `${layer.corpus}|${layer.depthLayer}`),
+		).toEqual(["benchmark|100-199", "legacy|200-299"]);
+		const publicReport = renderForgettingReport(summary, {
+			privateDetails: false,
+		});
+		expect(publicReport).toContain("公开基准");
+		expect(publicReport).toContain("legacy 对话");
+		expect(publicReport).not.toContain("benchmark-story");
+		expect(publicReport).not.toContain("private-legacy-story");
+		const legacyJson = Object.fromEntries(
+			Object.entries(legacy).filter(([key]) => key !== "corpus"),
+		);
+		expect(parseForgettingRun(legacyJson).corpus).toBe("benchmark");
+	});
+
 	it("报告命令行读取运行目录并分别写出私有版与统计版", async () => {
 		const dir = makeDir();
 		createdDirs.push(dir);
@@ -502,9 +533,11 @@ function syntheticRun(options: {
 	readonly story: string;
 	readonly startDepth: number;
 	readonly records: ForgettingRunResult["questions"];
+	readonly corpus?: ForgettingCorpus;
 }): ForgettingRunResult {
 	return {
 		story: options.story,
+		corpus: options.corpus ?? "benchmark",
 		headNodeId: `${options.story}:head`,
 		profile: "native",
 		model: "rp",
