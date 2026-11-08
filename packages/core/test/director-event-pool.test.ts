@@ -94,6 +94,7 @@ describe("事件池机制", () => {
 		expect(decision?.mechanisms).toEqual([
 			expect.objectContaining({ name: "clue", triggered: false }),
 			expect.objectContaining({ name: "opening", triggered: false }),
+			expect.objectContaining({ name: "beat", triggered: false }),
 			expect.objectContaining({ name: "repetition", triggered: false }),
 			expect.objectContaining({ name: "event_pool", triggered: false }),
 			expect.objectContaining({ name: "pacing", triggered: false }),

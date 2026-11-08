@@ -484,7 +484,8 @@
   - CLI 新增 `dramaticer director plan --story <id> --db <path> --generate`：同步执行一次规划器，与后台任务共用处理器与校验。
   验收：假客户端一次调用写入计划；相同输入重复执行行数不变；非法字段整份拒绝且不写入；玩家编辑的弧线与序列在规划器运行后保留；没有计划或拍耗尽时入队，当前拍未耗尽时不入队；非长间隙不执行 `deferred`；回合内后台客户端零调用；`pnpm check` 通过。
 
-- [ ] **R4-T03 短线层：当前拍、强度与纠偏信号** | 依赖：R4-T01、R4-T02、M3-T01、M3-T06、M3-T07、O-T02 | DESIGN §8.2 | ADR-0077
+- [x] **R4-T03 短线层：当前拍、强度与纠偏信号** | 依赖：R4-T01、R4-T02、M3-T01、M3-T06、M3-T07、O-T02 | DESIGN §8.2 | ADR-0077
+  完成：2026-11-08 新增 `director/intensity.ts`（`DIRECTOR_INTENSITIES`、`DirectorIntensity`、`isDirectorIntensity`、`assertDirectorIntensity`、`resolveDirectorIntensity`、`renderByIntensity`），开场导演的强度渲染改用同一函数、三种强度的输出逐字节不变；`DirectorConfig` 新增 `intensity`（默认 `natural`），`assertDirectorConfig` 校验、`DIRECTOR_CONFIG_KEYS` 收录，旧记录读取时按默认值补齐；新增 `director/beat.ts`（`BEAT_PRIORITY = 23`，注册在开场之后），用 `resolveCurrentBeat` 取当前拍，`setup` 只给目标与起始迹象、`natural` 加契合点、`detonate` 加可见变化要求与三条方向，`signals.beat` 写弧线、序列、节拍 id、强度、难度、使用的契合点与楼层深度；`ChatTurnOptions.directorIntensity` 在 `runChatTurn` 追加楼层之前解析并重建导演槽位，`DirectorSlotProvider` 带出配置与机制；`dramaticer chat --intensity` 与 `POST /api/stories/:id/turns` 的 `intensity` 走同一套校验，非法值分别抛错与返回 400 且不建楼层；新增 `director-beat.test.ts`（8 个测试），更新三处机制列表断言、故事设置默认值与非法取值、chat CLI 与 server 回合测试；门禁通过（121 个测试文件、1075 个测试通过，3 个 live 跳过，共 1078 个）
   做什么：
   - 把 `director/opening.ts` 的强度渲染提取到 `director/intensity.ts`，类型 `OpeningIntensity` 改名为 `DirectorIntensity`（同步全部引用）；`openingIntensity` 的行为不变。
   - `DirectorConfig` 增加 `intensity`（`setup`、`natural`、`detonate`，默认 `natural`）并由 `assertDirectorConfig` 校验；单轮参数 `directorIntensity` 优先于故事设置；`dramaticer chat --intensity` 与 `POST /api/stories/:id/turns` 的请求体 `intensity` 走同一处解析，非法取值抛错。`intensity` 只作用于序列拍建议，`openingIntensity` 仍只作用于开场导演。

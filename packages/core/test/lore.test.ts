@@ -385,6 +385,7 @@ describe("createDirectorSlotProvider", () => {
 				reason: expect.stringContaining("超过阈值 12"),
 			},
 			expect.objectContaining({ name: "opening", triggered: false }),
+			expect.objectContaining({ name: "beat", triggered: false }),
 			expect.objectContaining({ name: "repetition", triggered: false }),
 			{ name: "event_pool", triggered: false, reason: "事件池为空" },
 			expect.objectContaining({ name: "pacing", triggered: false }),

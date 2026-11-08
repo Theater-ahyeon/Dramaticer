@@ -1,6 +1,7 @@
 import type { ServerResponse } from "node:http";
 import {
 	type ChatTurnResult,
+	type DirectorIntensity,
 	type GenerateAssistantTurnOptions,
 	LlmAllChannelsFailedError,
 	LlmProviderError,
@@ -100,6 +101,11 @@ interface StreamTurnOptions {
 	) => Promise<ChatTurnResult>;
 }
 
+export interface TurnRequestInputs {
+	/** 单轮导演强度；请求没给时为 null。 */
+	readonly directorIntensity?: DirectorIntensity | null;
+}
+
 /**
  * `POST /api/stories/:id/turns` 的 SSE 实现：先建用户楼层，再流式生成；
  * 客户端断开时中止上游并保存已经生成的部分正文。
@@ -109,6 +115,7 @@ export async function handleTurnStream(
 	storyId: string,
 	text: string,
 	options: TurnRouteOptions,
+	inputs: TurnRequestInputs = {},
 ): Promise<void> {
 	const ticket = options.turns.begin(storyId);
 	if (ticket === null) {
@@ -138,6 +145,7 @@ export async function handleTurnStream(
 			return generateAssistantTurn({
 				...turnOptions(runtime, storyId, options),
 				userNodeId,
+				directorIntensity: inputs.directorIntensity ?? null,
 				signal,
 				...hooks,
 			});

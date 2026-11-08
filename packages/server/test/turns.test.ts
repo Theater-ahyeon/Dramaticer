@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
 	type BackgroundJobRegistry,
+	DEFAULT_DIRECTOR_CONFIG,
 	type LlmCallOptions,
 	type LlmChannelsConfig,
 	type LlmRequest,
@@ -12,6 +13,7 @@ import {
 	type LlmToolCall,
 	StoryStore,
 	createBackgroundJobRegistry,
+	mergePlannedArcs,
 } from "@dramaticer/core";
 import type { SseEventMap, SseEventName } from "@dramaticer/protocol";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
@@ -590,6 +592,79 @@ describe("POST /api/stories/:id/turns", () => {
 			{ method: "POST" },
 		);
 		expect(notAssistant.status).toBe(400);
+	});
+
+	it("回合请求的 intensity 覆盖故事设置，非法值返回 400 且不建楼层", async () => {
+		const { running } = await startTurnServer([{ text: "收到。" }]);
+		running.store.updateStorySettings("s1", {
+			directorConfig: {
+				...DEFAULT_DIRECTOR_CONFIG,
+				intensity: "detonate",
+			},
+		});
+		mergePlannedArcs(
+			running.store,
+			"s1",
+			{
+				arcs: [
+					{
+						id: "arc-1",
+						title: "开学",
+						throughLine: "凛必须说出真相",
+						difficulty: 0.4,
+						redLines: [],
+						sequences: [
+							{
+								id: "seq-1",
+								title: "相遇",
+								beats: [
+									{
+										id: "beat-1",
+										goal: "确认来意",
+										entrySigns: ["凛堵在门口"],
+										fitPoints: ["凛盯着你"],
+									},
+								],
+							},
+						],
+					},
+				],
+			},
+			"model",
+		);
+		running.store.appendNode({
+			id: "a0",
+			storyId: "s1",
+			parentId: null,
+			role: "assistant",
+			raw: "开场。",
+		});
+
+		const response = await fetch(`${running.origin}/api/stories/s1/turns`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ text: "我看着他。", intensity: "setup" }),
+		});
+		expect(response.status).toBe(200);
+		const frames = await new FrameStream(response).readAll();
+		const completed = frameData(frames, "turn.completed");
+		const decision = running.store.getDirectorDecision(completed.userNode.id);
+		expect(decision?.signals.beat).toMatchObject({ intensity: "setup" });
+		expect(decision?.directive).not.toContain("可见变化");
+
+		const before = running.store.listStoryNodes("s1").length;
+		const invalid = await fetch(`${running.origin}/api/stories/s1/turns`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ text: "再来。", intensity: "hype" }),
+		});
+		expect(invalid.status).toBe(400);
+		const body = (await invalid.json()) as {
+			error: { code: string; details?: { path?: string } };
+		};
+		expect(body.error.code).toBe("bad_request");
+		expect(body.error.details?.path).toBe("intensity");
+		expect(running.store.listStoryNodes("s1")).toHaveLength(before);
 	});
 
 	it("设置或渠道配置变化后重建运行时", async () => {

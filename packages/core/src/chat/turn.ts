@@ -6,6 +6,10 @@ import {
 	assembleContext,
 } from "../context/assembler.js";
 import type { ContextTemplate } from "../context/template.js";
+import {
+	type DirectorIntensity,
+	resolveDirectorIntensity,
+} from "../director/intensity.js";
 import { type LlmToolTransport, assertToolTransport } from "../llm/channels.js";
 import type { EmbeddingClient } from "../llm/embeddings.js";
 import {
@@ -47,6 +51,10 @@ import {
 	DEFAULT_CHAT_PROFILE,
 	assertChatProfile,
 } from "./profile.js";
+import {
+	createDirectorSlotProvider,
+	isDirectorSlotProvider,
+} from "./providers.js";
 
 export interface ChatTurnOptions {
 	readonly store: StoryStore;
@@ -69,6 +77,8 @@ export interface ChatTurnOptions {
 	readonly profile?: ChatProfile;
 	/** 读取工具软上限；不设置时使用故事设置。 */
 	readonly maxReadRounds?: number | null;
+	/** 单轮导演强度；优先于导演槽位配置里的值。 */
+	readonly directorIntensity?: DirectorIntensity | null;
 	readonly model?: string;
 	readonly maxTokens?: number;
 	readonly temperature?: number;
@@ -145,6 +155,33 @@ function resolveTurnMode(
 }
 
 /**
+ * 单轮强度覆盖导演槽位配置里的值。槽位携带了评估用的配置与机制，
+ * 这里只重建导演槽位，其它槽位原样复用。
+ */
+function resolveTurnProviders(options: {
+	readonly store: StoryStore;
+	readonly providers?: ContextSlotProviders;
+	readonly directorIntensity?: DirectorIntensity | null;
+}): ContextSlotProviders | undefined {
+	const requested = options.directorIntensity;
+	if (requested === null || requested === undefined) return options.providers;
+	const director = options.providers?.director;
+	if (director === undefined) {
+		throw new Error("指定了单轮导演强度，但上下文槽位里没有导演槽位");
+	}
+	if (!isDirectorSlotProvider(director)) {
+		throw new Error("指定了单轮导演强度，但导演槽位没有携带配置");
+	}
+	return {
+		...options.providers,
+		director: createDirectorSlotProvider(options.store, {
+			config: resolveDirectorIntensity(director.config, requested),
+			mechanisms: director.mechanisms,
+		}),
+	};
+}
+
+/**
  * 单轮生成：追加用户楼层，组装上下文，流式生成并解析块，
  * 把回复、状态 diff 与 Trace 一起写进楼层树。
  */
@@ -166,6 +203,7 @@ export async function runChatTurn(
 		options.turnMode,
 		options.maxReadRounds,
 	);
+	const providers = resolveTurnProviders(options);
 	const head = options.store.getHead(options.storyId);
 
 	const userNode = options.store.appendNode({
@@ -176,6 +214,8 @@ export async function runChatTurn(
 	});
 	return generateAssistantTurn({
 		...options,
+		providers,
+		directorIntensity: null,
 		userNodeId: userNode.id,
 		turnMode: resolved.mode,
 		maxReadRounds: resolved.maxReadRounds,
@@ -224,7 +264,7 @@ export async function generateAssistantTurn(
 		budgetTokens: options.budgetTokens,
 		storyId: options.storyId,
 		nodeId: userNode.id,
-		providers: options.providers,
+		providers: resolveTurnProviders(options),
 	});
 
 	const startedAt = now();

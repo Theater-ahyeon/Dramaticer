@@ -6,6 +6,7 @@ import {
 	DEFAULT_CONTEXT_TEMPLATE_ID,
 	DEFAULT_MEMORY_EVENT_LIMIT,
 	DIRECTOR_CONFIG_KEYS,
+	type DirectorIntensity,
 	LEDGER_CHANGE_CARD_STATUSES,
 	MAX_MEMORY_EVENT_LIMIT,
 	OPENING_CANDIDATE_STATUSES,
@@ -17,6 +18,7 @@ import {
 	type StoryStore,
 	type TimelineNode,
 	type UpdateContextTemplateInput,
+	assertDirectorIntensity,
 	fulfillLedgerClue,
 	isJsonObject,
 	isLedgerChangeCardStatus,
@@ -367,9 +369,23 @@ async function handleTurns(
 ): Promise<void> {
 	requireStory(options.store, storyId);
 	const body = await readObjectBody(req, options.maxJsonBodyBytes);
-	assertKnownKeys(body, ["text"]);
+	assertKnownKeys(body, ["text", "intensity"]);
 	const text = requireText(body.text, "text");
-	await handleTurnStream(res, storyId, text, options);
+	await handleTurnStream(res, storyId, text, options, {
+		directorIntensity: readOptionalIntensity(body.intensity),
+	});
+}
+
+function readOptionalIntensity(value: unknown): DirectorIntensity | null {
+	if (value === undefined) return null;
+	try {
+		return assertDirectorIntensity(value, "回合的 intensity");
+	} catch (error) {
+		throw fieldError(
+			"intensity",
+			error instanceof Error ? error.message : "回合的 intensity 不合法",
+		);
+	}
 }
 
 function handleJobs(

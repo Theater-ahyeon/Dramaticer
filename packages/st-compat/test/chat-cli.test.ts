@@ -7,6 +7,7 @@ import {
 	type LlmStreamingClient,
 	StoryStore,
 	createEventStream,
+	mergePlannedArcs,
 } from "@dramaticer/core";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { parseCharacterCardFile } from "../src/character-card.js";
@@ -197,6 +198,7 @@ describe("dramaticer chat", () => {
 			expect(decision?.mechanisms.map((item) => item.name)).toEqual([
 				"clue",
 				"opening",
+				"beat",
 				"repetition",
 				"event_pool",
 				"pacing",
@@ -633,6 +635,115 @@ describe("dramaticer chat", () => {
 		} finally {
 			store.close();
 		}
+	});
+
+	it("--intensity 覆盖故事设置的拍强度，非法值直接失败", async () => {
+		const dbPath = createTempDb();
+		const seed = StoryStore.open(dbPath);
+		seed.createStory({ id: "s1", title: "山神" });
+		seed.appendNode({
+			id: "a0",
+			storyId: "s1",
+			parentId: null,
+			role: "assistant",
+			raw: "山门在夜里开着。",
+		});
+		mergePlannedArcs(
+			seed,
+			"s1",
+			{
+				arcs: [
+					{
+						id: "arc-1",
+						title: "开学",
+						throughLine: "凛必须说出真相",
+						difficulty: 0.4,
+						redLines: [],
+						sequences: [
+							{
+								id: "seq-1",
+								title: "相遇",
+								beats: [
+									{
+										id: "beat-1",
+										goal: "确认来意",
+										entrySigns: ["凛堵在门口"],
+										fitPoints: ["凛盯着你"],
+									},
+								],
+							},
+						],
+					},
+				],
+			},
+			"model",
+		);
+		seed.close();
+
+		const fake = createFakeClient();
+		const result = await runChatCli(
+			[
+				"chat",
+				"--story",
+				"s1",
+				"--card",
+				cardPath,
+				"--user",
+				"我推开山门。",
+				"--db",
+				dbPath,
+				"--intensity",
+				"setup",
+			],
+			dependencies(fake, [], []),
+		);
+		const store = StoryStore.open(dbPath);
+		try {
+			const decision = store.getDirectorDecision(result.userNode.id);
+			expect(decision?.signals.beat).toMatchObject({ intensity: "setup" });
+			expect(decision?.directive).toContain("确认来意");
+		} finally {
+			store.close();
+		}
+
+		await expect(
+			runChatCli(
+				[
+					"chat",
+					"--story",
+					"s1",
+					"--card",
+					cardPath,
+					"--user",
+					"我推开山门。",
+					"--db",
+					dbPath,
+					"--intensity",
+					"hype",
+				],
+				dependencies(createFakeClient(), [], []),
+			),
+		).rejects.toThrow("--intensity");
+		await expect(
+			runChatCli(
+				[
+					"chat",
+					"--story",
+					"s1",
+					"--card",
+					cardPath,
+					"--user",
+					"我推开山门。",
+					"--db",
+					dbPath,
+					"--profile",
+					"naive",
+					"--intensity",
+					"setup",
+				],
+				dependencies(createFakeClient(), [], []),
+			),
+		).rejects.toThrow("朴素模式");
 	});
 
 	it("导入角色卡时同时写入 extensions.dramaticer 的事件池与 NPC 议程", async () => {

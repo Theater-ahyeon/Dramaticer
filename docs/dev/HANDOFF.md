@@ -3,18 +3,19 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：142
-- 任务：R4-T02 后台规划器
-- 结果：完成（`DONE`），门禁通过（120 个测试文件、1065 个测试通过，3 个 live 跳过，共 1068 个）。
-  - 新增 `packages/core/src/director/planner.ts`：`DIRECTOR_PLAN_JOB_KIND`、`collectDirectorPlanInput`、`directorPlanNeedsRun`、`buildDirectorPlanUserContent`、`generateDirectorPlan`、`createDirectorPlanHandler`。输入汇总角色卡、台账人物与关系、未兑现线索、物品、用户意志、最近章节摘要与现有计划（含 `player` 行）；输出交给 `parseJsonOutputObject` 与 `parseDirectorPlan`，合法时 `mergePlannedArcs(..., "model")`。
-  - 入队条件 `story`、档位 `deferred`：计划为空或 head 上当前拍耗尽时补建；当前拍仍可解析时不补建；没有角色卡与台账素材时不补建也不调用模型。
-  - `createDefaultBackgroundJobRegistry` 新增 `plannerClient` 选项并注册 `director_plan`；`dramaticer work` 用 `roles.planner` 创建独立客户端；server 的 `StoryRuntime` 与 `BackgroundRuntime` 新增 `plannerClient`，由调度器传给注册表。
-  - CLI `dramaticer director plan --story <id> --db <path> [--json] [--set <file> | --generate]`；`--generate` 与后台任务共用 `generateDirectorPlan`，与 `--set` 互斥。`runDirectorCli` 改为异步，st-compat 的命令分发已 `await`。
-  - 新增 `packages/core/test/director-planner.test.ts`（12 个测试）；更新 `director-plan.test.ts` 的 CLI 用例、`work-cli.test.ts` 的假渠道配置、server 的 `runtime.test.ts` 与 `background.test.ts`。真实 CLI 在临时库上跑过列表命令。
+- 会话：143
+- 任务：R4-T03 短线层
+- 结果：完成（`DONE`），门禁通过（121 个测试文件、1075 个测试通过，3 个 live 跳过，共 1078 个）。
+  - 新增 `packages/core/src/director/intensity.ts`：`DIRECTOR_INTENSITIES`、`DirectorIntensity`、`isDirectorIntensity`、`assertDirectorIntensity`、`resolveDirectorIntensity`、`renderByIntensity`。`OpeningIntensity` 与 `OPENING_INTENSITIES` 已删除，全部引用改为 `DirectorIntensity`；开场导演的三档输出逐字节不变。
+  - `DirectorConfig` 新增 `intensity`（默认 `natural`），`assertDirectorConfig` 校验，`DIRECTOR_CONFIG_KEYS` 收录；旧故事设置读取时按默认值补齐，写回包含该字段。
+  - 新增 `director/beat.ts` 的 `createBeatMechanism`（`BEAT_PRIORITY = 23`，注册在开场之后）：`resolveCurrentBeat` 取当前拍，`setup` 只给目标与起始迹象，`natural` 再加契合点，`detonate` 再加「本楼必须出现可见变化」与三条方向（方向逐字取自目标、首条起始迹象与首条契合点）；`signals.beat` 写 `arcId`、`sequenceId`、`beatId`、`intensity`、`difficulty`、`usedFitPoints` 与 `floorDepth`。
+  - `ChatTurnOptions.directorIntensity`：`runChatTurn` 在追加用户楼层之前解析并重建导演槽位，`generateAssistantTurn` 也解析一次；`createDirectorSlotProvider` 返回带 `config` 与 `mechanisms` 的 `DirectorSlotProvider`，`isDirectorSlotProvider` 用于覆盖。没有导演槽位或槽位不带配置时指定强度直接抛错。
+  - `dramaticer chat --intensity <setup|natural|detonate>` 与 `POST /api/stories/:id/turns` 的请求体 `intensity` 走同一套校验；服务端非法值返回 400（`details.path` 为 `intensity`）且不建楼层；朴素模式传 `--intensity` 直接失败。
+  - 新增 `packages/core/test/director-beat.test.ts`（8 个测试）；更新 `director.test.ts`、`director-event-pool.test.ts`、`lore.test.ts` 的机制列表断言，`story-settings.test.ts` 的默认值与非法取值，`chat-cli.test.ts` 与 server `turns.test.ts` 各加一个用例。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09.a、R2-T09.b、R2-T09.c、R2-T99、R5-T01、R5-T02、E-T01、R4-T00、R4-T01、R4-T02。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- **下一个可做任务是 R4-T03 短线层**：依赖 R4-T01、R4-T02、M3-T01、M3-T06、M3-T07、O-T02 均已满足。之后依次 R4-T04、R4-T05、R4-T06、R4-T07、R4-T08、R4-T99，然后 R5-T00。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09.a、R2-T09.b、R2-T09.c、R2-T99、R5-T01、R5-T02、E-T01、R4-T00、R4-T01、R4-T02、R4-T03。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- **下一个可做任务是 R4-T04 注入口**：依赖 R4-T03、R3-T03、M1-T04 均已满足。之后依次 R4-T05、R4-T06、R4-T07、R4-T08、R4-T99，然后 R5-T00。
 - v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
 - R5-T00 仍被 R4-T99 阻塞；R5-T04 依赖 M4-T05、M4-T06、M4-T01，可以排在 R4 之后。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045。
@@ -30,12 +31,12 @@
 - 排障命令：`dramaticer explain --node <id> --db <path> [--json]`。只读、零模型调用；导演决策从助手楼层的父楼层读（`director_decisions` 写在生成时的消息楼层上）。记忆槽位的 `retrieval` 只在槽位真正注入内容时写进 Trace；没有命中时该槽位记为 `missing-slot`。
 - 导演计划接口：`readDirectorPlan` 按 `ordinal` 还原弧线、序列、节拍；`--set` 与 `PUT /api/stories/:id/director/plan` 都整份替换并把所有行标为 `player`，`mergePlannedArcs` 只更新或追加 `model`/`import` 行，永不删除、不覆盖 `player` 行。`resolveCurrentBeat` 沿路径最近一条 `director_beat_states` 前进：完成则到下一拍（跨序列），未完成停在原地，无状态取第一拍，耗尽返回 null；记录指向已不存在的节拍时跳过该记录，仍无有效记录则回到第一拍。
 - 导演规划器（R4-T02）：`directorPlanNeedsRun` 需要角色卡或台账素材；计划为空时补建，head 上 `resolveCurrentBeat` 返回 null 时补建，head 为空或当前拍仍可解析时不补建。输入读取 `head` 处的 `listLedgerEntities`、`item` 与 `userWill` 子树及 `getValidSummaries` 的第一条（有章节摘要时取最近章节，否则最近主线）。`plannerClient` 在 `dramaticer work` 与 server 里用 `roles.planner` 建立，缺省回落到 `background`；注册表未收到 `plannerClient` 时使用任务上下文的后台客户端。`--generate` 与后台任务走同一个 `generateDirectorPlan`，写入的行来源都是 `model`。
-- 当前导演机制（R4-T01 之后、R4-T03 之前）：`DirectorConfig.enabled` 仍是布尔开关；机制优先级固定为重复正文 40、开场 35、线索过老 30、场景重复 25、线索过多 20、事件池 10、节奏 5；`createDirectorSlotProvider` 仍产生一条以 `【导演】` 开头的 system 消息；`GET /api/nodes/:id/director` 直接返回完整决策。
+- 导演强度（R4-T03 之后、R4-T04 之前）：`DirectorConfig.intensity` 与 `openingIntensity` 共用 `DirectorIntensity`（`setup`、`natural`、`detonate`），前者只作用于节拍建议，后者只作用于开场导演；`resolveDirectorIntensity` 让单轮参数覆盖配置。机制优先级固定为重复正文 40、开场 35、线索过老 30、场景重复 25、节拍 23、线索过多 20、事件池 10、节奏 5；默认机制注册顺序是 clue、opening、beat、repetition、event_pool、pacing。`createDirectorSlotProvider` 仍产生一条以 `【导演】` 开头的 system 消息，但返回类型是带 `config`、`mechanisms` 的 `DirectorSlotProvider`。`GET /api/nodes/:id/director` 直接返回完整决策。
 - `extensions.dramaticer` 目前只有 `events` 与 `npcAgendas` 两个键；R4-T08 新增 `arcs` 时必须同步更新严格校验与 st-compat 的导入测试。
 
 ## 下一步
-- **R4-T03 短线层**：把 `director/opening.ts` 的强度渲染提取到 `director/intensity.ts` 并把 `OpeningIntensity` 改名为 `DirectorIntensity`；`DirectorConfig` 增加 `intensity`（默认 `natural`），单轮参数 `directorIntensity` 优先；新增 `director/beat.ts` 的 `createBeatMechanism`（优先级 23，注册在开场之后），用 `resolveCurrentBeat` 拼出当前拍指令；`signals.beat` 写弧线、序列、节拍 id、强度、难度、契合点与楼层深度；`dramaticer chat --intensity` 与回合请求体 `intensity` 走同一处解析。依赖与验收见 TASKS。
-- R4-T03 之后依次 R4-T04（注入口）、R4-T05（模式）、R4-T06（落拍）、R4-T07（候选行动，v33）、R4-T08（卡扩展）、R4-T99，然后 R5-T00。
+- **R4-T04 注入口**：`ContextSlotContent` 增加 `suffix?: string`，`ContextTraceEntry` 增加 `appendedTo?: "last-user"`；组装器在预算裁剪之后把 `suffix` 接在最后一条 `user` 消息末尾，Trace 记来源、token 与 `appendedTo`。`createDirectorSlotProvider` 改为返回 suffix（`【导演】<directive>` 加固定尾注 `玩家行动优先，你可以按剧情需要调整。`，尾注导出为常量），不再返回 system 消息；预算不足时整个 suffix 标记 `budget-dropped`；没有玩家消息时记 `missing-slot`；`dramaticer explain` 显示 `appendedTo`。依赖与验收见 TASKS。
+- R4-T04 之后依次 R4-T05（模式）、R4-T06（落拍）、R4-T07（候选行动，v33）、R4-T08（卡扩展）、R4-T99，然后 R5-T00。
 - 引用评测数字时：B1 必须同时说明同模型子集为空、每个对话每档只有 1 个样本；遗忘矛盾率必须同时说明失败题数与可判定样本数；偏好一致率当前没有样本。
 
 ## 注意事项
@@ -59,8 +60,8 @@
 - 基准的入口是 `pnpm --filter @dramaticer/st-compat benchmark --generate|--validate|--import --db <path>`，`--root` 指定基准目录；`benchmarks/` 是生成产物，**不要手改**。
 - 开局包的读取入口是 `readOpeningPack(store, storyId)`；校验用 `validateOpeningPackPayload(value, known)`；首楼候选解析用 `parseOpeningCandidatesResponse(text, expectedCount)`，不要另写一套。
 - 自动试玩的入口是 `pnpm --filter @dramaticer/st-compat playtest`：每轮顺序是读间隙积压 → 模拟用户 → `runChatTurn` → swipe/edit/branch → 间隙后台任务 → 一致性探针 → 每轮裁判 → 写记录。`--seed` 只决定模拟用户的提示顺序与探针事实选择。
-- 开场导演的楼层深度按当前路径助手楼层数计算；`openingFloors` 为 0 关闭；强度 `setup`、`natural`、`detonate` 的字段范围见 DESIGN §8.4。
-- 故事设置缺省值：`budgetTokens` 12000、`structuredOutput` `text-tags`、`temperature` 0.8、`maxTokens` 4096、`reasoning` `low`、`turnMode` `fast`、`maxReadRounds` 3、`historyBlockPolicy` `{mode:"default",overrides:{}}`、`gapPassEnabled` `false`、`gapPlanSeconds` 212、导演默认配置（含 `openingFloors` 10 与 `openingIntensity` `natural`）。
+- 开场导演的楼层深度按当前路径助手楼层数计算；`openingFloors` 为 0 关闭；开局强度 `setup`、`natural`、`detonate` 的字段范围见 DESIGN §8.4。节拍机制的楼层深度用同一口径。
+- 故事设置缺省值：`budgetTokens` 12000、`structuredOutput` `text-tags`、`temperature` 0.8、`maxTokens` 4096、`reasoning` `low`、`turnMode` `fast`、`maxReadRounds` 3、`historyBlockPolicy` `{mode:"default",overrides:{}}`、`gapPassEnabled` `false`、`gapPlanSeconds` 212、导演默认配置（含 `openingFloors` 10、`openingIntensity` `natural` 与 `intensity` `natural`）。
 - 已注册的槽位是十一个：lore、character、persona、summary、state、memory、history、scene、director、user_will、protocol。默认模板顺序：character、lore、state、summary、memory、scene、director、user_will、history、（可选的 block_format）、protocol。R4-T04 起 `director` 槽位改为 suffix，不再产生 system 消息；不新增 `beat` 槽位。
 - 原生块类型是 12 个（`thinking`、`选项`、`状态栏`、`变量更新`、`分析`、`图片`、`页眉`、`悄悄话`、`旁白`、`备忘`、`state_update`、`plot_note`）；`thinking`、`变量更新`、`state_update`、`plot_note` 的上下文策略是删除。
 - 历史槽位默认策略：更早楼层省略五个显示类块，最近 1 楼不套用这层省略；`full` 是改动前行为。设置项 `historyBlockPolicy` 存在 `story_settings.history_block_policy`。

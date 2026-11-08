@@ -143,7 +143,10 @@ describe("故事设置", () => {
 				.get() as string;
 			const legacy = Object.fromEntries(
 				Object.entries(JSON.parse(row) as Record<string, unknown>).filter(
-					([key]) => key !== "openingFloors" && key !== "openingIntensity",
+					([key]) =>
+						key !== "openingFloors" &&
+						key !== "openingIntensity" &&
+						key !== "intensity",
 				),
 			);
 			db.prepare(
@@ -159,6 +162,7 @@ describe("故事设置", () => {
 				pace: 2,
 				openingFloors: 10,
 				openingIntensity: "natural",
+				intensity: "natural",
 			});
 		} finally {
 			reopened.close();
@@ -194,6 +198,15 @@ describe("故事设置", () => {
 					},
 				},
 				"openingIntensity",
+			],
+			[
+				{
+					directorConfig: {
+						...DEFAULT_DIRECTOR_CONFIG,
+						intensity: "hype" as never,
+					},
+				},
+				"intensity",
 			],
 			[
 				{

@@ -6,6 +6,7 @@ import {
 	type ChatTurnResult,
 	DEFAULT_CHAT_PROFILE,
 	DEFAULT_DIRECTOR_CONFIG,
+	type DirectorIntensity,
 	type LlmChannelsConfig,
 	type LlmStreamingClient,
 	StoryStore,
@@ -16,6 +17,7 @@ import {
 	createNaiveContextTemplate,
 	createStandardChatProviders,
 	isChatProfile,
+	isDirectorIntensity,
 	isTurnMode,
 	loadChannelsConfig,
 	loadDotEnv,
@@ -53,7 +55,7 @@ export interface ChatCliDependencies {
 }
 
 const USAGE =
-	"用法：dramaticer chat --story <id> --user <text> [--card <path>] [--world <path>] [--profile <native|naive>] [--persona <text>] [--director <on|off>] [--mode <fast|deep>] [--db <path>] [--model <alias>] [--budget <tokens>] [--max-tokens <n>] [--temperature <x>]";
+	"用法：dramaticer chat --story <id> --user <text> [--card <path>] [--world <path>] [--profile <native|naive>] [--persona <text>] [--director <on|off>] [--intensity <setup|natural|detonate>] [--mode <fast|deep>] [--db <path>] [--model <alias>] [--budget <tokens>] [--max-tokens <n>] [--temperature <x>]";
 
 interface ChatArgs {
 	readonly storyId: string;
@@ -67,6 +69,8 @@ interface ChatArgs {
 	readonly maxTokens: number | null;
 	readonly temperature: number | null;
 	readonly directorEnabled: boolean;
+	/** 单轮导演强度；不传时用导演配置里的值。 */
+	readonly directorIntensity: DirectorIntensity | null;
 	/** 单轮模式；不传时用故事设置里的锁定值。 */
 	readonly turnMode: TurnMode | null;
 	readonly profile: ChatProfile;
@@ -214,6 +218,7 @@ export async function runChatCli(
 			profile: parsed.profile,
 			toolTransport: resolveToolTransport(model),
 			turnMode: parsed.turnMode,
+			directorIntensity: parsed.directorIntensity,
 			model: modelAlias,
 			embedder,
 			maxTokens: parsed.maxTokens ?? undefined,
@@ -258,6 +263,7 @@ function parseChatArgs(args: readonly string[]): ChatArgs {
 		"max-tokens": true,
 		temperature: true,
 		director: true,
+		intensity: true,
 		mode: true,
 		profile: true,
 		persona: true,
@@ -305,6 +311,7 @@ function parseChatArgs(args: readonly string[]): ChatArgs {
 	const maxTokens = values.get("max-tokens");
 	const temperature = values.get("temperature");
 	const director = values.get("director");
+	const intensity = values.get("intensity");
 	const turnModeValue = values.get("mode");
 	const profileValue = values.get("profile");
 	const personaValue = values.get("persona");
@@ -314,8 +321,13 @@ function parseChatArgs(args: readonly string[]): ChatArgs {
 			: parseProfile(profileValue);
 	const directorEnabled =
 		director === undefined ? true : parseDirector(director);
+	const directorIntensity =
+		intensity === undefined ? null : parseIntensity(intensity);
 	if (profile === "naive" && director !== undefined && directorEnabled) {
 		throw new Error(`朴素模式没有导演，不要传 --director on；${USAGE}`);
+	}
+	if (profile === "naive" && directorIntensity !== null) {
+		throw new Error(`朴素模式没有导演，不要传 --intensity；${USAGE}`);
 	}
 	return {
 		storyId,
@@ -333,6 +345,7 @@ function parseChatArgs(args: readonly string[]): ChatArgs {
 		temperature:
 			temperature === undefined ? null : parseTemperature(temperature),
 		directorEnabled,
+		directorIntensity,
 		turnMode: turnModeValue === undefined ? null : parseTurnMode(turnModeValue),
 		profile,
 		persona:
@@ -377,6 +390,15 @@ function parseDirector(value: string): boolean {
 	if (value === "on") return true;
 	if (value === "off") return false;
 	throw new Error(`--director 只接受 on 或 off，收到 ${value}；${USAGE}`);
+}
+
+function parseIntensity(value: string): DirectorIntensity {
+	if (!isDirectorIntensity(value)) {
+		throw new Error(
+			`--intensity 只接受 setup、natural 或 detonate，收到 ${value}；${USAGE}`,
+		);
+	}
+	return value;
 }
 
 function parseTurnMode(value: string): TurnMode {

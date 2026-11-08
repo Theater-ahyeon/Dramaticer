@@ -1,17 +1,6 @@
 import type { JsonObject } from "../json.js";
 import type { StoryStore } from "../store/story-store.js";
-
-/** 开场导演强度：只铺垫、自然推进、尽快引爆。 */
-export const OPENING_INTENSITIES = ["setup", "natural", "detonate"] as const;
-
-export type OpeningIntensity = (typeof OPENING_INTENSITIES)[number];
-
-export function isOpeningIntensity(value: unknown): value is OpeningIntensity {
-	return (
-		typeof value === "string" &&
-		(OPENING_INTENSITIES as readonly string[]).includes(value)
-	);
-}
+import type { DirectorIntensity } from "./intensity.js";
 
 export interface DirectorConfig {
 	readonly enabled: boolean;
@@ -68,7 +57,9 @@ export interface DirectorConfig {
 	/** 当前路径的助手楼层数小于它时启用开场导演；0 表示关闭。 */
 	readonly openingFloors: number;
 	/** 开场导演的强度档位。 */
-	readonly openingIntensity: OpeningIntensity;
+	readonly openingIntensity: DirectorIntensity;
+	/** 序列拍建议的强度档位；单轮参数优先。 */
+	readonly intensity: DirectorIntensity;
 }
 
 export const DEFAULT_DIRECTOR_CONFIG: DirectorConfig = {
@@ -98,6 +89,7 @@ export const DEFAULT_DIRECTOR_CONFIG: DirectorConfig = {
 	breatheFloors: 6,
 	openingFloors: 10,
 	openingIntensity: "natural",
+	intensity: "natural",
 };
 
 export interface DirectorSuggestion {

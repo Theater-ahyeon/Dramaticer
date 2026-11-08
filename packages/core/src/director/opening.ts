@@ -3,12 +3,12 @@ import {
 	type OpeningPackPayload,
 	readOpeningPack,
 } from "../opening/opening.js";
+import { type DirectorIntensity, renderByIntensity } from "./intensity.js";
 import type {
 	DirectorMechanism,
 	DirectorMechanismContext,
 	DirectorMechanismResult,
 	DirectorSuggestion,
-	OpeningIntensity,
 } from "./types.js";
 
 /**
@@ -27,11 +27,12 @@ type OpeningField =
 	| "conflict"
 	| "directions";
 
-const FIELDS_BY_INTENSITY: Record<OpeningIntensity, readonly OpeningField[]> = {
-	setup: ["place", "time", "conflict"],
-	natural: ["place", "time", "participants", "conflict"],
-	detonate: ["place", "time", "participants", "conflict", "directions"],
-};
+const FIELDS_BY_INTENSITY: Record<DirectorIntensity, readonly OpeningField[]> =
+	{
+		setup: ["place", "time", "conflict"],
+		natural: ["place", "time", "participants", "conflict"],
+		detonate: ["place", "time", "participants", "conflict", "directions"],
+	};
 
 /**
  * 开场导演：当前路径的助手楼层数小于 `openingFloors` 时，用后台备好的开局包
@@ -101,25 +102,19 @@ function idle(reason: string, signals: JsonObject): DirectorMechanismResult {
 function buildDirective(
 	pack: OpeningPackPayload,
 	floor: number,
-	intensity: OpeningIntensity,
+	intensity: DirectorIntensity,
 ): string {
-	const lines = [
-		`开场第 ${floor} 楼：场景在${pack.place}，时间是${pack.time}。`,
-		`本楼目标：让冲突「${pack.conflict}」往前推进。`,
-	];
-	if (intensity !== "setup") {
-		const actions = pack.participants
+	return renderByIntensity(intensity, {
+		setup: [
+			`开场第 ${floor} 楼：场景在${pack.place}，时间是${pack.time}。`,
+			`本楼目标：让冲突「${pack.conflict}」往前推进。`,
+		].join(""),
+		natural: `在场人物各自的行动：${pack.participants
 			.map(
 				(participant) =>
 					`${participant.name}会为「${participant.wants}」采取行动`,
 			)
-			.join("；");
-		lines.push(`在场人物各自的行动：${actions}。`);
-	}
-	if (intensity === "detonate") {
-		lines.push(
-			`开场方向可选：${pack.directions.join("；")}。本轮挑一条推进，让冲突当场出现变化。`,
-		);
-	}
-	return lines.join("");
+			.join("；")}。`,
+		detonate: `开场方向可选：${pack.directions.join("；")}。本轮挑一条推进，让冲突当场出现变化。`,
+	});
 }

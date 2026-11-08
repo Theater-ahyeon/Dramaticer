@@ -228,6 +228,7 @@ export const DIRECTOR_CONFIG_KEYS: readonly (keyof DirectorConfig)[] = [
 	"breatheFloors",
 	"openingFloors",
 	"openingIntensity",
+	"intensity",
 ];
 
 function assertNullableText(value: unknown, label: string): void {

@@ -572,6 +572,19 @@ export interface DirectorSlotProviderOptions {
 	readonly mechanisms?: readonly DirectorMechanism[];
 }
 
+/** 导演槽位把评估用的配置与机制一起带出来，单轮强度覆盖时据此重建。 */
+export interface DirectorSlotProvider extends ContextSlotProvider {
+	readonly config: DirectorConfig;
+	readonly mechanisms: readonly DirectorMechanism[] | undefined;
+}
+
+export function isDirectorSlotProvider(
+	value: ContextSlotProvider,
+): value is DirectorSlotProvider {
+	if (!("config" in value)) return false;
+	return value.config !== undefined;
+}
+
 /**
  * 评估全部导演机制，有建议时只返回一条以「【导演】」开头的系统消息。
  * 评估结果写入该楼层的决策记录；导演关闭时既不出消息也不写记录。
@@ -579,9 +592,11 @@ export interface DirectorSlotProviderOptions {
 export function createDirectorSlotProvider(
 	store: StoryStore,
 	options: DirectorSlotProviderOptions = {},
-): ContextSlotProvider {
+): DirectorSlotProvider {
 	const config = options.config ?? DEFAULT_DIRECTOR_CONFIG;
 	return {
+		config,
+		mechanisms: options.mechanisms,
 		provide(request): ContextSlotContent | null {
 			const nodeId =
 				request.nodeId ?? store.getHead(request.storyId)?.id ?? null;
