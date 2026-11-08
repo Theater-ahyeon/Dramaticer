@@ -60,6 +60,10 @@ devloop.ps1（新窗口里）
 
 换模型的方法：给 devloop 传 `-Model <模型名>`（omp 的模型写法），或者用 `-Agent dsh`。规则文件对所有模型都一样。
 
+## 端到端测试
+
+`pnpm e2e` 单独运行，不进入 `pnpm check`（浏览器体积大）。它会先构建 server 与 web，再启动一个本地假 OpenAI 兼容渠道和 Dramaticer server，最后用 Playwright 跑 `packages/web/e2e/` 下的用例，覆盖登录、聊天、分支、台账、导演、设置、渠道、开场候选与路径分页，移动端 390×844 与桌面 1440×900 两种视口。失败截图与 trace 写在 `.devloop/scratch/e2e/`（已被 git 忽略）。测试用的数据库与渠道配置每次运行都会重新生成。
+
 ## 可选参数
 
 ```powershell

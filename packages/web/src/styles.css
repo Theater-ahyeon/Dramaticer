@@ -732,10 +732,12 @@ button.candidate-scene-change {
 	display: flex;
 	flex-direction: column;
 	gap: 12px;
+	min-width: 0;
 }
 
 .branches-tree-pane,
 .branches-detail-pane {
+	min-width: 0;
 	padding: 10px 12px;
 	background: var(--surface);
 	border: 1px solid var(--border);
@@ -794,6 +796,7 @@ button.branch-toggle:hover {
 button.branch-select {
 	display: flex;
 	flex: 1 1 auto;
+	min-width: 0;
 	align-items: baseline;
 	gap: 8px;
 	padding: 4px 8px;
@@ -867,6 +870,8 @@ button.branch-select:hover {
 }
 
 .branch-detail-raw {
+	max-width: 100%;
+	min-width: 0;
 	max-height: 40vh;
 	margin: 8px 0;
 	overflow: auto;

@@ -29,3 +29,4 @@
 | `@vitejs/plugin-react` | `packages/web` | dev | JSX 转换 |
 | `@types/react` | `packages/web` | dev | React 类型 |
 | `@types/react-dom` | `packages/web` | dev | React DOM 类型 |
+| `@playwright/test` | `packages/web` | dev | 端到端测试运行器与浏览器断言（R5-T12） |

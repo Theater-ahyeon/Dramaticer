@@ -706,7 +706,8 @@
   - 角色分工：显示 `roles` 的四个岗位（writer、settler、planner、judge）当前指向的模型别名，可以在这里改；保存前提示 writer 与 judge 必须来自不同模型家族。
   验收：界面不出现密钥值；保存后服务端配置更新；未设置的变量有醒目提示；体检失败显示错误；角色指向未知别名或 writer 与 judge 同家族时显示字段错误；纯逻辑单测覆盖表单校验；`pnpm check` 通过。
 
-- [ ] **R5-T12 Playwright 端到端**（原 M4-T18） | 依赖：R5-T01 至 R5-T11 以及 R5-T02.a、R5-T02.b、R5-T02.c、R5-T05.a、R5-T07.a 子任务
+- [x] **R5-T12 Playwright 端到端**（原 M4-T18） | 依赖：R5-T01 至 R5-T11 以及 R5-T02.a、R5-T02.b、R5-T02.c、R5-T05.a、R5-T07.a 子任务
+  完成：2026-11-08 新增 `packages/web/e2e/` 与 `playwright.config.ts`，根脚本 `pnpm e2e` 先构建 server 与 web，再由 `e2e/serve.mjs` 启动本地假 OpenAI 兼容渠道与 Dramaticer server（每次运行重建数据库与渠道配置）；假渠道按路径分流 writer 与 background 请求，返回思考、原生块、`state_update`、线索、事件、摘要、候选行动、开场候选与 `<tool>` 文本读取调用的固定 SSE；10 个用例在 390×844 与 1440×900 两种视口下各跑一次（20 个全部通过，1.2 分钟），覆盖密码登录、通过接口创建故事与导入合成卡、两轮对话、深回合锁定被拒与玩家切回快回合、选项 `choice` 偏好、重新生成 `swipe` 偏好、编辑与改写分支、head 切换、台账与故事级记忆、变更卡批准与拒绝、导演决策与候选行动、Trace 与计划编辑、线索兑现、模板复制编辑、渠道保存与密钥不显示、开场候选重新生成与选取、130 楼路径分页；失败截图与 trace 落在 `.devloop/scratch/e2e/artifacts`；修复分支页桌面端横向溢出（`branch-select` 与分支面板允许收缩）；`vitest.config.ts` 排除 `packages/web/e2e`；门禁通过（145 个测试文件、1289 个测试，3 个 live 跳过，共 1292 个）。
   做什么：
   - 安装 `@playwright/test` 与 Chromium；`packages/web/e2e/` 配置 `pnpm e2e`：先构建 server 与 web，再启动本地假 OpenAI 兼容渠道与 server；假渠道返回固定 SSE，覆盖思考、块、台账写入、线索、候选行动、开场候选与读取工具调用。
   - 用例覆盖：密码登录、创建故事、导入合成卡、两轮对话、模式开关、选项点击记录偏好、重新生成、swipe、编辑、分支切换、台账与记忆面板、变更卡批准与拒绝、导演与 Trace 面板、模板编辑、渠道编辑、开场候选选取与重新生成、路径分页；390×844 与桌面两种视口。
