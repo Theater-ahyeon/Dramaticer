@@ -3,20 +3,18 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：112
-- 任务：O-T01 开局包
-- 结果：完成（`DONE`），门禁通过（97 个测试文件、874 个测试通过，3 个 live 跳过，共 877 个）。
-  - 迁移 v29：新增 `opening_packs(story_id PRIMARY KEY, payload, input_hash, source_node_id, created_at)`；重建 `background_jobs` 让 `node_id` 可以为 null，并用部分唯一索引 `(story_id, kind) WHERE node_id IS NULL` 保证故事级任务每故事每类型一行。
-  - 入队条件新增 `story`：注册表要求这种任务定义提供 `needsRun(store, storyId)`，非 story 条件提供它直接抛错；`drainBackgroundJobs` 补建前逐个求值，只有返回 true 才写任务；已存在的故事级任务只有 `done`、`failed`、`discarded` 会翻回 `pending`。
-  - `BackgroundJob.nodeId` 与 `BackgroundJobRun.nodeId` 改为 `string | null`；楼层级处理器统一用 `requireJobNodeId(job)`，故事级任务误用时抛错。drain 对 `node_id` 为 null 的任务跳过“楼层是否还在 head 路径上”的丢弃判断。
-  - 新增 `packages/core/src/opening/opening.ts`：`collectOpeningInput` 汇总角色卡提示词、常驻世界书条目、模板 id 与内容、当前 head 路径上首条玩家消息，生成 SHA-256 输入摘要；`openingPackNeedsRun` 在素材（角色卡或常驻世界书）存在且摘要与已存包不同时返回 true；`createOpeningHandler` 再比较一次摘要，不同才调用模型，严格校验 JSON（未知字段、缺字段、空字符串、未知人物、方向不是三条都整包拒绝）后按 `story_id` 覆盖同一行；`parseOpeningPackResponse` 与 `validateOpeningPackPayload` 导出供后续导演使用。
-  - `dramaticer work` 的默认注册表注册 `opening`（`enqueue: "story"`、`needsRun: openingPackNeedsRun`）。任务只由 `dramaticer work` 执行，回合内后台客户端零调用（I11）；开局包不写台账（I12）。
-  - ADR-0059 记录故事级任务与输入摘要；新增 9 个测试（`core/test/opening-pack.test.ts`）与一次 `runWorkCli` 冒烟（1 条故事级任务、1 次模型调用、开局包入库、`nodeId` 为 null）。
-  - 冒烟用 `.devloop/scratch/opening-smoke.mjs` 与 `../../packages/core/dist`，跑完已删除脚本与临时数据库。
+- 会话：113
+- 任务：O-T02 开场导演与前 10 楼强度
+- 结果：完成（`DONE`），门禁通过（98 个测试文件、882 个测试通过，3 个 live 跳过，共 885 个）。
+  - `DirectorConfig` 增加 `openingFloors`（默认 10，非负整数，0 表示关闭）与 `openingIntensity`（`setup`、`natural`、`detonate`，默认 `natural`）；`assertDirectorConfig` 校验两个字段，`DIRECTOR_CONFIG_KEYS` 同步；故事设置读取时把已保存的 `directorConfig` 与 `DEFAULT_DIRECTOR_CONFIG` 合并再校验，旧行缺字段时得到默认值（ADR-0060）。
+  - 新增 `core/src/director/opening.ts` 的开局机制（`name: "opening"`，`OPENING_PRIORITY = 35`）：楼层深度取当前路径上的助手楼层数，深度不小于 `openingFloors` 时不触发；深度够时用 `readOpeningPack` 读开局包，按强度拼出本楼目标、在场人物各自的行动（`natural` 起）与三条可选方向（`detonate`）；`signals.opening` 写 `floorDepth`、`openingFloors`、`intensity`、`usedFields`。机制只读数据库与配置，不调用模型（I9）。
+  - 注册顺序为线索、开局、重复度、事件池、节奏；优先级 35 高于线索年龄 30 与节奏 5，低于重复度 40。
+  - `core/src/opening/opening.ts` 抽出 `collectKnownNames` 并新增 `readOpeningPack(store, storyId)`：没有开局包返回 null，有则用当前角色卡与角色实体的名称、别名调用 `validateOpeningPackPayload` 校验。读取不看 `inputHash`，首次输入之前生成的包直接服务于第一轮；卡片改掉在场人物后旧包校验失败，需要重新生成。
+  - 新增 7 个测试（`core/test/director-opening.test.ts`，含楼层边界、三种强度、无包回退、`openingFloors` 为 0、非法配置、导演槽位输出）与故事设置的旧配置兼容测试；`director.test.ts`、`lore.test.ts`、`director-event-pool.test.ts`、`st-compat/test/chat-cli.test.ts` 的机制列表断言加入 `opening`。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`；未完成任务见 `docs/dev/TASKS.md`。
-- **O 阶段进行中，下一个任务是 O-T02 开场导演与前 10 楼强度**。v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`；未完成任务见 `docs/dev/TASKS.md`。
+- **O 阶段进行中，下一个任务是 O-T03 首楼多候选**。v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045。
 - HUMAN-09 待处理（不阻塞）：`data/channels.yaml` 已有 `bg-fallback`、`main-fallback`、`codex`，`channels.example.yaml` 还没有这三个别名。
 - HUMAN-10 待处理（不阻塞）：插件不变量是否加进 AGENTS.md。
@@ -34,7 +32,7 @@
 - 原生块类型现在是 12 个（`thinking`、`选项`、`状态栏`、`变量更新`、`分析`、`图片`、`页眉`、`悄悄话`、`旁白`、`备忘`、`state_update`、`plot_note`）；其中 `thinking`、`变量更新`、`state_update`、`plot_note` 的上下文策略是删除。
 - 历史槽位的默认策略：更早楼层省略五个显示类块，最近 1 楼不套用这层省略；`full` 是改动前的行为，用于对照。设置项 `historyBlockPolicy` 存在 `story_settings.history_block_policy`（JSON）。
 - `packages/server` 已提供故事、导入、设置、模板、SSE 回合与后台运行时缓存；`packages/protocol` 已提供 HTTP 与 SSE 类型；`packages/web` 尚未创建。
-- 故事设置缺省值：`budgetTokens` 12000、`structuredOutput` `text-tags`、`temperature` 0.8、`maxTokens` 4096（server 对没有保存过设置的故事改用 `min(4096, writer 模型声明)`）、`reasoning` `low`、`turnMode` `fast`、`maxReadRounds` 3、`historyBlockPolicy` `{mode:"default",overrides:{}}`、`gapPassEnabled` `false`、`gapPlanSeconds` 212、导演使用默认配置。
+- 故事设置缺省值：`budgetTokens` 12000、`structuredOutput` `text-tags`、`temperature` 0.8、`maxTokens` 4096（server 对没有保存过设置的故事改用 `min(4096, writer 模型声明)`）、`reasoning` `low`、`turnMode` `fast`、`maxReadRounds` 3、`historyBlockPolicy` `{mode:"default",overrides:{}}`、`gapPassEnabled` `false`、`gapPlanSeconds` 212、导演使用默认配置（含 `openingFloors` 10 与 `openingIntensity` `natural`）。
 - 快照：`eval-private/raw/` 有 94 个文件；manifest 记录 `corpus` 与 `sourceMtime`。`eval-private/reference/` 有 5 部参照小说。
 - 事件表已在 v7 建立；批量抽取窗口与抽取记录在 R1-T03 实现；批量回填管线在 R1-T04.a 实现，真实回填由 R1-T04.b 执行。
 - F0 的私有产物：`eval-private/f0/pairs.jsonl`（290 对）、`attribution.jsonl`、`judge.jsonl`（793 行）、`fulltext/work.db`、`fulltext-probe.json`、`fulltext-branches.json`、`fulltext-generations.jsonl`、`fulltext-judgements.jsonl`、`fulltext-summary.json`、`llm-cache/`。`eval-private/reports/f0-corpus-map.json` 是对话编号到文件路径的映射。
@@ -44,13 +42,17 @@
 - 插件系统在 DESIGN §19 是唯一权威；P 阶段任务在 TASKS 的「P：插件内核」小节，C 线兼容插件任务已存在且依赖 P2。
 
 ## 下一步
-- **O-T02 开场导演与前 10 楼强度**：`DirectorConfig` 增加 `openingFloors`（默认 10）与 `openingIntensity`；当前路径助手楼层数小于 `openingFloors` 时，新增的开局机制以 `store.getOpeningPack(storyId)` 为输入产生一条具体建议（本楼目标、在场人物各自的行动、可行动冲突），优先级高于线索年龄与节奏机制；机制是同步纯函数、不调用模型；没有开局包时退回现有机制；决策记录的 `signals` 写出发强度档位、使用的开局包字段与楼层深度。先读 DESIGN §8.4 与 M3-T02。
-- O-T02 之后是 O-T03（首楼多候选，迁移 v30），然后是 O-T99。O-T99 依赖 R2-T02、R2-T03，所以 O 阶段中途会等 R2 的试玩与探针。
-- 开局包读取入口：`store.getOpeningPack(storyId)`（返回 `payload: JsonObject`）与 `validateOpeningPackPayload(value, knownNames)`；导演机制只需要读取，不要再写一套校验。
+- **O-T03 首楼多候选**：迁移 v30 新增 `opening_candidates(id, story_id, ordinal, raw, status, created_at)`，`status` 取 `pending`、`chosen`、`discarded`；后台任务 `opening_candidates` 一次生成 2–3 个完整正文候选（默认 3），选中一个后在当前路径根部追加为首个助手楼层，其余标为 `discarded`，重新生成追加新一批且旧批状态不变；未选候选不进上下文；CLI 为 `dramaticer open --story <id> [--generate <n>] [--list] [--pick <id>]`。先读 DESIGN §8.4。
+- O-T03 之后是 O-T99；O-T99 依赖 R2-T02、R2-T03，所以 O 阶段收尾会等 R2 的试玩与探针。
+- 开局包的读取入口是 `readOpeningPack(store, storyId)`；需要自己校验时用 `validateOpeningPackPayload(value, knownNames)`，不要另写一套。
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
 - 不要修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 下的任何文件。不变量 I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账是唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖任何其他工作区包、ST 语义只在兼容插件里实现。
+- 导演现在有五个机制，注册顺序是 `clue`、`opening`、`repetition`、`event_pool`、`pacing`；`opening` 的优先级是 35（`OPENING_PRIORITY`），线索年龄 30、线索数量 20、事件池 10、节奏 5，重复度 40。新增或调整机制时同步更新 `director.test.ts`、`lore.test.ts`、`director-event-pool.test.ts` 与 `st-compat/test/chat-cli.test.ts` 的机制列表断言。
+- 开场导演的楼层深度按当前路径上的助手楼层数计算（含中止保存的楼层）；`openingFloors` 为 0 关闭机制，`enabled: false` 时整轮不评估也不写决策记录。强度 `setup` 只用场景、目标与冲突，`natural` 加人物行动，`detonate` 再加三条方向；`signals.opening.usedFields` 记录本条建议实际用到的字段。
+- `readOpeningPack` 用当前角色卡与角色实体的名称、别名校验存下来的开局包，不看 `inputHash`（首轮用的正是首次输入之前生成的包）；卡片改掉在场人物后旧包会校验失败，先跑 `dramaticer work --kind opening` 重新生成。
+- 故事设置里的 `directorConfig` 读取时与 `DEFAULT_DIRECTOR_CONFIG` 合并再校验，旧数据库行缺少新增字段时得到默认值；新增导演配置字段不需要迁移。写入仍然拒绝未知字段。
 - 回合模式：`TurnMode`、`DEFAULT_MAX_READ_ROUNDS`、`isTurnMode`、`assertTurnMode`、`assertMaxReadRounds`、`assertTurnModeSupported` 都在 `core/src/chat/mode.ts`。模式与软上限只在 `chat/turn.ts` 的 `resolveTurnMode` 解析一次，单轮参数优先于故事设置；新增入口不要另写一套判断。程序没有任何按轮数、工具调用数、错误或预算切换模式的代码路径（I6）。
 - 深回合在 R3b 实现前请求即失败；失败在 `runChatTurn` 追加用户楼层之前发生，所以不会留下只有用户楼层的分支。不要为了“能跑”把它降级成快回合。
 - 读取工具软上限是可配的软上限（默认 3），执行器没有上限常量。达到上限时若模型仍只请求工具且正文为空，执行器会抛错；有正文时正常收束并把 `tools.capped` 记为 true。
@@ -135,7 +137,6 @@
 - 安装依赖时用 `HTTP_PROXY= HTTPS_PROXY= pnpm install`；新增工作区包后需要 `--no-frozen-lockfile` 更新锁文件。
 - 渠道行为（ADR-0009、ADR-0011、ADR-0042）：`reasoning:"off"` 在该渠道仍会输出思考并消耗输出 token；abort 后 `usage` 全为 0；gcli2api 必须把 Gemini API 路径挂在 baseUrl 根下；该渠道不支持预填充。评测报告必须记录实际使用的路由。
 - live 测试用 `DRAMATICER_LIVE=1` 开启；`*.live.test.ts` 会被门禁的 I10 扫描排除。当前 `llm-probe.live.test.ts` 与 `chat-cli.live.test.ts` 会因正文路由不可用而失败，属已知外部问题。
-- Director 机制新增时同步更新既有测试里的机制列表断言：`director.test.ts`、`director-event-pool.test.ts`、`lore.test.ts`、`packages/st-compat/test/chat-cli.test.ts`。O-T02 新增开局机制、R4 替换 Director v1 时删除被取代的机制与断言，不保留两套。
 - 函数调用模式的读取工具列表会随 `READ_TOOLS` 变化；测试不要断言完整列表，只断言写入工具在前、包含用到的读取工具。
 - Playwright 浏览器与 `pnpm e2e` 不进入 `pnpm check`；端到端失败产物写 `.devloop/scratch/e2e/`。
 - 故事设置的更新时间由存储层用 `new Date().toISOString()` 写入；测试不要断言具体时间值。

@@ -1,5 +1,6 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import Database from "better-sqlite3";
 import { describe, expect, it, onTestFinished } from "vitest";
 import {
 	DEFAULT_CONTEXT_TEMPLATE_ID,
@@ -125,6 +126,45 @@ describe("故事设置", () => {
 		}
 	});
 
+	it("旧版本保存的导演配置缺少新增字段时按默认值读取", () => {
+		const { store, close, path } = openStory();
+		store.updateStorySettings("s1", {
+			directorConfig: { ...DEFAULT_DIRECTOR_CONFIG, pace: 2 },
+		});
+		close();
+
+		const db = new Database(path);
+		try {
+			const row = db
+				.prepare(
+					"SELECT director_config FROM story_settings WHERE story_id = 's1'",
+				)
+				.pluck()
+				.get() as string;
+			const legacy = Object.fromEntries(
+				Object.entries(JSON.parse(row) as Record<string, unknown>).filter(
+					([key]) => key !== "openingFloors" && key !== "openingIntensity",
+				),
+			);
+			db.prepare(
+				"UPDATE story_settings SET director_config = ? WHERE story_id = 's1'",
+			).run(JSON.stringify(legacy));
+		} finally {
+			db.close();
+		}
+
+		const reopened = StoryStore.open(path);
+		try {
+			expect(reopened.getStorySettings("s1").directorConfig).toMatchObject({
+				pace: 2,
+				openingFloors: 10,
+				openingIntensity: "natural",
+			});
+		} finally {
+			reopened.close();
+		}
+	});
+
 	it("非法枚举、数值范围、模板引用与字段名都抛错", () => {
 		const { store } = openStory();
 		const cases: readonly [StorySettingsUpdate, string][] = [
@@ -141,6 +181,19 @@ describe("故事设置", () => {
 			[
 				{ directorConfig: { ...DEFAULT_DIRECTOR_CONFIG, climaxFloors: 0 } },
 				"climaxFloors",
+			],
+			[
+				{ directorConfig: { ...DEFAULT_DIRECTOR_CONFIG, openingFloors: -1 } },
+				"openingFloors",
+			],
+			[
+				{
+					directorConfig: {
+						...DEFAULT_DIRECTOR_CONFIG,
+						openingIntensity: "hype" as never,
+					},
+				},
+				"openingIntensity",
 			],
 			[
 				{

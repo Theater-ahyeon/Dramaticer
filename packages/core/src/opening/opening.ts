@@ -153,16 +153,7 @@ export function collectOpeningInput(
 	const openingNode =
 		path.find((node) => node.role === "user" && node.raw.trim().length > 0) ??
 		null;
-	const knownNames = new Set<string>();
-	if (settings.cardName !== null) {
-		knownNames.add(normalizeEntityName(settings.cardName));
-	}
-	for (const entity of store.listEntities(storyId, { kind: "character" })) {
-		knownNames.add(normalizeEntityName(entity.name));
-		for (const alias of entity.aliases) {
-			knownNames.add(normalizeEntityName(alias));
-		}
-	}
+	const knownNames = collectKnownNames(store, storyId, settings.cardName);
 	const hash = createHash("sha256")
 		.update(
 			JSON.stringify({
@@ -183,6 +174,43 @@ export function collectOpeningInput(
 		openingNode,
 		knownNames,
 	};
+}
+
+/** 角色卡名与角色实体的名称、别名，用来校验开局包里的在场人物。 */
+function collectKnownNames(
+	store: StoryStore,
+	storyId: string,
+	cardName: string | null,
+): ReadonlySet<string> {
+	const knownNames = new Set<string>();
+	if (cardName !== null) {
+		knownNames.add(normalizeEntityName(cardName));
+	}
+	for (const entity of store.listEntities(storyId, { kind: "character" })) {
+		knownNames.add(normalizeEntityName(entity.name));
+		for (const alias of entity.aliases) {
+			knownNames.add(normalizeEntityName(alias));
+		}
+	}
+	return knownNames;
+}
+
+/**
+ * 导演读开局包；没有时返回 null。存下来的包用当前的角色卡与实体校验，
+ * 不在卡里的人物会让读取失败，需要重新生成开局包。
+ */
+export function readOpeningPack(
+	store: StoryStore,
+	storyId: string,
+): OpeningPackPayload | null {
+	const record = store.getOpeningPack(storyId);
+	if (record === null) return null;
+	const settings = store.getStorySettings(storyId);
+	return validateOpeningPackPayload(
+		record.payload,
+		collectKnownNames(store, storyId, settings.cardName),
+		`故事 ${storyId} 的开局包`,
+	);
 }
 
 /**

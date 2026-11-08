@@ -1,6 +1,18 @@
 import type { JsonObject } from "../json.js";
 import type { StoryStore } from "../store/story-store.js";
 
+/** 开场导演强度：只铺垫、自然推进、尽快引爆。 */
+export const OPENING_INTENSITIES = ["setup", "natural", "detonate"] as const;
+
+export type OpeningIntensity = (typeof OPENING_INTENSITIES)[number];
+
+export function isOpeningIntensity(value: unknown): value is OpeningIntensity {
+	return (
+		typeof value === "string" &&
+		(OPENING_INTENSITIES as readonly string[]).includes(value)
+	);
+}
+
 export interface DirectorConfig {
 	readonly enabled: boolean;
 	/** 未兑现线索的最老年龄超过这个楼层数时建议回收。 */
@@ -53,6 +65,10 @@ export interface DirectorConfig {
 	readonly climaxFloors: number;
 	/** 喘息阶段持续到这个楼层数后回到铺垫。 */
 	readonly breatheFloors: number;
+	/** 当前路径的助手楼层数小于它时启用开场导演；0 表示关闭。 */
+	readonly openingFloors: number;
+	/** 开场导演的强度档位。 */
+	readonly openingIntensity: OpeningIntensity;
 }
 
 export const DEFAULT_DIRECTOR_CONFIG: DirectorConfig = {
@@ -80,6 +96,8 @@ export const DEFAULT_DIRECTOR_CONFIG: DirectorConfig = {
 	minEscalateFloors: 2,
 	climaxFloors: 7,
 	breatheFloors: 6,
+	openingFloors: 10,
+	openingIntensity: "natural",
 };
 
 export interface DirectorSuggestion {

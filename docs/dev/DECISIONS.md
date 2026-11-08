@@ -827,3 +827,19 @@
   - 新增故事级后台任务必须在注册表里提供 `needsRun`，否则创建注册表时抛错；非 `story` 条件提供 `needsRun` 同样抛错。
   - `opening_packs` 的行按故事覆盖，不保留历史版本；O-T02 读取这份记录作为导演输入，O-T03 的候选另建表（迁移 v30）。
   - 回合路径与 server 仍然不补建、不执行后台任务；故事创建或导入后的第一次 `dramaticer work` 负责补建开局任务。
+
+## ADR-0060 开场导演的楼层深度与强度档位（2026-11-08）
+
+- **背景**：O-T01 已经能生成并保存开局包（开场地点与时间、在场人物与各自想要什么、第一个可行动冲突、三条可选开场方向），但导演还没有使用它。O-T02 要求前 `openingFloors` 楼给出比常规机制更具体的建议，并让强度可配；实时选择仍然由程序完成，不调用模型（I9），没有开局包时退回现有机制。
+- **决定**：
+  - `DirectorConfig` 增加 `openingFloors`（默认 10，非负整数）与 `openingIntensity`（`setup`、`natural`、`detonate`，默认 `natural`）。`openingFloors` 为 0 表示关闭开场导演；`enabled` 仍由导演总开关控制，关闭时整轮不评估也不写决策记录。
+  - 新增机制 `opening`，优先级 35：高于线索年龄（30）与节奏（5），低于重复度（40）。注册顺序排在线索之后，决策记录里各机制的位次保持稳定；优先级决定最终选中哪一条建议。
+  - 楼层深度取当前路径上的助手楼层数（含中止保存的楼层），生成第 N 楼时看到的深度是 N-1；深度不小于 `openingFloors` 时机制不触发，回到常规机制。
+  - 建议由程序用开局包拼出：`setup` 只给场景、本楼目标与冲突；`natural` 再列出在场人物各自的行动；`detonate` 再附上三条可选方向并要求本轮让冲突出现可见变化。决策记录的 `signals.opening` 写 `floorDepth`、`openingFloors`、`intensity` 与 `usedFields`（本条建议实际用到的开局包字段）。
+  - 导演读开局包走 `readOpeningPack`：取 `opening_packs` 的 `payload` 后交给 `validateOpeningPackPayload` 校验，人物名按当前角色卡与角色实体的名称、别名判定。读取不看 `inputHash`，因为包是在首次输入之前生成的，第一次回合使用的正是这份没有玩家开场白的包；卡片改掉在场人物后旧包校验失败，需要 `dramaticer work --kind opening` 重新生成。
+  - 故事设置里已保存的 `directorConfig` 在读取时与 `DEFAULT_DIRECTOR_CONFIG` 合并后再校验，旧版本行缺少新增字段时得到默认值；写入路径仍然拒绝未知字段。
+  - 机制只读数据库与配置，不调用模型；建议经既有导演槽位以一条 `【导演】` system 消息注入，消息位置不变。
+- **影响**：
+  - 每次导演评估的决策记录多一条 `opening` 机制记录与 `signals.opening`；没有开局包或超出开场楼层时 `triggered` 为 false。
+  - 新增导演配置字段不需要迁移，因为 `story_settings.director_config` 是 JSON 列；后续再加字段沿用同一合并方式。
+  - `director-eval` 与 `chat-cli` 的机制列表断言需要包含 `opening`；手册里描述的注入位置暂时仍由槽位决定，不改成拼接玩家消息。

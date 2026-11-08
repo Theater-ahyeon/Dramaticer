@@ -29,11 +29,12 @@ import type {
 	NpcAgenda,
 	NpcAgendaUpsertResult,
 } from "../director/pool.js";
-import type {
-	DirectorConfig,
-	DirectorDecision,
-	DirectorMechanismRecord,
-	NewDirectorDecisionInput,
+import {
+	DEFAULT_DIRECTOR_CONFIG,
+	type DirectorConfig,
+	type DirectorDecision,
+	type DirectorMechanismRecord,
+	type NewDirectorDecisionInput,
 } from "../director/types.js";
 import {
 	type Entity,
@@ -718,9 +719,11 @@ function rowToStorySettings(row: StorySettingsRow): StorySettings {
 			`故事 ${row.story_id} 的 turn_mode 不合法：${row.turn_mode}`,
 		);
 	}
-	const parsedDirectorConfig = JSON.parse(
-		row.director_config,
-	) as DirectorConfig;
+	// 旧版本保存的配置没有后来新增的字段，读取时用默认值补齐。
+	const parsedDirectorConfig: DirectorConfig = {
+		...DEFAULT_DIRECTOR_CONFIG,
+		...(JSON.parse(row.director_config) as Partial<DirectorConfig>),
+	};
 	assertDirectorConfig(parsedDirectorConfig);
 	const parsedHistoryBlockPolicy: unknown = JSON.parse(
 		row.history_block_policy,

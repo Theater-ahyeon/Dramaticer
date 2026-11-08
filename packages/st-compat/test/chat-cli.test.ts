@@ -196,6 +196,7 @@ describe("dramaticer chat", () => {
 			expect(decision?.directive).toBeNull();
 			expect(decision?.mechanisms.map((item) => item.name)).toEqual([
 				"clue",
+				"opening",
 				"repetition",
 				"event_pool",
 				"pacing",

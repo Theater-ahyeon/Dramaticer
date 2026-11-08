@@ -2,13 +2,15 @@ import type { JsonObject } from "../json.js";
 import type { StoryStore } from "../store/story-store.js";
 import { createClueTrackingMechanism } from "./clue.js";
 import { createEventPoolMechanism } from "./event-pool.js";
+import { createOpeningMechanism } from "./opening.js";
 import { createPacingMechanism } from "./pacing.js";
 import { createRepetitionMechanism } from "./repetition.js";
-import type {
-	DirectorConfig,
-	DirectorMechanism,
-	DirectorMechanismRecord,
-	DirectorSuggestion,
+import {
+	type DirectorConfig,
+	type DirectorMechanism,
+	type DirectorMechanismRecord,
+	type DirectorSuggestion,
+	isOpeningIntensity,
 } from "./types.js";
 
 export interface EvaluateDirectorInput {
@@ -22,6 +24,7 @@ export interface EvaluateDirectorInput {
 
 export const DEFAULT_DIRECTOR_MECHANISMS: readonly DirectorMechanism[] = [
 	createClueTrackingMechanism(),
+	createOpeningMechanism(),
 	createRepetitionMechanism(),
 	createEventPoolMechanism(),
 	createPacingMechanism(),
@@ -174,6 +177,14 @@ export function assertDirectorConfig(config: DirectorConfig): void {
 		if (!Number.isInteger(value) || value < 1) {
 			throw new Error(`导演配置的 ${name} 必须是正整数`);
 		}
+	}
+	if (!Number.isInteger(config.openingFloors) || config.openingFloors < 0) {
+		throw new Error("导演配置的 openingFloors 必须是非负整数");
+	}
+	if (!isOpeningIntensity(config.openingIntensity)) {
+		throw new Error(
+			"导演配置的 openingIntensity 必须是 setup、natural 或 detonate",
+		);
 	}
 }
 
