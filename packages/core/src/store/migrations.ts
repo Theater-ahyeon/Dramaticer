@@ -785,6 +785,38 @@ export function buildMigrations(
 				ON opening_candidates(story_id, status)`,
 			],
 		},
+		{
+			version: 31,
+			description: "偏好信号：swipe、选项选择、变更卡决定与编辑，只追加",
+			statements: [
+				`CREATE TABLE preference_events (
+					id TEXT PRIMARY KEY,
+					story_id TEXT NOT NULL REFERENCES stories(id),
+					node_id TEXT NOT NULL REFERENCES nodes(id),
+					kind TEXT NOT NULL CHECK (kind IN ('swipe', 'choice', 'card_decision', 'edit')),
+					payload TEXT NOT NULL,
+					created_at TEXT NOT NULL
+				) STRICT`,
+				`CREATE INDEX preference_events_story_kind_idx
+				ON preference_events(story_id, kind, created_at)`,
+				`CREATE TRIGGER preference_events_story_matches_node
+				BEFORE INSERT ON preference_events
+				WHEN COALESCE((SELECT story_id FROM nodes WHERE id = NEW.node_id), '') <> NEW.story_id
+				BEGIN
+					SELECT RAISE(ABORT, '偏好记录的 story_id 必须与所在楼层一致');
+				END`,
+				`CREATE TRIGGER preference_events_immutable
+				BEFORE UPDATE ON preference_events
+				BEGIN
+					SELECT RAISE(ABORT, '偏好记录只追加，不能修改');
+				END`,
+				`CREATE TRIGGER preference_events_no_delete
+				BEFORE DELETE ON preference_events
+				BEGIN
+					SELECT RAISE(ABORT, '偏好记录只追加，不能删除');
+				END`,
+			],
+		},
 	];
 }
 

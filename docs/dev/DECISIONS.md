@@ -976,3 +976,14 @@
   - 第一部分沿用 F0 的纯函数，避免同一协议出现两套实现；第二部分复用 `judgePlaytestTurn` 的提示词与解析，两个评审拿到完全相同的输入。
   - 两个评审都来自语言模型，第二部分的对照只能说明两个模型尺度是否一致，不能替代玩家的真实偏好；R2-T07 与 R2-T07.a 落地后，偏好子集改用真实 swipe 记录。
   - 校准本身不写楼层、不改 head、不进入剧情上下文；除模型调用外只写私有目录与 `docs/dev/reports/R2-judge.md`。
+
+## ADR-0069 偏好记录的锚点、载荷与写入位置（2026-11-08）
+
+- **背景**：DESIGN §14.5 规定 swipe、选项选择、变更卡决定与编辑四种偏好信号只追加写入本地库。R2-T07 要建表并给出写入接口，需要确定每条记录的所在楼层、载荷字段，以及核心操作与记录如何共用事务。
+- **决定**：
+  - `preference_events.node_id` 是事件锚点：swipe 记被接受的新楼层，edit 记编辑后的新楼层，choice 记选项所在楼层，card_decision 记变更卡的来源楼层。载荷再记与之配对的楼层或对象：swipe 为 `{abandonedNodeId, acceptedNodeId}`，edit 为 `{beforeNodeId, afterNodeId}`，choice 为 `{choiceText}`，card_decision 为 `{cardId, decision}`，`decision` 只取 `approved` 与 `rejected`。
+  - 核心操作在自己的事务里直接记录：`swipeNode`、`editNode` 与变更卡的 `updateLedgerChangeCardStatus`（仅 `approved`、`rejected`）不允许调用方另写一次。选项选择在核心没有对应操作，由调用方用 `recordPreference` 写入，并且必须与选择操作放在同一个 `runInTransaction` 里。
+  - 回滚变更卡不是偏好信号，不写记录。表上的触发器拒绝一切 UPDATE 与 DELETE。
+- **影响**：
+  - R2-T07.a 只需要接入选项选择的 `recordPreference`，swipe、edit 与变更卡的记录已由核心操作产生，不能再写第二行。
+  - 记录只用于评测与校准：不进入上下文组装、预算、检索与导演；测试用 `assembleContext`、`searchNodeText` 与事务回滚覆盖。

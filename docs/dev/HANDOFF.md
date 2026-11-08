@@ -3,25 +3,26 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：125
-- 任务：R2-T03.b 裁判校准（judge，GLM）
-- 结果：完成（`DONE`），门禁通过（106 个测试文件、950 个测试通过，3 个 live 跳过，共 953 个）。
-  - 新增 `scripts/r2-judge.mjs`（`pnpm r2:judge`）与纯函数库 `scripts/r2-judge-lib.mjs`：第一部分复用 F0-T03 的分层抽样（同步种子 `f0-t03-v1`，目标 1–10 楼 70、11–50 楼 60、51 楼以上 70）、同一提示词、严格 `{choice, confidence}` 解析与两种顺序各判一次的实现，对 `judge`（`auto/glm-5.3`）重跑；第二部分取一轮 100 轮自动试玩的 100 条助手回复，把 `judgePlaytestTurn` 的同一输入同时交给 `judge` 与模拟用户模型，逐条配对。
-  - 结果：195 对里 194 对至少一次成功，386 次成功判断（4 次三次重试后仍没有 JSON 输出，未计入分母），合并一致率 71.5%（95% 置信区间 66.8%–75.8%）、位置偏差 0.8 个百分点、换序一致率 81.3%（192 对）；两项门槛都达到。1–10 楼子集 55.0%、切回较早 swipe 子集 47.9% 低于门槛，按预注册规则这两类只用玩家数据，不用裁判外推。
-  - 第二部分：100 轮试玩 0 失败、2 轮截断；99 条可判定回复上裁判与模拟用户模型的重 roll 率都是 1.0%（各 1 条），重 roll 与跟随指令判定各一致 97/99（98.0%），没有宽松证据。
-  - 报告 `docs/dev/reports/R2-judge.md`（预注册门槛在运行前写入文件顶部，自动生成段在 `<!-- R2-T03.b:begin -->` 与 `:end` 之间）；结论写入 ADR-0068。
-  - 新增 8 个纯函数测试（`scripts/r2-judge-lib.test.mjs`，覆盖配对汇总、失败剔除、宽松界、报告渲染与阈值判定）。
+- 会话：126
+- 任务：R2-T07 偏好信号记录
+- 结果：完成（`DONE`），门禁通过（107 个测试文件、956 个测试通过，3 个 live 跳过，共 959 个）。
+  - 迁移 v31 新增只追加的 `preference_events(id, story_id, node_id, kind, payload, created_at)`；`kind` 取 `swipe`、`choice`、`card_decision`、`edit`，`story_id` 必须与所在楼层一致；`BEFORE UPDATE` 与 `BEFORE DELETE` 触发器直接拒绝。
+  - core 新增 `packages/core/src/preferences/events.ts`：`PREFERENCE_EVENT_KINDS`、`CardDecision`、四种载荷类型、`NewPreferenceEventInput`、`assertPreferencePayload`（按种类拒绝未知字段与非法值）与 `isPreferenceEventKind`，从 `@dramaticer/core` 导出。
+  - `StoryStore.recordPreference(input)` 校验故事、楼层归属、载荷与配对楼层后追加一行；`listPreferenceEvents(storyId, {kind})` 按 `created_at` 与插入顺序读取。
+  - `swipeNode`、`editNode` 与 `updateLedgerChangeCardStatus`（仅 `approved`、`rejected`）在各自事务里自动记录；选项选择没有核心操作，由调用方用 `recordPreference` 写入，并且必须与选择操作放在同一个 `runInTransaction` 里。锚点与载荷口径写进 ADR-0069。
+  - 偏好记录不进入上下文、预算、检索与导演；测试用 `assembleContext`、`searchNodeText` 与事务回滚覆盖。
+  - 新增 6 个测试（`packages/core/test/preferences.test.ts`）：四种信号内容完整、重复操作新增行、触发器拒绝修改与删除、事务失败一起回滚、载荷字段与跨故事引用校验、上下文与检索不含载荷。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`；未完成任务见 `docs/dev/TASKS.md`。
-- **下一个可做任务是 R2-T07 偏好信号记录**：迁移 v31 新增只追加的 `preference_events`，`kind` 取 `swipe`、`choice`、`card_decision`、`edit`，触发器拒绝 UPDATE 与 DELETE；写入与对应操作同一事务；不进入上下文。它之后的 R2-T07.a 需要 R5-T02（R5 阶段未开始），所以 R2-T04 盲测两两对比仍被阻塞；R2-T08 公开合成基准与 R2-T09 长对话遗忘评测的依赖已满足，可在 R2-T07 之后按顺序做。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T07。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`；未完成任务见 `docs/dev/TASKS.md`。
+- **下一个可做任务是 R2-T08 公开合成基准**：在仓库内新增 `benchmarks/`（3 张 SFW 合成卡、长线对话与题目集），提供 `benchmark` 命令生成或校验，校验题目结构、证据楼层与去重；不含私有数据与版权文本。R2-T09 长对话遗忘评测的依赖也已满足，可在 R2-T08 之后做；R2-T04、R2-T04.a、R2-T05、R2-T06 依赖 R2-T04 或 R2-T07.a，R2-T07.a 需要 R5-T02（R5 阶段未开始），所以这些任务仍被阻塞。
 - v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045。
 - HUMAN-09 待处理（不阻塞）：`data/channels.yaml` 已有 `bg-fallback`、`main-fallback`、`codex`，`channels.example.yaml` 还没有这三个别名。
 - HUMAN-10 待处理（不阻塞）：插件不变量是否加进 AGENTS.md。
 - HUMAN-11 待处理（不阻塞）：`.env` 的正文模型 `opendesign/deepseek-v4.1-flash` 返回 membership entitlement 错误，是否换用 `auto/deepseek-v4.1-flash`；`.env` 由人类维护。
 - HUMAN-12 待处理（不阻塞）：HUMAN.md 条目仍描述 `roles.judge` 指向 `codex`，实际配置已是 `judge`（`auto/glm-5.3`）且 R2-T03.b 已用它跑通校准；由人类确认后关闭。
-- 数据库 schema 版本 30（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡、v25 合并调用开关与执行记录、v26 间隙档位阈值与丢弃状态、v27 合并调用丢弃条目、v28 回合模式与读取工具软上限、v29 开局包与故事级后台任务、v30 首楼开场候选）；后续编号：v31 偏好记录、v32 父子分块、v33 章节压缩、v34 世界书预筛、v35 上下文包；插入新迁移时后续编号一起顺延。R2-T03.b 没有迁移。
+- 数据库 schema 版本 31（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡、v25 合并调用开关与执行记录、v26 间隙档位阈值与丢弃状态、v27 合并调用丢弃条目、v28 回合模式与读取工具软上限、v29 开局包与故事级后台任务、v30 首楼开场候选、v31 偏好记录）；后续编号：v32 父子分块、v33 章节压缩、v34 世界书预筛、v35 上下文包；插入新迁移时后续编号一起顺延。
 - 结算只有 `dramaticer work` 调度：server 的回合路径不补建也不执行后台任务，所以回合内后台客户端零调用是结构保证；要真正结算故事，跑 `pnpm work --db <path> --kind settle`，要生成现场分析跑 `--kind scene`，要捕获用户意志跑 `--kind user_will`，要生成修订草案跑 `--kind memory_revision`，要回填事件跑 `--kind events`（单故事、逐窗口推进，适合小批量），要生成开局包跑 `--kind opening`，要生成首楼候选跑 `--kind opening_candidates`，要合并调用跑 `--kind gap_pass`（先打开故事设置 `gapPassEnabled`），批量回填三个 legacy 对话用 R1-T04.a 的 `events-backfill`。
 - 后台任务分两档：`gap` 档每次间隙都执行，`deferred` 档（`events`、`summary`、`npc_agenda`）只在会话结束或间隙达到 `gapPlanSeconds` 时执行。`dramaticer work` 不给 `--gap-seconds` 就按会话结束处理；要模拟回合中的短间隙就传 `--gap-seconds <秒数>`，短于阈值时延后档只入队不执行。
 - `gap_pass` 默认关闭；开关关着时 `dramaticer work` 既不为故事补建该任务也不执行它，`--kind gap_pass` 同样被跳过。ADR-0055、ADR-0056、ADR-0057 的结论都是保持默认关闭。
@@ -46,13 +47,14 @@
 - 插件系统在 DESIGN §19 是唯一权威；P 阶段任务在 TASKS 的「P：插件内核」小节，C 线兼容插件任务已存在且依赖 P2。
 
 ## 下一步
-- **R2-T07 偏好信号记录**：迁移 v31 的 `preference_events`（只追加，`kind` 取 `swipe`、`choice`、`card_decision`、`edit`，触发器拒绝 UPDATE 与 DELETE）；core 提供 `recordPreference` 与按故事、按种类的读取；与对应操作同一事务；不进入剧情上下文、预算、检索与导演。
-- 之后 R2-T07.a 需要 R5-T02（未开始），所以 R2-T04 的偏好子集要等 R5 的分支接口；R2-T08（公开合成基准，题目结构校验）与 R2-T09（长对话遗忘评测）依赖已满足。
+- **R2-T08 公开合成基准**：在 `benchmarks/` 放 3 张 SFW 合成卡（含世界书与原生模板）、长线对话与题目集（记忆题、探针题与预注册分支点），提供 `pnpm --filter @dramaticer/st-compat benchmark` 生成或校验，固定种子、结构校验、证据楼层与去重；私有 3 个对话继续作对照，报告分开列。
+- R2-T09（长对话遗忘评测）依赖已满足，排在 R2-T08 之后；R2-T04、R2-T04.a、R2-T05、R2-T06 仍被 R2-T07.a 阻塞，R2-T07.a 需要 R5-T02。
 - 开局包的读取入口是 `readOpeningPack(store, storyId)`；需要自己校验时用 `validateOpeningPackPayload(value, known)`，第二个参数是 `OpeningKnownNames`（`names` 与 `sourceText`），判定函数是 `isKnownOpeningName`。首楼候选的解析用 `parseOpeningCandidatesResponse(text, expectedCount)`，不要另写一套。
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
 - 不要修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 下的任何文件。不变量 I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账是唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖任何其他工作区包、ST 语义只在兼容插件里实现。
+- 偏好记录（ADR-0069）：表 `preference_events` 只追加，触发器拒绝 UPDATE 与 DELETE；`node_id` 是锚点（swipe 记被接受的新楼层、edit 记编辑后的新楼层、choice 记选项所在楼层、card_decision 记卡片来源楼层）；载荷分别是 `{abandonedNodeId, acceptedNodeId}`、`{beforeNodeId, afterNodeId}`、`{choiceText}`、`{cardId, decision}`。`swipeNode`、`editNode` 与 `updateLedgerChangeCardStatus` 的 `approved`/`rejected` 已经自动记录，**不要在这三处再调用 `recordPreference`**；选项选择由调用方在同一个 `runInTransaction` 里调用。回滚变更卡不记偏好。读取用 `listPreferenceEvents(storyId, {kind})`。
 - 裁判校准的入口是 `pnpm r2:judge`：每次运行先补齐缺少的判断，再补齐试玩判定，最后用 `replaceMarkedSection` 重写 `docs/dev/reports/R2-judge.md` 的 `<!-- R2-T03.b:begin -->` 段；已有成功结果不会重跑，`DRAMATICER_R2_JUDGE_RERUN=1` 忽略已有结果。报告顶部（标记之外）是预注册门槛，运行后不要再改。
 - 校准第一部分失败重试：第二次运行用不带缓存的客户端重试失败键，第三次仍失败的键就留在失败列表；当前有 4 次判断（对话 85:16 两种顺序、72:20 与 129:97/129:220 的 accepted-first）与 1 次模拟用户判定（第 100 轮）三次重试后仍无合法 JSON。不要为了凑满分母反复重跑整批。
 - 校准第二部分的一轮试玩在 `eval-private/reports/r2-judge/playtest.jsonl`：`naive` 档、写作 `rp`、模拟用户 `background`、种子 1、`--no-background`、`--probe-every 0`、100 轮；试玩故事是 `opening-eval-1-candidates`（试玩库 `eval-private/reports/r2-judge/playtest.db`），复跑用 `--resume`。

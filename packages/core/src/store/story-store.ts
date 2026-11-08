@@ -100,6 +100,18 @@ import {
 	isSummaryLevel,
 } from "../memory/summary.js";
 import {
+	type CardDecisionPreferencePayload,
+	type EditPreferencePayload,
+	type ListPreferenceEventsOptions,
+	type NewPreferenceEventInput,
+	type PreferenceEvent,
+	type PreferenceEventKind,
+	type PreferenceEventPayload,
+	type SwipePreferencePayload,
+	assertPreferencePayload,
+	isPreferenceEventKind,
+} from "../preferences/events.js";
+import {
 	buildTrigramQuery,
 	normalizeRetrievalText,
 } from "../retrieval/chunk-index.js";
@@ -255,6 +267,15 @@ interface OpeningCandidateRow {
 	readonly ordinal: number;
 	readonly raw: string;
 	readonly status: string;
+	readonly created_at: string;
+}
+
+interface PreferenceEventRow {
+	readonly id: string;
+	readonly story_id: string;
+	readonly node_id: string;
+	readonly kind: string;
+	readonly payload: string;
 	readonly created_at: string;
 }
 
@@ -973,6 +994,24 @@ function rowToLedgerChangeCard(row: LedgerChangeCardRow): LedgerChangeCard {
 		rejectionReason: row.rejection_reason,
 		createdAt: row.created_at,
 		decidedAt: row.decided_at,
+	};
+}
+
+function rowToPreferenceEvent(row: PreferenceEventRow): PreferenceEvent {
+	if (!isPreferenceEventKind(row.kind)) {
+		throw new Error(`偏好记录 ${row.id} 的种类不合法：${row.kind}`);
+	}
+	return {
+		id: row.id,
+		storyId: row.story_id,
+		nodeId: row.node_id,
+		kind: row.kind,
+		payload: assertPreferencePayload(
+			row.kind,
+			JSON.parse(row.payload) as unknown,
+			`偏好记录 ${row.id} 的载荷`,
+		),
+		createdAt: row.created_at,
 	};
 }
 
@@ -1973,12 +2012,32 @@ export class StoryStore {
 
 	/** 以某个楼层为参照重新生成一条回复：新建兄弟节点，旧节点保留。 */
 	swipeNode(nodeId: string, raw: string): TimelineNode {
-		return this.#appendSibling(nodeId, raw);
+		return this.#db.transaction((): TimelineNode => {
+			const node = this.#appendSibling(nodeId, raw);
+			this.recordPreference({
+				storyId: node.storyId,
+				nodeId: node.id,
+				kind: "swipe",
+				payload: { abandonedNodeId: nodeId, acceptedNodeId: node.id },
+				createdAt: node.createdAt,
+			});
+			return node;
+		})();
 	}
 
 	/** 编辑某条回复：旧节点保留为兄弟节点，编辑后的内容写入新节点。 */
 	editNode(nodeId: string, raw: string): TimelineNode {
-		return this.#appendSibling(nodeId, raw);
+		return this.#db.transaction((): TimelineNode => {
+			const node = this.#appendSibling(nodeId, raw);
+			this.recordPreference({
+				storyId: node.storyId,
+				nodeId: node.id,
+				kind: "edit",
+				payload: { beforeNodeId: nodeId, afterNodeId: node.id },
+				createdAt: node.createdAt,
+			});
+			return node;
+		})();
 	}
 
 	/** 用户基于某个节点继续发言时，该节点即被确认；有子节点就是已确认。 */
@@ -2007,6 +2066,152 @@ export class StoryStore {
 			role: original.role,
 			raw,
 		});
+	}
+
+	/**
+	 * 追加一条偏好信号。只写本表，不进入剧情上下文、预算、检索与导演。
+	 * 与对应操作放在同一个事务里，任一步失败时操作与记录一起回滚。
+	 */
+	recordPreference(input: NewPreferenceEventInput): PreferenceEvent {
+		assertNonEmptyString(input.storyId, "偏好记录的故事 id");
+		assertNonEmptyString(input.nodeId, "偏好记录的楼层 id");
+		if (!this.getStory(input.storyId)) {
+			throw new Error(`故事不存在：${input.storyId}`);
+		}
+		if (!isPreferenceEventKind(input.kind)) {
+			throw new Error(`偏好记录的种类不合法：${String(input.kind)}`);
+		}
+		const node = this.getNode(input.nodeId);
+		if (!node) {
+			throw new Error(`偏好记录的楼层不存在：${input.nodeId}`);
+		}
+		if (node.storyId !== input.storyId) {
+			throw new Error(
+				`偏好记录的 storyId 与楼层所属故事不一致：${input.storyId}`,
+			);
+		}
+		const payload = assertPreferencePayload(input.kind, input.payload);
+		this.#assertPreferenceReferences(
+			input.kind,
+			input.storyId,
+			input.nodeId,
+			payload,
+		);
+		const id = input.id ?? randomUUID();
+		assertNonEmptyString(id, "偏好记录 id");
+		const createdAt = input.createdAt ?? new Date().toISOString();
+		assertNonEmptyString(createdAt, "偏好记录时间");
+		this.#db
+			.prepare(
+				`INSERT INTO preference_events (id, story_id, node_id, kind, payload, created_at)
+				VALUES (?, ?, ?, ?, ?, ?)`,
+			)
+			.run(
+				id,
+				input.storyId,
+				input.nodeId,
+				input.kind,
+				JSON.stringify(payload),
+				createdAt,
+			);
+		return {
+			id,
+			storyId: input.storyId,
+			nodeId: input.nodeId,
+			kind: input.kind,
+			payload,
+			createdAt,
+		};
+	}
+
+	/** 按创建顺序列出故事的偏好记录，可以按种类过滤。 */
+	listPreferenceEvents(
+		storyId: string,
+		options: ListPreferenceEventsOptions = {},
+	): PreferenceEvent[] {
+		assertNonEmptyString(storyId, "偏好记录的故事 id");
+		if (!this.getStory(storyId)) {
+			throw new Error(`故事不存在：${storyId}`);
+		}
+		const kind = options.kind;
+		if (kind !== undefined && !isPreferenceEventKind(kind)) {
+			throw new Error(`偏好记录的种类不合法：${String(kind)}`);
+		}
+		const rows =
+			kind === undefined
+				? (this.#db
+						.prepare(
+							`SELECT * FROM preference_events
+							WHERE story_id = ?
+							ORDER BY created_at ASC, rowid ASC`,
+						)
+						.all(storyId) as PreferenceEventRow[])
+				: (this.#db
+						.prepare(
+							`SELECT * FROM preference_events
+							WHERE story_id = ? AND kind = ?
+							ORDER BY created_at ASC, rowid ASC`,
+						)
+						.all(storyId, kind) as PreferenceEventRow[]);
+		return rows.map(rowToPreferenceEvent);
+	}
+
+	#assertPreferenceReferences(
+		kind: PreferenceEventKind,
+		storyId: string,
+		nodeId: string,
+		payload: PreferenceEventPayload,
+	): void {
+		if (kind === "swipe") {
+			const { abandonedNodeId, acceptedNodeId } =
+				payload as SwipePreferencePayload;
+			if (acceptedNodeId !== nodeId) {
+				throw new Error(
+					`swipe 的 acceptedNodeId ${acceptedNodeId} 必须等于记录的所在楼层 ${nodeId}`,
+				);
+			}
+			this.#assertPreferenceNodeInStory(
+				abandonedNodeId,
+				storyId,
+				"被放弃的楼层",
+			);
+		} else if (kind === "edit") {
+			const { beforeNodeId, afterNodeId } = payload as EditPreferencePayload;
+			if (afterNodeId !== nodeId) {
+				throw new Error(
+					`edit 的 afterNodeId ${afterNodeId} 必须等于记录的所在楼层 ${nodeId}`,
+				);
+			}
+			this.#assertPreferenceNodeInStory(beforeNodeId, storyId, "编辑前的楼层");
+		} else if (kind === "card_decision") {
+			const { cardId } = payload as CardDecisionPreferencePayload;
+			const card = this.getLedgerChangeCard(cardId);
+			if (card === null) {
+				throw new Error(`变更卡不存在：${cardId}`);
+			}
+			if (card.storyId !== storyId) {
+				throw new Error(`变更卡 ${cardId} 属于另一个故事 ${card.storyId}`);
+			}
+			if (card.sourceNodeId !== nodeId) {
+				throw new Error(
+					`card_decision 的所在楼层 ${nodeId} 必须与变更卡的来源楼层 ${card.sourceNodeId} 一致`,
+				);
+			}
+		}
+	}
+
+	#assertPreferenceNodeInStory(
+		nodeId: string,
+		storyId: string,
+		label: string,
+	): void {
+		const node = this.getNode(nodeId);
+		if (!node) {
+			throw new Error(`${label}不存在：${nodeId}`);
+		}
+		if (node.storyId !== storyId) {
+			throw new Error(`${label} ${nodeId} 属于另一个故事 ${node.storyId}`);
+		}
 	}
 
 	appendStateDiff(input: NewStateDiff): StateDiff {
@@ -2457,19 +2662,34 @@ export class StoryStore {
 			throw new Error("变更卡不能退回待定状态");
 		}
 		assertNonEmptyString(decidedAt, "变更卡的决定时间");
-		const info = this.#db
-			.prepare(
-				"UPDATE ledger_change_cards SET status = ?, decided_at = ? WHERE id = ?",
-			)
-			.run(status, decidedAt, cardId);
-		if (info.changes !== 1) {
-			throw new Error(`变更卡不存在：${cardId}`);
-		}
-		const card = this.getLedgerChangeCard(cardId);
-		if (card === null) {
-			throw new Error(`变更卡 ${cardId} 更新后读取失败`);
-		}
-		return card;
+		return this.#db.transaction((): LedgerChangeCard => {
+			const existing = this.getLedgerChangeCard(cardId);
+			if (existing === null) {
+				throw new Error(`变更卡不存在：${cardId}`);
+			}
+			const info = this.#db
+				.prepare(
+					"UPDATE ledger_change_cards SET status = ?, decided_at = ? WHERE id = ?",
+				)
+				.run(status, decidedAt, cardId);
+			if (info.changes !== 1) {
+				throw new Error(`变更卡不存在：${cardId}`);
+			}
+			if (status === "approved" || status === "rejected") {
+				this.recordPreference({
+					storyId: existing.storyId,
+					nodeId: existing.sourceNodeId,
+					kind: "card_decision",
+					payload: { cardId, decision: status },
+					createdAt: decidedAt,
+				});
+			}
+			const card = this.getLedgerChangeCard(cardId);
+			if (card === null) {
+				throw new Error(`变更卡 ${cardId} 更新后读取失败`);
+			}
+			return card;
+		})();
 	}
 
 	/** 写入一个楼层的现场分析；同一楼层重复执行覆盖同一行。 */

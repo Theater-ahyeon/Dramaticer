@@ -391,7 +391,8 @@
   - 写清门槛规则：没赢过基线就自动生成改进任务并重评，最多三轮，之后写入 HUMAN.md。
   验收：记分牌可由报告重复生成；字段齐全；私有标识反向扫描通过；门槛规则写进文档；`pnpm check` 通过。
 
-- [ ] **R2-T07 偏好信号记录** | 依赖：M2-T01、R1-T07.a、M4-T03 | DESIGN §14.5 | ADR-0044
+- [x] **R2-T07 偏好信号记录** | 依赖：M2-T01、R1-T07.a、M4-T03 | DESIGN §14.5 | ADR-0044
+  完成：2026-11-08 迁移 v31 新增只追加的 `preference_events`（`kind` 取 `swipe`、`choice`、`card_decision`、`edit`，`story_id` 必须与所在楼层一致，触发器拒绝 UPDATE 与 DELETE）；core 新增 `preferences/events.ts`（种类、四种载荷的字段校验与未知字段拒绝）与 `StoryStore.recordPreference`、`listPreferenceEvents`；`swipeNode`、`editNode` 与变更卡的 `updateLedgerChangeCardStatus`（仅批准与拒绝）在各自事务里直接记录，选项选择由调用方用 `recordPreference` 写入；锚点语义与选择载荷写进 ADR-0069；新增 6 个测试（四种信号、重复写入、触发器、事务回滚、上下文与检索不含载荷、载荷校验）；门禁通过（107 个测试文件、956 个测试，3 个 live 跳过）
   做什么：
   - 迁移 v31 新增只追加的 `preference_events(id, story_id, node_id, kind, payload, created_at)`；`kind` 取 `swipe`、`choice`、`card_decision`、`edit`；数据库触发器拒绝 UPDATE 与 DELETE。`payload` 存 JSON：swipe 记被放弃与被接受的节点 id，choice 记选项正文与所在楼层，card_decision 记卡片 id 与决定，edit 记改前改后的节点 id。
   - core 提供 `recordPreference(event)` 与按故事、按种类的读取接口；写入与对应操作在同一个事务里，失败则整个操作回滚。
@@ -400,7 +401,7 @@
 
 - [ ] **R2-T07.a 偏好信号接线与导出** | 依赖：R2-T07、R5-T02 | DESIGN §14.5
   做什么：
-  - 在 server 的 swipe、edit 与变更卡接口里调用 `recordPreference`；选项块的选择由界面发送一个只含选择内容的接口调用，同样记录。CLI 的 swipe、edit 与变更卡命令走同一处。
+  - 选项块的选择由界面发送一个只含选择内容的接口调用，接口用 `recordPreference` 记录。swipe、edit 与变更卡决定由核心操作在各自事务里写入（ADR-0069），这三个接口不再重复记录。CLI 的 swipe、edit 与变更卡命令走同一处。
   - 新增 `pnpm --filter @dramaticer/st-compat preferences export`：按故事导出 JSONL 到 `eval-private/preferences/`，并生成接受与放弃的回复对清单（重 roll 与选择两类），供 R2-T04 的偏好子集使用。
   - 导出内容属于私有数据，只写 `eval-private/`；报告只出聚合数字。
   验收：四个入口各产生一条记录且节点 id 正确；导出文件按故事分组；回复对清单不含原文进统计版；重复导出结果一致；`pnpm check` 通过。
