@@ -1,0 +1,390 @@
+import { existsSync } from "node:fs";
+import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import {
+	type BackgroundJobRegistry,
+	type ChatProfile,
+	DEFAULT_CHAT_PROFILE,
+	type LlmChannelsConfig,
+	type LlmStreamingClient,
+	StoryStore,
+	createDefaultBackgroundJobRegistry,
+	createEmbeddingClient,
+	createLlmClient,
+	createNaiveChatProviders,
+	createNaiveContextTemplate,
+	createStandardChatProviders,
+	isChatProfile,
+	loadChannelsConfig,
+	loadDotEnv,
+	resolveDefaultMaxTokens,
+	resolveModelForRole,
+	resolveStructuredOutputMode,
+	resolveToolTransport,
+} from "@dramaticer/core";
+import { resolveStoryContextTemplate } from "../chat/session.js";
+import {
+	DEFAULT_PLAYTEST_MODEL,
+	DEFAULT_PLAYTEST_ROUNDS,
+	DEFAULT_PLAYTEST_USER_MODEL,
+	type PlaytestRunResult,
+	parsePlaytestJsonl,
+	runPlaytest,
+	serializePlaytestRecord,
+} from "./playtest.js";
+
+const repoRoot = fileURLToPath(new URL("../../../../", import.meta.url));
+
+const USAGE = [
+	"用法：pnpm --filter @dramaticer/st-compat playtest --db <path> --story <id> [选项]",
+	"",
+	"用模拟用户连续生成回复，逐轮把私有记录写进 JSONL。",
+	"",
+	"选项：",
+	"  --db <path>       必填，故事所在的数据库",
+	"  --story <id>      必填，数据库里已有的故事",
+	`  --rounds <n>      总轮数，默认 ${DEFAULT_PLAYTEST_ROUNDS}`,
+	"  --profile <p>     对话档位 native 或 naive，默认 native",
+	`  --user-model <m>  模拟用户使用的模型别名，默认 ${DEFAULT_PLAYTEST_USER_MODEL}`,
+	`  --model <m>       助手模型别名，默认 ${DEFAULT_PLAYTEST_MODEL}`,
+	"  --seed <n>        随机种子，默认 1；决定模拟用户的写作提示顺序",
+	"  --out <path>      私有 JSONL 路径，默认 eval-private/reports/playtest.jsonl",
+	"  --resume          从已有记录的最后轮次之后继续",
+	"  --swipe-at <轮次> 在这些轮次之后重新生成回复，逗号分隔",
+	"  --edit-at <轮次>  在这些轮次之后编辑玩家输入并重新生成，逗号分隔",
+	"  --branch-at <轮次> 在这些轮次之后新建并行分支并切过去，逗号分隔",
+	"  --channels <path> 渠道配置，默认 data/channels.yaml",
+	"  --help            显示本说明",
+].join("\n");
+
+export interface PlaytestCliDependencies {
+	readonly envPath?: string;
+	readonly channelsPath?: string;
+	readonly loadEnv?: (filePath: string) => void;
+	readonly loadConfig?: (filePath: string) => Promise<LlmChannelsConfig>;
+	readonly createClient?: (
+		config: LlmChannelsConfig,
+		modelAlias: string,
+	) => LlmStreamingClient;
+	readonly registry?: BackgroundJobRegistry;
+	readonly now?: () => number;
+	readonly log?: (message: string) => void;
+}
+
+export async function runPlaytestCli(
+	args: readonly string[],
+	dependencies: PlaytestCliDependencies = {},
+): Promise<PlaytestRunResult> {
+	const log = dependencies.log ?? console.log;
+	if (args.includes("--help") || args.includes("-h")) {
+		log(USAGE);
+		return { records: [], failures: 0, lastRound: 0 };
+	}
+	const parsed = parsePlaytestArgs(args);
+	if (!existsSync(parsed.dbPath)) {
+		throw new Error(`数据库不存在：${parsed.dbPath}`);
+	}
+	const envPath = dependencies.envPath ?? path.join(repoRoot, ".env");
+	const channelsPath =
+		dependencies.channelsPath ?? path.join(repoRoot, "data", "channels.yaml");
+	(dependencies.loadEnv ?? loadDotEnv)(envPath);
+	const config = await (dependencies.loadConfig ?? loadChannelsConfig)(
+		channelsPath,
+	);
+	const assistantModel = config.models.get(parsed.model);
+	if (assistantModel === undefined) {
+		throw new Error(
+			`没有模型 ${parsed.model}；可用模型：${[...config.models.keys()].join("、")}`,
+		);
+	}
+	if (!config.models.has(parsed.userModel)) {
+		throw new Error(
+			`没有模拟用户模型 ${parsed.userModel}；可用模型：${[...config.models.keys()].join("、")}`,
+		);
+	}
+	const createClient =
+		dependencies.createClient ??
+		((channels: LlmChannelsConfig, alias: string) =>
+			createLlmClient(channels, { defaultModel: alias, cacheDir: null }));
+	const mode = resolveStructuredOutputMode(assistantModel.probe);
+	const embeddingConfig = config.embeddings.get("default");
+	const embedder = embeddingConfig ? createEmbeddingClient(config) : null;
+	const store = StoryStore.open(
+		parsed.dbPath,
+		embeddingConfig === undefined
+			? {}
+			: { embeddingDimensions: embeddingConfig.dimensions },
+	);
+	try {
+		if (store.getStory(parsed.storyId) === null) {
+			throw new Error(`故事不存在：${parsed.storyId}`);
+		}
+		const settings = store.getStorySettings(parsed.storyId);
+		const characterPrompt = settings.characterPrompt;
+		if (characterPrompt === null || characterPrompt.trim().length === 0) {
+			throw new Error(
+				`故事 ${parsed.storyId} 没有保存角色提示词，先导入角色卡或用 dramaticer chat 生成一轮`,
+			);
+		}
+		const maxTokens = store.hasStorySettings(parsed.storyId)
+			? settings.maxTokens
+			: resolveDefaultMaxTokens(config, parsed.model);
+		const budgetTokens = assistantModel.contextWindow - maxTokens;
+		if (budgetTokens <= 0) {
+			throw new Error(
+				`模型的上下文窗口 ${assistantModel.contextWindow} 不大于输出上限 ${maxTokens}，没有可用的输入预算`,
+			);
+		}
+		const template =
+			parsed.profile === "naive"
+				? createNaiveContextTemplate()
+				: resolveStoryContextTemplate(store, settings.templateId, mode);
+		const providers =
+			parsed.profile === "naive"
+				? createNaiveChatProviders({
+						store,
+						characterPrompt,
+						persona: settings.persona,
+					})
+				: createStandardChatProviders({
+						store,
+						characterPrompt,
+						embedder,
+						directorConfig: settings.directorConfig,
+						historyBlockPolicy: settings.historyBlockPolicy,
+					});
+		await mkdir(path.dirname(parsed.outPath), { recursive: true });
+		const startRound = parsed.resume
+			? await readResumeStart(parsed.outPath)
+			: await resetOutput(parsed.outPath);
+		if (startRound > parsed.rounds) {
+			log(
+				`已有记录到第 ${startRound - 1} 轮，没有需要继续的轮次（总轮数 ${parsed.rounds}）`,
+			);
+			return { records: [], failures: 0, lastRound: startRound - 1 };
+		}
+		const assistantClient = createClient(config, parsed.model);
+		const userClient = createClient(config, parsed.userModel);
+		const background =
+			parsed.profile === "naive"
+				? null
+				: {
+						client: createClient(
+							config,
+							resolveModelForRole(config, "settler"),
+						),
+						registry:
+							dependencies.registry ??
+							createDefaultBackgroundJobRegistry({ embedder }),
+					};
+		log(
+			`试玩：故事 ${parsed.storyId}，档位 ${parsed.profile}，第 ${startRound} 到 ${parsed.rounds} 轮，助手模型 ${parsed.model}，模拟用户模型 ${parsed.userModel}`,
+		);
+		const result = await runPlaytest({
+			store,
+			storyId: parsed.storyId,
+			rounds: parsed.rounds,
+			startRound,
+			profile: parsed.profile,
+			seed: parsed.seed,
+			assistant: { client: assistantClient, model: parsed.model },
+			user: { client: userClient, model: parsed.userModel },
+			turn: {
+				template,
+				providers,
+				budgetTokens,
+				structuredOutput: mode,
+				toolTransport: resolveToolTransport(assistantModel),
+				embedder,
+				viewpoint: settings.viewpoint,
+				maxTokens,
+				temperature: settings.temperature,
+				reasoning: settings.reasoning,
+			},
+			background,
+			operations: parsed.operations,
+			onRecord: async (record) => {
+				await appendFile(
+					parsed.outPath,
+					serializePlaytestRecord(record),
+					"utf8",
+				);
+			},
+			log,
+			now: dependencies.now,
+		});
+		log(
+			`试玩完成：${result.records.length} 轮，失败 ${result.failures} 轮，记录 ${parsed.outPath}`,
+		);
+		return result;
+	} finally {
+		store.close();
+	}
+}
+
+async function resetOutput(outPath: string): Promise<number> {
+	await writeFile(outPath, "", "utf8");
+	return 1;
+}
+
+async function readResumeStart(outPath: string): Promise<number> {
+	if (!existsSync(outPath)) return 1;
+	const text = await readFile(outPath, "utf8");
+	const records = parsePlaytestJsonl(text);
+	const last = records.reduce(
+		(max, record) => (record.round > max ? record.round : max),
+		0,
+	);
+	return last + 1;
+}
+
+interface PlaytestArgs {
+	readonly dbPath: string;
+	readonly storyId: string;
+	readonly rounds: number;
+	readonly profile: ChatProfile;
+	readonly userModel: string;
+	readonly model: string;
+	readonly seed: number;
+	readonly outPath: string;
+	readonly resume: boolean;
+	readonly operations: {
+		readonly swipeAt: readonly number[];
+		readonly editAt: readonly number[];
+		readonly branchAt: readonly number[];
+	};
+}
+
+function parsePlaytestArgs(args: readonly string[]): PlaytestArgs {
+	const flags = new Set<string>();
+	const values = new Map<string, string>();
+	const allowedValues: Readonly<Record<string, true>> = {
+		db: true,
+		story: true,
+		rounds: true,
+		profile: true,
+		"user-model": true,
+		model: true,
+		seed: true,
+		out: true,
+		"swipe-at": true,
+		"edit-at": true,
+		"branch-at": true,
+		channels: true,
+	};
+	const allowedFlags: Readonly<Record<string, true>> = {
+		resume: true,
+	};
+	for (let index = 0; index < args.length; index += 1) {
+		const arg = args[index] as string;
+		if (!arg.startsWith("--")) {
+			throw new Error(`多余的参数 ${arg}；${USAGE}`);
+		}
+		const equals = arg.indexOf("=");
+		const key = equals === -1 ? arg.slice(2) : arg.slice(2, equals);
+		if (allowedFlags[key] === true) {
+			if (equals !== -1) {
+				throw new Error(`参数 --${key} 不带值；${USAGE}`);
+			}
+			flags.add(key);
+			continue;
+		}
+		if (allowedValues[key] !== true) {
+			throw new Error(`不认识的参数 --${key}；${USAGE}`);
+		}
+		if (values.has(key)) {
+			throw new Error(`参数 --${key} 重复；${USAGE}`);
+		}
+		let value: string | undefined;
+		if (equals !== -1) {
+			value = arg.slice(equals + 1);
+		} else {
+			value = args[index + 1];
+			index += 1;
+		}
+		if (value === undefined) {
+			throw new Error(`--${key} 后面必须写值；${USAGE}`);
+		}
+		values.set(key, value);
+	}
+	const dbPath = requireText(values.get("db"), "--db");
+	const storyId = requireText(values.get("story"), "--story");
+	const roundsValue = values.get("rounds");
+	const rounds =
+		roundsValue === undefined
+			? DEFAULT_PLAYTEST_ROUNDS
+			: parseInteger(roundsValue, "--rounds", 1);
+	const profileValue = values.get("profile");
+	const profile =
+		profileValue === undefined ? DEFAULT_CHAT_PROFILE : profileValue;
+	if (!isChatProfile(profile)) {
+		throw new Error(`--profile 只接受 native 或 naive，收到 ${profile}`);
+	}
+	const userModel = values.get("user-model") ?? DEFAULT_PLAYTEST_USER_MODEL;
+	const model = values.get("model") ?? DEFAULT_PLAYTEST_MODEL;
+	if (model.trim().length === 0) {
+		throw new Error("--model 不能为空字符串");
+	}
+	const seedValue = values.get("seed");
+	const seed =
+		seedValue === undefined ? 1 : parseInteger(seedValue, "--seed", 0);
+	const outPath =
+		values.get("out") ??
+		path.join(repoRoot, "eval-private", "reports", "playtest.jsonl");
+	return {
+		dbPath,
+		storyId,
+		rounds,
+		profile,
+		userModel,
+		model,
+		seed,
+		outPath,
+		resume: flags.has("resume"),
+		operations: {
+			swipeAt: parseRoundList(values.get("swipe-at"), "--swipe-at"),
+			editAt: parseRoundList(values.get("edit-at"), "--edit-at"),
+			branchAt: parseRoundList(values.get("branch-at"), "--branch-at"),
+		},
+	};
+}
+
+function parseRoundList(
+	value: string | undefined,
+	label: string,
+): readonly number[] {
+	if (value === undefined) return [];
+	return value
+		.split(",")
+		.map((part) => part.trim())
+		.filter((part) => part.length > 0)
+		.map((part) => parseInteger(part, label, 1));
+}
+
+function parseInteger(value: string, label: string, minimum: number): number {
+	const parsed = Number(value);
+	if (!Number.isInteger(parsed) || parsed < minimum) {
+		throw new Error(`${label} 必须是不小于 ${minimum} 的整数；${USAGE}`);
+	}
+	return parsed;
+}
+
+function requireText(value: string | undefined, label: string): string {
+	if (value === undefined || value.trim().length === 0) {
+		throw new Error(`${label} 必须是非空字符串；${USAGE}`);
+	}
+	return value;
+}
+
+async function main(): Promise<void> {
+	await runPlaytestCli(process.argv.slice(2));
+}
+
+const entryPath = process.argv[1];
+if (
+	entryPath !== undefined &&
+	import.meta.url === pathToFileURL(entryPath).href
+) {
+	await main();
+}

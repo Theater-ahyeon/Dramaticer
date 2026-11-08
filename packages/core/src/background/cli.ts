@@ -2,16 +2,6 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadDotEnv } from "../env.js";
-import { GAP_PASS_JOB_KIND, createGapPassHandler } from "../ledger/gap-pass.js";
-import {
-	MEMORY_REVISION_JOB_KIND,
-	createMemoryRevisionHandler,
-} from "../ledger/revision.js";
-import { SETTLE_JOB_KIND, createSettleHandler } from "../ledger/settle.js";
-import {
-	USER_WILL_JOB_KIND,
-	createUserWillHandler,
-} from "../ledger/user-will.js";
 import {
 	type LlmChannelsConfig,
 	loadChannelsConfig,
@@ -23,36 +13,18 @@ import {
 	createEmbeddingClient,
 } from "../llm/embeddings.js";
 import type { LlmClient } from "../llm/types.js";
-import {
-	EMBEDDINGS_JOB_KIND,
-	createEmbeddingsHandler,
-} from "../memory/embed.js";
-import { createEventExtractionHandler } from "../memory/extract.js";
-import {
-	NPC_AGENDA_JOB_KIND,
-	createNpcAgendaHandler,
-} from "../memory/npc-agenda.js";
-import { SCENE_JOB_KIND, createSceneHandler } from "../memory/scene.js";
-import { createSummaryHandler } from "../memory/summarize.js";
-import {
-	OPENING_CANDIDATES_JOB_KIND,
-	createOpeningCandidatesHandler,
-	openingCandidatesNeedRun,
-} from "../opening/candidates.js";
-import {
-	OPENING_JOB_KIND,
-	createOpeningHandler,
-	openingPackNeedsRun,
-} from "../opening/opening.js";
 import { DEFAULT_EMBEDDING_DIMENSIONS } from "../store/migrations.js";
 import { StoryStore } from "../store/story-store.js";
 import { type GapWorkBacklog, readGapWorkBacklog } from "./backlog.js";
+import {
+	createDefaultBackgroundJobRegistry,
+	resolveStoryBackgroundKinds,
+} from "./defaults.js";
 import {
 	type BackgroundJobRun,
 	DEFAULT_BACKGROUND_JOB_LIMIT,
 	drainBackgroundJobs,
 } from "./drain.js";
-import { createBackgroundJobRegistry } from "./registry.js";
 import type { BackgroundJobCounts, BackgroundJobRegistry } from "./types.js";
 
 const repoRoot = fileURLToPath(new URL("../../../../", import.meta.url));
@@ -113,50 +85,7 @@ export async function runWorkCli(
 		? (dependencies.createEmbedder ?? createEmbeddingClient)(config)
 		: null;
 	const registry: BackgroundJobRegistry =
-		dependencies.registry ??
-		createBackgroundJobRegistry({
-			events: { handler: createEventExtractionHandler(), tier: "deferred" },
-			summary: { handler: createSummaryHandler(), tier: "deferred" },
-			[NPC_AGENDA_JOB_KIND]: {
-				handler: createNpcAgendaHandler(),
-				tier: "deferred",
-			},
-			[SETTLE_JOB_KIND]: {
-				handler: createSettleHandler(),
-				enqueue: "settled",
-			},
-			[SCENE_JOB_KIND]: {
-				handler: createSceneHandler(),
-				enqueue: "settled",
-			},
-			[USER_WILL_JOB_KIND]: {
-				handler: createUserWillHandler(),
-				enqueue: "settled",
-			},
-			[MEMORY_REVISION_JOB_KIND]: {
-				handler: createMemoryRevisionHandler(),
-				enqueue: "settled",
-			},
-			[GAP_PASS_JOB_KIND]: {
-				handler: createGapPassHandler(),
-				enqueue: "settled",
-			},
-			[OPENING_JOB_KIND]: {
-				handler: createOpeningHandler(),
-				enqueue: "story",
-				needsRun: openingPackNeedsRun,
-			},
-			[OPENING_CANDIDATES_JOB_KIND]: {
-				handler: createOpeningCandidatesHandler(),
-				enqueue: "story",
-				needsRun: openingCandidatesNeedRun,
-			},
-			...(embedder === null
-				? {}
-				: {
-						[EMBEDDINGS_JOB_KIND]: createEmbeddingsHandler({ embedder }),
-					}),
-		});
+		dependencies.registry ?? createDefaultBackgroundJobRegistry({ embedder });
 
 	const store = StoryStore.open(parsed.dbPath, {
 		embeddingDimensions:
@@ -175,11 +104,10 @@ export async function runWorkCli(
 		let enqueued = 0;
 		let discarded = 0;
 		for (const story of stories) {
-			const kinds = resolveStoryKinds(
-				registry,
-				store.getStorySettings(story.id).gapPassEnabled,
-				parsed.kind === null ? null : parsed.kind,
-			);
+			const kinds = resolveStoryBackgroundKinds(registry, {
+				gapPassEnabled: store.getStorySettings(story.id).gapPassEnabled,
+				requested: parsed.kind,
+			});
 			if (kinds.length === 0) continue;
 			const result = await drainBackgroundJobs({
 				store,
@@ -243,20 +171,6 @@ export async function runWorkCli(
 
 function formatRunNode(nodeId: string | null): string {
 	return nodeId === null ? "故事级任务" : `楼层 ${nodeId}`;
-}
-
-/**
- * 合并调用的开关按故事读取：关闭时这一类型既不建任务也不执行，其余类型
- * 照常。不认识的类型留在列表里，交给 drain 报错。
- */
-function resolveStoryKinds(
-	registry: BackgroundJobRegistry,
-	gapPassEnabled: boolean,
-	requested: string | null,
-): string[] {
-	const kinds = requested === null ? [...registry.keys()] : [requested];
-	if (gapPassEnabled) return kinds;
-	return kinds.filter((kind) => kind !== GAP_PASS_JOB_KIND);
 }
 
 interface WorkArgs {

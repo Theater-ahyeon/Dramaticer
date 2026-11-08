@@ -1,0 +1,111 @@
+import { GAP_PASS_JOB_KIND, createGapPassHandler } from "../ledger/gap-pass.js";
+import {
+	MEMORY_REVISION_JOB_KIND,
+	createMemoryRevisionHandler,
+} from "../ledger/revision.js";
+import { SETTLE_JOB_KIND, createSettleHandler } from "../ledger/settle.js";
+import {
+	USER_WILL_JOB_KIND,
+	createUserWillHandler,
+} from "../ledger/user-will.js";
+import type { EmbeddingClient } from "../llm/embeddings.js";
+import {
+	EMBEDDINGS_JOB_KIND,
+	createEmbeddingsHandler,
+} from "../memory/embed.js";
+import { createEventExtractionHandler } from "../memory/extract.js";
+import {
+	NPC_AGENDA_JOB_KIND,
+	createNpcAgendaHandler,
+} from "../memory/npc-agenda.js";
+import { SCENE_JOB_KIND, createSceneHandler } from "../memory/scene.js";
+import { createSummaryHandler } from "../memory/summarize.js";
+import {
+	OPENING_CANDIDATES_JOB_KIND,
+	createOpeningCandidatesHandler,
+	openingCandidatesNeedRun,
+} from "../opening/candidates.js";
+import {
+	OPENING_JOB_KIND,
+	createOpeningHandler,
+	openingPackNeedsRun,
+} from "../opening/opening.js";
+import { createBackgroundJobRegistry } from "./registry.js";
+import type { BackgroundJobRegistry } from "./types.js";
+
+export interface DefaultBackgroundRegistryOptions {
+	/** 没有 embedding 客户端时不注册向量任务。 */
+	readonly embedder?: EmbeddingClient | null;
+}
+
+/** 生产环境与自动试玩共用的任务注册表。 */
+export function createDefaultBackgroundJobRegistry(
+	options: DefaultBackgroundRegistryOptions = {},
+): BackgroundJobRegistry {
+	const embedder = options.embedder ?? null;
+	return createBackgroundJobRegistry({
+		events: { handler: createEventExtractionHandler(), tier: "deferred" },
+		summary: { handler: createSummaryHandler(), tier: "deferred" },
+		[NPC_AGENDA_JOB_KIND]: {
+			handler: createNpcAgendaHandler(),
+			tier: "deferred",
+		},
+		[SETTLE_JOB_KIND]: {
+			handler: createSettleHandler(),
+			enqueue: "settled",
+		},
+		[SCENE_JOB_KIND]: {
+			handler: createSceneHandler(),
+			enqueue: "settled",
+		},
+		[USER_WILL_JOB_KIND]: {
+			handler: createUserWillHandler(),
+			enqueue: "settled",
+		},
+		[MEMORY_REVISION_JOB_KIND]: {
+			handler: createMemoryRevisionHandler(),
+			enqueue: "settled",
+		},
+		[GAP_PASS_JOB_KIND]: {
+			handler: createGapPassHandler(),
+			enqueue: "settled",
+		},
+		[OPENING_JOB_KIND]: {
+			handler: createOpeningHandler(),
+			enqueue: "story",
+			needsRun: openingPackNeedsRun,
+		},
+		[OPENING_CANDIDATES_JOB_KIND]: {
+			handler: createOpeningCandidatesHandler(),
+			enqueue: "story",
+			needsRun: openingCandidatesNeedRun,
+		},
+		...(embedder === null
+			? {}
+			: {
+					[EMBEDDINGS_JOB_KIND]: createEmbeddingsHandler({ embedder }),
+				}),
+	});
+}
+
+export interface StoryBackgroundKindsOptions {
+	readonly gapPassEnabled: boolean;
+	/** 只跑指定类型；不设置时使用注册表里的全部类型。 */
+	readonly requested?: string | null;
+}
+
+/**
+ * 合并调用的开关按故事读取：关闭时这一类型既不建任务也不执行，其余类型
+ * 照常。不认识的类型留在列表里，交给 drain 报错。
+ */
+export function resolveStoryBackgroundKinds(
+	registry: BackgroundJobRegistry,
+	options: StoryBackgroundKindsOptions,
+): string[] {
+	const kinds =
+		options.requested === undefined || options.requested === null
+			? [...registry.keys()]
+			: [options.requested];
+	if (options.gapPassEnabled) return kinds;
+	return kinds.filter((kind) => kind !== GAP_PASS_JOB_KIND);
+}

@@ -4,16 +4,12 @@ import { fileURLToPath } from "node:url";
 import {
 	type ChatProfile,
 	type ChatTurnResult,
-	type ContextTemplate,
 	DEFAULT_CHAT_PROFILE,
-	DEFAULT_CONTEXT_TEMPLATE_ID,
 	DEFAULT_DIRECTOR_CONFIG,
 	type LlmChannelsConfig,
 	type LlmStreamingClient,
 	StoryStore,
-	type StructuredOutputMode,
 	type TurnMode,
-	createDefaultContextTemplate,
 	createEmbeddingClient,
 	createLlmClient,
 	createNaiveChatProviders,
@@ -33,7 +29,7 @@ import {
 	parseCharacterCardFile,
 } from "../character-card.js";
 import { type StWorldInfo, parseWorldInfoFile } from "../world-info.js";
-import { importCardContent } from "./session.js";
+import { importCardContent, resolveStoryContextTemplate } from "./session.js";
 
 const repoRoot = fileURLToPath(new URL("../../../../", import.meta.url));
 
@@ -186,7 +182,7 @@ export async function runChatCli(
 		const template =
 			parsed.profile === "naive"
 				? createNaiveContextTemplate()
-				: resolveTemplate(store, settings.templateId, mode);
+				: resolveStoryContextTemplate(store, settings.templateId, mode);
 		const budgetTokens =
 			parsed.budgetTokens ?? model.contextWindow - model.maxTokens;
 		if (budgetTokens <= 0) {
@@ -247,22 +243,6 @@ export async function runChatCli(
 	} finally {
 		store.close();
 	}
-}
-
-/** 故事指向库里的模板时读取它；为空或指向内置模板时用默认模板。 */
-function resolveTemplate(
-	store: StoryStore,
-	templateId: string | null,
-	mode: StructuredOutputMode,
-): ContextTemplate {
-	if (templateId === null || templateId === DEFAULT_CONTEXT_TEMPLATE_ID) {
-		return createDefaultContextTemplate({ structuredOutput: mode });
-	}
-	const record = store.getContextTemplate(templateId);
-	if (record === null) {
-		throw new Error(`故事引用的上下文模板不存在：${templateId}`);
-	}
-	return record.template;
 }
 
 function parseChatArgs(args: readonly string[]): ChatArgs {

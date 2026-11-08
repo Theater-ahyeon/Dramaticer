@@ -1,5 +1,7 @@
 import {
 	type ContextSlotProviders,
+	type ContextTemplate,
+	DEFAULT_CONTEXT_TEMPLATE_ID,
 	type DirectorConfig,
 	type DirectorMechanism,
 	type EmbeddingClient,
@@ -7,6 +9,8 @@ import {
 	type HistoryBlockPolicy,
 	type NpcAgendaUpsertResult,
 	type StoryStore,
+	type StructuredOutputMode,
+	createDefaultContextTemplate,
 	createStandardChatProviders,
 } from "@dramaticer/core";
 import type { StCharacterCard } from "../character-card.js";
@@ -123,4 +127,20 @@ export function createChatProviders(
 		mechanisms: options.mechanisms,
 		historyBlockPolicy: options.historyBlockPolicy,
 	});
+}
+
+/** 故事指向库里的模板时读取它；为空或指向内置模板时用默认模板。 */
+export function resolveStoryContextTemplate(
+	store: StoryStore,
+	templateId: string | null,
+	mode: StructuredOutputMode,
+): ContextTemplate {
+	if (templateId === null || templateId === DEFAULT_CONTEXT_TEMPLATE_ID) {
+		return createDefaultContextTemplate({ structuredOutput: mode });
+	}
+	const record = store.getContextTemplate(templateId);
+	if (record === null) {
+		throw new Error(`故事引用的上下文模板不存在：${templateId}`);
+	}
+	return record.template;
 }

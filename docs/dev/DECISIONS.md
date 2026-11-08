@@ -874,3 +874,21 @@
   - 结算、现场分析、用户意志与修订这些处理器只对已有后台任务执行，任务不会为朴素楼层创建；同一路径上原生任务的窗口仍可能把朴素楼层当上下文读出，但不会为它写结算。评测对比应让两种档位各用一个数据库或故事。
   - `TurnTrace` 新增 `profile` 字段。旧数据库里的 Trace 没有这个字段，存储层的查询用 `COALESCE(..., 'native')` 兜底，读取代码需要按 `native` 处理缺失值。
   - 朴素模式不参与增益对比以外的功能；R2-T02 的试玩记录直接取运行参数里的档位，R2-T06 的记分牌按档位分组。
+
+## ADR-0063 自动试玩的轮次记录与间隙结算（2026-11-08）
+
+- **背景**：R2-T02 需要一个能在已有故事上连续跑几十轮的 CLI，用模型模拟玩家，逐轮留下可聚合的评测记录。记录要能回答首字延迟、用量、台账写入、线索、导演决策、截断与间隙工作完成情况这些问题；中断后要能续跑。R2-T03 的一致性探针与 R2-T06 的记分牌都读取这批记录。
+- **决定**：
+  - 新增 `pnpm --filter @dramaticer/st-compat playtest`，在 `--db` 指定的数据库里操作已有故事；参数是 `--story`、`--rounds`（默认 20）、`--profile`、`--user-model`、`--model`、`--seed`、`--out`、`--resume`。助手模型默认 `rp`，模拟用户默认 `background`。
+  - 模拟用户每轮由 `background` 模型生成，提示词包含故事名、角色卡（截断到 1,500 字符）、玩家人设、最近 12 楼原文与一条按种子选出的写作提示；输出必须是唯一键 `message` 的严格 JSON。非法输出最多尝试 3 次，之后抛错终止整批，不写失败轮次。
+  - 助手回合走 `runChatTurn`，模板与槽位按档位选择：`native` 用故事模板与 `createStandardChatProviders`，`naive` 用 `createNaiveContextTemplate` 与 `createNaiveChatProviders`。生成参数取故事设置（温度、输出上限、思考档位、视角、导演配置、历史块策略）；故事没有保存过设置时输出上限按 `resolveDefaultMaxTokens`，输入预算等于上下文窗口减输出上限。
+  - 每轮结束后先执行间隙工作，再写记录。`native` 档用与 `dramaticer work` 相同的注册表跑一轮 `drainBackgroundJobs`，`gapSeconds` 为 0、不按会话结束处理，所以只执行 `gap` 档，延后档留在待办里；`gap_pass` 按故事开关过滤。`naive` 档不补建也不执行后台任务。记录里的 `gapWork` 取本轮开始时（上一轮间隙之后）的 `readGapWorkBacklog`，分母不含丢弃。
+  - 记录字段：轮次、档位、种子、开始时间、本轮开始时的间隙积压、用户输入与写作提示、助手正文、用户楼层与助手楼层 id、Trace 所在楼层、首字毫秒、总耗时、用量、该助手楼层上的台账事实条数（含间隙结算）、新建线索（`clue.<id>.text` 的 set）、兑现线索（`clue.<id>.status` 的 set 且值为 `fulfilled`）、导演决策、Trace 摘要、是否截断与间隙执行计数。失败轮次写 `status: failed` 与错误信息，不写助手正文与 Trace。
+  - 特殊操作按轮次配置：`--swipe-at` 重新生成本轮回复；`--edit-at` 给玩家输入追加一句补充、生成新的用户楼层并重新生成；`--branch-at` 为当前助手楼层建一个同文兄弟节点并把 head 切过去。三种操作都保留旧节点（I4），记录里写 `fromNodeId` 与 `toNodeId`，`traceNodeId` 指向真正带 Trace 的楼层。
+  - `--seed` 决定模拟用户写作提示的顺序；模型请求不带种子，因为渠道接口没有 seed 字段。同一份记录与种子重复运行时用户提示顺序一致。
+  - 私有 JSONL 默认写 `eval-private/reports/playtest.jsonl`；`--resume` 从已有记录的最大轮次加一继续，不带时先清空文件。坏行直接失败，不静默跳过。
+  - 后台注册表与 `gap_pass` 开关过滤提取成 `createDefaultBackgroundJobRegistry` 与 `resolveStoryBackgroundKinds`，`dramaticer work` 与试玩共用，避免两处接线不一致。
+- **影响**：
+  - 试玩每轮会发出一次正文请求与一次模拟用户请求；配置了 swipe 或 edit 的轮次再多一次正文请求。间隙结算与其它已注册任务在正文请求之外调用后台模型。
+  - 试玩不复制或导入故事，故事必须先用 `dramaticer chat` 或导入流程建好并保存角色提示词；缺少角色提示词时直接失败。
+  - 记录只进私有目录；统计版报告由 R2-T06 从这些记录聚合生成，不直接引用原文。

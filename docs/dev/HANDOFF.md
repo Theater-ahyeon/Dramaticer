@@ -3,20 +3,21 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：116
-- 任务：R2-T01 B0 朴素模式
-- 结果：完成（`DONE`），门禁通过（103 个测试文件、906 个测试通过，3 个 live 跳过，共 909 个）。
-  - core 新增 `chat/profile.ts`：`ChatProfile` 取 `native`、`naive`，默认 `native`，`assertChatProfile`；`runChatTurn` 的 `profile` 是单轮参数，写进 `TurnTrace.profile`（正常楼层与中止楼层都写）。
-  - 朴素模式模板 `createNaiveContextTemplate`（id `dramaticer-naive`）只有 `character`、`persona`、`history`、`protocol`；`protocol` 文本只有导出的 `WRITING_CONTRACT`，不含写入标签说明。朴素模式忽略故事指向的自定义模板。
-  - 朴素槽位 `createNaiveChatProviders`：角色卡、故事设置 `persona`、最近 20 楼原文（`createRawHistorySlotProvider`，不做块视图与省略）。新增 `createPersonaSlotProvider`、`createRawHistorySlotProvider`。
-  - 朴素回合不提供读取与写入工具、不收集结构化输出、不写 `state_diffs` 与 `plot_notes`；Trace 的 `structured` 计数为 0。
-  - 后台按楼层过滤：`enqueueMissingBackgroundJobs` 的 `confirmed` 与 `settled` 条件、`listUnsettledSettledAssistantNodes` 的结算窗口都跳过 `profile` 为 `naive` 的助手楼层；没有 Trace 的楼层按 `native` 处理。
-  - CLI：`dramaticer chat --profile <native|naive>`、`--persona <text>`（写进故事设置）；`--profile naive` 搭配显式 `--director on` 在参数解析阶段失败。
-  - ADR-0062；新增 7 个 core 测试（`chat-profile.test.ts`）与 3 个 CLI 测试。
+- 会话：117
+- 任务：R2-T02 回放驱动与长程自动试玩命令行
+- 结果：完成（`DONE`），门禁通过（104 个测试文件、913 个测试通过，3 个 live 跳过，共 916 个）。
+  - 新增 `pnpm --filter @dramaticer/st-compat playtest`（`evalset/playtest-cli.ts`、`evalset/playtest.ts`）：参数 `--db`、`--story`、`--rounds` 默认 20、`--profile`、`--user-model` 默认 `background`、`--model` 默认 `rp`、`--seed` 默认 1、`--out`、`--resume`，另有按轮次配置的 `--swipe-at`、`--edit-at`、`--branch-at`。
+  - 模拟用户由 `background` 模型生成，严格 JSON 唯一键 `message`；连续 3 次非法抛 `PlaytestUserOutputError` 终止整批。
+  - 每轮走 `runChatTurn`；`native` 用故事模板与 `createStandardChatProviders`，`naive` 用 `createNaiveContextTemplate` 与 `createNaiveChatProviders`。生成参数取故事设置；输入预算等于模型上下文窗口减输出上限。
+  - `native` 每轮结束跑一次 `drainBackgroundJobs`（`gapSeconds` 0、`sessionEnded` false，只执行 `gap` 档），`gap_pass` 按故事开关过滤；`naive` 不建也不跑后台任务。记录里的 `gapWork` 是下一轮开始时的 `readGapWorkBacklog`。
+  - 记录字段：轮次、档位、种子、开始时间、间隙积压、用户输入与写作提示、助手正文、用户与助手楼层 id、`traceNodeId`、首字与总耗时、用量、台账事实条数（含间隙结算）、新建与兑现线索、导演决策、Trace 摘要、截断、间隙执行计数；失败轮次写 `status:"failed"` 与错误，不中断整批。
+  - `--resume` 从已有记录的最大轮次加一继续；不带 `--resume` 先清空输出文件。坏行直接失败。
+  - 后台注册表与 `gap_pass` 过滤提取成 core 的 `createDefaultBackgroundJobRegistry`、`resolveStoryBackgroundKinds`，`dramaticer work` 与试玩共用；st-compat 的模板解析提取成 `resolveStoryContextTemplate`。
+  - ADR-0063；新增 7 个测试（`playtest.test.ts`）：5 轮记录字段、模拟用户重试与终止、严格解析、三种操作、朴素档位、CLI 续跑与重写。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、R2-T01。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`；未完成任务见 `docs/dev/TASKS.md`。
-- **下一个可做任务是 R2-T02 回放驱动与长程自动试玩命令行**。v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。O-T99 开局验收仍依赖 R2-T02、R2-T03。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、R2-T01、R2-T02。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`；未完成任务见 `docs/dev/TASKS.md`。
+- **下一个可做任务是 R2-T03 一致性探针**。v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。O-T99 开局验收仍依赖 R2-T02（已完成）与 R2-T03。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045。
 - HUMAN-09 待处理（不阻塞）：`data/channels.yaml` 已有 `bg-fallback`、`main-fallback`、`codex`，`channels.example.yaml` 还没有这三个别名。
 - HUMAN-10 待处理（不阻塞）：插件不变量是否加进 AGENTS.md。
@@ -44,14 +45,21 @@
 - 插件系统在 DESIGN §19 是唯一权威；P 阶段任务在 TASKS 的「P：插件内核」小节，C 线兼容插件任务已存在且依赖 P2。
 
 ## 下一步
-- **R2-T02 回放驱动与长程自动试玩命令行**：新增 `pnpm --filter @dramaticer/st-compat playtest`（`--db`、`--story`、`--rounds` 默认 20、`--profile`、`--user-model`、`--model`、`--seed`、`--out`、`--resume`）；模拟用户由 `background` 模型生成，严格 JSON `{message}`，解析失败重试 3 次后终止；默认助手模型用 `rp`（catie 渠道的 Gemini 3.8 Flash，人类指定）；每轮记录序号、节点 id、用户输入与助手正文、首字毫秒、用量、台账 diff 数、线索、导演决策、Trace 摘要、截断与下一轮开始时关键间隙工作的完成情况，写私有 JSONL；`--resume` 从最后一个完成轮次继续，单轮失败记入失败列表。
-- R2-T02 的 `--profile` 直接传给 `runChatTurn` 的 `profile`（`native` 或 `naive`），并用 `createNaiveChatProviders` / `createNaiveContextTemplate` 或 `createStandardChatProviders` / 默认模板组装上下文；试玩记录里的档位取运行参数，不要从 Trace 反推（Trace 里也有 `profile`）。
-- R2-T02 之后是 R2-T03（一致性探针）、R2-T03.a、R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09、R2-T99；O-T99 开局验收要等 R2-T02、R2-T03 完成后再做。
+- **R2-T03 一致性探针**：在试玩中每 `probeEvery`（默认 10）轮插入一次回忆型探针，从台账里取至少 20 楼之前的事实生成问题；探针调用不写楼层树、不改 head；回答与当前台账快照交给 `judge` 角色的模型，严格 JSON `{consistent: boolean, reason}`，无法判断记 `unknown` 且不并入矛盾率；报告按对话与轮次给出矛盾率、`unknown` 数与样例编号（私有版可含原文，统计版只含数字）。探针逻辑应复用 R2-T02 的 `runPlaytest` 记录点，不要在 CLI 外再写一套循环。
+- R2-T03 之后是 R2-T03.a、R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09、R2-T99；O-T99 开局验收要等 R2-T03 完成后再做。
 - 开局包的读取入口是 `readOpeningPack(store, storyId)`；需要自己校验时用 `validateOpeningPackPayload(value, knownNames)`。首楼候选的解析用 `parseOpeningCandidatesResponse(text, expectedCount)`，不要另写一套。
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
 - 不要修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 下的任何文件。不变量 I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账是唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖任何其他工作区包、ST 语义只在兼容插件里实现。
+- 自动试玩的入口是 `pnpm --filter @dramaticer/st-compat playtest`，实现分两层：`evalset/playtest.ts` 只管轮次循环、模拟用户、记录与间隙，`evalset/playtest-cli.ts` 负责参数、渠道、模板、槽位与文件续跑。新增试玩选项改 CLI，不要改 `runPlaytest` 的轮次语义。
+- 试玩默认写 `eval-private/reports/playtest.jsonl`；`--resume` 从已有记录的最大轮次加一继续，失败轮次也算已记录，不会被重跑；不带 `--resume` 会先清空文件。坏行直接抛错。
+- 试玩每轮的顺序是：读间隙积压 → 模拟用户生成 → `runChatTurn` → 按 `--swipe-at`/`--edit-at`/`--branch-at` 执行操作 → 间隙后台任务 → 写记录。`gapWork` 因此描述的是本轮开始前（上一轮间隙之后）的状态。
+- 试玩里 `--seed` 只决定模拟用户的写作提示顺序（固定五行），模型请求不带 seed；不要声称它控制模型采样。记录里 `userHint` 就是当轮提示。
+- `--swipe-at` 用 `regenerateAssistantTurn`；`--edit-at` 给玩家输入追加「（我想补充一句。）」后建新用户楼层并 `generateAssistantTurn`；`--branch-at` 用 `store.swipeNode` 建同文兄弟节点并切 head。三种操作都会增加正文请求（branch 不增加），旧节点保留（I4）。
+- 试玩的 `native` 档每轮跑 `drainBackgroundJobs`，`gapSeconds` 固定 0，所以只执行 `gap` 档；`naive` 档完全不建也不跑后台任务。需要暂停档任务时在记录外另跑 `dramaticer work`。
+- 后台注册表工厂在 `core/src/background/defaults.ts` 的 `createDefaultBackgroundJobRegistry`，`gap_pass` 开关过滤在 `resolveStoryBackgroundKinds`；新增后台任务类型时改这两个函数和 `dramaticer work`/试玩都会同步。
+- `dramaticer chat` 与试玩共用 `resolveStoryContextTemplate`（`st-compat/src/chat/session.ts`）：故事模板为空或指向内置模板时用默认模板。
 - 对话档位（ADR-0062）：`ChatProfile` 取 `native`、`naive`，在 `core/src/chat/profile.ts`；`runChatTurn` 的 `profile` 单轮参数默认 `native`，没有按运行状况切换的代码路径。`TurnTrace.profile` 记录本轮档位；旧数据库里没有该字段的 Trace 按 `native` 处理（存储层查询用 `COALESCE(..., 'native')`）。
 - 朴素模式的工厂是 `createNaiveContextTemplate()`（id `dramaticer-naive`）与 `createNaiveChatProviders({store, characterPrompt, persona, historyLimit})`；它忽略故事指向的自定义模板，`protocol` 段只有导出的 `WRITING_CONTRACT`。原文历史用 `createRawHistorySlotProvider`（默认 20 楼，不做块视图），persona 用 `createPersonaSlotProvider`。
 - 朴素回合不提供读取与写入工具、不收集结构化输出、不写 `state_diffs` 与 `plot_notes`；测试 `chat-profile.test.ts` 锁住 Trace 只有四个片段、请求不带工具、不建后台任务、两种档位节点结构一致。
@@ -154,4 +162,4 @@
 - 导入接口的角色卡图片与 JSON 都在请求体内，25 MB 上限覆盖；PNG base64 目前只接受无前缀的 base64，测试里用 `node:zlib` 构造最小 PNG。
 - `packages/st-compat` 的测试通过 workspace 依赖解析到 `packages/core/dist`；改了 core 的公开代码后先 `pnpm run typecheck` 或 `pnpm --filter @dramaticer/core build`，再单独跑 st-compat 测试。`pnpm check` 会先构建。
 - 任务编号映射（历史）：M4-T07→R5-T01、T08→R5-T02、T09→R5-T03、T10→R5-T04、T11→R5-T05、T12→R5-T06、T13→R5-T07、T14→R5-T08、T15→R5-T09、T16→R5-T10、T17→R5-T11、T18→R5-T12、T19→R5-T13、T20→R5-T14、T99→R5-T99。
-- 整轮门禁在 Windows 上并行跑 103 个测试文件时，单个测试的耗时可以比单独运行高十几倍（`gap-pass-compare.test.ts` 的第一个用例单独 680 毫秒、整轮 9.8 秒）。新建要跑数据库或文件系统的测试必须显式设置超时，vitest 默认的 5 秒不够；`afterEach` 删除临时目录用 `rmSync` 时带上 `maxRetries` 与 `retryDelay`，否则 Windows 上文件句柄未释放会报 EPERM 并掩盖真正失败的用例。
+- 整轮门禁在 Windows 上并行跑 100 多个测试文件时，单个测试的耗时可以比单独运行高十几倍（`gap-pass-compare.test.ts` 的第一个用例单独 680 毫秒、整轮 9.8 秒）。新建要跑数据库或文件系统的测试必须显式设置超时，vitest 默认的 5 秒不够；`afterEach` 删除临时目录用 `rmSync` 时带上 `maxRetries` 与 `retryDelay`，否则 Windows 上文件句柄未释放会报 EPERM 并掩盖真正失败的用例。

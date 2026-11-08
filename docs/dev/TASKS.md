@@ -315,7 +315,8 @@
   - 与 `native` 共用同一条生成与楼层写入路径，只替换槽位提供者集合。
   验收：朴素模式 Trace 只有角色、persona、历史与写作契约；后台客户端零调用；两种模式写出的楼层结构一致；`pnpm check` 通过。
 
-- [ ] **R2-T02 回放驱动与长程自动试玩命令行** | 依赖：R2-T01、R1-T02
+- [x] **R2-T02 回放驱动与长程自动试玩命令行** | 依赖：R2-T01、R1-T02
+  完成：2026-11-08 新增 `pnpm --filter @dramaticer/st-compat playtest`（`--db`、`--story`、`--rounds` 默认 20、`--profile`、`--user-model` 默认 `background`、`--model` 默认 `rp`、`--seed`、`--out`、`--resume`、`--swipe-at`、`--edit-at`、`--branch-at`）；模拟用户严格解析唯一键 `message` 的 JSON，连续 3 次非法时终止；每轮记录序号、用户与助手楼层 id、用户输入与正文、首字与总耗时、用量、台账事实条数、新建与兑现线索、导演决策、Trace 摘要、截断与间隙积压；native 档每轮跑一轮 `gapSeconds` 为 0 的后台任务，naive 档不建也不跑；`--resume` 从最后记录的轮次加一继续；`createDefaultBackgroundJobRegistry` 与 `resolveStoryBackgroundKinds` 由 `dramaticer work` 与试玩共用；ADR-0063；新增 7 个测试；门禁通过（104 个测试文件、913 个测试，3 个 live 跳过）
   做什么：
   - 新增 `pnpm --filter @dramaticer/st-compat playtest`：参数 `--db`、`--story`、`--rounds`（默认 20）、`--profile`、`--user-model`、`--model`、`--seed`、`--out`、`--resume`。
   - 模拟用户由 `background` 模型生成，严格 JSON `{message}`；解析失败重试 3 次后终止并记录原因；支持按轮次配置 swipe、编辑与分支切换。
