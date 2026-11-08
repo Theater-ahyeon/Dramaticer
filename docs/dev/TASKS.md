@@ -23,8 +23,8 @@
 | R3 快回合 | 完成 | 本文件 |
 | O 开局与方向 | 完成 | 本文件 |
 | R2 评测底座 | 完成 | 本文件 |
-| E 排障命令行 | 当前阶段 | 本文件 |
-| R4 Director v2 | 待做 | 本文件 |
+| E 排障命令行 | 完成 | 本文件 |
+| R4 Director v2 | 当前阶段 | 本文件 |
 | R5 能玩的界面 | 待做 | 本文件 |
 | M6 生图第一批 | 待做 | 本文件 |
 | R1 续 记忆增强 | 待做 | 本文件 |
@@ -460,12 +460,75 @@
 
 ## R4：Director v2
 
-- [ ] **R4-T00 细化 R4 任务** | 依赖：R1-T99、R2-T99、R3-T99 | DESIGN §8
+- [x] **R4-T00 细化 R4 任务** | 依赖：R1-T99、R2-T99、R3-T99 | DESIGN §8
+  完成：2026-11-08 把 R4 拆成 R4-T01 至 R4-T08 与 R4-T99：计划存储与玩家编辑、后台规划器、短线层节拍选择、并入玩家消息、透明与盲盒模式、落拍检测、候选行动、`extensions.dramaticer` 扩展；M3 已实现的线索、事件池、NPC 议程、重复检测、节奏与 O 的开局导演不重复建任务；迁移 v32 存计划与拍状态、v33 存候选行动，R1 续原计划的 v32–v35 顺延为 v34–v37；ADR-0077；门禁通过（118 个测试文件、1038 个测试通过，3 个 live 跳过，共 1041 个）
   做什么：把长线层（弧线、序列、后台规划器、玩家编辑）、短线层（当前拍、强度、纠偏信号、程序选择）、落拍检测、候选行动、注入玩家消息末尾、透明与盲盒模式、`extensions.dramaticer` 扩展拆成任务，写清依赖与验收；开局导演（O）已实现的机制不重复建任务。
   验收：任务清单可直接执行；`pnpm check` 通过。
 
+- [ ] **R4-T01 导演计划存储与玩家编辑** | 依赖：R1-T99、R2-T99、R3-T99 | DESIGN §8.1 | ADR-0077
+  做什么：
+  - 迁移 v32 新增 `story_arcs(story_id, arc_id, title, through_line, difficulty, red_lines, source, created_at, updated_at, PRIMARY KEY(story_id, arc_id))`、`story_sequences(story_id, sequence_id, arc_id, ordinal, title, source, created_at, updated_at, PRIMARY KEY(story_id, sequence_id))`、`story_beats(story_id, beat_id, sequence_id, ordinal, goal, entry_signs, fit_points, source, created_at, updated_at, PRIMARY KEY(story_id, beat_id))` 与 `director_beat_states(node_id PRIMARY KEY, story_id, beat_id, completed, created_at)`；`source` 取 `player`、`model`、`import`，`difficulty` 是 0 到 1 的数字，`entry_signs` 与 `fit_points` 存 JSON 字符串数组；组合外键与触发器拒绝跨故事引用。
+  - 新增 `packages/core/src/director/plan.ts`：`DirectorPlan { arcs }`，弧线含 `id`、`title`、`throughLine`、`difficulty`、`redLines`、`sequences`；序列含 `id`、`title`、`beats`；节拍含 `id`、`goal`、`entrySigns`、`fitPoints`（至少一条）。`parseDirectorPlan` 拒绝未知字段、空字符串、重复 id、越界难度与空的 `entrySigns`/`fitPoints`，并指出 JSON 路径。
+  - `readDirectorPlan(store, storyId)` 按弧线、序列、节拍的 `ordinal` 还原成嵌套结构；`replaceDirectorPlan(store, storyId, plan)` 在一个事务里整份替换并把所有行标为 `player`；`mergePlannedArcs(store, storyId, plan, source)` 只按 id 更新或追加，`source` 取 `model` 或 `import`，不删除任何行，也不覆盖 `player` 行。
+  - `resolveCurrentBeat(store, storyId, nodeId)` 沿当前路径向前找最近一条 `director_beat_states`：`completed` 为真时前进到下一拍（序列末拍进入下一序列首拍），没有状态时从第一拍开始，计划耗尽返回 null。只读路径上的记录，分支切换后另一分支不参与。
+  - `StoryStore` 提供计划的读写方法与拍状态读写；CLI 新增 `dramaticer director plan --story <id> --db <path> [--json] [--set <file>]`（`--set` 用玩家身份整份替换）；server 新增 `GET /api/stories/:id/director/plan` 与 `PUT`（同一套校验与替换语义）。
+  验收：合法计划写入后能按原顺序读回；未知字段、重复 id、空字符串、越界难度与空契合点各抛错并指出路径；`--set` 写入的行来源为 `player`；`mergePlannedArcs` 不删除行、不改 `player` 行、同 id 更新；当前拍在无状态时取第一拍，完成后前进，计划耗尽返回 null，另一分支的状态不参与；列表命令只读；`pnpm check` 通过。
+
+- [ ] **R4-T02 后台规划器** | 依赖：R4-T01、R1-T02.2 | DESIGN §8.1 | ADR-0077
+  做什么：
+  - 新增后台任务 `director_plan`（`director/planner.ts`，入队条件 `story`，档位 `deferred`）：没有计划，或当前拍已耗尽时补建；使用 `roles.planner` 角色与独立客户端，回合内不调用模型。
+  - 输入：角色卡提示词、台账里的人物关系、未兑现线索、物品与用户意志、最近章节摘要（存在时）、现有计划（含玩家编辑的行）。模型严格输出 `{arcs:[{id,title,throughLine,difficulty,redLines,sequences:[{id,title,beats:[{id,goal,entrySigns,fitPoints}]}]}]}`，字段、类型、非空、难度范围与 id 唯一性全部复用 `parseDirectorPlan`。
+  - 输出非法时整份拒绝，交给任务框架重试；合法时走 `mergePlannedArcs`，来源 `model`；不删除既有行，不覆盖 `player` 行；同一输入重复执行不新增行。玩家的编辑是修订的输入，规划器据此追加后续序列。
+  - CLI 新增 `dramaticer director plan --story <id> --db <path> --generate`：同步执行一次规划器，与后台任务共用处理器与校验。
+  验收：假客户端一次调用写入计划；相同输入重复执行行数不变；非法字段整份拒绝且不写入；玩家编辑的弧线与序列在规划器运行后保留；没有计划或拍耗尽时入队，当前拍未耗尽时不入队；非长间隙不执行 `deferred`；回合内后台客户端零调用；`pnpm check` 通过。
+
+- [ ] **R4-T03 短线层：当前拍、强度与纠偏信号** | 依赖：R4-T01、R4-T02、M3-T01、M3-T06、M3-T07、O-T02 | DESIGN §8.2 | ADR-0077
+  做什么：
+  - 把 `director/opening.ts` 的强度渲染提取到 `director/intensity.ts`，类型 `OpeningIntensity` 改名为 `DirectorIntensity`（同步全部引用）；`openingIntensity` 的行为不变。
+  - `DirectorConfig` 增加 `intensity`（`setup`、`natural`、`detonate`，默认 `natural`）并由 `assertDirectorConfig` 校验；单轮参数 `directorIntensity` 优先于故事设置；`dramaticer chat --intensity` 与 `POST /api/stories/:id/turns` 的请求体 `intensity` 走同一处解析，非法取值抛错。`intensity` 只作用于序列拍建议，`openingIntensity` 仍只作用于开场导演。
+  - 新增 `director/beat.ts` 的 `createBeatMechanism`（`BEAT_PRIORITY = 23`，注册在开场机制之后）：`resolveCurrentBeat` 取当前拍，按强度拼出一条具体指令：`setup` 只给目标与起始迹象；`natural` 再给在场人物与事的契合点；`detonate` 要求本楼出现可见变化并附三条可选方向。契合点与起始迹象逐字来自计划，不泛化。
+  - 决策的 `signals.beat` 写弧线、序列、节拍 id、强度、难度、使用到的契合点与当前楼层深度。纠偏信号沿用现有机制的优先级：重复正文 40、开场 35、线索过老 30、场景重复 25 都压过节拍 23；节拍压过线索过多 20、事件池 10 与节奏 5。评估全程只读数据库，不调用模型。
+  验收：计划存在时指令包含当前拍的目标、起始迹象与至少一条契合点；三档强度的指令不同，`detonate` 出现可见变化要求；没有计划或拍耗尽时行为与改动前一致；单轮强度覆盖故事设置，非法值抛错；重复正文、线索过老与场景重复压过节拍；节拍压过线索过多与节奏；另一分支的拍状态不参与；导演评估的模型调用次数为零；`pnpm check` 通过。
+
+- [ ] **R4-T04 导演建议并入玩家消息末尾** | 依赖：R4-T03、R3-T03、M1-T04 | DESIGN §8.2、§9 | ADR-0077
+  做什么：
+  - `ContextSlotContent` 增加 `suffix?: string`，`ContextTraceEntry` 增加 `appendedTo?: "last-user"`；组装器在预算裁剪之后把 `suffix` 接在最后一条 `user` 消息的末尾，Trace 记来源、token 与 `appendedTo`；没有 `user` 消息时该槽位记 `missing-slot`，不产生独立消息。
+  - `createDirectorSlotProvider` 改为返回 `suffix`：`【导演】<directive>` 加固定尾注 `玩家行动优先，你可以按剧情需要调整。`，不再返回 system 消息；尾注定义成导出的常量，测试直接引用。
+  - 预算不足时整个 suffix 随该片段一起被标记 `budget-dropped`；原文不改写，Trace 的 token 计入总量；`dramaticer explain` 在上下文分段里显示 `appendedTo`。
+  验收：组装结果里没有以 `【导演】` 开头的独立消息，最后一条 `user` 消息以指令与尾注结束；楼层原文与数据库中的玩家楼层不变；Trace 的来源、token 与 `appendedTo` 可读；导演关闭时没有 suffix；`protocol` 仍是最后一个模板段落；预算不足时 suffix 被裁剪并标记；没有玩家消息时记 `missing-slot`；`pnpm check` 通过。
+
+- [ ] **R4-T05 透明与盲盒模式** | 依赖：R4-T04、M3-T02、M4-T03 | DESIGN §8.2 | ADR-0077
+  做什么：
+  - `DirectorConfig.enabled` 改为 `mode`，取值 `off`、`transparent`、`blind`，`assertDirectorConfig` 校验；读取旧故事设置时把 `enabled: true` 映射为 `transparent`、`false` 映射为 `off` 并从对象里去掉 `enabled`，之后写回只保存 `mode`。
+  - `off` 不评估、不写决策、不注入；`transparent` 与 `blind` 都评估、写决策、注入 suffix，差别只在面向玩家的展示：`GET /api/nodes/:id/director` 在 `blind` 下返回 `mode` 与机制触发状态，`decision.directive` 为 null 且不返回 `signals`；`transparent` 返回完整决策。`explain` 是排障工具，两种模式都显示全文。
+  - CLI 的 `--director` 取值改为 `off|transparent|blind`；故事设置接口接受同一取值，非法值指出字段。
+  验收：三种模式各有用例；`off` 没有决策记录与 suffix；`transparent` 与 `blind` 都注入且决策记录逐字段相同；`blind` 的接口响应不含指令与信号；`explain` 在 `blind` 下仍显示全文；旧配置读取后 `mode` 正确且再次保存不出现 `enabled`；非法取值抛错并指出字段；`pnpm check` 通过。
+
+- [ ] **R4-T06 落拍检测与拍推进** | 依赖：R4-T01、R4-T03、R1-T02.2 | DESIGN §8.3 | ADR-0077
+  做什么：
+  - 结算提示词在存在当前拍时为每层增加可选字段 `beatCompleted`（布尔），与结算数组一起返回；提示词只说明可以判断，不要求必须输出（I13）。缺少该字段按 false 处理，非法类型让该楼层整条拒绝并记入 `repairs`。
+  - 结算写入后按路径顺序处理窗口内楼层：读取该楼层父节点处的当前拍，把 `beat_id` 与该楼层是否完成写入 `director_beat_states`（`completed`）；程序据此推进到下一拍，不额外调用模型、不新增请求。
+  - 没有计划或当前拍已耗尽时不输出 `beatCompleted` 说明，也不写拍状态；分支切换后只使用当前路径上的拍状态。
+  - `explain` 增加当前拍与完成记录（节拍 id、完成楼层、是否已前进），仍然只读。
+  验收：模型输出完成的楼层写入拍状态并在下一轮解析出下一拍；缺省字段不推进；非法类型整楼层拒绝并记录原因；结算请求次数与改动前相同；没有计划时不写状态也不提该字段；另一分支的完成记录不参与；`explain` 能读回拍 id 与完成楼层；`pnpm check` 通过。
+
+- [ ] **R4-T07 候选行动** | 依赖：R4-T01、R4-T02、R5-T01、R1-T02.2 | DESIGN §8.3 | ADR-0077
+  做什么：
+  - 迁移 v33 新增 `director_candidate_actions(id, story_id, node_id, ordinal, kind, text, created_at)`，`kind` 取 `action`、`scene_change`。
+  - 后台任务 `candidate_actions`（档位 `gap`，入队条件 `settled`）：一次调用产出 4 条行动与 1 条场景变化；严格 JSON `{actions:[...],"sceneChange":"..."}`，必须正好 4 条且与场景变化互不重复、全部非空，未知字段与数量不符整批拒绝并重试。输入为当前拍与强度、最近 3 楼原文、未兑现线索与人物关系；使用 `roles.planner`。
+  - 写入在同一事务里替换该楼层的旧候选；同一楼层重复执行不新增行。候选不进入上下文、不改变 head、不自动发送，只供读取。
+  - CLI 新增 `dramaticer actions --node <id> --db <path> [--json]`；server 新增 `GET /api/nodes/:id/actions`，返回 5 条与各自 `kind`。
+  验收：合法输出写入 4 条行动与 1 条场景变化，顺序固定为行动在前；重复执行行数不变；非法数量、空字符串与重复正文整批拒绝且不写入；候选不出现在下一次组装的上下文里；不是 `gap` 档时不执行；读取接口按楼层返回，切换分支后另一楼层的候选不参与；回合内零模型调用；`pnpm check` 通过。
+
+- [ ] **R4-T08 卡扩展弧线与序列** | 依赖：R4-T01、M3-T03 | DESIGN §8.3 | ADR-0077
+  做什么：
+  - `DramaticerCardExtension` 增加 `arcs`：每个弧线含 `id`、`title`、`throughLine`、`difficulty`、`redLines`、`sequences`，序列与节拍字段与 `DirectorPlan` 相同；`parseDramaticerCardExtension` 接受 `arcs` 键并复用 `parseDirectorPlan` 的校验，未知字段、重复 id、空字符串与越界难度都抛错并指出 `extensions.dramaticer.arcs[...]` 路径。
+  - `importDramaticerExtension` 把弧线与序列用 `mergePlannedArcs` 写入，来源 `import`：同 id 更新，新 id 追加，不删除既有行，不覆盖 `player` 行；重复导入不产生重复行。没有 `arcs` 时行为与现状一致。
+  - 事件与 NPC 议程的解析、导入与存储不变；`extensions` 里的其它未知字段仍只由卡解析层处理，不影响 ST 卡导入。
+  验收：合法扩展解析出弧线、序列与节拍；未知字段、重复 id、空字符串、越界难度与空契合点各抛错并指出路径；导入后计划可读且来源为 `import`；重复导入行数不变、文本更新；玩家编辑的行保留；没有 `arcs` 时导入计数不变；带 `extensions.dramaticer` 的合成卡可以正常导入；`pnpm check` 通过。
+
 - [ ] **R4-T99 R4 验收** | 依赖：R4 全部任务
-  做什么：核对短线层零模型调用、建议具体到人和事、玩家可编辑与关闭、落拍检测不额外调用；复核 I9；写 `docs/dev/reports/R4.md`；确认 R5 任务。
+  做什么：逐条核对短线层零模型调用、建议具体到人和事、玩家可编辑与关闭、落拍检测不额外调用、候选行动不进上下文；复核 I9（实时选择与翻页用程序实现，导演只给建议）与 I13（不强制模型输出结构，`beatCompleted` 可不输出）；用假客户端跑一次包含计划、节拍选择、注入、落拍与候选行动的 5 轮链路；写 `docs/dev/reports/R4.md`；确认 R5 任务（尤其 R5-T08 面板复用计划、动作与决策接口）。
   结果写 `MILESTONE_DONE`。
 
 ## R5：能玩的界面
@@ -591,7 +654,7 @@
 
 - [ ] **R1-T03.a 父子分块** | 依赖：M2-T08、M2-T10、R5-T99 | DESIGN §7.3 | ADR-0044
   做什么：
-  - 迁移 v32 给 `chunks` 增加父段字段（`parent_ordinal`、`parent_text`）：父段按段落边界切分，过长的段落退化为整楼；检索只匹配小块，命中后返回父段文本。
+  - 迁移 v34 给 `chunks` 增加父段字段（`parent_ordinal`、`parent_text`）：父段按段落边界切分，过长的段落退化为整楼；检索只匹配小块，命中后返回父段文本。
   - 打开数据库时按新规则重建块，旧块与对应向量一并删除；`embeddings` 任务随后补齐缺失向量。回填可重复执行，不产生重复块。
   - `searchChunks` 与 `searchVectors` 返回父段文本；多路融合按楼层去重时保留父段文本，Trace 记录注入的是整段还是整楼。先读 R2-T09 与 R5-T14 的报告，决定是否默认开启。
   验收：小块命中后返回父段；同一父段多个小块只占一个结果位次；回填重复运行后块数不变；旧向量被清理且不参与查询；开关关闭时与现状逐条一致；`pnpm check` 通过。
@@ -613,7 +676,7 @@
 
 - [ ] **R1-T05 八段式章节压缩** | 依赖：M2-T06、R1-T01、R1-T04.b | DESIGN §7.3 | ADR-0044
   做什么：
-  - 迁移 v33 新增 `chapter_compressions(id, story_id, level, start_node_id, end_node_id, sections, token_count, created_at)`，`level` 取 `chapter` 或 `mainline`，同一故事、级别、起止节点唯一；`sections` 存 JSON，键固定为 `剧情脉络`、`人物档案`、`关系网`、`世界与设定`、`物品与资源`、`伏笔与约定`、`当前情况`、`用户意志`。
+  - 迁移 v35 新增 `chapter_compressions(id, story_id, level, start_node_id, end_node_id, sections, token_count, created_at)`，`level` 取 `chapter` 或 `mainline`，同一故事、级别、起止节点唯一；`sections` 存 JSON，键固定为 `剧情脉络`、`人物档案`、`关系网`、`世界与设定`、`物品与资源`、`伏笔与约定`、`当前情况`、`用户意志`。
   - 后台任务 `compression`：每 `chapterSize`（默认 20）个已确认助手楼层生成一条章节压缩，输入为窗口原文与上一份压缩；每 5 条章节压缩生成一条主线压缩，输入为最近 5 条章节压缩。八个键必须齐全，值为字符串；缺键或类型不符整条拒绝并记录原因。
   - 有效性与 M2-T06 一致：起止节点都在当前路径上且起点在终点之前；重复执行不产生重复行；空窗口不调用模型。
   - 槽位提供者按预算注入主线与最近章节压缩，用户意志段永远保留；Trace 来源写 `compression:<level>`。
@@ -621,7 +684,7 @@
 
 - [ ] **R1-T06 后台预筛世界书** | 依赖：M2-T13、R1-T02、R1-T05 | DESIGN §7.3、§9 | ADR-0044
   做什么：
-  - 迁移 v34 新增 `lore_prefilter(node_id PRIMARY KEY, story_id, entry_ids, created_at)`；`entry_ids` 存 JSON 数组。
+  - 迁移 v36 新增 `lore_prefilter(node_id PRIMARY KEY, story_id, entry_ids, created_at)`；`entry_ids` 存 JSON 数组。
   - 后台任务 `lore_prefilter`：回合落定后，用本轮用户消息、最近一条压缩摘要与下一拍方案构造查询；先用 BM25 取前 `prefilterLimit`（默认 20）条非恒常 lore，再由后台模型判断相关性并写入当前 head 楼层的预筛结果；恒常条目永远保留。
   - 下一轮组装时 `createLoreSlotProvider` 优先读当前 head 的预筛结果，没有记录时退回关键词与实体命中；回合内不调用模型。
   - 重复执行覆盖同一 `node_id`，不新增行；分支切换后只使用当前路径上的预筛结果。
@@ -629,7 +692,7 @@
 
 - [ ] **R1-T08 上下文包复用** | 依赖：R1-T02.a、R1-T03.a、R1-T06、M2-T12 | DESIGN §7.3、§9 | ADR-0044
   做什么：
-  - 迁移 v35 新增 `context_packs(node_id PRIMARY KEY, story_id, payload, created_at)`；`payload` 存检索结果、预筛世界书条目 id、现场分析引用与台账快照版本。
+  - 迁移 v37 新增 `context_packs(node_id PRIMARY KEY, story_id, payload, created_at)`；`payload` 存检索结果、预筛世界书条目 id、现场分析引用与台账快照版本。
   - 第一次生成玩家楼层的回复时组装上下文并写入上下文包；swipe 与重新生成同一楼层直接读包，不重新检索、不重新调用 embedding 或预筛；包不存在时按现有路径组装并写入。
   - 玩家编辑输入产生新楼层，不继承旧包；包引用的条目被删或分析楼层不在当前路径时视为不存在，重新组装。
   - 包本身不触发模型调用；回合内只读，回合外只准备下一轮能提前准备的部分。

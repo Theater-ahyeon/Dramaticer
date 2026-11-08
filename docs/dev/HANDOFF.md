@@ -3,16 +3,17 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：139
-- 任务：E-T01 排障命令行 `dramaticer explain`
+- 会话：140
+- 任务：R4-T00 细化 R4 任务
 - 结果：完成（`DONE`），门禁通过（118 个测试文件、1038 个测试通过，3 个 live 跳过，共 1041 个）。
-  - 新增 `packages/core/src/explain`：`explainNode` 同步只读地读出楼层的 Trace、上下文分段、预算裁剪与缺失槽位、记忆检索各路名次与 RRF 融合分数、台账快照与本楼写入、导演决策，并给出逐条带证据的修正建议；`renderExplainReport` 输出中文文本，`runExplainCli` 实现 `dramaticer explain --node <id> --db <path> [--json]`，接入 `packages/st-compat/src/cli.ts`。
-  - 记忆槽位现在把检索细节写进 Trace：`ContextTraceEntry.retrieval` 记录 `routes`（每一路原始名次）、`hits`（融合分数与来源路）与 `injectedNodeIds`；`RetrieveMemory` 的返回值新增 `routes`。旧的 Trace 没有这个字段时 explain 写“没有记录”。
-  - 冒烟：用真实 `runChatTurn` 加假客户端生成楼层，记忆分段 `memory:1`、`bm25` 第 1 名、融合分数 0.0164、注入 `n-root`；CLI 文本与 `--json` 都从磁盘数据库读出同一结果。新增 7 个测试（固定顺序、缺少 Trace、消息楼层、只读性、CLI 参数）。
+  - 把 R4 拆成 R4-T01 至 R4-T08 与 R4-T99：R4-T01 计划存储与玩家编辑、R4-T02 后台规划器、R4-T03 短线层节拍选择、R4-T04 建议并入玩家消息末尾、R4-T05 透明与盲盒模式、R4-T06 落拍检测、R4-T07 候选行动、R4-T08 卡扩展弧线与序列。每项写明迁移、存储方法、接口、依赖与验收。
+  - R4 使用迁移 v32（计划三张表与 `director_beat_states`）与 v33（`director_candidate_actions`）；R1 续原计划的 v32–v35 顺延为 v34–v37，TASKS 里已改。
+  - ADR-0077 记录：计划行的 `source` 与玩家整份替换、规划器只更新或追加不删除、当前拍按路径解析、节拍优先级 23、强度拆成 `intensity` 与 `openingIntensity`、`suffix` 注入玩家消息末尾、`mode` 取代 `enabled`、盲盒只影响玩家接口、候选行动不进上下文。
+  - 没有改代码；M3 的线索、事件池、NPC 议程、重复检测、节奏与 O 的开局导演不重复建任务。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09.a、R2-T09.b、R2-T09.c、R2-T99、R5-T01、R5-T02、E-T01。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- **下一个可做任务是 R4-T00 细化 R4 任务**：依赖 R1-T99、R2-T99、R3-T99 均已满足。E 阶段没有 E-T99，E-T01 即该阶段唯一任务。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09.a、R2-T09.b、R2-T09.c、R2-T99、R5-T01、R5-T02、E-T01、R4-T00。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- **下一个可做任务是 R4-T01 导演计划存储与玩家编辑**：依赖 R1-T99、R2-T99、R3-T99 均已满足。之后依次 R4-T02、R4-T03、R4-T04、R4-T05、R4-T06、R4-T07、R4-T08、R4-T99，然后 R5-T00。
 - v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
 - R5-T00 仍被 R4-T99 阻塞；R5-T04 依赖 M4-T05、M4-T06、M4-T01，可以排在 R4 之后。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045。
@@ -21,15 +22,17 @@
 - HUMAN-11 待处理（不阻塞）：`.env` 的正文模型 `opendesign/deepseek-v4.1-flash` 返回 membership entitlement 错误。
 - HUMAN-12 待处理（不阻塞）：HUMAN.md 条目仍描述 `roles.judge` 指向 `codex`，实际配置已是 `judge`（`auto/glm-5.3`）。
 - HUMAN-13 待处理（不阻塞）：`catie` 的 `rp`（`agy-gemini-3.8-flash-medium`）返回 503「没有可用的 Antigravity 凭证」，影响 `roles.writer`；R2-T99 的真实分支点验证改用 `main-fallback`。凭证恢复后可用 `node scripts/r2-legacy-forgetting.mjs run-all --concurrency 3` 补齐 45 道失败题。
-- 数据库 schema 版本 31（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡、v25 合并调用开关与执行记录、v26 间隙档位阈值与丢弃状态、v27 合并调用丢弃条目、v28 回合模式与读取工具软上限、v29 开局包与故事级后台任务、v30 首楼开场候选、v31 偏好记录）；后续编号：v32 父子分块、v33 章节压缩、v34 世界书预筛、v35 上下文包；插入新迁移时后续编号一起顺延。
+- 数据库 schema 版本 31（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡、v25 合并调用开关与执行记录、v26 间隙档位阈值与丢弃状态、v27 合并调用丢弃条目、v28 回合模式与读取工具软上限、v29 开局包与故事级后台任务、v30 首楼开场候选、v31 偏好记录）；R4 使用 v32（导演计划与拍状态）、v33（候选行动），R1 续顺延为 v34–v37；插入新迁移时后续编号一起顺延。
 - server 的回合路径会补建并执行后台任务：`handleTurnStream` 在 `turn.completed` 之后调用 `BackgroundScheduler.schedule`，不等待 drain；同一时刻只有一个 drain，故事之间先来先做。
 - 分支与面板接口已可用；`packages/web` 尚未创建。`GET /api/nodes/:id/ledger` 返回 `{state, facts, diffs}`，`facts` 来自 `readLedgerFacts`，`diffs` 只含该楼层自己的写入。
 - 偏好记录已闭环：记录写入（四种信号）→ `POST /api/nodes/:id/choice` → `preferences export` 产出回复对 → `pairwise` 盲测与评分 → `scoreboard` 汇总。私有库目前没有任何 `preference_events`。
 - 排障命令：`dramaticer explain --node <id> --db <path> [--json]`。只读、零模型调用；导演决策从助手楼层的父楼层读（`director_decisions` 写在生成时的消息楼层上）。记忆槽位的 `retrieval` 只在槽位真正注入内容时写进 Trace；没有命中时该槽位记为 `missing-slot`。
+- 当前导演实现（R4 之前）：`DirectorConfig.enabled` 是布尔开关；机制优先级固定为重复正文 40、开场 35、线索过老 30、场景重复 25、线索过多 20、事件池 10、节奏 5；`createDirectorSlotProvider` 产生一条以 `【导演】` 开头的 system 消息，尚未并进玩家消息末尾；`GET /api/nodes/:id/director` 直接返回完整决策。
+- `extensions.dramaticer` 目前只有 `events` 与 `npcAgendas` 两个键；新增 `arcs` 时必须同步更新严格校验与 st-compat 的导入测试。
 
 ## 下一步
-- **R4-T00 细化 R4 任务**：把长线层（弧线、序列、后台规划器、玩家编辑）、短线层（当前拍、强度、纠偏信号、程序选择）、落拍检测、候选行动、注入玩家消息末尾、透明与盲盒模式、`extensions.dramaticer` 扩展拆成任务，写清依赖与验收；开局导演（O）已实现的机制不重复建任务。参考 DESIGN §8。
-- R4-T00 之后依次 R4-T01 起的任务，最后 R4-T99，然后 R5-T00。
+- **R4-T01 导演计划存储与玩家编辑**：按 TASKS 里的迁移 v32 建 `story_arcs`、`story_sequences`、`story_beats` 与 `director_beat_states`；新增 `director/plan.ts` 的 `DirectorPlan`、`parseDirectorPlan`、`readDirectorPlan`、`replaceDirectorPlan`、`mergePlannedArcs`、`resolveCurrentBeat`；CLI `dramaticer director plan --story <id> --db <path> [--json] [--set <file>]`；server `GET/PUT /api/stories/:id/director/plan`。验收逐条按 TASKS。
+- R4-T01 之后依次 R4-T02（后台规划器）、R4-T03（短线层）、R4-T04（注入口）、R4-T05（模式）、R4-T06（落拍）、R4-T07（候选行动）、R4-T08（卡扩展）、R4-T99，然后 R5-T00。
 - 引用评测数字时：B1 必须同时说明同模型子集为空、每个对话每档只有 1 个样本；遗忘矛盾率必须同时说明失败题数与可判定样本数；偏好一致率当前没有样本。
 
 ## 注意事项
@@ -55,7 +58,7 @@
 - 自动试玩的入口是 `pnpm --filter @dramaticer/st-compat playtest`：每轮顺序是读间隙积压 → 模拟用户 → `runChatTurn` → swipe/edit/branch → 间隙后台任务 → 一致性探针 → 每轮裁判 → 写记录。`--seed` 只决定模拟用户的提示顺序与探针事实选择。
 - 开场导演的楼层深度按当前路径助手楼层数计算；`openingFloors` 为 0 关闭；强度 `setup`、`natural`、`detonate` 的字段范围见 DESIGN §8.4。
 - 故事设置缺省值：`budgetTokens` 12000、`structuredOutput` `text-tags`、`temperature` 0.8、`maxTokens` 4096、`reasoning` `low`、`turnMode` `fast`、`maxReadRounds` 3、`historyBlockPolicy` `{mode:"default",overrides:{}}`、`gapPassEnabled` `false`、`gapPlanSeconds` 212、导演默认配置（含 `openingFloors` 10 与 `openingIntensity` `natural`）。
-- 已注册的槽位是十一个：lore、character、persona、summary、state、memory、history、scene、director、user_will、protocol。默认模板顺序：character、lore、state、summary、memory、scene、director、user_will、history、（可选的 block_format）、protocol。
+- 已注册的槽位是十一个：lore、character、persona、summary、state、memory、history、scene、director、user_will、protocol。默认模板顺序：character、lore、state、summary、memory、scene、director、user_will、history、（可选的 block_format）、protocol。R4-T04 起 `director` 槽位改为 suffix，不再产生 system 消息；不新增 `beat` 槽位。
 - 原生块类型是 12 个（`thinking`、`选项`、`状态栏`、`变量更新`、`分析`、`图片`、`页眉`、`悄悄话`、`旁白`、`备忘`、`state_update`、`plot_note`）；`thinking`、`变量更新`、`state_update`、`plot_note` 的上下文策略是删除。
 - 历史槽位默认策略：更早楼层省略五个显示类块，最近 1 楼不套用这层省略；`full` 是改动前行为。设置项 `historyBlockPolicy` 存在 `story_settings.history_block_policy`。
 - 结算窗口以 head 为终点（ADR-0046），取**最旧的** N 个未结算助手楼层；冲突检查窗口取 head 路径最后 `conflictWindowFloors` 楼。现场分析以被分析的楼层为锚点。`scene` 任务显式传 200 token 上限。
