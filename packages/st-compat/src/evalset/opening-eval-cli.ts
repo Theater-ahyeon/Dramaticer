@@ -66,6 +66,7 @@ const USAGE = [
 	"  --public-out <path>  统计版报告路径，默认 docs/dev/reports/O-opening.md",
 	"  --candidate-count <n> 每张卡生成的候选数，默认 3",
 	"  --channels <path>    渠道配置，默认 data/channels.yaml",
+	"  --note <text>        报告头里的配置差异与数字变化说明",
 	"  --report-only        只从已有 manifest 与 JSONL 重新生成报告",
 	"  --help               显示本说明",
 ].join("\n");
@@ -110,6 +111,7 @@ interface OpeningEvalArgs {
 	readonly publicOut: string;
 	readonly candidateCount: number;
 	readonly channelsPath: string | null;
+	readonly note: string | null;
 	readonly reportOnly: boolean;
 }
 
@@ -273,6 +275,7 @@ export async function runOpeningEvalCli(
 		assistantModel: parsed.model,
 		userModel: parsed.userModel,
 		judgeModel,
+		...(parsed.note === null ? {} : { note: parsed.note }),
 		runs,
 		candidates,
 	};
@@ -507,6 +510,7 @@ function parseArgs(args: readonly string[]): OpeningEvalArgs {
 		"public-out": true,
 		"candidate-count": true,
 		channels: true,
+		note: true,
 	};
 	const allowedFlags: Readonly<Record<string, true>> = {
 		"report-only": true,
@@ -588,6 +592,10 @@ function parseArgs(args: readonly string[]): OpeningEvalArgs {
 			channelsValue === undefined
 				? null
 				: requireText(channelsValue, "--channels"),
+		note:
+			values.get("note") === undefined
+				? null
+				: requireText(values.get("note") as string, "--note"),
 		reportOnly: flags.has("report-only"),
 	};
 }

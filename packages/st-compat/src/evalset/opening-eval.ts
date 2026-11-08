@@ -44,8 +44,42 @@ export interface OpeningEvalManifest {
 	readonly assistantModel: string;
 	readonly userModel: string;
 	readonly judgeModel: string;
+	/** 报告头里的配置差异说明；没有时不出现在报告里。 */
+	readonly note?: string | null;
+	/** 需要与本次运行并列保留的历史数字。 */
+	readonly previousRuns?: readonly OpeningEvalPriorRun[];
 	readonly runs: readonly OpeningEvalRunMeta[];
 	readonly candidates: readonly OpeningEvalCandidateMeta[];
+}
+
+/** 历史运行只保留报告表格用到的聚合数字。 */
+export interface OpeningEvalPriorConfig {
+	readonly config: OpeningEvalConfig;
+	readonly runs: number;
+	readonly runErrors: number;
+	readonly roundsCompleted: number;
+	readonly roundsFailed: number;
+	readonly judged: number;
+	readonly rerolled: number;
+	readonly rerollRate: number;
+	readonly followed: number;
+	readonly followedRate: number;
+	readonly earlyJudged: number;
+	readonly earlyRerollRate: number;
+	readonly verdictFailed: number;
+	readonly firstTokenP50: number | null;
+	readonly firstTokenP90: number | null;
+	readonly truncations: number;
+}
+
+export interface OpeningEvalPriorRun {
+	readonly label: string;
+	readonly assistantModel: string;
+	readonly userModel: string;
+	readonly judgeModel: string;
+	readonly opening: OpeningEvalPriorConfig;
+	readonly baseline: OpeningEvalPriorConfig;
+	readonly candidates: OpeningEvalCandidateSummary;
 }
 
 export interface OpeningEvalRunInput {
@@ -309,8 +343,55 @@ function configLabel(config: OpeningEvalConfig): string {
 	return config === "opening" ? "开局开启" : "开局关闭";
 }
 
-function configTableRow(summary: OpeningEvalConfigSummary): string {
-	return `| ${configLabel(summary.config)} | ${summary.runs} | ${summary.runErrors} | ${summary.roundsCompleted} | ${summary.roundsFailed} | ${summary.judged} | ${summary.rerolled} | ${percent(summary.rerollRate, summary.judged)} | ${summary.followed} | ${percent(summary.followedRate, summary.judged)} | ${summary.early.judged} | ${percent(summary.early.rerollRate, summary.early.judged)} | ${summary.verdictFailed} | ${milliseconds(summary.firstTokenP50)} | ${milliseconds(summary.firstTokenP90)} | ${summary.truncations} |`;
+const CONFIG_TABLE_HEADER = [
+	"| 配置 | 运行 | 运行失败 | 完成轮次 | 失败轮次 | 有判定 | 重 roll | 重 roll 率 | 遵循指令 | 遵循率 | 前 5 轮判定 | 前 5 轮重 roll 率 | 裁判失败 | 首字 P50 (ms) | 首字 P90 (ms) | 截断 |",
+	"| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+];
+
+function priorFromSummary(
+	summary: OpeningEvalConfigSummary,
+): OpeningEvalPriorConfig {
+	return {
+		config: summary.config,
+		runs: summary.runs,
+		runErrors: summary.runErrors,
+		roundsCompleted: summary.roundsCompleted,
+		roundsFailed: summary.roundsFailed,
+		judged: summary.judged,
+		rerolled: summary.rerolled,
+		rerollRate: summary.rerollRate,
+		followed: summary.followed,
+		followedRate: summary.followedRate,
+		earlyJudged: summary.early.judged,
+		earlyRerollRate: summary.early.rerollRate,
+		verdictFailed: summary.verdictFailed,
+		firstTokenP50: summary.firstTokenP50,
+		firstTokenP90: summary.firstTokenP90,
+		truncations: summary.truncations,
+	};
+}
+
+function configTableRow(summary: OpeningEvalPriorConfig): string {
+	return `| ${configLabel(summary.config)} | ${summary.runs} | ${summary.runErrors} | ${summary.roundsCompleted} | ${summary.roundsFailed} | ${summary.judged} | ${summary.rerolled} | ${percent(summary.rerollRate, summary.judged)} | ${summary.followed} | ${percent(summary.followedRate, summary.judged)} | ${summary.earlyJudged} | ${percent(summary.earlyRerollRate, summary.earlyJudged)} | ${summary.verdictFailed} | ${milliseconds(summary.firstTokenP50)} | ${milliseconds(summary.firstTokenP90)} | ${summary.truncations} |`;
+}
+
+function previousRunLines(previous: OpeningEvalPriorRun): string[] {
+	return [
+		`### ${previous.label}`,
+		"",
+		`- 助手模型：${previous.assistantModel}`,
+		`- 模拟用户模型：${previous.userModel}`,
+		`- 裁判模型：${previous.judgeModel}`,
+		"",
+		...CONFIG_TABLE_HEADER,
+		configTableRow(previous.opening),
+		configTableRow(previous.baseline),
+		"",
+		"| 卡数 | 生成成功 | 生成失败 | 采用候选 | 自己写开场 | 采用率 |",
+		"| ---: | ---: | ---: | ---: | ---: | ---: |",
+		`| ${previous.candidates.cards} | ${previous.candidates.generated} | ${previous.candidates.failed} | ${previous.candidates.adopted} | ${previous.candidates.none} | ${percent(previous.candidates.adoptionRate, previous.candidates.adopted + previous.candidates.none)} |`,
+		"",
+	];
 }
 
 /**
@@ -331,20 +412,23 @@ export function renderOpeningEvalReport(
 		`- 助手模型：${manifest.assistantModel}`,
 		`- 模拟用户模型：${manifest.userModel}`,
 		`- 裁判模型：${manifest.judgeModel}`,
+		...(manifest.note === undefined || manifest.note === null
+			? []
+			: [`- 配置差异：${manifest.note}`]),
 		`- 对照：F0 的 1–10 楼重 roll 率 ${(F0_EARLY_REROLL_RATE * 100).toFixed(1)}%`,
 		"",
 		"## 一、汇总",
 		"",
-		"| 配置 | 运行 | 运行失败 | 完成轮次 | 失败轮次 | 有判定 | 重 roll | 重 roll 率 | 遵循指令 | 遵循率 | 前 5 轮判定 | 前 5 轮重 roll 率 | 裁判失败 | 首字 P50 (ms) | 首字 P90 (ms) | 截断 |",
-		"| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
-		configTableRow(summary.opening),
-		configTableRow(summary.baseline),
+		...CONFIG_TABLE_HEADER,
+		configTableRow(priorFromSummary(summary.opening)),
+		configTableRow(priorFromSummary(summary.baseline)),
 		"",
 		`- 开局开启的 1–10 轮重 roll 率 ${percent(summary.opening.rerollRate, summary.opening.judged)}，${summary.opening.targetMet ? "低于" : "没有低于"} F0 的 ${(F0_EARLY_REROLL_RATE * 100).toFixed(1)}%。`,
 		`- 开局关闭的 1–10 轮重 roll 率 ${percent(summary.baseline.rerollRate, summary.baseline.judged)}。`,
 		`- 开局开启相对关闭的重 roll 率变化 ${signedPoints(summary.opening.rerollRate, summary.baseline.rerollRate)}，指令遵循率变化 ${signedPoints(summary.opening.followedRate, summary.baseline.followedRate)}。`,
 		`- 前 5 轮（约对应 F0 的第 1–10 个消息楼层）：开局开启 ${percent(summary.opening.early.rerollRate, summary.opening.early.judged)}，开局关闭 ${percent(summary.baseline.early.rerollRate, summary.baseline.early.judged)}。`,
 		"",
+		...(manifest.previousRuns ?? []).flatMap(previousRunLines),
 		"## 二、开场候选采用",
 		"",
 		"| 卡数 | 生成成功 | 生成失败 | 采用候选 | 自己写开场 | 采用率 |",

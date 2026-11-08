@@ -3,25 +3,26 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：120
-- 任务：O-T01.a 开局包的在场人物覆盖角色卡里的其他人物
-- 结果：完成（`DONE`），门禁通过（103 个测试文件、934 个测试通过，3 个 live 跳过，共 937 个）。
-  - `validateOpeningPackPayload` 与 `parseOpeningPackResponse` 的第二个参数从名称集合改为 `OpeningKnownNames`（`names` 加 `sourceText`）；`isKnownOpeningName` 先查实体表，再把名字规范化后到角色卡正文与常驻世界书正文里做子串判定。规范化后少于两个字符的名字只按实体表判定，避免单字名偶然命中。
-  - `collectKnownNames` 现在接收角色卡正文与常驻世界书条目；`collectOpeningInput` 与 `readOpeningPack` 用同一份依据，开局包字段、存储与输入摘要不变。生成提示词同步说明可以使用角色卡描述里提到的其他人物。
-  - 新增 4 个测试：卡描述里的人物通过校验、卡里没有的名字仍然整包拒绝并指出 `participants[0].name`、单字名不按正文命中、真实卡描述人物不建实体也能生成并读回开局包。
-  - 真实卡冒烟：仓库外只读的真实角色卡各跑一次 `opening` 任务（`main-fallback`），角色卡正文 20 字符与 163 字符的两张卡都生成成功，在场人物 1 人与 3 人，全部只出现在角色卡正文、没有对应的 `character` 实体（数字只记进 ADR-0066，不写仓库里的报告）。
-  - `opening-eval` 报告里已不成立的“在场人物只认实体”限制段已从两个渲染分支删掉，私有版与统计版用 `--report-only` 重新生成；ADR-0066；`pnpm check` 通过。
-  - 会话期间人类提交了 c33fe22：把本任务的完成记录与报告的限制段改动一并提交，新增任务 O-T99.a（用 `--model rp --judge-model judge` 重跑开局验收），并在 `docs/dev/reports/O-opening.md` 报告头注明上一次运行的模型配置缺陷。`data/channels.yaml` 的 roles 现在是 `writer: rp`、`judge: judge`（`auto/glm-5.3`）。
+- 会话：121
+- 任务：O-T99.a 用正确的写作模型与独立裁判重跑开局验收
+- 结果：完成（`DONE`），门禁通过（103 个测试文件、936 个测试通过，3 个 live 跳过，共 939 个）。
+  - 用 `--model rp --judge-model judge` 重跑同一批 3 张合成卡与种子 1，每卡开启与关闭各 10 轮：开局开启与关闭都是 0/30 重 roll（0.0%），前 5 轮都是 0/15，指令遵循各 30/30（100.0%），候选生成 2/3（第一张卡首批输出不是合法 JSON）、采用 2/2，首字 P50/P90 开启 7,501/10,432 毫秒、关闭 7,423/11,581 毫秒，截断 0、运行失败 0、裁判失败 0。
+  - 两份 `O-opening` 报告已覆盖；报告头写明写作 `rp`、模拟用户 `background`、裁判 `judge` 与配置差异，并说明超过 5 个百分点的变化（旧开启 3.3% / 关闭 10.0% → 0.0%，指令遵循 96.7% → 100.0%）的可能原因：裁判换模型家族后的判定尺度、写作模型更换、样本只有 30 轮。
+  - O-T99 首次运行的数字没有删除：manifest 新增 `previousRuns`，报告在「一、汇总」下用 `### O-T99 首次运行（写作 main-fallback、裁判 rp）` 并列保留（开启 1/30、关闭 3/30、前 5 轮 0/15 与 2/15、指令遵循各 29/30、候选 3/3、首字 3,455/7,161 与 3,359/7,513 毫秒）。
+  - `opening-eval` 新增 `--note <text>`；manifest 的 `previousRuns` 是可选的聚合数字（`OpeningEvalPriorConfig`），报告用 `configTableRow` 同一套表格渲染。`--report-only` 对同一份 manifest 与 JSONL 两次生成逐字节相同。
+  - 新增夹具 `packages/st-compat/test/fixtures/opening-card-shanshen.json`（与上一批卡内容一致）；完整重跑命令：`pnpm --filter @dramaticer/st-compat opening-eval --card packages/st-compat/test/fixtures/opening-card-shanshen.json --card packages/st-compat/test/fixtures/opening-card-shanshen.json --card packages/st-compat/test/fixtures/health-card.json --rounds 10 --seed 1 --model rp --judge-model judge`。
+  - ADR-0065 已把两次运行并列，并记录重 roll 指标饱和：60 次判定没有一次重 roll、全部判为遵循指令，开局开启与关闭完全一致，裁判区分度不足与写作模型确实稳定无法从这批样本区分。后续要么换更严格的裁判，要么用真实玩家的 swipe（R2-T07 偏好记录）。
+  - 新增 2 个测试（配置差异说明进报告头且缺省不出现、历史运行聚合数字并列渲染），`opening-eval.test.ts` 共 7 个用例。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、R2-T01、R2-T02、R2-T03。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`；未完成任务见 `docs/dev/TASKS.md`。
-- **下一个可做任务是 O-T99.a 用正确的写作模型与独立裁判重跑开局验收**：`--model rp --judge-model judge`，覆盖两份 O-opening 报告并在报告头写明三个模型。它之后是 R2-T03.a 五类记忆题与编造回忆率，再往后是 R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09、R2-T99。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`；未完成任务见 `docs/dev/TASKS.md`。
+- **下一个可做任务是 R2-T03.a 五类记忆题与编造回忆率**：按 LongMemEval 五类（信息抽取、跨段推理、时间推理、知识更新、拒答）扩充记忆题，每道题标注类别与证据楼层；新增编造回忆题（问从未发生的人、事、物，肯定描述即计为编造）；一致性探针与记忆评测共用同一套判分，报告按类别给出命中与编造率、`unknown` 单列。复用 R2-T03 的 `parseProbeJudgeOutput` 与裁判调用约定，不要另写判分口径。它之后是 R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09、R2-T99。
 - v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（最小界面先做）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045。
 - HUMAN-09 待处理（不阻塞）：`data/channels.yaml` 已有 `bg-fallback`、`main-fallback`、`codex`，`channels.example.yaml` 还没有这三个别名。
 - HUMAN-10 待处理（不阻塞）：插件不变量是否加进 AGENTS.md。
 - HUMAN-11 待处理（不阻塞）：`.env` 的正文模型 `opendesign/deepseek-v4.1-flash` 返回 membership entitlement 错误，是否换用 `auto/deepseek-v4.1-flash`；`.env` 由人类维护。
-- HUMAN-12 待处理（不阻塞）：`roles.judge` 已从 `codex` 改为 `judge`（`auto/glm-5.3`），HUMAN.md 条目本身仍标待处理，由人类确认后关闭。
+- HUMAN-12 待处理（不阻塞）：`roles.judge` 已是 `judge`（`auto/glm-5.3`），HUMAN.md 条目仍描述成 `codex`，由人类确认后关闭。
 - 数据库 schema 版本 30（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡、v25 合并调用开关与执行记录、v26 间隙档位阈值与丢弃状态、v27 合并调用丢弃条目、v28 回合模式与读取工具软上限、v29 开局包与故事级后台任务、v30 首楼开场候选）；后续编号：v31 偏好记录、v32 父子分块、v33 章节压缩、v34 世界书预筛、v35 上下文包；插入新迁移时后续编号一起顺延。
 - 结算只有 `dramaticer work` 调度：server 的回合路径不补建也不执行后台任务，所以回合内后台客户端零调用是结构保证；要真正结算故事，跑 `pnpm work --db <path> --kind settle`，要生成现场分析跑 `--kind scene`，要捕获用户意志跑 `--kind user_will`，要生成修订草案跑 `--kind memory_revision`，要回填事件跑 `--kind events`（单故事、逐窗口推进，适合小批量），要生成开局包跑 `--kind opening`，要生成首楼候选跑 `--kind opening_candidates`，要合并调用跑 `--kind gap_pass`（先打开故事设置 `gapPassEnabled`），批量回填三个 legacy 对话用 R1-T04.a 的 `events-backfill`。
 - 后台任务分两档：`gap` 档每次间隙都执行，`deferred` 档（`events`、`summary`、`npc_agenda`）只在会话结束或间隙达到 `gapPlanSeconds` 时执行。`dramaticer work` 不给 `--gap-seconds` 就按会话结束处理；要模拟回合中的短间隙就传 `--gap-seconds <秒数>`，短于阈值时延后档只入队不执行。
@@ -40,13 +41,12 @@
 - 事件表已在 v7 建立；批量抽取窗口与抽取记录在 R1-T03 实现；批量回填管线在 R1-T04.a 实现，真实回填由 R1-T04.b 执行。
 - F0 的私有产物：`eval-private/f0/pairs.jsonl`（290 对）、`attribution.jsonl`、`judge.jsonl`（793 行）、`fulltext/work.db`、`fulltext-probe.json`、`fulltext-branches.json`、`fulltext-generations.jsonl`、`fulltext-judgements.jsonl`、`fulltext-summary.json`、`llm-cache/`。`eval-private/reports/f0-corpus-map.json` 是对话编号到文件路径的映射。
 - R3 的产物：`docs/dev/reports/R3.md`（验收报告）、`docs/dev/reports/R3-fast.md` 与私有 `eval-private/reports/R3-fast.md`、`R3-fast.json`。
-- O 的产物：`docs/dev/reports/O-opening.md`（O-T99 统计版）、`eval-private/reports/O-opening.md`（私有版）、`eval-private/reports/opening-eval/`（manifest 与逐轮 JSONL）。
+- O 的产物：`docs/dev/reports/O-opening.md`（统计版）、`eval-private/reports/O-opening.md`（私有版）、`eval-private/reports/opening-eval/`（manifest 与逐轮 JSONL，当前是 O-T99.a 的重跑结果，manifest 用 `previousRuns` 保留 O-T99 首次运行的聚合数字）。
 - HUMAN-03（事件题抽查）仍未完成，不阻塞任何任务；其余 HUMAN 条目均已完成或明确不阻塞。
 - M3 的两项效果目标按 ADR-0029 保留为未证实；v2 的门槛改由 R6 按 B0/B1 对比判定。
 - 插件系统在 DESIGN §19 是唯一权威；P 阶段任务在 TASKS 的「P：插件内核」小节，C 线兼容插件任务已存在且依赖 P2。
 
 ## 下一步
-- **O-T99.a 用正确的写作模型与独立裁判重跑开局验收**：O-T99 的实跑把写作模型设成 `main-fallback`（DeepSeek）、裁判设成 `rp`（Gemini），与 ADR-0041 A7 和人类指定的方向相反。`data/channels.yaml` 的 roles 现在是 `writer: rp`、`judge: judge`（`auto/glm-5.3`）。用 `--model rp --judge-model judge` 重跑同一批卡与种子，覆盖 `docs/dev/reports/O-opening.md` 与私有报告；报告头写明写作、模拟用户、裁判三个模型与和上一次运行的配置差异；数字变化超过 5 个百分点时说明可能原因；同一输入重跑数字可复现。
 - **R2-T03.a 五类记忆题与编造回忆率**：按 LongMemEval 五类（信息抽取、跨段推理、时间推理、知识更新、拒答）扩充记忆题，每道题标注类别与证据楼层；新增编造回忆题（问从未发生的人、事、物，肯定描述即计为编造）；一致性探针与记忆评测共用同一套判分，报告按类别给出命中与编造率、`unknown` 单列。复用 R2-T03 的 `parseProbeJudgeOutput` 与裁判调用约定，不要另写判分口径。
 - 之后是 R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09、R2-T99。
 - 开局包的读取入口是 `readOpeningPack(store, storyId)`；需要自己校验时用 `validateOpeningPackPayload(value, known)`，第二个参数是 `OpeningKnownNames`（`names` 与 `sourceText`），判定函数是 `isKnownOpeningName`。首楼候选的解析用 `parseOpeningCandidatesResponse(text, expectedCount)`，不要另写一套。
@@ -68,9 +68,11 @@
 - 开局评测入口是 `pnpm --filter @dramaticer/st-compat opening-eval --card <path> [--card <path> ...]`，默认每卡每种配置 10 轮、种子 1、助手 `rp`；当前验收口径是 `--model rp --judge-model judge`。每张卡建三个故事（`opening-eval-<n>-on`、`-off`、`-candidates`），开启侧先生成开局包，候选故事生成 3 条候选并让模拟用户选择。`--report-only` 只读 `--out-dir/manifest.json` 与逐轮 JSONL 重算报告。
 - `opening-eval` 的 `--no-background` 由评测内部固定传给 playtest，用来隔离开局机制；本轮没有结算、现场分析与用户意志写入。要测完整链路应去掉该开关并换用足够长的试玩。
 - `opening-eval` 的统计版只含模型别名、样本数、聚合数字与轮次级判定；私有版含卡名、故事 id、逐轮理由与候选正文。`--out-dir` 默认 `eval-private/reports/opening-eval`，私有报告默认 `eval-private/reports/O-opening.md`，统计版默认 `docs/dev/reports/O-opening.md`。
-- `opening-eval` 的候选选择用 `--user-model`（默认 `background`）；候选生成与开局包用 `roles.settler`。本次 3 张卡全部选择候选，采用率没有区分度；不要把 100% 当成候选质量结论。
+- `opening-eval` 的 `--note <text>` 写进 manifest 的 `note`，在报告头渲染成「配置差异」；manifest 的可选 `previousRuns` 用 `OpeningEvalPriorConfig` 保存历史运行的聚合数字，报告在汇总下并列渲染。两者都只接受聚合数字与模型别名，不要把私有正文写进去。`--report-only` 不读 `--note`，只从 manifest 重算。
+- `opening-eval` 的候选选择用 `--user-model`（默认 `background`）；候选生成与开局包用 `roles.settler`。本次 3 张卡里 2 张生成成功并都选择了候选，另一张首批输出不是合法 JSON；不要把 100% 当成候选质量结论。
 - 开局包的在场人物必须命中角色卡名、`character` 实体的名称/别名，或者出现在角色卡与常驻世界书正文里；正文判定用与实体名称同一套规范化，规范化后少于两个字符的名字只按实体表判定。都不命中时整包拒绝并指出 `participants[i].name`。素材只有角色卡提示词或常驻世界书时才生成，玩家开场白只作补充。
 - 当前 `data/channels.yaml` 的 roles 是 `writer: rp`、`settler: background`、`planner: background`、`judge: judge`（`auto/glm-5.3`）；评测用 `--model rp --judge-model judge`。`createLlmClient` 按配置里的 `roles.judge` 与 `roles.writer` 校验模型家族，显式覆盖别名不参与校验。HUMAN-12。
+- 开局验收的重 roll 指标在 O-T99.a 已经饱和（60/60 判不重 roll、全部遵循指令，开启与关闭一致）；后续引用这两个配置时必须同时引用这一限制，不能据此宣称开局机制有效或无效。
 - 后台注册表工厂在 `core/src/background/defaults.ts` 的 `createDefaultBackgroundJobRegistry`，`gap_pass` 开关过滤在 `resolveStoryBackgroundKinds`；新增后台任务类型时改这两个函数和 `dramaticer work`/试玩都会同步。
 - `dramaticer chat` 与试玩共用 `resolveStoryContextTemplate`（`st-compat/src/chat/session.ts`）：故事模板为空或指向内置模板时用默认模板。
 - 对话档位（ADR-0062）：`ChatProfile` 取 `native`、`naive`，在 `core/src/chat/profile.ts`；`runChatTurn` 的 `profile` 单轮参数默认 `native`，没有按运行状况切换的代码路径。`TurnTrace.profile` 记录本轮档位；旧数据库里没有该字段的 Trace 按 `native` 处理（存储层查询用 `COALESCE(..., 'native')`）。

@@ -184,6 +184,84 @@ describe("开局评测报告", () => {
 		expect(summary.baseline.rerollRate).toBeCloseTo(0.5);
 	});
 
+	it("配置差异说明进入报告头，缺省时不出现", () => {
+		const summary = summarizeOpeningEval(input());
+		const withoutNote = renderOpeningEvalReport(summary, {
+			privateDetails: false,
+		});
+		expect(withoutNote).not.toContain("配置差异");
+		const withNote = renderOpeningEvalReport(
+			{
+				...summary,
+				manifest: { ...summary.manifest, note: "写作模型换成 rp" },
+			},
+			{ privateDetails: false },
+		);
+		expect(withNote).toContain("- 配置差异：写作模型换成 rp");
+	});
+
+	it("并列渲染历史运行的聚合数字", () => {
+		const summary = summarizeOpeningEval(input());
+		const prior = {
+			runs: 3,
+			runErrors: 0,
+			roundsCompleted: 30,
+			roundsFailed: 0,
+			judged: 30,
+			rerolled: 3,
+			rerollRate: 0.1,
+			followed: 29,
+			followedRate: 29 / 30,
+			earlyJudged: 15,
+			earlyRerollRate: 2 / 15,
+			verdictFailed: 0,
+			firstTokenP50: 3_359,
+			firstTokenP90: 7_513,
+			truncations: 0,
+		};
+		const report = renderOpeningEvalReport(
+			{
+				...summary,
+				manifest: {
+					...summary.manifest,
+					previousRuns: [
+						{
+							label: "首次运行",
+							assistantModel: "main-fallback",
+							userModel: "background",
+							judgeModel: "rp",
+							opening: {
+								...prior,
+								config: "opening",
+								rerolled: 1,
+								rerollRate: 1 / 30,
+							},
+							baseline: { ...prior, config: "baseline" },
+							candidates: {
+								cards: 3,
+								generated: 3,
+								failed: 0,
+								adopted: 3,
+								none: 0,
+								adoptionRate: 1,
+								choices: [1, 2, 2],
+							},
+						},
+					],
+				},
+			},
+			{ privateDetails: false },
+		);
+		expect(report).toContain("### 首次运行");
+		expect(report).toContain("main-fallback");
+		expect(report).toContain(
+			"| 开局开启 | 3 | 0 | 30 | 0 | 30 | 1 | 3.3% | 29 | 96.7% |",
+		);
+		expect(report).toContain(
+			"| 开局关闭 | 3 | 0 | 30 | 0 | 30 | 3 | 10.0% | 29 | 96.7% |",
+		);
+	});
+
 	it("候选采用率排除生成失败的卡", () => {
 		const summary = summarizeOpeningEval(input());
 		expect(summary.candidates.cards).toBe(3);
