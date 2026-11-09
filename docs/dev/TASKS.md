@@ -725,7 +725,7 @@
 
 **R5-T14 真实 60 轮试玩与报告**（原 M4-T20，已拆成 R5-T14.a 与 R5-T14.b） | 依赖：R5-T13 | 使用 `.env` 里的真实渠道
 
-- [ ] **R5-T14.a 真实 60 轮试玩（分会话续跑）** | 依赖：R5-T13
+- [~] **R5-T14.a 真实 60 轮试玩（分会话续跑）** | 依赖：R5-T13
   做什么：
   - 用专用渠道配置 `.devloop/scratch/R5-T14/channels.yaml`（`writer: main-fallback`、`settler/planner: background`；`rp` 仍返回 503）与专用数据库 `.devloop/scratch/R5-T14/live.db` 跑满 60 轮，包含两次重新生成、两次编辑与两次分支切换。
   - 启动 server：`pnpm --filter @dramaticer/server build && node packages/server/dist/cli.js --db .devloop/scratch/R5-T14/live.db --channels .devloop/scratch/R5-T14/channels.yaml --port 8787`。

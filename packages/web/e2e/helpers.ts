@@ -42,6 +42,12 @@ export async function login(
 	page: Page,
 	password: string = PASSWORD,
 ): Promise<void> {
+	// 服务端没有设置访问密码时接口不校验会话，登录页的表单也提交不了空密码。
+	if (password === "") {
+		await page.goto("/");
+		await page.waitForURL("**/");
+		return;
+	}
 	await page.goto("/login");
 	await page.getByLabel("访问密码").fill(password);
 	await page.getByRole("button", { name: "登录" }).click();
