@@ -1634,6 +1634,87 @@ button.branch-select:hover {
 	font-size: 0.8rem;
 }
 
+.ledger-warning {
+	color: var(--danger);
+	font-size: 0.8rem;
+}
+
+.image-provider-list,
+.image-workflow-list,
+.image-profile-list {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin: 10px 0 0;
+	padding: 0;
+	list-style: none;
+}
+
+.image-provider-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 8px;
+	padding: 8px 10px;
+	background: var(--bg);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	font-size: 0.85rem;
+}
+
+.image-workflow-card,
+.image-profile-card {
+	padding: 10px;
+	background: var(--bg);
+	border: 1px solid var(--border);
+	border-radius: 10px;
+}
+
+.image-workflow-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 8px;
+}
+
+.image-workflow-card .ledger-meta,
+.image-workflow-card .muted {
+	margin: 6px 0 0;
+}
+
+.image-workflow-card .plan-remove {
+	margin-top: 8px;
+}
+
+.image-profile-fields {
+	display: grid;
+	grid-template-columns: 1fr;
+	gap: 4px 12px;
+	margin: 8px 0 0;
+	font-size: 0.82rem;
+}
+
+.image-profile-fields > div {
+	display: flex;
+	gap: 6px;
+}
+
+.image-profile-fields dt {
+	color: var(--muted);
+	white-space: nowrap;
+}
+
+.image-profile-fields dd {
+	margin: 0;
+	overflow-wrap: anywhere;
+}
+
+@media (min-width: 720px) {
+	.image-profile-fields {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
 .template-editor {
 	margin-top: 12px;
 	padding-top: 10px;

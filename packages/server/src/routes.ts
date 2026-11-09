@@ -46,6 +46,7 @@ import {
 	type TimelineNode,
 	type TurnMode,
 	type UpdateContextTemplateInput,
+	VISUAL_PROFILE_JOB_KIND,
 	applyChannelsUpdate,
 	approveLedgerChangeCard,
 	assertComfyUiSlots,
@@ -125,6 +126,7 @@ import {
 	type StoryTree,
 	type StoryTreeNode,
 	type StoryView,
+	type StoryVisualProfileGenerateResult,
 	type StoryVisualProfilesView,
 	isProposalDecisionAction,
 } from "@dramaticer/protocol";
@@ -263,6 +265,15 @@ export async function handleApiRequest(
 		) {
 			requireMethod(method, ["POST"]);
 			handleOpeningPick(res, options, storyId, parts[3]);
+			return;
+		}
+		if (
+			third === "visual-profiles" &&
+			parts.length === 4 &&
+			parts[3] === "generate"
+		) {
+			requireMethod(method, ["POST"]);
+			handleStoryVisualProfilesGenerate(res, options, storyId);
 			return;
 		}
 		if (third === "director" && parts.length === 4 && parts[3] === "plan") {
@@ -1082,6 +1093,28 @@ function handleStoryVisualProfiles(
 		profiles: options.store.listCharacterVisualProfiles(storyId),
 	};
 	sendJson(res, 200, view);
+}
+
+function handleStoryVisualProfilesGenerate(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	storyId: string,
+): void {
+	requireStory(options.store, storyId);
+	const [job] = options.store.enqueueStoryBackgroundJobs({
+		storyId,
+		kinds: [VISUAL_PROFILE_JOB_KIND],
+	});
+	if (job === undefined) {
+		throw new Error(`故事 ${storyId} 的视觉档案任务没有入队`);
+	}
+	options.scheduler?.schedule(storyId);
+	const view: StoryVisualProfileGenerateResult = {
+		storyId,
+		jobId: job.id,
+		kind: job.kind,
+	};
+	sendJson(res, 202, view);
 }
 
 function handleOpeningGenerate(

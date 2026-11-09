@@ -12,6 +12,12 @@ import type {
 	TurnMode,
 } from "@dramaticer/core";
 import { ApiError } from "../api";
+import {
+	type ImageSettingsDraft,
+	buildImageSettingsDraft,
+	describeImageConfigPath,
+	parseImageSettingsDraft,
+} from "./image-form";
 
 export interface FormFieldError {
 	/** 与服务端 `details.path` 同一套写法；空字符串表示整份表单。 */
@@ -265,6 +271,7 @@ export interface SettingsFormDraft {
 	readonly viewpoint: string;
 	readonly gapPassEnabled: boolean;
 	readonly gapPlanSeconds: string;
+	readonly image: ImageSettingsDraft;
 	readonly director: DirectorFormDraft;
 	readonly history: HistoryPolicyFormDraft;
 }
@@ -301,6 +308,9 @@ export function describeSettingsPath(path: string): string {
 	if (head === "historyBlockPolicy" && rest.length > 0) {
 		return `历史块策略·${rest.join(".")}`;
 	}
+	if (head === "imageConfig") {
+		return describeImageConfigPath(path);
+	}
 	return label;
 }
 
@@ -332,6 +342,7 @@ export function buildSettingsDraft(settings: StorySettings): SettingsFormDraft {
 		viewpoint: settings.viewpoint ?? "",
 		gapPassEnabled: settings.gapPassEnabled,
 		gapPlanSeconds: String(settings.gapPlanSeconds),
+		image: buildImageSettingsDraft(settings.imageConfig),
 		director: {
 			mode: director.mode,
 			intensity: director.intensity,
@@ -458,6 +469,8 @@ export function parseSettingsDraft(draft: SettingsFormDraft): {
 		0,
 		errors,
 	);
+	const image = parseImageSettingsDraft(draft.image);
+	errors.push(...image.errors);
 
 	const numbers = {} as Record<DirectorNumberKey, number>;
 	for (const field of DIRECTOR_NUMBER_FIELDS) {
@@ -562,6 +575,7 @@ export function parseSettingsDraft(draft: SettingsFormDraft): {
 		viewpoint: nullableText(draft.viewpoint),
 		gapPassEnabled: draft.gapPassEnabled,
 		gapPlanSeconds: gapPlanSeconds ?? 0,
+		imageConfig: image.config,
 		directorConfig,
 		historyBlockPolicy: { mode: draft.history.mode, overrides },
 	};

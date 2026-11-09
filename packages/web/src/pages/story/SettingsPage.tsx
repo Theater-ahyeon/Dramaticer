@@ -1,15 +1,20 @@
 import type {
 	ContextTemplateRecord,
+	ImageWorkflowView,
 	StorySettings,
 	StoryTemplateView,
 } from "@dramaticer/protocol";
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { api } from "../../api";
 import {
 	DIRECTOR_INTENSITY_CHOICES,
 	DIRECTOR_MODE_CHOICES,
 } from "../../chat/director-view";
+import {
+	IMAGE_MODE_CHOICES,
+	type ImageSettingsDraft,
+} from "../../chat/image-form";
 import {
 	DIRECTOR_NUMBER_FIELDS,
 	type DirectorFormDraft,
@@ -72,6 +77,9 @@ export function SettingsPage() {
 	const [templates, setTemplates] = useState<readonly ContextTemplateRecord[]>(
 		[],
 	);
+	const [imageWorkflows, setImageWorkflows] = useState<
+		readonly ImageWorkflowView[]
+	>([]);
 	const [templateView, setTemplateView] = useState<StoryTemplateView | null>(
 		null,
 	);
@@ -112,10 +120,11 @@ export function SettingsPage() {
 		setTemplateSaved(false);
 		void (async () => {
 			try {
-				const [loadedSettings, list, view] = await Promise.all([
+				const [loadedSettings, list, view, workflows] = await Promise.all([
 					api.getSettings(storyId),
 					api.listTemplates(),
 					api.getStoryTemplate(storyId),
+					api.getImageWorkflows(),
 				]);
 				if (!active) return;
 				const templateId =
@@ -126,6 +135,7 @@ export function SettingsPage() {
 				setTemplates(list);
 				setTemplateView(view);
 				setSelectedTemplateId(record?.id ?? null);
+				setImageWorkflows(workflows.workflows);
 				setTemplateDraft(
 					templateDraftFrom(
 						view.template,
@@ -146,10 +156,11 @@ export function SettingsPage() {
 		if (storyId === undefined) return;
 		const request = requestRef.current + 1;
 		requestRef.current = request;
-		const [loadedSettings, list, view] = await Promise.all([
+		const [loadedSettings, list, view, workflows] = await Promise.all([
 			api.getSettings(storyId),
 			api.listTemplates(),
 			api.getStoryTemplate(storyId),
+			api.getImageWorkflows(),
 		]);
 		if (requestRef.current !== request) return;
 		const templateId = view.source === "stored" ? (view.templateId ?? "") : "";
@@ -159,6 +170,7 @@ export function SettingsPage() {
 		setTemplates(list);
 		setTemplateView(view);
 		setSelectedTemplateId(record?.id ?? null);
+		setImageWorkflows(workflows.workflows);
 		setTemplateDraft(
 			templateDraftFrom(view.template, record?.name ?? DEFAULT_TEMPLATE_NAME),
 		);
@@ -177,6 +189,15 @@ export function SettingsPage() {
 			previous === null
 				? previous
 				: { ...previous, director: { ...previous.director, ...patch } },
+		);
+		setSettingsSaved(false);
+	};
+
+	const updateImage = (patch: Partial<ImageSettingsDraft>): void => {
+		setDraft((previous) =>
+			previous === null
+				? previous
+				: { ...previous, image: { ...previous.image, ...patch } },
 		);
 		setSettingsSaved(false);
 	};
@@ -292,6 +313,24 @@ export function SettingsPage() {
 	const templateChoiceOptions = [
 		{ value: "", label: DEFAULT_TEMPLATE_NAME },
 		...templates.map((record) => ({ value: record.id, label: record.name })),
+	];
+
+	const imageWorkflowOptions = [
+		{ value: "", label: "未选择" },
+		...imageWorkflows.map((record) => ({
+			value: record.id,
+			label: record.name,
+		})),
+		...(draft !== null &&
+		draft.image.workflowId.length > 0 &&
+		!imageWorkflows.some((record) => record.id === draft.image.workflowId)
+			? [
+					{
+						value: draft.image.workflowId,
+						label: `已删除的 workflow（${draft.image.workflowId}）`,
+					},
+				]
+			: []),
 	];
 
 	return (
@@ -501,6 +540,78 @@ export function SettingsPage() {
 								/>
 							</Field>
 						</div>
+					</section>
+					<section className="director-section" aria-label="生图">
+						<header className="director-section-head">
+							<h2>生图</h2>
+							<span className="ledger-tag">
+								{draft.image.mode === "auto"
+									? "模型可以调用 illustrate"
+									: draft.image.mode === "manual"
+										? "只允许手动登记"
+										: "已关闭"}
+							</span>
+						</header>
+						<div className="settings-grid">
+							<Field label="生图模式">
+								<select
+									value={draft.image.mode}
+									onChange={(event) =>
+										updateImage({
+											mode: event.target.value as ImageSettingsDraft["mode"],
+										})
+									}
+									disabled={settingsBusy}
+								>
+									{IMAGE_MODE_CHOICES.map((choice) => (
+										<option key={choice.value} value={choice.value}>
+											{choice.label}
+										</option>
+									))}
+								</select>
+							</Field>
+							<Field label="workflow">
+								<select
+									value={draft.image.workflowId}
+									onChange={(event) =>
+										updateImage({ workflowId: event.target.value })
+									}
+									disabled={settingsBusy}
+								>
+									{imageWorkflowOptions.map((choice) => (
+										<option key={choice.value} value={choice.value}>
+											{choice.label}
+										</option>
+									))}
+								</select>
+							</Field>
+							<Field label="每楼最多插图（1 到 4）">
+								<input
+									type="text"
+									inputMode="numeric"
+									value={draft.image.maxPerFloor}
+									onChange={(event) =>
+										updateImage({ maxPerFloor: event.target.value })
+									}
+									disabled={settingsBusy}
+								/>
+							</Field>
+							<Field label="两次插图的最小楼层间隔（0 到 100）">
+								<input
+									type="text"
+									inputMode="numeric"
+									value={draft.image.minFloorsBetween}
+									onChange={(event) =>
+										updateImage({ minFloorsBetween: event.target.value })
+									}
+									disabled={settingsBusy}
+								/>
+							</Field>
+						</div>
+						<p className="muted">
+							workflow 的导入与角色视觉档案在{" "}
+							<Link to="../images">生图面板</Link>。
+						</p>
 					</section>
 					<section className="director-section" aria-label="历史块策略">
 						<header className="director-section-head">

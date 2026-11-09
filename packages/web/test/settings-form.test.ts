@@ -117,6 +117,7 @@ describe("故事设置表单", () => {
 			viewpoint: "云裳",
 			gapPassEnabled: true,
 			gapPlanSeconds: 212,
+			imageConfig: settings.imageConfig,
 			directorConfig: settings.directorConfig,
 			historyBlockPolicy: {
 				mode: "full",

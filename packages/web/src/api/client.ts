@@ -12,6 +12,12 @@ import {
 	type CreateStoryRequest,
 	type FulfillClueRequest,
 	type FulfillClueResult,
+	type ImageProvidersView,
+	type ImageWorkflowDetectRequest,
+	type ImageWorkflowDetectionView,
+	type ImageWorkflowImportRequest,
+	type ImageWorkflowView,
+	type ImageWorkflowsView,
 	type ImportStoryRequest,
 	type ImportStoryResult,
 	type NodeActionResult,
@@ -45,6 +51,8 @@ import {
 	type StoryTemplateView,
 	type StoryTree,
 	type StoryView,
+	type StoryVisualProfileGenerateResult,
+	type StoryVisualProfilesView,
 	type TurnCompletedPayload,
 	type TurnRequest,
 	type UpdateContextTemplateRequest,
@@ -398,6 +406,57 @@ export class ApiClient {
 		return this.json<NodeImageRecord>(
 			"POST",
 			`/api/images/${encodeURIComponent(imageId)}/retry`,
+		);
+	}
+
+	async getImageProviders(): Promise<ImageProvidersView> {
+		return this.json<ImageProvidersView>("GET", "/api/images/providers");
+	}
+
+	async getImageWorkflows(): Promise<ImageWorkflowsView> {
+		return this.json<ImageWorkflowsView>("GET", "/api/images/workflows");
+	}
+
+	async detectImageWorkflow(
+		request: ImageWorkflowDetectRequest,
+	): Promise<ImageWorkflowDetectionView> {
+		return this.json<ImageWorkflowDetectionView>(
+			"POST",
+			"/api/images/workflows/detect",
+			request,
+		);
+	}
+
+	async importImageWorkflow(
+		request: ImageWorkflowImportRequest,
+	): Promise<ImageWorkflowView> {
+		return this.json<ImageWorkflowView>(
+			"POST",
+			"/api/images/workflows/import",
+			request,
+		);
+	}
+
+	async deleteImageWorkflow(workflowId: string): Promise<void> {
+		await this.send(
+			"DELETE",
+			`/api/images/workflows/${encodeURIComponent(workflowId)}`,
+		);
+	}
+
+	async getVisualProfiles(storyId: string): Promise<StoryVisualProfilesView> {
+		return this.json<StoryVisualProfilesView>(
+			"GET",
+			`${storyPath(storyId)}/visual-profiles`,
+		);
+	}
+
+	async generateVisualProfiles(
+		storyId: string,
+	): Promise<StoryVisualProfileGenerateResult> {
+		return this.json<StoryVisualProfileGenerateResult>(
+			"POST",
+			`${storyPath(storyId)}/visual-profiles/generate`,
 		);
 	}
 

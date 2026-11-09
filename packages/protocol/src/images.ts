@@ -28,6 +28,13 @@ export interface StoryVisualProfilesView {
 	readonly profiles: readonly CharacterVisualProfileRecord[];
 }
 
+/** `POST /api/stories/:id/visual-profiles/generate` 的结果；生成在后台执行。 */
+export interface StoryVisualProfileGenerateResult {
+	readonly storyId: string;
+	readonly jobId: number;
+	readonly kind: string;
+}
+
 export type ImageWorkflowView = ImageWorkflowRecord;
 
 export interface ImageWorkflowsView {

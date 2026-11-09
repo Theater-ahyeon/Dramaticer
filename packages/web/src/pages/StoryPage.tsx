@@ -9,6 +9,7 @@ const TABS = [
 	{ path: "branches", label: "分支" },
 	{ path: "ledger", label: "台账" },
 	{ path: "director", label: "导演" },
+	{ path: "images", label: "生图" },
 	{ path: "settings", label: "设置" },
 	{ path: "channels", label: "渠道" },
 ] as const;

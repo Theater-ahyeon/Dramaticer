@@ -8,6 +8,7 @@ import type {
 	ImageWorkflowsView,
 	NodeImagesView,
 	StoryPath,
+	StoryVisualProfileGenerateResult,
 	StoryVisualProfilesView,
 } from "@dramaticer/protocol";
 import { describe, expect, it, onTestFinished } from "vitest";
@@ -489,6 +490,54 @@ describe("生图接口", () => {
 		const missing = await request(
 			running.origin,
 			"/api/stories/missing/visual-profiles",
+		);
+		expect(missing.status).toBe(404);
+	});
+
+	it("visual-profiles/generate 只入队，已有档案也允许重新生成", async () => {
+		const { running } = await startImagesServer();
+		running.store.createStory({ id: "s1", title: "测试" });
+		const timestamp = "2026-11-09T00:00:00.000Z";
+		running.store.saveCharacterVisualProfiles({
+			storyId: "s1",
+			source: "model",
+			createdAt: timestamp,
+			updatedAt: timestamp,
+			profiles: [
+				{
+					character: "凛",
+					base: ["黑长直"],
+					defaultOutfit: "深蓝校服",
+					outfitPath: null,
+					negative: [],
+					seed: null,
+					backends: {},
+				},
+			],
+		});
+
+		const response = await request(
+			running.origin,
+			"/api/stories/s1/visual-profiles/generate",
+			"POST",
+		);
+		expect(response.status).toBe(202);
+		const view = (await response.json()) as StoryVisualProfileGenerateResult;
+		expect(view.storyId).toBe("s1");
+		expect(view.kind).toBe("visual_profile");
+		const jobs = running.store.listBackgroundJobs({
+			storyId: "s1",
+			kinds: ["visual_profile"],
+		});
+		expect(jobs).toHaveLength(1);
+		expect(jobs[0]?.id).toBe(view.jobId);
+		expect(jobs[0]?.status).toBe("pending");
+		expect(running.store.listCharacterVisualProfiles("s1")).toHaveLength(1);
+
+		const missing = await request(
+			running.origin,
+			"/api/stories/missing/visual-profiles/generate",
+			"POST",
 		);
 		expect(missing.status).toBe(404);
 	});

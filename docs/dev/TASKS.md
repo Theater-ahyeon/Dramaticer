@@ -826,7 +826,8 @@
   - 轮询：回合完成后如果最新楼层有未完成图片，按 2 秒间隔最多 15 次调用 `GET /api/nodes/:id/images`，把结果并入路径状态；离开页面或切换故事时停止。新增 `chat/node-images.ts` 纯逻辑（状态合并、是否需要轮询、失败重试）与测试。
   验收：path 返回的每个楼层带按 `ordinal` 排序的图片，`url` 只在 `done` 时出现，图片查询次数与楼层数无关；媒体接口需要登录，未完成与越界路径不返回文件；聊天页在假 provider 下从占位变为图片，失败显示原因且重试后重新出现占位；放大与移动端布局正常，390×844 无横向溢出；图片不出现在楼层原文与 `parseBlocks` 结果里；纯逻辑测试覆盖合并与轮询停止；`pnpm check` 通过。
 
-- [ ] **M6-T05 生图设置与 workflow 管理界面** | 依赖：M6-T01、M6-T03、M6-T04、R5-T09 | DESIGN §12 | ADR-0082
+- [x] **M6-T05 生图设置与 workflow 管理界面** | 依赖：M6-T01、M6-T03、M6-T04、R5-T09 | DESIGN §12 | ADR-0082
+  完成：2026-11-09 新增“生图”面板（provider 状态、workflow 文件导入与插槽确认、删除、视觉档案查看与重新生成）与 `POST /api/stories/:id/visual-profiles/generate`；设置页接入 `imageConfig`；`chat/image-form.ts` 纯逻辑与 10 个测试、server 1 个用例；390×844 生图页与设置页冒烟通过；门禁通过（159 个测试文件、1409 个测试、4 个 live 跳过）
   做什么：
   - 故事页新增“生图”面板（路由与导航与现有六个面板并列）：上半是 provider 状态（ComfyUI 是否配置、地址只读显示）与 workflow 列表；导入入口读取本地 JSON 文件，先调用 `POST /api/images/workflows/detect` 显示自动识别的插槽与候选，用户用下拉框确认正向提示词、负向提示词、seed、width、height 后调用 `import` 保存；删除只允许没有被 `node_images` 引用的 workflow，409 时显示原因；界面不显示密钥值。
   - 同一面板显示角色视觉档案（人物、基础外貌、默认服装、来源）与“重新生成”按钮（新增 `POST /api/stories/:id/visual-profiles/generate`，只入队，不阻塞请求）；档案只在没有记录时自动生成，手动按钮覆盖。

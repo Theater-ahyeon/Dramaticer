@@ -6,6 +6,7 @@ import { BranchesPage } from "./pages/story/BranchesPage";
 import { ChannelsPage } from "./pages/story/ChannelsPage";
 import { ChatPage } from "./pages/story/ChatPage";
 import { DirectorPage } from "./pages/story/DirectorPage";
+import { ImagesPage } from "./pages/story/ImagesPage";
 import { LedgerPage } from "./pages/story/LedgerPage";
 import { SettingsPage } from "./pages/story/SettingsPage";
 
@@ -31,6 +32,7 @@ export function App() {
 						<Route path="branches" element={<BranchesPage />} />
 						<Route path="ledger" element={<LedgerPage />} />
 						<Route path="director" element={<DirectorPage />} />
+						<Route path="images" element={<ImagesPage />} />
 						<Route path="settings" element={<SettingsPage />} />
 						<Route path="channels" element={<ChannelsPage />} />
 					</Route>
