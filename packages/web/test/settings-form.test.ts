@@ -61,6 +61,12 @@ function settingsFixture(
 		historyBlockPolicy: { mode: "default", overrides: {} },
 		gapPassEnabled: false,
 		gapPlanSeconds: 212,
+		imageConfig: {
+			mode: "off",
+			workflowId: "",
+			maxPerFloor: 1,
+			minFloorsBetween: 3,
+		},
 		updatedAt: "2026-11-08T10:00:00.000Z",
 		...overrides,
 	};

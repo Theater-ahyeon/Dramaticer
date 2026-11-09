@@ -804,7 +804,8 @@
   - server 新增 `GET /api/stories/:id/visual-profiles`（只读，返回档案、来源与更新时间）；注册表注册 `visual_profile`，`dramaticer work` 与 server 的调度器自动带上。
   验收：假客户端生成一包并入库；重复执行只覆盖不新增；非法人物名、空字符串、重复人物、未知字段、越界 seed 与空路径段各抛出错误并指出路径；没有卡与常驻世界书时不入队也不调用；两种提示词风格的固定断言通过，服装来自台账、缺档案的人物列进 `missingProfiles`；回合内后台客户端零调用；`pnpm check` 通过。
 
-- [ ] **M6-T03 `illustrate` 工具与异步出图队列** | 依赖：M6-T01、M6-T02、R1-T02.2、R3-T01、R5-T01 | DESIGN §11、§12 | ADR-0082 | I11
+- [x] **M6-T03 `illustrate` 工具与异步出图队列** | 依赖：M6-T01、M6-T02、R1-T02.2、R3-T01、R5-T01 | DESIGN §11、§12 | ADR-0082 | I11
+  完成：2026-11-09 `imageConfig` 进入故事设置（`mode`、`workflowId`、`maxPerFloor`、`minFloorsBetween`，旧记录按默认值补齐）；`images/request.ts` 统一校验 `illustrate` 参数；`images/tool.ts` 只在 `auto`、workflow 存在且 provider 已配置时提供工具，回合事务内校验频率并写 `node_images` 的 `pending` 行，拒绝原因进入 Trace 的 `images.rejected` 与 `tools.calls`；`runModelTurns` 新增 `sideEffectTools`（两种传输共用，文本协议回“已登记”）；`images/queue.ts` 每次处理 2 行、单行失败 3 次标记 `failed`，失败行不影响其它行，旧分支不处理；`images/client.ts` 抽象 provider 客户端，`images/media.ts` 读取 PNG/GIF/WebP/JPEG 宽高；`dramaticer images generate|list`、`POST /api/nodes/:id/images`、`POST /api/images/:id/retry`；server 与 `dramaticer work` 注册任务、传入 `--media-dir` 与 `images.yaml`，启动时 `requeueRunningNodeImages`
   做什么：
   - 故事设置新增 `imageConfig`（存 `story_settings.image_config`）：`mode` 取 `off`、`manual`、`auto`（默认 `off`），`workflowId`（默认空），`maxPerFloor`（1 到 4，默认 1），`minFloorsBetween`（0 到 100，默认 3）；`assertStorySettingsUpdate` 校验，`STORY_SETTINGS_UPDATE_KEYS` 收录，旧记录按默认值补齐。
   - `images/tool.ts` 定义 `illustrate` 工具：参数 `{ characters?: string[], scene: string, shot?: "close-up"|"medium"|"wide"|"scenery", mood?: string }`，只允许这些键，`scene` 1 到 500 字，人物最多 4 个、名字非空；描述写明每楼上限、最小间隔与“只登记，后台生成”。只有 `mode` 为 `auto`、`workflowId` 指向存在的 workflow、workflow 的 provider 已配置时才把工具发给模型；`manual` 与 `off` 不发。

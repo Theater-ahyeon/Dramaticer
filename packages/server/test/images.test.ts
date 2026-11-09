@@ -278,6 +278,116 @@ describe("生图接口", () => {
 		);
 	});
 
+	it("手动登记插图：off 返回 409，manual 与 auto 可用，retry 只接受 failed", async () => {
+		const { running } = await startImagesServer();
+		const savedWorkflow = running.store.saveImageWorkflow({
+			name: "默认",
+			provider: "comfy",
+			payload: workflow() as never,
+			slots: SLOTS,
+		});
+		running.store.createStory({ id: "s1", title: "测试" });
+		running.store.appendNode({
+			id: "n1",
+			storyId: "s1",
+			parentId: null,
+			role: "assistant",
+			raw: "正文",
+		});
+
+		const off = await request(running.origin, "/api/nodes/n1/images", "POST", {
+			scene: "雨夜",
+		});
+		expect(off.status).toBe(409);
+
+		const saveSettings = (mode: "manual" | "auto") =>
+			request(running.origin, "/api/stories/s1/settings", "PUT", {
+				imageConfig: {
+					mode,
+					workflowId: savedWorkflow.id,
+					maxPerFloor: 2,
+					minFloorsBetween: 0,
+				},
+			});
+		expect((await saveSettings("manual")).status).toBe(200);
+
+		const invalid = await request(
+			running.origin,
+			"/api/nodes/n1/images",
+			"POST",
+			{ scene: "雨夜", extra: true },
+		);
+		expect(invalid.status).toBe(400);
+		expect((await errorOf(invalid)).details?.path).toBe("request");
+
+		const manual = await request(
+			running.origin,
+			"/api/nodes/n1/images",
+			"POST",
+			{ scene: "雨夜的站台", characters: ["凛"], shot: "wide" },
+		);
+		expect(manual.status).toBe(201);
+		const first = (await manual.json()) as {
+			id: string;
+			status: string;
+			ordinal: number;
+			request: { scene: string };
+		};
+		expect(first).toMatchObject({
+			status: "pending",
+			ordinal: 0,
+			request: { scene: "雨夜的站台" },
+		});
+		expect(running.store.listNodeImages("n1")).toHaveLength(1);
+		const jobs = running.store.listBackgroundJobs({
+			storyId: "s1",
+			kinds: ["illustrate"],
+		});
+		expect(jobs).toHaveLength(1);
+		expect(jobs[0]?.status).toBe("pending");
+
+		expect((await saveSettings("auto")).status).toBe(200);
+		const auto = await request(running.origin, "/api/nodes/n1/images", "POST", {
+			scene: "第二张",
+		});
+		expect(auto.status).toBe(201);
+
+		const pendingRetry = await request(
+			running.origin,
+			`/api/images/${first.id}/retry`,
+			"POST",
+		);
+		expect(pendingRetry.status).toBe(409);
+
+		running.store.startNodeImage(first.id, {
+			prompt: "p",
+			negativePrompt: "n",
+		});
+		running.store.failNodeImage(first.id, {
+			error: "后端失败",
+			maxAttempts: 1,
+		});
+		const retried = await request(
+			running.origin,
+			`/api/images/${first.id}/retry`,
+			"POST",
+		);
+		expect(retried.status).toBe(200);
+		expect(await retried.json()).toMatchObject({
+			id: first.id,
+			status: "pending",
+			attempts: 0,
+			error: null,
+		});
+
+		const missing = await request(
+			running.origin,
+			"/api/images/missing/retry",
+			"POST",
+		);
+		expect(missing.status).toBe(404);
+	});
+
 	it("visual-profiles 返回档案、来源与更新时间，缺失故事 404", async () => {
 		const { running } = await startImagesServer();
 		running.store.createStory({ id: "s1", title: "测试" });

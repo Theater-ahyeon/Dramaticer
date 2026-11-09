@@ -12,6 +12,12 @@ import {
 	createVisualProfileHandler,
 	visualProfileNeedsRun,
 } from "../images/profiles.js";
+import {
+	ILLUSTRATE_JOB_KIND,
+	type IllustrateHandlerOptions,
+	createIllustrateHandler,
+	illustrateNeedsRun,
+} from "../images/queue.js";
 import { GAP_PASS_JOB_KIND, createGapPassHandler } from "../ledger/gap-pass.js";
 import {
 	MEMORY_REVISION_JOB_KIND,
@@ -53,6 +59,8 @@ export interface DefaultBackgroundRegistryOptions {
 	readonly embedder?: EmbeddingClient | null;
 	/** 规划器专用客户端；不设置时规划任务使用任务上下文里的后台客户端。 */
 	readonly plannerClient?: LlmClient | null;
+	/** 生图队列；不设置时不注册 illustrate 任务。 */
+	readonly illustrate?: IllustrateHandlerOptions | null;
 }
 
 /** 生产环境与自动试玩共用的任务注册表。 */
@@ -104,6 +112,16 @@ export function createDefaultBackgroundJobRegistry(
 			tier: "gap",
 			needsRun: visualProfileNeedsRun,
 		},
+		...(options.illustrate === undefined || options.illustrate === null
+			? {}
+			: {
+					[ILLUSTRATE_JOB_KIND]: {
+						handler: createIllustrateHandler(options.illustrate),
+						enqueue: "story" as const,
+						tier: "gap" as const,
+						needsRun: illustrateNeedsRun,
+					},
+				}),
 		[DIRECTOR_PLAN_JOB_KIND]: {
 			handler: createDirectorPlanHandler({
 				...(plannerClient === null ? {} : { client: plannerClient }),

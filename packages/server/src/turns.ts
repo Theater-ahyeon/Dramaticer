@@ -3,6 +3,8 @@ import {
 	type ChatTurnResult,
 	type DirectorIntensity,
 	type GenerateAssistantTurnOptions,
+	type IllustrateTurnOptions,
+	type ImagesConfig,
 	LlmAllChannelsFailedError,
 	LlmProviderError,
 	type ParsedContent,
@@ -71,6 +73,8 @@ export interface TurnRouteOptions {
 	readonly heartbeatMs: number;
 	readonly scheduler?: BackgroundScheduler | null;
 	readonly now?: () => number;
+	/** 启动时读取的生图配置；不设置时按没有 provider 处理。 */
+	readonly imagesConfig?: ImagesConfig;
 }
 
 interface GenerationHooks {
@@ -233,6 +237,31 @@ function turnOptions(
 		maxTokens: runtime.maxTokens,
 		temperature: runtime.settings.temperature,
 		reasoning: runtime.settings.reasoning,
+		illustrate: resolveIllustrateOptions(
+			options.store,
+			storyId,
+			options.imagesConfig,
+		),
+	};
+}
+
+/** 工具可见性与回合内的频率检查共用故事设置里的 imageConfig。 */
+function resolveIllustrateOptions(
+	store: StoryStore,
+	storyId: string,
+	imagesConfig: ImagesConfig | undefined,
+): IllustrateTurnOptions {
+	const config = store.getStorySettings(storyId).imageConfig;
+	const workflow =
+		config.workflowId.trim().length === 0
+			? null
+			: store.getImageWorkflow(config.workflowId.trim());
+	return {
+		...config,
+		providerConfigured:
+			workflow !== null &&
+			imagesConfig !== undefined &&
+			imagesConfig.providers.has(workflow.provider),
 	};
 }
 

@@ -1,6 +1,139 @@
 import { normalizeEntityName } from "../entity.js";
 import { assertPlainObject, rejectUnknownKeys } from "../json.js";
+import type { ImagePromptRequest } from "./prompt.js";
 import type { ComfyUiSlots, ComfyUiWorkflow } from "./slots.js";
+
+export const IMAGE_MODES = ["off", "manual", "auto"] as const;
+
+export type ImageMode = (typeof IMAGE_MODES)[number];
+
+export function isImageMode(value: unknown): value is ImageMode {
+	return (
+		typeof value === "string" &&
+		(IMAGE_MODES as readonly string[]).includes(value)
+	);
+}
+
+/** 故事的出图配置；`mode` 只有 auto 会把 illustrate 工具发给模型。 */
+export interface ImageConfig {
+	readonly mode: ImageMode;
+	/** 为空表示没有选择 workflow；手动与自动模式都需要它。 */
+	readonly workflowId: string;
+	/** 每楼最多接受几张图。 */
+	readonly maxPerFloor: number;
+	/** 两次出图之间至少隔多少个助手楼层。 */
+	readonly minFloorsBetween: number;
+}
+
+export const MIN_IMAGES_PER_FLOOR = 1;
+export const MAX_IMAGES_PER_FLOOR = 4;
+export const MIN_IMAGE_FLOOR_GAP = 0;
+export const MAX_IMAGE_FLOOR_GAP = 100;
+
+export const DEFAULT_IMAGE_CONFIG: ImageConfig = {
+	mode: "off",
+	workflowId: "",
+	maxPerFloor: 1,
+	minFloorsBetween: 3,
+};
+
+const IMAGE_CONFIG_KEYS = [
+	"mode",
+	"workflowId",
+	"maxPerFloor",
+	"minFloorsBetween",
+] as const;
+
+/** 校验故事设置里的出图配置；范围与工具注册、频率检查共用。 */
+export function assertImageConfig(
+	value: unknown,
+	label = "故事设置的 imageConfig",
+): ImageConfig {
+	const record = assertPlainObject(value, label);
+	rejectUnknownKeys(record, IMAGE_CONFIG_KEYS, label);
+	if (!isImageMode(record.mode)) {
+		throw new Error(`${label}.mode 必须是 off、manual 或 auto`);
+	}
+	if (typeof record.workflowId !== "string") {
+		throw new Error(`${label}.workflowId 必须是字符串`);
+	}
+	const maxPerFloor = record.maxPerFloor;
+	if (
+		typeof maxPerFloor !== "number" ||
+		!Number.isInteger(maxPerFloor) ||
+		maxPerFloor < MIN_IMAGES_PER_FLOOR ||
+		maxPerFloor > MAX_IMAGES_PER_FLOOR
+	) {
+		throw new Error(
+			`${label}.maxPerFloor 必须是 ${MIN_IMAGES_PER_FLOOR} 到 ${MAX_IMAGES_PER_FLOOR} 之间的整数`,
+		);
+	}
+	const minFloorsBetween = record.minFloorsBetween;
+	if (
+		typeof minFloorsBetween !== "number" ||
+		!Number.isInteger(minFloorsBetween) ||
+		minFloorsBetween < MIN_IMAGE_FLOOR_GAP ||
+		minFloorsBetween > MAX_IMAGE_FLOOR_GAP
+	) {
+		throw new Error(
+			`${label}.minFloorsBetween 必须是 ${MIN_IMAGE_FLOOR_GAP} 到 ${MAX_IMAGE_FLOOR_GAP} 之间的整数`,
+		);
+	}
+	return {
+		mode: record.mode,
+		workflowId: record.workflowId.trim(),
+		maxPerFloor,
+		minFloorsBetween,
+	};
+}
+
+export const NODE_IMAGE_STATUSES = [
+	"pending",
+	"running",
+	"done",
+	"failed",
+] as const;
+
+export type NodeImageStatus = (typeof NODE_IMAGE_STATUSES)[number];
+
+export function isNodeImageStatus(value: unknown): value is NodeImageStatus {
+	return (
+		typeof value === "string" &&
+		(NODE_IMAGE_STATUSES as readonly string[]).includes(value)
+	);
+}
+
+/** 楼层上的一条出图记录；图片是楼层的附属数据，不是原文的一部分。 */
+export interface NodeImageRecord {
+	readonly id: string;
+	readonly storyId: string;
+	readonly nodeId: string;
+	readonly ordinal: number;
+	readonly status: NodeImageStatus;
+	/** 模型或玩家的原始生图请求。 */
+	readonly request: ImagePromptRequest;
+	readonly prompt: string | null;
+	readonly negativePrompt: string | null;
+	readonly workflowId: string;
+	readonly seed: number | null;
+	readonly attempts: number;
+	readonly fileName: string | null;
+	readonly mediaType: string | null;
+	readonly width: number | null;
+	readonly height: number | null;
+	readonly error: string | null;
+	readonly createdAt: string;
+	readonly updatedAt: string;
+}
+
+export interface NewNodeImageInput {
+	readonly storyId: string;
+	readonly nodeId: string;
+	readonly request: ImagePromptRequest;
+	readonly workflowId: string;
+	readonly seed: number | null;
+	readonly createdAt?: string;
+}
 
 /** 保存在数据库里的 workflow 模板；`payload` 是原始 API 格式 JSON。 */
 export interface ImageWorkflowRecord {

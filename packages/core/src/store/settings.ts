@@ -18,6 +18,11 @@ import {
 	DEFAULT_DIRECTOR_CONFIG,
 	type DirectorConfig,
 } from "../director/types.js";
+import {
+	DEFAULT_IMAGE_CONFIG,
+	type ImageConfig,
+	assertImageConfig,
+} from "../images/types.js";
 import type { JsonObject } from "../json.js";
 import { type LlmReasoningLevel, isLlmReasoningLevel } from "../llm/types.js";
 import {
@@ -54,6 +59,8 @@ export interface StorySettings {
 	readonly gapPassEnabled: boolean;
 	/** 执行可延后档后台任务所需的间隙秒数；默认 212。 */
 	readonly gapPlanSeconds: number;
+	/** 生图模式、workflow 与频率设置。 */
+	readonly imageConfig: ImageConfig;
 	readonly updatedAt: string;
 }
 
@@ -75,6 +82,7 @@ export interface StorySettingsUpdate {
 	readonly historyBlockPolicy?: HistoryBlockPolicy;
 	readonly gapPassEnabled?: boolean;
 	readonly gapPlanSeconds?: number;
+	readonly imageConfig?: ImageConfig;
 }
 
 export const STORY_SETTINGS_UPDATE_KEYS: readonly (keyof StorySettingsUpdate)[] =
@@ -96,6 +104,7 @@ export const STORY_SETTINGS_UPDATE_KEYS: readonly (keyof StorySettingsUpdate)[] 
 		"historyBlockPolicy",
 		"gapPassEnabled",
 		"gapPlanSeconds",
+		"imageConfig",
 	];
 
 /** 尚未保存设置时使用的数值与枚举；故事 id 与更新时间由调用方补齐。 */
@@ -111,6 +120,7 @@ export const DEFAULT_STORY_SETTINGS_VALUES = {
 	historyBlockPolicy: DEFAULT_HISTORY_BLOCK_POLICY,
 	gapPassEnabled: false,
 	gapPlanSeconds: 212,
+	imageConfig: DEFAULT_IMAGE_CONFIG,
 } as const;
 
 export interface ContextTemplateRecord {
@@ -320,6 +330,9 @@ export function assertStorySettingsUpdate(update: StorySettingsUpdate): void {
 		if (!Number.isInteger(update.gapPlanSeconds) || update.gapPlanSeconds < 0) {
 			throw new Error("故事设置的 gapPlanSeconds 必须是非负整数");
 		}
+	}
+	if (update.imageConfig !== undefined) {
+		assertImageConfig(update.imageConfig);
 	}
 }
 

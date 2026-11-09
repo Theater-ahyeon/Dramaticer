@@ -1,14 +1,18 @@
 import http from "node:http";
 import type { AddressInfo } from "node:net";
+import path from "node:path";
 import {
+	type ImagesConfig,
 	type LlmChannel,
 	type LlmChannelConfig,
 	type LlmChannelsConfig,
 	StoryStore,
 	createLlmChannel,
+	emptyImagesConfig,
 	getCoreVersion,
 	isJsonObject,
 	loadChannelsConfig,
+	loadImagesConfig,
 } from "@dramaticer/core";
 import {
 	type SessionStore,
@@ -63,6 +67,8 @@ export interface ServerImagesOptions {
 	readonly path: string;
 	/** 解析 `${VAR}` 使用的环境变量。 */
 	readonly env?: Readonly<Record<string, string | undefined>>;
+	/** 生成文件目录；默认是数据库文件同目录的 `images/`。 */
+	readonly mediaDir?: string;
 }
 
 export interface StartServerOptions {
@@ -100,6 +106,7 @@ interface HandlerOptions {
 	readonly channelsEnv: Readonly<Record<string, string | undefined>>;
 	readonly imagesPath: string | null;
 	readonly imagesEnv: Readonly<Record<string, string | undefined>>;
+	readonly imagesConfig: ImagesConfig;
 	readonly createChannel: (config: LlmChannelConfig) => LlmChannel;
 	readonly heartbeatMs: number;
 	readonly now?: () => number;
@@ -119,6 +126,13 @@ export async function startServer(
 	const images = options.images ?? null;
 	const loadConfig = channels === null ? null : resolveChannelsLoader(channels);
 	const initialConfig = loadConfig === null ? null : await loadConfig();
+	const imagesEnv = images?.env ?? channels?.env ?? process.env;
+	const imagesConfig =
+		images === null
+			? emptyImagesConfig()
+			: await loadImagesConfig(images.path, imagesEnv);
+	const imagesMediaDir =
+		images?.mediaDir ?? path.join(path.dirname(options.dbPath), "images");
 	const embeddingDimensions =
 		initialConfig?.embeddings.get("default")?.dimensions;
 	const store = StoryStore.open(
@@ -127,6 +141,7 @@ export async function startServer(
 	);
 	// 上一个进程在执行中途退出时留下的 running 行不在 drain 的候选里，先退回待办。
 	store.requeueRunningBackgroundJobs();
+	store.requeueRunningNodeImages();
 	const runtime =
 		channels === null || loadConfig === null
 			? null
@@ -146,6 +161,10 @@ export async function startServer(
 					...(channels?.createBackgroundRegistry === undefined
 						? {}
 						: { createRegistry: channels.createBackgroundRegistry }),
+					illustrate:
+						images === null
+							? undefined
+							: { config: imagesConfig, mediaDir: imagesMediaDir },
 					log,
 					...(options.now === undefined ? {} : { now: options.now }),
 				});
@@ -162,7 +181,8 @@ export async function startServer(
 			channelsPath: channels?.path ?? null,
 			channelsEnv: channels?.env ?? process.env,
 			imagesPath: images?.path ?? null,
-			imagesEnv: images?.env ?? channels?.env ?? process.env,
+			imagesEnv,
+			imagesConfig,
 			createChannel: channels?.createChannel ?? createLlmChannel,
 			heartbeatMs: options.heartbeatMs ?? SSE_HEARTBEAT_MS,
 			now: options.now,
@@ -288,6 +308,7 @@ async function handleRequest(
 			channelsEnv: options.channelsEnv,
 			imagesPath: options.imagesPath,
 			imagesEnv: options.imagesEnv,
+			imagesConfig: options.imagesConfig,
 			createChannel: options.createChannel,
 			log: options.log,
 			heartbeatMs: options.heartbeatMs,

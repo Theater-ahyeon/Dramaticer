@@ -12,6 +12,7 @@ import {
 	DIRECTOR_CONFIG_KEYS,
 	type DirectorDecision,
 	type DirectorIntensity,
+	type ImagePromptRequest,
 	ImageWorkflowInUseError,
 	type ImagesConfig,
 	LEDGER_CHANGE_CARD_STATUSES,
@@ -25,6 +26,7 @@ import {
 	type LlmModelProbe,
 	type LlmModelRole,
 	MAX_MEMORY_EVENT_LIMIT,
+	type NodeImageRecord,
 	OPENING_CANDIDATES_JOB_KIND,
 	OPENING_CANDIDATE_STATUSES,
 	STORY_SETTINGS_UPDATE_KEYS,
@@ -44,6 +46,7 @@ import {
 	createDefaultContextTemplate,
 	detectComfyUiSlots,
 	emptyImagesConfig,
+	enqueueIllustrateBackgroundJob,
 	enqueueOpeningBackgroundJobs,
 	enqueueVisualProfileBackgroundJob,
 	fulfillLedgerClue,
@@ -67,6 +70,7 @@ import {
 	resolveModelForRole,
 	rollbackLedgerChangeCard,
 	setModelProbeInText,
+	validateImagePromptRequest,
 	validateRoleModelFamilies,
 } from "@dramaticer/core";
 import {
@@ -146,6 +150,7 @@ export interface ApiRouteOptions {
 	/** 生图配置文件的路径；没有配置时 provider 列表为空。 */
 	readonly imagesPath: string | null;
 	readonly imagesEnv: Readonly<Record<string, string | undefined>>;
+	readonly imagesConfig: ImagesConfig;
 	/** 渠道体检用；测试注入假通道。 */
 	readonly createChannel: (config: LlmChannelConfig) => LlmChannel;
 }
@@ -292,6 +297,11 @@ export async function handleApiRequest(
 				return;
 			}
 		}
+		if (parts.length === 3 && third === "retry") {
+			requireMethod(method, ["POST"]);
+			handleImageRetry(res, options, second);
+			return;
+		}
 	}
 	if (first === "proposals" && second !== undefined && parts.length === 3) {
 		const action = third;
@@ -343,6 +353,10 @@ export async function handleApiRequest(
 			case "actions":
 				requireMethod(method, ["GET"]);
 				handleNodeActions(res, options, nodeId);
+				return;
+			case "images":
+				requireMethod(method, ["POST"]);
+				await handleNodeImages(req, res, options, nodeId);
 				return;
 			default:
 				break;
@@ -1846,6 +1860,88 @@ function handleImageWorkflowDelete(
 		throw error;
 	}
 	sendEmpty(res, 204);
+}
+
+function handleImageRetry(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	imageId: string,
+): void {
+	const image = options.store.getNodeImage(imageId);
+	if (image === null) {
+		throw new HttpError(404, "not_found", `图片记录不存在：${imageId}`);
+	}
+	if (image.status !== "failed") {
+		throw new HttpError(
+			409,
+			"conflict",
+			`图片记录 ${imageId} 的状态是 ${image.status}，只有 failed 可以重试`,
+		);
+	}
+	const retried = options.store.retryNodeImage(imageId);
+	enqueueIllustrateBackgroundJob(options.store, image.storyId);
+	options.scheduler?.schedule(image.storyId);
+	const view: NodeImageRecord = retried;
+	sendJson(res, 200, view);
+}
+
+async function handleNodeImages(
+	req: IncomingMessage,
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	nodeId: string,
+): Promise<void> {
+	const node = requireNode(options.store, nodeId);
+	if (node.role !== "assistant") {
+		throw fieldError("nodeId", `楼层 ${nodeId} 不是助手楼层，不能登记插图`);
+	}
+	const pathIds = new Set(
+		options.store.getPathToHead(node.storyId).map((item) => item.id),
+	);
+	if (!pathIds.has(nodeId)) {
+		throw new HttpError(
+			409,
+			"conflict",
+			`楼层 ${nodeId} 不在当前路径上，不能登记插图`,
+		);
+	}
+	const settings = options.store.getStorySettings(node.storyId);
+	if (settings.imageConfig.mode === "off") {
+		throw new HttpError(409, "conflict", "生图模式已关闭");
+	}
+	const workflowId = settings.imageConfig.workflowId.trim();
+	if (workflowId.length === 0) {
+		throw new HttpError(409, "conflict", "故事没有选择生图 workflow");
+	}
+	const workflow = options.store.getImageWorkflow(workflowId);
+	if (workflow === null) {
+		throw new HttpError(409, "conflict", `图片 workflow 不存在：${workflowId}`);
+	}
+	if (!options.imagesConfig.providers.has(workflow.provider)) {
+		throw new HttpError(
+			409,
+			"conflict",
+			`生图 workflow 的 provider 没有配置：${workflow.provider}`,
+		);
+	}
+	const body = await readObjectBody(req, options.maxJsonBodyBytes);
+	let request: ImagePromptRequest;
+	try {
+		request = validateImagePromptRequest(body);
+	} catch (error) {
+		throw toBadRequest(error, "request");
+	}
+	const image = options.store.insertNodeImage({
+		storyId: node.storyId,
+		nodeId,
+		request,
+		workflowId,
+		seed: Math.floor(Math.random() * 2_147_483_648),
+	});
+	enqueueIllustrateBackgroundJob(options.store, node.storyId);
+	options.scheduler?.schedule(node.storyId);
+	const view: NodeImageRecord = image;
+	sendJson(res, 201, view);
 }
 
 async function handleSettings(

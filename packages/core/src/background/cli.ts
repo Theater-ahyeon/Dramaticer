@@ -2,6 +2,8 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadDotEnv } from "../env.js";
+import type { ImageClientFactory } from "../images/client.js";
+import { type ImagesConfig, loadImagesConfig } from "../images/config.js";
 import {
 	type LlmChannelsConfig,
 	loadChannelsConfig,
@@ -30,15 +32,19 @@ import type { BackgroundJobCounts, BackgroundJobRegistry } from "./types.js";
 const repoRoot = fileURLToPath(new URL("../../../../", import.meta.url));
 
 const USAGE =
-	"用法：dramaticer work --db <path> [--limit <n>] [--kind <kind>] [--gap-seconds <n>]（--limit 是每个故事本轮最多执行的任务数；--gap-seconds 是上一轮落定到现在的秒数，不给时按会话结束处理）";
+	"用法：dramaticer work --db <path> [--limit <n>] [--kind <kind>] [--gap-seconds <n>] [--images <path>] [--media-dir <path>]（--limit 是每个故事本轮最多执行的任务数；--gap-seconds 是上一轮落定到现在的秒数，不给时按会话结束处理）";
 
 export interface WorkCliDependencies {
 	readonly envPath?: string;
 	readonly channelsPath?: string;
+	readonly imagesPath?: string;
+	readonly mediaDir?: string;
 	readonly loadEnv?: (filePath: string) => void;
 	readonly loadConfig?: (filePath: string) => Promise<LlmChannelsConfig>;
+	readonly loadImagesConfig?: (filePath: string) => Promise<ImagesConfig>;
 	readonly createClient?: (config: LlmChannelsConfig) => LlmClient;
 	readonly createPlannerClient?: (config: LlmChannelsConfig) => LlmClient;
+	readonly createImageClient?: ImageClientFactory;
 	readonly createEmbedder?: (config: LlmChannelsConfig) => EmbeddingClient;
 	readonly registry?: BackgroundJobRegistry;
 	readonly now?: () => number;
@@ -92,11 +98,26 @@ export async function runWorkCli(
 	const embedder = embeddingConfig
 		? (dependencies.createEmbedder ?? createEmbeddingClient)(config)
 		: null;
+	const imagesPath = dependencies.imagesPath ?? parsed.imagesPath;
+	const imagesConfig = await (
+		dependencies.loadImagesConfig ?? loadImagesConfig
+	)(imagesPath);
+	const mediaDir =
+		dependencies.mediaDir ??
+		parsed.mediaDir ??
+		path.join(path.dirname(parsed.dbPath), "images");
 	const registry: BackgroundJobRegistry =
 		dependencies.registry ??
 		createDefaultBackgroundJobRegistry({
 			embedder,
 			plannerClient: createPlannerClient(config),
+			illustrate: {
+				config: imagesConfig,
+				mediaDir,
+				...(dependencies.createImageClient === undefined
+					? {}
+					: { createClient: dependencies.createImageClient }),
+			},
 		});
 
 	const store = StoryStore.open(parsed.dbPath, {
@@ -106,6 +127,7 @@ export async function runWorkCli(
 	try {
 		// 上一次进程中断留下的 running 行不会被 drain 取到，先退回待办。
 		store.requeueRunningBackgroundJobs();
+		store.requeueRunningNodeImages();
 		const stories = store.listStories();
 		const runs: BackgroundJobRun[] = [];
 		const backlog = {
@@ -192,6 +214,8 @@ interface WorkArgs {
 	readonly limit: number | null;
 	readonly kind: string | null;
 	readonly gapSeconds: number | null;
+	readonly imagesPath: string;
+	readonly mediaDir: string | null;
 }
 
 function parseWorkArgs(args: readonly string[]): WorkArgs {
@@ -201,6 +225,8 @@ function parseWorkArgs(args: readonly string[]): WorkArgs {
 		limit: true,
 		kind: true,
 		"gap-seconds": true,
+		images: true,
+		"media-dir": true,
 	};
 	const values = new Map<string, string>();
 	for (let index = 1; index < args.length; index += 1) {
@@ -252,5 +278,8 @@ function parseWorkArgs(args: readonly string[]): WorkArgs {
 		limit: parsedLimit,
 		kind: kind ?? null,
 		gapSeconds: parsedGapSeconds,
+		imagesPath:
+			values.get("images") ?? path.join(repoRoot, "data", "images.yaml"),
+		mediaDir: values.get("media-dir") ?? null,
 	};
 }

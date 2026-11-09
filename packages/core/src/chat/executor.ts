@@ -59,6 +59,8 @@ export interface ModelTurnOptions {
 	readonly structuredTools?: readonly LlmToolDefinition[];
 	/** 本模式允许的读取工具；为空时不执行任何工具。 */
 	readonly readTools?: readonly LlmToolDefinition[];
+	/** 侧效应工具：发给模型并收集调用，但不在执行器里运行。 */
+	readonly sideEffectTools?: readonly LlmToolDefinition[];
 	readonly toolContext: ReadToolContext;
 	/** 读取工具软上限；达到后正常收束。 */
 	readonly maxReadRounds?: number;
@@ -133,9 +135,13 @@ export async function runModelTurns(
 	const startedAt = now();
 	const tools = [
 		...(options.structuredTools ?? []),
+		...(options.sideEffectTools ?? []),
 		...(options.readTools ?? []),
 	];
 	const toolNames = new Set(tools.map((tool) => tool.name));
+	const sideEffectNames = new Set(
+		(options.sideEffectTools ?? []).map((tool) => tool.name),
+	);
 	const allowedReadTools = new Set(
 		(options.readTools ?? []).map((tool) => tool.name),
 	);
@@ -290,6 +296,31 @@ export async function runModelTurns(
 				throwIfAborted(options.signal);
 				if (!isReadToolName(call.name) || !allowedReadTools.has(call.name)) {
 					if (transport !== "text") continue;
+					if (sideEffectNames.has(call.name)) {
+						if (call.error !== null || call.arguments === null) {
+							const error = call.error ?? "参数缺失";
+							calls.push({ name: call.name, ok: false, error });
+							options.onToolCall?.({ name: call.name, ok: false, error });
+							messages.push({
+								role: "tool",
+								toolCallId: call.id,
+								toolName: call.name,
+								content: `工具调用失败：${error}`,
+								isError: true,
+							});
+							continue;
+						}
+						calls.push({ name: call.name, ok: true, error: null });
+						options.onToolCall?.({ name: call.name, ok: true, error: null });
+						messages.push({
+							role: "tool",
+							toolCallId: call.id,
+							toolName: call.name,
+							content: "已登记，后台会处理。",
+							isError: false,
+						});
+						continue;
+					}
 					if (toolNames.has(call.name)) {
 						messages.push({
 							role: "tool",

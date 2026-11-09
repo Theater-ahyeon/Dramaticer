@@ -16,6 +16,7 @@ import {
 	VISUAL_PROFILE_JOB_KIND,
 	createVisualProfileHandler,
 } from "./profiles.js";
+import { validateImagePromptRequest } from "./request.js";
 import {
 	COMFYUI_SLOT_NAMES,
 	type ComfyUiSlotDetection,
@@ -27,15 +28,23 @@ import {
 import type {
 	CharacterVisualProfileRecord,
 	ImageWorkflowRecord,
+	NodeImageRecord,
 } from "./types.js";
 import { resolveImageProvider } from "./workflows.js";
 
 const repoRoot = fileURLToPath(new URL("../../../../", import.meta.url));
 
 const USAGE =
-	"用法：dramaticer images workflow import --file <路径> --name <名称> [--db <路径>] [--images <路径>] [--slots <json>] | list [--db <路径>] | show <id> [--db <路径>] | delete <id> [--db <路径>]；dramaticer images profiles --story <id> --db <路径> [--json] [--generate]";
+	"用法：dramaticer images workflow import --file <路径> --name <名称> [--db <路径>] [--images <路径>] [--slots <json>] | list [--db <路径>] | show <id> [--db <路径>] | delete <id> [--db <路径>]；dramaticer images profiles --story <id> --db <路径> [--json] [--generate]；dramaticer images generate --node <id> --scene <文本> [--characters a,b] [--shot <镜头>] [--mood <气氛>] [--db <路径>]；dramaticer images list --node <id> [--db <路径>]";
 
-type ImagesAction = "import" | "list" | "show" | "delete" | "profiles";
+type ImagesAction =
+	| "import"
+	| "list"
+	| "show"
+	| "delete"
+	| "profiles"
+	| "generate"
+	| "node-list";
 
 export interface ImagesCliDependencies {
 	readonly log?: (message: string) => void;
@@ -51,6 +60,7 @@ export interface ImagesCliResult {
 	readonly action: ImagesAction;
 	readonly workflows: readonly ImageWorkflowRecord[];
 	readonly profiles: readonly CharacterVisualProfileRecord[];
+	readonly nodeImages: readonly NodeImageRecord[];
 }
 
 type ImagesArgs =
@@ -71,6 +81,20 @@ type ImagesArgs =
 			readonly storyId: string;
 			readonly json: boolean;
 			readonly generate: boolean;
+	  }
+	| {
+			readonly action: "generate";
+			readonly dbPath: string;
+			readonly nodeId: string;
+			readonly scene: string;
+			readonly characters: readonly string[];
+			readonly shot: string | undefined;
+			readonly mood: string | undefined;
+	  }
+	| {
+			readonly action: "node-list";
+			readonly dbPath: string;
+			readonly nodeId: string;
 	  };
 
 /**
@@ -91,21 +115,39 @@ export async function runImagesCli(
 		if (parsed.action === "profiles") {
 			return await runProfiles(parsed, store, dependencies, log);
 		}
+		if (parsed.action === "generate" || parsed.action === "node-list") {
+			return runNodeImages(parsed, store, log);
+		}
 		if (parsed.action === "list") {
 			const workflows = store.listImageWorkflows();
 			logWorkflows(workflows, log);
-			return { action: "list", workflows, profiles: [] };
+			return {
+				action: "list",
+				workflows,
+				profiles: [],
+				nodeImages: [],
+			};
 		}
 		if (parsed.action === "show") {
 			const workflow = requireWorkflow(store, parsed.id);
 			log(JSON.stringify(workflow, null, 2));
-			return { action: "show", workflows: [workflow], profiles: [] };
+			return {
+				action: "show",
+				workflows: [workflow],
+				profiles: [],
+				nodeImages: [],
+			};
 		}
 		if (parsed.action === "delete") {
 			const workflow = requireWorkflow(store, parsed.id);
 			store.deleteImageWorkflow(parsed.id);
 			log(`已删除 workflow ${workflow.id}（${workflow.name}）`);
-			return { action: "delete", workflows: [workflow], profiles: [] };
+			return {
+				action: "delete",
+				workflows: [workflow],
+				profiles: [],
+				nodeImages: [],
+			};
 		}
 		return await importWorkflow(parsed, store, dependencies, log);
 	} finally {
@@ -157,7 +199,90 @@ async function runProfiles(
 	} else {
 		logProfiles(profiles, log);
 	}
-	return { action: "profiles", workflows: [], profiles };
+	return {
+		action: "profiles",
+		workflows: [],
+		profiles,
+		nodeImages: [],
+	};
+}
+
+function runNodeImages(
+	parsed: Extract<ImagesArgs, { readonly action: "generate" | "node-list" }>,
+	store: StoryStore,
+	log: (message: string) => void,
+): ImagesCliResult {
+	const node = store.getNode(parsed.nodeId);
+	if (node === null) {
+		throw new Error(`楼层节点不存在：${parsed.nodeId}`);
+	}
+	if (parsed.action === "node-list") {
+		const images = store.listNodeImages(parsed.nodeId);
+		logNodeImages(images, log);
+		return {
+			action: "node-list",
+			workflows: [],
+			profiles: [],
+			nodeImages: images,
+		};
+	}
+	if (node.role !== "assistant") {
+		throw new Error(`楼层 ${parsed.nodeId} 不是助手楼层，不能登记插图`);
+	}
+	const pathIds = new Set(
+		store.getPathToHead(node.storyId).map((item) => item.id),
+	);
+	if (!pathIds.has(parsed.nodeId)) {
+		throw new Error(`楼层 ${parsed.nodeId} 不在当前路径上，不能登记插图`);
+	}
+	const config = store.getStorySettings(node.storyId).imageConfig;
+	if (config.mode === "off") {
+		throw new Error("生图模式已关闭");
+	}
+	const workflowId = config.workflowId.trim();
+	if (workflowId.length === 0) {
+		throw new Error("故事没有选择生图 workflow");
+	}
+	if (store.getImageWorkflow(workflowId) === null) {
+		throw new Error(`图片 workflow 不存在：${workflowId}`);
+	}
+	const request = validateImagePromptRequest({
+		scene: parsed.scene,
+		...(parsed.characters.length === 0
+			? {}
+			: { characters: parsed.characters }),
+		...(parsed.shot === undefined ? {} : { shot: parsed.shot }),
+		...(parsed.mood === undefined ? {} : { mood: parsed.mood }),
+	});
+	const image = store.insertNodeImage({
+		storyId: node.storyId,
+		nodeId: parsed.nodeId,
+		request,
+		workflowId,
+		seed: Math.floor(Math.random() * 2_147_483_648),
+	});
+	log(`已登记插图 ${image.id}（楼层 ${parsed.nodeId}，状态 ${image.status}）`);
+	return {
+		action: "generate",
+		workflows: [],
+		profiles: [],
+		nodeImages: [image],
+	};
+}
+
+function logNodeImages(
+	images: readonly NodeImageRecord[],
+	log: (message: string) => void,
+): void {
+	if (images.length === 0) {
+		log("这个楼层还没有插图。");
+		return;
+	}
+	for (const image of images) {
+		log(
+			`${image.id} 第 ${image.ordinal + 1} 张（${image.status}，尝试 ${image.attempts} 次）：${image.request.scene}${image.error === null ? "" : `；失败：${image.error}`}`,
+		);
+	}
 }
 
 async function importWorkflow(
@@ -199,7 +324,12 @@ async function importWorkflow(
 	log(
 		`已保存 workflow ${saved.id}（${saved.name}，provider ${saved.provider}）`,
 	);
-	return { action: "import", workflows: [saved], profiles: [] };
+	return {
+		action: "import",
+		workflows: [saved],
+		profiles: [],
+		nodeImages: [],
+	};
 }
 
 function logProfiles(
@@ -281,6 +411,13 @@ function formatSlots(slots: ComfyUiSlots): string {
 function parseImagesArgs(args: readonly string[]): ImagesArgs {
 	if (args[0] !== "images") throw new Error(USAGE);
 	if (args[1] === "profiles") return parseProfilesArgs(args);
+	if (args[1] === "generate") return parseNodeImageArgs(args, "generate");
+	const nodeFlag = args
+		.slice(2)
+		.some((arg) => arg === "--node" || arg.startsWith("--node="));
+	if (args[1] === "list" && nodeFlag) {
+		return parseNodeImageArgs(args, "node-list");
+	}
 	if (args[1] !== "workflow") throw new Error(USAGE);
 	const action = args[2];
 	if (
@@ -399,5 +536,73 @@ function parseProfilesArgs(
 		storyId,
 		json: flags.has("json"),
 		generate: flags.has("generate"),
+	};
+}
+
+function parseNodeImageArgs(
+	args: readonly string[],
+	action: "generate" | "node-list",
+): Extract<ImagesArgs, { readonly action: "generate" | "node-list" }> {
+	const allowed: Readonly<Record<string, true>> =
+		action === "generate"
+			? {
+					node: true,
+					scene: true,
+					characters: true,
+					shot: true,
+					mood: true,
+					db: true,
+				}
+			: { node: true, db: true };
+	const values = new Map<string, string>();
+	for (let index = 2; index < args.length; index += 1) {
+		const arg = args[index] as string;
+		if (!arg.startsWith("--")) {
+			throw new Error(`多余的参数 ${arg}；${USAGE}`);
+		}
+		const equals = arg.indexOf("=");
+		const key = equals === -1 ? arg.slice(2) : arg.slice(2, equals);
+		if (allowed[key] !== true) {
+			throw new Error(`不认识的参数 --${key}；${USAGE}`);
+		}
+		if (values.has(key)) {
+			throw new Error(`参数 --${key} 重复；${USAGE}`);
+		}
+		const value = equals === -1 ? args[index + 1] : arg.slice(equals + 1);
+		if (equals === -1) index += 1;
+		if (value === undefined || value.trim().length === 0) {
+			throw new Error(`--${key} 后面必须写值；${USAGE}`);
+		}
+		values.set(key, value);
+	}
+	const nodeId = values.get("node");
+	if (nodeId === undefined) {
+		throw new Error(`--node 必须是非空楼层 id；${USAGE}`);
+	}
+	const dbPath =
+		values.get("db") ?? path.join(repoRoot, "data", "dramaticer.db");
+	if (action === "node-list") {
+		return { action, dbPath, nodeId };
+	}
+	const scene = values.get("scene");
+	if (scene === undefined) {
+		throw new Error(`--scene 必须是非空文本；${USAGE}`);
+	}
+	const rawCharacters = values.get("characters");
+	const characters =
+		rawCharacters === undefined
+			? []
+			: rawCharacters.split(",").map((name) => name.trim());
+	if (characters.some((name) => name.length === 0)) {
+		throw new Error(`--characters 里的人物名不能为空；${USAGE}`);
+	}
+	return {
+		action,
+		dbPath,
+		nodeId,
+		scene,
+		characters,
+		shot: values.get("shot"),
+		mood: values.get("mood"),
 	};
 }

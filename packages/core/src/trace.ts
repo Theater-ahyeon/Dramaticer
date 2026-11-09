@@ -62,6 +62,13 @@ export interface TurnTraceTools {
 	readonly rejected: readonly TurnTraceToolRejection[];
 }
 
+export interface TurnTraceImages {
+	/** 本楼接受的出图登记数。 */
+	readonly accepted: number;
+	/** 被拒绝的 illustrate 调用原因，按调用顺序。 */
+	readonly rejected: readonly string[];
+}
+
 export interface TurnTraceTiming {
 	/** 第一个正文增量到达的毫秒数；没有正文时为 null。 */
 	readonly firstTokenMs: number | null;
@@ -83,5 +90,6 @@ export interface TurnTrace {
 	readonly llm: TurnTraceLlm;
 	readonly tools: TurnTraceTools;
 	readonly structured: TurnTraceStructuredOutput;
+	readonly images?: TurnTraceImages;
 	readonly timing: TurnTraceTiming;
 }

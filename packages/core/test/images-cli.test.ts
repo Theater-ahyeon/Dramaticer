@@ -350,4 +350,109 @@ describe("runImagesCli", () => {
 		const logged = JSON.parse(context.logs[0] ?? "[]") as unknown[];
 		expect(logged).toHaveLength(1);
 	});
+
+	it("generate 登记待出图记录，list 按楼层列出", async () => {
+		const context = setup();
+		const store = StoryStore.open(context.dbPath);
+		let workflowId: string;
+		try {
+			store.createStory({ id: "s1", title: "出图" });
+			store.appendNode({
+				id: "n1",
+				storyId: "s1",
+				parentId: null,
+				role: "assistant",
+				raw: "雨夜。",
+			});
+			workflowId = store.saveImageWorkflow({
+				name: "默认",
+				provider: "comfy",
+				payload: workflowRaw() as never,
+				slots: {
+					positive: { nodeId: "6", input: "text" },
+					negative: { nodeId: "7", input: "text" },
+					seed: { nodeId: "3", input: "seed" },
+					width: { nodeId: "5", input: "width" },
+					height: { nodeId: "5", input: "height" },
+				},
+			}).id;
+			store.updateStorySettings("s1", {
+				imageConfig: {
+					mode: "manual",
+					workflowId,
+					maxPerFloor: 1,
+					minFloorsBetween: 0,
+				},
+			});
+		} finally {
+			store.close();
+		}
+
+		const generated = await runImagesCli(
+			[
+				"images",
+				"generate",
+				"--node",
+				"n1",
+				"--scene",
+				"雨夜的站台",
+				"--characters",
+				"凛,阿岚",
+				"--shot",
+				"wide",
+				"--db",
+				context.dbPath,
+			],
+			deps(context),
+		);
+		expect(generated.action).toBe("generate");
+		expect(generated.nodeImages[0]).toMatchObject({
+			storyId: "s1",
+			nodeId: "n1",
+			status: "pending",
+			workflowId,
+			request: {
+				scene: "雨夜的站台",
+				characters: ["凛", "阿岚"],
+				shot: "wide",
+			},
+		});
+
+		const listed = await runImagesCli(
+			["images", "list", "--node", "n1", "--db", context.dbPath],
+			deps(context),
+		);
+		expect(listed.action).toBe("node-list");
+		expect(listed.nodeImages).toHaveLength(1);
+		expect(context.logs.join("\n")).toContain("pending");
+
+		const closed = StoryStore.open(context.dbPath);
+		try {
+			closed.updateStorySettings("s1", {
+				imageConfig: {
+					mode: "off",
+					workflowId,
+					maxPerFloor: 1,
+					minFloorsBetween: 0,
+				},
+			});
+		} finally {
+			closed.close();
+		}
+		await expect(
+			runImagesCli(
+				[
+					"images",
+					"generate",
+					"--node",
+					"n1",
+					"--scene",
+					"雨夜",
+					"--db",
+					context.dbPath,
+				],
+				deps(context),
+			),
+		).rejects.toThrow(/生图模式已关闭/);
+	});
 });

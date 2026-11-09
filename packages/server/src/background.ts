@@ -1,6 +1,7 @@
 import {
 	type BackgroundJobRegistry,
 	type EmbeddingClient,
+	type IllustrateHandlerOptions,
 	type LlmClient,
 	type StoryStore,
 	createDefaultBackgroundJobRegistry,
@@ -30,6 +31,8 @@ export interface BackgroundSchedulerOptions {
 	readonly log: (line: string) => void;
 	readonly limit?: number;
 	readonly now?: () => number;
+	/** 生图队列；不设置时不注册 illustrate 任务。 */
+	readonly illustrate?: IllustrateHandlerOptions | null;
 }
 
 /**
@@ -43,6 +46,7 @@ export class BackgroundScheduler {
 	readonly #log: (line: string) => void;
 	readonly #limit: number | undefined;
 	readonly #now: (() => number) | undefined;
+	readonly #illustrate: IllustrateHandlerOptions | null;
 	readonly #queue: string[] = [];
 	readonly #controller = new AbortController();
 	#pump: Promise<void> | null = null;
@@ -57,10 +61,12 @@ export class BackgroundScheduler {
 				createDefaultBackgroundJobRegistry({
 					embedder: runtime.embedder,
 					plannerClient: runtime.plannerClient,
+					illustrate: this.#illustrate,
 				}));
 		this.#log = options.log;
 		this.#limit = options.limit;
 		this.#now = options.now;
+		this.#illustrate = options.illustrate ?? null;
 	}
 
 	/** 把一个故事排进后台队列；同一个故事已经在队列里时合并成一次。 */

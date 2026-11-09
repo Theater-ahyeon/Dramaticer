@@ -10,6 +10,11 @@ import {
 	type DirectorIntensity,
 	resolveDirectorIntensity,
 } from "../director/intensity.js";
+import {
+	type IllustrateTurnOptions,
+	applyIllustrateCalls,
+	resolveIllustrateTool,
+} from "../images/tool.js";
 import { type LlmToolTransport, assertToolTransport } from "../llm/channels.js";
 import type { EmbeddingClient } from "../llm/embeddings.js";
 import {
@@ -79,6 +84,8 @@ export interface ChatTurnOptions {
 	readonly maxReadRounds?: number | null;
 	/** 单轮导演强度；优先于导演槽位配置里的值。 */
 	readonly directorIntensity?: DirectorIntensity | null;
+	/** 生图设置；工具可见性与频率检查都读这里。 */
+	readonly illustrate?: IllustrateTurnOptions | null;
 	readonly model?: string;
 	readonly maxTokens?: number;
 	readonly temperature?: number;
@@ -274,6 +281,9 @@ export async function generateAssistantTurn(
 	const functionCall =
 		writesLedger && options.structuredOutput === "function-call";
 	const transport = assertToolTransport(options.toolTransport ?? "native");
+	const illustrateTool = writesLedger
+		? resolveIllustrateTool(options.store, options.illustrate)
+		: null;
 	let turn: ModelTurnResult;
 	try {
 		turn = await runModelTurns({
@@ -284,6 +294,7 @@ export async function generateAssistantTurn(
 				writesLedger && (functionCall || transport === "text")
 					? READ_TOOLS
 					: undefined,
+			sideEffectTools: illustrateTool === null ? undefined : [illustrateTool],
 			toolTransport: transport,
 			toolContext: {
 				store: options.store,
@@ -362,6 +373,15 @@ export async function generateAssistantTurn(
 					})),
 				)
 			: [];
+		const imageResult = writesLedger
+			? applyIllustrateCalls({
+					store: options.store,
+					storyId: options.storyId,
+					nodeId: node.id,
+					calls: turn.toolCalls,
+					options: options.illustrate,
+				})
+			: { accepted: 0, rejected: [], calls: [] };
 		const trace: TurnTrace = {
 			storyId: options.storyId,
 			nodeId: node.id,
@@ -388,15 +408,24 @@ export async function generateAssistantTurn(
 				rounds: turn.rounds,
 				maxRounds: resolved.maxReadRounds,
 				capped: turn.capped,
-				calls: turn.calls.map((call) => ({
-					name: call.name,
-					ok: call.ok,
-					error: call.error,
-				})),
+				calls: [
+					...turn.calls
+						.filter((call) => call.name !== "illustrate")
+						.map((call) => ({
+							name: call.name,
+							ok: call.ok,
+							error: call.error,
+						})),
+					...imageResult.calls,
+				],
 				rejected: turn.rejected.map((rejection) => ({
 					name: rejection.name,
 					reason: rejection.reason,
 				})),
+			},
+			images: {
+				accepted: imageResult.accepted,
+				rejected: imageResult.rejected,
 			},
 			structured: {
 				mode: structured.mode,

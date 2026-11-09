@@ -6,6 +6,7 @@ import {
 	DEFAULT_CONTEXT_TEMPLATE_ID,
 	DEFAULT_DIRECTOR_CONFIG,
 	DEFAULT_HISTORY_BLOCK_POLICY,
+	DEFAULT_IMAGE_CONFIG,
 	type StorySettingsUpdate,
 	StoryStore,
 	createDefaultContextTemplate,
@@ -61,6 +62,7 @@ describe("故事设置", () => {
 			historyBlockPolicy: DEFAULT_HISTORY_BLOCK_POLICY,
 			gapPassEnabled: false,
 			gapPlanSeconds: 212,
+			imageConfig: DEFAULT_IMAGE_CONFIG,
 			updatedAt: createdAt,
 		});
 		close();
@@ -289,6 +291,42 @@ describe("故事设置", () => {
 			[{ gapPassEnabled: "yes" as never }, "gapPassEnabled"],
 			[{ gapPlanSeconds: -1 }, "gapPlanSeconds"],
 			[{ gapPlanSeconds: 1.5 }, "gapPlanSeconds"],
+			[
+				{
+					imageConfig: {
+						...DEFAULT_IMAGE_CONFIG,
+						mode: "always" as never,
+					},
+				},
+				"imageConfig.mode",
+			],
+			[
+				{
+					imageConfig: {
+						...DEFAULT_IMAGE_CONFIG,
+						maxPerFloor: 5,
+					},
+				},
+				"imageConfig.maxPerFloor",
+			],
+			[
+				{
+					imageConfig: {
+						...DEFAULT_IMAGE_CONFIG,
+						minFloorsBetween: -1,
+					},
+				},
+				"imageConfig.minFloorsBetween",
+			],
+			[
+				{
+					imageConfig: {
+						...DEFAULT_IMAGE_CONFIG,
+						unknown: true,
+					} as never,
+				},
+				"未知字段",
+			],
 			[
 				{
 					historyBlockPolicy: {
