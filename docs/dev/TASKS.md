@@ -727,11 +727,12 @@
 
 - [~] **R5-T14.a 真实 60 轮试玩（分会话续跑）** | 依赖：R5-T13
   做什么：
-  - 用专用渠道配置 `.devloop/scratch/R5-T14/channels.yaml`（`writer: main-fallback`、`settler/planner: background`；`rp` 仍返回 503）与专用数据库 `.devloop/scratch/R5-T14/live.db` 跑满 60 轮，包含两次重新生成、两次编辑与两次分支切换。
-  - 启动 server：`pnpm --filter @dramaticer/server build && node packages/server/dist/cli.js --db .devloop/scratch/R5-T14/live.db --channels .devloop/scratch/R5-T14/channels.yaml --port 8787`。
-  - 跑试玩：`PLAYTEST_LIVE=1 PLAYTEST_DB=.devloop/scratch/R5-T14/live.db PLAYTEST_CHANNELS=.devloop/scratch/R5-T14/channels.yaml PLAYTEST_ROUNDS=60 pnpm playtest`。命令在前台运行到进程退出；不要放后台后结束回合。
-  - 每轮完成后写续跑文件 `eval-private/reports/r5-playtest.progress.json`；每次会话的默认时间预算 45 分钟，到预算会停在整轮边界。下一会话用同一命令继续。`PLAYTEST_RESUME=0` 强制新开一次试玩，`PLAYTEST_TIME_BUDGET_MS` 改预算。
-  - 跑满 60 轮时自动写 `eval-private/reports/r5-playtest.md` 与 `docs/dev/reports/R5-playtest.md`；续跑文件记录的数据库、渠道、标题与排期必须与当前配置一致，不一致直接失败。
+  - 用专用渠道配置 `.devloop/scratch/R5-T14/channels.yaml`（`writer: main-fallback`、`settler/planner: background`；`rp` 仍返回 503，网关的 `auto/gemini-3.8-flash` 返回 400）与专用数据库 `.devloop/scratch/R5-T14/live.db` 跑满 60 轮，包含两次重新生成、两次编辑与两次分支切换。
+  - 试玩由会话外的监督进程执行，会话不要直接运行 `pnpm playtest`。只有 `.devloop/scratch/R5-T14/supervisor.json` 不存在或状态为 `completed`/`failed` 时才启动：
+    `powershell -NoProfile -Command '$p = Start-Process -FilePath "C:\Program Files\nodejs\node.exe" -ArgumentList "scripts/r5-playtest-supervisor.mjs","--config",".devloop/scratch/R5-T14/supervisor-config.json" -WorkingDirectory "E:\agentcoding\Dramaticer" -WindowStyle Hidden -PassThru; $p.Id'`
+  - 监督进程读 `.devloop/scratch/R5-T14/supervisor-config.json`，负责启动 server、按每次调用 20 分钟的预算反复调用自动试玩，直到 60 轮。每轮写 `eval-private/reports/r5-playtest.progress.json`；跑满时自动写 `eval-private/reports/r5-playtest.md` 与 `docs/dev/reports/R5-playtest.md`。状态写 `supervisor.json`，日志写 `supervisor.log`（都在 `.devloop/scratch/R5-T14/`）。
+  - 会话检查 `supervisor.json`：`running` → 把当前 `rounds/target` 写进 HANDOFF，提交，结果写 `PARTIAL`；`completed` → 核对续跑文件 60 条 round 记录与两份报告后标记完成；`failed` → 读 `supervisor.log` 修复后重新启动监督进程。不要在会话里再启动第二个 server 或第二个试玩。
+  - 监督进程只在会话外运行；续跑文件记录的数据库、渠道、标题与排期必须与当前配置一致，不一致直接失败。
   验收：续跑文件有 60 条 round 记录、0 个失败；两份报告生成；统计版无私有信息；报告给出导演机制命中、线索兑现与四种偏好信号的数字。
 
 - [ ] **R5-T14.b 试玩报告核对与文档** | 依赖：R5-T14.a
