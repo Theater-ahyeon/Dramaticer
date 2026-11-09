@@ -3,15 +3,14 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话 177：检查 R5-T14.a 的监督进程（2026-11-09 08:14Z）
-- 监督进程在 08:12:59Z 重启为 pid 37352；旧进程 pid 7524 在完成第 3 轮后消失，日志里没有停止状态，`supervisor.lock` 由新进程接管。
-- 续跑文件 `eval-private/reports/r5-playtest.progress.json` 已有 3/60 条 round 记录、0 个失败、无重复轮次（第 1 轮 08:09:01Z、第 2 轮 08:10:44Z、第 3 轮 08:12:36Z，每轮约 100 秒）。
-- `supervisor.json` 现在是 `running`，pid 37352，第 1 次调用进行中；它的 `rounds` 只在每次调用结束后刷新，实时轮数以续跑文件为准。
+- 会话 178：检查 R5-T14.a 的监督进程（2026-11-09 08:17Z）
+- 监督进程 pid 37352 存活，第 1 次试玩调用从 08:13:07Z 开始（20 分钟预算），`supervisor.json` 仍是 `running`。
+- 续跑文件 `eval-private/reports/r5-playtest.progress.json` 有 5/60 条 round 记录、0 个失败（第 1–3 轮沿用上一会话；第 4 轮 08:14:54Z、第 5 轮 08:16:38Z，第 4 轮包含一次编辑操作）。第 4 轮记录的 `background.failed` 为 1，server 日志的 drain 汇总仍是失败 0。
 - 本会话没有启动第二个 server 或试玩，没有改代码；门禁沿用上次通过（151 个测试文件、1301 个通过、3 个 live 跳过）。
 
 ## 当前状态
 - 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T07.b.d.a 与 R1-T07.b.d.b）、R3、O、R2、E、R4、R5-T01 至 R5-T13。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- **R5-T14.a 正在进行，由会话外的监督进程执行**（2026-11-09 08:14Z：pid 37352，3/60 轮，0 失败；旧进程在 08:12:59Z 前后被结束且没有停止日志）：
+- **R5-T14.a 正在进行，由会话外的监督进程执行**（2026-11-09 08:17Z：pid 37352，5/60 轮，0 失败；旧进程在 08:12:59Z 前被结束且没有停止日志）：
   - 状态文件 `.devloop/scratch/R5-T14/supervisor.json`；日志 `.devloop/scratch/R5-T14/supervisor.log`；续跑文件 `eval-private/reports/r5-playtest.progress.json`。
   - 会话只读状态：以 `supervisor.json` 的 `state` 为准，轮数以 `eval-private/reports/r5-playtest.progress.json` 的 round 记录数为准（状态里的 `rounds` 只在每次调用结束时刷新）。`running` → 把当前轮数写进本文件并提交，结果 `PARTIAL`；`completed` → 核对 60 条 round 记录与两份报告，标记 `[x]`；`failed` → 读日志修复后重新启动监督进程。
   - 不要在会话里再启动 server 或直接跑 `pnpm playtest`；不要删除 `supervisor.lock`（除非确认进程已死）。
