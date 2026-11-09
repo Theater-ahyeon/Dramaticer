@@ -726,6 +726,7 @@
 **R5-T14 真实 60 轮试玩与报告**（原 M4-T20，已拆成 R5-T14.a 与 R5-T14.b） | 依赖：R5-T13 | 使用 `.env` 里的真实渠道
 
 - [~] **R5-T14.a 真实 60 轮试玩（分会话续跑）** | 依赖：R5-T13
+  进度：2026-11-09 监督进程 pid 37352 运行中，续跑文件 12/60 轮、0 个失败；第 1 次试玩调用（08:13:07Z 开始）进行中，剩余 48 轮由监督进程自动续跑。候选行动面板未出现（第 2、6 轮 `count: 0`，后台积压），由 R5-T14.b 按缺失记录。
   做什么：
   - 用专用渠道配置 `.devloop/scratch/R5-T14/channels.yaml`（`writer: main-fallback`、`settler/planner: background`；`rp` 仍返回 503，网关的 `auto/gemini-3.8-flash` 返回 400）与专用数据库 `.devloop/scratch/R5-T14/live.db` 跑满 60 轮，包含两次重新生成、两次编辑与两次分支切换。
   - 试玩由会话外的监督进程执行，会话不要直接运行 `pnpm playtest`。只有 `.devloop/scratch/R5-T14/supervisor.json` 不存在或状态为 `completed`/`failed` 时才启动：
