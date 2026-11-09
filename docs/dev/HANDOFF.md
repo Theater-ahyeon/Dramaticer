@@ -3,11 +3,12 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 会话 222：R5-T14.c 的 60 轮重跑进行到第 41 轮。第 6 次试玩调用 11:42:29Z 开始、11:53:54Z 以退出码 1 结束（第 42 轮模拟用户连续三次空输出，`round-42/user`，失败记录已丢弃），第 7 次调用随即开始；11:54Z 续跑文件 41 条 round 记录、0 条失败。
-- 11:54Z 后台：`done=543`（`candidate_actions` 43、`settle` 45、`scene` 30、`user_will` 45、`memory_revision` 45、`events` 83、`summary` 83、`npc_agenda` 83、`embeddings` 83、`opening` 1、`opening_candidates` 1、`director_plan` 1）、`pending=4`（`candidate_actions` 1、`memory_revision` 1、`scene` 1、`user_will` 1）、`running=1`（`settle`）、`discarded=4`、`failed=13`（`scene` 11 条「现场分析返回了空内容」、`candidate_actions` 2 条严格解析失败），最后完成 11:54:50Z；`director_candidate_actions` 215 行 / 43 个助手楼层、`director_beat_states` 38 行、`ledger_settlements` 45 行。
-- `done` 依次为 12 轮 175、17 轮 228、20 轮 274、24 轮 318、28 轮 370、29 轮 390、33 轮 431、35 轮 457、36 轮 478、37 轮 492、39 轮 504、40 轮 530、41 轮 543，随轮次持续增长；修复前的「每轮复活 20 条旧任务」与 `pending` 持续增长都没有出现。
+- 会话 223：R5-T14.c 的 60 轮重跑进行到第 42 轮。第 7 次试玩调用 11:53:56Z 开始，11:56Z 写入第 42 条 round 记录；11:56Z 续跑文件 42 条 round 记录、0 条 failure。
+- 11:56Z 后台：`done=549`（`candidate_actions` 44、`settle` 46、`scene` 31、`user_will` 46、`memory_revision` 46、`events` 84、`summary` 83、`npc_agenda` 83、`embeddings` 83、`opening` 1、`opening_candidates` 1、`director_plan` 1）、`pending=11`（`candidate_actions` 1、`embeddings` 2、`events` 1、`memory_revision` 1、`npc_agenda` 2、`scene` 1、`settle` 1、`summary` 1、`user_will` 1）、`running=1`（`summary`）、`discarded=4`、`failed=13`（`scene` 11 条「现场分析返回了空内容」、`candidate_actions` 2 条严格解析失败），最后完成 11:56:47Z；`director_candidate_actions` 220 行 / 44 个助手楼层、`director_beat_states` 39 行、`ledger_settlements` 46 行。
+- `done` 依次为 12 轮 175、17 轮 228、20 轮 274、24 轮 318、28 轮 370、29 轮 390、33 轮 431、35 轮 457、36 轮 478、37 轮 492、39 轮 504、40 轮 530、41 轮 543、42 轮 549，随轮次持续增长；修复前的「每轮复活 20 条旧任务」与 `pending` 持续增长都没有出现。
+- `supervisor.json` 的 `updatedAt` 停在 11:53:54Z（每次试玩调用结束时刷新），`state` 为 `running`，`rounds` 41、`invocations` 6、`message`「第 6 次调用结束（退出码 1），41/60 轮」；当前轮数以续跑文件为准。
+- 两份报告最后重写时间 11:53:44Z（41 轮的中途版本）；试玩 CLI 在每次调用失败或跑满 60 轮时重写，跑满后才会写出最终版本。
 - 本会话未改代码、未启动第二个 server 或试玩、未跑全量门禁；只做只读查询并更新 TASKS、HANDOFF 与 LOG。
-- 两份报告在每次试玩调用失败或每轮结束时会被重写；11:53:44Z 的版本对应 41 轮（报告里记 41 成功 / 1 失败，这个失败是第 6 次调用在第 42 轮的那次模拟用户空输出）。跑满 60 轮后会再重写。
 - `candidateActions.count` 为 5 的轮次仍是第 1、8、11、12、18 轮，之后为 0，与候选行动写库晚于面板 30 秒轮询窗口的解释一致；R5-T14.b 解释该指标时仍要区分排队时长与饥饿。
 
 ## 当前状态
@@ -15,12 +16,12 @@
 - **当前任务 R5-T14.c**（依赖 R5-T14.a，已满足）：代码与回归测试已完成并提交（`5008df1`）；剩余工作是等监督进程跑满 60 轮，然后核对后台队列与两份报告并标记完成。
   - 修复内容：`packages/core/src/store/story-store.ts` 的 `enqueueMissingBackgroundJobs` 先取 `getPathToHead` 的节点 id，再过滤 `confirmed`/`settled` 集合并只对路径节点入队；故事级任务照常按 `story_id + kind` 入队。`drain` 的路径检查没有放宽。
   - 回归测试在 `packages/core/test/background-jobs.test.ts` 的「入队只看当前路径」：放弃分支后用 drain 推进当前路径任务、旧分支任务保持 `discarded`、切回旧分支后重新入队并执行、旧任务不占据队列头部（25 个旧楼层分两轮丢弃，当前路径任务在第二轮执行）。
-  - 重跑进度（11:54Z）：41/60 轮、0 条 failure；后台 `done=543`、`pending=4`、`running=1`（`settle`）、`discarded=4`、`failed=13`（`scene` 11 条空输出、`candidate_actions` 2 条严格解析失败）。
+  - 重跑进度（11:56Z）：42/60 轮、0 条 failure；后台 `done=549`、`pending=11`、`running=1`（`summary`）、`discarded=4`、`failed=13`（`scene` 11 条空输出、`candidate_actions` 2 条严格解析失败）。
   - 重跑完成后核对：续跑文件 60 条 round 记录、0 条 failure；`done` 随轮次持续增长；`candidate_actions` 与 `settle` 有完成记录；`pending` 不再持续增长；两份报告（`eval-private/reports/r5-playtest.md` 与 `docs/dev/reports/R5-playtest.md`）已重新生成且统计版通过私有标识反向扫描。
   - 监控口径：`supervisor.json` 的 `state`，轮数取续跑文件的 `records` 里 `kind === "round"` 的条数（`supervisor.json` 的 `rounds` 只在每次调用结束时刷新）。`running` 时只记录进度并交接；不要在会话里再启动 server 或试玩。监督进程负责停止 server；试玩 CLI 每次调用失败或每轮结束时都会重写报告，跑满 60 轮后写出最终版本。
 - **R5-T14.e 已登记（2026-11-09）**：现场分析请求的 `maxTokens` 必须是模型声明上限或显式留出思考预算，不能用 200 token 同时覆盖思考与正文；重跑期间 11 条 `scene` 任务因空输出失败。任务里写明了证据、修复与回归测试要求。
 - **R5-T14.d 已完成（2026-11-09）**：`requeueRunningBackgroundJobs` 在 server 启动与 `dramaticer work` 循环开始前清除遗留 running 行；server 的重启恢复测试在 `packages/server/test/jobs.test.ts`，work CLI 的恢复测试在 `packages/core/test/work-cli.test.ts`。
-- **R5-T14.b**（依赖 R5-T14.a 与 R5-T14.c）：核对统计版字段与 ADR-0033 口径（对比胜率、矛盾率、节拍余弦没有信号时保持「未证实」），在 `docs/dev/reports/R5.md` 引用统计版并写明模型别名、轮数与操作次数；重跑 `pnpm check`。修复前第一次运行的数据在 60 轮里产生，候选行动、线索、结算与节拍推进必须按「未证实」记录并写明原因与 R5-T14.c 的重跑结果。修复前的统计版可从 git 历史取出。解释候选行动数字时要区分排队时长与饥饿：重跑里每个已完成助手楼层都有 5 条 `director_candidate_actions`（41 轮时 215 行 / 43 个楼层），但写库时间比助手楼层晚，超过面板 30 秒的轮询窗口，续跑记录里的 `candidateActions.count` 仍可能为 0（41 轮里只有第 1、8、11、12、18 轮读到 5 条）。11:04:35Z 的开发循环全量门禁与第 15 轮重叠，报告解释延迟数字时要说明这一轮受负载影响。
+- **R5-T14.b**（依赖 R5-T14.a 与 R5-T14.c）：核对统计版字段与 ADR-0033 口径（对比胜率、矛盾率、节拍余弦没有信号时保持「未证实」），在 `docs/dev/reports/R5.md` 引用统计版并写明模型别名、轮数与操作次数；重跑 `pnpm check`。修复前第一次运行的数据在 60 轮里产生，候选行动、线索、结算与节拍推进必须按「未证实」记录并写明原因与 R5-T14.c 的重跑结果。修复前的统计版可从 git 历史取出。解释候选行动数字时要区分排队时长与饥饿：重跑里每个已完成助手楼层都有 5 条 `director_candidate_actions`（42 轮时 220 行 / 44 个楼层），但写库时间比助手楼层晚，超过面板 30 秒的轮询窗口，续跑记录里的 `candidateActions.count` 仍可能为 0（42 轮里只有第 1、8、11、12、18 轮读到 5 条）。11:04:35Z 的开发循环全量门禁与第 15 轮重叠，报告解释延迟数字时要说明这一轮受负载影响。
 - **R5-T99**：R5 验收；依赖包含 R5-T14.e；会重跑 `pnpm check`、`pnpm e2e` 与 60 轮报告。
 - v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（界面）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045、ADR-0078。
@@ -86,7 +87,7 @@
 - 聊天页、分支页、台账页、导演页、设置页与渠道页的手工冒烟脚本在 `.devloop/scratch/R5-T08`、`R5-T09`、`R5-T10`；`playwright-core` 在 `E:/agentcoding/node_modules` 可解析，Chromium 在 `%LOCALAPPDATA%/ms-playwright/chromium-1243/`。
 
 ## 下一步
-- **R5-T14.c**：监督进程 pid 45256 正在跑 60 轮重跑（配置 `.devloop/scratch/R5-T14/supervisor-config.json`；第 7 次试玩调用 11:53:56Z 开始，11:54Z 完成第 41 轮，约 1.9 分钟/轮，剩余约 19 轮、约 36 分钟、约 2 次调用）。每次会话读 `supervisor.json` 的 `state` 与续跑文件的 round 记录数；`running` 时记录进度并交接；`completed` 时核对 60 条 round 记录、0 条 failure、后台 `done` 持续增长、`candidate_actions` 与 `settle` 有完成记录、`pending` 不再持续增长，确认两份报告已重新生成（当前 11:53:44Z 的版本对应 41 轮，跑满 60 轮后会重写）并检查统计版私有标识扫描，然后标记 `[x]`；`failed` 时读 `supervisor.log` 修复后重新启动。不要在会话里启动第二个 server 或试玩。完成核对时如实记录 `scene` 的 `failed` 数量（重跑期间 11 条，原因全是空输出），以及 `candidate_actions` 的 2 条失败（模型给了 5 条行动，被严格解析拒绝后重试三次失败）。第 1 次调用在第 8 轮、第 3 次调用在第 22 轮、第 5 次调用在第 36 轮、第 6 次调用在第 42 轮各因模拟用户空输出失败一次，续跑规则都会丢弃该 failure 记录并重试该轮；每次调用 20 分钟预算，第 4 次调用在 32 轮达到预算后由第 5 次续跑。试玩 CLI 在失败时也会写出一份中途报告，核对时以跑满 60 轮后重写的版本为准。可用 `.devloop/scratch/R5-T14/verify-r5-t14c.mjs` 做只读核对。
+- **R5-T14.c**：监督进程 pid 45256 正在跑 60 轮重跑（配置 `.devloop/scratch/R5-T14/supervisor-config.json`；第 7 次试玩调用 11:53:56Z 开始，11:56Z 完成第 42 轮，约 1.9 分钟/轮，剩余约 18 轮、约 34 分钟、约 2 次调用）。每次会话读 `supervisor.json` 的 `state` 与续跑文件的 round 记录数；`running` 时记录进度并交接；`completed` 时核对 60 条 round 记录、0 条 failure、后台 `done` 持续增长、`candidate_actions` 与 `settle` 有完成记录、`pending` 不再持续增长，确认两份报告已重新生成（当前 11:53:44Z 的版本对应 41 轮，跑满 60 轮后会重写）并检查统计版私有标识扫描，然后标记 `[x]`；`failed` 时读 `supervisor.log` 修复后重新启动。不要在会话里启动第二个 server 或试玩。完成核对时如实记录 `scene` 的 `failed` 数量（重跑期间 11 条，原因全是空输出），以及 `candidate_actions` 的 2 条失败（模型给了 5 条行动，被严格解析拒绝后重试三次失败）。第 1 次调用在第 8 轮、第 3 次调用在第 22 轮、第 5 次调用在第 36 轮、第 6 次调用在第 42 轮各因模拟用户空输出失败一次，续跑规则都会丢弃该 failure 记录并重试该轮；每次调用 20 分钟预算，第 4 次调用在 32 轮达到预算后由第 5 次续跑。试玩 CLI 在失败时也会写出一份中途报告，核对时以跑满 60 轮后重写的版本为准。
 - **R5-T14.b**：核对统计版字段与 ADR-0033 口径，在 `docs/dev/reports/R5.md` 引用统计版并写明模型别名、轮数与操作次数；第一次运行的后台派生指标记为「未证实」并写明原因与 c 的重跑结果。
 - **R5-T14.e**：现场分析请求改用模型声明的输出上限，正文长度由提示词与 token 估算器控制；假客户端断言请求不带 `maxTokens`，空正文仍按三次重试后 `failed`。
 - **R5-T99**：R5 验收；重跑 `pnpm check`、`pnpm e2e` 与 60 轮报告。
