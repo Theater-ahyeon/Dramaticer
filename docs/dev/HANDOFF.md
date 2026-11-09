@@ -3,10 +3,9 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 会话 229：R5-T99 R5 验收进行中（PARTIAL）。`pnpm check` 通过（148 个测试文件、1311 个测试，3 个 live 跳过）；`pnpm e2e` 通过（20 个用例通过、2 个 playtest 用例跳过，390×844 与 1440×900 各 10 个）。
-- 逐条核对 R5-T01 至 R5-T14 与全部子任务，证据与结果写入 `docs/dev/reports/R5.md` 第四节；不变量 I6、I9、I11–I14、server 不直接写库、默认回环监听与局域网密码复核写入第五节；M6、R1 续与 R3b 的依赖确认写入第六节。
-- 60 轮重跑：清空 `.devloop/scratch/R5-T14/live.db` 与 `eval-private/reports/r5-playtest.progress.json` 后，2026-11-09T12:58:33Z 启动监督进程 pid 62556；13:02Z 进度 2/60、0 条失败，`scene` 完成 1、失败 0，监督进程仍在运行，**不要启动第二个 server 或第二个试玩**。
-- 本次没有改代码；仓库改动只有 `docs/dev/reports/R5.md`、`docs/dev/TASKS.md`、`docs/dev/HANDOFF.md` 与 `docs/dev/LOG.md`。
+- 会话 230：R5-T99 R5 验收进行中（PARTIAL）。本次没有改代码；门禁保持通过（148 个测试文件、1311 个测试，3 个 live 跳过）。
+- 60 轮重跑监督进程 pid 62556 仍在运行：13:04:57Z 进度 3/60 条 round 记录、0 条 failure；`scene` 完成 3、失败 0，`candidate_actions` 完成 2、失败 0，`settle` 完成 4，`background_jobs` 无失败行。修复后的 `scene` 空输出率待 60 轮结束后统计。
+- 进度已回填 `docs/dev/reports/R5.md` 第七节与 `docs/dev/TASKS.md` 的 R5-T99 进行中行；仓库改动只有 `docs/dev/reports/R5.md`、`docs/dev/TASKS.md`、`docs/dev/HANDOFF.md` 与 `docs/dev/LOG.md`。
 
 ## 当前状态
 - 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T07.b.d.a 与 R1-T07.b.d.b）、R3、O、R2、E、R4、R5-T01 至 R5-T13、R5-T14.a、R5-T14.b、R5-T14.c、R5-T14.d、R5-T14.e。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
@@ -23,11 +22,11 @@
 - 数据库 schema 版本 33（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡、v25 合并调用开关与执行记录、v26 间隙档位阈值与丢弃状态、v27 合并调用丢弃条目、v28 回合模式与读取工具软上限、v29 开局包与故事级后台任务、v30 首楼开场候选、v31 偏好记录、v32 导演计划与拍状态、v33 导演候选行动）；R1 续原计划的 v32–v35 顺延为 v34–v37。
 
 ## 后台任务与队列
-- **本轮重跑使用空库**：`live.db` 与续跑文件在 12:58Z 之前已被删除；13:01Z 数据库里 4 个节点、`background_jobs` 中 `settle` 运行中，`scene` 完成 1、失败 0，`candidate_actions` 完成 1、待执行 1，其余 `embeddings`、`events`、`npc_agenda`、`summary` 各完成 3，`opening`、`opening_candidates`、`director_plan` 各完成 1。这是修复后的干净口径，最终数字以 60 轮结束时的数据库为准。
+- **本轮重跑使用空库**：`live.db` 与续跑文件在 12:58Z 之前已被删除；13:04:57Z 数据库里 5 个助手楼层、4 个用户楼层，`background_jobs` 状态为 `done=38`、`pending=3`、`running=1`、`discarded=1`、`failed=0`；按种类 `settle` 完成 4、`scene` 完成 3、`candidate_actions` 完成 2、`user_will` 完成 3、`memory_revision` 完成 3、`events`/`summary`/`npc_agenda`/`embeddings` 各完成 5，`opening`、`opening_candidates`、`director_plan` 各完成 1；`director_candidate_actions` 10 行、`director_beat_states` 4 行、`ledger_settlements` 4 行、`preference_events` 只有 1 条 `swipe`。这是修复 R5-T14.e 后的干净口径，最终数字以 60 轮结束时的数据库为准。
 - server 的回合路径会补建并执行后台任务：`handleTurnStream` 在 `turn.completed` 之后调用 `BackgroundScheduler.schedule`，不等待 drain；同一时刻只有一个 drain，故事之间先来先做。`schedule` 的 drain 只跑 `resolveStoryBackgroundKinds` 过滤后的类型，并带 `sessionEnded: true`，所以每轮结束后延后档（事件、摘要、NPC 议程、导演计划）也会执行。
 - 后台任务恢复（R5-T14.d）：`requeueRunningBackgroundJobs(storyId?)` 把 running 行退回 pending、`attempts` 减一（不低于 0）、清空 `started_at` 与 `finished_at`、保留 `last_error`；`startServer` 打开数据库后调用一次，`dramaticer work` 在列出故事前调用一次；`done`、`failed`、`discarded` 不动。
 - 故事级任务入队：`StoryStore.enqueueStoryBackgroundJobs` 按种类写入 `node_id` 为空的 `background_jobs` 行；创建故事与导入卡的路由先调用 `enqueueOpeningBackgroundJobs`（按两个 `needsRun` 过滤）再 `schedule`。`POST /api/stories/:id/openings/generate` 无条件入队一条 `opening_candidates`（仅要求故事无楼层），同一行已完成时翻回 `pending`。
-- 60 轮重跑的历史对照（R5-T14.c，修复前的 `scene` 数据）：结束时 `done=770`、`pending=5`、`running=1`、`discarded=4`、`failed=19`；`scene` 完成 41、失败 17（全部为「现场分析返回了空内容」）、丢弃 4、待执行 2；`candidate_actions` 完成 61、失败 2（1 条「候选行动不是合法 JSON」、1 条「候选行动.actions 必须正好 4 条，实际为 5 条」）、待执行 1。这些旧数字只用于对照，不再作为 R5 验收证据。
+- 60 轮重跑的历史对照（R5-T14.c，R5-T14.e 修复前）：结束时 `done=770`、`pending=5`、`running=1`、`discarded=4`、`failed=19`；`scene` 完成 41、失败 17（全部为「现场分析返回了空内容」）、丢弃 4、待执行 2；`candidate_actions` 完成 61、失败 2（1 条「候选行动不是合法 JSON」、1 条「候选行动.actions 必须正好 4 条，实际为 5 条」）、待执行 1。这些旧数字只用于对照，不再作为 R5 验收证据。
 - 后台任务分两档：`gap` 每次间隙执行，`deferred`（`events`、`summary`、`npc_agenda`、`director_plan`）只在会话结束或间隙达到 `gapPlanSeconds` 时执行。`gap_pass` 默认关闭；`candidate_actions` 是 `gap` 档。后台任务连续失败 3 次才放弃；需要等待其它任务时抛 `BackgroundJobDeferredError`。`deferBackgroundJob` 把状态退回 `pending`、`attempts` 减一、`started_at` 清空。
 - `drainBackgroundJobs` 每轮按 `created_at ASC, id ASC` 取最多 `limit` 条 pending，先丢弃不在当前 head 路径上的楼层任务，再逐个执行；`BackgroundScheduler` 同一时刻只有一个 pump。服务端日志行格式：`后台任务 <storyId>：新增 N 条，执行 N 条（失败 N，丢弃 N）`。`limit` 默认 20。
 - `enqueueMissingBackgroundJobs` 的入队候选只来自 `getPathToHead`（R5-T14.c）；故事级任务按 `story_id + kind` 唯一，已完成、失败或丢弃的行翻回 `pending`。
