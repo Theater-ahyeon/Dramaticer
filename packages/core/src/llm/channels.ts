@@ -101,6 +101,8 @@ export interface LlmChannelsConfig {
 	/** 角色名到模型别名的映射；没有配置的角色走缺省回落。 */
 	readonly roles: ReadonlyMap<LlmModelRole, string>;
 	readonly embeddings: ReadonlyMap<string, EmbeddingProviderConfig>;
+	/** 重排序渠道；没有配置时为 null。 */
+	readonly reranker: RerankerProviderConfig | null;
 }
 
 export type EmbeddingApi = "openai-embeddings";
@@ -119,10 +121,28 @@ export interface EmbeddingProviderConfig {
 	readonly timeoutMs: number;
 }
 
+export type RerankerApi = "openai-rerank";
+
+/** 重排序渠道；`enabled` 默认关闭，评测确认有提升后再打开。 */
+export interface RerankerProviderConfig {
+	readonly id: string;
+	readonly api: RerankerApi;
+	readonly enabled: boolean;
+	readonly baseUrl: string;
+	readonly apiKey: string;
+	readonly model: string;
+	readonly batchSize: number;
+	readonly requestsPerMinute: number;
+	readonly maxRetries: number;
+	readonly retryBaseDelayMs: number;
+	readonly timeoutMs: number;
+}
+
 const DEFAULT_REQUESTS_PER_MINUTE = 30;
 const DEFAULT_MAX_RETRIES = 2;
 const DEFAULT_RETRY_BASE_DELAY_MS = 1_000;
 const DEFAULT_TIMEOUT_MS = 300_000;
+const DEFAULT_RERANK_TIMEOUT_MS = 30_000;
 const DEFAULT_CONTEXT_WINDOW = 131_072;
 const DEFAULT_MAX_TOKENS = 8_192;
 
@@ -320,7 +340,11 @@ export function parseChannelsConfig(
 			parseEmbedding(alias, value, env, `${label}.embeddings.${alias}`),
 		);
 	}
-	return { channels, models, roles, embeddings };
+	const reranker =
+		root.reranker === undefined
+			? null
+			: parseReranker(root.reranker, env, `${label}.reranker`);
+	return { channels, models, roles, embeddings, reranker };
 }
 
 function parseRoles(
@@ -463,6 +487,76 @@ function parseEmbedding(
 			value.timeoutMs,
 			`${label}.timeoutMs`,
 			DEFAULT_TIMEOUT_MS,
+			1,
+		),
+	};
+}
+
+function parseReranker(
+	value: unknown,
+	env: Readonly<Record<string, string | undefined>>,
+	label: string,
+): RerankerProviderConfig {
+	if (!isJsonObject(value)) {
+		throw new Error(`${label} 必须是对象`);
+	}
+	const api = value.api === undefined ? "openai-rerank" : value.api;
+	if (api !== "openai-rerank") {
+		throw new Error(`${label}.api 只能是 openai-rerank`);
+	}
+	const baseUrl = interpolate(
+		requireString(value.baseUrl, `${label}.baseUrl`),
+		env,
+		`${label}.baseUrl`,
+	);
+	if (baseUrl.trim().length === 0) {
+		throw new Error(`${label}.baseUrl 不能为空`);
+	}
+	const model = interpolate(
+		requireString(value.model, `${label}.model`),
+		env,
+		`${label}.model`,
+	);
+	if (model.trim().length === 0) {
+		throw new Error(`${label}.model 不能为空`);
+	}
+	return {
+		id: "reranker",
+		api,
+		enabled:
+			value.enabled === undefined
+				? false
+				: requireBoolean(value.enabled, `${label}.enabled`),
+		baseUrl,
+		apiKey: parseApiKey(
+			requireString(value.apiKey, `${label}.apiKey`),
+			env,
+			`${label}.apiKey`,
+		),
+		model,
+		batchSize: optionalInt(value.batchSize, `${label}.batchSize`, 32, 1),
+		requestsPerMinute: optionalInt(
+			value.requestsPerMinute,
+			`${label}.requestsPerMinute`,
+			DEFAULT_REQUESTS_PER_MINUTE,
+			0,
+		),
+		maxRetries: optionalInt(
+			value.maxRetries,
+			`${label}.maxRetries`,
+			DEFAULT_MAX_RETRIES,
+			0,
+		),
+		retryBaseDelayMs: optionalInt(
+			value.retryBaseDelayMs,
+			`${label}.retryBaseDelayMs`,
+			DEFAULT_RETRY_BASE_DELAY_MS,
+			0,
+		),
+		timeoutMs: optionalInt(
+			value.timeoutMs,
+			`${label}.timeoutMs`,
+			DEFAULT_RERANK_TIMEOUT_MS,
 			1,
 		),
 	};

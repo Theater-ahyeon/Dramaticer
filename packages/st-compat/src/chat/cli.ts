@@ -16,6 +16,7 @@ import {
 	createLlmClient,
 	createNaiveChatProviders,
 	createNaiveContextTemplate,
+	createRerankClient,
 	createStandardChatProviders,
 	isChatProfile,
 	isDirectorIntensity,
@@ -128,6 +129,7 @@ export async function runChatCli(
 	const embedder = config.embeddings.has("default")
 		? createEmbeddingClient(config)
 		: null;
+	const reranker = createRerankClient(config);
 	const store = StoryStore.open(
 		dbPath,
 		embeddingDimensions === undefined ? {} : { embeddingDimensions },
@@ -209,6 +211,7 @@ export async function runChatCli(
 							store,
 							characterPrompt,
 							embedder,
+							reranker,
 							directorConfig: {
 								...DEFAULT_DIRECTOR_CONFIG,
 								mode: parsed.directorMode,
@@ -223,6 +226,7 @@ export async function runChatCli(
 			directorIntensity: parsed.directorIntensity,
 			model: modelAlias,
 			embedder,
+			reranker,
 			maxTokens: parsed.maxTokens ?? undefined,
 			temperature: parsed.temperature ?? undefined,
 			reasoning: "low",

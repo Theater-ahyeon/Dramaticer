@@ -105,3 +105,17 @@ embeddings:
     dimensions: 1024
     batchSize: 32
     requestsPerMinute: 20
+
+# 重排序：多路融合后把前 20 条候选交给重排序模型再排序。默认关闭；
+# 事件题与状态题评测确认有提升后再把 enabled 改成 true（R1-T03.b、R1-T04.b）。
+reranker:
+  enabled: false
+  api: openai-rerank
+  baseUrl: https://api.siliconflow.cn/v1
+  apiKey: ${SILICONFLOW_API_KEY}
+  model: BAAI/bge-reranker-v2-m3
+  batchSize: 32
+  requestsPerMinute: 20
+  maxRetries: 2
+  retryBaseDelayMs: 1000
+  timeoutMs: 30000

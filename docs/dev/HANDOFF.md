@@ -3,14 +3,14 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-09 会话 265：M6-T99 因 HUMAN-15 未就绪（`127.0.0.1:8188` 拒绝连接）标为 `[!]`，改做 R1-T03.a 并完成。迁移 v35 给 `chunks` 增加 `parent_ordinal` 与 `parent_text`，清空旧块、全文索引与块向量，并把 `embeddings` 任务退回待执行；`chunkTextByParent` 按段落边界合并父段（上限 1200 个码点，单段超限时整楼退化成一个父段），小块沿用 400/80；`StoryStore.open` 新增 `chunkStrategy`，默认 `parent-child`，`fixed` 与旧分块逐条一致；`searchChunks` 按楼层与父段排名并返回父段，`searchVectors` 关联块表返回父段；融合按楼层去重时保留第一条父段文本，记忆槽位与 `memory_search` 注入父段，Trace 的 `injected` 记录父段或整楼；ADR-0083 按 R2-T09 的 legacy native 同题矛盾率上升（66.7% → 100.0%）决定默认开启；新增 10 个测试，门禁通过（159 个测试文件、1419 个测试、4 个 live 跳过）。
-- 会话 264：完成 M6-T05（生图设置与 workflow 管理界面）。新增 `packages/web/src/pages/story/ImagesPage.tsx` 与“生图”导航/路由：provider 状态（只读地址、不显示密钥）、本地 JSON 导入、`detect` 识别结果与五个插槽下拉确认、`import` 保存、被引用删除时显示 409 原因、视觉档案列表与“重新生成”。新增 `POST /api/stories/:id/visual-profiles/generate`（只入队，已有档案也允许覆盖）；协议新增 `StoryVisualProfileGenerateResult`，web `api` 增加 provider/workflow/档案方法。设置页加载 workflow 下拉并把 `imageConfig` 接入表单；`packages/web/src/chat/image-form.ts` 负责 workflow 文本解析、插槽选择与校验、生图设置范围校验和错误路径中文名，新增 10 个测试与 1 个 server 用例；390×844 生图页与设置页 Playwright 冒烟通过。
-- 会话 263：完成 M6-T04（楼层图片显示与媒体接口）。`StoryPath` 的节点改为 `StoryPathNode`，path 与节点图片接口返回按 `ordinal` 排序的 `NodeImage`，整页图片用 `listNodeImagesForNodes` 一次查询；新增 `GET /api/images/:id/file`；聊天页新增图片区、2 秒 15 次轮询、失败重试与共用放大层。
+- 2026-11-09 会话 266：完成 R1-T03.b（重排序）。新增 `packages/core/src/llm/rerank.ts`：`RerankClient`、`OpenAiRerankClient`（OpenAI 兼容 `POST /rerank`，`batchSize` 分批、限速队列、429/5xx 重试、超时、`index` 唯一性与分数校验）与 `createRerankClient`。`channels.ts` 新增 `reranker` 配置段（`RerankerProviderConfig`，`enabled` 默认 false；`batchSize` 32、`requestsPerMinute` 30、`maxRetries` 2、`retryBaseDelayMs` 1000、`timeoutMs` 30000；没有该段时为 null）。`retrieveMemory` 融合后取前 `rerankCandidates`（默认 20，范围 1–200）交给重排序，按分数降序、同分保持融合顺序，再取最终 top-K；重排序文档依次取事件正文、父段文本、旧分块楼层原文；空查询跳过重排序。`memory_search` 与记忆槽位共用 `retrieveMemory`；server `StoryRuntime`、`dramaticer chat` 与 `st-compat` 的 provider 选项都传入客户端；config 指纹包含 `reranker`。`channels.example.yaml` 与 `data/channels.yaml` 补 `reranker` 段（关闭）。新增 13 个测试；门禁通过（160 个测试文件、1432 个测试、4 个 live 跳过）。
+- 会话 265：M6-T99 因 HUMAN-15 未就绪（`127.0.0.1:8188` 拒绝连接）标为 `[!]`，改做 R1-T03.a 并完成。迁移 v35 给 `chunks` 增加 `parent_ordinal` 与 `parent_text`，清空旧块、全文索引与块向量，并把 `embeddings` 任务退回待执行；`chunkTextByParent` 按段落边界合并父段（上限 1200 个码点，单段超限时整楼退化成一个父段），小块沿用 400/80；`StoryStore.open` 新增 `chunkStrategy`，默认 `parent-child`，`fixed` 与旧分块逐条一致；`searchChunks` 按楼层与父段排名并返回父段，`searchVectors` 关联块表返回父段；融合按楼层去重时保留第一条父段文本，记忆槽位与 `memory_search` 注入父段，Trace 的 `injected` 记录父段或整楼；ADR-0083 按 R2-T09 的 legacy native 同题矛盾率上升（66.7% → 100.0%）决定默认开启。
+- 会话 264：完成 M6-T05（生图设置与 workflow 管理界面）。新增 `packages/web/src/pages/story/ImagesPage.tsx` 与“生图”导航/路由：provider 状态（只读地址、不显示密钥）、本地 JSON 导入、`detect` 识别结果与五个插槽下拉确认、`import` 保存、被引用删除时显示 409 原因、视觉档案列表与“重新生成”。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T07.b.d.a 与 R1-T07.b.d.b）、R3、O、R2、E、R4、R5 全部（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1-T03.a。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- **下一个任务：R1-T03.b 重排序**，依赖 R1-T03.a（已完成）与 M2-T10（已完成）。M6-T99 已标 `[!]`，等待 HUMAN-15：真实 ComfyUI 启动在 `http://127.0.0.1:8188` 并提供 API 格式 workflow JSON 到 `eval-private/comfyui/`；2026-11-09 探测时端口仍未监听。
-- v3 阶段顺序：R5（已完成）→ M6 生图第一批（T01–T05 完成，T99 阻塞）→ R1 续（T03.a 完成）→ R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → M6b 生图第二批 → P3/P4 → M5 → P5 → M7。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T07.b.d.a 与 R1-T07.b.d.b）、R3、O、R2、E、R4、R5 全部（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1-T03.a、R1-T03.b。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- **下一个任务：R1-T04.b（三对话事件表回填与记忆评测重跑）**，依赖 R1-T04.a、R1-T03.a、R1-T03.b、M2-T15，均已完成。M6-T99 已标 `[!]`，等待 HUMAN-15：真实 ComfyUI 启动在 `http://127.0.0.1:8188` 并提供 API 格式 workflow JSON 到 `eval-private/comfyui/`；2026-11-09 探测时端口仍未监听。
+- v3 阶段顺序：R5（已完成）→ M6 生图第一批（T01–T05 完成，T99 阻塞）→ R1 续（T03.a、T03.b 完成）→ R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → M6b 生图第二批 → P3/P4 → M5 → P5 → M7。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045、ADR-0078、ADR-0079、ADR-0080、ADR-0082、ADR-0083。
 - HUMAN-03 待处理（不阻塞）：抽查 `eval-private/evalset/spotcheck.md` 里的事件题。
 - HUMAN-14 待处理（不阻塞）：Vertex 真实调用还需要人类把服务账号 JSON 导出到仓库外，并在 `.env` 设置 `GOOGLE_APPLICATION_CREDENTIALS`、`GOOGLE_CLOUD_PROJECT`、`GOOGLE_CLOUD_LOCATION`。
@@ -18,14 +18,12 @@
 - HUMAN-12 已完成：人类确认保持 `judge`（`auto/glm-5.3`）作为裁判路由。HUMAN-13 已关闭：`writer` 继续用 `main-fallback`。HUMAN-11 已完成：`.env` 的正文模型已改为 `auto/deepseek-v4.1-flash`。
 - 数据库 schema 版本 35（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡、v25 合并调用开关与执行记录、v26 间隙档位阈值与丢弃状态、v27 合并调用丢弃条目、v28 回合模式与读取工具上限、v29 开局包与故事级后台任务、v30 首楼开场候选、v31 选择记录、v32 导演计划与拍状态、v33 导演候选行动、v34 生图表、v35 父子分块）。R1 续后续迁移为 v36–v38。
 
-## R1 续：父子分块（已完成）与后续
-- R1-T03.a 的块参数：父段上限 1200 个码点，按换行切段后合并；单个段落超过上限时整楼退化成一个父段。小块沿用 400 字符窗口与 80 字符重叠。
-- `StoryStore.open(path, { chunkStrategy })` 取 `parent-child`（默认）或 `fixed`；`fixed` 使用旧的固定窗口，命中后不返回父段。切换策略不会自动重建已经存在的块，需要清空 `chunks`、`chunks_fts` 与 `chunk_vectors` 后重新打开。
-- `chunks` 的 `parent_ordinal` 是父段在楼层内的序号，`parent_text` 是注入文本；`chunks_fts` 的 rowid 仍等于 `chunks.id`。迁移 v35 会清空三张表并把 `embeddings` 任务退回待执行。
-- `searchChunks` 按 `node_id` 与 `parent_ordinal` 排名（旧分块按楼层排名），返回 `parentOrdinal` 与 `parentText`；`searchVectors` 在向量候选之后关联 `chunks` 返回同两个字段。
-- `RetrievalHit` 增加 `parentOrdinal` 与 `parentText`；融合仍按楼层去重，保留第一条命中的父段文本。记忆槽位与 `memory_search` 优先使用父段文本，没有父段时退回整楼的 prompt 视图。
-- Trace 的 `context.entries[].retrieval.injected` 记录每次注入的 `{nodeId, kind, scope, parentOrdinal}`，`scope` 取 `segment` 或 `floor`；旧 Trace 没有这个字段。`dramaticer explain` 的检索段会显示“注入父段/注入整楼”。
-- 下一步 R1-T03.b：新增 `RerankClient`（OpenAI 兼容 `POST /rerank`），渠道写在 `data/channels.yaml` 的 `reranker` 段；`retrieveMemory` 融合后取前 `rerankCandidates`（默认 20）重排，再取 top-K；开关默认关闭，由 R1-T04.b 的记忆评测决定。
+## R1 续：重排序（已完成）与后续
+- 配置：`channels.yaml` 顶层 `reranker` 段，字段 `enabled`、`api`（只能是 `openai-rerank`，缺省即该值）、`baseUrl`、`apiKey`（必须写 `${VAR}`）、`model`、`batchSize`、`requestsPerMinute`、`maxRetries`、`retryBaseDelayMs`、`timeoutMs`。段缺失时 `LlmChannelsConfig.reranker` 为 null；`enabled` 缺省 false。`createRerankClient` 在段缺失或关闭时返回 null，也为缺少该字段的旧式配置对象做了 undefined 兼容。
+- 客户端：`OpenAiRerankClient` 请求体 `{model, query, documents}`，响应读取 `results[].index` 与 `results[].relevance_score`；每批必须返回全部下标，重复、越界或非有限分数直接抛错。批量拆分后把下标加回全局偏移。
+- 检索：`RetrieveMemoryOptions` 新增 `reranker` 与 `rerankCandidates`；`retrieveMemory` 在 RRF 融合后重排，同分按原融合顺序；`rerankCandidates` 默认 20，超过 200 或小于 1 抛错；空查询（新近度路）不调用重排序。`rankMemoryRoutes` 仍返回融合前的各原始路名次。
+- 生产接线：`server/src/runtime.ts` 的 `StoryRuntime.reranker` 由 `createRerankClient(config)` 创建并进入 config 指纹；`providers` 的记忆槽位与 `turns.ts` 的 `memory_search` 都接收它；`st-compat/src/chat/cli.ts` 与 `chat/session.ts` 同样传入。
+- **R1-T04.b 的注意点**：`packages/st-compat/src/evalset/memory-eval.ts` 目前用 `rankMemoryRoutes` + `fuseRetrievalRoutes` 自己算融合结果，不调用 `retrieveMemory`，因此 `reranker.enabled` 不会影响记忆评测数字。R1-T04.b 重跑评测前需要把重排序接入这条路径（例如复用 `retrieveMemory` 或把重排逻辑提成可复用函数），并分别报告开关前后的数字。默认配置保持关闭，直到 R1-T04.b 的事件题与状态题都没有下降且有提升，再写 ADR 打开。
 
 ## M6 生图第一批
 - 顺序：M6-T01 至 M6-T05（已完成）→ M6-T99（阻塞）。
@@ -91,6 +89,7 @@
 - `extensions.dramaticer` 有三个键：`events`、`npcs`、`arcs`；`arcs` 的校验全部复用 `parseDirectorPlan`。
 - 排障命令：`dramaticer explain --node <id> --db <path> [--json]`，只读、零模型调用。记忆检索段现在会显示每一路的父段信息与注入范围。
 - 模型响应的磁盘缓存键包含 `max_tokens` 只在请求显式带 maxTokens 时；改渠道配置的 `maxTokens` 后必须换一个 `--cache` 目录。后台 `background` 模型的输出上限是 32,768。
+- 父子分块：父段上限 1200 个码点，按换行切段后合并；单个段落超过上限时整楼退化成一个父段。小块沿用 400 字符窗口与 80 字符重叠。`StoryStore.open(path, { chunkStrategy })` 取 `parent-child`（默认）或 `fixed`；切换策略不会自动重建已经存在的块。`chunks` 的 `parent_ordinal` 是父段在楼层内的序号，`parent_text` 是注入文本。
 
 ## 评测与报告
 - 自动试玩的 CLI 入口是 `pnpm --filter @dramaticer/st-compat playtest`；界面自动试玩是 `pnpm playtest`。`pnpm e2e` 会收集但跳过 `e2e/playtest/playtest.spec.ts`。
@@ -116,10 +115,11 @@
 - e2e 的假渠道细节（R5-T12）：`serve.mjs` 用固定端口 4517，`playwright.config.ts` 的 baseURL 与 webServer 都读 `E2E_APP_PORT`；假渠道用随机端口并写进每次重建的 `channels.yaml`；数据库固定在 `.devloop/scratch/e2e/work/e2e.db`。
 - Vertex 渠道（V-T01）：`api: google-vertex` 使用 pi-ai 1.5.0 的适配器；凭证、项目、区域只从 `.env` 的三个 `GOOGLE_*` 变量读取，服务账号 JSON 不进仓库。
 - 生图（M6-T01 至 M6-T05）：`images.example.yaml` 是配置模板；`data/images.yaml` 缺失时 provider 列表为空、导入拒绝、illustrate 任务不注册。workflow 存在 `image_workflows`，同名导入更新同一行；视觉档案存在 `character_visual_profiles`；`node_images.file_name` 是相对路径，实际文件在 `mediaDir` 下；`readImageDimensions` 只支持 PNG、GIF、WebP、JPEG。
+- 重排序（R1-T03.b）：`data/channels.yaml` 的 `reranker.enabled` 当前为 false；改成 true 后 server 启动即创建客户端。`data/channels.yaml` 被 git 忽略，仓库里只有 `channels.example.yaml` 的示例。请求失败不静默回退：启用后重排序出错会让该次检索失败。
 - 不要修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 下的任何文件。不变量 I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账是唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖任何其他工作区包。
 
 ## 下一步
-- 选 R1-T03.b 重排序：新增 `RerankClient` 与 `reranker` 渠道段，融合后按 `rerankCandidates` 重排；默认关闭，用 R1-T04.b 的记忆评测决定是否开启。
+- 选 R1-T04.b：对 3 个 legacy 对话跑 `events-backfill`，重跑 `memory-eval`，给出五路的事件题命中@5/@10/@20 与分对话结果；按留一对话交叉验证选择融合权重；重新生成 `docs/dev/reports/R1-retrieval.md`。重排序评测要先把它接入 `memory-eval` 的融合路径（见上文），分别报告开关前后的数字，再写 ADR 决定默认值。
 - M6-T99 仍等待 HUMAN-15；人类把 ComfyUI 启动并放入 workflow JSON 后，把 TASKS 里 `[!]` 改回 `[ ]` 再做验收。
-- R1 续后续：R1-T03.b（无迁移）、R1-T04.b、R1-T05（v36）、R1-T06（v37）、R1-T08（v38）、R1-T99.a。章节压缩任务写的是 v36，与当前 schema 35 顺延一致。
+- R1 续后续：R1-T05（v36）、R1-T06（v37）、R1-T08（v38）、R1-T99.a。章节压缩任务写的是 v36，与当前 schema 35 顺延一致。
 - C 线兼容插件任务依赖 P2；插件系统以 DESIGN §19 为唯一权威。

@@ -17,6 +17,7 @@ import {
 } from "../images/tool.js";
 import { type LlmToolTransport, assertToolTransport } from "../llm/channels.js";
 import type { EmbeddingClient } from "../llm/embeddings.js";
+import type { RerankClient } from "../llm/rerank.js";
 import {
 	DEFAULT_TRUNCATION_TERMINATORS,
 	detectTruncations,
@@ -74,6 +75,8 @@ export interface ChatTurnOptions {
 	readonly toolTransport?: LlmToolTransport | null;
 	/** 有 embedding 客户端时 memory_search 启用向量路。 */
 	readonly embedder?: EmbeddingClient | null;
+	/** memory_search 的融合后重排序客户端。 */
+	readonly reranker?: RerankClient | null;
 	/** 知情者视角；不设置时读取工具返回全知结果。 */
 	readonly viewpoint?: string | null;
 	/** 单轮模式；不设置时使用故事设置里的锁定值。 */
@@ -301,6 +304,7 @@ export async function generateAssistantTurn(
 				storyId: options.storyId,
 				beforeNodeId: userNode.id,
 				embedder: options.embedder ?? null,
+				reranker: options.reranker ?? null,
 				viewpoint: options.viewpoint ?? null,
 			},
 			maxReadRounds: resolved.maxReadRounds,

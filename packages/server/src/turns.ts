@@ -232,6 +232,7 @@ function turnOptions(
 		structuredOutput: runtime.settings.structuredOutput,
 		toolTransport: runtime.toolTransport,
 		embedder: runtime.embedder,
+		reranker: runtime.reranker,
 		viewpoint: runtime.settings.viewpoint,
 		model: runtime.modelAlias,
 		maxTokens: runtime.maxTokens,

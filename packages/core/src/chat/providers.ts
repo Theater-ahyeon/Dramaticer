@@ -22,6 +22,7 @@ import { isJsonObject } from "../json.js";
 import { readLedger } from "../ledger/read.js";
 import { USER_WILL_KINDS, type UserWillKind } from "../ledger/schema.js";
 import type { EmbeddingClient } from "../llm/embeddings.js";
+import type { RerankClient } from "../llm/rerank.js";
 import { MAX_MEMORY_EVENT_LIMIT } from "../memory/event.js";
 import {
 	type LoreEntry,
@@ -251,6 +252,8 @@ export interface MemorySlotProviderOptions {
 	readonly limit?: number;
 	/** 有 embedding 客户端时启用向量路；没有时只走其余各路。 */
 	readonly embedder?: EmbeddingClient | null;
+	/** 融合后的可选重排序客户端。 */
+	readonly reranker?: RerankClient | null;
 }
 
 export const DEFAULT_MEMORY_SLOT_LIMIT = 6;
@@ -268,6 +271,7 @@ export function createMemorySlotProvider(
 		throw new Error("记忆槽位的检索条数必须是正整数");
 	}
 	const embedder = options.embedder ?? null;
+	const reranker = options.reranker ?? null;
 	return {
 		async provide(request): Promise<ContextSlotContent | null> {
 			if (request.nodeId === null) return null;
@@ -299,6 +303,7 @@ export function createMemorySlotProvider(
 			const result = await retrieveMemory({
 				store,
 				embedder,
+				reranker,
 				storyId: request.storyId,
 				query: current.raw,
 				beforeNodeId: request.nodeId,
@@ -715,6 +720,7 @@ export interface StandardChatProvidersOptions {
 	/** 为空表示故事还没有导入角色卡，角色槽位记为缺失。 */
 	readonly characterPrompt: string | null;
 	readonly embedder?: EmbeddingClient | null;
+	readonly reranker?: RerankClient | null;
 	readonly directorConfig?: DirectorConfig;
 	readonly mechanisms?: readonly DirectorMechanism[];
 	/** 块的 prompt 视图策略；不设置时使用默认策略。 */
@@ -726,6 +732,7 @@ export function createStandardChatProviders(
 	options: StandardChatProvidersOptions,
 ): ContextSlotProviders {
 	const embedder = options.embedder ?? null;
+	const reranker = options.reranker ?? null;
 	const character =
 		options.characterPrompt === null ||
 		options.characterPrompt.trim().length === 0
@@ -740,7 +747,7 @@ export function createStandardChatProviders(
 		user_will: createUserWillSlotProvider(options.store),
 		scene: createSceneSlotProvider(options.store),
 		summary: createSummarySlotProvider(options.store),
-		memory: createMemorySlotProvider(options.store, { embedder }),
+		memory: createMemorySlotProvider(options.store, { embedder, reranker }),
 		lore: createLoreSlotProvider(options.store),
 		director: createDirectorSlotProvider(options.store, {
 			config: options.directorConfig,

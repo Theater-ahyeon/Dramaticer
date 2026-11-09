@@ -1,5 +1,6 @@
 import { type Entity, normalizeEntityName } from "../entity.js";
 import type { EmbeddingClient } from "../llm/embeddings.js";
+import type { RerankClient } from "../llm/rerank.js";
 import { MAX_MEMORY_EVENT_LIMIT, type MemoryEvent } from "../memory/event.js";
 import type { StoryStore } from "../store/story-store.js";
 import type { TimelineNode } from "../timeline.js";
@@ -39,6 +40,10 @@ export interface RetrieveMemoryOptions {
 	/** 知情者过滤的视角；为空时返回全知结果 */
 	readonly viewpoint?: string | null;
 	readonly limit?: number;
+	/** 融合后的可选重排序；为空时直接用融合顺序。 */
+	readonly reranker?: RerankClient | null;
+	/** 交给重排序的候选条数，默认 20。 */
+	readonly rerankCandidates?: number;
 }
 
 /** 知情者过滤的统计，供 Trace 观察过滤量。 */
@@ -81,6 +86,9 @@ export interface MemoryRouteRankings {
 
 const DEFAULT_RETRIEVAL_LIMIT = 8;
 const MAX_RETRIEVAL_LIMIT = 50;
+/** 融合后交给重排序的默认候选条数。 */
+export const DEFAULT_RERANK_CANDIDATES = 20;
+export const MAX_RERANK_CANDIDATES = 200;
 const RRF_K = 60;
 const VECTOR_CANDIDATE_FACTOR = 4;
 const ROUTE_ORDER: readonly RetrievalRoute[] = [
@@ -116,9 +124,85 @@ interface EntityMatch {
 export async function retrieveMemory(
 	options: RetrieveMemoryOptions,
 ): Promise<RetrievalResult> {
+	const rerankCandidates =
+		options.rerankCandidates ?? DEFAULT_RERANK_CANDIDATES;
+	if (
+		!Number.isInteger(rerankCandidates) ||
+		rerankCandidates < 1 ||
+		rerankCandidates > MAX_RERANK_CANDIDATES
+	) {
+		throw new Error(
+			`重排序候选条数必须是 1 到 ${MAX_RERANK_CANDIDATES} 之间的整数`,
+		);
+	}
 	const { routes, filter } = await rankMemoryRoutes(options);
 	const limit = options.limit ?? DEFAULT_RETRIEVAL_LIMIT;
-	return { hits: fuseRoutes(routes).slice(0, limit), filter, routes };
+	const fused = fuseRoutes(routes);
+	const reranker = options.reranker ?? null;
+	const query = options.query ?? "";
+	if (reranker === null || normalizeRetrievalText(query).length === 0) {
+		return { hits: fused.slice(0, limit), filter, routes };
+	}
+	const candidates = fused.slice(0, rerankCandidates);
+	if (candidates.length === 0) {
+		return { hits: [], filter, routes };
+	}
+	const documents = candidates.map((hit) => rerankDocument(options.store, hit));
+	const scores = await reranker.rerank(query, documents);
+	const scoreByIndex = new Map<number, number>();
+	for (const score of scores) {
+		if (
+			!Number.isInteger(score.index) ||
+			score.index < 0 ||
+			score.index >= documents.length
+		) {
+			throw new Error(`重排序客户端返回了越界的下标 ${String(score.index)}`);
+		}
+		if (scoreByIndex.has(score.index)) {
+			throw new Error(`重排序客户端重复返回了下标 ${score.index}`);
+		}
+		if (!Number.isFinite(score.score)) {
+			throw new Error(`重排序客户端在下标 ${score.index} 返回了非有限分数`);
+		}
+		scoreByIndex.set(score.index, score.score);
+	}
+	if (scoreByIndex.size !== documents.length) {
+		throw new Error(
+			`重排序客户端返回了 ${scoreByIndex.size} 条分数，期望 ${documents.length} 条`,
+		);
+	}
+	const ordered = candidates
+		.map((hit, index) => ({
+			hit,
+			index,
+			score: scoreByIndex.get(index) as number,
+		}))
+		.sort((left, right) => right.score - left.score || left.index - right.index)
+		.map((entry) => entry.hit);
+	return {
+		hits: [...ordered, ...fused.slice(rerankCandidates)].slice(0, limit),
+		filter,
+		routes,
+	};
+}
+
+/** 重排序只看文本：事件用事件正文，父段块用父段，旧分块用楼层原文。 */
+function rerankDocument(store: StoryStore, hit: RetrievalHit): string {
+	if (hit.kind === "event") {
+		const events = store.getEventsForNode(hit.nodeId);
+		if (events.length === 0) {
+			throw new Error(
+				`检索结果把楼层 ${hit.nodeId} 标为事件，但该楼层没有事件正文`,
+			);
+		}
+		return events.map((event) => event.text).join("；");
+	}
+	if (hit.parentText !== null) return hit.parentText;
+	const node = store.getNode(hit.nodeId);
+	if (!node) {
+		throw new Error(`检索结果引用了不存在的楼层：${hit.nodeId}`);
+	}
+	return node.raw;
 }
 
 /**

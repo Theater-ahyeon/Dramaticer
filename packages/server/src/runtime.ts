@@ -6,11 +6,13 @@ import {
 	type LlmChannelsConfig,
 	type LlmStreamingClient,
 	type LlmToolTransport,
+	type RerankClient,
 	type StorySettings,
 	type StoryStore,
 	createDefaultContextTemplate,
 	createEmbeddingClient,
 	createLlmClient,
+	createRerankClient,
 	createStandardChatProviders,
 	resolveDefaultMaxTokens,
 	resolveModelForRole,
@@ -44,6 +46,7 @@ export interface StoryRuntime {
 	readonly backgroundClient: LlmStreamingClient | null;
 	readonly plannerClient: LlmStreamingClient | null;
 	readonly embedder: EmbeddingClient | null;
+	readonly reranker: RerankClient | null;
 }
 
 export interface StoryRuntimeManagerOptions {
@@ -112,6 +115,7 @@ export class StoryRuntimeManager {
 		const embedder = config.embeddings.has(DEFAULT_EMBEDDING_ALIAS)
 			? this.#createEmbedder(config)
 			: null;
+		const reranker = createRerankClient(config);
 		const maxTokens = this.#store.hasStorySettings(storyId)
 			? settings.maxTokens
 			: resolveDefaultMaxTokens(config, modelAlias);
@@ -125,6 +129,7 @@ export class StoryRuntimeManager {
 				store: this.#store,
 				characterPrompt: settings.characterPrompt,
 				embedder,
+				reranker,
 				directorConfig: settings.directorConfig,
 				historyBlockPolicy: settings.historyBlockPolicy,
 			}),
@@ -134,6 +139,7 @@ export class StoryRuntimeManager {
 			plannerClient:
 				plannerAlias === null ? null : this.#createClient(config, plannerAlias),
 			embedder,
+			reranker,
 		};
 	}
 }
@@ -183,5 +189,6 @@ function configFingerprint(config: LlmChannelsConfig): string {
 		models: [...config.models.values()],
 		roles: [...config.roles.entries()].sort(([a], [b]) => a.localeCompare(b)),
 		embeddings: [...config.embeddings.values()],
+		reranker: config.reranker,
 	});
 }

@@ -2,6 +2,7 @@ import { parseBlocks } from "../blocks/parser.js";
 import { renderContextView } from "../blocks/view.js";
 import { normalizeEntityName } from "../entity.js";
 import type { EmbeddingClient } from "../llm/embeddings.js";
+import type { RerankClient } from "../llm/rerank.js";
 import type { LlmToolDefinition } from "../llm/types.js";
 import { loreEntryMatchScore } from "../memory/lore.js";
 import { retrieveMemory } from "../retrieval/hybrid.js";
@@ -107,6 +108,7 @@ export interface ReadToolContext {
 	/** 当前用户楼层；检索范围是它的祖先 */
 	readonly beforeNodeId: string;
 	readonly embedder?: EmbeddingClient | null;
+	readonly reranker?: RerankClient | null;
 	readonly viewpoint?: string | null;
 }
 
@@ -166,6 +168,7 @@ async function runMemorySearch(
 	const result = await retrieveMemory({
 		store: context.store,
 		embedder: context.embedder ?? null,
+		reranker: context.reranker ?? null,
 		storyId: context.storyId,
 		query,
 		beforeNodeId: context.beforeNodeId,

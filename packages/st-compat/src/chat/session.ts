@@ -8,6 +8,7 @@ import {
 	type EventPoolUpsertResult,
 	type HistoryBlockPolicy,
 	type NpcAgendaUpsertResult,
+	type RerankClient,
 	type StoryStore,
 	type StructuredOutputMode,
 	createDefaultContextTemplate,
@@ -108,6 +109,7 @@ export function importCardContent(
 export interface CreateChatProvidersOptions {
 	readonly card: StCharacterCard;
 	readonly embedder?: EmbeddingClient | null;
+	readonly reranker?: RerankClient | null;
 	readonly directorConfig?: DirectorConfig;
 	readonly mechanisms?: readonly DirectorMechanism[];
 	/** 故事设置里的历史块策略；不设置时使用默认策略。 */
@@ -123,6 +125,7 @@ export function createChatProviders(
 		store,
 		characterPrompt: renderCharacterPrompt(options.card),
 		embedder: options.embedder,
+		reranker: options.reranker,
 		directorConfig: options.directorConfig,
 		mechanisms: options.mechanisms,
 		historyBlockPolicy: options.historyBlockPolicy,

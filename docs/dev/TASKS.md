@@ -852,7 +852,8 @@
   - `searchChunks` 与 `searchVectors` 返回父段文本；多路融合按楼层去重时保留父段文本，Trace 记录注入的是整段还是整楼。先读 R2-T09 与 R5-T14 的报告，决定是否默认开启。
   验收：小块命中后返回父段；同一父段多个小块只占一个结果位次；回填重复运行后块数不变；旧向量被清理且不参与查询；开关关闭时与现状逐条一致；`pnpm check` 通过。
 
-- [ ] **R1-T03.b 重排序** | 依赖：R1-T03.a、M2-T10 | DESIGN §7.3 | ADR-0044
+- [x] **R1-T03.b 重排序** | 依赖：R1-T03.a、M2-T10 | DESIGN §7.3 | ADR-0044
+  完成：2026-11-09 新增 `OpenAiRerankClient`（OpenAI 兼容 `POST /rerank`，按 `batchSize` 分批、限速、429/5xx 重试、超时与 `index`/分数校验）；`channels.yaml` 新增 `reranker` 段（`enabled` 默认 false，`batchSize` 32、`requestsPerMinute` 30、`timeoutMs` 30000），`createRerankClient` 在未配置或关闭时返回 null；`retrieveMemory` 融合后取前 `rerankCandidates`（默认 20，1–200）交给重排序，按分数降序、同分保持融合顺序，再取最终 top-K；重排序文档为事件正文、父段文本或旧分块楼层原文；`memory_search` 与记忆槽位共用该入口；server 运行时与 `dramaticer chat` 传入客户端；`channels.example.yaml` 补示例；新增 13 个测试；门禁通过（160 个测试文件、1432 个测试、4 个 live 跳过）
   做什么：
   - 新增 `RerankClient`（OpenAI 兼容 `POST /rerank`，批量、限速、重试），渠道写在 `data/channels.yaml` 的 `reranker` 段（硅基流动 bge-reranker），密钥只从 `.env` 读取；`channels.example.yaml` 补示例。
   - `retrieveMemory` 融合后取前 `rerankCandidates`（默认 20）交给重排序，再取最终 top-K；`memory_search` 与 M2-T12 的槽位共用同一入口。
