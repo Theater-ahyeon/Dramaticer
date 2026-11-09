@@ -726,7 +726,7 @@
 **R5-T14 真实 60 轮试玩与报告**（原 M4-T20，已拆成 R5-T14.a 与 R5-T14.b） | 依赖：R5-T13 | 使用 `.env` 里的真实渠道
 
 - [~] **R5-T14.a 真实 60 轮试玩（分会话续跑）** | 依赖：R5-T13
-  进度：2026-11-09 09:10Z 监督进程 pid 37352 运行中。第 1 次试玩调用 08:33:24Z 结束于 14 轮；第 2 次调用 08:58:37Z 因第 20 轮模拟用户连续 3 次输出非法 JSON 以退出码 1 结束（19 轮）；第 3 次调用 08:58:39Z 开始，第 20 轮重试成功（09:00:27Z），第 21 轮 09:02:26Z、第 22 轮 09:04:12Z、第 23 轮 09:06:00Z、第 24 轮 09:07:52Z、第 25 轮 09:09:36Z 完成。续跑文件 25/60 轮、0 条失败记录。排期六项操作在第 3–9 轮全部完成，第 10–25 轮无操作。候选行动面板未出现（第 2、6、20–25 轮 `count: 0`；后台 `discarded=20`、`done=140`、`pending=242`、`running=4`、`failed=4`，失败为 3 条 `scene` 与 1 条 `candidate_actions`）。后台 `done` 自 08:39:20Z 起没有新增，`pending` 每轮增加约 13 条，`pending` 行全部 `started_at` 为空，而调度日志每轮仍打印「执行 20 条」；该现象由 R5-T14.b 复核，报告中不能把候选行动与线索类指标按已验证记录。
+  进度：2026-11-09 09:16Z 监督进程 pid 37352 运行中。第 1 次试玩调用 08:33:24Z 结束于 14 轮；第 2 次调用 08:58:37Z 因第 20 轮模拟用户连续 3 次输出非法 JSON 以退出码 1 结束（19 轮）；第 3 次调用 08:58:39Z 开始，第 20 轮重试成功（09:00:27Z），第 21–28 轮分别在 09:02:26Z、09:04:12Z、09:06:00Z、09:07:52Z、09:09:36Z、09:11:21Z、09:13:12Z、09:15:07Z 完成。续跑文件 28/60 轮、0 条失败记录。排期六项操作在第 3–9 轮全部完成，第 10–28 轮无操作。候选行动面板未出现（第 2、6、20–28 轮 `count: 0`）；开场候选从第 2 轮起记录为 `null`；导演第 20–28 轮都由 `beat` 命中，拍停留在 `beat-light-first`。后台 `pending` 从第 20 轮的 158 涨到第 28 轮的 262（每轮约 13 条），`done` 停在 140（最后完成 08:39:20Z），`discarded` 总数一直是 20，`running=4`、`failed=4`（3 条 `scene`、1 条 `candidate_actions`）；`server.log` 每轮仍打印「执行 20 条（失败 0，丢弃 20）」。根因已定位：`enqueueMissingBackgroundJobs` 的 `confirmed`/`settled` 集合按整个故事的节点取，已丢弃的旧分支任务每轮被翻回 pending，占满 drain 的 20 条上限，当前路径上的任务一直排不到（详见 R5-T14.c）。本次运行的后台派生指标（候选行动、线索、结算、节拍推进）不能按已验证记录。
   做什么：
   - 用专用渠道配置 `.devloop/scratch/R5-T14/channels.yaml`（`writer: main-fallback`、`settler/planner: background`；`rp` 仍返回 503，网关的 `auto/gemini-3.8-flash` 返回 400）与专用数据库 `.devloop/scratch/R5-T14/live.db` 跑满 60 轮，包含两次重新生成、两次编辑与两次分支切换。
   - 试玩由会话外的监督进程执行，会话不要直接运行 `pnpm playtest`。只有 `.devloop/scratch/R5-T14/supervisor.json` 不存在或状态为 `completed`/`failed` 时才启动：
@@ -736,11 +736,20 @@
   - 监督进程只在会话外运行；续跑文件记录的数据库、渠道、标题与排期必须与当前配置一致，不一致直接失败。
   验收：续跑文件有 60 条 round 记录、0 个失败；两份报告生成；统计版无私有信息；报告给出导演机制命中、线索兑现与四种偏好信号的数字。
 
-- [ ] **R5-T14.b 试玩报告核对与文档** | 依赖：R5-T14.a
+- [ ] **R5-T14.c 后台任务入队只看当前路径（修正任务饥饿）** | 依赖：R5-T14.a、R5-T01
+  背景与证据（2026-11-09，对 `.devloop/scratch/R5-T14/live.db` 的只读查询）：`enqueueMissingBackgroundJobs`（`packages/core/src/store/story-store.ts:5077`）的 `confirmed`/`settled` 集合按 `SELECT id FROM nodes WHERE story_id = ?` 取整个故事的节点，没有按 head 路径过滤；已被 drain 丢弃（`status = 'discarded'`）的旧分支楼层任务因此每轮都会被 `ON CONFLICT (node_id, kind) DO UPDATE … WHERE background_jobs.status = 'discarded'` 翻回 `pending`。这些行创建时间最早，而 `listBackgroundJobs` 按 `created_at ASC, id ASC` 加 `limit` 取待办，drain 每轮先丢弃这 20 条旧分支行，当前路径上的任务永远轮不到。实测 5 个不在 head 路径上的楼层共 20 条任务每轮被丢弃，`discarded` 总数保持 20、`done` 停在 140（最后完成 08:39:20Z）、`pending` 每轮增加约 13 条、各行 `started_at` 全为空；`candidate_actions` 从第 2 轮起一直为 0，导演节拍停在 `beat-light-first`。
+  做什么：
+  - 楼层任务的入队候选只取当前 head 路径上的节点（`getPathToHead`），故事级任务不变。
+  - 切回旧分支时该分支楼层重新进入路径，任务仍会被翻回 `pending` 并执行；放弃的分支任务保持 `discarded`，不再每轮复活。
+  - 回归测试：两条分支交替，放弃一条后用 drain 推进当前路径上的任务；旧分支任务保持 `discarded`；切回后重新入队并执行；旧任务不占据队列头部。
+  - 修复后按 R5-T14 的配置重跑 60 轮（先停掉已完成的监督进程，清空 `live.db` 与续跑文件），确认 `done` 随轮次增长、`candidate_actions` 与 `settle` 有完成记录、`pending` 不再持续增长。
+  验收：回归测试覆盖上述四种情形；重跑 60 轮 0 条失败记录且后台 `done` 持续增长；两份报告重新生成；`pnpm check` 通过。
+
+- [ ] **R5-T14.b 试玩报告核对与文档** | 依赖：R5-T14.a、R5-T14.c
   做什么：核对统计版字段与 ADR-0033 口径，没有信号的指标保持「未证实」，不改口径；在 `docs/dev/reports/R5.md` 引用统计版并写明模型别名、轮数与操作次数；重跑 `pnpm check`。
   验收：统计版字段齐全并通过私有标识反向扫描；`docs/dev/reports/R5.md` 的引用与数字和统计版一致；`pnpm check` 通过。
 
-- [ ] **R5-T99 R5 验收** | 依赖：R5 全部任务（含 R5-T02.a、R5-T02.b、R5-T02.c、R5-T05.a、R5-T07.a、R5-T14.a、R5-T14.b）
+- [ ] **R5-T99 R5 验收** | 依赖：R5 全部任务（含 R5-T02.a、R5-T02.b、R5-T02.c、R5-T05.a、R5-T07.a、R5-T14.a、R5-T14.b、R5-T14.c）
   做什么：同 M0-T99；重跑 `pnpm check`、`pnpm e2e` 与 60 轮试玩报告；逐条核对 R5-T01 至 R5-T14 与全部子任务；复核 I6（模式只由玩家切换）、I9（导演实时选择零模型调用）、I11–I14，以及 server 不绕过 core 直接写库；检查默认回环监听与局域网密码；在 `docs/dev/reports/R5.md` 总结；确认 M6、R1 续与 R3b 任务。
   结果写 `MILESTONE_DONE`；报告缺失时写 `PARTIAL`。
 
