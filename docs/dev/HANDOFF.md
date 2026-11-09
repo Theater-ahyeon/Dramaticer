@@ -3,16 +3,18 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话 185：检查 R5-T14.a 的监督进程（2026-11-09 08:31Z）
-- 监督进程 pid 37352 存活，`supervisor.json` 的 `state` 仍是 `running`；第 1 次试玩调用从 08:13:07Z 开始、20 分钟预算到 08:33Z 左右，`server.log` 在 08:31:01Z 仍有写入，第 13 轮进行中。
-- 续跑文件 `eval-private/reports/r5-playtest.progress.json` 有 12/60 条 round 记录、0 个失败。第 1、2 轮来自上一次调用（08:09:01Z、08:10:44Z）；本次调用的记录是第 3–12 轮（第 3 轮 08:12:36Z swipe、第 4 轮 08:14:54Z edit、第 5 轮 08:16:38Z branch、第 6 轮 08:18:26Z 无操作、第 7 轮 08:20:19Z swipe、第 8 轮 08:22:06Z edit、第 9 轮 08:23:54Z branch、第 10 轮 08:25:47Z 无操作、第 11 轮 08:27:43Z 无操作、第 12 轮 08:29:41Z 无操作）。排期里的六项操作全部完成：swipe 2 次、edit 2 次、branch 2 次。
-- 候选行动面板没有出现：第 2 轮与第 6 轮（`schedule.candidateAt`）的 `candidateActions` 都是 `count: 0, visible: false`，后台 `candidate_actions` 任务积压未执行。开场候选只在第 1 轮出现（`openingCandidates` 非空）。R5-T14.b 写报告时不能把这两项算作已验证。
-- 后台队列持续增长：第 1 轮 pending 3 → 第 12 轮 pending 70、running 1、failed 3；失败都是 `scene`，`last_error` 为「现场分析返回了空内容」，每条已耗尽 3 次重试。每轮 drain 上限 20 条，新增任务数持续超过执行数。
+- 会话 186：检查 R5-T14.a 的监督进程（2026-11-09 08:34Z）
+- 监督进程 pid 37352 存活，`supervisor.json` 的 `state` 是 `running`。第 1 次试玩调用从 08:13:07Z 开始，08:33:24Z 结束（退出码 0，14/60 轮）；第 2 次调用从 08:33:26Z 开始，20 分钟预算到 08:53Z 前后。
+- 续跑文件 `eval-private/reports/r5-playtest.progress.json` 有 14 条 round 记录、0 个失败（`supervisor.json` 的 `rounds` 只在每次调用结束时刷新，当前也是 14）。本次新增的是第 13 轮（08:31:31Z）与第 14 轮（08:33:24Z），都没有操作。
+- 排期里的六项操作在第 3–9 轮全部完成：swipe 第 3、7 轮，edit 第 4、8 轮，branch 第 5、9 轮。`optionAt` 第 6、10 轮没有记录任何操作（这两轮没有出现选项块）。
+- 候选行动面板没有出现：第 2 轮与第 6 轮（`schedule.candidateAt`）的 `candidateActions` 都是 `count: 0, visible: false`，后台 `candidate_actions` 任务积压；第 14 轮起后台失败里新增 1 条 `candidate_actions`（此前 3 条失败都是 `scene`）。R5-T14.b 写报告时不能把这两项算作已验证。
+- 开场候选只在第 1 轮出现（`count: 3, visible: true, pickedText: null`），第 2 轮起记录为 `null`。导演机制在第 1–11 轮命中 `opening`，第 12–14 轮 `opening` 未命中（「当前路径已有 N 个助手楼层，不小于开场阈值 10」）并改由 `beat` 命中。
+- 后台队列持续增长：第 1 轮 pending 3 → 第 14 轮 pending 91，running 1，failed 4。失败是 3 条 `scene`（`last_error` 为「现场分析返回了空内容」，每条已耗尽 3 次重试）与 1 条 `candidate_actions`。每轮 drain 上限 20 条，新增任务数持续超过执行数。
 - 本会话没有启动第二个 server 或试玩，没有改代码；门禁沿用上次通过结果（148 个测试文件通过、3 个跳过，1301 个通过、3 个 live 跳过）。
 
 ## 当前状态
 - 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T07.b.d.a 与 R1-T07.b.d.b）、R3、O、R2、E、R4、R5-T01 至 R5-T13。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- **R5-T14.a 正在进行，由会话外的监督进程执行**（2026-11-09 08:31Z：pid 37352，12/60 轮，0 失败）：
+- **R5-T14.a 正在进行，由会话外的监督进程执行**（2026-11-09 08:34Z：pid 37352，14/60 轮，0 失败）：
   - 状态文件 `.devloop/scratch/R5-T14/supervisor.json`；日志 `.devloop/scratch/R5-T14/supervisor.log`；续跑文件 `eval-private/reports/r5-playtest.progress.json`。
   - 会话只读状态：以 `supervisor.json` 的 `state` 为准，轮数以 `eval-private/reports/r5-playtest.progress.json` 的 round 记录数为准（状态里的 `rounds` 只在每次调用结束时刷新）。`running` → 把当前轮数写进本文件并提交，结果 `PARTIAL`；`completed` → 核对 60 条 round 记录与两份报告，标记 `[x]`；`failed` → 读日志修复后重新启动监督进程。
   - 不要在会话里再启动 server 或直接跑 `pnpm playtest`；不要删除 `supervisor.lock`（除非确认进程已死）。
@@ -79,8 +81,8 @@
 - 聊天页、分支页、台账页、导演页、设置页与渠道页的手工冒烟脚本在 `.devloop/scratch/R5-T08`、`R5-T09`、`R5-T10`；`playwright-core` 在 `E:/agentcoding/node_modules` 可解析，Chromium 在 `%LOCALAPPDATA%/ms-playwright/chromium-1243/`。
 
 ## 下一步
-- **R5-T14.a**：先读 `.devloop/scratch/R5-T14/supervisor.json` 的 `state`，轮数以 `eval-private/reports/r5-playtest.progress.json` 的 round 记录数为准（本次为 12/60，第 1 次调用仍在进行，预算到 08:33Z 左右，结束后监督进程会自动开始第 2 次调用）。`running` 时只把当前轮数写进本文件、提交、结果写 `PARTIAL`，不要启动第二个 server 或试玩；`completed` 时核对续跑文件 60 条 round 记录、0 个失败与两份报告，标记 `[x]`；`failed` 时读 `supervisor.log` 修复后重新启动监督进程。
-- **R5-T14.b**：核对统计版字段与 ADR-0033 口径（对比胜率、矛盾率、节拍余弦没有信号时保持「未证实」），在 `docs/dev/reports/R5.md` 引用统计版并写明模型别名、轮数与操作次数；重跑 `pnpm check`。按本次观察写清三处缺失：候选行动在第 2、6 轮都是 `count: 0`，后台积压未执行，不能算作已验证；开场候选只在第 1 轮出现；`scene` 任务有 3 条因「现场分析返回了空内容」耗尽重试，不能把缺失算成零分析。
+- **R5-T14.a**：先读 `.devloop/scratch/R5-T14/supervisor.json` 的 `state`，轮数以 `eval-private/reports/r5-playtest.progress.json` 的 round 记录数为准（本次为 14/60，第 2 次调用仍在进行，预算到 08:53Z 左右，结束后监督进程会自动开始下一次调用）。`running` 时只把当前轮数写进本文件、提交、结果写 `PARTIAL`，不要启动第二个 server 或试玩；`completed` 时核对续跑文件 60 条 round 记录、0 个失败与两份报告，标记 `[x]`；`failed` 时读 `supervisor.log` 修复后重新启动监督进程。
+- **R5-T14.b**：核对统计版字段与 ADR-0033 口径（对比胜率、矛盾率、节拍余弦没有信号时保持「未证实」），在 `docs/dev/reports/R5.md` 引用统计版并写明模型别名、轮数与操作次数；重跑 `pnpm check`。按本次观察写清三处缺失：候选行动在第 2、6 轮都是 `count: 0`，后台积压且第 14 轮已有 1 条 `candidate_actions` 失败，不能算作已验证；开场候选只在第 1 轮出现（`count: 3, visible: true`），第 2 轮起记录为 `null`，第 6、10 轮没有选项块操作；`scene` 任务有 3 条因「现场分析返回了空内容」耗尽重试，不能把缺失算成零分析。
 - 之后 R5-T99（R5 验收；会重跑 `pnpm check`、`pnpm e2e` 与 60 轮报告）。
 - 引用评测数字时：B1 必须同时说明同模型子集为空、每个对话每档只有 1 个样本；遗忘矛盾率必须同时说明失败题数与可判定样本数；偏好一致率当前没有样本。
 
