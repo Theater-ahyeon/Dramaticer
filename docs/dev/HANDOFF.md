@@ -109,7 +109,8 @@
 - 自动试玩的 CLI 入口是 `pnpm --filter @dramaticer/st-compat playtest`（纯 CLI 试玩，不驱动界面）；界面自动试玩是 `pnpm playtest`（R5-T13），两者不要混淆。CLI 试玩的每轮顺序是读间隙积压 → 模拟用户 → `runChatTurn` → swipe/edit/branch → 间隙后台任务 → 一致性探针 → 每轮裁判 → 写记录。
 - 界面自动试玩（R5-T13）：`pnpm e2e` 会收集但跳过 `e2e/playtest/playtest.spec.ts`；`pnpm playtest` 先构建再跑 mobile project；`PLAYTEST_LIVE=1` 时 `playwright.config.ts` 不启动假 server，baseURL 默认 8787，`.env` 在用例里加载；模拟用户取 `roles.settler` 模型；报告默认路径见 `config.ts`（Windows 大小写不敏感，冒烟两份报告文件名不能只差大小写）；失败截图在 `.devloop/scratch/e2e/playtest/screenshots`。分支切换按 `.branch-preview` 精确文本定位，编辑会加〔试玩编辑第N轮〕前缀，保证预览可区分。
 - 自动试玩续跑（2026-11-09）：live 默认 `PLAYTEST_RESUME=1`；续跑文件默认 `eval-private/reports/r5-playtest.progress.json`，每轮写完写入磁盘，记录故事 id、数据库、渠道、标题、排期与全部轮次。续跑时复用故事，从上次编辑操作还原两个兄弟楼层，失败记录在下次运行时丢弃并重试该轮；跑满 60 轮才写报告。`PLAYTEST_RESUME=0` 新开一次，`PLAYTEST_TIME_BUDGET_MS` 控制单次调用预算。
-- 单轮失败时 `runPlaytest` 记录 `kind: "failure"` 并跳出循环；`playtest.spec.ts` 在存在 failure 记录时抛错，所以该次调用退出码为 1。监督进程按 failure 记录累计连续失败次数，并自动丢弃该记录重试。
+- 单轮失败时 `runPlaytest` 记录 `kind: "failure"` 并跳出循环；`playtest.spec.ts` 在存在 failure 记录时抛错，所以该次调用退出码为 1。监督进程按 failure 记录累计连续失败次数，并自动丢弃该记录重试。失败描述里的 `.error-notice` 读取带 5 秒超时；没有这个超时会一直等到用例超时，失败记录迟迟写不出来。
+- 试玩重跑进行时不要跑 `pnpm check` 全量测试：Windows 上并行跑 100 多个测试文件会明显拉高首字与生成耗时，污染报告里的延迟数字。只跑 biome、web typecheck 与相关的单个测试文件，等重跑结束、报告生成后再跑全量门禁。
 - 会话外监督进程（R5-T14.a）：`scripts/r5-playtest-supervisor.mjs` 读 `.devloop/scratch/R5-T14/supervisor-config.json`；状态 `supervisor.json`、日志 `supervisor.log`、锁 `supervisor.lock`。它负责构建一次、启动 server、反复调用试玩直到 60 轮，完成后停掉 server。会话只在状态缺失或为 `completed`/`failed` 时才用 `Start-Process` 启动它并读状态，不要再启动 server 或试玩。`baseUrl` 非空时复用已有服务（假 server 冒烟用）。
 - 续跑文件、私有报告与截图都是私有产物，不能提交；它们分别在 `eval-private/` 与 `.devloop/scratch/`。
 - 开场导演的楼层深度按当前路径助手楼层数计算；`openingFloors` 为 0 关闭。节拍机制的楼层深度用同一口径。
