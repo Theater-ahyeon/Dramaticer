@@ -3,14 +3,14 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-09 会话 238：R5-T99 重跑仍在进行，保持 `[~]`。监督进程 pid 62556 仍在运行；续跑文件 13:38Z 有 21 条 round 记录、0 条 failure；第 2 次试玩调用在 13:34:38Z 达到时间预算停在 20/60，第 3 次调用 13:34:39Z 启动。`docs/dev/reports/R5.md` 第七节与本文的数字更新到 13:38Z 的数据库快照，结果 `PARTIAL`。
-- 会话 237：记录重跑 18/60 与后台进度。会话 236（V-T01）：按人类请求加入 Vertex AI 渠道（ADR-0080）。`LlmChannelApi` 增加 `google-vertex`，`PiLlmChannel` 复用 pi-ai 的 `google-vertex` 适配器并按 API 分派，渠道环境传给适配器；`channels.example.yaml` 与 `data/channels.yaml` 增加 `vertex` 渠道和 `gemini-4-argon` 模型（`baseUrl: https://{location}-aiplatform.googleapis.com`、`apiKey: ""` 走服务账号/ADC）；server 渠道更新接口与 web 渠道表单接受新 API；凭证、项目、区域只从 `.env` 的 `GOOGLE_APPLICATION_CREDENTIALS`、`GOOGLE_CLOUD_PROJECT`、`GOOGLE_CLOUD_LOCATION` 读取；门禁通过（152 个测试文件、1312 个通过、4 个 live 跳过）。
-- 为隔离改动，改动前创建 `.devloop/STOP` 暂停 devloop；循环在会话 236 后停止（`.devloop/STOPPED.txt`）。重启时必须带 `-MaxSessions 80`，否则长跑仍在 40 个会话处停止。
+- 2026-11-09 会话 239：完成 `docs/proposals/preset-insights.md` 的分拣，写入 ADR-0081；`docs/DESIGN.md` §9 增加预设导入的兼容报告，§10.1 增加工具往返的上下文卫生；`docs/dev/TASKS.md` 的 C-T02 补兼容报告要求，R3b-T00 补较早步骤工具往返的成对省略。R5-T99 重跑仍在进行，保持 `[~]`：监督进程 pid 62556 仍在运行，续跑文件 13:48Z 有 27 条 round 记录、0 条 failure；第 3 次调用 13:34:39Z 启动，13:47:49Z 在第 28 轮模拟用户空输出后以退出码 1 结束，监督进程已丢弃该失败记录并启动第 4 次调用重试这一轮；`docs/dev/reports/R5.md` 第七节与本文数字更新到 13:48Z。结果 `PARTIAL`。
+- 会话 238：记录重跑 21/60 与后台进度。会话 237：记录重跑 18/60。会话 236（V-T01）：按人类请求加入 Vertex AI 渠道（ADR-0080），`LlmChannelApi` 增加 `google-vertex`，`channels.example.yaml` 与 `data/channels.yaml` 增加 `vertex` 渠道和 `gemini-4-argon` 模型，凭证、项目、区域只从 `.env` 的三个 `GOOGLE_*` 变量读取，门禁通过（152 个测试文件、1312 个通过、4 个 live 跳过）。
+- 为隔离改动，改动前创建 `.devloop/STOP` 暂停 devloop；循环在会话 236 后停止（`.devloop/STOPPED.txt`）。重启时必须带 `-MaxSessions 80`。
 
 ## 当前状态
 - 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T07.b.d.a 与 R1-T07.b.d.b）、R3、O、R2、E、R4、R5-T01 至 R5-T13、R5-T14.a、R5-T14.b、R5-T14.c、R5-T14.d、R5-T14.e、V-T01。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- **R5-T99 进行中**：`docs/dev/reports/R5.md` 第四至第七节已写好；第一至三节的统计数字仍来自 R5-T14.c 的 60 轮重跑，R5-T14.e 修复后的数据要等本轮重跑结束。重跑完成后必须回填统计版全部字段、`scene` 空输出数、`candidate_actions` 严格解析失败数、后台任务状态、偏好信号与导演机制命中。
-- `docs/proposals/preset-insights.md` 在会话 238 期间由外部提交加入（提交 `4967cf3`），尚未分拣；下一会话按 AGENTS.md 的设计变更流程处理：能执行的写成 TASKS 任务并排好依赖，改变路线或与设计冲突的写 DECISIONS 或 HUMAN.md。
+- **R5-T99 进行中**：`docs/dev/reports/R5.md` 第四至第七节已写好；第一至三节的统计数字仍来自 R5-T14.c 的 60 轮重跑，R5-T14.e 修复后的数据要等本轮重跑结束。重跑完成后必须回填统计版全部字段、`scene` 空输出数、`candidate_actions` 严格解析失败数、后台任务状态、选择信号与导演机制命中。
+- `docs/proposals/preset-insights.md` 已由 ADR-0081 分拣：建议 1（预设导入与兼容报告）、2（深度注入与角色映射）、4（预填充与续写）、6（正则与脚本沙箱）由 DESIGN §9、§19 与 C-T01、C-T02、C-T04、C-T05 覆盖；建议 3 的系统消息合并已在 C-T02 的预设范围里，较早步骤工具往返的成对省略写入 DESIGN §10.1 与 R3b-T00；建议 5 由 R5-T05.b 的思考折叠覆盖；建议 7 并入 C-T02 的兼容报告。不新增任务，不改变阶段顺序。
 - **Vertex 渠道（V-T01）**：`api: google-vertex` 使用 pi-ai 1.5.0 的 `google-vertex` 适配器；`gemini-4-argon` 模型在 `data/channels.yaml` 与示例里，凭证、项目、区域只从 `.env` 的三个 `GOOGLE_*` 变量读取，服务账号 JSON 不进仓库；未设置时不影响现有渠道，`roles.writer` 保持 `main-fallback`。live 验证用 `DRAMATICER_VERTEX_LIVE=1` 运行 `packages/core/test/google-vertex.live.test.ts`。
 - 下一个任务仍是 R5-T99：重跑完成后核对 60 条 round 记录与两份报告，更新 `docs/dev/reports/R5.md`，把 TASKS 的 R5-T99 标 `[x]` 并写完成行，结果写 `MILESTONE_DONE`。重跑未完成时写 `PARTIAL` 并记录当前轮数。提交后若要继续 devloop，带 `-MaxSessions 80` 重启。
 - v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（界面）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
@@ -19,10 +19,10 @@
 - HUMAN-12 已完成：人类确认保持 `judge`（`auto/glm-5.3`）作为裁判路由。
 - HUMAN-13 已关闭：人类决定不把 `writer` 改回 `rp`，继续用 `main-fallback`；凭证恢复后如需变更再提。
 - HUMAN-14 待处理（不阻塞）：Vertex 真实调用还需要人类把服务账号 JSON 导出到仓库外，并在 `.env` 设置 `GOOGLE_APPLICATION_CREDENTIALS`、`GOOGLE_CLOUD_PROJECT`、`GOOGLE_CLOUD_LOCATION`。
-- 数据库 schema 版本 33（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡、v25 合并调用开关与执行记录、v26 间隙档位阈值与丢弃状态、v27 合并调用丢弃条目、v28 回合模式与读取工具软上限、v29 开局包与故事级后台任务、v30 首楼开场候选、v31 偏好记录、v32 导演计划与拍状态、v33 导演候选行动）；R1 续原计划的 v32–v35 顺延为 v34–v37。
+- 数据库 schema 版本 33（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡、v25 合并调用开关与执行记录、v26 间隙档位阈值与丢弃状态、v27 合并调用丢弃条目、v28 回合模式与读取工具上限、v29 开局包与故事级后台任务、v30 首楼开场候选、v31 选择记录、v32 导演计划与拍状态、v33 导演候选行动）；R1 续原计划的 v32–v35 顺延为 v34–v37。
 
 ## 后台任务与队列
-- **本轮重跑使用空库**：`live.db` 与续跑文件在 12:58Z 之前已被删除。13:38Z 数据库里 26 个助手楼层、22 个用户楼层，`background_jobs` 状态为 `done=288`、`discarded=2`、`failed=1`、`running=1`；按种类 `candidate_actions` 完成 21、失败 1、丢弃 2、运行中 1，`scene` 完成 25、失败 0，`settle` 完成 25，`events`、`npc_agenda`、`summary`、`embeddings` 各完成 41，`memory_revision`、`user_will` 各完成 25，`director_plan`、`opening`、`opening_candidates` 各完成 1。这是 R5-T14.e 修复后的干净口径，最终数字以 60 轮结束时的数据库为准。
+- **本轮重跑使用空库**：`live.db` 与续跑文件在 12:58Z 之前已被删除。13:48Z 数据库里 32 个助手楼层、28 个用户楼层，`background_jobs` 状态为 `done=339`、`pending=27`、`discarded=2`、`failed=1`、`running=1`；按种类 `candidate_actions` 完成 24、失败 1、丢弃 2、待执行 3、运行中 1，`scene` 完成 29、失败 0、待执行 2，`settle` 完成 29、待执行 2，`events`、`npc_agenda`、`summary`、`embeddings` 各完成 49、待执行 4，`memory_revision`、`user_will` 各完成 29、待执行 2，`director_plan`、`opening`、`opening_candidates` 各完成 1。这是 R5-T14.e 修复后的干净口径，最终数字以 60 轮结束时的数据库为准。
 - server 的回合路径会补建并执行后台任务：`handleTurnStream` 在 `turn.completed` 之后调用 `BackgroundScheduler.schedule`，不等待 drain；同一时刻只有一个 drain，故事之间先来先做。`schedule` 的 drain 只跑 `resolveStoryBackgroundKinds` 过滤后的类型，并带 `sessionEnded: true`，所以每轮结束后延后档（事件、摘要、NPC 议程、导演计划）也会执行。
 - 后台任务恢复（R5-T14.d）：`requeueRunningBackgroundJobs(storyId?)` 把 running 行退回 pending、`attempts` 减一（不低于 0）、清空 `started_at` 与 `finished_at`、保留 `last_error`；`startServer` 打开数据库后调用一次，`dramaticer work` 在列出故事前调用一次；`done`、`failed`、`discarded` 不动。
 - 故事级任务入队：`StoryStore.enqueueStoryBackgroundJobs` 按种类写入 `node_id` 为空的 `background_jobs` 行；创建故事与导入卡的路由先调用 `enqueueOpeningBackgroundJobs`（按两个 `needsRun` 过滤）再 `schedule`。`POST /api/stories/:id/openings/generate` 无条件入队一条 `opening_candidates`（仅要求故事无楼层），同一行已完成时翻回 `pending`。
@@ -37,7 +37,7 @@
 - 导演强度与注入（R4-T03、R4-T04）：`DirectorConfig.intensity` 与 `openingIntensity` 共用 `DirectorIntensity`；机制优先级固定为重复正文 40、开场 35、线索过老 30、场景重复 25、节拍 23、线索过多 20、事件池 10、节奏 5；`createDirectorSlotProvider` 返回带 `config`、`mechanisms` 的 `DirectorSlotProvider`；组装器在预算裁剪后把 suffix 接在最后一条 user 消息末尾，Trace 记 `appendedTo: "last-user"`。
 - 导演模式（R4-T05）：`DirectorConfig.mode` 取 `off`、`transparent`、`blind`，默认 `transparent`。节拍完成检测（R4-T06）：结算窗口的 `beats` 按楼层父节点解析；模型没有给该楼层条目、楼层被拒绝、或按路径解析出的拍与提示词里的拍不同时不写状态。
 - 候选行动（R4-T07）：`candidate_actions` 按 `settled` 为每个已生成完成的助手楼层建任务，档位 `gap`；`parseCandidateActionsResponse` 是唯一校验口；写入顺序固定为 4 条 `action` 再 1 条 `scene_change`；`GET /api/nodes/:id/actions` 只按楼层读取，不跟随 head。
-- 13:38Z：`director_candidate_actions` 105 行（21 个楼层）、`director_beat_states` 21 行、`ledger_settlements` 25 行、`preference_events` 为 `swipe` 2 与 `edit` 2。R5-T14.c 的旧 60 轮数据库里 `director_candidate_actions` 305 行、`director_beat_states` 55 行、`ledger_settlements` 63 行，仅作历史对照；最终验收以本轮结束时的数据库为准。
+- 13:48Z：`director_candidate_actions` 120 行（24 个楼层）、`director_beat_states` 23 行、`ledger_settlements` 30 行、`preference_events` 为 `swipe` 2 与 `edit` 2。R5-T14.c 的旧 60 轮数据库里 `director_candidate_actions` 305 行、`director_beat_states` 55 行、`ledger_settlements` 63 行，仅作历史对照；最终验收以本轮结束时的数据库为准。
 
 ## 界面与接口
 - 分支与面板接口：`GET /api/nodes/:id/ledger` 返回 `{state, facts, diffs}`，`facts` 来自 `readLedgerFacts`，`diffs` 只含该楼层自己的写入。`GET /api/nodes/:id/events` 的 `limit` 默认 100、回显实际 `limit` 与 `offset`；`GET /api/nodes/:id/compressions` 返回 `{nodeId, compressions}`。
@@ -54,7 +54,7 @@
 - 导演页：楼层选择同样复用 `BranchTree`；`selectedId` 变化时并行取 `director`、`actions` 与 `trace`；故事级设置、计划与线索只在 storyId 变化时取一次。决策记录写在生成时的消息楼层上（助手楼层的父楼层），选中助手楼层时 `GET director` 通常返回 `decision: null`。盲盒模式下服务端省略整个 `signals`，前端不得推断指令。
 - 导演页的计划编辑器直接操作 `DirectorPlan` 对象：新增条目的标题与拍内容为空，保存时由服务端 `parseDirectorPlan` 拒绝并返回字段路径；`ErrorNotice` 显示 `details.path`。保存成功后 `plan` 与 `draftPlan` 同时替换。
 - 跨面板候选行动：`setComposerDraft(storyId, text)` 写入模块级 Map，导演页随后 `navigate` 到聊天页；`ChatPage` 用 `composerStoryRef` 保证每个故事只消费一次（StrictMode 会重复执行 mount effect），读取后立即清空。草稿不持久化，刷新丢失。
-- 偏好记录已闭环：记录写入（四种信号）→ `POST /api/nodes/:id/choice` → `preferences export` 产出回复对 → `pairwise` 盲测与评分 → `scoreboard` 汇总。重新生成与 `swipeNode` 都写 `swipe`；`editNode` 写 `edit`；`card_decision` 在批准与拒绝时由 `updateLedgerChangeCardStatus` 写入，回滚不写。
+- 选择信号已闭环：记录写入（四种信号）→ `POST /api/nodes/:id/choice` → `preferences export` 产出回复对 → `pairwise` 盲测与评分 → `scoreboard` 汇总。重新生成与 `swipeNode` 都写 `swipe`；`editNode` 写 `edit`；`card_decision` 在批准与拒绝时由 `updateLedgerChangeCardStatus` 写入，回滚不写。
 - 设置页（R5-T09）：`GET /api/stories/:id/template` 返回故事实际使用的模板；内置默认模板不能直接保存，先「复制为新模板并设为默认」再编辑。「故事使用的模板」下拉只改表单草稿。模板校验（`assertContextTemplate`）也校验 `when`；server 把模板校验错误映射为 `details.path: "template"`。
 - 设置表单校验与服务端同一套范围：`budgetTokens ≥ 0`、`maxTokens ≥ 1`、`temperature` 0–2、`maxReadRounds ≥ 0`、`gapPlanSeconds ≥ 0`、导演参数范围见 `DIRECTOR_NUMBER_FIELDS`；服务端错误路径由 `describeSettingsPath` 显示成中文名。
 - 渠道角色（`writer`、`settler`、`planner`、`judge`）与消息角色不同；`createLlmClient` 校验 judge 与 writer 的模型家族不同。`resolveModelForRole` 缺省 writer→main、其余→background。模型 `enabled` 默认 true；停用后不能作为故事模型、角色目标或路由。
@@ -79,12 +79,12 @@
 - 自动试玩续跑（2026-11-09）：live 默认 `PLAYTEST_RESUME=1`；续跑文件默认 `eval-private/reports/r5-playtest.progress.json`，每轮写完写入磁盘，记录故事 id、数据库、渠道、标题、排期与全部轮次。续跑时复用故事，从上次编辑操作还原两个兄弟楼层，失败记录在下次运行时丢弃并重试该轮；跑满 60 轮才写报告。`PLAYTEST_RESUME=0` 新开一次，`PLAYTEST_TIME_BUDGET_MS` 控制单次调用预算（监督进程配置 20 分钟）。
 - 本轮 R5-T99 重跑从空续跑文件开始，故事 id 是新建的 `e2e-2b61059d-…`，标题「自动试玩」；不要把它与旧报告里的故事混在一起。
 - 单轮失败时 `runPlaytest` 记录 `kind: "failure"` 并跳出循环；`playtest.spec.ts` 在存在 failure 记录时抛错，所以该次调用退出码为 1。监督进程按 failure 记录累计连续失败次数，并自动丢弃该记录重试。模拟用户的输出上限是 4096。
-- 会话外监督进程（R5-T14.a）：`scripts/r5-playtest-supervisor.mjs` 读 `.devloop/scratch/R5-T14/supervisor-config.json`；状态 `supervisor.json`、日志 `supervisor.log`、锁 `supervisor.lock`。它负责构建一次、启动 server、反复调用试玩直到 60 轮，完成后停掉 server；试玩 CLI 每次调用结束都会重写报告，跑满 60 轮时写出最终版本。`baseUrl` 非空时复用已有服务（假 server 冒烟用）。
-- **本轮监督进程仍在运行**：pid 62556，`supervisor.json` 状态 `running`，启动时间 2026-11-09T12:58:33Z，`supervisor.json` 的 `rounds` 停在 20（只在调用结束时刷新），invocations 为 2、failures 为 0；轮数以续跑文件的 round 记录为准（13:38Z 为 21 条）。目前处于第 3 次调用（13:34:39Z 启动）。完成前不要再次启动；完成后它会自动把状态改成 `completed` 并停掉 server。
-- 统计版 `docs/dev/reports/R5-playtest.md` 由试玩 CLI 在每次调用结束时重写，13:34Z 的工作区版本是第 2 次调用结束时的中途快照（20 成功 / 0 失败）；续跑文件此时已有 21 条 round 记录、0 条 failure，第 3 次调用仍在运行，60 轮完成后会被最终版本覆盖；R5-T14.c 的完整 60 轮数字保存在提交 `5f86554` 的同一文件里，只作历史对照。`docs/dev/reports/R5.md` 第四至第七节是本次验收新增。
-- 最终回填必须把数据库里的 1 条 `candidate_actions` 严格解析失败（「候选行动不是合法 JSON」）计入第二节；若后续出现更多失败，按最终数据库计数。`scene` 目前完成 25、失败 0。
+- 会话外监督进程（R5-T14.a）：`scripts/r5-playtest-supervisor.mjs` 读 `.devloop/scratch/R5-T14/supervisor-config.json`；状态 `supervisor.json`、日志 `supervisor.log`、锁 `supervisor.lock`。它负责构建一次、启动 server、反复调用试玩直到 60 轮，完成后停掉 server；试玩 CLI 只在跑满 60 轮或出现 failure 记录时写报告，跑满 60 轮时写出最终版本。`baseUrl` 非空时复用已有服务（假 server 冒烟用）。
+- **本轮监督进程仍在运行**：pid 62556，`supervisor.json` 状态 `running`，启动时间 2026-11-09T12:58:33Z，`supervisor.json` 在 13:47:49Z 记录 invocations 为 3、failures 为 1、rounds 为 27；轮数以续跑文件的 round 记录为准（13:48Z 为 27 条）。第 3 次调用在 13:47:49Z 以退出码 1 结束，失败记录是第 28 轮模拟用户空输出，监督进程已丢弃该记录并启动第 4 次调用重试这一轮。完成前不要再次启动；完成后它会自动把状态改成 `completed` 并停掉 server。
+- 统计版 `docs/dev/reports/R5-playtest.md` 当前是第 3 次调用第 28 轮失败时的 27 成功 / 1 失败快照；续跑文件 13:48Z 已有 27 条 round 记录、0 条 failure，第 4 次调用正在重试第 28 轮，跑满 60 轮后会被最终版本覆盖；R5-T14.c 的完整 60 轮数字保存在提交 `5f86554` 的同一文件里，只作历史对照。`docs/dev/reports/R5.md` 第四至第七节是本次验收新增。
+- 最终回填必须把数据库里的 1 条 `candidate_actions` 严格解析失败（「候选行动不是合法 JSON」）计入第二节；若后续出现更多失败，按最终数据库计数。`scene` 目前完成 29、失败 0。
 - F0 的私有产物：`eval-private/f0/`；R3 的产物：`docs/dev/reports/R3.md`、`R3-fast.md`；O 的产物：`docs/dev/reports/O-opening.md`；R2 的产物：`docs/dev/reports/R2.md`、`R2-judge.md`、`R2-pairwise.md`、`R2-b1.md`、`R2-forgetting.md`、`docs/dev/SCOREBOARD.md`；R4 的产物：`docs/dev/reports/R4.md`。
-- 引用评测数字时：B1 必须同时说明同模型子集为空、每个对话每档只有 1 个样本；遗忘矛盾率必须同时说明失败题数与可判定样本数；偏好一致率当前没有样本。
+- 引用评测数字时：B1 必须同时说明同模型子集为空、每个对话每档只有 1 个样本；遗忘矛盾率必须同时说明失败题数与可判定样本数；选择一致率当前没有样本。
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
@@ -115,11 +115,10 @@
 - 不要修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 下的任何文件。不变量 I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账是唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖任何其他工作区包。
 
 ## 下一步
-- **先分拣 `docs/proposals/preset-insights.md`**：七条建议里前两条属于 `packages/st-compat` 的预设导入与深度注入，排在 C 线/P2 前后要按 DESIGN §19 与 I15 判断；本次未分拣，下一会话开始处理。
 - **R5-T99 续**：
-  1. 读 `.devloop/scratch/R5-T14/supervisor.json`。`running`：以 `eval-private/reports/r5-playtest.progress.json` 的 `records` 条数为准（`supervisor.json` 的 `rounds` 只在调用结束时刷新），把当前轮数写进 HANDOFF 与 `docs/dev/reports/R5.md` 第七节，提交，结果写 `PARTIAL`；不要启动第二个监督进程或 server。`completed`：核对续跑文件 60 条 round 记录、0 条 failure，以及 `docs/dev/reports/R5-playtest.md` 已变成 60 轮成功版本（试玩 CLI 每次调用都会重写该文件，不能用文件生成时间判断是否完成）。
+  1. 读 `.devloop/scratch/R5-T14/supervisor.json`。`running`：以 `eval-private/reports/r5-playtest.progress.json` 的 `records` 条数为准（`supervisor.json` 的 `rounds` 只在调用结束时刷新），把当前轮数写进 HANDOFF 与 `docs/dev/reports/R5.md` 第七节，提交，结果写 `PARTIAL`；不要启动第二个监督进程或 server。`completed`：核对续跑文件 60 条 round 记录、0 条 failure，以及 `docs/dev/reports/R5-playtest.md` 已变成 60 轮成功版本。
   2. 用只读查询读 `live.db`：按种类统计 `background_jobs` 的五个状态，单列 `scene` 空输出失败数与 `candidate_actions` 严格解析失败数；统计 `director_candidate_actions`、`director_beat_states`、`ledger_settlements`、`preference_events` 的条数。`.devloop/scratch/R5-T14/queue-status.mjs` 给出总体状态与部分计数，其余计数可用 `node:sqlite` 只读查询（必须从仓库根目录运行，脚本里的路径是相对路径）。
   3. 用新的统计版替换 `docs/dev/reports/R5.md` 第一至三节的数字，更新 `scene` 与 `candidate_actions` 的失败口径；确认第一至三节不再保留旧的重跑数字。
   4. 把 `docs/dev/TASKS.md` 的 R5-T99 标 `[x]` 并写完成行；重写 HANDOFF；追加 LOG；提交。结果写 `MILESTONE_DONE`。
   5. `failed`：读 `supervisor.log` 与 `server.log` 修复后，先清空 `live.db` 与续跑文件再重启监督进程。
-- 记忆增强任务（R1-T03.a、R1-T03.b、R1-T04.b、R1-T05、R1-T06、R1-T08）都依赖 R5-T99；C 线兼容插件任务依赖 P2；插件系统以 DESIGN §19 为唯一权威。
+- 记忆增强任务（R1-T03.a、R1-T03.b、R1-T04.b、R1-T05、R1-T06、R1-T08）都依赖 R5-T99；C 线兼容插件任务依赖 P2，C-T02 已补上预设兼容报告的要求；插件系统以 DESIGN §19 为唯一权威。
