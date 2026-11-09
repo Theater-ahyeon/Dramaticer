@@ -1176,3 +1176,21 @@
 - **影响**：
   - 现场分析的输出上限跟随渠道配置的模型声明值；换用思考更长的模型时不需要再调现场分析配置。
   - 回归测试断言请求不带 `maxTokens`，并覆盖空正文三次重试后 `failed`；真实渠道一次验证 completion 255 token（思考 131）返回 188 字正文。
+
+## ADR-0080 Vertex AI 渠道（2026-11-09）
+
+- **背景**：人类要求接入 TauriTavern 当前使用的 Vertex AI `gemini-4-argon`。`catie` 的 Gemini 3.8 Flash 持续 503，网关的 `auto/gemini-3.8-flash` 返回 400；TauriTavern 的 `vertex` 目标使用 `vertexai`、区域 `global` 与服务账号。`@earendil-works/pi-ai` 1.5.0 已提供 `google-vertex` 适配器（内部使用 `@google/genai` 与 ADC），不需要自己实现 JWT 与服务账号换取 token。
+- **选项**：
+  - 自己实现服务账号 JWT 与 OAuth2 刷新：重复 pi-ai 已有实现，还要处理凭证缓存与错误分类（排除）。
+  - 要求人类提供 Vertex API key：与现有服务账号凭证不符（排除）。
+  - 复用 pi-ai 的 `google-vertex` 适配器，凭证走 ADC/服务账号，项目与区域走环境变量（采纳）。
+- **决定**：
+  - `LlmChannelApi` 增加 `google-vertex`；`PiLlmChannel` 按 API 选择 `streamSimple`，并把渠道环境传给适配器。
+  - `channels.yaml` 新增 `api: google-vertex` 的渠道：`baseUrl` 写 `https://{location}-aiplatform.googleapis.com`（适配器识别 `{location}` 后交给 Google SDK 解析），`apiKey: ""` 表示使用服务账号。
+  - 凭证、项目与区域只从 `.env` 读取：`GOOGLE_APPLICATION_CREDENTIALS`、`GOOGLE_CLOUD_PROJECT`、`GOOGLE_CLOUD_LOCATION`。服务账号 JSON 不进入仓库。
+  - `channels.example.yaml` 与 `data/channels.yaml` 增加 `gemini-4-argon` 模型；在凭证就绪前 `roles.writer` 保持 `main-fallback`。
+  - server 的渠道更新接口与 web 渠道表单接受 `google-vertex`。
+- **影响**：
+  - 不新增直接依赖：`@google/genai` 由 `@earendil-works/pi-ai` 的 Vertex 适配器使用。
+  - 新增可选的 live 测试 `packages/core/test/google-vertex.live.test.ts`，只有 `DRAMATICER_VERTEX_LIVE=1` 时运行；默认门禁跳过。
+  - 真实使用前需要人类把服务账号 JSON 导出到仓库外，并在 `.env` 设置三个变量；未设置时只有 Vertex 模型不可用，不影响现有回退路由。

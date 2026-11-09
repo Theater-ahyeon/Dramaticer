@@ -276,6 +276,7 @@ flowchart TB
 - **工具调用传输**：渠道体检判定工具调用稳定的，走原生函数调用；不稳定的，走文本协议（模型输出 `<tool>…</tool>`，由程序解析执行）。两种方式跑同一个循环、共用同一套参数校验。
 - **pi-ai**（MIT，`@earendil-works/*`）：锁死版本，外面包一层 `core/llm` 接口；`identity` 的归属声明设为 `{ attribution: null }`。`pi-agent-core` 只保留给验证脚本，不进入运行时。
 - **适配器顺序**：OpenAI 兼容 Chat Completions 优先（覆盖各种公益站和中转），Gemini 原生第二（赠金直连、gcli2api、Antigravity；未做端到端验证，见 ADR-0020）。
+- **接口类型**：渠道支持 OpenAI 兼容、Google Generative AI 与 Google Vertex AI；Vertex 使用服务账号/ADC，项目与区域从环境变量读取，凭证不写入仓库。
 - **多渠道**：同一模型可以配多个渠道，按优先级自动切换；Trace 记录实际使用的渠道。
 - **渠道体检**：检测真流式还是假流式、函数调用、思考输出、预填充、缓存统计是否可用，据此决定工具传输方式。
 - **可靠性**：截断检测、abort 后续写、失败重试、切换渠道。

@@ -104,6 +104,15 @@ models:
 		);
 	});
 
+	it("支持 Vertex 适配器与空 apiKey（服务账号凭证走环境变量）", () => {
+		const text = configText()
+			.replace("api: openai-completions", "api: google-vertex")
+			.replace("apiKey: ${BG_KEY}", 'apiKey: ""');
+		const channel = parseChannelsConfig(text, env).channels.get("bg");
+		expect(channel?.api).toBe("google-vertex");
+		expect(channel?.apiKey).toBe("");
+	});
+
 	it("环境变量缺失时指出变量名", () => {
 		expect(() =>
 			parseChannelsConfig(configText(), { ...env, BG_KEY: undefined }),

@@ -15,10 +15,15 @@ export interface CreateLlmClientOptions {
 		signal: AbortSignal | undefined,
 	) => Promise<void>;
 	readonly now?: () => number;
+	/** Vertex 与 Google 适配器读取项目、区域与凭证路径；缺省用进程环境。 */
+	readonly env?: Readonly<Record<string, string | undefined>>;
 }
 
 /** 按单个渠道配置创建适配器，渠道体检与路由共用。 */
-export function createLlmChannel(config: LlmChannelConfig): LlmChannel {
+export function createLlmChannel(
+	config: LlmChannelConfig,
+	env: Readonly<Record<string, string | undefined>> = process.env,
+): LlmChannel {
 	return new PiLlmChannel({
 		id: config.id,
 		api: config.api,
@@ -28,6 +33,7 @@ export function createLlmChannel(config: LlmChannelConfig): LlmChannel {
 		maxRetries: config.maxRetries,
 		retryBaseDelayMs: config.retryBaseDelayMs,
 		timeoutMs: config.timeoutMs,
+		env,
 	});
 }
 
@@ -46,7 +52,10 @@ export function createLlmClient(
 	}
 	const channels = new Map<string, LlmChannel>();
 	for (const channelConfig of config.channels.values()) {
-		channels.set(channelConfig.id, createLlmChannel(channelConfig));
+		channels.set(
+			channelConfig.id,
+			createLlmChannel(channelConfig, options.env ?? process.env),
+		);
 	}
 	const routes = new Map<string, LlmRoute>();
 	for (const model of config.models.values()) {

@@ -18,6 +18,7 @@ export const CHANNEL_API_CHOICES: readonly {
 }[] = [
 	{ value: "openai-completions", label: "OpenAI 兼容" },
 	{ value: "google-generative-ai", label: "Google Generative AI" },
+	{ value: "google-vertex", label: "Google Vertex AI" },
 ];
 
 export interface RoleChoice {
@@ -193,7 +194,8 @@ export function parseChannelsDraft(draft: ChannelsFormDraft): {
 		}
 		if (
 			channel.api !== "openai-completions" &&
-			channel.api !== "google-generative-ai"
+			channel.api !== "google-generative-ai" &&
+			channel.api !== "google-vertex"
 		) {
 			errors.push({ path: `${path}.api`, message: "接口类型不在允许范围内" });
 		}

@@ -8,6 +8,7 @@ import {
 	normalizeContext,
 } from "@earendil-works/pi-ai";
 import { streamSimple as googleStreamSimple } from "@earendil-works/pi-ai/api/google-generative-ai";
+import { streamSimple as googleVertexStreamSimple } from "@earendil-works/pi-ai/api/google-vertex";
 import { streamSimple as openAiStreamSimple } from "@earendil-works/pi-ai/api/openai-completions";
 import type { JsonObject } from "../json.js";
 import type { LlmChannelApi } from "./channels.js";
@@ -46,6 +47,8 @@ export interface PiLlmChannelOptions extends LlmChannelLimits {
 	readonly baseUrl: string;
 	readonly apiKey: string;
 	readonly timeoutMs: number;
+	/** Vertex 与 Google 适配器从这里读取项目、区域与凭证路径；缺省用进程环境。 */
+	readonly env?: Readonly<Record<string, string | undefined>>;
 }
 
 /** 把 pi-ai 包装成 core/llm 的渠道适配器。 */
@@ -58,6 +61,7 @@ export class PiLlmChannel implements LlmChannel {
 	readonly maxRetries: number;
 	readonly retryBaseDelayMs: number;
 	readonly timeoutMs: number;
+	private readonly env: Readonly<Record<string, string>>;
 
 	constructor(options: PiLlmChannelOptions) {
 		this.id = options.id;
@@ -68,6 +72,7 @@ export class PiLlmChannel implements LlmChannel {
 		this.maxRetries = options.maxRetries;
 		this.retryBaseDelayMs = options.retryBaseDelayMs;
 		this.timeoutMs = options.timeoutMs;
+		this.env = compactEnv(options.env ?? process.env);
 	}
 
 	stream(request: LlmProviderRequest): LlmProviderStream {
@@ -103,6 +108,7 @@ export class PiLlmChannel implements LlmChannel {
 			maxRetries: 0,
 			maxRetryDelayMs: 60_000,
 			identity: { attribution: null },
+			env: this.env,
 			onResponse: (response) => {
 				status = response.status;
 			},
@@ -115,11 +121,17 @@ export class PiLlmChannel implements LlmChannel {
 							context,
 							options,
 						)
-					: googleStreamSimple(
-							piModel as Model<"google-generative-ai">,
-							context,
-							options,
-						);
+					: this.api === "google-generative-ai"
+						? googleStreamSimple(
+								piModel as Model<"google-generative-ai">,
+								context,
+								options,
+							)
+						: googleVertexStreamSimple(
+								piModel as Model<"google-vertex">,
+								context,
+								options,
+							);
 			for await (const event of stream) {
 				if (event.type === "text_delta") {
 					emit({ type: "text_delta", delta: event.delta });
@@ -221,6 +233,16 @@ export class PiLlmChannel implements LlmChannel {
 			})),
 		};
 	}
+}
+
+function compactEnv(
+	env: Readonly<Record<string, string | undefined>>,
+): Record<string, string> {
+	const compact: Record<string, string> = {};
+	for (const [key, value] of Object.entries(env)) {
+		if (value !== undefined) compact[key] = value;
+	}
+	return compact;
 }
 
 function syntheticAssistant(

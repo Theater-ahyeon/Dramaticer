@@ -1481,10 +1481,14 @@ function readChannelUpdate(
 	const raw = requireObject(value, path);
 	assertKnownKeys(raw, CHANNEL_UPDATE_KEYS, path);
 	const api = raw.api;
-	if (api !== "openai-completions" && api !== "google-generative-ai") {
+	if (
+		api !== "openai-completions" &&
+		api !== "google-generative-ai" &&
+		api !== "google-vertex"
+	) {
 		throw fieldError(
 			`${path}.api`,
-			`${path}.api 只能是 openai-completions 或 google-generative-ai`,
+			`${path}.api 只能是 openai-completions、google-generative-ai 或 google-vertex`,
 		);
 	}
 	return {

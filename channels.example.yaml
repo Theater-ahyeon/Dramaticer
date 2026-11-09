@@ -19,6 +19,17 @@ channels:
     maxRetries: 2
     retryBaseDelayMs: 1000
     timeoutMs: 300000
+  # Vertex AI：凭证、项目与区域从 .env 读取（GOOGLE_APPLICATION_CREDENTIALS、
+  # GOOGLE_CLOUD_PROJECT、GOOGLE_CLOUD_LOCATION）。apiKey 留空表示用服务账号；
+  # baseUrl 里的 {location} 由 pi-ai 的 Vertex 适配器交给 Google SDK 解析。
+  vertex:
+    api: google-vertex
+    baseUrl: https://{location}-aiplatform.googleapis.com
+    apiKey: ""
+    requestsPerMinute: 20
+    maxRetries: 2
+    retryBaseDelayMs: 1000
+    timeoutMs: 300000
 
 models:
   background:
@@ -66,6 +77,15 @@ models:
     maxTokens: 16384
     reasoning: true
     channels: [main]
+  # Vertex 上的 Gemini；凭证就绪后可以把 roles.writer 指向这个别名。
+  gemini-4-argon:
+    id: gemini-4-argon
+    contextWindow: 131072
+    maxTokens: 8192
+    reasoning: true
+    channels: [vertex]
+    tools:
+      transport: native
 
 # 按岗位配置模型。没有写出的角色回落到 main（writer）或 background（其余）。
 # 裁判（judge）必须与写作（writer）来自不同模型家族，按模型名判断，

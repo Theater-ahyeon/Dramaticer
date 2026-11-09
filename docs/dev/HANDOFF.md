@@ -3,22 +3,22 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 会话 235：R5-T99 R5 验收进行中（PARTIAL）。本次没有改代码；门禁保持通过（148 个测试文件、1311 个测试，3 个 live 跳过）。
-- 60 轮重跑监督进程 pid 62556 仍在运行：13:20Z 进度 12/60 条 round 记录、0 条 failure；第 9 轮模拟用户连续 3 次空输出，监督进程已丢弃该失败记录，并在第 2 次试玩调用（13:13:26Z 启动）里重试成功（13:15:11Z 写入第 9 条 round 记录）；第 2 次调用仍在运行。
-- 数据库有 16 个助手楼层、12 个用户楼层；`background_jobs` 为 `done=172`、`discarded=2`、`failed=1`，`pending` 与 `running` 均为 0；按种类 `candidate_actions` 完成 13、失败 1、丢弃 2，`scene` 完成 16、失败 0，`settle` 完成 16，`events`、`npc_agenda`、`summary`、`embeddings` 各完成 23，`memory_revision` 与 `user_will` 各完成 16，`director_plan`、`opening`、`opening_candidates` 各完成 1；`director_candidate_actions` 65 行（13 个楼层）、`director_beat_states` 14 行、`ledger_settlements` 16 行、`preference_events` 为 `swipe` 2 与 `edit` 2。
-- `candidate_actions` 出现 1 条严格解析失败：3 次尝试后标记 `failed`，原因是「候选行动不是合法 JSON」。这是修复后的干净口径，最终统计必须把它计入严格解析失败数。
-- 进度已回填 `docs/dev/reports/R5.md` 第七节与 `docs/dev/TASKS.md` 的 R5-T99 进行中行；仓库改动只有 `docs/dev/reports/R5.md`、`docs/dev/TASKS.md`、`docs/dev/HANDOFF.md` 与 `docs/dev/LOG.md`。
+- 2026-11-09 V-T01：按人类请求加入 Vertex AI 渠道（ADR-0080）。`LlmChannelApi` 增加 `google-vertex`，`PiLlmChannel` 复用 pi-ai 的 `google-vertex` 适配器并按 API 分派，渠道环境传给适配器；`channels.example.yaml` 与 `data/channels.yaml` 增加 `vertex` 渠道和 `gemini-4-argon` 模型（`baseUrl: https://{location}-aiplatform.googleapis.com`、`apiKey: ""` 走服务账号/ADC）；server 渠道更新接口与 web 渠道表单接受新 API；凭证、项目、区域只从 `.env` 的 `GOOGLE_APPLICATION_CREDENTIALS`、`GOOGLE_CLOUD_PROJECT`、`GOOGLE_CLOUD_LOCATION` 读取；新增配置测试与 `DRAMATICER_VERTEX_LIVE=1` 的 live 测试。门禁通过（152 个测试文件、1312 个通过、4 个 live 跳过，共 1316 个）。
+- 为隔离改动，改动前创建 `.devloop/STOP` 暂停 devloop；循环在会话 236 后停止（`.devloop/STOPPED.txt`）。重启时必须带 `-MaxSessions 80`，否则长跑仍在 40 个会话处停止。
+- R5-T99 的 60 轮重跑监督进程 pid 62556 仍在运行：13:33Z 进度 17/60 条 round 记录、0 条 failure；第 9 轮模拟用户空输出已丢弃并重试成功；第 2 次试玩调用（13:13:26Z 启动）仍在运行。后台 `done` 随轮次增长；`candidate_actions` 有 1 条严格解析失败，最终统计必须计入。
+- Vertex 真实调用还需要人类把服务账号 JSON 导出到仓库外，并在 `.env` 设置三个 `GOOGLE_*` 变量（HUMAN-14）；凭证就绪前 `roles.writer` 保持 `main-fallback`，现有渠道不受影响。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T07.b.d.a 与 R1-T07.b.d.b）、R3、O、R2、E、R4、R5-T01 至 R5-T13、R5-T14.a、R5-T14.b、R5-T14.c、R5-T14.d、R5-T14.e。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T07.b.d.a 与 R1-T07.b.d.b）、R3、O、R2、E、R4、R5-T01 至 R5-T13、R5-T14.a、R5-T14.b、R5-T14.c、R5-T14.d、R5-T14.e、V-T01。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- **Vertex 渠道（V-T01）**：`api: google-vertex` 使用 pi-ai 1.5.0 的 `google-vertex` 适配器；`gemini-4-argon` 模型在 `data/channels.yaml` 与示例里，凭证、项目、区域只从 `.env` 的 `GOOGLE_APPLICATION_CREDENTIALS`、`GOOGLE_CLOUD_PROJECT`、`GOOGLE_CLOUD_LOCATION` 读取，服务账号 JSON 不进仓库；未设置时不影响现有渠道，`roles.writer` 保持 `main-fallback`。live 验证用 `DRAMATICER_VERTEX_LIVE=1` 运行 `packages/core/test/google-vertex.live.test.ts`。
 - **R5-T99 进行中**：`docs/dev/reports/R5.md` 第四至第七节已写好；第一至三节的统计数字仍来自 R5-T14.c 的 60 轮重跑，R5-T14.e 修复后的数据要等本轮重跑结束。重跑完成后必须回填统计版全部字段、`scene` 空输出数、`candidate_actions` 严格解析失败数、后台任务状态、偏好信号与导演机制命中。
-- 下一个任务仍是 R5-T99：重跑完成后核对 60 条 round 记录与两份报告，更新 `docs/dev/reports/R5.md`，把 TASKS 的 R5-T99 标 `[x]` 并写完成行，结果写 `MILESTONE_DONE`。重跑未完成时写 `PARTIAL` 并记录当前轮数。
+- 下一个任务仍是 R5-T99：重跑完成后核对 60 条 round 记录与两份报告，更新 `docs/dev/reports/R5.md`，把 TASKS 的 R5-T99 标 `[x]` 并写完成行，结果写 `MILESTONE_DONE`。重跑未完成时写 `PARTIAL` 并记录当前轮数。devloop 因 V-T01 暂停；提交后要带 `-MaxSessions 80` 重启。
 - v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（界面）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
-- 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045、ADR-0078、ADR-0079。
+- 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045、ADR-0078、ADR-0079、ADR-0080。
 - HUMAN-03 待处理（不阻塞）：抽查 `eval-private/evalset/spotcheck.md` 里的事件题。
-- HUMAN-12 待处理（不阻塞）：`data/channels.yaml` 的 `roles.judge` 指向 `judge`（`auto/glm-5.3`），`codex` 别名保留但未使用；是否保持由人类决定。
-- HUMAN-13 待处理（不阻塞）：`catie` 的 `rp`（`agy-gemini-3.8-flash-medium`）返回 503，影响 `roles.writer`；真实 60 轮试玩使用 `.devloop/scratch/R5-T14/channels.yaml`，其中 `roles.writer` 指向 `main-fallback`；`data/channels.yaml` 的 `roles.writer` 也已改为 `main-fallback`。凭证恢复后可用 `node scripts/r2-legacy-forgetting.mjs run-all --concurrency 3` 补齐 45 道失败题。
-- HUMAN-14 待处理（不阻塞）：用户当前的 TauriTavern 使用 `gemini-4-argon`（Vertex AI 服务账号）。本项目渠道只支持 OpenAI 兼容接口，不能直接复用该路由；如需 Gemini 4 作为正文模型，请提供一个 OpenAI 兼容端点与密钥变量。
+- HUMAN-12 已完成：人类确认保持 `judge`（`auto/glm-5.3`）作为裁判路由。
+- HUMAN-13 已关闭：人类决定不把 `writer` 改回 `rp`，继续用 `main-fallback`；凭证恢复后如需变更再提。
+- HUMAN-14 待处理（不阻塞）：Vertex 接口已加入；真实调用还需要人类把服务账号 JSON 导出到仓库外，并在 `.env` 设置 `GOOGLE_APPLICATION_CREDENTIALS`、`GOOGLE_CLOUD_PROJECT`、`GOOGLE_CLOUD_LOCATION`。
 - 数据库 schema 版本 33（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡、v25 合并调用开关与执行记录、v26 间隙档位阈值与丢弃状态、v27 合并调用丢弃条目、v28 回合模式与读取工具软上限、v29 开局包与故事级后台任务、v30 首楼开场候选、v31 偏好记录、v32 导演计划与拍状态、v33 导演候选行动）；R1 续原计划的 v32–v35 顺延为 v34–v37。
 
 ## 后台任务与队列

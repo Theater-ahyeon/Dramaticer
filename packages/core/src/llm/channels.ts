@@ -2,7 +2,10 @@ import { readFile, writeFile } from "node:fs/promises";
 import { parseDocument, parse as parseYaml } from "yaml";
 import { isJsonObject } from "../json.js";
 
-export type LlmChannelApi = "openai-completions" | "google-generative-ai";
+export type LlmChannelApi =
+	| "openai-completions"
+	| "google-generative-ai"
+	| "google-vertex";
 
 export type LlmProbeSupport = "supported" | "unsupported" | "unknown";
 
@@ -545,10 +548,16 @@ function parseModelTools(
 
 function parseApi(value: unknown, label: string): LlmChannelApi {
 	if (value === undefined) return "openai-completions";
-	if (value === "openai-completions" || value === "google-generative-ai") {
+	if (
+		value === "openai-completions" ||
+		value === "google-generative-ai" ||
+		value === "google-vertex"
+	) {
 		return value;
 	}
-	throw new Error(`${label} 只能是 openai-completions 或 google-generative-ai`);
+	throw new Error(
+		`${label} 只能是 openai-completions、google-generative-ai 或 google-vertex`,
+	);
 }
 
 function parseApiKey(

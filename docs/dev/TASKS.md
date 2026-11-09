@@ -982,3 +982,10 @@
 - [ ] **M7-T99 M7 验收** | 依赖：M7 全部任务
   做什么：打包产物在干净机器上启动并完成一轮对话；复核不变量；写报告。
   结果写 `MILESTONE_DONE`。
+
+## V：Vertex AI 渠道（人类请求，2026-11-09）
+
+- [x] **V-T01 加入 google-vertex 渠道** | 依赖：M1-T02 | 人类请求
+  完成：2026-11-09 `LlmChannelApi` 增加 `google-vertex`，`PiLlmChannel` 用 pi-ai 的 `google-vertex` 适配器并按 API 分派，渠道环境传给适配器；`channels.example.yaml` 与 `data/channels.yaml` 增加 `api: google-vertex` 的 `vertex` 渠道与 `gemini-4-argon` 模型（`baseUrl: https://{location}-aiplatform.googleapis.com`、`apiKey: ""` 走服务账号/ADC）；server 渠道更新接口与 web 渠道表单接受新 API；凭证、项目与区域从 `.env` 的 `GOOGLE_APPLICATION_CREDENTIALS`、`GOOGLE_CLOUD_PROJECT`、`GOOGLE_CLOUD_LOCATION` 读取；新增配置测试与 `DRAMATICER_VERTEX_LIVE=1` 才运行的 live 测试；ADR-0080；门禁通过（152 个测试文件、1312 个测试通过、4 个 live 跳过，共 1316 个）。
+  做什么：复用 pi-ai 1.5.0 的 `google-vertex` 适配器，增加 `google-vertex` 渠道 API；`apiKey` 为空时使用 ADC/服务账号；项目、区域与凭证路径只从 `.env` 读取；示例配置增加 Vertex 渠道与 Gemini 模型；服务端与 web 渠道表单接受新 API。
+  验收：配置解析接受 `google-vertex` 与空 `apiKey`；渠道适配器按 API 选择 Vertex；未设置 Google 环境变量时不影响现有渠道；`DRAMATICER_VERTEX_LIVE=1` 时能用服务账号跑通渠道体检；`pnpm check` 通过。
