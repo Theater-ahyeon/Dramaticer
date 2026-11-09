@@ -3,20 +3,20 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 会话 195：检查 R5-T14.a 的监督进程（2026-11-09 09:24Z）
-- 监督进程 pid 37352 存活，`supervisor.json` 的 `state` 是 `running`（`updatedAt` 09:19:00Z；该文件只在每次调用结束时刷新）。第 4 次试玩调用 09:19:02Z 开始，本会话检查时仍在运行。
-- 续跑文件 `eval-private/reports/r5-playtest.progress.json` 有 33 条 round 记录（轮次 1–33 各一条）、0 条 failure 记录。第 31–33 轮分别在 09:20:44Z、09:22:33Z、09:24:26Z 完成。
-- 第 31–33 轮没有操作，候选行动 `count: 0, visible: false`，导演都只由 `beat`（`beat-light-first`，`natural`）命中；`ledgerDiffCount` 全为 0。轮次记录里的后台积压为 `pending` 301、314、327，`running` 1、`failed` 4。
+- 会话 196：检查 R5-T14.a 的监督进程（2026-11-09 09:28Z）
+- 监督进程 pid 37352 存活，`supervisor.json` 的 `state` 是 `running`（`updatedAt` 09:19:00Z；该文件只在每次调用结束时刷新）。第 4 次试玩调用 09:19:02Z 开始（20 分钟预算，约 09:39Z 结束），本会话检查时仍在运行。
+- 续跑文件 `eval-private/reports/r5-playtest.progress.json` 有 35 条 round 记录（轮次 1–35 各一条）、0 条 failure 记录。第 31–35 轮分别在 09:20:44Z、09:22:33Z、09:24:26Z、09:26:17Z、09:28:06Z 完成。
+- 第 31–35 轮没有操作，候选行动 `count: 0, visible: false`，导演都只由 `beat`（`beat-light-first`，`natural`）命中；`ledgerDiffCount` 全为 0。轮次记录里的后台积压为 `pending` 301、314、327、340、353，`running` 1、`failed` 4。
 - 第 2 次调用（08:33:26Z 开始、08:58:37Z 结束，退出码 1）失败于 `round-20/user`：模拟用户连续 3 次没有输出合法的 `{message}`；监督进程按规则丢弃失败记录并重试，第 20 轮随后成功。
-- 排期里的六项操作在第 3–9 轮全部完成：swipe 第 3、7 轮，edit 第 4、8 轮，branch 第 5、9 轮。`optionAt` 第 6、10 轮没有记录任何操作（这两轮没有出现选项块）。第 10–33 轮没有操作。
-- 后台队列（`.devloop/scratch/R5-T14/live.db`，只读统计，故事 `e2e-92ce2226-4e09-423e-9784-7fbb1dc5f395`，09:24Z）：`pending=327`、`done=109`、`discarded=20`、`failed=4`、`running=1`。`done` 仍停在 08:39:20Z；`pending` 最旧的行创建于 08:23:50Z。按种类：`settle` 10 完成 / 26 待办，`scene` 6 完成 / 3 失败 / 26 待办，`candidate_actions` 7 完成 / 1 失败 / 1 运行中 / 26 待办，`events`、`summary`、`npc_agenda` 各 49 待办。
+- 排期里的六项操作在第 3–9 轮全部完成：swipe 第 3、7 轮，edit 第 4、8 轮，branch 第 5、9 轮。`optionAt` 第 6、10 轮没有记录任何操作（这两轮没有出现选项块）。第 10–35 轮没有操作。
+- 后台队列（`.devloop/scratch/R5-T14/live.db`，只读统计，故事 `e2e-92ce2226-4e09-423e-9784-7fbb1dc5f395`，09:28Z）：`pending=366`、`done=109`、`discarded=20`、`failed=4`、`running=1`。`done` 仍停在 08:39:20Z；`pending` 最旧的行创建于 08:23:50Z；`discarded` 最新一次丢弃在 09:28:16Z。按种类：`settle` 10 完成 / 29 待办，`scene` 6 完成 / 3 失败 / 29 待办，`candidate_actions` 7 完成 / 1 失败 / 1 运行中 / 29 待办，`events`、`summary`、`npc_agenda` 各 16 完成 / 55 待办。
 - **已定位根因**：`enqueueMissingBackgroundJobs`（`packages/core/src/store/story-store.ts:5077`）的 `confirmed`/`settled` 集合按 `SELECT id FROM nodes WHERE story_id = ?` 取整个故事的节点，没有按 head 路径过滤；已被 drain 丢弃的旧分支楼层任务每轮都被 `ON CONFLICT (node_id, kind) DO UPDATE … WHERE background_jobs.status = 'discarded'` 翻回 `pending`。这些行创建时间最早，`listBackgroundJobs` 按 `created_at ASC, id ASC` 加 `limit 20` 取待办，drain 每轮先把它们丢弃，当前路径上的任务永远轮不到。因此本次运行的候选行动、线索、结算与节拍推进都不能按已验证记录。R5-T14.c 负责修复，R5-T14.b 依赖它。
 - **新登记 R5-T14.d**：当前故事有一条 `candidate_actions`（`node_id` `1bb4dde0-8327-4410-a073-1af30c25e6b9`，`started_at` 08:12:45.729Z）停在 `running`。监督进程在 08:12:59Z 重新启动 server 后，drain 只取 `pending`，这条任务永不重试。修复要求见 TASKS。
-- 本会话没有启动第二个 server 或试玩，没有改代码；门禁沿用上次通过结果 `.devloop/gate.txt`（148 个测试文件通过、3 个跳过，1301 个通过、3 个 live 跳过）。
+- 本会话没有启动第二个 server 或试玩，没有改代码；门禁沿用上次通过结果 `.devloop/gate.txt`（148 个测试文件、1301 个通过、3 个 live 跳过）。
 
 ## 当前状态
 - 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T07.b.d.a 与 R1-T07.b.d.b）、R3、O、R2、E、R4、R5-T01 至 R5-T13。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- **R5-T14.a 正在进行，由会话外的监督进程执行**（2026-11-09 09:24Z：pid 37352，33/60 轮，0 条失败记录，第 4 次调用进行中）：
+- **R5-T14.a 正在进行，由会话外的监督进程执行**（2026-11-09 09:28Z：pid 37352，35/60 轮，0 条失败记录，第 4 次调用进行中）：
   - 状态文件 `.devloop/scratch/R5-T14/supervisor.json`；日志 `.devloop/scratch/R5-T14/supervisor.log`；续跑文件 `eval-private/reports/r5-playtest.progress.json`。
   - 会话只读状态：以 `supervisor.json` 的 `state` 为准，轮数以 `eval-private/reports/r5-playtest.progress.json` 里 `kind` 为 `round` 的 `records` 条目数为准（状态里的 `rounds` 只在每次调用结束时刷新）。`running` → 把当前轮数写进本文件并提交，结果 `PARTIAL`；`completed` → 核对 60 条 round 记录与两份报告，标记 `[x]`；`failed` → 读日志修复后重新启动监督进程。
   - 单轮失败时试玩会写一条 `kind: "failure"` 记录并以退出码 1 结束；监督进程累计连续失败次数，下一次调用会丢弃失败记录并重试该轮。第 20 轮的失败就是这样恢复的。连续失败超过 3 次或连续 3 次调用没有新增轮次时监督进程才进入 `failed`。
@@ -91,7 +91,7 @@
 - 聊天页、分支页、台账页、导演页、设置页与渠道页的手工冒烟脚本在 `.devloop/scratch/R5-T08`、`R5-T09`、`R5-T10`；`playwright-core` 在 `E:/agentcoding/node_modules` 可解析，Chromium 在 `%LOCALAPPDATA%/ms-playwright/chromium-1243/`。
 
 ## 下一步
-- **R5-T14.a**：先读 `.devloop/scratch/R5-T14/supervisor.json` 的 `state`，轮数以 `eval-private/reports/r5-playtest.progress.json` 里 `kind` 为 `round` 的 `records` 条目数为准（本次为 33/60，第 4 次调用进行中）。`running` 时只把当前轮数写进本文件、提交、结果写 `PARTIAL`，不要启动第二个 server 或试玩；`completed` 时核对续跑文件 60 条 round 记录、0 条 failure 记录与两份报告，标记 `[x]`；`failed` 时读 `supervisor.log` 修复后重新启动监督进程。
+- **R5-T14.a**：先读 `.devloop/scratch/R5-T14/supervisor.json` 的 `state`，轮数以 `eval-private/reports/r5-playtest.progress.json` 里 `kind` 为 `round` 的 `records` 条目数为准（本次为 35/60，第 4 次调用进行中）。`running` 时只把当前轮数写进本文件、提交、结果写 `PARTIAL`，不要启动第二个 server 或试玩；`completed` 时核对续跑文件 60 条 round 记录、0 条 failure 记录与两份报告，标记 `[x]`；`failed` 时读 `supervisor.log` 修复后重新启动监督进程。
 - **R5-T14.c**：修复 `enqueueMissingBackgroundJobs` 的路径过滤，补回归测试，然后按 60 轮重跑。第一步只改入队侧，不要改 drain 的丢弃规则；重跑前确认监督进程已退出、清空 `live.db` 与续跑文件。
 - **R5-T14.d**：在存储层新增 `requeueRunningBackgroundJobs`，server 与 `dramaticer work` 在第一次 drain 前调用；补模拟进程中断的回归测试。
 - **R5-T14.b**：核对统计版字段与 ADR-0033 口径（对比胜率、矛盾率、节拍余弦没有信号时保持「未证实」），在 `docs/dev/reports/R5.md` 引用统计版并写明模型别名、轮数与操作次数；重跑 `pnpm check`。第一次运行的数据在修复前产生，候选行动、线索、结算与节拍推进必须按「未证实」记录并在报告里写明原因与 R5-T14.c 的重跑结果。
