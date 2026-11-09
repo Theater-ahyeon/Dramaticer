@@ -34,6 +34,7 @@
 | H 应用内助手 | 待做 | 本文件 |
 | X 对比实验 | 待做 | 本文件 |
 | R6 效果门槛 | 待做 | 本文件 |
+| M6b 生图第二批 | 待做（R6 之后） | 本文件 |
 | M5 公开 alpha | 待做 | 本文件 |
 | M7 Tauri 打包 | 待做 | 本文件 |
 
@@ -461,7 +462,7 @@
 ## R4：Director v2
 
 - [x] **R4-T00 细化 R4 任务** | 依赖：R1-T99、R2-T99、R3-T99 | DESIGN §8
-  完成：2026-11-08 把 R4 拆成 R4-T01 至 R4-T08 与 R4-T99：计划存储与玩家编辑、后台规划器、短线层节拍选择、并入玩家消息、透明与盲盒模式、落拍检测、候选行动、`extensions.dramaticer` 扩展；M3 已实现的线索、事件池、NPC 议程、重复检测、节奏与 O 的开局导演不重复建任务；迁移 v32 存计划与拍状态、v33 存候选行动，R1 续原计划的 v32–v35 顺延为 v34–v37；ADR-0077；门禁通过（118 个测试文件、1038 个测试通过，3 个 live 跳过，共 1041 个）
+  完成：2026-11-08 把 R4 拆成 R4-T01 至 R4-T08 与 R4-T99：计划存储与玩家编辑、后台规划器、短线层节拍选择、并入玩家消息、透明与盲盒模式、落拍检测、候选行动、`extensions.dramaticer` 扩展；M3 已实现的线索、事件池、NPC 议程、重复检测、节奏与 O 的开局导演不重复建任务；迁移 v32 存计划与拍状态、v33 存候选行动，R1 续原计划的 v32–v35 顺延为 v35–v38（v34 留给生图表）；ADR-0077；门禁通过（118 个测试文件、1038 个测试通过，3 个 live 跳过，共 1041 个）
   做什么：把长线层（弧线、序列、后台规划器、玩家编辑）、短线层（当前拍、强度、纠偏信号、程序选择）、落拍检测、候选行动、注入玩家消息末尾、透明与盲盒模式、`extensions.dramaticer` 扩展拆成任务，写清依赖与验收；开局导演（O）已实现的机制不重复建任务。
   验收：任务清单可直接执行；`pnpm check` 通过。
 
@@ -775,14 +776,63 @@
 
 ## M6：生图第一批（ComfyUI 优先）
 
-> v3 路线（ADR-0044）：第一批排在最小界面之后，不再排在所有阶段之后。
+> v3 路线（ADR-0044）：第一批排在最小界面之后，R1 续之前完成。DESIGN §12 定义流程，ADR-0082 记录配置、存储与队列的决定。导演规则触发出图不在第一批；第一批跑过真实数据后另立任务。
 
-- [ ] **M6-T00 细化 M6 任务** | 依赖：R5-T99 | DESIGN §12
-  做什么：把第一批（ComfyUI API 格式 workflow 导入与插槽识别、`illustrate` 工具、图片块显示、角色视觉档案初版、异步任务队列与结果挂楼层）与第二批（NovelAI、Grok、OpenAI 兼容图像接口）拆成任务，写清依赖与验收；第一批在 R1 续之前完成。
+- [x] **M6-T00 细化 M6 任务** | 依赖：R5-T99 | DESIGN §12
+  完成：2026-11-09 把第一批分成 M6-T01 至 M6-T05 与 M6-T99（生图配置与 ComfyUI workflow 导入、视觉档案与提示词编译、`illustrate` 工具与异步队列、楼层图片显示与媒体接口、生图设置与 workflow 管理界面），第二批分成 M6b-T01 至 M6b-T03 与 M6b-T99 并排在 R6 之后；迁移 v34 预留给 `image_workflows`、`character_visual_profiles`、`node_images` 与 `story_settings.image_config`，R1 续的迁移编号顺延为 v35–v38；新增 ADR-0082、DESIGN §12 补充与 HUMAN-15（ComfyUI 启动与 workflow 文件）；门禁通过（148 个测试文件、1313 个测试通过，4 个 live 跳过）
+  做什么：把第一批（ComfyUI API 格式 workflow 导入与插槽识别、`illustrate` 工具、图片块显示、角色视觉档案初版、异步任务队列与结果附加到楼层）与第二批（NovelAI、Grok、OpenAI 兼容图像接口）分成任务，写清依赖与验收；第一批在 R1 续之前完成。
   验收：第一批任务可直接执行；第二批排在 R6 之后；`pnpm check` 通过。
 
-- [ ] **M6-T99 M6 第一批验收** | 依赖：M6-T01 至第一批全部任务
-  做什么：用真实 ComfyUI 跑通一张卡的开场图与一次剧情图，结果挂到楼层节点；核对失败重试、频率设置与图片块显示；写 `docs/dev/reports/M6.md`。
+- [ ] **M6-T01 生图配置、ComfyUI workflow 导入与插槽识别** | 依赖：R5-T99 | DESIGN §12 | ADR-0082
+  做什么：
+  - 新增 `packages/core/src/images/`。`config.ts` 解析 `data/images.yaml`（示例 `images.example.yaml`）：根 `providers`，第一版只接受 `api: comfyui`；字段 `baseUrl`、`apiKey`（空字符串或 `${VAR}` 引用）、`timeoutMs`（默认 300000）、`pollIntervalMs`（默认 1000）。文件不存在时返回空配置，生图功能关闭；未知 api、未知字段、非法 URL、非正数超时都抛出错误并指出字段路径。`${VAR}` 的解析复用渠道配置的同一套函数（提取成共享函数，不复制第二份规则）。
+  - 迁移 v34：新建 `image_workflows(id, name, provider, payload, slots, created_at, updated_at, UNIQUE(name))`、`character_visual_profiles(story_id, character, profile, source, created_at, updated_at, PRIMARY KEY(story_id, character))`、`node_images(id, story_id, node_id, ordinal, status, request, prompt, negative_prompt, workflow_id, seed, attempts, file_name, media_type, width, height, error, created_at, updated_at, UNIQUE(node_id, ordinal))`；`node_images` 的 story 与楼层一致由触发器拒绝；`status` 取 `pending`、`running`、`done`、`failed`；`story_settings` 增加可空的 `image_config` 列。R1 续的迁移编号从 v34–v37 顺延为 v35–v38，同步本文件里 R1 续的任务文字。
+  - `images/slots.ts`：`parseComfyUiWorkflow(value)` 校验 API 格式（每个节点有字符串 `class_type` 与对象 `inputs`）；`detectComfyUiSlots(workflow)` 跟随采样器的 `positive`、`negative` 与 `latent_image` 链接识别正向提示词、负向提示词、seed、width、height，返回 `{slots, candidates, unresolved}`；只有唯一候选时才自动采用，出现多个候选或找不到正向提示词与 seed 时返回候选并拒绝保存，要求显式插槽。`assertComfyUiSlots` 校验节点、输入存在与类型匹配。
+  - `images/comfyui.ts`：`createComfyUiClient(provider, { fetch })` 按插槽改写 workflow 的 `inputs`，`POST /prompt`，按 `pollIntervalMs` 轮询 `GET /history/<prompt_id>`，从 outputs 取第一张图，`GET /view?...` 下载；总超时、非 2xx、历史里的 `error` 与空输出都抛出错误并带 prompt id。重试由后台任务负责，客户端不重试。
+  - 存储层提供 workflow 的增删改查；`StoryStore` 导出接口。CLI `dramaticer images workflow import --file <路径> --name <名称> [--db] [--images] [--slots <json>]`、`list`、`show <id>`、`delete <id>`；导入时打印识别结果，有候选时必须给 `--slots`，不自动猜测。
+  - server 新增 `GET /api/images/providers`（只返回 provider id 与是否配置，不含密钥）、`GET /api/images/workflows`、`POST /api/images/workflows/detect`（请求体 `{workflow}`，只返回 `{slots, candidates, unresolved}`，不写入）、`POST /api/images/workflows/import`（请求体 `{name, workflow, slots}`，插槽未解析或指向不存在的节点时返回 400，`details.path` 为 `slots`）、`DELETE /api/images/workflows/:id`（被 `node_images` 引用时返回 409）；server 启动参数增加 `--images <路径>`（默认 `data/images.yaml`），缺失文件时接口返回空列表。
+  验收：合法 workflow 自动识别正向、负向、seed、width、height；负向与尺寸缺失时仍可保存；多采样器、找不到 seed、节点或输入不存在、输入类型不符各抛出错误并指出字段路径；同名导入更新同一行，未知 provider 拒绝；`detect` 只返回候选、不写库，`import` 在没有解析插槽时拒绝；删除被引用的 workflow 返回 409；`images.yaml` 缺失时生图功能关闭，未知字段与非法 `${VAR}` 抛出错误；迁移后三张表存在，跨故事的 `node_images` 写入被触发器拒绝；假 fetch 下 ComfyUI 客户端的提交、轮询、下载、超时与错误历史各有用例且零网络；`pnpm check` 通过。
+
+- [ ] **M6-T02 角色视觉档案与提示词编译** | 依赖：M6-T01、O-T01.a | DESIGN §12 | ADR-0082
+  做什么：
+  - `images/profiles.ts`：`CharacterVisualProfile` 含 `character`、`base`（基础外貌标签）、`defaultOutfit`、`outfitPath`（台账路径，可空）、`negative`、`seed`（可空）与 `backends`（第一版为空对象）；`validateVisualProfilePayload(value, knownNames)` 拒绝未知字段、空字符串、重复人物、空路径段、负 seed 与不在角色卡或实体里的人物；`parseVisualProfilesResponse(text, knownNames)` 要求 `{profiles:[...]}` 有 1 到 8 条。
+  - 后台任务 `visual_profile`（`VISUAL_PROFILE_JOB_KIND`）：`enqueue: story`、`tier: gap`，`needsRun` 为故事有角色卡或常驻世界书且档案表为空。输入是角色卡提示词、常驻世界书与已知人物名；模型输出按上面的严格 JSON 校验，整包拒绝；写入 `character_visual_profiles`，来源 `model`，同一人物重复执行覆盖、不新增行。导入卡后由创建与导入路由入队，和开局任务共用同一处调度。
+  - `images/prompt.ts`：纯函数 `compileImagePrompt({ profiles, state, request, style })`。`style: "tags"` 按基础外貌、当前服装、场景、镜头、气氛拼接去重后的逗号标签；当前服装从 `outfitPath` 读状态，读不到时用 `defaultOutfit`；负向合并角色负向标签与固定的默认负向常量。`style: "natural"` 用自然语言拼接，供第二批复用。没有档案的人物进入场景文本并记入返回的 `missingProfiles`，不报错。同一个输入重复编译逐字节相同，不读数据库、不调用模型。
+  - CLI `dramaticer images profiles --story <id> --db <路径> [--json] [--generate]`：列出档案；`--generate` 同步执行一次视觉档案任务，与后台任务共用处理器与校验。
+  - server 新增 `GET /api/stories/:id/visual-profiles`（只读，返回档案、来源与更新时间）；注册表注册 `visual_profile`，`dramaticer work` 与 server 的调度器自动带上。
+  验收：假客户端生成一包并入库；重复执行只覆盖不新增；非法人物名、空字符串、重复人物、未知字段、越界 seed 与空路径段各抛出错误并指出路径；没有卡与常驻世界书时不入队也不调用；两种提示词风格的固定断言通过，服装来自台账、缺档案的人物列进 `missingProfiles`；回合内后台客户端零调用；`pnpm check` 通过。
+
+- [ ] **M6-T03 `illustrate` 工具与异步出图队列** | 依赖：M6-T01、M6-T02、R1-T02.2、R3-T01、R5-T01 | DESIGN §11、§12 | ADR-0082 | I11
+  做什么：
+  - 故事设置新增 `imageConfig`（存 `story_settings.image_config`）：`mode` 取 `off`、`manual`、`auto`（默认 `off`），`workflowId`（默认空），`maxPerFloor`（1 到 4，默认 1），`minFloorsBetween`（0 到 100，默认 3）；`assertStorySettingsUpdate` 校验，`STORY_SETTINGS_UPDATE_KEYS` 收录，旧记录按默认值补齐。
+  - `images/tool.ts` 定义 `illustrate` 工具：参数 `{ characters?: string[], scene: string, shot?: "close-up"|"medium"|"wide"|"scenery", mood?: string }`，只允许这些键，`scene` 1 到 500 字，人物最多 4 个、名字非空；描述写明每楼上限、最小间隔与“只登记，后台生成”。只有 `mode` 为 `auto`、`workflowId` 指向存在的 workflow、workflow 的 provider 已配置时才把工具发给模型；`manual` 与 `off` 不发。
+  - `runModelTurns` 新增侧效应工具入口：工具定义参与两种传输，但不进入读取工具集合，不执行，参数随 `toolCalls` 返回；文本协议对已知侧效应工具返回“已登记”，未知工具仍然拒绝。Trace 的 `tools.calls` 记录 `illustrate` 的接受与拒绝原因。
+  - `generateAssistantTurn` 在写入助手楼层的同一个事务里处理 `illustrate` 调用：校验参数、按当前路径统计本楼与最近一次出图之间的助手楼层、应用 `maxPerFloor` 与 `minFloorsBetween`、写入 `node_images` 的 `pending` 行（`request` 存工具参数、`seed` 在此时生成、`workflow_id` 存当前 workflow）。被拒绝的调用不写行，原因写进 Trace 的 `images.rejected`；`node_images` 不修改楼层原文。
+  - 后台任务 `illustrate`（`ILLUSTRATE_JOB_KIND`）：`enqueue: story`、`tier: gap`、`needsRun` 为当前 head 路径上存在 `attempts < 3` 的 `pending` 行。处理器每次按创建顺序最多处理 `IMAGE_BATCH`（默认 2）行：读 workflow、provider 与楼层台账快照，用 `compileImagePrompt` 生成提示词，标 `running`，调用 provider，把文件写到 `<mediaDir>/<storyId>/<imageId>.<扩展名>`，读 PNG/GIF/WebP/JPEG 头得到宽高，写回 `done` 与文件元数据；失败时把该行 `attempts` 加一并保留原因，第三次失败标 `failed`，其余行继续。已完成的行不重复调用；不在当前路径上的行不处理。
+  - `dramaticer work` 与 server 注册处理器并传入 `mediaDir`（数据库文件同目录的 `images/`，可用 `--media-dir` 覆盖）与 `images.yaml`；没有 provider 或 workflow 时任务失败并保留原因，配置补上后按 `pending` 行继续。server 与 `dramaticer work` 启动时调用一次 `requeueRunningNodeImages`，把执行中途留下的 `running` 行退回 `pending`。
+  - 新增手动入口 `POST /api/nodes/:id/images`（当前路径上的助手楼层，`mode` 不是 `off`，workflow 已选）与 `POST /api/images/:id/retry`（`failed` 回到 `pending` 并清零 `attempts`），两者只入队，不调用图像后端；手动请求不受频率限制。CLI `dramaticer images generate --node <id> --scene <文本> [--characters a,b] [--db] [--images]`、`dramaticer images list --node <id>`。
+  - `ImageProviderClient` 抽象放在 `images/client.ts`，第一版只有 ComfyUI 实现；第二批按 provider 增加实现。
+  验收：工具只在配置完整且 `auto` 时出现；合法调用在楼层写入后产生 `pending` 行，参数非法、超过每楼上限、间隔不足、`mode` 为 `off` 或 `manual` 时被拒绝并写入 Trace，楼层照常保存；手动入口在 `manual` 与 `auto` 下可用、`off` 返回 409，`retry` 只接受 `failed` 行；假 provider 下两行依次完成、文件与宽高写入、已完成行不重复调用；provider 连续失败三次后该行 `failed` 并保留原因，其它行继续；模拟重启后遗留 `running` 行被重新执行；旧分支的 `pending` 行不被处理，切回后继续；出图不改楼层原文，图片行只出现在所属楼层；回合内图像后端零调用；`pnpm check` 通过。
+
+- [ ] **M6-T04 楼层图片显示与媒体接口** | 依赖：M6-T03、R5-T05.b、R5-T02 | DESIGN §6、§12 | ADR-0082
+  做什么：
+  - protocol：新增 `NodeImage`（`id`、`nodeId`、`ordinal`、`status`、`url`、`width`、`height`、`error`）与 `NodeImagesView`；`StoryPath` 的节点改为 `StoryPathNode`（`TimelineNode` 加 `images`），path 接口按返回的节点 id 一次查询图片并按 `ordinal` 排序，避免逐楼查询；`GET /api/nodes/:id/images` 返回同一结构，供轮询。
+  - server 新增 `GET /api/images/:id/file`：只读 `done` 行，从 `mediaDir` 解析文件名并确认仍在目录内，按 `media_type` 返回；未完成、失败、不存在与越界路径都返回 404，不返回文件系统路径。
+  - web：聊天页楼层正文后显示图片区；`done` 显示缩略图，点击放大（复用现有图片放大样式），`pending` 与 `running` 显示“正在生成插图……”，`failed` 显示原因与“重试”按钮（调用 retry 接口）。楼层图片不进入块渲染器，不修改块原文；`图片` 块继续按现有沙箱模板显示。
+  - 轮询：回合完成后如果最新楼层有未完成图片，按 2 秒间隔最多 15 次调用 `GET /api/nodes/:id/images`，把结果并入路径状态；离开页面或切换故事时停止。新增 `chat/node-images.ts` 纯逻辑（状态合并、是否需要轮询、失败重试）与测试。
+  验收：path 返回的每个楼层带按 `ordinal` 排序的图片，`url` 只在 `done` 时出现，图片查询次数与楼层数无关；媒体接口需要登录，未完成与越界路径不返回文件；聊天页在假 provider 下从占位变为图片，失败显示原因且重试后重新出现占位；放大与移动端布局正常，390×844 无横向溢出；图片不出现在楼层原文与 `parseBlocks` 结果里；纯逻辑测试覆盖合并与轮询停止；`pnpm check` 通过。
+
+- [ ] **M6-T05 生图设置与 workflow 管理界面** | 依赖：M6-T01、M6-T03、M6-T04、R5-T09 | DESIGN §12 | ADR-0082
+  做什么：
+  - 故事页新增“生图”面板（路由与导航与现有六个面板并列）：上半是 provider 状态（ComfyUI 是否配置、地址只读显示）与 workflow 列表；导入入口读取本地 JSON 文件，先调用 `POST /api/images/workflows/detect` 显示自动识别的插槽与候选，用户用下拉框确认正向提示词、负向提示词、seed、width、height 后调用 `import` 保存；删除只允许没有被 `node_images` 引用的 workflow，409 时显示原因；界面不显示密钥值。
+  - 同一面板显示角色视觉档案（人物、基础外貌、默认服装、来源）与“重新生成”按钮（新增 `POST /api/stories/:id/visual-profiles/generate`，只入队，不阻塞请求）；档案只在没有记录时自动生成，手动按钮覆盖。
+  - 故事设置表单增加生图配置：`mode`（关闭、手动、自动）、workflow 下拉、`maxPerFloor`（1–4）、`minFloorsBetween`（0–100）；保存前按 core 同一套范围校验，服务端错误路径翻成中文；`mode` 不是关闭而 workflow 为空时显示字段错误。设置写入 `PUT /api/stories/:id/settings`。
+  - 纯逻辑放在 `packages/web/src/chat/image-form.ts`：workflow 草稿、插槽校验、设置草稿与范围校验、服务端字段路径映射；测试覆盖。
+  验收：导入合法 workflow 后识别结果可见，候选插槽必须确认才能保存，保存后刷新仍在；删除被引用的 workflow 返回 409 并显示原因；生图设置保存后下一回合的工具可见性与频率生效；关闭模式后工具不再出现；视觉档案可查看与重新生成；界面不出现密钥；纯逻辑测试覆盖表单与插槽校验；`pnpm check` 通过。
+
+- [ ] **M6-T99 M6 第一批验收** | 依赖：M6-T01、M6-T02、M6-T03、M6-T04、M6-T05 | HUMAN-15
+  做什么：用真实 ComfyUI 跑通一张卡的开场图与一次剧情图，结果附加到楼层节点；核对失败重试、频率设置与图片块显示；写 `docs/dev/reports/M6.md`。
+  验收：真实 ComfyUI 下工具调用登记后生成图片并附加到正确楼层，记录实际耗时；图片不进入楼层原文；失败重试与手动重试可用；频率设置改变后超出的调用被拒绝并写入 Trace；聊天页与生图面板可用；统计版报告不含密钥与私有原文；`pnpm check` 与 `pnpm e2e` 通过。
   结果写 `MILESTONE_DONE`。
 
 ## R1 续：记忆增强（由长对话评测与工程证据决定）
@@ -791,7 +841,7 @@
 
 - [ ] **R1-T03.a 父子分块** | 依赖：M2-T08、M2-T10、R5-T99 | DESIGN §7.3 | ADR-0044
   做什么：
-  - 迁移 v34 给 `chunks` 增加父段字段（`parent_ordinal`、`parent_text`）：父段按段落边界切分，过长的段落退化为整楼；检索只匹配小块，命中后返回父段文本。
+  - 迁移 v35 给 `chunks` 增加父段字段（`parent_ordinal`、`parent_text`）：父段按段落边界切分，过长的段落退化为整楼；检索只匹配小块，命中后返回父段文本。
   - 打开数据库时按新规则重建块，旧块与对应向量一并删除；`embeddings` 任务随后补齐缺失向量。回填可重复执行，不产生重复块。
   - `searchChunks` 与 `searchVectors` 返回父段文本；多路融合按楼层去重时保留父段文本，Trace 记录注入的是整段还是整楼。先读 R2-T09 与 R5-T14 的报告，决定是否默认开启。
   验收：小块命中后返回父段；同一父段多个小块只占一个结果位次；回填重复运行后块数不变；旧向量被清理且不参与查询；开关关闭时与现状逐条一致；`pnpm check` 通过。
@@ -813,7 +863,7 @@
 
 - [ ] **R1-T05 八段式章节压缩** | 依赖：M2-T06、R1-T01、R1-T04.b | DESIGN §7.3 | ADR-0044
   做什么：
-  - 迁移 v35 新增 `chapter_compressions(id, story_id, level, start_node_id, end_node_id, sections, token_count, created_at)`，`level` 取 `chapter` 或 `mainline`，同一故事、级别、起止节点唯一；`sections` 存 JSON，键固定为 `剧情脉络`、`人物档案`、`关系网`、`世界与设定`、`物品与资源`、`伏笔与约定`、`当前情况`、`用户意志`。
+  - 迁移 v36 新增 `chapter_compressions(id, story_id, level, start_node_id, end_node_id, sections, token_count, created_at)`，`level` 取 `chapter` 或 `mainline`，同一故事、级别、起止节点唯一；`sections` 存 JSON，键固定为 `剧情脉络`、`人物档案`、`关系网`、`世界与设定`、`物品与资源`、`伏笔与约定`、`当前情况`、`用户意志`。
   - 后台任务 `compression`：每 `chapterSize`（默认 20）个已确认助手楼层生成一条章节压缩，输入为窗口原文与上一份压缩；每 5 条章节压缩生成一条主线压缩，输入为最近 5 条章节压缩。八个键必须齐全，值为字符串；缺键或类型不符整条拒绝并记录原因。
   - 有效性与 M2-T06 一致：起止节点都在当前路径上且起点在终点之前；重复执行不产生重复行；空窗口不调用模型。
   - 槽位提供者按预算注入主线与最近章节压缩，用户意志段永远保留；Trace 来源写 `compression:<level>`。
@@ -821,7 +871,7 @@
 
 - [ ] **R1-T06 后台预筛世界书** | 依赖：M2-T13、R1-T02、R1-T05 | DESIGN §7.3、§9 | ADR-0044
   做什么：
-  - 迁移 v36 新增 `lore_prefilter(node_id PRIMARY KEY, story_id, entry_ids, created_at)`；`entry_ids` 存 JSON 数组。
+  - 迁移 v37 新增 `lore_prefilter(node_id PRIMARY KEY, story_id, entry_ids, created_at)`；`entry_ids` 存 JSON 数组。
   - 后台任务 `lore_prefilter`：回合落定后，用本轮用户消息、最近一条压缩摘要与下一拍方案构造查询；先用 BM25 取前 `prefilterLimit`（默认 20）条非恒常 lore，再由后台模型判断相关性并写入当前 head 楼层的预筛结果；恒常条目永远保留。
   - 下一轮组装时 `createLoreSlotProvider` 优先读当前 head 的预筛结果，没有记录时退回关键词与实体命中；回合内不调用模型。
   - 重复执行覆盖同一 `node_id`，不新增行；分支切换后只使用当前路径上的预筛结果。
@@ -829,7 +879,7 @@
 
 - [ ] **R1-T08 上下文包复用** | 依赖：R1-T02.a、R1-T03.a、R1-T06、M2-T12 | DESIGN §7.3、§9 | ADR-0044
   做什么：
-  - 迁移 v37 新增 `context_packs(node_id PRIMARY KEY, story_id, payload, created_at)`；`payload` 存检索结果、预筛世界书条目 id、现场分析引用与台账快照版本。
+  - 迁移 v38 新增 `context_packs(node_id PRIMARY KEY, story_id, payload, created_at)`；`payload` 存检索结果、预筛世界书条目 id、现场分析引用与台账快照版本。
   - 第一次生成玩家楼层的回复时组装上下文并写入上下文包；swipe 与重新生成同一楼层直接读包，不重新检索、不重新调用 embedding 或预筛；包不存在时按现有路径组装并写入。
   - 玩家编辑输入产生新楼层，不继承旧包；包引用的条目被删或分析楼层不在当前路径时视为不存在，重新组装。
   - 包本身不触发模型调用；回合内只读，回合外只准备下一轮能提前准备的部分。
@@ -963,6 +1013,35 @@
 - [ ] **R6-T99 R6 验收** | 依赖：R6 全部任务
   做什么：按预注册门槛运行 B0、B1 对比（必要时按 HUMAN 流程申请 B2）；逐项判定；未达标时列出改进任务与重评结果；把结论写入 `docs/dev/SCOREBOARD.md` 与 `docs/dev/reports/R6.md`；确认 P3–P5 与 M5 任务。
   结果写 `MILESTONE_DONE` 或 `PARTIAL`。
+
+## M6b：生图第二批（排在 R6 之后）
+
+> DESIGN §12 的第二批。共用 M6 第一批的 `ImageProviderClient`、`images.yaml`、`node_images` 与显示路径，只增加后端适配与各自的参数。迁移编号在第一批之后继续顺延。
+
+- [ ] **M6b-T01 OpenAI 兼容图像接口** | 依赖：R6-T99、M6-T99、M6-T01 | DESIGN §12 | ADR-0082
+  做什么：
+  - `images.yaml` 的 `providers` 接受 `api: openai-images`：`baseUrl`、`apiKey`、`model`、`size`、`quality`（可空）、`timeoutMs`；请求 `POST /v1/images/generations`，读取 `b64_json` 或下载 `url`；自然语言提示词由 `compileImagePrompt(..., style: "natural")` 生成；响应与错误映射成统一的 `GeneratedImage`。
+  - 视觉档案的 `backends.openai` 可以附带额外正向与负向文字；没有时只用基础外貌与服装。图片仍写 `node_images` 与 `mediaDir`，显示与重试复用第一批。
+  - 假 HTTP 覆盖成功、`url` 下载、空响应、非 2xx 与超时；真实调用放 `*.live.test.ts`，只有设置对应环境变量时运行；`images.example.yaml` 补示例，不新增依赖。
+  验收：假 HTTP 下生成一张图并附加到楼层；`b64_json` 与 `url` 两种响应都可用；空响应、非 2xx、超时各按行失败并保留原因；提示词是自然语言；没有配置时不向模型提供出图工具；`pnpm check` 通过。
+
+- [ ] **M6b-T02 Grok 图像接口** | 依赖：M6b-T01 | DESIGN §12 | ADR-0082
+  做什么：
+  - `providers` 接受 `api: grok-images`：`baseUrl`、`apiKey`、`model`、`size`；请求 xAI 的图像生成接口，响应里的 `b64_json` 或 `url` 交给 M6b-T01 的同一套解析；提示词风格为自然语言。
+  - 与 `openai-images` 的请求差异只在地址、模型与更少的参数；真实调用放在 live 测试，默认跳过；示例配置补一个关闭的条目。
+  验收：假 HTTP 下与 OpenAI 兼容接口产出相同的 `GeneratedImage`；参数映射与错误原因正确；未配置时不影响其他后端；`pnpm check` 通过。
+
+- [ ] **M6b-T03 NovelAI 图像接口** | 依赖：R6-T99、M6-T99、M6-T01 | DESIGN §12 | ADR-0082
+  做什么：
+  - `providers` 接受 `api: novelai`：`baseUrl`、`apiKey`、`model`、`sampler`、`steps`、`scale`、`width`、`height`；请求 NovelAI 的生成接口，响应是 ZIP，需要解压取第一张 PNG。新增 ZIP 读取依赖（候选 `fflate`），在 `docs/dev/DEPENDENCIES.md` 登记理由并写进 ADR。
+  - 提示词用标签式：`compileImagePrompt` 产出正向与负向；视觉档案的 `backends.novelai` 提供角色专属提示词（`characters`）与 `uc`，有多个人物时按 NovelAI 的多人物格式拼接，超过 3 人退化为普通标签并在元数据里记原因。
+  - 假 HTTP 用固定 ZIP fixture 覆盖成功、空 ZIP、损坏 ZIP 与非 2xx；真实调用放 live 测试，默认跳过；示例配置补一个关闭的条目。
+  验收：假 HTTP 下解压出 PNG 并附加到楼层；角色专属提示词与负向进入请求；空与损坏 ZIP 按行失败并保留原因；未配置时不影响其他后端；`pnpm check` 通过。
+
+- [ ] **M6b-T99 M6 生图第二批验收** | 依赖：M6b-T01、M6b-T02、M6b-T03
+  做什么：用三个后端的假 HTTP 各生成一张图并附加到楼层；在有人类额度时用真实渠道各跑一次并记录耗时与失败；核对提示词风格、频率设置、失败重试与显示；写 `docs/dev/reports/M6b.md`。
+  验收：三个后端都能出图且显示路径一致；真实调用有结果或明确记录未申请；统计版报告不含密钥与私有原文；`pnpm check` 通过。
+  结果写 `MILESTONE_DONE`。
 
 ## M5：公开 alpha——由 M5-T00 细化，排在 R6 与 P3/P4 之后
 
