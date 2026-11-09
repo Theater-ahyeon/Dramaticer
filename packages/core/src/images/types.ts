@@ -1,3 +1,4 @@
+import { normalizeEntityName } from "../entity.js";
 import { assertPlainObject, rejectUnknownKeys } from "../json.js";
 import type { ComfyUiSlots, ComfyUiWorkflow } from "./slots.js";
 
@@ -165,7 +166,7 @@ export function assertUniqueVisualProfiles(
 ): void {
 	const seen = new Map<string, number>();
 	profiles.forEach((profile, index) => {
-		const key = profile.character.toLowerCase();
+		const key = normalizeEntityName(profile.character);
 		const first = seen.get(key);
 		if (first !== undefined) {
 			throw new Error(

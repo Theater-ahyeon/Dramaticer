@@ -794,7 +794,8 @@
   - server 新增 `GET /api/images/providers`（只返回 provider id 与是否配置，不含密钥）、`GET /api/images/workflows`、`POST /api/images/workflows/detect`（请求体 `{workflow}`，只返回 `{slots, candidates, unresolved}`，不写入）、`POST /api/images/workflows/import`（请求体 `{name, workflow, slots}`，插槽未解析或指向不存在的节点时返回 400，`details.path` 为 `slots`）、`DELETE /api/images/workflows/:id`（被 `node_images` 引用时返回 409）；server 启动参数增加 `--images <路径>`（默认 `data/images.yaml`），缺失文件时接口返回空列表。
   验收：合法 workflow 自动识别正向、负向、seed、width、height；负向与尺寸缺失时仍可保存；多采样器、找不到 seed、节点或输入不存在、输入类型不符各抛出错误并指出字段路径；同名导入更新同一行，未知 provider 拒绝；`detect` 只返回候选、不写库，`import` 在没有解析插槽时拒绝；删除被引用的 workflow 返回 409；`images.yaml` 缺失时生图功能关闭，未知字段与非法 `${VAR}` 抛出错误；迁移后三张表存在，跨故事的 `node_images` 写入被触发器拒绝；假 fetch 下 ComfyUI 客户端的提交、轮询、下载、超时与错误历史各有用例且零网络；`pnpm check` 通过。
 
-- [ ] **M6-T02 角色视觉档案与提示词编译** | 依赖：M6-T01、O-T01.a | DESIGN §12 | ADR-0082
+- [x] **M6-T02 角色视觉档案与提示词编译** | 依赖：M6-T01、O-T01.a | DESIGN §12 | ADR-0082
+  完成：2026-11-09 补上视觉档案的字段、响应、任务、提示词与入口测试（`visual-profiles.test.ts` 14 个、`image-prompt.test.ts` 8 个、`images-cli.test.ts` 新增 1 个、server 路由 2 个）；重复人物比较改用 `normalizeEntityName`，忽略大小写与标点；导入卡路由断言入队 `visual_profile`；门禁通过（156 个测试文件、1375 个测试）
   做什么：
   - `images/profiles.ts`：`CharacterVisualProfile` 含 `character`、`base`（基础外貌标签）、`defaultOutfit`、`outfitPath`（台账路径，可空）、`negative`、`seed`（可空）与 `backends`（第一版为空对象）；`validateVisualProfilePayload(value, knownNames)` 拒绝未知字段、空字符串、重复人物、空路径段、负 seed 与不在角色卡或实体里的人物；`parseVisualProfilesResponse(text, knownNames)` 要求 `{profiles:[...]}` 有 1 到 8 条。
   - 后台任务 `visual_profile`（`VISUAL_PROFILE_JOB_KIND`）：`enqueue: story`、`tier: gap`，`needsRun` 为故事有角色卡或常驻世界书且档案表为空。输入是角色卡提示词、常驻世界书与已知人物名；模型输出按上面的严格 JSON 校验，整包拒绝；写入 `character_visual_profiles`，来源 `model`，同一人物重复执行覆盖、不新增行。导入卡后由创建与导入路由入队，和开局任务共用同一处调度。

@@ -2,7 +2,12 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { runImagesCli } from "../src/images/cli.js";
-import { StoryStore } from "../src/index.js";
+import {
+	type LlmChannelsConfig,
+	type LlmClient,
+	type LlmResult,
+	StoryStore,
+} from "../src/index.js";
 
 const IMAGES_YAML = `providers:
   comfy:
@@ -10,6 +15,78 @@ const IMAGES_YAML = `providers:
     baseUrl: http://127.0.0.1:8188
     apiKey: ""
 `;
+
+function channelsConfig(): LlmChannelsConfig {
+	const channel = {
+		id: "background",
+		api: "openai-completions" as const,
+		baseUrl: "http://localhost:1234",
+		apiKey: "",
+		requestsPerMinute: 0,
+		maxRetries: 0,
+		retryBaseDelayMs: 0,
+		timeoutMs: 1_000,
+	};
+	return {
+		channels: new Map([["background", channel]]),
+		models: new Map([
+			[
+				"background",
+				{
+					alias: "background",
+					id: "fake-model",
+					channels: ["background"],
+					contextWindow: 8_192,
+					maxTokens: 1_024,
+					reasoning: true,
+					enabled: true,
+					tools: null,
+					probe: null,
+				},
+			],
+		]),
+		roles: new Map(),
+		embeddings: new Map(),
+	};
+}
+
+function llmResult(text: string): LlmResult {
+	return {
+		text,
+		reasoning: "",
+		toolCalls: [],
+		finishReason: "stop",
+		stopReason: "stop",
+		model: "fake-model",
+		channel: "fake-channel",
+		usage: {
+			promptTokens: null,
+			completionTokens: null,
+			totalTokens: null,
+			reasoningTokens: null,
+			cachedTokens: null,
+		},
+		raw: null,
+		cached: false,
+		attempts: 1,
+		rounds: 1,
+		truncation: null,
+		continuation: null,
+	};
+}
+
+function seedProfileStory(dbPath: string): void {
+	const store = StoryStore.open(dbPath);
+	try {
+		store.createStory({ id: "s1", title: "视觉档案" });
+		store.updateStorySettings("s1", {
+			cardName: "凛",
+			characterPrompt: "凛是图书委员，黑长直，常穿深蓝校服。",
+		});
+	} finally {
+		store.close();
+	}
+}
 
 function workflowRaw(secondSampler = false): unknown {
 	const raw: Record<string, unknown> = {
@@ -216,5 +293,61 @@ describe("runImagesCli", () => {
 				deps(context),
 			),
 		).rejects.toThrow(/没有配置图像 provider/);
+	});
+
+	it("profiles 列出档案，--generate 与后台任务共用处理器", async () => {
+		const context = setup();
+		seedProfileStory(context.dbPath);
+		let calls = 0;
+		const client: LlmClient = {
+			async complete() {
+				calls += 1;
+				return llmResult(
+					JSON.stringify({
+						profiles: [
+							{
+								character: "凛",
+								base: ["黑长直", "红瞳"],
+								defaultOutfit: "深蓝校服",
+							},
+						],
+					}),
+				);
+			},
+		};
+		const profileDeps = {
+			...deps(context),
+			loadChannelsConfig: async () => channelsConfig(),
+			createClient: () => client,
+		};
+
+		const empty = await runImagesCli(
+			["images", "profiles", "--story", "s1", "--db", context.dbPath],
+			profileDeps,
+		);
+		expect(empty.profiles).toEqual([]);
+		expect(context.logs.join("\n")).toContain("还没有视觉档案");
+		expect(calls).toBe(0);
+
+		context.logs.length = 0;
+		const generated = await runImagesCli(
+			[
+				"images",
+				"profiles",
+				"--story",
+				"s1",
+				"--db",
+				context.dbPath,
+				"--generate",
+				"--json",
+			],
+			profileDeps,
+		);
+		expect(calls).toBe(1);
+		expect(generated.profiles).toHaveLength(1);
+		expect(generated.profiles[0]?.source).toBe("model");
+		expect(generated.profiles[0]?.profile.base).toEqual(["黑长直", "红瞳"]);
+		const logged = JSON.parse(context.logs[0] ?? "[]") as unknown[];
+		expect(logged).toHaveLength(1);
 	});
 });

@@ -6,6 +6,7 @@ import type {
 	ImageProvidersView,
 	ImageWorkflowDetectionView,
 	ImageWorkflowsView,
+	StoryVisualProfilesView,
 } from "@dramaticer/protocol";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { type RunningServer, startServer } from "../src/index.js";
@@ -275,5 +276,62 @@ describe("生图接口", () => {
 		expect(((await response.json()) as ImageProvidersView).providers).toEqual(
 			[],
 		);
+	});
+
+	it("visual-profiles 返回档案、来源与更新时间，缺失故事 404", async () => {
+		const { running } = await startImagesServer();
+		running.store.createStory({ id: "s1", title: "测试" });
+		const timestamp = "2026-11-09T00:00:00.000Z";
+		running.store.saveCharacterVisualProfiles({
+			storyId: "s1",
+			source: "model",
+			createdAt: timestamp,
+			updatedAt: timestamp,
+			profiles: [
+				{
+					character: "凛",
+					base: ["黑长直"],
+					defaultOutfit: "深蓝校服",
+					outfitPath: ["character", "凛", "outfit"],
+					negative: ["眼镜"],
+					seed: 42,
+					backends: {},
+				},
+			],
+		});
+
+		const response = await request(
+			running.origin,
+			"/api/stories/s1/visual-profiles",
+		);
+		expect(response.status).toBe(200);
+		const view = (await response.json()) as StoryVisualProfilesView;
+		expect(view).toEqual({
+			storyId: "s1",
+			profiles: [
+				{
+					storyId: "s1",
+					character: "凛",
+					profile: {
+						character: "凛",
+						base: ["黑长直"],
+						defaultOutfit: "深蓝校服",
+						outfitPath: ["character", "凛", "outfit"],
+						negative: ["眼镜"],
+						seed: 42,
+						backends: {},
+					},
+					source: "model",
+					createdAt: timestamp,
+					updatedAt: timestamp,
+				},
+			],
+		});
+
+		const missing = await request(
+			running.origin,
+			"/api/stories/missing/visual-profiles",
+		);
+		expect(missing.status).toBe(404);
 	});
 });

@@ -1,7 +1,10 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { crc32, deflateSync } from "node:zlib";
-import { DEFAULT_DIRECTOR_CONFIG } from "@dramaticer/core";
+import {
+	DEFAULT_DIRECTOR_CONFIG,
+	VISUAL_PROFILE_JOB_KIND,
+} from "@dramaticer/core";
 import type {
 	ApiErrorResponse,
 	ImportStoryResult,
@@ -239,6 +242,13 @@ describe("导入接口", () => {
 		expect(running.store.listLoreEntries("story-1")).toHaveLength(2);
 		expect(running.store.listEventPool("story-1")).toHaveLength(1);
 		expect(running.store.listNpcAgendas("story-1")).toHaveLength(1);
+		const profileJobs = running.store.listBackgroundJobs({
+			storyId: "story-1",
+			kinds: [VISUAL_PROFILE_JOB_KIND],
+		});
+		expect(profileJobs).toHaveLength(1);
+		expect(profileJobs[0]?.nodeId).toBeNull();
+		expect(profileJobs[0]?.status).toBe("pending");
 
 		const second = await post(running.origin, "/api/stories/story-1/import", {
 			card: { format: "json", data: JSON.stringify(cardData) },

@@ -3,17 +3,16 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-09 会话 260：修复门禁。会话 257 的 autosave（`b394afb`）写完了 M6-T02 的大部分实现，但 `packages/server/src/routes.ts` 调用了未定义的 `handleStoryVisualProfiles`，类型检查失败，另有 6 处 biome 格式与 import 顺序问题。本会话补上该处理器（`requireStory` + `listCharacterVisualProfiles` + `StoryVisualProfilesView`），按 biome 输出手工修正格式；未改动实现逻辑。门禁通过：154 个测试文件、1351 个测试、4 个 live 跳过。
+- 2026-11-09 会话 261：完成 M6-T02（角色视觉档案与提示词编译）。补上三类测试：`packages/core/test/visual-profiles.test.ts`（14 个，字段与人物校验、响应解析、后台任务、覆盖写入、入队条件、注册档位）、`packages/core/test/image-prompt.test.ts`（8 个，两种风格的固定断言、服装来自台账、缺档案的人物、逐字节稳定、请求校验）、`packages/core/test/images-cli.test.ts` 新增 `profiles --generate` 用例、`packages/server/test/images.test.ts` 新增读取接口与 404 用例、`packages/server/test/stories.test.ts` 断言导入卡后入队 `visual_profile`。测试发现重复人物比较只折叠大小写，已改为 `normalizeEntityName`，与别名判定使用同一套规范化。门禁通过：156 个测试文件、1375 个测试、4 个 live 跳过。
+- 会话 260：修复门禁。会话 257 的 autosave（`b394afb`）写完了 M6-T02 的大部分实现，但 `packages/server/src/routes.ts` 调用了未定义的 `handleStoryVisualProfiles`，类型检查失败，另有 6 处 biome 格式与 import 顺序问题。补上该处理器（`requireStory` + `listCharacterVisualProfiles` + `StoryVisualProfilesView`），按 biome 输出手工修正格式；未改动实现逻辑。
 - 会话 257：autosave 写入 M6-T02 的 `images/profiles.ts`、`images/prompt.ts`、视觉档案类型与存储方法、`images profiles` CLI、`visual_profile` 注册、`GET /api/stories/:id/visual-profiles` 路由与创建/导入后的入队，但没有测试，任务仍是 `[ ]`，并且门禁失败。
 - 会话 256：完成 M6-T01。新增 `packages/core/src/images/`（`images.yaml` 解析、共享 `${VAR}` 解析、ComfyUI workflow 校验与插槽识别、ComfyUI 客户端、导入辅助与 CLI）；迁移 v34 建 `image_workflows`、`character_visual_profiles`、`node_images` 并给 `story_settings` 增加 `image_config`；`StoryStore` 增加 workflow 增删改查与引用计数；server 增加生图接口与 `--images` 启动参数；同步 `images.example.yaml`、协议类型与 `DEPENDENCIES.md`。
 - 会话 255：完成 M6-T00，把生图第一批分成 M6-T01 至 M6-T05 与 M6-T99，第二批分成 M6b-T01 至 M6b-T03 与 M6b-T99（排在 R6 之后）；写入 ADR-0082、DESIGN §12 的配置与队列补充、HUMAN-15；R1 续的迁移编号顺延为 v35–v38。
 - 会话 254：完成 R5-T99，60 轮重跑跑满 60/60、0 条失败，R5 报告与 TASKS 已回填最终数据库数字。
-- 会话 236（V-T01）：按人类请求加入 Vertex AI 渠道（ADR-0080），`LlmChannelApi` 增加 `google-vertex`，`channels.example.yaml` 与 `data/channels.yaml` 增加 `vertex` 渠道和 `gemini-4-argon` 模型，凭证、项目、区域只从 `.env` 的三个 `GOOGLE_*` 变量读取。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T07.b.d.a 与 R1-T07.b.d.b）、R3、O、R2、E、R4、R5 全部（含 R5-T99）、V-T01、M6-T00、M6-T01。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- **下一个任务：M6-T02 角色视觉档案与提示词编译（补测试与验收）**，依赖 M6-T01（已满足）与 O-T01.a。任务细节在 `docs/dev/TASKS.md` 的 M6 节，设计依据是 DESIGN §12 与 ADR-0082。
-- M6-T02 的实现已经在 HEAD（会话 257 的 autosave，本会话补上缺失的处理器）：`images/types.ts` 的档案校验、`images/profiles.ts` 的后台任务与入队、`images/prompt.ts` 的 `compileImagePrompt`、`StoryStore` 的三个视觉档案方法、`images profiles` CLI、`visual_profile` 注册、`GET /api/stories/:id/visual-profiles` 与创建/导入后的入队都已存在，但**没有任何测试**。下一个会话按验收标准补 `packages/core/test/visual-profiles.test.ts`、`packages/core/test/image-prompt.test.ts`、server 路由测试与 CLI 测试，遇到实现缺陷就地修正。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T07.b.d.a 与 R1-T07.b.d.b）、R3、O、R2、E、R4、R5 全部（含 R5-T99）、V-T01、M6-T00、M6-T01、M6-T02。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- **下一个任务：M6-T03 `illustrate` 工具与异步出图队列**，依赖 M6-T01、M6-T02、R1-T02.2、R3-T01、R5-T01（全部满足）。任务细节与验收在 `docs/dev/TASKS.md` 的 M6 节，设计依据是 DESIGN §11、§12 与 ADR-0082。
 - v3 阶段顺序：R5（已完成）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → M6b 生图第二批 → P3/P4 → M5 → P5 → M7。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045、ADR-0078、ADR-0079、ADR-0080、ADR-0082。
 - HUMAN-03 待处理（不阻塞）：抽查 `eval-private/evalset/spotcheck.md` 里的事件题。
@@ -23,24 +22,25 @@
 - 数据库 schema 版本 34（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡、v25 合并调用开关与执行记录、v26 间隙档位阈值与丢弃状态、v27 合并调用丢弃条目、v28 回合模式与读取工具上限、v29 开局包与故事级后台任务、v30 首楼开场候选、v31 选择记录、v32 导演计划与拍状态、v33 导演候选行动、v34 生图表）。R1 续使用 v35–v38。
 
 ## M6 生图第一批
-- 顺序：M6-T01（已完成）→ M6-T02（实现已有、测试待补）→ M6-T03 → M6-T04 → M6-T05 → M6-T99。
+- 顺序：M6-T01（已完成）→ M6-T02（已完成）→ M6-T03 → M6-T04 → M6-T05 → M6-T99。
 - M6-T01 已完成的内容：
   - `packages/core/src/images/config.ts`：`parseImagesConfig` / `loadImagesConfig` 解析 `data/images.yaml`，根只有 `providers`，第一版只接受 `api: comfyui`，字段 `baseUrl`、`apiKey`、`timeoutMs`（默认 300000）、`pollIntervalMs`（默认 1000）；文件不存在返回空配置；未知根字段、未知 provider 字段、未知 api、非法 URL、非正数超时、非法 `${VAR}` 与缺失环境变量都抛错并带字段路径。
-  - `${VAR}` 与 `apiKey` 的解析提取到 `packages/core/src/env-ref.ts`（`interpolateEnvRefs`、`parseApiKeyRef`），`llm/channels.ts` 与 `images/config.ts` 共用。
-  - `images/slots.ts`：`parseComfyUiWorkflow` 校验每个节点有 `class_type` 与 `inputs`；`detectComfyUiSlots` 跟随 `KSampler*` 的 `positive`、`negative`、`latent_image` 识别插槽（`seed` 或 `noise_seed`），返回 `{slots, candidates, unresolved}`；多采样器、缺正向前提或 seed 时不自动采用；`assertComfyUiSlots` 校验节点、输入与类型；`resolveComfyUiSlots` 只在自动识别成功时采用。
+  - `${VAR}` 与 `apiKey` 的解析在 `packages/core/src/env-ref.ts`（`interpolateEnvRefs`、`parseApiKeyRef`），`llm/channels.ts` 与 `images/config.ts` 共用。
+  - `images/slots.ts`：`parseComfyUiWorkflow` 校验每个节点有 `class_type` 与 `inputs`；`detectComfyUiSlots` 跟随 `KSampler*` 的 `positive`、`negative`、`latent_image` 识别插槽（`seed` 或 `noise_seed`），返回 `{slots, candidates, unresolved}`；`assertComfyUiSlots` 校验节点、输入与类型；`resolveComfyUiSlots` 只在自动识别成功时采用。
   - `images/comfyui.ts`：`createComfyUiClient(provider, {fetch, sleep?, now?})` 按插槽改写 workflow 的 `inputs`，`POST /prompt`、轮询 `GET /history/<id>`、从 outputs 取第一张图并下载 `/view`；非 2xx、历史错误、空输出、下载失败、缺 `prompt_id` 与总超时都抛错；客户端不重试。
   - `images/workflows.ts`：`resolveImageProvider`（显式 provider 优先，否则要求配置里只有一个）与 `importImageWorkflow`（未给插槽时只采用唯一候选）。
   - `StoryStore`：`listImageWorkflows`、`getImageWorkflow`、`saveImageWorkflow`（同名更新同一行）、`deleteImageWorkflow`（引用时抛 `ImageWorkflowInUseError`）、`countNodeImagesForWorkflow`。
   - CLI：`dramaticer images workflow import --file <路径> --name <名称> [--db] [--images] [--slots <json>]`、`list`、`show <id>`、`delete <id>`；导入打印候选与采用的插槽；`--db` 默认 `data/dramaticer.db`，`--images` 默认 `data/images.yaml`。
   - server：`GET /api/images/providers`、`GET /api/images/workflows`、`POST /api/images/workflows/detect`、`POST /api/images/workflows/import`、`DELETE /api/images/workflows/:id`；启动参数 `--images`。provider 响应含 id、api、baseUrl、configured、超时与轮询间隔，不含密钥。
-- M6-T02 已有实现（HEAD，测试待补）：
-  - `images/types.ts`：`CharacterVisualProfile`（`character`、`base`、`defaultOutfit`、`outfitPath`、`negative`、`seed`、`backends`）、`VISUAL_PROFILE_SOURCES`、`assertCharacterVisualProfile`（未知字段、空字符串、空标签、空路径段、负 seed、非空 `backends` 都抛错并带字段路径）、`assertUniqueVisualProfiles`（忽略大小写与标点）、`CharacterVisualProfileRecord` 与 `SaveCharacterVisualProfilesInput`。
+- M6-T02 已完成的内容：
+  - `images/types.ts`：`CharacterVisualProfile`（`character`、`base`、`defaultOutfit`、`outfitPath`、`negative`、`seed`、`backends`）、`VISUAL_PROFILE_SOURCES`、`assertCharacterVisualProfile`（未知字段、空字符串、空标签、空路径段、负 seed、非空 `backends` 都抛错并带字段路径）、`assertUniqueVisualProfiles`（用 `normalizeEntityName`，忽略大小写与标点）、`CharacterVisualProfileRecord` 与 `SaveCharacterVisualProfilesInput`。
   - `images/profiles.ts`：`VISUAL_PROFILE_JOB_KIND = "visual_profile"`；`collectVisualProfileInput` 读角色卡提示词与常驻世界书，两者都为空时返回 null；`isKnownVisualProfileName` 接受实体名、别名与正文里出现过的名字（少于两个字符只按名单匹配）；`validateVisualProfilePayload`、`parseVisualProfilesResponse`（`{profiles:[…]}`，1–8 条，整包拒绝）；`createVisualProfileHandler` 以 `temperature: 0` 调用客户端并按人物覆盖写入，来源 `model`；`visualProfileNeedsRun` 要求素材存在且档案表为空；`enqueueVisualProfileBackgroundJob`。
   - `background/defaults.ts`：`visual_profile` 注册为 `enqueue: story`、`tier: gap`、`needsRun: visualProfileNeedsRun`。
-  - `images/prompt.ts`：`compileImagePrompt({profiles, state, request, style})` 纯函数；`tags` 拼接去重标签，`natural` 供第二批复用；当前服装从 `outfitPath` 读台账，读不到用 `defaultOutfit`；负向合并默认常量与角色负向；没有档案的人物进入场景文本并记入 `missingProfiles`。
+  - `images/prompt.ts`：`compileImagePrompt({profiles, state, request, style})` 纯函数；`tags` 拼接去重标签（基础外貌、服装、场景、镜头、气氛），`natural` 供第二批复用；当前服装从 `outfitPath` 读台账，读不到用 `defaultOutfit`；负向合并默认常量与角色负向，保留首次出现的顺序；没有档案的人物进入场景文本并记入 `missingProfiles`。
   - `StoryStore`：`listCharacterVisualProfiles`、`getCharacterVisualProfile`、`saveCharacterVisualProfiles`（同一故事同一人物覆盖同一行，`created_at` 首次写入后保持不变）。
   - CLI：`dramaticer images profiles --story <id> --db <路径> [--json] [--generate]`；`--generate` 用 `roles.settler` 与 `data/channels.yaml` 同步执行一次任务。
   - server：`GET /api/stories/:id/visual-profiles` 返回 `{storyId, profiles}`；创建故事与导入卡之后调用 `enqueueVisualProfileBackgroundJob` 再调度。
+  - 测试：`visual-profiles.test.ts` 覆盖两种提示词风格以外的全部验收项；`image-prompt.test.ts` 覆盖固定标签与自然语言断言；server 与 CLI 各有入口用例。
 - M6-T03：`illustrate` 侧效应工具只在 `imageConfig.mode` 为 `auto` 且 workflow 与 provider 齐全时提供；回合事务写 `node_images` 的 `pending` 行；故事级 `illustrate` 后台任务（`gap`）每次最多 2 行，单行最多 3 次；手动入口与 `retry`；启动时把 `running` 行退回 `pending`。`node_images.workflow_id` 引用 `image_workflows(id)`，插入时触发器要求 `story_id` 与楼层一致。
 - M6-T04：`StoryPathNode` 带图片、`GET /api/nodes/:id/images`、`GET /api/images/:id/file`、聊天页缩略图/占位/失败重试与轮询。
 - M6-T05：生图面板（workflow 的 detect/import/删除、视觉档案、生图设置）。
@@ -70,6 +70,7 @@
 - `drainBackgroundJobs` 每轮按 `created_at ASC, id ASC` 取最多 `limit` 条 pending，先丢弃不在当前 head 路径上的楼层任务，再逐个执行；`BackgroundScheduler` 同一时刻只有一个 pump。服务端日志行格式：`后台任务 <storyId>：新增 N 条，执行 N 条（失败 N，丢弃 N）`。`limit` 默认 20。
 - `enqueueMissingBackgroundJobs` 的入队候选只来自 `getPathToHead`（R5-T14.c）；故事级任务按 `story_id + kind` 唯一，已完成、失败或丢弃的行翻回 `pending`。
 - 故事级任务的 `needsRun` 在每次 drain 时重新判断；完成的行会因为没有需要而不再翻回。M6-T03 的 `illustrate` 任务按 `pending` 图片行判断，适合这个机制。
+- `visual_profile` 的 `needsRun` 只在对素材存在且档案表为空时为真；直接调用 `createVisualProfileHandler()` 会覆盖已有行，供手动重新生成使用。
 
 ## 导演与候选行动
 - 导演计划接口：`readDirectorPlan` 按 `ordinal` 还原弧线、序列、节拍；`--set` 与 `PUT /api/stories/:id/director/plan` 都整份替换并把所有行标为 `player`，`mergePlannedArcs` 只更新或追加 `model`/`import` 行，永不删除、不覆盖 `player` 行。`resolveCurrentBeat` 沿路径最近一条 `director_beat_states` 前进；`readDirectorPlan` 与 `resolveCurrentBeat` 的入参是 `Pick<StoryStore, …>`。
@@ -151,10 +152,10 @@
 - e2e 的假渠道细节（R5-T12）：`serve.mjs` 用固定端口 4517，`playwright.config.ts` 的 baseURL 与 webServer 都读 `E2E_APP_PORT`；假渠道用随机端口并写进每次重建的 `channels.yaml`。数据库固定在 `.devloop/scratch/e2e/work/e2e.db`，测试直接用 `node:sqlite` 读 `preference_events` 或插变更卡；Playwright 的 `page.request` 与浏览器共享登录 cookie。`vitest.config.ts` 必须继续排除 `packages/web/e2e/**`（但 `packages/web/src/playtest` 与 `packages/web/test/playtest-*` 的纯逻辑测试会进入门禁）。`@playwright/test` 固定 1.63.0，浏览器 revision 1243 已在本机，不要再升级到需要新浏览器的版本。
 - `.devloop/scratch/` 已被 git 忽略，e2e 的临时数据库、截图与 trace、自动试玩的报告与截图都在里面。
 - Vertex 渠道（V-T01）：`api: google-vertex` 使用 pi-ai 1.5.0 的 `google-vertex` 适配器；`gemini-4-argon` 模型在 `data/channels.yaml` 与示例里，凭证、项目、区域只从 `.env` 的三个 `GOOGLE_*` 变量读取，服务账号 JSON 不进仓库；未设置时不影响现有渠道。live 验证用 `DRAMATICER_VERTEX_LIVE=1` 运行 `packages/core/test/google-vertex.live.test.ts`。
-- 生图（M6-T01）：`images.example.yaml` 是配置模板；`data/images.yaml` 缺失时 provider 列表为空、导入拒绝。workflow 存在 `image_workflows`，同名导入更新同一行；插槽由 `detectComfyUiSlots` 识别，多采样器或缺少正向/seed 时必须显式传 `slots`。ComfyUI 客户端接受注入的 `fetch`、`sleep`、`now`，单元测试零网络。`node_images` 已建表但 M6-T03 才写入。真实 ComfyUI 的启动与 workflow 文件见 HUMAN-15。
+- 生图（M6-T01、M6-T02）：`images.example.yaml` 是配置模板；`data/images.yaml` 缺失时 provider 列表为空、导入拒绝。workflow 存在 `image_workflows`，同名导入更新同一行；插槽由 `detectComfyUiSlots` 识别，多采样器或缺少正向/seed 时必须显式传 `slots`。ComfyUI 客户端接受注入的 `fetch`、`sleep`、`now`，单元测试零网络。`node_images` 已建表但 M6-T03 才写入。视觉档案存在 `character_visual_profiles`，同一故事同一人物一行；`normalizeEntityName` 是重复判定与人物已知判定的共同规范化。真实 ComfyUI 的启动与 workflow 文件见 HUMAN-15。
 - 不要修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 下的任何文件。不变量 I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账是唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖任何其他工作区包。
 
 ## 下一步
-- 选 **M6-T02 角色视觉档案与提示词编译**：实现已在 HEAD，本会话只补测试并逐条核对验收标准。先读 TASKS 的 M6-T02、DESIGN §12、ADR-0082，再写 `packages/core/test/visual-profiles.test.ts`（假客户端生成入库、重复执行只覆盖、未知人物/空字符串/重复人物/未知字段/越界 seed/空路径段各抛错并带路径、无素材时不入队）、`packages/core/test/image-prompt.test.ts`（两种风格的固定断言、服装来自台账、缺档案进 `missingProfiles`、同输入逐字节相同）、server 路由测试（`GET /api/stories/:id/visual-profiles`）与 CLI 测试（`--generate` 走同一处理器）。测试用临时数据库与假客户端，不访问网络。
-- M6-T02 完成后依次做 M6-T03（`illustrate` 与队列）、M6-T04（图片显示与媒体接口）、M6-T05（生图面板），最后 M6-T99 需要 HUMAN-15 就绪。
+- 选 **M6-T03 `illustrate` 工具与异步出图队列**：先读 TASKS 的 M6-T03、DESIGN §11、§12 与 ADR-0082。要点：`imageConfig` 进故事设置（`mode`、`workflowId`、`maxPerFloor`、`minFloorsBetween`）；`images/tool.ts` 定义 `illustrate` 的严格参数；`runModelTurns` 把侧效应工具参与两种传输但不执行；回合事务写 `node_images` 的 `pending` 行；故事级 `illustrate` 任务按 `pending` 行每次最多 2 条、单条最多 3 次；手动入口与 `retry`；启动时 `requeueRunningNodeImages`。测试用假 provider 与临时数据库，零网络；参考 M6-T01 的 `comfyui-client.test.ts` 与 M6-T02 的 `visual-profiles.test.ts`。
+- M6-T03 完成后依次做 M6-T04（图片显示与媒体接口）、M6-T05（生图面板），最后 M6-T99 需要 HUMAN-15 就绪。
 - R1 续的任务（R1-T03.a、R1-T03.b、R1-T04.b、R1-T05、R1-T06、R1-T08）等 M6 第一批完成后再开始；迁移编号为 v35–v38。C 线兼容插件任务依赖 P2，C-T02 已补上预设兼容报告的要求；插件系统以 DESIGN §19 为唯一权威。
