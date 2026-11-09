@@ -3,11 +3,12 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 会话 207：完成 R5-T14.d，并继续等待 R5-T14.c 的重跑（2026-11-09）。
-- R5-T14.d 已实现并提交：`StoryStore.requeueRunningBackgroundJobs(storyId?)` 把 running 行退回 pending、清空 `started_at` 与 `finished_at`、`attempts` 减一且不低于 0、保留 `last_error`，其他状态不动；`startServer` 在打开数据库之后、创建调度器之前对全部故事调用一次；`dramaticer work` 在循环开始前调用一次。新增 4 个回归测试（状态与故事作用域、drain 重新执行且执行次数不重复累计、server 重启恢复遗留 running 行、work CLI 恢复后执行）。
-- 门禁 `pnpm check` 通过：148 个测试文件、1310 个测试通过、3 个 live 跳过。
-- R5-T14.c 的监督进程 pid 45256 仍在跑第 1 次试玩调用（10:25:38Z 启动，pid 48864 的 server 监听 8787）。10:41:45Z 核对：续跑文件 7/60 条 round 记录、0 条 failure；后台 `done=99`（`candidate_actions` 9、`settle` 10、`scene` 5、`user_will` 10、`memory_revision` 10、`events` 13、`summary` 13、`npc_agenda` 13、`embeddings` 13、`opening` 1、`opening_candidates` 1、`director_plan` 1）、`pending=3`（`scene` 2、`candidate_actions` 1）、`running=0`、`discarded=3`（swipe/edit 放弃楼层的 `scene`）。`done` 随轮次增长，修复前每轮复活 20 条旧分支任务的循环没有出现。
-- 本会话的代码改动不会进入正在运行的 server（监督进程只构建一次）；R5-T14.d 的恢复逻辑要等下次启动 server 才生效，不影响当前重跑的结论。
+- 会话 208：R5-T14.c 重跑仍在进行；修掉第 8 轮失败暴露的两处试玩框架缺陷（2026-11-09）。
+- 第 1 次试玩调用在第 8 轮失败：失败截图 `.devloop/scratch/e2e/playtest/screenshots/failure-round-008.png` 在 10:38:37Z 生成，节点表显示第 8 轮的用户楼层没有创建，失败发生在发送之前。`describeFailure` 在 `.error-notice` 不存在时用 Playwright 默认动作超时（0）等待 `innerText`，一直挂到用例超时（预算 20 分钟 + 三轮超时，共 25 分钟），失败记录在超时后才写出，第 1 次调用耗尽时间预算（10:51:01Z 结束，退出码 1）。
+- 监督进程日志在 10:51:01Z 记下原因：`模拟用户连续 3 次没有输出合法的 {message}：输出为空`。根因是 `generateSimulatedUserMessage` 请求的 `maxTokens: 400` 与后台模型的思考 token 共用输出上限，思考耗尽后正文为空；上限改为 4096。
+- `describeFailure` 改为 `innerText({ timeout: 5_000 })`；`packages/web/src/playtest/user.ts` 的输出上限改为 4096。biome 与 web typecheck 通过。Playwright 按源码转译 e2e 文件，第 2 次调用起生效，不需要重新构建 server。
+- 第 2 次调用 10:51:03Z 开始，丢弃末尾失败记录并重试第 8 轮；10:53Z 第 8 轮完成（含 edit 操作），10:54Z 第 9 轮完成（含分支切换）。10:53Z 队列：`done=99`、`pending=3`（`scene` 2、`candidate_actions` 1）、`running=0`、`discarded=3`；两条 `scene` 的 `attempts` 分别是 2 与 1，`last_error` 为「现场分析返回了空内容」，`candidate_actions` 的 `last_error` 为「候选行动.sceneChange 必须是字符串」，任务在被重试而不是饥饿。10 个助手楼层里有 9 个各写了 5 条候选行动，结算记录 10 条。
+- 本会话的代码改动不进正在运行的 server（监督进程只构建一次），不影响当前重跑的结论。
 
 ## 当前状态
 - 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T07.b.d.a 与 R1-T07.b.d.b）、R3、O、R2、E、R4、R5-T01 至 R5-T13、R5-T14.a、R5-T14.d。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
@@ -16,6 +17,7 @@
   - 回归测试在 `packages/core/test/background-jobs.test.ts` 的「入队只看当前路径」：放弃分支后用 drain 推进当前路径任务、旧分支任务保持 `discarded`、切回旧分支后重新入队并执行、旧任务不占据队列头部（25 个旧楼层分两轮丢弃，当前路径任务在第二轮执行）。
   - 重跑完成后核对：续跑文件 60 条 round 记录、0 条 failure；`done` 随轮次持续增长；`candidate_actions` 与 `settle` 有完成记录；`pending` 不再持续增长；两份报告（`eval-private/reports/r5-playtest.md` 与 `docs/dev/reports/R5-playtest.md`）已重新生成且统计版通过私有标识反向扫描。
   - 监控口径：`supervisor.json` 的 `state`，轮数取续跑文件的 `records` 里 `kind === "round"` 的条数（`supervisor.json` 的 `rounds` 只在每次调用结束时刷新）。`running` 时只记录进度并交接；不要在会话里再启动 server 或试玩。监督进程负责停止 server 并写报告。
+  - 试玩框架修复（会话 208，2026-11-09）：`describeFailure` 的 `.error-notice` 读取加 5 秒超时（Playwright 动作默认无超时，不存在的元素会把调用拖到用例超时）；`generateSimulatedUserMessage` 的输出上限从 400 改为 4096（后台模型的思考 token 与正文共用上限，400 会得到空正文并连续失败）。第 1 次调用 10:51:01Z 以第 8 轮失败结束，第 2 次调用重试后 10:53Z 完成第 8 轮。
 - **R5-T14.d 已完成（2026-11-09）**：`requeueRunningBackgroundJobs` 在 server 启动与 `dramaticer work` 循环开始前清除遗留 running 行；server 的重启恢复测试在 `packages/server/test/jobs.test.ts`，work CLI 的恢复测试在 `packages/core/test/work-cli.test.ts`。
 - **R5-T14.b**（依赖 R5-T14.a 与 R5-T14.c）：核对统计版字段与 ADR-0033 口径（对比胜率、矛盾率、节拍余弦没有信号时保持「未证实」），在 `docs/dev/reports/R5.md` 引用统计版并写明模型别名、轮数与操作次数；重跑 `pnpm check`。修复前第一次运行的数据在 60 轮里产生，候选行动、线索、结算与节拍推进必须按「未证实」记录并写明原因与 R5-T14.c 的重跑结果。修复前的统计版可从 git 历史取出。解释候选行动数字时要区分排队时长与饥饿：重跑里每个已完成助手楼层都有 5 条 `director_candidate_actions`，但写库时间比助手楼层晚约 78 秒，超过面板 30 秒的轮询窗口，续跑记录里的 `candidateActions.count` 仍可能为 0。
 - **R5-T99**：R5 验收；会重跑 `pnpm check`、`pnpm e2e` 与 60 轮报告。
@@ -83,7 +85,7 @@
 - 聊天页、分支页、台账页、导演页、设置页与渠道页的手工冒烟脚本在 `.devloop/scratch/R5-T08`、`R5-T09`、`R5-T10`；`playwright-core` 在 `E:/agentcoding/node_modules` 可解析，Chromium 在 `%LOCALAPPDATA%/ms-playwright/chromium-1243/`。
 
 ## 下一步
-- **R5-T14.c**：监督进程 pid 45256 正在跑 60 轮重跑（配置 `.devloop/scratch/R5-T14/supervisor-config.json`）。每次会话读 `supervisor.json` 的 `state` 与续跑文件的 round 记录数；`running` 时记录进度并交接；`completed` 时核对 60 条 round 记录、0 条 failure、后台 `done` 持续增长、`candidate_actions` 与 `settle` 有完成记录、`pending` 不再持续增长，确认两份报告已重新生成并检查统计版私有标识扫描，然后标记 `[x]`；`failed` 时读 `supervisor.log` 修复后重新启动。不要在会话里启动第二个 server 或试玩。
+- **R5-T14.c**：监督进程 pid 45256 正在跑 60 轮重跑（配置 `.devloop/scratch/R5-T14/supervisor-config.json`）。每次会话读 `supervisor.json` 的 `state` 与续跑文件的 round 记录数；`running` 时记录进度并交接；`completed` 时核对 60 条 round 记录、0 条 failure、后台 `done` 持续增长、`candidate_actions` 与 `settle` 有完成记录、`pending` 不再持续增长，确认两份报告已重新生成并检查统计版私有标识扫描，然后标记 `[x]`；`failed` 时读 `supervisor.log` 修复后重新启动。不要在会话里启动第二个 server 或试玩。第 2 次调用 10:51:03Z 开始、10:53Z 完成第 8 轮；续跑文件末尾出现 failure 记录时，下一次调用会自动丢弃并重试该轮，`supervisor.log` 会写明原因（第 1 次调用失败的原因是模拟用户空输出，已把输出上限改为 4096）。
 - **R5-T14.b**：核对统计版字段与 ADR-0033 口径，在 `docs/dev/reports/R5.md` 引用统计版并写明模型别名、轮数与操作次数；第一次运行的后台派生指标记为「未证实」并写明原因与 c 的重跑结果。
 - **R5-T99**：R5 验收；重跑 `pnpm check`、`pnpm e2e` 与 60 轮报告。
 - 引用评测数字时：B1 必须同时说明同模型子集为空、每个对话每档只有 1 个样本；遗忘矛盾率必须同时说明失败题数与可判定样本数；偏好一致率当前没有样本。

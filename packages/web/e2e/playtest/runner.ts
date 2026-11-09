@@ -633,10 +633,11 @@ function escapeRegExp(text: string): string {
 }
 
 async function describeFailure(page: Page, error: unknown): Promise<string> {
+	// Playwright 的动作默认没有超时：错误提示元素不存在时 innerText 会一直等到用例超时，失败记录就写不出来。
 	const notice = await page
 		.locator(".error-notice")
 		.first()
-		.innerText()
+		.innerText({ timeout: 5_000 })
 		.catch(() => "");
 	const message = error instanceof Error ? error.message : String(error);
 	return notice.trim().length === 0

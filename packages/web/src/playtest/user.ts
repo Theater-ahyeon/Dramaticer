@@ -73,7 +73,8 @@ export async function generateSimulatedUserMessage(input: {
 							},
 						],
 			temperature: 0.8,
-			maxTokens: 400,
+			// 后台模型带思考，思考 token 与正文共用这个上限；400 会让整次输出只剩思考、正文为空。
+			maxTokens: 4096,
 		});
 		const message = parseSimulatedUserMessage(result.text);
 		if (message !== null) return message;
