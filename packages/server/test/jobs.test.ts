@@ -95,3 +95,53 @@ describe("GET /api/stories/:id/jobs", () => {
 		expect(wrongMethod.status).toBe(405);
 	});
 });
+
+describe("服务启动时的后台任务恢复", () => {
+	it("把上一个进程遗留的 running 任务退回待办", async () => {
+		const dir = tempDir();
+		const dbPath = join(dir, "story.db");
+		const webRoot = join(dir, "web");
+		writeWeb(webRoot);
+		const first = await startServer({
+			dbPath,
+			webRoot,
+			host: "127.0.0.1",
+			port: 0,
+			password: null,
+			log: () => undefined,
+		});
+		first.store.createStory({ id: "s1", title: "测试故事" });
+		first.store.appendNode({
+			storyId: "s1",
+			parentId: null,
+			role: "assistant",
+			raw: "开场",
+		});
+		const [job] = first.store.enqueueMissingBackgroundJobs({
+			storyId: "s1",
+			kinds: ["probe"],
+			conditions: { probe: "settled" },
+			createdAt: "2026-11-08T00:00:00.000Z",
+		});
+		if (job === undefined) throw new Error("测试任务没有入队");
+		first.store.startBackgroundJob(job.id, "2026-11-08T00:00:01.000Z");
+		expect(first.store.getBackgroundJob(job.id)?.status).toBe("running");
+		await first.close();
+
+		const second = await startServer({
+			dbPath,
+			webRoot,
+			host: "127.0.0.1",
+			port: 0,
+			password: null,
+			log: () => undefined,
+		});
+		onTestFinished(() => second.close());
+		expect(second.store.getBackgroundJob(job.id)).toMatchObject({
+			status: "pending",
+			attempts: 0,
+			startedAt: null,
+			finishedAt: null,
+		});
+	});
+});

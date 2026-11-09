@@ -3,21 +3,20 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 会话 206：继续 R5-T14.c（2026-11-09）。
-- 入队侧修复与四个回归测试已由会话 204 提交（`5008df1`，`enqueueMissingBackgroundJobs` 只按 `getPathToHead` 的节点入队，故事级任务不变）；`.devloop/gate.txt` 为 `PASS`（本地时间 02:32，晚于该提交）。
-- 监督进程 pid 45256 存活，server pid 48864 监听 8787；10:25:38Z 启动，第 1 次试玩调用（预算 20 分钟）进行中。
-- 10:35:10Z 核对：续跑文件 5/60 条 round 记录、0 条 failure；后台 `done=78`，其中 `candidate_actions` 7、`settle` 7、`scene` 4、`user_will` 7、`memory_revision` 7、`events` 11、`summary` 11、`npc_agenda` 11、`embeddings` 11、`opening` 1、`opening_candidates` 1、`director_plan` 1；`pending=6`、`running=1`（`settle`）、`discarded=2`（第 3 轮 swipe 与第 4 轮 edit 放弃楼层的 `scene`，节点 `ad55a04c`、`908169a9`）。`done` 随轮次增长，修复前「每轮复活 20 条旧分支任务再全部丢弃」的循环没有出现。
-- 两份报告仍是修复前第一次运行的产物（本地时间 02:12）；监督进程在跑满 60 轮时会覆盖它们。
-- 本会话未启动 server 或试玩，未改代码。
+- 会话 207：完成 R5-T14.d，并继续等待 R5-T14.c 的重跑（2026-11-09）。
+- R5-T14.d 已实现并提交：`StoryStore.requeueRunningBackgroundJobs(storyId?)` 把 running 行退回 pending、清空 `started_at` 与 `finished_at`、`attempts` 减一且不低于 0、保留 `last_error`，其他状态不动；`startServer` 在打开数据库之后、创建调度器之前对全部故事调用一次；`dramaticer work` 在循环开始前调用一次。新增 4 个回归测试（状态与故事作用域、drain 重新执行且执行次数不重复累计、server 重启恢复遗留 running 行、work CLI 恢复后执行）。
+- 门禁 `pnpm check` 通过：148 个测试文件、1310 个测试通过、3 个 live 跳过。
+- R5-T14.c 的监督进程 pid 45256 仍在跑第 1 次试玩调用（10:25:38Z 启动，pid 48864 的 server 监听 8787）。10:41:45Z 核对：续跑文件 7/60 条 round 记录、0 条 failure；后台 `done=99`（`candidate_actions` 9、`settle` 10、`scene` 5、`user_will` 10、`memory_revision` 10、`events` 13、`summary` 13、`npc_agenda` 13、`embeddings` 13、`opening` 1、`opening_candidates` 1、`director_plan` 1）、`pending=3`（`scene` 2、`candidate_actions` 1）、`running=0`、`discarded=3`（swipe/edit 放弃楼层的 `scene`）。`done` 随轮次增长，修复前每轮复活 20 条旧分支任务的循环没有出现。
+- 本会话的代码改动不会进入正在运行的 server（监督进程只构建一次）；R5-T14.d 的恢复逻辑要等下次启动 server 才生效，不影响当前重跑的结论。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T07.b.d.a 与 R1-T07.b.d.b）、R3、O、R2、E、R4、R5-T01 至 R5-T13、R5-T14.a。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- **当前任务 R5-T14.c**（依赖 R5-T14.a，已满足）：代码与回归测试已完成并提交；剩余工作是等监督进程跑满 60 轮，然后核对后台队列与两份报告并标记完成。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T07.b.d.a 与 R1-T07.b.d.b）、R3、O、R2、E、R4、R5-T01 至 R5-T13、R5-T14.a、R5-T14.d。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- **当前任务 R5-T14.c**（依赖 R5-T14.a，已满足）：代码与回归测试已完成并提交（`5008df1`）；剩余工作是等监督进程跑满 60 轮，然后核对后台队列与两份报告并标记完成。
   - 修复内容：`packages/core/src/store/story-store.ts` 的 `enqueueMissingBackgroundJobs` 先取 `getPathToHead` 的节点 id，再过滤 `confirmed`/`settled` 集合并只对路径节点入队；故事级任务照常按 `story_id + kind` 入队。`drain` 的路径检查没有放宽。
   - 回归测试在 `packages/core/test/background-jobs.test.ts` 的「入队只看当前路径」：放弃分支后用 drain 推进当前路径任务、旧分支任务保持 `discarded`、切回旧分支后重新入队并执行、旧任务不占据队列头部（25 个旧楼层分两轮丢弃，当前路径任务在第二轮执行）。
   - 重跑完成后核对：续跑文件 60 条 round 记录、0 条 failure；`done` 随轮次持续增长；`candidate_actions` 与 `settle` 有完成记录；`pending` 不再持续增长；两份报告（`eval-private/reports/r5-playtest.md` 与 `docs/dev/reports/R5-playtest.md`）已重新生成且统计版通过私有标识反向扫描。
-  - 监控口径：`supervisor.json` 的 `state`，轮数取续跑文件的 round 记录数（`supervisor.json` 的 `rounds` 只在每次调用结束时刷新）。`running` 时只记录进度并交接；不要在会话里再启动 server 或试玩。监督进程负责停止 server 并写报告。
-- **R5-T14.d**（依赖 R5-T14.a）：服务端重启后恢复遗留 `running` 行。`drainBackgroundJobs` 只取 `pending`，`startBackgroundJob` 只接受 `pending`；进程在执行中途退出后这些行既不会重试，也不计入待办（上一次运行留有一条 08:12:45Z 启动的 `candidate_actions` 停在 `running`）。存储层新增 `requeueRunningBackgroundJobs(storyId?)`：把 running 行退回 pending，清空 `started_at`、`attempts` 减一（不低于 0），保留 `last_error`；`done`、`failed`、`discarded` 不动。server 在启动、第一次 drain 之前对全部故事调用一次；`dramaticer work` 在循环开始前对目标故事调用一次；补模拟进程中断的回归测试。
+  - 监控口径：`supervisor.json` 的 `state`，轮数取续跑文件的 `records` 里 `kind === "round"` 的条数（`supervisor.json` 的 `rounds` 只在每次调用结束时刷新）。`running` 时只记录进度并交接；不要在会话里再启动 server 或试玩。监督进程负责停止 server 并写报告。
+- **R5-T14.d 已完成（2026-11-09）**：`requeueRunningBackgroundJobs` 在 server 启动与 `dramaticer work` 循环开始前清除遗留 running 行；server 的重启恢复测试在 `packages/server/test/jobs.test.ts`，work CLI 的恢复测试在 `packages/core/test/work-cli.test.ts`。
 - **R5-T14.b**（依赖 R5-T14.a 与 R5-T14.c）：核对统计版字段与 ADR-0033 口径（对比胜率、矛盾率、节拍余弦没有信号时保持「未证实」），在 `docs/dev/reports/R5.md` 引用统计版并写明模型别名、轮数与操作次数；重跑 `pnpm check`。修复前第一次运行的数据在 60 轮里产生，候选行动、线索、结算与节拍推进必须按「未证实」记录并写明原因与 R5-T14.c 的重跑结果。修复前的统计版可从 git 历史取出。解释候选行动数字时要区分排队时长与饥饿：重跑里每个已完成助手楼层都有 5 条 `director_candidate_actions`，但写库时间比助手楼层晚约 78 秒，超过面板 30 秒的轮询窗口，续跑记录里的 `candidateActions.count` 仍可能为 0。
 - **R5-T99**：R5 验收；会重跑 `pnpm check`、`pnpm e2e` 与 60 轮报告。
 - v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（界面）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
@@ -30,7 +29,7 @@
 - HUMAN-14 待处理（不阻塞）：用户当前的 TauriTavern 使用 `gemini-4-argon`（Vertex AI 服务账号）。本项目渠道只支持 OpenAI 兼容接口，不能直接复用该路由；如需 Gemini 4 作为正文模型，请提供一个 OpenAI 兼容端点与密钥变量。
 - 数据库 schema 版本 33（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡、v25 合并调用开关与执行记录、v26 间隙档位阈值与丢弃状态、v27 合并调用丢弃条目、v28 回合模式与读取工具软上限、v29 开局包与故事级后台任务、v30 首楼开场候选、v31 偏好记录、v32 导演计划与拍状态、v33 导演候选行动）；R1 续原计划的 v32–v35 顺延为 v34–v37。
 - server 的回合路径会补建并执行后台任务：`handleTurnStream` 在 `turn.completed` 之后调用 `BackgroundScheduler.schedule`，不等待 drain；同一时刻只有一个 drain，故事之间先来先做。`schedule` 的 drain 只跑 `resolveStoryBackgroundKinds` 过滤后的类型，并带 `sessionEnded: true`，所以每轮结束后延后档（事件、摘要、NPC 议程、导演计划）也会执行。
-- 后台任务遗留 `running` 行的缺陷（R5-T14.d）：drain 只取 `pending`；存储层要新增恢复方法，server 与 `dramaticer work` 在第一次 drain 前调用一次。
+- 后台任务恢复（R5-T14.d）：`requeueRunningBackgroundJobs(storyId?)` 把 running 行退回 pending、`attempts` 减一（不低于 0）、清空 `started_at` 与 `finished_at`、保留 `last_error`；`startServer` 打开数据库后调用一次，`dramaticer work` 在列出故事前调用一次；`done`、`failed`、`discarded` 不动。
 - 故事级任务入队：`StoryStore.enqueueStoryBackgroundJobs` 按种类写入 `node_id` 为空的 `background_jobs` 行；创建故事与导入卡的路由先调用 `enqueueOpeningBackgroundJobs`（按两个 `needsRun` 过滤）再 `schedule`。`POST /api/stories/:id/openings/generate` 无条件入队一条 `opening_candidates`（仅要求故事无楼层），同一行已完成时翻回 `pending`。
 - 分支与面板接口已可用。`GET /api/nodes/:id/ledger` 返回 `{state, facts, diffs}`，`facts` 来自 `readLedgerFacts`，`diffs` 只含该楼层自己的写入。`GET /api/nodes/:id/events` 的 `limit` 默认 100、回显实际 `limit` 与 `offset`；`GET /api/nodes/:id/compressions` 返回 `{nodeId, compressions}`。
 - 变更卡接口：`GET /api/stories/:id/proposals?status=` 默认 `pending`，接受 `all` 与四个状态；`POST /api/proposals/:id/approve|reject|rollback` 复用 core 的三个函数，返回 `{card, ledger}`。`LedgerChangeCardError` 的 `not_found` 映射 404、`invalid_status` 映射 409；批准玩家来源卡片会同时写 `userWill`；回滚只恢复 `before` 里的路径。
@@ -79,13 +78,12 @@
 - 不要修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 下的任何文件。不变量 I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账是唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖任何其他工作区包。
 - 整轮门禁在 Windows 上并行跑 100 多个测试文件时，单个测试耗时可以比单独运行高十几倍。数据库或文件系统测试必须显式设置超时（`it("…", { timeout: 30_000 }, async () => …)`）；`afterEach` 删除临时目录用 `rmSync` 时带 `maxRetries` 与 `retryDelay`。
 - `packages/core/test/` 与 `packages/st-compat/test/` 下的 `.tmp-*` 目录会被测试创建；它们在 gitignore 里，不要提交。
-- `packages/st-compat` 与 `packages/server` 在测试里通过 `@dramaticer/core` 的 `dist` 解析 core；只跑这两个包的测试前先执行 `pnpm run typecheck`。web 的 `typecheck` 与 `build` 会先构建 core 与 protocol。
+- `packages/st-compat` 与 `packages/server` 在测试里通过 `@dramaticer/core` 的 `dist` 解析 core；只跑这两个包的测试前先执行 `pnpm run typecheck`。
 - 沙箱消息的浏览器约束：srcdoc 沙箱在不带 `allow-same-origin` 时 `event.origin` 是字符串 `"null"`，读 `document.cookie` 会直接抛 `SecurityError`；Playwright 里要捕获这个异常。
 - 聊天页、分支页、台账页、导演页、设置页与渠道页的手工冒烟脚本在 `.devloop/scratch/R5-T08`、`R5-T09`、`R5-T10`；`playwright-core` 在 `E:/agentcoding/node_modules` 可解析，Chromium 在 `%LOCALAPPDATA%/ms-playwright/chromium-1243/`。
 
 ## 下一步
 - **R5-T14.c**：监督进程 pid 45256 正在跑 60 轮重跑（配置 `.devloop/scratch/R5-T14/supervisor-config.json`）。每次会话读 `supervisor.json` 的 `state` 与续跑文件的 round 记录数；`running` 时记录进度并交接；`completed` 时核对 60 条 round 记录、0 条 failure、后台 `done` 持续增长、`candidate_actions` 与 `settle` 有完成记录、`pending` 不再持续增长，确认两份报告已重新生成并检查统计版私有标识扫描，然后标记 `[x]`；`failed` 时读 `supervisor.log` 修复后重新启动。不要在会话里启动第二个 server 或试玩。
-- **R5-T14.d**：实现 `requeueRunningBackgroundJobs`，server 与 `dramaticer work` 在第一次 drain 前调用，补回归测试；不阻塞 c 的重跑结论，但它是本次运行丢失任务的原因之一。
 - **R5-T14.b**：核对统计版字段与 ADR-0033 口径，在 `docs/dev/reports/R5.md` 引用统计版并写明模型别名、轮数与操作次数；第一次运行的后台派生指标记为「未证实」并写明原因与 c 的重跑结果。
 - **R5-T99**：R5 验收；重跑 `pnpm check`、`pnpm e2e` 与 60 轮报告。
 - 引用评测数字时：B1 必须同时说明同模型子集为空、每个对话每档只有 1 个样本；遗忘矛盾率必须同时说明失败题数与可判定样本数；偏好一致率当前没有样本。

@@ -165,6 +165,52 @@ describe("dramaticer work", () => {
 		}
 	});
 
+	it("把遗留的 running 任务退回待办并执行", async () => {
+		const dbPath = createTempDb();
+		const store = StoryStore.open(dbPath);
+		let jobId = 0;
+		try {
+			const [job] = store.enqueueMissingBackgroundJobs({
+				storyId: "s1",
+				kinds: ["events"],
+				createdAt: new Date(FIXED_NOW).toISOString(),
+			});
+			if (job === undefined) throw new Error("测试任务没有入队");
+			jobId = job.id;
+			store.startBackgroundJob(job.id, new Date(FIXED_NOW).toISOString());
+		} finally {
+			store.close();
+		}
+		const executed: string[] = [];
+		const result = await runWorkCli(
+			["work", "--db", dbPath, "--kind", "events"],
+			{
+				loadEnv: () => undefined,
+				loadConfig: async () => createConfig(true),
+				createClient: () => fakeClient,
+				registry: createBackgroundJobRegistry({
+					events: (context) => {
+						executed.push(String(context.job.nodeId));
+					},
+				}),
+				now: () => FIXED_NOW,
+				log: () => undefined,
+			},
+		);
+		expect(result.enqueued).toBe(0);
+		expect(result.runs).toEqual([
+			{
+				jobId,
+				nodeId: "n-a",
+				kind: "events",
+				status: "done",
+				attempts: 1,
+				error: null,
+			},
+		]);
+		expect(executed).toEqual(["n-a"]);
+	});
+
 	it("不认识的类型、缺失的数据库与参数错误直接抛错", async () => {
 		const dbPath = createTempDb();
 		const base = {

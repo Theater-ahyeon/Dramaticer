@@ -104,6 +104,8 @@ export async function runWorkCli(
 			embeddingConfig?.dimensions ?? DEFAULT_EMBEDDING_DIMENSIONS,
 	});
 	try {
+		// 上一次进程中断留下的 running 行不会被 drain 取到，先退回待办。
+		store.requeueRunningBackgroundJobs();
 		const stories = store.listStories();
 		const runs: BackgroundJobRun[] = [];
 		const backlog = {

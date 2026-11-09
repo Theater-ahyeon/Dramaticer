@@ -923,6 +923,133 @@ describe("入队只看当前路径", () => {
 	);
 });
 
+describe("进程中断后的恢复", () => {
+	it("把 running 退回 pending 并撤销执行次数，其它状态不动", () => {
+		const { store } = openTempStore();
+		seedStory(store);
+		const jobs = store.enqueueMissingBackgroundJobs({
+			storyId: "s1",
+			kinds: ["events", "summary"],
+			createdAt: FIXED_ISO,
+		});
+		const done = jobs[0];
+		const failed = jobs[1];
+		const discarded = jobs[2];
+		const interrupted = jobs[3];
+		if (
+			done === undefined ||
+			failed === undefined ||
+			discarded === undefined ||
+			interrupted === undefined
+		) {
+			throw new Error("测试任务没有全部入队");
+		}
+		store.startBackgroundJob(done.id, FIXED_ISO);
+		store.finishBackgroundJob(done.id, FIXED_ISO);
+		store.startBackgroundJob(failed.id, FIXED_ISO);
+		store.failBackgroundJob(failed.id, {
+			error: "重试次数用尽",
+			maxAttempts: 1,
+			finishedAt: FIXED_ISO,
+		});
+		store.discardBackgroundJob(discarded.id, FIXED_ISO);
+		store.startBackgroundJob(interrupted.id, FIXED_ISO);
+		store.failBackgroundJob(interrupted.id, {
+			error: "旧错误",
+			maxAttempts: 3,
+			finishedAt: FIXED_ISO,
+		});
+		store.startBackgroundJob(interrupted.id, FIXED_ISO);
+
+		expect(store.requeueRunningBackgroundJobs("s1")).toBe(1);
+		expect(store.getBackgroundJob(interrupted.id)).toMatchObject({
+			status: "pending",
+			attempts: 1,
+			lastError: "旧错误",
+			startedAt: null,
+			finishedAt: null,
+		});
+		expect(store.getBackgroundJob(done.id)).toMatchObject({ status: "done" });
+		expect(store.getBackgroundJob(failed.id)).toMatchObject({
+			status: "failed",
+		});
+		expect(store.getBackgroundJob(discarded.id)).toMatchObject({
+			status: "discarded",
+		});
+		expect(store.requeueRunningBackgroundJobs("s1")).toBe(0);
+
+		store.createStory({ id: "s2", title: "别的故事" });
+		appendOtherStoryNode(store);
+		const [otherJob] = store.enqueueMissingBackgroundJobs({
+			storyId: "s2",
+			kinds: ["events"],
+			conditions: { events: "settled" },
+			createdAt: FIXED_ISO,
+		});
+		if (otherJob === undefined) throw new Error("别的故事任务没有入队");
+		store.startBackgroundJob(otherJob.id, FIXED_ISO);
+		expect(store.requeueRunningBackgroundJobs("s1")).toBe(0);
+		expect(store.getBackgroundJob(otherJob.id)?.status).toBe("running");
+		expect(store.requeueRunningBackgroundJobs()).toBe(1);
+		expect(store.getBackgroundJob(otherJob.id)).toMatchObject({
+			status: "pending",
+			attempts: 0,
+		});
+	});
+
+	it(
+		"恢复后 drain 重新执行它，执行次数不重复累计",
+		{ timeout: 30_000 },
+		async () => {
+			const { store } = openTempStore();
+			seedStory(store);
+			const [interrupted] = store.enqueueMissingBackgroundJobs({
+				storyId: "s1",
+				kinds: ["events"],
+				createdAt: FIXED_ISO,
+			});
+			if (interrupted === undefined) throw new Error("测试任务没有入队");
+			store.startBackgroundJob(interrupted.id, FIXED_ISO);
+			expect(store.getBackgroundJob(interrupted.id)).toMatchObject({
+				status: "running",
+				attempts: 1,
+			});
+
+			expect(store.requeueRunningBackgroundJobs()).toBe(1);
+			const executed: string[] = [];
+			const result = await drainBackgroundJobs({
+				store,
+				registry: createBackgroundJobRegistry({
+					events: (context) => {
+						executed.push(String(context.job.nodeId));
+					},
+				}),
+				client: unusedClient,
+				storyId: "s1",
+				kinds: ["events"],
+				now: () => FIXED_NOW,
+			});
+			expect(result.enqueued).toBe(0);
+			expect(executed).toContain("n-a");
+			expect(store.getBackgroundJob(interrupted.id)).toMatchObject({
+				status: "done",
+				attempts: 1,
+				startedAt: FIXED_ISO,
+				finishedAt: FIXED_ISO,
+			});
+		},
+	);
+
+	function appendOtherStoryNode(store: StoryStore): TimelineNode {
+		return store.appendNode({
+			storyId: "s2",
+			parentId: null,
+			role: "assistant",
+			raw: "另一个故事的开场",
+		});
+	}
+});
+
 describe("间隙积压", () => {
 	it("按状态读出关键间隙工作的未完成比例", async () => {
 		const { store } = openTempStore();

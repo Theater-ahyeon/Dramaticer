@@ -5404,6 +5404,22 @@ export class StoryStore {
 		return rows.map(rowToBackgroundJob);
 	}
 
+	/**
+	 * 进程在执行中途退出后，running 行既不会被 drain 取到，也不计入待办。
+	 * 启动时把它们退回 pending，并撤销开始执行时累计的那一次；其它状态不动。
+	 */
+	requeueRunningBackgroundJobs(storyId?: string): number {
+		if (storyId !== undefined) assertNonEmptyString(storyId, "故事 id");
+		const result = this.#db
+			.prepare(
+				`UPDATE background_jobs
+				SET status = 'pending', attempts = MAX(attempts - 1, 0), started_at = NULL, finished_at = NULL
+				WHERE status = 'running' AND (@storyId IS NULL OR story_id = @storyId)`,
+			)
+			.run({ storyId: storyId ?? null });
+		return result.changes;
+	}
+
 	/** 把 pending 任务标为 running，并累计执行次数。 */
 	startBackgroundJob(id: number, startedAt?: string): BackgroundJob {
 		const job = this.#requireBackgroundJob(id);

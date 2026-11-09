@@ -113,6 +113,8 @@ export async function startServer(
 		options.dbPath,
 		embeddingDimensions === undefined ? {} : { embeddingDimensions },
 	);
+	// 上一个进程在执行中途退出时留下的 running 行不在 drain 的候选里，先退回待办。
+	store.requeueRunningBackgroundJobs();
 	const runtime =
 		channels === null || loadConfig === null
 			? null
