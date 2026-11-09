@@ -1032,6 +1032,22 @@ export function buildMigrations(
 				"ALTER TABLE story_settings ADD COLUMN image_config TEXT",
 			],
 		},
+		{
+			version: 35,
+			description:
+				"父子分块：块表增加父段字段，清空旧块与向量，并把 embedding 任务退回待执行",
+			statements: [
+				"ALTER TABLE chunks ADD COLUMN parent_ordinal INTEGER",
+				"ALTER TABLE chunks ADD COLUMN parent_text TEXT",
+				"DELETE FROM chunk_vectors",
+				"DELETE FROM chunks_fts",
+				"DELETE FROM chunks",
+				`UPDATE background_jobs
+				SET status = 'pending', attempts = 0, last_error = NULL,
+					started_at = NULL, finished_at = NULL
+				WHERE kind = 'embeddings'`,
+			],
+		},
 	];
 }
 

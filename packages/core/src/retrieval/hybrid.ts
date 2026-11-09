@@ -19,6 +19,10 @@ export interface RetrievalHit {
 	readonly kind: RetrievalKind;
 	readonly nodeId: string;
 	readonly score: number;
+	/** 父段在楼层内的序号；事件与旧分块为 null。 */
+	readonly parentOrdinal: number | null;
+	/** 命中父段的文本；事件与旧分块为 null。 */
+	readonly parentText: string | null;
 	/** 命中来自哪些路，以及在该路上的名次（从 1 开始） */
 	readonly sources: readonly RetrievalSource[];
 }
@@ -60,6 +64,9 @@ export interface RetrievalResult {
 export interface RetrievalRouteItem {
 	readonly kind: RetrievalKind;
 	readonly nodeId: string;
+	/** 父段的序号与文本；事件、新近度与旧分块为 null。 */
+	readonly parentOrdinal?: number | null;
+	readonly parentText?: string | null;
 }
 
 export interface RetrievalRouteRanking {
@@ -87,6 +94,8 @@ const ROUTE_ORDER: readonly RetrievalRoute[] = [
 interface RouteItem {
 	readonly kind: RetrievalKind;
 	readonly nodeId: string;
+	readonly parentOrdinal?: number | null;
+	readonly parentText?: string | null;
 }
 
 interface RouteResult {
@@ -189,7 +198,12 @@ export async function rankMemoryRoutes(
 			});
 			routes.push({
 				route: "bm25",
-				items: bm25.map((match) => ({ kind: "chunk", nodeId: match.nodeId })),
+				items: bm25.map((match) => ({
+					kind: "chunk",
+					nodeId: match.nodeId,
+					parentOrdinal: match.parentOrdinal,
+					parentText: match.parentText,
+				})),
 			});
 
 			if (options.embedder) {
@@ -205,10 +219,12 @@ export async function rankMemoryRoutes(
 				});
 				routes.push({
 					route: "vector",
-					items: dedupeNodes(
+					items: dedupeChunkItems(
 						matches.map((match) => ({
 							kind: "chunk" as const,
 							nodeId: match.nodeId,
+							parentOrdinal: match.parentOrdinal,
+							parentText: match.parentText,
 						})),
 						limit,
 					),
@@ -374,7 +390,12 @@ function entityRouteItems(input: {
 				const key = `chunk\u0000${chunk.nodeId}`;
 				if (seen.has(key)) continue;
 				seen.add(key);
-				items.push({ kind: "chunk", nodeId: chunk.nodeId });
+				items.push({
+					kind: "chunk",
+					nodeId: chunk.nodeId,
+					parentOrdinal: chunk.parentOrdinal,
+					parentText: chunk.parentText,
+				});
 				if (items.length === input.limit) break outer;
 			}
 		}
@@ -450,6 +471,27 @@ function dedupeNodes(items: readonly RouteItem[], limit: number): RouteItem[] {
 	return deduped;
 }
 
+/**
+ * 同一父段的多个小块只保留名次最前的一个；没有父段时退化为按楼层去重。
+ */
+function dedupeChunkItems(
+	items: readonly RouteItem[],
+	limit: number,
+): RouteItem[] {
+	const seen = new Set<string>();
+	const deduped: RouteItem[] = [];
+	for (const item of items) {
+		const parent = item.parentOrdinal ?? null;
+		const key =
+			parent === null ? `${item.nodeId}` : `${item.nodeId}\u0000${parent}`;
+		if (seen.has(key)) continue;
+		seen.add(key);
+		deduped.push(item);
+		if (deduped.length === limit) break;
+	}
+	return deduped;
+}
+
 /** 按 RRF 融合每一路的名次；同一楼层重复出现只保留一条。 */
 export function fuseRetrievalRoutes(
 	routes: readonly RetrievalRouteRanking[],
@@ -463,6 +505,8 @@ function fuseRoutes(routes: readonly RouteResult[]): RetrievalHit[] {
 		{
 			kind: RetrievalKind;
 			nodeId: string;
+			parentOrdinal: number | null;
+			parentText: string | null;
 			sources: RetrievalSource[];
 		}
 	>();
@@ -475,8 +519,18 @@ function fuseRoutes(routes: readonly RouteResult[]): RetrievalHit[] {
 			const candidate = candidates.get(key) ?? {
 				kind: item.kind,
 				nodeId: item.nodeId,
+				parentOrdinal: item.parentOrdinal ?? null,
+				parentText: item.parentText ?? null,
 				sources: [],
 			};
+			if (
+				candidate.parentText === null &&
+				item.parentText !== undefined &&
+				item.parentText !== null
+			) {
+				candidate.parentOrdinal = item.parentOrdinal ?? null;
+				candidate.parentText = item.parentText;
+			}
 			candidate.sources.push({ route: route.route, rank: index + 1 });
 			candidates.set(key, candidate);
 		});
@@ -488,6 +542,8 @@ function fuseRoutes(routes: readonly RouteResult[]): RetrievalHit[] {
 			(total, source) => total + 1 / (RRF_K + source.rank),
 			0,
 		),
+		parentOrdinal: candidate.parentOrdinal,
+		parentText: candidate.parentText,
 		sources: [...candidate.sources].sort(
 			(left, right) =>
 				ROUTE_ORDER.indexOf(left.route) - ROUTE_ORDER.indexOf(right.route),

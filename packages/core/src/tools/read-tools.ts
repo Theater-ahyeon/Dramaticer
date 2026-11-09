@@ -192,6 +192,8 @@ async function runMemorySearch(
 				throw new Error(`楼层 ${hit.nodeId} 被标为事件，但没有事件正文`);
 			}
 			text = events.map((event) => event.text).join("；");
+		} else if (hit.parentText !== null) {
+			text = hit.parentText;
 		} else {
 			const position = positions.get(hit.nodeId);
 			if (position === undefined) {

@@ -37,12 +37,24 @@ export interface ContextSlotContent {
 	readonly retrieval?: ContextRetrievalTrace;
 }
 
+/** 一次注入的范围：父段只包含楼层的一部分，整楼是整层原文。 */
+export type RetrievalInjectionScope = "segment" | "floor";
+
+export interface RetrievalInjectionTrace {
+	readonly nodeId: string;
+	readonly kind: RetrievalHit["kind"];
+	readonly scope: RetrievalInjectionScope;
+	readonly parentOrdinal: number | null;
+}
+
 /** 记忆槽位的检索记录：每一路的原始名次、RRF 融合结果与最终进入上下文的楼层。 */
 export interface ContextRetrievalTrace {
 	readonly routes: readonly RetrievalRouteRanking[];
 	readonly hits: readonly RetrievalHit[];
 	/** 实际写进上下文消息的楼层 id，按注入顺序；可能少于 `hits`。 */
 	readonly injectedNodeIds: readonly string[];
+	/** 每次注入的范围；旧 Trace 没有这个字段。 */
+	readonly injected?: readonly RetrievalInjectionTrace[];
 }
 
 export interface ContextSlotProvider {

@@ -115,6 +115,38 @@ describe("多路融合检索", () => {
 		expect(hits[2]?.score).toBeCloseTo(1 / 62);
 	});
 
+	it("融合按楼层去重时保留命中父段的文本", async () => {
+		const { store } = openTempStore();
+		store.createStory({ id: "s-parent", title: "父段" });
+		const floor = store.appendNode({
+			id: "n-parent",
+			storyId: "s-parent",
+			parentId: null,
+			role: "assistant",
+			raw: `${"甲".repeat(700)}\n${"乙".repeat(700)}`,
+		});
+		const ask = store.appendNode({
+			id: "n-ask",
+			storyId: "s-parent",
+			parentId: floor.id,
+			role: "user",
+			raw: "乙乙乙",
+		});
+
+		const { hits } = await retrieveMemory({
+			store,
+			storyId: "s-parent",
+			query: "乙乙乙",
+			beforeNodeId: ask.id,
+		});
+		const chunk = hits.find((hit) => hit.kind === "chunk");
+		expect(chunk).toMatchObject({
+			nodeId: floor.id,
+			parentOrdinal: 1,
+			parentText: "乙".repeat(700),
+		});
+	});
+
 	it("每一路的原始名次可单独读取，融合结果与 retrieveMemory 一致", async () => {
 		const { store } = openTempStore();
 		store.createStory({ id: "s-routes", title: "名次" });
@@ -153,7 +185,11 @@ describe("多路融合检索", () => {
 		});
 		const bm25 = rankings.routes.find((route) => route.route === "bm25");
 		const events = rankings.routes.find((route) => route.route === "event");
-		expect(bm25?.items[0]).toEqual({ kind: "chunk", nodeId: root.id });
+		expect(bm25?.items[0]).toMatchObject({
+			kind: "chunk",
+			nodeId: root.id,
+			parentOrdinal: 0,
+		});
 		expect(events?.items[0]).toEqual({ kind: "event", nodeId: root.id });
 		expect(rankings.filter).toEqual({
 			viewpoint: null,

@@ -131,6 +131,31 @@ describe("块向量索引", () => {
 		).toEqual([right.id, user.id]);
 	});
 
+	it("向量检索返回命中的父段文本", () => {
+		const { store } = openTempStore();
+		store.createStory({ id: "s1", title: "父段" });
+		const first = "甲".repeat(700);
+		const node = store.appendNode({
+			id: "n-parent",
+			storyId: "s1",
+			parentId: null,
+			role: "assistant",
+			raw: `${first}\n${"乙".repeat(700)}`,
+		});
+		const chunks = store.listChunksMissingVectors(node.id);
+		expect(chunks).toHaveLength(4);
+		store.insertChunkVectors(
+			chunks.map((chunk, index) => ({
+				chunkId: chunk.chunkId,
+				embedding: vectorAt(index === 0 ? 0 : 1 + index),
+			})),
+		);
+		const matches = store.searchVectors(vectorAt(0), { storyId: "s1" });
+		expect(matches[0]?.nodeId).toBe(node.id);
+		expect(matches[0]?.parentOrdinal).toBe(0);
+		expect(matches[0]?.parentText).toBe(first);
+	});
+
 	it("其他故事与更近的向量不会混入结果", () => {
 		const { store } = openTempStore();
 		store.createStory({ id: "s1", title: "一" });

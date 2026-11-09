@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chunkText } from "../src/retrieval/chunk-text.js";
+import { chunkText, chunkTextByParent } from "../src/retrieval/chunk-text.js";
 
 describe("chunkText", () => {
 	it("短文本只产生一块", () => {
@@ -63,6 +63,45 @@ describe("chunkText", () => {
 		);
 		expect(() => chunkText("文本", { maxChars: 10, overlapChars: -1 })).toThrow(
 			"分块重叠必须是不小于 0、且小于分块长度的整数",
+		);
+	});
+});
+
+describe("chunkTextByParent", () => {
+	it("按段落边界合并父段，小块不跨父段", () => {
+		const first = "甲".repeat(40);
+		const second = "乙".repeat(40);
+		const third = "丙".repeat(40);
+		const text = `${first}\n${second}\n${third}`;
+		const chunks = chunkTextByParent(text, {
+			parentMaxChars: 100,
+			maxChars: 40,
+			overlapChars: 0,
+		});
+		expect(chunks.map((chunk) => chunk.parentOrdinal)).toEqual([0, 0, 0, 1]);
+		expect(chunks[0]?.parentText).toBe(`${first}\n${second}`);
+		expect(chunks[3]?.parentText).toBe(third);
+		expect(chunks[0]?.text).toBe(first);
+		expect(chunks[3]?.text).toBe(third);
+	});
+
+	it("单个段落超过父段上限时整楼退化成一个父段", () => {
+		const text = "丁".repeat(120);
+		const chunks = chunkTextByParent(`${text}\n戊`, {
+			parentMaxChars: 100,
+			maxChars: 40,
+			overlapChars: 0,
+		});
+		expect(new Set(chunks.map((chunk) => chunk.parentOrdinal))).toEqual(
+			new Set([0]),
+		);
+		for (const chunk of chunks) expect(chunk.parentText).toBe(`${text}\n戊`);
+	});
+
+	it("空白文本不产生块，非法父段长度直接抛错", () => {
+		expect(chunkTextByParent(" \n\t ")).toEqual([]);
+		expect(() => chunkTextByParent("文本", { parentMaxChars: 2 })).toThrow(
+			"父段长度必须是不小于 3 的整数",
 		);
 	});
 });

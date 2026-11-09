@@ -191,7 +191,6 @@ describe("workflow 存储与导入", () => {
 	it("迁移 v34 建好三张表与 story_settings.image_config 列", () => {
 		const { store, path } = openTempStore();
 		expect(store.getSchemaVersion()).toBe(LATEST_SCHEMA_VERSION);
-		expect(store.getSchemaVersion()).toBe(34);
 		const db = new Database(path);
 		onTestFinished(() => db.close());
 		const tables = db

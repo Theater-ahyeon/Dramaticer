@@ -8,6 +8,7 @@ import type {
 	ContextSlotContent,
 	ContextSlotProvider,
 	ContextSlotProviders,
+	RetrievalInjectionTrace,
 } from "../context/assembler.js";
 import type { ContextMessage } from "../context/template.js";
 import { evaluateDirector } from "../director/evaluate.js";
@@ -309,6 +310,7 @@ export function createMemorySlotProvider(
 			);
 			const seen = new Set<string>();
 			const injectedNodeIds: string[] = [];
+			const injected: RetrievalInjectionTrace[] = [];
 			const lines: string[] = [];
 			for (const hit of result.hits) {
 				if (seen.has(hit.nodeId)) continue;
@@ -326,6 +328,8 @@ export function createMemorySlotProvider(
 						);
 					}
 					text = texts.join("；");
+				} else if (hit.parentText !== null) {
+					text = hit.parentText;
 				} else {
 					const index = positions.get(hit.nodeId);
 					if (index === undefined) {
@@ -338,6 +342,18 @@ export function createMemorySlotProvider(
 				text = text.trim();
 				if (text.length === 0) continue;
 				injectedNodeIds.push(hit.nodeId);
+				const scope =
+					hit.kind === "chunk" &&
+					hit.parentText !== null &&
+					store.countChunkParentsForNode(hit.nodeId) > 1
+						? "segment"
+						: "floor";
+				injected.push({
+					nodeId: hit.nodeId,
+					kind: hit.kind,
+					scope,
+					parentOrdinal: hit.parentOrdinal,
+				});
 				const kind = hit.kind === "event" ? "事件" : "原文块";
 				lines.push(`- 楼层 ${hit.nodeId}（${kind}）：${text}`);
 			}
@@ -354,6 +370,7 @@ export function createMemorySlotProvider(
 					routes: result.routes,
 					hits: result.hits,
 					injectedNodeIds,
+					injected,
 				},
 			};
 		},

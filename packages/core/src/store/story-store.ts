@@ -152,7 +152,13 @@ import {
 	buildTrigramQuery,
 	normalizeRetrievalText,
 } from "../retrieval/chunk-index.js";
-import { chunkText } from "../retrieval/chunk-text.js";
+import {
+	type ChunkStrategy,
+	DEFAULT_CHUNK_STRATEGY,
+	chunkText,
+	chunkTextByParent,
+	isChunkStrategy,
+} from "../retrieval/chunk-text.js";
 import { applyStateDiffsTo } from "../state.js";
 import { isStructuredOutputMode } from "../structured/types.js";
 import type {
@@ -474,6 +480,8 @@ interface ChunkRow {
 	readonly chunk_id: number;
 	readonly story_id: string;
 	readonly node_id: string;
+	readonly parent_ordinal: number | null;
+	readonly parent_text: string | null;
 	readonly score: number;
 }
 
@@ -491,6 +499,8 @@ interface ChunkVectorRow {
 	readonly chunk_id: number;
 	readonly story_id: string;
 	readonly node_id: string;
+	readonly parent_ordinal: number | null;
+	readonly parent_text: string | null;
 	readonly distance: number;
 }
 
@@ -689,6 +699,10 @@ export interface ChunkSearchMatch {
 	readonly storyId: string;
 	readonly nodeId: string;
 	readonly chunkId: number;
+	/** 父段在楼层内的序号；旧分块没有父段。 */
+	readonly parentOrdinal: number | null;
+	/** 命中后应注入的父段文本；旧分块为 null。 */
+	readonly parentText: string | null;
 	/** FTS5 的 bm25 原始分数，越小越相关。 */
 	readonly score: number;
 }
@@ -720,6 +734,10 @@ export interface VectorSearchMatch {
 	readonly storyId: string;
 	readonly nodeId: string;
 	readonly chunkId: number;
+	/** 父段在楼层内的序号；旧分块没有父段。 */
+	readonly parentOrdinal: number | null;
+	/** 命中后应注入的父段文本；旧分块为 null。 */
+	readonly parentText: string | null;
 	/** 向量的 L2 距离，越小越接近。 */
 	readonly distance: number;
 }
@@ -727,6 +745,8 @@ export interface VectorSearchMatch {
 export interface StoryStoreOpenOptions {
 	/** 向量维度；必须与数据库中已有的 chunk_vectors 表一致。 */
 	readonly embeddingDimensions?: number;
+	/** 分块策略；缺省按父子分块建立索引。 */
+	readonly chunkStrategy?: ChunkStrategy;
 }
 
 export interface ListEntitiesOptions {
@@ -1614,19 +1634,29 @@ function rowToNpcAgenda(row: NpcAgendaRow): NpcAgenda {
 export class StoryStore {
 	readonly #db: Database.Database;
 	readonly #embeddingDimensions: number;
+	readonly #chunkStrategy: ChunkStrategy;
 
-	private constructor(db: Database.Database, embeddingDimensions: number) {
+	private constructor(
+		db: Database.Database,
+		embeddingDimensions: number,
+		chunkStrategy: ChunkStrategy,
+	) {
 		this.#db = db;
 		this.#embeddingDimensions = embeddingDimensions;
+		this.#chunkStrategy = chunkStrategy;
 	}
 
 	static open(path: string, options: StoryStoreOpenOptions = {}): StoryStore {
 		assertNonEmptyString(path, "数据库路径");
 		const embeddingDimensions =
 			options.embeddingDimensions ?? DEFAULT_EMBEDDING_DIMENSIONS;
+		const chunkStrategy = options.chunkStrategy ?? DEFAULT_CHUNK_STRATEGY;
+		if (!isChunkStrategy(chunkStrategy)) {
+			throw new Error(`分块策略不合法：${String(chunkStrategy)}`);
+		}
 		const db = new Database(path);
 		db.pragma("foreign_keys = ON");
-		const store = new StoryStore(db, embeddingDimensions);
+		const store = new StoryStore(db, embeddingDimensions, chunkStrategy);
 		try {
 			sqliteVec.load(db);
 			applyMigrations(db, buildMigrations(embeddingDimensions));
@@ -5344,6 +5374,22 @@ export class StoryStore {
 		return row.count;
 	}
 
+	/** 统计某个楼层的父段数；旧分块没有父段时返回 0。 */
+	countChunkParentsForNode(nodeId: string): number {
+		assertNonEmptyString(nodeId, "楼层节点 id");
+		if (!this.getNode(nodeId)) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
+		const row = this.#db
+			.prepare(
+				`SELECT COUNT(DISTINCT parent_ordinal) AS count
+				FROM chunks
+				WHERE node_id = ? AND parent_ordinal IS NOT NULL`,
+			)
+			.get(nodeId) as { readonly count: number };
+		return row.count;
+	}
+
 	/** 统计某个楼层已经写入的向量数。 */
 	countChunkVectorsForNode(nodeId: string): number {
 		assertNonEmptyString(nodeId, "楼层节点 id");
@@ -5492,14 +5538,21 @@ export class StoryStore {
 					SELECT nodes.parent_id
 					FROM nodes JOIN ancestors ON nodes.id = ancestors.node_id
 					WHERE nodes.parent_id IS NOT NULL
+				),
+				candidates AS (
+					SELECT chunk_id, story_id, node_id, distance
+					FROM chunk_vectors
+					WHERE embedding MATCH @vector AND k = @limit
+						AND story_id = @storyId
+						AND (@beforeNodeId IS NULL
+							OR node_id IN (SELECT node_id FROM ancestors))
+					ORDER BY distance ASC
 				)
-				SELECT chunk_id, story_id, node_id, distance
-				FROM chunk_vectors
-				WHERE embedding MATCH @vector AND k = @limit
-					AND story_id = @storyId
-					AND (@beforeNodeId IS NULL
-						OR node_id IN (SELECT node_id FROM ancestors))
-				ORDER BY distance ASC`,
+				SELECT candidates.chunk_id, candidates.story_id, candidates.node_id,
+					candidates.distance, chunks.parent_ordinal, chunks.parent_text
+				FROM candidates
+				JOIN chunks ON chunks.id = candidates.chunk_id
+				ORDER BY candidates.distance ASC`,
 			)
 			.all({
 				vector: query,
@@ -5511,6 +5564,8 @@ export class StoryStore {
 			storyId: row.story_id,
 			nodeId: row.node_id,
 			chunkId: row.chunk_id,
+			parentOrdinal: row.parent_ordinal,
+			parentText: row.parent_text,
 			distance: row.distance,
 		}));
 	}
@@ -5566,6 +5621,7 @@ export class StoryStore {
 				),
 				matches AS (
 					SELECT c.id AS chunk_id, c.node_id, c.story_id,
+						c.parent_ordinal, c.parent_text,
 						bm25(chunks_fts) AS score
 					FROM chunks_fts
 					JOIN chunks AS c ON c.id = chunks_fts.rowid
@@ -5575,14 +5631,16 @@ export class StoryStore {
 							OR c.node_id IN (SELECT node_id FROM ancestors))
 				),
 				ranked AS (
-					SELECT chunk_id, node_id, story_id, score,
+					SELECT chunk_id, node_id, story_id, parent_ordinal, parent_text,
+						score,
 						ROW_NUMBER() OVER (
-							PARTITION BY node_id
+							PARTITION BY node_id,
+								CASE WHEN parent_ordinal IS NULL THEN 0 ELSE parent_ordinal END
 							ORDER BY score ASC, chunk_id ASC
 						) AS position
 					FROM matches
 				)
-				SELECT chunk_id, node_id, story_id, score
+				SELECT chunk_id, node_id, story_id, parent_ordinal, parent_text, score
 				FROM ranked
 				WHERE position = 1
 				ORDER BY score ASC, chunk_id ASC
@@ -5598,6 +5656,8 @@ export class StoryStore {
 			storyId: row.story_id,
 			nodeId: row.node_id,
 			chunkId: row.chunk_id,
+			parentOrdinal: row.parent_ordinal,
+			parentText: row.parent_text,
 			score: row.score,
 		}));
 	}
@@ -6189,18 +6249,33 @@ export class StoryStore {
 		readonly raw: string;
 	}): void {
 		const insertChunk = this.#db.prepare(
-			`INSERT INTO chunks (story_id, node_id, ordinal, text)
-			VALUES (?, ?, ?, ?)
+			`INSERT INTO chunks (story_id, node_id, ordinal, text, parent_ordinal, parent_text)
+			VALUES (?, ?, ?, ?, ?, ?)
 			ON CONFLICT (node_id, ordinal) DO NOTHING`,
 		);
 		const insertText = this.#db.prepare(
 			`INSERT INTO chunks_fts (rowid, text, node_id, story_id)
 			VALUES (?, ?, ?, ?)`,
 		);
-		for (const [ordinal, text] of chunkText(node.raw).entries()) {
-			const normalized = normalizeRetrievalText(text);
+		const fragments =
+			this.#chunkStrategy === "parent-child"
+				? chunkTextByParent(node.raw)
+				: chunkText(node.raw).map((text) => ({
+						parentOrdinal: null,
+						parentText: null,
+						text,
+					}));
+		for (const [ordinal, fragment] of fragments.entries()) {
+			const normalized = normalizeRetrievalText(fragment.text);
 			if (normalized === "") continue;
-			const info = insertChunk.run(node.storyId, node.id, ordinal, text);
+			const info = insertChunk.run(
+				node.storyId,
+				node.id,
+				ordinal,
+				fragment.text,
+				fragment.parentOrdinal,
+				fragment.parentText,
+			);
 			if (info.changes !== 1) continue;
 			insertText.run(info.lastInsertRowid, normalized, node.id, node.storyId);
 		}

@@ -311,6 +311,41 @@ describe("记忆与摘要槽位", () => {
 		expect(content?.retrieval?.injectedNodeIds).toEqual(["n-greet"]);
 	});
 
+	it("记忆槽位注入父段而不是整楼，并在 Trace 记录范围", async () => {
+		const { store } = openTempStore();
+		store.createStory({ id: "s-parent", title: "父段" });
+		const floor = store.appendNode({
+			id: "n-parent",
+			storyId: "s-parent",
+			parentId: null,
+			role: "assistant",
+			raw: `${"甲".repeat(700)}\n${"乙".repeat(700)}`,
+		});
+		store.appendNode({
+			id: "n-ask",
+			storyId: "s-parent",
+			parentId: floor.id,
+			role: "user",
+			raw: "乙乙乙",
+		});
+
+		const provider = createMemorySlotProvider(store, { limit: 2 });
+		const content = await provider.provide(
+			request("s-parent", "n-ask", "memory"),
+		);
+		const text = content?.messages[0]?.content ?? "";
+		expect(text).toContain("乙".repeat(700));
+		expect(text).not.toContain("甲");
+		expect(content?.retrieval?.injected).toEqual([
+			{
+				nodeId: "n-parent",
+				kind: "chunk",
+				scope: "segment",
+				parentOrdinal: 1,
+			},
+		]);
+	});
+
 	it("记忆槽位在没有前置楼层或没有命中时返回 null", async () => {
 		const { store } = openTempStore();
 		store.createStory({ id: "s1", title: "测试" });

@@ -1,4 +1,7 @@
-import type { ContextTraceEntry } from "../context/assembler.js";
+import type {
+	ContextTraceEntry,
+	RetrievalInjectionTrace,
+} from "../context/assembler.js";
 import {
 	type ResolvedDirectorBeat,
 	readDirectorPlan,
@@ -27,6 +30,7 @@ export interface ExplainRetrievalSection {
 	readonly routes: NonNullable<ContextTraceEntry["retrieval"]>["routes"];
 	readonly hits: NonNullable<ContextTraceEntry["retrieval"]>["hits"];
 	readonly injectedNodeIds: readonly string[];
+	readonly injected: readonly RetrievalInjectionTrace[];
 }
 
 export interface ExplainLedgerSection {
@@ -116,6 +120,7 @@ export function explainNode(
 							routes: entry.retrieval.routes,
 							hits: entry.retrieval.hits,
 							injectedNodeIds: entry.retrieval.injectedNodeIds,
+							injected: entry.retrieval.injected ?? [],
 						},
 					];
 				});
@@ -466,8 +471,17 @@ export function renderExplainReport(report: ExplainReport): string {
 			const sources = hit.sources
 				.map((source) => `${source.route} 第 ${source.rank}`)
 				.join("、");
+			const injection = section.injected.find(
+				(item) => item.nodeId === hit.nodeId,
+			);
+			const scope =
+				injection === undefined
+					? ""
+					: injection.scope === "segment"
+						? "，注入父段"
+						: "，注入整楼";
 			lines.push(
-				`     融合：${hit.nodeId}（${hit.kind}）分数 ${hit.score.toFixed(4)}，来自 ${sources}${section.injectedNodeIds.includes(hit.nodeId) ? "，已注入" : "，未注入"}`,
+				`     融合：${hit.nodeId}（${hit.kind}）分数 ${hit.score.toFixed(4)}，来自 ${sources}${scope}${section.injectedNodeIds.includes(hit.nodeId) ? "，已注入" : "，未注入"}`,
 			);
 		}
 	}
