@@ -3,24 +3,26 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话 189：检查 R5-T14.a 的监督进程（2026-11-09 08:42Z）
-- 监督进程 pid 37352 存活，`supervisor.json` 的 `state` 是 `running`。第 1 次试玩调用从 08:13:07Z 开始，08:33:24Z 结束（退出码 0，14/60 轮）；第 2 次调用从 08:33:26Z 开始，20 分钟预算到 08:53Z 前后。
-- 续跑文件 `eval-private/reports/r5-playtest.progress.json` 有 19 条 round 记录、0 个失败。第 2 次调用新增第 15–19 轮（第 19 轮 08:42:20Z），全部没有操作。
-- 排期里的六项操作在第 3–9 轮全部完成：swipe 第 3、7 轮，edit 第 4、8 轮，branch 第 5、9 轮。`optionAt` 第 6、10 轮没有记录任何操作（这两轮没有出现选项块）。
-- 候选行动面板没有出现：第 2 轮与第 6 轮（`schedule.candidateAt`）的 `candidateActions` 都是 `count: 0, visible: false`；第 14 轮起后台失败里新增 1 条 `candidate_actions`（此前 3 条失败都是 `scene`）。R5-T14.b 写报告时不能把这两项算作已验证。
-- 开场候选只在第 1 轮出现（`count: 3, visible: true, pickedText: null`），第 2 轮起记录为 `null`。导演机制第 15–19 轮由 `beat` 命中（`beat-light-first`，`natural` 强度）；`opening` 未命中，原因是「当前路径已有 17 个助手楼层，不小于开场阈值 10」。
-- 后台队列持续增长：第 1 轮 pending 3 → 第 19 轮 pending 145，running 1，failed 4。失败是 3 条 `scene`（`last_error` 为「现场分析返回了空内容」，每条已耗尽 3 次重试）与 1 条 `candidate_actions`。每轮 drain 上限 20 条，新增任务数持续超过执行数。
-- 本会话没有启动第二个 server 或试玩，没有改代码；门禁沿用上次通过结果（148 个测试文件通过、3 个跳过，1301 个通过、3 个 live 跳过）。
+- 会话 190：检查 R5-T14.a 的监督进程（2026-11-09 09:00Z）
+- 监督进程 pid 37352 存活，`supervisor.json` 的 `state` 是 `running`。第 1 次试玩调用 08:33:24Z 结束（退出码 0，14/60 轮）；第 2 次调用 08:33:26Z 开始、08:58:37Z 结束（退出码 1，仍为 19 轮），失败记录为 `round-20/user`：模拟用户连续 3 次没有输出合法的 `{message}`；第 3 次调用 08:58:39Z 开始，启动时丢弃失败记录并重试第 20 轮，第 20 轮 09:00:27Z 成功。
+- 续跑文件 `eval-private/reports/r5-playtest.progress.json` 有 20 条 round 记录、0 条 failure 记录。第 20 轮没有操作，候选行动 `count: 0`，后台 pending 158、running 1、failed 4。
+- 第 2 次调用因为有 failure 记录，按 `runPlaytest` 的分支写了两份报告（19 成功 / 1 失败）；统计版 `docs/dev/reports/R5-playtest.md` 已被这次调用覆盖，跑满 60 轮后由最终报告替换。R5-T14.b 不能把这份 19 轮版本当成最终数据。
+- 排期里的六项操作在第 3–9 轮全部完成：swipe 第 3、7 轮，edit 第 4、8 轮，branch 第 5、9 轮。`optionAt` 第 6、10 轮没有记录任何操作（这两轮没有出现选项块）。第 10–20 轮没有操作。
+- 候选行动面板没有出现：第 2 轮与第 6 轮（`schedule.candidateAt`）的 `candidateActions` 都是 `count: 0, visible: false`；后台失败里从第 14 轮起有 1 条 `candidate_actions`（此前 3 条失败都是 `scene`）。R5-T14.b 写报告时不能把这两项算作已验证。
+- 开场候选只在第 1 轮出现（`count: 3, visible: true, pickedText: null`），第 2 轮起记录为 `null`。导演机制：`opening` 在第 1–11 轮命中，第 12 轮起因「当前路径已有 13 个助手楼层，不小于开场阈值 10」未命中；`beat` 从第 2 轮起命中，第 15–20 轮的当前拍是 `beat-light-first`（`natural` 强度）。
+- 后台队列持续增长：第 1 轮 pending 3 → 第 20 轮 pending 158，running 1，failed 4。失败是 3 条 `scene`（`last_error` 为「现场分析返回了空内容」，每条已耗尽 3 次重试）与 1 条 `candidate_actions`。每轮 drain 上限 20 条，新增任务数持续超过执行数。
+- 本会话没有启动第二个 server 或试玩，没有改代码；门禁沿用上次通过结果 `.devloop/gate.txt`（148 个测试文件通过、3 个跳过，1301 个通过、3 个 live 跳过）。
 
 ## 当前状态
 - 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T07.b.d.a 与 R1-T07.b.d.b）、R3、O、R2、E、R4、R5-T01 至 R5-T13。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- **R5-T14.a 正在进行，由会话外的监督进程执行**（2026-11-09 08:42Z：pid 37352，19/60 轮，0 失败）：
+- **R5-T14.a 正在进行，由会话外的监督进程执行**（2026-11-09 09:00Z：pid 37352，20/60 轮，0 条失败记录，第 3 次调用进行中）：
   - 状态文件 `.devloop/scratch/R5-T14/supervisor.json`；日志 `.devloop/scratch/R5-T14/supervisor.log`；续跑文件 `eval-private/reports/r5-playtest.progress.json`。
   - 会话只读状态：以 `supervisor.json` 的 `state` 为准，轮数以 `eval-private/reports/r5-playtest.progress.json` 里 `kind` 为 `round` 的 `records` 条目数为准（状态里的 `rounds` 只在每次调用结束时刷新）。`running` → 把当前轮数写进本文件并提交，结果 `PARTIAL`；`completed` → 核对 60 条 round 记录与两份报告，标记 `[x]`；`failed` → 读日志修复后重新启动监督进程。
-  - 不要在会话里再启动 server 或直接跑 `pnpm playtest`；不要删除 `supervisor.lock`（除非确认进程已死）。
+  - 单轮失败时试玩会写一条 `kind: "failure"` 记录并以退出码 1 结束；监督进程累计连续失败次数，下一次调用会丢弃失败记录并重试该轮。第 20 轮的失败就是这样恢复的。连续失败超过 3 次或连续 3 次调用没有新增轮次时监督进程才进入 `failed`。
+  - 不要删除 `supervisor.lock`（除非确认进程已死）；不要在会话里再启动 server 或直接跑 `pnpm playtest`。
   - 需要重启监督进程时用：
     `powershell -NoProfile -Command '$p = Start-Process -FilePath "C:\Program Files\nodejs\node.exe" -ArgumentList "scripts/r5-playtest-supervisor.mjs","--config",".devloop/scratch/R5-T14/supervisor-config.json" -WorkingDirectory "E:\agentcoding\Dramaticer" -WindowStyle Hidden -PassThru; $p.Id'`
-  - 配置：60 轮、每次调用 20 分钟、专用数据库与渠道、`maxInvocations` 20、连续失败上限 3、停滞上限 3。
+  - 配置：60 轮、每次调用 20 分钟、专用数据库与渠道、`maxInvocations` 20、连续失败上限 3、停滞上限 3。第 3 次调用是这个上限内的第 3 次。
   - 之后是 R5-T14.b（核对报告、写 `docs/dev/reports/R5.md`）与 R5-T99。
 - v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（界面）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045、ADR-0078。
@@ -81,8 +83,8 @@
 - 聊天页、分支页、台账页、导演页、设置页与渠道页的手工冒烟脚本在 `.devloop/scratch/R5-T08`、`R5-T09`、`R5-T10`；`playwright-core` 在 `E:/agentcoding/node_modules` 可解析，Chromium 在 `%LOCALAPPDATA%/ms-playwright/chromium-1243/`。
 
 ## 下一步
-- **R5-T14.a**：先读 `.devloop/scratch/R5-T14/supervisor.json` 的 `state`，轮数以 `eval-private/reports/r5-playtest.progress.json` 里 `kind` 为 `round` 的 `records` 条目数为准（本次为 19/60，第 2 次调用仍在进行，预算到 08:53Z 左右，结束后监督进程会自动开始下一次调用）。`running` 时只把当前轮数写进本文件、提交、结果写 `PARTIAL`，不要启动第二个 server 或试玩；`completed` 时核对续跑文件 60 条 round 记录、0 个失败与两份报告，标记 `[x]`；`failed` 时读 `supervisor.log` 修复后重新启动监督进程。
-- **R5-T14.b**：核对统计版字段与 ADR-0033 口径（对比胜率、矛盾率、节拍余弦没有信号时保持「未证实」），在 `docs/dev/reports/R5.md` 引用统计版并写明模型别名、轮数与操作次数；重跑 `pnpm check`。按本次观察写清三处缺失：候选行动在第 2、6 轮都是 `count: 0`，后台积压且第 14 轮已有 1 条 `candidate_actions` 失败，不能算作已验证；开场候选只在第 1 轮出现（`count: 3, visible: true`），第 2 轮起记录为 `null`，第 6、10 轮没有选项块操作；`scene` 任务有 3 条因「现场分析返回了空内容」耗尽重试，不能把缺失算成零分析。
+- **R5-T14.a**：先读 `.devloop/scratch/R5-T14/supervisor.json` 的 `state`，轮数以 `eval-private/reports/r5-playtest.progress.json` 里 `kind` 为 `round` 的 `records` 条目数为准（本次为 20/60，第 3 次调用进行中）。`running` 时只把当前轮数写进本文件、提交、结果写 `PARTIAL`，不要启动第二个 server 或试玩；`completed` 时核对续跑文件 60 条 round 记录、0 条 failure 记录与两份报告，标记 `[x]`；`failed` 时读 `supervisor.log` 修复后重新启动监督进程。
+- **R5-T14.b**：核对统计版字段与 ADR-0033 口径（对比胜率、矛盾率、节拍余弦没有信号时保持「未证实」），在 `docs/dev/reports/R5.md` 引用统计版并写明模型别名、轮数与操作次数；重跑 `pnpm check`。按本次观察写清三处缺失：候选行动在第 2、6 轮都是 `count: 0`，后台积压且第 14 轮已有 1 条 `candidate_actions` 失败，不能算作已验证；开场候选只在第 1 轮出现（`count: 3, visible: true`），第 2 轮起记录为 `null`，第 6、10 轮没有选项块操作；`scene` 任务有 3 条因「现场分析返回了空内容」耗尽重试，不能把缺失算成零分析。第 20 轮出现过一次模拟用户输出非法 JSON 的整轮失败，续跑后重试成功；报告要注明失败轮次与重试。
 - 之后 R5-T99（R5 验收；会重跑 `pnpm check`、`pnpm e2e` 与 60 轮报告）。
 - 引用评测数字时：B1 必须同时说明同模型子集为空、每个对话每档只有 1 个样本；遗忘矛盾率必须同时说明失败题数与可判定样本数；偏好一致率当前没有样本。
 
@@ -105,6 +107,7 @@
 - 自动试玩的 CLI 入口是 `pnpm --filter @dramaticer/st-compat playtest`（纯 CLI 试玩，不驱动界面）；界面自动试玩是 `pnpm playtest`（R5-T13），两者不要混淆。CLI 试玩的每轮顺序是读间隙积压 → 模拟用户 → `runChatTurn` → swipe/edit/branch → 间隙后台任务 → 一致性探针 → 每轮裁判 → 写记录。
 - 界面自动试玩（R5-T13）：`pnpm e2e` 会收集但跳过 `e2e/playtest/playtest.spec.ts`；`pnpm playtest` 先构建再跑 mobile project；`PLAYTEST_LIVE=1` 时 `playwright.config.ts` 不启动假 server，baseURL 默认 8787，`.env` 在用例里加载；模拟用户取 `roles.settler` 模型；报告默认路径见 `config.ts`（Windows 大小写不敏感，冒烟两份报告文件名不能只差大小写）；失败截图在 `.devloop/scratch/e2e/playtest/screenshots`。分支切换按 `.branch-preview` 精确文本定位，编辑会加〔试玩编辑第N轮〕前缀，保证预览可区分。
 - 自动试玩续跑（2026-11-09）：live 默认 `PLAYTEST_RESUME=1`；续跑文件默认 `eval-private/reports/r5-playtest.progress.json`，每轮写完落盘，记录故事 id、数据库、渠道、标题、排期与全部轮次。续跑时复用故事，从上次编辑操作还原两个兄弟楼层，失败记录在下次运行时丢弃并重试该轮；跑满 60 轮才写报告。`PLAYTEST_RESUME=0` 新开一次，`PLAYTEST_TIME_BUDGET_MS` 控制单次调用预算。
+- 单轮失败时 `runPlaytest` 记录 `kind: "failure"` 并跳出循环；`playtest.spec.ts` 在存在 failure 记录时抛错，所以该次调用退出码为 1。监督进程按 failure 记录累计连续失败次数，并自动丢弃该记录重试。
 - 会话外监督进程（R5-T14.a）：`scripts/r5-playtest-supervisor.mjs` 读 `.devloop/scratch/R5-T14/supervisor-config.json`；状态 `supervisor.json`、日志 `supervisor.log`、锁 `supervisor.lock`。它负责构建一次、启动 server、反复调用试玩直到 60 轮，完成后停掉 server。会话只用 `Start-Process` 启动它并读状态，不要再启动 server 或试玩。`baseUrl` 非空时复用已有服务（假 server 冒烟用）。
 - 续跑文件、私有报告与截图都是私有产物，不能提交；它们分别在 `eval-private/` 与 `.devloop/scratch/`。
 - 开场导演的楼层深度按当前路径助手楼层数计算；`openingFloors` 为 0 关闭。节拍机制的楼层深度用同一口径。
