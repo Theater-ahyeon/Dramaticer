@@ -15,4 +15,6 @@
 6. 写 `.devloop/result.json`
 7. 用一句话总结，然后结束
 
+预计超过 10 分钟的命令（长程试玩、整批评测、批量抽取）不要在会话里等待，也不要自己在后台启动：按 `AGENTS.md` 的"长任务"一节写 `.devloop/jobs/<id>.json` 申请，结果写 `WAITING`。如果 `.devloop/jobs/` 里有你之前申请的长任务已经跑完（有 `.status.json`），先读它的结果和日志。
+
 记住设计不变量和安全红线。不要修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 下的任何文件；觉得它们需要修改时，写进 HUMAN.md。
