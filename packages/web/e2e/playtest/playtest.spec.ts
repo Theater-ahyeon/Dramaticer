@@ -24,7 +24,12 @@ test("界面自动试玩：模型模拟用户、操作排期与两份报告", as
 	}
 	const config = resolvePlaytestConfig(process.env);
 	test.setTimeout(
-		config.rounds * config.roundTimeoutMs + config.backgroundWaitMs,
+		config.timeBudgetMs > 0
+			? config.timeBudgetMs +
+					config.roundTimeoutMs +
+					config.backgroundWaitMs +
+					60_000
+			: config.rounds * config.roundTimeoutMs + config.backgroundWaitMs,
 	);
 	const channels = await loadChannelsConfig(
 		config.channelsPath,
@@ -51,13 +56,21 @@ test("界面自动试玩：模型模拟用户、操作排期与两份报告", as
 				.join("、")}`,
 		);
 	}
-	expect(rounds.length).toBe(config.rounds);
-	expect(result.preferenceCounts.swipe).toBeGreaterThanOrEqual(
-		config.schedule.swipeAt.length,
+	console.log(
+		`自动试玩进度：${rounds.length}/${config.rounds} 轮完成，0 个失败。`,
 	);
-	expect(result.preferenceCounts.edit).toBeGreaterThanOrEqual(
-		config.schedule.editAt.length,
-	);
-	expect(existsSync(config.privateReportPath)).toBe(true);
-	expect(existsSync(config.statsReportPath)).toBe(true);
+	if (rounds.length === config.rounds) {
+		expect(result.preferenceCounts.swipe).toBeGreaterThanOrEqual(
+			config.schedule.swipeAt.length,
+		);
+		expect(result.preferenceCounts.edit).toBeGreaterThanOrEqual(
+			config.schedule.editAt.length,
+		);
+		expect(existsSync(config.privateReportPath)).toBe(true);
+		expect(existsSync(config.statsReportPath)).toBe(true);
+		return;
+	}
+	expect(config.resume).toBe(true);
+	expect(rounds.length).toBeGreaterThan(0);
+	expect(existsSync(config.progressPath)).toBe(true);
 });

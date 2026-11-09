@@ -15,6 +15,9 @@ export interface PlaytestConfig {
 	readonly storyTitle: string;
 	readonly backgroundWaitMs: number;
 	readonly roundTimeoutMs: number;
+	readonly resume: boolean;
+	readonly progressPath: string;
+	readonly timeBudgetMs: number;
 }
 
 const repoRoot = join(import.meta.dirname, "..", "..", "..", "..");
@@ -96,6 +99,25 @@ export function resolvePlaytestConfig(
 			env.PLAYTEST_ROUND_TIMEOUT_MS,
 			180_000,
 			"PLAYTEST_ROUND_TIMEOUT_MS",
+		),
+		resume: readBoolean(env.PLAYTEST_RESUME, live, "PLAYTEST_RESUME"),
+		progressPath: resolve(
+			repoRoot,
+			env.PLAYTEST_PROGRESS ??
+				(live
+					? join("eval-private", "reports", "r5-playtest.progress.json")
+					: join(
+							".devloop",
+							"scratch",
+							"e2e",
+							"playtest",
+							"progress-r5-playtest.json",
+						)),
+		),
+		timeBudgetMs: readInteger(
+			env.PLAYTEST_TIME_BUDGET_MS,
+			live ? 45 * 60_000 : 0,
+			"PLAYTEST_TIME_BUDGET_MS",
 		),
 	};
 }
@@ -205,4 +227,15 @@ function readInteger(
 		throw new Error(`${name} 必须是非负整数：${value}`);
 	}
 	return parsed;
+}
+
+function readBoolean(
+	value: string | undefined,
+	fallback: boolean,
+	name: string,
+): boolean {
+	if (value === undefined) return fallback;
+	if (value === "1") return true;
+	if (value === "0") return false;
+	throw new Error(`${name} 只能是 0 或 1：${value}`);
 }

@@ -723,11 +723,22 @@
   - 统计版不出现故事名、角色名、原文与题目文本；失败可整批重跑并注明。
   验收：假渠道下 5 轮冒烟跑通且不联网；私有报告含逐轮记录与截图路径；统计版字段齐全并通过私有标识反向扫描；四种偏好信号的条数来自 `preference_events`；`pnpm check` 通过。
 
-- [~] **R5-T14 真实 60 轮试玩与报告**（原 M4-T20） | 依赖：R5-T13 | 使用 `.env` 里的真实渠道
-  做什么：用真实正文与后台渠道运行至少 60 轮，执行规定次数的重新生成、编辑与分支切换；生成两份报告；统计版写入 `docs/dev/reports/R5-playtest.md` 并在 `docs/dev/reports/R5.md` 引用；效果指标按 ADR-0033 原样报告，没有信号就写未证实。
-  验收：60 轮完成，失败轮次有原因；两份报告生成；统计版无私有信息；报告给出导演机制命中、线索兑现与四种偏好信号的数字；`pnpm check` 通过。
+**R5-T14 真实 60 轮试玩与报告**（原 M4-T20，已拆成 R5-T14.a 与 R5-T14.b） | 依赖：R5-T13 | 使用 `.env` 里的真实渠道
 
-- [ ] **R5-T99 R5 验收** | 依赖：R5 全部任务（含 R5-T02.a、R5-T02.b、R5-T02.c、R5-T05.a、R5-T07.a）
+- [ ] **R5-T14.a 真实 60 轮试玩（分会话续跑）** | 依赖：R5-T13
+  做什么：
+  - 用专用渠道配置 `.devloop/scratch/R5-T14/channels.yaml`（`writer: main-fallback`、`settler/planner: background`；`rp` 仍返回 503）与专用数据库 `.devloop/scratch/R5-T14/live.db` 跑满 60 轮，包含两次重新生成、两次编辑与两次分支切换。
+  - 启动 server：`pnpm --filter @dramaticer/server build && node packages/server/dist/cli.js --db .devloop/scratch/R5-T14/live.db --channels .devloop/scratch/R5-T14/channels.yaml --port 8787`。
+  - 跑试玩：`PLAYTEST_LIVE=1 PLAYTEST_DB=.devloop/scratch/R5-T14/live.db PLAYTEST_CHANNELS=.devloop/scratch/R5-T14/channels.yaml PLAYTEST_ROUNDS=60 pnpm playtest`。命令在前台运行到进程退出；不要放后台后结束回合。
+  - 每轮完成后写续跑文件 `eval-private/reports/r5-playtest.progress.json`；每次会话的默认时间预算 45 分钟，到预算会停在整轮边界。下一会话用同一命令继续。`PLAYTEST_RESUME=0` 强制新开一次试玩，`PLAYTEST_TIME_BUDGET_MS` 改预算。
+  - 跑满 60 轮时自动写 `eval-private/reports/r5-playtest.md` 与 `docs/dev/reports/R5-playtest.md`；续跑文件记录的数据库、渠道、标题与排期必须与当前配置一致，不一致直接失败。
+  验收：续跑文件有 60 条 round 记录、0 个失败；两份报告生成；统计版无私有信息；报告给出导演机制命中、线索兑现与四种偏好信号的数字。
+
+- [ ] **R5-T14.b 试玩报告核对与文档** | 依赖：R5-T14.a
+  做什么：核对统计版字段与 ADR-0033 口径，没有信号的指标保持「未证实」，不改口径；在 `docs/dev/reports/R5.md` 引用统计版并写明模型别名、轮数与操作次数；重跑 `pnpm check`。
+  验收：统计版字段齐全并通过私有标识反向扫描；`docs/dev/reports/R5.md` 的引用与数字和统计版一致；`pnpm check` 通过。
+
+- [ ] **R5-T99 R5 验收** | 依赖：R5 全部任务（含 R5-T02.a、R5-T02.b、R5-T02.c、R5-T05.a、R5-T07.a、R5-T14.a、R5-T14.b）
   做什么：同 M0-T99；重跑 `pnpm check`、`pnpm e2e` 与 60 轮试玩报告；逐条核对 R5-T01 至 R5-T14 与全部子任务；复核 I6（模式只由玩家切换）、I9（导演实时选择零模型调用）、I11–I14，以及 server 不绕过 core 直接写库；检查默认回环监听与局域网密码；在 `docs/dev/reports/R5.md` 总结；确认 M6、R1 续与 R3b 任务。
   结果写 `MILESTONE_DONE`；报告缺失时写 `PARTIAL`。
 

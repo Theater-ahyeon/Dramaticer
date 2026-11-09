@@ -1,13 +1,28 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	renameSync,
+	writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import type { LlmClient } from "@dramaticer/core";
 import { type Page, expect } from "@playwright/test";
+import {
+	PLAYTEST_PROGRESS_VERSION,
+	type PlaytestProgress,
+	assertPlaytestProgressMatches,
+	completedRoundCount,
+	parsePlaytestProgress,
+	rebuildClueFirstSeen,
+} from "../../src/playtest/progress";
 import type {
 	PlaytestOperationRecord,
 	PlaytestRecord,
 	PlaytestRoundRecord,
 	PlaytestRunResult,
 } from "../../src/playtest/records";
+import { isPlaytestFailureRecord } from "../../src/playtest/records";
 import {
 	assertNoPrivateIdentifiers,
 	collectPrivateIdentifiers,
@@ -48,43 +63,77 @@ export interface PlaytestDependencies {
 
 const TRANSCRIPT_FLOORS = 12;
 
+interface PlaytestLastEdit {
+	readonly originalNodeId: string;
+	readonly editedNodeId: string;
+	readonly originalPreview: string;
+	readonly editedPreview: string;
+}
+
 export async function runPlaytest(
 	page: Page,
 	deps: PlaytestDependencies,
 ): Promise<PlaytestRunResult> {
 	const { config } = deps;
 	mkdirSync(config.screenshotDir, { recursive: true });
-	const startedAt = new Date().toISOString();
+	const sessionStarted = Date.now();
 	await login(page, config.password);
-	const storyId = await createImportedStory(page, config.storyTitle);
+	const progress = loadProgress(config);
+	const previousRecords = progress === null ? [] : [...progress.records];
+	const lastRecord = previousRecords.at(-1);
+	if (lastRecord !== undefined && isPlaytestFailureRecord(lastRecord)) {
+		console.log(
+			`上一次会话在第 ${lastRecord.round} 轮失败（${lastRecord.stepId}），丢弃该失败记录并重试这一轮。`,
+		);
+		previousRecords.pop();
+	}
+	const storyId =
+		progress?.storyId ?? (await createImportedStory(page, config.storyTitle));
+	if (progress !== null) {
+		try {
+			await fetchTree(page, storyId);
+		} catch (error) {
+			throw new Error(
+				`续跑文件指向的故事 ${storyId} 在数据库中不可读；确认 PLAYTEST_DB 与续跑文件来自同一次运行（${error instanceof Error ? error.message : String(error)}）`,
+			);
+		}
+	}
+	const startedAt = progress?.startedAt ?? new Date().toISOString();
+	const records: PlaytestRecord[] = previousRecords;
 	const characterNames = await fetchCharacterNames(page, storyId);
 	await openStoryTab(page, storyId, "chat");
-	const openingCount = await waitForCount(
-		page,
-		".opening-candidate",
-		1,
-		30_000,
-	);
-	const openingCandidates = {
-		count: openingCount,
-		visible: openingCount > 0,
-		pickedText: null,
-	};
-	const records: PlaytestRecord[] = [];
-	const clueFirstSeen = new Map<string, number>();
-	for (const clueId of await fetchOpenClueIds(page, storyId)) {
-		clueFirstSeen.set(clueId, 0);
+	let openingCandidates: PlaytestRoundRecord["openingCandidates"] = null;
+	if (records.length === 0) {
+		const openingCount = await waitForCount(
+			page,
+			".opening-candidate",
+			1,
+			30_000,
+		);
+		openingCandidates = {
+			count: openingCount,
+			visible: openingCount > 0,
+			pickedText: null,
+		};
 	}
-	let lastEdit:
-		| {
-				readonly originalNodeId: string;
-				readonly editedNodeId: string;
-				readonly originalPreview: string;
-				readonly editedPreview: string;
-		  }
-		| undefined;
+	const clueFirstSeen = rebuildClueFirstSeen(
+		records,
+		await fetchOpenClueIds(page, storyId),
+	);
+	let lastEdit = await rebuildLastEdit(page, storyId, records);
 	let currentStep = "";
-	for (let round = 1; round <= config.rounds; round += 1) {
+	saveProgress(config, storyId, startedAt, records);
+	const firstRound = completedRoundCount(records) + 1;
+	for (let round = firstRound; round <= config.rounds; round += 1) {
+		if (
+			config.timeBudgetMs > 0 &&
+			Date.now() - sessionStarted >= config.timeBudgetMs
+		) {
+			console.log(
+				`本轮会话达到时间预算，停在 ${completedRoundCount(records)}/${config.rounds} 轮；重跑同一命令会从这一轮继续。`,
+			);
+			break;
+		}
 		let screenshot = "";
 		try {
 			currentStep = `round-${round}/user`;
@@ -240,6 +289,7 @@ export async function runPlaytest(
 				createdAt: new Date().toISOString(),
 			};
 			records.push(record);
+			saveProgress(config, storyId, startedAt, records);
 			await openStoryTab(page, storyId, "chat");
 		} catch (error) {
 			const failureScreenshot = join(
@@ -257,6 +307,7 @@ export async function runPlaytest(
 				screenshot: failureScreenshot,
 				createdAt: new Date().toISOString(),
 			});
+			saveProgress(config, storyId, startedAt, records);
 			break;
 		}
 	}
@@ -277,6 +328,13 @@ export async function runPlaytest(
 		records,
 		preferenceCounts,
 	};
+	const completed = completedRoundCount(records);
+	if (completed < config.rounds && !records.some(isPlaytestFailureRecord)) {
+		console.log(
+			`试玩进度：${completed}/${config.rounds} 轮；本轮未写报告，重跑同一命令会继续。`,
+		);
+		return result;
+	}
 	const aggregate = summarizePlaytest({
 		requestedRounds: config.rounds,
 		records,
@@ -306,6 +364,79 @@ export async function runPlaytest(
 		renderStatsReport({ result, aggregate, scan }),
 	);
 	return result;
+}
+
+function loadProgress(config: PlaytestConfig): PlaytestProgress | null {
+	if (!config.resume || !existsSync(config.progressPath)) return null;
+	const progress = parsePlaytestProgress(
+		readFileSync(config.progressPath, "utf8"),
+	);
+	assertPlaytestProgressMatches(progress, {
+		storyTitle: config.storyTitle,
+		dbPath: config.dbPath,
+		channelsPath: config.channelsPath,
+		rounds: config.rounds,
+		schedule: config.schedule,
+	});
+	return progress;
+}
+
+function saveProgress(
+	config: PlaytestConfig,
+	storyId: string,
+	startedAt: string,
+	records: readonly PlaytestRecord[],
+): void {
+	const progress: PlaytestProgress = {
+		version: PLAYTEST_PROGRESS_VERSION,
+		storyId,
+		storyTitle: config.storyTitle,
+		dbPath: config.dbPath,
+		channelsPath: config.channelsPath,
+		rounds: config.rounds,
+		schedule: config.schedule,
+		startedAt,
+		records,
+	};
+	mkdirSync(dirname(config.progressPath), { recursive: true });
+	const temporary = `${config.progressPath}.tmp`;
+	writeFileSync(temporary, `${JSON.stringify(progress, null, 2)}\n`, "utf8");
+	renameSync(temporary, config.progressPath);
+}
+
+/** 续跑时从最近的编辑操作还原两个兄弟楼层，供后续分支切换定位。 */
+async function rebuildLastEdit(
+	page: Page,
+	storyId: string,
+	records: readonly PlaytestRecord[],
+): Promise<PlaytestLastEdit | undefined> {
+	for (
+		let recordIndex = records.length - 1;
+		recordIndex >= 0;
+		recordIndex -= 1
+	) {
+		const record = records[recordIndex];
+		if (record === undefined || record.kind !== "round") continue;
+		for (
+			let operationIndex = record.operations.length - 1;
+			operationIndex >= 0;
+			operationIndex -= 1
+		) {
+			const operation = record.operations[operationIndex];
+			if (operation === undefined || operation.kind !== "edit") continue;
+			if (operation.text === null) {
+				throw new Error(`编辑操作 ${operation.stepId} 缺少正文`);
+			}
+			const original = await fetchNode(page, storyId, operation.fromNodeId);
+			return {
+				originalNodeId: operation.fromNodeId,
+				editedNodeId: operation.toNodeId,
+				originalPreview: previewOf(original.raw),
+				editedPreview: previewOf(operation.text),
+			};
+		}
+	}
+	return undefined;
 }
 
 async function buildTranscript(page: Page, storyId: string): Promise<string> {
@@ -406,12 +537,7 @@ async function editHead(
 	timeoutMs: number,
 ): Promise<{
 	readonly operation: PlaytestOperationRecord;
-	readonly lastEdit: {
-		readonly originalNodeId: string;
-		readonly editedNodeId: string;
-		readonly originalPreview: string;
-		readonly editedPreview: string;
-	};
+	readonly lastEdit: PlaytestLastEdit;
 }> {
 	const treeBefore = await fetchTree(page, storyId);
 	const originalNodeId = treeBefore.headNodeId;
@@ -462,12 +588,7 @@ async function switchBranch(
 	page: Page,
 	storyId: string,
 	round: number,
-	lastEdit: {
-		readonly originalNodeId: string;
-		readonly editedNodeId: string;
-		readonly originalPreview: string;
-		readonly editedPreview: string;
-	},
+	lastEdit: PlaytestLastEdit,
 	timeoutMs: number,
 ): Promise<PlaytestOperationRecord> {
 	const head = (await fetchTree(page, storyId)).headNodeId;

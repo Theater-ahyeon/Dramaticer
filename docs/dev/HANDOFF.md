@@ -3,29 +3,34 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：168
-- 任务：R5-T13 自动试玩框架
-- 结果：完成，门禁通过（147 个测试文件、1296 个测试通过，3 个 live 跳过，共 1299 个）；`pnpm playtest` 假渠道 5 轮冒烟 14 秒通过；`pnpm e2e` 20 个用例通过（自动试玩用例默认跳过）。
-  - `packages/web/src/playtest/`：`records.ts`（逐轮、操作、导演、候选、偏好的记录类型）、`stats.ts`（最近秩分位、相邻块字符 4-gram Jaccard、token、机制命中、线索兑现与年龄、错误步骤）、`report.ts`（私有与统计两份 Markdown、私有标识收集与反向扫描、`assertNoPrivateIdentifiers`）、`user.ts`（模拟用户系统提示词、严格 `{message}` 解析、3 次尝试后抛 `SimulatedUserOutputError`）。
-  - `packages/web/e2e/playtest/`：`config.ts`（`PLAYTEST_*` 解析、默认排期、校验）、`session.ts`（路径/树/单楼/Trace/台账/导演/候选行动/线索/后台任务/实体与 `preference_events` 读取）、`runner.ts`（登录、建故事、等开场候选、逐轮：模拟用户 → 发送 → 等后台空闲 → 采样 → 截图 → 按排期点候选行动/选项/重新生成/编辑/分支切换 → 写两份报告）、`playtest.spec.ts`（`PLAYTEST=1` 才运行）、`cli.mjs`（用 `@playwright/test/cli` 以 `--project=mobile` 启动）。
-  - 模拟用户使用 `roles.settler` 模型（渠道里的 background 模型），因为 `LlmModelRole` 只有 writer/settler/planner/judge，没有 `background` 角色；`data/channels.yaml` 没配 settler 时回落到 `background` 模型别名。
-  - 排期默认：≥12 轮时 swipe 3、7；edit 4、8；branch 5、9；候选行动 2、6；选项 6、10。少于 12 轮时收缩为 swipe 2、edit 3、branch 4（≤轮数）；`rounds ≥ 60` 强制 swipe/edit/branch 各至少两次，且每个分支切换轮之前必须已经有编辑。可用 `PLAYTEST_SWIPE_AT`、`PLAYTEST_EDIT_AT`、`PLAYTEST_BRANCH_AT`、`PLAYTEST_CANDIDATE_AT`、`PLAYTEST_OPTION_AT` 覆盖（逗号分隔）。
-  - 冒烟默认 5 轮，报告写到 `.devloop/scratch/e2e/playtest/private-r5-playtest.md` 与 `stats-R5-playtest.md`（Windows 大小写不敏感，两份默认文件不能只差大小写）。`PLAYTEST_LIVE=1` 时不启动假 server，baseURL 默认 8787（可用 `PLAYTEST_BASE_URL`），密码取 `DRAMATICER_SERVER_PASSWORD`，库与渠道默认 `data/dramaticer.db`、`data/channels.yaml`，报告默认 `eval-private/reports/r5-playtest.md` 与 `docs/dev/reports/R5-playtest.md`。`.env` 只在 live 模式加载。
-  - `login(page, password = "e2e-password")` 现在接受密码参数，自动试玩用配置里的密码；已有用例不受影响。
-  - `fake-channel.mjs` 新增模拟用户分支：system/developer 提示词含「你在模拟一位玩文字角色扮演游戏的玩家」时返回 `{"message": …}`，六条固定发言循环。
-  - 私有报告含每轮用户/助手原文、节点 id、回合模式、首字、用量、台账 diff、线索、导演指令与机制、候选行动与开场候选显示、后台任务计数、操作与截图绝对路径；统计版只含数字、模型别名与配置。
-  - 统计版字段：轮数、对比胜率（未证实）、矛盾率（未证实）、相邻块 Jaccard 均值与 P90、节拍余弦（无楼层向量时未证实）、首字与耗时 P50/P95、每轮 prompt/completion/total/reasoning token、导演决策与机制命中、新建与兑现线索、兑现率与平均年龄、错误与复现步骤编号、四种偏好信号条数；报告生成时先扫描私有标识，命中直接抛错。
+- 会话：173 之后的循环修复（2026-11-08）
+- 问题：devloop 在会话 169–173 连续记录 `NO_RESULT`，达到失败上限后停止。每个会话都启动 60 轮真实试玩，然后结束回合；`omp -p` 随回合结束退出，没有写 `.devloop/result.json`。试玩当时没有续跑，每个会话都从第 1 轮重新开始，5 次之后循环停止。
+- 修复：
+  - 自动试玩支持跨会话续跑：新增 `packages/web/src/playtest/progress.ts`（续跑文件的严格解析、配置一致性校验、线索首次出现轮次重建）与 `packages/web/test/playtest-progress.test.ts`（5 个测试）；`packages/web/e2e/playtest/runner.ts` 每完成一轮写 `eval-private/reports/r5-playtest.progress.json`，续跑时复用同一个故事、重建最近一次编辑的两个兄弟楼层，并在上次失败时丢弃失败记录重试该轮。
+  - live 模式默认每次会话 45 分钟预算：到预算时停在整轮边界，只写续跑文件，不写报告；跑满 60 轮才生成两份报告。`PLAYTEST_RESUME=0` 强制新开一次试玩，`PLAYTEST_TIME_BUDGET_MS` 调整预算。
+  - `packages/web/e2e/playtest/playtest.spec.ts` 允许部分进度通过（必须有 `PLAYTEST_RESUME=1` 与续跑文件）；完整时仍检查偏好条数与两份报告。
+  - 验证：假渠道 5 轮冒烟 5/5 通过（14.5 秒）；假 server 上以 live 模式分两段续跑 3+3=6 轮，第二段重建了第一段的编辑分支并完成分支切换，报告正常生成；`pnpm check` 通过（151 个测试文件、1301 个通过、3 个 live 跳过，共 1304 个）。
+- 任务拆分：R5-T14 拆成 R5-T14.a（跑满 60 轮，允许跨会话）与 R5-T14.b（报告核对与文档）；R5-T99 依赖这两项。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0-T01 至 R0-T05、R1-T01、R1-T01.a、R1-T01.b、R1-T01.c、R1-T02.1、R1-T02.2、R1-T02.3、R1-T02.4、R1-T02.a、R1-T02.b、R1-T03、R1-T04.a、R1-T07、R1-T07.a、R1-T07.b.a、R1-T07.b.b、R1-T07.b.c、R1-T07.b.d、R1-T07.b.d.a、R1-T07.b.d.b、R1-T99、R3-T01、R3-T02、R3-T03、R3-T04、R3-T99、O-T01、O-T02、O-T03、O-T99、O-T01.a、O-T99.a、R2-T01、R2-T02、R2-T03、R2-T03.a、R2-T03.b、R2-T04、R2-T04.a、R2-T05、R2-T06、R2-T07、R2-T07.a、R2-T08、R2-T09.a、R2-T09.b、R2-T09.c、R2-T99、R5-T01、R5-T02、R5-T02.a、R5-T02.b、R5-T02.c、R5-T04、R5-T05.a、R5-T05.b、R5-T05.c、R5-T06、R5-T07、R5-T07.a、R5-T11、R5-T03、R5-T08、R5-T09、R5-T10、R5-T12、R5-T13、E-T01、R4-T00、R4-T01、R4-T02、R4-T03、R4-T04、R4-T05、R4-T06、R4-T07、R4-T08、R4-T99、R5-T00。完成记录与验收标准见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- **下一个可做任务是 R5-T14（真实 60 轮试玩与报告）**：依赖 R5-T13，已满足。用真实正文与后台渠道跑 `pnpm playtest`（`PLAYTEST_LIVE=1`、`PLAYTEST_ROUNDS=60`，必要时先启动 `pnpm serve`），生成 `eval-private/reports/r5-playtest.md` 与 `docs/dev/reports/R5-playtest.md`；统计版字段已齐，真实运行没有信号的指标会写「未证实」，不要改口径。之后是 R5-T99。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T07.b.d.a 与 R1-T07.b.d.b）、R3、O、R2、E、R4、R5-T01 至 R5-T13。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- **下一个可做任务是 R5-T14.a（真实 60 轮试玩）**：依赖 R5-T13，已满足。用专用渠道与专用数据库跑满 60 轮，跨会话续跑。
+  - 启动 server（在前台会话里作为服务启动，跑完停掉）：
+    `pnpm --filter @dramaticer/server build && node packages/server/dist/cli.js --db .devloop/scratch/R5-T14/live.db --channels .devloop/scratch/R5-T14/channels.yaml --port 8787`
+  - 跑试玩：
+    `PLAYTEST_LIVE=1 PLAYTEST_DB=.devloop/scratch/R5-T14/live.db PLAYTEST_CHANNELS=.devloop/scratch/R5-T14/channels.yaml PLAYTEST_ROUNDS=60 pnpm playtest`
+  - 命令必须在前台等到进程退出；**不要**把它放进后台后结束回合。
+  - 每轮写 `eval-private/reports/r5-playtest.progress.json`。达到 45 分钟预算时会在整轮边界停下并打印进度；本会话把任务保持 `[~]`、写清楚剩余轮数、跑 `pnpm check`、提交，结果写 `PARTIAL`。下一会话用同一命令继续。
+  - 跑满 60 轮时自动写 `eval-private/reports/r5-playtest.md` 与 `docs/dev/reports/R5-playtest.md`。
+  - 若续跑文件与当前数据库、渠道、标题或排期不一致，运行会直接失败并指出字段；换回原配置或删除续跑文件（`PLAYTEST_RESUME=0`）重新开始。
+  - 之后是 R5-T14.b（核对报告、写 `docs/dev/reports/R5.md`）与 R5-T99。
 - v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（界面）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045、ADR-0078。
 - HUMAN-09 待处理（不阻塞）：`data/channels.yaml` 已有 `bg-fallback`、`main-fallback`、`codex`，`channels.example.yaml` 还没有这三个别名。
 - HUMAN-10 待处理（不阻塞）：插件不变量是否加进 AGENTS.md。
 - HUMAN-11 待处理（不阻塞）：`.env` 的正文模型 `opendesign/deepseek-v4.1-flash` 返回 membership entitlement 错误。
 - HUMAN-12 待处理（不阻塞）：HUMAN.md 条目仍描述 `roles.judge` 指向 `codex`，实际配置已是 `judge`（`auto/glm-5.3`）。
-- HUMAN-13 待处理（不阻塞）：`catie` 的 `rp`（`agy-gemini-3.8-flash-medium`）返回 503「没有可用的 Antigravity 凭证」，影响 `roles.writer`；凭证恢复后可用 `node scripts/r2-legacy-forgetting.mjs run-all --concurrency 3` 补齐 45 道失败题。真实 60 轮试玩需要先确认 writer 路由可用（`main-fallback` 可用）。
+- HUMAN-13 待处理（不阻塞）：`catie` 的 `rp`（`agy-gemini-3.8-flash-medium`）返回 503「没有可用的 Antigravity 凭证」，影响 `roles.writer`；凭证恢复后可用 `node scripts/r2-legacy-forgetting.mjs run-all --concurrency 3` 补齐 45 道失败题。真实 60 轮试玩使用 `.devloop/scratch/R5-T14/channels.yaml`，其中 `roles.writer` 指向 `main-fallback`。
 - 数据库 schema 版本 33（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡、v25 合并调用开关与执行记录、v26 间隙档位阈值与丢弃状态、v27 合并调用丢弃条目、v28 回合模式与读取工具软上限、v29 开局包与故事级后台任务、v30 首楼开场候选、v31 偏好记录、v32 导演计划与拍状态、v33 导演候选行动）；R1 续原计划的 v32–v35 顺延为 v34–v37。
 - server 的回合路径会补建并执行后台任务：`handleTurnStream` 在 `turn.completed` 之后调用 `BackgroundScheduler.schedule`，不等待 drain；同一时刻只有一个 drain，故事之间先来先做。`schedule` 的 drain 只跑 `resolveStoryBackgroundKinds` 过滤后的类型，并带 `sessionEnded: true`，所以每轮结束后延后档（事件、摘要、NPC 议程、导演计划）也会执行。
 - 故事级任务入队：`StoryStore.enqueueStoryBackgroundJobs` 按种类写入 `node_id` 为空的 `background_jobs` 行；创建故事与导入卡的路由先调用 `enqueueOpeningBackgroundJobs`（按两个 `needsRun` 过滤）再 `schedule`。`POST /api/stories/:id/openings/generate` 无条件入队一条 `opening_candidates`（仅要求故事无楼层），同一行已完成时翻回 `pending`。
@@ -34,7 +39,7 @@
 - 路径接口：`GET /api/stories/:id/path?nodeId=&limit=&before=`，返回 `{storyId, headNodeId, nodes, hasMore}`。`nodeId` 是锚点、缺省 head，锚点节点包含在返回路径里；`before` 必须在本故事且在该锚点的路径上，返回它之前的 `limit` 楼；`hasMore` 只在返回页之前还有楼层时为真。`limit=1` 且带 `nodeId` 时只返回锚点自己。自动试玩用这个口径逐轮取用户与助手楼层，以及编辑/分支目标。
 - 分支接口的 head 语义：`appendNode` 自带把 head 移到新节点，所以 `swipeNode`、`editNode`、重新生成写完楼层后 head 已经是新楼层，不需要再调用 `POST /head`；`setHead` 只在树里主动切分支时使用。
 - 块载荷：`DisplayedContent` 是协议层的渲染载荷，`display` 为 `null` 表示没有显示策略、按原文显示；`html` 模板的 `{{content}}` 由 web 用 `escapeHtml` 替换，模板字符串只进入 iframe 的 `srcdoc`。本地历史楼层仍然在客户端用 `parseBlocks(node.raw)` 再 `toDisplayedBlocks`。
-- web 包结构：`src/api/{client,sse,index}.ts`；`src/chat/{path-state,virtual-window,stream-state,turn-summary,blocks,sandbox,candidate-actions,opening-candidates,branch-tree,ledger-view,proposal-view,director-view,composer-draft,settings-form,template-form,channels-form,format}.ts`；`src/playtest/{records,stats,report,user}.ts`（纯逻辑，Node 与浏览器都可导入）；`src/components/…`、`src/pages/*`、`src/pages/story/*`、`src/styles.css`。`@dramaticer/core/blocks` 是浏览器安全子路径；web 的界面代码不要从 `@dramaticer/core` 根入口导入运行时函数（`src/playtest` 只导入类型）。
+- web 包结构：`src/api/{client,sse,index}.ts`；`src/chat/{path-state,virtual-window,stream-state,turn-summary,blocks,sandbox,candidate-actions,opening-candidates,branch-tree,ledger-view,proposal-view,director-view,composer-draft,settings-form,template-form,channels-form,format}.ts`；`src/playtest/{records,stats,report,user,progress}.ts`（纯逻辑，Node 与浏览器都可导入）；`src/components/…`、`src/pages/*`、`src/pages/story/*`、`src/styles.css`。`@dramaticer/core/blocks` 是浏览器安全子路径；web 的界面代码不要从 `@dramaticer/core` 根入口导入运行时函数（`src/playtest` 只导入类型）。
 - 聊天页每轮生成完成后重新取最新 60 楼并丢弃旧的向上分页；`PAGE_SIZE` 60、分页阈值 240px、自动贴底阈值 96px、楼层高度估算 200px、overscan 600px。候选行动与开场候选的轮询间隔都是 2 秒、上限 15 次；两个面板在聊天面板里最高占 40vh。
 - 聊天页的回合模式取自 `GET settings` 的 `turnMode` 并作为 `mode` 发送；settings 尚未取到时按 `fast`。锁定为深回合时下拉框只显示当前值（不可选），旁边出现「切回快回合」按钮走 `PUT settings`；深回合不在可选项里（DESIGN §10.1）。
 - 分支页：路径高亮按完整路径 id 集合；head 行用 `focusSignal` 触发 `scrollIntoView`（0 表示还没加载）。树里只有 `childIds.length > 0` 才能折叠；`describeHeadSwitch` 是切换提示的唯一文案来源。自动试玩编辑时先点 `.branch-row-head .branch-select`，等 `.branch-detail-raw` 出现再点「编辑正文」；分支切换按 `.branch-preview` 的精确文本定位兄弟节点，再「切换到此楼层」→「确认切换」。
@@ -66,7 +71,7 @@
 - 模型响应的磁盘缓存键包含 `max_tokens` **只在请求显式带 maxTokens 时**；改渠道配置的 `maxTokens` 后必须换一个 `--cache` 目录。后台 `background` 模型的输出上限是 32,768。
 - 后台路由现状（2026-11-08）：`main-fallback`（`auto/deepseek-v4.1-flash`）可用；`opendesign/deepseek-v4.1-flash` 曾返回 membership entitlement 错误；`catie` 的 `rp` 返回 503（HUMAN-13）。`data/channels.yaml` 现在是 `writer: rp`、`judge: judge`（`auto/glm-5.3`）；`roles.planner` 未配置，回退到 `background`。
 - 快照：`eval-private/raw/` 有 94 个文件；`eval-private/reference/` 有 5 部参照小说。私有数据只写 `eval-private/`，报告不用原文。
-- F0 的私有产物：`eval-private/f0/`；R3 的产物：`docs/dev/reports/R3.md`、`R3-fast.md`；O 的产物：`docs/dev/reports/O-opening.md`；R2 的产物：`docs/dev/reports/R2.md`、`R2-judge.md`、`R2-pairwise.md`、`R2-b1.md`、`R2-forgetting.md`、`docs/dev/SCOREBOARD.md`；R4 的产物：`docs/dev/reports/R4.md`；R5 的自动试玩产物在 R5-T14 生成。
+- F0 的私有产物：`eval-private/f0/`；R3 的产物：`docs/dev/reports/R3.md`、`R3-fast.md`；O 的产物：`docs/dev/reports/O-opening.md`；R2 的产物：`docs/dev/reports/R2.md`、`R2-judge.md`、`R2-pairwise.md`、`R2-b1.md`、`R2-forgetting.md`、`docs/dev/SCOREBOARD.md`；R4 的产物：`docs/dev/reports/R4.md`；R5 的自动试玩产物在 R5-T14.a 生成。
 - HUMAN-03（事件题抽查）仍未完成，不阻塞。M3 的两项效果目标按 ADR-0029 保留为未证实；v2 的门槛改由 R6 按 B0/B1 对比判定。
 - 插件系统在 DESIGN §19 是唯一权威；C 线兼容插件任务依赖 P2。记忆增强任务（R1-T03.a、R1-T03.b、R1-T04.b、R1-T05、R1-T06、R1-T08）都依赖 R5-T99。
 - 不要修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 下的任何文件。不变量 I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账是唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖任何其他工作区包。
@@ -77,9 +82,8 @@
 - 聊天页、分支页、台账页、导演页、设置页与渠道页的手工冒烟脚本在 `.devloop/scratch/R5-T08`、`R5-T09`、`R5-T10`；`playwright-core` 在 `E:/agentcoding/node_modules` 可解析，Chromium 在 `%LOCALAPPDATA%/ms-playwright/chromium-1243/`。
 
 ## 下一步
-- **R5-T14 真实 60 轮试玩与报告**：先确认 `pnpm serve` 可用、`data/channels.yaml` 的 writer 路由可用（`main-fallback` 可试；`rp` 仍 503），然后
-  `PLAYTEST_LIVE=1 PLAYTEST_ROUNDS=60 pnpm --filter @dramaticer/web playtest`。
-  它会驱动界面跑 60 轮（含 2 次 swipe、2 次 edit、2 次 branch、候选行动与选项点击），私有报告写到 `eval-private/reports/r5-playtest.md`，统计版写到 `docs/dev/reports/R5-playtest.md`。失败轮次会在报告里给出 `round-N/<step>` 编号与截图，重跑即可整批覆盖。跑完在 `docs/dev/reports/R5.md` 引用统计版；没有信号的指标（对比胜率、矛盾率、节拍余弦）保持「未证实」，不要改口径。
+- **R5-T14.a**：按上面的两条命令跑 60 轮。每次会话最多 45 分钟；没跑满就保持 `[~]`、写 `PARTIAL`、提交进度，下一会话继续。跑满后核对续跑文件是 60 条 round 记录、0 个失败，并确认两份报告存在。
+- **R5-T14.b**：核对统计版字段与 ADR-0033 口径（对比胜率、矛盾率、节拍余弦没有信号时保持「未证实」），在 `docs/dev/reports/R5.md` 引用统计版并写明模型别名、轮数与操作次数；重跑 `pnpm check`。
 - 之后 R5-T99（R5 验收；会重跑 `pnpm check`、`pnpm e2e` 与 60 轮报告）。
 - 引用评测数字时：B1 必须同时说明同模型子集为空、每个对话每档只有 1 个样本；遗忘矛盾率必须同时说明失败题数与可判定样本数；偏好一致率当前没有样本。
 
@@ -100,7 +104,9 @@
 - 基准的入口是 `pnpm --filter @dramaticer/st-compat benchmark --generate|--validate|--import --db <path>`；`benchmarks/` 是生成产物，**不要手改**。
 - 开局包的读取入口是 `readOpeningPack(store, storyId)`；校验用 `validateOpeningPackPayload(value, known)`；首楼候选解析用 `parseOpeningCandidatesResponse(text, expectedCount)`。
 - 自动试玩的 CLI 入口是 `pnpm --filter @dramaticer/st-compat playtest`（纯 CLI 试玩，不驱动界面）；界面自动试玩是 `pnpm playtest`（R5-T13），两者不要混淆。CLI 试玩的每轮顺序是读间隙积压 → 模拟用户 → `runChatTurn` → swipe/edit/branch → 间隙后台任务 → 一致性探针 → 每轮裁判 → 写记录。
-- 界面自动试玩的细节（R5-T13）：`pnpm e2e` 会收集但跳过 `e2e/playtest/playtest.spec.ts`；`pnpm playtest` 先构建再跑 mobile project；`PLAYTEST_LIVE=1` 时 `playwright.config.ts` 不启动假 server，baseURL 默认 8787，`.env` 在用例里加载；模拟用户取 `roles.settler` 模型；报告默认路径见 `config.ts`（Windows 大小写不敏感，冒烟两份报告文件名不能只差大小写）；失败截图在 `.devloop/scratch/e2e/playtest/screenshots`。分支切换按 `.branch-preview` 精确文本定位，编辑会加 `〔试玩编辑第N轮〕` 前缀，保证预览可区分。
+- 界面自动试玩（R5-T13）：`pnpm e2e` 会收集但跳过 `e2e/playtest/playtest.spec.ts`；`pnpm playtest` 先构建再跑 mobile project；`PLAYTEST_LIVE=1` 时 `playwright.config.ts` 不启动假 server，baseURL 默认 8787，`.env` 在用例里加载；模拟用户取 `roles.settler` 模型；报告默认路径见 `config.ts`（Windows 大小写不敏感，冒烟两份报告文件名不能只差大小写）；失败截图在 `.devloop/scratch/e2e/playtest/screenshots`。分支切换按 `.branch-preview` 精确文本定位，编辑会加〔试玩编辑第N轮〕前缀，保证预览可区分。
+- 自动试玩续跑（2026-11-08）：live 默认 `PLAYTEST_RESUME=1`、每次会话 45 分钟预算；续跑文件默认 `eval-private/reports/r5-playtest.progress.json`，每轮写完落盘，记录故事 id、数据库、渠道、标题、排期与全部轮次。续跑时复用故事，从上次编辑操作还原两个兄弟楼层，失败记录在下次运行时丢弃并重试该轮；跑满 60 轮才写报告。`PLAYTEST_RESUME=0` 新开一次，`PLAYTEST_TIME_BUDGET_MS` 改预算。
+- 续跑文件、私有报告与截图都是私有产物，不能提交；它们分别在 `eval-private/` 与 `.devloop/scratch/`。
 - 开场导演的楼层深度按当前路径助手楼层数计算；`openingFloors` 为 0 关闭。节拍机制的楼层深度用同一口径。
 - 故事设置缺省值：`budgetTokens` 12000、`structuredOutput` `text-tags`、`temperature` 0.8、`maxTokens` 4096、`reasoning` `low`、`turnMode` `fast`、`maxReadRounds` 3、`historyBlockPolicy` `{mode:"default",overrides:{}}`、`gapPassEnabled` false、`gapPlanSeconds` 212、导演默认配置（`mode` `transparent`、`openingFloors` 10、`openingIntensity` `natural`、`intensity` `natural`）。
 - 回合模式的解析口只有 core 的 `resolveTurnMode`：单轮参数优先于故事设置，深回合直接抛错。server 在写楼层之前调用它，深回合返回 400，`details.path` 在请求给 `mode` 时是 `mode`，否则是 `turnMode`。
