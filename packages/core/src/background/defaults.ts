@@ -7,6 +7,11 @@ import {
 	createDirectorPlanHandler,
 	directorPlanNeedsRun,
 } from "../director/planner.js";
+import {
+	VISUAL_PROFILE_JOB_KIND,
+	createVisualProfileHandler,
+	visualProfileNeedsRun,
+} from "../images/profiles.js";
 import { GAP_PASS_JOB_KIND, createGapPassHandler } from "../ledger/gap-pass.js";
 import {
 	MEMORY_REVISION_JOB_KIND,
@@ -92,6 +97,12 @@ export function createDefaultBackgroundJobRegistry(
 			handler: createOpeningCandidatesHandler(),
 			enqueue: "story",
 			needsRun: openingCandidatesNeedRun,
+		},
+		[VISUAL_PROFILE_JOB_KIND]: {
+			handler: createVisualProfileHandler(),
+			enqueue: "story",
+			tier: "gap",
+			needsRun: visualProfileNeedsRun,
 		},
 		[DIRECTOR_PLAN_JOB_KIND]: {
 			handler: createDirectorPlanHandler({

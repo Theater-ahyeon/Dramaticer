@@ -1,4 +1,5 @@
 import type {
+	CharacterVisualProfileRecord,
 	ComfyUiSlotCandidates,
 	ComfyUiSlotName,
 	ComfyUiSlots,
@@ -18,6 +19,12 @@ export interface ImageProviderView {
 
 export interface ImageProvidersView {
 	readonly providers: readonly ImageProviderView[];
+}
+
+/** `GET /api/stories/:id/visual-profiles` 的载荷；只读。 */
+export interface StoryVisualProfilesView {
+	readonly storyId: string;
+	readonly profiles: readonly CharacterVisualProfileRecord[];
 }
 
 export type ImageWorkflowView = ImageWorkflowRecord;

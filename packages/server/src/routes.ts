@@ -45,6 +45,7 @@ import {
 	detectComfyUiSlots,
 	emptyImagesConfig,
 	enqueueOpeningBackgroundJobs,
+	enqueueVisualProfileBackgroundJob,
 	fulfillLedgerClue,
 	isJsonObject,
 	isLedgerChangeCardStatus,
@@ -108,6 +109,7 @@ import {
 	type StoryProposalsView,
 	type StoryTemplateView,
 	type StoryTree,
+	type StoryVisualProfilesView,
 	type StoryTreeNode,
 	type StoryView,
 	isProposalDecisionAction,
@@ -222,6 +224,10 @@ export async function handleApiRequest(
 				case "openings":
 					requireMethod(method, ["GET"]);
 					handleOpenings(res, options, url, storyId);
+					return;
+				case "visual-profiles":
+					requireMethod(method, ["GET"]);
+					handleStoryVisualProfiles(res, options, storyId);
 					return;
 				default:
 					break;
@@ -397,6 +403,7 @@ async function handleStories(
 	};
 	const story = options.store.createStory(request);
 	enqueueOpeningBackgroundJobs(options.store, story.id);
+	enqueueVisualProfileBackgroundJob(options.store, story.id);
 	options.scheduler?.schedule(story.id);
 	sendJson(res, 201, toStoryView(story, options.store));
 }
@@ -473,6 +480,7 @@ async function handleImport(
 	}
 
 	enqueueOpeningBackgroundJobs(options.store, storyId);
+	enqueueVisualProfileBackgroundJob(options.store, storyId);
 	options.scheduler?.schedule(storyId);
 	const result: ImportStoryResult = {
 		story: toStoryView(requireStory(options.store, storyId), options.store),

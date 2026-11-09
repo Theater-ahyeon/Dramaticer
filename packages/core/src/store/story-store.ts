@@ -64,9 +64,14 @@ import {
 } from "../entity.js";
 import { assertComfyUiSlots, parseComfyUiWorkflow } from "../images/slots.js";
 import {
+	type CharacterVisualProfileRecord,
 	ImageWorkflowInUseError,
 	type ImageWorkflowRecord,
+	type SaveCharacterVisualProfilesInput,
 	type SaveImageWorkflowInput,
+	assertCharacterVisualProfile,
+	assertUniqueVisualProfiles,
+	isVisualProfileSource,
 } from "../images/types.js";
 import {
 	type JsonObject,
@@ -301,6 +306,15 @@ interface ImageWorkflowRow {
 	readonly provider: string;
 	readonly payload: string;
 	readonly slots: string;
+	readonly created_at: string;
+	readonly updated_at: string;
+}
+
+interface CharacterVisualProfileRow {
+	readonly story_id: string;
+	readonly character: string;
+	readonly profile: string;
+	readonly source: string;
 	readonly created_at: string;
 	readonly updated_at: string;
 }
@@ -1097,6 +1111,33 @@ function rowToImageWorkflow(row: ImageWorkflowRow): ImageWorkflowRecord {
 		provider: row.provider,
 		payload: workflow,
 		slots,
+		createdAt: row.created_at,
+		updatedAt: row.updated_at,
+	};
+}
+
+function rowToCharacterVisualProfile(
+	row: CharacterVisualProfileRow,
+): CharacterVisualProfileRecord {
+	if (!isVisualProfileSource(row.source)) {
+		throw new Error(
+			`故事 ${row.story_id} 的视觉档案 ${row.character} 来源不合法：${row.source}`,
+		);
+	}
+	const profile = assertCharacterVisualProfile(
+		JSON.parse(row.profile) as unknown,
+		`故事 ${row.story_id} 的视觉档案 ${row.character}`,
+	);
+	if (profile.character !== row.character) {
+		throw new Error(
+			`故事 ${row.story_id} 的视觉档案人物 ${row.character} 与内容 ${profile.character} 不一致`,
+		);
+	}
+	return {
+		storyId: row.story_id,
+		character: row.character,
+		profile,
+		source: row.source,
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 	};
@@ -3375,6 +3416,100 @@ export class StoryStore {
 			)
 			.get(workflowId) as { readonly count: number };
 		return row.count;
+	}
+
+	/** 列出故事的视觉档案，按写入顺序。 */
+	listCharacterVisualProfiles(
+		storyId: string,
+	): CharacterVisualProfileRecord[] {
+		assertNonEmptyString(storyId, "故事 id");
+		if (!this.getStory(storyId)) {
+			throw new Error(`故事不存在：${storyId}`);
+		}
+		const rows = this.#db
+			.prepare(
+				"SELECT * FROM character_visual_profiles WHERE story_id = ? ORDER BY rowid ASC",
+			)
+			.all(storyId) as CharacterVisualProfileRow[];
+		return rows.map(rowToCharacterVisualProfile);
+	}
+
+	/** 读取一个故事里某个人的视觉档案；没有时返回 null。 */
+	getCharacterVisualProfile(
+		storyId: string,
+		character: string,
+	): CharacterVisualProfileRecord | null {
+		assertNonEmptyString(storyId, "故事 id");
+		assertNonEmptyString(character, "视觉档案的人物名");
+		if (!this.getStory(storyId)) {
+			throw new Error(`故事不存在：${storyId}`);
+		}
+		const row = this.#db
+			.prepare(
+				"SELECT * FROM character_visual_profiles WHERE story_id = ? AND character = ?",
+			)
+			.get(storyId, character.trim()) as
+			| CharacterVisualProfileRow
+			| undefined;
+		return row === undefined ? null : rowToCharacterVisualProfile(row);
+	}
+
+	/**
+	 * 保存一批视觉档案；同一个故事里的同一人物覆盖原行，不新增。
+	 * 创建时间只在首次写入时确定，更新时间每次刷新。
+	 */
+	saveCharacterVisualProfiles(
+		input: SaveCharacterVisualProfilesInput,
+	): CharacterVisualProfileRecord[] {
+		assertNonEmptyString(input.storyId, "视觉档案的故事 id");
+		if (!this.getStory(input.storyId)) {
+			throw new Error(`故事不存在：${input.storyId}`);
+		}
+		if (!isVisualProfileSource(input.source)) {
+			throw new Error(`视觉档案的来源不合法：${String(input.source)}`);
+		}
+		if (!Array.isArray(input.profiles) || input.profiles.length === 0) {
+			throw new Error("视觉档案至少需要一条");
+		}
+		const profiles = input.profiles.map((profile, index) =>
+			assertCharacterVisualProfile(profile, `视觉档案[${index}]`),
+		);
+		assertUniqueVisualProfiles(profiles);
+		const createdAt = input.createdAt ?? new Date().toISOString();
+		const updatedAt = input.updatedAt ?? createdAt;
+		assertNonEmptyString(createdAt, "视觉档案的创建时间");
+		assertNonEmptyString(updatedAt, "视觉档案的更新时间");
+		const upsert = this.#db.prepare(
+			`INSERT INTO character_visual_profiles
+				(story_id, character, profile, source, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?)
+			ON CONFLICT (story_id, character) DO UPDATE SET
+				profile = excluded.profile,
+				source = excluded.source,
+				updated_at = excluded.updated_at`,
+		);
+		this.#db.transaction(() => {
+			for (const profile of profiles) {
+				upsert.run(
+					input.storyId,
+					profile.character,
+					serializeJsonValue(profile, `视觉档案 ${profile.character}`),
+					input.source,
+					createdAt,
+					updatedAt,
+				);
+			}
+		})();
+		return profiles.map((profile) => {
+			const saved = this.getCharacterVisualProfile(
+				input.storyId,
+				profile.character,
+			);
+			if (saved === null) {
+				throw new Error(`视觉档案写入后读取失败：${profile.character}`);
+			}
+			return saved;
+		});
 	}
 
 	/**
