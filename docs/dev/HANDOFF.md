@@ -3,28 +3,26 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-09 会话 267：R1-T04.b 的代码部分完成，长任务已申请，状态 `WAITING`。
-  - core：`fuseRetrievalRoutes` 增加可选的路权重（默认 `DEFAULT_ROUTE_WEIGHTS` 全为 1），非法或非正的权重直接抛错；把重排序从 `retrieveMemory` 提成可复用的 `rerankRetrievalHits`，只重排前 `rerankCandidates` 条、其余保持融合顺序。
-  - 记忆评测：`MemoryEvalRoute` 增加 `reranked`；`evaluateMemoryQuestions` 在传入 `reranker` 时把融合候选交给重排序并单独记一路；`MemoryEvalStoryScore` 增加 `eventCoverage`（有事件的已确认助手楼层/已确认助手楼层）；`MemoryEvalReport` 增加 `fusionWeights`。
-  - 新增 `packages/st-compat/src/evalset/fusion-weights.ts`：`rankMemoryQuestions` 复用每一路名次；每一路权重候选 `0.5/1/2`（243 组）；选择顺序为命中@5、@10、@20，平局先取改动路数更少、再取离默认权重更近；`crossValidateFusionWeights` 做留一对话交叉验证，只有留出集合计命中高于默认才建议更新默认值。
-  - 报告：`renderPrivateMemoryReport` / `renderPublicMemoryReport` 支持标题参数；新增“融合权重交叉验证”章节、`融合后重排序` 行与事件覆盖列；统计版不出现故事名。
-  - CLI：`memory-eval` 新增 `--rerank`、`--private-report`、`--public-report`、`--title`；`--db` 与报告路径按仓库根目录解析；`--events` 的事件缓存目录改为 `eval-private/memory-cache/events`，与 `events-backfill` 共用缓存。`events-backfill` 的 `--db` 也按仓库根目录解析，输出每个故事的事件覆盖。
-  - 测试：core 加权融合 2 个、st-compat 融合权重 4 个、重排序路与 CLI 报告 2 个；门禁通过（161 个测试文件、1440 个测试、4 个 live 跳过）。
-  - 真实重排序端点已探测：`BAAI/bge-reranker-v2-m3` 在 237 毫秒内返回两条分数。
-  - 长任务 `R1-T04.b-01` 已写入 `.devloop/jobs/R1-T04.b-01.json`（上限 300 分钟）：先 `events-backfill --resume --db eval-private/memory-cache/r1-retrieval.db`，成功后跑 `memory-eval --events --rerank --db eval-private/memory-cache/tmp/r1-memory-eval.db --private-report eval-private/reports/R1-retrieval.md --public-report docs/dev/reports/R1-retrieval.md --title 'R1 记忆引擎检索评测'`。日志在 `.devloop/jobs/R1-T04.b-01.log`，状态在 `.devloop/jobs/R1-T04.b-01.status.json`。
+- 2026-11-09 会话 268：定位并修好长任务 `R1-T04.b-01` 的失败，重新申请 `R1-T04.b-02`，状态 `WAITING`。
+  - 失败原因：`eval-private/memory-cache/events/246f….json` 里的模型输出是「半截 JSON + 续写重发的整份 JSON」拼接，`JSON.parse` 在第 3055 个字符失败。路由层的续写把第一轮被打断的半截正文与第二轮的重新输出直接拼接，JSON 无法恢复；坏结果 stopReason 是 `stop`，被写进缓存，重试命中同一条缓存，窗口连续失败 3 次后长任务退出。
+  - 修复：`packages/core/src/llm/types.ts` 新增 `NO_CONTINUATION`（`continuation.maxRounds = 0`）。所有要求严格 JSON 的后台与评测调用都传入它：结算、`gap_pass`、修订草案、用户意志、事件抽取、NPC 议程、导演计划、候选行动、视觉档案、开局包、开场候选，以及评测里的裁判、出题与模拟用户。被打断的结果 stopReason 为 `error`，不写缓存，调用方重试时会发出新请求。
+  - 新增测试：`memory-events.test.ts` 断言事件抽取请求带 `NO_CONTINUATION`；路由层「失败的半截结果不写入缓存」原有测试覆盖 `maxRounds: 0`。
+  - 删除 `eval-private/memory-cache/events/246f….json` 这条坏缓存，以及会话 267 预检遗留的 `packages/st-compat/eval-private/memory-cache/r1-retrieval.db`（91 MB，长任务用的是仓库根目录的同名数据库）。
+  - 实测：`events-backfill --resume --story "仙侠雌竞：什么叫我是炉鼎体质？" --limit 1` 成功补跑一个窗口（8 楼、39 条事件、1 次模型请求、88.7 秒），说明修复生效。
+  - 门禁通过（161 个测试文件、1442 个测试、4 个 live 跳过）。
 
-## 下一步（会话 268 先做）
-1. 读 `.devloop/jobs/R1-T04.b-01.status.json` 与 `.devloop/jobs/R1-T04.b-01.log`。日志里有每个故事的事件覆盖、每个窗口的请求数、总耗时，以及 memory-eval 的最终数字。会话 267 的预检若在 `packages/st-compat/eval-private/` 留下数据库，确认长任务使用的是仓库根目录的 `eval-private/memory-cache/r1-retrieval.db` 后删除前者。
-2. 成功后读 `eval-private/reports/R1-retrieval.md` 与 `docs/dev/reports/R1-retrieval.md`，写 ADR-0084：五路事件题命中@5/@10/@20、分对话结果、事件覆盖率、耗时与请求数、留一交叉验证规则与选中权重、重排序开关前后的状态题与事件题对比。
+## 下一步（会话 269 先做）
+1. 读 `.devloop/jobs/R1-T04.b-02.status.json` 与 `.devloop/jobs/R1-T04.b-02.log`。成功就继续第 2 步；失败先看日志定位，修好后换 `R1-T04.b-03` 重新申请。
+2. 读 `eval-private/reports/R1-retrieval.md` 与 `docs/dev/reports/R1-retrieval.md`，写 ADR-0084：五路事件题命中@5/@10/@20、分对话结果、事件覆盖率、耗时与请求数、留一交叉验证规则与选中权重、重排序开关前后的状态题与事件题对比。
 3. 默认值决定：
-   - 事件题与状态题都没有下降且有提升，才把 `DEFAULT_ROUTE_WEIGHTS` 改成交叉验证推荐值，并在 `data/channels.yaml` 把 `reranker.enabled` 改为 true；重排序没有同时满足“两类题都不下降且有提升”时保持关闭。
+   - 事件题与状态题都没有下降且有提升，才把 `DEFAULT_ROUTE_WEIGHTS` 改成交叉验证推荐值，并在 `data/channels.yaml` 把 `reranker.enabled` 改为 true；重排序没有同时满足「两类题都不下降且有提升」时保持关闭。
    - 改变默认权重后重新生成报告（事件抽取与向量走缓存，只有重排序会重新请求渠道），必要时再申请一次长任务。
-4. 完成后把 R1-T04.b 标 `[x]` 并写完成行；若长任务失败，先看日志定位，换 `R1-T04.b-02` 重新申请。
+4. 完成后把 R1-T04.b 标 `[x]` 并写完成行；`docs/dev/reports/R1.md` 在 R1-T99.a 一并更新，本任务只更新 `R1-retrieval.md`。
 5. 后续任务：R1-T05（v36 八段式章节压缩）、R1-T06（v37 世界书预筛）、R1-T08（v38 上下文包复用）、R1-T99.a。
 
 ## 当前状态
 - 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1-T03.a、R1-T03.b。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- R1-T04.b 进行中：代码与测试已完成，正在等长任务。
+- R1-T04.b 进行中：代码与测试已完成，长任务 `R1-T04.b-02` 已申请，等待回填与评测结果。
 - M6-T99 标 `[!]`，等待 HUMAN-15：真实 ComfyUI 启动在 `http://127.0.0.1:8188` 并提供 API 格式 workflow JSON 到 `eval-private/comfyui/`；2026-11-09 探测时端口仍未监听。
 - v3 阶段顺序：R5（完成）→ M6 生图第一批（T01–T05 完成，T99 阻塞）→ R1 续（T03.a、T03.b 完成，T04.b 进行中）→ R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → M6b 生图第二批 → P3/P4 → M5 → P5 → M7。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045、ADR-0078、ADR-0079、ADR-0080、ADR-0082、ADR-0083。
@@ -109,7 +107,10 @@
 - `extensions.dramaticer` 有三个键：`events`、`npcs`、`arcs`；`arcs` 的校验全部复用 `parseDirectorPlan`。
 - 排障命令：`dramaticer explain --node <id> --db <path> [--json]`，只读、零模型调用。记忆检索段现在会显示每一路的父段信息与注入范围。
 - 模型响应的磁盘缓存键包含 `max_tokens` 只在请求显式带 maxTokens 时；改渠道配置的 `maxTokens` 后必须换一个 `--cache` 目录。后台 `background` 模型的输出上限是 32,768。
-- 父子分块：父段上限 1200 个码点，按换行切段后合并；单个段落超过上限时整楼退化成一个父段。小块沿用 400 字符窗口与 80 字符重叠。`StoryStore.open(path, { chunkStrategy })` 取 `parent-child`（默认）或 `fixed`；切换策略不会自动重建已经存在的块。`chunks` 的 `parent_ordinal` 是父段在楼层内的序号，`parent_text` 是注入文本。
+- 结构化 JSON 请求一律使用 `NO_CONTINUATION`（`llm/types.ts`）：自动续写会把被打断的半截 JSON 与模型重发的整份 JSON 拼接成无法解析的文本；这类结果也不写缓存，重试会重新请求。只有正文写作（流式）与散文类后台输出保留续写。
+
+## 父子分块与检索
+- 父段上限 1200 个码点，按换行切段后合并；单个段落超过上限时整楼退化成一个父段。小块沿用 400 字符窗口与 80 字符重叠。`StoryStore.open(path, { chunkStrategy })` 取 `parent-child`（默认）或 `fixed`；切换策略不会自动重建已经存在的块。`chunks` 的 `parent_ordinal` 是父段在楼层内的序号，`parent_text` 是注入文本。
 
 ## 评测与报告
 - 自动试玩的 CLI 入口是 `pnpm --filter @dramaticer/st-compat playtest`；界面自动试玩是 `pnpm playtest`。`pnpm e2e` 会收集但跳过 `e2e/playtest/playtest.spec.ts`。
@@ -139,6 +140,6 @@
 - 不要修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 下的任何文件。不变量 I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账是唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖任何其他工作区包。
 
 ## 下一步
-- 会话 268 按上文“下一步”执行并完成 R1-T04.b。
+- 会话 269 按上文“下一步”执行并完成 R1-T04.b。
 - M6-T99 仍等待 HUMAN-15；人类把 ComfyUI 启动并放入 workflow JSON 后，把 TASKS 里 `[!]` 改回 `[ ]` 再做验收。
 - 后续：R1-T05（v36）、R1-T06（v37）、R1-T08（v38）、R1-T99.a；C 线兼容插件任务依赖 P2，以 DESIGN §19 为唯一权威。

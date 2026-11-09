@@ -1,4 +1,8 @@
-import type { LlmClient, LlmMessage } from "@dramaticer/core";
+import {
+	type LlmClient,
+	type LlmMessage,
+	NO_CONTINUATION,
+} from "@dramaticer/core";
 import type { PlaytestRecord } from "./playtest.js";
 
 export const DEFAULT_OPENING_EVAL_ROUNDS = 10;
@@ -591,12 +595,15 @@ export async function chooseOpeningCandidate(
 					];
 		let text: string;
 		try {
-			const result = await input.client.complete({
-				messages,
-				model: input.model,
-				temperature: 0,
-				maxTokens: 512,
-			});
+			const result = await input.client.complete(
+				{
+					messages,
+					model: input.model,
+					temperature: 0,
+					maxTokens: 512,
+				},
+				NO_CONTINUATION,
+			);
 			text = result.text;
 		} catch (error) {
 			return {

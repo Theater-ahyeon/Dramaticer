@@ -14,7 +14,7 @@ import {
 	isJsonObject,
 	rejectUnknownKeys,
 } from "../json.js";
-import type { LlmMessage } from "../llm/types.js";
+import { type LlmMessage, NO_CONTINUATION } from "../llm/types.js";
 import { parseJsonOutputArray } from "../memory/json-output.js";
 import type { StoryStore } from "../store/story-store.js";
 import type {
@@ -264,12 +264,15 @@ export function createSettleHandler(
 	return async ({ store, client, job, signal }) => {
 		const window = prepareSettlement(store, job.storyId, resolved);
 		if (window === null) return;
-		const result = await client.complete({
-			messages: buildSettlementMessages(window),
-			model: options.model,
-			temperature: 0,
-			signal,
-		});
+		const result = await client.complete(
+			{
+				messages: buildSettlementMessages(window),
+				model: options.model,
+				temperature: 0,
+				signal,
+			},
+			NO_CONTINUATION,
+		);
 		applySettlementProposals(
 			store,
 			window,

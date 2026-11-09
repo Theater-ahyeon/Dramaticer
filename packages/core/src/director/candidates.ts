@@ -2,7 +2,11 @@ import type { BackgroundJobHandler } from "../background/types.js";
 import { requireJobNodeId } from "../background/types.js";
 import { assertPlainObject, rejectUnknownKeys } from "../json.js";
 import { type LedgerEntities, listLedgerEntities } from "../ledger/read.js";
-import type { LlmClient, LlmMessage } from "../llm/types.js";
+import {
+	type LlmClient,
+	type LlmMessage,
+	NO_CONTINUATION,
+} from "../llm/types.js";
 import { parseJsonOutputObject } from "../memory/json-output.js";
 import type { StoryStore } from "../store/story-store.js";
 import type { TimelineNode } from "../timeline.js";
@@ -241,12 +245,15 @@ export async function generateCandidateActions(
 		{ role: "system", content: SYSTEM_PROMPT },
 		{ role: "user", content: buildCandidateActionsUserContent(input) },
 	];
-	const result = await options.client.complete({
-		messages,
-		model: options.model,
-		temperature: 0,
-		...(options.signal === undefined ? {} : { signal: options.signal }),
-	});
+	const result = await options.client.complete(
+		{
+			messages,
+			model: options.model,
+			temperature: 0,
+			...(options.signal === undefined ? {} : { signal: options.signal }),
+		},
+		NO_CONTINUATION,
+	);
 	const parsed = parseCandidateActionsResponse(result.text);
 	return options.store.replaceDirectorCandidateActions({
 		storyId: options.storyId,

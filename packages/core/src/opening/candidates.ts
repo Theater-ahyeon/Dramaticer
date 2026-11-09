@@ -1,6 +1,10 @@
 import type { BackgroundJobHandler } from "../background/types.js";
 import { assertPlainObject, rejectUnknownKeys } from "../json.js";
-import type { LlmClient, LlmMessage } from "../llm/types.js";
+import {
+	type LlmClient,
+	type LlmMessage,
+	NO_CONTINUATION,
+} from "../llm/types.js";
 import { parseJsonOutputObject } from "../memory/json-output.js";
 import type { OpeningCandidateRecord } from "../store/settings.js";
 import type { StoryStore } from "../store/story-store.js";
@@ -101,12 +105,15 @@ export async function generateOpeningCandidates(
 		{ role: "system", content: systemPrompt(count) },
 		{ role: "user", content: buildOpeningUserContent(input) },
 	];
-	const result = await options.client.complete({
-		messages,
-		model: options.model,
-		temperature: 0.9,
-		signal: options.signal,
-	});
+	const result = await options.client.complete(
+		{
+			messages,
+			model: options.model,
+			temperature: 0.9,
+			signal: options.signal,
+		},
+		NO_CONTINUATION,
+	);
 	const raws = parseOpeningCandidatesResponse(result.text, count);
 	return options.store.appendOpeningCandidates({
 		storyId: options.storyId,

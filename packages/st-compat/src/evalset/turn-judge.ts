@@ -1,8 +1,9 @@
-import type {
-	LlmClient,
-	LlmMessage,
-	LlmUsage,
-	StoryStore,
+import {
+	type LlmClient,
+	type LlmMessage,
+	type LlmUsage,
+	NO_CONTINUATION,
+	type StoryStore,
 } from "@dramaticer/core";
 
 export const MAX_TURN_JUDGE_ATTEMPTS = 3;
@@ -143,12 +144,15 @@ export async function judgePlaytestTurn(
 					];
 		let text: string;
 		try {
-			const result = await input.judge.client.complete({
-				messages,
-				model: input.judge.model,
-				temperature: 0,
-				maxTokens: input.judge.maxTokens ?? DEFAULT_TURN_JUDGE_MAX_TOKENS,
-			});
+			const result = await input.judge.client.complete(
+				{
+					messages,
+					model: input.judge.model,
+					temperature: 0,
+					maxTokens: input.judge.maxTokens ?? DEFAULT_TURN_JUDGE_MAX_TOKENS,
+				},
+				NO_CONTINUATION,
+			);
 			text = result.text;
 			usage = result.usage;
 		} catch (error) {

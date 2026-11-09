@@ -1,4 +1,4 @@
-import type { LlmClient } from "@dramaticer/core";
+import { type LlmClient, NO_CONTINUATION } from "@dramaticer/core";
 
 /** 模拟用户连续输出非法 JSON 的次数上限；达到后试玩终止。 */
 export const MAX_SIMULATED_USER_ATTEMPTS = 3;

@@ -4,7 +4,7 @@ import {
 } from "../background/types.js";
 import type { NpcAgenda } from "../director/pool.js";
 import { normalizeEntityName } from "../entity.js";
-import type { LlmMessage } from "../llm/types.js";
+import { type LlmMessage, NO_CONTINUATION } from "../llm/types.js";
 import type { StoryStore } from "../store/story-store.js";
 import { parseJsonOutputArray } from "./json-output.js";
 import { DEFAULT_CHAPTER_SIZE } from "./summary.js";
@@ -112,12 +112,15 @@ export function createNpcAgendaHandler(
 			{ role: "system", content: SYSTEM_PROMPT },
 			{ role: "user", content },
 		];
-		const result = await client.complete({
-			messages,
-			model: options.model,
-			temperature: 0,
-			signal,
-		});
+		const result = await client.complete(
+			{
+				messages,
+				model: options.model,
+				temperature: 0,
+				signal,
+			},
+			NO_CONTINUATION,
+		);
 		const progressByEntity = resolveProgress(
 			parseNpcAgendaProgress(result.text),
 			entries,

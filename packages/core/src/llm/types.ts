@@ -133,6 +133,14 @@ export interface LlmCallOptions {
 	readonly continuation?: LlmContinuationOptions;
 }
 
+/**
+ * 结构化 JSON 输出不续写：模型接到半截 JSON 后通常从头重发整份内容，
+ * 与已生成部分拼接后无法解析；被打断的结果也不进缓存，交给调用方重新请求。
+ */
+export const NO_CONTINUATION: LlmCallOptions = Object.freeze({
+	continuation: { maxRounds: 0 },
+});
+
 /** 后台任务只依赖这个接口，测试可以注入假实现。 */
 export interface LlmClient {
 	complete(request: LlmRequest, options?: LlmCallOptions): Promise<LlmResult>;

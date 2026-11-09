@@ -4,7 +4,7 @@ import {
 	requireJobNodeId,
 } from "../background/types.js";
 import { assertPlainObject, isJsonObject, rejectUnknownKeys } from "../json.js";
-import type { LlmMessage } from "../llm/types.js";
+import { type LlmMessage, NO_CONTINUATION } from "../llm/types.js";
 import { parseJsonOutputArray } from "../memory/json-output.js";
 import type { StoryStore } from "../store/story-store.js";
 import type { NewStateDiff, TimelineNode } from "../timeline.js";
@@ -148,12 +148,15 @@ export function createUserWillHandler(
 			{ role: "system", content: SYSTEM_PROMPT },
 			{ role: "user", content: buildUserContent(existing.texts, players) },
 		];
-		const result = await client.complete({
-			messages,
-			model: options.model,
-			temperature: 0,
-			signal,
-		});
+		const result = await client.complete(
+			{
+				messages,
+				model: options.model,
+				temperature: 0,
+				signal,
+			},
+			NO_CONTINUATION,
+		);
 		const captured = parseUserWillResponse(result.text, players);
 		applyCapturedUserWills(store, job.storyId, nodeId, captured);
 	};

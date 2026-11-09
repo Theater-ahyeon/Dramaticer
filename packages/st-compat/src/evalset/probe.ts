@@ -6,6 +6,7 @@ import {
 	type LlmMessage,
 	type LlmResult,
 	type LlmUsage,
+	NO_CONTINUATION,
 	type StoryStore,
 	assembleContext,
 	readLedger,
@@ -332,12 +333,15 @@ export async function judgeAnswerConsistency(
 					];
 		let result: LlmResult;
 		try {
-			result = await input.judge.client.complete({
-				messages,
-				model: input.judge.model,
-				temperature: 0,
-				maxTokens: input.judge.maxTokens ?? 512,
-			});
+			result = await input.judge.client.complete(
+				{
+					messages,
+					model: input.judge.model,
+					temperature: 0,
+					maxTokens: input.judge.maxTokens ?? 512,
+				},
+				NO_CONTINUATION,
+			);
 		} catch (error) {
 			return {
 				status: "failed",

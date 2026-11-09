@@ -3,6 +3,7 @@ import {
 	type LlmReasoningLevel,
 	type LlmRequest,
 	type LlmResult,
+	NO_CONTINUATION,
 	isJsonObject,
 } from "@dramaticer/core";
 import type { StChatEntry, StChatMessage } from "../chat-jsonl.js";
@@ -216,7 +217,7 @@ export async function buildEventQuestions(
 		const request = buildRequest(chat, window, resolved);
 		let result: LlmResult;
 		try {
-			result = await client.complete(request);
+			result = await client.complete(request, NO_CONTINUATION);
 		} catch (error) {
 			failedWindows += 1;
 			failures.push({

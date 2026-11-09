@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
-import type {
-	LlmClient,
-	LlmMessage,
-	LlmUsage,
-	StoryStore,
-	TimelineNode,
+import {
+	type LlmClient,
+	type LlmMessage,
+	type LlmUsage,
+	NO_CONTINUATION,
+	type StoryStore,
+	type TimelineNode,
 } from "@dramaticer/core";
 import type { PreferencePair } from "../preferences/export.js";
 
@@ -185,12 +186,15 @@ export async function judgePairwise(
 					];
 		let text: string;
 		try {
-			const result = await input.judge.client.complete({
-				messages,
-				model: input.judge.model,
-				temperature: 0,
-				maxTokens: input.judge.maxTokens ?? DEFAULT_PAIRWISE_MAX_TOKENS,
-			});
+			const result = await input.judge.client.complete(
+				{
+					messages,
+					model: input.judge.model,
+					temperature: 0,
+					maxTokens: input.judge.maxTokens ?? DEFAULT_PAIRWISE_MAX_TOKENS,
+				},
+				NO_CONTINUATION,
+			);
 			text = result.text;
 			usage = result.usage;
 		} catch (error) {

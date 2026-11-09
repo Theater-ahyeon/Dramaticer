@@ -4,7 +4,7 @@ import type {
 } from "../background/types.js";
 import { normalizeEntityName } from "../entity.js";
 import { assertPlainObject, rejectUnknownKeys } from "../json.js";
-import type { LlmMessage } from "../llm/types.js";
+import { type LlmMessage, NO_CONTINUATION } from "../llm/types.js";
 import { parseJsonOutputObject } from "../memory/json-output.js";
 import type { LoreEntry } from "../memory/lore.js";
 import type { StoryStore } from "../store/story-store.js";
@@ -208,12 +208,15 @@ export function createVisualProfileHandler(
 			{ role: "system", content: SYSTEM_PROMPT },
 			{ role: "user", content: buildVisualProfileUserContent(input) },
 		];
-		const result = await client.complete({
-			messages,
-			model: options.model,
-			temperature: 0,
-			signal,
-		});
+		const result = await client.complete(
+			{
+				messages,
+				model: options.model,
+				temperature: 0,
+				signal,
+			},
+			NO_CONTINUATION,
+		);
 		const profiles = parseVisualProfilesResponse(result.text, input.knownNames);
 		store.saveCharacterVisualProfiles({
 			storyId: job.storyId,

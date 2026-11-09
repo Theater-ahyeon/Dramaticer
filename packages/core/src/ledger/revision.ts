@@ -8,7 +8,7 @@ import {
 	isJsonObject,
 	rejectUnknownKeys,
 } from "../json.js";
-import type { LlmMessage } from "../llm/types.js";
+import { type LlmMessage, NO_CONTINUATION } from "../llm/types.js";
 import { parseJsonOutputArray } from "../memory/json-output.js";
 import type { StoryStore } from "../store/story-store.js";
 import type { TimelineNode } from "../timeline.js";
@@ -136,12 +136,15 @@ export function createMemoryRevisionHandler(
 				),
 			},
 		];
-		const result = await client.complete({
-			messages,
-			model: options.model,
-			temperature: 0,
-			signal,
-		});
+		const result = await client.complete(
+			{
+				messages,
+				model: options.model,
+				temperature: 0,
+				signal,
+			},
+			NO_CONTINUATION,
+		);
 		const drafts = parseRevisionResponse(result.text, players);
 		applyRevisionDrafts(store, job.storyId, nodeId, drafts, snapshot);
 	};

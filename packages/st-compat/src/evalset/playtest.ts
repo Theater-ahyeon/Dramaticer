@@ -12,6 +12,7 @@ import {
 	type LlmStreamingClient,
 	type LlmToolTransport,
 	type LlmUsage,
+	NO_CONTINUATION,
 	type StoryStore,
 	type StructuredOutputMode,
 	type TurnTrace,
@@ -598,12 +599,15 @@ async function generateUserMessage(
 							content: `上一次输出不是合法 JSON（${lastProblem}）。只输出 {"message":"..."}，不要代码块。`,
 						},
 					];
-		const result = await options.client.complete({
-			messages,
-			model: options.model,
-			temperature: 0.8,
-			maxTokens: 512,
-		});
+		const result = await options.client.complete(
+			{
+				messages,
+				model: options.model,
+				temperature: 0.8,
+				maxTokens: 512,
+			},
+			NO_CONTINUATION,
+		);
 		const message = parseUserMessage(result.text);
 		if (message !== null) return message;
 		lastProblem = "缺少 message 或包含多余字段";

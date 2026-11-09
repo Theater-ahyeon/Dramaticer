@@ -1,4 +1,8 @@
-import type { LlmMessage, LlmUsage } from "@dramaticer/core";
+import {
+	type LlmMessage,
+	type LlmUsage,
+	NO_CONTINUATION,
+} from "@dramaticer/core";
 import {
 	type PairwiseJudge,
 	type PairwiseTask,
@@ -152,12 +156,15 @@ export async function judgeQuality(
 					];
 		let text: string;
 		try {
-			const result = await input.judge.client.complete({
-				messages,
-				model: input.judge.model,
-				temperature: 0,
-				maxTokens: input.judge.maxTokens ?? DEFAULT_QUALITY_MAX_TOKENS,
-			});
+			const result = await input.judge.client.complete(
+				{
+					messages,
+					model: input.judge.model,
+					temperature: 0,
+					maxTokens: input.judge.maxTokens ?? DEFAULT_QUALITY_MAX_TOKENS,
+				},
+				NO_CONTINUATION,
+			);
 			text = result.text;
 			usage = result.usage;
 		} catch (error) {

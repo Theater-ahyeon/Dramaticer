@@ -8,7 +8,7 @@ import {
 	assertPlainObject,
 	rejectUnknownKeys,
 } from "../json.js";
-import type { LlmMessage } from "../llm/types.js";
+import { type LlmMessage, NO_CONTINUATION } from "../llm/types.js";
 import { EVENT_WINDOW_FLOORS } from "../memory/event.js";
 import {
 	type EventWindow,
@@ -255,12 +255,15 @@ export function createGapPassHandler(
 			},
 			{ role: "user", content: buildUserContent(inputs) },
 		];
-		const result = await client.complete({
-			messages,
-			model: options.model,
-			temperature: 0,
-			signal,
-		});
+		const result = await client.complete(
+			{
+				messages,
+				model: options.model,
+				temperature: 0,
+				signal,
+			},
+			NO_CONTINUATION,
+		);
 		const response = parseGapPassResponse(result.text);
 		const rejections: GapPassSegmentRejection[] = [];
 		const dropped: GapPassDroppedEntry[] = [];

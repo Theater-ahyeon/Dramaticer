@@ -1,5 +1,5 @@
 import type { BackgroundJobHandler } from "../background/types.js";
-import type { LlmMessage } from "../llm/types.js";
+import { type LlmMessage, NO_CONTINUATION } from "../llm/types.js";
 import type { StoryStore } from "../store/story-store.js";
 import type { TimelineNode } from "../timeline.js";
 import { EVENT_WINDOW_FLOORS, type NewMemoryEventInput } from "./event.js";
@@ -182,12 +182,15 @@ export function createEventExtractionHandler(
 			{ role: "system", content: SYSTEM_PROMPT },
 			{ role: "user", content: formatEventWindow(window) },
 		];
-		const result = await client.complete({
-			messages,
-			model: options.model,
-			temperature: 0,
-			signal,
-		});
+		const result = await client.complete(
+			{
+				messages,
+				model: options.model,
+				temperature: 0,
+				signal,
+			},
+			NO_CONTINUATION,
+		);
 		const batches = parseEventBatchExtraction(
 			result.text,
 			window.floors.map((node) => node.id),

@@ -2,9 +2,11 @@ import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import {
 	type BackgroundJob,
+	type LlmCallOptions,
 	type LlmClient,
 	type LlmRequest,
 	type LlmResult,
+	NO_CONTINUATION,
 	type StoryStore,
 	createBackgroundJobRegistry,
 	createEventExtractionHandler,
@@ -535,6 +537,25 @@ describe("事件抽取任务", () => {
 		expect(store.listExtractedEventNodeIds("s1").sort()).toEqual(
 			[...floors].sort(),
 		);
+	});
+
+	it("抽取请求禁用自动续写，半截 JSON 不会被重发的整份结果拼接", async () => {
+		const { store } = openTempStore();
+		store.createStory({ id: "s1", title: "测试" });
+		appendAssistantFloors(store, 8);
+		const calls: (LlmCallOptions | undefined)[] = [];
+		const client: LlmClient = {
+			async complete(_request, options) {
+				calls.push(options);
+				return fakeResult(JSON.stringify([{ nodeId: "a0", events: [] }]));
+			},
+		};
+		enqueueMissingJobs({ store, storyId: "s1", kinds: ["events"] });
+		const job = jobOf(store, "s1", "a0");
+
+		await createEventExtractionHandler()({ store, client, job });
+
+		expect(calls).toEqual([NO_CONTINUATION]);
 	});
 
 	it("整段楼层由后台 drain 一次请求处理", async () => {
