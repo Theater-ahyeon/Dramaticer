@@ -3,8 +3,8 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 会话 230：R5-T99 R5 验收进行中（PARTIAL）。本次没有改代码；门禁保持通过（148 个测试文件、1311 个测试，3 个 live 跳过）。
-- 60 轮重跑监督进程 pid 62556 仍在运行：13:04:57Z 进度 3/60 条 round 记录、0 条 failure；`scene` 完成 3、失败 0，`candidate_actions` 完成 2、失败 0，`settle` 完成 4，`background_jobs` 无失败行。修复后的 `scene` 空输出率待 60 轮结束后统计。
+- 会话 231：R5-T99 R5 验收进行中（PARTIAL）。本次没有改代码；门禁保持通过（148 个测试文件、1311 个测试，3 个 live 跳过）。
+- 60 轮重跑监督进程 pid 62556 仍在运行：13:07Z 进度 4/60 条 round 记录、0 条 failure；`background_jobs` 为 `done=69`、`pending=3`、`running=1`、`discarded=1`、`failed=0`；`scene` 完成 6、运行中 1、失败 0，`candidate_actions` 完成 5、丢弃 1、待执行 1，`settle` 完成 7；`director_candidate_actions` 20 行、`director_beat_states` 7 行、`ledger_settlements` 7 行、`preference_events` 为 `swipe` 1 与 `edit` 1。修复后的 `scene` 空输出率待 60 轮结束后统计。
 - 进度已回填 `docs/dev/reports/R5.md` 第七节与 `docs/dev/TASKS.md` 的 R5-T99 进行中行；仓库改动只有 `docs/dev/reports/R5.md`、`docs/dev/TASKS.md`、`docs/dev/HANDOFF.md` 与 `docs/dev/LOG.md`。
 
 ## 当前状态
@@ -22,7 +22,7 @@
 - 数据库 schema 版本 33（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡、v25 合并调用开关与执行记录、v26 间隙档位阈值与丢弃状态、v27 合并调用丢弃条目、v28 回合模式与读取工具软上限、v29 开局包与故事级后台任务、v30 首楼开场候选、v31 偏好记录、v32 导演计划与拍状态、v33 导演候选行动）；R1 续原计划的 v32–v35 顺延为 v34–v37。
 
 ## 后台任务与队列
-- **本轮重跑使用空库**：`live.db` 与续跑文件在 12:58Z 之前已被删除；13:04:57Z 数据库里 5 个助手楼层、4 个用户楼层，`background_jobs` 状态为 `done=38`、`pending=3`、`running=1`、`discarded=1`、`failed=0`；按种类 `settle` 完成 4、`scene` 完成 3、`candidate_actions` 完成 2、`user_will` 完成 3、`memory_revision` 完成 3、`events`/`summary`/`npc_agenda`/`embeddings` 各完成 5，`opening`、`opening_candidates`、`director_plan` 各完成 1；`director_candidate_actions` 10 行、`director_beat_states` 4 行、`ledger_settlements` 4 行、`preference_events` 只有 1 条 `swipe`。这是修复 R5-T14.e 后的干净口径，最终数字以 60 轮结束时的数据库为准。
+- **本轮重跑使用空库**：`live.db` 与续跑文件在 12:58Z 之前已被删除；13:07Z 数据库里 7 个助手楼层、5 个用户楼层，`background_jobs` 状态为 `done=69`、`pending=3`、`running=1`、`discarded=1`、`failed=0`；按种类 `settle` 完成 7、`scene` 完成 6 且运行中 1、`candidate_actions` 完成 5 且丢弃 1、待执行 1，`director_candidate_actions` 20 行、`director_beat_states` 7 行、`ledger_settlements` 7 行、`preference_events` 为 `swipe` 1 与 `edit` 1。这是修复 R5-T14.e 后的干净口径，最终数字以 60 轮结束时的数据库为准。
 - server 的回合路径会补建并执行后台任务：`handleTurnStream` 在 `turn.completed` 之后调用 `BackgroundScheduler.schedule`，不等待 drain；同一时刻只有一个 drain，故事之间先来先做。`schedule` 的 drain 只跑 `resolveStoryBackgroundKinds` 过滤后的类型，并带 `sessionEnded: true`，所以每轮结束后延后档（事件、摘要、NPC 议程、导演计划）也会执行。
 - 后台任务恢复（R5-T14.d）：`requeueRunningBackgroundJobs(storyId?)` 把 running 行退回 pending、`attempts` 减一（不低于 0）、清空 `started_at` 与 `finished_at`、保留 `last_error`；`startServer` 打开数据库后调用一次，`dramaticer work` 在列出故事前调用一次；`done`、`failed`、`discarded` 不动。
 - 故事级任务入队：`StoryStore.enqueueStoryBackgroundJobs` 按种类写入 `node_id` 为空的 `background_jobs` 行；创建故事与导入卡的路由先调用 `enqueueOpeningBackgroundJobs`（按两个 `needsRun` 过滤）再 `schedule`。`POST /api/stories/:id/openings/generate` 无条件入队一条 `opening_candidates`（仅要求故事无楼层），同一行已完成时翻回 `pending`。
@@ -115,7 +115,7 @@
 
 ## 下一步
 - **R5-T99 续**：
-  1. 读 `.devloop/scratch/R5-T14/supervisor.json`。`running`：把 `eval-private/reports/r5-playtest.progress.json` 的 round 记录数写进 HANDOFF 与本报告，提交，结果写 `PARTIAL`；不要启动第二个监督进程或 server。`completed`：核对续跑文件 60 条 round 记录、0 条 failure，以及 `docs/dev/reports/R5-playtest.md` 与 `eval-private/reports/r5-playtest.md` 的生成时间。
+  1. 读 `.devloop/scratch/R5-T14/supervisor.json`。`running`：把 `eval-private/reports/r5-playtest.progress.json` 的 round 记录数写进 HANDOFF 与 `docs/dev/reports/R5.md` 第七节，提交，结果写 `PARTIAL`；不要启动第二个监督进程或 server。`completed`：核对续跑文件 60 条 round 记录、0 条 failure，以及 `docs/dev/reports/R5-playtest.md` 与 `eval-private/reports/r5-playtest.md` 的生成时间。
   2. 用只读查询读 `live.db`：按种类统计 `background_jobs` 的五个状态，单列 `scene` 空输出失败数与 `candidate_actions` 严格解析失败数；统计 `director_candidate_actions`、`director_beat_states`、`ledger_settlements`、`preference_events` 的条数。
   3. 用新的统计版替换 `docs/dev/reports/R5.md` 第一至三节的数字，更新 `scene` 与 `candidate_actions` 的失败口径；确认第一至三节不再保留旧的重跑数字。
   4. 把 `docs/dev/TASKS.md` 的 R5-T99 标 `[x]` 并写完成行；重写 HANDOFF；追加 LOG；提交。结果写 `MILESTONE_DONE`。
