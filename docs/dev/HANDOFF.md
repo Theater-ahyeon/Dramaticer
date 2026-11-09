@@ -10,6 +10,7 @@
 ## 当前状态
 - 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T07.b.d.a 与 R1-T07.b.d.b）、R3、O、R2、E、R4、R5-T01 至 R5-T13、R5-T14.a、R5-T14.b、R5-T14.c、R5-T14.d、R5-T14.e、V-T01。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
 - **R5-T99 进行中**：`docs/dev/reports/R5.md` 第四至第七节已写好；第一至三节的统计数字仍来自 R5-T14.c 的 60 轮重跑，R5-T14.e 修复后的数据要等本轮重跑结束。重跑完成后必须回填统计版全部字段、`scene` 空输出数、`candidate_actions` 严格解析失败数、后台任务状态、偏好信号与导演机制命中。
+- `docs/proposals/preset-insights.md` 在会话 238 期间由外部提交加入（提交 `4967cf3`），尚未分拣；下一会话按 AGENTS.md 的设计变更流程处理：能执行的写成 TASKS 任务并排好依赖，改变路线或与设计冲突的写 DECISIONS 或 HUMAN.md。
 - **Vertex 渠道（V-T01）**：`api: google-vertex` 使用 pi-ai 1.5.0 的 `google-vertex` 适配器；`gemini-4-argon` 模型在 `data/channels.yaml` 与示例里，凭证、项目、区域只从 `.env` 的三个 `GOOGLE_*` 变量读取，服务账号 JSON 不进仓库；未设置时不影响现有渠道，`roles.writer` 保持 `main-fallback`。live 验证用 `DRAMATICER_VERTEX_LIVE=1` 运行 `packages/core/test/google-vertex.live.test.ts`。
 - 下一个任务仍是 R5-T99：重跑完成后核对 60 条 round 记录与两份报告，更新 `docs/dev/reports/R5.md`，把 TASKS 的 R5-T99 标 `[x]` 并写完成行，结果写 `MILESTONE_DONE`。重跑未完成时写 `PARTIAL` 并记录当前轮数。提交后若要继续 devloop，带 `-MaxSessions 80` 重启。
 - v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（界面）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
@@ -114,6 +115,7 @@
 - 不要修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 下的任何文件。不变量 I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账是唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖任何其他工作区包。
 
 ## 下一步
+- **先分拣 `docs/proposals/preset-insights.md`**：七条建议里前两条属于 `packages/st-compat` 的预设导入与深度注入，排在 C 线/P2 前后要按 DESIGN §19 与 I15 判断；本次未分拣，下一会话开始处理。
 - **R5-T99 续**：
   1. 读 `.devloop/scratch/R5-T14/supervisor.json`。`running`：以 `eval-private/reports/r5-playtest.progress.json` 的 `records` 条数为准（`supervisor.json` 的 `rounds` 只在调用结束时刷新），把当前轮数写进 HANDOFF 与 `docs/dev/reports/R5.md` 第七节，提交，结果写 `PARTIAL`；不要启动第二个监督进程或 server。`completed`：核对续跑文件 60 条 round 记录、0 条 failure，以及 `docs/dev/reports/R5-playtest.md` 已变成 60 轮成功版本（试玩 CLI 每次调用都会重写该文件，不能用文件生成时间判断是否完成）。
   2. 用只读查询读 `live.db`：按种类统计 `background_jobs` 的五个状态，单列 `scene` 空输出失败数与 `candidate_actions` 严格解析失败数；统计 `director_candidate_actions`、`director_beat_states`、`ledger_settlements`、`preference_events` 的条数。`.devloop/scratch/R5-T14/queue-status.mjs` 给出总体状态与部分计数，其余计数可用 `node:sqlite` 只读查询（必须从仓库根目录运行，脚本里的路径是相对路径）。
