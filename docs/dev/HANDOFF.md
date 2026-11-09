@@ -3,8 +3,8 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 会话 232：R5-T99 R5 验收进行中（PARTIAL）。本次没有改代码；门禁保持通过（148 个测试文件、1311 个测试，3 个 live 跳过）。
-- 60 轮重跑监督进程 pid 62556 仍在运行：13:10Z 进度 6/60 条 round 记录、0 条 failure；`background_jobs` 为 `done=93`、`pending=4`、`running=1`、`discarded=2`、`failed=0`；`scene` 完成 8、待执行 1、失败 0，`candidate_actions` 完成 6、丢弃 2、待执行 1、失败 0，`settle` 完成 8、运行中 1，`events`、`embeddings`、`summary`、`npc_agenda` 各完成 13；`director_candidate_actions` 30 行（6 个楼层）、`director_beat_states` 8 行、`ledger_settlements` 8 行、`preference_events` 为 `swipe` 1 与 `edit` 1。修复后的 `scene` 空输出率待 60 轮结束后统计。
+- 会话 233：R5-T99 R5 验收进行中（PARTIAL）。本次没有改代码；门禁保持通过（148 个测试文件、1311 个测试，3 个 live 跳过）。
+- 60 轮重跑监督进程 pid 62556 仍在运行：13:13Z 进度 8/60 条 round 记录；第 9 轮模拟用户连续 3 次空输出，监督进程已丢弃该失败记录并在第 2 次试玩调用里重试该轮（当前 0 条 failure 记录）；数据库有 13 个助手楼层、9 个用户楼层；`background_jobs` 为 `done=119`、`pending=14`、`running=1`、`discarded=2`、`failed=0`；`scene` 完成 11、待执行 2、失败 0（R5-T14.e 修复后暂无空输出），`candidate_actions` 完成 9、丢弃 2、待执行 2、失败 0，`settle` 完成 11、待执行 1、运行中 1，`events`、`npc_agenda`、`summary` 各完成 16，`embeddings` 完成 15、待执行 2，`memory_revision` 与 `user_will` 各完成 11、待执行 2；`director_candidate_actions` 45 行（9 个楼层）、`director_beat_states` 11 行、`ledger_settlements` 11 行、`preference_events` 为 `swipe` 2 与 `edit` 2。
 - 进度已回填 `docs/dev/reports/R5.md` 第七节与 `docs/dev/TASKS.md` 的 R5-T99 进行中行；仓库改动只有 `docs/dev/reports/R5.md`、`docs/dev/TASKS.md`、`docs/dev/HANDOFF.md` 与 `docs/dev/LOG.md`。
 
 ## 当前状态
@@ -22,7 +22,7 @@
 - 数据库 schema 版本 33（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡、v25 合并调用开关与执行记录、v26 间隙档位阈值与丢弃状态、v27 合并调用丢弃条目、v28 回合模式与读取工具软上限、v29 开局包与故事级后台任务、v30 首楼开场候选、v31 偏好记录、v32 导演计划与拍状态、v33 导演候选行动）；R1 续原计划的 v32–v35 顺延为 v34–v37。
 
 ## 后台任务与队列
-- **本轮重跑使用空库**：`live.db` 与续跑文件在 12:58Z 之前已被删除；13:10Z 数据库里 9 个助手楼层、7 个用户楼层（当前路径 6 助手、6 用户），`background_jobs` 状态为 `done=93`、`pending=4`、`running=1`、`discarded=2`、`failed=0`；按种类 `settle` 完成 8、运行中 1，`scene` 完成 8、待执行 1，`candidate_actions` 完成 6、丢弃 2、待执行 1，`events`、`embeddings`、`summary`、`npc_agenda` 各完成 13，`director_candidate_actions` 30 行（6 个楼层）、`director_beat_states` 8 行、`ledger_settlements` 8 行、`preference_events` 为 `swipe` 1 与 `edit` 1。这是修复 R5-T14.e 后的干净口径，最终数字以 60 轮结束时的数据库为准。
+- **本轮重跑使用空库**：`live.db` 与续跑文件在 12:58Z 之前已被删除；13:13Z 数据库里 13 个助手楼层、9 个用户楼层，`background_jobs` 状态为 `done=119`、`pending=14`、`running=1`、`discarded=2`、`failed=0`；按种类 `settle` 完成 11、待执行 1、运行中 1，`scene` 完成 11、待执行 2、失败 0，`candidate_actions` 完成 9、丢弃 2、待执行 2，`events`、`npc_agenda`、`summary` 各完成 16，`embeddings` 完成 15、待执行 2，`memory_revision` 与 `user_will` 各完成 11、待执行 2，`director_plan`、`opening`、`opening_candidates` 各完成 1；`director_candidate_actions` 45 行（9 个楼层）、`director_beat_states` 11 行、`ledger_settlements` 11 行、`preference_events` 为 `swipe` 2 与 `edit` 2。这是 R5-T14.e 修复后的干净口径，最终数字以 60 轮结束时的数据库为准。
 - server 的回合路径会补建并执行后台任务：`handleTurnStream` 在 `turn.completed` 之后调用 `BackgroundScheduler.schedule`，不等待 drain；同一时刻只有一个 drain，故事之间先来先做。`schedule` 的 drain 只跑 `resolveStoryBackgroundKinds` 过滤后的类型，并带 `sessionEnded: true`，所以每轮结束后延后档（事件、摘要、NPC 议程、导演计划）也会执行。
 - 后台任务恢复（R5-T14.d）：`requeueRunningBackgroundJobs(storyId?)` 把 running 行退回 pending、`attempts` 减一（不低于 0）、清空 `started_at` 与 `finished_at`、保留 `last_error`；`startServer` 打开数据库后调用一次，`dramaticer work` 在列出故事前调用一次；`done`、`failed`、`discarded` 不动。
 - 故事级任务入队：`StoryStore.enqueueStoryBackgroundJobs` 按种类写入 `node_id` 为空的 `background_jobs` 行；创建故事与导入卡的路由先调用 `enqueueOpeningBackgroundJobs`（按两个 `needsRun` 过滤）再 `schedule`。`POST /api/stories/:id/openings/generate` 无条件入队一条 `opening_candidates`（仅要求故事无楼层），同一行已完成时翻回 `pending`。
@@ -79,9 +79,9 @@
 - 自动试玩续跑（2026-11-09）：live 默认 `PLAYTEST_RESUME=1`；续跑文件默认 `eval-private/reports/r5-playtest.progress.json`，每轮写完写入磁盘，记录故事 id、数据库、渠道、标题、排期与全部轮次。续跑时复用故事，从上次编辑操作还原两个兄弟楼层，失败记录在下次运行时丢弃并重试该轮；跑满 60 轮才写报告。`PLAYTEST_RESUME=0` 新开一次，`PLAYTEST_TIME_BUDGET_MS` 控制单次调用预算。
 - 本轮 R5-T99 重跑从空续跑文件开始，故事 id 是新建的 `e2e-2b61059d-…`，标题「自动试玩」；不要把它与旧报告里的故事混在一起。
 - 单轮失败时 `runPlaytest` 记录 `kind: "failure"` 并跳出循环；`playtest.spec.ts` 在存在 failure 记录时抛错，所以该次调用退出码为 1。监督进程按 failure 记录累计连续失败次数，并自动丢弃该记录重试。模拟用户的输出上限是 4096。
-- 会话外监督进程（R5-T14.a）：`scripts/r5-playtest-supervisor.mjs` 读 `.devloop/scratch/R5-T14/supervisor-config.json`；状态 `supervisor.json`、日志 `supervisor.log`、锁 `supervisor.lock`。它负责构建一次、启动 server、反复调用试玩直到 60 轮，完成后停掉 server；报告由试玩 CLI 在跑满 60 轮时写出。`baseUrl` 非空时复用已有服务（假 server 冒烟用）。
+- 会话外监督进程（R5-T14.a）：`scripts/r5-playtest-supervisor.mjs` 读 `.devloop/scratch/R5-T14/supervisor-config.json`；状态 `supervisor.json`、日志 `supervisor.log`、锁 `supervisor.lock`。它负责构建一次、启动 server、反复调用试玩直到 60 轮，完成后停掉 server；试玩 CLI 每次调用结束都会重写报告，跑满 60 轮时写出最终版本。`baseUrl` 非空时复用已有服务（假 server 冒烟用）。
 - **本轮监督进程仍在运行**：pid 62556，`supervisor.json` 状态 `running`，启动时间 2026-11-09T12:58:33Z。完成前不要再次启动；完成后它会自动把状态改成 `completed` 并停掉 server。
-- 统计版 `docs/dev/reports/R5-playtest.md` 当前仍对应 R5-T14.c 的 60 轮重跑；其中 `scene` 的 17 条空输出是 R5-T14.e 修复前的数据，R5-T99 重跑完成后会被新报告覆盖。`docs/dev/reports/R5.md` 第四至第七节是本次验收新增。
+- 统计版 `docs/dev/reports/R5-playtest.md` 由试玩 CLI 在每次调用结束时重写，13:13Z 的工作区版本是本次重跑的中途快照（8 成功 / 1 失败，失败为第 9 轮模拟用户空输出），60 轮完成后会被最终版本覆盖；R5-T14.c 的完整 60 轮数字保存在提交 `5f86554` 的同一文件里，`scene` 的 17 条空输出是 R5-T14.e 修复前的数据。`docs/dev/reports/R5.md` 第四至第七节是本次验收新增。
 - F0 的私有产物：`eval-private/f0/`；R3 的产物：`docs/dev/reports/R3.md`、`R3-fast.md`；O 的产物：`docs/dev/reports/O-opening.md`；R2 的产物：`docs/dev/reports/R2.md`、`R2-judge.md`、`R2-pairwise.md`、`R2-b1.md`、`R2-forgetting.md`、`docs/dev/SCOREBOARD.md`；R4 的产物：`docs/dev/reports/R4.md`。
 - 引用评测数字时：B1 必须同时说明同模型子集为空、每个对话每档只有 1 个样本；遗忘矛盾率必须同时说明失败题数与可判定样本数；偏好一致率当前没有样本。
 
@@ -115,7 +115,7 @@
 
 ## 下一步
 - **R5-T99 续**：
-  1. 读 `.devloop/scratch/R5-T14/supervisor.json`。`running`：把 `eval-private/reports/r5-playtest.progress.json` 的 round 记录数写进 HANDOFF 与 `docs/dev/reports/R5.md` 第七节，提交，结果写 `PARTIAL`；不要启动第二个监督进程或 server。`completed`：核对续跑文件 60 条 round 记录、0 条 failure，以及 `docs/dev/reports/R5-playtest.md` 与 `eval-private/reports/r5-playtest.md` 的生成时间。
+  1. 读 `.devloop/scratch/R5-T14/supervisor.json`。`running`：把 `eval-private/reports/r5-playtest.progress.json` 的 round 记录数写进 HANDOFF 与 `docs/dev/reports/R5.md` 第七节，提交，结果写 `PARTIAL`；不要启动第二个监督进程或 server。`completed`：核对续跑文件 60 条 round 记录、0 条 failure，以及 `docs/dev/reports/R5-playtest.md` 已变成 60 轮成功版本（试玩 CLI 每次调用都会重写该文件，不能用文件生成时间判断是否完成）。
   2. 用只读查询读 `live.db`：按种类统计 `background_jobs` 的五个状态，单列 `scene` 空输出失败数与 `candidate_actions` 严格解析失败数；统计 `director_candidate_actions`、`director_beat_states`、`ledger_settlements`、`preference_events` 的条数。
   3. 用新的统计版替换 `docs/dev/reports/R5.md` 第一至三节的数字，更新 `scene` 与 `candidate_actions` 的失败口径；确认第一至三节不再保留旧的重跑数字。
   4. 把 `docs/dev/TASKS.md` 的 R5-T99 标 `[x]` 并写完成行；重写 HANDOFF；追加 LOG；提交。结果写 `MILESTONE_DONE`。
