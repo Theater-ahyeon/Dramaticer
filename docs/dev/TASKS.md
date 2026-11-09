@@ -768,7 +768,8 @@
   验收：假客户端下 `scene` 请求使用模型声明上限；空正文仍按失败重试，三次后 `failed`；12 轮重跑里出现过的空输出不再发生（用固定假客户端与一次真实渠道各验证一次请求参数）；`pnpm check` 通过。
   完成：2026-11-09 `scene` 请求不再传 `maxTokens`，删除 `DEFAULT_SCENE_MAX_TOKENS` 与 `SceneHandlerOptions.maxTokens`，正文长度由系统提示词与 token 估算器约束；回归测试断言请求不带 `maxTokens`，新增空正文三次重试后 `failed` 并保留原因的用例；真实渠道一次请求 completion 255 token（思考 131）返回 188 字正文、`finishReason` 为 `stop`，旧上限会在思考写满后截断正文；ADR-0079；门禁通过（148 个测试文件、1311 个测试，3 个 live 跳过）
 
-- [ ] **R5-T99 R5 验收** | 依赖：R5 全部任务（含 R5-T02.a、R5-T02.b、R5-T02.c、R5-T05.a、R5-T07.a、R5-T14.a、R5-T14.b、R5-T14.c、R5-T14.e）
+- [~] **R5-T99 R5 验收** | 依赖：R5 全部任务（含 R5-T02.a、R5-T02.b、R5-T02.c、R5-T05.a、R5-T07.a、R5-T14.a、R5-T14.b、R5-T14.c、R5-T14.e）
+  进行中：2026-11-09 门禁通过（148 个测试文件、1311 个测试，3 个 live 跳过）；`pnpm e2e` 通过（20 个用例、2 个 playtest 用例跳过）；逐条核对、不变量与安全复核已写入 `docs/dev/reports/R5.md`；60 轮重跑从空数据库启动，完成后回填统计数字。
   做什么：同 M0-T99；重跑 `pnpm check`、`pnpm e2e` 与 60 轮试玩报告；逐条核对 R5-T01 至 R5-T14 与全部子任务；复核 I6（模式只由玩家切换）、I9（导演实时选择零模型调用）、I11–I14，以及 server 不绕过 core 直接写库；检查默认回环监听与局域网密码；在 `docs/dev/reports/R5.md` 总结；确认 M6、R1 续与 R3b 任务。
   结果写 `MILESTONE_DONE`；报告缺失时写 `PARTIAL`。
 
