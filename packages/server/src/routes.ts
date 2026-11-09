@@ -109,9 +109,9 @@ import {
 	type StoryProposalsView,
 	type StoryTemplateView,
 	type StoryTree,
-	type StoryVisualProfilesView,
 	type StoryTreeNode,
 	type StoryView,
+	type StoryVisualProfilesView,
 	isProposalDecisionAction,
 } from "@dramaticer/protocol";
 import {
@@ -1032,6 +1032,19 @@ function handleOpenings(
 			storyId,
 			status === "all" ? {} : { status },
 		),
+	};
+	sendJson(res, 200, view);
+}
+
+function handleStoryVisualProfiles(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	storyId: string,
+): void {
+	requireStory(options.store, storyId);
+	const view: StoryVisualProfilesView = {
+		storyId,
+		profiles: options.store.listCharacterVisualProfiles(storyId),
 	};
 	sendJson(res, 200, view);
 }

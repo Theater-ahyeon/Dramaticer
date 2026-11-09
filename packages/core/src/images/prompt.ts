@@ -28,9 +28,8 @@ export const DEFAULT_IMAGE_NEGATIVE_TAGS = [
 	"text",
 ] as const;
 
-export const DEFAULT_IMAGE_NEGATIVE_PROMPT = DEFAULT_IMAGE_NEGATIVE_TAGS.join(
-	", ",
-);
+export const DEFAULT_IMAGE_NEGATIVE_PROMPT =
+	DEFAULT_IMAGE_NEGATIVE_TAGS.join(", ");
 
 export const MAX_IMAGE_PROMPT_CHARACTERS = 4;
 
@@ -99,9 +98,7 @@ function normalizeRequest(request: ImagePromptRequest): {
 	let shot: ImageShot | null = null;
 	if (request.shot !== undefined) {
 		if (!isImageShot(request.shot)) {
-			throw new Error(
-				`生图请求的 shot 必须是 ${IMAGE_SHOTS.join("、")} 之一`,
-			);
+			throw new Error(`生图请求的 shot 必须是 ${IMAGE_SHOTS.join("、")} 之一`);
 		}
 		shot = request.shot;
 	}

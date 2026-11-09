@@ -124,9 +124,9 @@ async function runProfiles(
 		const channelsPath =
 			dependencies.channelsPath ?? path.join(repoRoot, "data", "channels.yaml");
 		(dependencies.loadEnv ?? loadDotEnv)(envPath);
-		const config = await (dependencies.loadChannelsConfig ?? loadChannelsConfig)(
-			channelsPath,
-		);
+		const config = await (
+			dependencies.loadChannelsConfig ?? loadChannelsConfig
+		)(channelsPath);
 		const model = resolveModelForRole(config, "settler");
 		const client = (
 			dependencies.createClient ??

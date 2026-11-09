@@ -102,12 +102,17 @@ function requireSeed(value: unknown, label: string): number | null {
 		value < 0 ||
 		value > MAX_PROFILE_SEED
 	) {
-		throw new Error(`${label} 必须是 0 到 ${MAX_PROFILE_SEED} 之间的整数或 null`);
+		throw new Error(
+			`${label} 必须是 0 到 ${MAX_PROFILE_SEED} 之间的整数或 null`,
+		);
 	}
 	return value;
 }
 
-function requireEmptyBackends(value: unknown, label: string): Record<string, never> {
+function requireEmptyBackends(
+	value: unknown,
+	label: string,
+): Record<string, never> {
 	const object = assertPlainObject(value, label);
 	rejectUnknownKeys(object, [], label);
 	return {};
@@ -135,12 +140,22 @@ export function assertCharacterVisualProfile(
 			? []
 			: requireTagList(record.negative, `${label}.negative`, true);
 	const seed =
-		record.seed === undefined ? null : requireSeed(record.seed, `${label}.seed`);
+		record.seed === undefined
+			? null
+			: requireSeed(record.seed, `${label}.seed`);
 	const backends =
 		record.backends === undefined
 			? {}
 			: requireEmptyBackends(record.backends, `${label}.backends`);
-	return { character, base, defaultOutfit, outfitPath, negative, seed, backends };
+	return {
+		character,
+		base,
+		defaultOutfit,
+		outfitPath,
+		negative,
+		seed,
+		backends,
+	};
 }
 
 /** 同一批档案里的人物不能重复；比较时忽略大小写与标点。 */

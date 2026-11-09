@@ -3419,9 +3419,7 @@ export class StoryStore {
 	}
 
 	/** 列出故事的视觉档案，按写入顺序。 */
-	listCharacterVisualProfiles(
-		storyId: string,
-	): CharacterVisualProfileRecord[] {
+	listCharacterVisualProfiles(storyId: string): CharacterVisualProfileRecord[] {
 		assertNonEmptyString(storyId, "故事 id");
 		if (!this.getStory(storyId)) {
 			throw new Error(`故事不存在：${storyId}`);
@@ -3448,9 +3446,7 @@ export class StoryStore {
 			.prepare(
 				"SELECT * FROM character_visual_profiles WHERE story_id = ? AND character = ?",
 			)
-			.get(storyId, character.trim()) as
-			| CharacterVisualProfileRow
-			| undefined;
+			.get(storyId, character.trim()) as CharacterVisualProfileRow | undefined;
 		return row === undefined ? null : rowToCharacterVisualProfile(row);
 	}
 

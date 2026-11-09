@@ -214,10 +214,7 @@ export function createVisualProfileHandler(
 			temperature: 0,
 			signal,
 		});
-		const profiles = parseVisualProfilesResponse(
-			result.text,
-			input.knownNames,
-		);
+		const profiles = parseVisualProfilesResponse(result.text, input.knownNames);
 		store.saveCharacterVisualProfiles({
 			storyId: job.storyId,
 			profiles,
