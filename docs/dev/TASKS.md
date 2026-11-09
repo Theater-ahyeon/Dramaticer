@@ -755,9 +755,10 @@
   - 回归测试：插入 running 行模拟进程中断，恢复后 drain 能执行它且 `attempts` 不重复累计；其它状态的行保持不变。
   验收：模拟重启后遗留 running 行被重新执行；恢复后 `attempts` 语义与 `deferBackgroundJob` 一致；`done`、`failed`、`discarded` 行不受影响；`pnpm check` 通过。
 
-- [ ] **R5-T14.b 试玩报告核对与文档** | 依赖：R5-T14.a、R5-T14.c
+- [x] **R5-T14.b 试玩报告核对与文档** | 依赖：R5-T14.a、R5-T14.c
   做什么：核对统计版字段与 ADR-0033 口径，没有信号的指标保持「未证实」，不改口径；在 `docs/dev/reports/R5.md` 引用统计版并写明模型别名、轮数与操作次数；重跑 `pnpm check`。
   验收：统计版字段齐全并通过私有标识反向扫描；`docs/dev/reports/R5.md` 的引用与数字和统计版一致；`pnpm check` 通过。
+  完成：2026-11-09 统计版 60 成功 / 0 失败，字段按 ADR-0033 §九逐项核对（对比胜率、矛盾率、节拍余弦保持未证实），独立反向扫描 806 个标识 0 处命中；`docs/dev/reports/R5.md` 记录正文 `main-fallback`、后台 `background`、60 轮与实际操作 swipe 2 / edit 2 / branch 2，候选行动 61 个楼层各 5 条（当前路径 55 个），`scene` 17 条空输出与 `candidate_actions` 2 条严格解析失败单列；门禁通过（148 个测试文件、1310 个测试，3 个 live 跳过）
 
 - [ ] **R5-T14.e 现场分析的输出预算与思考 token** | 依赖：R5-T14.c
   背景与证据（2026-11-09，对 `.devloop/scratch/R5-T14/live.db` 的只读查询）：R5-T14.c 重跑到第 12 轮时 17 条 `scene` 任务中 8 条完成、4 条随放弃楼层丢弃、4 条重试三次后 `failed`、1 条待执行，`last_error` 全是「现场分析返回了空内容」。`createSceneHandler` 把 `DEFAULT_SCENE_MAX_TOKENS = 200` 直接作为请求的 `maxTokens`（`packages/core/src/memory/scene.ts:108`）；`background` 模型的思考 token 与正文共用输出上限，思考耗尽 200 后正文为空，当前路径上约三分之一的楼层因此没有现场分析。R1-T07.b.d.b 已确认该网关无法关闭思考，后台模型的声明上限是 32,768。
