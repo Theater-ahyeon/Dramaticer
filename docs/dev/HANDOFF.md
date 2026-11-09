@@ -3,8 +3,8 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 会话 231：R5-T99 R5 验收进行中（PARTIAL）。本次没有改代码；门禁保持通过（148 个测试文件、1311 个测试，3 个 live 跳过）。
-- 60 轮重跑监督进程 pid 62556 仍在运行：13:07Z 进度 4/60 条 round 记录、0 条 failure；`background_jobs` 为 `done=69`、`pending=3`、`running=1`、`discarded=1`、`failed=0`；`scene` 完成 6、运行中 1、失败 0，`candidate_actions` 完成 5、丢弃 1、待执行 1，`settle` 完成 7；`director_candidate_actions` 20 行、`director_beat_states` 7 行、`ledger_settlements` 7 行、`preference_events` 为 `swipe` 1 与 `edit` 1。修复后的 `scene` 空输出率待 60 轮结束后统计。
+- 会话 232：R5-T99 R5 验收进行中（PARTIAL）。本次没有改代码；门禁保持通过（148 个测试文件、1311 个测试，3 个 live 跳过）。
+- 60 轮重跑监督进程 pid 62556 仍在运行：13:10Z 进度 6/60 条 round 记录、0 条 failure；`background_jobs` 为 `done=93`、`pending=4`、`running=1`、`discarded=2`、`failed=0`；`scene` 完成 8、待执行 1、失败 0，`candidate_actions` 完成 6、丢弃 2、待执行 1、失败 0，`settle` 完成 8、运行中 1，`events`、`embeddings`、`summary`、`npc_agenda` 各完成 13；`director_candidate_actions` 30 行（6 个楼层）、`director_beat_states` 8 行、`ledger_settlements` 8 行、`preference_events` 为 `swipe` 1 与 `edit` 1。修复后的 `scene` 空输出率待 60 轮结束后统计。
 - 进度已回填 `docs/dev/reports/R5.md` 第七节与 `docs/dev/TASKS.md` 的 R5-T99 进行中行；仓库改动只有 `docs/dev/reports/R5.md`、`docs/dev/TASKS.md`、`docs/dev/HANDOFF.md` 与 `docs/dev/LOG.md`。
 
 ## 当前状态
@@ -22,7 +22,7 @@
 - 数据库 schema 版本 33（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡、v25 合并调用开关与执行记录、v26 间隙档位阈值与丢弃状态、v27 合并调用丢弃条目、v28 回合模式与读取工具软上限、v29 开局包与故事级后台任务、v30 首楼开场候选、v31 偏好记录、v32 导演计划与拍状态、v33 导演候选行动）；R1 续原计划的 v32–v35 顺延为 v34–v37。
 
 ## 后台任务与队列
-- **本轮重跑使用空库**：`live.db` 与续跑文件在 12:58Z 之前已被删除；13:07Z 数据库里 7 个助手楼层、5 个用户楼层，`background_jobs` 状态为 `done=69`、`pending=3`、`running=1`、`discarded=1`、`failed=0`；按种类 `settle` 完成 7、`scene` 完成 6 且运行中 1、`candidate_actions` 完成 5 且丢弃 1、待执行 1，`director_candidate_actions` 20 行、`director_beat_states` 7 行、`ledger_settlements` 7 行、`preference_events` 为 `swipe` 1 与 `edit` 1。这是修复 R5-T14.e 后的干净口径，最终数字以 60 轮结束时的数据库为准。
+- **本轮重跑使用空库**：`live.db` 与续跑文件在 12:58Z 之前已被删除；13:10Z 数据库里 9 个助手楼层、7 个用户楼层（当前路径 6 助手、6 用户），`background_jobs` 状态为 `done=93`、`pending=4`、`running=1`、`discarded=2`、`failed=0`；按种类 `settle` 完成 8、运行中 1，`scene` 完成 8、待执行 1，`candidate_actions` 完成 6、丢弃 2、待执行 1，`events`、`embeddings`、`summary`、`npc_agenda` 各完成 13，`director_candidate_actions` 30 行（6 个楼层）、`director_beat_states` 8 行、`ledger_settlements` 8 行、`preference_events` 为 `swipe` 1 与 `edit` 1。这是修复 R5-T14.e 后的干净口径，最终数字以 60 轮结束时的数据库为准。
 - server 的回合路径会补建并执行后台任务：`handleTurnStream` 在 `turn.completed` 之后调用 `BackgroundScheduler.schedule`，不等待 drain；同一时刻只有一个 drain，故事之间先来先做。`schedule` 的 drain 只跑 `resolveStoryBackgroundKinds` 过滤后的类型，并带 `sessionEnded: true`，所以每轮结束后延后档（事件、摘要、NPC 议程、导演计划）也会执行。
 - 后台任务恢复（R5-T14.d）：`requeueRunningBackgroundJobs(storyId?)` 把 running 行退回 pending、`attempts` 减一（不低于 0）、清空 `started_at` 与 `finished_at`、保留 `last_error`；`startServer` 打开数据库后调用一次，`dramaticer work` 在列出故事前调用一次；`done`、`failed`、`discarded` 不动。
 - 故事级任务入队：`StoryStore.enqueueStoryBackgroundJobs` 按种类写入 `node_id` 为空的 `background_jobs` 行；创建故事与导入卡的路由先调用 `enqueueOpeningBackgroundJobs`（按两个 `needsRun` 过滤）再 `schedule`。`POST /api/stories/:id/openings/generate` 无条件入队一条 `opening_candidates`（仅要求故事无楼层），同一行已完成时翻回 `pending`。
