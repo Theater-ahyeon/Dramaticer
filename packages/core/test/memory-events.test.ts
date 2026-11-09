@@ -101,6 +101,21 @@ function appendAssistantFloors(store: StoryStore, count: number): string[] {
 	return ids;
 }
 
+/** 请求里窗口段内带 id 的助手楼层。 */
+function assistantIdsIn(request: LlmRequest): string[] {
+	const content =
+		request.messages.find((message) => message.role === "user")?.content ?? "";
+	const start = content.lastIndexOf("<窗口>");
+	const end = content.indexOf("</窗口>", start);
+	if (start < 0 || end < 0) {
+		throw new Error("抽取请求的窗口段不完整");
+	}
+	const body = content.slice(start, end);
+	return [...body.matchAll(/<楼层 id="([^"]+)" role="assistant">/g)].map(
+		(match) => match[1] ?? "",
+	);
+}
+
 /** 按请求里的窗口楼层返回结果，用来检查一次请求覆盖了哪些楼层。 */
 function windowClient(): {
 	readonly client: LlmClient;
@@ -112,18 +127,7 @@ function windowClient(): {
 		client: {
 			async complete(request) {
 				requests.push(request);
-				const content =
-					request.messages.find((message) => message.role === "user")
-						?.content ?? "";
-				const start = content.lastIndexOf("<窗口>");
-				const end = content.indexOf("</窗口>", start);
-				if (start < 0 || end < 0) {
-					throw new Error("抽取请求的窗口段不完整");
-				}
-				const body = content.slice(start, end);
-				const ids = [
-					...body.matchAll(/<楼层 id="([^"]+)" role="assistant">/g),
-				].map((match) => match[1] ?? "");
+				const ids = assistantIdsIn(request);
 				return fakeResult(
 					JSON.stringify(
 						ids.map((id) => ({
@@ -585,6 +589,68 @@ describe("事件抽取任务", () => {
 		for (const id of floors) {
 			expect(content).toMatch(new RegExp(`^- ${id}$`, "m"));
 		}
+	});
+
+	it("输出被截断时把窗口对半缩小再请求", async () => {
+		const { store } = openTempStore();
+		store.createStory({ id: "s1", title: "测试" });
+		const floors = appendAssistantFloors(store, 8);
+		const requests: LlmRequest[] = [];
+		const client: LlmClient = {
+			async complete(request) {
+				requests.push(request);
+				const ids = assistantIdsIn(request);
+				if (requests.length === 1) {
+					return {
+						...fakeResult('[{"nodeId":"a0","events":[{"text":"半截'),
+						stopReason: "length",
+						truncation: "length",
+					};
+				}
+				return fakeResult(
+					JSON.stringify(ids.map((id) => ({ nodeId: id, events: [] }))),
+				);
+			},
+		};
+		enqueueMissingJobs({ store, storyId: "s1", kinds: ["events"] });
+		const job = jobOf(store, "s1", "a0");
+
+		await createEventExtractionHandler()({ store, client, job });
+
+		expect(requests.map(assistantIdsIn)).toEqual([
+			floors.slice(0, 8),
+			floors.slice(0, 4),
+		]);
+		expect(store.listExtractedEventNodeIds("s1").sort()).toEqual(
+			floors.slice(0, 4).sort(),
+		);
+	});
+
+	it("单个楼层仍然截断时抛出错误并指出截断原因", async () => {
+		const { store } = openTempStore();
+		store.createStory({ id: "s1", title: "测试" });
+		appendAssistantFloors(store, 8);
+		const requests: LlmRequest[] = [];
+		const client: LlmClient = {
+			async complete(request) {
+				requests.push(request);
+				return {
+					...fakeResult('[{"nodeId":"a0"'),
+					stopReason: "length",
+					truncation: "length",
+				};
+			},
+		};
+		enqueueMissingJobs({ store, storyId: "s1", kinds: ["events"] });
+		const job = jobOf(store, "s1", "a0");
+
+		await expect(
+			createEventExtractionHandler()({ store, client, job }),
+		).rejects.toThrow(/截断（length）/);
+		expect(requests.map((request) => assistantIdsIn(request).length)).toEqual([
+			8, 4, 2, 1,
+		]);
+		expect(store.listExtractedEventNodeIds("s1")).toEqual([]);
 	});
 
 	it("整段楼层由后台 drain 一次请求处理", async () => {

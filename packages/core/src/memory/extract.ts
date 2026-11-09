@@ -174,34 +174,55 @@ function optionalString(value: unknown, label: string): string | null {
 export function createEventExtractionHandler(
 	options: EventExtractionOptions = {},
 ): BackgroundJobHandler {
-	const windowFloors = options.windowFloors ?? EVENT_WINDOW_FLOORS;
-	if (!Number.isInteger(windowFloors) || windowFloors < 1) {
+	const baseWindowFloors = options.windowFloors ?? EVENT_WINDOW_FLOORS;
+	if (!Number.isInteger(baseWindowFloors) || baseWindowFloors < 1) {
 		throw new Error("事件抽取窗口必须是不小于 1 的整数");
 	}
 	return async ({ store, client, job, signal }) => {
-		const window = selectEventWindow(store, job.storyId, windowFloors);
-		if (window === null) return;
-		const messages: LlmMessage[] = [
-			{ role: "system", content: SYSTEM_PROMPT },
-			{
-				role: "user",
-				content: formatEventWindow(window, retryHint(job, window)),
-			},
-		];
-		const result = await client.complete(
-			{
-				messages,
-				model: options.model,
-				temperature: 0,
-				signal,
-			},
-			NO_CONTINUATION,
-		);
-		const batches = parseEventBatchExtraction(
-			result.text,
-			window.floors.map((node) => node.id),
-		);
-		recordExtractedEvents(store, job.storyId, window, batches);
+		let windowFloors = baseWindowFloors;
+		for (;;) {
+			const window = selectEventWindow(store, job.storyId, windowFloors);
+			if (window === null) return;
+			const messages: LlmMessage[] = [
+				{ role: "system", content: SYSTEM_PROMPT },
+				{
+					role: "user",
+					content: formatEventWindow(window, retryHint(job, window)),
+				},
+			];
+			const result = await client.complete(
+				{
+					messages,
+					model: options.model,
+					temperature: 0,
+					signal,
+				},
+				NO_CONTINUATION,
+			);
+			let batches: BatchExtractedEvents[];
+			try {
+				batches = parseEventBatchExtraction(
+					result.text,
+					window.floors.map((node) => node.id),
+				);
+			} catch (error) {
+				// 输出被截断时 JSON 通常缺尾巴；把窗口对半缩小后重新请求，
+				// 单个楼层仍然截断才按失败交给任务框架。
+				if (result.truncation !== null && window.floors.length > 1) {
+					windowFloors = Math.max(1, Math.floor(window.floors.length / 2));
+					continue;
+				}
+				if (result.truncation !== null) {
+					throw new Error(
+						`事件抽取输出被截断（${result.truncation}），单个楼层仍无法完整输出`,
+						{ cause: error },
+					);
+				}
+				throw error;
+			}
+			recordExtractedEvents(store, job.storyId, window, batches);
+			return;
+		}
 	};
 }
 
