@@ -3,20 +3,19 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话 178：检查 R5-T14.a 的监督进程（2026-11-09 08:17Z）
+- 会话 179：检查 R5-T14.a 的监督进程（2026-11-09 08:20Z）
 - 监督进程 pid 37352 存活，第 1 次试玩调用从 08:13:07Z 开始（20 分钟预算），`supervisor.json` 仍是 `running`。
-- 续跑文件 `eval-private/reports/r5-playtest.progress.json` 有 5/60 条 round 记录、0 个失败（第 1–3 轮沿用上一会话；第 4 轮 08:14:54Z、第 5 轮 08:16:38Z，第 4 轮包含一次编辑操作）。第 4 轮记录的 `background.failed` 为 1，server 日志的 drain 汇总仍是失败 0。
-- 本会话没有启动第二个 server 或试玩，没有改代码；门禁沿用上次通过（151 个测试文件、1301 个通过、3 个 live 跳过）。
+- 续跑文件 `eval-private/reports/r5-playtest.progress.json` 有 6/60 条 round 记录、0 个失败（第 1–5 轮沿用上一会话；第 6 轮已落盘）。本会话没有启动第二个 server 或试玩，没有改代码；门禁沿用上次通过（151 个测试文件、1301 个通过、3 个 live 跳过）。
 
 ## 当前状态
 - 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T07.b.d.a 与 R1-T07.b.d.b）、R3、O、R2、E、R4、R5-T01 至 R5-T13。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- **R5-T14.a 正在进行，由会话外的监督进程执行**（2026-11-09 08:17Z：pid 37352，5/60 轮，0 失败；旧进程在 08:12:59Z 前被结束且没有停止日志）：
+- **R5-T14.a 正在进行，由会话外的监督进程执行**（2026-11-09 08:20Z：pid 37352，6/60 轮，0 失败；旧进程在 08:12:59Z 前被结束且没有停止日志）：
   - 状态文件 `.devloop/scratch/R5-T14/supervisor.json`；日志 `.devloop/scratch/R5-T14/supervisor.log`；续跑文件 `eval-private/reports/r5-playtest.progress.json`。
   - 会话只读状态：以 `supervisor.json` 的 `state` 为准，轮数以 `eval-private/reports/r5-playtest.progress.json` 的 round 记录数为准（状态里的 `rounds` 只在每次调用结束时刷新）。`running` → 把当前轮数写进本文件并提交，结果 `PARTIAL`；`completed` → 核对 60 条 round 记录与两份报告，标记 `[x]`；`failed` → 读日志修复后重新启动监督进程。
   - 不要在会话里再启动 server 或直接跑 `pnpm playtest`；不要删除 `supervisor.lock`（除非确认进程已死）。
   - 需要重启监督进程时用：
     `powershell -NoProfile -Command '$p = Start-Process -FilePath "C:\Program Files\nodejs\node.exe" -ArgumentList "scripts/r5-playtest-supervisor.mjs","--config",".devloop/scratch/R5-T14/supervisor-config.json" -WorkingDirectory "E:\agentcoding\Dramaticer" -WindowStyle Hidden -PassThru; $p.Id'`
-  - 配置：60 轮、每次调用 20 分钟、专用数据库与渠道、`maxInvocations` 8、连续失败上限 3、停滞上限 3。
+  - 配置：60 轮、每次调用 20 分钟、专用数据库与渠道、`maxInvocations` 20、连续失败上限 3、停滞上限 3。
   - 之后是 R5-T14.b（核对报告、写 `docs/dev/reports/R5.md`）与 R5-T99。
 - v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（界面）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045、ADR-0078。
