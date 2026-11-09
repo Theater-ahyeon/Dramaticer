@@ -619,7 +619,7 @@
   - 等待方式：处理器返回一个标记值（`void` 联合类型被 lint 判为易混淆）、把入队条件改成“已结算”（结算与分析的入队条件会重复表达同一件事）、抛出专用错误交给 drain 识别（采纳）。
   - 槽位段落位置：严格按 DESIGN 枚举放在历史段之后（会出现在对话消息后面）、放在记忆段之后与导演段之前（采纳）。
 - **决定**：
-  - `createSceneHandler` 的输入是该楼层结算后的台账快照（`getStateSnapshot(job.nodeId)`）与路径上最近 `windowFloors`（默认 6）楼原文，请求 `maxTokens` 取 `maxTokens`（默认 200），保存的 `token_count` 是 token 估算器对白本的估算值。
+  - `createSceneHandler` 的输入是该楼层结算后的台账快照（`getStateSnapshot(job.nodeId)`）与路径上最近 `windowFloors`（默认 6）楼原文，保存的 `token_count` 是 token 估算器对白本的估算值。请求输出上限的取值已被 ADR-0079 取代（不显式传 `maxTokens`）。
   - 该楼层没有 `ledger_settlements` 记录时抛 `BackgroundJobDeferredError`；`drainBackgroundJobs` 捕获后调用 `StoryStore.deferBackgroundJob`，把任务退回 pending、撤销本次执行计数、清空开始时间，其余错误照旧按重试规则处理。
   - `scene` 任务与 `settle` 一样使用 `settled` 入队条件。同一轮 drain 里结算先执行时分析直接读到结果，顺序不保证时分析在下一轮执行。
   - `scene_analyses` 以 `node_id` 为主键，重复执行覆盖同一行的文本、token 数与创建时间；槽位取当前路径上最近一条分析，跨分支不共享。
@@ -1161,3 +1161,18 @@
 - **影响**：
   - `LlmModelConfig` 新增必填的 `enabled`，程序化构造渠道配置的测试需要显式写 true。
   - R5-T10 直接复用这三条接口；密钥值不出现在任何响应里。
+
+## ADR-0079 现场分析的输出上限与思考 token（2026-11-09）
+
+- **背景**：R5-T14.e。`createSceneHandler` 曾把 200 token 同时当作请求的 `maxTokens` 与正文预算，而 `background` 模型的思考 token 与正文共用输出上限。R5-T14.c 的 60 轮重跑里 17 条 `scene` 任务在三次重试后失败，原因全是「现场分析返回了空内容」；R1-T07.b.d.b 已确认该网关无法关闭思考，后台模型的声明上限是 32,768。修复前的一次真实请求实测 completion 255 token，其中思考 131 token，200 的上限会在思考写满后截断正文。
+- **选项**：
+  - 保持 200 并关闭思考：该网关不能关闭思考（排除）。
+  - 把固定上限提高到足以容纳思考（例如 1,024）：不同模型与不同输入的思考长度不可预测，仍会偶发空正文（排除）。
+  - 不显式传 `maxTokens`，由模型声明的输出上限约束，正文长度继续靠系统提示词的「两百字以内」（采纳）。
+- **决定**：
+  - `scene` 请求不带 `maxTokens`；正文长度由系统提示词约束，写入时用 token 估算器记录 `tokenCount`。
+  - 删除 `DEFAULT_SCENE_MAX_TOKENS` 与 `SceneHandlerOptions.maxTokens`，不保留未被读取的配置。
+  - 空正文继续抛「现场分析返回了空内容」，由任务框架按三次重试后标为 `failed` 并保留原因。
+- **影响**：
+  - 现场分析的输出上限跟随渠道配置的模型声明值；换用思考更长的模型时不需要再调现场分析配置。
+  - 回归测试断言请求不带 `maxTokens`，并覆盖空正文三次重试后 `failed`；真实渠道一次验证 completion 255 token（思考 131）返回 188 字正文。

@@ -13,9 +13,6 @@ export const SCENE_JOB_KIND = "scene";
 /** 现场分析读取的最近楼层数；默认 6。 */
 export const SCENE_WINDOW_FLOORS = 6;
 
-/** 现场分析的输出上限，按 token 估算器与请求上限同时控制。 */
-export const DEFAULT_SCENE_MAX_TOKENS = 200;
-
 /** 一个楼层的现场分析；与楼层绑定，同一楼层只有一行。 */
 export interface SceneAnalysis {
 	readonly nodeId: string;
@@ -36,8 +33,6 @@ export interface NewSceneAnalysis {
 export interface SceneHandlerOptions {
 	/** 读取的最近楼层数；默认 6。 */
 	readonly windowFloors?: number;
-	/** 分析的 token 上限，同时作为请求的 maxTokens；默认 200。 */
-	readonly maxTokens?: number;
 	/** 覆盖客户端默认模型；不设置时使用客户端的默认模型（settler 角色）。 */
 	readonly model?: string;
 }
@@ -82,10 +77,6 @@ export function createSceneHandler(
 	if (!Number.isInteger(windowFloors) || windowFloors < 1) {
 		throw new Error("现场分析的楼层窗口必须是正整数");
 	}
-	const maxTokens = options.maxTokens ?? DEFAULT_SCENE_MAX_TOKENS;
-	if (!Number.isInteger(maxTokens) || maxTokens < 1) {
-		throw new Error("现场分析的 token 上限必须是正整数");
-	}
 	return async ({ store, client, job, signal }) => {
 		const nodeId = requireJobNodeId(job);
 		if (store.getLedgerSettlement(nodeId) === null) {
@@ -101,11 +92,12 @@ export function createSceneHandler(
 			{ role: "system", content: SYSTEM_PROMPT },
 			{ role: "user", content: buildUserContent(state, floors) },
 		];
+		// 思考 token 与正文共用模型声明的输出上限；固定小上限会让思考写满后正文为空。
+		// 正文长度由系统提示词的「两百字以内」约束，结果长度按 token 估算器记录。
 		const result = await client.complete({
 			messages,
 			model: options.model,
 			temperature: 0,
-			maxTokens,
 			signal,
 		});
 		saveSceneAnalysisText(store, job.storyId, nodeId, result.text);

@@ -149,7 +149,7 @@ describe("现场分析任务", () => {
 		expect(analysis?.storyId).toBe("s1");
 		expect(analysis?.tokenCount).toBeGreaterThan(0);
 		expect(requests).toHaveLength(1);
-		expect(requests[0]?.maxTokens).toBe(200);
+		expect(requests[0]?.maxTokens).toBeUndefined();
 		expect(requests[0]?.temperature).toBe(0);
 		const content = requests[0]?.messages[1]?.content;
 		expect(content).toContain('<楼层 id="a2"');
@@ -164,6 +164,55 @@ describe("现场分析任务", () => {
 		expect(pending.map((job) => job.nodeId)).toEqual(["a1"]);
 		expect(pending[0]?.attempts).toBe(0);
 		expect(result.runs.map((run) => run.status)).toEqual(["pending", "done"]);
+	});
+
+	it("空正文按任务重试，三次后 failed 并保留原因", async () => {
+		const { store } = openTempStore();
+		store.createStory({ id: "s1", title: "测试" });
+		store.appendNode({
+			id: "a1",
+			storyId: "s1",
+			parentId: null,
+			role: "assistant",
+			raw: "开场。凛站在教室门口。",
+		});
+		settle(store, "a1");
+		const { client, requests } = createFakeClient(["", "", ""]);
+		const registry = createBackgroundJobRegistry({
+			[SCENE_JOB_KIND]: {
+				handler: createSceneHandler(),
+				enqueue: "settled",
+			},
+		});
+		const runOnce = () =>
+			drainBackgroundJobs({
+				store,
+				registry,
+				client,
+				storyId: "s1",
+				kinds: [SCENE_JOB_KIND],
+				limit: 1,
+				now: () => FIXED_NOW,
+			});
+
+		const first = await runOnce();
+		expect(first.runs[0]).toMatchObject({
+			status: "pending",
+			attempts: 1,
+			error: "现场分析返回了空内容",
+		});
+		await runOnce();
+		const third = await runOnce();
+		expect(third.runs[0]).toMatchObject({
+			status: "failed",
+			attempts: 3,
+			error: "现场分析返回了空内容",
+		});
+		expect(requests).toHaveLength(3);
+		for (const request of requests) {
+			expect(request.maxTokens).toBeUndefined();
+		}
+		expect(store.getSceneAnalysis("a1")).toBeNull();
 	});
 
 	it("同一楼层重跑覆盖同一行", async () => {

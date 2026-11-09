@@ -3,18 +3,16 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 会话 227：R5-T14.b 完成。统计版 `docs/dev/reports/R5-playtest.md` 的字段按 ADR-0033 §九逐项核对，数字与续跑文件、`live.db` 一致；独立反向扫描用 806 个私有标识命中 0 处。
-- 统计版关键数字：60 成功 / 0 失败；相邻块 Jaccard 均值 0.0040、P90 0.0110（622 对）；首字 P50/P95 4,581/9,451 毫秒；生成 P50/P95 10,255/19,728 毫秒；每轮 prompt/completion/total token 7,968.6/747.5/8,989.1（思考 273）；导演决策 60 次、均有建议，beat 59、clue 46、opening 12、pacing 10、event_pool/repetition 0；新建线索 16、兑现 1（兑现率 6.3%、平均年龄 46.00 轮）；错误数 0；偏好信号 swipe 2、choice 0、edit 2、card_decision 0。
-- 对比胜率、矛盾率、节拍余弦保持「未证实」，原因是界面试玩没有两两对比、探针与楼层向量；推进度、NPC 主动性、深回合增益也没有信号，原因写进 `docs/dev/reports/R5.md`。
-- 实际操作：swipe 2（第 3、7 轮）、edit 2（第 4、8 轮）、branch 2（第 5、9 轮）；候选行动 2、6 与选项 6、10 的排期步骤没有产生操作记录（第 2、6 轮候选行动面板读到 0 条，排期轮次没有出现选项块）。
-- 新增 `docs/dev/reports/R5.md`：引用统计版，写明正文 `main-fallback`、后台 `background`、60 轮、实际操作次数、候选行动与失败任务口径、修复前后的数据口径与限制。R5 阶段尚未验收，R5-T99 继续补充。
-- 门禁通过（148 个测试文件、1310 个测试，3 个 live 跳过）。本会话只改文档，未改代码、未启动 server 或试玩。
+- 会话 228：R5-T14.e 完成。`scene` 请求不再显式传 `maxTokens`，删除 `DEFAULT_SCENE_MAX_TOKENS` 与 `SceneHandlerOptions.maxTokens`，让请求使用模型声明的输出上限；正文长度仍由系统提示词的「两百字以内」约束，写入时用 token 估算器记录 `tokenCount`。
+- 回归测试：`packages/core/test/scene-analysis.test.ts` 断言首次请求不带 `maxTokens`；新增用例让假客户端连续返回空正文，drain 三次后任务标为 `failed`，`lastError` 为「现场分析返回了空内容」，三次请求都不带 `maxTokens`。
+- 真实渠道一次验证（`background`，临时脚本 `.devloop/scratch/R5-T14/verify-scene-request.mjs`，运行后自删数据库）：请求不含 `maxTokens`，`finishReason` 为 `stop`，completion 255 token（思考 131）、prompt 250 token，返回 188 字正文、估算 122 token；旧上限 200 会被思考写满而截断正文。
+- 新增 ADR-0079（现场分析的输出上限与思考 token），ADR-0048 对应条目标注已被取代；`docs/dev/reports/R5.md` 的 `scene` 条目改写为修复前的失败口径与真实渠道验证结果。
+- 门禁通过（148 个测试文件、1311 个测试，3 个 live 跳过）。本会话未启动 server 或试玩。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T07.b.d.a 与 R1-T07.b.d.b）、R3、O、R2、E、R4、R5-T01 至 R5-T13、R5-T14.a、R5-T14.b、R5-T14.c、R5-T14.d。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- **R5-T14.b 已完成**：`docs/dev/reports/R5-playtest.md` 的字段与 ADR-0033 口径核对通过，`docs/dev/reports/R5.md` 是新报告；统计版由 R5-T14.c 的 60 轮重跑生成，报告时间 2026-11-09T12:30:23Z。
-- **下一个任务 R5-T14.e**（依赖 R5-T14.c，已满足）：`createSceneHandler` 把 `DEFAULT_SCENE_MAX_TOKENS = 200` 同时当作请求的 `maxTokens`（`packages/core/src/memory/scene.ts:85` 与 `:108`），`background` 模型的思考 token 与正文共用这个上限，思考写满后正文为空。改为请求不带 `maxTokens`（使用模型声明的输出上限），正文长度仍由系统提示词的「两百字以内」约束，存储时用 token 估算器记录长度。回归测试在 `packages/core/test/scene-analysis.test.ts`，其中 `expect(requests[0]?.maxTokens).toBe(200)` 要改成断言不带 `maxTokens`；空正文仍抛「现场分析返回了空内容」并按任务重试三次后 `failed`。验收要求假客户端与一次真实渠道各验证一次请求参数。
-- **R5-T99**：R5 验收；依赖包含 R5-T14.e；会重跑 `pnpm check`、`pnpm e2e` 与 60 轮报告，逐条核对 R5-T01 至 R5-T14，并复核 I6、I9、I11–I14、server 不绕过 core 直接写库、默认回环监听与局域网密码。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T07.b.d.a 与 R1-T07.b.d.b）、R3、O、R2、E、R4、R5-T01 至 R5-T13、R5-T14.a、R5-T14.b、R5-T14.c、R5-T14.d、R5-T14.e。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- **R5-T14.e 已完成**：`packages/core/src/memory/scene.ts` 的请求参数、`SceneHandlerOptions` 与导出常量已改；`docs/dev/DECISIONS.md` 新增 ADR-0079。
+- **下一个任务 R5-T99**（依赖 R5-T14.e，已满足）：R5 验收。重跑 `pnpm check`、`pnpm e2e` 与 60 轮报告；逐条核对 R5-T01 至 R5-T14 与全部子任务；复核 I6、I9、I11–I14、server 不绕过 core 直接写库、默认回环监听与局域网密码；在 `docs/dev/reports/R5.md` 总结；确认 M6、R1 续与 R3b 任务。结果写 `MILESTONE_DONE`，报告缺失时写 `PARTIAL`。
 - v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（界面）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045、ADR-0078。
 - HUMAN-09 待处理（不阻塞）：`data/channels.yaml` 已有 `bg-fallback`、`main-fallback`、`codex`，`channels.example.yaml` 还没有这三个别名。
@@ -30,7 +28,7 @@
 - 后台任务恢复（R5-T14.d）：`requeueRunningBackgroundJobs(storyId?)` 把 running 行退回 pending、`attempts` 减一（不低于 0）、清空 `started_at` 与 `finished_at`、保留 `last_error`；`startServer` 打开数据库后调用一次，`dramaticer work` 在列出故事前调用一次；`done`、`failed`、`discarded` 不动。
 - 故事级任务入队：`StoryStore.enqueueStoryBackgroundJobs` 按种类写入 `node_id` 为空的 `background_jobs` 行；创建故事与导入卡的路由先调用 `enqueueOpeningBackgroundJobs`（按两个 `needsRun` 过滤）再 `schedule`。`POST /api/stories/:id/openings/generate` 无条件入队一条 `opening_candidates`（仅要求故事无楼层），同一行已完成时翻回 `pending`。
 - 60 轮重跑结束时的后台状态：`done=770`、`pending=5`、`running=1`、`discarded=4`、`failed=19`。按种类：`settle` 完成 63；`candidate_actions` 完成 61、失败 2、待执行 1；`scene` 完成 41、失败 17、丢弃 4、待执行 2；`embeddings`、`events`、`npc_agenda`、`summary` 各完成 119；`memory_revision` 与 `user_will` 各完成 63、待执行 1；`opening`、`director_plan`、`opening_candidates` 各完成 1。
-- `scene` 的 17 条失败原因全是「现场分析返回了空内容」；`candidate_actions` 的 2 条失败分别是「候选行动不是合法 JSON」与「候选行动.actions 必须正好 4 条，实际为 5 条」。这些是后台任务失败，不计入统计版的「错误数」（后者只计界面试玩失败记录）。
+- `scene` 的 17 条失败全部产生在 R5-T14.e 修复之前，原因都是「现场分析返回了空内容」；修复后 `scene` 请求使用模型声明的输出上限，下一次 60 轮重跑（R5-T99）用于核对空输出是否消失。`candidate_actions` 的 2 条失败分别是「候选行动不是合法 JSON」与「候选行动.actions 必须正好 4 条，实际为 5 条」。这些是后台任务失败，不计入统计版的「错误数」（后者只计界面试玩失败记录）。
 - 监督进程停止 server 时一条 `settle`（12:30:16.957Z 启动）留在 `running`，是 R5-T14.d 恢复方法的实际输入；`verify-r5-t14c.mjs` 把它列为问题，其余检查全部通过。
 - 后台任务分两档：`gap` 每次间隙执行，`deferred`（`events`、`summary`、`npc_agenda`、`director_plan`）只在会话结束或间隙达到 `gapPlanSeconds` 时执行。`gap_pass` 默认关闭；`candidate_actions` 是 `gap` 档。后台任务连续失败 3 次才放弃；需要等待其它任务时抛 `BackgroundJobDeferredError`。`deferBackgroundJob` 把状态退回 `pending`、`attempts` 减一、`started_at` 清空。
 - `drainBackgroundJobs` 每轮按 `created_at ASC, id ASC` 取最多 `limit` 条 pending，先丢弃不在当前 head 路径上的楼层任务，再逐个执行；`BackgroundScheduler` 同一时刻只有一个 pump。服务端日志行格式：`后台任务 <storyId>：新增 N 条，执行 N 条（失败 N，丢弃 N）`。`limit` 默认 20。
@@ -72,7 +70,7 @@
 - 已注册的槽位是十一个：lore、character、persona、summary、state、memory、history、scene、director、user_will、protocol。默认模板顺序：character、lore、state、summary、memory、scene、director、user_will、history、（可选的 block_format）、protocol。`director` 槽位只返回 suffix；组装器的 suffix 用 `\n\n` 与玩家原文分隔，多个 suffix 之间用 `\n` 连接。
 - 原生块类型是 12 个（`thinking`、`选项`、`状态栏`、`变量更新`、`分析`、`图片`、`页眉`、`悄悄话`、`旁白`、`备忘`、`state_update`、`plot_note`）；`thinking`、`变量更新`、`state_update`、`plot_note` 的上下文策略是删除。`图片` 的显示策略是沙箱 HTML 模板。
 - 历史槽位默认策略：更早楼层省略五个显示类块，最近 1 楼不套用这层省略；`full` 是改动前行为。设置项 `historyBlockPolicy` 存在 `story_settings.history_block_policy`。
-- 结算窗口以 head 为终点（ADR-0046），取**最旧的** N 个未结算助手楼层；冲突检查窗口取 head 路径最后 `conflictWindowFloors` 楼。现场分析以被分析的楼层为锚点。`scene` 任务显式传 200 token 上限；R5-T14.e 将改为使用模型声明上限。
+- 结算窗口以 head 为终点（ADR-0046），取**最旧的** N 个未结算助手楼层；冲突检查窗口取 head 路径最后 `conflictWindowFloors` 楼。现场分析以被分析的楼层为锚点，读取该楼层结算后的台账快照与路径上最近 6 楼原文。`scene` 请求不传 `maxTokens`，使用模型声明的输出上限，正文长度由系统提示词约束（ADR-0079）。
 - 结算提示词只在 `SettlementWindow.beats` 非空时提 `beatCompleted`；`beatCompleted` 非布尔时该楼层整条拒绝，修复记录的 `path` 是 `["-"]`。
 - 回合模式的解析口只有 core 的 `resolveTurnMode`：单轮参数优先于故事设置，深回合直接抛错。server 在写楼层之前调用它，深回合返回 400，`details.path` 在请求给 `mode` 时是 `mode`，否则是 `turnMode`。
 - `extensions.dramaticer` 有三个键：`events`、`npcAgendas`、`arcs`；`arcs` 的校验全部复用 `parseDirectorPlan`，导入来源固定为 `import`。R4 验收的链路证据在 `packages/core/test/director-acceptance.test.ts` 与 `docs/dev/reports/R4.md`。
@@ -86,7 +84,7 @@
 - 单轮失败时 `runPlaytest` 记录 `kind: "failure"` 并跳出循环；`playtest.spec.ts` 在存在 failure 记录时抛错，所以该次调用退出码为 1。监督进程按 failure 记录累计连续失败次数，并自动丢弃该记录重试。模拟用户的输出上限是 4096。
 - 会话外监督进程（R5-T14.a）：`scripts/r5-playtest-supervisor.mjs` 读 `.devloop/scratch/R5-T14/supervisor-config.json`；状态 `supervisor.json`、日志 `supervisor.log`、锁 `supervisor.lock`。它负责构建一次、启动 server、反复调用试玩直到 60 轮，完成后停掉 server；报告由试玩 CLI 在跑满 60 轮时写出。`baseUrl` 非空时复用已有服务（假 server 冒烟用）。监督进程已完成，不要因为 `supervisor.json` 存在就再次启动。
 - 修复前第一次运行（统计版已被重跑覆盖，可从 git 历史取出）的关键数字：成功 60 轮、失败 0；首字 P50/P95 4,639/10,950 毫秒；生成 P50/P95 8,113/15,926 毫秒；每轮 prompt/completion/total token 5,039.4/492.3/5,804.8（思考 225）；相邻块 Jaccard 均值 0.0018、P90 0.0000（340 对）；导演机制命中 beat 59、clue 16、opening 11、event_pool/pacing/repetition 0；新建线索 3、兑现 0；候选行动面板 60 轮全部 `count: 0, visible: false`；后台队列 `pending=678`、`done=109`（最后完成 08:39:20Z）、`discarded=20`、`failed=4`、`running=1`。这些派生指标受队列饥饿影响，按「未证实」记录，不作为 R5 证据。
-- 统计版 `docs/dev/reports/R5-playtest.md` 当前对应 R5-T14.c 的 60 轮重跑；`docs/dev/reports/R5.md` 是 R5 阶段的汇总报告，R5-T99 继续补充。
+- 统计版 `docs/dev/reports/R5-playtest.md` 当前对应 R5-T14.c 的 60 轮重跑；其中 `scene` 的 17 条空输出是 R5-T14.e 修复前的数据，R5-T99 重跑后按新结果更新。`docs/dev/reports/R5.md` 是 R5 阶段的汇总报告，R5-T99 继续补充。
 - F0 的私有产物：`eval-private/f0/`；R3 的产物：`docs/dev/reports/R3.md`、`R3-fast.md`；O 的产物：`docs/dev/reports/O-opening.md`；R2 的产物：`docs/dev/reports/R2.md`、`R2-judge.md`、`R2-pairwise.md`、`R2-b1.md`、`R2-forgetting.md`、`docs/dev/SCOREBOARD.md`；R4 的产物：`docs/dev/reports/R4.md`。
 - 引用评测数字时：B1 必须同时说明同模型子集为空、每个对话每档只有 1 个样本；遗忘矛盾率必须同时说明失败题数与可判定样本数；偏好一致率当前没有样本。
 
@@ -119,6 +117,5 @@
 - 不要修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 下的任何文件。不变量 I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账是唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖任何其他工作区包。
 
 ## 下一步
-- **R5-T14.e**：按本文件「当前状态」的实现要点修改 `packages/core/src/memory/scene.ts` 与 `packages/core/test/scene-analysis.test.ts`；假客户端断言请求不带 `maxTokens`，空正文仍按三次重试后 `failed`；用固定假客户端与一次真实渠道各验证一次请求参数；然后重跑 `pnpm check`。
-- **R5-T99**：R5 验收；重跑 `pnpm check`、`pnpm e2e` 与 60 轮报告；逐条核对 R5-T01 至 R5-T14；复核 I6、I9、I11–I14；在 `docs/dev/reports/R5.md` 总结；确认 M6、R1 续与 R3b 任务。
+- **R5-T99**：R5 验收；重跑 `pnpm check`、`pnpm e2e` 与 60 轮报告；逐条核对 R5-T01 至 R5-T14 与全部子任务；复核 I6、I9、I11–I14；在 `docs/dev/reports/R5.md` 总结；确认 M6、R1 续与 R3b 任务。重跑前按 R5-T14.c 的步骤清空 `live.db` 与续跑文件，并用 `.devloop/scratch/R5-T14/channels.yaml`；新的统计版要单列 `scene` 空输出数与 `candidate_actions` 严格解析失败数。
 - 记忆增强任务（R1-T03.a、R1-T03.b、R1-T04.b、R1-T05、R1-T06、R1-T08）都依赖 R5-T99；C 线兼容插件任务依赖 P2；插件系统以 DESIGN §19 为唯一权威。
