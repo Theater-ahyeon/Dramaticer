@@ -58,6 +58,13 @@ export interface ServerChannelsOptions {
 	readonly createBackgroundRegistry?: BackgroundRegistryFactory;
 }
 
+/** 生图配置文件来源；文件不存在时生图功能关闭。 */
+export interface ServerImagesOptions {
+	readonly path: string;
+	/** 解析 `${VAR}` 使用的环境变量。 */
+	readonly env?: Readonly<Record<string, string | undefined>>;
+}
+
 export interface StartServerOptions {
 	readonly dbPath: string;
 	readonly webRoot: string;
@@ -67,6 +74,8 @@ export interface StartServerOptions {
 	readonly maxJsonBodyBytes?: number;
 	/** 不设置时不提供对话接口。 */
 	readonly channels?: ServerChannelsOptions;
+	/** 不设置时生图接口没有 provider，workflow 列表仍可读。 */
+	readonly images?: ServerImagesOptions;
 	readonly heartbeatMs?: number;
 	readonly now?: () => number;
 	readonly log?: (line: string) => void;
@@ -89,6 +98,8 @@ interface HandlerOptions {
 	readonly scheduler: BackgroundScheduler | null;
 	readonly channelsPath: string | null;
 	readonly channelsEnv: Readonly<Record<string, string | undefined>>;
+	readonly imagesPath: string | null;
+	readonly imagesEnv: Readonly<Record<string, string | undefined>>;
 	readonly createChannel: (config: LlmChannelConfig) => LlmChannel;
 	readonly heartbeatMs: number;
 	readonly now?: () => number;
@@ -105,6 +116,7 @@ export async function startServer(
 	assertBindAllowed(options.host, password);
 	const log = options.log ?? ((line: string) => console.log(line));
 	const channels = options.channels ?? null;
+	const images = options.images ?? null;
 	const loadConfig = channels === null ? null : resolveChannelsLoader(channels);
 	const initialConfig = loadConfig === null ? null : await loadConfig();
 	const embeddingDimensions =
@@ -149,6 +161,8 @@ export async function startServer(
 			scheduler,
 			channelsPath: channels?.path ?? null,
 			channelsEnv: channels?.env ?? process.env,
+			imagesPath: images?.path ?? null,
+			imagesEnv: images?.env ?? channels?.env ?? process.env,
 			createChannel: channels?.createChannel ?? createLlmChannel,
 			heartbeatMs: options.heartbeatMs ?? SSE_HEARTBEAT_MS,
 			now: options.now,
@@ -272,6 +286,8 @@ async function handleRequest(
 			scheduler: options.scheduler,
 			channelsPath: options.channelsPath,
 			channelsEnv: options.channelsEnv,
+			imagesPath: options.imagesPath,
+			imagesEnv: options.imagesEnv,
 			createChannel: options.createChannel,
 			log: options.log,
 			heartbeatMs: options.heartbeatMs,

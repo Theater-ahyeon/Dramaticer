@@ -968,6 +968,70 @@ export function buildMigrations(
 				END`,
 			],
 		},
+		{
+			version: 34,
+			description:
+				"生图表：workflow 模板、角色视觉档案、楼层图片与故事生图配置",
+			statements: [
+				`CREATE TABLE image_workflows (
+					id TEXT PRIMARY KEY,
+					name TEXT NOT NULL CHECK (length(name) > 0),
+					provider TEXT NOT NULL CHECK (length(provider) > 0),
+					payload TEXT NOT NULL,
+					slots TEXT NOT NULL,
+					created_at TEXT NOT NULL,
+					updated_at TEXT NOT NULL,
+					UNIQUE (name)
+				) STRICT`,
+				`CREATE TABLE character_visual_profiles (
+					story_id TEXT NOT NULL REFERENCES stories(id),
+					character TEXT NOT NULL CHECK (length(character) > 0),
+					profile TEXT NOT NULL,
+					source TEXT NOT NULL CHECK (source IN ('model', 'player', 'import')),
+					created_at TEXT NOT NULL,
+					updated_at TEXT NOT NULL,
+					PRIMARY KEY (story_id, character)
+				) STRICT`,
+				`CREATE TABLE node_images (
+					id TEXT PRIMARY KEY,
+					story_id TEXT NOT NULL REFERENCES stories(id),
+					node_id TEXT NOT NULL REFERENCES nodes(id),
+					ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+					status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'done', 'failed')),
+					request TEXT NOT NULL,
+					prompt TEXT,
+					negative_prompt TEXT,
+					workflow_id TEXT NOT NULL REFERENCES image_workflows(id),
+					seed INTEGER,
+					attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+					file_name TEXT,
+					media_type TEXT,
+					width INTEGER,
+					height INTEGER,
+					error TEXT,
+					created_at TEXT NOT NULL,
+					updated_at TEXT NOT NULL,
+					UNIQUE (node_id, ordinal)
+				) STRICT`,
+				`CREATE INDEX node_images_story_status_idx
+				ON node_images(story_id, status, created_at)`,
+				`CREATE INDEX node_images_workflow_idx
+				ON node_images(workflow_id)`,
+				`CREATE TRIGGER node_images_story_matches_node
+				BEFORE INSERT ON node_images
+				WHEN COALESCE((SELECT story_id FROM nodes WHERE id = NEW.node_id), '') <> NEW.story_id
+				BEGIN
+					SELECT RAISE(ABORT, '图片记录的 story_id 必须与所在楼层一致');
+				END`,
+				`CREATE TRIGGER node_images_identity_immutable
+				BEFORE UPDATE ON node_images
+				WHEN NEW.node_id <> OLD.node_id OR NEW.story_id <> OLD.story_id
+				BEGIN
+					SELECT RAISE(ABORT, '图片记录的楼层与故事归属不可修改');
+				END`,
+				"ALTER TABLE story_settings ADD COLUMN image_config TEXT",
+			],
+		},
 	];
 }
 

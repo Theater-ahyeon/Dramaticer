@@ -1,5 +1,9 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { parseDocument, parse as parseYaml } from "yaml";
+import {
+	interpolateEnvRefs as interpolate,
+	parseApiKeyRef as parseApiKey,
+} from "../env-ref.js";
 import { isJsonObject } from "../json.js";
 
 export type LlmChannelApi =
@@ -557,36 +561,6 @@ function parseApi(value: unknown, label: string): LlmChannelApi {
 	}
 	throw new Error(
 		`${label} 只能是 openai-completions、google-generative-ai 或 google-vertex`,
-	);
-}
-
-function parseApiKey(
-	value: string,
-	env: Readonly<Record<string, string | undefined>>,
-	label: string,
-): string {
-	const trimmed = value.trim();
-	if (trimmed.length === 0) return "";
-	if (!/^\$\{[A-Za-z_][A-Za-z0-9_]*\}$/.test(trimmed)) {
-		throw new Error(`${label} 必须写成 \${环境变量名} 的引用`);
-	}
-	return interpolate(trimmed, env, label);
-}
-
-function interpolate(
-	value: string,
-	env: Readonly<Record<string, string | undefined>>,
-	label: string,
-): string {
-	return value.replace(
-		/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g,
-		(_match, name: string) => {
-			const resolved = env[name];
-			if (resolved === undefined) {
-				throw new Error(`${label} 引用的环境变量 ${name} 没有设置`);
-			}
-			return resolved;
-		},
 	);
 }
 

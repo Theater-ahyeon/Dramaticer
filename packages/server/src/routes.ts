@@ -3,6 +3,8 @@ import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
 	type ChooseOpeningCandidateResult,
+	type ComfyUiSlots,
+	type ComfyUiWorkflow,
 	type ContextTemplate,
 	type ContextTemplateRecord,
 	DEFAULT_CONTEXT_TEMPLATE_ID,
@@ -10,6 +12,8 @@ import {
 	DIRECTOR_CONFIG_KEYS,
 	type DirectorDecision,
 	type DirectorIntensity,
+	ImageWorkflowInUseError,
+	type ImagesConfig,
 	LEDGER_CHANGE_CARD_STATUSES,
 	LLM_MODEL_ROLE_NAMES,
 	type LedgerChangeCard,
@@ -34,9 +38,12 @@ import {
 	type UpdateContextTemplateInput,
 	applyChannelsUpdate,
 	approveLedgerChangeCard,
+	assertComfyUiSlots,
 	assertDirectorIntensity,
 	createBlockFormatSegment,
 	createDefaultContextTemplate,
+	detectComfyUiSlots,
+	emptyImagesConfig,
 	enqueueOpeningBackgroundJobs,
 	fulfillLedgerClue,
 	isJsonObject,
@@ -44,7 +51,9 @@ import {
 	isOpeningCandidateStatus,
 	isTurnMode,
 	listLedgerEntities,
+	loadImagesConfig,
 	parseChannelsConfig,
+	parseComfyUiWorkflow,
 	parseDirectorPlan,
 	probeChannel,
 	readChannelsKeyRefs,
@@ -53,6 +62,7 @@ import {
 	readLedgerFacts,
 	rejectLedgerChangeCard,
 	replaceDirectorPlan,
+	resolveImageProvider,
 	resolveModelForRole,
 	rollbackLedgerChangeCard,
 	setModelProbeInText,
@@ -68,6 +78,9 @@ import {
 	type DirectorDecisionView,
 	type EmbeddingUpdateInput,
 	type FulfillClueResult,
+	type ImageProvidersView,
+	type ImageWorkflowDetectionView,
+	type ImageWorkflowsView,
 	type ImportCharacterCard,
 	type ImportStoryRequest,
 	type ImportStoryResult,
@@ -128,6 +141,9 @@ export interface ApiRouteOptions {
 	/** 渠道配置文件的路径；没有配置时管理接口返回 404。 */
 	readonly channelsPath: string | null;
 	readonly channelsEnv: Readonly<Record<string, string | undefined>>;
+	/** 生图配置文件的路径；没有配置时 provider 列表为空。 */
+	readonly imagesPath: string | null;
+	readonly imagesEnv: Readonly<Record<string, string | undefined>>;
 	/** 渠道体检用；测试注入假通道。 */
 	readonly createChannel: (config: LlmChannelConfig) => LlmChannel;
 }
@@ -240,6 +256,35 @@ export async function handleApiRequest(
 			requireMethod(method, ["POST"]);
 			await handleChannelProbe(req, res, options);
 			return;
+		}
+	}
+	if (first === "images") {
+		if (second === "providers" && parts.length === 2) {
+			requireMethod(method, ["GET"]);
+			await handleImageProviders(res, options);
+			return;
+		}
+		if (second === "workflows") {
+			if (parts.length === 2) {
+				requireMethod(method, ["GET"]);
+				handleImageWorkflows(res, options);
+				return;
+			}
+			if (parts.length === 3 && third === "detect") {
+				requireMethod(method, ["POST"]);
+				await handleImageWorkflowDetect(req, res, options);
+				return;
+			}
+			if (parts.length === 3 && third === "import") {
+				requireMethod(method, ["POST"]);
+				await handleImageWorkflowImport(req, res, options);
+				return;
+			}
+			if (parts.length === 3) {
+				requireMethod(method, ["DELETE"]);
+				handleImageWorkflowDelete(res, options, third);
+				return;
+			}
 		}
 	}
 	if (first === "proposals" && second !== undefined && parts.length === 3) {
@@ -1657,6 +1702,129 @@ function requireInteger(value: unknown, path: string, minimum: number): number {
 		throw fieldError(path, `${path} 必须是不小于 ${minimum} 的整数`);
 	}
 	return value;
+}
+
+async function handleImageProviders(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+): Promise<void> {
+	const config =
+		options.imagesPath === null
+			? emptyImagesConfig()
+			: await loadImagesConfig(options.imagesPath, options.imagesEnv);
+	const view: ImageProvidersView = {
+		providers: [...config.providers.values()].map((provider) => ({
+			id: provider.id,
+			api: provider.api,
+			baseUrl: provider.baseUrl,
+			configured: true,
+			timeoutMs: provider.timeoutMs,
+			pollIntervalMs: provider.pollIntervalMs,
+		})),
+	};
+	sendJson(res, 200, view);
+}
+
+function handleImageWorkflows(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+): void {
+	const view: ImageWorkflowsView = {
+		workflows: options.store.listImageWorkflows(),
+	};
+	sendJson(res, 200, view);
+}
+
+async function handleImageWorkflowDetect(
+	req: IncomingMessage,
+	res: ServerResponse,
+	options: ApiRouteOptions,
+): Promise<void> {
+	const body = await readObjectBody(req, options.maxJsonBodyBytes);
+	assertKnownKeys(body, ["workflow"]);
+	if (!Object.hasOwn(body, "workflow")) {
+		throw fieldError("workflow", "workflow 必须提供");
+	}
+	let workflow: ComfyUiWorkflow;
+	try {
+		workflow = parseComfyUiWorkflow(body.workflow, "workflow");
+	} catch (error) {
+		throw toBadRequest(error, "workflow");
+	}
+	try {
+		const detection: ImageWorkflowDetectionView = detectComfyUiSlots(workflow);
+		sendJson(res, 200, detection);
+	} catch (error) {
+		throw toBadRequest(error, "workflow");
+	}
+}
+
+async function handleImageWorkflowImport(
+	req: IncomingMessage,
+	res: ServerResponse,
+	options: ApiRouteOptions,
+): Promise<void> {
+	const body = await readObjectBody(req, options.maxJsonBodyBytes);
+	assertKnownKeys(body, ["name", "workflow", "slots"]);
+	const name = requireText(body.name, "name");
+	if (!Object.hasOwn(body, "workflow")) {
+		throw fieldError("workflow", "workflow 必须提供");
+	}
+	if (!Object.hasOwn(body, "slots")) {
+		throw fieldError("slots", "slots 必须提供");
+	}
+	let workflow: ComfyUiWorkflow;
+	try {
+		workflow = parseComfyUiWorkflow(body.workflow, "workflow");
+	} catch (error) {
+		throw toBadRequest(error, "workflow");
+	}
+	let slots: ComfyUiSlots;
+	try {
+		slots = assertComfyUiSlots(workflow, body.slots, "slots");
+	} catch (error) {
+		throw toBadRequest(error, "slots");
+	}
+	const config =
+		options.imagesPath === null
+			? emptyImagesConfig()
+			: await loadImagesConfig(options.imagesPath, options.imagesEnv);
+	let providerId: string;
+	try {
+		providerId = resolveImageProvider(config).id;
+	} catch (error) {
+		throw toBadRequest(error, "provider");
+	}
+	try {
+		const saved = options.store.saveImageWorkflow({
+			name,
+			provider: providerId,
+			payload: workflow,
+			slots,
+		});
+		sendJson(res, 200, saved);
+	} catch (error) {
+		throw toBadRequest(error, "slots");
+	}
+}
+
+function handleImageWorkflowDelete(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	workflowId: string,
+): void {
+	if (options.store.getImageWorkflow(workflowId) === null) {
+		throw new HttpError(404, "not_found", `workflow 不存在：${workflowId}`);
+	}
+	try {
+		options.store.deleteImageWorkflow(workflowId);
+	} catch (error) {
+		if (error instanceof ImageWorkflowInUseError) {
+			throw new HttpError(409, "conflict", error.message, { workflowId });
+		}
+		throw error;
+	}
+	sendEmpty(res, 204);
 }
 
 async function handleSettings(

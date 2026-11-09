@@ -62,6 +62,12 @@ import {
 	isEntityKind,
 	normalizeEntityName,
 } from "../entity.js";
+import { assertComfyUiSlots, parseComfyUiWorkflow } from "../images/slots.js";
+import {
+	ImageWorkflowInUseError,
+	type ImageWorkflowRecord,
+	type SaveImageWorkflowInput,
+} from "../images/types.js";
 import {
 	type JsonObject,
 	assertPlainObject,
@@ -287,6 +293,16 @@ interface OpeningCandidateRow {
 	readonly raw: string;
 	readonly status: string;
 	readonly created_at: string;
+}
+
+interface ImageWorkflowRow {
+	readonly id: string;
+	readonly name: string;
+	readonly provider: string;
+	readonly payload: string;
+	readonly slots: string;
+	readonly created_at: string;
+	readonly updated_at: string;
 }
 
 interface PreferenceEventRow {
@@ -1062,6 +1078,27 @@ function rowToOpeningCandidate(
 		raw: row.raw,
 		status: row.status,
 		createdAt: row.created_at,
+	};
+}
+
+function rowToImageWorkflow(row: ImageWorkflowRow): ImageWorkflowRecord {
+	const workflow = parseComfyUiWorkflow(
+		JSON.parse(row.payload) as unknown,
+		`图片 workflow ${row.id} 的 payload`,
+	);
+	const slots = assertComfyUiSlots(
+		workflow,
+		JSON.parse(row.slots) as unknown,
+		`图片 workflow ${row.id} 的 slots`,
+	);
+	return {
+		id: row.id,
+		name: row.name,
+		provider: row.provider,
+		payload: workflow,
+		slots,
+		createdAt: row.created_at,
+		updatedAt: row.updated_at,
 	};
 }
 
@@ -3243,6 +3280,101 @@ export class StoryStore {
 			}
 			return { candidate: updated, node };
 		})();
+	}
+
+	/** 列出所有 workflow，按创建顺序。 */
+	listImageWorkflows(): ImageWorkflowRecord[] {
+		const rows = this.#db
+			.prepare("SELECT * FROM image_workflows ORDER BY created_at ASC, id ASC")
+			.all() as ImageWorkflowRow[];
+		return rows.map(rowToImageWorkflow);
+	}
+
+	/** 读取一个 workflow；不存在时返回 null。 */
+	getImageWorkflow(id: string): ImageWorkflowRecord | null {
+		assertNonEmptyString(id, "图片 workflow id");
+		const row = this.#db
+			.prepare("SELECT * FROM image_workflows WHERE id = ?")
+			.get(id) as ImageWorkflowRow | undefined;
+		return row === undefined ? null : rowToImageWorkflow(row);
+	}
+
+	/** 保存 workflow；同名导入更新同一行，id 与创建时间不变。 */
+	saveImageWorkflow(input: SaveImageWorkflowInput): ImageWorkflowRecord {
+		const name = input.name.trim();
+		if (name.length === 0) {
+			throw new Error("图片 workflow 的 name 必须是非空字符串");
+		}
+		const provider = input.provider.trim();
+		if (provider.length === 0) {
+			throw new Error("图片 workflow 的 provider 必须是非空字符串");
+		}
+		const workflow = parseComfyUiWorkflow(
+			input.payload,
+			"图片 workflow 的 payload",
+		);
+		const slots = assertComfyUiSlots(
+			workflow,
+			input.slots,
+			"图片 workflow 的 slots",
+		);
+		const now = new Date().toISOString();
+		this.#db
+			.prepare(
+				`INSERT INTO image_workflows
+					(id, name, provider, payload, slots, created_at, updated_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?)
+				ON CONFLICT(name) DO UPDATE SET
+					provider = excluded.provider,
+					payload = excluded.payload,
+					slots = excluded.slots,
+					updated_at = excluded.updated_at`,
+			)
+			.run(
+				randomUUID(),
+				name,
+				provider,
+				serializeJsonValue(workflow, "图片 workflow 的 payload"),
+				serializeJsonValue(slots, "图片 workflow 的 slots"),
+				now,
+				now,
+			);
+		const row = this.#db
+			.prepare("SELECT * FROM image_workflows WHERE name = ?")
+			.get(name) as ImageWorkflowRow | undefined;
+		if (row === undefined) {
+			throw new Error(`图片 workflow 写入后读取失败：${name}`);
+		}
+		return rowToImageWorkflow(row);
+	}
+
+	/** 删除没有被图片记录引用的 workflow。 */
+	deleteImageWorkflow(id: string): void {
+		assertNonEmptyString(id, "图片 workflow id");
+		this.#db.transaction((): void => {
+			const row = this.#db
+				.prepare("SELECT id FROM image_workflows WHERE id = ?")
+				.get(id) as { readonly id: string } | undefined;
+			if (row === undefined) {
+				throw new Error(`图片 workflow 不存在：${id}`);
+			}
+			const imageCount = this.countNodeImagesForWorkflow(id);
+			if (imageCount > 0) {
+				throw new ImageWorkflowInUseError(id, imageCount);
+			}
+			this.#db.prepare("DELETE FROM image_workflows WHERE id = ?").run(id);
+		})();
+	}
+
+	/** 统计引用某个 workflow 的图片记录数。 */
+	countNodeImagesForWorkflow(workflowId: string): number {
+		assertNonEmptyString(workflowId, "图片 workflow id");
+		const row = this.#db
+			.prepare(
+				"SELECT COUNT(*) AS count FROM node_images WHERE workflow_id = ?",
+			)
+			.get(workflowId) as { readonly count: number };
+		return row.count;
 	}
 
 	/**

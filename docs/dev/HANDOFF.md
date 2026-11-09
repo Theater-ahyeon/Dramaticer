@@ -3,32 +3,41 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-09 会话 255：完成 M6-T00。把生图第一批分成 M6-T01 至 M6-T05 与 M6-T99，第二批分成 M6b-T01 至 M6b-T03 与 M6b-T99（排在 R6 之后）；写入 ADR-0082、DESIGN §12 的配置与队列补充、HUMAN-15；R1 续的迁移编号顺延为 v35–v38。门禁通过：148 个测试文件、1313 个测试通过、4 个 live 跳过。
+- 2026-11-09 会话 256：完成 M6-T01。新增 `packages/core/src/images/`（`images.yaml` 解析、共享 `${VAR}` 解析、ComfyUI workflow 校验与插槽识别、ComfyUI 客户端、导入辅助与 CLI）；迁移 v34 建 `image_workflows`、`character_visual_profiles`、`node_images` 并给 `story_settings` 增加 `image_config`；`StoryStore` 增加 workflow 增删改查与引用计数；server 增加生图接口与 `--images` 启动参数；同步 `images.example.yaml`、协议类型与 `DEPENDENCIES.md`。门禁通过：154 个测试文件、1351 个测试通过、4 个 live 跳过。
+- 会话 255：完成 M6-T00，把生图第一批分成 M6-T01 至 M6-T05 与 M6-T99，第二批分成 M6b-T01 至 M6b-T03 与 M6b-T99（排在 R6 之后）；写入 ADR-0082、DESIGN §12 的配置与队列补充、HUMAN-15；R1 续的迁移编号顺延为 v35–v38。
 - 会话 254：完成 R5-T99，60 轮重跑跑满 60/60、0 条失败，R5 报告与 TASKS 已回填最终数据库数字。
 - 会话 253：第 7 次调用运行中，按 51 轮快照更新文档。
 - 会话 239：分拣 `docs/proposals/preset-insights.md` 并写入 ADR-0081；DESIGN §9 增加预设导入的兼容报告，§10.1 增加工具往返的上下文卫生；C-T02 补兼容报告要求，R3b-T00 补较早步骤工具往返的成对省略。
 - 会话 236（V-T01）：按人类请求加入 Vertex AI 渠道（ADR-0080），`LlmChannelApi` 增加 `google-vertex`，`channels.example.yaml` 与 `data/channels.yaml` 增加 `vertex` 渠道和 `gemini-4-argon` 模型，凭证、项目、区域只从 `.env` 的三个 `GOOGLE_*` 变量读取。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T07.b.d.a 与 R1-T07.b.d.b）、R3、O、R2、E、R4、R5 全部（含 R5-T99）、V-T01、M6-T00。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- **下一个任务：M6-T01 生图配置、ComfyUI workflow 导入与插槽识别**，依赖 R5-T99（已满足）。任务细节在 `docs/dev/TASKS.md` 的 M6 节，设计依据是 DESIGN §12 与 ADR-0082。不需要真实 ComfyUI；真实环境只用于 M6-T99。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T07.b.d.a 与 R1-T07.b.d.b）、R3、O、R2、E、R4、R5 全部（含 R5-T99）、V-T01、M6-T00、M6-T01。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- **下一个任务：M6-T02 角色视觉档案与提示词编译**，依赖 M6-T01（已满足）与 O-T01.a。任务细节在 `docs/dev/TASKS.md` 的 M6 节，设计依据是 DESIGN §12 与 ADR-0082。
 - v3 阶段顺序：R5（已完成）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → M6b 生图第二批 → P3/P4 → M5 → P5 → M7。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045、ADR-0078、ADR-0079、ADR-0080、ADR-0082。
 - HUMAN-03 待处理（不阻塞）：抽查 `eval-private/evalset/spotcheck.md` 里的事件题。
 - HUMAN-14 待处理（不阻塞）：Vertex 真实调用还需要人类把服务账号 JSON 导出到仓库外，并在 `.env` 设置 `GOOGLE_APPLICATION_CREDENTIALS`、`GOOGLE_CLOUD_PROJECT`、`GOOGLE_CLOUD_LOCATION`。
 - HUMAN-15 待处理（不阻塞，M6-T99 需要）：把秋叶整合包 v3.2 的 ComfyUI 启动在 `http://127.0.0.1:8188`，并导出一份 API 格式 workflow JSON 到 `eval-private/comfyui/`。2026-11-09 探测时端口未监听。
 - HUMAN-12 已完成：人类确认保持 `judge`（`auto/glm-5.3`）作为裁判路由。HUMAN-13 已关闭：`writer` 继续用 `main-fallback`。HUMAN-11 已完成：`.env` 的正文模型已改为 `auto/deepseek-v4.1-flash`。
-- 数据库 schema 版本 33（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡、v25 合并调用开关与执行记录、v26 间隙档位阈值与丢弃状态、v27 合并调用丢弃条目、v28 回合模式与读取工具上限、v29 开局包与故事级后台任务、v30 首楼开场候选、v31 选择记录、v32 导演计划与拍状态、v33 导演候选行动）。M6-T01 使用 v34；R1 续原计划的 v34–v37 顺延为 v35–v38。
+- 数据库 schema 版本 34（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡、v25 合并调用开关与执行记录、v26 间隙档位阈值与丢弃状态、v27 合并调用丢弃条目、v28 回合模式与读取工具上限、v29 开局包与故事级后台任务、v30 首楼开场候选、v31 选择记录、v32 导演计划与拍状态、v33 导演候选行动、v34 生图表）。R1 续使用 v35–v38。
 
 ## M6 生图第一批
-- 顺序：M6-T01 → M6-T02 → M6-T03 → M6-T04 → M6-T05 → M6-T99。
-- M6-T01：`packages/core/src/images/` 的 `images.yaml` 解析、ComfyUI workflow 解析与插槽识别、ComfyUI 客户端、迁移 v34（`image_workflows`、`character_visual_profiles`、`node_images`、`story_settings.image_config`）、CLI 与 server 的 workflow 接口。`images.yaml` 缺失时生图功能关闭。
-- M6-T02：视觉档案后台任务 `visual_profile`（`enqueue: story`、`tier: gap`）与 `compileImagePrompt` 纯函数；tags 与 natural 两种风格；第一批用 tags。
-- M6-T03：`illustrate` 侧效应工具只在 `imageConfig.mode` 为 `auto` 且 workflow 与 provider 齐全时提供；回合事务写 `node_images` 的 `pending` 行；故事级 `illustrate` 后台任务（`gap`）每次最多 2 行，单行最多 3 次；手动入口与 `retry`；启动时把 `running` 行退回 `pending`。
+- 顺序：M6-T01（已完成）→ M6-T02 → M6-T03 → M6-T04 → M6-T05 → M6-T99。
+- M6-T01 已完成的内容：
+  - `packages/core/src/images/config.ts`：`parseImagesConfig` / `loadImagesConfig` 解析 `data/images.yaml`，根只有 `providers`，第一版只接受 `api: comfyui`，字段 `baseUrl`、`apiKey`、`timeoutMs`（默认 300000）、`pollIntervalMs`（默认 1000）；文件不存在返回空配置；未知根字段、未知 provider 字段、未知 api、非法 URL、非正数超时、非法 `${VAR}` 与缺失环境变量都抛错并带字段路径。
+  - `${VAR}` 与 `apiKey` 的解析提取到 `packages/core/src/env-ref.ts`（`interpolateEnvRefs`、`parseApiKeyRef`），`llm/channels.ts` 与 `images/config.ts` 共用。
+  - `images/slots.ts`：`parseComfyUiWorkflow` 校验每个节点有 `class_type` 与 `inputs`；`detectComfyUiSlots` 跟随 `KSampler*` 的 `positive`、`negative`、`latent_image` 识别插槽（`seed` 或 `noise_seed`），返回 `{slots, candidates, unresolved}`；多采样器、缺正向前提或 seed 时不自动采用；`assertComfyUiSlots` 校验节点、输入与类型；`resolveComfyUiSlots` 只在自动识别成功时采用。
+  - `images/comfyui.ts`：`createComfyUiClient(provider, {fetch, sleep?, now?})` 按插槽改写 workflow 的 `inputs`，`POST /prompt`、轮询 `GET /history/<id>`、从 outputs 取第一张图并下载 `/view`；非 2xx、历史错误、空输出、下载失败、缺 `prompt_id` 与总超时都抛错；客户端不重试。
+  - `images/workflows.ts`：`resolveImageProvider`（显式 provider 优先，否则要求配置里只有一个）与 `importImageWorkflow`（未给插槽时只采用唯一候选）。
+  - `StoryStore`：`listImageWorkflows`、`getImageWorkflow`、`saveImageWorkflow`（同名更新同一行）、`deleteImageWorkflow`（引用时抛 `ImageWorkflowInUseError`）、`countNodeImagesForWorkflow`。
+  - CLI：`dramaticer images workflow import --file <路径> --name <名称> [--db] [--images] [--slots <json>]`、`list`、`show <id>`、`delete <id>`；导入打印候选与采用的插槽；`--db` 默认 `data/dramaticer.db`，`--images` 默认 `data/images.yaml`。
+  - server：`GET /api/images/providers`、`GET /api/images/workflows`、`POST /api/images/workflows/detect`、`POST /api/images/workflows/import`、`DELETE /api/images/workflows/:id`；启动参数 `--images`。provider 响应含 id、api、baseUrl、configured、超时与轮询间隔，不含密钥。
+- M6-T02：视觉档案后台任务 `visual_profile`（`enqueue: story`、`tier: gap`）与 `compileImagePrompt` 纯函数；tags 与 natural 两种风格；第一批用 tags。表 `character_visual_profiles` 已存在，`source` 接受 `model`、`player`、`import`。
+- M6-T03：`illustrate` 侧效应工具只在 `imageConfig.mode` 为 `auto` 且 workflow 与 provider 齐全时提供；回合事务写 `node_images` 的 `pending` 行；故事级 `illustrate` 后台任务（`gap`）每次最多 2 行，单行最多 3 次；手动入口与 `retry`；启动时把 `running` 行退回 `pending`。`node_images.workflow_id` 引用 `image_workflows(id)`，插入时触发器要求 `story_id` 与楼层一致。
 - M6-T04：`StoryPathNode` 带图片、`GET /api/nodes/:id/images`、`GET /api/images/:id/file`、聊天页缩略图/占位/失败重试与轮询。
 - M6-T05：生图面板（workflow 的 detect/import/删除、视觉档案、生图设置）。
 - M6-T99：真实 ComfyUI 验收，见 HUMAN-15。
-- `imageConfig`：`mode` 取 `off`、`manual`、`auto`；`workflowId`；`maxPerFloor` 1–4；`minFloorsBetween` 0–100。
+- `imageConfig`（M6-T03 实现）：`mode` 取 `off`、`manual`、`auto`；`workflowId`；`maxPerFloor` 1–4；`minFloorsBetween` 0–100。
 - 生成文件目录：数据库文件同目录的 `images/`，可用 `--media-dir` 覆盖。
 - 导演规则触发出图不在第一批；第一批取得真实出图数据后另立任务。
 
@@ -65,6 +74,7 @@
 - 分支与面板接口：`GET /api/nodes/:id/ledger` 返回 `{state, facts, diffs}`，`facts` 来自 `readLedgerFacts`，`diffs` 只含该楼层自己的写入。`GET /api/nodes/:id/events` 的 `limit` 默认 100、回显实际 `limit` 与 `offset`；`GET /api/nodes/:id/compressions` 返回 `{nodeId, compressions}`。
 - 变更卡接口：`GET /api/stories/:id/proposals?status=` 默认 `pending`，接受 `all` 与四个状态；`POST /api/proposals/:id/approve|reject|rollback` 复用 core 的三个函数，返回 `{card, ledger}`。`LedgerChangeCardError` 的 `not_found` 映射 404、`invalid_status` 映射 409；批准玩家来源卡片会同时写 `userWill`；回滚只恢复 `before` 里的路径。
 - 路径接口：`GET /api/stories/:id/path?nodeId=&limit=&before=`，返回 `{storyId, headNodeId, nodes, hasMore}`；`nodeId` 是锚点、缺省 head，锚点节点包含在返回路径里；`before` 必须在本故事且在该锚点的路径上，返回它之前的 `limit` 楼；`hasMore` 只在返回页之前还有楼层时为真。`limit` 必须在 1 到 200 之间。M6-T04 会把 `nodes` 的每个楼层换成带 `images` 的 `StoryPathNode`。
+- 生图接口（M6-T01）：`GET /api/images/providers` 返回 `{providers:[{id, api, baseUrl, configured, timeoutMs, pollIntervalMs}]}`，不含 `apiKey`；`GET /api/images/workflows` 返回 `{workflows}`；`POST /api/images/workflows/detect` 请求 `{workflow}`，只返回 `{slots, candidates, unresolved}` 不写库；`POST /api/images/workflows/import` 请求 `{name, workflow, slots}`，缺插槽、插槽非法或 workflow 非法返回 400（`details.path` 为 `slots` 或 `workflow`），配置了多个 provider 时 400（`details.path` 为 `provider`）；`DELETE /api/images/workflows/:id` 被 `node_images` 引用时 409。`server --images <路径>` 默认 `data/images.yaml`，文件缺失时 provider 列表为空。
 - 分支接口的 head 语义：`appendNode` 自带把 head 移到新节点，所以 `swipeNode`、`editNode`、重新生成写完楼层后 head 已经是新楼层，不需要再调用 `POST /head`；`setHead` 只在树里主动切分支时使用。
 - 块载荷：`DisplayedContent` 是协议层的渲染载荷，`display` 为 `null` 表示没有显示策略、按原文显示；`html` 模板的 `{{content}}` 由 web 用 `escapeHtml` 替换，模板字符串只进入 iframe 的 `srcdoc`。本地历史楼层仍然在客户端用 `parseBlocks(node.raw)` 再 `toDisplayedBlocks`。`图片` 块继续走沙箱模板；M6-T04 的楼层图片是独立的附属数据显示。
 - web 包结构：`src/api/{client,sse,index}.ts`；`src/chat/{path-state,virtual-window,stream-state,turn-summary,blocks,sandbox,candidate-actions,opening-candidates,branch-tree,ledger-view,proposal-view,director-view,composer-draft,settings-form,template-form,channels-form,format}.ts`；`src/playtest/{records,stats,report,user,progress}.ts`（纯逻辑，Node 与浏览器都可导入）；`src/components/…`、`src/pages/*`、`src/pages/story/*`、`src/styles.css`。`@dramaticer/core/blocks` 是浏览器安全子路径；web 的界面代码不要从 `@dramaticer/core` 根入口导入运行时函数（`src/playtest` 只导入类型）。
@@ -133,10 +143,10 @@
 - e2e 的假渠道细节（R5-T12）：`serve.mjs` 用固定端口 4517，`playwright.config.ts` 的 baseURL 与 webServer 都读 `E2E_APP_PORT`；假渠道用随机端口并写进每次重建的 `channels.yaml`。数据库固定在 `.devloop/scratch/e2e/work/e2e.db`，测试直接用 `node:sqlite` 读 `preference_events` 或插变更卡；Playwright 的 `page.request` 与浏览器共享登录 cookie。`vitest.config.ts` 必须继续排除 `packages/web/e2e/**`（但 `packages/web/src/playtest` 与 `packages/web/test/playtest-*` 的纯逻辑测试会进入门禁）。`@playwright/test` 固定 1.63.0，浏览器 revision 1243 已在本机，不要再升级到需要新浏览器的版本。
 - `.devloop/scratch/` 已被 git 忽略，e2e 的临时数据库、截图与 trace、自动试玩的报告与截图都在里面。
 - Vertex 渠道（V-T01）：`api: google-vertex` 使用 pi-ai 1.5.0 的 `google-vertex` 适配器；`gemini-4-argon` 模型在 `data/channels.yaml` 与示例里，凭证、项目、区域只从 `.env` 的三个 `GOOGLE_*` 变量读取，服务账号 JSON 不进仓库；未设置时不影响现有渠道。live 验证用 `DRAMATICER_VERTEX_LIVE=1` 运行 `packages/core/test/google-vertex.live.test.ts`。
-- 生图（M6）：`data/images.yaml` 与示例 `images.example.yaml`；生成文件写到数据库同目录的 `images/`；`images.yaml` 缺失时功能关闭。真实 ComfyUI 的启动与 workflow 文件见 HUMAN-15。
+- 生图（M6-T01）：`images.example.yaml` 是配置模板；`data/images.yaml` 缺失时 provider 列表为空、导入拒绝。workflow 存在 `image_workflows`，同名导入更新同一行；插槽由 `detectComfyUiSlots` 识别，多采样器或缺少正向/seed 时必须显式传 `slots`。ComfyUI 客户端接受注入的 `fetch`、`sleep`、`now`，单元测试零网络。`node_images` 已建表但 M6-T03 才写入。真实 ComfyUI 的启动与 workflow 文件见 HUMAN-15。
 - 不要修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 下的任何文件。不变量 I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账是唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖任何其他工作区包。
 
 ## 下一步
-- 选 **M6-T01 生图配置、ComfyUI workflow 导入与插槽识别**：先读 DESIGN §12、ADR-0082 与 TASKS 里的任务文字，然后按顺序做迁移 v34、`images.yaml` 解析、workflow 解析与插槽识别、ComfyUI 客户端、存储层、CLI 与 server 接口。单元测试全部使用假 fetch 与临时数据库，不需要真实 ComfyUI；真实环境留给 M6-T99。
-- M6-T01 完成后依次做 M6-T02（视觉档案与提示词编译）、M6-T03（`illustrate` 与队列）、M6-T04（图片显示与媒体接口）、M6-T05（生图面板），最后 M6-T99 需要 HUMAN-15 就绪。
-- R1 续的任务（R1-T03.a、R1-T03.b、R1-T04.b、R1-T05、R1-T06、R1-T08）等 M6 第一批完成后再开始；迁移编号已改为 v35–v38。C 线兼容插件任务依赖 P2，C-T02 已补上预设兼容报告的要求；插件系统以 DESIGN §19 为唯一权威。
+- 选 **M6-T02 角色视觉档案与提示词编译**：先读 DESIGN §12、ADR-0082 与 TASKS 里的任务文字。先读 `character_visual_profiles` 表结构（v34 已建好），再实现 `images/profiles.ts` 的校验与解析、`visual_profile` 后台任务、`images/prompt.ts` 的 `compileImagePrompt`、CLI `dramaticer images profiles`、`GET /api/stories/:id/visual-profiles` 与后台注册。单元测试用假客户端与临时数据库，不访问真实模型。
+- M6-T02 完成后依次做 M6-T03（`illustrate` 与队列）、M6-T04（图片显示与媒体接口）、M6-T05（生图面板），最后 M6-T99 需要 HUMAN-15 就绪。
+- R1 续的任务（R1-T03.a、R1-T03.b、R1-T04.b、R1-T05、R1-T06、R1-T08）等 M6 第一批完成后再开始；迁移编号为 v35–v38。C 线兼容插件任务依赖 P2，C-T02 已补上预设兼容报告的要求；插件系统以 DESIGN §19 为唯一权威。

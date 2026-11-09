@@ -783,7 +783,8 @@
   做什么：把第一批（ComfyUI API 格式 workflow 导入与插槽识别、`illustrate` 工具、图片块显示、角色视觉档案初版、异步任务队列与结果附加到楼层）与第二批（NovelAI、Grok、OpenAI 兼容图像接口）分成任务，写清依赖与验收；第一批在 R1 续之前完成。
   验收：第一批任务可直接执行；第二批排在 R6 之后；`pnpm check` 通过。
 
-- [ ] **M6-T01 生图配置、ComfyUI workflow 导入与插槽识别** | 依赖：R5-T99 | DESIGN §12 | ADR-0082
+- [x] **M6-T01 生图配置、ComfyUI workflow 导入与插槽识别** | 依赖：R5-T99 | DESIGN §12 | ADR-0082
+  完成：2026-11-09 新增 `core/src/images`（`images.yaml` 解析与共享 `${VAR}` 解析、ComfyUI workflow 校验与插槽识别、ComfyUI 客户端、导入辅助与 CLI）；迁移 v34 新建 `image_workflows`、`character_visual_profiles`、`node_images` 并给 `story_settings` 增加 `image_config`；`StoryStore` 增加 workflow 增删改查与引用计数；server 增加 provider/workflow 的 detect、import、list 与删除接口及 `--images` 启动参数；同名导入更新同一行，被引用删除返回 409；门禁通过（154 个测试文件、1351 个测试通过、4 个 live 跳过）
   做什么：
   - 新增 `packages/core/src/images/`。`config.ts` 解析 `data/images.yaml`（示例 `images.example.yaml`）：根 `providers`，第一版只接受 `api: comfyui`；字段 `baseUrl`、`apiKey`（空字符串或 `${VAR}` 引用）、`timeoutMs`（默认 300000）、`pollIntervalMs`（默认 1000）。文件不存在时返回空配置，生图功能关闭；未知 api、未知字段、非法 URL、非正数超时都抛出错误并指出字段路径。`${VAR}` 的解析复用渠道配置的同一套函数（提取成共享函数，不复制第二份规则）。
   - 迁移 v34：新建 `image_workflows(id, name, provider, payload, slots, created_at, updated_at, UNIQUE(name))`、`character_visual_profiles(story_id, character, profile, source, created_at, updated_at, PRIMARY KEY(story_id, character))`、`node_images(id, story_id, node_id, ordinal, status, request, prompt, negative_prompt, workflow_id, seed, attempts, file_name, media_type, width, height, error, created_at, updated_at, UNIQUE(node_id, ordinal))`；`node_images` 的 story 与楼层一致由触发器拒绝；`status` 取 `pending`、`running`、`done`、`failed`；`story_settings` 增加可空的 `image_config` 列。R1 续的迁移编号从 v34–v37 顺延为 v35–v38，同步本文件里 R1 续的任务文字。

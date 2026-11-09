@@ -16,7 +16,7 @@
 | `@earendil-works/pi-ai` | `packages/core` | runtime | 模型层：流式生成、思考内容、用量与中止（ADR-0009） |
 | `@earendil-works/pi-ai` | 根目录 | dev | `spikes/pi/` 的验证脚本使用（ADR-0009） |
 | `@earendil-works/pi-agent-core` | 根目录 | dev | `spikes/pi/` 验证钩子使用；运行时执行器由 `packages/core` 自己实现（ADR-0022） |
-| `yaml` | `packages/core` | runtime | 解析 `data/channels.yaml` 渠道配置 |
+| `yaml` | `packages/core` | runtime | 解析 `data/channels.yaml` 与 `data/images.yaml` 配置 |
 | `sqlite-vec` | `packages/core` | runtime | 块向量的 vec0 虚拟表与 KNN 检索（DESIGN §13） |
 | `png-chunks-extract` | `packages/st-compat` | runtime | 解析角色卡 PNG 的块（ADR-0003） |
 | `png-chunks-extract` | 根目录 | dev | `scripts/snapshot-private-data.mjs` 从角色卡提取世界书引用（ADR-0003） |

@@ -7,6 +7,7 @@ export * from "./director/index.js";
 export * from "./entity.js";
 export * from "./env.js";
 export * from "./explain/index.js";
+export * from "./images/index.js";
 export * from "./json.js";
 export * from "./ledger/index.js";
 export * from "./llm/channels.js";

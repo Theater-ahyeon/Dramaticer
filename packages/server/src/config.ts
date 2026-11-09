@@ -5,7 +5,7 @@ import { SERVER_PASSWORD_ENV } from "./auth.js";
 export const DEFAULT_PORT = 8787;
 export const DEFAULT_HOST = "127.0.0.1";
 export const SERVER_USAGE =
-	"用法：dramaticer-serve [--db <路径>] [--port <端口>] [--host <地址>] [--channels <路径>] [--web <目录>]";
+	"用法：dramaticer-serve [--db <路径>] [--port <端口>] [--host <地址>] [--channels <路径>] [--images <路径>] [--web <目录>]";
 
 /** 仓库根目录；默认路径都从这里出发，与启动时的工作目录无关。 */
 export const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
@@ -13,6 +13,7 @@ export const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 export interface ServerConfig {
 	readonly dbPath: string;
 	readonly channelsPath: string;
+	readonly imagesPath: string;
 	readonly webRoot: string;
 	readonly host: string;
 	readonly port: number;
@@ -32,6 +33,7 @@ export function parseServerArgs(
 	const cwd = options.cwd ?? process.cwd();
 	let dbPath = path.join(repoRoot, "data", "dramaticer.db");
 	let channelsPath = path.join(repoRoot, "data", "channels.yaml");
+	let imagesPath = path.join(repoRoot, "data", "images.yaml");
 	let webRoot = path.join(repoRoot, "packages", "web", "dist");
 	let host = DEFAULT_HOST;
 	let port = DEFAULT_PORT;
@@ -54,6 +56,9 @@ export function parseServerArgs(
 			case "--channels":
 				channelsPath = path.resolve(cwd, readValue());
 				break;
+			case "--images":
+				imagesPath = path.resolve(cwd, readValue());
+				break;
 			case "--web":
 				webRoot = path.resolve(cwd, readValue());
 				break;
@@ -72,6 +77,7 @@ export function parseServerArgs(
 	return {
 		dbPath,
 		channelsPath,
+		imagesPath,
 		webRoot,
 		host,
 		port,
