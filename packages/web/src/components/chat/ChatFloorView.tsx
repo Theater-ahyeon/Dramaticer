@@ -4,12 +4,15 @@ import { useMemo } from "react";
 import { formatFloorTime } from "../../chat/format";
 import type { ChatFloor } from "../../chat/path-state";
 import { BlockContent } from "./BlockContent";
+import { FloorImages } from "./FloorImages";
 
 export interface ChatFloorViewProps {
 	readonly node: ChatFloor;
 	readonly canRegenerate: boolean;
+	readonly retryingImageId: string | null;
 	readonly onRegenerate: (nodeId: string) => void;
 	readonly onChooseOption: (nodeId: string, text: string) => void;
+	readonly onRetryImage: (nodeId: string, imageId: string) => void;
 	readonly registerRow: (nodeId: string, element: HTMLElement | null) => void;
 }
 
@@ -17,8 +20,10 @@ export interface ChatFloorViewProps {
 export function ChatFloorView({
 	node,
 	canRegenerate,
+	retryingImageId,
 	onRegenerate,
 	onChooseOption,
+	onRetryImage,
 	registerRow,
 }: ChatFloorViewProps) {
 	const items = useMemo(
@@ -63,6 +68,11 @@ export function ChatFloorView({
 					/>
 				)}
 			</div>
+			<FloorImages
+				images={node.images}
+				retryingImageId={retryingImageId}
+				onRetry={(imageId) => onRetryImage(node.id, imageId)}
+			/>
 		</article>
 	);
 }

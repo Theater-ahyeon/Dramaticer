@@ -1,3 +1,4 @@
+import type { NodeImageRecord } from "@dramaticer/core";
 import {
 	API_ERROR_CODES,
 	type ApiErrorBody,
@@ -20,6 +21,7 @@ import {
 	type NodeCompressionsView,
 	type NodeDirectorView,
 	type NodeEventsView,
+	type NodeImagesView,
 	type NodeLedgerView,
 	type NodeTextRequest,
 	type ProposalDecisionAction,
@@ -386,6 +388,17 @@ export class ApiClient {
 
 	async getActions(nodeId: string): Promise<NodeActionsView> {
 		return this.json<NodeActionsView>("GET", `${nodePath(nodeId)}/actions`);
+	}
+
+	async getNodeImages(nodeId: string): Promise<NodeImagesView> {
+		return this.json<NodeImagesView>("GET", `${nodePath(nodeId)}/images`);
+	}
+
+	async retryImage(imageId: string): Promise<NodeImageRecord> {
+		return this.json<NodeImageRecord>(
+			"POST",
+			`/api/images/${encodeURIComponent(imageId)}/retry`,
+		);
 	}
 
 	async getChannels(): Promise<ChannelsView> {

@@ -19,6 +19,7 @@ function buildNodes(count: number): readonly ChatFloor[] {
 		role: index % 2 === 0 ? ("user" as const) : ("assistant" as const),
 		raw: `楼层 ${index}`,
 		createdAt: `2026-01-01T00:00:${String(index % 60).padStart(2, "0")}.000Z`,
+		images: [],
 	}));
 }
 

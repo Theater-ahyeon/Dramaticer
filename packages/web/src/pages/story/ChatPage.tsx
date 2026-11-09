@@ -1,6 +1,7 @@
 import type { TurnMode } from "@dramaticer/core";
 import type {
 	NodeActionsView,
+	NodeImagesView,
 	SseEvent,
 	StoryOpeningsView,
 	StoryPath,
@@ -18,6 +19,13 @@ import {
 	clearComposerDraft,
 	readComposerDraft,
 } from "../../chat/composer-draft";
+import {
+	NODE_IMAGE_POLL_INTERVAL_MS,
+	applyNodeImages,
+	isImagePending,
+	nodesWithPendingImages,
+	shouldPollNodeImages,
+} from "../../chat/node-images";
 import {
 	OPENING_POLL_INTERVAL_MS,
 	type OpeningCandidateItem,
@@ -84,6 +92,10 @@ export function ChatPage() {
 	const [modeSaving, setModeSaving] = useState(false);
 	const [actions, setActions] = useState<readonly CandidateActionItem[]>([]);
 	const [actionsError, setActionsError] = useState<unknown>(null);
+	const [imageError, setImageError] = useState<unknown>(null);
+	const [retryingImageId, setRetryingImageId] = useState<string | null>(null);
+	/** 手动重试后立刻重新开始轮询。 */
+	const [imagePollSignal, setImagePollSignal] = useState(0);
 	const [openingCandidates, setOpeningCandidates] = useState<
 		readonly OpeningCandidateItem[]
 	>([]);
@@ -105,6 +117,10 @@ export function ChatPage() {
 	/** 开场候选只能成为首个楼层，故事有楼层时不再显示。 */
 	const storyEmpty = pathLoaded && path.nodes.length === 0;
 	const turnMode: TurnMode = settings?.turnMode ?? DEFAULT_TURN_MODE;
+	/** 有未完成插图的楼层；键变化时页面从第一次轮询重新开始。 */
+	const pendingImageKey = nodesWithPendingImages(path.nodes).join("\n");
+	/** 手动重试后即使楼层集合不变也要重新开始轮询。 */
+	const imagePollKey = `${imagePollSignal}\n${pendingImageKey}`;
 
 	useEffect(() => {
 		if (storyId === undefined) return;
@@ -127,6 +143,9 @@ export function ChatPage() {
 		setSettingsError(null);
 		setActions([]);
 		setActionsError(null);
+		setImageError(null);
+		setRetryingImageId(null);
+		setImagePollSignal(0);
 		setOpeningCandidates([]);
 		setOpeningBaseline(0);
 		setOpeningBusy(false);
@@ -197,6 +216,45 @@ export function ChatPage() {
 			clearTimeout(timer);
 		};
 	}, [storyId, latestAssistantId]);
+
+	// 出图在间隙里完成；有未完成图片时按固定间隔刷新这些楼层，失败或到上限就停。
+	useEffect(() => {
+		if (storyId === undefined) return;
+		const nodeIds = imagePollKey.split("\n").slice(1).filter(Boolean);
+		if (nodeIds.length === 0) return;
+		let cancelled = false;
+		let attempt = 0;
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const poll = async (): Promise<void> => {
+			const remaining = new Set(nodeIds);
+			for (const nodeId of nodeIds) {
+				let view: NodeImagesView;
+				try {
+					view = await api.getNodeImages(nodeId);
+				} catch (error) {
+					if (!cancelled) setImageError(error);
+					return;
+				}
+				if (cancelled) return;
+				setPath((previous) => ({
+					...previous,
+					nodes: applyNodeImages(previous.nodes, view.nodeId, view.images),
+				}));
+				if (!view.images.some(isImagePending)) remaining.delete(nodeId);
+			}
+			if (shouldPollNodeImages(attempt, [...remaining])) {
+				attempt += 1;
+				timer = setTimeout(() => {
+					void poll();
+				}, NODE_IMAGE_POLL_INTERVAL_MS);
+			}
+		};
+		void poll();
+		return () => {
+			cancelled = true;
+			clearTimeout(timer);
+		};
+	}, [storyId, imagePollKey]);
 
 	// 空故事的开场候选由后台任务生成，轮询到出现为止。
 	useEffect(() => {
@@ -373,6 +431,25 @@ export function ChatPage() {
 		}
 	};
 
+	/** 失败图片退回待生成；立刻刷新该楼层，把占位换回来。 */
+	const retryImage = async (nodeId: string, imageId: string) => {
+		setRetryingImageId(imageId);
+		setImageError(null);
+		try {
+			await api.retryImage(imageId);
+			const view = await api.getNodeImages(nodeId);
+			setPath((previous) => ({
+				...previous,
+				nodes: applyNodeImages(previous.nodes, view.nodeId, view.images),
+			}));
+			setImagePollSignal((value) => value + 1);
+		} catch (error) {
+			setImageError(error);
+		} finally {
+			setRetryingImageId(null);
+		}
+	};
+
 	/** 锁定为深回合时，玩家可以把故事改回唯一可运行的快回合。 */
 	const useFastMode = async () => {
 		if (storyId === undefined) return;
@@ -481,10 +558,14 @@ export function ChatPage() {
 				canLoadOlder={canLoadOlder(path)}
 				latestAssistantId={latestAssistantId}
 				bottomSignal={bottomSignal}
+				retryingImageId={retryingImageId}
 				onLoadOlder={loadOlder}
 				onRegenerate={regenerate}
 				onChooseOption={(nodeId, text) => {
 					void chooseOption(nodeId, text);
+				}}
+				onRetryImage={(nodeId, imageId) => {
+					void retryImage(nodeId, imageId);
 				}}
 			/>
 			{summary === null ? null : (
@@ -494,6 +575,7 @@ export function ChatPage() {
 				<CandidateActions actions={actions} onPick={setInput} />
 			) : null}
 			<ErrorNotice error={actionsError} />
+			<ErrorNotice error={imageError} />
 			{failed !== null && retryAction !== null ? (
 				<div className="retry-bar">
 					{retryAction.kind === "resend" ? (

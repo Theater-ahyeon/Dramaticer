@@ -817,7 +817,8 @@
   - `ImageProviderClient` 抽象放在 `images/client.ts`，第一版只有 ComfyUI 实现；第二批按 provider 增加实现。
   验收：工具只在配置完整且 `auto` 时出现；合法调用在楼层写入后产生 `pending` 行，参数非法、超过每楼上限、间隔不足、`mode` 为 `off` 或 `manual` 时被拒绝并写入 Trace，楼层照常保存；手动入口在 `manual` 与 `auto` 下可用、`off` 返回 409，`retry` 只接受 `failed` 行；假 provider 下两行依次完成、文件与宽高写入、已完成行不重复调用；provider 连续失败三次后该行 `failed` 并保留原因，其它行继续；模拟重启后遗留 `running` 行被重新执行；旧分支的 `pending` 行不被处理，切回后继续；出图不改楼层原文，图片行只出现在所属楼层；回合内图像后端零调用；`pnpm check` 通过。
 
-- [ ] **M6-T04 楼层图片显示与媒体接口** | 依赖：M6-T03、R5-T05.b、R5-T02 | DESIGN §6、§12 | ADR-0082
+- [x] **M6-T04 楼层图片显示与媒体接口** | 依赖：M6-T03、R5-T05.b、R5-T02 | DESIGN §6、§12 | ADR-0082
+  完成：2026-11-09 protocol 新增 `NodeImage`、`NodeImagesView` 与 `StoryPathNode`；path 与 `GET /api/nodes/:id/images` 返回按 `ordinal` 排序的图片，`url` 只在 `done` 时出现，整页图片一次查询；新增 `GET /api/images/:id/file`（只读 `done`、四种图片媒体类型、真实路径确认仍在 `mediaDir`、未完成/失败/缺失/越界一律 404、需要登录）；聊天页新增图片区（缩略图放大、占位、失败原因与重试）、`chat/node-images.ts` 纯逻辑与 2 秒 15 次轮询；`ImageZoom` 由图片块与楼层图片共用；390×844 冒烟无横向溢出
   做什么：
   - protocol：新增 `NodeImage`（`id`、`nodeId`、`ordinal`、`status`、`url`、`width`、`height`、`error`）与 `NodeImagesView`；`StoryPath` 的节点改为 `StoryPathNode`（`TimelineNode` 加 `images`），path 接口按返回的节点 id 一次查询图片并按 `ordinal` 排序，避免逐楼查询；`GET /api/nodes/:id/images` 返回同一结构，供轮询。
   - server 新增 `GET /api/images/:id/file`：只读 `done` 行，从 `mediaDir` 解析文件名并确认仍在目录内，按 `media_type` 返回；未完成、失败、不存在与越界路径都返回 404，不返回文件系统路径。

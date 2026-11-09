@@ -5,6 +5,7 @@ import {
 	parseSandboxMessage,
 	sandboxAck,
 } from "../../chat/sandbox";
+import { ImageZoom } from "./ImageZoom";
 
 export interface SandboxBlockProps {
 	readonly blockName: string;
@@ -66,25 +67,7 @@ export function SandboxBlock({
 				style={{ height: `${height}px` }}
 			/>
 			{zoomed && imageSource !== null ? (
-				<dialog
-					open
-					className="image-zoom"
-					aria-modal="true"
-					aria-label="放大图片"
-					onClick={() => setZoomed(false)}
-					onKeyDown={(event) => {
-						if (event.key === "Escape") setZoomed(false);
-					}}
-				>
-					<img src={imageSource} alt="剧情插图" />
-					<button
-						className="image-zoom-close"
-						type="button"
-						onClick={() => setZoomed(false)}
-					>
-						关闭
-					</button>
-				</dialog>
+				<ImageZoom src={imageSource} onClose={() => setZoomed(false)} />
 			) : null}
 		</div>
 	);

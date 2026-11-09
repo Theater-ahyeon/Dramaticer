@@ -5,6 +5,7 @@ import type {
 	ComfyUiSlots,
 	ComfyUiWorkflow,
 	ImageWorkflowRecord,
+	NodeImageStatus,
 } from "@dramaticer/core";
 
 /** 生图后端的状态；不包含密钥值。 */
@@ -49,4 +50,22 @@ export interface ImageWorkflowImportRequest {
 	readonly name: string;
 	readonly workflow: ComfyUiWorkflow;
 	readonly slots: ComfyUiSlots;
+}
+
+/** 楼层上的一张插图；`url` 只在生成完成时给出。 */
+export interface NodeImage {
+	readonly id: string;
+	readonly nodeId: string;
+	readonly ordinal: number;
+	readonly status: NodeImageStatus;
+	readonly url: string | null;
+	readonly width: number | null;
+	readonly height: number | null;
+	readonly error: string | null;
+}
+
+/** `GET /api/nodes/:id/images` 的载荷。 */
+export interface NodeImagesView {
+	readonly nodeId: string;
+	readonly images: readonly NodeImage[];
 }

@@ -3501,6 +3501,23 @@ export class StoryStore {
 		return rows.map(rowToNodeImage);
 	}
 
+	/** 一批楼层上的图片记录，一次查询完成，按楼层与序号排序。 */
+	listNodeImagesForNodes(nodeIds: readonly string[]): NodeImageRecord[] {
+		const unique = [...new Set(nodeIds)];
+		if (unique.length === 0) return [];
+		for (const nodeId of unique) {
+			assertNonEmptyString(nodeId, "楼层节点 id");
+		}
+		const placeholders = unique.map(() => "?").join(", ");
+		const rows = this.#db
+			.prepare(
+				`SELECT * FROM node_images WHERE node_id IN (${placeholders})
+				ORDER BY node_id ASC, ordinal ASC`,
+			)
+			.all(...unique) as NodeImageRow[];
+		return rows.map(rowToNodeImage);
+	}
+
 	/** 故事里全部图片记录，按楼层与序号排序。 */
 	listStoryNodeImages(storyId: string): NodeImageRecord[] {
 		assertNonEmptyString(storyId, "故事 id");

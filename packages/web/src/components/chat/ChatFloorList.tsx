@@ -24,9 +24,11 @@ export interface ChatFloorListProps {
 	readonly latestAssistantId: string | null;
 	/** 每次加一表示页面要求跳到最新楼层。 */
 	readonly bottomSignal: number;
+	readonly retryingImageId: string | null;
 	readonly onLoadOlder: () => void;
 	readonly onRegenerate: (nodeId: string) => void;
 	readonly onChooseOption: (nodeId: string, text: string) => void;
+	readonly onRetryImage: (nodeId: string, imageId: string) => void;
 }
 
 /**
@@ -188,8 +190,10 @@ export function ChatFloorList(props: ChatFloorListProps) {
 						canRegenerate={
 							props.draft === null && node.id === props.latestAssistantId
 						}
+						retryingImageId={props.retryingImageId}
 						onRegenerate={props.onRegenerate}
 						onChooseOption={props.onChooseOption}
+						onRetryImage={props.onRetryImage}
 						registerRow={registerRow}
 					/>
 				))}

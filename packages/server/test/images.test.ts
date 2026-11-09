@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type {
@@ -6,6 +6,8 @@ import type {
 	ImageProvidersView,
 	ImageWorkflowDetectionView,
 	ImageWorkflowsView,
+	NodeImagesView,
+	StoryPath,
 	StoryVisualProfilesView,
 } from "@dramaticer/protocol";
 import { describe, expect, it, onTestFinished } from "vitest";
@@ -61,7 +63,11 @@ interface TestServer {
 }
 
 async function startImagesServer(
-	options: { readonly yaml?: string; readonly missing?: boolean } = {},
+	options: {
+		readonly yaml?: string;
+		readonly missing?: boolean;
+		readonly password?: string;
+	} = {},
 ): Promise<TestServer> {
 	const dir = mkdtempSync(join(import.meta.dirname, ".tmp-images-server-"));
 	onTestFinished(() => {
@@ -77,7 +83,7 @@ async function startImagesServer(
 		webRoot: join(dir, "web"),
 		host: "127.0.0.1",
 		port: 0,
-		password: null,
+		password: options.password ?? null,
 		log: () => {},
 		images: { path: imagesPath, env: ENV },
 	});
@@ -101,6 +107,48 @@ async function request(
 async function errorOf(response: Response): Promise<ApiErrorResponse["error"]> {
 	const body = (await response.json()) as ApiErrorResponse;
 	return body.error;
+}
+
+function insertImageRow(
+	dbPath: string,
+	row: {
+		readonly id: string;
+		readonly nodeId: string;
+		readonly workflowId: string;
+		readonly ordinal: number;
+		readonly status: string;
+		readonly fileName?: string;
+		readonly mediaType?: string;
+		readonly width?: number;
+		readonly height?: number;
+		readonly error?: string;
+	},
+): void {
+	const db = new DatabaseSync(dbPath);
+	try {
+		const now = "2026-11-09T00:00:00.000Z";
+		db.prepare(
+			`INSERT INTO node_images
+				(id, story_id, node_id, ordinal, status, request, workflow_id,
+				 file_name, media_type, width, height, error, created_at, updated_at)
+			VALUES (?, 's1', ?, ?, ?, '{"scene":"测试"}', ?, ?, ?, ?, ?, ?, ?, ?)`,
+		).run(
+			row.id,
+			row.nodeId,
+			row.ordinal,
+			row.status,
+			row.workflowId,
+			row.fileName ?? null,
+			row.mediaType ?? null,
+			row.width ?? null,
+			row.height ?? null,
+			row.error ?? null,
+			now,
+			now,
+		);
+	} finally {
+		db.close();
+	}
 }
 
 describe("生图接口", () => {
@@ -443,5 +491,210 @@ describe("生图接口", () => {
 			"/api/stories/missing/visual-profiles",
 		);
 		expect(missing.status).toBe(404);
+	});
+
+	it("path 与节点图片接口返回按 ordinal 排序的图片，url 只在 done 时出现", async () => {
+		const { running, dbPath } = await startImagesServer();
+		running.store.createStory({ id: "s1", title: "测试" });
+		running.store.appendNode({
+			id: "n1",
+			storyId: "s1",
+			parentId: null,
+			role: "assistant",
+			raw: "第一楼",
+		});
+		running.store.appendNode({
+			id: "n2",
+			storyId: "s1",
+			parentId: "n1",
+			role: "assistant",
+			raw: "第二楼",
+		});
+		const savedWorkflow = running.store.saveImageWorkflow({
+			name: "默认",
+			provider: "comfy",
+			payload: workflow() as never,
+			slots: SLOTS,
+		});
+		insertImageRow(dbPath, {
+			id: "img-later",
+			nodeId: "n1",
+			workflowId: savedWorkflow.id,
+			ordinal: 1,
+			status: "pending",
+		});
+		insertImageRow(dbPath, {
+			id: "img-first",
+			nodeId: "n1",
+			workflowId: savedWorkflow.id,
+			ordinal: 0,
+			status: "done",
+			fileName: "s1/img-first.png",
+			mediaType: "image/png",
+			width: 512,
+			height: 768,
+		});
+
+		const pathResponse = await request(running.origin, "/api/stories/s1/path");
+		expect(pathResponse.status).toBe(200);
+		const path = (await pathResponse.json()) as StoryPath;
+		expect(path.nodes.map((node) => node.id)).toEqual(["n1", "n2"]);
+		expect(path.nodes[0]?.raw).toBe("第一楼");
+		expect(path.nodes[0]?.images).toEqual([
+			{
+				id: "img-first",
+				nodeId: "n1",
+				ordinal: 0,
+				status: "done",
+				url: "/api/images/img-first/file",
+				width: 512,
+				height: 768,
+				error: null,
+			},
+			{
+				id: "img-later",
+				nodeId: "n1",
+				ordinal: 1,
+				status: "pending",
+				url: null,
+				width: null,
+				height: null,
+				error: null,
+			},
+		]);
+		expect(path.nodes[1]?.images).toEqual([]);
+
+		const nodeResponse = await request(running.origin, "/api/nodes/n1/images");
+		expect(nodeResponse.status).toBe(200);
+		expect((await nodeResponse.json()) as NodeImagesView).toEqual({
+			nodeId: "n1",
+			images: path.nodes[0]?.images,
+		});
+	});
+
+	it("媒体接口只返回 done 行，未完成、越界文件名与缺失文件都是 404", async () => {
+		const { running, dir, dbPath } = await startImagesServer();
+		running.store.createStory({ id: "s1", title: "测试" });
+		running.store.appendNode({
+			id: "n1",
+			storyId: "s1",
+			parentId: null,
+			role: "assistant",
+			raw: "正文",
+		});
+		const mediaDir = join(dir, "images");
+		mkdirSync(join(mediaDir, "s1"), { recursive: true });
+		const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+		writeFileSync(join(mediaDir, "s1", "img-done.png"), bytes);
+		const savedWorkflow = running.store.saveImageWorkflow({
+			name: "默认",
+			provider: "comfy",
+			payload: workflow() as never,
+			slots: SLOTS,
+		});
+		insertImageRow(dbPath, {
+			id: "img-done",
+			nodeId: "n1",
+			workflowId: savedWorkflow.id,
+			ordinal: 0,
+			status: "done",
+			fileName: "s1/img-done.png",
+			mediaType: "image/png",
+		});
+		insertImageRow(dbPath, {
+			id: "img-pending",
+			nodeId: "n1",
+			workflowId: savedWorkflow.id,
+			ordinal: 1,
+			status: "pending",
+			fileName: "s1/img-done.png",
+			mediaType: "image/png",
+		});
+		insertImageRow(dbPath, {
+			id: "img-failed",
+			nodeId: "n1",
+			workflowId: savedWorkflow.id,
+			ordinal: 2,
+			status: "failed",
+			fileName: "s1/img-done.png",
+			mediaType: "image/png",
+			error: "后端失败",
+		});
+		insertImageRow(dbPath, {
+			id: "img-missing-file",
+			nodeId: "n1",
+			workflowId: savedWorkflow.id,
+			ordinal: 3,
+			status: "done",
+			fileName: "s1/nope.png",
+			mediaType: "image/png",
+		});
+		writeFileSync(join(dir, "secret.png"), bytes);
+		insertImageRow(dbPath, {
+			id: "img-outside",
+			nodeId: "n1",
+			workflowId: savedWorkflow.id,
+			ordinal: 4,
+			status: "done",
+			fileName: "../secret.png",
+			mediaType: "image/png",
+		});
+
+		const done = await request(running.origin, "/api/images/img-done/file");
+		expect(done.status).toBe(200);
+		expect(done.headers.get("content-type")).toBe("image/png");
+		expect(Buffer.from(await done.arrayBuffer())).toEqual(bytes);
+
+		for (const imageId of [
+			"img-pending",
+			"img-failed",
+			"img-missing-file",
+			"img-outside",
+			"missing",
+		]) {
+			const response = await request(
+				running.origin,
+				`/api/images/${imageId}/file`,
+			);
+			expect(response.status).toBe(404);
+			const body = (await response.json()) as ApiErrorResponse;
+			expect(body.error.message).toBe("图片文件不存在");
+			expect(JSON.stringify(body)).not.toContain(dir);
+		}
+	});
+
+	it("媒体接口需要登录", async () => {
+		const { running, dir, dbPath } = await startImagesServer({
+			password: "secret",
+		});
+		running.store.createStory({ id: "s1", title: "测试" });
+		running.store.appendNode({
+			id: "n1",
+			storyId: "s1",
+			parentId: null,
+			role: "assistant",
+			raw: "正文",
+		});
+		const mediaDir = join(dir, "images");
+		mkdirSync(join(mediaDir, "s1"), { recursive: true });
+		writeFileSync(join(mediaDir, "s1", "img.png"), Buffer.from([1]));
+		const savedWorkflow = running.store.saveImageWorkflow({
+			name: "默认",
+			provider: "comfy",
+			payload: workflow() as never,
+			slots: SLOTS,
+		});
+		insertImageRow(dbPath, {
+			id: "img",
+			nodeId: "n1",
+			workflowId: savedWorkflow.id,
+			ordinal: 0,
+			status: "done",
+			fileName: "s1/img.png",
+			mediaType: "image/png",
+		});
+
+		const response = await request(running.origin, "/api/images/img/file");
+		expect(response.status).toBe(401);
 	});
 });

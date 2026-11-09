@@ -1,6 +1,14 @@
 import { randomUUID } from "node:crypto";
-import { readFile, rename, rm, writeFile } from "node:fs/promises";
+import {
+	readFile,
+	realpath,
+	rename,
+	rm,
+	stat,
+	writeFile,
+} from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 import {
 	type ChooseOpeningCandidateResult,
 	type ComfyUiSlots,
@@ -96,6 +104,8 @@ import {
 	type NodeCompressionsView,
 	type NodeDirectorView,
 	type NodeEventsView,
+	type NodeImage,
+	type NodeImagesView,
 	type NodeLedgerView,
 	type ProposalDecisionAction,
 	type ProposalDecisionResult,
@@ -151,6 +161,8 @@ export interface ApiRouteOptions {
 	readonly imagesPath: string | null;
 	readonly imagesEnv: Readonly<Record<string, string | undefined>>;
 	readonly imagesConfig: ImagesConfig;
+	/** 生成文件目录；媒体接口只在这里读取。 */
+	readonly imagesMediaDir: string;
 	/** 渠道体检用；测试注入假通道。 */
 	readonly createChannel: (config: LlmChannelConfig) => LlmChannel;
 }
@@ -302,6 +314,11 @@ export async function handleApiRequest(
 			handleImageRetry(res, options, second);
 			return;
 		}
+		if (parts.length === 3 && third === "file") {
+			requireMethod(method, ["GET"]);
+			await handleImageFile(res, options, second);
+			return;
+		}
 	}
 	if (first === "proposals" && second !== undefined && parts.length === 3) {
 		const action = third;
@@ -355,7 +372,11 @@ export async function handleApiRequest(
 				handleNodeActions(res, options, nodeId);
 				return;
 			case "images":
-				requireMethod(method, ["POST"]);
+				requireMethod(method, ["GET", "POST"]);
+				if (method === "GET") {
+					handleNodeImageList(res, options, nodeId);
+					return;
+				}
 				await handleNodeImages(req, res, options, nodeId);
 				return;
 			default:
@@ -664,7 +685,7 @@ function handlePath(
 	const view: StoryPath = {
 		storyId,
 		headNodeId: options.store.getHead(storyId)?.id ?? null,
-		nodes: anchor.slice(pageStart, pageEnd),
+		nodes: toPathNodes(options.store, anchor.slice(pageStart, pageEnd)),
 		hasMore: pageStart > 0,
 	};
 	sendJson(res, 200, view);
@@ -1174,8 +1195,44 @@ function buildPath(
 	return {
 		storyId,
 		headNodeId: store.getHead(storyId)?.id ?? null,
-		nodes: [...nodes],
+		nodes: toPathNodes(store, nodes),
 		hasMore: false,
+	};
+}
+
+/** 路径楼层带上附属图片；一次查询覆盖整页，图片按 `ordinal` 排序。 */
+function toPathNodes(
+	store: StoryStore,
+	nodes: readonly TimelineNode[],
+): StoryPath["nodes"] {
+	const grouped = new Map<string, NodeImage[]>();
+	for (const record of store.listNodeImagesForNodes(
+		nodes.map((node) => node.id),
+	)) {
+		const list = grouped.get(record.nodeId);
+		const view = toNodeImage(record);
+		if (list === undefined) grouped.set(record.nodeId, [view]);
+		else list.push(view);
+	}
+	return nodes.map((node) => ({
+		...node,
+		images: grouped.get(node.id) ?? [],
+	}));
+}
+
+function toNodeImage(record: NodeImageRecord): NodeImage {
+	return {
+		id: record.id,
+		nodeId: record.nodeId,
+		ordinal: record.ordinal,
+		status: record.status,
+		url:
+			record.status === "done"
+				? `/api/images/${encodeURIComponent(record.id)}/file`
+				: null,
+		width: record.width,
+		height: record.height,
+		error: record.error,
 	};
 }
 
@@ -1942,6 +1999,99 @@ async function handleNodeImages(
 	options.scheduler?.schedule(node.storyId);
 	const view: NodeImageRecord = image;
 	sendJson(res, 201, view);
+}
+
+function handleNodeImageList(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	nodeId: string,
+): void {
+	const node = requireNode(options.store, nodeId);
+	const view: NodeImagesView = {
+		nodeId: node.id,
+		images: options.store.listNodeImages(node.id).map(toNodeImage),
+	};
+	sendJson(res, 200, view);
+}
+
+const IMAGE_MEDIA_TYPES: Readonly<Record<string, true>> = {
+	"image/png": true,
+	"image/jpeg": true,
+	"image/webp": true,
+	"image/gif": true,
+};
+
+/**
+ * 媒体接口只返回已完成的图片，文件名来自数据库；解析后必须仍在
+ * `imagesMediaDir` 里，软链接也要通过真实路径检查。
+ */
+async function handleImageFile(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	imageId: string,
+): Promise<void> {
+	const image = options.store.getNodeImage(imageId);
+	if (
+		image === null ||
+		image.status !== "done" ||
+		image.fileName === null ||
+		image.mediaType === null ||
+		IMAGE_MEDIA_TYPES[image.mediaType] !== true
+	) {
+		throw imageFileMissing();
+	}
+	const filePath = await resolveImageFile(
+		options.imagesMediaDir,
+		image.fileName,
+	);
+	if (filePath === null) throw imageFileMissing();
+	let bytes: Buffer;
+	try {
+		bytes = await readFile(filePath);
+	} catch {
+		throw imageFileMissing();
+	}
+	res.writeHead(200, {
+		"Content-Type": image.mediaType,
+		"Content-Length": bytes.length,
+		"X-Content-Type-Options": "nosniff",
+		"Cache-Control": "private, max-age=31536000, immutable",
+	});
+	res.end(bytes);
+}
+
+function imageFileMissing(): HttpError {
+	return new HttpError(404, "not_found", "图片文件不存在");
+}
+
+async function resolveImageFile(
+	mediaDir: string,
+	fileName: string,
+): Promise<string | null> {
+	const target = resolve(mediaDir, fileName);
+	if (!isInsideDirectory(mediaDir, target)) return null;
+	let realTarget: string;
+	let realRoot: string;
+	try {
+		realRoot = await realpath(mediaDir);
+		realTarget = await realpath(target);
+	} catch {
+		return null;
+	}
+	if (!isInsideDirectory(realRoot, realTarget)) return null;
+	const info = await stat(realTarget).catch(() => null);
+	if (info === null || !info.isFile()) return null;
+	return realTarget;
+}
+
+function isInsideDirectory(root: string, candidate: string): boolean {
+	const relativePath = relative(root, candidate);
+	return (
+		relativePath.length > 0 &&
+		relativePath !== ".." &&
+		!relativePath.startsWith(`..${sep}`) &&
+		!isAbsolute(relativePath)
+	);
 }
 
 async function handleSettings(

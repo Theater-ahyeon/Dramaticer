@@ -107,6 +107,7 @@ interface HandlerOptions {
 	readonly imagesPath: string | null;
 	readonly imagesEnv: Readonly<Record<string, string | undefined>>;
 	readonly imagesConfig: ImagesConfig;
+	readonly imagesMediaDir: string;
 	readonly createChannel: (config: LlmChannelConfig) => LlmChannel;
 	readonly heartbeatMs: number;
 	readonly now?: () => number;
@@ -183,6 +184,7 @@ export async function startServer(
 			imagesPath: images?.path ?? null,
 			imagesEnv,
 			imagesConfig,
+			imagesMediaDir,
 			createChannel: channels?.createChannel ?? createLlmChannel,
 			heartbeatMs: options.heartbeatMs ?? SSE_HEARTBEAT_MS,
 			now: options.now,
@@ -309,6 +311,7 @@ async function handleRequest(
 			imagesPath: options.imagesPath,
 			imagesEnv: options.imagesEnv,
 			imagesConfig: options.imagesConfig,
+			imagesMediaDir: options.imagesMediaDir,
 			createChannel: options.createChannel,
 			log: options.log,
 			heartbeatMs: options.heartbeatMs,

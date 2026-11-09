@@ -5,6 +5,7 @@ import type {
 	TimelineNode,
 	TimelineRole,
 } from "@dramaticer/core";
+import type { NodeImage } from "./images.js";
 
 /** 故事列表与详情共用的视图；head 为空表示还没有楼层。 */
 export interface StoryView {
@@ -87,11 +88,16 @@ export interface ImportStoryResult {
 	readonly imported: ImportStoryCounts;
 }
 
+/** 路径上的一个楼层：原文加附属插图；图片不属于原文。 */
+export interface StoryPathNode extends TimelineNode {
+	readonly images: readonly NodeImage[];
+}
+
 /** 锚点楼层到根节点的路径，按根到当前页最后一个节点的顺序。 */
 export interface StoryPath {
 	readonly storyId: string;
 	readonly headNodeId: string | null;
-	readonly nodes: readonly TimelineNode[];
+	readonly nodes: readonly StoryPathNode[];
 	/** 当前页之外还有更早的楼层可以继续向上加载。 */
 	readonly hasMore: boolean;
 }
