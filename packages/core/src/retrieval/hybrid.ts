@@ -11,6 +11,18 @@ export type RetrievalKind = "chunk" | "event";
 /** 参与排名融合的每一路。 */
 export type RetrievalRoute = "bm25" | "vector" | "entity" | "event" | "recent";
 
+/** 每一路在 RRF 融合里的权重；没有写出的路按 1 计算。 */
+export type RetrievalRouteWeights = Partial<Record<RetrievalRoute, number>>;
+
+/** 生产默认权重；只有评测确认有提升后才改动。 */
+export const DEFAULT_ROUTE_WEIGHTS: Readonly<Record<RetrievalRoute, number>> = {
+	bm25: 1,
+	vector: 1,
+	entity: 1,
+	event: 1,
+	recent: 1,
+};
+
 export interface RetrievalSource {
 	readonly route: RetrievalRoute;
 	readonly rank: number;
@@ -124,31 +136,48 @@ interface EntityMatch {
 export async function retrieveMemory(
 	options: RetrieveMemoryOptions,
 ): Promise<RetrievalResult> {
-	const rerankCandidates =
-		options.rerankCandidates ?? DEFAULT_RERANK_CANDIDATES;
-	if (
-		!Number.isInteger(rerankCandidates) ||
-		rerankCandidates < 1 ||
-		rerankCandidates > MAX_RERANK_CANDIDATES
-	) {
-		throw new Error(
-			`重排序候选条数必须是 1 到 ${MAX_RERANK_CANDIDATES} 之间的整数`,
-		);
-	}
+	const rerankCandidates = resolveRerankCandidates(options.rerankCandidates);
 	const { routes, filter } = await rankMemoryRoutes(options);
 	const limit = options.limit ?? DEFAULT_RETRIEVAL_LIMIT;
-	const fused = fuseRoutes(routes);
+	const fused = fuseRoutes(routes, DEFAULT_ROUTE_WEIGHTS);
 	const reranker = options.reranker ?? null;
 	const query = options.query ?? "";
 	if (reranker === null || normalizeRetrievalText(query).length === 0) {
 		return { hits: fused.slice(0, limit), filter, routes };
 	}
-	const candidates = fused.slice(0, rerankCandidates);
-	if (candidates.length === 0) {
-		return { hits: [], filter, routes };
+	const hits = await rerankRetrievalHits({
+		store: options.store,
+		query,
+		hits: fused,
+		reranker,
+		rerankCandidates,
+	});
+	return { hits: hits.slice(0, limit), filter, routes };
+}
+
+export interface RerankRetrievalHitsOptions {
+	readonly store: StoryStore;
+	readonly query: string;
+	readonly hits: readonly RetrievalHit[];
+	readonly reranker: RerankClient;
+	/** 交给重排序的候选条数，默认 20。 */
+	readonly rerankCandidates?: number;
+}
+
+/** 只重排前 `rerankCandidates` 条候选，其余保持融合顺序；空查询原样返回。 */
+export async function rerankRetrievalHits(
+	options: RerankRetrievalHitsOptions,
+): Promise<readonly RetrievalHit[]> {
+	const rerankCandidates = resolveRerankCandidates(options.rerankCandidates);
+	if (
+		normalizeRetrievalText(options.query).length === 0 ||
+		options.hits.length === 0
+	) {
+		return options.hits;
 	}
+	const candidates = options.hits.slice(0, rerankCandidates);
 	const documents = candidates.map((hit) => rerankDocument(options.store, hit));
-	const scores = await reranker.rerank(query, documents);
+	const scores = await options.reranker.rerank(options.query, documents);
 	const scoreByIndex = new Map<number, number>();
 	for (const score of scores) {
 		if (
@@ -179,11 +208,21 @@ export async function retrieveMemory(
 		}))
 		.sort((left, right) => right.score - left.score || left.index - right.index)
 		.map((entry) => entry.hit);
-	return {
-		hits: [...ordered, ...fused.slice(rerankCandidates)].slice(0, limit),
-		filter,
-		routes,
-	};
+	return [...ordered, ...options.hits.slice(rerankCandidates)];
+}
+
+function resolveRerankCandidates(value: number | undefined): number {
+	const rerankCandidates = value ?? DEFAULT_RERANK_CANDIDATES;
+	if (
+		!Number.isInteger(rerankCandidates) ||
+		rerankCandidates < 1 ||
+		rerankCandidates > MAX_RERANK_CANDIDATES
+	) {
+		throw new Error(
+			`重排序候选条数必须是 1 到 ${MAX_RERANK_CANDIDATES} 之间的整数`,
+		);
+	}
+	return rerankCandidates;
 }
 
 /** 重排序只看文本：事件用事件正文，父段块用父段，旧分块用楼层原文。 */
@@ -579,11 +618,27 @@ function dedupeChunkItems(
 /** 按 RRF 融合每一路的名次；同一楼层重复出现只保留一条。 */
 export function fuseRetrievalRoutes(
 	routes: readonly RetrievalRouteRanking[],
+	weights: RetrievalRouteWeights = DEFAULT_ROUTE_WEIGHTS,
 ): RetrievalHit[] {
-	return fuseRoutes(routes);
+	assertRouteWeights(weights);
+	return fuseRoutes(routes, weights);
 }
 
-function fuseRoutes(routes: readonly RouteResult[]): RetrievalHit[] {
+function assertRouteWeights(weights: RetrievalRouteWeights): void {
+	for (const [route, weight] of Object.entries(weights)) {
+		if (!ROUTE_ORDER.includes(route as RetrievalRoute)) {
+			throw new Error(`未知的检索路权重：${route}`);
+		}
+		if (typeof weight !== "number" || !Number.isFinite(weight) || weight <= 0) {
+			throw new Error(`检索路 ${route} 的权重必须是大于 0 的有限数`);
+		}
+	}
+}
+
+function fuseRoutes(
+	routes: readonly RouteResult[],
+	weights: RetrievalRouteWeights,
+): RetrievalHit[] {
 	const candidates = new Map<
 		string,
 		{
@@ -623,7 +678,8 @@ function fuseRoutes(routes: readonly RouteResult[]): RetrievalHit[] {
 		kind: candidate.kind,
 		nodeId: candidate.nodeId,
 		score: candidate.sources.reduce(
-			(total, source) => total + 1 / (RRF_K + source.rank),
+			(total, source) =>
+				total + (weights[source.route] ?? 1) / (RRF_K + source.rank),
 			0,
 		),
 		parentOrdinal: candidate.parentOrdinal,

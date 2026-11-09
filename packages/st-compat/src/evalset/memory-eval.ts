@@ -6,6 +6,7 @@ import {
 	type EmbeddingClient,
 	type LlmClient,
 	type LlmStreamingClient,
+	type RerankClient,
 	type RetrievalRoute,
 	type StoryStore,
 	StoryStore as StoryStoreClass,
@@ -14,6 +15,7 @@ import {
 	createStandardChatProviders,
 	fuseRetrievalRoutes,
 	rankMemoryRoutes,
+	rerankRetrievalHits,
 } from "@dramaticer/core";
 import {
 	type StCharacterCard,
@@ -31,6 +33,13 @@ import {
 	importWorldInfoLore,
 } from "../lore-import.js";
 import { parseWorldInfoFile } from "../world-info.js";
+import {
+	type FusionCrossValidation,
+	type FusionWeightStory,
+	type QuestionRanking,
+	crossValidateFusionWeights,
+	rankMemoryQuestions,
+} from "./fusion-weights.js";
 import {
 	type JudgedMemoryQuestionRecord,
 	type JudgedMemorySummary,
@@ -61,7 +70,12 @@ const ROUTE_ORDER: readonly RetrievalRoute[] = [
 	"event",
 	"recent",
 ];
-export type MemoryEvalRoute = RetrievalRoute | "fused";
+export type MemoryEvalRoute = RetrievalRoute | "fused" | "reranked";
+const EVAL_ROUTE_ORDER: readonly MemoryEvalRoute[] = [
+	...ROUTE_ORDER,
+	"fused",
+	"reranked",
+];
 const SCORE_KEYS = ["questionCount", "hitAt5", "hitAt10", "hitAt20"] as const;
 
 type MutableScore = Record<(typeof SCORE_KEYS)[number], number>;
@@ -98,6 +112,12 @@ export interface MemoryEvalStateAccuracy {
 	readonly missing: number;
 }
 
+/** 事件表覆盖：有事件的已确认助手楼层占全部已确认助手楼层的比例。 */
+export interface MemoryEvalEventCoverage {
+	readonly assistantFloors: number;
+	readonly floorsWithEvents: number;
+}
+
 export interface MemoryEvalStoryScore {
 	readonly story: string;
 	readonly floorCount: number;
@@ -105,6 +125,7 @@ export interface MemoryEvalStoryScore {
 	readonly vectorCount: number;
 	readonly entityCount: number;
 	readonly eventCount: number;
+	readonly eventCoverage: MemoryEvalEventCoverage;
 	readonly byKind: readonly MemoryEvalKindScore[];
 	readonly routes: readonly MemoryEvalRouteScore[];
 	readonly total: MemoryEvalScore;
@@ -136,6 +157,8 @@ export interface MemoryEvalReport {
 	readonly thresholds: readonly MemoryEvalThreshold[];
 	/** 没有运行五类记忆题时为 null。 */
 	readonly judged: JudgedMemorySummary | null;
+	/** 少于两个对话时不做留一交叉验证。 */
+	readonly fusionWeights: FusionCrossValidation | null;
 }
 
 export interface EvaluateMemoryQuestionsOptions {
@@ -144,6 +167,8 @@ export interface EvaluateMemoryQuestionsOptions {
 	readonly questions: readonly RetrievalQuestion[];
 	readonly embedder?: EmbeddingClient | null;
 	readonly viewpoint?: string | null;
+	/** 设置后把融合候选交给它重排，并单独记一路 `reranked`。 */
+	readonly reranker?: RerankClient | null;
 }
 
 export interface BuildVectorsOptions {
@@ -191,6 +216,8 @@ export interface CollectMemoryEvalOptions {
 	readonly eventClient?: LlmStreamingClient | null;
 	/** 设置后读取 `memory-<故事>.jsonl`，用裁判判分五类记忆题 */
 	readonly judged?: JudgedMemoryEvalOptions | null;
+	/** 设置后额外评测融合结果的重排序。 */
+	readonly reranker?: RerankClient | null;
 	readonly viewpoint?: string | null;
 	readonly generatedAt?: string;
 	readonly log?: (message: string) => void;
@@ -274,23 +301,35 @@ export async function evaluateMemoryQuestions(
 				),
 			);
 		}
-		const fused = fuseRetrievalRoutes(rankings.routes).slice(0, MAX_DEPTH);
+		const fused = fuseRetrievalRoutes(rankings.routes);
+		const fusedNodeIds = fused.slice(0, MAX_DEPTH).map((hit) => hit.nodeId);
 		recordHits(
 			routeScore(story, "fused").total,
 			kindScore(routeScore(story, "fused").byKind, question.kind),
-			hitVector(
-				fused.map((hit) => hit.nodeId),
-				evidence,
-			),
+			hitVector(fusedNodeIds, evidence),
 		);
 		recordHits(
 			story.total,
 			kindScore(story.byKind, question.kind),
-			hitVector(
-				fused.map((hit) => hit.nodeId),
-				evidence,
-			),
+			hitVector(fusedNodeIds, evidence),
 		);
+		if (options.reranker) {
+			const reranked = (
+				await rerankRetrievalHits({
+					store,
+					query: question.question,
+					hits: fused,
+					reranker: options.reranker,
+				})
+			)
+				.slice(0, MAX_DEPTH)
+				.map((hit) => hit.nodeId);
+			recordHits(
+				routeScore(story, "reranked").total,
+				kindScore(routeScore(story, "reranked").byKind, question.kind),
+				hitVector(reranked, evidence),
+			);
+		}
 		story.eventsBeforeFilter += rankings.filter.eventsBeforeFilter;
 		story.eventsAfterFilter += rankings.filter.eventsAfterFilter;
 		if (rankings.filter.chunksExcluded) {
@@ -311,6 +350,13 @@ export async function evaluateMemoryQuestions(
 		byKind: renderKindScores(routeScore(story, "fused").byKind),
 		total: { ...routeScore(story, "fused").total },
 	});
+	if (story.routes.has("reranked")) {
+		pathRoutes.push({
+			route: "reranked",
+			byKind: renderKindScores(routeScore(story, "reranked").byKind),
+			total: { ...routeScore(story, "reranked").total },
+		});
+	}
 	return {
 		story: storyId,
 		floorCount: store.getPathToHead(storyId).length,
@@ -318,6 +364,7 @@ export async function evaluateMemoryQuestions(
 		vectorCount: countStoryVectors(store, storyId),
 		entityCount: store.listEntities(storyId).length,
 		eventCount: countStoryEvents(store, storyId),
+		eventCoverage: measureEventCoverage(store, storyId),
 		byKind: renderKindScores(story.byKind),
 		routes: pathRoutes,
 		total: { ...story.total },
@@ -480,6 +527,7 @@ export async function collectMemoryEval(
 	try {
 		const stories: MemoryEvalStoryScore[] = [];
 		const judgedRecords: JudgedMemoryQuestionRecord[] = [];
+		const fusionStories: FusionWeightStory[] = [];
 		for (const entry of storyFiles) {
 			log(`导入 ${entry.story}`);
 			const chatPath = await snapshot.resolveFile(entry.file);
@@ -528,6 +576,14 @@ export async function collectMemoryEval(
 				entry.story,
 			);
 			log(`评测 ${entry.story}：${questions.length} 道题`);
+			const rankings = await rankMemoryQuestions({
+				store,
+				storyId: entry.story,
+				questions,
+				embedder: options.embedder ?? null,
+				viewpoint: options.viewpoint ?? null,
+			});
+			fusionStories.push({ story: entry.story, rankings });
 			stories.push(
 				await evaluateMemoryQuestions({
 					store,
@@ -535,6 +591,7 @@ export async function collectMemoryEval(
 					questions,
 					embedder: options.embedder ?? null,
 					viewpoint: options.viewpoint ?? null,
+					reranker: options.reranker ?? null,
 				}),
 			);
 			if (options.judged) {
@@ -585,6 +642,7 @@ export async function collectMemoryEval(
 				judgedRecords.length === 0
 					? null
 					: summarizeJudgedMemoryQuestions(judgedRecords),
+			fusionWeights: crossValidateFusionWeights(fusionStories),
 		});
 	} finally {
 		store.close();
@@ -646,6 +704,7 @@ function buildReport(input: {
 	readonly eventsBuilt: boolean;
 	readonly generatedAt: string;
 	readonly judged: JudgedMemorySummary | null;
+	readonly fusionWeights: FusionCrossValidation | null;
 }): MemoryEvalReport {
 	const total = emptyCounts(SCORE_KEYS);
 	const byKind = new Map<QuestionKind, MutableScore>();
@@ -701,7 +760,7 @@ function buildReport(input: {
 		{ questionCount: 0, correct: 0, missing: 0 },
 	);
 	const routeScores: MemoryEvalRouteScore[] = [];
-	for (const route of [...ROUTE_ORDER, "fused"] as MemoryEvalRoute[]) {
+	for (const route of EVAL_ROUTE_ORDER) {
 		const score = routes.get(route);
 		if (!score) continue;
 		routeScores.push({
@@ -722,6 +781,7 @@ function buildReport(input: {
 		stateAccuracy,
 		thresholds: checkThresholds(input.stories),
 		judged: input.judged,
+		fusionWeights: input.fusionWeights,
 	};
 }
 
@@ -861,6 +921,24 @@ export function countStoryVectors(store: StoryStore, storyId: string): number {
 		count += store.countChunkVectorsForNode(node.id);
 	}
 	return count;
+}
+
+/** 主路径上已确认助手楼层里有多少个至少有一条事件。 */
+export function measureEventCoverage(
+	store: StoryStore,
+	storyId: string,
+): MemoryEvalEventCoverage {
+	const assistantFloors = store
+		.getPathToHead(storyId)
+		.filter(
+			(node) => node.role === "assistant" && store.isNodeConfirmed(node.id),
+		);
+	return {
+		assistantFloors: assistantFloors.length,
+		floorsWithEvents: assistantFloors.filter(
+			(node) => store.countEventsForNode(node.id) > 0,
+		).length,
+	};
 }
 
 /** 故事主路径上的事件数。 */

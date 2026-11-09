@@ -1,15 +1,17 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
 	type EmbeddingClient,
 	type LlmResult,
 	type LlmStreamingClient,
+	type RerankClient,
 	StoryStore,
 } from "@dramaticer/core";
 import { onTestFinished } from "vitest";
 import { describe, expect, it } from "vitest";
 import { createCachedEmbeddingClient } from "../src/evalset/memory-cache.js";
+import { runMemoryEvalCli } from "../src/evalset/memory-cli.js";
 import {
 	buildStoryEvents,
 	buildStoryVectors,
@@ -202,6 +204,40 @@ describe("记忆引擎评测", () => {
 		});
 	});
 
+	it("设置重排序客户端后单独记录 reranked 一路", async () => {
+		const { store, first, ask } = seedStory();
+		const reranker: RerankClient = {
+			async rerank(_query, documents) {
+				return documents.map((document, index) => ({
+					index,
+					score: document.includes("木箱") ? 1 : 0,
+				}));
+			},
+		};
+		const report = await evaluateMemoryQuestions({
+			store,
+			storyId: "s-memory",
+			questions: [
+				question({
+					id: "q-event",
+					askAtNode: ask,
+					evidenceNodes: [first],
+					kind: "event",
+					question: "阿七把匕首藏在哪里？",
+				}),
+			],
+			embedder: fakeEmbedder(),
+			reranker,
+		});
+		const reranked = report.routes.find((route) => route.route === "reranked");
+		expect(reranked?.total.questionCount).toBe(1);
+		expect(reranked?.total.hitAt5).toBe(1);
+		expect(
+			report.routes.find((route) => route.route === "fused")?.total
+				.questionCount,
+		).toBe(1);
+	});
+
 	it("视角排除原文块并统计过滤前后的事件数", async () => {
 		const { store, first, ask } = seedStory();
 		const report = await evaluateMemoryQuestions({
@@ -314,6 +350,81 @@ describe("记忆引擎评测", () => {
 		expect(renderPublicMemoryReport(report)).toContain("对话 1");
 	});
 
+	it("统计版渲染交叉验证章节且不出现故事名", () => {
+		const score = {
+			questionCount: 1,
+			hitAt5: 1,
+			hitAt10: 1,
+			hitAt20: 1,
+		};
+		const weights = {
+			bm25: 1,
+			vector: 1,
+			entity: 1,
+			event: 2,
+			recent: 1,
+		};
+		const report = {
+			...sampleReport(),
+			fusionWeights: {
+				candidates: [0.5, 1, 2],
+				folds: [
+					{
+						heldOutStory: "仙侠雌竞",
+						selectedWeights: weights,
+						trainingScore: score,
+						heldOutScore: score,
+						defaultHeldOutScore: score,
+					},
+				],
+				selectedWeights: weights,
+				selectedScore: score,
+				defaultScore: score,
+				heldOutSelectedScore: score,
+				heldOutDefaultScore: score,
+				improved: true,
+			},
+		};
+		const publicReport = renderPublicMemoryReport(report);
+		expect(publicReport).toContain("融合权重交叉验证");
+		expect(publicReport).toContain("交叉验证有提升");
+		expect(publicReport).not.toContain("仙侠雌竞");
+	});
+
+	it("CLI 写出自定义路径与标题的报告", async () => {
+		const dir = await mkdtemp(
+			path.join(import.meta.dirname, ".tmp-memory-cli-"),
+		);
+		onTestFinished(async () => {
+			await rm(dir, { recursive: true, force: true });
+		});
+		const reranker: RerankClient = {
+			async rerank(_query, documents) {
+				return documents.map((_, index) => ({ index, score: 1 }));
+			},
+		};
+		const result = await runMemoryEvalCli({
+			rawRoot: fixturesPath,
+			evalsetRoot: path.join(fixturesPath, "evalset"),
+			channelsPath: path.join(dir, "channels.yaml"),
+			envPath: path.join(dir, ".env"),
+			dbPath: path.join(dir, "story.db"),
+			cacheDir: path.join(dir, "cache"),
+			privateReportPath: path.join(dir, "reports", "private.md"),
+			publicReportPath: path.join(dir, "reports", "public.md"),
+			embedder: null,
+			reranker,
+			title: "自定义标题",
+			log: () => undefined,
+		});
+		expect(
+			result.report.routes.some((route) => route.route === "reranked"),
+		).toBe(true);
+		const publicReport = await readFile(result.publicReportPath, "utf8");
+		expect(publicReport).toContain("# 自定义标题");
+		expect(publicReport).not.toContain("测试角色");
+	});
+
 	it("从 manifest 与题目文件汇总完整报告", async () => {
 		const dir = await mkdtemp(
 			path.join(import.meta.dirname, ".tmp-memory-eval-"),
@@ -384,6 +495,7 @@ function sampleReport(): MemoryEvalReport {
 		vectorCount: 3,
 		entityCount: 1,
 		eventCount: 1,
+		eventCoverage: { assistantFloors: 1, floorsWithEvents: 1 },
 		byKind: [kindScore("state"), kindScore("event")],
 		routes: [
 			{
@@ -421,5 +533,6 @@ function sampleReport(): MemoryEvalReport {
 		filter: story.filter,
 		stateAccuracy: story.stateAccuracy,
 		thresholds: [],
+		fusionWeights: null,
 	};
 }

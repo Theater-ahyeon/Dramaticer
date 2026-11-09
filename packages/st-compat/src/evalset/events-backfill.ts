@@ -24,6 +24,7 @@ import {
 	countStoryEvents,
 	countStoryVectors,
 	importStoryEntities,
+	measureEventCoverage,
 } from "./memory-eval.js";
 import { storyIdOf } from "./question-files.js";
 
@@ -55,6 +56,10 @@ export interface EventsBackfillStoryResult {
 	readonly windowCount: number;
 	readonly extractedFloors: number;
 	readonly eventCount: number;
+	/** 主路径已确认助手楼层数。 */
+	readonly assistantFloors: number;
+	/** 至少有一条事件的已确认助手楼层数。 */
+	readonly floorsWithEvents: number;
 }
 
 export interface EventsBackfillOptions {
@@ -152,6 +157,7 @@ export async function runEventsBackfill(
 			windowCount += extraction.windowCount;
 			extractedFloors += extraction.extractedFloors;
 			stoppedEarly = extraction.stoppedEarly;
+			const coverage = measureEventCoverage(store, target.story);
 			stories.push({
 				story: target.story,
 				imported,
@@ -162,9 +168,11 @@ export async function runEventsBackfill(
 				windowCount: extraction.windowCount,
 				extractedFloors: extraction.extractedFloors,
 				eventCount: countStoryEvents(store, target.story),
+				assistantFloors: coverage.assistantFloors,
+				floorsWithEvents: coverage.floorsWithEvents,
 			});
 			log(
-				`${target.story} 完成：${extraction.windowCount} 个窗口，${extraction.extractedFloors} 个楼层，${countStoryEvents(store, target.story)} 条事件，向量 ${vectors.vectorCount}/${vectors.chunkCount}`,
+				`${target.story} 完成：${extraction.windowCount} 个窗口，${extraction.extractedFloors} 个楼层，${countStoryEvents(store, target.story)} 条事件，事件覆盖 ${coverage.floorsWithEvents}/${coverage.assistantFloors}，向量 ${vectors.vectorCount}/${vectors.chunkCount}`,
 			);
 			if (stoppedEarly) break;
 		}

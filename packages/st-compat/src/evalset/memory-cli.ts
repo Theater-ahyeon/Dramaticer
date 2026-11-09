@@ -5,6 +5,8 @@ import {
 	type EmbeddingClient,
 	type LlmChannelsConfig,
 	type LlmStreamingClient,
+	OpenAiRerankClient,
+	type RerankClient,
 	createEmbeddingClient,
 	createLlmClient,
 	loadChannelsConfig,
@@ -42,6 +44,12 @@ export interface MemoryEvalCliOptions {
 	/** 测试注入；不提供时从渠道配置创建 */
 	readonly embedder?: EmbeddingClient | null;
 	readonly eventClient?: LlmStreamingClient | null;
+	/** 测试注入的重排序客户端；显式 null 表示不评测重排序 */
+	readonly reranker?: RerankClient | null;
+	/** 从渠道配置创建重排序客户端，即使配置里的 enabled 为 false */
+	readonly rerankEnabled?: boolean;
+	/** 报告标题；默认沿用 M2 报告标题 */
+	readonly title?: string;
 	readonly loadEnv?: (envPath: string) => void;
 	readonly loadConfig?: (channelsPath: string) => Promise<LlmChannelsConfig>;
 }
@@ -102,9 +110,19 @@ export async function runMemoryEvalCli(
 			const channels = await loadConfig();
 			eventClient = createLlmClient(channels, {
 				defaultModel: resolveModelForRole(channels, "settler"),
-				cacheDir: path.join(options.cacheDir, "llm"),
+				cacheDir: path.join(options.cacheDir, "events"),
 			});
 		}
+	}
+
+	let reranker: RerankClient | null = options.reranker ?? null;
+	if (options.reranker === undefined && options.rerankEnabled === true) {
+		const channels = await loadConfig();
+		const section = channels.reranker;
+		if (section === null) {
+			throw new Error("channels.yaml 没有配置 reranker，无法评测重排序");
+		}
+		reranker = new OpenAiRerankClient(section);
 	}
 
 	let judged = options.judged ?? null;
@@ -142,18 +160,19 @@ export async function runMemoryEvalCli(
 			embeddingLabel,
 			eventClient,
 			judged,
+			reranker,
 			viewpoint: options.viewpoint ?? null,
 			generatedAt: options.generatedAt,
 			log,
 		});
 		await writeFile(
 			options.privateReportPath,
-			renderPrivateMemoryReport(report),
+			renderPrivateMemoryReport(report, options.title),
 			"utf8",
 		);
 		await writeFile(
 			options.publicReportPath,
-			renderPublicMemoryReport(report),
+			renderPublicMemoryReport(report, options.title),
 			"utf8",
 		);
 		log(
@@ -181,15 +200,23 @@ export async function runMemoryEvalCli(
 interface CliArgs {
 	readonly buildEvents: boolean;
 	readonly judged: boolean;
+	readonly rerank: boolean;
 	readonly viewpoint: string | null;
 	readonly dbPath: string | null;
+	readonly privateReportPath: string | null;
+	readonly publicReportPath: string | null;
+	readonly title: string | null;
 }
 
 function parseArgs(args: readonly string[]): CliArgs {
 	let buildEvents = false;
 	let judged = false;
+	let rerank = false;
 	let viewpoint: string | null = null;
 	let dbPath: string | null = null;
+	let privateReportPath: string | null = null;
+	let publicReportPath: string | null = null;
+	let title: string | null = null;
 	for (let index = 0; index < args.length; index += 1) {
 		const arg = args[index];
 		if (arg === "--events") {
@@ -200,56 +227,68 @@ function parseArgs(args: readonly string[]): CliArgs {
 			judged = true;
 			continue;
 		}
-		if (arg === "--viewpoint") {
-			const value = args[index + 1];
-			if (value === undefined || value.length === 0) {
-				throw new Error("--viewpoint 需要非空的视角名称");
-			}
-			viewpoint = value;
-			index += 1;
+		if (arg === "--rerank") {
+			rerank = true;
 			continue;
 		}
-		if (arg === "--db") {
+		if (
+			arg === "--viewpoint" ||
+			arg === "--db" ||
+			arg === "--private-report" ||
+			arg === "--public-report" ||
+			arg === "--title"
+		) {
 			const value = args[index + 1];
 			if (value === undefined || value.length === 0) {
-				throw new Error("--db 需要数据库路径");
+				throw new Error(`${arg} 需要一个非空值`);
 			}
-			dbPath = value;
 			index += 1;
+			if (arg === "--viewpoint") viewpoint = value;
+			else if (arg === "--db") dbPath = value;
+			else if (arg === "--private-report") privateReportPath = value;
+			else if (arg === "--public-report") publicReportPath = value;
+			else title = value;
 			continue;
 		}
 		throw new Error(`未知参数：${arg}`);
 	}
-	return { buildEvents, judged, viewpoint, dbPath };
+	return {
+		buildEvents,
+		judged,
+		rerank,
+		viewpoint,
+		dbPath,
+		privateReportPath,
+		publicReportPath,
+		title,
+	};
 }
 
 async function main(): Promise<void> {
 	const repoRoot = fileURLToPath(new URL("../../../../", import.meta.url));
 	const parsed = parseArgs(process.argv.slice(2));
 	const cacheDir = path.join(repoRoot, "eval-private", "memory-cache");
+	const resolve = (value: string | null): string | null =>
+		value === null ? null : path.resolve(repoRoot, value);
 	await runMemoryEvalCli({
 		rawRoot: path.join(repoRoot, "eval-private", "raw"),
 		evalsetRoot: path.join(repoRoot, "eval-private", "evalset"),
 		channelsPath: path.join(repoRoot, "data", "channels.yaml"),
 		envPath: path.join(repoRoot, ".env"),
-		dbPath: parsed.dbPath ?? path.join(cacheDir, "tmp", "memory-eval.db"),
+		dbPath:
+			resolve(parsed.dbPath) ?? path.join(cacheDir, "tmp", "memory-eval.db"),
 		cacheDir,
-		privateReportPath: path.join(
-			repoRoot,
-			"eval-private",
-			"reports",
-			"m2-retrieval.md",
-		),
-		publicReportPath: path.join(
-			repoRoot,
-			"docs",
-			"dev",
-			"reports",
-			"M2-retrieval.md",
-		),
+		privateReportPath:
+			resolve(parsed.privateReportPath) ??
+			path.join(repoRoot, "eval-private", "reports", "m2-retrieval.md"),
+		publicReportPath:
+			resolve(parsed.publicReportPath) ??
+			path.join(repoRoot, "docs", "dev", "reports", "M2-retrieval.md"),
 		buildEvents: parsed.buildEvents,
 		judgedEnabled: parsed.judged,
+		rerankEnabled: parsed.rerank,
 		viewpoint: parsed.viewpoint,
+		title: parsed.title ?? undefined,
 	});
 }
 

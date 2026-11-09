@@ -1,3 +1,5 @@
+import type { RetrievalRoute, RetrievalRouteWeights } from "@dramaticer/core";
+import { FUSION_ROUTES, type FusionCrossValidation } from "./fusion-weights.js";
 import type {
 	MemoryEvalReport,
 	MemoryEvalScore,
@@ -16,7 +18,10 @@ const ROUTE_LABELS: Readonly<Record<string, string>> = {
 	event: "事件",
 	recent: "最近块",
 	fused: "融合",
+	reranked: "融合后重排序",
 };
+
+const DEFAULT_REPORT_TITLE = "M2 记忆引擎检索评测";
 
 /** M0 报告里已经发布的基线数字，用于和本次评测并列。 */
 const M0_BM25 = {
@@ -28,21 +33,28 @@ const M0_ACU = {
 	event: { covered: 3, questionCount: 150 },
 } as const;
 
-export function renderPrivateMemoryReport(report: MemoryEvalReport): string {
-	return renderMemoryReport(report, true);
+export function renderPrivateMemoryReport(
+	report: MemoryEvalReport,
+	title: string = DEFAULT_REPORT_TITLE,
+): string {
+	return renderMemoryReport(report, true, title);
 }
 
-export function renderPublicMemoryReport(report: MemoryEvalReport): string {
-	return renderMemoryReport(report, false);
+export function renderPublicMemoryReport(
+	report: MemoryEvalReport,
+	title: string = DEFAULT_REPORT_TITLE,
+): string {
+	return renderMemoryReport(report, false, title);
 }
 
 function renderMemoryReport(
 	report: MemoryEvalReport,
 	includeStoryNames: boolean,
+	title: string,
 ): string {
 	const judged = report.judged ?? null;
 	const lines: string[] = [
-		"# M2 记忆引擎检索评测",
+		`# ${title}`,
 		"",
 		`生成时间：${report.generatedAt}`,
 		"",
@@ -55,6 +67,11 @@ function renderMemoryReport(
 			: "- 本次没有建立事件表：事件路与实体路的事件召回不参与，知情者过滤数量为 0。",
 		"- 每道题用 `retrieveMemory` 的同一套候选收集与 RRF 融合；只在提问楼层的祖先路径上检索，证据楼层出现在前 K 个结果里算命中。",
 		"- 每一路按自己的原始名次单独计分；路缺失时该路记 0 命中，题数保持一致。",
+		...(report.routes.some((route) => route.route === "reranked")
+			? [
+					"- 融合后再把前 20 条候选交给重排序渠道；`融合后重排序` 一行是按重排序分数取前 K 的结果，融合一行仍保留重排序前的顺序。",
+				]
+			: []),
 		"- 状态题的标准答案来自 MVU 快照，证据楼层是产生该状态变更的楼层；原文检索不读取状态层，这一题型的结果只反映文本召回。",
 		...(judged === null
 			? []
@@ -64,12 +81,16 @@ function renderMemoryReport(
 		"",
 		"## 语料与索引",
 		"",
-		"| 对话 | 楼层 | 块数 | 向量数 | 实体数 | 事件数 |",
-		"|---|---|---|---|---|---|",
+		"| 对话 | 楼层 | 块数 | 向量数 | 实体数 | 事件数 | 事件覆盖（有事件楼层/已确认助手楼层） |",
+		"|---|---|---|---|---|---|---|",
 	];
 	report.stories.forEach((story, index) => {
+		const coverage =
+			story.eventCoverage.assistantFloors === 0
+				? "—"
+				: `${story.eventCoverage.floorsWithEvents}/${story.eventCoverage.assistantFloors}（${percent(story.eventCoverage.floorsWithEvents / story.eventCoverage.assistantFloors)}）`;
 		lines.push(
-			`| ${storyLabel(index, story, includeStoryNames)} | ${story.floorCount} | ${story.chunkCount} | ${story.vectorCount} | ${story.entityCount} | ${story.eventCount} |`,
+			`| ${storyLabel(index, story, includeStoryNames)} | ${story.floorCount} | ${story.chunkCount} | ${story.vectorCount} | ${story.entityCount} | ${story.eventCount} | ${coverage} |`,
 		);
 	});
 
@@ -103,7 +124,7 @@ function renderMemoryReport(
 		`| 全部 | ${report.total.questionCount} | ${hitText(report.total, "hitAt5")} | ${hitText(report.total, "hitAt10")} | ${hitText(report.total, "hitAt20")} |`,
 	);
 
-	lines.push("", "## 每一路的单独成绩", "");
+	lines.push("", "## 各路与后处理的单独成绩", "");
 	lines.push("| 路 | 题目类型 | 题数 | 命中@5 | 命中@10 | 命中@20 |");
 	lines.push("|---|---|---|---|---|---|");
 	for (const route of report.routes) {
@@ -164,6 +185,17 @@ function renderMemoryReport(
 	});
 	lines.push(accuracyRow("合计", report.stateAccuracy));
 
+	if (report.fusionWeights !== null) {
+		lines.push(
+			"",
+			...renderFusionWeightsSection(
+				report.fusionWeights,
+				report,
+				includeStoryNames,
+			),
+		);
+	}
+
 	lines.push("", "## 门槛核对", "");
 	lines.push("| 门槛 | 对话 | 题数 | 实际 | 基线 | 目标 | 结果 |");
 	lines.push("|---|---|---|---|---|---|---|");
@@ -179,6 +211,56 @@ function renderMemoryReport(
 		);
 	}
 	return `${lines.join("\n")}\n`;
+}
+
+function renderFusionWeightsSection(
+	fusion: FusionCrossValidation,
+	report: MemoryEvalReport,
+	includeStoryNames: boolean,
+): string[] {
+	const lines = [
+		"## 融合权重交叉验证",
+		"",
+		`规则：每一路的候选权重为 ${fusion.candidates.join("、")}；在其余对话上依次按命中@5、@10、@20 选择，平局先取改动路数更少、再取离默认权重更近的一组；在留出的对话上报告。只有留出集的合计命中高于默认权重时才建议更新默认值。`,
+		"",
+		"| 留出对话 | 选中权重（BM25/向量/实体/事件/最近块） | 训练集命中@5/@10/@20 | 留出命中@5/@10/@20 | 默认权重留出命中@5/@10/@20 |",
+		"|---|---|---|---|---|",
+	];
+	for (const fold of fusion.folds) {
+		const index = report.stories.findIndex(
+			(story) => story.story === fold.heldOutStory,
+		);
+		const story = report.stories[index];
+		const label =
+			story === undefined
+				? fold.heldOutStory
+				: storyLabel(index, story, includeStoryNames);
+		lines.push(
+			`| ${label} | ${formatWeights(fold.selectedWeights)} | ${formatScore(fold.trainingScore)} | ${formatScore(fold.heldOutScore)} | ${formatScore(fold.defaultHeldOutScore)} |`,
+		);
+	}
+	lines.push("");
+	lines.push(
+		`- 留出集合计：选中权重 ${formatScore(fusion.heldOutSelectedScore)}，默认权重 ${formatScore(fusion.heldOutDefaultScore)}。`,
+	);
+	lines.push(
+		`- 全量数据：选中权重 ${formatScore(fusion.selectedScore)}，默认权重 ${formatScore(fusion.defaultScore)}。`,
+	);
+	lines.push(
+		`- 推荐默认权重：${formatWeights(fusion.selectedWeights)}；结论：${fusion.improved ? "交叉验证有提升，更新默认值" : "交叉验证没有提升，保持默认值"}。`,
+	);
+	return lines;
+}
+
+function formatWeights(weights: RetrievalRouteWeights): string {
+	return FUSION_ROUTES.map((route: RetrievalRoute) =>
+		String(weights[route] ?? 1),
+	).join("/");
+}
+
+function formatScore(score: MemoryEvalScore): string {
+	if (score.questionCount === 0) return "—";
+	return `${score.hitAt5}/${score.hitAt10}/${score.hitAt20}（${percent(score.hitAt5 / score.questionCount)}/${percent(score.hitAt10 / score.questionCount)}/${percent(score.hitAt20 / score.questionCount)}）`;
 }
 
 function thresholdRow(

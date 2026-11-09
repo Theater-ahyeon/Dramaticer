@@ -96,7 +96,7 @@ export async function runEventsBackfillCli(
 	});
 	for (const story of result.stories) {
 		log(
-			`${story.story}${story.imported ? "（新导入）" : "（沿用已有导入）"}：${story.floorCount} 个楼层，${story.chunkCount} 个块，${story.vectorCount} 个向量，${story.entityCount} 个实体，${story.eventCount} 条事件，${story.windowCount} 个窗口`,
+			`${story.story}${story.imported ? "（新导入）" : "（沿用已有导入）"}：${story.floorCount} 个楼层，${story.chunkCount} 个块，${story.vectorCount} 个向量，${story.entityCount} 个实体，${story.eventCount} 条事件，事件覆盖 ${story.floorsWithEvents}/${story.assistantFloors}，${story.windowCount} 个窗口`,
 		);
 	}
 	log(
@@ -185,7 +185,10 @@ async function main(): Promise<void> {
 	const cacheRoot = path.join(repoRoot, "eval-private", "memory-cache");
 	await runEventsBackfillCli({
 		rawRoot: path.join(repoRoot, "eval-private", "raw"),
-		dbPath: args.dbPath ?? path.join(cacheRoot, "eval.db"),
+		dbPath:
+			args.dbPath === null
+				? path.join(cacheRoot, "eval.db")
+				: path.resolve(repoRoot, args.dbPath),
 		eventsCacheDir: path.join(cacheRoot, "events"),
 		embeddingsCacheDir: path.join(cacheRoot, "embeddings"),
 		channelsPath: path.join(repoRoot, "data", "channels.yaml"),

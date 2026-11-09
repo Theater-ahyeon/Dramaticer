@@ -745,4 +745,62 @@ describe("多路融合检索", () => {
 			}),
 		).rejects.toThrow("视角必须是非空字符串");
 	});
+
+	it("按每一路的权重改变 RRF 分数与顺序", async () => {
+		const { store } = openTempStore();
+		store.createStory({ id: "s-weighted", title: "权重" });
+		const root = store.appendNode({
+			id: "n-root",
+			storyId: "s-weighted",
+			parentId: null,
+			role: "system",
+			raw: "青铜匕首藏在井底。",
+		});
+		const user = store.appendNode({
+			id: "n-user",
+			storyId: "s-weighted",
+			parentId: root.id,
+			role: "user",
+			raw: "我顺着绳子下井。",
+		});
+		const ask = store.appendNode({
+			id: "n-ask",
+			storyId: "s-weighted",
+			parentId: user.id,
+			role: "assistant",
+			raw: "你找到了青铜匕首。",
+		});
+		store.insertMemoryEvents([
+			{
+				storyId: "s-weighted",
+				sourceNodeId: root.id,
+				ordinal: 0,
+				participants: ["我"],
+				importance: 0.9,
+				knowers: [],
+				text: "匕首藏在井底",
+			},
+		]);
+		const rankings = await rankMemoryRoutes({
+			store,
+			storyId: "s-weighted",
+			query: "青铜匕首",
+			beforeNodeId: ask.id,
+		});
+		const equal = fuseRetrievalRoutes(rankings.routes);
+		expect(equal[0]?.kind).toBe("event");
+		const weighted = fuseRetrievalRoutes(rankings.routes, { bm25: 2 });
+		expect(weighted[0]?.kind).toBe("chunk");
+		expect(weighted[0]?.score).toBeGreaterThan(weighted[1]?.score ?? 0);
+	});
+
+	it("非法的路权重直接抛错", () => {
+		expect(() => fuseRetrievalRoutes([], { bm25: Number.NaN })).toThrow(
+			"权重必须",
+		);
+		expect(() => fuseRetrievalRoutes([], { event: 0 })).toThrow("权重必须");
+		expect(() => fuseRetrievalRoutes([], { unknown: 1 } as never)).toThrow(
+			"未知的检索路权重",
+		);
+	});
 });
