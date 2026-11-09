@@ -3,11 +3,12 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 会话 205：继续 R5-T14.c（2026-11-09）。
-- 入队侧修复与四个回归测试已由会话 204 提交（`5008df1`，`enqueueMissingBackgroundJobs` 只按 `getPathToHead` 的节点入队，故事级任务不变）；`.devloop/gate.txt` 为 `PASS`（02:28:48 本地时间，晚于该提交）。
-- 会话 204 在 10:25:38Z 启动监督进程 pid 45256（配置 `.devloop/scratch/R5-T14/supervisor-config.json`），清空后的 `live.db` 与续跑文件运行 60 轮重跑；`supervisor.json` 状态 `running`，第 1 次试玩调用进行中。
-- 本会话未启动第二个 server 或试玩，未改代码。核对时进度：续跑文件 2/60 条 round 记录、0 条 failure；后台 `done=24`、`pending=13`、`running=1`；已完成的种类包含 `candidate_actions` 2、`settle` 2、`scene` 1、`user_will` 2、`memory_revision` 2、`events` 3、`summary` 3、`embeddings` 3、`npc_agenda` 3、`opening` 1、`opening_candidates` 1、`director_plan` 1。修复前的第 60 轮结束时 `done` 停在 109 且 `candidate_actions` 全部为 0，因此前 2 轮已能观察到饥饿症状消失；仍需跑满 60 轮后再下结论。
-- 目前唯一的 `running` 是 `scene`，`pending` 13 条属于当前路径上的新楼层，队列没有出现「每轮复活 20 条旧分支任务再全部丢弃」的循环。
+- 会话 206：继续 R5-T14.c（2026-11-09）。
+- 入队侧修复与四个回归测试已由会话 204 提交（`5008df1`，`enqueueMissingBackgroundJobs` 只按 `getPathToHead` 的节点入队，故事级任务不变）；`.devloop/gate.txt` 为 `PASS`（本地时间 02:32，晚于该提交）。
+- 监督进程 pid 45256 存活，server pid 48864 监听 8787；10:25:38Z 启动，第 1 次试玩调用（预算 20 分钟）进行中。
+- 10:35:10Z 核对：续跑文件 5/60 条 round 记录、0 条 failure；后台 `done=78`，其中 `candidate_actions` 7、`settle` 7、`scene` 4、`user_will` 7、`memory_revision` 7、`events` 11、`summary` 11、`npc_agenda` 11、`embeddings` 11、`opening` 1、`opening_candidates` 1、`director_plan` 1；`pending=6`、`running=1`（`settle`）、`discarded=2`（第 3 轮 swipe 与第 4 轮 edit 放弃楼层的 `scene`，节点 `ad55a04c`、`908169a9`）。`done` 随轮次增长，修复前「每轮复活 20 条旧分支任务再全部丢弃」的循环没有出现。
+- 两份报告仍是修复前第一次运行的产物（本地时间 02:12）；监督进程在跑满 60 轮时会覆盖它们。
+- 本会话未启动 server 或试玩，未改代码。
 
 ## 当前状态
 - 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T07.b.d.a 与 R1-T07.b.d.b）、R3、O、R2、E、R4、R5-T01 至 R5-T13、R5-T14.a。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
@@ -15,9 +16,9 @@
   - 修复内容：`packages/core/src/store/story-store.ts` 的 `enqueueMissingBackgroundJobs` 先取 `getPathToHead` 的节点 id，再过滤 `confirmed`/`settled` 集合并只对路径节点入队；故事级任务照常按 `story_id + kind` 入队。`drain` 的路径检查没有放宽。
   - 回归测试在 `packages/core/test/background-jobs.test.ts` 的「入队只看当前路径」：放弃分支后用 drain 推进当前路径任务、旧分支任务保持 `discarded`、切回旧分支后重新入队并执行、旧任务不占据队列头部（25 个旧楼层分两轮丢弃，当前路径任务在第二轮执行）。
   - 重跑完成后核对：续跑文件 60 条 round 记录、0 条 failure；`done` 随轮次持续增长；`candidate_actions` 与 `settle` 有完成记录；`pending` 不再持续增长；两份报告（`eval-private/reports/r5-playtest.md` 与 `docs/dev/reports/R5-playtest.md`）已重新生成且统计版通过私有标识反向扫描。
-  - 重跑期间继续按 R5-T14.a 的方式分会话监控：`supervisor.json` 的 `state`，轮数取续跑文件的 round 记录数。`running` 时只记录进度并交接；不要在会话里再启动 server 或试玩。监督进程负责停止 server 并写报告。
+  - 监控口径：`supervisor.json` 的 `state`，轮数取续跑文件的 round 记录数（`supervisor.json` 的 `rounds` 只在每次调用结束时刷新）。`running` 时只记录进度并交接；不要在会话里再启动 server 或试玩。监督进程负责停止 server 并写报告。
 - **R5-T14.d**（依赖 R5-T14.a）：服务端重启后恢复遗留 `running` 行。`drainBackgroundJobs` 只取 `pending`，`startBackgroundJob` 只接受 `pending`；进程在执行中途退出后这些行既不会重试，也不计入待办（上一次运行留有一条 08:12:45Z 启动的 `candidate_actions` 停在 `running`）。存储层新增 `requeueRunningBackgroundJobs(storyId?)`：把 running 行退回 pending，清空 `started_at`、`attempts` 减一（不低于 0），保留 `last_error`；`done`、`failed`、`discarded` 不动。server 在启动、第一次 drain 之前对全部故事调用一次；`dramaticer work` 在循环开始前对目标故事调用一次；补模拟进程中断的回归测试。
-- **R5-T14.b**（依赖 R5-T14.a 与 R5-T14.c）：核对统计版字段与 ADR-0033 口径（对比胜率、矛盾率、节拍余弦没有信号时保持「未证实」），在 `docs/dev/reports/R5.md` 引用统计版并写明模型别名、轮数与操作次数；重跑 `pnpm check`。修复前第一次运行的数据在 60 轮里产生，候选行动、线索、结算与节拍推进必须按「未证实」记录并写明原因与 R5-T14.c 的重跑结果。修复前的统计版可从 git 历史取出。
+- **R5-T14.b**（依赖 R5-T14.a 与 R5-T14.c）：核对统计版字段与 ADR-0033 口径（对比胜率、矛盾率、节拍余弦没有信号时保持「未证实」），在 `docs/dev/reports/R5.md` 引用统计版并写明模型别名、轮数与操作次数；重跑 `pnpm check`。修复前第一次运行的数据在 60 轮里产生，候选行动、线索、结算与节拍推进必须按「未证实」记录并写明原因与 R5-T14.c 的重跑结果。修复前的统计版可从 git 历史取出。解释候选行动数字时要区分排队时长与饥饿：重跑里每个已完成助手楼层都有 5 条 `director_candidate_actions`，但写库时间比助手楼层晚约 78 秒，超过面板 30 秒的轮询窗口，续跑记录里的 `candidateActions.count` 仍可能为 0。
 - **R5-T99**：R5 验收；会重跑 `pnpm check`、`pnpm e2e` 与 60 轮报告。
 - v3 阶段顺序：R3 快回合 → O 开局与方向 → R2 评测底座 → E 排障 → R4 → R5（界面）→ M6 生图第一批 → R1 续 记忆增强 → R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → P3/P4 → M5 → P5 → M7。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045、ADR-0078。

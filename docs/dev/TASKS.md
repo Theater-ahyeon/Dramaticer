@@ -744,7 +744,7 @@
   - 回归测试：两条分支交替，放弃一条后用 drain 推进当前路径上的任务；旧分支任务保持 `discarded`；切回后重新入队并执行；旧任务不占据队列头部。
   - 修复后按 R5-T14 的配置重跑 60 轮（先停掉已完成的监督进程，清空 `live.db` 与续跑文件），确认 `done` 随轮次增长、`candidate_actions` 与 `settle` 有完成记录、`pending` 不再持续增长。
   验收：回归测试覆盖上述四种情形；重跑 60 轮 0 条失败记录且后台 `done` 持续增长；两份报告重新生成；`pnpm check` 通过。
-  进度（2026-11-09）：入队侧已改为按 `getPathToHead` 过滤并提交（5008df1），四个回归测试通过，门禁通过；10:25:38Z 启动监督进程 pid 45256 重跑 60 轮，第 1 次调用进行中，续跑文件 2/60 轮、0 条失败，`done` 24（`candidate_actions` 2、`settle` 2），`pending` 13。剩余：等重跑完成，核对后台 `done` 持续增长、`candidate_actions` 与 `settle` 有完成记录、`pending` 不再持续增长，重新生成两份报告。
+  进度（2026-11-09）：入队侧已改为按 `getPathToHead` 过滤并提交（5008df1），四个回归测试通过，门禁通过；10:25:38Z 启动监督进程 pid 45256 重跑 60 轮，第 1 次调用进行中；10:35:10Z 核对续跑文件 5/60 轮、0 条失败，后台 `done=78`（`candidate_actions` 7、`settle` 7、`scene` 4、`user_will` 7、`memory_revision` 7、`events` 11、`summary` 11、`npc_agenda` 11、`embeddings` 11、`opening` 1、`opening_candidates` 1、`director_plan` 1）、`pending=6`、`running=1`、`discarded=2`（两次 swipe/edit 放弃楼层的 `scene`）；`done` 随轮次增长，修复前每轮复活 20 条旧分支任务再丢弃的循环没有出现。剩余：等重跑完成，核对 `done` 持续增长、`candidate_actions` 与 `settle` 有完成记录、`pending` 不再持续增长，确认两份报告重新生成。
 
 - [ ] **R5-T14.d 服务端重启后恢复遗留 running 任务** | 依赖：R5-T14.a、R5-T01
   背景与证据（2026-11-09 09:19Z，对 `.devloop/scratch/R5-T14/live.db` 的只读查询）：监督进程在 08:12:59Z 重新启动 server，当前故事留下一条 `candidate_actions` 任务（`node_id` `1bb4dde0-8327-4410-a073-1af30c25e6b9`，`started_at` 08:12:45.729Z）永久停在 `running`。`drainBackgroundJobs`（`packages/core/src/background/drain.ts`）只取 `status = 'pending'` 的行，`startBackgroundJob` 只接受 `pending`，所以进程在执行中途退出后这些行既不会重试，也不计入待办。
