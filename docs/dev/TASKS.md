@@ -744,7 +744,7 @@
   - 回归测试：两条分支交替，放弃一条后用 drain 推进当前路径上的任务；旧分支任务保持 `discarded`；切回后重新入队并执行；旧任务不占据队列头部。
   - 修复后按 R5-T14 的配置重跑 60 轮（先停掉已完成的监督进程，清空 `live.db` 与续跑文件），确认 `done` 随轮次增长、`candidate_actions` 与 `settle` 有完成记录、`pending` 不再持续增长。
   验收：回归测试覆盖上述四种情形；重跑 60 轮 0 条失败记录且后台 `done` 持续增长；两份报告重新生成；`pnpm check` 通过。
-  进度（2026-11-09）：入队侧已改为按 `getPathToHead` 过滤并提交（5008df1），四个回归测试通过，门禁通过；10:25:38Z 启动监督进程 pid 45256 重跑 60 轮，第 1 次调用进行中；10:41:45Z 核对续跑文件 7/60 轮、0 条失败，后台 `done=99`（`candidate_actions` 9、`settle` 10、`scene` 5、`user_will` 10、`memory_revision` 10、`events` 13、`summary` 13、`npc_agenda` 13、`embeddings` 13、`opening` 1、`opening_candidates` 1、`director_plan` 1）、`pending=3`（`scene` 2、`candidate_actions` 1）、`running=0`、`discarded=3`（swipe/edit 放弃楼层的 `scene`）；`done` 随轮次增长，修复前每轮复活 20 条旧分支任务再丢弃的循环没有出现。10:50Z 核对第 1 次调用在第 8 轮失败后卡在 `describeFailure`：`.error-notice` 不存在时 Playwright 动作没有默认超时，`innerText` 一直等到用例超时（25 分钟），失败记录在超时后才写出（失败截图 `failure-round-008.png` 生成于 10:38:37Z，节点表显示第 8 轮的用户楼层未创建，失败发生在发送之前），第 1 次调用因此耗尽时间预算；监督进程日志在 10:51:01Z 记下原因「模拟用户连续 3 次没有输出合法的 {message}：输出为空」。根因是模拟用户请求的 `maxTokens: 400` 与后台模型的思考 token 共用输出上限，思考耗尽后正文为空；`generateSimulatedUserMessage` 的上限改为 4096。`describeFailure` 改为 `innerText({ timeout: 5_000 })` 并加注释，biome 与 web typecheck 通过。第 2 次调用从 7/60 重试第 8 轮，10:53Z 完成第 8 轮（含 edit 操作），10:54Z 完成第 9 轮（含分支切换）。剩余：等重跑完成，核对 `done` 持续增长、`candidate_actions` 与 `settle` 有完成记录、`pending` 不再持续增长，确认两份报告重新生成。11:01Z 核对续跑文件 10/60 轮、0 条失败（第 8 轮重试成功，第 9、10 轮完成）；后台 `done=152`（`candidate_actions` 14、`settle` 15、`scene` 7、`user_will` 15、`memory_revision` 15、`events` 21、`summary` 21、`npc_agenda` 21、`embeddings` 21、`opening` 1、`opening_candidates` 1、`director_plan` 1）、`pending=3`、`running=1`、`discarded=4`、`failed=2`；`pending` 里的两条 `scene` 因「现场分析返回了空内容」重试中（`attempts` 2 与 1），`done` 随轮次增长、`pending` 保持个位数。
+  进度（2026-11-09）：入队侧已改为只按 `getPathToHead` 过滤并提交（5008df1），四个回归测试与门禁通过；监督进程 pid 45256 从 10:25:38Z 开始 60 轮重跑，第 1 次调用在第 8 轮因模拟用户空输出失败后由监督进程丢弃并重试（第 2 次调用 10:51:03Z 开始，第 8 轮含 edit、第 9 轮含分支切换）；11:01Z 续跑文件 12/60 条 round 记录、0 条失败，后台 `done=175`（`candidate_actions` 16、`settle` 16、`scene` 8、`user_will` 16、`memory_revision` 16、`events` 25、`summary` 25、`npc_agenda` 25、`embeddings` 25、`opening` 1、`opening_candidates` 1、`director_plan` 1）、`pending=4`（第 13 轮的 `candidate_actions`、`memory_revision`、`scene`、`user_will`）、`running=1`（`settle`）、`discarded=4`、`failed=4`（`scene`，均为「现场分析返回了空内容」重试三次后失败）；`done` 随轮次增长、`pending` 保持个位数，修复前每轮复活 20 条旧任务的循环没有出现。剩余：等重跑跑满 60 轮，核对 60 条 round 记录、0 条失败记录、两份报告重新生成与统计版私有标识扫描，然后标记完成；`scene` 空输出的修复见 R5-T14.e。
 
 - [x] **R5-T14.d 服务端重启后恢复遗留 running 任务** | 依赖：R5-T14.a、R5-T01
   完成：2026-11-09 存储层新增 `requeueRunningBackgroundJobs(storyId?)`（running 退回 pending、清空 `started_at` 与 `finished_at`、`attempts` 减一且不低于 0、保留 `last_error`，其它状态不动）；`startServer` 在打开数据库之后、创建调度器之前调用一次（全部故事），`dramaticer work` 在循环开始前调用一次；新增 4 个回归测试（状态与故事作用域、drain 重新执行且执行次数不重复累计、server 重启恢复遗留 running 行、work CLI 恢复后执行）；门禁通过（148 个测试文件、1310 个测试，3 个 live 跳过）
@@ -759,7 +759,14 @@
   做什么：核对统计版字段与 ADR-0033 口径，没有信号的指标保持「未证实」，不改口径；在 `docs/dev/reports/R5.md` 引用统计版并写明模型别名、轮数与操作次数；重跑 `pnpm check`。
   验收：统计版字段齐全并通过私有标识反向扫描；`docs/dev/reports/R5.md` 的引用与数字和统计版一致；`pnpm check` 通过。
 
-- [ ] **R5-T99 R5 验收** | 依赖：R5 全部任务（含 R5-T02.a、R5-T02.b、R5-T02.c、R5-T05.a、R5-T07.a、R5-T14.a、R5-T14.b、R5-T14.c）
+- [ ] **R5-T14.e 现场分析的输出预算与思考 token** | 依赖：R5-T14.c
+  背景与证据（2026-11-09，对 `.devloop/scratch/R5-T14/live.db` 的只读查询）：R5-T14.c 重跑到第 12 轮时 17 条 `scene` 任务中 8 条完成、4 条随放弃楼层丢弃、4 条重试三次后 `failed`、1 条待执行，`last_error` 全是「现场分析返回了空内容」。`createSceneHandler` 把 `DEFAULT_SCENE_MAX_TOKENS = 200` 直接作为请求的 `maxTokens`（`packages/core/src/memory/scene.ts:108`）；`background` 模型的思考 token 与正文共用输出上限，思考耗尽 200 后正文为空，当前路径上约三分之一的楼层因此没有现场分析。R1-T07.b.d.b 已确认该网关无法关闭思考，后台模型的声明上限是 32,768。
+  做什么：
+  - 现场分析请求不再用 200 token 同时充当思考与正文的预算：不显式传 `maxTokens`，让请求使用模型声明的输出上限；正文长度仍由系统提示词的「两百字以内」约束，存储时用 token 估算器记录长度。
+  - 假客户端回归测试断言 `scene` 请求不带 `maxTokens`（走模型声明上限），且空正文仍然抛错并按任务重试，三次后 `failed` 并保留原因。
+  验收：假客户端下 `scene` 请求使用模型声明上限；空正文仍按失败重试，三次后 `failed`；12 轮重跑里出现过的空输出不再发生（用固定假客户端与一次真实渠道各验证一次请求参数）；`pnpm check` 通过。
+
+- [ ] **R5-T99 R5 验收** | 依赖：R5 全部任务（含 R5-T02.a、R5-T02.b、R5-T02.c、R5-T05.a、R5-T07.a、R5-T14.a、R5-T14.b、R5-T14.c、R5-T14.e）
   做什么：同 M0-T99；重跑 `pnpm check`、`pnpm e2e` 与 60 轮试玩报告；逐条核对 R5-T01 至 R5-T14 与全部子任务；复核 I6（模式只由玩家切换）、I9（导演实时选择零模型调用）、I11–I14，以及 server 不绕过 core 直接写库；检查默认回环监听与局域网密码；在 `docs/dev/reports/R5.md` 总结；确认 M6、R1 续与 R3b 任务。
   结果写 `MILESTONE_DONE`；报告缺失时写 `PARTIAL`。
 
