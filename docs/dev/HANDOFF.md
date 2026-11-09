@@ -3,21 +3,16 @@
 > 每个会话结束前都要**完整重写**这个文件（不是往后追加）。
 
 ## 最近一次会话
-- 会话：173 之后的循环修复与监督进程（2026-11-09）
-- 问题：给试玩加上续跑后，devloop 会话 174–176 仍是 `NO_RESULT`。会话把试玩放到后台后结束回合，omp 退出时 server 与试玩一起结束；第 1 轮在 `round-1/observe` 收到 `ECONNREFUSED 127.0.0.1:8787`，续跑文件里只有一条失败记录。模型渠道不是失败原因：`main-fallback` 在第 1 轮 9 秒内完成了生成。
-- 修复：
-  - 新增会话外监督进程 `scripts/r5-playtest-supervisor.mjs`：读 `.devloop/scratch/R5-T14/supervisor-config.json`，构建一次、启动专用 server、按每次调用 20 分钟预算反复调用自动试玩，直到 60 轮；每轮写续跑文件，跑满写两份报告；状态与日志在 `.devloop/scratch/R5-T14/supervisor.json`、`supervisor.log`；同一时间只允许一个监督进程（`supervisor.lock`）。监督进程由会话用 `Start-Process` 启动，脱离会话运行。
-  - 续跑文件与配置一致性校验、失败轮重试、live 时间预算沿用上一轮修复。
-  - 验证：假 server 上监督进程 6 轮分 5 次调用跑完，状态 `completed`，两份报告生成；`node --check` 通过。
-- 渠道：`main-fallback` 与 `background` 可用；`catie` 的 Gemini 3.8 Flash 仍 503，网关的 `auto/gemini-3.8-flash` 返回 400「not allowed for user type personal_free_user」；TauriTavern 当前用 Vertex AI 的 `gemini-4-argon`，本项目不支持 Vertex 渠道，已记 HUMAN-14。`data/channels.yaml` 的 `roles.writer` 改为 `main-fallback`。
-- 任务拆分：R5-T14 拆成 R5-T14.a（跑满 60 轮，监督进程执行）与 R5-T14.b（报告核对与文档）；R5-T99 依赖这两项。
-- 监督进程已在 2026-11-09T08:06Z 启动（pid 7524），server 监听 8787，第一次试玩调用进行中。
+- 会话 177：检查 R5-T14.a 的监督进程（2026-11-09 08:11Z）
+- 监督进程 pid 7524 存活，第 1 次试玩调用自 08:07:05Z 起进行中；续跑文件 `eval-private/reports/r5-playtest.progress.json` 已有 2/60 条 round 记录、0 个失败（第 1 轮 114 秒、第 2 轮 103 秒）。
+- `supervisor.json` 仍是启动时写入的 `running`；它的 `rounds` 只在每次调用结束后刷新，实时轮数以续跑文件为准。
+- 本会话没有启动第二个 server 或试玩，没有改代码；门禁沿用上次通过（151 个测试文件、1301 个通过、3 个 live 跳过）。
 
 ## 当前状态
 - 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T07.b.d.a 与 R1-T07.b.d.b）、R3、O、R2、E、R4、R5-T01 至 R5-T13。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- **R5-T14.a 正在进行，由会话外的监督进程执行**：
+- **R5-T14.a 正在进行，由会话外的监督进程执行**（2026-11-09 08:11Z：pid 7524，2/60 轮，0 失败）：
   - 状态文件 `.devloop/scratch/R5-T14/supervisor.json`；日志 `.devloop/scratch/R5-T14/supervisor.log`；续跑文件 `eval-private/reports/r5-playtest.progress.json`。
-  - 会话只读状态：`running` → 把 `rounds/target` 写进本文件并提交，结果 `PARTIAL`；`completed` → 核对 60 条 round 记录与两份报告，标记 `[x]`；`failed` → 读日志修复后重新启动监督进程。
+  - 会话只读状态：以 `supervisor.json` 的 `state` 为准，轮数以 `eval-private/reports/r5-playtest.progress.json` 的 round 记录数为准（状态里的 `rounds` 只在每次调用结束时刷新）。`running` → 把当前轮数写进本文件并提交，结果 `PARTIAL`；`completed` → 核对 60 条 round 记录与两份报告，标记 `[x]`；`failed` → 读日志修复后重新启动监督进程。
   - 不要在会话里再启动 server 或直接跑 `pnpm playtest`；不要删除 `supervisor.lock`（除非确认进程已死）。
   - 需要重启监督进程时用：
     `powershell -NoProfile -Command '$p = Start-Process -FilePath "C:\Program Files\nodejs\node.exe" -ArgumentList "scripts/r5-playtest-supervisor.mjs","--config",".devloop/scratch/R5-T14/supervisor-config.json" -WorkingDirectory "E:\agentcoding\Dramaticer" -WindowStyle Hidden -PassThru; $p.Id'`
@@ -82,7 +77,7 @@
 - 聊天页、分支页、台账页、导演页、设置页与渠道页的手工冒烟脚本在 `.devloop/scratch/R5-T08`、`R5-T09`、`R5-T10`；`playwright-core` 在 `E:/agentcoding/node_modules` 可解析，Chromium 在 `%LOCALAPPDATA%/ms-playwright/chromium-1243/`。
 
 ## 下一步
-- **R5-T14.a**：先读 `.devloop/scratch/R5-T14/supervisor.json`。`running` 时只把 `rounds/target` 写进本文件、提交、结果写 `PARTIAL`，不要启动第二个 server 或试玩；`completed` 时核对续跑文件 60 条 round 记录、0 个失败与两份报告，标记 `[x]`；`failed` 时读 `supervisor.log` 修复后重新启动监督进程。
+- **R5-T14.a**：先读 `.devloop/scratch/R5-T14/supervisor.json` 的 `state`，轮数以 `eval-private/reports/r5-playtest.progress.json` 的 round 记录数为准。`running` 时只把当前轮数写进本文件、提交、结果写 `PARTIAL`，不要启动第二个 server 或试玩；`completed` 时核对续跑文件 60 条 round 记录、0 个失败与两份报告，标记 `[x]`；`failed` 时读 `supervisor.log` 修复后重新启动监督进程。
 - **R5-T14.b**：核对统计版字段与 ADR-0033 口径（对比胜率、矛盾率、节拍余弦没有信号时保持「未证实」），在 `docs/dev/reports/R5.md` 引用统计版并写明模型别名、轮数与操作次数；重跑 `pnpm check`。
 - 之后 R5-T99（R5 验收；会重跑 `pnpm check`、`pnpm e2e` 与 60 轮报告）。
 - 引用评测数字时：B1 必须同时说明同模型子集为空、每个对话每档只有 1 个样本；遗忘矛盾率必须同时说明失败题数与可判定样本数；偏好一致率当前没有样本。
