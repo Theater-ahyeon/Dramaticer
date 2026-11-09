@@ -5119,9 +5119,8 @@ export class StoryStore {
 		const requiresConfirmed = kinds.some(
 			(kind) => conditionFor(kind) === "confirmed",
 		);
-		const nodes = this.#db
-			.prepare("SELECT id FROM nodes WHERE story_id = ? ORDER BY row_id ASC")
-			.all(input.storyId) as { readonly id: string }[];
+		const nodeIds = this.getPathToHead(input.storyId).map((node) => node.id);
+		const pathNodeIds = new Set(nodeIds);
 		const confirmed = requiresConfirmed
 			? new Set(
 					(
@@ -5135,7 +5134,9 @@ export class StoryStore {
 									AND COALESCE(json_extract(traces.trace, '$.profile'), 'native') <> 'naive'`,
 							)
 							.all(input.storyId) as { readonly id: string }[]
-					).map((row) => row.id),
+					)
+						.filter((row) => pathNodeIds.has(row.id))
+						.map((row) => row.id),
 				)
 			: new Set<string>();
 		const settled = requiresSettled
@@ -5152,7 +5153,9 @@ export class StoryStore {
 									AND COALESCE(json_extract(traces.trace, '$.profile'), 'native') <> 'naive'`,
 							)
 							.all(input.storyId) as { readonly id: string }[]
-					).map((row) => row.id),
+					)
+						.filter((row) => pathNodeIds.has(row.id))
+						.map((row) => row.id),
 				)
 			: new Set<string>();
 		const insert = this.#db.prepare(
@@ -5181,16 +5184,16 @@ export class StoryStore {
 		);
 		const created: BackgroundJob[] = [];
 		this.#db.transaction(() => {
-			for (const node of nodes) {
+			for (const nodeId of nodeIds) {
 				for (const kind of kinds) {
 					const condition = conditionFor(kind);
 					if (condition === "story") continue;
 					const eligible =
 						condition === "settled"
-							? settled.has(node.id)
-							: confirmed.has(node.id);
+							? settled.has(nodeId)
+							: confirmed.has(nodeId);
 					if (!eligible) continue;
-					const row = insert.get(input.storyId, node.id, kind, createdAt) as
+					const row = insert.get(input.storyId, nodeId, kind, createdAt) as
 						| { readonly id: number }
 						| undefined;
 					if (row === undefined) continue;

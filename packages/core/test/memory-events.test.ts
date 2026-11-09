@@ -725,9 +725,14 @@ describe("事件抽取任务", () => {
 		store.setHead("s1", "u1");
 		const { client, requests } = windowClient();
 		enqueueMissingJobs({ store, storyId: "s1", kinds: ["events"] });
+		expect(
+			store
+				.listBackgroundJobs({ storyId: "s1", kinds: ["events"] })
+				.map((job) => job.nodeId),
+		).toEqual(["a0", "u0", "a1"]);
 		const handler = createEventExtractionHandler();
 
-		await handler({ store, client, job: jobOf(store, "s1", "a1b") });
+		await handler({ store, client, job: jobOf(store, "s1", "a1") });
 
 		expect(requests).toHaveLength(1);
 		const message = requests[0]?.messages.find(

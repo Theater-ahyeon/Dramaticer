@@ -4,6 +4,7 @@ import Database from "better-sqlite3";
 import * as sqliteVec from "sqlite-vec";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 import {
+	type BackgroundDrainResult,
 	type BackgroundJob,
 	type BackgroundJobContext,
 	LATEST_SCHEMA_VERSION,
@@ -745,6 +746,181 @@ describe("过期任务丢弃", () => {
 		});
 		expect(() => store.discardBackgroundJob(1)).toThrow("只有 pending");
 	});
+});
+
+describe("入队只看当前路径", () => {
+	interface BranchScenario {
+		readonly store: StoryStore;
+		readonly executed: string[];
+		readonly oldJobIds: readonly number[];
+		readonly drain: () => Promise<BackgroundDrainResult>;
+	}
+
+	/** 旧分支有 `oldFloorCount` 个楼层；入队旧分支任务后从 n-c 切到新分支。 */
+	async function openBranchScenario(
+		oldFloorCount: number,
+	): Promise<BranchScenario> {
+		const { store } = openTempStore();
+		store.createStory({ id: "s1", title: "分支测试" });
+		const append = (
+			id: string,
+			parentId: string | null,
+			role: "assistant" | "user",
+		) =>
+			store.appendNode({
+				id,
+				storyId: "s1",
+				parentId,
+				role,
+				raw: `楼层 ${id}`,
+			});
+		append("n-a", null, "assistant");
+		append("n-b", "n-a", "user");
+		append("n-c", "n-b", "assistant");
+		let parentId = "n-c";
+		for (let index = 1; index <= oldFloorCount; index += 1) {
+			const id = `n-old-${index}`;
+			append(id, parentId, index % 2 === 1 ? "user" : "assistant");
+			parentId = id;
+		}
+		const queued = await enqueueMissingJobs({
+			store,
+			storyId: "s1",
+			kinds: ["events"],
+			now: () => FIXED_NOW,
+		});
+		const oldJobIds = queued
+			.filter((job) => job.nodeId?.startsWith("n-old-") === true)
+			.map((job) => job.id);
+		if (oldJobIds.length === 0) throw new Error("旧分支任务没有入队");
+
+		store.setHead("s1", "n-c");
+		append("n-new", "n-c", "user");
+		append("n-new-reply", "n-new", "assistant");
+
+		const executed: string[] = [];
+		const registry = createBackgroundJobRegistry({
+			events: (context) => {
+				executed.push(String(context.job.nodeId));
+			},
+		});
+		return {
+			store,
+			executed,
+			oldJobIds,
+			drain: () =>
+				drainBackgroundJobs({
+					store,
+					registry,
+					client: unusedClient,
+					storyId: "s1",
+					kinds: ["events"],
+					now: () => FIXED_NOW,
+				}),
+		};
+	}
+
+	it(
+		"放弃分支后用 drain 推进当前路径上的任务",
+		{ timeout: 30_000 },
+		async () => {
+			const scenario = await openBranchScenario(5);
+			const result = await scenario.drain();
+			expect(
+				result.runs
+					.filter((run) => run.status === "done")
+					.map((run) => run.nodeId),
+			).toEqual(["n-a", "n-b", "n-c", "n-new"]);
+			expect(result.discarded).toBe(4);
+			expect(scenario.executed).toEqual(["n-a", "n-b", "n-c", "n-new"]);
+		},
+		{ timeout: 30_000 },
+	);
+
+	it(
+		"旧分支任务保持 discarded，后续入队不再翻回",
+		{ timeout: 30_000 },
+		async () => {
+			const scenario = await openBranchScenario(5);
+			await scenario.drain();
+			const jobId = scenario.oldJobIds[0] as number;
+			expect(scenario.store.getBackgroundJob(jobId)?.status).toBe("discarded");
+
+			const second = await scenario.drain();
+			expect(second.enqueued).toBe(0);
+			expect(second.runs).toEqual([]);
+			const third = await scenario.drain();
+			expect(third.enqueued).toBe(0);
+			expect(third.runs).toEqual([]);
+			expect(scenario.store.getBackgroundJob(jobId)?.status).toBe("discarded");
+			expect(
+				scenario.store.countBackgroundJobs({
+					storyId: "s1",
+					kinds: ["events"],
+				}),
+			).toEqual({
+				pending: 0,
+				running: 0,
+				done: 4,
+				failed: 0,
+				discarded: 4,
+			});
+		},
+		{ timeout: 30_000 },
+	);
+
+	it(
+		"切回旧分支后任务重新入队并执行",
+		{ timeout: 30_000 },
+		async () => {
+			const scenario = await openBranchScenario(5);
+			await scenario.drain();
+			scenario.store.setHead("s1", "n-old-5");
+			const result = await scenario.drain();
+			expect(result.enqueued).toBe(4);
+			expect(
+				result.runs.map((run) => `${String(run.nodeId)}:${run.status}`),
+			).toEqual([
+				"n-old-1:done",
+				"n-old-2:done",
+				"n-old-3:done",
+				"n-old-4:done",
+			]);
+			expect(scenario.executed.slice(-4)).toEqual([
+				"n-old-1",
+				"n-old-2",
+				"n-old-3",
+				"n-old-4",
+			]);
+		},
+		{ timeout: 30_000 },
+	);
+
+	it(
+		"旧分支任务不再占据队列头部",
+		{ timeout: 30_000 },
+		async () => {
+			const scenario = await openBranchScenario(25);
+			const first = await scenario.drain();
+			expect(first.discarded).toBe(17);
+			expect(scenario.executed).not.toContain("n-new");
+
+			const second = await scenario.drain();
+			expect(second.discarded).toBe(7);
+			expect(second.enqueued).toBe(0);
+			expect(scenario.executed).toContain("n-new");
+
+			const third = await scenario.drain();
+			expect(third).toEqual({ enqueued: 0, discarded: 0, runs: [] });
+			expect(
+				scenario.store.listBackgroundJobs({
+					storyId: "s1",
+					status: "pending",
+				}),
+			).toEqual([]);
+		},
+		{ timeout: 30_000 },
+	);
 });
 
 describe("间隙积压", () => {

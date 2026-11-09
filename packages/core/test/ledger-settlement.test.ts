@@ -452,19 +452,19 @@ describe("按落定条件入队", () => {
 			role: "user",
 			raw: "我来了。",
 		});
-		const c = store.appendNode({
-			id: "n3",
-			storyId: "s1",
-			parentId: b.id,
-			role: "assistant",
-			raw: "还在写",
-		});
 		const aborted = store.appendNode({
 			id: "n3x",
 			storyId: "s1",
 			parentId: b.id,
 			role: "assistant",
 			raw: "断在半句",
+		});
+		const c = store.appendNode({
+			id: "n3",
+			storyId: "s1",
+			parentId: b.id,
+			role: "assistant",
+			raw: "还在写",
 		});
 		store.saveTurnTrace(traceFor(a.id, "s1", null));
 		store.saveTurnTrace(traceFor(c.id, "s1", b.id));
@@ -495,6 +495,48 @@ describe("按落定条件入队", () => {
 			"n1:events",
 			"n2:events",
 		]);
+	});
+
+	it("settled 条件排除当前路径上的中止楼层", () => {
+		const { store } = openTempStore();
+		store.createStory({ id: "s1", title: "测试故事" });
+		store.appendNode({
+			id: "n1",
+			storyId: "s1",
+			parentId: null,
+			role: "assistant",
+			raw: "开场。",
+		});
+		store.appendNode({
+			id: "n2",
+			storyId: "s1",
+			parentId: "n1",
+			role: "user",
+			raw: "继续。",
+		});
+		store.appendNode({
+			id: "n3",
+			storyId: "s1",
+			parentId: "n2",
+			role: "assistant",
+			raw: "断在半句",
+		});
+		store.appendNode({
+			id: "n4",
+			storyId: "s1",
+			parentId: "n3",
+			role: "user",
+			raw: "再来。",
+		});
+		store.saveTurnTrace(traceFor("n1", "s1", null));
+		store.saveTurnTrace(traceFor("n3", "s1", "n2", "aborted"));
+		const created = store.enqueueMissingBackgroundJobs({
+			storyId: "s1",
+			kinds: ["settle"],
+			conditions: { settle: "settled" },
+			createdAt: FIXED_ISO,
+		});
+		expect(created.map((job) => job.nodeId)).toEqual(["n1"]);
 	});
 
 	it("条件键必须属于本次类型列表，取值必须是已知条件", () => {

@@ -736,7 +736,7 @@
   - 监督进程只在会话外运行；续跑文件记录的数据库、渠道、标题与排期必须与当前配置一致，不一致直接失败。
   验收：续跑文件有 60 条 round 记录、0 个失败；两份报告生成；统计版无私有信息；报告给出导演机制命中、线索兑现与四种偏好信号的数字。
 
-- [ ] **R5-T14.c 后台任务入队只看当前路径（修正任务饥饿）** | 依赖：R5-T14.a、R5-T01
+- [~] **R5-T14.c 后台任务入队只看当前路径（修正任务饥饿）** | 依赖：R5-T14.a、R5-T01
   背景与证据（2026-11-09，对 `.devloop/scratch/R5-T14/live.db` 的只读查询）：`enqueueMissingBackgroundJobs`（`packages/core/src/store/story-store.ts:5077`）的 `confirmed`/`settled` 集合按 `SELECT id FROM nodes WHERE story_id = ?` 取整个故事的节点，没有按 head 路径过滤；已被 drain 丢弃（`status = 'discarded'`）的旧分支楼层任务因此每轮都会被 `ON CONFLICT (node_id, kind) DO UPDATE … WHERE background_jobs.status = 'discarded'` 翻回 `pending`。这些行创建时间最早，而 `listBackgroundJobs` 按 `created_at ASC, id ASC` 加 `limit` 取待办，drain 每轮先丢弃这 20 条旧分支行，当前路径上的任务永远轮不到。实测 5 个不在 head 路径上的楼层共 20 条任务每轮被丢弃，`discarded` 总数保持 20、当前故事的 `done` 停在 109（最后完成 08:39:20Z）、`pending` 每轮增加约 13 条、`pending` 行 `started_at` 全为空；另有一条 08:12:45Z 启动的 `candidate_actions` 行停在 `running`，服务端重启后永不重试（见 R5-T14.d）；`candidate_actions` 从第 2 轮起一直为 0，导演节拍停在 `beat-light-first`。
   做什么：
   - 楼层任务的入队候选只取当前 head 路径上的节点（`getPathToHead`），故事级任务不变。
