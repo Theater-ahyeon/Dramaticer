@@ -99,7 +99,7 @@ export class PiLlmChannel implements LlmChannel {
 			),
 		);
 		const options: SimpleStreamOptions = {
-			apiKey: this.apiKey.length > 0 ? this.apiKey : "unused",
+			apiKey: resolveProviderApiKey(this.api, this.apiKey),
 			signal: request.signal,
 			temperature: request.temperature,
 			maxTokens: request.maxTokens ?? request.model.maxTokens,
@@ -233,6 +233,15 @@ export class PiLlmChannel implements LlmChannel {
 			})),
 		};
 	}
+}
+
+/** 空 apiKey 时 Vertex 用空字符串走 ADC；其它适配器用占位值避免 SDK 拒绝。 */
+export function resolveProviderApiKey(
+	api: LlmChannelApi,
+	apiKey: string,
+): string {
+	if (apiKey.length > 0) return apiKey;
+	return api === "google-vertex" ? "" : "unused";
 }
 
 function compactEnv(

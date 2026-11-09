@@ -7,6 +7,7 @@ import {
 	readChannelsKeyRefs,
 	resolveDefaultMaxTokens,
 	resolveModelForRole,
+	resolveProviderApiKey,
 	resolveToolTransport,
 } from "../src/index.js";
 
@@ -111,6 +112,14 @@ models:
 		const channel = parseChannelsConfig(text, env).channels.get("bg");
 		expect(channel?.api).toBe("google-vertex");
 		expect(channel?.apiKey).toBe("");
+	});
+
+	it("空 apiKey 时 Vertex 走 ADC，其它适配器用占位值", () => {
+		expect(resolveProviderApiKey("google-vertex", "")).toBe("");
+		expect(resolveProviderApiKey("openai-completions", "")).toBe("unused");
+		expect(resolveProviderApiKey("google-vertex", "vertex-key")).toBe(
+			"vertex-key",
+		);
 	});
 
 	it("环境变量缺失时指出变量名", () => {
