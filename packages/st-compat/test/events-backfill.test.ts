@@ -22,6 +22,78 @@ interface FakeClient extends LlmStreamingClient {
 	readonly windows: string[][];
 }
 
+function resultOf(text: string): LlmResult {
+	return {
+		text,
+		reasoning: "",
+		toolCalls: [],
+		finishReason: "stop",
+		stopReason: "stop",
+		model: "fake",
+		channel: null,
+		usage: {
+			promptTokens: 0,
+			completionTokens: 0,
+			reasoningTokens: null,
+			totalTokens: 0,
+		},
+		raw: null,
+		cached: false,
+		attempts: 1,
+		rounds: 1,
+		truncation: null,
+		continuation: null,
+	};
+}
+
+/** 第一次返回一个错后缀的 nodeId，第二次返回正确结果；记录每次请求。 */
+function flakyClient(): {
+	readonly client: LlmStreamingClient;
+	readonly prompts: string[];
+} {
+	const prompts: string[] = [];
+	const client: LlmStreamingClient = {
+		async complete(request: LlmRequest): Promise<LlmResult> {
+			const prompt = request.messages
+				.map((message) => message.content)
+				.join("\n");
+			prompts.push(prompt);
+			const window = /<窗口>([\s\S]*?)<\/窗口>/.exec(prompt);
+			if (window === null) throw new Error("请求里没有窗口");
+			const floors = [
+				...(window[1] ?? "").matchAll(
+					/<楼层 id="([^"]+)" role="assistant">\n([\s\S]*?)\n<\/楼层>/g,
+				),
+			].map((match) => ({
+				nodeId: match[1] as string,
+				text: match[2] as string,
+			}));
+			const first = floors[0];
+			if (first === undefined) throw new Error("窗口里没有助手楼层");
+			const firstCall = prompts.length === 1;
+			return resultOf(
+				JSON.stringify(
+					floors.map((floor) => ({
+						nodeId: firstCall ? `${floor.nodeId}错` : floor.nodeId,
+						events: [
+							{
+								text: floor.text,
+								participants: ["角色"],
+								knowers: ["*"],
+								importance: 0.5,
+							},
+						],
+					})),
+				),
+			);
+		},
+		stream(): never {
+			throw new Error("回填不使用流式接口");
+		},
+	};
+	return { client, prompts };
+}
+
 /** 从窗口里取助手楼层 id，为每个楼层返回一条事件；上下文楼层不输出。 */
 function fakeClient(): FakeClient {
 	const windows: string[][] = [];
@@ -47,8 +119,8 @@ function fakeClient(): FakeClient {
 				text: match[2] as string,
 			}));
 			windows.push(floors.map((floor) => floor.nodeId));
-			return {
-				text: JSON.stringify(
+			return resultOf(
+				JSON.stringify(
 					floors.map((floor) => ({
 						nodeId: floor.nodeId,
 						events: [
@@ -61,25 +133,7 @@ function fakeClient(): FakeClient {
 						],
 					})),
 				),
-				reasoning: "",
-				toolCalls: [],
-				finishReason: "stop",
-				stopReason: "stop",
-				model: "fake",
-				channel: null,
-				usage: {
-					promptTokens: 0,
-					completionTokens: 0,
-					reasoningTokens: null,
-					totalTokens: 0,
-				},
-				raw: null,
-				cached: false,
-				attempts: 1,
-				rounds: 1,
-				truncation: null,
-				continuation: null,
-			};
+			);
 		},
 		stream(): never {
 			throw new Error("回填不使用流式接口");
@@ -268,6 +322,37 @@ describe("runEventsBackfill", () => {
 			expect(after.listExtractedEventNodeIds(CHARACTER)).toHaveLength(
 				ASSISTANT_FLOORS,
 			);
+		},
+	);
+
+	it(
+		"窗口校验失败后重试会带上错误与允许的 nodeId，不会重复同一请求",
+		{ timeout: 30_000 },
+		async () => {
+			const root = await writeRawRoot();
+			const { client, prompts } = flakyClient();
+			const result = await runEventsBackfill({
+				rawRoot: root,
+				dbPath: path.join(root, "eval.db"),
+				client,
+				embedder: fakeEmbedder(),
+				maxWindows: 1,
+			});
+
+			expect(result.windowCount).toBe(1);
+			expect(result.extractedFloors).toBe(8);
+			expect(prompts).toHaveLength(2);
+			const retryPrompt = prompts[1];
+			if (retryPrompt === undefined) throw new Error("没有发出重试请求");
+			expect(retryPrompt).toContain("上一次输出没有通过校验");
+			expect(retryPrompt).toContain("不在本次窗口内");
+			const allowed = [
+				...retryPrompt.matchAll(new RegExp(`^- (${CHARACTER}:.+)$`, "gm")),
+			].map((match) => match[1] as string);
+			expect(allowed).toHaveLength(8);
+			for (const id of allowed) {
+				expect(retryPrompt).toContain(`id="${id}"`);
+			}
 		},
 	);
 

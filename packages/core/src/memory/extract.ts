@@ -1,4 +1,7 @@
-import type { BackgroundJobHandler } from "../background/types.js";
+import type {
+	BackgroundJob,
+	BackgroundJobHandler,
+} from "../background/types.js";
 import { type LlmMessage, NO_CONTINUATION } from "../llm/types.js";
 import type { StoryStore } from "../store/story-store.js";
 import type { TimelineNode } from "../timeline.js";
@@ -180,7 +183,10 @@ export function createEventExtractionHandler(
 		if (window === null) return;
 		const messages: LlmMessage[] = [
 			{ role: "system", content: SYSTEM_PROMPT },
-			{ role: "user", content: formatEventWindow(window) },
+			{
+				role: "user",
+				content: formatEventWindow(window, retryHint(job, window)),
+			},
 		];
 		const result = await client.complete(
 			{
@@ -284,7 +290,24 @@ export function selectEventWindow(
 	};
 }
 
-export function formatEventWindow(window: EventWindow): string {
+/**
+ * 上一次输出没有通过校验时，在重试请求末尾附上具体错误与允许的 nodeId。
+ * 这次请求的内容因此与上一次不同，响应缓存不会把同一条坏结果再送回模型重试。
+ */
+function retryHint(job: BackgroundJob, window: EventWindow): string | null {
+	if (job.attempts <= 1 || job.lastError === null) return null;
+	const lines = [
+		`这是第 ${job.attempts} 次请求。上一次输出没有通过校验：${job.lastError}`,
+		"请只使用下面列出的 nodeId，逐字复制，不要改动后缀：",
+		...window.floors.map((node) => `- ${node.id}`),
+	];
+	return lines.join("\n");
+}
+
+export function formatEventWindow(
+	window: EventWindow,
+	hint: string | null = null,
+): string {
 	const writable = new Set(window.floors.map((node) => node.id));
 	const lines = [
 		"以下是按时间顺序排列的楼层。只从 <窗口> 内带 id 的助手楼层抽取事件；其余楼层只用来理解前后经过，不要为它们输出记录。",
@@ -308,6 +331,7 @@ export function formatEventWindow(window: EventWindow): string {
 			"</上下文>",
 		);
 	}
+	if (hint !== null) lines.push(hint);
 	return lines.join("\n");
 }
 

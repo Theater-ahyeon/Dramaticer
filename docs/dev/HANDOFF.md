@@ -3,16 +3,16 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-09 会话 268：定位并修好长任务 `R1-T04.b-01` 的失败，重新申请 `R1-T04.b-02`，状态 `WAITING`。
-  - 失败原因：`eval-private/memory-cache/events/246f….json` 里的模型输出是「半截 JSON + 续写重发的整份 JSON」拼接，`JSON.parse` 在第 3055 个字符失败。路由层的续写把第一轮被打断的半截正文与第二轮的重新输出直接拼接，JSON 无法恢复；坏结果 stopReason 是 `stop`，被写进缓存，重试命中同一条缓存，窗口连续失败 3 次后长任务退出。
-  - 修复：`packages/core/src/llm/types.ts` 新增 `NO_CONTINUATION`（`continuation.maxRounds = 0`）。所有要求严格 JSON 的后台与评测调用都传入它：结算、`gap_pass`、修订草案、用户意志、事件抽取、NPC 议程、导演计划、候选行动、视觉档案、开局包、开场候选，以及评测里的裁判、出题与模拟用户。被打断的结果 stopReason 为 `error`，不写缓存，调用方重试时会发出新请求。
-  - 新增测试：`memory-events.test.ts` 断言事件抽取请求带 `NO_CONTINUATION`；路由层「失败的半截结果不写入缓存」原有测试覆盖 `maxRounds: 0`。
-  - 删除 `eval-private/memory-cache/events/246f….json` 这条坏缓存，以及会话 267 预检遗留的 `packages/st-compat/eval-private/memory-cache/r1-retrieval.db`（91 MB，长任务用的是仓库根目录的同名数据库）。
-  - 实测：`events-backfill --resume --story "仙侠雌竞：什么叫我是炉鼎体质？" --limit 1` 成功补跑一个窗口（8 楼、39 条事件、1 次模型请求、88.7 秒），说明修复生效。
-  - 门禁通过（161 个测试文件、1442 个测试、4 个 live 跳过）。
+- 2026-11-09 会话 269：定位并修好长任务 `R1-T04.b-02` 的失败，重新申请 `R1-T04.b-03`，状态 `WAITING`。
+  - 失败原因：事件抽取窗口 `m191:s0` 至 `m205:s0` 的模型输出把窗口里的 `m197:s1` 写成了 `m197:s0`，整窗被拒绝；重试读到同一条缓存结果（请求内容相同），三次都失败。窗口里实际只有 `m197:s1`，模型是单字符抄错。
+  - 修复：`createEventExtractionHandler` 在任务重试时（`job.attempts > 1` 且 `job.lastError` 非空）把「第 N 次请求」、上次校验错误与窗口允许的 nodeId 列表附在 user 消息末尾（`formatEventWindow` 新增可选 `hint` 参数）。请求内容因此每次不同，响应缓存不会把同一条坏结果送回重试。`runWindow`（events-backfill）把上一次的异常消息传进任务的 `lastError`。
+  - 删除 `eval-private/memory-cache/events/302c….json`（那条把 `m197:s1` 写成 `m197:s0` 的缓存）。
+  - 新增测试：`memory-events.test.ts` 断言重试请求包含上次错误与允许的 nodeId；`events-backfill.test.ts` 用第一次返回错误后缀、第二次返回正确结果的假客户端断言发出两次不同请求并成功写入。
+  - 实测：`events-backfill --resume --db eval-private/memory-cache/r1-retrieval.db --limit 1` 在失败窗口成功（8 楼、15 条事件、1 次新请求；总事件 126 → 141，抽取覆盖 104 个助手楼层）。
+  - 门禁通过（161 个测试文件、1444 个测试、4 个 live 跳过）。
 
-## 下一步（会话 269 先做）
-1. 读 `.devloop/jobs/R1-T04.b-02.status.json` 与 `.devloop/jobs/R1-T04.b-02.log`。成功就继续第 2 步；失败先看日志定位，修好后换 `R1-T04.b-03` 重新申请。
+## 下一步（会话 270 先做）
+1. 读 `.devloop/jobs/R1-T04.b-03.status.json` 与 `.devloop/jobs/R1-T04.b-03.log`。成功就继续第 2 步；失败先看日志定位，修好后换 `R1-T04.b-04` 重新申请。
 2. 读 `eval-private/reports/R1-retrieval.md` 与 `docs/dev/reports/R1-retrieval.md`，写 ADR-0084：五路事件题命中@5/@10/@20、分对话结果、事件覆盖率、耗时与请求数、留一交叉验证规则与选中权重、重排序开关前后的状态题与事件题对比。
 3. 默认值决定：
    - 事件题与状态题都没有下降且有提升，才把 `DEFAULT_ROUTE_WEIGHTS` 改成交叉验证推荐值，并在 `data/channels.yaml` 把 `reranker.enabled` 改为 true；重排序没有同时满足「两类题都不下降且有提升」时保持关闭。
@@ -22,7 +22,8 @@
 
 ## 当前状态
 - 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1-T03.a、R1-T03.b。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- R1-T04.b 进行中：代码与测试已完成，长任务 `R1-T04.b-02` 已申请，等待回填与评测结果。
+- R1-T04.b 进行中：代码与测试已完成，长任务 `R1-T04.b-03` 已申请（回填 3 个对话 + 开启重排序的 `memory-eval`，上限 420 分钟）。
+- `eval-private/memory-cache/r1-retrieval.db` 已有 104 个助手楼层的抽取记录、141 条事件；故事共 290 个助手楼层待抽取，剩余约 186 个楼层、24 个窗口。
 - M6-T99 标 `[!]`，等待 HUMAN-15：真实 ComfyUI 启动在 `http://127.0.0.1:8188` 并提供 API 格式 workflow JSON 到 `eval-private/comfyui/`；2026-11-09 探测时端口仍未监听。
 - v3 阶段顺序：R5（完成）→ M6 生图第一批（T01–T05 完成，T99 阻塞）→ R1 续（T03.a、T03.b 完成，T04.b 进行中）→ R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → M6b 生图第二批 → P3/P4 → M5 → P5 → M7。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045、ADR-0078、ADR-0079、ADR-0080、ADR-0082、ADR-0083。
@@ -41,7 +42,7 @@
 - 可重复命令（仓库根目录）：
   - `pnpm --filter @dramaticer/st-compat events-backfill --resume --db eval-private/memory-cache/r1-retrieval.db`
   - `pnpm --filter @dramaticer/st-compat memory-eval --events --rerank --db eval-private/memory-cache/tmp/r1-memory-eval.db --private-report eval-private/reports/R1-retrieval.md --public-report docs/dev/reports/R1-retrieval.md --title "R1 记忆引擎检索评测"`
-  - 两个 CLI 的相对路径都按仓库根目录解析；`--events` 与 `events-backfill` 共用 `eval-private/memory-cache/events`。
+  - 两个 CLI 的相对路径都按仓库根目录解析；`--events` 与 `events-backfill` 共用 `eval-private/memory-cache/events`。`memory-eval` 在自己的临时数据库上重新抽取事件，结束后删除该数据库。
 
 ## M6 生图第一批
 - 顺序：M6-T01 至 M6-T05（已完成）→ M6-T99（阻塞）。
@@ -108,6 +109,7 @@
 - 排障命令：`dramaticer explain --node <id> --db <path> [--json]`，只读、零模型调用。记忆检索段现在会显示每一路的父段信息与注入范围。
 - 模型响应的磁盘缓存键包含 `max_tokens` 只在请求显式带 maxTokens 时；改渠道配置的 `maxTokens` 后必须换一个 `--cache` 目录。后台 `background` 模型的输出上限是 32,768。
 - 结构化 JSON 请求一律使用 `NO_CONTINUATION`（`llm/types.ts`）：自动续写会把被打断的半截 JSON 与模型重发的整份 JSON 拼接成无法解析的文本；这类结果也不写缓存，重试会重新请求。只有正文写作（流式）与散文类后台输出保留续写。
+- 事件抽取的窗口重试（任务 `attempts > 1` 且 `lastError` 非空）会在请求末尾附上「第 N 次请求」、上次校验错误与允许的 nodeId；这是为了让重试成为新的请求，避免响应缓存返回同一条不合格结果。`events-backfill` 的窗口重试把上次异常写进任务上下文的 `lastError`。
 
 ## 父子分块与检索
 - 父段上限 1200 个码点，按换行切段后合并；单个段落超过上限时整楼退化成一个父段。小块沿用 400 字符窗口与 80 字符重叠。`StoryStore.open(path, { chunkStrategy })` 取 `parent-child`（默认）或 `fixed`；切换策略不会自动重建已经存在的块。`chunks` 的 `parent_ordinal` 是父段在楼层内的序号，`parent_text` 是注入文本。
@@ -140,6 +142,6 @@
 - 不要修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 下的任何文件。不变量 I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账是唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖任何其他工作区包。
 
 ## 下一步
-- 会话 269 按上文“下一步”执行并完成 R1-T04.b。
+- 会话 270 按上文“下一步”执行并完成 R1-T04.b。
 - M6-T99 仍等待 HUMAN-15；人类把 ComfyUI 启动并放入 workflow JSON 后，把 TASKS 里 `[!]` 改回 `[ ]` 再做验收。
 - 后续：R1-T05（v36）、R1-T06（v37）、R1-T08（v38）、R1-T99.a；C 线兼容插件任务依赖 P2，以 DESIGN §19 为唯一权威。

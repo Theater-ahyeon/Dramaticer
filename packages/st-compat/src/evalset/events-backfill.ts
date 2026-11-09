@@ -304,7 +304,7 @@ async function runWindow(input: {
 					kind: "events",
 					status: "running",
 					attempts: attempt,
-					lastError: null,
+					lastError: errorMessage(lastError),
 					createdAt: input.first.createdAt,
 					startedAt: null,
 					finishedAt: null,
@@ -319,6 +319,11 @@ async function runWindow(input: {
 		`故事 ${input.storyId} 的事件抽取窗口连续失败 ${WINDOW_ATTEMPTS} 次`,
 		{ cause: lastError },
 	);
+}
+
+function errorMessage(error: unknown): string | null {
+	if (error === null) return null;
+	return error instanceof Error ? error.message : String(error);
 }
 
 /** 当前路径上尚未抽取的已确认助手楼层，按时间顺序。 */

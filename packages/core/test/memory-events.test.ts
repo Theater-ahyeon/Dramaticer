@@ -558,6 +558,35 @@ describe("事件抽取任务", () => {
 		expect(calls).toEqual([NO_CONTINUATION]);
 	});
 
+	it("重试请求附上上次错误与允许的 nodeId，请求内容与首次不同", async () => {
+		const { store } = openTempStore();
+		store.createStory({ id: "s1", title: "测试" });
+		const floors = appendAssistantFloors(store, 8);
+		const { client, requests } = scriptedClient("[]");
+		enqueueMissingJobs({ store, storyId: "s1", kinds: ["events"] });
+		const base = jobOf(store, "s1", "a0");
+
+		await createEventExtractionHandler()({
+			store,
+			client,
+			job: {
+				...base,
+				attempts: 2,
+				lastError: "抽取结果[0].nodeId 不在本次窗口内：a0x",
+			},
+		});
+
+		expect(requests).toHaveLength(1);
+		const content =
+			requests[0]?.messages.find((message) => message.role === "user")
+				?.content ?? "";
+		expect(content).toContain("上一次输出没有通过校验");
+		expect(content).toContain("a0x");
+		for (const id of floors) {
+			expect(content).toMatch(new RegExp(`^- ${id}$`, "m"));
+		}
+	});
+
 	it("整段楼层由后台 drain 一次请求处理", async () => {
 		const { store } = openTempStore();
 		store.createStory({ id: "s1", title: "测试" });
