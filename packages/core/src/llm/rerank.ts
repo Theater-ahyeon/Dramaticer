@@ -30,6 +30,8 @@ export interface OpenAiRerankClientOptions {
 	readonly maxRetries?: number;
 	readonly retryBaseDelayMs?: number;
 	readonly timeoutMs?: number;
+	/** 单条文档最多发送的码点数；超过的部分丢掉。 */
+	readonly maxDocumentChars?: number;
 	readonly fetch?: typeof fetch;
 	readonly sleep?: (
 		ms: number,
@@ -43,6 +45,11 @@ const DEFAULT_REQUESTS_PER_MINUTE = 30;
 const DEFAULT_MAX_RETRIES = 2;
 const DEFAULT_RETRY_BASE_DELAY_MS = 1_000;
 const DEFAULT_TIMEOUT_MS = 30_000;
+/**
+ * 单条文档的默认上限。bge-reranker-v2-m3 的输入上限是 8192 token，
+ * 中文一字约占一个 token；4000 码点加上查询仍留有余量。
+ */
+const DEFAULT_MAX_DOCUMENT_CHARS = 4_000;
 
 /** OpenAI 兼容的 `/rerank` 客户端：批量、限速、重试与分数校验。 */
 export class OpenAiRerankClient implements RerankClient {
@@ -54,6 +61,7 @@ export class OpenAiRerankClient implements RerankClient {
 	private readonly maxRetries: number;
 	private readonly retryBaseDelayMs: number;
 	private readonly timeoutMs: number;
+	private readonly maxDocumentChars: number;
 	private readonly fetch: typeof fetch;
 	private readonly sleep: (
 		ms: number,
@@ -74,6 +82,8 @@ export class OpenAiRerankClient implements RerankClient {
 		this.retryBaseDelayMs =
 			options.retryBaseDelayMs ?? DEFAULT_RETRY_BASE_DELAY_MS;
 		this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+		this.maxDocumentChars =
+			options.maxDocumentChars ?? DEFAULT_MAX_DOCUMENT_CHARS;
 		this.fetch = options.fetch ?? fetch;
 		this.sleep =
 			options.sleep ?? ((ms, signal) => delay(ms, undefined, { signal }));
@@ -89,6 +99,9 @@ export class OpenAiRerankClient implements RerankClient {
 		}
 		if (!Number.isInteger(this.maxRetries) || this.maxRetries < 0) {
 			throw new Error("重排序重试次数必须是不小于 0 的整数");
+		}
+		if (!Number.isInteger(this.maxDocumentChars) || this.maxDocumentChars < 1) {
+			throw new Error("重排序单条文档上限必须是正整数");
 		}
 	}
 
@@ -109,8 +122,11 @@ export class OpenAiRerankClient implements RerankClient {
 			}
 		});
 		const scores: RerankScore[] = [];
-		for (let start = 0; start < documents.length; start += this.batchSize) {
-			const batch = documents.slice(start, start + this.batchSize);
+		const limited = documents.map((document) =>
+			truncateDocument(document, this.maxDocumentChars),
+		);
+		for (let start = 0; start < limited.length; start += this.batchSize) {
+			const batch = limited.slice(start, start + this.batchSize);
 			const batchScores = await this.requestBatch(query, batch, options.signal);
 			scores.push(
 				...batchScores.map((score) => ({
@@ -253,6 +269,11 @@ export function createRerankClient(
 	const reranker = config.reranker ?? null;
 	if (reranker === null || !reranker.enabled) return null;
 	return new OpenAiRerankClient(reranker);
+}
+
+function truncateDocument(document: string, maxChars: number): string {
+	if (document.length <= maxChars) return document;
+	return Array.from(document).slice(0, maxChars).join("");
 }
 
 function throwIfAborted(signal: AbortSignal | undefined): void {

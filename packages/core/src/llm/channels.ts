@@ -136,6 +136,8 @@ export interface RerankerProviderConfig {
 	readonly maxRetries: number;
 	readonly retryBaseDelayMs: number;
 	readonly timeoutMs: number;
+	/** 单条文档最多发送的码点数；超过的部分丢掉。 */
+	readonly maxDocumentChars: number;
 }
 
 const DEFAULT_REQUESTS_PER_MINUTE = 30;
@@ -143,6 +145,7 @@ const DEFAULT_MAX_RETRIES = 2;
 const DEFAULT_RETRY_BASE_DELAY_MS = 1_000;
 const DEFAULT_TIMEOUT_MS = 300_000;
 const DEFAULT_RERANK_TIMEOUT_MS = 30_000;
+const DEFAULT_RERANK_MAX_DOCUMENT_CHARS = 4_000;
 const DEFAULT_CONTEXT_WINDOW = 131_072;
 const DEFAULT_MAX_TOKENS = 8_192;
 
@@ -557,6 +560,12 @@ function parseReranker(
 			value.timeoutMs,
 			`${label}.timeoutMs`,
 			DEFAULT_RERANK_TIMEOUT_MS,
+			1,
+		),
+		maxDocumentChars: optionalInt(
+			value.maxDocumentChars,
+			`${label}.maxDocumentChars`,
+			DEFAULT_RERANK_MAX_DOCUMENT_CHARS,
 			1,
 		),
 	};

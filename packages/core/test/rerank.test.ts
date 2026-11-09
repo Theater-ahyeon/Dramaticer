@@ -119,6 +119,7 @@ describe("reranker 配置", () => {
 			maxRetries: 1,
 			retryBaseDelayMs: 1_000,
 			timeoutMs: 30_000,
+			maxDocumentChars: 4_000,
 		});
 	});
 
@@ -149,6 +150,13 @@ describe("reranker 配置", () => {
 		expect(() => parseChannelsConfig(configText(missingModel), env)).toThrow(
 			"reranker.model",
 		);
+		const zeroDocumentLimit = rerankerSection.replace(
+			"  model: BAAI/bge-reranker-v2-m3\n",
+			"  model: BAAI/bge-reranker-v2-m3\n  maxDocumentChars: 0\n",
+		);
+		expect(() =>
+			parseChannelsConfig(configText(zeroDocumentLimit), env),
+		).toThrow("reranker.maxDocumentChars");
 	});
 
 	it("工厂只在配置存在且 enabled 时创建客户端", () => {
@@ -189,6 +197,21 @@ describe("OpenAI 兼容 rerank 客户端", () => {
 			{ index: 0, score: 1 },
 			{ index: 1, score: 2 },
 			{ index: 2, score: 1 },
+		]);
+	});
+
+	it("单条文档超过上限时按码点截断后再发送", async () => {
+		const { fetch, calls } = createFetch((call) => {
+			const documents = call.body?.documents;
+			if (!Array.isArray(documents)) throw new Error("请求体缺少 documents");
+			return scoreResponse(documents.map(() => 1));
+		});
+		const client = makeClient(fetch, { maxDocumentChars: 3 });
+		const scores = await client.rerank("查询", ["123456", "a😀bcd"]);
+		expect(calls[0]?.body?.documents).toEqual(["123", "a😀b"]);
+		expect(scores).toEqual([
+			{ index: 0, score: 1 },
+			{ index: 1, score: 1 },
 		]);
 	});
 

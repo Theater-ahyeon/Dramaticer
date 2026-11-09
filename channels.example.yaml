@@ -119,3 +119,5 @@ reranker:
   maxRetries: 2
   retryBaseDelayMs: 1000
   timeoutMs: 30000
+  # 单条文档最多发送的码点数；bge-reranker-v2-m3 的输入上限是 8192 token
+  maxDocumentChars: 4000
