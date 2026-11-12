@@ -40,6 +40,10 @@ import {
 } from "../memory/embed.js";
 import { createEventExtractionHandler } from "../memory/extract.js";
 import {
+	LORE_PREFILTER_JOB_KIND,
+	createLorePrefilterHandler,
+} from "../memory/lore-prefilter.js";
+import {
 	NPC_AGENDA_JOB_KIND,
 	createNpcAgendaHandler,
 } from "../memory/npc-agenda.js";
@@ -83,6 +87,11 @@ export function createDefaultBackgroundJobRegistry(
 		[NPC_AGENDA_JOB_KIND]: {
 			handler: createNpcAgendaHandler(),
 			tier: "deferred",
+		},
+		[LORE_PREFILTER_JOB_KIND]: {
+			handler: createLorePrefilterHandler(),
+			enqueue: "settled",
+			tier: "gap",
 		},
 		[SETTLE_JOB_KIND]: {
 			handler: createSettleHandler(),

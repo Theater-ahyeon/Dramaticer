@@ -1076,6 +1076,31 @@ export function buildMigrations(
 				END`,
 			],
 		},
+		{
+			version: 37,
+			description: "世界书预筛：每个楼层保存下一轮要注入的非恒常条目 id",
+			statements: [
+				`CREATE TABLE lore_prefilter (
+					node_id TEXT PRIMARY KEY REFERENCES nodes(id),
+					story_id TEXT NOT NULL REFERENCES stories(id),
+					entry_ids TEXT NOT NULL,
+					created_at TEXT NOT NULL
+				) STRICT`,
+				"CREATE INDEX lore_prefilter_story_idx ON lore_prefilter(story_id)",
+				`CREATE TRIGGER lore_prefilter_story_matches_node
+				BEFORE INSERT ON lore_prefilter
+				WHEN COALESCE((SELECT story_id FROM nodes WHERE id = NEW.node_id), '') <> NEW.story_id
+				BEGIN
+					SELECT RAISE(ABORT, '世界书预筛的 story_id 必须与所在楼层一致');
+				END`,
+				`CREATE TRIGGER lore_prefilter_identity_immutable
+				BEFORE UPDATE ON lore_prefilter
+				WHEN NEW.node_id <> OLD.node_id OR NEW.story_id <> OLD.story_id
+				BEGIN
+					SELECT RAISE(ABORT, '世界书预筛的楼层与故事归属不可修改');
+				END`,
+			],
+		},
 	];
 }
 

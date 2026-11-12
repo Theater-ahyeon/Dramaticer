@@ -131,7 +131,12 @@ import {
 	NPC_AGENDA_EVENT_SOURCE,
 	type NewMemoryEventInput,
 } from "../memory/event.js";
-import type { LoreEntry, NewLoreEntryInput } from "../memory/lore.js";
+import type {
+	LoreEntry,
+	LorePrefilter,
+	NewLoreEntryInput,
+	NewLorePrefilterInput,
+} from "../memory/lore.js";
 import {
 	type NewPlotNoteInput,
 	type PlotNote,
@@ -634,6 +639,13 @@ interface LoreEntryRow {
 	readonly constant: number;
 	readonly keywords: string;
 	readonly source: string;
+	readonly created_at: string;
+}
+
+interface LorePrefilterRow {
+	readonly node_id: string;
+	readonly story_id: string;
+	readonly entry_ids: string;
 	readonly created_at: string;
 }
 
@@ -1405,6 +1417,27 @@ function parseStoredNameArray(value: string, label: string): string[] {
 	});
 }
 
+function normalisePrefilterEntryIds(value: readonly string[]): string[] {
+	if (!Array.isArray(value)) {
+		throw new Error("世界书预筛的 entryIds 必须是数组");
+	}
+	const seen = new Set<string>();
+	const entryIds: string[] = [];
+	for (const [index, item] of value.entries()) {
+		const label = `世界书预筛 entryIds[${index}]`;
+		assertNonEmptyString(item, label);
+		if (item !== item.trim()) {
+			throw new Error(`${label} 不能包含首尾空白`);
+		}
+		if (seen.has(item)) {
+			throw new Error(`${label} 重复：${item}`);
+		}
+		seen.add(item);
+		entryIds.push(item);
+	}
+	return entryIds;
+}
+
 function rowToSummary(row: SummaryRow): Summary {
 	if (!isSummaryLevel(row.level)) {
 		throw new Error(`摘要 ${row.id} 的级别不合法：${row.level}`);
@@ -1628,6 +1661,18 @@ function rowToLoreEntry(row: LoreEntryRow): LoreEntry {
 			`世界书条目 ${row.id} 的关键词`,
 		),
 		source: row.source,
+		createdAt: row.created_at,
+	};
+}
+
+function rowToLorePrefilter(row: LorePrefilterRow): LorePrefilter {
+	return {
+		nodeId: row.node_id,
+		storyId: row.story_id,
+		entryIds: parseStoredNameArray(
+			row.entry_ids,
+			`世界书预筛 ${row.node_id} 的条目 id`,
+		),
 		createdAt: row.created_at,
 	};
 }
@@ -5296,6 +5341,54 @@ export class StoryStore {
 			)
 			.all(storyId) as LoreEntryRow[];
 		return rows.map(rowToLoreEntry);
+	}
+
+	/**
+	 * 写入一个楼层的世界书预筛结果；同一楼层覆盖同一行。
+	 * 条目 id 必须是非空字符串且不重复，所属故事必须与楼层一致。
+	 */
+	saveLorePrefilter(input: NewLorePrefilterInput): LorePrefilter {
+		assertNonEmptyString(input.nodeId, "世界书预筛的楼层 id");
+		assertNonEmptyString(input.storyId, "世界书预筛的 storyId");
+		const node = this.getNode(input.nodeId);
+		if (!node) {
+			throw new Error(`楼层节点不存在：${input.nodeId}`);
+		}
+		if (node.storyId !== input.storyId) {
+			throw new Error(
+				`世界书预筛的 storyId 与楼层所属故事不一致：${input.storyId}`,
+			);
+		}
+		const entryIds = normalisePrefilterEntryIds(input.entryIds);
+		const createdAt = input.createdAt ?? new Date().toISOString();
+		assertNonEmptyString(createdAt, "世界书预筛的 createdAt");
+		this.#db
+			.prepare(
+				`INSERT INTO lore_prefilter (node_id, story_id, entry_ids, created_at)
+				VALUES (?, ?, ?, ?)
+				ON CONFLICT(node_id) DO UPDATE SET
+					entry_ids = excluded.entry_ids,
+					created_at = excluded.created_at`,
+			)
+			.run(input.nodeId, input.storyId, JSON.stringify(entryIds), createdAt);
+		return {
+			nodeId: input.nodeId,
+			storyId: input.storyId,
+			entryIds,
+			createdAt,
+		};
+	}
+
+	/** 读取一个楼层的预筛结果；没有记录时返回 null。 */
+	getLorePrefilter(nodeId: string): LorePrefilter | null {
+		assertNonEmptyString(nodeId, "世界书预筛的楼层 id");
+		if (!this.getNode(nodeId)) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
+		const row = this.#db
+			.prepare("SELECT * FROM lore_prefilter WHERE node_id = ?")
+			.get(nodeId) as LorePrefilterRow | undefined;
+		return row === undefined ? null : rowToLorePrefilter(row);
 	}
 
 	/**

@@ -885,7 +885,8 @@
   - 没有有效压缩时保持现有摘要注入行为。
   验收：预算裁剪保留用户意志；Trace 记录注入的压缩级别；没有压缩时摘要注入逐条不变；`pnpm check` 通过。
 
-- [ ] **R1-T06 后台预筛世界书** | 依赖：M2-T13、R1-T02、R1-T05.b | DESIGN §7.3、§9 | ADR-0044
+- [x] **R1-T06 后台预筛世界书** | 依赖：M2-T13、R1-T02、R1-T05.b | DESIGN §7.3、§9 | ADR-0044
+  完成：2026-11-12 迁移 v37 新增 `lore_prefilter`；后台任务 `lore_prefilter`（`gap` 档、`settled` 入队）只处理当前 head 路径上最新的助手楼层，用玩家消息、最近一条有效压缩与当前拍方案做二字窗口 BM25 取前 20 条非恒常条目，再由后台模型按 id 选择并写到该楼层；`createLoreSlotProvider` 先读参照楼层或其父楼层的预筛结果，没有记录时回退关键词与实体命中，常驻条目始终保留；12 个测试；门禁通过（163 个测试文件、1472 个测试、4 个 live 跳过）
   做什么：
   - 迁移 v37 新增 `lore_prefilter(node_id PRIMARY KEY, story_id, entry_ids, created_at)`；`entry_ids` 存 JSON 数组。
   - 后台任务 `lore_prefilter`：回合落定后，用本轮用户消息、最近一条压缩摘要与下一拍方案构造查询；先用 BM25 取前 `prefilterLimit`（默认 20）条非恒常 lore，再由后台模型判断相关性并写入当前 head 楼层的预筛结果；恒常条目永远保留。

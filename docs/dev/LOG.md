@@ -313,3 +313,5 @@
 - 2026-11-12 | S277 | R1-T05.a | DONE | 迁移 v36 新增 `chapter_compressions`（唯一约束与 story/楼层一致性触发器）；新增 `memory/compression.ts`（八段固定顺序解析与渲染、章节/主线压缩处理器）与默认注册表的 `compression` 任务（`deferred` 档）；`StoryStore` 新增 `insertChapterCompression`、`isCompressionValid`、`getValidCompressions`；11 个测试；R1-T05 拆成 `.a` 与 `.b`，`.a` 完成；门禁通过（162 个测试文件、1458 个测试、4 个 live 跳过）
 
 - 2026-11-12 | S278 | R1-T05.b | DONE | `createSummarySlotProvider` 在有有效压缩时注入全部主线压缩与最近一条章节压缩，来源写 `compression:mainline+chapter`；整段放不进预算时只保留该压缩的用户意志段且不受裁剪；没有压缩时摘要路径逐字不变；2 个测试；门禁通过（162 个测试文件、1460 个测试、4 个 live 跳过）
+
+- 2026-11-12 | S279 | R1-T06 | DONE | 迁移 v37 新增 `lore_prefilter`（楼层主键、故事一致性触发器）；新增 `memory/lore-prefilter.ts`（二字窗口 BM25 预筛、严格 id 校验、只处理最新助手楼层）与默认注册表的 `lore_prefilter` 任务（`gap` 档、`settled` 入队）；`StoryStore` 新增 `saveLorePrefilter`、`getLorePrefilter`；`createLoreSlotProvider` 优先读参照楼层或其父楼层的预筛结果，没有记录时回退关键词与实体命中；12 个测试；门禁通过（163 个测试文件、1472 个测试、4 个 live 跳过）

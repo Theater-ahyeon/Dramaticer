@@ -3,6 +3,7 @@ export * from "./event.js";
 export * from "./embed.js";
 export * from "./extract.js";
 export * from "./lore.js";
+export * from "./lore-prefilter.js";
 export * from "./npc-agenda.js";
 export * from "./plot-note.js";
 export * from "./scene.js";

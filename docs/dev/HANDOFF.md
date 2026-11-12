@@ -3,23 +3,23 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-12 会话 278：R1-T05.b（压缩槽位注入）。`createSummarySlotProvider` 先读当前 head 路径上的有效压缩；有压缩时注入全部主线压缩与最近一条章节压缩，整段放不进 token 上限时只保留该压缩的用户意志段且不受裁剪，Trace 来源写 `compression:mainline+chapter` 这类形式；没有有效压缩时走原摘要路径，输出逐字不变。新增 2 个测试。门禁通过（162 个测试文件、1460 个测试、4 个 live 跳过）。R1-T05 全部完成。
+- 2026-11-12 会话 279：R1-T06（后台预筛世界书）。迁移 v37 新增 `lore_prefilter`；后台任务 `lore_prefilter` 只在当前 head 路径上最新的助手楼层执行，用本轮玩家消息、最近一条有效压缩与当前拍方案做二字窗口 BM25，取前 20 条非恒常条目交给后台模型按 id 选择，结果覆盖写入该楼层。`createLoreSlotProvider` 先读参照楼层本身或其父楼层的预筛结果，没有记录时回退关键词与实体命中；常驻条目始终参与注入。新增 12 个测试。门禁通过（163 个测试文件、1472 个测试、4 个 live 跳过）。
 
-## 下一步（会话 279 先做）
-1. 做 R1-T06（后台预筛世界书，迁移 v37）：回合落定后由后台按本轮用户消息、最近一条压缩摘要与下一拍方案构造查询，先用 BM25 取前 20 条非恒常 lore，再由后台模型判断相关性并写入 head 楼层的预筛结果；下一轮 `createLoreSlotProvider` 优先读预筛结果，没有记录时退回关键词与实体命中。验收见 TASKS。
-2. R1-T06 之后的顺序：R1-T08（v38 上下文包复用）、R1-T99.a。
+## 下一步（会话 280 先做）
+1. 做 R1-T08（上下文包复用，迁移 v38）：回合第一次为玩家楼层组装上下文时写入 `context_packs`，swipe 与重新生成同一楼层直接读包；玩家编辑产生的新楼层不继承旧包；引用的条目被删或分析楼层不在当前路径时重新组装。验收见 TASKS。
+2. R1-T08 之后做 R1-T99.a（记忆增强验收），之后进入 R3b。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1-T03.a、R1-T03.b、R1-T04.b、R1-T05.a、R1-T05.b。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- R1 续剩余：R1-T06、R1-T08、R1-T99.a。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1-T03.a、R1-T03.b、R1-T04.b、R1-T05.a、R1-T05.b、R1-T06。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- R1 续剩余：R1-T08、R1-T99.a。
 - `eval-private/memory-cache/r1-retrieval.db` 现有三个故事：`仙侠雌竞：什么叫我是炉鼎体质？` 290 个助手楼层已抽取 282 个、414 条事件；`欲望世界-1600` 180 个助手楼层已抽取 174 个、292 条事件；`银麒赎世` 114 个助手楼层已抽取 112 个、248 条事件。评测自己的临时数据库重新抽取后事件覆盖为 282/290、172/180、112/114，事件数 371/247/248。
 - M6-T99 标 `[!]`，等待 HUMAN-15：真实 ComfyUI 启动在 `http://127.0.0.1:8188` 并提供 API 格式 workflow JSON 到 `eval-private/comfyui/`；2026-11-09 探测时端口仍未监听。
-- v3 阶段顺序：R5（完成）→ M6 生图第一批（T01–T05 完成，T99 阻塞）→ R1 续（T03.a、T03.b、T04.b、T05.a、T05.b 完成）→ R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → M6b 生图第二批 → P3/P4 → M5 → P5 → M7。
+- v3 阶段顺序：R5（完成）→ M6 生图第一批（T01–T05 完成，T99 阻塞）→ R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06 完成）→ R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → M6b 生图第二批 → P3/P4 → M5 → P5 → M7。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045、ADR-0078、ADR-0079、ADR-0080、ADR-0082、ADR-0083、ADR-0084。
 - HUMAN-03 待处理（不阻塞）：抽查 `eval-private/evalset/spotcheck.md` 里的事件题。
 - HUMAN-14 已关闭（2026-11-12：人类取消）：取消 Vertex 真实调用的凭证配置与验证要求；`roles.writer` 继续使用 `main-fallback`。
 - HUMAN-15 待处理（M6-T99 需要）：把秋叶整合包 v3.2 的 ComfyUI 启动在 `http://127.0.0.1:8188`，并导出一份 API 格式 workflow JSON 到 `eval-private/comfyui/`。
-- 数据库 schema 版本 36（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡、v25 合并调用开关与执行记录、v26 间隙档位阈值与丢弃状态、v27 合并调用丢弃条目、v28 回合模式与读取工具上限、v29 开局包与故事级后台任务、v30 首楼开场候选、v31 选择记录、v32 导演计划与拍状态、v33 导演候选行动、v34 生图表、v35 父子分块、v36 八段式压缩）。R1 续后续迁移为 v37–v38。
+- 数据库 schema 版本 37（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡、v25 合并调用开关与执行记录、v26 间隙档位阈值与丢弃状态、v27 合并调用丢弃条目、v28 回合模式与读取工具上限、v29 开局包与故事级后台任务、v30 首楼开场候选、v31 选择记录、v32 导演计划与拍状态、v33 导演候选行动、v34 生图表、v35 父子分块、v36 八段式压缩、v37 世界书预筛）。R1 续后续迁移编号为 v38。
 
 ## 八段式压缩（R1-T05.a 与 R1-T05.b）
 - 表 `chapter_compressions(row_id, id, story_id, level, start_node_id, end_node_id, sections, token_count, created_at)`，`level` 取 `chapter` 或 `mainline`，`UNIQUE(story_id, level, start_node_id, end_node_id)`；插入触发器要求起止楼层属于同一故事。
@@ -34,6 +34,16 @@
 - 测试 `packages/core/test/compressions.test.ts` 覆盖解析错误、存储、分支失效、章节与主线窗口、重跑幂等、空窗口零调用与注册档位。
 - 槽位注入（R1-T05.b）在 `createSummarySlotProvider` 内：先取 `getValidCompressions`，非空时注入全部主线压缩与最近一条章节压缩；候选按终点在当前路径上的位置从新到旧分配预算，整段放得进 `tokenLimit`（默认 800，与摘要共用）就注入完整八段，放不进只注入 `【主线压缩·用户意志】` / `【章节压缩·用户意志】` 段且不受预算裁剪；渲染顺序仍是主线从早到晚、章节最后，来源写 `compression:mainline+chapter`（只有一种级别时只写该级别）。没有有效压缩时完全不进入这段逻辑，摘要输出与改动前逐字节一致。
 - `GET /api/nodes/:id/compressions` 仍返回 `getValidSummaries` 的结果；压缩表的面板接口与显示尚未接。
+
+## 世界书预筛（R1-T06）
+- 表 `lore_prefilter(node_id PRIMARY KEY, story_id, entry_ids, created_at)`，`entry_ids` 存 JSON 数组；插入触发器要求楼层属于同一故事，更新触发器禁止修改楼层与故事归属。`StoryStore.saveLorePrefilter` 覆盖同一 `node_id`，校验 id 非空、无首尾空白、不重复；`getLorePrefilter` 没有记录时返回 null。
+- `core/src/memory/lore-prefilter.ts`：`LORE_PREFILTER_JOB_KIND = "lore_prefilter"`、`DEFAULT_LORE_PREFILTER_LIMIT = 20`、`buildLorePrefilterInput`、`parseLorePrefilterSelection`、`createLorePrefilterHandler`。
+- 任务档位 `gap`，入队条件 `settled`。处理器只处理当前 head 路径上最新的助手楼层；历史助手楼层的任务直接完成，不调用模型也不写结果。
+- 查询由本轮玩家消息（助手楼层的父用户楼层原文，任务楼层本身是用户楼层时用自身原文）、最近一条有效压缩（按终点在路径上的位置取最新）、当前拍方案（`resolveCurrentBeat` 的目标、起始迹象、契合点）组成。
+- BM25 在内存里对非恒常条目计算，`rankLoreEntriesByBm25` 用规范化后的二字窗口，分数相同时保持导入顺序；取前 `prefilterLimit` 条作为候选。候选为空时不发请求，直接写空数组。
+- 后台模型输出固定为 `{"entryIds":["…"]}`，只允许候选内的 id、不重复、不允许额外字段；结果覆盖写入该楼层。世界书预筛结果只影响下一轮世界书槽位，不进入台账。
+- `createLoreSlotProvider` 先读请求楼层的预筛记录，没有时读父楼层的记录；有记录时只注入常驻条目与记录选中的非恒常条目，没有记录时退回现有主关键词与实体别名命中。常驻条目始终参与注入，去重与预算裁剪沿用原逻辑，来源仍写 `lore:常驻 N 条、检索 M 条`。
+- 测试 `packages/core/test/lore-prefilter.test.ts` 覆盖 BM25 排序、请求内容、覆盖写入保持一行、候选为空零调用、历史楼层跳过、非法输出拒绝、槽位读取、无记录回退、分支隔离、迁移与注册表。
 
 ## R1 续：检索评测
 - 配置：`channels.yaml` 顶层 `reranker` 段，字段 `enabled`、`api`（只能是 `openai-rerank`）、`baseUrl`、`apiKey`（必须写 `${VAR}`）、`model`、`batchSize`、`requestsPerMinute`、`maxRetries`、`retryBaseDelayMs`、`timeoutMs`、`maxDocumentChars`（默认 4,000）。段缺失时 `LlmChannelsConfig.reranker` 为 null；`enabled` 缺省 false。`data/channels.yaml` 当前 `enabled: false`。
@@ -76,10 +86,11 @@
 - server 的回合路径会补建并执行后台任务：`handleTurnStream` 在 `turn.completed` 之后调用 `BackgroundScheduler.schedule`，不等待 drain；同一时刻只有一个 drain，故事之间先来先做。
 - 后台任务恢复：`requeueRunningBackgroundJobs(storyId?)` 把 running 行退回 pending、`attempts` 减一（不低于 0）、清空 `started_at` 与 `finished_at`、保留 `last_error`；`startServer` 与 `dramaticer work` 各调用一次。`requeueRunningNodeImages(storyId?)` 把 `node_images` 的 running 行退回 pending，不改 attempts。
 - 故事级任务：`enqueueStoryBackgroundJobs` 按 `story_id + kind` 唯一；`POST /api/stories/:id/openings/generate` 与 `POST /api/stories/:id/visual-profiles/generate` 只入队。
-- 后台任务分两档：`gap` 每次间隙执行，`deferred`（`events`、`summary`、`compression`、`npc_agenda`、`director_plan`）只在会话结束或间隙达到 `gapPlanSeconds` 时执行。`gap_pass` 默认关闭；`candidate_actions` 是 `gap` 档。连续失败 3 次才放弃。
+- 后台任务分两档：`gap` 每次间隙执行，`deferred`（`events`、`summary`、`compression`、`npc_agenda`、`director_plan`）只在会话结束或间隙达到 `gapPlanSeconds` 时执行。`gap_pass` 默认关闭；`candidate_actions` 与 `lore_prefilter` 是 `gap` 档。连续失败 3 次才放弃。
 - `drainBackgroundJobs` 每轮按 `created_at ASC, id ASC` 取最多 `limit` 条 pending，先丢弃不在当前 head 路径上的楼层任务；日志行格式：`后台任务 <storyId>：新增 N 条，执行 N 条（失败 N，丢弃 N）`。
 - `illustrate` 的 `needsRun` 只看当前 head 路径上 `attempts < 3` 的 pending 图片行；`visual_profile` 只在对素材存在且档案表为空时为真。
 - 迁移 v35 会把所有 `embeddings` 任务退回 `pending`，让后台按新的块补齐向量；打开旧数据库后第一次 drain 会处理它们。
+- `lore_prefilter` 由 `settled` 条件为每个助手楼层补建一次；处理器只让最新助手楼层产生结果，历史任务直接完成，不会在旧库第一次打开时批量调用模型。
 
 ## 导演与候选行动
 - 导演计划接口：`readDirectorPlan` 按 `ordinal` 还原弧线、序列、节拍；`--set` 与 `PUT /api/stories/:id/director/plan` 都整份替换并把所有行标为 `player`，`mergePlannedArcs` 只更新或追加 `model`/`import` 行，永不删除、不覆盖 `player` 行。
@@ -108,6 +119,7 @@
 - 工具传输：`resolveToolTransport` 在未显式配置时按 `probe.functionCalling` 决定；文本协议在 `core/src/chat/tool-protocol.ts`。e2e 的 writer 为确定性使用 `tools.transport: text`。
 - 写作规则：`WRITING_CONTRACT` 是四条原则；`protocol` 是固定 id 的静态段，`assertContextTemplate` 要求它是最后一个片段。
 - 已注册的槽位是十一个：lore、character、persona、summary、state、memory、history、scene、director、user_will、protocol。默认模板顺序：character、lore、state、summary、memory、scene、director、user_will、history、（可选的 block_format）、protocol。默认优先级：user_will 110、history 100、protocol 95、character 90、state 85、lore 80、summary 70、memory 60、scene 55、director 50。
+- 世界书槽位在有预筛记录时只注入常驻条目与记录选中的非恒常条目；没有记录时按参照楼层原文匹配关键词与实体别名。预筛任务只在后台执行，回合内槽位不调用模型。
 - 原生块类型是 12 个（`thinking`、`选项`、`状态栏`、`变量更新`、`分析`、`图片`、`页眉`、`悄悄话`、`旁白`、`备忘`、`state_update`、`plot_note`）；`thinking`、`变量更新`、`state_update`、`plot_note` 的上下文策略是删除。
 - 历史槽位默认策略：更早楼层省略五个显示类块，最近 1 楼不套用这层省略；`full` 是旧的完整视图。设置项 `historyBlockPolicy` 存在 `story_settings.history_block_policy`。
 - 结算窗口以 head 为终点，取最旧的 N 个未结算助手楼层；冲突检查窗口取 head 路径最后 `conflictWindowFloors` 楼。现场分析以被分析的楼层为锚点，读取该楼层结算后的台账快照与路径上最近 6 楼原文。
@@ -115,7 +127,7 @@
 - `extensions.dramaticer` 有三个键：`events`、`npcs`、`arcs`；`arcs` 的校验全部复用 `parseDirectorPlan`。
 - 排障命令：`dramaticer explain --node <id> --db <path> [--json]`，只读、零模型调用。记忆检索段现在会显示每一路的父段信息与注入范围。
 - 模型响应的磁盘缓存键包含 `max_tokens` 只在请求显式带 maxTokens 时；改渠道配置的 `maxTokens` 后必须换一个 `--cache` 目录。后台 `background` 模型的输出上限是 32,768。
-- 结构化 JSON 请求一律使用 `NO_CONTINUATION`（`llm/types.ts`）：自动续写会把被打断的半截 JSON 与模型重发的整份 JSON 拼接成无法解析的文本；这类结果也不写缓存，重试会重新请求。只有正文写作（流式）与散文类后台输出保留续写。八段式压缩与 NPC 议程都用它。
+- 结构化 JSON 请求一律使用 `NO_CONTINUATION`（`llm/types.ts`）：自动续写会把被打断的半截 JSON 与模型重发的整份 JSON 拼接成无法解析的文本；这类结果也不写缓存，重试会重新请求。只有正文写作（流式）与散文类后台输出保留续写。八段式压缩、世界书预筛与 NPC 议程都用它。
 - 事件抽取的窗口重试（任务 `attempts > 1` 且 `lastError` 非空）会在请求末尾附上「第 N 次请求」、上次校验错误与允许的 nodeId；这是为了让重试成为新的请求，避免响应缓存返回同一条不合格结果。`events-backfill` 的窗口重试把上次异常写进任务上下文的 `lastError`。
 - 事件抽取输出被截断时（`result.truncation !== null` 且解析失败），处理器把窗口对半缩小重新请求（默认 8 → 4 → 2 → 1）；单个楼层仍然截断才抛出带截断原因的错误。截断结果会进响应缓存，缩小窗口后请求内容不同，不会命中同一条。
 - 事件抽取提示词要求事件描述用克制、非露骨的中性表述概括发生了什么与谁参与，不复制原文中的露骨措辞。实测同一楼层在复述原文措辞时会被上游截断（`stopReason: length`），换成中性表述后正常结束；改提示词之前 cached 的截断结果不会命中新请求。
@@ -151,9 +163,10 @@
 - 重排序（R1-T03.b 与 R1-T04.b）：`data/channels.yaml` 的 `reranker.enabled` 当前为 false；评测用 `--rerank` 无视该开关创建客户端。请求失败不静默回退：启用后重排序出错会让该次检索失败。
 - 事件抽取的响应缓存键不含渠道的 `maxTokens`（请求没有显式带 maxTokens），所以改提示词或改模型输出上限后，旧缓存不会被新请求命中；不要为了省请求复用旧目录里的截断结果。
 - `packages/server/test/turns.test.ts` 的 `blocks.replace` 断言按“最后一个快照紧接 `turn.completed`”检查，不固定次数：流式快照按 100 毫秒节流，满负载下会多出一次，固定次数会随机失败。
+- 世界书预筛的 BM25 在内存里用规范化后的二字窗口，不写新的索引表；`lore_prefilter` 只存选中的非恒常条目 id，恒常条目由槽位直接读取。
 - 不要修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 下的任何文件。不变量 I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账是唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖任何其他工作区包。
 
 ## 下一步
-- 会话 279 做 R1-T06（后台预筛世界书，迁移 v37），依赖 M2-T13、R1-T02、R1-T05.b。
+- 会话 280 做 R1-T08（上下文包复用，迁移 v38），依赖 R1-T02.a、R1-T03.a、R1-T06、M2-T12。
 - M6-T99 仍等待 HUMAN-15；人类把 ComfyUI 启动并放入 workflow JSON 后，把 TASKS 里 `[!]` 改回 `[ ]` 再做验收。
-- 后续：R1-T08（v38）、R1-T99.a；C 线兼容插件任务依赖 P2，以 DESIGN §19 为唯一权威。
+- 后续：R1-T99.a；C 线兼容插件任务依赖 P2，以 DESIGN §19 为唯一权威。

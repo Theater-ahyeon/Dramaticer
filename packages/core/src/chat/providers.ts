@@ -30,6 +30,7 @@ import {
 import { MAX_MEMORY_EVENT_LIMIT } from "../memory/event.js";
 import {
 	type LoreEntry,
+	type LorePrefilter,
 	loreEntryContentKey,
 	loreEntryMatchScore,
 } from "../memory/lore.js";
@@ -604,31 +605,48 @@ export function createLoreSlotProvider(
 			const entries = store.listLoreEntries(request.storyId);
 			if (entries.length === 0) return null;
 
-			const orderedNonConstant: { entry: LoreEntry; score: number }[] = [];
-			for (const entry of entries) {
-				if (entry.constant) continue;
-				let entityAliases: readonly string[] = [];
-				if (entry.entityId !== null) {
-					const entity = store.getEntity(entry.entityId);
-					if (!entity) {
-						throw new Error(
-							`世界书条目 ${entry.id} 关联的实体不存在：${entry.entityId}`,
-						);
-					}
-					entityAliases = entity.aliases;
-				}
-				const score = loreEntryMatchScore(
-					entry,
-					normalizedQuery,
-					entityAliases,
+			const prefilter =
+				nodeId === null
+					? null
+					: readLorePrefilterForRequest(store, request.storyId, nodeId);
+			const orderedNonConstant: LoreEntry[] = [];
+			if (prefilter !== null) {
+				const byId = new Map(
+					entries.map((entry) => [entry.id, entry] as const),
 				);
-				if (score > 0) orderedNonConstant.push({ entry, score });
+				for (const id of prefilter.entryIds) {
+					const entry = byId.get(id);
+					if (entry === undefined || entry.constant) continue;
+					orderedNonConstant.push(entry);
+				}
+			} else {
+				const scored: { entry: LoreEntry; score: number }[] = [];
+				for (const entry of entries) {
+					if (entry.constant) continue;
+					let entityAliases: readonly string[] = [];
+					if (entry.entityId !== null) {
+						const entity = store.getEntity(entry.entityId);
+						if (!entity) {
+							throw new Error(
+								`世界书条目 ${entry.id} 关联的实体不存在：${entry.entityId}`,
+							);
+						}
+						entityAliases = entity.aliases;
+					}
+					const score = loreEntryMatchScore(
+						entry,
+						normalizedQuery,
+						entityAliases,
+					);
+					if (score > 0) scored.push({ entry, score });
+				}
+				scored.sort((left, right) => right.score - left.score);
+				orderedNonConstant.push(...scored.map((match) => match.entry));
 			}
-			orderedNonConstant.sort((left, right) => right.score - left.score);
 
 			const candidates = [
 				...entries.filter((entry) => entry.constant),
-				...orderedNonConstant.map((match) => match.entry),
+				...orderedNonConstant,
 			];
 			const seenEntities = new Set<string>();
 			const seenContents = new Set<string>();
@@ -686,6 +704,30 @@ function lastIndexWhere<T>(
 		if (item !== undefined && predicate(item)) return index;
 	}
 	return -1;
+}
+
+/**
+ * 预筛结果写在回合落定后的助手楼层上；下一轮组装的参照楼层是新的用户楼层，
+ * 所以先看参照楼层本身，再回退到它的父楼层。没有记录时返回 null，由关键词与
+ * 实体命中兜底。
+ */
+function readLorePrefilterForRequest(
+	store: StoryStore,
+	storyId: string,
+	nodeId: string,
+): LorePrefilter | null {
+	const node = store.getNode(nodeId);
+	if (!node) {
+		throw new Error(`楼层节点不存在：${nodeId}`);
+	}
+	if (node.storyId !== storyId) {
+		throw new Error(`楼层节点 ${nodeId} 属于另一个故事 ${node.storyId}`);
+	}
+	const own = store.getLorePrefilter(nodeId);
+	if (own !== null) return own;
+	if (node.parentId === null) return null;
+	const parent = store.getLorePrefilter(node.parentId);
+	return parent !== null && parent.storyId === storyId ? parent : null;
 }
 
 export interface DirectorSlotProviderOptions {
