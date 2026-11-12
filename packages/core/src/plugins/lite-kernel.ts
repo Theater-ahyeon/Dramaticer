@@ -114,13 +114,22 @@ export class LiteKernel extends KernelSurface implements PluginKernel {
 	}
 
 	snapshot(): KernelSnapshot {
+		const plugins = [...this.plugins.keys()].map((name) => this.status(name));
+		const missingServices: string[] = [];
+		for (const plugin of plugins) {
+			for (const service of plugin.missing) {
+				if (!missingServices.includes(service)) missingServices.push(service);
+			}
+		}
 		return {
-			plugins: [...this.plugins.keys()].map((name) => this.status(name)),
+			plugins,
+			missingServices,
 			slots: this.registry.slots(),
 			mechanisms: this.registry
 				.mechanisms()
 				.map((entry) => entry.mechanism.name),
 			blockTypes: this.registry.blockTypes(),
+			backgroundJobs: this.registry.backgroundJobs().map((entry) => entry.kind),
 			services: this.activeServiceNames(),
 		};
 	}
@@ -216,6 +225,21 @@ export class LiteKernel extends KernelSurface implements PluginKernel {
 			service: <T>(name: string) => this.service<T>(name),
 			on: (name, listener) => {
 				cleanups.push(this.bus.on(name, listener));
+			},
+			backgroundJob: (kind, entry) => {
+				cleanups.push(
+					this.registry.addBackgroundJob(definition.name, kind, entry),
+				);
+			},
+			timeout: (callback, delayMs) => {
+				const handle = setTimeout(callback, delayMs);
+				cleanups.push(() => clearTimeout(handle));
+				return () => clearTimeout(handle);
+			},
+			interval: (callback, delayMs) => {
+				const handle = setInterval(callback, delayMs);
+				cleanups.push(() => clearInterval(handle));
+				return () => clearInterval(handle);
 			},
 			onDispose: (cleanup) => {
 				cleanups.push(cleanup);

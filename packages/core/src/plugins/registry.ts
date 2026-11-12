@@ -1,3 +1,8 @@
+import {
+	type BackgroundJobEntry,
+	createBackgroundJobRegistry,
+} from "../background/registry.js";
+import type { BackgroundJobType } from "../background/types.js";
 import type { BlockTypeDefinition } from "../blocks/types.js";
 import { createBlockTypeRegistry } from "../blocks/types.js";
 import type { ContextSlotProvider } from "../context/assembler.js";
@@ -6,6 +11,7 @@ import {
 	isContextSlotName,
 } from "../context/template.js";
 import type { DirectorMechanism } from "../director/types.js";
+import type { RegisteredBackgroundJob } from "./contracts.js";
 
 interface RegisteredSlot {
 	readonly plugin: string;
@@ -27,6 +33,10 @@ export class ExtensionRegistry {
 	private readonly slotsByName = new Map<ContextSlotName, RegisteredSlot[]>();
 	private readonly mechanismsByName = new Map<string, RegisteredMechanism>();
 	private readonly blockTypesByName = new Map<string, RegisteredBlockType>();
+	private readonly backgroundJobsByKind = new Map<
+		string,
+		RegisteredBackgroundJob
+	>();
 
 	addSlot(
 		name: string,
@@ -86,6 +96,24 @@ export class ExtensionRegistry {
 		};
 	}
 
+	/** 复用后台任务注册表的校验：类型名、入队条件、档位与 needsRun。 */
+	addBackgroundJob(
+		plugin: string,
+		kind: string,
+		entry: BackgroundJobEntry,
+	): () => void {
+		if (this.backgroundJobsByKind.has(kind)) {
+			throw new Error(`后台任务类型重复注册：${kind}`);
+		}
+		const validated = createBackgroundJobRegistry({ [kind]: entry }).get(kind);
+		if (!validated) throw new Error(`后台任务类型注册失败：${kind}`);
+		this.backgroundJobsByKind.set(kind, { plugin, kind, type: validated });
+		return () => {
+			if (this.backgroundJobsByKind.get(kind)?.plugin !== plugin) return;
+			this.backgroundJobsByKind.delete(kind);
+		};
+	}
+
 	slots(): Record<string, readonly string[]> {
 		const result: Record<string, readonly string[]> = {};
 		for (const [name, entries] of this.slotsByName) {
@@ -108,5 +136,13 @@ export class ExtensionRegistry {
 
 	blockTypes(): readonly string[] {
 		return [...this.blockTypesByName.keys()];
+	}
+
+	backgroundJob(kind: string): BackgroundJobType | null {
+		return this.backgroundJobsByKind.get(kind)?.type ?? null;
+	}
+
+	backgroundJobs(): readonly RegisteredBackgroundJob[] {
+		return [...this.backgroundJobsByKind.values()];
 	}
 }

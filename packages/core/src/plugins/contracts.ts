@@ -1,4 +1,6 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
+import type { BackgroundJobEntry } from "../background/registry.js";
+import type { BackgroundJobType } from "../background/types.js";
 import type { BlockTypeDefinition } from "../blocks/types.js";
 import type {
 	ContextSlotContent,
@@ -29,10 +31,20 @@ export interface PluginStatus {
 
 export interface KernelSnapshot {
 	readonly plugins: readonly PluginStatus[];
+	/** 所有阻塞插件缺少的服务；已经由某个插件声明的服务不算缺失。 */
+	readonly missingServices: readonly string[];
 	readonly slots: Readonly<Record<string, readonly string[]>>;
 	readonly mechanisms: readonly string[];
 	readonly blockTypes: readonly string[];
+	readonly backgroundJobs: readonly string[];
 	readonly services: readonly string[];
+}
+
+/** 插件注册的后台任务类型；由内核在装载成功后归一化。 */
+export interface RegisteredBackgroundJob {
+	readonly plugin: string;
+	readonly kind: string;
+	readonly type: BackgroundJobType;
 }
 
 /** 监听器参数按扩展点各自声明，注册时不做双向兼容检查。 */
@@ -48,6 +60,11 @@ export interface PluginContext {
 	provide<T>(name: string, value: T): void;
 	service<T>(name: string): T | undefined;
 	on(name: string, listener: EventListener): void;
+	backgroundJob(kind: string, entry: BackgroundJobEntry): void;
+	/** 一次性定时器；卸载或重载时自动清除。 */
+	timeout(callback: () => void, delayMs: number): () => void;
+	/** 周期定时器；卸载或重载时自动清除。 */
+	interval(callback: () => void, delayMs: number): () => void;
 	onDispose(cleanup: () => void | Promise<void>): void;
 }
 
@@ -78,6 +95,8 @@ export interface PluginKernel {
 		result: DirectorMechanismResult;
 	}[];
 	blockType(name: string): BlockTypeDefinition | null;
+	backgroundJob(kind: string): BackgroundJobType | null;
+	backgroundJobs(): readonly RegisteredBackgroundJob[];
 	service<T>(name: string): T | undefined;
 	on(name: string, listener: EventListener): () => void;
 	emit(name: string, ...args: unknown[]): void;

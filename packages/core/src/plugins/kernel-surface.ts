@@ -1,3 +1,4 @@
+import type { BackgroundJobType } from "../background/types.js";
 import type { BlockTypeDefinition } from "../blocks/types.js";
 import type {
 	ContextSlotContent,
@@ -7,7 +8,11 @@ import type {
 	DirectorMechanismContext,
 	DirectorMechanismResult,
 } from "../director/types.js";
-import type { EventListener, SlotRunResult } from "./contracts.js";
+import type {
+	EventListener,
+	RegisteredBackgroundJob,
+	SlotRunResult,
+} from "./contracts.js";
 import { EventBus } from "./events.js";
 import { ExtensionRegistry } from "./registry.js";
 
@@ -45,6 +50,14 @@ export abstract class KernelSurface {
 
 	blockType(name: string): BlockTypeDefinition | null {
 		return this.registry.blockType(name);
+	}
+
+	backgroundJob(kind: string): BackgroundJobType | null {
+		return this.registry.backgroundJob(kind);
+	}
+
+	backgroundJobs(): readonly RegisteredBackgroundJob[] {
+		return this.registry.backgroundJobs();
 	}
 
 	on(name: string, listener: EventListener): () => void {

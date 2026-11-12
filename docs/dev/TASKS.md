@@ -1068,7 +1068,8 @@
   - `@standard-schema/spec` 重新登记为 `packages/core` 的类型依赖（配置 schema 类型出现在公开声明里）。
   验收：`LiteKernel` 与插件作者类型从包根可导入；11 条断言全部通过；`packages/core/src/plugins` 不依赖任何第三方插件框架，运行时代码不 import `@standard-schema/spec`；`pnpm check` 通过。
 
-- [ ] **P2.b 插件运行环境与生命周期** | 依赖：P2.a
+- [x] **P2.b 插件运行环境与生命周期** | 依赖：P2.a
+  完成：2026-11-12 `plugins/runtime.ts` 新增 `createPluginKernel({ plugins, configs })`：按数组顺序装载（缺省 `BUILTIN_PLUGINS`，当前为空清单）、配置按插件名取用、`inject`/`provide` 由内核解析、同名服务冲突时先 `dispose()` 已装载插件再抛出；`PluginContext` 新增 `timeout`、`interval`、`backgroundJob`，三者都进 `cleanups`，卸载、重载与装载失败时回收；`ExtensionRegistry` 新增后台任务类型注册（复用 `createBackgroundJobRegistry` 校验，同名拒绝，幂等撤销）；`KernelSnapshot` 新增 `missingServices` 与 `backgroundJobs`，`PluginKernel` 新增 `backgroundJob(kind)` 与 `backgroundJobs()`；`plugin-runtime.test.ts` 新增 6 个测试覆盖装载顺序与配置、缺失依赖、启动冲突回收、定时器回收（卸载与重载）、装载失败回收定时器、后台任务类型回收与重复注册；门禁通过（177 个测试文件、1582 个测试、5 个跳过）
   做什么：
   - core 提供创建插件内核的入口与运行环境：装载内置插件、按 `inject` 与 `provide` 解析依赖，依赖缺失的插件不加载并在状态里给出原因，同名服务冲突启动失败。
   - 卸载与热重载回收插件注册的钩子、定时器与后台任务；内核快照能读回插件状态、缺失服务、槽位、机制、块类型与服务。
