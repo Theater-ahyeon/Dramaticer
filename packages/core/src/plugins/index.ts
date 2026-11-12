@@ -71,6 +71,18 @@ export {
 export { ExtensionRegistry } from "./registry.js";
 export { createPluginKernel, type PluginKernelOptions } from "./runtime.js";
 export {
+	DEFAULT_TURN_HOOK_BUDGET_MS,
+	REQUEST_REWRITE_HOOK,
+	type RewrittenRequest,
+	type TurnHookExtension,
+	type TurnHookOutcome,
+	type TurnHookRun,
+	type TurnHookTraceEntry,
+	type TurnRequestRewriter,
+	assertTurnHookBudgetMs,
+	runTurnHook,
+} from "./turn-hooks.js";
+export {
 	CHARACTER_SLOT_PLUGIN,
 	DIRECTOR_SLOT_PLUGIN,
 	HISTORY_SLOT_PLUGIN,

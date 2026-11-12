@@ -312,6 +312,7 @@ function turnOptions(
 		storyId,
 		template: runtime.template,
 		providers: runtime.providers,
+		requestRewriter: runtime.requestRewriter,
 		budgetTokens: runtime.settings.budgetTokens,
 		structuredOutput: runtime.settings.structuredOutput,
 		toolTransport: runtime.toolTransport,

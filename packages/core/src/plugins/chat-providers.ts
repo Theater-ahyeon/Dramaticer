@@ -41,8 +41,9 @@ export function collectSlotProviders(
 ): ContextSlotProviders {
 	const providers: Partial<Record<ContextSlotName, ContextSlotProvider>> = {};
 	for (const name of CONTEXT_SLOT_NAMES) {
-		const provider = kernel.slotProvider(name);
-		if (provider !== null) providers[name] = provider;
+		const entry = kernel.slotProviderEntry(name);
+		if (entry === null) continue;
+		providers[name] = { ...entry.provider, plugin: entry.plugin };
 	}
 	return providers;
 }

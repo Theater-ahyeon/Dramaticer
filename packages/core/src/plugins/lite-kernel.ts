@@ -279,7 +279,7 @@ export class LiteKernel extends KernelSurface implements PluginKernel {
 			},
 			service: <T>(name: string) => this.service<T>(name),
 			on: (name, listener) => {
-				cleanups.push(this.bus.on(name, listener));
+				cleanups.push(this.bus.on(name, listener, definition.name));
 			},
 			backgroundJob: (kind, entry) => {
 				cleanups.push(

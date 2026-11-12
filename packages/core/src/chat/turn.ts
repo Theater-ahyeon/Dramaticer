@@ -33,6 +33,11 @@ import type {
 	LlmUsage,
 } from "../llm/types.js";
 import type { PlotNote } from "../memory/plot-note.js";
+import {
+	type TurnHookTraceEntry,
+	type TurnRequestRewriter,
+	assertTurnHookBudgetMs,
+} from "../plugins/turn-hooks.js";
 import type { TurnRunEventInput, TurnRunFinalStatus } from "../run-log.js";
 import type { StoryStore } from "../store/story-store.js";
 import {
@@ -91,6 +96,13 @@ export interface ChatTurnOptions {
 	readonly userText: string;
 	readonly template: ContextTemplate;
 	readonly providers?: ContextSlotProviders;
+	/**
+	 * 组装后的请求改写入口；不设置时请求与组装结果一致。
+	 * 由槽位集合的内核提供，每个钩子有耗时上限。
+	 */
+	readonly requestRewriter?: TurnRequestRewriter | null;
+	/** 回合钩子的时间预算；不设置时使用默认值。 */
+	readonly hookBudgetMs?: number;
 	readonly budgetTokens: number;
 	readonly structuredOutput: StructuredOutputMode;
 	/** 工具调用传输；不设置时走原生函数调用。 */
@@ -319,10 +331,13 @@ function resolveTurnProviders(options: {
 	}
 	return {
 		...options.providers,
-		director: createDirectorSlotProvider(options.store, {
-			config: resolveDirectorIntensity(director.config, requested),
-			mechanisms: director.mechanisms,
-		}),
+		director: {
+			...createDirectorSlotProvider(options.store, {
+				config: resolveDirectorIntensity(director.config, requested),
+				mechanisms: director.mechanisms,
+			}),
+			...(director.plugin === undefined ? {} : { plugin: director.plugin }),
+		},
 	};
 }
 
@@ -405,6 +420,9 @@ export async function generateAssistantTurn(
 	);
 	const profile = options.profile ?? DEFAULT_CHAT_PROFILE;
 	assertChatProfile(profile);
+	if (options.hookBudgetMs !== undefined) {
+		assertTurnHookBudgetMs(options.hookBudgetMs);
+	}
 	const writesLedger = profile === "native";
 	const now = options.now ?? Date.now;
 	const providers = resolveTurnProviders(options);
@@ -429,8 +447,12 @@ export async function generateAssistantTurn(
 			storyId: options.storyId,
 			nodeId: userNode.id,
 			providers,
+			hookBudgetMs: options.hookBudgetMs,
 		}));
-	if (cached === null) {
+	const slotHooks = assembled.hooks ?? [];
+	// 跳过的提供者按缺失处理，缺了槽位的包不能被后续回合复用。
+	const slotsSkipped = slotHooks.some((hook) => hook.outcome === "timeout");
+	if (cached === null && !slotsSkipped) {
 		saveContextPack(options.store, {
 			storyId: options.storyId,
 			nodeId: userNode.id,
@@ -438,6 +460,14 @@ export async function generateAssistantTurn(
 			assembled,
 		});
 	}
+	const rewritten =
+		options.requestRewriter === undefined || options.requestRewriter === null
+			? { messages: assembled.messages, hooks: [] }
+			: await options.requestRewriter.rewriteRequest(
+					assembled.messages,
+					options.hookBudgetMs,
+				);
+	const turnHooks = [...slotHooks, ...rewritten.hooks];
 
 	const startedAt = now();
 	const functionCall =
@@ -529,8 +559,8 @@ export async function generateAssistantTurn(
 	// 深回合在组装后的消息之后注入手记；快回合不注入。
 	const messages =
 		notes === null
-			? assembled.messages
-			: withDirectorNotes(options.store, assembled.messages, userNode.id);
+			? rewritten.messages
+			: withDirectorNotes(options.store, rewritten.messages, userNode.id);
 	const turnOptions = {
 		client: options.client,
 		messages,
@@ -606,6 +636,7 @@ export async function generateAssistantTurn(
 				options,
 				userNode,
 				assembled,
+				hooks: turnHooks,
 				startedAt,
 				error,
 				now,
@@ -771,6 +802,7 @@ export async function generateAssistantTurn(
 							contextOmitted: deepTurn.contextOmitted ?? undefined,
 						},
 			run: runTrace,
+			...(turnHooks.length === 0 ? {} : { hooks: turnHooks }),
 		};
 		options.store.saveTurnTrace(trace);
 		return {
@@ -895,6 +927,7 @@ async function persistAbortedTurn(input: {
 	readonly options: GenerateAssistantTurnOptions;
 	readonly userNode: TimelineNode;
 	readonly assembled: AssembledContext;
+	readonly hooks: readonly TurnHookTraceEntry[];
 	readonly startedAt: number;
 	readonly error: TurnAbortedError;
 	readonly now: () => number;
@@ -972,6 +1005,7 @@ async function persistAbortedTurn(input: {
 							drift: null,
 						},
 			run: runTrace,
+			...(input.hooks.length === 0 ? {} : { hooks: input.hooks }),
 		};
 		options.store.saveTurnTrace(trace);
 		return {

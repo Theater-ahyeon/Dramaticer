@@ -10,6 +10,7 @@ import {
 import type { DirectorDecision } from "../director/types.js";
 import type { LedgerFact } from "../ledger/read.js";
 import { readLedgerFacts } from "../ledger/read.js";
+import type { TurnHookTraceEntry } from "../plugins/turn-hooks.js";
 import type { TurnRunDetail } from "../run-log.js";
 import type { StoryStore } from "../store/story-store.js";
 import type { StateDiff, TimelineRole } from "../timeline.js";
@@ -76,6 +77,8 @@ export interface ExplainReport {
 	/** 这一轮的运行日志；快回合或没有运行记录时为 null。 */
 	readonly run: TurnRunDetail | null;
 	readonly context: ExplainContextSection | null;
+	/** 回合内钩子的耗时与跳过原因；没有记录时为空数组。 */
+	readonly hooks: readonly TurnHookTraceEntry[];
 	readonly retrieval: readonly ExplainRetrievalSection[];
 	readonly ledger: ExplainLedgerSection;
 	readonly director: ExplainDirectorSection | null;
@@ -160,6 +163,7 @@ export function explainNode(
 		trace,
 		run,
 		context,
+		hooks: trace?.hooks ?? [],
 		retrieval,
 		ledger: {
 			facts: readLedgerFacts(store, nodeId),
@@ -294,6 +298,17 @@ function buildSuggestions(report: ExplainReport): ExplainSuggestion[] {
 				evidence: "Trace context.entries 里这些片段的 status=missing-slot",
 			});
 		}
+	}
+	for (const hook of report.hooks) {
+		if (hook.outcome !== "timeout") continue;
+		const label =
+			hook.extension === "context.slot"
+				? `槽位 ${hook.hook}`
+				: `请求改写的 ${hook.hook}`;
+		suggestions.push({
+			advice: `${label} 的钩子（插件 ${hook.plugin}）超过时间预算被跳过，这一轮按缺失处理；检查该插件的耗时，或提高回合钩子的时间预算。`,
+			evidence: `Trace hooks 里 outcome=timeout，耗时 ${hook.durationMs} 毫秒，原因：${hook.reason ?? "没有记录"}`,
+		});
 	}
 	for (const section of report.retrieval) {
 		if (section.hits.length === 0) {
@@ -464,6 +479,27 @@ export function renderExplainReport(report: ExplainReport): string {
 		lines.push(`   预算裁剪：${describe(context.dropped)}`);
 		lines.push(`   缺失槽位：${describe(context.missingSlots)}`);
 		lines.push(`   条件不满足：${describe(context.conditionFalse)}`);
+	}
+
+	lines.push("");
+	lines.push("   回合钩子（时间预算与跳过原因）：");
+	if (report.hooks.length === 0) {
+		lines.push("     没有记录。");
+	} else {
+		const skipped = report.hooks.filter(
+			(hook) => hook.outcome === "timeout",
+		).length;
+		lines.push(`     运行 ${report.hooks.length} 个，超时跳过 ${skipped} 个`);
+		for (const hook of report.hooks) {
+			const label =
+				hook.extension === "context.slot"
+					? `槽位 ${hook.hook}`
+					: `请求改写 ${hook.hook}`;
+			const outcome = hook.outcome === "ok" ? "正常" : "超时跳过，按缺失处理";
+			lines.push(
+				`     - ${label}（插件 ${hook.plugin}）：${outcome}，${hook.durationMs} 毫秒${hook.reason === null ? "" : `，原因：${hook.reason}`}`,
+			);
+		}
 	}
 
 	lines.push("");

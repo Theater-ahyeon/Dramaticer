@@ -7,6 +7,7 @@ import type {
 	LlmTruncationReason,
 	LlmUsage,
 } from "./llm/types.js";
+import type { TurnHookTraceEntry } from "./plugins/turn-hooks.js";
 import type { TurnRunStatus } from "./run-log.js";
 import type {
 	StructuredOutputIssue,
@@ -144,4 +145,9 @@ export interface TurnTrace {
 	readonly deep: TurnTraceDeep | null;
 	/** 本轮运行日志；快回合为 null。 */
 	readonly run: TurnTraceRun | null;
+	/**
+	 * 回合内钩子的耗时与跳过原因；没有被计时的钩子时没有这个字段。
+	 * 超时跳过的提供者按缺失槽位处理，回合继续。
+	 */
+	readonly hooks?: readonly TurnHookTraceEntry[];
 }

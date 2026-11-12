@@ -236,6 +236,48 @@ describe("explainNode", () => {
 		expect(text).toContain("让卫宫说出一个具体理由");
 	});
 
+	it("输出超时跳过的回合钩子与原因", () => {
+		const { store } = openTempStore();
+		seed(store);
+		store.saveTurnTrace({
+			...traceFor("a1", "u1"),
+			hooks: [
+				{
+					extension: "context.slot",
+					plugin: "slot.memory",
+					hook: "memory",
+					durationMs: 1_002,
+					outcome: "timeout",
+					reason: "超过时间预算 1000 毫秒",
+				},
+				{
+					extension: "request.rewrite",
+					plugin: "test/rewrite",
+					hook: "request.rewrite",
+					durationMs: 1,
+					outcome: "ok",
+					reason: null,
+				},
+			],
+		});
+
+		const report = explainNode(store, "a1");
+
+		expect(report.hooks).toHaveLength(2);
+		expect(
+			report.suggestions.some((suggestion) =>
+				suggestion.advice.includes("slot.memory"),
+			),
+		).toBe(true);
+		const text = renderExplainReport(report);
+		expect(text).toContain("运行 2 个，超时跳过 1 个");
+		expect(text).toContain("槽位 memory（插件 slot.memory）");
+		expect(text).toContain("原因：超过时间预算 1000 毫秒");
+		expect(text).toContain(
+			"请求改写 request.rewrite（插件 test/rewrite）：正常",
+		);
+	});
+
 	it("盲盒模式下 explain 仍显示完整导演决策", () => {
 		const { store } = openTempStore();
 		seed(store);

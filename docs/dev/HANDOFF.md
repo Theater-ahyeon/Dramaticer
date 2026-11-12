@@ -3,48 +3,47 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-12 会话 303：P2.e（后台任务类型与工具插件化）。新增 `packages/core/src/plugins/background-jobs.ts`：17 个任务插件（`background.events`、`background.summary`、`background.compression`、`background.npc-agenda`、`background.lore-prefilter`、`background.settle`、`background.scene`、`background.user-will`、`background.memory-revision`、`background.gap-pass`、`background.opening`、`background.opening-candidates`、`background.visual-profile`、`background.illustrate`、`background.director-plan`、`background.candidate-actions`、`background.embeddings`），静态的 13 个在 `BACKGROUND_JOB_PLUGINS`，illustrate、规划器客户端与 embedder 由 `createBackgroundJobPlugins(options)` 按选项补齐；`createBackgroundJobRegistryFromPlugins` 用 `createStaticKernel` 装载，任何插件未激活或没有注册声明类型都抛错。新增 `packages/core/src/plugins/tools.ts`：10 个工具插件（4 个快回合可用的只读工具、2 个深回合只读工具、4 个写入或控制工具）、`DEFAULT_TOOL_KERNEL`、`toolRegistryFromKernel`、`createToolRegistryFromPlugins`、`defaultToolRegistry`。`ExtensionRegistry` 新增 `addTool(plugin, definition, phases)`（复用 `createDeepToolRegistry` 校验名称、权限与进度文字，同名拒绝，幂等撤销）以及 `tool`/`tools`/`toolNames`；`PluginContext` 新增 `tool(definition, phases)`；`PluginKernel` 新增 `tool(name)`、`tools(phase)`，`KernelSnapshot` 新增 `tools`。`FAST_TURN_TOOLS` 与 `DEEP_TURN_TOOLS` 从内核派生，工具顺序、权限、白名单与手记过滤与改动前一致。`createDefaultBackgroundJobRegistry` 改为 `createBackgroundJobPlugins` 加注册表收集，种类顺序、入队条件、档位与 `needsRun` 与改动前逐项一致。`BUILTIN_PLUGINS` 并入 `TOOL_PLUGINS` 与 `BACKGROUND_JOB_PLUGINS`。把槽位名与 `isContextSlotName` 移到 `packages/core/src/context/slot-names.ts`，打断 `tools/index → plugins/tools → static-kernel → lite-kernel → kernel-surface → plugins/registry → context/template → tools/index` 的求值循环。新增 `packages/core/test/plugin-background-tools.test.ts` 10 个测试。门禁通过（185 个测试文件、1603 个测试、5 个跳过）。
+- 2026-11-12 会话 304：P2.f（回合内钩子时间预算、Trace 与 explain）。新增 `packages/core/src/plugins/turn-hooks.ts`：`TurnHookTraceEntry { extension, plugin, hook, durationMs, outcome, reason }`、`TurnHookExtension` 取 `context.slot` 与 `request.rewrite`、`DEFAULT_TURN_HOOK_BUDGET_MS = 5_000`、`assertTurnHookBudgetMs`、`runTurnHook`（`Promise.withResolvers` 做截止计时，超时返回 null 与 timeout 记录，其它错误原样抛出）、`TurnRequestRewriter`。槽位提供者的 `ContextSlotProvider` 增加可选 `plugin`；`collectSlotProviders` 用 `kernel.slotProviderEntry(name)` 给每个提供者填插件名；`assembleContext` 对带插件名的提供者逐个计时，超时记 `missing-slot` 并继续组装，结果放进新的 `AssembledContext.hooks`。`EventBus` 的监听器带插件名（`LiteKernel` 的 `ctx.on` 传入插件名），`KernelSurface.rewriteRequest(messages, budgetMs?)` 按注册顺序依次改写（事件名常量 `REQUEST_REWRITE_HOOK = "request.rewrite"`），超时跳过、后面的钩子继续，返回值必须是消息数组否则指出插件并抛错。`TurnTrace.hooks` 收集槽位钩子与改写钩子；`generateAssistantTurn` 新增 `requestRewriter` 与 `hookBudgetMs`，改写发生在 `withDirectorNotes` 之前；任一槽位超时就不保存上下文包（避免缺槽位的包被复用），`saveContextPack` 不保存钩子耗时。`dramaticer explain` 第 3 段列出全部钩子、超时数与原因，`ExplainReport.hooks` 可从 `--json` 读；超时也给修正建议。server 运行时（`StoryRuntime.requestRewriter`）与 `dramaticer chat` 把槽位内核作为改写入口。新增 `packages/core/test/turn-hooks.test.ts`（7 条）与 explain 的 1 条钩子测试。门禁通过（181 个测试文件、1611 个测试、5 个跳过）。
 
-## 下一步（会话 304 先做）
-1. 做 **P2.f 回合内钩子时间预算、Trace 与 explain**（依赖 P2.e）：
-   - 回合内扩展点按 DESIGN §19.2 接入组装与请求改写：槽位提供者已经是 `parallel` 收集（`KernelSurface.runSlot`），需要给每个提供者加时间预算；组装后的请求改写走 `waterfall`。
-   - 超时跳过、继续回合；Trace 记录扩展点名、插件名、耗时与原因（I17）；跳过的提供者按缺失处理，不产生半截内容。
-   - `dramaticer explain` 读出被跳过的扩展点与原因。
-   - 现有 Trace 类型在 `packages/core/src/trace.ts`，组装在 `packages/core/src/context/assembler.ts`，`assembleContext` 由 `generateAssistantTurn` 调用；`TurnTrace.deep.contextOmitted` 是现有的深回合记录位置。
-   - 没有钩子时回合输出必须与改动前一致；相关测试要覆盖超时、正常耗时与无钩子三种情况。
-2. P2.e 的代码事实：
-   - `ExtensionRegistry.addTool(plugin, definition, phases)` 的 `phases` 取 `fast`、`deep`；空数组、未知阶段、同名工具都抛错；`tools(phase)` 按注册顺序返回。
-   - `plugins/tools.ts` 的 `toolByName` 在模块初始化时按名称取 `READ_TOOLS` 与 `DEEP_ONLY_READ_TOOLS` 里的定义，名称对不上时立即抛错。
-   - `plugins/background-jobs.ts` 的 `backgroundJobPlugin(plugin, kind, entry)` 把 `entry` 原样交给内核校验；`createBackgroundJobRegistryFromPlugins` 返回 `ReadonlyMap<string, BackgroundJobType>`，这是生产注册表的唯一来源。
-   - `background/defaults.ts` 的 `DefaultBackgroundRegistryOptions.illustrate` 类型是 `BackgroundJobPluginOptions["illustrate"]`。
-   - `context/slot-names.ts` 现在是槽位名的唯一来源，`context/template.ts` 继续从包根导出同名符号。
-3. P2.g 依赖 P2.c、P2.d、P2.e、P2.f，等 P2.f 完成后再做。
-4. C 线依赖 P2；H-T00 的依赖已满足但仍排在 P/C 之后，不要提前开始。
-5. M6-T99 仍等待 HUMAN-15（ComfyUI 与 API workflow JSON），不要开始。
-6. 后续顺序：P1 → P2 → C 兼容插件 → H → X → R6 → M6b → P3/P4 → M5 → P5 → M7。
+## 下一步（会话 305 先做）
+1. 做 **P2.g P2 验收**（依赖 P2.c、P2.d、P2.e、P2.f，现已全部满足）：
+   - 逐条核对 P2.b 至 P2.f 的验收标准；复核 I6、I7、I9、I11、I12、I13、I15、I17。
+   - 重跑 R2 的基准评测并对比数字；结果与复现命令写进 `docs/dev/reports/P2.md`；有退化的模块回退成直接调用并记录原因。
+   - 结果写 `MILESTONE_DONE`。
+2. P2.g 之后按顺序：C 兼容插件线（C-T01 起）→ H → X → R6 → M6b → P3/P4 → M5 → P5 → M7。
+3. M6-T99 仍等待 HUMAN-15（ComfyUI 与 API workflow JSON），不要开始。
 
 ## P2 插件内核（决定与代码位置）
 - ADR-0087 在 `docs/dev/DECISIONS.md`。采用的实现是 `LiteKernel`，不引入 `cordis`；Cordis 原型证据留在 ADR。
-- `packages/core/src/plugins/contracts.ts`：`PluginDefinition { name, inject?, provide?, Config?, apply(ctx, config) }`；`PluginContext` 提供 `slot`、`directorMechanism`、`blockType`、`tool(definition, phases)`、`provide`、`service`、`on`、`backgroundJob`、`timeout`、`interval`、`onDispose`；`PluginStatus.state` 的声明值是 `active`、`loading`、`blocked`、`failed`、`disposed`，`LiteKernel` 实际只产生 `active`、`blocked`、`failed`；`PluginKernel` 是内核对外接口，含 `runSlot`、`slotProvider`、`runMechanisms`、`mechanisms`、`blockType`、`blockTypes`、`tool`、`tools`、`backgroundJob(s)`、`service`、事件分发与 `dispose`；`KernelSnapshot` 有 `plugins`、`missingServices`、`slots`、`mechanisms`、`blockTypes`、`backgroundJobs`、`tools`、`services`。
-- `packages/core/src/plugins/lite-kernel.ts`：每个插件一条 `{ definition, config, state, failure, cleanups }`；`settle()` 先撤销依赖不再满足的 active 插件，再按装载顺序激活依赖满足的 pending 插件；服务值存在 `serviceValues` 表；同名服务在装载前拒绝；配置校验复用 `StandardSchemaV1`；`timeout`/`interval`/`backgroundJob`/`tool` 都进 `cleanups`，`deactivate()` 逆序执行，装载失败同样逆序回滚。`installSync` 供模块级静态插件使用。
-- `packages/core/src/plugins/runtime.ts`：`createPluginKernel({ plugins?, configs? })` 是启动入口；`plugins` 缺省为 `BUILTIN_PLUGINS`；配置按插件名取用；启动抛错时先 `dispose()` 再原样抛出。注意 `load()` 把 `apply` 抛错记为插件 failed 而不是让调用方失败，所以集合工厂必须自己检查状态。
-- `packages/core/src/plugins/builtin.ts`：`BUILTIN_PLUGINS = [...MECHANISM_PLUGINS, ...BLOCK_TYPE_PLUGINS, ...TOOL_PLUGINS, ...BACKGROUND_JOB_PLUGINS, ...SLOT_PLUGINS]`。任务与工具插件是静态的；槽位插件需要运行环境提供存储与选项。
-- `packages/core/src/plugins/mechanisms.ts`：6 个机制插件（`mechanism.clue`、`mechanism.opening`、`mechanism.beat`、`mechanism.repetition`、`mechanism.event-pool`、`mechanism.pacing`）；`DEFAULT_MECHANISM_KERNEL` 是模块级内核。
+- `packages/core/src/plugins/contracts.ts`：`PluginDefinition { name, inject?, provide?, Config?, apply(ctx, config) }`；`PluginContext` 提供 `slot`、`directorMechanism`、`blockType`、`tool(definition, phases)`、`provide`、`service`、`on`、`backgroundJob`、`timeout`、`interval`、`onDispose`；`PluginStatus.state` 的声明值是 `active`、`loading`、`blocked`、`failed`、`disposed`，`LiteKernel` 实际只产生 `active`、`blocked`、`failed`；`PluginKernel` 对外含 `runSlot`、`slotProvider`、`slotProviderEntry`、`rewriteRequest`、`runMechanisms`、`mechanisms`、`blockType`、`blockTypes`、`tool`、`tools`、`backgroundJob(s)`、`service`、五种事件分发与 `dispose`；`SlotProviderEntry { plugin, provider }`；`KernelSnapshot` 有 `plugins`、`missingServices`、`slots`、`mechanisms`、`blockTypes`、`backgroundJobs`、`tools`、`services`。
+- `packages/core/src/plugins/turn-hooks.ts`：`runTurnHook` 的预算默认 5,000 毫秒（内置记忆槽位会在回合内调用 embedding 与重排序渠道，不能设短）；`runTurnHook` 的实现用真实计时器与 `Promise.withResolvers`；`TurnRequestRewriter` 只有 `rewriteRequest` 一个方法。
+- `packages/core/src/plugins/events.ts`：`EventRegistration { plugin, listener }`；`on(name, listener, plugin = null)`、`listeners(name)`；`waterfall` 仍是同步版本，回合请求改写走 `KernelSurface.rewriteRequest`。
+- `packages/core/src/plugins/kernel-surface.ts`：`slotProviderEntry` 取注册表第一项；`rewriteRequest` 逐个钩子计时，`timeout` 跳过、`undefined`/`null` 视为不改写，其余必须返回消息数组（角色与内容校验）。
+- `packages/core/src/plugins/lite-kernel.ts`：每个插件一条 `{ definition, config, state, failure, cleanups }`；`settle()` 先撤销依赖不再满足的 active 插件，再按装载顺序激活依赖满足的 pending 插件；服务值存在 `serviceValues` 表；同名服务在装载前拒绝；配置校验复用 `StandardSchemaV1`；`timeout`/`interval`/`backgroundJob`/`tool`/`on` 都进 `cleanups`，`deactivate()` 逆序执行，装载失败同样逆序回滚。`installSync` 供模块级静态插件使用。
+- `packages/core/src/plugins/runtime.ts`：`createPluginKernel({ plugins?, configs? })` 是启动入口；`plugins` 缺省为 `BUILTIN_PLUGINS`；启动抛错时先 `dispose()` 再原样抛出。`load()` 把 `apply` 抛错记为插件 failed 而不是让调用方失败，所以集合工厂必须自己检查状态。
+- `packages/core/src/plugins/builtin.ts`：`BUILTIN_PLUGINS = [...MECHANISM_PLUGINS, ...BLOCK_TYPE_PLUGINS, ...TOOL_PLUGINS, ...BACKGROUND_JOB_PLUGINS, ...SLOT_PLUGINS]`。
+- `packages/core/src/plugins/mechanisms.ts`：6 个机制插件；`DEFAULT_MECHANISM_KERNEL` 是模块级内核。
 - `packages/core/src/plugins/block-types.ts`：12 个块类型插件；`DEFAULT_BLOCK_TYPES`、`DEFAULT_BLOCK_TYPE_KERNEL`、`blockTypeRegistryFromKernel`、`defaultBlockTypeRegistry` 在这里。
 - `packages/core/src/plugins/tools.ts`：10 个工具插件与阶段；`DEFAULT_TOOL_KERNEL`；`defaultToolRegistry(phase)` 装载失败直接抛错，`FAST_TURN_TOOLS`/`DEEP_TURN_TOOLS` 由它派生。
 - `packages/core/src/plugins/background-jobs.ts`：17 个任务插件、`BACKGROUND_JOB_PLUGINS`（静态 13 个）、`createBackgroundJobPlugins(options)`、`createBackgroundJobRegistryFromPlugins`。
-- `packages/core/src/plugins/slots.ts`：十个内置槽位插件与 `NAIVE_SLOT_PLUGINS`（character、persona、`slot.history.raw`）；插件名常量与配置接口在这里；history 的 `policy`、memory 的 `embedder`/`reranker` 原样透传给 `chat/providers.ts` 的工厂。
-- `packages/core/src/plugins/chat-providers.ts`：`ChatSlotSet`、`collectSlotProviders`、`composeSlotSet`、`createStandardChatSlots`、`createNaiveChatSlots`；标准集合装载 `BUILTIN_PLUGINS`（persona 配置为 null），朴素集合装载 `NAIVE_SLOT_PLUGINS`。
-- `packages/core/src/plugins/registry.ts`：槽位、Director 机制、块类型、工具、后台任务类型注册表；块类型复用 `blocks/types.ts`、工具复用 `tools/registry.ts`、后台任务复用 `background/registry.ts` 的校验；每次注册返回幂等撤销函数。
-- `packages/core/src/plugins/events.ts`：`emit` 通知、`parallel` 按注册顺序收集、`serial` 依次收集、`bail` 首个非空、`waterfall` 依次改写同一个值。
-- `packages/core/src/plugins/kernel-surface.ts`：`KernelSurface` 持有 `ExtensionRegistry` 与 `EventBus`，实现 `runSlot`、`slotProvider`、`runMechanisms`、`mechanisms`、`blockType`、`blockTypes`、`tool`、`tools`、`backgroundJob`、`backgroundJobs` 与五种分发。
-- `packages/core/src/context/slot-names.ts`：`CONTEXT_SLOT_NAMES`、`ContextSlotName`、`isContextSlotName`；`context/template.ts` 继续转出，plugins/registry 直接从这里取用。
-- 测试：`packages/core/test/plugin-fixtures.ts`、`plugin-kernel-suite.ts`、`plugins.test.ts`（11 条共享断言）、`plugin-runtime.test.ts`（6 条）、`chat-slot-plugins.test.ts`（4 条）、`plugin-extensions.test.ts`（7 条）、`plugin-background-tools.test.ts`（10 条）。
-- 依赖：`@standard-schema/spec` 在 `packages/core` 的 `dependencies`，只用于公开类型声明；不要在其他运行时代码里 import。
+- `packages/core/src/plugins/slots.ts`：十个内置槽位插件与 `NAIVE_SLOT_PLUGINS`；插件名常量与配置接口在这里；history 的 `policy`、memory 的 `embedder`/`reranker` 原样透传给 `chat/providers.ts` 的工厂。
+- `packages/core/src/plugins/chat-providers.ts`：`ChatSlotSet`、`collectSlotProviders`（现在给每个提供者填 `plugin`）、`composeSlotSet`、`createStandardChatSlots`、`createNaiveChatSlots`。
+- `packages/core/src/plugins/registry.ts`：槽位、Director 机制、块类型、工具、后台任务类型注册表；复用 `blocks/types.ts`、`tools/registry.ts`、`background/registry.ts` 的校验；每次注册返回幂等撤销函数。
+- `packages/core/src/plugins/index.ts`：导出 `turn-hooks.ts` 的全部公开符号（含 `REQUEST_REWRITE_HOOK`、`TurnRequestRewriter`）。
+- `packages/core/src/context/slot-names.ts`：`CONTEXT_SLOT_NAMES`、`ContextSlotName`、`isContextSlotName`；`context/template.ts` 继续转出。
+- 测试：`plugin-fixtures.ts`、`plugin-kernel-suite.ts`、`plugins.test.ts`（11 条）、`plugin-runtime.test.ts`（6 条）、`chat-slot-plugins.test.ts`（4 条）、`plugin-extensions.test.ts`（7 条）、`plugin-background-tools.test.ts`（10 条）、`turn-hooks.test.ts`（7 条）。
+- 依赖：`@standard-schema/spec` 在 `packages/core` 的 `dependencies`，只用于公开类型声明。
+
+## 回合内钩子（P2.f）
+- `ContextSlotProvider.plugin` 为空表示直接构造的提供者，组装时不计时、不写 Trace；生产路径经 `collectSlotProviders` 一定有插件名。
+- 超时的槽位在 `ContextTraceEntry` 里是 `missing-slot`，`source` 仍是 `slot:<name>`；`AssembledContext.hooks` 里有 `outcome: "timeout"` 与原因。超时回合不写上下文包；`saveContextPack` 本身也不保存钩子耗时（复用旧包时不重放）。
+- `TurnTrace.hooks` 是槽位钩子与改写钩子的拼接；没有计时钩子时字段不存在（`TurnTrace.hooks === undefined`），保证无插件路径的 Trace 与改动前一致。
+- 请求改写与槽位提供者共用 `hookBudgetMs`；`GenerateAssistantTurnOptions.requestRewriter` 由 server 运行时（`StoryRuntime.requestRewriter`）与 `dramaticer chat` 传入内核，st-compat 评测入口目前没有传（没有插件注册改写钩子，行为不变）。
+- `dramaticer explain` 第 3 段标题仍是「被裁剪的段落与缺失槽位」，随后多出「回合钩子（时间预算与跳过原因）」子段；`dramaticer explain --json` 的 `hooks` 字段直接给出条目。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a、P2.b、P2.c、P2.d、P2.e。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- 数据库 schema 版本 41。P2.e 没有迁移。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a、P2.b、P2.c、P2.d、P2.e、P2.f。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 数据库 schema 版本 41。P2.f 没有迁移。
 - 依赖登记：`@standard-schema/spec` 已登记为 `packages/core` 依赖；当前没有第三方插件框架。
 - `eval-private/memory-cache/r1-retrieval.db` 有三个故事：`仙侠雌竞：什么叫我是炉鼎体质？` 290 个助手楼层已抽取 282 个、414 条事件；`欲望世界-1600` 180 个助手楼层已抽取 174 个、292 条事件；`银麒赎世` 114 个助手楼层已抽取 112 个、248 条事件。评测自己的临时数据库重新抽取后事件覆盖为 282/290、172/180、112/114，事件数 371/247/248。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045、ADR-0078、ADR-0079、ADR-0080、ADR-0082、ADR-0083、ADR-0084、ADR-0085、ADR-0086、ADR-0087。
@@ -62,6 +61,8 @@
 
 ## 深回合实现位置（代码事实）
 - 回合入口 `packages/core/src/chat/turn.ts`：`runChatTurn` 先 `resolveTurnMode`，再追加用户楼层、组装上下文、按模式调用 `runDeepTurn` 或 `runModelTurns`。`generateAssistantTurn` 用 `applyTemplateDeepTurn` 覆盖模板里的 `deepTurn`；`selectDeepTurnTools` 按白名单过滤 `DEEP_TURN_TOOLS` 并排除关闭的手记工具。深回合新建 `TurnDraftController`、`TurnNoteController` 与 `TurnGuidanceController`；`withDirectorNotes` 在组装后的消息之后追加一条系统消息（没有手记时不加）。正文解析在 `resolveTurnBody`：显式提交用草稿；正常结束但没有提交时把最后一次输出整份替换为草稿并自动提交，记 `drift: "missing_commit"`；中止、超时、工具次数上限或没有正文且没有提交时返回 null，运行标为 `failed` 并抛 `DeepTurnWithoutCommitError`。
+- 上下文组装 `packages/core/src/context/assembler.ts`：模板片段并行解析，槽位提供者带 `plugin` 时逐个计时；`AssembledContext.hooks` 只在有计时钩子时出现。
+- 上下文包 `packages/core/src/context/pack.ts`：保存时只写 messages、segments、trace 与 references，不写钩子耗时。
 - 追加要求 `packages/core/src/chat/guidance.ts`：`MAX_TURN_GUIDANCE_ENTRIES = 5`、`MAX_TURN_GUIDANCE_LENGTH = 2_000`、`TURN_GUIDANCE_PREFIX`；执行器每次请求前成对省略旧工具往返，再 `guidance.drain()` 并逐条追加为用户消息。
 - 草稿 `packages/core/src/chat/draft.ts`：`TurnDraftSnapshot { text, version }`；替换时版本加一；`commit(method)` 只允许一次。运行日志的 `draft.replace` 只记版本号与正文长度，`draft.commit` 记版本号、长度与方式。
 - 运行日志 `packages/core/src/run-log.ts`：状态 `running`、`completed`、`interrupted`、`failed`、`aborted`；事件 `model.request`、`model.response`、`tool.call`、`tool.result`、`draft.replace`、`draft.commit`、`steering`、`limit`、`error`。事件表只追加，序号按运行内最大值加一；`TurnTrace.run` 记录 `runId`、状态与事件条数，快回合为 null。
@@ -70,7 +71,8 @@
 - 验收评测 `packages/st-compat/src/evalset/deep-eval.ts`：`runDeepEval`、`summarizeDeepEval`、`parseDeepEvalJsonl`、`serializeDeepEvalRecord`、`selectBranchRounds`；CLI 在 `deep-eval-cli.ts`。失败轮次把 head 恢复到生成前；分支盲评用 `judgePairwise({ task: "historical" })` 两次，两次结论不同记 `inconsistent`；统计按轮次去重，重试后的成功覆盖同一轮。
 
 ## server 与 web（R3b-T10）
-- server SSE `packages/server/src/turns.ts`：`turn.started`（带 `runId`，快回合 null）、`text.delta`、`blocks.replace`（100 毫秒节流）、`thinking.delta`、`tool.call`、`turn.progress`、`draft.replace`（100 毫秒节流）、`turn.steering`、`turn.committed`、`turn.error`、`turn.completed`。`TurnRunRegistry` 在 `onTurnStarted` 注册、流 `finally` 注销。
+- server SSE `packages/server/src/turns.ts`：`turn.started`（带 `runId`，快回合 null）、`text.delta`、`blocks.replace`（100 毫秒节流）、`thinking.delta`、`tool.call`、`turn.progress`、`draft.replace`（100 毫秒节流）、`turn.steering`、`turn.committed`、`turn.error`、`turn.completed`。`TurnRunRegistry` 在 `onTurnStarted` 注册、流 `finally` 注销。`turnOptions` 现在把 `runtime.requestRewriter` 传给生成入口。
+- server 运行时 `packages/server/src/runtime.ts`：`StoryRuntime` 增加 `requestRewriter`，来自 `createStandardChatSlots` 的内核。
 - server 接口 `packages/server/src/routes.ts`：`GET /api/nodes/:id/run` 返回 `NodeRunView`（`nodeId`、`run`、按 `seq` 升序的 `events`），没有运行 404；`POST /api/nodes/:id/retry` 只接受用户楼层，请求体 `{ mode? }`，以该用户楼层为父节点生成新的助手楼层，不追加用户楼层；`POST /api/stories/:id/turns/:runId/steering` 返回 202 `{ runId }`，未知或跨故事 404、已结束 409、文本非法 400、队列满 409。
 - `packages/web/src/chat/stream-state.ts`：`TurnDraft` 含 `runId`、`progress`、`liveDraft`、`guidance`、`committed`；`applyDraftSnapshot` 忽略不高于当前版本的快照；`describeProgress` 输出阶段文字；`turn.committed` 用提交块替换 `blocks` 并清空阶段文字。`resolveRetryAction` 依次给出 `regenerate`、`retry`、`resend`、`blocked`。
 - `packages/web/src/chat/run-timeline.ts` 按 `seq` 排序事件并生成标签；`StreamingBubble`、`Composer`、`FloorRunTimeline` 只做渲染。e2e 假渠道消息里含“深回合草稿”时返回 `draft_write` 与 `commit_draft`，每次响应延迟 1.2 秒。
@@ -97,9 +99,9 @@
 
 ## 可重复命令与评测产物
 - 门禁：`pnpm check`。
-- 插件内核、槽位、扩展、任务与工具测试：`pnpm exec vitest run packages/core/test/plugins.test.ts packages/core/test/plugin-runtime.test.ts packages/core/test/chat-slot-plugins.test.ts packages/core/test/plugin-extensions.test.ts packages/core/test/plugin-background-tools.test.ts`（38 个测试）。
+- 插件内核、槽位、扩展、任务与工具测试：`pnpm exec vitest run packages/core/test/plugins.test.ts packages/core/test/plugin-runtime.test.ts packages/core/test/chat-slot-plugins.test.ts packages/core/test/plugin-extensions.test.ts packages/core/test/plugin-background-tools.test.ts packages/core/test/turn-hooks.test.ts`（45 个测试）。
 - 单个 e2e：`cd packages/web && pnpm exec playwright test --project=desktop --grep "深回合"`；e2e 假渠道固定端口 4517，数据库 `.devloop/scratch/e2e/work/e2e.db`。
-- 排障命令：`dramaticer explain --node <id> --db <path> [--json]`，只读、零模型调用；第 9 段显示运行状态与按 `seq` 排序的事件。
+- 排障命令：`dramaticer explain --node <id> --db <path> [--json]`，只读、零模型调用；第 9 段显示运行状态与按 `seq` 排序的事件，第 3 段之后显示回合钩子。
 - R1 事件回填与检索评测：
   - `pnpm --filter @dramaticer/st-compat events-backfill --resume --db eval-private/memory-cache/r1-retrieval.db`
   - `pnpm --filter @dramaticer/st-compat memory-eval --events --rerank --db eval-private/memory-cache/tmp/r1-memory-eval.db --private-report eval-private/reports/R1-retrieval.md --public-report docs/dev/reports/R1-retrieval.md --title "R1 记忆引擎检索评测"`
@@ -118,7 +120,7 @@
 - `packages/st-compat` 与 `packages/server` 的测试通过 `@dramaticer/core` 的 `dist` 解析 core；只跑这些包的测试前先执行 `pnpm run typecheck`。
 - 结构化 JSON 请求一律使用 `NO_CONTINUATION`；正文写作与散文类后台输出保留续写。
 - web 源码不能 import `@dramaticer/core` 的运行时值（会把 `better-sqlite3` 与 `node:*` 打进前端包导致整页白屏），类型导入可以。
-- 槽位集合工厂是异步的（`createStandardChatSlots`、`createNaiveChatSlots`），返回 `{ kernel, providers }`；组装与回合只消费 `providers`。
+- 槽位集合工厂是异步的（`createStandardChatSlots`、`createNaiveChatSlots`），返回 `{ kernel, providers }`；组装与回合只消费 `providers`，请求改写消费 `kernel`。
 - 插件模块静态初始化时不要调用会反向 import 当前模块的注册表；槽位名等基础常量放在叶子模块。
 - 修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 的请求写进 HUMAN.md。
 - 不变量：I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖其他工作区包，I17 回合内插件钩子有时间预算，I18 插件权限必须声明。

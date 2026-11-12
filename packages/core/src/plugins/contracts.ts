@@ -7,13 +7,14 @@ import type {
 	ContextSlotProvider,
 	ContextSlotRequest,
 } from "../context/assembler.js";
-import type { ContextSlotName } from "../context/template.js";
+import type { ContextMessage, ContextSlotName } from "../context/template.js";
 import type {
 	DirectorMechanism,
 	DirectorMechanismContext,
 	DirectorMechanismResult,
 } from "../director/types.js";
 import type { DeepToolDefinition, ToolPhase } from "../tools/registry.js";
+import type { RewrittenRequest } from "./turn-hooks.js";
 
 export type PluginState =
 	| "active"
@@ -85,6 +86,12 @@ export interface SlotRunResult {
 	readonly content: ContextSlotContent | null;
 }
 
+/** 槽位注册项：插件名与它注册的提供者。 */
+export interface SlotProviderEntry {
+	readonly plugin: string;
+	readonly provider: ContextSlotProvider;
+}
+
 /** 插件内核的对外接口，运行环境与测试按这个接口取用。 */
 export interface PluginKernel {
 	load(definition: PluginDefinition, config?: unknown): Promise<PluginStatus>;
@@ -95,6 +102,13 @@ export interface PluginKernel {
 	runSlot(request: ContextSlotRequest): Promise<readonly SlotRunResult[]>;
 	/** 槽位当前注册的第一个提供者；没有注册时返回 null。 */
 	slotProvider(name: ContextSlotName): ContextSlotProvider | null;
+	/** 槽位当前注册的第一项，带插件名；没有注册时返回 null。 */
+	slotProviderEntry(name: ContextSlotName): SlotProviderEntry | null;
+	/** 组装后的请求改写：按注册顺序依次改写，每个钩子有耗时上限。 */
+	rewriteRequest(
+		messages: readonly ContextMessage[],
+		budgetMs?: number,
+	): Promise<RewrittenRequest>;
 	runMechanisms(context: DirectorMechanismContext): readonly {
 		plugin: string;
 		name: string;

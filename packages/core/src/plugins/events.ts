@@ -1,15 +1,21 @@
 import type { EventListener } from "./contracts.js";
 
-interface Registration {
+export interface EventRegistration {
+	readonly plugin: string | null;
 	readonly listener: EventListener;
 }
 
 /** 按 DESIGN §19.2 的语义分发事件。 */
 export class EventBus {
-	private readonly hooks = new Map<string, Registration[]>();
+	private readonly hooks = new Map<string, EventRegistration[]>();
 
-	on(name: string, listener: EventListener): () => void {
-		const registration: Registration = { listener };
+	/** 监听器的插件名用于 Trace；直接订阅内核的调用方不提供插件名。 */
+	on(
+		name: string,
+		listener: EventListener,
+		plugin: string | null = null,
+	): () => void {
+		const registration: EventRegistration = { plugin, listener };
 		const list = this.hooks.get(name) ?? [];
 		list.push(registration);
 		this.hooks.set(name, list);
@@ -66,7 +72,12 @@ export class EventBus {
 		return current;
 	}
 
-	private snapshot(name: string): readonly Registration[] {
+	/** 当前订阅者快照，按注册顺序；回合钩子按插件名逐个计时。 */
+	listeners(name: string): readonly EventRegistration[] {
+		return this.snapshot(name);
+	}
+
+	private snapshot(name: string): readonly EventRegistration[] {
 		return [...(this.hooks.get(name) ?? [])];
 	}
 }

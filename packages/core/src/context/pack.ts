@@ -19,10 +19,17 @@ export function saveContextPack(
 	input: SaveContextPackInput,
 ): ContextPack {
 	const diffCount = store.countStateDiffsAlongPath(input.nodeId);
+	// 钩子耗时只属于发起组装的那一轮，复用上下文包时不重放。
+	const assembled: AssembledContext = {
+		messages: input.assembled.messages,
+		segments: input.assembled.segments,
+		trace: input.assembled.trace,
+		references: input.assembled.references,
+	};
 	const payload: ContextPackPayload = {
 		version: CONTEXT_PACK_VERSION,
 		fingerprint: input.fingerprint,
-		assembled: input.assembled,
+		assembled,
 		references: {
 			loreEntryIds: input.assembled.references.loreEntryIds,
 			sceneAnalysisNodeId: input.assembled.references.sceneAnalysisNodeId,

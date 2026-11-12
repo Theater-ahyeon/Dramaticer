@@ -1,4 +1,5 @@
 import type { HistoryViewTrace } from "../blocks/history.js";
+import { type TurnHookTraceEntry, runTurnHook } from "../plugins/turn-hooks.js";
 import type {
 	RetrievalHit,
 	RetrievalRouteRanking,
@@ -73,6 +74,11 @@ export interface ContextSlotProvider {
 	 * 不声明时只按槽位名区分。
 	 */
 	readonly packKey?: string;
+	/**
+	 * 注册该提供者的插件名；由收集内核槽位的调用方填入。
+	 * 直接构造提供者的调用方不填，组装时不做计时也不跳过。
+	 */
+	readonly plugin?: string;
 	provide(
 		request: ContextSlotRequest,
 	): ContextSlotContent | null | PromiseLike<ContextSlotContent | null>;
@@ -91,6 +97,8 @@ export interface ContextAssemblyInput {
 	readonly state?: unknown;
 	readonly providers?: ContextSlotProviders;
 	readonly tokenEstimator?: TokenEstimator;
+	/** 每个槽位提供者的时间预算；不设置时使用默认值。 */
+	readonly hookBudgetMs?: number;
 }
 
 export type ContextTraceStatus =
@@ -138,6 +146,8 @@ export interface AssembledContext {
 	readonly trace: ContextTrace;
 	/** 进入上下文的引用；上下文包据此复核复用是否仍然有效。 */
 	readonly references: ContextAssemblyReferences;
+	/** 本次组装的槽位钩子耗时与跳过原因；不写进上下文包。 */
+	readonly hooks?: readonly TurnHookTraceEntry[];
 }
 
 export interface ContextAssemblyReferences {
@@ -163,6 +173,8 @@ interface ResolvedSegment {
 	readonly history?: HistoryViewTrace;
 	readonly retrieval?: ContextRetrievalTrace;
 	readonly references?: ContextSlotReferences;
+	/** 槽位提供者经过内核注册时的耗时记录；直接构造的提供者没有。 */
+	readonly hook?: TurnHookTraceEntry;
 }
 
 /**
@@ -296,6 +308,10 @@ export async function assembleContext(
 		}
 	});
 
+	const hooks = resolved.flatMap((item) =>
+		item.hook === undefined ? [] : [item.hook],
+	);
+
 	return {
 		messages,
 		segments,
@@ -305,6 +321,7 @@ export async function assembleContext(
 			entries,
 		},
 		references: { loreEntryIds, sceneAnalysisNodeId, retrievalNodeIds },
+		...(hooks.length === 0 ? {} : { hooks }),
 	};
 }
 
@@ -346,19 +363,35 @@ async function resolveSegment(
 			status: "missing-slot",
 		};
 	}
-	const content = await provider.provide({
+	const request: ContextSlotRequest = {
 		slot: segment.slot,
 		storyId: input.storyId,
 		nodeId: input.nodeId ?? null,
 		switches: facts.switches,
 		state: facts.state,
-	});
+	};
+	let content: ContextSlotContent | null;
+	let hook: TurnHookTraceEntry | undefined;
+	if (provider.plugin === undefined) {
+		content = await provider.provide(request);
+	} else {
+		const run = await runTurnHook({
+			extension: "context.slot",
+			hook: segment.slot,
+			plugin: provider.plugin,
+			budgetMs: input.hookBudgetMs,
+			run: async () => await provider.provide(request),
+		});
+		hook = run.trace;
+		content = run.value;
+	}
 	if (content === null) {
 		return {
 			segment,
 			messages: null,
 			source: fallbackSource,
 			status: "missing-slot",
+			...(hook === undefined ? {} : { hook }),
 		};
 	}
 	assertSlotContent(content, segment.slot);
@@ -368,6 +401,7 @@ async function resolveSegment(
 			messages: null,
 			source: fallbackSource,
 			status: "missing-slot",
+			...(hook === undefined ? {} : { hook }),
 		};
 	}
 	return {
@@ -375,6 +409,7 @@ async function resolveSegment(
 		messages: content.messages,
 		source: content.source,
 		status: "candidate",
+		...(hook === undefined ? {} : { hook }),
 		...(content.suffix === undefined ? {} : { suffix: content.suffix }),
 		...(content.history === undefined ? {} : { history: content.history }),
 		...(content.retrieval === undefined

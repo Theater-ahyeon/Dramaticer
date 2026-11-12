@@ -9,6 +9,7 @@ import {
 	type RerankClient,
 	type StorySettings,
 	type StoryStore,
+	type TurnRequestRewriter,
 	createDefaultContextTemplate,
 	createEmbeddingClient,
 	createLlmClient,
@@ -42,6 +43,8 @@ export interface StoryRuntime {
 	readonly maxTokens: number;
 	readonly template: ContextTemplate;
 	readonly providers: ContextSlotProviders;
+	/** 组装后的请求改写入口；与槽位提供者来自同一个内核。 */
+	readonly requestRewriter: TurnRequestRewriter;
 	readonly chatClient: LlmStreamingClient;
 	readonly backgroundClient: LlmStreamingClient | null;
 	readonly plannerClient: LlmStreamingClient | null;
@@ -134,6 +137,7 @@ export class StoryRuntimeManager {
 			maxTokens,
 			template,
 			providers: slots.providers,
+			requestRewriter: slots.kernel,
 			chatClient: this.#createClient(config, modelAlias),
 			backgroundClient:
 				settlerAlias === null ? null : this.#createClient(config, settlerAlias),

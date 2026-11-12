@@ -1097,7 +1097,8 @@
   - 深回合按白名单选取工具与手记开关过滤的行为不变。
   验收：每种任务类型与工具都有注册表条目与测试；入队条件、档位、权限与工具名单与改动前一致；缺失插件时不静默降级；`pnpm check` 通过。
 
-- [ ] **P2.f 回合内钩子时间预算、Trace 与 explain** | 依赖：P2.e
+- [x] **P2.f 回合内钩子时间预算、Trace 与 explain** | 依赖：P2.e
+  完成：2026-11-12 新增 `plugins/turn-hooks.ts`（`runTurnHook`、`DEFAULT_TURN_HOOK_BUDGET_MS = 5_000`、`TurnHookTraceEntry`、`TurnRequestRewriter`）：槽位提供者经内核收集时带上插件名，`assembleContext` 按提供者计时，超时按缺失槽位处理并让回合继续；组装后的请求改写经 `KernelSurface.rewriteRequest` 按注册顺序水流式改写（事件名 `request.rewrite`），超时跳过、后面的钩子继续；`TurnTrace.hooks` 记录扩展点、插件、耗时、结果与原因，超时槽位的上下文包不保存；`dramaticer explain` 第 3 段列出全部钩子、超时数与原因并给出修正建议；server 运行时与 `dramaticer chat` 传入内核作为改写入口；新增 7 个钩子测试与 1 个 explain 测试；门禁通过（181 个测试文件、1611 个测试、5 个跳过）
   做什么：
   - 回合内扩展点按 DESIGN §19.2 接入组装与请求改写，给每个钩子设置时间预算；超时跳过、继续回合，并把扩展点名、插件名、耗时与原因写进 Trace（I17）。
   - `dramaticer explain` 读出被跳过的扩展点与原因；跳过的提供者按缺失处理，不产生半截内容。

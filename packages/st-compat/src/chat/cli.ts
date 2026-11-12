@@ -198,30 +198,28 @@ export async function runChatCli(
 				`模型的上下文窗口 ${model.contextWindow} 不大于输出上限 ${model.maxTokens}，没有可用的输入预算`,
 			);
 		}
-		const providers =
+		const slots =
 			parsed.profile === "naive"
-				? (await createNaiveChatSlots({ store, characterPrompt, persona }))
-						.providers
-				: (
-						await createStandardChatSlots({
-							store,
-							characterPrompt,
-							embedder,
-							reranker,
-							directorConfig: {
-								...DEFAULT_DIRECTOR_CONFIG,
-								mode: parsed.directorMode,
-							},
-							historyBlockPolicy: settings.historyBlockPolicy,
-						})
-					).providers;
+				? await createNaiveChatSlots({ store, characterPrompt, persona })
+				: await createStandardChatSlots({
+						store,
+						characterPrompt,
+						embedder,
+						reranker,
+						directorConfig: {
+							...DEFAULT_DIRECTOR_CONFIG,
+							mode: parsed.directorMode,
+						},
+						historyBlockPolicy: settings.historyBlockPolicy,
+					});
 		const result = await runChatTurn({
 			store,
 			client: createClient(config, modelAlias),
 			storyId: parsed.storyId,
 			userText: parsed.userText,
 			template,
-			providers,
+			providers: slots.providers,
+			requestRewriter: slots.kernel,
 			budgetTokens,
 			structuredOutput: mode,
 			profile: parsed.profile,
