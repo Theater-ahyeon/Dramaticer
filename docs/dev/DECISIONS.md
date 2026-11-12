@@ -1508,3 +1508,21 @@
   - 启动器用当前 Node 运行 `server.js --port`，把标准输出与错误写到 `<沙箱>/st-bench-server.log`，轮询首页直到 200；默认等 180 秒，覆盖首次 webpack 编译。子进程提前退出或超时都会终止子进程，并报告退出码或日志路径。`stop()` 幂等。
   - CLI 新增 `st-bench serve`，默认使用私有根目录下的副本与 `http://127.0.0.1:8130/v1`；`--configure-only` 只写配置，供测试与人工核对。
 - **影响**：`packages/st-compat` 新增运行时依赖 `yaml` 并登记；C-T01.b.b 在此之上生成组合与 run 清单，C-T01.b.c 的 Playwright 驱动复用同一启动器；真实冒烟（ST 1.18.0，端口 8899）中首页与 `/api/settings/get` 返回 200，读回的自定义端点与桩模型和写入一致，录制服务收到零请求，沙箱配置里的原访问口令已被清空。
+
+## ADR-0096 沙箱组合计划与 run 清单的口径（2026-11-12）
+
+- **背景**：C-T01.b.c 要用 Playwright 逐个组合驱动沙箱 ST 并产出录制请求。真实沙箱里有 36 个 OpenAI 预设、68 张角色卡与 88 个聊天片段，完整三元组有 215,424 个组合；每个组合都要启动一次生成，全量跑完既没有必要，也无法在合理时间内完成。清单还要支持中断续跑，并能把录制索引里的序号对应回组合。
+- **选项**：
+  - 生成完整三元组：覆盖面最大，但组合数量与 Playwright 的串行生成次数成正比，无法在一批内完成。
+  - 只固定一个预设或一张卡，只变化另外一维：组合数量小，但会漏掉预设与角色卡的组合，不能作为兼容性测试台。
+  - 三份清单按稳定顺序轮转配对，组合数取三份长度的最大值：每个预设、角色卡与聊天片段至少出现一次，数量等于最长一维；采纳。`--limit` 只截取计划前缀，便于调试与分批。
+- **决定**：
+  - 输入发现只读沙箱 `data/default-user`：预设取 `OpenAI Settings/*.json`（文件名即预设名，不读内容）；角色卡取 `characters/` 顶层 `.png` 与 `.json`（跳过子目录与附属文件）；聊天片段取 `chats/` 下递归的 `*.jsonl`，以相对 `chats/` 的 posix 路径作为 id，楼层数按非空行统计，首行含 `chat_metadata` 时减一。聊天正文逐行流式读取，不进入内存与清单。
+  - 三份清单按码点排序；第 i 个组合取第 `i % 长度` 项，组合数取三份长度的最大值。组合 id 是 `preset\0character\0chat` 的 SHA-256 前 32 位十六进制，不含时间、批次与绝对路径。
+  - run 清单固定为 `<私有根>/st-sandbox/runs/<批次>/manifest.jsonl`，一行一个状态记录：`combinationId`、`preset`、`character`、`chat`、`floor`、`seqStart`、`seqEnd`、`startedAt`、`finishedAt`、`status` 与可选 `reason`。`status` 取 `pending`、`running`、`completed`、`failed`；同一组合的最后一行是当前状态，清单只追加、不原地改写。
+  - `plan` 命令为没有记录的组合写 `pending`；`completed` 跳过；`running`（上次中断）与 `failed` 补一条 `pending` 重试。同一组合已有记录的输入字段必须与计划一致，否则直接报错。
+  - 录制序号来自录制目录的 `index.jsonl`，驱动把一次组合用到的起止序号写进 `running`/`completed` 行；`findSandboxRunEntryBySeq` 按区间反查组合。批次目录必须在私有根目录内部，批次名只允许字母、数字、点、下划线与短横线。
+- **影响**：
+  - 新增 `packages/st-compat/src/st-bench/plan.ts`，经 `@dramaticer/st-compat` 根导出；CLI 新增 `st-bench plan [--sandbox] [--batch] [--limit]`；无新增依赖。
+  - 真实沙箱一次 `plan` 得到 36 个预设、68 张卡、88 个片段与 88 个组合，重复运行不新增行；清单只含标识、楼层与时间，不含提示词与对话正文。
+  - C-T01.b.c 的 Playwright 驱动直接使用组合计划与 `appendSandboxRunEntry`，C-T01.c 的比对按组合 id 与序号区间取录制请求。

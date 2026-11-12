@@ -32,6 +32,7 @@ export * from "./reference/collect.js";
 export * from "./reference/text-stats.js";
 export * from "./regex-classifier.js";
 export * from "./state-diff.js";
+export * from "./st-bench/plan.js";
 export * from "./st-bench/recorder.js";
 export * from "./st-bench/sandbox.js";
 export * from "./world-info.js";

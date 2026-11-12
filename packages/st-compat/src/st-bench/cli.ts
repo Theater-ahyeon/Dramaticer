@@ -7,23 +7,32 @@ import {
 	configureSandboxServer,
 	startSandboxServer,
 } from "./launcher.js";
+import {
+	RUN_MANIFEST_FILE,
+	assertBatchName,
+	discoverSandboxInputs,
+	planSandboxCombinations,
+	writeSandboxPlan,
+} from "./plan.js";
 import { startPromptRecorder } from "./recorder.js";
 import {
 	DEFAULT_DATA_ENTRIES,
 	type NodeModulesMode,
 	type StBenchPaths,
 	copySillyTavernSandbox,
+	isPathInside,
 	stBenchPaths,
 } from "./sandbox.js";
 
-const USAGE = `用法：st-bench <sandbox|record|serve> ...
+const USAGE = `用法：st-bench <sandbox|record|serve|plan> ...
   sandbox --source <SillyTavern 目录> [--target <目录>] [--private-root <目录>]
           [--node-modules link|copy|skip] [--data <相对路径>]... [--replace]
   record [--dir <录制目录>] [--host 127.0.0.1] [--port 8130]
          [--stub-model <名称>] [--max-requests <数量>]
   serve [--sandbox <目录>] [--port 8000]
         [--endpoint http://127.0.0.1:8130/v1] [--stub-model <名称>]
-        [--configure-only]`;
+        [--configure-only]
+  plan [--sandbox <目录>] [--batch <名称>] [--limit <数量>]`;
 
 export interface StBenchCliOptions {
 	readonly repoRoot?: string;
@@ -53,6 +62,10 @@ export async function runStBenchCli(
 	}
 	if (command === "serve") {
 		await runServe(args.slice(1), paths, log);
+		return;
+	}
+	if (command === "plan") {
+		await runPlan(args.slice(1), paths, log);
 		return;
 	}
 	throw new Error(USAGE);
@@ -244,6 +257,51 @@ async function runServe(
 	}
 	await server.stop();
 	log("沙箱 ST 已停止");
+}
+
+async function runPlan(
+	args: readonly string[],
+	paths: StBenchPaths,
+	log: (message: string) => void,
+): Promise<void> {
+	let sandboxDir = path.join(paths.sandboxDir, "st");
+	let batch = "default";
+	let limit: number | undefined;
+	for (let index = 0; index < args.length; index += 1) {
+		const arg = args[index];
+		if (arg === "--sandbox" || arg === "--batch" || arg === "--limit") {
+			const value = args[index + 1];
+			if (value === undefined) throw new Error(`${arg} 需要一个值`);
+			index += 1;
+			if (arg === "--sandbox") sandboxDir = value;
+			else if (arg === "--batch") batch = assertBatchName(value);
+			else limit = parsePositiveInteger(value, "--limit");
+			continue;
+		}
+		throw new Error(`未知参数：${arg}`);
+	}
+	const resolvedSandbox = path.resolve(sandboxDir);
+	if (!isPathInside(resolvedSandbox, paths.privateRoot)) {
+		throw new Error(
+			`沙箱目录必须在私有根目录 ${paths.privateRoot} 内部，收到 ${resolvedSandbox}`,
+		);
+	}
+	const dataRoot = path.join(resolvedSandbox, "data", "default-user");
+	const inputs = await discoverSandboxInputs({ dataRoot });
+	const combinations = planSandboxCombinations(inputs, { limit });
+	const batchDir = path.join(paths.sandboxDir, "runs", batch);
+	const result = await writeSandboxPlan({
+		batchDir,
+		privateRoot: paths.privateRoot,
+		combinations,
+	});
+	log(
+		`预设 ${inputs.presets.length} 个，角色卡 ${inputs.characters.length} 个，聊天片段 ${inputs.chats.length} 个`,
+	);
+	log(
+		`组合 ${result.total} 个：新建 ${result.created}，已完成 ${result.completed}，待跑 ${result.pending}，重试 ${result.retried}`,
+	);
+	log(`清单：${path.join(batchDir, RUN_MANIFEST_FILE)}`);
 }
 
 function parseNodeModulesMode(value: string): NodeModulesMode {
