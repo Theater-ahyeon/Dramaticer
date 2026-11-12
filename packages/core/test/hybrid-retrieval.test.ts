@@ -104,15 +104,16 @@ describe("多路融合检索", () => {
 		});
 
 		expect(hits.map((hit) => `${hit.kind}:${hit.nodeId}`)).toEqual([
-			"event:n-root",
 			"chunk:n-root",
+			"event:n-root",
 			"event:n-user",
 		]);
-		expect(hits[0]?.sources).toEqual([{ route: "event", rank: 1 }]);
-		expect(hits[1]?.sources).toEqual([{ route: "bm25", rank: 1 }]);
+		expect(hits[0]?.sources).toEqual([{ route: "bm25", rank: 1 }]);
+		expect(hits[1]?.sources).toEqual([{ route: "event", rank: 1 }]);
 		expect(hits[2]?.sources).toEqual([{ route: "event", rank: 2 }]);
-		expect(hits[0]?.score).toBeCloseTo(1 / 61);
-		expect(hits[2]?.score).toBeCloseTo(1 / 62);
+		expect(hits[0]?.score).toBeCloseTo(2 / 61);
+		expect(hits[1]?.score).toBeCloseTo(0.5 / 61);
+		expect(hits[2]?.score).toBeCloseTo(0.5 / 62);
 	});
 
 	it("融合按楼层去重时保留命中父段的文本", async () => {
@@ -272,7 +273,7 @@ describe("多路融合检索", () => {
 			{ route: "entity", rank: 1 },
 			{ route: "event", rank: 2 },
 		]);
-		expect(hits[0]?.score).toBeCloseTo(1 / 61 + 1 / 62);
+		expect(hits[0]?.score).toBeCloseTo(0.5 / 61 + 0.5 / 62);
 		expect(hits[1]?.sources).toEqual([{ route: "event", rank: 1 }]);
 	});
 
@@ -447,14 +448,16 @@ describe("多路融合检索", () => {
 
 		const { hits } = await retrieveMemory({ store, storyId: "s5", query: "" });
 		expect(hits.map((hit) => `${hit.kind}:${hit.nodeId}`)).toEqual([
-			"event:n-user",
 			"chunk:n-assistant",
-			"event:n-root",
 			"chunk:n-user",
 			"chunk:n-root",
+			"event:n-user",
+			"event:n-root",
 		]);
-		expect(hits[0]?.sources).toEqual([{ route: "event", rank: 1 }]);
-		expect(hits[1]?.sources).toEqual([{ route: "recent", rank: 1 }]);
+		expect(hits[0]?.sources).toEqual([{ route: "recent", rank: 1 }]);
+		expect(hits[1]?.sources).toEqual([{ route: "recent", rank: 2 }]);
+		expect(hits[3]?.sources).toEqual([{ route: "event", rank: 1 }]);
+		expect(hits[4]?.sources).toEqual([{ route: "event", rank: 2 }]);
 
 		const again = await retrieveMemory({ store, storyId: "s5", query: "" });
 		expect(again.hits).toEqual(hits);
@@ -787,7 +790,13 @@ describe("多路融合检索", () => {
 			query: "青铜匕首",
 			beforeNodeId: ask.id,
 		});
-		const equal = fuseRetrievalRoutes(rankings.routes);
+		const equal = fuseRetrievalRoutes(rankings.routes, {
+			bm25: 1,
+			vector: 1,
+			entity: 1,
+			event: 1,
+			recent: 1,
+		});
 		expect(equal[0]?.kind).toBe("event");
 		const weighted = fuseRetrievalRoutes(rankings.routes, { bm25: 2 });
 		expect(weighted[0]?.kind).toBe("chunk");

@@ -14,12 +14,12 @@ export type RetrievalRoute = "bm25" | "vector" | "entity" | "event" | "recent";
 /** 每一路在 RRF 融合里的权重；没有写出的路按 1 计算。 */
 export type RetrievalRouteWeights = Partial<Record<RetrievalRoute, number>>;
 
-/** 生产默认权重；只有评测确认有提升后才改动。 */
+/** 生产默认权重；来自 R1-T04.b 三对话留一交叉验证，见 ADR-0084。 */
 export const DEFAULT_ROUTE_WEIGHTS: Readonly<Record<RetrievalRoute, number>> = {
-	bm25: 1,
+	bm25: 2,
 	vector: 1,
-	entity: 1,
-	event: 1,
+	entity: 0.5,
+	event: 0.5,
 	recent: 1,
 };
 

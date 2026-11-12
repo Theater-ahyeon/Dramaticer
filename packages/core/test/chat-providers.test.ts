@@ -300,8 +300,8 @@ describe("记忆与摘要槽位", () => {
 		expect(content?.messages[0]?.role).toBe("system");
 		const text = content?.messages[0]?.content ?? "";
 		expect(text).toContain("n-greet");
-		expect(text).toContain("（事件）");
-		expect(text).toContain("守卫拦住了来客");
+		expect(text).toContain("（原文块）");
+		expect(text).toContain("山门口站着守卫，道路被拦住。");
 		expect(text.split("n-greet").length - 1).toBe(1);
 		expect(text).not.toContain("n-side");
 		expect(content?.retrieval?.routes.map((route) => route.route)).toContain(

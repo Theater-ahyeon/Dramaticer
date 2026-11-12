@@ -3,26 +3,24 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-12 会话 274：修复门禁。全仓并行运行时 `packages/server/test/images.test.ts` 与 `packages/st-compat/test/chat-cli.test.ts` 超过默认 5 秒，后者清理临时目录时 `EPERM`。`vitest.config.ts` 增加 `testTimeout: 60_000`，两个文件的临时目录清理补 `retryDelay: 100`；门禁通过（161 个测试文件、1447 个测试、4 个 live 跳过）。
-- 长任务 `R1-T04.b-06` 成功：`events-backfill --resume` 新增 0 个窗口（三个故事事件覆盖 282/290、174/180、112/114），`memory-eval --events --rerank` 完成 386 道题、29.3 分钟。融合命中@5/@10/@20 为 140/164/170；重排序后事件题 132/140/141、状态题 13/27/29；交叉验证推荐权重 2/1/0.5/0.5/1，留出集合计 152/169/178（默认权重 140/164/170）。
-- 公共报告 `docs/dev/reports/R1-retrieval.md` 已生成并提交；私有报告在 `eval-private/reports/R1-retrieval.md`。
+- 2026-11-12 会话 275：R1-T04.b 的收尾。写 ADR-0084，把 `DEFAULT_ROUTE_WEIGHTS` 从全 1 改为 2/1/0.5/0.5/1（BM25/向量/实体/事件/最近块），`data/channels.yaml` 的 `reranker.enabled` 保持 false。更新三个按旧默认顺序断言的测试（`hybrid-retrieval.test.ts` 的融合顺序与分数、`chat-providers.test.ts` 的记忆槽位代表行）。门禁通过（161 个测试文件、1447 个测试、4 个 live 跳过）。
+- 长任务 `R1-T04.b-07` 已申请：先用 `events-backfill --resume`（预期 0 个窗口），再用新默认权重跑 `memory-eval --events --rerank`，重新生成私有与统计版 `R1-retrieval.md`。上限 480 分钟。
 
-## 下一步（会话 275 先做）
-1. 读两份 `R1-retrieval.md`，写 ADR-0084：五路事件题与状态题命中@5/@10/@20、分对话结果、事件覆盖率、耗时与请求数、留一交叉验证规则与选中权重、重排序开关前后的对比。
-2. 默认值决定：
-   - 交叉验证推荐权重（2/1/0.5/0.5/1）在留出集与全量数据上都高于默认权重：把 `DEFAULT_ROUTE_WEIGHTS` 改成推荐值，重新生成报告核对事件题与状态题都没有下降；任一类型下降就恢复默认并在 ADR 记录原因。
-   - 重排序状态题@5/@10 低于融合（13/27 对 18/29）、@20 持平；事件题@5/@10 提升（132/140 对 122/135）、@20 持平。`data/channels.yaml` 的 `reranker.enabled` 保持 false，结论写进 ADR。
-   - 改变默认权重后重新生成两份报告（事件抽取与向量走缓存，只有重排序会重新请求渠道），必要时再申请一次长任务。
-3. 完成后把 R1-T04.b 标 `[x]` 并写完成行；`docs/dev/reports/R1.md` 在 R1-T99.a 一并更新，本任务只更新 `R1-retrieval.md`。
-4. 后续任务：R1-T05（v36 八段式章节压缩）、R1-T06（v37 世界书预筛）、R1-T08（v38 上下文包复用）、R1-T99.a。
+## 下一步（会话 276 先做）
+1. 如果 `R1-T04.b-07` 有 `.status.json`：读状态与日志，然后打开 `eval-private/reports/R1-retrieval.md` 与 `docs/dev/reports/R1-retrieval.md`。
+2. 核对新默认权重下的事件题与状态题融合命中@5/@10/@20。ADR-0084 记录的旧默认成绩：事件题 122/135/141，状态题 18/29/29。
+   - 两类都没有下降：把 TASKS 的 R1-T04.b 标 `[x]` 并写完成行，然后转向 R1-T05。
+   - 任一项下降：把 `DEFAULT_ROUTE_WEIGHTS` 恢复全 1，同步恢复三个测试的断言（`hybrid-retrieval.test.ts` 两处顺序与分数、`chat-providers.test.ts` 的事件行），在 ADR-0084 末尾记录下降的数字与恢复决定，重新申请一次长任务生成报告，R1-T04.b 保持 `[~]`。
+3. 若长任务失败：读 `.devloop/jobs/R1-T04.b-07.log` 修复原因，换一个新序号重新申请；不要把失败的日志删掉。
+4. 任务完成后后续顺序：R1-T05（v36 八段式章节压缩）、R1-T06（v37 世界书预筛）、R1-T08（v38 上下文包复用）、R1-T99.a。
 
 ## 当前状态
 - 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1-T03.a、R1-T03.b。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- R1-T04.b 进行中：事件回填与评测已全部完成，只剩 ADR-0084、默认权重与重排序开关的决定、任务标记。
-- `eval-private/memory-cache/r1-retrieval.db` 现有三个故事：`仙侠雌竞：什么叫我是炉鼎体质？` 290 个助手楼层已抽取 282 个、414 条事件；`欲望世界-1600` 180 个助手楼层已抽取 174 个、292 条事件；`银麒赎世` 114 个助手楼层已抽取 112 个、248 条事件。未覆盖的都是路径末端窗口之外的楼层，再次 `--resume` 回填为 0 个窗口。
+- R1-T04.b 进行中：事件回填、五路评测、交叉验证、ADR-0084 与默认权重改动都已完成；只剩用新默认权重重新生成报告并核对两类题不下降。
+- `eval-private/memory-cache/r1-retrieval.db` 现有三个故事：`仙侠雌竞：什么叫我是炉鼎体质？` 290 个助手楼层已抽取 282 个、414 条事件；`欲望世界-1600` 180 个助手楼层已抽取 174 个、292 条事件；`银麒赎世` 114 个助手楼层已抽取 112 个、248 条事件。评测自己的临时数据库重新抽取后事件覆盖为 282/290、172/180、112/114，事件数 371/247/248。
 - M6-T99 标 `[!]`，等待 HUMAN-15：真实 ComfyUI 启动在 `http://127.0.0.1:8188` 并提供 API 格式 workflow JSON 到 `eval-private/comfyui/`；2026-11-09 探测时端口仍未监听。
 - v3 阶段顺序：R5（完成）→ M6 生图第一批（T01–T05 完成，T99 阻塞）→ R1 续（T03.a、T03.b 完成，T04.b 收尾）→ R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → M6b 生图第二批 → P3/P4 → M5 → P5 → M7。
-- 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045、ADR-0078、ADR-0079、ADR-0080、ADR-0082、ADR-0083。
+- 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045、ADR-0078、ADR-0079、ADR-0080、ADR-0082、ADR-0083、ADR-0084。
 - HUMAN-03 待处理（不阻塞）：抽查 `eval-private/evalset/spotcheck.md` 里的事件题。
 - HUMAN-14 待处理（不阻塞）：Vertex 真实调用还需要人类把服务账号 JSON 导出到仓库外，并在 `.env` 设置 `GOOGLE_APPLICATION_CREDENTIALS`、`GOOGLE_CLOUD_PROJECT`、`GOOGLE_CLOUD_LOCATION`。
 - HUMAN-15 待处理（M6-T99 需要）：把秋叶整合包 v3.2 的 ComfyUI 启动在 `http://127.0.0.1:8188`，并导出一份 API 格式 workflow JSON 到 `eval-private/comfyui/`。
@@ -31,16 +29,17 @@
 ## R1 续：检索评测
 - 配置：`channels.yaml` 顶层 `reranker` 段，字段 `enabled`、`api`（只能是 `openai-rerank`）、`baseUrl`、`apiKey`（必须写 `${VAR}`）、`model`、`batchSize`、`requestsPerMinute`、`maxRetries`、`retryBaseDelayMs`、`timeoutMs`、`maxDocumentChars`（默认 4,000）。段缺失时 `LlmChannelsConfig.reranker` 为 null；`enabled` 缺省 false。`data/channels.yaml` 当前 `enabled: false`。
 - 重排序输入：客户端在发送前把每条文档按码点截断到 `maxDocumentChars`。父段最长可以整楼（单段超过 1,200 码点时），不截断会被 bge-reranker-v2-m3 以超过 8,192 token 拒绝（实测 94,701 码点文档返回 400，输入 8,193 token）。
-- 融合：`fuseRetrievalRoutes(routes, weights?)`，权重缺省全 1；`DEFAULT_ROUTE_WEIGHTS` 是可被 ADR 更新的生产默认值；权重必须是大于 0 的有限数。
+- 融合：`fuseRetrievalRoutes(routes, weights?)`，缺省用 `DEFAULT_ROUTE_WEIGHTS`；权重必须是大于 0 的有限数。当前默认 BM25 2、向量 1、实体 0.5、事件 0.5、最近块 1（ADR-0084）。
 - 重排序：`rerankRetrievalHits({store, query, hits, reranker, rerankCandidates?})` 只重排前 N 条、其余保持融合顺序；`retrieveMemory` 与评测共用这个函数。重排序文档依次取事件正文、父段文本、旧分块楼层原文。
 - 评测：`eval-private/reports/R1-retrieval.md`（私有，含故事名）与 `docs/dev/reports/R1-retrieval.md`（统计版，不含故事名与原文）。报告含语料与索引、事件覆盖、融合结果、五路成绩、重排序行、知情者过滤、M0 基线、状态层正确率、交叉验证、门槛核对。
 - 五路定义：BM25、向量、实体、事件、最近块；最近块只在空查询时产生，评测题都有文本查询，所以事件题的最近块一路为 0 命中是预期。
-- 交叉验证：每一路候选 `0.5/1/2` 共 243 组；留出一个对话，在另外两个对话上按命中@5、@10、@20 选择，平局先取改动路数更少、再取离默认更近；留出集合计命中高于默认才建议更新。最终默认权重用全量数据上选出的那组。
-- 评测题量：三个故事的事件题各 50 道、状态题 71/65/100 道，共 386 道；重排序每题一次请求（20 次/分钟），完整一轮约 50 分钟。
+- 交叉验证：每一路候选 `0.5/1/2` 共 243 组；留出一个对话，在另外两个对话上按命中@5、@10、@20 选择，平局先取改动路数更少、再取离默认更近；留出集合计命中高于默认才建议更新。旧默认（全 1）下三折选中 2/2/0.5/1/1、2/1/0.5/0.5/1、2/1/0.5/0.5/1；留出集合计 152/169/178，全量 153/171/181。默认改到 2/1/0.5/0.5/1 后，报告中的“默认权重留出命中”会变成新默认的成绩，`improved` 可能因此变为 false，这是预期。
+- 评测题量：三个故事的事件题各 50 道、状态题 71/65/100 道，共 386 道；重排序每题一次请求（20 次/分钟），完整一轮约 29 分钟。
 - 可重复命令（仓库根目录）：
   - `pnpm --filter @dramaticer/st-compat events-backfill --resume --db eval-private/memory-cache/r1-retrieval.db`
   - `pnpm --filter @dramaticer/st-compat memory-eval --events --rerank --db eval-private/memory-cache/tmp/r1-memory-eval.db --private-report eval-private/reports/R1-retrieval.md --public-report docs/dev/reports/R1-retrieval.md --title "R1 记忆引擎检索评测"`
   - 两个 CLI 的相对路径都按仓库根目录解析；`--events` 与 `events-backfill` 共用 `eval-private/memory-cache/events`。`memory-eval` 在自己的临时数据库上重新抽取事件，结束后删除该数据库。
+- 状态层答案正确率在 236 道状态题上全部记为路径缺失（0.0%）；状态题命中只反映文本召回，评测导入侧的问题不影响权重结论。
 
 ## M6 生图第一批
 - 顺序：M6-T01 至 M6-T05（已完成）→ M6-T99（阻塞）。
@@ -120,7 +119,7 @@
 - 自动试玩续跑：live 默认 `PLAYTEST_RESUME=1`；续跑文件默认 `eval-private/reports/r5-playtest.progress.json`。跑满 60 轮才写最终报告。
 - 会话外监督进程（R5-T14.a）：`scripts/r5-playtest-supervisor.mjs` 读 `.devloop/scratch/R5-T14/supervisor-config.json`；完成后停掉 server，不要重复启动。
 - 统计版 `docs/dev/reports/R5-playtest.md` 是 60 成功 / 0 失败的最终版本；`docs/dev/reports/R5.md` 第一至三节与第七节已按最终数据库回填。
-- F0 的私有产物：`eval-private/f0/`；R3 的产物：`docs/dev/reports/R3.md`、`R3-fast.md`；O 的产物：`docs/dev/reports/O-opening.md`；R2 的产物：`docs/dev/reports/R2.md`、`R2-judge.md`、`R2-pairwise.md`、`R2-b1.md`、`R2-forgetting.md`、`docs/dev/SCOREBOARD.md`；R4 的产物：`docs/dev/reports/R4.md`；R5 的产物：`docs/dev/reports/R5.md`、`R5-playtest.md`；R1 检索的产物：`docs/dev/reports/R1-retrieval.md`（由长任务生成，已提交）。
+- F0 的私有产物：`eval-private/f0/`；R3 的产物：`docs/dev/reports/R3.md`、`R3-fast.md`；O 的产物：`docs/dev/reports/O-opening.md`；R2 的产物：`docs/dev/reports/R2.md`、`R2-judge.md`、`R2-pairwise.md`、`R2-b1.md`、`R2-forgetting.md`、`docs/dev/SCOREBOARD.md`；R4 的产物：`docs/dev/reports/R4.md`；R5 的产物：`docs/dev/reports/R5.md`、`R5-playtest.md`；R1 检索的产物：`docs/dev/reports/R1-retrieval.md`。
 - 引用评测数字时：B1 必须同时说明同模型子集为空、每个对话每档只有 1 个样本；遗忘矛盾率必须同时说明失败题数与可判定样本数；选择一致率当前没有样本。
 - 记分牌重新生成（仓库根目录执行）：`node packages/st-compat/dist/evalset/scoreboard-cli.js --playtest eval-private/reports/forgetting/playtest --playtest eval-private/reports/forgetting/legacy/playtest --forgetting eval-private/reports/forgetting/runs --forgetting eval-private/reports/forgetting/legacy/runs --b1-samples eval-private/reports/R2-b1/samples.jsonl --b1-records eval-private/reports/R2-b1/records.jsonl --b1-quality eval-private/reports/R2-b1/quality.jsonl --out docs/dev/SCOREBOARD.md`
 - 遗忘评测（R2-T09.a）：`playtest --head` 只接受当前故事里存在的助手楼层，且不能与 `--resume` 同时使用；证据楼层不在当前路径上的题目记 `skipped`；遗忘分层固定为 `<100`、`100-199`、`200-299`、`300+`。
@@ -144,6 +143,6 @@
 - 不要修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 下的任何文件。不变量 I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账是唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖任何其他工作区包。
 
 ## 下一步
-- 会话 275 按上文“下一步”执行并完成 R1-T04.b。
+- 会话 276 先核对长任务 `R1-T04.b-07` 的报告与状态，按上文“下一步”决定 R1-T04.b 标 `[x]` 或恢复默认权重。
 - M6-T99 仍等待 HUMAN-15；人类把 ComfyUI 启动并放入 workflow JSON 后，把 TASKS 里 `[!]` 改回 `[ ]` 再做验收。
 - 后续：R1-T05（v36）、R1-T06（v37）、R1-T08（v38）、R1-T99.a；C 线兼容插件任务依赖 P2，以 DESIGN §19 为唯一权威。

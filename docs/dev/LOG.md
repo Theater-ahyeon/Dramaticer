@@ -306,3 +306,4 @@
 
 
 
+- 2026-11-12 | S275 | R1-T04.b | WAITING | 写 ADR-0084，`DEFAULT_ROUTE_WEIGHTS` 从全 1 改为 2/1/0.5/0.5/1（BM25/向量/实体/事件/最近块），`data/channels.yaml` 的 `reranker.enabled` 保持 false；三个依赖旧默认顺序的测试改为新顺序与分数（`hybrid-retrieval.test.ts` 两处、`chat-providers.test.ts` 一处）；门禁通过（161 个测试文件、1447 个测试、4 个 live 跳过）；长任务 `R1-T04.b-07` 已申请（用新默认权重重新生成两份报告，上限 480 分钟）
