@@ -3,35 +3,33 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-12 会话 304：P2.f（回合内钩子时间预算、Trace 与 explain）。新增 `packages/core/src/plugins/turn-hooks.ts`：`TurnHookTraceEntry { extension, plugin, hook, durationMs, outcome, reason }`、`TurnHookExtension` 取 `context.slot` 与 `request.rewrite`、`DEFAULT_TURN_HOOK_BUDGET_MS = 5_000`、`assertTurnHookBudgetMs`、`runTurnHook`（`Promise.withResolvers` 做截止计时，超时返回 null 与 timeout 记录，其它错误原样抛出）、`TurnRequestRewriter`。槽位提供者的 `ContextSlotProvider` 增加可选 `plugin`；`collectSlotProviders` 用 `kernel.slotProviderEntry(name)` 给每个提供者填插件名；`assembleContext` 对带插件名的提供者逐个计时，超时记 `missing-slot` 并继续组装，结果放进新的 `AssembledContext.hooks`。`EventBus` 的监听器带插件名（`LiteKernel` 的 `ctx.on` 传入插件名），`KernelSurface.rewriteRequest(messages, budgetMs?)` 按注册顺序依次改写（事件名常量 `REQUEST_REWRITE_HOOK = "request.rewrite"`），超时跳过、后面的钩子继续，返回值必须是消息数组否则指出插件并抛错。`TurnTrace.hooks` 收集槽位钩子与改写钩子；`generateAssistantTurn` 新增 `requestRewriter` 与 `hookBudgetMs`，改写发生在 `withDirectorNotes` 之前；任一槽位超时就不保存上下文包（避免缺槽位的包被复用），`saveContextPack` 不保存钩子耗时。`dramaticer explain` 第 3 段列出全部钩子、超时数与原因，`ExplainReport.hooks` 可从 `--json` 读；超时也给修正建议。server 运行时（`StoryRuntime.requestRewriter`）与 `dramaticer chat` 把槽位内核作为改写入口。新增 `packages/core/test/turn-hooks.test.ts`（7 条）与 explain 的 1 条钩子测试。门禁通过（181 个测试文件、1611 个测试、5 个跳过）。
+- 2026-11-12 会话 305：P2.g（P2 验收）。逐条核对 P2.b 至 P2.f 的验收标准与 I6、I7、I9、I11、I12、I13、I15、I17；确认 51 个内置插件（槽位 10、机制 6、块类型 12、工具 10、后台任务 13 个静态项）全部经内核注册并有测试；从已保存记录复跑 R2 的三份汇总（记分牌 600 轮、遗忘 30 次运行、B1 6 个样本），记分牌与遗忘报告逐字节相同，B1 报告只差生成时间；门禁通过（181 个测试文件、1611 个测试、5 个跳过）；结果写入 `docs/dev/reports/P2.md`。P2 全部完成。
 
-## 下一步（会话 305 先做）
-1. 做 **P2.g P2 验收**（依赖 P2.c、P2.d、P2.e、P2.f，现已全部满足）：
-   - 逐条核对 P2.b 至 P2.f 的验收标准；复核 I6、I7、I9、I11、I12、I13、I15、I17。
-   - 重跑 R2 的基准评测并对比数字；结果与复现命令写进 `docs/dev/reports/P2.md`；有退化的模块回退成直接调用并记录原因。
-   - 结果写 `MILESTONE_DONE`。
-2. P2.g 之后按顺序：C 兼容插件线（C-T01 起）→ H → X → R6 → M6b → P3/P4 → M5 → P5 → M7。
+## 下一步（会话 306 先做）
+1. 做 **P3 声明式插件格式与卡片打包**（依赖 P2，已满足）。P3 工作量超过一个会话，先按 AGENTS.md 的规则在 TASKS.md 里分成 `P3.a`、`P3.b`……，本会话只做 `P3.a`。
+   - 建议的第一项：定稿声明式插件的公共结构、每种类型的 schema 与版本字段，以及 `extensions.dramaticer` 的卡片打包格式；先写测试。
+2. P3 之后按 TASKS 顺序：P4 →（P5 依赖 M5-T99，暂不可做）→ C 兼容插件线（C-T01 起）→ H → X → R6 → M6b → M5 → P5 → M7。
 3. M6-T99 仍等待 HUMAN-15（ComfyUI 与 API workflow JSON），不要开始。
 
 ## P2 插件内核（决定与代码位置）
 - ADR-0087 在 `docs/dev/DECISIONS.md`。采用的实现是 `LiteKernel`，不引入 `cordis`；Cordis 原型证据留在 ADR。
 - `packages/core/src/plugins/contracts.ts`：`PluginDefinition { name, inject?, provide?, Config?, apply(ctx, config) }`；`PluginContext` 提供 `slot`、`directorMechanism`、`blockType`、`tool(definition, phases)`、`provide`、`service`、`on`、`backgroundJob`、`timeout`、`interval`、`onDispose`；`PluginStatus.state` 的声明值是 `active`、`loading`、`blocked`、`failed`、`disposed`，`LiteKernel` 实际只产生 `active`、`blocked`、`failed`；`PluginKernel` 对外含 `runSlot`、`slotProvider`、`slotProviderEntry`、`rewriteRequest`、`runMechanisms`、`mechanisms`、`blockType`、`blockTypes`、`tool`、`tools`、`backgroundJob(s)`、`service`、五种事件分发与 `dispose`；`SlotProviderEntry { plugin, provider }`；`KernelSnapshot` 有 `plugins`、`missingServices`、`slots`、`mechanisms`、`blockTypes`、`backgroundJobs`、`tools`、`services`。
-- `packages/core/src/plugins/turn-hooks.ts`：`runTurnHook` 的预算默认 5,000 毫秒（内置记忆槽位会在回合内调用 embedding 与重排序渠道，不能设短）；`runTurnHook` 的实现用真实计时器与 `Promise.withResolvers`；`TurnRequestRewriter` 只有 `rewriteRequest` 一个方法。
+- `packages/core/src/plugins/turn-hooks.ts`：`runTurnHook` 的预算默认 5,000 毫秒（内置记忆槽位会在回合内调用 embedding 与重排序渠道，不能设短）；实现用真实计时器与 `Promise.withResolvers`；`TurnRequestRewriter` 只有 `rewriteRequest` 一个方法。
 - `packages/core/src/plugins/events.ts`：`EventRegistration { plugin, listener }`；`on(name, listener, plugin = null)`、`listeners(name)`；`waterfall` 仍是同步版本，回合请求改写走 `KernelSurface.rewriteRequest`。
-- `packages/core/src/plugins/kernel-surface.ts`：`slotProviderEntry` 取注册表第一项；`rewriteRequest` 逐个钩子计时，`timeout` 跳过、`undefined`/`null` 视为不改写，其余必须返回消息数组（角色与内容校验）。
+- `packages/core/src/plugins/kernel-surface.ts`：`slotProviderEntry` 取注册表第一项；`rewriteRequest` 逐个钩子计时，超时跳过，`undefined`/`null` 视为不改写，其余必须返回消息数组（角色与内容校验）。
 - `packages/core/src/plugins/lite-kernel.ts`：每个插件一条 `{ definition, config, state, failure, cleanups }`；`settle()` 先撤销依赖不再满足的 active 插件，再按装载顺序激活依赖满足的 pending 插件；服务值存在 `serviceValues` 表；同名服务在装载前拒绝；配置校验复用 `StandardSchemaV1`；`timeout`/`interval`/`backgroundJob`/`tool`/`on` 都进 `cleanups`，`deactivate()` 逆序执行，装载失败同样逆序回滚。`installSync` 供模块级静态插件使用。
-- `packages/core/src/plugins/runtime.ts`：`createPluginKernel({ plugins?, configs? })` 是启动入口；`plugins` 缺省为 `BUILTIN_PLUGINS`；启动抛错时先 `dispose()` 再原样抛出。`load()` 把 `apply` 抛错记为插件 failed 而不是让调用方失败，所以集合工厂必须自己检查状态。
-- `packages/core/src/plugins/builtin.ts`：`BUILTIN_PLUGINS = [...MECHANISM_PLUGINS, ...BLOCK_TYPE_PLUGINS, ...TOOL_PLUGINS, ...BACKGROUND_JOB_PLUGINS, ...SLOT_PLUGINS]`。
+- `packages/core/src/plugins/runtime.ts`：`createPluginKernel({ plugins?, configs? })` 是启动入口；`plugins` 缺省为 `BUILTIN_PLUGINS`；启动抛错时先 `dispose()` 再原样抛出。`load()` 把 `apply` 抛错记为插件 failed，调用方需要自己检查状态。
+- `packages/core/src/plugins/builtin.ts`：`BUILTIN_PLUGINS = [...MECHANISM_PLUGINS, ...BLOCK_TYPE_PLUGINS, ...TOOL_PLUGINS, ...BACKGROUND_JOB_PLUGINS, ...SLOT_PLUGINS]`，共 51 个。没有配置时槽位插件会标为 failed 并给出原因。
 - `packages/core/src/plugins/mechanisms.ts`：6 个机制插件；`DEFAULT_MECHANISM_KERNEL` 是模块级内核。
 - `packages/core/src/plugins/block-types.ts`：12 个块类型插件；`DEFAULT_BLOCK_TYPES`、`DEFAULT_BLOCK_TYPE_KERNEL`、`blockTypeRegistryFromKernel`、`defaultBlockTypeRegistry` 在这里。
 - `packages/core/src/plugins/tools.ts`：10 个工具插件与阶段；`DEFAULT_TOOL_KERNEL`；`defaultToolRegistry(phase)` 装载失败直接抛错，`FAST_TURN_TOOLS`/`DEEP_TURN_TOOLS` 由它派生。
-- `packages/core/src/plugins/background-jobs.ts`：17 个任务插件、`BACKGROUND_JOB_PLUGINS`（静态 13 个）、`createBackgroundJobPlugins(options)`、`createBackgroundJobRegistryFromPlugins`。
+- `packages/core/src/plugins/background-jobs.ts`：17 个任务插件定义、`BACKGROUND_JOB_PLUGINS`（静态 13 个）、`createBackgroundJobPlugins(options)`、`createBackgroundJobRegistryFromPlugins`；`embeddings` 与 `illustrate` 按选项补齐。
 - `packages/core/src/plugins/slots.ts`：十个内置槽位插件与 `NAIVE_SLOT_PLUGINS`；插件名常量与配置接口在这里；history 的 `policy`、memory 的 `embedder`/`reranker` 原样透传给 `chat/providers.ts` 的工厂。
-- `packages/core/src/plugins/chat-providers.ts`：`ChatSlotSet`、`collectSlotProviders`（现在给每个提供者填 `plugin`）、`composeSlotSet`、`createStandardChatSlots`、`createNaiveChatSlots`。
+- `packages/core/src/plugins/chat-providers.ts`：`ChatSlotSet`、`collectSlotProviders`（给每个提供者填 `plugin`）、`composeSlotSet`、`createStandardChatSlots`、`createNaiveChatSlots`；任一插件未激活时工厂抛错并列出原因。
 - `packages/core/src/plugins/registry.ts`：槽位、Director 机制、块类型、工具、后台任务类型注册表；复用 `blocks/types.ts`、`tools/registry.ts`、`background/registry.ts` 的校验；每次注册返回幂等撤销函数。
 - `packages/core/src/plugins/index.ts`：导出 `turn-hooks.ts` 的全部公开符号（含 `REQUEST_REWRITE_HOOK`、`TurnRequestRewriter`）。
 - `packages/core/src/context/slot-names.ts`：`CONTEXT_SLOT_NAMES`、`ContextSlotName`、`isContextSlotName`；`context/template.ts` 继续转出。
-- 测试：`plugin-fixtures.ts`、`plugin-kernel-suite.ts`、`plugins.test.ts`（11 条）、`plugin-runtime.test.ts`（6 条）、`chat-slot-plugins.test.ts`（4 条）、`plugin-extensions.test.ts`（7 条）、`plugin-background-tools.test.ts`（10 条）、`turn-hooks.test.ts`（7 条）。
+- 测试：`plugin-fixtures.ts`、`plugin-kernel-suite.ts`、`plugins.test.ts`（11 条）、`plugin-runtime.test.ts`（6 条）、`chat-slot-plugins.test.ts`（4 条）、`plugin-extensions.test.ts`（7 条）、`plugin-background-tools.test.ts`（10 条）、`turn-hooks.test.ts`（7 条）、`explain.test.ts` 的钩子用例。
 - 依赖：`@standard-schema/spec` 在 `packages/core` 的 `dependencies`，只用于公开类型声明。
 
 ## 回合内钩子（P2.f）
@@ -42,9 +40,10 @@
 - `dramaticer explain` 第 3 段标题仍是「被裁剪的段落与缺失槽位」，随后多出「回合钩子（时间预算与跳过原因）」子段；`dramaticer explain --json` 的 `hooks` 字段直接给出条目。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a、P2.b、P2.c、P2.d、P2.e、P2.f。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- 数据库 schema 版本 41。P2.f 没有迁移。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a 至 P2.g。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 数据库 schema 版本 41。P2 没有迁移。
 - 依赖登记：`@standard-schema/spec` 已登记为 `packages/core` 依赖；当前没有第三方插件框架。
+- P2 验收数字与复现命令在 `docs/dev/reports/P2.md`：51 个内置插件；R2 记分牌、遗忘报告、B1 报告复跑一致。
 - `eval-private/memory-cache/r1-retrieval.db` 有三个故事：`仙侠雌竞：什么叫我是炉鼎体质？` 290 个助手楼层已抽取 282 个、414 条事件；`欲望世界-1600` 180 个助手楼层已抽取 174 个、292 条事件；`银麒赎世` 114 个助手楼层已抽取 112 个、248 条事件。评测自己的临时数据库重新抽取后事件覆盖为 282/290、172/180、112/114，事件数 371/247/248。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045、ADR-0078、ADR-0079、ADR-0080、ADR-0082、ADR-0083、ADR-0084、ADR-0085、ADR-0086、ADR-0087。
 - HUMAN-03 待处理（不阻塞）：抽查 `eval-private/evalset/spotcheck.md` 里的事件题。
@@ -71,8 +70,8 @@
 - 验收评测 `packages/st-compat/src/evalset/deep-eval.ts`：`runDeepEval`、`summarizeDeepEval`、`parseDeepEvalJsonl`、`serializeDeepEvalRecord`、`selectBranchRounds`；CLI 在 `deep-eval-cli.ts`。失败轮次把 head 恢复到生成前；分支盲评用 `judgePairwise({ task: "historical" })` 两次，两次结论不同记 `inconsistent`；统计按轮次去重，重试后的成功覆盖同一轮。
 
 ## server 与 web（R3b-T10）
-- server SSE `packages/server/src/turns.ts`：`turn.started`（带 `runId`，快回合 null）、`text.delta`、`blocks.replace`（100 毫秒节流）、`thinking.delta`、`tool.call`、`turn.progress`、`draft.replace`（100 毫秒节流）、`turn.steering`、`turn.committed`、`turn.error`、`turn.completed`。`TurnRunRegistry` 在 `onTurnStarted` 注册、流 `finally` 注销。`turnOptions` 现在把 `runtime.requestRewriter` 传给生成入口。
-- server 运行时 `packages/server/src/runtime.ts`：`StoryRuntime` 增加 `requestRewriter`，来自 `createStandardChatSlots` 的内核。
+- server SSE `packages/server/src/turns.ts`：`turn.started`（带 `runId`，快回合 null）、`text.delta`、`blocks.replace`（100 毫秒节流）、`thinking.delta`、`tool.call`、`turn.progress`、`draft.replace`（100 毫秒节流）、`turn.steering`、`turn.committed`、`turn.error`、`turn.completed`。`TurnRunRegistry` 在 `onTurnStarted` 注册、流 `finally` 注销。`turnOptions` 把 `runtime.requestRewriter` 传给生成入口。
+- server 运行时 `packages/server/src/runtime.ts`：`StoryRuntime` 有 `requestRewriter`，来自 `createStandardChatSlots` 的内核。
 - server 接口 `packages/server/src/routes.ts`：`GET /api/nodes/:id/run` 返回 `NodeRunView`（`nodeId`、`run`、按 `seq` 升序的 `events`），没有运行 404；`POST /api/nodes/:id/retry` 只接受用户楼层，请求体 `{ mode? }`，以该用户楼层为父节点生成新的助手楼层，不追加用户楼层；`POST /api/stories/:id/turns/:runId/steering` 返回 202 `{ runId }`，未知或跨故事 404、已结束 409、文本非法 400、队列满 409。
 - `packages/web/src/chat/stream-state.ts`：`TurnDraft` 含 `runId`、`progress`、`liveDraft`、`guidance`、`committed`；`applyDraftSnapshot` 忽略不高于当前版本的快照；`describeProgress` 输出阶段文字；`turn.committed` 用提交块替换 `blocks` 并清空阶段文字。`resolveRetryAction` 依次给出 `regenerate`、`retry`、`resend`、`blocked`。
 - `packages/web/src/chat/run-timeline.ts` 按 `seq` 排序事件并生成标签；`StreamingBubble`、`Composer`、`FloorRunTimeline` 只做渲染。e2e 假渠道消息里含“深回合草稿”时返回 `draft_write` 与 `commit_draft`，每次响应延迟 1.2 秒。
@@ -106,6 +105,7 @@
   - `pnpm --filter @dramaticer/st-compat events-backfill --resume --db eval-private/memory-cache/r1-retrieval.db`
   - `pnpm --filter @dramaticer/st-compat memory-eval --events --rerank --db eval-private/memory-cache/tmp/r1-memory-eval.db --private-report eval-private/reports/R1-retrieval.md --public-report docs/dev/reports/R1-retrieval.md --title "R1 记忆引擎检索评测"`
 - 记分牌重新生成：`node packages/st-compat/dist/evalset/scoreboard-cli.js --playtest eval-private/reports/forgetting/playtest --playtest eval-private/reports/forgetting/legacy/playtest --forgetting eval-private/reports/forgetting/runs --forgetting eval-private/reports/forgetting/legacy/runs --b1-samples eval-private/reports/R2-b1/samples.jsonl --b1-records eval-private/reports/R2-b1/records.jsonl --b1-quality eval-private/reports/R2-b1/quality.jsonl --out docs/dev/SCOREBOARD.md`
+- 遗忘报告复跑：`pnpm --filter @dramaticer/st-compat forgetting-report --input <仓库根>/eval-private/reports/forgetting/all-runs --private-out <目标>/R2-forgetting.private.md --public-out <目标>/R2-forgetting.public.md`；输入路径必须写绝对路径（命令行不按仓库根解析）。
 - 自动试玩：CLI 入口 `pnpm --filter @dramaticer/st-compat playtest`；界面自动试玩 `pnpm playtest`；live 默认 `PLAYTEST_RESUME=1`，续跑文件 `eval-private/reports/r5-playtest.progress.json`。
 - R5 最终数据：60 成功 / 0 失败；相邻块 Jaccard 均值 0.0019、P90 0.0031（599 对）；首字 P50 5,176、P95 10,150 毫秒；生成 P50 10,094、P95 16,905 毫秒；每轮 total token 8,971.8；导演决策 60、有建议 60；错误 0；私有标识反向扫描通过（804 个标识）。不要再启动第二个监督进程或 server。
 - R3 快回合：20/20 成功，首字 P50 1,448 / P90 3,435 毫秒，生成 P50 2,666 / P90 4,988 毫秒，截断 0/20。
