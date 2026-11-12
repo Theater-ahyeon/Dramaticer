@@ -9,8 +9,10 @@ import type { ContextSlotProvider } from "../context/assembler.js";
 import {
 	type ContextSlotName,
 	isContextSlotName,
-} from "../context/template.js";
+} from "../context/slot-names.js";
 import type { DirectorMechanism } from "../director/types.js";
+import type { DeepToolDefinition, ToolPhase } from "../tools/registry.js";
+import { createDeepToolRegistry, isToolPhase } from "../tools/registry.js";
 import type { RegisteredBackgroundJob } from "./contracts.js";
 
 interface RegisteredSlot {
@@ -28,6 +30,12 @@ interface RegisteredBlockType {
 	readonly definition: BlockTypeDefinition;
 }
 
+interface RegisteredTool {
+	readonly plugin: string;
+	readonly definition: DeepToolDefinition;
+	readonly phases: readonly ToolPhase[];
+}
+
 /** 扩展点注册表；每次注册返回一个幂等的撤销函数。 */
 export class ExtensionRegistry {
 	private readonly slotsByName = new Map<ContextSlotName, RegisteredSlot[]>();
@@ -37,6 +45,7 @@ export class ExtensionRegistry {
 		string,
 		RegisteredBackgroundJob
 	>();
+	private readonly toolsByName = new Map<string, RegisteredTool>();
 
 	addSlot(
 		name: string,
@@ -114,6 +123,33 @@ export class ExtensionRegistry {
 		};
 	}
 
+	/** 复用工具注册表的校验：名称、权限级别与进度阶段文字。 */
+	addTool(
+		plugin: string,
+		definition: DeepToolDefinition,
+		phases: readonly ToolPhase[],
+	): () => void {
+		if (phases.length === 0) {
+			throw new Error(`工具 ${definition.name} 必须声明至少一个开放阶段`);
+		}
+		for (const phase of phases) {
+			if (!isToolPhase(phase)) {
+				throw new Error(
+					`工具 ${definition.name} 的开放阶段不合法：${String(phase)}`,
+				);
+			}
+		}
+		createDeepToolRegistry([definition]);
+		if (this.toolsByName.has(definition.name)) {
+			throw new Error(`工具重复注册：${definition.name}`);
+		}
+		this.toolsByName.set(definition.name, { plugin, definition, phases });
+		return () => {
+			if (this.toolsByName.get(definition.name)?.plugin !== plugin) return;
+			this.toolsByName.delete(definition.name);
+		};
+	}
+
 	slots(): Record<string, readonly string[]> {
 		const result: Record<string, readonly string[]> = {};
 		for (const [name, entries] of this.slotsByName) {
@@ -144,5 +180,22 @@ export class ExtensionRegistry {
 
 	backgroundJobs(): readonly RegisteredBackgroundJob[] {
 		return [...this.backgroundJobsByKind.values()];
+	}
+
+	tool(name: string): DeepToolDefinition | null {
+		return this.toolsByName.get(name)?.definition ?? null;
+	}
+
+	/** 某个回合模式开放的工具，按注册顺序。 */
+	tools(phase: ToolPhase): readonly DeepToolDefinition[] {
+		const result: DeepToolDefinition[] = [];
+		for (const entry of this.toolsByName.values()) {
+			if (entry.phases.includes(phase)) result.push(entry.definition);
+		}
+		return result;
+	}
+
+	toolNames(): readonly string[] {
+		return [...this.toolsByName.keys()];
 	}
 }

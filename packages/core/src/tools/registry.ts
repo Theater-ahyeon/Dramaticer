@@ -44,6 +44,17 @@ export function assertToolPermission(
 	}
 }
 
+/** 工具开放的回合模式；快回合只有只读工具，深回合包含全部工具。 */
+export const TOOL_PHASES = ["fast", "deep"] as const;
+
+export type ToolPhase = (typeof TOOL_PHASES)[number];
+
+const TOOL_PHASE_SET: ReadonlySet<string> = new Set(TOOL_PHASES);
+
+export function isToolPhase(value: unknown): value is ToolPhase {
+	return typeof value === "string" && TOOL_PHASE_SET.has(value);
+}
+
 export interface DeepToolRegistry {
 	readonly tools: readonly DeepToolDefinition[];
 	get(name: string): DeepToolDefinition | undefined;

@@ -1090,7 +1090,8 @@
   - Director 机制保持同步纯函数（I9）；块类型校验仍走 `createBlockTypeRegistry`。
   验收：每个机制与块类型都有注册表条目与测试；同一输入下建议、决策记录与块解析结果与改动前一致；重复注册失败且不留下半成品；`pnpm check` 通过。
 
-- [ ] **P2.e 后台任务类型与工具插件化** | 依赖：P2.d
+- [x] **P2.e 后台任务类型与工具插件化** | 依赖：P2.d
+  完成：2026-11-12 新增 `packages/core/src/plugins/background-jobs.ts`（17 个任务插件定义与 `createBackgroundJobPlugins`、`createBackgroundJobRegistryFromPlugins`）与 `packages/core/src/plugins/tools.ts`（10 个工具插件、`DEFAULT_TOOL_KERNEL`、`toolRegistryFromKernel`、`defaultToolRegistry`）；`ExtensionRegistry` 新增工具注册（复用 `createDeepToolRegistry` 校验，按 `fast`/`deep` 阶段过滤）与 `tools`/`tool` 查询，`PluginContext` 新增 `tool`，`PluginKernel` 与快照新增工具读取；`createDefaultBackgroundJobRegistry` 改为插件装载后收集注册表，任务未激活直接抛错；`FAST_TURN_TOOLS`、`DEEP_TURN_TOOLS` 从内核派生；`BUILTIN_PLUGINS` 并入工具与静态任务插件；`context/slot-names.ts` 移出槽位名与校验以打断 `tools/index → plugins/tools → kernel → registry → context/template` 的循环；新增 `plugin-background-tools.test.ts` 10 个测试（每类任务与工具的注册表条目、名单与权限、入队条件与档位、illustrate/embeddings 选项、重复注册回滚、卸载、缺失插件抛错）；门禁通过（185 个测试文件、1603 个测试、5 个跳过）
   做什么：
   - `createDefaultBackgroundJobs` 里的每种后台任务与 `FAST_TURN_TOOLS`、`DEEP_TURN_TOOLS` 里的工具改为通过内核注册的插件，保留入队条件、档位与工具权限级别。
   - 深回合按白名单选取工具与手记开关过滤的行为不变。

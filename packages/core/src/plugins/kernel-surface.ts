@@ -11,6 +11,7 @@ import type {
 	DirectorMechanismContext,
 	DirectorMechanismResult,
 } from "../director/types.js";
+import type { DeepToolDefinition, ToolPhase } from "../tools/registry.js";
 import type {
 	EventListener,
 	RegisteredBackgroundJob,
@@ -75,6 +76,14 @@ export abstract class KernelSurface {
 
 	backgroundJobs(): readonly RegisteredBackgroundJob[] {
 		return this.registry.backgroundJobs();
+	}
+
+	tool(name: string): DeepToolDefinition | null {
+		return this.registry.tool(name);
+	}
+
+	tools(phase: ToolPhase): readonly DeepToolDefinition[] {
+		return this.registry.tools(phase);
 	}
 
 	on(name: string, listener: EventListener): () => void {

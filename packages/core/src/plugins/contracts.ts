@@ -13,6 +13,7 @@ import type {
 	DirectorMechanismContext,
 	DirectorMechanismResult,
 } from "../director/types.js";
+import type { DeepToolDefinition, ToolPhase } from "../tools/registry.js";
 
 export type PluginState =
 	| "active"
@@ -37,6 +38,7 @@ export interface KernelSnapshot {
 	readonly mechanisms: readonly string[];
 	readonly blockTypes: readonly string[];
 	readonly backgroundJobs: readonly string[];
+	readonly tools: readonly string[];
 	readonly services: readonly string[];
 }
 
@@ -61,6 +63,8 @@ export interface PluginContext {
 	service<T>(name: string): T | undefined;
 	on(name: string, listener: EventListener): void;
 	backgroundJob(kind: string, entry: BackgroundJobEntry): void;
+	/** 注册一个模型可调用的工具；阶段决定快回合与深回合是否开放。 */
+	tool(definition: DeepToolDefinition, phases: readonly ToolPhase[]): void;
 	/** 一次性定时器；卸载或重载时自动清除。 */
 	timeout(callback: () => void, delayMs: number): () => void;
 	/** 周期定时器；卸载或重载时自动清除。 */
@@ -103,6 +107,9 @@ export interface PluginKernel {
 	blockTypes(): readonly string[];
 	backgroundJob(kind: string): BackgroundJobType | null;
 	backgroundJobs(): readonly RegisteredBackgroundJob[];
+	tool(name: string): DeepToolDefinition | null;
+	/** 某个回合模式开放的工具，按注册顺序。 */
+	tools(phase: ToolPhase): readonly DeepToolDefinition[];
 	service<T>(name: string): T | undefined;
 	on(name: string, listener: EventListener): () => void;
 	emit(name: string, ...args: unknown[]): void;

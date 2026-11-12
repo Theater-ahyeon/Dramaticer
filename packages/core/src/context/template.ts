@@ -11,27 +11,12 @@ import {
 export const DEFAULT_CONTEXT_TEMPLATE_ID = "dramaticer-default";
 
 /** DESIGN §9 的 harness 槽位。 */
-export const CONTEXT_SLOT_NAMES = [
-	"lore",
-	"character",
-	"persona",
-	"summary",
-	"state",
-	"memory",
-	"history",
-	"scene",
-	"director",
-	"user_will",
-	"protocol",
-] as const;
-
-export type ContextSlotName = (typeof CONTEXT_SLOT_NAMES)[number];
-
-const SLOT_NAMES: ReadonlySet<string> = new Set(CONTEXT_SLOT_NAMES);
-
-export function isContextSlotName(value: unknown): value is ContextSlotName {
-	return typeof value === "string" && SLOT_NAMES.has(value);
-}
+import { type ContextSlotName, isContextSlotName } from "./slot-names.js";
+export {
+	CONTEXT_SLOT_NAMES,
+	type ContextSlotName,
+	isContextSlotName,
+} from "./slot-names.js";
 
 /** 组装器输出、也是 LlmRequest 直接消费的一条消息。 */
 export interface ContextMessage {
