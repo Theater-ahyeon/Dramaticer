@@ -3,17 +3,19 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-12 会话 301：P2.c（上下文槽位提供者插件化）。新增 `packages/core/src/plugins/slots.ts`：character、persona、history、state、summary、memory、lore、scene、director、user_will 各是一个插件定义，外加朴素档专用的 `slot.history.raw`；存储与客户端按插件名从内核配置取用，角色提示词或人设为空时插件保持 active 但不注册槽位（与改动前 providers 里没有该键逐字段一致）。`PluginKernel` 新增 `slotProvider(name)`（返回该槽位第一个提供者）。新增 `packages/core/src/plugins/chat-providers.ts`：`createStandardChatSlots(options)` 与 `createNaiveChatSlots(options)` 返回 `ChatSlotSet { kernel, providers }`，装载内置插件后经 `collectSlotProviders(kernel)` 读出提供者快照，任一插件未激活时先 `dispose()` 再抛错并列出插件名与原因。`chat/providers.ts` 只保留单个槽位提供者工厂，两个集合工厂与选项类型移到 `plugins/chat-providers.ts`；`BUILTIN_PLUGINS` 改为 `SLOT_PLUGINS`。全部调用点改为异步取 `slots.providers`：`packages/server/src/runtime.ts`（`#build` 改为 async）、`packages/st-compat/src/chat/session.ts`（`createChatProviders` 返回 Promise）、`chat/cli.ts`、`evalset/deep-eval-cli.ts`、`evalset/historical-replay-cli.ts`（`buildTurnContext` 改为 async）、`evalset/memory-eval.ts`、`evalset/playtest-cli.ts`、`evalset/director-replay.ts`。新增 `packages/core/test/chat-slot-plugins.test.ts` 4 个测试。门禁通过（178 个测试文件、1586 个测试、5 个跳过）。
+- 2026-11-12 会话 302：P2.d（Director 机制与块类型插件化）。新增 `packages/core/src/plugins/mechanisms.ts`：clue、opening、beat、repetition、event_pool、pacing 各是一个插件定义，装载进 `DEFAULT_MECHANISM_KERNEL`，保持同步纯函数与改动前的评估顺序。新增 `packages/core/src/plugins/block-types.ts`：12 个块类型各是一个插件定义，`DEFAULT_BLOCK_TYPES` 从这里派生，`DEFAULT_BLOCK_TYPE_KERNEL` 与 `blockTypeRegistryFromKernel(kernel)`、`defaultBlockTypeRegistry()` 提供只读注册表。`LiteKernel` 新增 `installSync(definition)`，同步安装没有 `Config` 的静态插件（装载失败逆序回滚，异步回收函数直接报错）；`PluginKernel` 增加 `mechanisms()` 与 `blockTypes()`。`evaluateDirector` 未传机制时用 `DEFAULT_MECHANISM_KERNEL.mechanisms()`；`parseBlocks` 与 `renderHistoryView` 未传 `types`/`registry` 时用 `defaultBlockTypeRegistry()`；`DEFAULT_BLOCK_TYPES` 从 `blocks/types.ts` 移到 `plugins/block-types.ts`，根导出路径不变。`BUILTIN_PLUGINS` 改为机制插件、块类型插件、槽位插件的并集，`createStandardChatSlots` 的检查因此覆盖 28 个插件。新增 `packages/core/test/plugin-extensions.test.ts` 7 个测试：注册表条目与顺序、缺省评估与显式机制一致、重复注册回滚且不留半成品、解析器缺省块类型来自内核、卸载块类型插件后不再解析该类型。门禁通过（179 个测试文件、1593 个测试、5 个跳过）。
 
-## 下一步（会话 302 先做）
-1. 做 **P2.d Director 机制与块类型插件化**（依赖 P2.c）：
-   - `DEFAULT_DIRECTOR_MECHANISMS`（`packages/core/src/director/evaluate.ts`）与 `DEFAULT_BLOCK_TYPES`（`packages/core/src/blocks/types.ts`）改为通过内核注册的插件；`evaluateDirector` 与 `parseBlocks`/`renderHistoryView` 在未传机制或块类型时从内核取。
-   - 机制保持同步纯函数（I9）；块类型校验仍走 `createBlockTypeRegistry`；注册顺序、优先级与 `signals` 与改动前一致。
-   - 内置定义加到 `plugins/`（建议 `plugins/mechanisms.ts`、`plugins/block-types.ts`）并并入 `BUILTIN_PLUGINS`；注意 `BUILTIN_PLUGINS` 现在被 `createStandardChatSlots` 用来装载槽位集合，机制与块类型插件没有配置依赖，可以直接加入。
-2. P2.d 之前的代码事实（供本任务使用）：
-   - `KernelSurface.runMechanisms(context)` 已按注册顺序执行全部机制并返回 `{plugin, name, result}`；`blockType(name)` 取块类型定义；`ctx.directorMechanism(mechanism)`、`ctx.blockType(definition)` 是插件侧注册入口。
-   - 槽位插件装载入口与失败语义在 `plugins/chat-providers.ts` 的 `composeSlotSet`。
-3. P2.c 之后仍未处理的调用链事实：
+## 下一步（会话 303 先做）
+1. 做 **P2.e 后台任务类型与工具插件化**（依赖 P2.d）：
+   - `packages/core/src/background/defaults.ts` 的 `createDefaultBackgroundJobRegistry` 里每种任务改为插件，经 `ctx.backgroundJob(kind, entry)` 注册；注册表复用 `createBackgroundJobRegistry` 校验，入队条件、档位与 `needsRun` 保持原样。任务清单：events、summary、compression、npc_agenda、lore_prefilter、settle、scene、user_will、memory_revision、gap_pass、opening、opening_candidates、visual_profile、illustrate（有 `illustrate` 选项时才注册）、director_plan。
+   - `packages/core/src/tools/index.ts` 的 `FAST_TURN_TOOLS` 与 `DEEP_TURN_TOOLS` 里的工具改为插件；`ToolRegistry`/`DeepToolRegistry` 的结构在 `tools/registry.ts`，深回合白名单在 `chat/turn.ts` 的 `selectDeepTurnTools`，`context/template.ts` 的模板校验也直接引用 `DEEP_TURN_TOOLS`。
+   - 验收要求：每种任务类型与工具都有注册表条目与测试；入队条件、档位、权限与工具名单不变；缺失插件时不静默降级。
+2. P2.d 的代码事实（供 P2.e 与 P2.f 使用）：
+   - `createStaticKernel(plugins)`（`plugins/static-kernel.ts`）同步建立内核；只适用于没有 `Config` 且依赖已经就绪的静态插件。
+   - `DEFAULT_MECHANISM_KERNEL`、`DEFAULT_BLOCK_TYPE_KERNEL` 是模块级内核；`DEFAULT_BLOCK_TYPES` 由 `BLOCK_TYPE_PLUGINS` 派生，仍从包根导出。
+   - `KernelSurface.mechanisms()` 返回机制实例；`blockTypes()` 返回注册顺序的块类型名；`runMechanisms(context)` 不经过名称校验，`evaluateDirector` 的循环仍负责重复名、触发与建议归属校验。
+   - 默认块类型注册表每次解析时按内核当前注册重建（不再缓存），`full` 历史视图与解析结果与改动前一致。
+3. 仍未处理的调用链事实：
    - 单个槽位工厂仍在 `packages/core/src/chat/providers.ts`（测试与 `resolveTurnProviders` 直接用）；集合工厂在 `packages/core/src/plugins/chat-providers.ts`，从包根导出。
    - `resolveTurnProviders`（`chat/turn.ts`）在单轮导演强度覆盖时重建导演槽位，读取 `providers.director` 的 `config` 与 `mechanisms`；这部分不经过内核。
    - server 的 `StoryRuntime` 只保留 `slots.providers`，没有持有内核；P2.f 接入回合内钩子时再决定是否把内核放进运行时。
@@ -23,20 +25,23 @@
 
 ## P2 插件内核（决定与代码位置）
 - ADR-0087 在 `docs/dev/DECISIONS.md`。采用的实现是 `LiteKernel`，不引入 `cordis`；Cordis 原型证据留在 ADR。
-- `packages/core/src/plugins/contracts.ts`：`PluginDefinition { name, inject?, provide?, Config?, apply(ctx, config) }`；`PluginContext` 提供 `slot`、`directorMechanism`、`blockType`、`provide`、`service`、`on`、`backgroundJob`、`timeout`、`interval`、`onDispose`；`PluginStatus.state` 的声明值是 `active`、`loading`、`blocked`、`failed`、`disposed`，`LiteKernel` 实际只产生 `active`、`blocked`、`failed`；`PluginKernel` 是内核对外接口，含 `runSlot`、`slotProvider`、`runMechanisms`、`blockType`、`backgroundJob(s)`、`service`、事件分发与 `dispose`；`KernelSnapshot` 有 `plugins`、`missingServices`、`slots`、`mechanisms`、`blockTypes`、`backgroundJobs`、`services`。
-- `packages/core/src/plugins/lite-kernel.ts`：每个插件一条 `{ definition, config, state, failure, cleanups }`；`settle()` 先撤销依赖不再满足的 active 插件，再按装载顺序激活依赖满足的 pending 插件；服务值存在 `serviceValues` 表；同名服务在装载前拒绝；配置校验复用 `StandardSchemaV1`；`timeout`/`interval`/`backgroundJob` 都进 `cleanups`，`deactivate()` 逆序执行，装载失败同样逆序回滚。
-- `packages/core/src/plugins/runtime.ts`：`createPluginKernel({ plugins?, configs? })` 是启动入口；`plugins` 缺省为 `BUILTIN_PLUGINS`（`plugins/builtin.ts`，现在是 `SLOT_PLUGINS` 十个槽位插件）；配置按插件名取用；启动抛错时先 `dispose()` 再原样抛出。注意 `load()` 把 `apply` 抛错记为插件 failed 而不是让调用方失败，所以集合工厂必须自己检查状态。
+- `packages/core/src/plugins/contracts.ts`：`PluginDefinition { name, inject?, provide?, Config?, apply(ctx, config) }`；`PluginContext` 提供 `slot`、`directorMechanism`、`blockType`、`provide`、`service`、`on`、`backgroundJob`、`timeout`、`interval`、`onDispose`；`PluginStatus.state` 的声明值是 `active`、`loading`、`blocked`、`failed`、`disposed`，`LiteKernel` 实际只产生 `active`、`blocked`、`failed`；`PluginKernel` 是内核对外接口，含 `runSlot`、`slotProvider`、`runMechanisms`、`mechanisms`、`blockType`、`blockTypes`、`backgroundJob(s)`、`service`、事件分发与 `dispose`；`KernelSnapshot` 有 `plugins`、`missingServices`、`slots`、`mechanisms`、`blockTypes`、`backgroundJobs`、`services`。
+- `packages/core/src/plugins/lite-kernel.ts`：每个插件一条 `{ definition, config, state, failure, cleanups }`；`settle()` 先撤销依赖不再满足的 active 插件，再按装载顺序激活依赖满足的 pending 插件；服务值存在 `serviceValues` 表；同名服务在装载前拒绝；配置校验复用 `StandardSchemaV1`；`timeout`/`interval`/`backgroundJob` 都进 `cleanups`，`deactivate()` 逆序执行，装载失败同样逆序回滚。`installSync` 供模块级静态插件使用。
+- `packages/core/src/plugins/runtime.ts`：`createPluginKernel({ plugins?, configs? })` 是启动入口；`plugins` 缺省为 `BUILTIN_PLUGINS`；配置按插件名取用；启动抛错时先 `dispose()` 再原样抛出。注意 `load()` 把 `apply` 抛错记为插件 failed 而不是让调用方失败，所以集合工厂必须自己检查状态。
+- `packages/core/src/plugins/builtin.ts`：`BUILTIN_PLUGINS = [...MECHANISM_PLUGINS, ...BLOCK_TYPE_PLUGINS, ...SLOT_PLUGINS]`。机制与块类型没有配置与依赖；槽位插件需要运行环境提供存储与选项。
+- `packages/core/src/plugins/mechanisms.ts`：6 个机制插件（`mechanism.clue`、`mechanism.opening`、`mechanism.beat`、`mechanism.repetition`、`mechanism.event-pool`、`mechanism.pacing`）；每个插件带 `mechanism` 字段。`DEFAULT_MECHANISM_KERNEL` 是模块级内核。
+- `packages/core/src/plugins/block-types.ts`：12 个块类型插件（插件名 `block.thinking`、`block.options`、`block.status`、`block.variables`、`block.analysis`、`block.image`、`block.header`、`block.whisper`、`block.narration`、`block.memo`、`block.state-update`、`block.plot-note`）；`DEFAULT_BLOCK_TYPES`、`DEFAULT_BLOCK_TYPE_KERNEL`、`blockTypeRegistryFromKernel`、`defaultBlockTypeRegistry` 在这里。
 - `packages/core/src/plugins/slots.ts`：十个内置槽位插件与 `NAIVE_SLOT_PLUGINS`（character、persona、`slot.history.raw`）；插件名常量（`CHARACTER_SLOT_PLUGIN` 等）与配置接口在这里；`slotConfig`/`requireSlotStore`/`optionalSlotText` 做配置校验。history 的 `policy`、memory 的 `embedder`/`reranker` 原样透传给 `chat/providers.ts` 的工厂，`packKey` 与改动前相同。
 - `packages/core/src/plugins/chat-providers.ts`：`ChatSlotSet`、`collectSlotProviders`、`composeSlotSet`、`createStandardChatSlots`、`createNaiveChatSlots`、`StandardChatSlotsOptions`、`NaiveChatSlotsOptions`。标准集合装载 `BUILTIN_PLUGINS`（persona 配置为 null，因此不注册该槽位）；朴素集合装载 `NAIVE_SLOT_PLUGINS`。
 - `packages/core/src/plugins/registry.ts`：槽位、Director 机制、块类型、后台任务类型注册表；块类型复用 `blocks/types.ts` 的 `createBlockTypeRegistry` 校验，后台任务复用 `background/registry.ts` 的 `createBackgroundJobRegistry` 校验；每次注册返回幂等撤销函数。
 - `packages/core/src/plugins/events.ts`：`emit` 通知、`parallel` 按注册顺序收集、`serial` 依次收集、`bail` 首个非空、`waterfall` 依次改写同一个值。
-- `packages/core/src/plugins/kernel-surface.ts`：`KernelSurface` 持有 `ExtensionRegistry` 与 `EventBus`，实现 `runSlot`、`slotProvider`、`runMechanisms`、`blockType`、`backgroundJob`、`backgroundJobs` 与五种分发。
-- 测试：`packages/core/test/plugin-fixtures.ts`、`plugin-kernel-suite.ts`、`plugins.test.ts`（11 条共享断言）、`plugin-runtime.test.ts`（6 条运行环境与生命周期断言）、`chat-slot-plugins.test.ts`（4 条槽位插件断言）。
+- `packages/core/src/plugins/kernel-surface.ts`：`KernelSurface` 持有 `ExtensionRegistry` 与 `EventBus`，实现 `runSlot`、`slotProvider`、`runMechanisms`、`mechanisms`、`blockType`、`blockTypes`、`backgroundJob`、`backgroundJobs` 与五种分发。
+- 测试：`packages/core/test/plugin-fixtures.ts`、`plugin-kernel-suite.ts`、`plugins.test.ts`（11 条共享断言）、`plugin-runtime.test.ts`（6 条运行环境与生命周期断言）、`chat-slot-plugins.test.ts`（4 条槽位插件断言）、`plugin-extensions.test.ts`（7 条机制与块类型插件断言）。
 - 依赖：`@standard-schema/spec` 在 `packages/core` 的 `dependencies`，只用于公开类型声明；不要在其他运行时代码里 import。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a、P2.b、P2.c。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- 数据库 schema 版本 41。P2.c 没有迁移。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a、P2.b、P2.c、P2.d。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 数据库 schema 版本 41。P2.d 没有迁移。
 - 依赖登记：`@standard-schema/spec` 已登记为 `packages/core` 依赖；当前没有第三方插件框架。
 - `eval-private/memory-cache/r1-retrieval.db` 有三个故事：`仙侠雌竞：什么叫我是炉鼎体质？` 290 个助手楼层已抽取 282 个、414 条事件；`欲望世界-1600` 180 个助手楼层已抽取 174 个、292 条事件；`银麒赎世` 114 个助手楼层已抽取 112 个、248 条事件。评测自己的临时数据库重新抽取后事件覆盖为 282/290、172/180、112/114，事件数 371/247/248。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045、ADR-0078、ADR-0079、ADR-0080、ADR-0082、ADR-0083、ADR-0084、ADR-0085、ADR-0086、ADR-0087。
@@ -88,7 +93,7 @@
 
 ## 可重复命令与评测产物
 - 门禁：`pnpm check`。
-- 插件内核与槽位插件测试：`pnpm exec vitest run packages/core/test/plugins.test.ts packages/core/test/plugin-runtime.test.ts packages/core/test/chat-slot-plugins.test.ts`（21 个测试）。
+- 插件内核、槽位插件与扩展插件测试：`pnpm exec vitest run packages/core/test/plugins.test.ts packages/core/test/plugin-runtime.test.ts packages/core/test/chat-slot-plugins.test.ts packages/core/test/plugin-extensions.test.ts`（28 个测试）。
 - 单个 e2e：`cd packages/web && pnpm exec playwright test --project=desktop --grep "深回合"`；e2e 假渠道固定端口 4517，数据库 `.devloop/scratch/e2e/work/e2e.db`。
 - 排障命令：`dramaticer explain --node <id> --db <path> [--json]`，只读、零模型调用；第 9 段显示运行状态与按 `seq` 排序的事件。
 - R1 事件回填与检索评测：

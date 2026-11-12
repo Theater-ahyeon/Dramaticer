@@ -61,6 +61,60 @@ export class LiteKernel extends KernelSurface implements PluginKernel {
 		return this.status(definition.name);
 	}
 
+	/**
+	 * 同步安装没有配置校验的插件；内置机制与块类型在模块初始化时使用。
+	 * 依赖服务必须已经就绪，回收函数必须是同步的。
+	 */
+	installSync(definition: PluginDefinition): PluginStatus {
+		if (this.disposed) throw new Error("插件内核已经关闭");
+		if (this.plugins.has(definition.name)) {
+			throw new Error(`插件已经加载：${definition.name}`);
+		}
+		if (definition.Config) {
+			throw new Error(`插件 ${definition.name} 有配置校验，必须异步装载`);
+		}
+		this.assertServicesAvailable(definition);
+		const entry: LiteEntry = {
+			definition,
+			config: undefined,
+			state: "pending",
+			failure: null,
+			cleanups: [],
+		};
+		this.plugins.set(definition.name, entry);
+		if (this.dependenciesMet(definition)) {
+			const cleanups: Cleanup[] = [];
+			entry.cleanups = cleanups;
+			const provided = new Set<string>();
+			try {
+				definition.apply(
+					this.createPluginContext(entry, cleanups, provided),
+					undefined,
+				);
+				for (const name of definition.provide ?? []) {
+					if (!provided.has(name)) {
+						throw new Error(
+							`插件 ${definition.name} 声明了服务 ${name} 但没有提供`,
+						);
+					}
+				}
+				entry.state = "active";
+			} catch (error) {
+				for (const cleanup of cleanups.splice(0).reverse()) {
+					const result = cleanup();
+					if (result instanceof Promise) {
+						throw new Error(
+							`插件 ${definition.name} 的同步装载使用了异步回收函数`,
+						);
+					}
+				}
+				entry.state = "failed";
+				entry.failure = error instanceof Error ? error.message : String(error);
+			}
+		}
+		return this.status(definition.name);
+	}
+
 	async unload(name: string): Promise<void> {
 		const entry = this.plugins.get(name);
 		if (!entry) throw new Error(`插件没有加载：${name}`);

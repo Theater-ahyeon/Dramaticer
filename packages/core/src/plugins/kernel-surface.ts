@@ -7,6 +7,7 @@ import type {
 } from "../context/assembler.js";
 import type { ContextSlotName } from "../context/template.js";
 import type {
+	DirectorMechanism,
 	DirectorMechanismContext,
 	DirectorMechanismResult,
 } from "../director/types.js";
@@ -54,8 +55,18 @@ export abstract class KernelSurface {
 		}));
 	}
 
+	/** 已注册的 Director 机制，按注册顺序。 */
+	mechanisms(): readonly DirectorMechanism[] {
+		return this.registry.mechanisms().map((entry) => entry.mechanism);
+	}
+
 	blockType(name: string): BlockTypeDefinition | null {
 		return this.registry.blockType(name);
+	}
+
+	/** 已注册的块类型名，按注册顺序。 */
+	blockTypes(): readonly string[] {
+		return this.registry.blockTypes();
 	}
 
 	backgroundJob(kind: string): BackgroundJobType | null {

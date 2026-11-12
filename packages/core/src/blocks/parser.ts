@@ -1,7 +1,7 @@
+import { defaultBlockTypeRegistry } from "../plugins/block-types.js";
 import {
 	type BlockTypeDefinition,
 	type BlockTypeRegistry,
-	DEFAULT_BLOCK_TYPES,
 	type ParsedBlock,
 	type ParsedContent,
 	createBlockTypeRegistry,
@@ -44,7 +44,9 @@ export class BlockParser {
 		}
 		this.#registry =
 			options.registry ??
-			createBlockTypeRegistry(options.types ?? DEFAULT_BLOCK_TYPES);
+			(options.types
+				? createBlockTypeRegistry(options.types)
+				: defaultBlockTypeRegistry());
 		this.#tags = this.#registry.names
 			.flatMap((name) => [`<${name}>`, `</${name}>`])
 			.sort((left, right) => right.length - left.length);

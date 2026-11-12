@@ -1,10 +1,10 @@
+import { defaultBlockTypeRegistry } from "../plugins/block-types.js";
 import { type TokenEstimator, createTokenEstimator } from "../tokens.js";
 import { parseBlocks } from "./parser.js";
 import {
 	type BlockContextStrategy,
 	type BlockTypeDefinition,
 	type BlockTypeRegistry,
-	DEFAULT_BLOCK_TYPES,
 	type ParsedBlock,
 	assertBlockContextStrategy,
 	createBlockTypeRegistry,
@@ -133,7 +133,9 @@ export function renderHistoryView(
 	const estimator = options.estimator ?? createTokenEstimator();
 	const registry =
 		options.registry ??
-		createBlockTypeRegistry(options.types ?? DEFAULT_BLOCK_TYPES);
+		(options.types
+			? createBlockTypeRegistry(options.types)
+			: defaultBlockTypeRegistry());
 	const defaultMode = policy.mode === "default";
 	const omitted = new Map<string, { characters: number; tokens: number }>();
 

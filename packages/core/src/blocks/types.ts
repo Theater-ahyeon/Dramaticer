@@ -1,5 +1,4 @@
 import type { StateDiffOp } from "../timeline.js";
-import { IMAGE_BLOCK_TEMPLATE } from "./templates.js";
 
 /** 显示策略：原生组件、沙箱 iframe 里的 HTML 模板，或者不显示。 */
 export type BlockDisplayStrategy =
@@ -149,79 +148,3 @@ export function createBlockTypeRegistry(
 		names: [...byName.keys()],
 	};
 }
-
-/** DESIGN §6 的原生协议块与 §11 的写入类文本标签。策略的处理器在后续任务里接入。 */
-export const DEFAULT_BLOCK_TYPES: readonly BlockTypeDefinition[] = [
-	{
-		name: "thinking",
-		display: { kind: "hidden" },
-		context: { kind: "drop" },
-		semantics: { kind: "none" },
-	},
-	{
-		name: "选项",
-		display: { kind: "native", component: "options" },
-		context: { kind: "keep" },
-		semantics: { kind: "none" },
-	},
-	{
-		name: "状态栏",
-		display: { kind: "native", component: "status" },
-		context: { kind: "keep" },
-		semantics: { kind: "none" },
-	},
-	{
-		name: "变量更新",
-		display: { kind: "hidden" },
-		context: { kind: "drop" },
-		semantics: { kind: "none" },
-	},
-	{
-		name: "分析",
-		display: { kind: "native", component: "analysis" },
-		context: { kind: "keep" },
-		semantics: { kind: "none" },
-	},
-	{
-		name: "图片",
-		display: { kind: "html", template: IMAGE_BLOCK_TEMPLATE },
-		context: { kind: "keep" },
-		semantics: { kind: "none" },
-	},
-	{
-		name: "页眉",
-		display: { kind: "native", component: "header" },
-		context: { kind: "keep" },
-		semantics: { kind: "none" },
-	},
-	{
-		name: "悄悄话",
-		display: { kind: "native", component: "whisper" },
-		context: { kind: "keep" },
-		semantics: { kind: "none" },
-	},
-	{
-		name: "旁白",
-		display: { kind: "native", component: "narration" },
-		context: { kind: "keep" },
-		semantics: { kind: "none" },
-	},
-	{
-		name: "备忘",
-		display: { kind: "native", component: "memo" },
-		context: { kind: "keep" },
-		semantics: { kind: "none" },
-	},
-	{
-		name: "state_update",
-		display: { kind: "hidden" },
-		context: { kind: "drop" },
-		semantics: { kind: "none" },
-	},
-	{
-		name: "plot_note",
-		display: { kind: "hidden" },
-		context: { kind: "drop" },
-		semantics: { kind: "none" },
-	},
-];

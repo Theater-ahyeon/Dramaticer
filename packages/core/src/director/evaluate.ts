@@ -1,12 +1,7 @@
 import type { JsonObject } from "../json.js";
+import { DEFAULT_MECHANISM_KERNEL } from "../plugins/mechanisms.js";
 import type { StoryStore } from "../store/story-store.js";
-import { createBeatMechanism } from "./beat.js";
-import { createClueTrackingMechanism } from "./clue.js";
-import { createEventPoolMechanism } from "./event-pool.js";
 import { isDirectorIntensity } from "./intensity.js";
-import { createOpeningMechanism } from "./opening.js";
-import { createPacingMechanism } from "./pacing.js";
-import { createRepetitionMechanism } from "./repetition.js";
 import type {
 	DirectorConfig,
 	DirectorMechanism,
@@ -20,18 +15,9 @@ export interface EvaluateDirectorInput {
 	readonly storyId: string;
 	readonly nodeId: string;
 	readonly config: DirectorConfig;
-	/** 默认使用内置机制；测试与后续机制通过这里注入。 */
+	/** 默认使用内核注册的内置机制；测试与后续机制通过这里注入。 */
 	readonly mechanisms?: readonly DirectorMechanism[];
 }
-
-export const DEFAULT_DIRECTOR_MECHANISMS: readonly DirectorMechanism[] = [
-	createClueTrackingMechanism(),
-	createOpeningMechanism(),
-	createBeatMechanism(),
-	createRepetitionMechanism(),
-	createEventPoolMechanism(),
-	createPacingMechanism(),
-];
 
 export function assertDirectorConfig(config: DirectorConfig): void {
 	if (typeof config !== "object" || config === null) {
@@ -215,7 +201,7 @@ export function evaluateDirector(
 	}
 	if (config.mode === "off") return null;
 
-	const mechanisms = input.mechanisms ?? DEFAULT_DIRECTOR_MECHANISMS;
+	const mechanisms = input.mechanisms ?? DEFAULT_MECHANISM_KERNEL.mechanisms();
 	const records: DirectorMechanismRecord[] = [];
 	const signals: JsonObject = {};
 	let best: DirectorSuggestion | null = null;

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	BUILTIN_PLUGINS,
 	CHARACTER_SLOT_PLUGIN,
 	type ContextSlotProviders,
 	DIRECTOR_SLOT_PLUGIN,
@@ -56,8 +57,11 @@ describe("内置槽位插件", () => {
 		});
 
 		expect(
+			slots.kernel.snapshot().plugins.map((plugin) => plugin.name),
+		).toEqual(BUILTIN_PLUGINS.map((plugin) => plugin.name));
+		expect(
 			slots.kernel.snapshot().plugins.map((plugin) => plugin.state),
-		).toEqual(Array.from({ length: 10 }, () => "active"));
+		).toEqual(BUILTIN_PLUGINS.map(() => "active"));
 		expect(slots.kernel.snapshot().slots).toEqual({
 			character: [CHARACTER_SLOT_PLUGIN],
 			history: [HISTORY_SLOT_PLUGIN],

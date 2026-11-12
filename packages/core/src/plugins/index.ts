@@ -1,5 +1,13 @@
 export { BUILTIN_PLUGINS } from "./builtin.js";
 export {
+	type BlockTypePlugin,
+	BLOCK_TYPE_PLUGINS,
+	DEFAULT_BLOCK_TYPES,
+	DEFAULT_BLOCK_TYPE_KERNEL,
+	blockTypeRegistryFromKernel,
+	defaultBlockTypeRegistry,
+} from "./block-types.js";
+export {
 	type ChatSlotSet,
 	type NaiveChatSlotsOptions,
 	type StandardChatSlotsOptions,
@@ -11,6 +19,12 @@ export * from "./contracts.js";
 export { EventBus } from "./events.js";
 export { KernelSurface } from "./kernel-surface.js";
 export { LiteKernel } from "./lite-kernel.js";
+export {
+	type MechanismPlugin,
+	DEFAULT_MECHANISM_KERNEL,
+	MECHANISM_PLUGINS,
+} from "./mechanisms.js";
+export { createStaticKernel } from "./static-kernel.js";
 export { ExtensionRegistry } from "./registry.js";
 export { createPluginKernel, type PluginKernelOptions } from "./runtime.js";
 export {

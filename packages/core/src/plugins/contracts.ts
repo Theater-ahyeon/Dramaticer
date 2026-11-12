@@ -96,7 +96,11 @@ export interface PluginKernel {
 		name: string;
 		result: DirectorMechanismResult;
 	}[];
+	/** 已注册的 Director 机制，按注册顺序。 */
+	mechanisms(): readonly DirectorMechanism[];
 	blockType(name: string): BlockTypeDefinition | null;
+	/** 已注册的块类型名，按注册顺序。 */
+	blockTypes(): readonly string[];
 	backgroundJob(kind: string): BackgroundJobType | null;
 	backgroundJobs(): readonly RegisteredBackgroundJob[];
 	service<T>(name: string): T | undefined;

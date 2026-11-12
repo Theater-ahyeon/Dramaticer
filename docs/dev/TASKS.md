@@ -1083,7 +1083,8 @@
   - 槽位内容、顺序、预算与 Trace 条目与改动前逐字段一致；插件缺失或未激活时槽位记 `missing-slot`。
   验收：每个槽位都有注册表条目与测试；同一故事与设置下组装结果与改动前一致；卸载槽位插件后该槽位缺失并被 Trace 记录；`pnpm check` 通过。
 
-- [ ] **P2.d Director 机制与块类型插件化** | 依赖：P2.c
+- [x] **P2.d Director 机制与块类型插件化** | 依赖：P2.c
+  完成：2026-11-12 新增 `plugins/mechanisms.ts`（clue、opening、beat、repetition、event_pool、pacing 六个机制插件与 `DEFAULT_MECHANISM_KERNEL`）与 `plugins/block-types.ts`（12 个块类型插件、`DEFAULT_BLOCK_TYPE_KERNEL`、`blockTypeRegistryFromKernel`、`defaultBlockTypeRegistry`）；`LiteKernel.installSync` 同步安装没有配置校验的插件，`PluginKernel` 增加 `mechanisms()` 与 `blockTypes()`；`evaluateDirector` 缺省机制、`parseBlocks` 与 `renderHistoryView` 缺省块类型都从内核读，顺序与改动前一致；`BUILTIN_PLUGINS` 并入这两组静态插件；新增 `plugin-extensions.test.ts` 7 个测试（注册表条目与顺序、缺省评估与显式机制一致、重复注册回滚、解析器缺省与卸载）；门禁通过（179 个测试文件、1593 个测试、5 个跳过）
   做什么：
   - `DEFAULT_DIRECTOR_MECHANISMS` 与 `DEFAULT_BLOCK_TYPES` 改为通过内核注册的插件；评估顺序、优先级与 `signals` 与改动前一致。
   - Director 机制保持同步纯函数（I9）；块类型校验仍走 `createBlockTypeRegistry`。
