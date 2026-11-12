@@ -910,12 +910,104 @@
 
 ## R3b：深回合
 
-- [ ] **R3b-T00 细化深回合任务** | 依赖：R3-T99、R5-T99 | DESIGN §10.1
+- [x] **R3b-T00 细化深回合任务** | 依赖：R3-T99、R5-T99 | DESIGN §10.1
+  完成：2026-11-12 按 DESIGN §10.1 拆成 T01 至 T10.b 与 T99：循环与上限、工具集与权限、运行日志、草稿与提交、导演手记、上下文卫生、模板配置、原生元数据、运行中追加要求、界面两段与验收；规划—批评—执行保持 DESIGN §18 的暂缓，模板只配置工具白名单与上限
   做什么：把 DESIGN §10.1 的深回合部分拆成可执行任务：单 agent 循环与防失控上限、故事级锁定与单轮开关、全部工具与权限、文本协议、进度事件、草稿与提交分开（草稿实时投影到界面，未提交不产生楼层）、导演手记挂在楼层树上按楼存修改并沿路径累加、运行日志只追加地并入 Trace、较早步骤工具往返的成对省略与 Trace 计数、模板附带深回合配置、多轮工具调用原样回放原生元数据（尤其 Gemini 思考签名）并配工具循环测试与中转渠道实测、运行中追加要求。容忍协议漂移（ADR-0041 的 A9）：模型没有调用提交工具、直接输出了正文时按草稿接住，不判失败。验收指标：运行失败率明显低于 23%、漂移率、时长分布（以 TauriTavern 的 P50 66 秒、P90 147 秒为对照）与深回合相对快回合的增益。
   验收：任务清单可直接执行；`pnpm check` 通过。
 
+- [ ] **R3b-T01 深回合循环与防失控上限** | 依赖：R3-T99、R5-T99 | DESIGN §10.1 | I6、I13
+  做什么：
+  - 新增 `packages/core/src/chat/deep-turn.ts`：`runDeepTurn(options)` 与快回合共用 `runModelTurns` 的工具传输、参数校验与流式接口；循环由模型自行决定步骤，不要求它每轮调用工具，也不要求固定输出结构。
+  - 上限只有两个：工具调用总次数（默认 40）与运行时长（默认 600,000 毫秒）。迁移 v39 给故事设置增加 `deepMaxToolCalls`（1–200）、`deepTimeoutMs`（60,000–3,600,000）、`deepContextTokenLimit`（默认 48,000）与 `deepRecentToolSteps`（默认 4，1–20）；校验复用范围检查，缺省值来自 `DEFAULT_DEEP_MAX_TOOL_CALLS`、`DEFAULT_DEEP_TIMEOUT_MS`、`DEFAULT_DEEP_CONTEXT_TOKEN_LIMIT` 与 `DEFAULT_DEEP_RECENT_TOOL_STEPS`。
+  - 解冻模式：`resolveTurnMode` 不再对 deep 抛错，`ResolvedTurnMode` 增加 `deep` 段（四个设置值，校验后返回）；server 与 CLI 的 deep 请求因此不再 400。快回合的 `maxReadRounds` 语义不变。
+  - 达到任一上限时停止继续调用工具，把已有正文按草稿交给草稿与提交环节，Trace 记 `deep.stopReason` 为 `max_tool_calls` 或 `timeout`；程序没有任何根据轮数、错误、预算改写模式的路径。
+  - `TurnTrace` 新增 `deep` 段：`maxToolCalls`、`maxDurationMs`、`toolCallCount`、`durationMs`、`stopReason`（`completed`、`max_tool_calls`、`timeout`、`aborted`、`error`）；快回合的 `deep` 为 null。
+  验收：第 41 次工具调用被拒绝且运行正常收束并记录 `max_tool_calls`；假时钟越过 10 分钟后不再发出请求；上限内的运行不受限制；设置越界抛错并指出字段；请求 deep 不再抛错；任意工具失败与重试都不改变模式；快回合的输出与 Trace 与改动前一致；`pnpm check` 通过。
+
+- [ ] **R3b-T02 深回合工具集、权限与进度事件** | 依赖：R3b-T01 | DESIGN §10.1、§10.2 | I12、I13、I18
+  做什么：
+  - 新增 `packages/core/src/tools/registry.ts`：`DeepToolDefinition` 在 `LlmToolDefinition` 之上声明 `permission`（`read`、`propose`、`control`、`side_effect`）与 `progressLabel`；注册时拒绝未知权限与重复工具名，执行时 Trace 记录每次调用的权限级别。
+  - 只读工具补两个：`history_read`（沿当前路径读取指定楼层或最近 N 楼的原文与块视图，参数 `{nodeId?, count?}`，不接受非祖先楼层）与 `ledger_read`（按前缀读取当前楼层快照上的台账事实与元数据，参数 `{prefix?}`）。现有 `memory_search`、`lore_lookup`、`state_get` 进入同一注册表。
+  - 写入工具 `ledger_write`（权限 `propose`）：参数 `{diffs: [{path, value, storyTime?, confidence?}]}`，每次最多 20 条；逐条用 `validateLedgerDiff` 校验，非法条目作为工具错误结果返回让模型修正，合法条目只收集进本轮的结构化写入集合，工具本身不写数据库（I12）；提交时由楼层事务统一写入。
+  - 权限执行规则：`read` 直接执行；`propose` 只收集；`control` 交给 R3b-T04；`side_effect` 只有已启用时才可调用（现有 `illustrate`），未启用的调用返回工具错误。这里只做深回合内的声明与执行，插件安装时的权限展示属于 P2。
+  - 进度事件：执行工具前发出 `{type: "progress", phase, detail}`（phase 取 `progressLabel`，例如“回忆中……”“查阅设定……”“读取台账……”）；server 映射为 SSE `turn.progress`，同一阶段连续调用只在阶段变化时发一次。
+  - 文本协议：同一套工具在 `tools.transport: text` 下可用，`<tool>` 解析、参数校验、错误结果回填与软上限行为与原生传输一致。
+  验收：六个工具各有参数正例与非法参数负例；`history_read` 拒绝非祖先楼层；`ledger_write` 的非法条目返回错误结果、合法条目在提交前查不到；权限未声明的调用被拒绝并记录；进度事件只在阶段变化时发送；两种传输产生相同执行结果；`pnpm check` 通过。
+
+- [ ] **R3b-T03 运行日志** | 依赖：R3b-T01、R3b-T02 | DESIGN §10.1 | I7（不阻塞回合）
+  做什么：
+  - 迁移 v40 新增 `turn_runs(run_id PRIMARY KEY, story_id, user_node_id, node_id, mode, status, started_at, finished_at)` 与 `turn_run_events(run_id, seq, kind, payload, created_at, PRIMARY KEY(run_id, seq))`；事件表的更新与删除由触发器拒绝，只追加。`status` 取 `running`、`completed`、`interrupted`、`failed`、`aborted`。
+  - 存储层新增 `startTurnRun`、`appendTurnRunEvent`、`finishTurnRun`、`listTurnRunEvents`、`markInterruptedTurnRuns`；`startServer` 与 `dramaticer work` 启动时把遗留的 `running` 行标为 `interrupted`。
+  - 深回合每一步同步追加事件：`model.request`、`model.response`、`tool.call`、`tool.result`、`draft.replace`（只记版本号与长度，不存全文）、`draft.commit`、`steering`、`limit`、`error`；快回合不写运行表，保持现有 Trace 语义。
+  - `TurnTrace` 增加 `run` 段（`runId`、`status`、`eventCount`），快回合为 null；新增 `GET /api/nodes/:id/run` 返回运行摘要与按 `seq` 排序的事件（没有运行时 404）；`dramaticer explain --node <id>` 打印同一时间线。
+  验收：事件按 `seq` 严格递增；更新或删除事件抛错且原行不变；模拟进程中断后重启把 `running` 改为 `interrupted` 并保留已有事件；Trace 与接口读到同一 `runId`；事件载荷不包含草稿全文与私有路径；`pnpm check` 通过。
+
+- [ ] **R3b-T04 草稿与提交** | 依赖：R3b-T01、R3b-T02、R3b-T03 | DESIGN §10.1 | I4、I12
+  做什么：
+  - 两个控制工具：`draft_write`（参数 `{text}`，权限 `control`）整份替换当前草稿；`commit_draft`（无参数）把当前草稿提交为助手楼层并结束运行。草稿只存在运行内状态，提交前不写 `timeline_nodes`、不进入历史、不参与台账。
+  - 每次草稿替换通过 `onDraftReplace` 回调交给 server，以 SSE `draft.replace` 发送（按 100 毫秒节流，与 `blocks.replace` 相同）；提交后发送 `turn.committed`，带助手楼层 id 与最终块快照。
+  - 提交走现有楼层写入路径：解析块、收集结构化写入、写 `state_update` 与 `plot_note`、写 Trace、`run.status` 改为 `completed`；提交后拒绝后续 `draft_write` 与 `commit_draft`，重复提交返回工具错误。
+  - 协议漂移（ADR-0041 A9）：运行正常结束、模型没有调用 `commit_draft` 但最后一次输出有正文时，把该正文当作最终草稿自动提交为楼层，`deep.drift` 记为 `missing_commit`，运行仍算成功；因中止、超时或错误结束且没有提交时，不写助手楼层，草稿保留在运行日志里，运行状态为 `aborted`、`failed` 或对应上限。
+  - 用户楼层在运行开始时照常写入；没有助手楼层时 head 停在用户楼层，界面可以重试这一轮。
+  验收：草稿替换只出现在 SSE 与运行日志，不产生楼层；提交后楼层正文与草稿逐字节一致且只写一次；无提交正常结束自动提交并记录漂移；中止结束不产生楼层；提交后再次写入或提交被拒绝；`pnpm check` 通过。
+
+- [ ] **R3b-T05 导演手记** | 依赖：R3b-T01、R3b-T02 | DESIGN §10.1 | I4、I12
+  做什么：
+  - 迁移 v41 新增 `director_notes(node_id PRIMARY KEY, story_id, diffs, created_at)`，同故事触发器与既有一致；`diffs` 是 JSON 数组，每条 `{action: "set" | "delete", key, text?}`，写入前校验 key 非空、单条文本不超过 2,000 字、每楼不超过 50 条。
+  - 工具 `note_read`（权限 `read`，返回沿当前路径累加后的手记键与正文）与 `note_write`（权限 `propose`，写入当前运行的待提交 diff；只有楼层提交时才写 `director_notes`）。
+  - 累加规则：从 head 路径根部到当前楼层逐楼应用 `set` 与 `delete`，后写的楼层覆盖先前同名键；分支切换后只读当前路径。手记不进入台账、不参与结算、不改写原文。
+  - 深回合开始时装入手记：在组装后的消息之后插入一条系统消息，列出累加后的手记；快回合不注入。手记是模型自己的工作材料，事实以台账为准。
+  验收：同一键在后续楼层覆盖、`delete` 后消失；不同分支各自累加且互不影响；提交前手记查不到、提交后可见；没有手记时不插入空消息；手记不出现台账路径中；`pnpm check` 通过。
+
+- [ ] **R3b-T06 工具往返的上下文卫生** | 依赖：R3b-T01、R3b-T03、R3b-T04 | DESIGN §10.1
+  做什么：
+  - 深回合每次请求前估算工具消息累计 token；超过故事设置 `deepContextTokenLimit`（默认 48,000）时，从最早的一对“助手工具调用消息 + 对应工具结果消息”开始成对省略，直到降到上限以下或只剩最近 `deepRecentToolSteps`（默认 4 步，1–20）为止。
+  - 只成对省略：不允许留下没有调用的工具结果，也不允许留下没有结果的工具调用；当前步骤正在使用的材料、系统消息、用户消息与最近步骤不省略。
+  - 省略数量、配对数与原因写进 Trace 的 `deep.contextOmitted`（`pairs`、`messages`、`tokens`、`reason`）；未触发省略时不写该记录。
+  - 快回合不套用这条规则；`maxReadRounds` 仍按原逻辑收束。
+  验收：构造超过上限的工具往返后最早成对的消息被省略且消息序列仍合法；最近步骤与当前步骤完整；不产生孤立的 `tool` 消息或 `toolCalls`；Trace 数字与实际省略一致；上限以下不做任何省略；`pnpm check` 通过。
+
+- [ ] **R3b-T07 模板里的深回合配置** | 依赖：R3b-T01、R3b-T02 | DESIGN §10.1 | I6、I13
+  做什么：
+  - `ContextTemplate` 增加可选 `deepTurn`：`tools`（工具名数组，缺省为注册表全部只读、propose 与 control 工具）、`maxToolCalls`、`maxDurationMs`、`notesEnabled`（默认 true）。规划—批评—执行按 DESIGN §18 保持暂缓，本轮不增加计划方式字段。
+  - 校验：未知工具名、重复工具名、越界上限、非布尔 `notesEnabled` 都抛错并指出模板 id 与字段；没有 `deepTurn` 的模板与现有模板逐字段一致。
+  - 生效顺序：模板 `deepTurn` 覆盖故事设置，故事设置覆盖默认值；工具白名单之外的工具调用按未知工具拒绝并记录 Trace，不静默放行。快回合忽略 `deepTurn`。
+  - 模板保存、导入与 `assertContextTemplate` 走同一校验；上下文包指纹包含模板内容，改动模板后旧包失效。
+  验收：深回合只暴露白名单工具；白名单外调用被拒绝并记录；上限覆盖顺序正确；无配置的模板行为与改动前一致；非法配置在保存时被拒绝并指出字段；模板变化后上下文包重新组装；`pnpm check` 通过。
+
+- [ ] **R3b-T08 原生元数据保真** | 依赖：R3b-T01、R3b-T02 | DESIGN §10.1、§10.2
+  做什么：
+  - `LlmToolCall` 增加可选的 `native`（不透明 JSON 对象）保存渠道原生字段，至少 `thoughtSignature`、`namespace`、`argumentsError`；助手消息增加可选的 `native`，保存渠道返回的完整内容片段（文本签名、思考签名与工具调用签名）。
+  - pi 通道：请求组装时，助手消息若有 `native.content` 就原样回放，否则按现有文本与工具调用拼装；工具调用有 `native` 时把这些字段原样带回。响应时从 `AssistantMessage.content` 提取签名写入 `LlmResult.native` 与各 `LlmToolCall.native`。
+  - 深回合循环把每一轮的 `LlmResult` 转成下一条助手消息时保留 `native`，不做合并、移动或丢失；续写产生的合成消息不带伪签名。
+  - 测试：固定 fixture 的 Gemini 两轮工具调用，断言第二次请求里 `thoughtSignature` 与第一轮响应逐字节一致；没有签名的渠道不受影响；新增一个 `*.live.test.ts` 用 `data/channels.yaml` 的中转渠道跑两轮工具调用，默认跳过，`DRAMATICER_DEEP_LIVE=1` 时执行。
+  验收：签名在两轮请求之间原样保留；缺失签名的响应不产生空对象；原生传输与文本传输都不因 `native` 字段报错；live 测试单独运行时两轮工具循环成功；`pnpm check` 通过。
+
+- [ ] **R3b-T09 运行中追加要求** | 依赖：R3b-T01、R3b-T03、R3b-T04 | DESIGN §10.1
+  做什么：
+  - core 的深回合运行暴露控制句柄 `pushGuidance(text)`：每次最多接受 5 条、每条去空白后 1–2,000 字；在下一个步骤开始前取出，作为新的用户消息追加到消息序列（前缀标明这是玩家在运行中追加的指引），并写 `steering` 运行事件；已经结束的运行拒绝追加。
+  - server 维护运行中的句柄表（`runId` 到句柄）；`POST /api/stories/:id/turns/:runId/steering` 请求 `{text}`，返回 202；未知或不属于该故事的运行返回 404，已结束返回 409，空文本或超长返回 400 并指出字段。`turn.started` 带 `runId`。
+  - 追加的指引不写新楼层、不改写原文，只影响后续步骤；SSE 发 `turn.steering` 回显文本。
+  - 文本协议与原生传输都能读到追加消息；追加发生在最后一次模型请求之后时不补发请求。
+  验收：运行中追加的指引出现在下一次模型请求里；不产生额外楼层；结束后追加被拒绝；句柄表在运行结束后清理；并发追加保持调用顺序；`pnpm check` 通过。
+
+- [ ] **R3b-T10.a 界面：模式开关与进度事件** | 依赖：R3b-T01、R3b-T02、R3b-T07 | DESIGN §10.1 | I6
+  做什么：
+  - 聊天页输入框旁的模式选择列出“快回合 / 深回合”，单轮值通过 `POST /api/stories/:id/turns` 的 `mode` 发送；设置页可以锁定故事默认 `turnMode`。深回合可用后移除 R5-T11 的隐藏条件。
+  - 生成过程中展示 `turn.progress` 的阶段文字，阶段结束后恢复正文流；深回合的 `turn.started` 带给定时器与句柄表使用的 `runId`。
+  - 设置页增加深回合区段：`deepMaxToolCalls`、`deepTimeoutMs`、`deepContextTokenLimit`、`deepRecentToolSteps`，校验范围与服务端一致；模板编辑器的深回合配置字段与 `ContextTemplate.deepTurn` 同形。
+  验收：深回合可以被选中并成功发送；故事锁定后新会话默认深回合；阶段文字按事件更新且不覆盖正文；设置表单越界被拒绝并指出字段；`pnpm check` 通过。
+
+- [ ] **R3b-T10.b 界面：草稿、追加要求与运行时间线** | 依赖：R3b-T03、R3b-T04、R3b-T09、R3b-T10.a | DESIGN §10.1
+  做什么：
+  - 草稿区实时显示 `draft.replace` 快照；提交后草稿区折叠为正式楼层；中止或失败时保留草稿与原因，提供“重试这一轮”。
+  - 深回合运行中输入框切换为“追加要求”，调用 steering 接口并在界面回显已追加的条目；运行结束后恢复普通输入。
+  - 楼层详情增加运行时间线：按 `GET /api/nodes/:id/run` 的事件顺序展示模型调用、工具调用、草稿版本、提交与上限端点；运行中断时显示停在哪一步。
+  - 纯逻辑（草稿快照合并、阶段文字、时间线排序）放进 `src/playtest/` 风格的可测模块，组件只做渲染。
+  验收：草稿逐次更新且不与正式楼层混在一起；追加要求出现在运行时间线里且不影响已完成的正文；时间线顺序与 `seq` 一致；中断运行显示最后一步；`pnpm check` 通过。
+
 - [ ] **R3b-T99 R3b 验收** | 依赖：R3b 全部任务
-  做什么：逐条核对深回合循环、草稿与提交、手记、运行日志、原生元数据、追加要求与防失控上限；复核 I6（程序不自动切换）、I13；用真实渠道跑失败率与时长分布；写 `docs/dev/reports/R3b.md`；确认 P1 与 H 任务。
+  做什么：逐条核对深回合循环、草稿与提交、手记、运行日志、原生元数据、追加要求与防失控上限；复核 I6（程序不自动切换）、I13（不强制工具与固定结构）、I12（所有写入经过校验）；用真实渠道在一张固定合成卡上跑至少 30 次深回合，记录运行失败率（目标 ≤10%，明显低于 23% 的基线）、漂移率、首字与总时长分布（对照 TauriTavern P50 66 秒、P90 147 秒）、每轮工具调用数与 token；在同一个分支点上快回合与深回合各生成一次，至少 10 个分支点，用 `roles.judge` 盲评两两对比给出深回合增益；统计版写 `docs/dev/reports/R3b.md`（只含数字与模型别名），私有明细留在 `eval-private/reports/`；确认 P1 与 H 任务。
   结果写 `MILESTONE_DONE`。
 
 ## P：插件内核（DESIGN §19；ADR-0045）
