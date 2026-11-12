@@ -321,6 +321,7 @@ describe("读取工具", () => {
 		}
 		expect(DEEP_ONLY_READ_TOOLS.map((tool) => tool.name)).toEqual([
 			"history_read",
+			"note_read",
 		]);
 	});
 });

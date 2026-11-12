@@ -21,6 +21,10 @@ import {
 	executeDraftWriteTool,
 } from "../tools/draft-tools.js";
 import {
+	NOTE_WRITE_TOOL_NAME,
+	executeNoteWriteTool,
+} from "../tools/note-tools.js";
+import {
 	type ReadToolContext,
 	executeReadTool,
 	isReadToolName,
@@ -37,6 +41,7 @@ import {
 } from "../tools/write-tools.js";
 import type { TurnDraftController } from "./draft.js";
 import { DEFAULT_MAX_READ_ROUNDS, assertMaxReadRounds } from "./mode.js";
+import type { TurnNoteController } from "./notes.js";
 import {
 	TextToolStreamFilter,
 	extractTextToolCalls,
@@ -95,6 +100,8 @@ export interface ModelTurnOptions {
 	readonly maxDurationMs?: number;
 	/** 深回合的草稿控制器；控制工具用它整份替换与提交草稿。 */
 	readonly draft?: TurnDraftController | null;
+	/** 深回合的手记控制器；note_write 用它收集提交前的修改。 */
+	readonly notes?: TurnNoteController | null;
 	/** 工具传输方式；不设置时走原生函数调用。 */
 	readonly toolTransport?: LlmToolTransport;
 	readonly model?: string;
@@ -528,6 +535,7 @@ export async function runModelTurns(
 							options.toolContext,
 							proposedStateUpdates,
 							options.draft ?? null,
+							options.notes ?? null,
 						);
 						content = outcome.content;
 						ok = outcome.ok;
@@ -643,6 +651,7 @@ async function runTool(
 	context: ReadToolContext,
 	proposed: AcceptedStateUpdate[],
 	draft: TurnDraftController | null,
+	notes: TurnNoteController | null,
 ): Promise<{ content: string; ok: boolean; error: string | null }> {
 	switch (definition.permission) {
 		case "read": {
@@ -660,6 +669,17 @@ async function runTool(
 			return { content, ok: true, error: null };
 		}
 		case "propose": {
+			if (definition.name === NOTE_WRITE_TOOL_NAME) {
+				if (notes === null) {
+					throw new Error(`工具 ${definition.name} 没有运行句柄`);
+				}
+				const outcome = executeNoteWriteTool(args, notes);
+				return {
+					content: outcome.content,
+					ok: outcome.ok,
+					error: outcome.error,
+				};
+			}
 			if (definition.name !== LEDGER_WRITE_TOOL_NAME) {
 				throw new Error(
 					`工具 ${definition.name} 声明为待提交写入，但没有对应的收集实现`,

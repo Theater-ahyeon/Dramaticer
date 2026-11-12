@@ -1,5 +1,10 @@
 import { parseBlocks } from "../blocks/parser.js";
 import { renderContextView } from "../blocks/view.js";
+import type { TurnNoteController } from "../chat/notes.js";
+import {
+	applyDirectorNoteDiffs,
+	formatDirectorNotes,
+} from "../director/notes.js";
 import { normalizeEntityName } from "../entity.js";
 import { readLedgerFacts } from "../ledger/read.js";
 import type { EmbeddingClient } from "../llm/embeddings.js";
@@ -19,7 +24,7 @@ export const READ_TOOL_NAMES = [
 ] as const;
 
 /** 只有深回合开放的只读工具。 */
-export const DEEP_ONLY_READ_TOOL_NAMES = ["history_read"] as const;
+export const DEEP_ONLY_READ_TOOL_NAMES = ["history_read", "note_read"] as const;
 
 const ALL_READ_TOOL_NAMES = [
 	...READ_TOOL_NAMES,
@@ -122,6 +127,12 @@ const HISTORY_READ_SCHEMA: Record<string, unknown> = {
 	additionalProperties: false,
 };
 
+const NOTE_READ_SCHEMA: Record<string, unknown> = {
+	type: "object",
+	properties: {},
+	additionalProperties: false,
+};
+
 /** 快回合与深回合共用的只读工具。 */
 export const READ_TOOLS: readonly DeepToolDefinition[] = [
 	{
@@ -168,6 +179,14 @@ export const DEEP_ONLY_READ_TOOLS: readonly DeepToolDefinition[] = [
 		permission: "read",
 		progressLabel: "翻阅历史……",
 	},
+	{
+		name: "note_read",
+		description:
+			"读取沿当前路径累加后的导演手记：模型自己记录的伏笔安排、人物动机与后续打算。事实以台账为准。",
+		parameters: NOTE_READ_SCHEMA,
+		permission: "read",
+		progressLabel: "翻看手记……",
+	},
 ];
 
 export function isReadToolName(name: string): name is ReadToolName {
@@ -182,6 +201,8 @@ export interface ReadToolContext {
 	readonly embedder?: EmbeddingClient | null;
 	readonly reranker?: RerankClient | null;
 	readonly viewpoint?: string | null;
+	/** 当前运行的待提交手记修改；深回合的 note_read 用它显示未提交内容。 */
+	readonly notes?: TurnNoteController | null;
 }
 
 /**
@@ -225,6 +246,10 @@ export function validateReadToolArguments(
 		if (count !== null) result.count = count;
 		return result;
 	}
+	if (name === "note_read") {
+		rejectUnknownKeys(name, args, []);
+		return {};
+	}
 	rejectUnknownKeys(name, args, ["query", "limit"]);
 	const query = args.query;
 	if (typeof query !== "string" || query.trim().length === 0) {
@@ -255,6 +280,8 @@ export async function executeReadTool(
 			return runLedgerRead(args, context);
 		case "history_read":
 			return runHistoryRead(args, context);
+		case "note_read":
+			return runNoteRead(context);
 	}
 }
 
@@ -467,6 +494,22 @@ function runHistoryRead(
 	return fitResult(
 		`当前路径最近 ${selected.length} 楼：\n${lines.join("\n")}`,
 		MAX_HISTORY_RESULT_CHARS,
+	);
+}
+
+function runNoteRead(context: ReadToolContext): string {
+	const accumulated = context.store.readDirectorNoteEntries(
+		context.beforeNodeId,
+	);
+	const entries = applyDirectorNoteDiffs(
+		accumulated,
+		context.notes?.pending ?? [],
+	);
+	if (entries.length === 0) {
+		return "当前没有导演手记。";
+	}
+	return fitResult(
+		`${formatDirectorNotes(entries)}\n共 ${entries.length} 条。`,
 	);
 }
 

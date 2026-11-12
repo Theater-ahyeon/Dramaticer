@@ -12,6 +12,7 @@ import {
 	type DirectorIntensity,
 	resolveDirectorIntensity,
 } from "../director/intensity.js";
+import { formatDirectorNotes } from "../director/notes.js";
 import {
 	ILLUSTRATE_TOOL,
 	type IllustrateTurnOptions,
@@ -26,6 +27,7 @@ import {
 	detectTruncations,
 } from "../llm/truncation.js";
 import type {
+	LlmMessage,
 	LlmReasoningLevel,
 	LlmStreamingClient,
 	LlmUsage,
@@ -62,6 +64,7 @@ import {
 	assertDeepTimeoutMs,
 	assertMaxReadRounds,
 } from "./mode.js";
+import { TurnNoteController } from "./notes.js";
 import {
 	type ChatProfile,
 	DEFAULT_CHAT_PROFILE,
@@ -438,9 +441,15 @@ export async function generateAssistantTurn(
 					},
 				})
 			: null;
+	const notes = resolved.mode === "deep" ? new TurnNoteController() : null;
+	// 深回合在组装后的消息之后注入手记；快回合不注入。
+	const messages =
+		notes === null
+			? assembled.messages
+			: withDirectorNotes(options.store, assembled.messages, userNode.id);
 	const turnOptions = {
 		client: options.client,
-		messages: assembled.messages,
+		messages,
 		structuredTools: functionCall ? STRUCTURED_OUTPUT_TOOLS : undefined,
 		tools,
 		disabledTools,
@@ -452,6 +461,7 @@ export async function generateAssistantTurn(
 			embedder: options.embedder ?? null,
 			reranker: options.reranker ?? null,
 			viewpoint: options.viewpoint ?? null,
+			notes,
 		},
 		model: options.model,
 		maxTokens: options.maxTokens,
@@ -468,6 +478,7 @@ export async function generateAssistantTurn(
 		onToolProgress: options.onToolProgress,
 		onRunEvent,
 		draft,
+		notes,
 		now,
 	} as const;
 	let turn: ModelTurnResult;
@@ -561,6 +572,13 @@ export async function generateAssistantTurn(
 			raw: finalText,
 		});
 		recordRegeneratedSwipe(options, node);
+		if (notes !== null && notes.pending.length > 0) {
+			options.store.saveDirectorNotes({
+				storyId: options.storyId,
+				nodeId: node.id,
+				diffs: notes.pending,
+			});
+		}
 		const savedDiffs = writesLedger
 			? options.store.appendStateDiffs(
 					toNewStateDiffs(options.storyId, node.id, structured.stateUpdates),
@@ -728,6 +746,20 @@ function recordRegeneratedSwipe(
 		payload: { abandonedNodeId, acceptedNodeId: node.id },
 		createdAt: node.createdAt,
 	});
+}
+
+/** 深回合开始前把沿当前路径累加的手记作为系统消息追加到上下文之后。 */
+function withDirectorNotes(
+	store: StoryStore,
+	messages: readonly LlmMessage[],
+	nodeId: string,
+): readonly LlmMessage[] {
+	const entries = store.readDirectorNoteEntries(nodeId);
+	if (entries.length === 0) return messages;
+	return [
+		...messages,
+		{ role: "system", content: formatDirectorNotes(entries) },
+	];
 }
 
 /** 运行结束却没有提交草稿时的原因。 */

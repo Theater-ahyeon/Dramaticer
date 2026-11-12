@@ -955,7 +955,8 @@
   - 用户楼层在运行开始时照常写入；没有助手楼层时 head 停在用户楼层，界面可以重试这一轮。
   验收：草稿替换只出现在 SSE 与运行日志，不产生楼层；提交后楼层正文与草稿逐字节一致且只写一次；无提交正常结束自动提交并记录漂移；中止结束不产生楼层；提交后再次写入或提交被拒绝；`pnpm check` 通过。
 
-- [ ] **R3b-T05 导演手记** | 依赖：R3b-T01、R3b-T02 | DESIGN §10.1 | I4、I12
+- [x] **R3b-T05 导演手记** | 依赖：R3b-T01、R3b-T02 | DESIGN §10.1 | I4、I12
+  完成：2026-11-12 迁移 v41 新增 `director_notes`（每楼一行、同故事触发器、归属不可改）；`director/notes.ts` 定义 `set`/`delete` diff 的校验与沿路径累加；`note_read`（`read`，深回合）读累加结果并叠加本轮待提交修改，`note_write`（`propose`）把修改交给运行内 `TurnNoteController`，楼层提交时与台账写入同一事务落库；深回合开始时在组装后的消息之后注入一条手记系统消息，没有手记时不插入，快回合不注入也不暴露两个工具；手记不进入台账；新增 8 个测试；门禁通过（172 个测试文件、1524 个测试、4 个 live 跳过）
   做什么：
   - 迁移 v41 新增 `director_notes(node_id PRIMARY KEY, story_id, diffs, created_at)`，同故事触发器与既有一致；`diffs` 是 JSON 数组，每条 `{action: "set" | "delete", key, text?}`，写入前校验 key 非空、单条文本不超过 2,000 字、每楼不超过 50 条。
   - 工具 `note_read`（权限 `read`，返回沿当前路径累加后的手记键与正文）与 `note_write`（权限 `propose`，写入当前运行的待提交 diff；只有楼层提交时才写 `director_notes`）。

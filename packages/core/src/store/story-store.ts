@@ -33,6 +33,14 @@ import {
 } from "../director/candidates.js";
 import { assertDirectorConfig } from "../director/evaluate.js";
 import {
+	type DirectorNoteDiff,
+	type DirectorNoteEntry,
+	type DirectorNoteRecord,
+	type NewDirectorNoteInput,
+	applyDirectorNoteDiffs,
+	assertDirectorNoteDiffs,
+} from "../director/notes.js";
+import {
 	type DirectorBeatState,
 	type DirectorPlan,
 	type DirectorPlanEntries,
@@ -318,6 +326,13 @@ interface SceneAnalysisRow {
 	readonly story_id: string;
 	readonly text: string;
 	readonly token_count: number;
+	readonly created_at: string;
+}
+
+interface DirectorNoteRow {
+	readonly node_id: string;
+	readonly story_id: string;
+	readonly diffs: string;
 	readonly created_at: string;
 }
 
@@ -1219,6 +1234,18 @@ function rowToSceneAnalysis(row: SceneAnalysisRow): SceneAnalysis {
 		storyId: row.story_id,
 		text: row.text,
 		tokenCount: row.token_count,
+		createdAt: row.created_at,
+	};
+}
+
+function rowToDirectorNote(row: DirectorNoteRow): DirectorNoteRecord {
+	return {
+		nodeId: row.node_id,
+		storyId: row.story_id,
+		diffs: assertDirectorNoteDiffs(
+			JSON.parse(row.diffs) as unknown,
+			`楼层 ${row.node_id} 的导演手记`,
+		),
 		createdAt: row.created_at,
 	};
 }
@@ -3385,6 +3412,74 @@ export class StoryStore {
 			)
 			.get(nodeId) as SceneAnalysisRow | undefined;
 		return row === undefined ? null : rowToSceneAnalysis(row);
+	}
+
+	/** 写入一个楼层的导演手记修改；每个楼层只有一行，重复写入直接失败。 */
+	saveDirectorNotes(input: NewDirectorNoteInput): DirectorNoteRecord {
+		assertNonEmptyString(input.nodeId, "导演手记的楼层 id");
+		assertNonEmptyString(input.storyId, "导演手记的故事 id");
+		const node = this.getNode(input.nodeId);
+		if (!node) {
+			throw new Error(`楼层节点不存在：${input.nodeId}`);
+		}
+		if (node.storyId !== input.storyId) {
+			throw new Error(
+				`导演手记的 storyId 与楼层所属故事不一致：${input.storyId}`,
+			);
+		}
+		const diffs = assertDirectorNoteDiffs(input.diffs, "导演手记的 diffs");
+		if (diffs.length === 0) {
+			throw new Error("导演手记的 diffs 至少要有一条");
+		}
+		const createdAt = input.createdAt ?? new Date().toISOString();
+		assertNonEmptyString(createdAt, "导演手记的创建时间");
+		this.#db
+			.prepare(
+				`INSERT INTO director_notes (node_id, story_id, diffs, created_at)
+				VALUES (?, ?, ?, ?)`,
+			)
+			.run(input.nodeId, input.storyId, JSON.stringify(diffs), createdAt);
+		return { nodeId: input.nodeId, storyId: input.storyId, diffs, createdAt };
+	}
+
+	/** 读取一个楼层的手记修改；没有记录时返回 null。 */
+	getDirectorNotes(nodeId: string): DirectorNoteRecord | null {
+		if (!this.getNode(nodeId)) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
+		const row = this.#db
+			.prepare("SELECT * FROM director_notes WHERE node_id = ?")
+			.get(nodeId) as DirectorNoteRow | undefined;
+		return row === undefined ? null : rowToDirectorNote(row);
+	}
+
+	/**
+	 * 沿节点所在的路径从根到该楼层逐楼应用手记修改：后写的楼层覆盖同名键，
+	 * `delete` 移除键。其他分支的记录不参与累加。
+	 */
+	readDirectorNoteEntries(nodeId: string): DirectorNoteEntry[] {
+		if (!this.getNode(nodeId)) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
+		const rows = this.#db
+			.prepare(
+				`WITH RECURSIVE chain(node_id, depth) AS (
+					SELECT id, 0 FROM nodes WHERE id = ?
+					UNION ALL
+					SELECT nodes.parent_id, chain.depth + 1
+					FROM nodes JOIN chain ON nodes.id = chain.node_id
+					WHERE nodes.parent_id IS NOT NULL
+				)
+				SELECT director_notes.*
+				FROM director_notes JOIN chain ON director_notes.node_id = chain.node_id
+				ORDER BY chain.depth DESC`,
+			)
+			.all(nodeId) as DirectorNoteRow[];
+		let entries: DirectorNoteEntry[] = [];
+		for (const row of rows) {
+			entries = applyDirectorNoteDiffs(entries, rowToDirectorNote(row).diffs);
+		}
+		return entries;
 	}
 
 	/** 写入一个楼层的合并调用执行记录；同一楼层重复执行覆盖同一行。 */

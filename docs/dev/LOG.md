@@ -329,3 +329,5 @@
 - 2026-11-12 | S285 | R3b-T03 | DONE | 迁移 v40 新增 `turn_runs` 与只追加的 `turn_run_events`（更新与删除由触发器拒绝，序号按运行内最大值加一）；`StoryStore` 新增运行创建、事件追加、结束、查询与 `markInterruptedTurnRuns`，`startServer` 与 `dramaticer work` 启动时把遗留 `running` 标为 `interrupted`；执行器通过 `onRunEvent` 在每次请求、响应、工具调用与结果处同步写事件，上限写 `limit`、失败与中止写 `error`；`TurnTrace.run` 记录运行 id、状态与事件条数，快回合为 null；新增 `GET /api/nodes/:id/run` 与 `dramaticer explain` 的运行时间线；门禁通过（166 个测试文件、1506 个测试、4 个 live 跳过）
 
 - 2026-11-12 | S286 | R3b-T04 | DONE | 新增 `chat/draft.ts`（整份替换、版本号、提交后拒绝修改）与 `draft_write`、`commit_draft` 两个 control 工具；执行器在提交后立即结束循环并拒绝后续工具；`turn.ts` 显式提交用草稿、正常结束没有提交时自动提交最后一次输出并记 `missing_commit`、中止/超时/上限/无正文时不写楼层并标 `failed` 或 `aborted`；server 新增 `draft.replace`（100 毫秒节流）与 `turn.committed`，web 流式状态缓存草稿与提交；运行日志只记版本号与长度；门禁通过（171 个测试文件、1512 个测试、4 个 live 跳过）
+
+- 2026-11-12 | S287 | R3b-T05 | DONE | 迁移 v41 新增 `director_notes`（每楼一行、同故事触发器、归属不可改）；`director/notes.ts` 定义 `set`/`delete` 校验与沿路径累加（后写覆盖、`delete` 移除、按键排序）；`note_read`（read）读当前路径结果并叠加本轮待提交修改，`note_write`（propose）交给运行内 `TurnNoteController`，提交楼层时与台账写入同一事务落库；深回合在组装后的消息之后注入手记系统消息，没有手记与快回合都不插入，快回合不暴露两个工具；手记不进台账；新增 8 个测试；门禁通过（172 个测试文件、1524 个测试、4 个 live 跳过）
