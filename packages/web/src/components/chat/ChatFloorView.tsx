@@ -5,6 +5,7 @@ import { formatFloorTime } from "../../chat/format";
 import type { ChatFloor } from "../../chat/path-state";
 import { BlockContent } from "./BlockContent";
 import { FloorImages } from "./FloorImages";
+import { FloorRunTimeline } from "./FloorRunTimeline";
 
 export interface ChatFloorViewProps {
 	readonly node: ChatFloor;
@@ -73,6 +74,7 @@ export function ChatFloorView({
 				retryingImageId={retryingImageId}
 				onRetry={(imageId) => onRetryImage(node.id, imageId)}
 			/>
+			{isUser ? null : <FloorRunTimeline nodeId={node.id} />}
 		</article>
 	);
 }

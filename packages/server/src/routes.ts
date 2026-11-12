@@ -147,6 +147,7 @@ import {
 	type TurnCoordinator,
 	type TurnRunRegistry,
 	handleRegenerateStream,
+	handleRetryStream,
 	handleTurnStream,
 } from "./turns.js";
 
@@ -370,6 +371,10 @@ export async function handleApiRequest(
 			case "regenerate":
 				requireMethod(method, ["POST"]);
 				await handleRegenerate(res, options, nodeId);
+				return;
+			case "retry":
+				requireMethod(method, ["POST"]);
+				await handleRetry(req, res, options, nodeId);
 				return;
 			case "trace":
 				requireMethod(method, ["GET"]);
@@ -838,6 +843,19 @@ async function handleRegenerate(
 		throw fieldError("nodeId", `楼层 ${nodeId} 不是助手楼层，不能重新生成`);
 	}
 	await handleRegenerateStream(res, nodeId, options);
+}
+
+/** `POST /api/nodes/:id/retry`：只接受用户楼层，可带单轮模式。 */
+async function handleRetry(
+	req: IncomingMessage,
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	nodeId: string,
+): Promise<void> {
+	requireNode(options.store, nodeId);
+	const body = await readObjectBody(req, options.maxJsonBodyBytes);
+	assertKnownKeys(body, ["mode"]);
+	await handleRetryStream(res, nodeId, options, readOptionalMode(body.mode));
 }
 
 function handleNodeTrace(

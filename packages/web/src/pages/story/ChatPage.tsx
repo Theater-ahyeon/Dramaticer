@@ -70,7 +70,13 @@ const DEFAULT_TURN_MODE: TurnMode = "fast";
 interface FailedTurn {
 	readonly text: string;
 	readonly started: boolean;
+	readonly userNodeId: string | null;
 	readonly assistantNodeId: string | null;
+	/** 失败时未提交的草稿或最后一段流式正文。 */
+	readonly draftText: string | null;
+	readonly reason: string;
+	/** 失败那一轮请求使用的模式；null 表示跟随故事设置。 */
+	readonly mode: TurnMode | null;
 }
 
 export function ChatPage() {
@@ -81,6 +87,9 @@ export function ChatPage() {
 	const [olderError, setOlderError] = useState<unknown>(null);
 	const [composerError, setComposerError] = useState<unknown>(null);
 	const [draft, setDraft] = useState<TurnDraft | null>(null);
+	const [steeringInput, setSteeringInput] = useState("");
+	const [steeringBusy, setSteeringBusy] = useState(false);
+	const [steeringError, setSteeringError] = useState<unknown>(null);
 	const [pendingUserText, setPendingUserText] = useState<string | null>(null);
 	const [summary, setSummary] = useState<TurnSummary | null>(null);
 	const [failed, setFailed] = useState<FailedTurn | null>(null);
@@ -137,6 +146,9 @@ export function ChatPage() {
 		setSummary(null);
 		setFailed(null);
 		setDraft(null);
+		setSteeringInput("");
+		setSteeringBusy(false);
+		setSteeringError(null);
 		if (composerStoryRef.current !== storyId) {
 			composerStoryRef.current = storyId;
 			const draft = readComposerDraft(storyId);
@@ -327,6 +339,7 @@ export function ChatPage() {
 		targetStoryId: string,
 		open: (signal: AbortSignal) => AsyncGenerator<SseEvent>,
 		userText: string | null,
+		mode: TurnMode | null,
 	) => {
 		if (streamingRef.current) return;
 		const controller = new AbortController();
@@ -336,6 +349,8 @@ export function ChatPage() {
 		setComposerError(null);
 		setFailed(null);
 		setSummary(null);
+		setSteeringInput("");
+		setSteeringError(null);
 		setPendingUserText(userText);
 		let current = createTurnDraft();
 		setDraft(current);
@@ -362,9 +377,6 @@ export function ChatPage() {
 			setPendingUserText(null);
 		}
 		const page = await refreshPath(targetStoryId, current.userNodeId);
-		setDraft(null);
-		if (failure === null || isAbortError(failure)) return;
-		setComposerError(failure);
 		const assistantNodeId =
 			current.userNodeId === null
 				? null
@@ -372,10 +384,25 @@ export function ChatPage() {
 						(node) =>
 							node.parentId === current.userNodeId && node.role === "assistant",
 					)?.id ?? null);
+		const aborted = failure !== null && isAbortError(failure);
+		setDraft(null);
+		if (failure === null) return;
+		// 中止时服务端已经保存了部分正文，页面刷新后就是正式楼层。
+		if (aborted && assistantNodeId !== null) return;
+		setComposerError(aborted ? null : failure);
 		setFailed({
 			text: userText ?? "",
 			started: current.started,
+			userNodeId: current.userNodeId,
 			assistantNodeId,
+			draftText:
+				current.liveDraft?.text ??
+				(current.text.trim().length === 0 ? null : current.text),
+			reason: aborted
+				? "回合被中止，草稿还没有提交"
+				: (current.errorMessage ??
+					(failure instanceof Error ? failure.message : "生成失败")),
+			mode,
 		});
 	};
 
@@ -389,6 +416,7 @@ export function ChatPage() {
 			(signal) =>
 				api.streamTurn(storyId, { text: trimmed, mode: turnMode }, signal),
 			trimmed,
+			turnMode,
 		);
 	};
 
@@ -398,7 +426,37 @@ export function ChatPage() {
 			storyId,
 			(signal) => api.streamRegenerate(nodeId, signal),
 			null,
+			null,
 		);
+	};
+
+	const retryTurn = (userNodeId: string, mode: TurnMode | null) => {
+		if (storyId === undefined) return;
+		void runStream(
+			storyId,
+			(signal) =>
+				api.streamRetry(userNodeId, mode === null ? {} : { mode }, signal),
+			null,
+			mode,
+		);
+	};
+
+	const steerTurn = async () => {
+		if (storyId === undefined || draft === null || draft.runId === null) {
+			return;
+		}
+		const text = steeringInput.trim();
+		if (text.length === 0 || steeringBusy) return;
+		setSteeringBusy(true);
+		setSteeringError(null);
+		try {
+			await api.steerTurn(storyId, draft.runId, { text });
+			setSteeringInput("");
+		} catch (error) {
+			setSteeringError(error);
+		} finally {
+			setSteeringBusy(false);
+		}
 	};
 
 	const loadOlder = () => {
@@ -517,7 +575,9 @@ export function ChatPage() {
 			: resolveRetryAction({
 					started: failed.started,
 					assistantNodeId: failed.assistantNodeId,
+					userNodeId: failed.userNodeId,
 				});
+	const steeringActive = streaming && draft !== null && draft.runId !== null;
 
 	return (
 		<section className="chat-panel" aria-label="聊天">
@@ -568,6 +628,13 @@ export function ChatPage() {
 			<ErrorNotice error={imageError} />
 			{failed !== null && retryAction !== null ? (
 				<div className="retry-bar">
+					<p className="retry-reason">{failed.reason}</p>
+					{failed.draftText === null ? null : (
+						<details className="retry-draft">
+							<summary>未提交的草稿</summary>
+							<pre>{failed.draftText}</pre>
+						</details>
+					)}
 					{retryAction.kind === "resend" ? (
 						<button type="button" onClick={() => sendText(failed.text)}>
 							重发
@@ -581,11 +648,31 @@ export function ChatPage() {
 							重新生成回复
 						</button>
 					) : null}
+					{retryAction.kind === "retry" ? (
+						<button
+							type="button"
+							onClick={() => retryTurn(retryAction.nodeId, failed.mode)}
+						>
+							重试这一轮
+						</button>
+					) : null}
 					{retryAction.kind === "blocked" ? (
 						<span>{retryAction.message}</span>
 					) : null}
 				</div>
 			) : null}
+			{draft !== null && draft.guidance.length > 0 ? (
+				<div className="steering-list" aria-label="已追加的要求">
+					<p className="muted">已追加的要求</p>
+					<ul>
+						{draft.guidance.map((text, index) => (
+							// 回显按接受顺序排列，同一段文字可以追加多次。
+							<li key={`${index}-${text}`}>{text}</li>
+						))}
+					</ul>
+				</div>
+			) : null}
+			<ErrorNotice error={steeringError} />
 			<ErrorNotice error={composerError} />
 			<Composer
 				value={input}
@@ -595,6 +682,13 @@ export function ChatPage() {
 				onChange={setInput}
 				onSend={() => sendText(input)}
 				onStop={() => abortRef.current?.abort()}
+				steering={steeringActive}
+				steeringValue={steeringInput}
+				steeringBusy={steeringBusy}
+				onSteeringChange={setSteeringInput}
+				onSteer={() => {
+					void steerTurn();
+				}}
 			/>
 		</section>
 	);

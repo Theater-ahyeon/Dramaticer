@@ -83,3 +83,38 @@ test("故事锁定深回合后新会话默认深回合，玩家可以逐轮切�
 
 	await sendTurn(page, storyId, "快回合里的行动");
 });
+
+test("深回合显示草稿、运行中追加要求与楼层运行时间线", async ({ page }) => {
+	const storyId = await createImportedStory(page, "深回合草稿");
+	await openStoryTab(page, storyId, "chat");
+	await page.getByLabel("回合模式").selectOption("deep");
+	await page.getByLabel("玩家行动").fill("深回合草稿：写下开场");
+	await page.getByLabel("玩家行动").press("Enter");
+
+	const steering = page.getByLabel("追加要求");
+	await expect(steering).toBeVisible({ timeout: 15_000 });
+	await steering.fill("让门外的脚步停下来");
+	await steering.press("Enter");
+	await expect(page.locator(".steering-list")).toContainText(
+		"让门外的脚步停下来",
+	);
+	await expect(page.locator(".draft-panel")).toContainText(
+		"草稿：门在风里响了一声。",
+		{ timeout: 15_000 },
+	);
+
+	const lastFloor = page.locator(".floor-assistant").last();
+	await expect(lastFloor).toContainText("草稿：门在风里响了一声。", {
+		timeout: 30_000,
+	});
+	await expect(page.locator(".draft-panel")).toHaveCount(0);
+
+	await lastFloor.getByRole("button", { name: "运行时间线" }).click();
+	const timeline = page.locator(".run-timeline");
+	await expect(timeline).toContainText("模型请求");
+	await expect(timeline).toContainText("工具调用");
+	await expect(timeline).toContainText("草稿替换");
+	await expect(timeline).toContainText("草稿提交");
+	await expect(timeline).toContainText("追加要求");
+	await expectNoHorizontalOverflow(page);
+});

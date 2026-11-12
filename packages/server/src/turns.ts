@@ -209,6 +209,49 @@ export async function handleTurnStream(
 }
 
 /**
+ * `POST /api/nodes/:id/retry` 的 SSE 实现：以已有的用户楼层为父节点重新生成回复。
+ * 不追加新的用户楼层，用于深回合失败或中止后重试同一轮。
+ */
+export async function handleRetryStream(
+	res: ServerResponse,
+	nodeId: string,
+	options: TurnRouteOptions,
+	turnMode: TurnMode | null,
+): Promise<void> {
+	const userNode = options.store.getNode(nodeId);
+	if (userNode === null) {
+		throw new HttpError(404, "not_found", `楼层节点不存在：${nodeId}`);
+	}
+	if (userNode.role !== "user") {
+		throw new HttpError(
+			400,
+			"bad_request",
+			`楼层 ${nodeId} 不是用户楼层，不能重试这一轮`,
+		);
+	}
+	const storyId = userNode.storyId;
+	const ticket = options.turns.begin(storyId);
+	if (ticket === null) {
+		throw new HttpError(409, "conflict", "这个故事正在生成上一轮回复");
+	}
+	await streamTurn({
+		res,
+		storyId,
+		ticket,
+		options,
+		prepare: async () => userNode.id,
+		run: async (runtime, signal, hooks) =>
+			generateAssistantTurn({
+				...turnOptions(runtime, storyId, options),
+				userNodeId: userNode.id,
+				turnMode,
+				signal,
+				...hooks,
+			}),
+	});
+}
+
+/**
  * `POST /api/nodes/:id/regenerate` 的 SSE 实现：以旧助手楼层的父楼层为锚点
  * 新建兄弟楼层，旧楼层与旧 Trace 保持不变。
  */

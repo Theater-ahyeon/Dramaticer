@@ -79,6 +79,59 @@ describe("流式回合归并", () => {
 		]);
 	});
 
+	it("草稿快照只向前合并，迟到的旧版本不覆盖", () => {
+		let draft = createTurnDraft();
+		draft = applyTurnEvent(
+			draft,
+			event("draft.replace", { text: "第一版", version: 1 }),
+		);
+		draft = applyTurnEvent(
+			draft,
+			event("draft.replace", { text: "第二版", version: 2 }),
+		);
+		draft = applyTurnEvent(
+			draft,
+			event("draft.replace", { text: "迟到的第一版", version: 1 }),
+		);
+		expect(draft.liveDraft).toEqual({ text: "第二版", version: 2 });
+	});
+
+	it("追加要求按顺序回显，不修改正文", () => {
+		let draft = createTurnDraft();
+		draft = applyTurnEvent(draft, event("text.delta", { delta: "正文" }));
+		draft = applyTurnEvent(
+			draft,
+			event("turn.steering", { runId: "run-1", text: "让脚步停下" }),
+		);
+		draft = applyTurnEvent(
+			draft,
+			event("turn.steering", { runId: "run-1", text: "转向窗外" }),
+		);
+		expect(draft.guidance).toEqual(["让脚步停下", "转向窗外"]);
+		expect(draft.text).toBe("正文");
+	});
+
+	it("提交事件用正式块替换正文并收起光标", () => {
+		let draft = createTurnDraft();
+		draft = applyTurnEvent(
+			draft,
+			event("draft.replace", { text: "提交的草稿", version: 3 }),
+		);
+		draft = applyTurnEvent(draft, {
+			event: "turn.committed",
+			data: {
+				storyId: "s",
+				runId: "run-1",
+				nodeId: "a1",
+				blocks: [{ kind: "text", text: "提交的草稿" }],
+				commit: "tool",
+			},
+		});
+		expect(draft.committed?.nodeId).toBe("a1");
+		expect(draft.blocks).toEqual([{ kind: "text", text: "提交的草稿" }]);
+		expect(draft.progress).toBeNull();
+	});
+
 	it("完成事件保留已经收到的正文，错误事件只记消息", () => {
 		const node = {
 			id: "a1",
@@ -169,10 +222,20 @@ describe("失败后的重试判定", () => {
 		).toEqual({ kind: "regenerate", nodeId: "a1" });
 	});
 
-	it("只有用户楼层时不提供重试", () => {
+	it("只有用户楼层时以该楼层重试这一轮", () => {
 		const action = resolveRetryAction({
 			started: true,
 			assistantNodeId: null,
+			userNodeId: "u1",
+		});
+		expect(action).toEqual({ kind: "retry", nodeId: "u1" });
+	});
+
+	it("既没有用户楼层也没有助手楼层时不提供重试", () => {
+		const action = resolveRetryAction({
+			started: true,
+			assistantNodeId: null,
+			userNodeId: null,
 		});
 		expect(action.kind).toBe("blocked");
 	});

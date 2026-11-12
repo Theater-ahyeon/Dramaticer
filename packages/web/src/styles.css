@@ -555,10 +555,38 @@ span.option-line {
 
 .retry-bar {
 	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
 	gap: 8px;
 	color: var(--danger);
 	font-size: 0.85rem;
+}
+
+.retry-reason {
+	flex: 1 1 100%;
+	margin: 0;
+}
+
+.retry-draft {
+	flex: 1 1 100%;
+	padding: 8px 10px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--surface);
+	color: var(--text);
+}
+
+.retry-draft summary {
+	cursor: pointer;
+	color: var(--accent);
+}
+
+.retry-draft pre {
+	margin: 6px 0 0;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	font: inherit;
+	font-size: 0.82rem;
 }
 
 .chat-to-bottom {
@@ -613,6 +641,104 @@ span.option-line {
 	font-size: 0.85rem;
 }
 
+.draft-panel {
+	margin: 6px 0;
+	padding: 8px 10px;
+	border: 1px dashed var(--accent);
+	border-radius: 8px;
+	background: var(--accent-soft);
+}
+
+.draft-meta {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	font-size: 0.78rem;
+	color: var(--muted);
+}
+
+.draft-state {
+	margin-left: auto;
+	color: var(--accent);
+}
+
+.draft-body {
+	margin-top: 4px;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+.steering-list {
+	padding: 8px 12px;
+	border: 1px solid var(--border);
+	border-radius: 10px;
+	background: var(--surface);
+	font-size: 0.82rem;
+}
+
+.steering-list p {
+	margin: 0;
+}
+
+.steering-list ul {
+	margin: 4px 0 0;
+	padding-left: 18px;
+}
+
+.floor-run {
+	margin-top: 8px;
+}
+
+.floor-run-toggle {
+	padding: 2px 8px;
+	font-size: 0.75rem;
+	background: transparent;
+	color: var(--accent);
+	border-color: var(--border);
+}
+
+.run-timeline {
+	margin-top: 6px;
+	padding: 8px 10px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--bg);
+}
+
+.run-steps {
+	margin: 6px 0 0;
+	padding: 0;
+	list-style: none;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	font-size: 0.8rem;
+}
+
+.run-step {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 8px;
+	padding: 4px 6px;
+	border-radius: 6px;
+	background: var(--surface);
+}
+
+.run-seq {
+	color: var(--muted);
+	font-variant-numeric: tabular-nums;
+}
+
+.run-label {
+	font-weight: 600;
+}
+
+.run-detail {
+	color: var(--muted);
+	overflow-wrap: anywhere;
+}
+
 .composer {
 	display: flex;
 	flex-direction: column;
@@ -658,6 +784,18 @@ span.option-line {
 .composer-send,
 .composer-stop {
 	margin-left: auto;
+}
+
+.composer-steering .muted {
+	flex: 1 1 auto;
+}
+
+.composer-steering .composer-stop {
+	margin-left: auto;
+}
+
+.composer-steering .composer-steer {
+	margin-left: 0;
 }
 
 /* 开场候选与候选行动都只把文本填进输入框，或者成为首个楼层。 */

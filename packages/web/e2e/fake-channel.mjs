@@ -280,6 +280,17 @@ export async function startFakeChannel(options = {}) {
 			const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
 			if (req.url === WRITER_PATH) {
 				const userText = lastUserText(body);
+				if (
+					body.messages.some((message) =>
+						textOf(message.content).includes("深回合草稿"),
+					)
+				) {
+					const reply = hasToolResult(body)
+						? '<tool name="commit_draft">{}</tool>'
+						: '<tool name="draft_write">{"text":"草稿：门在风里响了一声。"}</tool>';
+					setTimeout(() => streamText(res, splitForStream(reply)), 1_200);
+					return;
+				}
 				if (userText.includes("读取状态") && !hasToolResult(body)) {
 					streamText(res, splitForStream('<tool name="state_get">{}</tool>'));
 					return;

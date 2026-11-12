@@ -108,6 +108,11 @@ export interface DraftReplacePayload {
 	readonly version: number;
 }
 
+/** `POST /api/stories/:id/turns/:runId/steering` 的请求体。 */
+export interface TurnSteeringRequest {
+	readonly text: string;
+}
+
 /** 运行中接受的追加要求回显；不写楼层，只影响后续步骤。 */
 export interface TurnSteeringPayload {
 	readonly runId: string;

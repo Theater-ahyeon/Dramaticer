@@ -17,6 +17,7 @@ import type {
 	StateDiff,
 	Summary,
 	TimelineNode,
+	TurnMode,
 	TurnRunEvent,
 	TurnRunRecord,
 	TurnTrace,
@@ -45,6 +46,14 @@ export interface NodeChoiceRequest {
 /** `POST /api/nodes/:id/choice` 的响应：写入后的偏好记录。 */
 export interface NodeChoiceResult {
 	readonly event: PreferenceEvent;
+}
+
+/**
+ * `POST /api/nodes/:id/retry` 的请求体：以该用户楼层为父节点重新生成回复。
+ * 不写新的用户楼层；`mode` 省略时使用故事设置。
+ */
+export interface NodeRetryRequest {
+	readonly mode?: TurnMode;
 }
 
 /** `POST /api/stories/:id/head` 的请求体。 */

@@ -29,6 +29,8 @@ import {
 	type NodeEventsView,
 	type NodeImagesView,
 	type NodeLedgerView,
+	type NodeRetryRequest,
+	type NodeRunView,
 	type NodeTextRequest,
 	type ProposalDecisionAction,
 	type ProposalDecisionResult,
@@ -55,6 +57,7 @@ import {
 	type StoryVisualProfilesView,
 	type TurnCompletedPayload,
 	type TurnRequest,
+	type TurnSteeringRequest,
 	type UpdateContextTemplateRequest,
 	type UpdateStoryRequest,
 } from "@dramaticer/protocol";
@@ -357,6 +360,22 @@ export class ApiClient {
 		);
 	}
 
+	async getNodeRun(nodeId: string): Promise<NodeRunView> {
+		return this.json<NodeRunView>("GET", `${nodePath(nodeId)}/run`);
+	}
+
+	async steerTurn(
+		storyId: string,
+		runId: string,
+		request: TurnSteeringRequest,
+	): Promise<void> {
+		await this.json<{ runId: string }>(
+			"POST",
+			`${storyPath(storyId)}/turns/${encodeURIComponent(runId)}/steering`,
+			request,
+		);
+	}
+
 	async getTrace(nodeId: string): Promise<TurnCompletedPayload["trace"]> {
 		return this.json<TurnCompletedPayload["trace"]>(
 			"GET",
@@ -491,6 +510,15 @@ export class ApiClient {
 		signal?: AbortSignal,
 	): AsyncGenerator<SseEvent> {
 		yield* this.stream(`${nodePath(nodeId)}/regenerate`, undefined, signal);
+	}
+
+	/** 以已有的用户楼层重试这一轮；不追加新的用户楼层。 */
+	async *streamRetry(
+		nodeId: string,
+		request: NodeRetryRequest,
+		signal?: AbortSignal,
+	): AsyncGenerator<SseEvent> {
+		yield* this.stream(`${nodePath(nodeId)}/retry`, request, signal);
 	}
 
 	private async json<T>(

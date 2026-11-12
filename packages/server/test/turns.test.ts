@@ -608,6 +608,47 @@ describe("POST /api/stories/:id/turns", () => {
 		expect(notAssistant.status).toBe(400);
 	});
 
+	it("用户楼层可以重试这一轮，不追加新的用户楼层", async () => {
+		const { running } = await startTurnServer([
+			{ text: "第一次回复" },
+			{ text: "重试回复" },
+		]);
+		const firstFrames = await new FrameStream(
+			await postTurn(running.origin, "开始。"),
+		).readAll();
+		const first = frameData(firstFrames, "turn.completed");
+
+		const response = await fetch(
+			`${running.origin}/api/nodes/${first.userNode.id}/retry`,
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ mode: "fast" }),
+			},
+		);
+		expect(response.status).toBe(200);
+		expect(response.headers.get("content-type")).toContain("text/event-stream");
+		const frames = await new FrameStream(response).readAll();
+		const retried = frameData(frames, "turn.completed");
+
+		expect(retried.userNode.id).toBe(first.userNode.id);
+		expect(retried.userNode.raw).toBe(first.userNode.raw);
+		expect(retried.node.id).not.toBe(first.node.id);
+		expect(retried.node.parentId).toBe(first.userNode.id);
+		expect(retried.node.raw).toBe("重试回复");
+		expect(running.store.getHead("s1")?.id).toBe(retried.node.id);
+
+		const notUser = await fetch(
+			`${running.origin}/api/nodes/${first.node.id}/retry`,
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({}),
+			},
+		);
+		expect(notUser.status).toBe(400);
+	});
+
 	it("回合请求的 intensity 覆盖故事设置，非法值返回 400 且不建楼层", async () => {
 		const { running } = await startTurnServer([{ text: "收到。" }]);
 		running.store.updateStorySettings("s1", {
