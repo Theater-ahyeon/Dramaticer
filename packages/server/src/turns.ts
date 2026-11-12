@@ -354,7 +354,7 @@ async function streamTurn(stream: StreamTurnOptions): Promise<void> {
 	}
 }
 
-/** 写任何楼层之前先解析模式：深回合在 R3b 完成前按 400 拒绝。 */
+/** 写任何楼层之前先解析模式与防失控上限；配置非法时按 400 拒绝。 */
 function resolveRequestedTurnMode(
 	store: StoryStore,
 	storyId: string,

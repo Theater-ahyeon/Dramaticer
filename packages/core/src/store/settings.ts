@@ -4,8 +4,16 @@ import {
 	assertHistoryBlockPolicy,
 } from "../blocks/history.js";
 import {
+	DEFAULT_DEEP_CONTEXT_TOKEN_LIMIT,
+	DEFAULT_DEEP_MAX_TOOL_CALLS,
+	DEFAULT_DEEP_RECENT_TOOL_STEPS,
+	DEFAULT_DEEP_TIMEOUT_MS,
 	DEFAULT_MAX_READ_ROUNDS,
 	type TurnMode,
+	assertDeepContextTokenLimit,
+	assertDeepMaxToolCalls,
+	assertDeepRecentToolSteps,
+	assertDeepTimeoutMs,
 	assertMaxReadRounds,
 	isTurnMode,
 } from "../chat/mode.js";
@@ -50,6 +58,14 @@ export interface StorySettings {
 	readonly turnMode: TurnMode;
 	/** 快回合里读取工具的软上限。 */
 	readonly maxReadRounds: number;
+	/** 深回合的工具调用总次数上限。 */
+	readonly deepMaxToolCalls: number;
+	/** 深回合的运行时长上限（毫秒）。 */
+	readonly deepTimeoutMs: number;
+	/** 深回合每次请求前允许的工具消息 token 上限。 */
+	readonly deepContextTokenLimit: number;
+	/** 上下文卫生保留的最近工具步骤数。 */
+	readonly deepRecentToolSteps: number;
 	/** 知情者视角；为空表示全知。 */
 	readonly viewpoint: string | null;
 	readonly directorConfig: DirectorConfig;
@@ -77,6 +93,10 @@ export interface StorySettingsUpdate {
 	readonly reasoning?: LlmReasoningLevel;
 	readonly turnMode?: TurnMode;
 	readonly maxReadRounds?: number;
+	readonly deepMaxToolCalls?: number;
+	readonly deepTimeoutMs?: number;
+	readonly deepContextTokenLimit?: number;
+	readonly deepRecentToolSteps?: number;
 	readonly viewpoint?: string | null;
 	readonly directorConfig?: DirectorConfig;
 	readonly historyBlockPolicy?: HistoryBlockPolicy;
@@ -99,6 +119,10 @@ export const STORY_SETTINGS_UPDATE_KEYS: readonly (keyof StorySettingsUpdate)[] 
 		"reasoning",
 		"turnMode",
 		"maxReadRounds",
+		"deepMaxToolCalls",
+		"deepTimeoutMs",
+		"deepContextTokenLimit",
+		"deepRecentToolSteps",
 		"viewpoint",
 		"directorConfig",
 		"historyBlockPolicy",
@@ -116,6 +140,10 @@ export const DEFAULT_STORY_SETTINGS_VALUES = {
 	reasoning: "low",
 	turnMode: "fast",
 	maxReadRounds: DEFAULT_MAX_READ_ROUNDS,
+	deepMaxToolCalls: DEFAULT_DEEP_MAX_TOOL_CALLS,
+	deepTimeoutMs: DEFAULT_DEEP_TIMEOUT_MS,
+	deepContextTokenLimit: DEFAULT_DEEP_CONTEXT_TOKEN_LIMIT,
+	deepRecentToolSteps: DEFAULT_DEEP_RECENT_TOOL_STEPS,
 	directorConfig: DEFAULT_DIRECTOR_CONFIG,
 	historyBlockPolicy: DEFAULT_HISTORY_BLOCK_POLICY,
 	gapPassEnabled: false,
@@ -310,6 +338,27 @@ export function assertStorySettingsUpdate(update: StorySettingsUpdate): void {
 	}
 	if (update.maxReadRounds !== undefined) {
 		assertMaxReadRounds(update.maxReadRounds, "故事设置的 maxReadRounds");
+	}
+	if (update.deepMaxToolCalls !== undefined) {
+		assertDeepMaxToolCalls(
+			update.deepMaxToolCalls,
+			"故事设置的 deepMaxToolCalls",
+		);
+	}
+	if (update.deepTimeoutMs !== undefined) {
+		assertDeepTimeoutMs(update.deepTimeoutMs, "故事设置的 deepTimeoutMs");
+	}
+	if (update.deepContextTokenLimit !== undefined) {
+		assertDeepContextTokenLimit(
+			update.deepContextTokenLimit,
+			"故事设置的 deepContextTokenLimit",
+		);
+	}
+	if (update.deepRecentToolSteps !== undefined) {
+		assertDeepRecentToolSteps(
+			update.deepRecentToolSteps,
+			"故事设置的 deepRecentToolSteps",
+		);
 	}
 	if (update.directorConfig !== undefined) {
 		assertDirectorConfig(update.directorConfig);

@@ -3,17 +3,17 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-12 会话 282：R3b-T00（细化深回合任务）。只改 `docs/dev/TASKS.md`，没有实现深回合。把 DESIGN §10.1 拆成 R3b-T01 至 R3b-T10.b 与 R3b-T99，每项写清文件、接口、迁移编号与验收；规划—批评—执行保持 DESIGN §18 的暂缓，模板只配置工具白名单与上限。门禁通过（164 个测试文件、1480 个测试、4 个 live 跳过）。
+- 2026-11-12 会话 283：R3b-T01（深回合循环与防失控上限）。新增 `packages/core/src/chat/deep-turn.ts` 的 `runDeepTurn`，与快回合共用 `runModelTurns` 的传输、参数校验与流式接口。执行器新增 `maxToolCalls` 与 `maxDurationMs`：工具调用按总次数收束（第 41 次返回工具错误并记录 `max_tool_calls`），每次请求前检查时长（超时不再发请求并记录 `timeout`），只有设置 `maxToolCalls` 时才绕过快回合的 `maxReadRounds` 轮数上限。迁移 v39 给 `story_settings` 增加 `deep_max_tool_calls`（1–200）、`deep_timeout_ms`（60,000–3,600,000）、`deep_context_token_limit`（默认 48,000）、`deep_recent_tool_steps`（1–20）。`resolveTurnMode` 解冻 deep，返回 `deep` 段（四个校验后的值），删除 `assertTurnModeSupported`。`TurnTrace.deep` 记录 `maxToolCalls`、`maxDurationMs`、`toolCallCount`、`durationMs`、`stopReason`（`completed`、`max_tool_calls`、`timeout`、`aborted`、`error`），快回合为 null。server 与 CLI 的 deep 请求不再 400。门禁通过（164 个测试文件、1484 个测试、4 个 live 跳过）。
 
-## 下一步（会话 283 先做）
-1. 做 R3b-T01（深回合循环与防失控上限）。迁移 v39 给故事设置增加四个深回合字段（`deepMaxToolCalls`、`deepTimeoutMs`、`deepContextTokenLimit`、`deepRecentToolSteps`），新增 `core/src/chat/deep-turn.ts`，解冻 `resolveTurnMode` 的 deep 分支，Trace 增加 `deep` 段。按 R3b-T01 的验收逐条核对。
-2. R3b-T01 之后按顺序做 T02（工具集与权限）、T03（运行日志，迁移 v40）、T04（草稿与提交）、T05（导演手记，迁移 v41）、T06（上下文卫生）、T07（模板配置）、T08（原生元数据）、T09（运行中追加要求）、T10.a/T10.b（界面）、T99。
+## 下一步（会话 284 先做）
+1. 做 R3b-T02（深回合工具集、权限与进度事件）。新增 `core/src/tools/registry.ts`，声明 `DeepToolDefinition` 的 `permission`（`read`、`propose`、`control`、`side_effect`）与 `progressLabel`；补 `history_read`、`ledger_read`、`ledger_write`；`ledger_write` 只收集 diff，提交时统一写入（I12）；server 发 `turn.progress`；文本协议与原生传输共用同一套工具。按 R3b-T02 的验收逐条核对。
+2. R3b-T02 之后按顺序做 T03（运行日志，迁移 v40）、T04（草稿与提交）、T05（导演手记，迁移 v41）、T06（上下文卫生）、T07（模板配置）、T08（原生元数据）、T09（运行中追加要求）、T10.a/T10.b（界面）、T99。
 3. M6-T99 仍等待 HUMAN-15（ComfyUI 与 API workflow JSON），不要开始。
 4. R3b 完成后再做 P1/P2 → C 兼容插件 → H → X → R6 → M6b → P3/P4 → M5 → P5 → M7。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- 数据库 schema 版本 38。R3b 计划的迁移：v39 深回合设置、v40 运行日志与事件、v41 导演手记。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00、R3b-T01。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 数据库 schema 版本 39。R3b 后续计划的迁移：v40 运行日志与事件、v41 导演手记。
 - `eval-private/memory-cache/r1-retrieval.db` 有三个故事：`仙侠雌竞：什么叫我是炉鼎体质？` 290 个助手楼层已抽取 282 个、414 条事件；`欲望世界-1600` 180 个助手楼层已抽取 174 个、292 条事件；`银麒赎世` 114 个助手楼层已抽取 112 个、248 条事件。评测自己的临时数据库重新抽取后事件覆盖为 282/290、172/180、112/114，事件数 371/247/248。
 - M6-T99 标 `[!]`，等待 HUMAN-15：真实 ComfyUI 启动在 `http://127.0.0.1:8188` 并提供 API 格式 workflow JSON 到 `eval-private/comfyui/`；2026-11-09 探测时端口仍未监听。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045、ADR-0078、ADR-0079、ADR-0080、ADR-0082、ADR-0083、ADR-0084、ADR-0085、ADR-0086。
@@ -22,10 +22,10 @@
 - HUMAN-15 待处理（M6-T99 需要）：把秋叶整合包 v3.2 的 ComfyUI 启动在 `http://127.0.0.1:8188`，并导出一份 API 格式 workflow JSON 到 `eval-private/comfyui/` 或告知路径。
 
 ## R3b 任务拆分（2026-11-12）
-- T01 深回合循环与上限：`runDeepTurn` 复用 `runModelTurns` 的传输与流式接口；工具调用总数默认 40、时长默认 600 秒；迁移 v39 增加四个故事设置并解冻 `resolveTurnMode` 的 deep 分支；Trace 增加 `deep` 段（`maxToolCalls`、`maxDurationMs`、`toolCallCount`、`durationMs`、`stopReason`），快回合为 null。
-- T02 工具集、权限与进度事件：`tools/registry.ts` 的 `DeepToolDefinition` 声明 `permission`（`read`、`propose`、`control`、`side_effect`）与 `progressLabel`；新增 `history_read`、`ledger_read`、`ledger_write`；`ledger_write` 只收集合法 diff，提交时统一写入（I12）；server 发 `turn.progress`；文本协议与原生传输共用同一套工具。
+- T01 深回合循环与上限（已完成）：`runDeepTurn` 复用 `runModelTurns`；工具调用总数默认 40、时长默认 600 秒；迁移 v39 的四个故事设置；`TurnTrace.deep`；快回合为 null。
+- T02 工具集、权限与进度事件：`tools/registry.ts` 的 `DeepToolDefinition` 声明 `permission`（`read`、`propose`、`control`、`side_effect`）与 `progressLabel`；新增 `history_read`、`ledger_read`、`ledger_write`；`ledger_write` 只收集合法 diff，提交时统一写入（I12）；server 发 `turn.progress`；文本协议与原生传输共用同一套工具。执行器当前按读取工具计数，T02 要把 propose/control 与 side_effect 一并纳入同一上限。
 - T03 运行日志：迁移 v40 新增 `turn_runs` 与只追加的 `turn_run_events`（触发器拒绝更新与删除）；深回合每步同步写事件，快回合不写；启动时把遗留 `running` 标为 `interrupted`；`TurnTrace.run`、`GET /api/nodes/:id/run`、`dramaticer explain` 读同一时间线。
-- T04 草稿与提交：`draft_write` 整份替换草稿，`commit_draft` 提交为助手楼层；`draft.replace` SSE 按 100 毫秒节流；提交前不写楼层、不进历史；正常结束但没有提交时把最终正文自动提交并记 `missing_commit` 漂移，中止或超时且没有提交时不产生楼层。
+- T04 草稿与提交：`draft_write` 整份替换草稿，`commit_draft` 提交为助手楼层；`draft.replace` SSE 按 100 毫秒节流；提交前不写楼层、不进历史；正常结束但没有提交时把最终正文自动提交并记 `missing_commit` 漂移，中止或超时且没有提交时不产生楼层。当前 T01 在达到上限或超时后直接把最后一轮正文写回楼层，T04 要改成草稿语义。
 - T05 导演手记：迁移 v41 新增 `director_notes(node_id PRIMARY KEY, story_id, diffs, created_at)`；每楼存 `set`/`delete` diff，沿当前路径累加，后写覆盖；`note_read` 与 `note_write` 工具；深回合开始时插入一条系统消息，快回合不注入；手记不进台账。
 - T06 上下文卫生：超过 `deepContextTokenLimit`（默认 48,000）时从最早的一对“助手工具调用 + 工具结果”开始成对省略，保留最近 `deepRecentToolSteps`（默认 4）；不产生孤立消息；Trace 记 `deep.contextOmitted`。
 - T07 模板配置：`ContextTemplate.deepTurn` 增加 `tools` 白名单、`maxToolCalls`、`maxDurationMs`、`notesEnabled`；模板覆盖故事设置，故事设置覆盖默认值；白名单外调用按未知工具拒绝。
@@ -36,15 +36,14 @@
 - T99 验收：30 次真实深回合（失败率目标 ≤10%）、漂移率、时长对照 TauriTavern P50 66 秒/P90 147 秒、10 个分支点的快/深盲评增益；统计版 `docs/dev/reports/R3b.md`。
 
 ## 深回合实现起点（代码事实）
-- 回合入口 `packages/core/src/chat/turn.ts`：`runChatTurn` 先 `resolveTurnMode`（单轮参数优先于 `story_settings.turn_mode`），再追加用户楼层、组装上下文、调用 `runModelTurns`、解析块并写楼层与 Trace。`generateAssistantTurn` 额外写上下文包并支持 swipe。
-- 工具执行器 `packages/core/src/chat/executor.ts`：`runModelTurns` 当前只执行只读工具，最多 `maxReadRounds` 轮，达到上限返回 `capped`；写入类工具只收集；传输方式 `native` 或 `text`；文本协议在 `chat/tool-protocol.ts`。
-- 只读工具 `packages/core/src/tools/read-tools.ts`：`memory_search`、`lore_lookup`、`state_get`；`ReadToolContext` 带 store、storyId、`beforeNodeId`、embedder、reranker、viewpoint。参数校验与执行结果回填都在这里。
-- 模式 `packages/core/src/chat/mode.ts`：`TurnMode = "fast" | "deep"`；`assertTurnModeSupported` 当前对 deep 抛错；`DEFAULT_MAX_READ_ROUNDS = 3`。server 在写楼层前调用 `resolveTurnMode`，deep 返回 400（R3b-T01 解冻）。
-- 故事设置 `packages/core/src/store/settings.ts` 与 `story-store.ts`：`turnMode`、`maxReadRounds` 已有；迁移 v28 增加。CLI 与其他设置更新共用 `validateStorySettingsUpdate`。
-- Trace `packages/core/src/trace.ts`：`TurnTrace` 已有 `turnMode`、`tools`（transport、rounds、maxRounds、capped、calls、rejected）、`llm`、`context`、`structured`、`images`、`timing`；`saveTurnTrace` 存在 `StoryStore`。
+- 回合入口 `packages/core/src/chat/turn.ts`：`runChatTurn` 先 `resolveTurnMode`，再追加用户楼层、组装上下文、按模式调用 `runDeepTurn` 或 `runModelTurns`，解析块并写楼层与 Trace。`generateAssistantTurn` 额外写上下文包并支持 swipe。深回合提供给模型的读取工具不再受 `structuredOutput` 限制；`maxReadRounds` 在深回合被忽略。
+- 模式 `packages/core/src/chat/mode.ts`：`TurnMode = "fast" | "deep"`；四个 `DEFAULT_DEEP_*` 常量与范围常量；`assertDeepMaxToolCalls`、`assertDeepTimeoutMs`、`assertDeepContextTokenLimit`、`assertDeepRecentToolSteps`；不再有 `assertTurnModeSupported`。
+- 执行器 `packages/core/src/chat/executor.ts`：`runModelTurns` 支持 `maxToolCalls` 与 `maxDurationMs`；工具预算只在真实读取工具执行前扣减，超限调用写失败 Trace 与错误工具结果后收束；返回 `toolCallCount` 与 `stopReason`；`TurnAbortedError` 带 `toolCallCount`。快回合行为不变。
+- `packages/core/src/chat/deep-turn.ts`：`runDeepTurn(options)` 校验两个上限，调用执行器并返回 `DeepTurnResult`（`turn`、`stopReason`、上限、`toolCallCount`、`durationMs`）。
+- 故事设置 `packages/core/src/store/settings.ts` 与 `story-store.ts`：`deepMaxToolCalls`、`deepTimeoutMs`、`deepContextTokenLimit`、`deepRecentToolSteps` 已进入默认值、更新校验、迁移 v39 与读写映射。
+- Trace `packages/core/src/trace.ts`：`TurnTrace.deep`（`TurnTraceDeep`）与 `DeepTurnStopReason`；快回合为 null；中止时写 `stopReason: "aborted"`。
 - server SSE `packages/server/src/turns.ts`：`turn.started`、`text.delta`、`blocks.replace`（100 毫秒节流）、`thinking.delta`、`tool.call`、`turn.error`、`turn.completed`；`handleTurnStream` 在 `turn.completed` 后触发后台调度。
-- web `packages/web/src/chat/stream-state.ts` 已处理 `turn.started`、`blocks.replace`、`tool.call`；聊天页每轮完成后重新取最近 60 楼。
-- 原生元数据：pi-ai `ToolCall` 带 `thoughtSignature`，`ThinkingContent` 带 `thinkingSignature`；当前 `LlmMessage` 的助手消息只有字符串正文与 `toolCalls`，`pi-channel.ts` 组装上下文时丢弃签名，R3b-T08 修这里。
+- web `packages/web/src/chat/stream-state.ts` 已处理 `turn.started`、`blocks.replace`、`tool.call`；聊天页每轮完成后重新取最近 60 楼。界面仍只展示快回合（R3b-T10.a 才放开）。
 
 ## 记忆与检索（R1 续）
 - 父子分块：父段上限 1200 码点，按换行合并；单段超过上限时整楼退化成一个父段。小块 400 字符窗口、80 字符重叠。`StoryStore.open(path, { chunkStrategy })` 取 `parent-child`（默认）或 `fixed`。

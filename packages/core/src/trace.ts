@@ -75,6 +75,24 @@ export interface TurnTraceTiming {
 	readonly durationMs: number;
 }
 
+/** 深回合的收束原因；快回合不写这一段。 */
+export type DeepTurnStopReason =
+	| "completed"
+	| "max_tool_calls"
+	| "timeout"
+	| "aborted"
+	| "error";
+
+/** 深回合的防失控上限与运行结果；快回合为 null。 */
+export interface TurnTraceDeep {
+	readonly maxToolCalls: number;
+	readonly maxDurationMs: number;
+	/** 实际执行的工具调用次数。 */
+	readonly toolCallCount: number;
+	readonly durationMs: number;
+	readonly stopReason: DeepTurnStopReason;
+}
+
 /** 一轮生成的完整记录，按楼层节点存放。 */
 export interface TurnTrace {
 	readonly storyId: string;
@@ -92,4 +110,6 @@ export interface TurnTrace {
 	readonly structured: TurnTraceStructuredOutput;
 	readonly images?: TurnTraceImages;
 	readonly timing: TurnTraceTiming;
+	/** 深回合的上限与收束原因；快回合为 null。 */
+	readonly deep: TurnTraceDeep | null;
 }

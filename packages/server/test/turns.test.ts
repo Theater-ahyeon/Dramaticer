@@ -681,8 +681,12 @@ describe("POST /api/stories/:id/turns", () => {
 		expect(running.store.listStoryNodes("s1")).toHaveLength(before);
 	});
 
-	it("回合请求的 mode 覆盖故事设置，深回合返回 400 且不建楼层", async () => {
-		const { running, client } = await startTurnServer([{ text: "收到。" }]);
+	it("回合请求的 mode 覆盖故事设置，深回合正常生成并记录上限", async () => {
+		const { running, client } = await startTurnServer([
+			{ text: "深回合的回复。" },
+			{ text: "快回合的回复。" },
+			{ text: "再看一次的回复。" },
+		]);
 		running.store.updateStorySettings("s1", { turnMode: "deep" });
 		const turn = (payload: Record<string, unknown>) =>
 			fetch(`${running.origin}/api/stories/s1/turns`, {
@@ -693,32 +697,33 @@ describe("POST /api/stories/:id/turns", () => {
 
 		const before = running.store.listStoryNodes("s1").length;
 		const fromSettings = await turn({ text: "我看着他。" });
-		expect(fromSettings.status).toBe(400);
-		const settingsError = (await fromSettings.json()) as {
-			error: { code: string; message: string; details?: { path?: string } };
-		};
-		expect(settingsError.error.code).toBe("bad_request");
-		expect(settingsError.error.message).toContain("R3b");
-		expect(settingsError.error.details?.path).toBe("turnMode");
-		expect(running.store.listStoryNodes("s1")).toHaveLength(before);
-		expect(client.requests).toHaveLength(0);
+		expect(fromSettings.status).toBe(200);
+		const settingsFrames = await new FrameStream(fromSettings).readAll();
+		const settingsTrace = frameData(settingsFrames, "turn.completed").trace;
+		expect(settingsTrace.turnMode).toBe("deep");
+		expect(settingsTrace.deep).toMatchObject({
+			maxToolCalls: 40,
+			maxDurationMs: 600_000,
+			toolCallCount: 0,
+			stopReason: "completed",
+		});
+		expect(running.store.listStoryNodes("s1")).toHaveLength(before + 2);
 
 		const fast = await turn({ text: "我看着他。", mode: "fast" });
 		expect(fast.status).toBe(200);
 		const frames = await new FrameStream(fast).readAll();
 		expect(frameData(frames, "turn.completed").trace.turnMode).toBe("fast");
-		expect(running.store.listStoryNodes("s1")).toHaveLength(before + 2);
+		expect(running.store.listStoryNodes("s1")).toHaveLength(before + 4);
 
 		const afterFast = running.store.listStoryNodes("s1").length;
 		const deep = await turn({ text: "再看一次。", mode: "deep" });
-		expect(deep.status).toBe(400);
-		const deepError = (await deep.json()) as {
-			error: { message: string; details?: { path?: string } };
-		};
-		expect(deepError.error.message).toContain("R3b");
-		expect(deepError.error.details?.path).toBe("mode");
-		expect(running.store.listStoryNodes("s1")).toHaveLength(afterFast);
-		expect(client.requests).toHaveLength(1);
+		expect(deep.status).toBe(200);
+		const deepFrames = await new FrameStream(deep).readAll();
+		const deepTrace = frameData(deepFrames, "turn.completed").trace;
+		expect(deepTrace.turnMode).toBe("deep");
+		expect(deepTrace.deep?.stopReason).toBe("completed");
+		expect(running.store.listStoryNodes("s1")).toHaveLength(afterFast + 2);
+		expect(client.requests).toHaveLength(3);
 
 		const invalid = await turn({ text: "再来。", mode: "slow" });
 		expect(invalid.status).toBe(400);
@@ -727,12 +732,12 @@ describe("POST /api/stories/:id/turns", () => {
 		};
 		expect(invalidError.error.code).toBe("bad_request");
 		expect(invalidError.error.details?.path).toBe("mode");
-		expect(running.store.listStoryNodes("s1")).toHaveLength(afterFast);
+		expect(running.store.listStoryNodes("s1")).toHaveLength(afterFast + 2);
 
 		const unknownField = await turn({ text: "再来。", mode: "fast", extra: 1 });
 		expect(unknownField.status).toBe(400);
-		expect(running.store.listStoryNodes("s1")).toHaveLength(afterFast);
-		expect(client.requests).toHaveLength(1);
+		expect(running.store.listStoryNodes("s1")).toHaveLength(afterFast + 2);
+		expect(client.requests).toHaveLength(3);
 	});
 
 	it("设置或渠道配置变化后重建运行时", async () => {

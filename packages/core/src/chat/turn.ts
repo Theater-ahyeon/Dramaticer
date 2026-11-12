@@ -44,6 +44,7 @@ import type {
 import type { NewStateDiff, StateDiff, TimelineNode } from "../timeline.js";
 import { READ_TOOLS } from "../tools/read-tools.js";
 import type { TurnTrace } from "../trace.js";
+import { type DeepTurnResult, runDeepTurn } from "./deep-turn.js";
 import {
 	type ModelTurnResult,
 	TurnAbortedError,
@@ -51,8 +52,11 @@ import {
 } from "./executor.js";
 import {
 	type TurnMode,
+	assertDeepContextTokenLimit,
+	assertDeepMaxToolCalls,
+	assertDeepRecentToolSteps,
+	assertDeepTimeoutMs,
 	assertMaxReadRounds,
-	assertTurnModeSupported,
 } from "./mode.js";
 import {
 	type ChatProfile,
@@ -145,15 +149,32 @@ const TRUNCATION_OPTIONS = {
 	detectAbruptEnd: true,
 } as const;
 
-export interface ResolvedTurnMode {
-	readonly mode: TurnMode;
-	readonly maxReadRounds: number;
+export interface ResolvedDeepTurnSettings {
+	readonly maxToolCalls: number;
+	readonly maxDurationMs: number;
+	readonly contextTokenLimit: number;
+	readonly recentToolSteps: number;
 }
+
+export interface ResolvedFastTurnMode {
+	readonly mode: "fast";
+	readonly maxReadRounds: number;
+	readonly deep: null;
+}
+
+export interface ResolvedDeepTurnMode {
+	readonly mode: "deep";
+	/** 快回合的软上限；深回合不使用它。 */
+	readonly maxReadRounds: number;
+	readonly deep: ResolvedDeepTurnSettings;
+}
+
+export type ResolvedTurnMode = ResolvedFastTurnMode | ResolvedDeepTurnMode;
 
 /**
  * 模式与读取工具软上限的唯一解析口：单轮参数优先于故事设置。
- * 深回合未实现时在这里直接失败；没有按任何运行状况切换模式的路径。
- * 服务端在写楼层之前调用它，深回合请求因此不会留下用户楼层。
+ * 深回合只解析防失控上限；没有按任何运行状况切换模式的路径。
+ * 服务端在写楼层之前调用它，配置非法时请求不会留下用户楼层。
  */
 export function resolveTurnMode(
 	store: StoryStore,
@@ -163,10 +184,32 @@ export function resolveTurnMode(
 ): ResolvedTurnMode {
 	const settings = store.getStorySettings(storyId);
 	const mode = requestedMode ?? settings.turnMode;
-	assertTurnModeSupported(mode);
 	const maxReadRounds = requestedRounds ?? settings.maxReadRounds;
 	assertMaxReadRounds(maxReadRounds, "读取工具软上限");
-	return { mode, maxReadRounds };
+	if (mode === "fast") return { mode, maxReadRounds, deep: null };
+	assertDeepMaxToolCalls(
+		settings.deepMaxToolCalls,
+		"故事设置的 deepMaxToolCalls",
+	);
+	assertDeepTimeoutMs(settings.deepTimeoutMs, "故事设置的 deepTimeoutMs");
+	assertDeepContextTokenLimit(
+		settings.deepContextTokenLimit,
+		"故事设置的 deepContextTokenLimit",
+	);
+	assertDeepRecentToolSteps(
+		settings.deepRecentToolSteps,
+		"故事设置的 deepRecentToolSteps",
+	);
+	return {
+		mode,
+		maxReadRounds,
+		deep: {
+			maxToolCalls: settings.deepMaxToolCalls,
+			maxDurationMs: settings.deepTimeoutMs,
+			contextTokenLimit: settings.deepContextTokenLimit,
+			recentToolSteps: settings.deepRecentToolSteps,
+		},
+	};
 }
 
 /**
@@ -313,41 +356,55 @@ export async function generateAssistantTurn(
 	const illustrateTool = writesLedger
 		? resolveIllustrateTool(options.store, options.illustrate)
 		: null;
+	const exposeReadTools =
+		resolved.mode === "deep"
+			? writesLedger
+			: writesLedger && (functionCall || transport === "text");
+	const turnOptions = {
+		client: options.client,
+		messages: assembled.messages,
+		structuredTools: functionCall ? STRUCTURED_OUTPUT_TOOLS : undefined,
+		readTools: exposeReadTools ? READ_TOOLS : undefined,
+		sideEffectTools: illustrateTool === null ? undefined : [illustrateTool],
+		toolTransport: transport,
+		toolContext: {
+			store: options.store,
+			storyId: options.storyId,
+			beforeNodeId: userNode.id,
+			embedder: options.embedder ?? null,
+			reranker: options.reranker ?? null,
+			viewpoint: options.viewpoint ?? null,
+		},
+		model: options.model,
+		maxTokens: options.maxTokens,
+		temperature: options.temperature,
+		reasoning: options.reasoning,
+		signal: options.signal,
+		continuation: {
+			expectedTags: WRITE_BLOCK_TAGS,
+			continueOn: ["length", "unclosed_tag"],
+		},
+		onTextDelta: options.onTextDelta,
+		onThinkingDelta: options.onThinkingDelta,
+		onToolCall: options.onToolCall,
+		now,
+	} as const;
 	let turn: ModelTurnResult;
+	let deepTurn: DeepTurnResult | null = null;
 	try {
-		turn = await runModelTurns({
-			client: options.client,
-			messages: assembled.messages,
-			structuredTools: functionCall ? STRUCTURED_OUTPUT_TOOLS : undefined,
-			readTools:
-				writesLedger && (functionCall || transport === "text")
-					? READ_TOOLS
-					: undefined,
-			sideEffectTools: illustrateTool === null ? undefined : [illustrateTool],
-			toolTransport: transport,
-			toolContext: {
-				store: options.store,
-				storyId: options.storyId,
-				beforeNodeId: userNode.id,
-				embedder: options.embedder ?? null,
-				reranker: options.reranker ?? null,
-				viewpoint: options.viewpoint ?? null,
-			},
-			maxReadRounds: resolved.maxReadRounds,
-			model: options.model,
-			maxTokens: options.maxTokens,
-			temperature: options.temperature,
-			reasoning: options.reasoning,
-			signal: options.signal,
-			continuation: {
-				expectedTags: WRITE_BLOCK_TAGS,
-				continueOn: ["length", "unclosed_tag"],
-			},
-			onTextDelta: options.onTextDelta,
-			onThinkingDelta: options.onThinkingDelta,
-			onToolCall: options.onToolCall,
-			now,
-		});
+		if (resolved.mode === "deep") {
+			deepTurn = await runDeepTurn({
+				...turnOptions,
+				maxToolCalls: resolved.deep.maxToolCalls,
+				maxDurationMs: resolved.deep.maxDurationMs,
+			});
+			turn = deepTurn.turn;
+		} else {
+			turn = await runModelTurns({
+				...turnOptions,
+				maxReadRounds: resolved.maxReadRounds,
+			});
+		}
 	} catch (error) {
 		if (
 			error instanceof TurnAbortedError &&
@@ -467,6 +524,16 @@ export async function generateAssistantTurn(
 				firstTokenMs: turn.firstTokenMs,
 				durationMs: completedAt - startedAt,
 			},
+			deep:
+				deepTurn === null
+					? null
+					: {
+							maxToolCalls: deepTurn.maxToolCalls,
+							maxDurationMs: deepTurn.maxDurationMs,
+							toolCallCount: deepTurn.toolCallCount,
+							durationMs: deepTurn.durationMs,
+							stopReason: deepTurn.stopReason,
+						},
 		};
 		options.store.saveTurnTrace(trace);
 		return {
@@ -596,6 +663,16 @@ async function persistAbortedTurn(input: {
 				firstTokenMs: error.firstTokenMs,
 				durationMs: completedAt - input.startedAt,
 			},
+			deep:
+				input.mode.deep === null
+					? null
+					: {
+							maxToolCalls: input.mode.deep.maxToolCalls,
+							maxDurationMs: input.mode.deep.maxDurationMs,
+							toolCallCount: error.toolCallCount,
+							durationMs: completedAt - input.startedAt,
+							stopReason: "aborted",
+						},
 		};
 		options.store.saveTurnTrace(trace);
 		return {

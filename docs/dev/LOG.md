@@ -321,3 +321,5 @@
 - 2026-11-12 | S281 | R1-T99.a | DONE | 记忆增强验收：门禁通过（164 个测试文件、1480 个测试、4 个 live 跳过），live 测试 3 个文件全部通过；父子分块、重排序、八段式压缩、世界书预筛、上下文包五项逐条核对通过；融合命中@5/@10/@20 从 R1 最小集的 148/170/179 升到 153/171/181；重排序后状态题@5/@10 下降，保持 `reranker.enabled: false`；三份 20 楼八段压缩为 1,146/1,210/1,491 token，新增 `DEFAULT_COMPRESSION_TOKEN_LIMIT = 2_000`（散文摘要保持 800）后完整八段注入，ADR-0086；复核 I5、I11、I12 通过；`docs/dev/reports/R1.md` 第十二节
 
 - 2026-11-12 | S282 | R3b-T00 | DONE | 把 DESIGN §10.1 拆成 R3b-T01 至 R3b-T10.b 与 R3b-T99：循环与上限（迁移 v39 四个设置）、工具集与权限、运行日志（迁移 v40）、草稿与提交、导演手记（迁移 v41）、上下文卫生、模板配置、原生元数据、运行中追加要求、界面两段与验收；规划—批评—执行保持 DESIGN §18 暂缓；门禁通过（164 个测试文件、1480 个测试、4 个 live 跳过）
+
+- 2026-11-12 | S283 | R3b-T01 | DONE | 新增 `chat/deep-turn.ts`（`runDeepTurn`）与执行器的 `maxToolCalls`、`maxDurationMs`：工具调用按总次数收束（第 41 次返回错误结果并记录 `max_tool_calls`），每次请求前检查时长（超时不再发请求并记录 `timeout`）；迁移 v39 增加四个深回合故事设置与范围校验；`resolveTurnMode` 解冻 deep 并返回解析后的上限，删除 `assertTurnModeSupported`；`TurnTrace.deep` 记录上限、调用数、耗时与 `stopReason`，快回合为 null；server 与 CLI 的 deep 请求不再 400；门禁通过（164 个测试文件、1484 个测试、4 个 live 跳过）

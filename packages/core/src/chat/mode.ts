@@ -9,6 +9,19 @@ export const TURN_MODES: readonly TurnMode[] = ["fast", "deep"];
 /** DESIGN §10.1：快回合里读取工具的软上限默认 3 轮。 */
 export const DEFAULT_MAX_READ_ROUNDS = 3;
 
+/** DESIGN §10.1：深回合只设防失控上限，不压缩模型的思考。 */
+export const DEFAULT_DEEP_MAX_TOOL_CALLS = 40;
+export const DEFAULT_DEEP_TIMEOUT_MS = 600_000;
+export const DEFAULT_DEEP_CONTEXT_TOKEN_LIMIT = 48_000;
+export const DEFAULT_DEEP_RECENT_TOOL_STEPS = 4;
+
+export const MIN_DEEP_MAX_TOOL_CALLS = 1;
+export const MAX_DEEP_MAX_TOOL_CALLS = 200;
+export const MIN_DEEP_TIMEOUT_MS = 60_000;
+export const MAX_DEEP_TIMEOUT_MS = 3_600_000;
+export const MIN_DEEP_RECENT_TOOL_STEPS = 1;
+export const MAX_DEEP_RECENT_TOOL_STEPS = 20;
+
 export function isTurnMode(value: unknown): value is TurnMode {
 	return value === "fast" || value === "deep";
 }
@@ -31,13 +44,58 @@ export function assertMaxReadRounds(
 	}
 }
 
-/**
- * 深回合在 R3b 实现；在那之前请求深回合直接失败并指出阶段，
- * 不降级成快回合，也不按任何条件自动切换。
- */
-export function assertTurnModeSupported(mode: TurnMode): void {
-	if (mode === "fast") return;
-	throw new Error(
-		"深回合尚未实现（阶段 R3b）；当前只支持快回合，请把 turnMode 设为 fast",
+function assertIntegerRange(
+	value: unknown,
+	label: string,
+	minimum: number,
+	maximum: number,
+): asserts value is number {
+	if (
+		typeof value !== "number" ||
+		!Number.isInteger(value) ||
+		value < minimum ||
+		value > maximum
+	) {
+		throw new Error(`${label} 必须是 ${minimum} 到 ${maximum} 之间的整数`);
+	}
+}
+
+export function assertDeepMaxToolCalls(
+	value: unknown,
+	label: string,
+): asserts value is number {
+	assertIntegerRange(
+		value,
+		label,
+		MIN_DEEP_MAX_TOOL_CALLS,
+		MAX_DEEP_MAX_TOOL_CALLS,
+	);
+}
+
+export function assertDeepTimeoutMs(
+	value: unknown,
+	label: string,
+): asserts value is number {
+	assertIntegerRange(value, label, MIN_DEEP_TIMEOUT_MS, MAX_DEEP_TIMEOUT_MS);
+}
+
+export function assertDeepContextTokenLimit(
+	value: unknown,
+	label: string,
+): asserts value is number {
+	if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
+		throw new Error(`${label} 必须是正整数`);
+	}
+}
+
+export function assertDeepRecentToolSteps(
+	value: unknown,
+	label: string,
+): asserts value is number {
+	assertIntegerRange(
+		value,
+		label,
+		MIN_DEEP_RECENT_TOOL_STEPS,
+		MAX_DEEP_RECENT_TOOL_STEPS,
 	);
 }

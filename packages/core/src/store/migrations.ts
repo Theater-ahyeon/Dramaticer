@@ -1126,6 +1126,20 @@ export function buildMigrations(
 				END`,
 			],
 		},
+		{
+			version: 39,
+			description: "深回合的防失控上限与上下文卫生设置",
+			statements: [
+				`ALTER TABLE story_settings ADD COLUMN deep_max_tool_calls INTEGER NOT NULL
+					DEFAULT 40 CHECK (deep_max_tool_calls BETWEEN 1 AND 200)`,
+				`ALTER TABLE story_settings ADD COLUMN deep_timeout_ms INTEGER NOT NULL
+					DEFAULT 600000 CHECK (deep_timeout_ms BETWEEN 60000 AND 3600000)`,
+				`ALTER TABLE story_settings ADD COLUMN deep_context_token_limit INTEGER NOT NULL
+					DEFAULT 48000 CHECK (deep_context_token_limit >= 1)`,
+				`ALTER TABLE story_settings ADD COLUMN deep_recent_tool_steps INTEGER NOT NULL
+					DEFAULT 4 CHECK (deep_recent_tool_steps BETWEEN 1 AND 20)`,
+			],
+		},
 	];
 }
 

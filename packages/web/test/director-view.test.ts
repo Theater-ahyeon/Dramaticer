@@ -195,6 +195,7 @@ function traceFixture(): TurnTrace {
 			issues: [],
 		},
 		timing: { firstTokenMs: 1448, durationMs: 2666 },
+		deep: null,
 	};
 }
 

@@ -240,6 +240,10 @@ interface StorySettingsRow {
 	readonly reasoning: string;
 	readonly turn_mode: string;
 	readonly max_read_rounds: number;
+	readonly deep_max_tool_calls: number;
+	readonly deep_timeout_ms: number;
+	readonly deep_context_token_limit: number;
+	readonly deep_recent_tool_steps: number;
 	readonly viewpoint: string | null;
 	readonly director_config: string;
 	readonly history_block_policy: string;
@@ -980,6 +984,10 @@ function rowToStorySettings(row: StorySettingsRow): StorySettings {
 		reasoning: row.reasoning,
 		turnMode: row.turn_mode,
 		maxReadRounds: row.max_read_rounds,
+		deepMaxToolCalls: row.deep_max_tool_calls,
+		deepTimeoutMs: row.deep_timeout_ms,
+		deepContextTokenLimit: row.deep_context_token_limit,
+		deepRecentToolSteps: row.deep_recent_tool_steps,
 		viewpoint: row.viewpoint,
 		directorConfig: parsedDirectorConfig,
 		historyBlockPolicy: parsedHistoryBlockPolicy,
@@ -1877,6 +1885,11 @@ export class StoryStore {
 			reasoning: DEFAULT_STORY_SETTINGS_VALUES.reasoning,
 			turnMode: DEFAULT_STORY_SETTINGS_VALUES.turnMode,
 			maxReadRounds: DEFAULT_STORY_SETTINGS_VALUES.maxReadRounds,
+			deepMaxToolCalls: DEFAULT_STORY_SETTINGS_VALUES.deepMaxToolCalls,
+			deepTimeoutMs: DEFAULT_STORY_SETTINGS_VALUES.deepTimeoutMs,
+			deepContextTokenLimit:
+				DEFAULT_STORY_SETTINGS_VALUES.deepContextTokenLimit,
+			deepRecentToolSteps: DEFAULT_STORY_SETTINGS_VALUES.deepRecentToolSteps,
 			viewpoint: null,
 			directorConfig: DEFAULT_STORY_SETTINGS_VALUES.directorConfig,
 			historyBlockPolicy: DEFAULT_STORY_SETTINGS_VALUES.historyBlockPolicy,
@@ -1958,6 +1971,22 @@ export class StoryStore {
 				update.maxReadRounds !== undefined
 					? update.maxReadRounds
 					: current.maxReadRounds,
+			deepMaxToolCalls:
+				update.deepMaxToolCalls !== undefined
+					? update.deepMaxToolCalls
+					: current.deepMaxToolCalls,
+			deepTimeoutMs:
+				update.deepTimeoutMs !== undefined
+					? update.deepTimeoutMs
+					: current.deepTimeoutMs,
+			deepContextTokenLimit:
+				update.deepContextTokenLimit !== undefined
+					? update.deepContextTokenLimit
+					: current.deepContextTokenLimit,
+			deepRecentToolSteps:
+				update.deepRecentToolSteps !== undefined
+					? update.deepRecentToolSteps
+					: current.deepRecentToolSteps,
 			viewpoint:
 				update.viewpoint !== undefined ? update.viewpoint : current.viewpoint,
 			directorConfig:
@@ -1987,10 +2016,11 @@ export class StoryStore {
 				`INSERT INTO story_settings
 					(story_id, card_name, character_prompt, persona, template_id, model,
 					 budget_tokens, structured_output, temperature, max_tokens, reasoning,
-					 turn_mode, max_read_rounds, viewpoint, director_config,
-					 history_block_policy, gap_pass_enabled, gap_plan_seconds,
-					 image_config, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+					 turn_mode, max_read_rounds, deep_max_tool_calls, deep_timeout_ms,
+					 deep_context_token_limit, deep_recent_tool_steps, viewpoint,
+					 director_config, history_block_policy, gap_pass_enabled,
+					 gap_plan_seconds, image_config, updated_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 				ON CONFLICT(story_id) DO UPDATE SET
 					card_name = excluded.card_name,
 					character_prompt = excluded.character_prompt,
@@ -2004,6 +2034,10 @@ export class StoryStore {
 					reasoning = excluded.reasoning,
 					turn_mode = excluded.turn_mode,
 					max_read_rounds = excluded.max_read_rounds,
+					deep_max_tool_calls = excluded.deep_max_tool_calls,
+					deep_timeout_ms = excluded.deep_timeout_ms,
+					deep_context_token_limit = excluded.deep_context_token_limit,
+					deep_recent_tool_steps = excluded.deep_recent_tool_steps,
 					viewpoint = excluded.viewpoint,
 					director_config = excluded.director_config,
 					history_block_policy = excluded.history_block_policy,
@@ -2026,6 +2060,10 @@ export class StoryStore {
 				next.reasoning,
 				next.turnMode,
 				next.maxReadRounds,
+				next.deepMaxToolCalls,
+				next.deepTimeoutMs,
+				next.deepContextTokenLimit,
+				next.deepRecentToolSteps,
 				next.viewpoint,
 				serializeDirectorConfig(next.directorConfig),
 				serializeHistoryBlockPolicy(next.historyBlockPolicy),

@@ -28,7 +28,7 @@
 | R5 能玩的界面 | 完成 | 本文件 |
 | M6 生图第一批 | 当前阶段 | 本文件 |
 | R1 续 记忆增强 | 完成 | 本文件 |
-| R3b 深回合 | 待做 | 本文件 |
+| R3b 深回合 | 进行中 | 本文件 |
 | P 插件内核 | 待做 | 本文件 |
 | 兼容插件线 | 待做 | 本文件 |
 | H 应用内助手 | 待做 | 本文件 |
@@ -915,7 +915,8 @@
   做什么：把 DESIGN §10.1 的深回合部分拆成可执行任务：单 agent 循环与防失控上限、故事级锁定与单轮开关、全部工具与权限、文本协议、进度事件、草稿与提交分开（草稿实时投影到界面，未提交不产生楼层）、导演手记挂在楼层树上按楼存修改并沿路径累加、运行日志只追加地并入 Trace、较早步骤工具往返的成对省略与 Trace 计数、模板附带深回合配置、多轮工具调用原样回放原生元数据（尤其 Gemini 思考签名）并配工具循环测试与中转渠道实测、运行中追加要求。容忍协议漂移（ADR-0041 的 A9）：模型没有调用提交工具、直接输出了正文时按草稿接住，不判失败。验收指标：运行失败率明显低于 23%、漂移率、时长分布（以 TauriTavern 的 P50 66 秒、P90 147 秒为对照）与深回合相对快回合的增益。
   验收：任务清单可直接执行；`pnpm check` 通过。
 
-- [ ] **R3b-T01 深回合循环与防失控上限** | 依赖：R3-T99、R5-T99 | DESIGN §10.1 | I6、I13
+- [x] **R3b-T01 深回合循环与防失控上限** | 依赖：R3-T99、R5-T99 | DESIGN §10.1 | I6、I13
+  完成：2026-11-12 新增 `core/src/chat/deep-turn.ts`（`runDeepTurn` 复用 `runModelTurns` 的传输、校验与流式接口）；迁移 v39 给故事设置增加四个深回合字段与范围约束；执行器新增 `maxToolCalls`、`maxDurationMs`，工具调用按总次数收束、每次请求前检查时长，超出上限的调用返回工具错误；`resolveTurnMode` 解冻 deep 并返回四个解析后的设置，删除 `assertTurnModeSupported`；`TurnTrace.deep` 记录上限、调用数、耗时与 `stopReason`（快回合为 null）；server 与 CLI 的 deep 请求不再 400；新增 5 个深回合测试并更新旧断言；门禁通过（164 个测试文件、1484 个测试、4 个 live 跳过）
   做什么：
   - 新增 `packages/core/src/chat/deep-turn.ts`：`runDeepTurn(options)` 与快回合共用 `runModelTurns` 的工具传输、参数校验与流式接口；循环由模型自行决定步骤，不要求它每轮调用工具，也不要求固定输出结构。
   - 上限只有两个：工具调用总次数（默认 40）与运行时长（默认 600,000 毫秒）。迁移 v39 给故事设置增加 `deepMaxToolCalls`（1–200）、`deepTimeoutMs`（60,000–3,600,000）、`deepContextTokenLimit`（默认 48,000）与 `deepRecentToolSteps`（默认 4，1–20）；校验复用范围检查，缺省值来自 `DEFAULT_DEEP_MAX_TOOL_CALLS`、`DEFAULT_DEEP_TIMEOUT_MS`、`DEFAULT_DEEP_CONTEXT_TOKEN_LIMIT` 与 `DEFAULT_DEEP_RECENT_TOOL_STEPS`。

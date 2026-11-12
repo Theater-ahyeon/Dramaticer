@@ -30,12 +30,15 @@ export class TurnAbortedError extends Error {
 	readonly partialText: string;
 	readonly partialReasoning: string;
 	readonly firstTokenMs: number | null;
+	/** 中止之前已经执行的工具调用次数。 */
+	readonly toolCallCount: number;
 
 	constructor(
 		reason: unknown,
 		partialText: string,
 		partialReasoning: string,
 		firstTokenMs: number | null,
+		toolCallCount = 0,
 	) {
 		super(
 			reason instanceof Error
@@ -49,6 +52,7 @@ export class TurnAbortedError extends Error {
 		this.partialText = partialText;
 		this.partialReasoning = partialReasoning;
 		this.firstTokenMs = firstTokenMs;
+		this.toolCallCount = toolCallCount;
 	}
 }
 
@@ -64,6 +68,13 @@ export interface ModelTurnOptions {
 	readonly toolContext: ReadToolContext;
 	/** 读取工具软上限；达到后正常收束。 */
 	readonly maxReadRounds?: number;
+	/**
+	 * 工具调用总次数上限；深回合设置。设置后按调用次数而不是轮数收束，
+	 * 超出上限的调用被拒绝，不再发出请求。
+	 */
+	readonly maxToolCalls?: number;
+	/** 运行时长上限（毫秒）；每次发出请求之前检查。 */
+	readonly maxDurationMs?: number;
 	/** 工具传输方式；不设置时走原生函数调用。 */
 	readonly toolTransport?: LlmToolTransport;
 	readonly model?: string;
@@ -95,6 +106,9 @@ export interface ToolCallRejection {
 	readonly reason: string;
 }
 
+/** 执行器收束的原因：自然结束、工具调用达到上限或运行超时。 */
+export type ModelTurnStopReason = "completed" | "max_tool_calls" | "timeout";
+
 export interface ModelTurnResult {
 	readonly result: LlmResult;
 	/** 全部轮次里的工具调用，供结构化输出收集写出类工具。 */
@@ -111,6 +125,9 @@ export interface ModelTurnResult {
 	readonly modelRounds: number;
 	readonly cached: boolean;
 	readonly firstTokenMs: number | null;
+	/** 实际执行的工具调用次数；被上限拒绝的调用不计入。 */
+	readonly toolCallCount: number;
+	readonly stopReason: ModelTurnStopReason;
 }
 
 /**
@@ -165,10 +182,23 @@ export async function runModelTurns(
 	let roundText = "";
 	let roundReasoning = "";
 	let roundIndex = 0;
+	let toolCallCount = 0;
+	let stopReason: ModelTurnStopReason = "completed";
+	/** 最近一轮的非空正文；上限收束时没有新正文就沿用它。 */
+	let lastBody = "";
 
 	try {
 		for (;;) {
 			throwIfAborted(options.signal);
+			if (
+				options.maxDurationMs !== undefined &&
+				now() - startedAt >= options.maxDurationMs
+			) {
+				stopReason = "timeout";
+				finalText = lastBody;
+				blocks = parseBlocks(finalText);
+				break;
+			}
 			const request = {
 				messages,
 				tools: transport === "native" && tools.length > 0 ? tools : undefined,
@@ -263,12 +293,13 @@ export async function runModelTurns(
 			const readRequests = roundCalls.filter(
 				(call) => allowedReadTools.has(call.name) && isReadToolName(call.name),
 			);
+			if (body.length > 0) lastBody = body;
 			if (readRequests.length === 0) {
 				finalText = body;
 				blocks = transport === "text" ? parseBlocks(body) : parser.finish();
 				break;
 			}
-			if (rounds >= maxReadRounds) {
+			if (options.maxToolCalls === undefined && rounds >= maxReadRounds) {
 				if (body.trim().length === 0) {
 					throw new Error("模型在工具轮数用完后仍只请求读取工具，没有生成正文");
 				}
@@ -279,6 +310,7 @@ export async function runModelTurns(
 			}
 
 			rounds += 1;
+			let hitToolCallLimit = false;
 			if (transport === "native") {
 				messages.push({
 					role: "assistant",
@@ -343,11 +375,20 @@ export async function runModelTurns(
 				let content: string;
 				let ok = true;
 				let error: string | null = null;
-				if (call.error !== null || call.arguments === null) {
+				if (
+					options.maxToolCalls !== undefined &&
+					toolCallCount >= options.maxToolCalls
+				) {
+					hitToolCallLimit = true;
+					error = `工具调用次数已达上限（${options.maxToolCalls}）`;
+					ok = false;
+					content = `工具调用失败：${error}`;
+				} else if (call.error !== null || call.arguments === null) {
 					ok = false;
 					error = call.error ?? "参数缺失";
 					content = `工具调用失败：${error}`;
 				} else {
+					toolCallCount += 1;
 					try {
 						const args = validateReadToolArguments(call.name, call.arguments);
 						content = await executeReadTool(
@@ -372,6 +413,12 @@ export async function runModelTurns(
 					isError: !ok,
 				});
 			}
+			if (hitToolCallLimit) {
+				stopReason = "max_tool_calls";
+				finalText = body.length > 0 ? body : lastBody;
+				blocks = parseBlocks(finalText);
+				break;
+			}
 		}
 	} catch (error) {
 		if (options.signal?.aborted) {
@@ -380,6 +427,7 @@ export async function runModelTurns(
 				roundText,
 				roundReasoning,
 				firstTokenMs,
+				toolCallCount,
 			);
 		}
 		throw error;
@@ -401,6 +449,8 @@ export async function runModelTurns(
 		modelRounds,
 		cached,
 		firstTokenMs,
+		toolCallCount,
+		stopReason,
 	};
 }
 

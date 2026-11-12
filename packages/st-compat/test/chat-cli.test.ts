@@ -242,30 +242,36 @@ describe("dramaticer chat", () => {
 		}
 	});
 
-	it("请求深回合时直接失败并指出 R3b，不发出请求", async () => {
+	it("请求深回合时按深回合运行并记录防失控上限", async () => {
 		const dbPath = createTempDb();
 		const fake = createFakeClient();
 		const logs: string[] = [];
 
-		await expect(
-			runChatCli(
-				[
-					"chat",
-					"--story",
-					"s1",
-					"--card",
-					cardPath,
-					"--user",
-					"我推开山门。",
-					"--db",
-					dbPath,
-					"--mode",
-					"deep",
-				],
-				dependencies(fake, logs, []),
-			),
-		).rejects.toThrow("R3b");
-		expect(fake.requests).toHaveLength(0);
+		const result = await runChatCli(
+			[
+				"chat",
+				"--story",
+				"s1",
+				"--card",
+				cardPath,
+				"--user",
+				"我推开山门。",
+				"--db",
+				dbPath,
+				"--mode",
+				"deep",
+			],
+			dependencies(fake, logs, []),
+		);
+		expect(fake.requests).toHaveLength(1);
+		expect(result.trace.turnMode).toBe("deep");
+		expect(result.trace.deep).toMatchObject({
+			maxToolCalls: 40,
+			maxDurationMs: 600_000,
+			toolCallCount: 0,
+			stopReason: "completed",
+		});
+		expect(result.node.raw).toBe(REPLY);
 	});
 
 	it("不认识的模式在参数解析阶段就被拒绝", async () => {

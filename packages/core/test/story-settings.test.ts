@@ -57,6 +57,10 @@ describe("故事设置", () => {
 			reasoning: "low",
 			turnMode: "fast",
 			maxReadRounds: 3,
+			deepMaxToolCalls: 40,
+			deepTimeoutMs: 600_000,
+			deepContextTokenLimit: 48_000,
+			deepRecentToolSteps: 4,
 			viewpoint: null,
 			directorConfig: DEFAULT_DIRECTOR_CONFIG,
 			historyBlockPolicy: DEFAULT_HISTORY_BLOCK_POLICY,
@@ -86,6 +90,10 @@ describe("故事设置", () => {
 			reasoning: "high",
 			turnMode: "deep",
 			maxReadRounds: 5,
+			deepMaxToolCalls: 60,
+			deepTimeoutMs: 900_000,
+			deepContextTokenLimit: 64_000,
+			deepRecentToolSteps: 6,
 			viewpoint: "山神",
 			directorConfig: { ...DEFAULT_DIRECTOR_CONFIG, mode: "off" },
 			historyBlockPolicy: {
@@ -114,6 +122,10 @@ describe("故事设置", () => {
 				reasoning: "high",
 				turnMode: "deep",
 				maxReadRounds: 5,
+				deepMaxToolCalls: 60,
+				deepTimeoutMs: 900_000,
+				deepContextTokenLimit: 64_000,
+				deepRecentToolSteps: 6,
 				viewpoint: "山神",
 				directorConfig: { mode: "off" },
 				historyBlockPolicy: {
@@ -291,6 +303,14 @@ describe("故事设置", () => {
 			[{ gapPassEnabled: "yes" as never }, "gapPassEnabled"],
 			[{ gapPlanSeconds: -1 }, "gapPlanSeconds"],
 			[{ gapPlanSeconds: 1.5 }, "gapPlanSeconds"],
+			[{ deepMaxToolCalls: 0 }, "deepMaxToolCalls"],
+			[{ deepMaxToolCalls: 201 }, "deepMaxToolCalls"],
+			[{ deepMaxToolCalls: 1.5 }, "deepMaxToolCalls"],
+			[{ deepTimeoutMs: 59_999 }, "deepTimeoutMs"],
+			[{ deepTimeoutMs: 3_600_001 }, "deepTimeoutMs"],
+			[{ deepContextTokenLimit: 0 }, "deepContextTokenLimit"],
+			[{ deepRecentToolSteps: 0 }, "deepRecentToolSteps"],
+			[{ deepRecentToolSteps: 21 }, "deepRecentToolSteps"],
 			[
 				{
 					imageConfig: {
