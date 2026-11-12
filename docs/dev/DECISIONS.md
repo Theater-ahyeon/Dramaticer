@@ -1350,7 +1350,7 @@
   - 混用两者：让 Cordis 管理生命周期、自研事件总线；生命周期部分本来只有 306 行，混用会同时保留两套概念和两套错误来源；排除。
 - **决定**：
   - 插件内核采用自研精简实现，不引入 `cordis`。`docs/dev/DEPENDENCIES.md` 删除 `cordis` 与 `@standard-schema/spec` 两行。
-  - P2 把 `packages/plugin-spike/src` 里的 `contracts.ts`、`kernel-surface.ts`、`registry.ts`、`events.ts`、`lite-kernel.ts` 迁到 `packages/core/src/plugins/`，插件作者看到的类型从 `@dramaticer/core` 导出；共享的 11 条断言随内核迁到 core 的测试。原型代码可从 P1.c 测量提交与 P1.b 提交 `8773049` 取回。
+  - P2 把 `packages/plugin-spike/src` 里的 `contracts.ts`、`kernel-surface.ts`、`registry.ts`、`events.ts`、`lite-kernel.ts` 迁到 `packages/core/src/plugins/`，插件作者看到的类型从 `@dramaticer/core` 导出；共享的 11 条断言随内核迁到 core 的测试。原型代码与测量脚本可从 P1.c 测量提交 `9c9c823` 与 P1.b 提交 `8773049` 取回。
   - `packages/plugin-spike` 是技术验证用的私有包，没有生产调用方；原型保留会让同一套类型出现两份，`packages/core` 又不能依赖其他工作区包（I15）。因此 P1.c 删除该包。
   - 后续内核扩展（回合内钩子时间预算、Trace 记录、权限检查）在 core 的插件内核上实现，不再引入第三方插件框架。
 - **影响**：

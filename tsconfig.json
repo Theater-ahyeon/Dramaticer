@@ -3,7 +3,6 @@
 	"references": [
 		{ "path": "packages/core" },
 		{ "path": "packages/protocol" },
-		{ "path": "packages/plugin-spike" },
 		{ "path": "packages/server" },
 		{ "path": "packages/st-compat" }
 	]

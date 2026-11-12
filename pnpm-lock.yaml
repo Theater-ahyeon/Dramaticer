@@ -52,19 +52,6 @@ importers:
         specifier: ^9.6.0
         version: 9.6.0
 
-  packages/plugin-spike:
-    dependencies:
-      cordis:
-        specifier: 4.0.0-rc.13
-        version: 4.0.0-rc.13
-    devDependencies:
-      '@dramaticer/core':
-        specifier: workspace:*
-        version: link:../core
-      '@standard-schema/spec':
-        specifier: ^1.1.0
-        version: 1.1.0
-
   packages/protocol:
     dependencies:
       '@dramaticer/core':
@@ -781,9 +768,6 @@ packages:
   '@stablelib/base64@1.0.1':
     resolution: {integrity: sha512-1bnPQqSxSuc3Ii6MhBysoWCg58j97aUjuCSZrGSmDxNqtytIi0k8utUenAwTZN4V5mXXYGsVUI9zeBqy+jBOSQ==}
 
-  '@standard-schema/spec@1.1.0':
-    resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
-
   '@types/better-sqlite3@9.6.0':
     resolution: {integrity: sha512-ZEEwBSgMu7GYJOynoagg5X9JbxfL6dTJDsgViJIqh67jV44kyOr9RXfmFjLK5rzC4MWssP06t9hu/JwGDnUbCg==}
 
@@ -898,27 +882,6 @@ packages:
   cookie@1.1.1:
     resolution: {integrity: sha512-ei8Aos7ja0weRpFzJnEA9UHJ/7XQmqglbRwnf2ATjcB9Wq874VKH9kfjjirM6UhU2/E5fFYadylyhFldcqSidQ==}
     engines: {node: '>=18'}
-
-  cordis@4.0.0-rc.13:
-    resolution: {integrity: sha512-rYsquBfrd1U8HuaDr/1TYpdnHiuy5X2oEWJbfEveIZwysfjg3vTXJWKvTPlaPtt2VeFsAJIrzHZnymONyOr3PA==}
-    hasBin: true
-    peerDependencies:
-      '@cordisjs/fs': ^2.0.0-rc.0
-      '@cordisjs/fs-node': ^0.1.0
-      '@cordisjs/include': ^2.0.0-rc.0
-      '@cordisjs/loader': ^1.0.0-rc.10
-    peerDependenciesMeta:
-      '@cordisjs/fs':
-        optional: true
-      '@cordisjs/fs-node':
-        optional: true
-      '@cordisjs/include':
-        optional: true
-      '@cordisjs/loader':
-        optional: true
-
-  cosmokit@1.8.1:
-    resolution: {integrity: sha512-PDBv4l90xZKrUsZ0vtoycgZpO/j4iFsqJXrAxsyBDsnQRI7ZMJXIjgDJsKNjd5L8jnVnnlrDCdhkFbTncgCVjQ==}
 
   crc-32@0.3.0:
     resolution: {integrity: sha512-kucVIjOmMc1f0tv53BJ/5WIX+MGLcKuoBhnGqQrgKJNqLByb/sVMWfW/Aw6hw0jgcqjJ2pi9E5y32zOIpaUlsA==}
@@ -2049,8 +2012,6 @@ snapshots:
 
   '@stablelib/base64@1.0.1': {}
 
-  '@standard-schema/spec@1.1.0': {}
-
   '@types/better-sqlite3@9.6.0':
     dependencies:
       '@types/node': 24.19.2
@@ -2156,13 +2117,6 @@ snapshots:
   check-error@2.1.3: {}
 
   cookie@1.1.1: {}
-
-  cordis@4.0.0-rc.13:
-    dependencies:
-      '@standard-schema/spec': 1.1.0
-      cosmokit: 1.8.1
-
-  cosmokit@1.8.1: {}
 
   crc-32@0.3.0: {}
 
