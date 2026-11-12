@@ -164,6 +164,15 @@ import {
 	isSummaryLevel,
 } from "../memory/summary.js";
 import {
+	diffCodePluginPermissions,
+	parseCodePluginManifest,
+	parseCodePluginPermissions,
+} from "../plugins/code-plugins.js";
+import {
+	type CodePluginInstallationRecord,
+	assertCodePluginInstallSource,
+} from "../plugins/installation.js";
+import {
 	type CardDecisionPreferencePayload,
 	type EditPreferencePayload,
 	type ListPreferenceEventsOptions,
@@ -361,6 +370,16 @@ interface OpeningCandidateRow {
 	readonly raw: string;
 	readonly status: string;
 	readonly created_at: string;
+}
+
+interface PluginInstallationRow {
+	readonly name: string;
+	readonly version: string;
+	readonly manifest: string;
+	readonly granted_permissions: string;
+	readonly source_kind: string;
+	readonly source_spec: string;
+	readonly installed_at: string;
 }
 
 interface ImageWorkflowRow {
@@ -1301,6 +1320,32 @@ function rowToOpeningCandidate(
 	};
 }
 
+function rowToPluginInstallation(
+	row: PluginInstallationRow,
+): CodePluginInstallationRecord {
+	const manifest = parseCodePluginManifest(
+		JSON.parse(row.manifest) as unknown,
+		`插件 ${row.name} 的安装记录`,
+	);
+	if (manifest.name !== row.name || manifest.version !== row.version) {
+		throw new Error(`插件 ${row.name} 的安装记录与清单的名称或版本不一致`);
+	}
+	return {
+		name: row.name,
+		version: row.version,
+		manifest,
+		grantedPermissions: parseCodePluginPermissions(
+			JSON.parse(row.granted_permissions) as unknown,
+			`插件 ${row.name} 的已授予权限`,
+		),
+		source: assertCodePluginInstallSource(
+			{ kind: row.source_kind, spec: row.source_spec },
+			`插件 ${row.name} 的安装来源`,
+		),
+		installedAt: row.installed_at,
+	};
+}
+
 function rowToImageWorkflow(row: ImageWorkflowRow): ImageWorkflowRecord {
 	const workflow = parseComfyUiWorkflow(
 		JSON.parse(row.payload) as unknown,
@@ -1957,6 +2002,79 @@ export class StoryStore {
 			.prepare("SELECT id, title, created_at FROM stories ORDER BY rowid ASC")
 			.all() as StoryRow[];
 		return rows.map(rowToStory);
+	}
+
+	/** 读取一个代码插件的安装记录；没有安装过时返回 null。 */
+	getCodePluginInstallation(name: string): CodePluginInstallationRecord | null {
+		assertNonEmptyString(name, "插件名称");
+		const row = this.#db
+			.prepare("SELECT * FROM plugin_installations WHERE name = ?")
+			.get(name) as PluginInstallationRow | undefined;
+		return row === undefined ? null : rowToPluginInstallation(row);
+	}
+
+	listCodePluginInstallations(): CodePluginInstallationRecord[] {
+		const rows = this.#db
+			.prepare("SELECT * FROM plugin_installations ORDER BY name")
+			.all() as PluginInstallationRow[];
+		return rows.map(rowToPluginInstallation);
+	}
+
+	/** 写入或更新安装记录；安装与升级都覆盖同一行。 */
+	saveCodePluginInstallation(
+		record: CodePluginInstallationRecord,
+	): CodePluginInstallationRecord {
+		const manifest = parseCodePluginManifest(record.manifest, "安装记录的清单");
+		if (manifest.name !== record.name || manifest.version !== record.version) {
+			throw new Error(
+				`安装记录的名称或版本与清单不一致：${record.name}@${record.version}`,
+			);
+		}
+		const grantedPermissions = parseCodePluginPermissions(
+			record.grantedPermissions,
+			"安装记录已授予的权限",
+		);
+		const changes = diffCodePluginPermissions(
+			grantedPermissions,
+			manifest.permissions,
+		);
+		if (changes.added.length > 0 || changes.removed.length > 0) {
+			throw new Error(
+				`安装记录已授予的权限与清单声明的权限不一致：${manifest.name}`,
+			);
+		}
+		const source = assertCodePluginInstallSource(
+			record.source,
+			"安装记录的来源",
+		);
+		assertNonEmptyString(record.installedAt, "安装记录的安装时间");
+		this.#db
+			.prepare(
+				`INSERT INTO plugin_installations
+					(name, version, manifest, granted_permissions, source_kind, source_spec, installed_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?)
+				ON CONFLICT (name) DO UPDATE SET
+					version = excluded.version,
+					manifest = excluded.manifest,
+					granted_permissions = excluded.granted_permissions,
+					source_kind = excluded.source_kind,
+					source_spec = excluded.source_spec,
+					installed_at = excluded.installed_at`,
+			)
+			.run(
+				manifest.name,
+				manifest.version,
+				JSON.stringify(manifest),
+				JSON.stringify(manifest.permissions),
+				source.kind,
+				source.spec,
+				record.installedAt,
+			);
+		const saved = this.getCodePluginInstallation(manifest.name);
+		if (saved === null) {
+			throw new Error(`安装记录写入后读取失败：${manifest.name}`);
+		}
+		return saved;
 	}
 
 	/** 故事没有保存过设置时返回默认值，不写入数据库。 */

@@ -1224,6 +1224,22 @@ export function buildMigrations(
 					DEFAULT '{}'`,
 			],
 		},
+		{
+			version: 43,
+			description: "代码插件的安装记录：清单、已授予权限、来源与时间",
+			statements: [
+				`CREATE TABLE plugin_installations (
+					name TEXT PRIMARY KEY,
+					version TEXT NOT NULL,
+					manifest TEXT NOT NULL,
+					granted_permissions TEXT NOT NULL,
+					source_kind TEXT NOT NULL
+						CHECK (source_kind IN ('npm', 'git', 'zip')),
+					source_spec TEXT NOT NULL,
+					installed_at TEXT NOT NULL
+				) STRICT`,
+			],
+		},
 	];
 }
 

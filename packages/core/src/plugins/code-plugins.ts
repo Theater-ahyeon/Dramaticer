@@ -225,13 +225,15 @@ export function diffCodePluginPermissions(
 	previous: readonly CodePluginPermission[],
 	next: readonly CodePluginPermission[],
 ): CodePluginPermissionChanges {
-	const previousKeys = new Set(previous.map(permissionKey));
-	const nextKeys = new Set(next.map(permissionKey));
+	const previousKeys = new Set(previous.map(codePluginPermissionKey));
+	const nextKeys = new Set(next.map(codePluginPermissionKey));
 	const added = next
-		.filter((permission) => !previousKeys.has(permissionKey(permission)))
+		.filter(
+			(permission) => !previousKeys.has(codePluginPermissionKey(permission)),
+		)
 		.map(toChange);
 	const removed = previous
-		.filter((permission) => !nextKeys.has(permissionKey(permission)))
+		.filter((permission) => !nextKeys.has(codePluginPermissionKey(permission)))
 		.map(toChange);
 	return {
 		added,
@@ -248,6 +250,14 @@ export function isEngineCompatible(
 	const range = readVersionRange(engineRange, "engineRange");
 	assertInstalledVersion(engineVersion, "engineVersion");
 	return versionSatisfies(engineVersion, range);
+}
+
+/** 解析权限清单；安装记录读回时复用同一套校验。 */
+export function parseCodePluginPermissions(
+	value: unknown,
+	path = "permissions",
+): CodePluginPermission[] {
+	return readPermissions(value, path);
 }
 
 function describePermission(permission: CodePluginPermission): string {
@@ -269,7 +279,10 @@ function toChange(
 	return { permission, summary: describePermission(permission) };
 }
 
-function permissionKey(permission: CodePluginPermission): string {
+/** 权限条目的稳定比较键；数组顺序不影响结果。 */
+export function codePluginPermissionKey(
+	permission: CodePluginPermission,
+): string {
 	switch (permission.kind) {
 		case "network":
 			return `network:${[...permission.hosts].sort().join(",")}`;

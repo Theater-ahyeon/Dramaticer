@@ -1411,3 +1411,27 @@
   - P4.b 用 `requiresConfirmation` 决定首次安装与升级是否需要用户确认，并把已授予的权限存进安装记录；P4.c 用 `network`/`files`/`model`/`ledger-write` 的范围做运行时判定，未命中的调用拒绝并写 Trace。
   - 权限只限制插件自己的调用，不改变台账写入路径：`ledger-write` 的调用仍然提交为待校验的 diff，经过结算器（I12、I16）。
   - 新增测试：`packages/core/test/code-plugins.test.ts`（外壳与可选项、非法入口、服务名、四类权限的非法范围、展示文案、权限差异、引擎范围）。
+
+## ADR-0091 代码插件安装确认与安装记录（2026-11-12）
+
+- **背景**：P4.a 定稿了代码插件清单与权限范围，并给出 `requiresConfirmation` 所需的权限差异。P4.b 要把用户确认过的权限落成持久记录：首次安装展示全部权限，升级只展示变化，拒绝后不留记录；启动时如果记录与磁盘上的清单对不上，直接失败。安装属于应用级状态，与具体故事无关。
+- **选项**：
+  - 安装记录按故事存：同一插件在每个故事里各存一份，升级要与故事数量相同的确认，还会出现不同故事授予权限不一致的情况。
+  - 安装记录全局存一张表：安装一次、所有故事共享，升级只确认一次；采纳。
+  - 每次安装或升级都重新确认：权限没变化时也打断常规的版本升级。
+  - 只在权限变化时确认：权限没变化（含数组顺序变化）时不重复确认，权限新增或移除时必须确认；采纳。
+  - 记录只存已授予权限：无法判断磁盘上的清单是否被替换，启动核对只能看到权限。
+  - 记录同时保存清单原文并做指纹比较：启动时能发现清单内容或权限与记录不一致，错误里指出插件名；采纳。
+  - 确认时直接写入调用方给的计划：计划可能已经过期，写进去的权限与用户看到的不是同一份。
+  - 确认时重算计划并比较：版本、新增与移除都对得上才写入，否则抛「安装计划已过期」；采纳。
+- **决定**：
+  - 迁移 v43 新增全局表 `plugin_installations`：`name` 主键、`version`、`manifest`（清单的规范 JSON）、`granted_permissions`、`source_kind`、`source_spec`、`installed_at`。安装与升级都覆盖同一行；`source_kind` 限定为 `npm`、`git`、`zip`。
+  - 安装来源用 `{ kind, spec }` 表示，`spec` 是可直接展示的包名与版本、仓库地址或文件路径。
+  - `planCodePluginInstallation`：没有记录时 `previousVersion` 为 `null`、`added` 是全部权限、`requiresConfirmation` 恒为 `true`（有代码就要求确认）；已有记录时用 `diffCodePluginPermissions` 比较已授予权限与新清单，权限没有变化（数组顺序不影响）时 `requiresConfirmation` 为 `false`。
+  - `confirmCodePluginInstallation` 用同一份清单与来源重新计算计划，比较 `previousVersion`、`added`、`removed`，不一致直接抛「安装计划已过期：<插件名>」；写入的 `grantedPermissions` 等于清单声明的权限。拒绝安装就是不调用这个函数，库里不会留下记录。
+  - `assertInstalledCodePluginsMatch` 在启动时核对：记录没有对应的磁盘清单、磁盘清单没有记录、清单指纹不一致、记录已授予权限与清单权限不一致，都抛错并指出插件名。
+  - 存储层读回记录时复用 `parseCodePluginManifest` 与 `parseCodePluginPermissions`，损坏的记录直接失败，不做修补。
+- **影响**：
+  - P4.c 从安装记录读取已授予权限做运行时判定；P4.d 的卸载需要删除对应记录（后续任务实现）。
+  - 版本升级不改变权限时不弹确认；权限范围变化（例如网络主机列表扩大）会表现为旧条目移除、新条目新增，仍会要求确认。
+  - 新增测试：`packages/core/test/code-plugin-installations.test.ts`（首次安装、确认写入与重开读回、升级差异、无变化、拒绝、计划过期、启动核对、存储层校验、来源校验）。
