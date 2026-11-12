@@ -209,7 +209,7 @@ export function parseDeclarativePlugin(
 		);
 	}
 	const name = readPluginName(object.name, `${path}.name`);
-	const version = readVersion(object.version, `${path}.version`);
+	const version = readPluginVersion(object.version, `${path}.version`);
 	const title =
 		object.title === undefined
 			? undefined
@@ -691,7 +691,7 @@ function parseEventPoolPayload(value: unknown, path: string): EventPoolPayload {
 	};
 }
 
-function readPluginName(value: unknown, path: string): string {
+export function readPluginName(value: unknown, path: string): string {
 	const name = readNonEmptyString(value, path);
 	if (!NAME_PATTERN.test(name)) {
 		throw new Error(
@@ -701,7 +701,7 @@ function readPluginName(value: unknown, path: string): string {
 	return name;
 }
 
-function readVersion(value: unknown, path: string): string {
+export function readPluginVersion(value: unknown, path: string): string {
 	const version = readNonEmptyString(value, path);
 	if (!VERSION_PATTERN.test(version)) {
 		throw new Error(`${path} 必须是形如 1.2.3 的版本号：${version}`);

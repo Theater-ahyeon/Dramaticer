@@ -51,6 +51,7 @@ export {
 	MECHANISM_PLUGINS,
 } from "./mechanisms.js";
 export { createStaticKernel } from "./static-kernel.js";
+export * from "./playpack.js";
 export {
 	type ToolPlugin,
 	COMMIT_DRAFT_TOOL_PLUGIN,

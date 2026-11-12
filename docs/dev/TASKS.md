@@ -1122,7 +1122,8 @@
   - 卡片可以在 `extensions.dramaticer` 里打包声明式插件与依赖声明。
   验收：七种类型各有合法样例与非法样例测试；函数无法通过解析；卡片随附插件、必需依赖与推荐依赖可解析；`pnpm check` 通过。
 
-- [ ] **P3.b 玩法包分层与用户覆盖** | 依赖：P3.a
+- [x] **P3.b 玩法包分层与用户覆盖** | 依赖：P3.a
+  完成：2026-11-12 新增 `packages/core/src/plugins/playpack.ts`：`dramaticer.playpack` 外壳（名称、版本、依赖、插件、配置补丁、开关）与严格解析 `parsePlaypackManifest`、`parsePlaypacks`、`parsePlaypackUserOverrides`；`stackPlaypacks` 按加载顺序收集插件，后层覆盖前层同名插件的配置（嵌套对象深合并，数组与标量整体替换）与开关，用户覆盖放在最上层且不写回包文件；依赖必须由更早的层满足，跨包重名插件、重复玩法包、引用未知插件的配置与开关直接拒绝；`isPlaypackPluginEnabled` 未声明按启用；`readPluginName`/`readPluginVersion` 从 `declarative.ts` 导出复用；新增 10 个测试（含深冻结输入证明包文件只读）；门禁通过（183 个测试文件、1634 个测试、5 个跳过）
   做什么：
   - 定义玩法包清单：名称、版本、依赖、包含的插件与配置补丁、开关。
   - 多个玩法包按加载顺序叠加，后面的包覆盖前面的同名配置与开关；用户覆盖在最上层，不修改包文件。

@@ -3,12 +3,23 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-12 会话 306：P3.a（声明式插件格式与卡片打包字段）。新增 `packages/core/src/plugins/declarative.ts`，定稿七种声明式插件的公共外壳与负载 schema；事件定义解析抽到 `director/event-definition.ts`；`extensions.dramaticer` 新增 `plugins`、`requires`、`recommends`。P3 已拆成 P3.a 至 P3.f，本会话完成 P3.a。门禁通过（182 个测试文件、1624 个测试、5 个跳过）。
+- 2026-11-12 会话 307：P3.b（玩法包分层与用户覆盖）。新增 `packages/core/src/plugins/playpack.ts`：`dramaticer.playpack` 清单外壳与严格解析，`stackPlaypacks` 按加载顺序叠加插件、配置补丁与开关，用户覆盖在最上层；`declarative.ts` 导出 `readPluginName`/`readPluginVersion` 供复用。P3 已拆成 P3.a 至 P3.f，已完成 P3.a 与 P3.b。门禁通过（183 个测试文件、1634 个测试、5 个跳过）。
 
-## 下一步（会话 307 先做）
-1. 做 **P3.b 玩法包分层与用户覆盖**（依赖 P3.a，已满足）。定义玩法包清单（名称、版本、依赖、包含的插件、配置补丁、开关），实现有序补丁层与最上层用户覆盖，纯函数加测试。P3.b 的规则：后面的包覆盖前面的同名配置与开关，用户覆盖不修改包文件。
-2. P3.b 之后按 TASKS 顺序：P3.c（按故事启用与覆盖，需要迁移）→ P3.d（卡片导入依赖检查与提示）→ P3.e（示例插件与格式文档）→ P3.f（P3 验收）→ P4。
+## 下一步（会话 308 先做）
+1. 做 **P3.c 按故事启用与覆盖**（依赖 P3.b，已满足）。迁移 v42 新增故事级插件状态（每个故事的启用开关与配置覆盖，分支共享）；运行时按故事把 `stackPlaypacks` 的结果与故事覆盖再叠一层，得到最终启用的插件与配置。注意 P3.b 的 `stackPlaypacks` 里 `knownPluginNames` 决定配置键是否合法，故事覆盖应复用同一套校验。
+2. P3.c 之后按 TASKS 顺序：P3.d（卡片导入依赖检查与提示）→ P3.e（示例插件与格式文档）→ P3.f（P3 验收）→ P4。
 3. M6-T99 仍等待 HUMAN-15（ComfyUI 与 API workflow JSON），不要开始。
+
+## 玩法包（P3.b，代码事实）
+- 模块 `packages/core/src/plugins/playpack.ts`，从 `@dramaticer/core` 根导出。
+- 外壳 `PlaypackManifest`：`format` 固定 `"dramaticer.playpack"`，`formatVersion` 固定 `1`；`name` 与 `version` 的规则和插件相同（`readPluginName`/`readPluginVersion` 从 `declarative.ts` 导入）；可选 `title`、`description`；`requirements` 复用 `parseDeclarativeRequirements`（`plugins` 与 `playpacks`，版本范围只做语法检查）；`plugins` 复用 `parseDeclarativePlugins`（包内重名整组拒绝）；`config` 是插件名到 JSON 对象的补丁表；`switches` 是插件名到布尔值的表。
+- 解析入口 `parsePlaypackManifest(value, path?)`、`parsePlaypacks(value, path?)`（同名玩法包整组拒绝）、`parsePlaypackUserOverrides(value, path?)`（只接受 `config` 与 `switches`，省略时返回空覆盖）。清单先过 `assertJsonValue`，函数与类实例无法通过；未知字段一律拒绝。
+- `stackPlaypacks(packs, { overrides?, knownPluginNames? })` 返回 `ResolvedPlaypack { playpacks, plugins, configs, switches }`：插件按加载顺序收集；同一插件名跨包重复直接拒绝；同一玩法包名在叠加里出现两次直接拒绝；配置按插件名做深合并（嵌套对象递归合并，数组与标量整体替换），后加载的包覆盖前面的值；开关按插件名覆盖，用户覆盖最后应用。
+- 依赖规则：`requirements.playpacks` 必须是更早加载的包；`requirements.plugins` 必须由更早的包或本包提供。版本范围不匹配（P3.d）。
+- 配置与开关的键必须出现在玩法包插件集合或 `knownPluginNames` 里，否则抛错并指出来源（`玩法包 <name> 的配置/开关`、`用户覆盖的配置/开关`）。运行时调用方要把内置插件名传进 `knownPluginNames`。
+- `isPlaypackPluginEnabled(resolved, name)`：只有显式 `false` 才算关闭，未声明的插件按启用处理。
+- 输入只读：叠加不写回包文件，返回的 `configs`、`switches` 与插件数组都是新对象（测试用深冻结输入验证）。
+- 测试：`packages/core/test/playpacks.test.ts`（10 条）覆盖解析与缺省值、外壳与补丁校验、同名玩法包与函数拒绝、用户覆盖解析、叠加顺序、深合并、用户覆盖优先级、包文件只读、开关默认值、跨包重名、依赖顺序与未知插件。
 
 ## 声明式插件格式（P3.a，代码事实）
 - 模块 `packages/core/src/plugins/declarative.ts`，从 `@dramaticer/core` 根导出。
@@ -47,8 +58,8 @@
 - `dramaticer explain` 第 3 段标题仍是「被裁剪的段落与缺失槽位」，随后多出「回合钩子（时间预算与跳过原因）」子段；`dramaticer explain --json` 的 `hooks` 字段直接给出条目。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a 至 P2.g、P3.a。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- 数据库 schema 版本 41。P2 与 P3.a 没有迁移；P3.c 需要新迁移（编号 v42）。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a 至 P2.g、P3.a、P3.b。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 数据库 schema 版本 41。P2、P3.a 与 P3.b 没有迁移；P3.c 需要新迁移（编号 v42）。
 - 依赖登记：`@standard-schema/spec` 已登记为 `packages/core` 依赖；当前没有第三方插件框架。
 - P2 验收数字与复现命令在 `docs/dev/reports/P2.md`：51 个内置插件；R2 记分牌、遗忘报告、B1 报告复跑一致。
 - `eval-private/memory-cache/r1-retrieval.db` 有三个故事：`仙侠雌竞：什么叫我是炉鼎体质？` 290 个助手楼层已抽取 282 个、414 条事件；`欲望世界-1600` 180 个助手楼层已抽取 174 个、292 条事件；`银麒赎世` 114 个助手楼层已抽取 112 个、248 条事件。评测自己的临时数据库重新抽取后事件覆盖为 282/290、172/180、112/114，事件数 371/247/248。
