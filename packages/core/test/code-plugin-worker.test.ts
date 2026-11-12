@@ -487,12 +487,15 @@ export default function activate(api) {
 		},
 		["fast"],
 		async function (args) {
+			if (args.q === "crash") {
+				// 本次调用返回时抛出未捕获异常，制造 worker 崩溃
+				queueMicrotask(function () {
+					throw new Error("注册工具后崩溃");
+				});
+			}
 			return { echo: args.q };
 		},
 	);
-	setTimeout(function () {
-		throw new Error("注册工具后崩溃");
-	}, 20);
 }
 `,
 		);
@@ -501,6 +504,10 @@ export default function activate(api) {
 		const tool = registry.tool("plugin_lookup");
 		expect(tool).not.toBeNull();
 		expect(await tool?.execute?.({ q: "天气" })).toEqual({ echo: "天气" });
+		// 触发崩溃的这次调用可能先于崩溃返回、也可能被崩溃打断，两种都接受
+		await Promise.resolve(tool?.execute?.({ q: "crash" })).catch(
+			() => undefined,
+		);
 		await waitForState(runtime, "failed");
 		expect(registry.tool("plugin_lookup")).toBeNull();
 	});

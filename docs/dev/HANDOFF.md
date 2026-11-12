@@ -3,9 +3,9 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-12 会话 315：P4.d（npm、git、zip 安装、更新检查与卸载回收）。新增 `packages/core/src/plugins/code-plugin-installer.ts` 的 `CodePluginManager`；新增运行时依赖 `tar` 与 `fflate`；安装记录接口新增 `deleteCodePluginInstallation`；ADR-0093；新增 9 条本地 fixture 测试；门禁通过（191 个测试文件、1690 个测试、5 个跳过）。
+- 2026-11-12 会话 316：修复门禁。`packages/core/test/code-plugin-worker.test.ts` 的「插件注册的工具只在 active 时可执行，崩溃后从注册表消失」在整轮并行门禁里失败、单测连续 8 次通过：用例让插件在激活后 20 毫秒抛出未捕获异常，和第二次 worker 往返竞速。改为先用一次查询确认工具可用，再由 `{ q: "crash" }` 调用触发崩溃；崩溃由处理器内的 `queueMicrotask` 抛出，触发崩溃的调用同时接受成功与拒绝。实现代码未改动。门禁通过（191 个测试文件、1690 个测试、5 个跳过）。
 
-## 下一步（会话 316 先做）
+## 下一步（会话 317 先做）
 1. 按 TASKS 从上往下选任务：**P4.e 插件开发文档与示例代码插件**（依赖 P4.c，已满足）。
 2. P4.e 要点：写 `docs/plugins/code-plugins.md`（清单字段、`dramaticer.plugin.json` 文件名、四类权限、Context API、`activate(api, config)` 生命周期、失败与 Trace 语义、git 安装需要本机 git）；提供一个可运行的示例代码插件，并用测试在沙箱里装载、注册槽位或工具、按权限清单运行。
 3. P4.e 之后是 P4.f 验收：逐条核对 P4 总验收与 I4、I12、I15、I16、I17、I18，写 `docs/dev/reports/P4.md`。
