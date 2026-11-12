@@ -2077,6 +2077,15 @@ export class StoryStore {
 		return saved;
 	}
 
+	/** 删除安装记录；插件卸载时调用，记录不存在时返回 false。 */
+	deleteCodePluginInstallation(name: string): boolean {
+		assertNonEmptyString(name, "插件名称");
+		const result = this.#db
+			.prepare("DELETE FROM plugin_installations WHERE name = ?")
+			.run(name);
+		return result.changes > 0;
+	}
+
 	/** 故事没有保存过设置时返回默认值，不写入数据库。 */
 	getStorySettings(storyId: string): StorySettings {
 		assertNonEmptyString(storyId, "故事 id");

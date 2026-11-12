@@ -43,6 +43,7 @@ export {
 export * from "./card-dependencies.js";
 export * from "./code-plugins.js";
 export * from "./code-plugin-worker.js";
+export * from "./code-plugin-installer.js";
 export * from "./installation.js";
 export * from "./contracts.js";
 export * from "./declarative.js";

@@ -1456,3 +1456,26 @@
   - P4.d 的安装与卸载复用 `CodePluginRuntime` 的启动、停止与注册项回收；P4.e 的示例插件按 `activate(api, config)` 编写，并在沙箱里注册槽位与工具。
   - `DeepToolDefinition` 新增可选 `execute`：插件提供的只读工具由执行器直接调用 worker 代理；内置工具没有这个字段，行为不变。
   - 新增测试：`packages/core/test/code-plugin-worker.test.ts`（四类声明能力、四类未声明拒绝、只读权限、台账校验、崩溃、激活与调用超时、超限消息、工具注册与回收、机制拒绝）。
+
+## ADR-0093 代码插件安装来源、更新检查与卸载回收（2026-11-12）
+
+- **背景**：ADR-0090 定稿清单与权限，ADR-0091 定稿安装确认与记录，ADR-0092 定稿 worker 隔离。P4.d 要把插件从 npm、git、zip 三种来源安装到磁盘，读清单后复用安装确认流程；更新时给出新版本与兼容提示，卸载时回收 worker、注册项与插件目录文件。
+- **选项**：
+  - npm 来源调用 `npm pack` 子进程：多一个外部命令，Windows 上 `npm.cmd` 只能经 shell 执行，spec 会进入 shell 命令行。
+  - npm 来源直接读 registry 元数据并下载 tarball：与 npm 客户端使用同一份数据，没有子进程与 shell 注入面；采纳。
+  - git 来源自己实现传输协议：需要处理 dumb/smart HTTP、SSH 与认证，成本与风险都高。
+  - git 来源调用系统 `git clone --depth 1 -- <spec> <dir>`，spec 之后加 `--` 防止被当成选项；采纳，文档写明需要本机安装 git。
+  - zip 来源手写解包：违反成熟格式必须用库解析的规则。使用 `fflate` 解包 zip，使用 `tar` 解包 npm tarball；采纳。
+- **决定**：
+  - 插件安装目录是 `<pluginsDir>/<插件名>/`，清单固定命名 `dramaticer.plugin.json`。插件名沿用声明式插件的名称规则（小写字母、数字、点、下划线、连字符），因此不会产生路径分隔符。
+  - 三种来源都先解包到 `<pluginsDir>/.staging/` 下的临时目录；npm tarball 前缀 `package/` 用 `strip: 1` 去掉，git 安装后删除 `.git`，zip 条目逐个校验为安装目录内的相对路径且拒绝 `..`、绝对路径与反斜杠。来源解包后必须有根清单文件，清单按 `parseCodePluginManifest` 校验。
+  - `prepare(source)` 返回清单、权限计划与兼容判定；本机版本不满足 `engine` 时不保留暂存目录，返回 `compatible: false` 与提示，`confirm` 直接抛错。`confirm(preparation)` 先把旧目录移进暂存区作为备份，新目录就位后调用 `confirmCodePluginInstallation` 写记录；写记录失败时删除新目录并恢复旧目录。更新因此整体替换插件文件，不保留旧版本残留文件。
+  - `checkUpdate(name)` 按安装记录里的来源重新解包一次并比较版本；只有新版本更高且本机兼容时 `updateAvailable` 为 true。权限差异来自 P4.b 的计划函数，来源版本更低时明确提示。
+  - 故事级插件配置存在 `story_settings.pluginOverrides.config`，安装与更新都不触碰故事设置；启动时由调用方把该故事的配置传给 `start(name, { config })`。
+  - `uninstall(name)` 先 `stop` 运行中的 worker（`CodePluginRuntime.dispose` 撤销全部注册项），再删除插件目录与安装记录；目录与记录只有一个存在时也允许清理。
+  - npm 下载在元数据带 `dist.integrity` 时按 sha1/sha256/sha512 校验内容，不匹配直接拒绝安装。
+- **影响**：
+  - `packages/core` 新增运行时依赖 `tar` 与 `fflate`（已在 `docs/dev/DEPENDENCIES.md` 登记）。
+  - 新增 `packages/core/src/plugins/code-plugin-installer.ts`（`CodePluginManager`、`parseNpmSpec`、`CODE_PLUGIN_MANIFEST_FILENAME`），经 `plugins/index.ts` 从 `@dramaticer/core` 根导出。
+  - 安装记录存储接口新增 `deleteCodePluginInstallation`，`StoryStore` 直接实现；不需要新迁移。
+  - 测试 `packages/core/test/code-plugin-installer.test.ts` 使用本地 fixture：npm 用本地打包的 tarball 与假 registry fetch，git 用本地仓库，zip 用本地压缩文件，均不访问网络。

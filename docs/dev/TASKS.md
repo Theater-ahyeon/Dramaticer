@@ -1184,7 +1184,8 @@
   - 台账写入仍然只能提交为待校验的 diff，经过结算器校验（I12、I16）。
   验收：未声明的四类调用各被拒绝并带 Trace 记录；声明的调用正常执行；worker 崩溃后主进程继续并且插件状态为失败；超限消息被拒绝；台账写入路径上没有绕过结算器的入口；`pnpm check` 通过。
 
-- [ ] **P4.d 从 npm、git、zip 安装与更新，卸载回收副作用** | 依赖：P4.c
+- [x] **P4.d 从 npm、git、zip 安装与更新，卸载回收副作用** | 依赖：P4.c
+  完成：2026-11-12 新增 `plugins/code-plugin-installer.ts` 的 `CodePluginManager`：三种来源先解包到 `<pluginsDir>/.staging/` 并读取根清单 `dramaticer.plugin.json`，npm 直接读 registry 元数据、按 `dist.integrity` 校验并解包 tarball（`tar`），git 用 `git clone --depth 1 --` 并删除 `.git`，zip 用 `fflate` 解包且拒绝逃出安装目录的条目；`prepare` 给出权限计划与本机兼容判定，不兼容时删除暂存目录且 `confirm` 抛错；`confirm` 先备份旧目录、就位后写安装记录（失败恢复旧目录）；`checkUpdate` 重新解包来源比较版本并给出不兼容提示，只有更高且兼容的版本算可更新；`uninstall` 先停 worker（撤销注册项）再删除插件目录与安装记录；故事级配置 `story_settings.pluginOverrides.config` 不参与安装与更新；安装记录接口新增 `deleteCodePluginInstallation`；ADR-0093；新增 9 条本地 fixture 测试；门禁通过（191 个测试文件、1690 个测试、5 个跳过）。
   做什么：
   - 三种来源的安装：npm 包名与版本、git 地址、zip 文件；安装到插件目录，读取清单，按 P4.b 走确认。
   - 更新检查与版本兼容提示；卸载时回收 worker、注册项与插件目录里的文件。

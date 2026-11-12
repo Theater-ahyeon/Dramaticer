@@ -37,6 +37,8 @@ export interface CodePluginInstallationStore {
 		record: CodePluginInstallationRecord,
 	): CodePluginInstallationRecord;
 	listCodePluginInstallations(): CodePluginInstallationRecord[];
+	/** 删除安装记录；记录不存在时返回 false。 */
+	deleteCodePluginInstallation(name: string): boolean;
 }
 
 /** 待确认的安装计划：安装界面按 `added` 与 `removed` 逐条展示。 */
