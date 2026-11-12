@@ -1493,3 +1493,18 @@
   - 录制服务只监听本机，记录生成请求的正文与脱敏后的请求头、查询参数，返回固定桩（非流式 JSON、流式 SSE）。服务不持有模型客户端；测试把全局 `fetch` 替换成抛错函数，证明录制期间零外呼。
   - 录制产物固定为 `requests/NNNNN.json` 与 `index.jsonl`，后续比对与覆盖统计只读这两种文件；所有产物默认落在私有根目录，不进入提交。
 - **影响**：`packages/st-compat` 新增 `st-bench` 子模块与 `st-bench` 脚本，无新增依赖；C-T02–C-T05 的一致性测试与共存评测共用同一套录制、索引与报告口径；`core` 不出现 ST 概念（I1、I15）。
+
+## ADR-0095 沙箱 ST 的配置、桩设置与启动器（2026-11-12）
+
+- **背景**：C-T01.b 要用 Playwright 一次性驱动沙箱 ST，产出零模型请求记录。复制来的 `config.yaml` 带着玩家原安装的访问口令、监听 0.0.0.0 的地址与自动更新开关；`settings.json` 因为可能含密钥被排除，沙箱首次启动时前端还要用 webpack 编译一次库文件。启动与配置因此要单独做成可测试的一层。
+- **选项**：
+  - 直接启动玩家原安装目录：会写缓存与编译产物，违反原目录只读。
+  - 只通过命令行参数覆盖：ST 支持端口与部分开关，但数据根、访问口令、扩展更新与 `settings.json` 仍需写进副本；采纳改写副本配置。
+  - 每批次用 Playwright 在界面里填端点与模型：每次都要等前端加载，容易漏配；改为启动前写入 `settings.json` 的 `oai_settings`，驱动只切换预设与卡。
+  - 用 `/api/settings/get` 判断就绪：请求需要 CSRF 会话；用首页 200 判断就绪，冒烟时再单独核对设置读回；采纳。
+- **决定**：
+  - `configureSandboxServer` 只接受私有根目录内带 `sandbox.json` 清单的副本，用 `yaml` 的 Document 改键以保留其余键与注释。`listen: false` 只绑定回环，`protocol.ipv4` 开、IPv6 关，白名单只允许 `127.0.0.1` 与 `::1`；关闭访问口令、浏览器启动、扩展与自动更新、缩略图、CORS 代理、请求代理、SSL、主机白名单、聊天备份与访问日志。
+  - 写入 `data/default-user/settings.json`：`main_api` 为 `openai`，`oai_settings.chat_completion_source` 为 `custom`，`custom_url` 指向录制服务，`custom_model` 是桩模型，`openai_max_context`/`openai_max_tokens` 与 `max_context`/`amount_gen` 一致。ST 的自定义源是 keyless，不需要任何密钥。录制端点必须是 http(s) 且主机为回环，防止误配到真实渠道（I14）。
+  - 启动器用当前 Node 运行 `server.js --port`，把标准输出与错误写到 `<沙箱>/st-bench-server.log`，轮询首页直到 200；默认等 180 秒，覆盖首次 webpack 编译。子进程提前退出或超时都会终止子进程，并报告退出码或日志路径。`stop()` 幂等。
+  - CLI 新增 `st-bench serve`，默认使用私有根目录下的副本与 `http://127.0.0.1:8130/v1`；`--configure-only` 只写配置，供测试与人工核对。
+- **影响**：`packages/st-compat` 新增运行时依赖 `yaml` 并登记；C-T01.b.b 在此之上生成组合与 run 清单，C-T01.b.c 的 Playwright 驱动复用同一启动器；真实冒烟（ST 1.18.0，端口 8899）中首页与 `/api/settings/get` 返回 200，读回的自定义端点与桩模型和写入一致，录制服务收到零请求，沙箱配置里的原访问口令已被清空。

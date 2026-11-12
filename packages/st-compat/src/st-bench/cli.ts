@@ -1,6 +1,12 @@
 import { stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+	DEFAULT_SANDBOX_SERVER_PORT,
+	DEFAULT_STUB_MODEL,
+	configureSandboxServer,
+	startSandboxServer,
+} from "./launcher.js";
 import { startPromptRecorder } from "./recorder.js";
 import {
 	DEFAULT_DATA_ENTRIES,
@@ -10,11 +16,14 @@ import {
 	stBenchPaths,
 } from "./sandbox.js";
 
-const USAGE = `用法：st-bench <sandbox|record> ...
+const USAGE = `用法：st-bench <sandbox|record|serve> ...
   sandbox --source <SillyTavern 目录> [--target <目录>] [--private-root <目录>]
           [--node-modules link|copy|skip] [--data <相对路径>]... [--replace]
   record [--dir <录制目录>] [--host 127.0.0.1] [--port 8130]
-         [--stub-model <名称>] [--max-requests <数量>]`;
+         [--stub-model <名称>] [--max-requests <数量>]
+  serve [--sandbox <目录>] [--port 8000]
+        [--endpoint http://127.0.0.1:8130/v1] [--stub-model <名称>]
+        [--configure-only]`;
 
 export interface StBenchCliOptions {
 	readonly repoRoot?: string;
@@ -40,6 +49,10 @@ export async function runStBenchCli(
 	}
 	if (command === "record") {
 		await runRecord(args.slice(1), paths.recordingsDir, log);
+		return;
+	}
+	if (command === "serve") {
+		await runServe(args.slice(1), paths, log);
 		return;
 	}
 	throw new Error(USAGE);
@@ -159,6 +172,78 @@ async function runRecord(
 	}
 	await recorder.close();
 	log(`已录制 ${recorder.records.length} 条请求`);
+}
+
+async function runServe(
+	args: readonly string[],
+	paths: StBenchPaths,
+	log: (message: string) => void,
+): Promise<void> {
+	let sandboxDir = path.join(paths.sandboxDir, "st");
+	let port = DEFAULT_SANDBOX_SERVER_PORT;
+	let endpointUrl = "http://127.0.0.1:8130/v1";
+	let stubModel = DEFAULT_STUB_MODEL;
+	let configureOnly = false;
+	for (let index = 0; index < args.length; index += 1) {
+		const arg = args[index];
+		if (arg === "--configure-only") {
+			configureOnly = true;
+			continue;
+		}
+		if (
+			arg === "--sandbox" ||
+			arg === "--port" ||
+			arg === "--endpoint" ||
+			arg === "--stub-model"
+		) {
+			const value = args[index + 1];
+			if (value === undefined) throw new Error(`${arg} 需要一个值`);
+			index += 1;
+			if (arg === "--sandbox") sandboxDir = value;
+			else if (arg === "--port") port = parsePort(value);
+			else if (arg === "--endpoint") endpointUrl = value;
+			else stubModel = value;
+			continue;
+		}
+		throw new Error(`未知参数：${arg}`);
+	}
+
+	const options = {
+		sandboxDir,
+		privateRoot: paths.privateRoot,
+		port,
+		endpointUrl,
+		stubModel,
+		log,
+	};
+	if (configureOnly) {
+		const setup = await configureSandboxServer(options);
+		log(`沙箱配置：${setup.configFile}`);
+		log(`桩设置：${setup.settingsFile}`);
+		log(`自定义端点 ${setup.endpointUrl}，模型 ${setup.stubModel}`);
+		log("只写配置，沙箱 ST 未启动");
+		return;
+	}
+
+	const server = await startSandboxServer(options);
+	log(`沙箱 ST 已就绪：${server.url}`);
+	log(`日志：${server.logFile}`);
+	log("按 Ctrl+C 停止沙箱 ST");
+
+	const stop = Promise.withResolvers<void>();
+	const onSignal = (): void => {
+		stop.resolve();
+	};
+	process.once("SIGINT", onSignal);
+	process.once("SIGTERM", onSignal);
+	try {
+		await stop.promise;
+	} finally {
+		process.off("SIGINT", onSignal);
+		process.off("SIGTERM", onSignal);
+	}
+	await server.stop();
+	log("沙箱 ST 已停止");
 }
 
 function parseNodeModulesMode(value: string): NodeModulesMode {

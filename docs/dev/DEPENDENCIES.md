@@ -17,6 +17,7 @@
 | `@earendil-works/pi-ai` | 根目录 | dev | `spikes/pi/` 的验证脚本使用（ADR-0009） |
 | `@earendil-works/pi-agent-core` | 根目录 | dev | `spikes/pi/` 验证钩子使用；运行时执行器由 `packages/core` 自己实现（ADR-0022） |
 | `yaml` | `packages/core` | runtime | 解析 `data/channels.yaml` 与 `data/images.yaml` 配置 |
+| `yaml` | `packages/st-compat` | runtime | 改写沙箱 ST 的 `config.yaml` 并保留原有键与注释（C-T01.b） |
 | `semver` | `packages/core` | runtime | 卡片与玩法包的插件版本范围匹配（ADR-0089） |
 | `@types/semver` | `packages/core` | dev | `semver` 的类型声明 |
 | `tar` | `packages/core` | runtime | 解包 npm 来源的插件 tarball；测试里也用来生成 fixture tarball（ADR-0093） |

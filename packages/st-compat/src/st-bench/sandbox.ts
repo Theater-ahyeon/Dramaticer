@@ -130,10 +130,10 @@ export function assertSandboxTarget(
 	if (target === root) {
 		throw new Error("沙箱目标不能就是私有根目录本身");
 	}
-	if (!isInside(target, root)) {
+	if (!isPathInside(target, root)) {
 		throw new Error(`沙箱目标必须在私有根目录 ${root} 内部，收到 ${target}`);
 	}
-	if (isInside(target, source) || isInside(source, target)) {
+	if (isPathInside(target, source) || isPathInside(source, target)) {
 		throw new Error("沙箱目标与源目录不能互相包含");
 	}
 }
@@ -272,7 +272,7 @@ function relativePosix(from: string, to: string): string {
 	return path.relative(from, to).split(path.sep).join("/");
 }
 
-function isInside(child: string, parent: string): boolean {
+export function isPathInside(child: string, parent: string): boolean {
 	const relative = path.relative(parent, child);
 	return (
 		relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative)
