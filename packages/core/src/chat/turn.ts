@@ -48,6 +48,7 @@ import { DEEP_TURN_TOOLS, FAST_TURN_TOOLS } from "../tools/index.js";
 import type { ToolProgressEvent } from "../tools/registry.js";
 import type { TurnTrace, TurnTraceRun } from "../trace.js";
 import { type DeepTurnResult, runDeepTurn } from "./deep-turn.js";
+import { TurnDraftController, type TurnDraftSnapshot } from "./draft.js";
 import {
 	type ModelTurnResult,
 	TurnAbortedError,
@@ -115,6 +116,8 @@ export interface ChatTurnOptions {
 	}) => void;
 	/** 工具执行前的进度阶段；同一阶段连续调用只回调一次。 */
 	readonly onToolProgress?: (event: ToolProgressEvent) => void;
+	/** 深回合草稿整份替换后的快照；服务端用它发 SSE。 */
+	readonly onDraftReplace?: (draft: TurnDraftSnapshot) => void;
 	readonly now?: () => number;
 }
 
@@ -175,6 +178,26 @@ export interface ResolvedDeepTurnMode {
 }
 
 export type ResolvedTurnMode = ResolvedFastTurnMode | ResolvedDeepTurnMode;
+
+/**
+ * 深回合在达到上限、超时或没有任何正文时结束，又没有提交草稿：
+ * 运行记为失败，不写助手楼层，head 停在用户楼层。
+ */
+export class DeepTurnWithoutCommitError extends Error {
+	readonly runId: string;
+	readonly reason: ModelTurnResult["stopReason"];
+
+	constructor(
+		message: string,
+		runId: string,
+		reason: ModelTurnResult["stopReason"],
+	) {
+		super(message);
+		this.name = "DeepTurnWithoutCommitError";
+		this.runId = runId;
+		this.reason = reason;
+	}
+}
 
 /**
  * 模式与读取工具软上限的唯一解析口：单轮参数优先于故事设置。
@@ -390,6 +413,31 @@ export async function generateAssistantTurn(
 			: (event: TurnRunEventInput): void => {
 					options.store.appendTurnRunEvent({ runId, ...event });
 				};
+	const draft =
+		resolved.mode === "deep"
+			? new TurnDraftController({
+					onReplace: (snapshot) => {
+						onRunEvent?.({
+							kind: "draft.replace",
+							payload: {
+								version: snapshot.version,
+								textLength: snapshot.text.length,
+							},
+						});
+						options.onDraftReplace?.(snapshot);
+					},
+					onCommit: (snapshot, method) => {
+						onRunEvent?.({
+							kind: "draft.commit",
+							payload: {
+								version: snapshot.version,
+								textLength: snapshot.text.length,
+								method,
+							},
+						});
+					},
+				})
+			: null;
 	const turnOptions = {
 		client: options.client,
 		messages: assembled.messages,
@@ -419,6 +467,7 @@ export async function generateAssistantTurn(
 		onToolCall: options.onToolCall,
 		onToolProgress: options.onToolProgress,
 		onRunEvent,
+		draft,
 		now,
 	} as const;
 	let turn: ModelTurnResult;
@@ -444,7 +493,12 @@ export async function generateAssistantTurn(
 				kind: "error",
 				payload: { message: describeRunError(error) },
 			});
+			options.store.finishTurnRun({
+				runId,
+				status: error instanceof TurnAbortedError ? "aborted" : "failed",
+			});
 		}
+		if (resolved.mode === "deep") throw error;
 		if (
 			error instanceof TurnAbortedError &&
 			error.partialText.trim().length > 0
@@ -459,22 +513,34 @@ export async function generateAssistantTurn(
 				mode: resolved,
 				profile,
 				transport,
-				runId,
-			});
-		}
-		if (runId !== null) {
-			options.store.finishTurnRun({
-				runId,
-				status: error instanceof TurnAbortedError ? "aborted" : "failed",
+				runId: null,
 			});
 		}
 		throw error;
 	}
 	const result = turn.result;
 	const completedAt = now();
-	const blocks = turn.blocks;
+	const completion = resolveTurnBody({
+		mode: resolved.mode,
+		draft,
+		turn,
+	});
+	if (completion.text === null) {
+		const message = describeMissingCommit(turn.stopReason);
+		const failedRunId = runId as string;
+		options.store.appendTurnRunEvent({
+			runId: failedRunId,
+			kind: "error",
+			payload: { message, reason: turn.stopReason },
+		});
+		options.store.finishTurnRun({ runId: failedRunId, status: "failed" });
+		throw new DeepTurnWithoutCommitError(message, failedRunId, turn.stopReason);
+	}
+	const finalText = completion.text;
+	const blocks =
+		finalText === result.text ? turn.blocks : parseBlocks(finalText);
 	const truncations = detectTruncations(
-		{ text: result.text, stopReason: result.stopReason },
+		{ text: finalText, stopReason: result.stopReason },
 		TRUNCATION_OPTIONS,
 	);
 
@@ -483,7 +549,7 @@ export async function generateAssistantTurn(
 		: withProposedStateUpdates(
 				functionCall
 					? collectStructuredOutputFromToolCalls(turn.toolCalls)
-					: collectStructuredOutputFromText(result.text),
+					: collectStructuredOutputFromText(finalText),
 				turn.proposedStateUpdates,
 			);
 
@@ -492,7 +558,7 @@ export async function generateAssistantTurn(
 			storyId: options.storyId,
 			parentId: userNode.id,
 			role: "assistant",
-			raw: result.text,
+			raw: finalText,
 		});
 		recordRegeneratedSwipe(options, node);
 		const savedDiffs = writesLedger
@@ -592,6 +658,8 @@ export async function generateAssistantTurn(
 							toolCallCount: deepTurn.toolCallCount,
 							durationMs: deepTurn.durationMs,
 							stopReason: deepTurn.stopReason,
+							commit: draft?.commitMethod ?? "none",
+							drift: completion.drift,
 						},
 			run: runTrace,
 		};
@@ -660,6 +728,43 @@ function recordRegeneratedSwipe(
 		payload: { abandonedNodeId, acceptedNodeId: node.id },
 		createdAt: node.createdAt,
 	});
+}
+
+/** 运行结束却没有提交草稿时的原因。 */
+function describeMissingCommit(reason: ModelTurnResult["stopReason"]): string {
+	if (reason === "timeout") return "深回合超过时长上限，没有提交草稿";
+	if (reason === "max_tool_calls") {
+		return "深回合达到工具调用上限，没有提交草稿";
+	}
+	return "模型没有生成正文，运行没有提交草稿";
+}
+
+/**
+ * 运行结束后的楼层正文：显式提交用草稿；正常结束但没有提交时，
+ * 把最后一次输出当作草稿自动提交并记漂移；达到上限、超时或没有正文
+ * 且没有提交时返回 null，调用方不写助手楼层。
+ */
+function resolveTurnBody(input: {
+	readonly mode: TurnMode;
+	readonly draft: TurnDraftController | null;
+	readonly turn: ModelTurnResult;
+}): { readonly text: string | null; readonly drift: "missing_commit" | null } {
+	if (input.mode !== "deep") {
+		return { text: input.turn.result.text, drift: null };
+	}
+	const draft = input.draft;
+	if (draft === null) throw new Error("深回合缺少草稿控制器");
+	if (draft.committed) return { text: draft.text, drift: null };
+	if (input.turn.stopReason !== "completed") {
+		return { text: null, drift: null };
+	}
+	const body = input.turn.result.text;
+	if (body.trim().length > 0 && body !== draft.text) draft.replace(body);
+	if (draft.version > 0) {
+		draft.commit("auto");
+		return { text: draft.text, drift: "missing_commit" };
+	}
+	return { text: null, drift: null };
 }
 
 /** 中止时保存已经生成的部分正文；没有正文时不创建楼层。 */
@@ -740,6 +845,8 @@ async function persistAbortedTurn(input: {
 							toolCallCount: error.toolCallCount,
 							durationMs: completedAt - input.startedAt,
 							stopReason: "aborted",
+							commit: "none",
+							drift: null,
 						},
 			run: runTrace,
 		};

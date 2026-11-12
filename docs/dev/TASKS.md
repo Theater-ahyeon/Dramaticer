@@ -945,7 +945,8 @@
   - `TurnTrace` 增加 `run` 段（`runId`、`status`、`eventCount`），快回合为 null；新增 `GET /api/nodes/:id/run` 返回运行摘要与按 `seq` 排序的事件（没有运行时 404）；`dramaticer explain --node <id>` 打印同一时间线。
   验收：事件按 `seq` 严格递增；更新或删除事件抛错且原行不变；模拟进程中断后重启把 `running` 改为 `interrupted` 并保留已有事件；Trace 与接口读到同一 `runId`；事件载荷不包含草稿全文与私有路径；`pnpm check` 通过。
 
-- [ ] **R3b-T04 草稿与提交** | 依赖：R3b-T01、R3b-T02、R3b-T03 | DESIGN §10.1 | I4、I12
+- [x] **R3b-T04 草稿与提交** | 依赖：R3b-T01、R3b-T02、R3b-T03 | DESIGN §10.1 | I4、I12
+  完成：2026-11-12 新增运行内草稿控制器 `chat/draft.ts`（整份替换、版本号、提交后拒绝修改）与两个 `control` 工具 `draft_write`、`commit_draft`；草稿替换经 `onDraftReplace` 以 SSE `draft.replace` 发送并按 100 毫秒节流，提交后发送 `turn.committed`（楼层 id、最终块与提交方式）；提交走现有楼层写入路径，正文与草稿逐字节一致且只写一次；正常结束但没有提交时把最后一次输出自动提交并记 `deep.drift = missing_commit`，运行仍为成功；中止、超时、工具次数上限或没有任何正文且没有提交时不写助手楼层，运行标为 `aborted` 或 `failed` 并抛 `DeepTurnWithoutCommitError`；提交后同一轮的后续控制工具返回“已经提交”，其它工具返回“运行已经结束”；运行日志只记草稿版本号与长度；新增 5 个 core 测试与 1 个 server 测试；门禁通过（171 个测试文件、1512 个测试、4 个 live 跳过）
   做什么：
   - 两个控制工具：`draft_write`（参数 `{text}`，权限 `control`）整份替换当前草稿；`commit_draft`（无参数）把当前草稿提交为助手楼层并结束运行。草稿只存在运行内状态，提交前不写 `timeline_nodes`、不进入历史、不参与台账。
   - 每次草稿替换通过 `onDraftReplace` 回调交给 server，以 SSE `draft.replace` 发送（按 100 毫秒节流，与 `blocks.replace` 相同）；提交后发送 `turn.committed`，带助手楼层 id 与最终块快照。

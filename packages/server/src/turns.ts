@@ -1,6 +1,7 @@
 import type { ServerResponse } from "node:http";
 import {
 	type ChatTurnResult,
+	DeepTurnWithoutCommitError,
 	type DirectorIntensity,
 	type GenerateAssistantTurnOptions,
 	type IllustrateTurnOptions,
@@ -9,6 +10,7 @@ import {
 	LlmProviderError,
 	type ParsedContent,
 	type StoryStore,
+	type TurnDraftSnapshot,
 	type TurnMode,
 	generateAssistantTurn,
 	regenerateAssistantTurn,
@@ -91,6 +93,7 @@ interface GenerationHooks {
 		readonly phase: string;
 		readonly detail: string;
 	}) => void;
+	readonly onDraftReplace: (draft: TurnDraftSnapshot) => void;
 	readonly now: () => number;
 }
 
@@ -298,6 +301,7 @@ async function streamTurn(stream: StreamTurnOptions): Promise<void> {
 		heartbeat.unref();
 		const now = options.now ?? Date.now;
 		let lastBlocksAt = Number.NEGATIVE_INFINITY;
+		let lastDraftAt = Number.NEGATIVE_INFINITY;
 		const result = await stream.run(runtime, ticket.signal, {
 			onTextDelta: (delta, snapshot) => {
 				if (clientGone || sse === null) return;
@@ -325,10 +329,32 @@ async function streamTurn(stream: StreamTurnOptions): Promise<void> {
 					detail: event.detail,
 				});
 			},
+			onDraftReplace: (draft) => {
+				if (clientGone || sse === null) return;
+				const current = now();
+				if (current - lastDraftAt >= 100) {
+					lastDraftAt = current;
+					sse.send("draft.replace", {
+						text: draft.text,
+						version: draft.version,
+					});
+				}
+			},
 			now,
 		});
 		if (clientGone || sse === null) return;
 		sse.send("blocks.replace", { blocks: toDisplayedBlocks(result.blocks) });
+		const deep = result.trace.deep;
+		const run = result.trace.run;
+		if (deep !== null && run !== null && deep.commit !== "none") {
+			sse.send("turn.committed", {
+				storyId,
+				runId: run.runId,
+				nodeId: result.node.id,
+				blocks: toDisplayedBlocks(result.blocks),
+				commit: deep.commit,
+			});
+		}
 		if (result.trace.llm.stopReason === "aborted") {
 			sse.send("turn.error", {
 				code: "upstream_error",
@@ -394,6 +420,9 @@ function toTurnError(error: unknown): ApiErrorBody {
 		error instanceof LlmProviderError
 	) {
 		return { code: "upstream_error", message: error.message };
+	}
+	if (error instanceof DeepTurnWithoutCommitError) {
+		return { code: "internal", message: error.message };
 	}
 	return { code: "internal", message: "生成失败" };
 }

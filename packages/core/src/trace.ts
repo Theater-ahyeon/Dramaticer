@@ -95,6 +95,10 @@ export interface TurnTraceDeep {
 	readonly toolCallCount: number;
 	readonly durationMs: number;
 	readonly stopReason: DeepTurnStopReason;
+	/** 楼层怎么来的：模型调用提交工具、运行结束自动提交，或没有提交。 */
+	readonly commit: "tool" | "auto" | "none";
+	/** 正常结束但没有调用提交工具时记为 missing_commit；其余为 null。 */
+	readonly drift: "missing_commit" | null;
 }
 
 /** 本轮对应的运行日志；快回合不写运行表，为 null。 */

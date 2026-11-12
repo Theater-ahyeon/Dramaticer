@@ -159,7 +159,7 @@ describe("深回合工具注册表", () => {
 		).toThrow("progressLabel 必须是非空字符串");
 	});
 
-	it("深回合注册六个工具，权限各自声明", () => {
+	it("深回合注册八个工具，权限各自声明", () => {
 		const registry = DEEP_TURN_TOOLS;
 		expect(registry.tools.map((tool) => tool.name)).toEqual([
 			"memory_search",
@@ -168,10 +168,14 @@ describe("深回合工具注册表", () => {
 			"ledger_read",
 			"history_read",
 			"ledger_write",
+			"draft_write",
+			"commit_draft",
 		]);
 		expect(registry.get("ledger_write")?.permission).toBe("propose");
 		expect(registry.get("history_read")?.permission).toBe("read");
 		expect(registry.get("ledger_read")?.permission).toBe("read");
+		expect(registry.get("draft_write")?.permission).toBe("control");
+		expect(registry.get("commit_draft")?.permission).toBe("control");
 	});
 });
 

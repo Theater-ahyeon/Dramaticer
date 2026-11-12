@@ -281,8 +281,10 @@ describe("深回合运行事件", () => {
 			"tool.result",
 			"model.request",
 			"model.response",
+			"draft.replace",
+			"draft.commit",
 		]);
-		expect(events.map((event) => event.seq)).toEqual([1, 2, 3, 4, 5, 6]);
+		expect(events.map((event) => event.seq)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
 		expect(result.trace.run?.eventCount).toBe(events.length);
 		expect(events[2]?.payload).toEqual({
 			round: 1,

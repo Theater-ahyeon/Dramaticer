@@ -268,6 +268,8 @@ describe("explainNode", () => {
 				toolCallCount: 0,
 				durationMs: 500,
 				stopReason: "completed",
+				commit: "auto",
+				drift: "missing_commit",
 			},
 			run: { runId: "r1", status: "completed", eventCount: 1 },
 		});

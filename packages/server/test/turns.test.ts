@@ -712,6 +712,64 @@ describe("POST /api/stories/:id/turns", () => {
 		expect(client.requests).toHaveLength(2);
 	});
 
+	it("深回合草稿通过 SSE 投影，提交后发送 turn.committed", async () => {
+		const draftText = "山门缓缓打开，他退后一步。";
+		const { running, client } = await startTurnServer([
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: "draft-1",
+						name: "draft_write",
+						arguments: { text: draftText },
+					},
+				],
+			},
+			{
+				text: "",
+				toolCalls: [{ id: "commit-1", name: "commit_draft", arguments: {} }],
+			},
+		]);
+		const response = await fetch(`${running.origin}/api/stories/s1/turns`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ text: "我推门。", mode: "deep" }),
+		});
+		expect(response.status).toBe(200);
+		const frames = await new FrameStream(response).readAll();
+		const names = eventNames(frames);
+		const completed = frameData(frames, "turn.completed");
+		const committed = frameData(frames, "turn.committed");
+
+		expect(frameData(frames, "draft.replace")).toEqual({
+			text: draftText,
+			version: 1,
+		});
+		expect(committed).toMatchObject({
+			storyId: "s1",
+			nodeId: completed.node.id,
+			commit: "tool",
+		});
+		expect(committed.blocks).toEqual(completed.blocks);
+		expect(names.indexOf("draft.replace")).toBeLessThan(
+			names.indexOf("turn.committed"),
+		);
+		expect(names.indexOf("turn.committed")).toBeLessThan(
+			names.indexOf("turn.completed"),
+		);
+		expect(completed.node.raw).toBe(draftText);
+		expect(completed.trace.deep).toMatchObject({
+			commit: "tool",
+			drift: null,
+		});
+		expect(client.requests).toHaveLength(2);
+
+		const run = running.store.getTurnRunForNode(completed.node.id);
+		expect(run?.status).toBe("completed");
+		const events = running.store.listTurnRunEvents(run?.runId as string);
+		expect(JSON.stringify(events)).not.toContain("山门缓缓打开");
+	});
+
 	it("回合请求的 mode 覆盖故事设置，深回合正常生成并记录上限", async () => {
 		const { running, client } = await startTurnServer([
 			{ text: "深回合的回复。" },

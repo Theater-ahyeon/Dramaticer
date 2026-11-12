@@ -159,6 +159,8 @@ describe("回合模式与读取工具软上限", () => {
 			toolCallCount: 0,
 			durationMs: expect.any(Number),
 			stopReason: "completed",
+			commit: "auto",
+			drift: "missing_commit",
 		});
 		expect(result.node.raw).toBe("井底有回声。");
 	});
@@ -187,7 +189,7 @@ describe("回合模式与读取工具软上限", () => {
 		expect(result.trace.deep?.stopReason).toBe("completed");
 	});
 
-	it("第 41 次工具调用被拒绝，运行正常收束并记录 max_tool_calls", async () => {
+	it("第 41 次工具调用被拒绝，没有提交草稿时不写楼层并记录上限", async () => {
 		const { store } = openTempStore();
 		seedStory(store);
 		const calls = Array.from({ length: 41 }, (_, index) => ({
@@ -198,44 +200,44 @@ describe("回合模式与读取工具软上限", () => {
 			{ text: "", toolCalls: calls },
 		]);
 
-		const result = await runChatTurn({
-			store,
-			client,
-			storyId: "s1",
-			userText: "我把井底翻了个遍。",
-			template: createDefaultContextTemplate({
+		await expect(
+			runChatTurn({
+				store,
+				client,
+				storyId: "s1",
+				userText: "我把井底翻了个遍。",
+				template: createDefaultContextTemplate({
+					structuredOutput: "function-call",
+				}),
+				providers: providers(store),
+				budgetTokens: 4_000,
 				structuredOutput: "function-call",
+				turnMode: "deep",
 			}),
-			providers: providers(store),
-			budgetTokens: 4_000,
-			structuredOutput: "function-call",
-			turnMode: "deep",
-		});
+		).rejects.toThrow("工具调用上限");
 
 		expect(requests.length).toBe(1);
-		expect(result.trace.turnMode).toBe("deep");
-		expect(result.trace.deep).toMatchObject({
-			maxToolCalls: 40,
-			toolCallCount: 40,
-			stopReason: "max_tool_calls",
-		});
-		expect(result.trace.tools.calls).toHaveLength(41);
-		expect(result.trace.tools.calls.slice(0, 40)).toEqual(
-			calls.slice(0, 40).map(() => ({
-				name: "state_get",
-				ok: true,
-				error: null,
-				permission: "read",
-			})),
+		expect(store.getHead("s1")?.role).toBe("user");
+		const runs = store.listTurnRuns("s1");
+		expect(runs).toHaveLength(1);
+		expect(runs[0]).toMatchObject({ status: "failed", nodeId: null });
+		const events = store.listTurnRunEvents(runs[0]?.runId as string);
+		expect(events.filter((event) => event.kind === "tool.call")).toHaveLength(
+			41,
 		);
-		expect(result.trace.tools.calls[40]).toMatchObject({
-			name: "state_get",
+		const results = events.filter((event) => event.kind === "tool.result");
+		expect(results).toHaveLength(41);
+		expect(results.at(-1)?.payload).toMatchObject({
 			ok: false,
 			error: expect.stringContaining("工具调用次数已达上限"),
 		});
+		expect(events.slice(-2).map((event) => event.kind)).toEqual([
+			"limit",
+			"error",
+		]);
 	});
 
-	it("假时钟越过时长上限后不再发出请求，记录 timeout", async () => {
+	it("假时钟越过时长上限后不再发出请求，没有提交草稿时不写楼层", async () => {
 		const { store } = openTempStore();
 		seedStory(store);
 		let clock = 0;
@@ -258,26 +260,35 @@ describe("回合模式与读取工具软上限", () => {
 			},
 		};
 
-		const result = await runChatTurn({
-			store,
-			client: withClock,
-			storyId: "s1",
-			userText: "我等着。",
-			template: createDefaultContextTemplate({
+		await expect(
+			runChatTurn({
+				store,
+				client: withClock,
+				storyId: "s1",
+				userText: "我等着。",
+				template: createDefaultContextTemplate({
+					structuredOutput: "function-call",
+				}),
+				providers: providers(store),
+				budgetTokens: 4_000,
 				structuredOutput: "function-call",
+				turnMode: "deep",
+				now: () => clock,
 			}),
-			providers: providers(store),
-			budgetTokens: 4_000,
-			structuredOutput: "function-call",
-			turnMode: "deep",
-			now: () => clock,
-		});
+		).rejects.toThrow("时长上限");
 
 		expect(requests.length).toBe(1);
-		expect(result.trace.deep).toMatchObject({
+		expect(store.getHead("s1")?.role).toBe("user");
+		const runs = store.listTurnRuns("s1");
+		expect(runs[0]).toMatchObject({ status: "failed", nodeId: null });
+		const events = store.listTurnRunEvents(runs[0]?.runId as string);
+		expect(events.slice(-2).map((event) => event.kind)).toEqual([
+			"limit",
+			"error",
+		]);
+		expect(events.at(-2)?.payload).toMatchObject({
+			reason: "timeout",
 			maxDurationMs: 600_000,
-			stopReason: "timeout",
-			durationMs: 600_000,
 		});
 	});
 

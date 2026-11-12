@@ -27,6 +27,8 @@ export const SSE_EVENT_NAMES = {
 	blocksReplace: "blocks.replace",
 	toolCall: "tool.call",
 	turnProgress: "turn.progress",
+	draftReplace: "draft.replace",
+	turnCommitted: "turn.committed",
 	turnCompleted: "turn.completed",
 	turnError: "turn.error",
 } as const;
@@ -97,6 +99,21 @@ export interface TurnProgressPayload {
 	readonly detail: string;
 }
 
+/** 深回合草稿整份替换后的快照；提交前不会写成楼层。 */
+export interface DraftReplacePayload {
+	readonly text: string;
+	readonly version: number;
+}
+
+/** 草稿提交为助手楼层：模型调用提交工具，或运行结束自动提交。 */
+export interface TurnCommittedPayload {
+	readonly storyId: string;
+	readonly runId: string;
+	readonly nodeId: string;
+	readonly blocks: readonly DisplayedContent[];
+	readonly commit: "tool" | "auto";
+}
+
 export interface TurnCompletedPayload {
 	readonly storyId: string;
 	readonly userNode: TimelineNode;
@@ -118,6 +135,8 @@ export interface SseEventMap {
 	"blocks.replace": BlocksReplacePayload;
 	"tool.call": ToolCallPayload;
 	"turn.progress": TurnProgressPayload;
+	"draft.replace": DraftReplacePayload;
+	"turn.committed": TurnCommittedPayload;
 	"turn.completed": TurnCompletedPayload;
 	"turn.error": TurnErrorPayload;
 }

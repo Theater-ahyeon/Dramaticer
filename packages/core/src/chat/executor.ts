@@ -15,6 +15,12 @@ import type {
 import type { TurnRunEventInput } from "../run-log.js";
 import type { AcceptedStateUpdate } from "../structured/types.js";
 import {
+	COMMIT_DRAFT_TOOL_NAME,
+	DRAFT_WRITE_TOOL_NAME,
+	executeDraftCommitTool,
+	executeDraftWriteTool,
+} from "../tools/draft-tools.js";
+import {
 	type ReadToolContext,
 	executeReadTool,
 	isReadToolName,
@@ -29,6 +35,7 @@ import {
 	LEDGER_WRITE_TOOL_NAME,
 	executeLedgerWriteTool,
 } from "../tools/write-tools.js";
+import type { TurnDraftController } from "./draft.js";
 import { DEFAULT_MAX_READ_ROUNDS, assertMaxReadRounds } from "./mode.js";
 import {
 	TextToolStreamFilter,
@@ -86,6 +93,8 @@ export interface ModelTurnOptions {
 	readonly maxToolCalls?: number;
 	/** 运行时长上限（毫秒）；每次发出请求之前检查。 */
 	readonly maxDurationMs?: number;
+	/** 深回合的草稿控制器；控制工具用它整份替换与提交草稿。 */
+	readonly draft?: TurnDraftController | null;
 	/** 工具传输方式；不设置时走原生函数调用。 */
 	readonly toolTransport?: LlmToolTransport;
 	readonly model?: string;
@@ -412,7 +421,8 @@ export async function runModelTurns(
 				}
 			}
 			for (const call of roundCalls) {
-				throwIfAborted(options.signal);
+				const alreadyCommitted = options.draft?.committed === true;
+				if (!alreadyCommitted) throwIfAborted(options.signal);
 				const definition = definitions.get(call.name);
 				const disabled = disabledDefinitions.get(call.name);
 				if (definition !== undefined || disabled !== undefined) {
@@ -485,7 +495,11 @@ export async function runModelTurns(
 				let content: string;
 				let ok = true;
 				let error: string | null = null;
-				if (
+				if (alreadyCommitted && definition.permission !== "control") {
+					ok = false;
+					error = "草稿已经提交，运行已经结束";
+					content = `工具调用失败：${error}`;
+				} else if (
 					options.maxToolCalls !== undefined &&
 					toolCallCount >= options.maxToolCalls
 				) {
@@ -513,6 +527,7 @@ export async function runModelTurns(
 							call.arguments,
 							options.toolContext,
 							proposedStateUpdates,
+							options.draft ?? null,
 						);
 						content = outcome.content;
 						ok = outcome.ok;
@@ -549,6 +564,12 @@ export async function runModelTurns(
 					content,
 					isError: !ok,
 				});
+			}
+			if (options.draft?.committed === true) {
+				stopReason = "completed";
+				finalText = options.draft.text;
+				blocks = parseBlocks(finalText);
+				break;
 			}
 			if (hitToolCallLimit) {
 				stopReason = "max_tool_calls";
@@ -614,13 +635,14 @@ interface RoundToolCall {
 
 /**
  * 按权限执行一次工具调用：只读直接执行，待提交写入只收集，
- * 侧效应工具只登记，控制工具交给运行句柄（后续任务）。
+ * 侧效应工具只登记，控制工具交给运行内的草稿控制器。
  */
 async function runTool(
 	definition: DeepToolDefinition,
 	args: JsonObject,
 	context: ReadToolContext,
 	proposed: AcceptedStateUpdate[],
+	draft: TurnDraftController | null,
 ): Promise<{ content: string; ok: boolean; error: string | null }> {
 	switch (definition.permission) {
 		case "read": {
@@ -658,8 +680,20 @@ async function runTool(
 		}
 		case "side_effect":
 			return { content: "已登记，后台会处理。", ok: true, error: null };
-		case "control":
-			throw new Error(`控制工具 ${definition.name} 需要运行句柄，本阶段不执行`);
+		case "control": {
+			if (draft === null) {
+				throw new Error(`控制工具 ${definition.name} 没有运行句柄`);
+			}
+			if (definition.name === DRAFT_WRITE_TOOL_NAME) {
+				return executeDraftWriteTool(args, draft);
+			}
+			if (definition.name === COMMIT_DRAFT_TOOL_NAME) {
+				return executeDraftCommitTool(args, draft);
+			}
+			throw new Error(
+				`工具 ${definition.name} 声明为控制工具，但没有对应的运行句柄实现`,
+			);
+		}
 	}
 }
 

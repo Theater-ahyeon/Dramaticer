@@ -1,12 +1,19 @@
 import type {
 	DisplayedContent,
 	SseEvent,
+	TurnCommittedPayload,
 	TurnCompletedPayload,
 } from "@dramaticer/protocol";
 
 export interface ToolCallRecord {
 	readonly name: string;
 	readonly ok: boolean;
+}
+
+/** 深回合投影出来的草稿；提交前不写楼层。 */
+export interface LiveDraft {
+	readonly text: string;
+	readonly version: number;
 }
 
 /** 正在流式生成的回合；完成后页面重新取路径并丢弃这份草稿。 */
@@ -17,6 +24,8 @@ export interface TurnDraft {
 	readonly thinking: string;
 	readonly blocks: readonly DisplayedContent[];
 	readonly tools: readonly ToolCallRecord[];
+	readonly liveDraft: LiveDraft | null;
+	readonly committed: TurnCommittedPayload | null;
 	readonly completed: TurnCompletedPayload | null;
 	readonly errorMessage: string | null;
 }
@@ -29,6 +38,8 @@ export function createTurnDraft(): TurnDraft {
 		thinking: "",
 		blocks: [],
 		tools: [],
+		liveDraft: null,
+		committed: null,
 		completed: null,
 		errorMessage: null,
 	};
@@ -56,6 +67,16 @@ export function applyTurnEvent(draft: TurnDraft, event: SseEvent): TurnDraft {
 			};
 		case "turn.progress":
 			return draft;
+		case "draft.replace":
+			return {
+				...draft,
+				liveDraft: {
+					text: event.data.text,
+					version: event.data.version,
+				},
+			};
+		case "turn.committed":
+			return { ...draft, committed: event.data };
 		case "turn.completed":
 			return {
 				...draft,
