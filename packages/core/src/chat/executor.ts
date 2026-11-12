@@ -46,6 +46,10 @@ import {
 	pruneToolRoundTrips,
 } from "./context-window.js";
 import type { TurnDraftController } from "./draft.js";
+import {
+	type TurnGuidanceController,
+	formatGuidanceMessage,
+} from "./guidance.js";
 import { DEFAULT_MAX_READ_ROUNDS, assertMaxReadRounds } from "./mode.js";
 import type { TurnNoteController } from "./notes.js";
 import {
@@ -113,6 +117,8 @@ export interface ModelTurnOptions {
 	readonly draft?: TurnDraftController | null;
 	/** 深回合的手记控制器；note_write 用它收集提交前的修改。 */
 	readonly notes?: TurnNoteController | null;
+	/** 运行内的追加要求；每次请求前整批取出并作为用户消息追加。 */
+	readonly guidance?: TurnGuidanceController | null;
 	/** 工具传输方式；不设置时走原生函数调用。 */
 	readonly toolTransport?: LlmToolTransport;
 	readonly model?: string;
@@ -279,6 +285,10 @@ export async function runModelTurns(
 					messages.splice(0, messages.length, ...pruned.messages);
 					contextOmitted = addContextOmission(contextOmitted, pruned.omitted);
 				}
+			}
+			// 指引在成对省略之后追加，保证不会被当作较早的工具往返省略掉。
+			for (const text of options.guidance?.drain() ?? []) {
+				messages.push({ role: "user", content: formatGuidanceMessage(text) });
 			}
 			const request = {
 				messages,

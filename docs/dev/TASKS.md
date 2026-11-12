@@ -991,7 +991,8 @@
   - 测试：固定 fixture 的 Gemini 两轮工具调用，断言第二次请求里 `thoughtSignature` 与第一轮响应逐字节一致；没有签名的渠道不受影响；新增一个 `*.live.test.ts` 用 `data/channels.yaml` 的中转渠道跑两轮工具调用，默认跳过，`DRAMATICER_DEEP_LIVE=1` 时执行。
   验收：签名在两轮请求之间原样保留；缺失签名的响应不产生空对象；原生传输与文本传输都不因 `native` 字段报错；live 测试单独运行时两轮工具循环成功；`pnpm check` 通过。
 
-- [ ] **R3b-T09 运行中追加要求** | 依赖：R3b-T01、R3b-T03、R3b-T04 | DESIGN §10.1
+- [x] **R3b-T09 运行中追加要求** | 依赖：R3b-T01、R3b-T03、R3b-T04 | DESIGN §10.1
+  完成：2026-11-12 深回合句柄 `pushGuidance`、server 句柄表与 `POST /api/stories/:id/turns/:runId/steering`、`turn.steering` 回显与 `turn.started.runId`；指引只进入下一次请求，不写楼层。
   做什么：
   - core 的深回合运行暴露控制句柄 `pushGuidance(text)`：每次最多接受 5 条、每条去空白后 1–2,000 字；在下一个步骤开始前取出，作为新的用户消息追加到消息序列（前缀标明这是玩家在运行中追加的指引），并写 `steering` 运行事件；已经结束的运行拒绝追加。
   - server 维护运行中的句柄表（`runId` 到句柄）；`POST /api/stories/:id/turns/:runId/steering` 请求 `{text}`，返回 202；未知或不属于该故事的运行返回 404，已结束返回 409，空文本或超长返回 400 并指出字段。`turn.started` 带 `runId`。

@@ -2,6 +2,7 @@ export * from "./context-window.js";
 export * from "./deep-turn.js";
 export * from "./draft.js";
 export * from "./executor.js";
+export * from "./guidance.js";
 export * from "./mode.js";
 export * from "./notes.js";
 export * from "./profile.js";

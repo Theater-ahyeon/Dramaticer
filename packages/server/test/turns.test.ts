@@ -770,6 +770,100 @@ describe("POST /api/stories/:id/turns", () => {
 		expect(JSON.stringify(events)).not.toContain("山门缓缓打开");
 	});
 
+	it("运行中追加要求进入下一次请求，事件与状态码按运行状态返回", async () => {
+		const gate = Promise.withResolvers<void>();
+		const { running, client } = await startTurnServer([
+			{
+				text: "",
+				toolCalls: [{ id: "call-1", name: "state_get", arguments: {} }],
+				wait: gate.promise,
+			},
+			{ text: "山神收回了手。" },
+		]);
+		running.store.createStory({ id: "s2", title: "另一个故事" });
+		const response = await fetch(`${running.origin}/api/stories/s1/turns`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ text: "我点亮火把。", mode: "deep" }),
+		});
+		expect(response.status).toBe(200);
+		const stream = new FrameStream(response);
+		const startedFrames = await stream.readUntil(
+			(frame) => frame.event === "turn.started",
+		);
+		const runId = frameData(startedFrames, "turn.started").runId;
+		expect(typeof runId).toBe("string");
+		await vi.waitFor(() => expect(client.requests).toHaveLength(1));
+
+		const steer = (storyId: string, id: string, text: unknown) =>
+			fetch(`${running.origin}/api/stories/${storyId}/turns/${id}/steering`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ text }),
+			});
+
+		const first = await steer("s1", runId as string, "不要杀他");
+		expect(first.status).toBe(202);
+		expect(await first.json()).toEqual({ runId });
+		const firstEcho = await stream.readUntil(
+			(frame) => frame.event === "turn.steering",
+		);
+		expect(frameData(firstEcho, "turn.steering")).toEqual({
+			runId,
+			text: "不要杀他",
+		});
+
+		const second = await steer("s1", runId as string, "让他先说完");
+		expect(second.status).toBe(202);
+		const secondEcho = await stream.readUntil(
+			(frame) => frame.event === "turn.steering",
+		);
+		expect(frameData(secondEcho, "turn.steering")).toEqual({
+			runId,
+			text: "让他先说完",
+		});
+
+		const empty = await steer("s1", runId as string, "   ");
+		expect(empty.status).toBe(400);
+		const emptyBody = (await empty.json()) as {
+			error: { details?: { path?: string } };
+		};
+		expect(emptyBody.error.details?.path).toBe("text");
+		const tooLong = await steer("s1", runId as string, "字".repeat(2_001));
+		expect(tooLong.status).toBe(400);
+		const unknown = await steer("s1", "missing-run", "继续");
+		expect(unknown.status).toBe(404);
+		const otherStory = await steer("s2", runId as string, "继续");
+		expect(otherStory.status).toBe(404);
+
+		gate.resolve();
+		const frames = await stream.readAll();
+		const completed = frameData(frames, "turn.completed");
+		expect(completed.node.raw).toBe("山神收回了手。");
+		expect(running.store.listStoryNodes("s1")).toHaveLength(2);
+
+		const guidance = client.requests[1]?.messages
+			.filter((message) => message.role === "user")
+			.map((message) => message.content)
+			.slice(-2);
+		expect(guidance).toEqual([
+			"【玩家在运行中追加的指引】\n不要杀他",
+			"【玩家在运行中追加的指引】\n让他先说完",
+		]);
+		const steering = running.store
+			.listTurnRunEvents(runId as string)
+			.filter((event) => event.kind === "steering");
+		expect(steering).toHaveLength(2);
+		expect(JSON.stringify(steering)).not.toContain("不要杀他");
+
+		const finished = await steer("s1", runId as string, "结束以后");
+		expect(finished.status).toBe(409);
+		const finishedBody = (await finished.json()) as {
+			error: { code: string };
+		};
+		expect(finishedBody.error.code).toBe("conflict");
+	});
+
 	it("回合请求的 mode 覆盖故事设置，深回合正常生成并记录上限", async () => {
 		const { running, client } = await startTurnServer([
 			{ text: "深回合的回复。" },

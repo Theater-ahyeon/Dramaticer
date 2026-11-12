@@ -44,6 +44,7 @@ import {
 	type StorySettingsUpdate,
 	type StoryStore,
 	type TimelineNode,
+	TurnGuidanceError,
 	type TurnMode,
 	type UpdateContextTemplateInput,
 	VISUAL_PROFILE_JOB_KIND,
@@ -144,6 +145,7 @@ import { HttpError, readJsonBody, sendEmpty, sendJson } from "./http.js";
 import type { StoryRuntimeManager } from "./runtime.js";
 import {
 	type TurnCoordinator,
+	type TurnRunRegistry,
 	handleRegenerateStream,
 	handleTurnStream,
 } from "./turns.js";
@@ -153,6 +155,7 @@ export interface ApiRouteOptions {
 	readonly maxJsonBodyBytes: number;
 	readonly runtime: StoryRuntimeManager | null;
 	readonly turns: TurnCoordinator;
+	readonly runs: TurnRunRegistry;
 	readonly scheduler?: BackgroundScheduler | null;
 	readonly log: (line: string) => void;
 	readonly heartbeatMs: number;
@@ -191,6 +194,15 @@ export async function handleApiRequest(
 		const storyId = second;
 		if (third === undefined) {
 			await handleStory(req, res, method, options, storyId);
+			return;
+		}
+		if (third === "turns" && parts.length === 5 && parts[4] === "steering") {
+			const runId = parts[3];
+			if (runId === undefined) {
+				throw new HttpError(404, "not_found", "没有这个接口");
+			}
+			requireMethod(method, ["POST"]);
+			await handleTurnSteering(req, res, options, storyId, runId);
 			return;
 		}
 		if (parts.length === 3) {
@@ -561,6 +573,43 @@ async function handleTurns(
 		directorIntensity: readOptionalIntensity(body.intensity),
 		turnMode: readOptionalMode(body.mode),
 	});
+}
+
+/**
+ * 运行中追加要求：只接受属于该故事、仍在运行且句柄还在的深回合。
+ * 文本校验与队列上限由 core 的句柄负责，这里只做状态映射。
+ */
+async function handleTurnSteering(
+	req: IncomingMessage,
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	storyId: string,
+	runId: string,
+): Promise<void> {
+	requireStory(options.store, storyId);
+	const run = options.store.getTurnRun(runId);
+	if (run === null || run.storyId !== storyId) {
+		throw new HttpError(404, "not_found", `运行不存在：${runId}`);
+	}
+	const active = options.runs.get(runId);
+	if (run.status !== "running" || active === null) {
+		throw new HttpError(409, "conflict", "运行已经结束，不能再追加要求");
+	}
+	const body = await readObjectBody(req, options.maxJsonBodyBytes);
+	assertKnownKeys(body, ["text"]);
+	if (typeof body.text !== "string") {
+		throw fieldError("text", "text 必须是字符串");
+	}
+	try {
+		active.push(body.text);
+	} catch (error) {
+		if (!(error instanceof TurnGuidanceError)) throw error;
+		if (error.reason === "queue_full") {
+			throw new HttpError(409, "conflict", error.message);
+		}
+		throw fieldError("text", error.message);
+	}
+	sendJson(res, 202, { runId });
 }
 
 function readOptionalMode(value: unknown): TurnMode | null {

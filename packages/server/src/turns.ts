@@ -12,6 +12,7 @@ import {
 	type StoryStore,
 	type TurnDraftSnapshot,
 	type TurnMode,
+	type TurnStartedInfo,
 	generateAssistantTurn,
 	regenerateAssistantTurn,
 	resolveTurnMode,
@@ -67,10 +68,42 @@ export class TurnCoordinator {
 	}
 }
 
+/**
+ * 正在运行的深回合句柄表：按 `runId` 找到追加要求的入口。
+ * 运行结束或流关闭时移除，追加请求随后按运行状态返回 409。
+ */
+export interface ActiveTurnRun {
+	readonly runId: string;
+	readonly storyId: string;
+	/** 追加一条指引；校验与拒绝理由由 core 的句柄给出。 */
+	readonly push: (text: string) => void;
+}
+
+export class TurnRunRegistry {
+	readonly #runs = new Map<string, ActiveTurnRun>();
+
+	register(run: ActiveTurnRun): void {
+		this.#runs.set(run.runId, run);
+	}
+
+	unregister(runId: string): void {
+		this.#runs.delete(runId);
+	}
+
+	get(runId: string): ActiveTurnRun | null {
+		return this.#runs.get(runId) ?? null;
+	}
+
+	get size(): number {
+		return this.#runs.size;
+	}
+}
+
 export interface TurnRouteOptions {
 	readonly store: StoryStore;
 	readonly runtime: StoryRuntimeManager | null;
 	readonly turns: TurnCoordinator;
+	readonly runs: TurnRunRegistry;
 	readonly log: (line: string) => void;
 	readonly heartbeatMs: number;
 	readonly scheduler?: BackgroundScheduler | null;
@@ -94,6 +127,7 @@ interface GenerationHooks {
 		readonly detail: string;
 	}) => void;
 	readonly onDraftReplace: (draft: TurnDraftSnapshot) => void;
+	readonly onTurnStarted: (started: TurnStartedInfo) => void;
 	readonly now: () => number;
 }
 
@@ -278,6 +312,14 @@ async function streamTurn(stream: StreamTurnOptions): Promise<void> {
 	let sse: SseStream | null = null;
 	let clientGone = false;
 	let heartbeat: NodeJS.Timeout | undefined;
+	let userNodeId: string | null = null;
+	let started = false;
+	const activeRuns: string[] = [];
+	const sendStarted = (runId: string | null): void => {
+		if (started || sse === null || clientGone || userNodeId === null) return;
+		started = true;
+		sse.send("turn.started", { storyId, userNodeId, runId });
+	};
 	const onClose = (): void => {
 		if (res.writableEnded) return;
 		clientGone = true;
@@ -290,10 +332,9 @@ async function streamTurn(stream: StreamTurnOptions): Promise<void> {
 		}
 		const runtime = await options.runtime.get(storyId);
 		if (clientGone || ticket.signal.aborted) return;
-		const userNodeId = await stream.prepare(runtime, ticket.signal);
+		userNodeId = await stream.prepare(runtime, ticket.signal);
 		if (clientGone || ticket.signal.aborted) return;
 		sse = createSseStream(res);
-		sse.send("turn.started", { storyId, userNodeId });
 		heartbeat = setInterval(
 			() => sse?.comment("ping"),
 			Math.max(1, options.heartbeatMs),
@@ -303,6 +344,22 @@ async function streamTurn(stream: StreamTurnOptions): Promise<void> {
 		let lastBlocksAt = Number.NEGATIVE_INFINITY;
 		let lastDraftAt = Number.NEGATIVE_INFINITY;
 		const result = await stream.run(runtime, ticket.signal, {
+			onTurnStarted: (startedTurn) => {
+				sendStarted(startedTurn.runId);
+				const handle = startedTurn.handle;
+				if (handle === null) return;
+				activeRuns.push(handle.runId);
+				options.runs.register({
+					runId: handle.runId,
+					storyId,
+					push: (text) => {
+						handle.pushGuidance(text);
+						if (!clientGone && sse !== null) {
+							sse.send("turn.steering", { runId: handle.runId, text });
+						}
+					},
+				});
+			},
 			onTextDelta: (delta, snapshot) => {
 				if (clientGone || sse === null) return;
 				sse.send("text.delta", { delta });
@@ -378,6 +435,7 @@ async function streamTurn(stream: StreamTurnOptions): Promise<void> {
 	} catch (error) {
 		if (sse === null) throw error;
 		if (!clientGone) {
+			sendStarted(null);
 			sse.send("turn.error", toTurnError(error));
 			options.log(
 				`回合失败：${error instanceof Error ? error.name : "未知错误"}`,
@@ -386,6 +444,7 @@ async function streamTurn(stream: StreamTurnOptions): Promise<void> {
 	} finally {
 		clearInterval(heartbeat);
 		res.off("close", onClose);
+		for (const runId of activeRuns) options.runs.unregister(runId);
 		ticket.release();
 		sse?.close();
 	}

@@ -28,6 +28,7 @@ export const SSE_EVENT_NAMES = {
 	toolCall: "tool.call",
 	turnProgress: "turn.progress",
 	draftReplace: "draft.replace",
+	turnSteering: "turn.steering",
 	turnCommitted: "turn.committed",
 	turnCompleted: "turn.completed",
 	turnError: "turn.error",
@@ -39,6 +40,8 @@ export type SseEventName =
 export interface TurnStartedPayload {
 	readonly storyId: string;
 	readonly userNodeId: string;
+	/** 深回合的运行 id；快回合没有运行记录，为 null。 */
+	readonly runId: string | null;
 }
 
 export interface TextDeltaPayload {
@@ -105,6 +108,12 @@ export interface DraftReplacePayload {
 	readonly version: number;
 }
 
+/** 运行中接受的追加要求回显；不写楼层，只影响后续步骤。 */
+export interface TurnSteeringPayload {
+	readonly runId: string;
+	readonly text: string;
+}
+
 /** 草稿提交为助手楼层：模型调用提交工具，或运行结束自动提交。 */
 export interface TurnCommittedPayload {
 	readonly storyId: string;
@@ -136,6 +145,7 @@ export interface SseEventMap {
 	"tool.call": ToolCallPayload;
 	"turn.progress": TurnProgressPayload;
 	"draft.replace": DraftReplacePayload;
+	"turn.steering": TurnSteeringPayload;
 	"turn.committed": TurnCommittedPayload;
 	"turn.completed": TurnCompletedPayload;
 	"turn.error": TurnErrorPayload;

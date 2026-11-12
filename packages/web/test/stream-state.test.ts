@@ -19,7 +19,11 @@ describe("流式回合归并", () => {
 		let draft = createTurnDraft();
 		draft = applyTurnEvent(
 			draft,
-			event("turn.started", { storyId: "s", userNodeId: "u1" }),
+			event("turn.started", {
+				storyId: "s",
+				userNodeId: "u1",
+				runId: null,
+			}),
 		);
 		draft = applyTurnEvent(draft, event("text.delta", { delta: "黑" }));
 		draft = applyTurnEvent(draft, event("text.delta", { delta: "夜" }));

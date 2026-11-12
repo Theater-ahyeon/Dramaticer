@@ -75,6 +75,8 @@ export function applyTurnEvent(draft: TurnDraft, event: SseEvent): TurnDraft {
 					version: event.data.version,
 				},
 			};
+		case "turn.steering":
+			return draft;
 		case "turn.committed":
 			return { ...draft, committed: event.data };
 		case "turn.completed":

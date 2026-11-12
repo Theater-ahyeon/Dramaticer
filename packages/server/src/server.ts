@@ -43,7 +43,7 @@ import {
 } from "./runtime.js";
 import { SSE_HEARTBEAT_MS } from "./sse.js";
 import { resolveStaticFile, serveStaticFile } from "./static-files.js";
-import { TurnCoordinator } from "./turns.js";
+import { TurnCoordinator, TurnRunRegistry } from "./turns.js";
 
 /** 角色卡以 base64 JSON 上传，这个上限要能装下一张卡。 */
 export const MAX_JSON_BODY_BYTES = 25 * 1024 * 1024;
@@ -101,6 +101,7 @@ interface HandlerOptions {
 	readonly maxJsonBodyBytes: number;
 	readonly runtime: StoryRuntimeManager | null;
 	readonly turns: TurnCoordinator;
+	readonly runs: TurnRunRegistry;
 	readonly scheduler: BackgroundScheduler | null;
 	readonly channelsPath: string | null;
 	readonly channelsEnv: Readonly<Record<string, string | undefined>>;
@@ -155,6 +156,7 @@ export async function startServer(
 					createEmbedder: channels.createEmbedder,
 				});
 	const turns = new TurnCoordinator();
+	const runs = new TurnRunRegistry();
 	const scheduler =
 		runtime === null
 			? null
@@ -180,6 +182,7 @@ export async function startServer(
 			maxJsonBodyBytes: options.maxJsonBodyBytes ?? MAX_JSON_BODY_BYTES,
 			runtime,
 			turns,
+			runs,
 			scheduler,
 			channelsPath: channels?.path ?? null,
 			channelsEnv: channels?.env ?? process.env,
@@ -307,6 +310,7 @@ async function handleRequest(
 			maxJsonBodyBytes: options.maxJsonBodyBytes,
 			runtime: options.runtime,
 			turns: options.turns,
+			runs: options.runs,
 			scheduler: options.scheduler,
 			channelsPath: options.channelsPath,
 			channelsEnv: options.channelsEnv,

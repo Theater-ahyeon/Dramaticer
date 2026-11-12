@@ -64,6 +64,7 @@ import {
 	TurnAbortedError,
 	runModelTurns,
 } from "./executor.js";
+import { TurnGuidanceController, type TurnStartedInfo } from "./guidance.js";
 import {
 	type TurnMode,
 	assertDeepContextTokenLimit,
@@ -129,6 +130,8 @@ export interface ChatTurnOptions {
 	readonly onToolProgress?: (event: ToolProgressEvent) => void;
 	/** 深回合草稿整份替换后的快照；服务端用它发 SSE。 */
 	readonly onDraftReplace?: (draft: TurnDraftSnapshot) => void;
+	/** 运行开始后、第一次模型请求前的启动信息；快回合没有运行句柄。 */
+	readonly onTurnStarted?: (started: TurnStartedInfo) => void;
 	readonly now?: () => number;
 }
 
@@ -504,6 +507,25 @@ export async function generateAssistantTurn(
 		resolved.mode === "deep" && resolved.deep.notesEnabled
 			? new TurnNoteController()
 			: null;
+	const guidance =
+		resolved.mode === "deep"
+			? new TurnGuidanceController(runId as string, (text) => {
+					onRunEvent?.({
+						kind: "steering",
+						payload: { textLength: text.length },
+					});
+				})
+			: null;
+	options.onTurnStarted?.({
+		runId,
+		handle:
+			guidance === null
+				? null
+				: {
+						runId: guidance.runId,
+						pushGuidance: (text) => guidance.push(text),
+					},
+	});
 	// 深回合在组装后的消息之后注入手记；快回合不注入。
 	const messages =
 		notes === null
@@ -541,6 +563,7 @@ export async function generateAssistantTurn(
 		onRunEvent,
 		draft,
 		notes,
+		guidance,
 		now,
 	} as const;
 	let turn: ModelTurnResult;
@@ -572,6 +595,7 @@ export async function generateAssistantTurn(
 				runId,
 				status: error instanceof TurnAbortedError ? "aborted" : "failed",
 			});
+			guidance?.close();
 		}
 		if (resolved.mode === "deep") throw error;
 		if (
@@ -609,6 +633,7 @@ export async function generateAssistantTurn(
 			payload: { message, reason: turn.stopReason },
 		});
 		options.store.finishTurnRun({ runId: failedRunId, status: "failed" });
+		guidance?.close();
 		throw new DeepTurnWithoutCommitError(message, failedRunId, turn.stopReason);
 	}
 	const finalText = completion.text;
@@ -666,6 +691,7 @@ export async function generateAssistantTurn(
 					options: options.illustrate,
 				})
 			: { accepted: 0, rejected: [], calls: [] };
+		guidance?.close();
 		const runTrace = finishRunWithTrace(
 			options.store,
 			runId,
