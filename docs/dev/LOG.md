@@ -317,3 +317,5 @@
 - 2026-11-12 | S279 | R1-T06 | DONE | 迁移 v37 新增 `lore_prefilter`（楼层主键、故事一致性触发器）；新增 `memory/lore-prefilter.ts`（二字窗口 BM25 预筛、严格 id 校验、只处理最新助手楼层）与默认注册表的 `lore_prefilter` 任务（`gap` 档、`settled` 入队）；`StoryStore` 新增 `saveLorePrefilter`、`getLorePrefilter`；`createLoreSlotProvider` 优先读参照楼层或其父楼层的预筛结果，没有记录时回退关键词与实体命中；12 个测试；门禁通过（163 个测试文件、1472 个测试、4 个 live 跳过）
 
 - 2026-11-12 | S280 | R1-T08 | DONE | 迁移 v38 新增 `context_packs`（玩家楼层主键、故事一致性触发器）；新增 `context/pack-format.ts` 与 `context/pack.ts`（完整组装结果、引用、台账快照版本、模板与槽位配置指纹、严格解析）；`generateAssistantTurn` 在组装后写入包，重复生成同一玩家楼层直接读包；`ContextSlotProvider` 新增可选 `packKey`，槽位内容新增可选 `references`，世界书槽位记录注入条目 id、现场分析槽位记录分析楼层；失效条件为指纹变化、条目被删、分析楼层不在 head 路径、检索楼层不在参照路径；ADR-0085；7 个测试；门禁通过（164 个测试文件、1479 个测试、4 个 live 跳过）
+
+- 2026-11-12 | S281 | R1-T99.a | DONE | 记忆增强验收：门禁通过（164 个测试文件、1480 个测试、4 个 live 跳过），live 测试 3 个文件全部通过；父子分块、重排序、八段式压缩、世界书预筛、上下文包五项逐条核对通过；融合命中@5/@10/@20 从 R1 最小集的 148/170/179 升到 153/171/181；重排序后状态题@5/@10 下降，保持 `reranker.enabled: false`；三份 20 楼八段压缩为 1,146/1,210/1,491 token，新增 `DEFAULT_COMPRESSION_TOKEN_LIMIT = 2_000`（散文摘要保持 800）后完整八段注入，ADR-0086；复核 I5、I11、I12 通过；`docs/dev/reports/R1.md` 第十二节

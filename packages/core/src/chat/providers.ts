@@ -406,9 +406,13 @@ export function createMemorySlotProvider(
 export interface SummarySlotProviderOptions {
 	/** 摘要段占用的 token 上限，默认 800。 */
 	readonly tokenLimit?: number;
+	/** 八段式压缩占用的 token 上限，默认 2,000。 */
+	readonly compressionTokenLimit?: number;
 	readonly tokenEstimator?: TokenEstimator;
 }
 export const DEFAULT_SUMMARY_TOKEN_LIMIT = 800;
+/** 实测三份 20 楼章节压缩为 1,146、1,210、1,491 token，默认预算要容得下完整八段。 */
+export const DEFAULT_COMPRESSION_TOKEN_LIMIT = 2_000;
 
 const SUMMARY_HEADER = "故事摘要：";
 const COMPRESSION_HEADER = "故事压缩：";
@@ -496,20 +500,26 @@ function buildCompressionSlotContent(
 
 /**
  * 返回当前分支下有效的主线摘要与最近一条章节摘要；超过 token 上限时
- * 从最久远的摘要开始丢弃。存在有效压缩时改为注入压缩，用户意志段不裁剪。
+ * 从最久远的摘要开始丢弃。存在有效压缩时改为注入压缩，压缩段按
+ * `compressionTokenLimit` 裁剪，用户意志段不裁剪。
  */
 export function createSummarySlotProvider(
 	store: StoryStore,
 	options: SummarySlotProviderOptions = {},
 ): ContextSlotProvider {
 	const tokenLimit = options.tokenLimit ?? DEFAULT_SUMMARY_TOKEN_LIMIT;
+	const compressionTokenLimit =
+		options.compressionTokenLimit ?? DEFAULT_COMPRESSION_TOKEN_LIMIT;
 	if (!Number.isInteger(tokenLimit) || tokenLimit < 1) {
 		throw new Error("摘要槽位的 token 上限必须是正整数");
+	}
+	if (!Number.isInteger(compressionTokenLimit) || compressionTokenLimit < 1) {
+		throw new Error("压缩槽位的 token 上限必须是正整数");
 	}
 	const estimator = options.tokenEstimator ?? createTokenEstimator();
 	const header = SUMMARY_HEADER;
 	return {
-		packKey: `summary:${tokenLimit}`,
+		packKey: `summary:${tokenLimit}:${compressionTokenLimit}`,
 		provide(request): ContextSlotContent | null {
 			const headNodeId =
 				request.nodeId ?? store.getHead(request.storyId)?.id ?? null;
@@ -523,7 +533,7 @@ export function createSummarySlotProvider(
 					store,
 					compressions,
 					headNodeId,
-					tokenLimit,
+					compressionTokenLimit,
 					estimator,
 				);
 			}
