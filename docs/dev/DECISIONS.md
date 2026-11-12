@@ -1479,3 +1479,17 @@
   - 新增 `packages/core/src/plugins/code-plugin-installer.ts`（`CodePluginManager`、`parseNpmSpec`、`CODE_PLUGIN_MANIFEST_FILENAME`），经 `plugins/index.ts` 从 `@dramaticer/core` 根导出。
   - 安装记录存储接口新增 `deleteCodePluginInstallation`，`StoryStore` 直接实现；不需要新迁移。
   - 测试 `packages/core/test/code-plugin-installer.test.ts` 使用本地 fixture：npm 用本地打包的 tarball 与假 registry fetch，git 用本地仓库，zip 用本地压缩文件，均不访问网络。
+
+## ADR-0094 ST 一致性测试台的沙箱副本与录制分层（2026-11-12）
+
+- **背景**：C-T01 要求把玩家的 ST 程序与数据复制到私有目录、指向本地录制服务做零模型 prompt 录制，再用 58 个预设 × 卡片 × 片段驱动。整件事包含四块可以独立验收的工作：副本与录制、启动与驱动、逐条比对、共存评测；一次会话无法完成。副本复制哪些文件、请求记录长什么样、怎样证明不调用模型，又会决定后面三块的实现与净室证据。
+- **选项**：
+  - 在仓库外写一次性脚本：无法被测试覆盖，也无法复用给 C-T02–C-T05 的一致性测试。
+  - 把测试台放进 `packages/st-compat/src/st-bench` 并拆成四个子任务：代码在仓库内，测试不访问网络，私密产物留在私有目录；采纳。
+  - 把 ST 前端当依赖打包进仓库：AGPL-3.0 代码进入仓库，超出兼容插件自身的范围，也与"只以录制行为作为规格"的净室规则冲突。
+- **决定**：
+  - C-T01 拆为 a（副本与录制）、b（启动与驱动）、c（比对与覆盖）、d（共存评测），按依赖顺序执行。
+  - 沙箱只复制程序允许清单与驱动器需要的数据子集；第三方前端扩展、服务器插件、`secrets.json`、`settings.json`、缓存与备份不复制；`node_modules` 用 junction 指向源目录，清单 `sandbox.json` 记录来源、版本与 AGPL-3.0。
+  - 录制服务只监听本机，记录生成请求的正文与脱敏后的请求头、查询参数，返回固定桩（非流式 JSON、流式 SSE）。服务不持有模型客户端；测试把全局 `fetch` 替换成抛错函数，证明录制期间零外呼。
+  - 录制产物固定为 `requests/NNNNN.json` 与 `index.jsonl`，后续比对与覆盖统计只读这两种文件；所有产物默认落在私有根目录，不进入提交。
+- **影响**：`packages/st-compat` 新增 `st-bench` 子模块与 `st-bench` 脚本，无新增依赖；C-T02–C-T05 的一致性测试与共存评测共用同一套录制、索引与报告口径；`core` 不出现 ST 概念（I1、I15）。

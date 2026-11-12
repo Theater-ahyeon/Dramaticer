@@ -3,91 +3,43 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-12 会话 318：完成 P4.f P4 验收。逐条核对 P4 总验收与 P4.a 至 P4.e 的验收标准，复核 I4、I12、I15、I16、I17、I18；5 个测试文件、45 个测试单独重跑通过，`node scripts/check-invariants.mjs` 通过；新增 `docs/dev/reports/P4.md`，记录总验收、五个子任务的证据与限制。门禁通过（192 个测试文件、1695 个测试、5 个跳过）。
+- 2026-11-12 会话 319：把 C-T01 拆成 C-T01.a 至 C-T01.d，完成 C-T01.a 沙箱副本与零模型录制服务（ADR-0094）。`packages/st-compat/src/st-bench/` 新增 `sandbox.ts`、`recorder.ts`、`cli.ts`，`st-compat` 新增 `st-bench` 脚本；10 个测试；真实副本 `eval-private/st-sandbox/st`（ST 1.18.0）与录制冒烟通过；原目录在复制窗口内没有新写入；副本与录制被 git 忽略。门禁通过（193 个测试文件、1705 个测试、5 个跳过）。
 
-## 下一步（会话 319 先做）
-1. 按 TASKS 从上往下选任务：P5 依赖 M5-T99（未完成），跳过；下一个是 **C-T01 ST 沙箱与 prompt 一致性测试台**（依赖 P2，已满足）。
-2. C-T01 要点：把 `D:\SillyTavern\` 的程序与数据复制到 `eval-private/st-sandbox/` 运行（原目录只读，不得调用模型，I14）；启动本地录制服务只记录请求；用 58 个预设 × 卡片 × 对话片段驱动 ST 生成并录下请求；实现逐条比对的覆盖率与差异清单；忠实模式与共存模式分开；净室规则（不移植 ST 源码）；产物只留在 `eval-private/`。这是大任务，必要时先在 TASKS 里拆子任务，一个会话只做第一个。
-3. 其余可做任务：C-T02 起依赖 C-T01；H-T00 依赖 R5-T99、R3b-T99、E-T01（均已完成）；X1 依赖 R1-T99.a、R2-T99（均已完成）。M5-T00 依赖 R6-T99，R6-T00 依赖 H-T00，都不能先做。M6-T99 等待 HUMAN-15。
+## 下一步（会话 320 先做）
+1. 按 TASKS 从上往下选：C-T01 的父任务保持 `[~]`，第一个未完成的子任务是 **C-T01.b 沙箱 ST 启动与生成驱动**（依赖 C-T01.a，已满足）。
+2. C-T01.b 要点：
+   - 沙箱副本已存在，但只复制了 `data/default-user/OpenAI Settings`。补齐卡片、世界书、对话片段用 `node packages/st-compat/dist/st-bench/cli.js sandbox --source "D:\SillyTavern" --replace`（默认数据子集约 500 MB；`node_modules` 默认用 junction 链到源目录）。`pnpm --filter @dramaticer/st-compat st-bench -- ...` 会把 `--` 当成参数，直接用 node 调 `dist`。
+   - ST 的 `config.yaml` 已复制。启动前把数据根目录、监听地址、端口改到沙箱内部（只监听 127.0.0.1），并写一份不含密钥的 `data/default-user/settings.json`，把自定义 OpenAI 兼容端点指向录制服务、模型名用桩模型。`secrets.json` 不能复制，沙箱里也不应该有真实密钥。
+   - 录制服务：`startPromptRecorder({dir})` 或 `node packages/st-compat/dist/st-bench/cli.js record --dir <录制目录> [--port 8130] [--max-requests N]`；端点写 `http://127.0.0.1:<port>/v1`；`closed` 在服务关闭时完成，CLI 用 SIGINT 停止。
+   - 驱动 ST 前端需要 Playwright：`@playwright/test` 1.63.0 与浏览器已装在 `packages/web`（devDependency），`packages/st-compat` 还没有这个依赖。加进 st-compat devDependencies 时要在 `docs/dev/DEPENDENCIES.md` 登记，并用 pnpm 安装。
+   - 还没实现：run 清单（组合 → 请求记录的对应关系）、断点续跑、沙箱 ST 启动器、settings.json 生成。
+3. 其余可做任务：C-T02 起依赖 C-T01；H-T00 依赖 R5-T99、R3b-T99、E-T01（均已完成）；X1 依赖 R1-T99.a、R2-T99（均已完成）。M5-T00 依赖 R6-T99，不能先做；M6-T99 等待 HUMAN-15。
 
-## P4.f 验收结论（代码事实）
-- 报告 `docs/dev/reports/P4.md`：总验收 6 条全部通过；P4.a 至 P4.e 的验收项逐条列出证据；不变量 I4、I12、I15、I16、I18 通过，I17 运行时部分通过（超时预算、`lifecycle/failed` Trace、注册项撤销有测试），`dramaticer explain` 展示尚未接入，报告中列为限制。
-- 限制：代码插件目前只有库 API（清单、安装确认、worker、安装/更新/卸载、文档与示例）；命令行与 server 未接入，因此没有跨进程端到端安装流程；worker 是故障隔离与能力中介，不是对抗性沙箱。
-- 复现：`pnpm exec vitest run packages/core/test/code-plugins.test.ts packages/core/test/code-plugin-installations.test.ts packages/core/test/code-plugin-worker.test.ts packages/core/test/code-plugin-installer.test.ts packages/core/test/code-plugin-examples.test.ts`（45 个测试）。
-
-## P4.e 文档与示例（代码事实）
-- 文档 `docs/plugins/code-plugins.md`：清单字段表（`format`、`formatVersion`、`name`、`version`、`tier`、`engine`、`entry`、`title`、`description`、`inject`、`provide`、`configSchema`、`permissions`）、四类权限范围、Context API 全部成员（`name`、`version`、`config`、`network`、`readFile`、`writeFile`、`model`、`writeLedger`、`slot`、`tool`、`blockType`、`mechanism`、`onDispose`、`log`）、生命周期与失败处理、Trace 字段、安装更新与卸载、示例与安全边界。
-- 示例 `docs/plugins/examples/code-travel-log/dramaticer.plugin.json`：名称 `example.travel-log`、版本 `1.0.0`、`engine` 为 `>=0.1.0 <0.2.0`、入口 `plugin.mjs`、权限只有 `{ kind: "files", access: "read", paths: ["data"] }`、`configSchema` 允许可选 `file`。
-- 入口 `plugin.mjs` 导出 `activate(api)`：读 `api.config?.file ?? "data/travel.md"`；`api.slot("memory", ...)` 返回 `{ messages, source: api.name }`；`api.tool` 定义 `travel_log`（`permission: "read"`、`progressLabel`、参数为空对象 schema、阶段 `["fast","deep"]`）；`api.blockType` 定义 `旅行日志`（`display.kind: "html"`、`context.kind: "keep-depth"` 深度 2、`semantics.kind: "none"`）。
-- 测试 `packages/core/test/code-plugin-examples.test.ts` 5 条：清单解析；按权限装载并验证槽位、工具执行、块类型与 `allowed` Trace；空权限下槽位返回 null、`tool.execute` 拒绝、两条 `denied` Trace 且插件保持运行；停止后注册表为空；文档覆盖清单字段、四类权限、模型角色、台账命名空间、11 个槽位名、13 个 API 方法与格式常量。
-- 声明式示例目录的测试 `declarative-plugin-examples.test.ts` 只读取顶层 `.json`，`code-travel-log/` 子目录不影响它。
-
-## P4.d 安装、更新与卸载（代码事实）
-- 模块 `packages/core/src/plugins/code-plugin-installer.ts`，经 `plugins/index.ts` 从 `@dramaticer/core` 根导出：`CodePluginManager`、`parseNpmSpec`、`CODE_PLUGIN_MANIFEST_FILENAME`。
-- 目录布局：`<pluginsDir>/<插件名>/`，清单固定 `dramaticer.plugin.json`；插件名沿用声明式插件名称规则（不会有路径分隔符）。暂存目录默认 `<pluginsDir>/.staging/`。
-- 来源：
-  - npm：读 `<npmRegistry>/<包名>` 元数据（scoped 包把 `/` 编码成 `%2f`），按 `dist-tags.latest`、精确版本或 semver 范围选版本；下载 tarball，元数据带 `dist.integrity` 时按 sha1/sha256/sha512 校验；`tar` 以 `strip: 1` 解包（npm tarball 的 `package/` 前缀），只允许普通文件与目录。
-  - git：`git clone --depth 1 --quiet -- <spec> <dir>`（`--` 防止 spec 被当成选项），随后删除 `.git`；需要本机有 git。
-  - zip：`fflate` 解包；每个条目按插件目录内相对路径校验，拒绝绝对路径、反斜杠与 `..`，逃出安装目录直接抛错。
-- 流程：`prepare(source)` 解包并读清单 → `planCodePluginInstallation` 计算权限计划；本机版本不满足 `engine` 时删除暂存目录、返回 `compatible: false` 与提示，`confirm` 抛错。`confirm(preparation, {installedAt})` 把旧目录移到暂存区作为备份，新目录就位后调用 `confirmCodePluginInstallation`；写记录失败时删除新目录并恢复旧目录（整体替换，旧版本文件不残留）。`cancel(preparation)` 清理暂存目录。
-- `checkUpdate(name)` 按安装记录的 `source` 重新解包比较版本；`updateAvailable` 只在来源版本更高且本机兼容时为 true；消息区分「发现新版本」「已是最新」「来源版本更低」「本机不兼容」，并给出 `added`/`removed` 权限差异。更新检查不写记录、不改插件目录。
-- `start(name, {config, activationTimeoutMs, invokeTimeoutMs})` 从安装记录取清单与 `grantedPermissions` 启动 `CodePluginRuntime`，注册表、插件网络 fetch、模型与台账处理器来自构造选项；激活失败返回 `failed` 运行时且不登记。`stop(name)`、`runtime(name)`、`runtimeStatuses()` 管理运行中的 worker。
-- `uninstall(name)` 先 `stop`（撤销全部注册项）再删除插件目录与安装记录；目录与记录只有一个存在时也允许清理；两者都没有时抛错。调用方仍应自己读故事设置，故事级配置在 `story_settings.pluginOverrides.config`，安装与更新都不触碰它。
-- `readInstalledManifests()` 读取插件目录下全部清单（跳过点目录与没有清单的目录），供 `assertInstalledCodePluginsMatch` 启动核对。
-- 构造选项：`pluginsDir`、`store`、`engineVersion`（semver）、`stagingDir`、`npmRegistry`、`registryFetch`（npm 元数据与 tarball 下载，默认全局 fetch）、`pluginFetch`（插件网络能力）、`registry`、`model`、`ledger`、`onTrace`、`commandTimeoutMs`（默认 120 秒）。
-- `tar` 与 `fflate` 已在 `docs/dev/DEPENDENCIES.md` 登记；`rmSync` 删除临时目录带 `maxRetries` 与 `retryDelay`。
-
-## P4.c worker 隔离（代码事实）
-- 模块 `packages/core/src/plugins/code-plugin-worker.ts`，经 `plugins/index.ts` 从 `@dramaticer/core` 根导出。
-- `startCodePluginRuntime(options)` 返回 `CodePluginRuntime`；激活失败、崩溃或超时不会抛错，状态为 `failed`，原因在 `status.reason`。构造参数非法、已授予权限不在清单里才同步抛错。
-- 选项：`pluginDir`、`manifest`、`grantedPermissions`（安装记录里的值，必须是清单权限子集）、`config`、`registry`（`ExtensionRegistry`，插件注册项进入这里）、`fetch`（默认全局 fetch）、`model`（声明 model 权限时需要）、`ledger`（声明 ledger-write 权限时需要，只接收已校验的 `LedgerDiffInput[]`）、`onTrace`；上限：`activationTimeoutMs` 10 秒、`invokeTimeoutMs` 10 秒、`maxMessageBytes` 1 MiB、`maxTraceEntries` 200。
-- 插件入口导出 `activate(api, config)` 或默认导出同名函数。`api`：`name`、`version`、`config`、`network(url, options)`、`readFile(path)`、`writeFile(path, content)`、`model(role, messages, options)`、`writeLedger(diffs)`、`slot(name, handler)`、`tool(definition, phases, handler)`、`blockType(definition)`、`mechanism(name)`、`onDispose(fn)`、`log(message)`。
-- 能力判定：网络按主机与可选端口（`*.example.com` 匹配子域，不匹配裸域）；文件按插件目录内相对路径的目录前缀，写只允许 `read-write`，读写都用 `realpath` 确认不逃出插件目录；模型按角色；台账按命名空间。未声明调用返回错误给插件，写一条 `denied` Trace，插件继续运行。
-- 台账写入：每条 diff 强制 `source: "settler"`，逐条 `validateLedgerDiff`；全部通过后交给 `CodePluginLedgerSink`。运行时没有 `StoryStore` 参数，无法绕过结算器（I12、I16）。
-- 失败处理：非法帧、未知能力、消息超限、激活或调用超时、worker `error`、提前退出都置为 `failed`，撤销全部注册项、拒绝挂起调用并终止 worker；其他插件不受影响。失败后槽位返回 null，工具从注册表消失。
-- 扩展点：槽位与只读工具（`permission: "read"`）通过消息代理执行；块类型只允许纯数据且 `semantics.kind = "none"`；Director 机制拒绝注册（I9 要求同步纯函数，机制上下文含 `StoryStore`），拒绝原因写 Trace。
-- `DeepToolDefinition` 新增可选 `execute(args)`；执行器在 `permission: "read"` 且存在 `execute` 时直接调用并 JSON 化返回值，内置工具没有这个字段，行为不变。
-- Trace 类型 `CodePluginTraceEntry`：`plugin`、`kind`（permission/lifecycle/protocol/registration）、`action`、`capability`、`target`、`outcome`（allowed/denied/rejected/failed/registered/unregistered/disposed）、`reason`、`durationMs`、`at`。`takeTrace()` 取走并清空，供后续接到排障报告。
-- worker 线程是故障隔离与能力中介，不是对抗性沙箱；插件仍可直接使用 Node 内置模块。信任依据是安装时展示的权限（见 DESIGN §19.7 与 ADR-0092）。
-
-## P4.b 安装记录（代码事实）
-- 模块 `packages/core/src/plugins/installation.ts`，经 `plugins/index.ts` 从 `@dramaticer/core` 根导出。
-- 来源：`CodePluginInstallSource { kind: "npm" | "git" | "zip"; spec: string }`，`assertCodePluginInstallSource` 拒绝未知字段、非法类型与首尾空白。
-- 记录：`CodePluginInstallationRecord { name, version, manifest, grantedPermissions, source, installedAt }`；`CodePluginInstallationStore` 声明 `getCodePluginInstallation`、`saveCodePluginInstallation`、`listCodePluginInstallations`、`deleteCodePluginInstallation`，`StoryStore` 直接满足这个形状。
-- `planCodePluginInstallation(store, manifest, source)`：首次安装 `previousVersion` 为 null、`added` 是全部权限、`requiresConfirmation` 恒 true；已有记录时用 `diffCodePluginPermissions(已授予, 新声明)`，权限没有变化（数组顺序不影响）时不要求确认。
-- `confirmCodePluginInstallation(store, plan, { installedAt? })`：重算计划并比较 `previousVersion`、`added`、`removed`，不一致抛「安装计划已过期：<插件名>」；写入的 `grantedPermissions` 等于清单声明的权限；拒绝安装就是不调用它。
-- `assertInstalledCodePluginsMatch(store, manifests)`：记录没有磁盘清单、磁盘清单没有记录、清单指纹不一致、已授予权限与清单权限不一致，都抛错并指出插件名。指纹覆盖全部字段，`inject`/`provide` 与权限数组按比较键排序。
-- 存储：迁移 v43 `plugin_installations(name PRIMARY KEY, version, manifest, granted_permissions, source_kind CHECK(npm/git/zip), source_spec, installed_at) STRICT`；安装与升级覆盖同一行；删除走 `deleteCodePluginInstallation`。
-- 测试 `packages/core/test/code-plugin-installations.test.ts` 9 条。
-
-## P4.a 代码插件清单（代码事实）
-- 模块 `packages/core/src/plugins/code-plugins.ts`。外壳：`format` 固定 `"dramaticer.code-plugin"`、`formatVersion` 固定 `1`、`tier` 固定 `"code"`、`name` 与 `version` 复用声明式插件的校验、`engine` 是 semver 范围、`entry` 是插件目录内的相对 js 模块、可选 `title`/`description`/`configSchema`、`inject`/`provide`、`permissions`。未知字段拒绝。
-- 权限：`network`（`hosts`）、`files`（`access` 与 `paths`）、`model`（四个角色）、`ledger-write`（九个命名空间）；同类权限只能出现一次。
-- 纯函数：`parseCodePluginManifest`、`parseCodePluginManifests`、`describeCodePluginPermissions`、`diffCodePluginPermissions`、`isEngineCompatible`、`parseCodePluginPermissions`、`assertCodePluginRelativePath`、`codePluginPermissionKey`。
-- 测试 `packages/core/test/code-plugins.test.ts` 12 条。
-
-## P3 声明式插件（代码事实）
-- 模块 `packages/core/src/plugins/declarative.ts`，根导出。外壳 `dramaticer.plugin`、`formatVersion` 1、七种 `kind`；未知字段与函数拒绝，错误带 JSON 路径。
-- `parseDeclarativePlugin`、`parseDeclarativePlugins`、`parseDeclarativeRequirements`；`readPluginName` 与 `readPluginVersion` 导出复用。
-- `plugins/playpack.ts`：`parsePlaypackManifest`、`parsePlaypacks`、`stackPlaypacks`、`isPlaypackPluginEnabled`、`resolveStoryPlugins`；用户覆盖在叶子模块 `plugins/playpack-overrides.ts`。
-- 迁移 v42：`story_settings.plugin_overrides`；`StorySettings.pluginOverrides` 复用 `PlaypackUserOverrides`。
-- 卡片依赖：`plugins/versions.ts` 与 `plugins/card-dependencies.ts`；`semver` 是 core 运行依赖，已在 `docs/dev/DEPENDENCIES.md` 登记。
-- 文档 `docs/plugins/declarative-plugins.md`，示例在 `docs/plugins/examples/`，测试 `declarative-plugins.test.ts`（13）、`declarative-plugin-examples.test.ts`（3）。
-
-## P2 插件内核（代码事实）
-- ADR-0087 决定采用自研 `LiteKernel`，不引入 `cordis`。
-- `plugins/contracts.ts`：`PluginDefinition { name, inject?, provide?, Config?, apply(ctx, config) }`；`PluginContext` 提供 `slot`、`directorMechanism`、`blockType`、`tool(definition, phases)`、`provide`、`service`、`on`、`backgroundJob`、`timeout`、`interval`、`onDispose`。
-- `plugins/lite-kernel.ts` 与 `plugins/runtime.ts`；`plugins/builtin.ts` 的 `BUILTIN_PLUGINS` 共 51 个。
-- 槽位 10 个（另有朴素档 `slot.history.raw`）、机制 6 个、块类型 12 个、工具 10 个、后台任务静态 13 个。
-- 回合内钩子：`plugins/turn-hooks.ts` 的 `runTurnHook` 预算默认 5,000 毫秒；超时跳过并写 `TurnTrace.hooks`。
+## C-T01.a 代码事实
+- `packages/st-compat/src/st-bench/sandbox.ts`：
+  - `DEFAULT_PROGRAM_ENTRIES`：`server.js`、`plugins.js`、`recover.js`、`index.d.ts`、`package.json`、`package-lock.json`、`config.yaml`、`webpack.config.js`、`jsconfig.json`、`LICENSE`、`README.md`、`src`、`public`、`default`。
+  - `DEFAULT_DATA_ENTRIES`：四类预设目录、`characters`、`worlds`、`chats`、`group chats`（目录名含空格）、`groups`、`sysprompt`、`instruct`、`QuickReplies`、`context`、`themes`、`reasoning`、`assets`、`backgrounds`、`User Avatars`、`user`（均在 `data/default-user/` 下）。
+  - 排除：顶层 `.git`、`node_modules`、`backups`、`_cache`、`_errors`、`thumbnails`、`content.log`；任意位置的 `secrets.json` 与 `cookie-secret.txt`；`public/scripts/extensions/third-party/**`；`data/default-user/settings.json`。根 `plugins/` 不在程序清单里，不复制。
+  - `copySillyTavernSandbox({sourceDir, privateRoot, targetDir, programEntries?, dataEntries?, nodeModules?: "link"|"skip"|"copy", replace?})`：目标必须在 `privateRoot` 内部、与源目录不互相包含；`node_modules` 在 Windows 用 `cmd /c mklink /J` 建 junction，其他平台用目录符号链接；写 `<target>/sandbox.json`（`format: "dramaticer.st-sandbox"`、`formatVersion: 1`、`sourceDir`、`targetDir`、`createdAt`、`stName`、`stVersion`、`license: "AGPL-3.0"`、`nodeModules`、`copied`、`skipped`）。
+  - `stBenchPaths(repoRoot)` 返回 `{privateRoot, sandboxDir, recordingsDir}`，默认 `<repo>/eval-private/st-sandbox/{st,recordings/st}`。
+- `packages/st-compat/src/st-bench/recorder.ts`：
+  - `startPromptRecorder({dir, host?, port?, stubModel?, maxBodyBytes?, maxRequests?, shouldRecord?})` 返回 `{url, host, port, dir, records, closed, close()}`。
+  - 默认记录全部 POST；`GET /v1/models` 返回桩模型列表且不记录；`GET /health` 返回计数；`OPTIONS` 返回 204。
+  - 每条记录写 `requests/00000.json`（5 位序号）和 `index.jsonl` 一行。索引字段：`seq`、`at`、`method`、`path`、`model`、`stream`、`messageCount`、`bodyBytes`、`file`；正文文件另含 `headers`（`authorization`、`proxy-authorization`、`x-api-key`、`api-key`、`apikey`、`x-goog-api-key`、`cookie`、`set-cookie` 的值为 `<redacted>`）、`query`（`key`、`api_key`、`apikey`、`token` 脱敏）、`body`。
+  - 非流式返回固定 JSON（内容 `"[dramaticer-st-bench record-only]"`）；`stream: true` 返回三段 `chat.completion.chunk` 加 `data: [DONE]`；响应里的 `model` 始终是桩模型名。
+  - 正文超过 `maxBodyBytes`（默认 64 MiB）返回 413，`file: null`，索引记实际字节数；`maxRequests` 达到后自动关闭；`closed` 在服务端关闭时完成。
+  - `readPromptRecordIndex(dir)` 与 `readPromptRecordFile(dir, summary)` 读回记录。
+- CLI：`node packages/st-compat/dist/st-bench/cli.js sandbox --source <目录> [--target ...] [--node-modules link|copy|skip] [--data <相对路径>]... [--replace]`；`record [--dir ...] [--host 127.0.0.1] [--port 8130] [--stub-model ...] [--max-requests N]`。
+- 测试 `packages/st-compat/test/st-bench.test.ts` 10 条：非流式记录与脱敏、流式 SSE 与自动停止、全局 `fetch` 抛错证明零外呼、413 与索引、允许清单复制且源 mtime 不变、目标守卫、数据条目校验、deny 规则、CLI sandbox、CLI 非法端口。
+- 真实副本：`eval-private/st-sandbox/st`（ST 1.18.0，public 59M、src 18M、`node_modules` junction），只复制了预设数据；录制冒烟在 `eval-private/st-sandbox/recordings/smoke`（1 条记录，`authorization` 已脱敏）。复制后对 `D:\SillyTavern` 做 `find -maxdepth 2 -newermt` 没有新写入。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a 至 P2.g、P3.a 至 P3.f、P4.a 至 P4.f。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a 至 P2.g、P3.a 至 P3.f、P4.a 至 P4.f、C-T01.a。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
 - 数据库 schema 版本 43。
 - 报告：`docs/dev/reports/P2.md`、`P3.md`、`P4.md`。
-- 声明式插件还没有接进运行时装载器：P3 完成格式、解析、叠加、按故事解析与导入报告；把台账 schema、块渲染器、技能与玩法包配置注册到内核留给后续任务。
-- 代码插件已有清单、安装确认、worker 运行时、安装/更新/卸载库 API 与开发文档和示例；尚未接到启动流程与命令行（P5 或专门任务）。
-- ADR-0088 记录故事级插件状态存进 `story_settings`；ADR-0089 记录版本范围用 semver 与导入报告字段；ADR-0090 记录代码插件清单与权限形状；ADR-0091 记录安装确认与安装记录；ADR-0092 记录 worker 隔离、能力判定与信任边界；ADR-0093 记录安装来源、更新检查与卸载回收。
+- 插件：声明式插件完成格式、解析、叠加、按故事解析与导入报告，尚未接进运行时装载器；代码插件完成清单、安装确认、worker 运行时、安装/更新/卸载库 API、开发文档与示例，尚未接到启动流程与命令行（P5 或专门任务）。
+- 兼容插件线：C-T01 已拆成 a–d，C-T01.a 完成；C-T02–C-T05 依赖 C-T01。
+- ADR-0088 至 ADR-0093 记录插件决策；ADR-0094 记录 ST 一致性测试台的沙箱与录制分层。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045、ADR-0078、ADR-0079、ADR-0080、ADR-0082、ADR-0083、ADR-0084、ADR-0085、ADR-0086、ADR-0087。
 - HUMAN-03 待处理（不阻塞）：抽查 `eval-private/evalset/spotcheck.md` 里的事件题。
 - HUMAN-14 已关闭（2026-11-12：人类取消）：取消 Vertex 真实调用的凭证配置与验证要求；`roles.writer` 继续使用 `main-fallback`。
@@ -95,6 +47,9 @@
 
 ## 可重复命令
 - 门禁：`pnpm check`。
+- C-T01.a 目标测试：`pnpm exec vitest run packages/st-compat/test/st-bench.test.ts`（10 个测试）。
+- 沙箱副本：`node packages/st-compat/dist/st-bench/cli.js sandbox --source "D:\SillyTavern" --replace`。
+- 录制服务：`node packages/st-compat/dist/st-bench/cli.js record --dir eval-private/st-sandbox/recordings/<批次> --port 8130`。
 - P4 目标测试：`pnpm exec vitest run packages/core/test/code-plugins.test.ts packages/core/test/code-plugin-installations.test.ts packages/core/test/code-plugin-worker.test.ts packages/core/test/code-plugin-installer.test.ts packages/core/test/code-plugin-examples.test.ts`（45 个测试）。
 - 插件内核与扩展测试：`pnpm exec vitest run packages/core/test/plugins.test.ts packages/core/test/plugin-runtime.test.ts packages/core/test/chat-slot-plugins.test.ts packages/core/test/plugin-extensions.test.ts packages/core/test/plugin-background-tools.test.ts packages/core/test/turn-hooks.test.ts`。
 - 不变量检查：`node scripts/check-invariants.mjs`。
@@ -102,6 +57,7 @@
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
 - 私有数据（`eval-private/`、`data/`、`.env`）不能进入测试数据、提交、文档或日志；报告只写统计数字，不写对话原文。
+- ST 的原始安装目录只读：不得修改，不得复制出 `secrets.json`、`settings.json`、`cookie-secret.txt`；沙箱里不得配置真实模型端点，录制服务不持有模型客户端（I14）。
 - Windows 上并行跑测试会显著变慢；`vitest.config.ts` 默认 `testTimeout` 60 秒；`afterEach` 删除临时目录用 `rmSync` 时必须带 `maxRetries` 与 `retryDelay`。
 - `packages/st-compat` 与 `packages/server` 的测试通过 `@dramaticer/core` 的 `dist` 解析 core；只跑这些包的测试前先执行 `pnpm run typecheck`。
 - 结构化 JSON 请求一律使用 `NO_CONTINUATION`；正文写作与散文类后台输出保留续写。

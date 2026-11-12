@@ -40,6 +40,7 @@
 		"probe-report": "tsc -b && node dist/evalset/probe-report-cli.js",
 		"director-eval": "tsc -b && node dist/evalset/director-cli.js",
 		"report": "tsc -b && node dist/health/cli.js",
+		"st-bench": "tsc -b && node dist/st-bench/cli.js",
 		"reference": "tsc -b && node dist/reference/cli.js",
 		"reference:cosine": "tsc -b && node dist/reference/cli.js --cosine"
 	},
