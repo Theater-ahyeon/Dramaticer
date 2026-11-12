@@ -1321,3 +1321,40 @@
   - 槽位 `packKey` 变化会让升级前写入的上下文包指纹失效，第一次重新生成时重新组装并覆盖。
   - 不新增迁移，schema 版本保持 38。
   - 新增测试：默认压缩预算容纳超过 800 token 的完整八段；预算调到 5 时仍只注入用户意志段。
+
+## ADR-0087 插件内核采用自研精简内核（2026-11-12）
+
+- **背景**：P1.a 用 Cordis 4.0.0-rc.13 实现了一个适配层原型，P1.b 在同一组对外类型下实现了不依赖第三方插件框架的 `LiteKernel`，11 条行为断言由两个内核各跑一遍。P1.c 需要按包体积、启动耗时、类型检查、热重载、依赖解析与循环检测、许可证与打包方式决定采用哪一个。
+- **证据**：
+  - 包体积（删除前统计 `packages/plugin-spike` 安装文件的实际字节数）：
+
+    | 包 | 字节 | 作用 |
+    |---|---|---|
+    | `cordis` | 77,075 | Context、fiber 生命周期、`ctx.effect` |
+    | `cosmokit` | 69,801 | `cordis` 的运行时依赖 |
+    | `@standard-schema/spec` | 16,578 | 配置 schema 类型；两个内核都用到 |
+
+    `cordis` 加 `cosmokit` 合计 146,876 字节；加上共享的 `@standard-schema/spec` 为 163,454 字节。字节数由文件大小相加得到：`cordis` 的 `lib` 74,796、`package.json` 1,298、`bin.js` 447、`README.md` 534 合计 77,075；`cosmokit` 的 `lib` 51,351、`src` 15,140、`package.json` 1,796、`README.md` 443、`LICENSE` 1,071 合计 69,801；`@standard-schema/spec` 的 `dist` 6,810、`package.json` 1,146、`README.md` 7,551、`LICENSE` 1,071 合计 16,578。`LiteKernel` 的运行时第三方包为 0，`@standard-schema/spec` 只在开发期用于类型。
+  - 启动耗时：脚本 `packages/plugin-spike/scripts/bench-kernels.mjs` 每次新建内核、按顺序装载 weather 服务插件、scene 槽位插件、Director 机制插件与块类型插件、取一次 `scene` 槽位并关闭；预热 20 次，测量 200 次。三次独立运行的中位数为 Cordis 1.087、1.098、1.079 毫秒，P90 为 1.230、1.256、1.261 毫秒；`LiteKernel` 三次中位数都是 0.012 毫秒，P90 为 0.022、0.023、0.022 毫秒。中位数相差约 90 倍。
+  - 冷启动模块加载：新 node 进程动态 `import("cordis")` 10 次为 6.83–7.41 毫秒；`LiteKernel` 不增加第三方模块加载。
+  - 代码量：Cordis 适配层 317 行，`LiteKernel` 306 行；两者共用的注册表 112 行、事件分发 76 行、`KernelSurface` 75 行、对外类型 100 行。
+  - 类型检查：两个内核在 `strict`、`NodeNext` 下通过 `tsc`。适配层需要把 `PluginDefinition` 断言成 `Component`、把配置断言成 `Component.Base["Config"]`；Cordis 的事件名来自静态 `Events` 声明合并，动态扩展点事件名没有类型。`LiteKernel` 的对外类型全部由本包声明，没有外部框架类型泄漏。
+  - 热重载与生命周期：两个内核跑同一份 11 条断言，全部通过，覆盖装载失败回滚、卸载回收、热重载、依赖缺失后自动激活、提供者卸载后回到阻塞、五种分发与配置校验。
+  - 依赖解析与循环检测：Cordis 对依赖缺失与循环依赖只把 fiber 停在 PENDING，`await()` 不报错，也不给原因；同名服务不拒绝，后注册者覆盖 `ctx.get`。适配层因此自己实现了 `missingServices`、`findCycle` 与 `assertServicesAvailable`。`LiteKernel` 在内核里完成同样的检查，错误消息与适配层一致。
+  - 分发模式：Cordis 的 `parallel` 不收集结果、`serial` 只返回第一个非空结果、`waterfall` 是中间件，与 DESIGN §19.2 不同；两个原型都使用自己实现的 `EventBus`，Cordis 没有减少这部分代码。
+  - 许可证：`cordis`、`cosmokit`、`@standard-schema/spec` 都是 MIT。
+  - 打包方式：`cordis` 是 ESM-only（`type: module`，只导出 `.` 与 `./src/*`），可选 peer 依赖 `@cordisjs/fs`、`@cordisjs/fs-node`、`@cordisjs/include`、`@cordisjs/loader` 没有安装；`LiteKernel` 是工作区 ESM，无运行时外部依赖。
+- **选项**：
+  - 采用 Cordis 作为内核：省掉 fiber 生命周期实现，但依赖分析、同名服务检查、五种分发仍要自己写，适配层 317 行比 `LiteKernel` 306 行更长；增加 146,876 字节运行时依赖与约 7 毫秒冷启动，当前版本是 rc.13；排除。
+  - 采用 `LiteKernel`：无运行时第三方依赖，启动耗时约 0.012 毫秒，对外类型完全由项目控制，分发语义直接满足 DESIGN §19.2；采纳。
+  - 混用两者：让 Cordis 管理生命周期、自研事件总线；生命周期部分本来只有 306 行，混用会同时保留两套概念和两套错误来源；排除。
+- **决定**：
+  - 插件内核采用自研精简实现，不引入 `cordis`。`docs/dev/DEPENDENCIES.md` 删除 `cordis` 与 `@standard-schema/spec` 两行。
+  - P2 把 `packages/plugin-spike/src` 里的 `contracts.ts`、`kernel-surface.ts`、`registry.ts`、`events.ts`、`lite-kernel.ts` 迁到 `packages/core/src/plugins/`，插件作者看到的类型从 `@dramaticer/core` 导出；共享的 11 条断言随内核迁到 core 的测试。原型代码可从 P1.c 测量提交与 P1.b 提交 `8773049` 取回。
+  - `packages/plugin-spike` 是技术验证用的私有包，没有生产调用方；原型保留会让同一套类型出现两份，`packages/core` 又不能依赖其他工作区包（I15）。因此 P1.c 删除该包。
+  - 后续内核扩展（回合内钩子时间预算、Trace 记录、权限检查）在 core 的插件内核上实现，不再引入第三方插件框架。
+- **影响**：
+  - 工作区少一个包与两个测试文件；门禁从 177 个测试文件、1587 个测试变为 175 个测试文件、1565 个测试（删除后实测）。
+  - 运行时不新增依赖；`@standard-schema/spec` 在 P2 作为配置 schema 的类型来源时需要重新登记，当前没有消费者，不保留。
+  - 维护成本是 306 行内核加 363 行共用代码；行为由 11 条共享断言覆盖。
+  - 测量命令（在删除前的测量提交上执行）：`pnpm --filter @dramaticer/plugin-spike build`；`node packages/plugin-spike/scripts/bench-kernels.mjs`；冷启动用 `node --input-type=module -e 'const t=performance.now(); await import("cordis"); console.log(performance.now()-t)'`；门禁 `pnpm check`。
