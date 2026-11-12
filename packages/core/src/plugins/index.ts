@@ -41,6 +41,7 @@ export {
 	createStandardChatSlots,
 } from "./chat-providers.js";
 export * from "./contracts.js";
+export * from "./declarative.js";
 export { EventBus } from "./events.js";
 export { KernelSurface } from "./kernel-surface.js";
 export { LiteKernel } from "./lite-kernel.js";

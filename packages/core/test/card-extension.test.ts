@@ -3,16 +3,16 @@ import { parseDramaticerCardExtension } from "../src/index.js";
 
 describe("extensions.dramaticer 解析", () => {
 	it("没有字段时返回空扩展", () => {
-		expect(parseDramaticerCardExtension(undefined)).toEqual({
+		const empty = {
 			events: [],
 			npcAgendas: [],
 			arcs: [],
-		});
-		expect(parseDramaticerCardExtension(null)).toEqual({
-			events: [],
-			npcAgendas: [],
-			arcs: [],
-		});
+			plugins: [],
+			requires: { plugins: [], playpacks: [] },
+			recommends: { plugins: [], playpacks: [] },
+		};
+		expect(parseDramaticerCardExtension(undefined)).toEqual(empty);
+		expect(parseDramaticerCardExtension(null)).toEqual(empty);
 	});
 
 	it("解析全部字段并套用默认值", () => {

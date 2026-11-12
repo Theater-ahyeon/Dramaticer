@@ -1,17 +1,16 @@
-import { parseContextCondition } from "../context/condition.js";
-import type { ContextCondition } from "../context/template.js";
 import { normalizeEntityName } from "../entity.js";
 import { assertPlainObject, rejectUnknownKeys } from "../json.js";
+import {
+	type DeclarativePlugin,
+	type DeclarativeRequirements,
+	parseDeclarativePlugins,
+	parseDeclarativeRequirements,
+} from "../plugins/declarative.js";
+import {
+	type DramaticerEventDefinition,
+	parseDramaticerEventDefinitions,
+} from "./event-definition.js";
 import { type DirectorArc, parseDirectorPlan } from "./plan.js";
-
-export interface DramaticerEventDefinition {
-	/** 故事内唯一；事件池以它作为 `source_id`。 */
-	readonly id: string;
-	readonly text: string;
-	readonly preconditions: ContextCondition | null;
-	readonly cooldown: number;
-	readonly enabled: boolean;
-}
 
 export interface DramaticerNpcAgendaDefinition {
 	/** NPC 的名称或别名，导入时解析成实体。 */
@@ -26,15 +25,23 @@ export interface DramaticerCardExtension {
 	readonly npcAgendas: readonly DramaticerNpcAgendaDefinition[];
 	/** 弧线、序列与节拍，字段与 `DirectorPlan` 相同。 */
 	readonly arcs: readonly DirectorArc[];
+	/** 卡片随附的声明式插件；导入时与依赖声明一起展示。 */
+	readonly plugins: readonly DeclarativePlugin[];
+	/** 缺少时导入流程必须提示安装的插件与玩法包。 */
+	readonly requires: DeclarativeRequirements;
+	/** 建议安装但不影响使用的插件与玩法包。 */
+	readonly recommends: DeclarativeRequirements;
 }
 
 const EMPTY_EXTENSION: DramaticerCardExtension = {
 	events: [],
 	npcAgendas: [],
 	arcs: [],
+	plugins: [],
+	requires: { plugins: [], playpacks: [] },
+	recommends: { plugins: [], playpacks: [] },
 };
 
-const EVENT_KEYS = ["id", "text", "preconditions", "cooldown", "enabled"];
 const AGENDA_KEYS = ["npc", "goal", "everyChapters", "importance"];
 
 /**
@@ -48,24 +55,14 @@ export function parseDramaticerCardExtension(
 	const root = assertPlainObject(value, "extensions.dramaticer");
 	rejectUnknownKeys(
 		root,
-		["events", "npcAgendas", "arcs"],
+		["events", "npcAgendas", "arcs", "plugins", "requires", "recommends"],
 		"extensions.dramaticer",
 	);
 
-	const events = parseArray(
+	const events = parseDramaticerEventDefinitions(
 		root.events,
 		"extensions.dramaticer.events",
-		(item, path) => parseEvent(item, path),
 	);
-	const ids = new Set<string>();
-	events.forEach((event, index) => {
-		if (ids.has(event.id)) {
-			throw new Error(
-				`extensions.dramaticer.events[${index}].id 重复：${event.id}`,
-			);
-		}
-		ids.add(event.id);
-	});
 	const npcAgendas = parseArray(
 		root.npcAgendas,
 		"extensions.dramaticer.npcAgendas",
@@ -75,7 +72,19 @@ export function parseDramaticerCardExtension(
 		{ arcs: root.arcs ?? [] },
 		"extensions.dramaticer",
 	);
-	return { events, npcAgendas, arcs };
+	const plugins = parseDeclarativePlugins(
+		root.plugins,
+		"extensions.dramaticer.plugins",
+	);
+	const requires = parseDeclarativeRequirements(
+		root.requires,
+		"extensions.dramaticer.requires",
+	);
+	const recommends = parseDeclarativeRequirements(
+		root.recommends,
+		"extensions.dramaticer.recommends",
+	);
+	return { events, npcAgendas, arcs, plugins, requires, recommends };
 }
 
 function parseArray<T>(
@@ -88,38 +97,6 @@ function parseArray<T>(
 		throw new Error(`${path} 必须是数组`);
 	}
 	return value.map((item, index) => parseItem(item, `${path}[${index}]`));
-}
-
-function parseEvent(value: unknown, path: string): DramaticerEventDefinition {
-	const object = assertPlainObject(value, path);
-	rejectUnknownKeys(object, EVENT_KEYS, path);
-	const id = readNonEmptyString(object.id, `${path}.id`);
-	const text = readNonEmptyString(object.text, `${path}.text`);
-	const preconditions =
-		object.preconditions === undefined || object.preconditions === null
-			? null
-			: parseContextCondition(object.preconditions, `${path}.preconditions`, {
-					allowSwitch: false,
-				});
-	const cooldown = object.cooldown ?? 0;
-	if (
-		typeof cooldown !== "number" ||
-		!Number.isInteger(cooldown) ||
-		cooldown < 0
-	) {
-		throw new Error(`${path}.cooldown 必须是非负整数`);
-	}
-	const enabled = object.enabled ?? true;
-	if (typeof enabled !== "boolean") {
-		throw new Error(`${path}.enabled 必须是布尔值`);
-	}
-	return {
-		id,
-		text,
-		preconditions,
-		cooldown,
-		enabled,
-	};
 }
 
 function parseAgenda(

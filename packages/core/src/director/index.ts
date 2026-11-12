@@ -6,6 +6,7 @@ export * from "./cli.js";
 export * from "./clue.js";
 export * from "./evaluate.js";
 export * from "./event-pool.js";
+export * from "./event-definition.js";
 export * from "./intensity.js";
 export * from "./notes.js";
 export * from "./opening.js";

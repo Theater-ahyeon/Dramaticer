@@ -3,13 +3,21 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-12 会话 305：P2.g（P2 验收）。逐条核对 P2.b 至 P2.f 的验收标准与 I6、I7、I9、I11、I12、I13、I15、I17；确认 51 个内置插件（槽位 10、机制 6、块类型 12、工具 10、后台任务 13 个静态项）全部经内核注册并有测试；从已保存记录复跑 R2 的三份汇总（记分牌 600 轮、遗忘 30 次运行、B1 6 个样本），记分牌与遗忘报告逐字节相同，B1 报告只差生成时间；门禁通过（181 个测试文件、1611 个测试、5 个跳过）；结果写入 `docs/dev/reports/P2.md`。P2 全部完成。
+- 2026-11-12 会话 306：P3.a（声明式插件格式与卡片打包字段）。新增 `packages/core/src/plugins/declarative.ts`，定稿七种声明式插件的公共外壳与负载 schema；事件定义解析抽到 `director/event-definition.ts`；`extensions.dramaticer` 新增 `plugins`、`requires`、`recommends`。P3 已拆成 P3.a 至 P3.f，本会话完成 P3.a。门禁通过（182 个测试文件、1624 个测试、5 个跳过）。
 
-## 下一步（会话 306 先做）
-1. 做 **P3 声明式插件格式与卡片打包**（依赖 P2，已满足）。P3 工作量超过一个会话，先按 AGENTS.md 的规则在 TASKS.md 里分成 `P3.a`、`P3.b`……，本会话只做 `P3.a`。
-   - 建议的第一项：定稿声明式插件的公共结构、每种类型的 schema 与版本字段，以及 `extensions.dramaticer` 的卡片打包格式；先写测试。
-2. P3 之后按 TASKS 顺序：P4 →（P5 依赖 M5-T99，暂不可做）→ C 兼容插件线（C-T01 起）→ H → X → R6 → M6b → M5 → P5 → M7。
+## 下一步（会话 307 先做）
+1. 做 **P3.b 玩法包分层与用户覆盖**（依赖 P3.a，已满足）。定义玩法包清单（名称、版本、依赖、包含的插件、配置补丁、开关），实现有序补丁层与最上层用户覆盖，纯函数加测试。P3.b 的规则：后面的包覆盖前面的同名配置与开关，用户覆盖不修改包文件。
+2. P3.b 之后按 TASKS 顺序：P3.c（按故事启用与覆盖，需要迁移）→ P3.d（卡片导入依赖检查与提示）→ P3.e（示例插件与格式文档）→ P3.f（P3 验收）→ P4。
 3. M6-T99 仍等待 HUMAN-15（ComfyUI 与 API workflow JSON），不要开始。
+
+## 声明式插件格式（P3.a，代码事实）
+- 模块 `packages/core/src/plugins/declarative.ts`，从 `@dramaticer/core` 根导出。
+- 外壳：`DeclarativePlugin`，字段 `format` 固定 `"dramaticer.plugin"`、`formatVersion` 固定 `1`（当前唯一版本）、`name`（小写字母数字与 `.`、`_`、`-`）、`version`（`1.2.3` 或 `1.2.3-beta.1`）、`kind`、可选 `title` 与 `description`、`payload`。解析入口 `parseDeclarativePlugin(value, path?)`、`parseDeclarativePlugins(value, path?)`（组内重名整组拒绝）。输入先过 `assertJsonValue`，函数与类实例无法通过。
+- 七种 `kind` 与负载：`ledger-schema`（`namespace` 取 `LEDGER_NAMESPACES`，`fields` 每项 `path`、`type` 取 `string`/`number`/`integer`/`boolean`/`enum`/`string-array`，`enum` 必须给非空 `values`，数值可给 `min`/`max`，字符串可给 `maxLength`，路径不得重复）；`plot-beat`（`id`、`title`、`text`、`preconditions`，条件允许 `switch`）；`context-template`（直接是 `ContextTemplate`，`segments` 非空，`protocol` 仍必须最后，`deepTurn` 走现有工具白名单校验）；`block-renderer`（`block`、`display`、`context`，只允许显示与上下文策略，没有语义处理器）；`skill`（`name`、`description`、`content`）；`director-config`（`config` 为 `DirectorConfig` 的覆盖项，与 `DEFAULT_DIRECTOR_CONFIG` 合并后校验）；`event-pool`（`events` 非空，复用事件定义校验）。
+- 依赖声明：`DeclarativeDependency { name, versionRange? }`、`DeclarativeRequirements { plugins, playpacks }`；`parseDeclarativeRequirements` 拒绝未知字段、重名与空版本范围。版本范围只做语法检查，匹配留给 P3.d。
+- 卡片打包：`DramaticerCardExtension` 新增 `plugins`（随卡附带的声明式插件）、`requires`、`recommends`（后两者都是 `DeclarativeRequirements`）。缺省为空数组。`parseDramaticerCardExtension` 的合法键现在是 `events`、`npcAgendas`、`arcs`、`plugins`、`requires`、`recommends`。
+- 事件定义 `DramaticerEventDefinition` 与 `parseDramaticerEventDefinitions` 移到 `packages/core/src/director/event-definition.ts`，卡扩展与 `event-pool` 共用；`director/index.ts` 转出该模块。
+- 测试：`packages/core/test/declarative-plugins.test.ts`（13 条）覆盖七种合法样例、外壳字段、函数拒绝、组内重名、各负载非法值、卡片打包与依赖声明；`card-extension.test.ts` 的空扩展断言已补三个新字段。
 
 ## P2 插件内核（决定与代码位置）
 - ADR-0087 在 `docs/dev/DECISIONS.md`。采用的实现是 `LiteKernel`，不引入 `cordis`；Cordis 原型证据留在 ADR。
@@ -27,7 +35,6 @@
 - `packages/core/src/plugins/slots.ts`：十个内置槽位插件与 `NAIVE_SLOT_PLUGINS`；插件名常量与配置接口在这里；history 的 `policy`、memory 的 `embedder`/`reranker` 原样透传给 `chat/providers.ts` 的工厂。
 - `packages/core/src/plugins/chat-providers.ts`：`ChatSlotSet`、`collectSlotProviders`（给每个提供者填 `plugin`）、`composeSlotSet`、`createStandardChatSlots`、`createNaiveChatSlots`；任一插件未激活时工厂抛错并列出原因。
 - `packages/core/src/plugins/registry.ts`：槽位、Director 机制、块类型、工具、后台任务类型注册表；复用 `blocks/types.ts`、`tools/registry.ts`、`background/registry.ts` 的校验；每次注册返回幂等撤销函数。
-- `packages/core/src/plugins/index.ts`：导出 `turn-hooks.ts` 的全部公开符号（含 `REQUEST_REWRITE_HOOK`、`TurnRequestRewriter`）。
 - `packages/core/src/context/slot-names.ts`：`CONTEXT_SLOT_NAMES`、`ContextSlotName`、`isContextSlotName`；`context/template.ts` 继续转出。
 - 测试：`plugin-fixtures.ts`、`plugin-kernel-suite.ts`、`plugins.test.ts`（11 条）、`plugin-runtime.test.ts`（6 条）、`chat-slot-plugins.test.ts`（4 条）、`plugin-extensions.test.ts`（7 条）、`plugin-background-tools.test.ts`（10 条）、`turn-hooks.test.ts`（7 条）、`explain.test.ts` 的钩子用例。
 - 依赖：`@standard-schema/spec` 在 `packages/core` 的 `dependencies`，只用于公开类型声明。
@@ -40,8 +47,8 @@
 - `dramaticer explain` 第 3 段标题仍是「被裁剪的段落与缺失槽位」，随后多出「回合钩子（时间预算与跳过原因）」子段；`dramaticer explain --json` 的 `hooks` 字段直接给出条目。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a 至 P2.g。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- 数据库 schema 版本 41。P2 没有迁移。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a 至 P2.g、P3.a。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 数据库 schema 版本 41。P2 与 P3.a 没有迁移；P3.c 需要新迁移（编号 v42）。
 - 依赖登记：`@standard-schema/spec` 已登记为 `packages/core` 依赖；当前没有第三方插件框架。
 - P2 验收数字与复现命令在 `docs/dev/reports/P2.md`：51 个内置插件；R2 记分牌、遗忘报告、B1 报告复跑一致。
 - `eval-private/memory-cache/r1-retrieval.db` 有三个故事：`仙侠雌竞：什么叫我是炉鼎体质？` 290 个助手楼层已抽取 282 个、414 条事件；`欲望世界-1600` 180 个助手楼层已抽取 174 个、292 条事件；`银麒赎世` 114 个助手楼层已抽取 112 个、248 条事件。评测自己的临时数据库重新抽取后事件覆盖为 282/290、172/180、112/114，事件数 371/247/248。
@@ -98,7 +105,7 @@
 
 ## 可重复命令与评测产物
 - 门禁：`pnpm check`。
-- 插件内核、槽位、扩展、任务与工具测试：`pnpm exec vitest run packages/core/test/plugins.test.ts packages/core/test/plugin-runtime.test.ts packages/core/test/chat-slot-plugins.test.ts packages/core/test/plugin-extensions.test.ts packages/core/test/plugin-background-tools.test.ts packages/core/test/turn-hooks.test.ts`（45 个测试）。
+- 插件内核、槽位、扩展、任务、工具与声明式格式测试：`pnpm exec vitest run packages/core/test/plugins.test.ts packages/core/test/plugin-runtime.test.ts packages/core/test/chat-slot-plugins.test.ts packages/core/test/plugin-extensions.test.ts packages/core/test/plugin-background-tools.test.ts packages/core/test/turn-hooks.test.ts packages/core/test/declarative-plugins.test.ts packages/core/test/card-extension.test.ts`（58 个测试）。
 - 单个 e2e：`cd packages/web && pnpm exec playwright test --project=desktop --grep "深回合"`；e2e 假渠道固定端口 4517，数据库 `.devloop/scratch/e2e/work/e2e.db`。
 - 排障命令：`dramaticer explain --node <id> --db <path> [--json]`，只读、零模型调用；第 9 段显示运行状态与按 `seq` 排序的事件，第 3 段之后显示回合钩子。
 - R1 事件回填与检索评测：
