@@ -3,27 +3,25 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-12 会话 294：R3b-T99.a（深回合验收评测工具）。新增 `packages/st-compat/src/evalset/deep-eval.ts` 与 `deep-eval-cli.ts`，命令为 `pnpm --filter @dramaticer/st-compat deep-eval`：在仓库里的公开合成基准故事上导入一张固定卡，用模拟用户连续跑深回合；逐轮记录失败原因、`Trace.deep` 的收束原因与漂移、提交方式、首字与总耗时、工具调用、token、截断与上下文省略；在同一批用户楼层上再生成一次快回合回复，用 `roles.judge` 按“深在前 / 快在前”两种顺序盲评，统计深胜、快胜、平局与不一致。JSONL 断点续跑，统计按轮次取最后一条记录，输出只含数字。`PLAYTEST_USER_HINTS` 与 `generateUserMessage` 从试玩模块导出复用。相对路径统一按仓库根目录解析。真实渠道冒烟：1 轮深回合成功、漂移 1 次（`missing_commit`）、4.3 秒；1 个分支点深 143 字对快 82 字，裁判判深胜。门禁通过（175 个测试文件通过、5 个跳过；1565 个测试通过、5 个跳过）。
+- 2026-11-12 会话 295：R3b-T99.b（R3b 验收，真实渠道批量与报告）。长任务 `R3b-T99.b-01` 成功（exitCode 0、5.8 分钟），在公开合成基准故事 `benchmark-mist-harbor` 上跑 30 轮深回合与 10 个分支点：30/30 成功、失败率 0%（基线 23%），首字 P50/P90 2,566/3,584 毫秒、总时长 P50/P90 3,261/4,208 毫秒，每轮 1 次模型请求、工具调用 0 次，输入 39,264 / 输出 4,221 token，提交全部 `auto`、漂移 30/30 `missing_commit`，截断与上下文省略 0；盲评深胜 4、快胜 3、平局 0、两次顺序结论相反 3。`docs/dev/reports/R3b.md` 逐条核对 T01 至 T10.b 的验收标准，复核 I6、I13、I12、I4、I7 通过。门禁通过（175 个测试文件通过、5 个跳过；1565 个测试通过、5 个跳过）。
 
-## 下一步（会话 295 先做）
-1. 先读 `.devloop/jobs/R3b-T99.b-01.status.json` 与 `.devloop/jobs/R3b-T99.b-01.log`。这是会话 294 申请的长任务：30 轮深回合 + 10 个分支点，命令里的数据库是 `.devloop/scratch/R3b-T99/deep.db`，逐条记录写到 `eval-private/reports/R3b-deep.jsonl`，统计写到 `eval-private/reports/R3b-deep.json`。
-2. 成功：用统计 JSON 与 JSONL 写 `docs/dev/reports/R3b.md`（只含数字与模型别名），逐条核对 R3b-T99.b 的验收标准，复核 I6、I12、I13，把 T99.b 标 `[x]`，结果写 `MILESTONE_DONE`。
-3. 失败：读日志修问题；需要重跑时**必须**带 `--resume`，不要删除数据库或 JSONL，也不要重新生成已完成的轮次。重新申请 `.devloop/jobs/R3b-T99.b-02.json`，结果写 `WAITING`。
-4. 报告至少包含：完成/失败轮次与失败率（目标 ≤10%，对照 23% 基线）、漂移率、首字与总时长 P50/P90/最大（对照 TauriTavern P50 66 秒、P90 147 秒）、每轮工具调用数与 token、盲评深胜/快胜/平局/不一致。私有明细留在 `eval-private/reports/`，公开报告不写原文与私有路径。
-5. M6-T99 仍等待 HUMAN-15（ComfyUI 与 API workflow JSON），不要开始。
-6. R3b 完成后按顺序做 P1/P2 → C 兼容插件 → H → X → R6 → M6b → P3/P4 → M5 → P5 → M7。
+## 下一步（会话 296 先做）
+1. 选 **P1 插件内核技术验证**（依赖 R5-T99，已满足）：按 DESIGN §19.1、§19.6 用两个最小原型各实现同一组扩展点（一个上下文槽位提供者、一个 Director 机制、一个块类型）：①直接依赖 Cordis 上游（MIT 版本）；②自研精简版（只做 Context、注册表、依赖解析、生命周期回收与五种分发模式）。比较类型体验、热重载、依赖解析与循环检测、包体积与启动耗时、许可证与打包方式，写 ADR 决定采用哪一种，并登记依赖（`docs/dev/DEPENDENCIES.md` 与 ADR）。P1 可能需要拆成 `.a`（Cordis 原型）、`.b`（自研原型）、`.c`（比较与 ADR）。
+2. R3b 已完成，H-T00 的依赖（R5-T99、R3b-T99、E-T01）已全部满足；H-T00 仍排在 P/C 之后，不要提前开始。
+3. M6-T99 仍等待 HUMAN-15（ComfyUI 与 API workflow JSON），不要开始。
+4. 后续顺序：P1/P2 → C 兼容插件 → H → X → R6 → M6b → P3/P4 → M5 → P5 → M7。
 
-## 评测命令与产物
+## 深回合评测命令与产物
 - 完整批量：
   `pnpm --filter @dramaticer/st-compat deep-eval --db .devloop/scratch/R3b-T99/deep.db --story benchmark-mist-harbor --turns 30 --branches 10 --out eval-private/reports/R3b-deep.jsonl --summary eval-private/reports/R3b-deep.json --resume`
 - 只重算统计（零模型调用）：
   `pnpm --filter @dramaticer/st-compat deep-eval --db .devloop/scratch/R3b-T99/deep.db --out eval-private/reports/R3b-deep.jsonl --summary eval-private/reports/R3b-deep.json --summary-only`
 - 相对路径都按仓库根目录解析。默认模型 `main-fallback`、模拟用户 `background`、裁判按 `roles.judge`。
-- 冒烟只用了 1 轮并写进 `.devloop/scratch/`，不能当作验收数字。
+- 运行数据库 `.devloop/scratch/R3b-T99/deep.db` 里 30 次运行共 120 条事件（`model.request`、`model.response`、`draft.replace`、`draft.commit` 各 30 条），每次请求暴露 12 个工具、传输为 `native`；模型一次也没有调用工具，提交方式全部是 `auto`。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- 数据库 schema 版本 41。R3b-T99.a 没有迁移。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 数据库 schema 版本 41。R3b-T99.b 只写文档与报告，没有迁移。
 - `eval-private/memory-cache/r1-retrieval.db` 有三个故事：`仙侠雌竞：什么叫我是炉鼎体质？` 290 个助手楼层已抽取 282 个、414 条事件；`欲望世界-1600` 180 个助手楼层已抽取 174 个、292 条事件；`银麒赎世` 114 个助手楼层已抽取 112 个、248 条事件。评测自己的临时数据库重新抽取后事件覆盖为 282/290、172/180、112/114，事件数 371/247/248。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045、ADR-0078、ADR-0079、ADR-0080、ADR-0082、ADR-0083、ADR-0084、ADR-0085、ADR-0086。
 - HUMAN-03 待处理（不阻塞）：抽查 `eval-private/evalset/spotcheck.md` 里的事件题。
@@ -35,7 +33,7 @@
 - T10.a 已完成：模式开关、阶段文字、故事设置深回合区段与模板深回合配置。
 - T10.b 已完成：草稿面板、失败草稿与“重试这一轮”、运行中追加要求、楼层运行时间线。
 - T99.a 已完成：深回合验收评测工具与冒烟。
-- T99.b 进行中：等待长任务 `R3b-T99.b-01`；验收数字写 `docs/dev/reports/R3b.md`（只含数字与模型别名），私有明细留在 `eval-private/reports/`。
+- T99.b 已完成：真实渠道 30 轮与 10 个分支点盲评；统计版报告 `docs/dev/reports/R3b.md`，私有明细 `eval-private/reports/R3b-deep.jsonl` 与 `R3b-deep.json`。
 
 ## 深回合实现位置（代码事实）
 - 回合入口 `packages/core/src/chat/turn.ts`：`runChatTurn` 先 `resolveTurnMode`，再追加用户楼层、组装上下文、按模式调用 `runDeepTurn` 或 `runModelTurns`。`generateAssistantTurn` 用 `applyTemplateDeepTurn` 覆盖模板里的 `deepTurn`；`selectDeepTurnTools` 按白名单过滤注册表工具并排除关闭的手记工具。深回合新建 `TurnDraftController`、`TurnNoteController` 与 `TurnGuidanceController`；`withDirectorNotes` 在组装后的消息之后追加一条系统消息（没有手记时不加）。正文解析在 `resolveTurnBody`：显式提交用草稿；正常结束但没有提交时把最后一次输出整份替换为草稿并自动提交，记 `drift: "missing_commit"`；中止、超时、工具次数上限或没有正文且没有提交时返回 null，运行标为 `failed` 并抛 `DeepTurnWithoutCommitError`。
@@ -81,6 +79,8 @@
 - 记分牌重新生成：`node packages/st-compat/dist/evalset/scoreboard-cli.js --playtest eval-private/reports/forgetting/playtest --playtest eval-private/reports/forgetting/legacy/playtest --forgetting eval-private/reports/forgetting/runs --forgetting eval-private/reports/forgetting/legacy/runs --b1-samples eval-private/reports/R2-b1/samples.jsonl --b1-records eval-private/reports/R2-b1/records.jsonl --b1-quality eval-private/reports/R2-b1/quality.jsonl --out docs/dev/SCOREBOARD.md`
 - 自动试玩：CLI 入口 `pnpm --filter @dramaticer/st-compat playtest`；界面自动试玩 `pnpm playtest`；live 默认 `PLAYTEST_RESUME=1`，续跑文件 `eval-private/reports/r5-playtest.progress.json`。
 - R5 最终数据：60 成功 / 0 失败；相邻块 Jaccard 均值 0.0019、P90 0.0031（599 对）；首字 P50 5,176、P95 10,150 毫秒；生成 P50 10,094、P95 16,905 毫秒；每轮 total token 8,971.8；导演决策 60、有建议 60；错误 0；私有标识反向扫描通过（804 个标识）。不要再启动第二个监督进程或 server。
+- R3 快回合：20/20 成功，首字 P50 1,448 / P90 3,435 毫秒，生成 P50 2,666 / P90 4,988 毫秒，截断 0/20。
+- R3b 深回合：30/30 成功，首字 P50 2,566 / P90 3,584 毫秒，总时长 P50 3,261 / P90 4,208 毫秒，工具调用 0，漂移 30/30，分支盲评 deep 4 / fast 3 / tie 0 / inconsistent 3。
 - 引用评测数字：B1 必须说明同模型子集为空、每个对话每档只有 1 个样本；遗忘矛盾率必须同时说明失败题数与可判定样本数；选择一致率当前没有样本。
 
 ## 注意事项
