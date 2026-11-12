@@ -116,6 +116,13 @@ import {
 } from "../ledger/settlement.js";
 import { isLlmReasoningLevel } from "../llm/types.js";
 import {
+	type ChapterCompression,
+	type NewChapterCompressionInput,
+	assertCompressionSections,
+	formatCompressionSections,
+	isCompressionLevel,
+} from "../memory/compression.js";
+import {
 	DEFAULT_MEMORY_EVENT_LIMIT,
 	DEFAULT_MEMORY_EVENT_SOURCE,
 	type GetEventsForPathOptions,
@@ -446,6 +453,17 @@ interface SummaryRow {
 	readonly start_node_id: string;
 	readonly end_node_id: string;
 	readonly text: string;
+	readonly token_count: number;
+	readonly created_at: string;
+}
+
+interface ChapterCompressionRow {
+	readonly id: string;
+	readonly story_id: string;
+	readonly level: string;
+	readonly start_node_id: string;
+	readonly end_node_id: string;
+	readonly sections: string;
 	readonly token_count: number;
 	readonly created_at: string;
 }
@@ -1398,6 +1416,32 @@ function rowToSummary(row: SummaryRow): Summary {
 		startNodeId: row.start_node_id,
 		endNodeId: row.end_node_id,
 		text: row.text,
+		tokenCount: row.token_count,
+		createdAt: row.created_at,
+	};
+}
+
+function rowToChapterCompression(
+	row: ChapterCompressionRow,
+): ChapterCompression {
+	if (!isCompressionLevel(row.level)) {
+		throw new Error(`压缩 ${row.id} 的级别不合法：${row.level}`);
+	}
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(row.sections);
+	} catch (error) {
+		throw new Error(`压缩 ${row.id} 的 sections 不是合法 JSON`, {
+			cause: error,
+		});
+	}
+	return {
+		id: row.id,
+		storyId: row.story_id,
+		level: row.level,
+		startNodeId: row.start_node_id,
+		endNodeId: row.end_node_id,
+		sections: assertCompressionSections(parsed, `压缩 ${row.id} 的 sections`),
 		tokenCount: row.token_count,
 		createdAt: row.created_at,
 	};
@@ -5335,6 +5379,88 @@ export class StoryStore {
 		return rows.map(rowToSummary);
 	}
 
+	/**
+	 * 写入一条八段式压缩。起点必须是终点的祖先，八段必须齐全且都是非空字符串；
+	 * token_count 在这里按渲染后的八段正文计算。同一区间重复写入由唯一约束拒绝。
+	 */
+	insertChapterCompression(
+		input: NewChapterCompressionInput,
+	): ChapterCompression {
+		const compression = this.#normaliseCompression(input);
+		this.#db
+			.prepare(
+				`INSERT INTO chapter_compressions
+					(id, story_id, level, start_node_id, end_node_id, sections, token_count, created_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			)
+			.run(
+				compression.id,
+				compression.storyId,
+				compression.level,
+				compression.startNodeId,
+				compression.endNodeId,
+				JSON.stringify(compression.sections),
+				compression.tokenCount,
+				compression.createdAt,
+			);
+		return compression;
+	}
+
+	/** 起止节点都在 head 的路径上、且起点在终点之前的压缩才有效。 */
+	isCompressionValid(
+		compression: ChapterCompression,
+		headNodeId: string,
+	): boolean {
+		const head = this.getNode(headNodeId);
+		if (!head) {
+			throw new Error(`楼层节点不存在：${headNodeId}`);
+		}
+		if (head.storyId !== compression.storyId) return false;
+		const path = this.getPathToNode(headNodeId);
+		const startIndex = path.findIndex(
+			(node) => node.id === compression.startNodeId,
+		);
+		if (startIndex === -1) return false;
+		const endIndex = path.findIndex(
+			(node) => node.id === compression.endNodeId,
+		);
+		return endIndex !== -1 && startIndex < endIndex;
+	}
+
+	/** 只返回在当前 head 路径上仍然有效的压缩；先章节后主线，各自从早到晚。 */
+	getValidCompressions(
+		storyId: string,
+		headNodeId: string,
+	): ChapterCompression[] {
+		assertNonEmptyString(storyId, "故事 id");
+		const head = this.getNode(headNodeId);
+		if (!head) {
+			throw new Error(`楼层节点不存在：${headNodeId}`);
+		}
+		if (head.storyId !== storyId) {
+			throw new Error(`楼层节点 ${headNodeId} 属于另一个故事 ${head.storyId}`);
+		}
+		const rows = this.#db
+			.prepare(
+				`WITH RECURSIVE path(node_id, position) AS (
+					SELECT id, 0 FROM nodes WHERE id = ?
+					UNION ALL
+					SELECT nodes.parent_id, path.position + 1
+					FROM path JOIN nodes ON nodes.id = path.node_id
+					WHERE nodes.parent_id IS NOT NULL
+				)
+				SELECT c.*
+				FROM chapter_compressions AS c
+				JOIN path AS start ON start.node_id = c.start_node_id
+				JOIN path AS end ON end.node_id = c.end_node_id
+				WHERE c.story_id = ?
+					AND start.position > end.position
+				ORDER BY (c.level = 'chapter') DESC, end.position DESC`,
+			)
+			.all(headNodeId, storyId) as ChapterCompressionRow[];
+		return rows.map(rowToChapterCompression);
+	}
+
 	/** 统计路径上已确认（有子节点）的助手楼层数，包含给定节点自身。 */
 	countConfirmedAssistantNodesOnPath(nodeId: string): number {
 		assertNonEmptyString(nodeId, "楼层节点 id");
@@ -6348,6 +6474,67 @@ export class StoryStore {
 				});
 			}
 		})();
+	}
+
+	#normaliseCompression(input: NewChapterCompressionInput): ChapterCompression {
+		if (input === null || typeof input !== "object" || Array.isArray(input)) {
+			throw new Error("压缩必须是对象");
+		}
+		assertNonEmptyString(input.storyId, "压缩的 storyId");
+		if (!this.getStory(input.storyId)) {
+			throw new Error(`故事不存在：${input.storyId}`);
+		}
+		if (!isCompressionLevel(input.level)) {
+			throw new Error(`压缩级别不合法：${String(input.level)}`);
+		}
+		assertNonEmptyString(input.startNodeId, "压缩的 startNodeId");
+		assertNonEmptyString(input.endNodeId, "压缩的 endNodeId");
+		const start = this.getNode(input.startNodeId);
+		if (!start) {
+			throw new Error(`压缩的起点楼层不存在：${input.startNodeId}`);
+		}
+		if (start.storyId !== input.storyId) {
+			throw new Error(
+				`压缩的起点楼层属于另一个故事 ${start.storyId}：${input.startNodeId}`,
+			);
+		}
+		const end = this.getNode(input.endNodeId);
+		if (!end) {
+			throw new Error(`压缩的终点楼层不存在：${input.endNodeId}`);
+		}
+		if (end.storyId !== input.storyId) {
+			throw new Error(
+				`压缩的终点楼层属于另一个故事 ${end.storyId}：${input.endNodeId}`,
+			);
+		}
+		const sections = assertCompressionSections(
+			input.sections,
+			"压缩的 sections",
+		);
+		const path = this.getPathToNode(input.endNodeId);
+		const startIndex = path.findIndex((node) => node.id === input.startNodeId);
+		if (startIndex === -1) {
+			throw new Error(
+				`压缩的起点必须是终点的祖先：${input.startNodeId} 不在 ${input.endNodeId} 的路径上`,
+			);
+		}
+		if (startIndex === path.length - 1) {
+			throw new Error("压缩的起点必须在终点之前");
+		}
+		const id = input.id ?? randomUUID();
+		assertNonEmptyString(id, "压缩的 id");
+		const createdAt = input.createdAt ?? new Date().toISOString();
+		assertNonEmptyString(createdAt, "压缩的 createdAt");
+		return {
+			id,
+			storyId: input.storyId,
+			level: input.level,
+			startNodeId: input.startNodeId,
+			endNodeId: input.endNodeId,
+			sections,
+			tokenCount: estimateTokens(formatCompressionSections(sections)),
+			createdAt,
+		};
 	}
 
 	#normaliseSummary(input: NewSummaryInput): NormalisedSummary {

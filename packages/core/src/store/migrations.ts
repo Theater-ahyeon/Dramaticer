@@ -1048,6 +1048,34 @@ export function buildMigrations(
 				WHERE kind = 'embeddings'`,
 			],
 		},
+		{
+			version: 36,
+			description:
+				"八段式章节压缩：章节与主线压缩的起止楼层、八段正文与 token 数",
+			statements: [
+				`CREATE TABLE chapter_compressions (
+					row_id INTEGER PRIMARY KEY,
+					id TEXT NOT NULL UNIQUE,
+					story_id TEXT NOT NULL REFERENCES stories(id),
+					level TEXT NOT NULL CHECK (level IN ('chapter', 'mainline')),
+					start_node_id TEXT NOT NULL REFERENCES nodes(id),
+					end_node_id TEXT NOT NULL REFERENCES nodes(id),
+					sections TEXT NOT NULL,
+					token_count INTEGER NOT NULL CHECK (token_count > 0),
+					created_at TEXT NOT NULL,
+					UNIQUE (story_id, level, start_node_id, end_node_id)
+				) STRICT`,
+				`CREATE INDEX chapter_compressions_story_level_idx
+				ON chapter_compressions(story_id, level)`,
+				`CREATE TRIGGER chapter_compressions_story_matches_nodes
+				BEFORE INSERT ON chapter_compressions
+				WHEN COALESCE((SELECT story_id FROM nodes WHERE id = NEW.start_node_id), '') <> NEW.story_id
+					OR COALESCE((SELECT story_id FROM nodes WHERE id = NEW.end_node_id), '') <> NEW.story_id
+				BEGIN
+					SELECT RAISE(ABORT, '压缩的 story_id 必须与起止楼层一致');
+				END`,
+			],
+		},
 	];
 }
 

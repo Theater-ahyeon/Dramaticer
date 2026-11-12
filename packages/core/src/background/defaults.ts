@@ -31,6 +31,10 @@ import {
 import type { EmbeddingClient } from "../llm/embeddings.js";
 import type { LlmClient } from "../llm/types.js";
 import {
+	COMPRESSION_JOB_KIND,
+	createCompressionHandler,
+} from "../memory/compression.js";
+import {
 	EMBEDDINGS_JOB_KIND,
 	createEmbeddingsHandler,
 } from "../memory/embed.js";
@@ -72,6 +76,10 @@ export function createDefaultBackgroundJobRegistry(
 	return createBackgroundJobRegistry({
 		events: { handler: createEventExtractionHandler(), tier: "deferred" },
 		summary: { handler: createSummaryHandler(), tier: "deferred" },
+		[COMPRESSION_JOB_KIND]: {
+			handler: createCompressionHandler(),
+			tier: "deferred",
+		},
 		[NPC_AGENDA_JOB_KIND]: {
 			handler: createNpcAgendaHandler(),
 			tier: "deferred",

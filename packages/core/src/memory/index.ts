@@ -1,3 +1,4 @@
+export * from "./compression.js";
 export * from "./event.js";
 export * from "./embed.js";
 export * from "./extract.js";

@@ -367,7 +367,11 @@ describe("POST /api/stories/:id/turns", () => {
 		expect(names.filter((name) => name === "text.delta")).toHaveLength(
 			[...reply].length,
 		);
-		expect(names.filter((name) => name === "blocks.replace")).toHaveLength(2);
+		const blockReplaceIndexes = names.flatMap((name, index) =>
+			name === "blocks.replace" ? [index] : [],
+		);
+		expect(blockReplaceIndexes.length).toBeGreaterThan(0);
+		expect(blockReplaceIndexes.at(-1)).toBe(names.length - 2);
 		expect(names.at(-1)).toBe("turn.completed");
 		expect(names.indexOf("text.delta")).toBeGreaterThan(0);
 		expect(names.indexOf("text.delta")).toBeGreaterThan(

@@ -3,7 +3,12 @@ import { dirname, join } from "node:path";
 import Database from "better-sqlite3";
 import * as sqliteVec from "sqlite-vec";
 import { describe, expect, it, onTestFinished } from "vitest";
-import { StoryStore, chunkText, chunkTextByParent } from "../src/index.js";
+import {
+	LATEST_SCHEMA_VERSION,
+	StoryStore,
+	chunkText,
+	chunkTextByParent,
+} from "../src/index.js";
 import { MIGRATIONS, applyMigrations } from "../src/store/migrations.js";
 import { openTempStore } from "./temp-store.js";
 
@@ -267,7 +272,7 @@ describe("运行时分块与 BM25 索引", () => {
 
 		const store = StoryStore.open(path);
 		try {
-			expect(store.getSchemaVersion()).toBe(35);
+			expect(store.getSchemaVersion()).toBe(LATEST_SCHEMA_VERSION);
 			expect(store.countChunksForNode("迁移楼层")).toBe(
 				chunkTextByParent(text).length,
 			);
