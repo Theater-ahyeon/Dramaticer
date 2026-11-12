@@ -23,6 +23,10 @@ import { readLedger } from "../ledger/read.js";
 import { USER_WILL_KINDS, type UserWillKind } from "../ledger/schema.js";
 import type { EmbeddingClient } from "../llm/embeddings.js";
 import type { RerankClient } from "../llm/rerank.js";
+import {
+	type ChapterCompression,
+	formatCompressionSections,
+} from "../memory/compression.js";
 import { MAX_MEMORY_EVENT_LIMIT } from "../memory/event.js";
 import {
 	type LoreEntry,
@@ -389,9 +393,93 @@ export interface SummarySlotProviderOptions {
 }
 export const DEFAULT_SUMMARY_TOKEN_LIMIT = 800;
 
+const SUMMARY_HEADER = "故事摘要：";
+const COMPRESSION_HEADER = "故事压缩：";
+
+function formatCompressionForPrompt(
+	compression: ChapterCompression,
+	willOnly: boolean,
+): string {
+	const label = compression.level === "mainline" ? "主线压缩" : "章节压缩";
+	if (willOnly) {
+		return `【${label}·用户意志】\n【用户意志】\n${compression.sections.用户意志}`;
+	}
+	return `【${label}】\n${formatCompressionSections(compression.sections)}`;
+}
+
+/**
+ * 主线压缩全部注入，另加最近一条章节压缩；整段放不进预算时退化为只保留
+ * 该压缩的用户意志段，用户意志段不受预算裁剪。
+ */
+function buildCompressionSlotContent(
+	store: StoryStore,
+	compressions: readonly ChapterCompression[],
+	headNodeId: string,
+	tokenLimit: number,
+	estimator: TokenEstimator,
+): ContextSlotContent | null {
+	const latestChapter = compressions
+		.filter((compression) => compression.level === "chapter")
+		.at(-1);
+	const mainlines = compressions.filter(
+		(compression) => compression.level === "mainline",
+	);
+	const selected =
+		latestChapter === undefined ? mainlines : [...mainlines, latestChapter];
+	if (selected.length === 0) return null;
+	const path = store.getPathToNode(headNodeId);
+	const positions = new Map(
+		path.map((node, index) => [node.id, index] as const),
+	);
+	const byRecency = [...selected].sort(
+		(left, right) =>
+			(positions.get(right.endNodeId) ?? -1) -
+			(positions.get(left.endNodeId) ?? -1),
+	);
+	let used = estimator(COMPRESSION_HEADER);
+	const full = new Set<string>();
+	const willOnly = new Set<string>();
+	for (const compression of byRecency) {
+		const fullTokens = estimator(
+			formatCompressionForPrompt(compression, false),
+		);
+		if (used + fullTokens <= tokenLimit) {
+			used += fullTokens;
+			full.add(compression.id);
+			continue;
+		}
+		used += estimator(formatCompressionForPrompt(compression, true));
+		willOnly.add(compression.id);
+	}
+	const keptMainlines = mainlines.filter(
+		(compression) => full.has(compression.id) || willOnly.has(compression.id),
+	);
+	const chapterKept =
+		latestChapter !== undefined &&
+		(full.has(latestChapter.id) || willOnly.has(latestChapter.id));
+	const lines = [COMPRESSION_HEADER];
+	for (const compression of keptMainlines) {
+		lines.push(
+			formatCompressionForPrompt(compression, !full.has(compression.id)),
+		);
+	}
+	if (chapterKept && latestChapter !== undefined) {
+		lines.push(
+			formatCompressionForPrompt(latestChapter, !full.has(latestChapter.id)),
+		);
+	}
+	const levels: SummaryLevel[] = [];
+	if (keptMainlines.length > 0) levels.push("mainline");
+	if (chapterKept) levels.push("chapter");
+	return {
+		messages: [{ role: "system", content: lines.join("\n") }],
+		source: `compression:${levels.join("+")}`,
+	};
+}
+
 /**
  * 返回当前分支下有效的主线摘要与最近一条章节摘要；超过 token 上限时
- * 从最久远的摘要开始丢弃。
+ * 从最久远的摘要开始丢弃。存在有效压缩时改为注入压缩，用户意志段不裁剪。
  */
 export function createSummarySlotProvider(
 	store: StoryStore,
@@ -402,12 +490,25 @@ export function createSummarySlotProvider(
 		throw new Error("摘要槽位的 token 上限必须是正整数");
 	}
 	const estimator = options.tokenEstimator ?? createTokenEstimator();
-	const header = "故事摘要：";
+	const header = SUMMARY_HEADER;
 	return {
 		provide(request): ContextSlotContent | null {
 			const headNodeId =
 				request.nodeId ?? store.getHead(request.storyId)?.id ?? null;
 			if (headNodeId === null) return null;
+			const compressions = store.getValidCompressions(
+				request.storyId,
+				headNodeId,
+			);
+			if (compressions.length > 0) {
+				return buildCompressionSlotContent(
+					store,
+					compressions,
+					headNodeId,
+					tokenLimit,
+					estimator,
+				);
+			}
 			const valid = store.getValidSummaries(request.storyId, headNodeId);
 			const latestChapter = valid
 				.filter((summary) => summary.level === "chapter")

@@ -311,3 +311,5 @@
 - 2026-11-12 | S276 | R1-T04.b | DONE | 长任务 `R1-T04.b-07` 成功（退出码 0、37.4 分钟）：回填新增 0 个窗口，`memory-eval --events --rerank` 用新默认权重 2/1/0.5/0.5/1 重新生成两份报告，融合事件题 133/141/146、状态题 20/30/35，均高于全 1 的 122/135/141 与 18/29/29；ADR-0084 记录实测；TASKS 的 R1-T04.b 标 `[x]`；门禁通过（161 个测试文件、1447 个测试、4 个 live 跳过）
 
 - 2026-11-12 | S277 | R1-T05.a | DONE | 迁移 v36 新增 `chapter_compressions`（唯一约束与 story/楼层一致性触发器）；新增 `memory/compression.ts`（八段固定顺序解析与渲染、章节/主线压缩处理器）与默认注册表的 `compression` 任务（`deferred` 档）；`StoryStore` 新增 `insertChapterCompression`、`isCompressionValid`、`getValidCompressions`；11 个测试；R1-T05 拆成 `.a` 与 `.b`，`.a` 完成；门禁通过（162 个测试文件、1458 个测试、4 个 live 跳过）
+
+- 2026-11-12 | S278 | R1-T05.b | DONE | `createSummarySlotProvider` 在有有效压缩时注入全部主线压缩与最近一条章节压缩，来源写 `compression:mainline+chapter`；整段放不进预算时只保留该压缩的用户意志段且不受裁剪；没有压缩时摘要路径逐字不变；2 个测试；门禁通过（162 个测试文件、1460 个测试、4 个 live 跳过）

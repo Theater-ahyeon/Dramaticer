@@ -3,25 +3,25 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-12 会话 277：R1-T05.a（八段式压缩的存储与后台任务）。迁移 v36 新增 `chapter_compressions`；新增 `core/src/memory/compression.ts`（八段固定顺序解析与渲染、章节/主线压缩处理器、`compression` 任务类型）；`StoryStore` 新增写入、有效性判断与路径读取；默认后台注册表加入 `compression`（`deferred` 档）；新增 11 个测试。门禁通过（162 个测试文件、1458 个测试、4 个 live 跳过）。R1-T05 已拆成 `.a` 与 `.b`，`.a` 完成。
+- 2026-11-12 会话 278：R1-T05.b（压缩槽位注入）。`createSummarySlotProvider` 先读当前 head 路径上的有效压缩；有压缩时注入全部主线压缩与最近一条章节压缩，整段放不进 token 上限时只保留该压缩的用户意志段且不受裁剪，Trace 来源写 `compression:mainline+chapter` 这类形式；没有有效压缩时走原摘要路径，输出逐字不变。新增 2 个测试。门禁通过（162 个测试文件、1460 个测试、4 个 live 跳过）。R1-T05 全部完成。
 
-## 下一步（会话 278 先做）
-1. 做 R1-T05.b（压缩槽位注入）：槽位提供者按预算注入主线与最近章节压缩，用户意志段永远保留，Trace 来源写 `compression:<level>`；没有有效压缩时保持现有摘要注入行为。验收见 TASKS。
-2. R1-T05.b 之后的顺序：R1-T06（v37 世界书预筛）、R1-T08（v38 上下文包复用）、R1-T99.a。
+## 下一步（会话 279 先做）
+1. 做 R1-T06（后台预筛世界书，迁移 v37）：回合落定后由后台按本轮用户消息、最近一条压缩摘要与下一拍方案构造查询，先用 BM25 取前 20 条非恒常 lore，再由后台模型判断相关性并写入 head 楼层的预筛结果；下一轮 `createLoreSlotProvider` 优先读预筛结果，没有记录时退回关键词与实体命中。验收见 TASKS。
+2. R1-T06 之后的顺序：R1-T08（v38 上下文包复用）、R1-T99.a。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1-T03.a、R1-T03.b、R1-T04.b、R1-T05.a。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- R1 续剩余：R1-T05.b、R1-T06、R1-T08、R1-T99.a。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1-T03.a、R1-T03.b、R1-T04.b、R1-T05.a、R1-T05.b。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- R1 续剩余：R1-T06、R1-T08、R1-T99.a。
 - `eval-private/memory-cache/r1-retrieval.db` 现有三个故事：`仙侠雌竞：什么叫我是炉鼎体质？` 290 个助手楼层已抽取 282 个、414 条事件；`欲望世界-1600` 180 个助手楼层已抽取 174 个、292 条事件；`银麒赎世` 114 个助手楼层已抽取 112 个、248 条事件。评测自己的临时数据库重新抽取后事件覆盖为 282/290、172/180、112/114，事件数 371/247/248。
 - M6-T99 标 `[!]`，等待 HUMAN-15：真实 ComfyUI 启动在 `http://127.0.0.1:8188` 并提供 API 格式 workflow JSON 到 `eval-private/comfyui/`；2026-11-09 探测时端口仍未监听。
-- v3 阶段顺序：R5（完成）→ M6 生图第一批（T01–T05 完成，T99 阻塞）→ R1 续（T03.a、T03.b、T04.b、T05.a 完成）→ R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → M6b 生图第二批 → P3/P4 → M5 → P5 → M7。
+- v3 阶段顺序：R5（完成）→ M6 生图第一批（T01–T05 完成，T99 阻塞）→ R1 续（T03.a、T03.b、T04.b、T05.a、T05.b 完成）→ R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → M6b 生图第二批 → P3/P4 → M5 → P5 → M7。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045、ADR-0078、ADR-0079、ADR-0080、ADR-0082、ADR-0083、ADR-0084。
 - HUMAN-03 待处理（不阻塞）：抽查 `eval-private/evalset/spotcheck.md` 里的事件题。
 - HUMAN-14 已关闭（2026-11-12：人类取消）：取消 Vertex 真实调用的凭证配置与验证要求；`roles.writer` 继续使用 `main-fallback`。
 - HUMAN-15 待处理（M6-T99 需要）：把秋叶整合包 v3.2 的 ComfyUI 启动在 `http://127.0.0.1:8188`，并导出一份 API 格式 workflow JSON 到 `eval-private/comfyui/`。
 - 数据库 schema 版本 36（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡、v25 合并调用开关与执行记录、v26 间隙档位阈值与丢弃状态、v27 合并调用丢弃条目、v28 回合模式与读取工具上限、v29 开局包与故事级后台任务、v30 首楼开场候选、v31 选择记录、v32 导演计划与拍状态、v33 导演候选行动、v34 生图表、v35 父子分块、v36 八段式压缩）。R1 续后续迁移为 v37–v38。
 
-## 八段式压缩（R1-T05.a）
+## 八段式压缩（R1-T05.a 与 R1-T05.b）
 - 表 `chapter_compressions(row_id, id, story_id, level, start_node_id, end_node_id, sections, token_count, created_at)`，`level` 取 `chapter` 或 `mainline`，`UNIQUE(story_id, level, start_node_id, end_node_id)`；插入触发器要求起止楼层属于同一故事。
 - `sections` 存 JSON，键固定并有序：`剧情脉络`、`人物档案`、`关系网`、`世界与设定`、`物品与资源`、`伏笔与约定`、`当前情况`、`用户意志`。
 - `core/src/memory/compression.ts`：`COMPRESSION_SECTION_KEYS`、`assertCompressionSections`（缺键、未知键、非字符串、去空白后为空都抛错并指出字段）、`parseCompressionSections`（允许代码块包裹）、`formatCompressionSections`（固定顺序渲染）、`createCompressionHandler`、`COMPRESSION_JOB_KIND = "compression"`。
@@ -32,7 +32,8 @@
 - 读取：`isCompressionValid(compression, headNodeId)` 与 `getValidCompressions(storyId, headNodeId)`；只返回当前 head 路径上有效的行，先章节后主线，各自从早到晚；分支切换后旧分支的行自动失效。
 - 模型输出缺段或类型不符时处理器直接抛错，整条不写入；错误由后台任务框架记入 `last_error` 并按既有规则重试。
 - 测试 `packages/core/test/compressions.test.ts` 覆盖解析错误、存储、分支失效、章节与主线窗口、重跑幂等、空窗口零调用与注册档位。
-- 尚未做：槽位注入（R1-T05.b）。`GET /api/nodes/:id/compressions` 目前仍返回 `getValidSummaries`。
+- 槽位注入（R1-T05.b）在 `createSummarySlotProvider` 内：先取 `getValidCompressions`，非空时注入全部主线压缩与最近一条章节压缩；候选按终点在当前路径上的位置从新到旧分配预算，整段放得进 `tokenLimit`（默认 800，与摘要共用）就注入完整八段，放不进只注入 `【主线压缩·用户意志】` / `【章节压缩·用户意志】` 段且不受预算裁剪；渲染顺序仍是主线从早到晚、章节最后，来源写 `compression:mainline+chapter`（只有一种级别时只写该级别）。没有有效压缩时完全不进入这段逻辑，摘要输出与改动前逐字节一致。
+- `GET /api/nodes/:id/compressions` 仍返回 `getValidSummaries` 的结果；压缩表的面板接口与显示尚未接。
 
 ## R1 续：检索评测
 - 配置：`channels.yaml` 顶层 `reranker` 段，字段 `enabled`、`api`（只能是 `openai-rerank`）、`baseUrl`、`apiKey`（必须写 `${VAR}`）、`model`、`batchSize`、`requestsPerMinute`、`maxRetries`、`retryBaseDelayMs`、`timeoutMs`、`maxDocumentChars`（默认 4,000）。段缺失时 `LlmChannelsConfig.reranker` 为 null；`enabled` 缺省 false。`data/channels.yaml` 当前 `enabled: false`。
@@ -153,6 +154,6 @@
 - 不要修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 下的任何文件。不变量 I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账是唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖任何其他工作区包。
 
 ## 下一步
-- 会话 278 做 R1-T05.b（压缩槽位注入），依赖 R1-T05.a。
+- 会话 279 做 R1-T06（后台预筛世界书，迁移 v37），依赖 M2-T13、R1-T02、R1-T05.b。
 - M6-T99 仍等待 HUMAN-15；人类把 ComfyUI 启动并放入 workflow JSON 后，把 TASKS 里 `[!]` 改回 `[ ]` 再做验收。
-- 后续：R1-T05.b、R1-T06（v37）、R1-T08（v38）、R1-T99.a；C 线兼容插件任务依赖 P2，以 DESIGN §19 为唯一权威。
+- 后续：R1-T08（v38）、R1-T99.a；C 线兼容插件任务依赖 P2，以 DESIGN §19 为唯一权威。

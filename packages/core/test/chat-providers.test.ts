@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+	COMPRESSION_SECTION_KEYS,
+	type CompressionSectionKey,
+	type CompressionSections,
 	type ContextSlotRequest,
 	assembleContext,
 	createCharacterSlotProvider,
@@ -20,6 +23,16 @@ function request(
 	slot: ContextSlotRequest["slot"],
 ): ContextSlotRequest {
 	return { slot, storyId, nodeId, switches: {}, state: undefined };
+}
+
+function compressionSections(
+	overrides: Partial<Record<CompressionSectionKey, string>> = {},
+): CompressionSections {
+	const sections = {} as Record<CompressionSectionKey, string>;
+	for (const key of COMPRESSION_SECTION_KEYS) {
+		sections[key] = `${key}正文`;
+	}
+	return { ...sections, ...overrides };
 }
 
 describe("createDefaultContextTemplate", () => {
@@ -555,6 +568,111 @@ describe("记忆与摘要槽位", () => {
 			);
 			expect(entry?.status).toBe("missing-slot");
 		}
+	});
+
+	it("有有效压缩时注入主线与最近章节压缩，用户意志段不受预算裁剪", async () => {
+		const { store } = openTempStore();
+		store.createStory({ id: "s1", title: "测试" });
+		const floors = [
+			["n0", null, "assistant"],
+			["n1", "n0", "user"],
+			["n2", "n1", "assistant"],
+			["n3", "n2", "user"],
+			["n4", "n3", "assistant"],
+		] as const;
+		for (const [id, parentId, role] of floors) {
+			store.appendNode({
+				id,
+				storyId: "s1",
+				parentId,
+				role,
+				raw: `[[${id}]]`,
+			});
+		}
+		store.insertSummary({
+			storyId: "s1",
+			level: "chapter",
+			startNodeId: "n0",
+			endNodeId: "n4",
+			text: "旧摘要文本",
+		});
+		store.insertChapterCompression({
+			storyId: "s1",
+			level: "mainline",
+			startNodeId: "n0",
+			endNodeId: "n2",
+			sections: compressionSections({ 剧情脉络: "主线脉络" }),
+		});
+		store.insertChapterCompression({
+			storyId: "s1",
+			level: "chapter",
+			startNodeId: "n3",
+			endNodeId: "n4",
+			sections: compressionSections({ 剧情脉络: "章节脉络" }),
+		});
+
+		const provider = createSummarySlotProvider(store);
+		const content = await provider.provide(request("s1", "n4", "summary"));
+		expect(content?.source).toBe("compression:mainline+chapter");
+		const text = content?.messages[0]?.content ?? "";
+		expect(text).toContain("【主线压缩】");
+		expect(text).toContain("【章节压缩】");
+		expect(text).toContain("主线脉络");
+		expect(text).toContain("章节脉络");
+		expect(text).not.toContain("旧摘要文本");
+
+		const trimmed = createSummarySlotProvider(store, { tokenLimit: 5 });
+		const trimmedContent = await trimmed.provide(
+			request("s1", "n4", "summary"),
+		);
+		expect(trimmedContent?.source).toBe("compression:mainline+chapter");
+		const trimmedText = trimmedContent?.messages[0]?.content ?? "";
+		expect(trimmedText).toContain("【主线压缩·用户意志】");
+		expect(trimmedText).toContain("【章节压缩·用户意志】");
+		expect(trimmedText).toContain("用户意志正文");
+		expect(trimmedText).not.toContain("主线脉络");
+		expect(trimmedText).not.toContain("章节脉络");
+	});
+
+	it("分支切换后另一分支的压缩失效，退回该分支的摘要", async () => {
+		const { store } = openTempStore();
+		store.createStory({ id: "s1", title: "测试" });
+		const floors = [
+			["n0", null, "assistant"],
+			["n1", "n0", "user"],
+			["n2", "n1", "assistant"],
+			["n-side", "n0", "assistant"],
+		] as const;
+		for (const [id, parentId, role] of floors) {
+			store.appendNode({
+				id,
+				storyId: "s1",
+				parentId,
+				role,
+				raw: `[[${id}]]`,
+			});
+		}
+		store.insertChapterCompression({
+			storyId: "s1",
+			level: "chapter",
+			startNodeId: "n0",
+			endNodeId: "n2",
+			sections: compressionSections(),
+		});
+		store.insertSummary({
+			storyId: "s1",
+			level: "chapter",
+			startNodeId: "n0",
+			endNodeId: "n-side",
+			text: "另一条分支的摘要",
+		});
+		store.setHead("s1", "n-side");
+
+		const provider = createSummarySlotProvider(store);
+		const content = await provider.provide(request("s1", "n-side", "summary"));
+		expect(content?.source).toBe("summary:chapter");
+		expect(content?.messages[0]?.content).toContain("另一条分支的摘要");
+		expect(content?.messages[0]?.content).not.toContain("章节压缩");
 	});
 });
 
