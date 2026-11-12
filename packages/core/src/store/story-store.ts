@@ -235,6 +235,7 @@ import {
 	assertStoredContextTemplate,
 	assertStorySettingsUpdate,
 	isOpeningCandidateStatus,
+	parseStoryPluginOverrides,
 } from "./settings.js";
 
 interface StoryRow {
@@ -267,6 +268,7 @@ interface StorySettingsRow {
 	readonly gap_pass_enabled: number;
 	readonly gap_plan_seconds: number;
 	readonly image_config: string | null;
+	readonly plugin_overrides: string;
 	readonly updated_at: string;
 }
 
@@ -1079,6 +1081,9 @@ function rowToStorySettings(row: StorySettingsRow): StorySettings {
 		),
 		gapPlanSeconds: row.gap_plan_seconds,
 		imageConfig: readStoredImageConfig(row.image_config),
+		pluginOverrides: parseStoryPluginOverrides(
+			JSON.parse(row.plugin_overrides) as unknown,
+		),
 		updatedAt: row.updated_at,
 	};
 }
@@ -1990,6 +1995,7 @@ export class StoryStore {
 			gapPassEnabled: DEFAULT_STORY_SETTINGS_VALUES.gapPassEnabled,
 			gapPlanSeconds: DEFAULT_STORY_SETTINGS_VALUES.gapPlanSeconds,
 			imageConfig: DEFAULT_STORY_SETTINGS_VALUES.imageConfig,
+			pluginOverrides: DEFAULT_STORY_SETTINGS_VALUES.pluginOverrides,
 			updatedAt: story.createdAt,
 		};
 	}
@@ -2103,6 +2109,10 @@ export class StoryStore {
 				update.imageConfig !== undefined
 					? update.imageConfig
 					: current.imageConfig,
+			pluginOverrides:
+				update.pluginOverrides !== undefined
+					? update.pluginOverrides
+					: current.pluginOverrides,
 		};
 		const updatedAt = new Date().toISOString();
 		this.#db
@@ -2113,8 +2123,8 @@ export class StoryStore {
 					 turn_mode, max_read_rounds, deep_max_tool_calls, deep_timeout_ms,
 					 deep_context_token_limit, deep_recent_tool_steps, viewpoint,
 					 director_config, history_block_policy, gap_pass_enabled,
-					 gap_plan_seconds, image_config, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+					 gap_plan_seconds, image_config, plugin_overrides, updated_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 				ON CONFLICT(story_id) DO UPDATE SET
 					card_name = excluded.card_name,
 					character_prompt = excluded.character_prompt,
@@ -2138,6 +2148,7 @@ export class StoryStore {
 					gap_pass_enabled = excluded.gap_pass_enabled,
 					gap_plan_seconds = excluded.gap_plan_seconds,
 					image_config = excluded.image_config,
+					plugin_overrides = excluded.plugin_overrides,
 					updated_at = excluded.updated_at`,
 			)
 			.run(
@@ -2164,6 +2175,10 @@ export class StoryStore {
 				next.gapPassEnabled ? 1 : 0,
 				next.gapPlanSeconds,
 				serializeJsonValue(next.imageConfig, "故事设置的 imageConfig"),
+				serializeJsonValue(
+					parseStoryPluginOverrides(next.pluginOverrides),
+					"故事设置的 pluginOverrides",
+				),
 				updatedAt,
 			);
 		const saved = this.getStorySettings(storyId);

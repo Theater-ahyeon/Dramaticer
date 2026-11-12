@@ -8,6 +8,7 @@ import {
 	parsePlaypackManifest,
 	parsePlaypackUserOverrides,
 	parsePlaypacks,
+	resolveStoryPlugins,
 	stackPlaypacks,
 } from "../src/index.js";
 
@@ -300,5 +301,44 @@ describe("玩法包叠加", () => {
 				}),
 			}),
 		).toThrow("用户覆盖的配置引用了未知插件：ghost");
+	});
+});
+
+describe("按故事解析", () => {
+	it("关闭的插件不加载，故事覆盖优先于包默认值", () => {
+		const packs = parsePlaypacks([
+			playpack("base", {
+				plugins: [skillPlugin("base.core"), skillPlugin("base.extra")],
+				config: {
+					"slot.memory": { limit: 20, nested: { a: 1, b: 2 } },
+					"base.core": { greeting: "包默认" },
+					"base.extra": { greeting: "保留" },
+				},
+			}),
+		]);
+		const resolved = resolveStoryPlugins(packs, {
+			knownPluginNames: KNOWN,
+			overrides: parsePlaypackUserOverrides({
+				config: {
+					"slot.memory": { limit: 8, nested: { a: 3 } },
+					"base.core": { greeting: "故事覆盖" },
+				},
+				switches: { "base.extra": false, "slot.summary": false },
+			}),
+		});
+		expect(resolved.plugins.map((plugin) => plugin.name)).toEqual([
+			"base.core",
+		]);
+		expect(resolved.configs["slot.memory"]).toEqual({
+			limit: 8,
+			nested: { a: 3, b: 2 },
+		});
+		expect(resolved.configs["base.core"]).toEqual({ greeting: "故事覆盖" });
+		expect(resolved.configs["base.extra"]).toBeUndefined();
+		expect(resolved.disabledPlugins).toEqual(["base.extra", "slot.summary"]);
+		expect(resolved.switches).toEqual({
+			"base.extra": false,
+			"slot.summary": false,
+		});
 	});
 });

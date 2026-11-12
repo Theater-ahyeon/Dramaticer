@@ -53,6 +53,11 @@ export {
 export { createStaticKernel } from "./static-kernel.js";
 export * from "./playpack.js";
 export {
+	EMPTY_PLAYPACK_USER_OVERRIDES,
+	type PlaypackUserOverrides,
+	parsePlaypackUserOverrides,
+} from "./playpack-overrides.js";
+export {
 	type ToolPlugin,
 	COMMIT_DRAFT_TOOL_PLUGIN,
 	DEFAULT_TOOL_KERNEL,

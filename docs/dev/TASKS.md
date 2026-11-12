@@ -1129,7 +1129,8 @@
   - 多个玩法包按加载顺序叠加，后面的包覆盖前面的同名配置与开关；用户覆盖在最上层，不修改包文件。
   验收：叠加顺序与用户覆盖优先级有测试；包文件只读；`pnpm check` 通过。
 
-- [ ] **P3.c 按故事启用与覆盖** | 依赖：P3.b
+- [x] **P3.c 按故事启用与覆盖** | 依赖：P3.b
+  完成：2026-11-12 迁移 v42 给 `story_settings` 增加 `plugin_overrides`（`{config, switches}`，同故事各分支共享）；`StorySettings.pluginOverrides` 与更新字段复用 `PlaypackUserOverrides`，保存与读取都走 `parseStoryPluginOverrides`；用户覆盖解析与 JSON 拷贝抽到叶子模块 `plugins/playpack-overrides.ts`；新增 `resolveStoryPlugins` 在玩法包叠加之后剔除显式关闭的插件，`plugins` 与 `configs` 只含启用项并给出 `disabledPlugins`；新增 `story-plugins.test.ts`（分支切换、重新打开、故事隔离）与按故事解析用例；门禁通过（184 个测试文件、1637 个测试、5 个跳过）
   做什么：
   - 迁移新增故事级插件状态：每个故事的启用开关与配置覆盖，分支共享同一份。
   - 运行时按故事解析最终启用的插件与配置。

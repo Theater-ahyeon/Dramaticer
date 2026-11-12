@@ -71,6 +71,7 @@ function settingsFixture(
 			maxPerFloor: 1,
 			minFloorsBetween: 3,
 		},
+		pluginOverrides: { config: {}, switches: {} },
 		updatedAt: "2026-11-08T10:00:00.000Z",
 		...overrides,
 	};

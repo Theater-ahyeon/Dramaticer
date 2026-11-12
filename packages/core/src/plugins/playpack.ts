@@ -1,6 +1,5 @@
 import {
 	type JsonObject,
-	type JsonValue,
 	assertJsonValue,
 	assertPlainObject,
 	isJsonObject,
@@ -14,6 +13,14 @@ import {
 	readPluginName,
 	readPluginVersion,
 } from "./declarative.js";
+import {
+	EMPTY_PLAYPACK_USER_OVERRIDES,
+	type PlaypackUserOverrides,
+	clonePlaypackJson,
+	clonePlaypackJsonObject,
+	parsePlaypackConfigPatches,
+	parsePlaypackSwitches,
+} from "./playpack-overrides.js";
 
 /** 玩法包的格式标识；玩法包文件与用户覆盖都按同一套外壳解析。 */
 export const PLAYPACK_FORMAT = "dramaticer.playpack";
@@ -35,12 +42,6 @@ export interface PlaypackManifest {
 	/** 需要更早加载的玩法包与插件；版本范围的匹配留给导入流程。 */
 	readonly requirements: DeclarativeRequirements;
 	readonly plugins: readonly DeclarativePlugin[];
-	readonly config: Readonly<Record<string, JsonObject>>;
-	readonly switches: Readonly<Record<string, boolean>>;
-}
-
-/** 最上层的手工覆盖，不写回任何玩法包文件。 */
-export interface PlaypackUserOverrides {
 	readonly config: Readonly<Record<string, JsonObject>>;
 	readonly switches: Readonly<Record<string, boolean>>;
 }
@@ -77,9 +78,6 @@ const MANIFEST_KEYS = [
 	"config",
 	"switches",
 ];
-const OVERRIDE_KEYS = ["config", "switches"];
-const EMPTY_OVERRIDES: PlaypackUserOverrides = { config: {}, switches: {} };
-
 /** 解析一个玩法包文件；输入先按 JSON 值校验，代码无法通过。 */
 export function parsePlaypackManifest(
 	value: unknown,
@@ -109,8 +107,8 @@ export function parsePlaypackManifest(
 		`${path}.requirements`,
 	);
 	const plugins = parseDeclarativePlugins(object.plugins, `${path}.plugins`);
-	const config = parseConfigPatches(object.config, `${path}.config`);
-	const switches = parseSwitches(object.switches, `${path}.switches`);
+	const config = parsePlaypackConfigPatches(object.config, `${path}.config`);
+	const switches = parsePlaypackSwitches(object.switches, `${path}.switches`);
 	return {
 		format: PLAYPACK_FORMAT,
 		formatVersion: PLAYPACK_FORMAT_VERSION,
@@ -144,20 +142,6 @@ export function parsePlaypacks(
 		names.add(playpack.name);
 		return playpack;
 	});
-}
-
-/** 解析用户覆盖；省略时返回空覆盖。 */
-export function parsePlaypackUserOverrides(
-	value: unknown,
-	path = "playpackOverrides",
-): PlaypackUserOverrides {
-	if (value === undefined || value === null) return EMPTY_OVERRIDES;
-	const object = assertPlainObject(value, path);
-	rejectUnknownKeys(object, OVERRIDE_KEYS, path);
-	return {
-		config: parseConfigPatches(object.config, `${path}.config`),
-		switches: parseSwitches(object.switches, `${path}.switches`),
-	};
 }
 
 /**
@@ -199,7 +183,7 @@ export function stackPlaypacks(
 			const current = configs[pluginName];
 			configs[pluginName] = Object.hasOwn(configs, pluginName)
 				? mergePatch(current as JsonObject, patch)
-				: cloneJsonObject(patch);
+				: clonePlaypackJsonObject(patch);
 		}
 		for (const [pluginName, enabled] of Object.entries(pack.switches)) {
 			assertKnown(pluginName, available, `玩法包 ${pack.name} 的开关`);
@@ -208,13 +192,13 @@ export function stackPlaypacks(
 		loaded.set(pack.name, pack.version);
 	}
 
-	const overrides = options.overrides ?? EMPTY_OVERRIDES;
+	const overrides = options.overrides ?? EMPTY_PLAYPACK_USER_OVERRIDES;
 	for (const [pluginName, patch] of Object.entries(overrides.config)) {
 		assertKnown(pluginName, available, "用户覆盖的配置");
 		const current = configs[pluginName];
 		configs[pluginName] = Object.hasOwn(configs, pluginName)
 			? mergePatch(current as JsonObject, patch)
-			: cloneJsonObject(patch);
+			: clonePlaypackJsonObject(patch);
 	}
 	for (const [pluginName, enabled] of Object.entries(overrides.switches)) {
 		assertKnown(pluginName, available, "用户覆盖的开关");
@@ -238,6 +222,39 @@ export function isPlaypackPluginEnabled(
 	pluginName: string,
 ): boolean {
 	return resolved.switches[pluginName] !== false;
+}
+
+/** 按故事解析后的结果：关闭的插件不出现在 `plugins` 与 `configs` 里。 */
+export interface ResolvedStoryPlugins extends ResolvedPlaypack {
+	readonly disabledPlugins: readonly string[];
+}
+
+/**
+ * 解析一个故事最终启用的插件与配置：玩法包叠加之后应用故事级开关与覆盖，
+ * 再剔除显式关闭的插件。故事覆盖来自 `StorySettings.pluginOverrides`，
+ * 同一故事的所有分支读取同一份设置。
+ */
+export function resolveStoryPlugins(
+	packs: readonly PlaypackManifest[],
+	options: PlaypackStackOptions = {},
+): ResolvedStoryPlugins {
+	const resolved = stackPlaypacks(packs, options);
+	const disabled = new Set<string>();
+	for (const [pluginName, enabled] of Object.entries(resolved.switches)) {
+		if (!enabled) disabled.add(pluginName);
+	}
+	const configs: Record<string, JsonObject> = {};
+	for (const [pluginName, patch] of Object.entries(resolved.configs)) {
+		if (disabled.has(pluginName)) continue;
+		configs[pluginName] = patch;
+	}
+	return {
+		playpacks: resolved.playpacks,
+		plugins: resolved.plugins.filter((plugin) => !disabled.has(plugin.name)),
+		configs,
+		switches: resolved.switches,
+		disabledPlugins: [...disabled],
+	};
 }
 
 function assertRequirements(
@@ -279,51 +296,14 @@ function assertKnown(
 		throw new Error(`${what}引用了未知插件：${pluginName}`);
 	}
 }
-
-function parseConfigPatches(
-	value: unknown,
-	path: string,
-): Record<string, JsonObject> {
-	if (value === undefined) return {};
-	const object = assertPlainObject(value, path);
-	const patches: Record<string, JsonObject> = {};
-	for (const [pluginName, patch] of Object.entries(object)) {
-		if (pluginName.trim().length === 0) {
-			throw new Error(`${path} 的键名不能是空字符串`);
-		}
-		const patchPath = `${path}.${pluginName}`;
-		assertJsonValue(patch, patchPath);
-		patches[pluginName] = cloneJsonObject(
-			assertPlainObject(patch, patchPath) as JsonObject,
-		);
-	}
-	return patches;
-}
-
-function parseSwitches(value: unknown, path: string): Record<string, boolean> {
-	if (value === undefined) return {};
-	const object = assertPlainObject(value, path);
-	const switches: Record<string, boolean> = {};
-	for (const [pluginName, enabled] of Object.entries(object)) {
-		if (pluginName.trim().length === 0) {
-			throw new Error(`${path} 的键名不能是空字符串`);
-		}
-		if (typeof enabled !== "boolean") {
-			throw new Error(`${path}.${pluginName} 必须是布尔值`);
-		}
-		switches[pluginName] = enabled;
-	}
-	return switches;
-}
-
 function mergePatch(base: JsonObject, patch: JsonObject): JsonObject {
-	const result: JsonObject = cloneJsonObject(base);
+	const result: JsonObject = clonePlaypackJsonObject(base);
 	for (const [key, value] of Object.entries(patch)) {
 		const current = result[key];
 		result[key] =
 			current !== undefined && isJsonObject(current) && isJsonObject(value)
 				? mergePatch(current, value)
-				: cloneJson(value);
+				: clonePlaypackJson(value);
 	}
 	return result;
 }
@@ -337,18 +317,4 @@ function readNonEmptyString(value: unknown, path: string): string {
 		throw new Error(`${path} 不能是空字符串`);
 	}
 	return trimmed;
-}
-
-function cloneJson(value: JsonValue): JsonValue {
-	if (Array.isArray(value)) return value.map((item) => cloneJson(item));
-	if (isJsonObject(value)) return cloneJsonObject(value);
-	return value;
-}
-
-function cloneJsonObject(value: JsonObject): JsonObject {
-	const copy: JsonObject = {};
-	for (const [key, child] of Object.entries(value)) {
-		copy[key] = cloneJson(child);
-	}
-	return copy;
 }

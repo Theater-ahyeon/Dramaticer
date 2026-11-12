@@ -3,25 +3,33 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-12 会话 307：P3.b（玩法包分层与用户覆盖）。新增 `packages/core/src/plugins/playpack.ts`：`dramaticer.playpack` 清单外壳与严格解析，`stackPlaypacks` 按加载顺序叠加插件、配置补丁与开关，用户覆盖在最上层；`declarative.ts` 导出 `readPluginName`/`readPluginVersion` 供复用。P3 已拆成 P3.a 至 P3.f，已完成 P3.a 与 P3.b。门禁通过（183 个测试文件、1634 个测试、5 个跳过）。
+- 2026-11-12 会话 308：P3.c（按故事启用与覆盖）。迁移 v42 给 `story_settings` 增加 `plugin_overrides`（`{config, switches}`，同一故事的各分支共享）；`StorySettings.pluginOverrides` 与 `StorySettingsUpdate.pluginOverrides` 复用 `PlaypackUserOverrides`，保存与读取都走 `parseStoryPluginOverrides`；用户覆盖解析与 JSON 拷贝抽到叶子模块 `packages/core/src/plugins/playpack-overrides.ts`；新增 `resolveStoryPlugins`，在玩法包叠加之后剔除显式关闭的插件，`plugins` 与 `configs` 只含启用项，`disabledPlugins` 记录被关闭的插件名；新增 `story-plugins.test.ts` 2 条与 `playpacks.test.ts` 按故事解析 1 条。门禁通过（184 个测试文件、1637 个测试、5 个跳过）。
 
-## 下一步（会话 308 先做）
-1. 做 **P3.c 按故事启用与覆盖**（依赖 P3.b，已满足）。迁移 v42 新增故事级插件状态（每个故事的启用开关与配置覆盖，分支共享）；运行时按故事把 `stackPlaypacks` 的结果与故事覆盖再叠一层，得到最终启用的插件与配置。注意 P3.b 的 `stackPlaypacks` 里 `knownPluginNames` 决定配置键是否合法，故事覆盖应复用同一套校验。
-2. P3.c 之后按 TASKS 顺序：P3.d（卡片导入依赖检查与提示）→ P3.e（示例插件与格式文档）→ P3.f（P3 验收）→ P4。
+## 下一步（会话 309 先做）
+1. 做 **P3.d 卡片导入依赖检查与提示**（依赖 P3.a、P3.b，已满足）。导入卡片时把 `extensions.dramaticer` 的 `requires` 与 `recommends` 和本机可用插件与玩法包比较，导入报告逐条列出缺失项；缺少必需依赖时不静默降级。版本范围匹配目前只做了语法检查，P3.d 需要决定按什么规则判断已安装版本是否满足。
+2. P3.d 之后按 TASKS 顺序：P3.e（示例插件与格式文档）→ P3.f（P3 验收）→ P4。
 3. M6-T99 仍等待 HUMAN-15（ComfyUI 与 API workflow JSON），不要开始。
 
-## 玩法包（P3.b，代码事实）
+## 玩法包与故事级插件状态（P3.b、P3.c，代码事实）
 - 模块 `packages/core/src/plugins/playpack.ts`，从 `@dramaticer/core` 根导出。
 - 外壳 `PlaypackManifest`：`format` 固定 `"dramaticer.playpack"`，`formatVersion` 固定 `1`；`name` 与 `version` 的规则和插件相同（`readPluginName`/`readPluginVersion` 从 `declarative.ts` 导入）；可选 `title`、`description`；`requirements` 复用 `parseDeclarativeRequirements`（`plugins` 与 `playpacks`，版本范围只做语法检查）；`plugins` 复用 `parseDeclarativePlugins`（包内重名整组拒绝）；`config` 是插件名到 JSON 对象的补丁表；`switches` 是插件名到布尔值的表。
-- 解析入口 `parsePlaypackManifest(value, path?)`、`parsePlaypacks(value, path?)`（同名玩法包整组拒绝）、`parsePlaypackUserOverrides(value, path?)`（只接受 `config` 与 `switches`，省略时返回空覆盖）。清单先过 `assertJsonValue`，函数与类实例无法通过；未知字段一律拒绝。
+- 解析入口 `parsePlaypackManifest(value, path?)`、`parsePlaypacks(value, path?)`（同名玩法包整组拒绝）；`parsePlaypackUserOverrides(value, path?)` 在叶子模块 `plugins/playpack-overrides.ts`，只接受 `config` 与 `switches`，省略或 `null` 返回 `EMPTY_PLAYPACK_USER_OVERRIDES`；未知字段一律拒绝。
 - `stackPlaypacks(packs, { overrides?, knownPluginNames? })` 返回 `ResolvedPlaypack { playpacks, plugins, configs, switches }`：插件按加载顺序收集；同一插件名跨包重复直接拒绝；同一玩法包名在叠加里出现两次直接拒绝；配置按插件名做深合并（嵌套对象递归合并，数组与标量整体替换），后加载的包覆盖前面的值；开关按插件名覆盖，用户覆盖最后应用。
 - 依赖规则：`requirements.playpacks` 必须是更早加载的包；`requirements.plugins` 必须由更早的包或本包提供。版本范围不匹配（P3.d）。
 - 配置与开关的键必须出现在玩法包插件集合或 `knownPluginNames` 里，否则抛错并指出来源（`玩法包 <name> 的配置/开关`、`用户覆盖的配置/开关`）。运行时调用方要把内置插件名传进 `knownPluginNames`。
 - `isPlaypackPluginEnabled(resolved, name)`：只有显式 `false` 才算关闭，未声明的插件按启用处理。
+- `resolveStoryPlugins(packs, { overrides?, knownPluginNames? })` 返回 `ResolvedStoryPlugins extends ResolvedPlaypack` 加 `disabledPlugins`：先叠加玩法包与故事覆盖，再把开关为 `false` 的插件从 `plugins` 与 `configs` 里剔除；`switches` 保留完整解析结果。
 - 输入只读：叠加不写回包文件，返回的 `configs`、`switches` 与插件数组都是新对象（测试用深冻结输入验证）。
-- 测试：`packages/core/test/playpacks.test.ts`（10 条）覆盖解析与缺省值、外壳与补丁校验、同名玩法包与函数拒绝、用户覆盖解析、叠加顺序、深合并、用户覆盖优先级、包文件只读、开关默认值、跨包重名、依赖顺序与未知插件。
+- 测试：`packages/core/test/playpacks.test.ts`（11 条）覆盖解析与缺省值、外壳与补丁校验、同名玩法包与函数拒绝、用户覆盖解析、叠加顺序、深合并、用户覆盖优先级、包文件只读、开关默认值、跨包重名、依赖顺序与未知插件、按故事解析；`packages/core/test/story-plugins.test.ts`（2 条）覆盖故事覆盖保存与重新打开、分支切换不改变、故事隔离。
 
-## 声明式插件格式（P3.a，代码事实）
+## 故事设置里的插件状态（P3.c）
+- 迁移 v42：`ALTER TABLE story_settings ADD COLUMN plugin_overrides TEXT NOT NULL DEFAULT '{}'`。值是 `{config, switches}`；旧数据库升级后覆盖为空。
+- `StorySettings.pluginOverrides` 与 `StorySettingsUpdate.pluginOverrides` 是 `PlaypackUserOverrides`；默认值是 `EMPTY_PLAYPACK_USER_OVERRIDES`（冻结的空覆盖）。
+- `parseStoryPluginOverrides(value)` 在 `store/settings.ts`，错误路径是 `故事设置的 pluginOverrides...`；`assertStorySettingsUpdate` 与 `updateStorySettings` 都调用它，`rowToStorySettings` 读取列时也调用。
+- `store/settings.ts` 只依赖叶子模块 `plugins/playpack-overrides.ts`，不把 `declarative.ts` 的导入链带进存储层。
+- 分支共享由 `story_settings` 的一行一故事保证：`setHead` 只改 `stories.head_node_id`。
+
+## 声明式插件格式（P3.a）
 - 模块 `packages/core/src/plugins/declarative.ts`，从 `@dramaticer/core` 根导出。
 - 外壳：`DeclarativePlugin`，字段 `format` 固定 `"dramaticer.plugin"`、`formatVersion` 固定 `1`（当前唯一版本）、`name`（小写字母数字与 `.`、`_`、`-`）、`version`（`1.2.3` 或 `1.2.3-beta.1`）、`kind`、可选 `title` 与 `description`、`payload`。解析入口 `parseDeclarativePlugin(value, path?)`、`parseDeclarativePlugins(value, path?)`（组内重名整组拒绝）。输入先过 `assertJsonValue`，函数与类实例无法通过。
 - 七种 `kind` 与负载：`ledger-schema`（`namespace` 取 `LEDGER_NAMESPACES`，`fields` 每项 `path`、`type` 取 `string`/`number`/`integer`/`boolean`/`enum`/`string-array`，`enum` 必须给非空 `values`，数值可给 `min`/`max`，字符串可给 `maxLength`，路径不得重复）；`plot-beat`（`id`、`title`、`text`、`preconditions`，条件允许 `switch`）；`context-template`（直接是 `ContextTemplate`，`segments` 非空，`protocol` 仍必须最后，`deepTurn` 走现有工具白名单校验）；`block-renderer`（`block`、`display`、`context`，只允许显示与上下文策略，没有语义处理器）；`skill`（`name`、`description`、`content`）；`director-config`（`config` 为 `DirectorConfig` 的覆盖项，与 `DEFAULT_DIRECTOR_CONFIG` 合并后校验）；`event-pool`（`events` 非空，复用事件定义校验）。
@@ -58,9 +66,10 @@
 - `dramaticer explain` 第 3 段标题仍是「被裁剪的段落与缺失槽位」，随后多出「回合钩子（时间预算与跳过原因）」子段；`dramaticer explain --json` 的 `hooks` 字段直接给出条目。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a 至 P2.g、P3.a、P3.b。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- 数据库 schema 版本 41。P2、P3.a 与 P3.b 没有迁移；P3.c 需要新迁移（编号 v42）。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a 至 P2.g、P3.a、P3.b、P3.c。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 数据库 schema 版本 42。P3.c 的迁移是 v42（`story_settings.plugin_overrides`）；P3.a 与 P3.b 没有迁移。
 - 依赖登记：`@standard-schema/spec` 已登记为 `packages/core` 依赖；当前没有第三方插件框架。
+- ADR-0088 记录故事级插件状态存进 `story_settings` 的理由与影响。
 - P2 验收数字与复现命令在 `docs/dev/reports/P2.md`：51 个内置插件；R2 记分牌、遗忘报告、B1 报告复跑一致。
 - `eval-private/memory-cache/r1-retrieval.db` 有三个故事：`仙侠雌竞：什么叫我是炉鼎体质？` 290 个助手楼层已抽取 282 个、414 条事件；`欲望世界-1600` 180 个助手楼层已抽取 174 个、292 条事件；`银麒赎世` 114 个助手楼层已抽取 112 个、248 条事件。评测自己的临时数据库重新抽取后事件覆盖为 282/290、172/180、112/114，事件数 371/247/248。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045、ADR-0078、ADR-0079、ADR-0080、ADR-0082、ADR-0083、ADR-0084、ADR-0085、ADR-0086、ADR-0087。
@@ -116,7 +125,7 @@
 
 ## 可重复命令与评测产物
 - 门禁：`pnpm check`。
-- 插件内核、槽位、扩展、任务、工具与声明式格式测试：`pnpm exec vitest run packages/core/test/plugins.test.ts packages/core/test/plugin-runtime.test.ts packages/core/test/chat-slot-plugins.test.ts packages/core/test/plugin-extensions.test.ts packages/core/test/plugin-background-tools.test.ts packages/core/test/turn-hooks.test.ts packages/core/test/declarative-plugins.test.ts packages/core/test/card-extension.test.ts`（58 个测试）。
+- 插件内核、槽位、扩展、任务、工具、声明式格式、玩法包与故事级插件测试：`pnpm exec vitest run packages/core/test/plugins.test.ts packages/core/test/plugin-runtime.test.ts packages/core/test/chat-slot-plugins.test.ts packages/core/test/plugin-extensions.test.ts packages/core/test/plugin-background-tools.test.ts packages/core/test/turn-hooks.test.ts packages/core/test/declarative-plugins.test.ts packages/core/test/playpacks.test.ts packages/core/test/story-plugins.test.ts packages/core/test/story-settings.test.ts packages/core/test/card-extension.test.ts`（88 个测试）。
 - 单个 e2e：`cd packages/web && pnpm exec playwright test --project=desktop --grep "深回合"`；e2e 假渠道固定端口 4517，数据库 `.devloop/scratch/e2e/work/e2e.db`。
 - 排障命令：`dramaticer explain --node <id> --db <path> [--json]`，只读、零模型调用；第 9 段显示运行状态与按 `seq` 排序的事件，第 3 段之后显示回合钩子。
 - R1 事件回填与检索评测：
@@ -140,5 +149,6 @@
 - web 源码不能 import `@dramaticer/core` 的运行时值（会把 `better-sqlite3` 与 `node:*` 打进前端包导致整页白屏），类型导入可以。
 - 槽位集合工厂是异步的（`createStandardChatSlots`、`createNaiveChatSlots`），返回 `{ kernel, providers }`；组装与回合只消费 `providers`，请求改写消费 `kernel`。
 - 插件模块静态初始化时不要调用会反向 import 当前模块的注册表；槽位名等基础常量放在叶子模块。
+- `store/settings.ts` 只能依赖 `plugins/playpack-overrides.ts` 这类叶子模块，避免把 `declarative.ts`、`director/evaluate.ts` 与机制内核的导入链带进存储层。
 - 修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 的请求写进 HUMAN.md。
 - 不变量：I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖其他工作区包，I17 回合内插件钩子有时间预算，I18 插件权限必须声明。

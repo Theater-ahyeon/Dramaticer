@@ -34,6 +34,11 @@ import {
 import type { JsonObject } from "../json.js";
 import { type LlmReasoningLevel, isLlmReasoningLevel } from "../llm/types.js";
 import {
+	EMPTY_PLAYPACK_USER_OVERRIDES,
+	type PlaypackUserOverrides,
+	parsePlaypackUserOverrides,
+} from "../plugins/playpack-overrides.js";
+import {
 	type StructuredOutputMode,
 	isStructuredOutputMode,
 } from "../structured/types.js";
@@ -77,6 +82,8 @@ export interface StorySettings {
 	readonly gapPlanSeconds: number;
 	/** 生图模式、workflow 与频率设置。 */
 	readonly imageConfig: ImageConfig;
+	/** 故事级插件开关与配置覆盖；同一故事的所有分支共享。 */
+	readonly pluginOverrides: PlaypackUserOverrides;
 	readonly updatedAt: string;
 }
 
@@ -103,6 +110,7 @@ export interface StorySettingsUpdate {
 	readonly gapPassEnabled?: boolean;
 	readonly gapPlanSeconds?: number;
 	readonly imageConfig?: ImageConfig;
+	readonly pluginOverrides?: PlaypackUserOverrides;
 }
 
 export const STORY_SETTINGS_UPDATE_KEYS: readonly (keyof StorySettingsUpdate)[] =
@@ -129,6 +137,7 @@ export const STORY_SETTINGS_UPDATE_KEYS: readonly (keyof StorySettingsUpdate)[] 
 		"gapPassEnabled",
 		"gapPlanSeconds",
 		"imageConfig",
+		"pluginOverrides",
 	];
 
 /** 尚未保存设置时使用的数值与枚举；故事 id 与更新时间由调用方补齐。 */
@@ -149,6 +158,7 @@ export const DEFAULT_STORY_SETTINGS_VALUES = {
 	gapPassEnabled: false,
 	gapPlanSeconds: 212,
 	imageConfig: DEFAULT_IMAGE_CONFIG,
+	pluginOverrides: EMPTY_PLAYPACK_USER_OVERRIDES,
 } as const;
 
 export interface ContextTemplateRecord {
@@ -276,6 +286,13 @@ function assertNullableText(value: unknown, label: string): void {
 	}
 }
 
+/** 解析故事设置里的插件开关与配置覆盖；省略或空对象都返回空覆盖。 */
+export function parseStoryPluginOverrides(
+	value: unknown,
+): PlaypackUserOverrides {
+	return parsePlaypackUserOverrides(value, "故事设置的 pluginOverrides");
+}
+
 /** 校验故事设置的更新内容；只检查出现过的字段。 */
 export function assertStorySettingsUpdate(update: StorySettingsUpdate): void {
 	if (typeof update !== "object" || update === null) {
@@ -382,6 +399,9 @@ export function assertStorySettingsUpdate(update: StorySettingsUpdate): void {
 	}
 	if (update.imageConfig !== undefined) {
 		assertImageConfig(update.imageConfig);
+	}
+	if (update.pluginOverrides !== undefined) {
+		parseStoryPluginOverrides(update.pluginOverrides);
 	}
 }
 

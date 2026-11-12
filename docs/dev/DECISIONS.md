@@ -1358,3 +1358,20 @@
   - 运行时不新增依赖；`@standard-schema/spec` 在 P2 作为配置 schema 的类型来源时需要重新登记，当前没有消费者，不保留。
   - 维护成本是 306 行内核加 363 行共用代码；行为由 11 条共享断言覆盖。
   - 测量命令（在删除前的测量提交上执行）：`pnpm --filter @dramaticer/plugin-spike build`；`node packages/plugin-spike/scripts/bench-kernels.mjs`；冷启动用 `node --input-type=module -e 'const t=performance.now(); await import("cordis"); console.log(performance.now()-t)'`；门禁 `pnpm check`。
+
+## ADR-0088 故事级插件状态存进 story_settings（2026-11-12）
+
+- **背景**：DESIGN §19.4 要求每个故事单独开关插件与覆盖配置，同一故事的各条分支共享同一份。P3.b 已经有了玩法包叠加与最上层用户覆盖（`stackPlaypacks`），需要决定故事级状态放在哪里，以及运行时如何得到最终启用的插件与配置。
+- **选项**：
+  - 新建 `story_plugins` 表保存每个故事的插件行：可以按插件逐行更新，但需要额外的同故事触发器、迁移与读取路径，而且与 `story_settings` 的合并式更新分成两处写入。
+  - 在 `story_settings` 增加 JSON 列 `plugin_overrides`：故事设置本来就是一行一故事、分支共享，更新已经在一个事务里完成；覆盖的形状与玩法包用户覆盖相同，可以直接复用 `parsePlaypackUserOverrides`。
+- **决定**：
+  - 迁移 v42 给 `story_settings` 增加 `plugin_overrides TEXT NOT NULL DEFAULT '{}'`。值为 `{config, switches}`，`config` 是插件名到 JSON 对象的补丁，`switches` 是插件名到布尔值；省略或空对象都表示没有覆盖。
+  - `StorySettings.pluginOverrides` 与 `StorySettingsUpdate.pluginOverrides` 使用 `PlaypackUserOverrides`；保存前与读取时都走 `parseStoryPluginOverrides`，未知字段、非布尔开关与非 JSON 配置直接抛错。
+  - 用户覆盖解析与 JSON 拷贝抽到叶子模块 `packages/core/src/plugins/playpack-overrides.ts`，`store/settings.ts` 只依赖这个叶子模块，不把 `declarative.ts` 的整条导入链带进存储层。
+  - 新增 `resolveStoryPlugins(packs, { overrides, knownPluginNames })`：先 `stackPlaypacks` 把故事覆盖放在玩法包之上，再剔除显式关闭的插件，返回的 `plugins` 与 `configs` 只含启用项，`disabledPlugins` 记录被关闭的插件名。
+- **影响**：
+  - schema 版本 42；旧数据库升级后所有故事的覆盖为空。
+  - 分支切换只改 `stories.head_node_id`，不触碰 `story_settings`，因此插件配置天然按故事共享。
+  - 运行时调用方（server、CLI）把故事设置里的 `pluginOverrides` 传给 `resolveStoryPlugins`；P3.c 不改变现有槽位插件工厂的配置入口。
+  - 新增测试：`packages/core/test/story-plugins.test.ts`（分支切换、重新打开、故事隔离）与 `playpacks.test.ts` 的按故事解析用例。

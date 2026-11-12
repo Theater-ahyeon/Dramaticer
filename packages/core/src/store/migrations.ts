@@ -1216,6 +1216,14 @@ export function buildMigrations(
 				END`,
 			],
 		},
+		{
+			version: 42,
+			description: "故事级插件开关与配置覆盖；同一故事的所有分支共享",
+			statements: [
+				`ALTER TABLE story_settings ADD COLUMN plugin_overrides TEXT NOT NULL
+					DEFAULT '{}'`,
+			],
+		},
 	];
 }
 

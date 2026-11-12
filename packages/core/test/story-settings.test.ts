@@ -67,6 +67,7 @@ describe("故事设置", () => {
 			gapPassEnabled: false,
 			gapPlanSeconds: 212,
 			imageConfig: DEFAULT_IMAGE_CONFIG,
+			pluginOverrides: { config: {}, switches: {} },
 			updatedAt: createdAt,
 		});
 		close();
@@ -355,6 +356,19 @@ describe("故事设置", () => {
 					},
 				},
 				"compress",
+			],
+			[
+				{
+					pluginOverrides: {
+						config: { "slot.memory": { limit: 5 } },
+						switches: { "slot.memory": "off" },
+					},
+				} as never,
+				"pluginOverrides.switches.slot.memory 必须是布尔值",
+			],
+			[
+				{ pluginOverrides: { plugins: [] } } as never,
+				"pluginOverrides.plugins 是未知字段",
 			],
 			[{ templateId: "missing" }, "上下文模板不存在"],
 			[{ unknown: true } as never, "未知字段"],
