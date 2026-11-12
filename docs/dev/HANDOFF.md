@@ -3,27 +3,37 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-12 会话 298：P1.c（比较与 ADR）。测量两个插件内核原型后，ADR-0087 决定采用自研精简内核 `LiteKernel`，不引入 `cordis`。Cordis 适配层的运行时依赖为 146,876 字节（`cordis` 77,075 + `cosmokit` 69,801），冷启动模块加载 6.83–7.41 毫秒，新建内核并装载同一组四个插件的中位数 1.079–1.098 毫秒；`LiteKernel` 的运行时第三方依赖为 0，中位数 0.012 毫秒。两者都通过 `strict` 类型检查、同一份 11 条断言与热重载；Cordis 的依赖缺失与循环依赖只停在 PENDING，原因分析、同名服务检查与五种分发仍要适配层自己实现，适配层 317 行比 `LiteKernel` 306 行更长。`packages/plugin-spike` 已删除，根 `tsconfig.json` 的项目引用与 `docs/dev/DEPENDENCIES.md` 的 `cordis`、`@standard-schema/spec` 两行同步删除，`pnpm-lock.yaml` 已刷新。删除前门禁通过两次（177 个测试文件、1587 个测试、5 个跳过），删除后门禁通过（175 个测试文件、1565 个测试、5 个跳过）。
+- 2026-11-12 会话 299：P2.a（内核迁入 core）。P2 在 TASKS 拆成 P2.a 至 P2.g。`packages/core/src/plugins/` 新增 `contracts.ts`、`events.ts`、`registry.ts`、`kernel-surface.ts`、`lite-kernel.ts` 与 `index.ts`，import 全部改成 core 内部的相对模块；插件作者类型（`PluginDefinition`、`PluginContext`、`PluginStatus`、`KernelSnapshot`、`EventListener`、`SlotRunResult`、`PluginKernel`）与 `LiteKernel` 从 `@dramaticer/core` 根导出，`ExtensionRegistry`、`EventBus`、`KernelSurface` 从 `plugins` 模块导出。原型 fixtures 与 11 条断言迁到 `packages/core/test/plugin-fixtures.ts`、`plugin-kernel-suite.ts`、`plugins.test.ts`，只跑 `LiteKernel`。`@standard-schema/spec` 作为 `packages/core` 的依赖登记（只在公开类型声明里出现，运行时代码不 import）。门禁通过（176 个测试文件、1576 个测试、5 个跳过）。
 
-## 下一步（会话 299 先做）
-1. 做 **P2 插件内核改造**。它明显超过一个会话，先按 AGENTS.md 拆成 P2.a、P2.b……再只做第一个。拆分建议：
-   - P2.a：把原型里的 `contracts.ts`、`kernel-surface.ts`、`registry.ts`、`events.ts`、`lite-kernel.ts` 迁到 `packages/core/src/plugins/`，从 `@dramaticer/core` 导出插件作者看到的类型；共享的 11 条断言迁到 core 的测试；`@standard-schema/spec` 作为类型依赖重新登记。
-   - P2.b 起：内置模块逐个改成插件（上下文槽位提供者、Director 机制、块类型、后台任务类型、工具），每改一个提交一次并保持门禁与评测数字不退化。
-   - 回合内钩子的时间预算、Trace 记录与 `dramaticer explain` 展示放在内置模块迁移之后。
-2. 之后 C 线依赖 P2；H-T00 的依赖已满足但仍排在 P/C 之后，不要提前开始。
-3. M6-T99 仍等待 HUMAN-15（ComfyUI 与 API workflow JSON），不要开始。
-4. 后续顺序：P1 → P2 → C 兼容插件 → H → X → R6 → M6b → P3/P4 → M5 → P5 → M7。
+## 下一步（会话 300 先做）
+1. 做 **P2.b 插件运行环境与生命周期**。不改变现有内置模块的调用路径，只建立内核运行环境与状态读取：
+   - 在 core 提供一个创建插件内核的入口，装载内置插件并按 `inject`/`provide` 解析依赖；依赖缺失的插件不加载并保留原因，同名服务冲突启动失败。
+   - 卸载与热重载回收插件注册的钩子、定时器与后台任务；内核快照能读回插件状态、缺失服务、槽位、机制、块类型与服务。
+   - 五种分发模式在内核上可用；测试覆盖依赖缺失、服务冲突、卸载回收与热重载。
+2. P2.b 之后的改造落点（当前代码事实，供后续子任务使用）：
+   - 槽位：`packages/core/src/chat/providers.ts` 的 `createStandardChatProviders` 与 `createNaiveChatProviders`；`ContextSlotProviders` 由 server、st-compat CLI 与评测入口传入（`packages/server/src/runtime.ts`、`packages/st-compat/src/chat/session.ts`、`chat/cli.ts`、`evalset/*-cli.ts`）。导演槽位携带 `config` 与 `mechanisms`，单轮强度覆盖会重建导演槽位（`resolveTurnProviders`，`chat/turn.ts`）。
+   - Director 机制：`DEFAULT_DIRECTOR_MECHANISMS` 在 `packages/core/src/director/evaluate.ts`，`evaluateDirector` 在未传机制时使用它。
+   - 块类型：`DEFAULT_BLOCK_TYPES` 在 `packages/core/src/blocks/types.ts`，`parseBlocks` 与 `renderHistoryView` 在未传 `types` 时使用它。
+   - 后台任务：`createDefaultBackgroundJobRegistry` 在 `packages/core/src/background/defaults.ts`，入队条件与档位由 `background/registry.ts` 校验。
+   - 工具：`FAST_TURN_TOOLS`、`DEEP_TURN_TOOLS` 在 `packages/core/src/tools/index.ts`；深回合白名单与手记过滤在 `selectDeepTurnTools`（`chat/turn.ts`）。
+3. C 线依赖 P2；H-T00 的依赖已满足但仍排在 P/C 之后，不要提前开始。
+4. M6-T99 仍等待 HUMAN-15（ComfyUI 与 API workflow JSON），不要开始。
+5. 后续顺序：P1 → P2 → C 兼容插件 → H → X → R6 → M6b → P3/P4 → M5 → P5 → M7。
 
-## P1 插件内核（决定与代码位置）
-- ADR-0087 在 `docs/dev/DECISIONS.md`。采用的实现是 `LiteKernel`：只做扩展点注册、`inject`/`provide` 依赖解析、装载失败回滚、卸载回收、热重载、扩展点取用与五种分发；依赖缺失停在 pending，提供者出现后按装载顺序自动激活，提供者卸载或依赖消失时回到 pending 并撤销全部注册；配置校验复用 `StandardSchemaV1`。
-- 原型代码与测量脚本在提交 `9c9c823`（比较脚本与 ADR）与 `8773049`（P1.b 内核）里，需要时用 `git show` 读取，不要恢复整个包到工作区。
-- 原型文件组成：`src/contracts.ts`（`PluginDefinition { name, inject?, provide?, Config?, apply(ctx, config) }`；`PluginContext` 提供 `slot`、`directorMechanism`、`blockType`、`provide`、`service`、`on`、`onDispose`；`PluginStatus` 状态为 `active`、`loading`、`blocked`、`failed`、`disposed`；`PluginKernel` 是共同对外接口）、`src/kernel-surface.ts`（`KernelSurface` 持有 `ExtensionRegistry` 与 `EventBus`，实现 `runSlot`、`runMechanisms`、`blockType` 与五种分发）、`src/registry.ts`（槽位、Director 机制、块类型注册表，块类型复用 `@dramaticer/core/blocks` 的校验）、`src/events.ts`（`emit` 通知、`parallel` 按注册顺序收集、`serial` 依次收集、`bail` 首个非空、`waterfall` 依次改写同一个值）、`src/lite-kernel.ts`（每个插件一条 `{ definition, config, state, failure, cleanups }`；`settle()` 先撤销依赖不再满足的 active 插件，再按装载顺序激活依赖满足的 pending 插件；服务值存在内核的 `serviceValues` 表）、`src/fixtures.ts`（weather 服务 + scene 槽位 + Director 机制 + `weather` 块类型，以及两个互相依赖的循环插件）、`test/kernel-suite.ts`（11 条断言）。
-- Cordis 4.0.0-rc.13 的原型结论（P2 不需要它，留作记录）：`new Context()` 是根，`ctx.use(component, config)` 返回 thenable 的 `Fiber`，`fiber.await()` 等待装载；配置校验失败抛 `ValidationError`；依赖缺失与循环依赖只让 fiber 停在 PENDING，`await()` 不报错；同名服务不拒绝，后注册者覆盖 `ctx.get`；`ctx.effect(() => dispose)` 随 fiber 卸载执行；`FiberState` 运行时导出；事件名来自静态 `Events` 声明合并，动态扩展点事件名没有类型；`parallel` 不收集结果、`serial` 只返回第一个非空结果、`waterfall` 是中间件，与 DESIGN §19.2 不同。许可证 MIT，ESM-only。
+## P2 插件内核（决定与代码位置）
+- ADR-0087 在 `docs/dev/DECISIONS.md`。采用的实现是 `LiteKernel`，不引入 `cordis`；Cordis 原型证据留在 ADR。
+- `packages/core/src/plugins/contracts.ts`：`PluginDefinition { name, inject?, provide?, Config?, apply(ctx, config) }`；`PluginContext` 提供 `slot`、`directorMechanism`、`blockType`、`provide`、`service`、`on`、`onDispose`；`PluginStatus.state` 的声明值是 `active`、`loading`、`blocked`、`failed`、`disposed`，`LiteKernel` 实际只产生 `active`、`blocked`、`failed`；`PluginKernel` 是内核对外接口。
+- `packages/core/src/plugins/lite-kernel.ts`：每个插件一条 `{ definition, config, state, failure, cleanups }`；`settle()` 先撤销依赖不再满足的 active 插件，再按装载顺序激活依赖满足的 pending 插件；服务值存在 `serviceValues` 表；同名服务在装载前拒绝；配置校验复用 `StandardSchemaV1`。
+- `packages/core/src/plugins/registry.ts`：槽位、Director 机制、块类型注册表；块类型复用 `blocks/types.ts` 的 `createBlockTypeRegistry` 校验；每次注册返回幂等撤销函数。
+- `packages/core/src/plugins/events.ts`：`emit` 通知、`parallel` 按注册顺序收集、`serial` 依次收集、`bail` 首个非空、`waterfall` 依次改写同一个值。
+- `packages/core/src/plugins/kernel-surface.ts`：`KernelSurface` 持有 `ExtensionRegistry` 与 `EventBus`，实现 `runSlot`、`runMechanisms`、`blockType` 与五种分发。
+- 测试：`packages/core/test/plugin-fixtures.ts`、`plugin-kernel-suite.ts`、`plugins.test.ts`；11 条断言覆盖三个扩展点、依赖缺失与自动激活、循环依赖、同名服务与扩展点拒绝、抛错回滚、卸载回收、热重载、五种分发与配置校验。
+- 依赖：`@standard-schema/spec` 在 `packages/core` 的 `dependencies`，只用于公开类型声明；不要在其他运行时代码里 import。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- 数据库 schema 版本 41。P1.c 没有迁移。
-- 依赖登记：P1.c 删除了 `cordis` 与 `@standard-schema/spec`，当前没有插件内核的第三方运行时依赖。P2 重新引入 `@standard-schema/spec` 作为类型依赖时要登记。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 数据库 schema 版本 41。P2.a 没有迁移。
+- 依赖登记：`@standard-schema/spec` 已重新登记为 `packages/core` 依赖；当前没有第三方插件框架。
 - `eval-private/memory-cache/r1-retrieval.db` 有三个故事：`仙侠雌竞：什么叫我是炉鼎体质？` 290 个助手楼层已抽取 282 个、414 条事件；`欲望世界-1600` 180 个助手楼层已抽取 174 个、292 条事件；`银麒赎世` 114 个助手楼层已抽取 112 个、248 条事件。评测自己的临时数据库重新抽取后事件覆盖为 282/290、172/180、112/114，事件数 371/247/248。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045、ADR-0078、ADR-0079、ADR-0080、ADR-0082、ADR-0083、ADR-0084、ADR-0085、ADR-0086、ADR-0087。
 - HUMAN-03 待处理（不阻塞）：抽查 `eval-private/evalset/spotcheck.md` 里的事件题。
@@ -74,7 +84,7 @@
 
 ## 可重复命令与评测产物
 - 门禁：`pnpm check`。
-- 插件内核：原型包已删除；P2 迁移完成后再补运行命令。
+- 插件内核测试：`pnpm --filter @dramaticer/core build && pnpm exec vitest run packages/core/test/plugins.test.ts`（11 个测试）。
 - 单个 e2e：`cd packages/web && pnpm exec playwright test --project=desktop --grep "深回合"`；e2e 假渠道固定端口 4517，数据库 `.devloop/scratch/e2e/work/e2e.db`。
 - 排障命令：`dramaticer explain --node <id> --db <path> [--json]`，只读、零模型调用；第 9 段显示运行状态与按 `seq` 排序的事件。
 - R1 事件回填与检索评测：

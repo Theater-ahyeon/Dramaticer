@@ -1055,13 +1055,55 @@
   - 写 ADR 决定采用哪一种，登记依赖清单；删除 `packages/plugin-spike`，把可复现命令与数字留在 ADR。
   验收：比较表有数字与结论；ADR 写清采用方式、依赖清单与原型删除理由；删除前两个原型各跑一次门禁通过；`pnpm check` 通过。
 
-- [ ] **P2 插件内核改造** | 依赖：P1、R5-T99 | DESIGN §19.1、§19.2
+**P2 插件内核改造**（已拆成 P2.a 至 P2.g） | 依赖：P1、R5-T99 | DESIGN §19.1、§19.2
+
+  总验收（P2.g 逐条核对）：每个内置模块都有注册表条目与对应测试；测试覆盖依赖缺失跳过、服务冲突、卸载回收、热重载、五种分发模式与超时跳过；每次改造后门禁通过且 R2 的基准数字不退化；`core` 不依赖任何插件（I15）。
+
+- [x] **P2.a 内核迁入 core 与对外类型** | 依赖：P1、R5-T99
+  完成：2026-11-12 `packages/core/src/plugins` 新增 `contracts.ts`、`events.ts`、`registry.ts`、`kernel-surface.ts`、`lite-kernel.ts` 与模块入口，import 改为 core 内部的相对模块；插件作者类型与 `LiteKernel` 从 `@dramaticer/core` 根导出，`ExtensionRegistry`、`EventBus`、`KernelSurface` 由 `plugins` 模块导出；fixtures 与 11 条断言迁到 `packages/core/test/plugin-kernel-suite.ts` 并只跑 `LiteKernel`；`@standard-schema/spec` 登记为 `packages/core` 的依赖，运行时代码不 import 它；门禁通过（176 个测试文件、1576 个测试、5 个跳过）
   做什么：
-  - 引入 Context 与插件注册表：启动时解析 `inject` 与 `provide`，依赖缺失的插件不加载并记录原因，同名服务冲突启动失败，卸载时回收钩子、定时器与后台任务，支持热重载。
-  - 把内置模块逐个改成插件：上下文槽位提供者、Director 机制、块类型、后台任务类型、工具，每个模块单独提交一次。
-  - 实现五种分发模式与回合内钩子的时间预算：超时跳过并写入 Trace，`dramaticer explain` 能读出被跳过的扩展点与原因。
-  - 每改一个内置模块都保持门禁与评测数字不退化；退化的模块回退成直接调用并记录原因。
-  验收：每个内置模块都有注册表条目与对应测试；测试覆盖依赖缺失跳过、服务冲突、卸载回收、热重载、五种分发模式与超时跳过；每次改造后门禁通过且 R2 的基准数字不退化；`core` 不依赖任何插件（I15）。
+  - 把原型里的 `contracts.ts`、`kernel-surface.ts`、`registry.ts`、`events.ts`、`lite-kernel.ts` 迁到 `packages/core/src/plugins/`，import 改成 core 内部的相对模块，不经过包根与 `@dramaticer/core/blocks` 子路径。
+  - 插件作者看到的类型（`PluginDefinition`、`PluginContext`、`PluginStatus`、`KernelSnapshot`、`EventListener`、`SlotRunResult`、`PluginKernel`）与 `LiteKernel` 从 `@dramaticer/core` 根导出；`ExtensionRegistry`、`EventBus`、`KernelSurface` 由 `plugins` 模块导出。
+  - 原型里的 fixtures 与 11 条共享断言迁到 `packages/core/test/`，只跑 `LiteKernel`；断言内容与原型一致。
+  - `@standard-schema/spec` 重新登记为 `packages/core` 的类型依赖（配置 schema 类型出现在公开声明里）。
+  验收：`LiteKernel` 与插件作者类型从包根可导入；11 条断言全部通过；`packages/core/src/plugins` 不依赖任何第三方插件框架，运行时代码不 import `@standard-schema/spec`；`pnpm check` 通过。
+
+- [ ] **P2.b 插件运行环境与生命周期** | 依赖：P2.a
+  做什么：
+  - core 提供创建插件内核的入口与运行环境：装载内置插件、按 `inject` 与 `provide` 解析依赖，依赖缺失的插件不加载并在状态里给出原因，同名服务冲突启动失败。
+  - 卸载与热重载回收插件注册的钩子、定时器与后台任务；内核快照能读回插件状态、缺失服务、槽位、机制、块类型与服务。
+  - 五种分发模式（emit、parallel、serial、bail、waterfall）在内核上可用；这一子任务不改动现有内置模块的调用路径。
+  验收：依赖缺失、服务冲突、卸载回收与热重载各有测试；快照里的状态与原因可读；现有回合、后台任务与评测行为不变；`pnpm check` 通过。
+
+- [ ] **P2.c 上下文槽位提供者插件化** | 依赖：P2.b
+  做什么：
+  - 把 `chat/providers.ts` 的槽位提供者逐个改成插件定义并注册进内核：character、persona、history、state、summary、memory、lore、scene、director、user_will；`createStandardChatProviders` 等工厂改从内核取提供者。
+  - 槽位内容、顺序、预算与 Trace 条目与改动前逐字段一致；插件缺失或未激活时槽位记 `missing-slot`。
+  验收：每个槽位都有注册表条目与测试；同一故事与设置下组装结果与改动前一致；卸载槽位插件后该槽位缺失并被 Trace 记录；`pnpm check` 通过。
+
+- [ ] **P2.d Director 机制与块类型插件化** | 依赖：P2.c
+  做什么：
+  - `DEFAULT_DIRECTOR_MECHANISMS` 与 `DEFAULT_BLOCK_TYPES` 改为通过内核注册的插件；评估顺序、优先级与 `signals` 与改动前一致。
+  - Director 机制保持同步纯函数（I9）；块类型校验仍走 `createBlockTypeRegistry`。
+  验收：每个机制与块类型都有注册表条目与测试；同一输入下建议、决策记录与块解析结果与改动前一致；重复注册失败且不留下半成品；`pnpm check` 通过。
+
+- [ ] **P2.e 后台任务类型与工具插件化** | 依赖：P2.d
+  做什么：
+  - `createDefaultBackgroundJobs` 里的每种后台任务与 `FAST_TURN_TOOLS`、`DEEP_TURN_TOOLS` 里的工具改为通过内核注册的插件，保留入队条件、档位与工具权限级别。
+  - 深回合按白名单选取工具与手记开关过滤的行为不变。
+  验收：每种任务类型与工具都有注册表条目与测试；入队条件、档位、权限与工具名单与改动前一致；缺失插件时不静默降级；`pnpm check` 通过。
+
+- [ ] **P2.f 回合内钩子时间预算、Trace 与 explain** | 依赖：P2.e
+  做什么：
+  - 回合内扩展点按 DESIGN §19.2 接入组装与请求改写，给每个钩子设置时间预算；超时跳过、继续回合，并把扩展点名、插件名、耗时与原因写进 Trace（I17）。
+  - `dramaticer explain` 读出被跳过的扩展点与原因；跳过的提供者按缺失处理，不产生半截内容。
+  验收：超时钩子被跳过且回合继续，Trace 与 `dramaticer explain` 都能读到原因；未超时钩子的耗时被记录；没有钩子时回合输出与改动前一致；`pnpm check` 通过。
+
+- [ ] **P2.g P2 验收** | 依赖：P2.c、P2.d、P2.e、P2.f
+  做什么：
+  - 逐条核对 P2.b 至 P2.f 的验收标准，复核 I6、I7、I9、I11、I12、I13、I15、I17；重跑 R2 的基准评测，对比数字。
+  - 结果与复现命令写进 `docs/dev/reports/P2.md`；有退化的模块回退成直接调用并记录原因。
+  验收：全部内置模块经内核注册并有测试；R2 基准数字不退化；`core` 不依赖任何插件；`pnpm check` 通过。
 
 - [ ] **P3 声明式插件格式与卡片打包** | 依赖：P2 | DESIGN §19.3、§19.4
   做什么：

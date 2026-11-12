@@ -21,6 +21,7 @@
 	},
 	"dependencies": {
 		"@earendil-works/pi-ai": "1.5.0",
+		"@standard-schema/spec": "^1.1.0",
 		"better-sqlite3": "^13.0.3",
 		"sqlite-vec": "^0.1.9",
 		"yaml": "^2.9.1"
