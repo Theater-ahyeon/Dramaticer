@@ -70,6 +70,7 @@ export function createStaticSlotProvider(
 	}
 	const frozen = messages.map((message) => ({ ...message }));
 	return {
+		packKey: JSON.stringify({ source, messages: frozen }),
 		provide(): ContextSlotContent {
 			return { messages: frozen, source };
 		},
@@ -86,6 +87,11 @@ export function createHistorySlotProvider(
 		throw new Error("历史槽位的楼数上限必须是正整数");
 	}
 	return {
+		packKey: JSON.stringify({
+			limit,
+			policy: options.policy ?? null,
+			recentRawFloors: options.recentRawFloors ?? null,
+		}),
 		provide(request): ContextSlotContent | null {
 			if (request.nodeId === null) return null;
 			const path = store.getPathToNode(request.nodeId);
@@ -132,6 +138,7 @@ export function createRawHistorySlotProvider(
 		throw new Error("历史槽位的楼数上限必须是正整数");
 	}
 	return {
+		packKey: `raw-history:${limit}`,
 		provide(request): ContextSlotContent | null {
 			if (request.nodeId === null) return null;
 			const path = store.getPathToNode(request.nodeId);
@@ -154,6 +161,7 @@ export function createStateSlotProvider(
 	store: StoryStore,
 ): ContextSlotProvider {
 	return {
+		packKey: "state",
 		provide(request): ContextSlotContent | null {
 			if (request.nodeId === null) return null;
 			const { state } = store.getStateSnapshot(request.nodeId);
@@ -179,6 +187,7 @@ export function createSceneSlotProvider(
 	store: StoryStore,
 ): ContextSlotProvider {
 	return {
+		packKey: "scene",
 		provide(request): ContextSlotContent | null {
 			if (request.nodeId === null) return null;
 			const analysis = store.getLatestSceneAnalysisOnPath(request.nodeId);
@@ -186,6 +195,7 @@ export function createSceneSlotProvider(
 			return {
 				messages: [{ role: "system", content: `现场分析：\n${analysis.text}` }],
 				source: `scene:楼层 ${analysis.nodeId}，估算 ${analysis.tokenCount} token`,
+				references: { sceneAnalysisNodeId: analysis.nodeId },
 			};
 		},
 	};
@@ -213,6 +223,7 @@ export function createUserWillSlotProvider(
 	store: StoryStore,
 ): ContextSlotProvider {
 	return {
+		packKey: "userWill",
 		provide(request): ContextSlotContent | null {
 			if (request.nodeId === null) return null;
 			const value = readLedger(store, request.nodeId, ["userWill"]);
@@ -278,6 +289,11 @@ export function createMemorySlotProvider(
 	const embedder = options.embedder ?? null;
 	const reranker = options.reranker ?? null;
 	return {
+		packKey: JSON.stringify({
+			limit,
+			embedder: embedder !== null,
+			reranker: reranker !== null,
+		}),
 		async provide(request): Promise<ContextSlotContent | null> {
 			if (request.nodeId === null) return null;
 			const current = store.getNode(request.nodeId);
@@ -493,6 +509,7 @@ export function createSummarySlotProvider(
 	const estimator = options.tokenEstimator ?? createTokenEstimator();
 	const header = SUMMARY_HEADER;
 	return {
+		packKey: `summary:${tokenLimit}`,
 		provide(request): ContextSlotContent | null {
 			const headNodeId =
 				request.nodeId ?? store.getHead(request.storyId)?.id ?? null;
@@ -568,6 +585,7 @@ export interface LoreSlotProviderOptions {
 export const DEFAULT_LORE_TOKEN_LIMIT = 800;
 
 interface SelectedLoreLine {
+	readonly id: string;
 	readonly constant: boolean;
 	readonly line: string;
 	readonly tokens: number;
@@ -589,6 +607,7 @@ export function createLoreSlotProvider(
 	const estimator = options.tokenEstimator ?? createTokenEstimator();
 	const header = "世界书条目：";
 	return {
+		packKey: `lore:${tokenLimit}`,
 		provide(request): ContextSlotContent | null {
 			const nodeId = request.nodeId;
 			let normalizedQuery = "";
@@ -662,6 +681,7 @@ export function createLoreSlotProvider(
 				const prefix = entry.constant ? "【常驻】" : "【检索】";
 				const line = `${prefix}${entry.name}：${entry.content}`;
 				selected.push({
+					id: entry.id,
 					constant: entry.constant,
 					line,
 					tokens: estimator(line),
@@ -690,6 +710,9 @@ export function createLoreSlotProvider(
 					},
 				],
 				source: `lore:常驻 ${constantsKept} 条、检索 ${retrievedKept} 条`,
+				references: {
+					loreEntryIds: selected.map((item) => item.id),
+				},
 			};
 		},
 	};
@@ -765,6 +788,11 @@ export function createDirectorSlotProvider(
 	return {
 		config,
 		mechanisms: options.mechanisms,
+		packKey: JSON.stringify({
+			config,
+			mechanisms:
+				options.mechanisms?.map((mechanism) => mechanism.name) ?? null,
+		}),
 		provide(request): ContextSlotContent | null {
 			const nodeId =
 				request.nodeId ?? store.getHead(request.storyId)?.id ?? null;
@@ -797,6 +825,7 @@ export function createCharacterSlotProvider(
 		throw new Error("角色提示词必须是非空字符串");
 	}
 	return {
+		packKey: `character:${characterPrompt}`,
 		provide(): ContextSlotContent {
 			return {
 				messages: [{ role: "system", content: characterPrompt }],
@@ -824,6 +853,7 @@ export function createPersonaSlotProvider(
 		throw new Error("persona 必须是非空字符串");
 	}
 	return {
+		packKey: `persona:${persona}`,
 		provide(): ContextSlotContent {
 			return {
 				messages: [{ role: "system", content: persona }],

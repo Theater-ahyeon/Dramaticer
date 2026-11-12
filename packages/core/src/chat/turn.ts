@@ -5,6 +5,8 @@ import {
 	type ContextSlotProviders,
 	assembleContext,
 } from "../context/assembler.js";
+import { contextPackFingerprint } from "../context/pack-format.js";
+import { loadReusableContextPack, saveContextPack } from "../context/pack.js";
 import type { ContextTemplate } from "../context/template.js";
 import {
 	type DirectorIntensity,
@@ -272,13 +274,37 @@ export async function generateAssistantTurn(
 	assertChatProfile(profile);
 	const writesLedger = profile === "native";
 	const now = options.now ?? Date.now;
-	const assembled = await assembleContext({
+	const providers = resolveTurnProviders(options);
+	const fingerprint = contextPackFingerprint({
 		template: options.template,
 		budgetTokens: options.budgetTokens,
-		storyId: options.storyId,
-		nodeId: userNode.id,
-		providers: resolveTurnProviders(options),
+		profile,
+		directorIntensity: options.directorIntensity ?? null,
+		providers,
 	});
+	const cached = loadReusableContextPack(
+		options.store,
+		options.storyId,
+		userNode.id,
+		fingerprint,
+	);
+	const assembled =
+		cached ??
+		(await assembleContext({
+			template: options.template,
+			budgetTokens: options.budgetTokens,
+			storyId: options.storyId,
+			nodeId: userNode.id,
+			providers,
+		}));
+	if (cached === null) {
+		saveContextPack(options.store, {
+			storyId: options.storyId,
+			nodeId: userNode.id,
+			fingerprint,
+			assembled,
+		});
+	}
 
 	const startedAt = now();
 	const functionCall =

@@ -3,23 +3,32 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-12 会话 279：R1-T06（后台预筛世界书）。迁移 v37 新增 `lore_prefilter`；后台任务 `lore_prefilter` 只在当前 head 路径上最新的助手楼层执行，用本轮玩家消息、最近一条有效压缩与当前拍方案做二字窗口 BM25，取前 20 条非恒常条目交给后台模型按 id 选择，结果覆盖写入该楼层。`createLoreSlotProvider` 先读参照楼层本身或其父楼层的预筛结果，没有记录时回退关键词与实体命中；常驻条目始终参与注入。新增 12 个测试。门禁通过（163 个测试文件、1472 个测试、4 个 live 跳过）。
+- 2026-11-12 会话 280：R1-T08（上下文包复用）。迁移 v38 新增 `context_packs`；`generateAssistantTurn` 在组装上下文之后按玩家楼层写入完整组装结果、引用与台账快照版本，指纹包含模板、token 预算、对话档位、单轮导演强度与各槽位的 `packKey`。同一玩家楼层的重新生成直接读包，不再调用任何槽位；模板或预算变化、世界书条目被删、现场分析不在当前 head 路径、检索楼层不在参照路径时重新组装。槽位内容新增 `references`，世界书槽位写入最终注入的条目 id，现场分析槽位写入分析楼层。新增 7 个测试；ADR-0085。门禁通过（164 个测试文件、1479 个测试、4 个 live 跳过）。
 
-## 下一步（会话 280 先做）
-1. 做 R1-T08（上下文包复用，迁移 v38）：回合第一次为玩家楼层组装上下文时写入 `context_packs`，swipe 与重新生成同一楼层直接读包；玩家编辑产生的新楼层不继承旧包；引用的条目被删或分析楼层不在当前路径时重新组装。验收见 TASKS。
-2. R1-T08 之后做 R1-T99.a（记忆增强验收），之后进入 R3b。
+## 下一步（会话 281 先做）
+1. 做 R1-T99.a（记忆增强验收）：重跑门禁与 live 测试；逐条核对父子分块、重排序、八段式压缩、世界书预筛与上下文包五项；对照 R1 最小集的数字给出检索与压缩的提升或下降；默认开关按证据设置并写 ADR；在 `docs/dev/reports/R1.md` 追加一节；复核 I5、I11、I12。结果写 `MILESTONE_DONE`。
+2. R1-T99.a 之后进入 R3b-T00（细化深回合任务，依赖 R3-T99、R5-T99）。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1-T03.a、R1-T03.b、R1-T04.b、R1-T05.a、R1-T05.b、R1-T06。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- R1 续剩余：R1-T08、R1-T99.a。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1-T03.a、R1-T03.b、R1-T04.b、R1-T05.a、R1-T05.b、R1-T06、R1-T08。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- R1 续剩余：R1-T99.a。
 - `eval-private/memory-cache/r1-retrieval.db` 现有三个故事：`仙侠雌竞：什么叫我是炉鼎体质？` 290 个助手楼层已抽取 282 个、414 条事件；`欲望世界-1600` 180 个助手楼层已抽取 174 个、292 条事件；`银麒赎世` 114 个助手楼层已抽取 112 个、248 条事件。评测自己的临时数据库重新抽取后事件覆盖为 282/290、172/180、112/114，事件数 371/247/248。
 - M6-T99 标 `[!]`，等待 HUMAN-15：真实 ComfyUI 启动在 `http://127.0.0.1:8188` 并提供 API 格式 workflow JSON 到 `eval-private/comfyui/`；2026-11-09 探测时端口仍未监听。
-- v3 阶段顺序：R5（完成）→ M6 生图第一批（T01–T05 完成，T99 阻塞）→ R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06 完成）→ R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → M6b 生图第二批 → P3/P4 → M5 → P5 → M7。
-- 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045、ADR-0078、ADR-0079、ADR-0080、ADR-0082、ADR-0083、ADR-0084。
+- v3 阶段顺序：R5（完成）→ M6 生图第一批（T01–T05 完成，T99 阻塞）→ R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08 完成）→ R3b 深回合 → P1/P2 → C 兼容插件 → H → X → R6 → M6b 生图第二批 → P3/P4 → M5 → P5 → M7。
+- 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045、ADR-0078、ADR-0079、ADR-0080、ADR-0082、ADR-0083、ADR-0084、ADR-0085。
 - HUMAN-03 待处理（不阻塞）：抽查 `eval-private/evalset/spotcheck.md` 里的事件题。
 - HUMAN-14 已关闭（2026-11-12：人类取消）：取消 Vertex 真实调用的凭证配置与验证要求；`roles.writer` 继续使用 `main-fallback`。
 - HUMAN-15 待处理（M6-T99 需要）：把秋叶整合包 v3.2 的 ComfyUI 启动在 `http://127.0.0.1:8188`，并导出一份 API 格式 workflow JSON 到 `eval-private/comfyui/`。
-- 数据库 schema 版本 37（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡、v25 合并调用开关与执行记录、v26 间隙档位阈值与丢弃状态、v27 合并调用丢弃条目、v28 回合模式与读取工具上限、v29 开局包与故事级后台任务、v30 首楼开场候选、v31 选择记录、v32 导演计划与拍状态、v33 导演候选行动、v34 生图表、v35 父子分块、v36 八段式压缩、v37 世界书预筛）。R1 续后续迁移编号为 v38。
+- 数据库 schema 版本 38（v19 结算记录、v20 实体候选与置信度、v21 现场分析、v22 历史块策略、v23 事件抽取记录、v24 变更卡、v25 合并调用开关与执行记录、v26 间隙档位阈值与丢弃状态、v27 合并调用丢弃条目、v28 回合模式与读取工具上限、v29 开局包与故事级后台任务、v30 首楼开场候选、v31 选择记录、v32 导演计划与拍状态、v33 导演候选行动、v34 生图表、v35 父子分块、v36 八段式压缩、v37 世界书预筛、v38 上下文包）。后续迁移编号从 v39 起。
+
+## 上下文包（R1-T08）
+- 表 `context_packs(node_id PRIMARY KEY, story_id, payload, created_at)`，沿用 `lore_prefilter` 的故事一致性与归属不可修改触发器；同一玩家楼层覆盖同一行。
+- `core/src/context/pack-format.ts`：`CONTEXT_PACK_VERSION = 1`、`ContextPackPayload`、`contextPackFingerprint`、`assertContextPackPayload`、`serializeContextPackPayload`、`parseContextPackPayload`。payload 含完整 `assembled`（messages、segments、trace、组装引用）与 `references`（世界书条目 id、现场分析楼层、检索注入楼层、台账快照版本）。
+- `core/src/context/pack.ts`：`saveContextPack` 与 `loadReusableContextPack`。指纹是模板、预算、档位、单轮导演强度与槽位 `packKey` 的 SHA-256；台账快照版本只用于审计。
+- `ContextSlotProvider` 新增可选 `packKey`；标准槽位都声明配置指纹。`ContextSlotContent` 新增可选 `references`；世界书槽位记录最终注入的条目 id（含常驻），现场分析槽位记录分析楼层。`AssembledContext.references` 只收集实际进入上下文的引用。
+- 失效条件：指纹不一致、世界书条目被删、现场分析楼层不在当前 head 路径或分析记录不存在、检索注入楼层不在参照楼层路径上、包记录的楼层与请求不一致。失效时重新组装并覆盖。
+- 玩家编辑输入产生新的用户楼层，新楼层没有旧包；包按楼层主键隔离，天然不跨分支复用。
+- 包在模型调用之前写入，本身不触发模型调用；重复生成同一玩家楼层不再调用检索、embedding、预筛读取与现场分析读取。
 
 ## 八段式压缩（R1-T05.a 与 R1-T05.b）
 - 表 `chapter_compressions(row_id, id, story_id, level, start_node_id, end_node_id, sections, token_count, created_at)`，`level` 取 `chapter` 或 `mainline`，`UNIQUE(story_id, level, start_node_id, end_node_id)`；插入触发器要求起止楼层属于同一故事。
@@ -120,6 +129,7 @@
 - 写作规则：`WRITING_CONTRACT` 是四条原则；`protocol` 是固定 id 的静态段，`assertContextTemplate` 要求它是最后一个片段。
 - 已注册的槽位是十一个：lore、character、persona、summary、state、memory、history、scene、director、user_will、protocol。默认模板顺序：character、lore、state、summary、memory、scene、director、user_will、history、（可选的 block_format）、protocol。默认优先级：user_will 110、history 100、protocol 95、character 90、state 85、lore 80、summary 70、memory 60、scene 55、director 50。
 - 世界书槽位在有预筛记录时只注入常驻条目与记录选中的非恒常条目；没有记录时按参照楼层原文匹配关键词与实体别名。预筛任务只在后台执行，回合内槽位不调用模型。
+- 上下文包由 `generateAssistantTurn` 在组装后写入；重复生成同一玩家楼层直接读包。指纹覆盖模板、预算、档位、导演强度与槽位 `packKey`；引用失效时重新组装。包内保存完整 messages、segments、trace 与引用，数据库体积随楼层线性增长。
 - 原生块类型是 12 个（`thinking`、`选项`、`状态栏`、`变量更新`、`分析`、`图片`、`页眉`、`悄悄话`、`旁白`、`备忘`、`state_update`、`plot_note`）；`thinking`、`变量更新`、`state_update`、`plot_note` 的上下文策略是删除。
 - 历史槽位默认策略：更早楼层省略五个显示类块，最近 1 楼不套用这层省略；`full` 是旧的完整视图。设置项 `historyBlockPolicy` 存在 `story_settings.history_block_policy`。
 - 结算窗口以 head 为终点，取最旧的 N 个未结算助手楼层；冲突检查窗口取 head 路径最后 `conflictWindowFloors` 楼。现场分析以被分析的楼层为锚点，读取该楼层结算后的台账快照与路径上最近 6 楼原文。
@@ -164,9 +174,10 @@
 - 事件抽取的响应缓存键不含渠道的 `maxTokens`（请求没有显式带 maxTokens），所以改提示词或改模型输出上限后，旧缓存不会被新请求命中；不要为了省请求复用旧目录里的截断结果。
 - `packages/server/test/turns.test.ts` 的 `blocks.replace` 断言按“最后一个快照紧接 `turn.completed`”检查，不固定次数：流式快照按 100 毫秒节流，满负载下会多出一次，固定次数会随机失败。
 - 世界书预筛的 BM25 在内存里用规范化后的二字窗口，不写新的索引表；`lore_prefilter` 只存选中的非恒常条目 id，恒常条目由槽位直接读取。
+- 上下文包按玩家楼层保存完整组装结果与引用；指纹变化或引用失效时覆盖同一行。包内的台账快照版本只用于审计，台账在两次生成之间变化不会让包失效。
 - 不要修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 下的任何文件。不变量 I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账是唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖任何其他工作区包。
 
 ## 下一步
-- 会话 280 做 R1-T08（上下文包复用，迁移 v38），依赖 R1-T02.a、R1-T03.a、R1-T06、M2-T12。
+- 会话 281 做 R1-T99.a（记忆增强验收），依赖已全部完成。
 - M6-T99 仍等待 HUMAN-15；人类把 ComfyUI 启动并放入 workflow JSON 后，把 TASKS 里 `[!]` 改回 `[ ]` 再做验收。
-- 后续：R1-T99.a；C 线兼容插件任务依赖 P2，以 DESIGN §19 为唯一权威。
+- 后续：R3b-T00；C 线兼容插件任务依赖 P2，以 DESIGN §19 为唯一权威。

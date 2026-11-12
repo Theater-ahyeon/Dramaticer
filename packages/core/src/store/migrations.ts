@@ -1101,6 +1101,31 @@ export function buildMigrations(
 				END`,
 			],
 		},
+		{
+			version: 38,
+			description: "上下文包：玩家楼层保存组装结果与引用",
+			statements: [
+				`CREATE TABLE context_packs (
+					node_id TEXT PRIMARY KEY REFERENCES nodes(id),
+					story_id TEXT NOT NULL REFERENCES stories(id),
+					payload TEXT NOT NULL,
+					created_at TEXT NOT NULL
+				) STRICT`,
+				"CREATE INDEX context_packs_story_idx ON context_packs(story_id)",
+				`CREATE TRIGGER context_packs_story_matches_node
+				BEFORE INSERT ON context_packs
+				WHEN COALESCE((SELECT story_id FROM nodes WHERE id = NEW.node_id), '') <> NEW.story_id
+				BEGIN
+					SELECT RAISE(ABORT, '上下文包的 story_id 必须与所在楼层一致');
+				END`,
+				`CREATE TRIGGER context_packs_identity_immutable
+				BEFORE UPDATE ON context_packs
+				WHEN NEW.node_id <> OLD.node_id OR NEW.story_id <> OLD.story_id
+				BEGIN
+					SELECT RAISE(ABORT, '上下文包的楼层与故事归属不可修改');
+				END`,
+			],
+		},
 	];
 }
 

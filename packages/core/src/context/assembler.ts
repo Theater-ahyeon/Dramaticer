@@ -22,6 +22,14 @@ export interface ContextSlotRequest {
 	readonly state: unknown;
 }
 
+/** 槽位内容里需要随上下文包复核的引用。 */
+export interface ContextSlotReferences {
+	/** 实际注入的世界书条目 id；被删除后旧包不再复用。 */
+	readonly loreEntryIds?: readonly string[];
+	/** 实际注入的现场分析所在楼层；不在当前路径上时旧包不再复用。 */
+	readonly sceneAnalysisNodeId?: string | null;
+}
+
 export interface ContextSlotContent {
 	readonly messages: readonly ContextMessage[];
 	/**
@@ -35,6 +43,8 @@ export interface ContextSlotContent {
 	readonly history?: HistoryViewTrace;
 	/** 记忆检索的每一路名次、融合结果与实际注入的楼层。 */
 	readonly retrieval?: ContextRetrievalTrace;
+	/** 上下文包需要复核的引用；没有引用的槽位不产生这个字段。 */
+	readonly references?: ContextSlotReferences;
 }
 
 /** 一次注入的范围：父段只包含楼层的一部分，整楼是整层原文。 */
@@ -58,6 +68,11 @@ export interface ContextRetrievalTrace {
 }
 
 export interface ContextSlotProvider {
+	/**
+	 * 上下文包复用时的配置指纹；同一槽位换配置后旧包不再复用。
+	 * 不声明时只按槽位名区分。
+	 */
+	readonly packKey?: string;
 	provide(
 		request: ContextSlotRequest,
 	): ContextSlotContent | null | PromiseLike<ContextSlotContent | null>;
@@ -121,6 +136,14 @@ export interface AssembledContext {
 	readonly messages: readonly ContextMessage[];
 	readonly segments: readonly AssembledContextSegment[];
 	readonly trace: ContextTrace;
+	/** 进入上下文的引用；上下文包据此复核复用是否仍然有效。 */
+	readonly references: ContextAssemblyReferences;
+}
+
+export interface ContextAssemblyReferences {
+	readonly loreEntryIds: readonly string[];
+	readonly sceneAnalysisNodeId: string | null;
+	readonly retrievalNodeIds: readonly string[];
 }
 
 const MESSAGE_ROLE_BY_NAME: Readonly<Record<string, true>> = {
@@ -139,6 +162,7 @@ interface ResolvedSegment {
 	readonly suffix?: string;
 	readonly history?: HistoryViewTrace;
 	readonly retrieval?: ContextRetrievalTrace;
+	readonly references?: ContextSlotReferences;
 }
 
 /**
@@ -186,12 +210,30 @@ export async function assembleContext(
 	const messages: ContextMessage[] = [];
 	const suffixIndexes: number[] = [];
 	const suffixes: string[] = [];
+	const loreEntryIds: string[] = [];
+	const retrievalNodeIds: string[] = [];
+	const seenLoreEntryIds = new Set<string>();
+	const seenRetrievalNodeIds = new Set<string>();
+	let sceneAnalysisNodeId: string | null = null;
 	resolved.forEach((item, index) => {
 		if (item.status !== "candidate" || !keptIndexes.has(index)) return;
 		messages.push(...(item.messages ?? []));
 		if (item.suffix !== undefined) {
 			suffixIndexes.push(index);
 			suffixes.push(item.suffix);
+		}
+		for (const entryId of item.references?.loreEntryIds ?? []) {
+			if (seenLoreEntryIds.has(entryId)) continue;
+			seenLoreEntryIds.add(entryId);
+			loreEntryIds.push(entryId);
+		}
+		if (item.references?.sceneAnalysisNodeId !== undefined) {
+			sceneAnalysisNodeId = item.references.sceneAnalysisNodeId;
+		}
+		for (const nodeId of item.retrieval?.injectedNodeIds ?? []) {
+			if (seenRetrievalNodeIds.has(nodeId)) continue;
+			seenRetrievalNodeIds.add(nodeId);
+			retrievalNodeIds.push(nodeId);
 		}
 	});
 	let lastUserIndex = -1;
@@ -262,6 +304,7 @@ export async function assembleContext(
 			totalTokens,
 			entries,
 		},
+		references: { loreEntryIds, sceneAnalysisNodeId, retrievalNodeIds },
 	};
 }
 
@@ -337,6 +380,9 @@ async function resolveSegment(
 		...(content.retrieval === undefined
 			? {}
 			: { retrieval: content.retrieval }),
+		...(content.references === undefined
+			? {}
+			: { references: content.references }),
 	};
 }
 
@@ -363,6 +409,34 @@ function assertSlotContent(
 	if (content.suffix !== undefined) {
 		if (typeof content.suffix !== "string" || content.suffix.length === 0) {
 			throw new Error(`槽位 ${slot} 的 suffix 必须是非空字符串`);
+		}
+	}
+	if (content.references !== undefined) {
+		const references = content.references;
+		if (typeof references !== "object" || references === null) {
+			throw new Error(`槽位 ${slot} 的 references 必须是对象`);
+		}
+		if (references.loreEntryIds !== undefined) {
+			if (!Array.isArray(references.loreEntryIds)) {
+				throw new Error(`槽位 ${slot} 的 references.loreEntryIds 必须是数组`);
+			}
+			for (const entryId of references.loreEntryIds) {
+				if (typeof entryId !== "string" || entryId.length === 0) {
+					throw new Error(
+						`槽位 ${slot} 的 references.loreEntryIds 必须是非空字符串数组`,
+					);
+				}
+			}
+		}
+		if (
+			references.sceneAnalysisNodeId !== undefined &&
+			references.sceneAnalysisNodeId !== null &&
+			(typeof references.sceneAnalysisNodeId !== "string" ||
+				references.sceneAnalysisNodeId.length === 0)
+		) {
+			throw new Error(
+				`槽位 ${slot} 的 references.sceneAnalysisNodeId 必须是非空字符串或 null`,
+			);
 		}
 	}
 }

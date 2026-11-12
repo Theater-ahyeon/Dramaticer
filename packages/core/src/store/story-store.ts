@@ -15,6 +15,13 @@ import {
 import { isTurnMode } from "../chat/mode.js";
 import { parseContextCondition } from "../context/condition.js";
 import {
+	type ContextPack,
+	type ContextPackPayload,
+	type NewContextPackInput,
+	parseContextPackPayload,
+	serializeContextPackPayload,
+} from "../context/pack-format.js";
+import {
 	type ContextCondition,
 	type ContextTemplate,
 	DEFAULT_CONTEXT_TEMPLATE_ID,
@@ -646,6 +653,13 @@ interface LorePrefilterRow {
 	readonly node_id: string;
 	readonly story_id: string;
 	readonly entry_ids: string;
+	readonly created_at: string;
+}
+
+interface ContextPackRow {
+	readonly node_id: string;
+	readonly story_id: string;
+	readonly payload: string;
 	readonly created_at: string;
 }
 
@@ -1673,6 +1687,15 @@ function rowToLorePrefilter(row: LorePrefilterRow): LorePrefilter {
 			row.entry_ids,
 			`世界书预筛 ${row.node_id} 的条目 id`,
 		),
+		createdAt: row.created_at,
+	};
+}
+
+function rowToContextPack(row: ContextPackRow): ContextPack {
+	return {
+		nodeId: row.node_id,
+		storyId: row.story_id,
+		payload: parseContextPackPayload(row.payload),
 		createdAt: row.created_at,
 	};
 }
@@ -5389,6 +5412,54 @@ export class StoryStore {
 			.prepare("SELECT * FROM lore_prefilter WHERE node_id = ?")
 			.get(nodeId) as LorePrefilterRow | undefined;
 		return row === undefined ? null : rowToLorePrefilter(row);
+	}
+
+	/**
+	 * 写入玩家楼层的上下文包；同一楼层覆盖同一行。payload 必须是当前版本且
+	 * 结构合法，所属故事必须与楼层一致。
+	 */
+	saveContextPack(input: NewContextPackInput): ContextPack {
+		assertNonEmptyString(input.nodeId, "上下文包的楼层 id");
+		assertNonEmptyString(input.storyId, "上下文包的 storyId");
+		const node = this.getNode(input.nodeId);
+		if (!node) {
+			throw new Error(`楼层节点不存在：${input.nodeId}`);
+		}
+		if (node.storyId !== input.storyId) {
+			throw new Error(
+				`上下文包的 storyId 与楼层所属故事不一致：${input.storyId}`,
+			);
+		}
+		const payload = serializeContextPackPayload(input.payload);
+		const createdAt = input.createdAt ?? new Date().toISOString();
+		assertNonEmptyString(createdAt, "上下文包的 createdAt");
+		this.#db
+			.prepare(
+				`INSERT INTO context_packs (node_id, story_id, payload, created_at)
+				VALUES (?, ?, ?, ?)
+				ON CONFLICT(node_id) DO UPDATE SET
+					payload = excluded.payload,
+					created_at = excluded.created_at`,
+			)
+			.run(input.nodeId, input.storyId, payload, createdAt);
+		return {
+			nodeId: input.nodeId,
+			storyId: input.storyId,
+			payload: input.payload,
+			createdAt,
+		};
+	}
+
+	/** 读取玩家楼层的上下文包；没有记录时返回 null。 */
+	getContextPack(nodeId: string): ContextPack | null {
+		assertNonEmptyString(nodeId, "上下文包的楼层 id");
+		if (!this.getNode(nodeId)) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
+		const row = this.#db
+			.prepare("SELECT * FROM context_packs WHERE node_id = ?")
+			.get(nodeId) as ContextPackRow | undefined;
+		return row === undefined ? null : rowToContextPack(row);
 	}
 
 	/**
