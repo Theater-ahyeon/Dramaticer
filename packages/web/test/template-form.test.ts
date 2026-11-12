@@ -1,5 +1,14 @@
-import type { ContextCondition, ContextTemplate } from "@dramaticer/core";
+import {
+	type ContextCondition,
+	type ContextTemplate,
+	NOTE_READ_TOOL_NAME,
+	assertContextTemplate,
+} from "@dramaticer/core";
 import { describe, expect, it } from "vitest";
+import {
+	DEEP_TURN_TOOL_NAMES,
+	NOTE_TURN_TOOL_NAMES,
+} from "../src/chat/deep-turn";
 import {
 	BLOCK_FORMAT_SEGMENT_ID,
 	addBlockFormatSegment,
@@ -8,6 +17,7 @@ import {
 	buildContextTemplate,
 	conditionDraftFrom,
 	conditionDraftTo,
+	deepTurnDraftFrom,
 	describeConditionDraft,
 	describeTemplateSegments,
 	hasBlockFormatSegment,
@@ -15,6 +25,8 @@ import {
 	removeBlockFormatSegment,
 	removeSegmentDraft,
 	segmentDraftFrom,
+	setDeepTurnNotesEnabled,
+	setDeepTurnTool,
 	switchConditionKind,
 	templateDraftFrom,
 	updateSegmentDraft,
@@ -110,14 +122,30 @@ describe("模板表单", () => {
 		);
 
 		expect(
-			validateTemplateDraft({ id: "empty", name: "空", segments: [] }).map(
-				(error) => error.path,
-			),
+			validateTemplateDraft({
+				id: "empty",
+				name: "空",
+				segments: [],
+				deepTurn: {
+					tools: [],
+					maxToolCalls: "",
+					maxDurationMs: "",
+					notesEnabled: true,
+				},
+			}).map((error) => error.path),
 		).toEqual(["template.segments"]);
 		expect(
-			validateTemplateDraft({ id: "", name: "空", segments: [] }).map(
-				(error) => error.path,
-			),
+			validateTemplateDraft({
+				id: "",
+				name: "空",
+				segments: [],
+				deepTurn: {
+					tools: [],
+					maxToolCalls: "",
+					maxDurationMs: "",
+					notesEnabled: true,
+				},
+			}).map((error) => error.path),
 		).toEqual(["template.id", "template.segments"]);
 	});
 
@@ -268,5 +296,65 @@ describe("block_format 段落", () => {
 			priority: "",
 			condition: null,
 		});
+	});
+});
+
+describe("模板的深回合配置", () => {
+	it("显式配置往返一致，默认配置不写 deepTurn", () => {
+		const configured: ContextTemplate = {
+			...templateFixture(),
+			deepTurn: {
+				tools: ["memory_search", NOTE_READ_TOOL_NAME],
+				maxToolCalls: 20,
+				maxDurationMs: 120_000,
+			},
+		};
+		const draft = templateDraftFrom(configured, "模板甲");
+		expect(draft.deepTurn.tools).toEqual(configured.deepTurn?.tools);
+		expect(validateTemplateDraft(draft)).toEqual([]);
+		const built = buildContextTemplate(draft);
+		expect(built.deepTurn).toEqual(configured.deepTurn);
+		assertContextTemplate(built);
+
+		const plain = buildContextTemplate(
+			templateDraftFrom(templateFixture(), "模板甲"),
+		);
+		expect(plain.deepTurn).toBeUndefined();
+		assertContextTemplate(plain);
+		expect(deepTurnDraftFrom(undefined).tools).toEqual(DEEP_TURN_TOOL_NAMES);
+	});
+
+	it("工具勾选、关掉手记与越界上限逐字段报错", () => {
+		let draft = templateDraftFrom(templateFixture(), "模板甲");
+		draft = setDeepTurnTool(draft, "memory_search", false);
+		draft = setDeepTurnTool(draft, "memory_search", false);
+		expect(draft.deepTurn.tools.includes("memory_search")).toBe(false);
+		draft = setDeepTurnNotesEnabled(draft, false);
+		expect(
+			draft.deepTurn.tools.some((name) => NOTE_TURN_TOOL_NAMES.includes(name)),
+		).toBe(false);
+		const withNote = {
+			...draft,
+			deepTurn: {
+				...draft.deepTurn,
+				notesEnabled: false,
+				tools: [...draft.deepTurn.tools, NOTE_READ_TOOL_NAME],
+				maxToolCalls: "300",
+				maxDurationMs: "1000",
+			},
+		};
+		const errors = validateTemplateDraft(withNote);
+		expect(errors.map((error) => error.path)).toEqual([
+			"template.deepTurn.tools",
+			"template.deepTurn.maxToolCalls",
+			"template.deepTurn.maxDurationMs",
+		]);
+		const built = buildContextTemplate({
+			...draft,
+			deepTurn: { ...draft.deepTurn, maxToolCalls: "300" },
+		});
+		expect(() => assertContextTemplate(built)).toThrow(
+			"maxToolCalls 必须是 1 到 200 之间的整数",
+		);
 	});
 });

@@ -4,7 +4,15 @@ import type {
 	ContextSlotName,
 	ContextStaticSegment,
 	ContextTemplate,
+	ContextTemplateDeepTurn,
 } from "@dramaticer/core";
+import {
+	DEEP_MAX_TOOL_CALLS_RANGE,
+	DEEP_TIMEOUT_MS_RANGE,
+	DEEP_TURN_TOOL_NAMES,
+	DEEP_TURN_TOOL_OPTIONS,
+	NOTE_TURN_TOOL_NAMES,
+} from "./deep-turn";
 import type { FormFieldError } from "./settings-form";
 
 /** 写作契约段固定使用这个 id；服务端要求它排在最后。 */
@@ -97,10 +105,20 @@ export interface SegmentFormDraft {
 	readonly condition: ConditionDraft | null;
 }
 
+/** 深回合配置草稿；空字符串表示不覆盖故事设置里的对应上限。 */
+export interface TemplateDeepTurnDraft {
+	/** 选中的工具名；全选时保存会省略该字段，表示使用全部工具。 */
+	readonly tools: readonly string[];
+	readonly maxToolCalls: string;
+	readonly maxDurationMs: string;
+	readonly notesEnabled: boolean;
+}
+
 export interface TemplateFormDraft {
 	readonly id: string;
 	readonly name: string;
 	readonly segments: readonly SegmentFormDraft[];
+	readonly deepTurn: TemplateDeepTurnDraft;
 }
 
 export interface TemplateSegmentRow {
@@ -160,6 +178,19 @@ export function segmentDraftFrom(segment: ContextSegment): SegmentFormDraft {
 	};
 }
 
+export function deepTurnDraftFrom(
+	config: ContextTemplateDeepTurn | undefined,
+): TemplateDeepTurnDraft {
+	return {
+		tools: config?.tools === undefined ? DEEP_TURN_TOOL_NAMES : config.tools,
+		maxToolCalls:
+			config?.maxToolCalls === undefined ? "" : String(config.maxToolCalls),
+		maxDurationMs:
+			config?.maxDurationMs === undefined ? "" : String(config.maxDurationMs),
+		notesEnabled: config?.notesEnabled ?? true,
+	};
+}
+
 export function templateDraftFrom(
 	template: ContextTemplate,
 	name: string,
@@ -168,6 +199,7 @@ export function templateDraftFrom(
 		id: template.id,
 		name,
 		segments: template.segments.map(segmentDraftFrom),
+		deepTurn: deepTurnDraftFrom(template.deepTurn),
 	};
 }
 
@@ -318,6 +350,44 @@ export function updateSegmentDraft(
 		segments: draft.segments.map((segment, position) =>
 			position === index ? { ...segment, ...patch } : segment,
 		),
+	};
+}
+
+/** 勾选或取消一个工具；未知工具名原样拒绝为无变化。 */
+export function setDeepTurnTool(
+	draft: TemplateFormDraft,
+	name: string,
+	enabled: boolean,
+): TemplateFormDraft {
+	if (enabled) {
+		if (draft.deepTurn.tools.includes(name)) return draft;
+		return {
+			...draft,
+			deepTurn: { ...draft.deepTurn, tools: [...draft.deepTurn.tools, name] },
+		};
+	}
+	return {
+		...draft,
+		deepTurn: {
+			...draft.deepTurn,
+			tools: draft.deepTurn.tools.filter((item) => item !== name),
+		},
+	};
+}
+
+/** 关掉手记时同时移出手记工具，保证草稿与保存规则一致。 */
+export function setDeepTurnNotesEnabled(
+	draft: TemplateFormDraft,
+	enabled: boolean,
+): TemplateFormDraft {
+	const tools = enabled
+		? draft.deepTurn.tools
+		: draft.deepTurn.tools.filter(
+				(name) => !NOTE_TURN_TOOL_NAMES.includes(name),
+			);
+	return {
+		...draft,
+		deepTurn: { ...draft.deepTurn, notesEnabled: enabled, tools },
 	};
 }
 
@@ -481,6 +551,69 @@ export function describeTemplateSegments(
 	}));
 }
 
+/** 可选的整数上限；空字符串表示沿用故事设置。 */
+function parseOptionalDeepInteger(
+	text: string,
+	path: string,
+	minimum: number,
+	maximum: number,
+	errors: FormFieldError[],
+): void {
+	if (text.trim().length === 0) return;
+	const value = Number(text.trim());
+	if (!Number.isInteger(value) || value < minimum || value > maximum) {
+		errors.push({
+			path,
+			message: `必须是 ${minimum} 到 ${maximum} 之间的整数或留空`,
+		});
+	}
+}
+
+function validateDeepTurn(
+	draft: TemplateDeepTurnDraft,
+): readonly FormFieldError[] {
+	const errors: FormFieldError[] = [];
+	const seen = new Set<string>();
+	draft.tools.forEach((name, index) => {
+		if (!DEEP_TURN_TOOL_NAMES.includes(name)) {
+			errors.push({
+				path: `template.deepTurn.tools[${index}]`,
+				message: `未知工具：${name}`,
+			});
+		} else if (seen.has(name)) {
+			errors.push({
+				path: `template.deepTurn.tools[${index}]`,
+				message: `重复的工具名：${name}`,
+			});
+		}
+		seen.add(name);
+	});
+	if (
+		!draft.notesEnabled &&
+		draft.tools.some((name) => NOTE_TURN_TOOL_NAMES.includes(name))
+	) {
+		errors.push({
+			path: "template.deepTurn.tools",
+			message: "关掉手记时不能选中手记工具",
+		});
+	}
+	parseOptionalDeepInteger(
+		draft.maxToolCalls,
+		"template.deepTurn.maxToolCalls",
+		DEEP_MAX_TOOL_CALLS_RANGE.minimum,
+		DEEP_MAX_TOOL_CALLS_RANGE.maximum,
+		errors,
+	);
+	parseOptionalDeepInteger(
+		draft.maxDurationMs,
+		"template.deepTurn.maxDurationMs",
+		DEEP_TIMEOUT_MS_RANGE.minimum,
+		DEEP_TIMEOUT_MS_RANGE.maximum,
+		errors,
+	);
+	return errors;
+}
+
 /** 与服务端 `assertContextTemplate`、`assertStoredContextTemplate` 同一套规则。 */
 export function validateTemplateDraft(
 	draft: TemplateFormDraft,
@@ -543,7 +676,28 @@ export function validateTemplateDraft(
 			} 个片段`,
 		});
 	}
+	errors.push(...validateDeepTurn(draft.deepTurn));
 	return errors;
+}
+
+/** 全选工具与默认值等价，保存时省略该字段；其余字段为空时同样省略。 */
+function buildDeepTurn(
+	draft: TemplateDeepTurnDraft,
+): ContextTemplateDeepTurn | undefined {
+	const allSelected = DEEP_TURN_TOOL_NAMES.every((name) =>
+		draft.tools.includes(name),
+	);
+	const config: ContextTemplateDeepTurn = {
+		...(allSelected ? {} : { tools: [...draft.tools] }),
+		...(draft.maxToolCalls.trim().length === 0
+			? {}
+			: { maxToolCalls: Number(draft.maxToolCalls.trim()) }),
+		...(draft.maxDurationMs.trim().length === 0
+			? {}
+			: { maxDurationMs: Number(draft.maxDurationMs.trim()) }),
+		...(draft.notesEnabled ? {} : { notesEnabled: false }),
+	};
+	return Object.keys(config).length === 0 ? undefined : config;
 }
 
 /** 校验通过后转成协议对象；有错误时调用方不应保存。 */
@@ -569,5 +723,10 @@ export function buildContextTemplate(
 		}
 		return { ...base, kind: "slot" as const, slot: segment.slot };
 	});
-	return { id: draft.id, segments };
+	const deepTurn = buildDeepTurn(draft.deepTurn);
+	return {
+		id: draft.id,
+		segments,
+		...(deepTurn === undefined ? {} : { deepTurn }),
+	};
 }

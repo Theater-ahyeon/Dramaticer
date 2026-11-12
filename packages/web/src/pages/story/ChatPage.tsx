@@ -64,7 +64,7 @@ const PAGE_SIZE = 60;
 const RETRY_ATTEMPTS = 8;
 const RETRY_DELAY_MS = 150;
 
-/** R3b 完成前只有快回合可运行；故事设置缺失时按它发送。 */
+/** 故事设置尚未读到时的默认值；读到后跟随故事锁定值。 */
 const DEFAULT_TURN_MODE: TurnMode = "fast";
 
 interface FailedTurn {
@@ -89,7 +89,10 @@ export function ChatPage() {
 	const [bottomSignal, setBottomSignal] = useState(0);
 	const [settings, setSettings] = useState<StorySettings | null>(null);
 	const [settingsError, setSettingsError] = useState<unknown>(null);
-	const [modeSaving, setModeSaving] = useState(false);
+	/** 玩家为本轮选的模式；null 表示跟随故事设置。 */
+	const [turnModeOverride, setTurnModeOverride] = useState<TurnMode | null>(
+		null,
+	);
 	const [actions, setActions] = useState<readonly CandidateActionItem[]>([]);
 	const [actionsError, setActionsError] = useState<unknown>(null);
 	const [imageError, setImageError] = useState<unknown>(null);
@@ -116,7 +119,8 @@ export function ChatPage() {
 			: null;
 	/** 开场候选只能成为首个楼层，故事有楼层时不再显示。 */
 	const storyEmpty = pathLoaded && path.nodes.length === 0;
-	const turnMode: TurnMode = settings?.turnMode ?? DEFAULT_TURN_MODE;
+	const turnMode: TurnMode =
+		turnModeOverride ?? settings?.turnMode ?? DEFAULT_TURN_MODE;
 	/** 有未完成插图的楼层；键变化时页面从第一次轮询重新开始。 */
 	const pendingImageKey = nodesWithPendingImages(path.nodes).join("\n");
 	/** 手动重试后即使楼层集合不变也要重新开始轮询。 */
@@ -141,6 +145,7 @@ export function ChatPage() {
 		}
 		setSettings(null);
 		setSettingsError(null);
+		setTurnModeOverride(null);
 		setActions([]);
 		setActionsError(null);
 		setImageError(null);
@@ -450,21 +455,6 @@ export function ChatPage() {
 		}
 	};
 
-	/** 锁定为深回合时，玩家可以把故事改回唯一可运行的快回合。 */
-	const useFastMode = async () => {
-		if (storyId === undefined) return;
-		setModeSaving(true);
-		try {
-			const updated = await api.updateSettings(storyId, { turnMode: "fast" });
-			setSettings(updated);
-			setComposerError(null);
-		} catch (error) {
-			setComposerError(error);
-		} finally {
-			setModeSaving(false);
-		}
-	};
-
 	const generateOpenings = async () => {
 		if (storyId === undefined) return;
 		const baseline = maxOpeningOrdinal(openingCandidates);
@@ -601,14 +591,7 @@ export function ChatPage() {
 				value={input}
 				streaming={streaming}
 				turnMode={turnMode}
-				modeSaving={modeSaving}
-				onUseFastMode={
-					settings !== null && settings.turnMode !== "fast"
-						? () => {
-								void useFastMode();
-							}
-						: null
-				}
+				onTurnModeChange={setTurnModeOverride}
 				onChange={setInput}
 				onSend={() => sendText(input)}
 				onStop={() => abortRef.current?.abort()}

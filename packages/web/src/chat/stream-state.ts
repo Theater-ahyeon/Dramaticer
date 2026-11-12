@@ -3,6 +3,7 @@ import type {
 	SseEvent,
 	TurnCommittedPayload,
 	TurnCompletedPayload,
+	TurnProgressPayload,
 } from "@dramaticer/protocol";
 
 export interface ToolCallRecord {
@@ -20,10 +21,14 @@ export interface LiveDraft {
 export interface TurnDraft {
 	readonly started: boolean;
 	readonly userNodeId: string | null;
+	/** 深回合的运行 id；快回合为 null。 */
+	readonly runId: string | null;
 	readonly text: string;
 	readonly thinking: string;
 	readonly blocks: readonly DisplayedContent[];
 	readonly tools: readonly ToolCallRecord[];
+	/** 最近一条阶段提示；正文开始流出后清空。 */
+	readonly progress: TurnProgressPayload | null;
 	readonly liveDraft: LiveDraft | null;
 	readonly committed: TurnCommittedPayload | null;
 	readonly completed: TurnCompletedPayload | null;
@@ -34,10 +39,12 @@ export function createTurnDraft(): TurnDraft {
 	return {
 		started: false,
 		userNodeId: null,
+		runId: null,
 		text: "",
 		thinking: "",
 		blocks: [],
 		tools: [],
+		progress: null,
 		liveDraft: null,
 		committed: null,
 		completed: null,
@@ -53,20 +60,21 @@ export function applyTurnEvent(draft: TurnDraft, event: SseEvent): TurnDraft {
 				...draft,
 				started: true,
 				userNodeId: event.data.userNodeId,
+				runId: event.data.runId,
 			};
 		case "text.delta":
-			return { ...draft, text: draft.text + event.data.delta };
+			return { ...draft, text: draft.text + event.data.delta, progress: null };
 		case "thinking.delta":
 			return { ...draft, thinking: draft.thinking + event.data.delta };
 		case "blocks.replace":
-			return { ...draft, blocks: event.data.blocks };
+			return { ...draft, blocks: event.data.blocks, progress: null };
 		case "tool.call":
 			return {
 				...draft,
 				tools: [...draft.tools, { name: event.data.name, ok: event.data.ok }],
 			};
 		case "turn.progress":
-			return draft;
+			return { ...draft, progress: event.data };
 		case "draft.replace":
 			return {
 				...draft,

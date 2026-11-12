@@ -17,15 +17,28 @@ test("故事设置保存后刷新仍在，模板复制后编辑并保存", async
 	await expect(page.getByRole("heading", { name: "故事设置" })).toBeVisible();
 
 	await page.getByLabel("上下文预算 token").fill("9000");
+	const deepCalls = page.getByLabel("深回合工具调用上限");
+	await deepCalls.fill("500");
+	await page.getByRole("button", { name: "保存故事设置" }).click();
+	await expect(page.locator(".settings-errors")).toContainText(
+		"深回合工具调用上限",
+	);
+	await expect(page.locator(".settings-errors")).toContainText("1 到 200");
+	await deepCalls.fill("30");
 	await page.getByRole("button", { name: "保存故事设置" }).click();
 	await page.getByText("已保存", { exact: true }).waitFor();
 	await page.reload();
 	await expect(page.getByLabel("上下文预算 token")).toHaveValue("9000");
+	await expect(page.getByLabel("深回合工具调用上限")).toHaveValue("30");
 
 	const templateName = `端到端模板-${randomUUID().slice(0, 8)}`;
 	await page.getByLabel("新模板名称（复制用）").fill(templateName);
 	await page.getByRole("button", { name: "复制为新模板并设为默认" }).click();
 	await page.getByText("库里的模板").waitFor();
+	const memoryTool = page.getByLabel(/memory_search/);
+	await expect(memoryTool).toBeChecked();
+	await memoryTool.uncheck();
+	await page.getByLabel("工具调用上限（留空沿用故事设置）").fill("20");
 	const protocolSegment = page
 		.locator(".template-segment")
 		.filter({ hasText: "protocol" })
@@ -36,6 +49,10 @@ test("故事设置保存后刷新仍在，模板复制后编辑并保存", async
 	await page.reload();
 	await expect(page.locator(".template-preview")).toContainText(
 		"写作契约：端到端模板。",
+	);
+	await expect(page.getByLabel(/memory_search/)).not.toBeChecked();
+	await expect(page.getByLabel("工具调用上限（留空沿用故事设置）")).toHaveValue(
+		"20",
 	);
 	await expectNoHorizontalOverflow(page);
 });

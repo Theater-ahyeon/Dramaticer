@@ -118,6 +118,10 @@ describe("故事设置表单", () => {
 			reasoning: "high",
 			turnMode: "fast",
 			maxReadRounds: 3,
+			deepMaxToolCalls: 40,
+			deepTimeoutMs: 600_000,
+			deepContextTokenLimit: 48_000,
+			deepRecentToolSteps: 4,
 			viewpoint: "云裳",
 			gapPassEnabled: true,
 			gapPlanSeconds: 212,
@@ -153,6 +157,12 @@ describe("故事设置表单", () => {
 			temperature: "3",
 			maxTokens: "0",
 			maxReadRounds: "-1",
+			deep: {
+				deepMaxToolCalls: "500",
+				deepTimeoutMs: "1000",
+				deepContextTokenLimit: "0",
+				deepRecentToolSteps: "21",
+			},
 			gapPlanSeconds: "1.5",
 			director: {
 				...draft.director,
@@ -170,6 +180,10 @@ describe("故事设置表单", () => {
 			"temperature",
 			"maxTokens",
 			"maxReadRounds",
+			"deepMaxToolCalls",
+			"deepTimeoutMs",
+			"deepContextTokenLimit",
+			"deepRecentToolSteps",
 			"gapPlanSeconds",
 			"directorConfig.surprise",
 			"directorConfig.similarityWindow",
@@ -177,7 +191,8 @@ describe("故事设置表单", () => {
 			"directorConfig.scenePath",
 		]);
 		expect(errors[0]?.message).toContain("上下文预算 token");
-		expect(errors[5]?.message).toContain("0 到 1");
+		expect(errors[4]?.message).toContain("1 到 200");
+		expect(errors[9]?.message).toContain("0 到 1");
 	});
 
 	it("张力阈值与权重之和的跨字段检查", () => {

@@ -16,7 +16,9 @@ import {
 	type ImageSettingsDraft,
 } from "../../chat/image-form";
 import {
+	DEEP_NUMBER_FIELDS,
 	DIRECTOR_NUMBER_FIELDS,
+	type DeepNumberKey,
 	type DirectorFormDraft,
 	type DirectorNumberKey,
 	type FormFieldError,
@@ -205,6 +207,11 @@ export function SettingsPage() {
 	const setDirectorNumber = (key: DirectorNumberKey, value: string): void => {
 		if (draft === null) return;
 		updateDirector({ numbers: { ...draft.director.numbers, [key]: value } });
+	};
+
+	const setDeepNumber = (key: DeepNumberKey, value: string): void => {
+		if (draft === null) return;
+		updateDraft({ deep: { ...draft.deep, [key]: value } });
 	};
 
 	const saveSettings = (): void => {
@@ -442,10 +449,7 @@ export function SettingsPage() {
 									}
 									disabled={settingsBusy}
 								>
-									{TURN_MODE_CHOICES.filter(
-										(choice) =>
-											choice.value === "fast" || draft.turnMode === "deep",
-									).map((choice) => (
+									{TURN_MODE_CHOICES.map((choice) => (
 										<option key={choice.value} value={choice.value}>
 											{choice.label}
 										</option>
@@ -474,6 +478,30 @@ export function SettingsPage() {
 								/>
 							</Field>
 						</div>
+					</section>
+					<section className="director-section" aria-label="深回合">
+						<header className="director-section-head">
+							<h2>深回合</h2>
+							<span className="ledger-tag">只用作防失控上限</span>
+						</header>
+						<div className="settings-grid">
+							{DEEP_NUMBER_FIELDS.map((field) => (
+								<Field key={field.key} label={field.label}>
+									<input
+										type="text"
+										inputMode="numeric"
+										value={draft.deep[field.key]}
+										onChange={(event) =>
+											setDeepNumber(field.key, event.target.value)
+										}
+										disabled={settingsBusy}
+									/>
+								</Field>
+							))}
+						</div>
+						<p className="muted">
+							模板里的深回合配置可以覆盖工具白名单、工具调用上限与时长上限。
+						</p>
 					</section>
 					<section className="director-section" aria-label="角色与视角">
 						<header className="director-section-head">

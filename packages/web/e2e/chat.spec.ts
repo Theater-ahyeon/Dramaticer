@@ -60,7 +60,9 @@ test("两轮对话、思考折叠、选项偏好、读取工具与重新生成",
 	await expectNoHorizontalOverflow(page);
 });
 
-test("故事锁定深回合时拒绝发送，玩家切回快回合后恢复", async ({ page }) => {
+test("故事锁定深回合后新会话默认深回合，玩家可以逐轮切回快回合", async ({
+	page,
+}) => {
 	const storyId = await createImportedStory(page, "模式开关");
 	const locked = await page.request.put(`/api/stories/${storyId}/settings`, {
 		data: { turnMode: "deep" },
@@ -69,19 +71,15 @@ test("故事锁定深回合时拒绝发送，玩家切回快回合后恢复", as
 
 	await openStoryTab(page, storyId, "chat");
 	await expect(page.getByLabel("回合模式")).toHaveValue("deep");
-	await expect(page.getByRole("button", { name: "切回快回合" })).toBeVisible();
 
-	const composer = page.getByLabel("玩家行动");
-	await composer.fill("锁定深回合");
-	await composer.press("Enter");
-	await expect(page.locator(".error-notice")).toContainText("深回合");
-	expect(await pathNodeCount(page, storyId)).toBe(0);
+	await sendTurn(page, storyId, "深回合里的行动");
+	await sendTurn(page, storyId, "深回合里的第二轮");
 
-	await page.getByRole("button", { name: "切回快回合" }).click();
+	await page.getByLabel("回合模式").selectOption("fast");
 	await expect(page.getByLabel("回合模式")).toHaveValue("fast");
 	const settings = await page.request.get(`/api/stories/${storyId}/settings`);
 	const settingsBody: unknown = await settings.json();
-	expect(settingsBody).toMatchObject({ turnMode: "fast" });
+	expect(settingsBody).toMatchObject({ turnMode: "deep" });
 
-	await sendTurn(page, storyId, "切回快回合后的行动");
+	await sendTurn(page, storyId, "快回合里的行动");
 });

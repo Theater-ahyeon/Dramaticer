@@ -35,6 +35,27 @@ describe("流式回合归并", () => {
 		expect(draft.thinking).toBe("先\n观察");
 	});
 
+	it("深回合记下运行 id，阶段文字不覆盖正文", () => {
+		let draft = createTurnDraft();
+		draft = applyTurnEvent(
+			draft,
+			event("turn.started", {
+				storyId: "s",
+				userNodeId: "u1",
+				runId: "run-1",
+			}),
+		);
+		draft = applyTurnEvent(
+			draft,
+			event("turn.progress", { phase: "回忆中……", detail: "memory_search" }),
+		);
+		expect(draft.runId).toBe("run-1");
+		expect(draft.progress?.phase).toBe("回忆中……");
+		draft = applyTurnEvent(draft, event("text.delta", { delta: "正文" }));
+		expect(draft.text).toBe("正文");
+		expect(draft.progress).toBeNull();
+	});
+
 	it("块快照替换、工具调用按顺序累积", () => {
 		let draft = createTurnDraft();
 		draft = applyTurnEvent(

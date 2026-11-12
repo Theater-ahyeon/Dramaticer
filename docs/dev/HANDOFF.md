@@ -3,17 +3,17 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-12 会话 291：R3b-T09（运行中追加要求）。core 新增 `chat/guidance.ts`：`TurnGuidanceController` 按运行保存待处理指引，`pushGuidance` 去空白后校验 1–2,000 字、待处理上限 5 条，运行结束后拒绝；`TurnRunHandle` 与 `TurnStartedInfo` 由 `onTurnStarted` 在第一次模型请求前交给调用方。执行器每次请求前整批取走指引，按 `【玩家在运行中追加的指引】\n<文本>` 作为一条用户消息追加；省略旧工具往返之后再追加，不会被省略。`turn.ts` 接受指引时写 `steering` 运行事件（只记 `textLength`），在失败、未提交与成功提交三条结束路径上关闭控制器。server 新增 `TurnRunRegistry` 句柄表：`turn.started` 改由 `onTurnStarted` 发出并带 `runId`（快回合为 null），流结束时清理；`POST /api/stories/:id/turns/:runId/steering` 返回 202，未知或跨故事 404，已结束 409，空文本或超长 400 并指出 `text`，队列满 409；SSE 发 `turn.steering` 回显。协议新增 `turn.steering` 与 `TurnStartedPayload.runId`。新增 core 测试 2 个与 server 测试 1 个；门禁通过（172 个测试文件、1547 个测试、5 个 live 跳过）。
+- 2026-11-12 会话 292：R3b-T10.a（界面：模式开关与进度事件）。聊天页输入框旁的回合模式下拉框列出快/深两档，初值跟随 `StorySettings.turnMode`，玩家逐轮选择只改本轮，经 `POST /api/stories/:id/turns` 的 `mode` 发送；故事设置里的锁定值不被单轮选择改写。设置页新增“深回合”区段：`deepMaxToolCalls`（1–200）、`deepTimeoutMs`（60,000–3,600,000）、`deepContextTokenLimit`（正整数）、`deepRecentToolSteps`（1–20），表单校验范围由 `chat/deep-turn.ts` 的常量驱动并与 core 的 `assertDeep*` 逐一比对。模板编辑器新增深回合配置：十个工具的白名单勾选、手记开关（关闭时同时移出 `note_read`/`note_write`）、工具调用上限与时长上限，保存结果与 `ContextTemplate.deepTurn` 同形，全选工具时省略 `tools`。`TurnDraft` 新增 `runId` 与 `progress`：`turn.started` 写入 `runId`，`turn.progress` 写入阶段文字，`text.delta` 与 `blocks.replace` 清空阶段提示；`StreamingBubble` 用独立 `<output>` 显示阶段文字，不覆盖正文。移除 R5-T11 的深回合隐藏条件与“切回快回合”按钮。浏览器不能 import `@dramaticer/core` 的运行时值（会把 `better-sqlite3` 打进前端包导致整页白屏），界面常量统一放 `packages/web/src/chat/deep-turn.ts`，由 `packages/web/test/deep-turn.test.ts` 与 core 比对。e2e 改为“深回合锁定后直接发送两轮、再逐轮切回快回合”，并覆盖深回合设置越界与模板深回合字段保存。门禁通过（173 个测试文件、1552 个测试、5 个 live 跳过）。
 
-## 下一步（会话 292 先做）
-1. 做 R3b-T10.a（界面：模式开关与进度事件）。
-2. T10.a 之后做 T10.b（草稿、追加要求与运行时间线），再 T99。
+## 下一步（会话 293 先做）
+1. 做 R3b-T10.b（界面：草稿、追加要求与运行时间线）。
+2. T10.b 之后做 R3b-T99。
 3. M6-T99 仍等待 HUMAN-15（ComfyUI 与 API workflow JSON），不要开始。
 4. R3b 完成后再做 P1/P2 → C 兼容插件 → H → X → R6 → M6b → P3/P4 → M5 → P5 → M7。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T09。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- 数据库 schema 版本 41。R3b-T09 没有迁移：`steering` 事件使用已有的 `turn_run_events`。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.a。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 数据库 schema 版本 41。R3b-T10.a 没有迁移。
 - `eval-private/memory-cache/r1-retrieval.db` 有三个故事：`仙侠雌竞：什么叫我是炉鼎体质？` 290 个助手楼层已抽取 282 个、414 条事件；`欲望世界-1600` 180 个助手楼层已抽取 174 个、292 条事件；`银麒赎世` 114 个助手楼层已抽取 112 个、248 条事件。评测自己的临时数据库重新抽取后事件覆盖为 282/290、172/180、112/114，事件数 371/247/248。
 - M6-T99 标 `[!]`，等待 HUMAN-15：真实 ComfyUI 启动在 `http://127.0.0.1:8188` 并提供 API 格式 workflow JSON 到 `eval-private/comfyui/`；2026-11-09 探测时端口仍未监听。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045、ADR-0078、ADR-0079、ADR-0080、ADR-0082、ADR-0083、ADR-0084、ADR-0085、ADR-0086。
@@ -31,8 +31,8 @@
 - T07 模板配置（已完成）：`ContextTemplate.deepTurn` 见下文；模板覆盖故事设置，故事设置覆盖默认值；白名单外调用按未知工具拒绝并记录；模板保存、导入与 `assertContextTemplate` 走同一校验；指纹包含模板内容。规划—批评—执行仍按 DESIGN §18 暂缓。
 - T08 原生元数据（已完成）：`LlmResult.native` 与 `LlmToolCall.native` 保存签名类字段；pi 通道提取并回放，缺失签名时不产生空对象；执行器在深回合工具循环里逐轮保留；缓存键与缓存结果都包含 `native`；Gemini fixture 断言第二轮请求的 `thoughtSignature` 逐字节一致。
 - T09 运行中追加要求（已完成）：`chat/guidance.ts` 的 `TurnGuidanceController` 与 `TurnRunHandle`；`onTurnStarted` 带 `runId` 与句柄；执行器每次请求前整批追加为用户消息；`steering` 运行事件只记长度；server 句柄表与 steering 接口；`turn.steering` 回显；不写楼层；结束状态分别映射 404/409/400。
-- T10.a 界面：模式选择列出快/深、设置页深回合区段与模板字段（`ContextTemplate.deepTurn` 同形）、`turn.progress` 阶段文字；`turn.started` 已带 `runId`。
-- T10.b 界面：草稿区、追加要求输入（调用 steering 接口并回显）、楼层运行时间线。web 的流式状态已经有 `liveDraft` 与 `committed` 字段可用；`turn.steering` 目前在 `stream-state.ts` 里被忽略，T10.b 落界面状态。
+- T10.a 界面：模式开关与进度事件（已完成）：Composer 模式下拉框、ChatPage 逐轮模式覆盖、设置页深回合区段、模板编辑器深回合字段、`TurnDraft.runId`/`progress`、阶段文字独立显示；详见“代码事实”。
+- T10.b 界面：草稿区、追加要求输入（调用 steering 接口并回显）、楼层运行时间线。`stream-state.ts` 已经保存 `liveDraft`、`runId` 与 `progress`；`turn.steering` 目前仍被忽略，T10.b 要落界面状态；输入框在深回合运行中切换为“追加要求”，结束后恢复普通输入。
 - T99 验收：30 次真实深回合（失败率目标 ≤10%）、漂移率、时长对照 TauriTavern P50 66 秒/P90 147 秒、10 个分支点的快/深盲评增益；统计版写 `docs/dev/reports/R3b.md`。
 
 ## 深回合实现起点（代码事实）
@@ -49,8 +49,17 @@
 - 运行日志 `packages/core/src/run-log.ts`：`TurnRunRecord`、`TurnRunEvent`、`TurnRunEventInput`、`TurnRunDetail`，状态五种、事件九种（`model.request`、`model.response`、`tool.call`、`tool.result`、`draft.replace`、`draft.commit`、`steering`、`limit`、`error`）。存储层事件序号由单条 `INSERT ... SELECT COALESCE(MAX(seq),0)+1` 分配；事件表触发器拒绝更新与删除；只能在 `running` 状态追加；`markInterruptedTurnRuns` 返回改动行数。`turn_runs.node_id` 在提交/中止保存楼层时写入，没有楼层时为空；唯一索引保证一个助手楼层最多一条运行。
 - Trace `packages/core/src/trace.ts`：`TurnTrace.deep`（`TurnTraceDeep`，含 `stopReason`、`commit`、`drift`，以及可选的 `contextOmitted`）、`TurnTrace.run`、`DeepTurnStopReason`、`TurnTraceToolCall.permission`；快回合 `deep` 与 `run` 都为 null；旧 Trace 读回时缺失的 `run` 补 null。
 - server SSE `packages/server/src/turns.ts`：`turn.started`（由 `onTurnStarted` 发出，带 `runId`，快回合为 null）、`text.delta`、`blocks.replace`（100 毫秒节流）、`thinking.delta`、`tool.call`、`turn.progress`、`draft.replace`（100 毫秒节流）、`turn.steering`、`turn.committed`、`turn.error`、`turn.completed`；`turn.committed` 只带提交时的楼层 id、最终块与方式 `tool` 或 `auto`；`DeepTurnWithoutCommitError` 映射为 `internal` 错误并保留原因。`handleTurnStream` 在 `turn.completed` 后触发后台调度。`TurnRunRegistry` 在 `onTurnStarted` 注册、流 `finally` 注销。协议事件名与载荷在 `packages/protocol/src/turn.ts`。
-- server 只读接口 `packages/server/src/routes.ts`：`GET /api/nodes/:id/run` 返回 `NodeRunView`（`nodeId`、`run`、按 `seq` 升序的 `events`），楼层不存在或没有运行都 404。`POST /api/stories/:storyId/turns/:runId/steering` 先查故事与运行归属（404），再查运行状态与句柄（409），然后校验请求体字段 `text`，交给句柄追加；成功返回 202 `{ runId }`，队列满返回 409，文本非法返回 400 并带 `details.path = "text"`。
-- web `packages/web/src/chat/stream-state.ts` 处理 `turn.started`、`blocks.replace`、`tool.call`、`turn.progress`、`draft.replace`（写 `liveDraft`）、`turn.steering`（暂不落状态）与 `turn.committed`（写 `committed`）；聊天页每轮完成后重新取最近 60 楼。界面仍只展示快回合（R3b-T10.a 才放开）。
+- server 只读接口 `packages/server/src/routes.ts`：`GET /api/nodes/:id/run` 返回 `NodeRunView`（`nodeId`、`run`、按 `seq` 升序的 `events`），楼层不存在或没有运行都 404。`POST /api/stories/:storyId/turns/:runId/steering` 先查故事与运行归属（404），再查运行状态与句柄（409），然后校验请求体字段 `text`，交给句柄追加；成功返回 202 `{ runId }`，队列满返回 409，文本非法返回 400 并带 `details.path = "text"`。`POST /api/stories/:id/turns` 接受 `mode` 并交给 `resolveRequestedTurnMode`；非法模式返回 400 并指出 `mode`。
+
+## web 端（R3b-T10.a）
+- `packages/web/src/chat/deep-turn.ts` 是界面专用的深回合常量：`DEEP_TURN_TOOL_OPTIONS`（十个工具名与阶段文字）、`DEEP_TURN_TOOL_NAMES`、`NOTE_TURN_TOOL_NAMES`、四段数值范围。**web 源码不能 import `@dramaticer/core` 的运行时值**：core 的入口会把 `better-sqlite3` 与 `node:*` 带进 vite 包，浏览器加载即失败、整页白屏。类型导入（`import type`）可以照常使用。新增常量后要在 `packages/web/test/deep-turn.test.ts` 与 core 的导出比对。
+- `packages/web/src/chat/stream-state.ts`：`TurnDraft` 含 `runId`、`progress`；`turn.started` 写 `userNodeId` 与 `runId`，`turn.progress` 写 `progress`，`text.delta` 与 `blocks.replace` 清空 `progress`；`draft.replace` 写 `liveDraft`，`turn.committed` 写 `committed`，`turn.steering` 仍未落状态。
+- `packages/web/src/pages/story/ChatPage.tsx`：`turnModeOverride` 表示本轮选择，`null` 时跟随 `settings.turnMode`，故事切换时清空；`sendText` 把当前 `turnMode` 作为 `mode` 发送；不再有故事改写的“切回快回合”按钮。
+- `packages/web/src/components/chat/Composer.tsx`：模式下拉框始终列出快/深两档，生成中禁用；`TURN_MODE_CHOICES` 来自 `chat/settings-form.ts`。
+- `packages/web/src/components/chat/StreamingBubble.tsx`：阶段文字用独立 `<output className="stream-progress">` 渲染在正文之前，正文仍走原来的块或文本渲染。
+- `packages/web/src/chat/settings-form.ts`：`SettingsFormDraft.deep` 存四个字符串；`DEEP_NUMBER_KEYS`/`DEEP_NUMBER_FIELDS` 驱动渲染与校验；`parseInteger` 支持可选上限；`describeSettingsPath` 认识四个新字段。
+- `packages/web/src/chat/template-form.ts`：`TemplateDeepTurnDraft`（`tools`、`maxToolCalls`、`maxDurationMs`、`notesEnabled`）；`deepTurnDraftFrom` 缺省全选工具；`setDeepTurnTool`、`setDeepTurnNotesEnabled`；`validateDeepTurn` 校验未知与重复工具名、关掉手记时的冲突、两段整数范围；`buildDeepTurn` 在全选工具且其余为默认时省略 `deepTurn`，否则输出与 `ContextTemplateDeepTurn` 同形的对象。`TemplateEditor` 新增“深回合”区段。
+- e2e：`chat.spec.ts` 的深回合用例改为锁定后直接发送两轮、逐轮切回快回合，并确认故事设置仍为 deep；`settings-channels.spec.ts` 覆盖深回合数值越界报错、合法值保存刷新后仍在、模板里取消 `memory_search` 与设置工具上限后刷新仍在。跑单个用例用 `cd packages/web && pnpm exec playwright test --project=desktop --grep "深回合|故事设置"`；不要用 `pnpm e2e -- --grep ...`（多余 `--` 会让 Playwright 跑全部 22 个用例）。
 
 ## 记忆与检索（R1 续）
 - 父子分块：父段上限 1200 码点，按换行合并；单段超过上限时整楼退化成一个父段。小块 400 字符窗口、80 字符重叠。`StoryStore.open(path, { chunkStrategy })` 取 `parent-child`（默认）或 `fixed`。
@@ -85,7 +94,7 @@
 - R5 产物：`docs/dev/reports/R5.md`、`R5-playtest.md`；R3 产物 `R3.md`、`R3-fast.md`；O 产物 `O-opening.md`；R2 产物 `R2.md`、`R2-judge.md`、`R2-pairwise.md`、`R2-b1.md`、`R2-forgetting.md` 与 `docs/dev/SCOREBOARD.md`；R4 产物 `R4.md`；R1 检索与验收产物 `R1-retrieval.md`、`R1.md`。
 - 引用评测数字时：B1 必须同时说明同模型子集为空、每个对话每档只有 1 个样本；遗忘矛盾率必须同时说明失败题数与可判定样本数；选择一致率当前没有样本。
 - 手工冒烟脚本：聊天页、分支页、台账页、导演页、设置页与渠道页在 `.devloop/scratch/R5-T08`、`R5-T09`、`R5-T10`；M6-T04 与 M6-T05 在 `.devloop/scratch/M6-T04/smoke.mjs` 与 `.devloop/scratch/M6-T05/smoke.mjs`。
-- e2e 假渠道（R5-T12）：`serve.mjs` 固定端口 4517，`playwright.config.ts` 的 baseURL 与 webServer 读 `E2E_APP_PORT`；假渠道用随机端口并写进每次重建的 `channels.yaml`；数据库固定在 `.devloop/scratch/e2e/work/e2e.db`。
+- e2e 假渠道（R5-T12）：`serve.mjs` 固定端口 4517，`playwright.config.ts` 的 baseURL 与 webServer 读 `E2E_APP_PORT`；假渠道用随机端口并写进每次重建的 `channels.yaml`（`tools.transport: text`）；数据库固定在 `.devloop/scratch/e2e/work/e2e.db`。
 - Vertex 渠道（V-T01）：`api: google-vertex` 使用 pi-ai 1.5.0 的适配器；凭证、项目、区域只从 `.env` 的三个 `GOOGLE_*` 变量读取，服务账号 JSON 不进仓库。HUMAN-14 已取消真实调用要求。
 - 排障命令：`dramaticer explain --node <id> --db <path> [--json]`，只读、零模型调用；记忆检索段显示每一路的父段信息与注入范围；第 9 段显示运行状态与按 `seq` 排序的事件（包括草稿替换、提交与追加要求）。
 - 生图配置：`data/images.yaml` 只有 `providers`，第一版只接受 `api: comfyui`；`baseUrl`、`apiKey` 默认空，`timeoutMs` 300,000、`pollIntervalMs` 1,000；workflow 存 `image_workflows`；`imageConfig` 存在 `story_settings.image_config`；生成文件写到数据库同目录的 `images/`，可用 `--media-dir` 覆盖；`node_images.file_name` 是 `<storyId>/<imageId>.<扩展名>`。

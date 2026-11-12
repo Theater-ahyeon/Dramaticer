@@ -601,6 +601,12 @@ span.option-line {
 	}
 }
 
+.stream-progress {
+	margin: 6px 0 0;
+	color: var(--accent);
+	font-size: 0.85rem;
+}
+
 .stream-error {
 	margin: 6px 0 0;
 	color: var(--danger);
@@ -753,14 +759,6 @@ button.candidate-scene-change {
 }
 
 .candidate-kind {
-	color: var(--accent);
-	font-size: 0.8rem;
-}
-
-.composer-mode-lock {
-	padding: 4px 10px;
-	background: var(--surface);
-	border-color: var(--border);
 	color: var(--accent);
 	font-size: 0.8rem;
 }

@@ -14,6 +14,9 @@ export function StreamingBubble({ draft }: { readonly draft: TurnDraft }) {
 					{draft.completed === null ? "生成中" : "已生成"}
 				</span>
 			</header>
+			{draft.progress !== null && draft.errorMessage === null ? (
+				<output className="stream-progress">{draft.progress.phase}</output>
+			) : null}
 			{draft.thinking.length > 0 ? (
 				<details className="block block-thinking">
 					<summary>思考</summary>

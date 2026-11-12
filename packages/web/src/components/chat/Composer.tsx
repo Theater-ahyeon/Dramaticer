@@ -1,26 +1,24 @@
 import type { TurnMode } from "@dramaticer/core";
 import type { KeyboardEvent } from "react";
+import { TURN_MODE_CHOICES } from "../../chat/settings-form";
 
 export interface ComposerProps {
 	readonly value: string;
 	readonly streaming: boolean;
-	/** 故事锁定的回合模式；深回合在 R3b 之前不可运行。 */
+	/** 本轮使用的回合模式；初值来自故事设置，玩家可以逐轮改写。 */
 	readonly turnMode: TurnMode;
-	readonly modeSaving: boolean;
-	/** 故事锁定为深回合时提供的“切回快回合”入口。 */
-	readonly onUseFastMode: (() => void) | null;
+	readonly onTurnModeChange: (mode: TurnMode) => void;
 	readonly onChange: (value: string) => void;
 	readonly onSend: () => void;
 	readonly onStop: () => void;
 }
 
-/** 输入框；回车发送，Shift+回车换行。深回合在 R3b 之前不列为可选项。 */
+/** 输入框；回车发送，Shift+回车换行。 */
 export function Composer({
 	value,
 	streaming,
 	turnMode,
-	modeSaving,
-	onUseFastMode,
+	onTurnModeChange,
 	onChange,
 	onSend,
 	onStop,
@@ -48,25 +46,26 @@ export function Composer({
 				onKeyDown={handleKeyDown}
 			/>
 			<div className="composer-actions">
-				<label className="composer-mode" title="深回合在 R3b 之后提供">
+				<label
+					className="composer-mode"
+					title="故事设置给出默认值，这里只改本轮"
+				>
 					<span>回合模式</span>
-					<select aria-label="回合模式" disabled value={turnMode}>
-						<option value="fast">快回合</option>
-						{turnMode === "deep" ? (
-							<option value="deep">深回合（尚未实现）</option>
-						) : null}
+					<select
+						aria-label="回合模式"
+						disabled={streaming}
+						value={turnMode}
+						onChange={(event) =>
+							onTurnModeChange(event.target.value as TurnMode)
+						}
+					>
+						{TURN_MODE_CHOICES.map((choice) => (
+							<option key={choice.value} value={choice.value}>
+								{choice.label}
+							</option>
+						))}
 					</select>
 				</label>
-				{onUseFastMode === null ? null : (
-					<button
-						className="composer-mode-lock"
-						type="button"
-						disabled={modeSaving}
-						onClick={onUseFastMode}
-					>
-						切回快回合
-					</button>
-				)}
 				{streaming ? (
 					<button className="composer-stop" type="button" onClick={onStop}>
 						停止

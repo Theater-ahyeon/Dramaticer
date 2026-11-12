@@ -13,6 +13,12 @@ import type {
 } from "@dramaticer/core";
 import { ApiError } from "../api";
 import {
+	DEEP_CONTEXT_TOKEN_MINIMUM,
+	DEEP_MAX_TOOL_CALLS_RANGE,
+	DEEP_RECENT_TOOL_STEPS_RANGE,
+	DEEP_TIMEOUT_MS_RANGE,
+} from "./deep-turn";
+import {
 	type ImageSettingsDraft,
 	buildImageSettingsDraft,
 	describeImageConfigPath,
@@ -51,7 +57,7 @@ export const TURN_MODE_CHOICES: readonly {
 	readonly label: string;
 }[] = [
 	{ value: "fast", label: "快回合" },
-	{ value: "deep", label: "深回合（尚未实现）" },
+	{ value: "deep", label: "深回合" },
 ];
 
 export const HISTORY_MODE_CHOICES: readonly {
@@ -233,6 +239,50 @@ export const DIRECTOR_NUMBER_FIELDS: readonly DirectorNumberField[] = [
 	},
 ];
 
+export const DEEP_NUMBER_KEYS = [
+	"deepMaxToolCalls",
+	"deepTimeoutMs",
+	"deepContextTokenLimit",
+	"deepRecentToolSteps",
+] as const;
+
+export type DeepNumberKey = (typeof DEEP_NUMBER_KEYS)[number];
+
+export interface DeepNumberField {
+	readonly key: DeepNumberKey;
+	readonly label: string;
+	readonly minimum: number;
+	/** 数值上限；不设置时没有上限。 */
+	readonly maximum?: number;
+}
+
+/** 四段范围与 core 的 `assertDeep*` 一致。 */
+export const DEEP_NUMBER_FIELDS: readonly DeepNumberField[] = [
+	{
+		key: "deepMaxToolCalls",
+		label: `深回合工具调用上限（${DEEP_MAX_TOOL_CALLS_RANGE.minimum} 到 ${DEEP_MAX_TOOL_CALLS_RANGE.maximum}）`,
+		minimum: DEEP_MAX_TOOL_CALLS_RANGE.minimum,
+		maximum: DEEP_MAX_TOOL_CALLS_RANGE.maximum,
+	},
+	{
+		key: "deepTimeoutMs",
+		label: `深回合时长上限毫秒（${DEEP_TIMEOUT_MS_RANGE.minimum} 到 ${DEEP_TIMEOUT_MS_RANGE.maximum}）`,
+		minimum: DEEP_TIMEOUT_MS_RANGE.minimum,
+		maximum: DEEP_TIMEOUT_MS_RANGE.maximum,
+	},
+	{
+		key: "deepContextTokenLimit",
+		label: "深回合工具往返 token 上限（正整数）",
+		minimum: DEEP_CONTEXT_TOKEN_MINIMUM,
+	},
+	{
+		key: "deepRecentToolSteps",
+		label: `深回合保留的最近工具步骤（${DEEP_RECENT_TOOL_STEPS_RANGE.minimum} 到 ${DEEP_RECENT_TOOL_STEPS_RANGE.maximum}）`,
+		minimum: DEEP_RECENT_TOOL_STEPS_RANGE.minimum,
+		maximum: DEEP_RECENT_TOOL_STEPS_RANGE.maximum,
+	},
+];
+
 export interface HistoryOverrideFormDraft {
 	readonly name: string;
 	readonly strategy: BlockContextStrategy["kind"];
@@ -268,6 +318,7 @@ export interface SettingsFormDraft {
 	readonly reasoning: LlmReasoningLevel;
 	readonly turnMode: TurnMode;
 	readonly maxReadRounds: string;
+	readonly deep: Readonly<Record<DeepNumberKey, string>>;
 	readonly viewpoint: string;
 	readonly gapPassEnabled: boolean;
 	readonly gapPlanSeconds: string;
@@ -289,6 +340,10 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
 	reasoning: "思考档位",
 	turnMode: "回合模式",
 	maxReadRounds: "读取工具软上限",
+	deepMaxToolCalls: "深回合工具调用上限",
+	deepTimeoutMs: "深回合时长上限",
+	deepContextTokenLimit: "深回合工具往返 token 上限",
+	deepRecentToolSteps: "深回合保留的最近工具步骤",
 	viewpoint: "知情者视角",
 	gapPassEnabled: "间隙合并调用",
 	gapPlanSeconds: "可延后任务的间隙秒数",
@@ -339,6 +394,12 @@ export function buildSettingsDraft(settings: StorySettings): SettingsFormDraft {
 		reasoning: settings.reasoning,
 		turnMode: settings.turnMode,
 		maxReadRounds: String(settings.maxReadRounds),
+		deep: {
+			deepMaxToolCalls: String(settings.deepMaxToolCalls),
+			deepTimeoutMs: String(settings.deepTimeoutMs),
+			deepContextTokenLimit: String(settings.deepContextTokenLimit),
+			deepRecentToolSteps: String(settings.deepRecentToolSteps),
+		},
 		viewpoint: settings.viewpoint ?? "",
 		gapPassEnabled: settings.gapPassEnabled,
 		gapPlanSeconds: String(settings.gapPlanSeconds),
@@ -377,12 +438,21 @@ function parseInteger(
 	path: string,
 	minimum: number,
 	errors: FormFieldError[],
+	maximum?: number,
 ): number | null {
 	const value = Number(text.trim());
-	if (text.trim().length === 0 || !Number.isInteger(value) || value < minimum) {
+	if (
+		text.trim().length === 0 ||
+		!Number.isInteger(value) ||
+		value < minimum ||
+		(maximum !== undefined && value > maximum)
+	) {
 		errors.push({
 			path,
-			message: `${describeSettingsPath(path)} 必须是不小于 ${minimum} 的整数`,
+			message:
+				maximum === undefined
+					? `${describeSettingsPath(path)} 必须是不小于 ${minimum} 的整数`
+					: `${describeSettingsPath(path)} 必须是 ${minimum} 到 ${maximum} 之间的整数`,
 		});
 		return null;
 	}
@@ -463,6 +533,17 @@ export function parseSettingsDraft(draft: SettingsFormDraft): {
 		0,
 		errors,
 	);
+	const deep = {} as Record<DeepNumberKey, number>;
+	for (const field of DEEP_NUMBER_FIELDS) {
+		const parsed = parseInteger(
+			draft.deep[field.key],
+			field.key,
+			field.minimum,
+			errors,
+			field.maximum,
+		);
+		if (parsed !== null) deep[field.key] = parsed;
+	}
 	const gapPlanSeconds = parseInteger(
 		draft.gapPlanSeconds,
 		"gapPlanSeconds",
@@ -572,6 +653,13 @@ export function parseSettingsDraft(draft: SettingsFormDraft): {
 		reasoning: draft.reasoning,
 		turnMode: draft.turnMode,
 		maxReadRounds: maxReadRounds ?? 0,
+		deepMaxToolCalls:
+			deep.deepMaxToolCalls ?? DEEP_MAX_TOOL_CALLS_RANGE.minimum,
+		deepTimeoutMs: deep.deepTimeoutMs ?? DEEP_TIMEOUT_MS_RANGE.minimum,
+		deepContextTokenLimit:
+			deep.deepContextTokenLimit ?? DEEP_CONTEXT_TOKEN_MINIMUM,
+		deepRecentToolSteps:
+			deep.deepRecentToolSteps ?? DEEP_RECENT_TOOL_STEPS_RANGE.minimum,
 		viewpoint: nullableText(draft.viewpoint),
 		gapPassEnabled: draft.gapPassEnabled,
 		gapPlanSeconds: gapPlanSeconds ?? 0,

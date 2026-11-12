@@ -1,5 +1,9 @@
 import type { ContextSlotName, ContextStaticSegment } from "@dramaticer/core";
 import {
+	DEEP_TURN_TOOL_OPTIONS,
+	NOTE_TURN_TOOL_NAMES,
+} from "../../chat/deep-turn";
+import {
 	BLOCK_FORMAT_SEGMENT_ID,
 	type ConditionDraft,
 	SLOT_CHOICES,
@@ -12,6 +16,8 @@ import {
 	moveSegmentDraft,
 	removeBlockFormatSegment,
 	removeSegmentDraft,
+	setDeepTurnNotesEnabled,
+	setDeepTurnTool,
 	switchConditionKind,
 	updateSegmentDraft,
 } from "../../chat/template-form";
@@ -285,6 +291,80 @@ export function TemplateEditor({
 					添加槽位段
 				</button>
 			</div>
+			<section aria-label="深回合配置">
+				<h3>深回合</h3>
+				<label className="settings-check">
+					<input
+						type="checkbox"
+						checked={draft.deepTurn.notesEnabled}
+						onChange={(event) =>
+							onChange(setDeepTurnNotesEnabled(draft, event.target.checked))
+						}
+						disabled={disabled}
+					/>
+					<span>模型可以读写导演手记</span>
+				</label>
+				<div className="settings-grid">
+					{DEEP_TURN_TOOL_OPTIONS.map((tool) => {
+						const noteTool = NOTE_TURN_TOOL_NAMES.includes(tool.value);
+						return (
+							<label className="settings-check" key={tool.value}>
+								<input
+									type="checkbox"
+									checked={draft.deepTurn.tools.includes(tool.value)}
+									onChange={(event) =>
+										onChange(
+											setDeepTurnTool(draft, tool.value, event.target.checked),
+										)
+									}
+									disabled={
+										disabled || (!draft.deepTurn.notesEnabled && noteTool)
+									}
+								/>
+								<span>{tool.label}</span>
+							</label>
+						);
+					})}
+				</div>
+				<div className="plan-field-row">
+					<label className="plan-field">
+						<span>工具调用上限（留空沿用故事设置）</span>
+						<input
+							type="text"
+							inputMode="numeric"
+							value={draft.deepTurn.maxToolCalls}
+							onChange={(event) =>
+								onChange({
+									...draft,
+									deepTurn: {
+										...draft.deepTurn,
+										maxToolCalls: event.target.value,
+									},
+								})
+							}
+							disabled={disabled}
+						/>
+					</label>
+					<label className="plan-field">
+						<span>时长上限毫秒（留空沿用故事设置）</span>
+						<input
+							type="text"
+							inputMode="numeric"
+							value={draft.deepTurn.maxDurationMs}
+							onChange={(event) =>
+								onChange({
+									...draft,
+									deepTurn: {
+										...draft.deepTurn,
+										maxDurationMs: event.target.value,
+									},
+								})
+							}
+							disabled={disabled}
+						/>
+					</label>
+				</div>
+			</section>
 			<section aria-label="组装顺序预览">
 				<h3>组装顺序预览</h3>
 				<ol className="template-preview">
