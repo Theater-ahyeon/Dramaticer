@@ -3,19 +3,24 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-12 会话 317：完成 P4.e。新增 `docs/plugins/code-plugins.md`；新增示例代码插件 `docs/plugins/examples/code-travel-log/`（`dramaticer.plugin.json`、`plugin.mjs`、`data/travel.md`），只声明 `files` 只读权限，注册 `memory` 槽位、`travel_log` 只读工具与 `旅行日志` 块类型；新增 `packages/core/test/code-plugin-examples.test.ts` 5 条测试：在 worker 沙箱里按清单权限装载并验证三种扩展点、空权限下验证槽位与工具被拒绝且 Trace 记 `denied`、停止后撤销全部注册项，并核对文档与解析器常量。门禁通过（192 个测试文件、1695 个测试、5 个跳过）。
+- 2026-11-12 会话 318：完成 P4.f P4 验收。逐条核对 P4 总验收与 P4.a 至 P4.e 的验收标准，复核 I4、I12、I15、I16、I17、I18；5 个测试文件、45 个测试单独重跑通过，`node scripts/check-invariants.mjs` 通过；新增 `docs/dev/reports/P4.md`，记录总验收、五个子任务的证据与限制。门禁通过（192 个测试文件、1695 个测试、5 个跳过）。
 
-## 下一步（会话 318 先做）
-1. 按 TASKS 从上往下选任务：**P4.f P4 验收**（依赖 P4.b、P4.c、P4.d、P4.e，全部满足）。
-2. P4.f 要点：逐条核对 P4 总验收（未声明权限的调用被拒绝并有 Trace；安装与更新的权限展示有测试；worker 崩溃不影响主进程并有测试；卸载回收副作用有测试；示例代码插件在沙箱里运行通过），并复核 I4、I12、I15、I16、I17、I18；写 `docs/dev/reports/P4.md`；结果写 `MILESTONE_DONE`。
-3. P4.f 之后：P5 应用内插件市场依赖 P4.f 与 M5-T99，M5-T00 仍依赖 R6-T99 与 P4；M6-T99 等待 HUMAN-15，不要开始。
+## 下一步（会话 319 先做）
+1. 按 TASKS 从上往下选任务：P5 依赖 M5-T99（未完成），跳过；下一个是 **C-T01 ST 沙箱与 prompt 一致性测试台**（依赖 P2，已满足）。
+2. C-T01 要点：把 `D:\SillyTavern\` 的程序与数据复制到 `eval-private/st-sandbox/` 运行（原目录只读，不得调用模型，I14）；启动本地录制服务只记录请求；用 58 个预设 × 卡片 × 对话片段驱动 ST 生成并录下请求；实现逐条比对的覆盖率与差异清单；忠实模式与共存模式分开；净室规则（不移植 ST 源码）；产物只留在 `eval-private/`。这是大任务，必要时先在 TASKS 里拆子任务，一个会话只做第一个。
+3. 其余可做任务：C-T02 起依赖 C-T01；H-T00 依赖 R5-T99、R3b-T99、E-T01（均已完成）；X1 依赖 R1-T99.a、R2-T99（均已完成）。M5-T00 依赖 R6-T99，R6-T00 依赖 H-T00，都不能先做。M6-T99 等待 HUMAN-15。
+
+## P4.f 验收结论（代码事实）
+- 报告 `docs/dev/reports/P4.md`：总验收 6 条全部通过；P4.a 至 P4.e 的验收项逐条列出证据；不变量 I4、I12、I15、I16、I18 通过，I17 运行时部分通过（超时预算、`lifecycle/failed` Trace、注册项撤销有测试），`dramaticer explain` 展示尚未接入，报告中列为限制。
+- 限制：代码插件目前只有库 API（清单、安装确认、worker、安装/更新/卸载、文档与示例）；命令行与 server 未接入，因此没有跨进程端到端安装流程；worker 是故障隔离与能力中介，不是对抗性沙箱。
+- 复现：`pnpm exec vitest run packages/core/test/code-plugins.test.ts packages/core/test/code-plugin-installations.test.ts packages/core/test/code-plugin-worker.test.ts packages/core/test/code-plugin-installer.test.ts packages/core/test/code-plugin-examples.test.ts`（45 个测试）。
 
 ## P4.e 文档与示例（代码事实）
 - 文档 `docs/plugins/code-plugins.md`：清单字段表（`format`、`formatVersion`、`name`、`version`、`tier`、`engine`、`entry`、`title`、`description`、`inject`、`provide`、`configSchema`、`permissions`）、四类权限范围、Context API 全部成员（`name`、`version`、`config`、`network`、`readFile`、`writeFile`、`model`、`writeLedger`、`slot`、`tool`、`blockType`、`mechanism`、`onDispose`、`log`）、生命周期与失败处理、Trace 字段、安装更新与卸载、示例与安全边界。
 - 示例 `docs/plugins/examples/code-travel-log/dramaticer.plugin.json`：名称 `example.travel-log`、版本 `1.0.0`、`engine` 为 `>=0.1.0 <0.2.0`、入口 `plugin.mjs`、权限只有 `{ kind: "files", access: "read", paths: ["data"] }`、`configSchema` 允许可选 `file`。
 - 入口 `plugin.mjs` 导出 `activate(api)`：读 `api.config?.file ?? "data/travel.md"`；`api.slot("memory", ...)` 返回 `{ messages, source: api.name }`；`api.tool` 定义 `travel_log`（`permission: "read"`、`progressLabel`、参数为空对象 schema、阶段 `["fast","deep"]`）；`api.blockType` 定义 `旅行日志`（`display.kind: "html"`、`context.kind: "keep-depth"` 深度 2、`semantics.kind: "none"`）。
-- 测试 `packages/core/test/code-plugin-examples.test.ts` 5 条：清单解析；按权限装载并验证槽位、工具执行、块类型与 `allowed` Trace；空权限下槽位返回 null、`tool.execute` 拒绝、两条 `denied` Trace；停止后注册表为空；文档覆盖清单字段、四类权限、模型角色、台账命名空间、11 个槽位名、13 个 API 方法与格式常量。
-- 声明式示例目录的测试 `declarative-plugin-examples.test.ts` 只读取顶层 `.json`，新增的 `code-travel-log/` 子目录不影响它。
+- 测试 `packages/core/test/code-plugin-examples.test.ts` 5 条：清单解析；按权限装载并验证槽位、工具执行、块类型与 `allowed` Trace；空权限下槽位返回 null、`tool.execute` 拒绝、两条 `denied` Trace 且插件保持运行；停止后注册表为空；文档覆盖清单字段、四类权限、模型角色、台账命名空间、11 个槽位名、13 个 API 方法与格式常量。
+- 声明式示例目录的测试 `declarative-plugin-examples.test.ts` 只读取顶层 `.json`，`code-travel-log/` 子目录不影响它。
 
 ## P4.d 安装、更新与卸载（代码事实）
 - 模块 `packages/core/src/plugins/code-plugin-installer.ts`，经 `plugins/index.ts` 从 `@dramaticer/core` 根导出：`CodePluginManager`、`parseNpmSpec`、`CODE_PLUGIN_MANIFEST_FILENAME`。
@@ -30,6 +35,7 @@
 - `uninstall(name)` 先 `stop`（撤销全部注册项）再删除插件目录与安装记录；目录与记录只有一个存在时也允许清理；两者都没有时抛错。调用方仍应自己读故事设置，故事级配置在 `story_settings.pluginOverrides.config`，安装与更新都不触碰它。
 - `readInstalledManifests()` 读取插件目录下全部清单（跳过点目录与没有清单的目录），供 `assertInstalledCodePluginsMatch` 启动核对。
 - 构造选项：`pluginsDir`、`store`、`engineVersion`（semver）、`stagingDir`、`npmRegistry`、`registryFetch`（npm 元数据与 tarball 下载，默认全局 fetch）、`pluginFetch`（插件网络能力）、`registry`、`model`、`ledger`、`onTrace`、`commandTimeoutMs`（默认 120 秒）。
+- `tar` 与 `fflate` 已在 `docs/dev/DEPENDENCIES.md` 登记；`rmSync` 删除临时目录带 `maxRetries` 与 `retryDelay`。
 
 ## P4.c worker 隔离（代码事实）
 - 模块 `packages/core/src/plugins/code-plugin-worker.ts`，经 `plugins/index.ts` 从 `@dramaticer/core` 根导出。
@@ -76,11 +82,11 @@
 - 回合内钩子：`plugins/turn-hooks.ts` 的 `runTurnHook` 预算默认 5,000 毫秒；超时跳过并写 `TurnTrace.hooks`。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a 至 P2.g、P3.a 至 P3.f、P4.a 至 P4.e。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a 至 P2.g、P3.a 至 P3.f、P4.a 至 P4.f。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
 - 数据库 schema 版本 43。
-- P3 验收报告：`docs/dev/reports/P3.md`；P2 报告：`docs/dev/reports/P2.md`。
+- 报告：`docs/dev/reports/P2.md`、`P3.md`、`P4.md`。
 - 声明式插件还没有接进运行时装载器：P3 完成格式、解析、叠加、按故事解析与导入报告；把台账 schema、块渲染器、技能与玩法包配置注册到内核留给后续任务。
-- 代码插件已有清单、安装确认、worker 运行时、安装/更新/卸载库 API 与开发文档和示例；尚未接到启动流程与命令行（P4.d 与 P4.e 都只提供库 API 与示例，`dramaticer` CLI 与 server 的接入留给后续任务（P5 或专门任务））。
+- 代码插件已有清单、安装确认、worker 运行时、安装/更新/卸载库 API 与开发文档和示例；尚未接到启动流程与命令行（P5 或专门任务）。
 - ADR-0088 记录故事级插件状态存进 `story_settings`；ADR-0089 记录版本范围用 semver 与导入报告字段；ADR-0090 记录代码插件清单与权限形状；ADR-0091 记录安装确认与安装记录；ADR-0092 记录 worker 隔离、能力判定与信任边界；ADR-0093 记录安装来源、更新检查与卸载回收。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045、ADR-0078、ADR-0079、ADR-0080、ADR-0082、ADR-0083、ADR-0084、ADR-0085、ADR-0086、ADR-0087。
 - HUMAN-03 待处理（不阻塞）：抽查 `eval-private/evalset/spotcheck.md` 里的事件题。
@@ -89,11 +95,7 @@
 
 ## 可重复命令
 - 门禁：`pnpm check`。
-- P4.e 目标测试：`pnpm exec vitest run packages/core/test/code-plugin-examples.test.ts`（5 个测试）。
-- P4.d 目标测试：`pnpm exec vitest run packages/core/test/code-plugin-installer.test.ts`（9 个测试）。
-- P4.c 目标测试：`pnpm exec vitest run packages/core/test/code-plugin-worker.test.ts`（10 个测试）。
-- P4.b 目标测试：`pnpm exec vitest run packages/core/test/code-plugin-installations.test.ts`（9 个测试）。
-- P4.a 目标测试：`pnpm exec vitest run packages/core/test/code-plugins.test.ts`（12 个测试）。
+- P4 目标测试：`pnpm exec vitest run packages/core/test/code-plugins.test.ts packages/core/test/code-plugin-installations.test.ts packages/core/test/code-plugin-worker.test.ts packages/core/test/code-plugin-installer.test.ts packages/core/test/code-plugin-examples.test.ts`（45 个测试）。
 - 插件内核与扩展测试：`pnpm exec vitest run packages/core/test/plugins.test.ts packages/core/test/plugin-runtime.test.ts packages/core/test/chat-slot-plugins.test.ts packages/core/test/plugin-extensions.test.ts packages/core/test/plugin-background-tools.test.ts packages/core/test/turn-hooks.test.ts`。
 - 不变量检查：`node scripts/check-invariants.mjs`。
 
