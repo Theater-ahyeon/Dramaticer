@@ -489,6 +489,8 @@ export async function generateAssistantTurn(
 				...turnOptions,
 				maxToolCalls: resolved.deep.maxToolCalls,
 				maxDurationMs: resolved.deep.maxDurationMs,
+				contextTokenLimit: resolved.deep.contextTokenLimit,
+				recentToolSteps: resolved.deep.recentToolSteps,
 			});
 			turn = deepTurn.turn;
 		} else {
@@ -678,6 +680,7 @@ export async function generateAssistantTurn(
 							stopReason: deepTurn.stopReason,
 							commit: draft?.commitMethod ?? "none",
 							drift: completion.drift,
+							contextOmitted: deepTurn.contextOmitted ?? undefined,
 						},
 			run: runTrace,
 		};

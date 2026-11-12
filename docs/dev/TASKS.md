@@ -964,7 +964,8 @@
   - 深回合开始时装入手记：在组装后的消息之后插入一条系统消息，列出累加后的手记；快回合不注入。手记是模型自己的工作材料，事实以台账为准。
   验收：同一键在后续楼层覆盖、`delete` 后消失；不同分支各自累加且互不影响；提交前手记查不到、提交后可见；没有手记时不插入空消息；手记不出现台账路径中；`pnpm check` 通过。
 
-- [ ] **R3b-T06 工具往返的上下文卫生** | 依赖：R3b-T01、R3b-T03、R3b-T04 | DESIGN §10.1
+- [x] **R3b-T06 工具往返的上下文卫生** | 依赖：R3b-T01、R3b-T03、R3b-T04 | DESIGN §10.1
+  完成：2026-11-12 新增 `chat/context-window.ts`：`pruneToolRoundTrips` 把“助手工具调用消息 + 紧随其后的工具结果消息”识别为一个工具步，按累计估算 token 与 `tokenLimit` 判定，从最早一步开始整步省略，直到降到上限以下或只剩 `recentToolSteps` 步；系统消息、用户消息、非工具往返的助手消息不参与省略，`addContextOmission` 累计多次请求前的省略；执行器新增 `contextWindow` 选项，每次请求前就地省略并把累计数字随 `ModelTurnResult.contextOmitted` 返回；`runDeepTurn` 新增 `contextTokenLimit` 与 `recentToolSteps` 并校验，接线 `resolveTurnMode` 解析出的故事设置；`TurnTrace.deep.contextOmitted`（`pairs`、`messages`、`tokens`、`reason`）只在有省略时写入；快回合不传该选项，`maxReadRounds` 逻辑不变；新增 8 个测试（上限以下不省略、成对省略与 token 数字、保留最近两步、步数不足不省略、参数非法、深回合 Trace、深回合上限以下、快回合不套用）；门禁通过（169 个测试文件、1528 个测试、4 个 live 跳过）
   做什么：
   - 深回合每次请求前估算工具消息累计 token；超过故事设置 `deepContextTokenLimit`（默认 48,000）时，从最早的一对“助手工具调用消息 + 对应工具结果消息”开始成对省略，直到降到上限以下或只剩最近 `deepRecentToolSteps`（默认 4 步，1–20）为止。
   - 只成对省略：不允许留下没有调用的工具结果，也不允许留下没有结果的工具调用；当前步骤正在使用的材料、系统消息、用户消息与最近步骤不省略。

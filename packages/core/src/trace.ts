@@ -87,6 +87,17 @@ export type DeepTurnStopReason =
 	| "aborted"
 	| "error";
 
+/** 深回合每次请求前对工具往返做的成对省略。 */
+export interface TurnTraceDeepContextOmitted {
+	/** 省略的工具往返对数。 */
+	readonly pairs: number;
+	/** 省略的消息条数。 */
+	readonly messages: number;
+	/** 省略消息的估算 token 数。 */
+	readonly tokens: number;
+	readonly reason: "context_limit";
+}
+
 /** 深回合的防失控上限与运行结果；快回合为 null。 */
 export interface TurnTraceDeep {
 	readonly maxToolCalls: number;
@@ -99,6 +110,8 @@ export interface TurnTraceDeep {
 	readonly commit: "tool" | "auto" | "none";
 	/** 正常结束但没有调用提交工具时记为 missing_commit；其余为 null。 */
 	readonly drift: "missing_commit" | null;
+	/** 工具往返的成对省略；没有省略时不写这一段。 */
+	readonly contextOmitted?: TurnTraceDeepContextOmitted;
 }
 
 /** 本轮对应的运行日志；快回合不写运行表，为 null。 */

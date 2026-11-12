@@ -39,6 +39,12 @@ import {
 	LEDGER_WRITE_TOOL_NAME,
 	executeLedgerWriteTool,
 } from "../tools/write-tools.js";
+import {
+	type DeepContextOmission,
+	type DeepContextWindow,
+	addContextOmission,
+	pruneToolRoundTrips,
+} from "./context-window.js";
 import type { TurnDraftController } from "./draft.js";
 import { DEFAULT_MAX_READ_ROUNDS, assertMaxReadRounds } from "./mode.js";
 import type { TurnNoteController } from "./notes.js";
@@ -98,6 +104,11 @@ export interface ModelTurnOptions {
 	readonly maxToolCalls?: number;
 	/** 运行时长上限（毫秒）；每次发出请求之前检查。 */
 	readonly maxDurationMs?: number;
+	/**
+	 * 深回合的工具往返上下文卫生；每次请求前超过上限就成对省略较早的
+	 * 工具往返。快回合不传，不套用这条规则。
+	 */
+	readonly contextWindow?: DeepContextWindow;
 	/** 深回合的草稿控制器；控制工具用它整份替换与提交草稿。 */
 	readonly draft?: TurnDraftController | null;
 	/** 深回合的手记控制器；note_write 用它收集提交前的修改。 */
@@ -164,6 +175,8 @@ export interface ModelTurnResult {
 	/** 实际执行的工具调用次数；被上限拒绝的调用不计入。 */
 	readonly toolCallCount: number;
 	readonly stopReason: ModelTurnStopReason;
+	/** 深回合累计省略的工具往返；没有省略或快回合时为 null。 */
+	readonly contextOmitted: DeepContextOmission | null;
 	/** propose 工具收集的台账写入；提交楼层时统一写入。 */
 	readonly proposedStateUpdates: readonly AcceptedStateUpdate[];
 }
@@ -235,6 +248,8 @@ export async function runModelTurns(
 	let roundIndex = 0;
 	let toolCallCount = 0;
 	let stopReason: ModelTurnStopReason = "completed";
+	/** 工具往返的成对省略；只累计，不记录被省略的正文。 */
+	let contextOmitted: DeepContextOmission | null = null;
 	/** 最近一轮的非空正文；上限收束时没有新正文就沿用它。 */
 	let lastBody = "";
 
@@ -257,6 +272,13 @@ export async function runModelTurns(
 				finalText = lastBody;
 				blocks = parseBlocks(finalText);
 				break;
+			}
+			if (options.contextWindow !== undefined) {
+				const pruned = pruneToolRoundTrips(messages, options.contextWindow);
+				if (pruned.omitted !== null) {
+					messages.splice(0, messages.length, ...pruned.messages);
+					contextOmitted = addContextOmission(contextOmitted, pruned.omitted);
+				}
 			}
 			const request = {
 				messages,
@@ -629,6 +651,7 @@ export async function runModelTurns(
 		firstTokenMs,
 		toolCallCount,
 		stopReason,
+		contextOmitted,
 		proposedStateUpdates,
 	};
 }

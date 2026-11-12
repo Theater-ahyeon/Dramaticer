@@ -331,3 +331,5 @@
 - 2026-11-12 | S286 | R3b-T04 | DONE | 新增 `chat/draft.ts`（整份替换、版本号、提交后拒绝修改）与 `draft_write`、`commit_draft` 两个 control 工具；执行器在提交后立即结束循环并拒绝后续工具；`turn.ts` 显式提交用草稿、正常结束没有提交时自动提交最后一次输出并记 `missing_commit`、中止/超时/上限/无正文时不写楼层并标 `failed` 或 `aborted`；server 新增 `draft.replace`（100 毫秒节流）与 `turn.committed`，web 流式状态缓存草稿与提交；运行日志只记版本号与长度；门禁通过（171 个测试文件、1512 个测试、4 个 live 跳过）
 
 - 2026-11-12 | S287 | R3b-T05 | DONE | 迁移 v41 新增 `director_notes`（每楼一行、同故事触发器、归属不可改）；`director/notes.ts` 定义 `set`/`delete` 校验与沿路径累加（后写覆盖、`delete` 移除、按键排序）；`note_read`（read）读当前路径结果并叠加本轮待提交修改，`note_write`（propose）交给运行内 `TurnNoteController`，提交楼层时与台账写入同一事务落库；深回合在组装后的消息之后注入手记系统消息，没有手记与快回合都不插入，快回合不暴露两个工具；手记不进台账；新增 8 个测试；门禁通过（172 个测试文件、1524 个测试、4 个 live 跳过）
+
+- 2026-11-12 | S288 | R3b-T06 | DONE | 新增 `chat/context-window.ts`：工具步按“助手工具调用 + 紧随其后的工具结果”识别，累计估算 token 超过 `deepContextTokenLimit` 时从最早一步整步省略，保留最近 `deepRecentToolSteps` 步；执行器新增 `contextWindow` 选项，每次请求前就地省略并累计 `pairs`、`messages`、`tokens`；`runDeepTurn` 新增并校验 `contextTokenLimit` 与 `recentToolSteps`，`TurnTrace.deep.contextOmitted` 只在有省略时写入；快回合不套用；新增 8 个测试；门禁通过（169 个测试文件、1528 个测试、4 个 live 跳过）
