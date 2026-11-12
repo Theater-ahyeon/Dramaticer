@@ -11,6 +11,7 @@ import type {
 	StructuredOutputIssue,
 	StructuredOutputMode,
 } from "./structured/types.js";
+import type { ToolPermission } from "./tools/registry.js";
 
 export interface TurnTraceLlm {
 	/** 这一轮使用的模型角色；正文生成为 writer。 */
@@ -39,6 +40,8 @@ export interface TurnTraceToolCall {
 	readonly ok: boolean;
 	/** 失败原因；成功时为 null。 */
 	readonly error: string | null;
+	/** 本次调用的权限级别；未注册的工具为 null。 */
+	readonly permission: ToolPermission | null;
 }
 
 /** 文本协议里被拒绝、没有执行的工具调用。 */
@@ -50,15 +53,15 @@ export interface TurnTraceToolRejection {
 export interface TurnTraceTools {
 	/** 工具调用使用的传输方式：原生函数调用或文本协议。 */
 	readonly transport: LlmToolTransport;
-	/** 实际执行的读取工具轮数。 */
+	/** 实际执行工具的轮数。 */
 	readonly rounds: number;
-	/** 每轮读取工具的软上限；快回合默认 3。 */
+	/** 快回合每轮读取工具的软上限；深回合按工具调用总次数收束。 */
 	readonly maxRounds: number;
-	/** 模型在软上限处仍请求读取工具，本轮按上限收束。 */
+	/** 模型在软上限处仍请求工具，本轮按上限收束。 */
 	readonly capped: boolean;
-	/** 每次读取工具调用的结果，按调用顺序；参数非法的调用也记录。 */
+	/** 每次工具调用的结果与权限级别，按调用顺序；参数非法的调用也记录。 */
 	readonly calls: readonly TurnTraceToolCall[];
-	/** 文本协议里被拒绝的工具调用；原生传输下为空数组。 */
+	/** 被拒绝、没有执行的工具调用；只记录未知工具名。 */
 	readonly rejected: readonly TurnTraceToolRejection[];
 }
 

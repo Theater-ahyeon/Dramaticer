@@ -1,4 +1,4 @@
-import type { StateDiffOp } from "../timeline.js";
+import type { StateDiffOp, StoryTime } from "../timeline.js";
 
 /** 结构化输出的传输方式：函数调用或文本标签。 */
 export const STRUCTURED_OUTPUT_MODES = ["function-call", "text-tags"] as const;
@@ -23,6 +23,10 @@ export interface AcceptedStateUpdate {
 	/** op 为 set 时是任意 JSON 值（可以是 null）；op 为 delete 时为 null。 */
 	readonly value: unknown;
 	readonly reason: string | null;
+	/** 事实成立的故事内时间段；结构化标签不提供。 */
+	readonly storyTime?: StoryTime | null;
+	/** 置信度 0 到 1；结构化标签不提供。 */
+	readonly confidence?: number | null;
 }
 
 export interface AcceptedPlotNote {

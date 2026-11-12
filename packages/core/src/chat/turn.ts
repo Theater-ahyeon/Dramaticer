@@ -13,6 +13,7 @@ import {
 	resolveDirectorIntensity,
 } from "../director/intensity.js";
 import {
+	ILLUSTRATE_TOOL,
 	type IllustrateTurnOptions,
 	applyIllustrateCalls,
 	resolveIllustrateTool,
@@ -42,7 +43,8 @@ import type {
 	StructuredOutputMode,
 } from "../structured/types.js";
 import type { NewStateDiff, StateDiff, TimelineNode } from "../timeline.js";
-import { READ_TOOLS } from "../tools/read-tools.js";
+import { DEEP_TURN_TOOLS, FAST_TURN_TOOLS } from "../tools/index.js";
+import type { ToolProgressEvent } from "../tools/registry.js";
 import type { TurnTrace } from "../trace.js";
 import { type DeepTurnResult, runDeepTurn } from "./deep-turn.js";
 import {
@@ -110,6 +112,8 @@ export interface ChatTurnOptions {
 		readonly name: string;
 		readonly ok: boolean;
 	}) => void;
+	/** 工具执行前的进度阶段；同一阶段连续调用只回调一次。 */
+	readonly onToolProgress?: (event: ToolProgressEvent) => void;
 	readonly now?: () => number;
 }
 
@@ -360,12 +364,22 @@ export async function generateAssistantTurn(
 		resolved.mode === "deep"
 			? writesLedger
 			: writesLedger && (functionCall || transport === "text");
+	const toolSet = resolved.mode === "deep" ? DEEP_TURN_TOOLS : FAST_TURN_TOOLS;
+	const readTools = exposeReadTools ? toolSet.tools : [];
+	const tools =
+		readTools.length === 0 && illustrateTool === null
+			? undefined
+			: [...readTools, ...(illustrateTool === null ? [] : [illustrateTool])];
+	const disabledTools =
+		illustrateTool === null && (tools !== undefined || transport === "text")
+			? [ILLUSTRATE_TOOL]
+			: undefined;
 	const turnOptions = {
 		client: options.client,
 		messages: assembled.messages,
 		structuredTools: functionCall ? STRUCTURED_OUTPUT_TOOLS : undefined,
-		readTools: exposeReadTools ? READ_TOOLS : undefined,
-		sideEffectTools: illustrateTool === null ? undefined : [illustrateTool],
+		tools,
+		disabledTools,
 		toolTransport: transport,
 		toolContext: {
 			store: options.store,
@@ -387,6 +401,7 @@ export async function generateAssistantTurn(
 		onTextDelta: options.onTextDelta,
 		onThinkingDelta: options.onThinkingDelta,
 		onToolCall: options.onToolCall,
+		onToolProgress: options.onToolProgress,
 		now,
 	} as const;
 	let turn: ModelTurnResult;
@@ -434,9 +449,12 @@ export async function generateAssistantTurn(
 
 	const structured = !writesLedger
 		? emptyStructuredCollection(options.structuredOutput)
-		: functionCall
-			? collectStructuredOutputFromToolCalls(turn.toolCalls)
-			: collectStructuredOutputFromText(result.text);
+		: withProposedStateUpdates(
+				functionCall
+					? collectStructuredOutputFromToolCalls(turn.toolCalls)
+					: collectStructuredOutputFromText(result.text),
+				turn.proposedStateUpdates,
+			);
 
 	return await options.store.runInTransaction(() => {
 		const node = options.store.appendNode({
@@ -502,8 +520,12 @@ export async function generateAssistantTurn(
 							name: call.name,
 							ok: call.ok,
 							error: call.error,
+							permission: call.permission,
 						})),
-					...imageResult.calls,
+					...imageResult.calls.map((call) => ({
+						...call,
+						permission: "side_effect" as const,
+					})),
 				],
 				rejected: turn.rejected.map((rejection) => ({
 					name: rejection.name,
@@ -710,6 +732,18 @@ function emptyStructuredCollection(
 	return { mode, stateUpdates: [], notes: [], issues: [] };
 }
 
+/** 工具收集的台账写入与标签或函数调用的结构化写入合并，提交时一起写入。 */
+function withProposedStateUpdates(
+	structured: StructuredOutputCollection,
+	proposed: readonly AcceptedStateUpdate[],
+): StructuredOutputCollection {
+	if (proposed.length === 0) return structured;
+	return {
+		...structured,
+		stateUpdates: [...structured.stateUpdates, ...proposed],
+	};
+}
+
 function toNewStateDiffs(
 	storyId: string,
 	nodeId: string,
@@ -722,6 +756,8 @@ function toNewStateDiffs(
 			path: update.path,
 			reason: update.reason,
 			source: "model",
+			storyTime: update.storyTime ?? null,
+			confidence: update.confidence ?? null,
 		};
 		return update.op === "set"
 			? { ...common, op: "set", value: update.value }

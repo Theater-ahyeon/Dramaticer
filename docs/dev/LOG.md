@@ -323,3 +323,5 @@
 - 2026-11-12 | S282 | R3b-T00 | DONE | 把 DESIGN §10.1 拆成 R3b-T01 至 R3b-T10.b 与 R3b-T99：循环与上限（迁移 v39 四个设置）、工具集与权限、运行日志（迁移 v40）、草稿与提交、导演手记（迁移 v41）、上下文卫生、模板配置、原生元数据、运行中追加要求、界面两段与验收；规划—批评—执行保持 DESIGN §18 暂缓；门禁通过（164 个测试文件、1480 个测试、4 个 live 跳过）
 
 - 2026-11-12 | S283 | R3b-T01 | DONE | 新增 `chat/deep-turn.ts`（`runDeepTurn`）与执行器的 `maxToolCalls`、`maxDurationMs`：工具调用按总次数收束（第 41 次返回错误结果并记录 `max_tool_calls`），每次请求前检查时长（超时不再发请求并记录 `timeout`）；迁移 v39 增加四个深回合故事设置与范围校验；`resolveTurnMode` 解冻 deep 并返回解析后的上限，删除 `assertTurnModeSupported`；`TurnTrace.deep` 记录上限、调用数、耗时与 `stopReason`，快回合为 null；server 与 CLI 的 deep 请求不再 400；门禁通过（164 个测试文件、1484 个测试、4 个 live 跳过）
+
+- 2026-11-12 | S284 | R3b-T02 | DONE | 新增 `tools/registry.ts`（权限与进度文字声明、重复与未知权限拒绝）、`history_read`、`ledger_read`、`ledger_write`（逐条校验、最多 20 条、只收集到楼层事务）、执行器按权限执行并把 propose 与 side_effect 纳入工具调用上限、Trace 记录 `permission`、进度事件按阶段去重并由 server 发 SSE `turn.progress`；两种传输共用注册表；门禁通过（165 个测试文件、1496 个测试、4 个 live 跳过）

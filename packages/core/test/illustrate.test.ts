@@ -266,6 +266,7 @@ describe("illustrate 工具与回合登记", () => {
 			name: "illustrate",
 			ok: true,
 			error: null,
+			permission: "side_effect",
 		});
 	});
 
@@ -338,9 +339,11 @@ describe("illustrate 工具与回合登记", () => {
 			{
 				text: `正文一。<tool name="illustrate">{"scene":"雨夜"}</tool>`,
 			},
+			{ text: "正文一。" },
 			{
 				text: `正文二。<tool name="illustrate">{"scene":"雨夜"}</tool>`,
 			},
+			{ text: "正文二。" },
 		]);
 		const run = async (mode: "off" | "manual") =>
 			runChatTurn({

@@ -925,7 +925,8 @@
   - `TurnTrace` 新增 `deep` 段：`maxToolCalls`、`maxDurationMs`、`toolCallCount`、`durationMs`、`stopReason`（`completed`、`max_tool_calls`、`timeout`、`aborted`、`error`）；快回合的 `deep` 为 null。
   验收：第 41 次工具调用被拒绝且运行正常收束并记录 `max_tool_calls`；假时钟越过 10 分钟后不再发出请求；上限内的运行不受限制；设置越界抛错并指出字段；请求 deep 不再抛错；任意工具失败与重试都不改变模式；快回合的输出与 Trace 与改动前一致；`pnpm check` 通过。
 
-- [ ] **R3b-T02 深回合工具集、权限与进度事件** | 依赖：R3b-T01 | DESIGN §10.1、§10.2 | I12、I13、I18
+- [x] **R3b-T02 深回合工具集、权限与进度事件** | 依赖：R3b-T01 | DESIGN §10.1、§10.2 | I12、I13、I18
+  完成：2026-11-12 新增 `tools/registry.ts`（`DeepToolDefinition` 声明 `permission` 与 `progressLabel`，注册时拒绝未知权限、重复工具名与空进度文字）；只读工具补 `ledger_read` 与仅深回合的 `history_read`（拒绝非祖先楼层），写入工具 `ledger_write` 逐条用 `validateLedgerDiff` 校验、最多 20 条、非法条目返回工具错误、合法条目只收集并在楼层事务里写入；执行器按权限执行（`read` 直接执行、`propose` 只收集、`side_effect` 只登记、未启用的侧效应工具返回工具错误、未知工具记入 `rejected`），propose 与 side_effect 纳入同一工具调用上限，Trace 每次调用记录 `permission`；进度事件按阶段去重，server 映射为 SSE `turn.progress`；两种传输共用同一注册表；门禁通过（165 个测试文件、1496 个测试、4 个 live 跳过）
   做什么：
   - 新增 `packages/core/src/tools/registry.ts`：`DeepToolDefinition` 在 `LlmToolDefinition` 之上声明 `permission`（`read`、`propose`、`control`、`side_effect`）与 `progressLabel`；注册时拒绝未知权限与重复工具名，执行时 Trace 记录每次调用的权限级别。
   - 只读工具补两个：`history_read`（沿当前路径读取指定楼层或最近 N 楼的原文与块视图，参数 `{nodeId?, count?}`，不接受非祖先楼层）与 `ledger_read`（按前缀读取当前楼层快照上的台账事实与元数据，参数 `{prefix?}`）。现有 `memory_search`、`lore_lookup`、`state_get` 进入同一注册表。

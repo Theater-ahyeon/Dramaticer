@@ -26,6 +26,7 @@ export const SSE_EVENT_NAMES = {
 	thinkingDelta: "thinking.delta",
 	blocksReplace: "blocks.replace",
 	toolCall: "tool.call",
+	turnProgress: "turn.progress",
 	turnCompleted: "turn.completed",
 	turnError: "turn.error",
 } as const;
@@ -90,6 +91,12 @@ export interface ToolCallPayload {
 	readonly ok: boolean;
 }
 
+/** 深回合执行工具前的阶段提示；同一阶段连续调用只发一次。 */
+export interface TurnProgressPayload {
+	readonly phase: string;
+	readonly detail: string;
+}
+
 export interface TurnCompletedPayload {
 	readonly storyId: string;
 	readonly userNode: TimelineNode;
@@ -110,6 +117,7 @@ export interface SseEventMap {
 	"thinking.delta": ThinkingDeltaPayload;
 	"blocks.replace": BlocksReplacePayload;
 	"tool.call": ToolCallPayload;
+	"turn.progress": TurnProgressPayload;
 	"turn.completed": TurnCompletedPayload;
 	"turn.error": TurnErrorPayload;
 }

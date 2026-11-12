@@ -54,6 +54,8 @@ export function applyTurnEvent(draft: TurnDraft, event: SseEvent): TurnDraft {
 				...draft,
 				tools: [...draft.tools, { name: event.data.name, ok: event.data.ok }],
 			};
+		case "turn.progress":
+			return draft;
 		case "turn.completed":
 			return {
 				...draft,

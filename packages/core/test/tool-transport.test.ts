@@ -146,7 +146,14 @@ describe("文本协议的工具传输", () => {
 			rounds: 1,
 			maxRounds: 3,
 			capped: false,
-			calls: [{ name: "memory_search", ok: true, error: null }],
+			calls: [
+				{
+					name: "memory_search",
+					ok: true,
+					error: null,
+					permission: "read",
+				},
+			],
 			rejected: [],
 		});
 		expect(visible.join("")).not.toContain("<tool");
@@ -226,6 +233,7 @@ describe("文本协议的工具传输", () => {
 				name: "memory_search",
 				ok: false,
 				error: expect.stringContaining("参数不是合法 JSON"),
+				permission: "read",
 			},
 		]);
 		expect(result.trace.tools.rejected).toEqual([
@@ -299,7 +307,7 @@ describe("文本协议的工具传输", () => {
 			source: "model",
 		});
 		expect(result.trace.tools.calls).toEqual([
-			{ name: "state_get", ok: true, error: null },
+			{ name: "state_get", ok: true, error: null, permission: "read" },
 		]);
 		expect(result.trace.tools.rejected).toEqual([]);
 	});
@@ -334,8 +342,8 @@ describe("文本协议的工具传输", () => {
 			maxRounds: 2,
 			capped: true,
 			calls: [
-				{ name: "state_get", ok: true, error: null },
-				{ name: "state_get", ok: true, error: null },
+				{ name: "state_get", ok: true, error: null, permission: "read" },
+				{ name: "state_get", ok: true, error: null, permission: "read" },
 			],
 			rejected: [],
 		});

@@ -145,6 +145,7 @@ describe("单轮执行器的读取工具循环", () => {
 			"memory_search",
 			"lore_lookup",
 			"state_get",
+			"ledger_read",
 		]);
 		const secondMessages = requests[1]?.messages ?? [];
 		const assistantCall = secondMessages.find(
@@ -170,7 +171,14 @@ describe("单轮执行器的读取工具循环", () => {
 			rounds: 1,
 			maxRounds: 3,
 			capped: false,
-			calls: [{ name: "memory_search", ok: true, error: null }],
+			calls: [
+				{
+					name: "memory_search",
+					ok: true,
+					error: null,
+					permission: "read",
+				},
+			],
 			rejected: [],
 		});
 		expect(result.trace.llm).toMatchObject({
@@ -221,9 +229,9 @@ describe("单轮执行器的读取工具循环", () => {
 			maxRounds: 3,
 			capped: true,
 			calls: [
-				{ name: "state_get", ok: true, error: null },
-				{ name: "state_get", ok: true, error: null },
-				{ name: "state_get", ok: true, error: null },
+				{ name: "state_get", ok: true, error: null, permission: "read" },
+				{ name: "state_get", ok: true, error: null, permission: "read" },
+				{ name: "state_get", ok: true, error: null, permission: "read" },
 			],
 			rejected: [],
 		});
@@ -280,6 +288,7 @@ describe("单轮执行器的读取工具循环", () => {
 					error: expect.stringContaining(
 						"memory_search.limit 必须是 1 到 12 之间的整数",
 					),
+					permission: "read",
 				},
 			],
 			rejected: [],
@@ -349,7 +358,7 @@ describe("单轮执行器的读取工具循环", () => {
 			rounds: 1,
 			maxRounds: 3,
 			capped: false,
-			calls: [{ name: "state_get", ok: true, error: null }],
+			calls: [{ name: "state_get", ok: true, error: null, permission: "read" }],
 			rejected: [],
 		});
 	});

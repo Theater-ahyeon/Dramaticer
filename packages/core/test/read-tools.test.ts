@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	DEEP_ONLY_READ_TOOLS,
 	READ_TOOLS,
 	type ReadToolContext,
 	executeReadTool,
@@ -91,8 +92,27 @@ function seedStory(): { contextOf: (nodeId: string) => ReadToolContext } {
 			value: 12,
 			source: "test",
 		},
+		{
+			storyId: "s1",
+			nodeId: "n-assistant",
+			path: ["character", "山神", "status"],
+			op: "set",
+			value: "守夜",
+			source: "model",
+			storyTime: { start: "子时", end: null },
+			confidence: 0.8,
+		},
+		{
+			storyId: "s1",
+			nodeId: "n-assistant",
+			path: ["clue", "井底匕首", "status"],
+			op: "set",
+			value: "open",
+			source: "model",
+		},
 	]);
 	return {
+		store,
 		contextOf: (nodeId) => ({
 			store,
 			storyId: "s1",
@@ -183,6 +203,76 @@ describe("读取工具", () => {
 		expect(missing).toBe("路径 「角色」「卫宫」 不存在。");
 	});
 
+	it("ledger_read 按前缀读取台账事实与元数据", async () => {
+		const { contextOf } = seedStory();
+		const context = contextOf("n-current");
+		const full = await executeReadTool(
+			"ledger_read",
+			validateReadToolArguments("ledger_read", {}),
+			context,
+		);
+		expect(full).toContain('「character」「山神」「status」 = "守夜"');
+		expect(full).toContain("来源：model");
+		expect(full).toContain("故事时间：子时 至 …");
+		expect(full).toContain("楼层：n-assistant");
+		expect(full).toContain('「clue」「井底匕首」「status」 = "open"');
+
+		const prefix = await executeReadTool(
+			"ledger_read",
+			validateReadToolArguments("ledger_read", {
+				prefix: ["character", "山神"],
+			}),
+			context,
+		);
+		expect(prefix).toContain("「character」「山神」「status」");
+		expect(prefix).not.toContain("「clue」");
+
+		const missing = await executeReadTool(
+			"ledger_read",
+			validateReadToolArguments("ledger_read", { prefix: ["item"] }),
+			context,
+		);
+		expect(missing).toBe("台账前缀 「item」没有事实。");
+	});
+
+	it("history_read 读取最近楼层与祖先楼层，拒绝其他分支", async () => {
+		const { store, contextOf } = seedStory();
+		store.appendNode({
+			id: "n-other",
+			storyId: "s1",
+			parentId: "n-root",
+			role: "assistant",
+			raw: "另一条分支。",
+		});
+		const context = contextOf("n-current");
+
+		const recent = await executeReadTool(
+			"history_read",
+			validateReadToolArguments("history_read", { count: 2 }),
+			context,
+		);
+		expect(recent).toContain("当前路径最近 2 楼");
+		expect(recent).toContain("n-assistant");
+		expect(recent).toContain("n-current");
+		expect(recent).not.toContain("n-root");
+
+		const ancestor = await executeReadTool(
+			"history_read",
+			validateReadToolArguments("history_read", { nodeId: "n-root" }),
+			context,
+		);
+		expect(ancestor).toContain("n-root");
+		expect(ancestor).toContain("青铜匕首藏在井底。");
+
+		await expect(
+			executeReadTool(
+				"history_read",
+				validateReadToolArguments("history_read", { nodeId: "n-other" }),
+				context,
+			),
+		).rejects.toThrow("不在当前路径上");
+	});
+
 	it("参数校验拒绝缺失、未知字段与越界值", () => {
 		expect(() =>
 			validateReadToolArguments("memory_search", { limit: 3 }),
@@ -205,17 +295,32 @@ describe("读取工具", () => {
 		expect(() => validateReadToolArguments("lore_lookup", "山门")).toThrow(
 			"lore_lookup 的参数必须是 JSON 对象",
 		);
+		expect(() =>
+			validateReadToolArguments("ledger_read", { prefix: [] }),
+		).toThrow("ledger_read.prefix 必须是非空的字符串数组");
+		expect(() =>
+			validateReadToolArguments("history_read", { nodeId: "" }),
+		).toThrow("history_read.nodeId 必须是非空字符串");
+		expect(() =>
+			validateReadToolArguments("history_read", { count: 21 }),
+		).toThrow("history_read.count 必须是 1 到 20 之间的整数");
 	});
 
-	it("工具定义带 JSON Schema，名称与执行函数一致", () => {
+	it("工具定义带 JSON Schema、权限与进度阶段", () => {
 		expect(READ_TOOLS.map((tool) => tool.name)).toEqual([
 			"memory_search",
 			"lore_lookup",
 			"state_get",
+			"ledger_read",
 		]);
 		for (const tool of READ_TOOLS) {
 			expect(tool.parameters).toMatchObject({ type: "object" });
 			expect(tool.description.length).toBeGreaterThan(0);
+			expect(tool.permission).toBe("read");
+			expect(tool.progressLabel.length).toBeGreaterThan(0);
 		}
+		expect(DEEP_ONLY_READ_TOOLS.map((tool) => tool.name)).toEqual([
+			"history_read",
+		]);
 	});
 });

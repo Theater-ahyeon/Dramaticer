@@ -3,16 +3,16 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-12 会话 283：R3b-T01（深回合循环与防失控上限）。新增 `packages/core/src/chat/deep-turn.ts` 的 `runDeepTurn`，与快回合共用 `runModelTurns` 的传输、参数校验与流式接口。执行器新增 `maxToolCalls` 与 `maxDurationMs`：工具调用按总次数收束（第 41 次返回工具错误并记录 `max_tool_calls`），每次请求前检查时长（超时不再发请求并记录 `timeout`），只有设置 `maxToolCalls` 时才绕过快回合的 `maxReadRounds` 轮数上限。迁移 v39 给 `story_settings` 增加 `deep_max_tool_calls`（1–200）、`deep_timeout_ms`（60,000–3,600,000）、`deep_context_token_limit`（默认 48,000）、`deep_recent_tool_steps`（1–20）。`resolveTurnMode` 解冻 deep，返回 `deep` 段（四个校验后的值），删除 `assertTurnModeSupported`。`TurnTrace.deep` 记录 `maxToolCalls`、`maxDurationMs`、`toolCallCount`、`durationMs`、`stopReason`（`completed`、`max_tool_calls`、`timeout`、`aborted`、`error`），快回合为 null。server 与 CLI 的 deep 请求不再 400。门禁通过（164 个测试文件、1484 个测试、4 个 live 跳过）。
+- 2026-11-12 会话 284：R3b-T02（深回合工具集、权限与进度事件）。新增 `packages/core/src/tools/registry.ts`：`DeepToolDefinition` 在模型定义之上声明 `permission`（`read`、`propose`、`control`、`side_effect`）与 `progressLabel`，`createDeepToolRegistry` 拒绝未知权限、重复工具名与空进度文字。`tools/index.ts` 建立 `FAST_TURN_TOOLS`（四个公共只读工具）与 `DEEP_TURN_TOOLS`（再加 `history_read`、`ledger_write`）。`read-tools.ts` 补 `ledger_read`（按前缀读 `readLedgerFacts` 的来源、故事时间与楼层）与 `history_read`（沿当前路径取指定楼层或最近 N 楼的原文与块视图，非祖先楼层抛错）。新增 `tools/write-tools.ts`：`ledger_write` 每次最多 20 条，逐条 `validateLedgerDiff`，非法条目返回工具错误、合法条目只收集为 `AcceptedStateUpdate`（带 `storyTime`、`confidence`），楼层事务里统一 `appendStateDiffs`；工具本身不写数据库。执行器改为按权限执行：`read` 直接执行、`propose` 只收集、`side_effect` 只登记、未启用的侧效应工具返回“工具未启用”、未知工具名记入 `rejected`；`propose`、`side_effect` 与只读工具共用 `maxToolCalls`；`ToolCallTrace.permission` 进入 `TurnTrace.tools.calls`。工具执行前发出按阶段去重的 `ToolProgressEvent`，server 映射为 SSE `turn.progress`，web 草稿状态接收后暂不改动。原生与文本传输共用同一注册表与校验。门禁通过（165 个测试文件、1496 个测试、4 个 live 跳过）。
 
-## 下一步（会话 284 先做）
-1. 做 R3b-T02（深回合工具集、权限与进度事件）。新增 `core/src/tools/registry.ts`，声明 `DeepToolDefinition` 的 `permission`（`read`、`propose`、`control`、`side_effect`）与 `progressLabel`；补 `history_read`、`ledger_read`、`ledger_write`；`ledger_write` 只收集 diff，提交时统一写入（I12）；server 发 `turn.progress`；文本协议与原生传输共用同一套工具。按 R3b-T02 的验收逐条核对。
-2. R3b-T02 之后按顺序做 T03（运行日志，迁移 v40）、T04（草稿与提交）、T05（导演手记，迁移 v41）、T06（上下文卫生）、T07（模板配置）、T08（原生元数据）、T09（运行中追加要求）、T10.a/T10.b（界面）、T99。
+## 下一步（会话 285 先做）
+1. 做 R3b-T03（运行日志）。迁移 v40 新增 `turn_runs` 与只追加的 `turn_run_events`（触发器拒绝更新与删除）；存储层 `startTurnRun`、`appendTurnRunEvent`、`finishTurnRun`、`listTurnRunEvents`、`markInterruptedTurnRuns`；启动时把遗留 `running` 标为 `interrupted`；深回合每步同步写事件，快回合不写；`TurnTrace.run`、`GET /api/nodes/:id/run`、`dramaticer explain` 读同一时间线。按 R3b-T03 的验收逐条核对。
+2. R3b-T03 之后按顺序做 T04（草稿与提交）、T05（导演手记，迁移 v41）、T06（上下文卫生）、T07（模板配置）、T08（原生元数据）、T09（运行中追加要求）、T10.a/T10.b（界面）、T99。
 3. M6-T99 仍等待 HUMAN-15（ComfyUI 与 API workflow JSON），不要开始。
 4. R3b 完成后再做 P1/P2 → C 兼容插件 → H → X → R6 → M6b → P3/P4 → M5 → P5 → M7。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00、R3b-T01。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00、R3b-T01、R3b-T02。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
 - 数据库 schema 版本 39。R3b 后续计划的迁移：v40 运行日志与事件、v41 导演手记。
 - `eval-private/memory-cache/r1-retrieval.db` 有三个故事：`仙侠雌竞：什么叫我是炉鼎体质？` 290 个助手楼层已抽取 282 个、414 条事件；`欲望世界-1600` 180 个助手楼层已抽取 174 个、292 条事件；`银麒赎世` 114 个助手楼层已抽取 112 个、248 条事件。评测自己的临时数据库重新抽取后事件覆盖为 282/290、172/180、112/114，事件数 371/247/248。
 - M6-T99 标 `[!]`，等待 HUMAN-15：真实 ComfyUI 启动在 `http://127.0.0.1:8188` 并提供 API 格式 workflow JSON 到 `eval-private/comfyui/`；2026-11-09 探测时端口仍未监听。
@@ -23,9 +23,9 @@
 
 ## R3b 任务拆分（2026-11-12）
 - T01 深回合循环与上限（已完成）：`runDeepTurn` 复用 `runModelTurns`；工具调用总数默认 40、时长默认 600 秒；迁移 v39 的四个故事设置；`TurnTrace.deep`；快回合为 null。
-- T02 工具集、权限与进度事件：`tools/registry.ts` 的 `DeepToolDefinition` 声明 `permission`（`read`、`propose`、`control`、`side_effect`）与 `progressLabel`；新增 `history_read`、`ledger_read`、`ledger_write`；`ledger_write` 只收集合法 diff，提交时统一写入（I12）；server 发 `turn.progress`；文本协议与原生传输共用同一套工具。执行器当前按读取工具计数，T02 要把 propose/control 与 side_effect 一并纳入同一上限。
+- T02 工具集、权限与进度事件（已完成）：注册表声明权限与进度文字；`history_read`、`ledger_read`、`ledger_write`；`ledger_write` 只收集，提交时统一写（I12）；未启用的侧效应工具与未知工具都返回错误结果并记录；进度事件按阶段去重，server 发 `turn.progress`；工具调用上限覆盖 propose 与 side_effect。
 - T03 运行日志：迁移 v40 新增 `turn_runs` 与只追加的 `turn_run_events`（触发器拒绝更新与删除）；深回合每步同步写事件，快回合不写；启动时把遗留 `running` 标为 `interrupted`；`TurnTrace.run`、`GET /api/nodes/:id/run`、`dramaticer explain` 读同一时间线。
-- T04 草稿与提交：`draft_write` 整份替换草稿，`commit_draft` 提交为助手楼层；`draft.replace` SSE 按 100 毫秒节流；提交前不写楼层、不进历史；正常结束但没有提交时把最终正文自动提交并记 `missing_commit` 漂移，中止或超时且没有提交时不产生楼层。当前 T01 在达到上限或超时后直接把最后一轮正文写回楼层，T04 要改成草稿语义。
+- T04 草稿与提交：`draft_write` 整份替换草稿，`commit_draft` 提交为助手楼层；`draft.replace` SSE 按 100 毫秒节流；提交前不写楼层、不进历史；正常结束但没有提交时把最终正文自动提交并记 `missing_commit` 漂移，中止或超时且没有提交时不产生楼层。当前 T01/T02 在达到上限或超时后直接把最后一轮正文写回楼层，T04 要改成草稿语义。
 - T05 导演手记：迁移 v41 新增 `director_notes(node_id PRIMARY KEY, story_id, diffs, created_at)`；每楼存 `set`/`delete` diff，沿当前路径累加，后写覆盖；`note_read` 与 `note_write` 工具；深回合开始时插入一条系统消息，快回合不注入；手记不进台账。
 - T06 上下文卫生：超过 `deepContextTokenLimit`（默认 48,000）时从最早的一对“助手工具调用 + 工具结果”开始成对省略，保留最近 `deepRecentToolSteps`（默认 4）；不产生孤立消息；Trace 记 `deep.contextOmitted`。
 - T07 模板配置：`ContextTemplate.deepTurn` 增加 `tools` 白名单、`maxToolCalls`、`maxDurationMs`、`notesEnabled`；模板覆盖故事设置，故事设置覆盖默认值；白名单外调用按未知工具拒绝。
@@ -36,14 +36,14 @@
 - T99 验收：30 次真实深回合（失败率目标 ≤10%）、漂移率、时长对照 TauriTavern P50 66 秒/P90 147 秒、10 个分支点的快/深盲评增益；统计版 `docs/dev/reports/R3b.md`。
 
 ## 深回合实现起点（代码事实）
-- 回合入口 `packages/core/src/chat/turn.ts`：`runChatTurn` 先 `resolveTurnMode`，再追加用户楼层、组装上下文、按模式调用 `runDeepTurn` 或 `runModelTurns`，解析块并写楼层与 Trace。`generateAssistantTurn` 额外写上下文包并支持 swipe。深回合提供给模型的读取工具不再受 `structuredOutput` 限制；`maxReadRounds` 在深回合被忽略。
-- 模式 `packages/core/src/chat/mode.ts`：`TurnMode = "fast" | "deep"`；四个 `DEFAULT_DEEP_*` 常量与范围常量；`assertDeepMaxToolCalls`、`assertDeepTimeoutMs`、`assertDeepContextTokenLimit`、`assertDeepRecentToolSteps`；不再有 `assertTurnModeSupported`。
-- 执行器 `packages/core/src/chat/executor.ts`：`runModelTurns` 支持 `maxToolCalls` 与 `maxDurationMs`；工具预算只在真实读取工具执行前扣减，超限调用写失败 Trace 与错误工具结果后收束；返回 `toolCallCount` 与 `stopReason`；`TurnAbortedError` 带 `toolCallCount`。快回合行为不变。
-- `packages/core/src/chat/deep-turn.ts`：`runDeepTurn(options)` 校验两个上限，调用执行器并返回 `DeepTurnResult`（`turn`、`stopReason`、上限、`toolCallCount`、`durationMs`）。
-- 故事设置 `packages/core/src/store/settings.ts` 与 `story-store.ts`：`deepMaxToolCalls`、`deepTimeoutMs`、`deepContextTokenLimit`、`deepRecentToolSteps` 已进入默认值、更新校验、迁移 v39 与读写映射。
-- Trace `packages/core/src/trace.ts`：`TurnTrace.deep`（`TurnTraceDeep`）与 `DeepTurnStopReason`；快回合为 null；中止时写 `stopReason: "aborted"`。
-- server SSE `packages/server/src/turns.ts`：`turn.started`、`text.delta`、`blocks.replace`（100 毫秒节流）、`thinking.delta`、`tool.call`、`turn.error`、`turn.completed`；`handleTurnStream` 在 `turn.completed` 后触发后台调度。
-- web `packages/web/src/chat/stream-state.ts` 已处理 `turn.started`、`blocks.replace`、`tool.call`；聊天页每轮完成后重新取最近 60 楼。界面仍只展示快回合（R3b-T10.a 才放开）。
+- 回合入口 `packages/core/src/chat/turn.ts`：`runChatTurn` 先 `resolveTurnMode`，再追加用户楼层、组装上下文、按模式调用 `runDeepTurn` 或 `runModelTurns`，解析块并写楼层与 Trace。`generateAssistantTurn` 额外写上下文包并支持 swipe。工具集合按模式选 `DEEP_TURN_TOOLS` 或 `FAST_TURN_TOOLS`；快回合只在函数调用或文本协议下暴露只读工具；`illustrate` 启用时加入，未启用时作为停用工具传入。
+- 工具注册表 `packages/core/src/tools/registry.ts`、`read-tools.ts`、`write-tools.ts`、`index.ts`：权限与进度文字声明、两个注册表、六个内置工具。`ledger_write` 的收集结果进入 `ModelTurnResult.proposedStateUpdates`，`turn.ts` 与结构化写入合并后在同一楼层事务里写入。
+- 模式 `packages/core/src/chat/mode.ts`：`TurnMode = "fast" | "deep"`；四个 `DEFAULT_DEEP_*` 常量与范围常量；`assertDeepMaxToolCalls`、`assertDeepTimeoutMs`、`assertDeepContextTokenLimit`、`assertDeepRecentToolSteps`。
+- 执行器 `packages/core/src/chat/executor.ts`：按注册表权限执行工具；`maxToolCalls` 计只读、propose 与 side_effect 的执行次数；`side_effect` 不强制下一轮，只登记；停用工具返回工具错误；未知工具记入 `rejected`（两种传输）；`maxDurationMs` 每次请求前检查；进度阶段去重后回调 `onToolProgress`；`TurnAbortedError` 带 `toolCallCount`。快回合行为除工具集合与 Trace 的 `permission` 字段外不变。
+- 故事设置 `packages/core/src/store/settings.ts` 与 `story-store.ts`：`deepMaxToolCalls`、`deepTimeoutMs`、`deepContextTokenLimit`、`deepRecentToolSteps` 在默认值、更新校验、迁移 v39 与读写映射里。
+- Trace `packages/core/src/trace.ts`：`TurnTrace.deep`（`TurnTraceDeep`）、`DeepTurnStopReason`、`TurnTraceToolCall.permission`；快回合 `deep` 为 null；中止时 `stopReason: "aborted"`。
+- server SSE `packages/server/src/turns.ts`：`turn.started`、`text.delta`、`blocks.replace`（100 毫秒节流）、`thinking.delta`、`tool.call`、`turn.progress`、`turn.error`、`turn.completed`；`handleTurnStream` 在 `turn.completed` 后触发后台调度。协议事件名在 `packages/protocol/src/turn.ts`。
+- web `packages/web/src/chat/stream-state.ts` 已处理 `turn.started`、`blocks.replace`、`tool.call`、`turn.progress`（暂不显示）；聊天页每轮完成后重新取最近 60 楼。界面仍只展示快回合（R3b-T10.a 才放开）。
 
 ## 记忆与检索（R1 续）
 - 父子分块：父段上限 1200 码点，按换行合并；单段超过上限时整楼退化成一个父段。小块 400 字符窗口、80 字符重叠。`StoryStore.open(path, { chunkStrategy })` 取 `parent-child`（默认）或 `fixed`。
@@ -63,7 +63,7 @@
 ## 导演与界面
 - 导演计划、拍状态、候选行动与开局候选的既有语义见 TASKS 与 HANDOFF 历史记录；导演实时选择是纯程序，零模型调用（I9）。
 - 聊天页虚拟窗口 `PAGE_SIZE` 60、分页阈值 240px、自动贴底 96px、overscan 600px；候选行动、开场候选与楼层图片轮询 2 秒、上限 15 次。
-- 生图：`data/images.yaml`、`image_workflows`、`character_visual_profiles`、`node_images`；`server --images` 与 `--media-dir`；图片只读 `done` 行。
+- 生图：`data/images.yaml`、`image_workflows`、`character_visual_profiles`、`node_images`；`server --images` 与 `--media-dir`；图片只读 `done` 行。`illustrate` 现在是权限 `side_effect` 的深回合工具定义。
 - 块类型 12 个；`historyBlockPolicy` 默认在更早楼层省略显示类块，最近 1 楼保留原文。
 - 已注册槽位：lore、character、persona、summary、state、memory、history、scene、director、user_will、protocol；默认模板顺序 character、lore、state、summary、memory、scene、director、user_will、history、（可选的 block_format）、protocol；`protocol` 必须最后。
 

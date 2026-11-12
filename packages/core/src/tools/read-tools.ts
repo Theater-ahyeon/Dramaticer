@@ -1,28 +1,42 @@
 import { parseBlocks } from "../blocks/parser.js";
 import { renderContextView } from "../blocks/view.js";
 import { normalizeEntityName } from "../entity.js";
+import { readLedgerFacts } from "../ledger/read.js";
 import type { EmbeddingClient } from "../llm/embeddings.js";
 import type { RerankClient } from "../llm/rerank.js";
-import type { LlmToolDefinition } from "../llm/types.js";
 import { loreEntryMatchScore } from "../memory/lore.js";
 import { retrieveMemory } from "../retrieval/hybrid.js";
 import { readStateValue } from "../state.js";
 import type { StoryStore } from "../store/story-store.js";
+import type { DeepToolDefinition } from "./registry.js";
 
+/** 快回合与深回合共用的只读工具。 */
 export const READ_TOOL_NAMES = [
 	"memory_search",
 	"lore_lookup",
 	"state_get",
+	"ledger_read",
 ] as const;
 
-export type ReadToolName = (typeof READ_TOOL_NAMES)[number];
+/** 只有深回合开放的只读工具。 */
+export const DEEP_ONLY_READ_TOOL_NAMES = ["history_read"] as const;
 
-const READ_TOOL_NAME_SET: ReadonlySet<string> = new Set(READ_TOOL_NAMES);
+const ALL_READ_TOOL_NAMES = [
+	...READ_TOOL_NAMES,
+	...DEEP_ONLY_READ_TOOL_NAMES,
+] as const;
+
+export type ReadToolName = (typeof ALL_READ_TOOL_NAMES)[number];
+
+const READ_TOOL_NAME_SET: ReadonlySet<string> = new Set(ALL_READ_TOOL_NAMES);
 
 export const MAX_READ_TOOL_LIMIT = 20;
 const MAX_MEMORY_SEARCH_LIMIT = 12;
 const MAX_SNIPPET_CHARS = 500;
 const MAX_RESULT_CHARS = 6_000;
+const MAX_HISTORY_NODE_CHARS = 1_500;
+const MAX_HISTORY_RESULT_CHARS = 12_000;
+const MAX_LEDGER_RESULT_CHARS = 12_000;
 
 const MEMORY_SEARCH_SCHEMA: Record<string, unknown> = {
 	type: "object",
@@ -76,25 +90,83 @@ const STATE_GET_SCHEMA: Record<string, unknown> = {
 	additionalProperties: false,
 };
 
-/** 函数调用模式下提供给模型的只读工具。 */
-export const READ_TOOLS: readonly LlmToolDefinition[] = [
+const LEDGER_READ_SCHEMA: Record<string, unknown> = {
+	type: "object",
+	properties: {
+		prefix: {
+			type: "array",
+			items: { type: "string", minLength: 1 },
+			minItems: 1,
+			description:
+				'台账路径前缀，例如 ["character","卫宫"]；省略时返回全部台账事实',
+		},
+	},
+	additionalProperties: false,
+};
+
+const HISTORY_READ_SCHEMA: Record<string, unknown> = {
+	type: "object",
+	properties: {
+		nodeId: {
+			type: "string",
+			minLength: 1,
+			description: "要读取的楼层 id；必须在当前路径上",
+		},
+		count: {
+			type: "integer",
+			minimum: 1,
+			maximum: MAX_READ_TOOL_LIMIT,
+			description: `不指定 nodeId 时读取最近多少楼，默认 5，上限 ${MAX_READ_TOOL_LIMIT}`,
+		},
+	},
+	additionalProperties: false,
+};
+
+/** 快回合与深回合共用的只读工具。 */
+export const READ_TOOLS: readonly DeepToolDefinition[] = [
 	{
 		name: "memory_search",
 		description:
 			"检索过去的原文与事件记忆。返回按相关度排序的楼层片段；调用不会修改任何数据。",
 		parameters: MEMORY_SEARCH_SCHEMA,
+		permission: "read",
+		progressLabel: "回忆中……",
 	},
 	{
 		name: "lore_lookup",
 		description:
 			"按关键词、实体名或别名查询世界书条目与实体档案；调用不会修改任何数据。",
 		parameters: LORE_LOOKUP_SCHEMA,
+		permission: "read",
+		progressLabel: "查阅设定……",
 	},
 	{
 		name: "state_get",
 		description:
 			"读取当前累计状态；给出 path 时只返回该路径的值。调用不会修改任何数据。",
 		parameters: STATE_GET_SCHEMA,
+		permission: "read",
+		progressLabel: "读取状态……",
+	},
+	{
+		name: "ledger_read",
+		description:
+			"按路径前缀读取台账事实及其来源、故事时间与写入楼层；调用不会修改任何数据。",
+		parameters: LEDGER_READ_SCHEMA,
+		permission: "read",
+		progressLabel: "读取台账……",
+	},
+];
+
+/** 只有深回合开放的只读工具。 */
+export const DEEP_ONLY_READ_TOOLS: readonly DeepToolDefinition[] = [
+	{
+		name: "history_read",
+		description:
+			"沿当前路径读取指定楼层或最近若干楼的原文与块视图；不能读取其他分支的楼层。",
+		parameters: HISTORY_READ_SCHEMA,
+		permission: "read",
+		progressLabel: "翻阅历史……",
 	},
 ];
 
@@ -130,6 +202,29 @@ export function validateReadToolArguments(
 		const path = readStringArray(args.path, `${name}.path`);
 		return { path };
 	}
+	if (name === "ledger_read") {
+		rejectUnknownKeys(name, args, ["prefix"]);
+		if (args.prefix === undefined) return {};
+		const prefix = readStringArray(args.prefix, `${name}.prefix`);
+		return { prefix };
+	}
+	if (name === "history_read") {
+		rejectUnknownKeys(name, args, ["nodeId", "count"]);
+		const result: Record<string, unknown> = {};
+		if (args.nodeId !== undefined) {
+			if (typeof args.nodeId !== "string" || args.nodeId.trim().length === 0) {
+				throw new Error(`${name}.nodeId 必须是非空字符串`);
+			}
+			result.nodeId = args.nodeId.trim();
+		}
+		const count = readLimit(
+			args.count,
+			`${name}.count`,
+			MAX_READ_TOOL_LIMIT,
+		);
+		if (count !== null) result.count = count;
+		return result;
+	}
 	rejectUnknownKeys(name, args, ["query", "limit"]);
 	const query = args.query;
 	if (typeof query !== "string" || query.trim().length === 0) {
@@ -156,6 +251,10 @@ export async function executeReadTool(
 			return runLoreLookup(args, context);
 		case "state_get":
 			return runStateGet(args, context);
+		case "ledger_read":
+			return runLedgerRead(args, context);
+		case "history_read":
+			return runHistoryRead(args, context);
 	}
 }
 
@@ -305,6 +404,72 @@ function runStateGet(
 	);
 }
 
+function runLedgerRead(
+	args: Record<string, unknown>,
+	context: ReadToolContext,
+): string {
+	const prefix = args.prefix as readonly string[] | undefined;
+	const facts = readLedgerFacts(context.store, context.beforeNodeId, prefix);
+	const scope = prefix === undefined ? "全部" : `前缀 ${formatPath(prefix)}`;
+	if (facts.length === 0) {
+		return `台账${scope}没有事实。`;
+	}
+	const sorted = [...facts].sort((left, right) =>
+		left.path.join("\u0000").localeCompare(right.path.join("\u0000")),
+	);
+	const lines = sorted.map((fact) => {
+		const storyTime =
+			fact.storyTime === null
+				? "未指定"
+				: `${fact.storyTime.start ?? "…"} 至 ${fact.storyTime.end ?? "…"}`;
+		return `- ${formatPath(fact.path)} = ${JSON.stringify(fact.value)}（来源：${fact.source}；故事时间：${storyTime}；楼层：${fact.nodeId}）`;
+	});
+	return fitResult(
+		`台账事实（${scope}，${facts.length} 条）：\n${lines.join("\n")}`,
+		MAX_LEDGER_RESULT_CHARS,
+	);
+}
+
+function runHistoryRead(
+	args: Record<string, unknown>,
+	context: ReadToolContext,
+): string {
+	const path = context.store.getPathToNode(context.beforeNodeId);
+	const nodeId = args.nodeId as string | undefined;
+	const count = (args.count as number | undefined) ?? 5;
+	let selected: { readonly node: (typeof path)[number]; readonly position: number }[];
+	if (nodeId !== undefined) {
+		const position = path.findIndex((node) => node.id === nodeId);
+		if (position === -1) {
+			throw new Error(
+				`楼层 ${nodeId} 不在当前路径上，不能读取其他分支的楼层`,
+			);
+		}
+		const node = path[position] as (typeof path)[number];
+		selected = [{ node, position }];
+	} else {
+		const start = Math.max(0, path.length - count);
+		selected = path
+			.slice(start)
+			.map((node, index) => ({ node, position: start + index }));
+	}
+	const lines = selected.map(({ node, position }) => {
+		const depth = path.length - 1 - position;
+		const view = renderContextView(parseBlocks(node.raw), { depth });
+		const label = node.role === "user" ? "玩家" : "助手";
+		const original = truncateText(node.raw, MAX_HISTORY_NODE_CHARS);
+		const promptView =
+			view === node.raw
+				? ""
+				: `\n  块视图：${truncateText(view, MAX_HISTORY_NODE_CHARS)}`;
+		return `- 楼层 ${node.id}（${label}，第 ${position + 1} 层，深度 ${depth}）：${original}${promptView}`;
+	});
+	return fitResult(
+		`当前路径最近 ${selected.length} 楼：\n${lines.join("\n")}`,
+		MAX_HISTORY_RESULT_CHARS,
+	);
+}
+
 function formatPath(path: readonly string[]): string {
 	return path.map((segment) => `「${segment}」`).join("");
 }
@@ -352,8 +517,12 @@ function truncate(text: string): string {
 		: trimmed;
 }
 
-function fitResult(text: string): string {
-	return text.length > MAX_RESULT_CHARS
-		? `${text.slice(0, MAX_RESULT_CHARS)}\n……（结果已截断）`
+function truncateText(text: string, max: number): string {
+	return text.length > max ? `${text.slice(0, max)}……（已截断）` : text;
+}
+
+function fitResult(text: string, max = MAX_RESULT_CHARS): string {
+	return text.length > max
+		? `${text.slice(0, max)}\n……（结果已截断）`
 		: text;
 }

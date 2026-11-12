@@ -87,6 +87,10 @@ interface GenerationHooks {
 		readonly name: string;
 		readonly ok: boolean;
 	}) => void;
+	readonly onToolProgress: (event: {
+		readonly phase: string;
+		readonly detail: string;
+	}) => void;
 	readonly now: () => number;
 }
 
@@ -313,6 +317,13 @@ async function streamTurn(stream: StreamTurnOptions): Promise<void> {
 			onToolCall: (call) => {
 				if (clientGone || sse === null) return;
 				sse.send("tool.call", { name: call.name, ok: call.ok });
+			},
+			onToolProgress: (event) => {
+				if (clientGone || sse === null) return;
+				sse.send("turn.progress", {
+					phase: event.phase,
+					detail: event.detail,
+				});
 			},
 			now,
 		});

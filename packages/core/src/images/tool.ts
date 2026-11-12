@@ -1,5 +1,6 @@
-import type { LlmToolCall, LlmToolDefinition } from "../llm/types.js";
+import type { LlmToolCall } from "../llm/types.js";
 import type { StoryStore } from "../store/story-store.js";
+import type { DeepToolDefinition } from "../tools/registry.js";
 import { IMAGE_SHOTS, MAX_IMAGE_PROMPT_CHARACTERS } from "./prompt.js";
 import {
 	MAX_IMAGE_SCENE_CHARS,
@@ -39,11 +40,13 @@ const ILLUSTRATE_SCHEMA: Record<string, unknown> = {
 	additionalProperties: false,
 };
 
-export const ILLUSTRATE_TOOL: LlmToolDefinition = {
+export const ILLUSTRATE_TOOL: DeepToolDefinition = {
 	name: ILLUSTRATE_TOOL_NAME,
 	description:
 		"为这一楼登记一张插图。调用只登记，后台在间隙生成；每楼张数与两次出图的最小楼层间隔由故事设置限制。",
 	parameters: ILLUSTRATE_SCHEMA,
+	permission: "side_effect",
+	progressLabel: "准备插图……",
 };
 
 /** 回合里处理 illustrate 调用需要的设置；其余字段用于判定工具是否可见。 */
@@ -58,7 +61,7 @@ export interface IllustrateTurnOptions extends ImageConfig {
 export function resolveIllustrateTool(
 	store: StoryStore,
 	options: IllustrateTurnOptions | null | undefined,
-): LlmToolDefinition | null {
+): DeepToolDefinition | null {
 	if (options === undefined || options === null) return null;
 	if (options.mode !== "auto") return null;
 	const workflowId = options.workflowId.trim();

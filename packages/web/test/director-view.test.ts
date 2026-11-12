@@ -185,7 +185,9 @@ function traceFixture(): TurnTrace {
 			rounds: 1,
 			maxRounds: 3,
 			capped: false,
-			calls: [{ name: "search_lore", ok: true, error: null }],
+			calls: [
+				{ name: "search_lore", ok: true, error: null, permission: "read" },
+			],
 			rejected: [{ name: "write_state", reason: "写入工具不执行" }],
 		},
 		structured: {

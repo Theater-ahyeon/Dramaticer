@@ -311,6 +311,7 @@ describe("runChatTurn", () => {
 			"memory_search",
 			"lore_lookup",
 			"state_get",
+			"ledger_read",
 		]);
 		expect(result.stateDiffs).toHaveLength(1);
 		expect(result.stateDiffs[0]?.source).toBe("model");

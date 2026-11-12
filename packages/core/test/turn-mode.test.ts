@@ -225,6 +225,7 @@ describe("回合模式与读取工具软上限", () => {
 				name: "state_get",
 				ok: true,
 				error: null,
+				permission: "read",
 			})),
 		);
 		expect(result.trace.tools.calls[40]).toMatchObject({
@@ -349,6 +350,7 @@ describe("回合模式与读取工具软上限", () => {
 				name: "state_get",
 				ok: false,
 				error: expect.stringContaining("state_get.path"),
+				permission: "read",
 			},
 		]);
 	});
@@ -406,7 +408,7 @@ describe("回合模式与读取工具软上限", () => {
 			rounds: 1,
 			maxRounds: 1,
 			capped: true,
-			calls: [{ name: "state_get", ok: true, error: null }],
+			calls: [{ name: "state_get", ok: true, error: null, permission: "read" }],
 			rejected: [],
 		});
 	});
@@ -478,6 +480,7 @@ describe("回合模式与读取工具软上限", () => {
 				name: "state_get",
 				ok: false,
 				error: expect.stringContaining("state_get.path"),
+				permission: "read",
 			},
 		]);
 	});

@@ -12,12 +12,22 @@ import type {
 	LlmToolDefinition,
 	LlmUsage,
 } from "../llm/types.js";
+import type { AcceptedStateUpdate } from "../structured/types.js";
 import {
 	type ReadToolContext,
 	executeReadTool,
 	isReadToolName,
 	validateReadToolArguments,
 } from "../tools/read-tools.js";
+import type {
+	DeepToolDefinition,
+	ToolPermission,
+	ToolProgressEvent,
+} from "../tools/registry.js";
+import {
+	LEDGER_WRITE_TOOL_NAME,
+	executeLedgerWriteTool,
+} from "../tools/write-tools.js";
 import { DEFAULT_MAX_READ_ROUNDS, assertMaxReadRounds } from "./mode.js";
 import {
 	TextToolStreamFilter,
@@ -61,10 +71,10 @@ export interface ModelTurnOptions {
 	readonly messages: readonly LlmMessage[];
 	/** 结构化输出工具；只在函数调用模式下提供。 */
 	readonly structuredTools?: readonly LlmToolDefinition[];
-	/** 本模式允许的读取工具；为空时不执行任何工具。 */
-	readonly readTools?: readonly LlmToolDefinition[];
-	/** 侧效应工具：发给模型并收集调用，但不在执行器里运行。 */
-	readonly sideEffectTools?: readonly LlmToolDefinition[];
+	/** 本模式启用的工具；读取、待提交写入与会登记的侧效应工具都走这里。 */
+	readonly tools?: readonly DeepToolDefinition[];
+	/** 已声明但当前未启用的工具；调用时返回工具错误并记录。 */
+	readonly disabledTools?: readonly DeepToolDefinition[];
 	readonly toolContext: ReadToolContext;
 	/** 读取工具软上限；达到后正常收束。 */
 	readonly maxReadRounds?: number;
@@ -90,6 +100,8 @@ export interface ModelTurnOptions {
 	readonly onThinkingDelta?: (delta: string) => void;
 	/** 每次读取工具执行后回调，服务端用它转发 SSE 事件。 */
 	readonly onToolCall?: (call: ToolCallTrace) => void;
+	/** 工具执行前的进度阶段；同一阶段连续调用只回调一次。 */
+	readonly onToolProgress?: (event: ToolProgressEvent) => void;
 	readonly now?: () => number;
 }
 
@@ -98,9 +110,11 @@ export interface ToolCallTrace {
 	readonly ok: boolean;
 	/** 执行失败的原因；成功时为 null。 */
 	readonly error: string | null;
+	/** 本次调用使用的权限级别；未知工具为 null。 */
+	readonly permission: ToolPermission | null;
 }
 
-/** 文本协议里被拒绝、没有执行的工具调用。 */
+/** 被拒绝、没有执行的工具调用：模型调用了未注册的工具名。 */
 export interface ToolCallRejection {
 	readonly name: string;
 	readonly reason: string;
@@ -128,13 +142,17 @@ export interface ModelTurnResult {
 	/** 实际执行的工具调用次数；被上限拒绝的调用不计入。 */
 	readonly toolCallCount: number;
 	readonly stopReason: ModelTurnStopReason;
+	/** propose 工具收集的台账写入；提交楼层时统一写入。 */
+	readonly proposedStateUpdates: readonly AcceptedStateUpdate[];
 }
 
 /**
- * 无状态单轮执行器：组装好的上下文先发一次主请求；模型请求读取工具时，
- * 校验参数、执行工具，把结果作为工具消息发回去，最多往返 `maxReadRounds` 轮。
- * 写入类工具只收集、不执行。工具传输可以是原生函数调用，也可以是正文里的
- * `<tool>` 文本协议，两种方式共用这里的校验、执行与软上限。
+ * 无状态单轮执行器：组装好的上下文先发一次主请求；模型请求工具时，
+ * 按注册表声明的权限校验并执行：只读工具直接执行，待提交写入只收集，
+ * 侧效应工具只登记，结果作为工具消息发回去。快回合按 `maxReadRounds`
+ * 收束，深回合按工具调用总次数与运行时长收束。工具传输可以是原生函数
+ * 调用，也可以是正文里的 `<tool>` 文本协议，两种方式共用这里的校验、
+ * 执行与上限。
  */
 export async function runModelTurns(
 	options: ModelTurnOptions,
@@ -150,18 +168,27 @@ export async function runModelTurns(
 	}
 	const now = options.now ?? Date.now;
 	const startedAt = now();
+	const enabledTools = options.tools ?? [];
+	const disabledTools = options.disabledTools ?? [];
 	const tools = [
 		...(options.structuredTools ?? []),
-		...(options.sideEffectTools ?? []),
-		...(options.readTools ?? []),
+		...(enabledTools as readonly LlmToolDefinition[]),
 	];
 	const toolNames = new Set(tools.map((tool) => tool.name));
-	const sideEffectNames = new Set(
-		(options.sideEffectTools ?? []).map((tool) => tool.name),
+	const structuredNames = new Set(
+		(options.structuredTools ?? []).map((tool) => tool.name),
 	);
-	const allowedReadTools = new Set(
-		(options.readTools ?? []).map((tool) => tool.name),
+	const definitions = new Map(
+		enabledTools.map((tool) => [tool.name, tool] as const),
 	);
+	const disabledDefinitions = new Map(
+		disabledTools.map((tool) => [tool.name, tool] as const),
+	);
+	for (const name of disabledDefinitions.keys()) {
+		if (definitions.has(name)) {
+			throw new Error(`工具 ${name} 不能同时启用与停用`);
+		}
+	}
 	const messages: LlmMessage[] = [...options.messages];
 	if (transport === "text" && tools.length > 0) {
 		insertToolProtocol(messages, tools);
@@ -169,6 +196,8 @@ export async function runModelTurns(
 	const allToolCalls: LlmToolCall[] = [];
 	const calls: ToolCallTrace[] = [];
 	const rejected: ToolCallRejection[] = [];
+	const proposedStateUpdates: AcceptedStateUpdate[] = [];
+	let lastProgressPhase: string | null = null;
 	let rounds = 0;
 	let capped = false;
 	let firstTokenMs: number | null = null;
@@ -279,27 +308,34 @@ export async function runModelTurns(
 				}
 			}
 
-			if (transport === "text") {
-				for (const call of roundCalls) {
-					if (!toolNames.has(call.name)) {
-						rejected.push({
-							name: call.name,
-							reason: `未知工具：${call.name}`,
-						});
-					}
+			// 未知工具在任何传输下都拒绝并记录；原生传输同样不回放它。
+			for (const call of roundCalls) {
+				if (!toolNames.has(call.name) && !disabledDefinitions.has(call.name)) {
+					rejected.push({
+						name: call.name,
+						reason: `未知工具：${call.name}`,
+					});
 				}
 			}
 
-			const readRequests = roundCalls.filter(
-				(call) => allowedReadTools.has(call.name) && isReadToolName(call.name),
+			const drivingCalls = roundCalls.filter((call) => {
+				if (disabledDefinitions.has(call.name)) return true;
+				const definition = definitions.get(call.name);
+				return (
+					definition !== undefined && definition.permission !== "side_effect"
+				);
+			});
+			const respondableCalls = roundCalls.filter(
+				(call) =>
+					definitions.has(call.name) || disabledDefinitions.has(call.name),
 			);
+			const followUp = drivingCalls.length > 0;
 			if (body.length > 0) lastBody = body;
-			if (readRequests.length === 0) {
-				finalText = body;
-				blocks = transport === "text" ? parseBlocks(body) : parser.finish();
-				break;
-			}
-			if (options.maxToolCalls === undefined && rounds >= maxReadRounds) {
+			if (
+				followUp &&
+				options.maxToolCalls === undefined &&
+				rounds >= maxReadRounds
+			) {
 				if (body.trim().length === 0) {
 					throw new Error("模型在工具轮数用完后仍只请求读取工具，没有生成正文");
 				}
@@ -309,51 +345,49 @@ export async function runModelTurns(
 				break;
 			}
 
-			rounds += 1;
+			if (followUp) rounds += 1;
 			let hitToolCallLimit = false;
-			if (transport === "native") {
-				messages.push({
-					role: "assistant",
-					content: result.text,
-					toolCalls: readRequests.map((call) => ({
-						id: call.id,
-						name: call.name,
-						arguments: call.arguments as JsonObject,
-					})),
-				});
-			} else {
-				messages.push({ role: "assistant", content: result.text });
+			if (respondableCalls.length > 0) {
+				if (transport === "native") {
+					messages.push({
+						role: "assistant",
+						content: result.text,
+						toolCalls: respondableCalls.map((call) => ({
+							id: call.id,
+							name: call.name,
+							arguments: call.arguments as JsonObject,
+						})),
+					});
+				} else {
+					messages.push({ role: "assistant", content: result.text });
+				}
 			}
 			for (const call of roundCalls) {
 				throwIfAborted(options.signal);
-				if (!isReadToolName(call.name) || !allowedReadTools.has(call.name)) {
-					if (transport !== "text") continue;
-					if (sideEffectNames.has(call.name)) {
-						if (call.error !== null || call.arguments === null) {
-							const error = call.error ?? "参数缺失";
-							calls.push({ name: call.name, ok: false, error });
-							options.onToolCall?.({ name: call.name, ok: false, error });
-							messages.push({
-								role: "tool",
-								toolCallId: call.id,
-								toolName: call.name,
-								content: `工具调用失败：${error}`,
-								isError: true,
-							});
-							continue;
-						}
-						calls.push({ name: call.name, ok: true, error: null });
-						options.onToolCall?.({ name: call.name, ok: true, error: null });
+				const definition = definitions.get(call.name);
+				const disabled = disabledDefinitions.get(call.name);
+				if (definition === undefined) {
+					if (disabled !== undefined) {
+						const error = `工具未启用：${call.name}`;
+						const trace: ToolCallTrace = {
+							name: call.name,
+							ok: false,
+							error,
+							permission: disabled.permission,
+						};
+						calls.push(trace);
+						options.onToolCall?.(trace);
 						messages.push({
 							role: "tool",
 							toolCallId: call.id,
 							toolName: call.name,
-							content: "已登记，后台会处理。",
-							isError: false,
+							content: `工具调用失败：${error}`,
+							isError: true,
 						});
 						continue;
 					}
-					if (toolNames.has(call.name)) {
+					if (transport !== "text") continue;
+					if (structuredNames.has(call.name)) {
 						messages.push({
 							role: "tool",
 							toolCallId: call.id,
@@ -389,20 +423,36 @@ export async function runModelTurns(
 					content = `工具调用失败：${error}`;
 				} else {
 					toolCallCount += 1;
+					if (definition.progressLabel !== lastProgressPhase) {
+						lastProgressPhase = definition.progressLabel;
+						options.onToolProgress?.({
+							type: "progress",
+							phase: definition.progressLabel,
+							detail: definition.name,
+						});
+					}
 					try {
-						const args = validateReadToolArguments(call.name, call.arguments);
-						content = await executeReadTool(
-							call.name,
-							args,
+						const outcome = await runTool(
+							definition,
+							call.arguments,
 							options.toolContext,
+							proposedStateUpdates,
 						);
+						content = outcome.content;
+						ok = outcome.ok;
+						error = outcome.error;
 					} catch (caught) {
 						ok = false;
 						error = caught instanceof Error ? caught.message : String(caught);
 						content = `工具调用失败：${error}`;
 					}
 				}
-				const trace: ToolCallTrace = { name: call.name, ok, error };
+				const trace: ToolCallTrace = {
+					name: call.name,
+					ok,
+					error,
+					permission: definition.permission,
+				};
 				calls.push(trace);
 				options.onToolCall?.(trace);
 				messages.push({
@@ -417,6 +467,11 @@ export async function runModelTurns(
 				stopReason = "max_tool_calls";
 				finalText = body.length > 0 ? body : lastBody;
 				blocks = parseBlocks(finalText);
+				break;
+			}
+			if (!followUp) {
+				finalText = body;
+				blocks = transport === "text" ? parseBlocks(body) : parser.finish();
 				break;
 			}
 		}
@@ -451,6 +506,7 @@ export async function runModelTurns(
 		firstTokenMs,
 		toolCallCount,
 		stopReason,
+		proposedStateUpdates,
 	};
 }
 
@@ -460,6 +516,57 @@ interface RoundToolCall {
 	readonly arguments: JsonObject | null;
 	/** 文本协议里参数无法解析时的原因。 */
 	readonly error: string | null;
+}
+
+/**
+ * 按权限执行一次工具调用：只读直接执行，待提交写入只收集，
+ * 侧效应工具只登记，控制工具交给运行句柄（后续任务）。
+ */
+async function runTool(
+	definition: DeepToolDefinition,
+	args: JsonObject,
+	context: ReadToolContext,
+	proposed: AcceptedStateUpdate[],
+): Promise<{ content: string; ok: boolean; error: string | null }> {
+	switch (definition.permission) {
+		case "read": {
+			if (!isReadToolName(definition.name)) {
+				throw new Error(
+					`工具 ${definition.name} 声明为只读，但没有对应的读取实现`,
+				);
+			}
+			const validated = validateReadToolArguments(definition.name, args);
+			const content = await executeReadTool(
+				definition.name,
+				validated,
+				context,
+			);
+			return { content, ok: true, error: null };
+		}
+		case "propose": {
+			if (definition.name !== LEDGER_WRITE_TOOL_NAME) {
+				throw new Error(
+					`工具 ${definition.name} 声明为待提交写入，但没有对应的收集实现`,
+				);
+			}
+			const outcome = executeLedgerWriteTool(args);
+			for (const proposal of outcome.accepted) {
+				proposed.push({
+					path: proposal.path,
+					op: "set",
+					value: proposal.value,
+					reason: null,
+					storyTime: proposal.storyTime,
+					confidence: proposal.confidence,
+				});
+			}
+			return { content: outcome.content, ok: outcome.ok, error: outcome.error };
+		}
+		case "side_effect":
+			return { content: "已登记，后台会处理。", ok: true, error: null };
+		case "control":
+			throw new Error(`控制工具 ${definition.name} 需要运行句柄，本阶段不执行`);
+	}
 }
 
 /** 文本协议把工具说明插在开头几条 system 消息之后，正文与历史保持原顺序。 */

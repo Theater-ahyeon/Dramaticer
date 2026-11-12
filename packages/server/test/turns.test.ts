@@ -681,6 +681,37 @@ describe("POST /api/stories/:id/turns", () => {
 		expect(running.store.listStoryNodes("s1")).toHaveLength(before);
 	});
 
+	it("深回合执行工具前发送 turn.progress，同一阶段只发一次", async () => {
+		const { running, client } = await startTurnServer([
+			{
+				text: "",
+				toolCalls: [
+					{ id: "call-1", name: "state_get", arguments: {} },
+					{ id: "call-2", name: "state_get", arguments: {} },
+				],
+			},
+			{ text: "查完了。" },
+		]);
+		running.store.updateStorySettings("s1", { turnMode: "deep" });
+		const response = await fetch(`${running.origin}/api/stories/s1/turns`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ text: "我查一遍。" }),
+		});
+		expect(response.status).toBe(200);
+		const frames = await new FrameStream(response).readAll();
+		const progress = frames
+			.filter((frame) => frame.event === "turn.progress")
+			.map((frame) => frame.data);
+		expect(progress).toEqual([{ phase: "读取状态……", detail: "state_get" }]);
+		const trace = frameData(frames, "turn.completed").trace;
+		expect(trace.tools.calls[0]).toMatchObject({
+			name: "state_get",
+			permission: "read",
+		});
+		expect(client.requests).toHaveLength(2);
+	});
+
 	it("回合请求的 mode 覆盖故事设置，深回合正常生成并记录上限", async () => {
 		const { running, client } = await startTurnServer([
 			{ text: "深回合的回复。" },
