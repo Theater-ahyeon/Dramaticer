@@ -30,3 +30,5 @@
 | `@types/react` | `packages/web` | dev | React 类型 |
 | `@types/react-dom` | `packages/web` | dev | React DOM 类型 |
 | `@playwright/test` | `packages/web` | dev | 端到端测试运行器与浏览器断言（R5-T12） |
+| `cordis` | `packages/plugin-spike` | runtime | 插件内核技术验证：上游 Context、依赖注入与生命周期回收（P1.a） |
+| `@standard-schema/spec` | `packages/plugin-spike` | dev | 插件配置 schema 的类型；Cordis 自身已经依赖它（P1.a） |

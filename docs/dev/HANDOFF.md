@@ -3,13 +3,40 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-12 会话 295：R3b-T99.b（R3b 验收，真实渠道批量与报告）。长任务 `R3b-T99.b-01` 成功（exitCode 0、5.8 分钟），在公开合成基准故事 `benchmark-mist-harbor` 上跑 30 轮深回合与 10 个分支点：30/30 成功、失败率 0%（基线 23%），首字 P50/P90 2,566/3,584 毫秒、总时长 P50/P90 3,261/4,208 毫秒，每轮 1 次模型请求、工具调用 0 次，输入 39,264 / 输出 4,221 token，提交全部 `auto`、漂移 30/30 `missing_commit`，截断与上下文省略 0；盲评深胜 4、快胜 3、平局 0、两次顺序结论相反 3。`docs/dev/reports/R3b.md` 逐条核对 T01 至 T10.b 的验收标准，复核 I6、I13、I12、I4、I7 通过。门禁通过（175 个测试文件通过、5 个跳过；1565 个测试通过、5 个跳过）。
+- 2026-11-12 会话 296：P1.a（Cordis 插件内核原型）。新增私有包 `packages/plugin-spike`，用 Dramaticer 自己的契约（槽位提供者、Director 机制、块类型、服务、`onDispose`、五种分发模式）包住 Cordis 4.0.0-rc.13 的 Context、`use`/`inject`/`provide`、`ctx.effect` 与 StandardSchema 配置校验；11 个测试覆盖三个扩展点、依赖缺失阻塞与自动激活、循环依赖、重名拒绝、抛错回滚、卸载回收、热重载、配置校验与五种分发模式。门禁通过（176 个测试文件、1576 个测试、5 个跳过）。P1 已拆成 P1.a/P1.b/P1.c，P1.a 完成，P1.b 未开始。
 
-## 下一步（会话 296 先做）
-1. 选 **P1 插件内核技术验证**（依赖 R5-T99，已满足）：按 DESIGN §19.1、§19.6 用两个最小原型各实现同一组扩展点（一个上下文槽位提供者、一个 Director 机制、一个块类型）：①直接依赖 Cordis 上游（MIT 版本）；②自研精简版（只做 Context、注册表、依赖解析、生命周期回收与五种分发模式）。比较类型体验、热重载、依赖解析与循环检测、包体积与启动耗时、许可证与打包方式，写 ADR 决定采用哪一种，并登记依赖（`docs/dev/DEPENDENCIES.md` 与 ADR）。P1 可能需要拆成 `.a`（Cordis 原型）、`.b`（自研原型）、`.c`（比较与 ADR）。
-2. R3b 已完成，H-T00 的依赖（R5-T99、R3b-T99、E-T01）已全部满足；H-T00 仍排在 P/C 之后，不要提前开始。
-3. M6-T99 仍等待 HUMAN-15（ComfyUI 与 API workflow JSON），不要开始。
-4. 后续顺序：P1/P2 → C 兼容插件 → H → X → R6 → M6b → P3/P4 → M5 → P5 → M7。
+## 下一步（会话 297 先做）
+1. 做 **P1.b 自研精简版原型**：在同一个包、同一组契约下实现只有 Context、注册表、依赖解析与生命周期回收、五种分发模式的内核，不依赖 cordis；把 `packages/plugin-spike/test/cordis-kernel.test.ts` 抽成共享测试套件，让两个内核跑同一份断言。
+2. P1.c：测量两个原型的包体积（框架及传递依赖的安装体积）与启动耗时（新建内核并装载同一组插件，重复若干次取中位数），写 ADR 决定采用哪一种，登记依赖，删除 `packages/plugin-spike`。
+3. H-T00 的依赖（R5-T99、R3b-T99、E-T01）已全部满足，但仍排在 P/C 之后，不要提前开始。
+4. M6-T99 仍等待 HUMAN-15（ComfyUI 与 API workflow JSON），不要开始。
+5. 后续顺序：P1 → P2 → C 兼容插件 → H → X → R6 → M6b → P3/P4 → M5 → P5 → M7。
+
+## Cordis 4.0.0-rc.13 原型事实（P1.b / P1.c 直接可用）
+- 包名 `cordis`，MIT，解包 77,075 字节；运行时依赖 `cosmokit` 与 `@standard-schema/spec`，pnpm 一共新增 3 个包。`@deepseek-ai/cordis`（4.1.0）是 DSH 的分支，P1 只验证上游 `cordis`。
+- `new Context()` 是根；`ctx.use(component, config)` 返回 `Fiber`（thenable），组件形状 `{ name, inject, provide, Config, apply }`。`fiber.await()` 等待装载；配置校验失败时抛 `ValidationError`（`invalid config`）。
+- 依赖缺失与循环依赖都只让 fiber 停在 PENDING，`await()` 正常返回、没有错误；原因必须由适配层分析。同名服务不会被 Cordis 拒绝：两个插件都会 apply，`ctx.get(name)` 返回先注册的值；适配层必须在装载前检查 `provide` 声明与 `ctx.get`。
+- 分发语义与 DESIGN §19.2 不同：`emit` 同步通知无返回值；`parallel` 并行等待全部监听器、不收集结果、失败时抛 `AggregateError`；`serial` 依次执行但只返回第一个非 null/false/undefined 的结果；`bail` 与 `serial` 相同但不等待；`waterfall` 是中间件，监听器签名 `(...args, next)`，最后一个参数是兜底函数。适配层因此自己实现 EventBus：`emit` 通知、`parallel` 按注册顺序收集结果、`serial` 依次收集结果、`bail` 首个非空、`waterfall` 依次改写同一个值。
+- `ctx.effect(() => dispose)` 返回幂等 disposer，随 fiber 卸载执行；`ctx.provide(name, value)` 返回 disposer；`fiber.dispose()` 卸载。`FiberState` 运行时导出：PENDING 0、LOADING 1、ACTIVE 2、FAILED 3、DISPOSED 4、UNLOADING 5。
+- 类型体验：事件名是 `interface Events` 的静态声明合并，动态扩展点事件名没有类型；适配层的 `Component` 与 `Config` 需要一次类型断言。插件作者看到的契约全部在 `packages/plugin-spike/src/contracts.ts`，没有 import cordis。
+
+## 当前状态
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 数据库 schema 版本 41。P1.a 没有迁移。
+- 新增依赖：`cordis`（`packages/plugin-spike`，runtime）、`@standard-schema/spec`（`packages/plugin-spike`，dev）；已登记 `docs/dev/DEPENDENCIES.md`。
+- `eval-private/memory-cache/r1-retrieval.db` 有三个故事：`仙侠雌竞：什么叫我是炉鼎体质？` 290 个助手楼层已抽取 282 个、414 条事件；`欲望世界-1600` 180 个助手楼层已抽取 174 个、292 条事件；`银麒赎世` 114 个助手楼层已抽取 112 个、248 条事件。评测自己的临时数据库重新抽取后事件覆盖为 282/290、172/180、112/114，事件数 371/247/248。
+- 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045、ADR-0078、ADR-0079、ADR-0080、ADR-0082、ADR-0083、ADR-0084、ADR-0085、ADR-0086。
+- HUMAN-03 待处理（不阻塞）：抽查 `eval-private/evalset/spotcheck.md` 里的事件题。
+- HUMAN-14 已关闭（2026-11-12：人类取消）：取消 Vertex 真实调用的凭证配置与验证要求；`roles.writer` 继续使用 `main-fallback`。
+- HUMAN-15 待处理（M6-T99 需要）：把秋叶整合包 v3.2 的 ComfyUI 启动在 `http://127.0.0.1:8188`，并导出一份 API 格式 workflow JSON 到 `eval-private/comfyui/` 或告知路径。
+
+## P1 原型位置（代码事实）
+- `packages/plugin-spike/src/contracts.ts`：插件作者看到的类型。`PluginDefinition { name, inject?, provide?, Config?, apply(ctx, config) }`；`PluginContext` 提供 `slot`、`directorMechanism`、`blockType`、`provide`、`service`、`on`、`onDispose`；`PluginStatus` 状态为 `active`、`loading`、`blocked`、`failed`、`disposed`。
+- `packages/plugin-spike/src/cordis-kernel.ts`：`CordisKernel.load/unload/reload/status/snapshot/dispose`、`runSlot`、`runMechanisms`、`blockType`、五种分发方法。装载前检查 `provide` 与 `ctx.get` 重名；`settle()` 等待全部 fiber；PENDING 时用 `missingServices` 与 `findCycle` 生成原因；插件 apply 抛错时按倒序执行已注册清理。
+- `packages/plugin-spike/src/registry.ts`：槽位、Director 机制、块类型注册表；块类型复用 `@dramaticer/core/blocks` 的 `createBlockTypeRegistry` 校验。
+- `packages/plugin-spike/src/events.ts`：五种分发模式的 EventBus。
+- `packages/plugin-spike/src/fixtures.ts`：两个共享 fixture 组——weather 服务（带 StandardSchema 配置）+ scene 槽位 + Director 机制 + `weather` 块类型；两个互相依赖的循环插件。
+- `packages/plugin-spike/test/cordis-kernel.test.ts`：11 个测试。
 
 ## 深回合评测命令与产物
 - 完整批量：
@@ -18,22 +45,6 @@
   `pnpm --filter @dramaticer/st-compat deep-eval --db .devloop/scratch/R3b-T99/deep.db --out eval-private/reports/R3b-deep.jsonl --summary eval-private/reports/R3b-deep.json --summary-only`
 - 相对路径都按仓库根目录解析。默认模型 `main-fallback`、模拟用户 `background`、裁判按 `roles.judge`。
 - 运行数据库 `.devloop/scratch/R3b-T99/deep.db` 里 30 次运行共 120 条事件（`model.request`、`model.response`、`draft.replace`、`draft.commit` 各 30 条），每次请求暴露 12 个工具、传输为 `native`；模型一次也没有调用工具，提交方式全部是 `auto`。
-
-## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- 数据库 schema 版本 41。R3b-T99.b 只写文档与报告，没有迁移。
-- `eval-private/memory-cache/r1-retrieval.db` 有三个故事：`仙侠雌竞：什么叫我是炉鼎体质？` 290 个助手楼层已抽取 282 个、414 条事件；`欲望世界-1600` 180 个助手楼层已抽取 174 个、292 条事件；`银麒赎世` 114 个助手楼层已抽取 112 个、248 条事件。评测自己的临时数据库重新抽取后事件覆盖为 282/290、172/180、112/114，事件数 371/247/248。
-- 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045、ADR-0078、ADR-0079、ADR-0080、ADR-0082、ADR-0083、ADR-0084、ADR-0085、ADR-0086。
-- HUMAN-03 待处理（不阻塞）：抽查 `eval-private/evalset/spotcheck.md` 里的事件题。
-- HUMAN-14 已关闭（2026-11-12：人类取消）：取消 Vertex 真实调用的凭证配置与验证要求；`roles.writer` 继续使用 `main-fallback`。
-- HUMAN-15 待处理（M6-T99 需要）：把秋叶整合包 v3.2 的 ComfyUI 启动在 `http://127.0.0.1:8188`，并导出一份 API 格式 workflow JSON 到 `eval-private/comfyui/` 或告知路径。
-
-## R3b 任务状态
-- T01–T09 已完成：深回合循环与上限、工具集与权限、运行日志、草稿与提交、导演手记、上下文卫生、模板配置、原生元数据、运行中追加要求。
-- T10.a 已完成：模式开关、阶段文字、故事设置深回合区段与模板深回合配置。
-- T10.b 已完成：草稿面板、失败草稿与“重试这一轮”、运行中追加要求、楼层运行时间线。
-- T99.a 已完成：深回合验收评测工具与冒烟。
-- T99.b 已完成：真实渠道 30 轮与 10 个分支点盲评；统计版报告 `docs/dev/reports/R3b.md`，私有明细 `eval-private/reports/R3b-deep.jsonl` 与 `R3b-deep.json`。
 
 ## 深回合实现位置（代码事实）
 - 回合入口 `packages/core/src/chat/turn.ts`：`runChatTurn` 先 `resolveTurnMode`，再追加用户楼层、组装上下文、按模式调用 `runDeepTurn` 或 `runModelTurns`。`generateAssistantTurn` 用 `applyTemplateDeepTurn` 覆盖模板里的 `deepTurn`；`selectDeepTurnTools` 按白名单过滤注册表工具并排除关闭的手记工具。深回合新建 `TurnDraftController`、`TurnNoteController` 与 `TurnGuidanceController`；`withDirectorNotes` 在组装后的消息之后追加一条系统消息（没有手记时不加）。正文解析在 `resolveTurnBody`：显式提交用草稿；正常结束但没有提交时把最后一次输出整份替换为草稿并自动提交，记 `drift: "missing_commit"`；中止、超时、工具次数上限或没有正文且没有提交时返回 null，运行标为 `failed` 并抛 `DeepTurnWithoutCommitError`。
@@ -88,7 +99,7 @@
 - 私有数据（`eval-private/`、`data/`、`.env`）不能进入测试数据、提交、文档或日志；报告只写统计数字，不写对话原文。
 - 真实渠道实跑用 `--model main-fallback --judge-model judge`（`rp` 仍 503）。
 - Windows 上并行跑测试会显著变慢；`vitest.config.ts` 默认 `testTimeout` 60 秒；`afterEach` 删除临时目录用 `rmSync` 时必须带 `maxRetries` 与 `retryDelay`。
-- `packages/st-compat` 与 `packages/server` 测试通过 `@dramaticer/core` 的 `dist` 解析 core；只跑这两个包的测试前先执行 `pnpm run typecheck`。
+- `packages/st-compat`、`packages/server` 与 `packages/plugin-spike` 测试通过 `@dramaticer/core` 的 `dist` 解析 core；只跑这些包的测试前先执行 `pnpm run typecheck`。
 - 结构化 JSON 请求一律使用 `NO_CONTINUATION`；正文写作与散文类后台输出保留续写。
 - web 源码不能 import `@dramaticer/core` 的运行时值（会把 `better-sqlite3` 与 `node:*` 打进前端包导致整页白屏），类型导入可以。
 - 修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 的请求写进 HUMAN.md。
