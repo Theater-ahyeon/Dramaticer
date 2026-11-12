@@ -173,19 +173,20 @@ export function createChatReplayGenerator(
 	options: ChatReplayGeneratorOptions,
 ): ReplayGenerator {
 	return async ({ store, storyId, userText }) => {
+		const providers = await createChatProviders(store, {
+			card: options.card,
+			embedder: options.embedder,
+			directorConfig: options.directorConfig,
+			mechanisms: options.mechanisms,
+			historyBlockPolicy: store.getStorySettings(storyId).historyBlockPolicy,
+		});
 		const result = await runChatTurn({
 			store,
 			client: options.client,
 			storyId,
 			userText,
 			template: options.template,
-			providers: createChatProviders(store, {
-				card: options.card,
-				embedder: options.embedder,
-				directorConfig: options.directorConfig,
-				mechanisms: options.mechanisms,
-				historyBlockPolicy: store.getStorySettings(storyId).historyBlockPolicy,
-			}),
+			providers,
 			budgetTokens: options.budgetTokens,
 			structuredOutput: options.structuredOutput,
 			toolTransport: options.toolTransport,

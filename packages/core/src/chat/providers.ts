@@ -7,7 +7,6 @@ import { renderContextView } from "../blocks/view.js";
 import type {
 	ContextSlotContent,
 	ContextSlotProvider,
-	ContextSlotProviders,
 	RetrievalInjectionTrace,
 } from "../context/assembler.js";
 import type { ContextMessage } from "../context/template.js";
@@ -845,16 +844,6 @@ export function createCharacterSlotProvider(
 	};
 }
 
-export interface NaiveChatProvidersOptions {
-	readonly store: StoryStore;
-	/** 为空表示故事还没有导入角色卡，角色槽位记为缺失。 */
-	readonly characterPrompt: string | null;
-	/** 玩家人设；为空时 persona 槽位记为缺失。 */
-	readonly persona: string | null;
-	/** 最多带最近多少楼原文，默认 20。 */
-	readonly historyLimit?: number;
-}
-
 /** persona 槽位使用故事设置里的玩家人设；来源只记录长度，不重复正文。 */
 export function createPersonaSlotProvider(
 	persona: string,
@@ -870,71 +859,5 @@ export function createPersonaSlotProvider(
 				source: `persona:${persona.length} 字符`,
 			};
 		},
-	};
-}
-
-/**
- * 朴素模式（B0）的槽位集合：角色、persona 与最近若干楼原文。
- * 不提供台账、记忆、lore、摘要、现场分析与导演槽位。
- */
-export function createNaiveChatProviders(
-	options: NaiveChatProvidersOptions,
-): ContextSlotProviders {
-	const character =
-		options.characterPrompt === null ||
-		options.characterPrompt.trim().length === 0
-			? {}
-			: { character: createCharacterSlotProvider(options.characterPrompt) };
-	const persona =
-		options.persona === null || options.persona.trim().length === 0
-			? {}
-			: { persona: createPersonaSlotProvider(options.persona) };
-	return {
-		...character,
-		...persona,
-		history: createRawHistorySlotProvider(options.store, {
-			limit: options.historyLimit,
-		}),
-	};
-}
-
-export interface StandardChatProvidersOptions {
-	readonly store: StoryStore;
-	/** 为空表示故事还没有导入角色卡，角色槽位记为缺失。 */
-	readonly characterPrompt: string | null;
-	readonly embedder?: EmbeddingClient | null;
-	readonly reranker?: RerankClient | null;
-	readonly directorConfig?: DirectorConfig;
-	readonly mechanisms?: readonly DirectorMechanism[];
-	/** 块的 prompt 视图策略；不设置时使用默认策略。 */
-	readonly historyBlockPolicy?: HistoryBlockPolicy;
-}
-
-/** 生产对话与回放评测共用的七个槽位。 */
-export function createStandardChatProviders(
-	options: StandardChatProvidersOptions,
-): ContextSlotProviders {
-	const embedder = options.embedder ?? null;
-	const reranker = options.reranker ?? null;
-	const character =
-		options.characterPrompt === null ||
-		options.characterPrompt.trim().length === 0
-			? {}
-			: { character: createCharacterSlotProvider(options.characterPrompt) };
-	return {
-		...character,
-		history: createHistorySlotProvider(options.store, {
-			policy: options.historyBlockPolicy,
-		}),
-		state: createStateSlotProvider(options.store),
-		user_will: createUserWillSlotProvider(options.store),
-		scene: createSceneSlotProvider(options.store),
-		summary: createSummarySlotProvider(options.store),
-		memory: createMemorySlotProvider(options.store, { embedder, reranker }),
-		lore: createLoreSlotProvider(options.store),
-		director: createDirectorSlotProvider(options.store, {
-			config: options.directorConfig,
-			mechanisms: options.mechanisms,
-		}),
 	};
 }

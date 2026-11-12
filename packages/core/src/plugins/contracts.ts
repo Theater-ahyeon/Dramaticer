@@ -89,6 +89,8 @@ export interface PluginKernel {
 	status(name: string): PluginStatus;
 	snapshot(): KernelSnapshot;
 	runSlot(request: ContextSlotRequest): Promise<readonly SlotRunResult[]>;
+	/** 槽位当前注册的第一个提供者；没有注册时返回 null。 */
+	slotProvider(name: ContextSlotName): ContextSlotProvider | null;
 	runMechanisms(context: DirectorMechanismContext): readonly {
 		plugin: string;
 		name: string;

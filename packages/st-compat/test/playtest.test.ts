@@ -12,7 +12,7 @@ import {
 	createDefaultContextTemplate,
 	createEventStream,
 	createNaiveContextTemplate,
-	createStandardChatProviders,
+	createStandardChatSlots,
 } from "@dramaticer/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { runPlaytestCli } from "../src/evalset/playtest-cli.js";
@@ -154,10 +154,10 @@ function seedStory(store: StoryStore): void {
 	});
 }
 
-function playtestOptions(
+async function playtestOptions(
 	store: StoryStore,
 	overrides: Partial<PlaytestOptions> = {},
-): PlaytestOptions {
+): Promise<PlaytestOptions> {
 	const writer = createWriter();
 	const user = createUser((round) =>
 		JSON.stringify({ message: `第 ${round} 轮：我环视四周。` }),
@@ -172,11 +172,13 @@ function playtestOptions(
 		user: { client: user.client, model: "background" },
 		turn: {
 			template: createDefaultContextTemplate({ structuredOutput: "text-tags" }),
-			providers: createStandardChatProviders({
-				store,
-				characterPrompt: CARD_PROMPT,
-				directorConfig: DEFAULT_DIRECTOR_CONFIG,
-			}),
+			providers: (
+				await createStandardChatSlots({
+					store,
+					characterPrompt: CARD_PROMPT,
+					directorConfig: DEFAULT_DIRECTOR_CONFIG,
+				})
+			).providers,
 			budgetTokens: 4_000,
 			structuredOutput: "text-tags",
 			toolTransport: "native",
@@ -204,7 +206,7 @@ describe("自动试玩", () => {
 			JSON.stringify({ message: `第 ${round} 轮：我环视四周。` }),
 		);
 		const records: PlaytestRecord[] = [];
-		const options = playtestOptions(store, {
+		const options = await playtestOptions(store, {
 			assistant: { client: writer.client, model: "main" },
 			user: { client: user.client, model: "background" },
 			onRecord: (record) => {
@@ -268,7 +270,7 @@ describe("自动试玩", () => {
 		const store = openStore(dir);
 		const writer = createWriter();
 		const user = createUser(() => "这不是 JSON");
-		const options = playtestOptions(store, {
+		const options = await playtestOptions(store, {
 			rounds: 1,
 			assistant: { client: writer.client, model: "main" },
 			user: { client: user.client, model: "background" },
@@ -287,7 +289,7 @@ describe("自动试玩", () => {
 			call < 3 ? "still not json" : JSON.stringify({ message: "我推门进去。" }),
 		);
 		const records: PlaytestRecord[] = [];
-		const options = playtestOptions(store, {
+		const options = await playtestOptions(store, {
 			rounds: 1,
 			assistant: { client: writer.client, model: "main" },
 			user: { client: user.client, model: "background" },
@@ -321,7 +323,7 @@ describe("自动试玩", () => {
 			JSON.stringify({ message: `第 ${round} 轮：我向前走。` }),
 		);
 		const records: PlaytestRecord[] = [];
-		const options = playtestOptions(store, {
+		const options = await playtestOptions(store, {
 			rounds: 4,
 			assistant: { client: writer.client, model: "main" },
 			user: { client: user.client, model: "background" },
@@ -367,13 +369,13 @@ describe("自动试玩", () => {
 		const writer = createWriter();
 		const user = createUser(() => JSON.stringify({ message: "我继续走。" }));
 		const records: PlaytestRecord[] = [];
-		const base = playtestOptions(store);
+		const base = await playtestOptions(store);
 		const naiveProviders = {
 			character: base.turn.providers.character,
 			persona: base.turn.providers.persona,
 			history: base.turn.providers.history,
 		};
-		const options = playtestOptions(store, {
+		const options = await playtestOptions(store, {
 			rounds: 2,
 			profile: "naive",
 			assistant: { client: writer.client, model: "main" },
@@ -426,7 +428,7 @@ describe("自动试玩", () => {
 			}),
 		);
 		const records: PlaytestRecord[] = [];
-		const options = playtestOptions(store, {
+		const options = await playtestOptions(store, {
 			rounds: 2,
 			assistant: { client: writer.client, model: "main" },
 			user: { client: user.client, model: "background" },
@@ -468,7 +470,7 @@ describe("自动试玩", () => {
 		const user = createUser(() => JSON.stringify({ message: "我继续走。" }));
 		const judge = createUser(() => "不是 JSON");
 		const records: PlaytestRecord[] = [];
-		const options = playtestOptions(store, {
+		const options = await playtestOptions(store, {
 			rounds: 2,
 			assistant: { client: writer.client, model: "main" },
 			user: { client: user.client, model: "background" },

@@ -13,7 +13,7 @@ import {
 	createEmbeddingClient,
 	createLlmClient,
 	createRerankClient,
-	createStandardChatProviders,
+	createStandardChatSlots,
 	resolveDefaultMaxTokens,
 	resolveModelForRole,
 	resolveToolTransport,
@@ -86,16 +86,16 @@ export class StoryRuntimeManager {
 		const key = `${settings.updatedAt}\u0000${configFingerprint(config)}`;
 		const cached = this.#cache.get(storyId);
 		if (cached?.key === key) return cached.runtime;
-		const runtime = this.#build(storyId, settings, config);
+		const runtime = await this.#build(storyId, settings, config);
 		this.#cache.set(storyId, { key, runtime });
 		return runtime;
 	}
 
-	#build(
+	async #build(
 		storyId: string,
 		settings: StorySettings,
 		config: LlmChannelsConfig,
-	): StoryRuntime {
+	): Promise<StoryRuntime> {
 		const modelAlias = settings.model ?? resolveModelForRole(config, "writer");
 		const model = config.models.get(modelAlias);
 		if (model === undefined) {
@@ -119,20 +119,21 @@ export class StoryRuntimeManager {
 		const maxTokens = this.#store.hasStorySettings(storyId)
 			? settings.maxTokens
 			: resolveDefaultMaxTokens(config, modelAlias);
+		const slots = await createStandardChatSlots({
+			store: this.#store,
+			characterPrompt: settings.characterPrompt,
+			embedder,
+			reranker,
+			directorConfig: settings.directorConfig,
+			historyBlockPolicy: settings.historyBlockPolicy,
+		});
 		return {
 			settings,
 			modelAlias,
 			toolTransport,
 			maxTokens,
 			template,
-			providers: createStandardChatProviders({
-				store: this.#store,
-				characterPrompt: settings.characterPrompt,
-				embedder,
-				reranker,
-				directorConfig: settings.directorConfig,
-				historyBlockPolicy: settings.historyBlockPolicy,
-			}),
+			providers: slots.providers,
 			chatClient: this.#createClient(config, modelAlias),
 			backgroundClient:
 				settlerAlias === null ? null : this.#createClient(config, settlerAlias),

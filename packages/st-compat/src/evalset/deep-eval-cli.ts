@@ -9,7 +9,7 @@ import {
 	StoryStore,
 	createEmbeddingClient,
 	createLlmClient,
-	createStandardChatProviders,
+	createStandardChatSlots,
 	loadChannelsConfig,
 	loadDotEnv,
 	resolveDefaultMaxTokens,
@@ -178,13 +178,15 @@ export async function runDeepEvalCli(
 			settings.templateId,
 			mode,
 		);
-		const providers = createStandardChatProviders({
-			store,
-			characterPrompt,
-			embedder,
-			directorConfig: DEFAULT_DIRECTOR_CONFIG,
-			historyBlockPolicy: settings.historyBlockPolicy,
-		});
+		const providers = (
+			await createStandardChatSlots({
+				store,
+				characterPrompt,
+				embedder,
+				directorConfig: DEFAULT_DIRECTOR_CONFIG,
+				historyBlockPolicy: settings.historyBlockPolicy,
+			})
+		).providers;
 		const existing = parsed.resume
 			? existsSync(parsed.outPath)
 				? parseDeepEvalJsonl(await readFile(parsed.outPath, "utf8"))

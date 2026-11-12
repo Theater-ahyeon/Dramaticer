@@ -12,7 +12,7 @@ import {
 	StoryStore as StoryStoreClass,
 	createDefaultContextTemplate,
 	createEventExtractionHandler,
-	createStandardChatProviders,
+	createStandardChatSlots,
 	fuseRetrievalRoutes,
 	rankMemoryRoutes,
 	rerankRetrievalHits,
@@ -611,11 +611,13 @@ export async function collectMemoryEval(
 				const template = createDefaultContextTemplate({
 					structuredOutput: "text-tags",
 				});
-				const providers = createStandardChatProviders({
-					store,
-					characterPrompt: settings.characterPrompt,
-					directorConfig: DEFAULT_DIRECTOR_CONFIG,
-				});
+				const providers = (
+					await createStandardChatSlots({
+						store,
+						characterPrompt: settings.characterPrompt,
+						directorConfig: DEFAULT_DIRECTOR_CONFIG,
+					})
+				).providers;
 				judgedRecords.push(
 					...(await runJudgedMemoryQuestions({
 						store,

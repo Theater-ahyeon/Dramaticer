@@ -13,9 +13,9 @@ import {
 	createDefaultBackgroundJobRegistry,
 	createEmbeddingClient,
 	createLlmClient,
-	createNaiveChatProviders,
+	createNaiveChatSlots,
 	createNaiveContextTemplate,
-	createStandardChatProviders,
+	createStandardChatSlots,
 	isChatProfile,
 	loadChannelsConfig,
 	loadDotEnv,
@@ -194,18 +194,22 @@ export async function runPlaytestCli(
 					: settings.directorConfig;
 		const providers =
 			parsed.profile === "naive"
-				? createNaiveChatProviders({
-						store,
-						characterPrompt,
-						persona: settings.persona,
-					})
-				: createStandardChatProviders({
-						store,
-						characterPrompt,
-						embedder,
-						directorConfig,
-						historyBlockPolicy: settings.historyBlockPolicy,
-					});
+				? (
+						await createNaiveChatSlots({
+							store,
+							characterPrompt,
+							persona: settings.persona,
+						})
+					).providers
+				: (
+						await createStandardChatSlots({
+							store,
+							characterPrompt,
+							embedder,
+							directorConfig,
+							historyBlockPolicy: settings.historyBlockPolicy,
+						})
+					).providers;
 		await mkdir(path.dirname(parsed.outPath), { recursive: true });
 		const startRound = parsed.resume
 			? await readResumeStart(parsed.outPath)

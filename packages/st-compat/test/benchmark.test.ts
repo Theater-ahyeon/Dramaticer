@@ -17,7 +17,7 @@ import {
 	StoryStore,
 	createDefaultContextTemplate,
 	createEventStream,
-	createStandardChatProviders,
+	createStandardChatSlots,
 } from "@dramaticer/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { runBenchmarkCli } from "../src/evalset/benchmark-cli.js";
@@ -303,11 +303,13 @@ describe("公开合成基准", () => {
 						createDefaultContextTemplate({
 							structuredOutput: "text-tags",
 						}),
-					providers: createStandardChatProviders({
-						store,
-						characterPrompt: settings.characterPrompt ?? "",
-						directorConfig: DEFAULT_DIRECTOR_CONFIG,
-					}),
+					providers: (
+						await createStandardChatSlots({
+							store,
+							characterPrompt: settings.characterPrompt ?? "",
+							directorConfig: DEFAULT_DIRECTOR_CONFIG,
+						})
+					).providers,
 					budgetTokens: 4_000,
 					structuredOutput: "text-tags",
 					toolTransport: "native",

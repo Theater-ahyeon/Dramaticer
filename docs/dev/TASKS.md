@@ -1076,9 +1076,10 @@
   - 五种分发模式（emit、parallel、serial、bail、waterfall）在内核上可用；这一子任务不改动现有内置模块的调用路径。
   验收：依赖缺失、服务冲突、卸载回收与热重载各有测试；快照里的状态与原因可读；现有回合、后台任务与评测行为不变；`pnpm check` 通过。
 
-- [ ] **P2.c 上下文槽位提供者插件化** | 依赖：P2.b
+- [x] **P2.c 上下文槽位提供者插件化** | 依赖：P2.b
+  完成：2026-11-12 新增 `plugins/slots.ts`：character、persona、history、state、summary、memory、lore、scene、director、user_will 各是一个插件定义（另有朴素档的 `slot.history.raw`），存储与选项按插件名从内核配置取用，角色提示词或人设为空时不注册槽位；`PluginKernel` 新增 `slotProvider(name)`，`plugins/chat-providers.ts` 的 `createStandardChatSlots` 与 `createNaiveChatSlots` 装载内置插件后从内核读出提供者快照（`collectSlotProviders`），装载失败的插件让工厂抛错并列出原因；`createPluginKernel` 的缺省插件清单改为 `SLOT_PLUGINS`；`chat/providers.ts` 只保留单个槽位提供者工厂；server 运行时、st-compat 会话与 chat CLI、五个评测与回放入口改为异步取 `slots.providers`；`chat-slot-plugins.test.ts` 新增 4 个测试（注册表条目、空角色提示词、朴素集合、卸载后 Trace 记 `missing-slot`）；门禁通过（178 个测试文件、1586 个测试、5 个跳过）
   做什么：
-  - 把 `chat/providers.ts` 的槽位提供者逐个改成插件定义并注册进内核：character、persona、history、state、summary、memory、lore、scene、director、user_will；`createStandardChatProviders` 等工厂改从内核取提供者。
+  - 把 `chat/providers.ts` 的槽位提供者逐个改成插件定义并注册进内核：character、persona、history、state、summary、memory、lore、scene、director、user_will；`createStandardChatSlots` 等工厂改从内核取提供者。
   - 槽位内容、顺序、预算与 Trace 条目与改动前逐字段一致；插件缺失或未激活时槽位记 `missing-slot`。
   验收：每个槽位都有注册表条目与测试；同一故事与设置下组装结果与改动前一致；卸载槽位插件后该槽位缺失并被 Trace 记录；`pnpm check` 通过。
 

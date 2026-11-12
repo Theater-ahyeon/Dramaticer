@@ -9,7 +9,7 @@ import {
 	StoryStore,
 	createDefaultContextTemplate,
 	createEventStream,
-	createStandardChatProviders,
+	createStandardChatSlots,
 } from "@dramaticer/core";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -158,10 +158,10 @@ function seedStory(store: StoryStore): void {
 	});
 }
 
-function deepEvalOptions(
+async function deepEvalOptions(
 	store: StoryStore,
 	overrides: Partial<DeepEvalOptions> = {},
-): DeepEvalOptions {
+): Promise<DeepEvalOptions> {
 	return {
 		store,
 		storyId: STORY_ID,
@@ -177,11 +177,13 @@ function deepEvalOptions(
 		judge: { client: createRecordedJudge().client, model: "judge" },
 		turn: {
 			template: createDefaultContextTemplate({ structuredOutput: "text-tags" }),
-			providers: createStandardChatProviders({
-				store,
-				characterPrompt: CARD_PROMPT,
-				directorConfig: DEFAULT_DIRECTOR_CONFIG,
-			}),
+			providers: (
+				await createStandardChatSlots({
+					store,
+					characterPrompt: CARD_PROMPT,
+					directorConfig: DEFAULT_DIRECTOR_CONFIG,
+				})
+			).providers,
 			budgetTokens: 4_000,
 			structuredOutput: "text-tags",
 			toolTransport: "native",
@@ -203,7 +205,7 @@ describe("深回合验收评测", () => {
 		);
 		const judge = createRecordedJudge();
 		const records: DeepEvalRecord[] = [];
-		const options = deepEvalOptions(store, {
+		const options = await deepEvalOptions(store, {
 			assistant: { client: writer.client, model: "main" },
 			judge: { client: judge.client, model: "judge" },
 			onRecord: (record) => {
@@ -248,7 +250,7 @@ describe("深回合验收评测", () => {
 		});
 		const records: DeepEvalRecord[] = [];
 		await runDeepEval(
-			deepEvalOptions(store, {
+			await deepEvalOptions(store, {
 				turns: 1,
 				branches: 0,
 				assistant: { client: failing.client, model: "main" },
@@ -263,7 +265,7 @@ describe("深回合验收评测", () => {
 		expect(summarizeDeepEval(records).turns.failureRate).toBe(1);
 
 		const resumed = await runDeepEval(
-			deepEvalOptions(store, {
+			await deepEvalOptions(store, {
 				turns: 1,
 				branches: 0,
 				existing: records,
@@ -288,7 +290,7 @@ describe("深回合验收评测", () => {
 		const first = createWriter((call) => `深版本 ${call}。`);
 		const records: DeepEvalRecord[] = [];
 		await runDeepEval(
-			deepEvalOptions(store, {
+			await deepEvalOptions(store, {
 				turns: 2,
 				branches: 0,
 				assistant: { client: first.client, model: "main" },
@@ -299,7 +301,7 @@ describe("深回合验收评测", () => {
 		);
 		const second = createWriter(() => "不该出现。");
 		const resumed = await runDeepEval(
-			deepEvalOptions(store, {
+			await deepEvalOptions(store, {
 				turns: 2,
 				branches: 0,
 				existing: records,

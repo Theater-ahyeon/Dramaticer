@@ -12,7 +12,7 @@ import {
 	type StoryStore,
 	type StructuredOutputMode,
 	createDefaultContextTemplate,
-	createStandardChatProviders,
+	createStandardChatSlots,
 } from "@dramaticer/core";
 import type { StCharacterCard } from "../character-card.js";
 import { importDramaticerExtension } from "../dramaticer-extension.js";
@@ -116,12 +116,15 @@ export interface CreateChatProvidersOptions {
 	readonly historyBlockPolicy?: HistoryBlockPolicy;
 }
 
-/** 生产对话与回放评测共用的槽位集合：从角色卡渲染提示词后交给 core。 */
-export function createChatProviders(
+/**
+ * 生产对话与回放评测共用的槽位集合：从角色卡渲染提示词后交给 core；
+ * 槽位由 core 的内置槽位插件注册，调用方拿到的是装载后的提供者快照。
+ */
+export async function createChatProviders(
 	store: StoryStore,
 	options: CreateChatProvidersOptions,
-): ContextSlotProviders {
-	return createStandardChatProviders({
+): Promise<ContextSlotProviders> {
+	const slots = await createStandardChatSlots({
 		store,
 		characterPrompt: renderCharacterPrompt(options.card),
 		embedder: options.embedder,
@@ -130,6 +133,7 @@ export function createChatProviders(
 		mechanisms: options.mechanisms,
 		historyBlockPolicy: options.historyBlockPolicy,
 	});
+	return slots.providers;
 }
 
 /** 故事指向库里的模板时读取它；为空或指向内置模板时用默认模板。 */

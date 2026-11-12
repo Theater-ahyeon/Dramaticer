@@ -11,7 +11,7 @@ import {
 	createBackgroundJobRegistry,
 	createDefaultContextTemplate,
 	createEventStream,
-	createStandardChatProviders,
+	createStandardChatSlots,
 } from "@dramaticer/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { runPlaytestCli } from "../src/evalset/playtest-cli.js";
@@ -220,10 +220,10 @@ function openStore(dir: string): StoryStore {
 	return store;
 }
 
-function playtestOptions(
+async function playtestOptions(
 	store: StoryStore,
 	overrides: Partial<PlaytestOptions> = {},
-): PlaytestOptions {
+): Promise<PlaytestOptions> {
 	return {
 		store,
 		storyId: STORY_ID,
@@ -234,11 +234,13 @@ function playtestOptions(
 		user: { client: createUser(), model: "background" },
 		turn: {
 			template: createDefaultContextTemplate({ structuredOutput: "text-tags" }),
-			providers: createStandardChatProviders({
-				store,
-				characterPrompt: CARD_PROMPT,
-				directorConfig: DEFAULT_DIRECTOR_CONFIG,
-			}),
+			providers: (
+				await createStandardChatSlots({
+					store,
+					characterPrompt: CARD_PROMPT,
+					directorConfig: DEFAULT_DIRECTOR_CONFIG,
+				})
+			).providers,
 			budgetTokens: 4_000,
 			structuredOutput: "text-tags",
 			toolTransport: "native",
@@ -313,7 +315,7 @@ describe("一致性探针", () => {
 			JSON.stringify({ consistent: true, reason: "台账写明山门" }),
 		]);
 		const records: PlaytestRecord[] = [];
-		const options = playtestOptions(store, {
+		const options = await playtestOptions(store, {
 			assistant: { client: writer.client, model: "main" },
 			probes: probeEvery(judge),
 			onRecord: (record) => {
@@ -354,7 +356,7 @@ describe("一致性探针", () => {
 		]);
 		const records: PlaytestRecord[] = [];
 		await runPlaytest(
-			playtestOptions(store, {
+			await playtestOptions(store, {
 				assistant: { client: writer.client, model: "main" },
 				probes: probeEvery(judge),
 				onRecord: (record) => {
@@ -377,7 +379,7 @@ describe("一致性探针", () => {
 		const judge = createJudge(["{}"]);
 		const records: PlaytestRecord[] = [];
 		const result = await runPlaytest(
-			playtestOptions(store, {
+			await playtestOptions(store, {
 				rounds: 2,
 				assistant: { client: writer.client, model: "main" },
 				probes: probeEvery(judge),
@@ -406,7 +408,7 @@ describe("一致性探针", () => {
 		const judge = createJudge([]);
 		const records: PlaytestRecord[] = [];
 		await runPlaytest(
-			playtestOptions(store, {
+			await playtestOptions(store, {
 				assistant: { client: writer.client, model: "main" },
 				probes: probeEvery(judge, { minAgeFloors: 200 }),
 				onRecord: (record) => {
@@ -436,7 +438,7 @@ describe("一致性探针", () => {
 		]);
 		const records: PlaytestRecord[] = [];
 		const result = await runPlaytest(
-			playtestOptions(store, {
+			await playtestOptions(store, {
 				rounds: 4,
 				assistant: { client: writer.client, model: "main" },
 				probes: probeEvery(judge),
@@ -473,7 +475,7 @@ describe("一致性探针", () => {
 		]);
 		const records: PlaytestRecord[] = [];
 		await runPlaytest(
-			playtestOptions(store, {
+			await playtestOptions(store, {
 				rounds: 2,
 				assistant: { client: writer.client, model: "main" },
 				probes: probeEvery(judge),

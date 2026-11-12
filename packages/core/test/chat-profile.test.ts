@@ -10,9 +10,9 @@ import {
 	createDefaultContextTemplate,
 	createEventStream,
 	createHistorySlotProvider,
-	createNaiveChatProviders,
+	createNaiveChatSlots,
 	createNaiveContextTemplate,
-	createStandardChatProviders,
+	createStandardChatSlots,
 	createStaticSlotProvider,
 	isChatProfile,
 	runChatTurn,
@@ -83,14 +83,16 @@ function seedStory(store: StoryStore, storyId = "s1"): void {
 	});
 }
 
-function naiveInputs(store: StoryStore, storyId: string) {
+async function naiveInputs(store: StoryStore, storyId: string) {
 	return {
 		template: createNaiveContextTemplate(),
-		providers: createNaiveChatProviders({
-			store,
-			characterPrompt: "你扮演山神。",
-			persona: "你是云游的剑客。",
-		}),
+		providers: (
+			await createNaiveChatSlots({
+				store,
+				characterPrompt: "你扮演山神。",
+				persona: "你是云游的剑客。",
+			})
+		).providers,
 		storyId,
 	};
 }
@@ -130,7 +132,7 @@ describe("对话档位", () => {
 		const { store } = openTempStore();
 		seedStory(store);
 		const fake = createFakeClient(REPLY);
-		const inputs = naiveInputs(store, "s1");
+		const inputs = await naiveInputs(store, "s1");
 
 		const result = await runChatTurn({
 			store,
@@ -205,6 +207,22 @@ describe("对话档位", () => {
 		seedStory(store, "native-story");
 		const structure = async (profile: ChatProfile, storyId: string) => {
 			const fake = createFakeClient("风停了。");
+			const providers =
+				profile === "naive"
+					? (
+							await createNaiveChatSlots({
+								store,
+								characterPrompt: "你扮演山神。",
+								persona: null,
+							})
+						).providers
+					: {
+							character: createStaticSlotProvider(
+								[{ role: "system", content: "你扮演山神。" }],
+								"card:山神",
+							),
+							history: createHistorySlotProvider(store, { limit: 10 }),
+						};
 			const result = await runChatTurn({
 				store,
 				client: fake.client,
@@ -214,20 +232,7 @@ describe("对话档位", () => {
 					profile === "naive"
 						? createNaiveContextTemplate()
 						: createDefaultContextTemplate({ structuredOutput: "text-tags" }),
-				providers:
-					profile === "naive"
-						? createNaiveChatProviders({
-								store,
-								characterPrompt: "你扮演山神。",
-								persona: null,
-							})
-						: {
-								character: createStaticSlotProvider(
-									[{ role: "system", content: "你扮演山神。" }],
-									"card:山神",
-								),
-								history: createHistorySlotProvider(store, { limit: 10 }),
-							},
+				providers,
 				budgetTokens: 4_000,
 				structuredOutput: "text-tags",
 				profile,
@@ -260,11 +265,13 @@ describe("对话档位", () => {
 			storyId: "s1",
 			userText: "我抬头。",
 			template: createNaiveContextTemplate(),
-			providers: createNaiveChatProviders({
-				store,
-				characterPrompt: "你扮演山神。",
-				persona: null,
-			}),
+			providers: (
+				await createNaiveChatSlots({
+					store,
+					characterPrompt: "你扮演山神。",
+					persona: null,
+				})
+			).providers,
 			budgetTokens: 4_000,
 			structuredOutput: "text-tags",
 			profile: "naive",
@@ -292,11 +299,13 @@ describe("对话档位", () => {
 			storyId: "s1",
 			userText: "我抬头。",
 			template: createNaiveContextTemplate(),
-			providers: createNaiveChatProviders({
-				store,
-				characterPrompt: "你扮演山神。",
-				persona: null,
-			}),
+			providers: (
+				await createNaiveChatSlots({
+					store,
+					characterPrompt: "你扮演山神。",
+					persona: null,
+				})
+			).providers,
 			budgetTokens: 4_000,
 			structuredOutput: "text-tags",
 			profile: "naive",
@@ -317,10 +326,12 @@ describe("对话档位", () => {
 			storyId: "s1",
 			userText: "我站起来。",
 			template: createDefaultContextTemplate({ structuredOutput: "text-tags" }),
-			providers: createStandardChatProviders({
-				store,
-				characterPrompt: "你扮演山神。",
-			}),
+			providers: (
+				await createStandardChatSlots({
+					store,
+					characterPrompt: "你扮演山神。",
+				})
+			).providers,
 			budgetTokens: 4_000,
 			structuredOutput: "text-tags",
 			profile: "native",
@@ -350,10 +361,12 @@ describe("对话档位", () => {
 			storyId: "s1",
 			userText: "我推开山门。",
 			template: createDefaultContextTemplate({ structuredOutput: "text-tags" }),
-			providers: createStandardChatProviders({
-				store,
-				characterPrompt: "你扮演山神。",
-			}),
+			providers: (
+				await createStandardChatSlots({
+					store,
+					characterPrompt: "你扮演山神。",
+				})
+			).providers,
 			budgetTokens: 4_000,
 			structuredOutput: "text-tags",
 			profile: "native",

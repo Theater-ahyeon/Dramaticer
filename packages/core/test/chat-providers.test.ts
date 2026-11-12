@@ -9,7 +9,7 @@ import {
 	createDefaultContextTemplate,
 	createHistorySlotProvider,
 	createMemorySlotProvider,
-	createStandardChatProviders,
+	createStandardChatSlots,
 	createStateSlotProvider,
 	createStaticSlotProvider,
 	createSummarySlotProvider,
@@ -739,7 +739,7 @@ describe("角色与标准槽位", () => {
 	it("标准集合包含九个槽位，character 使用传入的提示词", async () => {
 		const { store } = openTempStore();
 		store.createStory({ id: "s1", title: "山神" });
-		const providers = createStandardChatProviders({
+		const { providers } = await createStandardChatSlots({
 			store,
 			characterPrompt: "你扮演山神。",
 		});

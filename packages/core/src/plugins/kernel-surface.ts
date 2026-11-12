@@ -2,8 +2,10 @@ import type { BackgroundJobType } from "../background/types.js";
 import type { BlockTypeDefinition } from "../blocks/types.js";
 import type {
 	ContextSlotContent,
+	ContextSlotProvider,
 	ContextSlotRequest,
 } from "../context/assembler.js";
+import type { ContextSlotName } from "../context/template.js";
 import type {
 	DirectorMechanismContext,
 	DirectorMechanismResult,
@@ -34,6 +36,10 @@ export abstract class KernelSurface {
 				)) as ContextSlotContent | null,
 			})),
 		);
+	}
+
+	slotProvider(name: ContextSlotName): ContextSlotProvider | null {
+		return this.registry.slotProviders(name)[0]?.provider ?? null;
 	}
 
 	runMechanisms(context: DirectorMechanismContext): readonly {

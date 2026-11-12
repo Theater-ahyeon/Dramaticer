@@ -8,7 +8,7 @@ import {
 	approveLedgerChangeCard,
 	assembleContext,
 	createDefaultContextTemplate,
-	createStandardChatProviders,
+	createStandardChatSlots,
 	rejectLedgerChangeCard,
 } from "../src/index.js";
 
@@ -299,10 +299,12 @@ describe("偏好信号", () => {
 			budgetTokens: 12_000,
 			storyId: "story-1",
 			nodeId: user.id,
-			providers: createStandardChatProviders({
-				store,
-				characterPrompt: null,
-			}),
+			providers: (
+				await createStandardChatSlots({
+					store,
+					characterPrompt: null,
+				})
+			).providers,
 		});
 		const text = assembled.messages
 			.map((message) => message.content)

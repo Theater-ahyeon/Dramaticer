@@ -8,7 +8,7 @@ import {
 	type LlmUsage,
 	StoryStore,
 	createDefaultContextTemplate,
-	createStandardChatProviders,
+	createStandardChatSlots,
 } from "@dramaticer/core";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -265,11 +265,13 @@ async function run(
 		questions: items,
 		askAtNode,
 		template: createDefaultContextTemplate({ structuredOutput: "text-tags" }),
-		providers: createStandardChatProviders({
-			store,
-			characterPrompt: CARD_PROMPT,
-			directorConfig: DEFAULT_DIRECTOR_CONFIG,
-		}),
+		providers: (
+			await createStandardChatSlots({
+				store,
+				characterPrompt: CARD_PROMPT,
+				directorConfig: DEFAULT_DIRECTOR_CONFIG,
+			})
+		).providers,
 		budgetTokens: 4_000,
 		assistant: { client: createAnswerClient(), model: "main" },
 		judge: { client: judge, model: "judge" },

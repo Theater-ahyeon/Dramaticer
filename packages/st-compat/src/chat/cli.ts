@@ -14,10 +14,10 @@ import {
 	type TurnMode,
 	createEmbeddingClient,
 	createLlmClient,
-	createNaiveChatProviders,
+	createNaiveChatSlots,
 	createNaiveContextTemplate,
 	createRerankClient,
-	createStandardChatProviders,
+	createStandardChatSlots,
 	isChatProfile,
 	isDirectorIntensity,
 	isDirectorMode,
@@ -198,16 +198,12 @@ export async function runChatCli(
 				`模型的上下文窗口 ${model.contextWindow} 不大于输出上限 ${model.maxTokens}，没有可用的输入预算`,
 			);
 		}
-		const result = await runChatTurn({
-			store,
-			client: createClient(config, modelAlias),
-			storyId: parsed.storyId,
-			userText: parsed.userText,
-			template,
-			providers:
-				parsed.profile === "naive"
-					? createNaiveChatProviders({ store, characterPrompt, persona })
-					: createStandardChatProviders({
+		const providers =
+			parsed.profile === "naive"
+				? (await createNaiveChatSlots({ store, characterPrompt, persona }))
+						.providers
+				: (
+						await createStandardChatSlots({
 							store,
 							characterPrompt,
 							embedder,
@@ -217,7 +213,15 @@ export async function runChatCli(
 								mode: parsed.directorMode,
 							},
 							historyBlockPolicy: settings.historyBlockPolicy,
-						}),
+						})
+					).providers;
+		const result = await runChatTurn({
+			store,
+			client: createClient(config, modelAlias),
+			storyId: parsed.storyId,
+			userText: parsed.userText,
+			template,
+			providers,
 			budgetTokens,
 			structuredOutput: mode,
 			profile: parsed.profile,

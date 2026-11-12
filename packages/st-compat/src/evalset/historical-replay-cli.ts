@@ -11,9 +11,9 @@ import {
 	type StorySettings,
 	StoryStore,
 	createLlmClient,
-	createNaiveChatProviders,
+	createNaiveChatSlots,
 	createNaiveContextTemplate,
-	createStandardChatProviders,
+	createStandardChatSlots,
 	isJsonObject,
 	loadChannelsConfig,
 	loadDotEnv,
@@ -319,7 +319,7 @@ export async function runHistoricalReplayCli(
 						`模型的上下文窗口 ${writerModelConfig.contextWindow} 不大于输出上限 ${maxTokens}，没有可用的输入预算`,
 					);
 				}
-				const turnContext = buildTurnContext({
+				const turnContext = await buildTurnContext({
 					store,
 					storyId,
 					settings,
@@ -588,8 +588,26 @@ interface BuildTurnContextOptions {
 	readonly toolTransport: LlmToolTransport;
 }
 
-function buildTurnContext(options: BuildTurnContextOptions): TurnContext {
+async function buildTurnContext(
+	options: BuildTurnContextOptions,
+): Promise<TurnContext> {
 	const { store, storyId, settings } = options;
+	const native = (
+		await createStandardChatSlots({
+			store,
+			characterPrompt: options.characterPrompt,
+			embedder: null,
+			directorConfig: settings.directorConfig,
+			historyBlockPolicy: settings.historyBlockPolicy,
+		})
+	).providers;
+	const naive = (
+		await createNaiveChatSlots({
+			store,
+			characterPrompt: options.characterPrompt,
+			persona: settings.persona,
+		})
+	).providers;
 	return {
 		store,
 		client: options.writerClient,
@@ -608,21 +626,11 @@ function buildTurnContext(options: BuildTurnContextOptions): TurnContext {
 				settings.templateId,
 				settings.structuredOutput,
 			),
-			providers: createStandardChatProviders({
-				store,
-				characterPrompt: options.characterPrompt,
-				embedder: null,
-				directorConfig: settings.directorConfig,
-				historyBlockPolicy: settings.historyBlockPolicy,
-			}),
+			providers: native,
 		},
 		naive: {
 			template: createNaiveContextTemplate(),
-			providers: createNaiveChatProviders({
-				store,
-				characterPrompt: options.characterPrompt,
-				persona: settings.persona,
-			}),
+			providers: naive,
 		},
 	};
 }
