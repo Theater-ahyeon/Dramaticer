@@ -1041,7 +1041,8 @@
   - 用 Cordis 的 Context、`ctx.use`、`inject`/`provide`、`ctx.effect` 与 StandardSchema 配置校验实现装载器。
   验收：三个扩展点都能注册、取用与卸载；依赖缺失、循环依赖、重名、抛错与热重载都有测试；`pnpm check` 通过。
 
-- [ ] **P1.b 自研精简版原型** | 依赖：P1.a
+- [x] **P1.b 自研精简版原型** | 依赖：P1.a
+  完成：2026-11-12 同一包内新增 `KernelSurface`（两个内核共用的注册表、槽位取用、机制执行与五种事件分发）与 `LiteKernel`：只保留扩展点注册、`inject`/`provide` 依赖解析、装载失败回滚、卸载回收、热重载、扩展点取用与五种分发模式，不 import `cordis`；依赖缺失停在 pending、提供者出现后按装载顺序自动激活、提供者卸载或依赖消失时回退为 pending 并撤销全部注册；配置校验复用 `StandardSchemaV1`；依赖缺失、循环依赖与重名检查由内核自己分析。`PluginKernel` 接口进入 `contracts.ts`，11 条行为断言抽成 `test/kernel-suite.ts`，`cordis-kernel.test.ts` 与 `lite-kernel.test.ts` 各跑同一份套件（22 个测试）；门禁通过（177 个测试文件、1587 个测试、5 个跳过）
   做什么：
   - 在同一个包、同一组契约下实现只有 Context、注册表、依赖解析与生命周期回收、五种分发模式的精简内核，不依赖 cordis。
   - 把 P1.a 的行为测试抽成共享测试套件，两个内核跑同一份断言。

@@ -74,3 +74,27 @@ export interface SlotRunResult {
 	readonly plugin: string;
 	readonly content: ContextSlotContent | null;
 }
+
+/** 两个内核原型共用的对外表面，共享测试套件按这个接口断言。 */
+export interface PluginKernel {
+	load(definition: PluginDefinition, config?: unknown): Promise<PluginStatus>;
+	unload(name: string): Promise<void>;
+	reload(definition: PluginDefinition, config?: unknown): Promise<PluginStatus>;
+	status(name: string): PluginStatus;
+	snapshot(): KernelSnapshot;
+	runSlot(request: ContextSlotRequest): Promise<readonly SlotRunResult[]>;
+	runMechanisms(context: DirectorMechanismContext): readonly {
+		plugin: string;
+		name: string;
+		result: DirectorMechanismResult;
+	}[];
+	blockType(name: string): BlockTypeDefinition | null;
+	service<T>(name: string): T | undefined;
+	on(name: string, listener: EventListener): () => void;
+	emit(name: string, ...args: unknown[]): void;
+	parallel(name: string, ...args: unknown[]): Promise<readonly unknown[]>;
+	serial(name: string, ...args: unknown[]): Promise<readonly unknown[]>;
+	bail(name: string, ...args: unknown[]): unknown;
+	waterfall<T>(name: string, value: T): T;
+	dispose(): Promise<void>;
+}

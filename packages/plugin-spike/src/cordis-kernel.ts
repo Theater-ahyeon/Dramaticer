@@ -1,18 +1,12 @@
 import { type Component, Context, type Fiber, FiberState } from "cordis";
 import type {
-	ContextSlotContent,
-	ContextSlotRequest,
-	DirectorMechanismContext,
-	DirectorMechanismResult,
-	EventListener,
 	KernelSnapshot,
 	PluginContext,
 	PluginDefinition,
+	PluginKernel,
 	PluginStatus,
-	SlotRunResult,
 } from "./contracts.js";
-import { EventBus } from "./events.js";
-import { ExtensionRegistry } from "./registry.js";
+import { KernelSurface } from "./kernel-surface.js";
 
 interface PluginEntry {
 	readonly definition: PluginDefinition;
@@ -27,10 +21,8 @@ function errorMessage(error: unknown): string {
 }
 
 /** 用 Cordis 的 Context、依赖注入与生命周期回收装载 Dramaticer 插件。 */
-export class CordisKernel {
+export class CordisKernel extends KernelSurface implements PluginKernel {
 	private readonly ctx = new Context();
-	private readonly registry = new ExtensionRegistry();
-	private readonly bus = new EventBus();
 	private readonly plugins = new Map<string, PluginEntry>();
 	private disposed = false;
 
@@ -135,62 +127,8 @@ export class CordisKernel {
 		};
 	}
 
-	async runSlot(
-		request: ContextSlotRequest,
-	): Promise<readonly SlotRunResult[]> {
-		const providers = this.registry.slotProviders(request.slot);
-		return Promise.all(
-			providers.map(async (entry) => ({
-				plugin: entry.plugin,
-				content: (await entry.provider.provide(
-					request,
-				)) as ContextSlotContent | null,
-			})),
-		);
-	}
-
-	runMechanisms(context: DirectorMechanismContext): readonly {
-		plugin: string;
-		name: string;
-		result: DirectorMechanismResult;
-	}[] {
-		return this.registry.mechanisms().map((entry) => ({
-			plugin: entry.plugin,
-			name: entry.mechanism.name,
-			result: entry.mechanism.evaluate(context),
-		}));
-	}
-
-	blockType(name: string) {
-		return this.registry.blockType(name);
-	}
-
 	service<T>(name: string): T | undefined {
 		return this.ctx.get(name) as T | undefined;
-	}
-
-	on(name: string, listener: EventListener): () => void {
-		return this.bus.on(name, listener);
-	}
-
-	emit(name: string, ...args: unknown[]): void {
-		this.bus.emit(name, ...args);
-	}
-
-	parallel(name: string, ...args: unknown[]): Promise<readonly unknown[]> {
-		return this.bus.parallel(name, ...args);
-	}
-
-	serial(name: string, ...args: unknown[]): Promise<readonly unknown[]> {
-		return this.bus.serial(name, ...args);
-	}
-
-	bail(name: string, ...args: unknown[]): unknown {
-		return this.bus.bail(name, ...args);
-	}
-
-	waterfall<T>(name: string, value: T): T {
-		return this.bus.waterfall(name, value);
 	}
 
 	private toComponent(
