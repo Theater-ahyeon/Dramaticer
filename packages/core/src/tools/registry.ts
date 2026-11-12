@@ -1,3 +1,4 @@
+import type { JsonObject } from "../json.js";
 import type { LlmToolDefinition } from "../llm/types.js";
 
 /**
@@ -20,6 +21,11 @@ export interface DeepToolDefinition extends LlmToolDefinition {
 	readonly permission: ToolPermission;
 	/** 界面进度阶段文字，例如“回忆中……”。 */
 	readonly progressLabel: string;
+	/**
+	 * 插件提供的只读工具执行函数；返回 JSON 值或字符串。
+	 * 内置工具没有这个字段，按工具名走内置实现。
+	 */
+	readonly execute?: (args: JsonObject) => unknown;
 }
 
 /** 执行工具前发给界面的进度事件。 */
@@ -82,6 +88,9 @@ export function createDeepToolRegistry(
 			tool.progressLabel.trim().length === 0
 		) {
 			throw new Error(`工具 ${tool.name} 的 progressLabel 必须是非空字符串`);
+		}
+		if (tool.execute !== undefined && typeof tool.execute !== "function") {
+			throw new Error(`工具 ${tool.name} 的 execute 必须是函数`);
 		}
 		if (byName.has(tool.name)) {
 			throw new Error(`重复的工具名：${tool.name}`);

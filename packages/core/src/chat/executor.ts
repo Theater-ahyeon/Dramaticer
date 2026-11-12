@@ -694,6 +694,10 @@ async function runTool(
 ): Promise<{ content: string; ok: boolean; error: string | null }> {
 	switch (definition.permission) {
 		case "read": {
+			if (definition.execute !== undefined) {
+				const content = formatToolExecuteResult(await definition.execute(args));
+				return { content, ok: true, error: null };
+			}
 			if (!isReadToolName(definition.name)) {
 				throw new Error(
 					`工具 ${definition.name} 声明为只读，但没有对应的读取实现`,
@@ -754,6 +758,13 @@ async function runTool(
 			);
 		}
 	}
+}
+
+/** 插件工具的返回值统一转成文本；字符串原样返回，其余按 JSON 输出。 */
+function formatToolExecuteResult(value: unknown): string {
+	if (typeof value === "string") return value;
+	const json = JSON.stringify(value);
+	return json === undefined ? "null" : json;
 }
 
 /** 文本协议把工具说明插在开头几条 system 消息之后，正文与历史保持原顺序。 */

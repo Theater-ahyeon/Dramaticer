@@ -260,6 +260,16 @@ export function parseCodePluginPermissions(
 	return readPermissions(value, path);
 }
 
+/** 校验插件目录内的相对路径；运行时处理插件请求时复用。 */
+export function assertCodePluginRelativePath(
+	value: unknown,
+	path = "path",
+): string {
+	const relative = readText(value, path);
+	assertRelativePath(relative, path);
+	return relative;
+}
+
 function describePermission(permission: CodePluginPermission): string {
 	switch (permission.kind) {
 		case "network":
