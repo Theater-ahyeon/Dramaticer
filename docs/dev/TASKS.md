@@ -1143,7 +1143,8 @@
   - 缺少必需依赖时不静默降级，导入报告中逐条说明。
   验收：缺失必需与推荐依赖的提示各有测试；全部满足时不提示；`pnpm check` 通过。
 
-- [ ] **P3.e 示例声明式插件与格式文档** | 依赖：P3.a
+- [x] **P3.e 示例声明式插件与格式文档** | 依赖：P3.a
+  完成：2026-11-12 `docs/plugins/examples/` 新增台账 schema（`example.cultivation-ledger`）、块渲染器（`example.status-bar`）与技能（`example.dialogue-craft`）三个示例；`docs/plugins/declarative-plugins.md` 记录外壳字段、七种负载、条件表达式、卡片打包、版本规则与玩法包叠加；新增 `declarative-plugin-examples.test.ts` 读取三个示例走 `parseDeclarativePlugins`，并核对文档包含解析器的类型、命名空间、槽位、导演键与格式常量；门禁通过（187 个测试文件、1650 个测试、5 个跳过）
   做什么：
   - 提供台账 schema、块渲染器与技能三个示例声明式插件，放进 `docs/plugins/examples/` 并由测试读取校验。
   - 写格式文档：外壳字段、七种负载、卡片打包与版本规则。

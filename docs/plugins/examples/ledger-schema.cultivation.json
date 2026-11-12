@@ -1,0 +1,38 @@
+{
+	"format": "dramaticer.plugin",
+	"formatVersion": 1,
+	"name": "example.cultivation-ledger",
+	"version": "1.0.0",
+	"title": "修仙台账字段",
+	"description": "给人物台账补充境界、修为与法器字段。",
+	"kind": "ledger-schema",
+	"payload": {
+		"namespace": "character",
+		"fields": [
+			{
+				"path": ["境界"],
+				"type": "enum",
+				"values": ["炼气", "筑基", "金丹"]
+			},
+			{
+				"path": ["修为"],
+				"type": "integer",
+				"min": 0,
+				"max": 100
+			},
+			{
+				"path": ["称号"],
+				"type": "string",
+				"maxLength": 20
+			},
+			{
+				"path": ["法器"],
+				"type": "string-array"
+			},
+			{
+				"path": ["已故"],
+				"type": "boolean"
+			}
+		]
+	}
+}

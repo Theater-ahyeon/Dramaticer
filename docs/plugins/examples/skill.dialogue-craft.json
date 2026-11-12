@@ -1,0 +1,14 @@
+{
+	"format": "dramaticer.plugin",
+	"formatVersion": 1,
+	"name": "example.dialogue-craft",
+	"version": "1.0.0",
+	"title": "对白分寸",
+	"description": "写对白时保持人物语气与信息差。",
+	"kind": "skill",
+	"payload": {
+		"name": "对白分寸",
+		"description": "判断一句对白是否符合人物当下的处境。",
+		"content": "# 对白分寸\n\n- 人物只说他知道的事，不替作者交代设定。\n- 同一句话里不要同时完成表态、解释与反转。\n- 沉默、回避与答非所问也是对白。\n"
+	}
+}

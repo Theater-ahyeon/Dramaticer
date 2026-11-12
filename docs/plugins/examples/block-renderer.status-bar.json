@@ -1,0 +1,20 @@
+{
+	"format": "dramaticer.plugin",
+	"formatVersion": 1,
+	"name": "example.status-bar",
+	"version": "1.0.0",
+	"title": "状态栏渲染",
+	"description": "在沙箱里把状态栏块渲染成定义列表。",
+	"kind": "block-renderer",
+	"payload": {
+		"block": "状态栏",
+		"display": {
+			"kind": "html",
+			"template": "<dl class=\"status-bar\">{{content}}</dl>"
+		},
+		"context": {
+			"kind": "keep-depth",
+			"depth": 2
+		}
+	}
+}
