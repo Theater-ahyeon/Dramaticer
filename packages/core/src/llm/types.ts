@@ -6,11 +6,20 @@ export type LlmRole = "system" | "user" | "assistant";
  * 一条发给模型的消息。工具往返需要三种额外信息：助手消息里的工具调用、
  * 工具结果对应的调用 id，以及工具名（部分渠道要求结果带上它）。
  */
+/**
+ * 渠道返回的完整内容片段，包含文本签名、思考签名与工具调用签名。
+ * 多轮工具调用必须原样回放，否则 Gemini 一类渠道会拒绝请求。
+ */
+export interface LlmAssistantNative {
+	readonly content: readonly JsonObject[];
+}
+
 export type LlmMessage =
 	| {
 			readonly role: LlmRole;
 			readonly content: string;
 			readonly toolCalls?: readonly LlmToolCall[];
+			readonly native?: LlmAssistantNative;
 	  }
 	| {
 			readonly role: "tool";
@@ -61,6 +70,8 @@ export interface LlmToolCall {
 	readonly id: string;
 	readonly name: string;
 	readonly arguments: JsonObject;
+	/** 渠道原生字段（thoughtSignature、namespace、argumentsError 等）；没有时省略。 */
+	readonly native?: JsonObject;
 }
 
 export interface LlmRequest {
@@ -97,6 +108,8 @@ export interface LlmResult {
 	readonly channel: string | null;
 	readonly usage: LlmUsage;
 	readonly raw: unknown;
+	/** 渠道返回的完整内容片段；没有签名类字段时省略。 */
+	readonly native?: LlmAssistantNative;
 	/** 命中本地缓存时为 true，此时没有发出网络请求。 */
 	readonly cached: boolean;
 	/** 实际发出的请求次数，包含重试与续写；缓存命中为 0。 */
@@ -184,6 +197,8 @@ export interface LlmProviderResult {
 	readonly model: string;
 	readonly usage: LlmUsage;
 	readonly raw: unknown;
+	/** 渠道返回的完整内容片段；没有签名类字段时省略。 */
+	readonly native?: LlmAssistantNative;
 	readonly retryable: boolean;
 	readonly status: number | null;
 	readonly errorMessage: string | null;

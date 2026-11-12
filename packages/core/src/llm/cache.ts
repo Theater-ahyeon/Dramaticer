@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { isJsonObject } from "../json.js";
+import { type JsonObject, isJsonObject } from "../json.js";
 import type { LlmRequest, LlmResult, LlmToolCall, LlmUsage } from "./types.js";
 
 const CACHE_VERSION = 1;
@@ -46,8 +46,14 @@ export function requestCacheKey(
 										id: call.id,
 										name: call.name,
 										arguments: call.arguments,
+										...(call.native === undefined
+											? {}
+											: { native: call.native }),
 									})),
 								}),
+						...(message.role === "assistant" && message.native !== undefined
+							? { native: message.native }
+							: {}),
 					},
 		),
 		stream: false,
@@ -130,6 +136,7 @@ function parseCachedResult(value: unknown): LlmResult | null {
 		reasoningTokens: readNumber(value.usage.reasoningTokens),
 		cachedTokens: readNumber(value.usage.cachedTokens),
 	};
+	const native = readAssistantNative(value.native);
 	return {
 		text: value.text,
 		reasoning: value.reasoning,
@@ -141,6 +148,7 @@ function parseCachedResult(value: unknown): LlmResult | null {
 		channel: typeof value.channel === "string" ? value.channel : null,
 		usage,
 		raw: value.raw,
+		...(native === undefined ? {} : { native }),
 		cached: false,
 		attempts: 0,
 		rounds:
@@ -226,7 +234,18 @@ function readToolCalls(value: unknown): LlmToolCall[] {
 			id: item.id,
 			name: item.name,
 			arguments: item.arguments,
+			...(isJsonObject(item.native) ? { native: item.native } : {}),
 		});
 	}
 	return calls;
+}
+
+function readAssistantNative(value: unknown): LlmResult["native"] | undefined {
+	if (!isJsonObject(value) || !Array.isArray(value.content)) return undefined;
+	const content: JsonObject[] = [];
+	for (const part of value.content) {
+		if (!isJsonObject(part)) return undefined;
+		content.push(part);
+	}
+	return content.length > 0 ? { content } : undefined;
 }

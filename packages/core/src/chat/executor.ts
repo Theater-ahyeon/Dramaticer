@@ -353,6 +353,7 @@ export async function runModelTurns(
 							id: call.id,
 							name: call.name,
 							arguments: call.arguments,
+							native: call.native,
 							error: null,
 						}))
 					: extraction.calls.map((call, index) => ({
@@ -387,6 +388,7 @@ export async function runModelTurns(
 						id: call.id,
 						name: call.name,
 						arguments: call.arguments,
+						...(call.native === undefined ? {} : { native: call.native }),
 					});
 				}
 			}
@@ -443,7 +445,9 @@ export async function runModelTurns(
 							id: call.id,
 							name: call.name,
 							arguments: call.arguments as JsonObject,
+							...(call.native === undefined ? {} : { native: call.native }),
 						})),
+						...(result.native === undefined ? {} : { native: result.native }),
 					});
 				} else {
 					messages.push({ role: "assistant", content: result.text });
@@ -660,6 +664,8 @@ interface RoundToolCall {
 	readonly id: string;
 	readonly name: string;
 	readonly arguments: JsonObject | null;
+	/** 原生工具调用里随响应返回的渠道字段。 */
+	readonly native?: JsonObject;
 	/** 文本协议里参数无法解析时的原因。 */
 	readonly error: string | null;
 }

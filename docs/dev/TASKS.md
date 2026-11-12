@@ -982,7 +982,8 @@
   - 模板保存、导入与 `assertContextTemplate` 走同一校验；上下文包指纹包含模板内容，改动模板后旧包失效。
   验收：深回合只暴露白名单工具；白名单外调用被拒绝并记录；上限覆盖顺序正确；无配置的模板行为与改动前一致；非法配置在保存时被拒绝并指出字段；模板变化后上下文包重新组装；`pnpm check` 通过。
 
-- [ ] **R3b-T08 原生元数据保真** | 依赖：R3b-T01、R3b-T02 | DESIGN §10.1、§10.2
+- [x] **R3b-T08 原生元数据保真** | 依赖：R3b-T01、R3b-T02 | DESIGN §10.1、§10.2
+  完成：2026-11-12 助手消息新增可选 `native`（完整内容片段），`LlmToolCall.native` 保存 `thoughtSignature`、`namespace`、`argumentsError`，`LlmResult` 与 `LlmProviderResult` 带可选 `native`；pi 通道从 `AssistantMessage.content` 提取签名，只有存在签名类字段时才写 `native`，`buildPiContext` 在 `native.content` 存在时逐块回放并按当前 `toolCalls` 的 id 过滤、补齐缺失调用；执行器的 `RoundToolCall` 保留 `native`，原生传输下写入下一条助手消息与 `ModelTurnResult.toolCalls`，文本协议不受影响；缓存键与缓存结果都保留 `native`；新增 Gemini 两轮工具调用 fixture 测试（`thoughtSignature` 逐字节一致）、无签名渠道测试、深回合循环保留测试、缓存回写测试与 `native-metadata.live.test.ts`（`DRAMATICER_DEEP_LIVE=1` 时用 `main-fallback` 跑两轮工具调用）；门禁通过（171 个测试文件、1544 个测试、5 个 live 跳过）
   做什么：
   - `LlmToolCall` 增加可选的 `native`（不透明 JSON 对象）保存渠道原生字段，至少 `thoughtSignature`、`namespace`、`argumentsError`；助手消息增加可选的 `native`，保存渠道返回的完整内容片段（文本签名、思考签名与工具调用签名）。
   - pi 通道：请求组装时，助手消息若有 `native.content` 就原样回放，否则按现有文本与工具调用拼装；工具调用有 `native` 时把这些字段原样带回。响应时从 `AssistantMessage.content` 提取签名写入 `LlmResult.native` 与各 `LlmToolCall.native`。

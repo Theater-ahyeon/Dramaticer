@@ -5,15 +5,19 @@ import {
 	type Message as PiMessage,
 	type Usage as PiUsage,
 	type SimpleStreamOptions,
+	type TextContent,
+	type ThinkingContent,
+	type ToolCall,
 	normalizeContext,
 } from "@earendil-works/pi-ai";
 import { streamSimple as googleStreamSimple } from "@earendil-works/pi-ai/api/google-generative-ai";
 import { streamSimple as googleVertexStreamSimple } from "@earendil-works/pi-ai/api/google-vertex";
 import { streamSimple as openAiStreamSimple } from "@earendil-works/pi-ai/api/openai-completions";
-import type { JsonObject } from "../json.js";
+import { type JsonObject, isJsonObject } from "../json.js";
 import type { LlmChannelApi } from "./channels.js";
 import { createEventStream } from "./event-stream.js";
 import {
+	type LlmAssistantNative,
 	type LlmChannel,
 	type LlmChannelLimits,
 	type LlmContinuation,
@@ -91,7 +95,7 @@ export class PiLlmChannel implements LlmChannel {
 			throw toProviderError(error, status, request.signal);
 		}
 		const context = normalizeContext(
-			this.buildContext(
+			buildPiContext(
 				request.messages,
 				request.continuation,
 				piModel,
@@ -140,7 +144,7 @@ export class PiLlmChannel implements LlmChannel {
 				}
 			}
 			const message = await stream.result();
-			return toProviderResult(message, status, request.signal);
+			return providerResultFromMessage(message, status, request.signal);
 		} catch (error) {
 			throw toProviderError(error, status, request.signal);
 		}
@@ -160,78 +164,215 @@ export class PiLlmChannel implements LlmChannel {
 			maxTokens: info.maxTokens,
 		};
 	}
+}
 
-	private buildContext(
-		messages: readonly LlmMessage[],
-		continuation: LlmContinuation | undefined,
-		model: Model<LlmChannelApi>,
-		tools: readonly LlmToolDefinition[] | undefined,
-	): PiContext {
-		const timestamp = Date.now();
-		const converted: PiMessage[] = messages.map((message, index) => {
-			const at = timestamp + index;
-			if (message.role === "system") {
-				return { role: "system", content: message.content, timestamp: at };
-			}
-			if (message.role === "user") {
-				return { role: "user", content: message.content, timestamp: at };
-			}
-			if (message.role === "tool") {
-				return {
-					role: "toolResult",
-					toolCallId: message.toolCallId,
-					toolName: message.toolName,
-					content: [{ type: "text", text: message.content }],
-					isError: message.isError ?? false,
-					timestamp: at,
-				};
-			}
-			const content: AssistantMessage["content"] = [];
-			if (message.content.length > 0) {
-				content.push({ type: "text", text: message.content });
-			}
-			for (const call of message.toolCalls ?? []) {
-				content.push({
-					type: "toolCall",
-					id: call.id,
-					name: call.name,
-					arguments: call.arguments,
-				});
-			}
+/**
+ * 把 core 消息转换成 pi-ai 的上下文。助手消息带 `native.content` 时原样回放，
+ * 只保留仍在当前消息里的工具调用；没有 `native` 时按正文与工具调用拼装。
+ */
+export function buildPiContext(
+	messages: readonly LlmMessage[],
+	continuation: LlmContinuation | undefined,
+	model: Model<LlmChannelApi>,
+	tools: readonly LlmToolDefinition[] | undefined,
+): PiContext {
+	const timestamp = Date.now();
+	const converted: PiMessage[] = messages.map((message, index) => {
+		const at = timestamp + index;
+		if (message.role === "system") {
+			return { role: "system", content: message.content, timestamp: at };
+		}
+		if (message.role === "user") {
+			return { role: "user", content: message.content, timestamp: at };
+		}
+		if (message.role === "tool") {
 			return {
-				role: "assistant",
-				content,
-				api: model.api,
-				provider: model.provider,
-				model: model.id,
-				usage: zeroUsage(),
-				stopReason: "stop",
+				role: "toolResult",
+				toolCallId: message.toolCallId,
+				toolName: message.toolName,
+				content: [{ type: "text", text: message.content }],
+				isError: message.isError ?? false,
 				timestamp: at,
 			};
-		});
-		if (continuation !== undefined) {
-			converted.push(
-				syntheticAssistant(
-					model,
-					continuation.text,
-					timestamp + messages.length,
-					continuation.reasoning,
-				),
-			);
-			converted.push({
-				role: "user",
-				content: CONTINUE_INSTRUCTION,
-				timestamp: timestamp + messages.length + 1,
-			});
 		}
 		return {
-			messages: converted,
-			tools: tools?.map((tool) => ({
-				name: tool.name,
-				description: tool.description,
-				parameters: tool.parameters,
-			})),
+			role: "assistant",
+			content: assistantContentFromMessage(message),
+			api: model.api,
+			provider: model.provider,
+			model: model.id,
+			usage: zeroUsage(),
+			stopReason: "stop",
+			timestamp: at,
 		};
+	});
+	if (continuation !== undefined) {
+		converted.push(
+			syntheticAssistant(
+				model,
+				continuation.text,
+				timestamp + messages.length,
+				continuation.reasoning,
+			),
+		);
+		converted.push({
+			role: "user",
+			content: CONTINUE_INSTRUCTION,
+			timestamp: timestamp + messages.length + 1,
+		});
+	}
+	return {
+		messages: converted,
+		tools: tools?.map((tool) => ({
+			name: tool.name,
+			description: tool.description,
+			parameters: tool.parameters,
+		})),
+	};
+}
+
+function assistantContentFromMessage(message: {
+	readonly content: string;
+	readonly toolCalls?: readonly LlmToolCall[];
+	readonly native?: LlmAssistantNative;
+}): AssistantMessage["content"] {
+	const toolCalls = message.toolCalls ?? [];
+	if (message.native !== undefined && message.native.content.length > 0) {
+		return replayNativeContent(message.native, toolCalls);
+	}
+	const content: AssistantMessage["content"] = [];
+	if (message.content.length > 0) {
+		content.push({ type: "text", text: message.content });
+	}
+	for (const call of toolCalls) {
+		content.push(toolCallPart(call));
+	}
+	return content;
+}
+
+function replayNativeContent(
+	native: LlmAssistantNative,
+	toolCalls: readonly LlmToolCall[],
+): AssistantMessage["content"] {
+	const byId = new Map(toolCalls.map((call) => [call.id, call] as const));
+	const content: AssistantMessage["content"] = [];
+	const replayed = new Set<string>();
+	for (const [index, part] of native.content.entries()) {
+		const path = `native.content[${index}]`;
+		if (part.type === "toolCall") {
+			if (typeof part.id !== "string" || part.id.length === 0) {
+				throw new Error(`${path}.id 必须是非空字符串`);
+			}
+			if (!byId.has(part.id)) continue;
+			if (replayed.has(part.id)) {
+				throw new Error(`${path}.id 重复：${part.id}`);
+			}
+			replayed.add(part.id);
+			content.push(nativeToolCallPart(part, path));
+			continue;
+		}
+		content.push(nativeTextPart(part, path));
+	}
+	for (const call of toolCalls) {
+		if (!replayed.has(call.id)) content.push(toolCallPart(call));
+	}
+	return content;
+}
+
+function nativeTextPart(
+	part: JsonObject,
+	path: string,
+): TextContent | ThinkingContent {
+	if (part.type === "text") {
+		if (typeof part.text !== "string") {
+			throw new Error(`${path}.text 必须是字符串`);
+		}
+		const block: TextContent = { type: "text", text: part.text };
+		if (part.textSignature !== undefined) {
+			if (typeof part.textSignature !== "string") {
+				throw new Error(`${path}.textSignature 必须是字符串`);
+			}
+			block.textSignature = part.textSignature;
+		}
+		return block;
+	}
+	if (part.type === "thinking") {
+		if (typeof part.thinking !== "string") {
+			throw new Error(`${path}.thinking 必须是字符串`);
+		}
+		const block: ThinkingContent = {
+			type: "thinking",
+			thinking: part.thinking,
+		};
+		if (part.thinkingSignature !== undefined) {
+			if (typeof part.thinkingSignature !== "string") {
+				throw new Error(`${path}.thinkingSignature 必须是字符串`);
+			}
+			block.thinkingSignature = part.thinkingSignature;
+		}
+		if (part.redacted !== undefined) {
+			if (typeof part.redacted !== "boolean") {
+				throw new Error(`${path}.redacted 必须是布尔值`);
+			}
+			block.redacted = part.redacted;
+		}
+		return block;
+	}
+	throw new Error(`${path}.type 必须是 text、thinking 或 toolCall`);
+}
+
+function nativeToolCallPart(part: JsonObject, path: string): ToolCall {
+	if (typeof part.name !== "string" || part.name.length === 0) {
+		throw new Error(`${path}.name 必须是非空字符串`);
+	}
+	if (!isJsonObject(part.arguments)) {
+		throw new Error(`${path}.arguments 必须是 JSON 对象`);
+	}
+	const block: ToolCall = {
+		type: "toolCall",
+		id: part.id as string,
+		name: part.name,
+		arguments: part.arguments,
+	};
+	applyNativeToolCallFields(block, part, path);
+	return block;
+}
+
+function toolCallPart(call: LlmToolCall): ToolCall {
+	const block: ToolCall = {
+		type: "toolCall",
+		id: call.id,
+		name: call.name,
+		arguments: call.arguments,
+	};
+	if (call.native !== undefined) {
+		applyNativeToolCallFields(block, call.native, `toolCall ${call.id}.native`);
+	}
+	return block;
+}
+
+function applyNativeToolCallFields(
+	block: ToolCall,
+	native: JsonObject,
+	path: string,
+): void {
+	if (native.thoughtSignature !== undefined) {
+		if (typeof native.thoughtSignature !== "string") {
+			throw new Error(`${path}.thoughtSignature 必须是字符串`);
+		}
+		block.thoughtSignature = native.thoughtSignature;
+	}
+	if (native.namespace !== undefined) {
+		if (typeof native.namespace !== "string") {
+			throw new Error(`${path}.namespace 必须是字符串`);
+		}
+		block.namespace = native.namespace;
+	}
+	if (native.argumentsError !== undefined) {
+		if (typeof native.argumentsError !== "string") {
+			throw new Error(`${path}.argumentsError 必须是字符串`);
+		}
+		block.argumentsError = native.argumentsError;
 	}
 }
 
@@ -288,7 +429,8 @@ function zeroUsage(): PiUsage {
 	};
 }
 
-function toProviderResult(
+/** 把 pi-ai 的回复转换成 core 结果，并保留渠道原生签名。 */
+export function providerResultFromMessage(
 	message: AssistantMessage,
 	status: number | null,
 	signal: AbortSignal | undefined,
@@ -300,13 +442,16 @@ function toProviderResult(
 		if (block.type === "text") text += block.text;
 		else if (block.type === "thinking") reasoning += block.thinking;
 		else if (block.type === "toolCall") {
+			const native = nativeToolCallFields(block);
 			toolCalls.push({
 				id: block.id,
 				name: block.name,
 				arguments: block.arguments as JsonObject,
+				...(native === undefined ? {} : { native }),
 			});
 		}
 	}
+	const native = nativeAssistantContent(message);
 	const stopReason = mapStopReason(message.stopReason);
 	const failed = stopReason === "error";
 	const usage: LlmUsage = {
@@ -325,6 +470,7 @@ function toProviderResult(
 		model: message.responseModel ?? message.model,
 		usage,
 		raw: message,
+		...(native === undefined ? {} : { native }),
 		retryable:
 			failed && !signal?.aborted && isRetryable(status, message.errorMessage),
 		status,
@@ -332,6 +478,64 @@ function toProviderResult(
 		continuation:
 			text.length > 0 || reasoning.length > 0 ? { text, reasoning } : null,
 	};
+}
+
+/**
+ * 只在存在签名类字段时保留原生内容；没有签名的渠道不产生空的 native 对象。
+ */
+function nativeAssistantContent(
+	message: AssistantMessage,
+): LlmAssistantNative | undefined {
+	let hasNative = false;
+	const content: JsonObject[] = [];
+	for (const block of message.content) {
+		if (block.type === "text") {
+			const part: JsonObject = { type: "text", text: block.text };
+			if (block.textSignature !== undefined) {
+				part.textSignature = block.textSignature;
+				hasNative = true;
+			}
+			content.push(part);
+			continue;
+		}
+		if (block.type === "thinking") {
+			const part: JsonObject = { type: "thinking", thinking: block.thinking };
+			if (block.thinkingSignature !== undefined) {
+				part.thinkingSignature = block.thinkingSignature;
+				hasNative = true;
+			}
+			if (block.redacted !== undefined) part.redacted = block.redacted;
+			content.push(part);
+			continue;
+		}
+		const part: JsonObject = {
+			type: "toolCall",
+			id: block.id,
+			name: block.name,
+			arguments: block.arguments as JsonObject,
+		};
+		const native = nativeToolCallFields(block);
+		if (native !== undefined) {
+			Object.assign(part, native);
+			hasNative = true;
+		}
+		content.push(part);
+	}
+	return hasNative ? { content } : undefined;
+}
+
+function nativeToolCallFields(
+	block: Pick<ToolCall, "thoughtSignature" | "namespace" | "argumentsError">,
+): JsonObject | undefined {
+	const native: JsonObject = {};
+	if (block.thoughtSignature !== undefined) {
+		native.thoughtSignature = block.thoughtSignature;
+	}
+	if (block.namespace !== undefined) native.namespace = block.namespace;
+	if (block.argumentsError !== undefined) {
+		native.argumentsError = block.argumentsError;
+	}
+	return Object.keys(native).length > 0 ? native : undefined;
 }
 
 function mapStopReason(reason: AssistantMessage["stopReason"]): LlmStopReason {

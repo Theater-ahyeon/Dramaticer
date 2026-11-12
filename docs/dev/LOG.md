@@ -335,3 +335,5 @@
 - 2026-11-12 | S288 | R3b-T06 | DONE | 新增 `chat/context-window.ts`：工具步按“助手工具调用 + 紧随其后的工具结果”识别，累计估算 token 超过 `deepContextTokenLimit` 时从最早一步整步省略，保留最近 `deepRecentToolSteps` 步；执行器新增 `contextWindow` 选项，每次请求前就地省略并累计 `pairs`、`messages`、`tokens`；`runDeepTurn` 新增并校验 `contextTokenLimit` 与 `recentToolSteps`，`TurnTrace.deep.contextOmitted` 只在有省略时写入；快回合不套用；新增 8 个测试；门禁通过（169 个测试文件、1528 个测试、4 个 live 跳过）
 
 - 2026-11-12 | S289 | R3b-T07 | DONE | `ContextTemplate.deepTurn`（`tools` 白名单、`maxToolCalls`、`maxDurationMs`、`notesEnabled`）与 `assertContextTemplateDeepTurn`；模板覆盖故事设置、故事设置覆盖默认值；深回合按白名单过滤注册表工具，手记关闭时排除两个手记工具，白名单外调用按未知工具拒绝并写入 `Trace.tools.rejected`；快回合忽略 `deepTurn`，模板改动使上下文包指纹失效；新增 12 个测试；门禁通过（170 个测试文件、1540 个测试、4 个 live 跳过）
+
+- 2026-11-12 | S290 | R3b-T08 | DONE | `LlmMessage` 助手分支新增 `native`（完整内容片段），`LlmToolCall.native` 保存 `thoughtSignature`、`namespace`、`argumentsError`，`LlmResult` 与 `LlmProviderResult` 带可选 `native`；pi 通道提取签名并在存在时写入，`buildPiContext` 逐块回放并按当前 `toolCalls` 的 id 过滤与补齐；执行器在原生传输下把 `native` 带进下一条助手消息与 `ModelTurnResult.toolCalls`；缓存键与缓存结果保留 `native`；Gemini fixture 断言第二轮请求的 `thoughtSignature` 逐字节一致，无签名渠道不产生 `native`，新增 live 测试；门禁通过（171 个测试文件、1544 个测试、5 个 live 跳过）

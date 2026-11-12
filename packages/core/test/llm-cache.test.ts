@@ -2,7 +2,11 @@ import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it, onTestFinished } from "vitest";
-import { readCachedResult, requestCacheKey } from "../src/llm/cache.js";
+import {
+	readCachedResult,
+	requestCacheKey,
+	writeCachedResult,
+} from "../src/llm/cache.js";
 
 const identity = {
 	baseUrl: "cache-base/",
@@ -109,6 +113,56 @@ describe("readCachedResult", () => {
 			rounds: 1,
 			truncation: null,
 			continuation: null,
+		});
+	});
+
+	it("原生签名随缓存结果写回", async () => {
+		const dir = tempCacheDir();
+		await writeCachedResult(dir, "native", {
+			text: "",
+			reasoning: "",
+			toolCalls: [
+				{
+					id: "call-1",
+					name: "ledger_read",
+					arguments: {},
+					native: { thoughtSignature: "signature-1" },
+				},
+			],
+			finishReason: "tool_calls",
+			stopReason: "toolUse",
+			model: "fixture-model",
+			channel: "fixture-channel",
+			usage: {
+				promptTokens: 1,
+				completionTokens: 2,
+				totalTokens: 3,
+				reasoningTokens: 0,
+				cachedTokens: 0,
+			},
+			raw: null,
+			native: {
+				content: [
+					{
+						type: "toolCall",
+						id: "call-1",
+						name: "ledger_read",
+						arguments: {},
+						thoughtSignature: "signature-1",
+					},
+				],
+			},
+			cached: false,
+			attempts: 1,
+			rounds: 1,
+			truncation: null,
+			continuation: null,
+		});
+
+		const result = await readCachedResult(dir, "native");
+		expect(result?.native?.content[0]?.thoughtSignature).toBe("signature-1");
+		expect(result?.toolCalls[0]?.native).toEqual({
+			thoughtSignature: "signature-1",
 		});
 	});
 

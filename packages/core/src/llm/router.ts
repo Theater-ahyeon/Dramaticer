@@ -205,6 +205,9 @@ export class LlmRouter implements LlmStreamingClient {
 			channel: last.channel.id,
 			usage,
 			raw: last.result.raw,
+			...(last.result.native === undefined
+				? {}
+				: { native: last.result.native }),
 			cached: false,
 			attempts,
 			rounds,
