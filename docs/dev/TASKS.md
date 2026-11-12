@@ -1017,9 +1017,14 @@
   - 纯逻辑（草稿快照合并、阶段文字、时间线排序）放进 `src/playtest/` 风格的可测模块，组件只做渲染。
   验收：草稿逐次更新且不与正式楼层混在一起；追加要求出现在运行时间线里且不影响已完成的正文；时间线顺序与 `seq` 一致；中断运行显示最后一步；`pnpm check` 通过。
 
-- [ ] **R3b-T99 R3b 验收** | 依赖：R3b 全部任务（T10.b 已完成）
+- [x] **R3b-T99.a 深回合验收评测工具** | 依赖：R3b-T10.b
+  完成：2026-11-12 新增 `packages/st-compat/src/evalset/deep-eval.ts` 与 `deep-eval-cli.ts`（`pnpm --filter @dramaticer/st-compat deep-eval`）：在公开合成基准故事上按模拟用户连续跑深回合，逐轮记录失败、漂移、收束原因、提交方式、首字与耗时、工具调用、token、截断与上下文省略；在同一批用户楼层上再生成一次快回合回复，用 `roles.judge` 按两种顺序盲评，统计深胜、快胜、平局与不一致；JSONL 断点续跑，统计只含数字；`PLAYTEST_USER_HINTS` 与 `generateUserMessage` 从试玩模块导出复用；新增 4 个假客户端测试并通过
+  做什么：在固定合成卡上连续跑 30 轮深回合，并在同一批分支点上比较快回合与深回合；记录失败、漂移、时长、工具调用与 token；用 `roles.judge` 盲评；支持断点续跑。
+  验收：假客户端下深回合、失败、续跑、盲评与统计都有测试；单位测试零网络；`pnpm check` 通过。
+
+- [~] **R3b-T99.b R3b 验收（真实渠道批量与报告）** | 依赖：R3b-T99.a
   做什么：逐条核对深回合循环、草稿与提交、手记、运行日志、原生元数据、追加要求与防失控上限；复核 I6（程序不自动切换）、I13（不强制工具与固定结构）、I12（所有写入经过校验）；用真实渠道在一张固定合成卡上跑至少 30 次深回合，记录运行失败率（目标 ≤10%，明显低于 23% 的基线）、漂移率、首字与总时长分布（对照 TauriTavern P50 66 秒、P90 147 秒）、每轮工具调用数与 token；在同一个分支点上快回合与深回合各生成一次，至少 10 个分支点，用 `roles.judge` 盲评两两对比给出深回合增益；统计版写 `docs/dev/reports/R3b.md`（只含数字与模型别名），私有明细留在 `eval-private/reports/`；确认 P1 与 H 任务。
-  结果写 `MILESTONE_DONE`。
+  等待：长任务 `.devloop/jobs/R3b-T99.b-01.json`（30 轮深回合 + 10 个分支点，`pnpm --filter @dramaticer/st-compat deep-eval`）；跑完先读 `.devloop/jobs/R3b-T99.b-01.status.json` 与 `.log`，统计在 `eval-private/reports/R3b-deep.json`，逐条明细在 `eval-private/reports/R3b-deep.jsonl`；失败就从记录续跑，不要重新生成已完成的轮次。
 
 ## P：插件内核（DESIGN §19；ADR-0045）
 

@@ -29,6 +29,7 @@
 		"gap-pass-compare": "tsc -b && node dist/evalset/gap-pass-compare-cli.js",
 		"memory-eval": "tsc -b && node dist/evalset/memory-cli.js",
 		"playtest": "tsc -b && node dist/evalset/playtest-cli.js",
+		"deep-eval": "tsc -b && node dist/evalset/deep-eval-cli.js",
 		"pairwise": "tsc -b && node dist/evalset/pairwise-cli.js",
 		"replay-eval": "tsc -b && node dist/evalset/historical-replay-cli.js",
 		"scoreboard": "tsc -b && node dist/evalset/scoreboard-cli.js",

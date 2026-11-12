@@ -3,16 +3,27 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-12 会话 293：R3b-T10.b（界面：草稿、追加要求与运行时间线）。深回合草稿面板按 `draft.replace` 的版本号向前合并，与流式正文分开展示；`turn.committed` 到达后用提交块渲染正文并收起草稿。失败与中止时保留最后一份草稿快照与原因，失败条提供“重试这一轮”。新增 `POST /api/nodes/:id/retry`：只接受用户楼层，以该楼层为父节点重新生成回复（不追加新的用户楼层），可带 `{ mode }`；`protocol` 新增 `NodeRetryRequest` 与 `TurnSteeringRequest`。深回合运行中 `Composer` 切换为“追加要求”，调用 `POST /api/stories/:id/turns/:runId/steering` 并把 `turn.steering` 回显成列表。助手楼层新增“运行时间线”折叠区，展开时读 `GET /api/nodes/:id/run`，按 `seq` 展示模型请求与响应、工具、草稿版本、提交、追加要求、上限与错误；中断、失败与中止时显示最后一步。纯逻辑在 `packages/web/src/chat/stream-state.ts`（草稿版本合并、阶段文字、追加要求回显、重试判定）与 `packages/web/src/chat/run-timeline.ts`（事件排序与载荷描述）。e2e 新增深回合草稿、追加要求与时间线用例，假渠道按“深回合草稿”关键字输出 `draft_write` 与 `commit_draft` 并延迟 1.2 秒。门禁通过（174 个测试文件、1561 个测试、5 个 live 跳过）。
+- 2026-11-12 会话 294：R3b-T99.a（深回合验收评测工具）。新增 `packages/st-compat/src/evalset/deep-eval.ts` 与 `deep-eval-cli.ts`，命令为 `pnpm --filter @dramaticer/st-compat deep-eval`：在仓库里的公开合成基准故事上导入一张固定卡，用模拟用户连续跑深回合；逐轮记录失败原因、`Trace.deep` 的收束原因与漂移、提交方式、首字与总耗时、工具调用、token、截断与上下文省略；在同一批用户楼层上再生成一次快回合回复，用 `roles.judge` 按“深在前 / 快在前”两种顺序盲评，统计深胜、快胜、平局与不一致。JSONL 断点续跑，统计按轮次取最后一条记录，输出只含数字。`PLAYTEST_USER_HINTS` 与 `generateUserMessage` 从试玩模块导出复用。相对路径统一按仓库根目录解析。真实渠道冒烟：1 轮深回合成功、漂移 1 次（`missing_commit`）、4.3 秒；1 个分支点深 143 字对快 82 字，裁判判深胜。门禁通过（175 个测试文件通过、5 个跳过；1565 个测试通过、5 个跳过）。
 
-## 下一步（会话 294 先做）
-1. 做 R3b-T99（R3b 验收）：逐条核对深回合循环、草稿与提交、手记、运行日志、原生元数据、追加要求与上限；复核 I6、I12、I13；真实渠道 30 次深回合与 10 个分支点的快/深盲评。真实渠道批量运行预计超过 10 分钟时，按“长任务”写 `.devloop/jobs/R3b-T99-1.json`，结果写 `WAITING`，不要自己在后台启动进程。
-2. M6-T99 仍等待 HUMAN-15（ComfyUI 与 API workflow JSON），不要开始。
-3. R3b 完成后按顺序做 P1/P2 → C 兼容插件 → H → X → R6 → M6b → P3/P4 → M5 → P5 → M7。
+## 下一步（会话 295 先做）
+1. 先读 `.devloop/jobs/R3b-T99.b-01.status.json` 与 `.devloop/jobs/R3b-T99.b-01.log`。这是会话 294 申请的长任务：30 轮深回合 + 10 个分支点，命令里的数据库是 `.devloop/scratch/R3b-T99/deep.db`，逐条记录写到 `eval-private/reports/R3b-deep.jsonl`，统计写到 `eval-private/reports/R3b-deep.json`。
+2. 成功：用统计 JSON 与 JSONL 写 `docs/dev/reports/R3b.md`（只含数字与模型别名），逐条核对 R3b-T99.b 的验收标准，复核 I6、I12、I13，把 T99.b 标 `[x]`，结果写 `MILESTONE_DONE`。
+3. 失败：读日志修问题；需要重跑时**必须**带 `--resume`，不要删除数据库或 JSONL，也不要重新生成已完成的轮次。重新申请 `.devloop/jobs/R3b-T99.b-02.json`，结果写 `WAITING`。
+4. 报告至少包含：完成/失败轮次与失败率（目标 ≤10%，对照 23% 基线）、漂移率、首字与总时长 P50/P90/最大（对照 TauriTavern P50 66 秒、P90 147 秒）、每轮工具调用数与 token、盲评深胜/快胜/平局/不一致。私有明细留在 `eval-private/reports/`，公开报告不写原文与私有路径。
+5. M6-T99 仍等待 HUMAN-15（ComfyUI 与 API workflow JSON），不要开始。
+6. R3b 完成后按顺序做 P1/P2 → C 兼容插件 → H → X → R6 → M6b → P3/P4 → M5 → P5 → M7。
+
+## 评测命令与产物
+- 完整批量：
+  `pnpm --filter @dramaticer/st-compat deep-eval --db .devloop/scratch/R3b-T99/deep.db --story benchmark-mist-harbor --turns 30 --branches 10 --out eval-private/reports/R3b-deep.jsonl --summary eval-private/reports/R3b-deep.json --resume`
+- 只重算统计（零模型调用）：
+  `pnpm --filter @dramaticer/st-compat deep-eval --db .devloop/scratch/R3b-T99/deep.db --out eval-private/reports/R3b-deep.jsonl --summary eval-private/reports/R3b-deep.json --summary-only`
+- 相对路径都按仓库根目录解析。默认模型 `main-fallback`、模拟用户 `background`、裁判按 `roles.judge`。
+- 冒烟只用了 1 轮并写进 `.devloop/scratch/`，不能当作验收数字。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- 数据库 schema 版本 41。R3b-T10.b 没有迁移。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 数据库 schema 版本 41。R3b-T99.a 没有迁移。
 - `eval-private/memory-cache/r1-retrieval.db` 有三个故事：`仙侠雌竞：什么叫我是炉鼎体质？` 290 个助手楼层已抽取 282 个、414 条事件；`欲望世界-1600` 180 个助手楼层已抽取 174 个、292 条事件；`银麒赎世` 114 个助手楼层已抽取 112 个、248 条事件。评测自己的临时数据库重新抽取后事件覆盖为 282/290、172/180、112/114，事件数 371/247/248。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045、ADR-0078、ADR-0079、ADR-0080、ADR-0082、ADR-0083、ADR-0084、ADR-0085、ADR-0086。
 - HUMAN-03 待处理（不阻塞）：抽查 `eval-private/evalset/spotcheck.md` 里的事件题。
@@ -23,26 +34,23 @@
 - T01–T09 已完成：深回合循环与上限、工具集与权限、运行日志、草稿与提交、导演手记、上下文卫生、模板配置、原生元数据、运行中追加要求。
 - T10.a 已完成：模式开关、阶段文字、故事设置深回合区段与模板深回合配置。
 - T10.b 已完成：草稿面板、失败草稿与“重试这一轮”、运行中追加要求、楼层运行时间线。
-- T99 待做：验收数字写 `docs/dev/reports/R3b.md`（只含数字与模型别名），私有明细留在 `eval-private/reports/`。
+- T99.a 已完成：深回合验收评测工具与冒烟。
+- T99.b 进行中：等待长任务 `R3b-T99.b-01`；验收数字写 `docs/dev/reports/R3b.md`（只含数字与模型别名），私有明细留在 `eval-private/reports/`。
 
 ## 深回合实现位置（代码事实）
 - 回合入口 `packages/core/src/chat/turn.ts`：`runChatTurn` 先 `resolveTurnMode`，再追加用户楼层、组装上下文、按模式调用 `runDeepTurn` 或 `runModelTurns`。`generateAssistantTurn` 用 `applyTemplateDeepTurn` 覆盖模板里的 `deepTurn`；`selectDeepTurnTools` 按白名单过滤注册表工具并排除关闭的手记工具。深回合新建 `TurnDraftController`、`TurnNoteController` 与 `TurnGuidanceController`；`withDirectorNotes` 在组装后的消息之后追加一条系统消息（没有手记时不加）。正文解析在 `resolveTurnBody`：显式提交用草稿；正常结束但没有提交时把最后一次输出整份替换为草稿并自动提交，记 `drift: "missing_commit"`；中止、超时、工具次数上限或没有正文且没有提交时返回 null，运行标为 `failed` 并抛 `DeepTurnWithoutCommitError`。
-- 追加要求 `packages/core/src/chat/guidance.ts`：`MAX_TURN_GUIDANCE_ENTRIES = 5`、`MAX_TURN_GUIDANCE_LENGTH = 2_000`、`TURN_GUIDANCE_PREFIX`；`TurnGuidanceController.push` 同步校验并回调 `onAccepted`，`drain` 整批取走，`close` 清空并拒绝后续追加。执行器每次请求前成对省略旧工具往返，再 `guidance.drain()` 并逐条追加为用户消息。
+- 追加要求 `packages/core/src/chat/guidance.ts`：`MAX_TURN_GUIDANCE_ENTRIES = 5`、`MAX_TURN_GUIDANCE_LENGTH = 2_000`、`TURN_GUIDANCE_PREFIX`；执行器每次请求前成对省略旧工具往返，再 `guidance.drain()` 并逐条追加为用户消息。
 - 草稿 `packages/core/src/chat/draft.ts`：`TurnDraftSnapshot { text, version }`；替换时版本加一；`commit(method)` 只允许一次。运行日志的 `draft.replace` 只记版本号与正文长度，`draft.commit` 记版本号、长度与方式。
 - 运行日志 `packages/core/src/run-log.ts`：状态 `running`、`completed`、`interrupted`、`failed`、`aborted`；事件 `model.request`、`model.response`、`tool.call`、`tool.result`、`draft.replace`、`draft.commit`、`steering`、`limit`、`error`。事件表只追加，序号按运行内最大值加一；`TurnTrace.run` 记录 `runId`、状态与事件条数，快回合为 null。
 - 上下文卫生 `packages/core/src/chat/context-window.ts`：把助手工具调用加紧随其后的工具结果识别为一个工具步，按累计估算 token 从最早一步整步省略，保留最近 `deepRecentToolSteps` 步；省略量写 `TurnTrace.deep.contextOmitted`。
 - 手记 `packages/core/src/director/notes.ts`：`set`/`delete` diff 沿当前路径累加；`note_read`/`note_write`；手记不进台账，不参与结算。
-- server SSE `packages/server/src/turns.ts`：`turn.started`（带 `runId`，快回合 null）、`text.delta`、`blocks.replace`（100 毫秒节流）、`thinking.delta`、`tool.call`、`turn.progress`、`draft.replace`（100 毫秒节流）、`turn.steering`、`turn.committed`、`turn.error`、`turn.completed`。`TurnRunRegistry` 在 `onTurnStarted` 注册、流 `finally` 注销；`handleTurnStream` 在 `turn.completed` 后触发后台调度。
-- server 接口 `packages/server/src/routes.ts`：`GET /api/nodes/:id/run` 返回 `NodeRunView`（`nodeId`、`run`、按 `seq` 升序的 `events`），没有运行 404；`POST /api/nodes/:id/retry` 只接受用户楼层，请求体 `{ mode? }`，以该用户楼层为父节点生成新的助手楼层，不追加用户楼层；`POST /api/stories/:id/turns/:runId/steering` 返回 202 `{ runId }`，未知或跨故事 404、已结束 409、文本非法 400、队列满 409。
+- 验收评测 `packages/st-compat/src/evalset/deep-eval.ts`：`runDeepEval`、`summarizeDeepEval`、`parseDeepEvalJsonl`、`serializeDeepEvalRecord`、`selectBranchRounds`；CLI 在 `deep-eval-cli.ts`。失败轮次把 head 恢复到生成前；分支盲评用 `judgePairwise({ task: "historical" })` 两次，两次结论不同记 `inconsistent`；统计按轮次去重，重试后的成功覆盖同一轮。
 
-## web 端（R3b-T10）
-- `packages/web/src/chat/stream-state.ts`：`TurnDraft` 含 `runId`、`progress`、`liveDraft`、`guidance`、`committed`。`applyDraftSnapshot` 忽略不高于当前版本的快照；`describeProgress` 输出阶段文字；`turn.steering` 追加回显；`turn.committed` 用提交块替换 `blocks` 并清空阶段文字。`resolveRetryAction` 依次给出 `regenerate`（有助手楼层）、`retry`（只有用户楼层）、`resend`（还没写用户楼层）或 `blocked`。
-- `packages/web/src/chat/run-timeline.ts`：`sortRunEvents` 按 `seq` 升序；`buildRunTimeline` 生成 `rows`（标签与细节）、`statusLabel`、`eventCount` 与 `stoppedAt`；中断、失败与中止时 `stoppedAt` 指向最后一条事件。
-- `packages/web/src/components/chat/StreamingBubble.tsx`：草稿面板显示版本号；提交前显示草稿正文，提交后显示“已提交为正式楼层”并渲染正式块。
-- `packages/web/src/components/chat/Composer.tsx`：`steering` 为 true 时整块换成“追加要求”，保留“停止”；运行结束后恢复“玩家行动”输入与发送。
-- `packages/web/src/components/chat/FloorRunTimeline.tsx`：助手楼层的“运行时间线”按钮，首次展开读 `GET /api/nodes/:id/run`；404 显示“这一楼没有运行记录”；`run-timeline.ts` 的 `stoppedAt` 单独高亮。
-- `packages/web/src/pages/story/ChatPage.tsx`：失败时保留 `failed.draftText` 与原因，并渲染“重试这一轮”；追加要求列表来自 `draft.guidance`。
-- e2e 假渠道 `packages/web/e2e/fake-channel.mjs`：消息里含“深回合草稿”时，第一次请求返回 `draft_write`，有工具结果后返回 `commit_draft`，每次响应延迟 1.2 秒，供运行中追加要求与草稿面板观察。跑单个用例用 `cd packages/web && pnpm exec playwright test --project=desktop --grep "深回合"`；不要用 `pnpm e2e -- --grep ...`。
+## server 与 web（R3b-T10）
+- server SSE `packages/server/src/turns.ts`：`turn.started`（带 `runId`，快回合 null）、`text.delta`、`blocks.replace`（100 毫秒节流）、`thinking.delta`、`tool.call`、`turn.progress`、`draft.replace`（100 毫秒节流）、`turn.steering`、`turn.committed`、`turn.error`、`turn.completed`。`TurnRunRegistry` 在 `onTurnStarted` 注册、流 `finally` 注销。
+- server 接口 `packages/server/src/routes.ts`：`GET /api/nodes/:id/run` 返回 `NodeRunView`（`nodeId`、`run`、按 `seq` 升序的 `events`），没有运行 404；`POST /api/nodes/:id/retry` 只接受用户楼层，请求体 `{ mode? }`，以该用户楼层为父节点生成新的助手楼层，不追加用户楼层；`POST /api/stories/:id/turns/:runId/steering` 返回 202 `{ runId }`，未知或跨故事 404、已结束 409、文本非法 400、队列满 409。
+- `packages/web/src/chat/stream-state.ts`：`TurnDraft` 含 `runId`、`progress`、`liveDraft`、`guidance`、`committed`；`applyDraftSnapshot` 忽略不高于当前版本的快照；`describeProgress` 输出阶段文字；`turn.committed` 用提交块替换 `blocks` 并清空阶段文字。`resolveRetryAction` 依次给出 `regenerate`、`retry`、`resend`、`blocked`。
+- `packages/web/src/chat/run-timeline.ts` 按 `seq` 排序事件并生成标签；`StreamingBubble`、`Composer`、`FloorRunTimeline` 只做渲染。e2e 假渠道消息里含“深回合草稿”时返回 `draft_write` 与 `commit_draft`，每次响应延迟 1.2 秒。
 
 ## 记忆与检索（R1 续）
 - 父子分块：父段上限 1200 码点；小块 400 字符窗口、80 字符重叠。`StoryStore.open(path, { chunkStrategy })` 取 `parent-child`（默认）或 `fixed`。
@@ -58,7 +66,7 @@
 - `drainBackgroundJobs` 按 `created_at ASC, id ASC` 取 pending，先丢弃不在当前 head 路径上的楼层任务。
 
 ## 导演与界面
-- 导演实时选择是纯程序，零模型调用（I9）；计划、拍状态、候选行动与开局候选的既有语义见 TASKS 与本文件历史。
+- 导演实时选择是纯程序，零模型调用（I9）。
 - 聊天页虚拟窗口 `PAGE_SIZE` 60、分页阈值 240px、自动贴底 96px、overscan 600px；候选行动、开场候选与楼层图片轮询 2 秒、上限 15 次。
 - 生图：`data/images.yaml`、`image_workflows`、`character_visual_profiles`、`node_images`；`server --images` 与 `--media-dir`；图片只读 `done` 行；`illustrate` 是权限 `side_effect` 的深回合工具。
 - 已注册槽位：lore、character、persona、summary、state、memory、history、scene、director、user_will、protocol；默认顺序 character、lore、state、summary、memory、scene、director、user_will、history、（可选 `block_format`）、protocol，`protocol` 必须最后。

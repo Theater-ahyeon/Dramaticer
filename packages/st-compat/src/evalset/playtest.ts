@@ -252,7 +252,8 @@ export class PlaytestUserOutputError extends Error {
 	}
 }
 
-const USER_HINTS = [
+/** 模拟用户的写作提示；深回合评测复用同一组。 */
+export const PLAYTEST_USER_HINTS = [
 	"推进当前场景，让事情往前走一步。",
 	"对在场的角色提出一个具体的问题。",
 	"表达怀疑或不安，试探对方的反应。",
@@ -305,7 +306,8 @@ export async function runPlaytest(
 		const startedAt = new Date(now()).toISOString();
 		const gapWork = readGapWork(options);
 		const userHint =
-			USER_HINTS[Math.floor(random() * USER_HINTS.length)] ?? USER_HINTS[0];
+			PLAYTEST_USER_HINTS[Math.floor(random() * PLAYTEST_USER_HINTS.length)] ??
+			PLAYTEST_USER_HINTS[0];
 		const userMessage = await generateUserMessage({
 			store: options.store,
 			storyId: options.storyId,
@@ -570,7 +572,7 @@ function readGapWork(options: PlaytestOptions): PlaytestGapRecord {
 	};
 }
 
-interface UserMessageOptions {
+export interface UserMessageOptions {
 	readonly store: StoryStore;
 	readonly storyId: string;
 	readonly client: LlmClient;
@@ -579,7 +581,8 @@ interface UserMessageOptions {
 	readonly now: () => number;
 }
 
-async function generateUserMessage(
+/** 让模拟用户输出下一句玩家发言；非法输出重试三次。 */
+export async function generateUserMessage(
 	options: UserMessageOptions,
 ): Promise<string> {
 	const base = buildUserSimulatorMessages(options);
