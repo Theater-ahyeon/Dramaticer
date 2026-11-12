@@ -175,6 +175,11 @@ export async function runChatCli(
 				cardName: imported.cardName,
 				characterPrompt: imported.characterPrompt,
 			});
+			for (const issue of imported.dependencies.issues) {
+				log(
+					`依赖提示：${issue.message}${issue.level === "required" ? "（必需依赖未满足）" : ""}`,
+				);
+			}
 		}
 		const characterPrompt =
 			imported === null ? settings.characterPrompt : imported.characterPrompt;

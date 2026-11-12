@@ -1136,7 +1136,8 @@
   - 运行时按故事解析最终启用的插件与配置。
   验收：分支切换不改变插件配置；关闭的插件不加载；覆盖值优先于包默认值；`pnpm check` 通过。
 
-- [ ] **P3.d 卡片导入依赖检查与提示** | 依赖：P3.a、P3.b
+- [x] **P3.d 卡片导入依赖检查与提示** | 依赖：P3.a、P3.b
+  完成：2026-11-12 `packages/core` 增加 `semver` 依赖；新增 `plugins/versions.ts`（`readVersionRange`、`assertInstalledVersion`、`versionSatisfies`）与 `plugins/card-dependencies.ts`（`checkCardDependencies`，返回 `CardDependencyReport {satisfied, issues}`，状态取 `missing`、`version-mismatch`、`unknown-version`，每条带安装建议）；`parseDeclarativeRequirements` 的版本范围改为 semver 语法校验；`importCardContent` 合并内置插件、调用方 `availableDependencies` 与卡随附插件后核对依赖，报告进入 `ImportedCardContent.dependencies`、server 的 `ImportStoryResult.imported.dependencies` 与 `dramaticer chat --card` 日志；ADR-0089；新增 core 6 条与 st-compat 4 条测试；门禁通过（186 个测试文件、1647 个测试、5 个跳过）
   做什么：
   - 导入卡片时比较 `requires` 与 `recommends` 和本机可用的插件与玩法包，列出缺失项并给出安装建议。
   - 缺少必需依赖时不静默降级，导入报告中逐条说明。

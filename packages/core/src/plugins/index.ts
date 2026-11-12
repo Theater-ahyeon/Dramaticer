@@ -40,6 +40,7 @@ export {
 	createNaiveChatSlots,
 	createStandardChatSlots,
 } from "./chat-providers.js";
+export * from "./card-dependencies.js";
 export * from "./contracts.js";
 export * from "./declarative.js";
 export { EventBus } from "./events.js";
@@ -57,6 +58,7 @@ export {
 	type PlaypackUserOverrides,
 	parsePlaypackUserOverrides,
 } from "./playpack-overrides.js";
+export * from "./versions.js";
 export {
 	type ToolPlugin,
 	COMMIT_DRAFT_TOOL_PLUGIN,

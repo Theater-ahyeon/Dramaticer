@@ -3,19 +3,27 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-12 会话 308：P3.c（按故事启用与覆盖）。迁移 v42 给 `story_settings` 增加 `plugin_overrides`（`{config, switches}`，同一故事的各分支共享）；`StorySettings.pluginOverrides` 与 `StorySettingsUpdate.pluginOverrides` 复用 `PlaypackUserOverrides`，保存与读取都走 `parseStoryPluginOverrides`；用户覆盖解析与 JSON 拷贝抽到叶子模块 `packages/core/src/plugins/playpack-overrides.ts`；新增 `resolveStoryPlugins`，在玩法包叠加之后剔除显式关闭的插件，`plugins` 与 `configs` 只含启用项，`disabledPlugins` 记录被关闭的插件名；新增 `story-plugins.test.ts` 2 条与 `playpacks.test.ts` 按故事解析 1 条。门禁通过（184 个测试文件、1637 个测试、5 个跳过）。
+- 2026-11-12 会话 309：P3.d（卡片导入依赖检查与提示）。`packages/core` 新增 `semver` 运行时依赖与 `@types/semver` 开发依赖；新增 `plugins/versions.ts`（`readVersionRange`、`assertInstalledVersion`、`versionSatisfies`）与 `plugins/card-dependencies.ts`（`checkCardDependencies`，返回 `CardDependencyReport {satisfied, issues}`）；`parseDeclarativeRequirements` 的 `versionRange` 改为 semver 语法校验；`importCardContent` 合并内置插件、调用方 `availableDependencies` 与卡随附声明式插件后核对依赖，报告进入 `ImportedCardContent.dependencies`、server 的 `ImportStoryResult.imported.dependencies` 与 `dramaticer chat --card` 的日志；ADR-0089；新增 `packages/core/test/card-dependencies.test.ts` 6 条与 `packages/st-compat/test/card-dependencies.test.ts` 4 条，server 导入断言补上 `dependencies`。门禁通过（186 个测试文件、1647 个测试、5 个跳过）。
 
-## 下一步（会话 309 先做）
-1. 做 **P3.d 卡片导入依赖检查与提示**（依赖 P3.a、P3.b，已满足）。导入卡片时把 `extensions.dramaticer` 的 `requires` 与 `recommends` 和本机可用插件与玩法包比较，导入报告逐条列出缺失项；缺少必需依赖时不静默降级。版本范围匹配目前只做了语法检查，P3.d 需要决定按什么规则判断已安装版本是否满足。
-2. P3.d 之后按 TASKS 顺序：P3.e（示例插件与格式文档）→ P3.f（P3 验收）→ P4。
-3. M6-T99 仍等待 HUMAN-15（ComfyUI 与 API workflow JSON），不要开始。
+## 下一步（会话 310 先做）
+1. 做 **P3.e 示例声明式插件与格式文档**（依赖 P3.a，已满足）。在 `docs/plugins/examples/` 放台账 schema、块渲染器与技能三个示例声明式插件，测试读取并走 `parseDeclarativePlugin` 校验；写格式文档（外壳字段、七种负载、卡片打包、semver 版本范围规则）。
+2. P3.e 之后做 **P3.f P3 验收**（依赖 P3.b、P3.c、P3.d、P3.e）：逐条核对 P3 总验收与 I4、I8、I12、I13、I15、I16，写 `docs/dev/reports/P3.md`。
+3. P3 之后按 TASKS 顺序做 P4（代码插件：权限清单、worker 隔离、安装与更新）。
+4. M6-T99 仍等待 HUMAN-15（ComfyUI 与 API workflow JSON），不要开始。
+
+## 卡片依赖检查（P3.d，代码事实）
+- `plugins/versions.ts`：`readVersionRange(value, path)` 用 semver 的 `validRange` 校验，空字符串报「不能是空字符串」，非法范围报「不是合法的版本范围」；`assertInstalledVersion` 用 `valid` 校验已安装版本；`versionSatisfies` 用 `satisfies`，预发布按 semver 默认规则排除。
+- `plugins/card-dependencies.ts`：`CardDependencyCatalog { plugins, playpacks }` 每项是 `{name, version?}`；`checkCardDependencies({requires, recommends}, catalog)` 只返回未满足的 `issues`，每条含 `kind`（`plugin`/`playpack`）、`level`（`required`/`recommended`）、`name`、`versionRange`、`installedVersion`、`status`、`message`；`status` 取 `missing`、`version-mismatch`、`unknown-version`。`satisfied` 只看必需依赖。已安装版本未知时带范围的依赖记为 `unknown-version`，不当作满足；没有范围的依赖只按名称判断。可用清单重名直接抛错。
+- `parseDeclarativeRequirements` 的版本范围现在有语法校验，P3.a 的合法样例不受影响。
+- `importCardContent`（`packages/st-compat/src/chat/session.ts`）新增 `availableDependencies?: CardDependencyCatalog`；可用清单由 `BUILTIN_PLUGINS`（只有名称）、调用方清单与 `extension.plugins`（名称与版本）合并，同名时卡随附版本优先。缺少必需依赖不中止导入，报告里逐条说明。
+- `ImportStoryCounts.dependencies` 在 `packages/protocol/src/story.ts`；server 导入接口返回它；`dramaticer chat --card` 逐条打印「依赖提示：…」，必需依赖未满足时追加「（必需依赖未满足）」。
 
 ## 玩法包与故事级插件状态（P3.b、P3.c，代码事实）
 - 模块 `packages/core/src/plugins/playpack.ts`，从 `@dramaticer/core` 根导出。
-- 外壳 `PlaypackManifest`：`format` 固定 `"dramaticer.playpack"`，`formatVersion` 固定 `1`；`name` 与 `version` 的规则和插件相同（`readPluginName`/`readPluginVersion` 从 `declarative.ts` 导入）；可选 `title`、`description`；`requirements` 复用 `parseDeclarativeRequirements`（`plugins` 与 `playpacks`，版本范围只做语法检查）；`plugins` 复用 `parseDeclarativePlugins`（包内重名整组拒绝）；`config` 是插件名到 JSON 对象的补丁表；`switches` 是插件名到布尔值的表。
+- 外壳 `PlaypackManifest`：`format` 固定 `"dramaticer.playpack"`，`formatVersion` 固定 `1`；`name` 与 `version` 的规则和插件相同（`readPluginName`/`readPluginVersion` 从 `declarative.ts` 导入）；可选 `title`、`description`；`requirements` 复用 `parseDeclarativeRequirements`（`plugins` 与 `playpacks`，版本范围有 semver 语法校验）；`plugins` 复用 `parseDeclarativePlugins`（包内重名整组拒绝）；`config` 是插件名到 JSON 对象的补丁表；`switches` 是插件名到布尔值的表。
 - 解析入口 `parsePlaypackManifest(value, path?)`、`parsePlaypacks(value, path?)`（同名玩法包整组拒绝）；`parsePlaypackUserOverrides(value, path?)` 在叶子模块 `plugins/playpack-overrides.ts`，只接受 `config` 与 `switches`，省略或 `null` 返回 `EMPTY_PLAYPACK_USER_OVERRIDES`；未知字段一律拒绝。
 - `stackPlaypacks(packs, { overrides?, knownPluginNames? })` 返回 `ResolvedPlaypack { playpacks, plugins, configs, switches }`：插件按加载顺序收集；同一插件名跨包重复直接拒绝；同一玩法包名在叠加里出现两次直接拒绝；配置按插件名做深合并（嵌套对象递归合并，数组与标量整体替换），后加载的包覆盖前面的值；开关按插件名覆盖，用户覆盖最后应用。
-- 依赖规则：`requirements.playpacks` 必须是更早加载的包；`requirements.plugins` 必须由更早的包或本包提供。版本范围不匹配（P3.d）。
+- 依赖规则：`requirements.playpacks` 必须是更早加载的包；`requirements.plugins` 必须由更早的包或本包提供。叠加阶段只判断存在性，不做版本匹配；版本匹配用于 P3.d 的卡片导入报告。
 - 配置与开关的键必须出现在玩法包插件集合或 `knownPluginNames` 里，否则抛错并指出来源（`玩法包 <name> 的配置/开关`、`用户覆盖的配置/开关`）。运行时调用方要把内置插件名传进 `knownPluginNames`。
 - `isPlaypackPluginEnabled(resolved, name)`：只有显式 `false` 才算关闭，未声明的插件按启用处理。
 - `resolveStoryPlugins(packs, { overrides?, knownPluginNames? })` 返回 `ResolvedStoryPlugins extends ResolvedPlaypack` 加 `disabledPlugins`：先叠加玩法包与故事覆盖，再把开关为 `false` 的插件从 `plugins` 与 `configs` 里剔除；`switches` 保留完整解析结果。
@@ -33,7 +41,7 @@
 - 模块 `packages/core/src/plugins/declarative.ts`，从 `@dramaticer/core` 根导出。
 - 外壳：`DeclarativePlugin`，字段 `format` 固定 `"dramaticer.plugin"`、`formatVersion` 固定 `1`（当前唯一版本）、`name`（小写字母数字与 `.`、`_`、`-`）、`version`（`1.2.3` 或 `1.2.3-beta.1`）、`kind`、可选 `title` 与 `description`、`payload`。解析入口 `parseDeclarativePlugin(value, path?)`、`parseDeclarativePlugins(value, path?)`（组内重名整组拒绝）。输入先过 `assertJsonValue`，函数与类实例无法通过。
 - 七种 `kind` 与负载：`ledger-schema`（`namespace` 取 `LEDGER_NAMESPACES`，`fields` 每项 `path`、`type` 取 `string`/`number`/`integer`/`boolean`/`enum`/`string-array`，`enum` 必须给非空 `values`，数值可给 `min`/`max`，字符串可给 `maxLength`，路径不得重复）；`plot-beat`（`id`、`title`、`text`、`preconditions`，条件允许 `switch`）；`context-template`（直接是 `ContextTemplate`，`segments` 非空，`protocol` 仍必须最后，`deepTurn` 走现有工具白名单校验）；`block-renderer`（`block`、`display`、`context`，只允许显示与上下文策略，没有语义处理器）；`skill`（`name`、`description`、`content`）；`director-config`（`config` 为 `DirectorConfig` 的覆盖项，与 `DEFAULT_DIRECTOR_CONFIG` 合并后校验）；`event-pool`（`events` 非空，复用事件定义校验）。
-- 依赖声明：`DeclarativeDependency { name, versionRange? }`、`DeclarativeRequirements { plugins, playpacks }`；`parseDeclarativeRequirements` 拒绝未知字段、重名与空版本范围。版本范围只做语法检查，匹配留给 P3.d。
+- 依赖声明：`DeclarativeDependency { name, versionRange? }`、`DeclarativeRequirements { plugins, playpacks }`；`parseDeclarativeRequirements` 拒绝未知字段、重名与非法版本范围。版本范围用 semver 语法。
 - 卡片打包：`DramaticerCardExtension` 新增 `plugins`（随卡附带的声明式插件）、`requires`、`recommends`（后两者都是 `DeclarativeRequirements`）。缺省为空数组。`parseDramaticerCardExtension` 的合法键现在是 `events`、`npcAgendas`、`arcs`、`plugins`、`requires`、`recommends`。
 - 事件定义 `DramaticerEventDefinition` 与 `parseDramaticerEventDefinitions` 移到 `packages/core/src/director/event-definition.ts`，卡扩展与 `event-pool` 共用；`director/index.ts` 转出该模块。
 - 测试：`packages/core/test/declarative-plugins.test.ts`（13 条）覆盖七种合法样例、外壳字段、函数拒绝、组内重名、各负载非法值、卡片打包与依赖声明；`card-extension.test.ts` 的空扩展断言已补三个新字段。
@@ -66,10 +74,10 @@
 - `dramaticer explain` 第 3 段标题仍是「被裁剪的段落与缺失槽位」，随后多出「回合钩子（时间预算与跳过原因）」子段；`dramaticer explain --json` 的 `hooks` 字段直接给出条目。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a 至 P2.g、P3.a、P3.b、P3.c。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- 数据库 schema 版本 42。P3.c 的迁移是 v42（`story_settings.plugin_overrides`）；P3.a 与 P3.b 没有迁移。
-- 依赖登记：`@standard-schema/spec` 已登记为 `packages/core` 依赖；当前没有第三方插件框架。
-- ADR-0088 记录故事级插件状态存进 `story_settings` 的理由与影响。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a 至 P2.g、P3.a 至 P3.d。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 数据库 schema 版本 42。P3.c 的迁移是 v42（`story_settings.plugin_overrides`）；P3.a、P3.b、P3.d 没有迁移。
+- 依赖登记：`@standard-schema/spec`、`semver` 已登记为 `packages/core` 依赖；`@types/semver` 是开发依赖；当前没有第三方插件框架。
+- ADR-0088 记录故事级插件状态存进 `story_settings` 的理由与影响；ADR-0089 记录版本范围用 semver 与导入报告的字段。
 - P2 验收数字与复现命令在 `docs/dev/reports/P2.md`：51 个内置插件；R2 记分牌、遗忘报告、B1 报告复跑一致。
 - `eval-private/memory-cache/r1-retrieval.db` 有三个故事：`仙侠雌竞：什么叫我是炉鼎体质？` 290 个助手楼层已抽取 282 个、414 条事件；`欲望世界-1600` 180 个助手楼层已抽取 174 个、292 条事件；`银麒赎世` 114 个助手楼层已抽取 112 个、248 条事件。评测自己的临时数据库重新抽取后事件覆盖为 282/290、172/180、112/114，事件数 371/247/248。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045、ADR-0078、ADR-0079、ADR-0080、ADR-0082、ADR-0083、ADR-0084、ADR-0085、ADR-0086、ADR-0087。
@@ -125,7 +133,7 @@
 
 ## 可重复命令与评测产物
 - 门禁：`pnpm check`。
-- 插件内核、槽位、扩展、任务、工具、声明式格式、玩法包与故事级插件测试：`pnpm exec vitest run packages/core/test/plugins.test.ts packages/core/test/plugin-runtime.test.ts packages/core/test/chat-slot-plugins.test.ts packages/core/test/plugin-extensions.test.ts packages/core/test/plugin-background-tools.test.ts packages/core/test/turn-hooks.test.ts packages/core/test/declarative-plugins.test.ts packages/core/test/playpacks.test.ts packages/core/test/story-plugins.test.ts packages/core/test/story-settings.test.ts packages/core/test/card-extension.test.ts`（88 个测试）。
+- 插件内核、槽位、扩展、任务、工具、声明式格式、玩法包、故事级插件与卡片依赖测试：`pnpm exec vitest run packages/core/test/plugins.test.ts packages/core/test/plugin-runtime.test.ts packages/core/test/chat-slot-plugins.test.ts packages/core/test/plugin-extensions.test.ts packages/core/test/plugin-background-tools.test.ts packages/core/test/turn-hooks.test.ts packages/core/test/declarative-plugins.test.ts packages/core/test/playpacks.test.ts packages/core/test/story-plugins.test.ts packages/core/test/story-settings.test.ts packages/core/test/card-extension.test.ts packages/core/test/card-dependencies.test.ts packages/st-compat/test/card-dependencies.test.ts`（98 个测试）。
 - 单个 e2e：`cd packages/web && pnpm exec playwright test --project=desktop --grep "深回合"`；e2e 假渠道固定端口 4517，数据库 `.devloop/scratch/e2e/work/e2e.db`。
 - 排障命令：`dramaticer explain --node <id> --db <path> [--json]`，只读、零模型调用；第 9 段显示运行状态与按 `seq` 排序的事件，第 3 段之后显示回合钩子。
 - R1 事件回填与检索评测：

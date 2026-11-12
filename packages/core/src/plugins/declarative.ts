@@ -28,6 +28,7 @@ import {
 	rejectUnknownKeys,
 } from "../json.js";
 import { type LedgerNamespace, isLedgerNamespace } from "../ledger/schema.js";
+import { readVersionRange } from "./versions.js";
 
 /** 声明式插件的格式标识；卡片打包与独立文件都使用同一个外壳。 */
 export const DECLARATIVE_PLUGIN_FORMAT = "dramaticer.plugin";
@@ -164,7 +165,7 @@ export type DeclarativePlugin =
 	| DirectorConfigPlugin
 	| EventPoolPlugin;
 
-/** 卡片声明的一条例外依赖；`versionRange` 只做语法检查，匹配留给安装流程。 */
+/** 卡片声明的一条例外依赖；`versionRange` 使用 semver 范围语法，导入时按已安装版本匹配。 */
 export interface DeclarativeDependency {
 	readonly name: string;
 	readonly versionRange?: string;
@@ -342,7 +343,7 @@ function parseDependencyList(
 		const versionRange =
 			object.versionRange === undefined
 				? undefined
-				: readNonEmptyString(object.versionRange, `${itemPath}.versionRange`);
+				: readVersionRange(object.versionRange, `${itemPath}.versionRange`);
 		if (names.has(name)) {
 			throw new Error(`${itemPath}.name 重复：${name}`);
 		}

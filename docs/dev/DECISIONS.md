@@ -1375,3 +1375,20 @@
   - 分支切换只改 `stories.head_node_id`，不触碰 `story_settings`，因此插件配置天然按故事共享。
   - 运行时调用方（server、CLI）把故事设置里的 `pluginOverrides` 传给 `resolveStoryPlugins`；P3.c 不改变现有槽位插件工厂的配置入口。
   - 新增测试：`packages/core/test/story-plugins.test.ts`（分支切换、重新打开、故事隔离）与 `playpacks.test.ts` 的按故事解析用例。
+
+## ADR-0089 卡片依赖的版本范围与导入报告（2026-11-12）
+
+- **背景**：P3.a 的卡片扩展已经有 `requires` 与 `recommends`，`versionRange` 当时只校验非空；P3.b 的玩法包也复用了同一份依赖声明。P3.d 要在导入卡片时逐条核对本机的插件与玩法包，缺少必需依赖不能静默降级，并且要给出安装建议。需要决定版本范围按什么规则匹配，以及核对结果从哪里进入导入流程。
+- **选项**：
+  - 自己实现版本范围解析：只支持 `^` 与精确版本，代码量小，但会与生态里常用的 semver 写法产生偏差，预发布版本的处理也要自己维护。
+  - 采用 `semver` 包的 `validRange` 与 `satisfies`：范围写法与 npm 生态一致，预发布排除规则有明确定义；增加一个运行时依赖。
+- **决定**：
+  - `packages/core` 增加 `semver` 运行时依赖，`@types/semver` 为开发依赖。版本范围的语法校验放在 `plugins/versions.ts`，`parseDeclarativeRequirements` 遇到非法范围直接抛错。
+  - 新增 `checkCardDependencies({ requires, recommends }, catalog)`，返回 `CardDependencyReport { satisfied, issues }`。`issues` 只列出未满足的条目，每条带 `kind`、`level`、`name`、`versionRange`、`installedVersion`、`status` 与可直接展示的 `message`。`status` 取 `missing`、`version-mismatch`、`unknown-version`。
+  - 已安装版本未知时，带版本范围的依赖记为 `unknown-version`，不当作满足；没有版本范围的依赖只按名称判断。
+  - `importCardContent` 生成导入报告：可用清单由内置插件、调用方传入的 `availableDependencies` 与卡随附的声明式插件合并而成，同名时以卡随附的版本为准。报告放进 `ImportedCardContent.dependencies`，同时出现在 server 的 `ImportStoryResult.imported.dependencies` 与 `dramaticer chat --card` 的日志里。
+- **影响**：
+  - 导入不会因为缺少必需依赖而中止，但报告里会逐条说明缺少什么、需要安装或升级到哪个范围。调用方可以按 `satisfied` 决定是否继续使用依赖了这些插件的能力。
+  - `parseDeclarativeRequirements` 的报错从「不能是空字符串」扩展到「不是合法的版本范围」，P3.a 的现有样例都使用合法范围，行为不变。
+  - 版本范围只影响卡片的导入报告与玩法包依赖声明的可读性；玩法包叠加时仍按加载顺序判断依赖是否存在，P3.d 不在叠加过程中重做版本匹配。
+  - 新增测试：`packages/core/test/card-dependencies.test.ts`（缺失必需、缺失推荐、全部满足、版本不匹配、版本未知、非法范围）与 `packages/st-compat/test/card-dependencies.test.ts`（导入报告、卡随附插件、本机清单、推荐依赖）。

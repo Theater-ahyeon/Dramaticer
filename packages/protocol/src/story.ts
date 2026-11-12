@@ -1,6 +1,7 @@
 import type {
 	BackgroundJobCounts,
 	BackgroundJobStatus,
+	CardDependencyReport,
 	StorySettings,
 	TimelineNode,
 	TimelineRole,
@@ -79,6 +80,8 @@ export interface ImportStoryCounts {
 	};
 	readonly events: { readonly inserted: number; readonly updated: number };
 	readonly npcAgendas: { readonly inserted: number; readonly updated: number };
+	/** 卡片声明的依赖核对结果；全部满足时 `issues` 为空。 */
+	readonly dependencies: CardDependencyReport;
 }
 
 export interface ImportStoryResult {

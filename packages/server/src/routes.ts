@@ -559,6 +559,7 @@ async function handleImport(
 			lore: imported.lore,
 			events: imported.events,
 			npcAgendas: imported.npcAgendas,
+			dependencies: imported.dependencies,
 		},
 	};
 	sendJson(res, 200, result);

@@ -17,6 +17,8 @@
 | `@earendil-works/pi-ai` | 根目录 | dev | `spikes/pi/` 的验证脚本使用（ADR-0009） |
 | `@earendil-works/pi-agent-core` | 根目录 | dev | `spikes/pi/` 验证钩子使用；运行时执行器由 `packages/core` 自己实现（ADR-0022） |
 | `yaml` | `packages/core` | runtime | 解析 `data/channels.yaml` 与 `data/images.yaml` 配置 |
+| `semver` | `packages/core` | runtime | 卡片与玩法包的插件版本范围匹配（ADR-0089） |
+| `@types/semver` | `packages/core` | dev | `semver` 的类型声明 |
 | `@standard-schema/spec` | `packages/core` | runtime | 插件配置 schema 的类型来源（ADR-0087）；只出现在公开类型声明里，不引入运行时代码 |
 | `sqlite-vec` | `packages/core` | runtime | 块向量的 vec0 虚拟表与 KNN 检索（DESIGN §13） |
 | `png-chunks-extract` | `packages/st-compat` | runtime | 解析角色卡 PNG 的块（ADR-0003） |
