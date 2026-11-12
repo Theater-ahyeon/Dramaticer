@@ -41,6 +41,7 @@ export {
 	createStandardChatSlots,
 } from "./chat-providers.js";
 export * from "./card-dependencies.js";
+export * from "./code-plugins.js";
 export * from "./contracts.js";
 export * from "./declarative.js";
 export { EventBus } from "./events.js";

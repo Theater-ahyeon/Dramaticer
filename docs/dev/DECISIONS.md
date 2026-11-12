@@ -1392,3 +1392,22 @@
   - `parseDeclarativeRequirements` 的报错从「不能是空字符串」扩展到「不是合法的版本范围」，P3.a 的现有样例都使用合法范围，行为不变。
   - 版本范围只影响卡片的导入报告与玩法包依赖声明的可读性；玩法包叠加时仍按加载顺序判断依赖是否存在，P3.d 不在叠加过程中重做版本匹配。
   - 新增测试：`packages/core/test/card-dependencies.test.ts`（缺失必需、缺失推荐、全部满足、版本不匹配、版本未知、非法范围）与 `packages/st-compat/test/card-dependencies.test.ts`（导入报告、卡随附插件、本机清单、推荐依赖）。
+
+## ADR-0090 代码插件清单与权限声明（2026-11-12）
+
+- **背景**：DESIGN §19.3 与 §19.4 要求代码插件带权限清单，安装时展示，未声明的调用直接拒绝并记录（I18）。P3 的声明式插件格式 `dramaticer.plugin` 只接受 JSON 数据，负载按 `kind` 分为七种，解析器拒绝函数与类实例；代码插件需要入口模块、引擎兼容范围与可执行权限范围。P4.a 要定稿清单的字段、权限的范围形状与安装展示所需的数据。
+- **选项**：
+  - 复用 `dramaticer.plugin` 外壳并新增 `kind: "code"`：声明式解析器要放行入口文件与权限，纯数据保证被打破，卡片打包的校验也会变宽。
+  - 单独的 `dramaticer.code-plugin` 外壳：代码插件与声明式插件的解析路径、错误信息与格式版本互不影响；采纳。
+  - 权限只写类别名（`network`、`files`）：展示容易，但运行时无法判定一次调用是否落在已声明的范围内，会退化成“声明了就全放开”。
+  - 权限带范围（主机、路径、角色、命名空间）：判定与展示共用同一份数据，升级时的差异也能逐条比较；采纳。
+- **决定**：
+  - 外壳字段固定为 `format`（`dramaticer.code-plugin`）、`formatVersion`（`1`）、`name`、`version`、`tier`（固定 `code`）、`engine`、`entry`、可选 `title`/`description`/`configSchema`、`inject`、`provide`、`permissions`；未知字段一律拒绝，函数与类实例在 `assertJsonValue` 处拒绝。
+  - `engine` 使用 semver 范围（与玩法包依赖同一套校验）；`entry` 是插件目录内的相对路径，必须使用 `/`，拒绝绝对路径、盘符、空段、`.`、`..`，扩展名必须是 `.js` 或 `.mjs`。`inject` 与 `provide` 是服务名数组（小写字母、数字、点、下划线与连字符），各自不许重复，也不许同一个名字同时出现在两边。
+  - 权限四类，每类只能声明一次：`network`（小写主机列表，支持 `*.example.com` 前缀通配与可选端口）、`files`（`read` 或 `read-write`，加上插件目录内的相对路径，规则与入口相同）、`model`（`writer`、`settler`、`planner`、`judge` 的子集）、`ledger-write`（九个台账命名空间的子集）。清单没有 `permissions` 时权限为空。
+  - `describeCodePluginPermissions` 输出安装界面逐条展示的文案；`diffCodePluginPermissions` 按权限范围比较：范围本身变化时旧范围记入移除、新范围记入新增，数组顺序不影响结果，任一侧非空即 `requiresConfirmation`。
+  - `isEngineCompatible(engineRange, engineVersion)` 的版本由调用方传入，本机版本不写死在模块里；非法范围与本机版本直接抛错。
+- **影响**：
+  - P4.b 用 `requiresConfirmation` 决定首次安装与升级是否需要用户确认，并把已授予的权限存进安装记录；P4.c 用 `network`/`files`/`model`/`ledger-write` 的范围做运行时判定，未命中的调用拒绝并写 Trace。
+  - 权限只限制插件自己的调用，不改变台账写入路径：`ledger-write` 的调用仍然提交为待校验的 diff，经过结算器（I12、I16）。
+  - 新增测试：`packages/core/test/code-plugins.test.ts`（外壳与可选项、非法入口、服务名、四类权限的非法范围、展示文案、权限差异、引擎范围）。
