@@ -72,7 +72,12 @@ async function startImagesServer(
 ): Promise<TestServer> {
 	const dir = mkdtempSync(join(import.meta.dirname, ".tmp-images-server-"));
 	onTestFinished(() => {
-		rmSync(dir, { recursive: true, force: true, maxRetries: 5 });
+		rmSync(dir, {
+			recursive: true,
+			force: true,
+			maxRetries: 5,
+			retryDelay: 100,
+		});
 	});
 	const imagesPath = join(dir, "images.yaml");
 	if (options.missing !== true) {

@@ -30,7 +30,12 @@ function createTempDb(): string {
 		"story.db",
 	);
 	onTestFinished(() => {
-		rmSync(dirname(path), { recursive: true, force: true, maxRetries: 5 });
+		rmSync(dirname(path), {
+			recursive: true,
+			force: true,
+			maxRetries: 5,
+			retryDelay: 100,
+		});
 	});
 	return path;
 }
