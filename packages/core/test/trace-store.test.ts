@@ -62,6 +62,8 @@ function traceFor(
 			issues: [],
 		},
 		timing: { firstTokenMs: 100, durationMs: 500 },
+		deep: null,
+		run: null,
 	};
 }
 

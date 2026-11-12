@@ -1140,6 +1140,57 @@ export function buildMigrations(
 					DEFAULT 4 CHECK (deep_recent_tool_steps BETWEEN 1 AND 20)`,
 			],
 		},
+		{
+			version: 40,
+			description:
+				"深回合运行日志：一次运行一行，运行内事件只追加且按序号严格递增",
+			statements: [
+				`CREATE TABLE turn_runs (
+					run_id TEXT PRIMARY KEY,
+					story_id TEXT NOT NULL REFERENCES stories(id),
+					user_node_id TEXT NOT NULL REFERENCES nodes(id),
+					node_id TEXT REFERENCES nodes(id),
+					mode TEXT NOT NULL CHECK (mode IN ('fast', 'deep')),
+					status TEXT NOT NULL CHECK (status IN ('running', 'completed', 'interrupted', 'failed', 'aborted')),
+					started_at TEXT NOT NULL,
+					finished_at TEXT
+				) STRICT`,
+				"CREATE INDEX turn_runs_story_idx ON turn_runs(story_id, started_at)",
+				`CREATE UNIQUE INDEX turn_runs_node_idx
+				ON turn_runs(node_id) WHERE node_id IS NOT NULL`,
+				`CREATE TRIGGER turn_runs_story_matches_user_node
+				BEFORE INSERT ON turn_runs
+				WHEN COALESCE((SELECT story_id FROM nodes WHERE id = NEW.user_node_id), '') <> NEW.story_id
+				BEGIN
+					SELECT RAISE(ABORT, '运行记录的 story_id 必须与用户楼层一致');
+				END`,
+				`CREATE TRIGGER turn_runs_node_matches_story
+				BEFORE UPDATE ON turn_runs
+				WHEN NEW.node_id IS NOT NULL
+					AND COALESCE((SELECT story_id FROM nodes WHERE id = NEW.node_id), '') <> NEW.story_id
+				BEGIN
+					SELECT RAISE(ABORT, '运行记录的助手楼层必须属于同一故事');
+				END`,
+				`CREATE TABLE turn_run_events (
+					run_id TEXT NOT NULL REFERENCES turn_runs(run_id),
+					seq INTEGER NOT NULL CHECK (seq >= 1),
+					kind TEXT NOT NULL,
+					payload TEXT NOT NULL,
+					created_at TEXT NOT NULL,
+					PRIMARY KEY (run_id, seq)
+				) STRICT`,
+				`CREATE TRIGGER turn_run_events_append_only_update
+				BEFORE UPDATE ON turn_run_events
+				BEGIN
+					SELECT RAISE(ABORT, '运行事件只追加，不能修改');
+				END`,
+				`CREATE TRIGGER turn_run_events_append_only_delete
+				BEFORE DELETE ON turn_run_events
+				BEGIN
+					SELECT RAISE(ABORT, '运行事件只追加，不能删除');
+				END`,
+			],
+		},
 	];
 }
 

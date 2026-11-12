@@ -10,6 +10,7 @@ import {
 import type { DirectorDecision } from "../director/types.js";
 import type { LedgerFact } from "../ledger/read.js";
 import { readLedgerFacts } from "../ledger/read.js";
+import type { TurnRunDetail } from "../run-log.js";
 import type { StoryStore } from "../store/story-store.js";
 import type { StateDiff, TimelineRole } from "../timeline.js";
 import type { TurnTrace } from "../trace.js";
@@ -72,6 +73,8 @@ export interface ExplainReport {
 	readonly storyId: string;
 	readonly role: TimelineRole;
 	readonly trace: TurnTrace | null;
+	/** 这一轮的运行日志；快回合或没有运行记录时为 null。 */
+	readonly run: TurnRunDetail | null;
 	readonly context: ExplainContextSection | null;
 	readonly retrieval: readonly ExplainRetrievalSection[];
 	readonly ledger: ExplainLedgerSection;
@@ -95,6 +98,8 @@ export function explainNode(
 		| "getDirectorDecision"
 		| "getStateSnapshot"
 		| "getStateDiffsAlongPath"
+		| "getTurnRunForNode"
+		| "listTurnRunEvents"
 		| "listDirectorPlanEntries"
 		| "listDirectorBeatStatesAlongPath"
 	>,
@@ -108,6 +113,14 @@ export function explainNode(
 		throw new Error(`楼层节点不存在：${nodeId}`);
 	}
 	const trace = store.getTurnTrace(nodeId);
+	const runRecord = store.getTurnRunForNode(nodeId);
+	const run: TurnRunDetail | null =
+		runRecord === null
+			? null
+			: {
+					run: runRecord,
+					events: store.listTurnRunEvents(runRecord.runId),
+				};
 	const context = trace === null ? null : buildContextSection(trace);
 	const retrieval =
 		context === null
@@ -145,6 +158,7 @@ export function explainNode(
 		storyId: node.storyId,
 		role: node.role,
 		trace,
+		run,
 		context,
 		retrieval,
 		ledger: {
@@ -369,6 +383,11 @@ export function renderExplainReport(report: ExplainReport): string {
 		lines.push(
 			`   模板：${trace.templateId}；模式：${trace.turnMode}；档位：${trace.profile}`,
 		);
+		if (trace.run !== null) {
+			lines.push(
+				`   运行：${trace.run.runId}（${trace.run.status}，事件 ${trace.run.eventCount} 条）`,
+			);
+		}
 		lines.push(
 			`   结束原因：${trace.llm.stopReason}（${trace.llm.finishReason ?? "没有记录"}）；截断：${
 				trace.llm.truncations.length === 0
@@ -563,6 +582,27 @@ export function renderExplainReport(report: ExplainReport): string {
 	for (const suggestion of report.suggestions) {
 		lines.push(`   - ${suggestion.advice}`);
 		lines.push(`     证据：${suggestion.evidence}`);
+	}
+
+	lines.push("");
+	lines.push("9. 运行时间线");
+	if (report.run === null) {
+		lines.push(
+			"   没有记录（快回合不写运行日志，或者这一楼不是深回合提交的助手楼层）。",
+		);
+	} else {
+		const run = report.run.run;
+		lines.push(
+			`   运行 ${run.runId}：模式 ${run.mode}，状态 ${run.status}，开始 ${run.startedAt}，结束 ${run.finishedAt ?? "没有结束"}`,
+		);
+		if (report.run.events.length === 0) {
+			lines.push("   没有事件。");
+		}
+		for (const event of report.run.events) {
+			lines.push(
+				`   - #${event.seq} ${event.kind}：${JSON.stringify(event.payload)}`,
+			);
+		}
 	}
 
 	if (report.notes.length > 0) {

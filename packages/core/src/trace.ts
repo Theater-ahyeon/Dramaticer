@@ -7,6 +7,7 @@ import type {
 	LlmTruncationReason,
 	LlmUsage,
 } from "./llm/types.js";
+import type { TurnRunStatus } from "./run-log.js";
 import type {
 	StructuredOutputIssue,
 	StructuredOutputMode,
@@ -96,6 +97,15 @@ export interface TurnTraceDeep {
 	readonly stopReason: DeepTurnStopReason;
 }
 
+/** 本轮对应的运行日志；快回合不写运行表，为 null。 */
+export interface TurnTraceRun {
+	readonly runId: string;
+	/** 运行结束时的状态。 */
+	readonly status: TurnRunStatus;
+	/** 这次运行写入的事件条数。 */
+	readonly eventCount: number;
+}
+
 /** 一轮生成的完整记录，按楼层节点存放。 */
 export interface TurnTrace {
 	readonly storyId: string;
@@ -115,4 +125,6 @@ export interface TurnTrace {
 	readonly timing: TurnTraceTiming;
 	/** 深回合的上限与收束原因；快回合为 null。 */
 	readonly deep: TurnTraceDeep | null;
+	/** 本轮运行日志；快回合为 null。 */
+	readonly run: TurnTraceRun | null;
 }

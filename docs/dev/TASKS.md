@@ -936,7 +936,8 @@
   - 文本协议：同一套工具在 `tools.transport: text` 下可用，`<tool>` 解析、参数校验、错误结果回填与软上限行为与原生传输一致。
   验收：六个工具各有参数正例与非法参数负例；`history_read` 拒绝非祖先楼层；`ledger_write` 的非法条目返回错误结果、合法条目在提交前查不到；权限未声明的调用被拒绝并记录；进度事件只在阶段变化时发送；两种传输产生相同执行结果；`pnpm check` 通过。
 
-- [ ] **R3b-T03 运行日志** | 依赖：R3b-T01、R3b-T02 | DESIGN §10.1 | I7（不阻塞回合）
+- [x] **R3b-T03 运行日志** | 依赖：R3b-T01、R3b-T02 | DESIGN §10.1 | I7（不阻塞回合）
+  完成：2026-11-12 迁移 v40 新增 `turn_runs` 与只追加的 `turn_run_events`（更新与删除由触发器拒绝，序号按运行内最大值加一）；`StoryStore` 新增 `startTurnRun`、`appendTurnRunEvent`、`finishTurnRun`、`listTurnRunEvents`、`countTurnRunEvents`、`getTurnRun`、`getTurnRunForNode`、`listTurnRuns`、`markInterruptedTurnRuns`；`startServer` 与 `dramaticer work` 启动时把遗留的 `running` 标为 `interrupted`；执行器在每次请求、响应、工具调用与工具结果处回调 `onRunEvent`，达到工具次数、时长或读取轮数上限时写 `limit`，失败与中止写 `error`；`TurnTrace.run` 记录 `runId`、结束状态与事件条数，快回合为 null；新增 `GET /api/nodes/:id/run`（没有运行 404）与 `dramaticer explain` 的“运行时间线”段；事件载荷只放轮次、名称、权限、成败、长度与用量，不放正文、参数或路径；新增 10 个测试；门禁通过（166 个测试文件、1506 个测试，4 个 live 跳过）
   做什么：
   - 迁移 v40 新增 `turn_runs(run_id PRIMARY KEY, story_id, user_node_id, node_id, mode, status, started_at, finished_at)` 与 `turn_run_events(run_id, seq, kind, payload, created_at, PRIMARY KEY(run_id, seq))`；事件表的更新与删除由触发器拒绝，只追加。`status` 取 `running`、`completed`、`interrupted`、`failed`、`aborted`。
   - 存储层新增 `startTurnRun`、`appendTurnRunEvent`、`finishTurnRun`、`listTurnRunEvents`、`markInterruptedTurnRuns`；`startServer` 与 `dramaticer work` 启动时把遗留的 `running` 行标为 `interrupted`。

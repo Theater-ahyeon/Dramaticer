@@ -388,7 +388,7 @@ describe("上下文包复用", () => {
 });
 
 describe("上下文包存储", () => {
-	it("迁移到 v39，同一楼层覆盖同一行，跨故事写入被拒绝", () => {
+	it("迁移到 v40，同一楼层覆盖同一行，跨故事写入被拒绝", () => {
 		const { store, path } = openTempStore();
 		seed(store);
 		store.appendNode({
@@ -400,7 +400,7 @@ describe("上下文包存储", () => {
 		});
 		store.createStory({ id: "s2", title: "另一个故事" });
 		expect(store.getSchemaVersion()).toBe(LATEST_SCHEMA_VERSION);
-		expect(store.getSchemaVersion()).toBe(39);
+		expect(store.getSchemaVersion()).toBe(40);
 
 		const payload = {
 			version: CONTEXT_PACK_VERSION as const,

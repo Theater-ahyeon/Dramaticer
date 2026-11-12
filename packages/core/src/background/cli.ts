@@ -128,6 +128,7 @@ export async function runWorkCli(
 		// 上一次进程中断留下的 running 行不会被 drain 取到，先退回待办。
 		store.requeueRunningBackgroundJobs();
 		store.requeueRunningNodeImages();
+		store.markInterruptedTurnRuns();
 		const stories = store.listStories();
 		const runs: BackgroundJobRun[] = [];
 		const backlog = {

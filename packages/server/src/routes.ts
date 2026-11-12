@@ -108,6 +108,7 @@ import {
 	type NodeImage,
 	type NodeImagesView,
 	type NodeLedgerView,
+	type NodeRunView,
 	type ProposalDecisionAction,
 	type ProposalDecisionResult,
 	type SetHeadRequest,
@@ -361,6 +362,10 @@ export async function handleApiRequest(
 			case "trace":
 				requireMethod(method, ["GET"]);
 				handleNodeTrace(res, options, nodeId);
+				return;
+			case "run":
+				requireMethod(method, ["GET"]);
+				handleNodeRun(res, options, nodeId);
 				return;
 			case "ledger":
 				requireMethod(method, ["GET"]);
@@ -797,6 +802,24 @@ function handleNodeTrace(
 		throw new HttpError(404, "not_found", `楼层 ${nodeId} 没有 Trace`);
 	}
 	sendJson(res, 200, trace);
+}
+
+function handleNodeRun(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	nodeId: string,
+): void {
+	requireNode(options.store, nodeId);
+	const run = options.store.getTurnRunForNode(nodeId);
+	if (run === null) {
+		throw new HttpError(404, "not_found", `楼层 ${nodeId} 没有运行记录`);
+	}
+	const view: NodeRunView = {
+		nodeId,
+		run,
+		events: options.store.listTurnRunEvents(run.runId),
+	};
+	sendJson(res, 200, view);
 }
 
 function handleNodeLedger(

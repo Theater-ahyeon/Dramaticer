@@ -256,6 +256,54 @@ describe("explainNode", () => {
 		expect(renderExplainReport(report)).toContain("让卫宫说出一个具体理由");
 	});
 
+	it("打印运行日志摘要与按序号排列的事件", () => {
+		const { store } = openTempStore();
+		seed(store);
+		store.saveTurnTrace({
+			...traceFor("a1", "u1"),
+			turnMode: "deep",
+			deep: {
+				maxToolCalls: 40,
+				maxDurationMs: 600_000,
+				toolCallCount: 0,
+				durationMs: 500,
+				stopReason: "completed",
+			},
+			run: { runId: "r1", status: "completed", eventCount: 1 },
+		});
+		store.startTurnRun({
+			runId: "r1",
+			storyId: "s1",
+			userNodeId: "u1",
+			mode: "deep",
+			startedAt: "2026-11-12T00:00:00.000Z",
+		});
+		store.appendTurnRunEvent({
+			runId: "r1",
+			kind: "model.request",
+			payload: { round: 1, messages: 3 },
+			createdAt: "2026-11-12T00:00:01.000Z",
+		});
+		store.finishTurnRun({
+			runId: "r1",
+			status: "completed",
+			nodeId: "a1",
+			finishedAt: "2026-11-12T00:00:02.000Z",
+		});
+
+		const report = explainNode(store, "a1");
+
+		expect(report.run?.run.runId).toBe("r1");
+		expect(report.run?.events.map((event) => event.kind)).toEqual([
+			"model.request",
+		]);
+		const text = renderExplainReport(report);
+		expect(text).toContain("运行：r1（completed，事件 1 条）");
+		expect(text).toContain("9. 运行时间线");
+		expect(text).toContain("#1 model.request");
+		expect(text).toContain('"messages":3');
+	});
+
 	it("没有 Trace 的楼层明确写没有记录，仍然读出台账与导演决策", () => {
 		const { store } = openTempStore();
 		store.createStory({ id: "s1", title: "排障测试" });

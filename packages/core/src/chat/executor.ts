@@ -12,6 +12,7 @@ import type {
 	LlmToolDefinition,
 	LlmUsage,
 } from "../llm/types.js";
+import type { TurnRunEventInput } from "../run-log.js";
 import type { AcceptedStateUpdate } from "../structured/types.js";
 import {
 	type ReadToolContext,
@@ -102,6 +103,11 @@ export interface ModelTurnOptions {
 	readonly onToolCall?: (call: ToolCallTrace) => void;
 	/** 工具执行前的进度阶段；同一阶段连续调用只回调一次。 */
 	readonly onToolProgress?: (event: ToolProgressEvent) => void;
+	/**
+	 * 深回合的运行事件；快回合不传这个回调，运行表保持为空。
+	 * 事件载荷只放计数、长度与状态，不放正文、参数或路径。
+	 */
+	readonly onRunEvent?: (event: TurnRunEventInput) => void;
 	readonly now?: () => number;
 }
 
@@ -224,6 +230,14 @@ export async function runModelTurns(
 				now() - startedAt >= options.maxDurationMs
 			) {
 				stopReason = "timeout";
+				options.onRunEvent?.({
+					kind: "limit",
+					payload: {
+						reason: "timeout",
+						maxDurationMs: options.maxDurationMs,
+						durationMs: now() - startedAt,
+					},
+				});
 				finalText = lastBody;
 				blocks = parseBlocks(finalText);
 				break;
@@ -237,6 +251,18 @@ export async function runModelTurns(
 				reasoning: options.reasoning,
 				signal: options.signal,
 			};
+			const roundNumber = roundIndex + 1;
+			options.onRunEvent?.({
+				kind: "model.request",
+				payload: {
+					round: roundNumber,
+					model: options.model ?? null,
+					messages: messages.length,
+					tools: tools.length,
+					transport,
+				},
+			});
+			const requestStartedAt = now();
 			const parser = new BlockParser();
 			const filter = transport === "text" ? new TextToolStreamFilter() : null;
 			roundText = "";
@@ -298,6 +324,25 @@ export async function runModelTurns(
 							error: call.error,
 						}));
 			roundIndex += 1;
+			options.onRunEvent?.({
+				kind: "model.response",
+				payload: {
+					round: roundNumber,
+					stopReason: result.stopReason,
+					finishReason: result.finishReason,
+					textLength: body.length,
+					usage: {
+						promptTokens: result.usage.promptTokens,
+						completionTokens: result.usage.completionTokens,
+						totalTokens: result.usage.totalTokens,
+						reasoningTokens: result.usage.reasoningTokens,
+						cachedTokens: result.usage.cachedTokens,
+					},
+					attempts: result.attempts,
+					cached: result.cached,
+					durationMs: now() - requestStartedAt,
+				},
+			});
 			for (const call of roundCalls) {
 				if (call.error === null && call.arguments !== null) {
 					allToolCalls.push({
@@ -340,6 +385,10 @@ export async function runModelTurns(
 					throw new Error("模型在工具轮数用完后仍只请求读取工具，没有生成正文");
 				}
 				capped = true;
+				options.onRunEvent?.({
+					kind: "limit",
+					payload: { reason: "max_read_rounds", maxReadRounds },
+				});
 				finalText = body;
 				blocks = transport === "text" ? parseBlocks(body) : parser.finish();
 				break;
@@ -366,6 +415,17 @@ export async function runModelTurns(
 				throwIfAborted(options.signal);
 				const definition = definitions.get(call.name);
 				const disabled = disabledDefinitions.get(call.name);
+				if (definition !== undefined || disabled !== undefined) {
+					options.onRunEvent?.({
+						kind: "tool.call",
+						payload: {
+							round: roundNumber,
+							name: call.name,
+							permission:
+								definition?.permission ?? disabled?.permission ?? null,
+						},
+					});
+				}
 				if (definition === undefined) {
 					if (disabled !== undefined) {
 						const error = `工具未启用：${call.name}`;
@@ -377,6 +437,17 @@ export async function runModelTurns(
 						};
 						calls.push(trace);
 						options.onToolCall?.(trace);
+						options.onRunEvent?.({
+							kind: "tool.result",
+							payload: {
+								round: roundNumber,
+								name: call.name,
+								permission: disabled.permission,
+								ok: false,
+								error,
+								resultLength: 0,
+							},
+						});
 						messages.push({
 							role: "tool",
 							toolCallId: call.id,
@@ -387,23 +458,28 @@ export async function runModelTurns(
 						continue;
 					}
 					if (transport !== "text") continue;
-					if (structuredNames.has(call.name)) {
-						messages.push({
-							role: "tool",
-							toolCallId: call.id,
-							toolName: call.name,
-							content: "已记录，正文输出结束后由结算器校验。",
-							isError: false,
-						});
-					} else {
-						messages.push({
-							role: "tool",
-							toolCallId: call.id,
-							toolName: call.name,
-							content: `工具调用失败：未知工具：${call.name}`,
-							isError: true,
-						});
-					}
+					const structured = structuredNames.has(call.name);
+					const resultContent = structured
+						? "已记录，正文输出结束后由结算器校验。"
+						: `工具调用失败：未知工具：${call.name}`;
+					messages.push({
+						role: "tool",
+						toolCallId: call.id,
+						toolName: call.name,
+						content: resultContent,
+						isError: !structured,
+					});
+					options.onRunEvent?.({
+						kind: "tool.result",
+						payload: {
+							round: roundNumber,
+							name: call.name,
+							permission: null,
+							ok: structured,
+							error: structured ? null : `未知工具：${call.name}`,
+							resultLength: resultContent.length,
+						},
+					});
 					continue;
 				}
 				let content: string;
@@ -455,6 +531,17 @@ export async function runModelTurns(
 				};
 				calls.push(trace);
 				options.onToolCall?.(trace);
+				options.onRunEvent?.({
+					kind: "tool.result",
+					payload: {
+						round: roundNumber,
+						name: call.name,
+						permission: definition.permission,
+						ok,
+						error,
+						resultLength: content.length,
+					},
+				});
 				messages.push({
 					role: "tool",
 					toolCallId: call.id,
@@ -465,6 +552,13 @@ export async function runModelTurns(
 			}
 			if (hitToolCallLimit) {
 				stopReason = "max_tool_calls";
+				options.onRunEvent?.({
+					kind: "limit",
+					payload: {
+						reason: "max_tool_calls",
+						maxToolCalls: options.maxToolCalls ?? null,
+					},
+				});
 				finalText = body.length > 0 ? body : lastBody;
 				blocks = parseBlocks(finalText);
 				break;

@@ -31,6 +31,7 @@ import type {
 	LlmUsage,
 } from "../llm/types.js";
 import type { PlotNote } from "../memory/plot-note.js";
+import type { TurnRunEventInput, TurnRunFinalStatus } from "../run-log.js";
 import type { StoryStore } from "../store/story-store.js";
 import {
 	collectStructuredOutputFromText,
@@ -45,7 +46,7 @@ import type {
 import type { NewStateDiff, StateDiff, TimelineNode } from "../timeline.js";
 import { DEEP_TURN_TOOLS, FAST_TURN_TOOLS } from "../tools/index.js";
 import type { ToolProgressEvent } from "../tools/registry.js";
-import type { TurnTrace } from "../trace.js";
+import type { TurnTrace, TurnTraceRun } from "../trace.js";
 import { type DeepTurnResult, runDeepTurn } from "./deep-turn.js";
 import {
 	type ModelTurnResult,
@@ -374,6 +375,21 @@ export async function generateAssistantTurn(
 		illustrateTool === null && (tools !== undefined || transport === "text")
 			? [ILLUSTRATE_TOOL]
 			: undefined;
+	// 运行表只记录深回合；快回合保持现有 Trace 语义，不写运行行。
+	const runId =
+		resolved.mode === "deep"
+			? options.store.startTurnRun({
+					storyId: options.storyId,
+					userNodeId: userNode.id,
+					mode: "deep",
+				}).runId
+			: null;
+	const onRunEvent =
+		runId === null
+			? undefined
+			: (event: TurnRunEventInput): void => {
+					options.store.appendTurnRunEvent({ runId, ...event });
+				};
 	const turnOptions = {
 		client: options.client,
 		messages: assembled.messages,
@@ -402,6 +418,7 @@ export async function generateAssistantTurn(
 		onThinkingDelta: options.onThinkingDelta,
 		onToolCall: options.onToolCall,
 		onToolProgress: options.onToolProgress,
+		onRunEvent,
 		now,
 	} as const;
 	let turn: ModelTurnResult;
@@ -421,6 +438,13 @@ export async function generateAssistantTurn(
 			});
 		}
 	} catch (error) {
+		if (runId !== null) {
+			options.store.appendTurnRunEvent({
+				runId,
+				kind: "error",
+				payload: { message: describeRunError(error) },
+			});
+		}
 		if (
 			error instanceof TurnAbortedError &&
 			error.partialText.trim().length > 0
@@ -435,6 +459,13 @@ export async function generateAssistantTurn(
 				mode: resolved,
 				profile,
 				transport,
+				runId,
+			});
+		}
+		if (runId !== null) {
+			options.store.finishTurnRun({
+				runId,
+				status: error instanceof TurnAbortedError ? "aborted" : "failed",
 			});
 		}
 		throw error;
@@ -487,6 +518,12 @@ export async function generateAssistantTurn(
 					options: options.illustrate,
 				})
 			: { accepted: 0, rejected: [], calls: [] };
+		const runTrace = finishRunWithTrace(
+			options.store,
+			runId,
+			"completed",
+			node.id,
+		);
 		const trace: TurnTrace = {
 			storyId: options.storyId,
 			nodeId: node.id,
@@ -556,6 +593,7 @@ export async function generateAssistantTurn(
 							durationMs: deepTurn.durationMs,
 							stopReason: deepTurn.stopReason,
 						},
+			run: runTrace,
 		};
 		options.store.saveTurnTrace(trace);
 		return {
@@ -635,6 +673,8 @@ async function persistAbortedTurn(input: {
 	readonly mode: ResolvedTurnMode;
 	readonly profile: ChatProfile;
 	readonly transport: LlmToolTransport;
+	/** 深回合的运行 id；快回合为 null。 */
+	readonly runId: string | null;
 }): Promise<ChatTurnResult> {
 	const { options, userNode, assembled, error } = input;
 	const completedAt = input.now();
@@ -646,6 +686,12 @@ async function persistAbortedTurn(input: {
 			raw: error.partialText,
 		});
 		recordRegeneratedSwipe(options, node);
+		const runTrace = finishRunWithTrace(
+			options.store,
+			input.runId,
+			"aborted",
+			node.id,
+		);
 		const trace: TurnTrace = {
 			storyId: options.storyId,
 			nodeId: node.id,
@@ -695,6 +741,7 @@ async function persistAbortedTurn(input: {
 							durationMs: completedAt - input.startedAt,
 							stopReason: "aborted",
 						},
+			run: runTrace,
 		};
 		options.store.saveTurnTrace(trace);
 		return {
@@ -723,6 +770,27 @@ function emptyUsage(): LlmUsage {
 		reasoningTokens: null,
 		cachedTokens: null,
 	};
+}
+
+/** 结束运行并把最终状态与事件条数写进 Trace；快回合没有运行行。 */
+function finishRunWithTrace(
+	store: StoryStore,
+	runId: string | null,
+	status: TurnRunFinalStatus,
+	nodeId: string,
+): TurnTraceRun | null {
+	if (runId === null) return null;
+	const run = store.finishTurnRun({ runId, status, nodeId });
+	return {
+		runId: run.runId,
+		status: run.status,
+		eventCount: store.countTurnRunEvents(run.runId),
+	};
+}
+
+function describeRunError(error: unknown): string {
+	const message = error instanceof Error ? error.message : String(error);
+	return message.length > 500 ? `${message.slice(0, 500)}…` : message;
 }
 
 /** 朴素模式不收集结构化写入，返回与请求模式一致的空集合。 */

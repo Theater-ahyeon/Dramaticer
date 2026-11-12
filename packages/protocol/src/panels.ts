@@ -17,6 +17,8 @@ import type {
 	StateDiff,
 	Summary,
 	TimelineNode,
+	TurnRunEvent,
+	TurnRunRecord,
 	TurnTrace,
 } from "@dramaticer/core";
 import type { StoryPath } from "./story.js";
@@ -65,6 +67,13 @@ export interface NodeEventsView {
 	readonly limit: number;
 	readonly offset: number;
 	readonly events: readonly MemoryEvent[];
+}
+
+/** `GET /api/nodes/:id/run`：运行摘要与按 seq 升序的事件。 */
+export interface NodeRunView {
+	readonly nodeId: string;
+	readonly run: TurnRunRecord;
+	readonly events: readonly TurnRunEvent[];
 }
 
 /** `GET /api/nodes/:id/compressions`：覆盖该楼层的记忆压缩记录。 */

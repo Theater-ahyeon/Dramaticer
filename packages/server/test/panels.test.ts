@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { DEFAULT_DIRECTOR_CONFIG } from "@dramaticer/core";
+import { DEFAULT_DIRECTOR_CONFIG, StoryStore } from "@dramaticer/core";
 import type {
 	ApiErrorResponse,
 	FulfillClueResult,
@@ -9,6 +9,7 @@ import type {
 	NodeDirectorView,
 	NodeEventsView,
 	NodeLedgerView,
+	NodeRunView,
 	ProposalDecisionResult,
 	StoryCluesView,
 	StoryDirectorPlanView,
@@ -123,6 +124,101 @@ function seedStory(running: RunningServer): Seeded {
 }
 
 describe("节点面板接口", () => {
+	it("启动时把遗留的运行标为中断并保留事件", async () => {
+		const dir = tempDir();
+		const dbPath = join(dir, "story.db");
+		const store = StoryStore.open(dbPath);
+		store.createStory({ id: "s1", title: "中断测试" });
+		store.appendNode({
+			id: "u1",
+			storyId: "s1",
+			parentId: null,
+			role: "user",
+			raw: "我推门。",
+		});
+		store.startTurnRun({
+			runId: "run-stale",
+			storyId: "s1",
+			userNodeId: "u1",
+			mode: "deep",
+		});
+		store.appendTurnRunEvent({
+			runId: "run-stale",
+			kind: "model.request",
+			payload: { round: 1 },
+		});
+		store.close();
+
+		const webRoot = join(dir, "web");
+		mkdirSync(webRoot, { recursive: true });
+		writeFileSync(
+			join(webRoot, "index.html"),
+			"<!doctype html><title>应用</title>",
+		);
+		const running = await startServer({
+			dbPath,
+			webRoot,
+			host: "127.0.0.1",
+			port: 0,
+			password: null,
+			log: () => {},
+		});
+		onTestFinished(() => running.close());
+
+		const run = running.store.getTurnRun("run-stale");
+		expect(run?.status).toBe("interrupted");
+		expect(run?.finishedAt).not.toBeNull();
+		expect(
+			running.store.listTurnRunEvents("run-stale").map((event) => event.seq),
+		).toEqual([1]);
+	});
+
+	it("运行记录返回摘要与按序号排列的事件，没有运行返回 404", async () => {
+		const running = await startTestServer();
+		const seeded = seedStory(running);
+		running.store.startTurnRun({
+			runId: "run-1",
+			storyId: "s1",
+			userNodeId: seeded.userId,
+			mode: "deep",
+			startedAt: "2026-11-12T00:00:00.000Z",
+		});
+		running.store.appendTurnRunEvent({
+			runId: "run-1",
+			kind: "model.request",
+			payload: { round: 1, messages: 2 },
+		});
+		running.store.appendTurnRunEvent({
+			runId: "run-1",
+			kind: "model.response",
+			payload: { round: 1, textLength: 7 },
+		});
+		running.store.finishTurnRun({
+			runId: "run-1",
+			status: "completed",
+			nodeId: seeded.replyId,
+			finishedAt: "2026-11-12T00:00:02.000Z",
+		});
+
+		const view = await getJson<NodeRunView>(
+			running.origin,
+			`/api/nodes/${seeded.replyId}/run`,
+		);
+		expect(view.nodeId).toBe(seeded.replyId);
+		expect(view.run.runId).toBe("run-1");
+		expect(view.run.status).toBe("completed");
+		expect(view.events.map((event) => event.seq)).toEqual([1, 2]);
+		expect(view.events.map((event) => event.kind)).toEqual([
+			"model.request",
+			"model.response",
+		]);
+
+		const missing = await fetch(
+			`${running.origin}/api/nodes/${seeded.rootId}/run`,
+		);
+		expect(missing.status).toBe(404);
+	});
+
 	it("台账、事件、压缩与导演数据与 store 一致", async () => {
 		const running = await startTestServer();
 		const seeded = seedStory(running);

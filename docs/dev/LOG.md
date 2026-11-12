@@ -325,3 +325,5 @@
 - 2026-11-12 | S283 | R3b-T01 | DONE | 新增 `chat/deep-turn.ts`（`runDeepTurn`）与执行器的 `maxToolCalls`、`maxDurationMs`：工具调用按总次数收束（第 41 次返回错误结果并记录 `max_tool_calls`），每次请求前检查时长（超时不再发请求并记录 `timeout`）；迁移 v39 增加四个深回合故事设置与范围校验；`resolveTurnMode` 解冻 deep 并返回解析后的上限，删除 `assertTurnModeSupported`；`TurnTrace.deep` 记录上限、调用数、耗时与 `stopReason`，快回合为 null；server 与 CLI 的 deep 请求不再 400；门禁通过（164 个测试文件、1484 个测试、4 个 live 跳过）
 
 - 2026-11-12 | S284 | R3b-T02 | DONE | 新增 `tools/registry.ts`（权限与进度文字声明、重复与未知权限拒绝）、`history_read`、`ledger_read`、`ledger_write`（逐条校验、最多 20 条、只收集到楼层事务）、执行器按权限执行并把 propose 与 side_effect 纳入工具调用上限、Trace 记录 `permission`、进度事件按阶段去重并由 server 发 SSE `turn.progress`；两种传输共用注册表；门禁通过（165 个测试文件、1496 个测试、4 个 live 跳过）
+
+- 2026-11-12 | S285 | R3b-T03 | DONE | 迁移 v40 新增 `turn_runs` 与只追加的 `turn_run_events`（更新与删除由触发器拒绝，序号按运行内最大值加一）；`StoryStore` 新增运行创建、事件追加、结束、查询与 `markInterruptedTurnRuns`，`startServer` 与 `dramaticer work` 启动时把遗留 `running` 标为 `interrupted`；执行器通过 `onRunEvent` 在每次请求、响应、工具调用与结果处同步写事件，上限写 `limit`、失败与中止写 `error`；`TurnTrace.run` 记录运行 id、状态与事件条数，快回合为 null；新增 `GET /api/nodes/:id/run` 与 `dramaticer explain` 的运行时间线；门禁通过（166 个测试文件、1506 个测试、4 个 live 跳过）

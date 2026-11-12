@@ -143,6 +143,8 @@ export async function startServer(
 	// 上一个进程在执行中途退出时留下的 running 行不在 drain 的候选里，先退回待办。
 	store.requeueRunningBackgroundJobs();
 	store.requeueRunningNodeImages();
+	// 上一次进程留下的深回合运行没有结束，保留事件并标为中断。
+	store.markInterruptedTurnRuns();
 	const runtime =
 		channels === null || loadConfig === null
 			? null
