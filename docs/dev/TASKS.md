@@ -1191,7 +1191,8 @@
   - 更新检查与版本兼容提示；卸载时回收 worker、注册项与插件目录里的文件。
   验收：三种来源各有一个用本地 fixture 的安装测试；版本不兼容时给出提示且不安装；更新保留故事级配置；卸载回收 worker 与注册项；`pnpm check` 通过。
 
-- [ ] **P4.e 插件开发文档与示例代码插件** | 依赖：P4.c
+- [x] **P4.e 插件开发文档与示例代码插件** | 依赖：P4.c
+  完成：2026-11-12 新增 `docs/plugins/code-plugins.md`（清单字段与 `dramaticer.plugin.json`、四类权限范围、Context API、生命周期与失败处理、安装更新与卸载、安全边界）；示例插件 `docs/plugins/examples/code-travel-log/` 注册 `memory` 槽位、`travel_log` 只读工具与 `旅行日志` 块类型，只声明 `files` 只读权限；`code-plugin-examples.test.ts` 5 条测试在 worker 沙箱里按清单权限装载并验证三种扩展点，空权限下验证拒绝与 Trace，另核对文档与解析器常量；门禁通过（192 个测试文件、1695 个测试、5 个跳过）
   做什么：
   - 写代码插件的开发文档：清单、权限、Context API、生命周期与错误处理。
   - 提供示例代码插件并由测试在沙箱里装载运行。

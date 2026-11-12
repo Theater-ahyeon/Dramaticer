@@ -3,13 +3,19 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-12 会话 316：修复门禁。`packages/core/test/code-plugin-worker.test.ts` 的「插件注册的工具只在 active 时可执行，崩溃后从注册表消失」在整轮并行门禁里失败、单测连续 8 次通过：用例让插件在激活后 20 毫秒抛出未捕获异常，和第二次 worker 往返竞速。改为先用一次查询确认工具可用，再由 `{ q: "crash" }` 调用触发崩溃；崩溃由处理器内的 `queueMicrotask` 抛出，触发崩溃的调用同时接受成功与拒绝。实现代码未改动。门禁通过（191 个测试文件、1690 个测试、5 个跳过）。
+- 2026-11-12 会话 317：完成 P4.e。新增 `docs/plugins/code-plugins.md`；新增示例代码插件 `docs/plugins/examples/code-travel-log/`（`dramaticer.plugin.json`、`plugin.mjs`、`data/travel.md`），只声明 `files` 只读权限，注册 `memory` 槽位、`travel_log` 只读工具与 `旅行日志` 块类型；新增 `packages/core/test/code-plugin-examples.test.ts` 5 条测试：在 worker 沙箱里按清单权限装载并验证三种扩展点、空权限下验证槽位与工具被拒绝且 Trace 记 `denied`、停止后撤销全部注册项，并核对文档与解析器常量。门禁通过（192 个测试文件、1695 个测试、5 个跳过）。
 
-## 下一步（会话 317 先做）
-1. 按 TASKS 从上往下选任务：**P4.e 插件开发文档与示例代码插件**（依赖 P4.c，已满足）。
-2. P4.e 要点：写 `docs/plugins/code-plugins.md`（清单字段、`dramaticer.plugin.json` 文件名、四类权限、Context API、`activate(api, config)` 生命周期、失败与 Trace 语义、git 安装需要本机 git）；提供一个可运行的示例代码插件，并用测试在沙箱里装载、注册槽位或工具、按权限清单运行。
-3. P4.e 之后是 P4.f 验收：逐条核对 P4 总验收与 I4、I12、I15、I16、I17、I18，写 `docs/dev/reports/P4.md`。
-4. 代码插件还没有接进启动流程与安装命令：P4.d 只提供库 API，`dramaticer` CLI 与 server 的接入留给后续任务（P5 或专门任务）。M6-T99 仍等待 HUMAN-15，不要开始。
+## 下一步（会话 318 先做）
+1. 按 TASKS 从上往下选任务：**P4.f P4 验收**（依赖 P4.b、P4.c、P4.d、P4.e，全部满足）。
+2. P4.f 要点：逐条核对 P4 总验收（未声明权限的调用被拒绝并有 Trace；安装与更新的权限展示有测试；worker 崩溃不影响主进程并有测试；卸载回收副作用有测试；示例代码插件在沙箱里运行通过），并复核 I4、I12、I15、I16、I17、I18；写 `docs/dev/reports/P4.md`；结果写 `MILESTONE_DONE`。
+3. P4.f 之后：P5 应用内插件市场依赖 P4.f 与 M5-T99，M5-T00 仍依赖 R6-T99 与 P4；M6-T99 等待 HUMAN-15，不要开始。
+
+## P4.e 文档与示例（代码事实）
+- 文档 `docs/plugins/code-plugins.md`：清单字段表（`format`、`formatVersion`、`name`、`version`、`tier`、`engine`、`entry`、`title`、`description`、`inject`、`provide`、`configSchema`、`permissions`）、四类权限范围、Context API 全部成员（`name`、`version`、`config`、`network`、`readFile`、`writeFile`、`model`、`writeLedger`、`slot`、`tool`、`blockType`、`mechanism`、`onDispose`、`log`）、生命周期与失败处理、Trace 字段、安装更新与卸载、示例与安全边界。
+- 示例 `docs/plugins/examples/code-travel-log/dramaticer.plugin.json`：名称 `example.travel-log`、版本 `1.0.0`、`engine` 为 `>=0.1.0 <0.2.0`、入口 `plugin.mjs`、权限只有 `{ kind: "files", access: "read", paths: ["data"] }`、`configSchema` 允许可选 `file`。
+- 入口 `plugin.mjs` 导出 `activate(api)`：读 `api.config?.file ?? "data/travel.md"`；`api.slot("memory", ...)` 返回 `{ messages, source: api.name }`；`api.tool` 定义 `travel_log`（`permission: "read"`、`progressLabel`、参数为空对象 schema、阶段 `["fast","deep"]`）；`api.blockType` 定义 `旅行日志`（`display.kind: "html"`、`context.kind: "keep-depth"` 深度 2、`semantics.kind: "none"`）。
+- 测试 `packages/core/test/code-plugin-examples.test.ts` 5 条：清单解析；按权限装载并验证槽位、工具执行、块类型与 `allowed` Trace；空权限下槽位返回 null、`tool.execute` 拒绝、两条 `denied` Trace；停止后注册表为空；文档覆盖清单字段、四类权限、模型角色、台账命名空间、11 个槽位名、13 个 API 方法与格式常量。
+- 声明式示例目录的测试 `declarative-plugin-examples.test.ts` 只读取顶层 `.json`，新增的 `code-travel-log/` 子目录不影响它。
 
 ## P4.d 安装、更新与卸载（代码事实）
 - 模块 `packages/core/src/plugins/code-plugin-installer.ts`，经 `plugins/index.ts` 从 `@dramaticer/core` 根导出：`CodePluginManager`、`parseNpmSpec`、`CODE_PLUGIN_MANIFEST_FILENAME`。
@@ -70,11 +76,11 @@
 - 回合内钩子：`plugins/turn-hooks.ts` 的 `runTurnHook` 预算默认 5,000 毫秒；超时跳过并写 `TurnTrace.hooks`。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a 至 P2.g、P3.a 至 P3.f、P4.a 至 P4.d。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a 至 P2.g、P3.a 至 P3.f、P4.a 至 P4.e。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
 - 数据库 schema 版本 43。
 - P3 验收报告：`docs/dev/reports/P3.md`；P2 报告：`docs/dev/reports/P2.md`。
 - 声明式插件还没有接进运行时装载器：P3 完成格式、解析、叠加、按故事解析与导入报告；把台账 schema、块渲染器、技能与玩法包配置注册到内核留给后续任务。
-- 代码插件已有清单、安装确认、worker 运行时与安装/更新/卸载库 API；尚未接到启动流程与命令行（P4.d 不提供 CLI）。
+- 代码插件已有清单、安装确认、worker 运行时、安装/更新/卸载库 API 与开发文档和示例；尚未接到启动流程与命令行（P4.d 与 P4.e 都只提供库 API 与示例，`dramaticer` CLI 与 server 的接入留给后续任务（P5 或专门任务））。
 - ADR-0088 记录故事级插件状态存进 `story_settings`；ADR-0089 记录版本范围用 semver 与导入报告字段；ADR-0090 记录代码插件清单与权限形状；ADR-0091 记录安装确认与安装记录；ADR-0092 记录 worker 隔离、能力判定与信任边界；ADR-0093 记录安装来源、更新检查与卸载回收。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045、ADR-0078、ADR-0079、ADR-0080、ADR-0082、ADR-0083、ADR-0084、ADR-0085、ADR-0086、ADR-0087。
 - HUMAN-03 待处理（不阻塞）：抽查 `eval-private/evalset/spotcheck.md` 里的事件题。
@@ -83,6 +89,7 @@
 
 ## 可重复命令
 - 门禁：`pnpm check`。
+- P4.e 目标测试：`pnpm exec vitest run packages/core/test/code-plugin-examples.test.ts`（5 个测试）。
 - P4.d 目标测试：`pnpm exec vitest run packages/core/test/code-plugin-installer.test.ts`（9 个测试）。
 - P4.c 目标测试：`pnpm exec vitest run packages/core/test/code-plugin-worker.test.ts`（10 个测试）。
 - P4.b 目标测试：`pnpm exec vitest run packages/core/test/code-plugin-installations.test.ts`（9 个测试）。

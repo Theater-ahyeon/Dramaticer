@@ -1,0 +1,27 @@
+{
+	"format": "dramaticer.code-plugin",
+	"formatVersion": 1,
+	"name": "example.travel-log",
+	"version": "1.0.0",
+	"tier": "code",
+	"title": "旅行日志",
+	"description": "把插件目录里的旅行日志注入记忆槽位，并提供一个只读工具与一个块类型。",
+	"engine": ">=0.1.0 <0.2.0",
+	"entry": "plugin.mjs",
+	"configSchema": {
+		"type": "object",
+		"properties": {
+			"file": {
+				"type": "string",
+				"description": "相对插件目录的日志文件路径"
+			}
+		}
+	},
+	"permissions": [
+		{
+			"kind": "files",
+			"access": "read",
+			"paths": ["data"]
+		}
+	]
+}
