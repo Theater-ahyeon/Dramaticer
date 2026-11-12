@@ -23,8 +23,13 @@ export const READ_TOOL_NAMES = [
 	"ledger_read",
 ] as const;
 
+export const NOTE_READ_TOOL_NAME = "note_read";
+
 /** 只有深回合开放的只读工具。 */
-export const DEEP_ONLY_READ_TOOL_NAMES = ["history_read", "note_read"] as const;
+export const DEEP_ONLY_READ_TOOL_NAMES = [
+	"history_read",
+	NOTE_READ_TOOL_NAME,
+] as const;
 
 const ALL_READ_TOOL_NAMES = [
 	...READ_TOOL_NAMES,
@@ -180,7 +185,7 @@ export const DEEP_ONLY_READ_TOOLS: readonly DeepToolDefinition[] = [
 		progressLabel: "翻阅历史……",
 	},
 	{
-		name: "note_read",
+		name: NOTE_READ_TOOL_NAME,
 		description:
 			"读取沿当前路径累加后的导演手记：模型自己记录的伏笔安排、人物动机与后续打算。事实以台账为准。",
 		parameters: NOTE_READ_SCHEMA,

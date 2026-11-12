@@ -973,7 +973,8 @@
   - 快回合不套用这条规则；`maxReadRounds` 仍按原逻辑收束。
   验收：构造超过上限的工具往返后最早成对的消息被省略且消息序列仍合法；最近步骤与当前步骤完整；不产生孤立的 `tool` 消息或 `toolCalls`；Trace 数字与实际省略一致；上限以下不做任何省略；`pnpm check` 通过。
 
-- [ ] **R3b-T07 模板里的深回合配置** | 依赖：R3b-T01、R3b-T02 | DESIGN §10.1 | I6、I13
+- [x] **R3b-T07 模板里的深回合配置** | 依赖：R3b-T01、R3b-T02 | DESIGN §10.1 | I6、I13
+  完成：2026-11-12 `ContextTemplate` 新增可选 `deepTurn`（`tools`、`maxToolCalls`、`maxDurationMs`、`notesEnabled`），`assertContextTemplate` 调用新增的 `assertContextTemplateDeepTurn` 校验未知字段、未知工具名、重复工具名、越界上限、非布尔开关与「手记关闭却点名手记工具」，错误带模板 id 与字段路径；模板保存与导入都经过 `assertStoredContextTemplate` 走同一校验；`resolveTurnMode` 解析出的深回合设置新增 `tools`（null 表示全部）与 `notesEnabled`，`generateAssistantTurn` 用模板覆盖故事设置，`selectDeepTurnTools` 按白名单过滤注册表工具、手记关闭时排除 `note_read` 与 `note_write`，白名单外调用走执行器的未知工具拒绝并写入 `Trace.tools.rejected`，快回合忽略 `deepTurn`；上下文包指纹本就序列化整份模板，模板改动后旧包失效；新增 12 个测试；门禁通过（170 个测试文件、1540 个测试、4 个 live 跳过）
   做什么：
   - `ContextTemplate` 增加可选 `deepTurn`：`tools`（工具名数组，缺省为注册表全部只读、propose 与 control 工具）、`maxToolCalls`、`maxDurationMs`、`notesEnabled`（默认 true）。规划—批评—执行按 DESIGN §18 保持暂缓，本轮不增加计划方式字段。
   - 校验：未知工具名、重复工具名、越界上限、非布尔 `notesEnabled` 都抛错并指出模板 id 与字段；没有 `deepTurn` 的模板与现有模板逐字段一致。

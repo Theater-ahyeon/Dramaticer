@@ -3,17 +3,17 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-12 会话 288：R3b-T06（工具往返的上下文卫生）。新增 `packages/core/src/chat/context-window.ts`：`pruneToolRoundTrips` 把“助手工具调用消息 + 紧随其后的工具结果消息”识别为一个工具步，累计估算 token 超过 `tokenLimit` 时从最早一步开始整步省略，直到降到上限以下或只剩 `recentToolSteps` 步；系统消息、用户消息与非工具往返的助手消息不参与省略，`addContextOmission` 累计多次请求前的省略。执行器新增 `contextWindow` 选项，每次请求前就地省略，累计结果随 `ModelTurnResult.contextOmitted` 返回；`runDeepTurn` 新增 `contextTokenLimit` 与 `recentToolSteps`（默认 48,000 与 4，校验范围），由 `resolveTurnMode` 解析出的故事设置接线；`TurnTrace.deep.contextOmitted`（`pairs`、`messages`、`tokens`、`reason`）只在有省略时写入，快回合不传该选项。新增 8 个 core 测试；门禁通过（169 个测试文件、1528 个测试、4 个 live 跳过）
+- 2026-11-12 会话 289：R3b-T07（模板里的深回合配置）。`ContextTemplate` 新增可选 `deepTurn`：`tools`（工具名白名单，缺省为注册表全部工具）、`maxToolCalls`、`maxDurationMs`、`notesEnabled`（默认 true）；新增 `assertContextTemplateDeepTurn` 校验未知字段、未知工具名、重复工具名、越界上限、非布尔开关、以及「`notesEnabled` 为 false 却点名手记工具」，错误带模板 id 与字段路径，`assertContextTemplate` 调用它，模板保存与导入都经过 `assertStoredContextTemplate` 走同一校验。`resolveTurnMode` 的深回合设置新增 `tools`（null 表示全部）与 `notesEnabled`；`generateAssistantTurn` 用 `applyTemplateDeepTurn` 以模板覆盖故事设置；`selectDeepTurnTools` 按白名单过滤 `DEEP_TURN_TOOLS`，手记关闭时排除 `note_read` 与 `note_write`，白名单外调用走执行器既有的未知工具分支，写入 `Trace.tools.rejected`；快回合忽略 `deepTurn`；上下文包指纹序列化整份模板，模板改动后旧包失效。新增 12 个测试；门禁通过（170 个测试文件、1540 个测试、4 个 live 跳过）
 
-## 下一步（会话 289 先做）
-1. 做 R3b-T07（模板里的深回合配置）：`ContextTemplate.deepTurn` 增加 `tools` 白名单、`maxToolCalls`、`maxDurationMs`、`notesEnabled`（默认 true）；模板覆盖故事设置，故事设置覆盖默认值；白名单外调用按未知工具拒绝并记录；模板保存、导入与 `assertContextTemplate` 走同一校验；上下文包指纹包含模板内容。规划—批评—执行仍按 DESIGN §18 暂缓。
-2. T07 之后按顺序做 T08（原生元数据）、T09（运行中追加要求）、T10.a/T10.b（界面）、T99。
+## 下一步（会话 290 先做）
+1. 做 R3b-T08（原生元数据保真）：`LlmToolCall.native` 保存 `thoughtSignature`、`namespace`、`argumentsError`，助手消息 `native` 保存完整内容片段；pi 通道原样回放；Gemini 两轮工具调用 fixture 断言签名逐字节一致；新增 `*.live.test.ts`（`DRAMATICER_DEEP_LIVE=1`）。
+2. T08 之后按顺序做 T09（运行中追加要求）、T10.a/T10.b（界面）、T99。
 3. M6-T99 仍等待 HUMAN-15（ComfyUI 与 API workflow JSON），不要开始。
 4. R3b 完成后再做 P1/P2 → C 兼容插件 → H → X → R6 → M6b → P3/P4 → M5 → P5 → M7。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00、R3b-T01、R3b-T02、R3b-T03、R3b-T04、R3b-T05、R3b-T06。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- 数据库 schema 版本 41。R3b 后续计划的迁移：v42 模板深回合配置（R3b-T07）。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T07。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 数据库 schema 版本 41。R3b 后续计划的迁移：v42（R3b-T09 若需要新表）与运行日志相关字段，按任务文本决定。
 - `eval-private/memory-cache/r1-retrieval.db` 有三个故事：`仙侠雌竞：什么叫我是炉鼎体质？` 290 个助手楼层已抽取 282 个、414 条事件；`欲望世界-1600` 180 个助手楼层已抽取 174 个、292 条事件；`银麒赎世` 114 个助手楼层已抽取 112 个、248 条事件。评测自己的临时数据库重新抽取后事件覆盖为 282/290、172/180、112/114，事件数 371/247/248。
 - M6-T99 标 `[!]`，等待 HUMAN-15：真实 ComfyUI 启动在 `http://127.0.0.1:8188` 并提供 API 格式 workflow JSON 到 `eval-private/comfyui/`；2026-11-09 探测时端口仍未监听。
 - 人类已确认的路线变更：ADR-0038、ADR-0039、ADR-0040、ADR-0041（A1–A11）、ADR-0042、ADR-0043、ADR-0044、ADR-0045、ADR-0078、ADR-0079、ADR-0080、ADR-0082、ADR-0083、ADR-0084、ADR-0085、ADR-0086。
@@ -28,20 +28,21 @@
 - T04 草稿与提交（已完成）：`draft_write` 整份替换运行内草稿，`commit_draft` 提交为助手楼层并结束运行；草稿提交前不写楼层、不进历史、不参与台账；`draft.replace` SSE 按 100 毫秒节流；提交后发 `turn.committed`；正常结束但没有提交时把最后一次输出自动提交并记 `missing_commit` 漂移；中止、超时、工具次数上限或没有正文时运行标为 `aborted` 或 `failed`，不产生楼层，head 停在用户楼层。
 - T05 导演手记（已完成）：迁移 v41；每楼存 `set`/`delete` diff，沿当前路径累加，后写覆盖；`note_read` 与 `note_write`；深回合开始时在组装后的消息之后注入一条系统消息，快回合不注入；手记不进台账。
 - T06 上下文卫生（已完成）：每次请求前对工具往返累计估算 token，超过 `deepContextTokenLimit`（默认 48,000）时从最早一步开始成对省略，保留最近 `deepRecentToolSteps`（默认 4）步；`TurnTrace.deep.contextOmitted` 只在有省略时写入；快回合不套用。
-- T07 模板配置：`ContextTemplate.deepTurn` 增加 `tools` 白名单、`maxToolCalls`、`maxDurationMs`、`notesEnabled`；模板覆盖故事设置，故事设置覆盖默认值；白名单外调用按未知工具拒绝。
+- T07 模板配置（已完成）：`ContextTemplate.deepTurn` 见上文；模板覆盖故事设置，故事设置覆盖默认值；白名单外调用按未知工具拒绝并记录；模板保存、导入与 `assertContextTemplate` 走同一校验；指纹包含模板内容。规划—批评—执行仍按 DESIGN §18 暂缓。
 - T08 原生元数据：`LlmToolCall.native` 保存 `thoughtSignature`、`namespace`、`argumentsError`，助手消息 `native` 保存完整内容片段；pi 通道原样回放；Gemini 两轮工具调用 fixture 断言签名逐字节一致；新增 `*.live.test.ts`（`DRAMATICER_DEEP_LIVE=1`）。
 - T09 运行中追加要求：core 暴露 `pushGuidance`（最多 5 条、每条 1–2,000 字）；server 维护运行句柄表；`POST /api/stories/:id/turns/:runId/steering`；`turn.started` 带 `runId`；SSE `turn.steering`；指引不写楼层；`steering` 事件写进运行日志。
-- T10.a 界面：模式选择列出快/深、设置页深回合区段与模板字段、`turn.progress` 阶段文字。
+- T10.a 界面：模式选择列出快/深、设置页深回合区段与模板字段（`ContextTemplate.deepTurn` 同形）、`turn.progress` 阶段文字。
 - T10.b 界面：草稿区、追加要求输入、楼层运行时间线。web 的流式状态已经有 `liveDraft` 与 `committed` 字段可用。
 - T99 验收：30 次真实深回合（失败率目标 ≤10%）、漂移率、时长对照 TauriTavern P50 66 秒/P90 147 秒、10 个分支点的快/深盲评增益；统计版 `docs/dev/reports/R3b.md`。
 
 ## 深回合实现起点（代码事实）
-- 回合入口 `packages/core/src/chat/turn.ts`：`runChatTurn` 先 `resolveTurnMode`，再追加用户楼层、组装上下文、按模式调用 `runDeepTurn` 或 `runModelTurns`。深回合新建 `TurnDraftController` 与 `TurnNoteController`；`withDirectorNotes` 在组装后的消息之后追加一条系统消息（没有手记时不加）。`runDeepTurn` 收到 `maxToolCalls`、`maxDurationMs`、`contextTokenLimit`、`recentToolSteps`，其中后两项来自 `resolveTurnMode` 解析出的故事设置。正文解析在 `resolveTurnBody`：显式提交用草稿；正常结束但没有提交时把最后一次输出整份替换为草稿并自动提交，记 `drift: "missing_commit"`；中止、超时、工具次数上限或没有正文且没有提交时返回 null，运行标为 `failed` 并抛 `DeepTurnWithoutCommitError`（中止抛 `TurnAbortedError`，运行标为 `aborted`）。提交事务里先写助手楼层，再写手记 diff、台账 diff 与 Trace。快回合保持旧行为：中止且已有部分正文时仍写楼层。工具集合按模式选 `DEEP_TURN_TOOLS` 或 `FAST_TURN_TOOLS`；快回合只在函数调用或文本协议下暴露只读工具；`illustrate` 启用时加入，未启用时作为停用工具传入。
-- 上下文卫生 `packages/core/src/chat/context-window.ts`：`DeepContextWindow { tokenLimit, recentToolSteps, estimator? }`；`pruneToolRoundTrips` 把助手工具调用消息加紧随其后的工具结果识别为一个工具步（没有工具结果的助手消息不算），按“正文 + 工具名 + 参数 JSON”估算每条消息 token，累计超过上限时从最早一步整步删除，直到降到上限以下或只剩 `recentToolSteps` 步；`addContextOmission` 把多次请求前的省略累计成 `{pairs, messages, tokens, reason: "context_limit"}`。
-- 工具注册表 `packages/core/src/tools/registry.ts`、`read-tools.ts`、`write-tools.ts`、`draft-tools.ts`、`note-tools.ts`、`index.ts`：权限与进度文字声明、两个注册表、十个内置工具。`ledger_write` 的收集结果进入 `ModelTurnResult.proposedStateUpdates`，`note_write` 的收集结果留在 `TurnNoteController`，两者都在楼层事务里写入。深回合工具顺序为 memory_search、lore_lookup、state_get、ledger_read、history_read、note_read、ledger_write、note_write、draft_write、commit_draft。
+- 回合入口 `packages/core/src/chat/turn.ts`：`runChatTurn` 先 `resolveTurnMode`，再追加用户楼层、组装上下文、按模式调用 `runDeepTurn` 或 `runModelTurns`。`generateAssistantTurn` 里 `applyTemplateDeepTurn` 用 `options.template.deepTurn` 覆盖 `resolveTurnMode` 的结果；`selectDeepTurnTools` 按白名单过滤注册表工具并排除关闭的手记工具，白名单外调用落到执行器的未知工具拒绝。深回合新建 `TurnDraftController` 与 `TurnNoteController`（`notesEnabled` 为 false 时为 null，也不注入手记系统消息）；`withDirectorNotes` 在组装后的消息之后追加一条系统消息（没有手记时不加）。`runDeepTurn` 收到 `maxToolCalls`、`maxDurationMs`、`contextTokenLimit`、`recentToolSteps`。正文解析在 `resolveTurnBody`：显式提交用草稿；正常结束但没有提交时把最后一次输出整份替换为草稿并自动提交，记 `drift: "missing_commit"`；中止、超时、工具次数上限或没有正文且没有提交时返回 null，运行标为 `failed` 并抛 `DeepTurnWithoutCommitError`（中止抛 `TurnAbortedError`，运行标为 `aborted`）。提交事务里先写助手楼层，再写手记 diff、台账 diff 与 Trace。快回合保持旧行为：中止且已有部分正文时仍写楼层。快回合忽略 `deepTurn`，工具集合是 `FAST_TURN_TOOLS`。
+- 模板与校验 `packages/core/src/context/template.ts`：`ContextTemplate` 含 `id`、`segments`、可选 `deepTurn`；`assertContextTemplate` 校验片段 id、priority、静态文本、槽位、条件、`protocol` 必须在最后，并调用 `assertContextTemplateDeepTurn`。`deepTurn.tools` 只接受 `DEEP_TURN_TOOLS` 里的工具名；`maxToolCalls` 与 `maxDurationMs` 复用 `chat/mode.ts` 的范围校验；`notesEnabled` 必须是布尔值，为 false 时不允许点名 `note_read` 或 `note_write`。模板保存与导入都经过 `store` 的 `assertStoredContextTemplate`。
+- 工具注册表 `packages/core/src/tools/registry.ts`、`read-tools.ts`、`write-tools.ts`、`draft-tools.ts`、`note-tools.ts`、`index.ts`：权限与进度文字声明、两个注册表、十个内置工具；`NOTE_READ_TOOL_NAME` 与 `NOTE_WRITE_TOOL_NAME` 是模板校验与工具过滤共用的常量。`ledger_write` 的收集结果进入 `ModelTurnResult.proposedStateUpdates`，`note_write` 的收集结果留在 `TurnNoteController`，两者都在楼层事务里写入。深回合工具顺序为 memory_search、lore_lookup、state_get、ledger_read、history_read、note_read、ledger_write、note_write、draft_write、commit_draft。
 - 导演手记 `packages/core/src/director/notes.ts`：`set`/`delete` 校验、`applyDirectorNoteDiffs` 累加、`formatDirectorNotes` 注入文本；存储层 `saveDirectorNotes`、`getDirectorNotes`、`readDirectorNoteEntries`。手记是模型的工作材料，不写 `state_diffs`，不参与结算。
 - 草稿 `packages/core/src/chat/draft.ts`：`TurnDraftSnapshot { text, version }`；替换时版本加一，空正文与提交后的替换抛错；`commit(method)` 只允许一次，方式取 `tool` 或 `auto`。运行日志的 `draft.replace` 只记版本号与正文长度，`draft.commit` 记版本号、长度与方式。
 - 手记控制器 `packages/core/src/chat/notes.ts`：`TurnNoteController.pending` 是本次运行的待提交 diff；`apply` 逐条校验并在累计超过 50 条时整批拒绝。
+- 上下文卫生 `packages/core/src/chat/context-window.ts`：`DeepContextWindow { tokenLimit, recentToolSteps, estimator? }`；`pruneToolRoundTrips` 把助手工具调用消息加紧随其后的工具结果识别为一个工具步（没有工具结果的助手消息不算），按“正文 + 工具名 + 参数 JSON”估算每条消息 token，累计超过上限时从最早一步整步删除，直到降到上限以下或只剩 `recentToolSteps` 步；`addContextOmission` 把多次请求前的省略累计成 `{pairs, messages, tokens, reason: "context_limit"}`。
 - 执行器 `packages/core/src/chat/executor.ts`：按注册表权限执行工具；`maxToolCalls` 计只读、propose、control 与 side_effect 的执行次数；`side_effect` 不强制下一轮，只登记；停用工具返回工具错误；未知工具记入 `rejected`（两种传输）；`maxDurationMs` 每次请求前检查；每次请求前如果传了 `contextWindow` 就先成对省略较早的工具往返；进度阶段去重后回调 `onToolProgress`；`TurnAbortedError` 带 `toolCallCount`。`control` 工具需要 `draft` 控制器；`propose` 里 `ledger_write` 进待提交集合、`note_write` 进手记控制器；提交后同一轮后续工具不再产生副作用，循环立即收束并把草稿正文作为最终结果。
 - 运行日志 `packages/core/src/run-log.ts`：`TurnRunRecord`、`TurnRunEvent`、`TurnRunEventInput`、`TurnRunDetail`，状态五种、事件九种（`model.request`、`model.response`、`tool.call`、`tool.result`、`draft.replace`、`draft.commit`、`steering`、`limit`、`error`）。存储层事件序号由单条 `INSERT ... SELECT COALESCE(MAX(seq),0)+1` 分配；事件表触发器拒绝更新与删除；只能在 `running` 状态追加；`markInterruptedTurnRuns` 返回改动行数。`turn_runs.node_id` 在提交/中止保存楼层时写入，没有楼层时为空；唯一索引保证一个助手楼层最多一条运行。
 - Trace `packages/core/src/trace.ts`：`TurnTrace.deep`（`TurnTraceDeep`，含 `stopReason`、`commit`、`drift`，以及可选的 `contextOmitted`）、`TurnTrace.run`、`DeepTurnStopReason`、`TurnTraceToolCall.permission`；快回合 `deep` 与 `run` 都为 null；旧 Trace 读回时缺失的 `run` 补 null。
@@ -54,7 +55,7 @@
 - 重排序：`reranker` 段在 `channels.yaml`，`enabled` 当前 false；`OpenAiRerankClient` 默认把文档截断到 4,000 码点。融合权重默认 BM25 2、向量 1、实体 0.5、事件 0.5、最近块 1。
 - 八段式压缩：表 `chapter_compressions`，固定八个键；槽位注入主线压缩与最近一条章节；`DEFAULT_COMPRESSION_TOKEN_LIMIT = 2_000`，散文摘要默认 800；完整八段实测 1,146/1,210/1,491 token。
 - 世界书预筛：表 `lore_prefilter(node_id PRIMARY KEY, story_id, entry_ids, created_at)`；后台任务 `lore_prefilter` 只处理当前 head 路径最新助手楼层；槽位有记录时只注入常驻条目与记录选中的非恒常条目。
-- 上下文包：表 `context_packs(node_id PRIMARY KEY, story_id, payload, created_at)`；指纹覆盖模板、预算、档位、导演强度与各槽位 `packKey`；引用失效时重新组装；玩家编辑产生新楼层，不继承旧包。
+- 上下文包：表 `context_packs(node_id PRIMARY KEY, story_id, payload, created_at)`；指纹覆盖模板（含 `deepTurn`）、预算、档位、导演强度与各槽位 `packKey`；引用失效时重新组装；玩家编辑产生新楼层，不继承旧包。
 - R1 验收数字与口径见 `docs/dev/reports/R1.md` 第十二节与 ADR-0086。
 
 ## 后台任务与队列

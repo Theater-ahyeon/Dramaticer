@@ -1,4 +1,11 @@
+import { assertDeepMaxToolCalls, assertDeepTimeoutMs } from "../chat/mode.js";
+import { assertPlainObject, rejectUnknownKeys } from "../json.js";
 import type { LlmRole } from "../llm/types.js";
+import {
+	DEEP_TURN_TOOLS,
+	NOTE_READ_TOOL_NAME,
+	NOTE_WRITE_TOOL_NAME,
+} from "../tools/index.js";
 
 /** 内置默认模板的 id；故事设置把 templateId 指向它表示不使用库里的模板。 */
 export const DEFAULT_CONTEXT_TEMPLATE_ID = "dramaticer-default";
@@ -88,10 +95,26 @@ export interface ContextSlotSegment extends ContextSegmentBase {
 
 export type ContextSegment = ContextStaticSegment | ContextSlotSegment;
 
+/**
+ * 模板附带的深回合配置。缺省的字段回落到故事设置与默认值；
+ * 规划方式按 DESIGN §18 暂缓，这里没有计划方式字段。
+ */
+export interface ContextTemplateDeepTurn {
+	/** 放开的工具名；缺省为注册表里的全部工具。 */
+	readonly tools?: readonly string[];
+	/** 工具调用总次数上限；缺省沿用故事设置。 */
+	readonly maxToolCalls?: number;
+	/** 运行时长上限（毫秒）；缺省沿用故事设置。 */
+	readonly maxDurationMs?: number;
+	/** 是否放开导演手记；默认 true。 */
+	readonly notesEnabled?: boolean;
+}
+
 /** 有序的上下文模板。输出顺序始终等于这里的顺序。 */
 export interface ContextTemplate {
 	readonly id: string;
 	readonly segments: readonly ContextSegment[];
+	readonly deepTurn?: ContextTemplateDeepTurn;
 }
 
 /** 写作契约片段固定使用的 id；契约始终是模板最后一个段落。 */
@@ -139,6 +162,66 @@ export function assertContextTemplate(template: ContextTemplate): void {
 		throw new Error(
 			`上下文模板 ${template.id} 的 protocol 写作契约片段必须是最后一个片段：当前在第 ${protocolIndex + 1} 个，后面还有 ${lastIndex - protocolIndex} 个片段`,
 		);
+	}
+	if (template.deepTurn !== undefined) {
+		assertContextTemplateDeepTurn(template.deepTurn, template.id);
+	}
+}
+
+/**
+ * 校验模板的深回合配置：保存、导入与运行前的模板校验都走这里，
+ * 拼错的工具名与越界上限立即拒绝，运行时不静默忽略。
+ */
+export function assertContextTemplateDeepTurn(
+	value: unknown,
+	templateId: string,
+): void {
+	const label = `上下文模板 ${templateId} 的 deepTurn`;
+	const config = assertPlainObject(value, label);
+	rejectUnknownKeys(
+		config,
+		["tools", "maxToolCalls", "maxDurationMs", "notesEnabled"],
+		label,
+	);
+	if (config.tools !== undefined) {
+		if (!Array.isArray(config.tools)) {
+			throw new Error(`${label}.tools 必须是数组`);
+		}
+		const seen = new Set<string>();
+		for (const [index, name] of config.tools.entries()) {
+			if (typeof name !== "string" || name.trim().length === 0) {
+				throw new Error(`${label}.tools[${index}] 必须是非空字符串`);
+			}
+			if (!DEEP_TURN_TOOLS.tools.some((tool) => tool.name === name)) {
+				throw new Error(`${label}.tools[${index}] 是未知工具：${name}`);
+			}
+			if (seen.has(name)) {
+				throw new Error(`${label}.tools[${index}] 重复的工具名：${name}`);
+			}
+			seen.add(name);
+		}
+	}
+	if (config.maxToolCalls !== undefined) {
+		assertDeepMaxToolCalls(config.maxToolCalls, `${label}.maxToolCalls`);
+	}
+	if (config.maxDurationMs !== undefined) {
+		assertDeepTimeoutMs(config.maxDurationMs, `${label}.maxDurationMs`);
+	}
+	if (
+		config.notesEnabled !== undefined &&
+		typeof config.notesEnabled !== "boolean"
+	) {
+		throw new Error(`${label}.notesEnabled 必须是布尔值`);
+	}
+	if (config.notesEnabled === false && Array.isArray(config.tools)) {
+		const enabledNote = config.tools.find(
+			(name) => name === NOTE_READ_TOOL_NAME || name === NOTE_WRITE_TOOL_NAME,
+		);
+		if (enabledNote !== undefined) {
+			throw new Error(
+				`${label}.tools 不能在 notesEnabled 为 false 时包含 ${String(enabledNote)}`,
+			);
+		}
 	}
 }
 

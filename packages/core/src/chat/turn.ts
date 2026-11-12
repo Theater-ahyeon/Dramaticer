@@ -46,8 +46,16 @@ import type {
 	StructuredOutputMode,
 } from "../structured/types.js";
 import type { NewStateDiff, StateDiff, TimelineNode } from "../timeline.js";
-import { DEEP_TURN_TOOLS, FAST_TURN_TOOLS } from "../tools/index.js";
-import type { ToolProgressEvent } from "../tools/registry.js";
+import {
+	DEEP_TURN_TOOLS,
+	FAST_TURN_TOOLS,
+	NOTE_READ_TOOL_NAME,
+	NOTE_WRITE_TOOL_NAME,
+} from "../tools/index.js";
+import type {
+	DeepToolDefinition,
+	ToolProgressEvent,
+} from "../tools/registry.js";
 import type { TurnTrace, TurnTraceRun } from "../trace.js";
 import { type DeepTurnResult, runDeepTurn } from "./deep-turn.js";
 import { TurnDraftController, type TurnDraftSnapshot } from "./draft.js";
@@ -165,6 +173,10 @@ export interface ResolvedDeepTurnSettings {
 	readonly maxDurationMs: number;
 	readonly contextTokenLimit: number;
 	readonly recentToolSteps: number;
+	/** 模板放开的工具名；null 表示注册表里的全部工具。 */
+	readonly tools: readonly string[] | null;
+	/** 是否放开导演手记；模板缺省为 true。 */
+	readonly notesEnabled: boolean;
 }
 
 export interface ResolvedFastTurnMode {
@@ -239,8 +251,49 @@ export function resolveTurnMode(
 			maxDurationMs: settings.deepTimeoutMs,
 			contextTokenLimit: settings.deepContextTokenLimit,
 			recentToolSteps: settings.deepRecentToolSteps,
+			tools: null,
+			notesEnabled: true,
 		},
 	};
+}
+
+/**
+ * 模板里的深回合配置覆盖故事设置，故事设置覆盖默认值。
+ * 快回合忽略 deepTurn，模板缺省的字段保持解析出的故事设置。
+ */
+function applyTemplateDeepTurn(
+	template: ContextTemplate,
+	resolved: ResolvedTurnMode,
+): ResolvedTurnMode {
+	const config = template.deepTurn;
+	if (resolved.mode !== "deep" || config === undefined) return resolved;
+	return {
+		...resolved,
+		deep: {
+			...resolved.deep,
+			maxToolCalls: config.maxToolCalls ?? resolved.deep.maxToolCalls,
+			maxDurationMs: config.maxDurationMs ?? resolved.deep.maxDurationMs,
+			tools: config.tools ?? null,
+			notesEnabled: config.notesEnabled ?? true,
+		},
+	};
+}
+
+/**
+ * 深回合只暴露模板放开的工具；手记关闭时两个手记工具一并排除，
+ * 名单之外的工具调用由执行器按未知工具拒绝并记录。
+ */
+function selectDeepTurnTools(
+	deep: ResolvedDeepTurnSettings,
+): readonly DeepToolDefinition[] {
+	const whitelist = deep.tools === null ? null : new Set(deep.tools);
+	return DEEP_TURN_TOOLS.tools.filter(
+		(tool) =>
+			(whitelist === null || whitelist.has(tool.name)) &&
+			(deep.notesEnabled ||
+				(tool.name !== NOTE_READ_TOOL_NAME &&
+					tool.name !== NOTE_WRITE_TOOL_NAME)),
+	);
 }
 
 /**
@@ -338,11 +391,14 @@ export async function generateAssistantTurn(
 			`助手楼层需要以用户楼层为父节点：${userNode.id} 的角色是 ${userNode.role}`,
 		);
 	}
-	const resolved = resolveTurnMode(
-		options.store,
-		options.storyId,
-		options.turnMode,
-		options.maxReadRounds,
+	const resolved = applyTemplateDeepTurn(
+		options.template,
+		resolveTurnMode(
+			options.store,
+			options.storyId,
+			options.turnMode,
+			options.maxReadRounds,
+		),
 	);
 	const profile = options.profile ?? DEFAULT_CHAT_PROFILE;
 	assertChatProfile(profile);
@@ -391,8 +447,11 @@ export async function generateAssistantTurn(
 		resolved.mode === "deep"
 			? writesLedger
 			: writesLedger && (functionCall || transport === "text");
-	const toolSet = resolved.mode === "deep" ? DEEP_TURN_TOOLS : FAST_TURN_TOOLS;
-	const readTools = exposeReadTools ? toolSet.tools : [];
+	const readTools = exposeReadTools
+		? resolved.mode === "deep"
+			? selectDeepTurnTools(resolved.deep)
+			: FAST_TURN_TOOLS.tools
+		: [];
 	const tools =
 		readTools.length === 0 && illustrateTool === null
 			? undefined
@@ -441,7 +500,10 @@ export async function generateAssistantTurn(
 					},
 				})
 			: null;
-	const notes = resolved.mode === "deep" ? new TurnNoteController() : null;
+	const notes =
+		resolved.mode === "deep" && resolved.deep.notesEnabled
+			? new TurnNoteController()
+			: null;
 	// 深回合在组装后的消息之后注入手记；快回合不注入。
 	const messages =
 		notes === null
