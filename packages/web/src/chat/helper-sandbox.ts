@@ -29,12 +29,21 @@ export interface StHelperSandboxFrameDone {
 	readonly error?: string;
 }
 
+export interface StHelperSandboxFrameRendered {
+	readonly type: "st-helper:rendered";
+	readonly render: string;
+	readonly ok: boolean;
+	readonly html?: string;
+	readonly error?: string;
+}
+
 export type StHelperSandboxFrameMessage =
 	| StHelperSandboxFrameReady
 	| StHelperSandboxFrameCall
-	| StHelperSandboxFrameDone;
+	| StHelperSandboxFrameDone
+	| StHelperSandboxFrameRendered;
 
-/** 白名单：ready、call 与 done；其余消息一律忽略。 */
+/** 白名单：ready、call、done 与 rendered；其余消息一律忽略。 */
 export function parseHelperSandboxFrameMessage(
 	value: unknown,
 ): StHelperSandboxFrameMessage | null {
@@ -74,6 +83,27 @@ export function parseHelperSandboxFrameMessage(
 			...(value.error === undefined ? {} : { error: value.error }),
 		};
 	}
+	if (value.type === "st-helper:rendered") {
+		if (!isNonEmptyString(value.render) || typeof value.ok !== "boolean") {
+			return null;
+		}
+		if (value.ok) {
+			if (typeof value.html !== "string") return null;
+			return {
+				type: "st-helper:rendered",
+				render: value.render,
+				ok: true,
+				html: value.html,
+			};
+		}
+		if (!isNonEmptyString(value.error)) return null;
+		return {
+			type: "st-helper:rendered",
+			render: value.render,
+			ok: false,
+			error: value.error,
+		};
+	}
 	return null;
 }
 
@@ -104,6 +134,7 @@ html, body { margin: 0; padding: 0; background: transparent; color: #ddd; font: 
 </style>
 </head>
 <body>
+<div id="st-helper-root"></div>
 <script>
 (function () {
 	"use strict";
@@ -259,6 +290,110 @@ html, body { margin: 0; padding: 0; background: transparent; color: #ddd; font: 
 
 	window.__stHelperSandboxDone = done;
 
+	const root = document.getElementById("st-helper-root");
+	const scriptWaiters = new Map();
+	let scriptSeq = 0;
+	let renderQueue = Promise.resolve();
+
+	window.__stHelperRenderScriptDone = function (id, ok, error) {
+		const waiter = scriptWaiters.get(id);
+		if (waiter === undefined) return;
+		scriptWaiters.delete(id);
+		if (ok) waiter.resolve();
+		else waiter.reject(new Error(error || "脚本执行失败"));
+	};
+
+	function executeInlineScript(code) {
+		return new Promise(function (resolve, reject) {
+			const id = "render-script-" + (++scriptSeq);
+			scriptWaiters.set(id, { resolve: resolve, reject: reject });
+			const element = document.createElement("script");
+			element.textContent =
+				"(async function () {\\n" +
+				code +
+				"\\n})().then(function () { window.__stHelperRenderScriptDone(" +
+				JSON.stringify(id) +
+				", true); }, function (error) { window.__stHelperRenderScriptDone(" +
+				JSON.stringify(id) +
+				", false, error && error.message ? error.message : String(error)); });";
+			document.body.appendChild(element);
+		});
+	}
+
+	function collectPageScripts(doc) {
+		const scripts = [];
+		for (const element of doc.querySelectorAll("script")) {
+			if (element.getAttribute("src")) {
+				throw new Error("状态栏与开场页不支持外部脚本");
+			}
+			const type = (element.getAttribute("type") || "").trim().toLowerCase();
+			if (type === "module") {
+				throw new Error("状态栏与开场页不支持 module 脚本");
+			}
+			if (
+				type !== "" &&
+				type !== "text/javascript" &&
+				type !== "application/javascript"
+			) {
+				continue;
+			}
+			scripts.push(element.textContent || "");
+		}
+		return scripts;
+	}
+
+	function importPage(doc) {
+		root.textContent = "";
+		const order = [];
+		for (const node of doc.head.childNodes) order.push(node);
+		for (const node of doc.body.childNodes) order.push(node);
+		for (const node of order) {
+			if (node.nodeName === "SCRIPT") continue;
+			root.appendChild(document.importNode(node, true));
+		}
+		for (const element of root.querySelectorAll("script")) element.remove();
+	}
+
+	function renderPage(data) {
+		const result = renderQueue.then(function () {
+			return Promise.resolve()
+				.then(function () {
+					const doc = new DOMParser().parseFromString(data.html, "text/html");
+					const scripts = collectPageScripts(doc);
+					for (const code of data.scripts || []) scripts.push(code);
+					importPage(doc);
+					return scripts.reduce(function (chain, code) {
+						return chain.then(function () {
+							return executeInlineScript(code);
+						});
+					}, Promise.resolve());
+				})
+				.then(
+					function () {
+						post({
+							type: "st-helper:rendered",
+							render: data.render,
+							ok: true,
+							html: root.innerHTML,
+						});
+					},
+					function (error) {
+						post({
+							type: "st-helper:rendered",
+							render: data.render,
+							ok: false,
+							error: error && error.message ? error.message : String(error),
+						});
+					},
+				);
+		});
+		renderQueue = result.then(
+			function () {},
+			function () {},
+		);
+		return result;
+	}
+
 	window.addEventListener("error", function (event) {
 		if (!running || current === null) return;
 		done(current, false, event.error || event.message);
@@ -296,6 +431,10 @@ html, body { margin: 0; padding: 0; background: transparent; color: #ddd; font: 
 					if (entry.type === data.event) removeListenerToken(token);
 				}
 			}
+			return;
+		}
+		if (data.type === "st-helper:render") {
+			renderPage(data);
 			return;
 		}
 		if (data.type === "st-helper:run") {

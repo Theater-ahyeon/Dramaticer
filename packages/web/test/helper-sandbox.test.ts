@@ -44,6 +44,21 @@ describe("酒馆助手沙箱文档", () => {
 		expect(document).toContain("\\u003c/script>\\u003cscript>alert(1)");
 		expect(document).not.toContain("</script><script>alert(1)");
 	});
+
+	it("渲染 HTML 时先插入页面再执行页面脚本，脚本仍在沙箱里", () => {
+		const document = buildStHelperSandboxDocument({
+			functions: ["getVariable"],
+			events: {},
+		});
+		expect(document).toContain('<div id="st-helper-root"></div>');
+		expect(document).toContain('"st-helper:render"');
+		expect(document).toContain('type: "st-helper:rendered"');
+		expect(document).toContain("new DOMParser()");
+		expect(document).toContain("不支持外部脚本");
+		expect(document).toContain("不支持 module 脚本");
+		expect(document).toContain("root.innerHTML");
+		expect(document).not.toContain("allow-same-origin");
+	});
 });
 
 describe("沙箱消息白名单", () => {
@@ -123,6 +138,57 @@ describe("沙箱消息白名单", () => {
 				execution: "exec-1",
 				ok: true,
 				error: 42,
+			}),
+		).toBeNull();
+	});
+
+	it("接受渲染快照，拒绝缺少正文或原因的渲染结果", () => {
+		expect(
+			parseHelperSandboxFrameMessage({
+				type: "st-helper:rendered",
+				render: "render-1",
+				ok: true,
+				html: "<div>生命 9</div>",
+			}),
+		).toEqual({
+			type: "st-helper:rendered",
+			render: "render-1",
+			ok: true,
+			html: "<div>生命 9</div>",
+		});
+		expect(
+			parseHelperSandboxFrameMessage({
+				type: "st-helper:rendered",
+				render: "render-1",
+				ok: false,
+				error: "脚本执行失败",
+			}),
+		).toEqual({
+			type: "st-helper:rendered",
+			render: "render-1",
+			ok: false,
+			error: "脚本执行失败",
+		});
+		expect(
+			parseHelperSandboxFrameMessage({
+				type: "st-helper:rendered",
+				render: "render-1",
+				ok: true,
+			}),
+		).toBeNull();
+		expect(
+			parseHelperSandboxFrameMessage({
+				type: "st-helper:rendered",
+				render: "render-1",
+				ok: false,
+			}),
+		).toBeNull();
+		expect(
+			parseHelperSandboxFrameMessage({
+				type: "st-helper:rendered",
+				render: "",
+				ok: true,
+				html: "<div></div>",
 			}),
 		).toBeNull();
 	});

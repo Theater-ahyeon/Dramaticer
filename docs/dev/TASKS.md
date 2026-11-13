@@ -1447,7 +1447,8 @@
   做什么：`generate`/`generateRaw` 只登记后台任务，复用卡级限流调度器，走后台渠道并在间隙执行；Trace 单独计数；回合内不等待。
   验收：脚本发起的生成不进入回合内；按卡限流；Trace 有独立计数；`pnpm check` 通过。
 
-- [ ] **C-T05.e HTML 状态栏与开场页** | 依赖：C-T05.b | I4、I8
+- [x] **C-T05.e HTML 状态栏与开场页** | 依赖：C-T05.b | I4、I8
+  完成：2026-11-13 新增 `st-helper-host/html.ts`：`extractStHelperHtmlFragments` 只认 `html` 围栏、完整 `<html>` 文档与整段 HTML 三种载体；`StHelperHtmlRenderer` 从楼层原文或角色卡 `firstMessage` 生成渲染请求并把快照写进插件显示状态（`statusBar`、`openingPage`），原文与台账不变；变量写入触发状态栏重渲染，进行中的写入合并、连续自动刷新默认上限 8；沙箱协议新增 `st-helper:render`/`st-helper:rendered`，渲染共用超时与 `terminate`，Trace 用 `kind: "render"` 记录；web 沙箱用 `DOMParser` 插入页面、按顺序执行页面内联脚本与卡片脚本后回传快照，外部与 module 脚本直接失败；新增 10 个 st-compat 测试、2 个 web 单元用例与 1 个 e2e 用例；ADR-0123；门禁通过
   做什么：提取角色卡与楼层里的 HTML 状态栏和开场页，在沙箱 iframe 里渲染；脚本只能通过宿主 API 读写变量与消息；渲染结果进入插件显示状态，不改原文、不写台账。
   验收：状态栏随变量更新重新渲染；开场页与楼层中的脚本在沙箱里运行；原文逐字节不变；`pnpm check` 通过。
 

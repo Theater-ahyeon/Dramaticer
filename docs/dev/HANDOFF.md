@@ -3,35 +3,42 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-13 会话 353：完成 C-T05.d（脚本发起的生成后台化）。
-- 新增 `packages/st-compat/src/st-helper-host/generation.ts`：`StHelperGenerationQueue` 复用 `StEjsGenerationScheduler`，所以脚本请求与模板请求共用同一张卡的未完成上限（默认 4）。`enqueue(request)` 只校验并入队、返回请求 id，不调用模型；`read(id)` 返回已完成正文（未完成或失败是空串）；`getCounts()` 与 `trace` 只统计本队列登记的请求。
-- `slash.ts`：`gen`、`genraw` 改为登记并返回请求 id；新增命令 `genresult <id>`（也接受管道传入的 id）读取正文。未知 id 失败；没有结果存储时命令失败并指出 `genresult`。
-- `st-ejs/generation.ts` 的 `StEjsGenerationDrainOptions` 增加 `ids` 过滤（重复、空 id 直接失败）；队列 `drain` 用自己的 id 过滤，同一调度器上 EJS 模板登记的请求保持 pending，由模板自己的 `drain` 执行。
-- Trace 每条记录是 `{ kind: "generation", plugin, requestId, command, outcome, reason, durationMs, at }`，`outcome` 取 `submitted`、`completed`、`failed`、`rejected`；`getCounts()` 汇总 `submitted`、`pending`、`running`、`completed`、`failed`、`rejected`。`onTrace` 回调供 C-T05.f 并入插件 Trace。
-- 宿主：`StHelperHostSessionOptions.generation` 接收与 EJS 共用的调度器，会话用 `storyId`、`card.name` 与创建时的 head 楼层构造队列；`session.generation` 暴露队列供间隙 `drain`。上一轮的 `generateQuiet` 选项已删除（删除 `StHelperSlashGenerator` 的同步执行路径，生成一律后台）。
-- 新增 5 个 `packages/st-compat/test/st-helper-generation.test.ts`；`st-helper-slash.test.ts` 的安静生成用例改为“登记 id → `drain` → `genresult`”。ADR-0122；门禁通过（231 个测试文件、2058 个测试、5 个跳过）。
+- 2026-11-13 会话 354：完成 C-T05.e（HTML 状态栏与开场页）。
+- 新增 `packages/st-compat/src/st-helper-host/html.ts`：
+  - `extractStHelperHtmlFragments(raw)` 只认三种载体：```html 围栏、完整 `<html>…</html>` 文档、整段正文就是 HTML（首尾是 `<` 与 `>`）。散文中间没有标记的 HTML 不算状态栏，不做结构猜测。
+  - `StHelperHtmlRenderer` 构造参数 `{ store, displayState, start, scripts?, openingRaw?, plugin?, maxAutoRefreshes?, maxTraceEntries?, now?, onTrace? }`。`renderStatusBar(nodeId)` 从楼层原文取 HTML；`renderOpeningPage(nodeId, raw?)` 默认用角色卡的 `firstMessage`。两者返回渲染 id，没有 HTML 载体时返回 null。
+  - `start(request)` 收到 `{ page, nodeId, html, scripts }`，`scripts` 是脚本库里 `enabled && type === "script"` 的正文，按库顺序。
+  - `complete(renderId, snapshot)` 把快照写进 `PluginDisplayState` 的 `display`（键 `statusBar` / `openingPage`），`readStHelperHtmlPage(displayState, nodeId, page)` 读回。`fail(renderId, reason)` 清掉进行中的请求。未知渲染 id 与空快照直接抛错。
+  - 变量写入经 `StHelperVariableBank` 的 `onChange` 调 `refreshStatusBars()`：进行中的渲染把后续写入合并成一次待渲染；同一页面连续自动刷新默认上限 8，超出写一条 `rejected` 后停止（显式渲染重置）；Trace 最多 200 条。
+- 沙箱协议（`sandbox.ts`）：新增 `st-helper:render`（宿主 → iframe，带 `render`、`label`、`html`、`scripts`）与 `st-helper:rendered`（iframe → 宿主，`ok` 时带 `html`，失败带 `error`）。`StHelperSandboxHost.startRender({ label, html, scripts? })` 与脚本执行共用超时和 `terminate`；完成、失败、超时都回调 `onRender({ render, label, ok, html, error, durationMs })`；Trace 用 `kind: "render"`，超时的原因是“渲染 … 执行超过 … 毫秒，已终止”。
+- web（`packages/web/src/chat/helper-sandbox.ts`）：文档里有 `#st-helper-root`；收到 `st-helper:render` 后用 `DOMParser` 解析，把 head 与 body 的非脚本节点导入 root，按文档顺序执行页面内联脚本，再执行卡片脚本，结束后回传 `root.innerHTML`。外部 `src` 与 `module` 脚本直接让渲染失败；`application/json` 等非 JS 类型跳过；快照里没有脚本标签。
+- 宿主会话：`StHelperHostSessionOptions.html` 接收 `{ start, maxAutoRefreshes?, onTrace? }`，`session.html` 暴露渲染器；不提供时 `session.html` 为 null，变量写入不触发渲染。
+- 新增 `packages/st-compat/test/st-helper-html.test.ts` 10 个测试；`packages/web/test/helper-sandbox.test.ts` 增加渲染文档与 `rendered` 解析用例（共 7 个）；`packages/web/e2e/helper-sandbox.spec.ts` 增加 1 个浏览器用例（页面脚本读变量、卡片脚本改 DOM、快照只含渲染后的 HTML），3 个 e2e 全部通过。ADR-0123；门禁通过（232 个测试文件、2070 个测试、5 个跳过）。
 
-## 下一步（会话 354 先做）
-1. **C-T05.e HTML 状态栏与开场页**：从角色卡与楼层提取 HTML 状态栏、开场页，在沙箱 iframe 里渲染；脚本只能通过宿主 API 读写变量与消息；渲染结果进插件显示状态，不改原文、不写台账。依赖 C-T05.b，已完成。
-2. 其余可做任务：C-T05.f（依赖 C-T05.b 至 C-T05.e），H-T00（依赖已完成），X1（依赖已完成）。M5-T00 依赖 R6-T99；M6-T99 等待 HUMAN-15；P5 依赖 M5-T99。
+## 下一步（会话 355 先做）
+1. **C-T05.f 一致性测试与共存评测**：C-T05.b 至 C-T05.e 已完成，依赖满足。按酒馆助手公开 API 统计覆盖率；把 `st-helper-host` 注册进 `ST_BENCH_COEXIST_PLUGINS`；开启与关闭各跑一批，报告四项原生指标；写 `docs/dev/reports/C-T05.md` 逐条核对 C-T05 总验收。
+   - 覆盖率清单用 `ST_HELPER_IMPLEMENTED_FUNCTIONS`（`packages/st-compat/src/st-helper-host/host.ts`）。
+   - Trace 合并：沙箱 `onTrace`（`kind` 取 `permission`/`execution`/`render`/`protocol`/`timeout`）、生成队列 `onGenerationTrace`（`kind: "generation"`）、渲染器 `onTrace`（`kind: "render"`，与沙箱的 render 区分来源要看 `page`）。
+2. 其余可做任务：H-T00（依赖已完成）、X1（依赖已完成）。M5-T00 依赖 R6-T99；M6-T99 等待 HUMAN-15；P5 依赖 M5-T99。
 
-## C-T05.d 代码事实
-- `StHelperGenerationQueue` 构造参数：`{ scheduler, storyId, cardId, nodeId, plugin?, onTrace?, maxTraceEntries?, now? }`；`nodeId` 是创建会话时的 head 楼层，只用于请求来源记录。
-- `enqueue` 失败会先记一条 `rejected` 再原样抛出；卡级上限抛出的是 `StEjsGenerationLimitError`，消息里带卡 id 与上限。
-- `drain()` 在调用时同步快照 pending 的 id，再交给调度器；执行期间新登记的请求留到下一次。`drain` 返回的 `runs` 已过滤为本队列的请求，`counts` 用 `getCounts()` 计算。
-- `StEjsGenerationScheduler.drain({ ids })` 现在是通用过滤；`cardId` 与 `ids` 同时给出时两个条件都要满足。`ids` 里的空串或重复项直接失败。
-- `/genresult` 返回空串表示还没执行完或已失败；要区分状态用 `queue.get(id)`（返回 `StEjsGenerationTask`，含 `status` 与 `error`）。脚本在沙箱里只能拿到字符串，看不到状态。
-- 宿主会话的 `api.triggerSlash` 仍是异步的：登记是同步的，Promise 立刻完成并返回 id；不要在回合内等待正文。
-- 生成结果只在内存里，进程结束或换调度器就消失；跨进程保存留给调用方。
+## C-T05.e 代码事实
+- HTML 提取是纯字符串操作：先找围栏，其次找完整文档，最后看整段正文；三类都只取第一份文档，围栏可以有多份并按顺序拼接（用换行连接）。
+- `StHelperHtmlRenderer` 的渲染请求只带纯数据，iframe 内的页面脚本与卡片脚本都能调用白名单里的宿主 API；权限声明仍是 `{ kind: "st-helper", apis: [...] }`，未声明的调用由沙箱拒绝并记录。
+- 自动刷新按 `page + nodeId` 计数：显式 `renderStatusBar`/`renderOpeningPage` 把计数归零并解除停止状态；只有进行了渲染的页面才参与刷新，开场页不会自动重渲染。
+- `fail()` 对未知 id 只写一条 `rejected` Trace，不抛错（iframe 被移除后迟到的失败是正常现象）；`complete()` 对未知 id 与空快照抛错。
+- 渲染 Trace 的 `page` 与 `nodeId` 在未知请求时是 null；沙箱 Trace 的 `scriptId` 存的是渲染 `label`（例如 `statusBar:n-bar`）。
+- `StHelperSandboxHost` 的渲染与脚本执行共用 `scriptTimeoutMs`；超时会先回调 `onRender`（`ok: false`），再调用 `terminate`，调用方负责移除 iframe 并重建。
+- iframe 里的渲染串行执行（`renderQueue`）；页面脚本与卡片脚本都包在 async IIFE 里，可以 `await` 宿主 API，作用域是 iframe 的全局对象。
+- 快照是 `#st-helper-root` 的 `innerHTML`，包含导入的 `<style>`，不包含 `<script>`；宿主不要把它当楼层原文，也不要写回台账。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a 至 P2.g、P3.a 至 P3.f、P4.a 至 P4.f、C-T01.a 至 C-T01.d、C-T02.a 至 C-T02.f、C-T03.a 至 C-T03.d、C-T04.a、C-T04.b.a、C-T04.b.b、C-T04.c.a、C-T04.c.b、C-T04.c.c、C-T04.c.d、C-T04.d、C-T05.a、C-T05.b、C-T05.c、C-T05.d。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- 兼容插件线：`st-content`、`st-mvu`、`st-ejs` 的内容映射、模板引擎、装饰器/注入/激活正则、世界书与数据函数、沙箱执行、回合内时间预算、流水线接入、模板生成、一致性套件与共存评测全部完成；`st-helper-host` 已完成脚本库、宿主会话 API、沙箱 iframe 与权限/超时、STscript 子集、生成后台化，HTML 状态栏待做（C-T05.e 至 C-T05.f）。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a 至 P2.g、P3.a 至 P3.f、P4.a 至 P4.f、C-T01.a 至 C-T01.d、C-T02.a 至 C-T02.f、C-T03.a 至 C-T03.d、C-T04.a、C-T04.b.a、C-T04.b.b、C-T04.c.a、C-T04.c.b、C-T04.c.c、C-T04.c.d、C-T04.d、C-T05.a、C-T05.b、C-T05.c、C-T05.d、C-T05.e。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 兼容插件线：`st-content`、`st-mvu`、`st-ejs` 的内容映射、模板引擎、装饰器/注入/激活正则、世界书与数据函数、沙箱执行、回合内时间预算、流水线接入、模板生成、一致性套件与共存评测全部完成；`st-helper-host` 已完成脚本库、宿主会话 API、沙箱 iframe 与权限/超时、STscript 子集、生成后台化、HTML 状态栏与开场页，只剩 C-T05.f 的一致性测试与共存评测。
 - 数据库 schema 版本 43；本轮没有改 schema。本轮没有新增依赖。
 - 报告：`docs/dev/reports/P2.md`、`P3.md`、`P4.md`、`C-T01.md`、`C-T02.md`、`C-T03.md`、`C-T04.md`。
 - 沙箱现状：`eval-private/st-sandbox/st` 有 36 个预设、68 张卡、89 个非驱动聊天片段；预设连接字段已被驱动改写为录制端点与桩模型，全局 `openai_max_context` 已被驱动改为 2,000,000。需要恢复原始预设时用 `sandbox --replace` 重建。
 - 私有比对批次：`compare-smoke4`（5 个组合，修复后）与更早的 `compare-smoke2`、`compare-smoke3`、`session324-sanitize`；每个批次的 `compare/` 下有报告、差异清单与汇总。
-- ADR-0088 至 ADR-0122 记录插件、沙箱、比对、兼容内容映射、EJS、沙箱执行、时间预算、流水线接入、模板生成、一致性评测、酒馆助手宿主、iframe 沙箱、STscript 子集与生成后台化的决策。
+- ADR-0088 至 ADR-0123 记录插件、沙箱、比对、兼容内容映射、EJS、沙箱执行、时间预算、流水线接入、模板生成、一致性评测、酒馆助手宿主、iframe 沙箱、STscript 子集、生成后台化与 HTML 渲染的决策。
 - HUMAN-03 待处理（不阻塞）：抽查 `eval-private/evalset/spotcheck.md` 里的事件题。
 - HUMAN-14 已关闭（2026-11-12：人类取消）：取消 Vertex 真实调用的凭证配置与验证要求；`roles.writer` 继续使用 `main-fallback`。
 - HUMAN-15 待处理（M6-T99 需要）：把秋叶整合包 v3.2 的 ComfyUI 启动在 `http://127.0.0.1:8188`，并导出一份 API 格式 workflow JSON 到 `eval-private/comfyui/` 或告知路径。
@@ -40,9 +47,11 @@
 
 ## 可重复命令
 - 门禁：`pnpm check`。
+- C-T05.e 目标测试：`pnpm exec vitest run packages/st-compat/test/st-helper-html.test.ts packages/st-compat/test/st-helper-host.test.ts packages/st-compat/test/st-helper-sandbox.test.ts packages/st-compat/test/st-helper-slash.test.ts packages/st-compat/test/st-helper-generation.test.ts packages/web/test/helper-sandbox.test.ts`（53 个）。
+- C-T05.e 浏览器用例：`pnpm --filter @dramaticer/web exec playwright test e2e/helper-sandbox.spec.ts --project=desktop`（3 个；e2e 不在 `pnpm check` 里）。
 - C-T05.d 目标测试：`pnpm exec vitest run packages/st-compat/test/st-helper-generation.test.ts packages/st-compat/test/st-helper-slash.test.ts packages/st-compat/test/st-helper-host.test.ts packages/st-compat/test/st-helper-sandbox.test.ts packages/st-compat/test/st-ejs-generation.test.ts`（45 个）。
 - C-T05.c 目标测试：`pnpm exec vitest run packages/st-compat/test/st-helper-slash.test.ts packages/st-compat/test/st-helper-host.test.ts packages/st-compat/test/st-helper-sandbox.test.ts packages/web/test/helper-sandbox.test.ts`。
-- C-T05.b 浏览器用例：`pnpm --filter @dramaticer/web exec playwright test e2e/helper-sandbox.spec.ts --project=desktop`（2 个；e2e 不在 `pnpm check` 里）。
+- C-T05.b 浏览器用例：`pnpm --filter @dramaticer/web exec playwright test e2e/helper-sandbox.spec.ts --project=desktop`。
 - C-T05.a 目标测试：`pnpm exec vitest run packages/st-compat/test/st-helper-host.test.ts`（12 个）。
 - C-T04.d 目标测试：`pnpm exec vitest run packages/st-compat/test/st-ejs-consistency.test.ts packages/st-compat/test/st-ejs-coexist.test.ts`（19 个）。
 - EJS 全部测试：`pnpm exec vitest run packages/st-compat/test/st-ejs-template.test.ts packages/st-compat/test/st-ejs-variables.test.ts packages/st-compat/test/st-ejs-decorators.test.ts packages/st-compat/test/st-ejs-injections.test.ts packages/st-compat/test/st-ejs-regex.test.ts packages/st-compat/test/st-ejs-world-info.test.ts packages/st-compat/test/st-ejs-data.test.ts packages/st-compat/test/st-ejs-json.test.ts packages/st-compat/test/st-ejs-sandbox.test.ts packages/st-compat/test/st-ejs-budget.test.ts packages/st-compat/test/st-content-ejs-pipeline.test.ts packages/st-compat/test/st-ejs-generation.test.ts packages/st-compat/test/st-ejs-consistency.test.ts packages/st-compat/test/st-ejs-coexist.test.ts`（131 个）。
@@ -97,3 +106,5 @@
 - STscript：`triggerSlash` 只执行 `ST_HELPER_SLASH_COMMANDS` 里的命令，未知命令按名字失败。变量命令默认作用域与上游一致（`setvar` 是 chat/local），`messages` 的单个数字是消息下标，不是“最后 N 条”。`addswipe` 默认不切换 head，`swipe` 在兄弟楼层之间循环。
 - `/gen` 与 `/genraw` 只登记后台请求并返回请求 id，不返回正文，回合内不等待。正文用 `/genresult <id>` 读取，未完成或失败是空串；状态用 `session.generation.get(id)`。脚本请求与 EJS 模板请求共用 `StEjsGenerationScheduler` 的卡级上限，队列 `drain` 只执行脚本登记的请求。
 - `StEjsGenerationScheduler.drain({ ids })` 是通用过滤，供脚本队列使用；`drain` 快照在开始时确定，期间新入队的请求留到下一次。
+- HTML 状态栏与开场页的渲染结果只在插件显示状态（`PluginDisplayState`，插件 `st-helper-host`，键 `statusBar`/`openingPage`）；要把它们接入界面时读 `readStHelperHtmlPage`，不要写回楼层原文或台账。沙箱里的页面脚本与卡片脚本共享同一份权限白名单，未声明的 API 调用会被拒绝并记录。
+- 状态栏自动重渲染由变量写入触发，同一页面进行中的渲染会合并后续写入；连续自动刷新默认上限 8 次，超出后需要显式调用 `renderStatusBar` 才会恢复。开场页不参与自动重渲染。

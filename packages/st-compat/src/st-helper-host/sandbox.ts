@@ -123,6 +123,7 @@ function readApis(
 export type StHelperSandboxTraceKind =
 	| "permission"
 	| "execution"
+	| "render"
 	| "protocol"
 	| "timeout";
 
@@ -178,11 +179,21 @@ export interface StHelperSandboxClearMessage {
 	readonly event: string | null;
 }
 
+/** 渲染一段 HTML 状态栏或开场页；页面里的脚本与卡片脚本都在 iframe 里执行。 */
+export interface StHelperSandboxRenderMessage {
+	readonly type: "st-helper:render";
+	readonly render: string;
+	readonly label: string;
+	readonly html: string;
+	readonly scripts: readonly string[];
+}
+
 export type StHelperSandboxHostMessage =
 	| StHelperSandboxRunMessage
 	| StHelperSandboxResultMessage
 	| StHelperSandboxEventMessage
-	| StHelperSandboxClearMessage;
+	| StHelperSandboxClearMessage
+	| StHelperSandboxRenderMessage;
 
 export interface StHelperSandboxReadyMessage {
 	readonly type: "st-helper:ready";
@@ -203,10 +214,19 @@ export interface StHelperSandboxDoneMessage {
 	readonly error?: string;
 }
 
+export interface StHelperSandboxRenderedMessage {
+	readonly type: "st-helper:rendered";
+	readonly render: string;
+	readonly ok: boolean;
+	readonly html?: string;
+	readonly error?: string;
+}
+
 export type StHelperSandboxFrameMessage =
 	| StHelperSandboxReadyMessage
 	| StHelperSandboxCallMessage
-	| StHelperSandboxDoneMessage;
+	| StHelperSandboxDoneMessage
+	| StHelperSandboxRenderedMessage;
 
 /**
  * 白名单解析 iframe 发来的消息。未知类型、缺字段、非法 id 与不是 JSON 的
@@ -256,7 +276,38 @@ export function parseStHelperSandboxFrameMessage(
 			...(value.error === undefined ? {} : { error: value.error }),
 		};
 	}
+	if (value.type === "st-helper:rendered") {
+		if (!isNonEmptyString(value.render) || typeof value.ok !== "boolean") {
+			return null;
+		}
+		if (value.ok) {
+			if (typeof value.html !== "string") return null;
+			return {
+				type: "st-helper:rendered",
+				render: value.render,
+				ok: true,
+				html: value.html,
+			};
+		}
+		if (!isNonEmptyString(value.error)) return null;
+		return {
+			type: "st-helper:rendered",
+			render: value.render,
+			ok: false,
+			error: value.error,
+		};
+	}
 	return null;
+}
+
+/** iframe 一次渲染的结果；超时也会回调 `ok: false`，调用方据此清掉进行中的请求。 */
+export interface StHelperSandboxRenderOutcome {
+	readonly render: string;
+	readonly label: string;
+	readonly ok: boolean;
+	readonly html: string | null;
+	readonly error: string | null;
+	readonly durationMs: number;
 }
 
 export interface StHelperSandboxHostOptions {
@@ -266,6 +317,7 @@ export interface StHelperSandboxHostOptions {
 	readonly send: (message: StHelperSandboxHostMessage) => void;
 	/** 超时后由调用方移除 iframe，再新建一个继续执行。 */
 	readonly terminate: (execution: string, reason: string) => void;
+	readonly onRender?: (outcome: StHelperSandboxRenderOutcome) => void;
 	readonly plugin?: string;
 	readonly scriptTimeoutMs?: number;
 	readonly now?: () => number;
@@ -275,6 +327,7 @@ export interface StHelperSandboxHostOptions {
 
 interface ExecutionState {
 	readonly id: string;
+	readonly kind: "script" | "render";
 	readonly scriptId: string;
 	readonly startedAt: number;
 	readonly deadline: number;
@@ -299,6 +352,7 @@ export class StHelperSandboxHost {
 	readonly #allowed: ReadonlySet<string>;
 	readonly #send: (message: StHelperSandboxHostMessage) => void;
 	readonly #terminate: (execution: string, reason: string) => void;
+	readonly #onRender: ((outcome: StHelperSandboxRenderOutcome) => void) | null;
 	readonly #plugin: string;
 	readonly #timeoutMs: number;
 	readonly #now: () => number;
@@ -324,6 +378,7 @@ export class StHelperSandboxHost {
 		this.#allowed = new Set(options.permission.apis);
 		this.#send = options.send;
 		this.#terminate = options.terminate;
+		this.#onRender = options.onRender ?? null;
 		this.#plugin = plugin;
 		this.#timeoutMs = timeoutMs;
 		this.#now = options.now ?? Date.now;
@@ -354,6 +409,7 @@ export class StHelperSandboxHost {
 		const startedAt = this.#now();
 		this.#executions.set(id, {
 			id,
+			kind: "script",
 			scriptId: input.id,
 			startedAt,
 			deadline: startedAt + this.#timeoutMs,
@@ -366,6 +422,51 @@ export class StHelperSandboxHost {
 			content: input.content,
 			functions: this.functions,
 			events: ST_HELPER_TAVERN_EVENTS,
+		});
+		return id;
+	}
+
+	/**
+	 * 让 iframe 渲染一段 HTML 并执行页面脚本与卡片脚本，完成后由 iframe
+	 * 发回快照。`label` 只用于 Trace。
+	 */
+	startRender(input: {
+		readonly label: string;
+		readonly html: string;
+		readonly scripts?: readonly string[];
+	}): string {
+		this.#assertActive();
+		if (typeof input.label !== "string" || input.label.trim().length === 0) {
+			throw new Error("渲染标签必须是非空字符串");
+		}
+		if (typeof input.html !== "string" || input.html.length === 0) {
+			throw new Error("渲染的 HTML 不能为空");
+		}
+		const scripts = input.scripts ?? [];
+		if (!Array.isArray(scripts)) {
+			throw new Error("渲染的脚本清单必须是数组");
+		}
+		for (const [index, script] of scripts.entries()) {
+			if (typeof script !== "string") {
+				throw new Error(`渲染脚本[${index}] 必须是字符串`);
+			}
+		}
+		const id = `render-${++this.#counter}`;
+		const startedAt = this.#now();
+		this.#executions.set(id, {
+			id,
+			kind: "render",
+			scriptId: input.label,
+			startedAt,
+			deadline: startedAt + this.#timeoutMs,
+			done: false,
+		});
+		this.#send({
+			type: "st-helper:render",
+			render: id,
+			label: input.label,
+			html: input.html,
+			scripts,
 		});
 		return id;
 	}
@@ -392,6 +493,10 @@ export class StHelperSandboxHost {
 			this.#finish(message);
 			return;
 		}
+		if (message.type === "st-helper:rendered") {
+			this.#finishRender(message);
+			return;
+		}
 		this.#call(message);
 	}
 
@@ -402,7 +507,11 @@ export class StHelperSandboxHost {
 		for (const execution of this.#executions.values()) {
 			if (execution.done || now < execution.deadline) continue;
 			execution.done = true;
-			const reason = `脚本 ${execution.scriptId} 执行超过 ${this.#timeoutMs} 毫秒，已终止`;
+			const what =
+				execution.kind === "render"
+					? `渲染 ${execution.scriptId}`
+					: `脚本 ${execution.scriptId}`;
+			const reason = `${what} 执行超过 ${this.#timeoutMs} 毫秒，已终止`;
 			this.#record({
 				kind: "timeout",
 				execution: execution.id,
@@ -414,6 +523,16 @@ export class StHelperSandboxHost {
 			});
 			for (const listener of [...this.#listeners.values()]) {
 				if (listener.execution === execution.id) listener.stop();
+			}
+			if (execution.kind === "render") {
+				this.#onRender?.({
+					render: execution.id,
+					label: execution.scriptId,
+					ok: false,
+					html: null,
+					error: reason,
+					durationMs: now - execution.startedAt,
+				});
 			}
 			this.#terminate(execution.id, reason);
 			expired.push(execution.id);
@@ -710,6 +829,45 @@ export class StHelperSandboxHost {
 			outcome: message.ok ? "completed" : "failed",
 			reason: message.ok ? null : (message.error ?? "脚本执行失败"),
 			durationMs: this.#now() - execution.startedAt,
+		});
+	}
+
+	#finishRender(message: StHelperSandboxRenderedMessage): void {
+		const execution = this.#executions.get(message.render);
+		if (
+			execution === undefined ||
+			execution.done ||
+			execution.kind !== "render"
+		) {
+			this.#record({
+				kind: "protocol",
+				execution: message.render,
+				scriptId: execution?.scriptId ?? null,
+				function: null,
+				outcome: "rejected",
+				reason: "渲染结果来自已结束的请求",
+				durationMs: 0,
+			});
+			return;
+		}
+		execution.done = true;
+		const durationMs = this.#now() - execution.startedAt;
+		this.#record({
+			kind: "render",
+			execution: execution.id,
+			scriptId: execution.scriptId,
+			function: null,
+			outcome: message.ok ? "completed" : "failed",
+			reason: message.ok ? null : (message.error ?? "渲染失败"),
+			durationMs,
+		});
+		this.#onRender?.({
+			render: execution.id,
+			label: execution.scriptId,
+			ok: message.ok,
+			html: message.ok ? (message.html ?? null) : null,
+			error: message.ok ? null : (message.error ?? "渲染失败"),
+			durationMs,
 		});
 	}
 

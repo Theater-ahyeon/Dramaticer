@@ -17,6 +17,11 @@ import {
 	type StHelperGenerationTraceEntry,
 } from "./generation.js";
 import {
+	StHelperHtmlRenderer,
+	type StHelperRenderRequest,
+	type StHelperRenderTraceEntry,
+} from "./html.js";
+import {
 	type StHelperChatMessage,
 	type StHelperChatMessageOptions,
 	type StHelperChatMessageRange,
@@ -113,7 +118,17 @@ export interface StHelperHostSession {
 	readonly events: StHelperEventRegistry;
 	/** 脚本发起的生成队列；没有提供调度器时为 null。 */
 	readonly generation: StHelperGenerationQueue | null;
+	/** HTML 状态栏与开场页；没有提供渲染入口时为 null。 */
+	readonly html: StHelperHtmlRenderer | null;
 	dispose(): void;
+}
+
+export interface StHelperHtmlHostOptions {
+	/** 把渲染请求送进沙箱 iframe；通常调用 `StHelperSandboxHost.startRender`。 */
+	readonly start: (request: StHelperRenderRequest) => string;
+	/** 同一状态栏连续自动刷新的上限，默认 8。 */
+	readonly maxAutoRefreshes?: number;
+	readonly onTrace?: (entry: StHelperRenderTraceEntry) => void;
 }
 
 export interface StHelperHostSessionOptions {
@@ -132,6 +147,8 @@ export interface StHelperHostSessionOptions {
 	 */
 	readonly generation?: StEjsGenerationScheduler;
 	readonly onGenerationTrace?: (entry: StHelperGenerationTraceEntry) => void;
+	/** 提供后，宿主会渲染 HTML 状态栏与开场页，变量写入时自动重渲染状态栏。 */
+	readonly html?: StHelperHtmlHostOptions;
 }
 
 export function createStHelperHostSession(
@@ -152,7 +169,29 @@ export function createStHelperHostSession(
 			})),
 		});
 	const events = new EventRegistry();
-	const variableBank = new StHelperVariableBank(variables);
+	const scripts = discoverStHelperScripts(options.card);
+	let html: StHelperHtmlRenderer | null = null;
+	const variableBank = new StHelperVariableBank(variables, {
+		onChange: () => {
+			html?.refreshStatusBars();
+		},
+	});
+	if (options.html !== undefined) {
+		html = new StHelperHtmlRenderer({
+			store: options.store,
+			displayState: options.displayState,
+			start: options.html.start,
+			scripts,
+			openingRaw: options.card.firstMessage,
+			plugin,
+			...(options.html.maxAutoRefreshes === undefined
+				? {}
+				: { maxAutoRefreshes: options.html.maxAutoRefreshes }),
+			...(options.html.onTrace === undefined
+				? {}
+				: { onTrace: options.html.onTrace }),
+		});
+	}
 	const messages = new StHelperChatMessages({
 		store: options.store,
 		storyId: options.storyId,
@@ -221,9 +260,10 @@ export function createStHelperHostSession(
 
 	return {
 		api,
-		scripts: discoverStHelperScripts(options.card),
+		scripts,
 		events,
 		generation,
+		html,
 		dispose: () => {
 			events.clearAll();
 		},

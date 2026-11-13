@@ -1961,3 +1961,17 @@
   - 新增 `packages/st-compat/test/st-helper-generation.test.ts` 5 个测试：卡级限流与拒绝 Trace、脚本请求与模板请求分开计数、失败单独记录、未知请求 id、`drain` 快照顺序。
   - `st-helper-slash.test.ts` 的安静生成用例改为登记 id + `drain` + `genresult`，并覆盖缺少队列时的失败。
   - 没有改数据库 schema，没有新增依赖，`core` 没有改动（I1、I15）。
+
+## ADR-0123 `st-helper-host` 的 HTML 状态栏与开场页渲染（2026-11-13）
+
+- **背景**：C-T05.e 要把角色卡与楼层里的 HTML 状态栏、开场页在沙箱 iframe 里渲染，脚本只能经宿主 API 读写变量与消息，渲染结果进插件显示状态。HTML 里可以带 `<style>` 与 `<script>`；楼层原文不能改（I4），显示状态不进台账（I12）。
+- **决定**：
+  - `packages/st-compat/src/st-helper-host/html.ts` 的 `extractStHelperHtmlFragments` 只认三种载体：`html` 围栏、完整 `<html>` 文档、整段正文就是 HTML。不猜 HTML 结构，散文中间没有标记的 HTML 不算状态栏。
+  - `StHelperHtmlRenderer` 从楼层原文（状态栏）或角色卡 `firstMessage`（开场页）生成渲染请求 `{page, nodeId, html, scripts}`；`scripts` 是脚本库里启用且 `type` 为 `script` 的正文，按库顺序。iframe 回传快照后 `complete(renderId, snapshot)` 写进插件显示状态（键 `statusBar`、`openingPage`），`readStHelperHtmlPage` 读回；原文与台账不写。
+  - 变量写入经 `StHelperVariableBank` 的 `onChange` 触发 `refreshStatusBars()`；进行中的渲染把后续写入合并成一次待渲染；连续自动刷新默认上限 8，超出停止并记录 `rejected`，显式渲染会重置。Trace 上限默认 200 条，`onTrace` 供 C-T05.f 合并。
+  - 沙箱协议新增 `st-helper:render`（宿主 → iframe，带 HTML 与卡片脚本）与 `st-helper:rendered`（iframe → 宿主，带快照或错误）；`StHelperSandboxHost.startRender` 使用同一套超时与 `terminate`，完成、失败与超时都回调 `onRender`，Trace 用 `kind: "render"` 记录。
+  - `packages/web/src/chat/helper-sandbox.ts` 的渲染：`DOMParser` 解析 HTML，把 head 与 body 的非脚本节点导入 `#st-helper-root`，按文档顺序执行页面里的内联脚本，再执行卡片脚本，全部结束后回传 `root.innerHTML`（脚本标签不进入快照）。外部 `src` 与 `module` 脚本直接失败；`application/json` 等非 JS 类型跳过。CSP 仍为 `default-src 'none'`，没有 `allow-same-origin`，页面脚本与卡片脚本使用同一份权限白名单。
+- **影响**：
+  - 新增 `packages/st-compat/test/st-helper-html.test.ts` 10 个测试：三种载体与负例、状态栏与开场页请求与显示状态、变量触发的重渲染与合并、自动刷新上限、未知渲染 id、空快照与缺失楼层、渲染消息与快照回传、渲染超时。
+  - `packages/web/test/helper-sandbox.test.ts` 增加渲染文档与 `rendered` 消息解析用例（共 7 个）；`packages/web/e2e/helper-sandbox.spec.ts` 增加 1 个浏览器用例：页面脚本经宿主 API 读到变量、卡片脚本随后修改 DOM、快照只含渲染后的 HTML。
+  - 没有改数据库 schema，没有新增依赖，`core` 没有改动（I1、I15）。

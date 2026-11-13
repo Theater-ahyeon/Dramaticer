@@ -161,3 +161,74 @@ test("脚本超时被终止后新 iframe 仍能执行", async ({ page }) => {
 		);
 	});
 });
+
+const RENDER_HTML =
+	"<style>#hp { color: rgb(1, 2, 3); }</style>" +
+	'<div id="hp"></div>' +
+	'<script>document.getElementById("hp").textContent = "生命 " + (await getVariable("hp"));</script>';
+
+const RENDER_HOST_PAGE = `<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>渲染宿主</title></head>
+<body>
+<script>
+const SANDBOX = ${JSON.stringify(
+	buildStHelperSandboxDocument({ functions: ["getVariable"], events: {} }),
+).replaceAll("<", "\\u003c")};
+window.__rendered = null;
+const frame = document.createElement("iframe");
+frame.setAttribute("sandbox", "allow-scripts");
+frame.srcdoc = SANDBOX;
+window.addEventListener("message", function (event) {
+	if (event.source !== frame.contentWindow) return;
+	const data = event.data;
+	if (!data || typeof data !== "object") return;
+	if (data.type === "st-helper:ready") {
+		frame.contentWindow.postMessage({
+			type: "st-helper:render",
+			render: "render-1",
+			label: "statusBar:n-bar",
+			html: ${JSON.stringify(RENDER_HTML).replaceAll("<", "\\u003c")},
+			scripts: ['document.querySelector("#hp").setAttribute("data-card", "ok");'],
+		}, "*");
+		return;
+	}
+	if (data.type === "st-helper:call") {
+		frame.contentWindow.postMessage({
+			type: "st-helper:result",
+			id: data.id,
+			ok: true,
+			value: 7,
+		}, "*");
+		return;
+	}
+	if (data.type === "st-helper:rendered") {
+		window.__rendered = data;
+	}
+});
+document.body.appendChild(frame);
+</script>
+</body>
+</html>`;
+
+test("HTML 状态栏在沙箱里渲染，页面脚本与卡片脚本按顺序执行", async ({
+	page,
+}) => {
+	await page.setContent(RENDER_HOST_PAGE);
+	await page.waitForFunction(() => {
+		const host = window as unknown as { readonly __rendered: unknown };
+		return host.__rendered !== null;
+	});
+	const rendered = await page.evaluate(() => {
+		const host = window as unknown as {
+			readonly __rendered: {
+				readonly ok: boolean;
+				readonly html: string;
+			} | null;
+		};
+		return host.__rendered;
+	});
+	expect(rendered?.ok).toBe(true);
+	expect(rendered?.html).toContain("<style>");
+	expect(rendered?.html).toContain('<div id="hp" data-card="ok">生命 7</div>');
+});

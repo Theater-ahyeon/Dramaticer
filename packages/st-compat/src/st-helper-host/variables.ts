@@ -27,6 +27,11 @@ export interface StHelperVariableOptions {
 
 export type StHelperVariables = Record<string, unknown>;
 
+export interface StHelperVariableBankOptions {
+	/** 每次成功的写入之后调用；状态栏据此重新渲染。 */
+	readonly onChange?: (type: StHelperVariableType) => void;
+}
+
 const UNSAFE_PATH_SEGMENTS = ["__proto__", "constructor", "prototype"];
 
 /**
@@ -37,11 +42,16 @@ const UNSAFE_PATH_SEGMENTS = ["__proto__", "constructor", "prototype"];
  */
 export class StHelperVariableBank {
 	readonly #store: StEjsVariableStore;
+	readonly #onChange: ((type: StHelperVariableType) => void) | null;
 	readonly #preset: StEjsVariableTree = {};
 	readonly #script: StEjsVariableTree = {};
 
-	constructor(store: StEjsVariableStore) {
+	constructor(
+		store: StEjsVariableStore,
+		options: StHelperVariableBankOptions = {},
+	) {
 		this.#store = store;
+		this.#onChange = options.onChange ?? null;
 	}
 
 	getVariables(options?: StHelperVariableOptions): StHelperVariables {
@@ -62,6 +72,7 @@ export class StHelperVariableBank {
 		if (type === "preset" || type === "script") {
 			const target = this.#localTree(type);
 			replaceContents(target, cloneTree(variables));
+			this.#notify(type);
 			return;
 		}
 		this.#store.assign(
@@ -69,6 +80,7 @@ export class StHelperVariableBank {
 			cloneTree(variables),
 			this.#storeOptions(type, options),
 		);
+		this.#notify(type);
 	}
 
 	insertOrAssignVariables(
@@ -79,12 +91,14 @@ export class StHelperVariableBank {
 		const type = resolveType(options);
 		if (type === "preset" || type === "script") {
 			lodash.merge(this.#localTree(type), cloneTree(variables));
+			this.#notify(type);
 			return;
 		}
 		this.#store.assign(null, cloneTree(variables), {
 			...this.#storeOptions(type, options),
 			merge: true,
 		});
+		this.#notify(type);
 	}
 
 	updateVariablesWith(
@@ -123,6 +137,7 @@ export class StHelperVariableBank {
 		const type = resolveType(options);
 		if (type === "preset" || type === "script") {
 			lodash.set(this.#localTree(type), path, lodash.cloneDeep(value));
+			this.#notify(type);
 			return;
 		}
 		this.#store.assign(
@@ -130,6 +145,7 @@ export class StHelperVariableBank {
 			lodash.cloneDeep(value),
 			this.#storeOptions(type, options),
 		);
+		this.#notify(type);
 	}
 
 	deleteVariable(path: string, options?: StHelperVariableOptions): void {
@@ -137,9 +153,15 @@ export class StHelperVariableBank {
 		const type = resolveType(options);
 		if (type === "preset" || type === "script") {
 			lodash.unset(this.#localTree(type), path);
+			this.#notify(type);
 			return;
 		}
 		this.#store.remove(path, undefined, this.#storeOptions(type, options));
+		this.#notify(type);
+	}
+
+	#notify(type: StHelperVariableType): void {
+		this.#onChange?.(type);
 	}
 
 	#localTree(type: "preset" | "script"): StEjsVariableTree {
