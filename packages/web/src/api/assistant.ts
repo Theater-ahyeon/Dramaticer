@@ -1,12 +1,22 @@
 import type {
+	AssistantActionListView,
+	AssistantActionStatus,
+	AssistantCancelView,
 	AssistantConversationDetailView,
 	AssistantConversationEventsView,
 	AssistantConversationListView,
 	AssistantConversationStatusView,
 	AssistantConversationView,
+	AssistantSkillListView,
+	ChannelsView,
 	CreateAssistantConversationRequest,
+	SendAssistantMessageRequest,
 	UpdateAssistantConversationRequest,
 } from "@dramaticer/protocol";
+import {
+	type AssistantSseEvent,
+	parseAssistantSseStream,
+} from "../assistant/stream";
 import { ApiError, type FetchLike, readApiError } from "./client";
 
 export interface AssistantApiClientOptions {
@@ -18,6 +28,14 @@ export interface AssistantApiClientOptions {
 export interface ListAssistantConversationsOptions {
 	readonly query?: string;
 	readonly storyId?: string;
+	readonly limit?: number;
+}
+
+export interface ListAssistantActionsOptions {
+	/** 缺省只列待确认动作；`all` 列出全部状态。 */
+	readonly status?: AssistantActionStatus | "all";
+	readonly storyId?: string;
+	readonly conversationId?: string;
 	readonly limit?: number;
 }
 
@@ -93,6 +111,66 @@ export class AssistantApiClient {
 		);
 	}
 
+	async listSkills(): Promise<AssistantSkillListView> {
+		return this.json<AssistantSkillListView>("GET", "/api/assistant/skills");
+	}
+
+	/** 模型选择器需要的别名与启用状态；渠道接口本来就只返回脱敏字段。 */
+	async getChannels(): Promise<ChannelsView> {
+		return this.json<ChannelsView>("GET", "/api/channels");
+	}
+
+	async listActions(
+		options: ListAssistantActionsOptions = {},
+	): Promise<AssistantActionListView> {
+		const query = new URLSearchParams();
+		if (options.status !== undefined) query.set("status", options.status);
+		if (options.storyId !== undefined) query.set("storyId", options.storyId);
+		if (options.conversationId !== undefined) {
+			query.set("conversationId", options.conversationId);
+		}
+		if (options.limit !== undefined) query.set("limit", String(options.limit));
+		const text = query.toString();
+		return this.json<AssistantActionListView>(
+			"GET",
+			`/api/assistant/actions${text.length === 0 ? "" : `?${text}`}`,
+		);
+	}
+
+	async cancel(id: string): Promise<AssistantCancelView> {
+		return this.json<AssistantCancelView>(
+			"POST",
+			`${conversationPath(id)}/cancel`,
+		);
+	}
+
+	/**
+	 * 发送一条消息并读取本次运行的 SSE。服务端在客户端断开后继续运行，
+	 * 事件已经写库，重连用 `listEvents(id, after)` 续读。
+	 */
+	async *streamMessage(
+		id: string,
+		text: string,
+		signal?: AbortSignal,
+	): AsyncGenerator<AssistantSseEvent> {
+		const request: SendAssistantMessageRequest = { text };
+		const response = await this.send(
+			"POST",
+			`${conversationPath(id)}/messages`,
+			request,
+			signal,
+		);
+		if (response.body === null) {
+			throw new ApiError(0, {
+				code: "internal",
+				message: "服务端没有返回事件流",
+			});
+		}
+		for await (const event of parseAssistantSseStream(response.body)) {
+			yield event;
+		}
+	}
+
 	async listEvents(
 		id: string,
 		after = 0,
@@ -117,10 +195,12 @@ export class AssistantApiClient {
 		method: string,
 		path: string,
 		body?: unknown,
+		signal?: AbortSignal,
 	): Promise<Response> {
 		const init: RequestInit = {
 			method,
 			credentials: "include",
+			...(signal === undefined ? {} : { signal }),
 			...(body === undefined
 				? {}
 				: {
@@ -131,7 +211,8 @@ export class AssistantApiClient {
 		let response: Response;
 		try {
 			response = await this.fetchImpl(`${this.baseUrl}${path}`, init);
-		} catch {
+		} catch (error) {
+			if (error instanceof Error && error.name === "AbortError") throw error;
 			throw new ApiError(0, { code: "internal", message: "无法连接服务端" });
 		}
 		if (!response.ok) throw await readApiError(response);
@@ -142,3 +223,6 @@ export class AssistantApiClient {
 function conversationPath(id: string): string {
 	return `/api/assistant/conversations/${encodeURIComponent(id)}`;
 }
+
+/** 与认证信息同源的单例；界面共享一个客户端。 */
+export const assistantApi = new AssistantApiClient();

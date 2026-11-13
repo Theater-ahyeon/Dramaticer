@@ -2014,3 +2014,315 @@ button.branch-select:hover {
 	color: var(--muted);
 	font-size: 0.8rem;
 }
+
+/* 输入框旁的助手入口；抽屉覆盖在右侧，不改变聊天区宽度。 */
+.composer-row {
+	display: flex;
+	align-items: flex-end;
+	gap: 8px;
+}
+
+.composer-row .composer {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.assistant-open-button {
+	flex: 0 0 auto;
+	padding: 8px 12px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--surface);
+	color: var(--text);
+	font: inherit;
+}
+
+.assistant-drawer {
+	position: fixed;
+	top: 0;
+	right: 0;
+	bottom: 0;
+	z-index: 40;
+	display: flex;
+	flex-direction: column;
+	width: min(520px, 100vw);
+	background: var(--bg);
+	border-left: 1px solid var(--border);
+	box-shadow: -12px 0 32px rgb(0 0 0 / 18%);
+}
+
+.assistant-drawer[hidden] {
+	display: none;
+}
+
+.assistant-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 10px 14px;
+	border-bottom: 1px solid var(--border);
+}
+
+.assistant-head h2 {
+	margin: 0;
+	font-size: 1rem;
+}
+
+.assistant-body {
+	display: grid;
+	grid-template-columns: minmax(140px, 0.8fr) minmax(0, 1.6fr);
+	flex: 1;
+	min-height: 0;
+}
+
+.assistant-conversations {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	min-height: 0;
+	padding: 10px;
+	border-right: 1px solid var(--border);
+	overflow-y: auto;
+}
+
+.assistant-search {
+	display: flex;
+	gap: 4px;
+}
+
+.assistant-search input {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.assistant-search button,
+.assistant-new,
+.assistant-conversation-actions button,
+.assistant-rename button {
+	padding: 4px 6px;
+	font-size: 0.78rem;
+}
+
+.assistant-conversation-list {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.assistant-conversation-item {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	padding: 6px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--surface);
+}
+
+.assistant-conversation-open {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	padding: 4px;
+	border: 0;
+	background: transparent;
+	color: var(--text);
+	text-align: left;
+	font: inherit;
+}
+
+.assistant-conversation-open.active {
+	background: var(--accent-soft);
+	border-radius: 6px;
+}
+
+.assistant-conversation-title {
+	font-weight: 600;
+	overflow-wrap: anywhere;
+}
+
+.assistant-conversation-meta {
+	color: var(--muted);
+	font-size: 0.75rem;
+	overflow-wrap: anywhere;
+}
+
+.assistant-conversation-actions,
+.assistant-rename {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+}
+
+.assistant-rename input {
+	flex: 1 1 90px;
+	min-width: 0;
+}
+
+.assistant-danger {
+	background: var(--danger);
+}
+
+.assistant-conversation {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	min-height: 0;
+	padding: 10px;
+}
+
+.assistant-controls {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	font-size: 0.78rem;
+}
+
+.assistant-controls label {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	color: var(--muted);
+}
+
+.assistant-controls select {
+	max-width: 150px;
+}
+
+.assistant-status {
+	color: var(--muted);
+}
+
+.assistant-messages {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	gap: 8px;
+	min-height: 0;
+	overflow-y: auto;
+	padding-right: 2px;
+}
+
+.assistant-message {
+	padding: 8px 10px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--surface);
+}
+
+.assistant-message-user {
+	background: var(--accent-soft);
+}
+
+.assistant-message-role {
+	margin: 0 0 4px;
+	color: var(--muted);
+	font-size: 0.72rem;
+}
+
+.assistant-message pre,
+.assistant-thinking pre,
+.assistant-tools pre {
+	margin: 0;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	font: inherit;
+}
+
+.assistant-thinking,
+.assistant-tools {
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	padding: 6px 8px;
+	font-size: 0.8rem;
+}
+
+.assistant-tools ul {
+	margin: 6px 0 0;
+	padding-left: 18px;
+}
+
+.assistant-tools li {
+	margin-bottom: 6px;
+}
+
+.assistant-denied {
+	margin-left: 6px;
+	color: var(--danger);
+}
+
+.assistant-composer {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.assistant-composer textarea {
+	width: 100%;
+	padding: 8px 10px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--surface);
+	color: var(--text);
+	font: inherit;
+	resize: vertical;
+}
+
+.assistant-composer-actions {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+}
+
+.assistant-badge {
+	position: fixed;
+	right: 16px;
+	bottom: 16px;
+	z-index: 30;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 8px 12px;
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	background: var(--surface);
+	color: var(--text);
+	box-shadow: 0 6px 18px rgb(0 0 0 / 16%);
+	font: inherit;
+	font-size: 0.8rem;
+}
+
+.assistant-badge.running {
+	border-color: var(--accent);
+}
+
+.assistant-badge.failed {
+	border-color: var(--danger);
+	color: var(--danger);
+}
+
+.assistant-badge-count {
+	min-width: 18px;
+	padding: 0 5px;
+	border-radius: 999px;
+	background: var(--accent);
+	color: var(--bg);
+	font-size: 0.72rem;
+	text-align: center;
+}
+
+@media (max-width: 720px) {
+	.assistant-body {
+		grid-template-columns: 1fr;
+		grid-template-rows: minmax(120px, 0.5fr) minmax(0, 1.5fr);
+	}
+
+	.assistant-conversations {
+		border-right: 0;
+		border-bottom: 1px solid var(--border);
+	}
+}

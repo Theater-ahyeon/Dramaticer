@@ -3,11 +3,11 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-13 会话 362：完成 H-T06（资料员、卡片工坊与设置向导技能）。新增 `packages/core/src/assistant/setup.ts`：`card_read` 读回卡片字段、实体、世界书与生效模板；`web_search` 通过注入的 `AssistantSearchClient` 返回标题、链接、摘要与抓取时间；`propose_lore_entries`、`propose_card_change`（card 或 template 二选一）、`propose_channels_change`、`propose_settings_change` 用 `createAssistantAction` 生成待确认动作。`propose_channels_change` 要求 channels、models、embeddings、roles 四段给全，因为批准走整段替换的 `applyChannelsUpdate`。新增 `packages/core/src/assistant/search.ts` 的搜索接口与 HTTP 客户端（响应可以是数组或 `{results}`，非 2xx 直接失败）。技能注册表新增 `research`、`card_workshop`、`setup_wizard`。server 新增 `--assistant-web-search <地址>`，只在显式开启时注册 `web_search`；渠道读取返回非敏感字段（含速率与密钥是否设置），密钥值不进入工具结果。门禁通过（243 个测试文件、2135 个测试、5 个跳过）。
+- 2026-11-13 会话 363：完成 H-T07（抽屉界面与运行状态）。新增 `packages/web/src/assistant/`：`AssistantDrawer.tsx`（覆盖右侧，含会话列表、标题搜索、新建、改名、删除确认、技能/权限/思考/模型选择、消息流、工具与思考折叠、错误提示）、`conversation-list.ts`（列表与搜索命中状态）、`stream.ts`（`assistant_*` 事件还原、工具结果配对、按序号去重、只重放最后一次运行）、`permissions.ts`（三级权限与状态文案）与 `context.ts`（故事页 outlet 上下文）。`packages/web/src/api/sse.ts` 增加按事件名白名单解析的 `parseNamedSseStream`；`AssistantApiClient` 增加 `listSkills`、`listActions`、`cancel`、`getChannels`、`streamMessage`。抽屉与右下角状态标记挂在 `StoryPage`，关闭抽屉或切换标签页不中止运行；刷新后从 localStorage 的活动会话、`GET /status` 与 `events?after=` 恢复。`ChatPage` 输入框旁新增助手按钮。新增 3 个 web 单元测试文件与 `e2e/assistant.spec.ts` 三条路径，desktop 与 mobile 各 3 条通过。门禁通过（246 个测试文件、2146 个测试、5 个跳过）。
 
-## 下一步（会话 363 先做）
-1. **H-T07 抽屉界面与运行状态**：`packages/web/src/assistant/` 的 `AssistantDrawer.tsx`、`conversation-list.ts`、`stream.ts`、`permissions.ts`；抽屉从聊天页输入框旁打开，覆盖右侧不挤压聊天区；会话列表、标题搜索、新建、改名、删除、技能切换、模型与思考强度、权限、消息流、工具活动折叠与错误提示；按 `assistant_*` 事件增量渲染并用 `after` 续读；关闭不取消运行，右下角状态标记在路由切换后保留并在刷新后由 `GET /status` 与待确认动作恢复；目标 e2e 覆盖打开、关闭后继续运行、重新连接。
-2. 之后按 H-T08 → H-T09 → H-T99 的顺序做。H-T08 需要迁移 v46 的 `assistant_compactions`。一个会话只做一个任务。
+## 下一步（会话 364 先做）
+1. **H-T08 上下文压缩与用量环**：迁移 v46 新建 `assistant_compactions`；`assistant/context.ts` 估算下一次请求的 token 并报告 `context_used`、`context_budget`、`context_percent` 与各部分占用；自动压缩在请求前检查阈值，手动压缩走 `POST /api/assistant/conversations/:id/compact`；摘要用会话模型与 `NO_CONTINUATION`，失败保留原上下文并写事件；抽屉显示用量环与悬停占比。
+2. 之后按 H-T09 → H-T99 的顺序做。H-T09 复用 H-T03 的动作接口与现有变更卡差异展示。一个会话只做一个任务。
 3. 其余可做任务：X1（依赖已完成）、R6-T00（依赖已满足，但排在 H 之后）。M5-T00 依赖 R6-T99；M6-T99 等待 HUMAN-15；P5 依赖 M5-T99。
 
 ## H 的任务划分（ADR-0125）
@@ -17,7 +17,7 @@
 - **H-T04（已完成）** 技能注册表、排障与使用指南；`docs_search` 从 `--docs-root` 读取文档，trigram 检索，目录缺失时启动失败；`GET /api/assistant/skills`。
 - **H-T05（已完成）** 台账修订与参谋：`propose_ledger_change` 生成来源 `assistant` 的变更卡，`propose_director_plan` 生成 `director_plan` 待确认动作；`summarize_recent` 只读摘要。
 - **H-T06（已完成）** 资料员、卡片工坊与设置向导；联网搜索显式开启；卡片读取与四类提案；渠道读取不含密钥。
-- **H-T07** web 抽屉、会话搜索与改名、技能与权限选择、事件续读、关闭后继续运行与状态标记。
+- **H-T07（已完成）** web 抽屉、会话搜索与改名、技能与权限选择、事件续读、关闭后继续运行与状态标记；重连不重复消息；取消后状态为 `cancelled`。
 - **H-T08** 迁移 v46：`assistant_compactions`；自动与手动压缩、用量环；预算与正剧记忆独立。
 - **H-T09** 待确认动作与台账变更卡审阅面板。
 - **H-T99** 验收与 `docs/dev/reports/H.md`。
@@ -40,11 +40,21 @@
 - 白名单里的工具名必须在本次运行实际注册，否则 `runAssistantTurn` 在切换运行状态之前抛错。`docs_search`、两个旧提案工具与 `createAssistantSetupTools` 生成的新工具都由 server 以 `extraTools` 注入。
 - `proposals.ts`：台账卡 id 由工具名、会话、head、解释与规范化 diffs 生成；head 改变后同内容会生成新卡。`propose_director_plan` 参数是 `{plan, summary?}`。
 - `setup.ts`：`web_search` 只在 `searchClient` 注入时生成；`channels_read` 只在 `readChannels` 注入时生成；`card_read` 需要关联故事。提案工具在 `read_only` 级别自行抛 `permission_denied`。
-- `propose_channels_change` 与 `PUT /api/channels` 一样是整段替换：四个段必须给全，未写的条目会被删除。`channels_read` 返回重建整段配置所需的非敏感字段（api、baseUrl、密钥引用名与是否设置、速率、模型与 embedding 参数、岗位映射），但不返回密钥值。
+- `propose_channels_change` 与 `PUT /api/channels` 一样是整段替换：四个段必须给全，未写的条目会被删除。`channels_read` 返回重建整段配置所需的非敏感字段，但不返回密钥值。
 - `--assistant-web-search <地址>` 只接受 http/https；未开启时不注册 `web_search`，此时运行 `research` 技能会在切换状态前报“助手工具未注册：web_search”。
 
+## web 助手界面
+- `AssistantDrawer.tsx` 由 `StoryPage` 持有，`key={storyId}`；抽屉关闭时仍挂载，运行中的 SSE 继续写入状态。`ChatPage` 通过 outlet 上下文拿到 `openAssistant`，在 `Composer` 旁渲染 `.assistant-open-button`。
+- 焦点：抽屉打开时聚焦“关闭助手”；关闭后等两帧用 `document.querySelector(".assistant-open-button")` 把焦点送回触发按钮（隐藏元素不能保留焦点）。键盘 `Ctrl+Shift+A` 开关，`Escape` 关闭。
+- 状态标记是 `.assistant-badge`，固定在右下角；运行中、失败与待确认动作数都从抽屉状态回调到 `StoryPage`。抽屉打开时不渲染标记。
+- `stream.ts` 的 `AssistantRunState` 保存正文、思考、工具活动、用量、状态、结束原因、错误与 `lastSeq`。持久事件按 `seq <= lastSeq` 去重；`selectLatestRunEvents` 只保留最后一次 `started` 之后的事件。重连时先读会话、`GET /status` 与全部事件，再按 `lastSeq` 用 `events?after=` 轮询。
+- 轮询把非运行状态的处理放在 `setStatus` 之前：先读会话把消息写入状态，最后改状态，否则状态变化触发 effect 清理会把消息更新丢掉。
+- 抽屉内的快照请求都走 `assistantApi`（包含 `/api/channels` 的模型列表）；类型只从 `@dramaticer/protocol` 导入，不 import `@dramaticer/core` 的运行时值。
+- 新建会话用 `ASSISTANT_CONVERSATION_DEFAULTS`：排障、修改前确认、`modelAlias: null`（跟随 `roles.writer`）、思考关闭。
+- 取消按钮只在 `status === "running"` 时出现；取消后重新读状态，界面显示“已取消”。待确认动作数每 5 秒刷新一次，运行结束后立即刷新。
+
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a 至 P2.g、P3.a 至 P3.f、P4.a 至 P4.f、C-T01.a 至 C-T01.d、C-T02.a 至 C-T02.f、C-T03.a 至 C-T03.d、C-T04.a、C-T04.b.a、C-T04.b.b、C-T04.c.a、C-T04.c.b、C-T04.c.c、C-T04.c.d、C-T04.d、C-T05.a 至 C-T05.f、H-T00 至 H-T06。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a 至 P2.g、P3.a 至 P3.f、P4.a 至 P4.f、C-T01.a 至 C-T01.d、C-T02.a 至 C-T02.f、C-T03.a 至 C-T03.d、C-T04.a、C-T04.b.a、C-T04.b.b、C-T04.c.a、C-T04.c.b、C-T04.c.c、C-T04.c.d、C-T04.d、C-T05.a 至 C-T05.f、H-T00 至 H-T07。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
 - 兼容插件线：`st-content`、`st-mvu`、`st-ejs`、`st-helper-host` 全部完成（含一致性测试与共存评测）。
 - 数据库 schema 版本 45；v46 预留给助手的压缩记录。本轮没有新增依赖。
 - 报告：`docs/dev/reports/P2.md`、`P3.md`、`P4.md`、`C-T01.md`、`C-T02.md`、`C-T03.md`、`C-T04.md`、`C-T05.md`。
@@ -60,6 +70,8 @@
 
 ## 可重复命令
 - 门禁：`pnpm check`。
+- H-T07 目标测试：`pnpm exec vitest run packages/web/test/assistant-api.test.ts packages/web/test/assistant-stream.test.ts packages/web/test/assistant-conversation-list.test.ts packages/web/test/assistant-permissions.test.ts`。
+- H-T07 e2e：`pnpm --filter @dramaticer/web build && pnpm --filter @dramaticer/web exec playwright test e2e/assistant.spec.ts`（desktop 与 mobile 各 3 条）。
 - H-T06 目标测试：`pnpm exec vitest run packages/core/test/assistant-setup.test.ts packages/core/test/assistant-skills.test.ts packages/server/test/assistant-skills.test.ts packages/server/test/assistant.test.ts packages/server/test/config.test.ts`。
 - H-T05 目标测试：`pnpm exec vitest run packages/core/test/assistant-proposals.test.ts packages/core/test/assistant-skills.test.ts packages/server/test/assistant-skills.test.ts`。
 - H-T04 目标测试：`pnpm exec vitest run packages/core/test/assistant-skills.test.ts packages/server/test/assistant-skills.test.ts packages/server/test/config.test.ts`。
@@ -94,7 +106,7 @@
 - `assistant_events` 的删除触发器只在会话仍存在时拒绝，删除会话的级联删除不受影响；事件修改始终被拒绝。
 - 助手接口的 `storyId` 不存在返回 404，字段非法返回 400 并在 `details.path` 指出字段；删除会话不触碰楼层、head 与状态 diff。
 - 助手运行时把会话消息转成模型消息时，工具消息没有可回放的调用 id 与原生签名，统一转成 `system` 消息保留工具名与结果；不要伪造 `toolCalls` 回放，Gemini 一类渠道会因缺少签名拒绝请求。
-- 助手运行事件名带前缀（`assistant.started`、`assistant.text.delta` 等），与剧情回合的 `text.delta`、`tool.call` 分开；两套 SSE 载荷形状不同，`createSseStream` 按事件表类型参数区分。
+- 助手运行事件名带前缀（`assistant.started`、`assistant.text.delta` 等），与剧情回合的 `text.delta`、`tool.call` 分开；两套 SSE 载荷形状不同，`parseNamedSseStream` 按传入的事件名白名单区分。
 - 助手并发启动有两层保护：server 的 `AssistantRunCoordinator` 返回 409，store 的 `startAssistantConversationRun` 在同一事务里拒绝第二个 running。客户端断开只停止 SSE 写入，不中止运行。
 - 助手工具的 `permission` 是助手自己的三级权限判定；传给深回合执行器时统一为 `read`，否则执行器会把 `propose` 与 `side_effect` 当成剧情写入语义处理。新增提案工具用 `defineAssistantTool` 包装，工具内部调用 `assistantActionGate` 与 `store.createAssistantAction`。
 - `assistant_actions` 的待定唯一索引以规范化 JSON 载荷为键；同会话同种类同载荷复用已有待定动作。批准顺序是先校验、再调用领域写入、最后改状态，失败时动作保持 `pending`。
@@ -107,6 +119,9 @@
 - `summarize_recent` 只读现有压缩与摘要；新增摘要仍然走后台任务，不要在助手工具里调用模型生成摘要（I11、I13）。
 - 联网搜索只由 `--assistant-web-search` 开启；HTTP 客户端 POST `{query, limit}`，接受结果数组或 `{results}`，每条必须有 title 与 url。测试只注入假客户端，不访问网络。
 - 渠道读取不返回密钥值；返回的字段足以重建整段配置。`propose_channels_change` 四个段必须给全，批准时仍由 `readChannelsUpdate`、`applyChannelsUpdate` 与 `parseChannelsConfig` 校验并写文件。
+- 抽屉的持久状态只有 localStorage 里的活动会话 id（`dramaticer.assistant.active.<storyId>`）；消息、状态与事件都以 server 为准，不要缓存正文。
+- 重连轮询必须在改状态之前把会话详情与消息写入状态：`status` 变化会触发 effect 清理，之后再写消息会被 `cancelled` 挡住。
+- 关闭抽屉的焦点恢复要等两帧；隐藏祖先元素后 Chromium 会把焦点退到 body。触发按钮用选择器 `.assistant-open-button` 查找，不能依赖只在聊天页存在的 ref。
 - 新增的格式化与 lint 用 `pnpm exec biome check --write <文件>`，不要手写格式。
 - 修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 的请求写进 HUMAN.md。
 - 不变量：I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖其他工作区包，I17 回合内插件钩子有时间预算，I18 插件权限必须声明。

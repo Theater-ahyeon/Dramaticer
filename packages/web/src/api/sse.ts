@@ -1,8 +1,4 @@
-import {
-	SSE_EVENT_NAMES,
-	type SseEvent,
-	type SseEventName,
-} from "@dramaticer/protocol";
+import { SSE_EVENT_NAMES, type SseEvent } from "@dramaticer/protocol";
 
 export type { SseEvent };
 
@@ -17,6 +13,12 @@ export class SseParseError extends Error {
 	}
 }
 
+/** 未按事件名收窄的 SSE 事件；调用方自己按白名单解释载荷。 */
+export interface RawSseEvent {
+	readonly event: string;
+	readonly data: unknown;
+}
+
 /**
  * 把 fetch 的响应体按 SSE 规范切成事件。分块边界可以在任意位置，
  * 解析器自己保留没读完的一行与没分发完的事件。
@@ -24,19 +26,29 @@ export class SseParseError extends Error {
 export async function* parseSseStream(
 	stream: ReadableStream<Uint8Array>,
 ): AsyncGenerator<SseEvent> {
+	for await (const event of parseNamedSseStream(stream, KNOWN_EVENTS)) {
+		yield event as SseEvent;
+	}
+}
+
+/** 按给定事件名白名单解析；白名单以外的事件与空 data 直接跳过。 */
+export async function* parseNamedSseStream(
+	stream: ReadableStream<Uint8Array>,
+	knownEvents: ReadonlySet<string>,
+): AsyncGenerator<RawSseEvent> {
 	const reader = stream.getReader();
 	const decoder = new TextDecoder();
 	let buffer = "";
 	let eventName: string | null = null;
 	let dataLines: string[] = [];
 
-	const dispatch = (): SseEvent | null => {
+	const dispatch = (): RawSseEvent | null => {
 		const name = eventName;
 		const data = dataLines.join("\n");
 		eventName = null;
 		dataLines = [];
 		if (name === null || data.length === 0) return null;
-		if (!KNOWN_EVENTS.has(name)) return null;
+		if (!knownEvents.has(name)) return null;
 		let parsed: unknown;
 		try {
 			parsed = JSON.parse(data);
@@ -46,10 +58,10 @@ export async function* parseSseStream(
 				`SSE 事件 ${name} 的数据不是合法 JSON：${reason}`,
 			);
 		}
-		return { event: name as SseEventName, data: parsed } as SseEvent;
+		return { event: name, data: parsed };
 	};
 
-	const handleLine = (line: string): SseEvent | null => {
+	const handleLine = (line: string): RawSseEvent | null => {
 		if (line.length === 0) return dispatch();
 		if (line.startsWith(":")) return null;
 		const separator = line.indexOf(":");
@@ -64,8 +76,8 @@ export async function* parseSseStream(
 		return null;
 	};
 
-	const drainLines = (final: boolean): SseEvent[] => {
-		const events: SseEvent[] = [];
+	const drainLines = (final: boolean): RawSseEvent[] => {
+		const events: RawSseEvent[] = [];
 		while (true) {
 			let end = -1;
 			for (let index = 0; index < buffer.length; index += 1) {

@@ -48,7 +48,7 @@ function baseChunk(id) {
 	};
 }
 
-function streamText(res, chunks) {
+function streamText(res, chunks, delayMs = 0) {
 	res.writeHead(200, {
 		"content-type": "text/event-stream; charset=utf-8",
 		"cache-control": "no-cache",
@@ -63,34 +63,49 @@ function streamText(res, chunks) {
 			],
 		}),
 	);
-	for (const delta of chunks) {
+	const finish = () => {
+		res.write(
+			sseChunk({
+				...baseChunk(id),
+				choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+			}),
+		);
+		res.write(
+			sseChunk({
+				...baseChunk(id),
+				choices: [],
+				usage: {
+					prompt_tokens: 120,
+					completion_tokens: 40,
+					total_tokens: 160,
+					completion_tokens_details: { reasoning_tokens: 8 },
+				},
+			}),
+		);
+		res.write("data: [DONE]\n\n");
+		res.end();
+	};
+	let index = 0;
+	const writeNext = () => {
+		if (index >= chunks.length) {
+			finish();
+			return;
+		}
+		const delta = chunks[index];
+		index += 1;
 		res.write(
 			sseChunk({
 				...baseChunk(id),
 				choices: [{ index: 0, delta: { content: delta }, finish_reason: null }],
 			}),
 		);
-	}
-	res.write(
-		sseChunk({
-			...baseChunk(id),
-			choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
-		}),
-	);
-	res.write(
-		sseChunk({
-			...baseChunk(id),
-			choices: [],
-			usage: {
-				prompt_tokens: 120,
-				completion_tokens: 40,
-				total_tokens: 160,
-				completion_tokens_details: { reasoning_tokens: 8 },
-			},
-		}),
-	);
-	res.write("data: [DONE]\n\n");
-	res.end();
+		if (delayMs > 0) {
+			setTimeout(writeNext, delayMs);
+			return;
+		}
+		writeNext();
+	};
+	writeNext();
 }
 
 function splitForStream(text) {
@@ -280,6 +295,14 @@ export async function startFakeChannel(options = {}) {
 			const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
 			if (req.url === WRITER_PATH) {
 				const userText = lastUserText(body);
+				if (systemText(body).includes("你是 Dramaticer 的应用内助手")) {
+					const slow = userText.includes("慢速");
+					const reply = slow
+						? "慢速助手的完整回答：抽屉关闭后运行仍然继续。"
+						: `助手回答：${userText}`;
+					streamText(res, splitForStream(reply), slow ? 500 : 0);
+					return;
+				}
 				if (
 					body.messages.some((message) =>
 						textOf(message.content).includes("深回合草稿"),

@@ -1520,7 +1520,8 @@
   - 注册 `setup_wizard`（设置向导）：工具 `settings_read`、`channels_read`、`plugin_list`、`propose_channels_change`、`propose_settings_change`。渠道读取只返回别名、模型名、baseUrl 与是否有密钥，密钥值永不进入工具结果、事件与消息；批准渠道修改调用 `applyChannelsUpdate` 并复用现有解析校验，批准故事设置调用 `updateStorySettings`。不读写 `.env`，不写仓库外文件。
   验收：资料员用假搜索客户端产出带链接的条目草案，批准后世界书出现条目、拒绝后不变；未开启联网时不注册 `web_search`；卡片工坊读回人物字段与世界书，生成模板草案，非法模板在批准时被拒绝并保留待确认状态；设置向导读到的渠道不含密钥值，批准渠道修改后配置可重新解析，非法配置被拒绝；三个技能都不写楼层；`pnpm check` 通过。
 
-- [ ] **H-T07 抽屉界面与运行状态** | 依赖：H-T01、H-T02、H-T03 | DESIGN §10.3 | ADR-0125
+- [x] **H-T07 抽屉界面与运行状态** | 依赖：H-T01、H-T02、H-T03 | DESIGN §10.3 | ADR-0125
+  完成：2026-11-13 新增 `packages/web/src/assistant/` 的抽屉、会话列表、事件流与权限文案；抽屉覆盖右侧，运行状态由故事页持有，关闭与切换标签页继续接收事件，右下角标记显示运行中、失败与待确认动作数，刷新后从活动会话、`GET /status` 与事件续读恢复；`AssistantApiClient` 增加技能、动作、取消、渠道与消息流，SSE 解析器按事件名白名单泛化；新增 3 个 web 单元测试文件与三条 Playwright 路径，desktop 与 mobile 各 3 条通过；门禁通过（246 个测试文件、2146 个测试、5 个跳过）
   做什么：
   - 新增 `packages/web/src/assistant/`：`AssistantDrawer.tsx`、`conversation-list.ts`、`stream.ts`、`permissions.ts`。抽屉从聊天页输入框旁打开，覆盖在右侧，不挤压聊天区；包含会话列表、标题搜索、新建、改名、删除、技能切换、模型与思考强度选择、权限选择、消息流、工具活动折叠区与错误提示。
   - 消息流按 `assistant_*` 事件增量渲染；重新打开抽屉时先读会话与 `status`，再用 `after` 续读事件，运行中继续接收，完成后显示结束状态。取消按钮调用取消接口。

@@ -1,9 +1,12 @@
 import type {
+	AssistantActionListView,
+	AssistantCancelView,
 	AssistantConversationDetailView,
 	AssistantConversationEventsView,
 	AssistantConversationListView,
 	AssistantConversationStatusView,
 	AssistantConversationView,
+	AssistantSkillListView,
 } from "@dramaticer/protocol";
 import { describe, expect, it } from "vitest";
 import {
@@ -163,6 +166,66 @@ describe("助手接口客户端", () => {
 				url: "/api/assistant/conversations/c-1",
 				body: undefined,
 			},
+		]);
+	});
+
+	it("技能、待确认动作、取消与消息流都打到对应路径", async () => {
+		const skills: AssistantSkillListView = {
+			skills: [
+				{
+					id: "troubleshoot",
+					name: "排障",
+					description: "解释这一轮为什么这么写",
+					defaultPermission: "confirm",
+					tools: ["trace_read"],
+				},
+			],
+		};
+		const actions: AssistantActionListView = { actions: [] };
+		const cancel: AssistantCancelView = {
+			conversationId: "c-1",
+			status: "cancelled",
+		};
+		const frames = [
+			'event: assistant.started\ndata: {"conversationId":"c-1","skill":"troubleshoot"}\n\n',
+			'event: assistant.text.delta\ndata: {"delta":"收到"}\n\n',
+			'event: assistant.completed\ndata: {"status":"completed","stopReason":"completed"}\n\n',
+		].join("");
+		const { fetchImpl, calls } = stubFetch((call) => {
+			if (call.url.endsWith("/skills")) return jsonResponse(skills);
+			if (call.url.includes("/actions?")) return jsonResponse(actions);
+			if (call.url.endsWith("/cancel")) return jsonResponse(cancel);
+			return new Response(frames, {
+				status: 200,
+				headers: { "Content-Type": "text/event-stream" },
+			});
+		});
+		const client = new AssistantApiClient({ fetch: fetchImpl });
+		await expect(client.listSkills()).resolves.toEqual(skills);
+		await expect(
+			client.listActions({
+				storyId: "story-1",
+				status: "pending",
+				limit: 5,
+			}),
+		).resolves.toEqual(actions);
+		await expect(client.cancel("c-1")).resolves.toEqual(cancel);
+		const events = [];
+		for await (const event of client.streamMessage("c-1", "你好")) {
+			events.push(event);
+		}
+		expect(events.map((event) => event.event)).toEqual([
+			"assistant.started",
+			"assistant.text.delta",
+			"assistant.completed",
+		]);
+		expect(
+			calls.map((call) => call.url.replace("http://localhost:8787", "")),
+		).toEqual([
+			"/api/assistant/skills",
+			"/api/assistant/actions?status=pending&storyId=story-1&limit=5",
+			"/api/assistant/conversations/c-1/cancel",
+			"/api/assistant/conversations/c-1/messages",
 		]);
 	});
 

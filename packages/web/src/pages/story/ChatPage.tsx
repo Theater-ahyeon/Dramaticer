@@ -10,6 +10,7 @@ import type {
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api } from "../../api";
+import { useStoryAssistant } from "../../assistant/context";
 import {
 	ACTION_POLL_INTERVAL_MS,
 	type CandidateActionItem,
@@ -81,6 +82,7 @@ interface FailedTurn {
 
 export function ChatPage() {
 	const { storyId } = useParams();
+	const assistant = useStoryAssistant();
 	const [path, setPath] = useState(emptyPathState);
 	const [pathLoaded, setPathLoaded] = useState(false);
 	const [loadError, setLoadError] = useState<unknown>(null);
@@ -674,22 +676,31 @@ export function ChatPage() {
 			) : null}
 			<ErrorNotice error={steeringError} />
 			<ErrorNotice error={composerError} />
-			<Composer
-				value={input}
-				streaming={streaming}
-				turnMode={turnMode}
-				onTurnModeChange={setTurnModeOverride}
-				onChange={setInput}
-				onSend={() => sendText(input)}
-				onStop={() => abortRef.current?.abort()}
-				steering={steeringActive}
-				steeringValue={steeringInput}
-				steeringBusy={steeringBusy}
-				onSteeringChange={setSteeringInput}
-				onSteer={() => {
-					void steerTurn();
-				}}
-			/>
+			<div className="composer-row">
+				<Composer
+					value={input}
+					streaming={streaming}
+					turnMode={turnMode}
+					onTurnModeChange={setTurnModeOverride}
+					onChange={setInput}
+					onSend={() => sendText(input)}
+					onStop={() => abortRef.current?.abort()}
+					steering={steeringActive}
+					steeringValue={steeringInput}
+					steeringBusy={steeringBusy}
+					onSteeringChange={setSteeringInput}
+					onSteer={() => {
+						void steerTurn();
+					}}
+				/>
+				<button
+					type="button"
+					className="assistant-open-button"
+					onClick={assistant.openAssistant}
+				>
+					助手
+				</button>
+			</div>
 		</section>
 	);
 }
