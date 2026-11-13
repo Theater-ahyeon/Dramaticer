@@ -1593,7 +1593,7 @@
   - 新增 `packages/st-compat/src/st-bench/coexist.ts`。`CoexistPluginAdapter.apply` 是插件唯一接入点，返回改写后的模板与槽位提供者；关闭组使用默认模板与基础槽位。已注册适配器放在 `ST_BENCH_COEXIST_PLUGINS`，由 C-T02–C-T05 追加。
   - `runCoexistComparisons` 对配置里的每个插件各跑关闭与开启两组；每张卡每组使用独立数据库、相同角色卡、相同已有片段与相同脚本玩家消息，避免模型生成的玩家消息把两边输入拉开。
   - 配置为 JSON（`format` 为 `dramaticer.st-bench-coexist`），声明正文模型、裁判模型、结构化输出方式、插件 id、角色卡路径、可选片段路径、脚本消息与记忆题文件；相对路径按配置文件所在目录解析。CLI 为 `st-bench coexist --config <路径> [--out <目录>]`，输出目录必须在私有根目录内部。
-  - 指标口径：矛盾率 = 矛盾题数 /（一致题数 + 矛盾题数）；编造回忆率 = 编造题判矛盾数 / 被判定的编造题数；盲测胜率 = 开启侧在两顺序盲评里的顺序级胜率（接受侧固定为开启侧）；首字延迟取回合 Trace 的 P90。前两项与跑后提问复用 R2 的题目与裁判，盲评复用 `runPreferenceSample` 与 `summarizePreferenceComparisons`。
+  - 指标口径：矛盾率 = 矛盾题数 /（一致题数 + 矛盾题数）；编造回忆率 = 编造题判矛盾数 / 被判定的编造题数；盲测胜率 = 开启侧在两顺序盲评里的顺序级胜率（接受侧固定为开启侧，平局不计入胜负；全部平局时判定持平，见 ADR-0124）；首字延迟取回合 Trace 的 P90。前两项与跑后提问复用 R2 的题目与裁判，盲评复用 `runPreferenceSample` 与 `summarizePreferenceComparisons`。
   - 变差门槛：矛盾率与编造回忆率开启侧比关闭侧高 5 个百分点；盲测胜率低于 45%；首字 P90 超过关闭侧 1.2 倍且多 100 毫秒。任一侧样本少于 5 时写「样本不足」，不判变差。报告末尾列出达到门槛的项目与样本量。
   - 报告写到 `<输出>/<插件>/report.md`，指标写到 `metrics.json`；两者只含数字、样本量与开关状态，不含提示词与回复正文。
   - 入口只调用 Dramaticer 配置的模型渠道，不启动沙箱 ST，不调用玩家本机 ST 额度（I14）。
@@ -1974,4 +1974,17 @@
 - **影响**：
   - 新增 `packages/st-compat/test/st-helper-html.test.ts` 10 个测试：三种载体与负例、状态栏与开场页请求与显示状态、变量触发的重渲染与合并、自动刷新上限、未知渲染 id、空快照与缺失楼层、渲染消息与快照回传、渲染超时。
   - `packages/web/test/helper-sandbox.test.ts` 增加渲染文档与 `rendered` 消息解析用例（共 7 个）；`packages/web/e2e/helper-sandbox.spec.ts` 增加 1 个浏览器用例：页面脚本经宿主 API 读到变量、卡片脚本随后修改 DOM、快照只含渲染后的 HTML。
+  - 没有改数据库 schema，没有新增依赖，`core` 没有改动（I1、I15）。
+
+## ADR-0124 `st-helper-host` 的 API 覆盖率口径、盲评平局与共存边界（2026-11-13）
+
+- **背景**：C-T05.f 要按酒馆助手公开类型定义统计覆盖率，并把插件注册进共存评测。酒馆助手的公开 API 有 140 个函数，覆盖音频、扩展安装、世界书与预设文件管理等大量只有 ST 前端才有的能力；本实现只移植任务书写明的五组能力。共存批次在 Node 里运行，没有 iframe，脚本正文无法执行；两组回复按设计完全相同，盲评裁判在两份文本相同时直接判平局，而原来的 `compareBlindWin` 把平局算成开启侧未胜，给出“变差”。
+- **决定**：
+  - 覆盖率快照放在 `packages/st-compat/src/st-helper-host/coverage.ts`，记录本机 SillyTavern 里 JS-Slash-Runner 4.8.10 的公开类型定义中的 140 个函数名与 6 个常量/类/对象入口。只记录名字与来源文件名，不复制上游源码；不认识的名称直接抛错。
+  - 同时记录 C-T05 范围内的 19 个上游函数（变量读写、六个事件函数、`triggerSlash`、`generate`/`generateRaw`、读消息与改消息），以及三个上游 4.8.10 未声明的扩展名 `getVariable`、`insertOrAssignVariable`、`getChatMessage`。全量与范围内覆盖率都写进报告，没有同名实现的函数逐组列出。
+  - `compareBlindWin` 改为按非平局判定计算开启侧胜率：裁判在两份文本相同时不调用模型、直接判平局；全部平局时判定为“持平”而不是“变差”。样本量仍按顺序级判定计数，明细里写平局次数。EJS 批次的胜率口径不变（没有平局）。
+  - `st-helper-host` 的共存适配器两组都用同一份 `st-content` 映射。开启组每轮做宿主侧工作：读取脚本库、从新楼层提取 HTML 状态栏并把渲染请求送进沙箱。批次没有 iframe，脚本不执行；测试断言两组提示词逐字节相同，报告把这条边界写在“已知边界”里，不用脚本执行结果冒充指标。
+- **影响**：
+  - 新增 `packages/st-compat/src/st-helper-host/coverage.ts`、`packages/st-compat/src/st-bench/st-helper-plugin.ts`、`packages/st-compat/test/st-helper-consistency.test.ts`（31 条用例 + 覆盖率断言）与 `packages/st-compat/test/st-helper-coexist.test.ts`（1 条合成批次）。
+  - `ST_BENCH_COEXIST_PLUGINS` 增加 `st-helper-host`；`docs/dev/reports/C-T05.md` 记录覆盖率、一致性用例、合成批次四项指标与总验收核对。
   - 没有改数据库 schema，没有新增依赖，`core` 没有改动（I1、I15）。

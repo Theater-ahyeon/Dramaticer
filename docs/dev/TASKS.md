@@ -1452,7 +1452,8 @@
   做什么：提取角色卡与楼层里的 HTML 状态栏和开场页，在沙箱 iframe 里渲染；脚本只能通过宿主 API 读写变量与消息；渲染结果进入插件显示状态，不改原文、不写台账。
   验收：状态栏随变量更新重新渲染；开场页与楼层中的脚本在沙箱里运行；原文逐字节不变；`pnpm check` 通过。
 
-- [ ] **C-T05.f 一致性测试与共存评测** | 依赖：C-T05.b 至 C-T05.e
+- [x] **C-T05.f 一致性测试与共存评测** | 依赖：C-T05.b 至 C-T05.e
+  完成：2026-11-13 新增 `st-helper-host/coverage.ts`：按本机 JS-Slash-Runner 4.8.10 公开类型定义记录 140 个函数与 6 个非函数入口，`summarizeStHelperCoverage()` 给全量 16/140、任务范围 16/19 与逐项缺口，另列三个扩展名；`st-helper-consistency.test.ts` 31 条用例覆盖清单里每个函数；`st-bench/st-helper-plugin.ts` 注册进 `ST_BENCH_COEXIST_PLUGINS`，开启组每轮读脚本库、提取状态栏渲染请求，合成批次两组提示词逐字节相同、四项指标有数字；`compareBlindWin` 改为平局不计入胜负；写 `docs/dev/reports/C-T05.md` 逐条核对总验收；ADR-0124；门禁通过
   做什么：按酒馆助手公开 API 统计覆盖率，补齐一致性用例；在 `ST_BENCH_COEXIST_PLUGINS` 注册 `st-helper-host`，开启与关闭各跑一批并报告四项原生指标；写 `docs/dev/reports/C-T05.md` 逐条核对总验收。
   验收：API 覆盖率与一致性用例达到提案口径；开关对照四项指标有数字与样本量；报告不含正文；`pnpm check` 通过。
 

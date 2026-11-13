@@ -42,6 +42,7 @@ import {
 import { type StPreset, parsePresetFile } from "../preset.js";
 import { ST_CONTENT_COEXIST_PLUGIN } from "./st-content-plugin.js";
 import { ST_EJS_COEXIST_PLUGIN } from "./st-ejs-plugin.js";
+import { ST_HELPER_COEXIST_PLUGIN } from "./st-helper-plugin.js";
 import { ST_MVU_COEXIST_PLUGIN } from "./st-mvu-plugin.js";
 
 /** 指标变差的门槛；报告与 ADR 共用这些数字。 */
@@ -90,6 +91,7 @@ export const ST_BENCH_COEXIST_PLUGINS: readonly CoexistPluginAdapter[] = [
 	ST_CONTENT_COEXIST_PLUGIN,
 	ST_MVU_COEXIST_PLUGIN,
 	ST_EJS_COEXIST_PLUGIN,
+	ST_HELPER_COEXIST_PLUGIN,
 ];
 
 export interface CoexistApplyInput {
@@ -686,7 +688,11 @@ function buildMetrics(
 			onScore.fabricatedJudged,
 			"占比越低越好",
 		),
-		compareBlindWin(overall.acceptedShare, overall.judgements),
+		compareBlindWin({
+			acceptedShare: overall.acceptedShare,
+			tieShare: overall.tieShare,
+			judgements: overall.judgements,
+		}),
 		compareFirstToken(offFirstToken, onFirstToken),
 	];
 }
@@ -728,16 +734,28 @@ function compareRateMetric(
 	};
 }
 
-function compareBlindWin(
-	acceptedShare: number | null,
-	judgements: number,
-): CoexistMetricComparison {
+function compareBlindWin(overall: {
+	readonly acceptedShare: number | null;
+	readonly tieShare: number | null;
+	readonly judgements: number;
+}): CoexistMetricComparison {
+	const { judgements } = overall;
+	const tieShare = overall.tieShare ?? 0;
+	// 平局不计入胜负：两份文本完全相同时裁判直接判平局，不能算成开启侧输。
+	const ties = judgements * tieShare;
+	const decisive = judgements - ties;
+	const share =
+		overall.acceptedShare === null || decisive === 0
+			? null
+			: overall.acceptedShare / (1 - tieShare);
 	let verdict: CoexistVerdict;
-	if (acceptedShare === null || judgements < COEXIST_MIN_SAMPLES) {
+	if (share === null) {
+		verdict = "same";
+	} else if (decisive < COEXIST_MIN_SAMPLES) {
 		verdict = "insufficient";
-	} else if (acceptedShare < COEXIST_BLIND_WIN_FLOOR) {
+	} else if (share < COEXIST_BLIND_WIN_FLOOR) {
 		verdict = "worse";
-	} else if (acceptedShare > COEXIST_BLIND_WIN_CEILING) {
+	} else if (share > COEXIST_BLIND_WIN_CEILING) {
 		verdict = "better";
 	} else {
 		verdict = "same";
@@ -745,11 +763,11 @@ function compareBlindWin(
 	return {
 		metric: "blindWin",
 		off: null,
-		on: acceptedShare,
+		on: share,
 		samplesOff: judgements,
 		samplesOn: judgements,
 		verdict,
-		detail: `开启侧胜率；门槛 ${COEXIST_BLIND_WIN_FLOOR} 到 ${COEXIST_BLIND_WIN_CEILING}；顺序级判定 ${judgements} 次`,
+		detail: `开启侧胜率（平局不计入胜负）；门槛 ${COEXIST_BLIND_WIN_FLOOR} 到 ${COEXIST_BLIND_WIN_CEILING}；顺序级判定 ${judgements} 次，平局 ${ties} 次`,
 	};
 }
 

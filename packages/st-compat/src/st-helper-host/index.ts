@@ -1,3 +1,4 @@
+export * from "./coverage.js";
 export * from "./events.js";
 export * from "./generation.js";
 export * from "./host.js";

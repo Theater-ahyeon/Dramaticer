@@ -223,7 +223,8 @@ describe("st-mvu 共存评测", () => {
 		expect(byMetric.get("contradiction")?.on).toBe(0);
 		expect(byMetric.get("fabricated")?.off).toBe(0);
 		expect(byMetric.get("fabricated")?.on).toBe(0);
-		expect(byMetric.get("blindWin")?.on).toBe(0.8);
+		expect(byMetric.get("blindWin")?.on).toBe(1);
+		expect(byMetric.get("blindWin")?.detail).toContain("平局 2 次");
 		expect(byMetric.get("contradiction")?.verdict).toBe("same");
 		expect(byMetric.get("fabricated")?.verdict).toBe("insufficient");
 		expect(byMetric.get("blindWin")?.verdict).toBe("better");
