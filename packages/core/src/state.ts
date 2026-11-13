@@ -1,5 +1,12 @@
 import type { JsonObject, JsonValue } from "./json.js";
-import type { StateDiff } from "./timeline.js";
+import type { StateDiff, StateDiffOp } from "./timeline.js";
+
+/** 一条只带路径、操作与值的状态变更；待结算视图与完整 diff 共用累加逻辑。 */
+export interface StateDiffEntry {
+	readonly path: readonly string[];
+	readonly op: StateDiffOp;
+	readonly value?: unknown;
+}
 
 /** 按路径读取状态值；路径不存在或中途不是对象时返回 undefined。 */
 export function readStateValue(
@@ -24,6 +31,14 @@ export function applyStateDiffs(diffs: readonly StateDiff[]): JsonObject {
 export function applyStateDiffsTo(
 	base: JsonObject,
 	diffs: readonly StateDiff[],
+): JsonObject {
+	return applyDiffEntriesTo(base, diffs);
+}
+
+/** 在已有状态上累加一组请求的变更；与 `applyStateDiffsTo` 共用同一套路径规则。 */
+export function applyDiffEntriesTo(
+	base: JsonObject,
+	diffs: readonly StateDiffEntry[],
 ): JsonObject {
 	const root = structuredClone(base);
 	for (const diff of diffs) {

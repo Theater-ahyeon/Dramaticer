@@ -1726,3 +1726,18 @@
   - 新增 `packages/st-compat/test/st-mvu.test.ts` 17 个测试，覆盖条目筛选与合并、代码块与开场白覆盖、`$meta` 与递归扩展、结构读回、补丁解析、值说明保留与 `strictSet`、锁定结构、模板、数字转换、JSON Pointer 与移动、非法操作逐条拒绝、原型污染键。
   - `core` 无改动（I1、I15）；引擎不写楼层与台账（I4、I12），C-T03.b 再把结果映射为 `mvu` 命名空间的待结算 diff。
   - 没有新增运行时依赖。
+
+## ADR-0108 MVU 变量写入台账的待结算视图与结算校验（2026-11-13）
+
+- **背景**：C-T03.b 要求把 MVU 变量写入台账 `mvu` 命名空间，写入经过结算器校验与修复，修复与拒绝原因留在 Trace；插件内的临时视图要让脚本写后立刻读到待结算值，结算完成后以台账为准。ADR-0041 的 A10 把这条列为兼容插件的共存规则，ADR-0040 明确 MVU 是台账里的一个命名空间，不是第二套数据。
+- **决定**：
+  - `core` 新增 `packages/core/src/ledger/pending.ts`：`PendingLedgerView.open(store, nodeId, prefix?)` 读台账快照，`stage(writes, source)` 用 `validateLedgerDiff` 逐条校验并收下合法写入，`read()` 返回台账快照叠加尚未提交的写入，`commit({storyId, source})` 把待结算写入通过 `appendStateDiffs` 写进台账并重新从台账读取。限定前缀时，前缀之外的路径直接拒绝；不带前缀时按台账各命名空间的路径规则校验。
+  - `packages/core/src/state.ts` 导出 `StateDiffEntry` 与 `applyDiffEntriesTo`；完整 diff 与待结算写入共用同一套路径累加规则，避免两处实现出现差异。
+  - 新增 `packages/st-compat/src/st-mvu/ledger.ts` 的 `MvuLedgerSession`：在当前楼层打开 `["mvu"]` 前缀的待结算视图，台账没有 `mvu` 子树时把 initvar 的初始数据作为待结算写入；`apply` 调 `applyMvuPatch` 后只对变化路径调 `diffSnapshots`，把变量路径映射成 `["mvu", ...]` 再交给视图；`commit` 之后 `read()` 直接来自台账。会话只保存结构（`MvuSchemaNode`）与根级开关，变量数据始终只有台账与待结算写入两份状态，后者在提交时清空。
+  - 补丁操作被引擎拒绝时逐条记 Trace，不写台账；写入被 `validateLedgerDiff` 拒绝时也记 Trace，并在提交结果里转成 `action: "delete"` 的修复记录。Trace 条目与代码插件的 `ledger-write` 同形（`plugin`、`action`、`target`、`outcome`、`path`、`reason`），宿主可以把它们并入插件 Trace。
+  - 写入来源固定为 `settler`。插件写入不单独写结算记录；该楼层的常规结算窗口把已写入的 `mvu` 路径视为已覆盖，不会用模型提案覆盖，非法条目仍由既有结算路径删除并记入 `repairs`（I12）。
+  - 卡内脚本发起的变量读写仍走酒馆助手宿主（C-T05）；本任务提供宿主后续直接复用的会话接口，不启动脚本运行时。
+- **影响**：
+  - 新增 `packages/core/test/ledger-pending.test.ts` 5 个测试：写后立即可读与提交前台账不可见、提交后以台账为准且重复提交不新增行、删除写入一致、前缀之外与空变量路径及非法值逐条拒绝、无前缀时按台账结构校验。
+  - 新增 `packages/st-compat/test/st-mvu-ledger.test.ts` 4 个测试：初始变量只是待结算值、脚本写后立即可读且结算窗口不覆盖、锁定对象新增键被拒绝并留 Trace、再次打开从台账读起且仍只有一份事实。
+  - `core` 只新增通用的待结算视图与累加入口，没有增加 ST 概念（I1、I15），不改数据库 schema；变量与台账同一条累加与快照路径，没有第二份事实（I12）。没有新增运行时依赖。
