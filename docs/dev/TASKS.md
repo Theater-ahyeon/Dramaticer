@@ -1349,12 +1349,43 @@
   - 记录变量结构（zod 卡生成的 schema）的校验口径；需要执行卡内 zod 脚本时复用酒馆助手宿主（C-T05）的沙箱。
   验收：C-T03 总验收逐条通过；开关对照四项指标有数字与样本量，变差时列出项目；`pnpm check` 通过。
 
-- [ ] **C-T04 P-B `st-ejs` Prompt Template 兼容** | 依赖：C-T03
+- **C-T04 P-B `st-ejs` Prompt Template 兼容**（已拆成 C-T04.a 至 C-T04.d） | 依赖：C-T03
   做什么：
   - 先搭一致性测试并让它变红，再实现：世界书条目与预设里的 EJS 模板，包括 `getvar`/`setvar` 等函数、装饰器、激活正则与世界书条目的能力；模板在沙箱里执行。
   - 执行隔离（ADR-0041 的 A10）：EJS 在 worker 里执行，`node:vm` 不作为安全边界；模板发起的生成按卡限流并计入后台预算。
   - 作用范围：ST 正则、宏与 EJS 只作用于 history 槽位里的 ST 内容，不碰记忆、台账、导演与写作契约等 harness 槽位。
-  验收：EJS 模板的一致性用例全部通过；沙箱逃逸测试通过；模板执行不影响台账事实（I12）；EJS 只作用于来自 ST 的内容，不修改 harness 槽位；模板执行与世界书递归激活计入回合内时间预算，超时写入 Trace；开启与关闭本插件的对照评测里原生指标不明显变差（ADR-0040）。
+  总验收（C-T04.d 逐条核对）：EJS 模板的一致性用例全部通过；沙箱逃逸测试通过；模板执行不影响台账事实（I12）；EJS 只作用于来自 ST 的内容，不修改 harness 槽位；模板执行与世界书递归激活计入回合内时间预算，超时写入 Trace；开启与关闭本插件的对照评测里原生指标不明显变差（ADR-0040）。
+
+- [x] **C-T04.a EJS 模板解析与变量函数库** | 依赖：C-T03 | ADR-0111
+  完成：2026-11-13 新增 `packages/st-compat/src/st-ejs/`：`createStEjsRuntime` 用 `ejs` 编译模板，`locals.__append` 与 `print(...args)` 按调用顺序收集输出，`<%=` 走可配置格式化（生成阶段原样、消息渲染后续接入格式化），`<#escape-ejs>` 与 HTML 转义还原按上游文档处理，错误包装成带来源与行号的 `StEjsTemplateError`；`StEjsVariableStore` 实现 `initial`/`global`/`local`/`message`/`cache` 五个作用域与文档规定的合并顺序、`getvar`/`setvar`/`incvar`/`decvar`/`delvar`/`insvar` 及三种作用域别名、`nx`/`xx`/`nxs`/`xxs`、`old`/`new`/`fullcache`、`merge`、`dryRun` 与准备阶段写保护，每次写入记一条 `StEjsVariableWrite`；函数库另有 `define`（绑定 `this`）、`evalTemplate`（同运行时递归，上限 16 层）、`getChatMessage`/`getChatMessages`/`matchChatMessages`、`injectPrompt`/`getPromptsInjected`/`hasPromptsInjected`；原型污染路径与非法选项直接拒绝；`ejs`、`lodash` 与类型包登记进 `DEPENDENCIES.md`；新增 26 个测试；门禁通过
+  做什么：
+  - 用 `ejs` 编译模板，提供 `print`、`define`、`evalTemplate` 与 `getvar`/`setvar`/`incvar`/`decvar`/`delvar`/`insvar` 及作用域别名。
+  - 变量按 `initial`、`global`、`local`、消息四层合并；写入默认落消息变量并同步合并视图；支持条件写入、返回类型、深合与准备阶段写保护。
+  - 提供楼层读取与 prompt 注入函数；非法选项、非法路径与超深递归直接抛错。
+  验收：模板语法、`print` 输出位置、格式化开关、转义区域、错误来源与行号有测试；五个作用域、四种条件、三种返回类型、深合、准备阶段写保护、整棵树替换、增减删插与作用域别名有测试；写入记录完整；原型污染路径被拒绝；`pnpm check` 通过。
+
+- [ ] **C-T04.b 装饰器、激活正则与世界书条目能力** | 依赖：C-T04.a
+  做什么：
+  - 解析世界书内容开头的 `@@` 装饰器：`@@activate`、`@@dont_activate`、`@@message_formatting`、`@@generate_before`/`@@generate_after`、`@@render_before`/`@@render_after`、`@@dont_preload`、`@@preload`、`@@only_preload`、`@@initial_variables`、`@@always_enabled`、`@@private`、`@@if`、`@@iframe`、`@@preprocessing`；未知装饰器行丢弃，`@@@` 前缀按原文保留。
+  - 内容注入：`[GENERATE:BEFORE]`/`[GENERATE:AFTER]`、`[GENERATE:{idx}:BEFORE]`/`[GENERATE:{idx}:AFTER]`、`[GENERATE:REGEX:pattern]`、`[RENDER:*]`、`[InitialVariables]`（JSON 优先、再按 YAML 解析）；`@INJECT` 的 `pos`、`target`、`regex` 三种位置与 `order`/`role`。
+  - `activateRegex(pattern, replacement, options)`：`basic`、`generate`、`message`、`html`、`before`、`minDepth`/`maxDepth`、`order`、`sticky`，替换内容可以是函数并绑定运行时上下文。
+  - 世界书与数据读取：`getwi`/`getWorldInfo`（含递归与同世界书省略世界书名）、`activewi`/`activateWorldInfo`、`activateWorldInfoByKeywords`、`getWorldInfoData`、`getWorldInfoActivatedData`、`getEnabledWorldInfoEntries`、`selectActivatedEntries`，以及 `getchar`/`getCharData`/`getpreset`/`getqr`/`getQuickReplyData`；`parseJSON`、`jsonPatch`、`patchVariables`、`setVariableSchema`。
+  验收：每个装饰器与注入形式有测试；未知装饰器被丢弃、`@@@` 转义保留；激活正则的每种选项有测试且替换函数拿到 `this.getvar`；世界书递归与同世界书省略参数有测试；`getwi` 的结果再次进入模板处理与 token 预算；`pnpm check` 通过。
+
+- [ ] **C-T04.c worker 隔离、时间预算与流水线接入** | 依赖：C-T04.b
+  做什么：
+  - 把模板编译与执行放进 `worker_threads`，`node:vm` 不作为安全边界；主线程只传文本、变量快照与允许的函数清单，超时终止 worker 并重建。
+  - 每次模板执行计入回合内时间预算，超时跳过该条并写 Trace（来源、耗时、跳过原因），`dramaticer explain` 能读到。
+  - 接入 `st-content` 的预设、世界书与深度注入：EJS 只作用于来自 ST 的内容，进入槽位前完成；不碰记忆、台账、导演与写作契约等 harness 槽位。
+  - 变量来源接到 ST 的变量视图：与 MVU 使用同一份台账数据（`mvu` 子树），读经台账快照，写经待结算视图与结算器校验；全局与消息级变量留在插件自己的存储里，不新建台账事实。
+  - 模板发起的生成按卡限流并作为后台任务执行，不进入回合内（I6、I11）。
+  验收：沙箱逃逸测试通过（模板拿不到 `process`、`require`、文件系统与网络）；超时用例留下 Trace 且回合继续；EJS 只修改 ST 内容，harness 槽位逐字节不变；变量读写与 MVU 是同一份数据且有测试；`pnpm check` 通过。
+
+- [ ] **C-T04.d EJS 一致性测试与共存评测** | 依赖：C-T04.a 至 C-T04.c
+  做什么：
+  - 用世界书、预设、卡片与对话片段组成 EJS 一致性用例表，逐条记录期望输出与来源（上游文档行为）；在 `ST_BENCH_COEXIST_PLUGINS` 注册 `st-ejs` 适配器，开启与关闭各跑一批。
+  - 报告四项原生指标与样本量；变差时列出项目；写 `docs/dev/reports/C-T04.md`，逐条核对 C-T04 总验收。
+  验收：一致性用例全部通过；开关对照四项指标有数字与样本量；报告不含正文；`pnpm check` 通过。
 
 - [ ] **C-T05 P-D `st-helper-host` 酒馆助手宿主** | 依赖：C-T04
   做什么：

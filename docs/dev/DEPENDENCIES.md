@@ -18,6 +18,10 @@
 | `@earendil-works/pi-agent-core` | 根目录 | dev | `spikes/pi/` 验证钩子使用；运行时执行器由 `packages/core` 自己实现（ADR-0022） |
 | `yaml` | `packages/core` | runtime | 解析 `data/channels.yaml` 与 `data/images.yaml` 配置 |
 | `yaml` | `packages/st-compat` | runtime | 改写沙箱 ST 的 `config.yaml` 并保留原有键与注释（C-T01.b） |
+| `ejs` | `packages/st-compat` | runtime | ST-Prompt-Template 的模板语法与编译（Apache-2.0，ADR-0111） |
+| `lodash` | `packages/st-compat` | runtime | EJS 变量的路径读写与深合语义（MIT，ADR-0111） |
+| `@types/ejs` | `packages/st-compat` | dev | `ejs` 的类型声明 |
+| `@types/lodash` | `packages/st-compat` | dev | `lodash` 的类型声明 |
 | `moment` | `packages/st-compat` | runtime | 宏引擎的时间宏与酒馆的 `moment` 格式一致（ADR-0104） |
 | `seedrandom` | `packages/st-compat` | runtime | `{{pick}}` 的稳定抽取与酒馆一致（ADR-0104） |
 | `droll` | `packages/st-compat` | runtime | `{{roll}}` 的骰子公式（ADR-0104） |

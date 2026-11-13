@@ -1768,3 +1768,24 @@
   - 新增 `packages/st-compat/test/st-mvu-coexist.test.ts` 2 个测试：四项指标与样本量、开启组的台账与原文、第二轮起 `state` 槽位带变量。
   - 新增 `packages/st-compat/test/fixtures/coexist-mvu-card.json` 合成卡（世界书 `[initvar]` + 开场白 `<initvar>`）。
   - 没有改数据库 schema，没有新增运行时依赖；`core` 不出现 ST 概念（I1、I15），插件写入仍经结算器校验（I12），原楼层原文不变（I4）。
+
+## ADR-0111 `st-ejs` 的模板引擎、变量作用域与函数库（2026-11-13）
+
+- **背景**：C-T04 要求兼容 ST-Prompt-Template 的 EJS 模板：世界书与预设里的 `<% %>`、`getvar`/`setvar` 等函数、装饰器、激活正则与世界书条目能力，执行环境要在沙箱里而不是 `node:vm`。上游项目在提案里记为 MIT，实际仓库声明 AGPL-3.0，所以只以公开文档描述的行为作为规格，不复制或移植源码，也不引入它的包。C-T04 拆成 a（模板解析与函数库）、b（装饰器、激活正则、世界书能力）、c（worker 隔离、时间预算、Trace 与流水线接入）、d（一致性测试、共存评测与报告）。
+- **决定**：
+  - 新增运行时依赖 `ejs`（Apache-2.0）负责模板语法与编译，`lodash`（MIT）负责路径读写与深合；两者登记在 `docs/dev/DEPENDENCIES.md`。不自己实现模板语法或路径语义。
+  - 新增 `packages/st-compat/src/st-ejs/`：`createStEjsRuntime` 每次生成或每次消息渲染创建一个实例，实例内部持有变量存储、`define` 定义的函数与 `injectPrompt` 的注入表，不跨实例共享。
+  - 模板输出通过 `locals.__append` 与可变的 `print(...args)` 收集：EJS 在 `with (locals)` 里解析 `__append` 引用，运行时的收集函数按调用顺序拼接文本；`print` 至少接受一个参数，`null`/`undefined` 输出空串。`<%=` 走可配置的 `formatEscaped`，生成阶段默认原样输出，消息渲染由调用方传入宏、正则与 Markdown 格式化（C-T04.c 接入）。
+  - 模板预处理顺序：消息渲染阶段先把 `&lt;%` 与 `%&gt;` 还原成标签，再把 `<#escape-ejs>` 区域里的 `<%` 与 `%>` 转成 EJS 的字面量形式；其余文本原样交给 EJS。编译与执行错误包装成 `StEjsTemplateError`，带上来源与行号。
+  - **变量作用域**：`initial`、`global`、`local`、`message`、`cache`。合并视图按 `initial` → `global` → `local` → 消息（旧到新）的顺序深合，靠后的覆盖靠前的；`initial` 在文档里没有列进优先级，本实现把它放在最低层，`getvar` 可以用 `scope: "initial"` 读到原始初始值。
+  - `getvar` 默认读合并视图，`setvar` 默认写消息变量（与上游 reference 的缺省值一致）；写入同时更新目标作用域与合并视图，所以模板里写后立刻能读到新值。每次写入记一条 `StEjsVariableWrite`（作用域、消息 id、swipe、路径、操作、值），本轮不落存储；持久化与台账映射由 C-T04.c 决定。
+  - `flags`：`nx`/`xx` 按合并视图判断存在性，`nxs`/`xxs` 按目标作用域判断；`results` 取 `old`、`new`、`fullcache`；`merge` 对对象与数组用 `_.merge`，其余类型直接替换；`key` 为 `null` 时替换或合并整棵树。
+  - 准备阶段（世界书、预设、角色卡的多次计算）默认不写变量，`dryRun: true` 放行。运行时不维护额外的查询缓存，因此不实现上游的 `noCache`（读的一直是当前树）。没有消息变量时按需建一条匿名的当前消息，写入记录里消息 id 为 `null`。
+  - 函数库本段实现：`getvar`/`setvar`/`incvar`/`decvar`/`delvar`/`insvar` 与 `*GlobalVar`/`*LocalVar`/`*MessageVar` 别名、`define`、`evalTemplate`（同一运行时递归，最多 16 层）、`print`、`getChatMessage`/`getChatMessages`/`matchChatMessages`、`injectPrompt`/`getPromptsInjected`/`hasPromptsInjected`。`define` 的函数按文档绑定到运行时上下文，`this.getvar` 等可用。
+  - 原型污染路径（`__proto__`、`constructor`、`prototype`，含方括号写法）在读写前直接拒绝；`define` 不能使用 `print` 与这四个名称。`evalTemplate` 的嵌套上限防止模板互递归。
+  - 本段不做：装饰器、`[GENERATE]`/`[RENDER]`/`@INJECT`/`[InitialVariables]`、`activateRegex`、`getwi`/`activewi`/世界书数据函数、角色卡与预设读取函数、worker 隔离、时间预算与 Trace、与 `st-content` 流水线的接入。它们分别落在 C-T04.b 与 C-T04.c，验收见 TASKS。
+- **影响**：
+  - 新增 `packages/st-compat/test/st-ejs-template.test.ts` 12 个测试：表达式与 `print` 的输出位置、`<%=` 的格式化开关、空白控制、`<#escape-ejs>`、HTML 转义还原、`await`、错误来源与行号、`define` 跨渲染与 `this` 绑定、`evalTemplate` 递归、prompt 注入的顺序与覆盖、楼层读取、楼层内容查找。
+  - 新增 `packages/st-compat/test/st-ejs-variables.test.ts` 14 个测试：合并顺序与深合、`getvar` 作用域与缺省值与深拷贝、`setvar` 的写入记录与 `results`、四种 `flags`、`merge`、准备阶段与 `dryRun`、整棵树替换、`incvar`/`decvar` 的边界、`delvar`、`insvar`、作用域别名、`withMsg`、原型污染路径、实例隔离。
+  - `ejs` 与 `lodash` 新增在 `packages/st-compat`，`@types/ejs` 与 `@types/lodash` 为开发依赖；没有改数据库 schema，`core` 没有新增代码（I1、I15）。
+  - 上游许可证与提案不一致的事实与处理方式写进 HUMAN.md；本实现没有复制上游源码，没有引入上游包。

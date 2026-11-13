@@ -20,3 +20,4 @@ agent 遇到只有人类才能做的事，就记在这里，并在 TASKS 里把�
 | HUMAN-14 | 已关闭（2026-11-12：人类取消） | 不阻塞 | 取消 Vertex 真实调用的凭证配置与验证要求；`roles.writer` 继续使用 `main-fallback`。 | 无 |
 | HUMAN-15 | 待处理 | 不阻塞（M6-T99 执行时需要） | M6 第一批验收要用真实 ComfyUI：请把秋叶整合包 v3.2 的 ComfyUI 启动在 `http://127.0.0.1:8188`（2026-11-09 检查时端口未监听），并导出一份 API 格式 workflow JSON 放到 `eval-private/comfyui/` 或告知路径。M6-T01 至 M6-T05 不需要它，使用假 provider。 | M6-T99 |
 | HUMAN-16 | 待处理 | 不阻塞 | `C:\Users\theater\AppData\Local\Temp` 已经大到 `du -sh` 跑满 300 秒仍未结束，里面有多批测试超时留下的 `gap-pass-compare-*` 目录（每个几 MB 的 SQLite 库）。这个目录在仓库外，agent 不能删除；请清理其中的测试临时目录，或对 `Temp` 与仓库目录关闭 Defender 的实时扫描，门禁的 `collect` 阶段会明显加快 | 无 |
+| HUMAN-17 | 待处理 | 不阻塞 | 提案 `docs/proposals/st-compat-plugins.md` 把 ST-Prompt-Template 记为 MIT，上游仓库实际声明 AGPL-3.0。C-T04 按公开文档描述的行为独立实现，没有复制或移植源码，也没有把上游包加进依赖；运行时用 `ejs`（Apache-2.0）与 `lodash`（MIT）。这个做法是否可接受请人类确认（ADR-0111） | 无 |
