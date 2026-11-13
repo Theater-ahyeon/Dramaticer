@@ -14,6 +14,8 @@ import {
 	loadChannelsConfig,
 	loadImagesConfig,
 } from "@dramaticer/core";
+import { AssistantRuntimeManager } from "./assistant-runtime.js";
+import { AssistantRunCoordinator } from "./assistant.js";
 import {
 	type SessionStore,
 	assertBindAllowed,
@@ -100,6 +102,8 @@ interface HandlerOptions {
 	readonly sessions: SessionStore;
 	readonly maxJsonBodyBytes: number;
 	readonly runtime: StoryRuntimeManager | null;
+	readonly assistantRuntime: AssistantRuntimeManager | null;
+	readonly assistantRuns: AssistantRunCoordinator;
 	readonly turns: TurnCoordinator;
 	readonly runs: TurnRunRegistry;
 	readonly scheduler: BackgroundScheduler | null;
@@ -146,6 +150,8 @@ export async function startServer(
 	store.requeueRunningNodeImages();
 	// 上一次进程留下的深回合运行没有结束，保留事件并标为中断。
 	store.markInterruptedTurnRuns();
+	// 助手运行不在进程里排队：上一次进程留下的 running 直接标为中断。
+	store.markInterruptedAssistantConversations();
 	const runtime =
 		channels === null || loadConfig === null
 			? null
@@ -155,6 +161,15 @@ export async function startServer(
 					createClient: channels.createClient,
 					createEmbedder: channels.createEmbedder,
 				});
+	const assistantRuntime =
+		channels === null || loadConfig === null
+			? null
+			: new AssistantRuntimeManager({
+					loadConfig,
+					createClient: channels.createClient,
+					createEmbedder: channels.createEmbedder,
+				});
+	const assistantRuns = new AssistantRunCoordinator();
 	const turns = new TurnCoordinator();
 	const runs = new TurnRunRegistry();
 	const scheduler =
@@ -181,6 +196,8 @@ export async function startServer(
 			sessions: createSessionStore(),
 			maxJsonBodyBytes: options.maxJsonBodyBytes ?? MAX_JSON_BODY_BYTES,
 			runtime,
+			assistantRuntime,
+			assistantRuns,
 			turns,
 			runs,
 			scheduler,
@@ -212,6 +229,7 @@ export async function startServer(
 			if (closed) return;
 			closed = true;
 			await turns.abortAll();
+			await assistantRuns.abortAll();
 			await scheduler?.close();
 			const finished = Promise.withResolvers<void>();
 			server.close((error) =>
@@ -309,6 +327,8 @@ async function handleRequest(
 			store: options.store,
 			maxJsonBodyBytes: options.maxJsonBodyBytes,
 			runtime: options.runtime,
+			assistantRuntime: options.assistantRuntime,
+			assistantRuns: options.assistantRuns,
 			turns: options.turns,
 			runs: options.runs,
 			scheduler: options.scheduler,

@@ -61,6 +61,20 @@ export const DEFAULT_ASSISTANT_TITLE = "新会话";
 export const DEFAULT_ASSISTANT_LIST_LIMIT = 20;
 export const MAX_ASSISTANT_LIST_LIMIT = 100;
 
+/**
+ * 同一会话已经有一次运行在执行。运行开始时在同一事务里检查并切换状态，
+ * 并发启动的第二个请求直接失败，不会被排队。
+ */
+export class AssistantRunConflictError extends Error {
+	readonly conversationId: string;
+
+	constructor(conversationId: string) {
+		super(`助手会话正在运行：${conversationId}`);
+		this.name = "AssistantRunConflictError";
+		this.conversationId = conversationId;
+	}
+}
+
 /** 一个助手会话；`storyId` 为空表示不关联故事（使用指南、设置向导）。 */
 export interface AssistantConversation {
 	readonly id: string;

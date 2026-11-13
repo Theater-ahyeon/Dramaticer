@@ -1,18 +1,20 @@
 import type { ServerResponse } from "node:http";
-import type { SseEventMap, SseEventName } from "@dramaticer/protocol";
+import type { SseEventMap } from "@dramaticer/protocol";
 
 /** 回合进行中每 15 秒发一条注释，防止代理提前断开。 */
 export const SSE_HEARTBEAT_MS = 15_000;
 
-export interface SseStream {
-	send<N extends SseEventName>(event: N, data: SseEventMap[N]): void;
+export interface SseStream<Events extends object = SseEventMap> {
+	send<N extends keyof Events & string>(event: N, data: Events[N]): void;
 	comment(text: string): void;
 	close(): void;
 	readonly closed: boolean;
 }
 
 /** 把响应切换成 `text/event-stream`，之后的写入都是一帧事件。 */
-export function createSseStream(res: ServerResponse): SseStream {
+export function createSseStream<Events extends object = SseEventMap>(
+	res: ServerResponse,
+): SseStream<Events> {
 	res.writeHead(200, {
 		"Content-Type": "text/event-stream; charset=utf-8",
 		"Cache-Control": "no-cache, no-transform",

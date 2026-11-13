@@ -1474,7 +1474,8 @@
   - server 新增 `packages/server/src/assistant.ts` 并挂到 `/api/assistant`：`GET /api/assistant/conversations?query=&storyId=&limit=`、`POST /api/assistant/conversations`、`GET /api/assistant/conversations/:id`、`PATCH /api/assistant/conversations/:id`、`DELETE /api/assistant/conversations/:id`、`GET /api/assistant/conversations/:id/status`、`GET /api/assistant/conversations/:id/events?after=<seq>`。未知 id 返回 404，字段非法返回 400 并指出字段，删除会话不影响任何楼层。
   验收：迁移后四张表与索引存在，事件表的更新与删除被拒绝；会话改名、改权限、改模型、删除都能读回；中文两字查询命中标题与正文并返回片段；删除会话后消息、事件一起消失；未知 id 与非法字段有明确错误；protocol 类型被 server 与 web 共用且 web 没有 core 运行时导入；助手接口不创建楼层、不改 head、不写状态 diff；`pnpm check` 通过。
 
-- [ ] **H-T02 助手运行时、隔离与只读工具** | 依赖：H-T01 | DESIGN §10.1、§10.3 | ADR-0125 | I4、I8、I11
+- [x] **H-T02 助手运行时、隔离与只读工具** | 依赖：H-T01 | DESIGN §10.1、§10.3 | ADR-0125 | I4、I8、I11
+  完成：2026-11-13 新增 `assistant/runtime.ts` 的 `runAssistantTurn`（复用 `runDeepTurn`，消息只来自技能系统提示、会话消息与本轮输入；上限 20 次工具、300,000 毫秒、32,000 token 与最近 4 步，会话 `context_budget` 覆盖 token 上限；正文、工具结果与用量写进消息，事件与状态在同一事务里切换，并发启动抛 `AssistantRunConflictError`，取消保留部分正文并写 cancelled）；新增 `assistant/tools.ts` 的十个只读工具（`explain_node`、`run_log_read`、`memory_search` 限当前故事与 head 最多 10 条、`ledger_read`、`lore_lookup`、`state_get`、`director_read`、`settings_read`、`template_read`、`plugin_list`；结果超过 32,000 字符截断并写明原长与截断位置）与 `assistant/prompts.ts`；`StoryStore` 新增 `startAssistantConversationRun`、`finishAssistantConversationRun`；protocol 增加 `assistant.*` SSE 事件与 `SendAssistantMessageRequest`、`AssistantCancelView`；server 新增消息 SSE 与取消接口、`AssistantRuntimeManager`、启动时把遗留 `running` 改为 `interrupted`；客户端断开不中止运行；新增 7 个 core 测试与 3 个 server 测试；门禁通过（238 个测试文件、2094 个测试、5 个跳过）
   做什么：
   - 新增 `packages/core/src/assistant/runtime.ts` 的 `runAssistantTurn`：复用 `runDeepTurn` 的工具循环、传输、流式回调与上限，消息只由技能系统提示、压缩摘要、会话内消息和本轮附件组成。不调用 `generateAssistantTurn`，不组装剧情上下文，不读取 `history` 槽位，不写 `turn_runs`。
   - 默认上限：工具调用 20 次、运行 300,000 毫秒、工具往返 32,000 token、保留最近 4 步；会话的 `context_budget` 可以覆盖 token 上限。达到上限按现有规则正常收束并记录事件。

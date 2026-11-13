@@ -81,12 +81,25 @@ export interface TurnTraceTiming {
 }
 
 /** 深回合的收束原因；快回合不写这一段。 */
-export type DeepTurnStopReason =
-	| "completed"
-	| "max_tool_calls"
-	| "timeout"
-	| "aborted"
-	| "error";
+export const DEEP_TURN_STOP_REASONS = [
+	"completed",
+	"max_tool_calls",
+	"timeout",
+	"aborted",
+	"error",
+] as const;
+
+export type DeepTurnStopReason = (typeof DEEP_TURN_STOP_REASONS)[number];
+
+const DEEP_TURN_STOP_REASON_SET: ReadonlySet<string> = new Set(
+	DEEP_TURN_STOP_REASONS,
+);
+
+export function isDeepTurnStopReason(
+	value: unknown,
+): value is DeepTurnStopReason {
+	return typeof value === "string" && DEEP_TURN_STOP_REASON_SET.has(value);
+}
 
 /** 深回合每次请求前对工具往返做的成对省略。 */
 export interface TurnTraceDeepContextOmitted {

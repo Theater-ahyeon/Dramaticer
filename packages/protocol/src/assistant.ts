@@ -5,6 +5,7 @@ import type {
 	AssistantMessage,
 	AssistantPermission,
 	AssistantThinking,
+	DeepTurnStopReason,
 	JsonObject,
 	JsonValue,
 	LlmUsage,
@@ -140,6 +141,8 @@ export interface AssistantUsagePayload {
 
 export interface AssistantCompletedPayload {
 	readonly status: AssistantConversationStatus;
+	/** 运行怎么结束的：正常完成、工具次数、时长或中止。 */
+	readonly stopReason: DeepTurnStopReason;
 }
 
 export interface AssistantErrorPayload {
@@ -155,4 +158,44 @@ export interface AssistantEventPayloadMap {
 	readonly usage: AssistantUsagePayload;
 	readonly completed: AssistantCompletedPayload;
 	readonly error: AssistantErrorPayload;
+}
+
+/** `POST /api/assistant/conversations/:id/messages` 的请求体。 */
+export interface SendAssistantMessageRequest {
+	readonly text: string;
+}
+
+/** `POST /api/assistant/conversations/:id/cancel` 的响应。 */
+export interface AssistantCancelView {
+	readonly conversationId: string;
+	readonly status: AssistantConversationStatus;
+}
+
+/**
+ * 助手 SSE 的事件名。与剧情回合的 `text.delta`、`tool.call` 分开命名，
+ * 两套事件的载荷形状不同，客户端不需要区分来源。
+ */
+export const ASSISTANT_SSE_EVENT_NAMES = {
+	started: "assistant.started",
+	textDelta: "assistant.text.delta",
+	thinkingDelta: "assistant.thinking.delta",
+	toolCall: "assistant.tool.call",
+	toolResult: "assistant.tool.result",
+	usage: "assistant.usage",
+	completed: "assistant.completed",
+	error: "assistant.error",
+} as const;
+
+export type AssistantSseEventName =
+	(typeof ASSISTANT_SSE_EVENT_NAMES)[keyof typeof ASSISTANT_SSE_EVENT_NAMES];
+
+export interface AssistantSseEventMap {
+	"assistant.started": AssistantStartedPayload;
+	"assistant.text.delta": AssistantTextDeltaPayload;
+	"assistant.thinking.delta": AssistantThinkingDeltaPayload;
+	"assistant.tool.call": AssistantToolCallPayload;
+	"assistant.tool.result": AssistantToolResultPayload;
+	"assistant.usage": AssistantUsagePayload;
+	"assistant.completed": AssistantCompletedPayload;
+	"assistant.error": AssistantErrorPayload;
 }

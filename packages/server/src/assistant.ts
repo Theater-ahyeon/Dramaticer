@@ -1,30 +1,125 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
 	type AssistantConversation,
+	type AssistantEvent,
+	type JsonObject,
+	type JsonValue,
 	type StoryStore,
 	assertAssistantCompactionThreshold,
 	assertAssistantContextBudget,
+	assertAssistantConversationStatus,
 	assertAssistantPermission,
 	assertAssistantThinking,
+	assertJsonValue,
+	buildAssistantSystemPrompt,
+	isDeepTurnStopReason,
+	isJsonObject,
+	runAssistantTurn,
 } from "@dramaticer/core";
 import {
+	ASSISTANT_SSE_EVENT_NAMES,
+	type AssistantCancelView,
+	type AssistantCompletedPayload,
 	type AssistantConversationDetailView,
 	type AssistantConversationEventsView,
 	type AssistantConversationListView,
 	type AssistantConversationStatusView,
 	type AssistantConversationView,
+	type AssistantErrorPayload,
 	type AssistantPermission,
 	type AssistantSkillId,
+	type AssistantSseEventMap,
+	type AssistantStartedPayload,
+	type AssistantTextDeltaPayload,
 	type AssistantThinking,
+	type AssistantThinkingDeltaPayload,
+	type AssistantToolCallPayload,
+	type AssistantToolResultPayload,
+	type AssistantUsagePayload,
 	type CreateAssistantConversationRequest,
 	type UpdateAssistantConversationRequest,
 	isAssistantSkillId,
 } from "@dramaticer/protocol";
+import type {
+	AssistantRuntime,
+	AssistantRuntimeManager,
+} from "./assistant-runtime.js";
 import { HttpError, readJsonBody, sendEmpty, sendJson } from "./http.js";
+import { type SseStream, createSseStream } from "./sse.js";
 
 export interface AssistantRouteOptions {
 	readonly store: StoryStore;
 	readonly maxJsonBodyBytes: number;
+	/** 没有配置渠道时为 null，助手消息接口返回 500。 */
+	readonly runtime: AssistantRuntimeManager | null;
+	readonly runs: AssistantRunCoordinator;
+	readonly heartbeatMs: number;
+	readonly now?: () => number;
+	readonly log: (line: string) => void;
+}
+
+/** 同一助手会话同时只允许一次运行；取消用它找到正在执行的那一次。 */
+export interface AssistantRunTicket {
+	readonly signal: AbortSignal;
+	abort(reason?: unknown): void;
+	release(): void;
+	/** 运行结束（无论成功、失败或取消）时完成。 */
+	readonly done: Promise<void>;
+}
+
+interface ActiveAssistantRun {
+	readonly controller: AbortController;
+	readonly finished: Promise<void>;
+}
+
+export class AssistantRunCoordinator {
+	readonly #active = new Map<string, ActiveAssistantRun>();
+
+	begin(conversationId: string): AssistantRunTicket | null {
+		if (this.#active.has(conversationId)) return null;
+		const controller = new AbortController();
+		const finished = Promise.withResolvers<void>();
+		this.#active.set(conversationId, {
+			controller,
+			finished: finished.promise,
+		});
+		let released = false;
+		return {
+			signal: controller.signal,
+			abort: (reason?: unknown) => {
+				if (!controller.signal.aborted) controller.abort(reason);
+			},
+			release: () => {
+				if (released) return;
+				released = true;
+				this.#active.delete(conversationId);
+				finished.resolve();
+			},
+			done: finished.promise,
+		};
+	}
+
+	get(conversationId: string): AssistantRunTicket | null {
+		const run = this.#active.get(conversationId);
+		if (run === undefined) return null;
+		return {
+			signal: run.controller.signal,
+			abort: (reason?: unknown) => {
+				if (!run.controller.signal.aborted) run.controller.abort(reason);
+			},
+			release: () => {},
+			done: run.finished,
+		};
+	}
+
+	/** 服务端关闭时中止全部助手运行，并等它们写完状态。 */
+	async abortAll(reason: unknown = new Error("服务端关闭")): Promise<void> {
+		const runs = [...this.#active.values()];
+		for (const run of runs) {
+			if (!run.controller.signal.aborted) run.controller.abort(reason);
+		}
+		await Promise.all(runs.map((run) => run.finished));
+	}
 }
 
 const PATH_PREFIX = "/api/assistant";
@@ -80,6 +175,16 @@ export async function handleAssistantRequest(
 	if (action === "events") {
 		requireMethod(method, ["GET"]);
 		handleConversationEvents(res, url, options, id);
+		return;
+	}
+	if (action === "messages") {
+		requireMethod(method, ["POST"]);
+		await handleConversationMessage(req, res, options, id);
+		return;
+	}
+	if (action === "cancel") {
+		requireMethod(method, ["POST"]);
+		await handleConversationCancel(res, options, id);
 		return;
 	}
 	throw new HttpError(404, "not_found", "没有这个接口");
@@ -317,6 +422,298 @@ function handleConversationEvents(
 		events,
 	};
 	sendJson(res, 200, body);
+}
+
+/**
+ * `POST /api/assistant/conversations/:id/messages` 的 SSE 实现：运行一次
+ * 助手回合，事件按 `assistant.*` 名字推送。客户端断开不中止运行，
+ * 事件仍然写入数据库，重连后用 `events?after=` 续读。
+ */
+async function handleConversationMessage(
+	req: IncomingMessage,
+	res: ServerResponse,
+	options: AssistantRouteOptions,
+	id: string,
+): Promise<void> {
+	const conversation = requireConversation(options.store, id);
+	if (conversation.status === "running") {
+		throw new HttpError(409, "conflict", `助手会话正在运行：${id}`);
+	}
+	const body = await readObjectBody(req, options.maxJsonBodyBytes);
+	assertKnownKeys(body, ["text"]);
+	const text = requireText(body.text, "text");
+	if (options.runtime === null) {
+		throw new HttpError(500, "internal", "服务端没有配置渠道");
+	}
+	let runtime: AssistantRuntime;
+	try {
+		runtime = await options.runtime.get(conversation);
+	} catch (error) {
+		throw fieldError("modelAlias", errorMessage(error));
+	}
+	const ticket = options.runs.begin(id);
+	if (ticket === null) {
+		throw new HttpError(409, "conflict", `助手会话正在运行：${id}`);
+	}
+	let clientGone = false;
+	const sse = createSseStream<AssistantSseEventMap>(res);
+	const heartbeat = setInterval(
+		() => sse.comment("ping"),
+		Math.max(1, options.heartbeatMs),
+	);
+	heartbeat.unref();
+	const onClose = (): void => {
+		clientGone = true;
+	};
+	res.once("close", onClose);
+	try {
+		await runAssistantTurn({
+			store: options.store,
+			client: runtime.client,
+			conversationId: id,
+			userText: text,
+			systemPrompt: buildAssistantSystemPrompt({ skill: conversation.skill }),
+			model: runtime.modelAlias,
+			maxTokens: runtime.maxTokens,
+			toolTransport: runtime.toolTransport,
+			reasoning: conversation.thinking,
+			contextBudget: conversation.contextBudget,
+			embedder: runtime.embedder,
+			reranker: runtime.reranker,
+			signal: ticket.signal,
+			onEvent: (event) => {
+				if (clientGone) return;
+				sendAssistantEvent(sse, toAssistantSseEvent(event));
+			},
+			now: options.now,
+		});
+	} catch (error) {
+		if (!clientGone) {
+			sse.send(ASSISTANT_SSE_EVENT_NAMES.error, {
+				message: errorMessage(error),
+			});
+		}
+		options.log(
+			`助手运行失败：${error instanceof Error ? error.name : "未知错误"}`,
+		);
+	} finally {
+		clearInterval(heartbeat);
+		res.off("close", onClose);
+		ticket.release();
+		sse.close();
+	}
+}
+
+/**
+ * `POST /api/assistant/conversations/:id/cancel`：中止正在运行的助手回合，
+ * 等它把状态写成 cancelled 之后再返回实际状态。
+ */
+async function handleConversationCancel(
+	res: ServerResponse,
+	options: AssistantRouteOptions,
+	id: string,
+): Promise<void> {
+	requireConversation(options.store, id);
+	const ticket = options.runs.get(id);
+	if (ticket === null) {
+		throw new HttpError(409, "conflict", `助手会话没有正在运行的任务：${id}`);
+	}
+	ticket.abort(new Error("玩家取消"));
+	await ticket.done;
+	const updated = requireConversation(options.store, id);
+	const body: AssistantCancelView = {
+		conversationId: id,
+		status: updated.status,
+	};
+	sendJson(res, 200, body);
+}
+
+type AssistantSseEvent =
+	| {
+			readonly event: typeof ASSISTANT_SSE_EVENT_NAMES.started;
+			readonly data: AssistantStartedPayload;
+	  }
+	| {
+			readonly event: typeof ASSISTANT_SSE_EVENT_NAMES.textDelta;
+			readonly data: AssistantTextDeltaPayload;
+	  }
+	| {
+			readonly event: typeof ASSISTANT_SSE_EVENT_NAMES.thinkingDelta;
+			readonly data: AssistantThinkingDeltaPayload;
+	  }
+	| {
+			readonly event: typeof ASSISTANT_SSE_EVENT_NAMES.toolCall;
+			readonly data: AssistantToolCallPayload;
+	  }
+	| {
+			readonly event: typeof ASSISTANT_SSE_EVENT_NAMES.toolResult;
+			readonly data: AssistantToolResultPayload;
+	  }
+	| {
+			readonly event: typeof ASSISTANT_SSE_EVENT_NAMES.usage;
+			readonly data: AssistantUsagePayload;
+	  }
+	| {
+			readonly event: typeof ASSISTANT_SSE_EVENT_NAMES.completed;
+			readonly data: AssistantCompletedPayload;
+	  }
+	| {
+			readonly event: typeof ASSISTANT_SSE_EVENT_NAMES.error;
+			readonly data: AssistantErrorPayload;
+	  };
+
+/** 把库里的事件转成 SSE 帧；载荷形状不对时直接失败，不发送半截数据。 */
+function toAssistantSseEvent(event: AssistantEvent): AssistantSseEvent {
+	const payload = event.payload;
+	switch (event.kind) {
+		case "started":
+			return {
+				event: ASSISTANT_SSE_EVENT_NAMES.started,
+				data: {
+					conversationId: readPayloadString(payload, "conversationId"),
+					skill: readPayloadString(payload, "skill"),
+				},
+			};
+		case "text.delta":
+			return {
+				event: ASSISTANT_SSE_EVENT_NAMES.textDelta,
+				data: { delta: readPayloadString(payload, "delta") },
+			};
+		case "thinking.delta":
+			return {
+				event: ASSISTANT_SSE_EVENT_NAMES.thinkingDelta,
+				data: { delta: readPayloadString(payload, "delta") },
+			};
+		case "tool.call": {
+			const args = payload.arguments;
+			if (!isJsonObject(args)) {
+				throw new Error("助手 tool.call 事件的 arguments 必须是 JSON 对象");
+			}
+			return {
+				event: ASSISTANT_SSE_EVENT_NAMES.toolCall,
+				data: {
+					name: readPayloadString(payload, "name"),
+					arguments: args,
+				},
+			};
+		}
+		case "tool.result": {
+			const ok = payload.ok;
+			if (typeof ok !== "boolean") {
+				throw new Error("助手 tool.result 事件的 ok 必须是布尔值");
+			}
+			const result = payload.result;
+			if (result === undefined) {
+				throw new Error("助手 tool.result 事件缺少 result");
+			}
+			assertJsonValue(result, "助手 tool.result 事件的 result");
+			return {
+				event: ASSISTANT_SSE_EVENT_NAMES.toolResult,
+				data: {
+					name: readPayloadString(payload, "name"),
+					ok,
+					result,
+				},
+			};
+		}
+		case "usage": {
+			const usage = payload.usage;
+			if (usage === undefined) {
+				throw new Error("助手 usage 事件缺少 usage");
+			}
+			return {
+				event: ASSISTANT_SSE_EVENT_NAMES.usage,
+				data: { usage: toLlmUsage(usage) },
+			};
+		}
+		case "completed": {
+			const status = payload.status;
+			assertAssistantConversationStatus(status, "助手 completed 事件的状态");
+			const stopReason = payload.stopReason;
+			if (!isDeepTurnStopReason(stopReason)) {
+				throw new Error(
+					`助手 completed 事件的 stopReason 不合法：${String(stopReason)}`,
+				);
+			}
+			return {
+				event: ASSISTANT_SSE_EVENT_NAMES.completed,
+				data: { status, stopReason },
+			};
+		}
+		case "error":
+			return {
+				event: ASSISTANT_SSE_EVENT_NAMES.error,
+				data: { message: readPayloadString(payload, "message") },
+			};
+	}
+}
+
+function sendAssistantEvent(
+	sse: SseStream<AssistantSseEventMap>,
+	event: AssistantSseEvent,
+): void {
+	switch (event.event) {
+		case ASSISTANT_SSE_EVENT_NAMES.started:
+			sse.send(event.event, event.data);
+			return;
+		case ASSISTANT_SSE_EVENT_NAMES.textDelta:
+			sse.send(event.event, event.data);
+			return;
+		case ASSISTANT_SSE_EVENT_NAMES.thinkingDelta:
+			sse.send(event.event, event.data);
+			return;
+		case ASSISTANT_SSE_EVENT_NAMES.toolCall:
+			sse.send(event.event, event.data);
+			return;
+		case ASSISTANT_SSE_EVENT_NAMES.toolResult:
+			sse.send(event.event, event.data);
+			return;
+		case ASSISTANT_SSE_EVENT_NAMES.usage:
+			sse.send(event.event, event.data);
+			return;
+		case ASSISTANT_SSE_EVENT_NAMES.completed:
+			sse.send(event.event, event.data);
+			return;
+		case ASSISTANT_SSE_EVENT_NAMES.error:
+			sse.send(event.event, event.data);
+			return;
+	}
+}
+
+function readPayloadString(payload: JsonObject, key: string): string {
+	const value = payload[key];
+	if (typeof value !== "string") {
+		throw new Error(`助手事件载荷的 ${key} 必须是字符串`);
+	}
+	return value;
+}
+
+function toLlmUsage(value: JsonValue): {
+	readonly promptTokens: number | null;
+	readonly completionTokens: number | null;
+	readonly totalTokens: number | null;
+	readonly reasoningTokens: number | null;
+	readonly cachedTokens: number | null;
+} {
+	if (!isJsonObject(value)) {
+		throw new Error("助手 usage 事件的 usage 必须是 JSON 对象");
+	}
+	return {
+		promptTokens: readNullableNumber(value, "promptTokens"),
+		completionTokens: readNullableNumber(value, "completionTokens"),
+		totalTokens: readNullableNumber(value, "totalTokens"),
+		reasoningTokens: readNullableNumber(value, "reasoningTokens"),
+		cachedTokens: readNullableNumber(value, "cachedTokens"),
+	};
+}
+
+function readNullableNumber(payload: JsonObject, key: string): number | null {
+	const value = payload[key];
+	if (value === null || value === undefined) return null;
+	if (typeof value !== "number") {
+		throw new Error(`助手事件载荷的 ${key} 必须是数字或 null`);
+	}
+	return value;
 }
 
 function requireConversation(

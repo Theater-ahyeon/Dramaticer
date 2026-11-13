@@ -140,7 +140,11 @@ import {
 	parseCharacterCardPng,
 	parseWorldInfoJson,
 } from "@dramaticer/st-compat";
-import { handleAssistantRequest } from "./assistant.js";
+import type { AssistantRuntimeManager } from "./assistant-runtime.js";
+import {
+	type AssistantRunCoordinator,
+	handleAssistantRequest,
+} from "./assistant.js";
 import type { BackgroundScheduler } from "./background.js";
 import { HttpError, readJsonBody, sendEmpty, sendJson } from "./http.js";
 import type { StoryRuntimeManager } from "./runtime.js";
@@ -156,6 +160,9 @@ export interface ApiRouteOptions {
 	readonly store: StoryStore;
 	readonly maxJsonBodyBytes: number;
 	readonly runtime: StoryRuntimeManager | null;
+	/** 助手运行时；没有配置渠道时为 null。 */
+	readonly assistantRuntime: AssistantRuntimeManager | null;
+	readonly assistantRuns: AssistantRunCoordinator;
 	readonly turns: TurnCoordinator;
 	readonly runs: TurnRunRegistry;
 	readonly scheduler?: BackgroundScheduler | null;
@@ -193,6 +200,11 @@ export async function handleApiRequest(
 		await handleAssistantRequest(req, res, url, method, {
 			store: options.store,
 			maxJsonBodyBytes: options.maxJsonBodyBytes,
+			runtime: options.assistantRuntime,
+			runs: options.assistantRuns,
+			heartbeatMs: options.heartbeatMs,
+			now: options.now,
+			log: options.log,
 		});
 		return;
 	}

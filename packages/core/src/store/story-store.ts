@@ -10,6 +10,7 @@ import {
 	type AssistantEvent,
 	type AssistantEventKind,
 	type AssistantMessage,
+	AssistantRunConflictError,
 	type AssistantSearchHit,
 	DEFAULT_ASSISTANT_COMPACTION_THRESHOLD,
 	DEFAULT_ASSISTANT_CONTEXT_BUDGET,
@@ -7280,6 +7281,108 @@ export class StoryStore {
 			throw new Error(`助手会话状态更新后读取失败：${id}`);
 		}
 		return conversation;
+	}
+
+	/**
+	 * 开始一次运行：在同一事务里检查会话没有在跑、把状态改成 running，
+	 * 并写入 started 事件。并发启动的第二个请求抛 `AssistantRunConflictError`。
+	 */
+	startAssistantConversationRun(
+		id: string,
+		payload: JsonObject,
+	): AssistantEvent {
+		assertNonEmptyString(id, "助手会话 id");
+		if (!isJsonObject(payload)) {
+			throw new Error("助手 started 事件的载荷必须是 JSON 对象");
+		}
+		const createdAt = new Date().toISOString();
+		return this.#db.transaction((): AssistantEvent => {
+			const conversation = this.getAssistantConversation(id);
+			if (conversation === null) {
+				throw new Error(`助手会话不存在：${id}`);
+			}
+			if (conversation.status === "running") {
+				throw new AssistantRunConflictError(id);
+			}
+			this.#db
+				.prepare(
+					"UPDATE assistant_conversations SET status = 'running', updated_at = ? WHERE id = ?",
+				)
+				.run(createdAt, id);
+			this.#db
+				.prepare(
+					`INSERT INTO assistant_events
+					(conversation_id, seq, kind, payload, created_at)
+					SELECT ?, COALESCE(MAX(seq), 0) + 1, 'started', ?, ?
+					FROM assistant_events WHERE conversation_id = ?`,
+				)
+				.run(id, JSON.stringify(payload), createdAt, id);
+			const row = this.#db
+				.prepare(
+					`SELECT conversation_id, seq, kind, payload, created_at
+					FROM assistant_events WHERE conversation_id = ?
+					ORDER BY seq DESC LIMIT 1`,
+				)
+				.get(id) as AssistantEventRow | undefined;
+			if (row === undefined) {
+				throw new Error(`助手事件写入后读取失败：${id}`);
+			}
+			return rowToAssistantEvent(row);
+		})();
+	}
+
+	/**
+	 * 结束一次运行：在同一事务里切换会话状态并写入最终事件。
+	 * 只有 completed、failed、cancelled、interrupted 四种结束状态。
+	 */
+	finishAssistantConversationRun(
+		id: string,
+		status: "completed" | "failed" | "cancelled" | "interrupted",
+		kind: "completed" | "error",
+		payload: JsonObject,
+	): AssistantEvent {
+		assertNonEmptyString(id, "助手会话 id");
+		assertAssistantConversationStatus(status, "助手会话结束状态");
+		assertAssistantEventKind(kind, "助手结束事件种类");
+		if (status === "completed" && kind !== "completed") {
+			throw new Error("完成的助手运行必须写 completed 事件");
+		}
+		if (status !== "completed" && kind !== "error") {
+			throw new Error("失败、取消或中断的助手运行必须写 error 事件");
+		}
+		if (!isJsonObject(payload)) {
+			throw new Error("助手结束事件的载荷必须是 JSON 对象");
+		}
+		const createdAt = new Date().toISOString();
+		return this.#db.transaction((): AssistantEvent => {
+			if (this.getAssistantConversation(id) === null) {
+				throw new Error(`助手会话不存在：${id}`);
+			}
+			this.#db
+				.prepare(
+					"UPDATE assistant_conversations SET status = ?, updated_at = ? WHERE id = ?",
+				)
+				.run(status, createdAt, id);
+			this.#db
+				.prepare(
+					`INSERT INTO assistant_events
+					(conversation_id, seq, kind, payload, created_at)
+					SELECT ?, COALESCE(MAX(seq), 0) + 1, ?, ?, ?
+					FROM assistant_events WHERE conversation_id = ?`,
+				)
+				.run(id, kind, JSON.stringify(payload), createdAt, id);
+			const row = this.#db
+				.prepare(
+					`SELECT conversation_id, seq, kind, payload, created_at
+					FROM assistant_events WHERE conversation_id = ?
+					ORDER BY seq DESC LIMIT 1`,
+				)
+				.get(id) as AssistantEventRow | undefined;
+			if (row === undefined) {
+				throw new Error(`助手事件写入后读取失败：${id}`);
+			}
+			return rowToAssistantEvent(row);
+		})();
 	}
 
 	/** 启动时把上一个进程留下的运行中会话标为 interrupted。 */
