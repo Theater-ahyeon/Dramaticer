@@ -295,6 +295,13 @@ export async function startFakeChannel(options = {}) {
 			const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
 			if (req.url === WRITER_PATH) {
 				const userText = lastUserText(body);
+				if (systemText(body).includes("上下文压缩器")) {
+					streamText(
+						res,
+						splitForStream("上下文摘要：较早的排障结论与台账路径。"),
+					);
+					return;
+				}
 				if (systemText(body).includes("你是 Dramaticer 的应用内助手")) {
 					const slow = userText.includes("慢速");
 					const reply = slow

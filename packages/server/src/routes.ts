@@ -146,6 +146,7 @@ import {
 } from "@dramaticer/st-compat";
 import type { AssistantRuntimeManager } from "./assistant-runtime.js";
 import {
+	type AssistantCompactionCoordinator,
 	type AssistantRunCoordinator,
 	handleAssistantRequest,
 } from "./assistant.js";
@@ -167,6 +168,7 @@ export interface ApiRouteOptions {
 	/** 助手运行时；没有配置渠道时为 null。 */
 	readonly assistantRuntime: AssistantRuntimeManager | null;
 	readonly assistantRuns: AssistantRunCoordinator;
+	readonly assistantCompactions: AssistantCompactionCoordinator;
 	readonly docsIndex: AssistantDocsIndex;
 	readonly assistantSearch: AssistantSearchClient | null;
 	readonly turns: TurnCoordinator;
@@ -208,6 +210,7 @@ export async function handleApiRequest(
 			maxJsonBodyBytes: options.maxJsonBodyBytes,
 			runtime: options.assistantRuntime,
 			runs: options.assistantRuns,
+			compactions: options.assistantCompactions,
 			docsIndex: options.docsIndex,
 			searchClient: options.assistantSearch,
 			readChannelsView:

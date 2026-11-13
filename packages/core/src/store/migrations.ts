@@ -1419,6 +1419,39 @@ export function buildMigrations(
 				END`,
 			],
 		},
+		{
+			version: 46,
+			description: "助手上下文压缩记录：摘要、被省略的消息序号与压缩前后 token",
+			statements: [
+				`CREATE TABLE assistant_compactions (
+					id TEXT PRIMARY KEY,
+					conversation_id TEXT NOT NULL
+						REFERENCES assistant_conversations(id) ON DELETE CASCADE,
+					seq INTEGER NOT NULL CHECK (seq >= 1),
+					summary TEXT NOT NULL CHECK (length(trim(summary)) > 0),
+					omitted_message_ids TEXT NOT NULL,
+					before_tokens INTEGER NOT NULL CHECK (before_tokens >= 0),
+					after_tokens INTEGER NOT NULL CHECK (after_tokens >= 0),
+					created_at TEXT NOT NULL,
+					UNIQUE (conversation_id, seq)
+				) STRICT`,
+				`CREATE TRIGGER assistant_compactions_append_only_update
+				BEFORE UPDATE ON assistant_compactions
+				BEGIN
+					SELECT RAISE(ABORT, '助手压缩记录只追加，不能修改');
+				END`,
+				// 会话删除时父行已经不存在，触发器放行；单独删除压缩记录仍然被拒绝。
+				`CREATE TRIGGER assistant_compactions_append_only_delete
+				BEFORE DELETE ON assistant_compactions
+				WHEN EXISTS (
+					SELECT 1 FROM assistant_conversations
+					WHERE id = old.conversation_id
+				)
+				BEGIN
+					SELECT RAISE(ABORT, '助手压缩记录只追加，不能删除');
+				END`,
+			],
+		},
 	];
 }
 

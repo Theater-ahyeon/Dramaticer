@@ -4,7 +4,6 @@ import type { LlmToolTransport } from "../llm/channels.js";
 import type { EmbeddingClient } from "../llm/embeddings.js";
 import type { RerankClient } from "../llm/rerank.js";
 import type {
-	LlmMessage,
 	LlmReasoningLevel,
 	LlmStreamingClient,
 	LlmUsage,
@@ -12,6 +11,7 @@ import type {
 import type { StoryStore } from "../store/story-store.js";
 import type { DeepToolDefinition } from "../tools/registry.js";
 import type { DeepTurnStopReason } from "../trace.js";
+import { buildAssistantRequestMessages } from "./context.js";
 import { ASSISTANT_TOOL_NAMES, createAssistantTools } from "./tools.js";
 import type {
 	AssistantConversationStatus,
@@ -166,10 +166,11 @@ export async function runAssistantTurn(
 			writeEvent("permission.denied", { name, permission, reason });
 		},
 	}).filter((tool) => toolNames === null || toolNames.includes(tool.name));
-	const messages = buildAssistantMessages(
-		options.systemPrompt,
-		options.store.getAssistantMessages(options.conversationId),
-	);
+	const messages = buildAssistantRequestMessages({
+		systemPrompt: options.systemPrompt,
+		messages: options.store.getAssistantMessages(options.conversationId),
+		compaction: options.store.getAssistantCompaction(options.conversationId),
+	});
 	try {
 		const deep = await runDeepTurn({
 			client: options.client,
@@ -283,39 +284,6 @@ function resolveToolNames(
 		}
 	}
 	return [...new Set(names)];
-}
-
-/**
- * 会话内消息转成模型消息。工具消息没有可以原样回放的调用 id 与原生签名，
- * 这里以 system 消息保留工具名与结果，避免伪造无法验证的调用。
- */
-function buildAssistantMessages(
-	systemPrompt: string,
-	messages: readonly AssistantMessage[],
-): LlmMessage[] {
-	const result: LlmMessage[] = [{ role: "system", content: systemPrompt }];
-	for (const message of messages) {
-		switch (message.role) {
-			case "user":
-				result.push({ role: "user", content: message.text });
-				break;
-			case "assistant":
-				result.push({ role: "assistant", content: message.text });
-				break;
-			case "system":
-				result.push({ role: "system", content: message.text });
-				break;
-			case "tool": {
-				const json = JSON.stringify(message.toolResult ?? null);
-				result.push({
-					role: "system",
-					content: `工具 ${message.toolName ?? "未知"} 的结果：${json}`,
-				});
-				break;
-			}
-		}
-	}
-	return result;
 }
 
 function usagePayload(usage: LlmUsage): JsonObject {

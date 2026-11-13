@@ -1,6 +1,7 @@
 import type {
 	AssistantActionListView,
 	AssistantCancelView,
+	AssistantCompactView,
 	AssistantConversationDetailView,
 	AssistantConversationEventsView,
 	AssistantConversationListView,
@@ -91,6 +92,18 @@ describe("助手接口客户端", () => {
 		const detail: AssistantConversationDetailView = {
 			conversation,
 			messages: [],
+			compaction: null,
+			context: {
+				used: 120,
+				budget: conversation.contextBudget,
+				percent: 120 / conversation.contextBudget,
+				parts: [
+					{ id: "system", tokens: 80 },
+					{ id: "summary", tokens: 0 },
+					{ id: "messages", tokens: 40 },
+					{ id: "tools", tokens: 0 },
+				],
+			},
 		};
 		const status: AssistantConversationStatusView = {
 			conversationId: conversation.id,
@@ -105,7 +118,21 @@ describe("助手接口客户端", () => {
 			lastSeq: 2,
 			events: [],
 		};
+		const compactView: AssistantCompactView = {
+			compaction: {
+				id: "cmp-1",
+				conversationId: conversation.id,
+				seq: 1,
+				summary: "摘要：排障结论。",
+				omittedMessageIds: [1, 2],
+				beforeTokens: 500,
+				afterTokens: 200,
+				createdAt: "2026-11-13T02:00:00.000Z",
+			},
+			context: detail.context,
+		};
 		const { fetchImpl, calls } = stubFetch((call) => {
+			if (call.url.endsWith("/compact")) return jsonResponse(compactView);
 			if (call.init.method === "POST") return jsonResponse(conversation, 201);
 			if (call.init.method === "PATCH") return jsonResponse(conversation);
 			if (call.init.method === "DELETE")
@@ -124,6 +151,11 @@ describe("助手接口客户端", () => {
 		await client.updateConversation(conversation.id, { permission: "auto" });
 		await client.getStatus(conversation.id);
 		await client.listEvents(conversation.id, 2);
+		await expect(
+			client.compactConversation(conversation.id, {
+				instructions: "保留排障结论",
+			}),
+		).resolves.toEqual(compactView);
 		await client.deleteConversation(conversation.id);
 
 		const callsView = calls.map((call) => ({
@@ -160,6 +192,11 @@ describe("助手接口客户端", () => {
 				method: "GET",
 				url: "/api/assistant/conversations/c-1/events?after=2",
 				body: undefined,
+			},
+			{
+				method: "POST",
+				url: "/api/assistant/conversations/c-1/compact",
+				body: JSON.stringify({ instructions: "保留排障结论" }),
 			},
 			{
 				method: "DELETE",

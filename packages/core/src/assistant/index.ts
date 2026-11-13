@@ -1,4 +1,5 @@
 export * from "./actions.js";
+export * from "./context.js";
 export * from "./docs.js";
 export * from "./permissions.js";
 export * from "./prompts.js";

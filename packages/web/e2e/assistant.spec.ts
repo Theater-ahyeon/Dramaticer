@@ -102,6 +102,50 @@ test("刷新后从 status 与 after 续读正在运行的助手", async ({ page 
 	await expect(page.locator(".assistant-message-assistant")).toHaveCount(1);
 });
 
+test("用量环与手动压缩显示摘要与省略来源", async ({ page }) => {
+	const storyId = "e2e-assistant-context";
+	const conversationId = "e2e-assistant-context-conversation";
+	await openStoryTab(page, storyId, "chat");
+	await openDrawer(page);
+	await page
+		.locator(".assistant-conversation-open", { hasText: "上下文压缩测试" })
+		.click();
+	await expect(page.locator(".assistant-context")).toBeVisible();
+
+	const before = await page.request.get(
+		`/api/assistant/conversations/${conversationId}`,
+	);
+	expect(before.ok()).toBeTruthy();
+	const beforeBody = (await before.json()) as {
+		context: { used: number; budget: number };
+	};
+	await expect(page.locator(".assistant-context")).toContainText(
+		`${beforeBody.context.used}/${beforeBody.context.budget}`,
+	);
+
+	await page.getByLabel("压缩要求").fill("保留排障结论");
+	await page.getByRole("button", { name: "压缩上下文" }).click();
+	await expect(page.locator(".assistant-compaction")).toContainText(
+		"已压缩 2 条消息",
+	);
+	await expect(page.locator(".assistant-compaction")).toContainText(
+		"上下文摘要",
+	);
+
+	const after = await page.request.get(
+		`/api/assistant/conversations/${conversationId}`,
+	);
+	const afterBody = (await after.json()) as {
+		compaction: { omittedMessageIds: number[]; summary: string };
+		context: { used: number; budget: number };
+	};
+	expect(afterBody.compaction.omittedMessageIds).toEqual([1, 2]);
+	expect(afterBody.compaction.summary).toContain("上下文摘要");
+	await expect(page.locator(".assistant-context")).toContainText(
+		`${afterBody.context.used}/${afterBody.context.budget}`,
+	);
+});
+
 test("改名、搜索、删除与取消运行", async ({ page }) => {
 	const storyId = await createImportedStory(page, "助手会话管理");
 	await openStoryTab(page, storyId, "chat");

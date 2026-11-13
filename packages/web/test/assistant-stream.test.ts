@@ -142,4 +142,24 @@ describe("助手事件流", () => {
 		expect(twice.text).toBe("新");
 		expect(twice.lastSeq).toBe(5);
 	});
+
+	it("持久压缩事件被识别且不改变正文与水位以外的东西", () => {
+		const events = [
+			persistedEvent(1, "compaction", {
+				status: "completed",
+				compactionId: "cmp-1",
+				omittedCount: 2,
+				beforeTokens: 900,
+				afterTokens: 500,
+				error: null,
+			}),
+			persistedEvent(2, "text.delta", { delta: "正文" }),
+		];
+		const state = applyPersistedAssistantEvents(
+			createAssistantRunState(),
+			events,
+		);
+		expect(state.text).toBe("正文");
+		expect(state.lastSeq).toBe(2);
+	});
 });

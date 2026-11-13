@@ -17,7 +17,10 @@ import {
 	loadImagesConfig,
 } from "@dramaticer/core";
 import { AssistantRuntimeManager } from "./assistant-runtime.js";
-import { AssistantRunCoordinator } from "./assistant.js";
+import {
+	AssistantCompactionCoordinator,
+	AssistantRunCoordinator,
+} from "./assistant.js";
 import {
 	type SessionStore,
 	assertBindAllowed,
@@ -111,6 +114,7 @@ interface HandlerOptions {
 	readonly runtime: StoryRuntimeManager | null;
 	readonly assistantRuntime: AssistantRuntimeManager | null;
 	readonly assistantRuns: AssistantRunCoordinator;
+	readonly assistantCompactions: AssistantCompactionCoordinator;
 	readonly docsIndex: AssistantDocsIndex;
 	readonly assistantSearch: AssistantSearchClient | null;
 	readonly turns: TurnCoordinator;
@@ -183,6 +187,7 @@ export async function startServer(
 					createEmbedder: channels.createEmbedder,
 				});
 	const assistantRuns = new AssistantRunCoordinator();
+	const assistantCompactions = new AssistantCompactionCoordinator();
 	const turns = new TurnCoordinator();
 	const runs = new TurnRunRegistry();
 	const scheduler =
@@ -211,6 +216,7 @@ export async function startServer(
 			runtime,
 			assistantRuntime,
 			assistantRuns,
+			assistantCompactions,
 			docsIndex,
 			assistantSearch,
 			turns,
@@ -344,6 +350,7 @@ async function handleRequest(
 			runtime: options.runtime,
 			assistantRuntime: options.assistantRuntime,
 			assistantRuns: options.assistantRuns,
+			assistantCompactions: options.assistantCompactions,
 			docsIndex: options.docsIndex,
 			assistantSearch: options.assistantSearch,
 			turns: options.turns,

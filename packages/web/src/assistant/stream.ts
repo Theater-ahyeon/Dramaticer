@@ -118,6 +118,8 @@ export function applyAssistantSseEvent(
 			};
 		case "assistant.usage":
 			return { ...state, usage: event.data.usage };
+		case "assistant.compaction":
+			return state;
 		case "assistant.completed":
 			return {
 				...state,
@@ -214,6 +216,24 @@ export function toAssistantSseEvent(
 				event: ASSISTANT_SSE_EVENT_NAMES.usage,
 				data: { usage: readUsage(payload) },
 			};
+		case "compaction": {
+			const status = readText(payload, "status");
+			if (status !== "completed" && status !== "failed") {
+				throw new Error(`助手事件字段 status 不是合法压缩状态：${status}`);
+			}
+			const error = readNullableText(payload, "error");
+			return {
+				event: ASSISTANT_SSE_EVENT_NAMES.compaction,
+				data: {
+					status,
+					compactionId: readNullableText(payload, "compactionId"),
+					omittedCount: readNumber(payload, "omittedCount"),
+					beforeTokens: readNullableNumber(payload, "beforeTokens"),
+					afterTokens: readNullableNumber(payload, "afterTokens"),
+					error,
+				},
+			};
+		}
 		case "completed":
 			return {
 				event: ASSISTANT_SSE_EVENT_NAMES.completed,
@@ -286,6 +306,23 @@ function readBoolean(payload: JsonObject, key: string): boolean {
 	const value = payload[key];
 	if (typeof value !== "boolean") {
 		throw new Error(`助手事件字段 ${key} 必须是布尔值`);
+	}
+	return value;
+}
+
+function readNumber(payload: JsonObject, key: string): number {
+	const value = payload[key];
+	if (typeof value !== "number") {
+		throw new Error(`助手事件字段 ${key} 必须是数字`);
+	}
+	return value;
+}
+
+function readNullableText(payload: JsonObject, key: string): string | null {
+	const value = payload[key];
+	if (value === null || value === undefined) return null;
+	if (typeof value !== "string") {
+		throw new Error(`助手事件字段 ${key} 必须是字符串或 null`);
 	}
 	return value;
 }

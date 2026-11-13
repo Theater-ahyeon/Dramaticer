@@ -2,6 +2,7 @@ import type {
 	AssistantActionListView,
 	AssistantActionStatus,
 	AssistantCancelView,
+	AssistantCompactView,
 	AssistantConversationDetailView,
 	AssistantConversationEventsView,
 	AssistantConversationListView,
@@ -9,6 +10,7 @@ import type {
 	AssistantConversationView,
 	AssistantSkillListView,
 	ChannelsView,
+	CompactAssistantConversationRequest,
 	CreateAssistantConversationRequest,
 	SendAssistantMessageRequest,
 	UpdateAssistantConversationRequest,
@@ -141,6 +143,18 @@ export class AssistantApiClient {
 		return this.json<AssistantCancelView>(
 			"POST",
 			`${conversationPath(id)}/cancel`,
+		);
+	}
+
+	/** 手动压缩上下文；可以附带一段要求，摘要由会话模型生成。 */
+	async compactConversation(
+		id: string,
+		request: CompactAssistantConversationRequest = {},
+	): Promise<AssistantCompactView> {
+		return this.json<AssistantCompactView>(
+			"POST",
+			`${conversationPath(id)}/compact`,
+			request,
 		);
 	}
 

@@ -19,6 +19,7 @@ import {
 } from "../assistant/actions.js";
 import {
 	ASSISTANT_EVENT_KINDS,
+	type AssistantCompaction,
 	type AssistantConversation,
 	type AssistantConversationSearchOptions,
 	type AssistantConversationStatus,
@@ -36,6 +37,7 @@ import {
 	DEFAULT_ASSISTANT_TITLE,
 	type ListAssistantConversationsOptions,
 	type ListAssistantEventsOptions,
+	type NewAssistantCompactionInput,
 	type NewAssistantConversationInput,
 	type NewAssistantMessageInput,
 	assertAssistantCompactionThreshold,
@@ -43,6 +45,7 @@ import {
 	assertAssistantConversationStatus,
 	assertAssistantEventKind,
 	assertAssistantListLimit,
+	assertAssistantMessageOrdinals,
 	assertAssistantMessageRole,
 	assertAssistantPermission,
 	assertAssistantThinking,
@@ -573,6 +576,17 @@ interface AssistantEventRow {
 	readonly seq: number;
 	readonly kind: string;
 	readonly payload: string;
+	readonly created_at: string;
+}
+
+interface AssistantCompactionRow {
+	readonly id: string;
+	readonly conversation_id: string;
+	readonly seq: number;
+	readonly summary: string;
+	readonly omitted_message_ids: string;
+	readonly before_tokens: number;
+	readonly after_tokens: number;
 	readonly created_at: string;
 }
 
@@ -1208,6 +1222,32 @@ function rowToAssistantEvent(row: AssistantEventRow): AssistantEvent {
 		seq: row.seq,
 		kind: row.kind,
 		payload,
+		createdAt: row.created_at,
+	};
+}
+
+function rowToAssistantCompaction(
+	row: AssistantCompactionRow,
+): AssistantCompaction {
+	const label = `助手压缩记录 ${row.conversation_id}#${row.seq}`;
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(row.omitted_message_ids);
+	} catch {
+		throw new Error(`${label} 的省略消息序号不是合法 JSON`);
+	}
+	assertAssistantMessageOrdinals(parsed, `${label} 的省略消息序号`);
+	if (typeof row.summary !== "string" || row.summary.trim().length === 0) {
+		throw new Error(`${label} 的摘要不能为空`);
+	}
+	return {
+		id: row.id,
+		conversationId: row.conversation_id,
+		seq: row.seq,
+		summary: row.summary,
+		omittedMessageIds: parsed,
+		beforeTokens: row.before_tokens,
+		afterTokens: row.after_tokens,
 		createdAt: row.created_at,
 	};
 }
@@ -7190,6 +7230,110 @@ export class StoryStore {
 		return rows.map(rowToAssistantMessage);
 	}
 
+	/** 写入一次压缩记录；序号在同一事务里取最大值加一，并更新会话时间。 */
+	createAssistantCompaction(
+		input: NewAssistantCompactionInput,
+	): AssistantCompaction {
+		assertNonEmptyString(input.conversationId, "助手会话 id");
+		if (
+			typeof input.summary !== "string" ||
+			input.summary.trim().length === 0
+		) {
+			throw new Error("助手压缩摘要不能为空");
+		}
+		assertAssistantMessageOrdinals(
+			input.omittedMessageIds,
+			"助手压缩的省略消息序号",
+		);
+		if (
+			!Number.isInteger(input.beforeTokens) ||
+			input.beforeTokens < 0 ||
+			!Number.isInteger(input.afterTokens) ||
+			input.afterTokens < 0
+		) {
+			throw new Error("助手压缩前后的 token 必须是非负整数");
+		}
+		const id = input.id ?? randomUUID();
+		assertNonEmptyString(id, "助手压缩记录 id");
+		if (this.getAssistantConversation(input.conversationId) === null) {
+			throw new Error(`助手会话不存在：${input.conversationId}`);
+		}
+		const createdAt = input.createdAt ?? new Date().toISOString();
+		assertNonEmptyString(createdAt, "助手压缩记录时间");
+		return this.#db.transaction((): AssistantCompaction => {
+			this.#db
+				.prepare(
+					`INSERT INTO assistant_compactions
+					(id, conversation_id, seq, summary, omitted_message_ids,
+						before_tokens, after_tokens, created_at)
+					SELECT ?, ?, COALESCE(MAX(seq), 0) + 1, ?, ?, ?, ?, ?
+					FROM assistant_compactions WHERE conversation_id = ?`,
+				)
+				.run(
+					id,
+					input.conversationId,
+					input.summary,
+					JSON.stringify(input.omittedMessageIds),
+					input.beforeTokens,
+					input.afterTokens,
+					createdAt,
+					input.conversationId,
+				);
+			this.#db
+				.prepare(
+					"UPDATE assistant_conversations SET updated_at = ? WHERE id = ?",
+				)
+				.run(createdAt, input.conversationId);
+			const row = this.#db
+				.prepare(
+					`SELECT id, conversation_id, seq, summary, omitted_message_ids,
+						before_tokens, after_tokens, created_at
+					FROM assistant_compactions
+					WHERE conversation_id = ?
+					ORDER BY seq DESC LIMIT 1`,
+				)
+				.get(input.conversationId) as AssistantCompactionRow | undefined;
+			if (row === undefined) {
+				throw new Error(`助手压缩记录写入后读取失败：${input.conversationId}`);
+			}
+			return rowToAssistantCompaction(row);
+		})();
+	}
+
+	/** 最新一次压缩；没有压缩过时返回 null。后续请求按它过滤消息。 */
+	getAssistantCompaction(conversationId: string): AssistantCompaction | null {
+		assertNonEmptyString(conversationId, "助手会话 id");
+		if (this.getAssistantConversation(conversationId) === null) {
+			throw new Error(`助手会话不存在：${conversationId}`);
+		}
+		const row = this.#db
+			.prepare(
+				`SELECT id, conversation_id, seq, summary, omitted_message_ids,
+					before_tokens, after_tokens, created_at
+				FROM assistant_compactions
+				WHERE conversation_id = ?
+				ORDER BY seq DESC LIMIT 1`,
+			)
+			.get(conversationId) as AssistantCompactionRow | undefined;
+		return row === undefined ? null : rowToAssistantCompaction(row);
+	}
+
+	listAssistantCompactions(conversationId: string): AssistantCompaction[] {
+		assertNonEmptyString(conversationId, "助手会话 id");
+		if (this.getAssistantConversation(conversationId) === null) {
+			throw new Error(`助手会话不存在：${conversationId}`);
+		}
+		const rows = this.#db
+			.prepare(
+				`SELECT id, conversation_id, seq, summary, omitted_message_ids,
+					before_tokens, after_tokens, created_at
+				FROM assistant_compactions
+				WHERE conversation_id = ?
+				ORDER BY seq ASC`,
+			)
+			.all(conversationId) as AssistantCompactionRow[];
+		return rows.map(rowToAssistantCompaction);
+	}
 	/** 追加一条消息；序号在同一事务里取最大值加一，并更新会话的最后消息时间。 */
 	appendAssistantMessage(input: NewAssistantMessageInput): AssistantMessage {
 		assertNonEmptyString(input.conversationId, "助手会话 id");

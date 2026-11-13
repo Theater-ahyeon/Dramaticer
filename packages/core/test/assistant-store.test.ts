@@ -38,8 +38,8 @@ function seedStory(store: StoryStore): void {
 describe("助手会话存储", () => {
 	it("迁移 v44 建表建索引，事件只追加", () => {
 		const { store, path } = openTempStore();
-		expect(store.getSchemaVersion()).toBe(45);
-		expect(LATEST_SCHEMA_VERSION).toBe(45);
+		expect(store.getSchemaVersion()).toBe(46);
+		expect(LATEST_SCHEMA_VERSION).toBe(46);
 		const raw = new Database(path);
 		onTestFinished(() => raw.close());
 		const tables = raw
@@ -82,6 +82,108 @@ describe("助手会话存储", () => {
 		);
 		store.deleteAssistantConversation(conversation.id);
 		expect(store.getAssistantConversation(conversation.id)).toBeNull();
+	});
+
+	it("压缩记录按序号追加，不能修改或单独删除，删除会话时随会话消失", () => {
+		const { store, path } = openTempStore();
+		seedStory(store);
+		const conversation = store.createAssistantConversation({
+			storyId: "story-1",
+			skill: "troubleshoot",
+		});
+		store.appendAssistantMessage({
+			conversationId: conversation.id,
+			role: "user",
+			text: "第一句",
+		});
+		const before = store.getAssistantConversation(conversation.id);
+		expect(before).not.toBeNull();
+		const updatedAtBefore = before?.updatedAt ?? "";
+		const first = store.createAssistantCompaction({
+			conversationId: conversation.id,
+			summary: "摘要一",
+			omittedMessageIds: [1],
+			beforeTokens: 300,
+			afterTokens: 120,
+			createdAt: "2026-11-13T03:00:00.000Z",
+		});
+		expect(first.seq).toBe(1);
+		expect(first.omittedMessageIds).toEqual([1]);
+		const second = store.createAssistantCompaction({
+			conversationId: conversation.id,
+			summary: "摘要二",
+			omittedMessageIds: [1, 2],
+			beforeTokens: 400,
+			afterTokens: 160,
+			createdAt: "2026-11-13T03:05:00.000Z",
+		});
+		expect(second.seq).toBe(2);
+		expect(store.getAssistantCompaction(conversation.id)?.id).toBe(second.id);
+		expect(
+			store
+				.listAssistantCompactions(conversation.id)
+				.map((compaction) => compaction.seq),
+		).toEqual([1, 2]);
+		expect(store.getAssistantConversation(conversation.id)?.updatedAt).not.toBe(
+			updatedAtBefore,
+		);
+
+		const raw = new Database(path);
+		onTestFinished(() => raw.close());
+		expect(() =>
+			raw
+				.prepare(
+					"UPDATE assistant_compactions SET summary = '改' WHERE seq = 1",
+				)
+				.run(),
+		).toThrow(/只追加/);
+		expect(() =>
+			raw.prepare("DELETE FROM assistant_compactions WHERE seq = 1").run(),
+		).toThrow(/只追加/);
+
+		store.deleteAssistantConversation(conversation.id);
+		expect(
+			raw
+				.prepare(
+					"SELECT COUNT(*) AS c FROM assistant_compactions WHERE conversation_id = ?",
+				)
+				.get(conversation.id),
+		).toEqual({ c: 0 });
+	});
+
+	it("非法压缩记录在写入前拒绝", () => {
+		const { store } = openTempStore();
+		const conversation = store.createAssistantConversation({
+			skill: "guide",
+		});
+		expect(() =>
+			store.createAssistantCompaction({
+				conversationId: conversation.id,
+				summary: "  ",
+				omittedMessageIds: [1],
+				beforeTokens: 1,
+				afterTokens: 1,
+			}),
+		).toThrow(/摘要不能为空/);
+		expect(() =>
+			store.createAssistantCompaction({
+				conversationId: conversation.id,
+				summary: "摘要",
+				omittedMessageIds: [2, 1],
+				beforeTokens: 1,
+				afterTokens: 1,
+			}),
+		).toThrow(/严格递增/);
+		expect(() =>
+			store.createAssistantCompaction({
+				conversationId: conversation.id,
+				summary: "摘要",
+				omittedMessageIds: [1],
+				beforeTokens: -1,
+				afterTokens: 1,
+			}),
+		).toThrow(/非负整数/);
+		expect(store.getAssistantCompaction(conversation.id)).toBeNull();
 	});
 
 	it("创建、改字段、按故事与技能列出，并记住模型与压缩设置", () => {

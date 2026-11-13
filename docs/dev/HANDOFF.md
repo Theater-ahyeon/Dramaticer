@@ -3,11 +3,11 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-13 会话 363：完成 H-T07（抽屉界面与运行状态）。新增 `packages/web/src/assistant/`：`AssistantDrawer.tsx`（覆盖右侧，含会话列表、标题搜索、新建、改名、删除确认、技能/权限/思考/模型选择、消息流、工具与思考折叠、错误提示）、`conversation-list.ts`（列表与搜索命中状态）、`stream.ts`（`assistant_*` 事件还原、工具结果配对、按序号去重、只重放最后一次运行）、`permissions.ts`（三级权限与状态文案）与 `context.ts`（故事页 outlet 上下文）。`packages/web/src/api/sse.ts` 增加按事件名白名单解析的 `parseNamedSseStream`；`AssistantApiClient` 增加 `listSkills`、`listActions`、`cancel`、`getChannels`、`streamMessage`。抽屉与右下角状态标记挂在 `StoryPage`，关闭抽屉或切换标签页不中止运行；刷新后从 localStorage 的活动会话、`GET /status` 与 `events?after=` 恢复。`ChatPage` 输入框旁新增助手按钮。新增 3 个 web 单元测试文件与 `e2e/assistant.spec.ts` 三条路径，desktop 与 mobile 各 3 条通过。门禁通过（246 个测试文件、2146 个测试、5 个跳过）。
+- 2026-11-13 会话 364：完成 H-T08（上下文压缩与用量环）。迁移 v46 新增 `assistant_compactions`；新增 `packages/core/src/assistant/context.ts`：`estimateAssistantContext` 按系统提示、摘要、消息与工具结果四部分估算 `used`、`budget`、`percent`，`buildAssistantRequestMessages` 用最新压缩过滤消息并在系统提示后插入一条摘要，`compactAssistantConversation` 保留最近 10 条（`DEFAULT_ASSISTANT_KEEP_RECENT_MESSAGES`），有等待确认动作时把产生它的对话之后的消息一起保留，摘要由会话模型以 `NO_CONTINUATION` 生成。server 在每次消息请求前检查阈值并先压缩（`compactBeforeAssistantRun`），手动接口为 `POST /api/assistant/conversations/:id/compact`；两者共用 `AssistantCompactionCoordinator`，手动在运行中或没有可省略消息时返回 409。压缩失败保留原消息并写 `compaction` 事件，自动压缩失败不影响本次运行。详情接口返回 `compaction` 与 `context`。抽屉新增用量环、可折叠摘要与省略序号、手动压缩表单。新增 `packages/core/test/assistant-context.test.ts` 与 `packages/web/test/assistant-context-usage.test.ts`，扩充 store、server、API 与事件流测试；`e2e/assistant.spec.ts` 增加用量环与手动压缩一条（desktop/mobile 各 4 条通过）。门禁通过（253 个测试文件、2170 个测试、5 个跳过）。
 
-## 下一步（会话 364 先做）
-1. **H-T08 上下文压缩与用量环**：迁移 v46 新建 `assistant_compactions`；`assistant/context.ts` 估算下一次请求的 token 并报告 `context_used`、`context_budget`、`context_percent` 与各部分占用；自动压缩在请求前检查阈值，手动压缩走 `POST /api/assistant/conversations/:id/compact`；摘要用会话模型与 `NO_CONTINUATION`，失败保留原上下文并写事件；抽屉显示用量环与悬停占比。
-2. 之后按 H-T09 → H-T99 的顺序做。H-T09 复用 H-T03 的动作接口与现有变更卡差异展示。一个会话只做一个任务。
+## 下一步（会话 365 先做）
+1. **H-T09 变更审阅面板**：抽屉内“待确认”视图，列出 `assistant_actions` 与待批准台账变更卡，按会话与故事过滤；显示类型、摘要、来源会话、字段前后值与批准/拒绝按钮；台账卡复用现有差异展示；渠道动作只显示别名与模型，密钥只显示已设置或未设置；失败保留待确认并显示原因。复用 H-T03 的动作接口与 H-T05 的变更卡接口。
+2. 之后 H-T99 验收与 `docs/dev/reports/H.md`。
 3. 其余可做任务：X1（依赖已完成）、R6-T00（依赖已满足，但排在 H 之后）。M5-T00 依赖 R6-T99；M6-T99 等待 HUMAN-15；P5 依赖 M5-T99。
 
 ## H 的任务划分（ADR-0125）
@@ -18,7 +18,7 @@
 - **H-T05（已完成）** 台账修订与参谋：`propose_ledger_change` 生成来源 `assistant` 的变更卡，`propose_director_plan` 生成 `director_plan` 待确认动作；`summarize_recent` 只读摘要。
 - **H-T06（已完成）** 资料员、卡片工坊与设置向导；联网搜索显式开启；卡片读取与四类提案；渠道读取不含密钥。
 - **H-T07（已完成）** web 抽屉、会话搜索与改名、技能与权限选择、事件续读、关闭后继续运行与状态标记；重连不重复消息；取消后状态为 `cancelled`。
-- **H-T08** 迁移 v46：`assistant_compactions`；自动与手动压缩、用量环；预算与正剧记忆独立。
+- **H-T08（已完成）** 迁移 v46：`assistant_compactions`；自动与手动压缩、用量环；预算与正剧记忆独立。
 - **H-T09** 待确认动作与台账变更卡审阅面板。
 - **H-T99** 验收与 `docs/dev/reports/H.md`。
 
@@ -29,7 +29,7 @@
 - 三级权限：只读只执行 `read`；确认执行 `read` 与 `control`，提案与外部影响写成待确认动作；自动级别只有 `channels` 直接执行，其余种类仍然待确认。台账修改永远只生成变更卡，任何级别都不能自动批准。
 - 待确认动作的载荷在创建与批准时各校验一次；批准失败保留 `pending`。同一会话内相同 `kind` 与规范化载荷的待定动作复用同一条记录。拒绝必须写原因。
 - 台账变更卡锚定当前 head：`source_node_id` 取 head，`before` 取 head 快照，批准复用 `approveLedgerChangeCard`，事实来源为 `player`；助手卡片记录 `assistant_conversation_id`。
-- 助手上下文预算默认 48,000 token，压缩阈值默认 0.8；较早消息合并成一条 `system` 摘要，保留最近 10 条与待确认动作引用的消息。
+- 助手上下文预算默认 48,000 token，压缩阈值默认 0.8；压缩保留最近 10 条，较早消息合并成摘要。`percent` 是 `used / budget` 的比值，与阈值同一口径；用量环超过 0.8 显示警告色、0.95 显示危险色。
 - 助手默认模型是 `roles.writer` 解析到的别名，会话可以覆盖；不新增渠道角色。
 - 请求与响应类型放在 `packages/protocol`，运行时放在 `packages/core/src/assistant`，server 处理放在 `packages/server/src/assistant.ts`，web 放在 `packages/web/src/assistant`。
 
@@ -43,20 +43,35 @@
 - `propose_channels_change` 与 `PUT /api/channels` 一样是整段替换：四个段必须给全，未写的条目会被删除。`channels_read` 返回重建整段配置所需的非敏感字段，但不返回密钥值。
 - `--assistant-web-search <地址>` 只接受 http/https；未开启时不注册 `web_search`，此时运行 `research` 技能会在切换状态前报“助手工具未注册：web_search”。
 
+## 上下文压缩（H-T08）
+- `assistant_compactions(id, conversation_id, seq, summary, omitted_message_ids, before_tokens, after_tokens, created_at)`，同一会话 `seq` 递增且唯一；更新与单独删除都被触发器拒绝，删除会话时级联删除。
+- 消息没有单独的 id，`ordinal` 就是它的身份；`omitted_message_ids` 存顺序号数组，按升序去重。
+- 最新一条压缩决定后续请求：请求消息是系统提示、摘要、未被省略的消息；被省略的旧消息不再发送，但数据库行保留，界面显示完整消息流。
+- 多次压缩会把上一次的省略序号与新省略序号合并；摘要请求的输入包含已有摘要与新增被省略的消息，附加要求只在手动压缩时出现。
+- 待确认动作保护：取最早待确认动作的 `createdAt`，产生它的对话之后的消息不省略；没有待确认动作时只按最近 10 条划分。
+- 自动压缩在 server 的 `handleConversationMessage` 里、`runAssistantTurn` 之前执行，用量估算包含即将写入的用户消息；阈值以下不发压缩请求，没有可省略消息时不调用模型。
+- `AssistantCompactionCoordinator` 按会话互斥；自动压缩拿不到锁时跳过，手动压缩拿不到锁返回 409。手动压缩在会话运行中、或没有可省略消息时也返回 409。
+- 压缩失败：原消息不动，写 `compaction` 事件（`status: "failed"`），自动压缩继续本次运行，手动压缩返回 500。
+- SSE 事件名 `assistant.compaction`，载荷 `{status, compactionId, omittedCount, beforeTokens, afterTokens, error}`；持久事件按 `kind: "compaction"` 读回。
+- 直接调用 `runAssistantTurn` 不会自动压缩，但会按已有压缩过滤消息；自动压缩只发生在 server 的消息接口。
+
 ## web 助手界面
 - `AssistantDrawer.tsx` 由 `StoryPage` 持有，`key={storyId}`；抽屉关闭时仍挂载，运行中的 SSE 继续写入状态。`ChatPage` 通过 outlet 上下文拿到 `openAssistant`，在 `Composer` 旁渲染 `.assistant-open-button`。
-- 焦点：抽屉打开时聚焦“关闭助手”；关闭后等两帧用 `document.querySelector(".assistant-open-button")` 把焦点送回触发按钮（隐藏元素不能保留焦点）。键盘 `Ctrl+Shift+A` 开关，`Escape` 关闭。
+- 焦点：抽屉打开时聚焦“关闭助手”；关闭后等两帧用 `document.querySelector(".assistant-open-button")` 把焦点送回触发按钮。键盘 `Ctrl+Shift+A` 开关，`Escape` 关闭。
 - 状态标记是 `.assistant-badge`，固定在右下角；运行中、失败与待确认动作数都从抽屉状态回调到 `StoryPage`。抽屉打开时不渲染标记。
 - `stream.ts` 的 `AssistantRunState` 保存正文、思考、工具活动、用量、状态、结束原因、错误与 `lastSeq`。持久事件按 `seq <= lastSeq` 去重；`selectLatestRunEvents` 只保留最后一次 `started` 之后的事件。重连时先读会话、`GET /status` 与全部事件，再按 `lastSeq` 用 `events?after=` 轮询。
 - 轮询把非运行状态的处理放在 `setStatus` 之前：先读会话把消息写入状态，最后改状态，否则状态变化触发 effect 清理会把消息更新丢掉。
 - 抽屉内的快照请求都走 `assistantApi`（包含 `/api/channels` 的模型列表）；类型只从 `@dramaticer/protocol` 导入，不 import `@dramaticer/core` 的运行时值。
 - 新建会话用 `ASSISTANT_CONVERSATION_DEFAULTS`：排障、修改前确认、`modelAlias: null`（跟随 `roles.writer`）、思考关闭。
 - 取消按钮只在 `status === "running"` 时出现；取消后重新读状态，界面显示“已取消”。待确认动作数每 5 秒刷新一次，运行结束后立即刷新。
+- 用量环 `.assistant-context` 读详情里的 `context`：显示百分比与 `used/budget`，`title` 列出四部分 token；颜色由 `context-usage.ts` 的 `contextLevel` 决定。
+- 摘要面板 `.assistant-compaction` 在消息流顶部，折叠显示摘要正文与合并后的省略序号；手动压缩表单 `.assistant-compact` 在输入框上方，要求可空。
+- 抽屉的持久状态只有 localStorage 里的活动会话 id（`dramaticer.assistant.active.<storyId>`）；消息、状态与事件都以 server 为准，不要缓存正文。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a 至 P2.g、P3.a 至 P3.f、P4.a 至 P4.f、C-T01.a 至 C-T01.d、C-T02.a 至 C-T02.f、C-T03.a 至 C-T03.d、C-T04.a、C-T04.b.a、C-T04.b.b、C-T04.c.a、C-T04.c.b、C-T04.c.c、C-T04.c.d、C-T04.d、C-T05.a 至 C-T05.f、H-T00 至 H-T07。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a 至 P2.g、P3.a 至 P3.f、P4.a 至 P4.f、C-T01.a 至 C-T01.d、C-T02.a 至 C-T02.f、C-T03.a 至 C-T03.d、C-T04.a、C-T04.b.a、C-T04.b.b、C-T04.c.a、C-T04.c.b、C-T04.c.c、C-T04.c.d、C-T04.d、C-T05.a 至 C-T05.f、H-T00 至 H-T08。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
 - 兼容插件线：`st-content`、`st-mvu`、`st-ejs`、`st-helper-host` 全部完成（含一致性测试与共存评测）。
-- 数据库 schema 版本 45；v46 预留给助手的压缩记录。本轮没有新增依赖。
+- 数据库 schema 版本 46。本轮没有新增依赖。
 - 报告：`docs/dev/reports/P2.md`、`P3.md`、`P4.md`、`C-T01.md`、`C-T02.md`、`C-T03.md`、`C-T04.md`、`C-T05.md`。
 - 沙箱现状：`eval-private/st-sandbox/st` 有 36 个预设、68 张卡、89 个非驱动聊天片段；预设连接字段已被驱动改写为录制端点与桩模型，全局 `openai_max_context` 已被驱动改为 2,000,000。需要恢复原始预设时用 `sandbox --replace` 重建。
 - 私有比对批次：`compare-smoke4`（5 个组合，修复后）与更早的 `compare-smoke2`、`compare-smoke3`、`session324-sanitize`；每个批次的 `compare/` 下有报告、差异清单与汇总。
@@ -70,8 +85,9 @@
 
 ## 可重复命令
 - 门禁：`pnpm check`。
+- H-T08 目标测试：`pnpm exec vitest run packages/core/test/assistant-context.test.ts packages/core/test/assistant-store.test.ts packages/server/test/assistant.test.ts packages/web/test/assistant-api.test.ts packages/web/test/assistant-stream.test.ts packages/web/test/assistant-context-usage.test.ts`。
+- H-T08 e2e：`pnpm --filter @dramaticer/web build && pnpm --filter @dramaticer/web exec playwright test e2e/assistant.spec.ts`（desktop 与 mobile 各 4 条）。
 - H-T07 目标测试：`pnpm exec vitest run packages/web/test/assistant-api.test.ts packages/web/test/assistant-stream.test.ts packages/web/test/assistant-conversation-list.test.ts packages/web/test/assistant-permissions.test.ts`。
-- H-T07 e2e：`pnpm --filter @dramaticer/web build && pnpm --filter @dramaticer/web exec playwright test e2e/assistant.spec.ts`（desktop 与 mobile 各 3 条）。
 - H-T06 目标测试：`pnpm exec vitest run packages/core/test/assistant-setup.test.ts packages/core/test/assistant-skills.test.ts packages/server/test/assistant-skills.test.ts packages/server/test/assistant.test.ts packages/server/test/config.test.ts`。
 - H-T05 目标测试：`pnpm exec vitest run packages/core/test/assistant-proposals.test.ts packages/core/test/assistant-skills.test.ts packages/server/test/assistant-skills.test.ts`。
 - H-T04 目标测试：`pnpm exec vitest run packages/core/test/assistant-skills.test.ts packages/server/test/assistant-skills.test.ts packages/server/test/config.test.ts`。
@@ -100,13 +116,13 @@
 - Windows 上并行跑测试会显著变慢；`vitest.config.ts` 默认 `testTimeout` 60 秒、`maxWorkers` 8；`afterEach` 删除临时目录用 `rmSync` 时必须带 `maxRetries` 与 `retryDelay`。
 - 整轮并行门禁连跑或与大量临时目录写入同时进行时，Windows 的系统扫描会拖慢文件与 SQLite 操作，出现过后台 worker 激活超时与 `gap-pass-compare` 的 30 秒用例超时；这些用例单独运行都通过。门禁失败先看失败是否只在整轮并行时出现，不要连续并发跑多轮整仓测试；`gap-pass-compare` 的 3 个用例上限已放宽到 180 秒。
 - `packages/st-compat` 与 `packages/server` 的测试通过 `@dramaticer/core` 的 `dist` 解析 core；只跑这些包的测试前先执行 `pnpm run typecheck`。
-- 结构化 JSON 请求一律使用 `NO_CONTINUATION`；正文写作与散文类后台输出保留续写。
+- 结构化 JSON 请求一律使用 `NO_CONTINUATION`；正文写作与散文类后台输出保留续写。上下文摘要按结构化请求处理，也使用 `NO_CONTINUATION`。
 - web 源码不能 import `@dramaticer/core` 的运行时值（会把 `better-sqlite3` 与 `node:*` 打进前端包导致整页白屏），类型导入可以；助手类型从 `@dramaticer/protocol` 取。
 - 助手搜索：标题使用 LIKE，消息正文在查询不少于三个字符时用 `assistant_message_text` 的 trigram，短于三个字符时退回 LIKE；命中片段用方括号标出。`assistant_message_text` 由消息表触发器同步，删除会话时先删消息再删会话，保证索引清理。
-- `assistant_events` 的删除触发器只在会话仍存在时拒绝，删除会话的级联删除不受影响；事件修改始终被拒绝。
+- `assistant_events` 与 `assistant_compactions` 的删除触发器只在会话仍存在时拒绝，删除会话的级联删除不受影响；事件与压缩记录的修改始终被拒绝。
 - 助手接口的 `storyId` 不存在返回 404，字段非法返回 400 并在 `details.path` 指出字段；删除会话不触碰楼层、head 与状态 diff。
 - 助手运行时把会话消息转成模型消息时，工具消息没有可回放的调用 id 与原生签名，统一转成 `system` 消息保留工具名与结果；不要伪造 `toolCalls` 回放，Gemini 一类渠道会因缺少签名拒绝请求。
-- 助手运行事件名带前缀（`assistant.started`、`assistant.text.delta` 等），与剧情回合的 `text.delta`、`tool.call` 分开；两套 SSE 载荷形状不同，`parseNamedSseStream` 按传入的事件名白名单区分。
+- 助手运行事件名带前缀（`assistant.started`、`assistant.text.delta` 等），与剧情回合的 `text.delta`、`tool.call` 分开；两套 SSE 载荷形状不同，`parseNamedSseStream` 按传入的事件名白名单区分。压缩事件名是 `assistant.compaction`。
 - 助手并发启动有两层保护：server 的 `AssistantRunCoordinator` 返回 409，store 的 `startAssistantConversationRun` 在同一事务里拒绝第二个 running。客户端断开只停止 SSE 写入，不中止运行。
 - 助手工具的 `permission` 是助手自己的三级权限判定；传给深回合执行器时统一为 `read`，否则执行器会把 `propose` 与 `side_effect` 当成剧情写入语义处理。新增提案工具用 `defineAssistantTool` 包装，工具内部调用 `assistantActionGate` 与 `store.createAssistantAction`。
 - `assistant_actions` 的待定唯一索引以规范化 JSON 载荷为键；同会话同种类同载荷复用已有待定动作。批准顺序是先校验、再调用领域写入、最后改状态，失败时动作保持 `pending`。
@@ -122,6 +138,9 @@
 - 抽屉的持久状态只有 localStorage 里的活动会话 id（`dramaticer.assistant.active.<storyId>`）；消息、状态与事件都以 server 为准，不要缓存正文。
 - 重连轮询必须在改状态之前把会话详情与消息写入状态：`status` 变化会触发 effect 清理，之后再写消息会被 `cancelled` 挡住。
 - 关闭抽屉的焦点恢复要等两帧；隐藏祖先元素后 Chromium 会把焦点退到 body。触发按钮用选择器 `.assistant-open-button` 查找，不能依赖只在聊天页存在的 ref。
+- 压缩记录只追加；需要重新压缩只能新增一条，最新一条生效。不要修改旧记录或删除单条记录。
+- 自动压缩在 server 的消息接口里执行，`runAssistantTurn` 自身不触发压缩；后台脚本或测试直接调用运行时只应按已有压缩过滤消息。
+- 压缩失败的自动运行仍然返回模型回答；不要因为压缩失败把会话标成失败或丢弃消息。
 - 新增的格式化与 lint 用 `pnpm exec biome check --write <文件>`，不要手写格式。
 - 修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 的请求写进 HUMAN.md。
 - 不变量：I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖其他工作区包，I17 回合内插件钩子有时间预算，I18 插件权限必须声明。

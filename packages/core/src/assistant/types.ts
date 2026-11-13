@@ -46,6 +46,7 @@ export const ASSISTANT_EVENT_KINDS = [
 	"tool.result",
 	"permission.denied",
 	"usage",
+	"compaction",
 	"completed",
 	"error",
 ] as const;
@@ -54,6 +55,8 @@ export type AssistantEventKind = (typeof ASSISTANT_EVENT_KINDS)[number];
 
 export const DEFAULT_ASSISTANT_CONTEXT_BUDGET = 48_000;
 export const DEFAULT_ASSISTANT_COMPACTION_THRESHOLD = 0.8;
+/** 压缩后保留的最近消息条数；更早的消息合并进摘要。 */
+export const DEFAULT_ASSISTANT_KEEP_RECENT_MESSAGES = 10;
 export const MIN_ASSISTANT_COMPACTION_THRESHOLD = 0.5;
 export const MAX_ASSISTANT_COMPACTION_THRESHOLD = 0.95;
 export const DEFAULT_ASSISTANT_PERMISSION: AssistantPermission = "confirm";
@@ -115,6 +118,32 @@ export interface AssistantEvent {
 	readonly kind: AssistantEventKind;
 	readonly payload: JsonObject;
 	readonly createdAt: string;
+}
+
+/**
+ * 一次上下文压缩。`omittedMessageIds` 是被摘要替代的消息序号：消息在同一
+ * 会话里没有单独的 id，`ordinal` 就是它的身份。记录只追加，会话删除时一起删除。
+ */
+export interface AssistantCompaction {
+	readonly id: string;
+	readonly conversationId: string;
+	/** 同一会话内从 1 开始递增；最新一条决定后续请求发送哪些消息。 */
+	readonly seq: number;
+	readonly summary: string;
+	readonly omittedMessageIds: readonly number[];
+	readonly beforeTokens: number;
+	readonly afterTokens: number;
+	readonly createdAt: string;
+}
+
+export interface NewAssistantCompactionInput {
+	readonly id?: string;
+	readonly conversationId: string;
+	readonly summary: string;
+	readonly omittedMessageIds: readonly number[];
+	readonly beforeTokens: number;
+	readonly afterTokens: number;
+	readonly createdAt?: string;
 }
 
 export interface NewAssistantConversationInput {
@@ -291,6 +320,26 @@ export function assertAssistantContextBudget(
 ): asserts value is number {
 	if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
 		throw new Error(`${label} 必须是大于等于 1 的整数：${String(value)}`);
+	}
+}
+
+/** 被压缩的消息序号：互不相同、从 1 开始的正整数，按升序保存。 */
+export function assertAssistantMessageOrdinals(
+	value: unknown,
+	label: string,
+): asserts value is number[] {
+	if (!Array.isArray(value)) {
+		throw new Error(`${label} 必须是消息序号数组`);
+	}
+	let previous = 0;
+	for (const item of value) {
+		if (typeof item !== "number" || !Number.isInteger(item) || item < 1) {
+			throw new Error(`${label} 里的序号必须是正整数：${String(item)}`);
+		}
+		if (item <= previous) {
+			throw new Error(`${label} 里的序号必须严格递增：${String(item)}`);
+		}
+		previous = item;
 	}
 }
 

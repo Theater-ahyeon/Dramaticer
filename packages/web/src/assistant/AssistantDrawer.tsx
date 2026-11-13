@@ -1,4 +1,5 @@
 import type {
+	AssistantContextUsage,
 	AssistantConversationDetailView,
 	AssistantConversationStatus,
 	AssistantConversationStatusView,
@@ -20,6 +21,12 @@ import {
 } from "react";
 import { assistantApi } from "../api/assistant";
 import { ErrorNotice } from "../components/ErrorNotice";
+import {
+	contextLevel,
+	contextPartsLabel,
+	contextPercentLabel,
+	formatOrdinalRanges,
+} from "./context-usage";
 import {
 	type ConversationListState,
 	applyConversationList,
@@ -96,6 +103,7 @@ export function AssistantDrawer({
 	const [messages, setMessages] = useState<readonly AssistantMessageView[]>([]);
 	const [run, setRun] = useState<AssistantRunState>(createAssistantRunState);
 	const [input, setInput] = useState("");
+	const [compactInput, setCompactInput] = useState("");
 	const [streaming, setStreaming] = useState(false);
 	const [error, setError] = useState<unknown>(null);
 	const [busy, setBusy] = useState(false);
@@ -163,6 +171,7 @@ export function AssistantDrawer({
 		setMessages([]);
 		setRun(createAssistantRunState());
 		setInput("");
+		setCompactInput("");
 		setError(null);
 		setQuery("");
 		setSearchInput("");
@@ -212,6 +221,7 @@ export function AssistantDrawer({
 		setMessages([]);
 		setRun(createAssistantRunState());
 		setError(null);
+		setCompactInput("");
 		void (async () => {
 			try {
 				const [detailView, statusView, eventsView] = await Promise.all([
@@ -506,6 +516,25 @@ export function AssistantDrawer({
 		}
 	};
 
+	const compactContext = async (): Promise<void> => {
+		if (active === null || busy || running) return;
+		setBusy(true);
+		setError(null);
+		try {
+			const instructions = compactInput.trim();
+			await assistantApi.compactConversation(
+				active.id,
+				instructions.length === 0 ? {} : { instructions },
+			);
+			setCompactInput("");
+			await reloadConversation(active.id);
+		} catch (value) {
+			setError(value);
+		} finally {
+			setBusy(false);
+		}
+	};
+
 	const statusValue: AssistantConversationStatus =
 		status?.status ?? active?.status ?? "idle";
 
@@ -740,6 +769,9 @@ export function AssistantDrawer({
 								<span className="assistant-status">
 									{conversationStatusLabel(statusValue)}
 								</span>
+								{detail === null ? null : (
+									<ContextRing usage={detail.context} />
+								)}
 								{canCancel(statusValue) ? (
 									<button type="button" onClick={() => void cancelRun()}>
 										取消运行
@@ -756,6 +788,19 @@ export function AssistantDrawer({
 								}
 							/>
 							<div className="assistant-messages" aria-live="polite">
+								{detail?.compaction === null ||
+								detail?.compaction === undefined ? null : (
+									<details className="assistant-compaction">
+										<summary>
+											已压缩 {detail.compaction.omittedMessageIds.length} 条消息
+										</summary>
+										<p className="muted">
+											省略序号：
+											{formatOrdinalRanges(detail.compaction.omittedMessageIds)}
+										</p>
+										<pre>{detail.compaction.summary}</pre>
+									</details>
+								)}
 								{messages.map((message, index) => (
 									<article
 										key={`${message.ordinal}-${index}`}
@@ -818,6 +863,27 @@ export function AssistantDrawer({
 								)}
 							</div>
 							<form
+								className="assistant-compact"
+								onSubmit={(event) => {
+									event.preventDefault();
+									void compactContext();
+								}}
+							>
+								<input
+									type="text"
+									aria-label="压缩要求"
+									placeholder="压缩要求（可选）"
+									value={compactInput}
+									onChange={(event) => setCompactInput(event.target.value)}
+								/>
+								<button
+									type="submit"
+									disabled={busy || running || detail === null}
+								>
+									压缩上下文
+								</button>
+							</form>
+							<form
 								className="assistant-composer"
 								onSubmit={(event) => {
 									event.preventDefault();
@@ -852,6 +918,43 @@ export function AssistantDrawer({
 				</section>
 			</div>
 		</aside>
+	);
+}
+
+function ContextRing({ usage }: { usage: AssistantContextUsage }) {
+	const circumference = 2 * Math.PI * 18;
+	const filled = Math.min(1, Math.max(0, usage.percent)) * circumference;
+	return (
+		<div
+			className={`assistant-context assistant-context-${contextLevel(usage)}`}
+			title={contextPartsLabel(usage)}
+			aria-label={`上下文用量 ${contextPercentLabel(usage)}`}
+		>
+			<svg viewBox="0 0 44 44" role="img" aria-hidden="true">
+				<circle
+					className="assistant-context-track"
+					cx="22"
+					cy="22"
+					r="18"
+					fill="none"
+				/>
+				<circle
+					className="assistant-context-fill"
+					cx="22"
+					cy="22"
+					r="18"
+					fill="none"
+					strokeDasharray={`${filled} ${circumference}`}
+					transform="rotate(-90 22 22)"
+				/>
+			</svg>
+			<span className="assistant-context-label">
+				{contextPercentLabel(usage)}
+			</span>
+			<span className="assistant-context-used">
+				{usage.used}/{usage.budget}
+			</span>
+		</div>
 	);
 }
 

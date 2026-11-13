@@ -1,5 +1,7 @@
 import type {
 	AssistantAction,
+	AssistantCompaction,
+	AssistantContextUsage,
 	AssistantConversation,
 	AssistantConversationStatus,
 	AssistantEvent,
@@ -100,10 +102,36 @@ export interface AssistantConversationListView {
 	readonly matches?: readonly AssistantConversationMatch[];
 }
 
-/** `GET /api/assistant/conversations/:id` 的响应：会话与全部消息。 */
+/** 压缩记录与上下文用量的响应形状与 core 的领域类型一致。 */
+export type AssistantCompactionView = AssistantCompaction;
+export type AssistantContextUsageView = AssistantContextUsage;
+export type {
+	AssistantCompaction,
+	AssistantContextPart,
+	AssistantContextPartId,
+	AssistantContextUsage,
+} from "@dramaticer/core";
+
+/** `GET /api/assistant/conversations/:id` 的响应：会话、全部消息与上下文占用。 */
 export interface AssistantConversationDetailView {
 	readonly conversation: AssistantConversationView;
 	readonly messages: readonly AssistantMessageView[];
+	/** 最新一次压缩；没有压缩过时为 null。 */
+	readonly compaction: AssistantCompactionView | null;
+	/** 下一次请求的上下文占用；`percent` 与压缩阈值同一个口径。 */
+	readonly context: AssistantContextUsageView;
+}
+
+/** `POST /api/assistant/conversations/:id/compact` 的请求体。 */
+export interface CompactAssistantConversationRequest {
+	/** 可选的手动压缩要求；自动压缩不带。 */
+	readonly instructions?: string;
+}
+
+/** 手动压缩的响应：新记录与压缩后的上下文占用。 */
+export interface AssistantCompactView {
+	readonly compaction: AssistantCompactionView;
+	readonly context: AssistantContextUsageView;
 }
 
 /** `GET /api/assistant/conversations/:id/status` 的响应。 */
@@ -183,6 +211,16 @@ export interface AssistantUsagePayload {
 	readonly usage: LlmUsage;
 }
 
+/** 自动或手动压缩的结果；失败时原消息保持不变。 */
+export interface AssistantCompactionPayload {
+	readonly status: "completed" | "failed";
+	readonly compactionId: string | null;
+	readonly omittedCount: number;
+	readonly beforeTokens: number | null;
+	readonly afterTokens: number | null;
+	readonly error: string | null;
+}
+
 export interface AssistantCompletedPayload {
 	readonly status: AssistantConversationStatus;
 	/** 运行怎么结束的：正常完成、工具次数、时长或中止。 */
@@ -201,6 +239,7 @@ export interface AssistantEventPayloadMap {
 	readonly "tool.result": AssistantToolResultPayload;
 	readonly "permission.denied": AssistantPermissionDeniedPayload;
 	readonly usage: AssistantUsagePayload;
+	readonly compaction: AssistantCompactionPayload;
 	readonly completed: AssistantCompletedPayload;
 	readonly error: AssistantErrorPayload;
 }
@@ -228,6 +267,7 @@ export const ASSISTANT_SSE_EVENT_NAMES = {
 	toolResult: "assistant.tool.result",
 	permissionDenied: "assistant.permission.denied",
 	usage: "assistant.usage",
+	compaction: "assistant.compaction",
 	completed: "assistant.completed",
 	error: "assistant.error",
 } as const;
@@ -243,6 +283,7 @@ export interface AssistantSseEventMap {
 	"assistant.tool.result": AssistantToolResultPayload;
 	"assistant.permission.denied": AssistantPermissionDeniedPayload;
 	"assistant.usage": AssistantUsagePayload;
+	"assistant.compaction": AssistantCompactionPayload;
 	"assistant.completed": AssistantCompletedPayload;
 	"assistant.error": AssistantErrorPayload;
 }

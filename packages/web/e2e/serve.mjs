@@ -64,6 +64,37 @@ for (let index = 1; index <= 130; index += 1) {
 }
 store.close();
 
+const seedStore = core.StoryStore.open(dbPath);
+seedStore.createStory({ id: "e2e-assistant-context", title: "助手上下文" });
+const seedRoot = seedStore.appendNode({
+	storyId: "e2e-assistant-context",
+	parentId: null,
+	role: "system",
+	raw: "你是故事引擎。",
+});
+seedStore.appendNode({
+	storyId: "e2e-assistant-context",
+	parentId: seedRoot.id,
+	role: "user",
+	raw: "我推开古老的山门。",
+});
+const seedConversation = seedStore.createAssistantConversation({
+	id: "e2e-assistant-context-conversation",
+	storyId: "e2e-assistant-context",
+	skill: "troubleshoot",
+	title: "上下文压缩测试",
+	contextBudget: 2_000,
+	compactionThreshold: 0.8,
+});
+for (let index = 1; index <= 12; index += 1) {
+	seedStore.appendAssistantMessage({
+		conversationId: seedConversation.id,
+		role: index % 2 === 1 ? "user" : "assistant",
+		text: `第 ${index} 条消息：门厅里的脚步声与台账路径的排障记录。`,
+	});
+}
+seedStore.close();
+
 const serverModule = await import(
 	pathToFileURL(join(root, "packages", "server", "dist", "index.js")).href
 );

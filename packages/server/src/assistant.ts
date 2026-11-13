@@ -20,9 +20,11 @@ import {
 	assertAssistantThinking,
 	assertJsonValue,
 	buildAssistantSystemPrompt,
+	compactAssistantConversation,
 	createAssistantProposalTools,
 	createAssistantSetupTools,
 	createDocsSearchTool,
+	estimateAssistantContext,
 	getAssistantSkill,
 	isAssistantActionStatus,
 	isDeepTurnStopReason,
@@ -36,7 +38,10 @@ import {
 	type AssistantActionDecisionView,
 	type AssistantActionListView,
 	type AssistantCancelView,
+	type AssistantCompactView,
+	type AssistantCompactionPayload,
 	type AssistantCompletedPayload,
+	type AssistantContextUsageView,
 	type AssistantConversationDetailView,
 	type AssistantConversationEventsView,
 	type AssistantConversationListView,
@@ -55,6 +60,7 @@ import {
 	type AssistantToolCallPayload,
 	type AssistantToolResultPayload,
 	type AssistantUsagePayload,
+	type CompactAssistantConversationRequest,
 	type CreateAssistantConversationRequest,
 	type RejectAssistantActionRequest,
 	type UpdateAssistantConversationRequest,
@@ -73,6 +79,7 @@ export interface AssistantRouteOptions {
 	/** 没有配置渠道时为 null，助手消息接口返回 500。 */
 	readonly runtime: AssistantRuntimeManager | null;
 	readonly runs: AssistantRunCoordinator;
+	readonly compactions: AssistantCompactionCoordinator;
 	readonly docsIndex: AssistantDocsIndex;
 	/** 显式开启联网搜索时才提供；没有时资料员工具里不注册 web_search。 */
 	readonly searchClient?: AssistantSearchClient | null;
@@ -146,6 +153,25 @@ export class AssistantRunCoordinator {
 			if (!run.controller.signal.aborted) run.controller.abort(reason);
 		}
 		await Promise.all(runs.map((run) => run.finished));
+	}
+}
+
+/**
+ * 同一会话同时只允许一次压缩：自动压缩在运行开始前执行，手动压缩在空闲时
+ * 执行，两者共用这把锁。拿不到锁时自动压缩跳过，手动压缩返回 409。
+ */
+export class AssistantCompactionCoordinator {
+	readonly #active = new Set<string>();
+
+	begin(conversationId: string): (() => void) | null {
+		if (this.#active.has(conversationId)) return null;
+		this.#active.add(conversationId);
+		let released = false;
+		return () => {
+			if (released) return;
+			released = true;
+			this.#active.delete(conversationId);
+		};
 	}
 }
 
@@ -238,6 +264,11 @@ export async function handleAssistantRequest(
 	if (action === "cancel") {
 		requireMethod(method, ["POST"]);
 		await handleConversationCancel(res, options, id);
+		return;
+	}
+	if (action === "compact") {
+		requireMethod(method, ["POST"]);
+		await handleConversationCompact(req, res, options, id);
 		return;
 	}
 	throw new HttpError(404, "not_found", "没有这个接口");
@@ -370,9 +401,23 @@ function handleConversationDetail(
 	id: string,
 ): void {
 	const conversation = requireConversation(options.store, id);
+	const skill = requireConversationSkill(conversation);
+	const systemPrompt = buildAssistantSystemPrompt({
+		skill: skill.id,
+		instructions: skill.instructions,
+	});
+	const messages = options.store.getAssistantMessages(id);
+	const compaction = options.store.getAssistantCompaction(id);
 	const body: AssistantConversationDetailView = {
 		conversation: toConversationView(conversation),
-		messages: options.store.getAssistantMessages(id),
+		messages,
+		compaction,
+		context: estimateAssistantContext({
+			systemPrompt,
+			messages,
+			compaction,
+			contextBudget: conversation.contextBudget,
+		}),
 	};
 	sendJson(res, 200, body);
 }
@@ -644,6 +689,10 @@ async function handleConversationMessage(
 	} catch (error) {
 		throw fieldError("modelAlias", errorMessage(error));
 	}
+	const systemPrompt = buildAssistantSystemPrompt({
+		skill: skill.id,
+		instructions: skill.instructions,
+	});
 	const ticket = options.runs.begin(id);
 	if (ticket === null) {
 		throw new HttpError(409, "conflict", `助手会话正在运行：${id}`);
@@ -660,15 +709,25 @@ async function handleConversationMessage(
 	};
 	res.once("close", onClose);
 	try {
+		await compactBeforeAssistantRun({
+			options,
+			conversation,
+			runtime,
+			systemPrompt,
+			userText: text,
+			signal: ticket.signal,
+			onEvent: (payload) => {
+				if (!clientGone) {
+					sse.send(ASSISTANT_SSE_EVENT_NAMES.compaction, payload);
+				}
+			},
+		});
 		await runAssistantTurn({
 			store: options.store,
 			client: runtime.client,
 			conversationId: id,
 			userText: text,
-			systemPrompt: buildAssistantSystemPrompt({
-				skill: skill.id,
-				instructions: skill.instructions,
-			}),
+			systemPrompt,
 			toolNames: skill.toolNames,
 			extraTools: [
 				createDocsSearchTool(options.docsIndex),
@@ -716,6 +775,177 @@ async function handleConversationMessage(
 		ticket.release();
 		sse.close();
 	}
+}
+
+/**
+ * 每次模型请求前的自动压缩：占用达到会话阈值时先压缩再运行。
+ * 压缩失败保留原消息，只写失败事件；并发压缩拿不到锁时跳过。
+ */
+async function compactBeforeAssistantRun(input: {
+	readonly options: AssistantRouteOptions;
+	readonly conversation: AssistantConversation;
+	readonly runtime: AssistantRuntime;
+	readonly systemPrompt: string;
+	readonly userText: string;
+	readonly signal: AbortSignal;
+	readonly onEvent: (payload: AssistantCompactionPayload) => void;
+}): Promise<void> {
+	const { options, conversation, runtime } = input;
+	const usage = estimateAssistantContext({
+		systemPrompt: input.systemPrompt,
+		messages: options.store.getAssistantMessages(conversation.id),
+		compaction: options.store.getAssistantCompaction(conversation.id),
+		contextBudget: conversation.contextBudget,
+		pendingUserText: input.userText,
+	});
+	if (usage.percent < conversation.compactionThreshold) return;
+	const release = options.compactions.begin(conversation.id);
+	if (release === null) return;
+	try {
+		const outcome = await compactAssistantConversation({
+			store: options.store,
+			client: runtime.client,
+			conversationId: conversation.id,
+			systemPrompt: input.systemPrompt,
+			model: runtime.modelAlias,
+			maxTokens: runtime.maxTokens,
+			signal: input.signal,
+		});
+		if (outcome === null) return;
+		const payload: AssistantCompactionPayload = {
+			status: "completed",
+			compactionId: outcome.compaction.id,
+			omittedCount: outcome.compaction.omittedMessageIds.length,
+			beforeTokens: outcome.compaction.beforeTokens,
+			afterTokens: outcome.compaction.afterTokens,
+			error: null,
+		};
+		appendCompactionEvent(options.store, conversation.id, payload);
+		input.onEvent(payload);
+	} catch (error) {
+		const payload: AssistantCompactionPayload = {
+			status: "failed",
+			compactionId: null,
+			omittedCount: 0,
+			beforeTokens: null,
+			afterTokens: null,
+			error: errorMessage(error),
+		};
+		appendCompactionEvent(options.store, conversation.id, payload);
+		input.onEvent(payload);
+		if (input.signal.aborted) throw error;
+		options.log(`助手上下文压缩失败：${errorMessage(error)}`);
+	} finally {
+		release();
+	}
+}
+
+/** 手动压缩：空闲时按给定要求生成摘要；运行中或已有压缩时返回 409。 */
+async function handleConversationCompact(
+	req: IncomingMessage,
+	res: ServerResponse,
+	options: AssistantRouteOptions,
+	id: string,
+): Promise<void> {
+	const conversation = requireConversation(options.store, id);
+	if (conversation.status === "running" || options.runs.get(id) !== null) {
+		throw new HttpError(409, "conflict", `助手会话正在运行：${id}`);
+	}
+	const body = await readObjectBody(req, options.maxJsonBodyBytes);
+	assertKnownKeys(body, ["instructions"]);
+	const request: CompactAssistantConversationRequest = {
+		...(body.instructions === undefined
+			? {}
+			: { instructions: requireText(body.instructions, "instructions") }),
+	};
+	if (options.runtime === null) {
+		throw new HttpError(500, "internal", "服务端没有配置渠道");
+	}
+	let runtime: AssistantRuntime;
+	try {
+		runtime = await options.runtime.get(conversation);
+	} catch (error) {
+		throw fieldError("modelAlias", errorMessage(error));
+	}
+	const skill = requireConversationSkill(conversation);
+	const systemPrompt = buildAssistantSystemPrompt({
+		skill: skill.id,
+		instructions: skill.instructions,
+	});
+	const release = options.compactions.begin(id);
+	if (release === null) {
+		throw new HttpError(409, "conflict", `助手会话正在压缩：${id}`);
+	}
+	try {
+		const outcome = await compactAssistantConversation({
+			store: options.store,
+			client: runtime.client,
+			conversationId: id,
+			systemPrompt,
+			model: runtime.modelAlias,
+			maxTokens: runtime.maxTokens,
+			instructions: request.instructions ?? null,
+		});
+		if (outcome === null) {
+			throw new HttpError(409, "conflict", "没有可以压缩的消息");
+		}
+		const payload: AssistantCompactionPayload = {
+			status: "completed",
+			compactionId: outcome.compaction.id,
+			omittedCount: outcome.compaction.omittedMessageIds.length,
+			beforeTokens: outcome.compaction.beforeTokens,
+			afterTokens: outcome.compaction.afterTokens,
+			error: null,
+		};
+		appendCompactionEvent(options.store, id, payload);
+		const context: AssistantContextUsageView = estimateAssistantContext({
+			systemPrompt,
+			messages: options.store.getAssistantMessages(id),
+			compaction: outcome.compaction,
+			contextBudget: conversation.contextBudget,
+		});
+		const view: AssistantCompactView = {
+			compaction: outcome.compaction,
+			context,
+		};
+		sendJson(res, 200, view);
+	} catch (error) {
+		if (error instanceof HttpError) throw error;
+		appendCompactionEvent(options.store, id, {
+			status: "failed",
+			compactionId: null,
+			omittedCount: 0,
+			beforeTokens: null,
+			afterTokens: null,
+			error: errorMessage(error),
+		});
+		throw new HttpError(
+			500,
+			"internal",
+			`上下文压缩失败：${errorMessage(error)}`,
+		);
+	} finally {
+		release();
+	}
+}
+
+function appendCompactionEvent(
+	store: StoryStore,
+	conversationId: string,
+	payload: AssistantCompactionPayload,
+): void {
+	store.appendAssistantEvent({
+		conversationId,
+		kind: "compaction",
+		payload: {
+			status: payload.status,
+			compactionId: payload.compactionId,
+			omittedCount: payload.omittedCount,
+			beforeTokens: payload.beforeTokens,
+			afterTokens: payload.afterTokens,
+			error: payload.error,
+		},
+	});
 }
 
 /**
@@ -770,6 +1000,10 @@ type AssistantSseEvent =
 	| {
 			readonly event: typeof ASSISTANT_SSE_EVENT_NAMES.usage;
 			readonly data: AssistantUsagePayload;
+	  }
+	| {
+			readonly event: typeof ASSISTANT_SSE_EVENT_NAMES.compaction;
+			readonly data: AssistantCompactionPayload;
 	  }
 	| {
 			readonly event: typeof ASSISTANT_SSE_EVENT_NAMES.completed;
@@ -853,6 +1087,37 @@ function toAssistantSseEvent(event: AssistantEvent): AssistantSseEvent {
 				data: { usage: toLlmUsage(usage) },
 			};
 		}
+		case "compaction": {
+			const status = payload.status;
+			if (status !== "completed" && status !== "failed") {
+				throw new Error(`助手 compaction 事件的状态不合法：${String(status)}`);
+			}
+			const compactionId = payload.compactionId;
+			if (compactionId !== null && typeof compactionId !== "string") {
+				throw new Error(
+					"助手 compaction 事件的 compactionId 必须是字符串或 null",
+				);
+			}
+			const omittedCount = payload.omittedCount;
+			if (typeof omittedCount !== "number") {
+				throw new Error("助手 compaction 事件的 omittedCount 必须是数字");
+			}
+			const error = payload.error;
+			if (error !== null && typeof error !== "string") {
+				throw new Error("助手 compaction 事件的 error 必须是字符串或 null");
+			}
+			return {
+				event: ASSISTANT_SSE_EVENT_NAMES.compaction,
+				data: {
+					status,
+					compactionId,
+					omittedCount,
+					beforeTokens: readNullableNumber(payload, "beforeTokens"),
+					afterTokens: readNullableNumber(payload, "afterTokens"),
+					error,
+				},
+			};
+		}
 		case "completed": {
 			const status = payload.status;
 			assertAssistantConversationStatus(status, "助手 completed 事件的状态");
@@ -899,6 +1164,9 @@ function sendAssistantEvent(
 			sse.send(event.event, event.data);
 			return;
 		case ASSISTANT_SSE_EVENT_NAMES.usage:
+			sse.send(event.event, event.data);
+			return;
+		case ASSISTANT_SSE_EVENT_NAMES.compaction:
 			sse.send(event.event, event.data);
 			return;
 		case ASSISTANT_SSE_EVENT_NAMES.completed:
@@ -955,6 +1223,18 @@ function requireConversation(
 		throw new HttpError(404, "not_found", `助手会话不存在：${id}`);
 	}
 	return conversation;
+}
+
+function requireConversationSkill(conversation: AssistantConversation) {
+	const skill = getAssistantSkill(conversation.skill);
+	if (skill === null) {
+		throw new HttpError(
+			500,
+			"internal",
+			`助手会话 ${conversation.id} 的技能未注册：${conversation.skill}`,
+		);
+	}
+	return skill;
 }
 
 function toConversationView(

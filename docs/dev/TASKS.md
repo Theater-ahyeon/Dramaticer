@@ -1530,7 +1530,8 @@
   - 新建会话默认技能为排障、权限为修改前确认、模型为 `roles.writer`；设置在一次会话内保留，切换会话时读取该会话自己的设置。
   验收：抽屉打开、关闭、刷新后能恢复会话与运行状态；关闭后运行继续且状态标记更新；事件续读不重复消息；会话搜索、改名、删除可用；权限与技能切换写回 server；取消后状态为 `cancelled`；键盘可以打开与关闭抽屉，焦点不留在隐藏元素上；助手操作不改变楼层数量与 head；web 单元测试与 Playwright 用例覆盖打开、关闭后继续运行、重新连接三条路径；`pnpm check` 与目标 e2e 通过。
 
-- [ ] **H-T08 上下文压缩与用量环** | 依赖：H-T02、H-T07 | DESIGN §10.3 | ADR-0125 | I11
+- [x] **H-T08 上下文压缩与用量环** | 依赖：H-T02、H-T07 | DESIGN §10.3 | ADR-0125 | I11
+  完成：2026-11-13 迁移 v46 新增 `assistant_compactions`（只追加，删除会话时级联删除）；新增 `assistant/context.ts`（`estimateAssistantContext`、`buildAssistantRequestMessages`、`compactAssistantConversation`），用量按系统提示、摘要、消息与工具结果四部分估算并给出 `used`、`budget`、`percent`；server 在每次请求前检查阈值并先压缩，手动 `POST /api/assistant/conversations/:id/compact` 可附要求，压缩失败保留原消息并写 `compaction` 事件；详情接口返回最新压缩与用量；抽屉新增用量环、摘要折叠面板与手动压缩表单；新增 `assistant-context.test.ts`（9 个）与 `assistant-context-usage.test.ts`（3 个），扩充 store、server、API 与事件流断言，desktop/mobile 各 4 条 e2e 通过；门禁通过（253 个测试文件、2170 个测试、5 个跳过）
   做什么：
   - 新增 `assistant/context.ts`：按消息、系统提示与附件估算下一次请求的 token；会话报告 `context_used`、`context_budget`、`context_percent` 与各部分占用。用量环读取这三个字段，悬停显示输入、输出、工具结果与摘要的占比。
   - 迁移 v46 新建 `assistant_compactions(id, conversation_id, seq, summary, omitted_message_ids, before_tokens, after_tokens, created_at)`；压缩把较早的消息合并成一条 `system` 摘要消息，保留最近 N 条（默认 10）与被待确认动作引用的消息，省略的消息 id 写进压缩记录。摘要由会话选择的模型生成，使用 `NO_CONTINUATION`，失败时保留原上下文并把失败写进事件，不丢消息。

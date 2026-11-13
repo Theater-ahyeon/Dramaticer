@@ -2255,6 +2255,84 @@ button.branch-select:hover {
 	color: var(--danger);
 }
 
+.assistant-context {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	margin-left: auto;
+	color: var(--muted);
+	font-size: 0.72rem;
+}
+
+.assistant-context svg {
+	width: 26px;
+	height: 26px;
+}
+
+.assistant-context-track {
+	stroke: var(--border);
+	stroke-width: 4;
+}
+
+.assistant-context-fill {
+	stroke: var(--accent);
+	stroke-width: 4;
+	stroke-linecap: round;
+	transition: stroke-dasharray 200ms ease;
+}
+
+.assistant-context-warn .assistant-context-fill {
+	stroke: #b45309;
+}
+
+.assistant-context-danger .assistant-context-fill {
+	stroke: var(--danger);
+}
+
+.assistant-context-used {
+	color: var(--muted);
+}
+
+.assistant-compaction {
+	padding: 6px 8px;
+	border: 1px dashed var(--border);
+	border-radius: 8px;
+	font-size: 0.8rem;
+}
+
+.assistant-compaction summary {
+	cursor: pointer;
+	color: var(--muted);
+}
+
+.assistant-compaction pre {
+	margin: 6px 0 0;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	font: inherit;
+}
+
+.assistant-compact {
+	display: flex;
+	gap: 6px;
+}
+
+.assistant-compact input {
+	flex: 1 1 auto;
+	min-width: 0;
+	padding: 6px 8px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--surface);
+	color: var(--text);
+	font: inherit;
+}
+
+.assistant-compact button {
+	flex: 0 0 auto;
+}
+
 .assistant-composer {
 	display: flex;
 	flex-direction: column;

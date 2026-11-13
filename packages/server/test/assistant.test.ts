@@ -15,6 +15,7 @@ import type {
 	AssistantActionDecisionView,
 	AssistantActionListView,
 	AssistantCancelView,
+	AssistantCompactView,
 	AssistantConversationDetailView,
 	AssistantConversationEventsView,
 	AssistantConversationListView,
@@ -116,14 +117,45 @@ interface FakeReply {
 
 class ScriptedClient implements LlmStreamingClient {
 	readonly requests: LlmRequest[] = [];
+	readonly completions: LlmRequest[] = [];
 	readonly #replies: FakeReply[];
+	readonly #summary: string | null;
 
-	constructor(replies: readonly FakeReply[]) {
+	constructor(replies: readonly FakeReply[], summary: string | null = null) {
 		this.#replies = [...replies];
+		this.#summary = summary;
 	}
 
-	async complete(): Promise<LlmResult> {
-		throw new Error("助手运行不应该调用 complete");
+	async complete(
+		request: LlmRequest,
+		_options?: LlmCallOptions,
+	): Promise<LlmResult> {
+		this.completions.push(request);
+		if (this.#summary === null) {
+			throw new Error("助手运行不应该调用 complete");
+		}
+		return {
+			text: this.#summary,
+			reasoning: "",
+			toolCalls: [],
+			finishReason: "stop",
+			stopReason: "stop",
+			model: "fake-model",
+			channel: "fake",
+			usage: {
+				promptTokens: 10,
+				completionTokens: 5,
+				totalTokens: 15,
+				reasoningTokens: 0,
+				cachedTokens: 0,
+			},
+			raw: null,
+			cached: false,
+			attempts: 1,
+			rounds: 1,
+			truncation: null,
+			continuation: null,
+		};
 	}
 
 	stream(request: LlmRequest, _options?: LlmCallOptions): LlmStream {
@@ -558,6 +590,21 @@ function seedStory(running: RunningServer): {
 	return { userNodeId: user.id };
 }
 
+function seedAssistantMessages(
+	store: RunningServer["store"],
+	conversationId: string,
+	count: number,
+	text = "较长的上下文内容用来超过预算。",
+): void {
+	for (let index = 1; index <= count; index += 1) {
+		store.appendAssistantMessage({
+			conversationId,
+			role: index % 2 === 1 ? "user" : "assistant",
+			text: `${index}:${text}`,
+		});
+	}
+}
+
 describe("助手消息接口", () => {
 	it("SSE 推送工具事件并写入消息与事件，不写楼层", async () => {
 		const call: LlmToolCall = {
@@ -693,6 +740,163 @@ describe("助手消息接口", () => {
 		expect(second.store.getAssistantConversation(conversation.id)?.status).toBe(
 			"interrupted",
 		);
+	});
+});
+
+describe("助手上下文压缩接口", () => {
+	it("自动压缩在请求前发生，摘要进入请求且消息数下降", async () => {
+		const client = new ScriptedClient(
+			[{ text: "继续回答" }],
+			"自动摘要：较早的排障结论。",
+		);
+		const running = await startTestServerWithChannels(client);
+		seedStory(running);
+		const conversation = await createConversation(running.origin, {
+			storyId: "story-1",
+			skill: "guide",
+			contextBudget: 160,
+			compactionThreshold: 0.5,
+		});
+		seedAssistantMessages(running.store, conversation.id, 12);
+
+		const response = await post(
+			running.origin,
+			`/api/assistant/conversations/${conversation.id}/messages`,
+			{ text: "继续" },
+		);
+		expect(response.status).toBe(200);
+		const frames = parseFrames(await response.text());
+		const compaction = frameData(frames, "assistant.compaction");
+		expect(compaction.status).toBe("completed");
+		expect(compaction.omittedCount).toBe(2);
+		expect(client.completions).toHaveLength(1);
+
+		const stored = running.store.getAssistantCompaction(conversation.id);
+		expect(stored?.omittedMessageIds).toEqual([1, 2]);
+		expect(stored?.beforeTokens).toBeGreaterThan(stored?.afterTokens ?? 0);
+		const request = client.requests[0];
+		const joined = request?.messages
+			.map((message) => message.content)
+			.join("\n");
+		expect(joined).toContain("更早对话的摘要：\n自动摘要：较早的排障结论。");
+		expect(request?.messages).toHaveLength(13);
+		expect(running.store.getAssistantMessages(conversation.id)).toHaveLength(
+			14,
+		);
+		const head = running.store.getHead("story-1")?.id ?? "";
+		expect(running.store.getValidCompressions("story-1", head)).toEqual([]);
+		expect(running.store.getPathToHead("story-1")).toHaveLength(2);
+	});
+
+	it("自动压缩失败时照常运行，失败写入事件且不丢消息", async () => {
+		const client = new ScriptedClient([{ text: "照常回答" }]);
+		const running = await startTestServerWithChannels(client);
+		seedStory(running);
+		const conversation = await createConversation(running.origin, {
+			storyId: "story-1",
+			skill: "guide",
+			contextBudget: 160,
+			compactionThreshold: 0.5,
+		});
+		seedAssistantMessages(running.store, conversation.id, 12);
+
+		const response = await post(
+			running.origin,
+			`/api/assistant/conversations/${conversation.id}/messages`,
+			{ text: "继续" },
+		);
+		expect(response.status).toBe(200);
+		const frames = parseFrames(await response.text());
+		const compaction = frameData(frames, "assistant.compaction");
+		expect(compaction.status).toBe("failed");
+		expect(compaction.error).toContain("助手运行不应该调用 complete");
+		expect(frameData(frames, "assistant.completed").status).toBe("completed");
+		expect(running.store.getAssistantCompaction(conversation.id)).toBeNull();
+		expect(running.store.getAssistantMessages(conversation.id)).toHaveLength(
+			14,
+		);
+		expect(client.requests[0]?.messages).toHaveLength(14);
+	});
+
+	it("手动压缩按给定要求生成摘要，写事件并保留原消息", async () => {
+		const client = new ScriptedClient([], "手动摘要：保留排障结论。");
+		const running = await startTestServerWithChannels(client);
+		const conversation = await createConversation(running.origin, {
+			skill: "guide",
+		});
+		seedAssistantMessages(running.store, conversation.id, 12);
+
+		const response = await post(
+			running.origin,
+			`/api/assistant/conversations/${conversation.id}/compact`,
+			{ instructions: "保留排障结论" },
+		);
+		expect(response.status).toBe(200);
+		const body = (await response.json()) as AssistantCompactView;
+		expect(body.compaction.omittedMessageIds).toEqual([1, 2]);
+		expect(body.compaction.summary).toContain("手动摘要");
+		expect(body.context.used).toBe(body.compaction.afterTokens);
+		expect(client.completions[0]?.messages[1]?.content).toContain(
+			"附加要求：保留排障结论",
+		);
+
+		const detail = await request(
+			running.origin,
+			`/api/assistant/conversations/${conversation.id}`,
+		);
+		const detailBody = (await detail.json()) as AssistantConversationDetailView;
+		expect(detailBody.compaction?.id).toBe(body.compaction.id);
+		expect(detailBody.context.used).toBe(body.context.used);
+		expect(detailBody.messages).toHaveLength(12);
+
+		const events = await request(
+			running.origin,
+			`/api/assistant/conversations/${conversation.id}/events`,
+		);
+		const eventsBody = (await events.json()) as AssistantConversationEventsView;
+		expect(
+			eventsBody.events.some(
+				(event) =>
+					event.kind === "compaction" && event.payload.status === "completed",
+			),
+		).toBe(true);
+
+		const again = await post(
+			running.origin,
+			`/api/assistant/conversations/${conversation.id}/compact`,
+			{},
+		);
+		expect(again.status).toBe(409);
+	});
+
+	it("压缩失败保留消息、写失败事件并返回错误", async () => {
+		const client = new ScriptedClient([]);
+		const running = await startTestServerWithChannels(client);
+		const conversation = await createConversation(running.origin, {
+			skill: "guide",
+		});
+		seedAssistantMessages(running.store, conversation.id, 12);
+
+		const response = await post(
+			running.origin,
+			`/api/assistant/conversations/${conversation.id}/compact`,
+			{},
+		);
+		expect(response.status).toBe(500);
+		expect(running.store.getAssistantCompaction(conversation.id)).toBeNull();
+		expect(running.store.getAssistantMessages(conversation.id)).toHaveLength(
+			12,
+		);
+		const events = await request(
+			running.origin,
+			`/api/assistant/conversations/${conversation.id}/events`,
+		);
+		const eventsBody = (await events.json()) as AssistantConversationEventsView;
+		const failed = eventsBody.events.find(
+			(event) =>
+				event.kind === "compaction" && event.payload.status === "failed",
+		);
+		expect(failed).toBeDefined();
 	});
 });
 
