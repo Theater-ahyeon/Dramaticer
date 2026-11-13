@@ -74,6 +74,8 @@ export interface StEjsRuntimeOptions {
 	readonly estimateTokens?: (text: string) => number;
 	/** `getwi` 输出的 token 上限；不传时不限制。 */
 	readonly tokenBudget?: number;
+	/** 隔离执行器；提供之后模板不再在主线程里执行。 */
+	readonly executor?: StEjsTemplateExecutor;
 }
 
 export interface StEjsRenderOptions {
@@ -101,6 +103,21 @@ export interface StEjsPromptInjection {
 	readonly order: number;
 	readonly sticky: number;
 	readonly uid: string;
+}
+
+/**
+ * 一段模板在隔离执行器里的请求。模板文本已经做完转义处理；
+ * `escape` 为 `remote` 时调用方另外提供 `<%=` 的格式化。
+ */
+export interface StEjsTemplateExecution {
+	readonly template: string;
+	readonly source: string;
+	readonly escape: "string" | "remote";
+}
+
+/** 模板执行器（沙箱）。渲染入口由运行时提供文本，执行器只负责隔离与超时。 */
+export interface StEjsTemplateExecutor {
+	execute(execution: StEjsTemplateExecution): Promise<string>;
 }
 
 /** 模板与激活正则共用的变量函数。 */
@@ -233,6 +250,8 @@ export class StEjsRuntime {
 	readonly #regexes: StEjsActivatedRegexScript[] = [];
 	#variableSchema: StEjsVariableSchemaNode | null = null;
 	#evalDepth = 0;
+	#executor: StEjsTemplateExecutor | null;
+	readonly #formatEscapedCustom: boolean;
 
 	constructor(options: StEjsRuntimeOptions = {}) {
 		this.variables = new StEjsVariableStore(options.variables, {
@@ -251,6 +270,8 @@ export class StEjsRuntime {
 			}
 		}
 		this.#formatEscaped = options.formatEscaped ?? stringifyOutput;
+		this.#formatEscapedCustom = options.formatEscaped !== undefined;
+		this.#executor = options.executor ?? null;
 		this.#data = new StEjsDataReader(options.data ?? {});
 		const estimateTokens = options.estimateTokens ?? defaultStEjsTokenEstimator;
 		this.#worldInfo = new StEjsWorldInfo(
@@ -282,6 +303,42 @@ export class StEjsRuntime {
 
 	getWrites(): readonly StEjsVariableWrite[] {
 		return this.variables.writes;
+	}
+
+	/** 切换隔离执行器；模板之后只在执行器里编译与执行。 */
+	setExecutor(executor: StEjsTemplateExecutor | null): void {
+		this.#executor = executor;
+	}
+
+	/** 沙箱里允许出现的函数名；`print`、`define`、`evalTemplate` 在沙箱里自带。 */
+	listSandboxFunctions(): readonly string[] {
+		return Object.entries(this.#functionTable())
+			.filter(([, value]) => typeof value === "function")
+			.map(([name]) => name);
+	}
+
+	/** `<%=` 的格式化结果；沙箱里经远程调用取这个值。 */
+	formatEscapedValue(value: unknown): string {
+		return this.#formatEscaped(stringifyOutput(value));
+	}
+
+	/**
+	 * 沙箱模板发起的函数调用。名字必须出现在函数表里；参数已经还原成普通值。
+	 * 调用方保证只有允许清单里的名字会到达这里。
+	 */
+	invokeSandboxFunction(name: string, args: readonly unknown[]): unknown {
+		if (name === "__escape") {
+			const [value] = args;
+			if (typeof value !== "string") {
+				throw new StEjsVariableError("__escape 的参数必须是字符串");
+			}
+			return this.formatEscapedValue(value);
+		}
+		const fn = this.#functionTable()[name];
+		if (typeof fn !== "function") {
+			throw new StEjsVariableError(`模板函数 ${name} 不在允许清单里`);
+		}
+		return fn(...args);
 	}
 
 	getInjections(): readonly StEjsPromptInjection[] {
@@ -451,6 +508,14 @@ export class StEjsRuntime {
 	): Promise<string> {
 		const source = options.source ?? "模板";
 		const prepared = prepareTemplate(text, options.unescapeHtmlTags ?? false);
+		const executor = this.#executor;
+		if (executor !== null) {
+			return executor.execute({
+				template: prepared,
+				source,
+				escape: this.#formatEscapedCustom ? "remote" : "string",
+			});
+		}
 		const locals = this.#buildLocals(extraLocals);
 		const chunks: string[] = [];
 		const append = (...values: unknown[]) => {
@@ -511,12 +576,7 @@ export class StEjsRuntime {
 		return { getvar, setvar, incvar, decvar, delvar, insvar };
 	}
 
-	#buildLocals(extraLocals: Record<string, unknown>): Record<string, unknown> {
-		const locals: Record<string, unknown> = {};
-		for (const [name, value] of this.#definitions) {
-			locals[name] = typeof value === "function" ? value.bind(locals) : value;
-		}
-		Object.assign(locals, extraLocals);
+	#functionTable(): Record<string, unknown> {
 		const {
 			getvar,
 			setvar,
@@ -570,7 +630,7 @@ export class StEjsRuntime {
 		const globalScope = scoped("global");
 		const localScope = scoped("local");
 		const messageScope = scoped("message");
-		Object.assign(locals, {
+		return {
 			variables: this.variables.variables,
 			getvar,
 			setvar,
@@ -596,17 +656,6 @@ export class StEjsRuntime {
 			decMessageVar: messageScope.dec,
 			delMessageVar: messageScope.del,
 			insertMessageVar: messageScope.insert,
-			define: (name: unknown, value: unknown, merge = false) => {
-				const localName = assertLocalName(name);
-				const existing = this.#definitions.get(localName);
-				if (merge && existing !== undefined) {
-					this.#definitions.set(localName, lodash.merge(existing, value));
-					return;
-				}
-				this.#definitions.set(localName, value);
-			},
-			evalTemplate: (content: string, data: Record<string, unknown> = {}) =>
-				this.#evalTemplate(content, data),
 			getChatMessage: (index: number, role?: StEjsMessageRole) =>
 				this.#getChatMessage(index, role),
 			getChatMessages: (...args: unknown[]) => this.#getChatMessages(args),
@@ -674,7 +723,29 @@ export class StEjsRuntime {
 				options?: StEjsVariableOptionsInput,
 			) => this.patchVariables(patch, options),
 			setVariableSchema: (schema: unknown) => this.setVariableSchema(schema),
-		});
+		};
+	}
+
+	#buildLocals(extraLocals: Record<string, unknown>): Record<string, unknown> {
+		const locals: Record<string, unknown> = {};
+		for (const [name, value] of this.#definitions) {
+			locals[name] = typeof value === "function" ? value.bind(locals) : value;
+		}
+		Object.assign(locals, extraLocals);
+		Object.assign(locals, this.#functionTable());
+		locals.define = (name: unknown, value: unknown, merge = false) => {
+			const localName = assertLocalName(name);
+			const existing = this.#definitions.get(localName);
+			if (merge && existing !== undefined) {
+				this.#definitions.set(localName, lodash.merge(existing, value));
+				return;
+			}
+			this.#definitions.set(localName, value);
+		};
+		locals.evalTemplate = (
+			content: string,
+			data: Record<string, unknown> = {},
+		) => this.#evalTemplate(content, data);
 		return locals;
 	}
 

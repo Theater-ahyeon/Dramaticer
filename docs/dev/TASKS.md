@@ -1381,14 +1381,31 @@
   - `parseJSON`、`jsonPatch`、`patchVariables`、`setVariableSchema`。
   验收：世界书递归与同世界书省略参数有测试；`getwi` 的结果再次进入模板处理与 token 预算；JSON 与补丁函数有测试；`pnpm check` 通过。
 
-- [ ] **C-T04.c worker 隔离、时间预算与流水线接入** | 依赖：C-T04.b.b
+- **C-T04.c worker 隔离、时间预算与流水线接入**（已拆成 C-T04.c.a 至 C-T04.c.d） | 依赖：C-T04.b.b
+  总验收：沙箱逃逸测试通过（模板拿不到 `process`、`require`、文件系统与网络）；超时用例留下 Trace 且回合继续；EJS 只修改 ST 内容，harness 槽位逐字节不变；变量读写与 MVU 是同一份数据且有测试；模板发起的生成作为后台任务且按卡限流；`pnpm check` 通过。
+
+- [x] **C-T04.c.a 沙箱执行与超时重建** | 依赖：C-T04.b.b
+  完成：2026-11-13 新增 `st-ejs/sandbox.ts`（worker 内每个执行新建 `node:vm` 上下文，EJS 在 worker 里编译成源码后于上下文里求值；模板函数按允许清单在上下文里定义，经同步 RPC 回到主线程的运行时执行，结果写 `SharedArrayBuffer` 后 `Atomics.notify`；变量快照与函数回包用带标记的 JSON 编解码；默认 5 秒预算，超时终止 worker 并重新启动，执行记录带来源、耗时、结果、原因与调用过的函数）；`StEjsRuntime` 增加 `executor` 选项、`setExecutor`、`#functionTable`、`listSandboxFunctions`、`invokeSandboxFunction` 与 `formatEscapedValue`，`#render` 在沙箱模式下只准备文本；新增 10 个测试（逃逸、超时重建、变量写入、`print`/`define`/`evalTemplate`、世界书嵌套渲染、允许清单）；ADR-0114；门禁通过（221 个测试文件、1971 个测试、5 个跳过）
   做什么：
-  - 把模板编译与执行放进 `worker_threads`，`node:vm` 不作为安全边界；主线程只传文本、变量快照与允许的函数清单，超时终止 worker 并重建。
-  - 每次模板执行计入回合内时间预算，超时跳过该条并写 Trace（来源、耗时、跳过原因），`dramaticer explain` 能读到。
+  - 模板编译在 worker 里进行，模板函数在 `node:vm` 上下文里执行；主线程只传模板文本、变量快照、允许的函数清单与格式化方式，函数调用经同步 RPC 回到主线程执行，沙箱里拿不到任何主线程对象。
+  - 超时终止 worker 并重建，执行记录带来源、耗时、结果、跳过原因与调用过的函数名。
+  验收：模板拿不到 `process`、`require`、`fetch`、`Buffer`、动态 `import` 与文件系统；超时后同一沙箱能继续执行下一次渲染；变量读写、`print`、`define`、`evalTemplate` 与嵌套世界书渲染在沙箱里输出与主线程渲染一致；`pnpm check` 通过。
+
+- [ ] **C-T04.c.b 回合内时间预算与 Trace** | 依赖：C-T04.c.a
+  做什么：
+  - 每次模板执行计入回合内时间预算，超时跳过该条并写 `TurnHookTraceEntry`（来源、耗时、跳过原因、调用的函数），`dramaticer explain` 能读到。
+  验收：超时用例的 Trace 可在 `dramaticer explain` 输出里读到，回合继续；未超时也记录耗时；`pnpm check` 通过。
+
+- [ ] **C-T04.c.c st-content 流水线接入与变量视图** | 依赖：C-T04.c.b
+  做什么：
   - 接入 `st-content` 的预设、世界书与深度注入：EJS 只作用于来自 ST 的内容，进入槽位前完成；不碰记忆、台账、导演与写作契约等 harness 槽位。
   - 变量来源接到 ST 的变量视图：与 MVU 使用同一份台账数据（`mvu` 子树），读经台账快照，写经待结算视图与结算器校验；全局与消息级变量留在插件自己的存储里，不新建台账事实。
+  验收：EJS 只修改 ST 内容，harness 槽位逐字节不变；变量读写与 MVU 是同一份数据且有测试；`pnpm check` 通过。
+
+- [ ] **C-T04.c.d 模板发起的生成** | 依赖：C-T04.c.c
+  做什么：
   - 模板发起的生成按卡限流并作为后台任务执行，不进入回合内（I6、I11）。
-  验收：沙箱逃逸测试通过（模板拿不到 `process`、`require`、文件系统与网络）；超时用例留下 Trace 且回合继续；EJS 只修改 ST 内容，harness 槽位逐字节不变；变量读写与 MVU 是同一份数据且有测试；`pnpm check` 通过。
+  验收：模板发起的生成走后台渠道、单独计数并受卡级限流；回合内不等待生成；`pnpm check` 通过。
 
 - [ ] **C-T04.d EJS 一致性测试与共存评测** | 依赖：C-T04.a 至 C-T04.c
   做什么：

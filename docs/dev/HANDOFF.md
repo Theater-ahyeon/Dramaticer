@@ -3,39 +3,38 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-13 会话 343：C-T04.b.b 完成，门禁通过（220 个测试文件、1961 个测试、5 个跳过）。
+- 2026-11-13 会话 344：C-T04.c.a 完成，门禁通过（221 个测试文件、1971 个测试、5 个跳过）。
 - 实现：
-  - `packages/st-compat/src/st-ejs/world-info.ts`：`getwi`/`getWorldInfo` 省略世界书名时用 `currentWorld`，没有当前世界书时按顺序搜索全部世界书；按 `comment` 再按关键词精确匹配（默认不区分大小写），显式读取可以读到禁用条目。默认把条目正文当成模板渲染，`raw: true` 跳过；渲染结果计入 `estimateTokens` 并受 `tokenBudget` 限制（`StEjsBudgetError`），嵌套读取上限 8 层。`recursive: true` 用首次渲染结果做 `activateStWorldInfo` 扫描（`scanDepth: 1`、递归、默认 3 轮），常量条目与首次命中的条目不重复返回。
-  - 同一模块的激活函数维护本次运行的强制激活表：`activateWorldInfo(world, keys?)` 加入指定世界书的启用条目，`activateWorldInfoByKeywords(text)` 用文本扫描后加入；`getWorldInfoActivatedData()` 先返回当前楼层关键词命中的条目（`activatedBy: "keyword"`），再接强制激活条目，条目元数据从世界书补齐；`selectActivatedEntries` 接受名称、`世界.uid`、`世界/注释` 或条目对象；`getWorldInfoData` 与 `getEnabledWorldInfoEntries` 提供条目视图。激活结果按运行时楼层扫描一次后缓存。
-  - `packages/st-compat/src/st-ejs/data.ts`：角色卡、预设、快捷回复通过 `StEjsRuntimeOptions.data` 注入。`getchar`/`getCharData` 支持字段别名（`first_mes`、`firstMessage`、`mes_example` 等）与整卡视图；`getpreset(name?)` 省略名称用当前预设；`getqr(label)` 跨集合按标签查找，`getqr(set, label)` 限定集合；`getQuickReplyData(name?)` 返回全部或指定集合；`normalizeStEjsQuickReplySet` 归一酒馆 `qrList` 格式。未知名称与缺数据直接抛 `StEjsDataError`。
-  - `packages/st-compat/src/st-ejs/json.ts`：`parseJSON` 先严格 JSON，只有以 `{` 或 `[` 开头才用 YAML 接受单引号与尾逗号；`jsonPatch` 按 RFC 6902 支持 `add`、`remove`、`replace`、`move`、`copy`、`test`，实现 JSON Pointer 转义、数组 `-` 与下标边界，拒绝原型路径，输入对象不变，错误带序号与操作名。
-  - `packages/st-compat/src/st-ejs/schema.ts`：`StEjsVariableSchemaNode`（`type`、`properties`、`items`、`required`、`enum`）与注册时校验、按路径取值校验。
-  - `StEjsRuntime` 新增 `getWorldInfo`、`activateWorldInfo`、`activateWorldInfoByKeywords`、`getWorldInfoData`、`getWorldInfoActivatedData`、`getEnabledWorldInfoEntries`、`selectActivatedEntries`、`getCharData`、`getPreset`、`getQuickReply`、`getQuickReplyData`、`patchVariables`、`setVariableSchema`、`getTokenUsage`、`getTokenTotal`、`setTokenBudget`，模板局部变量里有对应的 `getwi`/`getWorldInfo`、`activewi`/`activateWorldInfo`、`getchar`/`getCharData`、`getqr`/`getQuickReplyData`、`parseJSON`、`jsonPatch`、`patchVariables`、`setVariableSchema`。`patchVariables` 把变化的顶层键写回目标作用域；`setVariableSchema` 校验 `setvar`、`incvar`、`decvar` 与补丁结果。
-- 测试：新增 `st-ejs-world-info.test.ts` 10 个、`st-ejs-data.test.ts` 7 个、`st-ejs-json.test.ts` 7 个。ADR-0113。
+  - `packages/st-compat/src/st-ejs/sandbox.ts`：`StEjsSandbox` 实现 `StEjsTemplateExecutor`。worker 由内联源码启动（`eval: true`、空 `execArgv`），每次执行在 worker 里新建一个 `node:vm` 上下文；EJS 在 worker 里用 `ejs.compile({client: true, compileDebug: true, async: true})` 生成函数源码，再在上下文里用间接 `eval` 求值。模板因此拿不到 `process`、`require`、`Buffer`、`fetch`，动态 `import` 以 `ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING` 失败，`Function` 构造的代码也只跑在上下文里。
+  - 主线程只传模板文本、变量快照、允许的函数清单与格式化方式；上下文里的函数由 bootstrap 按清单定义，调用时把 `(名字, 参数 JSON)` 发给主线程，主线程在运行时函数表里执行后写 `SharedArrayBuffer` 并 `Atomics.notify`，模板线程 `Atomics.wait` 同步等待，所以 `getvar`/`setvar`/`getwi` 在模板里仍是同步调用。`getwi` 的嵌套渲染由主线程再申请一个新 worker。
+  - 编解码 `encodeSandboxValue`/`decodeSandboxValue`：`undefined` 与正则换成带标记对象，函数、bigint、循环引用直接抛错。`print`、`define`、`evalTemplate` 在上下文里实现；`define` 的作用域是一次执行（含它的 `evalTemplate`），不跨多次 `render`。
+  - 默认 5 秒预算（`budgetMs` 可配）：超时终止 worker 并抛 `StEjsSandboxTimeoutError`（来源、耗时、预算、调用的函数）；`run()` 把超时作为 `output: null`、`outcome: "timeout"` 的执行记录返回。超时 worker 不进空闲池，下一次执行重新启动。空闲 worker 最多 2 个。
+  - `StEjsRuntime` 增加 `executor` 选项、`setExecutor`、`listSandboxFunctions`、`invokeSandboxFunction`、`formatEscapedValue`，`#buildLocals` 拆出 `#functionTable`；`#render` 在沙箱模式下只做 `prepareTemplate`（`<#escape-ejs>` 与 HTML 转义还原）再交给执行器，`<%=` 的自定义格式化经 `__escape` 远程调用。
+- 测试：新增 `st-ejs-sandbox.test.ts` 10 个（变量写入、`print`/`define`/`evalTemplate`、格式化远程调用、逃逸检查含 `node:fs` 与 `node:net` 的 import、允许清单、超时后继续执行、超时错误带来源、世界书条目嵌套渲染、执行记录的函数与耗时、模板错误带来源）。ADR-0114。
 
-## 下一步（会话 344 先做）
-1. **C-T04.c worker 隔离、时间预算与流水线接入**：依赖 C-T04.b.b，现在可以做。把模板编译与执行放进 `worker_threads`，主线程只传文本、变量快照与允许的函数清单；超时终止 worker 并重建；每个模板执行计入回合内时间预算，超时跳过并写 Trace（来源、耗时、跳过原因），`dramaticer explain` 可读。接入 `st-content` 的预设、世界书与深度注入，EJS 只作用于 ST 内容；变量读经台账快照、写经待结算视图与结算器校验；模板发起的生成按卡限流并作为后台任务（I6、I11）。
-2. 然后 C-T04.d（一致性用例、`ST_BENCH_COEXIST_PLUGINS` 注册 `st-ejs`、开关对照与报告）。
+## 下一步（会话 345 先做）
+1. **C-T04.c.b 回合内时间预算与 Trace**：依赖 C-T04.c.a，现在可以做。把沙箱执行记录接到 `TurnHookTraceEntry`（扩展点、插件、来源、耗时、outcome、跳过原因，函数列表一起写），超时跳过该条模板并让回合继续；`dramaticer explain` 输出里能读到。注意 `runTurnHook` 的返回结构只有 `value`/`trace`，需要在不破坏现有调用方的前提下扩展 `TurnHookTraceEntry` 或新增 EJS 专用字段。
+2. 然后 C-T04.c.c（st-content 流水线接入与变量视图；同时决定沙箱实例的生命周期，`define` 的跨模板作用域在这里定）、C-T04.c.d（模板发起的生成，后台任务与卡级限流）。
 3. 其余可做任务：H-T00（依赖 R5-T99、R3b-T99、E-T01，均已完成）、X1（依赖 R1-T99.a、R2-T99，均已完成）。M5-T00 依赖 R6-T99；M6-T99 等待 HUMAN-15；P5 依赖 M5-T99。
 
-## C-T04.b.b 代码事实
-- 世界书数据完全由 `StEjsRuntimeOptions.worldInfo` 注入；`worldInfo.messages` 省略时用运行时的楼层正文（旧到新），内部传给 `activateStWorldInfo` 前会反转成最新在前。`currentWorld` 不在 `worlds` 里时构造直接抛 `StEjsWorldInfoError`。
-- `getWorldInfoActivatedData()` 在没有消息时仍会返回常量条目；`activateWorldInfoByKeywords` 与 `getwi` 的递归扫描都会过滤常量条目，避免重复。
-- `getwi` 的 `recursive` 轮数缺省 3；显式传 0 时只返回首次命中的条目。`@@` 装饰器行在读取时去掉，但 `@@if` 不求值；求值与激活过滤由 C-T04.c 的流水线决定。
-- token 用量只统计 `getwi` 的输出（嵌套渲染的条目各自计一条），来源是 `世界书 <世界>:<注释或关键词>`；超预算时已经计入的用量保留。
-- `getWorldInfoData` 返回的 `content` 是未渲染的原文；`getWorldInfoActivatedData` 的 `content` 来自激活结果（已去掉 `@@` 装饰器、已做宏替换，但没有渲染 EJS）。
-- `patchVariables` 按顶层键写回，嵌套对象整键赋值；删除的键走 `delvar`。`setVariableSchema` 只作用于 `setvar`、`incvar`、`decvar` 与 `patchVariables`，`insvar` 与 `store.assign` 的直接调用不校验。
-- `parseJSON` 对不以 `{`/`[` 开头的文本直接报错；`jsonPatch` 的 `move` 允许 from 与 path 相同，拒绝 from 是 path 的严格上级。
-- 模板里调用异步函数需要 `await`：`<%- await getwi('条目') %>`。
+## C-T04.c.a 代码事实
+- 沙箱入口：`createStEjsSandbox({ runtime, budgetMs?, allowedFunctions?, responseBytes?, maxIdleWorkers? })`；`execute(execution)` 抛错，`run(execution)` 返回 `{ output, trace }`，超时 `output` 为 null。`execution` 是 `{ template, source, escape: "string" | "remote" }`，`template` 已经做过转义处理（直接调用 `execute` 时由调用方负责）。
+- 启用沙箱的写法：`const sandbox = createStEjsSandbox({ runtime }); runtime.setExecutor(sandbox);`。构造校验允许清单里每个名字都出现在 `runtime.listSandboxFunctions()` 里，未知名字直接抛错。
+- 远程调用只支持可 JSON 化的值；`activateRegex` 的函数替换参数、`define` 的函数值只在沙箱内部有效，跨进程的调用参数里出现函数会抛 `StEjsVariableError`。
+- 每次执行使用新上下文，变量来自 `runtime.variables.variables` 的快照；每次远程调用回包里带新的合并视图，模板里写后立刻读到。`define` 的名字只在本次执行（含 `evalTemplate`）有效。
+- `evalTemplate` 的新模板由 worker 编译、在同一个上下文里执行，不再回到主线程；`include` 在沙箱里直接抛错。
+- 模板错误统一包装成 `StEjsTemplateError`，来源是 `execution.source`；EJS 的行号仍在错误消息里（`readErrorLine` 对 ejs 错误一直取不到 `line`）。
+- 超时只由主线程计时；嵌套渲染各自计时，总的回合预算留给 C-T04.c.b。
+- 空闲 worker 复用同一个进程，但每次执行新建上下文；不要用空闲池承载跨故事的状态。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a 至 P2.g、P3.a 至 P3.f、P4.a 至 P4.f、C-T01.a 至 C-T01.d、C-T02.a 至 C-T02.f、C-T03.a 至 C-T03.d、C-T04.a、C-T04.b.a、C-T04.b.b。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- 兼容插件线：`st-content`、`st-mvu`、`st-ejs` 的模板引擎、装饰器/注入/激活正则、世界书与数据函数完成；`st-ejs` 的隔离与评测（C-T04.c–d）与 `st-helper-host`（C-T05）待做。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a 至 P2.g、P3.a 至 P3.f、P4.a 至 P4.f、C-T01.a 至 C-T01.d、C-T02.a 至 C-T02.f、C-T03.a 至 C-T03.d、C-T04.a、C-T04.b.a、C-T04.b.b、C-T04.c.a。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 兼容插件线：`st-content`、`st-mvu`、`st-ejs` 的模板引擎、装饰器/注入/激活正则、世界书与数据函数、沙箱执行完成；`st-ejs` 的 Trace 接入（C-T04.c.b）、流水线接入（c.c）、生成（c.d）与评测（C-T04.d）待做；`st-helper-host`（C-T05）待做。
 - 数据库 schema 版本 43；本轮没有改 schema。本轮没有新增依赖。
 - 报告：`docs/dev/reports/P2.md`、`P3.md`、`P4.md`、`C-T01.md`、`C-T02.md`、`C-T03.md`。
 - 沙箱现状：`eval-private/st-sandbox/st` 有 36 个预设、68 张卡、89 个非驱动聊天片段；预设连接字段已被驱动改写为录制端点与桩模型，全局 `openai_max_context` 已被驱动改为 2,000,000。需要恢复原始预设时用 `sandbox --replace` 重建。
 - 私有比对批次：`compare-smoke4`（5 个组合，修复后）与更早的 `compare-smoke2`、`compare-smoke3`、`session324-sanitize`；每个批次的 `compare/` 下有报告、差异清单与汇总。
-- ADR-0088 至 ADR-0113 记录插件、沙箱、比对、兼容内容映射与 EJS 决策。
+- ADR-0088 至 ADR-0114 记录插件、沙箱、比对、兼容内容映射、EJS 与沙箱执行决策。
 - HUMAN-03 待处理（不阻塞）：抽查 `eval-private/evalset/spotcheck.md` 里的事件题。
 - HUMAN-14 已关闭（2026-11-12：人类取消）：取消 Vertex 真实调用的凭证配置与验证要求；`roles.writer` 继续使用 `main-fallback`。
 - HUMAN-15 待处理（M6-T99 需要）：把秋叶整合包 v3.2 的 ComfyUI 启动在 `http://127.0.0.1:8188`，并导出一份 API 格式 workflow JSON 到 `eval-private/comfyui/` 或告知路径。
@@ -44,8 +43,9 @@
 
 ## 可重复命令
 - 门禁：`pnpm check`。
+- C-T04.c.a 目标测试：`pnpm exec vitest run packages/st-compat/test/st-ejs-sandbox.test.ts`（10 个）。
+- 全部 EJS 测试：`pnpm exec vitest run packages/st-compat/test/st-ejs-template.test.ts packages/st-compat/test/st-ejs-variables.test.ts packages/st-compat/test/st-ejs-decorators.test.ts packages/st-compat/test/st-ejs-injections.test.ts packages/st-compat/test/st-ejs-regex.test.ts packages/st-compat/test/st-ejs-world-info.test.ts packages/st-compat/test/st-ejs-data.test.ts packages/st-compat/test/st-ejs-json.test.ts packages/st-compat/test/st-ejs-sandbox.test.ts`（91 个）。
 - C-T04.b.b 目标测试：`pnpm exec vitest run packages/st-compat/test/st-ejs-world-info.test.ts packages/st-compat/test/st-ejs-data.test.ts packages/st-compat/test/st-ejs-json.test.ts`（24 个）。
-- 全部 EJS 测试：`pnpm exec vitest run packages/st-compat/test/st-ejs-template.test.ts packages/st-compat/test/st-ejs-variables.test.ts packages/st-compat/test/st-ejs-decorators.test.ts packages/st-compat/test/st-ejs-injections.test.ts packages/st-compat/test/st-ejs-regex.test.ts packages/st-compat/test/st-ejs-world-info.test.ts packages/st-compat/test/st-ejs-data.test.ts packages/st-compat/test/st-ejs-json.test.ts`（81 个）。
 - C-T04.b.a 目标测试：`pnpm exec vitest run packages/st-compat/test/st-ejs-decorators.test.ts packages/st-compat/test/st-ejs-injections.test.ts packages/st-compat/test/st-ejs-regex.test.ts`（31 个）。
 - C-T04.a 目标测试：`pnpm exec vitest run packages/st-compat/test/st-ejs-template.test.ts packages/st-compat/test/st-ejs-variables.test.ts`（26 个）。
 - C-T03.d 目标测试：`pnpm exec vitest run packages/st-compat/test/st-mvu-consistency.test.ts packages/st-compat/test/st-mvu-coexist.test.ts`（8 个）。
@@ -90,6 +90,7 @@
 - MVU 引擎的 `[值, 说明]` 判定与 MVU 一致：长度为 2 且第二个元素是字符串的普通数组也会被当成值加说明，测试与真实卡都要避开这种歧义；需要真正两个元素的列表时用三个元素或开启 `strictSet` 后显式写结构。
 - 显示状态只在当前会话；需要跨进程显示时由台账快照重新渲染，不要把它写成楼层原文或台账事实。
 - 共存适配器在 `apply` 之后按轮调用 `afterTurn`；插件写错直接让运行失败，不要吞掉错误。`st-mvu` 适配器要求卡里有 `[initvar]` 世界书或开场白 `<initvar>`，没有时它不改任何内容。
-- EJS 模板里再写 `<%` 会被外层标签解析截断：内层模板通过变量或 `evalTemplate` 的第二参数传入，测试不要直接嵌套标签。
+- EJS 模板里再写 `<%` 会被外层标签解析截断：内层模板通过变量或 `evalTemplate` 的第二参数传入，测试里用字符串拼接构造内层标签。
 - `st-ejs` 的激活正则默认一次性生效（命中后停用），连续使用时显式传 `sticky: true`；注入标记与 `@INJECT` 必须独占一行才会被识别。
 - `st-ejs` 的 `getwi` 在模板里需要 `await`；世界书、角色卡、预设与快捷回复数据由调用方注入，不要读 `eval-private/` 或 ST 安装目录。
+- 沙箱里模板函数是同步的（远程调用会阻塞模板线程），函数参数与返回值必须能 JSON 化；`define` 只在一次执行内有效，`include` 不可用。

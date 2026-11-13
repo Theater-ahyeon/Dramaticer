@@ -4,6 +4,7 @@ export * from "./decorators.js";
 export * from "./injection.js";
 export * from "./json.js";
 export * from "./runtime.js";
+export * from "./sandbox.js";
 export * from "./schema.js";
 export * from "./variables.js";
 export * from "./world-info.js";

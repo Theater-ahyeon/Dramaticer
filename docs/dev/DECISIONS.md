@@ -1827,3 +1827,17 @@
   - 新增 `packages/st-compat/test/st-ejs-json.test.ts` 7 个测试：严格与宽松 JSON、六种 RFC 6902 操作与不可变、非法操作与原型路径、顶层键写回与写入记录、指定作用域、结构校验与注册校验。
   - 没有新增运行时依赖（`yaml` 已在 `packages/st-compat`），没有改数据库 schema，`core` 没有新增代码（I1、I15）。
 
+## ADR-0114 `st-ejs` 的沙箱执行与同步函数调用（2026-11-13）
+
+- **背景**：C-T04.b.b 之前模板在主线程用 `ejs` 直接执行，模板代码与主线程同域；C-T04.c 要求把编译与执行放进 `worker_threads`，模板拿不到 `process`、`require`、文件系统与网络，超时终止 worker 并重建。任务范围明显超过一个会话，拆成 C-T04.c.a（沙箱执行与超时重建）、C-T04.c.b（回合内时间预算与 Trace）、C-T04.c.c（st-content 流水线接入与变量视图）、C-T04.c.d（模板发起的生成），本会话只做 c.a。
+- **决定**：
+  - 新增 `packages/st-compat/src/st-ejs/sandbox.ts`：`StEjsSandbox` 实现 `StEjsTemplateExecutor`。worker 由内联源码启动（`eval: true`、空 `execArgv`），每个执行请求在 worker 里新建一个 `node:vm` 上下文，EJS 由 worker 用 `ejs.compile({client: true, compileDebug: true, async: true})` 生成函数源码，再在上下文里用间接 `eval` 变成上下文自己的函数。模板代码因此只拿到上下文的标准内建对象：没有 `process`、`require`、`Buffer`、`fetch`，动态 `import` 直接以 `ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING` 失败，`Function` 构造出来的代码同样跑在上下文里。`node:vm` 在这里做能力隔离，worker 只负责让失控代码可以被终止。
+  - 主线程与沙箱之间只传模板文本、变量快照、允许的函数清单与格式化方式。上下文里的函数名由 bootstrap 按允许清单定义，每次调用把 `(名字, 参数 JSON)` 发给主线程，主线程在 `StEjsRuntime` 的函数表里执行后把结果写进 `SharedArrayBuffer` 并 `Atomics.notify`；模板线程用 `Atomics.wait` 同步等待，因此 `getvar`、`setvar`、`getwi` 等函数在模板里保持同步调用语义，不需要改写成 `await`。`getwi` 的嵌套渲染走同一条路径：主线程的运行时再向沙箱申请一个新 worker，嵌套层级仍受世界书递归上限约束。
+  - 参数与返回值用 `encodeSandboxValue`/`decodeSandboxValue` 互转：`undefined` 与正则换成带标记的对象，函数、bigint 与循环引用直接抛错。变量快照在每次执行开始时传入，每次函数调用的回包里带新的合并视图，模板里写后立刻读到新值。
+  - `print` 与 EJS 自己的追加语义在上下文里实现，`define` 与 `evalTemplate` 也在上下文里：`evalTemplate` 的新模板由 worker 编译、在同一个上下文里执行，因此能看到本次执行里 `define` 的名字。`define` 的作用域因此是一次执行（含它的 `evalTemplate` 调用），不跨多次 `render`；跨生成传递定义留给 C-T04.c.c 决定沙箱实例的生命周期。
+  - 时间预算默认 5 秒，超时终止 worker 并抛 `StEjsSandboxTimeoutError`（来源、耗时、预算、已调用的函数）；`run()` 把超时作为 `output: null` 与 `outcome: "timeout"` 的执行记录返回，`execute()` 抛错。超时后的 worker 不进空闲池，下一次渲染重新启动。空闲 worker 最多保留 2 个，其余在用完后终止。模板错误的 `StEjsTemplateError` 带真正来源，不再是固定的“模板”。
+  - `StEjsRuntime` 增加 `executor` 选项与 `setExecutor`，`#render` 在提供执行器时只准备文本（`<#escape-ejs>` 与 HTML 转义还原仍在主线程）再交给执行器；`<%=` 的自定义格式化经 `__escape` 远程调用取结果。`listSandboxFunctions`、`invokeSandboxFunction`、`formatEscapedValue` 是沙箱与运行时之间的接口，`#buildLocals` 拆出 `#functionTable` 供两者共用。
+- **影响**：
+  - 新增 `packages/st-compat/test/st-ejs-sandbox.test.ts` 10 个测试：变量函数经远程调用与写入回主线程、`print`/`define`/`evalTemplate`、格式化函数远程调用、逃逸检查（`process`/`require`/`fetch`/`Buffer`/构造器链/`node:fs`/`node:net` 动态 import）、允许清单、超时后继续执行、超时错误带来源、世界书条目里的模板在沙箱里渲染、执行记录的函数列表与耗时、模板错误带来源。
+  - 现有 81 个 EJS 测试保持通过；门禁 221 个测试文件、1971 个测试通过，5 个 live 跳过。没有新增依赖（`ejs` 已在 `packages/st-compat`），没有改数据库 schema，`core` 没有改动（I1、I15）。EJS 仍未接入槽位，只作用于调用方传入的文本（C-T04.c.c 接入 st-content）。
+
