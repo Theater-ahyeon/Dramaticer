@@ -111,6 +111,11 @@ export interface StPresetMapping {
 	readonly sampling: StPresetSamplingMapping;
 	readonly prefill: StPresetPrefillMapping;
 	readonly formats: StPresetFormatMapping;
+	/** 模板里实际存在的世界书 marker；两者共用一个原生 `lore` 槽位。 */
+	readonly worldInfo: {
+		readonly before: boolean;
+		readonly after: boolean;
+	};
 	readonly authorNote: {
 		readonly placement: StAuthorNotePlacement;
 		readonly injected: boolean;
@@ -148,7 +153,8 @@ export function mapStPreset(input: StPresetMappingInput): StPresetMapping {
 	const injections: StDepthInjection[] = [];
 	const segments: ContextSegment[] = [];
 	let mainIndex: number | null = null;
-	let loreUsed = false;
+	let loreSegmentId: string | null = null;
+	const worldInfo = { before: false, after: false };
 	let historyIndex: number | null = null;
 
 	const ordered = resolveOrderedPrompts(input.preset, issues);
@@ -220,24 +226,26 @@ export function mapStPreset(input: StPresetMappingInput): StPresetMapping {
 				addUnmapped(entries, issues, entry, "marker-injection");
 				continue;
 			}
-			if (loreUsed) {
-				addUnmapped(
-					entries,
-					issues,
-					entry,
-					"world-info-after",
-					entry.identifier,
+			if (entry.identifier === "worldInfoBefore") worldInfo.before = true;
+			else worldInfo.after = true;
+			if (loreSegmentId === null) {
+				loreSegmentId = segmentId;
+				segments.push({
+					id: segmentId,
+					kind: "slot",
+					slot: "lore",
+					priority: 80,
+				});
+				entries.push(entryReport(entry, "slot", segmentId, null, 0, null));
+			} else {
+				entries.push(
+					entryReport(entry, "slot", loreSegmentId, null, 0, "merged-lore"),
 				);
-				continue;
+				issues.push({
+					code: "world-info-after",
+					detail: "merged-lore",
+				});
 			}
-			loreUsed = true;
-			segments.push({
-				id: segmentId,
-				kind: "slot",
-				slot: "lore",
-				priority: 80,
-			});
-			entries.push(entryReport(entry, "slot", segmentId, null, 0, null));
 			continue;
 		}
 
@@ -381,6 +389,7 @@ export function mapStPreset(input: StPresetMappingInput): StPresetMapping {
 		sampling: mapSampling(input.preset, issues),
 		prefill: readPrefill(input.preset),
 		formats,
+		worldInfo,
 		authorNote,
 		issues,
 	};

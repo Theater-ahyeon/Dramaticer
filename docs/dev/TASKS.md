@@ -1296,7 +1296,8 @@
   做什么：`prompt_order`、深度注入、角色、预填充、续写预填充、squash、format 字段、采样参数；把 C-T02.a 的卡、人设与作者注释映射成原生模板段落与槽位，未映射条目逐条记入报告。先写一致性测试。
   验收：预设一致性用例通过；写作契约保持在最后；无法映射的条目有原因；`pnpm check` 通过。
 
-- [ ] **C-T02.c 世界书完整激活语义** | 依赖：C-T02.b
+- [x] **C-T02.c 世界书完整激活语义** | 依赖：C-T02.b
+  完成：2026-11-13 新增 `st-content/world-info-activation.ts`，纯函数 `activateStWorldInfo` 实现主次关键词与四种逻辑、正则关键词、大小写与整词、递归与 `preventRecursion`/`excludeRecursion`/`delayUntilRecursion`、sticky/cooldown/delay、分组覆盖与组内权重、组内评分、概率、扫描深度、全局扫描字段、位置/深度/角色、outlet、token 与时间预算；`createStWorldInfoProviders` 把 before/after 送进原生 `lore` 槽位并应用 `wi_format`，深度条目经历史包装器注入，两者共用激活结果并跨轮保存计时状态；`mapStPreset` 的两个世界书 marker 合并到同一 `lore` 槽位并返回 `worldInfo.before/after`；`StWorldInfoEntry` 补六个扫描范围标志，角色卡内嵌世界书补齐位置、深度、角色、分组、概率、计时效果与 outlet 等字段；新增 23 个测试；ADR-0103；门禁通过
   做什么：主次关键词与逻辑、正则关键词、递归、sticky/cooldown/delay、分组与组内权重、概率、扫描深度、位置/深度/角色、outlet；按 ST 语义在插件里实现，结果交给原生槽位预算。
   验收：世界书一致性用例通过；激活结果与录制一致；扫描深度与递归受时间预算约束；`pnpm check` 通过。
 

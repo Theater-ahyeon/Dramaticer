@@ -213,7 +213,7 @@ describe("预设与 prompt 顺序", () => {
 		expect(reasons.get("badRole")).toBe("role");
 		expect(reasons.get("noDepth")).toBe("injection-depth");
 		expect(reasons.get("chatHistory")).toBe("marker-injection");
-		expect(reasons.get("worldInfoAfter")).toBe("world-info-after");
+		expect(reasons.get("worldInfoAfter")).toBe("merged-lore");
 		expect(reasons.get("unknownMarker")).toBe("unknown-marker");
 		expect(reasons.get("empty")).toBe("empty");
 		expect(mapping.issues.map((issue) => issue.code)).toEqual(
@@ -227,6 +227,7 @@ describe("预设与 prompt 顺序", () => {
 				"unknown-marker",
 			]),
 		);
+		expect(mapping.worldInfo).toEqual({ before: true, after: true });
 		expect(
 			mapping.template.segments.filter((segment) => segment.id !== "protocol"),
 		).toEqual([

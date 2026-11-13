@@ -1625,7 +1625,7 @@
 - **决定**：
   - 新增 `packages/st-compat/src/st-content/preset-mapping.ts`，`mapStPreset` 的输入是预设、角色卡、可选人设与作者注释、结构化输出模式与玩家楼层数；输出是原生 `ContextTemplate`、条目报告、深度注入、采样映射、预填充与 squash 映射、format 字段、作者注释结果与问题列表。
   - 顺序组取 `100001`，没有时回退 `100000` 或第一组；该选择器移到 `preset.ts` 的 `selectStPromptOrderGroup`，忠实模式与比对工具共用同一实现。
-  - 顺序里的普通条目变成原生静态段，角色 `system`、`user`、`assistant`、`model` 分别映射；`chatHistory` 变成 `history` 槽位，`worldInfoBefore` 变成 `lore` 槽位；两个世界书 marker 同时出现时第二个记 `world-info-after`，由 C-T02.c 接管。角色的 `system_prompt` 与 `post_history_instructions` 在预设未声明 `forbid_overrides` 时覆盖 `main` 与 `jailbreak` 条目的正文。
+  - 顺序里的普通条目变成原生静态段，角色 `system`、`user`、`assistant`、`model` 分别映射；`chatHistory` 变成 `history` 槽位，`worldInfoBefore` 与 `worldInfoAfter` 共用一个 `lore` 槽位（ADR-0103）。角色的 `system_prompt` 与 `post_history_instructions` 在预设未声明 `forbid_overrides` 时覆盖 `main` 与 `jailbreak` 条目的正文。
   - 卡片 marker 使用 C-T02.a 的 `sections` 正文；`scenario_format` 与 `personality_format` 只替换 `{{scenario}}` 与 `{{personality}}` 占位符，其余宏原样保留并记 `macro` 问题，完整宏引擎属于 C-T02.d。`wi_format` 原样放进映射结果，供 C-T02.c 使用。
   - 绝对位置注入（`injection_position` 为 1）收集成 `StDepthInjection`，保留角色、深度与 `injection_order`。历史槽位包装器 `createStHistoryProvider` 在返回消息上叠加注入：深度 0 放在最后一条之后，深度 n 放在倒数第 n 条之前；同一深度内按顺序组升序、组内按 assistant、user、system 排列，扩展提示词接在同顺序组同角色的预设正文之后。包装器把注入内容哈希写进 `packKey`，复用上下文包时不会拿到旧注入。
   - 作者注释：位置 0 插在主提示之后，位置 2 插在主提示之前，位置 1 作为扩展提示词在指定深度注入；间隔按玩家楼层数取模判定，缺少楼层数且间隔大于 1 时记 `author-note-interval`。人设位置 0/1 在主提示内输出静态段，位置 4 按深度注入，位置 2/3 无法相对作者注释定位并记问题，位置 9 不注入。
@@ -1635,3 +1635,24 @@
 - **影响**：
   - 新增 `packages/st-compat/test/st-content-preset.test.ts` 14 个测试，覆盖顺序组、模板段落、markers、深度注入分组与包装器、作者注释三种位置与间隔、采样与预填充报告、报告不含正文；`st-content.test.ts` 的人设与作者注释断言同步到酒馆的实际枚举。
   - `core` 无改动，原生模板只出现静态段与既有槽位名；C-T02.c 使用 `lore` 槽位与 `wi_format`，C-T02.d 接管宏，C-T02.f 把 `mapStPreset` 接进 `ST_BENCH_COEXIST_PLUGINS`。
+
+## ADR-0103 `st-content` 的世界书激活语义（2026-11-13）
+
+- **背景**：C-T02.b 只把预设的世界书 marker 接成 `lore` 槽位，世界书条目本身仍按原生的常驻与关键词规则参与检索，无法表达酒馆的次关键词逻辑、正则关键词、递归、计时效果、分组权重、概率、扫描深度与深度角色。C-T01 的录制请求没有覆盖带世界书的组合，入口基线把 `world-info` 逐条列为不支持；因此一致性规格取沙箱版酒馆源码的 `checkWorldInfo` 与 `WorldInfoBuffer` 行为。
+- **决定**：
+  - 新增 `packages/st-compat/src/st-content/world-info-activation.ts`。`activateStWorldInfo` 是纯函数：输入世界书、倒序楼层文本、楼层数、全局扫描字段、计时状态、随机函数与时间上限，输出 before、after、作者注释上下、扩展上下、深度分组、outlet、激活条目与问题。
+  - 主关键词按条目的 `caseSensitive` 与 `matchWholeWords` 匹配，`/pattern/flags` 按酒馆的 `parseRegexFromString` 解释；次关键词支持 AND_ANY、NOT_ALL、NOT_ANY、AND_ALL 四种逻辑。关键词为空、条目停用、生成类型 `triggers` 不匹配的条目跳过。
+  - 递归按酒馆的扫描状态运行：首轮激活后把未声明 `preventRecursion` 的正文加入递归缓冲；声明 `excludeRecursion` 的条目在递归轮次跳过；`delayUntilRecursion` 只在递归轮次、达到对应延迟级别时激活。递归轮数由设置上限与时间预算共同约束。
+  - sticky、cooldown、delay 按酒馆的聊天长度语义实现：sticky 在 `start + sticky` 之前保持激活，结束时可立即进入受保护的 cooldown；delay 在聊天长度达到值之前抑制条目。计时状态作为返回值交给调用方跨轮保存。
+  - 分组按 `group` 的逗号拆分；组内有 sticky 条目时只保留 sticky；`groupOverride` 取顺序最高的条目；没有覆盖时按 `groupWeight` 加权随机；`useGroupScoring` 按主关键词与次关键词命中数保留最高分。
+  - 概率用调用方传入的随机函数；失败条目在本轮递归里不再重试。token 预算只在调用方提供估算函数时按酒馆的累计正文口径执行，默认交给原生槽位预算裁剪。
+  - 位置 0/1 分别进入 before/after，2/3 进入作者注释上下，4 按 `depth` 与 `role` 分组成深度条目，5/6 进入扩展上下，7 按 `outletName` 收集；outlet 没有名字时记 `outlet-without-name`，不注入。条目注入顺序沿用酒馆的降序排序再前插，最终数组为升序。
+  - `mapStPreset` 现在把 `worldInfoBefore` 与 `worldInfoAfter` 映射到同一个 `lore` 槽位，并返回 `worldInfo.before/after` 两个开关；第二个 marker 记 `merged-lore` 原因与 `world-info-after` 问题。原生模板只有一个 `lore` 槽位，两个 marker 无法在模板里分别定位，保留内容分类并由提供者决定注入哪一组。
+  - `createStWorldInfoProviders` 返回 `lore` 提供者与历史包装器：`lore` 把启用的 before/after 组按 `wi_format` 包裹成 system 消息；历史包装器把深度条目插到对应位置。两者在同一次组装里共用一份激活结果，计时状态跨轮更新；`packKey` 带激活代数，避免上下文包复用旧结果。单次激活默认 50 毫秒时间上限。
+  - `StWorldInfoEntry` 补上酒馆 `extensions` 里的六个扫描范围标志（人设、角色描述、性格、角色深度提示、场景、作者注释），其余字段沿用已有解析。
+  - 角色卡内嵌世界书的转换补齐酒馆 `convertCharacterBook` 的字段：位置、深度、角色、分组与权重、概率、扫描深度、大小写、整词、组评分、计时效果、outlet、触发类型与六个扫描范围标志都从 `extensions` 映射到条目视图，未识别字段继续保留在原始对象里。
+- **影响**：
+  - 新增 `packages/st-compat/test/st-content-world-info.test.ts` 23 个测试，覆盖内嵌世界书字段、主次关键词与四种逻辑、正则关键词、大小写与整词、递归、prevent/exclude/delayUntilRecursion、sticky/cooldown/delay、分组覆盖与权重、组内评分、概率、扫描深度、全局扫描字段、位置与深度角色、outlet、token 与时间预算、`wi_format` 与两个槽位提供者。
+  - `st-content-preset.test.ts` 的世界书 marker 断言改为 `merged-lore`，并要求映射结果带有 before/after 开关。
+  - 录制没有世界书组合，激活结果暂时以沙箱源码行为为准；C-T02.f 的共存对照与 C-T01.b 的后续批次需要补世界书组合，才能把“与录制一致”落到真实请求。
+  - `core` 无改动，ST 语义全部留在兼容插件里（I1、I15）。

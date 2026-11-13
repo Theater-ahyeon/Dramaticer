@@ -62,6 +62,13 @@ export interface StWorldInfoEntry {
 	readonly ignoreBudget: boolean | null;
 	readonly outletName: string | null;
 	readonly triggers: readonly JsonValue[] | null;
+	/** 扫描范围是否包含人设、角色卡字段与场景；酒馆把它们放在 extensions 里。 */
+	readonly matchPersonaDescription: boolean;
+	readonly matchCharacterDescription: boolean;
+	readonly matchCharacterPersonality: boolean;
+	readonly matchCharacterDepthPrompt: boolean;
+	readonly matchScenario: boolean;
+	readonly matchCreatorNotes: boolean;
 	readonly extensions: JsonObject | null;
 	/** 条目原始对象，导出时直接写回 */
 	readonly raw: JsonObject;
@@ -125,14 +132,81 @@ export function worldInfoFromCharacterBook(
 				: String(index);
 		const comment = readString(value, "comment", context);
 		const entryName = readString(value, "name", context);
+		const extensions = optionalObject(value, "extensions", context);
+		const extensionContext = `${context} 的 extensions`;
+		const extension = <T>(
+			field: string,
+			read: (source: JsonObject, name: string, label: string) => T | null,
+		): T | null =>
+			extensions === null ? null : read(extensions, field, extensionContext);
+		const rawPosition = optionalString(value, "position", context);
+		const triggers = extension("triggers", optionalJsonArray);
 		rawEntries[sourceKey] = {
+			...value,
+			uid:
+				typeof rawId === "number"
+					? rawId
+					: typeof rawId === "string" && /^\d+$/.test(rawId)
+						? Number(rawId)
+						: index,
 			key: keys,
 			keysecondary: secondaryKeys,
 			comment: comment.length > 0 ? comment : entryName,
 			content: readString(value, "content", context),
 			constant: readBoolean(value, "constant", context, false),
 			disable: !enabled,
-			order: optionalNumber(value, "insertion_order", context),
+			order:
+				optionalNumber(value, "insertion_order", context) ??
+				optionalNumber(value, "order", context),
+			selective: optionalBoolean(value, "selective", context) ?? false,
+			selectiveLogic: extension("selectiveLogic", optionalNumber),
+			excludeRecursion: extension("exclude_recursion", optionalBoolean),
+			preventRecursion: extension("prevent_recursion", optionalBoolean),
+			delayUntilRecursion: extension(
+				"delay_until_recursion",
+				optionalNumberOrBoolean,
+			),
+			probability: extension("probability", optionalNumber),
+			useProbability: extension("useProbability", optionalBoolean),
+			depth: extension("depth", optionalNumber),
+			position:
+				extension("position", optionalNumber) ??
+				(rawPosition === "before_char" ? 0 : 1),
+			outletName: extension("outlet_name", optionalString),
+			group: extension("group", optionalString),
+			groupOverride: extension("group_override", optionalBoolean),
+			groupWeight: extension("group_weight", optionalNumber),
+			scanDepth: extension("scan_depth", optionalNumber),
+			caseSensitive: extension("case_sensitive", optionalBoolean),
+			matchWholeWords: extension("match_whole_words", optionalBoolean),
+			useGroupScoring: extension("use_group_scoring", optionalBoolean),
+			automationId: extension("automation_id", optionalString),
+			role: extension("role", optionalNumber),
+			vectorized: extension("vectorized", optionalBoolean),
+			sticky: extension("sticky", optionalNumber),
+			cooldown: extension("cooldown", optionalNumber),
+			delay: extension("delay", optionalNumber),
+			ignoreBudget: extension("ignore_budget", optionalBoolean),
+			triggers: triggers === null ? null : [...triggers],
+			matchPersonaDescription: extension(
+				"match_persona_description",
+				optionalBoolean,
+			),
+			matchCharacterDescription: extension(
+				"match_character_description",
+				optionalBoolean,
+			),
+			matchCharacterPersonality: extension(
+				"match_character_personality",
+				optionalBoolean,
+			),
+			matchCharacterDepthPrompt: extension(
+				"match_character_depth_prompt",
+				optionalBoolean,
+			),
+			matchScenario: extension("match_scenario", optionalBoolean),
+			matchCreatorNotes: extension("match_creator_notes", optionalBoolean),
+			extensions,
 		};
 	});
 	const entries = Object.entries(rawEntries).map(([sourceKey, entry]) => {
@@ -184,6 +258,12 @@ function normalizeWorldInfoEntry(
 	raw: JsonObject,
 ): StWorldInfoEntry {
 	const context = `世界书条目 "${sourceKey}"`;
+	const extensions = optionalObject(raw, "extensions", context);
+	function extensionFlag(name: string): boolean {
+		return extensions === null
+			? false
+			: readBoolean(extensions, name, `${context} 的 extensions`, false);
+	}
 	return {
 		sourceKey,
 		uid: optionalNumber(raw, "uid", context),
@@ -224,7 +304,13 @@ function normalizeWorldInfoEntry(
 		ignoreBudget: optionalBoolean(raw, "ignoreBudget", context),
 		outletName: optionalString(raw, "outletName", context),
 		triggers: optionalJsonArray(raw, "triggers", context),
-		extensions: optionalObject(raw, "extensions", context),
+		matchPersonaDescription: extensionFlag("match_persona_description"),
+		matchCharacterDescription: extensionFlag("match_character_description"),
+		matchCharacterPersonality: extensionFlag("match_character_personality"),
+		matchCharacterDepthPrompt: extensionFlag("match_character_depth_prompt"),
+		matchScenario: extensionFlag("match_scenario"),
+		matchCreatorNotes: extensionFlag("match_creator_notes"),
+		extensions,
 		raw,
 	};
 }
