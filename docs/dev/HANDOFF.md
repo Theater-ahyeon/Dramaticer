@@ -3,53 +3,37 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-13 会话 349：完成 C-T04.d（EJS 一致性测试与共存评测）。
-- 新增 `packages/st-compat/test/st-ejs-consistency.test.ts` 18 个测试：按世界书、预设、角色卡、对话片段四类用例表逐条记录上游文档行为与期望输出；覆盖 `getwi` 递归、关键词与常驻激活、`[GENERATE:*]`、`@@if`、`getpreset`/`getqr`、`getchar`/`getCharData`、楼层读取、变量函数、`generate` 队列与激活正则。
-- 内容范围用例：预设静态段、`history` 与 `lore` 执行 EJS；写作契约与 `state` 等 harness 槽位逐字节不变；`setvar` 经待结算视图与结算器落成 `mvu` 事实，楼层原文不变。
-- `CoexistPluginAdapter` 新增可选 `baseline`：关闭组可以执行“同一份 ST 内容、只关掉本插件”；不提供时仍用默认模板与槽位，st-content、st-mvu 与 st-bench 的既有目录结构不变。
-- `buildStContentCoexistResult(input, { ejs })` 拆出 EJS 开关；`st-content` 适配器行为不变。新增 `st-bench/st-ejs-plugin.ts`，`ST_BENCH_COEXIST_PLUGINS` 注册 `st-ejs`；关闭组是 `ejs: false`，开启组是 `ejs: true`。
-- 修复第一轮没有楼层时 `prepareTurn` 直接跳过的问题：现在用 `nodeId: null` 渲染预设静态段，变量只留在运行时内存；有楼层后按台账 `mvu` 子树读写。
-- 合成批次（1 张卡、5 轮、假客户端）：矛盾率 0%/0%（8/8）、编造回忆率 0%/0%（4/4，样本不足）、盲测胜率 100%（10/10）、首字 P90 1/0 毫秒（5/5），无变差项。`docs/dev/reports/C-T04.md` 逐条核对 C-T04 总验收；ADR-0118。门禁通过（226 个测试文件、2017 个测试、5 个跳过）。
+- 2026-11-13 会话 350：完成 C-T05.a（`st-helper-host` 脚本库发现与宿主会话 API），并把 C-T05 拆成 C-T05.a 至 C-T05.f。
+- 新增 `packages/st-compat/src/st-helper-host/`：`scripts.ts` 读取角色卡 `extensions.tavern_helper.scripts`，保留禁用脚本，重复 id 与字段类型错误直接抛错；`variables.ts` 实现七个变量函数并映射到 EJS 的 `StEjsVariableStore`；`events.ts` 实现六个事件函数与 `tavern_events` 常量；`messages.ts` 把读消息、改消息与 `swipe_id` 映射到楼层树；`host.ts` 组装会话与 `ST_HELPER_IMPLEMENTED_FUNCTIONS` 清单。
+- 变量作用域：`message` → 消息作用域（`message_id` 缺省 `latest`），`chat` → 局部作用域，`global` → 全局作用域，`character` → `initial`（台账 `mvu`，经结算器），`preset`、`script` 留在宿主会话。`st-content/ejs-pipeline.ts` 导出 `createStEjsMvuVariableBackend` 供两边共用。
+- 消息修改：改正文调用 core 的 `applyMessageModification`，追加兄弟楼层并成为新的 head（界面里的新 swipe），原文逐字节不变；只改 `is_hidden` 写 `PluginDisplayState` 元数据；`swipe_id` 只把 head 切到已有兄弟楼层。
+- 新增 `packages/st-compat/test/st-helper-host.test.ts` 12 个测试；ADR-0119；门禁通过（227 个测试文件、2029 个测试、5 个跳过）。
 
-## 下一步（会话 350 先做）
-1. **C-T05 P-D `st-helper-host` 酒馆助手宿主**：依赖 C-T04，现在可以做。先搭一致性测试并让它变红，再实现酒馆助手脚本、角色卡内脚本、HTML 状态栏与开场页；运行在沙箱 iframe 里，提供变量读写、事件监听、`triggerSlash`/STscript、生成、读消息、改消息。修改消息一律映射成新楼层或新 swipe；脚本发起的生成按卡限流、走后台渠道并单独计数；变量写入经过结算器；写 `docs/dev/reports/C-T05.md` 并逐条核对验收。这明显超过一个会话，按 AGENTS.md 的上下文预算先拆成 `C-T05.a`、`.b`……再只做第一个。
+## 下一步（会话 351 先做）
+1. **C-T05.b 沙箱 iframe 执行与权限声明**：把 C-T05.a 的宿主 API 通过 `postMessage` 暴露给沙箱 iframe；脚本在 iframe 里执行，拿不到主线程对象、文件系统与网络；代码插件权限声明列出脚本可用的 API，未声明的调用被拒绝并记录；脚本死循环或超时被终止，原因写进 Trace。先写测试台与权限拒绝用例，再实现宿主侧消息分发器与 iframe 文档。浏览器运行时放 `packages/web/src/chat/`，Node 侧测试覆盖消息协议、权限表与超时；真实 iframe 行为用 web 测试或 e2e 验证。这个任务如果超出一个会话，按 `.a`/`.b` 再拆。
 2. 其余可做任务：H-T00（依赖 R5-T99、R3b-T99、E-T01，均已完成）、X1（依赖 R1-T99.a、R2-T99，均已完成）。M5-T00 依赖 R6-T99；M6-T99 等待 HUMAN-15；P5 依赖 M5-T99。
 
-## C-T04.d 代码事实
-- 一致性用例表：`test/st-ejs-consistency.test.ts`，`CASES` 数组每项有 `name`、`source`、`doc`、`run`、`expected`；新增用例按同一结构追加。内容范围用例单独两个 `it`。
-- 共存适配器：`st-bench/st-ejs-plugin.ts` 导出 `ST_EJS_PLUGIN_ID = "st-ejs"` 与 `ST_EJS_COEXIST_PLUGIN`；`apply` → `buildStContentCoexistResult(input, { ejs: true })`，`baseline` → `ejs: false`。
-- `CoexistPluginAdapter.baseline` 只在关闭组调用；开启组仍然调用 `apply` 与 `afterTurn`。关闭组目录：有 `baseline` 时是 `<runDir>/<pluginId>/off`，没有时仍是 `<runDir>/baseline/off`。
-- `buildStContentCoexistResult` 的返回在 `ejs: false` 时只有 `template`、`providers`、`notes`；`ejs: true` 时额外有 `prepareTurn`、`dispose` 与 EJS 模板段计数备注。
-- 首轮 `prepareTurn` 以 `nodeId: null` 渲染；此时 `StEjsMvuVariableBackend` 不创建，`setvar` 只改运行时变量。需要写台账的模板要处理 `getvar` 返回 `undefined` 的情况（示例用 `Number(getvar('stat_data.hp') ?? 0)`）。
-- 合成批次数据库：`<runDir>/st-ejs/{off,on}/<cardId>.db`；开启组最后一轮玩家楼层的 `mvu.stat_data.hp` 等于已完成轮数（首轮不写台账）。
-- 报告只写指标、样本量与插件备注；备注里不出现模板正文。`docs/dev/reports/C-T04.md` 不写私有数据。
-
-## C-T04.c.d 代码事实
-- 调度器入口：`new StEjsGenerationScheduler({ run, maxPendingPerCard?, now? })`。`run` 是 `(input) => Promise<string>`；`submit({storyId, cardId, nodeId, prompt, systemPrompt?, maxTokens?})` 返回 `st-ejs-gen-<序号>`；`drain({cardId?, signal?})` 返回 `{runs, counts}`。
-- `runs` 每条包含 `id/cardId/status("done"|"failed")/text/error/durationMs`；`counts` 是全量计数，按 `cardId` 过滤用 `getCounts(cardId)`。`get(id)` 读任务快照，`getGenerated(id)` 只在 done 时返回正文。
-- 模板函数名是 `generate` 与 `getGenerated`；选项的键是 `system`（映射到 `systemPrompt`）与 `maxTokens`。函数返回 id 字符串，模板可以保存 id 并在之后的一轮读取结果。
-- 流水线绑定：`createStEjsContentPipeline({ ..., generation, cardId })`；同一个流水线的回合运行时共享同一个调度器，结果跨回合可读。调度器由宿主创建与持有，`drain` 由宿主在间隙调用。
-- 宿主接线：`createStEjsBackgroundGenerationRunner({ client: runtime.backgroundClient, model? })`；不要传正文客户端。
-- 失败语义：模板参数错误与没有队列是回合内错误；`drain` 里的模型失败只写任务状态，不影响回合。请求没有持久化。
-
-## C-T04.c.c 代码事实
-- 流水线入口：`createStEjsContentPipeline({ store, storyId, card, preset, worlds?, tokenBudget?, estimateTokens?, generation?, cardId? })`。`beginTurn(nodeId)` 返回活动回合；同一楼层重复调用复用；换楼层先结束上一回合。`dispose()` 结束时收回 global 并释放沙箱。
-- `renderTemplate(template, { nodeId, budget? })`：只处理 `kind === "static"` 且 id 不是 `WRITING_CONTRACT_SEGMENT_ID`、正文含 `<%` 或 `<#escape-ejs>` 的段。`wrapProviders(providers)` 返回新的 providers 映射，`history`/`lore` 被包装，其余槽位保持同一对象。
-- 槽位模板执行使用 `ContextSlotRequest.budget`（子预算先于钩子截止）；预设静态段在 `prepareTurn` 里使用 `createStEjsTurnBudget(DEFAULT_TURN_HOOK_BUDGET_MS)` 的独立预算。
-- 活动回合内的运行时与沙箱被所有模板共用；`#render` 用 `turn.tail` 串行化顶层渲染。嵌套 `getwi` 走运行时自己的预算链，不经过这条队列，因此不会死锁。
-- 台账锚点：`beginTurn` 的 `nodeId`。评测里是每轮追加玩家楼层之前的 head；写入挂在该楼层，读取到玩家楼层时仍能看到。
-- 后端写：`setvar('stat_data.hp', 3)` → `mvu.stat_data.hp`；`scope: 'initial'` 与 `[InitialVariables]` 同样写台账；`setGlobalVar`/`setMessageVar`/`setLocalVar` 不写台账。`patchVariables` 的默认写回也随后端写到台账。
-- 结算器拒绝（例如空路径段）会让模板渲染直接抛错，回合失败，不静默丢弃。
-- `CoexistPrepareTurnInput` 提供 `store/storyId/card/round/template/providers`；返回 `template/providers/notes`。适配器返回的 `dispose` 在 `runVariant` 的 finally 中调用。
+## C-T05.a 代码事实
+- 入口：`createStHelperHostSession({ store, storyId, card, displayState, variables?, userName?, characterName?, plugin? })` 返回 `{ api, scripts, events, dispose }`。`plugin` 缺省是 `st-helper-host`，决定显示状态与消息修改的归属。
+- `variables` 不提供时，会话按当前 head 路径建一个空的消息变量种子；需要与 EJS 共用数据时把同一个 `StEjsVariableStore` 传进来。
+- `character` 作用域的写入要求 store 接入了 `StEjsVariableBackend`；用 `createStEjsMvuVariableBackend({ store, storyId, nodeId, initial })` 构造，写入立即 `commit` 成该楼层的 `mvu` 台账事实。没有后端时 `character` 写入只改内存，不落台账。
+- 变量路径与整棵树写入都会拒绝 `__proto__`、`constructor`、`prototype`；`insertOrAssignVariables` 对对象做深合，`updateVariablesWith` 把整棵作用域树交给更新函数并用返回值替换。
+- `getChatMessages(range, options)` 的 `range` 支持数字（最后 N 条）、`latest`、`"start-end"`（负数从末尾数）、`{start, end}`；`options` 支持 `role`、`hide_state`、`include_swipes`。`getChatMessages(0)` 返回空数组。
+- 消息对象字段：`message_id`、`name`、`role`、`message`、`is_hidden`、`swipe_id`，`include_swipes` 时额外有 `swipes`。`message_id` 是当前 head 路径上的下标，不是数据库行 id。
+- 改正文后 head 指向新兄弟楼层，路径长度不变；如果改的是较早消息，后面的楼层会从当前路径上消失（分支切换语义）。`swipe_id` 选择兄弟楼层同样会切换 head。
+- `setChatMessages` 的 `refresh` 只校验取值（`none`、`affected`、`all`），不做界面刷新；刷新由调用方负责。
+- 脚本发现只读角色卡脚本库，不执行脚本；世界书与预设里的全局脚本留到后续任务。`source` 目前固定为 `"card"`。
+- API 覆盖清单：`ST_HELPER_IMPLEMENTED_FUNCTIONS` 共 18 个名称（7 变量、6 事件、5 消息）；`ST_HELPER_TAVERN_EVENTS` 是事件常量表。
+- 测试：`pnpm exec vitest run packages/st-compat/test/st-helper-host.test.ts`（12 个）。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a 至 P2.g、P3.a 至 P3.f、P4.a 至 P4.f、C-T01.a 至 C-T01.d、C-T02.a 至 C-T02.f、C-T03.a 至 C-T03.d、C-T04.a、C-T04.b.a、C-T04.b.b、C-T04.c.a、C-T04.c.b、C-T04.c.c、C-T04.c.d、C-T04.d。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- 兼容插件线：`st-content`、`st-mvu`、`st-ejs` 的内容映射、模板引擎、装饰器/注入/激活正则、世界书与数据函数、沙箱执行、回合内时间预算、流水线接入、模板生成、一致性套件与共存评测全部完成；`st-helper-host`（C-T05）待做。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a 至 P2.g、P3.a 至 P3.f、P4.a 至 P4.f、C-T01.a 至 C-T01.d、C-T02.a 至 C-T02.f、C-T03.a 至 C-T03.d、C-T04.a、C-T04.b.a、C-T04.b.b、C-T04.c.a、C-T04.c.b、C-T04.c.c、C-T04.c.d、C-T04.d、C-T05.a。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 兼容插件线：`st-content`、`st-mvu`、`st-ejs` 的内容映射、模板引擎、装饰器/注入/激活正则、世界书与数据函数、沙箱执行、回合内时间预算、流水线接入、模板生成、一致性套件与共存评测全部完成；`st-helper-host` 已完成脚本库与宿主会话 API，沙箱 iframe、STscript、生成与 HTML 状态栏待做（C-T05.b 至 C-T05.f）。
 - 数据库 schema 版本 43；本轮没有改 schema。本轮没有新增依赖。
 - 报告：`docs/dev/reports/P2.md`、`P3.md`、`P4.md`、`C-T01.md`、`C-T02.md`、`C-T03.md`、`C-T04.md`。
 - 沙箱现状：`eval-private/st-sandbox/st` 有 36 个预设、68 张卡、89 个非驱动聊天片段；预设连接字段已被驱动改写为录制端点与桩模型，全局 `openai_max_context` 已被驱动改为 2,000,000。需要恢复原始预设时用 `sandbox --replace` 重建。
 - 私有比对批次：`compare-smoke4`（5 个组合，修复后）与更早的 `compare-smoke2`、`compare-smoke3`、`session324-sanitize`；每个批次的 `compare/` 下有报告、差异清单与汇总。
-- ADR-0088 至 ADR-0118 记录插件、沙箱、比对、兼容内容映射、EJS、沙箱执行、时间预算、流水线接入、模板生成与一致性评测决策。
+- ADR-0088 至 ADR-0119 记录插件、沙箱、比对、兼容内容映射、EJS、沙箱执行、时间预算、流水线接入、模板生成、一致性评测与酒馆助手宿主的决策。
 - HUMAN-03 待处理（不阻塞）：抽查 `eval-private/evalset/spotcheck.md` 里的事件题。
 - HUMAN-14 已关闭（2026-11-12：人类取消）：取消 Vertex 真实调用的凭证配置与验证要求；`roles.writer` 继续使用 `main-fallback`。
 - HUMAN-15 待处理（M6-T99 需要）：把秋叶整合包 v3.2 的 ComfyUI 启动在 `http://127.0.0.1:8188`，并导出一份 API 格式 workflow JSON 到 `eval-private/comfyui/` 或告知路径。
@@ -58,6 +42,7 @@
 
 ## 可重复命令
 - 门禁：`pnpm check`。
+- C-T05.a 目标测试：`pnpm exec vitest run packages/st-compat/test/st-helper-host.test.ts`（12 个）。
 - C-T04.d 目标测试：`pnpm exec vitest run packages/st-compat/test/st-ejs-consistency.test.ts packages/st-compat/test/st-ejs-coexist.test.ts`（19 个）。
 - EJS 全部测试：`pnpm exec vitest run packages/st-compat/test/st-ejs-template.test.ts packages/st-compat/test/st-ejs-variables.test.ts packages/st-compat/test/st-ejs-decorators.test.ts packages/st-compat/test/st-ejs-injections.test.ts packages/st-compat/test/st-ejs-regex.test.ts packages/st-compat/test/st-ejs-world-info.test.ts packages/st-compat/test/st-ejs-data.test.ts packages/st-compat/test/st-ejs-json.test.ts packages/st-compat/test/st-ejs-sandbox.test.ts packages/st-compat/test/st-ejs-budget.test.ts packages/st-compat/test/st-content-ejs-pipeline.test.ts packages/st-compat/test/st-ejs-generation.test.ts packages/st-compat/test/st-ejs-consistency.test.ts packages/st-compat/test/st-ejs-coexist.test.ts`（131 个）。
 - 共存评测：`pnpm exec vitest run packages/st-compat/test/st-content-coexist.test.ts packages/st-compat/test/st-bench-coexist.test.ts packages/st-compat/test/st-mvu-coexist.test.ts packages/st-compat/test/st-ejs-coexist.test.ts`。
@@ -106,3 +91,4 @@
 - `StEjsVariableStore` 接入 `backend` 后，不指定作用域的写落在 `initial`（台账 `mvu`），global/message/local 仍是插件内存；接入台账的消费方要意识到写入会立即 `commit` 成当前楼层的 state diff。
 - 模板生成只登记请求：`generate` 返回 id 不返回正文，宿主用 `createStEjsBackgroundGenerationRunner` 接后台客户端并在间隙 `drain`；结果只在内存里，进程结束就消失，需要跨进程时由调用方另行保存。
 - 流水线第一轮没有楼层时用 `nodeId: null` 渲染预设静态段；`getvar` 读不到初始变量，模板要处理 `undefined`（例如 `Number(getvar(...) ?? 0)`）。
+- `st-helper-host` 的宿主会话不做执行；脚本正文只在 `scripts` 里返回。`character` 作用域依赖调用方传入带台账后端的 `StEjsVariableStore`，否则写入只留在内存。改消息会切换 head，较早消息的修改按分支切换处理。

@@ -1898,3 +1898,17 @@
   - 合成批次（1 张卡、5 轮、假正文客户端与假裁判，零网络）：矛盾率 0%/0%（8/8）、编造回忆率 0%/0%（4/4，样本不足）、盲测胜率开启侧 100%（10/10）、首字 P90 1/0 毫秒（5/5），没有变差项。假客户端的胜负由固定标记决定，不代表真实模型效果。
   - 没有改数据库 schema，没有新增依赖，`core` 没有改动（I1、I15）。
 
+
+## ADR-0119 `st-helper-host` 的脚本库与宿主会话 API（2026-11-13）
+
+- **背景**：C-T05 要把酒馆助手（JS-Slash-Runner）脚本接进 Dramaticer，同时不能让脚本直接改楼层原文或绕过结算器。整条任务一次做完会超过一个会话，先拆成脚本发现与宿主会话 API，沙箱 iframe、STscript、生成与 HTML 状态栏随后再做。酒馆助手的变量 API 有多个作用域，上游把状态放在消息变量里；Dramaticer 把 MVU 状态放在台账 `mvu` 子树里，EJS 的 `initial` 已经接到这份数据。
+- **决定**：
+  - 从角色卡 `extensions.tavern_helper.scripts` 读取脚本库。禁用脚本保留并带 `enabled: false`；重复 id、非数组、字段类型错误直接抛错并指出 `scripts[下标].字段`。不认识的字段留在角色卡原始 JSON 里，不在发现阶段丢弃或改写。
+  - 宿主会话的变量 API 与 EJS 共用同一个 `StEjsVariableStore`。`message` 映射消息作用域（`message_id` 缺省为 `latest`），`chat` 映射局部作用域，`global` 映射全局作用域，`character` 映射 `initial` 并接到台账 `mvu` 的待结算视图；`preset` 与 `script` 是宿主会话内的变量，不入台账。这样脚本改 MVU 状态时会经过结算器（I12），与 EJS 模板读写同一份数据。
+  - `events.ts` 提供 `eventOn`/`eventOnce`/`eventEmit`/`eventRemoveListener`/`eventClearEvent`/`eventClearAll` 与 `tavern_events` 常量。监听器异常直接抛出，不吞掉；事件表按宿主会话隔离。
+  - `messages.ts` 把消息 id 映射成当前 head 路径的下标。改正文调用 core 的 `applyMessageModification`，追加兄弟楼层并成为新的 head（界面里的新 swipe）；只改 `is_hidden` 写 `PluginDisplayState` 的元数据，不新建楼层；`swipe_id` 只把 head 切到已有的兄弟楼层。原文逐字节不变（I4）。
+  - 宿主会话通过 `createStHelperHostSession` 暴露 `api`、`scripts` 与 `events`。sandbox iframe 只需要把这组方法转成 `postMessage` 调用，不用重新实现语义；`ST_HELPER_IMPLEMENTED_FUNCTIONS` 记录当前覆盖率，C-T05.f 用它和上游公开类型定义对照。
+  - `st-content/ejs-pipeline.ts` 导出 `createStEjsMvuVariableBackend`，让 `st-helper-host` 与 EJS 共用同一份台账后端，不复制一套 `PendingLedgerView` 读写逻辑。
+- **影响**：
+  - 新增 `packages/st-compat/src/st-helper-host/` 与 `packages/st-compat/test/st-helper-host.test.ts` 12 个测试：脚本库启用/禁用与错误结构、七个变量函数的作用域与危险路径、六个事件函数、五个消息函数的范围/角色/隐藏过滤、改正文生成兄弟楼层且原文不变、只改显示不新建楼层、`swipe_id` 切换 head、`character` 写入成为 `mvu` 事实、覆盖清单完整。
+  - 现有 EJS、st-content、st-mvu 与 `core` 的消息修改测试保持通过；没有改数据库 schema，没有新增依赖，`core` 没有改动（I1、I15）。宿主的 `preset`/`script` 变量只在会话内存在，跨进程持久化留给后续任务。

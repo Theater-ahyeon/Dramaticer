@@ -34,6 +34,7 @@ export * from "./reference/text-stats.js";
 export * from "./regex-classifier.js";
 export * from "./st-content/index.js";
 export * from "./st-ejs/index.js";
+export * from "./st-helper-host/index.js";
 export * from "./st-mvu/index.js";
 export * from "./state-diff.js";
 export * from "./st-bench/compare.js";

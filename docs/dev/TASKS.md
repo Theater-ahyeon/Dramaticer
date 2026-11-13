@@ -1417,12 +1417,40 @@
   - 报告四项原生指标与样本量；变差时列出项目；写 `docs/dev/reports/C-T04.md`，逐条核对 C-T04 总验收。
   验收：一致性用例全部通过；开关对照四项指标有数字与样本量；报告不含正文；`pnpm check` 通过。
 
-- [ ] **C-T05 P-D `st-helper-host` 酒馆助手宿主** | 依赖：C-T04
+- **C-T05 P-D `st-helper-host` 酒馆助手宿主**（已拆成 C-T05.a 至 C-T05.f） | 依赖：C-T04
   做什么：
   - 先搭一致性测试并让它变红，再实现：执行酒馆助手脚本、角色卡内脚本、HTML 状态栏与开场页；运行在沙箱 iframe 里，提供与酒馆助手 API 对齐的变量读写、事件监听、`triggerSlash`/STscript、生成、读消息、改消息。
   - 修改消息一律映射成新建楼层或新的 swipe，不修改原文（I4）；只改显示或元数据的写进插件显示状态，不新建节点。
   - 执行隔离（ADR-0041 的 A10）：脚本在沙箱 iframe 里运行，`node:vm` 不作为安全边界；脚本发起的生成按卡限流并计入后台预算。
-  验收：酒馆助手 API 覆盖率与一致性测试达到提案口径；修改消息不触碰原文；脚本在沙箱里运行；脚本发起的生成一律作为后台任务执行并在 Trace 里单独计数，走后台渠道、不进入回合内；脚本与正则的变量写入经过结算器；开启与关闭本插件的对照评测里原生指标不明显变差（ADR-0040）。
+  总验收（C-T05.f 逐条核对）：酒馆助手 API 覆盖率与一致性测试达到提案口径；修改消息不触碰原文；脚本在沙箱里运行；脚本发起的生成一律作为后台任务执行并在 Trace 里单独计数，走后台渠道、不进入回合内；脚本与正则的变量写入经过结算器；开启与关闭本插件的对照评测里原生指标不明显变差（ADR-0040）。
+
+- [x] **C-T05.a 脚本库发现与宿主会话 API** | 依赖：C-T04 | I4、I12
+  完成：2026-11-13 新增 `packages/st-compat/src/st-helper-host/`：`scripts.ts` 严格读取角色卡 `extensions.tavern_helper.scripts`（启用与禁用脚本、重复 id 与字段类型错误），`variables.ts` 把七个变量函数映射到 EJS 变量存储（`character` 经台账后端写 `mvu`，`preset`/`script` 留会话），`events.ts` 提供六个事件函数与 `tavern_events` 常量，`messages.ts` 把消息 API 映射到 head 路径（改正文生成兄弟楼层、`is_hidden` 写显示状态、`swipe_id` 切换 head），`host.ts` 组装会话与覆盖清单；`ejs-pipeline.ts` 导出 `createStEjsMvuVariableBackend` 供共用；新增 12 个测试；ADR-0119；门禁通过（227 个测试文件、2029 个测试、5 个跳过）
+  做什么：
+  - 从角色卡 `extensions.tavern_helper.scripts` 严格读取脚本库（`id`、`name`、`content`、`enabled`、`type`、`info`、`button`、`data`），保留禁用脚本；重复 id 或结构错误直接抛错并指出位置。
+  - 宿主会话提供变量、事件与消息三组 API：变量 `getVariables`/`replaceVariables`/`insertOrAssignVariables`/`updateVariablesWith`/`getVariable`/`insertOrAssignVariable`/`deleteVariable`；事件 `eventOn`/`eventOnce`/`eventEmit`/`eventRemoveListener`/`eventClearEvent`/`eventClearAll` 与 `tavern_events` 常量；消息 `getChatMessages`/`getChatMessage`/`getLastMessageId`/`getCurrentMessageId`/`setChatMessages`。
+  - 变量与 EJS 共用 `StEjsVariableStore`：`message`、`chat`、`global` 用插件的消息、局部与全局作用域；`character` 落台账 `mvu` 并经结算器校验；`preset`、`script` 留在宿主会话。改正文走 `applyMessageModification` 生成新 swipe，只改 `is_hidden` 写插件显示状态，`swipe_id` 切换 head。
+  验收：脚本库覆盖启用与禁用、重复 id 与结构错误；七个变量函数、六个事件函数与五个消息函数各有测试；改正文不触碰原文并生成兄弟楼层；只改显示不新建楼层；`character` 写入经结算器成为台账事实；`pnpm check` 通过。
+
+- [ ] **C-T05.b 沙箱 iframe 执行与权限声明** | 依赖：C-T05.a | ADR-0041（A10）、I18
+  做什么：把 C-T05.a 的宿主 API 通过 `postMessage` 暴露给沙箱 iframe；脚本在 iframe 里执行，拿不到主线程对象、文件系统与网络；代码插件权限声明列出脚本可用的 API，未声明的调用被拒绝并记录；脚本死循环或超时被终止，原因写进 Trace。
+  验收：逃逸测试通过；超时终止后宿主仍可继续；未声明权限的调用被拒绝并记录；`pnpm check` 通过。
+
+- [ ] **C-T05.c `triggerSlash` 与 STscript 子集** | 依赖：C-T05.b
+  做什么：实现酒馆助手脚本常用的 STscript 子集（变量读写、消息读取与修改、聊天切换、安静生成、管道与引号），`triggerSlash` 返回结果字符串；未实现的命令抛错并指出命令名。
+  验收：每个受支持命令有测试；命令改写消息仍映射为新 swipe；未知命令失败并指出命令名；`pnpm check` 通过。
+
+- [ ] **C-T05.d 脚本发起的生成后台化** | 依赖：C-T05.c、C-T04.c.d | I6、I11
+  做什么：`generate`/`generateRaw` 只登记后台任务，复用卡级限流调度器，走后台渠道并在间隙执行；Trace 单独计数；回合内不等待。
+  验收：脚本发起的生成不进入回合内；按卡限流；Trace 有独立计数；`pnpm check` 通过。
+
+- [ ] **C-T05.e HTML 状态栏与开场页** | 依赖：C-T05.b | I4、I8
+  做什么：提取角色卡与楼层里的 HTML 状态栏和开场页，在沙箱 iframe 里渲染；脚本只能通过宿主 API 读写变量与消息；渲染结果进入插件显示状态，不改原文、不写台账。
+  验收：状态栏随变量更新重新渲染；开场页与楼层中的脚本在沙箱里运行；原文逐字节不变；`pnpm check` 通过。
+
+- [ ] **C-T05.f 一致性测试与共存评测** | 依赖：C-T05.b 至 C-T05.e
+  做什么：按酒馆助手公开 API 统计覆盖率，补齐一致性用例；在 `ST_BENCH_COEXIST_PLUGINS` 注册 `st-helper-host`，开启与关闭各跑一批并报告四项原生指标；写 `docs/dev/reports/C-T05.md` 逐条核对总验收。
+  验收：API 覆盖率与一致性用例达到提案口径；开关对照四项指标有数字与样本量；报告不含正文；`pnpm check` 通过。
 
 ## H：应用内助手（排在 R5 与 R3b 之后，取代原侧边 agent）
 

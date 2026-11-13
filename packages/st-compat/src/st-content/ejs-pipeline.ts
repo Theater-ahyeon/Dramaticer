@@ -189,6 +189,19 @@ class StEjsMvuVariableBackend implements StEjsVariableBackend {
 	}
 }
 
+/**
+ * 给其它 ST 兼容插件复用的台账变量视图；`character` 作用域与 MVU、EJS 的
+ * `initial` 是同一份 `mvu` 数据，写入先经结算器校验，再提交成台账事实。
+ */
+export function createStEjsMvuVariableBackend(input: {
+	readonly store: StoryStore;
+	readonly storyId: string;
+	readonly nodeId: string;
+	readonly initial: StEjsVariableTree;
+}): StEjsVariableBackend {
+	return new StEjsMvuVariableBackend(input);
+}
+
 interface ActiveTurn {
 	readonly nodeId: string | null;
 	readonly runtime: StEjsRuntime;
