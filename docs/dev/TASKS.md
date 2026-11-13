@@ -1301,7 +1301,8 @@
   做什么：主次关键词与逻辑、正则关键词、递归、sticky/cooldown/delay、分组与组内权重、概率、扫描深度、位置/深度/角色、outlet；按 ST 语义在插件里实现，结果交给原生槽位预算。
   验收：世界书一致性用例通过；激活结果与录制一致；扫描深度与递归受时间预算约束；`pnpm check` 通过。
 
-- [ ] **C-T02.d 宏与正则** | 依赖：C-T02.c
+- [x] **C-T02.d 宏与正则** | 依赖：C-T02.c
+  完成：2026-11-13 新增 `st-content/macros.ts`（`createStMacroEngine` 复刻酒馆旧宏引擎：环境宏与展开顺序、`setvar`/`getvar`/`addvar`/`incvar`/`decvar` 与 global 版本、`random`/`pick`/`roll`、对话、时间、outlet、屏蔽词与后处理）与 `st-content/regex.ts`（`parseStRegexScript`、`collectStRegexScripts` 按全局→角色卡→预设收集并受允许开关约束、`applyStRegexScripts` 复刻位置、只影响显示、只影响 prompt、编辑开关与深度筛选、`runStRegexScript` 复刻 `$1`/`$<name>`/`{{match}}`/`trimStrings`/`substituteRegex`）；`mapStPreset` 的预设条目、卡片 marker、人设注入与作者注释在写入前替换宏，`activateStWorldInfo` 用同一替换函数处理关键词与正文并让替换后的正文进入递归缓冲与 token 预算，激活结果按 `WORLD_INFO` 位置执行 promptOnly 正则并带深度；新增 23 个测试与 ADR-0104
   做什么：完整宏引擎与完整正则语义；只作用于来自 ST 的内容，不碰 harness 槽位；正则作用范围、只影响显示、只影响 prompt、深度限制与宏替换与 ST 一致。
   验收：宏与正则一致性用例通过；原文不被修改；作用范围受控；`pnpm check` 通过。
 

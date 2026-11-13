@@ -6,7 +6,10 @@ import type {
 	LlmRole,
 	StoryStore,
 } from "@dramaticer/core";
+import type { StRegexScript } from "../preset.js";
 import type { StWorldInfo, StWorldInfoEntry } from "../world-info.js";
+import type { StMacroSubstitute } from "./macros.js";
+import { ST_REGEX_PLACEMENT, applyStRegexScripts } from "./regex.js";
 
 /** 酒馆世界书条目的注入位置。 */
 export const ST_WORLD_INFO_POSITION = {
@@ -149,7 +152,14 @@ export interface StWorldInfoActivationInput {
 	/** 毫秒时间戳；触达后停止递归并保留已经激活的结果。 */
 	readonly deadline?: number;
 	readonly dryRun?: boolean;
-	readonly substitute?: (text: string) => string;
+	readonly substitute?: StMacroSubstitute;
+	/** 世界书条目在 prompt 里的正则处理；与酒馆 `buildWorldInfoPrompt` 相同。 */
+	readonly regex?: StWorldInfoRegexOptions;
+}
+
+export interface StWorldInfoRegexOptions {
+	readonly scripts: readonly StRegexScript[];
+	readonly substitute?: StMacroSubstitute;
 }
 
 interface ScanEntry {
@@ -159,7 +169,7 @@ interface ScanEntry {
 	readonly hash: string;
 	readonly index: number;
 	readonly decorators: readonly string[];
-	readonly content: string;
+	content: string;
 }
 
 interface TimedEffectBuffers {
@@ -460,6 +470,7 @@ export function activateStWorldInfo(
 				failedProbability.add(item.key);
 				continue;
 			}
+			item.content = substitute(item.content);
 			newContent += `${item.content}\n`;
 			if (
 				settings.budgetTokens !== undefined &&
@@ -514,6 +525,7 @@ export function activateStWorldInfo(
 		steps,
 		deadlineExceeded,
 		budgetExceeded,
+		regex: input.regex,
 	});
 }
 
@@ -915,6 +927,7 @@ function buildActivation(input: {
 	readonly steps: number;
 	readonly deadlineExceeded: boolean;
 	readonly budgetExceeded: boolean;
+	readonly regex?: StWorldInfoRegexOptions;
 }): StWorldInfoActivation {
 	const before: string[] = [];
 	const after: string[] = [];
@@ -934,10 +947,23 @@ function buildActivation(input: {
 
 	for (const item of sorted) {
 		const entry = item.entry;
-		if (item.content.length === 0) continue;
 		const position = entry.position ?? ST_WORLD_INFO_POSITION.before;
 		const role = DEPTH_ROLES[entry.role ?? 0] ?? "system";
 		const depthValue = entry.depth ?? DEFAULT_ENTRY_DEPTH;
+		const content =
+			input.regex === undefined
+				? item.content
+				: applyStRegexScripts(item.content, ST_REGEX_PLACEMENT.worldInfo, {
+						scripts: input.regex.scripts,
+						isMarkdown: false,
+						isPrompt: true,
+						depth:
+							position === ST_WORLD_INFO_POSITION.atDepth
+								? depthValue
+								: undefined,
+						substitute: input.regex.substitute,
+					});
+		if (content.length === 0) continue;
 		entries.push({
 			world: item.world,
 			uid: entry.uid ?? -1,
@@ -951,16 +977,16 @@ function buildActivation(input: {
 		});
 		switch (position) {
 			case ST_WORLD_INFO_POSITION.before:
-				before.unshift(item.content);
+				before.unshift(content);
 				break;
 			case ST_WORLD_INFO_POSITION.after:
-				after.unshift(item.content);
+				after.unshift(content);
 				break;
 			case ST_WORLD_INFO_POSITION.authorNoteTop:
-				authorNoteTop.unshift(item.content);
+				authorNoteTop.unshift(content);
 				break;
 			case ST_WORLD_INFO_POSITION.authorNoteBottom:
-				authorNoteBottom.unshift(item.content);
+				authorNoteBottom.unshift(content);
 				break;
 			case ST_WORLD_INFO_POSITION.atDepth: {
 				const existing = depth.find(
@@ -970,19 +996,19 @@ function buildActivation(input: {
 					depth.push({
 						depth: depthValue,
 						role,
-						contents: [item.content],
+						contents: [content],
 					});
 				} else {
 					const contents = existing.contents as string[];
-					contents.unshift(item.content);
+					contents.unshift(content);
 				}
 				break;
 			}
 			case ST_WORLD_INFO_POSITION.extensionTop:
-				extensionTop.unshift(item.content);
+				extensionTop.unshift(content);
 				break;
 			case ST_WORLD_INFO_POSITION.extensionBottom:
-				extensionBottom.unshift(item.content);
+				extensionBottom.unshift(content);
 				break;
 			case ST_WORLD_INFO_POSITION.outlet: {
 				if (!entry.outletName) {
@@ -995,7 +1021,7 @@ function buildActivation(input: {
 				}
 				outlets[entry.outletName] = [
 					...(outlets[entry.outletName] ?? []),
-					item.content,
+					content,
 				];
 				break;
 			}
@@ -1080,7 +1106,9 @@ export interface StWorldInfoProviderOptions {
 	readonly random?: () => number;
 	readonly now?: () => number;
 	readonly dryRun?: boolean;
-	readonly substitute?: (text: string) => string;
+	readonly substitute?: StMacroSubstitute;
+	/** 世界书条目的 prompt 正则；由调用方从全局、角色卡与预设脚本收集。 */
+	readonly regexScripts?: readonly StRegexScript[];
 }
 
 export interface StWorldInfoProviders {
@@ -1146,6 +1174,13 @@ export function createStWorldInfoProviders(
 				deadline: timeBudgetMs > 0 ? now() + timeBudgetMs : undefined,
 				dryRun: options.dryRun,
 				substitute: options.substitute,
+				regex:
+					options.regexScripts === undefined
+						? undefined
+						: {
+								scripts: options.regexScripts,
+								substitute: options.substitute,
+							},
 			});
 			timedEffects = activation.timedEffects;
 			generation += 1;

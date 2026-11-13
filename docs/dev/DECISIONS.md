@@ -1656,3 +1656,21 @@
   - `st-content-preset.test.ts` 的世界书 marker 断言改为 `merged-lore`，并要求映射结果带有 before/after 开关。
   - 录制没有世界书组合，激活结果暂时以沙箱源码行为为准；C-T02.f 的共存对照与 C-T01.b 的后续批次需要补世界书组合，才能把“与录制一致”落到真实请求。
   - `core` 无改动，ST 语义全部留在兼容插件里（I1、I15）。
+
+## ADR-0104 `st-content` 的宏引擎与正则语义（2026-11-13）
+
+- **背景**：C-T02.b 把预设内容映射成原生模板时只处理了 `scenario_format` 与 `personality_format` 的占位符，其余宏原样保留并记 `macro` 问题；世界书的关键词与正文也没有宏替换，正则脚本完全没有接入。酒馆默认关闭实验性宏引擎，真正执行的是 `evaluateMacros` 的旧引擎；正则扩展用 `getRegexedString` 按位置、显示/prompt 开关、编辑开关与深度范围挑脚本。C-T02.d 的验收要求宏与正则一致性用例通过、原文不被修改、作用范围受控。
+- **决定**：
+  - 新增 `packages/st-compat/src/st-content/macros.ts`。`createStMacroEngine` 复刻旧引擎的求值顺序：`<USER>`、`<BOT>`、`<CHAR>`、`<CHARIFNOTGROUP>`、`<GROUP>` 与骰子宏，变量宏，换行、裁剪、空操作与输入，然后是角色卡与用户环境宏，最后是上下文、时间、outlet、屏蔽词、随机与稳定抽取。环境宏按酒馆的对象插入顺序逐个替换，所以先替换的值里出现的宏会被后面的宏继续展开。
+  - 变量读写沿用酒馆语义：`setvar`、`getvar`、`addvar`、`incvar`、`decvar` 与对应的 global 版本；数值字符串在读取时按数字返回，`addvar` 对数组值追加、对数字值求和、其余按字符串拼接。变量存储在引擎实例里，由调用方跨轮保存。
+  - `{{random}}` 使用调用方传入的随机函数；`{{pick}}` 用酒馆的 `getStringHash`、对话 id 与文本位置构造稳定种子，并调用 `seedrandom` 得到与酒馆相同的抽取结果；`{{roll}}` 用 `droll` 解释骰子公式；时间宏用 `moment`，`now` 可注入固定时钟。
+  - `{{original}}` 在一次替换里只输出一次。引擎保留不认识的宏，`unresolved` 用来检查替换后的残留。
+  - 新增 `packages/st-compat/src/st-content/regex.ts`。`StRegexScript` 复用 `preset.ts` 已有的类型；`parseStRegexScript` 宽松解析全局、角色卡与预设来源的脚本，`collectStRegexScripts` 按酒馆的顺序与允许开关收集：全局、角色卡、预设，角色卡与预设默认不执行。
+  - `applyStRegexScripts` 复刻 `getRegexedString`：只影响显示的脚本只在 `isMarkdown` 时执行，只影响 prompt 的脚本只在 `isPrompt` 时执行，两者都不设的脚本只在既非显示也非 prompt 的生成输出路径执行；编辑路径要求 `runOnEdit`；深度范围按 `minDepth` 与 `maxDepth` 过滤，`-1` 表示不设界。
+  - `runStRegexScript` 复刻替换语义：`{{match}}` 等价 `$0`，编号组 `$1`、命名组 `$<name>`、`trimStrings` 按当前角色名替换宏后逐字删除，替换串最后整体做一次宏替换；`substituteRegex` 的 RAW 与 ESCAPED 分别对 `findRegex` 做普通宏替换与逐值转义。没有传入替换函数时使用一个空上下文的宏引擎，与酒馆始终调用 `substituteParams` 的行为一致。
+  - `activateStWorldInfo` 在概率检查通过后用同一个 `substitute` 替换条目正文，替换后的正文参与递归缓冲与 token 预算；激活结果在构建 before/after、作者注释上下、扩展上下、深度分组与 outlet 时按 `WORLD_INFO` 位置执行 promptOnly 正则，深度条目带自己的深度。`createStWorldInfoProviders` 新增 `regexScripts` 选项并把它交给同一次激活。
+  - `mapStPreset` 新增 `macros` 选项，预设条目、角色卡 marker、人设注入与作者注释在写进模板或注入列表之前替换宏；替换后仍存在的宏继续记 `macro` 问题。
+- **影响**：
+  - 新增 `packages/st-compat/test/st-content-macros-regex.test.ts` 23 个测试，覆盖环境宏与展开顺序、变量读写、随机与稳定抽取、骰子、对话与时间宏、工具宏、原句、后处理、正则位置与显示/prompt/编辑/深度筛选、替换组与 trimStrings、`substituteRegex`、来源顺序、预设与人设与作者注释的宏替换、世界书关键词与递归缓冲的宏替换、世界书 prompt 正则与深度筛选。
+  - 新增运行时依赖 `moment`、`seedrandom`、`droll` 与开发依赖 `@types/seedrandom`，已登记在 `docs/dev/DEPENDENCIES.md`。
+  - `core` 无改动（I1、I15）；正则只处理来自 ST 的内容并作为 prompt 视图使用，楼层原文不变（I8）。

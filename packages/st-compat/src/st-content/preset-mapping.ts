@@ -21,6 +21,7 @@ import {
 } from "../preset.js";
 import type { StAuthorNote, StAuthorNotePlacement } from "./author-note.js";
 import { mapCharacterCard } from "./card.js";
+import type { StMacroEngine } from "./macros.js";
 import {
 	type StPersona,
 	type StPersonaMapping,
@@ -102,6 +103,8 @@ export interface StPresetMappingInput {
 	/** 玩家楼层数；作者注释按间隔注入时需要它判定本轮是否到期。 */
 	readonly playerMessageCount?: number;
 	readonly templateId?: string;
+	/** 酒馆宏引擎；预设与卡片正文在写进模板前替换。 */
+	readonly macros?: StMacroEngine;
 }
 
 export interface StPresetMapping {
@@ -282,7 +285,11 @@ export function mapStPreset(input: StPresetMappingInput): StPresetMapping {
 					addUnmapped(entries, issues, entry, "persona-depth");
 					continue;
 				}
-				const text = personaMapping.text.trim();
+				const personaText =
+					input.macros === undefined
+						? personaMapping.text
+						: input.macros.substitute(personaMapping.text);
+				const text = personaText.trim();
 				if (text.length === 0) {
 					entries.push(entryReport(entry, "skipped", null, null, 0, "empty"));
 					continue;
@@ -311,12 +318,16 @@ export function mapStPreset(input: StPresetMappingInput): StPresetMapping {
 		}
 
 		const text = marker?.text ?? prompt.content;
-		const effectiveText = applyPresetOverride(
+		const overridden = applyPresetOverride(
 			entry.identifier,
 			prompt,
 			text,
 			input.card,
 		);
+		const effectiveText =
+			input.macros === undefined
+				? overridden
+				: input.macros.substitute(overridden);
 		const trimmed = effectiveText.trim();
 		if (trimmed.length === 0) {
 			entries.push(entryReport(entry, "skipped", null, null, 0, "empty"));
@@ -691,11 +702,13 @@ function applyAuthorNote(
 	if (!due) {
 		return { placement: note.placement, injected: false };
 	}
-	recordMacroIssue(note.text, "author-note", issues);
+	const noteText =
+		input.macros === undefined ? note.text : input.macros.substitute(note.text);
+	recordMacroIssue(noteText, "author-note", issues);
 	const segment: ContextSegment = {
 		id: "st:author-note",
 		kind: "static",
-		text: note.text,
+		text: noteText,
 		role: note.role,
 		priority: 10,
 	};
@@ -703,7 +716,7 @@ function applyAuthorNote(
 		injections.push({
 			identifier: "author-note",
 			role: note.role,
-			content: note.text,
+			content: noteText,
 			depth: note.depth,
 			order: DEFAULT_INJECTION_ORDER,
 			source: "extension",
