@@ -3,6 +3,7 @@ import type { AddressInfo } from "node:net";
 import path from "node:path";
 import {
 	AssistantDocsIndex,
+	type AssistantSearchClient,
 	type ImagesConfig,
 	type LlmChannel,
 	type LlmChannelConfig,
@@ -88,6 +89,8 @@ export interface StartServerOptions {
 	readonly images?: ServerImagesOptions;
 	/** 内置文档目录；默认是仓库根目录的 `docs/`，缺失或为空时启动失败。 */
 	readonly docsRoot?: string;
+	/** 显式开启资料员联网搜索；不设置时不注册 web_search。 */
+	readonly assistantSearch?: AssistantSearchClient | null;
 	readonly heartbeatMs?: number;
 	readonly now?: () => number;
 	readonly log?: (line: string) => void;
@@ -109,6 +112,7 @@ interface HandlerOptions {
 	readonly assistantRuntime: AssistantRuntimeManager | null;
 	readonly assistantRuns: AssistantRunCoordinator;
 	readonly docsIndex: AssistantDocsIndex;
+	readonly assistantSearch: AssistantSearchClient | null;
 	readonly turns: TurnCoordinator;
 	readonly runs: TurnRunRegistry;
 	readonly scheduler: BackgroundScheduler | null;
@@ -136,6 +140,7 @@ export async function startServer(
 	const docsIndex = await AssistantDocsIndex.load(
 		options.docsRoot ?? path.join(repoRoot, "docs"),
 	);
+	const assistantSearch = options.assistantSearch ?? null;
 	const channels = options.channels ?? null;
 	const images = options.images ?? null;
 	const loadConfig = channels === null ? null : resolveChannelsLoader(channels);
@@ -207,6 +212,7 @@ export async function startServer(
 			assistantRuntime,
 			assistantRuns,
 			docsIndex,
+			assistantSearch,
 			turns,
 			runs,
 			scheduler,
@@ -339,6 +345,7 @@ async function handleRequest(
 			assistantRuntime: options.assistantRuntime,
 			assistantRuns: options.assistantRuns,
 			docsIndex: options.docsIndex,
+			assistantSearch: options.assistantSearch,
 			turns: options.turns,
 			runs: options.runs,
 			scheduler: options.scheduler,

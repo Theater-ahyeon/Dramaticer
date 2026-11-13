@@ -1512,7 +1512,8 @@
   - 两个技能的系统提示都要求先读事实再提议，提案里写清会改变哪条路径或哪个拍；只读级别没有提案工具，确认与自动级别也只能生成待确认动作或变更卡。
   验收：假客户端下“把某人的好感度改成某值”生成一张待批准卡，批准后快照改变、拒绝后不变；非法路径整条拒绝并指出字段；相同内容不重复建卡；没有 head 的故事直接失败并说明原因；参谋生成的计划批准后能按现有读取接口读回，拒绝后计划不变；两个技能都不写楼层、不改 head、不调用正文写入工具；`pnpm check` 通过。
 
-- [ ] **H-T06 资料员、卡片工坊与设置向导技能** | 依赖：H-T03、P4.f、R4-T99 | DESIGN §10.3 | ADR-0125 | I14、I18
+- [x] **H-T06 资料员、卡片工坊与设置向导技能** | 依赖：H-T03、P4.f、R4-T99 | DESIGN §10.3 | ADR-0125 | I14、I18
+  完成：2026-11-13 注册 `research`（`web_search`、`lore_lookup`、`settings_read`、`propose_lore_entries`）、`card_workshop`（`card_read`、`template_read`、`lore_lookup`、`settings_read`、`propose_card_change`、`propose_lore_entries`）与 `setup_wizard`（`settings_read`、`channels_read`、`plugin_list`、`propose_channels_change`、`propose_settings_change`）；新增 `assistant/setup.ts` 的卡片读取、联网搜索与四类提案工具，以及 `assistant/search.ts` 的搜索接口与 HTTP 客户端；`propose_channels_change` 要求四个配置段给全，批准仍走 `applyChannelsUpdate` 与现有解析校验；`web_search` 只在 server 以 `--assistant-web-search <地址>` 显式开启时注册，渠道读取只返回非敏感字段；门禁通过
   做什么：
   - 注册 `research`（资料员）：工具 `web_search` 只在 server 用 `--assistant-web-search <baseUrl>` 显式开启时注册，接口通过注入的 `AssistantSearchClient` 调用，返回标题、链接、摘要与抓取时间；单元测试用假客户端，零网络。研究结论必须带链接；原作资料整理成世界书条目的待确认动作（`kind` 为 `lore`），批准时调用现有世界书写入并校验，拒绝不写。
   - 注册 `card_workshop`（卡片工坊）：工具 `card_read` 读当前故事的 `character_prompt`、`persona`、实体、世界书条目与上下文模板；`propose_card_change`（权限 `propose`）生成 `card` 或 `template` 待确认动作。批准模板时复用 `assertContextTemplate`，批准人物字段时复用现有设置校验；卡片工坊不修改楼层原文，也不导入或覆盖外部卡文件。

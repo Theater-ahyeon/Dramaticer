@@ -3,8 +3,11 @@ import { join } from "node:path";
 import { describe, expect, it, onTestFinished } from "vitest";
 import {
 	AssistantDocsIndex,
+	CARD_WORKSHOP_TOOL_NAMES,
 	GUIDE_TOOL_NAMES,
 	LEDGER_REVISION_TOOL_NAMES,
+	RESEARCH_TOOL_NAMES,
+	SETUP_WIZARD_TOOL_NAMES,
 	STRATEGY_TOOL_NAMES,
 	TROUBLESHOOT_TOOL_NAMES,
 	buildAssistantSystemPrompt,
@@ -62,12 +65,15 @@ function writeDocs(root: string): void {
 }
 
 describe("助手技能注册表", () => {
-	it("注册四个技能，未注册的技能被拒绝", () => {
+	it("注册七个技能，未注册的技能被拒绝", () => {
 		expect(listAssistantSkills().map((skill) => skill.id)).toEqual([
 			"troubleshoot",
 			"guide",
 			"ledger_revision",
 			"strategy",
+			"research",
+			"card_workshop",
+			"setup_wizard",
 		]);
 		const troubleshoot = requireAssistantSkill("troubleshoot");
 		expect(troubleshoot.name).toBe("排障");
@@ -90,13 +96,26 @@ describe("助手技能注册表", () => {
 		expect(strategy.toolNames).toContain("summarize_recent");
 
 		expect(getAssistantSkill("guide")).toBe(guide);
-		expect(getAssistantSkill("research")).toBeNull();
-		expect(() => requireAssistantSkill("research")).toThrow(
-			/助手技能未注册：research/,
+		const research = requireAssistantSkill("research");
+		expect(research.name).toBe("资料员");
+		expect(research.toolNames).toEqual([...RESEARCH_TOOL_NAMES]);
+		expect(research.toolNames).toContain("web_search");
+		const cardWorkshop = requireAssistantSkill("card_workshop");
+		expect(cardWorkshop.name).toBe("卡片工坊");
+		expect(cardWorkshop.toolNames).toEqual([...CARD_WORKSHOP_TOOL_NAMES]);
+		expect(cardWorkshop.toolNames).toContain("propose_card_change");
+		const setupWizard = requireAssistantSkill("setup_wizard");
+		expect(setupWizard.name).toBe("设置向导");
+		expect(setupWizard.toolNames).toEqual([...SETUP_WIZARD_TOOL_NAMES]);
+		expect(setupWizard.instructions).toContain("密钥");
+		expect(getAssistantSkill("unknown_skill")).toBeNull();
+		expect(() => requireAssistantSkill("unknown_skill")).toThrow(
+			/助手技能未注册：unknown_skill/,
 		);
 		expect(isAssistantSkillRegistered("troubleshoot")).toBe(true);
 		expect(isAssistantSkillRegistered("ledger_revision")).toBe(true);
-		expect(isAssistantSkillRegistered("research")).toBe(false);
+		expect(isAssistantSkillRegistered("research")).toBe(true);
+		expect(isAssistantSkillRegistered("unknown_skill")).toBe(false);
 		expect(isAssistantSkillRegistered(42)).toBe(false);
 	});
 

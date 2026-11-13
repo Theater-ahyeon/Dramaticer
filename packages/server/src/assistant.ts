@@ -3,10 +3,12 @@ import {
 	type AssistantAction,
 	AssistantActionError,
 	AssistantActionPayloadError,
+	type AssistantChannelsSnapshot,
 	type AssistantConversation,
 	AssistantConversationHasPendingActionsError,
 	type AssistantDocsIndex,
 	type AssistantEvent,
+	type AssistantSearchClient,
 	type JsonObject,
 	type JsonValue,
 	type StoryStore,
@@ -19,6 +21,7 @@ import {
 	assertJsonValue,
 	buildAssistantSystemPrompt,
 	createAssistantProposalTools,
+	createAssistantSetupTools,
 	createDocsSearchTool,
 	getAssistantSkill,
 	isAssistantActionStatus,
@@ -71,6 +74,10 @@ export interface AssistantRouteOptions {
 	readonly runtime: AssistantRuntimeManager | null;
 	readonly runs: AssistantRunCoordinator;
 	readonly docsIndex: AssistantDocsIndex;
+	/** 显式开启联网搜索时才提供；没有时资料员工具里不注册 web_search。 */
+	readonly searchClient?: AssistantSearchClient | null;
+	/** 没有渠道文件时不提供，设置向导的渠道读取会失败。 */
+	readonly readChannelsView?: () => Promise<AssistantChannelsSnapshot>;
 	readonly heartbeatMs: number;
 	/** 批准渠道动作时调用；没有渠道文件时为 null。 */
 	readonly applyChannelsAction?: (payload: JsonObject) => Promise<void>;
@@ -670,6 +677,14 @@ async function handleConversationMessage(
 					storyId: conversation.storyId,
 					conversationId: conversation.id,
 					permission: conversation.permission,
+				}),
+				...createAssistantSetupTools({
+					store: options.store,
+					storyId: conversation.storyId,
+					conversationId: conversation.id,
+					permission: conversation.permission,
+					searchClient: options.searchClient,
+					readChannels: options.readChannelsView,
 				}),
 			],
 			model: runtime.modelAlias,

@@ -5,7 +5,7 @@ import { SERVER_PASSWORD_ENV } from "./auth.js";
 export const DEFAULT_PORT = 8787;
 export const DEFAULT_HOST = "127.0.0.1";
 export const SERVER_USAGE =
-	"用法：dramaticer-serve [--db <路径>] [--port <端口>] [--host <地址>] [--channels <路径>] [--images <路径>] [--media-dir <路径>] [--docs-root <目录>] [--web <目录>]";
+	"用法：dramaticer-serve [--db <路径>] [--port <端口>] [--host <地址>] [--channels <路径>] [--images <路径>] [--media-dir <路径>] [--docs-root <目录>] [--assistant-web-search <地址>] [--web <目录>]";
 
 /** 仓库根目录；默认路径都从这里出发，与启动时的工作目录无关。 */
 export const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
@@ -16,6 +16,8 @@ export interface ServerConfig {
 	readonly imagesPath: string;
 	readonly mediaDir: string;
 	readonly docsRoot: string;
+	/** 显式开启资料员联网搜索时指向搜索服务；未设置时不注册 web_search。 */
+	readonly assistantWebSearch: string | null;
 	readonly webRoot: string;
 	readonly host: string;
 	readonly port: number;
@@ -38,6 +40,7 @@ export function parseServerArgs(
 	let imagesPath = path.join(repoRoot, "data", "images.yaml");
 	let mediaDir: string | null = null;
 	let docsRoot = path.join(repoRoot, "docs");
+	let assistantWebSearch: string | null = null;
 	let webRoot = path.join(repoRoot, "packages", "web", "dist");
 	let host = DEFAULT_HOST;
 	let port = DEFAULT_PORT;
@@ -69,6 +72,12 @@ export function parseServerArgs(
 			case "--docs-root":
 				docsRoot = path.resolve(cwd, readValue());
 				break;
+			case "--assistant-web-search":
+				assistantWebSearch = parseHttpUrl(
+					readValue(),
+					"--assistant-web-search",
+				);
+				break;
 			case "--web":
 				webRoot = path.resolve(cwd, readValue());
 				break;
@@ -90,6 +99,7 @@ export function parseServerArgs(
 		imagesPath,
 		mediaDir: mediaDir ?? path.join(path.dirname(dbPath), "images"),
 		docsRoot,
+		assistantWebSearch,
 		webRoot,
 		host,
 		port,
@@ -98,6 +108,19 @@ export function parseServerArgs(
 				? null
 				: envPassword,
 	};
+}
+
+function parseHttpUrl(value: string, flag: string): string {
+	let url: URL;
+	try {
+		url = new URL(value);
+	} catch {
+		throw new Error(`参数 ${flag} 必须是合法地址：${value}`);
+	}
+	if (url.protocol !== "http:" && url.protocol !== "https:") {
+		throw new Error(`参数 ${flag} 只支持 http 或 https：${value}`);
+	}
+	return url.toString();
 }
 
 function parsePort(value: string): number {

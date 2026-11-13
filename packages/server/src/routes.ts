@@ -10,7 +10,9 @@ import {
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import {
+	type AssistantChannelsSnapshot,
 	type AssistantDocsIndex,
+	type AssistantSearchClient,
 	type ChooseOpeningCandidateResult,
 	type ComfyUiSlots,
 	type ComfyUiWorkflow,
@@ -166,6 +168,7 @@ export interface ApiRouteOptions {
 	readonly assistantRuntime: AssistantRuntimeManager | null;
 	readonly assistantRuns: AssistantRunCoordinator;
 	readonly docsIndex: AssistantDocsIndex;
+	readonly assistantSearch: AssistantSearchClient | null;
 	readonly turns: TurnCoordinator;
 	readonly runs: TurnRunRegistry;
 	readonly scheduler?: BackgroundScheduler | null;
@@ -206,6 +209,11 @@ export async function handleApiRequest(
 			runtime: options.assistantRuntime,
 			runs: options.assistantRuns,
 			docsIndex: options.docsIndex,
+			searchClient: options.assistantSearch,
+			readChannelsView:
+				options.channelsPath === null
+					? undefined
+					: async () => await readAssistantChannelsSnapshot(options),
 			heartbeatMs: options.heartbeatMs,
 			applyChannelsAction:
 				options.channelsPath === null
@@ -1707,6 +1715,76 @@ function buildChannelsView(
 		configuredRoles: Object.fromEntries(config.roles.entries()) as Partial<
 			Record<LlmModelRole, string>
 		>,
+	};
+}
+
+/** 设置向导读取渠道：只返回非敏感字段，密钥值不进入工具结果。 */
+async function readAssistantChannelsSnapshot(
+	options: ApiRouteOptions,
+): Promise<AssistantChannelsSnapshot> {
+	if (options.channelsPath === null) {
+		throw new HttpError(
+			404,
+			"not_found",
+			"服务没有配置渠道文件，渠道读取不可用",
+		);
+	}
+	const filePath = options.channelsPath;
+	const text = await readChannelsText(filePath);
+	const config = parseChannelsText(text, options, filePath);
+	const refs = readChannelsKeyRefs(text, filePath);
+	const env = options.channelsEnv;
+	return {
+		channels: [...config.channels.values()].map((channel) => {
+			const envName = refs.channels.get(channel.id) ?? null;
+			return {
+				id: channel.id,
+				api: channel.api,
+				baseUrl: channel.baseUrl,
+				apiKeyEnv: envName,
+				apiKeySet: envName === null ? true : (env[envName] ?? "").length > 0,
+				requestsPerMinute: channel.requestsPerMinute,
+				maxRetries: channel.maxRetries,
+				retryBaseDelayMs: channel.retryBaseDelayMs,
+				timeoutMs: channel.timeoutMs,
+			};
+		}),
+		models: [...config.models.values()].map((model) => ({
+			alias: model.alias,
+			id: model.id,
+			contextWindow: model.contextWindow,
+			maxTokens: model.maxTokens,
+			reasoning: model.reasoning,
+			enabled: model.enabled,
+			channels: [...model.channels],
+		})),
+		embeddings: [...config.embeddings.values()].map((embedding) => {
+			const envName = refs.embeddings.get(embedding.id) ?? null;
+			return {
+				id: embedding.id,
+				api: embedding.api,
+				baseUrl: embedding.baseUrl,
+				apiKeyEnv: envName,
+				apiKeySet: envName === null ? true : (env[envName] ?? "").length > 0,
+				model: embedding.model,
+				dimensions: embedding.dimensions,
+				batchSize: embedding.batchSize,
+				requestsPerMinute: embedding.requestsPerMinute,
+				maxRetries: embedding.maxRetries,
+				retryBaseDelayMs: embedding.retryBaseDelayMs,
+				timeoutMs: embedding.timeoutMs,
+			};
+		}),
+		roles: Object.fromEntries(
+			LLM_MODEL_ROLE_NAMES.map((role) => {
+				try {
+					return [role, resolveModelForRole(config, role)];
+				} catch {
+					return [role, config.roles.get(role) ?? null];
+				}
+			}),
+		) as Record<string, string | null>,
+		configuredRoles: Object.fromEntries(config.roles.entries()),
 	};
 }
 

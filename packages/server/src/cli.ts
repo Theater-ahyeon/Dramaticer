@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { loadDotEnv } from "@dramaticer/core";
+import { createHttpAssistantSearchClient, loadDotEnv } from "@dramaticer/core";
 import { parseServerArgs, repoRoot } from "./config.js";
 import { startServer } from "./server.js";
 
@@ -17,6 +17,13 @@ async function main(args: readonly string[]): Promise<void> {
 		port: config.port,
 		password: config.password,
 		docsRoot: config.docsRoot,
+		...(config.assistantWebSearch === null
+			? {}
+			: {
+					assistantSearch: createHttpAssistantSearchClient({
+						baseUrl: config.assistantWebSearch,
+					}),
+				}),
 		channels: { path: config.channelsPath },
 		images: { path: config.imagesPath, mediaDir: config.mediaDir },
 	});

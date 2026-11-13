@@ -25,6 +25,7 @@ describe("parseServerArgs", () => {
 		);
 		expect(config.imagesPath).toBe(path.join(repoRoot, "data", "images.yaml"));
 		expect(config.docsRoot).toBe(path.join(repoRoot, "docs"));
+		expect(config.assistantWebSearch).toBeNull();
 		expect(config.webRoot).toBe(path.join(repoRoot, "packages", "web", "dist"));
 		expect(config.password).toBe("secret");
 	});
@@ -52,6 +53,8 @@ describe("parseServerArgs", () => {
 				"conf/images.yaml",
 				"--docs-root",
 				"reference",
+				"--assistant-web-search",
+				"http://127.0.0.1:9100/search",
 				"--web",
 				"site",
 			],
@@ -65,6 +68,7 @@ describe("parseServerArgs", () => {
 		);
 		expect(config.imagesPath).toBe(path.resolve(cwd, "conf", "images.yaml"));
 		expect(config.docsRoot).toBe(path.resolve(cwd, "reference"));
+		expect(config.assistantWebSearch).toBe("http://127.0.0.1:9100/search");
 		expect(config.webRoot).toBe(path.resolve(cwd, "site"));
 	});
 
@@ -84,6 +88,9 @@ describe("parseServerArgs", () => {
 		expect(() => parseServerArgs(["--style", "x"], { env: {}, cwd })).toThrow(
 			"未知参数 --style",
 		);
+		expect(() =>
+			parseServerArgs(["--assistant-web-search", "ftp://x"], { env: {}, cwd }),
+		).toThrow("只支持 http 或 https");
 	});
 });
 

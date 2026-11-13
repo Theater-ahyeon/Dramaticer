@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type {
+	AssistantSearchClient,
 	LlmCallOptions,
 	LlmChannelsConfig,
 	LlmRequest,
@@ -174,6 +175,9 @@ class ScriptedClient implements LlmStreamingClient {
 async function startTestServer(options: {
 	readonly docsRoot?: string;
 	readonly client?: LlmStreamingClient;
+	readonly assistantSearch?: AssistantSearchClient;
+	readonly channelsPath?: string;
+	readonly channelsEnv?: Readonly<Record<string, string | undefined>>;
 }): Promise<RunningServer> {
 	const dir = tempDir();
 	const running = await startServer({
@@ -185,10 +189,19 @@ async function startTestServer(options: {
 		log: () => {},
 		heartbeatMs: 20,
 		...(options.docsRoot === undefined ? {} : { docsRoot: options.docsRoot }),
+		...(options.assistantSearch === undefined
+			? {}
+			: { assistantSearch: options.assistantSearch }),
 		...(options.client === undefined
 			? {}
 			: {
 					channels: {
+						...(options.channelsPath === undefined
+							? {}
+							: { path: options.channelsPath }),
+						...(options.channelsEnv === undefined
+							? {}
+							: { env: options.channelsEnv }),
 						load: async () => fakeConfig(),
 						createClient: () => options.client as LlmStreamingClient,
 					},
@@ -233,6 +246,9 @@ describe("助手技能接口", () => {
 			"guide",
 			"ledger_revision",
 			"strategy",
+			"research",
+			"card_workshop",
+			"setup_wizard",
 		]);
 		expect(body.skills[0]?.name).toBe("排障");
 		expect(body.skills[0]?.defaultPermission).toBe("confirm");
@@ -242,11 +258,14 @@ describe("助手技能接口", () => {
 		expect(body.skills[1]?.tools).toContain("docs_search");
 		expect(body.skills[2]?.tools).toContain("propose_ledger_change");
 		expect(body.skills[3]?.tools).toContain("propose_director_plan");
+		expect(body.skills[4]?.tools).toContain("web_search");
+		expect(body.skills[5]?.tools).toContain("card_read");
+		expect(body.skills[6]?.tools).toContain("propose_channels_change");
 
 		const unregistered = await post(
 			running.origin,
 			"/api/assistant/conversations",
-			{ skill: "research" },
+			{ skill: "unknown_skill" },
 		);
 		expect(unregistered.status).toBe(400);
 		expect(
@@ -261,7 +280,7 @@ describe("助手技能接口", () => {
 		const badPatch = await request(
 			running.origin,
 			`/api/assistant/conversations/${conversation.id}`,
-			{ method: "PATCH", body: JSON.stringify({ skill: "research" }) },
+			{ method: "PATCH", body: JSON.stringify({ skill: "unknown_skill" }) },
 		);
 		expect(badPatch.status).toBe(400);
 		const patched = await request(
@@ -355,6 +374,141 @@ describe("助手技能运行", () => {
 		expect(first?.messages[0]?.content).toContain("没有记录");
 		expect((first?.tools ?? []).map((tool) => tool.name).sort()).toEqual(
 			TROUBLESHOOT_TOOLS,
+		);
+	});
+
+	it("资料员只在显式开启联网时提供 web_search", async () => {
+		const searchClient: AssistantSearchClient = {
+			async search(query) {
+				return [
+					{
+						title: "原作年表",
+						url: `https://example.com/${query}`,
+						snippet: "第三卷关闭山门。",
+						fetchedAt: "2026-11-13T00:00:00.000Z",
+					},
+				];
+			},
+		};
+		const client = new ScriptedClient([
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: "call-1",
+						name: "web_search",
+						arguments: { query: "山门" },
+					},
+				],
+			},
+			{ text: "来源：https://example.com/山门" },
+		]);
+		const running = await startTestServer({
+			client,
+			assistantSearch: searchClient,
+		});
+		const conversation = await createConversation(running.origin, {
+			skill: "research",
+		});
+		const response = await post(
+			running.origin,
+			`/api/assistant/conversations/${conversation.id}/messages`,
+			{ text: "查一下山门什么时候关。" },
+		);
+		expect(response.status).toBe(200);
+		const stream = await response.text();
+		expect(stream).toContain("assistant.tool.result");
+		expect(stream).toContain("https://example.com/山门");
+		expect(stream).toContain("assistant.completed");
+		const tools = (client.requests[0]?.tools ?? []).map((tool) => tool.name);
+		expect(tools).toEqual(
+			expect.arrayContaining([
+				"web_search",
+				"lore_lookup",
+				"settings_read",
+				"propose_lore_entries",
+			]),
+		);
+
+		const disabledClient = new ScriptedClient([]);
+		const disabled = await startTestServer({ client: disabledClient });
+		const disabledConversation = await createConversation(disabled.origin, {
+			skill: "research",
+		});
+		const disabledResponse = await post(
+			disabled.origin,
+			`/api/assistant/conversations/${disabledConversation.id}/messages`,
+			{ text: "查一下山门。" },
+		);
+		expect(disabledResponse.status).toBe(200);
+		const disabledStream = await disabledResponse.text();
+		expect(disabledStream).toContain("assistant.error");
+		expect(disabledStream).toContain("助手工具未注册：web_search");
+		expect(disabledClient.requests).toEqual([]);
+	});
+
+	it("设置向导读取渠道不回传密钥值", async () => {
+		const dir = tempDir();
+		const channelsPath = join(dir, "channels.yaml");
+		writeFileSync(
+			channelsPath,
+			[
+				"channels:",
+				"  fake:",
+				"    api: openai-completions",
+				"    baseUrl: http://127.0.0.1:9",
+				"    apiKey: ${FAKE_KEY}",
+				"models:",
+				"  main:",
+				"    id: fake-model",
+				"    channels: [fake]",
+				"roles:",
+				"  writer: main",
+				"",
+			].join("\n"),
+		);
+		const client = new ScriptedClient([
+			{
+				text: "",
+				toolCalls: [{ id: "call-1", name: "channels_read", arguments: {} }],
+			},
+			{ text: "渠道 fake 已配置。" },
+		]);
+		const running = await startTestServer({
+			client,
+			channelsPath,
+			channelsEnv: { FAKE_KEY: "sk-secret" },
+		});
+		const conversation = await createConversation(running.origin, {
+			skill: "setup_wizard",
+		});
+		const response = await post(
+			running.origin,
+			`/api/assistant/conversations/${conversation.id}/messages`,
+			{ text: "现在用的是哪个模型？" },
+		);
+		expect(response.status).toBe(200);
+		const stream = await response.text();
+		expect(stream).toContain("assistant.tool.result");
+		expect(stream).not.toContain("sk-secret");
+		const toolMessage = running.store
+			.getAssistantMessages(conversation.id)
+			.find((message) => message.role === "tool");
+		expect(toolMessage?.toolName).toBe("channels_read");
+		const result = JSON.stringify(toolMessage?.toolResult);
+		expect(result).toContain("apiKeySet");
+		expect(result).toContain('\\"apiKeySet\\": true');
+		expect(result).toContain("fake-model");
+		expect(result).not.toContain("sk-secret");
+		const tools = (client.requests[0]?.tools ?? []).map((tool) => tool.name);
+		expect(tools).toEqual(
+			expect.arrayContaining([
+				"settings_read",
+				"channels_read",
+				"plugin_list",
+				"propose_channels_change",
+				"propose_settings_change",
+			]),
 		);
 	});
 

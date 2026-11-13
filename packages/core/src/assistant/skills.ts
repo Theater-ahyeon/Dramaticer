@@ -3,6 +3,15 @@ import {
 	PROPOSE_LEDGER_CHANGE_TOOL_NAME,
 } from "./proposals.js";
 import {
+	CARD_READ_TOOL_NAME,
+	CHANNELS_READ_TOOL_NAME,
+	PROPOSE_CARD_CHANGE_TOOL_NAME,
+	PROPOSE_CHANNELS_CHANGE_TOOL_NAME,
+	PROPOSE_LORE_ENTRIES_TOOL_NAME,
+	PROPOSE_SETTINGS_CHANGE_TOOL_NAME,
+	WEB_SEARCH_TOOL_NAME,
+} from "./setup.js";
+import {
 	type AssistantPermission,
 	DEFAULT_ASSISTANT_PERMISSION,
 } from "./types.js";
@@ -54,6 +63,30 @@ export const STRATEGY_TOOL_NAMES = [
 	PROPOSE_DIRECTOR_PLAN_TOOL_NAME,
 ] as const;
 
+export const RESEARCH_TOOL_NAMES = [
+	WEB_SEARCH_TOOL_NAME,
+	"lore_lookup",
+	"settings_read",
+	PROPOSE_LORE_ENTRIES_TOOL_NAME,
+] as const;
+
+export const CARD_WORKSHOP_TOOL_NAMES = [
+	CARD_READ_TOOL_NAME,
+	"template_read",
+	"lore_lookup",
+	"settings_read",
+	PROPOSE_CARD_CHANGE_TOOL_NAME,
+	PROPOSE_LORE_ENTRIES_TOOL_NAME,
+] as const;
+
+export const SETUP_WIZARD_TOOL_NAMES = [
+	"settings_read",
+	CHANNELS_READ_TOOL_NAME,
+	"plugin_list",
+	PROPOSE_CHANNELS_CHANGE_TOOL_NAME,
+	PROPOSE_SETTINGS_CHANGE_TOOL_NAME,
+] as const;
+
 const TROUBLESHOOT_INSTRUCTIONS = [
 	"每条结论必须附证据：楼层 id、Trace 字段、上下文分段 id、检索名次、台账路径或导演机制；指出具体字段与数值，不要只复述结论。",
 	"没有运行日志、没有检索记录或没有导演决策时，明确写“没有记录”，并说明查的是哪个楼层或哪个字段。",
@@ -78,6 +111,28 @@ const STRATEGY_INSTRUCTIONS = [
 	"用 propose_director_plan 提交弧线、序列与拍的草案；每个拍都要有观众能观察到的起始迹象与具体契合点。",
 	"提案只会生成待确认动作，玩家批准后才替换计划；拒绝时计划保持不变。",
 	"不要修改楼层正文，也不要用提案绕过台账变更卡。",
+].join("\n");
+
+const RESEARCH_INSTRUCTIONS = [
+	"用 web_search 调研原作资料；每条结论都要带链接，链接缺失时明确写“没有来源”。",
+	"整理资料前先用 lore_lookup 查现有世界书，避免重复条目；时间点、卷次或出处不同的内容分开写。",
+	"用 propose_lore_entries 生成世界书条目草案，只写有来源的事实；玩家批准后才写入。",
+	"不要声称已经写入世界书；提案被拒绝时原有条目不变。",
+].join("\n");
+
+const CARD_WORKSHOP_INSTRUCTIONS = [
+	"先用 card_read 读当前卡片名、人物提示、persona、实体、世界书与上下文模板，再提出修改。",
+	"人物字段与世界书用 propose_card_change 或 propose_lore_entries 生成待确认动作；不要直接写设置。",
+	"上下文模板用 propose_card_change 的 template 分支；模板校验失败时保留待确认状态，不要绕过校验。",
+	"卡片工坊不修改楼层原文，也不导入或覆盖外部卡文件。",
+].join("\n");
+
+const SETUP_WIZARD_INSTRUCTIONS = [
+	"先读 settings_read、channels_read 与 plugin_list，确认当前配置再提议。",
+	"渠道读取只显示别名、模型名、baseUrl 与密钥是否已设置；不要询问、输出或猜测密钥值。",
+	"渠道修改用 propose_channels_change，故事设置用 propose_settings_change；两类都只生成待确认动作。",
+	"渠道修改是整段替换：channels_read 读回现有条目后再提交四个段，未写的条目会被删除。",
+	"不要读写 .env，不要修改仓库外的文件；批准渠道修改由现有配置解析校验。",
 ].join("\n");
 
 export const ASSISTANT_SKILLS: readonly AssistantSkillDefinition[] = [
@@ -115,6 +170,33 @@ export const ASSISTANT_SKILLS: readonly AssistantSkillDefinition[] = [
 			"基于导演计划、台账与摘要提出新的弧线、序列与拍；提案写成待确认的导演计划动作。",
 		instructions: STRATEGY_INSTRUCTIONS,
 		toolNames: STRATEGY_TOOL_NAMES,
+		defaultPermission: DEFAULT_ASSISTANT_PERMISSION,
+	},
+	{
+		id: "research",
+		name: "资料员",
+		description:
+			"为同人卡调研原作资料：联网搜索并整理成带链接的世界书条目草案，玩家批准后才写入。",
+		instructions: RESEARCH_INSTRUCTIONS,
+		toolNames: RESEARCH_TOOL_NAMES,
+		defaultPermission: DEFAULT_ASSISTANT_PERMISSION,
+	},
+	{
+		id: "card_workshop",
+		name: "卡片工坊",
+		description:
+			"读取并修改角色卡字段、世界书条目与上下文模板；修改写成待确认动作，不碰楼层原文。",
+		instructions: CARD_WORKSHOP_INSTRUCTIONS,
+		toolNames: CARD_WORKSHOP_TOOL_NAMES,
+		defaultPermission: DEFAULT_ASSISTANT_PERMISSION,
+	},
+	{
+		id: "setup_wizard",
+		name: "设置向导",
+		description:
+			"读取渠道、模型、岗位与插件配置，提议渠道或故事设置修改；渠道读取永不返回密钥值。",
+		instructions: SETUP_WIZARD_INSTRUCTIONS,
+		toolNames: SETUP_WIZARD_TOOL_NAMES,
 		defaultPermission: DEFAULT_ASSISTANT_PERMISSION,
 	},
 ];

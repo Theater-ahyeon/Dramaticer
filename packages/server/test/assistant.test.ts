@@ -249,12 +249,36 @@ async function startTestServerWithChannels(
 		log: () => {},
 		heartbeatMs: 20,
 		channels: {
+			path: writeChannelsConfig(dir),
+			env: { FAKE_KEY: "sk-test" },
 			load: async () => fakeConfig(),
 			createClient: () => client,
 		},
 	});
 	onTestFinished(() => running.close());
 	return running;
+}
+
+function writeChannelsConfig(dir: string): string {
+	const file = join(dir, "channels.yaml");
+	writeFileSync(
+		file,
+		[
+			"channels:",
+			"  fake:",
+			"    api: openai-completions",
+			"    baseUrl: http://127.0.0.1:9",
+			"    apiKey: ${FAKE_KEY}",
+			"models:",
+			"  main:",
+			"    id: fake-model",
+			"    channels: [fake]",
+			"roles:",
+			"  writer: main",
+			"",
+		].join("\n"),
+	);
+	return file;
 }
 
 function patch(origin: string, path: string, body: unknown): Promise<Response> {
@@ -746,6 +770,32 @@ describe("助手待确认动作接口", () => {
 			{},
 		);
 		expect(missing.status).toBe(404);
+	});
+
+	it("非法渠道载荷批准失败并保留待定", async () => {
+		const running = await startTestServerWithChannels(new ScriptedClient([]));
+		const conversation = await createConversation(running.origin, {
+			skill: "setup_wizard",
+		});
+		const action = running.store.createAssistantAction({
+			conversationId: conversation.id,
+			kind: "channels",
+			summary: "改模型",
+			payload: {
+				channels: {},
+				models: { main: {} },
+				embeddings: {},
+				roles: {},
+			},
+		});
+		const response = await post(
+			running.origin,
+			`/api/assistant/actions/${action.id}/approve`,
+			{},
+		);
+		expect(response.status).toBe(400);
+		expect((await errorBody(response)).error.message).toMatch(/models\.main\./);
+		expect(running.store.getAssistantAction(action.id)?.status).toBe("pending");
 	});
 
 	it("有待确认动作的会话删除返回 409，处理后删除", async () => {

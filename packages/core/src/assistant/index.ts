@@ -4,6 +4,8 @@ export * from "./permissions.js";
 export * from "./prompts.js";
 export * from "./proposals.js";
 export * from "./runtime.js";
+export * from "./search.js";
+export * from "./setup.js";
 export * from "./skills.js";
 export * from "./tools.js";
 export * from "./types.js";
