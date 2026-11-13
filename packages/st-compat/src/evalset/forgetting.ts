@@ -430,6 +430,29 @@ function rate(numerator: number, denominator: number): number {
 	return denominator === 0 ? 0 : numerator / denominator;
 }
 
+/** 单次运行的题目计数与比率；与 `summarizeForgettingRuns` 使用同一套口径。 */
+export interface ForgettingQuestionSummary extends ForgettingQuestionCounts {
+	readonly contradictionRate: number;
+	readonly hitRate: number;
+	readonly fabricatedRate: number;
+}
+
+export function summarizeQuestionRecords(
+	records: readonly ForgettingQuestionRecord[],
+): ForgettingQuestionSummary {
+	const counts = emptyCounts();
+	for (const record of records) addQuestion(counts, record);
+	return {
+		...counts,
+		contradictionRate: rate(
+			counts.contradicted,
+			counts.consistent + counts.contradicted,
+		),
+		hitRate: rate(counts.consistent, counts.consistent + counts.contradicted),
+		fabricatedRate: rate(counts.fabricated, counts.fabricatedJudged),
+	};
+}
+
 export function summarizeForgettingRuns(
 	runs: readonly ForgettingRunResult[],
 ): ForgettingSummary {

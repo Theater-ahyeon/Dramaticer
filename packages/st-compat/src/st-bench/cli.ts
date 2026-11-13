@@ -1,6 +1,21 @@
 import { stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+	createLlmClient,
+	loadChannelsConfig,
+	loadDotEnv,
+	resolveModelForRole,
+} from "@dramaticer/core";
+import {
+	COEXIST_DEFAULT_BUDGET_TOKENS,
+	type CoexistRunConfig,
+	ST_BENCH_COEXIST_PLUGINS,
+	loadCoexistCards,
+	loadCoexistConfig,
+	runCoexistComparisons,
+	writeCoexistOutputs,
+} from "./coexist.js";
 import { compareSandboxBatch } from "./compare.js";
 import {
 	DEFAULT_COMBINATION_TIMEOUT_MS,
@@ -30,7 +45,7 @@ import {
 	stBenchPaths,
 } from "./sandbox.js";
 
-const USAGE = `用法：st-bench <sandbox|record|serve|plan|drive|compare> ...
+const USAGE = `用法：st-bench <sandbox|record|serve|plan|drive|compare|coexist> ...
   sandbox --source <SillyTavern 目录> [--target <目录>] [--private-root <目录>]
           [--node-modules link|copy|skip] [--data <相对路径>]... [--replace]
   record [--dir <录制目录>] [--host 127.0.0.1] [--port 8130]
@@ -42,7 +57,8 @@ const USAGE = `用法：st-bench <sandbox|record|serve|plan|drive|compare> ...
   drive [--sandbox <目录>] [--batch <名称>] [--limit <数量>]
         [--port 8000] [--recorder-port 8130] [--stub-model <名称>]
         [--combination-timeout <秒>] [--headed]
-  compare [--sandbox <目录>] [--batch <名称>] [--limit <数量>]`;
+  compare [--sandbox <目录>] [--batch <名称>] [--limit <数量>]
+  coexist --config <配置.json> [--out <目录>]`;
 
 export interface StBenchCliOptions {
 	readonly repoRoot?: string;
@@ -84,6 +100,10 @@ export async function runStBenchCli(
 	}
 	if (command === "compare") {
 		await runCompare(args.slice(1), paths, log);
+		return;
+	}
+	if (command === "coexist") {
+		await runCoexist(args.slice(1), paths, repoRoot, log);
 		return;
 	}
 	throw new Error(USAGE);
@@ -425,6 +445,102 @@ async function runCompare(
 	);
 	log(`报告：${result.reportFile}`);
 	log(`差异清单：${result.diffsFile}`);
+}
+
+async function runCoexist(
+	args: readonly string[],
+	paths: StBenchPaths,
+	repoRoot: string,
+	log: (message: string) => void,
+): Promise<void> {
+	let configPath: string | null = null;
+	let outDir: string | null = null;
+	for (let index = 0; index < args.length; index += 1) {
+		const arg = args[index];
+		if (arg === "--config" || arg === "--out") {
+			const value = args[index + 1];
+			if (value === undefined) throw new Error(`${arg} 需要一个值`);
+			index += 1;
+			if (arg === "--config") configPath = value;
+			else outDir = value;
+			continue;
+		}
+		throw new Error(`未知参数：${arg}`);
+	}
+	if (configPath === null)
+		throw new Error("coexist 需要 --config（配置 JSON）");
+	const file = await loadCoexistConfig(configPath);
+	const resolvedOut =
+		outDir ??
+		path.join(
+			paths.privateRoot,
+			"coexist",
+			path.basename(configPath).replace(/\.json$/i, ""),
+		);
+	if (!isPathInside(path.resolve(resolvedOut), paths.privateRoot)) {
+		throw new Error(
+			`输出目录必须在私有根目录 ${paths.privateRoot} 内部，收到 ${resolvedOut}`,
+		);
+	}
+	loadDotEnv(path.join(repoRoot, ".env"));
+	const channels = await loadChannelsConfig(
+		path.join(repoRoot, "data", "channels.yaml"),
+	);
+	if (!channels.models.has(file.writerModel)) {
+		throw new Error(
+			`没有正文模型 ${file.writerModel}；可用模型：${[...channels.models.keys()].join("、")}`,
+		);
+	}
+	const judgeModel = file.judgeModel ?? resolveModelForRole(channels, "judge");
+	if (!channels.models.has(judgeModel)) {
+		throw new Error(
+			`没有裁判模型 ${judgeModel}；可用模型：${[...channels.models.keys()].join("、")}`,
+		);
+	}
+	const config: CoexistRunConfig = {
+		pluginIds: file.plugins,
+		cards: await loadCoexistCards(file),
+		rounds: file.rounds,
+		budgetTokens: file.budgetTokens ?? COEXIST_DEFAULT_BUDGET_TOKENS,
+		maxTokens: file.maxTokens,
+		temperature: file.temperature,
+		structuredOutput: file.structuredOutput,
+	};
+	log(
+		`共存对照：插件 ${file.plugins.join("、")}，卡 ${config.cards.length} 张，正文模型 ${file.writerModel}，裁判模型 ${judgeModel}`,
+	);
+	const comparisons = await runCoexistComparisons({
+		config,
+		plugins: ST_BENCH_COEXIST_PLUGINS,
+		writer: {
+			client: createLlmClient(channels, {
+				defaultModel: file.writerModel,
+				cacheDir: null,
+			}),
+			model: file.writerModel,
+		},
+		judge: {
+			client: createLlmClient(channels, {
+				defaultModel: judgeModel,
+				cacheDir: null,
+			}),
+			model: judgeModel,
+		},
+		runDir: path.join(resolvedOut, "runs"),
+		log,
+	});
+	for (const comparison of comparisons) {
+		const files = await writeCoexistOutputs(
+			path.join(resolvedOut, comparison.pluginId),
+			comparison,
+			config,
+		);
+		log(
+			`插件 ${comparison.pluginId}：轮数 ${comparison.roundsOff}/${comparison.roundsOn}，失败 ${comparison.failedRoundsOff}/${comparison.failedRoundsOn}，明显变差 ${comparison.degraded.length} 项`,
+		);
+		log(`报告：${files.reportFile}`);
+		log(`指标：${files.metricsFile}`);
+	}
 }
 
 function parseNodeModulesMode(value: string): NodeModulesMode {

@@ -33,6 +33,7 @@ export * from "./reference/text-stats.js";
 export * from "./regex-classifier.js";
 export * from "./state-diff.js";
 export * from "./st-bench/compare.js";
+export * from "./st-bench/coexist.js";
 export * from "./st-bench/faithful.js";
 export * from "./st-bench/plan.js";
 export * from "./st-bench/recorder.js";
