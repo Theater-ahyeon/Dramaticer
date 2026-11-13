@@ -3,7 +3,7 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-13 会话 333：修复门禁。会话开始时的 `pnpm check` 只有 `packages/core/test/code-plugin-worker.test.ts` 的「声明的四类能力正常执行，并各写一条 allowed Trace」失败，`runtime.state` 是 `failed` 而不是 `active`；同一文件单独运行通过，整轮重跑也通过，属于整轮并行时 worker 线程启动与临时目录模块加载被挤占、撞上默认 10 秒激活上限。
+- 2026-11-13 会话 333：修复门禁。会话开始时的 `pnpm check` 只有 `packages/core/test/code-plugin-worker.test.ts` 的「声明的四类能力正常执行，并各写一条 allowed Trace」失败，`runtime.state` 是 `failed` 而不是 `active`；同一文件单独运行通过，整轮重跑也通过；失败发生在激活阶段，与整轮并行时 worker 线程启动、临时目录模块加载被挤占并撞上默认 10 秒激活上限的表现一致。
 - 改动只在测试：`start` helper 统一传 `activationTimeoutMs` 与 `invokeTimeoutMs` 30 秒（显式传入的 100 毫秒超时用例仍然覆盖它），`waitForState` 与 `waitForTrace` 的等待上限从 3 秒放宽到 30 秒，首个断言改成比较完整 `status`（`name`、`state`、`reason`），失败时能直接看到原因。被测的 `code-plugin-worker.ts` 未改动。
 - 验证：目标文件 10 个测试通过；整轮门禁通过（203 个测试文件、1828 个测试、5 个跳过，153 秒）。
 
