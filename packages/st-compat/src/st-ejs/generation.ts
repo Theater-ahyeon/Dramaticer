@@ -111,10 +111,30 @@ export interface StEjsGenerationSchedulerOptions {
 export interface StEjsGenerationDrainOptions {
 	/** 只执行这张卡的请求。 */
 	readonly cardId?: string;
+	/** 只执行这些请求 id；与 `cardId` 同时给出时两个条件都要满足。 */
+	readonly ids?: readonly string[];
 	readonly signal?: AbortSignal;
 }
 
 const DEFAULT_MAX_PENDING_PER_CARD = 4;
+
+/** `drain` 的 ids 过滤表；空数组表示不执行任何请求。 */
+function readDrainIds(value: readonly string[]): ReadonlySet<string> {
+	if (!Array.isArray(value)) {
+		throw new StEjsGenerationError("drain 的 ids 必须是数组");
+	}
+	const ids = new Set<string>();
+	for (const [index, id] of value.entries()) {
+		if (typeof id !== "string" || id.trim().length === 0) {
+			throw new StEjsGenerationError(`drain 的 ids[${index}] 必须是请求 id`);
+		}
+		if (ids.has(id)) {
+			throw new StEjsGenerationError(`drain 的 ids[${index}] 重复：${id}`);
+		}
+		ids.add(id);
+	}
+	return ids;
+}
 
 function assertNonEmptyString(value: unknown, label: string): string {
 	if (typeof value !== "string" || value.trim().length === 0) {
@@ -314,16 +334,18 @@ export class StEjsGenerationScheduler {
 			options.cardId === undefined
 				? undefined
 				: assertNonEmptyString(options.cardId, "drain 的卡 id");
-		const ids: string[] = [];
+		const filter = options.ids === undefined ? null : readDrainIds(options.ids);
+		const targetIds: string[] = [];
 		for (const task of this.#tasks.values()) {
 			if (task.status !== "pending") continue;
 			if (cardId !== undefined && task.cardId !== cardId) continue;
-			ids.push(task.id);
+			if (filter !== null && !filter.has(task.id)) continue;
+			targetIds.push(task.id);
 		}
 		this.#draining = true;
 		try {
 			const runs: StEjsGenerationRun[] = [];
-			for (const id of ids) {
+			for (const id of targetIds) {
 				if (options.signal?.aborted === true) break;
 				const task = this.#tasks.get(id);
 				if (task === undefined || task.status !== "pending") continue;

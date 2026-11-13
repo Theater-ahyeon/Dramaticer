@@ -32,6 +32,7 @@ export const ST_HELPER_SLASH_COMMANDS = [
 	"unhide",
 	"gen",
 	"genraw",
+	"genresult",
 ] as const;
 
 export type StHelperSlashCommand = (typeof ST_HELPER_SLASH_COMMANDS)[number];
@@ -45,15 +46,21 @@ export interface StHelperSlashGenerationRequest {
 	readonly maxTokens: number | null;
 }
 
-/** 安静生成的执行者；C-T05.d 把它接到后台任务与后台渠道。 */
+/** 安静生成的登记者；返回后台请求 id，不返回正文。 */
 export type StHelperSlashGenerator = (
 	request: StHelperSlashGenerationRequest,
-) => Promise<string>;
+) => string | Promise<string>;
+
+/** 读取已登记请求的正文；未完成时是空串。 */
+export interface StHelperSlashGenerationReader {
+	read(id: string): string;
+}
 
 export interface StHelperSlashRunnerOptions {
 	readonly variables: StHelperVariableBank;
 	readonly messages: StHelperChatMessages;
 	readonly generate?: StHelperSlashGenerator;
+	readonly generationResults?: StHelperSlashGenerationReader;
 }
 
 const COMMANDS: ReadonlySet<string> = new Set(ST_HELPER_SLASH_COMMANDS);
@@ -94,6 +101,7 @@ const NAMED_ARGUMENTS: Readonly<
 	unhide: [],
 	gen: ["length"],
 	genraw: ["length", "system"],
+	genresult: [],
 };
 
 const DIRECTION_RIGHT = "right";
@@ -106,18 +114,20 @@ interface SlashStage {
 }
 
 /**
- * 执行一段 STscript，返回最后一个命令的结果字符串。脚本是同步命令的
- * 序列；安静生成会等待宿主提供的执行者。
+ * 执行一段 STscript，返回最后一个命令的结果字符串。安静生成只登记后台
+ * 请求并返回请求 id；正文用 `genresult` 在之后读取。
  */
 export class StHelperSlashRunner {
 	readonly #variables: StHelperVariableBank;
 	readonly #messages: StHelperChatMessages;
 	readonly #generate: StHelperSlashGenerator | null;
+	readonly #generationResults: StHelperSlashGenerationReader | null;
 
 	constructor(options: StHelperSlashRunnerOptions) {
 		this.#variables = options.variables;
 		this.#messages = options.messages;
 		this.#generate = options.generate ?? null;
+		this.#generationResults = options.generationResults ?? null;
 	}
 
 	get commands(): readonly StHelperSlashCommand[] {
@@ -183,6 +193,8 @@ export class StHelperSlashRunner {
 				return this.#generateText(stage, argument, "gen");
 			case "genraw":
 				return this.#generateText(stage, argument, "genraw");
+			case "genresult":
+				return this.#generationResult(argument);
 		}
 	}
 
@@ -329,6 +341,19 @@ export class StHelperSlashRunner {
 			system: stage.named.system ?? null,
 			maxTokens,
 		});
+	}
+
+	#generationResult(argument: string): string {
+		if (this.#generationResults === null) {
+			throw new Error(
+				"STscript 命令 genresult 需要宿主接入安静生成队列，当前没有结果存储",
+			);
+		}
+		const id = argument.trim();
+		if (id.length === 0) {
+			throw new Error("STscript 命令 genresult 需要生成请求 id");
+		}
+		return this.#generationResults.read(id);
 	}
 }
 

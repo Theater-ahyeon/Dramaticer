@@ -1442,7 +1442,8 @@
   做什么：实现酒馆助手脚本常用的 STscript 子集（变量读写、消息读取与修改、聊天切换、安静生成、管道与引号），`triggerSlash` 返回结果字符串；未实现的命令抛错并指出命令名。
   验收：每个受支持命令有测试；命令改写消息仍映射为新 swipe；未知命令失败并指出命令名；`pnpm check` 通过。
 
-- [ ] **C-T05.d 脚本发起的生成后台化** | 依赖：C-T05.c、C-T04.c.d | I6、I11
+- [x] **C-T05.d 脚本发起的生成后台化** | 依赖：C-T05.c、C-T04.c.d | I6、I11
+  完成：2026-11-13 新增 `st-helper-host/generation.ts` 的 `StHelperGenerationQueue`，复用 EJS 的 `StEjsGenerationScheduler` 共享卡级上限（默认 4）；`/gen`、`/genraw` 只登记后台请求并返回 id，新增 `/genresult <id>` 读取正文；`StEjsGenerationDrainOptions` 增加 `ids` 过滤，队列 `drain` 只执行脚本登记的请求；Trace 用 `kind: "generation"` 与独立计数记录登记、完成、失败与拒绝；宿主会话选项 `generation` 接收调度器并暴露 `session.generation`，删除 `generateQuiet`；新增 5 个测试；ADR-0122；门禁通过（231 个测试文件、2058 个测试、5 个跳过）
   做什么：`generate`/`generateRaw` 只登记后台任务，复用卡级限流调度器，走后台渠道并在间隙执行；Trace 单独计数；回合内不等待。
   验收：脚本发起的生成不进入回合内；按卡限流；Trace 有独立计数；`pnpm check` 通过。
 

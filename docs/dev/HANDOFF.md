@@ -3,36 +3,35 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-13 会话 352：完成 C-T05.c（`triggerSlash` 与 STscript 子集）。
-- 新增 `packages/st-compat/src/st-helper-host/slash.ts`：`StHelperSlashRunner.run(script)` 解析并执行固定命令表 `ST_HELPER_SLASH_COMMANDS`；分段按未转义且不在引号里的 `|`，双引号保留空格与管道符，`\` 转义下一个字符；每段结果作为下一段的未命名参数（下一段没有显式未命名参数时）。
-- 命令：
-  - 变量：`setvar`、`getvar`、`addvar`、`incvar`、`decvar`、`flushvar` 走 `chat` 作用域；`setglobalvar`、`getglobalvar`、`addglobalvar`、`incglobalvar`、`decglobalvar`、`flushglobalvar` 走 `global`；别名 `setchatvar`/`getchatvar`/`addchatvar`/`incchatvar`/`decchatvar`/`flushchatvar` 与上游一致。变量存储与 EJS 共用。
-  - 消息：`messages`（单个下标、`起-止`、`latest`、`names`、`hidden`、`role`）、`hide`/`unhide`（只写插件显示状态的 `is_hidden`）、`addswipe`（追加同父新楼层，默认不切换 head，`switch=on` 切换，返回新 swipe 下标）、`swipe direction=left|right`（在兄弟楼层之间循环切换 head，返回空串）。别名 `message`、`swipeadd`。
-  - 文本与生成：`pass`、`echo`（只返回文本，不弹窗）、`gen`、`genraw`（调用注入的 `generateQuiet`，接收 `{command, prompt, system, maxTokens}`）。未注入执行者时失败并指出命令名。
-  - 未知命令抛 `STscript 命令 <名> 未实现`；未知命名参数、重复参数、引号未闭合、命令不以 `/` 开头都直接失败。宏、闭包、`/go` 这类切换聊天文件的命令不在子集内，同样按未知命令失败。
-- 宿主：`ST_HELPER_IMPLEMENTED_FUNCTIONS` 增加 `triggerSlash`（共 19 项），`StHelperHostApi.triggerSlash(script)` 返回 `Promise<string>`；`createStHelperHostSession` 新增可选 `generateQuiet`。沙箱权限分组新增 `slash: ["triggerSlash"]`；声明它等于允许该脚本使用上表的变量与消息写入能力（I18 的权限清单按函数名展示）。
-- 沙箱宿主：`#call` 现在支持 Promise 返回值，结果在 Promise 结束时回 `st-helper:result`；执行超时或已结束时丢弃迟到结果。同步 API 的响应仍是同步的。
-- 新增 12 个 `packages/st-compat/test/st-helper-slash.test.ts`；ADR-0121；门禁通过（230 个测试文件、2053 个测试、5 个跳过）。
+- 2026-11-13 会话 353：完成 C-T05.d（脚本发起的生成后台化）。
+- 新增 `packages/st-compat/src/st-helper-host/generation.ts`：`StHelperGenerationQueue` 复用 `StEjsGenerationScheduler`，所以脚本请求与模板请求共用同一张卡的未完成上限（默认 4）。`enqueue(request)` 只校验并入队、返回请求 id，不调用模型；`read(id)` 返回已完成正文（未完成或失败是空串）；`getCounts()` 与 `trace` 只统计本队列登记的请求。
+- `slash.ts`：`gen`、`genraw` 改为登记并返回请求 id；新增命令 `genresult <id>`（也接受管道传入的 id）读取正文。未知 id 失败；没有结果存储时命令失败并指出 `genresult`。
+- `st-ejs/generation.ts` 的 `StEjsGenerationDrainOptions` 增加 `ids` 过滤（重复、空 id 直接失败）；队列 `drain` 用自己的 id 过滤，同一调度器上 EJS 模板登记的请求保持 pending，由模板自己的 `drain` 执行。
+- Trace 每条记录是 `{ kind: "generation", plugin, requestId, command, outcome, reason, durationMs, at }`，`outcome` 取 `submitted`、`completed`、`failed`、`rejected`；`getCounts()` 汇总 `submitted`、`pending`、`running`、`completed`、`failed`、`rejected`。`onTrace` 回调供 C-T05.f 并入插件 Trace。
+- 宿主：`StHelperHostSessionOptions.generation` 接收与 EJS 共用的调度器，会话用 `storyId`、`card.name` 与创建时的 head 楼层构造队列；`session.generation` 暴露队列供间隙 `drain`。上一轮的 `generateQuiet` 选项已删除（删除 `StHelperSlashGenerator` 的同步执行路径，生成一律后台）。
+- 新增 5 个 `packages/st-compat/test/st-helper-generation.test.ts`；`st-helper-slash.test.ts` 的安静生成用例改为“登记 id → `drain` → `genresult`”。ADR-0122；门禁通过（231 个测试文件、2058 个测试、5 个跳过）。
 
-## 下一步（会话 353 先做）
-1. **C-T05.d 脚本发起的生成后台化**：把 `generateQuiet` 接到 EJS 生成调度器（`StEjsGenerationScheduler`，卡级限流默认 4）与后台渠道，脚本里的 `/gen`、`/genraw` 只登记请求并在间隙 `drain`；Trace 单独计数，回合内不调用模型。注意 `triggerSlash` 是异步的，登记后可以返回请求 id，宿主在下一轮或间隙把结果交回脚本的执行环境（iframe 可能已经结束，需要定义结果存放位置，建议与 EJS 的 `getGenerated` 一样由后续命令读取，不伪造同步返回）。
-2. 其余可做任务：C-T05.e（依赖 C-T05.b）、C-T05.f（依赖 C-T05.b 至 C-T05.e）、H-T00（依赖已完成）、X1（依赖已完成）。M5-T00 依赖 R6-T99；M6-T99 等待 HUMAN-15；P5 依赖 M5-T99。
+## 下一步（会话 354 先做）
+1. **C-T05.e HTML 状态栏与开场页**：从角色卡与楼层提取 HTML 状态栏、开场页，在沙箱 iframe 里渲染；脚本只能通过宿主 API 读写变量与消息；渲染结果进插件显示状态，不改原文、不写台账。依赖 C-T05.b，已完成。
+2. 其余可做任务：C-T05.f（依赖 C-T05.b 至 C-T05.e），H-T00（依赖已完成），X1（依赖已完成）。M5-T00 依赖 R6-T99；M6-T99 等待 HUMAN-15；P5 依赖 M5-T99。
 
-## C-T05.c 代码事实
-- `StHelperSlashRunner` 构造参数：`{ variables: StHelperVariableBank, messages: StHelperChatMessages, generate?: StHelperSlashGenerator }`；`run()` 失败一律抛 `Error`，消息里带命令名或参数名。
-- `StHelperChatMessages` 新增 `addSwipe(text, { switchTo? })` 与 `switchSwipe("left" | "right")`。`store.appendNode` 总会把 head 移到新楼层，`addSwipe` 在 `switchTo` 不为 `true` 时把 head 切回原最后一条消息。
-- 消息范围在 slash 层是 `{start, end}` 对象（`latest` 是 `{-1, -1}`），与 `getChatMessages` 的“数字 = 最后 N 条”语义不同；不要在 slash 层把单个数字直接传下去。
-- `readBoolean` 接受 `on/off`、`true/false`、`1/0`；`formatVariable` 把数字字符串转成数字再转回字符串，与上游 `getLocalVariable` 的读取口径一致。
-- 沙箱异步分派在 `StHelperSandboxHost.#call`：`value instanceof Promise` 时挂 `then`，成功调用 `#respond`，失败调用 `#failCall`（记录 `kind: "execution"`、`outcome: "failed"` 与耗时）；两条路径都先检查 `execution.done`。
+## C-T05.d 代码事实
+- `StHelperGenerationQueue` 构造参数：`{ scheduler, storyId, cardId, nodeId, plugin?, onTrace?, maxTraceEntries?, now? }`；`nodeId` 是创建会话时的 head 楼层，只用于请求来源记录。
+- `enqueue` 失败会先记一条 `rejected` 再原样抛出；卡级上限抛出的是 `StEjsGenerationLimitError`，消息里带卡 id 与上限。
+- `drain()` 在调用时同步快照 pending 的 id，再交给调度器；执行期间新登记的请求留到下一次。`drain` 返回的 `runs` 已过滤为本队列的请求，`counts` 用 `getCounts()` 计算。
+- `StEjsGenerationScheduler.drain({ ids })` 现在是通用过滤；`cardId` 与 `ids` 同时给出时两个条件都要满足。`ids` 里的空串或重复项直接失败。
+- `/genresult` 返回空串表示还没执行完或已失败；要区分状态用 `queue.get(id)`（返回 `StEjsGenerationTask`，含 `status` 与 `error`）。脚本在沙箱里只能拿到字符串，看不到状态。
+- 宿主会话的 `api.triggerSlash` 仍是异步的：登记是同步的，Promise 立刻完成并返回 id；不要在回合内等待正文。
+- 生成结果只在内存里，进程结束或换调度器就消失；跨进程保存留给调用方。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a 至 P2.g、P3.a 至 P3.f、P4.a 至 P4.f、C-T01.a 至 C-T01.d、C-T02.a 至 C-T02.f、C-T03.a 至 C-T03.d、C-T04.a、C-T04.b.a、C-T04.b.b、C-T04.c.a、C-T04.c.b、C-T04.c.c、C-T04.c.d、C-T04.d、C-T05.a、C-T05.b、C-T05.c。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- 兼容插件线：`st-content`、`st-mvu`、`st-ejs` 的内容映射、模板引擎、装饰器/注入/激活正则、世界书与数据函数、沙箱执行、回合内时间预算、流水线接入、模板生成、一致性套件与共存评测全部完成；`st-helper-host` 已完成脚本库、宿主会话 API、沙箱 iframe 与权限/超时、STscript 子集，生成后台化与 HTML 状态栏待做（C-T05.d 至 C-T05.f）。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a 至 P2.g、P3.a 至 P3.f、P4.a 至 P4.f、C-T01.a 至 C-T01.d、C-T02.a 至 C-T02.f、C-T03.a 至 C-T03.d、C-T04.a、C-T04.b.a、C-T04.b.b、C-T04.c.a、C-T04.c.b、C-T04.c.c、C-T04.c.d、C-T04.d、C-T05.a、C-T05.b、C-T05.c、C-T05.d。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 兼容插件线：`st-content`、`st-mvu`、`st-ejs` 的内容映射、模板引擎、装饰器/注入/激活正则、世界书与数据函数、沙箱执行、回合内时间预算、流水线接入、模板生成、一致性套件与共存评测全部完成；`st-helper-host` 已完成脚本库、宿主会话 API、沙箱 iframe 与权限/超时、STscript 子集、生成后台化，HTML 状态栏待做（C-T05.e 至 C-T05.f）。
 - 数据库 schema 版本 43；本轮没有改 schema。本轮没有新增依赖。
 - 报告：`docs/dev/reports/P2.md`、`P3.md`、`P4.md`、`C-T01.md`、`C-T02.md`、`C-T03.md`、`C-T04.md`。
 - 沙箱现状：`eval-private/st-sandbox/st` 有 36 个预设、68 张卡、89 个非驱动聊天片段；预设连接字段已被驱动改写为录制端点与桩模型，全局 `openai_max_context` 已被驱动改为 2,000,000。需要恢复原始预设时用 `sandbox --replace` 重建。
 - 私有比对批次：`compare-smoke4`（5 个组合，修复后）与更早的 `compare-smoke2`、`compare-smoke3`、`session324-sanitize`；每个批次的 `compare/` 下有报告、差异清单与汇总。
-- ADR-0088 至 ADR-0121 记录插件、沙箱、比对、兼容内容映射、EJS、沙箱执行、时间预算、流水线接入、模板生成、一致性评测、酒馆助手宿主、iframe 沙箱与 STscript 子集的决策。
+- ADR-0088 至 ADR-0122 记录插件、沙箱、比对、兼容内容映射、EJS、沙箱执行、时间预算、流水线接入、模板生成、一致性评测、酒馆助手宿主、iframe 沙箱、STscript 子集与生成后台化的决策。
 - HUMAN-03 待处理（不阻塞）：抽查 `eval-private/evalset/spotcheck.md` 里的事件题。
 - HUMAN-14 已关闭（2026-11-12：人类取消）：取消 Vertex 真实调用的凭证配置与验证要求；`roles.writer` 继续使用 `main-fallback`。
 - HUMAN-15 待处理（M6-T99 需要）：把秋叶整合包 v3.2 的 ComfyUI 启动在 `http://127.0.0.1:8188`，并导出一份 API 格式 workflow JSON 到 `eval-private/comfyui/` 或告知路径。
@@ -41,7 +40,8 @@
 
 ## 可重复命令
 - 门禁：`pnpm check`。
-- C-T05.c 目标测试：`pnpm exec vitest run packages/st-compat/test/st-helper-slash.test.ts packages/st-compat/test/st-helper-host.test.ts packages/st-compat/test/st-helper-sandbox.test.ts packages/web/test/helper-sandbox.test.ts`（36 个）。
+- C-T05.d 目标测试：`pnpm exec vitest run packages/st-compat/test/st-helper-generation.test.ts packages/st-compat/test/st-helper-slash.test.ts packages/st-compat/test/st-helper-host.test.ts packages/st-compat/test/st-helper-sandbox.test.ts packages/st-compat/test/st-ejs-generation.test.ts`（45 个）。
+- C-T05.c 目标测试：`pnpm exec vitest run packages/st-compat/test/st-helper-slash.test.ts packages/st-compat/test/st-helper-host.test.ts packages/st-compat/test/st-helper-sandbox.test.ts packages/web/test/helper-sandbox.test.ts`。
 - C-T05.b 浏览器用例：`pnpm --filter @dramaticer/web exec playwright test e2e/helper-sandbox.spec.ts --project=desktop`（2 个；e2e 不在 `pnpm check` 里）。
 - C-T05.a 目标测试：`pnpm exec vitest run packages/st-compat/test/st-helper-host.test.ts`（12 个）。
 - C-T04.d 目标测试：`pnpm exec vitest run packages/st-compat/test/st-ejs-consistency.test.ts packages/st-compat/test/st-ejs-coexist.test.ts`（19 个）。
@@ -94,4 +94,6 @@
 - 流水线第一轮没有楼层时用 `nodeId: null` 渲染预设静态段；`getvar` 读不到初始变量，模板要处理 `undefined`（例如 `Number(getvar(...) ?? 0)`）。
 - `st-helper-host` 的宿主会话不做执行；脚本正文只在 `scripts` 里返回。`character` 作用域依赖调用方传入带台账后端的 `StEjsVariableStore`，否则写入只留在内存。改消息会切换 head，较早消息的修改按分支切换处理。
 - `st-helper-host` 的沙箱 API 全部异步：`postMessage` 不能同步取返回值，脚本必须 `await`。事件监听用整数 token，`eventClearEvent`/`eventClearAll` 会同时清掉 iframe 与宿主两边的监听器。超时由宿主 `sweepTimeouts()` 驱动，调用方负责移除 iframe；超时执行注册的监听器会被清掉。
-- STscript：`triggerSlash` 只执行 `ST_HELPER_SLASH_COMMANDS` 里的命令，未知命令按名字失败。变量命令默认作用域与上游一致（`setvar` 是 chat/local），`messages` 的单个数字是消息下标，不是“最后 N 条”。`addswipe` 默认不切换 head，`swipe` 在兄弟楼层之间循环。`gen`/`genraw` 需要宿主注入 `generateQuiet`，当前没有注入时按命令名失败；C-T05.d 负责接后台。
+- STscript：`triggerSlash` 只执行 `ST_HELPER_SLASH_COMMANDS` 里的命令，未知命令按名字失败。变量命令默认作用域与上游一致（`setvar` 是 chat/local），`messages` 的单个数字是消息下标，不是“最后 N 条”。`addswipe` 默认不切换 head，`swipe` 在兄弟楼层之间循环。
+- `/gen` 与 `/genraw` 只登记后台请求并返回请求 id，不返回正文，回合内不等待。正文用 `/genresult <id>` 读取，未完成或失败是空串；状态用 `session.generation.get(id)`。脚本请求与 EJS 模板请求共用 `StEjsGenerationScheduler` 的卡级上限，队列 `drain` 只执行脚本登记的请求。
+- `StEjsGenerationScheduler.drain({ ids })` 是通用过滤，供脚本队列使用；`drain` 快照在开始时确定，期间新入队的请求留到下一次。

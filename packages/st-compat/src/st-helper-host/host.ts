@@ -1,5 +1,6 @@
 import type { PluginDisplayState, StoryStore } from "@dramaticer/core";
 import type { StCharacterCard } from "../character-card.js";
+import type { StEjsGenerationScheduler } from "../st-ejs/generation.js";
 import {
 	type StEjsVariableStore,
 	StEjsVariableStore as VariableStore,
@@ -12,6 +13,10 @@ import {
 	type StHelperEventRegistry,
 } from "./events.js";
 import {
+	StHelperGenerationQueue,
+	type StHelperGenerationTraceEntry,
+} from "./generation.js";
+import {
 	type StHelperChatMessage,
 	type StHelperChatMessageOptions,
 	type StHelperChatMessageRange,
@@ -20,7 +25,7 @@ import {
 	type StHelperSetChatMessagesOptions,
 } from "./messages.js";
 import { type StHelperScript, discoverStHelperScripts } from "./scripts.js";
-import { type StHelperSlashGenerator, StHelperSlashRunner } from "./slash.js";
+import { StHelperSlashRunner } from "./slash.js";
 import {
 	StHelperVariableBank,
 	type StHelperVariableOptions,
@@ -106,6 +111,8 @@ export interface StHelperHostSession {
 	readonly api: StHelperHostApi;
 	readonly scripts: readonly StHelperScript[];
 	readonly events: StHelperEventRegistry;
+	/** 脚本发起的生成队列；没有提供调度器时为 null。 */
+	readonly generation: StHelperGenerationQueue | null;
 	dispose(): void;
 }
 
@@ -119,8 +126,12 @@ export interface StHelperHostSessionOptions {
 	readonly userName?: string;
 	readonly characterName?: string;
 	readonly plugin?: string;
-	/** `/gen` 与 `/genraw` 的执行者；C-T05.d 接入后台任务与后台渠道。 */
-	readonly generateQuiet?: StHelperSlashGenerator;
+	/**
+	 * 与 EJS 模板共用的生成调度器；提供后 `/gen`、`/genraw` 只登记后台
+	 * 请求，宿主在间隙调用 `session.generation.drain()` 用后台渠道执行。
+	 */
+	readonly generation?: StEjsGenerationScheduler;
+	readonly onGenerationTrace?: (entry: StHelperGenerationTraceEntry) => void;
 }
 
 export function createStHelperHostSession(
@@ -150,12 +161,28 @@ export function createStHelperHostSession(
 		userName: options.userName ?? "用户",
 		characterName: options.characterName ?? options.card.name,
 	});
+	const generation =
+		options.generation === undefined
+			? null
+			: new StHelperGenerationQueue({
+					scheduler: options.generation,
+					storyId: options.storyId,
+					cardId: options.card.name,
+					nodeId: path.at(-1)?.id ?? null,
+					plugin,
+					...(options.onGenerationTrace === undefined
+						? {}
+						: { onTrace: options.onGenerationTrace }),
+				});
 	const slash = new StHelperSlashRunner({
 		variables: variableBank,
 		messages,
-		...(options.generateQuiet === undefined
+		...(generation === null
 			? {}
-			: { generate: options.generateQuiet }),
+			: {
+					generate: (request) => generation.enqueue(request),
+					generationResults: { read: (id) => generation.read(id) },
+				}),
 	});
 
 	const api: StHelperHostApi = {
@@ -196,6 +223,7 @@ export function createStHelperHostSession(
 		api,
 		scripts: discoverStHelperScripts(options.card),
 		events,
+		generation,
 		dispose: () => {
 			events.clearAll();
 		},

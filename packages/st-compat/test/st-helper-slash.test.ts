@@ -7,11 +7,14 @@ import {
 	parseCharacterCardJson,
 } from "../src/character-card.js";
 import {
+	type StEjsGenerationRunnerInput,
+	StEjsGenerationScheduler,
+} from "../src/st-ejs/index.js";
+import {
 	ST_HELPER_SANDBOX_FULL_PERMISSION,
 	type StHelperHostSession,
 	StHelperSandboxHost,
 	type StHelperSandboxHostMessage,
-	type StHelperSlashGenerationRequest,
 	createStHelperHostSession,
 } from "../src/st-helper-host/index.js";
 
@@ -34,9 +37,7 @@ interface Harness {
 
 function openHarness(
 	options: {
-		readonly generateQuiet?: (
-			request: StHelperSlashGenerationRequest,
-		) => Promise<string>;
+		readonly generation?: StEjsGenerationScheduler;
 	} = {},
 ): Harness {
 	const path = join(
@@ -84,9 +85,9 @@ function openHarness(
 		displayState,
 		userName: "玩家",
 		characterName: "测试角色",
-		...(options.generateQuiet === undefined
+		...(options.generation === undefined
 			? {}
-			: { generateQuiet: options.generateQuiet }),
+			: { generation: options.generation }),
 	});
 	onTestFinished(() => session.dispose());
 	return { store, storyId, displayState, session };
@@ -227,30 +228,51 @@ describe("STscript 消息命令", () => {
 });
 
 describe("STscript 安静生成", () => {
-	it("gen 与 genraw 交给宿主的执行者并返回正文", async () => {
-		const requests: StHelperSlashGenerationRequest[] = [];
-		const { session } = openHarness({
-			generateQuiet: async (request) => {
-				requests.push(request);
-				return `结果:${request.prompt}`;
+	it("gen 与 genraw 只登记后台请求，drain 之后用 genresult 读取正文", async () => {
+		const calls: StEjsGenerationRunnerInput[] = [];
+		const scheduler = new StEjsGenerationScheduler({
+			run: async (input) => {
+				calls.push(input);
+				return `结果:${input.prompt}`;
 			},
 		});
-		expect(
-			await session.api.triggerSlash("/genraw system=指令 length=64 请回答"),
-		).toBe("结果:请回答");
-		expect(requests[0]).toEqual({
-			command: "genraw",
+		const { session } = openHarness({ generation: scheduler });
+		const queue = session.generation;
+		if (queue === null) throw new Error("缺少脚本生成队列");
+		const api = session.api;
+		const rawId = await api.triggerSlash(
+			"/genraw system=指令 length=64 请回答",
+		);
+		expect(rawId).toBe("st-ejs-gen-1");
+		expect(calls).toHaveLength(0);
+		expect(queue.get(rawId)).toMatchObject({
 			prompt: "请回答",
-			system: "指令",
+			systemPrompt: "指令",
 			maxTokens: 64,
+			status: "pending",
 		});
-		expect(await session.api.triggerSlash("/gen 继续")).toBe("结果:继续");
-		expect(requests[1]).toEqual({
-			command: "gen",
-			prompt: "继续",
-			system: null,
-			maxTokens: null,
-		});
+		expect(await api.triggerSlash(`/genresult ${rawId}`)).toBe("");
+		expect(queue.getCounts()).toMatchObject({ submitted: 1, pending: 1 });
+
+		const drain = await queue.drain();
+		expect(drain.runs).toEqual([
+			expect.objectContaining({
+				id: rawId,
+				status: "done",
+				text: "结果:请回答",
+			}),
+		]);
+		expect(calls).toEqual([
+			{ prompt: "请回答", systemPrompt: "指令", maxTokens: 64 },
+		]);
+		expect(await api.triggerSlash(`/genresult ${rawId}`)).toBe("结果:请回答");
+
+		const second = await api.triggerSlash("/gen 继续");
+		expect(second).toBe("st-ejs-gen-2");
+		expect(queue.get(second)).toMatchObject({ prompt: "继续" });
+		expect(queue.get(second)?.systemPrompt).toBeUndefined();
+		expect(queue.get(second)?.maxTokens).toBeUndefined();
+		expect(await api.triggerSlash("/gen 再继续 | /genresult")).toBe("");
 	});
 
 	it("没有执行者时失败并指出命令名", async () => {
@@ -258,6 +280,9 @@ describe("STscript 安静生成", () => {
 		await expect(session.api.triggerSlash("/gen 内容")).rejects.toThrow(
 			/命令 gen 需要宿主接入安静生成/,
 		);
+		await expect(
+			session.api.triggerSlash("/genresult st-ejs-gen-1"),
+		).rejects.toThrow(/命令 genresult 需要宿主接入安静生成队列/);
 	});
 });
 

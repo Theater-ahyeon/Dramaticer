@@ -1946,3 +1946,18 @@
 - **影响**：
   - 新增 `packages/st-compat/test/st-helper-slash.test.ts` 12 个测试：变量读写与作用域、别名、数值增减与删除、管道与引号转义、消息范围/名字/角色过滤、`addswipe` 新楼层与 head 切换、`swipe` 循环切换、`hide`/`unhide` 只改显示状态、`gen`/`genraw` 的请求形状与缺少执行者、未知命令与未知参数、沙箱里的异步成功与失败。
   - 现有 `st-helper-host`、`st-helper-sandbox` 与 web 沙箱测试保持通过；没有改数据库 schema，没有新增依赖，`core` 没有改动（I1、I15）。
+
+## ADR-0122 `st-helper-host` 脚本发起的生成后台化（2026-11-13）
+
+- **背景**：C-T05.c 里 `/gen` 与 `/genraw` 交给宿主注入的执行者并等待正文，这会在回合内调用模型，违反 I6 与 I11。酒馆助手的脚本习惯同步拿到生成结果；Dramaticer 的宿主要求脚本发起的生成一律走后台渠道，在回合结束后的间隙执行，并在 Trace 里单独计数。
+- **决定**：
+  - 新增 `packages/st-compat/src/st-helper-host/generation.ts` 的 `StHelperGenerationQueue`：复用 EJS 的 `StEjsGenerationScheduler`，从而共享“同一张卡最多 4 条未完成请求”的卡级上限；`enqueue` 只校验并入队，返回请求 id，不调用模型。
+  - `StHelperSlashRunner` 的 `gen`/`genraw` 改为登记并返回请求 id；新增 `genresult <id>` 命令读取正文，未完成或失败时返回空串，未知 id 直接失败。管道可以写成 `/gen 提示 | /genresult`，得到的是登记后的空串，正文要等 `drain` 之后的下一次调用。
+  - `StEjsGenerationDrainOptions` 增加 `ids` 过滤；队列 `drain` 只执行自己登记的请求，同一调度器上 EJS 模板登记的请求留在原地，由 EJS 自己的 `drain` 执行。`drain` 快照在开始时确定，执行期间新登记的请求留到下一次。
+  - Trace 用独立的 `StHelperGenerationTraceEntry`（`kind: "generation"`）记录 `submitted`、`completed`、`failed` 与 `rejected`，`getCounts()` 按本队列的 id 统计 `submitted`/`pending`/`running`/`completed`/`failed`/`rejected`，与模板发起的请求分开。`onTrace` 供 C-T05.f 并入插件 Trace。
+  - 宿主会话选项 `generation` 接收与 EJS 共用的调度器，会话用故事、角色卡名称与当前 head 楼层构造队列，并通过 `session.generation` 暴露给调用方在间隙 `drain`；上一轮的 `generateQuiet` 选项删除，避免同时存在两条执行路径。
+  - 生成只登记，不写楼层、不改原文；后台正文只留在队列内存里，进程结束即消失，与 EJS 模板生成一致。
+- **影响**：
+  - 新增 `packages/st-compat/test/st-helper-generation.test.ts` 5 个测试：卡级限流与拒绝 Trace、脚本请求与模板请求分开计数、失败单独记录、未知请求 id、`drain` 快照顺序。
+  - `st-helper-slash.test.ts` 的安静生成用例改为登记 id + `drain` + `genresult`，并覆盖缺少队列时的失败。
+  - 没有改数据库 schema，没有新增依赖，`core` 没有改动（I1、I15）。
