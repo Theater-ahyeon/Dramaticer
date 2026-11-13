@@ -17,6 +17,8 @@ import lodash from "lodash";
 import type { StCharacterCard } from "../character-card.js";
 import type { StPreset } from "../preset.js";
 import {
+	type StEjsGenerationScheduler,
+	type StEjsGenerationSink,
 	type StEjsRuntime,
 	StEjsSandbox,
 	type StEjsTemplateExecutor,
@@ -45,6 +47,32 @@ export function hasStEjsMarkup(text: string): boolean {
 function toJsonValue(value: unknown, label: string): JsonValue {
 	assertJsonValue(value, label);
 	return value as JsonValue;
+}
+
+/** 把模板里的 `generate` 绑到当前故事、卡与楼层；模板只拿到请求 id。 */
+function bindGenerationSink(
+	scheduler: StEjsGenerationScheduler,
+	input: {
+		readonly storyId: string;
+		readonly cardId: string;
+		readonly nodeId: string | null;
+	},
+): StEjsGenerationSink {
+	return {
+		submit: (content) =>
+			scheduler.submit({
+				storyId: input.storyId,
+				cardId: input.cardId,
+				nodeId: input.nodeId,
+				...content,
+			}),
+		read: (id) => {
+			if (scheduler.get(id) === null) {
+				throw new Error(`未知的生成请求：${id}`);
+			}
+			return scheduler.getGenerated(id);
+		},
+	};
 }
 
 /**
@@ -181,6 +209,10 @@ export interface StEjsContentPipelineOptions {
 	/** `getwi` 输出的 token 上限；不传时不限制。 */
 	readonly tokenBudget?: number;
 	readonly estimateTokens?: (text: string) => number;
+	/** 卡级生成队列；提供后模板可以调用 `generate` 登记后台生成。 */
+	readonly generation?: StEjsGenerationScheduler;
+	/** 卡 id；默认用角色卡名称，作为卡级限流的键。 */
+	readonly cardId?: string;
 }
 
 export interface StEjsRenderContentOptions {
@@ -204,6 +236,8 @@ export class StEjsContentPipeline {
 	readonly #worlds: readonly StWorldInfo[];
 	readonly #tokenBudget: number | undefined;
 	readonly #estimateTokens: ((text: string) => number) | undefined;
+	readonly #generationScheduler: StEjsGenerationScheduler | undefined;
+	readonly #cardId: string;
 	#global: StEjsVariableTree = {};
 	#turn: ActiveTurn | null = null;
 	#generation = 0;
@@ -217,6 +251,11 @@ export class StEjsContentPipeline {
 		this.#worlds = options.worlds ?? [];
 		this.#tokenBudget = options.tokenBudget;
 		this.#estimateTokens = options.estimateTokens;
+		this.#generationScheduler = options.generation;
+		this.#cardId = options.cardId ?? options.card.name;
+		if (this.#cardId.trim().length === 0) {
+			throw new Error("EJS 流水线的卡 id 必须是非空字符串");
+		}
 	}
 
 	get turnNodeId(): string | null {
@@ -374,6 +413,15 @@ export class StEjsContentPipeline {
 		}));
 		const runtime = createStEjsRuntime({
 			...(backend === null ? {} : { backend }),
+			...(this.#generationScheduler === undefined
+				? {}
+				: {
+						generation: bindGenerationSink(this.#generationScheduler, {
+							storyId: this.#storyId,
+							cardId: this.#cardId,
+							nodeId,
+						}),
+					}),
 			variables: {
 				global: this.#global,
 				messages: path.map((node, index) => ({

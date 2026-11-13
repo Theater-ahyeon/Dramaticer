@@ -1404,7 +1404,8 @@
   - 变量来源接到 ST 的变量视图：与 MVU 使用同一份台账数据（`mvu` 子树），读经台账快照，写经待结算视图与结算器校验；全局与消息级变量留在插件自己的存储里，不新建台账事实。
   验收：EJS 只修改 ST 内容，harness 槽位逐字节不变；变量读写与 MVU 是同一份数据且有测试；`pnpm check` 通过。
 
-- [ ] **C-T04.c.d 模板发起的生成** | 依赖：C-T04.c.c
+- [x] **C-T04.c.d 模板发起的生成** | 依赖：C-T04.c.c
+  完成：2026-11-13 新增 `st-ejs/generation.ts`（`StEjsGenerationScheduler` 只登记请求并返回 id，`drain` 在间隙逐条执行；卡级待执行上限默认 4，超出抛 `StEjsGenerationLimitError`；计数与回合正文调用分开；单条失败记录错误后继续；`createStEjsBackgroundGenerationRunner` 用注入的后台 `LlmClient` 构造 system 与 user 消息）；`StEjsRuntime` 新增 `generate`/`getGenerated`，没有队列或参数非法时直接报错；`StEjsContentPipelineOptions` 新增 `generation` 与 `cardId`，流水线把请求绑定到当前故事、卡与楼层；新增 9 个测试；ADR-0117；门禁通过（224 个测试文件、1998 个测试、5 个跳过）。
   做什么：
   - 模板发起的生成按卡限流并作为后台任务执行，不进入回合内（I6、I11）。
   验收：模板发起的生成走后台渠道、单独计数并受卡级限流；回合内不等待生成；`pnpm check` 通过。

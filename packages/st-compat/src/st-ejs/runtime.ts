@@ -13,6 +13,11 @@ import {
 import { StEjsDataReader, type StEjsDataSource } from "./data.js";
 import { evaluateStEjsDecoratorCondition } from "./decorators.js";
 import {
+	StEjsGenerationError,
+	type StEjsGenerationSink,
+	normalizeStEjsGenerationOptions,
+} from "./generation.js";
+import {
 	type StEjsInitialVariablesParse,
 	parseStEjsInitialVariables,
 } from "./injection.js";
@@ -79,6 +84,8 @@ export interface StEjsRuntimeOptions {
 	readonly executor?: StEjsTemplateExecutor;
 	/** `initial` 作用域的读写后端；接入台账时由调用方提供。 */
 	readonly backend?: StEjsVariableBackend;
+	/** 模板发起生成的登记入口；不提供时 `generate` 直接报错。 */
+	readonly generation?: StEjsGenerationSink;
 }
 
 export interface StEjsRenderOptions {
@@ -290,6 +297,7 @@ export class StEjsRuntime {
 	#variableSchema: StEjsVariableSchemaNode | null = null;
 	#evalDepth = 0;
 	#executor: StEjsTemplateExecutor | null;
+	#generation: StEjsGenerationSink | null;
 	/** 当前渲染沿用中的回合预算；嵌套渲染（`getwi`）读它。 */
 	#activeBudget: StEjsTurnBudget | null = null;
 	readonly #formatEscapedCustom: boolean;
@@ -314,6 +322,7 @@ export class StEjsRuntime {
 		this.#formatEscaped = options.formatEscaped ?? stringifyOutput;
 		this.#formatEscapedCustom = options.formatEscaped !== undefined;
 		this.#executor = options.executor ?? null;
+		this.#generation = options.generation ?? null;
 		this.#data = new StEjsDataReader(options.data ?? {});
 		const estimateTokens = options.estimateTokens ?? defaultStEjsTokenEstimator;
 		this.#worldInfo = new StEjsWorldInfo(
@@ -498,6 +507,38 @@ export class StEjsRuntime {
 		const previous = this.#variableSchema;
 		this.#variableSchema = lodash.cloneDeep(schema);
 		return previous;
+	}
+
+	/**
+	 * 模板里的 `generate(prompt, { system, maxTokens })`：只登记请求并返回 id，
+	 * 不调用模型；宿主在回合结束后用后台客户端执行。
+	 */
+	requestGeneration(prompt: unknown, options?: unknown): string {
+		if (this.#generation === null) {
+			throw new StEjsGenerationError(
+				"模板发起生成需要宿主接入生成队列（StEjsGenerationScheduler）",
+			);
+		}
+		if (typeof prompt !== "string" || prompt.trim().length === 0) {
+			throw new StEjsGenerationError("generate 的 prompt 必须是非空字符串");
+		}
+		return this.#generation.submit({
+			prompt,
+			...normalizeStEjsGenerationOptions(options),
+		});
+	}
+
+	/** 模板里的 `getGenerated(id)`：未完成或失败时返回空串。 */
+	readGeneration(id: unknown): string {
+		if (typeof id !== "string" || id.length === 0) {
+			throw new StEjsGenerationError("getGenerated 的 id 必须是非空字符串");
+		}
+		if (this.#generation === null) {
+			throw new StEjsGenerationError(
+				"模板发起生成需要宿主接入生成队列（StEjsGenerationScheduler）",
+			);
+		}
+		return this.#generation.read(id);
 	}
 
 	/** 把 RFC 6902 补丁应用到合并视图，变化落到目标作用域。 */
@@ -822,6 +863,9 @@ export class StEjsRuntime {
 				options?: StEjsVariableOptionsInput,
 			) => this.patchVariables(patch, options),
 			setVariableSchema: (schema: unknown) => this.setVariableSchema(schema),
+			generate: (prompt: unknown, options?: unknown) =>
+				this.requestGeneration(prompt, options),
+			getGenerated: (id: unknown) => this.readGeneration(id),
 		};
 	}
 

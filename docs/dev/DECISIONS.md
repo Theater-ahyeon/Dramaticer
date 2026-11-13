@@ -1868,3 +1868,18 @@
 - **影响**：
   - 新增 `packages/st-compat/test/st-content-ejs-pipeline.test.ts` 5 个测试：ST 静态段与 history/lore 渲染而 harness 槽位与写作契约逐字节不变、变量读台账快照并写回 `mvu` 事实、global 与消息变量不写台账、结算器拒绝非法路径时直接抛错、超时模板按空内容并记录预算。
   - 现有 EJS、st-content 与共存评测测试保持通过；门禁 223 个测试文件、1989 个测试通过，5 个 live 跳过。没有改数据库 schema，没有新增依赖，`core` 没有改动（I1、I15）。EJS 仍不处理模板发起的生成（C-T04.c.d）。
+
+## ADR-0117 `st-ejs` 模板发起的生成（2026-11-13）
+
+- **背景**：C-T04.c.d 要求模板里的生成调用不走回合内的正文请求。I6 规定每回合只有一次主调用加按需读取工具，I11 要求能放到间隙里的工作不进入回合；模板在沙箱里同步执行，函数调用经 RPC 回到主线程，调用方不能在这里等待一次模型请求。上游 ST-Prompt-Template 的生成函数通常直接返回文本，本实现必须把“模板里拿到生成结果”改成“登记请求、之后读取结果”。
+- **决定**：
+  - 新增 `packages/st-compat/src/st-ejs/generation.ts`。`StEjsGenerationScheduler` 是进程内的请求队列：`submit` 只校验并保存 `{storyId, cardId, nodeId, prompt, systemPrompt?, maxTokens?}`，返回请求 id，不调用模型；`drain` 按入队顺序逐条执行，宿主在回合结束后的间隙调用它。执行期间再次 `drain` 直接失败，宿主本就应该串行调度。
+  - 模板函数 `generate(prompt, options?)` 返回请求 id；选项只接受 `system` 与 `maxTokens`，其他键、空 prompt 与非正整数上限直接抛 `StEjsGenerationError`。模板函数 `getGenerated(id)` 读取已完成正文，未完成或失败时返回空串；未知 id 在流水线绑定的入口处直接报错。没有接入队列时两个函数都报错，不静默返回空串。
+  - 卡级限流按 `cardId` 统计待执行条数（pending 与 running），默认每张卡最多 4 条，超过时抛 `StEjsGenerationLimitError`（带卡 id 与上限）。`getCounts(cardId?)` 给出 pending、running、done、failed 与 total；生成请求的计数与回合正文调用分开。
+  - `drain` 只处理调用开始时的待办快照；单条失败记录 `error` 并继续后面的请求，不把一次后台失败变成回合失败。`signal` 在每条请求之间检查，已取消时剩余请求保持 pending。
+  - `createStEjsBackgroundGenerationRunner({ client, model })` 把请求转成一条 system（可选）加一条 user 消息，调用注入的 `LlmClient`；调用方传 `runtime.backgroundClient`，不传正文客户端。散文类输出保留默认续写。
+  - `StEjsContentPipelineOptions` 新增 `generation` 与 `cardId`；流水线在创建回合运行时绑定当前故事、卡与楼层，模板拿不到也不能改写这些来源。`cardId` 缺省用角色卡名称。
+  - 请求与结果只存在内存：模板生成是辅助内容，进程结束后可以重新发起；不新增数据库表，`core` 没有改动（I1、I15），也不改变 `background_jobs` 的档位语义。宿主需要在回合结束之后调用 `drain`，这一步与既有后台任务在同一个间隙执行。
+- **影响**：
+  - 新增 `packages/st-compat/test/st-ejs-generation.test.ts` 9 个测试：渲染只登记不执行、`drain` 后下一次渲染读到结果、卡级待执行上限与其他卡不受影响、单条失败不阻塞后续、没有队列与非法参数直接报错、沙箱里登记、后台执行函数构造的请求、流水线绑定故事/卡/楼层并在下一轮读到结果。
+  - 现有 EJS、st-content 与共存评测测试保持通过；没有新增依赖，没有改数据库 schema，`core` 没有改动（I1、I15）。

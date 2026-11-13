@@ -1,6 +1,7 @@
 export * from "./activate-regex.js";
 export * from "./data.js";
 export * from "./decorators.js";
+export * from "./generation.js";
 export * from "./injection.js";
 export * from "./json.js";
 export * from "./runtime.js";
