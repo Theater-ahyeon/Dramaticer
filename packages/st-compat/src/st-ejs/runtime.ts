@@ -1,6 +1,21 @@
 import ejs from "ejs";
 import lodash from "lodash";
 import {
+	type StEjsActivateRegexOptions,
+	type StEjsActivatedRegexScript,
+	type StEjsRegexApplyOptions,
+	type StEjsRegexContext,
+	StEjsRegexError,
+	type StEjsRegexReplacementFunction,
+	applyStEjsActivatedRegexes,
+	createStEjsActivatedRegex,
+} from "./activate-regex.js";
+import { evaluateStEjsDecoratorCondition } from "./decorators.js";
+import {
+	type StEjsInitialVariablesParse,
+	parseStEjsInitialVariables,
+} from "./injection.js";
+import {
 	type StEjsMessageFilter,
 	type StEjsMessageRole,
 	StEjsVariableError,
@@ -61,6 +76,40 @@ export interface StEjsPromptInjection {
 	readonly order: number;
 	readonly sticky: number;
 	readonly uid: string;
+}
+
+/** 模板与激活正则共用的变量函数。 */
+export interface StEjsVariableFunctions {
+	readonly getvar: (
+		key: string | null,
+		options?: StEjsVariableOptionsInput,
+	) => unknown;
+	readonly setvar: (
+		key: string | null,
+		value: unknown,
+		options?: StEjsVariableOptionsInput,
+	) => unknown;
+	readonly incvar: (
+		key: string,
+		value?: number,
+		options?: StEjsVariableOptionsInput,
+	) => unknown;
+	readonly decvar: (
+		key: string,
+		value?: number,
+		options?: StEjsVariableOptionsInput,
+	) => unknown;
+	readonly delvar: (
+		key: string | null,
+		index?: string | number,
+		options?: StEjsVariableOptionsInput,
+	) => unknown;
+	readonly insvar: (
+		key: string,
+		value: unknown,
+		index?: string | number,
+		options?: StEjsVariableOptionsInput,
+	) => unknown;
 }
 
 export class StEjsTemplateError extends Error {
@@ -154,6 +203,7 @@ export class StEjsRuntime {
 	readonly #formatEscaped: (value: string) => string;
 	readonly #definitions = new Map<string, unknown>();
 	readonly #injections: StEjsPromptInjection[] = [];
+	readonly #regexes: StEjsActivatedRegexScript[] = [];
 	#evalDepth = 0;
 
 	constructor(options: StEjsRuntimeOptions = {}) {
@@ -181,6 +231,50 @@ export class StEjsRuntime {
 
 	getInjections(): readonly StEjsPromptInjection[] {
 		return this.#injections;
+	}
+
+	/** 注册一条激活正则；同一实例内按注册顺序保存。 */
+	activateRegex(
+		pattern: RegExp | string,
+		replacement: string | StEjsRegexReplacementFunction,
+		options: StEjsActivateRegexOptions = {},
+	): void {
+		this.#regexes.push(
+			createStEjsActivatedRegex(pattern, replacement, options),
+		);
+	}
+
+	getActivatedRegexes(): readonly StEjsActivatedRegexScript[] {
+		return this.#regexes;
+	}
+
+	/** 按内容类型、阶段、深度与 HTML 标记执行激活正则。 */
+	applyRegex(text: string, options: StEjsRegexApplyOptions): string {
+		if (typeof text !== "string") {
+			throw new StEjsRegexError("激活正则的输入必须是字符串");
+		}
+		return applyStEjsActivatedRegexes(
+			this.#regexes,
+			text,
+			options,
+			(match): StEjsRegexContext => ({
+				...match,
+				variables: this.variables.variables,
+				...this.#variableFunctions(),
+			}),
+		);
+	}
+
+	/** `@@if` 的表达式：与模板共用同一批局部变量。 */
+	evaluateCondition(expression: string): unknown {
+		return evaluateStEjsDecoratorCondition(expression, this.#buildLocals({}));
+	}
+
+	/** 解析 `[InitialVariables]` 的内容并写进 `initial` 作用域。 */
+	defineInitialVariables(text: string): StEjsInitialVariablesParse {
+		const parsed = parseStEjsInitialVariables(text);
+		this.variables.addInitialVariables(parsed.variables);
+		return parsed;
 	}
 
 	/** 渲染一段模板。准备阶段的写入拦截由 `StEjsVariableStore` 负责。 */
@@ -232,12 +326,7 @@ export class StEjsRuntime {
 		}
 	}
 
-	#buildLocals(extraLocals: Record<string, unknown>): Record<string, unknown> {
-		const locals: Record<string, unknown> = {};
-		for (const [name, value] of this.#definitions) {
-			locals[name] = typeof value === "function" ? value.bind(locals) : value;
-		}
-		Object.assign(locals, extraLocals);
+	#variableFunctions(): StEjsVariableFunctions {
 		const store = this.variables;
 		const getvar = (key: string | null, options?: StEjsVariableOptionsInput) =>
 			store.read(key, options);
@@ -256,7 +345,7 @@ export class StEjsRuntime {
 			value = 1,
 			options?: StEjsVariableOptionsInput,
 		) => this.#stepVariable(key, value, options, -1);
-		const insertvar = (
+		const insvar = (
 			key: string,
 			value: unknown,
 			index?: string | number,
@@ -267,6 +356,23 @@ export class StEjsRuntime {
 			index?: string | number,
 			options?: StEjsVariableOptionsInput,
 		) => store.remove(key, index, options);
+		return { getvar, setvar, incvar, decvar, delvar, insvar };
+	}
+
+	#buildLocals(extraLocals: Record<string, unknown>): Record<string, unknown> {
+		const locals: Record<string, unknown> = {};
+		for (const [name, value] of this.#definitions) {
+			locals[name] = typeof value === "function" ? value.bind(locals) : value;
+		}
+		Object.assign(locals, extraLocals);
+		const {
+			getvar,
+			setvar,
+			incvar,
+			decvar,
+			delvar,
+			insvar: insertvar,
+		} = this.#variableFunctions();
 		const scoped = (scope: StEjsVariableScope) => ({
 			get: (key: string | null, options?: StEjsVariableOptionsInput) =>
 				getvar(key, { ...normalizeStEjsVariableOptions(options), scope }),
@@ -313,7 +419,7 @@ export class StEjsRuntime {
 		const localScope = scoped("local");
 		const messageScope = scoped("message");
 		Object.assign(locals, {
-			variables: store.variables,
+			variables: this.variables.variables,
 			getvar,
 			setvar,
 			incvar,
@@ -369,6 +475,11 @@ export class StEjsRuntime {
 			) => this.#getPromptsInjected(key, postprocess),
 			hasPromptsInjected: (key: string) =>
 				this.#injections.some((entry) => entry.key === key),
+			activateRegex: (
+				pattern: RegExp | string,
+				replacement: string | StEjsRegexReplacementFunction,
+				options?: StEjsActivateRegexOptions,
+			) => this.activateRegex(pattern, replacement, options ?? {}),
 		});
 		return locals;
 	}

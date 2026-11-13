@@ -337,6 +337,22 @@ export class StEjsVariableStore {
 		this.#preparation = value;
 	}
 
+	/** 准备阶段解析出来的初始变量并进 `initial` 作用域，随后重建合并视图。 */
+	addInitialVariables(tree: StEjsVariableTree): void {
+		mergeInto(this.#initial, assertTree(tree, "初始变量"));
+		this.#rebuildCache();
+	}
+
+	#rebuildCache(): void {
+		replaceContents(this.#cache, {});
+		mergeInto(this.#cache, this.#initial);
+		mergeInto(this.#cache, this.#global);
+		mergeInto(this.#cache, this.#local);
+		for (const message of this.#messages) {
+			mergeInto(this.#cache, message.variables);
+		}
+	}
+
 	/** 按作用域读取；`scope` 缺省为合并视图。 */
 	read(key: string | null, input?: StEjsVariableOptionsInput): unknown {
 		const options = normalizeStEjsVariableOptions(input);

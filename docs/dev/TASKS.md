@@ -1364,15 +1364,23 @@
   - 提供楼层读取与 prompt 注入函数；非法选项、非法路径与超深递归直接抛错。
   验收：模板语法、`print` 输出位置、格式化开关、转义区域、错误来源与行号有测试；五个作用域、四种条件、三种返回类型、深合、准备阶段写保护、整棵树替换、增减删插与作用域别名有测试；写入记录完整；原型污染路径被拒绝；`pnpm check` 通过。
 
-- [ ] **C-T04.b 装饰器、激活正则与世界书条目能力** | 依赖：C-T04.a
+- **C-T04.b 装饰器、激活正则与世界书条目能力**（已拆成 C-T04.b.a 与 C-T04.b.b） | 依赖：C-T04.a
+
+- [x] **C-T04.b.a 装饰器、内容注入与激活正则** | 依赖：C-T04.a
+  完成：2026-11-13 新增 `st-ejs/decorators.ts`（`parseStEjsDecorators` 解析内容开头 17 个装饰器，未知行丢弃并记录，`@@@` 行按原文保留，`@@if` 表达式用模板局部变量求值并带表达式原文报错）、`st-ejs/injection.ts`（`[GENERATE|RENDER:BEFORE|AFTER]`、带下标、`REGEX` 标记与 `@INJECT` 的 `pos`/`target`/`regex`/`order`/`role` 拆成注入条目，`[InitialVariables]` 先 JSON 再 YAML 并写进 `initial` 作用域）、`st-ejs/activate-regex.ts`（`basic`/`generate`/`message`/`html`/`before`/`minDepth`/`maxDepth`/`order`/`sticky`，字符串 pattern 复用酒馆正则解析，替换函数绑定 `this.getvar` 等运行时上下文并记录写入）；新增 31 个测试；ADR-0112；门禁通过（217 个测试文件、1937 个测试、5 个跳过）
   做什么：
   - 解析世界书内容开头的 `@@` 装饰器：`@@activate`、`@@dont_activate`、`@@message_formatting`、`@@generate_before`/`@@generate_after`、`@@render_before`/`@@render_after`、`@@dont_preload`、`@@preload`、`@@only_preload`、`@@initial_variables`、`@@always_enabled`、`@@private`、`@@if`、`@@iframe`、`@@preprocessing`；未知装饰器行丢弃，`@@@` 前缀按原文保留。
   - 内容注入：`[GENERATE:BEFORE]`/`[GENERATE:AFTER]`、`[GENERATE:{idx}:BEFORE]`/`[GENERATE:{idx}:AFTER]`、`[GENERATE:REGEX:pattern]`、`[RENDER:*]`、`[InitialVariables]`（JSON 优先、再按 YAML 解析）；`@INJECT` 的 `pos`、`target`、`regex` 三种位置与 `order`/`role`。
   - `activateRegex(pattern, replacement, options)`：`basic`、`generate`、`message`、`html`、`before`、`minDepth`/`maxDepth`、`order`、`sticky`，替换内容可以是函数并绑定运行时上下文。
-  - 世界书与数据读取：`getwi`/`getWorldInfo`（含递归与同世界书省略世界书名）、`activewi`/`activateWorldInfo`、`activateWorldInfoByKeywords`、`getWorldInfoData`、`getWorldInfoActivatedData`、`getEnabledWorldInfoEntries`、`selectActivatedEntries`，以及 `getchar`/`getCharData`/`getpreset`/`getqr`/`getQuickReplyData`；`parseJSON`、`jsonPatch`、`patchVariables`、`setVariableSchema`。
-  验收：每个装饰器与注入形式有测试；未知装饰器被丢弃、`@@@` 转义保留；激活正则的每种选项有测试且替换函数拿到 `this.getvar`；世界书递归与同世界书省略参数有测试；`getwi` 的结果再次进入模板处理与 token 预算；`pnpm check` 通过。
+  验收：每个装饰器与注入形式有测试；未知装饰器被丢弃、`@@@` 转义保留；激活正则的每种选项有测试且替换函数拿到 `this.getvar`；`pnpm check` 通过。
 
-- [ ] **C-T04.c worker 隔离、时间预算与流水线接入** | 依赖：C-T04.b
+- [ ] **C-T04.b.b 世界书与数据读取函数** | 依赖：C-T04.b.a
+  做什么：
+  - 世界书与数据读取：`getwi`/`getWorldInfo`（含递归与同世界书省略世界书名）、`activewi`/`activateWorldInfo`、`activateWorldInfoByKeywords`、`getWorldInfoData`、`getWorldInfoActivatedData`、`getEnabledWorldInfoEntries`、`selectActivatedEntries`，以及 `getchar`/`getCharData`/`getpreset`/`getqr`/`getQuickReplyData`。
+  - `parseJSON`、`jsonPatch`、`patchVariables`、`setVariableSchema`。
+  验收：世界书递归与同世界书省略参数有测试；`getwi` 的结果再次进入模板处理与 token 预算；JSON 与补丁函数有测试；`pnpm check` 通过。
+
+- [ ] **C-T04.c worker 隔离、时间预算与流水线接入** | 依赖：C-T04.b.b
   做什么：
   - 把模板编译与执行放进 `worker_threads`，`node:vm` 不作为安全边界；主线程只传文本、变量快照与允许的函数清单，超时终止 worker 并重建。
   - 每次模板执行计入回合内时间预算，超时跳过该条并写 Trace（来源、耗时、跳过原因），`dramaticer explain` 能读到。

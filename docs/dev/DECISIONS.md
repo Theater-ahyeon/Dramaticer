@@ -1789,3 +1789,23 @@
   - 新增 `packages/st-compat/test/st-ejs-variables.test.ts` 14 个测试：合并顺序与深合、`getvar` 作用域与缺省值与深拷贝、`setvar` 的写入记录与 `results`、四种 `flags`、`merge`、准备阶段与 `dryRun`、整棵树替换、`incvar`/`decvar` 的边界、`delvar`、`insvar`、作用域别名、`withMsg`、原型污染路径、实例隔离。
   - `ejs` 与 `lodash` 新增在 `packages/st-compat`，`@types/ejs` 与 `@types/lodash` 为开发依赖；没有改数据库 schema，`core` 没有新增代码（I1、I15）。
   - 上游许可证与提案不一致的事实与处理方式写进 HUMAN.md；本实现没有复制上游源码，没有引入上游包。
+
+## ADR-0112 `st-ejs` 的装饰器、内容注入与激活正则（2026-11-13）
+
+- **背景**：C-T04.b 的条目横跨装饰器、内容注入、激活正则、世界书与数据读取四组能力，一个会话做不完，拆成 C-T04.b.a（装饰器、内容注入、激活正则）与 C-T04.b.b（世界书与数据读取函数、JSON 与变量补丁）。上游 ST-Prompt-Template 的文档在本机不可达（网络不可用），实现只依据 TASKS 条目描述的行为与酒馆正则的既有语义；没有上游源码可参考，也没有复制上游内容，许可证口径见 HUMAN-17。
+- **决定**：
+  - 新增 `packages/st-compat/src/st-ejs/decorators.ts`：`parseStEjsDecorators` 只解析内容最前面连续的 `@@` 行，17 个已知名称之外的行整行丢弃并记入 `discarded`；`@@@` 开头的行是普通内容，装饰器块在它之前结束，这一行按原文保留在正文里。名称区分大小写，`@@if` 必须带非空表达式，否则直接抛 `StEjsDecoratorError`。
+  - `@@if` 的表达式由 `evaluateStEjsDecoratorCondition` 在模板同一批局部变量里用 `new Function` 加 `with` 求值，因此可以使用 `variables`、`getvar`、`setvar` 等模板函数；求值失败抛 `StEjsDecoratorError` 并带上表达式原文。执行隔离仍由 C-T04.c 的 worker 负责，与模板本身相同。
+  - 新增 `packages/st-compat/src/st-ejs/injection.ts`：`parseStEjsInjections` 把渲染结果按独占一行的标记拆成正常输出与注入条目。识别 `[GENERATE:BEFORE]`、`[GENERATE:AFTER]`、`[GENERATE:{n}:BEFORE]`、`[GENERATE:{n}:AFTER]`、`[GENERATE:REGEX:pattern]`，`RENDER` 同理；标记行与其后直到下一条标记的文本归入该条注入，其余文本按原顺序拼回输出。标记必须独占一行，夹在文本里的标记按普通文本保留。
+  - `@INJECT` 一行内用 `key=value` 属性描述位置，支持 `pos`（`before`/`after`）、`target`（任何槽位名，缺省 `generate`）、`regex`（正则文本）三种位置，以及 `order`（缺省 100）与 `role`（`system`/`user`/`assistant`）；未知属性、重复属性、非法取值、未闭合引号直接抛 `StEjsInjectionError`。`@INJECT` 之后的文本同样归入该条注入。拆分只产生数据，具体插入到生成或渲染的哪个位置由 C-T04.c 的流水线决定。
+  - `[InitialVariables]` 由 `parseStEjsInitialVariables` 解析：去掉标记行后先试 JSON，再试 YAML，两者都必须得到对象；空内容得到空对象，数组与非法文本直接抛错。`StEjsVariableStore.addInitialVariables` 把结果并进 `initial` 作用域并重建合并视图，因此 `initial` 仍然优先级最低、`scope: "initial"` 仍能读到原始值。
+  - 新增 `packages/st-compat/src/st-ejs/activate-regex.ts`：`activateRegex(pattern, replacement, options)` 同时在模板局部变量与 `StEjsRuntime` 上提供。字符串 pattern 用 `st-content/regex.ts` 的 `stRegexFromString` 解析，与酒馆正则的 `/pattern/flags` 口径一致；非法 pattern 抛 `StEjsRegexError`。选项校验为布尔、非负整数深度、有限 `order`，`minDepth` 不能大于 `maxDepth`。
+  - 执行口径：`basic` 同时作用于生成与消息，`generate`/`message` 分别限定，两者都没写时同样作用于两种内容；`before` 只在 `stage: "before"` 执行，否则只在不带阶段（视为 after）时执行；`html: true` 只在 `html` 为真的 HTML 处理后执行，未声明的脚本两种输出都执行；带深度范围的脚本在调用方没有传 `depth` 时跳过，`depth` 以 0 表示最新楼层。脚本按 `order`、再按注册顺序执行；没有 `sticky` 的脚本命中一次后停用，`sticky` 的脚本继续保留。
+  - 替换内容可以是函数，函数的 `this` 是运行时上下文：`variables`、`getvar`/`setvar`/`incvar`/`decvar`/`delvar`/`insvar` 以及当前匹配的 `match`、`groups`、`offset`、`input`，函数里的写入照常记入 `StEjsVariableWrite`。字符串替换保留 JavaScript 的 `$1`/`$&` 语义。
+  - 这些解析与注册都只在内存里生效，不写台账、不改楼层原文、不产生数据库行；持久化与作用范围（只作用于 ST 内容）留给 C-T04.c。
+- **影响**：
+  - 新增 `packages/st-compat/test/st-ejs-decorators.test.ts` 8 个测试：全部装饰器名称、未知行丢弃、`@@@` 保留、只解析开头、`@@if` 表达式与缺参、表达式求值、求值错误带表达式。
+  - 新增 `packages/st-compat/test/st-ejs-injections.test.ts` 12 个测试：`GENERATE` 的两种位置、带下标、`REGEX`、`RENDER` 三种形式、`@INJECT` 的 `pos`/`target`/`regex`/`order`/`role`、非独占行不识别、非法属性逐条拒绝、`[InitialVariables]` 的 JSON 与 YAML、非对象与非法文本、`initial` 作用域优先级。
+  - 新增 `packages/st-compat/test/st-ejs-regex.test.ts` 11 个测试：一次性与 `sticky`、`basic`/`generate`/`message`、`html`、`before`、`minDepth`/`maxDepth`、`order` 与注册顺序、替换函数的 `this.getvar` 与写入记录、模板内注册、字符串 pattern 的标志、非法参数。
+  - `yaml` 已是 `packages/st-compat` 的运行时依赖，没有新增依赖；没有改数据库 schema，`core` 没有改动（I1、I15）。EJS 仍只作用于 ST 内容，harness 槽位没有接入点（C-T04.c 时才接入）。
+
