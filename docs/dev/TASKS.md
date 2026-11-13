@@ -1437,7 +1437,8 @@
   做什么：把 C-T05.a 的宿主 API 通过 `postMessage` 暴露给沙箱 iframe；脚本在 iframe 里执行，拿不到主线程对象、文件系统与网络；代码插件权限声明列出脚本可用的 API，未声明的调用被拒绝并记录；脚本死循环或超时被终止，原因写进 Trace。
   验收：逃逸测试通过；超时终止后宿主仍可继续；未声明权限的调用被拒绝并记录；`pnpm check` 通过。
 
-- [ ] **C-T05.c `triggerSlash` 与 STscript 子集** | 依赖：C-T05.b
+- [x] **C-T05.c `triggerSlash` 与 STscript 子集** | 依赖：C-T05.b
+  完成：2026-11-13 新增 `st-helper-host/slash.ts`：`StHelperSlashRunner` 支持变量读写与作用域别名、`messages`/`hide`/`unhide`/`addswipe`/`swipe` 的楼层映射、`pass`/`echo`、`gen`/`genraw` 经注入的 `generateQuiet` 执行安静生成；管道、双引号与转义按上游口径解析，未知命令与未知参数直接失败并指出名称；`addswipe` 追加同父楼层且默认不切换 head，`swipe` 在兄弟楼层之间循环切换；沙箱权限新增 `slash` 分组，宿主异步返回 Promise 结果并在执行结束后丢弃迟到响应；新增 12 个测试；ADR-0121；门禁通过
   做什么：实现酒馆助手脚本常用的 STscript 子集（变量读写、消息读取与修改、聊天切换、安静生成、管道与引号），`triggerSlash` 返回结果字符串；未实现的命令抛错并指出命令名。
   验收：每个受支持命令有测试；命令改写消息仍映射为新 swipe；未知命令失败并指出命令名；`pnpm check` 通过。
 

@@ -3,37 +3,36 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-13 会话 351：完成 C-T05.b（`st-helper-host` 沙箱 iframe、权限声明与超时）。
-- 新增 `packages/st-compat/src/st-helper-host/sandbox.ts`：`st-helper:ready/call/done` 与 `st-helper:run/result/event/clear` 的纯 JSON 协议；`parseStHelperSandboxPermission` 解析 `{ kind: "st-helper", apis }` 白名单，未知函数、重复函数与依赖缺失直接抛错；`StHelperSandboxHost` 负责权限判定、API 分派、事件 token 桥接、执行计时与 Trace。
-- 权限依赖：声明 `updateVariablesWith` 必须同时声明 `getVariables` 与 `replaceVariables`；声明 `eventOnce`、`eventRemoveListener`、`eventClearEvent`、`eventClearAll` 必须同时声明 `eventOn`。`ST_HELPER_SANDBOX_FULL_PERMISSION` 是覆盖全部 18 个函数的声明。
-- 未声明的调用返回错误结果并记录 `kind: "permission"`、`outcome: "denied"`；协议错误、宿主抛错与非 JSON 返回值分别记录。超时执行由 `sweepTimeouts()` 找出，调用 `terminate` 并清掉该执行注册的监听器，Trace 记 `kind: "timeout"` 与原因；之后仍可 `startScript`。
-- 新增 `packages/web/src/chat/helper-sandbox.ts`：`buildStHelperSandboxDocument` 生成 `sandbox="allow-scripts"` 的 srcdoc，CSP 为 `default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:`；脚本经内联 `<script>` 元素执行（不用 eval），运行在 async IIFE 里；宿主 API 只按白名单生成，全部返回 Promise。
-- `updateVariablesWith` 在 iframe 里由 `getVariables` → 本地更新函数 → `replaceVariables` 组合；宿主不接受函数参数。事件监听用整数 token 映射，宿主事件回发 `st-helper:event`，清空事件时同时通知 iframe 丢弃本地回调。
-- 新增 7 个 `packages/st-compat/test/st-helper-sandbox.test.ts`、5 个 `packages/web/test/helper-sandbox.test.ts`、2 个 `packages/web/e2e/helper-sandbox.spec.ts` 浏览器用例；ADR-0120；门禁通过（229 个测试文件、2041 个测试、5 个跳过）。
+- 2026-11-13 会话 352：完成 C-T05.c（`triggerSlash` 与 STscript 子集）。
+- 新增 `packages/st-compat/src/st-helper-host/slash.ts`：`StHelperSlashRunner.run(script)` 解析并执行固定命令表 `ST_HELPER_SLASH_COMMANDS`；分段按未转义且不在引号里的 `|`，双引号保留空格与管道符，`\` 转义下一个字符；每段结果作为下一段的未命名参数（下一段没有显式未命名参数时）。
+- 命令：
+  - 变量：`setvar`、`getvar`、`addvar`、`incvar`、`decvar`、`flushvar` 走 `chat` 作用域；`setglobalvar`、`getglobalvar`、`addglobalvar`、`incglobalvar`、`decglobalvar`、`flushglobalvar` 走 `global`；别名 `setchatvar`/`getchatvar`/`addchatvar`/`incchatvar`/`decchatvar`/`flushchatvar` 与上游一致。变量存储与 EJS 共用。
+  - 消息：`messages`（单个下标、`起-止`、`latest`、`names`、`hidden`、`role`）、`hide`/`unhide`（只写插件显示状态的 `is_hidden`）、`addswipe`（追加同父新楼层，默认不切换 head，`switch=on` 切换，返回新 swipe 下标）、`swipe direction=left|right`（在兄弟楼层之间循环切换 head，返回空串）。别名 `message`、`swipeadd`。
+  - 文本与生成：`pass`、`echo`（只返回文本，不弹窗）、`gen`、`genraw`（调用注入的 `generateQuiet`，接收 `{command, prompt, system, maxTokens}`）。未注入执行者时失败并指出命令名。
+  - 未知命令抛 `STscript 命令 <名> 未实现`；未知命名参数、重复参数、引号未闭合、命令不以 `/` 开头都直接失败。宏、闭包、`/go` 这类切换聊天文件的命令不在子集内，同样按未知命令失败。
+- 宿主：`ST_HELPER_IMPLEMENTED_FUNCTIONS` 增加 `triggerSlash`（共 19 项），`StHelperHostApi.triggerSlash(script)` 返回 `Promise<string>`；`createStHelperHostSession` 新增可选 `generateQuiet`。沙箱权限分组新增 `slash: ["triggerSlash"]`；声明它等于允许该脚本使用上表的变量与消息写入能力（I18 的权限清单按函数名展示）。
+- 沙箱宿主：`#call` 现在支持 Promise 返回值，结果在 Promise 结束时回 `st-helper:result`；执行超时或已结束时丢弃迟到结果。同步 API 的响应仍是同步的。
+- 新增 12 个 `packages/st-compat/test/st-helper-slash.test.ts`；ADR-0121；门禁通过（230 个测试文件、2053 个测试、5 个跳过）。
 
-## 下一步（会话 352 先做）
-1. **C-T05.c `triggerSlash` 与 STscript 子集**：实现酒馆助手脚本常用的 STscript 子集（变量读写、消息读取与修改、聊天切换、安静生成、管道与引号），`triggerSlash` 返回结果字符串；未实现的命令抛错并指出命令名。先写命令用例表再实现；命令改写消息仍映射为新 swipe，未实现命令失败并指出命令名。
-2. 其余可做任务：C-T05.d（依赖 C-T05.c）、C-T05.e（依赖 C-T05.b，已完成）、H-T00（依赖已完成）、X1（依赖已完成）。M5-T00 依赖 R6-T99；M6-T99 等待 HUMAN-15；P5 依赖 M5-T99。
+## 下一步（会话 353 先做）
+1. **C-T05.d 脚本发起的生成后台化**：把 `generateQuiet` 接到 EJS 生成调度器（`StEjsGenerationScheduler`，卡级限流默认 4）与后台渠道，脚本里的 `/gen`、`/genraw` 只登记请求并在间隙 `drain`；Trace 单独计数，回合内不调用模型。注意 `triggerSlash` 是异步的，登记后可以返回请求 id，宿主在下一轮或间隙把结果交回脚本的执行环境（iframe 可能已经结束，需要定义结果存放位置，建议与 EJS 的 `getGenerated` 一样由后续命令读取，不伪造同步返回）。
+2. 其余可做任务：C-T05.e（依赖 C-T05.b）、C-T05.f（依赖 C-T05.b 至 C-T05.e）、H-T00（依赖已完成）、X1（依赖已完成）。M5-T00 依赖 R6-T99；M6-T99 等待 HUMAN-15；P5 依赖 M5-T99。
 
-## C-T05.b 代码事实
-- 宿主入口：`new StHelperSandboxHost({ api, permission, send, terminate, plugin?, scriptTimeoutMs?, now?, onTrace?, maxTraceEntries? })`。`api` 来自 `createStHelperHostSession`；`send` 把 `StHelperSandboxHostMessage` 送到 iframe；`terminate(execution, reason)` 负责移除 iframe。
-- `startScript({ id, content })` 返回 `exec-<n>` 执行 id；`handleMessage(data)` 接 iframe 消息；`sweepTimeouts()` 返回被终止的执行 id；`dispose()` 清空宿主事件监听器并停止接受新执行。
-- `ST_HELPER_SANDBOX_FUNCTION_GROUPS` 按 variables、events、messages 分组；`ST_HELPER_SANDBOX_DEFAULT_TIMEOUT_MS` 为 10,000 毫秒。
-- 事件注册消息的形状是 `[type, token, { once }]`；`eventOnce` 与 `eventOn` 在宿主侧都落到 `eventOn`，`once` 由参数控制。`eventEmit` 会同步触发宿主监听器。
-- iframe 消息白名单在 `parseStHelperSandboxFrameMessage`（st-compat）与 `parseHelperSandboxFrameMessage`（web）各有一份；两份校验规则必须同步修改。
-- iframe 文档只接收 `functions` 与 `events` 两份配置；`tavern_events` 同时挂在 `window.tavern_events` 与 `window.TavernHelper.tavern_events`。所有 API 同时挂为全局函数与 `window.TavernHelper` 的属性。
-- 沙箱 API 是异步的：脚本必须 `await getVariable(...)` 等调用。这是 `postMessage` 的必然结果，C-T05.f 的一致性用例要把这一点列为已知差异，不伪造同步返回值。
-- 浏览器超时用例用 60 秒的 `setTimeout` 脚本验证 iframe 被移除后新 iframe 能执行；真正的死循环会让渲染进程卡住，不放进 e2e。
-- 权限声明属于 `st-helper-host` 插件自己的清单扩展，`core` 的代码插件清单没有增加 ST 名称（I1、I15）。
+## C-T05.c 代码事实
+- `StHelperSlashRunner` 构造参数：`{ variables: StHelperVariableBank, messages: StHelperChatMessages, generate?: StHelperSlashGenerator }`；`run()` 失败一律抛 `Error`，消息里带命令名或参数名。
+- `StHelperChatMessages` 新增 `addSwipe(text, { switchTo? })` 与 `switchSwipe("left" | "right")`。`store.appendNode` 总会把 head 移到新楼层，`addSwipe` 在 `switchTo` 不为 `true` 时把 head 切回原最后一条消息。
+- 消息范围在 slash 层是 `{start, end}` 对象（`latest` 是 `{-1, -1}`），与 `getChatMessages` 的“数字 = 最后 N 条”语义不同；不要在 slash 层把单个数字直接传下去。
+- `readBoolean` 接受 `on/off`、`true/false`、`1/0`；`formatVariable` 把数字字符串转成数字再转回字符串，与上游 `getLocalVariable` 的读取口径一致。
+- 沙箱异步分派在 `StHelperSandboxHost.#call`：`value instanceof Promise` 时挂 `then`，成功调用 `#respond`，失败调用 `#failCall`（记录 `kind: "execution"`、`outcome: "failed"` 与耗时）；两条路径都先检查 `execution.done`。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a 至 P2.g、P3.a 至 P3.f、P4.a 至 P4.f、C-T01.a 至 C-T01.d、C-T02.a 至 C-T02.f、C-T03.a 至 C-T03.d、C-T04.a、C-T04.b.a、C-T04.b.b、C-T04.c.a、C-T04.c.b、C-T04.c.c、C-T04.c.d、C-T04.d、C-T05.a、C-T05.b。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- 兼容插件线：`st-content`、`st-mvu`、`st-ejs` 的内容映射、模板引擎、装饰器/注入/激活正则、世界书与数据函数、沙箱执行、回合内时间预算、流水线接入、模板生成、一致性套件与共存评测全部完成；`st-helper-host` 已完成脚本库、宿主会话 API、沙箱 iframe 与权限/超时，STscript、生成与 HTML 状态栏待做（C-T05.c 至 C-T05.f）。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a 至 P2.g、P3.a 至 P3.f、P4.a 至 P4.f、C-T01.a 至 C-T01.d、C-T02.a 至 C-T02.f、C-T03.a 至 C-T03.d、C-T04.a、C-T04.b.a、C-T04.b.b、C-T04.c.a、C-T04.c.b、C-T04.c.c、C-T04.c.d、C-T04.d、C-T05.a、C-T05.b、C-T05.c。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 兼容插件线：`st-content`、`st-mvu`、`st-ejs` 的内容映射、模板引擎、装饰器/注入/激活正则、世界书与数据函数、沙箱执行、回合内时间预算、流水线接入、模板生成、一致性套件与共存评测全部完成；`st-helper-host` 已完成脚本库、宿主会话 API、沙箱 iframe 与权限/超时、STscript 子集，生成后台化与 HTML 状态栏待做（C-T05.d 至 C-T05.f）。
 - 数据库 schema 版本 43；本轮没有改 schema。本轮没有新增依赖。
 - 报告：`docs/dev/reports/P2.md`、`P3.md`、`P4.md`、`C-T01.md`、`C-T02.md`、`C-T03.md`、`C-T04.md`。
 - 沙箱现状：`eval-private/st-sandbox/st` 有 36 个预设、68 张卡、89 个非驱动聊天片段；预设连接字段已被驱动改写为录制端点与桩模型，全局 `openai_max_context` 已被驱动改为 2,000,000。需要恢复原始预设时用 `sandbox --replace` 重建。
 - 私有比对批次：`compare-smoke4`（5 个组合，修复后）与更早的 `compare-smoke2`、`compare-smoke3`、`session324-sanitize`；每个批次的 `compare/` 下有报告、差异清单与汇总。
-- ADR-0088 至 ADR-0120 记录插件、沙箱、比对、兼容内容映射、EJS、沙箱执行、时间预算、流水线接入、模板生成、一致性评测、酒馆助手宿主与 iframe 沙箱的决策。
+- ADR-0088 至 ADR-0121 记录插件、沙箱、比对、兼容内容映射、EJS、沙箱执行、时间预算、流水线接入、模板生成、一致性评测、酒馆助手宿主、iframe 沙箱与 STscript 子集的决策。
 - HUMAN-03 待处理（不阻塞）：抽查 `eval-private/evalset/spotcheck.md` 里的事件题。
 - HUMAN-14 已关闭（2026-11-12：人类取消）：取消 Vertex 真实调用的凭证配置与验证要求；`roles.writer` 继续使用 `main-fallback`。
 - HUMAN-15 待处理（M6-T99 需要）：把秋叶整合包 v3.2 的 ComfyUI 启动在 `http://127.0.0.1:8188`，并导出一份 API 格式 workflow JSON 到 `eval-private/comfyui/` 或告知路径。
@@ -42,7 +41,7 @@
 
 ## 可重复命令
 - 门禁：`pnpm check`。
-- C-T05.b 目标测试：`pnpm exec vitest run packages/st-compat/test/st-helper-sandbox.test.ts packages/st-compat/test/st-helper-host.test.ts packages/web/test/helper-sandbox.test.ts`（24 个）。
+- C-T05.c 目标测试：`pnpm exec vitest run packages/st-compat/test/st-helper-slash.test.ts packages/st-compat/test/st-helper-host.test.ts packages/st-compat/test/st-helper-sandbox.test.ts packages/web/test/helper-sandbox.test.ts`（36 个）。
 - C-T05.b 浏览器用例：`pnpm --filter @dramaticer/web exec playwright test e2e/helper-sandbox.spec.ts --project=desktop`（2 个；e2e 不在 `pnpm check` 里）。
 - C-T05.a 目标测试：`pnpm exec vitest run packages/st-compat/test/st-helper-host.test.ts`（12 个）。
 - C-T04.d 目标测试：`pnpm exec vitest run packages/st-compat/test/st-ejs-consistency.test.ts packages/st-compat/test/st-ejs-coexist.test.ts`（19 个）。
@@ -95,3 +94,4 @@
 - 流水线第一轮没有楼层时用 `nodeId: null` 渲染预设静态段；`getvar` 读不到初始变量，模板要处理 `undefined`（例如 `Number(getvar(...) ?? 0)`）。
 - `st-helper-host` 的宿主会话不做执行；脚本正文只在 `scripts` 里返回。`character` 作用域依赖调用方传入带台账后端的 `StEjsVariableStore`，否则写入只留在内存。改消息会切换 head，较早消息的修改按分支切换处理。
 - `st-helper-host` 的沙箱 API 全部异步：`postMessage` 不能同步取返回值，脚本必须 `await`。事件监听用整数 token，`eventClearEvent`/`eventClearAll` 会同时清掉 iframe 与宿主两边的监听器。超时由宿主 `sweepTimeouts()` 驱动，调用方负责移除 iframe；超时执行注册的监听器会被清掉。
+- STscript：`triggerSlash` 只执行 `ST_HELPER_SLASH_COMMANDS` 里的命令，未知命令按名字失败。变量命令默认作用域与上游一致（`setvar` 是 chat/local），`messages` 的单个数字是消息下标，不是“最后 N 条”。`addswipe` 默认不切换 head，`swipe` 在兄弟楼层之间循环。`gen`/`genraw` 需要宿主注入 `generateQuiet`，当前没有注入时按命令名失败；C-T05.d 负责接后台。

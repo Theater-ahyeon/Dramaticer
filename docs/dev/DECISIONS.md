@@ -1930,3 +1930,19 @@
   - 新增 `packages/web/test/helper-sandbox.test.ts` 5 个测试：CSP 与不同源属性、只暴露声明过的函数、配置里的尖括号转义、消息白名单的正例与反例。
   - 新增 `packages/web/e2e/helper-sandbox.spec.ts` 2 个浏览器用例：脚本读不到父页面、`localStorage`、`indexedDB` 与网络，只能通过宿主 API 拿到值；超时移除 iframe 后新 iframe 仍能执行。
   - 没有改数据库 schema，没有新增依赖，`core` 没有改动（I1、I15）；`pnpm check` 通过。
+
+## ADR-0121 `st-helper-host` 的 `triggerSlash` 与 STscript 子集（2026-11-13）
+
+- **背景**：C-T05.c 要让酒馆助手脚本用 `triggerSlash` 执行 STscript。STscript 是一套数量很大的命令语言，包含闭包、宏、快捷回复、弹窗与聊天文件切换；Dramaticer 的宿主会话固定在一个故事上，没有聊天文件、弹窗与快捷回复。一次实现全量命令会把大量上游专有语义带进兼容层，并且很多命令无法映射到楼层树。
+- **决定**：
+  - 新增 `packages/st-compat/src/st-helper-host/slash.ts` 的 `StHelperSlashRunner`。命令表固定在 `ST_HELPER_SLASH_COMMANDS`，只实现酒馆助手脚本最常用来读写状态、读取与切换聊天内容的子集；不在表里的命令（包括 `/go` 这类切换聊天文件的操作）直接抛错 `STscript 命令 <名> 未实现`。
+  - 变量命令映射到与 EJS 共用的变量存储：`setvar`/`getvar`/`addvar`/`incvar`/`decvar`/`flushvar` 用 `chat` 作用域，`*globalvar` 用 `global` 作用域；`setchatvar`、`getchatvar` 等别名与上游一致。`addvar` 在两边都能转成数字时做数值加法，否则按字符串拼接；`getvar` 对数字字符串做数值化，与上游的读取口径一致。
+  - 消息命令映射到楼层树：`messages` 读取当前 head 路径上的楼层，支持单个下标、`起-止`、`latest`、`names`、`hidden` 与 `role`；`hide`/`unhide` 只写插件显示状态里的 `is_hidden`，不改原文；`addswipe` 追加同父的新楼层（界面里的新 swipe），默认不切换 head，`switch=on` 时切换；`swipe` 在兄弟楼层之间循环切换 head。原文逐字节不变（I4）。
+  - 管道与引号：`|` 分段（引号内与 `\|` 除外），每段的结果成为下一段的未命名参数（下一段自己没写未命名参数时）；双引号保留空格与 `|`，`\` 转义下一个字符。宏展开、闭包、命名参数之外的类型转换都不支持，遇到未知命名参数直接失败并指出参数名。
+  - `pass` 与 `echo` 只返回文本，不弹窗：本工程没有酒馆的 toast 层，脚本只需要拿到结果字符串。
+  - `/gen` 与 `/genraw` 只调用宿主注入的 `generateQuiet`，接收 `{command, prompt, system, maxTokens}` 并返回文本；没有注入执行者时失败并指出命令名。它们不在回合内调用模型；C-T05.d 把执行者接到后台任务与后台渠道，卡级限流沿用 EJS 生成调度器。
+  - 沙箱权限里新增 `triggerSlash`（分组 `slash`）。声明它就等于声明这条脚本可以使用上表的变量与消息写入能力，权限清单按函数名展示；不声明时宿主拒绝调用并记录，不会因为附带命令而放行其他未声明函数（I18）。
+  - 沙箱宿主支持异步返回值：`postMessage` 调用如果返回 Promise，宿主在它结束时才回 `st-helper:result`；执行超时或已结束时丢弃迟到的结果。同步函数的响应行为不变。
+- **影响**：
+  - 新增 `packages/st-compat/test/st-helper-slash.test.ts` 12 个测试：变量读写与作用域、别名、数值增减与删除、管道与引号转义、消息范围/名字/角色过滤、`addswipe` 新楼层与 head 切换、`swipe` 循环切换、`hide`/`unhide` 只改显示状态、`gen`/`genraw` 的请求形状与缺少执行者、未知命令与未知参数、沙箱里的异步成功与失败。
+  - 现有 `st-helper-host`、`st-helper-sandbox` 与 web 沙箱测试保持通过；没有改数据库 schema，没有新增依赖，`core` 没有改动（I1、I15）。

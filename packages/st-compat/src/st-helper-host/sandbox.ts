@@ -35,6 +35,7 @@ export const ST_HELPER_SANDBOX_FUNCTION_GROUPS = {
 		"getCurrentMessageId",
 		"setChatMessages",
 	],
+	slash: ["triggerSlash"],
 } as const satisfies Record<string, readonly StHelperImplementedFunction[]>;
 
 /**
@@ -460,22 +461,46 @@ export class StHelperSandboxHost {
 			return;
 		}
 		const startedAt = this.#now();
+		let value: unknown;
 		try {
-			const value = this.#dispatch(execution, message);
-			this.#respond(message, true, value);
+			value = this.#dispatch(execution, message);
 		} catch (error) {
-			const reason = errorText(error);
-			this.#respond(message, false, reason);
-			this.#record({
-				kind: "execution",
-				execution: execution.id,
-				scriptId: execution.scriptId,
-				function: message.name,
-				outcome: "failed",
-				reason,
-				durationMs: this.#now() - startedAt,
-			});
+			this.#failCall(message, execution, error, startedAt);
+			return;
 		}
+		if (value instanceof Promise) {
+			void value.then(
+				(result) => {
+					if (execution.done) return;
+					this.#respond(message, true, result);
+				},
+				(error: unknown) => {
+					if (execution.done) return;
+					this.#failCall(message, execution, error, startedAt);
+				},
+			);
+			return;
+		}
+		this.#respond(message, true, value);
+	}
+
+	#failCall(
+		message: StHelperSandboxCallMessage,
+		execution: ExecutionState,
+		error: unknown,
+		startedAt: number,
+	): void {
+		const reason = errorText(error);
+		this.#respond(message, false, reason);
+		this.#record({
+			kind: "execution",
+			execution: execution.id,
+			scriptId: execution.scriptId,
+			function: message.name,
+			outcome: "failed",
+			reason,
+			durationMs: this.#now() - startedAt,
+		});
 	}
 
 	#dispatch(

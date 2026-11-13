@@ -140,6 +140,57 @@ export class StHelperChatMessages {
 		}
 	}
 
+	/** 给最后一条助手消息追加一个 swipe（同父的新楼层），返回它的下标。 */
+	addSwipe(
+		text: string,
+		options: { readonly switchTo?: boolean } = {},
+	): number {
+		if (typeof text !== "string" || text.length === 0) {
+			throw new Error("addSwipe 需要非空的正文");
+		}
+		const path = this.#path();
+		const last = path.at(-1);
+		if (last === undefined) {
+			throw new Error("当前聊天没有可以添加 swipe 的消息");
+		}
+		if (last.role !== "assistant") {
+			throw new Error("只能给助手消息添加 swipe");
+		}
+		const siblings = this.#siblings(last);
+		const node = this.#store.appendNode({
+			storyId: this.#storyId,
+			parentId: last.parentId,
+			role: last.role,
+			raw: text,
+		});
+		if (options.switchTo === true) {
+			this.#store.setHead(this.#storyId, node.id);
+		} else {
+			// appendNode 会把 head 移到新楼层；addswipe 默认不切换 swipe
+			this.#store.setHead(this.#storyId, last.id);
+		}
+		return siblings.length;
+	}
+
+	/** 在最后一条消息的 swipe 之间循环切换；返回新 swipe 的下标。 */
+	switchSwipe(direction: "left" | "right"): number {
+		const path = this.#path();
+		const last = path.at(-1);
+		if (last === undefined) {
+			throw new Error("当前聊天没有可以切换的消息");
+		}
+		const siblings = this.#siblings(last);
+		if (siblings.length < 2) {
+			throw new Error("当前消息没有其他 swipe");
+		}
+		const current = siblings.findIndex((sibling) => sibling.id === last.id);
+		const index = current < 0 ? 0 : current;
+		const step = direction === "right" ? 1 : -1;
+		const next = (index + step + siblings.length) % siblings.length;
+		this.#store.setHead(this.#storyId, siblings[next].id);
+		return next;
+	}
+
 	#applyUpdate(update: StHelperChatMessageUpdate): void {
 		if (typeof update !== "object" || update === null) {
 			throw new Error("setChatMessages 的条目必须是对象");

@@ -20,6 +20,7 @@ import {
 	type StHelperSetChatMessagesOptions,
 } from "./messages.js";
 import { type StHelperScript, discoverStHelperScripts } from "./scripts.js";
+import { type StHelperSlashGenerator, StHelperSlashRunner } from "./slash.js";
 import {
 	StHelperVariableBank,
 	type StHelperVariableOptions,
@@ -46,6 +47,7 @@ export const ST_HELPER_IMPLEMENTED_FUNCTIONS = [
 	"getLastMessageId",
 	"getCurrentMessageId",
 	"setChatMessages",
+	"triggerSlash",
 ] as const;
 
 export type StHelperImplementedFunction =
@@ -97,6 +99,7 @@ export interface StHelperHostApi {
 		updates: readonly StHelperChatMessageUpdate[],
 		options?: StHelperSetChatMessagesOptions,
 	): void;
+	triggerSlash(script: string): Promise<string>;
 }
 
 export interface StHelperHostSession {
@@ -116,6 +119,8 @@ export interface StHelperHostSessionOptions {
 	readonly userName?: string;
 	readonly characterName?: string;
 	readonly plugin?: string;
+	/** `/gen` 与 `/genraw` 的执行者；C-T05.d 接入后台任务与后台渠道。 */
+	readonly generateQuiet?: StHelperSlashGenerator;
 }
 
 export function createStHelperHostSession(
@@ -144,6 +149,13 @@ export function createStHelperHostSession(
 		plugin,
 		userName: options.userName ?? "用户",
 		characterName: options.characterName ?? options.card.name,
+	});
+	const slash = new StHelperSlashRunner({
+		variables: variableBank,
+		messages,
+		...(options.generateQuiet === undefined
+			? {}
+			: { generate: options.generateQuiet }),
 	});
 
 	const api: StHelperHostApi = {
@@ -177,6 +189,7 @@ export function createStHelperHostSession(
 		getCurrentMessageId: () => messages.getCurrentMessageId(),
 		setChatMessages: (updates, messageOptions) =>
 			messages.setChatMessages(updates, messageOptions),
+		triggerSlash: (script) => slash.run(script),
 	};
 
 	return {
