@@ -10,6 +10,7 @@ import {
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import {
+	type AssistantDocsIndex,
 	type ChooseOpeningCandidateResult,
 	type ComfyUiSlots,
 	type ComfyUiWorkflow,
@@ -29,7 +30,7 @@ import {
 	type LedgerChangeCard,
 	LedgerChangeCardError,
 	type LlmChannel,
-	type LlmChannelApi,
+	LlmChannelApi,
 	type LlmChannelConfig,
 	type LlmChannelsConfig,
 	type LlmModelProbe,
@@ -164,6 +165,7 @@ export interface ApiRouteOptions {
 	/** 助手运行时；没有配置渠道时为 null。 */
 	readonly assistantRuntime: AssistantRuntimeManager | null;
 	readonly assistantRuns: AssistantRunCoordinator;
+	readonly docsIndex: AssistantDocsIndex;
 	readonly turns: TurnCoordinator;
 	readonly runs: TurnRunRegistry;
 	readonly scheduler?: BackgroundScheduler | null;
@@ -203,6 +205,7 @@ export async function handleApiRequest(
 			maxJsonBodyBytes: options.maxJsonBodyBytes,
 			runtime: options.assistantRuntime,
 			runs: options.assistantRuns,
+			docsIndex: options.docsIndex,
 			heartbeatMs: options.heartbeatMs,
 			applyChannelsAction:
 				options.channelsPath === null

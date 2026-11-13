@@ -1495,7 +1495,8 @@
   - 删除会话时存在待确认动作返回 409，先批准或拒绝再删除。
   验收：只读级别下 `propose` 与 `side_effect` 调用被拒绝并写事件；确认级别生成待确认动作，批准后数据改变、拒绝后不变；自动级别只直接执行渠道与模型这类操作，模板、世界书、导演计划、卡片字段、生图配置与台账仍进入待确认流程；相同载荷不重复创建；批准时载荷非法保留 `pending` 并返回原因；删除有待确认动作的会话被拒绝；任何权限级别都不会自动批准台账变更卡；`pnpm check` 通过。
 
-- [ ] **H-T04 排障与使用指南技能** | 依赖：H-T02、E-T01 | DESIGN §10.3 | ADR-0125
+- [x] **H-T04 排障与使用指南技能** | 依赖：H-T02、E-T01 | DESIGN §10.3 | ADR-0125
+  完成：2026-11-13 新增 `assistant/skills.ts` 技能注册表（`AssistantSkillDefinition` 含 id、名称、说明、系统提示、工具白名单与默认权限），注册 `troubleshoot`（`explain_node`、`run_log_read`、`ledger_read`、`director_read`、`memory_search`、`state_get`，要求结论附楼层 id 与具体字段、缺失写“没有记录”）与 `guide`（`docs_search`、`settings_read`、`template_read`、`plugin_list`，要求引用相对路径与标题）；创建与修改会话按注册表校验，未注册的技能返回 400 并指出 `skill`；新增 `assistant/docs.ts` 的 `AssistantDocsIndex`（启动时读取 DESIGN、TASKS、HUMAN 与 `dev/reports/*.md`，按标题与文本块切分，三字以上用 trigram、两字退回子串）与 `docs_search` 工具，目录缺失或没有可读文件时启动失败并指出路径；`runAssistantTurn` 的工具白名单按本次已注册工具校验，技能说明接在基础提示之后交给模型；server 新增 `GET /api/assistant/skills` 与 `--docs-root`（默认仓库 `docs/`）；门禁通过（241 个测试文件、2115 个测试、5 个跳过）
   做什么：
   - 新增 `assistant/skills.ts` 的技能注册表：`AssistantSkillDefinition` 含 id、名称、说明、系统提示、工具白名单与默认权限。本任务注册 `troubleshoot`（排障）与 `guide`（使用指南）；其余五个技能由 H-T05 与 H-T06 注册，未注册的技能 id 在创建会话时被拒绝。
   - 排障提示词要求每条结论附证据（楼层 id、Trace 字段、上下文分段 id、检索名次、台账路径或导演机制），没有记录时写“没有记录”，修正建议只使用现有工具能做到的动作；工具白名单为 `explain_node`、`run_log_read`、`ledger_read`、`director_read`、`memory_search`、`state_get`。

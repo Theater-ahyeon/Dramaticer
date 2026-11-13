@@ -312,7 +312,7 @@ describe("助手会话接口", () => {
 
 		const bodyMatch = await createConversation(running.origin, {
 			storyId: "story-1",
-			skill: "strategy",
+			skill: "guide",
 			title: "剧情参谋",
 			thinking: "high",
 		});
@@ -678,7 +678,7 @@ describe("助手待确认动作接口", () => {
 		seedStory(running);
 		const conversation = await createConversation(running.origin, {
 			storyId: "story-1",
-			skill: "setup_wizard",
+			skill: "guide",
 		});
 		const settings = running.store.createAssistantAction({
 			conversationId: conversation.id,
@@ -753,7 +753,7 @@ describe("助手待确认动作接口", () => {
 		seedStory(running);
 		const conversation = await createConversation(running.origin, {
 			storyId: "story-1",
-			skill: "card_workshop",
+			skill: "guide",
 		});
 		const action = running.store.createAssistantAction({
 			conversationId: conversation.id,

@@ -16,6 +16,7 @@ async function main(args: readonly string[]): Promise<void> {
 		host: config.host,
 		port: config.port,
 		password: config.password,
+		docsRoot: config.docsRoot,
 		channels: { path: config.channelsPath },
 		images: { path: config.imagesPath, mediaDir: config.mediaDir },
 	});

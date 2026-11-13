@@ -32,6 +32,20 @@ export function isAssistantSkillId(value: unknown): value is AssistantSkillId {
 	);
 }
 
+/** `GET /api/assistant/skills` 的响应。 */
+export interface AssistantSkillView {
+	readonly id: string;
+	readonly name: string;
+	readonly description: string;
+	readonly defaultPermission: AssistantPermission;
+	/** 技能白名单里的工具名；本次运行不会发送白名单以外的工具。 */
+	readonly tools: readonly string[];
+}
+
+export interface AssistantSkillListView {
+	readonly skills: readonly AssistantSkillView[];
+}
+
 /** 会话与消息的响应形状与 core 的领域类型一致，界面直接使用。 */
 export type AssistantConversationView = AssistantConversation;
 export type AssistantMessageView = AssistantMessage;

@@ -2,6 +2,7 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
 import {
+	AssistantDocsIndex,
 	type ImagesConfig,
 	type LlmChannel,
 	type LlmChannelConfig,
@@ -30,6 +31,7 @@ import {
 	type BackgroundRegistryFactory,
 	BackgroundScheduler,
 } from "./background.js";
+import { repoRoot } from "./config.js";
 import {
 	HttpError,
 	readJsonBody,
@@ -84,6 +86,8 @@ export interface StartServerOptions {
 	readonly channels?: ServerChannelsOptions;
 	/** 不设置时生图接口没有 provider，workflow 列表仍可读。 */
 	readonly images?: ServerImagesOptions;
+	/** 内置文档目录；默认是仓库根目录的 `docs/`，缺失或为空时启动失败。 */
+	readonly docsRoot?: string;
 	readonly heartbeatMs?: number;
 	readonly now?: () => number;
 	readonly log?: (line: string) => void;
@@ -104,6 +108,7 @@ interface HandlerOptions {
 	readonly runtime: StoryRuntimeManager | null;
 	readonly assistantRuntime: AssistantRuntimeManager | null;
 	readonly assistantRuns: AssistantRunCoordinator;
+	readonly docsIndex: AssistantDocsIndex;
 	readonly turns: TurnCoordinator;
 	readonly runs: TurnRunRegistry;
 	readonly scheduler: BackgroundScheduler | null;
@@ -128,6 +133,9 @@ export async function startServer(
 			: options.password;
 	assertBindAllowed(options.host, password);
 	const log = options.log ?? ((line: string) => console.log(line));
+	const docsIndex = await AssistantDocsIndex.load(
+		options.docsRoot ?? path.join(repoRoot, "docs"),
+	);
 	const channels = options.channels ?? null;
 	const images = options.images ?? null;
 	const loadConfig = channels === null ? null : resolveChannelsLoader(channels);
@@ -198,6 +206,7 @@ export async function startServer(
 			runtime,
 			assistantRuntime,
 			assistantRuns,
+			docsIndex,
 			turns,
 			runs,
 			scheduler,
@@ -329,6 +338,7 @@ async function handleRequest(
 			runtime: options.runtime,
 			assistantRuntime: options.assistantRuntime,
 			assistantRuns: options.assistantRuns,
+			docsIndex: options.docsIndex,
 			turns: options.turns,
 			runs: options.runs,
 			scheduler: options.scheduler,

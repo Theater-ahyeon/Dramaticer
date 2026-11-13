@@ -12,12 +12,7 @@ import type {
 import type { StoryStore } from "../store/story-store.js";
 import type { DeepToolDefinition } from "../tools/registry.js";
 import type { DeepTurnStopReason } from "../trace.js";
-import {
-	ASSISTANT_TOOL_NAMES,
-	type AssistantToolName,
-	createAssistantTools,
-	isAssistantToolName,
-} from "./tools.js";
+import { ASSISTANT_TOOL_NAMES, createAssistantTools } from "./tools.js";
 import type {
 	AssistantConversationStatus,
 	AssistantEvent,
@@ -55,8 +50,8 @@ export interface AssistantTurnOptions {
 	readonly reranker?: RerankClient | null;
 	/** 会话的上下文预算；给出时覆盖工具往返的 token 上限。 */
 	readonly contextBudget?: number | null;
-	/** 本次运行启用的工具；缺省为全部只读工具。 */
-	readonly toolNames?: readonly AssistantToolName[];
+	/** 本次运行启用的工具；缺省为全部已注册工具。 */
+	readonly toolNames?: readonly string[];
 	/** 技能附带的其他工具；与只读工具一起按会话权限包装。 */
 	readonly extraTools?: readonly DeepToolDefinition[];
 	/** 测试用：覆盖防失控上限。 */
@@ -111,7 +106,13 @@ export async function runAssistantTurn(
 	const toolNames =
 		options.toolNames === undefined
 			? null
-			: resolveToolNames(options.toolNames);
+			: resolveToolNames(
+					options.toolNames,
+					new Set([
+						...ASSISTANT_TOOL_NAMES,
+						...(options.extraTools ?? []).map((tool) => tool.name),
+					]),
+				);
 	const now = options.now ?? Date.now;
 	const startedAt = now();
 	const startedEvent = options.store.startAssistantConversationRun(
@@ -164,10 +165,7 @@ export async function runAssistantTurn(
 		onPermissionDenied: (name, permission, reason) => {
 			writeEvent("permission.denied", { name, permission, reason });
 		},
-	}).filter(
-		(tool) =>
-			toolNames === null || toolNames.includes(tool.name as AssistantToolName),
-	);
+	}).filter((tool) => toolNames === null || toolNames.includes(tool.name));
 	const messages = buildAssistantMessages(
 		options.systemPrompt,
 		options.store.getAssistantMessages(options.conversationId),
@@ -276,12 +274,12 @@ export async function runAssistantTurn(
 }
 
 function resolveToolNames(
-	names: readonly AssistantToolName[] | undefined,
-): readonly AssistantToolName[] {
-	if (names === undefined) return ASSISTANT_TOOL_NAMES;
+	names: readonly string[],
+	available: ReadonlySet<string>,
+): readonly string[] {
 	for (const name of names) {
-		if (!isAssistantToolName(name)) {
-			throw new Error(`助手工具未注册：${String(name)}`);
+		if (!available.has(name)) {
+			throw new Error(`助手工具未注册：${name}`);
 		}
 	}
 	return [...new Set(names)];

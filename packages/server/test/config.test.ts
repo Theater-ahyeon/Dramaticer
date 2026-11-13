@@ -24,6 +24,7 @@ describe("parseServerArgs", () => {
 			path.join(repoRoot, "data", "channels.yaml"),
 		);
 		expect(config.imagesPath).toBe(path.join(repoRoot, "data", "images.yaml"));
+		expect(config.docsRoot).toBe(path.join(repoRoot, "docs"));
 		expect(config.webRoot).toBe(path.join(repoRoot, "packages", "web", "dist"));
 		expect(config.password).toBe("secret");
 	});
@@ -49,6 +50,8 @@ describe("parseServerArgs", () => {
 				"conf/channels.yaml",
 				"--images",
 				"conf/images.yaml",
+				"--docs-root",
+				"reference",
 				"--web",
 				"site",
 			],
@@ -61,6 +64,7 @@ describe("parseServerArgs", () => {
 			path.resolve(cwd, "conf", "channels.yaml"),
 		);
 		expect(config.imagesPath).toBe(path.resolve(cwd, "conf", "images.yaml"));
+		expect(config.docsRoot).toBe(path.resolve(cwd, "reference"));
 		expect(config.webRoot).toBe(path.resolve(cwd, "site"));
 	});
 

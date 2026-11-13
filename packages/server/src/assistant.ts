@@ -5,6 +5,7 @@ import {
 	AssistantActionPayloadError,
 	type AssistantConversation,
 	AssistantConversationHasPendingActionsError,
+	type AssistantDocsIndex,
 	type AssistantEvent,
 	type JsonObject,
 	type JsonValue,
@@ -17,9 +18,12 @@ import {
 	assertAssistantThinking,
 	assertJsonValue,
 	buildAssistantSystemPrompt,
+	createDocsSearchTool,
+	getAssistantSkill,
 	isAssistantActionStatus,
 	isDeepTurnStopReason,
 	isJsonObject,
+	listAssistantSkills,
 	rejectAssistantAction,
 	runAssistantTurn,
 } from "@dramaticer/core";
@@ -38,6 +42,7 @@ import {
 	type AssistantPermission,
 	type AssistantPermissionDeniedPayload,
 	type AssistantSkillId,
+	type AssistantSkillListView,
 	type AssistantSseEventMap,
 	type AssistantStartedPayload,
 	type AssistantTextDeltaPayload,
@@ -64,6 +69,7 @@ export interface AssistantRouteOptions {
 	/** 没有配置渠道时为 null，助手消息接口返回 500。 */
 	readonly runtime: AssistantRuntimeManager | null;
 	readonly runs: AssistantRunCoordinator;
+	readonly docsIndex: AssistantDocsIndex;
 	readonly heartbeatMs: number;
 	/** 批准渠道动作时调用；没有渠道文件时为 null。 */
 	readonly applyChannelsAction?: (payload: JsonObject) => Promise<void>;
@@ -153,6 +159,14 @@ export async function handleAssistantRequest(
 	}
 	const parts = assistantPathSegments(url.pathname);
 	const [collection, id, action] = parts;
+	if (collection === "skills") {
+		if (id !== undefined) {
+			throw new HttpError(404, "not_found", "没有这个接口");
+		}
+		requireMethod(method, ["GET"]);
+		handleSkillList(res);
+		return;
+	}
 	if (collection === "actions") {
 		if (id === undefined) {
 			requireMethod(method, ["GET"]);
@@ -221,6 +235,19 @@ export async function handleAssistantRequest(
 	throw new HttpError(404, "not_found", "没有这个接口");
 }
 
+function handleSkillList(res: ServerResponse): void {
+	const body: AssistantSkillListView = {
+		skills: listAssistantSkills().map((skill) => ({
+			id: skill.id,
+			name: skill.name,
+			description: skill.description,
+			defaultPermission: skill.defaultPermission,
+			tools: [...skill.toolNames],
+		})),
+	};
+	sendJson(res, 200, body);
+}
+
 function handleConversationList(
 	res: ServerResponse,
 	url: URL,
@@ -278,7 +305,10 @@ async function handleConversationCreate(
 		"contextBudget",
 		"compactionThreshold",
 	]);
-	if (!isAssistantSkillId(body.skill)) {
+	if (
+		!isAssistantSkillId(body.skill) ||
+		getAssistantSkill(body.skill) === null
+	) {
 		throw fieldError(
 			"skill",
 			`skill 必须是已注册的技能 id：${String(body.skill)}`,
@@ -367,7 +397,10 @@ async function handleConversationUpdate(
 	} = {};
 	if (body.title !== undefined) update.title = requireText(body.title, "title");
 	if (body.skill !== undefined) {
-		if (!isAssistantSkillId(body.skill)) {
+		if (
+			!isAssistantSkillId(body.skill) ||
+			getAssistantSkill(body.skill) === null
+		) {
 			throw fieldError(
 				"skill",
 				`skill 必须是已注册的技能 id：${String(body.skill)}`,
@@ -580,6 +613,14 @@ async function handleConversationMessage(
 	id: string,
 ): Promise<void> {
 	const conversation = requireConversation(options.store, id);
+	const skill = getAssistantSkill(conversation.skill);
+	if (skill === null) {
+		throw new HttpError(
+			500,
+			"internal",
+			`助手会话 ${id} 的技能未注册：${conversation.skill}`,
+		);
+	}
 	if (conversation.status === "running") {
 		throw new HttpError(409, "conflict", `助手会话正在运行：${id}`);
 	}
@@ -616,7 +657,12 @@ async function handleConversationMessage(
 			client: runtime.client,
 			conversationId: id,
 			userText: text,
-			systemPrompt: buildAssistantSystemPrompt({ skill: conversation.skill }),
+			systemPrompt: buildAssistantSystemPrompt({
+				skill: skill.id,
+				instructions: skill.instructions,
+			}),
+			toolNames: skill.toolNames,
+			extraTools: [createDocsSearchTool(options.docsIndex)],
 			model: runtime.modelAlias,
 			maxTokens: runtime.maxTokens,
 			toolTransport: runtime.toolTransport,
@@ -890,7 +936,10 @@ function requireConversation(
 function toConversationView(
 	conversation: AssistantConversation,
 ): AssistantConversationView {
-	if (!isAssistantSkillId(conversation.skill)) {
+	if (
+		!isAssistantSkillId(conversation.skill) ||
+		getAssistantSkill(conversation.skill) === null
+	) {
 		throw new HttpError(
 			500,
 			"internal",
