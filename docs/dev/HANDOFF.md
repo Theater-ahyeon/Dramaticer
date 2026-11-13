@@ -3,22 +3,15 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-13 会话 336：完成 **C-T03.b「台账命名空间与待结算视图」**。
-- `packages/core/src/ledger/pending.ts` 新增 `PendingLedgerView` 与 `PendingLedgerWrite`、`PendingLedgerRejection`、`PendingLedgerOutcome`、`PendingLedgerCommit`：
-  - `open(store, nodeId, prefix?)` 读台账快照；`stage(writes, source)` 用 `validateLedgerDiff` 逐条校验，合法写入留在内存，非法写入逐条拒绝并给出原因；
-  - `read()` 返回台账快照叠加尚未提交的写入；`pending()` 返回尚未提交的写入；
-  - `commit({storyId, source})` 通过 `store.appendStateDiffs` 写入，提交后重新从台账读取并清空待结算写入；重复提交不新增行。
-  - 限定前缀时，前缀之外或与前缀等长的路径直接拒绝；不限定前缀时走完整的台账命名空间校验。
-- `packages/core/src/state.ts` 新增 `StateDiffEntry` 与 `applyDiffEntriesTo`；`applyStateDiffsTo` 委托给它，完整 diff 与待结算写入共用同一套路径累加规则。
-- `packages/st-compat/src/st-mvu/ledger.ts` 新增 `MvuLedgerSession`（从 `st-mvu/index.ts` 导出）：
-  - `open({store, nodeId, state, onTrace?})` 在 `["mvu"]` 前缀上打开待结算视图；台账没有 `mvu` 子树时把 initvar 初始数据用 `diffSnapshots({}, data)` 变成待结算写入；
-  - `apply(operations)` 读待结算数据 → `applyMvuPatch` → 只对变化路径 `diffSnapshots` → `mvuLedgerPath` → `stage`；补丁拒绝与被视图拒绝的写入各记一条 Trace；会话只保存 `MvuSchemaNode` 与根级开关，不另存变量；
-  - `commit({storyId, source?})` 返回写入的 `StateDiff[]`、转成 `action: "delete"` 的修复记录与 Trace；之后 `read()` 直接来自台账。
-  - Trace 条目形如 `{plugin: "st-mvu", action: "ledger-write", target: "mvu", outcome, path, reason}`，与代码插件的 `ledger-write` 记录同形。
-- 新增 9 个测试：`packages/core/test/ledger-pending.test.ts`（5 个）与 `packages/st-compat/test/st-mvu-ledger.test.ts`（4 个）。测试证明：提交前台账不可见、提交后读取与结算路径都以台账为准；常规结算窗口把已写入的 `mvu` 路径视为已覆盖，模型提案不会覆盖；锁定对象新增键被拒绝并留 Trace；同一楼层再次打开会话从台账读起。
-- ADR-0108；`core` 只新增通用的待结算视图，没有 ST 概念，没有 schema 变更，没有新增依赖；门禁通过（208 个测试文件、1860 个测试、5 个跳过）。
+- 2026-11-13 会话 337：门禁失败，只修门禁，没有选任务。
+- 失败证据（`.devloop/gate.txt`，会话 336 结束时）：整轮并行下 `packages/st-compat/test/gap-pass-compare.test.ts` 3 个用例超过各自的 30 秒上限（实测 115 秒、78 秒、44 秒），`packages/core/test/code-plugin-installer.test.ts` 的「从 git 来源安装本地仓库」超过 60 秒；两个文件单独运行都通过。失败后的 `afterEach` 还出现 `EPERM`，因为超时的用例仍在后台持有 SQLite 句柄，`rmSync` 删不掉临时目录。
+- 修复：
+  - `vitest.config.ts` 增加 `maxWorkers: 8`。本机 24 核会让 24 个 worker 同时往临时目录建 SQLite 库，磁盘与杀毒扫描互相排队，单文件耗时涨到单独运行的几十倍；限制 worker 数量后 `collect` 从 4026 秒降到约 506 秒，整轮耗时从 275 秒（带超时失败）降到 154 秒。
+  - `packages/st-compat/test/gap-pass-compare.test.ts` 的 3 个用例上限从 30 秒放宽到 180 秒，`afterEach` 的 `rmSync` 重试从 5 次×100 毫秒改为 10 次×200 毫秒。被测实现未改动。
+- 门禁结果：`pnpm check` 通过（208 个测试文件、1860 个测试、5 个跳过，153.77 秒）。
+- 观察：`C:\Users\theater\AppData\Local\Temp` 已经大到 `du -sh` 跑满 300 秒仍未结束，里面有多批历史超时留下的 `gap-pass-compare-*` 目录。这不在仓库里，agent 不能删除，已记入 HUMAN-16。
 
-## 下一步（会话 337 先做）
+## 下一步（会话 338 先做）
 1. 按 TASKS 从上往下选：**C-T03.c 消息修改分类与显示状态**。改正文的类型生成新 swipe（参考 `StoryStore` 追加节点与 `chat-import` 的 swipe 写法，`packages/core/src/chat/turn.ts` 的 `recordRegeneratedSwipe`）；只改显示或元数据的类型写进插件显示状态，不新建节点；状态栏刷新与 `<StatusPlaceHolderImpl/>` 等显示副作用不进入台账、不写楼层。
 2. C-T03.d：补 MVU 一致性用例并逐条核对 C-T03 总验收；在 `ST_BENCH_COEXIST_PLUGINS` 注册 `st-mvu` 并跑开关对照；卡内 zod 脚本执行复用 C-T05 的酒馆助手宿主，当前只消费消息变量里的结构 JSON。
 3. 其余可做任务：H-T00（依赖 R5-T99、R3b-T99、E-T01）、X1（依赖 R1-T99.a、R2-T99）。M5-T00 依赖 R6-T99；M6-T99 等待 HUMAN-15；P5 依赖 M5-T99。
@@ -42,6 +35,7 @@
 - HUMAN-03 待处理（不阻塞）：抽查 `eval-private/evalset/spotcheck.md` 里的事件题。
 - HUMAN-14 已关闭（2026-11-12：人类取消）：取消 Vertex 真实调用的凭证配置与验证要求；`roles.writer` 继续使用 `main-fallback`。
 - HUMAN-15 待处理（M6-T99 需要）：把秋叶整合包 v3.2 的 ComfyUI 启动在 `http://127.0.0.1:8188`，并导出一份 API 格式 workflow JSON 到 `eval-private/comfyui/` 或告知路径。
+- HUMAN-16 待处理（不阻塞）：清理 `C:\Users\theater\AppData\Local\Temp` 里累积的测试临时目录。
 
 ## 可重复命令
 - 门禁：`pnpm check`。
@@ -72,8 +66,8 @@
 - 私有数据（`eval-private/`、`data/`、`.env`）不能进入测试数据、提交、文档或日志；报告只写统计数字，不写对话原文。
 - ST 的原始安装目录只读：不得修改，不得复制出 `secrets.json`、`settings.json`、`cookie-secret.txt`；沙箱里不得配置真实模型端点，录制服务不持有模型客户端（I14）。
 - 测试文件里不能出现 I10 拦截的地址：只允许 `localhost`、`127.0.0.1`、`example.com`/`example.org`/`example.invalid` 作为主机名，不能出现 `eval-private` 字面量（用 `stBenchPaths(repoRoot).privateRoot`）。
-- Windows 上并行跑测试会显著变慢；`vitest.config.ts` 默认 `testTimeout` 60 秒；`afterEach` 删除临时目录用 `rmSync` 时必须带 `maxRetries` 与 `retryDelay`。
-- 整轮并行门禁连跑或与大量临时目录写入同时进行时，Windows 的系统扫描会拖慢文件与 SQLite 操作，出现过后台 worker 激活超时与 `gap-pass-compare` 的 30 秒用例超时；这些用例单独运行都通过。门禁失败先看失败是否只在整轮并行时出现，不要连续并发跑多轮整仓测试。
+- Windows 上并行跑测试会显著变慢；`vitest.config.ts` 默认 `testTimeout` 60 秒、`maxWorkers` 8；`afterEach` 删除临时目录用 `rmSync` 时必须带 `maxRetries` 与 `retryDelay`。
+- 整轮并行门禁连跑或与大量临时目录写入同时进行时，Windows 的系统扫描会拖慢文件与 SQLite 操作，出现过后台 worker 激活超时与 `gap-pass-compare` 的 30 秒用例超时；这些用例单独运行都通过。门禁失败先看失败是否只在整轮并行时出现，不要连续并发跑多轮整仓测试；`gap-pass-compare` 的 3 个用例上限已放宽到 180 秒。
 - `packages/st-compat` 与 `packages/server` 的测试通过 `@dramaticer/core` 的 `dist` 解析 core；只跑这些包的测试前先执行 `pnpm run typecheck`。
 - 结构化 JSON 请求一律使用 `NO_CONTINUATION`；正文写作与散文类后台输出保留续写。
 - web 源码不能 import `@dramaticer/core` 的运行时值（会把 `better-sqlite3` 与 `node:*` 打进前端包导致整页白屏），类型导入可以。

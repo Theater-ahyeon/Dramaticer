@@ -26,8 +26,8 @@ afterEach(() => {
 		rmSync(dir, {
 			recursive: true,
 			force: true,
-			maxRetries: 5,
-			retryDelay: 100,
+			maxRetries: 10,
+			retryDelay: 200,
 		});
 	}
 });
@@ -196,7 +196,7 @@ function fakeClient(mode: SettlementMode): LlmStreamingClient {
 describe("runGapPassCompareOnEntries", () => {
 	it(
 		"两条路径在相同楼层上写入相同事实，请求数与缓存数可读",
-		{ timeout: 30_000 },
+		{ timeout: 180_000 },
 		async () => {
 			const client = fakeClient("valid");
 			const report = await runGapPassCompareOnEntries({
@@ -228,7 +228,7 @@ describe("runGapPassCompareOnEntries", () => {
 
 	it(
 		"同一个目录重跑时直接复用已完成的样本，不再调用模型",
-		{ timeout: 30_000 },
+		{ timeout: 180_000 },
 		async () => {
 			const dir = makeDir();
 			const first = fakeClient("valid");
@@ -265,7 +265,7 @@ describe("runGapPassCompareOnEntries", () => {
 
 	it(
 		"非法路径在两条路径上都记成修复，且整楼不写入",
-		{ timeout: 30_000 },
+		{ timeout: 180_000 },
 		async () => {
 			const report = await runGapPassCompareOnEntries({
 				story: STORY,
