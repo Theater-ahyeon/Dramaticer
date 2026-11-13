@@ -41,6 +41,7 @@ import {
 } from "../evalset/pairwise.js";
 import { type StPreset, parsePresetFile } from "../preset.js";
 import { ST_CONTENT_COEXIST_PLUGIN } from "./st-content-plugin.js";
+import { ST_MVU_COEXIST_PLUGIN } from "./st-mvu-plugin.js";
 
 /** 指标变差的门槛；报告与 ADR 共用这些数字。 */
 export const COEXIST_REGRESSION_MARGIN = 0.05;
@@ -63,14 +64,22 @@ export interface CoexistPluginAdapter {
 	apply(
 		input: CoexistApplyInput,
 	): Promise<CoexistApplyResult> | CoexistApplyResult;
+	/**
+	 * 每轮助手楼层写入后调用；插件在这里处理本轮的写入（例如 MVU 变量更新）。
+	 * 返回的字符串只进报告，不含正文。
+	 */
+	afterTurn?(
+		input: CoexistAfterTurnInput,
+	): Promise<readonly string[]> | readonly string[];
 }
 
 /**
  * 供 CLI 使用的已注册兼容插件。C-T02–C-T05 在这里加入各自的适配器；
- * 适配器只改写模板与槽位，不直接写楼层或台账。
+ * 适配器只改写模板与槽位，每轮的写入通过 `afterTurn` 落到台账或显示状态。
  */
 export const ST_BENCH_COEXIST_PLUGINS: readonly CoexistPluginAdapter[] = [
 	ST_CONTENT_COEXIST_PLUGIN,
+	ST_MVU_COEXIST_PLUGIN,
 ];
 
 export interface CoexistApplyInput {
@@ -89,6 +98,15 @@ export interface CoexistApplyResult {
 	readonly providers?: ContextSlotProviders;
 	/** 只进报告，不含正文。 */
 	readonly notes?: readonly string[];
+}
+
+export interface CoexistAfterTurnInput {
+	readonly store: StoryStore;
+	readonly storyId: string;
+	readonly card: StCharacterCard;
+	readonly nodeId: string;
+	readonly raw: string;
+	readonly round: number;
 }
 
 /** 一张卡在两种开关状态下各跑一遍；脚本消息保证两边输入一致。 */
@@ -351,7 +369,7 @@ async function runVariant(
 		});
 		let template = baseTemplate;
 		let providers = slots.providers;
-		let notes: readonly string[] = [];
+		const notes: string[] = [];
 		if (adapter !== null) {
 			const applied = await adapter.apply({
 				store,
@@ -365,7 +383,7 @@ async function runVariant(
 			});
 			template = applied.template ?? template;
 			providers = applied.providers ?? providers;
-			notes = applied.notes ?? [];
+			notes.push(...(applied.notes ?? []));
 		}
 		const records: CoexistRoundRecord[] = [];
 		for (let round = 1; round <= rounds; round += 1) {
@@ -374,8 +392,13 @@ async function runVariant(
 				throw new Error(`卡 ${card.id} 缺少第 ${round} 轮脚本消息`);
 			}
 			const startedAt = options.now?.() ?? Date.now();
+			let result: {
+				nodeId: string;
+				raw: string;
+				firstTokenMs: number | null;
+			} | null = null;
 			try {
-				const result = await runTurn(options, store, card, {
+				result = await runTurn(options, store, card, {
 					template,
 					providers,
 					userText,
@@ -399,6 +422,18 @@ async function runVariant(
 					durationMs: null,
 					error: message,
 				});
+			}
+			if (result !== null && adapter?.afterTurn !== undefined) {
+				notes.push(
+					...(await adapter.afterTurn({
+						store,
+						storyId: card.storyId,
+						card: card.card,
+						nodeId: result.nodeId,
+						raw: result.raw,
+						round,
+					})),
+				);
 			}
 		}
 		const questions =
@@ -447,7 +482,11 @@ async function runTurn(
 		readonly providers: ContextSlotProviders;
 		readonly userText: string;
 	},
-): Promise<{ readonly raw: string; readonly firstTokenMs: number | null }> {
+): Promise<{
+	readonly nodeId: string;
+	readonly raw: string;
+	readonly firstTokenMs: number | null;
+}> {
 	const result = await runChatTurn({
 		store,
 		storyId: card.storyId,
@@ -466,6 +505,7 @@ async function runTurn(
 			: { temperature: options.config.temperature }),
 	});
 	return {
+		nodeId: result.node.id,
 		raw: result.node.raw,
 		firstTokenMs: result.trace.timing.firstTokenMs,
 	};

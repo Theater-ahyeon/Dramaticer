@@ -1342,7 +1342,8 @@
   - 状态栏刷新、`<StatusPlaceHolderImpl/>` 等显示副作用不进入台账，也不写楼层。
   验收：改正文生成新 swipe 且原楼层逐字节不变；显示状态不新建节点；`pnpm check` 通过。
 
-- [ ] **C-T03.d MVU 一致性测试与共存评测** | 依赖：C-T03.a 至 C-T03.c
+- [x] **C-T03.d MVU 一致性测试与共存评测** | 依赖：C-T03.a 至 C-T03.c
+  完成：2026-11-13 新增 `buildMvuCardInitState`（世界书 `[initvar]` 与开场白 `<initvar>` 合并，坏条目只记原因，无变量时返回 null）与 `st-bench/st-mvu-plugin.ts` 适配器（`apply` 只读初始变量，`afterTurn` 每轮解析 `<UpdateVariable>` 经 `MvuLedgerSession` 写台账并校验原文未变）；`CoexistPluginAdapter` 增加可选 `afterTurn`，`ST_BENCH_COEXIST_PLUGINS` 注册 `st-mvu`；新增一致性用例 6 个（卡级初始变量、一轮写入与 Trace、多块与围栏、结构往返校验、结算覆盖）与共存用例 2 个，合成批次四项指标 0%/0%（8/8）、0%/0%（4/4，样本不足）、80%（10/10）、首字 P90 0/1 毫秒（5/5），无变差项；`docs/dev/reports/C-T03.md` 逐条核对总验收并记录 zod 结构校验口径；ADR-0110；门禁通过
   做什么：
   - 补齐 MVU 一致性用例并逐条核对 C-T03 总验收；在 `ST_BENCH_COEXIST_PLUGINS` 注册 `st-mvu`，开启与关闭各跑一批，报告四项原生指标与样本量（ADR-0040）。
   - 记录变量结构（zod 卡生成的 schema）的校验口径；需要执行卡内 zod 脚本时复用酒馆助手宿主（C-T05）的沙箱。

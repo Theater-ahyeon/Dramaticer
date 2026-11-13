@@ -1754,3 +1754,17 @@
   - 新增 `packages/core/test/message-modification.test.ts` 7 个测试：改正文生成兄弟节点且原文逐字节不变、显示修改不新建节点且台账不变、元数据与显示分开存放、混合类别与空修改被拒、正文未变化与目标缺失被拒、显示状态按楼层与插件隔离并可清理、值必须是有限 JSON 且类别与键合法。
   - 新增 `packages/st-compat/test/st-mvu-message.test.ts` 5 个测试：状态栏刷新只写显示状态、重复刷新覆盖同一项、缺占位符与空 HTML 与缺失楼层被拒、改正文生成新 swipe 且原楼层不变、消息元数据只写显示状态。
   - `core` 的新增模块没有 ST 概念（I1、I15）；写入不经过台账，也不产生楼层原文（I4、I12）。没有改数据库 schema，没有新增运行时依赖。
+
+## ADR-0110 `st-mvu` 的运行时接入、变量结构校验口径与共存适配器（2026-11-13）
+
+- **背景**：C-T03.d 要把 MVU 的初始变量、每轮 `<UpdateVariable>` 与共存评测接起来，并说明变量结构（zod 卡生成的 schema）到底校验什么。前三段实现的是纯函数引擎、台账写入与消息修改分类，卡级别的来源合并与每轮写入还没有入口，共存评测也没有 `st-mvu` 适配器。
+- **决定**：
+  - `packages/st-compat/src/st-mvu/initvar.ts` 新增 `buildMvuCardInitState`：按世界书顺序读取 `[initvar]` 条目，再用角色卡开场白里的 `<initvar>` 块深度合并覆盖；单个条目解析失败只记录原因，结构（`$meta`）非法直接抛错。没有任何初始变量时返回 `state: null`，插件不启用。
+  - `packages/st-compat/src/st-bench/st-mvu-plugin.ts` 注册 id 为 `st-mvu` 的共存适配器：`apply` 只读初始变量并写报告说明，不改模板与槽位；`afterTurn` 在每轮助手楼层写入后解析 `<UpdateVariable>`，经 `MvuLedgerSession` 把补丁写成该楼层的 `mvu` diff，先断言楼层原文与刚产出的回复一致，再提交。初始变量在第一个助手楼层提交后成为台账事实，`state` 槽位从下一轮开始带着变量进入上下文。
+  - `CoexistPluginAdapter` 增加可选的 `afterTurn`；运行器在回复成功记录后调用，返回的说明只进报告。插件写错误不吞掉，直接让这次运行失败。
+  - **变量结构的校验口径**：MVU 卡里的 zod schema 由 `$meta` 生成。Dramaticer 只消费它的结构化投影（`MvuObjectSchemaNode`：`type`、`properties`、`elementType`、`extensible`、`recursiveExtensible`、`template`、`required`），`parseMvuSchema` 能把这棵结构原样读回并给出与内存结构相同的校验结果。`strictSet`、`strictTemplate`、`concatTemplateArray` 是 initvar 根级 `$meta` 的选项，不写进结构 JSON，由 `MvuState.options` 携带；需要执行卡内 zod 脚本本身时走 C-T05 的酒馆助手宿主，目前不执行任何卡内 JS。
+- **影响**：
+  - 新增 `packages/st-compat/test/st-mvu-consistency.test.ts` 6 个测试：世界书与开场白合并及坏条目、无初始变量与非法 `$meta`、一轮回复只写台账且原文逐字节不变并留 Trace、结算窗口把变量写入视为已覆盖且不被模型提案覆盖、多块与代码围栏解析、结构与校验口径往返。
+  - 新增 `packages/st-compat/test/st-mvu-coexist.test.ts` 2 个测试：四项指标与样本量、开启组的台账与原文、第二轮起 `state` 槽位带变量。
+  - 新增 `packages/st-compat/test/fixtures/coexist-mvu-card.json` 合成卡（世界书 `[initvar]` + 开场白 `<initvar>`）。
+  - 没有改数据库 schema，没有新增运行时依赖；`core` 不出现 ST 概念（I1、I15），插件写入仍经结算器校验（I12），原楼层原文不变（I4）。
