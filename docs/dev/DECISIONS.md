@@ -1688,3 +1688,23 @@
 - **影响**：
   - 新增 `packages/st-compat/test/chat-export.test.ts` 9 个测试，覆盖文档往返逐字节一致、文件写入、导入返回源文档、带源文档的完整往返、无源文档的 store 导出、重新导入后的楼层与快照一致、store 新增 MVU 事实进入导出、导出文件可解析、未知故事与空故事报错。
   - `core` 无改动（I1、I15）；楼层原文仍不可修改（I4），导出只读 store 与状态快照。
+
+## ADR-0106 `st-content` 的兼容报告、预设检查与共存适配器（2026-11-13）
+
+- **背景**：C-T02.a 至 C-T02.e 分别完成了卡片、预设、世界书、宏与正则、对话导入导出。C-T02.f 要把这些映射结果汇成一份不含正文的兼容报告，落实 DESIGN §9 与 ADR-0081 的预设检查口径，并把 `st-content` 接进 C-T01.d 的共存开关对照。共存评测的卡配置只有角色卡与片段，适配器拿不到预设，也无法区分 ST 世界书与原生 lore 的来源。
+- **决定**：
+  - `StPresetEntryMapping` 新增 `tokens`，由 `createTokenEstimator` 按条目最终正文估算；静态段、深度注入、跳过与无法映射的条目都带字符数与 token，报告不再需要重新拼接正文。
+  - 新增 `packages/st-compat/src/st-content/compat-report.ts`。`buildStContentCompatReport` 汇总启用条目的 token 规模（进入 prompt 的静态段与注入、无法映射的条目分开计数）、未识别的 marker、角色卡未知字段与扩展键、无法映射的深度与角色组合、重复条目、世界书启用条目的 token 规模、预设与角色卡问题。
+  - 重复条目只列出同一顺序组里同时启用的同名或同标识条目，不推断互斥；无法映射的深度与角色只取 `role`、`injection-depth`、`injection-position`、`marker-injection`、`persona-depth` 五类原因，细节只写角色值、深度、位置或 marker 标识。
+  - `classifyStPresetEntry` 按标识与名称识别总结类与规划类条目（英文词边界与中文关键词）；两类条目仍按酒馆的启用状态留在 prompt 里，不改变位置与顺序，只在报告中列出。
+  - 报告与摘要只含标识、名称、计数、token 与原因，不含任何提示词正文；世界书统计只读角色卡内嵌世界书的启用状态与正文 token，不输出正文。
+  - CLI 新增 `st-bench preset --preset <路径> --card <路径> [--out <路径>]`，输出 Markdown 报告；不给 `--out` 时打印到日志。
+  - 共存评测的卡配置新增可选 `preset` 路径，`CoexistCardSpec` 与 `CoexistApplyInput` 带 `preset` 对象；`loadCoexistCards` 用现有的 `parsePresetFile` 读取。
+  - 新增 `packages/st-compat/src/st-bench/st-content-plugin.ts`，在 `ST_BENCH_COEXIST_PLUGINS` 注册 id 为 `st-content` 的适配器。开启组用 `mapStPreset` 生成模板，宏引擎带角色卡字段与当前路径楼层；角色卡内嵌世界书交给 `createStWorldInfoProviders`，`worldInfoBefore/After` 映射到原生 `lore` 槽位，深度条目经 `createStHistoryProvider` 叠到历史槽位，预设正则按允许开关收集。
+  - 世界书槽位的 `source` 加 `st-content：` 前缀，Trace 里能把 ST 世界书与原生槽位分开；模板里的 ST 静态段保留 `template:st-content-preset/...` 来源。适配器的 `notes` 只写一行报告摘要。
+  - 关闭组仍用默认模板与基础槽位；`st-content` 缺少预设时直接报错，不退回基线。
+- **影响**：
+  - 新增 `packages/st-compat/test/st-content-compat-report.test.ts` 3 个测试：报告字段与分类、渲染不含正文、标识与名称分类。
+  - 新增 `packages/st-compat/test/st-content-coexist.test.ts` 3 个测试：注册表与开/关两组各 5 轮、四项指标与样本量、报告不含正文；配置读取预设；缺少预设时报错。
+  - `st-bench coexist` 的配置格式向后兼容，旧配置没有 `preset` 时仅在使用 `st-content` 时报错。
+  - `core` 无改动（I1、I15）；适配器只改写模板与槽位，不写楼层与台账（I4、I12）；对照评测只用 Dramaticer 渠道，不调用玩家本机 ST 额度（I14）。

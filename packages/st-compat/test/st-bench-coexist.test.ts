@@ -184,6 +184,7 @@ async function buildCard(): Promise<CoexistCardSpec> {
 		storyId: STORY_ID,
 		title: "共存测试",
 		card: await parseCharacterCardFile(CARD_PATH),
+		preset: null,
 		chatPath: CHAT_PATH,
 		messages: ["走一步。", "问一句。", "怀疑他。", "做个选择。", "继续往前。"],
 		questions: questions(8),

@@ -10,6 +10,7 @@ import {
 	WRITING_CONTRACT_SEGMENT_ID,
 	assertContextTemplate,
 	createDefaultContextTemplate,
+	createTokenEstimator,
 	isLlmReasoningLevel,
 } from "@dramaticer/core";
 import type { StCharacterCard } from "../character-card.js";
@@ -43,6 +44,7 @@ const SUPPORTED_ROLES: Readonly<Record<string, LlmRole>> = {
 };
 const INJECTION_ROLES: readonly LlmRole[] = ["system", "user", "assistant"];
 const MACRO_PATTERN = /\{\{[^{}]*\}\}/;
+const estimateTokens = createTokenEstimator();
 
 export interface StPresetMappingIssue {
 	readonly code: string;
@@ -56,6 +58,8 @@ export interface StPresetEntryMapping {
 	readonly segmentId: string | null;
 	readonly role: LlmRole | null;
 	readonly chars: number;
+	/** 按条目正文估算的 token 数；没有正文的条目为 0。 */
+	readonly tokens: number;
 	/** 跳过或无法映射的原因代码；成功映射时为 null。 */
 	readonly reason: string | null;
 }
@@ -165,14 +169,14 @@ export function mapStPreset(input: StPresetMappingInput): StPresetMapping {
 		const { entry, prompt } = orderedPrompt;
 		const segmentId = `st:${index}:${entry.identifier}`;
 		if (!entry.enabled) {
-			entries.push(entryReport(entry, "skipped", null, null, 0, "disabled"));
+			entries.push(entryReport(entry, "skipped", null, null, null, "disabled"));
 			continue;
 		}
 		if (
 			prompt.injectionTrigger !== null &&
 			prompt.injectionTrigger.length > 0
 		) {
-			addUnmapped(entries, issues, entry, "injection-trigger");
+			addUnmapped(entries, issues, entry, "injection-trigger", prompt.content);
 			continue;
 		}
 		if (
@@ -180,16 +184,23 @@ export function mapStPreset(input: StPresetMappingInput): StPresetMapping {
 			prompt.attachRole !== null ||
 			prompt.attachSide !== null
 		) {
-			addUnmapped(entries, issues, entry, "attached-prompt");
+			addUnmapped(entries, issues, entry, "attached-prompt", prompt.content);
 			continue;
 		}
 		if (prompt.extra !== null && Object.keys(prompt.extra).length > 0) {
-			addUnmapped(entries, issues, entry, "prompt-extra");
+			addUnmapped(entries, issues, entry, "prompt-extra", prompt.content);
 			continue;
 		}
 		const role = resolveRole(prompt);
 		if (role === null) {
-			addUnmapped(entries, issues, entry, "role", `${prompt.role ?? ""}`);
+			addUnmapped(
+				entries,
+				issues,
+				entry,
+				"role",
+				prompt.content,
+				`${prompt.role ?? ""}`,
+			);
 			continue;
 		}
 		const position = prompt.injectionPosition ?? RELATIVE_INJECTION_POSITION;
@@ -197,17 +208,30 @@ export function mapStPreset(input: StPresetMappingInput): StPresetMapping {
 			position !== RELATIVE_INJECTION_POSITION &&
 			position !== DEPTH_INJECTION_POSITION
 		) {
-			addUnmapped(entries, issues, entry, "injection-position", `${position}`);
+			addUnmapped(
+				entries,
+				issues,
+				entry,
+				"injection-position",
+				prompt.content,
+				`${position}`,
+			);
 			continue;
 		}
 
 		if (prompt.marker && entry.identifier === "chatHistory") {
 			if (position === DEPTH_INJECTION_POSITION) {
-				addUnmapped(entries, issues, entry, "marker-injection");
+				addUnmapped(entries, issues, entry, "marker-injection", prompt.content);
 				continue;
 			}
 			if (historyIndex !== null) {
-				addUnmapped(entries, issues, entry, "duplicate-history");
+				addUnmapped(
+					entries,
+					issues,
+					entry,
+					"duplicate-history",
+					prompt.content,
+				);
 				continue;
 			}
 			historyIndex = segments.length;
@@ -217,7 +241,7 @@ export function mapStPreset(input: StPresetMappingInput): StPresetMapping {
 				slot: "history",
 				priority: 100,
 			});
-			entries.push(entryReport(entry, "slot", segmentId, null, 0, null));
+			entries.push(entryReport(entry, "slot", segmentId, null, null, null));
 			continue;
 		}
 		if (
@@ -226,7 +250,7 @@ export function mapStPreset(input: StPresetMappingInput): StPresetMapping {
 				entry.identifier === "worldInfoAfter")
 		) {
 			if (position === DEPTH_INJECTION_POSITION) {
-				addUnmapped(entries, issues, entry, "marker-injection");
+				addUnmapped(entries, issues, entry, "marker-injection", prompt.content);
 				continue;
 			}
 			if (entry.identifier === "worldInfoBefore") worldInfo.before = true;
@@ -239,10 +263,10 @@ export function mapStPreset(input: StPresetMappingInput): StPresetMapping {
 					slot: "lore",
 					priority: 80,
 				});
-				entries.push(entryReport(entry, "slot", segmentId, null, 0, null));
+				entries.push(entryReport(entry, "slot", segmentId, null, null, null));
 			} else {
 				entries.push(
-					entryReport(entry, "slot", loreSegmentId, null, 0, "merged-lore"),
+					entryReport(entry, "slot", loreSegmentId, null, null, "merged-lore"),
 				);
 				issues.push({
 					code: "world-info-after",
@@ -256,12 +280,19 @@ export function mapStPreset(input: StPresetMappingInput): StPresetMapping {
 			? resolveMarkerText(entry.identifier, input, sectionText, personaMapping)
 			: null;
 		if (prompt.marker && marker === null) {
-			addUnmapped(entries, issues, entry, "unknown-marker", entry.identifier);
+			addUnmapped(
+				entries,
+				issues,
+				entry,
+				"unknown-marker",
+				prompt.content,
+				entry.identifier,
+			);
 			continue;
 		}
 		if (marker !== null && marker.marker === "personaDescription") {
 			if (personaMapping === null) {
-				entries.push(entryReport(entry, "skipped", null, null, 0, "empty"));
+				entries.push(entryReport(entry, "skipped", null, null, null, "empty"));
 				continue;
 			}
 			if (
@@ -273,16 +304,25 @@ export function mapStPreset(input: StPresetMappingInput): StPresetMapping {
 					issues,
 					entry,
 					`persona-${personaMapping.placement}`,
+					personaMapping.text,
 				);
 				continue;
 			}
 			if (personaMapping.placement === "disabled") {
-				entries.push(entryReport(entry, "skipped", null, null, 0, "disabled"));
+				entries.push(
+					entryReport(entry, "skipped", null, null, null, "disabled"),
+				);
 				continue;
 			}
 			if (personaMapping.placement === "in-chat") {
 				if (personaMapping.depth === null) {
-					addUnmapped(entries, issues, entry, "persona-depth");
+					addUnmapped(
+						entries,
+						issues,
+						entry,
+						"persona-depth",
+						personaMapping.text,
+					);
 					continue;
 				}
 				const personaText =
@@ -291,7 +331,9 @@ export function mapStPreset(input: StPresetMappingInput): StPresetMapping {
 						: input.macros.substitute(personaMapping.text);
 				const text = personaText.trim();
 				if (text.length === 0) {
-					entries.push(entryReport(entry, "skipped", null, null, 0, "empty"));
+					entries.push(
+						entryReport(entry, "skipped", null, null, null, "empty"),
+					);
 					continue;
 				}
 				recordMacroIssue(text, entry.identifier, issues);
@@ -309,7 +351,7 @@ export function mapStPreset(input: StPresetMappingInput): StPresetMapping {
 						"injection",
 						null,
 						personaMapping.role,
-						text.length,
+						text,
 						null,
 					),
 				);
@@ -330,14 +372,14 @@ export function mapStPreset(input: StPresetMappingInput): StPresetMapping {
 				: input.macros.substitute(overridden);
 		const trimmed = effectiveText.trim();
 		if (trimmed.length === 0) {
-			entries.push(entryReport(entry, "skipped", null, null, 0, "empty"));
+			entries.push(entryReport(entry, "skipped", null, null, null, "empty"));
 			continue;
 		}
 		recordMacroIssue(effectiveText, entry.identifier, issues);
 		if (position === DEPTH_INJECTION_POSITION) {
 			const depth = prompt.injectionDepth;
 			if (depth === null || !Number.isInteger(depth) || depth < 0) {
-				addUnmapped(entries, issues, entry, "injection-depth");
+				addUnmapped(entries, issues, entry, "injection-depth", effectiveText);
 				continue;
 			}
 			const order = readInjectionOrder(prompt, entry.identifier, issues);
@@ -350,7 +392,7 @@ export function mapStPreset(input: StPresetMappingInput): StPresetMapping {
 				source: "preset",
 			});
 			entries.push(
-				entryReport(entry, "injection", null, role, effectiveText.length, null),
+				entryReport(entry, "injection", null, role, effectiveText, null),
 			);
 			continue;
 		}
@@ -363,7 +405,7 @@ export function mapStPreset(input: StPresetMappingInput): StPresetMapping {
 		});
 		if (entry.identifier === "main") mainIndex = segments.length - 1;
 		entries.push(
-			entryReport(entry, "static", segmentId, role, effectiveText.length, null),
+			entryReport(entry, "static", segmentId, role, effectiveText, null),
 		);
 	}
 
@@ -661,10 +703,11 @@ function addUnmapped(
 	issues: StPresetMappingIssue[],
 	entry: { readonly identifier: string; readonly enabled: boolean },
 	reason: string,
+	text: string | null,
 	detail = entry.identifier,
 ): void {
 	issues.push({ code: reason, detail });
-	entries.push(entryReport(entry, "unmapped", null, null, 0, reason));
+	entries.push(entryReport(entry, "unmapped", null, null, text, reason));
 }
 
 function entryReport(
@@ -672,9 +715,10 @@ function entryReport(
 	kind: StPresetEntryMapping["kind"],
 	segmentId: string | null,
 	role: LlmRole | null,
-	chars: number,
+	text: string | null,
 	reason: string | null,
 ): StPresetEntryMapping {
+	const chars = text === null ? 0 : text.length;
 	return {
 		identifier: entry.identifier,
 		enabled: entry.enabled,
@@ -682,6 +726,7 @@ function entryReport(
 		segmentId,
 		role,
 		chars,
+		tokens: text === null ? 0 : estimateTokens(text),
 		reason,
 	};
 }

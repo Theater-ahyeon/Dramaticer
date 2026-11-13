@@ -1,4 +1,4 @@
-import { stat } from "node:fs/promises";
+import { stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -7,6 +7,15 @@ import {
 	loadDotEnv,
 	resolveModelForRole,
 } from "@dramaticer/core";
+import { parseCharacterCardFile } from "../character-card.js";
+import { parsePresetFile } from "../preset.js";
+import {
+	buildStContentCompatReport,
+	renderStContentCompatReport,
+	summarizeStContentCompatReport,
+} from "../st-content/compat-report.js";
+import { createStMacroEngine } from "../st-content/macros.js";
+import { mapStPreset } from "../st-content/preset-mapping.js";
 import {
 	COEXIST_DEFAULT_BUDGET_TOKENS,
 	type CoexistRunConfig,
@@ -45,7 +54,7 @@ import {
 	stBenchPaths,
 } from "./sandbox.js";
 
-const USAGE = `用法：st-bench <sandbox|record|serve|plan|drive|compare|coexist> ...
+const USAGE = `用法：st-bench <sandbox|record|serve|plan|drive|compare|coexist|preset> ...
   sandbox --source <SillyTavern 目录> [--target <目录>] [--private-root <目录>]
           [--node-modules link|copy|skip] [--data <相对路径>]... [--replace]
   record [--dir <录制目录>] [--host 127.0.0.1] [--port 8130]
@@ -58,7 +67,8 @@ const USAGE = `用法：st-bench <sandbox|record|serve|plan|drive|compare|coexis
         [--port 8000] [--recorder-port 8130] [--stub-model <名称>]
         [--combination-timeout <秒>] [--headed]
   compare [--sandbox <目录>] [--batch <名称>] [--limit <数量>]
-  coexist --config <配置.json> [--out <目录>]`;
+  coexist --config <配置.json> [--out <目录>]
+  preset --preset <路径> --card <路径> [--out <路径>]`;
 
 export interface StBenchCliOptions {
 	readonly repoRoot?: string;
@@ -104,6 +114,10 @@ export async function runStBenchCli(
 	}
 	if (command === "coexist") {
 		await runCoexist(args.slice(1), paths, repoRoot, log);
+		return;
+	}
+	if (command === "preset") {
+		await runPresetReport(args.slice(1), log);
 		return;
 	}
 	throw new Error(USAGE);
@@ -541,6 +555,61 @@ async function runCoexist(
 		log(`报告：${files.reportFile}`);
 		log(`指标：${files.metricsFile}`);
 	}
+}
+
+async function runPresetReport(
+	args: readonly string[],
+	log: (message: string) => void,
+): Promise<void> {
+	let presetPath: string | null = null;
+	let cardPath: string | null = null;
+	let outPath: string | null = null;
+	for (let index = 0; index < args.length; index += 1) {
+		const arg = args[index];
+		if (arg === "--preset" || arg === "--card" || arg === "--out") {
+			const value = args[index + 1];
+			if (value === undefined) throw new Error(`${arg} 需要一个值`);
+			index += 1;
+			if (arg === "--preset") presetPath = value;
+			else if (arg === "--card") cardPath = value;
+			else outPath = value;
+			continue;
+		}
+		throw new Error(`未知参数：${arg}`);
+	}
+	if (presetPath === null || cardPath === null) {
+		throw new Error("preset 需要 --preset 与 --card");
+	}
+	const preset = await parsePresetFile(presetPath);
+	const card = await parseCharacterCardFile(cardPath);
+	const macros = createStMacroEngine({
+		char: card.name,
+		card: {
+			charPrompt: card.systemPrompt,
+			charJailbreak: card.postHistoryInstructions,
+			description: card.description,
+			personality: card.personality,
+			scenario: card.scenario,
+			mesExamples: card.messageExample,
+			charVersion: card.characterVersion,
+			creatorNotes: card.creatorNotes,
+		},
+	});
+	const mapping = mapStPreset({
+		preset,
+		card,
+		structuredOutput: "text-tags",
+		macros,
+	});
+	const report = buildStContentCompatReport({ preset, card, mapping });
+	const text = renderStContentCompatReport(report);
+	if (outPath === null) {
+		log(text);
+		return;
+	}
+	await writeFile(outPath, text, "utf8");
+	log(summarizeStContentCompatReport(report));
+	log(`报告：${outPath}`);
 }
 
 function parseNodeModulesMode(value: string): NodeModulesMode {

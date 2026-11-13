@@ -39,6 +39,8 @@ import {
 	runPreferenceSample,
 	summarizePreferenceComparisons,
 } from "../evalset/pairwise.js";
+import { type StPreset, parsePresetFile } from "../preset.js";
+import { ST_CONTENT_COEXIST_PLUGIN } from "./st-content-plugin.js";
 
 /** 指标变差的门槛；报告与 ADR 共用这些数字。 */
 export const COEXIST_REGRESSION_MARGIN = 0.05;
@@ -67,12 +69,15 @@ export interface CoexistPluginAdapter {
  * 供 CLI 使用的已注册兼容插件。C-T02–C-T05 在这里加入各自的适配器；
  * 适配器只改写模板与槽位，不直接写楼层或台账。
  */
-export const ST_BENCH_COEXIST_PLUGINS: readonly CoexistPluginAdapter[] = [];
+export const ST_BENCH_COEXIST_PLUGINS: readonly CoexistPluginAdapter[] = [
+	ST_CONTENT_COEXIST_PLUGIN,
+];
 
 export interface CoexistApplyInput {
 	readonly store: StoryStore;
 	readonly storyId: string;
 	readonly card: StCharacterCard;
+	readonly preset: StPreset | null;
 	readonly template: ContextTemplate;
 	readonly providers: ContextSlotProviders;
 	readonly budgetTokens: number;
@@ -92,6 +97,8 @@ export interface CoexistCardSpec {
 	readonly storyId: string;
 	readonly title: string;
 	readonly card: StCharacterCard;
+	/** 可选预设；st-content 适配器需要它，基线不读。 */
+	readonly preset: StPreset | null;
 	/** 可选的已有对话；导入后两边从同一分支点继续。 */
 	readonly chatPath: string | null;
 	readonly messages: readonly string[];
@@ -350,6 +357,7 @@ async function runVariant(
 				store,
 				storyId: card.storyId,
 				card: card.card,
+				preset: card.preset,
 				template,
 				providers,
 				budgetTokens: options.config.budgetTokens,
@@ -891,6 +899,7 @@ export interface CoexistCardFile {
 	readonly storyId: string;
 	readonly title: string;
 	readonly cardPath: string;
+	readonly presetPath: string | null;
 	readonly chatPath: string | null;
 	readonly messages: readonly string[];
 	readonly questionsPath: string | null;
@@ -972,6 +981,13 @@ function parseCardFile(
 		requireString(value.card, `${label}.card`),
 		baseDir,
 	);
+	const presetPath =
+		value.preset === undefined || value.preset === null
+			? null
+			: resolveRelative(
+					requireString(value.preset, `${label}.preset`),
+					baseDir,
+				);
 	const chatPath =
 		value.chat === undefined || value.chat === null
 			? null
@@ -988,6 +1004,7 @@ function parseCardFile(
 		storyId: requireString(value.storyId, `${label}.storyId`),
 		title: requireString(value.title, `${label}.title`),
 		cardPath,
+		presetPath,
 		chatPath,
 		messages: requireNonEmptyStrings(value.messages, `${label}.messages`),
 		questionsPath,
@@ -1001,6 +1018,10 @@ export async function loadCoexistCards(
 	const cards: CoexistCardSpec[] = [];
 	for (const entry of file.cards) {
 		const card = await parseCharacterCardFile(entry.cardPath);
+		const preset =
+			entry.presetPath === null
+				? null
+				: await parsePresetFile(entry.presetPath);
 		const questions =
 			entry.questionsPath === null
 				? []
@@ -1021,6 +1042,7 @@ export async function loadCoexistCards(
 			storyId: entry.storyId,
 			title: entry.title,
 			card,
+			preset,
 			chatPath: entry.chatPath,
 			messages: entry.messages,
 			questions,
