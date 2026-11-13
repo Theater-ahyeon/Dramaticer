@@ -26,6 +26,7 @@ import {
 import {
 	type StEjsMessageFilter,
 	type StEjsMessageRole,
+	type StEjsVariableBackend,
 	StEjsVariableError,
 	type StEjsVariableOptionsInput,
 	type StEjsVariableScope,
@@ -76,6 +77,8 @@ export interface StEjsRuntimeOptions {
 	readonly tokenBudget?: number;
 	/** 隔离执行器；提供之后模板不再在主线程里执行。 */
 	readonly executor?: StEjsTemplateExecutor;
+	/** `initial` 作用域的读写后端；接入台账时由调用方提供。 */
+	readonly backend?: StEjsVariableBackend;
 }
 
 export interface StEjsRenderOptions {
@@ -294,6 +297,7 @@ export class StEjsRuntime {
 	constructor(options: StEjsRuntimeOptions = {}) {
 		this.variables = new StEjsVariableStore(options.variables, {
 			preparation: options.preparation ?? false,
+			...(options.backend === undefined ? {} : { backend: options.backend }),
 		});
 		this.#messages = options.messages ?? [];
 		for (const message of this.#messages) {

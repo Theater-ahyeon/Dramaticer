@@ -275,9 +275,21 @@ export function normalizeStEjsVariableOptions(
 	return options;
 }
 
+/**
+ * `initial` 作用域的外部后端。接入台账时由它提供 MVU 变量的底层数据，
+ * 并把写回交给结算器。`key` 是 lodash 的点路径；`value` 是该键写入后的最终值，
+ * `undefined` 表示删除该键。
+ */
+export interface StEjsVariableBackend {
+	read(): StEjsVariableTree;
+	write(key: string | null, value: unknown): void;
+}
+
 export interface StEjsVariableStoreOptions {
 	/** 准备阶段（世界书、预设、角色卡的多次计算）默认不写变量。 */
 	readonly preparation?: boolean;
+	/** 提供时 `initial` 层改为从后端读取、写入后端；不指定作用域的写也落在 `initial`。 */
+	readonly backend?: StEjsVariableBackend | null;
 }
 
 export class StEjsVariableStore {
@@ -287,6 +299,7 @@ export class StEjsVariableStore {
 	readonly #messages: MessageScope[];
 	readonly #cache: StEjsVariableTree;
 	readonly #writes: StEjsVariableWrite[] = [];
+	readonly #backend: StEjsVariableBackend | null;
 	#preparation: boolean;
 
 	constructor(
@@ -311,8 +324,9 @@ export class StEjsVariableStore {
 			return scope;
 		});
 		this.#preparation = options.preparation ?? false;
+		this.#backend = options.backend ?? null;
 		this.#cache = {};
-		mergeInto(this.#cache, this.#initial);
+		mergeInto(this.#cache, this.#baseInitial());
 		mergeInto(this.#cache, this.#global);
 		mergeInto(this.#cache, this.#local);
 		for (const message of this.#messages) {
@@ -339,13 +353,27 @@ export class StEjsVariableStore {
 
 	/** 准备阶段解析出来的初始变量并进 `initial` 作用域，随后重建合并视图。 */
 	addInitialVariables(tree: StEjsVariableTree): void {
-		mergeInto(this.#initial, assertTree(tree, "初始变量"));
+		const input = assertTree(tree, "初始变量");
+		if (this.#backend !== null) {
+			const base = this.#backend.read();
+			for (const [key, value] of Object.entries(input)) {
+				this.#backend.write(key, mergeValue(base[key], value));
+			}
+			this.#rebuildCache();
+			return;
+		}
+		mergeInto(this.#initial, input);
 		this.#rebuildCache();
+	}
+
+	/** `initial` 的当前内容：接入后端时以后端为准。 */
+	#baseInitial(): StEjsVariableTree {
+		return this.#backend === null ? this.#initial : this.#backend.read();
 	}
 
 	#rebuildCache(): void {
 		replaceContents(this.#cache, {});
-		mergeInto(this.#cache, this.#initial);
+		mergeInto(this.#cache, this.#baseInitial());
 		mergeInto(this.#cache, this.#global);
 		mergeInto(this.#cache, this.#local);
 		for (const message of this.#messages) {
@@ -373,7 +401,24 @@ export class StEjsVariableStore {
 	): unknown {
 		const options = normalizeStEjsVariableOptions(input);
 		if (this.#preparation && options.dryRun !== true) return undefined;
-		const scope = options.scope ?? "message";
+		const scope = options.scope ?? this.#defaultWriteScope();
+		if (this.#backend !== null && scope === "initial") {
+			const tree = cloneValue(this.#backend.read());
+			if (!this.#passesFlags(tree, key, options)) return undefined;
+			const previous = readTreeValue(tree, key, true);
+			const merge = options.merge === true;
+			const next = assignToTree(tree, key, value, merge);
+			this.#backend.write(key, key === null ? tree : next);
+			this.#rebuildCache();
+			this.#record(
+				"initial",
+				{ tree, messageId: null, swipeId: null },
+				key,
+				merge ? "merge" : "set",
+				next,
+			);
+			return this.#result(options.results ?? "new", previous, next);
+		}
 		const target = this.#writeTarget(scope, options.withMsg);
 		if (!this.#passesFlags(target.tree, key, options)) return undefined;
 		const previous = readTreeValue(target.tree, key, true);
@@ -392,7 +437,25 @@ export class StEjsVariableStore {
 	): unknown {
 		const options = normalizeStEjsVariableOptions(input);
 		if (this.#preparation && options.dryRun !== true) return undefined;
-		const scope = options.scope ?? "message";
+		const scope = options.scope ?? this.#defaultWriteScope();
+		if (this.#backend !== null && scope === "initial") {
+			const tree = cloneValue(this.#backend.read());
+			if (!this.#passesFlags(tree, key, options)) return undefined;
+			const previous = readTreeValue(tree, key, true);
+			const next = insertIntoValue(previous, value, index, key);
+			if (next === undefined) return undefined;
+			this.#backend.write(key, next);
+			this.#rebuildCache();
+			this.#record(
+				"initial",
+				{ tree, messageId: null, swipeId: null },
+				key,
+				"insert",
+				next,
+				index,
+			);
+			return this.#result(options.results ?? "new", previous, next);
+		}
 		const target = this.#writeTarget(scope, options.withMsg);
 		if (!this.#passesFlags(target.tree, key, options)) return undefined;
 		const previous = readTreeValue(target.tree, key, true);
@@ -411,7 +474,49 @@ export class StEjsVariableStore {
 	): unknown {
 		const options = normalizeStEjsVariableOptions(input);
 		if (this.#preparation && options.dryRun !== true) return undefined;
-		const scope = options.scope ?? "message";
+		const scope = options.scope ?? this.#defaultWriteScope();
+		if (this.#backend !== null && scope === "initial") {
+			const tree = cloneValue(this.#backend.read());
+			if (!this.#passesFlags(tree, key, options)) return undefined;
+			const previous = readTreeValue(tree, key, true);
+			if (key === null) {
+				replaceContents(tree, {});
+				this.#backend.write(null, tree);
+				this.#rebuildCache();
+				this.#record(
+					"initial",
+					{ tree, messageId: null, swipeId: null },
+					null,
+					"delete",
+				);
+				return this.#result(options.results ?? "new", previous, tree);
+			}
+			if (index === undefined) {
+				lodash.unset(tree, key);
+				this.#backend.write(key, undefined);
+				this.#rebuildCache();
+				this.#record(
+					"initial",
+					{ tree, messageId: null, swipeId: null },
+					key,
+					"delete",
+				);
+				return this.#result(options.results ?? "new", previous, undefined);
+			}
+			const next = removeFromValue(previous, index, key);
+			if (next === undefined) return undefined;
+			this.#backend.write(key, next);
+			this.#rebuildCache();
+			this.#record(
+				"initial",
+				{ tree, messageId: null, swipeId: null },
+				key,
+				"delete",
+				undefined,
+				index,
+			);
+			return this.#result(options.results ?? "new", previous, next);
+		}
 		const target = this.#writeTarget(scope, options.withMsg);
 		if (!this.#passesFlags(target.tree, key, options)) return undefined;
 		const previous = readTreeValue(target.tree, key, true);
@@ -435,6 +540,11 @@ export class StEjsVariableStore {
 		return this.#result(options.results ?? "new", previous, next);
 	}
 
+	/** 不指定作用域的写入落在 `initial`（接入台账时就是 MVU 变量）；没有后端时与上游一致落消息变量。 */
+	#defaultWriteScope(): StEjsVariableScope {
+		return this.#backend === null ? "message" : "initial";
+	}
+
 	/** 写前检查 `nx`/`xx`/`nxs`/`xxs`：前两个看合并视图，后两个看目标作用域。 */
 	#passesFlags(
 		targetTree: StEjsVariableTree,
@@ -455,7 +565,7 @@ export class StEjsVariableStore {
 		if (scope === "cache") return this.#cache;
 		if (scope === "global") return this.#global;
 		if (scope === "local") return this.#local;
-		if (scope === "initial") return this.#initial;
+		if (scope === "initial") return this.#baseInitial();
 		return this.#resolveMessage(filter)?.variables ?? {};
 	}
 

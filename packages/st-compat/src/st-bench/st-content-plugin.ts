@@ -1,12 +1,17 @@
-import type {
-	ContextSlotContent,
-	ContextSlotProvider,
-	ContextSlotRequest,
+import {
+	type ContextSlotContent,
+	type ContextSlotProvider,
+	type ContextSlotRequest,
+	DEFAULT_TURN_HOOK_BUDGET_MS,
 } from "@dramaticer/core";
 import {
 	buildStContentCompatReport,
 	summarizeStContentCompatReport,
 } from "../st-content/compat-report.js";
+import {
+	createStEjsContentPipeline,
+	createStEjsTurnBudget,
+} from "../st-content/ejs-pipeline.js";
 import { createStMacroEngine } from "../st-content/macros.js";
 import {
 	ST_CONTENT_TEMPLATE_ID,
@@ -122,10 +127,44 @@ function applyStContent(input: CoexistApplyInput): CoexistApplyResult {
 			history: createStHistoryProvider(baseHistory, mapping.injections),
 		};
 	}
+	const pipeline = createStEjsContentPipeline({
+		store: input.store,
+		storyId: input.storyId,
+		card: input.card,
+		preset,
+		worlds,
+		tokenBudget: input.budgetTokens,
+	});
+	providers = pipeline.wrapProviders(providers);
 	return {
 		template: mapping.template,
 		providers,
 		notes: [summarizeStContentCompatReport(report)],
+		prepareTurn: async (turn) => {
+			const head = turn.store.getHead(turn.storyId);
+			if (head === null) return {};
+			await pipeline.beginTurn(head.id);
+			const { budget, entries } = createStEjsTurnBudget(
+				DEFAULT_TURN_HOOK_BUDGET_MS,
+			);
+			const template = await pipeline.renderTemplate(turn.template, {
+				nodeId: head.id,
+				budget,
+			});
+			const timeouts = entries.filter(
+				(entry) => entry.outcome === "timeout",
+			).length;
+			return {
+				template,
+				notes:
+					entries.length === 0
+						? []
+						: [
+								`st-ejs：本轮渲染 ${entries.length} 段预设模板${timeouts === 0 ? "" : `，超时 ${timeouts} 段`}`,
+							],
+			};
+		},
+		dispose: () => pipeline.dispose(),
 	};
 }
 

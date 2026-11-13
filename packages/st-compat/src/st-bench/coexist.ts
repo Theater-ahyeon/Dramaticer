@@ -98,6 +98,27 @@ export interface CoexistApplyResult {
 	readonly providers?: ContextSlotProviders;
 	/** 只进报告，不含正文。 */
 	readonly notes?: readonly string[];
+	/** 每轮开始前的准备；返回的模板与槽位只对这一轮生效。 */
+	readonly prepareTurn?: (
+		input: CoexistPrepareTurnInput,
+	) => Promise<CoexistPrepareTurnResult> | CoexistPrepareTurnResult;
+	/** 评测结束时释放 `apply` 里创建的资源。 */
+	readonly dispose?: () => Promise<void> | void;
+}
+
+export interface CoexistPrepareTurnInput {
+	readonly store: StoryStore;
+	readonly storyId: string;
+	readonly card: StCharacterCard;
+	readonly round: number;
+	readonly template: ContextTemplate;
+	readonly providers: ContextSlotProviders;
+}
+
+export interface CoexistPrepareTurnResult {
+	readonly template?: ContextTemplate;
+	readonly providers?: ContextSlotProviders;
+	readonly notes?: readonly string[];
 }
 
 export interface CoexistAfterTurnInput {
@@ -355,6 +376,7 @@ async function runVariant(
 	const store = SqliteStoryStore.open(
 		path.join(dir, `${safeSegment(card.id)}.db`),
 	);
+	let dispose: CoexistApplyResult["dispose"];
 	try {
 		const { characterPrompt } = await prepareStory(store, card);
 		const baseContext = formatPairwiseContext(
@@ -369,6 +391,8 @@ async function runVariant(
 		});
 		let template = baseTemplate;
 		let providers = slots.providers;
+		let prepareTurn: CoexistApplyResult["prepareTurn"];
+		let renderedTemplate = baseTemplate;
 		const notes: string[] = [];
 		if (adapter !== null) {
 			const applied = await adapter.apply({
@@ -384,6 +408,8 @@ async function runVariant(
 			template = applied.template ?? template;
 			providers = applied.providers ?? providers;
 			notes.push(...(applied.notes ?? []));
+			prepareTurn = applied.prepareTurn;
+			dispose = applied.dispose;
 		}
 		const records: CoexistRoundRecord[] = [];
 		for (let round = 1; round <= rounds; round += 1) {
@@ -391,6 +417,22 @@ async function runVariant(
 			if (userText === undefined) {
 				throw new Error(`卡 ${card.id} 缺少第 ${round} 轮脚本消息`);
 			}
+			let turnTemplate = template;
+			let turnProviders = providers;
+			if (prepareTurn !== undefined) {
+				const prepared = await prepareTurn({
+					store,
+					storyId: card.storyId,
+					card: card.card,
+					round,
+					template,
+					providers,
+				});
+				turnTemplate = prepared.template ?? turnTemplate;
+				turnProviders = prepared.providers ?? turnProviders;
+				notes.push(...(prepared.notes ?? []));
+			}
+			renderedTemplate = turnTemplate;
 			const startedAt = options.now?.() ?? Date.now();
 			let result: {
 				nodeId: string;
@@ -399,8 +441,8 @@ async function runVariant(
 			} | null = null;
 			try {
 				result = await runTurn(options, store, card, {
-					template,
-					providers,
+					template: turnTemplate,
+					providers: turnProviders,
 					userText,
 				});
 				const finishedAt = options.now?.() ?? Date.now();
@@ -439,7 +481,7 @@ async function runVariant(
 		const questions =
 			card.questions.length === 0
 				? []
-				: await askQuestions(options, store, card, template, providers);
+				: await askQuestions(options, store, card, renderedTemplate, providers);
 		return {
 			cardId: card.id,
 			variant,
@@ -449,6 +491,7 @@ async function runVariant(
 			baseContext,
 		};
 	} finally {
+		await dispose?.();
 		store.close();
 	}
 }

@@ -1855,3 +1855,16 @@
   - 新增 `packages/st-compat/test/st-ejs-budget.test.ts` 8 个测试：正常执行的记录、超时按空内容并记录原因、剩余时间覆盖默认预算、预算用完不启动执行、变量写入回到主线程、嵌套世界书渲染各自记录、没有沙箱执行器时报错、槽位钩子里超时后回合继续且 Trace 带模板记录。
   - `packages/core/test/turn-hooks.test.ts` 新增 3 个测试：预算随槽位请求传入并写进 Trace、钩子超时后保留已记录模板且后续记录被丢弃、没有模板记录时 Trace 不带 `templates`；`packages/core/test/explain.test.ts` 新增 1 个测试覆盖排版与建议。
   - `core` 的钩子 API 向后兼容：`run` 的零参回调仍然可赋值；`Timeline` 与存储层没有改动，没有改数据库 schema，没有新增依赖。EJS 仍未接入 `st-content` 的槽位（C-T04.c.c）。
+
+## ADR-0116 `st-ejs` 的 st-content 流水线接入与台账变量视图（2026-11-13）
+
+- **背景**：C-T04.c.b 让沙箱模板按回合预算执行并把记录写进钩子 Trace，但 EJS 还没有接到 `st-content` 的槽位：预设静态段、世界书与深度注入都原样进入上下文；模板变量也没有持久来源，`setvar` 只留在一次执行的内存里。C-T04.c 的总验收要求模板执行只修改 ST 内容、变量与 MVU 是同一份台账数据，并且超时计入回合预算。
+- **决定**：
+  - `st-ejs/variables.ts` 新增 `StEjsVariableBackend`（`read()` 与 `write(key, value)`）。`StEjsVariableStore` 的 `backend` 选项让 `initial` 层改为从后端读取、写回后端；接入后端时不指定作用域的写也落在 `initial`。`global`、`local` 与消息级变量仍由 store 自己保存，不写台账。`StEjsRuntimeOptions.backend` 把后端透传给变量存储。
+  - 新增 `packages/st-compat/src/st-content/ejs-pipeline.ts`：`StEjsContentPipeline` 负责回合生命周期。`beginTurn(nodeId)` 以该楼层的台账快照创建运行时；回合内所有模板共用同一个运行时与沙箱，`define` 与变量写入跨模板可见；换楼层时先收回合（释放沙箱、收回 global 变量）。`renderTemplate` 只渲染来自预设的静态段，写作契约 `protocol` 原样保留；`wrapProviders` 只包 `history` 与 `lore`，记忆、台账、导演等 harness 槽位不经过模板。没有 `<%` 或 `<#escape-ejs>` 的文本逐字节不变。包 key 带回合代数，避免复用上一轮渲染出的上下文包。
+  - 台账后端用 `PendingLedgerView.open(store, nodeId, ["mvu"])`：读是快照叠加待结算写入；写先 `stage`（结算器校验）再 `commit`，拒绝条目直接抛 `StEjsVariableError`，不静默丢弃。台账没有 `mvu` 子树时，把卡内 `[initvar]` 与开场白里的初始变量按 `settler` 来源写入，与 `st-mvu` 用同一份初始数据。
+  - 回合内模板串行执行：同一个沙箱 worker 依次处理每段模板，`define` 在一次回合内持续有效；`getwi` 的嵌套渲染由运行时自己的预算链处理，不进入这条队列。
+  - `CoexistApplyResult` 新增可选的 `prepareTurn` 与 `dispose`。`st-content` 适配器在每轮开始前渲染预设静态段（使用 `DEFAULT_TURN_HOOK_BUDGET_MS` 的独立预算，超时数量写进报告备注），评测结束时释放流水线；槽位渲染使用 `ContextSlotRequest.budget`，因此模板执行计入槽位钩子的同一份 Trace。
+- **影响**：
+  - 新增 `packages/st-compat/test/st-content-ejs-pipeline.test.ts` 5 个测试：ST 静态段与 history/lore 渲染而 harness 槽位与写作契约逐字节不变、变量读台账快照并写回 `mvu` 事实、global 与消息变量不写台账、结算器拒绝非法路径时直接抛错、超时模板按空内容并记录预算。
+  - 现有 EJS、st-content 与共存评测测试保持通过；门禁 223 个测试文件、1989 个测试通过，5 个 live 跳过。没有改数据库 schema，没有新增依赖，`core` 没有改动（I1、I15）。EJS 仍不处理模板发起的生成（C-T04.c.d）。

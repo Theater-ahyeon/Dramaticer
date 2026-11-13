@@ -1397,7 +1397,8 @@
   - 每次模板执行计入回合内时间预算，超时跳过该条并写 `TurnHookTraceEntry`（来源、耗时、跳过原因、调用的函数），`dramaticer explain` 能读到。
   验收：超时用例的 Trace 可在 `dramaticer explain` 输出里读到，回合继续；未超时也记录耗时；`pnpm check` 通过。
 
-- [ ] **C-T04.c.c st-content 流水线接入与变量视图** | 依赖：C-T04.c.b
+- [x] **C-T04.c.c st-content 流水线接入与变量视图** | 依赖：C-T04.c.b
+  完成：2026-11-13 新增 `st-content/ejs-pipeline.ts`（`StEjsContentPipeline`：每回合一个运行时与沙箱，`beginTurn`/`renderTemplate`/`wrapProviders`/`dispose`；只渲染预设静态段与 `history`、`lore` 槽位，跳过写作契约与 harness 槽位；`createStEjsTurnBudget` 与 `hasStEjsMarkup`）；`st-ejs/variables.ts` 新增 `StEjsVariableBackend`，`initial` 层接台账 `mvu` 子树（`PendingLedgerView` 读写，stage 后 commit，拒绝直接抛错），global 与消息变量留在插件存储；`StEjsRuntimeOptions.backend` 透传；`CoexistApplyResult` 新增 `prepareTurn` 与 `dispose`，st-content 适配器每轮渲染预设静态段并在结束时释放；新增 5 个测试；ADR-0116；门禁通过（223 个测试文件、1989 个测试、5 个跳过）。
   做什么：
   - 接入 `st-content` 的预设、世界书与深度注入：EJS 只作用于来自 ST 的内容，进入槽位前完成；不碰记忆、台账、导演与写作契约等 harness 槽位。
   - 变量来源接到 ST 的变量视图：与 MVU 使用同一份台账数据（`mvu` 子树），读经台账快照，写经待结算视图与结算器校验；全局与消息级变量留在插件自己的存储里，不新建台账事实。

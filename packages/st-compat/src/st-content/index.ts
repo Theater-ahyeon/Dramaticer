@@ -1,6 +1,7 @@
 export * from "./author-note.js";
 export * from "./card.js";
 export * from "./compat-report.js";
+export * from "./ejs-pipeline.js";
 export * from "./macros.js";
 export * from "./persona.js";
 export * from "./preset-mapping.js";
