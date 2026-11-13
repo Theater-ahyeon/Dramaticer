@@ -36,3 +36,4 @@
 | `@types/react` | `packages/web` | dev | React 类型 |
 | `@types/react-dom` | `packages/web` | dev | React DOM 类型 |
 | `@playwright/test` | `packages/web` | dev | 端到端测试运行器与浏览器断言（R5-T12） |
+| `@playwright/test` | `packages/st-compat` | dev | 驱动沙箱 ST 前端逐个组合触发生成（C-T01.b.c） |

@@ -90,6 +90,10 @@ async function createSandboxFixture(): Promise<SandboxFixture> {
 		path.join(dataRoot, "chats", "bob", "chat-two.jsonl.bak"),
 		"x\n",
 	);
+	await writeFile(
+		path.join(dataRoot, "chats", "bob", `bench-${"b".repeat(32)}.jsonl`),
+		`${JSON.stringify({ name: "card-b", is_user: false, mes: "copy" })}\n`,
+	);
 
 	return {
 		repoRoot,
@@ -116,7 +120,7 @@ function runEntry(
 }
 
 describe("沙箱输入发现", () => {
-	it("读出预设、角色卡与聊天片段，并忽略目录与附属文件", async () => {
+	it("读出预设、角色卡与聊天片段，并忽略目录、附属文件与驱动副本", async () => {
 		const fixture = await createSandboxFixture();
 		const inputs = await discoverSandboxInputs({ dataRoot: fixture.dataRoot });
 

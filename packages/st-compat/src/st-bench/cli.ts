@@ -2,6 +2,11 @@ import { stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+	DEFAULT_COMBINATION_TIMEOUT_MS,
+	DEFAULT_DRIVE_RECORDER_PORT,
+	driveSandboxBatch,
+} from "./driver.js";
+import {
 	DEFAULT_SANDBOX_SERVER_PORT,
 	DEFAULT_STUB_MODEL,
 	configureSandboxServer,
@@ -24,7 +29,7 @@ import {
 	stBenchPaths,
 } from "./sandbox.js";
 
-const USAGE = `用法：st-bench <sandbox|record|serve|plan> ...
+const USAGE = `用法：st-bench <sandbox|record|serve|plan|drive> ...
   sandbox --source <SillyTavern 目录> [--target <目录>] [--private-root <目录>]
           [--node-modules link|copy|skip] [--data <相对路径>]... [--replace]
   record [--dir <录制目录>] [--host 127.0.0.1] [--port 8130]
@@ -32,7 +37,10 @@ const USAGE = `用法：st-bench <sandbox|record|serve|plan> ...
   serve [--sandbox <目录>] [--port 8000]
         [--endpoint http://127.0.0.1:8130/v1] [--stub-model <名称>]
         [--configure-only]
-  plan [--sandbox <目录>] [--batch <名称>] [--limit <数量>]`;
+  plan [--sandbox <目录>] [--batch <名称>] [--limit <数量>]
+  drive [--sandbox <目录>] [--batch <名称>] [--limit <数量>]
+        [--port 8000] [--recorder-port 8130] [--stub-model <名称>]
+        [--combination-timeout <秒>] [--headed]`;
 
 export interface StBenchCliOptions {
 	readonly repoRoot?: string;
@@ -66,6 +74,10 @@ export async function runStBenchCli(
 	}
 	if (command === "plan") {
 		await runPlan(args.slice(1), paths, log);
+		return;
+	}
+	if (command === "drive") {
+		await runDrive(args.slice(1), paths, log);
 		return;
 	}
 	throw new Error(USAGE);
@@ -302,6 +314,72 @@ async function runPlan(
 		`组合 ${result.total} 个：新建 ${result.created}，已完成 ${result.completed}，待跑 ${result.pending}，重试 ${result.retried}`,
 	);
 	log(`清单：${path.join(batchDir, RUN_MANIFEST_FILE)}`);
+}
+
+async function runDrive(
+	args: readonly string[],
+	paths: StBenchPaths,
+	log: (message: string) => void,
+): Promise<void> {
+	let sandboxDir = path.join(paths.sandboxDir, "st");
+	let batch = "default";
+	let limit: number | undefined;
+	let port = DEFAULT_SANDBOX_SERVER_PORT;
+	let recorderPort = DEFAULT_DRIVE_RECORDER_PORT;
+	let stubModel = DEFAULT_STUB_MODEL;
+	let combinationTimeoutMs = DEFAULT_COMBINATION_TIMEOUT_MS;
+	let headless = true;
+	for (let index = 0; index < args.length; index += 1) {
+		const arg = args[index];
+		if (arg === "--headed") {
+			headless = false;
+			continue;
+		}
+		if (
+			arg === "--sandbox" ||
+			arg === "--batch" ||
+			arg === "--limit" ||
+			arg === "--port" ||
+			arg === "--recorder-port" ||
+			arg === "--stub-model" ||
+			arg === "--combination-timeout"
+		) {
+			const value = args[index + 1];
+			if (value === undefined) throw new Error(`${arg} 需要一个值`);
+			index += 1;
+			if (arg === "--sandbox") sandboxDir = value;
+			else if (arg === "--batch") batch = assertBatchName(value);
+			else if (arg === "--limit")
+				limit = parsePositiveInteger(value, "--limit");
+			else if (arg === "--port") port = parsePort(value);
+			else if (arg === "--recorder-port") recorderPort = parsePort(value);
+			else if (arg === "--stub-model") stubModel = value;
+			else {
+				combinationTimeoutMs =
+					parsePositiveInteger(value, "--combination-timeout") * 1000;
+			}
+			continue;
+		}
+		throw new Error(`未知参数：${arg}`);
+	}
+	const batchDir = path.join(paths.sandboxDir, "runs", batch);
+	const result = await driveSandboxBatch({
+		sandboxDir,
+		privateRoot: paths.privateRoot,
+		batchDir,
+		port,
+		recorderPort,
+		limit,
+		stubModel,
+		combinationTimeoutMs,
+		headless,
+		log,
+	});
+	log(
+		`驱动结束：完成 ${result.completed}，失败 ${result.failed}，跳过 ${result.skipped}，组合 ${result.total} 个`,
+	);
+	log(`清单：${path.join(batchDir, RUN_MANIFEST_FILE)}`);
+	log(`录制：${path.join(batchDir, "index.jsonl")}`);
 }
 
 function parseNodeModulesMode(value: string): NodeModulesMode {

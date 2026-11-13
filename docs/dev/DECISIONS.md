@@ -1526,3 +1526,24 @@
   - 新增 `packages/st-compat/src/st-bench/plan.ts`，经 `@dramaticer/st-compat` 根导出；CLI 新增 `st-bench plan [--sandbox] [--batch] [--limit]`；无新增依赖。
   - 真实沙箱一次 `plan` 得到 36 个预设、68 张卡、88 个片段与 88 个组合，重复运行不新增行；清单只含标识、楼层与时间，不含提示词与对话正文。
   - C-T01.b.c 的 Playwright 驱动直接使用组合计划与 `appendSandboxRunEntry`，C-T01.c 的比对按组合 id 与序号区间取录制请求。
+
+## ADR-0097 Playwright 驱动的组合生成与端点守护（2026-11-12）
+
+- **背景**：C-T01.b.c 要把组合计划真的跑起来：逐个切换预设、角色卡与聊天片段，触发一次生成，并把录制序号写回 run 清单。ST 1.18 的 UI 把预设、卡片与对话藏在抽屉与菜单里，点击路径长且容易受布局与欢迎页影响；同时预设带 `bind_preset_to_connection` 时会把连接切回预设里保存的渠道，如果驱动照搬预设设置就可能调用真实模型（I14）。驱动还要能中断续跑、失败不阻塞后续组合。
+- **选项**：
+  - 用 Playwright 点击界面控件：最接近人手操作，但需要处理抽屉展开、欢迎页、下拉框滚动与 toast，任何一处布局变化都会让整批失败。
+  - 用 Playwright 打开前端后调用 `SillyTavern.getContext()` 暴露的前端函数：与界面控件走同一套组装与生成代码，不依赖布局；采纳。
+  - 直接请求 ST 的 `/api/backends/...`：绕过前端就不会走预设、世界书与宏的真实组装路径，无法作为一致性测试。
+- **决定**：
+  - `packages/st-compat` 新增 devDependency `@playwright/test` 1.63.0；`st-bench drive` 在进程内同时启动录制服务（默认 8130）与沙箱 ST（默认 8000，复用 C-T01.b.a 的启动器），把端点的录制地址写进沙箱设置。
+  - 每个组合开始前切换预设：通过 `getPresetManager('openai').getPresetList().preset_names` 找到选项值（它同时是前端加载完成的信号），再调用 `selectPreset`。选中角色卡用 `selectCharacterById`（按去掉扩展名的 avatar 匹配），打开片段用 `openCharacterChat`，生成用 `generate('normal')`。`getContext()` 返回的 `characterId` 与 `groupId` 是调用时的快照，轮询时必须重新取上下文。
+  - ST 按角色卡名决定对话目录，片段跨卡配对时不能直接打开；驱动把片段复制到 `chats/<角色名>/` 下的 `bench-<组合 id>.jsonl`，再打开这份副本。输入发现跳过 `bench-<32 位十六进制>.jsonl`，避免驱动自己的副本进入下一批计划。
+  - 每次生成前用 `/api/settings/get` 读回磁盘设置，确认 `chat_completion_source` 是 `custom`、`custom_url` 是录制服务、`custom_model` 是桩模型。切换预设后立即把这三项写回内存与表单，调用 `saveSettingsDebounced` 并轮询设置文件直到三项一致。
+  - 启动沙箱之前把 `OpenAI Settings/*.json` 的连接字段统一改写成录制服务：`chat_completion_source` 设为 `custom`，`custom_url` 与 `custom_model` 设为录制地址与桩模型，`reverse_proxy`、`proxy_password`、`custom_include_headers` 清空；提示词、`prompt_order` 与采样参数保持原样。ST 应用预设时会先对预设里的渠道拉取模型列表，只在切换后改内存设置拦不住这次请求。
+  - 录制序号取 `<批次目录>/index.jsonl` 里以换行结尾的完整行：生成前读最后序号，`running` 行写下一个序号；生成后等到索引出现新行，`completed` 行写实际最小与最大序号。失败组合写 `failed` 与原因（请求已发出时带实际序号范围），然后重建页面继续下一个组合；单组合默认时限 180 秒。
+  - 沙箱目录与批次目录都必须位于私有根目录内部；录制服务与索引都只写批次目录。
+- **影响**：
+  - 新增 `packages/st-compat/src/st-bench/driver.ts`（`driveSandboxBatch`、`prepareSandboxChat`、`sanitizeSandboxPresets`），CLI 新增 `st-bench drive [--sandbox] [--batch] [--limit] [--port] [--recorder-port] [--stub-model] [--combination-timeout] [--headed]`；`@playwright/test` 登记进 `docs/dev/DEPENDENCIES.md`。
+  - 真实沙箱（ST 1.18.0，端口 8899，录制 8130）连跑 3 个组合，每个组合一条请求，`completed` 行的序号范围为 0..0、1..1、2..2；重复运行同一批次跳过已完成组合且不新增请求；人为放入一张 ST 不认识的 `.json` 卡后，第一个组合记失败原因，后两个照常完成。
+  - 两个组合的复跑确认预设连接字段在启动前被改写：录制索引只有 `seq` 0 与 1，`completed` 行范围 0..0 与 1..1；沙箱日志里不再出现预设渠道的模型列表请求。
+  - C-T01.c 的比对按 `completed` 行的序号区间从 `requests/NNNNN.json` 取请求；`core` 不出现 ST 概念（I1）。

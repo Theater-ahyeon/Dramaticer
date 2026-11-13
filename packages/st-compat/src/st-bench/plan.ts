@@ -14,6 +14,8 @@ const CHARACTER_EXTENSIONS: Record<string, true> = {
 	".png": true,
 };
 const CHAT_EXTENSION = ".jsonl";
+/** 驱动把片段复制成 `bench-<组合 id>.jsonl` 放进角色卡目录；这些副本不算输入。 */
+const BENCH_CHAT_PATTERN = /^bench-[0-9a-f]{32}\.jsonl$/i;
 
 const RUN_STATUSES = {
 	pending: true,
@@ -469,6 +471,7 @@ async function walkChats(
 		}
 		if (!entry.isFile()) continue;
 		if (!entry.name.toLowerCase().endsWith(CHAT_EXTENSION)) continue;
+		if (BENCH_CHAT_PATTERN.test(entry.name)) continue;
 		const id = path.relative(root, fullPath).split(path.sep).join("/");
 		output.push({ id, floor: await countChatFloors(fullPath) });
 	}

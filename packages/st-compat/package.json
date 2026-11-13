@@ -46,6 +46,7 @@
 		"reference:cosine": "tsc -b && node dist/reference/cli.js --cosine"
 	},
 	"devDependencies": {
+		"@playwright/test": "1.63.0",
 		"@types/better-sqlite3": "^9.6.0"
 	}
 }
