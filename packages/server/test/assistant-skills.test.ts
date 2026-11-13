@@ -231,6 +231,8 @@ describe("助手技能接口", () => {
 		expect(body.skills.map((skill) => skill.id)).toEqual([
 			"troubleshoot",
 			"guide",
+			"ledger_revision",
+			"strategy",
 		]);
 		expect(body.skills[0]?.name).toBe("排障");
 		expect(body.skills[0]?.defaultPermission).toBe("confirm");
@@ -238,11 +240,13 @@ describe("助手技能接口", () => {
 			TROUBLESHOOT_TOOLS,
 		);
 		expect(body.skills[1]?.tools).toContain("docs_search");
+		expect(body.skills[2]?.tools).toContain("propose_ledger_change");
+		expect(body.skills[3]?.tools).toContain("propose_director_plan");
 
 		const unregistered = await post(
 			running.origin,
 			"/api/assistant/conversations",
-			{ skill: "ledger_revision" },
+			{ skill: "research" },
 		);
 		expect(unregistered.status).toBe(400);
 		expect(
@@ -257,7 +261,7 @@ describe("助手技能接口", () => {
 		const badPatch = await request(
 			running.origin,
 			`/api/assistant/conversations/${conversation.id}`,
-			{ method: "PATCH", body: JSON.stringify({ skill: "strategy" }) },
+			{ method: "PATCH", body: JSON.stringify({ skill: "research" }) },
 		);
 		expect(badPatch.status).toBe(400);
 		const patched = await request(
@@ -352,6 +356,80 @@ describe("助手技能运行", () => {
 		expect((first?.tools ?? []).map((tool) => tool.name).sort()).toEqual(
 			TROUBLESHOOT_TOOLS,
 		);
+	});
+
+	it("台账修订会话通过接口生成待批准卡，不改楼层", async () => {
+		const client = new ScriptedClient([
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: "call-1",
+						name: "propose_ledger_change",
+						arguments: {
+							diffs: [
+								{
+									path: ["relation", "甲", "乙", "affectionInner"],
+									op: "set",
+									value: "亲近",
+								},
+							],
+							explanation: "她刚刚主动出手救人。",
+						},
+					},
+				],
+			},
+			{ text: "已经生成待批准的变更卡。" },
+		]);
+		const running = await startTestServer({ client });
+		running.store.createStory({ id: "story-1", title: "测试故事" });
+		const root = running.store.appendNode({
+			id: "n-root",
+			storyId: "story-1",
+			parentId: null,
+			role: "system",
+			raw: "你是故事引擎。",
+		});
+		running.store.appendNode({
+			id: "n-user",
+			storyId: "story-1",
+			parentId: root.id,
+			role: "user",
+			raw: "我看向她。",
+		});
+		running.store.appendStateDiffs([
+			{
+				storyId: "story-1",
+				nodeId: "n-user",
+				path: ["relation", "甲", "乙", "affectionInner"],
+				op: "set",
+				value: "冷淡",
+				source: "model",
+			},
+		]);
+		const conversation = await createConversation(running.origin, {
+			storyId: "story-1",
+			skill: "ledger_revision",
+		});
+		const response = await post(
+			running.origin,
+			`/api/assistant/conversations/${conversation.id}/messages`,
+			{ text: "把好感度改成亲近。" },
+		);
+		expect(response.status).toBe(200);
+		const stream = await response.text();
+		expect(stream).toContain("assistant.completed");
+		const cards = running.store.listLedgerChangeCards("story-1", {
+			status: "pending",
+		});
+		expect(cards).toHaveLength(1);
+		expect(cards[0]?.source).toBe("assistant");
+		expect(cards[0]?.assistantConversationId).toBe(conversation.id);
+		expect(running.store.getPathToNode("n-user")).toHaveLength(2);
+		expect(running.store.getHead("story-1")?.id).toBe("n-user");
+		expect(
+			running.store.getAssistantMessages(conversation.id).length,
+		).toBeGreaterThan(0);
 	});
 });
 

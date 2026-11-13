@@ -3,11 +3,11 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-13 会话 360：完成 H-T04（排障与使用指南技能）。新增 `packages/core/src/assistant/skills.ts`：`AssistantSkillDefinition` 含 id、名称、说明、系统提示、工具白名单与默认权限，注册 `troubleshoot`（六个只读工具：`explain_node`、`run_log_read`、`ledger_read`、`director_read`、`memory_search`、`state_get`；要求每条结论带楼层 id、Trace 字段、上下文分段 id、检索名次、台账路径或导演机制，缺失写“没有记录”，修正建议只引用可用工具）与 `guide`（`docs_search`、`settings_read`、`template_read`、`plugin_list`；要求引用相对路径与标题）。创建与修改会话按注册表校验，未注册的 id 返回 400 并指出 `skill`；`runAssistantTurn` 改为按本次已注册工具校验白名单（支持 `docs_search` 这类技能附带工具）。新增 `packages/core/src/assistant/docs.ts`：`AssistantDocsIndex.load` 在启动时读取 `DESIGN.md`、`dev/TASKS.md`、`dev/HUMAN.md` 与 `dev/reports/*.md`，按标题路径与文本块切分，三字以上用 trigram 计分，两字退回子串匹配；目录不存在或没有可读文件时抛错并写出路径；`createDocsSearchTool` 返回路径、标题、行号、片段与匹配词。server 新增 `GET /api/assistant/skills`，`startServer` 增加 `docsRoot`（默认仓库 `docs/`），CLI 增加 `--docs-root`；助手消息运行使用技能说明、白名单与 `docs_search` 工具。门禁通过（241 个测试文件、2115 个测试、5 个跳过）；新增 9 个测试。
+- 2026-11-13 会话 361：完成 H-T05（台账修订与参谋技能）。新增 `packages/core/src/assistant/proposals.ts`：`propose_ledger_change` 逐条用 `assertLedgerChangeCardDiff` 与 head 快照校验（`delete` 必须指向已存在路径），以 `sourceNodeId` 为 head、`before` 为 head 快照生成来源 `assistant` 的待批准变更卡；id 由工具名、会话、head、解释与规范化 diffs 生成，同内容复用已有卡；`propose_director_plan` 用 `parseDirectorPlan` 校验后写成 `director_plan` 待确认动作，批准走 `approveAssistantAction` 里的 `replaceDirectorPlan`。技能注册表新增 `ledger_revision`（`ledger_read`、`state_get`、`memory_search`、`propose_ledger_change`）与 `strategy`（`director_read`、`ledger_read`、`memory_search`、`state_get`、`summarize_recent`、`propose_director_plan`），系统提示要求先读事实再提议。新增只读工具 `summarize_recent`，读取有效章节压缩与主线、章节摘要，不调用模型。server 在助手运行里注入两个提案工具；只读级别由 `defineAssistantTool` 拒绝并写 `permission.denied`，确认与自动级别都只生成待确认记录。
 
-## 下一步（会话 361 先做）
-1. **H-T05 台账修订与参谋技能**：注册 `ledger_revision` 与 `strategy`。`propose_ledger_change` 用 `validateLedgerDiff` 与 head 快照生成来源 `assistant` 的待批准台账变更卡（`source_node_id` 取 head、`before` 取 head 快照、相同内容复用待批准卡，批准走 `approveLedgerChangeCard`）；`propose_director_plan` 用现有导演计划解析器校验后写成 `assistant_actions` 的 `director_plan` 待确认动作，批准调用 `replaceDirectorPlan`。参谋读取工具加 `summarize_recent`（复用现有摘要，不新增模型调用）。
-2. 之后按 H-T06 → H-T07 → H-T08 → H-T09 → H-T99 的顺序做。一个会话只做一个任务。
+## 下一步（会话 362 先做）
+1. **H-T06 资料员、卡片工坊与设置向导技能**：注册 `research`（`web_search` 只在 `--assistant-web-search <baseUrl>` 显式开启时注册，经注入的 `AssistantSearchClient` 调用，返回标题、链接、摘要与抓取时间；原作资料写成 `lore` 待确认动作）、`card_workshop`（`card_read` 读人物提示、persona、实体、世界书与模板；`propose_card_change` 生成 `card` 或 `template` 动作）、`setup_wizard`（`settings_read`、`channels_read`、`plugin_list`、`propose_channels_change`、`propose_settings_change`；渠道读取不返回密钥）。批准路径复用 `applyChannelsUpdate`、`updateStorySettings`、`assertContextTemplate` 与现有世界书写入。
+2. 之后按 H-T07 → H-T08 → H-T09 → H-T99 的顺序做。一个会话只做一个任务。
 3. 其余可做任务：X1（依赖已完成）、R6-T00（依赖已满足，但排在 H 之后）。M5-T00 依赖 R6-T99；M6-T99 等待 HUMAN-15；P5 依赖 M5-T99。
 
 ## H 的任务划分（ADR-0125）
@@ -15,7 +15,7 @@
 - **H-T02（已完成）** `runAssistantTurn` 复用 `runDeepTurn`；十个只读工具；事件与状态持久化；消息 SSE、取消、并发 409 与重启后的 `interrupted`；不写楼层、不写 `turn_runs`、不进入剧情上下文。
 - **H-T03（已完成）** 迁移 v45：`assistant_actions` 与台账变更卡来源 `assistant`；三级权限映射；七类载荷校验与批准路径；动作列表、批准、拒绝接口；待确认动作阻止会话删除。
 - **H-T04（已完成）** 技能注册表（`skills.ts`）、排障与使用指南；`docs_search` 从 `--docs-root` 读取文档，trigram 检索，目录缺失时启动失败；`GET /api/assistant/skills`。
-- **H-T05** 台账修订与参谋：`propose_ledger_change` 生成来源 `assistant` 的变更卡，`propose_director_plan` 生成 `director_plan` 待确认动作。
+- **H-T05（已完成）** 台账修订与参谋：`propose_ledger_change` 生成来源 `assistant` 的变更卡，`propose_director_plan` 生成 `director_plan` 待确认动作；`summarize_recent` 只读摘要。
 - **H-T06** 资料员、卡片工坊、设置向导；联网搜索必须显式开启；渠道读取不返回密钥；渠道动作批准复用 `applyChannelsUpdate`。
 - **H-T07** web 抽屉、会话搜索与改名、技能与权限选择、事件续读、关闭后继续运行与状态标记。
 - **H-T08** 迁移 v46：`assistant_compactions`；自动与手动压缩、用量环；预算与正剧记忆独立。
@@ -25,7 +25,7 @@
 ## H 设计要点
 - 助手会话可以关联故事，也可以不关联；消息与事件独立于 `nodes`、`state_diffs`、`turn_runs`。
 - 助手运行不调用 `generateAssistantTurn`，不组装剧情上下文；正剧上下文也不读取助手消息。
-- 工具白名单不含草稿、提交、导演手记、正文写入、台账直接写入与生图。技能注册表按 id 拒绝未注册技能；`H-T05`、`H-T06` 注册其余五个技能。
+- 工具白名单不含草稿、提交、导演手记、正文写入、台账直接写入与生图。技能注册表按 id 拒绝未注册技能；`H-T06` 注册其余三个技能。
 - 三级权限：只读只执行 `read`；确认执行 `read` 与 `control`，提案与外部影响写成待确认动作；自动级别只有 `channels` 直接执行，其余种类仍然待确认。台账修改永远只生成变更卡，任何级别都不能自动批准。
 - 待确认动作的载荷在创建与批准时各校验一次；批准失败保留 `pending`。同一会话内相同 `kind` 与规范化载荷的待定动作复用同一条记录。拒绝必须写原因。
 - 台账变更卡锚定当前 head：`source_node_id` 取 head，`before` 取 head 快照，批准复用 `approveLedgerChangeCard`，事实来源为 `player`；助手卡片记录 `assistant_conversation_id`。
@@ -33,15 +33,16 @@
 - 助手默认模型是 `roles.writer` 解析到的别名，会话可以覆盖；不新增渠道角色。
 - 请求与响应类型放在 `packages/protocol`，运行时放在 `packages/core/src/assistant`，server 处理放在 `packages/server/src/assistant.ts`，web 放在 `packages/web/src/assistant`。
 
-## 技能与文档检索
-- `packages/core/src/assistant/skills.ts`：`listAssistantSkills`、`getAssistantSkill`、`requireAssistantSkill`、`isAssistantSkillRegistered`；创建与 PATCH 会话都用注册表校验。
-- `troubleshoot` 白名单六个只读工具；`guide` 白名单 `docs_search`、`settings_read`、`template_read`、`plugin_list`。白名单里的工具名必须在本次运行实际注册，否则 `runAssistantTurn` 在切换运行状态之前抛错。
-- `docs_search` 是技能附带工具（`createDocsSearchTool`），由 server 通过 `extraTools` 注入；它不是默认只读工具，`ASSISTANT_TOOL_NAMES` 保持十个。
-- `AssistantDocsIndex.load` 每次启动读取文档并建立内存索引；三字以上用 trigram 交集计分（标题权重 2），少于三字用子串。`docs_search` 返回 `路径:行号 标题「…」`、`匹配词` 与 `片段`；零命中明确写没有命中。
-- 文档目录缺失、不是目录或没有可读文件都让 `startServer` 失败；server 测试不传 `docsRoot` 时使用仓库 `docs/`。
+## 技能与提案工具
+- `packages/core/src/assistant/skills.ts`：`listAssistantSkills`、`getAssistantSkill`、`requireAssistantSkill`、`isAssistantSkillRegistered`；创建与 PATCH 会话都用注册表校验。已注册 `troubleshoot`、`guide`、`ledger_revision`、`strategy`；`research`、`card_workshop`、`setup_wizard` 留给 H-T06。
+- `troubleshoot` 六个只读工具；`guide` 为 `docs_search`、`settings_read`、`template_read`、`plugin_list`；`ledger_revision` 为 `ledger_read`、`state_get`、`memory_search`、`propose_ledger_change`；`strategy` 为 `director_read`、`ledger_read`、`memory_search`、`state_get`、`summarize_recent`、`propose_director_plan`。
+- 白名单里的工具名必须在本次运行实际注册，否则 `runAssistantTurn` 在切换运行状态之前抛错。`docs_search` 与两个提案工具都通过 server 的 `extraTools` 注入。
+- `packages/core/src/assistant/proposals.ts`：`createAssistantProposalTools` 返回两个权限为 `propose` 的工具。台账卡 id 由工具名、会话、head、解释与规范化 diffs 生成；head 改变后同内容会生成新卡。`delete` 指向不存在路径时直接失败。
+- `propose_director_plan` 的参数是 `{plan, summary?}`；省略 `summary` 时用弧线标题拼一句摘要。动作种类 `director_plan` 的载荷固定为 `{plan}`。
+- `summarize_recent` 是第十一个只读工具：返回 `getValidCompressions` 与 `getValidSummaries` 的内容；没有记录时明确写“没有摘要记录”。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a 至 P2.g、P3.a 至 P3.f、P4.a 至 P4.f、C-T01.a 至 C-T01.d、C-T02.a 至 C-T02.f、C-T03.a 至 C-T03.d、C-T04.a、C-T04.b.a、C-T04.b.b、C-T04.c.a、C-T04.c.b、C-T04.c.c、C-T04.c.d、C-T04.d、C-T05.a 至 C-T05.f、H-T00、H-T01、H-T02、H-T03、H-T04。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a 至 P2.g、P3.a 至 P3.f、P4.a 至 P4.f、C-T01.a 至 C-T01.d、C-T02.a 至 C-T02.f、C-T03.a 至 C-T03.d、C-T04.a、C-T04.b.a、C-T04.b.b、C-T04.c.a、C-T04.c.b、C-T04.c.c、C-T04.c.d、C-T04.d、C-T05.a 至 C-T05.f、H-T00、H-T01、H-T02、H-T03、H-T04、H-T05。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
 - 兼容插件线：`st-content`、`st-mvu`、`st-ejs`、`st-helper-host` 全部完成（含一致性测试与共存评测）。
 - 数据库 schema 版本 45；v46 预留给助手的压缩记录。本轮没有新增依赖。
 - 报告：`docs/dev/reports/P2.md`、`P3.md`、`P4.md`、`C-T01.md`、`C-T02.md`、`C-T03.md`、`C-T04.md`、`C-T05.md`。
@@ -57,6 +58,7 @@
 
 ## 可重复命令
 - 门禁：`pnpm check`。
+- H-T05 目标测试：`pnpm exec vitest run packages/core/test/assistant-proposals.test.ts packages/core/test/assistant-skills.test.ts packages/server/test/assistant-skills.test.ts`。
 - H-T04 目标测试：`pnpm exec vitest run packages/core/test/assistant-skills.test.ts packages/server/test/assistant-skills.test.ts packages/server/test/config.test.ts`。
 - H-T03 目标测试：`pnpm exec vitest run packages/core/test/assistant-actions.test.ts packages/core/test/assistant-runtime.test.ts packages/core/test/assistant-store.test.ts packages/server/test/assistant.test.ts packages/core/test/ledger-cards.test.ts`。
 - H-T02 目标测试：`pnpm exec vitest run packages/core/test/assistant-runtime.test.ts packages/server/test/assistant.test.ts`。
@@ -94,9 +96,12 @@
 - 助手工具的 `permission` 是助手自己的三级权限判定；传给深回合执行器时统一为 `read`，否则执行器会把 `propose` 与 `side_effect` 当成剧情写入语义处理。新增提案工具用 `defineAssistantTool` 包装，工具内部调用 `assistantActionGate` 与 `store.createAssistantAction`。
 - `assistant_actions` 的待定唯一索引以规范化 JSON 载荷为键；同会话同种类同载荷复用已有待定动作。批准顺序是先校验、再调用领域写入、最后改状态，失败时动作保持 `pending`。
 - 台账变更卡来源增加 `assistant` 后，`assistantConversationId` 只允许助手来源填写；批准仍走 `approveLedgerChangeCard`，事实来源为 `player`，任何权限级别都不能自动批准。
-- 技能注册表以 `packages/core/src/assistant/skills.ts` 为唯一来源；新增技能在 H-T05、H-T06 注册，server 端创建与 PATCH 会话都按注册表返回 400。测试里创建会话只能使用 `troubleshoot` 与 `guide`。
-- 技能白名单里的工具名必须在本次运行实际注册：`docs_search` 由 server 以 `extraTools` 注入，未注入时带该名字的技能会让 `runAssistantTurn` 在切换运行状态前抛错。
+- 技能注册表以 `packages/core/src/assistant/skills.ts` 为唯一来源；新增技能在 H-T06 注册，server 端创建与 PATCH 会话都按注册表返回 400。测试里创建会话只能使用已注册的四个技能。
+- 技能白名单里的工具名必须在本次运行实际注册：`docs_search` 与两个提案工具由 server 以 `extraTools` 注入，未注入时带该名字的技能会让 `runAssistantTurn` 在切换运行状态前抛错。
 - `AssistantDocsIndex.load` 每次 `startServer` 都会读取并切分文档（约 1.6 MB），server 测试的启动耗时会增加数百毫秒；不要在测试里传不存在的 `docsRoot`，除非就是要验证启动失败。
+- 提案工具在 server 里对所有会话注入，靠白名单过滤；只读级别仍会收到工具定义，但执行被 `defineAssistantTool` 拒绝并写 `permission.denied`。不要在 server 里按权限过滤工具名，否则 `runAssistantTurn` 会因白名单工具缺失抛错。
+- 台账变更卡 id 包含当前 head：同一内容在 head 未变时复用同一张卡，head 变化后会生成新卡。已批准或已拒绝的同内容卡存在时不再新建，工具结果会写明状态。
+- `summarize_recent` 只读现有压缩与摘要；新增摘要仍然走后台任务，不要在助手工具里调用模型生成摘要（I11、I13）。
 - 新增的格式化与 lint 用 `pnpm exec biome check --write <文件>`，不要手写格式。
 - 修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 的请求写进 HUMAN.md。
 - 不变量：I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖其他工作区包，I17 回合内插件钩子有时间预算，I18 插件权限必须声明。

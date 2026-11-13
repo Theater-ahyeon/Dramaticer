@@ -32,6 +32,7 @@ export const ASSISTANT_TOOL_NAMES = [
 	"settings_read",
 	"template_read",
 	"plugin_list",
+	"summarize_recent",
 ] as const;
 
 export type AssistantToolName = (typeof ASSISTANT_TOOL_NAMES)[number];
@@ -316,6 +317,42 @@ export function createAssistantTools(
 					payload.overrides = settings.pluginOverrides;
 				}
 				return `插件：\n${JSON.stringify(payload, null, 2)}`;
+			},
+		),
+		define(
+			"summarize_recent",
+			"读取当前 head 路径上已有的章节压缩与主线、章节摘要，不生成新摘要也不调用模型。只读。",
+			objectSchema({}, []),
+			"读取摘要……",
+			(args) => {
+				rejectUnknownKeys(args, []);
+				const scope = requireStoryHead(context);
+				const compressions = context.store.getValidCompressions(
+					scope.storyId,
+					scope.headId,
+				);
+				const summaries = context.store.getValidSummaries(
+					scope.storyId,
+					scope.headId,
+				);
+				if (compressions.length === 0 && summaries.length === 0) {
+					return `故事 ${scope.storyId} 在 head ${scope.headId} 上没有摘要记录。`;
+				}
+				const lines: string[] = [];
+				for (const compression of compressions) {
+					lines.push(
+						`【压缩 ${compression.level}】覆盖 ${compression.startNodeId} 到 ${compression.endNodeId}，约 ${compression.tokenCount} token：`,
+					);
+					for (const [section, text] of Object.entries(compression.sections)) {
+						lines.push(`${section}：${text}`);
+					}
+				}
+				for (const summary of summaries) {
+					lines.push(
+						`【${summary.level === "chapter" ? "章节" : "主线"}摘要】覆盖 ${summary.startNodeId} 到 ${summary.endNodeId}，约 ${summary.tokenCount} token：${summary.text}`,
+					);
+				}
+				return `故事 ${scope.storyId} 在 head ${scope.headId} 上的已有摘要：\n${lines.join("\n")}`;
 			},
 		),
 	];

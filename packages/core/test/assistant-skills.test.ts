@@ -4,6 +4,8 @@ import { describe, expect, it, onTestFinished } from "vitest";
 import {
 	AssistantDocsIndex,
 	GUIDE_TOOL_NAMES,
+	LEDGER_REVISION_TOOL_NAMES,
+	STRATEGY_TOOL_NAMES,
 	TROUBLESHOOT_TOOL_NAMES,
 	buildAssistantSystemPrompt,
 	createDocsSearchTool,
@@ -60,10 +62,12 @@ function writeDocs(root: string): void {
 }
 
 describe("助手技能注册表", () => {
-	it("注册排障与使用指南，未注册的技能被拒绝", () => {
+	it("注册四个技能，未注册的技能被拒绝", () => {
 		expect(listAssistantSkills().map((skill) => skill.id)).toEqual([
 			"troubleshoot",
 			"guide",
+			"ledger_revision",
+			"strategy",
 		]);
 		const troubleshoot = requireAssistantSkill("troubleshoot");
 		expect(troubleshoot.name).toBe("排障");
@@ -75,13 +79,23 @@ describe("助手技能注册表", () => {
 		expect(guide.toolNames).toEqual([...GUIDE_TOOL_NAMES]);
 		expect(guide.instructions).toContain("docs_search");
 		expect(guide.instructions).toContain("路径与标题");
+		const ledgerRevision = requireAssistantSkill("ledger_revision");
+		expect(ledgerRevision.name).toBe("台账修订");
+		expect(ledgerRevision.toolNames).toEqual([...LEDGER_REVISION_TOOL_NAMES]);
+		expect(ledgerRevision.instructions).toContain("待批准");
+		expect(ledgerRevision.defaultPermission).toBe("confirm");
+		const strategy = requireAssistantSkill("strategy");
+		expect(strategy.name).toBe("参谋");
+		expect(strategy.toolNames).toEqual([...STRATEGY_TOOL_NAMES]);
+		expect(strategy.toolNames).toContain("summarize_recent");
 
 		expect(getAssistantSkill("guide")).toBe(guide);
-		expect(getAssistantSkill("strategy")).toBeNull();
-		expect(() => requireAssistantSkill("ledger_revision")).toThrow(
-			/助手技能未注册：ledger_revision/,
+		expect(getAssistantSkill("research")).toBeNull();
+		expect(() => requireAssistantSkill("research")).toThrow(
+			/助手技能未注册：research/,
 		);
 		expect(isAssistantSkillRegistered("troubleshoot")).toBe(true);
+		expect(isAssistantSkillRegistered("ledger_revision")).toBe(true);
 		expect(isAssistantSkillRegistered("research")).toBe(false);
 		expect(isAssistantSkillRegistered(42)).toBe(false);
 	});

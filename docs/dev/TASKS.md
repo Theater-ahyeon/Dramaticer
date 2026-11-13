@@ -1504,7 +1504,8 @@
   - `GET /api/assistant/skills` 返回已注册技能的名称、说明、默认权限与工具名；使用指南会话的系统提示要求引用来源路径与标题，回答“怎么用”时优先引用内置文档。
   验收：排障会话用假客户端时能调用 `explain_node`，回答包含楼层 id 与具体字段；没有运行记录或检索记录的楼层明确写“没有记录”；使用指南的中文两字查询命中文档路径与标题；文档目录缺失时启动失败并指出路径；未注册技能创建会话被拒绝；工具本身零模型调用；`pnpm check` 通过。
 
-- [ ] **H-T05 台账修订与参谋技能** | 依赖：H-T03、R1-T07.a、R4-T99 | DESIGN §10.3 | ADR-0125 | I12、I13
+- [x] **H-T05 台账修订与参谋技能** | 依赖：H-T03、R1-T07.a、R4-T99 | DESIGN §10.3 | ADR-0125 | I12、I13
+  完成：2026-11-13 注册 `ledger_revision` 与 `strategy`；新增 `assistant/proposals.ts` 的 `propose_ledger_change`（逐条用 `assertLedgerChangeCardDiff` 与 head 快照校验，`delete` 要求路径存在，稳定 id 复用同内容待批准卡，生成来源 `assistant` 的变更卡并锚定当前 head）与 `propose_director_plan`（`parseDirectorPlan` 校验后写成 `director_plan` 待确认动作，批准走 `replaceDirectorPlan`）；新增只读工具 `summarize_recent`（读取有效压缩与摘要，不调用模型）；server 在助手运行里注入提案工具；门禁通过（242 个测试文件、2124 个测试、5 个跳过）
   做什么：
   - 注册 `ledger_revision`（台账修订）：工具 `propose_ledger_change`（权限 `propose`）接收 `{diffs: [{path, op, value?}], explanation}`，逐条用 `validateLedgerDiff` 与 head 快照校验，`delete` 必须指向已存在的路径；生成 `before` 快照与待批准的台账变更卡，来源 `assistant`，`text` 写解释，`source_node_id` 取当前 head；内容相同的待批准卡不重复创建。批准走现有 `approveLedgerChangeCard`，写入的事实来源为 `player`。
   - 注册 `strategy`（参谋）：工具 `propose_director_plan`（权限 `propose`）接收弧线、序列与拍的草案，用现有导演计划解析器校验后写成 `assistant_actions` 的 `director_plan` 待确认动作；批准调用 `replaceDirectorPlan`，拒绝不改计划。参谋的读取工具为 `director_read`、`ledger_read`、`memory_search`、`state_get`、`summarize_recent`（复用现有章节压缩或最近楼层摘要，不生成新模型调用）。
