@@ -1723,6 +1723,6 @@
   - 路径与新增键拒绝 `__proto__`、`constructor`、`prototype`，避免模型输出污染对象原型。
   - 变量结构是 zod 卡脚本的产物；本任务先消费酒馆消息变量里保存的结构 JSON，执行卡内 zod 脚本需要酒馆助手宿主（C-T05）的沙箱，接入放在 C-T03.d，届时用同一套 `parseMvuSchema` 与 `validateMvuSchemaValue` 校验。
 - **影响**：
-  - 新增 `packages/st-compat/test/st-mvu.test.ts` 16 个测试，覆盖条目筛选与合并、代码块与开场白覆盖、`$meta` 与递归扩展、结构读回、补丁解析、值说明保留与 `strictSet`、锁定结构、模板、数字转换、JSON Pointer 与移动、非法操作逐条拒绝、原型污染键。
+  - 新增 `packages/st-compat/test/st-mvu.test.ts` 17 个测试，覆盖条目筛选与合并、代码块与开场白覆盖、`$meta` 与递归扩展、结构读回、补丁解析、值说明保留与 `strictSet`、锁定结构、模板、数字转换、JSON Pointer 与移动、非法操作逐条拒绝、原型污染键。
   - `core` 无改动（I1、I15）；引擎不写楼层与台账（I4、I12），C-T03.b 再把结果映射为 `mvu` 命名空间的待结算 diff。
   - 没有新增运行时依赖。

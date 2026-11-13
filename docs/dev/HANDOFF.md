@@ -11,7 +11,7 @@
   - `parseMvuUpdate(text)` 从所有 `<UpdateVariable>` 里取 `<Analysis>` 与 `<JSONPatch>`；支持 `replace`、`delta`、`insert`/`add`、`remove`、`move`，路径是 JSON Pointer，数组追加用 `/-`。非法 JSON 整段拒绝，未知操作逐条拒绝。
   - `applyMvuPatch(state, operations)` 每条操作在副本上执行并整份校验，失败只拒绝该条（`rejected[].reason` 以路径开头），合法操作保留。返回 `{data, schema, options, applied, rejected}`。
   - `[值, 说明]`：长度 2 且第二个元素是字符串；未开 `strictSet` 时 `replace`/`delta` 只改第 0 个元素；结构操作必须显式写到 `[0]` 或更深，否则拒绝。数字结构允许数字字符串转换；路径与新增键拒绝 `__proto__`、`constructor`、`prototype`。
-- 新增 16 个测试 `packages/st-compat/test/st-mvu.test.ts`；ADR-0107；`core` 无改动，无新增依赖；门禁通过（206 个测试文件、1850 个测试、5 个跳过）。
+- 新增 17 个测试 `packages/st-compat/test/st-mvu.test.ts`；ADR-0107；`core` 无改动，无新增依赖；门禁通过（206 个测试文件、1851 个测试、5 个跳过）。
 
 ## 下一步（会话 336 先做）
 1. 按 TASKS 从上往下选：**C-T03.b 台账命名空间与待结算视图**。用 `applyMvuPatch` 把当前 `mvu` 快照算出新值，再用 `diffSnapshots`（`packages/st-compat/src/state-diff.ts`）比较前后快照，路径经 `mvuLedgerPath` 变成 `["mvu", ...]`。
@@ -49,7 +49,7 @@
 
 ## 可重复命令
 - 门禁：`pnpm check`。
-- C-T03.a 目标测试：`pnpm exec vitest run packages/st-compat/test/st-mvu.test.ts`（16 个）。
+- C-T03.a 目标测试：`pnpm exec vitest run packages/st-compat/test/st-mvu.test.ts`（17 个）。
 - C-T02.f 目标测试：`pnpm exec vitest run packages/st-compat/test/st-content-compat-report.test.ts packages/st-compat/test/st-content-coexist.test.ts packages/st-compat/test/st-bench-coexist.test.ts`。
 - 预设报告：`pnpm --filter @dramaticer/st-compat build && node packages/st-compat/dist/st-bench/cli.js preset --preset <预设.json> --card <卡> [--out <报告.md>]`。
 - C-T02.e 目标测试：`pnpm exec vitest run packages/st-compat/test/chat-export.test.ts packages/st-compat/test/chat-jsonl.test.ts packages/st-compat/test/chat-import.test.ts`。

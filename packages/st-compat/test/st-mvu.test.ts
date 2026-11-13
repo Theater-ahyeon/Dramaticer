@@ -347,4 +347,18 @@ describe("路径与移动", () => {
 		expect(result.rejected).toHaveLength(1);
 		expect(({} as Record<string, unknown>).污染).toBeUndefined();
 	});
+
+	it("数组下标越界被拒绝并指出位置", () => {
+		const state = initvarState({
+			清单: ["$__META_EXTENSIBLE__$", "a", "b", "c"],
+		});
+		const result = applyMvuPatch(state, [
+			{ op: "remove", path: "/清单/9" },
+			{ op: "replace", path: "/清单/-", value: "x" },
+		]);
+		expect(result.rejected).toHaveLength(2);
+		expect(result.rejected[0]?.reason).toContain("/清单/9");
+		expect(result.rejected[0]?.reason).toContain("越界");
+		expect(result.data).toEqual({ 清单: ["a", "b", "c"] });
+	});
 });

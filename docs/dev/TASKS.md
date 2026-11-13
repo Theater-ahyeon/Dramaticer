@@ -1321,7 +1321,7 @@
   总验收（四个子任务全部完成后由 C-T03.d 逐条核对）：一致性测试的 MVU 用例全部通过；非法更新经结算器修复或拒绝并留 Trace；原楼层原文不可修改（I4）；MVU 变量与台账是同一套数据，没有第二份事实，读取路径与结算路径的测试证明这一点；开启与关闭本插件的对照评测里原生指标不明显变差（ADR-0040）。
 
 - [x] **C-T03.a MVU 变量引擎** | 依赖：C-T02
-  完成：2026-11-13 新增 `packages/st-compat/src/st-mvu/`：`initvar` 读取 `[initvar]` 条目（YAML/JSON、代码块、`<initvar>` 块）、多条目深度合并与开场白覆盖；`$meta` 提取 `extensible`、`required`、`recursiveExtensible`、`template`、`$__META_EXTENSIBLE__$`、`$arrayMeta`、根级 `strictSet`/`strictTemplate`/`concatTemplateArray` 并生成与酒馆同形的结构；`<UpdateVariable>`/`<JSONPatch>` 支持 `replace`、`delta`、`insert`/`add`、`remove`、`move`、JSON Pointer 与 `/-`；`[值, 说明]` 保留说明，`strictSet` 关闭隐式保留；每条操作在副本上执行并按结构校验，非法条目逐条拒绝并给出路径，原型污染键被拒绝；16 个测试；ADR-0107；门禁通过（206 个测试文件、1850 个测试、5 个跳过）
+  完成：2026-11-13 新增 `packages/st-compat/src/st-mvu/`：`initvar` 读取 `[initvar]` 条目（YAML/JSON、代码块、`<initvar>` 块）、多条目深度合并与开场白覆盖；`$meta` 提取 `extensible`、`required`、`recursiveExtensible`、`template`、`$__META_EXTENSIBLE__$`、`$arrayMeta`、根级 `strictSet`/`strictTemplate`/`concatTemplateArray` 并生成与酒馆同形的结构；`<UpdateVariable>`/`<JSONPatch>` 支持 `replace`、`delta`、`insert`/`add`、`remove`、`move`、JSON Pointer 与 `/-`；`[值, 说明]` 保留说明，`strictSet` 关闭隐式保留；每条操作在副本上执行并按结构校验，非法条目逐条拒绝并给出路径，原型污染键被拒绝；17 个测试；ADR-0107；门禁通过（206 个测试文件、1851 个测试、5 个跳过）
   做什么：
   - 先搭一致性测试并让它变红，再实现纯函数引擎：`initvar`（世界书 `[initvar]` 条目、YAML/JSON、多条目合并、开场白 `<initvar>` 覆盖）、`$meta`（`extensible`、`required`、`recursiveExtensible`、`template`、`$__META_EXTENSIBLE__$`、`$arrayMeta`、根级 `strictSet`/`strictTemplate`/`concatTemplateArray`）与生成的变量结构。
   - `<UpdateVariable>` 与 `<JSONPatch>` 解析（`replace`、`delta`、`insert`/`add`、`remove`、`move`，JSON Pointer 与 `/-`）；`[值, 说明]` 的保留与 `strictSet`；按变量结构校验类型、必填键与可扩展性，非法操作逐条拒绝并给出原因。
