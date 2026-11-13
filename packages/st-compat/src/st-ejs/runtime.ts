@@ -10,11 +10,19 @@ import {
 	applyStEjsActivatedRegexes,
 	createStEjsActivatedRegex,
 } from "./activate-regex.js";
+import { StEjsDataReader, type StEjsDataSource } from "./data.js";
 import { evaluateStEjsDecoratorCondition } from "./decorators.js";
 import {
 	type StEjsInitialVariablesParse,
 	parseStEjsInitialVariables,
 } from "./injection.js";
+import { applyStEjsJsonPatch, parseStEjsJson } from "./json.js";
+import {
+	type StEjsVariableSchemaNode,
+	assertStEjsSchemaValue,
+	assertStEjsVariableSchema,
+	findStEjsSchemaNode,
+} from "./schema.js";
 import {
 	type StEjsMessageFilter,
 	type StEjsMessageRole,
@@ -28,6 +36,16 @@ import {
 	isStEjsMessageRole,
 	normalizeStEjsVariableOptions,
 } from "./variables.js";
+import {
+	type StEjsActivatedWorldInfoEntryData,
+	type StEjsTokenUsage,
+	StEjsWorldInfo,
+	type StEjsWorldInfoEntryData,
+	type StEjsWorldInfoKeywordOptions,
+	type StEjsWorldInfoOptions,
+	type StEjsWorldInfoReadOptions,
+	defaultStEjsTokenEstimator,
+} from "./world-info.js";
 
 /**
  * ST-Prompt-Template 的 EJS 运行时：一个实例对应一次生成或一次消息渲染。
@@ -49,6 +67,13 @@ export interface StEjsRuntimeOptions {
 	readonly preparation?: boolean;
 	/** `<%=` 的输出格式化；生成阶段不传，消息渲染由调用方传入。 */
 	readonly formatEscaped?: (value: string) => string;
+	/** 世界书、角色卡、预设与快捷回复的数据由调用方注入。 */
+	readonly worldInfo?: StEjsWorldInfoOptions;
+	readonly data?: StEjsDataSource;
+	/** `getwi` 结果的 token 估算；缺省用 core 的估算器。 */
+	readonly estimateTokens?: (text: string) => number;
+	/** `getwi` 输出的 token 上限；不传时不限制。 */
+	readonly tokenBudget?: number;
 }
 
 export interface StEjsRenderOptions {
@@ -201,9 +226,12 @@ export class StEjsRuntime {
 	readonly variables: StEjsVariableStore;
 	readonly #messages: readonly StEjsChatMessage[];
 	readonly #formatEscaped: (value: string) => string;
+	readonly #data: StEjsDataReader;
+	readonly #worldInfo: StEjsWorldInfo;
 	readonly #definitions = new Map<string, unknown>();
 	readonly #injections: StEjsPromptInjection[] = [];
 	readonly #regexes: StEjsActivatedRegexScript[] = [];
+	#variableSchema: StEjsVariableSchemaNode | null = null;
 	#evalDepth = 0;
 
 	constructor(options: StEjsRuntimeOptions = {}) {
@@ -223,6 +251,33 @@ export class StEjsRuntime {
 			}
 		}
 		this.#formatEscaped = options.formatEscaped ?? stringifyOutput;
+		this.#data = new StEjsDataReader(options.data ?? {});
+		const estimateTokens = options.estimateTokens ?? defaultStEjsTokenEstimator;
+		this.#worldInfo = new StEjsWorldInfo(
+			{
+				...(options.worldInfo ?? {}),
+				messages:
+					options.worldInfo?.messages ??
+					this.#messages.map((message) => readMessageContent(message)),
+			},
+			{
+				render: (text, source) => this.#render(text, { source }, {}),
+				estimateTokens,
+			},
+			options.tokenBudget ?? null,
+		);
+	}
+
+	getTokenUsage(): readonly StEjsTokenUsage[] {
+		return this.#worldInfo.getTokenUsage();
+	}
+
+	getTokenTotal(): number {
+		return this.#worldInfo.getTokenTotal();
+	}
+
+	setTokenBudget(tokens: number | null): void {
+		this.#worldInfo.setBudgetTokens(tokens);
 	}
 
 	getWrites(): readonly StEjsVariableWrite[] {
@@ -275,6 +330,103 @@ export class StEjsRuntime {
 		const parsed = parseStEjsInitialVariables(text);
 		this.variables.addInitialVariables(parsed.variables);
 		return parsed;
+	}
+
+	async getWorldInfo(
+		worldOrKey: string,
+		keyOrOptions?: string | StEjsWorldInfoReadOptions,
+		maybeOptions?: StEjsWorldInfoReadOptions,
+	): Promise<string> {
+		return this.#worldInfo.getWorldInfo(worldOrKey, keyOrOptions, maybeOptions);
+	}
+
+	activateWorldInfo(
+		world: string,
+		keys?: string | readonly string[],
+	): readonly StEjsActivatedWorldInfoEntryData[] {
+		return this.#worldInfo.activateWorldInfo(world, keys);
+	}
+
+	activateWorldInfoByKeywords(
+		text: string,
+		options: StEjsWorldInfoKeywordOptions = {},
+	): readonly StEjsActivatedWorldInfoEntryData[] {
+		return this.#worldInfo.activateWorldInfoByKeywords(text, options);
+	}
+
+	getWorldInfoData(world?: string): readonly StEjsWorldInfoEntryData[] {
+		return this.#worldInfo.getWorldInfoData(world);
+	}
+
+	getWorldInfoActivatedData(): readonly StEjsActivatedWorldInfoEntryData[] {
+		return this.#worldInfo.getWorldInfoActivatedData();
+	}
+
+	getEnabledWorldInfoEntries(
+		world?: string,
+	): readonly StEjsWorldInfoEntryData[] {
+		return this.#worldInfo.getEnabledWorldInfoEntries(world);
+	}
+
+	selectActivatedEntries(
+		candidates:
+			| string
+			| StEjsWorldInfoEntryData
+			| readonly (string | StEjsWorldInfoEntryData)[],
+	): readonly StEjsActivatedWorldInfoEntryData[] {
+		return this.#worldInfo.selectActivatedEntries(candidates);
+	}
+
+	getCharData(field?: string): unknown {
+		return this.#data.getCharData(field);
+	}
+
+	getPreset(name?: string): unknown {
+		return this.#data.getPreset(name);
+	}
+
+	getQuickReply(setOrLabel: string, label?: string): string {
+		return this.#data.getQuickReply(setOrLabel, label);
+	}
+
+	getQuickReplyData(name?: string): unknown {
+		return this.#data.getQuickReplyData(name);
+	}
+
+	/** 记录变量结构；之后的 `setvar` 与 `patchVariables` 按它校验。 */
+	setVariableSchema(schema: unknown): StEjsVariableSchemaNode | null {
+		assertStEjsVariableSchema(schema);
+		const previous = this.#variableSchema;
+		this.#variableSchema = lodash.cloneDeep(schema);
+		return previous;
+	}
+
+	/** 把 RFC 6902 补丁应用到合并视图，变化落到目标作用域。 */
+	patchVariables(
+		patch: readonly unknown[],
+		input?: StEjsVariableOptionsInput,
+	): StEjsVariableTree {
+		const before = lodash.cloneDeep(this.variables.variables);
+		const next = applyStEjsJsonPatch(before, patch);
+		if (typeof next !== "object" || next === null || Array.isArray(next)) {
+			throw new StEjsVariableError("patchVariables 的结果必须是对象");
+		}
+		const options = normalizeStEjsVariableOptions(input);
+		if (this.#variableSchema !== null) {
+			assertStEjsSchemaValue(this.#variableSchema, next, "变量");
+		}
+		const after = next as StEjsVariableTree;
+		const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+		for (const key of keys) {
+			if (!Object.hasOwn(after, key)) {
+				this.variables.remove(key, undefined, options);
+				continue;
+			}
+			if (!lodash.isEqual(before[key], after[key])) {
+				this.variables.assign(key, after[key], options);
+			}
+		}
+		return this.variables.variables;
 	}
 
 	/** 渲染一段模板。准备阶段的写入拦截由 `StEjsVariableStore` 负责。 */
@@ -334,7 +486,7 @@ export class StEjsRuntime {
 			key: string | null,
 			value: unknown,
 			options?: StEjsVariableOptionsInput,
-		) => store.assign(key, value, options);
+		) => this.#assignVariable(key, value, options);
 		const incvar = (
 			key: string,
 			value = 1,
@@ -480,6 +632,48 @@ export class StEjsRuntime {
 				replacement: string | StEjsRegexReplacementFunction,
 				options?: StEjsActivateRegexOptions,
 			) => this.activateRegex(pattern, replacement, options ?? {}),
+			getwi: (
+				worldOrKey: string,
+				keyOrOptions?: string | StEjsWorldInfoReadOptions,
+				maybeOptions?: StEjsWorldInfoReadOptions,
+			) => this.getWorldInfo(worldOrKey, keyOrOptions, maybeOptions),
+			getWorldInfo: (
+				worldOrKey: string,
+				keyOrOptions?: string | StEjsWorldInfoReadOptions,
+				maybeOptions?: StEjsWorldInfoReadOptions,
+			) => this.getWorldInfo(worldOrKey, keyOrOptions, maybeOptions),
+			activewi: (world: string, keys?: string | readonly string[]) =>
+				this.activateWorldInfo(world, keys),
+			activateWorldInfo: (world: string, keys?: string | readonly string[]) =>
+				this.activateWorldInfo(world, keys),
+			activateWorldInfoByKeywords: (
+				text: string,
+				options?: StEjsWorldInfoKeywordOptions,
+			) => this.activateWorldInfoByKeywords(text, options ?? {}),
+			getWorldInfoData: (world?: string) => this.getWorldInfoData(world),
+			getWorldInfoActivatedData: () => this.getWorldInfoActivatedData(),
+			getEnabledWorldInfoEntries: (world?: string) =>
+				this.getEnabledWorldInfoEntries(world),
+			selectActivatedEntries: (
+				candidates:
+					| string
+					| StEjsWorldInfoEntryData
+					| readonly (string | StEjsWorldInfoEntryData)[],
+			) => this.selectActivatedEntries(candidates),
+			getchar: (field?: string) => this.getCharData(field),
+			getCharData: (field?: string) => this.getCharData(field),
+			getpreset: (name?: string) => this.getPreset(name),
+			getqr: (setOrLabel: string, label?: string) =>
+				this.getQuickReply(setOrLabel, label),
+			getQuickReplyData: (name?: string) => this.getQuickReplyData(name),
+			parseJSON: (text: string) => parseStEjsJson(text),
+			jsonPatch: (target: unknown, patch: readonly unknown[]) =>
+				applyStEjsJsonPatch(target, patch),
+			patchVariables: (
+				patch: readonly unknown[],
+				options?: StEjsVariableOptionsInput,
+			) => this.patchVariables(patch, options),
+			setVariableSchema: (schema: unknown) => this.setVariableSchema(schema),
 		});
 		return locals;
 	}
@@ -497,6 +691,28 @@ export class StEjsRuntime {
 		} finally {
 			this.#evalDepth -= 1;
 		}
+	}
+
+	#assignVariable(
+		key: string | null,
+		value: unknown,
+		input?: StEjsVariableOptionsInput,
+	): unknown {
+		const options = normalizeStEjsVariableOptions(input);
+		const node = findStEjsSchemaNode(this.#variableSchema, key);
+		if (node !== undefined) {
+			let candidate = value;
+			if (options.merge === true) {
+				const current = this.variables.read(key, {
+					scope: options.scope ?? "message",
+					withMsg: options.withMsg,
+					clone: true,
+				});
+				candidate = lodash.merge(current ?? {}, value);
+			}
+			assertStEjsSchemaValue(node, candidate, key ?? "变量");
+		}
+		return this.variables.assign(key, value, options);
 	}
 
 	/** `incvar` 与 `decvar` 共用：读旧值、按选项计算、再写回。 */
@@ -518,7 +734,7 @@ export class StEjsRuntime {
 		let next = current + direction * amount;
 		if (options.min !== undefined) next = Math.max(next, options.min);
 		if (options.max !== undefined) next = Math.min(next, options.max);
-		return this.variables.assign(key, next, {
+		return this.#assignVariable(key, next, {
 			...options,
 			scope: options.outscope ?? "message",
 		});

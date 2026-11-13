@@ -1374,7 +1374,8 @@
   - `activateRegex(pattern, replacement, options)`：`basic`、`generate`、`message`、`html`、`before`、`minDepth`/`maxDepth`、`order`、`sticky`，替换内容可以是函数并绑定运行时上下文。
   验收：每个装饰器与注入形式有测试；未知装饰器被丢弃、`@@@` 转义保留；激活正则的每种选项有测试且替换函数拿到 `this.getvar`；`pnpm check` 通过。
 
-- [ ] **C-T04.b.b 世界书与数据读取函数** | 依赖：C-T04.b.a
+- [x] **C-T04.b.b 世界书与数据读取函数** | 依赖：C-T04.b.a
+  完成：2026-11-13 新增 `st-ejs/world-info.ts`（同世界书省略、递归激活、强制激活表、激活数据与候选过滤、token 预算与嵌套上限）、`st-ejs/data.ts`（角色卡、预设、快捷回复读取与 `qrList` 归一）、`st-ejs/json.ts`（严格 JSON 与 YAML 宽松回退、RFC 6902 全部操作）、`st-ejs/schema.ts`（变量结构校验）；`StEjsRuntime` 暴露全部函数并接入模板局部变量，`patchVariables` 与 `setVariableSchema` 生效；新增 24 个测试；ADR-0113；门禁通过（220 个测试文件、1961 个测试、5 个跳过）
   做什么：
   - 世界书与数据读取：`getwi`/`getWorldInfo`（含递归与同世界书省略世界书名）、`activewi`/`activateWorldInfo`、`activateWorldInfoByKeywords`、`getWorldInfoData`、`getWorldInfoActivatedData`、`getEnabledWorldInfoEntries`、`selectActivatedEntries`，以及 `getchar`/`getCharData`/`getpreset`/`getqr`/`getQuickReplyData`。
   - `parseJSON`、`jsonPatch`、`patchVariables`、`setVariableSchema`。

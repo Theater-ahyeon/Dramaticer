@@ -1809,3 +1809,21 @@
   - 新增 `packages/st-compat/test/st-ejs-regex.test.ts` 11 个测试：一次性与 `sticky`、`basic`/`generate`/`message`、`html`、`before`、`minDepth`/`maxDepth`、`order` 与注册顺序、替换函数的 `this.getvar` 与写入记录、模板内注册、字符串 pattern 的标志、非法参数。
   - `yaml` 已是 `packages/st-compat` 的运行时依赖，没有新增依赖；没有改数据库 schema，`core` 没有改动（I1、I15）。EJS 仍只作用于 ST 内容，harness 槽位没有接入点（C-T04.c 时才接入）。
 
+## ADR-0113 `st-ejs` 的世界书、角色卡与 JSON 函数（2026-11-13）
+
+- **背景**：C-T04.b.b 补齐 ST-Prompt-Template 的世界书读取与激活、角色卡/预设/快捷回复读取、JSON 解析与变量补丁。上游文档在本机不可达（网络不可用），没有上游源码可参考，实现依据 TASKS 条目与已有的世界书激活语义；许可证口径见 HUMAN-17。
+- **决定**：
+  - 新增 `packages/st-compat/src/st-ejs/world-info.ts`：世界书数据通过 `StEjsRuntimeOptions.worldInfo` 注入（世界书、当前世界书名、楼层、扫描设置、预计算的激活结果），函数不读文件、不访问网络。`getwi(key)` 在 `currentWorld` 里查找，`getwi(world, key)` 指定世界书；没有当前世界书时在所有世界书里按顺序查找。条目按 `comment`、再按关键词精确匹配，默认不区分大小写；显式读取允许读到禁用条目。
+  - `getwi` 默认把条目正文当作模板渲染（与 `evalTemplate` 同一个运行时），`raw: true` 跳过渲染；每次输出按 `estimateTokens` 记入 token 用量，超过配置的 `tokenBudget` 抛 `StEjsBudgetError`；嵌套读取上限 8 层，超过抛 `StEjsWorldInfoError`。
+  - `recursive: true` 把首次渲染结果当成一条扫描文本，用 `activateStWorldInfo`（`scanDepth: 1`、递归开启、默认 3 轮）找出被触发的条目，逐条渲染后按分隔符拼接；常量条目与首次命中的条目不再重复返回。递归轮数显式传 0 时只返回首次命中的条目。
+  - 激活函数维护本次运行时的强制激活表：`activateWorldInfo(world, keys?)` 把指定世界书的启用条目加入（省略 `keys` 时整本），`activateWorldInfoByKeywords(text)` 用给定文本扫描并把命中条目加入；常量条目不算新增。`getWorldInfoActivatedData()` 先给出按当前楼层关键词命中的条目（`activatedBy: "keyword"`），再接强制激活的条目（`activatedBy: "activate"`），条目元数据从世界书补齐。`selectActivatedEntries` 接受名称、`世界.uid`、`世界/注释` 或条目对象，按激活顺序过滤。`getWorldInfoData` 返回条目视图，`getEnabledWorldInfoEntries` 去掉禁用条目。
+  - 新增 `packages/st-compat/src/st-ejs/data.ts`：角色卡、预设与快捷回复由 `StEjsRuntimeOptions.data` 注入。`getchar`/`getCharData` 读取单个字段（`first_mes`、`firstMessage`、`mes_example` 等别名）或整张卡；`getpreset(name?)` 省略名称时用当前预设；`getqr(label)` 跨回复集按标签查找，`getqr(set, label)` 限定集合；`getQuickReplyData(name?)` 返回全部或指定回复集。未知字段、未知预设、未知集合与缺数据直接抛 `StEjsDataError`。`normalizeStEjsQuickReplySet` 把酒馆 `qrList` 格式转成同样的视图。
+  - 新增 `packages/st-compat/src/st-ejs/json.ts`：`parseJSON` 先按严格 JSON 解析，只有输入以 `{` 或 `[` 开头时才用 `yaml` 接受单引号、尾逗号等宽松写法；其余文本直接报错，避免把普通文本当成 YAML 标量。`jsonPatch` 按 RFC 6902 支持 `add`、`remove`、`replace`、`move`、`copy`、`test`，实现 JSON Pointer 转义、数组 `-` 追加与下标边界检查，拒绝 `__proto__`/`constructor`/`prototype`，输入对象不被修改；错误带条目序号与操作名。
+  - `patchVariables(patch, options?)` 把补丁应用到合并视图的副本，只把变化的顶层键写回目标作用域（默认消息变量），删除的键走 `delvar`，返回新的合并视图。`setVariableSchema(schema)` 记录结构描述（`type`、`properties`、`items`、`required`、`enum`），之后的 `setvar`、`incvar`、`decvar` 与 `patchVariables` 按路径校验，违反时抛 `StEjsVariableError`；结构本身在注册时校验。不执行卡内 zod 脚本。
+  - 所有函数只操作内存中的运行时数据，不写台账、不改楼层原文（I4、I12）；世界书与数据来源由 C-T04.c 的流水线注入，作用范围仍限定在 ST 内容。
+- **影响**：
+  - 新增 `packages/st-compat/test/st-ejs-world-info.test.ts` 10 个测试：同世界书省略、`raw`、模板再处理、递归、无当前世界书、未知条目与世界书、条目视图与禁用过滤、关键词激活、强制激活与按关键词补充、候选过滤、token 预算。
+  - 新增 `packages/st-compat/test/st-ejs-data.test.ts` 7 个测试：角色卡字段与整卡、未知字段、预设缺省与指定、缺当前预设、快捷回复按标签与集合、回复集视图与 id、缺数据与非法快捷回复。
+  - 新增 `packages/st-compat/test/st-ejs-json.test.ts` 7 个测试：严格与宽松 JSON、六种 RFC 6902 操作与不可变、非法操作与原型路径、顶层键写回与写入记录、指定作用域、结构校验与注册校验。
+  - 没有新增运行时依赖（`yaml` 已在 `packages/st-compat`），没有改数据库 schema，`core` 没有新增代码（I1、I15）。
+
