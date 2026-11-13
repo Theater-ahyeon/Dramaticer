@@ -1846,7 +1846,7 @@
 
 - **背景**：C-T04.c.a 的沙箱能按固定预算终止单次模板执行，但回合内的预算语义还没接上：一个槽位钩子里可能连续执行多条模板（世界书条目、嵌套 `getwi`），每条都按 5 秒算会让一整轮远远超过回合预算；超时只抛错误，回合会失败，而 I17 要求超时跳过并把跳过的扩展点与原因写进 Trace。
 - **决定**：
-  - `runTurnHook` 的 `run` 回调拿到 `TurnHookBudget`：`budgetMs`、`remainingMs()`（钩子结束后为 0）与 `recordTemplate()`。钩子结束时把已记录的模板快照写进 `TurnHookTraceEntry.templates`（来源、耗时、outcome、原因、调用过的函数），之后的记录被丢弃；单次模板记录超过一条时按执行顺序保存。插件没有记录模板时 `templates` 不出现，旧 Trace 不受影响。
+  - `runTurnHook` 的 `run` 回调拿到 `TurnHookBudget`：`budgetMs`、`remainingMs()`（钩子结束后为 0）与 `recordTemplate()`。`remainingMs()` 扣除 50 毫秒的收尾预留：子任务按它启动自己的超时，必须在外层截止之前结束，才有时间终止沙箱、记录 Trace 与返回；外层截止仍然是完整的 `budgetMs`。钩子结束时把已记录的模板快照写进 `TurnHookTraceEntry.templates`（来源、耗时、outcome、原因、调用过的函数），之后的记录被丢弃；单次模板记录超过一条时按执行顺序保存。插件没有记录模板时 `templates` 不出现，旧 Trace 不受影响。
   - `ContextSlotRequest` 增加可选的 `budget`，组装器在插件槽位里传入同一次钩子的预算。内置槽位不带 `plugin`，仍然不计时、不传预算。
   - `StEjsRuntime.render` 增加 `budget` 选项：有预算时必须提供沙箱执行器（否则直接抛 `StEjsTemplateError`），每次执行用 `remainingMs()` 作为本次的时间上限，执行记录写进预算；超时的模板按空内容处理，其余错误照常抛出。嵌套的 `getwi` 渲染沿用同一个预算，因此一条模板链的总时间不超过钩子的剩余时间。运行时用 `#activeBudget` 在同步 RPC 期间传递预算，嵌套渲染按调用顺序串行。
   - `StEjsSandbox.run` 接受 `budgetMs` 覆盖构造时的预算，超时错误带上实际使用的预算；执行记录类型与运行时的 `StEjsTemplateTraceEntry` 合并为同一结构。

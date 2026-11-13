@@ -39,7 +39,7 @@ export interface TurnHookTraceEntry {
  */
 export interface TurnHookBudget {
 	readonly budgetMs: number;
-	/** 剩余毫秒；钩子结束后为 0。 */
+	/** 可供子任务使用的剩余毫秒，已扣除收尾预留；钩子结束后为 0。 */
 	remainingMs(): number;
 	recordTemplate(entry: TurnHookTemplateTraceEntry): void;
 }
@@ -49,6 +49,12 @@ export interface TurnHookBudget {
  * 预算要留出这些调用的时间；超时的提供者按缺失处理，所以不能设得太短。
  */
 export const DEFAULT_TURN_HOOK_BUDGET_MS = 5_000;
+
+/**
+ * 钩子收尾预留：模板等子任务按 `remainingMs()` 启动自己的超时，
+ * 必须在外层截止之前结束，才有时间终止沙箱、记录 Trace 并返回结果。
+ */
+const TURN_HOOK_FINISH_RESERVE_MS = 50;
 
 /** 组装后的请求；`messages` 是依次改写后的最终请求。 */
 export interface RewrittenRequest {
@@ -104,7 +110,14 @@ export async function runTurnHook<T>(input: {
 	const budget: TurnHookBudget = {
 		budgetMs,
 		remainingMs: () =>
-			closed ? 0 : Math.max(0, budgetMs - (performance.now() - startedAt)),
+			closed
+				? 0
+				: Math.max(
+						0,
+						budgetMs -
+							TURN_HOOK_FINISH_RESERVE_MS -
+							(performance.now() - startedAt),
+					),
 		recordTemplate: (entry) => {
 			if (closed) return;
 			templates.push({ ...entry, functions: [...entry.functions] });

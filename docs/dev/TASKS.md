@@ -1392,7 +1392,7 @@
   验收：模板拿不到 `process`、`require`、`fetch`、`Buffer`、动态 `import` 与文件系统；超时后同一沙箱能继续执行下一次渲染；变量读写、`print`、`define`、`evalTemplate` 与嵌套世界书渲染在沙箱里输出与主线程渲染一致；`pnpm check` 通过。
 
 - [x] **C-T04.c.b 回合内时间预算与 Trace** | 依赖：C-T04.c.a
-  完成：2026-11-13 `runTurnHook` 的 `run` 回调拿到 `TurnHookBudget`（`budgetMs`、`remainingMs()`、`recordTemplate()`），钩子结束时把模板执行记录写进 `TurnHookTraceEntry.templates`，钩子结束后不再接收记录；`ContextSlotRequest` 增加可选 `budget`，组装器在插件槽位里传入同一次钩子的预算；`StEjsRuntime.render` 支持 `budget`，每次执行按 `remainingMs()` 限制，超时按空内容处理并把来源、耗时、原因与函数写进预算，嵌套 `getwi` 沿用同一预算；`StEjsSandbox.run` 接受 `budgetMs` 覆盖默认预算；`dramaticer explain` 逐条列出模板执行并对超时模板给出建议；新增 8 个 st-compat 测试、3 个 core 钩子测试与 1 个 explain 测试；ADR-0115；门禁通过（222 个测试文件、1984 个测试、5 个跳过）
+  完成：2026-11-13 `runTurnHook` 的 `run` 回调拿到 `TurnHookBudget`（`budgetMs`、`remainingMs()`、`recordTemplate()`），钩子结束时把模板执行记录写进 `TurnHookTraceEntry.templates`，钩子结束后不再接收记录；`ContextSlotRequest` 增加可选 `budget`，组装器在插件槽位里传入同一次钩子的预算；`StEjsRuntime.render` 支持 `budget`，每次执行按 `remainingMs()` 限制，超时按空内容处理并把来源、耗时、原因与函数写进预算，嵌套 `getwi` 沿用同一预算；`StEjsSandbox.run` 接受 `budgetMs` 覆盖默认预算；`dramaticer explain` 逐条列出模板执行并对超时模板给出建议；新增 8 个 st-compat 测试、3 个 core 钩子测试与 1 个 explain 测试；ADR-0115；门禁通过（222 个测试文件、1984 个测试、5 个跳过）；会话 346 修复门禁：`remainingMs()` 预留 50 毫秒收尾时间，模板按子预算先于外层截止超时，钩子记录后正常返回。
   做什么：
   - 每次模板执行计入回合内时间预算，超时跳过该条并写 `TurnHookTraceEntry`（来源、耗时、跳过原因、调用的函数），`dramaticer explain` 能读到。
   验收：超时用例的 Trace 可在 `dramaticer explain` 输出里读到，回合继续；未超时也记录耗时；`pnpm check` 通过。

@@ -3,22 +3,19 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-13 会话 345：C-T04.c.b 完成，门禁通过（222 个测试文件、1984 个测试、5 个跳过）。
-- 实现：
-  - `core/src/plugins/turn-hooks.ts`：`runTurnHook` 的 `run` 回调签名变成 `run(budget: TurnHookBudget)`。预算对象带 `budgetMs`、`remainingMs()` 与 `recordTemplate()`；钩子结束时把记录的模板快照写进新增的 `TurnHookTraceEntry.templates`（`source`、`durationMs`、`outcome`、`reason`、`functions`），钩子结束后 `remainingMs()` 返回 0，之后的记录被丢弃。没有模板记录时 Trace 不带这个字段，旧 Trace 兼容。
-  - `core/src/context/assembler.ts`：`ContextSlotRequest` 新增可选 `budget`，插件槽位的请求在 `run` 回调里构造并带上同一次钩子的预算；内置槽位（没有 `plugin`）仍不计时。
-  - `core/src/explain/explain.ts`：`dramaticer explain` 的回合钩子段落下面逐条列出模板的来源、耗时、结果与调用的函数，并对超时模板追加一条建议与证据。
-  - `st-compat/src/st-ejs/runtime.ts`：`StEjsRenderOptions.budget`（`StEjsTurnBudget`，与 core 的 `TurnHookBudget` 结构一致，可以原样传入）。有预算时必须提供沙箱执行器，否则抛 `StEjsTemplateError`；每次执行用 `remainingMs()` 作为本次时间上限，执行记录写进预算，超时的模板按空内容处理（其余错误照常抛）。嵌套的 `getwi` 渲染经 `#activeBudget` 沿用同一预算，各自记录。
-  - `st-compat/src/st-ejs/sandbox.ts`：`run(execution, { budgetMs })` 覆盖构造时的预算；超时错误带实际预算；执行记录类型与运行时的 `StEjsTemplateTraceEntry` 合并（`StEjsSandboxTraceEntry`、`StEjsSandboxRun` 保留为别名）。
-- 测试：新增 `st-ejs-budget.test.ts` 8 个（正常记录、超时按空内容、剩余时间覆盖默认预算、预算用完不启动执行、变量写入回主线程、嵌套世界书各自记录、没有沙箱执行器报错、槽位钩子超时后回合继续且 Trace 带模板记录）；`core/test/turn-hooks.test.ts` 新增 3 个；`core/test/explain.test.ts` 新增 1 个。ADR-0115。
+- 2026-11-13 会话 346：门禁修复（上一次 `pnpm check` 失败于 `st-ejs-budget.test.ts` 的槽位钩子用例），修复后门禁通过（222 个测试文件、1984 个测试、5 个跳过）。
+- 原因：`runTurnHook` 的外层截止与模板的沙箱截止同为 `remainingMs()`，外层定时器先启动，模板超时终止沙箱的收尾时间不足，钩子被判 `timeout`，而用例要求模板超时后钩子正常返回。
+- 修复：`packages/core/src/plugins/turn-hooks.ts` 的 `remainingMs()` 扣除 `TURN_HOOK_FINISH_RESERVE_MS = 50` 毫秒收尾预留；外层截止仍是完整的 `budgetMs`。模板按子预算先超时，钩子拿到模板记录后正常返回。ADR-0115 已补充这条语义。
+- 验证：目标测试 `packages/core/test/turn-hooks.test.ts`、`packages/core/test/explain.test.ts`、`packages/st-compat/test/st-ejs-budget.test.ts`（30 个）通过；整仓 `pnpm check` 通过。
 
-## 下一步（会话 346 先做）
+## 下一步（会话 347 先做）
 1. **C-T04.c.c st-content 流水线接入与变量视图**：依赖 C-T04.c.b，现在可以做。把 EJS 接到 `st-content` 的预设、世界书与深度注入，EJS 只作用于来自 ST 的内容、进入槽位前完成，不碰记忆、台账、导演与写作契约。槽位提供者用 `ContextSlotRequest.budget` 直接传给 `runtime.render(text, { source, budget })`（`StEjsTurnBudget` 与 `TurnHookBudget` 结构一致）。变量来源接台账 `mvu` 子树：读经台账快照，写经待结算视图与结算器校验；全局与消息级变量留在插件存储。这里同时决定沙箱实例与运行时实例的生命周期（`define` 的作用域目前是一次执行）。
 2. 然后 C-T04.c.d（模板发起的生成，后台任务与卡级限流）、C-T04.d（一致性测试与共存评测）、C-T05。
 3. 其余可做任务：H-T00（依赖 R5-T99、R3b-T99、E-T01，均已完成）、X1（依赖 R1-T99.a、R2-T99，均已完成）。M5-T00 依赖 R6-T99；M6-T99 等待 HUMAN-15；P5 依赖 M5-T99。
 
 ## C-T04.c.b 代码事实
 - 钩子预算：`runTurnHook({ extension, hook, plugin, budgetMs?, run(budget) })`。零参回调仍然可以赋值（`run: () => value`），不需要改现有调用方。钩子超时仍返回 `value: null`、`outcome: "timeout"`，已记录的模板一起写进 trace。
+- `remainingMs()` 返回 `budgetMs - 50 - 已用时`，最小为 0；钩子结束后为 0。50 毫秒的收尾预留用于模板超时后终止沙箱、记录 Trace 与返回。
 - 模板记录类型在 core 叫 `TurnHookTemplateTraceEntry`，st-compat 叫 `StEjsTemplateTraceEntry`，字段完全一致（`source`、`durationMs`、`outcome`、`reason`、`functions`）。`StEjsTurnBudget` 只需要 `remainingMs()` 与 `recordTemplate()`。
 - `runtime.render(text, { source, budget })` 在预算内运行；超时返回空字符串并记录 `outcome: "timeout"`，预算已用完时记录 0 毫秒与原因「回合时间预算已用完」。模板语法错误仍然以 `StEjsTemplateError` 抛出。
 - 沙箱执行器必须实现 `run`（沙箱自带）；只有 `execute` 的执行器在预算模式下直接抛错，不做静默降级。
@@ -41,7 +38,8 @@
 
 ## 可重复命令
 - 门禁：`pnpm check`。
-- C-T04.c.b 目标测试：`pnpm exec vitest run packages/st-compat/test/st-ejs-budget.test.ts packages/core/test/turn-hooks.test.ts packages/core/test/explain.test.ts`（30 个）。
+- 会话 346 目标测试：`pnpm exec vitest run packages/core/test/turn-hooks.test.ts packages/core/test/explain.test.ts packages/st-compat/test/st-ejs-budget.test.ts`（30 个）。
+- C-T04.c.b 目标测试：`pnpm exec vitest run packages/st-compat/test/st-ejs-budget.test.ts packages/core/test/turn-hooks.test.ts packages/core/test/explain.test.ts`。
 - C-T04.c.a 目标测试：`pnpm exec vitest run packages/st-compat/test/st-ejs-sandbox.test.ts`（10 个）。
 - 全部 EJS 测试：`pnpm exec vitest run packages/st-compat/test/st-ejs-template.test.ts packages/st-compat/test/st-ejs-variables.test.ts packages/st-compat/test/st-ejs-decorators.test.ts packages/st-compat/test/st-ejs-injections.test.ts packages/st-compat/test/st-ejs-regex.test.ts packages/st-compat/test/st-ejs-world-info.test.ts packages/st-compat/test/st-ejs-data.test.ts packages/st-compat/test/st-ejs-json.test.ts packages/st-compat/test/st-ejs-sandbox.test.ts packages/st-compat/test/st-ejs-budget.test.ts`（99 个）。
 - C-T04.b.b 目标测试：`pnpm exec vitest run packages/st-compat/test/st-ejs-world-info.test.ts packages/st-compat/test/st-ejs-data.test.ts packages/st-compat/test/st-ejs-json.test.ts`（24 个）。
@@ -79,6 +77,7 @@
 - 测试文件里不能出现 I10 拦截的地址：只允许 `localhost`、`127.0.0.1`、`example.com`/`example.org`/`example.invalid` 作为主机名，不能出现 `eval-private` 字面量（用 `stBenchPaths(repoRoot).privateRoot`）。
 - Windows 上并行跑测试会显著变慢；`vitest.config.ts` 默认 `testTimeout` 60 秒、`maxWorkers` 8；`afterEach` 删除临时目录用 `rmSync` 时必须带 `maxRetries` 与 `retryDelay`。
 - 整轮并行门禁连跑或与大量临时目录写入同时进行时，Windows 的系统扫描会拖慢文件与 SQLite 操作，出现过后台 worker 激活超时与 `gap-pass-compare` 的 30 秒用例超时；这些用例单独运行都通过。门禁失败先看失败是否只在整轮并行时出现，不要连续并发跑多轮整仓测试；`gap-pass-compare` 的 3 个用例上限已放宽到 180 秒。
+- 回合预算的截止与子任务截止不能重叠：`remainingMs()` 已扣除 50 毫秒收尾预留，子任务用 `remainingMs()` 作为自己的上限才能先于外层截止结束。
 - `packages/st-compat` 与 `packages/server` 的测试通过 `@dramaticer/core` 的 `dist` 解析 core；只跑这些包的测试前先执行 `pnpm run typecheck`。
 - 结构化 JSON 请求一律使用 `NO_CONTINUATION`；正文写作与散文类后台输出保留续写。
 - web 源码不能 import `@dramaticer/core` 的运行时值（会把 `better-sqlite3` 与 `node:*` 打进前端包导致整页白屏），类型导入可以。
