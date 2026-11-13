@@ -1708,3 +1708,21 @@
   - 新增 `packages/st-compat/test/st-content-coexist.test.ts` 3 个测试：注册表与开/关两组各 5 轮、四项指标与样本量、报告不含正文；配置读取预设；缺少预设时报错。
   - `st-bench coexist` 的配置格式向后兼容，旧配置没有 `preset` 时仅在使用 `st-content` 时报错。
   - `core` 无改动（I1、I15）；适配器只改写模板与槽位，不写楼层与台账（I4、I12）；对照评测只用 Dramaticer 渠道，不调用玩家本机 ST 额度（I14）。
+
+## ADR-0107 `st-mvu` 变量引擎的边界与语义（2026-11-13）
+
+- **背景**：C-T03.a 要把 MVU 的变量初始化与更新协议做成纯函数引擎。MVU 变量在酒馆里是一份按楼层保存的 `stat_data`：`[initvar]` 世界书条目给出初始值，开场白里的 `<initvar>` 覆盖局部初始值，模型在回复末尾输出 `<UpdateVariable>` 与 `<JSONPatch>`，脚本按 `$meta` 生成的结构约束执行补丁。仓库已有 `mvu` 台账命名空间和对话导入时的 `mvu.<路径>` diff，但没有解析初始化块、结构元信息或补丁的代码。
+- **决定**：
+  - 新增 `packages/st-compat/src/st-mvu/`，全部是纯函数：`schema.ts` 负责 `$meta` 与结构、`initvar.ts` 负责条目收集与合并、`update.ts` 负责协议解析与执行。引擎不读写存储、不调用模型，输入与输出都是 JSON。
+  - `initvar` 只读取名字或注释里带 `[initvar]` 的条目；正文支持 YAML、JSON、整段代码块与 `<initvar>` 块。多条按输入顺序深度合并，对象递归合并，数组与基本值整体替换后一份（与当前 MVU 的数组替换语义一致）。开场白里的 `<initvar>` 作为后一份参与同一套合并。
+  - `$meta` 在初始化时被读取并移除：对象支持 `extensible`（默认关闭）、`required`、`recursiveExtensible` 与 `template`；数组支持元素 `"$__META_EXTENSIBLE__$"` 与带 `$arrayMeta: true` 的元信息对象。根级 `$meta` 的 `strictSet`、`strictTemplate`、`concatTemplateArray` 作为整份变量的开关，默认分别是关闭、关闭、开启。`recursiveExtensible` 向子孙传递，显式 `extensible: false` 截断。
+  - 生成的 `schema` 与酒馆消息变量里的结构同形（`type`、`properties`、`elementType`、`extensible`、`required`、`template`），可以直接用 `parseMvuSchema` 读回。`validateMvuSchemaValue` 校验对象类型、必填键、锁定对象的新增键与数组元素类型；错误路径写到具体键。
+  - `[值, 说明]` 由“长度 2 且第二个元素是字符串”判定。未开启 `strictSet` 时，`replace` 与 `delta` 只改第 0 个元素，说明保留；结构操作（`insert`/`add`/`remove`）必须显式写到 `[0]` 或更深的位置，否则拒绝。
+  - `<JSONPatch>` 支持 `replace`、`delta`、`insert`/`add`、`remove`、`move`，路径用 JSON Pointer 与 `/-`。每条操作在副本上执行并按结构校验，失败只拒绝该条并给出原因，合法操作照常生效；同一批次里的非法 JSON 整段拒绝。
+  - 数字结构允许把数字字符串转成数字；其余类型不匹配拒绝。模板按文档口径处理：对象模板与对象值合并（值优先），数组模板默认拼接在入参之后，`strictTemplate` 关闭时字面值先包成数组；`concatTemplateArray` 关闭时按位置融合。
+  - 路径与新增键拒绝 `__proto__`、`constructor`、`prototype`，避免模型输出污染对象原型。
+  - 变量结构是 zod 卡脚本的产物；本任务先消费酒馆消息变量里保存的结构 JSON，执行卡内 zod 脚本需要酒馆助手宿主（C-T05）的沙箱，接入放在 C-T03.d，届时用同一套 `parseMvuSchema` 与 `validateMvuSchemaValue` 校验。
+- **影响**：
+  - 新增 `packages/st-compat/test/st-mvu.test.ts` 16 个测试，覆盖条目筛选与合并、代码块与开场白覆盖、`$meta` 与递归扩展、结构读回、补丁解析、值说明保留与 `strictSet`、锁定结构、模板、数字转换、JSON Pointer 与移动、非法操作逐条拒绝、原型污染键。
+  - `core` 无改动（I1、I15）；引擎不写楼层与台账（I4、I12），C-T03.b 再把结果映射为 `mvu` 命名空间的待结算 diff。
+  - 没有新增运行时依赖。

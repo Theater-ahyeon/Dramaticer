@@ -1316,13 +1316,35 @@
   做什么：汇总兼容报告（启用条目 token 规模、未识别 marker 与字段、无法映射的深度与角色、重复条目）；在 `ST_BENCH_COEXIST_PLUGINS` 注册 `st-content` 适配器；开启与关闭对照评测。
   验收：报告覆盖要求且不含正文；开关对照四项原生指标有数字与样本量；变差时列出项目；`pnpm check` 通过。
 
-- [ ] **C-T03 P-C `st-mvu` MVU 兼容** | 依赖：C-T02
+**C-T03 P-C `st-mvu` MVU 兼容**（已拆成 C-T03.a 至 C-T03.d） | 依赖：C-T02
+
+  总验收（四个子任务全部完成后由 C-T03.d 逐条核对）：一致性测试的 MVU 用例全部通过；非法更新经结算器修复或拒绝并留 Trace；原楼层原文不可修改（I4）；MVU 变量与台账是同一套数据，没有第二份事实，读取路径与结算路径的测试证明这一点；开启与关闭本插件的对照评测里原生指标不明显变差（ADR-0040）。
+
+- [x] **C-T03.a MVU 变量引擎** | 依赖：C-T02
+  完成：2026-11-13 新增 `packages/st-compat/src/st-mvu/`：`initvar` 读取 `[initvar]` 条目（YAML/JSON、代码块、`<initvar>` 块）、多条目深度合并与开场白覆盖；`$meta` 提取 `extensible`、`required`、`recursiveExtensible`、`template`、`$__META_EXTENSIBLE__$`、`$arrayMeta`、根级 `strictSet`/`strictTemplate`/`concatTemplateArray` 并生成与酒馆同形的结构；`<UpdateVariable>`/`<JSONPatch>` 支持 `replace`、`delta`、`insert`/`add`、`remove`、`move`、JSON Pointer 与 `/-`；`[值, 说明]` 保留说明，`strictSet` 关闭隐式保留；每条操作在副本上执行并按结构校验，非法条目逐条拒绝并给出路径，原型污染键被拒绝；16 个测试；ADR-0107；门禁通过（206 个测试文件、1850 个测试、5 个跳过）
   做什么：
-  - 先搭一致性测试并让它变红，再实现：`initvar`、`<UpdateVariable>`、JSONPatch、`[值, 说明]`、`$meta`（strictSet、extensible、模板）、zod schema 校验。
-  - 变量映射为台账的一个命名空间；更新指令交给结算器校验和修复（I12）。
-  - 脚本写变量后立刻读取要读到待结算的值：这一层是插件内的临时视图，结算后以台账为准（ADR-0041 的 A10）。
-  - 修改消息分两类：改正文一律生成新 swipe（I4）；只改显示或元数据（状态栏刷新这类）写进插件自己的显示状态，不新建节点。
-  验收：一致性测试的 MVU 用例全部通过；非法更新经结算器修复或拒绝并留 Trace；原楼层原文不可修改（I4）；MVU 变量与台账是同一套数据，没有第二份事实，读取路径与结算路径的测试证明这一点；开启与关闭本插件的对照评测里原生指标不明显变差（ADR-0040）。
+  - 先搭一致性测试并让它变红，再实现纯函数引擎：`initvar`（世界书 `[initvar]` 条目、YAML/JSON、多条目合并、开场白 `<initvar>` 覆盖）、`$meta`（`extensible`、`required`、`recursiveExtensible`、`template`、`$__META_EXTENSIBLE__$`、`$arrayMeta`、根级 `strictSet`/`strictTemplate`/`concatTemplateArray`）与生成的变量结构。
+  - `<UpdateVariable>` 与 `<JSONPatch>` 解析（`replace`、`delta`、`insert`/`add`、`remove`、`move`，JSON Pointer 与 `/-`）；`[值, 说明]` 的保留与 `strictSet`；按变量结构校验类型、必填键与可扩展性，非法操作逐条拒绝并给出原因。
+  - 引擎只操作传入的状态，不读写存储、不调用模型。
+  验收：以上每种语义各有一致性用例；非法 JSON、未知操作、越界路径、必填键删除、锁定结构写入都被拒绝并指出位置；`pnpm check` 通过。
+
+- [ ] **C-T03.b 台账命名空间与待结算视图** | 依赖：C-T03.a
+  做什么：
+  - 把 MVU 变量写入台账 `mvu` 命名空间，写入前经过结算器校验与修复（I12），修复与拒绝原因进入 Trace；变量与台账是同一套数据。
+  - 插件内的临时视图：脚本写变量后立刻读取先读到待结算值，结算完成后以台账为准。
+  验收：读取路径与结算路径的测试证明只有一份事实；非法更新经结算器修复或拒绝并留 Trace；`pnpm check` 通过。
+
+- [ ] **C-T03.c 消息修改分类与显示状态** | 依赖：C-T03.b
+  做什么：
+  - 改正文的类型生成新 swipe，不修改原楼层原文（I4）；只改显示或元数据的类型写进插件显示状态，不新建节点。
+  - 状态栏刷新、`<StatusPlaceHolderImpl/>` 等显示副作用不进入台账，也不写楼层。
+  验收：改正文生成新 swipe 且原楼层逐字节不变；显示状态不新建节点；`pnpm check` 通过。
+
+- [ ] **C-T03.d MVU 一致性测试与共存评测** | 依赖：C-T03.a 至 C-T03.c
+  做什么：
+  - 补齐 MVU 一致性用例并逐条核对 C-T03 总验收；在 `ST_BENCH_COEXIST_PLUGINS` 注册 `st-mvu`，开启与关闭各跑一批，报告四项原生指标与样本量（ADR-0040）。
+  - 记录变量结构（zod 卡生成的 schema）的校验口径；需要执行卡内 zod 脚本时复用酒馆助手宿主（C-T05）的沙箱。
+  验收：C-T03 总验收逐条通过；开关对照四项指标有数字与样本量，变差时列出项目；`pnpm check` 通过。
 
 - [ ] **C-T04 P-B `st-ejs` Prompt Template 兼容** | 依赖：C-T03
   做什么：
