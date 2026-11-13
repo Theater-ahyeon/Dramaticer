@@ -23,6 +23,7 @@ import {
 	type ImagePromptRequest,
 	ImageWorkflowInUseError,
 	type ImagesConfig,
+	type JsonObject,
 	LEDGER_CHANGE_CARD_STATUSES,
 	LLM_MODEL_ROLE_NAMES,
 	type LedgerChangeCard,
@@ -203,6 +204,12 @@ export async function handleApiRequest(
 			runtime: options.assistantRuntime,
 			runs: options.assistantRuns,
 			heartbeatMs: options.heartbeatMs,
+			applyChannelsAction:
+				options.channelsPath === null
+					? undefined
+					: async (payload) => {
+							await applyChannelsActionPayload(payload, options);
+						},
 			now: options.now,
 			log: options.log,
 		});
@@ -1456,6 +1463,35 @@ async function handleChannels(
 	assertChannelsUsable(config);
 	await writeChannelsText(filePath, candidate);
 	sendJson(res, 200, buildChannelsView(candidate, config, options));
+}
+
+/** 助手批准渠道动作时复用同一套解析、校验与写文件路径。 */
+async function applyChannelsActionPayload(
+	payload: JsonObject,
+	options: ApiRouteOptions,
+): Promise<void> {
+	if (options.channelsPath === null) {
+		throw new HttpError(
+			404,
+			"not_found",
+			"服务没有配置渠道文件，渠道动作无法批准",
+		);
+	}
+	const filePath = options.channelsPath;
+	const update = readChannelsUpdate(
+		payload as unknown as Record<string, unknown>,
+		options.channelsEnv,
+	);
+	const text = await readChannelsText(filePath);
+	let candidate: string;
+	try {
+		candidate = applyChannelsUpdate(text, update, filePath);
+	} catch (error) {
+		throw configError(error, filePath);
+	}
+	const config = parseChannelsText(candidate, options, filePath);
+	assertChannelsUsable(config);
+	await writeChannelsText(filePath, candidate);
 }
 
 async function handleChannelProbe(

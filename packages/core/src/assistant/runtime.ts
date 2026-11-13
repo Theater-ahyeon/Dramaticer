@@ -57,6 +57,8 @@ export interface AssistantTurnOptions {
 	readonly contextBudget?: number | null;
 	/** 本次运行启用的工具；缺省为全部只读工具。 */
 	readonly toolNames?: readonly AssistantToolName[];
+	/** 技能附带的其他工具；与只读工具一起按会话权限包装。 */
+	readonly extraTools?: readonly DeepToolDefinition[];
 	/** 测试用：覆盖防失控上限。 */
 	readonly maxToolCalls?: number;
 	readonly maxDurationMs?: number;
@@ -106,7 +108,10 @@ export async function runAssistantTurn(
 	if (options.userText.trim().length === 0) {
 		throw new Error("助手消息正文不能为空");
 	}
-	const toolNames = resolveToolNames(options.toolNames);
+	const toolNames =
+		options.toolNames === undefined
+			? null
+			: resolveToolNames(options.toolNames);
 	const now = options.now ?? Date.now;
 	const startedAt = now();
 	const startedEvent = options.store.startAssistantConversationRun(
@@ -134,6 +139,9 @@ export async function runAssistantTurn(
 	const tools = createAssistantTools({
 		store: options.store,
 		storyId: conversation.storyId,
+		permission: conversation.permission,
+		conversationId: conversation.id,
+		extraTools: options.extraTools,
 		embedder: options.embedder ?? null,
 		reranker: options.reranker ?? null,
 		onToolCall: (name, args) => {
@@ -153,7 +161,13 @@ export async function runAssistantTurn(
 				toolResult: { ok, content },
 			});
 		},
-	}).filter((tool) => toolNames.includes(tool.name as AssistantToolName));
+		onPermissionDenied: (name, permission, reason) => {
+			writeEvent("permission.denied", { name, permission, reason });
+		},
+	}).filter(
+		(tool) =>
+			toolNames === null || toolNames.includes(tool.name as AssistantToolName),
+	);
 	const messages = buildAssistantMessages(
 		options.systemPrompt,
 		options.store.getAssistantMessages(options.conversationId),

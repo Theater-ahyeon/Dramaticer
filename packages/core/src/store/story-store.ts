@@ -2,6 +2,22 @@ import { randomUUID } from "node:crypto";
 import Database from "better-sqlite3";
 import * as sqliteVec from "sqlite-vec";
 import {
+	ASSISTANT_ACTION_KINDS,
+	type AssistantAction,
+	type AssistantActionKind,
+	type AssistantActionStatus,
+	AssistantConversationHasPendingActionsError,
+	DEFAULT_ASSISTANT_ACTION_LIST_LIMIT,
+	type ListAssistantActionsOptions,
+	type NewAssistantActionInput,
+	assertAssistantActionKind,
+	assertAssistantActionListLimit,
+	assertAssistantActionPayload,
+	assertAssistantActionStatus,
+	canonicalAssistantActionPayload,
+	isAssistantActionStatus,
+} from "../assistant/actions.js";
+import {
 	ASSISTANT_EVENT_KINDS,
 	type AssistantConversation,
 	type AssistantConversationSearchOptions,
@@ -134,8 +150,10 @@ import {
 	rejectUnknownKeys,
 } from "../json.js";
 import {
+	LEDGER_CHANGE_CARD_SOURCES,
 	LEDGER_CHANGE_CARD_STATUSES,
 	type LedgerChangeCard,
+	type LedgerChangeCardSource,
 	type LedgerChangeCardStatus,
 	type NewLedgerChangeCardInput,
 	assertLedgerBeforeEntries,
@@ -467,6 +485,7 @@ interface LedgerChangeCardRow {
 	readonly id: string;
 	readonly story_id: string;
 	readonly source: string;
+	readonly assistant_conversation_id: string | null;
 	readonly source_node_id: string;
 	readonly text: string;
 	readonly diffs: string;
@@ -555,6 +574,19 @@ interface AssistantEventRow {
 	readonly kind: string;
 	readonly payload: string;
 	readonly created_at: string;
+}
+
+interface AssistantActionRow {
+	readonly id: string;
+	readonly conversation_id: string;
+	readonly story_id: string | null;
+	readonly kind: string;
+	readonly summary: string;
+	readonly payload: string;
+	readonly status: string;
+	readonly rejection_reason: string | null;
+	readonly created_at: string;
+	readonly decided_at: string | null;
 }
 
 interface StateSnapshotRow {
@@ -1180,6 +1212,29 @@ function rowToAssistantEvent(row: AssistantEventRow): AssistantEvent {
 	};
 }
 
+function rowToAssistantAction(row: AssistantActionRow): AssistantAction {
+	assertAssistantActionKind(row.kind, `助手动作 ${row.id} 的种类`);
+	if (!isAssistantActionStatus(row.status)) {
+		throw new Error(`助手动作 ${row.id} 的状态不合法：${row.status}`);
+	}
+	const payload: unknown = JSON.parse(row.payload);
+	if (!isJsonObject(payload)) {
+		throw new Error(`助手动作 ${row.id} 的载荷不是 JSON 对象`);
+	}
+	return {
+		id: row.id,
+		conversationId: row.conversation_id,
+		storyId: row.story_id,
+		kind: row.kind,
+		summary: row.summary,
+		payload,
+		status: row.status,
+		rejectionReason: row.rejection_reason,
+		createdAt: row.created_at,
+		decidedAt: row.decided_at,
+	};
+}
+
 const ASSISTANT_SNIPPET_RADIUS = 24;
 
 /** 把命中位置前后各截一段，命中词用方括号标出。 */
@@ -1604,7 +1659,7 @@ function rowToNodeImage(row: NodeImageRow): NodeImageRecord {
 }
 
 function rowToLedgerChangeCard(row: LedgerChangeCardRow): LedgerChangeCard {
-	if (!(LEDGER_SOURCES as readonly string[]).includes(row.source)) {
+	if (!(LEDGER_CHANGE_CARD_SOURCES as readonly string[]).includes(row.source)) {
 		throw new Error(`变更卡 ${row.id} 的来源不合法：${row.source}`);
 	}
 	if (!isLedgerChangeCardStatus(row.status)) {
@@ -1617,7 +1672,8 @@ function rowToLedgerChangeCard(row: LedgerChangeCardRow): LedgerChangeCard {
 	return {
 		id: row.id,
 		storyId: row.story_id,
-		source: row.source as LedgerSource,
+		source: row.source as LedgerChangeCardSource,
+		assistantConversationId: row.assistant_conversation_id,
 		sourceNodeId: row.source_node_id,
 		text: row.text,
 		diffs,
@@ -3486,10 +3542,34 @@ export class StoryStore {
 		if (!this.getStory(input.storyId)) {
 			throw new Error(`故事不存在：${input.storyId}`);
 		}
-		if (!(LEDGER_SOURCES as readonly string[]).includes(input.source)) {
+		if (
+			!(LEDGER_CHANGE_CARD_SOURCES as readonly string[]).includes(input.source)
+		) {
 			throw new Error(
-				`变更卡的来源只能是 ${LEDGER_SOURCES.join("、")}，收到 ${JSON.stringify(input.source)}`,
+				`变更卡的来源只能是 ${LEDGER_CHANGE_CARD_SOURCES.join("、")}，收到 ${JSON.stringify(input.source)}`,
 			);
+		}
+		const assistantConversationId = input.assistantConversationId ?? null;
+		if (input.source === "assistant") {
+			if (assistantConversationId === null) {
+				throw new Error("助手生成的变更卡必须写明 assistantConversationId");
+			}
+			const conversation = this.getAssistantConversation(
+				assistantConversationId,
+			);
+			if (conversation === null) {
+				throw new Error(`助手会话不存在：${assistantConversationId}`);
+			}
+			if (
+				conversation.storyId !== null &&
+				conversation.storyId !== input.storyId
+			) {
+				throw new Error(
+					`变更卡的 storyId 与会话所属故事不一致：${input.storyId}`,
+				);
+			}
+		} else if (assistantConversationId !== null) {
+			throw new Error("只有助手生成的变更卡可以带 assistantConversationId");
 		}
 		const node = this.getNode(input.sourceNodeId);
 		if (!node) {
@@ -3544,13 +3624,14 @@ export class StoryStore {
 		this.#db
 			.prepare(
 				`INSERT INTO ledger_change_cards
-					(id, story_id, source, source_node_id, text, diffs, before, status, rejection_reason, created_at, decided_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+					(id, story_id, source, assistant_conversation_id, source_node_id, text, diffs, before, status, rejection_reason, created_at, decided_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			)
 			.run(
 				input.id,
 				input.storyId,
 				input.source,
+				assistantConversationId,
 				input.sourceNodeId,
 				input.text,
 				JSON.stringify(diffs),
@@ -7398,11 +7479,18 @@ export class StoryStore {
 		return info.changes;
 	}
 
-	/** 删除会话及其消息与事件；先删消息让 trigram 索引同步清理。 */
+	/**
+	 * 删除会话及其消息、事件与已决定动作；先删消息让 trigram 索引同步清理。
+	 * 仍有待确认动作时拒绝删除，避免玩家丢掉待审提案。
+	 */
 	deleteAssistantConversation(id: string): void {
 		assertNonEmptyString(id, "助手会话 id");
 		if (this.getAssistantConversation(id) === null) {
 			throw new Error(`助手会话不存在：${id}`);
+		}
+		const pending = this.countPendingAssistantActions({ conversationId: id });
+		if (pending > 0) {
+			throw new AssistantConversationHasPendingActionsError(id, pending);
 		}
 		this.#db.transaction(() => {
 			this.#db
@@ -7494,6 +7582,199 @@ export class StoryStore {
 			)
 			.get(conversationId) as { readonly count: number };
 		return row.count;
+	}
+
+	/**
+	 * 写入一个待确认动作。同一会话里种类与规范化载荷都相同的待定动作只保留
+	 * 第一条，重复提案直接返回已有记录。
+	 */
+	createAssistantAction(input: NewAssistantActionInput): AssistantAction {
+		assertNonEmptyString(input.conversationId, "助手会话 id");
+		assertAssistantActionKind(input.kind, "助手动作种类");
+		if (
+			typeof input.summary !== "string" ||
+			input.summary.trim().length === 0
+		) {
+			throw new Error("助手动作的摘要必须是非空字符串");
+		}
+		assertAssistantActionPayload(input.kind, input.payload);
+		const conversation = this.getAssistantConversation(input.conversationId);
+		if (conversation === null) {
+			throw new Error(`助手会话不存在：${input.conversationId}`);
+		}
+		const storyId = conversation.storyId;
+		if (storyId === null && input.kind !== "channels") {
+			throw new Error(`动作 ${input.kind} 必须来自关联故事的会话`);
+		}
+		if (storyId !== null && this.getStory(storyId) === null) {
+			throw new Error(`故事不存在：${storyId}`);
+		}
+		const createdAt = input.createdAt ?? new Date().toISOString();
+		assertNonEmptyString(createdAt, "助手动作的创建时间");
+		const payload = canonicalAssistantActionPayload(input.payload);
+		const existing = this.#db
+			.prepare(
+				`SELECT * FROM assistant_actions
+				WHERE conversation_id = ? AND kind = ? AND payload = ?
+					AND status = 'pending'
+				LIMIT 1`,
+			)
+			.get(input.conversationId, input.kind, payload) as
+			| AssistantActionRow
+			| undefined;
+		if (existing !== undefined) return rowToAssistantAction(existing);
+		const id = input.id ?? randomUUID();
+		assertNonEmptyString(id, "助手动作 id");
+		if (this.getAssistantAction(id) !== null) {
+			throw new Error(`助手动作已存在：${id}`);
+		}
+		this.#db
+			.prepare(
+				`INSERT INTO assistant_actions
+				(id, conversation_id, story_id, kind, summary, payload, status,
+					rejection_reason, created_at, decided_at)
+				VALUES (?, ?, ?, ?, ?, ?, 'pending', NULL, ?, NULL)`,
+			)
+			.run(
+				id,
+				input.conversationId,
+				storyId,
+				input.kind,
+				input.summary.trim(),
+				payload,
+				createdAt,
+			);
+		const action = this.getAssistantAction(id);
+		if (action === null) {
+			throw new Error(`助手动作写入后读取失败：${id}`);
+		}
+		return action;
+	}
+
+	getAssistantAction(id: string): AssistantAction | null {
+		assertNonEmptyString(id, "助手动作 id");
+		const row = this.#db
+			.prepare("SELECT * FROM assistant_actions WHERE id = ?")
+			.get(id) as AssistantActionRow | undefined;
+		return row === undefined ? null : rowToAssistantAction(row);
+	}
+
+	/** 按创建顺序列出待确认动作；可以按会话、故事与状态过滤。 */
+	listAssistantActions(
+		options: ListAssistantActionsOptions = {},
+	): AssistantAction[] {
+		const limit = options.limit ?? DEFAULT_ASSISTANT_ACTION_LIST_LIMIT;
+		assertAssistantActionListLimit(limit, "助手动作条数");
+		const conditions: string[] = [];
+		const params: (string | number)[] = [];
+		if (options.conversationId !== undefined) {
+			assertNonEmptyString(options.conversationId, "助手会话 id");
+			if (this.getAssistantConversation(options.conversationId) === null) {
+				throw new Error(`助手会话不存在：${options.conversationId}`);
+			}
+			conditions.push("conversation_id = ?");
+			params.push(options.conversationId);
+		}
+		if (options.storyId !== undefined) {
+			assertNonEmptyString(options.storyId, "助手动作的故事 id");
+			if (this.getStory(options.storyId) === null) {
+				throw new Error(`故事不存在：${options.storyId}`);
+			}
+			conditions.push("story_id = ?");
+			params.push(options.storyId);
+		}
+		if (options.status !== undefined) {
+			assertAssistantActionStatus(options.status, "助手动作状态");
+			conditions.push("status = ?");
+			params.push(options.status);
+		}
+		const where =
+			conditions.length === 0 ? "" : `WHERE ${conditions.join(" AND ")}`;
+		params.push(limit);
+		const rows = this.#db
+			.prepare(
+				`SELECT * FROM assistant_actions
+				${where}
+				ORDER BY created_at ASC, id ASC
+				LIMIT ?`,
+			)
+			.all(...params) as AssistantActionRow[];
+		return rows.map(rowToAssistantAction);
+	}
+
+	countPendingAssistantActions(
+		options: {
+			readonly conversationId?: string;
+			readonly storyId?: string;
+		} = {},
+	): number {
+		const conditions = ["status = 'pending'"];
+		const params: string[] = [];
+		if (options.conversationId !== undefined) {
+			assertNonEmptyString(options.conversationId, "助手会话 id");
+			conditions.push("conversation_id = ?");
+			params.push(options.conversationId);
+		}
+		if (options.storyId !== undefined) {
+			assertNonEmptyString(options.storyId, "助手动作的故事 id");
+			conditions.push("story_id = ?");
+			params.push(options.storyId);
+		}
+		const row = this.#db
+			.prepare(
+				`SELECT COUNT(*) AS count FROM assistant_actions
+				WHERE ${conditions.join(" AND ")}`,
+			)
+			.get(...params) as { readonly count: number };
+		return row.count;
+	}
+
+	/** 结束一个待确认动作；只有待定状态可以改成批准或拒绝。 */
+	setAssistantActionDecision(
+		id: string,
+		status: Exclude<AssistantActionStatus, "pending">,
+		options: {
+			readonly decidedAt?: string;
+			readonly rejectionReason?: string | null;
+		} = {},
+	): AssistantAction {
+		assertNonEmptyString(id, "助手动作 id");
+		if (status !== "approved" && status !== "rejected") {
+			throw new Error("助手动作的结束状态只能是 approved 或 rejected");
+		}
+		const decidedAt = options.decidedAt ?? new Date().toISOString();
+		assertNonEmptyString(decidedAt, "助手动作的决定时间");
+		const rejectionReason =
+			status === "rejected" ? (options.rejectionReason ?? null) : null;
+		if (
+			status === "rejected" &&
+			(rejectionReason === null || rejectionReason.trim().length === 0)
+		) {
+			throw new Error("拒绝助手动作必须写明原因");
+		}
+		return this.#db.transaction((): AssistantAction => {
+			const existing = this.getAssistantAction(id);
+			if (existing === null) {
+				throw new Error(`助手动作不存在：${id}`);
+			}
+			if (existing.status !== "pending") {
+				throw new Error(
+					`助手动作 ${id} 的状态是 ${existing.status}，不能再决定`,
+				);
+			}
+			this.#db
+				.prepare(
+					`UPDATE assistant_actions
+					SET status = ?, rejection_reason = ?, decided_at = ?
+					WHERE id = ?`,
+				)
+				.run(status, rejectionReason, decidedAt, id);
+			const action = this.getAssistantAction(id);
+			if (action === null) {
+				throw new Error(`助手动作 ${id} 更新后读取失败`);
+			}
+			return action;
+		})();
 	}
 
 	/** 按任务类型的入队条件为故事补建缺失的后台任务。 */

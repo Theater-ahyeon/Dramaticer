@@ -1485,7 +1485,8 @@
   - 模型默认使用 `roles.writer` 解析到的别名，会话的 `model_alias` 可以覆盖；思考强度按会话设置传给请求。用量写进助手消息与 `usage` 事件。
   验收：假客户端下排障问答能调用 `explain_node` 并读回报告；工具结果截断有标记；没有运行记录时报告写“没有记录”；同一会话并发启动被拒绝；取消、超时与工具上限都让状态结束而不是停在 `running`；进程重启后遗留运行变为 `interrupted`；运行前后楼层数量、head、状态 diff 与剧情 Trace 不变；正剧上下文里不出现助手消息；`pnpm check` 通过。
 
-- [ ] **H-T03 三级权限与待确认动作** | 依赖：H-T02 | DESIGN §10.3 | ADR-0125 | I12、I13
+- [x] **H-T03 三级权限与待确认动作** | 依赖：H-T02 | DESIGN §10.3 | ADR-0125 | I12、I13
+  完成：2026-11-13 迁移 v45 新建 `assistant_actions`（唯一待定索引、会话与故事一致性触发器、内容不可改）并重建 `ledger_change_cards` 允许来源 `assistant` 与可空的 `assistant_conversation_id`；`assistant/permissions.ts` 把三级权限映射到四类工具权限，只读拒绝提案与外部影响并写 `permission.denied` 事件，自动级别只有渠道动作可绕过确认；`assistant/actions.ts` 校验七类载荷、规范化去重、批准时重新校验并调用 `updateStorySettings`、`createContextTemplate`/`updateContextTemplate`、`insertLoreEntries`、`replaceDirectorPlan` 与生图配置写入，拒绝只改状态；`assistant_actions` 与变更卡共用现有会话删除保护；server 新增列表、批准与拒绝接口，批准渠道动作复用 `applyChannelsUpdate`；门禁通过（239 个测试文件、2106 个测试、5 个跳过）
   做什么：
   - 新增 `assistant/permissions.ts`，把助手权限映射到工具权限：`read_only` 只执行 `read`，其余调用返回 `permission_denied` 工具结果并写事件；`confirm` 执行 `read` 与 `control`，`propose` 与 `side_effect` 生成待确认动作；`auto` 执行 `read` 与 `control`，可以在不确认的情况下直接执行渠道、模型选择、思考强度与界面设置这类不改变剧情内容的工作，剧情相关内容仍然生成待确认动作。
   - 迁移 v45 新建 `assistant_actions(id, conversation_id, story_id, kind, summary, payload, status, rejection_reason, created_at, decided_at)`，`kind` 取 `channels`、`settings`、`template`、`lore`、`director_plan`、`card`、`image_config`，`status` 取 `pending`、`approved`、`rejected`；同会话内相同 `kind` 与规范化 `payload` 的待确认动作不重复创建。重建 `ledger_change_cards` 允许来源 `assistant`，增加可空的 `assistant_conversation_id`，原触发器与唯一约束保留。

@@ -1,4 +1,5 @@
 import type {
+	AssistantAction,
 	AssistantConversation,
 	AssistantConversationStatus,
 	AssistantEvent,
@@ -110,6 +111,28 @@ export interface AssistantConversationEventsView {
 	readonly events: readonly AssistantEventView[];
 }
 
+/** 待确认动作的响应形状与 core 的领域类型一致。 */
+export type AssistantActionView = AssistantAction;
+export type {
+	AssistantActionKind,
+	AssistantActionStatus,
+} from "@dramaticer/core";
+
+/** `GET /api/assistant/actions` 的响应。 */
+export interface AssistantActionListView {
+	readonly actions: readonly AssistantActionView[];
+}
+
+/** 批准后返回动作的最新状态。 */
+export interface AssistantActionDecisionView {
+	readonly action: AssistantActionView;
+}
+
+/** `POST /api/assistant/actions/:id/reject` 的请求体。 */
+export interface RejectAssistantActionRequest {
+	readonly reason: string;
+}
+
 /** 助手事件种类的载荷；运行时写库与 SSE 推送共用这套形状。 */
 export interface AssistantStartedPayload {
 	readonly conversationId: string;
@@ -135,6 +158,13 @@ export interface AssistantToolResultPayload {
 	readonly result: JsonValue;
 }
 
+export interface AssistantPermissionDeniedPayload {
+	readonly name: string;
+	/** 被拒绝的工具权限级别。 */
+	readonly permission: string;
+	readonly reason: string;
+}
+
 export interface AssistantUsagePayload {
 	readonly usage: LlmUsage;
 }
@@ -155,6 +185,7 @@ export interface AssistantEventPayloadMap {
 	readonly "thinking.delta": AssistantThinkingDeltaPayload;
 	readonly "tool.call": AssistantToolCallPayload;
 	readonly "tool.result": AssistantToolResultPayload;
+	readonly "permission.denied": AssistantPermissionDeniedPayload;
 	readonly usage: AssistantUsagePayload;
 	readonly completed: AssistantCompletedPayload;
 	readonly error: AssistantErrorPayload;
@@ -181,6 +212,7 @@ export const ASSISTANT_SSE_EVENT_NAMES = {
 	thinkingDelta: "assistant.thinking.delta",
 	toolCall: "assistant.tool.call",
 	toolResult: "assistant.tool.result",
+	permissionDenied: "assistant.permission.denied",
 	usage: "assistant.usage",
 	completed: "assistant.completed",
 	error: "assistant.error",
@@ -195,6 +227,7 @@ export interface AssistantSseEventMap {
 	"assistant.thinking.delta": AssistantThinkingDeltaPayload;
 	"assistant.tool.call": AssistantToolCallPayload;
 	"assistant.tool.result": AssistantToolResultPayload;
+	"assistant.permission.denied": AssistantPermissionDeniedPayload;
 	"assistant.usage": AssistantUsagePayload;
 	"assistant.completed": AssistantCompletedPayload;
 	"assistant.error": AssistantErrorPayload;

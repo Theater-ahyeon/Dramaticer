@@ -3,20 +3,20 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-13 会话 358：完成 H-T02（助手运行时、隔离与只读工具）。`packages/core/src/assistant/runtime.ts` 新增 `runAssistantTurn`：复用 `runDeepTurn` 的工具循环、传输与流式回调，消息只来自技能系统提示、会话消息与本轮输入；上限为 20 次工具调用、300,000 毫秒、32,000 token 工具往返与最近 4 步，会话 `context_budget` 覆盖 token 上限。`assistant/tools.ts` 新增十个只读工具（`explain_node`、`run_log_read`、`memory_search` 限当前故事与 head 最多 10 条、`ledger_read`、`lore_lookup`、`state_get`、`director_read`、`settings_read`、`template_read`、`plugin_list`），结果超过 32,000 字符截断并写明原长与截断位置；`assistant/prompts.ts` 提供所有技能共用的基础提示。`StoryStore` 新增 `startAssistantConversationRun` 与 `finishAssistantConversationRun`（状态与事件同一事务，并发启动抛 `AssistantRunConflictError`）。protocol 新增 `assistant.*` SSE 事件、`SendAssistantMessageRequest` 与 `AssistantCancelView`；server 新增 `POST /api/assistant/conversations/:id/messages`（SSE）与 `/cancel`、`AssistantRuntimeManager`，启动时调用 `markInterruptedAssistantConversations`；客户端断开不中止运行。门禁通过（238 个测试文件、2094 个测试、5 个跳过）。
+- 2026-11-13 会话 359：完成 H-T03（三级权限与待确认动作）。迁移 v45 新建 `assistant_actions` 并重建 `ledger_change_cards`。`packages/core/src/assistant/permissions.ts` 新增权限矩阵 `decideAssistantToolExecution`、`defineAssistantTool`、`assistantActionGate` 与 `canAutoExecuteAssistantAction`：只读级别拒绝 `propose` 与 `side_effect` 并把 `permission_denied` 作为工具结果返回、写 `permission.denied` 事件；确认级别执行控制工具，提案与外部影响进入待确认；自动级别只有 `channels` 可以直接执行，模板、世界书、导演计划、卡片与生图配置仍然待确认。`assistant/actions.ts` 定义七种动作、规范化载荷去重、创建与批准/拒绝，批准前重新校验，批准时调用 `updateStorySettings`、`createContextTemplate`/`updateContextTemplate`、`insertLoreEntries`、`replaceDirectorPlan` 与生图配置写入；渠道动作由 server 注入 `applyChannelsUpdate` 的写入路径。`StoryStore` 新增动作创建、读取、列表、计数与决定方法；删除仍有待确认动作的会话抛错。protocol 新增动作视图、拒绝请求、`permission.denied` 事件与 SSE 名；server 新增 `GET /api/assistant/actions`、`POST /api/assistant/actions/:id/approve|reject`，删除会话遇到待确认动作返回 409。`ASSISTANT_ACTION_KINDS` 不含台账修改，助手只能生成来源为 `assistant` 的变更卡。
 
-## 下一步（会话 359 先做）
-1. **H-T03 三级权限与待确认动作**：依赖 H-T02，已完成。迁移 v45 新建 `assistant_actions`，重建 `ledger_change_cards` 允许来源 `assistant` 并增加可空的 `assistant_conversation_id`；`assistant/permissions.ts` 映射三级权限；`confirm` 与 `auto` 的剧情相关调用只生成待确认动作；批准调用现有写入函数，拒绝只改状态；删除有待确认动作的会话返回 409。
-2. 之后按 H-T04 → H-T05/H-T06 → H-T07 → H-T08 → H-T09 → H-T99 的顺序做。一个会话只做一个任务。
+## 下一步（会话 360 先做）
+1. **H-T04 排障与使用指南技能**：依赖 H-T02 与 E-T01，已完成。新增 `assistant/skills.ts` 技能注册表（id、名称、说明、系统提示、工具白名单、默认权限），本任务注册 `troubleshoot` 与 `guide`，未注册技能在创建会话时拒绝；排障提示词要求结论带证据并在缺失时写“没有记录”；新增 `assistant/docs.ts` 的 `docs_search`（`--docs-root` 默认仓库 `docs/`，读取 DESIGN、TASKS、HUMAN 与 reports，trigram 检索，目录缺失启动失败）；server 新增 `GET /api/assistant/skills`。
+2. 之后按 H-T05 → H-T06 → H-T07 → H-T08 → H-T09 → H-T99 的顺序做。一个会话只做一个任务。
 3. 其余可做任务：X1（依赖已完成）、R6-T00（依赖已满足，但排在 H 之后）。M5-T00 依赖 R6-T99；M6-T99 等待 HUMAN-15；P5 依赖 M5-T99。
 
 ## H 的任务划分（ADR-0125）
 - **H-T01（已完成）** 迁移 v44：会话、消息、只追加事件与 trigram 索引；`StoryStore` 读写与搜索；protocol 类型；server 会话 CRUD、状态与事件续读接口；web 类型化客户端。
 - **H-T02（已完成）** `runAssistantTurn` 复用 `runDeepTurn`；十个只读工具；事件与状态持久化；消息 SSE、取消、并发 409 与重启后的 `interrupted`；不写楼层、不写 `turn_runs`、不进入剧情上下文。
-- **H-T03** 迁移 v45：`assistant_actions` 与台账变更卡来源 `assistant`；三级权限映射；批准时调用现有写入函数；自动级别只直接执行渠道、模型、思考强度与界面设置。
+- **H-T03（已完成）** 迁移 v45：`assistant_actions` 与台账变更卡来源 `assistant`；三级权限映射；七类载荷校验与批准路径；动作列表、批准、拒绝接口；待确认动作阻止会话删除。
 - **H-T04** 技能注册表、排障与使用指南；`docs_search` 从 `--docs-root` 读取文档，trigram 检索，目录缺失时启动失败。
-- **H-T05** 台账修订与参谋：`propose_ledger_change` 生成来源 `assistant` 的变更卡，`propose_director_plan` 生成待确认动作。
-- **H-T06** 资料员、卡片工坊、设置向导；联网搜索必须显式开启；渠道读取不返回密钥。
+- **H-T05** 台账修订与参谋：`propose_ledger_change` 生成来源 `assistant` 的变更卡，`propose_director_plan` 生成 `director_plan` 待确认动作。
+- **H-T06** 资料员、卡片工坊、设置向导；联网搜索必须显式开启；渠道读取不返回密钥；渠道动作批准复用 `applyChannelsUpdate`。
 - **H-T07** web 抽屉、会话搜索与改名、技能与权限选择、事件续读、关闭后继续运行与状态标记。
 - **H-T08** 迁移 v46：`assistant_compactions`；自动与手动压缩、用量环；预算与正剧记忆独立。
 - **H-T09** 待确认动作与台账变更卡审阅面板。
@@ -26,16 +26,17 @@
 - 助手会话可以关联故事，也可以不关联；消息与事件独立于 `nodes`、`state_diffs`、`turn_runs`。
 - 助手运行不调用 `generateAssistantTurn`，不组装剧情上下文；正剧上下文也不读取助手消息。
 - 工具白名单不含草稿、提交、导演手记、正文写入、台账直接写入与生图。H-T02 只有 `permission: "read"` 的十个工具。
-- 只读级别只执行 `read`；确认级别把提案与有外部影响的操作写成待确认动作；自动级别只直接执行不改变剧情内容的渠道、模型、思考强度与界面设置。台账、记忆、故事设置、模板、世界书、卡片字段、导演计划与生图配置在任何级别都只生成待确认动作或变更卡。
-- 台账变更卡锚定当前 head：`source_node_id` 取 head，`before` 取 head 快照，批准复用 `approveLedgerChangeCard`，事实来源为 `player`。
+- 三级权限：只读只执行 `read`；确认执行 `read` 与 `control`，提案与外部影响写成待确认动作；自动级别只有 `channels` 直接执行，其余种类仍然待确认。台账修改永远只生成变更卡，任何级别都不能自动批准。
+- 待确认动作的载荷在创建与批准时各校验一次；批准失败保留 `pending`。同一会话内相同 `kind` 与规范化载荷的待定动作复用同一条记录。拒绝必须写原因。
+- 台账变更卡锚定当前 head：`source_node_id` 取 head，`before` 取 head 快照，批准复用 `approveLedgerChangeCard`，事实来源为 `player`；助手卡片记录 `assistant_conversation_id`。
 - 助手上下文预算默认 48,000 token，压缩阈值默认 0.8；较早消息合并成一条 `system` 摘要，保留最近 10 条与待确认动作引用的消息。
 - 助手默认模型是 `roles.writer` 解析到的别名，会话可以覆盖；不新增渠道角色。
 - 请求与响应类型放在 `packages/protocol`，运行时放在 `packages/core/src/assistant`，server 处理放在 `packages/server/src/assistant.ts`，web 放在 `packages/web/src/assistant`。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a 至 P2.g、P3.a 至 P3.f、P4.a 至 P4.f、C-T01.a 至 C-T01.d、C-T02.a 至 C-T02.f、C-T03.a 至 C-T03.d、C-T04.a、C-T04.b.a、C-T04.b.b、C-T04.c.a、C-T04.c.b、C-T04.c.c、C-T04.c.d、C-T04.d、C-T05.a 至 C-T05.f、H-T00、H-T01、H-T02。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a 至 P2.g、P3.a 至 P3.f、P4.a 至 P4.f、C-T01.a 至 C-T01.d、C-T02.a 至 C-T02.f、C-T03.a 至 C-T03.d、C-T04.a、C-T04.b.a、C-T04.b.b、C-T04.c.a、C-T04.c.b、C-T04.c.c、C-T04.c.d、C-T04.d、C-T05.a 至 C-T05.f、H-T00、H-T01、H-T02、H-T03。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
 - 兼容插件线：`st-content`、`st-mvu`、`st-ejs`、`st-helper-host` 全部完成（含一致性测试与共存评测）。
-- 数据库 schema 版本 44；v45–v46 预留给助手的待确认动作与压缩记录。本轮没有新增依赖。
+- 数据库 schema 版本 45；v46 预留给助手的压缩记录。本轮没有新增依赖。
 - 报告：`docs/dev/reports/P2.md`、`P3.md`、`P4.md`、`C-T01.md`、`C-T02.md`、`C-T03.md`、`C-T04.md`、`C-T05.md`。
 - 沙箱现状：`eval-private/st-sandbox/st` 有 36 个预设、68 张卡、89 个非驱动聊天片段；预设连接字段已被驱动改写为录制端点与桩模型，全局 `openai_max_context` 已被驱动改为 2,000,000。需要恢复原始预设时用 `sandbox --replace` 重建。
 - 私有比对批次：`compare-smoke4`（5 个组合，修复后）与更早的 `compare-smoke2`、`compare-smoke3`、`session324-sanitize`；每个批次的 `compare/` 下有报告、差异清单与汇总。
@@ -49,6 +50,7 @@
 
 ## 可重复命令
 - 门禁：`pnpm check`。
+- H-T03 目标测试：`pnpm exec vitest run packages/core/test/assistant-actions.test.ts packages/core/test/assistant-runtime.test.ts packages/core/test/assistant-store.test.ts packages/server/test/assistant.test.ts packages/core/test/ledger-cards.test.ts`。
 - H-T02 目标测试：`pnpm exec vitest run packages/core/test/assistant-runtime.test.ts packages/server/test/assistant.test.ts`。
 - H-T01 目标测试：`pnpm exec vitest run packages/core/test/assistant-store.test.ts packages/server/test/assistant.test.ts packages/web/test/assistant-api.test.ts`。
 - web 端到端用例用 `pnpm --filter @dramaticer/web exec playwright test <spec> --project=desktop`，e2e 不在 `pnpm check` 里。
@@ -81,6 +83,9 @@
 - 助手运行时把会话消息转成模型消息时，工具消息没有可回放的调用 id 与原生签名，统一转成 `system` 消息保留工具名与结果；不要伪造 `toolCalls` 回放，Gemini 一类渠道会因缺少签名拒绝请求。
 - 助手运行事件名带前缀（`assistant.started`、`assistant.text.delta` 等），与剧情回合的 `text.delta`、`tool.call` 分开；两套 SSE 载荷形状不同，`createSseStream` 按事件表类型参数区分。
 - 助手并发启动有两层保护：server 的 `AssistantRunCoordinator` 返回 409，store 的 `startAssistantConversationRun` 在同一事务里拒绝第二个 running。客户端断开只停止 SSE 写入，不中止运行。
+- 助手工具的 `permission` 是助手自己的三级权限判定；传给深回合执行器时统一为 `read`，否则执行器会把 `propose` 与 `side_effect` 当成剧情写入语义处理。新增提案工具用 `defineAssistantTool` 包装，工具内部调用 `assistantActionGate` 与 `store.createAssistantAction`。
+- `assistant_actions` 的待定唯一索引以规范化 JSON 载荷为键；同会话同种类同载荷复用已有待定动作。批准顺序是先校验、再调用领域写入、最后改状态，失败时动作保持 `pending`。
+- 台账变更卡来源增加 `assistant` 后，`assistantConversationId` 只允许助手来源填写；批准仍走 `approveLedgerChangeCard`，事实来源为 `player`，任何权限级别都不能自动批准。
 - 插件模块静态初始化时不要调用会反向 import 当前模块的注册表；槽位名等基础常量放在叶子模块。
 - 新增的格式化与 lint 用 `pnpm exec biome check --write <文件>`，不要手写格式；用 Python 等外部工具改写文件后要重跑 biome，它会带 CRLF，需要格式化回 LF。
 - 修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 的请求写进 HUMAN.md。

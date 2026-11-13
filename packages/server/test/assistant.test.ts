@@ -12,6 +12,8 @@ import type {
 } from "@dramaticer/core";
 import type {
 	ApiErrorResponse,
+	AssistantActionDecisionView,
+	AssistantActionListView,
 	AssistantCancelView,
 	AssistantConversationDetailView,
 	AssistantConversationEventsView,
@@ -667,5 +669,113 @@ describe("助手消息接口", () => {
 		expect(second.store.getAssistantConversation(conversation.id)?.status).toBe(
 			"interrupted",
 		);
+	});
+});
+
+describe("助手待确认动作接口", () => {
+	it("列出、批准与拒绝故事动作，非法载荷保留待定", async () => {
+		const running = await startTestServer();
+		seedStory(running);
+		const conversation = await createConversation(running.origin, {
+			storyId: "story-1",
+			skill: "setup_wizard",
+		});
+		const settings = running.store.createAssistantAction({
+			conversationId: conversation.id,
+			kind: "settings",
+			summary: "提高预算",
+			payload: { budgetTokens: 18_000 },
+		});
+		const broken = running.store.createAssistantAction({
+			conversationId: conversation.id,
+			kind: "settings",
+			summary: "换模板",
+			payload: { templateId: "missing-template" },
+		});
+		const list = await request(
+			running.origin,
+			"/api/assistant/actions?status=pending&storyId=story-1",
+		);
+		expect(list.status).toBe(200);
+		const listBody = (await list.json()) as AssistantActionListView;
+		expect(listBody.actions.map((action) => action.id)).toEqual([
+			settings.id,
+			broken.id,
+		]);
+		expect(listBody.actions[0]?.kind).toBe("settings");
+
+		const bad = await post(
+			running.origin,
+			`/api/assistant/actions/${broken.id}/approve`,
+			{},
+		);
+		expect(bad.status).toBe(400);
+		expect((await errorBody(bad)).error.message).toContain("模板不存在");
+		expect(running.store.getAssistantAction(broken.id)?.status).toBe("pending");
+
+		const approved = await post(
+			running.origin,
+			`/api/assistant/actions/${settings.id}/approve`,
+			{},
+		);
+		expect(approved.status).toBe(200);
+		const approvedBody = (await approved.json()) as AssistantActionDecisionView;
+		expect(approvedBody.action.status).toBe("approved");
+		expect(running.store.getStorySettings("story-1").budgetTokens).toBe(18_000);
+
+		const rejected = await post(
+			running.origin,
+			`/api/assistant/actions/${broken.id}/reject`,
+			{ reason: "模板还没准备好" },
+		);
+		expect(rejected.status).toBe(200);
+		const rejectedBody = (await rejected.json()) as AssistantActionDecisionView;
+		expect(rejectedBody.action.status).toBe("rejected");
+		expect(rejectedBody.action.rejectionReason).toBe("模板还没准备好");
+		expect(running.store.getStorySettings("story-1").templateId).toBeNull();
+
+		const again = await post(
+			running.origin,
+			`/api/assistant/actions/${settings.id}/reject`,
+			{ reason: "重复" },
+		);
+		expect(again.status).toBe(409);
+		const missing = await post(
+			running.origin,
+			"/api/assistant/actions/missing/approve",
+			{},
+		);
+		expect(missing.status).toBe(404);
+	});
+
+	it("有待确认动作的会话删除返回 409，处理后删除", async () => {
+		const running = await startTestServer();
+		seedStory(running);
+		const conversation = await createConversation(running.origin, {
+			storyId: "story-1",
+			skill: "card_workshop",
+		});
+		const action = running.store.createAssistantAction({
+			conversationId: conversation.id,
+			kind: "card",
+			summary: "改人物提示",
+			payload: { characterPrompt: "新的提示" },
+		});
+		const blocked = await request(
+			running.origin,
+			`/api/assistant/conversations/${conversation.id}`,
+			{ method: "DELETE" },
+		);
+		expect(blocked.status).toBe(409);
+		await post(running.origin, `/api/assistant/actions/${action.id}/reject`, {
+			reason: "先不用",
+		});
+		const deleted = await request(
+			running.origin,
+			`/api/assistant/conversations/${conversation.id}`,
+			{ method: "DELETE" },
+		);
+		expect(deleted.status).toBe(204);
+		expect(running.store.getAssistantConversation(conversation.id)).toBeNull();
 	});
 });

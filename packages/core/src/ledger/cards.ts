@@ -10,7 +10,7 @@ import { readStateValue } from "../state.js";
 import type { StoryStore } from "../store/story-store.js";
 import type { NewStateDiff, StateDiffOp } from "../timeline.js";
 import { readLedger } from "./read.js";
-import { type LedgerSource, validateLedgerDiff } from "./schema.js";
+import { validateLedgerDiff } from "./schema.js";
 import { userWillStableId } from "./user-will.js";
 
 export const LEDGER_CHANGE_CARD_STATUSES = [
@@ -21,6 +21,17 @@ export const LEDGER_CHANGE_CARD_STATUSES = [
 ] as const;
 export type LedgerChangeCardStatus =
 	(typeof LEDGER_CHANGE_CARD_STATUSES)[number];
+
+/** 变更卡来源；助手生成的卡片单独标注，批准后事实来源仍是 `player`。 */
+export const LEDGER_CHANGE_CARD_SOURCES = [
+	"model",
+	"settler",
+	"player",
+	"import",
+	"assistant",
+] as const;
+export type LedgerChangeCardSource =
+	(typeof LEDGER_CHANGE_CARD_SOURCES)[number];
 
 /** 变更卡操作失败的原因；调用方据此区分“不存在”和“状态不允许”。 */
 export type LedgerChangeCardErrorCode = "not_found" | "invalid_status";
@@ -60,8 +71,10 @@ export interface LedgerBeforeEntry {
 export interface LedgerChangeCard {
 	readonly id: string;
 	readonly storyId: string;
-	/** 卡片来源：玩家提出、结算冲突、正文模型提案。 */
-	readonly source: LedgerSource;
+	/** 卡片来源：玩家提出、结算冲突、正文模型提案或应用内助手。 */
+	readonly source: LedgerChangeCardSource;
+	/** 助手生成的卡片所属会话；其余来源为 null。 */
+	readonly assistantConversationId: string | null;
 	readonly sourceNodeId: string;
 	readonly text: string;
 	readonly diffs: readonly LedgerChangeCardDiff[];
@@ -76,7 +89,8 @@ export interface LedgerChangeCard {
 export interface NewLedgerChangeCardInput {
 	readonly id: string;
 	readonly storyId: string;
-	readonly source: LedgerSource;
+	readonly source: LedgerChangeCardSource;
+	readonly assistantConversationId?: string | null;
 	readonly sourceNodeId: string;
 	readonly text: string;
 	readonly diffs: readonly LedgerChangeCardDiff[];

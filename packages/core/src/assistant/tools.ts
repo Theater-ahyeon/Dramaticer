@@ -14,6 +14,11 @@ import {
 	validateReadToolArguments,
 } from "../tools/read-tools.js";
 import type { DeepToolDefinition } from "../tools/registry.js";
+import { defineAssistantTool } from "./permissions.js";
+import {
+	type AssistantPermission,
+	DEFAULT_ASSISTANT_PERMISSION,
+} from "./types.js";
 
 /** 应用内助手的只读工具名；没有草稿、提交、手记、正文写入与生图工具。 */
 export const ASSISTANT_TOOL_NAMES = [
@@ -52,13 +57,19 @@ export interface AssistantToolContext {
 	readonly store: StoryStore;
 	/** 会话关联的故事；不关联故事时为 null。 */
 	readonly storyId: string | null;
+	/** 会话权限；缺省按修改前确认处理。 */
+	readonly permission?: AssistantPermission;
+	readonly conversationId?: string;
 	readonly embedder?: EmbeddingClient | null;
 	readonly reranker?: RerankClient | null;
-	readonly onToolCall?: (name: AssistantToolName, args: JsonObject) => void;
-	readonly onToolResult?: (
-		name: AssistantToolName,
-		ok: boolean,
-		content: string,
+	/** 技能附带的工具；与只读工具一起按会话权限包装。 */
+	readonly extraTools?: readonly DeepToolDefinition[];
+	readonly onToolCall?: (name: string, args: JsonObject) => void;
+	readonly onToolResult?: (name: string, ok: boolean, content: string) => void;
+	readonly onPermissionDenied?: (
+		name: string,
+		permission: string,
+		reason: string,
 	) => void;
 }
 
@@ -69,33 +80,33 @@ export interface AssistantToolContext {
 export function createAssistantTools(
 	context: AssistantToolContext,
 ): readonly DeepToolDefinition[] {
+	const permission = context.permission ?? DEFAULT_ASSISTANT_PERMISSION;
 	const define = (
 		name: AssistantToolName,
 		description: string,
 		parameters: Record<string, unknown>,
 		progressLabel: string,
 		run: (args: JsonObject) => string | Promise<string>,
-	): DeepToolDefinition => ({
-		name,
-		description,
-		parameters,
-		permission: "read",
-		progressLabel,
-		execute: async (args) => {
-			context.onToolCall?.(name, args);
-			try {
-				const content = fitResult(await run(args));
-				context.onToolResult?.(name, true, content);
-				return content;
-			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
-				context.onToolResult?.(name, false, `工具调用失败：${message}`);
-				throw error;
-			}
-		},
-	});
+	): DeepToolDefinition =>
+		defineAssistantTool(
+			{
+				permission,
+				conversationId: context.conversationId ?? "",
+				onToolCall: context.onToolCall,
+				onToolResult: context.onToolResult,
+				onPermissionDenied: context.onPermissionDenied,
+			},
+			{
+				name,
+				description,
+				parameters,
+				permission: "read",
+				progressLabel,
+				execute: async (args: JsonObject) => fitResult(await run(args)),
+			},
+		);
 
-	return [
+	const readTools = [
 		define(
 			"explain_node",
 			"解释一个楼层这一轮为什么这么写：Trace、上下文分段与 token、被裁剪的段落、检索名次、台账、导演决策、当前拍与修正建议。只读。",
@@ -308,6 +319,24 @@ export function createAssistantTools(
 			},
 		),
 	];
+	const extras = (context.extraTools ?? []).map((tool) =>
+		defineAssistantTool(
+			{
+				permission,
+				conversationId: context.conversationId ?? "",
+				onToolCall: context.onToolCall,
+				onToolResult: context.onToolResult,
+				onPermissionDenied: context.onPermissionDenied,
+			},
+			tool,
+		),
+	);
+	for (const tool of extras) {
+		if (readTools.some((builtin) => builtin.name === tool.name)) {
+			throw new Error(`助手工具名重复：${tool.name}`);
+		}
+	}
+	return [...readTools, ...extras];
 }
 
 function runLogRead(context: AssistantToolContext, args: JsonObject): string {

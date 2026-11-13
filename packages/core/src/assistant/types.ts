@@ -44,6 +44,7 @@ export const ASSISTANT_EVENT_KINDS = [
 	"thinking.delta",
 	"tool.call",
 	"tool.result",
+	"permission.denied",
 	"usage",
 	"completed",
 	"error",

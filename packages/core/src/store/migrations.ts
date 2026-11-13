@@ -1325,6 +1325,100 @@ export function buildMigrations(
 				END`,
 			],
 		},
+		{
+			version: 45,
+			description: "助手待确认动作；台账变更卡允许助手来源并记录会话",
+			statements: [
+				`CREATE TABLE assistant_actions (
+					id TEXT PRIMARY KEY,
+					conversation_id TEXT NOT NULL
+						REFERENCES assistant_conversations(id) ON DELETE CASCADE,
+					story_id TEXT REFERENCES stories(id),
+					kind TEXT NOT NULL CHECK (kind IN (
+						'channels', 'settings', 'template', 'lore',
+						'director_plan', 'card', 'image_config'
+					)),
+					summary TEXT NOT NULL CHECK (length(trim(summary)) > 0),
+					payload TEXT NOT NULL,
+					status TEXT NOT NULL
+						CHECK (status IN ('pending', 'approved', 'rejected')),
+					rejection_reason TEXT,
+					created_at TEXT NOT NULL,
+					decided_at TEXT,
+					CHECK (
+						(status = 'pending' AND decided_at IS NULL AND rejection_reason IS NULL)
+						OR (status = 'approved' AND decided_at IS NOT NULL AND rejection_reason IS NULL)
+						OR (status = 'rejected' AND decided_at IS NOT NULL AND rejection_reason IS NOT NULL)
+					)
+				) STRICT`,
+				`CREATE UNIQUE INDEX assistant_actions_pending_payload_idx
+					ON assistant_actions(conversation_id, kind, payload)
+					WHERE status = 'pending'`,
+				"CREATE INDEX assistant_actions_story_status_idx ON assistant_actions(story_id, status, created_at)",
+				`CREATE TRIGGER assistant_actions_story_matches_conversation
+				BEFORE INSERT ON assistant_actions
+				WHEN COALESCE((SELECT story_id FROM assistant_conversations WHERE id = NEW.conversation_id), '') <> COALESCE(NEW.story_id, '')
+				BEGIN
+					SELECT RAISE(ABORT, '助手动作的 story_id 必须与会话一致');
+				END`,
+				`CREATE TRIGGER assistant_actions_identity_immutable
+				BEFORE UPDATE ON assistant_actions
+				WHEN NEW.id <> OLD.id
+					OR NEW.conversation_id <> OLD.conversation_id
+					OR COALESCE(NEW.story_id, '') <> COALESCE(OLD.story_id, '')
+					OR NEW.kind <> OLD.kind
+					OR NEW.summary <> OLD.summary
+					OR NEW.payload <> OLD.payload
+					OR NEW.created_at <> OLD.created_at
+					OR OLD.status <> 'pending'
+				BEGIN
+					SELECT RAISE(ABORT, '助手动作的内容与归属不可修改');
+				END`,
+				`CREATE TABLE ledger_change_cards_next (
+					id TEXT PRIMARY KEY,
+					story_id TEXT NOT NULL REFERENCES stories(id),
+					source TEXT NOT NULL CHECK (source IN ('model', 'settler', 'player', 'import', 'assistant')),
+					assistant_conversation_id TEXT
+						REFERENCES assistant_conversations(id) ON DELETE SET NULL,
+					source_node_id TEXT NOT NULL REFERENCES nodes(id),
+					text TEXT NOT NULL,
+					diffs TEXT NOT NULL,
+					before TEXT NOT NULL,
+					status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'rejected', 'rolled_back')),
+					rejection_reason TEXT,
+					created_at TEXT NOT NULL,
+					decided_at TEXT
+				) STRICT`,
+				`INSERT INTO ledger_change_cards_next
+					(id, story_id, source, assistant_conversation_id, source_node_id, text, diffs, before, status, rejection_reason, created_at, decided_at)
+				SELECT id, story_id, source, NULL, source_node_id, text, diffs, before, status, rejection_reason, created_at, decided_at
+				FROM ledger_change_cards`,
+				"DROP TABLE ledger_change_cards",
+				"ALTER TABLE ledger_change_cards_next RENAME TO ledger_change_cards",
+				"CREATE INDEX ledger_change_cards_story_idx ON ledger_change_cards(story_id, status)",
+				"CREATE INDEX ledger_change_cards_assistant_idx ON ledger_change_cards(assistant_conversation_id)",
+				`CREATE TRIGGER ledger_change_cards_story_matches_node
+				BEFORE INSERT ON ledger_change_cards
+				WHEN COALESCE((SELECT story_id FROM nodes WHERE id = NEW.source_node_id), '') <> NEW.story_id
+				BEGIN
+					SELECT RAISE(ABORT, '变更卡的 story_id 必须与来源楼层一致');
+				END`,
+				`CREATE TRIGGER ledger_change_cards_identity_immutable
+				BEFORE UPDATE ON ledger_change_cards
+				WHEN NEW.id <> OLD.id
+					OR NEW.story_id <> OLD.story_id
+					OR NEW.source <> OLD.source
+					OR COALESCE(NEW.assistant_conversation_id, '') <> COALESCE(OLD.assistant_conversation_id, '')
+					OR NEW.source_node_id <> OLD.source_node_id
+					OR NEW.text <> OLD.text
+					OR NEW.diffs <> OLD.diffs
+					OR NEW.before <> OLD.before
+					OR NEW.created_at <> OLD.created_at
+				BEGIN
+					SELECT RAISE(ABORT, '变更卡的内容与归属不可修改');
+				END`,
+			],
+		},
 	];
 }
 

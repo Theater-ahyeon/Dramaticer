@@ -1,10 +1,15 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
+	type AssistantAction,
+	AssistantActionError,
+	AssistantActionPayloadError,
 	type AssistantConversation,
+	AssistantConversationHasPendingActionsError,
 	type AssistantEvent,
 	type JsonObject,
 	type JsonValue,
 	type StoryStore,
+	approveAssistantAction,
 	assertAssistantCompactionThreshold,
 	assertAssistantContextBudget,
 	assertAssistantConversationStatus,
@@ -12,12 +17,16 @@ import {
 	assertAssistantThinking,
 	assertJsonValue,
 	buildAssistantSystemPrompt,
+	isAssistantActionStatus,
 	isDeepTurnStopReason,
 	isJsonObject,
+	rejectAssistantAction,
 	runAssistantTurn,
 } from "@dramaticer/core";
 import {
 	ASSISTANT_SSE_EVENT_NAMES,
+	type AssistantActionDecisionView,
+	type AssistantActionListView,
 	type AssistantCancelView,
 	type AssistantCompletedPayload,
 	type AssistantConversationDetailView,
@@ -27,6 +36,7 @@ import {
 	type AssistantConversationView,
 	type AssistantErrorPayload,
 	type AssistantPermission,
+	type AssistantPermissionDeniedPayload,
 	type AssistantSkillId,
 	type AssistantSseEventMap,
 	type AssistantStartedPayload,
@@ -37,6 +47,7 @@ import {
 	type AssistantToolResultPayload,
 	type AssistantUsagePayload,
 	type CreateAssistantConversationRequest,
+	type RejectAssistantActionRequest,
 	type UpdateAssistantConversationRequest,
 	isAssistantSkillId,
 } from "@dramaticer/protocol";
@@ -54,6 +65,8 @@ export interface AssistantRouteOptions {
 	readonly runtime: AssistantRuntimeManager | null;
 	readonly runs: AssistantRunCoordinator;
 	readonly heartbeatMs: number;
+	/** 批准渠道动作时调用；没有渠道文件时为 null。 */
+	readonly applyChannelsAction?: (payload: JsonObject) => Promise<void>;
 	readonly now?: () => number;
 	readonly log: (line: string) => void;
 }
@@ -140,6 +153,24 @@ export async function handleAssistantRequest(
 	}
 	const parts = assistantPathSegments(url.pathname);
 	const [collection, id, action] = parts;
+	if (collection === "actions") {
+		if (id === undefined) {
+			requireMethod(method, ["GET"]);
+			handleActionList(res, url, options);
+			return;
+		}
+		if (action === "approve") {
+			requireMethod(method, ["POST"]);
+			await handleActionApprove(req, res, options, id);
+			return;
+		}
+		if (action === "reject") {
+			requireMethod(method, ["POST"]);
+			await handleActionReject(req, res, options, id);
+			return;
+		}
+		throw new HttpError(404, "not_found", "没有这个接口");
+	}
 	if (collection !== "conversations") {
 		throw new HttpError(404, "not_found", "没有这个接口");
 	}
@@ -379,8 +410,121 @@ function handleConversationDelete(
 	id: string,
 ): void {
 	requireConversation(options.store, id);
-	options.store.deleteAssistantConversation(id);
+	try {
+		options.store.deleteAssistantConversation(id);
+	} catch (error) {
+		if (error instanceof AssistantConversationHasPendingActionsError) {
+			throw new HttpError(409, "conflict", error.message, {
+				pendingActions: error.pendingCount,
+			});
+		}
+		throw error;
+	}
 	sendEmpty(res, 204);
+}
+
+function handleActionList(
+	res: ServerResponse,
+	url: URL,
+	options: AssistantRouteOptions,
+): void {
+	const rawStatus = url.searchParams.get("status");
+	const status =
+		rawStatus === null || rawStatus === "pending"
+			? "pending"
+			: rawStatus === "all"
+				? undefined
+				: rawStatus;
+	if (status !== undefined && !isAssistantActionStatus(status)) {
+		throw fieldError(
+			"status",
+			"status 只能是 all、pending、approved 或 rejected",
+		);
+	}
+	const storyId = url.searchParams.get("storyId") ?? undefined;
+	if (storyId !== undefined && options.store.getStory(storyId) === null) {
+		throw new HttpError(404, "not_found", `故事不存在：${storyId}`, {
+			path: "storyId",
+		});
+	}
+	const conversationId = url.searchParams.get("conversationId") ?? undefined;
+	if (
+		conversationId !== undefined &&
+		options.store.getAssistantConversation(conversationId) === null
+	) {
+		throw new HttpError(404, "not_found", `助手会话不存在：${conversationId}`, {
+			path: "conversationId",
+		});
+	}
+	const actions = options.store.listAssistantActions({
+		...(conversationId === undefined ? {} : { conversationId }),
+		...(storyId === undefined ? {} : { storyId }),
+		...(status === undefined ? {} : { status }),
+		limit: readLimit(url, 50),
+	});
+	const body: AssistantActionListView = { actions };
+	sendJson(res, 200, body);
+}
+
+async function handleActionApprove(
+	req: IncomingMessage,
+	res: ServerResponse,
+	options: AssistantRouteOptions,
+	id: string,
+): Promise<void> {
+	const body = await readObjectBody(req, options.maxJsonBodyBytes);
+	assertKnownKeys(body, []);
+	let action: AssistantAction;
+	try {
+		action = await approveAssistantAction(options.store, id, {
+			...(options.applyChannelsAction === undefined
+				? {}
+				: { applyChannels: options.applyChannelsAction }),
+		});
+	} catch (error) {
+		throw toActionDecisionError(error);
+	}
+	const view: AssistantActionDecisionView = { action };
+	sendJson(res, 200, view);
+}
+
+async function handleActionReject(
+	req: IncomingMessage,
+	res: ServerResponse,
+	options: AssistantRouteOptions,
+	id: string,
+): Promise<void> {
+	const body = await readObjectBody(req, options.maxJsonBodyBytes);
+	assertKnownKeys(body, ["reason"]);
+	const request: RejectAssistantActionRequest = {
+		reason: requireText(body.reason, "reason"),
+	};
+	let action: AssistantAction;
+	try {
+		action = rejectAssistantAction(options.store, id, request.reason);
+	} catch (error) {
+		throw toActionDecisionError(error);
+	}
+	const view: AssistantActionDecisionView = { action };
+	sendJson(res, 200, view);
+}
+
+/** 动作不存在映射 404、已决定映射 409、载荷非法映射 400；都保留原状态。 */
+function toActionDecisionError(error: unknown): HttpError {
+	if (error instanceof HttpError) return error;
+	if (error instanceof AssistantActionError) {
+		return error.code === "not_found"
+			? new HttpError(404, "not_found", error.message)
+			: new HttpError(409, "conflict", error.message);
+	}
+	if (error instanceof AssistantActionPayloadError) {
+		return new HttpError(400, "bad_request", error.message);
+	}
+	return new HttpError(
+		400,
+		"bad_request",
+		error instanceof Error ? error.message : String(error),
+	);
 }
 
 function handleConversationStatus(
@@ -550,6 +694,10 @@ type AssistantSseEvent =
 			readonly data: AssistantToolResultPayload;
 	  }
 	| {
+			readonly event: typeof ASSISTANT_SSE_EVENT_NAMES.permissionDenied;
+			readonly data: AssistantPermissionDeniedPayload;
+	  }
+	| {
 			readonly event: typeof ASSISTANT_SSE_EVENT_NAMES.usage;
 			readonly data: AssistantUsagePayload;
 	  }
@@ -616,6 +764,15 @@ function toAssistantSseEvent(event: AssistantEvent): AssistantSseEvent {
 				},
 			};
 		}
+		case "permission.denied":
+			return {
+				event: ASSISTANT_SSE_EVENT_NAMES.permissionDenied,
+				data: {
+					name: readPayloadString(payload, "name"),
+					permission: readPayloadString(payload, "permission"),
+					reason: readPayloadString(payload, "reason"),
+				},
+			};
 		case "usage": {
 			const usage = payload.usage;
 			if (usage === undefined) {
@@ -666,6 +823,9 @@ function sendAssistantEvent(
 			sse.send(event.event, event.data);
 			return;
 		case ASSISTANT_SSE_EVENT_NAMES.toolResult:
+			sse.send(event.event, event.data);
+			return;
+		case ASSISTANT_SSE_EVENT_NAMES.permissionDenied:
 			sse.send(event.event, event.data);
 			return;
 		case ASSISTANT_SSE_EVENT_NAMES.usage:

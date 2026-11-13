@@ -18,6 +18,7 @@ function card(
 		id,
 		storyId: "story-1",
 		source: "player",
+		assistantConversationId: null,
 		sourceNodeId: "node-1",
 		text: `变更 ${id}`,
 		diffs: [{ path: ["mvu", "time"], op: "set", value: "夜晚" }],
