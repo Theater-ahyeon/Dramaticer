@@ -71,7 +71,15 @@ interface ContextSegmentBase {
 export interface ContextStaticSegment extends ContextSegmentBase {
 	readonly kind: "static";
 	readonly text: string;
+	/** 静态消息的角色，默认 system。 */
+	readonly role?: LlmRole;
 }
+
+const STATIC_SEGMENT_ROLES: Readonly<Record<string, true>> = {
+	system: true,
+	user: true,
+	assistant: true,
+};
 
 export interface ContextSlotSegment extends ContextSegmentBase {
 	readonly kind: "slot";
@@ -129,6 +137,14 @@ export function assertContextTemplate(template: ContextTemplate): void {
 		if (segment.kind === "static") {
 			if (typeof segment.text !== "string" || segment.text.length === 0) {
 				throw new Error(`上下文片段 ${segment.id} 的静态文本必须是非空字符串`);
+			}
+			if (
+				segment.role !== undefined &&
+				STATIC_SEGMENT_ROLES[segment.role] !== true
+			) {
+				throw new Error(
+					`上下文片段 ${segment.id} 的静态消息角色不合法：${String(segment.role)}`,
+				);
 			}
 		} else if (!isContextSlotName(segment.slot)) {
 			throw new Error(

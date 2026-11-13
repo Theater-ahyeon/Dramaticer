@@ -199,10 +199,12 @@ export async function driveSandboxBatch(
 	}
 
 	const stubModel = options.stubModel ?? DEFAULT_STUB_MODEL;
+	const recordingGate = { enabled: false };
 	const recorder = await startPromptRecorder({
 		dir: batchDir,
 		port: options.recorderPort ?? DEFAULT_DRIVE_RECORDER_PORT,
 		stubModel,
+		isRecordingEnabled: () => recordingGate.enabled,
 	});
 	let completed = 0;
 	let failed = 0;
@@ -236,6 +238,7 @@ export async function driveSandboxBatch(
 				combinationTimeoutMs:
 					options.combinationTimeoutMs ?? DEFAULT_COMBINATION_TIMEOUT_MS,
 				headless: options.headless ?? true,
+				recordingGate,
 				log,
 			});
 			completed = outcome.completed;
@@ -264,6 +267,7 @@ interface RunPendingOptions {
 	readonly pending: readonly SandboxCombination[];
 	readonly combinationTimeoutMs: number;
 	readonly headless: boolean;
+	readonly recordingGate: { enabled: boolean };
 	readonly log: (line: string) => void;
 }
 
@@ -275,7 +279,11 @@ async function runPendingCombinations(
 	let failed = 0;
 	try {
 		const context = await browser.newContext();
-		let page = await openBenchPage(context, options.serverUrl);
+		let page = await openBenchPage(
+			context,
+			options.serverUrl,
+			options.recordingGate,
+		);
 		for (let index = 0; index < options.pending.length; index += 1) {
 			const combination = options.pending[index];
 			if (combination === undefined) continue;
@@ -318,11 +326,13 @@ async function runPendingCombinations(
 				finishedAt: null,
 			});
 			try {
+				options.recordingGate.enabled = false;
 				await withTimeout(
 					runBrowserTurn(page, {
 						preset: combination.preset,
 						avatar: combination.character,
 						chatName: prepared.chatName,
+						floor: combination.floor,
 						endpointUrl: options.endpointUrl,
 						stubModel: options.stubModel,
 					}),
@@ -378,7 +388,13 @@ async function runPendingCombinations(
 				);
 				// 超时的生成可能还占着页面；换一张新页面继续。
 				await page.close().catch(() => {});
-				page = await openBenchPage(context, options.serverUrl);
+				page = await openBenchPage(
+					context,
+					options.serverUrl,
+					options.recordingGate,
+				);
+			} finally {
+				options.recordingGate.enabled = false;
 			}
 		}
 		await page.close().catch(() => {});
@@ -392,8 +408,12 @@ async function runPendingCombinations(
 async function openBenchPage(
 	context: BrowserContext,
 	serverUrl: string,
+	recordingGate: { enabled: boolean },
 ): Promise<Page> {
 	const page = await context.newPage();
+	await page.exposeFunction("__dramaticerStartRecording", () => {
+		recordingGate.enabled = true;
+	});
 	await page.goto(serverUrl, {
 		waitUntil: "domcontentloaded",
 		timeout: 120_000,
@@ -415,6 +435,7 @@ interface BrowserTurnInput {
 	readonly preset: string;
 	readonly avatar: string;
 	readonly chatName: string;
+	readonly floor: number;
 	readonly endpointUrl: string;
 	readonly stubModel: string;
 }
@@ -435,7 +456,10 @@ async function runBrowserTurn(
 ): Promise<BrowserTurnResult> {
 	return page.evaluate(async (turn: BrowserTurnInput) => {
 		interface Context {
-			readonly characters: readonly { readonly avatar?: string }[];
+			readonly characters: readonly {
+				readonly avatar?: string;
+				readonly chat?: string;
+			}[];
 			readonly characterId: number | undefined;
 			readonly groupId: string | undefined;
 			readonly chat: readonly unknown[];
@@ -465,6 +489,7 @@ async function runBrowserTurn(
 			SillyTavern?: { getContext?: () => Context };
 			$?: (selector: string) => JQuery;
 			setTimeout: (callback: () => void, milliseconds: number) => unknown;
+			__dramaticerStartRecording?: () => Promise<void>;
 		};
 		const sleep = (milliseconds: number): Promise<void> => {
 			const { promise, resolve } = Promise.withResolvers<void>();
@@ -638,14 +663,24 @@ async function runBrowserTurn(
 		}
 
 		await context.openCharacterChat(turn.chatName);
-		if (context.chat.length === 0) {
-			throw new Error("聊天片段没有加载出消息");
+		await sleep(1000);
+		const opened = getContext();
+		const openedCharacter = opened.characters[opened.characterId as number];
+		if (openedCharacter?.chat !== turn.chatName) {
+			throw new Error("打开的聊天片段不是驱动复制的副本");
 		}
-		await context.generate("normal");
+		if (opened.chat.length < turn.floor) {
+			throw new Error("聊天片段没有加载出全部楼层");
+		}
+		if (scope.__dramaticerStartRecording === undefined) {
+			throw new Error("录制开关没有注入页面");
+		}
+		await scope.__dramaticerStartRecording();
+		await opened.generate("normal");
 		return {
 			preset: turn.preset,
 			avatar: turn.avatar,
-			messageCount: context.chat.length,
+			messageCount: opened.chat.length,
 		};
 	}, input);
 }

@@ -66,6 +66,8 @@ export interface PromptRecorderOptions {
 		readonly method: string;
 		readonly path: string;
 	}) => boolean;
+	/** 录制开关；关闭时仍然返回桩响应，但不写请求文件与索引。 */
+	readonly isRecordingEnabled?: () => boolean;
 }
 
 export interface PromptRecorder {
@@ -180,10 +182,30 @@ export async function startPromptRecorder(
 		}
 
 		const read = await readBody(request, maxBodyBytes);
+		const parsed = read.text === null ? null : parseJsonValue(read.text);
+		if (
+			options.isRecordingEnabled !== undefined &&
+			!options.isRecordingEnabled()
+		) {
+			ignoredRequests += 1;
+			if (read.truncated) {
+				sendJson(response, 413, {
+					error: {
+						message: `请求体超过 ${maxBodyBytes} 字节，录制服务没有缓存正文`,
+					},
+				});
+				return;
+			}
+			if (readStream(parsed)) {
+				sendStubStream(response, stubModel);
+			} else {
+				sendStubCompletion(response, stubModel);
+			}
+			return;
+		}
 		const seq = nextSeq;
 		nextSeq += 1;
 		const at = new Date().toISOString();
-		const parsed = read.text === null ? null : parseJsonValue(read.text);
 		const summary: PromptRecordSummary = {
 			seq,
 			at,

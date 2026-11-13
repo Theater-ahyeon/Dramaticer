@@ -1,6 +1,7 @@
 import { stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { compareSandboxBatch } from "./compare.js";
 import {
 	DEFAULT_COMBINATION_TIMEOUT_MS,
 	DEFAULT_DRIVE_RECORDER_PORT,
@@ -29,7 +30,7 @@ import {
 	stBenchPaths,
 } from "./sandbox.js";
 
-const USAGE = `用法：st-bench <sandbox|record|serve|plan|drive> ...
+const USAGE = `用法：st-bench <sandbox|record|serve|plan|drive|compare> ...
   sandbox --source <SillyTavern 目录> [--target <目录>] [--private-root <目录>]
           [--node-modules link|copy|skip] [--data <相对路径>]... [--replace]
   record [--dir <录制目录>] [--host 127.0.0.1] [--port 8130]
@@ -40,7 +41,8 @@ const USAGE = `用法：st-bench <sandbox|record|serve|plan|drive> ...
   plan [--sandbox <目录>] [--batch <名称>] [--limit <数量>]
   drive [--sandbox <目录>] [--batch <名称>] [--limit <数量>]
         [--port 8000] [--recorder-port 8130] [--stub-model <名称>]
-        [--combination-timeout <秒>] [--headed]`;
+        [--combination-timeout <秒>] [--headed]
+  compare [--sandbox <目录>] [--batch <名称>] [--limit <数量>]`;
 
 export interface StBenchCliOptions {
 	readonly repoRoot?: string;
@@ -78,6 +80,10 @@ export async function runStBenchCli(
 	}
 	if (command === "drive") {
 		await runDrive(args.slice(1), paths, log);
+		return;
+	}
+	if (command === "compare") {
+		await runCompare(args.slice(1), paths, log);
 		return;
 	}
 	throw new Error(USAGE);
@@ -380,6 +386,45 @@ async function runDrive(
 	);
 	log(`清单：${path.join(batchDir, RUN_MANIFEST_FILE)}`);
 	log(`录制：${path.join(batchDir, "index.jsonl")}`);
+}
+
+async function runCompare(
+	args: readonly string[],
+	paths: StBenchPaths,
+	log: (message: string) => void,
+): Promise<void> {
+	let sandboxDir = path.join(paths.sandboxDir, "st");
+	let batch = "default";
+	let limit: number | undefined;
+	for (let index = 0; index < args.length; index += 1) {
+		const arg = args[index];
+		if (arg === "--sandbox" || arg === "--batch" || arg === "--limit") {
+			const value = args[index + 1];
+			if (value === undefined) throw new Error(`${arg} 需要一个值`);
+			index += 1;
+			if (arg === "--sandbox") sandboxDir = value;
+			else if (arg === "--batch") batch = assertBatchName(value);
+			else limit = parsePositiveInteger(value, "--limit");
+			continue;
+		}
+		throw new Error(`未知参数：${arg}`);
+	}
+	const batchDir = path.join(paths.sandboxDir, "runs", batch);
+	const result = await compareSandboxBatch({
+		sandboxDir,
+		privateRoot: paths.privateRoot,
+		batchDir,
+		limit,
+		log,
+	});
+	log(
+		`比对结束：组合 ${result.combinations}，请求 ${result.requests}，消息覆盖率 ${(result.summary.messageCoverage * 100).toFixed(2)}%，差异 ${result.summary.diffCount}，不支持功能 ${result.summary.unsupportedCount}`,
+	);
+	log(
+		`采样参数一致 ${result.summary.matchedSamplingFields}/${result.summary.comparedSamplingFields}`,
+	);
+	log(`报告：${result.reportFile}`);
+	log(`差异清单：${result.diffsFile}`);
 }
 
 function parseNodeModulesMode(value: string): NodeModulesMode {

@@ -5,6 +5,7 @@ import {
 	type ContextSlotProvider,
 	type ContextTemplate,
 	assembleContext,
+	assertContextTemplate,
 	evaluateContextCondition,
 } from "../src/index.js";
 
@@ -30,6 +31,44 @@ function slot(
 }
 
 describe("assembleContext", () => {
+	it("静态段可以指定 system、user 与 assistant 三种消息角色", async () => {
+		const result = await assembleContext({
+			template: {
+				id: "roles",
+				segments: [
+					{ kind: "static", id: "s", text: "系统", role: "system" },
+					{ kind: "static", id: "u", text: "玩家", role: "user" },
+					{ kind: "static", id: "a", text: "角色", role: "assistant" },
+				],
+			},
+			budgetTokens: 100,
+			storyId: "story-1",
+			tokenEstimator: lengthTokens,
+		});
+
+		expect(result.messages).toEqual([
+			{ role: "system", content: "系统" },
+			{ role: "user", content: "玩家" },
+			{ role: "assistant", content: "角色" },
+		]);
+	});
+
+	it("静态段的消息角色不合法时直接抛错", () => {
+		expect(() =>
+			assertContextTemplate({
+				id: "bad-role",
+				segments: [
+					{
+						kind: "static",
+						id: "bad",
+						text: "文本",
+						role: "tool" as "system",
+					},
+				],
+			}),
+		).toThrow(/静态消息角色不合法：tool/);
+	});
+
 	it("按模板顺序输出静态段与槽位消息，并在 Trace 里记录来源和 token 数", async () => {
 		const result = await assembleContext({
 			template: baseTemplate,

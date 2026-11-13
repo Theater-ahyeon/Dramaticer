@@ -133,6 +133,36 @@ describe("ST prompt 录制服务", () => {
 		expect(record.headers["x-api-key"]).toBe("<redacted>");
 	});
 
+	it("录制开关关闭时返回桩响应但不写请求与索引", async () => {
+		const dir = await makeTempDir();
+		let enabled = false;
+		const recorder = await startPromptRecorder({
+			dir,
+			isRecordingEnabled: () => enabled,
+		});
+		onTestFinished(() => recorder.close());
+
+		const skipped = await sendHttp(
+			`${recorder.url}/v1/chat/completions`,
+			"POST",
+			chatBody(false),
+		);
+		expect(skipped.status).toBe(200);
+		expect(recorder.records).toHaveLength(0);
+
+		enabled = true;
+		const recorded = await sendHttp(
+			`${recorder.url}/v1/chat/completions`,
+			"POST",
+			chatBody(false),
+		);
+		expect(recorded.status).toBe(200);
+		await recorder.close();
+		const index = await readPromptRecordIndex(dir);
+		expect(index).toHaveLength(1);
+		expect(index[0]?.seq).toBe(0);
+	});
+
 	it("流式请求返回 OpenAI SSE 桩，达到上限后自动停止", async () => {
 		const dir = await makeTempDir();
 		const recorder = await startPromptRecorder({ dir, maxRequests: 1 });

@@ -348,7 +348,7 @@ async function resolveSegment(
 	if (segment.kind === "static") {
 		return {
 			segment,
-			messages: [{ role: "system", content: segment.text }],
+			messages: [{ role: segment.role ?? "system", content: segment.text }],
 			source: fallbackSource,
 			status: "candidate",
 		};
