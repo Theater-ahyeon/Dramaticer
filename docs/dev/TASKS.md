@@ -1291,7 +1291,8 @@
   - 兼容报告只含字段名、标识、字符数、条目数与原因，不含任何提示词正文；导入不丢字段，未知字段进入报告。
   验收：一致性测试的卡片、群聊问候、人设与作者注释用例全部通过；V1/V2/V3、PNG/JSON 的字段与原始对象保持；群聊问候在单聊不进入候选、在群聊进入候选；人设位置、深度、角色与关联世界书可读；卡片作者注释不进入提示词；报告不含正文；`pnpm check` 通过。
 
-- [ ] **C-T02.b 预设与 prompt 顺序** | 依赖：C-T02.a
+- [x] **C-T02.b 预设与 prompt 顺序** | 依赖：C-T02.a
+  完成：2026-11-12 新增 `packages/st-compat/src/st-content/preset-mapping.ts`：`mapStPreset` 按 `prompt_order`（100001 优先）生成原生模板，普通条目变静态段、`chatHistory` 变 history 槽位、`worldInfoBefore` 变 lore 槽位，卡片 `system_prompt` 与 `post_history_instructions` 覆盖 `main` 与 `jailbreak`；`scenario_format` 与 `personality_format` 替换占位符，其余宏记问题留给 C-T02.d；绝对位置条目收集为深度注入，`createStHistoryProvider` 按酒馆语义叠加到历史消息（深度 0 在最后，同一深度按顺序组与角色排列，扩展提示词接在预设正文之后），包装器用内容哈希更新 `packKey`；作者注释三种位置与玩家楼层间隔、人设提示词内/聊天内位置均接入模板与槽位，作者注释上下方与无法映射条目逐条记入不含正文的报告；采样只映射 temperature、openai_max_tokens 与可识别的 reasoning_effort，其余字段与 prefill、continue、squash 逐条说明；写作契约固定为最后一段；`selectStPromptOrderGroup` 移到 `preset.ts` 供忠实模式共用；新增 14 个测试；ADR-0102；门禁通过
   做什么：`prompt_order`、深度注入、角色、预填充、续写预填充、squash、format 字段、采样参数；把 C-T02.a 的卡、人设与作者注释映射成原生模板段落与槽位，未映射条目逐条记入报告。先写一致性测试。
   验收：预设一致性用例通过；写作契约保持在最后；无法映射的条目有原因；`pnpm check` 通过。
 

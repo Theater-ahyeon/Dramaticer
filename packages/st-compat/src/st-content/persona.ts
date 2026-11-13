@@ -13,9 +13,9 @@ export interface StPersona {
 	readonly name: string;
 	readonly description: string;
 	readonly title: string | null;
-	/** 0 相对位置（故事字符串内），1 作者注释上方，2 作者注释下方，3 聊天内按深度。 */
+	/** 0 提示词内、1 旧版角色之后（等同提示词内）、2 作者注释上方、3 作者注释下方、4 聊天内按深度、9 不注入。 */
 	readonly position: number;
-	/** 位置为 3 时使用；其余位置只保留元数据。 */
+	/** 位置为 4 时使用；其余位置只保留元数据。 */
 	readonly depth: number;
 	/** 0 system，1 user，2 assistant。 */
 	readonly role: number;
@@ -23,10 +23,12 @@ export interface StPersona {
 }
 
 export type StPersonaPlacement =
-	| "relative"
+	| "in-prompt"
+	| "after-char"
 	| "author-note-top"
 	| "author-note-bottom"
-	| "in-chat";
+	| "in-chat"
+	| "disabled";
 
 export interface StPersonaMappingIssue {
 	readonly code: string;
@@ -50,10 +52,12 @@ const ROLE_NAMES: Readonly<Record<number, LlmRole>> = {
 };
 
 const PLACEMENTS: Readonly<Record<number, StPersonaPlacement>> = {
-	0: "relative",
-	1: "author-note-top",
-	2: "author-note-bottom",
-	3: "in-chat",
+	0: "in-prompt",
+	1: "after-char",
+	2: "author-note-top",
+	3: "author-note-bottom",
+	4: "in-chat",
+	9: "disabled",
 };
 
 /**
@@ -110,7 +114,7 @@ export function readStPersona(settings: JsonObject): StPersona | null {
 			"position",
 			"persona_description_position",
 			0,
-			[0, 1, 2, 3],
+			[0, 1, 2, 3, 4, 9],
 			"人设",
 		),
 		depth: readBoundedInteger(
@@ -151,24 +155,12 @@ export function mapStPersona(persona: StPersona): StPersonaMapping {
 	if (placement === "author-note-top" || placement === "author-note-bottom") {
 		issues.push({
 			code: `persona-${placement}`,
-			detail: "原生模板没有作者注释段，暂按 persona 槽位处理",
-		});
-	}
-	if (placement === "in-chat") {
-		issues.push({
-			code: "persona-depth",
-			detail: `聊天内深度 ${persona.depth}，原生 persona 槽位暂不支持深度注入`,
+			detail: "原生模板无法相对作者注释定位",
 		});
 	}
 	const role = ROLE_NAMES[persona.role];
 	if (role === undefined) {
 		throw new Error(`人设角色超出范围：${persona.role}`);
-	}
-	if (role !== "system") {
-		issues.push({
-			code: "persona-role",
-			detail: `角色 ${role}，原生 persona 槽位固定为 system`,
-		});
 	}
 	if (persona.lorebook !== null) {
 		issues.push({

@@ -198,7 +198,7 @@ describe("人设设置", () => {
 				"user-default.png": {
 					description: "人设描述正文",
 					title: "称号",
-					position: 3,
+					position: 4,
 					depth: 2,
 					role: 1,
 					lorebook: "人设世界书",
@@ -213,7 +213,7 @@ describe("人设设置", () => {
 			name: "人设名",
 			description: "人设描述正文",
 			title: "称号",
-			position: 3,
+			position: 4,
 			depth: 2,
 			role: 1,
 			lorebook: "人设世界书",
@@ -259,7 +259,7 @@ describe("人设设置", () => {
 				...base,
 				power_user: {
 					...base.power_user,
-					persona_description_position: 9,
+					persona_description_position: 5,
 				},
 			}),
 		).toThrow(/position/);
@@ -293,8 +293,6 @@ describe("人设设置", () => {
 		expect(mapping.placement).toBe("in-chat");
 		expect(mapping.depth).toBe(2);
 		expect(mapping.issues.map((issue) => issue.code)).toEqual([
-			"persona-depth",
-			"persona-role",
 			"persona-lorebook",
 		]);
 
@@ -304,17 +302,24 @@ describe("人设设置", () => {
 			role: 0,
 			lorebook: null,
 		});
-		expect(relative.placement).toBe("relative");
+		expect(relative.placement).toBe("in-prompt");
 		expect(relative.issues).toEqual([]);
-
 		expect(
 			mapStPersona({ ...persona, position: 1, role: 0, lorebook: null })
-				.issues[0]?.code,
-		).toBe("persona-author-note-top");
+				.placement,
+		).toBe("after-char");
 		expect(
 			mapStPersona({ ...persona, position: 2, role: 0, lorebook: null })
 				.issues[0]?.code,
+		).toBe("persona-author-note-top");
+		expect(
+			mapStPersona({ ...persona, position: 3, role: 0, lorebook: null })
+				.issues[0]?.code,
 		).toBe("persona-author-note-bottom");
+		expect(
+			mapStPersona({ ...persona, position: 9, role: 0, lorebook: null })
+				.placement,
+		).toBe("disabled");
 	});
 });
 
@@ -331,7 +336,7 @@ describe("聊天作者注释", () => {
 		).toEqual({
 			text: "作者注释正文",
 			interval: 2,
-			position: "before",
+			placement: "in-chat",
 			depth: 3,
 			role: "assistant",
 		});

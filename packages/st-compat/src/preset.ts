@@ -123,6 +123,22 @@ export async function parsePresetFile(path: string): Promise<StPreset> {
 	}
 }
 
+/**
+ * 酒馆的 OpenAI 连接使用固定的全局顺序组 100001；100000 是默认预设管理器的
+ * 全局组，只在预设没有 100001 时回退。
+ */
+export function selectStPromptOrderGroup(
+	preset: StPreset,
+): StPromptOrderGroup | undefined {
+	return (
+		preset.promptOrder.find((group) => group.characterId === 100001) ??
+		preset.promptOrder.find(
+			(group) => group.characterId === null || group.characterId === 100000,
+		) ??
+		preset.promptOrder[0]
+	);
+}
+
 function normalizePreset(value: unknown): StPreset {
 	if (!isJsonObject(value)) throw new Error("预设必须是 JSON 对象");
 	const extensions = readObject(value, "extensions", "预设");

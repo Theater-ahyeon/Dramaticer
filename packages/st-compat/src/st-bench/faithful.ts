@@ -12,6 +12,7 @@ import type {
 	StPresetPrompt,
 	StPromptOrderGroup,
 } from "../preset.js";
+import { selectStPromptOrderGroup } from "../preset.js";
 import type { BenchmarkSampling } from "./compare.js";
 
 /** 忠实模式的输入：同一份预设、角色卡、聊天片段与人设。 */
@@ -364,13 +365,7 @@ export async function assembleFaithfulRequest(
 export function selectPromptOrderGroup(
 	preset: StPreset,
 ): StPromptOrderGroup | undefined {
-	return (
-		preset.promptOrder.find((group) => group.characterId === 100001) ??
-		preset.promptOrder.find(
-			(group) => group.characterId === null || group.characterId === 100000,
-		) ??
-		preset.promptOrder[0]
-	);
+	return selectStPromptOrderGroup(preset);
 }
 
 /** 全局顺序组优先；没有显式顺序时按 prompts 数组顺序并沿用各自的启用状态。 */

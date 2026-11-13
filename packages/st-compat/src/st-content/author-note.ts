@@ -2,22 +2,26 @@ import type { JsonValue, LlmRole } from "@dramaticer/core";
 import { isJsonObject } from "@dramaticer/core";
 import { optionalNumber, readString } from "../field-readers.js";
 
-export type StAuthorNotePosition = "replace" | "before" | "after";
+/**
+ * 酒馆的作者注释位置：0 在提示词内（主提示之后），1 在聊天内按深度注入，
+ * 2 在主提示之前。默认在聊天内、深度 4。
+ */
+export type StAuthorNotePlacement = "in-prompt" | "in-chat" | "before-prompt";
 
 export interface StAuthorNote {
 	readonly text: string;
-	/** 每隔多少条消息注入一次。 */
+	/** 每隔多少条玩家消息注入一次。 */
 	readonly interval: number;
-	readonly position: StAuthorNotePosition;
-	/** position 为 before 或 after 时使用的深度。 */
+	readonly placement: StAuthorNotePlacement;
+	/** placement 为 in-chat 时使用的深度。 */
 	readonly depth: number;
 	readonly role: LlmRole;
 }
 
-const POSITIONS: Readonly<Record<number, StAuthorNotePosition>> = {
-	0: "replace",
-	1: "before",
-	2: "after",
+const PLACEMENTS: Readonly<Record<number, StAuthorNotePlacement>> = {
+	0: "in-prompt",
+	1: "in-chat",
+	2: "before-prompt",
 };
 
 const ROLES: Readonly<Record<number, LlmRole>> = {
@@ -39,7 +43,7 @@ export function readStAuthorNote(
 	return {
 		text,
 		interval: readInteger(metadata, "note_interval", 1, 1),
-		position: readEnum(metadata, "note_position", POSITIONS, 0),
+		placement: readEnum(metadata, "note_position", PLACEMENTS, 1),
 		depth: readInteger(metadata, "note_depth", 4, 0),
 		role: readEnum(metadata, "note_role", ROLES, 0),
 	};

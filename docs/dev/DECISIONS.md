@@ -1609,12 +1609,29 @@
   - 新增 `packages/st-compat/src/st-content/`。`mapCharacterCard` 按酒馆的 marker 标识输出未改写的字段：`description` → `charDescription`、`personality` → `charPersonality`、`scenario` → `scenario`、`system_prompt` → `main`、`mes_example` → `dialogueExamples`、`post_history_instructions` → `jailbreak`。字段正文不做宏替换或裁剪，卡片 `raw` 保持同一个引用。
   - `creator_notes` 与 V1 的 `creatorcomment` 只作为元数据返回，`creatorNotesChars` 进入报告；它们不进入提示词，与酒馆的展示行为一致。
   - 开场候选分为 `first`、`alternate`、`group-only`。单聊只列出开场白与备用问候；群聊优先使用 `group_only_greetings`，没有时退回单聊候选。备用问候按数组下标选择，越界或正文为空直接报错。
-  - 新增 `readStPersona`：活动头像取 `settings.user_avatar`，名字取 `power_user.personas`，描述、称号、位置、深度、角色与关联世界书取 `power_user.persona_descriptions`；缺失的字段回落到 `persona_description*` 全局设置。位置 0 相对、1 作者注释上方、2 作者注释下方、3 聊天内按深度；角色 0 system、1 user、2 assistant。字段类型、范围或整数约束不满足时立刻抛错并指出字段。
-  - `mapStPersona` 返回 `personaDescription` marker 与 `placement`、`depth`、`role`；原生 persona 槽位暂时只能表达相对位置的 system 文本，其余组合逐条写入 `issues`，由 C-T02.b 的模板组装接管。
-  - 新增 `readStAuthorNote`：读取聊天头部 `chat_metadata` 的 `note_prompt`、`note_interval`、`note_position`、`note_depth`、`note_role`；没有正文时返回 null。位置 0 替换、1 之前、2 之后，角色与深度映射到原生类型。
+  - 新增 `readStPersona`：活动头像取 `settings.user_avatar`，名字取 `power_user.personas`，描述、称号、位置、深度、角色与关联世界书取 `power_user.persona_descriptions`；缺失的字段回落到 `persona_description*` 全局设置。位置 0 提示词内、1 旧版角色之后（等同提示词内）、2 作者注释上方、3 作者注释下方、4 聊天内按深度、9 不注入；角色 0 system、1 user、2 assistant。字段类型、范围或整数约束不满足时立刻抛错并指出字段。
+  - `mapStPersona` 返回 `personaDescription` marker 与 `placement`、`depth`、`role`；聊天内深度由 C-T02.b 的模板组装转成历史槽位注入，作者注释上下方暂时无法映射并逐条写入 `issues`。
+  - 新增 `readStAuthorNote`：读取聊天头部 `chat_metadata` 的 `note_prompt`、`note_interval`、`note_position`、`note_depth`、`note_role`；没有正文时返回 null。位置 0 提示词内、1 聊天内按深度、2 主提示之前，默认聊天内、深度 4；角色与深度映射到原生类型。
   - 兼容报告只包含 `spec`、字段标识与字符数、问候条数、内嵌世界书条目数、未知字段名、扩展键名与原因，不包含任何提示词正文。未知卡片字段排序后列入报告，原始对象继续保留。
   - `importCardContent` 返回 `cardMapping`，`dramaticer chat` 导入角色卡时打印报告摘要与映射提示；`renderCharacterPrompt` 改为复用同一份字段映射，避免两套字段顺序。
 - **影响**：
   - 新增 `packages/st-compat/src/st-content/card.ts`、`persona.ts`、`author-note.ts` 与 barrel，并经 `@dramaticer/st-compat` 根导出；无新增依赖。
   - `packages/st-compat/test/st-content.test.ts` 16 个测试覆盖字段映射、作者注释、未知字段、PNG 与 JSON 一致性、群聊问候、人设读取与非法值、聊天作者注释。
   - C-T02.b 直接使用 `sections` 的 marker、`StPersonaMapping.placement` 与作者注释元数据组装预设顺序；C-T02.c 接管人设关联世界书。
+
+## ADR-0102 `st-content` 的预设顺序、深度注入与作者注释组装（2026-11-12）
+
+- **背景**：C-T02.a 只提供了角色卡、人设与作者注释的字段映射。C-T02.b 要把预设的 `prompt_order`、深度注入、角色、预填充、续写、squash、format 字段与采样参数接进原生模板与槽位，并保证写作契约始终是最后一段。酒馆的 persona 与作者注释位置枚举以沙箱版源码与录制的实际行为为准。
+- **决定**：
+  - 新增 `packages/st-compat/src/st-content/preset-mapping.ts`，`mapStPreset` 的输入是预设、角色卡、可选人设与作者注释、结构化输出模式与玩家楼层数；输出是原生 `ContextTemplate`、条目报告、深度注入、采样映射、预填充与 squash 映射、format 字段、作者注释结果与问题列表。
+  - 顺序组取 `100001`，没有时回退 `100000` 或第一组；该选择器移到 `preset.ts` 的 `selectStPromptOrderGroup`，忠实模式与比对工具共用同一实现。
+  - 顺序里的普通条目变成原生静态段，角色 `system`、`user`、`assistant`、`model` 分别映射；`chatHistory` 变成 `history` 槽位，`worldInfoBefore` 变成 `lore` 槽位；两个世界书 marker 同时出现时第二个记 `world-info-after`，由 C-T02.c 接管。角色的 `system_prompt` 与 `post_history_instructions` 在预设未声明 `forbid_overrides` 时覆盖 `main` 与 `jailbreak` 条目的正文。
+  - 卡片 marker 使用 C-T02.a 的 `sections` 正文；`scenario_format` 与 `personality_format` 只替换 `{{scenario}}` 与 `{{personality}}` 占位符，其余宏原样保留并记 `macro` 问题，完整宏引擎属于 C-T02.d。`wi_format` 原样放进映射结果，供 C-T02.c 使用。
+  - 绝对位置注入（`injection_position` 为 1）收集成 `StDepthInjection`，保留角色、深度与 `injection_order`。历史槽位包装器 `createStHistoryProvider` 在返回消息上叠加注入：深度 0 放在最后一条之后，深度 n 放在倒数第 n 条之前；同一深度内按顺序组升序、组内按 assistant、user、system 排列，扩展提示词接在同顺序组同角色的预设正文之后。包装器把注入内容哈希写进 `packKey`，复用上下文包时不会拿到旧注入。
+  - 作者注释：位置 0 插在主提示之后，位置 2 插在主提示之前，位置 1 作为扩展提示词在指定深度注入；间隔按玩家楼层数取模判定，缺少楼层数且间隔大于 1 时记 `author-note-interval`。人设位置 0/1 在主提示内输出静态段，位置 4 按深度注入，位置 2/3 无法相对作者注释定位并记问题，位置 9 不注入。
+  - 写作契约从原生默认模板复制，固定追加为最后一段；`assertContextTemplate` 在返回前校验。ST 内容段的预算优先级为 10，历史 100，世界书 80，作者注释相关静态段 10。
+  - 采样只映射原生请求支持的 `temperature`、`openai_max_tokens` 与可识别的 `reasoning_effort`；`top_p`、`top_k`、`top_a`、`min_p`、`frequency_penalty`、`presence_penalty`、`repetition_penalty`、`seed`、`n`、`openai_max_context` 逐条列入不支持。`assistant_prefill`、`continue_prefill`、`continue_postfix`、`squash_system_messages`、`assistant_impersonation` 保留原值并说明原生回合暂不消费。
+  - 条目报告只含标识、启用状态、类别、角色、字符数与原因；问题报告只含代码与标识或数值，不含任何提示词正文。
+- **影响**：
+  - 新增 `packages/st-compat/test/st-content-preset.test.ts` 14 个测试，覆盖顺序组、模板段落、markers、深度注入分组与包装器、作者注释三种位置与间隔、采样与预填充报告、报告不含正文；`st-content.test.ts` 的人设与作者注释断言同步到酒馆的实际枚举。
+  - `core` 无改动，原生模板只出现静态段与既有槽位名；C-T02.c 使用 `lore` 槽位与 `wi_format`，C-T02.d 接管宏，C-T02.f 把 `mapStPreset` 接进 `ST_BENCH_COEXIST_PLUGINS`。
