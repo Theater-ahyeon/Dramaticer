@@ -3,6 +3,7 @@ import {
 	type ContextSlotProvider,
 	type ContextSlotRequest,
 	DEFAULT_TURN_HOOK_BUDGET_MS,
+	WRITING_CONTRACT_SEGMENT_ID,
 } from "@dramaticer/core";
 import {
 	buildStContentCompatReport,
@@ -11,6 +12,7 @@ import {
 import {
 	createStEjsContentPipeline,
 	createStEjsTurnBudget,
+	hasStEjsMarkup,
 } from "../st-content/ejs-pipeline.js";
 import { createStMacroEngine } from "../st-content/macros.js";
 import {
@@ -50,7 +52,22 @@ function tagProviderSource(
 	};
 }
 
-function applyStContent(input: CoexistApplyInput): CoexistApplyResult {
+export interface StContentCoexistOptions {
+	/**
+	 * 是否在 ST 内容进入槽位前执行 EJS 模板。`st-ejs` 的关闭组用
+	 * `false`，保持同一份预设、世界书与角色卡，只去掉模板执行。
+	 */
+	readonly ejs?: boolean;
+}
+
+/**
+ * 把预设、世界书与深度注入映射成共存评测的模板与槽位。`ejs` 为真时
+ * 再叠加 EJS 流水线；模板只作用于来自 ST 的内容。
+ */
+export function buildStContentCoexistResult(
+	input: CoexistApplyInput,
+	options: StContentCoexistOptions = {},
+): CoexistApplyResult {
 	const preset = input.preset;
 	if (preset === null) {
 		throw new Error(
@@ -127,6 +144,13 @@ function applyStContent(input: CoexistApplyInput): CoexistApplyResult {
 			history: createStHistoryProvider(baseHistory, mapping.injections),
 		};
 	}
+	if (options.ejs === false) {
+		return {
+			template: mapping.template,
+			providers,
+			notes: [summarizeStContentCompatReport(report)],
+		};
+	}
 	const pipeline = createStEjsContentPipeline({
 		store: input.store,
 		storyId: input.storyId,
@@ -136,19 +160,28 @@ function applyStContent(input: CoexistApplyInput): CoexistApplyResult {
 		tokenBudget: input.budgetTokens,
 	});
 	providers = pipeline.wrapProviders(providers);
+	const templatedSegments = mapping.template.segments.filter(
+		(segment) =>
+			segment.kind === "static" &&
+			segment.id !== WRITING_CONTRACT_SEGMENT_ID &&
+			hasStEjsMarkup(segment.text),
+	).length;
 	return {
 		template: mapping.template,
 		providers,
-		notes: [summarizeStContentCompatReport(report)],
+		notes: [
+			summarizeStContentCompatReport(report),
+			`st-ejs：${templatedSegments} 段预设静态模板，world book 与深度注入按槽位渲染`,
+		],
 		prepareTurn: async (turn) => {
 			const head = turn.store.getHead(turn.storyId);
-			if (head === null) return {};
-			await pipeline.beginTurn(head.id);
+			const nodeId = head?.id ?? null;
+			await pipeline.beginTurn(nodeId);
 			const { budget, entries } = createStEjsTurnBudget(
 				DEFAULT_TURN_HOOK_BUDGET_MS,
 			);
 			const template = await pipeline.renderTemplate(turn.template, {
-				nodeId: head.id,
+				nodeId,
 				budget,
 			});
 			const timeouts = entries.filter(
@@ -174,5 +207,5 @@ function applyStContent(input: CoexistApplyInput): CoexistApplyResult {
  */
 export const ST_CONTENT_COEXIST_PLUGIN: CoexistPluginAdapter = {
 	id: ST_CONTENT_PLUGIN_ID,
-	apply: applyStContent,
+	apply: (input) => buildStContentCoexistResult(input),
 };

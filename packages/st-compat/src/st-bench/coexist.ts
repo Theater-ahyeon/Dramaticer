@@ -41,6 +41,7 @@ import {
 } from "../evalset/pairwise.js";
 import { type StPreset, parsePresetFile } from "../preset.js";
 import { ST_CONTENT_COEXIST_PLUGIN } from "./st-content-plugin.js";
+import { ST_EJS_COEXIST_PLUGIN } from "./st-ejs-plugin.js";
 import { ST_MVU_COEXIST_PLUGIN } from "./st-mvu-plugin.js";
 
 /** 指标变差的门槛；报告与 ADR 共用这些数字。 */
@@ -65,6 +66,14 @@ export interface CoexistPluginAdapter {
 		input: CoexistApplyInput,
 	): Promise<CoexistApplyResult> | CoexistApplyResult;
 	/**
+	 * 关闭组的替代基线。插件依赖另一个兼容插件的内容时（例如 EJS 只处理
+	 * ST 内容），用它把关闭组变成“同一个内容映射、只关掉本插件”，而不是
+	 * 完全原生的基线。不提供时关闭组保持默认模板与槽位。
+	 */
+	baseline?(
+		input: CoexistApplyInput,
+	): Promise<CoexistApplyResult> | CoexistApplyResult;
+	/**
 	 * 每轮助手楼层写入后调用；插件在这里处理本轮的写入（例如 MVU 变量更新）。
 	 * 返回的字符串只进报告，不含正文。
 	 */
@@ -80,6 +89,7 @@ export interface CoexistPluginAdapter {
 export const ST_BENCH_COEXIST_PLUGINS: readonly CoexistPluginAdapter[] = [
 	ST_CONTENT_COEXIST_PLUGIN,
 	ST_MVU_COEXIST_PLUGIN,
+	ST_EJS_COEXIST_PLUGIN,
 ];
 
 export interface CoexistApplyInput {
@@ -273,7 +283,7 @@ async function comparePlugin(
 	for (const card of options.config.cards) {
 		const rounds = options.config.rounds ?? card.messages.length;
 		log(`插件 ${adapter.id}：卡 ${card.id}，关闭与开启各 ${rounds} 轮`);
-		const off = await runVariant(options, card, "off", null, rounds);
+		const off = await runVariant(options, card, "off", adapter, rounds);
 		const on = await runVariant(options, card, "on", adapter, rounds);
 		const baseContext = off.baseContext;
 		pairs.push({ card, off, on, baseContext });
@@ -367,9 +377,15 @@ async function runVariant(
 	adapter: CoexistPluginAdapter | null,
 	rounds: number,
 ): Promise<CoexistVariantRun> {
+	const apply =
+		variant === "on"
+			? adapter?.apply
+			: adapter === null
+				? undefined
+				: (adapter.baseline ?? undefined);
 	const dir = path.join(
 		options.runDir,
-		safeSegment(adapter?.id ?? "baseline"),
+		apply === undefined ? "baseline" : safeSegment(adapter?.id ?? "baseline"),
 		variant,
 	);
 	await mkdir(dir, { recursive: true });
@@ -394,8 +410,8 @@ async function runVariant(
 		let prepareTurn: CoexistApplyResult["prepareTurn"];
 		let renderedTemplate = baseTemplate;
 		const notes: string[] = [];
-		if (adapter !== null) {
-			const applied = await adapter.apply({
+		if (apply !== undefined) {
+			const applied = await apply({
 				store,
 				storyId: card.storyId,
 				card: card.card,
@@ -465,7 +481,11 @@ async function runVariant(
 					error: message,
 				});
 			}
-			if (result !== null && adapter?.afterTurn !== undefined) {
+			if (
+				variant === "on" &&
+				result !== null &&
+				adapter?.afterTurn !== undefined
+			) {
 				notes.push(
 					...(await adapter.afterTurn({
 						store,

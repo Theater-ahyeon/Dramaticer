@@ -1410,7 +1410,8 @@
   - 模板发起的生成按卡限流并作为后台任务执行，不进入回合内（I6、I11）。
   验收：模板发起的生成走后台渠道、单独计数并受卡级限流；回合内不等待生成；`pnpm check` 通过。
 
-- [ ] **C-T04.d EJS 一致性测试与共存评测** | 依赖：C-T04.a 至 C-T04.c
+- [x] **C-T04.d EJS 一致性测试与共存评测** | 依赖：C-T04.a 至 C-T04.c
+  完成：2026-11-13 新增 `packages/st-compat/test/st-ejs-consistency.test.ts` 18 个测试（世界书、预设、角色卡、对话片段四类用例表逐条记录上游文档行为与期望输出；预设/history/lore 执行 EJS，写作契约与 harness 槽位逐字节不变；变量写经结算器落成 `mvu` 事实且原文不变）；`CoexistPluginAdapter` 新增可选 `baseline`，关闭组可执行“同一份 ST 内容、只关掉本插件”；`buildStContentCoexistResult(input, { ejs })` 拆出 EJS 开关并修正首轮无楼层时也渲染预设静态段；新增 `st-bench/st-ejs-plugin.ts` 并注册 `st-ejs`；合成批次矛盾率 0%/0%（8/8）、编造回忆率 0%/0%（4/4，样本不足）、盲测胜率 100%（10/10）、首字 P90 1/0 毫秒（5/5），无变差项；`docs/dev/reports/C-T04.md` 逐条核对总验收；ADR-0118；门禁通过（226 个测试文件、2017 个测试、5 个跳过）。
   做什么：
   - 用世界书、预设、卡片与对话片段组成 EJS 一致性用例表，逐条记录期望输出与来源（上游文档行为）；在 `ST_BENCH_COEXIST_PLUGINS` 注册 `st-ejs` 适配器，开启与关闭各跑一批。
   - 报告四项原生指标与样本量；变差时列出项目；写 `docs/dev/reports/C-T04.md`，逐条核对 C-T04 总验收。

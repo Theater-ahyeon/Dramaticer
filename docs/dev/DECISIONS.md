@@ -1883,3 +1883,18 @@
 - **影响**：
   - 新增 `packages/st-compat/test/st-ejs-generation.test.ts` 9 个测试：渲染只登记不执行、`drain` 后下一次渲染读到结果、卡级待执行上限与其他卡不受影响、单条失败不阻塞后续、没有队列与非法参数直接报错、沙箱里登记、后台执行函数构造的请求、流水线绑定故事/卡/楼层并在下一轮读到结果。
   - 现有 EJS、st-content 与共存评测测试保持通过；没有新增依赖，没有改数据库 schema，`core` 没有改动（I1、I15）。
+
+## ADR-0118 `st-ejs` 的一致性用例表与共存评测（2026-11-13）
+
+- **背景**：C-T04.d 要把世界书、预设、角色卡与对话片段里的 EJS 行为汇总成可逐条核对的一致性用例，并在 `ST_BENCH_COEXIST_PLUGINS` 注册 `st-ejs` 做开启与关闭的原生指标对照。EJS 模板只存在于 ST 内容里：完全原生的关闭组连预设与世界书都没有，无法区分“ST 内容映射”与“EJS 执行”各自的影响。
+- **决定**：
+  - `CoexistPluginAdapter` 新增可选的 `baseline`：关闭组默认仍用默认模板与槽位；适配器提供 `baseline` 时，关闭组改为执行这个基线。`runVariant` 只在开启组调用 `afterTurn`，关闭组也不会误用开启组的轮次钩子。
+  - `st-content-plugin` 把映射与槽位构造拆成 `buildStContentCoexistResult(input, { ejs })`：`ejs: false` 返回同一份预设、世界书、深度注入与角色卡映射，只是不创建 EJS 流水线。`st-content` 适配器继续用 `ejs: true`，行为不变。
+  - 新增 `st-bench/st-ejs-plugin.ts`：关闭组是 `ejs: false` 的同一份 ST 内容，开启组是 `ejs: true`；两组输入相同，四项原生指标只反映模板执行与它带来的上下文变化。注册 id 为 `st-ejs`。
+  - 事务回合的 `prepareTurn` 在第一轮没有楼层时也用 `nodeId: null` 渲染预设静态段；此前首轮直接跳过，模板原文会进入 prompt。没有楼层时变量只留在运行时内存，不写台账；有楼层后变量视图按台账 `mvu` 子树工作。
+  - 一致性用例表按来源分成世界书、预设、角色卡、对话片段四类，每行记录上游文档行为、输入与期望输出；另有两组内容范围用例：预设静态段、history 与 lore 槽位执行 EJS，写作契约、harness 槽位与楼层原文逐字节不变；变量写入经结算器落成 `mvu` 事实。
+- **影响**：
+  - 新增 `packages/st-compat/test/st-ejs-consistency.test.ts` 18 个测试与 `packages/st-compat/test/st-ejs-coexist.test.ts` 1 个测试；现有 st-content、st-mvu 与 st-bench 共存测试保持通过。
+  - 合成批次（1 张卡、5 轮、假正文客户端与假裁判，零网络）：矛盾率 0%/0%（8/8）、编造回忆率 0%/0%（4/4，样本不足）、盲测胜率开启侧 100%（10/10）、首字 P90 1/0 毫秒（5/5），没有变差项。假客户端的胜负由固定标记决定，不代表真实模型效果。
+  - 没有改数据库 schema，没有新增依赖，`core` 没有改动（I1、I15）。
+
