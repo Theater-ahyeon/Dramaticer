@@ -1335,7 +1335,8 @@
   - 插件内的临时视图：脚本写变量后立刻读取先读到待结算值，结算完成后以台账为准。
   验收：读取路径与结算路径的测试证明只有一份事实；非法更新经结算器修复或拒绝并留 Trace；`pnpm check` 通过。
 
-- [ ] **C-T03.c 消息修改分类与显示状态** | 依赖：C-T03.b
+- [x] **C-T03.c 消息修改分类与显示状态** | 依赖：C-T03.b
+  完成：2026-11-13 新增 `core/src/plugins/display-state.ts`（`PluginDisplayState`：按楼层与插件分桶，`display` 与 `metadata` 分开，值校验为有限 JSON，只在当前会话存在）与 `core/src/plugins/message-modification.ts`（`classifyMessageModification` 只接受正文、显示、元数据中的一类；`applyMessageModification` 对正文修改追加同父同角色的兄弟楼层，原楼层逐字节不变，显示与元数据修改只写显示状态）；新增 `st-mvu/message.ts`（`applyMvuMessageChange` 分派 `content`、`statusBar`、`metadata`；状态栏刷新要求原文含 `<StatusPlaceHolderImpl/>`，只写 `st-mvu` 的 `display.statusBar`，占位符留在原文；`readMvuStatusBar` 读回）；插件改写正文不写偏好记录；新增 12 个测试（core 7、st-compat 5）与 ADR-0109；无 schema 变更、无新增依赖
   做什么：
   - 改正文的类型生成新 swipe，不修改原楼层原文（I4）；只改显示或元数据的类型写进插件显示状态，不新建节点。
   - 状态栏刷新、`<StatusPlaceHolderImpl/>` 等显示副作用不进入台账，也不写楼层。

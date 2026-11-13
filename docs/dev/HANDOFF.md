@@ -3,35 +3,34 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-13 会话 337：门禁失败，只修门禁，没有选任务。
-- 失败证据（`.devloop/gate.txt`，会话 336 结束时）：整轮并行下 `packages/st-compat/test/gap-pass-compare.test.ts` 3 个用例超过各自的 30 秒上限（实测 115 秒、78 秒、44 秒），`packages/core/test/code-plugin-installer.test.ts` 的「从 git 来源安装本地仓库」超过 60 秒；两个文件单独运行都通过。失败后的 `afterEach` 还出现 `EPERM`，因为超时的用例仍在后台持有 SQLite 句柄，`rmSync` 删不掉临时目录。
-- 修复：
-  - `vitest.config.ts` 增加 `maxWorkers: 8`。本机 24 核会让 24 个 worker 同时往临时目录建 SQLite 库，磁盘与杀毒扫描互相排队，单文件耗时涨到单独运行的几十倍；限制 worker 数量后 `collect` 从 4026 秒降到约 506 秒，整轮耗时从 275 秒（带超时失败）降到 154 秒。
-  - `packages/st-compat/test/gap-pass-compare.test.ts` 的 3 个用例上限从 30 秒放宽到 180 秒，`afterEach` 的 `rmSync` 重试从 5 次×100 毫秒改为 10 次×200 毫秒。被测实现未改动。
-- 门禁结果：`pnpm check` 通过（208 个测试文件、1860 个测试、5 个跳过，153.77 秒）。
-- 观察：`C:\Users\theater\AppData\Local\Temp` 已经大到 `du -sh` 跑满 300 秒仍未结束，里面有多批历史超时留下的 `gap-pass-compare-*` 目录。这不在仓库里，agent 不能删除，已记入 HUMAN-16。
+- 2026-11-13 会话 338：C-T03.c 完成，门禁通过。
+- 实现：
+  - `core/src/plugins/display-state.ts` 新增 `PluginDisplayState`：按楼层 id 与应用插件名分桶，`display` 与 `metadata` 分开存放；值必须是有限 JSON，键不能为空，每类至少一个键；写入做深拷贝，读取返回副本。显示状态只活在当前会话，不持久化、不进入台账、不进入楼层原文。
+  - `core/src/plugins/message-modification.ts` 新增 `classifyMessageModification` 与 `applyMessageModification`：正文、显示、元数据只能出现一类，混合类别与空修改直接抛错；正文修改用 `appendNode` 追加同父同角色的兄弟楼层（界面里的新 swipe），原楼层逐字节不变；显示与元数据修改只写 `PluginDisplayState`，不新建节点。插件改写正文不写偏好记录。
+  - `st-mvu/message.ts` 新增 `applyMvuMessageChange`、`applyMvuStatusBarRefresh`、`readMvuStatusBar`、`hasMvuStatusPlaceholder`：状态栏刷新要求目标楼层原文含 `<StatusPlaceHolderImpl/>`，只把 HTML 写进 `st-mvu` 的 `display.statusBar`，占位符留在原文；MVU 变量更新仍走 `MvuLedgerSession`，这里的 `metadata` 只放不属于台账事实的显示字段。
+- 测试：新增 `packages/core/test/message-modification.test.ts` 7 个、`packages/st-compat/test/st-mvu-message.test.ts` 5 个，全部通过；ADR-0109。
+- 门禁：`pnpm check` 通过（210 个测试文件、1872 个测试、5 个跳过，188.52 秒；本轮新增 2 个测试文件、12 个测试）。
 
-## 下一步（会话 338 先做）
-1. 按 TASKS 从上往下选：**C-T03.c 消息修改分类与显示状态**。改正文的类型生成新 swipe（参考 `StoryStore` 追加节点与 `chat-import` 的 swipe 写法，`packages/core/src/chat/turn.ts` 的 `recordRegeneratedSwipe`）；只改显示或元数据的类型写进插件显示状态，不新建节点；状态栏刷新与 `<StatusPlaceHolderImpl/>` 等显示副作用不进入台账、不写楼层。
-2. C-T03.d：补 MVU 一致性用例并逐条核对 C-T03 总验收；在 `ST_BENCH_COEXIST_PLUGINS` 注册 `st-mvu` 并跑开关对照；卡内 zod 脚本执行复用 C-T05 的酒馆助手宿主，当前只消费消息变量里的结构 JSON。
-3. 其余可做任务：H-T00（依赖 R5-T99、R3b-T99、E-T01）、X1（依赖 R1-T99.a、R2-T99）。M5-T00 依赖 R6-T99；M6-T99 等待 HUMAN-15；P5 依赖 M5-T99。
+## 下一步（会话 339 先做）
+1. **C-T03.d MVU 一致性测试与共存评测**：补齐 MVU 一致性用例并逐条核对 C-T03 总验收；在 `ST_BENCH_COEXIST_PLUGINS` 注册 `st-mvu` 并跑开关对照；记录以 zod 卡生成 schema 的校验口径，需要执行卡内 zod 脚本时复用 C-T05 的酒馆助手宿主，当前只消费消息变量里的结构 JSON。
+2. 其余可做任务：H-T00（依赖 R5-T99、R3b-T99、E-T01）、X1（依赖 R1-T99.a、R2-T99）。M5-T00 依赖 R6-T99；M6-T99 等待 HUMAN-15；P5 依赖 M5-T99。
 
-## C-T03.b 代码事实
-- `PendingLedgerView` 的提交路径不写 `ledger_settlements`：楼层仍由常规结算任务记录一次结算；已写入的 `mvu` 路径进入 `WindowFloor.covered`，`planFloor` 跳过同路径提案。非法 `mvu` 写入与其它命名空间的非法写入一样，由 `readWindowFloor` 记入 `invalid`，结算时删除并记 `repairs`。
-- 初始数据只在台账没有 `mvu` 子树时写入；`buildMvuInitState` 返回的 `data` 已去掉 `$meta`，结构保存在会话内存里。需要从已保存结构恢复时，用 `parseMvuSchema` 读出结构再传给 `MvuLedgerSession.open`。
-- 同一会话里连续 `apply` 会以“待结算值”为基准生成新 diff；同一路径可能出现多条写入，台账按写入顺序回放，最后一条生效。
-- `MvuLedgerSession.open` 传给 `onTrace` 的回调在 `apply` 与 `commit` 时各调用一次；`apply` 只记拒绝，`commit` 记每条实际写入与提交时的拒绝。
-- `packages/core/src/ledger/settle.ts` 的 `validateLedgerDiff` 对 `mvu` 只要求路径至少两段；变量结构校验在引擎里完成（C-T03.a）。
+## C-T03.c 代码事实
+- `PluginDisplayState` 的键是楼层 id（不是故事 id）；同一楼层里按插件名分桶。`get` 返回 `{display, metadata}` 的深拷贝，没有状态时返回 `null`；`getValue` 没写过的键返回 `undefined`。
+- `applyMessageModification` 的输入同时带 `raw`、`display`、`metadata` 中的两个以上时直接抛错并列出类别；`raw` 为空或与原楼层完全相同时抛错，不生成节点。
+- 正文修改不调用 `swipeNode`/`editNode`，因此不写 `preference_events`；偏好记录只反映玩家的接受与放弃。新节点由 `appendNode` 写入并把 head 指向它，原节点保留在树里。
+- 状态栏显示状态的插件名是 `ST_MVU_PLUGIN_ID`（`st-mvu`），键是 `ST_MVU_STATUS_BAR_KEY`（`statusBar`）；重复刷新覆盖同一个键，不累加节点。
+- 显示状态是会话内的视图，不持久化；状态栏内容由台账快照重新算出，不构成第二份变量事实。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a 至 P2.g、P3.a 至 P3.f、P4.a 至 P4.f、C-T01.a 至 C-T01.d、C-T02.a 至 C-T02.f、C-T03.a、C-T03.b。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- C-T03 已拆成 a–d：a、b 完成，c（消息修改分类）、d（一致性与共存评测）待做。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a 至 P2.g、P3.a 至 P3.f、P4.a 至 P4.f、C-T01.a 至 C-T01.d、C-T02.a 至 C-T02.f、C-T03.a、C-T03.b、C-T03.c。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- C-T03 已拆成 a–d：a、b、c 完成，d（一致性与共存评测）待做。
 - 数据库 schema 版本 43；本轮没有改 schema。
 - 报告：`docs/dev/reports/P2.md`、`P3.md`、`P4.md`、`C-T01.md`、`C-T02.md`。
-- 兼容插件线：`st-content` 完成；`st-mvu` 引擎、台账写入与待结算视图完成，尚未接运行时与共存评测。
+- 兼容插件线：`st-content` 完成；`st-mvu` 引擎、台账写入、待结算视图与消息修改分类完成，尚未接运行时与共存评测。
 - 沙箱现状：`eval-private/st-sandbox/st` 有 36 个预设、68 张卡、89 个非驱动聊天片段；预设连接字段已被驱动改写为录制端点与桩模型，全局 `openai_max_context` 已被驱动改为 2,000,000。需要恢复原始预设时用 `sandbox --replace` 重建。
 - 私有比对批次：`compare-smoke4`（5 个组合，修复后）与更早的 `compare-smoke2`、`compare-smoke3`、`session324-sanitize`；每个批次的 `compare/` 下有报告、差异清单与汇总。
-- ADR-0088 至 ADR-0108 记录插件、沙箱、比对与兼容内容映射决策。
+- ADR-0088 至 ADR-0109 记录插件、沙箱、比对与兼容内容映射决策。
 - HUMAN-03 待处理（不阻塞）：抽查 `eval-private/evalset/spotcheck.md` 里的事件题。
 - HUMAN-14 已关闭（2026-11-12：人类取消）：取消 Vertex 真实调用的凭证配置与验证要求；`roles.writer` 继续使用 `main-fallback`。
 - HUMAN-15 待处理（M6-T99 需要）：把秋叶整合包 v3.2 的 ComfyUI 启动在 `http://127.0.0.1:8188`，并导出一份 API 格式 workflow JSON 到 `eval-private/comfyui/` 或告知路径。
@@ -39,6 +38,7 @@
 
 ## 可重复命令
 - 门禁：`pnpm check`。
+- C-T03.c 目标测试：`pnpm exec vitest run packages/core/test/message-modification.test.ts packages/st-compat/test/st-mvu-message.test.ts`（12 个）。
 - C-T03.b 目标测试：`pnpm exec vitest run packages/core/test/ledger-pending.test.ts packages/st-compat/test/st-mvu-ledger.test.ts`（9 个）。
 - C-T03.a 目标测试：`pnpm exec vitest run packages/st-compat/test/st-mvu.test.ts`（17 个）。
 - C-T02.f 目标测试：`pnpm exec vitest run packages/st-compat/test/st-content-compat-report.test.ts packages/st-compat/test/st-content-coexist.test.ts packages/st-compat/test/st-bench-coexist.test.ts`。
@@ -76,3 +76,4 @@
 - 修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 的请求写进 HUMAN.md。
 - 不变量：I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖其他工作区包，I17 回合内插件钩子有时间预算，I18 插件权限必须声明。
 - MVU 引擎的 `[值, 说明]` 判定与 MVU 一致：长度为 2 且第二个元素是字符串的普通数组也会被当成值加说明，测试与真实卡都要避开这种歧义；需要真正两个元素的列表时用三个元素或开启 `strictSet` 后显式写结构。
+- 显示状态只在当前会话；需要跨进程显示时由台账快照重新渲染，不要把它写成楼层原文或台账事实。

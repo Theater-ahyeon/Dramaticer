@@ -1741,3 +1741,16 @@
   - 新增 `packages/core/test/ledger-pending.test.ts` 5 个测试：写后立即可读与提交前台账不可见、提交后以台账为准且重复提交不新增行、删除写入一致、前缀之外与空变量路径及非法值逐条拒绝、无前缀时按台账结构校验。
   - 新增 `packages/st-compat/test/st-mvu-ledger.test.ts` 4 个测试：初始变量只是待结算值、脚本写后立即可读且结算窗口不覆盖、锁定对象新增键被拒绝并留 Trace、再次打开从台账读起且仍只有一份事实。
   - `core` 只新增通用的待结算视图与累加入口，没有增加 ST 概念（I1、I15），不改数据库 schema；变量与台账同一条累加与快照路径，没有第二份事实（I12）。没有新增运行时依赖。
+
+## ADR-0109 消息修改分类与插件显示状态（2026-11-13）
+
+- **背景**：C-T03.c 要求兼容脚本与 MVU 对消息的修改分成两类：改正文生成新的 swipe，不触碰原楼层（I4）；只改显示或元数据时写进插件显示状态，不新建节点，避免状态栏刷新这类副作用把楼层树撑大（ADR-0041 的 A10）。MVU 的变量更新已经走 `MvuLedgerSession` 与台账（ADR-0108），显示状态不能成为第二份变量事实。
+- **决定**：
+  - `core` 新增 `packages/core/src/plugins/display-state.ts` 的 `PluginDisplayState`：按楼层 id 与应用插件名分桶，`display` 与 `metadata` 分开存放；值必须是有限 JSON，键不能为空，每类至少一个键；写入做深拷贝，读取返回副本。显示状态只活在当前会话，不持久化、不进入台账、不进入楼层原文；状态栏这类内容可以由台账快照重新算出。
+  - `core` 新增 `packages/core/src/plugins/message-modification.ts`：`classifyMessageModification` 只接受正文、显示、元数据中的一类，混合类别与空修改直接抛错并列出收到的类别。`applyMessageModification` 对正文修改用 `appendNode` 追加同父、同角色的兄弟楼层，新楼层成为 head，原楼层逐字节不变；显示与元数据修改调用 `PluginDisplayState.set`，不新建节点。插件改写正文不写偏好记录，偏好只反映玩家自己的接受与放弃。
+  - 新增 `packages/st-compat/src/st-mvu/message.ts`：`applyMvuMessageChange` 把 MVU 的 `content`、`statusBar`、`metadata` 三种修改交给上面的分类入口；`applyMvuStatusBarRefresh` 要求目标楼层原文里有 `<StatusPlaceHolderImpl/>`，只把状态栏 HTML 写进 `st-mvu` 的 `display.statusBar`，占位符仍留在原文里；`readMvuStatusBar` 从显示状态读回渲染结果。MVU 变量更新继续走 `MvuLedgerSession`，这里的 `metadata` 只放显示与模板需要、不属于台账事实的字段。
+  - 状态栏刷新与占位符替换都是显示副作用，不写 `state_diffs`，也不追加楼层；测试同时断言台账快照、楼层数与 head 不变。
+- **影响**：
+  - 新增 `packages/core/test/message-modification.test.ts` 7 个测试：改正文生成兄弟节点且原文逐字节不变、显示修改不新建节点且台账不变、元数据与显示分开存放、混合类别与空修改被拒、正文未变化与目标缺失被拒、显示状态按楼层与插件隔离并可清理、值必须是有限 JSON 且类别与键合法。
+  - 新增 `packages/st-compat/test/st-mvu-message.test.ts` 5 个测试：状态栏刷新只写显示状态、重复刷新覆盖同一项、缺占位符与空 HTML 与缺失楼层被拒、改正文生成新 swipe 且原楼层不变、消息元数据只写显示状态。
+  - `core` 的新增模块没有 ST 概念（I1、I15）；写入不经过台账，也不产生楼层原文（I4、I12）。没有改数据库 schema，没有新增运行时依赖。
