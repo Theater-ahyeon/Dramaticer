@@ -54,6 +54,10 @@ async function start(
 		pluginDir: dir,
 		manifest,
 		grantedPermissions: granted,
+		// 整仓并行门禁时，worker 线程启动与临时目录上的模块加载会被其他测试挤占；
+		// 这些用例验证的是能力行为，时间上限只用来避免用例挂住。
+		activationTimeoutMs: 30_000,
+		invokeTimeoutMs: 30_000,
 		...options,
 	});
 	runtimes.push(runtime);
@@ -63,7 +67,7 @@ async function start(
 async function waitForState(
 	runtime: CodePluginRuntime,
 	state: CodePluginRuntime["state"],
-	timeoutMs = 3_000,
+	timeoutMs = 30_000,
 ): Promise<void> {
 	const startedAt = Date.now();
 	while (Date.now() - startedAt < timeoutMs) {
@@ -186,7 +190,11 @@ describe("代码插件 worker 隔离", () => {
 				submitted.push(diffs);
 			},
 		});
-		expect(runtime.state).toBe("active");
+		expect(runtime.status).toEqual({
+			name: "test.probe",
+			state: "active",
+			reason: null,
+		});
 		const result = await provideLore(registry);
 		expect(result.network).toBe("pong");
 		expect(result.read).toBe("hello");
@@ -544,7 +552,7 @@ export default function activate(api) {
 async function waitForTrace(
 	runtime: CodePluginRuntime,
 	predicate: (entry: CodePluginRuntime["trace"][number]) => boolean,
-	timeoutMs = 3_000,
+	timeoutMs = 30_000,
 ): Promise<void> {
 	const startedAt = Date.now();
 	while (Date.now() - startedAt < timeoutMs) {
