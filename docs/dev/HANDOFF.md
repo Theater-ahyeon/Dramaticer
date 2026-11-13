@@ -3,11 +3,11 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-13 会话 365：完成 H-T09（变更审阅面板）。抽屉新增“对话 / 待确认”视图切换：待确认面板同时列出 `assistant_actions` 与故事下待批准的台账变更卡，按来源会话过滤；每条显示种类、摘要、产生它的会话、创建时间与字段或路径差异，台账卡逐条给出原值（没有记录时写“未记录”）与新值（删除写明），渠道动作只显示模型别名、模型 id、岗位与“密钥已设置/未设置”，密钥值和环境变量名都不进入界面。新增 `packages/web/src/assistant/review.ts` 的四类函数（字段描述、台账行、会话过滤、过滤选项）；`AssistantApiClient` 增加 `approveAction`、`rejectAction`、`listProposals`、`decideProposal`；批准与拒绝复用 H-T03 的动作接口与 H-T05 的变更卡接口，失败保留条目并在条目内显示服务端原因。右下角状态标记的待确认数量改为待确认动作与待确认变更卡之和，与面板一致，决定后立即刷新。新增 `packages/web/test/assistant-review.test.ts`（4 个测试）与 `e2e/assistant.spec.ts` 的审阅用例（desktop 与 mobile 各 1 条，覆盖 8 项待确认、密钥不显示、非法载荷批准失败后保留并显示原因、批准设置后数据改变、拒绝写入原因、数量同步）。门禁通过（249 个测试文件、2169 个测试、5 个跳过）。
+- 2026-11-13 会话 366：完成 H-T99（H 验收）。门禁通过（249 个测试文件、2169 个测试、5 个跳过）；`e2e/assistant.spec.ts` 的 desktop 与 mobile 各 5 条通过。用 `.env` 的 `main` 渠道（`main-fallback`）跑通两条真实流程：排障问答（只读，11,207 毫秒，6 次工具调用，回答含楼层 id 与“没有记录”）与台账修订批准（确认级别，9,919 毫秒，3 次工具调用，1 张来源 `assistant` 的变更卡，批准后 `冷淡` → `亲近`、事实来源 `player`、楼层数 3 → 3、head 与原文不变、待批准数 0）。手动压缩把 40 条消息的估算从 1,122 降到 613 token，省略 30 条，消息行保留。逐条核对 H-T01 至 H-T09 与 I4、I8、I11、I12、I13、I14、I15；报告 `docs/dev/reports/H.md`，原始数字 `eval-private/reports/H-live.json`。H 里程碑完成。
 
-## 下一步（会话 366 先做）
-1. **H-T99 H 验收**：重跑门禁与 web 目标 e2e；用真实渠道跑一次排障问答与一次台账修订批准流程（只调用 `.env` 里的渠道，不访问本地 ST，不修改 `.env`）；逐条核对 H-T01 至 H-T09 的验收；复核 I4、I8、I11、I12、I13、I14、I15；写 `docs/dev/reports/H.md`，只写数字与配置，不写对话原文。结果写 `MILESTONE_DONE`。
-2. 之后可做任务：X1（依赖已完成）、R6-T00（依赖已满足，排在 H 之后）。M5-T00 依赖 R6-T99；M6-T99 等待 HUMAN-15；P5 依赖 M5-T99。
+## 下一步（会话 367 先做）
+1. **X1 世界模型表示方式对比**：依赖 R1-T99.a 与 R2-T99，均已完成。任务较大，先在 TASKS 里拆成子任务，只做第一个。候选是现有台账、台账加实体 Wiki 页、时序知识图谱；通过同一个读写接口切换，在 3 个对话上比较矛盾率、编造回忆率、盲测胜率与每轮成本，每种至少重复 3 次；判定规则不变。评测需要真实渠道时只使用 `.env`；本地 ST 额度按 I14 先在 HUMAN.md 申请。
+2. 之后可做任务：R6-T00（依赖已满足）、M6-T99（被 HUMAN-15 阻塞）、M5-T00（依赖 R6-T99）、P5（依赖 M5-T99）。
 
 ## H 的任务划分（ADR-0125）
 - **H-T01（已完成）** 迁移 v44：会话、消息、只追加事件与 trigram 索引；`StoryStore` 读写与搜索；protocol 类型；server 会话 CRUD、状态与事件续读接口；web 类型化客户端。
@@ -19,7 +19,7 @@
 - **H-T07（已完成）** web 抽屉、会话搜索与改名、技能与权限选择、事件续读、关闭后继续运行与状态标记；重连不重复消息；取消后状态为 `cancelled`。
 - **H-T08（已完成）** 迁移 v46：`assistant_compactions`；自动与手动压缩、用量环；预算与正剧记忆独立。
 - **H-T09（已完成）** 待确认动作与台账变更卡审阅面板；按来源会话过滤；批准与拒绝失败保留条目并显示原因；徽标数量与面板一致。
-- **H-T99** 验收与 `docs/dev/reports/H.md`。
+- **H-T99（已完成）** 验收与 `docs/dev/reports/H.md`。
 
 ## H 设计要点
 - 助手会话可以关联故事，也可以不关联；消息与事件独立于 `nodes`、`state_diffs`、`turn_runs`。
@@ -78,10 +78,10 @@
 - e2e 的审阅数据按项目名分别种在 `e2e-assistant-review-mobile` 与 `e2e-assistant-review-desktop`：7 个待确认动作（覆盖七类）与 1 张待确认台账卡，初始数量 8。两个项目共用同一个服务端，所以不能用同一份会被修改的种子。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a 至 P2.g、P3.a 至 P3.f、P4.a 至 P4.f、C-T01.a 至 C-T01.d、C-T02.a 至 C-T02.f、C-T03.a 至 C-T03.d、C-T04.a、C-T04.b.a、C-T04.b.b、C-T04.c.a、C-T04.c.b、C-T04.c.c、C-T04.c.d、C-T04.d、C-T05.a 至 C-T05.f、H-T00 至 H-T09。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a 至 P2.g、P3.a 至 P3.f、P4.a 至 P4.f、C-T01.a 至 C-T01.d、C-T02.a 至 C-T02.f、C-T03.a 至 C-T03.d、C-T04.a、C-T04.b.a、C-T04.b.b、C-T04.c.a、C-T04.c.b、C-T04.c.c、C-T04.c.d、C-T04.d、C-T05.a 至 C-T05.f、H-T00 至 H-T09、H-T99。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
 - 兼容插件线：`st-content`、`st-mvu`、`st-ejs`、`st-helper-host` 全部完成（含一致性测试与共存评测）。
 - 数据库 schema 版本 46。本轮没有新增依赖。
-- 报告：`docs/dev/reports/P2.md`、`P3.md`、`P4.md`、`C-T01.md`、`C-T02.md`、`C-T03.md`、`C-T04.md`、`C-T05.md`。
+- 报告：`docs/dev/reports/P2.md`、`P3.md`、`P4.md`、`C-T01.md`、`C-T02.md`、`C-T03.md`、`C-T04.md`、`C-T05.md`、`H.md`。
 - 沙箱现状：`eval-private/st-sandbox/st` 有 36 个预设、68 张卡、89 个非驱动聊天片段；预设连接字段已被驱动改写为录制端点与桩模型，全局 `openai_max_context` 已被驱动改为 2,000,000。需要恢复原始预设时用 `sandbox --replace` 重建。
 - 私有比对批次：`compare-smoke4`（5 个组合，修复后）与更早的 `compare-smoke2`、`compare-smoke3`、`session324-sanitize`；每个批次的 `compare/` 下有报告、差异清单与汇总。
 - ADR-0088 至 ADR-0125 记录插件、沙箱、比对、兼容内容映射、EJS、沙箱执行、时间预算、流水线接入、模板生成、一致性评测、酒馆助手宿主、iframe 沙箱、STscript 子集、生成后台化、HTML 渲染、覆盖率口径与应用内助手的决策。
@@ -94,8 +94,9 @@
 
 ## 可重复命令
 - 门禁：`pnpm check`。
+- H-T99 真实渠道验收：`node .devloop/scratch/H-T99/live.mjs`（脚本读取 `.env`、`data/channels.yaml` 与 `docs/`，数据库写在 `.devloop/scratch/H-T99/live.db`；结果同时写 `.devloop/scratch/H-T99/live.json`）。脚本是一次性验收工具，不需要长期保留。
+- H-T99 e2e：`pnpm --filter @dramaticer/server build && pnpm --filter @dramaticer/web build && pnpm --filter @dramaticer/web exec playwright test e2e/assistant.spec.ts`（desktop 与 mobile 各 5 条）。
 - H-T09 目标测试：`pnpm exec vitest run packages/web/test/assistant-review.test.ts packages/web/test/assistant-api.test.ts`。
-- H-T09 e2e：`pnpm --filter @dramaticer/server build && pnpm --filter @dramaticer/web build && pnpm --filter @dramaticer/web exec playwright test e2e/assistant.spec.ts`（desktop 与 mobile 各 5 条）。
 - H-T08 目标测试：`pnpm exec vitest run packages/core/test/assistant-context.test.ts packages/core/test/assistant-store.test.ts packages/server/test/assistant.test.ts packages/web/test/assistant-api.test.ts packages/web/test/assistant-stream.test.ts packages/web/test/assistant-context-usage.test.ts`。
 - H-T07 目标测试：`pnpm exec vitest run packages/web/test/assistant-api.test.ts packages/web/test/assistant-stream.test.ts packages/web/test/assistant-conversation-list.test.ts packages/web/test/assistant-permissions.test.ts`。
 - H-T06 目标测试：`pnpm exec vitest run packages/core/test/assistant-setup.test.ts packages/core/test/assistant-skills.test.ts packages/server/test/assistant-skills.test.ts packages/server/test/assistant.test.ts packages/server/test/config.test.ts`。
