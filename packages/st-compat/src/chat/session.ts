@@ -31,6 +31,7 @@ import {
 	importCharacterBookLore,
 	importWorldInfoLore,
 } from "../lore-import.js";
+import { type StCardMapping, mapCharacterCard } from "../st-content/card.js";
 import type { StWorldInfo } from "../world-info.js";
 import { renderCharacterPrompt } from "./character.js";
 
@@ -50,6 +51,8 @@ export interface ImportedLoreTotals {
 export interface ImportedCardContent {
 	readonly characterPrompt: string;
 	readonly cardName: string;
+	/** 卡与 prompt 字段的映射结果与兼容报告；报告不含正文。 */
+	readonly cardMapping: StCardMapping;
 	readonly entities: EntityImportResult;
 	readonly lore: ImportedLoreTotals;
 	readonly events: EventPoolUpsertResult;
@@ -145,6 +148,7 @@ export function importCardContent(
 	return {
 		characterPrompt: renderCharacterPrompt(card),
 		cardName: card.name,
+		cardMapping: mapCharacterCard(card),
 		entities,
 		lore,
 		events: extension.events,

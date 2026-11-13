@@ -31,6 +31,7 @@ export * from "./preset.js";
 export * from "./reference/collect.js";
 export * from "./reference/text-stats.js";
 export * from "./regex-classifier.js";
+export * from "./st-content/index.js";
 export * from "./state-diff.js";
 export * from "./st-bench/compare.js";
 export * from "./st-bench/coexist.js";

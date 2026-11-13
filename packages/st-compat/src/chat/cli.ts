@@ -175,6 +175,13 @@ export async function runChatCli(
 				cardName: imported.cardName,
 				characterPrompt: imported.characterPrompt,
 			});
+			const report = imported.cardMapping.report;
+			log(
+				`角色卡兼容：${report.spec}，prompt 字段 ${report.fields.length} 个，未知字段 ${report.unknownFields.length} 个，群聊问候 ${report.greetings.groupOnlyCount} 条，作者注释 ${report.creatorNotesChars} 字符未注入`,
+			);
+			for (const issue of imported.cardMapping.report.issues) {
+				log(`兼容提示：${issue.code}：${issue.detail}`);
+			}
 			for (const issue of imported.dependencies.issues) {
 				log(
 					`依赖提示：${issue.message}${issue.level === "required" ? "（必需依赖未满足）" : ""}`,

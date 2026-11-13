@@ -1601,3 +1601,20 @@
   - C-T02–C-T05 只需在 `ST_BENCH_COEXIST_PLUGINS` 注册适配器并准备配置文件，不再各自实现对照运行与统计。
   - `packages/st-compat/test/st-bench-coexist.test.ts` 用假插件、假正文客户端与假裁判验证两组跑完、四项指标、样本量、变差清单与报告不含正文；3 个测试通过。
   - 当前注册表为空，CLI 遇到未注册的插件 id 会直接报错并列出可用插件；这是 C-T02 之前的状态。
+
+## ADR-0101 `st-content` 的角色卡、人设与作者注释映射（2026-11-12）
+
+- **背景**：C-T02 要把酒馆内容转换成原生模板与槽位，并先以 C-T01 的录制结果作为一致性规格。角色卡解析已经覆盖 V1/V2/V3 与 PNG/JSON，但提示词字段、群聊问候、人设位置和作者注释没有统一的映射结构，导入时也没有兼容报告。原生 `persona` 槽位只有一个 system 文本，无法直接表达酒馆人设的位置、深度与角色。
+- **决定**：
+  - 新增 `packages/st-compat/src/st-content/`。`mapCharacterCard` 按酒馆的 marker 标识输出未改写的字段：`description` → `charDescription`、`personality` → `charPersonality`、`scenario` → `scenario`、`system_prompt` → `main`、`mes_example` → `dialogueExamples`、`post_history_instructions` → `jailbreak`。字段正文不做宏替换或裁剪，卡片 `raw` 保持同一个引用。
+  - `creator_notes` 与 V1 的 `creatorcomment` 只作为元数据返回，`creatorNotesChars` 进入报告；它们不进入提示词，与酒馆的展示行为一致。
+  - 开场候选分为 `first`、`alternate`、`group-only`。单聊只列出开场白与备用问候；群聊优先使用 `group_only_greetings`，没有时退回单聊候选。备用问候按数组下标选择，越界或正文为空直接报错。
+  - 新增 `readStPersona`：活动头像取 `settings.user_avatar`，名字取 `power_user.personas`，描述、称号、位置、深度、角色与关联世界书取 `power_user.persona_descriptions`；缺失的字段回落到 `persona_description*` 全局设置。位置 0 相对、1 作者注释上方、2 作者注释下方、3 聊天内按深度；角色 0 system、1 user、2 assistant。字段类型、范围或整数约束不满足时立刻抛错并指出字段。
+  - `mapStPersona` 返回 `personaDescription` marker 与 `placement`、`depth`、`role`；原生 persona 槽位暂时只能表达相对位置的 system 文本，其余组合逐条写入 `issues`，由 C-T02.b 的模板组装接管。
+  - 新增 `readStAuthorNote`：读取聊天头部 `chat_metadata` 的 `note_prompt`、`note_interval`、`note_position`、`note_depth`、`note_role`；没有正文时返回 null。位置 0 替换、1 之前、2 之后，角色与深度映射到原生类型。
+  - 兼容报告只包含 `spec`、字段标识与字符数、问候条数、内嵌世界书条目数、未知字段名、扩展键名与原因，不包含任何提示词正文。未知卡片字段排序后列入报告，原始对象继续保留。
+  - `importCardContent` 返回 `cardMapping`，`dramaticer chat` 导入角色卡时打印报告摘要与映射提示；`renderCharacterPrompt` 改为复用同一份字段映射，避免两套字段顺序。
+- **影响**：
+  - 新增 `packages/st-compat/src/st-content/card.ts`、`persona.ts`、`author-note.ts` 与 barrel，并经 `@dramaticer/st-compat` 根导出；无新增依赖。
+  - `packages/st-compat/test/st-content.test.ts` 16 个测试覆盖字段映射、作者注释、未知字段、PNG 与 JSON 一致性、群聊问候、人设读取与非法值、聊天作者注释。
+  - C-T02.b 直接使用 `sections` 的 marker、`StPersonaMapping.placement` 与作者注释元数据组装预设顺序；C-T02.c 接管人设关联世界书。
