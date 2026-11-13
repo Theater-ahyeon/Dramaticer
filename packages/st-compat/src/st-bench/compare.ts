@@ -5,11 +5,12 @@ import path from "node:path";
 import { type ContextMessage, isJsonObject } from "@dramaticer/core";
 import { parseCharacterCardFile } from "../character-card.js";
 import { parseChatJsonl } from "../chat-jsonl.js";
-import { parsePresetFile } from "../preset.js";
+import { type StPreset, parsePresetFile } from "../preset.js";
 import {
 	type FaithfulChatMessage,
 	type FaithfulUnsupportedFeature,
 	assembleFaithfulRequest,
+	selectPromptOrderGroup,
 } from "./faithful.js";
 import {
 	assertBatchDir,
@@ -62,6 +63,16 @@ export interface ComparisonMeta {
 	readonly seq: number;
 }
 
+/** 片段历史是否被 ST 送进请求，以及没有被送进去时的原因。 */
+export interface HistoryDiagnosis {
+	/** 片段里非空的楼层数。 */
+	readonly floors: number;
+	/** 录制请求里能找到原文的楼层数。 */
+	readonly includedFloors: number;
+	/** 完整包含时为 null；否则写原因，不含正文。 */
+	readonly reason: string | null;
+}
+
 export interface RequestComparison {
 	readonly combinationId: string;
 	readonly seq: number;
@@ -75,6 +86,7 @@ export interface RequestComparison {
 	readonly unsupported: readonly FaithfulUnsupportedFeature[];
 	readonly expectedHash: string;
 	readonly actualHash: string;
+	readonly history: HistoryDiagnosis | null;
 }
 
 export interface ComparisonSummary {
@@ -87,6 +99,8 @@ export interface ComparisonSummary {
 	readonly matchedSamplingFields: number;
 	readonly diffCount: number;
 	readonly unsupportedCount: number;
+	readonly historyFloors: number;
+	readonly historyIncludedFloors: number;
 }
 
 const SAMPLING_FIELDS: readonly (readonly [keyof BenchmarkSampling, string])[] =
@@ -228,6 +242,7 @@ export function compareRequests(
 	expected: NormalizedRequest,
 	actual: NormalizedRequest,
 	unsupported: readonly FaithfulUnsupportedFeature[],
+	history: HistoryDiagnosis | null = null,
 ): RequestComparison {
 	const diffs: ComparisonDiff[] = [];
 	const total = Math.max(expected.messages.length, actual.messages.length);
@@ -323,6 +338,7 @@ export function compareRequests(
 		unsupported,
 		expectedHash: structuralHash(expected),
 		actualHash: structuralHash(actual),
+		history,
 	};
 }
 
@@ -390,6 +406,14 @@ export function summarizeComparisons(
 			(total, item) => total + item.unsupported.length,
 			0,
 		),
+		historyFloors: comparisons.reduce(
+			(total, item) => total + (item.history?.floors ?? 0),
+			0,
+		),
+		historyIncludedFloors: comparisons.reduce(
+			(total, item) => total + (item.history?.includedFloors ?? 0),
+			0,
+		),
 	};
 }
 
@@ -436,6 +460,9 @@ export function renderComparisonReport(input: ComparisonReportInput): string {
 	lines.push(
 		`- 采样参数：${summary.matchedSamplingFields}/${summary.comparedSamplingFields} 一致`,
 	);
+	lines.push(
+		`- 片段历史：${summary.historyIncludedFloors}/${summary.historyFloors} 楼进入录制请求`,
+	);
 	lines.push(`- 差异：${summary.diffCount}`);
 	lines.push(`- 不支持功能：${summary.unsupportedCount}`);
 	lines.push("");
@@ -448,6 +475,21 @@ export function renderComparisonReport(input: ComparisonReportInput): string {
 	for (const item of input.comparisons) {
 		lines.push(
 			`| ${item.combinationId} | ${item.seq} | ${item.expected.messages.length} | ${item.actual.messages.length} | ${item.matchedMessages} | ${formatPercent(item.messageCoverage)} | ${item.diffs.length} | ${item.unsupported.length} | ${shortHash(item.expectedHash)} | ${shortHash(item.actualHash)} |`,
+		);
+	}
+	lines.push("");
+	lines.push("## 片段历史");
+	lines.push("");
+	const withHistory = input.comparisons.filter((item) => item.history !== null);
+	if (withHistory.length === 0) {
+		lines.push("- 没有历史诊断");
+	}
+	for (const item of withHistory) {
+		const history = item.history;
+		if (history === null) continue;
+		const detail = history.reason === null ? "完整" : `原因：${history.reason}`;
+		lines.push(
+			`- ${item.combinationId} 序号 ${item.seq}：包含 ${history.includedFloors}/${history.floors} 楼，${detail}`,
 		);
 	}
 	lines.push("");
@@ -560,6 +602,7 @@ export async function compareSandboxBatch(
 	const limited =
 		options.limit === undefined ? entries : entries.slice(0, options.limit);
 	const recordings = await readRecordingIndex(options.batchDir);
+	const settingsUserName = await readSandboxUserName(dataRoot);
 	const comparisons: RequestComparison[] = [];
 
 	for (const entry of limited) {
@@ -585,7 +628,7 @@ export async function compareSandboxBatch(
 			preset,
 			character,
 			chat: chat.messages,
-			userName: chat.userName,
+			userName: settingsUserName ?? chat.userName,
 		});
 		const actual = normalizeAssembledRequest({
 			messages: assembled.request.messages,
@@ -613,6 +656,7 @@ export async function compareSandboxBatch(
 					expected,
 					actual,
 					assembled.unsupported,
+					diagnoseHistory(chat.messages, preset, record.body),
 				),
 			);
 		}
@@ -693,6 +737,75 @@ async function readRecordingIndex(
 	return entries;
 }
 
+/** 沙箱的全局用户名就是 ST 替换 `{{user}}` 时使用的人设名。 */
+async function readSandboxUserName(dataRoot: string): Promise<string | null> {
+	const file = path.join(dataRoot, "settings.json");
+	const parsed = await readJsonFile(file).catch(() => null);
+	if (!isJsonObject(parsed)) return null;
+	const username = parsed.username;
+	return typeof username === "string" && username !== "" ? username : null;
+}
+
+/**
+ * 统计片段楼层在录制请求里的出现情况。ST 可能把连续同角色消息合并，
+ * 所以先按整条内容匹配，再按长文本包含匹配；只输出数量与原因。
+ */
+function diagnoseHistory(
+	chat: readonly FaithfulChatMessage[],
+	preset: StPreset,
+	body: unknown,
+): HistoryDiagnosis {
+	const contents: string[] = [];
+	if (isJsonObject(body) && Array.isArray(body.messages)) {
+		for (const message of body.messages) {
+			if (isJsonObject(message) && typeof message.content === "string") {
+				contents.push(message.content);
+			}
+		}
+	}
+	const joined = contents.join("\n");
+	const floors = chat.filter((message) => message.content.trim().length > 0);
+	const present = floors.map((message) => {
+		const content = message.content.replace(/\r/gm, "");
+		const candidates = [content];
+		if (typeof message.name === "string" && message.name !== "") {
+			candidates.push(`${message.name}: ${content}`);
+		}
+		return candidates.some(
+			(candidate) =>
+				contents.includes(candidate) ||
+				(candidate.length >= 20 && joined.includes(candidate)),
+		);
+	});
+	const includedFloors = present.filter(Boolean).length;
+	let reason: string | null = null;
+	if (includedFloors < floors.length) {
+		const firstIncluded = present.indexOf(true);
+		const trimmedOldest =
+			firstIncluded > 0 && present.slice(firstIncluded).every(Boolean);
+		if (!isHistoryEnabledInPromptOrder(preset)) {
+			reason = "预设的提示词顺序没有启用 chatHistory";
+		} else if (includedFloors === 0) {
+			reason = `上下文预算不足，历史全部被裁掉（预设上下文 ${preset.contextSize ?? "未知"}，输出上限 ${preset.maxTokens ?? "未知"}）`;
+		} else if (trimmedOldest) {
+			reason = `上下文预算不足，只保留最近 ${includedFloors} 楼`;
+		} else {
+			reason = `${floors.length - includedFloors} 楼内容被正则或宏修改`;
+		}
+	}
+	return { floors: floors.length, includedFloors, reason };
+}
+
+function isHistoryEnabledInPromptOrder(preset: StPreset): boolean {
+	const group = selectPromptOrderGroup(preset);
+	if (group === undefined) {
+		return preset.prompts.some((prompt) => prompt.identifier === "chatHistory");
+	}
+	return group.order.some(
+		(entry) => entry.identifier === "chatHistory" && entry.enabled,
+	);
+}
+
 async function readChatMessages(file: string): Promise<{
 	readonly messages: readonly FaithfulChatMessage[];
 	readonly userName: string | null;
@@ -707,12 +820,19 @@ async function readChatMessages(file: string): Promise<{
 			userName = entry.header.userName;
 			continue;
 		}
-		const role = entry.message.isSystem
-			? "system"
-			: entry.message.isUser
-				? "user"
-				: "assistant";
-		messages.push({ role, content: entry.message.text });
+		if (entry.message.isSystem) continue;
+		const role = entry.message.isUser ? "user" : "assistant";
+		const raw = entry.message.raw;
+		const forceAvatar =
+			"force_avatar" in raw &&
+			raw.force_avatar !== null &&
+			raw.force_avatar !== false;
+		messages.push({
+			role,
+			content: entry.message.text,
+			name: entry.message.name,
+			forceAvatar,
+		});
 	}
 	return { messages, userName };
 }

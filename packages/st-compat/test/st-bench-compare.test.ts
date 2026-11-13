@@ -54,7 +54,7 @@ const PRESET = {
 			content: "Remember the rule.",
 			role: "system",
 			system_prompt: true,
-			injection_position: 0,
+			injection_position: 1,
 			injection_depth: 1,
 		},
 		{
@@ -202,6 +202,7 @@ describe("忠实模式组装", () => {
 		expect(assembly.request.messages).toEqual([
 			{ role: "system", content: "You are Alice talking to Bob." },
 			{ role: "system", content: "a witch" },
+			{ role: "system", content: "[Start a new Chat]" },
 			{ role: "user", content: "hello" },
 			{ role: "assistant", content: "hi" },
 			{ role: "system", content: "Remember the rule." },
@@ -220,6 +221,44 @@ describe("忠实模式组装", () => {
 			.map((message) => message.content)
 			.join("\n");
 		expect(text).not.toContain("写作契约");
+	});
+
+	it("使用 ST OpenAI 连接的全局顺序组 100001", async () => {
+		const preset = {
+			...PRESET,
+			prompts: [
+				...PRESET.prompts,
+				{
+					identifier: "groupOnly",
+					name: "Group only",
+					content: "group text",
+					role: "user",
+					system_prompt: false,
+				},
+			],
+			prompt_order: [
+				{ character_id: 100000, order: BASE_ORDER },
+				{
+					character_id: 100001,
+					order: [
+						{ identifier: "main", enabled: true },
+						{ identifier: "groupOnly", enabled: true },
+						{ identifier: "chatHistory", enabled: false },
+					],
+				},
+			],
+		};
+		const assembly = await assembleFaithfulRequest({
+			preset: parsePresetJson(JSON.stringify(preset)),
+			character: parseCharacterCardJson(JSON.stringify(CARD)),
+			chat: CHAT,
+			userName: "Bob",
+		});
+		expect(assembly.request.messages).toEqual([
+			{ role: "system", content: "You are Alice talking to Bob." },
+			{ role: "user", content: "group text" },
+			{ role: "assistant", content: "As Alice," },
+		]);
 	});
 
 	it("无法表达的功能逐条记入不支持，不把半成品放进消息", async () => {
@@ -248,7 +287,7 @@ describe("忠实模式组装", () => {
 					content: "Absolute note.",
 					role: "system",
 					system_prompt: true,
-					injection_position: 1,
+					injection_position: 2,
 				},
 				{
 					identifier: "unknownMarker",
@@ -426,6 +465,8 @@ describe("批次比对", () => {
 			"utf8",
 		);
 		expect(report).toContain("消息覆盖率：100.00%");
+		expect(report).toContain("片段历史：3/3 楼进入录制请求");
+		expect(report).toContain("包含 3/3 楼，完整");
 		expect(report).not.toContain("You are Alice");
 		expect(report).not.toContain("a witch");
 		expect(report).not.toContain("hello");

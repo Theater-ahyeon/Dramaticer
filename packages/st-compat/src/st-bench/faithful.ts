@@ -7,7 +7,11 @@ import {
 	assembleContext,
 } from "@dramaticer/core";
 import type { StCharacterCard } from "../character-card.js";
-import type { StPreset, StPresetPrompt } from "../preset.js";
+import type {
+	StPreset,
+	StPresetPrompt,
+	StPromptOrderGroup,
+} from "../preset.js";
 import type { BenchmarkSampling } from "./compare.js";
 
 /** 忠实模式的输入：同一份预设、角色卡、聊天片段与人设。 */
@@ -22,6 +26,9 @@ export interface FaithfulAssemblyInput {
 export interface FaithfulChatMessage {
 	readonly role: LlmRole;
 	readonly content: string;
+	readonly name?: string | null;
+	/** 酒馆据此决定是否给消息加说话人名前缀。 */
+	readonly forceAvatar?: boolean;
 }
 
 /** 忠实模式无法表达的功能；detail 只写标识，不写提示词正文。 */
@@ -155,14 +162,8 @@ export async function assembleFaithfulRequest(
 		const role = resolveRole(prompt, unsupported);
 		if (role === null) continue;
 
-		if (prompt.injectionPosition !== null) {
-			if (prompt.injectionPosition !== 0) {
-				unsupported.push({
-					feature: "injection-position",
-					detail: `${prompt.identifier}:${prompt.injectionPosition}`,
-				});
-				continue;
-			}
+		// 1 是绝对位置（按深度插进聊天历史），0 是普通相对位置。
+		if (prompt.injectionPosition === 1) {
 			if (prompt.injectionDepth === null || prompt.injectionDepth < 0) {
 				unsupported.push({
 					feature: "injection-depth",
@@ -190,6 +191,13 @@ export async function assembleFaithfulRequest(
 				role,
 				content: text,
 				depth: prompt.injectionDepth,
+			});
+			continue;
+		}
+		if (prompt.injectionPosition !== null && prompt.injectionPosition !== 0) {
+			unsupported.push({
+				feature: "injection-position",
+				detail: `${prompt.identifier}:${prompt.injectionPosition}`,
 			});
 			continue;
 		}
@@ -290,8 +298,27 @@ export async function assembleFaithfulRequest(
 			? { id: entry.id, kind: "slot", slot: "history", priority: 100 }
 			: staticSegment(entry.id, entry.text, entry.role),
 	);
+	let newChatPrompt: string | null = null;
+	if (hasHistory) {
+		const newChatText = expandNames(
+			readNewChatPrompt(input.preset),
+			charName,
+			userName,
+		);
+		if (newChatText === null) {
+			unsupported.push({ feature: "macro", detail: "new_chat_prompt" });
+		} else if (newChatText.trim().length > 0) {
+			newChatPrompt = newChatText;
+		}
+	}
 	const historyProvider = hasHistory
-		? createHistoryProvider(input.chat, injections)
+		? createHistoryProvider(
+				input.chat,
+				injections,
+				newChatPrompt,
+				readNamesBehavior(input.preset),
+				userName,
+			)
 		: null;
 
 	const prefill = input.preset.assistantPrefill ?? "";
@@ -330,15 +357,28 @@ export async function assembleFaithfulRequest(
 	};
 }
 
+/**
+ * ST 的 OpenAI 连接使用固定的全局顺序组 100001；100000 是默认预设管理器的
+ * 全局组，只在预设没有 100001 时回退。
+ */
+export function selectPromptOrderGroup(
+	preset: StPreset,
+): StPromptOrderGroup | undefined {
+	return (
+		preset.promptOrder.find((group) => group.characterId === 100001) ??
+		preset.promptOrder.find(
+			(group) => group.characterId === null || group.characterId === 100000,
+		) ??
+		preset.promptOrder[0]
+	);
+}
+
 /** 全局顺序组优先；没有显式顺序时按 prompts 数组顺序并沿用各自的启用状态。 */
 function resolvePromptOrder(
 	preset: StPreset,
 	unsupported: FaithfulUnsupportedFeature[],
 ): readonly OrderedPrompt[] {
-	const global =
-		preset.promptOrder.find(
-			(group) => group.characterId === null || group.characterId === 100000,
-		) ?? preset.promptOrder[0];
+	const global = selectPromptOrderGroup(preset);
 	const byIdentifier = new Map<string, StPresetPrompt>();
 	for (const prompt of preset.prompts) {
 		if (!byIdentifier.has(prompt.identifier)) {
@@ -384,6 +424,33 @@ function resolveRole(
 	return resolved;
 }
 
+/** ST 的 names_behavior：-1 不加名字，0 仅强制头像的消息，2 全部非旁白消息。 */
+function readNamesBehavior(preset: StPreset): number {
+	const value = preset.raw.names_behavior;
+	return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function formatHistoryContent(
+	message: FaithfulChatMessage,
+	namesBehavior: number,
+	userName: string,
+): string {
+	const content = message.content.replace(/\r/gm, "");
+	const name = message.name ?? "";
+	const forceAvatar = message.forceAvatar === true;
+	const prefixed =
+		name !== "" &&
+		(namesBehavior === 2 ||
+			(namesBehavior === 0 && forceAvatar && name !== userName));
+	return prefixed ? `${name}: ${content}` : content;
+}
+
+/** 预设没有保存 `new_chat_prompt` 时使用 ST 的默认文本。 */
+function readNewChatPrompt(preset: StPreset): string {
+	const value = preset.raw.new_chat_prompt;
+	return typeof value === "string" ? value : "[Start a new Chat]";
+}
+
 /** 只替换角色名与玩家名；其余宏一律记为不支持，避免拿半成品去比较。 */
 function expandNames(
 	text: string,
@@ -417,12 +484,21 @@ function staticSegment(
 function createHistoryProvider(
 	chat: readonly FaithfulChatMessage[],
 	injections: readonly DepthInjection[],
+	newChatPrompt: string | null,
+	namesBehavior: number,
+	userName: string,
 ): ContextSlotProvider {
-	const messages: ContextMessage[] = chat.flatMap((message) =>
-		message.content.trim().length === 0
+	const messages: ContextMessage[] = [
+		...(newChatPrompt === null
 			? []
-			: [{ role: message.role, content: message.content }],
-	);
+			: [{ role: "system" as const, content: newChatPrompt }]),
+		...chat.flatMap((message) => {
+			const content = formatHistoryContent(message, namesBehavior, userName);
+			return content.trim().length === 0
+				? []
+				: [{ role: message.role, content }];
+		}),
+	];
 	for (const injection of injections) {
 		const index = Math.max(0, messages.length - injection.depth);
 		messages.splice(index, 0, {

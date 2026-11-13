@@ -29,6 +29,13 @@ import { isPathInside } from "./sandbox.js";
 /** 与 `st-bench record` 的默认端口一致；沙箱端点指回这个地址。 */
 export const DEFAULT_DRIVE_RECORDER_PORT = 8130;
 export const DEFAULT_COMBINATION_TIMEOUT_MS = 180_000;
+/**
+ * 测试台把 ST 的上下文预算抬到上限，让录制请求保留完整历史。
+ * 预设自带的预算会按自己的渠道裁剪历史，比对时无法区分「预设没启用历史」与
+ * 「预算不足」两种原因；抬高预算后，前者仍由预设的 prompt_order 决定。
+ * 2,000,000 是 ST 对自定义模型允许的最大上下文。
+ */
+export const DEFAULT_BENCH_CONTEXT_TOKENS = 2_000_000;
 /** 一条生成请求从发出到索引落盘的等待上限。 */
 const DEFAULT_RECORD_WAIT_MS = 15_000;
 
@@ -335,6 +342,7 @@ async function runPendingCombinations(
 						floor: combination.floor,
 						endpointUrl: options.endpointUrl,
 						stubModel: options.stubModel,
+						contextTokens: DEFAULT_BENCH_CONTEXT_TOKENS,
 					}),
 					options.combinationTimeoutMs,
 					`组合 ${combination.combinationId}`,
@@ -438,6 +446,7 @@ interface BrowserTurnInput {
 	readonly floor: number;
 	readonly endpointUrl: string;
 	readonly stubModel: string;
+	readonly contextTokens: number;
 }
 
 interface BrowserTurnResult {
@@ -510,6 +519,7 @@ async function runBrowserTurn(
 			readonly source: unknown;
 			readonly customUrl: unknown;
 			readonly model: unknown;
+			readonly maxContext: unknown;
 		}> {
 			const response = await fetch("/api/settings/get", {
 				method: "POST",
@@ -550,6 +560,10 @@ async function runBrowserTurn(
 					settingsObject === null
 						? undefined
 						: Reflect.get(settingsObject, "custom_model"),
+				maxContext:
+					settingsObject === null
+						? undefined
+						: Reflect.get(settingsObject, "openai_max_context"),
 			};
 		}
 
@@ -560,6 +574,7 @@ async function runBrowserTurn(
 			settings.chat_completion_source = expectedSource;
 			settings.custom_url = turn.endpointUrl;
 			settings.custom_model = turn.stubModel;
+			settings.openai_max_context = turn.contextTokens;
 			$("#chat_completion_source").val(expectedSource).trigger("change");
 			$("#custom_api_url_text").val(turn.endpointUrl).trigger("input");
 			$("#custom_model_id").val(turn.stubModel).trigger("input");
@@ -570,12 +585,13 @@ async function runBrowserTurn(
 				if (
 					saved.source === expectedSource &&
 					saved.customUrl === turn.endpointUrl &&
-					saved.model === turn.stubModel
+					saved.model === turn.stubModel &&
+					saved.maxContext === turn.contextTokens
 				) {
 					return;
 				}
 				if (Date.now() >= saveDeadline) {
-					throw new Error("保存后的端点不是录制服务");
+					throw new Error("保存后的端点或上下文预算不是测试台配置");
 				}
 				await sleep(200);
 			}
