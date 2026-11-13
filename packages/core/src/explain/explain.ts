@@ -310,6 +310,15 @@ function buildSuggestions(report: ExplainReport): ExplainSuggestion[] {
 			evidence: `Trace hooks 里 outcome=timeout，耗时 ${hook.durationMs} 毫秒，原因：${hook.reason ?? "没有记录"}`,
 		});
 	}
+	for (const hook of report.hooks) {
+		for (const template of hook.templates ?? []) {
+			if (template.outcome !== "timeout") continue;
+			suggestions.push({
+				advice: `${hook.plugin} 的模板「${template.source}」超过时间预算被跳过，这一条按空内容处理；检查模板里的循环与远程调用，或提高回合钩子的时间预算。`,
+				evidence: `Trace hooks 里模板 outcome=timeout，耗时 ${template.durationMs} 毫秒，调用函数：${template.functions.length === 0 ? "无" : template.functions.join("、")}，原因：${template.reason ?? "没有记录"}`,
+			});
+		}
+	}
 	for (const section of report.retrieval) {
 		if (section.hits.length === 0) {
 			const routes =
@@ -499,6 +508,17 @@ export function renderExplainReport(report: ExplainReport): string {
 			lines.push(
 				`     - ${label}（插件 ${hook.plugin}）：${outcome}，${hook.durationMs} 毫秒${hook.reason === null ? "" : `，原因：${hook.reason}`}`,
 			);
+			for (const template of hook.templates ?? []) {
+				const templateOutcome =
+					template.outcome === "ok" ? "正常" : "超时跳过，按空内容处理";
+				const functions =
+					template.functions.length === 0
+						? ""
+						: `，调用函数：${template.functions.join("、")}`;
+				lines.push(
+					`       模板 ${template.source}：${templateOutcome}，${template.durationMs} 毫秒${functions}${template.reason === null ? "" : `，原因：${template.reason}`}`,
+				);
+			}
 		}
 	}
 

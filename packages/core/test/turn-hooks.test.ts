@@ -7,6 +7,7 @@ import {
 	type LlmStreamingClient,
 	REQUEST_REWRITE_HOOK,
 	type StoryStore,
+	type TurnHookBudget,
 	assembleContext,
 	collectSlotProviders,
 	createDefaultContextTemplate,
@@ -15,6 +16,7 @@ import {
 	createStandardChatSlots,
 	createStaticSlotProvider,
 	runChatTurn,
+	runTurnHook,
 } from "../src/index.js";
 import { openTempStore } from "./temp-store.js";
 
@@ -153,6 +155,134 @@ describe("槽位提供者的时间预算", () => {
 		expect(
 			assembled.messages.some((message) => message.content === "角色设定"),
 		).toBe(true);
+	});
+
+	it("提供者拿到时间预算，模板执行记录写进 Trace", async () => {
+		const { store } = openTempStore();
+		seedStory(store);
+		const providers: ContextSlotProviders = {
+			character: {
+				plugin: "test/ejs",
+				provide(request) {
+					expect(request.budget?.budgetMs).toBe(5_000);
+					request.budget?.recordTemplate({
+						source: "世界书 卡:开场",
+						durationMs: 7,
+						outcome: "ok",
+						reason: null,
+						functions: ["getvar", "getwi"],
+					});
+					return {
+						messages: [{ role: "system" as const, content: "渲染结果" }],
+						source: "st-ejs:character",
+					};
+				},
+			},
+		};
+
+		const assembled = await assembleContext({
+			template: createDefaultContextTemplate({ structuredOutput: "text-tags" }),
+			budgetTokens: 4_000,
+			storyId: "s1",
+			providers,
+		});
+
+		expect(assembled.hooks).toHaveLength(1);
+		expect(assembled.hooks?.[0]).toMatchObject({
+			extension: "context.slot",
+			plugin: "test/ejs",
+			hook: "character",
+			outcome: "ok",
+		});
+		expect(assembled.hooks?.[0].templates).toEqual([
+			{
+				source: "世界书 卡:开场",
+				durationMs: 7,
+				outcome: "ok",
+				reason: null,
+				functions: ["getvar", "getwi"],
+			},
+		]);
+		expect(
+			assembled.messages.some((message) => message.content === "渲染结果"),
+		).toBe(true);
+	});
+
+	it("钩子超时后保留已记录的模板，之后的记录不再写入", async () => {
+		const { store } = openTempStore();
+		seedStory(store);
+		let captured: TurnHookBudget | null = null;
+		const providers: ContextSlotProviders = {
+			character: {
+				plugin: "test/ejs-slow",
+				async provide(request) {
+					captured = request.budget ?? null;
+					request.budget?.recordTemplate({
+						source: "世界书 卡:循环",
+						durationMs: 20,
+						outcome: "timeout",
+						reason: "超过时间预算 20 毫秒",
+						functions: ["getvar"],
+					});
+					await new Promise<never>(() => {});
+					throw new Error("不可达");
+				},
+			},
+		};
+
+		const assembled = await assembleContext({
+			template: createDefaultContextTemplate({ structuredOutput: "text-tags" }),
+			budgetTokens: 4_000,
+			storyId: "s1",
+			providers,
+			hookBudgetMs: 20,
+		});
+
+		const hook = assembled.hooks?.[0];
+		expect(hook?.outcome).toBe("timeout");
+		expect(hook?.templates).toHaveLength(1);
+		expect(hook?.templates?.[0].source).toBe("世界书 卡:循环");
+
+		if (captured === null) throw new Error("提供者没有拿到时间预算");
+		expect(captured.remainingMs()).toBe(0);
+		captured.recordTemplate({
+			source: "迟到的模板",
+			durationMs: 1,
+			outcome: "ok",
+			reason: null,
+			functions: [],
+		});
+		expect(hook?.templates).toHaveLength(1);
+	});
+});
+
+describe("钩子时间预算", () => {
+	it("结束后剩余时间为 0，预算值原样可见", async () => {
+		let remainingDuringRun = -1;
+		const run = await runTurnHook({
+			extension: "context.slot",
+			hook: "character",
+			plugin: "test/ejs",
+			budgetMs: 500,
+			run(budget) {
+				remainingDuringRun = budget.remainingMs();
+				expect(budget.budgetMs).toBe(500);
+				return "内容";
+			},
+		});
+		expect(run.value).toBe("内容");
+		expect(remainingDuringRun).toBeGreaterThan(0);
+		expect(remainingDuringRun).toBeLessThanOrEqual(500);
+	});
+
+	it("没有记录模板时 Trace 不带 templates 字段", async () => {
+		const run = await runTurnHook({
+			extension: "request.rewrite",
+			hook: REQUEST_REWRITE_HOOK,
+			plugin: "test/rewrite",
+			run: () => [],
+		});
+		expect(run.trace).not.toHaveProperty("templates");
 	});
 });
 

@@ -1841,3 +1841,17 @@
   - 新增 `packages/st-compat/test/st-ejs-sandbox.test.ts` 10 个测试：变量函数经远程调用与写入回主线程、`print`/`define`/`evalTemplate`、格式化函数远程调用、逃逸检查（`process`/`require`/`fetch`/`Buffer`/构造器链/`node:fs`/`node:net` 动态 import）、允许清单、超时后继续执行、超时错误带来源、世界书条目里的模板在沙箱里渲染、执行记录的函数列表与耗时、模板错误带来源。
   - 现有 81 个 EJS 测试保持通过；门禁 221 个测试文件、1971 个测试通过，5 个 live 跳过。没有新增依赖（`ejs` 已在 `packages/st-compat`），没有改数据库 schema，`core` 没有改动（I1、I15）。EJS 仍未接入槽位，只作用于调用方传入的文本（C-T04.c.c 接入 st-content）。
 
+
+## ADR-0115 `st-ejs` 的回合内时间预算与 Trace（2026-11-13）
+
+- **背景**：C-T04.c.a 的沙箱能按固定预算终止单次模板执行，但回合内的预算语义还没接上：一个槽位钩子里可能连续执行多条模板（世界书条目、嵌套 `getwi`），每条都按 5 秒算会让一整轮远远超过回合预算；超时只抛错误，回合会失败，而 I17 要求超时跳过并把跳过的扩展点与原因写进 Trace。
+- **决定**：
+  - `runTurnHook` 的 `run` 回调拿到 `TurnHookBudget`：`budgetMs`、`remainingMs()`（钩子结束后为 0）与 `recordTemplate()`。钩子结束时把已记录的模板快照写进 `TurnHookTraceEntry.templates`（来源、耗时、outcome、原因、调用过的函数），之后的记录被丢弃；单次模板记录超过一条时按执行顺序保存。插件没有记录模板时 `templates` 不出现，旧 Trace 不受影响。
+  - `ContextSlotRequest` 增加可选的 `budget`，组装器在插件槽位里传入同一次钩子的预算。内置槽位不带 `plugin`，仍然不计时、不传预算。
+  - `StEjsRuntime.render` 增加 `budget` 选项：有预算时必须提供沙箱执行器（否则直接抛 `StEjsTemplateError`），每次执行用 `remainingMs()` 作为本次的时间上限，执行记录写进预算；超时的模板按空内容处理，其余错误照常抛出。嵌套的 `getwi` 渲染沿用同一个预算，因此一条模板链的总时间不超过钩子的剩余时间。运行时用 `#activeBudget` 在同步 RPC 期间传递预算，嵌套渲染按调用顺序串行。
+  - `StEjsSandbox.run` 接受 `budgetMs` 覆盖构造时的预算，超时错误带上实际使用的预算；执行记录类型与运行时的 `StEjsTemplateTraceEntry` 合并为同一结构。
+  - `dramaticer explain` 在回合钩子下面逐条列出模板的来源、耗时、结果与调用的函数，并对超时的模板给出建议与证据。
+- **影响**：
+  - 新增 `packages/st-compat/test/st-ejs-budget.test.ts` 8 个测试：正常执行的记录、超时按空内容并记录原因、剩余时间覆盖默认预算、预算用完不启动执行、变量写入回到主线程、嵌套世界书渲染各自记录、没有沙箱执行器时报错、槽位钩子里超时后回合继续且 Trace 带模板记录。
+  - `packages/core/test/turn-hooks.test.ts` 新增 3 个测试：预算随槽位请求传入并写进 Trace、钩子超时后保留已记录模板且后续记录被丢弃、没有模板记录时 Trace 不带 `templates`；`packages/core/test/explain.test.ts` 新增 1 个测试覆盖排版与建议。
+  - `core` 的钩子 API 向后兼容：`run` 的零参回调仍然可赋值；`Timeline` 与存储层没有改动，没有改数据库 schema，没有新增依赖。EJS 仍未接入 `st-content` 的槽位（C-T04.c.c）。

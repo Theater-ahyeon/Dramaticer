@@ -8,6 +8,16 @@ export type TurnHookOutcome = "ok" | "timeout";
 /** 请求改写钩子注册的事件名；水流式分发，依次把同一个请求交给下一个钩子。 */
 export const REQUEST_REWRITE_HOOK = "request.rewrite";
 
+/** 钩子里执行过一次的模板：来源、耗时、结果与调用过的函数。 */
+export interface TurnHookTemplateTraceEntry {
+	readonly source: string;
+	readonly durationMs: number;
+	readonly outcome: TurnHookOutcome;
+	readonly reason: string | null;
+	/** 模板调用过的函数名，按首次调用顺序去重。 */
+	readonly functions: readonly string[];
+}
+
 /**
  * 一次钩子运行。超时的钩子被跳过，扩展点、插件、耗时与原因都写进 Trace（I17）。
  */
@@ -19,6 +29,19 @@ export interface TurnHookTraceEntry {
 	readonly durationMs: number;
 	readonly outcome: TurnHookOutcome;
 	readonly reason: string | null;
+	/** 钩子内各次模板执行的记录；没有执行模板时不写。 */
+	readonly templates?: readonly TurnHookTemplateTraceEntry[];
+}
+
+/**
+ * 钩子在本次运行里可用的时间预算。模板执行按剩余时间决定做到哪里，
+ * 每次执行都通过 `recordTemplate` 写进 Trace；钩子结束后不再接收记录。
+ */
+export interface TurnHookBudget {
+	readonly budgetMs: number;
+	/** 剩余毫秒；钩子结束后为 0。 */
+	remainingMs(): number;
+	recordTemplate(entry: TurnHookTemplateTraceEntry): void;
 }
 
 /**
@@ -71,11 +94,38 @@ export async function runTurnHook<T>(input: {
 	readonly hook: string;
 	readonly plugin: string;
 	readonly budgetMs?: number;
-	run(): T | PromiseLike<T>;
+	run(budget: TurnHookBudget): T | PromiseLike<T>;
 }): Promise<TurnHookRun<T>> {
 	const budgetMs = input.budgetMs ?? DEFAULT_TURN_HOOK_BUDGET_MS;
 	assertTurnHookBudgetMs(budgetMs);
 	const startedAt = performance.now();
+	const templates: TurnHookTemplateTraceEntry[] = [];
+	let closed = false;
+	const budget: TurnHookBudget = {
+		budgetMs,
+		remainingMs: () =>
+			closed ? 0 : Math.max(0, budgetMs - (performance.now() - startedAt)),
+		recordTemplate: (entry) => {
+			if (closed) return;
+			templates.push({ ...entry, functions: [...entry.functions] });
+		},
+	};
+	const traceFor = (
+		outcome: TurnHookOutcome,
+		reason: string | null,
+	): TurnHookTraceEntry => {
+		closed = true;
+		const captured = templates.slice();
+		return {
+			extension: input.extension,
+			plugin: input.plugin,
+			hook: input.hook,
+			durationMs: Math.round(performance.now() - startedAt),
+			outcome,
+			reason,
+			...(captured.length === 0 ? {} : { templates: captured }),
+		};
+	};
 	const { promise: deadline, reject: rejectDeadline } =
 		Promise.withResolvers<never>();
 	const timer = setTimeout(
@@ -84,33 +134,13 @@ export async function runTurnHook<T>(input: {
 	);
 	try {
 		const value = await Promise.race([
-			Promise.resolve().then(() => input.run()),
+			Promise.resolve().then(() => input.run(budget)),
 			deadline,
 		]);
-		return {
-			value,
-			trace: {
-				extension: input.extension,
-				plugin: input.plugin,
-				hook: input.hook,
-				durationMs: Math.round(performance.now() - startedAt),
-				outcome: "ok",
-				reason: null,
-			},
-		};
+		return { value, trace: traceFor("ok", null) };
 	} catch (error) {
 		if (!(error instanceof HookBudgetExceededError)) throw error;
-		return {
-			value: null,
-			trace: {
-				extension: input.extension,
-				plugin: input.plugin,
-				hook: input.hook,
-				durationMs: Math.round(performance.now() - startedAt),
-				outcome: "timeout",
-				reason: error.message,
-			},
-		};
+		return { value: null, trace: traceFor("timeout", error.message) };
 	} finally {
 		clearTimeout(timer);
 	}

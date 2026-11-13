@@ -278,6 +278,56 @@ describe("explainNode", () => {
 		);
 	});
 
+	it("输出模板执行的耗时、调用的函数与超时跳过原因", () => {
+		const { store } = openTempStore();
+		seed(store);
+		store.saveTurnTrace({
+			...traceFor("a1", "u1"),
+			hooks: [
+				{
+					extension: "context.slot",
+					plugin: "st-ejs",
+					hook: "lore",
+					durationMs: 40,
+					outcome: "ok",
+					reason: null,
+					templates: [
+						{
+							source: "世界书 卡:开场",
+							durationMs: 12,
+							outcome: "ok",
+							reason: null,
+							functions: ["getvar"],
+						},
+						{
+							source: "世界书 卡:循环",
+							durationMs: 200,
+							outcome: "timeout",
+							reason: "模板 世界书 卡:循环 执行超过时间预算 200 毫秒",
+							functions: ["getwi"],
+						},
+					],
+				},
+			],
+		});
+
+		const report = explainNode(store, "a1");
+		const text = renderExplainReport(report);
+		expect(text).toContain(
+			"模板 世界书 卡:开场：正常，12 毫秒，调用函数：getvar",
+		);
+		expect(text).toContain(
+			"模板 世界书 卡:循环：超时跳过，按空内容处理，200 毫秒，调用函数：getwi",
+		);
+		expect(text).toContain(
+			"原因：模板 世界书 卡:循环 执行超过时间预算 200 毫秒",
+		);
+		const suggestion = report.suggestions.find((item) =>
+			item.advice.includes("世界书 卡:循环"),
+		);
+		expect(suggestion?.evidence).toContain("调用函数：getwi");
+	});
+
 	it("盲盒模式下 explain 仍显示完整导演决策", () => {
 		const { store } = openTempStore();
 		seed(store);

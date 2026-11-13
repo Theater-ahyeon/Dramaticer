@@ -1,10 +1,12 @@
 import { createRequire } from "node:module";
 import { Worker } from "node:worker_threads";
 import {
+	type StEjsExecutionRun,
 	type StEjsRuntime,
 	StEjsTemplateError,
 	type StEjsTemplateExecution,
 	type StEjsTemplateExecutor,
+	type StEjsTemplateTraceEntry,
 } from "./runtime.js";
 import { StEjsVariableError } from "./variables.js";
 
@@ -378,20 +380,9 @@ parentPort.on("message", async (message) => {
 });
 `;
 
-export interface StEjsSandboxTraceEntry {
-	readonly source: string;
-	readonly durationMs: number;
-	readonly outcome: "ok" | "timeout";
-	readonly reason: string | null;
-	/** 模板调用过的函数名，按首次调用顺序去重。 */
-	readonly functions: readonly string[];
-}
-
-export interface StEjsSandboxRun {
-	/** 超时跳过时为 null。 */
-	readonly output: string | null;
-	readonly trace: StEjsSandboxTraceEntry;
-}
+/** 执行记录与运行时共用同一个结构，超时跳过时 `output` 为 null。 */
+export type StEjsSandboxTraceEntry = StEjsTemplateTraceEntry;
+export type StEjsSandboxRun = StEjsExecutionRun;
 
 export class StEjsSandboxTimeoutError extends Error {
 	readonly source: string;
@@ -510,17 +501,30 @@ export class StEjsSandbox implements StEjsTemplateExecutor {
 		return result.output;
 	}
 
-	/** 执行一段模板并返回执行记录；只有超时走 `output: null`。 */
-	async run(execution: StEjsTemplateExecution): Promise<StEjsSandboxRun> {
+	/**
+	 * 执行一段模板并返回执行记录；只有超时走 `output: null`。
+	 * `budgetMs` 覆盖构造时的预算，用于回合内按剩余时间执行。
+	 */
+	async run(
+		execution: StEjsTemplateExecution,
+		options: { readonly budgetMs?: number } = {},
+	): Promise<StEjsSandboxRun> {
 		if (this.#disposed) {
 			throw new Error("沙箱已经释放");
 		}
+		const budgetMs = options.budgetMs ?? this.#budgetMs;
+		assertPositiveInt(budgetMs, "沙箱时间预算");
 		const handle = this.#acquire();
 		this.#executionCounter += 1;
 		const executionId = this.#executionCounter;
 		const startedAt = performance.now();
 		try {
-			const result = await this.#dispatch(handle, executionId, execution);
+			const result = await this.#dispatch(
+				handle,
+				executionId,
+				execution,
+				budgetMs,
+			);
 			return {
 				output: result.output,
 				trace: {
@@ -620,6 +624,7 @@ export class StEjsSandbox implements StEjsTemplateExecutor {
 		handle: SandboxWorkerHandle,
 		executionId: number,
 		execution: StEjsTemplateExecution,
+		budgetMs: number,
 	): Promise<{ output: string; functions: string[] }> {
 		let variablesJson: string;
 		try {
@@ -646,11 +651,11 @@ export class StEjsSandbox implements StEjsTemplateExecutor {
 				new StEjsSandboxTimeoutError({
 					source: execution.source,
 					durationMs: Math.round(performance.now() - startedAt),
-					budgetMs: this.#budgetMs,
+					budgetMs,
 					functions: [...functions],
 				}),
 			);
-		}, this.#budgetMs);
+		}, budgetMs);
 		handle.current = {
 			executionId,
 			source: execution.source,

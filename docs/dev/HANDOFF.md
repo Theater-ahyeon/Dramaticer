@@ -3,38 +3,36 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-13 会话 344：C-T04.c.a 完成，门禁通过（221 个测试文件、1971 个测试、5 个跳过）。
+- 2026-11-13 会话 345：C-T04.c.b 完成，门禁通过（222 个测试文件、1984 个测试、5 个跳过）。
 - 实现：
-  - `packages/st-compat/src/st-ejs/sandbox.ts`：`StEjsSandbox` 实现 `StEjsTemplateExecutor`。worker 由内联源码启动（`eval: true`、空 `execArgv`），每次执行在 worker 里新建一个 `node:vm` 上下文；EJS 在 worker 里用 `ejs.compile({client: true, compileDebug: true, async: true})` 生成函数源码，再在上下文里用间接 `eval` 求值。模板因此拿不到 `process`、`require`、`Buffer`、`fetch`，动态 `import` 以 `ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING` 失败，`Function` 构造的代码也只跑在上下文里。
-  - 主线程只传模板文本、变量快照、允许的函数清单与格式化方式；上下文里的函数由 bootstrap 按清单定义，调用时把 `(名字, 参数 JSON)` 发给主线程，主线程在运行时函数表里执行后写 `SharedArrayBuffer` 并 `Atomics.notify`，模板线程 `Atomics.wait` 同步等待，所以 `getvar`/`setvar`/`getwi` 在模板里仍是同步调用。`getwi` 的嵌套渲染由主线程再申请一个新 worker。
-  - 编解码 `encodeSandboxValue`/`decodeSandboxValue`：`undefined` 与正则换成带标记对象，函数、bigint、循环引用直接抛错。`print`、`define`、`evalTemplate` 在上下文里实现；`define` 的作用域是一次执行（含它的 `evalTemplate`），不跨多次 `render`。
-  - 默认 5 秒预算（`budgetMs` 可配）：超时终止 worker 并抛 `StEjsSandboxTimeoutError`（来源、耗时、预算、调用的函数）；`run()` 把超时作为 `output: null`、`outcome: "timeout"` 的执行记录返回。超时 worker 不进空闲池，下一次执行重新启动。空闲 worker 最多 2 个。
-  - `StEjsRuntime` 增加 `executor` 选项、`setExecutor`、`listSandboxFunctions`、`invokeSandboxFunction`、`formatEscapedValue`，`#buildLocals` 拆出 `#functionTable`；`#render` 在沙箱模式下只做 `prepareTemplate`（`<#escape-ejs>` 与 HTML 转义还原）再交给执行器，`<%=` 的自定义格式化经 `__escape` 远程调用。
-- 测试：新增 `st-ejs-sandbox.test.ts` 10 个（变量写入、`print`/`define`/`evalTemplate`、格式化远程调用、逃逸检查含 `node:fs` 与 `node:net` 的 import、允许清单、超时后继续执行、超时错误带来源、世界书条目嵌套渲染、执行记录的函数与耗时、模板错误带来源）。ADR-0114。
+  - `core/src/plugins/turn-hooks.ts`：`runTurnHook` 的 `run` 回调签名变成 `run(budget: TurnHookBudget)`。预算对象带 `budgetMs`、`remainingMs()` 与 `recordTemplate()`；钩子结束时把记录的模板快照写进新增的 `TurnHookTraceEntry.templates`（`source`、`durationMs`、`outcome`、`reason`、`functions`），钩子结束后 `remainingMs()` 返回 0，之后的记录被丢弃。没有模板记录时 Trace 不带这个字段，旧 Trace 兼容。
+  - `core/src/context/assembler.ts`：`ContextSlotRequest` 新增可选 `budget`，插件槽位的请求在 `run` 回调里构造并带上同一次钩子的预算；内置槽位（没有 `plugin`）仍不计时。
+  - `core/src/explain/explain.ts`：`dramaticer explain` 的回合钩子段落下面逐条列出模板的来源、耗时、结果与调用的函数，并对超时模板追加一条建议与证据。
+  - `st-compat/src/st-ejs/runtime.ts`：`StEjsRenderOptions.budget`（`StEjsTurnBudget`，与 core 的 `TurnHookBudget` 结构一致，可以原样传入）。有预算时必须提供沙箱执行器，否则抛 `StEjsTemplateError`；每次执行用 `remainingMs()` 作为本次时间上限，执行记录写进预算，超时的模板按空内容处理（其余错误照常抛）。嵌套的 `getwi` 渲染经 `#activeBudget` 沿用同一预算，各自记录。
+  - `st-compat/src/st-ejs/sandbox.ts`：`run(execution, { budgetMs })` 覆盖构造时的预算；超时错误带实际预算；执行记录类型与运行时的 `StEjsTemplateTraceEntry` 合并（`StEjsSandboxTraceEntry`、`StEjsSandboxRun` 保留为别名）。
+- 测试：新增 `st-ejs-budget.test.ts` 8 个（正常记录、超时按空内容、剩余时间覆盖默认预算、预算用完不启动执行、变量写入回主线程、嵌套世界书各自记录、没有沙箱执行器报错、槽位钩子超时后回合继续且 Trace 带模板记录）；`core/test/turn-hooks.test.ts` 新增 3 个；`core/test/explain.test.ts` 新增 1 个。ADR-0115。
 
-## 下一步（会话 345 先做）
-1. **C-T04.c.b 回合内时间预算与 Trace**：依赖 C-T04.c.a，现在可以做。把沙箱执行记录接到 `TurnHookTraceEntry`（扩展点、插件、来源、耗时、outcome、跳过原因，函数列表一起写），超时跳过该条模板并让回合继续；`dramaticer explain` 输出里能读到。注意 `runTurnHook` 的返回结构只有 `value`/`trace`，需要在不破坏现有调用方的前提下扩展 `TurnHookTraceEntry` 或新增 EJS 专用字段。
-2. 然后 C-T04.c.c（st-content 流水线接入与变量视图；同时决定沙箱实例的生命周期，`define` 的跨模板作用域在这里定）、C-T04.c.d（模板发起的生成，后台任务与卡级限流）。
+## 下一步（会话 346 先做）
+1. **C-T04.c.c st-content 流水线接入与变量视图**：依赖 C-T04.c.b，现在可以做。把 EJS 接到 `st-content` 的预设、世界书与深度注入，EJS 只作用于来自 ST 的内容、进入槽位前完成，不碰记忆、台账、导演与写作契约。槽位提供者用 `ContextSlotRequest.budget` 直接传给 `runtime.render(text, { source, budget })`（`StEjsTurnBudget` 与 `TurnHookBudget` 结构一致）。变量来源接台账 `mvu` 子树：读经台账快照，写经待结算视图与结算器校验；全局与消息级变量留在插件存储。这里同时决定沙箱实例与运行时实例的生命周期（`define` 的作用域目前是一次执行）。
+2. 然后 C-T04.c.d（模板发起的生成，后台任务与卡级限流）、C-T04.d（一致性测试与共存评测）、C-T05。
 3. 其余可做任务：H-T00（依赖 R5-T99、R3b-T99、E-T01，均已完成）、X1（依赖 R1-T99.a、R2-T99，均已完成）。M5-T00 依赖 R6-T99；M6-T99 等待 HUMAN-15；P5 依赖 M5-T99。
 
-## C-T04.c.a 代码事实
-- 沙箱入口：`createStEjsSandbox({ runtime, budgetMs?, allowedFunctions?, responseBytes?, maxIdleWorkers? })`；`execute(execution)` 抛错，`run(execution)` 返回 `{ output, trace }`，超时 `output` 为 null。`execution` 是 `{ template, source, escape: "string" | "remote" }`，`template` 已经做过转义处理（直接调用 `execute` 时由调用方负责）。
-- 启用沙箱的写法：`const sandbox = createStEjsSandbox({ runtime }); runtime.setExecutor(sandbox);`。构造校验允许清单里每个名字都出现在 `runtime.listSandboxFunctions()` 里，未知名字直接抛错。
-- 远程调用只支持可 JSON 化的值；`activateRegex` 的函数替换参数、`define` 的函数值只在沙箱内部有效，跨进程的调用参数里出现函数会抛 `StEjsVariableError`。
-- 每次执行使用新上下文，变量来自 `runtime.variables.variables` 的快照；每次远程调用回包里带新的合并视图，模板里写后立刻读到。`define` 的名字只在本次执行（含 `evalTemplate`）有效。
-- `evalTemplate` 的新模板由 worker 编译、在同一个上下文里执行，不再回到主线程；`include` 在沙箱里直接抛错。
-- 模板错误统一包装成 `StEjsTemplateError`，来源是 `execution.source`；EJS 的行号仍在错误消息里（`readErrorLine` 对 ejs 错误一直取不到 `line`）。
-- 超时只由主线程计时；嵌套渲染各自计时，总的回合预算留给 C-T04.c.b。
-- 空闲 worker 复用同一个进程，但每次执行新建上下文；不要用空闲池承载跨故事的状态。
+## C-T04.c.b 代码事实
+- 钩子预算：`runTurnHook({ extension, hook, plugin, budgetMs?, run(budget) })`。零参回调仍然可以赋值（`run: () => value`），不需要改现有调用方。钩子超时仍返回 `value: null`、`outcome: "timeout"`，已记录的模板一起写进 trace。
+- 模板记录类型在 core 叫 `TurnHookTemplateTraceEntry`，st-compat 叫 `StEjsTemplateTraceEntry`，字段完全一致（`source`、`durationMs`、`outcome`、`reason`、`functions`）。`StEjsTurnBudget` 只需要 `remainingMs()` 与 `recordTemplate()`。
+- `runtime.render(text, { source, budget })` 在预算内运行；超时返回空字符串并记录 `outcome: "timeout"`，预算已用完时记录 0 毫秒与原因「回合时间预算已用完」。模板语法错误仍然以 `StEjsTemplateError` 抛出。
+- 沙箱执行器必须实现 `run`（沙箱自带）；只有 `execute` 的执行器在预算模式下直接抛错，不做静默降级。
+- 预算内的执行记录由运行时写，沙箱本身不写；嵌套 `getwi` 的记录先于外层记录（嵌套在 worker 同步 RPC 里完成）。
+- 没有预算时行为与 C-T04.c.a 一致：`execute` 抛 `StEjsSandboxTimeoutError`，沙箱继续执行下一次渲染。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a 至 P2.g、P3.a 至 P3.f、P4.a 至 P4.f、C-T01.a 至 C-T01.d、C-T02.a 至 C-T02.f、C-T03.a 至 C-T03.d、C-T04.a、C-T04.b.a、C-T04.b.b、C-T04.c.a。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- 兼容插件线：`st-content`、`st-mvu`、`st-ejs` 的模板引擎、装饰器/注入/激活正则、世界书与数据函数、沙箱执行完成；`st-ejs` 的 Trace 接入（C-T04.c.b）、流水线接入（c.c）、生成（c.d）与评测（C-T04.d）待做；`st-helper-host`（C-T05）待做。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a 至 P2.g、P3.a 至 P3.f、P4.a 至 P4.f、C-T01.a 至 C-T01.d、C-T02.a 至 C-T02.f、C-T03.a 至 C-T03.d、C-T04.a、C-T04.b.a、C-T04.b.b、C-T04.c.a、C-T04.c.b。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 兼容插件线：`st-content`、`st-mvu`、`st-ejs` 的模板引擎、装饰器/注入/激活正则、世界书与数据函数、沙箱执行与回合内时间预算完成；`st-ejs` 的流水线接入（c.c）、生成（c.d）与评测（C-T04.d）待做；`st-helper-host`（C-T05）待做。
 - 数据库 schema 版本 43；本轮没有改 schema。本轮没有新增依赖。
 - 报告：`docs/dev/reports/P2.md`、`P3.md`、`P4.md`、`C-T01.md`、`C-T02.md`、`C-T03.md`。
 - 沙箱现状：`eval-private/st-sandbox/st` 有 36 个预设、68 张卡、89 个非驱动聊天片段；预设连接字段已被驱动改写为录制端点与桩模型，全局 `openai_max_context` 已被驱动改为 2,000,000。需要恢复原始预设时用 `sandbox --replace` 重建。
 - 私有比对批次：`compare-smoke4`（5 个组合，修复后）与更早的 `compare-smoke2`、`compare-smoke3`、`session324-sanitize`；每个批次的 `compare/` 下有报告、差异清单与汇总。
-- ADR-0088 至 ADR-0114 记录插件、沙箱、比对、兼容内容映射、EJS 与沙箱执行决策。
+- ADR-0088 至 ADR-0115 记录插件、沙箱、比对、兼容内容映射、EJS、沙箱执行与时间预算决策。
 - HUMAN-03 待处理（不阻塞）：抽查 `eval-private/evalset/spotcheck.md` 里的事件题。
 - HUMAN-14 已关闭（2026-11-12：人类取消）：取消 Vertex 真实调用的凭证配置与验证要求；`roles.writer` 继续使用 `main-fallback`。
 - HUMAN-15 待处理（M6-T99 需要）：把秋叶整合包 v3.2 的 ComfyUI 启动在 `http://127.0.0.1:8188`，并导出一份 API 格式 workflow JSON 到 `eval-private/comfyui/` 或告知路径。
@@ -43,8 +41,9 @@
 
 ## 可重复命令
 - 门禁：`pnpm check`。
+- C-T04.c.b 目标测试：`pnpm exec vitest run packages/st-compat/test/st-ejs-budget.test.ts packages/core/test/turn-hooks.test.ts packages/core/test/explain.test.ts`（30 个）。
 - C-T04.c.a 目标测试：`pnpm exec vitest run packages/st-compat/test/st-ejs-sandbox.test.ts`（10 个）。
-- 全部 EJS 测试：`pnpm exec vitest run packages/st-compat/test/st-ejs-template.test.ts packages/st-compat/test/st-ejs-variables.test.ts packages/st-compat/test/st-ejs-decorators.test.ts packages/st-compat/test/st-ejs-injections.test.ts packages/st-compat/test/st-ejs-regex.test.ts packages/st-compat/test/st-ejs-world-info.test.ts packages/st-compat/test/st-ejs-data.test.ts packages/st-compat/test/st-ejs-json.test.ts packages/st-compat/test/st-ejs-sandbox.test.ts`（91 个）。
+- 全部 EJS 测试：`pnpm exec vitest run packages/st-compat/test/st-ejs-template.test.ts packages/st-compat/test/st-ejs-variables.test.ts packages/st-compat/test/st-ejs-decorators.test.ts packages/st-compat/test/st-ejs-injections.test.ts packages/st-compat/test/st-ejs-regex.test.ts packages/st-compat/test/st-ejs-world-info.test.ts packages/st-compat/test/st-ejs-data.test.ts packages/st-compat/test/st-ejs-json.test.ts packages/st-compat/test/st-ejs-sandbox.test.ts packages/st-compat/test/st-ejs-budget.test.ts`（99 个）。
 - C-T04.b.b 目标测试：`pnpm exec vitest run packages/st-compat/test/st-ejs-world-info.test.ts packages/st-compat/test/st-ejs-data.test.ts packages/st-compat/test/st-ejs-json.test.ts`（24 个）。
 - C-T04.b.a 目标测试：`pnpm exec vitest run packages/st-compat/test/st-ejs-decorators.test.ts packages/st-compat/test/st-ejs-injections.test.ts packages/st-compat/test/st-ejs-regex.test.ts`（31 个）。
 - C-T04.a 目标测试：`pnpm exec vitest run packages/st-compat/test/st-ejs-template.test.ts packages/st-compat/test/st-ejs-variables.test.ts`（26 个）。
@@ -94,3 +93,4 @@
 - `st-ejs` 的激活正则默认一次性生效（命中后停用），连续使用时显式传 `sticky: true`；注入标记与 `@INJECT` 必须独占一行才会被识别。
 - `st-ejs` 的 `getwi` 在模板里需要 `await`；世界书、角色卡、预设与快捷回复数据由调用方注入，不要读 `eval-private/` 或 ST 安装目录。
 - 沙箱里模板函数是同步的（远程调用会阻塞模板线程），函数参数与返回值必须能 JSON 化；`define` 只在一次执行内有效，`include` 不可用。
+- 回合预算只从调用方传进来：槽位提供者用 `request.budget`，直接调用运行时用 `render(text, { budget })`。没有预算时不限时（沙箱自己的默认 5 秒仍生效）；预算模式必须用沙箱执行器。

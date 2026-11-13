@@ -1,5 +1,9 @@
 import type { HistoryViewTrace } from "../blocks/history.js";
-import { type TurnHookTraceEntry, runTurnHook } from "../plugins/turn-hooks.js";
+import {
+	type TurnHookBudget,
+	type TurnHookTraceEntry,
+	runTurnHook,
+} from "../plugins/turn-hooks.js";
 import type {
 	RetrievalHit,
 	RetrievalRouteRanking,
@@ -21,6 +25,8 @@ export interface ContextSlotRequest {
 	readonly nodeId: string | null;
 	readonly switches: Readonly<Record<string, boolean>>;
 	readonly state: unknown;
+	/** 插件槽位的时间预算；提供者按剩余时间决定做到哪里，模板执行记进 Trace。 */
+	readonly budget?: TurnHookBudget;
 }
 
 /** 槽位内容里需要随上下文包复核的引用。 */
@@ -380,7 +386,7 @@ async function resolveSegment(
 			hook: segment.slot,
 			plugin: provider.plugin,
 			budgetMs: input.hookBudgetMs,
-			run: async () => await provider.provide(request),
+			run: async (budget) => await provider.provide({ ...request, budget }),
 		});
 		hook = run.trace;
 		content = run.value;

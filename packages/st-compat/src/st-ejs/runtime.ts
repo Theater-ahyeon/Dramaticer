@@ -83,6 +83,11 @@ export interface StEjsRenderOptions {
 	readonly source?: string;
 	/** 消息渲染阶段先还原 `&lt;%` 与 `%&gt;`。 */
 	readonly unescapeHtmlTags?: boolean;
+	/**
+	 * 回合内时间预算。每次模板执行按剩余时间限制，执行记录交给调用方写进 Trace；
+	 * 超时的模板按空内容处理，其余错误照常抛出。嵌套的 `getwi` 渲染沿用同一个预算。
+	 */
+	readonly budget?: StEjsTurnBudget;
 }
 
 export interface StEjsPostProcess {
@@ -115,9 +120,40 @@ export interface StEjsTemplateExecution {
 	readonly escape: "string" | "remote";
 }
 
+/** 一次模板执行的结果与记录；超时被跳过时 `output` 为 null。 */
+export interface StEjsExecutionRun {
+	readonly output: string | null;
+	readonly trace: StEjsTemplateTraceEntry;
+}
+
+/** 一次模板执行的记录：来源、耗时、结果、原因与调用过的函数。 */
+export interface StEjsTemplateTraceEntry {
+	readonly source: string;
+	readonly durationMs: number;
+	readonly outcome: "ok" | "timeout";
+	readonly reason: string | null;
+	/** 模板调用过的函数名，按首次调用顺序去重。 */
+	readonly functions: readonly string[];
+}
+
+/** 回合内时间预算；与 core 的 `TurnHookBudget` 结构一致，可以原样传入。 */
+export interface StEjsTurnBudget {
+	/** 剩余毫秒。 */
+	remainingMs(): number;
+	recordTemplate(entry: StEjsTemplateTraceEntry): void;
+}
+
 /** 模板执行器（沙箱）。渲染入口由运行时提供文本，执行器只负责隔离与超时。 */
 export interface StEjsTemplateExecutor {
 	execute(execution: StEjsTemplateExecution): Promise<string>;
+	/**
+	 * 带执行记录的执行入口；`budgetMs` 覆盖执行器自己的时间预算。
+	 * 回合预算需要它；没有实现的执行器无法在预算内运行。
+	 */
+	run?(
+		execution: StEjsTemplateExecution,
+		options?: { readonly budgetMs?: number },
+	): Promise<StEjsExecutionRun>;
 }
 
 /** 模板与激活正则共用的变量函数。 */
@@ -251,6 +287,8 @@ export class StEjsRuntime {
 	#variableSchema: StEjsVariableSchemaNode | null = null;
 	#evalDepth = 0;
 	#executor: StEjsTemplateExecutor | null;
+	/** 当前渲染沿用中的回合预算；嵌套渲染（`getwi`）读它。 */
+	#activeBudget: StEjsTurnBudget | null = null;
 	readonly #formatEscapedCustom: boolean;
 
 	constructor(options: StEjsRuntimeOptions = {}) {
@@ -509,6 +547,17 @@ export class StEjsRuntime {
 		const source = options.source ?? "模板";
 		const prepared = prepareTemplate(text, options.unescapeHtmlTags ?? false);
 		const executor = this.#executor;
+		const budget = options.budget ?? this.#activeBudget;
+		if (budget !== null) {
+			if (executor === null) {
+				throw new StEjsTemplateError(
+					source,
+					null,
+					"回合时间预算需要沙箱执行器",
+				);
+			}
+			return await this.#renderWithinBudget(prepared, source, executor, budget);
+		}
 		if (executor !== null) {
 			return executor.execute({
 				template: prepared,
@@ -540,6 +589,52 @@ export class StEjsRuntime {
 				error instanceof Error ? error.message : String(error),
 				error,
 			);
+		}
+	}
+
+	/**
+	 * 在剩余时间里执行一段模板并记录；超时的模板按空内容处理。
+	 * 嵌套渲染沿用同一个预算，所以一条模板链的总时间不会超过钩子的剩余时间。
+	 */
+	async #renderWithinBudget(
+		prepared: string,
+		source: string,
+		executor: StEjsTemplateExecutor,
+		budget: StEjsTurnBudget,
+	): Promise<string> {
+		const previous = this.#activeBudget;
+		this.#activeBudget = budget;
+		try {
+			const remaining = Math.floor(budget.remainingMs());
+			if (remaining <= 0) {
+				budget.recordTemplate({
+					source,
+					durationMs: 0,
+					outcome: "timeout",
+					reason: "回合时间预算已用完",
+					functions: [],
+				});
+				return "";
+			}
+			if (executor.run === undefined) {
+				throw new StEjsTemplateError(
+					source,
+					null,
+					"执行器不支持带时间预算的执行",
+				);
+			}
+			const result = await executor.run(
+				{
+					template: prepared,
+					source,
+					escape: this.#formatEscapedCustom ? "remote" : "string",
+				},
+				{ budgetMs: remaining },
+			);
+			budget.recordTemplate(result.trace);
+			return result.output ?? "";
+		} finally {
+			this.#activeBudget = previous;
 		}
 	}
 
