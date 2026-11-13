@@ -31,7 +31,7 @@
 | R3b 深回合 | 完成 | 本文件 |
 | P 插件内核 | 进行中 | 本文件 |
 | 兼容插件线 | 进行中 | 本文件 |
-| H 应用内助手 | 待做 | 本文件 |
+| H 应用内助手 | 进行中 | 本文件 |
 | X 对比实验 | 待做 | 本文件 |
 | R6 效果门槛 | 待做 | 本文件 |
 | M6b 生图第二批 | 待做（R6 之后） | 本文件 |
@@ -1459,9 +1459,88 @@
 
 ## H：应用内助手（排在 R5 与 R3b 之后，取代原侧边 agent）
 
-- [ ] **H-T00 细化应用内助手** | 依赖：R5-T99、R3b-T99、E-T01 | DESIGN §10.3
-  做什么：把抽屉界面与全部技能（排障、台账修订、参谋、资料员、卡片工坊、设置向导、使用指南）、类型化 server 接口、三级权限（只读、修改前确认、自动执行）、对话保存与搜索、关掉抽屉后任务继续运行与状态提示、上下文自动与手动压缩、用量环拆成任务；复用深回合的 agent 运行时，与正剧隔离：不写楼层，不进入剧情上下文；影响剧情的修改一律走变更卡并由结算器校验。写清依赖与验收。
+- [x] **H-T00 细化应用内助手** | 依赖：R5-T99、R3b-T99、E-T01 | DESIGN §10.3
+  完成：2026-11-13 把应用内助手分成 H-T01 至 H-T09 与 H-T99：会话存储与类型化接口、运行时与只读工具、三级权限与待确认动作、排障与使用指南、台账修订与参谋、资料员与卡片工坊与设置向导、抽屉界面、上下文压缩与用量环、变更审阅面板、验收；迁移 v44–v46 预留给助手会话、消息、事件、待确认动作与压缩记录；ADR-0125；门禁通过（234 个测试文件、2074 个测试、5 个跳过）
+  做什么：把抽屉界面与全部技能（排障、台账修订、参谋、资料员、卡片工坊、设置向导、使用指南）、类型化 server 接口、三级权限（只读、修改前确认、自动执行）、对话保存与搜索、关掉抽屉后任务继续运行与状态提示、上下文自动与手动压缩、用量环分成任务；复用深回合的 agent 运行时，与正剧隔离：不写楼层，不进入剧情上下文；影响剧情的修改一律走变更卡并由结算器校验。写清依赖与验收。
   验收：任务清单可直接执行；应用内助手不写楼层、不进入剧情上下文；影响剧情的修改全部经过变更卡；`pnpm check` 通过。
+
+- [ ] **H-T01 助手会话存储与类型化接口** | 依赖：R5-T99、R3b-T99、E-T01、P2.g | DESIGN §10.3 | ADR-0125
+  做什么：
+  - 迁移 v44 新建 `assistant_conversations`、`assistant_messages`、`assistant_events` 与 `assistant_message_text`（trigram 全文索引）。会话字段：`id`、可空的 `story_id`（使用指南与全局设置可以为空）、`skill`、`title`、`permission`（`read_only`、`confirm`、`auto`）、`status`（`idle`、`running`、`completed`、`failed`、`cancelled`、`interrupted`）、可空的 `model_alias`、`thinking`（`off`、`low`、`high`）、`context_budget`（默认 48,000）、`compaction_threshold`（默认 0.8，范围 0.5–0.95）、`created_at`、`updated_at`、`last_message_at`。消息表按会话内递增 `ordinal` 保存 `user`、`assistant`、`tool`、`system` 四种角色，工具消息带 `tool_name` 与 `tool_result`，助手消息带可空的 `usage`（JSON）。事件表只追加，主键 `(conversation_id, seq)`，更新与删除由触发器拒绝。
+  - `assistant_message_text` 的插入与删除由 `assistant_messages` 上的触发器同步；会话标题用普通索引，消息正文用 trigram，中文两字查询可以命中。
+  - `StoryStore` 增加会话与消息的读写：创建、按故事或技能列出、按标题与正文搜索（返回会话摘要与命中片段）、读取完整会话、改名、改技能与权限、改模型与思考强度、删除（消息、事件级联删除）；消息序号在同一事务里取最大值加一。
+  - `packages/protocol/src/assistant.ts` 定义与 server 共用的类型：技能 id、权限级别、会话摘要、消息、状态、创建与修改请求、搜索响应、事件名与事件载荷。`packages/server` 与 `packages/web` 只从 protocol 取这些类型；web 不从 core 取运行时值。
+  - server 新增 `packages/server/src/assistant.ts` 并挂到 `/api/assistant`：`GET /api/assistant/conversations?query=&storyId=&limit=`、`POST /api/assistant/conversations`、`GET /api/assistant/conversations/:id`、`PATCH /api/assistant/conversations/:id`、`DELETE /api/assistant/conversations/:id`、`GET /api/assistant/conversations/:id/status`、`GET /api/assistant/conversations/:id/events?after=<seq>`。未知 id 返回 404，字段非法返回 400 并指出字段，删除会话不影响任何楼层。
+  验收：迁移后四张表与索引存在，事件表的更新与删除被拒绝；会话改名、改权限、改模型、删除都能读回；中文两字查询命中标题与正文并返回片段；删除会话后消息、事件一起消失；未知 id 与非法字段有明确错误；protocol 类型被 server 与 web 共用且 web 没有 core 运行时导入；助手接口不创建楼层、不改 head、不写状态 diff；`pnpm check` 通过。
+
+- [ ] **H-T02 助手运行时、隔离与只读工具** | 依赖：H-T01 | DESIGN §10.1、§10.3 | ADR-0125 | I4、I8、I11
+  做什么：
+  - 新增 `packages/core/src/assistant/runtime.ts` 的 `runAssistantTurn`：复用 `runDeepTurn` 的工具循环、传输、流式回调与上限，消息只由技能系统提示、压缩摘要、会话内消息和本轮附件组成。不调用 `generateAssistantTurn`，不组装剧情上下文，不读取 `history` 槽位，不写 `turn_runs`。
+  - 默认上限：工具调用 20 次、运行 300,000 毫秒、工具往返 32,000 token、保留最近 4 步；会话的 `context_budget` 可以覆盖 token 上限。达到上限按现有规则正常收束并记录事件。
+  - 新增 `assistant/tools.ts` 的只读工具集：`explain_node`（包装 `explainNode`，按楼层给出 Trace、上下文分段、检索、台账、导演与建议）、`run_log_read`（读运行日志）、`memory_search`（限定当前故事与当前 head 路径，最多 10 条）、`ledger_read`、`lore_lookup`、`state_get`、`director_read`、`settings_read`、`template_read`、`plugin_list`。工具结果超过 32,000 字符时截断并写明截断位置。注册表里没有草稿、提交、手记、正文写入与生图工具。
+  - 每次运行写 `assistant_events`：`started`、`text.delta`、`thinking.delta`、`tool.call`、`tool.result`、`usage`、`completed`、`error`，会话状态在同一事务里切换。同一会话同时只允许一次运行，重复启动返回 409。取消把状态改为 `cancelled` 并中止请求；server 启动时把遗留的 `running` 改为 `interrupted`。
+  - server 新增 `POST /api/assistant/conversations/:id/messages`（SSE）与 `POST /api/assistant/conversations/:id/cancel`；SSE 事件名与载荷来自 protocol。客户端断开不中止运行，重新连接用 `after` 续读事件，再按 `GET /status` 判断是否结束。
+  - 模型默认使用 `roles.writer` 解析到的别名，会话的 `model_alias` 可以覆盖；思考强度按会话设置传给请求。用量写进助手消息与 `usage` 事件。
+  验收：假客户端下排障问答能调用 `explain_node` 并读回报告；工具结果截断有标记；没有运行记录时报告写“没有记录”；同一会话并发启动被拒绝；取消、超时与工具上限都让状态结束而不是停在 `running`；进程重启后遗留运行变为 `interrupted`；运行前后楼层数量、head、状态 diff 与剧情 Trace 不变；正剧上下文里不出现助手消息；`pnpm check` 通过。
+
+- [ ] **H-T03 三级权限与待确认动作** | 依赖：H-T02 | DESIGN §10.3 | ADR-0125 | I12、I13
+  做什么：
+  - 新增 `assistant/permissions.ts`，把助手权限映射到工具权限：`read_only` 只执行 `read`，其余调用返回 `permission_denied` 工具结果并写事件；`confirm` 执行 `read` 与 `control`，`propose` 与 `side_effect` 生成待确认动作；`auto` 执行 `read` 与 `control`，可以在不确认的情况下直接执行渠道、模型选择、思考强度与界面设置这类不改变剧情内容的工作，剧情相关内容仍然生成待确认动作。
+  - 迁移 v45 新建 `assistant_actions(id, conversation_id, story_id, kind, summary, payload, status, rejection_reason, created_at, decided_at)`，`kind` 取 `channels`、`settings`、`template`、`lore`、`director_plan`、`card`、`image_config`，`status` 取 `pending`、`approved`、`rejected`；同会话内相同 `kind` 与规范化 `payload` 的待确认动作不重复创建。重建 `ledger_change_cards` 允许来源 `assistant`，增加可空的 `assistant_conversation_id`，原触发器与唯一约束保留。
+  - 台账修改不使用 `assistant_actions`：`propose_ledger_change` 直接生成待批准的台账变更卡，来源为 `assistant`，`source_node_id` 取当前 head，`before` 取 head 快照，内容不变时复用已有待批准卡。
+  - server 新增 `GET /api/assistant/actions?status=`、`POST /api/assistant/actions/:id/approve`、`POST /api/assistant/actions/:id/reject`；批准前重新校验载荷，批准时调用现有写入函数（`applyChannelsUpdate`、`updateStorySettings`、`updateContextTemplate` 并复用模板校验、世界书写入、`replaceDirectorPlan`、卡片字段写入、生图配置写入），拒绝只改状态并保留原因。任何级别都不能自动批准台账变更卡。
+  - 删除会话时存在待确认动作返回 409，先批准或拒绝再删除。
+  验收：只读级别下 `propose` 与 `side_effect` 调用被拒绝并写事件；确认级别生成待确认动作，批准后数据改变、拒绝后不变；自动级别只直接执行渠道与模型这类操作，模板、世界书、导演计划、卡片字段、生图配置与台账仍进入待确认流程；相同载荷不重复创建；批准时载荷非法保留 `pending` 并返回原因；删除有待确认动作的会话被拒绝；任何权限级别都不会自动批准台账变更卡；`pnpm check` 通过。
+
+- [ ] **H-T04 排障与使用指南技能** | 依赖：H-T02、E-T01 | DESIGN §10.3 | ADR-0125
+  做什么：
+  - 新增 `assistant/skills.ts` 的技能注册表：`AssistantSkillDefinition` 含 id、名称、说明、系统提示、工具白名单与默认权限。本任务注册 `troubleshoot`（排障）与 `guide`（使用指南）；其余五个技能由 H-T05 与 H-T06 注册，未注册的技能 id 在创建会话时被拒绝。
+  - 排障提示词要求每条结论附证据（楼层 id、Trace 字段、上下文分段 id、检索名次、台账路径或导演机制），没有记录时写“没有记录”，修正建议只使用现有工具能做到的动作；工具白名单为 `explain_node`、`run_log_read`、`ledger_read`、`director_read`、`memory_search`、`state_get`。
+  - 新增 `assistant/docs.ts` 的 `docs_search`：启动时从 `--docs-root`（默认仓库根目录的 `docs/`）读取 `DESIGN.md`、`dev/TASKS.md`、`dev/HUMAN.md`、`dev/reports/*.md`，按标题与文本块切分后用 trigram 检索，返回路径、标题、片段与匹配词；目录不存在或没有可读文件时启动失败并指出路径，不静默返回空结果。工具只读，不访问网络。
+  - `GET /api/assistant/skills` 返回已注册技能的名称、说明、默认权限与工具名；使用指南会话的系统提示要求引用来源路径与标题，回答“怎么用”时优先引用内置文档。
+  验收：排障会话用假客户端时能调用 `explain_node`，回答包含楼层 id 与具体字段；没有运行记录或检索记录的楼层明确写“没有记录”；使用指南的中文两字查询命中文档路径与标题；文档目录缺失时启动失败并指出路径；未注册技能创建会话被拒绝；工具本身零模型调用；`pnpm check` 通过。
+
+- [ ] **H-T05 台账修订与参谋技能** | 依赖：H-T03、R1-T07.a、R4-T99 | DESIGN §10.3 | ADR-0125 | I12、I13
+  做什么：
+  - 注册 `ledger_revision`（台账修订）：工具 `propose_ledger_change`（权限 `propose`）接收 `{diffs: [{path, op, value?}], explanation}`，逐条用 `validateLedgerDiff` 与 head 快照校验，`delete` 必须指向已存在的路径；生成 `before` 快照与待批准的台账变更卡，来源 `assistant`，`text` 写解释，`source_node_id` 取当前 head；内容相同的待批准卡不重复创建。批准走现有 `approveLedgerChangeCard`，写入的事实来源为 `player`。
+  - 注册 `strategy`（参谋）：工具 `propose_director_plan`（权限 `propose`）接收弧线、序列与拍的草案，用现有导演计划解析器校验后写成 `assistant_actions` 的 `director_plan` 待确认动作；批准调用 `replaceDirectorPlan`，拒绝不改计划。参谋的读取工具为 `director_read`、`ledger_read`、`memory_search`、`state_get`、`summarize_recent`（复用现有章节压缩或最近楼层摘要，不生成新模型调用）。
+  - 两个技能的系统提示都要求先读事实再提议，提案里写清会改变哪条路径或哪个拍；只读级别没有提案工具，确认与自动级别也只能生成待确认动作或变更卡。
+  验收：假客户端下“把某人的好感度改成某值”生成一张待批准卡，批准后快照改变、拒绝后不变；非法路径整条拒绝并指出字段；相同内容不重复建卡；没有 head 的故事直接失败并说明原因；参谋生成的计划批准后能按现有读取接口读回，拒绝后计划不变；两个技能都不写楼层、不改 head、不调用正文写入工具；`pnpm check` 通过。
+
+- [ ] **H-T06 资料员、卡片工坊与设置向导技能** | 依赖：H-T03、P4.f、R4-T99 | DESIGN §10.3 | ADR-0125 | I14、I18
+  做什么：
+  - 注册 `research`（资料员）：工具 `web_search` 只在 server 用 `--assistant-web-search <baseUrl>` 显式开启时注册，接口通过注入的 `AssistantSearchClient` 调用，返回标题、链接、摘要与抓取时间；单元测试用假客户端，零网络。研究结论必须带链接；原作资料整理成世界书条目的待确认动作（`kind` 为 `lore`），批准时调用现有世界书写入并校验，拒绝不写。
+  - 注册 `card_workshop`（卡片工坊）：工具 `card_read` 读当前故事的 `character_prompt`、`persona`、实体、世界书条目与上下文模板；`propose_card_change`（权限 `propose`）生成 `card` 或 `template` 待确认动作。批准模板时复用 `assertContextTemplate`，批准人物字段时复用现有设置校验；卡片工坊不修改楼层原文，也不导入或覆盖外部卡文件。
+  - 注册 `setup_wizard`（设置向导）：工具 `settings_read`、`channels_read`、`plugin_list`、`propose_channels_change`、`propose_settings_change`。渠道读取只返回别名、模型名、baseUrl 与是否有密钥，密钥值永不进入工具结果、事件与消息；批准渠道修改调用 `applyChannelsUpdate` 并复用现有解析校验，批准故事设置调用 `updateStorySettings`。不读写 `.env`，不写仓库外文件。
+  验收：资料员用假搜索客户端产出带链接的条目草案，批准后世界书出现条目、拒绝后不变；未开启联网时不注册 `web_search`；卡片工坊读回人物字段与世界书，生成模板草案，非法模板在批准时被拒绝并保留待确认状态；设置向导读到的渠道不含密钥值，批准渠道修改后配置可重新解析，非法配置被拒绝；三个技能都不写楼层；`pnpm check` 通过。
+
+- [ ] **H-T07 抽屉界面与运行状态** | 依赖：H-T01、H-T02、H-T03 | DESIGN §10.3 | ADR-0125
+  做什么：
+  - 新增 `packages/web/src/assistant/`：`AssistantDrawer.tsx`、`conversation-list.ts`、`stream.ts`、`permissions.ts`。抽屉从聊天页输入框旁打开，覆盖在右侧，不挤压聊天区；包含会话列表、标题搜索、新建、改名、删除、技能切换、模型与思考强度选择、权限选择、消息流、工具活动折叠区与错误提示。
+  - 消息流按 `assistant_*` 事件增量渲染；重新打开抽屉时先读会话与 `status`，再用 `after` 续读事件，运行中继续接收，完成后显示结束状态。取消按钮调用取消接口。
+  - 抽屉关闭不取消运行；聊天页右下角保留状态标记（运行中、待确认动作数、失败），点击重新打开。状态标记在路由切换后仍然存在，刷新页面后从 `GET /status` 与待确认动作列表恢复。
+  - 所有请求走 `packages/web/src/api/assistant.ts`，类型只从 `@dramaticer/protocol` 导入；不模拟点击，不访问助手接口以外的内部状态。
+  - 新建会话默认技能为排障、权限为修改前确认、模型为 `roles.writer`；设置在一次会话内保留，切换会话时读取该会话自己的设置。
+  验收：抽屉打开、关闭、刷新后能恢复会话与运行状态；关闭后运行继续且状态标记更新；事件续读不重复消息；会话搜索、改名、删除可用；权限与技能切换写回 server；取消后状态为 `cancelled`；键盘可以打开与关闭抽屉，焦点不留在隐藏元素上；助手操作不改变楼层数量与 head；web 单元测试与 Playwright 用例覆盖打开、关闭后继续运行、重新连接三条路径；`pnpm check` 与目标 e2e 通过。
+
+- [ ] **H-T08 上下文压缩与用量环** | 依赖：H-T02、H-T07 | DESIGN §10.3 | ADR-0125 | I11
+  做什么：
+  - 新增 `assistant/context.ts`：按消息、系统提示与附件估算下一次请求的 token；会话报告 `context_used`、`context_budget`、`context_percent` 与各部分占用。用量环读取这三个字段，悬停显示输入、输出、工具结果与摘要的占比。
+  - 迁移 v46 新建 `assistant_compactions(id, conversation_id, seq, summary, omitted_message_ids, before_tokens, after_tokens, created_at)`；压缩把较早的消息合并成一条 `system` 摘要消息，保留最近 N 条（默认 10）与被待确认动作引用的消息，省略的消息 id 写进压缩记录。摘要由会话选择的模型生成，使用 `NO_CONTINUATION`，失败时保留原上下文并把失败写进事件，不丢消息。
+  - 自动压缩在每次模型请求前检查 `context_percent`，达到 `compaction_threshold` 时先压缩再请求；同一会话同时只有一次压缩。手动压缩走 `POST /api/assistant/conversations/:id/compact`，可以附带一段要求；压缩完成后写事件并更新会话的 `updated_at`。
+  - 界面在消息流顶部显示可折叠的摘要与“省略 N 条消息”的来源列表；压缩不触碰正剧的章节压缩与记忆，也不把助手摘要写进剧情上下文。
+  验收：构造超过阈值的会话后，下一次请求前自动压缩并且请求里的消息数下降；用量环的数字与接口一致；手动压缩按给定要求生成摘要，省略的消息 id 可读；压缩请求失败时原消息仍在、状态为可继续；压缩后待确认动作仍然可见；正剧的记忆压缩记录与上下文不变；`pnpm check` 通过。
+
+- [ ] **H-T09 变更审阅面板** | 依赖：H-T03、H-T05、H-T06、H-T07 | DESIGN §10.3 | ADR-0125 | I12
+  做什么：
+  - 抽屉内新增“待确认”视图：列出 `assistant_actions` 与待批准台账变更卡，按会话与故事过滤；每条显示类型、摘要、产生它的会话、路径或字段的前后值、以及批准与拒绝按钮。
+  - 台账变更卡复用现有卡片接口与差异展示；其他动作按 `kind` 显示字段差异（渠道只显示别名与模型，密钥永远显示为已设置或未设置）。批准与拒绝调用 H-T03 的接口，失败时保留待确认状态并显示原因，不吞错误。
+  - 聊天页状态标记上的待确认数量与视图一致；批准或拒绝后数量立即更新。审阅面板不提供批量批准，也不提供自动批准台账变更卡。
+  验收：五种以上动作类型在面板里可读，台账卡显示路径与前后值，渠道卡不显示密钥；批准后条目消失且数据改变，拒绝后条目消失且数据不变；非法载荷批准失败并保留条目与原因；台账卡无法批量或自动批准；状态标记数量同步；`pnpm check` 通过。
+
+- [ ] **H-T99 H 验收** | 依赖：H-T01 至 H-T09
+  做什么：重跑门禁与 web 目标 e2e；用真实渠道跑一次排障问答与一次台账修订批准流程（只调用 `.env` 里的渠道，不访问本地 ST，不修改 `.env`）；逐条核对 H-T01 至 H-T09 的验收；复核 I4（不写楼层原文）、I8（助手不改变剧情视图）、I11（助手运行不进入剧情回合）、I12（台账写入全部经过变更卡与结算校验）、I13（不强制模型输出结构）、I14（不消耗本地 ST 额度）、I15（core 不依赖其他工作区包）；写 `docs/dev/reports/H.md`，记录技能、权限、压缩与用量环的实测结果，只写数字与配置，不写对话原文。
+  验收：全部技能可用且未注册技能被拒绝；助手会话与正剧隔离；三级权限按 ADR-0125 执行；台账修改只能通过批准后的变更卡写入；抽屉关闭后运行继续；压缩与用量环有实测数字；报告不含私有数据；`pnpm check` 通过。结果写 `MILESTONE_DONE`。
 
 ## X：对比实验（排在 H 之后）
 

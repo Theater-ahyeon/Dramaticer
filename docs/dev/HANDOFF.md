@@ -3,38 +3,44 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-13 会话 355：完成 C-T05.f（酒馆助手宿主的一致性测试与共存评测），兼容插件线 C-T01–C-T05 全部完成。
-- 新增 `packages/st-compat/src/st-helper-host/coverage.ts`：
-  - `ST_HELPER_UPSTREAM_API_SNAPSHOT` 记录本机 SillyTavern 里 JS-Slash-Runner 4.8.10 公开类型定义中的 140 个函数与 6 个非函数入口（只记录名字与来源文件名，不复制源码）。
-  - `ST_HELPER_SCOPE_FUNCTIONS` 是 C-T05 任务范围内的 19 个上游函数；`ST_HELPER_EXTENDED_FUNCTIONS` 是上游 4.8.10 未声明的三个扩展名 `getVariable`、`insertOrAssignVariable`、`getChatMessage`。
-  - `summarizeStHelperCoverage()` 给全量 16/140（11.4%）、范围 16/19（84.2%）、范围内缺口 `insertVariables`、`generate`、`generateRaw`；名称不在快照或扩展清单里直接抛错。
-- 新增 `packages/st-compat/test/st-helper-consistency.test.ts`：31 条一致性用例，按来源（变量、事件、消息、STscript、沙箱、状态栏、脚本库）记录上游行为与期望；断言覆盖清单里每个函数至少一条用例，并断言覆盖率数字。
-- 新增 `packages/st-compat/src/st-bench/st-helper-plugin.ts` 并注册进 `ST_BENCH_COEXIST_PLUGINS`：两组都用 `buildStContentCoexistResult`；开启组每轮读脚本库、从新楼层提取 HTML 状态栏并把渲染请求送进沙箱（Node 批次没有 iframe，请求保持等待）。测试 `st-helper-coexist.test.ts` 断言两组提示词逐字节相同、四项指标有样本量、报告不含正文。
-- `compareBlindWin` 改为按非平局判定计算开启侧胜率：两份文本相同时裁判直接判平局，全部平局判“持平”。MVU 共存测试的胜率随之从 0.8 变成 1.0（另有 2 次平局），C-T01、C-T03 报告与 ADR-0100 的口径已同步。
-- 新增 `docs/dev/reports/C-T05.md`：覆盖率、31 条用例、合成批次四项指标（矛盾率 0%/0% 8/8；编造回忆率 0%/0% 4/4 样本不足；盲测 10 次全部平局判持平；首字 P90 1/1 毫秒 5/5）与 C-T05 总验收逐条核对。
-- ADR-0124；门禁通过（234 个测试文件、2074 个测试、5 个跳过）。
+- 2026-11-13 会话 356：完成 H-T00（细化应用内助手）。把 DESIGN §10.3 分成 H-T01 至 H-T09 与 H-T99，写清依赖与验收；新增 ADR-0125，记录助手存储、运行时隔离、三级权限、技能、压缩与接口的决定；迁移 v44–v46 预留给助手会话、待确认动作与压缩记录。本轮只改文档，门禁通过（234 个测试文件、2074 个测试、5 个跳过）。
 
-## 下一步（会话 356 先做）
-1. **H-T00 细化应用内助手**：依赖 R5-T99、R3b-T99、E-T01 全部完成。按 DESIGN §10.3 写清抽屉界面与全部技能、类型化 server 接口、三级权限、对话保存与搜索、关掉抽屉后任务继续运行与状态提示、上下文自动与手动压缩、用量环，拆成可执行任务。
-2. 其余可做任务：X1（依赖已完成）。M5-T00 依赖 R6-T99；M6-T99 等待 HUMAN-15；P5 依赖 M5-T99。
-3. 兼容插件线已全部完成；剩余风险是覆盖率：全量 140 个上游函数只同名实现 16 个，未实现的分组见 `docs/dev/reports/C-T05.md`。
+## 下一步（会话 357 先做）
+1. **H-T01 助手会话存储与类型化接口**：依赖 R5-T99、R3b-T99、E-T01、P2.g，全部完成。按 H-T01 的条目做迁移 v44、`StoryStore` 读写、`packages/protocol/src/assistant.ts` 与 `/api/assistant` 的会话接口。
+2. 之后按 H-T02 → H-T03 → H-T04/H-T05/H-T06 → H-T07 → H-T08 → H-T09 → H-T99 的顺序做。H-T04 与 H-T05、H-T06 可以在 H-T03 完成后并行安排，但一个会话只做一个任务。
+3. H-T00 完成后 R6-T00 的依赖已满足（R5-T99、R3b-T99、R1-T99.a、H-T00），但任务顺序上仍排在 H 之后；不要跳过 H。
+4. 其余可做任务：X1（依赖已完成）。M5-T00 依赖 R6-T99；M6-T99 等待 HUMAN-15；P5 依赖 M5-T99。
 
-## C-T05.f 代码事实
-- 覆盖率快照与范围清单都是静态常量，测试断言 140/16/19/16/3 这组数字；改动上游快照或实现清单时要同步改断言与报告。
-- 生成能力没有 `generate`/`generateRaw` 全局函数，脚本用 `/gen`、`/genraw` 登记后台请求，`/genresult <id>` 读正文；一致性用例把这一条记为“函数名未暴露”。
-- 共存适配器的开启组每轮新建一个宿主会话：读脚本库、`renderStatusBar(nodeId)` 登记渲染、写一条只含数字的 note（`st-helper-host：脚本库 N 条（启用 M 条），状态栏渲染请求 K 次（等待 iframe）`）。批次不执行脚本。
-- `compareBlindWin` 现在按 `acceptedShare / (1 - tieShare)` 计算胜率，`decisive < 5` 判样本不足，没有非平局判定判持平；`on` 字段是全为平局时的 `null`。
-- 一致性用例里 `/setvar` 必须写 `key=名字`（上游语法），`/messages` 默认带 `名字: ` 前缀，`names=off` 去掉。
-- 沙箱一致性用例直接驱动 `StHelperSandboxHost`：`startScript` 之后用 `handleMessage` 发调用，结果从 `send` 回调里读；超时用 `sweepTimeouts()`。
+## H-T00 的任务划分（ADR-0125）
+- **H-T01** 迁移 v44：`assistant_conversations`、`assistant_messages`、`assistant_events`、trigram 索引；`StoryStore` 读写与搜索；`packages/protocol/src/assistant.ts`；`packages/server/src/assistant.ts` 的会话 CRUD、状态与事件续读接口。
+- **H-T02** `runAssistantTurn` 复用 `runDeepTurn`，消息只来自技能提示、摘要与会话；只读工具包装 `explainNode`、检索、台账、导演、设置、模板与插件；SSE、取消、状态持久化与重启后的 `interrupted`；不写楼层、不进入剧情上下文。
+- **H-T03** 迁移 v45：`assistant_actions` 与台账变更卡来源 `assistant`；三级权限映射；批准时调用现有写入函数；自动级别只直接执行渠道、模型、思考强度与界面设置。
+- **H-T04** 技能注册表、排障与使用指南；`docs_search` 从 `--docs-root` 读取文档，trigram 检索，目录缺失时启动失败。
+- **H-T05** 台账修订与参谋：`propose_ledger_change` 生成来源 `assistant` 的变更卡，`propose_director_plan` 生成待确认动作。
+- **H-T06** 资料员、卡片工坊、设置向导；联网搜索必须显式开启；渠道读取不返回密钥。
+- **H-T07** web 抽屉、会话搜索与改名、技能与权限选择、事件续读、关闭后继续运行与状态标记。
+- **H-T08** 迁移 v46：`assistant_compactions`；自动与手动压缩、用量环；预算与正剧记忆独立。
+- **H-T09** 待确认动作与台账变更卡审阅面板。
+- **H-T99** 验收与 `docs/dev/reports/H.md`。
+
+## H 设计要点
+- 助手会话可以关联故事，也可以不关联；消息与事件独立于 `nodes`、`state_diffs`、`turn_runs`。
+- 助手运行不调用 `generateAssistantTurn`，不组装剧情上下文；正剧上下文也不读取助手消息。
+- 工具白名单不含草稿、提交、导演手记、正文写入、台账直接写入与生图。
+- 只读级别只执行 `read`；确认级别把提案与有外部影响的操作写成待确认动作；自动级别只直接执行不改变剧情内容的渠道、模型、思考强度与界面设置。台账、记忆、故事设置、模板、世界书、卡片字段、导演计划与生图配置在任何级别都只生成待确认动作或变更卡。
+- 台账变更卡锚定当前 head：`source_node_id` 取 head，`before` 取 head 快照，批准复用 `approveLedgerChangeCard`，事实来源为 `player`。
+- 助手上下文预算默认 48,000 token，压缩阈值默认 0.8；较早消息合并成一条 `system` 摘要，保留最近 10 条与待确认动作引用的消息。
+- 助手默认模型是 `roles.writer` 解析到的别名，会话可以覆盖；不新增渠道角色。
+- 请求与响应类型放在 `packages/protocol`，运行时放在 `packages/core/src/assistant`，server 处理放在 `packages/server/src/assistant.ts`，web 放在 `packages/web/src/assistant`。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a 至 P2.g、P3.a 至 P3.f、P4.a 至 P4.f、C-T01.a 至 C-T01.d、C-T02.a 至 C-T02.f、C-T03.a 至 C-T03.d、C-T04.a、C-T04.b.a、C-T04.b.b、C-T04.c.a、C-T04.c.b、C-T04.c.c、C-T04.c.d、C-T04.d、C-T05.a 至 C-T05.f。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a 至 P2.g、P3.a 至 P3.f、P4.a 至 P4.f、C-T01.a 至 C-T01.d、C-T02.a 至 C-T02.f、C-T03.a 至 C-T03.d、C-T04.a、C-T04.b.a、C-T04.b.b、C-T04.c.a、C-T04.c.b、C-T04.c.c、C-T04.c.d、C-T04.d、C-T05.a 至 C-T05.f、H-T00。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
 - 兼容插件线：`st-content`、`st-mvu`、`st-ejs`、`st-helper-host` 全部完成（含一致性测试与共存评测）。
-- 数据库 schema 版本 43；本轮没有改 schema。本轮没有新增依赖。
+- 数据库 schema 版本 43；v44–v46 已预留给 H 任务。本轮没有新增依赖。
 - 报告：`docs/dev/reports/P2.md`、`P3.md`、`P4.md`、`C-T01.md`、`C-T02.md`、`C-T03.md`、`C-T04.md`、`C-T05.md`。
 - 沙箱现状：`eval-private/st-sandbox/st` 有 36 个预设、68 张卡、89 个非驱动聊天片段；预设连接字段已被驱动改写为录制端点与桩模型，全局 `openai_max_context` 已被驱动改为 2,000,000。需要恢复原始预设时用 `sandbox --replace` 重建。
 - 私有比对批次：`compare-smoke4`（5 个组合，修复后）与更早的 `compare-smoke2`、`compare-smoke3`、`session324-sanitize`；每个批次的 `compare/` 下有报告、差异清单与汇总。
-- ADR-0088 至 ADR-0124 记录插件、沙箱、比对、兼容内容映射、EJS、沙箱执行、时间预算、流水线接入、模板生成、一致性评测、酒馆助手宿主、iframe 沙箱、STscript 子集、生成后台化、HTML 渲染与覆盖率/平局口径的决策。
+- ADR-0088 至 ADR-0125 记录插件、沙箱、比对、兼容内容映射、EJS、沙箱执行、时间预算、流水线接入、模板生成、一致性评测、酒馆助手宿主、iframe 沙箱、STscript 子集、生成后台化、HTML 渲染、覆盖率口径与应用内助手的决策。
 - HUMAN-03 待处理（不阻塞）：抽查 `eval-private/evalset/spotcheck.md` 里的事件题。
 - HUMAN-14 已关闭（2026-11-12：人类取消）：取消 Vertex 真实调用的凭证配置与验证要求；`roles.writer` 继续使用 `main-fallback`。
 - HUMAN-15 待处理（M6-T99 需要）：把秋叶整合包 v3.2 的 ComfyUI 启动在 `http://127.0.0.1:8188`，并导出一份 API 格式 workflow JSON 到 `eval-private/comfyui/` 或告知路径。
@@ -44,9 +50,10 @@
 
 ## 可重复命令
 - 门禁：`pnpm check`。
+- H-T01 之后的助手接口目标测试按任务新增文件确定；web 端到端用例用 `pnpm --filter @dramaticer/web exec playwright test <spec> --project=desktop`，e2e 不在 `pnpm check` 里。
 - C-T05.f 目标测试：`pnpm exec vitest run packages/st-compat/test/st-helper-consistency.test.ts packages/st-compat/test/st-helper-coexist.test.ts packages/st-compat/test/st-mvu-coexist.test.ts packages/st-compat/test/st-ejs-coexist.test.ts packages/st-compat/test/st-bench-coexist.test.ts`。
 - C-T05.e 目标测试：`pnpm exec vitest run packages/st-compat/test/st-helper-html.test.ts packages/st-compat/test/st-helper-host.test.ts packages/st-compat/test/st-helper-sandbox.test.ts packages/st-compat/test/st-helper-slash.test.ts packages/st-compat/test/st-helper-generation.test.ts packages/web/test/helper-sandbox.test.ts`（53 个）。
-- 酒馆助手浏览器用例：`pnpm --filter @dramaticer/web exec playwright test e2e/helper-sandbox.spec.ts --project=desktop`（3 个；e2e 不在 `pnpm check` 里）。
+- 酒馆助手浏览器用例：`pnpm --filter @dramaticer/web exec playwright test e2e/helper-sandbox.spec.ts --project=desktop`（3 个）。
 - 共存评测：`node packages/st-compat/dist/st-bench/cli.js coexist --config <配置.json> [--out <目录>]`（已注册插件：`st-content`、`st-mvu`、`st-ejs`、`st-helper-host`）。
 - 不变量检查：`node scripts/check-invariants.mjs`。
 - 重建沙箱数据：`pnpm --filter @dramaticer/st-compat build && node packages/st-compat/dist/st-bench/cli.js sandbox --source "D:/SillyTavern" --replace`。
@@ -66,7 +73,7 @@
 - 整轮并行门禁连跑或与大量临时目录写入同时进行时，Windows 的系统扫描会拖慢文件与 SQLite 操作，出现过后台 worker 激活超时与 `gap-pass-compare` 的 30 秒用例超时；这些用例单独运行都通过。门禁失败先看失败是否只在整轮并行时出现，不要连续并发跑多轮整仓测试；`gap-pass-compare` 的 3 个用例上限已放宽到 180 秒。
 - `packages/st-compat` 与 `packages/server` 的测试通过 `@dramaticer/core` 的 `dist` 解析 core；只跑这些包的测试前先执行 `pnpm run typecheck`。
 - 结构化 JSON 请求一律使用 `NO_CONTINUATION`；正文写作与散文类后台输出保留续写。
-- web 源码不能 import `@dramaticer/core` 的运行时值（会把 `better-sqlite3` 与 `node:*` 打进前端包导致整页白屏），类型导入可以。
+- web 源码不能 import `@dramaticer/core` 的运行时值（会把 `better-sqlite3` 与 `node:*` 打进前端包导致整页白屏），类型导入可以；助手类型从 `@dramaticer/protocol` 取。
 - 插件模块静态初始化时不要调用会反向 import 当前模块的注册表；槽位名等基础常量放在叶子模块。
 - 新增的格式化与 lint 用 `pnpm exec biome check --write <文件>`，不要手写格式；用 Python 等外部工具改写文件后要重跑 biome，它会带 CRLF，需要格式化回 LF。
 - 修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 的请求写进 HUMAN.md。
@@ -82,7 +89,7 @@
 - `st-ejs` 的 `getwi` 在模板里需要 `await`；世界书、角色卡、预设与快捷回复数据由调用方注入，不要读 `eval-private/` 或 ST 安装目录。
 - 沙箱里模板函数是同步的（远程调用会阻塞模板线程），函数参数与返回值必须能 JSON 化；`define` 只在一次执行内有效，`include` 不可用。流水线接入后，同一回合内的多次模板执行共用一个沙箱 worker，`define` 在回合内跨模板有效，换回合或沙箱超时重建后失效。
 - 回合预算只从调用方传进来：槽位提供者用 `request.budget`，直接调用运行时用 `render(text, { budget })`。没有预算时不限时（沙箱自己的默认 5 秒仍生效）；预算模式必须用沙箱执行器。
-- `StEjsVariableStore` 接入 `backend` 后，不指定作用域的写落在 `initial`（台账 `mvu`），global/message/local 仍是插件内存；接入台账的消费方要意识到写入会立即 `commit` 成当前楼层的 state diff。
+- `StEjsVariableStore` 接入 `backend` 后，不指定作用域的写进入 `initial`（台账 `mvu`），global/message/local 仍是插件内存；接入台账的消费方要意识到写入会立即 `commit` 成当前楼层的 state diff。
 - 模板生成只登记请求：`generate` 返回 id 不返回正文，宿主用 `createStEjsBackgroundGenerationRunner` 接后台客户端并在间隙 `drain`；结果只在内存里，进程结束就消失，需要跨进程时由调用方另行保存。
 - `st-helper-host` 的宿主会话不做执行；脚本正文只在 `scripts` 里返回。`character` 作用域依赖调用方传入带台账后端的 `StEjsVariableStore`，否则写入只留在内存。改消息会切换 head，较早消息的修改按分支切换处理。
 - `st-helper-host` 的沙箱 API 全部异步：`postMessage` 不能同步取返回值，脚本必须 `await`。事件监听用整数 token，`eventClearEvent`/`eventClearAll` 会同时清掉 iframe 与宿主两边的监听器。超时由宿主 `sweepTimeouts()` 驱动，调用方负责移除 iframe；超时执行注册的监听器会被清掉。
@@ -91,3 +98,5 @@
 - HTML 状态栏与开场页的渲染结果只在插件显示状态（`PluginDisplayState`，插件 `st-helper-host`，键 `statusBar`/`openingPage`）；要把它们接入界面时读 `readStHelperHtmlPage`，不要写回楼层原文或台账。沙箱里的页面脚本与卡片脚本共享同一份权限白名单，未声明的 API 调用会被拒绝并记录。
 - 状态栏自动重渲染由变量写入触发，同一页面进行中的渲染会合并后续写入；连续自动刷新默认上限 8 次，超出后需要显式调用 `renderStatusBar` 才会恢复。开场页不参与自动重渲染。
 - 酒馆助手的 API 覆盖率快照以本机 JS-Slash-Runner 4.8.10 为准；升级上游版本时要重新生成 `coverage.ts` 的名字清单并同步报告与测试断言。
+- 助手任务不要复用 `turn_runs`：助手没有楼层，运行状态与事件在 `assistant_conversations`、`assistant_events` 里；批准助手动作时调用现有写入函数，不要新写一套数据库更新。
+- 助手接口的请求与响应类型放在 `packages/protocol`，不要从 web 直接 import `@dramaticer/core` 的运行时；助手运行与剧情回合是两条路径，测试要断言正剧上下文里没有助手消息。

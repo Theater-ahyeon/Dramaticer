@@ -1988,3 +1988,20 @@
   - 新增 `packages/st-compat/src/st-helper-host/coverage.ts`、`packages/st-compat/src/st-bench/st-helper-plugin.ts`、`packages/st-compat/test/st-helper-consistency.test.ts`（31 条用例 + 覆盖率断言）与 `packages/st-compat/test/st-helper-coexist.test.ts`（1 条合成批次）。
   - `ST_BENCH_COEXIST_PLUGINS` 增加 `st-helper-host`；`docs/dev/reports/C-T05.md` 记录覆盖率、一致性用例、合成批次四项指标与总验收核对。
   - 没有改数据库 schema，没有新增依赖，`core` 没有改动（I1、I15）。
+
+## ADR-0125 应用内助手的隔离、三级权限与存储（2026-11-13）
+
+- **背景**：H-T00 要把 DESIGN §10.3 的应用内助手分成可执行任务。现有基础是 R3b 的单 agent 深回合运行时、R1-T07.a 的台账变更卡、E-T01 的只读排障报告与 P2 的工具注册表；助手需要复用这些能力，又不能写楼层、不能进入剧情上下文，影响剧情的修改还要经过玩家确认与结算器校验。
+- **决定**：
+  - **存储**：迁移 v44 新建 `assistant_conversations`、`assistant_messages`、`assistant_events` 与 trigram 全文索引。会话可以关联故事，也可以不关联（使用指南与设置向导）；消息与事件独立于 `nodes`、`state_diffs`、`turn_runs`。事件只追加，会话状态持久化。删除会话连同消息与事件一起删除，存在待确认动作时先处理再删除。
+  - **运行时**：`runAssistantTurn` 复用 `runDeepTurn` 的工具循环与上限，消息只由技能系统提示、压缩摘要、会话消息与本轮附件组成。助手工具白名单不含草稿、提交、导演手记、正文写入、台账直接写入与生图；只读工具包装现有查询与 `explainNode`。助手运行不调用 `generateAssistantTurn`，不组装剧情上下文，正剧上下文也不读取助手消息。
+  - **三级权限**：`read_only` 只执行只读工具；`confirm` 把提案与有外部影响的操作写成待确认动作；`auto` 可以直接执行渠道、模型选择、思考强度与界面设置这类不改变剧情内容的工作。台账、记忆、故事设置、模板、世界书、卡片字段、导演计划与生图配置仍然只生成待确认动作或台账变更卡，任何级别都不能自动批准。台账变更卡来源增加 `assistant`，`source_node_id` 取当前 head，`before` 取 head 快照，批准复用现有 `approveLedgerChangeCard`，写入的事实来源为 `player`。
+  - **技能**：技能是系统提示与工具白名单的组合，注册表按 id 拒绝未知技能。排障与使用指南先实现；排障要求结论附证据并写明“没有记录”，使用指南从 `--docs-root` 读取只读文档并用 trigram 检索。资料员的联网搜索必须显式开启，未开启时不注册工具；卡片工坊修改人物字段、世界书与模板，不碰楼层原文与外部卡文件；设置向导读取渠道时永不返回密钥值，批准渠道修改复用现有配置解析。
+  - **上下文**：迁移 v46 新建 `assistant_compactions`。助手上下文按会话自己的 `context_budget` 与 `compaction_threshold` 估算与压缩，较早消息合并成一条 `system` 摘要并记录省略的消息 id，保留最近 10 条与待确认动作引用的消息。自动压缩在模型请求前执行，手动压缩走独立接口。这套预算与压缩独立于正剧的章节压缩、记忆与上下文包。
+  - **接口**：请求与响应类型放在 `packages/protocol/src/assistant.ts`，server 与 web 共用；运行时与领域逻辑放在 `packages/core/src/assistant/`。助手运行通过 SSE 推送文本、思考、工具、用量与结束事件，客户端断开不中止运行，重新连接按事件序号续读，状态由 `GET /status` 恢复。
+  - **模型**：会话的 `model_alias` 可以覆盖，缺省使用 `roles.writer` 解析到的别名；思考强度按会话设置传入，不新增渠道角色。
+- **影响**：
+  - 新增 `packages/core/src/assistant/`、`packages/server/src/assistant.ts`、`packages/web/src/assistant/` 与 `packages/web/src/api/assistant.ts`；`packages/protocol/src/assistant.ts` 增加类型与事件名。
+  - 迁移 v44 至 v46 分别用于会话与消息、待确认动作与变更卡来源、压缩记录；没有新增依赖。
+  - `core` 不依赖 `protocol` 或其他工作区包（I15），web 只从 protocol 取类型；助手不写楼层、不改原文、不进入剧情上下文（I4、I8）；台账写入只经变更卡与现有结算路径（I12）；工具调用仍然只作为模型的选择，不强制输出结构（I13）；助手不调用本地 ST（I14）。
+  - `docs/dev/reports/H.md` 在 H-T99 记录技能、权限、压缩与用量环的实测结果，只写数字与配置。
