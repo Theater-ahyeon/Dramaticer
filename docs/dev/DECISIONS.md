@@ -1912,3 +1912,21 @@
 - **影响**：
   - 新增 `packages/st-compat/src/st-helper-host/` 与 `packages/st-compat/test/st-helper-host.test.ts` 12 个测试：脚本库启用/禁用与错误结构、七个变量函数的作用域与危险路径、六个事件函数、五个消息函数的范围/角色/隐藏过滤、改正文生成兄弟楼层且原文不变、只改显示不新建楼层、`swipe_id` 切换 head、`character` 写入成为 `mvu` 事实、覆盖清单完整。
   - 现有 EJS、st-content、st-mvu 与 `core` 的消息修改测试保持通过；没有改数据库 schema，没有新增依赖，`core` 没有改动（I1、I15）。宿主的 `preset`/`script` 变量只在会话内存在，跨进程持久化留给后续任务。
+
+## ADR-0120 `st-helper-host` 的沙箱 iframe、权限白名单与超时（2026-11-13）
+
+- **背景**：C-T05.b 要把 C-T05.a 的宿主会话 API 通过 `postMessage` 暴露给沙箱 iframe，并保证脚本拿不到父页面对象、文件系统与网络。酒馆助手脚本经常直接调用同步函数；跨 iframe 的 `postMessage` 只能是异步的，这一点会改变脚本的写法。C-T05.b 还需要权限声明与超时终止，否则任意卡内脚本都能读写台账或让界面卡住。
+- **决定**：
+  - 宿主侧新增 `packages/st-compat/src/st-helper-host/sandbox.ts` 的 `StHelperSandboxHost`：只接受 `st-helper:call`、`st-helper:done` 与 `st-helper:ready` 三类消息，参数必须是 JSON。执行消息 `st-helper:run` 只带脚本 id、正文、允许的函数清单与 `tavern_events`，不带宿主对象。
+  - 权限声明是 `{ kind: "st-helper", apis: [...] }`，由 `parseStHelperSandboxPermission` 严格解析：未知函数、重复函数与未知字段直接抛错；`updateVariablesWith` 必须同时声明 `getVariables` 与 `replaceVariables`；`eventOnce`、`eventRemoveListener`、`eventClearEvent`、`eventClearAll` 必须同时声明 `eventOn`。这份声明属于 `st-helper-host` 插件自己的清单扩展，`core` 的代码插件清单不增加 ST 名称（I1、I15）。
+  - 未声明的调用返回错误结果并记录 `kind: "permission"`、`outcome: "denied"` 的 Trace；宿主不执行对应的 API。返回值不是 JSON、宿主抛错与协议错误分别记录 `execution` 或 `protocol`。
+  - 事件监听在 iframe 里用整数 token 标识，宿主把 token 映射到自己的 `eventOn`/`eventOnce`；宿主事件触发时发回 `st-helper:event`，iframe 调用本地回调。`eventClearEvent` 与 `eventClearAll` 同时清空宿主监听器并通知 iframe 丢弃本地回调。
+  - `packages/web/src/chat/helper-sandbox.ts` 生成 `sandbox="allow-scripts"` 的 iframe 文档：CSP 为 `default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:`，没有 `allow-same-origin`，也没有 `connect-src`。脚本正文通过新建的 `<script>` 元素执行，不使用 `eval`/`new Function`；脚本运行在 async IIFE 里，因此可以使用 `await`。
+  - 沙箱 API 是异步的：`getVariable` 等函数返回 Promise，脚本必须 `await`。`updateVariablesWith` 在 iframe 里由 `getVariables` → 本地更新函数 → `replaceVariables` 组合实现，宿主不接受函数参数。这个差异写进 C-T05.f 的一致性用例，不伪造同步语义。
+  - 超时由宿主计时：`startScript` 记录截止时间，`sweepTimeouts()` 找出超时执行并调用调用方提供的 `terminate`（浏览器侧移除 iframe），Trace 记录 `kind: "timeout"`、`outcome: "terminated"` 与原因。终止后宿主仍可启动下一次执行；旧执行的调用返回“已结束”。
+  - 沙箱文档生成函数只接收纯数据，父页面负责 `event.source` 与 `event.origin` 校验后再把消息交给宿主。iframe 里没有父页面的对象引用，所有能力调用都经 `postMessage`。
+- **影响**：
+  - 新增 `packages/st-compat/test/st-helper-sandbox.test.ts` 7 个测试：权限清单校验、未声明调用拒绝与 Trace、事件跨 iframe 转发与一次性监听、清空事件通知、非法消息、超时终止后继续执行。
+  - 新增 `packages/web/test/helper-sandbox.test.ts` 5 个测试：CSP 与不同源属性、只暴露声明过的函数、配置里的尖括号转义、消息白名单的正例与反例。
+  - 新增 `packages/web/e2e/helper-sandbox.spec.ts` 2 个浏览器用例：脚本读不到父页面、`localStorage`、`indexedDB` 与网络，只能通过宿主 API 拿到值；超时移除 iframe 后新 iframe 仍能执行。
+  - 没有改数据库 schema，没有新增依赖，`core` 没有改动（I1、I15）；`pnpm check` 通过。

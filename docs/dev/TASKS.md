@@ -1432,7 +1432,8 @@
   - 变量与 EJS 共用 `StEjsVariableStore`：`message`、`chat`、`global` 用插件的消息、局部与全局作用域；`character` 落台账 `mvu` 并经结算器校验；`preset`、`script` 留在宿主会话。改正文走 `applyMessageModification` 生成新 swipe，只改 `is_hidden` 写插件显示状态，`swipe_id` 切换 head。
   验收：脚本库覆盖启用与禁用、重复 id 与结构错误；七个变量函数、六个事件函数与五个消息函数各有测试；改正文不触碰原文并生成兄弟楼层；只改显示不新建楼层；`character` 写入经结算器成为台账事实；`pnpm check` 通过。
 
-- [ ] **C-T05.b 沙箱 iframe 执行与权限声明** | 依赖：C-T05.a | ADR-0041（A10）、I18
+- [x] **C-T05.b 沙箱 iframe 执行与权限声明** | 依赖：C-T05.a | ADR-0041（A10）、I18
+  完成：2026-11-13 新增 `st-helper-host/sandbox.ts`：`st-helper:run/call/result/event/clear/done/ready` 纯 JSON 协议，`parseStHelperSandboxPermission` 严格解析 `{ kind: "st-helper", apis }` 白名单（未知、重复、依赖缺失直接抛错），`StHelperSandboxHost` 负责权限判定、API 分派、事件 token 桥接、执行计时与 Trace；未声明调用拒绝并记录，超时执行调用 `terminate` 并清掉该执行的监听器，之后仍可启动新脚本；新增 `packages/web/src/chat/helper-sandbox.ts`：`sandbox="allow-scripts"` 文档带 `default-src 'none'` CSP、无 `allow-same-origin`，脚本经内联 `<script>` 执行，宿主 API 按白名单生成异步包装，`updateVariablesWith` 在 iframe 内组合；新增 7 个 st-compat 测试、5 个 web 测试、2 个 Playwright 逃逸与超时用例；ADR-0120；门禁通过（229 个测试文件、2041 个测试、5 个跳过）
   做什么：把 C-T05.a 的宿主 API 通过 `postMessage` 暴露给沙箱 iframe；脚本在 iframe 里执行，拿不到主线程对象、文件系统与网络；代码插件权限声明列出脚本可用的 API，未声明的调用被拒绝并记录；脚本死循环或超时被终止，原因写进 Trace。
   验收：逃逸测试通过；超时终止后宿主仍可继续；未声明权限的调用被拒绝并记录；`pnpm check` 通过。
 
