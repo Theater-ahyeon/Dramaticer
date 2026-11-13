@@ -1240,6 +1240,91 @@ export function buildMigrations(
 				) STRICT`,
 			],
 		},
+		{
+			version: 44,
+			description: "应用内助手：会话、消息、只追加事件与消息正文 trigram 检索",
+			statements: [
+				`CREATE TABLE assistant_conversations (
+					id TEXT PRIMARY KEY,
+					story_id TEXT REFERENCES stories(id),
+					skill TEXT NOT NULL CHECK (length(trim(skill)) > 0),
+					title TEXT NOT NULL CHECK (length(trim(title)) > 0),
+					permission TEXT NOT NULL
+						CHECK (permission IN ('read_only', 'confirm', 'auto')),
+					status TEXT NOT NULL CHECK (status IN (
+						'idle', 'running', 'completed', 'failed', 'cancelled',
+						'interrupted'
+					)),
+					model_alias TEXT,
+					thinking TEXT NOT NULL CHECK (thinking IN ('off', 'low', 'high')),
+					context_budget INTEGER NOT NULL DEFAULT 48000
+						CHECK (context_budget >= 1),
+					compaction_threshold REAL NOT NULL DEFAULT 0.8
+						CHECK (compaction_threshold BETWEEN 0.5 AND 0.95),
+					created_at TEXT NOT NULL,
+					updated_at TEXT NOT NULL,
+					last_message_at TEXT
+				) STRICT`,
+				"CREATE INDEX assistant_conversations_story_idx ON assistant_conversations(story_id)",
+				"CREATE INDEX assistant_conversations_title_idx ON assistant_conversations(title)",
+				`CREATE TABLE assistant_messages (
+					conversation_id TEXT NOT NULL
+						REFERENCES assistant_conversations(id) ON DELETE CASCADE,
+					ordinal INTEGER NOT NULL CHECK (ordinal >= 1),
+					role TEXT NOT NULL
+						CHECK (role IN ('user', 'assistant', 'tool', 'system')),
+					text TEXT NOT NULL,
+					tool_name TEXT,
+					tool_result TEXT,
+					usage TEXT,
+					created_at TEXT NOT NULL,
+					PRIMARY KEY (conversation_id, ordinal),
+					CHECK (role = 'tool' OR tool_name IS NULL),
+					CHECK (role = 'tool' OR tool_result IS NULL),
+					CHECK (role = 'assistant' OR usage IS NULL),
+					CHECK (role <> 'tool' OR tool_name IS NOT NULL)
+				) STRICT`,
+				`CREATE VIRTUAL TABLE assistant_message_text USING fts5(
+					conversation_id UNINDEXED,
+					ordinal UNINDEXED,
+					text,
+					tokenize = 'trigram'
+				)`,
+				`CREATE TRIGGER assistant_messages_fts_insert AFTER INSERT ON assistant_messages
+				BEGIN
+					INSERT INTO assistant_message_text(rowid, conversation_id, ordinal, text)
+					VALUES (new.rowid, new.conversation_id, new.ordinal, new.text);
+				END`,
+				`CREATE TRIGGER assistant_messages_fts_delete AFTER DELETE ON assistant_messages
+				BEGIN
+					DELETE FROM assistant_message_text WHERE rowid = old.rowid;
+				END`,
+				`CREATE TABLE assistant_events (
+					conversation_id TEXT NOT NULL
+						REFERENCES assistant_conversations(id) ON DELETE CASCADE,
+					seq INTEGER NOT NULL CHECK (seq >= 1),
+					kind TEXT NOT NULL,
+					payload TEXT NOT NULL,
+					created_at TEXT NOT NULL,
+					PRIMARY KEY (conversation_id, seq)
+				) STRICT`,
+				`CREATE TRIGGER assistant_events_append_only_update
+				BEFORE UPDATE ON assistant_events
+				BEGIN
+					SELECT RAISE(ABORT, '助手事件只追加，不能修改');
+				END`,
+				// 会话删除时父行已经不存在，触发器放行；单独删除事件仍然被拒绝。
+				`CREATE TRIGGER assistant_events_append_only_delete
+				BEFORE DELETE ON assistant_events
+				WHEN EXISTS (
+					SELECT 1 FROM assistant_conversations
+					WHERE id = old.conversation_id
+				)
+				BEGIN
+					SELECT RAISE(ABORT, '助手事件只追加，不能删除');
+				END`,
+			],
+		},
 	];
 }
 

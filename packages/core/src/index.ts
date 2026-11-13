@@ -1,3 +1,4 @@
+export * from "./assistant/index.js";
 export * from "./background/index.js";
 export * from "./blocks/index.js";
 export * from "./chat/index.js";

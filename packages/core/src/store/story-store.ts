@@ -2,6 +2,35 @@ import { randomUUID } from "node:crypto";
 import Database from "better-sqlite3";
 import * as sqliteVec from "sqlite-vec";
 import {
+	ASSISTANT_EVENT_KINDS,
+	type AssistantConversation,
+	type AssistantConversationSearchOptions,
+	type AssistantConversationStatus,
+	type AssistantConversationUpdate,
+	type AssistantEvent,
+	type AssistantEventKind,
+	type AssistantMessage,
+	type AssistantSearchHit,
+	DEFAULT_ASSISTANT_COMPACTION_THRESHOLD,
+	DEFAULT_ASSISTANT_CONTEXT_BUDGET,
+	DEFAULT_ASSISTANT_LIST_LIMIT,
+	DEFAULT_ASSISTANT_PERMISSION,
+	DEFAULT_ASSISTANT_THINKING,
+	DEFAULT_ASSISTANT_TITLE,
+	type ListAssistantConversationsOptions,
+	type ListAssistantEventsOptions,
+	type NewAssistantConversationInput,
+	type NewAssistantMessageInput,
+	assertAssistantCompactionThreshold,
+	assertAssistantContextBudget,
+	assertAssistantConversationStatus,
+	assertAssistantEventKind,
+	assertAssistantListLimit,
+	assertAssistantMessageRole,
+	assertAssistantPermission,
+	assertAssistantThinking,
+} from "../assistant/types.js";
+import {
 	type BackgroundJob,
 	type BackgroundJobCounts,
 	type BackgroundJobEnqueueCondition,
@@ -97,6 +126,8 @@ import {
 } from "../images/types.js";
 import {
 	type JsonObject,
+	type JsonValue,
+	assertJsonValue,
 	assertPlainObject,
 	isJsonObject,
 	rejectUnknownKeys,
@@ -471,6 +502,54 @@ interface TurnRunRow {
 
 interface TurnRunEventRow {
 	readonly run_id: string;
+	readonly seq: number;
+	readonly kind: string;
+	readonly payload: string;
+	readonly created_at: string;
+}
+
+interface AssistantConversationRow {
+	readonly id: string;
+	readonly story_id: string | null;
+	readonly skill: string;
+	readonly title: string;
+	readonly permission: string;
+	readonly status: string;
+	readonly model_alias: string | null;
+	readonly thinking: string;
+	readonly context_budget: number;
+	readonly compaction_threshold: number;
+	readonly created_at: string;
+	readonly updated_at: string;
+	readonly last_message_at: string | null;
+}
+
+interface AssistantMessageRow {
+	readonly conversation_id: string;
+	readonly ordinal: number;
+	readonly role: string;
+	readonly text: string;
+	readonly tool_name: string | null;
+	readonly tool_result: string | null;
+	readonly usage: string | null;
+	readonly created_at: string;
+}
+
+interface AssistantMessageSearchRow {
+	readonly conversation_id: string;
+	readonly ordinal: number;
+	readonly snippet: string;
+	readonly score: number;
+}
+
+interface AssistantMessageLikeRow {
+	readonly conversation_id: string;
+	readonly ordinal: number;
+	readonly text: string;
+}
+
+interface AssistantEventRow {
+	readonly conversation_id: string;
 	readonly seq: number;
 	readonly kind: string;
 	readonly payload: string;
@@ -1018,6 +1097,106 @@ function toTurnRunEvent(row: TurnRunEventRow): TurnRunEvent {
 		payload,
 		createdAt: row.created_at,
 	};
+}
+
+function rowToAssistantConversation(
+	row: AssistantConversationRow,
+): AssistantConversation {
+	assertAssistantPermission(row.permission, `助手会话 ${row.id} 的权限`);
+	assertAssistantConversationStatus(row.status, `助手会话 ${row.id} 的状态`);
+	assertAssistantThinking(row.thinking, `助手会话 ${row.id} 的思考强度`);
+	assertAssistantContextBudget(
+		row.context_budget,
+		`助手会话 ${row.id} 的上下文预算`,
+	);
+	assertAssistantCompactionThreshold(
+		row.compaction_threshold,
+		`助手会话 ${row.id} 的压缩阈值`,
+	);
+	return {
+		id: row.id,
+		storyId: row.story_id,
+		skill: row.skill,
+		title: row.title,
+		permission: row.permission,
+		status: row.status,
+		modelAlias: row.model_alias,
+		thinking: row.thinking,
+		contextBudget: row.context_budget,
+		compactionThreshold: row.compaction_threshold,
+		createdAt: row.created_at,
+		updatedAt: row.updated_at,
+		lastMessageAt: row.last_message_at,
+	};
+}
+
+function rowToAssistantMessage(row: AssistantMessageRow): AssistantMessage {
+	const label = `助手消息 ${row.conversation_id}#${row.ordinal}`;
+	assertAssistantMessageRole(row.role, `${label} 的角色`);
+	let toolResult: JsonValue | null = null;
+	if (row.tool_result !== null) {
+		const parsed: unknown = JSON.parse(row.tool_result);
+		assertJsonValue(parsed, `${label} 的工具结果`);
+		toolResult = parsed as JsonValue;
+	}
+	let usage: JsonObject | null = null;
+	if (row.usage !== null) {
+		const parsed: unknown = JSON.parse(row.usage);
+		if (!isJsonObject(parsed)) {
+			throw new Error(`${label} 的用量不是 JSON 对象`);
+		}
+		usage = parsed;
+	}
+	return {
+		conversationId: row.conversation_id,
+		ordinal: row.ordinal,
+		role: row.role,
+		text: row.text,
+		toolName: row.tool_name,
+		toolResult,
+		usage,
+		createdAt: row.created_at,
+	};
+}
+
+function rowToAssistantEvent(row: AssistantEventRow): AssistantEvent {
+	assertAssistantEventKind(
+		row.kind,
+		`助手会话 ${row.conversation_id} 的事件 ${row.seq} 的种类`,
+	);
+	const payload: unknown = JSON.parse(row.payload);
+	if (!isJsonObject(payload)) {
+		throw new Error(
+			`助手会话 ${row.conversation_id} 的事件 ${row.seq} 的载荷不是 JSON 对象`,
+		);
+	}
+	return {
+		conversationId: row.conversation_id,
+		seq: row.seq,
+		kind: row.kind,
+		payload,
+		createdAt: row.created_at,
+	};
+}
+
+const ASSISTANT_SNIPPET_RADIUS = 24;
+
+/** 把命中位置前后各截一段，命中词用方括号标出。 */
+function createAssistantSnippet(text: string, query: string): string {
+	const index = text.toLowerCase().indexOf(query.toLowerCase());
+	if (index < 0) {
+		return text.length <= ASSISTANT_SNIPPET_RADIUS * 2
+			? text
+			: `${text.slice(0, ASSISTANT_SNIPPET_RADIUS * 2)}…`;
+	}
+	const start = Math.max(0, index - ASSISTANT_SNIPPET_RADIUS);
+	const end = Math.min(
+		text.length,
+		index + query.length + ASSISTANT_SNIPPET_RADIUS,
+	);
+	const prefix = start > 0 ? "…" : "";
+	const suffix = end < text.length ? "…" : "";
+	return `${prefix}${text.slice(start, index)}[${text.slice(index, index + query.length)}]${text.slice(index + query.length, end)}${suffix}`;
 }
 
 function normaliseNameArray(value: unknown, label: string): string[] {
@@ -6632,6 +6811,586 @@ export class StoryStore {
 			)
 			.run(value);
 		return info.changes;
+	}
+
+	createAssistantConversation(
+		input: NewAssistantConversationInput,
+	): AssistantConversation {
+		if (typeof input.skill !== "string" || input.skill.trim().length === 0) {
+			throw new Error("助手技能必须是非空字符串");
+		}
+		const skill = input.skill.trim();
+		const id = input.id ?? randomUUID();
+		assertNonEmptyString(id, "助手会话 id");
+		if (this.getAssistantConversation(id) !== null) {
+			throw new Error(`助手会话已存在：${id}`);
+		}
+		const storyId = input.storyId ?? null;
+		if (storyId !== null) {
+			assertNonEmptyString(storyId, "助手会话的故事 id");
+			if (!this.getStory(storyId)) {
+				throw new Error(`故事不存在：${storyId}`);
+			}
+		}
+		const title = (input.title ?? DEFAULT_ASSISTANT_TITLE).trim();
+		if (title.length === 0) {
+			throw new Error("助手会话标题不能为空");
+		}
+		const permission = input.permission ?? DEFAULT_ASSISTANT_PERMISSION;
+		assertAssistantPermission(permission, "助手会话权限");
+		const thinking = input.thinking ?? DEFAULT_ASSISTANT_THINKING;
+		assertAssistantThinking(thinking, "助手会话思考强度");
+		const contextBudget =
+			input.contextBudget ?? DEFAULT_ASSISTANT_CONTEXT_BUDGET;
+		assertAssistantContextBudget(contextBudget, "助手会话上下文预算");
+		const compactionThreshold =
+			input.compactionThreshold ?? DEFAULT_ASSISTANT_COMPACTION_THRESHOLD;
+		assertAssistantCompactionThreshold(compactionThreshold, "助手会话压缩阈值");
+		const modelAlias = input.modelAlias ?? null;
+		if (modelAlias !== null) {
+			assertNonEmptyString(modelAlias, "助手会话模型别名");
+		}
+		const createdAt = input.createdAt ?? new Date().toISOString();
+		assertNonEmptyString(createdAt, "助手会话创建时间");
+		this.#db
+			.prepare(
+				`INSERT INTO assistant_conversations
+				(id, story_id, skill, title, permission, status, model_alias,
+					thinking, context_budget, compaction_threshold, created_at,
+					updated_at, last_message_at)
+				VALUES (?, ?, ?, ?, ?, 'idle', ?, ?, ?, ?, ?, ?, NULL)`,
+			)
+			.run(
+				id,
+				storyId,
+				skill,
+				title,
+				permission,
+				modelAlias,
+				thinking,
+				contextBudget,
+				compactionThreshold,
+				createdAt,
+				createdAt,
+			);
+		const conversation = this.getAssistantConversation(id);
+		if (conversation === null) {
+			throw new Error(`助手会话写入后读取失败：${id}`);
+		}
+		return conversation;
+	}
+
+	getAssistantConversation(id: string): AssistantConversation | null {
+		assertNonEmptyString(id, "助手会话 id");
+		const row = this.#db
+			.prepare("SELECT * FROM assistant_conversations WHERE id = ?")
+			.get(id) as AssistantConversationRow | undefined;
+		return row === undefined ? null : rowToAssistantConversation(row);
+	}
+
+	/** 按最近活动列出会话；可以按故事与技能过滤。 */
+	listAssistantConversations(
+		options: ListAssistantConversationsOptions = {},
+	): AssistantConversation[] {
+		const limit = options.limit ?? DEFAULT_ASSISTANT_LIST_LIMIT;
+		assertAssistantListLimit(limit, "助手会话条数");
+		const storyId = options.storyId ?? null;
+		if (storyId !== null) {
+			assertNonEmptyString(storyId, "助手会话的故事 id");
+			if (!this.getStory(storyId)) {
+				throw new Error(`故事不存在：${storyId}`);
+			}
+		}
+		const skill = options.skill ?? null;
+		if (skill !== null) assertNonEmptyString(skill, "助手技能");
+		const conditions: string[] = [];
+		const params: (string | number)[] = [];
+		if (storyId !== null) {
+			conditions.push("story_id = ?");
+			params.push(storyId);
+		}
+		if (skill !== null) {
+			conditions.push("skill = ?");
+			params.push(skill);
+		}
+		const where =
+			conditions.length === 0 ? "" : `WHERE ${conditions.join(" AND ")}`;
+		params.push(limit);
+		const rows = this.#db
+			.prepare(
+				`SELECT * FROM assistant_conversations
+				${where}
+				ORDER BY COALESCE(last_message_at, updated_at) DESC,
+					created_at DESC, id ASC
+				LIMIT ?`,
+			)
+			.all(...params) as AssistantConversationRow[];
+		return rows.map(rowToAssistantConversation);
+	}
+
+	/**
+	 * 按标题与消息正文搜索。标题走 LIKE，两字中文也能命中；正文优先用
+	 * trigram 索引，查询短于三个字符时退回到 LIKE。
+	 */
+	searchAssistantConversations(
+		query: string,
+		options: AssistantConversationSearchOptions = {},
+	): AssistantSearchHit[] {
+		if (typeof query !== "string") {
+			throw new Error("检索语句必须是字符串");
+		}
+		const trimmed = query.trim();
+		if (trimmed.length === 0) {
+			throw new Error("检索语句不能为空");
+		}
+		if (trimmed.includes("\u0000")) {
+			throw new Error("检索语句不能包含空字符");
+		}
+		const limit = options.limit ?? DEFAULT_ASSISTANT_LIST_LIMIT;
+		assertAssistantListLimit(limit, "检索条数");
+		const storyId = options.storyId ?? null;
+		if (storyId !== null) {
+			assertNonEmptyString(storyId, "助手会话的故事 id");
+			if (!this.getStory(storyId)) {
+				throw new Error(`故事不存在：${storyId}`);
+			}
+		}
+		const likePattern = `%${trimmed
+			.replaceAll("\\", "\\\\")
+			.replaceAll("%", "\\%")
+			.replaceAll("_", "\\_")}%`;
+		const titleRows = this.#db
+			.prepare(
+				`SELECT * FROM assistant_conversations
+				WHERE title LIKE @pattern ESCAPE '\\'
+					AND (@storyId IS NULL OR story_id = @storyId)
+				ORDER BY COALESCE(last_message_at, updated_at) DESC,
+					created_at DESC, id ASC
+				LIMIT @limit`,
+			)
+			.all({
+				pattern: likePattern,
+				storyId,
+				limit,
+			}) as AssistantConversationRow[];
+		const titleIds = new Set(titleRows.map((row) => row.id));
+
+		const messageHits: {
+			conversationId: string;
+			ordinal: number;
+			snippet: string;
+			score: number;
+		}[] = [];
+		const ftsQuery = buildTrigramQuery(trimmed);
+		if (ftsQuery !== null) {
+			const rows = this.#db
+				.prepare(
+					`WITH matches AS (
+						SELECT m.conversation_id AS conversation_id,
+							m.ordinal AS ordinal,
+							snippet(assistant_message_text, 2, '[', ']', '…', 12) AS snippet,
+							bm25(assistant_message_text) AS score
+						FROM assistant_message_text
+						JOIN assistant_messages AS m
+							ON m.rowid = assistant_message_text.rowid
+						WHERE assistant_message_text MATCH @query
+							AND (@storyId IS NULL OR m.conversation_id IN (
+								SELECT id FROM assistant_conversations
+								WHERE story_id = @storyId
+							))
+					),
+					ranked AS (
+						SELECT conversation_id, ordinal, snippet, score,
+							ROW_NUMBER() OVER (
+								PARTITION BY conversation_id
+								ORDER BY score ASC, ordinal ASC
+							) AS position
+						FROM matches
+					)
+					SELECT conversation_id, ordinal, snippet, score
+					FROM ranked WHERE position = 1
+					ORDER BY score ASC, ordinal ASC, conversation_id ASC
+					LIMIT @limit`,
+				)
+				.all({
+					query: ftsQuery,
+					storyId,
+					limit,
+				}) as AssistantMessageSearchRow[];
+			for (const row of rows) {
+				messageHits.push({
+					conversationId: row.conversation_id,
+					ordinal: row.ordinal,
+					snippet: row.snippet,
+					score: row.score,
+				});
+			}
+		} else {
+			const rows = this.#db
+				.prepare(
+					`WITH matches AS (
+						SELECT conversation_id, ordinal, text,
+							ROW_NUMBER() OVER (
+								PARTITION BY conversation_id ORDER BY ordinal ASC
+							) AS position
+						FROM assistant_messages
+						WHERE text LIKE @pattern ESCAPE '\\'
+							AND (@storyId IS NULL OR conversation_id IN (
+								SELECT id FROM assistant_conversations
+								WHERE story_id = @storyId
+							))
+					)
+					SELECT conversation_id, ordinal, text
+					FROM matches WHERE position = 1
+					ORDER BY ordinal ASC, conversation_id ASC
+					LIMIT @limit`,
+				)
+				.all({
+					pattern: likePattern,
+					storyId,
+					limit,
+				}) as AssistantMessageLikeRow[];
+			for (const row of rows) {
+				messageHits.push({
+					conversationId: row.conversation_id,
+					ordinal: row.ordinal,
+					snippet: createAssistantSnippet(row.text, trimmed),
+					score: 0,
+				});
+			}
+		}
+
+		const results: AssistantSearchHit[] = [];
+		const used = new Set<string>();
+		for (const hit of messageHits) {
+			if (results.length >= limit) break;
+			const conversation = this.getAssistantConversation(hit.conversationId);
+			if (conversation === null) {
+				throw new Error(`助手会话不存在：${hit.conversationId}`);
+			}
+			used.add(hit.conversationId);
+			results.push({
+				conversation,
+				matchedIn: "message",
+				snippet: hit.snippet,
+				messageOrdinal: hit.ordinal,
+				score: hit.score,
+			});
+		}
+		for (const row of titleRows) {
+			if (results.length >= limit) break;
+			if (used.has(row.id)) continue;
+			results.push({
+				conversation: rowToAssistantConversation(row),
+				matchedIn: "title",
+				snippet: createAssistantSnippet(row.title, trimmed),
+				messageOrdinal: null,
+				score: 0,
+			});
+		}
+		return results;
+	}
+
+	getAssistantMessages(conversationId: string): AssistantMessage[] {
+		assertNonEmptyString(conversationId, "助手会话 id");
+		if (this.getAssistantConversation(conversationId) === null) {
+			throw new Error(`助手会话不存在：${conversationId}`);
+		}
+		const rows = this.#db
+			.prepare(
+				`SELECT conversation_id, ordinal, role, text, tool_name,
+					tool_result, usage, created_at
+				FROM assistant_messages
+				WHERE conversation_id = ?
+				ORDER BY ordinal ASC`,
+			)
+			.all(conversationId) as AssistantMessageRow[];
+		return rows.map(rowToAssistantMessage);
+	}
+
+	/** 追加一条消息；序号在同一事务里取最大值加一，并更新会话的最后消息时间。 */
+	appendAssistantMessage(input: NewAssistantMessageInput): AssistantMessage {
+		assertNonEmptyString(input.conversationId, "助手会话 id");
+		assertAssistantMessageRole(input.role, "助手消息角色");
+		if (typeof input.text !== "string") {
+			throw new Error("助手消息正文必须是字符串");
+		}
+		if (input.role !== "tool" && input.text.trim().length === 0) {
+			throw new Error("助手消息正文不能为空");
+		}
+		const toolName = input.toolName ?? null;
+		const toolResult = input.toolResult;
+		if (input.role === "tool") {
+			if (toolName === null) {
+				throw new Error("工具消息必须提供工具名");
+			}
+			assertNonEmptyString(toolName, "工具名");
+		} else if (toolName !== null || toolResult !== undefined) {
+			throw new Error("只有工具消息可以携带工具名与工具结果");
+		}
+		const usage = input.usage;
+		if (input.role !== "assistant" && usage !== undefined) {
+			throw new Error("只有助手消息可以携带用量");
+		}
+		const toolResultJson =
+			toolResult === undefined
+				? null
+				: serializeJsonValue(toolResult, "助手消息的工具结果");
+		const usageJson =
+			usage === undefined ? null : serializeJsonValue(usage, "助手消息的用量");
+		if (this.getAssistantConversation(input.conversationId) === null) {
+			throw new Error(`助手会话不存在：${input.conversationId}`);
+		}
+		const createdAt = input.createdAt ?? new Date().toISOString();
+		assertNonEmptyString(createdAt, "助手消息时间");
+		return this.#db.transaction((): AssistantMessage => {
+			this.#db
+				.prepare(
+					`INSERT INTO assistant_messages
+					(conversation_id, ordinal, role, text, tool_name, tool_result,
+						usage, created_at)
+					SELECT ?, COALESCE(MAX(ordinal), 0) + 1, ?, ?, ?, ?, ?, ?
+					FROM assistant_messages WHERE conversation_id = ?`,
+				)
+				.run(
+					input.conversationId,
+					input.role,
+					input.text,
+					toolName,
+					toolResultJson,
+					usageJson,
+					createdAt,
+					input.conversationId,
+				);
+			this.#db
+				.prepare(
+					`UPDATE assistant_conversations
+					SET updated_at = ?, last_message_at = ?
+					WHERE id = ?`,
+				)
+				.run(createdAt, createdAt, input.conversationId);
+			const row = this.#db
+				.prepare(
+					`SELECT conversation_id, ordinal, role, text, tool_name,
+						tool_result, usage, created_at
+					FROM assistant_messages
+					WHERE conversation_id = ?
+					ORDER BY ordinal DESC LIMIT 1`,
+				)
+				.get(input.conversationId) as AssistantMessageRow | undefined;
+			if (row === undefined) {
+				throw new Error(`助手消息写入后读取失败：${input.conversationId}`);
+			}
+			return rowToAssistantMessage(row);
+		})();
+	}
+
+	updateAssistantConversation(
+		id: string,
+		update: AssistantConversationUpdate,
+	): AssistantConversation {
+		assertNonEmptyString(id, "助手会话 id");
+		if (this.getAssistantConversation(id) === null) {
+			throw new Error(`助手会话不存在：${id}`);
+		}
+		const sets: string[] = [];
+		const params: (string | number | null)[] = [];
+		if (update.title !== undefined) {
+			const title = update.title.trim();
+			if (title.length === 0) {
+				throw new Error("助手会话标题不能为空");
+			}
+			sets.push("title = ?");
+			params.push(title);
+		}
+		if (update.skill !== undefined) {
+			if (
+				typeof update.skill !== "string" ||
+				update.skill.trim().length === 0
+			) {
+				throw new Error("助手技能必须是非空字符串");
+			}
+			sets.push("skill = ?");
+			params.push(update.skill.trim());
+		}
+		if (update.permission !== undefined) {
+			assertAssistantPermission(update.permission, "助手会话权限");
+			sets.push("permission = ?");
+			params.push(update.permission);
+		}
+		if (update.modelAlias !== undefined) {
+			if (update.modelAlias !== null) {
+				assertNonEmptyString(update.modelAlias, "助手会话模型别名");
+			}
+			sets.push("model_alias = ?");
+			params.push(update.modelAlias);
+		}
+		if (update.thinking !== undefined) {
+			assertAssistantThinking(update.thinking, "助手会话思考强度");
+			sets.push("thinking = ?");
+			params.push(update.thinking);
+		}
+		if (update.contextBudget !== undefined) {
+			assertAssistantContextBudget(update.contextBudget, "助手会话上下文预算");
+			sets.push("context_budget = ?");
+			params.push(update.contextBudget);
+		}
+		if (update.compactionThreshold !== undefined) {
+			assertAssistantCompactionThreshold(
+				update.compactionThreshold,
+				"助手会话压缩阈值",
+			);
+			sets.push("compaction_threshold = ?");
+			params.push(update.compactionThreshold);
+		}
+		if (sets.length === 0) {
+			throw new Error("助手会话更新至少需要一个字段");
+		}
+		sets.push("updated_at = ?");
+		params.push(new Date().toISOString());
+		params.push(id);
+		this.#db
+			.prepare(
+				`UPDATE assistant_conversations SET ${sets.join(", ")} WHERE id = ?`,
+			)
+			.run(...params);
+		const conversation = this.getAssistantConversation(id);
+		if (conversation === null) {
+			throw new Error(`助手会话更新后读取失败：${id}`);
+		}
+		return conversation;
+	}
+
+	setAssistantConversationStatus(
+		id: string,
+		status: AssistantConversationStatus,
+	): AssistantConversation {
+		assertNonEmptyString(id, "助手会话 id");
+		assertAssistantConversationStatus(status, "助手会话状态");
+		if (this.getAssistantConversation(id) === null) {
+			throw new Error(`助手会话不存在：${id}`);
+		}
+		this.#db
+			.prepare(
+				"UPDATE assistant_conversations SET status = ?, updated_at = ? WHERE id = ?",
+			)
+			.run(status, new Date().toISOString(), id);
+		const conversation = this.getAssistantConversation(id);
+		if (conversation === null) {
+			throw new Error(`助手会话状态更新后读取失败：${id}`);
+		}
+		return conversation;
+	}
+
+	/** 启动时把上一个进程留下的运行中会话标为 interrupted。 */
+	markInterruptedAssistantConversations(updatedAt?: string): number {
+		const value = updatedAt ?? new Date().toISOString();
+		assertNonEmptyString(value, "助手会话结束时间");
+		const info = this.#db
+			.prepare(
+				`UPDATE assistant_conversations SET status = 'interrupted', updated_at = ?
+				WHERE status = 'running'`,
+			)
+			.run(value);
+		return info.changes;
+	}
+
+	/** 删除会话及其消息与事件；先删消息让 trigram 索引同步清理。 */
+	deleteAssistantConversation(id: string): void {
+		assertNonEmptyString(id, "助手会话 id");
+		if (this.getAssistantConversation(id) === null) {
+			throw new Error(`助手会话不存在：${id}`);
+		}
+		this.#db.transaction(() => {
+			this.#db
+				.prepare("DELETE FROM assistant_messages WHERE conversation_id = ?")
+				.run(id);
+			this.#db
+				.prepare("DELETE FROM assistant_conversations WHERE id = ?")
+				.run(id);
+			this.#db
+				.prepare("DELETE FROM assistant_events WHERE conversation_id = ?")
+				.run(id);
+		})();
+	}
+
+	appendAssistantEvent(input: {
+		readonly conversationId: string;
+		readonly kind: AssistantEventKind;
+		readonly payload: JsonObject;
+		readonly createdAt?: string;
+	}): AssistantEvent {
+		assertNonEmptyString(input.conversationId, "助手会话 id");
+		assertAssistantEventKind(input.kind, "助手事件种类");
+		if (!isJsonObject(input.payload)) {
+			throw new Error("助手事件载荷必须是 JSON 对象");
+		}
+		if (this.getAssistantConversation(input.conversationId) === null) {
+			throw new Error(`助手会话不存在：${input.conversationId}`);
+		}
+		const createdAt = input.createdAt ?? new Date().toISOString();
+		assertNonEmptyString(createdAt, "助手事件时间");
+		this.#db
+			.prepare(
+				`INSERT INTO assistant_events
+				(conversation_id, seq, kind, payload, created_at)
+				SELECT ?, COALESCE(MAX(seq), 0) + 1, ?, ?, ?
+				FROM assistant_events WHERE conversation_id = ?`,
+			)
+			.run(
+				input.conversationId,
+				input.kind,
+				JSON.stringify(input.payload),
+				createdAt,
+				input.conversationId,
+			);
+		const row = this.#db
+			.prepare(
+				`SELECT conversation_id, seq, kind, payload, created_at
+				FROM assistant_events WHERE conversation_id = ?
+				ORDER BY seq DESC LIMIT 1`,
+			)
+			.get(input.conversationId) as AssistantEventRow | undefined;
+		if (row === undefined) {
+			throw new Error(`助手事件写入后读取失败：${input.conversationId}`);
+		}
+		return rowToAssistantEvent(row);
+	}
+
+	listAssistantEvents(
+		conversationId: string,
+		options: ListAssistantEventsOptions = {},
+	): AssistantEvent[] {
+		assertNonEmptyString(conversationId, "助手会话 id");
+		const afterSeq = options.afterSeq ?? 0;
+		if (!Number.isInteger(afterSeq) || afterSeq < 0) {
+			throw new Error(`助手事件起始序号必须是非负整数：${String(afterSeq)}`);
+		}
+		if (this.getAssistantConversation(conversationId) === null) {
+			throw new Error(`助手会话不存在：${conversationId}`);
+		}
+		const rows = this.#db
+			.prepare(
+				`SELECT conversation_id, seq, kind, payload, created_at
+				FROM assistant_events
+				WHERE conversation_id = ? AND seq > ?
+				ORDER BY seq ASC`,
+			)
+			.all(conversationId, afterSeq) as AssistantEventRow[];
+		return rows.map(rowToAssistantEvent);
+	}
+
+	countAssistantEvents(conversationId: string): number {
+		assertNonEmptyString(conversationId, "助手会话 id");
+		if (this.getAssistantConversation(conversationId) === null) {
+			throw new Error(`助手会话不存在：${conversationId}`);
+		}
+		const row = this.#db
+			.prepare(
+				"SELECT COUNT(*) AS count FROM assistant_events WHERE conversation_id = ?",
+			)
+			.get(conversationId) as { readonly count: number };
+		return row.count;
 	}
 
 	/** 按任务类型的入队条件为故事补建缺失的后台任务。 */

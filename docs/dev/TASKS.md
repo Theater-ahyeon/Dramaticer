@@ -1464,7 +1464,8 @@
   做什么：把抽屉界面与全部技能（排障、台账修订、参谋、资料员、卡片工坊、设置向导、使用指南）、类型化 server 接口、三级权限（只读、修改前确认、自动执行）、对话保存与搜索、关掉抽屉后任务继续运行与状态提示、上下文自动与手动压缩、用量环分成任务；复用深回合的 agent 运行时，与正剧隔离：不写楼层，不进入剧情上下文；影响剧情的修改一律走变更卡并由结算器校验。写清依赖与验收。
   验收：任务清单可直接执行；应用内助手不写楼层、不进入剧情上下文；影响剧情的修改全部经过变更卡；`pnpm check` 通过。
 
-- [ ] **H-T01 助手会话存储与类型化接口** | 依赖：R5-T99、R3b-T99、E-T01、P2.g | DESIGN §10.3 | ADR-0125
+- [x] **H-T01 助手会话存储与类型化接口** | 依赖：R5-T99、R3b-T99、E-T01、P2.g | DESIGN §10.3 | ADR-0125
+  完成：2026-11-13 迁移 v44 新建 `assistant_conversations`、`assistant_messages`、`assistant_events` 与 trigram 全文索引；`StoryStore` 增加创建、按故事与技能列出、标题与正文搜索（两字走 LIKE、三字以上走 FTS）、改名、改权限与模型、状态切换、删除与消息、事件读写；`packages/protocol/src/assistant.ts` 定义技能、请求、视图与事件载荷；`packages/server/src/assistant.ts` 挂载七个 `/api/assistant` 接口；`packages/web/src/api/assistant.ts` 类型化客户端；门禁通过（237 个测试文件、2084 个测试、5 个跳过）
   做什么：
   - 迁移 v44 新建 `assistant_conversations`、`assistant_messages`、`assistant_events` 与 `assistant_message_text`（trigram 全文索引）。会话字段：`id`、可空的 `story_id`（使用指南与全局设置可以为空）、`skill`、`title`、`permission`（`read_only`、`confirm`、`auto`）、`status`（`idle`、`running`、`completed`、`failed`、`cancelled`、`interrupted`）、可空的 `model_alias`、`thinking`（`off`、`low`、`high`）、`context_budget`（默认 48,000）、`compaction_threshold`（默认 0.8，范围 0.5–0.95）、`created_at`、`updated_at`、`last_message_at`。消息表按会话内递增 `ordinal` 保存 `user`、`assistant`、`tool`、`system` 四种角色，工具消息带 `tool_name` 与 `tool_result`，助手消息带可空的 `usage`（JSON）。事件表只追加，主键 `(conversation_id, seq)`，更新与删除由触发器拒绝。
   - `assistant_message_text` 的插入与删除由 `assistant_messages` 上的触发器同步；会话标题用普通索引，消息正文用 trigram，中文两字查询可以命中。

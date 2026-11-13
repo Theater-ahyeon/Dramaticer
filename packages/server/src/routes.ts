@@ -140,6 +140,7 @@ import {
 	parseCharacterCardPng,
 	parseWorldInfoJson,
 } from "@dramaticer/st-compat";
+import { handleAssistantRequest } from "./assistant.js";
 import type { BackgroundScheduler } from "./background.js";
 import { HttpError, readJsonBody, sendEmpty, sendJson } from "./http.js";
 import type { StoryRuntimeManager } from "./runtime.js";
@@ -184,6 +185,16 @@ export async function handleApiRequest(
 ): Promise<void> {
 	if (!url.pathname.startsWith("/api/")) {
 		throw new HttpError(404, "not_found", "没有这个接口");
+	}
+	if (
+		url.pathname === "/api/assistant" ||
+		url.pathname.startsWith("/api/assistant/")
+	) {
+		await handleAssistantRequest(req, res, url, method, {
+			store: options.store,
+			maxJsonBodyBytes: options.maxJsonBodyBytes,
+		});
+		return;
 	}
 	const parts = pathSegments(url.pathname);
 	const [first, second, third] = parts;

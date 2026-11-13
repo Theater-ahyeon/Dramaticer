@@ -596,7 +596,7 @@ function isAbortError(error: unknown): boolean {
 	return error instanceof Error && error.name === "AbortError";
 }
 
-async function readApiError(response: Response): Promise<ApiError> {
+export async function readApiError(response: Response): Promise<ApiError> {
 	const fallback: ApiErrorBody = {
 		code: "internal",
 		message: `请求失败（HTTP ${response.status}）`,
