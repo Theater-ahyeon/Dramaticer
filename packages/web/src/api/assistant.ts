@@ -1,4 +1,5 @@
 import type {
+	AssistantActionDecisionView,
 	AssistantActionListView,
 	AssistantActionStatus,
 	AssistantCancelView,
@@ -12,7 +13,11 @@ import type {
 	ChannelsView,
 	CompactAssistantConversationRequest,
 	CreateAssistantConversationRequest,
+	ProposalDecisionAction,
+	ProposalDecisionResult,
+	RejectAssistantActionRequest,
 	SendAssistantMessageRequest,
+	StoryProposalsView,
 	UpdateAssistantConversationRequest,
 } from "@dramaticer/protocol";
 import {
@@ -136,6 +141,49 @@ export class AssistantApiClient {
 		return this.json<AssistantActionListView>(
 			"GET",
 			`/api/assistant/actions${text.length === 0 ? "" : `?${text}`}`,
+		);
+	}
+
+	/** 批准待确认动作；载荷非法时服务端保留待定并返回原因。 */
+	async approveAction(id: string): Promise<AssistantActionDecisionView> {
+		return this.json<AssistantActionDecisionView>(
+			"POST",
+			`/api/assistant/actions/${encodeURIComponent(id)}/approve`,
+			{},
+		);
+	}
+
+	async rejectAction(
+		id: string,
+		reason: string,
+	): Promise<AssistantActionDecisionView> {
+		const request: RejectAssistantActionRequest = { reason };
+		return this.json<AssistantActionDecisionView>(
+			"POST",
+			`/api/assistant/actions/${encodeURIComponent(id)}/reject`,
+			request,
+		);
+	}
+
+	/** 故事下待批准的台账变更卡；审阅面板与台账页共用同一接口。 */
+	async listProposals(
+		storyId: string,
+		status = "pending",
+	): Promise<StoryProposalsView> {
+		const query = new URLSearchParams({ status });
+		return this.json<StoryProposalsView>(
+			"GET",
+			`/api/stories/${encodeURIComponent(storyId)}/proposals?${query.toString()}`,
+		);
+	}
+
+	async decideProposal(
+		cardId: string,
+		action: ProposalDecisionAction,
+	): Promise<ProposalDecisionResult> {
+		return this.json<ProposalDecisionResult>(
+			"POST",
+			`/api/proposals/${encodeURIComponent(cardId)}/${action}`,
 		);
 	}
 

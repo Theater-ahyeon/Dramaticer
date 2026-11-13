@@ -184,3 +184,83 @@ test("改名、搜索、删除与取消运行", async ({ page }) => {
 		"我的排障会话",
 	);
 });
+
+test("待确认面板审阅动作与台账卡并同步数量", async ({ page }) => {
+	const storyId = `e2e-assistant-review-${test.info().project.name}`;
+	await openStoryTab(page, storyId, "chat");
+	await expect(page.locator(".assistant-badge-count")).toHaveText("8");
+
+	await openDrawer(page);
+	await page.getByRole("tab", { name: /待确认/ }).click();
+	await expect(page.locator(".assistant-review-item")).toHaveCount(8);
+
+	const channels = page.locator('.assistant-review-item[data-kind="channels"]');
+	await expect(channels).toContainText("review-model");
+	await expect(channels).toContainText("密钥已设置");
+	await expect(channels).not.toContainText("E2E_SECRET_ENV");
+	await expect(channels).not.toContainText("sk-");
+
+	const ledger = page.locator('.assistant-review-item[data-kind="ledger"]');
+	await expect(ledger).toContainText("character / 凛 / location");
+	await expect(ledger).toContainText("走廊");
+	await expect(ledger).toContainText("屋顶");
+
+	const broken = page
+		.locator(".assistant-review-item")
+		.filter({ hasText: "模板还没准备好的修改" });
+	await broken.getByRole("button", { name: "批准" }).click();
+	await expect(broken.locator(".assistant-review-error")).toContainText(
+		"模板不存在",
+	);
+	await expect(broken).toBeVisible();
+
+	const settingsItem = page
+		.locator(".assistant-review-item")
+		.filter({ hasText: "把输出预算改成 1024" });
+	await settingsItem.getByRole("button", { name: "批准" }).click();
+	await expect(settingsItem).toHaveCount(0);
+
+	const loreItem = page
+		.locator(".assistant-review-item")
+		.filter({ hasText: "加一条世界书" });
+	await loreItem.getByRole("button", { name: "拒绝" }).click();
+	await page.getByLabel("拒绝原因").fill("不需要这条世界书");
+	await page.getByRole("button", { name: "确定拒绝" }).click();
+	await expect(loreItem).toHaveCount(0);
+
+	await ledger.getByRole("button", { name: "拒绝" }).click();
+	await expect(ledger).toHaveCount(0);
+
+	await expect(page.locator(".assistant-review-item")).toHaveCount(5);
+	await page.getByRole("button", { name: "关闭助手" }).click();
+	await expect(page.locator(".assistant-badge-count")).toHaveText("5");
+
+	const settings = await page.request.get(`/api/stories/${storyId}/settings`);
+	expect(settings.ok()).toBeTruthy();
+	expect(((await settings.json()) as { maxTokens: number }).maxTokens).toBe(
+		1024,
+	);
+	const actions = await page.request.get(
+		`/api/assistant/actions?status=all&storyId=${storyId}`,
+	);
+	expect(actions.ok()).toBeTruthy();
+	const actionsBody = (await actions.json()) as {
+		actions: {
+			summary: string;
+			status: string;
+			rejectionReason: string | null;
+		}[];
+	};
+	const rejectedLore = actionsBody.actions.find(
+		(action) => action.summary === "加一条世界书",
+	);
+	expect(rejectedLore?.status).toBe("rejected");
+	expect(rejectedLore?.rejectionReason).toBe("不需要这条世界书");
+	const proposals = await page.request.get(
+		`/api/stories/${storyId}/proposals?status=rejected`,
+	);
+	expect(proposals.ok()).toBeTruthy();
+	expect(
+		((await proposals.json()) as { proposals: unknown[] }).proposals,
+	).toHaveLength(1);
+});

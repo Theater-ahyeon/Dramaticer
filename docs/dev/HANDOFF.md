@@ -3,12 +3,11 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-13 会话 364：完成 H-T08（上下文压缩与用量环）。迁移 v46 新增 `assistant_compactions`；新增 `packages/core/src/assistant/context.ts`：`estimateAssistantContext` 按系统提示、摘要、消息与工具结果四部分估算 `used`、`budget`、`percent`，`buildAssistantRequestMessages` 用最新压缩过滤消息并在系统提示后插入一条摘要，`compactAssistantConversation` 保留最近 10 条（`DEFAULT_ASSISTANT_KEEP_RECENT_MESSAGES`），有等待确认动作时把产生它的对话之后的消息一起保留，摘要由会话模型以 `NO_CONTINUATION` 生成。server 在每次消息请求前检查阈值并先压缩（`compactBeforeAssistantRun`），手动接口为 `POST /api/assistant/conversations/:id/compact`；两者共用 `AssistantCompactionCoordinator`，手动在运行中或没有可省略消息时返回 409。压缩失败保留原消息并写 `compaction` 事件，自动压缩失败不影响本次运行。详情接口返回 `compaction` 与 `context`。抽屉新增用量环、可折叠摘要与省略序号、手动压缩表单。新增 `packages/core/test/assistant-context.test.ts` 与 `packages/web/test/assistant-context-usage.test.ts`，扩充 store、server、API 与事件流测试；`e2e/assistant.spec.ts` 增加用量环与手动压缩一条（desktop/mobile 各 4 条通过）。门禁通过（253 个测试文件、2170 个测试、5 个跳过）。
+- 2026-11-13 会话 365：完成 H-T09（变更审阅面板）。抽屉新增“对话 / 待确认”视图切换：待确认面板同时列出 `assistant_actions` 与故事下待批准的台账变更卡，按来源会话过滤；每条显示种类、摘要、产生它的会话、创建时间与字段或路径差异，台账卡逐条给出原值（没有记录时写“未记录”）与新值（删除写明），渠道动作只显示模型别名、模型 id、岗位与“密钥已设置/未设置”，密钥值和环境变量名都不进入界面。新增 `packages/web/src/assistant/review.ts` 的四类函数（字段描述、台账行、会话过滤、过滤选项）；`AssistantApiClient` 增加 `approveAction`、`rejectAction`、`listProposals`、`decideProposal`；批准与拒绝复用 H-T03 的动作接口与 H-T05 的变更卡接口，失败保留条目并在条目内显示服务端原因。右下角状态标记的待确认数量改为待确认动作与待确认变更卡之和，与面板一致，决定后立即刷新。新增 `packages/web/test/assistant-review.test.ts`（4 个测试）与 `e2e/assistant.spec.ts` 的审阅用例（desktop 与 mobile 各 1 条，覆盖 8 项待确认、密钥不显示、非法载荷批准失败后保留并显示原因、批准设置后数据改变、拒绝写入原因、数量同步）。门禁通过（249 个测试文件、2169 个测试、5 个跳过）。
 
-## 下一步（会话 365 先做）
-1. **H-T09 变更审阅面板**：抽屉内“待确认”视图，列出 `assistant_actions` 与待批准台账变更卡，按会话与故事过滤；显示类型、摘要、来源会话、字段前后值与批准/拒绝按钮；台账卡复用现有差异展示；渠道动作只显示别名与模型，密钥只显示已设置或未设置；失败保留待确认并显示原因。复用 H-T03 的动作接口与 H-T05 的变更卡接口。
-2. 之后 H-T99 验收与 `docs/dev/reports/H.md`。
-3. 其余可做任务：X1（依赖已完成）、R6-T00（依赖已满足，但排在 H 之后）。M5-T00 依赖 R6-T99；M6-T99 等待 HUMAN-15；P5 依赖 M5-T99。
+## 下一步（会话 366 先做）
+1. **H-T99 H 验收**：重跑门禁与 web 目标 e2e；用真实渠道跑一次排障问答与一次台账修订批准流程（只调用 `.env` 里的渠道，不访问本地 ST，不修改 `.env`）；逐条核对 H-T01 至 H-T09 的验收；复核 I4、I8、I11、I12、I13、I14、I15；写 `docs/dev/reports/H.md`，只写数字与配置，不写对话原文。结果写 `MILESTONE_DONE`。
+2. 之后可做任务：X1（依赖已完成）、R6-T00（依赖已满足，排在 H 之后）。M5-T00 依赖 R6-T99；M6-T99 等待 HUMAN-15；P5 依赖 M5-T99。
 
 ## H 的任务划分（ADR-0125）
 - **H-T01（已完成）** 迁移 v44：会话、消息、只追加事件与 trigram 索引；`StoryStore` 读写与搜索；protocol 类型；server 会话 CRUD、状态与事件续读接口；web 类型化客户端。
@@ -19,7 +18,7 @@
 - **H-T06（已完成）** 资料员、卡片工坊与设置向导；联网搜索显式开启；卡片读取与四类提案；渠道读取不含密钥。
 - **H-T07（已完成）** web 抽屉、会话搜索与改名、技能与权限选择、事件续读、关闭后继续运行与状态标记；重连不重复消息；取消后状态为 `cancelled`。
 - **H-T08（已完成）** 迁移 v46：`assistant_compactions`；自动与手动压缩、用量环；预算与正剧记忆独立。
-- **H-T09** 待确认动作与台账变更卡审阅面板。
+- **H-T09（已完成）** 待确认动作与台账变更卡审阅面板；按来源会话过滤；批准与拒绝失败保留条目并显示原因；徽标数量与面板一致。
 - **H-T99** 验收与 `docs/dev/reports/H.md`。
 
 ## H 设计要点
@@ -32,6 +31,7 @@
 - 助手上下文预算默认 48,000 token，压缩阈值默认 0.8；压缩保留最近 10 条，较早消息合并成摘要。`percent` 是 `used / budget` 的比值，与阈值同一口径；用量环超过 0.8 显示警告色、0.95 显示危险色。
 - 助手默认模型是 `roles.writer` 解析到的别名，会话可以覆盖；不新增渠道角色。
 - 请求与响应类型放在 `packages/protocol`，运行时放在 `packages/core/src/assistant`，server 处理放在 `packages/server/src/assistant.ts`，web 放在 `packages/web/src/assistant`。
+- 待确认视图只读服务端状态：动作来自 `GET /api/assistant/actions?status=pending&storyId=`，变更卡来自 `GET /api/stories/:id/proposals?status=pending`；决定走 `POST /api/assistant/actions/:id/approve|reject` 与 `POST /api/proposals/:id/approve|reject`。面板不提供批量批准，也不自动批准台账卡。
 
 ## 技能与工具
 - `packages/core/src/assistant/skills.ts`：`listAssistantSkills`、`getAssistantSkill`、`requireAssistantSkill`、`isAssistantSkillRegistered`；创建与 PATCH 会话都用注册表校验。七个技能：`troubleshoot`、`guide`、`ledger_revision`、`strategy`、`research`、`card_workshop`、`setup_wizard`。
@@ -58,18 +58,27 @@
 ## web 助手界面
 - `AssistantDrawer.tsx` 由 `StoryPage` 持有，`key={storyId}`；抽屉关闭时仍挂载，运行中的 SSE 继续写入状态。`ChatPage` 通过 outlet 上下文拿到 `openAssistant`，在 `Composer` 旁渲染 `.assistant-open-button`。
 - 焦点：抽屉打开时聚焦“关闭助手”；关闭后等两帧用 `document.querySelector(".assistant-open-button")` 把焦点送回触发按钮。键盘 `Ctrl+Shift+A` 开关，`Escape` 关闭。
-- 状态标记是 `.assistant-badge`，固定在右下角；运行中、失败与待确认动作数都从抽屉状态回调到 `StoryPage`。抽屉打开时不渲染标记。
+- 状态标记是 `.assistant-badge`，固定在右下角；运行中、失败与待确认动作数都从抽屉状态回调到 `StoryPage`。抽屉打开时不渲染标记。待确认数量是待确认动作与待确认变更卡之和。
 - `stream.ts` 的 `AssistantRunState` 保存正文、思考、工具活动、用量、状态、结束原因、错误与 `lastSeq`。持久事件按 `seq <= lastSeq` 去重；`selectLatestRunEvents` 只保留最后一次 `started` 之后的事件。重连时先读会话、`GET /status` 与全部事件，再按 `lastSeq` 用 `events?after=` 轮询。
 - 轮询把非运行状态的处理放在 `setStatus` 之前：先读会话把消息写入状态，最后改状态，否则状态变化触发 effect 清理会把消息更新丢掉。
-- 抽屉内的快照请求都走 `assistantApi`（包含 `/api/channels` 的模型列表）；类型只从 `@dramaticer/protocol` 导入，不 import `@dramaticer/core` 的运行时值。
+- 抽屉内的快照请求都走 `assistantApi`（包含 `/api/channels`、动作决定与变更卡接口）；类型只从 `@dramaticer/protocol` 导入，不 import `@dramaticer/core` 的运行时值。
 - 新建会话用 `ASSISTANT_CONVERSATION_DEFAULTS`：排障、修改前确认、`modelAlias: null`（跟随 `roles.writer`）、思考关闭。
-- 取消按钮只在 `status === "running"` 时出现；取消后重新读状态，界面显示“已取消”。待确认动作数每 5 秒刷新一次，运行结束后立即刷新。
+- 取消按钮只在 `status === "running"` 时出现；取消后重新读状态，界面显示“已取消”。待确认数量每 5 秒刷新一次，运行结束后立即刷新，批准或拒绝后也立即刷新。
 - 用量环 `.assistant-context` 读详情里的 `context`：显示百分比与 `used/budget`，`title` 列出四部分 token；颜色由 `context-usage.ts` 的 `contextLevel` 决定。
 - 摘要面板 `.assistant-compaction` 在消息流顶部，折叠显示摘要正文与合并后的省略序号；手动压缩表单 `.assistant-compact` 在输入框上方，要求可空。
 - 抽屉的持久状态只有 localStorage 里的活动会话 id（`dramaticer.assistant.active.<storyId>`）；消息、状态与事件都以 server 为准，不要缓存正文。
 
+## 待确认视图（H-T09）
+- 视图切换在抽屉头部：`对话` 与 `待确认（N）`；面板在右侧列，复用 `.assistant-conversation` 容器，列表类名 `.assistant-review-list`，每条 `.assistant-review-item` 带 `data-kind`（七类动作或 `ledger`）与 `data-id`。
+- `review.ts`：`ASSISTANT_ACTION_KIND_LABELS`、`describeAssistantActionFields`（channels、settings、card、template、lore、director_plan、image_config）、`describeLedgerRows`（按 `before` 路径配对原值）、`matchesReviewConversation`、`reviewConversationOptions`、`reviewConversationTitle`。
+- 渠道动作只展示模型别名与模型 id、渠道 id 的密钥状态、向量模型与密钥状态、岗位指向；`apiKey` 值与环境变量名都不渲染。密钥状态由 `apiKey` 或 `apiKeyEnv` 是否非空决定。
+- 台账卡复用 `formatLedgerPath` 与 `LedgerValue`；原值不存在时显示“（未记录）”，删除动作的新值显示“删除”。
+- 过滤只按来源会话：选项来自当前待确认动作与变更卡的会话 id，标题从会话列表与会话搜索结果合并查找；台账卡没有 `assistantConversationId` 时只出现在“全部来源”。
+- 拒绝助手动作必须先填原因（输入框 `.assistant-review-reject`），拒绝台账卡不需要原因。失败时 `.assistant-review-error` 显示服务端消息，条目保留。
+- e2e 的审阅数据按项目名分别种在 `e2e-assistant-review-mobile` 与 `e2e-assistant-review-desktop`：7 个待确认动作（覆盖七类）与 1 张待确认台账卡，初始数量 8。两个项目共用同一个服务端，所以不能用同一份会被修改的种子。
+
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a 至 P2.g、P3.a 至 P3.f、P4.a 至 P4.f、C-T01.a 至 C-T01.d、C-T02.a 至 C-T02.f、C-T03.a 至 C-T03.d、C-T04.a、C-T04.b.a、C-T04.b.b、C-T04.c.a、C-T04.c.b、C-T04.c.c、C-T04.c.d、C-T04.d、C-T05.a 至 C-T05.f、H-T00 至 H-T08。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a 至 P2.g、P3.a 至 P3.f、P4.a 至 P4.f、C-T01.a 至 C-T01.d、C-T02.a 至 C-T02.f、C-T03.a 至 C-T03.d、C-T04.a、C-T04.b.a、C-T04.b.b、C-T04.c.a、C-T04.c.b、C-T04.c.c、C-T04.c.d、C-T04.d、C-T05.a 至 C-T05.f、H-T00 至 H-T09。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
 - 兼容插件线：`st-content`、`st-mvu`、`st-ejs`、`st-helper-host` 全部完成（含一致性测试与共存评测）。
 - 数据库 schema 版本 46。本轮没有新增依赖。
 - 报告：`docs/dev/reports/P2.md`、`P3.md`、`P4.md`、`C-T01.md`、`C-T02.md`、`C-T03.md`、`C-T04.md`、`C-T05.md`。
@@ -85,8 +94,9 @@
 
 ## 可重复命令
 - 门禁：`pnpm check`。
+- H-T09 目标测试：`pnpm exec vitest run packages/web/test/assistant-review.test.ts packages/web/test/assistant-api.test.ts`。
+- H-T09 e2e：`pnpm --filter @dramaticer/server build && pnpm --filter @dramaticer/web build && pnpm --filter @dramaticer/web exec playwright test e2e/assistant.spec.ts`（desktop 与 mobile 各 5 条）。
 - H-T08 目标测试：`pnpm exec vitest run packages/core/test/assistant-context.test.ts packages/core/test/assistant-store.test.ts packages/server/test/assistant.test.ts packages/web/test/assistant-api.test.ts packages/web/test/assistant-stream.test.ts packages/web/test/assistant-context-usage.test.ts`。
-- H-T08 e2e：`pnpm --filter @dramaticer/web build && pnpm --filter @dramaticer/web exec playwright test e2e/assistant.spec.ts`（desktop 与 mobile 各 4 条）。
 - H-T07 目标测试：`pnpm exec vitest run packages/web/test/assistant-api.test.ts packages/web/test/assistant-stream.test.ts packages/web/test/assistant-conversation-list.test.ts packages/web/test/assistant-permissions.test.ts`。
 - H-T06 目标测试：`pnpm exec vitest run packages/core/test/assistant-setup.test.ts packages/core/test/assistant-skills.test.ts packages/server/test/assistant-skills.test.ts packages/server/test/assistant.test.ts packages/server/test/config.test.ts`。
 - H-T05 目标测试：`pnpm exec vitest run packages/core/test/assistant-proposals.test.ts packages/core/test/assistant-skills.test.ts packages/server/test/assistant-skills.test.ts`。
@@ -141,6 +151,9 @@
 - 压缩记录只追加；需要重新压缩只能新增一条，最新一条生效。不要修改旧记录或删除单条记录。
 - 自动压缩在 server 的消息接口里执行，`runAssistantTurn` 自身不触发压缩；后台脚本或测试直接调用运行时只应按已有压缩过滤消息。
 - 压缩失败的自动运行仍然返回模型回答；不要因为压缩失败把会话标成失败或丢弃消息。
+- 待确认数量与待确认视图必须同源：`refreshPendingActions` 同时读动作与变更卡并把和写进 `AssistantSummary.pendingActions`；新增待确认来源时同步改这一处与面板过滤，不要另开一个计数。
+- 审阅面板的渠道字段只能渲染白名单字段（模型别名与 id、密钥状态、岗位）；原始载荷不要直接 `JSON.stringify` 到界面，否则会泄露密钥值与环境变量名。
+- e2e 的审阅种子按 Playwright 项目名分开（`e2e-assistant-review-mobile`、`e2e-assistant-review-desktop`），因为 desktop 与 mobile 共用同一个服务端，会依次修改同一份数据。
 - 新增的格式化与 lint 用 `pnpm exec biome check --write <文件>`，不要手写格式。
 - 修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 的请求写进 HUMAN.md。
 - 不变量：I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖其他工作区包，I17 回合内插件钩子有时间预算，I18 插件权限必须声明。

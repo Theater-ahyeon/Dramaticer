@@ -2393,6 +2393,134 @@ button.branch-select:hover {
 	text-align: center;
 }
 
+.assistant-view-tabs {
+	display: flex;
+	gap: 4px;
+	margin-left: auto;
+	margin-right: 8px;
+}
+
+.assistant-view-tabs button {
+	padding: 4px 8px;
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	background: var(--surface);
+	color: var(--muted);
+	font: inherit;
+	font-size: 0.76rem;
+}
+
+.assistant-view-tabs button.active {
+	background: var(--accent-soft);
+	color: var(--text);
+}
+
+.assistant-review-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	font-size: 0.78rem;
+}
+
+.assistant-review-head label {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	color: var(--muted);
+}
+
+.assistant-review-list {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	gap: 8px;
+	min-height: 0;
+	margin: 0;
+	padding: 0 2px 0 0;
+	list-style: none;
+	overflow-y: auto;
+}
+
+.assistant-review-item {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 8px 10px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--surface);
+}
+
+.assistant-review-meta {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	align-items: baseline;
+	font-size: 0.74rem;
+}
+
+.assistant-review-kind {
+	padding: 1px 6px;
+	border-radius: 999px;
+	background: var(--accent-soft);
+	font-weight: 600;
+}
+
+.assistant-review-summary {
+	margin: 0;
+	overflow-wrap: anywhere;
+}
+
+.assistant-review-fields {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	font-size: 0.82rem;
+}
+
+.assistant-review-fields > li {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	align-items: baseline;
+}
+
+.assistant-review-diff {
+	display: inline-flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	align-items: baseline;
+}
+
+.assistant-review-actions,
+.assistant-review-reject {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.assistant-review-reject input {
+	flex: 1 1 140px;
+	min-width: 0;
+	padding: 4px 6px;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: var(--bg);
+	color: var(--text);
+	font: inherit;
+}
+
+.assistant-review-error {
+	margin: 0;
+	color: var(--danger);
+	font-size: 0.8rem;
+}
+
 @media (max-width: 720px) {
 	.assistant-body {
 		grid-template-columns: 1fr;
