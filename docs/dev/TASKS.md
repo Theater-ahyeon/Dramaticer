@@ -1306,7 +1306,8 @@
   做什么：完整宏引擎与完整正则语义；只作用于来自 ST 的内容，不碰 harness 槽位；正则作用范围、只影响显示、只影响 prompt、深度限制与宏替换与 ST 一致。
   验收：宏与正则一致性用例通过；原文不被修改；作用范围受控；`pnpm check` 通过。
 
-- [ ] **C-T02.e 对话 jsonl 导入导出** | 依赖：C-T02.d
+- [x] **C-T02.e 对话 jsonl 导入导出** | 依赖：C-T02.d
+  完成：2026-11-13 `chat-jsonl.ts` 新增 `StChatDocument` 与文档收集、序列化、文件写入，解析与序列化往返逐字节一致；`importChatToStore` 返回源文档；新增 `chat-export.ts` 从当前 head 路径导出消息、兄弟楼层作为 swipe、变量由 `mvu` 快照还原，传入源文档时补回头部元数据、未知字段、`swipe_info`、`extra`、原始 `send_date` 与编辑前的 swipe 文本；9 个测试；ADR-0105；门禁通过
   做什么：对话 jsonl 的导入导出；保留 swipe、变量快照、头部元数据与未知字段；导出尽力而为。
   验收：导入导出往返不丢已支持字段；原文不变；`pnpm check` 通过。
 

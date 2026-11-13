@@ -8,6 +8,7 @@ export {
 export * from "./character-card.js";
 export * from "./chat/character.js";
 export * from "./chat/session.js";
+export * from "./chat-export.js";
 export * from "./chat-import.js";
 export * from "./chat-jsonl.js";
 export * from "./dramaticer-extension.js";

@@ -1,4 +1,5 @@
 import { createReadStream } from "node:fs";
+import { writeFile } from "node:fs/promises";
 import {
 	type JsonObject,
 	type JsonValue,
@@ -43,6 +44,12 @@ export interface StChatMessage {
 export type StChatEntry =
 	| { readonly kind: "header"; readonly header: StChatHeader }
 	| { readonly kind: "message"; readonly message: StChatMessage };
+
+/** 一份完整的聊天记录；每条消息的 `raw` 保留未识别字段，序列化时原样写回。 */
+export interface StChatDocument {
+	readonly header: StChatHeader;
+	readonly messages: readonly StChatMessage[];
+}
 
 export interface ChatJsonlParseOptions {
 	/**
@@ -128,6 +135,70 @@ export async function* parseChatJsonlFile(
 	} catch (error) {
 		throw new Error(`解析聊天文件失败：${path}`, { cause: error });
 	}
+}
+
+/** 收集整份聊天记录；与逐行解析共用同一套字段与校验。 */
+export async function collectChatDocument(
+	entries: AsyncIterable<StChatEntry> | Iterable<StChatEntry>,
+): Promise<StChatDocument> {
+	let header: StChatHeader | null = null;
+	const messages: StChatMessage[] = [];
+	for await (const entry of entries) {
+		if (entry.kind === "header") {
+			if (header !== null) throw new Error("聊天记录里出现了第二个头部");
+			header = entry.header;
+			continue;
+		}
+		messages.push(entry.message);
+	}
+	if (header === null) throw new Error("聊天记录为空：缺少头部");
+	return { header, messages };
+}
+
+export async function parseChatDocument(
+	chunks: AsyncIterable<string> | Iterable<string>,
+	options: ChatJsonlParseOptions = {},
+): Promise<StChatDocument> {
+	return collectChatDocument(parseChatJsonl(chunks, options));
+}
+
+export async function parseChatDocumentFile(
+	path: string,
+	options: ChatJsonlParseOptions = {},
+): Promise<StChatDocument> {
+	return collectChatDocument(parseChatJsonlFile(path, options));
+}
+
+/** 用原始记录构造文档；导出器先生成原始对象，再走与解析相同的字段规则。 */
+export function createChatDocument(
+	header: JsonObject,
+	messages: readonly JsonObject[],
+): StChatDocument {
+	return {
+		header: toHeader(header),
+		messages: messages.map((raw, index) =>
+			toMessage(raw, index, index + 2, true),
+		),
+	};
+}
+
+/**
+ * 序列化成 ST 的 jsonl：一行头部，之后一行一条消息。
+ * 每行直接写回原始记录，未识别字段与字段顺序之外的差异不会丢失。
+ */
+export function serializeChatJsonl(document: StChatDocument): string {
+	const lines = [
+		JSON.stringify(document.header.raw),
+		...document.messages.map((message) => JSON.stringify(message.raw)),
+	];
+	return `${lines.join("\n")}\n`;
+}
+
+export async function writeChatJsonlFile(
+	path: string,
+	document: StChatDocument,
+): Promise<void> {
+	await writeFile(path, serializeChatJsonl(document), "utf8");
 }
 
 async function* readUtf8Chunks(

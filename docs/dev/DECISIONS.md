@@ -1674,3 +1674,17 @@
   - 新增 `packages/st-compat/test/st-content-macros-regex.test.ts` 23 个测试，覆盖环境宏与展开顺序、变量读写、随机与稳定抽取、骰子、对话与时间宏、工具宏、原句、后处理、正则位置与显示/prompt/编辑/深度筛选、替换组与 trimStrings、`substituteRegex`、来源顺序、预设与人设与作者注释的宏替换、世界书关键词与递归缓冲的宏替换、世界书 prompt 正则与深度筛选。
   - 新增运行时依赖 `moment`、`seedrandom`、`droll` 与开发依赖 `@types/seedrandom`，已登记在 `docs/dev/DEPENDENCIES.md`。
   - `core` 无改动（I1、I15）；正则只处理来自 ST 的内容并作为 prompt 视图使用，楼层原文不变（I8）。
+
+## ADR-0105 `st-content` 的对话 jsonl 导入导出（2026-11-13）
+
+- **背景**：C-T02.e 要求对话 jsonl 的导入导出保留 swipe、变量快照、头部元数据与未知字段，原文不变，导出尽力而为。仓库已有 `packages/st-compat/src/chat-jsonl.ts` 的流式解析与 `chat-import.ts` 写入 `StoryStore` 的导入，但没有序列化与导出；导入只保存正文、角色、时间与 MVU diff，头部元数据、未知字段、`swipe_info`、原始 `send_date` 与编辑过的 `swipes[swipe_id]` 都会丢失。I15 禁止为了兼容插件修改 core 的数据模型，因此不能在故事或楼层上加 ST 专用列。
+- **决定**：
+  - `chat-jsonl.ts` 新增 `StChatDocument`、`collectChatDocument`、`parseChatDocument`、`parseChatDocumentFile`、`createChatDocument`、`serializeChatJsonl` 与 `writeChatJsonlFile`。文档保留每条记录的原始对象，序列化直接写回这些对象，因此解析与序列化之间的往返逐字节一致，未知字段不会丢失。
+  - `importChatToStore` 的 `ChatImportResult` 新增 `document`，带回导入时看到的头部与消息原文。store 仍然只保存正文、角色、时间与 MVU diff；导入不修改正文。
+  - 新增 `packages/st-compat/src/chat-export.ts`。`exportChatDocument` 把当前 head 路径导出成消息：主路径上一个楼层一条消息，同一父楼层下的兄弟楼层作为 swipe；导入生成的兄弟楼层按 id 里的 swipe 下标排序，其他来源按创建顺序。`variables` 由每个楼层沿路径的 `mvu` 快照还原。
+  - 传入导入结果里的 `source` 文档时，导出补回 store 不保存的字段：头部 `chat_metadata` 与未知键、消息未知键、`swipe_info`、`extra`、原始 `send_date`；源记录用空对象或 `null` 表示“这一层没有变量更新”，且 store 里该楼层状态与父楼层一致时写回原标记。编辑过的消息里 `mes` 与 `swipes[swipe_id]` 不同，store 只保存 `mes`；当源记录的 `mes` 与楼层原文一致时，`swipes` 按源数组写回，两个字段都能保留。
+  - 不传 `source` 时导出只使用 store 能提供的信息：角色决定 `name`、`is_user` 与 `is_system`，`send_date` 用楼层创建时间，`variables` 用状态快照；头部名字取故事设置里的卡名或故事标题，用户名缺省为 `User`。这是“尽力而为”的边界，不猜未知字段。
+  - 导出只包含当前 head 路径，其他分支不进入 ST 的线性聊天记录；空故事与不存在的故事直接报错。
+- **影响**：
+  - 新增 `packages/st-compat/test/chat-export.test.ts` 9 个测试，覆盖文档往返逐字节一致、文件写入、导入返回源文档、带源文档的完整往返、无源文档的 store 导出、重新导入后的楼层与快照一致、store 新增 MVU 事实进入导出、导出文件可解析、未知故事与空故事报错。
+  - `core` 无改动（I1、I15）；楼层原文仍不可修改（I4），导出只读 store 与状态快照。

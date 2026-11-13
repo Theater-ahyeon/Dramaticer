@@ -6,7 +6,12 @@ import {
 	type TimelineRole,
 	mvuLedgerPath,
 } from "@dramaticer/core";
-import type { StChatEntry, StChatMessage } from "./chat-jsonl.js";
+import type {
+	StChatDocument,
+	StChatEntry,
+	StChatHeader,
+	StChatMessage,
+} from "./chat-jsonl.js";
 import { parseChatJsonlFile } from "./chat-jsonl.js";
 import { currentSwipeIndex, messageNodeId, swipeNodeId } from "./node-id.js";
 import type { SnapshotDiff } from "./state-diff.js";
@@ -29,6 +34,11 @@ export interface ChatImportResult {
 	/** 写入的楼层节点总数，包含其他 swipe 形成的兄弟节点。 */
 	readonly nodeCount: number;
 	readonly stateDiffCount: number;
+	/**
+	 * 导入的原始记录，包含 store 不保存的头部元数据、未知字段、swipe_info 与原始
+	 * send_date；导出时传回去可以原样补回这些字段。
+	 */
+	readonly document: StChatDocument;
 }
 
 /**
@@ -51,6 +61,8 @@ export async function importChatToStore(
 	}
 
 	let story: Story | null = null;
+	let header: StChatHeader | null = null;
+	const sourceMessages: StChatMessage[] = [];
 	let parentId: string | null = null;
 	let currentVariables: JsonObject | null = null;
 	const mainPathNodeIds: string[] = [];
@@ -63,6 +75,7 @@ export async function importChatToStore(
 				if (story) {
 					throw new Error("聊天记录里出现了第二个头部");
 				}
+				header = entry.header;
 				story = store.createStory({
 					id: storyId,
 					title: options.title ?? entry.header.characterName ?? storyId,
@@ -73,6 +86,7 @@ export async function importChatToStore(
 				throw new Error("聊天记录缺少头部");
 			}
 			const message = entry.message;
+			sourceMessages.push(message);
 			const role = roleOf(message);
 			const createdAt = createdAtFromSendDate(message.sendDate);
 			const mainNodeId = messageNodeId(idPrefix, message);
@@ -137,7 +151,7 @@ export async function importChatToStore(
 			}
 		}
 
-		if (!story) {
+		if (!story || !header) {
 			throw new Error("聊天记录为空：缺少头部");
 		}
 		// 其他 swipe 是后追加的兄弟节点，head 要回到主路径末端。
@@ -145,7 +159,13 @@ export async function importChatToStore(
 		if (lastMainNodeId !== undefined) {
 			store.setHead(story.id, lastMainNodeId);
 		}
-		return { story, mainPathNodeIds, nodeCount, stateDiffCount };
+		return {
+			story,
+			mainPathNodeIds,
+			nodeCount,
+			stateDiffCount,
+			document: { header, messages: sourceMessages },
+		};
 	};
 
 	return store.runInTransaction(write);
