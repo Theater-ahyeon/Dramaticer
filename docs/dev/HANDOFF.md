@@ -46,7 +46,6 @@
 - HUMAN-15 待处理（M6-T99 需要）：把秋叶整合包 v3.2 的 ComfyUI 启动在 `http://127.0.0.1:8188`，并导出一份 API 格式 workflow JSON 到 `eval-private/comfyui/` 或告知路径。
 - HUMAN-16、HUMAN-17、HUMAN-18 待处理（不阻塞）。
 - HUMAN-19 待处理（阻塞真实批次）：`bg` 渠道 402 `insufficient_balance`，额度 2026-11-17T11:44:35Z 重置；或把 `roles.settler`/`roles.planner` 指到可用路由。
-- HUMAN-20 待处理（不阻塞）：v4 提案引用的界面原型 `docs/proposals/v4-ui.html` 不在仓库里，界面改版任务需要它。
 
 ## 可重复命令
 - 门禁：`pnpm check`。
