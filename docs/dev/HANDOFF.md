@@ -3,26 +3,27 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-14 会话 392：门禁修复。上一个会话结束后 devloop 的 autosave 把残留的一次性截图脚本 `packages/web/.v4shot.mjs`（`@playwright/test` 驱动、写死 `E:/agentcoding/Dramaticer/docs/proposals/v4-ui.html`，共 9 行）提交进仓库，`biome check` 在该文件上报 4 个 `useTemplate`、1 个格式错误、1 个其它格式项，`pnpm run lint` 失败，整条 `pnpm check` 因此失败。该脚本没有被任何文档、脚本或包配置引用（全仓搜索无命中），是给 v4 界面原型拍截图的临时工具，已从仓库删除。
-- 门禁现在通过：261 个测试文件、2,292 个测试、5 个跳过（耗时 170 秒）。类型检查与不变量检查没有被本次改动影响。
-- 本会话没有选任务；分拣了会话进行中人类新写入的 INBOX 条目（卡面图与人物立绘）为 W0-T01，依赖 W0-T00。
+- 2026-11-14 会话 393：完成 W0-T00（v4 设计合并）。ADR-0139 记录采纳范围、提案第十一节八处冲突的处理、R6 先后与人类四条约束；`docs/DESIGN.md` 升到 v0.4：改写 §1 主菜排序、§3 原则（场次、`sourceQuote`、成本可见）、§4 架构（场记与档案）、§5 场次、§7.1 台账（硬状态与软知识分层、知情改为在场推导）、§7.2 结算器（场记合并的对照前置、引文校验）、§7.3 记忆分层（场记记录、场次档案、知情标注、重逢注入、按需付费）、§8 导演（线、章/场/拍、八种动作、推进三档、伏笔账、章末清点、场面卡）、§9 上下文（按易变性排布、缓存统计）、§10.1 深回合改为可选、§11 输出只要正文、§12 封面与立绘、§14.2 R6 先后、§15 路线图、§17 待验证、§18 规则层移出暂缓；新增 §20 世界包与分型导入、§21 故事蓝图、§22 交互与功能开关；附录 A 补 Q44–Q49。
+- TASKS 新增 W1–W9 共 29 个任务（W9 按原型分 7 个子任务加验收），R6 段移到 W4 与 W5 之间；W2-T04（场记真实对照与默认切换）标 `[!]`，阻塞 HUMAN-19。
+- HUMAN 新增两条待确认且不阻塞：HUMAN-20（R6 耗额度批次排在 W1–W4 之后）、HUMAN-21（I12 文字是否改为「台账是唯一的结构化视图，写入须有原文出处」）。HUMAN-19 的阻塞任务列补上 W2-T04。
+- 门禁通过：261 个测试文件、2,292 个测试、5 个跳过（146 秒）。本会话只改文档，没有代码改动、没有新增依赖。
 
-## 下一步（会话 393 先做）
-1. **W0-T00**（v4 设计合并）：人类在会话 391 进行中把 v4 提案写进 INBOX，已分拣为 TASKS 的 W 阶段任务——写 ADR、合并进 DESIGN、细化 W1–W9，并落实四条约束（不变量不动、场记先做对照、R6 额度批次先后写 ADR 与不阻塞的 HUMAN 确认、界面以 `docs/proposals/v4-ui.html` 为参考）。这是设计文档任务，不需要额度。
-2. 之后做 **W0-T01**（卡面图与人物立绘）：人类在会话 392 进行中写入的 INBOX 条目，卡片 PNG 作故事封面、资源表立绘进人物档案、认证媒体接口、无图卡用占位图。排在界面改版之前，代码任务不需要额度。
-3. 之后做 R6-T07.b（重 roll 点回放批次）；HUMAN-19 只阻塞真实批次，代码与假客户端测试不需要额度。
-4. R6-T07.b 要点：
+## 下一步（会话 394 先做）
+1. **W0-T01 卡面图与人物立绘**（依赖 W0-T00，已满足）：导入时保存卡片 PNG、认证媒体接口、书架/游玩页/导入体检页封面、人物档案立绘、无图卡 2:3 占位图。按 W0-T01 的验收逐条核对，e2e 要过。
+2. 之后从上往下做 **W1-T01**（模板按易变性重排与缓存统计）→ **W2-T01**（场记调用与事实引文）→ **W2-T02**（场次边界与归档）→ **W2-T03**（场记对照工具，假客户端）→ **W3-T01 至 W3-T03**（分型器、体检页与升级向导、规则执行层）→ **W4-T01 至 W4-T03**（线加八种动作、推进三档与伏笔账、场面卡与章级规划）。
+3. W4 完成后到 R6 段：先 **R6-T07.b**（重 roll 点回放批次）、**R6-T07.c**（遗忘漏斗）、**R6-T07.d**（门槛判定 CLI），再 **R6-T99**。**R6-T06** 与 **W2-T04** 被 HUMAN-19 阻塞（`bg` 渠道额度 2026-11-17T11:44:35Z 重置）。
+4. R6 段之后继续 **W5-T01、W5-T02**（推进按钮与带原因的重 roll、就地纠正与场面控制）→ **W6-T01 至 W6-T03**（归档与知情标注、重逢注入、连载视图）→ **W7-T01 至 W7-T03**（蓝图结构、AI 建议、剧透与导出）→ **W8-T01、W8-T02**（三层开关、成本与补算）→ **W9-T01 至 W9-T99**（界面改版，按原型分页）。
+5. R6-T07.b 的实现要点（旧交接保留）：
    - 新增 `evalset/r6-replay.ts` 与 CLI：从 `eval-private/world-model-compare/source/<slug>.db` 规划重 roll 点（`xianxia` 24、`yuwang` 8、`yinqi` 11），被接受的是 head 路径上的助手兄弟楼层（43 个点都是最大 swipe 下标），放弃侧取下标紧邻其下的那条，另有 5 条更早的放弃 swipe 只报告。
    - 每个点复制数据库、head 移到父玩家楼层、预热 12 楼，先按种子 1 生成一次原生续写（同时是 G1 的续写与 A/A 的第一次生成），再按种子 2 生成一次（只用于 A/A）；同一请求体只差种子，会命中响应缓存（ADR-0136）。
    - 每次生成后写 A/A 样本 JSONL（格式见下面「注意事项」），再调用 `runR6AaInstrument`（`dir` 用自己的运行目录）得到 G0 的 A/A 侧；G1 的两组配对（对放弃侧、对接受侧）各两种顺序判一次，汇总产出 `R6ReplayGateInput`。
    - sidecar 校验故事、分支点、玩家消息、swipe 下标、模型与种子；`done` 复用，`running` 与 `failed` 续跑；失败样本单独计数。
-5. 额度恢复（2026-11-17T11:44:35Z 之后）后，再申请 C1 长任务（`R6-T06-03`，9 个分支点 × 2 档位 × 30 轮）与 R6-T07.b 的批次长任务。
-6. 阻塞检查：M6-T99 仍等 HUMAN-15；HUMAN-03、HUMAN-16、HUMAN-17、HUMAN-18 不阻塞；HUMAN-19 阻塞真实批次。
+6. 阻塞检查：M6-T99 仍等 HUMAN-15；HUMAN-03、HUMAN-16、HUMAN-17、HUMAN-18、HUMAN-20、HUMAN-21 不阻塞；HUMAN-19 阻塞 R6-T06、R6-T99 与 W2-T04。
 
 ## 当前状态
-- 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1–P4、C-T01 至 C-T05、H-T00 至 H-T99、X1.a 至 X1.e、X2.a 至 X2.d、R6-T00 至 R6-T05、R6-T07、R6-T07.a。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1–P4、C-T01 至 C-T05、H-T00 至 H-T99、X1.a 至 X1.e、X2.a 至 X2.d、R6-T00 至 R6-T05、R6-T07、R6-T07.a、W0-T00。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 设计版本 v0.4（ADR-0139）。W 阶段任务顺序：W0-T00（完成）→ W0-T01 → W1 → W2 → W3 → W4 → R6 段（T07.b、T07.c、T07.d、T99）→ W5 → W6 → W7 → W8 → W9。
 - R6-T06 标 `[!]`（HUMAN-19）：剩余 C1 的 540 轮；B1 已完成的 `xianxia` 9 对作为参考样本，`yuwang` 与 `yinqi` 不补。
-- W0-T00 待做（`[ ]`），W1–W9 还未拆分；W0-T01（卡面图与人物立绘）依赖 W0-T00；R6-T07.b 至 R6-T07.d 待做；R6-T99 依赖它们与 R6-T06。
 - 兼容插件线：`st-content`、`st-mvu`、`st-ejs`、`st-helper-host` 全部完成（含一致性测试与共存评测）。
 - 数据库 schema 版本 50。本轮没有新增依赖。
 - 报告：`docs/dev/reports/P2.md`、`P3.md`、`P4.md`、`C-T01.md`、`C-T02.md`、`C-T03.md`、`C-T04.md`、`C-T05.md`、`H.md`、`X1.md`、`X2.md`。
@@ -33,16 +34,16 @@
 - R6 B1 缩样结果在 `.devloop/scratch/R6-T06/smoke/yuwang.json` 与 `.md`；批量脚本在同一目录（`run-b1.mjs`、`run-compare.mjs`、`plan-branches.mjs`）。`.devloop/` 已被 git 忽略。
 - R6 的结算提示词在本轮改过一次（ADR-0137）：冲突检查窗口不再带楼层 id。R6-T05 的深回合批次与 B1 的 `xianxia` 前 6 个样本在改前完成；预热结算只写各样本自己的副本。
 - 世界模型：默认 `ledger`；`wiki` 与 `temporal_graph` 已经可用，由故事设置 `worldModel` 选择，只有 `temporal_graph` 支持 `atStoryTime`。
-- 导演组织方式：默认 `mechanisms`（现有机制序列）；`bits` 已可用，由故事设置 `directorOrganization` 选择。X2 判定见 ADR-0134 与 `docs/dev/reports/X2.md`。
+- 导演组织方式：默认 `mechanisms`（现有机制序列）；`bits` 已可用，由故事设置 `directorOrganization` 选择。X2 判定见 ADR-0134 与 `docs/dev/reports/X2.md`。W4 会把两者演化为动作层加小品层。
 - X2 的输入与运行脚本在 `.devloop/scratch/X2.d/`：`inputs/`、`run-compare.mjs`、`summarize.mjs`、`runs/<slug>/`、`smoke/`。长任务状态在 `.devloop/jobs/X2.d-01.status.json`（退出码 0）。
 - X1 的原始数据在 `eval-private/reports/world-model-compare/`（含故事标题与回复，不进入仓库）；长任务脚本与 sidecar 在 `.devloop/scratch/X1.e/`。
 - 沙箱现状：`eval-private/st-sandbox/st` 有 36 个预设、68 张卡、89 个非驱动聊天片段；需要恢复原始预设时用 `sandbox --replace` 重建。
 - 私有比对批次：`compare-smoke4`（5 个组合，修复后）与更早的 `compare-smoke2`、`compare-smoke3`、`session324-sanitize`。
-- ADR-0088 至 ADR-0138 记录插件、沙箱、比对、兼容内容映射、EJS、沙箱执行、时间预算、流水线接入、模板生成、一致性评测、酒馆助手宿主、iframe 沙箱、STscript 子集、生成后台化、HTML 渲染、覆盖率口径、应用内助手、世界模型接口、实体档案、时序图谱、对比运行器、X1 判定、导演组织方式、剧情小品、X2 对比运行器、X2 判定、R6 预注册（v1 与 v2 改写）、评测调用输出预算、结算提示词楼层 id 的决策。
+- ADR-0088 至 ADR-0139 记录插件、沙箱、比对、兼容内容映射、EJS、沙箱执行、时间预算、流水线接入、模板生成、一致性评测、酒馆助手宿主、iframe 沙箱、STscript 子集、生成后台化、HTML 渲染、覆盖率口径、应用内助手、世界模型接口、实体档案、时序图谱、对比运行器、X1 判定、导演组织方式、剧情小品、X2 对比运行器、X2 判定、R6 预注册（v1 与 v2 改写）、评测调用输出预算、结算提示词楼层 id、v4 设计合并的决策。
 - HUMAN-03 待处理（不阻塞）：抽查 `eval-private/evalset/spotcheck.md` 里的事件题。
 - HUMAN-15 待处理（M6-T99 需要）：把秋叶整合包 v3.2 的 ComfyUI 启动在 `http://127.0.0.1:8188`，并导出一份 API 格式 workflow JSON 到 `eval-private/comfyui/` 或告知路径。
-- HUMAN-16、HUMAN-17、HUMAN-18 待处理（不阻塞）。
-- HUMAN-19 待处理（阻塞真实批次）：`bg` 渠道 402 `insufficient_balance`，额度 2026-11-17T11:44:35Z 重置；或把 `roles.settler`/`roles.planner` 指到可用路由。
+- HUMAN-16 至 HUMAN-18、HUMAN-20、HUMAN-21 待处理（不阻塞）。
+- HUMAN-19 待处理（阻塞 R6-T06、R6-T99、W2-T04）：`bg` 渠道 402 `insufficient_balance`，额度 2026-11-17T11:44:35Z 重置；或把 `roles.settler`/`roles.planner` 指到可用路由。
 
 ## 可重复命令
 - 门禁：`pnpm check`。
@@ -77,7 +78,9 @@
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
 - 私有数据（`eval-private/`、`data/`、`.env`）不能进入测试数据、提交、文档或日志；报告只写统计数字，不写对话原文。X1、X2 与 R6 的 JSON 含回复与答案，只能放在私有目录；`eval-private/reports/r6/b1/<slug>.md` 含故事标题，属于私有报告，仓库报告只能用 slug。
-- 一次性脚本不要提交：devloop 的 autosave 会把仓库里的残留文件一起提交，残留文件会进 `biome check` 并让门禁失败。`.devloop/scratch/` 下的脚本放在被忽略的目录里。
+- 一次性脚本不要提交：devloop 的 autosave 会把仓库里的残留文件一起提交，残留文件会进 `biome check` 并让门禁失败。`.devloop/scratch/` 下的脚本放在被忽略的目录里。`docs/proposals/v4-ui.html` 是原型，不进入构建、不提交截图脚本。
+- W 阶段的顺序写在 TASKS 里：W1–W4 → R6 段 → W5–W9。R6-T07.b 与 R6-T06 的真实批次需要 `background` 渠道，额度恢复前只能做代码与假客户端测试。
+- W2-T04 的切换条件是结算一致率不低于独立任务（ADR-0055 口径），不达标时保留独立任务并写 ADR；不得为了让场记上线而放宽对照。
 - R6 预注册 v2 在第一次 v2 批次运行后冻结：门槛、样本、指标、模型与种子都不改；必须调整时另写 v3、记 ADR、把评测轮次计数重置为 0。门槛常量与 `docs/dev/R6-PREREG.md` 必须逐项一致，`evaluateR6Gates` 不允许缺项回落。
 - v2 的判定状态：`pass`、`fail`、`insufficient`、`not-measurable`；G0 未通过或样本不足时 G1 与 G5 被替换成 `invalid`。`passed` 只在 G0 pass、G1–G4 pass、G5 pass 或不可测、G6 pass 或未证实时为 true；`unproven` = G5 不可测 + G6 未证实。
 - G0 的两项：A/A（43 个点、种子 1 与 2、完成 ≥ 36、Wilson 区间含 50%、换序不一致 ≤ 20%、排除 ≤ 30%、判定失败 ≤ 10%）与真人标注（F0-T03 同一批 195 对、完成 ≥ 165、一致率 ≥ 65%、Wilson 下界 > 50%、位置偏差 ≤ 10 个百分点、判定失败 ≤ 10%）。G0 失败时改进任务只指向裁判。
@@ -121,6 +124,11 @@
 - `pnpm exec biome check --write <文件>` 处理格式；不要手写格式。
 - 修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 的请求写进 HUMAN.md。
 - 不变量：I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖其他工作区包，I17 回合内插件钩子有时间预算，I18 插件权限必须声明。
+- v4 起台账写入分硬状态与软知识；每条事实的 `sourceQuote` 必须逐字出现在源楼层，校验失败整条拒绝（W2-T01）。`knowledge` 不再新增写入，由在场推导的知情标注取代，旧事实继续可读。
+- 场次是路径上的派生区间，不新增节点；边界由场记判定，`maxSceneFloors` 默认 12；分支切换后重算（W2-T02）。
+- 合并后台调用（场记）必须先通过结算一致率对照才能切默认；`gapPassEnabled` 与 `sceneLogEnabled` 在对照通过前保持关闭。
+- 导演的八种动作由程序选择，同一动作不连用三次；理由进 Trace 与 `explain`（W4）。
+- 重 roll 必须带原因，原因进入用户意志与偏好信号（W5）。
 - 结构化 JSON 请求一律使用 `NO_CONTINUATION`；正文写作与散文类后台输出保留续写。上下文摘要按结构化请求处理。
 - 世界模型只用故事设置 `worldModel` 选择；状态槽位的 `packKey` 必须带种类（`state:<kind>`）。
 - 导演组织方式只用故事设置 `directorOrganization` 选择；导演槽位持有 `DirectorEngine`，单轮强度覆盖用 `engine` 重建槽位。
