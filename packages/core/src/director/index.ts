@@ -10,6 +10,7 @@ export * from "./event-definition.js";
 export * from "./intensity.js";
 export * from "./notes.js";
 export * from "./opening.js";
+export * from "./organization.js";
 export * from "./pacing.js";
 export * from "./plan.js";
 export * from "./planner.js";

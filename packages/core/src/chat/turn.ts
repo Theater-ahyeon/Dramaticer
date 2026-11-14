@@ -334,7 +334,7 @@ function resolveTurnProviders(options: {
 		director: {
 			...createDirectorSlotProvider(options.store, {
 				config: resolveDirectorIntensity(director.config, requested),
-				mechanisms: director.mechanisms,
+				engine: director.engine,
 			}),
 			...(director.plugin === undefined ? {} : { plugin: director.plugin }),
 		},

@@ -8,6 +8,7 @@ import {
 	type DeclarativePlugin,
 	type DirectorConfig,
 	type DirectorMechanism,
+	type DirectorOrganizationKind,
 	type EmbeddingClient,
 	type EventPoolUpsertResult,
 	type HistoryBlockPolicy,
@@ -172,6 +173,8 @@ export interface CreateChatProvidersOptions {
 	readonly embedder?: EmbeddingClient | null;
 	readonly reranker?: RerankClient | null;
 	readonly directorConfig?: DirectorConfig;
+	/** 故事设置里的导演组织方式；不设置时使用现有机制序列。 */
+	readonly directorOrganization?: DirectorOrganizationKind;
 	readonly mechanisms?: readonly DirectorMechanism[];
 	/** 故事设置里的历史块策略；不设置时使用默认策略。 */
 	readonly historyBlockPolicy?: HistoryBlockPolicy;
@@ -193,6 +196,7 @@ export async function createChatProviders(
 		embedder: options.embedder,
 		reranker: options.reranker,
 		directorConfig: options.directorConfig,
+		directorOrganization: options.directorOrganization,
 		mechanisms: options.mechanisms,
 		historyBlockPolicy: options.historyBlockPolicy,
 		worldModel: options.worldModel,

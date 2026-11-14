@@ -224,6 +224,7 @@ export async function runChatCli(
 						},
 						historyBlockPolicy: settings.historyBlockPolicy,
 						worldModel: settings.worldModel,
+						directorOrganization: settings.directorOrganization,
 					});
 		const result = await runChatTurn({
 			store,

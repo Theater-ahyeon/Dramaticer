@@ -3,29 +3,32 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-14 会话 372：X1.e 判定。长任务 X1.e-01 退出码 0、耗时 181.1 分钟，3 个故事 × 3 种候选 × 3 次重复 × 8 轮全部完成，没有运行失败。合计矛盾率 `ledger` 39.2%（38/97，95% 区间 30.1%–49.1%）、`wiki` 41.6%（32/77）、`temporal_graph` 45.7%（37/81）；盲测胜率 `wiki` 47.5%（66/139）、`temporal_graph` 51.5%（69/134）；编造题与时间点探针样本都是 0；裁判位置互换的一致性合计约 30%。判定保持 `ledger` 为默认，两个候选留在 `worldModel` 开关后。写入 ADR-0130、`docs/dev/reports/X1.md` 与 DESIGN §14.4 的判定行；没有代码改动。
+- 2026-11-14 会话 373：X2.a 先按 T00 规则把 X2 细化成 X2.a 至 X2.d，然后实现统一导演评估接口与故事设置开关。新增 `packages/core/src/director/organization.ts`（`DirectorOrganizationKind` 取 `mechanisms`、`bits`，`DirectorEngine.evaluate`，`createDirectorEngine`）；现有机制序列包成 `mechanisms` 引擎，行为与 `evaluateDirector` 一致；`bits` 在 X2.b 之前由工厂直接失败。导演槽位改为持有引擎，`packKey` 带组织方式与机制名，单轮强度覆盖复用同一引擎。故事设置新增 `directorOrganization`（迁移 v49，默认 `mechanisms`），server、`dramaticer chat`、回放与评测入口传入设置。ADR-0131；新增 6 个测试；门禁通过（252 个测试文件、2,195 个测试、5 个跳过）。
 
-## 下一步（会话 373 先做）
-1. X1 的全部子任务已完成。按 TASKS 从上往下，下一个可做任务是 **X2 Director 组织方式对比**，它现在只有一个粗粒度条目：先按 T00 规则在 TASKS 里把它细化成 `X2.a`（候选接口与故事设置开关）、`X2.b`（剧情小品引擎）、`X2.c`（对比运行器）、`X2.d`（实跑与判定），然后只做 `X2.a`。
-2. X2 的设计依据是 DESIGN §14.4 与 R4 的导演实现（`packages/core/src/director`）。条件判断准确率必须用固定样本逐条核对，不能只靠裁判自评；盲测复用 R2 的 `runPreferenceSample` 与 `summarizePreferenceComparisons`。
-3. X1 的重评条件写在 ADR-0130：源数据有可出题的时间点事实、编造题样本、更高的裁判一致性、更大的判定样本，满足后按同一规则与同一口径再跑一次。
+## 下一步（会话 374 先做）
+1. 按 TASKS 从上往下，下一个可做任务是 **X2.b 剧情小品引擎**。它在 `director/organization.ts` 的 `bits` 分支里实现，必须替换当前的“尚未实现”抛错。
+2. X2.b 的对象设计：小品只有一种对象，字段为 id、条件（自然语言或台账查询）、指令、优先级、冷却楼层、顺序约束、可否重复与兜底；卡作者在 `extensions.dramaticer` 里附带自己的小品。条件解析与校验放在 `director/card-extension.ts` 的扩展解析里，未知字段、重复 id、非法条件抛错并指出路径。
+3. 自然语言条件在间隙里一次调用批量判断，结果按楼层缓存；程序判定台账查询。冷却、顺序、可否重复与兜底由程序执行；同一层只给最高优先级的一条建议，决策记录写清命中与跳过原因（I9、I11、I13）。
+4. X2.c 运行器与 X2.d 判定在 X2.b 之后：条件判断准确率必须用固定样本逐条核对，不能只靠裁判自评；盲测复用 R2 的 `runPreferenceSample` 与 `summarizePreferenceComparisons`。
 
 ## 当前状态
-- 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1–P4、C-T01 至 C-T05、H-T00 至 H-T99、X1.a 至 X1.e。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1–P4、C-T01 至 C-T05、H-T00 至 H-T99、X1.a 至 X1.e、X2.a。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
 - 兼容插件线：`st-content`、`st-mvu`、`st-ejs`、`st-helper-host` 全部完成（含一致性测试与共存评测）。
-- 数据库 schema 版本 48。本轮没有新增依赖。
+- 数据库 schema 版本 49。本轮没有新增依赖。
 - 报告：`docs/dev/reports/P2.md`、`P3.md`、`P4.md`、`C-T01.md`、`C-T02.md`、`C-T03.md`、`C-T04.md`、`C-T05.md`、`H.md`、`X1.md`。
 - 世界模型：默认 `ledger`；`wiki` 与 `temporal_graph` 已经可用，由故事设置 `worldModel` 选择，只有 `temporal_graph` 支持 `atStoryTime`。
+- 导演组织方式：默认 `mechanisms`（现有机制序列）；`bits` 已登记在设置与工厂里，X2.b 之前调用会直接失败。
 - X1 的原始数据在 `eval-private/reports/world-model-compare/`（含故事标题与回复，不进入仓库）；长任务脚本与 sidecar 在 `.devloop/scratch/X1.e/`。
 - 沙箱现状：`eval-private/st-sandbox/st` 有 36 个预设、68 张卡、89 个非驱动聊天片段；预设连接字段已被驱动改写为录制端点与桩模型。需要恢复原始预设时用 `sandbox --replace` 重建。
 - 私有比对批次：`compare-smoke4`（5 个组合，修复后）与更早的 `compare-smoke2`、`compare-smoke3`、`session324-sanitize`。
-- ADR-0088 至 ADR-0130 记录插件、沙箱、比对、兼容内容映射、EJS、沙箱执行、时间预算、流水线接入、模板生成、一致性评测、酒馆助手宿主、iframe 沙箱、STscript 子集、生成后台化、HTML 渲染、覆盖率口径、应用内助手、世界模型接口、实体档案、时序图谱、对比运行器与 X1 判定的决策。
+- ADR-0088 至 ADR-0131 记录插件、沙箱、比对、兼容内容映射、EJS、沙箱执行、时间预算、流水线接入、模板生成、一致性评测、酒馆助手宿主、iframe 沙箱、STscript 子集、生成后台化、HTML 渲染、覆盖率口径、应用内助手、世界模型接口、实体档案、时序图谱、对比运行器、X1 判定与导演组织方式的决策。
 - HUMAN-03 待处理（不阻塞）：抽查 `eval-private/evalset/spotcheck.md` 里的事件题。
 - HUMAN-15 待处理（M6-T99 需要）：把秋叶整合包 v3.2 的 ComfyUI 启动在 `http://127.0.0.1:8188`，并导出一份 API 格式 workflow JSON 到 `eval-private/comfyui/` 或告知路径。
 - HUMAN-16、HUMAN-17、HUMAN-18 待处理（不阻塞）：临时目录清理、ST-Prompt-Template 与酒馆助手上游许可证确认。
 
 ## 可重复命令
 - 门禁：`pnpm check`。
+- X2.a 目标测试：`pnpm exec vitest run packages/core/test/director-organization.test.ts packages/core/test/story-settings.test.ts packages/core/test/lore.test.ts packages/core/test/director.test.ts packages/core/test/assistant-store.test.ts packages/web/test/settings-form.test.ts`。
 - X1 目标测试：`pnpm exec vitest run packages/st-compat/test/world-model-compare.test.ts`。
 - X1 长任务（重跑会复用 sidecar）：`node .devloop/scratch/X1.e/run-compare.mjs`。
 - X1 单个故事：`node packages/st-compat/dist/evalset/world-model-compare-cli.js --db eval-private/world-model-compare/source/<slug>.db --story <故事> --messages .devloop/scratch/X1.e/inputs/<slug>.messages.json --questions .devloop/scratch/X1.e/inputs/<slug>.questions.jsonl --rounds 8 --repeat 3 --seed 1 --dir .devloop/scratch/X1.e/runs/<slug>`。
@@ -37,7 +40,7 @@
 - 重建沙箱数据：`pnpm --filter @dramaticer/st-compat build && node packages/st-compat/dist/st-bench/cli.js sandbox --source "D:/SillyTavern" --replace`。
 - 生成组合清单：`node packages/st-compat/dist/st-bench/cli.js plan --sandbox eval-private/st-sandbox/st --batch <批次>`。
 - 逐条比对：`node packages/st-compat/dist/st-bench/cli.js compare --sandbox eval-private/st-sandbox/st --batch <批次> [--limit <数量>]`。
-- 不变量：I1–I18 的定义见 `AGENTS.md`；世界模型实验不改变 I5、I6、I9、I12、I15。
+- 不变量：I1–I18 的定义见 `AGENTS.md`；世界模型与导演组织方式实验不改变 I5、I6、I9、I11、I12、I15。
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
@@ -50,6 +53,9 @@
 - 结构化 JSON 请求一律使用 `NO_CONTINUATION`；正文写作与散文类后台输出保留续写。上下文摘要按结构化请求处理，也使用 `NO_CONTINUATION`。
 - web 源码不能 import `@dramaticer/core` 的运行时值（会把 `better-sqlite3` 与 `node:*` 打进前端包导致整页白屏），类型导入可以；助手类型从 `@dramaticer/protocol` 取。
 - 世界模型只用故事设置 `worldModel` 选择；新增调用方传 `settings.worldModel`，不要自己判断种类或回落到台账。状态槽位的 `packKey` 必须带种类（`state:<kind>`），否则不同表示会共用上下文包指纹。
+- 导演组织方式只用故事设置 `directorOrganization` 选择；新增调用方传 `settings.directorOrganization`。导演槽位持有 `DirectorEngine`，`packKey` 带组织方式与机制名；单轮强度覆盖用 `engine` 重建槽位，不要重新按种类构造，否则会丢掉引擎里的缓存状态。
+- `createDirectorEngine("bits")` 在 X2.b 实现前必须继续抛错并指出任务，不要改成回落到 `mechanisms`。
+- `DirectorEngine.evaluate` 负责写本楼层的决策记录；导演关闭时返回 null 且不写记录。`mechanisms` 引擎的决策记录仍由 `evaluateDirector` 生成。
 - `WorldModel.read` 的 `atStoryTime` 只有 `temporal_graph` 支持；台账与 wiki 会直接抛错。时间点标签必须是在当前路径上出现过的文字，顺序按首次出现建立（ADR-0128）；评测探针不要假设它等价于真实时间轴。
 - 时序图谱的失效段只在当前视图的 `sections` 里；时间点查询的 `state` 由命中的版本累加，`sections` 为空。`versions(nodeId)` 是调试与评测入口，不在状态槽位里使用。
 - 实体档案（`wiki`）的写入路径是 `["profile", "<人物>"]`，其余路径按台账 diff 校验；档案实体必须是台账 `character` 里的人物，人物字段逐项写，整对象写人物会被 `validateLedgerDiff` 拒绝。

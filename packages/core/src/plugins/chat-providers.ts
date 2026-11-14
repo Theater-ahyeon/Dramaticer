@@ -7,6 +7,7 @@ import {
 	CONTEXT_SLOT_NAMES,
 	type ContextSlotName,
 } from "../context/template.js";
+import type { DirectorOrganizationKind } from "../director/organization.js";
 import type { DirectorConfig, DirectorMechanism } from "../director/types.js";
 import type { EmbeddingClient } from "../llm/embeddings.js";
 import type { RerankClient } from "../llm/rerank.js";
@@ -101,6 +102,7 @@ export interface StandardChatSlotsOptions {
 	readonly embedder?: EmbeddingClient | null;
 	readonly reranker?: RerankClient | null;
 	readonly directorConfig?: DirectorConfig;
+	readonly directorOrganization?: DirectorOrganizationKind;
 	readonly mechanisms?: readonly DirectorMechanism[];
 	/** 块的 prompt 视图策略；不设置时使用默认策略。 */
 	readonly historyBlockPolicy?: HistoryBlockPolicy;
@@ -136,6 +138,7 @@ export async function createStandardChatSlots(
 		[DIRECTOR_SLOT_PLUGIN]: {
 			store: options.store,
 			config: options.directorConfig,
+			organization: options.directorOrganization,
 			mechanisms: options.mechanisms,
 		},
 		[USER_WILL_SLOT_PLUGIN]: { store: options.store },

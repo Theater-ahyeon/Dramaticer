@@ -178,6 +178,7 @@ export function createChatReplayGenerator(
 			card: options.card,
 			embedder: options.embedder,
 			directorConfig: options.directorConfig,
+			directorOrganization: settings.directorOrganization,
 			mechanisms: options.mechanisms,
 			historyBlockPolicy: settings.historyBlockPolicy,
 			worldModel: settings.worldModel,

@@ -62,6 +62,7 @@ function settingsFixture(
 		deepRecentToolSteps: 4,
 		viewpoint: null,
 		directorConfig: DIRECTOR,
+		directorOrganization: "mechanisms",
 		historyBlockPolicy: { mode: "default", overrides: {} },
 		gapPassEnabled: false,
 		gapPlanSeconds: 212,

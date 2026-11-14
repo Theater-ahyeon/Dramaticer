@@ -128,6 +128,7 @@ export class StoryRuntimeManager {
 			embedder,
 			reranker,
 			directorConfig: settings.directorConfig,
+			directorOrganization: settings.directorOrganization,
 			historyBlockPolicy: settings.historyBlockPolicy,
 			worldModel: settings.worldModel,
 		});

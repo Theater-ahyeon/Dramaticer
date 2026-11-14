@@ -23,6 +23,11 @@ import {
 } from "../context/template.js";
 import { assertDirectorConfig } from "../director/evaluate.js";
 import {
+	DEFAULT_DIRECTOR_ORGANIZATION,
+	type DirectorOrganizationKind,
+	assertDirectorOrganizationKind,
+} from "../director/organization.js";
+import {
 	DEFAULT_DIRECTOR_CONFIG,
 	type DirectorConfig,
 } from "../director/types.js";
@@ -79,6 +84,8 @@ export interface StorySettings {
 	/** 知情者视角；为空表示全知。 */
 	readonly viewpoint: string | null;
 	readonly directorConfig: DirectorConfig;
+	/** 导演的组织方式；默认沿用现有机制序列，对比实验按它切换候选。 */
+	readonly directorOrganization: DirectorOrganizationKind;
 	/** 历史槽位的块 prompt 视图策略。 */
 	readonly historyBlockPolicy: HistoryBlockPolicy;
 	/** 间隙里用一次合并调用代替几个独立后台任务；默认关闭。 */
@@ -113,6 +120,7 @@ export interface StorySettingsUpdate {
 	readonly deepRecentToolSteps?: number;
 	readonly viewpoint?: string | null;
 	readonly directorConfig?: DirectorConfig;
+	readonly directorOrganization?: DirectorOrganizationKind;
 	readonly historyBlockPolicy?: HistoryBlockPolicy;
 	readonly gapPassEnabled?: boolean;
 	readonly gapPlanSeconds?: number;
@@ -141,6 +149,7 @@ export const STORY_SETTINGS_UPDATE_KEYS: readonly (keyof StorySettingsUpdate)[] 
 		"deepRecentToolSteps",
 		"viewpoint",
 		"directorConfig",
+		"directorOrganization",
 		"historyBlockPolicy",
 		"gapPassEnabled",
 		"gapPlanSeconds",
@@ -163,6 +172,7 @@ export const DEFAULT_STORY_SETTINGS_VALUES = {
 	deepContextTokenLimit: DEFAULT_DEEP_CONTEXT_TOKEN_LIMIT,
 	deepRecentToolSteps: DEFAULT_DEEP_RECENT_TOOL_STEPS,
 	directorConfig: DEFAULT_DIRECTOR_CONFIG,
+	directorOrganization: DEFAULT_DIRECTOR_ORGANIZATION,
 	historyBlockPolicy: DEFAULT_HISTORY_BLOCK_POLICY,
 	gapPassEnabled: false,
 	gapPlanSeconds: 212,
@@ -389,6 +399,12 @@ export function assertStorySettingsUpdate(update: StorySettingsUpdate): void {
 	}
 	if (update.directorConfig !== undefined) {
 		assertDirectorConfig(update.directorConfig);
+	}
+	if (update.directorOrganization !== undefined) {
+		assertDirectorOrganizationKind(
+			update.directorOrganization,
+			"故事设置的 directorOrganization",
+		);
 	}
 	if (update.historyBlockPolicy !== undefined) {
 		assertHistoryBlockPolicy(

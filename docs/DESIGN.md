@@ -386,6 +386,7 @@ flowchart TB
 - **只有显著胜出才切换**：主要指标不劣于现有实现，且盲测胜率明显高于对照，才替换默认方案；否则保留现有实现，实验代码留在开关后面或删除。
 - **X1 判定**：在 3 个对话上，`wiki` 与 `temporal_graph` 的矛盾率都高于台账（41.6%、45.7% 对 39.2%），盲测胜率分别为 47.5% 与 51.5%（非平局判定），都没有达到切换条件；默认保持 `ledger`，两个候选留在 `worldModel` 开关后。数字、样本与重评条件见 ADR-0130 与 `docs/dev/reports/X1.md`。
 - 三个候选通过 `packages/core/src/world-model` 的同一组读写方法切换，用故事设置 `worldModel` 选择；默认 `ledger`，调用方只传种类。
+- X2 的两个候选通过 `packages/core/src/director/organization.ts` 的 `DirectorEngine` 切换，用故事设置 `directorOrganization` 选择；默认 `mechanisms`（现有方案与序列），调用方只传种类。
 - 实验不改 R3 的不变量：快回合与深回合仍由玩家手动切换，导演实时选择仍由程序完成（I6、I9）。
 
 ### 14.5 偏好信号与自动试玩

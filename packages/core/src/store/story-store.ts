@@ -89,6 +89,7 @@ import {
 	applyDirectorNoteDiffs,
 	assertDirectorNoteDiffs,
 } from "../director/notes.js";
+import { assertDirectorOrganizationKind } from "../director/organization.js";
 import {
 	type DirectorBeatState,
 	type DirectorPlan,
@@ -331,6 +332,7 @@ interface StorySettingsRow {
 	readonly deep_recent_tool_steps: number;
 	readonly viewpoint: string | null;
 	readonly director_config: string;
+	readonly director_organization: string;
 	readonly history_block_policy: string;
 	readonly gap_pass_enabled: number;
 	readonly gap_plan_seconds: number;
@@ -1386,6 +1388,10 @@ function rowToStorySettings(row: StorySettingsRow): StorySettings {
 		deepRecentToolSteps: row.deep_recent_tool_steps,
 		viewpoint: row.viewpoint,
 		directorConfig: parsedDirectorConfig,
+		directorOrganization: assertDirectorOrganizationKind(
+			row.director_organization,
+			`故事 ${row.story_id} 的 directorOrganization`,
+		),
 		historyBlockPolicy: parsedHistoryBlockPolicy,
 		gapPassEnabled: readBooleanColumn(
 			row.gap_pass_enabled,
@@ -2435,6 +2441,7 @@ export class StoryStore {
 			deepRecentToolSteps: DEFAULT_STORY_SETTINGS_VALUES.deepRecentToolSteps,
 			viewpoint: null,
 			directorConfig: DEFAULT_STORY_SETTINGS_VALUES.directorConfig,
+			directorOrganization: DEFAULT_STORY_SETTINGS_VALUES.directorOrganization,
 			historyBlockPolicy: DEFAULT_STORY_SETTINGS_VALUES.historyBlockPolicy,
 			gapPassEnabled: DEFAULT_STORY_SETTINGS_VALUES.gapPassEnabled,
 			gapPlanSeconds: DEFAULT_STORY_SETTINGS_VALUES.gapPlanSeconds,
@@ -2538,6 +2545,10 @@ export class StoryStore {
 				update.directorConfig !== undefined
 					? update.directorConfig
 					: current.directorConfig,
+			directorOrganization:
+				update.directorOrganization !== undefined
+					? update.directorOrganization
+					: current.directorOrganization,
 			historyBlockPolicy:
 				update.historyBlockPolicy !== undefined
 					? update.historyBlockPolicy
@@ -2573,8 +2584,8 @@ export class StoryStore {
 					 deep_context_token_limit, deep_recent_tool_steps, viewpoint,
 					 director_config, history_block_policy, gap_pass_enabled,
 					 gap_plan_seconds, image_config, plugin_overrides, world_model,
-					 updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+					 director_organization, updated_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 				ON CONFLICT(story_id) DO UPDATE SET
 					card_name = excluded.card_name,
 					character_prompt = excluded.character_prompt,
@@ -2600,6 +2611,7 @@ export class StoryStore {
 					image_config = excluded.image_config,
 					plugin_overrides = excluded.plugin_overrides,
 					world_model = excluded.world_model,
+					director_organization = excluded.director_organization,
 					updated_at = excluded.updated_at`,
 			)
 			.run(
@@ -2631,6 +2643,7 @@ export class StoryStore {
 					"故事设置的 pluginOverrides",
 				),
 				next.worldModel,
+				next.directorOrganization,
 				updatedAt,
 			);
 		const saved = this.getStorySettings(storyId);

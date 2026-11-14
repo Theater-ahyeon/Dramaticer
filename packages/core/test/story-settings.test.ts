@@ -63,6 +63,7 @@ describe("故事设置", () => {
 			deepRecentToolSteps: 4,
 			viewpoint: null,
 			directorConfig: DEFAULT_DIRECTOR_CONFIG,
+			directorOrganization: "mechanisms",
 			historyBlockPolicy: DEFAULT_HISTORY_BLOCK_POLICY,
 			gapPassEnabled: false,
 			gapPlanSeconds: 212,
@@ -98,6 +99,7 @@ describe("故事设置", () => {
 			deepRecentToolSteps: 6,
 			viewpoint: "山神",
 			directorConfig: { ...DEFAULT_DIRECTOR_CONFIG, mode: "off" },
+			directorOrganization: "bits",
 			historyBlockPolicy: {
 				mode: "full",
 				overrides: { 选项: { kind: "drop" } },
@@ -130,6 +132,7 @@ describe("故事设置", () => {
 				deepRecentToolSteps: 6,
 				viewpoint: "山神",
 				directorConfig: { mode: "off" },
+				directorOrganization: "bits",
 				historyBlockPolicy: {
 					mode: "full",
 					overrides: { 选项: { kind: "drop" } },
@@ -302,6 +305,7 @@ describe("故事设置", () => {
 				"mode",
 			],
 			[{ historyBlockPolicy: { mode: "huge" } as never }, "historyBlockPolicy"],
+			[{ directorOrganization: "scripts" as never }, "directorOrganization"],
 			[{ gapPassEnabled: "yes" as never }, "gapPassEnabled"],
 			[{ gapPlanSeconds: -1 }, "gapPlanSeconds"],
 			[{ gapPlanSeconds: 1.5 }, "gapPlanSeconds"],

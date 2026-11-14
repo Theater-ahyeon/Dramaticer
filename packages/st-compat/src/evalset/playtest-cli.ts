@@ -209,6 +209,7 @@ export async function runPlaytestCli(
 							directorConfig,
 							historyBlockPolicy: settings.historyBlockPolicy,
 							worldModel: settings.worldModel,
+							directorOrganization: settings.directorOrganization,
 						})
 					).providers;
 		await mkdir(path.dirname(parsed.outPath), { recursive: true });

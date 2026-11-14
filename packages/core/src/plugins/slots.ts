@@ -12,6 +12,7 @@ import {
 	createSummarySlotProvider,
 	createUserWillSlotProvider,
 } from "../chat/providers.js";
+import type { DirectorOrganizationKind } from "../director/organization.js";
 import type { DirectorConfig, DirectorMechanism } from "../director/types.js";
 import type { EmbeddingClient } from "../llm/embeddings.js";
 import type { RerankClient } from "../llm/rerank.js";
@@ -83,6 +84,7 @@ export interface LoreSlotConfig {
 export interface DirectorSlotConfig {
 	readonly store: StoryStore;
 	readonly config?: DirectorConfig;
+	readonly organization?: DirectorOrganizationKind;
 	readonly mechanisms?: readonly DirectorMechanism[];
 }
 
@@ -267,6 +269,9 @@ export const directorSlotPlugin: PluginDefinition = {
 			"director",
 			createDirectorSlotProvider(store, {
 				config: values.config as DirectorConfig | undefined,
+				organization: values.organization as
+					| DirectorOrganizationKind
+					| undefined,
 				mechanisms: values.mechanisms as
 					| readonly DirectorMechanism[]
 					| undefined,

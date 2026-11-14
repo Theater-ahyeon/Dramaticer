@@ -527,6 +527,7 @@ async function runCandidate(
 			characterPrompt: settings.characterPrompt,
 			embedder: options.embedder ?? null,
 			directorConfig: settings.directorConfig,
+			directorOrganization: settings.directorOrganization,
 			historyBlockPolicy: settings.historyBlockPolicy,
 			worldModel: options.kind,
 		});

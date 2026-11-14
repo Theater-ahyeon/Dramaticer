@@ -2085,3 +2085,17 @@
   - 没有代码改动，默认行为与 X1.a 之后一致。
   - 统计版报告 `docs/dev/reports/X1.md`；原始运行记录与报告在 `eval-private/reports/world-model-compare/`，含故事标题与回复，不进入仓库。
   - R6 的效果门槛以 `ledger` 为基线运行；X1 的实验代码留在 `packages/core/src/world-model` 内，由故事设置选择。
+
+## ADR-0131 导演组织方式的统一评估接口与开关（2026-11-14）
+
+- **背景**：X2 要比较现有「方案与序列加每轮机制选择」与「剧情小品引擎」。两种组织方式的内部结构完全不同：前者每轮按注册顺序评估固定机制，后者在间隙里一次批量判断条件，再按冷却、顺序与兜底选一条。如果对比实验各自改槽位、决策记录与调用方，差异会混入实现路径，也无法保证两组只在组织方式上不同。
+- **决定**：
+  - 新增 `packages/core/src/director/organization.ts`：`DirectorOrganizationKind` 取 `mechanisms`、`bits`，`DirectorEngine` 只暴露 `kind`、`mechanismNames` 与 `evaluate({store, storyId, nodeId, config})`。评估返回可选的 `DirectorSuggestion`，决策记录的写入由引擎负责；导演关闭时返回 null 且不写记录。
+  - `mechanisms` 引擎把现有机制序列包起来，内部直接调用 `evaluateDirector`，机制集合与 `evaluateDirector` 的默认值一致；行为、决策记录与 Trace 来源与改动前相同。
+  - 导演槽位持有引擎而不是机制数组；`packKey` 由配置、组织方式与机制名组成，避免两种组织方式共用同一个上下文包指纹。单轮强度覆盖重建槽位时复用同一引擎，不重新构造。
+  - 故事设置新增 `directorOrganization`（迁移 v49），默认 `mechanisms`，写入校验种类；server、`dramaticer chat`、回放与评测入口把设置传入槽位。`bits` 在 X2.b 实现前由工厂直接失败并指出任务，不回落到机制序列。
+  - X2 拆为 X2.a 至 X2.d：接口与开关、剧情小品引擎、对比运行器、在 3 个对话上运行并判定。
+- **影响**：
+  - 新增 `packages/core/src/director/organization.ts` 与 `packages/core/test/director-organization.test.ts` 6 个测试；迁移 v49 给 `story_settings` 增加 `director_organization`，schema 版本变为 49。
+  - `DirectorSlotProvider` 的 `mechanisms` 字段改为 `engine`；单轮强度覆盖与槽位插件走同一接口。既有调用方传入的 `mechanisms` 仍然有效，会被包进机制型引擎。
+  - 没有新增依赖；导演实时选择仍由程序完成，引擎的求值不调用模型（I9）；`bits` 的自然语言条件判断属于间隙后台工作，X2.b 按 I11 实现。

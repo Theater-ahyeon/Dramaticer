@@ -1496,6 +1496,14 @@ export function buildMigrations(
 				END`,
 			],
 		},
+		{
+			version: 49,
+			description: "导演的组织方式：现有机制序列或剧情小品引擎",
+			statements: [
+				`ALTER TABLE story_settings ADD COLUMN director_organization TEXT NOT NULL
+					DEFAULT 'mechanisms' CHECK (director_organization IN ('mechanisms', 'bits'))`,
+			],
+		},
 	];
 }
 
