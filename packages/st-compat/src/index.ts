@@ -53,6 +53,7 @@ export * from "./st-bench/plan.js";
 export * from "./st-bench/recorder.js";
 export * from "./st-bench/sandbox.js";
 export * from "./world-info.js";
+export * from "./worldbook-classify.js";
 
 export interface CompatInfo {
 	readonly format: "sillytavern";

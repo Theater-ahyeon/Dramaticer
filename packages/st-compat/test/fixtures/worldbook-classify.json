@@ -1,0 +1,92 @@
+{
+	"entries": {
+		"0": {
+			"uid": 0,
+			"key": [],
+			"comment": "世界背景",
+			"content": "灵潮退去三百年后，修行者依靠旧时代的遗物行走世间。",
+			"constant": true
+		},
+		"1": {
+			"uid": 1,
+			"key": ["苏瑾", "阿瑾"],
+			"comment": "苏瑾",
+			"content": "青云宗外门弟子，随身携带一枚残缺的铜镜，遇水会发热。",
+			"selective": true
+		},
+		"2": {
+			"uid": 2,
+			"key": ["断魂崖"],
+			"comment": "断魂崖",
+			"content": "断魂崖"
+		},
+		"3": {
+			"uid": 3,
+			"key": ["战斗", "交手"],
+			"comment": "战斗规则",
+			"content": "攻击检定：掷 d20，加攻击力，对抗难度。\n伤害 = 攻击力 - 防御力。\n每次使用法术消耗 3 点灵力。"
+		},
+		"4": {
+			"uid": 4,
+			"key": [],
+			"comment": "变量初始值",
+			"content": "[InitVar]\n角色.灵力 = 100\n角色.声望 = 0",
+			"constant": true
+		},
+		"5": {
+			"uid": 5,
+			"key": ["大比"],
+			"comment": "阶段设定",
+			"content": "<% if (getvar('章节') === '第二章') { %>\n此时宗门大比已经开始。\n<% } %>",
+			"selective": true
+		},
+		"6": {
+			"uid": 6,
+			"key": ["城门", "求援"],
+			"comment": "第三章 舞台",
+			"content": "本章开始时，城门口出现求援的散修。",
+			"selective": true
+		},
+		"7": {
+			"uid": 7,
+			"key": [],
+			"comment": "写作要求",
+			"content": "回复时使用第三人称，禁止出现现代词汇，正文保持克制。",
+			"constant": true
+		},
+		"8": {
+			"uid": 8,
+			"key": [],
+			"comment": "状态栏模板",
+			"content": "<div class=\"status\"><span>灵力</span></div>",
+			"constant": true
+		},
+		"9": {
+			"uid": 9,
+			"key": [],
+			"comment": "开局选项",
+			"content": "可选模式：\n1. 散修出身\n2. 宗门弟子",
+			"constant": true
+		},
+		"10": {
+			"uid": 10,
+			"key": [],
+			"comment": "历史记录表",
+			"content": "| 楼层 | 经过 |\n| --- | --- |\n| 12 | 初入宗门 |",
+			"constant": true
+		},
+		"11": {
+			"uid": 11,
+			"key": ["苏瑾", "宗门"],
+			"comment": "宗门人物与规则",
+			"content": "苏瑾：青云宗外门弟子。\n战斗规则：攻击检定掷 d20。\n<% if (getvar('入魔') === true) { %>\n苏瑾的瞳色会变红。\n<% } %>",
+			"selective": true
+		},
+		"12": {
+			"uid": 12,
+			"key": [],
+			"comment": "附录甲",
+			"content": "作者在整理笔记时留下的一段说明文字，没有可以识别的运行时标记，也没有可以归入的任何一类内容。"
+		}
+	}
+}
