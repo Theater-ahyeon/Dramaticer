@@ -9,6 +9,7 @@ import {
 	MEMORY_SLOT_PLUGIN,
 	PERSONA_SLOT_PLUGIN,
 	RAW_HISTORY_SLOT_PLUGIN,
+	SCENE_CARD_SLOT_PLUGIN,
 	SCENE_SLOT_PLUGIN,
 	STATE_SLOT_PLUGIN,
 	SUMMARY_SLOT_PLUGIN,
@@ -70,6 +71,7 @@ describe("内置槽位插件", () => {
 			memory: [MEMORY_SLOT_PLUGIN],
 			lore: [LORE_SLOT_PLUGIN],
 			scene: [SCENE_SLOT_PLUGIN],
+			scene_card: [SCENE_CARD_SLOT_PLUGIN],
 			director: [DIRECTOR_SLOT_PLUGIN],
 			user_will: [USER_WILL_SLOT_PLUGIN],
 		});
@@ -80,6 +82,7 @@ describe("内置槽位插件", () => {
 			"lore",
 			"memory",
 			"scene",
+			"scene_card",
 			"state",
 			"summary",
 			"user_will",

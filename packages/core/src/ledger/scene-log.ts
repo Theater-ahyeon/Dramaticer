@@ -16,6 +16,7 @@ import { type LlmMessage, NO_CONTINUATION } from "../llm/types.js";
 import { parseJsonOutputObject } from "../memory/json-output.js";
 import type { StoryStore } from "../store/story-store.js";
 import type { StateDiffOp, StoryTime, TimelineNode } from "../timeline.js";
+import { readSceneSegments } from "./scenes.js";
 import {
 	type FloorProposals,
 	LEDGER_PATH_GUIDE,
@@ -47,11 +48,28 @@ const RESPONSE_KEYS = [
 	"states",
 	"present",
 	"sceneEnds",
+	"sceneCard",
 	"bits",
 	"conditions",
 ] as const;
 
 const CONDITION_KEYS = ["id", "matched", "reason"] as const;
+
+const SCENE_CARD_KEYS = ["present", "change"] as const;
+
+const SCENE_CARD_PRESENT_KEYS = ["who", "want"] as const;
+
+/** 场面卡里一个在场者：谁、此刻想要什么。 */
+export interface SceneCardActor {
+	readonly who: string;
+	readonly want: string;
+}
+
+/** 一场开始时写下的场面卡；这一场结束时应该改变什么也在这里。 */
+export interface SceneCard {
+	readonly present: readonly SceneCardActor[];
+	readonly change: string;
+}
 
 /** 一条通过引文校验的硬状态提案；引文逐字摘自任务楼层的原文。 */
 export interface SceneLogState {
@@ -86,6 +104,8 @@ export interface SceneLog {
 	readonly beat: string;
 	readonly present: readonly string[];
 	readonly sceneEnds: boolean;
+	/** 这一楼开了一个新场时写下的场面卡；其余楼层为 null。 */
+	readonly sceneCard: SceneCard | null;
 	readonly bits: readonly string[];
 	readonly conditions: readonly SceneLogConditionJudgment[];
 	readonly states: readonly SceneLogState[];
@@ -100,12 +120,41 @@ export interface NewSceneLog {
 	readonly beat: string;
 	readonly present: readonly string[];
 	readonly sceneEnds: boolean;
+	readonly sceneCard: SceneCard | null;
 	readonly bits: readonly string[];
 	readonly conditions: readonly SceneLogConditionJudgment[];
 	readonly states: readonly SceneLogState[];
 	readonly quotes: SceneLogQuoteStats;
 	readonly repairs: readonly LedgerRepair[];
 	readonly createdAt?: string;
+}
+
+/** 校验场面卡；空在场者、空文本与重复人物都拒绝。 */
+export function assertSceneCard(value: unknown, label: string): SceneCard {
+	const record = assertPlainObject(value, label);
+	rejectUnknownKeys(record, SCENE_CARD_KEYS, label);
+	if (!Array.isArray(record.present)) {
+		throw new Error(`${label}.present 必须是数组`);
+	}
+	if (record.present.length === 0) {
+		throw new Error(`${label}.present 至少要有一个人`);
+	}
+	const seen = new Set<string>();
+	const present = record.present.map((item, index): SceneCardActor => {
+		const path = `${label}.present[${index}]`;
+		const actor = assertPlainObject(item, path);
+		rejectUnknownKeys(actor, SCENE_CARD_PRESENT_KEYS, path);
+		const who = requireNonEmptyString(actor.who, `${path}.who`);
+		if (seen.has(who)) {
+			throw new Error(`${path}.who 与前面的人物重复：${who}`);
+		}
+		seen.add(who);
+		return { who, want: requireNonEmptyString(actor.want, `${path}.want`) };
+	});
+	return {
+		present,
+		change: requireNonEmptyString(record.change, `${label}.change`),
+	};
 }
 
 /** 校验存储里的一条场记状态；引文只查形状，原文可能已经不在当前路径上。 */
@@ -219,6 +268,8 @@ export interface SceneLogParseInput {
 	readonly nodeId: string;
 	/** 任务楼层的原文；引文必须逐字出现在里面。 */
 	readonly floorRaw: string;
+	/** 这一楼是否开了一个新场；新场必须给场面卡。 */
+	readonly sceneStarts: boolean;
 	/** 故事里已有的剧情小品；bits 只能从这个列表里选。 */
 	readonly bits: readonly DirectorBit[];
 	/** 需要判断的文本条件；conditions 必须恰好覆盖这些 id。 */
@@ -233,6 +284,7 @@ export interface ParsedSceneLog {
 	readonly states: readonly SceneLogState[];
 	readonly present: readonly string[];
 	readonly sceneEnds: boolean;
+	readonly sceneCard: SceneCard | null;
 	readonly bits: readonly string[];
 	readonly conditions: readonly SceneLogConditionJudgment[];
 	readonly quotes: SceneLogQuoteStats;
@@ -293,6 +345,7 @@ export function parseSceneLogResponse(
 	const present = record.present.map((name, index) =>
 		requireNonEmptyString(name, `场记记录.present[${index}]`),
 	);
+	const sceneCard = readSceneCard(record.sceneCard, input.sceneStarts, repairs);
 	const bits = readBits(record.bits, input.bits, repairs);
 	const conditions =
 		input.conditions.length === 0
@@ -306,11 +359,38 @@ export function parseSceneLogResponse(
 		states,
 		present: dedupe(present),
 		sceneEnds: record.sceneEnds,
+		sceneCard,
 		bits,
 		conditions,
 		quotes: { submitted, verified },
 		repairs,
 	};
+}
+
+/**
+ * 场面卡只在新场的第一楼要求；其余楼层模型照旧给出时按空处理并记入
+ * repairs，不整次拒绝。
+ */
+function readSceneCard(
+	value: unknown,
+	sceneStarts: boolean,
+	repairs: LedgerRepair[],
+): SceneCard | null {
+	if (value === undefined || value === null) {
+		if (sceneStarts) {
+			throw new Error("场记记录.sceneCard 必须给出这一场的场面卡");
+		}
+		return null;
+	}
+	if (!sceneStarts) {
+		repairs.push({
+			path: ["sceneCard"],
+			action: "delete",
+			reason: "这一楼没有开场，sceneCard 已丢弃",
+		});
+		return null;
+	}
+	return assertSceneCard(value, "场记记录.sceneCard");
 }
 
 function readEmptyConditions(
@@ -386,12 +466,21 @@ export interface SceneLogHandlerOptions {
 }
 
 /** 只放在有剧情小品时出现的说明。 */
-function buildSystemPrompt(hasBits: boolean, hasConditions: boolean): string {
+function buildSystemPrompt(
+	hasBits: boolean,
+	hasConditions: boolean,
+	sceneStarts: boolean,
+): string {
 	const shape = [
 		'"beat":"试探"',
 		'"states":[{"path":["scene","current","place"],"op":"set","value":"教室","confidence":0.9,"sourceQuote":"原文里的原句"}]',
 		'"present":["凛"]',
 		'"sceneEnds":false',
+		...(sceneStarts
+			? [
+					'"sceneCard":{"present":[{"who":"凛","want":"拿回那封信"}],"change":"凛离开教室，把信交出去"}',
+				]
+			: []),
 		...(hasBits ? ['"bits":[]'] : []),
 		...(hasConditions
 			? ['"conditions":[{"id":"…","matched":true,"reason":"…"}]']
@@ -406,6 +495,11 @@ function buildSystemPrompt(hasBits: boolean, hasConditions: boolean): string {
 		"- op 只能是 set 或 delete；delete 不能带 value；confidence 是 0 到 1 的数字。",
 		"- present：这一楼结束时在场的人物名称，用卡里的写法。",
 		"- sceneEnds：这一楼是否结束了一个场次。",
+		...(sceneStarts
+			? [
+					"- sceneCard：这一楼开了一个新的场次，写下这一场的场面卡。present 是此刻在场者各自想要什么；change 是这一场结束时应该改变什么。两项都只写局面与人物意图。",
+				]
+			: []),
 		...(hasBits
 			? [
 					"- bits：这一楼适合触发的剧情小品 id，只能从给定的列表里选，可以为空数组。",
@@ -486,10 +580,18 @@ export function createSceneLogHandler(
 			nodeId,
 		);
 		const conditions = conditionInput?.conditions ?? [];
+		const segment = readSceneSegments(store, nodeId).find((item) =>
+			item.floorIds.includes(nodeId),
+		);
+		const sceneStarts = segment !== undefined && segment.startNodeId === nodeId;
 		const messages: LlmMessage[] = [
 			{
 				role: "system",
-				content: buildSystemPrompt(bits.length > 0, conditions.length > 0),
+				content: buildSystemPrompt(
+					bits.length > 0,
+					conditions.length > 0,
+					sceneStarts,
+				),
 			},
 			{
 				role: "user",
@@ -513,6 +615,7 @@ export function createSceneLogHandler(
 		const parsed = parseSceneLogResponse(result.text, {
 			nodeId,
 			floorRaw: node.raw,
+			sceneStarts,
 			bits,
 			conditions,
 		});
@@ -549,6 +652,7 @@ export function createSceneLogHandler(
 			beat: parsed.beat,
 			present: parsed.present,
 			sceneEnds: parsed.sceneEnds,
+			sceneCard: parsed.sceneCard,
 			bits: parsed.bits,
 			conditions: parsed.conditions,
 			states: parsed.states,
@@ -636,6 +740,10 @@ export function assertNewSceneLog(input: NewSceneLog): NewSceneLog {
 			requireNonEmptyString(name, `场记记录的 present[${index}]`),
 		),
 		sceneEnds: input.sceneEnds,
+		sceneCard:
+			input.sceneCard === null
+				? null
+				: assertSceneCard(input.sceneCard, "场记记录的 sceneCard"),
 		bits: input.bits.map((id, index) =>
 			requireNonEmptyString(id, `场记记录的 bits[${index}]`),
 		),

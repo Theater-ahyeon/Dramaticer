@@ -25,6 +25,7 @@ import {
 	NAIVE_SLOT_PLUGINS,
 	PERSONA_SLOT_PLUGIN,
 	RAW_HISTORY_SLOT_PLUGIN,
+	SCENE_CARD_SLOT_PLUGIN,
 	SCENE_SLOT_PLUGIN,
 	STATE_SLOT_PLUGIN,
 	SUMMARY_SLOT_PLUGIN,
@@ -135,6 +136,7 @@ export async function createStandardChatSlots(
 		},
 		[LORE_SLOT_PLUGIN]: { store: options.store },
 		[SCENE_SLOT_PLUGIN]: { store: options.store },
+		[SCENE_CARD_SLOT_PLUGIN]: { store: options.store },
 		[DIRECTOR_SLOT_PLUGIN]: {
 			store: options.store,
 			config: options.directorConfig,

@@ -14,6 +14,7 @@ const DIRECTOR: DirectorConfig = {
 	clueAgeWarning: 12,
 	maxOpenClues: 5,
 	maxOpenPromises: 5,
+	chapterFloors: 20,
 	stallFloors: 3,
 	surprise: 1,
 	similarityThreshold: 0.73,

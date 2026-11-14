@@ -144,6 +144,7 @@ describe("内置后台任务插件", () => {
 			"opening_candidates",
 			"visual_profile",
 			"director_plan",
+			"chapter_plan",
 			"candidate_actions",
 			"director_bits",
 		]);
@@ -165,6 +166,7 @@ describe("内置后台任务插件", () => {
 			["opening_candidates", "story", "gap"],
 			["visual_profile", "story", "gap"],
 			["director_plan", "story", "deferred"],
+			["chapter_plan", "story", "deferred"],
 			["candidate_actions", "settled", "gap"],
 			["director_bits", "settled", "gap"],
 		];
@@ -174,6 +176,7 @@ describe("内置后台任务插件", () => {
 		expect(registry.get("opening")?.needsRun).toBeTypeOf("function");
 		expect(registry.get("import_kind")?.needsRun).toBeTypeOf("function");
 		expect(registry.get("scene_archive")?.needsRun).toBeTypeOf("function");
+		expect(registry.get("chapter_plan")?.needsRun).toBeTypeOf("function");
 		expect(registry.get("settle")?.needsRun).toBeUndefined();
 	});
 

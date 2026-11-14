@@ -1798,6 +1798,11 @@ export function buildMigrations(
 				"ALTER TABLE story_settings_next RENAME TO story_settings",
 			],
 		},
+		{
+			version: 61,
+			description: "场记记录增加场面卡",
+			statements: ["ALTER TABLE scene_logs ADD COLUMN scene_card TEXT"],
+		},
 	];
 }
 

@@ -3,31 +3,29 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-14 会话 409：完成 W4-T02（推进三档、伏笔账与章末清点）。单轮参数新增 `push`，取值 `advance`、`quick`、`jump`，请求体字段同为 `push`，经 `resolveTurnProviders` 重建导演槽位，写进槽位的 `packKey` 与决策记录的 `signals.push`；`selectDirectorAction` 按档位替换候选集合（同一套抑制与让位优先），决策理由照旧写进机制条目与信号。`DirectorConfig.maxOpenPromises`（默认 5）登记进 `DIRECTOR_CONFIG_KEYS` 与设置表单，`saveDirectorLines` 在写入前模拟修改并拒绝「新建伏笔超过上限」。迁移 v59 新增只追加的 `director_chapter_reviews`（逐条伏笔处理 `carry`/`retire`、2–3 条下一章焦点，写入前对照当前路径的线）。迁移 v60 重建 `story_settings`，把 `director_organization` 的 CHECK 扩到 `lines`：W4-T01 之后 `lines` 其实无法保存，本会话补上。新增 10 个测试；门禁通过（282 个测试文件、2,415 个测试、5 个跳过）。
+- 2026-11-14 会话 410：完成 W4-T03（场面卡与章级规划）。迁移 v61 给 `scene_logs` 增加 `scene_card`；场记在开新场的楼层必须输出 `{present: [{who, want}], change}`，其余楼层给出时丢弃并记入 `repairs`；开新场用 `readSceneSegments` 判断（节点是所属场次的 `startNodeId`）。新增 `scene_card` 槽位，内容只有人物意图与「这一场结束时应该改变什么」，只在当前场次尚未结束且导演未关闭时注入；默认模板的 `volatility` 与 `full` 两种排布都在 `director` 之前放这一段。动作引擎的接球候选读最近一楼的卡：理由与建议用卡里的目标，`signals.sceneGoal` 进入决策记录；没有卡时沿用旧的 `sceneEnds` 代理，转场仍以 `sceneEnds` 判定。`DirectorConfig.chapterFloors`（默认 20）与后台任务 `chapter_plan`（故事级、`deferred` 档、`planner` 客户端）落地：距上一次章末清点积累够楼层、最近一楼标记这一场结束、路径上至少两条线时入队；一次调用输出线修改与章末清点，先写清点再写线（作废的伏笔由程序补 `delete`），两者在一个事务里；`carry` 的伏笔不能在这一批被删除或改种类；`focus` 只能是清点之前已经存在的线。ADR-0145。新增 12 个测试；门禁通过（284 个测试文件、2,427 个测试、5 个跳过）。
 
-## 下一步（会话 410 先做）
-1. **W4-T03 场面卡与章级规划**（依赖 W4-T01、W2-T02，均已满足）：
-   - 场景开始时把场面卡并入 `scene_log` 的输出（在场者各自想要什么、这一场结束时应该改变什么），作为槽位注入；场面卡的「这一场结束时应该改变什么」替换 `sceneEnds` 作为接球/转场的代理。
-   - 章末规划一次后台调用更新线，可走 `planner` 角色的更强模型；写作结果用 `saveDirectorLines`，章末清点用本会话新增的 `saveDirectorChapterReview`（形状与校验见 ADR-0144）。
-   - 注入写作模型的是局面与人物意图，不写写作指令；关闭导演时不产生槽位、不写决策记录。
-2. R6 段：**R6-T07.b**（重 roll 点回放批次）、**R6-T07.c**（遗忘漏斗）、**R6-T07.d**（门槛判定 CLI）→ **R6-T99**；**R6-T06** 与 W2-T04 被 HUMAN-19 阻塞（`bg` 渠道额度 2026-11-17T11:44:35Z 重置）。
+## 下一步（会话 411 先做）
+1. R6 段：**R6-T07.b**（重 roll 点回放批次）、**R6-T07.c**（遗忘漏斗）、**R6-T07.d**（门槛判定 CLI）→ **R6-T99**。**R6-T06**、**R6-T99** 与 W2-T04 被 HUMAN-19 阻塞（`bg` 渠道额度 2026-11-17T11:44:35Z 重置）；R6-T07.b/.c/.d 的代码与假客户端测试照常进行。
+2. R6 段之后继续 **W5-T01、W5-T02** → **W6-T01 至 W6-T03** → **W7-T01 至 W7-T03** → **W8-T01、W8-T02** → **W9-T01 至 W9-T99**。W5-T01 的「推进」按钮直接把三档填进请求体的 `push`。
 3. **W3-T02.e** 被 HUMAN-22 阻塞：原样模式目前按导入字段注入；完整酒馆激活需要原始世界书入库并把 `st-content` 接进 server 运行时。
 4. **W2-T04** 继续被 HUMAN-19 阻塞。额度恢复后用 `pnpm --filter @dramaticer/st-compat scene-log-compare`（默认读 `eval-private/reports/scene-log/samples.json`，24 个楼层 ≥ 20）跑真实对照。不达标时保留独立任务并写 ADR。
-5. R6 段之后继续 **W5-T01、W5-T02** → **W6-T01 至 W6-T03** → **W7-T01 至 W7-T03** → **W8-T01、W8-T02** → **W9-T01 至 W9-T99**。W5-T01 的「推进」按钮直接把三档填进请求体的 `push`。
-6. R6-T07.b 的实现要点（旧交接保留）：
+5. R6-T07.b 的实现要点（旧交接保留）：
    - 新增 `evalset/r6-replay.ts` 与 CLI：从 `eval-private/world-model-compare/source/<slug>.db` 规划重 roll 点（`xianxia` 24、`yuwang` 8、`yinqi` 11），被接受的是 head 路径上的助手兄弟楼层（43 个点都是最大 swipe 下标），放弃侧取下标紧邻其下的那条，另有 5 条更早的放弃 swipe 只报告。
    - 每个点复制数据库、head 移到父玩家楼层、预热 12 楼，先按种子 1 生成一次原生续写（同时是 G1 的续写与 A/A 的第一次生成），再按种子 2 生成一次（只用于 A/A）；同一请求体只差种子，会命中响应缓存（ADR-0136）。
    - 每次生成后写 A/A 样本 JSONL，再调用 `runR6AaInstrument`（`dir` 用自己的运行目录）得到 G0 的 A/A 侧；G1 的两组配对（对放弃侧、对接受侧）各两种顺序判一次，汇总产出 `R6ReplayGateInput`。
    - sidecar 校验故事、分支点、玩家消息、swipe 下标、模型与种子；`done` 复用，`running` 与 `failed` 续跑；失败样本单独计数。
-7. 阻塞检查：M6-T99 仍等 HUMAN-15；HUMAN-03、HUMAN-16、HUMAN-17、HUMAN-18、HUMAN-20、HUMAN-21 不阻塞；HUMAN-19 阻塞 R6-T06、R6-T99、W2-T04；HUMAN-22 阻塞 W3-T02.e。
+6. 阻塞检查：M6-T99 仍等 HUMAN-15；HUMAN-03、HUMAN-16、HUMAN-17、HUMAN-18、HUMAN-20、HUMAN-21、HUMAN-22 不阻塞其他任务；HUMAN-19 阻塞 R6-T06、R6-T99、W2-T04。
 
 ## 当前状态
-- 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1–P4、C-T01 至 C-T05、H-T00 至 H-T99、X1.a 至 X1.e、X2.a 至 X2.d、R6-T00 至 R6-T05、R6-T07、R6-T07.a、W0-T00、W0-T01、W1-T01、W2-T01、W2-T02、W2-T03、W3-T01、W3-T02.a、W3-T02.b、W3-T02.c、W3-T02.d、W3-T03.a、W3-T03.b、W3-T03、W4-T01、W4-T02。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- 设计版本 v0.4（ADR-0139、ADR-0142、ADR-0143、ADR-0144）。W 阶段任务顺序：W0（完成）→ W1（完成）→ W2（T01–T03 完成，T04 被阻塞）→ W3（T01、T02.a–T02.d、T03.a、T03.b、T03 完成，T02.e 被 HUMAN-22 阻塞）→ W4（T01、T02 完成）→ R6 段（T07.b、T07.c、T07.d、T99）→ W5 → W6 → W7 → W8 → W9。
-- 数据库 schema 版本 60（v51 `story_media`、v52 `story_settings.contextLayout`、v53 `scene_logs` 与 `scene_log_enabled`、v54 `scene_archives`、v55 `import_audit_entries` 与 `story_settings.import_mode`、v56 `import_audit_entries.memory`、v57 `story_rules`、v58 `director_lines`、v59 `director_chapter_reviews`、v60 `story_settings` 重建并允许 `director_organization = lines`）。
+- 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1–P4、C-T01 至 C-T05、H-T00 至 H-T99、X1.a 至 X1.e、X2.a 至 X2.d、R6-T00 至 R6-T05、R6-T07、R6-T07.a、W0-T00、W0-T01、W1-T01、W2-T01、W2-T02、W2-T03、W3-T01、W3-T02.a、W3-T02.b、W3-T02.c、W3-T02.d、W3-T03.a、W3-T03.b、W3-T03、W4-T01、W4-T02、W4-T03。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 设计版本 v0.4（ADR-0139、ADR-0142、ADR-0143、ADR-0144、ADR-0145）。W 阶段任务顺序：W0（完成）→ W1（完成）→ W2（T01–T03 完成，T04 被阻塞）→ W3（T01、T02.a–T02.d、T03.a、T03.b、T03 完成，T02.e 被 HUMAN-22 阻塞）→ W4（完成）→ R6 段（T07.b、T07.c、T07.d、T99）→ W5 → W6 → W7 → W8 → W9。
+- 数据库 schema 版本 61（v51 `story_media`、v52 `story_settings.contextLayout`、v53 `scene_logs` 与 `scene_log_enabled`、v54 `scene_archives`、v55 `import_audit_entries` 与 `story_settings.import_mode`、v56 `import_audit_entries.memory`、v57 `story_rules`、v58 `director_lines`、v59 `director_chapter_reviews`、v60 `story_settings` 重建并允许 `director_organization = lines`、v61 `scene_logs.scene_card`）。
+- 场面卡：`SceneLog.sceneCard` 为 `{present: [{who, want}], change}` 或 null；`assertSceneCard` 拒绝空在场者、空文本与重复人物。场记只在开新场的第一楼要求卡，其余楼层出现时整条丢弃并记 `repairs`（path 为 `["sceneCard"]`）。`createSceneCardSlotProvider` 用 `readSceneSegments` 找节点所属场次，场次已经结束（`endNodeId !== null`）或导演 `mode = "off"` 时返回 null，否则取该场第一个带卡的楼层，注入一条 system 消息：「场面卡：谁想要什么…这一场结束时应该改变：…」，来源为 `scene_card:楼层 <id>，<n> 人`。槽位名在 `CONTEXT_SLOT_NAMES` 里，默认模板两种排布置于 `scene` 与 `director` 之间（priority 52）。
 - 导演的线：`director_lines(node_id PRIMARY KEY, story_id, diffs, created_at)`，一行一个楼层的线修改；`set` 带完整线，`delete` 只带 id。存储层 `saveDirectorLines`（同楼层重复写入失败）、`getDirectorLines`、`readDirectorLineStates`；冷热由读取路径上的助手楼层数派生，其他分支不参与累加。线字段：`id`（≤64 字）、`kind`（`main`、`relationship`、`opposition`、`promise`）、`who`、`want`、`obstacle`、`countdown`（非负整数或 null）、`preparations`（最多三条、不重复、每条 ≤500 字）。单条文本 ≤500 字，每个楼层最多 50 条修改。
 - 伏笔账：`DirectorConfig.maxOpenPromises` 默认 5，`saveDirectorLines` 用 `assertPromiseBudget` 在写入前拒绝会让未兑现伏笔条数增加且超过上限的整批修改；`countOpenPromises` 是唯一的计数口径。超过上限的旧状态改内容、删除一条同时新建一条都允许。兑现优先级仍是「最老的 promise 线优先」。
 - 章末清点：`director_chapter_reviews(node_id PRIMARY KEY, story_id, payload, created_at)`，只追加（UPDATE 触发器拒绝）。`payload = {promises: [{lineId, disposition}], focus: [lineId…]}`，`disposition` 取 `carry`（带到下一章）或 `retire`（作废），`focus` 固定 2–3 条。`assertDirectorChapterReviewPayload` 只校验形状，`assertChapterReviewMatchesLines` 对照当前路径：每条未兑现伏笔恰好一条处理、处理只能指向伏笔、焦点线存在且不能是同一份清点里作废的伏笔。读取用 `getDirectorChapterReview` 与 `listDirectorChapterReviewsAlongPath`（只校验形状，不重新对照后来的线）。
+- 章级规划：`CHAPTER_PLAN_JOB_KIND = "chapter_plan"` 在 `director/chapter-plan.ts`；`DirectorConfig.chapterFloors` 默认 20；入队条件见 `chapterPlanNeedsRun`（导演未关闭、最后一个助手楼层处最近场记 `sceneEnds`、路径上至少两条线、距上一次清点够 `chapterFloors` 楼、该楼层没有清点与线记录）。规划写在当前路径最后一个助手楼层；模型输出 `{lines, review}`，`chapterReviewLineDiffs` 给 `retire` 的伏笔补 `delete` 并拒绝删除/改种类 `carry` 的伏笔；`saveDirectorChapterPlan` 在一个事务里先写清点再写线，任一步失败整批回滚。处理器在目标楼层已有清点时直接返回，不调用模型。使用 `planner` 客户端（`options.client` 优先）。
 - 动作引擎：`DIRECTOR_ORGANIZATION_KINDS` 是 `mechanisms`、`bits`、`lines`，默认仍是 `mechanisms`。`selectDirectorAction` 的输入是内存里的 `DirectorActionInput`（`floorDepth`、`playerMessage`、`push`、`floors`、`lines`、`recentActions`、`config`），数据库读取只在 `readDirectorActionInput` 里发生。常规回合顺序为让位、闯入、兑现、揭示、转场、喘息、加码、接球。
 - 推进三档：`DIRECTOR_PUSH_KINDS` 是 `advance`、`quick`、`jump`，`DIRECTOR_PUSH_LABELS` 是推进、快速推进、大幅推进。候选集合按档位替换：`advance` 用接球与加码（场面未收尾时接球在前，已收尾时加码在前）；`quick` 用转场、接球作候补；`jump` 用最接近到点的线（余量最小，可已到点）作闯入、转场作候补，没有倒计时线时退回收尾转场。让位在三种档位里都排第一，抑制规则不变。无建议时照常写决策记录（`signals.action = null`、`signals.push` 保留）。
 - 单轮参数管线：`ChatTurnOptions.directorPush` → `resolveTurnProviders`（与 `directorIntensity` 共用一次重建）→ `createDirectorSlotProvider({push})`（`packKey` 含 `push`）→ `engine.evaluate({push})`。`POST /api/stories/:id/turns` 的请求体接受 `push`，非法值在写用户楼层前返回 400（字段路径 `push`）。
@@ -42,17 +40,17 @@
 - 台账 `rule` 命名空间：只允许 `rule.<id>.result`，值为 `{roll,difficulty,success}`；`success` 必须等于 `roll >= difficulty`，未知字段与越界值都报错。`LEDGER_NAMESPACES` 现在是十个。
 - 状态定义：`SettlementWindow.stateDefinitions` 来自生效类型为 `state` 的审计条目；`buildSettlementMessages` 与 gap_pass 的系统提示词带「卡定义的状态定义」段，`formatStateDefinitions` 每条截 800 字、合计 4,000 字封顶并追加省略标记。状态变量由结算器按 `mvu.<变量路径>` 写入；升级模式的世界书段不含这些条目。
 - 世界书分型：`classifyWorldbookEntries(entries)` 只读 `StWorldInfoEntry`，返回 `{entries, counts}`；每条有 `matches[{kind, rules}]`、`primaryKind`、`mixed`。`primaryKind` 取 `IMPORT_ENTRY_KINDS` 顺序里第一个命中类型（`common` 最前，`unknown` 最后）。
-- 场记：`scene_log` 默认关闭（`sceneLogEnabled`）；打开后与结算、现场分析、用户意志、小品条件并行运行，尚未替换它们（W2-T04 按对照结论切换）。`scene_logs` 一行一个助手楼层，`states` 存引文已核对的提案，`quotes` 记提交/核验数，`repairs` 记引文与形状拒绝加上结算器的非 `fill` 修复。
+- 场记：`scene_log` 默认关闭（`sceneLogEnabled`）；打开后与结算、现场分析、用户意志、小品条件并行运行，尚未替换它们（W2-T04 按对照结论切换）。`scene_logs` 一行一个助手楼层，`states` 存引文已核对的提案，`quotes` 记提交/核验数，`repairs` 记引文与形状拒绝加上结算器的非 `fill` 修复，`scene_card` 存开新场时的场面卡。
 - 场次：`readSceneSegments` 沿给定节点路径派生；`sceneEnds` 的楼层收尾这一场，否则到 `DEFAULT_MAX_SCENE_FLOORS`（12）个助手楼层强制收尾；场次不是节点，不写 `nodes`。`scene_archives` 以结束楼层为主键，`boundary` 记 `scene-ends` 或 `max-floors`。
 - 场记对照：`compareSceneLog` 逐楼层跑独立任务（`settle`、`scene`、`user_will`、`director_bits`）与 `scene_log`；`runSceneLogCompareBatch` 负责复制源库、按故事汇总与样本判定。私有样本清单 `eval-private/reports/scene-log/samples.json`，`minimumFloors` 20，3 个故事各 8 个助手楼层（共 24）；`sourceDb` 相对样本文件。重生成用 `.devloop/scratch/W2-T03/plan-samples.mjs`（只读打开源库）。
-- 上下文排布：默认模板按易变性排布；`contextLayout` 取 `volatility`（默认）或 `full`（对照）。自定义模板不参与这个开关，Trace 的 `layout` 记为 `custom`。`segmentOrder` 是模板片段 id 的生效顺序，`cache.source` 为 `channel` 或 `none`；旧 Trace 没有这三个字段。
-- 上下文包缓存：`loadReusableContextPack` 按指纹与引用校验；导入模式变化与记忆转换会调用 `clearContextPacks(storyId)`。导演槽位的 `packKey` 含配置、组织方式、机制名与 `push`。
+- 上下文排布：默认模板按易变性排布；`contextLayout` 取 `volatility`（默认）或 `full`（对照）。自定义模板不参与这个开关，Trace 的 `layout` 记为 `custom`。`segmentOrder` 是模板片段 id 的生效顺序，`cache.source` 为 `channel` 或 `none`；旧 Trace 没有这三个字段。两种内置排布都含 `scene_card`，位置在 `scene` 与 `director` 之间。
+- 上下文包缓存：`loadReusableContextPack` 按指纹与引用校验；导入模式变化与记忆转换会调用 `clearContextPacks(storyId)`。导演槽位的 `packKey` 含配置、组织方式、机制名与 `push`；场面卡槽位的 `packKey` 是 `sceneCard`。
 - 故事图片：`story_media` 存相对路径，文件在媒体目录（默认数据库同目录的 `images/`）的 `story-media/<故事 id 摘要>/` 下，按内容哈希命名；封面缺失时由 `packages/server/src/cover-placeholder.ts` 渲染 SVG 占位图，不写磁盘。
 - R6-T06 标 `[!]`（HUMAN-19）；R6 预注册 v2、门槛 G0–G6 与 ADR-0135/0138 不变；R6-T05 的深回合数据仍是 `v1`。
 - 兼容插件线：`st-content`、`st-mvu`、`st-ejs`、`st-helper-host` 全部完成；`st-content` 的世界书激活只在共存评测里使用，没有接进 server 运行时。
 - 报告：`docs/dev/reports/P2.md`、`P3.md`、`P4.md`、`C-T01.md`、`C-T02.md`、`C-T03.md`、`C-T04.md`、`C-T05.md`、`H.md`、`X1.md`、`X2.md`。
 - 沙箱现状：`eval-private/st-sandbox/st` 有 36 个预设、68 张卡、89 个非驱动聊天片段；需要恢复原始预设时用 `sandbox --replace` 重建。
-- ADR-0088 至 ADR-0144 记录插件、沙箱、比对、兼容内容映射、EJS、沙箱执行、时间预算、流水线接入、模板生成、一致性评测、酒馆助手宿主、iframe 沙箱、STscript 子集、生成后台化、HTML 渲染、覆盖率口径、应用内助手、世界模型接口、实体档案、时序图谱、对比运行器、X1 判定、导演组织方式、剧情小品、X2 对比运行器、X2 判定、R6 预注册、评测调用输出预算、结算提示词楼层 id、v4 设计合并、故事图片、导入模式与初始记忆、规则声明与状态定义、线与八种动作的程序判断口径、推进三档与伏笔账与章末清点的程序口径。
+- ADR-0088 至 ADR-0145 记录插件、沙箱、比对、兼容内容映射、EJS、沙箱执行、时间预算、流水线接入、模板生成、一致性评测、酒馆助手宿主、iframe 沙箱、STscript 子集、生成后台化、HTML 渲染、覆盖率口径、应用内助手、世界模型接口、实体档案、时序图谱、对比运行器、X1 判定、导演组织方式、剧情小品、X2 对比运行器、X2 判定、R6 预注册、评测调用输出预算、结算提示词楼层 id、v4 设计合并、故事图片、导入模式与初始记忆、规则声明与状态定义、线与八种动作的程序判断口径、推进三档与伏笔账与章末清点的程序口径、场面卡与章级规划的程序口径。
 - HUMAN-03 待处理（不阻塞）：抽查 `eval-private/evalset/spotcheck.md` 里的事件题。
 - HUMAN-15 待处理（M6-T99 需要）：把秋叶整合包 v3.2 的 ComfyUI 启动在 `http://127.0.0.1:8188`，并导出一份 API 格式 workflow JSON 到 `eval-private/comfyui/` 或告知路径。
 - HUMAN-16 至 HUMAN-18、HUMAN-20 至 HUMAN-22 待处理（HUMAN-22 阻塞 W3-T02.e，其余不阻塞）。
@@ -62,6 +60,7 @@
 - 门禁：`pnpm check`。
 - 全量 e2e：`pnpm e2e`（会先构建 server 与 web；跑两个项目）。
 - 线与动作目标测试：`pnpm exec vitest run packages/core/test/director-lines.test.ts`。
+- 场面卡与章级规划目标测试：`pnpm exec vitest run packages/core/test/scene-card.test.ts packages/core/test/chapter-plan.test.ts`。
 - 组织方式与旧导演目标测试：`pnpm exec vitest run packages/core/test/director-organization.test.ts packages/core/test/director.test.ts packages/core/test/explain.test.ts`。
 - 推进档位接口目标测试：`pnpm exec vitest run packages/server/test/turns.test.ts -t "推进档位"`（先 `pnpm run typecheck`）。
 - X2 对比运行器目标测试：`pnpm exec vitest run packages/st-compat/test/director-organization-compare.test.ts`。
@@ -123,6 +122,8 @@
 - 线的冷热与倒计时深度单位是**助手楼层数**（当前路径上 `role = "assistant"` 的节点个数）；读取在 `readDirectorLineStates` 里用 `getPathToNode` 一次算出深度表，不要另写递归查询。
 - 倒计时的有效余量用 `directorLineRemaining`：`countdown - (当前深度 - lastTouchedDepth)`；不要在每个判断处重算 `countdown`，否则「按楼推进」的口径会散落多处。
 - 八种动作的判定口径、优先级与常量写在 ADR-0143；`selectDirectorAction` 只接受内存输入，不读数据库、不调用模型。需要读场记、线与决策记录时用 `readDirectorActionInput`，不要在判断函数里传 `StoryStore`。
+- 场面卡的判定：开新场用 `readSceneSegments`，不要用「上一个助手楼层有没有场记」另写一套；槽位只在场次尚未结束（`endNodeId === null`）时注入。
+- 场面卡写入 `scene_logs.scene_card`（JSON 或 null），不写台账，也不进上下文包引用；重跑同一楼层覆盖同一行。
 - 动作的 `directive` 只写局面与人物意图；`DIRECTOR_SUFFIX_NOTE` 由槽位统一追加，不要在动作里再复述玩家优先。
 - 决策记录里的机制名固定是 `action`；动作种类在 `signals.action`，理由在 `mechanisms[].reason` 与 `signals.reason`。`explain` 第 6 节直接打印这些字段，不要为动作另开一节。
 - 槽位来源是 `director:action:<kind>`（英文 kind），改格式时同步 `director-lines.test.ts` 与 explain 相关断言。
@@ -131,7 +132,10 @@
 - `jump` 的「目的地」取余量最小的倒计时线（可以已经到点），没有倒计时线时退回收尾转场；不要新增第九种动作。
 - 未兑现伏笔的上限只由 `saveDirectorLines` 里的 `assertPromiseBudget` 执行，计数只用 `countOpenPromises`；不要在规划器里另算一遍再放行。已经超限的故事允许改内容、允许「删一条建一条」。
 - 章末清点记录只追加：同一楼层第二次写入直接失败，UPDATE 被触发器拒绝。写入前必须用 `assertChapterReviewMatchesLines` 对照当前路径；读取时不重新对照（后来的线会变）。
-- `focus` 固定 2–3 条且不能包含同一份清点里 `retire` 的伏笔；`promises` 只写 `promise` 线，每条未兑现伏笔恰好一条处理。
+- `focus` 固定 2–3 条且不能包含同一份清点里 `retire` 的伏笔；`promises` 只写清点之前已经存在的 `promise` 线，每条未兑现伏笔恰好一条处理。
+- 章级规划的条件全部在 `chapterPlanNeedsRun` 里，不要另写一套；`chapterFloors` 只按清点之后的助手楼层数计。
+- 章级规划输出先写清点再写线：`saveDirectorChapterPlan` 保证同一事务；不要在处理器里分别调用两个存储方法，否则失败会留下半条记录。
+- `retire` 的伏笔由 `chapterReviewLineDiffs` 补 `delete`；`carry` 的伏笔不能被这一批删除或改种类，程序直接拒绝。
 - `story_settings.director_organization` 的 CHECK 现在允许 `mechanisms`、`bits`、`lines`；新增组织方式时要重建表（SQLite 不能改 CHECK），并在 `assistant-store.test.ts` 里同步 schema 版本。
 - 增加导演组织方式时改 `DIRECTOR_ORGANIZATION_KINDS`；X2 的实验候选固定为 `X2_DIRECTOR_ORGANIZATION_KINDS`，不要让它跟着合法集合扩张。
 - `assistant-store.test.ts` 把 schema 版本钉在最新值，新增迁移时要同步改这个数字；其他存储测试用 `LATEST_SCHEMA_VERSION`，不要改。
@@ -153,7 +157,7 @@
 - `scene_archive` 是故事级任务：`nodeId` 为 null，处理器不能调用 `requireJobNodeId`；执行一次只归档最早一场。
 - 归档的线索校验：`cluesOpened`/`cluesClosed` 的 id 必须出现在结束楼层的 `clue` 台账里，`cluesClosed` 还必须是 `fulfilled`；校验失败整次拒绝，3 次后任务标 failed。
 - `dramaticer explain` 的第 10 节使用默认上限 12；如果将来把 `maxSceneFloors` 做成故事设置，`explain` 必须改为从同一个来源读取。
-- 新迁移编号从 v61 起（v60 是 `story_settings` 重建）。
+- 新迁移编号从 v62 起（v61 是 `scene_logs.scene_card`）。
 - R6 预注册 v2 在第一次 v2 批次运行后冻结：门槛、样本、指标、模型与种子都不改；必须调整时另写 v3、记 ADR、把评测轮次计数重置为 0。
 - v2 的判定状态：`pass`、`fail`、`insufficient`、`not-measurable`；G0 未通过或样本不足时 G1 与 G5 被替换成 `invalid`。
 - G0 的两项：A/A（43 个点、种子 1 与 2、完成 ≥ 36、Wilson 区间含 50%、换序不一致 ≤ 20%、排除 ≤ 30%、判定失败 ≤ 10%）与真人标注（195 对、完成 ≥ 165、一致率 ≥ 65%、Wilson 下界 > 50%、位置偏差 ≤ 10 个百分点、判定失败 ≤ 10%）。
@@ -178,7 +182,7 @@
 - `packages/st-compat` 与 `packages/server` 的测试通过 `@dramaticer/core` 的 `dist` 解析 core；只跑这些包的测试前先执行 `pnpm run typecheck`。
 - `.devloop/scratch/` 下的脚本要用 `createRequire` 指向 `packages/st-compat/package.json` 才能加载 `better-sqlite3`；`.devloop/` 已被 git 忽略。
 - EJS 沙箱的时间预算按墙钟计；测试不要用接近 worker 启动耗时的预算。
-- `pnpm exec biome check --write <文件>` 处理格式；不要手写格式。
+- `pnpm exec biome check --write <文件>` 处理格式；不要手写格式。新建文件用 LF 写入后 biome 会改成仓库的 CRLF，提交前必须跑一次。
 - 修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 的请求写进 HUMAN.md。
 - 不变量：I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I8 显示与 prompt 从原文派生，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖其他工作区包，I16–I18 插件约束。
 - 故事图片：`story_media` 是唯一的图片索引，文件不放进数据库；立绘按卡里的角色名登记，其他人物查不到时媒体接口返回 404；封面在无图时永远返回占位图。

@@ -10,6 +10,11 @@ import {
 	createCandidateActionsHandler,
 } from "../director/candidates.js";
 import {
+	CHAPTER_PLAN_JOB_KIND,
+	chapterPlanNeedsRun,
+	createChapterPlanHandler,
+} from "../director/chapter-plan.js";
+import {
 	DIRECTOR_PLAN_JOB_KIND,
 	createDirectorPlanHandler,
 	directorPlanNeedsRun,
@@ -107,6 +112,7 @@ export const OPENING_CANDIDATES_JOB_PLUGIN = "background.opening-candidates";
 export const VISUAL_PROFILE_JOB_PLUGIN = "background.visual-profile";
 export const ILLUSTRATE_JOB_PLUGIN = "background.illustrate";
 export const DIRECTOR_PLAN_JOB_PLUGIN = "background.director-plan";
+export const CHAPTER_PLAN_JOB_PLUGIN = "background.chapter-plan";
 export const CANDIDATE_ACTIONS_JOB_PLUGIN = "background.candidate-actions";
 export const DIRECTOR_BITS_JOB_PLUGIN = "background.director-bits";
 export const EMBEDDINGS_JOB_PLUGIN = "background.embeddings";
@@ -247,6 +253,12 @@ export function createBackgroundJobPlugins(
 			enqueue: "story",
 			tier: "deferred",
 			needsRun: directorPlanNeedsRun,
+		}),
+		backgroundJobPlugin(CHAPTER_PLAN_JOB_PLUGIN, CHAPTER_PLAN_JOB_KIND, {
+			handler: createChapterPlanHandler(plannerOptions(plannerClient)),
+			enqueue: "story",
+			tier: "deferred",
+			needsRun: chapterPlanNeedsRun,
 		}),
 		backgroundJobPlugin(
 			CANDIDATE_ACTIONS_JOB_PLUGIN,

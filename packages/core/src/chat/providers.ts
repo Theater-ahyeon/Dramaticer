@@ -25,6 +25,7 @@ import {
 import { normalizeEntityName } from "../entity.js";
 import { isJsonObject } from "../json.js";
 import { readLedger } from "../ledger/read.js";
+import { readSceneSegments } from "../ledger/scenes.js";
 import { USER_WILL_KINDS, type UserWillKind } from "../ledger/schema.js";
 import type { EmbeddingClient } from "../llm/embeddings.js";
 import type { RerankClient } from "../llm/rerank.js";
@@ -216,6 +217,46 @@ export function createSceneSlotProvider(
 				source: `scene:楼层 ${analysis.nodeId}，估算 ${analysis.tokenCount} token`,
 				references: { sceneAnalysisNodeId: analysis.nodeId },
 			};
+		},
+	};
+}
+
+/**
+ * 当前这一场的场面卡：谁想要什么、这一场结束时应该改变什么。
+ * 导演关闭时不注入；这一场还没有卡时槽位缺失。
+ */
+export function createSceneCardSlotProvider(
+	store: StoryStore,
+): ContextSlotProvider {
+	return {
+		packKey: "sceneCard",
+		provide(request): ContextSlotContent | null {
+			if (request.nodeId === null) return null;
+			const nodeId = request.nodeId;
+			const mode = store.getStorySettings(request.storyId).directorConfig.mode;
+			if (mode === "off") return null;
+			const segments = readSceneSegments(store, nodeId);
+			const current = segments.find((segment) =>
+				segment.floorIds.includes(nodeId),
+			);
+			if (current === undefined || current.endNodeId !== null) return null;
+			for (const id of current.floorIds) {
+				const card = store.getSceneLog(id)?.sceneCard ?? null;
+				if (card === null) continue;
+				const lines = card.present.map(
+					(actor) => `${actor.who}想要${actor.want}`,
+				);
+				return {
+					messages: [
+						{
+							role: "system",
+							content: `场面卡：\n${lines.join("\n")}\n这一场结束时应该改变：${card.change}`,
+						},
+					],
+					source: `scene_card:楼层 ${id}，${card.present.length} 人`,
+				};
+			}
+			return null;
 		},
 	};
 }

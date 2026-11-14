@@ -4,6 +4,7 @@ export * from "./bit-judgments.js";
 export * from "./bits.js";
 export * from "./card-extension.js";
 export * from "./chapter.js";
+export * from "./chapter-plan.js";
 export * from "./candidates.js";
 export * from "./cli.js";
 export * from "./clue.js";

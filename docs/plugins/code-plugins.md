@@ -84,7 +84,7 @@ export async function activate(api, config) {
 | `onDispose()` | `onDispose(fn)` 登记卸载回调，停止时按登记顺序的逆序调用 |
 | `log()` | `log(message)` 写一条日志消息；不进入 Trace |
 
-槽位名取 `lore`、`character`、`persona`、`summary`、`state`、`memory`、`history`、`scene`、`director`、`user_will`、`protocol` 之一。处理器收到槽位请求（`slot`、`storyId`、`nodeId`、`switches`、`state`），返回 `{ messages, source, suffix? }`：`messages` 每项是 `{ role, content }`，`role` 取 `system`、`user`、`assistant`，`content` 必须是非空字符串；`source` 也必须是非空字符串。
+槽位名取 `lore`、`character`、`persona`、`summary`、`state`、`memory`、`history`、`scene`、`scene_card`、`director`、`user_will`、`protocol` 之一。处理器收到槽位请求（`slot`、`storyId`、`nodeId`、`switches`、`state`），返回 `{ messages, source, suffix? }`：`messages` 每项是 `{ role, content }`，`role` 取 `system`、`user`、`assistant`，`content` 必须是非空字符串；`source` 也必须是非空字符串。
 
 工具定义只允许 `name`、`description`、`parameters`、`permission`、`progressLabel` 五个字段，`permission` 目前只接受 `read`，`phases` 是非空的 `fast`、`deep` 数组。处理器返回 JSON 值，执行结果进入工具结果。
 

@@ -22,6 +22,8 @@ export interface DirectorConfig {
 	readonly maxOpenClues: number;
 	/** 当前分支上未兑现的伏笔最多保留几条；满了不再新建。 */
 	readonly maxOpenPromises: number;
+	/** 距上一次章末规划积累这么多助手楼层后，在间隙做一次章级规划。 */
+	readonly chapterFloors: number;
 	/** 最近多少个已确认助手楼层都没有进展时判定为停滞。 */
 	readonly stallFloors: number;
 	/** 事件池的意外频率门槛，取值 0 到 1；0 表示永不触发，1 表示停滞就触发。 */
@@ -81,6 +83,7 @@ export const DEFAULT_DIRECTOR_CONFIG: DirectorConfig = {
 	clueAgeWarning: 12,
 	maxOpenClues: 5,
 	maxOpenPromises: 5,
+	chapterFloors: 20,
 	stallFloors: 3,
 	surprise: 1,
 	similarityThreshold: 0.73,

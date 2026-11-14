@@ -79,7 +79,7 @@
 负载直接是 `ContextTemplate`：`id`、非空的 `segments`，可选 `deepTurn`。
 
 - 每个片段有唯一的 `id`，`priority` 是有限数字，`when` 是可选条件。
-- `kind` 为 `static` 时 `text` 必须非空；为 `slot` 时 `slot` 取已注册槽位：`lore`、`character`、`persona`、`summary`、`state`、`memory`、`history`、`scene`、`director`、`user_will`、`protocol`。
+- `kind` 为 `static` 时 `text` 必须非空；为 `slot` 时 `slot` 取已注册槽位：`lore`、`character`、`persona`、`summary`、`state`、`memory`、`history`、`scene`、`scene_card`、`director`、`user_will`、`protocol`。
 - `id` 为 `protocol` 的写作契约片段必须排在最后。
 - `deepTurn` 只允许 `tools`、`maxToolCalls`、`maxDurationMs`、`notesEnabled`。`tools` 是深回合工具名的子集，不能重复，未知工具名直接拒绝；`notesEnabled` 为 `false` 时 `tools` 不能含 `note_read` 或 `note_write`。
 
@@ -135,6 +135,7 @@
 | `clueAgeWarning` | `12` | 非负整数 |
 | `maxOpenClues` | `5` | 正整数 |
 | `maxOpenPromises` | `5` | 非负整数；未兑现伏笔的上限，满了不再新建 |
+| `chapterFloors` | `20` | 正整数；距上一次章末规划积累多少助手楼层后在间隙做一次章级规划 |
 | `stallFloors` | `3` | 正整数 |
 | `surprise` | `1` | 0 到 1 的数字 |
 | `similarityThreshold` | `0.73` | 0 到 1 的数字 |

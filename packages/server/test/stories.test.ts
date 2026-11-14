@@ -464,6 +464,7 @@ describe("设置接口", () => {
 			"summary",
 			"memory",
 			"scene",
+			"scene_card",
 			"director",
 			"user_will",
 			"history",

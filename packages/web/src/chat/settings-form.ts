@@ -92,6 +92,7 @@ export const DIRECTOR_NUMBER_KEYS = [
 	"clueAgeWarning",
 	"maxOpenClues",
 	"maxOpenPromises",
+	"chapterFloors",
 	"stallFloors",
 	"surprise",
 	"similarityThreshold",
@@ -136,6 +137,12 @@ export const DIRECTOR_NUMBER_FIELDS: readonly DirectorNumberField[] = [
 		label: "未兑现伏笔上限",
 		integer: true,
 		minimum: 0,
+	},
+	{
+		key: "chapterFloors",
+		label: "章末规划楼层间隔",
+		integer: true,
+		minimum: 1,
 	},
 	{ key: "stallFloors", label: "停滞判定楼层数", integer: true, minimum: 1 },
 	{

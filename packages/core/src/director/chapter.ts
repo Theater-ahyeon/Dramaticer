@@ -1,5 +1,10 @@
 import { assertPlainObject, rejectUnknownKeys } from "../json.js";
-import { type DirectorLineState, MAX_DIRECTOR_LINE_ID_CHARS } from "./lines.js";
+import {
+	type DirectorLineDiff,
+	type DirectorLineRecord,
+	type DirectorLineState,
+	MAX_DIRECTOR_LINE_ID_CHARS,
+} from "./lines.js";
 
 /** 章末对每条旧伏笔的处理：带到下一章，或者作废。 */
 export const DIRECTOR_CHAPTER_PROMISE_DISPOSITIONS = [
@@ -46,6 +51,22 @@ export interface NewDirectorChapterReviewInput {
 	readonly storyId: string;
 	readonly payload: DirectorChapterReviewPayload;
 	readonly createdAt?: string;
+}
+
+/** 一次章级规划要写的两个部分：线修改与章末清点；两者同一事务写入。 */
+export interface NewDirectorChapterPlanInput {
+	readonly nodeId: string;
+	readonly storyId: string;
+	/** 可以为空：这一章没有线需要改动时只写清点。 */
+	readonly diffs: readonly DirectorLineDiff[];
+	readonly review: DirectorChapterReviewPayload;
+	readonly createdAt?: string;
+}
+
+export interface DirectorChapterPlanRecord {
+	/** 没有线修改时为 null。 */
+	readonly lines: DirectorLineRecord | null;
+	readonly review: DirectorChapterReview;
 }
 
 export function isDirectorChapterPromiseDisposition(

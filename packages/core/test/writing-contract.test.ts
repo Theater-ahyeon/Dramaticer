@@ -17,6 +17,7 @@ const DEFAULT_SEGMENT_ORDER = [
 	"state",
 	"memory",
 	"scene",
+	"scene_card",
 	"director",
 	"user_will",
 	"protocol",
@@ -29,6 +30,7 @@ const FULL_SEGMENT_ORDER = [
 	"summary",
 	"memory",
 	"scene",
+	"scene_card",
 	"director",
 	"user_will",
 	"history",
@@ -69,7 +71,7 @@ describe("写作契约段", () => {
 		]);
 	});
 
-	it("full 排布与改动前的段落顺序逐字段一致", () => {
+	it("full 排布沿用 v4 之前的顺序，场面卡仍在导演之前", () => {
 		const template = createDefaultContextTemplate({
 			structuredOutput: "text-tags",
 			layout: "full",
@@ -81,6 +83,12 @@ describe("写作契约段", () => {
 			{ id: "summary", kind: "slot", slot: "summary", priority: 70 },
 			{ id: "memory", kind: "slot", slot: "memory", priority: 60 },
 			{ id: "scene", kind: "slot", slot: "scene", priority: 55 },
+			{
+				id: "scene_card",
+				kind: "slot",
+				slot: "scene_card",
+				priority: 52,
+			},
 			{ id: "director", kind: "slot", slot: "director", priority: 50 },
 			{ id: "user_will", kind: "slot", slot: "user_will", priority: 110 },
 			{ id: "history", kind: "slot", slot: "history", priority: 100 },

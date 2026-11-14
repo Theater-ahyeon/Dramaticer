@@ -461,6 +461,7 @@ describe("explainNode", () => {
 			beat: "试探",
 			present: ["卫宫"],
 			sceneEnds: true,
+			sceneCard: null,
 			bits: [],
 			conditions: [],
 			states: [],

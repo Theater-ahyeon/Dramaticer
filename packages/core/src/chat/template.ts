@@ -104,6 +104,12 @@ const DEFAULT_SEGMENTS: Readonly<Record<string, ContextSegment>> = {
 	state: { id: "state", kind: "slot", slot: "state", priority: 85 },
 	memory: { id: "memory", kind: "slot", slot: "memory", priority: 60 },
 	scene: { id: "scene", kind: "slot", slot: "scene", priority: 55 },
+	scene_card: {
+		id: "scene_card",
+		kind: "slot",
+		slot: "scene_card",
+		priority: 52,
+	},
 	director: { id: "director", kind: "slot", slot: "director", priority: 50 },
 	user_will: {
 		id: "user_will",
@@ -128,6 +134,7 @@ export const DEFAULT_CONTEXT_SEGMENT_ORDER: Readonly<
 		"state",
 		"memory",
 		"scene",
+		"scene_card",
 		"director",
 		"user_will",
 		WRITING_CONTRACT_SEGMENT_ID,
@@ -139,6 +146,7 @@ export const DEFAULT_CONTEXT_SEGMENT_ORDER: Readonly<
 		"summary",
 		"memory",
 		"scene",
+		"scene_card",
 		"director",
 		"user_will",
 		"history",

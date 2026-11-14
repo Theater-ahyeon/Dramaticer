@@ -7,6 +7,7 @@ import {
 	createMemorySlotProvider,
 	createPersonaSlotProvider,
 	createRawHistorySlotProvider,
+	createSceneCardSlotProvider,
 	createSceneSlotProvider,
 	createStateSlotProvider,
 	createSummarySlotProvider,
@@ -35,6 +36,7 @@ export const SUMMARY_SLOT_PLUGIN = "slot.summary";
 export const MEMORY_SLOT_PLUGIN = "slot.memory";
 export const LORE_SLOT_PLUGIN = "slot.lore";
 export const SCENE_SLOT_PLUGIN = "slot.scene";
+export const SCENE_CARD_SLOT_PLUGIN = "slot.scene-card";
 export const DIRECTOR_SLOT_PLUGIN = "slot.director";
 export const USER_WILL_SLOT_PLUGIN = "slot.user-will";
 
@@ -198,6 +200,19 @@ export const sceneSlotPlugin: PluginDefinition = {
 	},
 };
 
+export const sceneCardSlotPlugin: PluginDefinition = {
+	name: SCENE_CARD_SLOT_PLUGIN,
+	apply(context, config) {
+		const values = slotConfig(SCENE_CARD_SLOT_PLUGIN, config);
+		context.slot(
+			"scene_card",
+			createSceneCardSlotProvider(
+				requireSlotStore(SCENE_CARD_SLOT_PLUGIN, values),
+			),
+		);
+	},
+};
+
 export const userWillSlotPlugin: PluginDefinition = {
 	name: USER_WILL_SLOT_PLUGIN,
 	apply(context, config) {
@@ -290,6 +305,7 @@ export const SLOT_PLUGINS: readonly PluginDefinition[] = [
 	memorySlotPlugin,
 	loreSlotPlugin,
 	sceneSlotPlugin,
+	sceneCardSlotPlugin,
 	directorSlotPlugin,
 	userWillSlotPlugin,
 ];

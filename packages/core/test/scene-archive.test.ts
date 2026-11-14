@@ -82,6 +82,7 @@ function saveLog(store: StoryStore, nodeId: string, sceneEnds: boolean): void {
 		beat: "试探",
 		present: ["凛"],
 		sceneEnds,
+		sceneCard: null,
 		bits: [],
 		conditions: [],
 		states: [],

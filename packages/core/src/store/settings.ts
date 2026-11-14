@@ -316,6 +316,7 @@ export const DIRECTOR_CONFIG_KEYS: readonly (keyof DirectorConfig)[] = [
 	"clueAgeWarning",
 	"maxOpenClues",
 	"maxOpenPromises",
+	"chapterFloors",
 	"stallFloors",
 	"surprise",
 	"similarityThreshold",

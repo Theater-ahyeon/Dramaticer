@@ -35,6 +35,9 @@ export function assertDirectorConfig(config: DirectorConfig): void {
 	if (!Number.isInteger(config.maxOpenPromises) || config.maxOpenPromises < 0) {
 		throw new Error("导演配置的 maxOpenPromises 必须是非负整数");
 	}
+	if (!Number.isInteger(config.chapterFloors) || config.chapterFloors < 1) {
+		throw new Error("导演配置的 chapterFloors 必须是正整数");
+	}
 	if (!Number.isInteger(config.stallFloors) || config.stallFloors < 1) {
 		throw new Error("导演配置的 stallFloors 必须是正整数");
 	}

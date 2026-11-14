@@ -90,8 +90,10 @@ import {
 	isDirectorCandidateKind,
 } from "../director/candidates.js";
 import {
+	type DirectorChapterPlanRecord,
 	type DirectorChapterReview,
 	type DirectorChapterReviewPayload,
+	type NewDirectorChapterPlanInput,
 	type NewDirectorChapterReviewInput,
 	assertChapterReviewMatchesLines,
 	assertDirectorChapterReviewPayload,
@@ -208,6 +210,7 @@ import {
 	type NewSceneLog,
 	type SceneLog,
 	assertNewSceneLog,
+	assertSceneCard,
 	assertSceneLogConditions,
 	assertSceneLogQuotes,
 	assertSceneLogStates,
@@ -481,6 +484,7 @@ interface SceneLogRow {
 	readonly beat: string;
 	readonly present: string;
 	readonly scene_ends: number;
+	readonly scene_card: string | null;
 	readonly bits: string;
 	readonly conditions: string;
 	readonly states: string;
@@ -1765,6 +1769,13 @@ function rowToSceneLog(row: SceneLogRow): SceneLog {
 		beat: row.beat,
 		present: readStringArray(row.present, `${label}.present`),
 		sceneEnds: readBooleanColumn(row.scene_ends, `${label}.scene_ends`),
+		sceneCard:
+			row.scene_card === null
+				? null
+				: assertSceneCard(
+						JSON.parse(row.scene_card) as unknown,
+						`${label}.scene_card`,
+					),
 		bits: readStringArray(row.bits, `${label}.bits`),
 		conditions: assertSceneLogConditions(
 			JSON.parse(row.conditions) as unknown,
@@ -4619,6 +4630,46 @@ export class StoryStore {
 		};
 	}
 
+	/**
+	 * 章级规划一次写入章末清点与线修改；两者在同一事务里。清点先写入并
+	 * 对照清点之前的线，随后应用线修改（作废的伏笔在这里删除）。同一楼层
+	 * 已经有清点时直接失败，重复调用不会追加。
+	 */
+	saveDirectorChapterPlan(
+		input: NewDirectorChapterPlanInput,
+	): DirectorChapterPlanRecord {
+		assertNonEmptyString(input.nodeId, "章级规划的楼层 id");
+		assertNonEmptyString(input.storyId, "章级规划的故事 id");
+		const diffs = assertDirectorLineDiffs(input.diffs, "章级规划的 diffs");
+		const review = assertDirectorChapterReviewPayload(
+			input.review,
+			"章级规划的 review",
+		);
+		const createdAt = input.createdAt ?? new Date().toISOString();
+		assertNonEmptyString(createdAt, "章级规划的创建时间");
+		return this.#db.transaction((): DirectorChapterPlanRecord => {
+			if (this.getDirectorChapterReview(input.nodeId) !== null) {
+				throw new Error(`楼层 ${input.nodeId} 已经有章末清点记录`);
+			}
+			const saved = this.saveDirectorChapterReview({
+				nodeId: input.nodeId,
+				storyId: input.storyId,
+				payload: review,
+				createdAt,
+			});
+			const lines =
+				diffs.length === 0
+					? null
+					: this.saveDirectorLines({
+							nodeId: input.nodeId,
+							storyId: input.storyId,
+							diffs,
+							createdAt,
+						});
+			return { lines, review: saved };
+		})();
+	}
+
 	/** 读取一个楼层的章末清点；没有记录时返回 null。 */
 	getDirectorChapterReview(nodeId: string): DirectorChapterReview | null {
 		if (!this.getNode(nodeId)) {
@@ -4729,13 +4780,15 @@ export class StoryStore {
 		this.#db
 			.prepare(
 				`INSERT INTO scene_logs
-					(node_id, story_id, beat, present, scene_ends, bits, conditions,
-					 states, quote_submitted, quote_verified, repairs, created_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+					(node_id, story_id, beat, present, scene_ends, scene_card, bits,
+					 conditions, states, quote_submitted, quote_verified, repairs,
+					 created_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 				ON CONFLICT (node_id) DO UPDATE SET
 					beat = excluded.beat,
 					present = excluded.present,
 					scene_ends = excluded.scene_ends,
+					scene_card = excluded.scene_card,
 					bits = excluded.bits,
 					conditions = excluded.conditions,
 					states = excluded.states,
@@ -4750,6 +4803,9 @@ export class StoryStore {
 				normalised.beat,
 				JSON.stringify(normalised.present),
 				normalised.sceneEnds ? 1 : 0,
+				normalised.sceneCard === null
+					? null
+					: JSON.stringify(normalised.sceneCard),
 				JSON.stringify(normalised.bits),
 				JSON.stringify(normalised.conditions),
 				JSON.stringify(normalised.states),

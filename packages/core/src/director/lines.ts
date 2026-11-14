@@ -3,6 +3,7 @@ import {
 	assertPlainObject,
 	rejectUnknownKeys,
 } from "../json.js";
+import type { SceneCard } from "../ledger/scene-log.js";
 import type { StoryStore } from "../store/story-store.js";
 import type { DirectorConfig } from "./types.js";
 
@@ -371,6 +372,8 @@ export interface DirectorActionFloor {
 	readonly beat: string | null;
 	readonly present: readonly string[];
 	readonly sceneEnds: boolean;
+	/** 这一楼开新场时写下的场面卡；其余楼层为 null。 */
+	readonly sceneCard?: SceneCard | null;
 	/** 这一楼写入台账的硬状态条数。 */
 	readonly stateChanges: number;
 }
@@ -507,6 +510,7 @@ export function selectDirectorAction(
 		blockedAction: blocked,
 		candidates: candidates.map((candidate) => candidate.action),
 		present: [...present],
+		sceneGoal: latest?.sceneCard?.change ?? null,
 		lineCount: lines.length,
 		stallFloors: config.stallFloors,
 		clueAgeWarning: config.clueAgeWarning,
@@ -546,7 +550,28 @@ function playerDirectionCandidate(
 	};
 }
 
-function catchCandidate(hot: DirectorLineState | null): ActionCandidate {
+function formatSceneCard(card: SceneCard): string {
+	const wants = card.present
+		.map((actor) => `${actor.who}想要${actor.want}`)
+		.join("；");
+	return `这一场还没有结束：${wants}。这一场结束时应该改变的是：${card.change}`;
+}
+
+function catchCandidate(
+	hot: DirectorLineState | null,
+	card: SceneCard | null,
+): ActionCandidate {
+	if (card !== null) {
+		return {
+			action: "catch",
+			lineId: hot === null ? null : hot.line.id,
+			reason: `这一场结束时应该改变的是「${card.change}」，还没有达成`,
+			directive:
+				hot === null
+					? `${formatSceneCard(card)}。`
+					: `${formatSceneCard(card)}；${formatDirectorLine(hot.line)}。`,
+		};
+	}
 	return {
 		action: "catch",
 		lineId: hot === null ? null : hot.line.id,
@@ -600,23 +625,35 @@ function buildPushCandidates(
 	const { push, lines, floors, floorDepth } = input;
 	const latest = floors[0] ?? null;
 	const sceneEnded = latest?.sceneEnds === true;
+	const card = latest?.sceneCard ?? null;
 	if (push === "advance") {
 		return sceneEnded
-			? [escalateCandidate(readAnchorLine(lines, "cold")), catchCandidate(hot)]
-			: [catchCandidate(hot), escalateCandidate(readAnchorLine(lines, "cold"))];
+			? [
+					escalateCandidate(readAnchorLine(lines, "cold")),
+					catchCandidate(hot, card),
+				]
+			: [
+					catchCandidate(hot, card),
+					escalateCandidate(readAnchorLine(lines, "cold")),
+				];
 	}
 	if (push === "quick") {
 		return [
 			{
 				action: "transition",
 				lineId: hot === null ? null : hot.line.id,
-				reason: "玩家选择了快速推进：让这一场达成目标并转场",
+				reason:
+					card === null
+						? "玩家选择了快速推进：让这一场达成目标并转场"
+						: `玩家选择了快速推进：让这一场达成目标（${card.change}）并转场`,
 				directive:
-					hot === null
-						? "这一场到此收尾；时间向前走一截。"
-						: `这一场到此收尾：${formatDirectorLine(hot.line)}。时间向前走一截。`,
+					card !== null
+						? `这一场到此收尾：${card.change}。时间向前走一截。`
+						: hot === null
+							? "这一场到此收尾；时间向前走一截。"
+							: `这一场到此收尾：${formatDirectorLine(hot.line)}。时间向前走一截。`,
 			},
-			catchCandidate(hot),
+			catchCandidate(hot, card),
 		];
 	}
 	const soonest = soonestCountdownLine(lines, floorDepth);
@@ -631,7 +668,7 @@ function buildPushCandidates(
 						? "时间向前跳过一段空白。"
 						: `时间向前跳过一段空白；${formatDirectorLine(hot.line)}。`,
 			},
-			catchCandidate(hot),
+			catchCandidate(hot, card),
 		];
 	}
 	return [
@@ -783,15 +820,26 @@ function buildActionCandidates(input: DirectorActionInput): ActionCandidate[] {
 		});
 	}
 
-	if ((latest === null || !latest.sceneEnds) && hot !== null) {
+	const latestCard = latest?.sceneCard ?? null;
+	const catchDirective =
+		latestCard === null
+			? hot === null
+				? null
+				: `这一场还没有结束：${formatDirectorLine(hot.line)}。`
+			: hot === null
+				? `${formatSceneCard(latestCard)}。`
+				: `${formatSceneCard(latestCard)}；${formatDirectorLine(hot.line)}。`;
+	if (catchDirective !== null && (latest === null || !latest.sceneEnds)) {
 		candidates.push({
 			action: "catch",
-			lineId: hot.line.id,
+			lineId: hot === null ? null : hot.line.id,
 			reason:
-				latest === null
-					? "还没有场记记录，按场面没有结束处理"
-					: "最近一楼的场记没有标记场面结束",
-			directive: `这一场还没有结束：${formatDirectorLine(hot.line)}。`,
+				latestCard !== null
+					? `这一场结束时应该改变的是「${latestCard.change}」，这一场还没有结束`
+					: latest === null
+						? "还没有场记记录，按场面没有结束处理"
+						: "最近一楼的场记没有标记场面结束",
+			directive: catchDirective,
 		});
 	}
 
@@ -828,6 +876,7 @@ export function readDirectorActionInput(
 			beat: scene === null ? null : scene.beat,
 			present: scene === null ? [] : scene.present,
 			sceneEnds: scene === null ? false : scene.sceneEnds,
+			sceneCard: scene === null ? null : scene.sceneCard,
 			stateChanges: store.getStateDiffs(item.id).length,
 		};
 	});
