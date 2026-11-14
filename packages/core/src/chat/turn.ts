@@ -136,6 +136,8 @@ export interface ChatTurnOptions {
 	readonly model?: string;
 	readonly maxTokens?: number;
 	readonly temperature?: number;
+	/** 采样种子；评测用它区分两次同配置生成。 */
+	readonly seed?: number;
 	readonly reasoning?: LlmReasoningLevel;
 	readonly signal?: AbortSignal;
 	readonly onTextDelta?: (
@@ -614,6 +616,7 @@ export async function generateAssistantTurn(
 		model: options.model,
 		maxTokens: options.maxTokens,
 		temperature: options.temperature,
+		seed: options.seed,
 		reasoning: options.reasoning,
 		signal: options.signal,
 		continuation: {

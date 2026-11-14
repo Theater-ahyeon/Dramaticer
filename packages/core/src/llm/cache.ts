@@ -67,6 +67,9 @@ export function requestCacheKey(
 	if (request.reasoning !== undefined) {
 		body.reasoning_effort = request.reasoning;
 	}
+	if (request.seed !== undefined) {
+		body.seed = request.seed;
+	}
 	if (request.tools !== undefined && request.tools.length > 0) {
 		body.tools = request.tools.map((tool) => ({
 			name: tool.name,

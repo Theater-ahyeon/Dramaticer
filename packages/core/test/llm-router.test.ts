@@ -379,6 +379,18 @@ describe("LlmRouter", () => {
 		expect(other.calls).toHaveLength(1);
 	});
 
+	it("采样种子进入渠道请求，不同种子不共用缓存", async () => {
+		const dir = tempCacheDir();
+		const channel = fakeChannel("a", () => ({ text: "同配置" }));
+		const router = createRouter([channel], dir);
+		await router.complete({ ...request(), seed: 1 });
+		await router.complete({ ...request(), seed: 2 });
+		expect(channel.calls.map((call) => call.seed)).toEqual([1, 2]);
+		const again = await router.complete({ ...request(), seed: 1 });
+		expect(again.cached).toBe(true);
+		expect(channel.calls).toHaveLength(2);
+	});
+
 	it("失败的半截结果不写入缓存", async () => {
 		const dir = tempCacheDir();
 		const channel = fakeChannel("a", (_request, call) => {

@@ -82,6 +82,11 @@ export interface LlmRequest {
 	readonly model?: string;
 	readonly temperature?: number;
 	readonly maxTokens?: number;
+	/**
+	 * 采样种子；只有 openai 兼容适配器会写进请求体，其他适配器忽略。
+	 * 评测用它区分两次同配置生成，种子也进入响应缓存键。
+	 */
+	readonly seed?: number;
 	/** 思考档位；不设置时使用渠道默认行为。 */
 	readonly reasoning?: LlmReasoningLevel;
 	/** 把已有内容交给模型接着写；聊天历史仍放在 messages 里。 */
@@ -183,6 +188,7 @@ export interface LlmProviderRequest {
 	readonly tools?: readonly LlmToolDefinition[];
 	readonly temperature?: number;
 	readonly maxTokens?: number;
+	readonly seed?: number;
 	readonly reasoning?: LlmReasoningLevel;
 	readonly continuation?: LlmContinuation;
 	readonly signal?: AbortSignal;

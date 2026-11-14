@@ -1847,7 +1847,8 @@
   - 结果写成 sidecar（配对、顺序、判定、失败原因）以支持续跑；汇总直接产出 G0 的判定输入；报告只写聚合数字。
   验收：假客户端下两条分支都产出 G0 输入并支持续跑；同一配对两种顺序都记录；两次文本相同的 A/A 配对记失败；统计结果不含私有原文；`pnpm check` 通过。
 
-- [ ] **R6-T07.b 重 roll 点回放批次** | 依赖：R6-T07.a、R6-T02
+- [x] **R6-T07.b 重 roll 点回放批次** | 依赖：R6-T07.a、R6-T02
+  完成：2026-11-14 新增 `evalset/r6-replay.ts` 与 CLI `r6-replay`（package 脚本与包导出已接）：`planR6Replay` 从路径与兄弟楼层表规划点，被接受的是路径上的那一楼，放弃侧取 swipe 下标紧邻其下的那条（下标只从节点 id 后缀 `:s<N>` 读），更早的放弃 swipe 与「被接受不是最后一条 swipe」只计数；父楼层是助手楼层的兄弟楼层无法回放，只计入 `skippedAssistantParent`（真实数据 43 个点里有 1 个，可回放 42 个）。每个点复制源数据库、预热 12 楼，按种子 1 与种子 2 各生成一次（`generateAssistantTurn`，两个种子只差 `seed`），种子 1 的续写与被放弃侧、被接受侧各按两种顺序判一次；生成失败时两组各占两个失败槽位。sidecar 校验故事、玩家楼层、玩家消息、两侧节点与 swipe 下标、写作与裁判模型、两个种子，`running` 续跑、`done` 与 `failed` 复用；运行目录写出与 `r6-instrument` 同格式的 `aa-samples.jsonl`；汇总直接产出 `R6ReplayGateInput`。核心新增可选 `seed`：进入 `LlmRequest`、`requestCacheKey`、`LlmProviderRequest`、`ChatTurnOptions` 与 `ModelTurnOptions`，`PiLlmChannel` 用 `samplingParams` 透传，不带种子时请求体与之前逐字节相同。ADR-0146。新增 9 个测试（含核心缓存键与路由透传）；门禁通过。
   做什么：
   - 新增 `evalset/r6-replay.ts` 与 CLI：从源数据库规划重 roll 点（同一玩家楼层下多条助手兄弟楼层，被接受的是 head 路径上的那一楼，放弃侧取下标紧邻其下的 swipe），每个点复制数据库、预热 12 楼、生成一次原生续写，与被放弃侧和接受侧各配一次，两种顺序各判一次。
   - 复用 R6-T02 的副本与预热函数、R6-T03 的配对判定；sidecar 校验故事、分支点、玩家消息、swipe 下标、模型与种子；汇总直接产出 G1 的判定输入。

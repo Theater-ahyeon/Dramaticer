@@ -72,6 +72,14 @@ describe("requestCacheKey", () => {
 				temperature: 0.5,
 			}),
 		).not.toBe(base);
+		expect(
+			requestCacheKey(identity, "test-model", {
+				...request,
+				seed: 1,
+			}),
+		).not.toBe(
+			requestCacheKey(identity, "test-model", { ...request, seed: 2 }),
+		);
 	});
 });
 

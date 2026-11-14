@@ -270,6 +270,7 @@ export class LlmRouter implements LlmStreamingClient {
 					tools: input.request.tools,
 					temperature: input.request.temperature,
 					maxTokens: input.maxTokens,
+					seed: input.request.seed,
 					reasoning: input.request.reasoning,
 					continuation: activeContinuation,
 					signal: input.request.signal,

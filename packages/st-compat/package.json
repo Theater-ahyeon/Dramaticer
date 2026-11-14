@@ -40,6 +40,7 @@
 		"r6-deep": "tsc -b && node dist/evalset/r6-deep-cli.js",
 		"r6-preference": "tsc -b && node dist/evalset/r6-preference-cli.js",
 		"r6-instrument": "tsc -b && node dist/evalset/r6-instrument-cli.js",
+		"r6-replay": "tsc -b && node dist/evalset/r6-replay-cli.js",
 		"scene-log-compare": "tsc -b && node dist/evalset/scene-log-compare-cli.js",
 		"memory-eval": "tsc -b && node dist/evalset/memory-cli.js",
 		"playtest": "tsc -b && node dist/evalset/playtest-cli.js",

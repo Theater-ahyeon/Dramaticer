@@ -107,6 +107,9 @@ export class PiLlmChannel implements LlmChannel {
 			signal: request.signal,
 			temperature: request.temperature,
 			maxTokens: request.maxTokens ?? request.model.maxTokens,
+			...(request.seed === undefined
+				? {}
+				: { samplingParams: { seed: request.seed } }),
 			reasoning: request.reasoning === "off" ? undefined : request.reasoning,
 			timeoutMs: this.timeoutMs,
 			maxRetries: 0,
