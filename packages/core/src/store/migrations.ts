@@ -1691,6 +1691,31 @@ export function buildMigrations(
 				END`,
 			],
 		},
+		{
+			version: 58,
+			description: "导演的线：每个楼层保存线修改，沿路径累加",
+			statements: [
+				`CREATE TABLE director_lines (
+					node_id TEXT PRIMARY KEY REFERENCES nodes(id),
+					story_id TEXT NOT NULL REFERENCES stories(id),
+					diffs TEXT NOT NULL,
+					created_at TEXT NOT NULL
+				) STRICT`,
+				"CREATE INDEX director_lines_story_idx ON director_lines(story_id)",
+				`CREATE TRIGGER director_lines_story_matches_node
+				BEFORE INSERT ON director_lines
+				WHEN COALESCE((SELECT story_id FROM nodes WHERE id = NEW.node_id), '') <> NEW.story_id
+				BEGIN
+					SELECT RAISE(ABORT, '线修改的 story_id 必须与所在楼层一致');
+				END`,
+				`CREATE TRIGGER director_lines_identity_immutable
+				BEFORE UPDATE ON director_lines
+				WHEN NEW.node_id <> OLD.node_id OR NEW.story_id <> OLD.story_id
+				BEGIN
+					SELECT RAISE(ABORT, '线修改的楼层与故事归属不可修改');
+				END`,
+			],
+		},
 	];
 }
 

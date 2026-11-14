@@ -14,7 +14,6 @@ import {
 	type ContextTemplate,
 	DEFAULT_DIRECTOR_CONFIG,
 	DIRECTOR_BITS_JOB_KIND,
-	DIRECTOR_ORGANIZATION_KINDS,
 	type DirectorBit,
 	type DirectorDecision,
 	type DirectorOrganizationKind,
@@ -63,6 +62,12 @@ import {
 export const DIRECTOR_COMPARE_FORMAT =
 	"dramaticer.director-organization-compare";
 export const DEFAULT_REPETITIONS = 3;
+
+/** X2 对比实验固定比较这两个候选；新增组织方式不自动进入这个实验。 */
+export const X2_DIRECTOR_ORGANIZATION_KINDS = [
+	"mechanisms",
+	"bits",
+] as const satisfies readonly DirectorOrganizationKind[];
 
 export interface DirectorOrganizationCompareOptions {
 	/** 已导入故事与卡的数据库；每个候选与重复各复制一份。 */
@@ -288,7 +293,7 @@ export async function runDirectorOrganizationCompare(
 	await mkdir(options.dir, { recursive: true });
 	const conditionSamples = options.conditionSamples ?? [];
 	const runs: DirectorRunRecord[] = [];
-	for (const kind of DIRECTOR_ORGANIZATION_KINDS) {
+	for (const kind of X2_DIRECTOR_ORGANIZATION_KINDS) {
 		for (let repetition = 1; repetition <= repetitions; repetition += 1) {
 			const loaded = await loadRun({
 				dir: options.dir,
@@ -346,7 +351,7 @@ export async function runDirectorOrganizationCompare(
 		judge: options.judge,
 		log,
 	});
-	const candidates = DIRECTOR_ORGANIZATION_KINDS.map((kind) =>
+	const candidates = X2_DIRECTOR_ORGANIZATION_KINDS.map((kind) =>
 		summarizeCandidate({
 			kind,
 			repetitions,
@@ -781,7 +786,7 @@ async function judgePairs(input: {
 			baselineByRepetition.set(run.repetition, run);
 		}
 	}
-	for (const kind of DIRECTOR_ORGANIZATION_KINDS) {
+	for (const kind of X2_DIRECTOR_ORGANIZATION_KINDS) {
 		if (kind === "mechanisms") {
 			result.set(kind, summarizePreferenceComparisons([]));
 			continue;
@@ -1218,7 +1223,9 @@ function isDirectorRunRecord(value: unknown): value is DirectorRunRecord {
 		value.format === DIRECTOR_COMPARE_FORMAT &&
 		typeof value.story === "string" &&
 		typeof value.kind === "string" &&
-		(DIRECTOR_ORGANIZATION_KINDS as readonly string[]).includes(value.kind) &&
+		(X2_DIRECTOR_ORGANIZATION_KINDS as readonly string[]).includes(
+			value.kind,
+		) &&
 		typeof value.repetition === "number" &&
 		typeof value.rounds === "number" &&
 		typeof value.messagesHash === "string" &&

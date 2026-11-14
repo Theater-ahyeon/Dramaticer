@@ -91,6 +91,13 @@ import {
 } from "../director/candidates.js";
 import { assertDirectorConfig } from "../director/evaluate.js";
 import {
+	type DirectorLineRecord,
+	type DirectorLineState,
+	type NewDirectorLineRecordInput,
+	applyDirectorLineDiffs,
+	assertDirectorLineDiffs,
+} from "../director/lines.js";
+import {
 	type DirectorNoteDiff,
 	type DirectorNoteEntry,
 	type DirectorNoteRecord,
@@ -502,6 +509,13 @@ interface WikiRevisionRow {
 }
 
 interface DirectorNoteRow {
+	readonly node_id: string;
+	readonly story_id: string;
+	readonly diffs: string;
+	readonly created_at: string;
+}
+
+interface DirectorLineRow {
 	readonly node_id: string;
 	readonly story_id: string;
 	readonly diffs: string;
@@ -1822,6 +1836,18 @@ function rowToDirectorNote(row: DirectorNoteRow): DirectorNoteRecord {
 		diffs: assertDirectorNoteDiffs(
 			JSON.parse(row.diffs) as unknown,
 			`楼层 ${row.node_id} 的导演手记`,
+		),
+		createdAt: row.created_at,
+	};
+}
+
+function rowToDirectorLine(row: DirectorLineRow): DirectorLineRecord {
+	return {
+		nodeId: row.node_id,
+		storyId: row.story_id,
+		diffs: assertDirectorLineDiffs(
+			JSON.parse(row.diffs) as unknown,
+			`楼层 ${row.node_id} 的线修改`,
 		),
 		createdAt: row.created_at,
 	};
@@ -4429,6 +4455,88 @@ export class StoryStore {
 			entries = applyDirectorNoteDiffs(entries, rowToDirectorNote(row).diffs);
 		}
 		return entries;
+	}
+
+	/** 写入一个楼层的线修改；每个楼层只有一行，重复写入直接失败。 */
+	saveDirectorLines(input: NewDirectorLineRecordInput): DirectorLineRecord {
+		assertNonEmptyString(input.nodeId, "线修改的楼层 id");
+		assertNonEmptyString(input.storyId, "线修改的故事 id");
+		const node = this.getNode(input.nodeId);
+		if (!node) {
+			throw new Error(`楼层节点不存在：${input.nodeId}`);
+		}
+		if (node.storyId !== input.storyId) {
+			throw new Error(
+				`线修改的 storyId 与楼层所属故事不一致：${input.storyId}`,
+			);
+		}
+		const diffs = assertDirectorLineDiffs(input.diffs, "线修改的 diffs");
+		if (diffs.length === 0) {
+			throw new Error("线修改的 diffs 至少要有一条");
+		}
+		const createdAt = input.createdAt ?? new Date().toISOString();
+		assertNonEmptyString(createdAt, "线修改的创建时间");
+		this.#db
+			.prepare(
+				`INSERT INTO director_lines (node_id, story_id, diffs, created_at)
+				VALUES (?, ?, ?, ?)`,
+			)
+			.run(input.nodeId, input.storyId, JSON.stringify(diffs), createdAt);
+		return { nodeId: input.nodeId, storyId: input.storyId, diffs, createdAt };
+	}
+
+	/** 读取一个楼层的线修改；没有记录时返回 null。 */
+	getDirectorLines(nodeId: string): DirectorLineRecord | null {
+		if (!this.getNode(nodeId)) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
+		const row = this.#db
+			.prepare("SELECT * FROM director_lines WHERE node_id = ?")
+			.get(nodeId) as DirectorLineRow | undefined;
+		return row === undefined ? null : rowToDirectorLine(row);
+	}
+
+	/**
+	 * 沿节点所在的路径从根到该楼层逐楼应用线修改；楼层深度是路径上
+	 * 已经出现的助手楼层数，冷热据此计算。其他分支的记录不参与累加。
+	 */
+	readDirectorLineStates(nodeId: string): DirectorLineState[] {
+		if (!this.getNode(nodeId)) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
+		const depths = new Map<string, number>();
+		let depth = 0;
+		for (const item of this.getPathToNode(nodeId)) {
+			if (item.role === "assistant") depth += 1;
+			depths.set(item.id, depth);
+		}
+		const rows = this.#db
+			.prepare(
+				`WITH RECURSIVE chain(node_id, depth) AS (
+					SELECT id, 0 FROM nodes WHERE id = ?
+					UNION ALL
+					SELECT nodes.parent_id, chain.depth + 1
+					FROM nodes JOIN chain ON nodes.id = chain.node_id
+					WHERE nodes.parent_id IS NOT NULL
+				)
+				SELECT director_lines.*
+				FROM director_lines JOIN chain ON director_lines.node_id = chain.node_id
+				ORDER BY chain.depth DESC`,
+			)
+			.all(nodeId) as DirectorLineRow[];
+		let states: DirectorLineState[] = [];
+		for (const row of rows) {
+			const rowDepth = depths.get(row.node_id);
+			if (rowDepth === undefined) {
+				throw new Error(`线修改的楼层 ${row.node_id} 不在路径上`);
+			}
+			states = applyDirectorLineDiffs(
+				states,
+				rowToDirectorLine(row).diffs,
+				rowDepth,
+			);
+		}
+		return states;
 	}
 
 	/** 写入一个楼层的合并调用执行记录；同一楼层重复执行覆盖同一行。 */

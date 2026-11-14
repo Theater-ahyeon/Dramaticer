@@ -1755,7 +1755,8 @@
 
 ### W4：导演
 
-- [ ] **W4-T01 线与八种动作引擎** | 依赖：W2-T02 | DESIGN §8.1–8.3 | I9
+- [x] **W4-T01 线与八种动作引擎** | 依赖：W2-T02 | DESIGN §8.1–8.3 | I9 | ADR-0143
+  完成：2026-11-14 迁移 v58 新增 `director_lines`（每楼层一行、沿路径累加，同故事触发器与归属不可改，写法与 `director_notes` 一致）；`director/lines.ts` 新增线对象（`id`、`kind` 四类、`who`、`want`、`obstacle`、`countdown`、`preparations` 最多三条）与 `set`/`delete` 修改的校验、`applyDirectorLineDiffs` 与 `directorLineRemaining`；冷热由 `readDirectorLineStates` 按路径上的助手楼层数派生（`openedDepth`、`lastTouchedDepth`），倒计时每楼推进一拍。`DIRECTOR_ORGANIZATION_KINDS` 增加 `lines`，引擎读场记记录与线状态后由纯函数 `selectDirectorAction` 按让位、闯入、兑现、揭示、转场、喘息、加码、接球的顺序选一个动作，同一动作连续两次后禁止第三次；决策记录的机制条目与信号都带理由，槽位来源是 `director:action:<kind>`，`explain` 第 6 节可读；`settings` 与配置字段不变，`mechanisms` 默认不变，X2 对比实验固定 `X2_DIRECTOR_ORGANIZATION_KINDS` 两个候选。新增 19 个测试（校验、累加、分支隔离、八种动作、抑制、引擎与槽位）；门禁通过（282 个测试文件、2,410 个测试、5 个跳过）
   做什么：
   - 新增线对象与存储（谁想要什么、阻碍与代价、倒计时、后台预备的发展、冷热），按楼层存修改、沿路径累加；新增动作选择纯函数：输入场记记录与线状态，输出八种动作之一与理由。
   - 同一动作不连用三次；理由写进 Trace 并可从 `explain` 读到；在 `bits` 与 `mechanisms` 之上演进，`directorOrganization` 开关保留旧引擎。

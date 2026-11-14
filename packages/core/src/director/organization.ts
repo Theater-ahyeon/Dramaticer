@@ -10,6 +10,11 @@ import {
 	readSelectedDirectorBit,
 } from "./bits.js";
 import { assertDirectorConfig, evaluateDirector } from "./evaluate.js";
+import {
+	DIRECTOR_ACTION_PRIORITY,
+	readDirectorActionInput,
+	selectDirectorAction,
+} from "./lines.js";
 import type {
 	DirectorConfig,
 	DirectorMechanism,
@@ -17,8 +22,12 @@ import type {
 	DirectorSuggestion,
 } from "./types.js";
 
-/** 导演的组织方式；对比实验 X2 的两个候选。 */
-export const DIRECTOR_ORGANIZATION_KINDS = ["mechanisms", "bits"] as const;
+/** 导演的组织方式；X2 的两个候选与 v4 的线与动作引擎。 */
+export const DIRECTOR_ORGANIZATION_KINDS = [
+	"mechanisms",
+	"bits",
+	"lines",
+] as const;
 
 export type DirectorOrganizationKind =
 	(typeof DIRECTOR_ORGANIZATION_KINDS)[number];
@@ -99,6 +108,14 @@ export function createDirectorEngine(
 				mechanismNames: null,
 				evaluate(input) {
 					return evaluateDirectorBits(input);
+				},
+			};
+		case "lines":
+			return {
+				kind,
+				mechanismNames: null,
+				evaluate(input) {
+					return evaluateDirectorLines(input);
 				},
 			};
 	}
@@ -282,6 +299,64 @@ function evaluateDirectorBits(
 		},
 	});
 	return suggestion;
+}
+
+/**
+ * 线与动作引擎：读场记记录与线状态，由程序选一个动作并写进决策记录。
+ * 全程不调用模型；理由写进机制条目与信号，`explain` 可读。
+ */
+function evaluateDirectorLines(
+	input: DirectorEngineInput,
+): DirectorSuggestion | null {
+	const { store, storyId, nodeId, config } = input;
+	assertDirectorConfig(config);
+	if (!store.getStory(storyId)) {
+		throw new Error(`故事不存在：${storyId}`);
+	}
+	const node = store.getNode(nodeId);
+	if (!node) {
+		throw new Error(`楼层节点不存在：${nodeId}`);
+	}
+	if (node.storyId !== storyId) {
+		throw new Error(`楼层节点 ${nodeId} 属于另一个故事 ${node.storyId}`);
+	}
+	if (config.mode === "off") return null;
+	const actionInput = readDirectorActionInput(store, storyId, nodeId, config);
+	const selection = selectDirectorAction(actionInput);
+	if (selection === null) {
+		store.saveDirectorDecision({
+			nodeId,
+			storyId,
+			directive: null,
+			mechanisms: [
+				{ name: "action", triggered: false, reason: "没有可用的动作条件" },
+			],
+			signals: {
+				organization: "lines",
+				action: null,
+				floorDepth: actionInput.floorDepth,
+				recentActions: [...actionInput.recentActions],
+			},
+		});
+		return null;
+	}
+	const signals: JsonObject = {
+		organization: "lines",
+		...selection.signals,
+	};
+	store.saveDirectorDecision({
+		nodeId,
+		storyId,
+		directive: selection.directive,
+		mechanisms: [{ name: "action", triggered: true, reason: selection.reason }],
+		signals,
+	});
+	return {
+		mechanism: `action:${selection.action}`,
+		priority: DIRECTOR_ACTION_PRIORITY,
+		directive: selection.directive,
+		signals,
+	};
 }
 
 function highestPriority(items: readonly EligibleBit[]): EligibleBit | null {

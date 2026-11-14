@@ -2300,3 +2300,29 @@
   - 数据库 schema 升到 57。`LEDGER_NAMESPACES` 增加 `rule`，插件 schema 与路径校验自动接受它。
   - W3-T03 拆成 W3-T03.a（本 ADR：声明、存储、执行函数与状态定义接线）与 W3-T03.b（快回合 `rule_check` 工具、按用途开放与结算校验）；本会话只做 .a。
   - 检定结果不写楼层原文；模型只看到工具结果，正文由模型叙述。回合内不额外调用模型（I11）。
+
+## ADR-0143 线与八种动作引擎的程序判断口径（2026-11-14）
+
+- **背景**：DESIGN §8 把导演改写成「一组线 + 八种动作 + 三个时间尺度」，W4-T01 要做线对象与按楼层存修改的存储，以及一个只由程序判断的动作选择函数。设计只写了每种动作的触发语义，没有写程序用什么数据判定，也没有写优先级；这些口径必须先固定，否则后续的推进三档（W4-T02）与场面卡（W4-T03）会各自发明一套。
+- **选项**：
+  - 让模型判断动作：与 I9「导演的实时选择用纯程序实现」冲突，且每轮多一次调用。
+  - 程序从场记记录与线状态判断：无模型调用，判断口径可以写进测试；代价是部分语义要用代理指标（玩家消息长度、状态变化条数、冷热）。
+- **决定**：
+  - 迁移 v58 新增 `director_lines`，每个楼层保存一份线修改（`set` 带完整线、`delete` 只带 id），沿路径累加，写法与 `director_notes` 一致。线的字段是 `id`、`kind`（`main`、`relationship`、`opposition`、`promise`）、`who`（谁想要什么）、`want`、`obstacle`（阻碍与代价）、`countdown`（剩余拍数，null 表示没有倒计时）、`preparations`（后台预备的发展，最多三条）。冷热不落在线上：`readDirectorLineStates` 返回 `openedDepth` 与 `lastTouchedDepth`，单位是当前路径上的助手楼层数。
+  - 倒计时的单位是助手楼层。有效余量是 `countdown - (当前深度 - lastTouchedDepth)`；后台规划器写一条新 `set` 即重置时钟。设计里「按故事时间自己推进」在 W4-T01 落成这个口径，章级规划（W4-T03）负责按故事时间重写 `countdown`。
+  - `DIRECTOR_ORGANIZATION_KINDS` 增加 `lines`，`directorOrganization` 的三档默认仍是 `mechanisms`（X2 判定不变）。`lines` 引擎只产出一条建议，来源写成 `director:action:<kind>`；决策记录的机制条目是 `action`，理由同时在 `mechanisms[].reason` 与 `signals.reason` 里，`explain` 的第 6 节直接可读。
+  - 八种动作的判定口径：
+    - 让位：玩家消息去掉空白后至少 12 个字。
+    - 接球：最近一楼的场记没有标记 `sceneEnds`（没有场记记录时按场面未结束处理），锚定最热的线。
+    - 加码：连续 2 楼没有状态变化，从最冷的线取阻碍。
+    - 闯入：任意线的有效倒计时余量不大于 0，取余量最小的那条。
+    - 兑现：`promise` 线超过 `clueAgeWarning` 楼没有被触及，取最老的一条。
+    - 揭示：`opposition` 线的 `who` 在最近一楼的在场者里，且这条线最近 2 楼内被触及。
+    - 喘息：连续 2 楼每楼至少 `tensionStateDiffsPerFloor` 条状态变化。
+    - 转场：最近一楼 `sceneEnds` 为真，或连续 `stallFloors` 楼没有状态变化。
+  - 优先级固定为让位、闯入、兑现、揭示、转场、喘息、加码、接球。最近两个动作都是同一个时，这个动作被排除，改选下一候选；一个候选都没有时不产出建议，但照常写决策记录（导演关闭时不写）。
+- **影响**：
+  - 数据库 schema 升到 58。新配置项不增加：阈值来自既有的 `stallFloors`、`clueAgeWarning`、`tensionStateDiffsPerFloor`，其余是模块常量（`DIRECTOR_SMOOTH_FLOORS`、`DIRECTOR_INTENSE_FLOORS`、`DIRECTOR_REVEAL_HOT_FLOORS`、`PLAYER_DIRECTION_MIN_CHARS`），设置表单与存储格式不变。
+  - `selectDirectorAction` 只接收内存里的观察，不读数据库、不调用模型；数据库读取集中在 `readDirectorActionInput`。
+  - 场面目标与「这一场结束时应该改变什么」由 W4-T03 的场面卡补上；在那之前用场记的 `sceneEnds` 作为「场面目标已达成」的代理。
+  - 线的写入路径目前只有存储与线引擎读取；后台规划器写线与章末清点分别是 W4-T03 与 W4-T02。
