@@ -50,6 +50,28 @@ function templateFixture(): ContextTemplate {
 }
 
 describe("模板表单", () => {
+	it("人物档案、重逢注入与场面卡槽位可以保存", () => {
+		const draft = templateDraftFrom(
+			{
+				id: "custom",
+				segments: [
+					{ id: "profile", kind: "slot", slot: "profile" },
+					{ id: "reunion", kind: "slot", slot: "reunion" },
+					{ id: "scene_card", kind: "slot", slot: "scene_card" },
+					{ id: "protocol", kind: "static", text: "契约" },
+				],
+			},
+			"模板甲",
+		);
+		expect(validateTemplateDraft(draft)).toEqual([]);
+		expect(describeTemplateSegments(draft).map((row) => row.detail)).toEqual([
+			"人物档案",
+			"重逢注入",
+			"场面卡",
+			"契约",
+		]);
+	});
+
 	it("草稿顺序就是组装顺序与预览顺序", () => {
 		const draft = templateDraftFrom(templateFixture(), "模板甲");
 		expect(describeTemplateSegments(draft).map((row) => row.id)).toEqual([

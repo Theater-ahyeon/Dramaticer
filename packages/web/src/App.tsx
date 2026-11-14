@@ -10,6 +10,7 @@ import { ImagesPage } from "./pages/story/ImagesPage";
 import { ImportAuditPage } from "./pages/story/ImportAuditPage";
 import { ImportPage } from "./pages/story/ImportPage";
 import { LedgerPage } from "./pages/story/LedgerPage";
+import { SerialPage } from "./pages/story/SerialPage";
 import { SettingsPage } from "./pages/story/SettingsPage";
 
 export function App() {
@@ -35,6 +36,7 @@ export function App() {
 						<Route path="audit" element={<ImportAuditPage />} />
 						<Route path="branches" element={<BranchesPage />} />
 						<Route path="ledger" element={<LedgerPage />} />
+						<Route path="serial" element={<SerialPage />} />
 						<Route path="director" element={<DirectorPage />} />
 						<Route path="images" element={<ImagesPage />} />
 						<Route path="settings" element={<SettingsPage />} />

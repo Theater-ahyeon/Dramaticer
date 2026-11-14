@@ -73,7 +73,14 @@ export async function createImportedStory(
 export async function openStoryTab(
 	page: Page,
 	storyId: string,
-	tab: "chat" | "branches" | "ledger" | "director" | "settings" | "channels",
+	tab:
+		| "chat"
+		| "branches"
+		| "ledger"
+		| "serial"
+		| "director"
+		| "settings"
+		| "channels",
 ): Promise<void> {
 	await page.goto(`/stories/${storyId}/${tab}`);
 	await page.locator(".story-content").waitFor();

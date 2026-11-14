@@ -3,24 +3,25 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-14 会话 420：完成 W6-T03.c（导出成书）。core 新增 `serial/book.ts` 的 `exportSerialBook(store, storyId, {nodeId?})`：按连载视图的章节目录切分当前路径，章与章之间不重叠也不留空档（章末之后的玩家楼层仍属于最后一章，还没有章末清点时整条路径算一章）；章标题按目录序号写成 `## 第 N 章`，场次摘要按场次起点以引用块插入（未归档场次不写摘要），正文逐字取 `TimelineNode.raw`，输出只有故事标题、章标题、摘要与原文，重复导出逐字节一致；文件名由故事标题去掉 `\ / : * ? " < > |` 得到，标题为空时退回故事 id。`SerialView` 增加 `scenes`（与 `chapters[].sceneOrdinals` 对应），四块原有派生字段不变。接口 `GET /api/stories/:id/serial/export[?nodeId=]` 返回 `{storyId,nodeId,fileName,markdown}`，未知故事与跨故事楼层 404、空 `nodeId` 400。protocol 新增 `StoryBookExport`，web 客户端新增 `exportBook`。新增 core 8 个、server 3 个、web 1 个测试；`pnpm check` 通过（291 个测试文件、2,534 个测试、5 个跳过）。
+- 2026-11-14 会话 421：完成 W6-T03.d（连载页面与 e2e），W6 结束。web 新增 `/stories/:id/serial` 与故事导航的「连载」标签（移动端栅格改为 10 列），页面内五个标签（前情提要、章节目录、人物关系、时间线、可编辑记忆）共用一次 `api.getSerial` 响应：前情提要按 `recap.stale` 默认展开；章节目录按 `chapters[].sceneOrdinals` 取 `SerialView.scenes`；人物关系只读档案、台账与关系；时间线只读派生条目。可编辑记忆按人物把状态与位置的改动转成 `LedgerChangeCardDiff`（内容不变不写、清空已有值写 `delete`），说明缺省写成「修改「某人」的状态、位置」，经 `api.createProposal` 生成待审卡；批准、拒绝与回滚复用 `ProposalList` 与既有接口，批准后重新拉取视图。导出按钮用 `api.exportBook` 把 Markdown 按 `fileName` 触发下载。新增 `chat/serial-view.ts`（标签、章标题、可编辑字段与 diff 构造）与 4 个 web 测试。全量 e2e 发现设置页复制内置模板被前端校验拦下：`SLOT_CHOICES` 缺少 W6-T01/W6-T02 新增的 `profile`、`reunion`、`scene_card`，已补齐并加测试。e2e 新增固定样本 `e2e-serial`（`serve.mjs` 直接写入两场归档、一次玩家跳时间、章末清点与未收尾场次），`serial.spec.ts` 断言四块与 `GET /serial` 响应一致、编辑批准前台账不变、批准后状态更新、导出文件名与正文正确且不含路径/密钥。`pnpm check` 通过（292 个测试文件、2,539 个测试、5 个跳过）；全量 e2e 通过。
 
-## 下一步（会话 421 先做）
-1. 选下一个可做的任务：**W6-T03.d 连载页面与 e2e** → **W7-T01 至 W7-T03** → **W8-T01、W8-T02** → **W9-T01 至 W9-T99**。W6-T03.d 新增连载页与标签（前情提要、章节目录、人物关系页、时间线、可编辑记忆、导出按钮），四块共用一个 `GET /api/stories/:id/serial` 响应；编辑走 `api.createProposal` 与既有批准/拒绝/回滚接口，导出用 `api.exportBook` 下载 `fileName`；e2e 断言各页读同一份派生数据、批准前台账不变、导出内容不含路径。
+## 下一步（会话 422 先做）
+1. 选下一个可做的任务：**W7-T01 蓝图结构、存储与版本** → **W7-T02** → **W7-T03** → **W8-T01、W8-T02** → **W9-T01 至 W9-T99**。W7-T01 先读 `docs/DESIGN.md` §21 与 v4 提案：总纲、卷、里程碑三层结构，修改按楼层记录、沿路径累加，每条带出处与锁定标记，分支各有版本；存储参照 `director_lines` 的每楼层 diff 做法，不要另造版本快照。
 2. **R6-T99** 仍被 HUMAN-19 阻塞（`bg` 渠道额度 2026-11-17T11:44:35Z 重置）。恢复后先跑 `r6-replay`、`r6-instrument`、`r6-compare`、`r6-deep`、`r6-preference`、`r6-funnel`，再用 `r6-gate --dir eval-private/reports/r6` 判定；报告写 `docs/dev/SCOREBOARD.md` 与 `docs/dev/reports/R6.md`，只写聚合数字与 slug。
 3. **W3-T02.e** 被 HUMAN-22 阻塞：原样模式目前按导入字段注入；完整酒馆激活需要原始世界书入库并把 `st-content` 接进 server 运行时。
 4. **W2-T04** 继续被 HUMAN-19 阻塞。额度恢复后用 `pnpm --filter @dramaticer/st-compat scene-log-compare`（默认读 `eval-private/reports/scene-log/samples.json`，24 个楼层 ≥ 20）跑真实对照。不达标时保留独立任务并写 ADR。
 5. 阻塞检查：M6-T99 仍等 HUMAN-15；HUMAN-03、HUMAN-16、HUMAN-17、HUMAN-18、HUMAN-20、HUMAN-21、HUMAN-22 不阻塞其他任务；HUMAN-19 阻塞 R6-T06、R6-T99、W2-T04。
 
 ## 当前状态
-- 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1–P4、C-T01 至 C-T05、H-T00 至 H-T99、X1.a 至 X1.e、X2.a 至 X2.d、R6-T00 至 R6-T05、R6-T07、R6-T07.a、R6-T07.b、R6-T07.c、R6-T07.d、W0-T00、W0-T01、W1-T01、W2-T01、W2-T02、W2-T03、W3-T01、W3-T02.a、W3-T02.b、W3-T02.c、W3-T02.d、W3-T03.a、W3-T03.b、W3-T03、W4-T01、W4-T02、W4-T03、W5-T01、W5-T02、W6-T01、W6-T02、W6-T03.a、W6-T03.b、W6-T03.c。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- 设计版本 v0.4（ADR-0139、ADR-0142、ADR-0143、ADR-0144、ADR-0145、ADR-0146、ADR-0147、ADR-0148、ADR-0149、ADR-0150、ADR-0151、ADR-0152）。W 阶段任务顺序：W0（完成）→ W1（完成）→ W2（T01–T03 完成，T04 被阻塞）→ W3（T01、T02.a–T02.d、T03.a、T03.b、T03 完成，T02.e 被 HUMAN-22 阻塞）→ W4（完成）→ R6 段（T07.a 至 T07.d 完成，T99 被 HUMAN-19 阻塞）→ W5（完成）→ W6（T01、T02、T03.a、T03.b、T03.c 完成，剩 T03.d）→ W7 → W8 → W9。
-- 数据库 schema 版本 63（v51 `story_media`、v52 `story_settings.contextLayout`、v53 `scene_logs` 与 `scene_log_enabled`、v54 `scene_archives`、v55 `import_audit_entries` 与 `story_settings.import_mode`、v56 `import_audit_entries.memory`、v57 `story_rules`、v58 `director_lines`、v59 `director_chapter_reviews`、v60 `story_settings` 重建并允许 `director_organization = lines`、v61 `scene_logs.scene_card`、v62 `scene_controls` 与 `scene_archives` 重建、v63 `scene_archives.profiles` 与 `scene_archives.informed`）。W6-T03.a、W6-T03.b 与 W6-T03.c 都没有迁移。
+- 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1–P4、C-T01 至 C-T05、H-T00 至 H-T99、X1.a 至 X1.e、X2.a 至 X2.d、R6-T00 至 R6-T05、R6-T07、R6-T07.a、R6-T07.b、R6-T07.c、R6-T07.d、W0-T00、W0-T01、W1-T01、W2-T01、W2-T02、W2-T03、W3-T01、W3-T02.a、W3-T02.b、W3-T02.c、W3-T02.d、W3-T03.a、W3-T03.b、W3-T03、W4-T01、W4-T02、W4-T03、W5-T01、W5-T02、W6-T01、W6-T02、W6-T03.a、W6-T03.b、W6-T03.c、W6-T03.d。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 设计版本 v0.4（ADR-0139、ADR-0142、ADR-0143、ADR-0144、ADR-0145、ADR-0146、ADR-0147、ADR-0148、ADR-0149、ADR-0150、ADR-0151、ADR-0152）。W 阶段任务顺序：W0（完成）→ W1（完成）→ W2（T01–T03 完成，T04 被阻塞）→ W3（T01、T02.a–T02.d、T03.a、T03.b、T03 完成，T02.e 被 HUMAN-22 阻塞）→ W4（完成）→ R6 段（T07.a 至 T07.d 完成，T99 被 HUMAN-19 阻塞）→ W5（完成）→ W6（完成）→ W7 → W8 → W9。
+- 数据库 schema 版本 63（v51 `story_media`、v52 `story_settings.contextLayout`、v53 `scene_logs` 与 `scene_log_enabled`、v54 `scene_archives`、v55 `import_audit_entries` 与 `story_settings.import_mode`、v56 `import_audit_entries.memory`、v57 `story_rules`、v58 `director_lines`、v59 `director_chapter_reviews`、v60 `story_settings` 重建并允许 `director_organization = lines`、v61 `scene_logs.scene_card`、v62 `scene_controls` 与 `scene_archives` 重建、v63 `scene_archives.profiles` 与 `scene_archives.informed`）。W6-T03.a 至 W6-T03.d 都没有迁移。
 - 变更卡：`ledger/cards.ts` 的 `createPlayerLedgerChangeCard` 是玩家直接编辑的唯一入口；来源 `player`、`before` 取 head 快照、删除不存在的路径拒绝、同一 head 上内容相同的编辑复用同一张卡（id 由 `player-edit`、故事、head、说明与 `JSON.stringify(diffs)` 取摘要）。批准沿用 `approveLedgerChangeCard`：事实来源 `player`，玩家卡的说明同时写一条 `userWill` 纠正；拒绝只改状态；回滚按 `before` 追加反向 diff。
-- 变更卡接口：`POST /api/stories/:id/proposals` 建卡（201，返回 `{card, ledger}`，非法路径或值 400 且 `details.path = "diffs"`，缺说明 400 且为 `text`）；`GET /api/stories/:id/proposals[?status=]` 列出；`POST /api/proposals/:id/{approve,reject,rollback}` 决定。protocol 的 `StoryProposalCreateRequest`、`StoryProposalCreateResult` 与 web 客户端的 `createProposal` 已就位，界面在 W6-T03.d 接入。
+- 变更卡接口：`POST /api/stories/:id/proposals` 建卡（201，返回 `{card, ledger}`，非法路径或值 400 且 `details.path = "diffs"`，缺说明 400 且为 `text`）；`GET /api/stories/:id/proposals[?status=]` 列出；`POST /api/proposals/:id/{approve,reject,rollback}` 决定。protocol 的 `StoryProposalCreateRequest`、`StoryProposalCreateResult` 与 web 客户端的 `createProposal` 已就位，连载页的可编辑记忆已接入。
 - 连载视图：`serial/view.ts` 的 `readSerialView` 是前情提要、章节目录、人物关系页与时间线的唯一派生入口；四块都只读，不调用模型、不写数据库。`SerialScene` 带序号、起止楼层、楼层数、边界、归档摘要、在场者、地点与故事时间，`SerialView.scenes` 按路径顺序给出全部场次（序号与 `chapters[].sceneOrdinals` 对应）；`SerialChapter` 带序数、起点、章末清点楼层（未收尾时 null）、楼层数、所属场次序号与 `focusLineIds`；`SerialCharacter` 带是否在场（最近一条场记，没有场记时取最后一场归档，与 `profile` 槽位同一口径）、台账档位/状态/位置、上次出场、带标签的档案条目、有方向的关系与不知情场次；`SerialTimelineEntry` 的 `kind` 取 `scene` 或 `time`，`ordinal` 是路径序号（从 1 起）。`SerialRecap.stale` 由当前路径最后一楼的 `createdAt` 与 `now` 比较得出，阈值 `staleHours` 默认 12；`recapScenes` 默认 3。时间线只把来源为 `player` 的 `time.current` 写入当跳跃，且跳过场次结束楼层上已有的时间事实。
-- 连载接口：`GET /api/stories/:id/serial` 返回 `StorySerialView`（等于 core 的 `SerialView`）；`nodeId` 省略时取 head，指定时必须属于同一故事，否则 404；空 `nodeId` 返回 400。web 客户端的 `getSerial(storyId, nodeId?)` 已就位，页面在 W6-T03.d 接入。
+- 连载接口：`GET /api/stories/:id/serial` 返回 `StorySerialView`（等于 core 的 `SerialView`）；`nodeId` 省略时取 head，指定时必须属于同一故事，否则 404；空 `nodeId` 返回 400。web 客户端的 `getSerial(storyId, nodeId?)` 已就位，连载页直接使用。
 - 导出成书：`serial/book.ts` 的 `exportSerialBook` 读 `readSerialView` 的 `scenes` 与 `chapters`，按章末清点把路径切成互不重叠的段（章末之后的玩家楼层仍属于最后一章；没有清点时整条路径算一章，`chapter` 为 null 时不写章标题），场次摘要按 `startNodeId` 在路径上的位置以 `> ` 引用块插在正文之前，正文逐字取 `TimelineNode.raw`，块之间空一行、末尾一个换行；每章标题是 `## 第 N 章`，首行是 `# <故事标题>`。`fileName` 由故事标题替换 `\ / : * ? " < > |` 得到，标题为空时用故事 id。接口 `GET /api/stories/:id/serial/export[?nodeId=]` 返回 `StoryBookExport` = `{storyId,nodeId,fileName,markdown}`；web 客户端的 `exportBook(storyId, nodeId?)` 已就位。
+- 连载页面：web 路由 `/stories/:id/serial`，故事导航第 10 个标签「连载」；页面内 `SERIAL_TABS` 五个标签共用一个 `StorySerialView`，切换标签不重新请求。前情提要的 `details` 以 `recap.stale` 决定初始展开；章节目录用 `chapters[].sceneOrdinals` 去 `SerialView.scenes` 取场次；人物关系与时间线只读派生字段。可编辑记忆只改人物的 `status` 与 `location`：`buildCharacterDiffs` 跳过未变字段、清空已有值写 `delete`，说明为空时用 `defaultMemoryDescription`；提交走 `api.createProposal`，列表复用 `ProposalList`，批准/拒绝/回滚后重新拉取 `getSerial`。导出按钮由 `api.exportBook` 生成 Blob 并按 `fileName` 触发下载，不把 Markdown 存到本地磁盘以外的地方。
 - 就地纠正：`chat/correction.ts` 的 `locateCorrectionSpan`（逐字、唯一）、`applyCorrectionSpan`（切片拼回、拒绝空输出与无变化）、`rewriteFloorSegment`（模型只收整楼原文 + 选中段 + 意见，只输出改写段；新楼层用 `editNode` 写成兄弟节点，同时写 `userWill.<id>`）。接口 `POST /api/nodes/:id/correct`，非法 `quote` 在调用模型前返回 400。
 - 场面控制：`ledger/scene-control.ts` 的 `endSceneAt`、`jumpSceneTime`、`setScenePace` 与 `SCENE_CONTROL_KINDS`、`SCENE_PACE_VALUES`。`scene_controls` 主键 `(node_id, kind)`，只接受当前路径的助手楼层。场次派生的第四个参数是 `playerEnds`，`boundary` 取 `player-ends`；场记判定优先于玩家结束，楼层上限最后。`SCENE_BOUNDARY_LABELS` 是 explain 与归档提示词的唯一措辞来源。
 - 调整节奏写进 `DirectorConfig.pace`（`slow` 0.6、`normal` 1、`fast` 1.6），故事设置是唯一存放处；`pace` 只影响节奏状态机的楼层需求，不新增开关。
@@ -78,6 +79,8 @@
 - 连载视图目标测试：`pnpm exec vitest run packages/core/test/serial.test.ts`。
 - 导出成书目标测试：`pnpm exec vitest run packages/core/test/serial-book.test.ts packages/server/test/serial.test.ts packages/web/test/api-client.test.ts`（server 用例先 `pnpm run typecheck`）。
 - 连载接口目标测试：`pnpm exec vitest run packages/server/test/serial.test.ts`（先 `pnpm run typecheck`）。
+- 连载页面目标测试：`pnpm exec vitest run packages/web/test/serial-view.test.ts`。
+- 连载页 e2e：`cd packages/web && pnpm exec playwright test serial.spec.ts`（需要先构建 server 与 web）。
 - 玩家编辑变更卡与接口目标测试：`pnpm exec vitest run packages/core/test/ledger-cards.test.ts packages/server/test/panels.test.ts packages/web/test/api-client.test.ts`（server 用例先 `pnpm run typecheck`）。
 - 线与动作目标测试：`pnpm exec vitest run packages/core/test/director-lines.test.ts`。
 - 场面卡与章级规划目标测试：`pnpm exec vitest run packages/core/test/scene-card.test.ts packages/core/test/chapter-plan.test.ts`。
@@ -264,7 +267,7 @@
 - 不变量：I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I8 显示与 prompt 从原文派生，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖其他工作区包，I16–I18 插件约束。
 - 故事图片：`story_media` 是唯一的图片索引，文件不放进数据库；立绘按卡里的角色名登记，其他人物查不到时媒体接口返回 404；封面在无图时永远返回占位图。
 - 旧故事（W0-T01 之前导入的卡）没有保存过原图，封面是占位图；不要尝试从 `story_settings` 或卡文件恢复。
-- e2e 的 `serve.mjs` 启动时清空 `.devloop/scratch/e2e/work`；Playwright 的 mobile 与 desktop 两个项目共用同一个数据库，测试标题必须带唯一 id。
+- e2e 的 `serve.mjs` 启动时清空 `.devloop/scratch/e2e/work`；Playwright 的 mobile 与 desktop 两个项目共用同一个数据库，测试标题必须带唯一 id。`serial.spec.ts` 用固定故事 `e2e-serial`（在 `serve.mjs` 里直接写场记、归档、台账、线与章末清点），两个项目都会改「林雪」的状态，因此测试里的新状态与说明必须带随机后缀，不能依赖初始值。
 - 台账页只在选中楼层后渲染故事级区块（实体、世界书），e2e 要显示立绘得先给故事补一层（`cover.spec.ts` 的 `seedFloor`）。
 - v4 起台账写入分硬状态与软知识；每条事实的 `sourceQuote` 必须逐字出现在源楼层，校验失败整条拒绝（W2-T01）。`knowledge` 不再新增写入。
 - 合并后台调用（场记）必须先通过结算一致率对照才能切默认；`gapPassEnabled` 与 `sceneLogEnabled` 在对照通过前保持关闭。
@@ -295,6 +298,7 @@
 - 压缩记录只追加；自动压缩在 server 的消息接口里执行。
 - web 源码不能 import `@dramaticer/core` 的运行时值（会把 `better-sqlite3` 与 `node:*` 打进前端包导致整页白屏），类型导入可以；助手类型从 `@dramaticer/protocol` 取。
 - 上下文排布的设置只对内置默认模板生效；故事指向库里保存的模板时 `detectContextLayout` 记 `custom`。
+- 模板表单的 `SLOT_CHOICES` 必须覆盖 `CONTEXT_SLOT_NAMES` 的全部槽位；新增槽位时同步 `packages/web/src/chat/template-form.ts`，否则界面会把内置模板判成「未知的槽位」，复制或保存都失败。
 - 导入体检页的「全部条目」是玩家改过类型后的恢复入口；三组审查只按生效类型分组。
 - e2e 的 `pagination.spec.ts` 不要用 `scrollHeight` 在最后一页继续增长判断加载；最后一页检查 `chat-load-older` 消失与最早楼层可见。
-- 移动端故事导航是固定 9 列栅格（聊天、导入、体检、分支、台账、导演、生图、设置、渠道）；新增 tab 时同步改 `styles.css` 的 `repeat(9, …)` 与 `StoryPage` 的 `TABS`。
+- 移动端故事导航是固定 10 列栅格（聊天、导入、体检、分支、台账、连载、导演、生图、设置、渠道）；新增 tab 时同步改 `styles.css` 的 `repeat(10, …)` 与 `StoryPage` 的 `TABS`。

@@ -251,7 +251,7 @@ button:disabled {
 	bottom: 0;
 	z-index: 10;
 	display: grid;
-	grid-template-columns: repeat(9, minmax(0, 1fr));
+	grid-template-columns: repeat(10, minmax(0, 1fr));
 	background: var(--surface);
 	border-top: 1px solid var(--border);
 	padding-bottom: env(safe-area-inset-bottom);
@@ -1348,6 +1348,204 @@ button.branch-select:hover {
 		position: sticky;
 		top: 12px;
 		flex: 1 1 45%;
+	}
+}
+
+/* 连载页：标签切换四块派生数据与可编辑记忆，导出按钮固定在页头。 */
+.serial-panel {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	min-width: 0;
+}
+
+.serial-header {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 10px;
+	padding: 10px 12px;
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: 12px;
+}
+
+.serial-header h1 {
+	margin: 0;
+}
+
+.serial-export {
+	padding: 8px 14px;
+	border: 1px solid var(--accent);
+	border-radius: 8px;
+	background: var(--accent);
+	color: #fff;
+	cursor: pointer;
+}
+
+.serial-export:disabled {
+	cursor: default;
+	opacity: 0.6;
+}
+
+.serial-tabs {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.serial-tab {
+	padding: 6px 12px;
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	background: var(--surface);
+	color: var(--muted);
+	cursor: pointer;
+}
+
+.serial-tab.active {
+	border-color: var(--accent);
+	background: var(--accent-soft);
+	color: var(--accent);
+}
+
+.serial-body {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	min-width: 0;
+}
+
+.serial-section {
+	padding: 10px 12px;
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: 12px;
+}
+
+.serial-section h2 {
+	margin: 0 0 8px;
+	font-size: 1rem;
+}
+
+.serial-section h3 {
+	margin: 0;
+	font-size: 0.95rem;
+}
+
+.serial-meta {
+	margin: 2px 0;
+	color: var(--muted);
+	font-size: 0.78rem;
+	overflow-wrap: anywhere;
+}
+
+.serial-recap summary {
+	cursor: pointer;
+	font-weight: 600;
+}
+
+.serial-recap-list,
+.serial-chapter-scenes,
+.serial-note-list,
+.serial-relation-list,
+.serial-timeline-list {
+	margin: 8px 0 0;
+	padding: 0;
+	list-style: none;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.serial-recap-scene,
+.serial-scene,
+.serial-note,
+.serial-relation,
+.serial-timeline-entry {
+	padding: 8px 10px;
+	background: var(--bg);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	overflow-wrap: anywhere;
+}
+
+.serial-recap-scene p,
+.serial-scene p,
+.serial-timeline-entry p {
+	margin: 4px 0 0;
+}
+
+.serial-chapter + .serial-chapter {
+	margin-top: 12px;
+	padding-top: 12px;
+	border-top: 1px solid var(--border);
+}
+
+.serial-chapter-head,
+.serial-character-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 6px;
+}
+
+.serial-character + .serial-character {
+	margin-top: 12px;
+	padding-top: 12px;
+	border-top: 1px solid var(--border);
+}
+
+.serial-memory-form {
+	margin-top: 10px;
+	padding: 10px 12px;
+	background: var(--bg);
+	border: 1px solid var(--border);
+	border-radius: 10px;
+}
+
+.serial-memory-fields {
+	display: grid;
+	grid-template-columns: 1fr;
+	gap: 8px;
+	margin-top: 8px;
+}
+
+.serial-memory-field {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	font-size: 0.85rem;
+}
+
+.serial-memory-field input {
+	padding: 6px 8px;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	background: var(--surface);
+}
+
+.serial-memory-actions {
+	margin-top: 8px;
+}
+
+.serial-memory-actions button {
+	padding: 6px 12px;
+	border: 1px solid var(--accent);
+	border-radius: 8px;
+	background: var(--surface);
+	color: var(--accent);
+	cursor: pointer;
+}
+
+@media (min-width: 700px) {
+	.serial-memory-fields {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+
+	.serial-memory-description {
+		grid-column: 1 / -1;
 	}
 }
 

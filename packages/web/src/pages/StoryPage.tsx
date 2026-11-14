@@ -16,6 +16,7 @@ const TABS = [
 	{ path: "audit", label: "体检" },
 	{ path: "branches", label: "分支" },
 	{ path: "ledger", label: "台账" },
+	{ path: "serial", label: "连载" },
 	{ path: "director", label: "导演" },
 	{ path: "images", label: "生图" },
 	{ path: "settings", label: "设置" },

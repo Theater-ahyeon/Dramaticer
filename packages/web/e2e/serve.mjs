@@ -234,6 +234,222 @@ for (const project of ["mobile", "desktop"]) {
 		status: "pending",
 	});
 }
+// 连载页的固定样本：两场已归档、一次玩家跳时间、一场还在进行，
+// 章末清点落在 serial-a4；楼层时间远在过去，前情提要默认展开。
+const serialStoryId = "e2e-serial";
+seedStore.createStory({ id: serialStoryId, title: "连载视图" });
+const serialFloor = (id, parentId, role, raw) => {
+	seedStore.appendNode({
+		id,
+		storyId: serialStoryId,
+		parentId,
+		role,
+		raw,
+		createdAt: "2020-01-01T00:00:00.000Z",
+	});
+	return id;
+};
+serialFloor("serial-a1", null, "assistant", "门厅里只剩一盏灯。");
+serialFloor("serial-u1", "serial-a1", "user", "我走进门厅。");
+serialFloor("serial-a2", "serial-u1", "assistant", "林雪抬头看你。");
+serialFloor("serial-u2", "serial-a2", "user", "我问她那封信。");
+serialFloor("serial-a3", "serial-u2", "assistant", "她把信推回桌面。");
+serialFloor("serial-u3", "serial-a3", "user", "我收下信。");
+serialFloor("serial-a4", "serial-u3", "assistant", "灯忽然灭了。");
+serialFloor("serial-u4", "serial-a4", "user", "我摸黑往前走。");
+serialFloor("serial-a5", "serial-u4", "assistant", "楼梯上传来脚步声。");
+const saveSerialLog = (nodeId, present, sceneEnds) => {
+	seedStore.saveSceneLog({
+		nodeId,
+		storyId: serialStoryId,
+		beat: "试探",
+		present,
+		sceneEnds,
+		sceneCard: null,
+		bits: [],
+		conditions: [],
+		states: [],
+		quotes: { submitted: 0, verified: 0 },
+		repairs: [],
+	});
+};
+saveSerialLog("serial-a2", ["林雪", "阿宁", "你"], true);
+saveSerialLog("serial-a4", ["林雪"], true);
+saveSerialLog("serial-a5", ["林雪", "你"], false);
+seedStore.saveSceneArchive({
+	endNodeId: "serial-a2",
+	storyId: serialStoryId,
+	startNodeId: "serial-a1",
+	floorCount: 2,
+	boundary: "scene-ends",
+	summary: "林雪在门厅试探你，阿宁在旁边翻信。",
+	present: ["林雪", "阿宁", "你"],
+	profiles: [
+		{
+			who: "林雪",
+			want: "看清你的来意",
+			hide: "她也怕那封信",
+			speech: "别装了。",
+			unresolved: "那封信还没有交出去",
+		},
+		{
+			who: "阿宁",
+			want: "把信读完了再走",
+			hide: null,
+			speech: null,
+			unresolved: null,
+		},
+	],
+	informed: [],
+	stateChanges: [{ path: ["scene", "current", "place"], change: "留在门厅" }],
+	cluesOpened: [],
+	cluesClosed: [],
+});
+seedStore.saveSceneArchive({
+	endNodeId: "serial-a4",
+	storyId: serialStoryId,
+	startNodeId: "serial-a3",
+	floorCount: 2,
+	boundary: "scene-ends",
+	summary: "林雪把信推回桌面，灯忽然灭了。",
+	present: ["林雪"],
+	profiles: [
+		{
+			who: "林雪",
+			want: "让你自己决定要不要收下信",
+			hide: null,
+			speech: null,
+			unresolved: "信在她手上还是在你手上",
+		},
+	],
+	informed: [],
+	stateChanges: [
+		{ path: ["scene", "current", "place"], change: "从天台看着你" },
+	],
+	cluesOpened: [],
+	cluesClosed: [],
+});
+seedStore.appendStateDiffs([
+	{
+		storyId: serialStoryId,
+		nodeId: "serial-a2",
+		path: ["scene", "current", "place"],
+		op: "set",
+		value: "门厅",
+		source: "settler",
+	},
+	{
+		storyId: serialStoryId,
+		nodeId: "serial-a2",
+		path: ["time", "current"],
+		op: "set",
+		value: "第一天夜里",
+		source: "settler",
+	},
+	{
+		storyId: serialStoryId,
+		nodeId: "serial-a3",
+		path: ["time", "current"],
+		op: "set",
+		value: "第二天清晨",
+		source: "player",
+	},
+	{
+		storyId: serialStoryId,
+		nodeId: "serial-a4",
+		path: ["scene", "current", "place"],
+		op: "set",
+		value: "天台",
+		source: "settler",
+	},
+	{
+		storyId: serialStoryId,
+		nodeId: "serial-a2",
+		path: ["character", "林雪", "tier"],
+		op: "set",
+		value: "lead",
+		source: "settler",
+	},
+	{
+		storyId: serialStoryId,
+		nodeId: "serial-a2",
+		path: ["character", "林雪", "status"],
+		op: "set",
+		value: "平静",
+		source: "settler",
+	},
+	{
+		storyId: serialStoryId,
+		nodeId: "serial-a2",
+		path: ["character", "林雪", "location"],
+		op: "set",
+		value: "门厅",
+		source: "settler",
+	},
+	{
+		storyId: serialStoryId,
+		nodeId: "serial-a2",
+		path: ["character", "阿宁", "tier"],
+		op: "set",
+		value: "minor",
+		source: "settler",
+	},
+	{
+		storyId: serialStoryId,
+		nodeId: "serial-a2",
+		path: ["relation", "林雪", "你", "type"],
+		op: "set",
+		value: "旧识",
+		source: "settler",
+	},
+	{
+		storyId: serialStoryId,
+		nodeId: "serial-a2",
+		path: ["relation", "林雪", "你", "stage"],
+		op: "set",
+		value: "试探",
+		source: "settler",
+	},
+]);
+seedStore.saveDirectorLines({
+	nodeId: "serial-a3",
+	storyId: serialStoryId,
+	diffs: [
+		{
+			action: "set",
+			line: {
+				id: "serial-l1",
+				kind: "main",
+				who: "林雪",
+				want: "让玩家说出信从哪里来",
+				obstacle: "玩家还在躲",
+				countdown: null,
+				preparations: [],
+			},
+		},
+		{
+			action: "set",
+			line: {
+				id: "serial-l2",
+				kind: "promise",
+				who: "阿宁",
+				want: "读完那封信",
+				obstacle: "信被收走了",
+				countdown: null,
+				preparations: [],
+			},
+		},
+	],
+});
+seedStore.saveDirectorChapterReview({
+	nodeId: "serial-a4",
+	storyId: serialStoryId,
+	payload: {
+		promises: [{ lineId: "serial-l2", disposition: "carry" }],
+		focus: ["serial-l1", "serial-l2"],
+	},
+});
+
 seedStore.close();
 
 const serverModule = await import(
