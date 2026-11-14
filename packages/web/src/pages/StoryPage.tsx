@@ -13,6 +13,7 @@ import { ErrorNotice } from "../components/ErrorNotice";
 const TABS = [
 	{ path: "chat", label: "聊天" },
 	{ path: "import", label: "导入" },
+	{ path: "audit", label: "体检" },
 	{ path: "branches", label: "分支" },
 	{ path: "ledger", label: "台账" },
 	{ path: "director", label: "导演" },

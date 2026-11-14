@@ -18,6 +18,9 @@ import {
 	type ImageWorkflowImportRequest,
 	type ImageWorkflowView,
 	type ImageWorkflowsView,
+	type ImportAuditEntryKindUpdateRequest,
+	type ImportAuditEntryKindUpdateResult,
+	type ImportAuditReportView,
 	type ImportStoryRequest,
 	type ImportStoryResult,
 	type NodeActionResult,
@@ -154,6 +157,25 @@ export class ApiClient {
 		return this.json<ImportStoryResult>(
 			"POST",
 			`${storyPath(storyId)}/import`,
+			request,
+		);
+	}
+
+	async getImportAudit(storyId: string): Promise<ImportAuditReportView> {
+		return this.json<ImportAuditReportView>(
+			"GET",
+			`${storyPath(storyId)}/import-audit`,
+		);
+	}
+
+	async updateImportAuditEntry(
+		storyId: string,
+		source: string,
+		request: ImportAuditEntryKindUpdateRequest,
+	): Promise<ImportAuditEntryKindUpdateResult> {
+		return this.json<ImportAuditEntryKindUpdateResult>(
+			"PATCH",
+			`${storyPath(storyId)}/import-audit/entries/${encodeURIComponent(source)}`,
 			request,
 		);
 	}

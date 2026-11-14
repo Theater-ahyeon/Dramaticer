@@ -5,7 +5,7 @@ import type {
 	StoryView,
 } from "@dramaticer/protocol";
 import { type ChangeEvent, type FormEvent, useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { api } from "../../api";
 import { ErrorNotice } from "../../components/ErrorNotice";
 
@@ -163,6 +163,9 @@ export function ImportPage() {
 				<div className="import-result">
 					<h2>{result.cardName}</h2>
 					<ImportCounts counts={result.imported} />
+					<Link className="import-audit-link" to={`/stories/${storyId}/audit`}>
+						查看导入体检
+					</Link>
 				</div>
 			)}
 		</section>

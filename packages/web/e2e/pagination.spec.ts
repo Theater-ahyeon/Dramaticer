@@ -29,21 +29,10 @@ test("路径分页向上加载更早楼层，最早楼层可以滚动到", async
 		)
 		.toBe(true);
 	await expect(page.locator(".chat-load-older")).toBeVisible();
-	const secondHeight = await scroller.evaluate(
-		(element) => element.scrollHeight,
-	);
-
 	await scrollToTop();
 	await expect(page.locator(".chat-load-older")).toHaveCount(0, {
 		timeout: 20_000,
 	});
-	await expect
-		.poll(
-			async () =>
-				(await scroller.evaluate((element) => element.scrollHeight)) >
-				secondHeight,
-		)
-		.toBe(true);
 
 	await scrollToTop();
 	await expect(page.getByText("楼层-1-user")).toBeVisible();

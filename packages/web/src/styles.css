@@ -251,7 +251,7 @@ button:disabled {
 	bottom: 0;
 	z-index: 10;
 	display: grid;
-	grid-template-columns: repeat(8, minmax(0, 1fr));
+	grid-template-columns: repeat(9, minmax(0, 1fr));
 	background: var(--surface);
 	border-top: 1px solid var(--border);
 	padding-bottom: env(safe-area-inset-bottom);
@@ -2616,6 +2616,155 @@ button.branch-select:hover {
 .import-issues {
 	margin: 0;
 	padding-left: 1.2em;
+}
+
+.import-audit-summary {
+	display: grid;
+	gap: 16px;
+}
+
+@media (min-width: 700px) {
+	.import-audit-summary {
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+	}
+}
+
+.import-audit-summary h2,
+.import-audit-section h2 {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin: 0 0 6px;
+	font-size: 1rem;
+}
+
+.import-audit-counts {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+	gap: 4px 12px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.import-audit-counts li {
+	display: flex;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 2px 0;
+	border-bottom: 1px dashed var(--border);
+	font-size: 0.9rem;
+}
+
+.import-audit-count-value,
+.import-audit-tokens {
+	font-variant-numeric: tabular-nums;
+}
+
+.import-audit-tokens {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	margin: 0 0 4px;
+	font-size: 1.5rem;
+}
+
+.import-audit-tokens .muted {
+	font-size: 0.9rem;
+}
+
+.import-audit-arrow {
+	color: var(--muted);
+}
+
+.import-audit-section {
+	margin-top: 18px;
+}
+
+.import-audit-entries {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin: 8px 0 0;
+	padding: 0;
+	list-style: none;
+}
+
+.import-audit-entry {
+	padding: 8px 10px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+}
+
+.import-audit-entry-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+}
+
+.import-audit-entry-title {
+	font-weight: 600;
+	overflow-wrap: anywhere;
+}
+
+.import-audit-kind {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	margin-left: auto;
+	font-size: 0.85rem;
+}
+
+.import-audit-kind select {
+	width: auto;
+	padding: 4px 6px;
+	font-size: 0.85rem;
+}
+
+.import-audit-content {
+	margin-top: 6px;
+	font-size: 0.9rem;
+}
+
+.import-audit-content summary {
+	color: var(--muted);
+	cursor: pointer;
+}
+
+.import-audit-content pre {
+	margin: 6px 0 0;
+	padding: 8px;
+	border-radius: 6px;
+	background: var(--accent-soft);
+	font: inherit;
+	font-size: 0.9rem;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+.import-audit-link {
+	display: inline-block;
+	margin-top: 8px;
+}
+
+.import-audit-all {
+	margin-top: 18px;
+}
+
+.import-audit-all > summary {
+	color: var(--muted);
+	cursor: pointer;
+}
+
+.import-audit-all-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	padding: 4px 0;
+	border-bottom: 1px solid var(--border);
+	font-size: 0.9rem;
 }
 
 .ledger-entity {

@@ -203,6 +203,38 @@ describe("ApiClient", () => {
 		expect(readBody(probeCall.init)).toEqual({ alias: "main" });
 	});
 
+	it("导入体检读取与逐条调整对来源编码", async () => {
+		const { client, calls } = clientFor(() => jsonResponse({}));
+		await client.getImportAudit("s 1");
+		await client.updateImportAuditEntry("s 1", "world:旧宅:门厅", {
+			kind: "common",
+		});
+		await client.updateImportAuditEntry("s 1", "world:旧宅:门厅", {
+			kind: "entity",
+			kindSource: "rule",
+		});
+		expect(calls.map((call) => [call.init.method, call.url])).toEqual([
+			["GET", "/api/stories/s%201/import-audit"],
+			[
+				"PATCH",
+				"/api/stories/s%201/import-audit/entries/world%3A%E6%97%A7%E5%AE%85%3A%E9%97%A8%E5%8E%85",
+			],
+			[
+				"PATCH",
+				"/api/stories/s%201/import-audit/entries/world%3A%E6%97%A7%E5%AE%85%3A%E9%97%A8%E5%8E%85",
+			],
+		]);
+		const patchCall = calls[1];
+		if (patchCall === undefined) throw new Error("缺少调整请求");
+		expect(readBody(patchCall.init)).toEqual({ kind: "common" });
+		const restoreCall = calls[2];
+		if (restoreCall === undefined) throw new Error("缺少恢复请求");
+		expect(readBody(restoreCall.init)).toEqual({
+			kind: "entity",
+			kindSource: "rule",
+		});
+	});
+
 	it("中止信号按原样向上传递", async () => {
 		const controller = new AbortController();
 		const client = new ApiClient({
