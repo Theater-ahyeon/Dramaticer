@@ -2502,3 +2502,23 @@
   - 不新增迁移；候选与触发全部读已有表，写入路径不变。
   - `CONTEXT_SLOT_NAMES`、两种内置排布、插件文档清单与 server 的模板接口测试同步多一项 `reunion`；没有归档的故事该槽位记为缺失。
   - 触发只看玩家消息与导演建议，不做同义词推断；别名不全时会出现「提到了但没注入」，补别名走实体表，不在注入路径里加猜测。
+
+## ADR-0153 蓝图按楼层存 diff、出处与锁定分两层、版本由累加得到（2026-11-14）
+
+- **背景**：DESIGN §21 要求总纲 → 卷 → 里程碑三层结构，修改按楼层记录、沿路径累加，每条带出处与锁定，分支各有版本且可以回看与回滚。W7-T01 需要在不动楼层原文（I4）、不存状态快照（I5）的前提下给出存储与校验口径，并为 W7-T02 的 AI 建议预留「不接受不写」的写入路径。
+- **选项**：
+  - 每层单独建表（总纲一行、卷一张表、里程碑一张表）：跨层引用与整体校验要跨三张表读，版本还要三处各算一遍。
+  - 全部条目存一张表、每个楼层保存整份蓝图快照：分支立刻可读，但每次修改都把整份蓝图复制一遍，违反 I5 的「状态按楼层存 diff」。
+  - 一张表、每个楼层保存 `set`/`delete` 数组，读取时沿路径累加：与 `director_lines`、`director_notes` 同一做法，分支天然隔离。
+- **决定**：
+  - 条目模型是带 `kind` 的联合类型：`premise`（核心问题、基调、候选结局、红线）、`volume`（标题、核心问题、起止状态）、`milestone`（所属卷、希望发生的事、前提条件、先后约束、硬性或软性）。每条都有 `id`、`source`（`player` 或 `ai`）与 `locked`。总纲最多一条；里程碑的 `volumeId` 必须指向存在的卷；`after` 必须指向存在的里程碑且不成环；由 `assertBlueprintEntries` 在每一批修改应用之后整体校验，整批不合法就拒绝。
+  - 文本字段允许留空（玩家写到一半、AI 待补全），列表项不允许空串与重复；单个文本上限 500 字，列表上限 12 条，一个楼层最多 50 条修改。先后约束用 id 引用而不是楼层，里程碑不绑定楼层。
+  - 迁移 v64 新建 `story_blueprints(node_id PRIMARY KEY, story_id, source, diffs, created_at)`，加故事一致性与只追加触发器。`source` 记这一批修改是谁写的，条目里的 `source` 记这条内容的出处；玩家接受 AI 建议时是一条来源 `player` 的记录里带来源 `ai` 的条目。
+  - 锁定只约束 AI 写入：`assertBlueprintWriteAllowed` 在写入之前检查，来源为 `ai` 的 `set` 与 `delete` 命中锁定条目时整批拒绝，包括把 `locked` 改回 false。玩家来源不受限制，解锁与改写都由玩家完成。
+  - 版本不单独存表：`listBlueprintVersions(nodeId)` 沿当前路径逐楼累加，给每个楼层一条 `{nodeId, source, diffs, createdAt, entries}`；`readBlueprintEntries` 取最后一版。回滚用 `planBlueprintRollback(current, target)` 算出「删多出来的、重写内容不同的」，由 `rollbackStoryBlueprint` 以玩家来源写到新楼层；版本楼层本身不动，跨分支回滚只是把那一版照抄过来。
+  - 同一楼层重复写入直接失败，与 `saveDirectorLines` 一致；`applyBlueprintDiffs` 同时用于写入前校验与读取时回放，读取端遇到不合法的旧数据直接报错，不静默跳过。
+- **影响**：
+  - 数据库 schema 升到 64；`assistant-store.test.ts` 的版本断言同步。
+  - core 新增 `blueprint/story-blueprint.ts`（类型、校验、累加、锁定检查、回滚计划）与 `StoryStore.saveStoryBlueprint`、`getStoryBlueprintRecord`、`listBlueprintVersions`、`readBlueprintEntries`、`rollbackStoryBlueprint`。
+  - 本任务不开放接口与界面；W7-T02 的 AI 建议走同一写入路径（来源 `ai`、锁定自动生效），W9-T05 的蓝图页读版本列表与本任务派生出的条目。
+  - 新增 core 测试 8 个，覆盖三层校验、沿路径累加、分支隔离、锁定拒绝、版本回看与回滚。

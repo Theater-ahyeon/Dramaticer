@@ -33,7 +33,7 @@
 | 兼容插件线 | 进行中 | 本文件 |
 | H 应用内助手 | 完成 | 本文件 |
 | X 对比实验 | 完成 | 本文件 |
-| W v4 改版 | 进行中（W0–W6 完成；W3 剩 T02.e 被 HUMAN-22 阻塞） | 本文件 |
+| W v4 改版 | 进行中（W0–W6 完成，W7-T01 完成；W3 剩 T02.e 被 HUMAN-22 阻塞） | 本文件 |
 | R6 效果门槛 | 进行中 | 本文件 |
 | M6b 生图第二批 | 待做（R6 之后） | 本文件 |
 | M5 公开 alpha | 待做 | 本文件 |
@@ -1938,7 +1938,8 @@
 
 ### W7：故事蓝图
 
-- [ ] **W7-T01 蓝图结构、存储与版本** | 依赖：W6-T01 | DESIGN §21
+- [x] **W7-T01 蓝图结构、存储与版本** | 依赖：W6-T01 | DESIGN §21
+  完成：2026-11-14 core 新增 `blueprint/story-blueprint.ts`：总纲、卷、里程碑的联合类型（总纲最多一条），每条带 `source`（`player`/`ai`）与 `locked`；`assertBlueprintEntries` 在每批修改应用之后整体校验卷与里程碑引用、先后约束存在且不成环、id 不重复；`assertBlueprintWriteAllowed` 只拦 AI，来源为 `ai` 的 `set` 与 `delete` 命中锁定条目时整批拒绝（含不能解锁）。迁移 v64 新建 `story_blueprints(node_id PRIMARY KEY, story_id, source, diffs, created_at)`，每楼层一行 `set`/`delete`，故事一致性触发器加只追加触发器。`StoryStore` 新增 `saveStoryBlueprint`（写入前校验来源、锁与结果合法性，同楼层重复写入失败）、`getStoryBlueprintRecord`、`listBlueprintVersions`（沿路径逐楼累加出每一版）、`readBlueprintEntries`、`rollbackStoryBlueprint`（`planBlueprintRollback` 以玩家来源写到新楼层，版本楼层不动）。新增 core 8 个测试；ADR-0153；`pnpm check` 通过（293 个测试文件、2,547 个测试、5 个跳过）。
   做什么：
   - 总纲（核心问题、基调、候选结局、红线）、卷、里程碑三层结构；修改按楼层记录、沿路径累加；每条带出处（玩家或 AI）与锁定标记；分支各有版本，可回看与回滚。
   验收：沿路径累加与分支隔离；锁定的条目不接受 AI 建议覆盖；版本可回看；`pnpm check` 通过。

@@ -1,6 +1,7 @@
 export * from "./assistant/index.js";
 export * from "./background/index.js";
 export * from "./blocks/index.js";
+export * from "./blueprint/index.js";
 export * from "./chat/index.js";
 export * from "./cli/index.js";
 export * from "./context/index.js";
