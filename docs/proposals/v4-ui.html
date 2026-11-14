@@ -27,6 +27,7 @@
   --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 28px rgba(0,0,0,.35); color-scheme:dark }
 
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 body{background:var(--bg);color:var(--ink);font:14px/1.6 var(--f-ui);-webkit-font-smoothing:antialiased}
 body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:30;background:var(--bg)}
 button,textarea,input{font:inherit;color:inherit}
@@ -153,7 +154,9 @@ h1,h2,h3,p{margin:0}
   .sheet-head,.composer{padding-inline:16px}
   .recap,.slate,.said,.pushmark,.why{margin-inline:16px}
   .acts{padding-inline:8px}
-  .slate{flex-wrap:wrap}.slate span{border-top:1px solid var(--line-soft)}
+  .slate{flex-wrap:wrap}.slate .who{flex-basis:100%;border-left:0;border-top:1px solid var(--line)}
+  .opts{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}.opts .chip{white-space:nowrap;flex:none}
+  #strengthHint,.meta .num{display:none}
   .prose p{font-size:16.5px;text-align:left}
 }
 
@@ -207,12 +210,16 @@ h1,h2,h3,p{margin:0}
 
 /* 书架 */
 .shelf{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:20px}
-.book{display:flex;flex-direction:column;gap:10px;padding:22px;background:var(--sheet);border:1px solid var(--line);border-radius:4px;box-shadow:var(--shadow);text-decoration:none;color:inherit;border-top:4px solid var(--gold)}
+.cover{display:block;flex:none;width:100%;height:auto;aspect-ratio:2/3;border-radius:3px;border:1px solid var(--line);background:var(--line-soft)}
+.ttl{display:flex;align-items:center;gap:14px;min-width:0}
+.ttl .cover{width:38px}.ttl .cover.lg{width:72px}
+.bk{display:flex;flex-direction:column;gap:10px;min-width:0}
+.book{display:grid;grid-template-columns:108px minmax(0,1fr);gap:18px;padding:18px;background:var(--sheet);border:1px solid var(--line);border-radius:4px;box-shadow:var(--shadow);text-decoration:none;color:inherit;border-top:4px solid var(--gold)}
 .book.t{border-top-color:var(--teal)}
 .book h2{font:400 24px/1.2 var(--f-display)}
 .book p{font:14.5px/1.8 var(--f-prose);color:var(--muted)}
 .book .foot{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-top:auto;padding-top:10px;border-top:1px solid var(--line-soft)}
-.book.add{border:1px dashed var(--line);border-top:1px dashed var(--line);box-shadow:none;background:none;justify-content:center;align-items:center;text-align:center;min-height:180px}
+.book.add{display:flex;flex-direction:column;gap:10px;border:1px dashed var(--line);border-top:1px dashed var(--line);box-shadow:none;background:none;justify-content:center;align-items:center;text-align:center;min-height:180px}
 
 .toast{position:fixed;left:50%;bottom:calc(22px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:999px;font-size:13px;z-index:40;max-width:calc(100% - 32px);text-align:center}
 </style>
@@ -232,7 +239,7 @@ h1,h2,h3,p{margin:0}
  <div class="play">
   <div class="sheet">
     <div class="sheet-head">
-      <h1>雾港纪事</h1>
+      <div class="ttl"><canvas class="cover" width="240" height="360" data-seed="7" data-hue="205" role="img" aria-label="雾港纪事的卡面图"></canvas><h1>雾港纪事</h1></div>
       <span class="label">第三章 · 退潮之前 · 第 43 楼</span>
     </div>
     <details class="recap" open>
@@ -395,7 +402,7 @@ h1,h2,h3,p{margin:0}
 <!-- 导入体检 -->
 <section class="view" data-view="import" hidden>
   <div class="vh">
-    <div><h1>潮汐列岛 · 导入体检</h1><p>这张卡的世界书有 213 条。条目按它在运行时的用法分流，原文一字不改；随时可以切回原样模式。</p></div>
+    <div class="ttl"><canvas class="cover lg" width="240" height="360" data-seed="31" data-hue="168" role="img" aria-label="潮汐列岛的卡面图"></canvas><div><h1>潮汐列岛 · 导入体检</h1><p>卡面图取自卡片文件本身。这张卡的世界书有 213 条。条目按它在运行时的用法分流，原文一字不改；随时可以切回原样模式。</p></div></div>
     <div class="seg" id="mode" role="group" aria-label="导入模式"><button aria-pressed="true" data-v="up">升级模式</button><button aria-pressed="false" data-v="raw">原样模式</button></div>
   </div>
   <div class="audit">
@@ -432,8 +439,8 @@ h1,h2,h3,p{margin:0}
 <section class="view" data-view="library" hidden>
   <div class="vh"><div><h1>书架</h1><p>每个故事都是一本连载。隔几天回来，先看上回说到哪。</p></div></div>
   <div class="shelf">
-    <a class="book" href="#play"><span class="label">第三章 · 退潮之前</span><h2>雾港纪事</h2><p>你在七号码头截下的那箱货里，是灯塔的透镜。有人在把灯塔一点一点搬走。</p><div class="foot"><span>43 楼 · 3 条线在走</span><span>3 天前</span></div></a>
-    <a class="book t" href="#play"><span class="label">第一章 · 入山</span><h2>青崖书院</h2><p>山门前的石阶有九百级，你数到第四百级时，雨停了。</p><div class="foot"><span>6 楼 · 开局阶段</span><span>昨天</span></div></a>
+    <a class="book" href="#play"><canvas class="cover" width="240" height="360" data-seed="7" data-hue="205" role="img" aria-label="雾港纪事的卡面图"></canvas><div class="bk"><span class="label">第三章 · 退潮之前</span><h2>雾港纪事</h2><p>你在七号码头截下的那箱货里，是灯塔的透镜。有人在把灯塔一点一点搬走。</p><div class="foot"><span>43 楼 · 3 条线在走</span><span>3 天前</span></div></div></a>
+    <a class="book t" href="#play"><canvas class="cover" width="240" height="360" data-seed="113" data-hue="150" role="img" aria-label="青崖书院的卡面图"></canvas><div class="bk"><span class="label">第一章 · 入山</span><h2>青崖书院</h2><p>山门前的石阶有九百级，你数到第四百级时，雨停了。</p><div class="foot"><span>6 楼 · 开局阶段</span><span>昨天</span></div></div></a>
     <a class="book add" href="#import"><h2 style="font:400 22px var(--f-display)">导入一张卡</h2><p>酒馆的卡、世界书和聊天记录都可以带进来</p></a>
   </div>
 </section>
@@ -446,6 +453,15 @@ const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelect
 const el=html=>{const t=document.createElement('template');t.innerHTML=html.trim();return t.content.firstElementChild};
 let toastTimer;function toast(msg){const t=$('#toast');t.textContent=msg;t.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.hidden=true,3600)}
 document.addEventListener('click',e=>{const b=e.target.closest('[data-toast]');if(b)toast(b.dataset.toast)});
+
+/* 卡面图：真实产品里读卡片 PNG 本身，这里用画出来的示例图代替 */
+function cover(c){const g=c.getContext("2d"),W=c.width,H=c.height,hu=+c.dataset.hue;let s=+c.dataset.seed;const R=()=>(s=s*16807%2147483647)/2147483647;
+  const sky=g.createLinearGradient(0,0,0,H);sky.addColorStop(0,`hsl(${hu} 45% 13%)`);sky.addColorStop(.6,`hsl(${hu+20} 40% 33%)`);sky.addColorStop(1,`hsl(${hu+50} 55% 62%)`);g.fillStyle=sky;g.fillRect(0,0,W,H);
+  g.fillStyle=`hsl(${hu+60} 80% 86% / .9)`;g.beginPath();g.arc(W*(.25+R()*.5),H*(.17+R()*.1),W*.09,0,7);g.fill();
+  const tx=W*(.5+R()*.25),tb=H*.6;
+  for(let i=0;i<5;i++){if(i===1){g.fillStyle=`hsl(${hu} 30% 8%)`;g.beginPath();g.moveTo(tx-10,tb+30);g.lineTo(tx-5,tb-80);g.lineTo(tx+5,tb-80);g.lineTo(tx+10,tb+30);g.fill();g.fillRect(tx-8,tb-93,16,13);g.fillStyle="hsl(45 90% 72%)";g.fillRect(tx-4,tb-90,8,7)}
+    const y=H*(.46+i*.11),a=8+R()*22,fr=.01+R()*.02,p=R()*6;g.fillStyle=`hsl(${hu+10} ${30-i*3}% ${40-i*7}% / ${.55+i*.1})`;g.beginPath();g.moveTo(0,H);for(let x=0;x<=W;x+=6)g.lineTo(x,y+Math.sin(x*fr+p)*a+Math.sin(x*fr*2.7+p)*a*.4);g.lineTo(W,H);g.fill()}}
+$$("canvas.cover").forEach(cover);
 
 /* 路由 */
 const VIEWS=['play','blueprint','import','switches','library'];

@@ -3,29 +3,25 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-14 会话 391：做 R6-T07.a（G0 的两件仪器），门禁通过（261 个测试文件、2,292 个测试、5 个跳过）。
-- 新增 `packages/st-compat/src/evalset/r6-instrument.ts`：A/A 检验与真人标注两件仪器、汇总、sidecar 续跑、G0 判定输入与报告；`r6-instrument-cli.ts` 与包脚本 `r6-instrument`、包导出已接。新增 12 个测试（`packages/st-compat/test/r6-instrument.test.ts`，全假客户端）。
-- A/A 分支：读 `r6-replay` 写出的样本 JSONL，每点种子 1 与种子 2 的文本各判两种顺序（`seed1-first`、`seed2-first`），归一成胜、负、平、换序不一致；每对固定两个判定槽位，两次文本相同、生成失败、判定失败都记配对失败并占两个失败槽位，前两种不调用裁判，「两次相同」单列比例。判定沿用 `pairwise` 的 `{winner, reason}` 与 `MAX_PAIRWISE_ATTEMPTS`。
-- 真人标注分支：从 `eval-private/f0/judge.jsonl` 取 F0-T03 的 195 个配对 id，从 `eval-private/f0/pairs.jsonl` 取文本，按 `rejected-first`／`accepted-first` 各判一次，沿用 F0-T03 的系统提示词与 `{choice, confidence}` 解析；汇总合并一致率、Wilson 区间、位置甲偏差、裁判失败率，并单独报告 `acceptedNotLast` 子集。
-- sidecar：`<dir>/aa.jsonl`（含 `sampleHash` 文本指纹）、`<dir>/human.jsonl`；续跑复用 `done`、重试裁判失败槽位，样本文本变化、配对 id 不在计划内或裁判模型变化都直接抛错。汇总直接产出 `R6InstrumentGateInput`，测试里用 `validateR6GateInput` 与完整 `R6GateInput` 验证过。
-- 本任务没有真实运行（额度阻塞见 HUMAN-19，且 A/A 需要 R6-T07.b 的生成）；没有新增依赖，没有迁移。
-- 会话进行中人类往 INBOX 写了 v4 提案（`docs/proposals/v4.md`）与四条约束，已分拣为 W0-T00 并清空 INBOX；该任务排在本文件「下一步」第 1 位。
+- 2026-11-14 会话 392：门禁修复。上一个会话结束后 devloop 的 autosave 把残留的一次性截图脚本 `packages/web/.v4shot.mjs`（`@playwright/test` 驱动、写死 `E:/agentcoding/Dramaticer/docs/proposals/v4-ui.html`，共 9 行）提交进仓库，`biome check` 在该文件上报 4 个 `useTemplate`、1 个格式错误、1 个其它格式项，`pnpm run lint` 失败，整条 `pnpm check` 因此失败。该脚本没有被任何文档、脚本或包配置引用（全仓搜索无命中），是给 v4 界面原型拍截图的临时工具，已从仓库删除。
+- 门禁现在通过：261 个测试文件、2,292 个测试、5 个跳过（耗时 170 秒）。类型检查与不变量检查没有被本次改动影响。
+- 本会话没有选任务；W0-T00 与 R6 的任务状态没有变化。
 
-## 下一步（会话 392 先做）
-1. 先做 **W0-T00**（v4 设计合并）：人类在会话进行中把 v4 提案写进 INBOX，已分拣为 TASKS 的 W 阶段任务——写 ADR、合并进 DESIGN、细化 W1–W9，并落实四条约束（不变量不动、场记先做对照、R6 额度批次先后写 ADR 与不阻塞的 HUMAN 确认、界面以 `docs/proposals/v4-ui.html` 为参考）。这是设计文档任务，不需要额度。
+## 下一步（会话 393 先做）
+1. **W0-T00**（v4 设计合并）：人类在会话 391 进行中把 v4 提案写进 INBOX，已分拣为 TASKS 的 W 阶段任务——写 ADR、合并进 DESIGN、细化 W1–W9，并落实四条约束（不变量不动、场记先做对照、R6 额度批次先后写 ADR 与不阻塞的 HUMAN 确认、界面以 `docs/proposals/v4-ui.html` 为参考）。这是设计文档任务，不需要额度。
 2. 之后做 R6-T07.b（重 roll 点回放批次）；HUMAN-19 只阻塞真实批次，代码与假客户端测试不需要额度。
 3. R6-T07.b 要点：
    - 新增 `evalset/r6-replay.ts` 与 CLI：从 `eval-private/world-model-compare/source/<slug>.db` 规划重 roll 点（`xianxia` 24、`yuwang` 8、`yinqi` 11），被接受的是 head 路径上的助手兄弟楼层（43 个点都是最大 swipe 下标），放弃侧取下标紧邻其下的那条，另有 5 条更早的放弃 swipe 只报告。
    - 每个点复制数据库、head 移到父玩家楼层、预热 12 楼，先按种子 1 生成一次原生续写（同时是 G1 的续写与 A/A 的第一次生成），再按种子 2 生成一次（只用于 A/A）；同一请求体只差种子，会命中响应缓存（ADR-0136）。
    - 每次生成后写 A/A 样本 JSONL（格式见下面「注意事项」），再调用 `runR6AaInstrument`（`dir` 用自己的运行目录）得到 G0 的 A/A 侧；G1 的两组配对（对放弃侧、对接受侧）各两种顺序判一次，汇总产出 `R6ReplayGateInput`。
    - sidecar 校验故事、分支点、玩家消息、swipe 下标、模型与种子；`done` 复用，`running` 与 `failed` 续跑；失败样本单独计数。
-3. 额度恢复（2026-11-17T11:44:35Z 之后）后，再申请 C1 长任务（`R6-T06-03`，9 个分支点 × 2 档位 × 30 轮）与 R6-T07.b 的批次长任务。
-4. 阻塞检查：M6-T99 仍等 HUMAN-15；HUMAN-03、HUMAN-16、HUMAN-17、HUMAN-18 不阻塞；HUMAN-19 阻塞真实批次。
+4. 额度恢复（2026-11-17T11:44:35Z 之后）后，再申请 C1 长任务（`R6-T06-03`，9 个分支点 × 2 档位 × 30 轮）与 R6-T07.b 的批次长任务。
+5. 阻塞检查：M6-T99 仍等 HUMAN-15；HUMAN-03、HUMAN-16、HUMAN-17、HUMAN-18 不阻塞；HUMAN-19 阻塞真实批次。
 
 ## 当前状态
 - 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1–P4、C-T01 至 C-T05、H-T00 至 H-T99、X1.a 至 X1.e、X2.a 至 X2.d、R6-T00 至 R6-T05、R6-T07、R6-T07.a。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
 - R6-T06 标 `[!]`（HUMAN-19）：剩余 C1 的 540 轮；B1 已完成的 `xianxia` 9 对作为参考样本，`yuwang` 与 `yinqi` 不补。
-- R6-T07.b 至 R6-T07.d 待做；R6-T99 依赖它们与 R6-T06。
+- W0-T00 待做（`[ ]`），W1–W9 还未拆分；R6-T07.b 至 R6-T07.d 待做；R6-T99 依赖它们与 R6-T06。
 - 兼容插件线：`st-content`、`st-mvu`、`st-ejs`、`st-helper-host` 全部完成（含一致性测试与共存评测）。
 - 数据库 schema 版本 50。本轮没有新增依赖。
 - 报告：`docs/dev/reports/P2.md`、`P3.md`、`P4.md`、`C-T01.md`、`C-T02.md`、`C-T03.md`、`C-T04.md`、`C-T05.md`、`H.md`、`X1.md`、`X2.md`。
@@ -49,6 +45,7 @@
 
 ## 可重复命令
 - 门禁：`pnpm check`。
+- `docs/proposals/` 下的原型页面用浏览器直接打开即可，不需要构建；仓库里不保留截图脚本。
 - G0 仪器目标测试：`pnpm exec vitest run packages/st-compat/test/r6-instrument.test.ts`。
 - R6 门槛与指标的目标测试：`pnpm exec vitest run packages/st-compat/test/gates.test.ts packages/st-compat/test/metrics.test.ts`。
 - R6 深回合目标测试：`pnpm exec vitest run packages/st-compat/test/r6-deep.test.ts packages/st-compat/test/deep-eval.test.ts`。
@@ -79,6 +76,7 @@
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
 - 私有数据（`eval-private/`、`data/`、`.env`）不能进入测试数据、提交、文档或日志；报告只写统计数字，不写对话原文。X1、X2 与 R6 的 JSON 含回复与答案，只能放在私有目录；`eval-private/reports/r6/b1/<slug>.md` 含故事标题，属于私有报告，仓库报告只能用 slug。
+- 一次性脚本不要提交：devloop 的 autosave 会把仓库里的残留文件一起提交，残留文件会进 `biome check` 并让门禁失败。`.devloop/scratch/` 下的脚本放在被忽略的目录里。
 - R6 预注册 v2 在第一次 v2 批次运行后冻结：门槛、样本、指标、模型与种子都不改；必须调整时另写 v3、记 ADR、把评测轮次计数重置为 0。门槛常量与 `docs/dev/R6-PREREG.md` 必须逐项一致，`evaluateR6Gates` 不允许缺项回落。
 - v2 的判定状态：`pass`、`fail`、`insufficient`、`not-measurable`；G0 未通过或样本不足时 G1 与 G5 被替换成 `invalid`。`passed` 只在 G0 pass、G1–G4 pass、G5 pass 或不可测、G6 pass 或未证实时为 true；`unproven` = G5 不可测 + G6 未证实。
 - G0 的两项：A/A（43 个点、种子 1 与 2、完成 ≥ 36、Wilson 区间含 50%、换序不一致 ≤ 20%、排除 ≤ 30%、判定失败 ≤ 10%）与真人标注（F0-T03 同一批 195 对、完成 ≥ 165、一致率 ≥ 65%、Wilson 下界 > 50%、位置偏差 ≤ 10 个百分点、判定失败 ≤ 10%）。G0 失败时改进任务只指向裁判。
