@@ -14,6 +14,7 @@ import {
 	StoryStore as StoryStoreClass,
 } from "@dramaticer/core";
 import { afterEach, describe, expect, it } from "vitest";
+import { R6_GATE_VERSION } from "../src/evalset/gates.js";
 import type {
 	PairwiseOrder,
 	PairwiseTask,
@@ -265,7 +266,7 @@ describe("r6-preference", () => {
 			now: () => new Date("2026-01-01T00:00:00.000Z"),
 		});
 		expect(first.format).toBe(R6_PREFERENCE_FORMAT);
-		expect(first.gateVersion).toBe("v1");
+		expect(first.gateVersion).toBe(R6_GATE_VERSION);
 		expect(first.summary.plannedPairs).toBe(1);
 		expect(first.summary.completedPairs).toBe(1);
 		expect(first.summary.accepted).toBe(1);

@@ -1,5 +1,5 @@
-/** R6 预注册 v1 的门槛常量与判定；门禁版本随预注册版本变化。 */
-export const R6_GATE_VERSION = "v1";
+/** R6 预注册 v2 的门槛常量与判定；门禁版本随预注册版本变化。 */
+export const R6_GATE_VERSION = "v2";
 
 export const R6_WILSON_Z = 1.96;
 export const R6_STORY_COUNT = 3;
@@ -10,7 +10,13 @@ export const R6_BRANCH_DEPTHS = [
 export const R6_MAX_BRANCH_POINTS = 10;
 export const R6_C1_BRANCH_POINTS = 3;
 export const R6_C1_ROUNDS = 30;
+/** 三个源数据库里同一玩家楼层下有多条助手兄弟楼层的点。 */
+export const R6_REPLAY_PLANNED_PAIRS = 43;
+export const R6_REPLAY_MIN_COMPLETED_PAIRS = 36;
+export const R6_REPLAY_MIN_STORY_PAIRS = 6;
+/** B1 只作参考样本，不设门槛。 */
 export const R6_B1_PLANNED_PAIRS = 30;
+export const R6_B1_MIN_COMPLETED_PAIRS = 27;
 export const R6_DEEP_ROUNDS = 20;
 export const R6_DEEP_BRANCH_POINTS = 8;
 export const R6_WARMUP_FLOORS = 12;
@@ -18,8 +24,14 @@ export const R6_PROBE_INTERVAL_ROUNDS = 6;
 export const R6_PROBE_MIN_FACT_AGE = 10;
 export const R6_PROBE_MAX_PER_RUN = 5;
 
-export const R6_B1_MIN_COMPLETED_PAIRS = 27;
 export const R6_DEEP_MIN_COMPLETED_PAIRS = 24;
+export const R6_SAME_CONFIG_MIN_COMPLETED_PAIRS = 36;
+export const R6_HUMAN_LABEL_PLANNED_PAIRS = 195;
+export const R6_HUMAN_LABEL_MIN_COMPLETED_PAIRS = 165;
+export const R6_HUMAN_LABEL_MIN_AGREEMENT = 0.65;
+export const R6_HUMAN_LABEL_MAX_POSITION_BIAS = 0.1;
+export const R6_MIN_REPLAY_ABANDONED_WIN_RATE = 0.6;
+export const R6_MIN_REPLAY_ACCEPTED_WIN_RATE = 0.45;
 export const R6_MIN_REPETITION_PAIRS = 240;
 export const R6_MIN_PROGRESS_SAMPLES = 240;
 export const R6_MIN_DECIDED_PROBES = 30;
@@ -40,9 +52,14 @@ export const R6_B2_MAX_GENERATIONS = 60;
 export const R6_B2_MAX_PER_ROUND = 1;
 export const R6_B2_MAX_TOTAL = 2;
 
-export const R6_GATE_IDS = ["G1", "G2", "G3", "G4", "G5", "G6"] as const;
+export const R6_GATE_IDS = ["G0", "G1", "G2", "G3", "G4", "G5", "G6"] as const;
 export type R6GateId = (typeof R6_GATE_IDS)[number];
-export type R6GateStatus = "pass" | "fail" | "insufficient";
+export type R6GateStatus =
+	| "pass"
+	| "fail"
+	| "insufficient"
+	| "not-measurable"
+	| "invalid";
 
 export type R6PairSide = "candidate" | "baseline" | "tie";
 export type R6PairOutcome = "win" | "loss" | "tie" | "inconsistent";
@@ -54,7 +71,8 @@ export interface R6PairCounts {
 	readonly inconsistent: number;
 }
 
-export interface R6B1GateInput {
+/** 一组配对样本：计划数、配对计数、失败数、逐故事完成数与判定次数。 */
+export interface R6PairingSample {
 	readonly plannedPairs: number;
 	readonly pairs: R6PairCounts;
 	readonly failures: number;
@@ -66,6 +84,36 @@ export interface R6B1GateInput {
 		readonly completed: number;
 		readonly failed: number;
 	};
+}
+
+/** G0：同一配置的 A/A 检验与真人标注配对。 */
+export interface R6InstrumentGateInput {
+	readonly sameConfig: {
+		readonly plannedPairs: number;
+		readonly pairs: R6PairCounts;
+		readonly failures: number;
+		readonly judgments: {
+			readonly completed: number;
+			readonly failed: number;
+		};
+	};
+	readonly humanLabels: {
+		readonly plannedPairs: number;
+		readonly completedPairs: number;
+		/** 两种顺序合并后选中被玩家接受侧的次数。 */
+		readonly acceptedChoices: number;
+		/** 成功判断次数，两种顺序合计。 */
+		readonly judgments: number;
+		/** 选中位置甲的次数。 */
+		readonly positionA: number;
+		readonly failures: number;
+	};
+}
+
+/** G1：续写对放弃侧与对接受侧两组配对。 */
+export interface R6ReplayGateInput {
+	readonly abandoned: R6PairingSample;
+	readonly accepted: R6PairingSample;
 }
 
 export interface R6StoryMetric {
@@ -93,6 +141,8 @@ export interface R6DeepGateInput {
 		readonly completed: number;
 		readonly failed: number;
 	};
+	/** 完成轮次的工具调用次数合计；为 0 时 G5 不可测。 */
+	readonly toolCalls: number;
 }
 
 export interface R6PreferenceGateInput {
@@ -104,7 +154,8 @@ export interface R6PreferenceGateInput {
 }
 
 export interface R6GateInput {
-	readonly b1: R6B1GateInput;
+	readonly instrument: R6InstrumentGateInput;
+	readonly replay: R6ReplayGateInput;
 	readonly repetition: R6SimilarityGateInput;
 	readonly progression: R6SimilarityGateInput;
 	readonly contradiction: R6ContradictionGateInput;
@@ -128,8 +179,11 @@ export interface R6GateReport {
 	readonly passed: boolean;
 	readonly failed: readonly R6GateId[];
 	readonly insufficient: readonly R6GateId[];
-	/** 样本不足但按预注册不算未通过的项；目前只有 G6。 */
+	/** 样本不足或前置不成立、按预注册不算未通过的项：G5 不可测与 G6 未证实。 */
 	readonly unproven: readonly R6GateId[];
+	/** G0 未通过或样本不足时记为仪器无效、不计为未通过的项：G1 与 G5。 */
+	readonly invalid: readonly R6GateId[];
+	readonly notMeasurable: readonly R6GateId[];
 }
 
 export interface WilsonInterval {
@@ -265,27 +319,53 @@ function insufficientResult(
 	};
 }
 
-/** 按预注册 v1 判定 G1 至 G6；输入缺项或自相矛盾直接抛错。 */
+function notMeasurableResult(
+	id: R6GateId,
+	title: string,
+	counts: Record<string, number>,
+	values: Record<string, number | null>,
+	thresholds: Record<string, number>,
+	reason: string,
+): R6GateResult {
+	return {
+		id,
+		title,
+		status: "not-measurable",
+		reason,
+		counts,
+		values,
+		thresholds,
+	};
+}
+
+/** 按预注册 v2 判定 G0 至 G6；G0 不通过时 G1 与 G5 记为仪器无效。 */
 export function evaluateR6Gates(input: R6GateInput): R6GateReport {
 	validateR6GateInput(input);
+	const instrument = evaluateInstrument(input.instrument);
+	const instrumentValid = instrument.status === "pass";
 	const gates = [
-		evaluateB1(input.b1),
+		instrument,
+		withInstrument(instrumentValid, evaluateReplay(input.replay)),
 		evaluateSimilarity("G2", "重复度", input.repetition, "repetition"),
 		evaluateSimilarity("G3", "推进度", input.progression, "progression"),
 		evaluateContradiction(input.contradiction),
-		evaluateDeep(input.deep),
+		withInstrument(instrumentValid, evaluateDeep(input.deep)),
 		evaluatePreference(input.preference),
 	];
-	const failed = gates
-		.filter((gate) => gate.status === "fail")
-		.map((gate) => gate.id);
-	const insufficient = gates
-		.filter((gate) => gate.status === "insufficient")
-		.map((gate) => gate.id);
-	const unproven = insufficient.filter((id) => id === "G6");
+	const byStatus = (status: R6GateStatus): R6GateId[] =>
+		gates.filter((gate) => gate.status === status).map((gate) => gate.id);
+	const failed = byStatus("fail");
+	const insufficient = byStatus("insufficient");
+	const invalid = byStatus("invalid");
+	const notMeasurable = byStatus("not-measurable");
+	const unproven = [
+		...notMeasurable,
+		...insufficient.filter((id) => id === "G6"),
+	];
 	const passed = gates.every(
 		(gate) =>
 			gate.status === "pass" ||
+			(gate.id === "G5" && gate.status === "not-measurable") ||
 			(gate.id === "G6" && gate.status === "insufficient"),
 	);
 	return {
@@ -295,98 +375,322 @@ export function evaluateR6Gates(input: R6GateInput): R6GateReport {
 		failed,
 		insufficient,
 		unproven,
+		invalid,
+		notMeasurable,
 	};
 }
 
-function evaluateB1(input: R6B1GateInput): R6GateResult {
-	const title = "B1 盲测胜率";
-	const completed = completedPairs(input.pairs);
-	const decided = decidedPairs(input.pairs);
-	const excluded = excludedCount(input.pairs, input.failures);
-	const judgeTotal = input.judgments.completed + input.judgments.failed;
-	const coveredStories = input.stories.filter(
-		(story) => story.completedPairs > 0,
-	).length;
-	const wilson = wilsonInterval(input.pairs.wins, decided);
+/** G0 未通过时把 G1 与 G5 标成仪器无效，保留各自的计数与数值。 */
+function withInstrument(valid: boolean, gate: R6GateResult): R6GateResult {
+	if (valid) return gate;
+	return {
+		...gate,
+		status: "invalid",
+		reason: `G0 未通过，仪器无效；${gate.reason}`,
+	};
+}
+
+function evaluateInstrument(input: R6InstrumentGateInput): R6GateResult {
+	const title = "仪器有效性";
+	const sameCompleted = completedPairs(input.sameConfig.pairs);
+	const sameDecided = decidedPairs(input.sameConfig.pairs);
+	const sameExcluded = excludedCount(
+		input.sameConfig.pairs,
+		input.sameConfig.failures,
+	);
+	const sameJudgeTotal =
+		input.sameConfig.judgments.completed + input.sameConfig.judgments.failed;
+	const sameWilson = wilsonInterval(input.sameConfig.pairs.wins, sameDecided);
+	const human = input.humanLabels;
+	const humanJudgeTotal = human.judgments + human.failures;
+	const humanWilson = wilsonInterval(human.acceptedChoices, human.judgments);
 	const counts = {
-		plannedPairs: input.plannedPairs,
-		completed,
-		decided,
-		wins: input.pairs.wins,
-		losses: input.pairs.losses,
-		ties: input.pairs.ties,
-		inconsistent: input.pairs.inconsistent,
-		failures: input.failures,
-		excluded,
-		coveredStories,
-		judgements: judgeTotal,
-		judgeFailures: input.judgments.failed,
+		sameConfigPlannedPairs: input.sameConfig.plannedPairs,
+		sameConfigCompleted: sameCompleted,
+		sameConfigDecided: sameDecided,
+		sameConfigWins: input.sameConfig.pairs.wins,
+		sameConfigLosses: input.sameConfig.pairs.losses,
+		sameConfigTies: input.sameConfig.pairs.ties,
+		sameConfigInconsistent: input.sameConfig.pairs.inconsistent,
+		sameConfigFailures: input.sameConfig.failures,
+		sameConfigExcluded: sameExcluded,
+		sameConfigJudgements: sameJudgeTotal,
+		sameConfigJudgeFailures: input.sameConfig.judgments.failed,
+		humanLabelPlannedPairs: human.plannedPairs,
+		humanLabelCompleted: human.completedPairs,
+		humanLabelAcceptedChoices: human.acceptedChoices,
+		humanLabelPositionA: human.positionA,
+		humanLabelFailures: human.failures,
+		humanLabelJudgements: humanJudgeTotal,
 	};
 	const values = {
-		winRate: decided === 0 ? null : input.pairs.wins / decided,
-		wilsonLower: wilson?.lower ?? null,
-		wilsonUpper: wilson?.upper ?? null,
-		excludedShare:
-			input.plannedPairs === 0 ? null : excluded / input.plannedPairs,
-		inconsistentShare:
-			completed === 0 ? null : input.pairs.inconsistent / completed,
-		judgeFailureShare:
-			judgeTotal === 0 ? null : input.judgments.failed / judgeTotal,
+		sameConfigWinRate:
+			sameDecided === 0 ? null : input.sameConfig.pairs.wins / sameDecided,
+		sameConfigWilsonLower: sameWilson?.lower ?? null,
+		sameConfigWilsonUpper: sameWilson?.upper ?? null,
+		sameConfigInconsistentShare:
+			sameCompleted === 0
+				? null
+				: input.sameConfig.pairs.inconsistent / sameCompleted,
+		sameConfigExcludedShare:
+			input.sameConfig.plannedPairs === 0
+				? null
+				: sameExcluded / input.sameConfig.plannedPairs,
+		sameConfigJudgeFailureShare:
+			sameJudgeTotal === 0
+				? null
+				: input.sameConfig.judgments.failed / sameJudgeTotal,
+		humanLabelAgreement:
+			human.judgments === 0 ? null : human.acceptedChoices / human.judgments,
+		humanLabelWilsonLower: humanWilson?.lower ?? null,
+		humanLabelWilsonUpper: humanWilson?.upper ?? null,
+		humanLabelPositionBias:
+			human.judgments === 0
+				? null
+				: Math.abs(human.positionA / human.judgments - 0.5),
+		humanLabelJudgeFailureShare:
+			humanJudgeTotal === 0 ? null : human.failures / humanJudgeTotal,
 	};
 	const thresholds = {
-		minCompletedPairs: R6_B1_MIN_COMPLETED_PAIRS,
-		requiredStories: R6_STORY_COUNT,
+		minSameConfigPairs: R6_SAME_CONFIG_MIN_COMPLETED_PAIRS,
+		minHumanLabelPairs: R6_HUMAN_LABEL_MIN_COMPLETED_PAIRS,
+		minHumanLabelAgreement: R6_HUMAN_LABEL_MIN_AGREEMENT,
+		maxHumanLabelPositionBias: R6_HUMAN_LABEL_MAX_POSITION_BIAS,
+		centerRate: R6_MIN_WIN_RATE,
 		maxExcludedShare: R6_MAX_EXCLUDED_SHARE,
 		maxInconsistentShare: R6_MAX_INCONSISTENT_SHARE,
 		maxJudgeFailureShare: R6_MAX_JUDGE_FAILURE_SHARE,
-		minWinRate: R6_MIN_WIN_RATE,
 	};
-	if (
-		completed < R6_B1_MIN_COMPLETED_PAIRS ||
-		coveredStories < R6_STORY_COUNT
-	) {
+	const gaps: string[] = [];
+	if (sameCompleted < R6_SAME_CONFIG_MIN_COMPLETED_PAIRS) {
+		gaps.push(
+			`A/A 完成配对 ${sameCompleted}（至少 ${R6_SAME_CONFIG_MIN_COMPLETED_PAIRS}）`,
+		);
+	}
+	if (human.completedPairs < R6_HUMAN_LABEL_MIN_COMPLETED_PAIRS) {
+		gaps.push(
+			`真人标注完成配对 ${human.completedPairs}（至少 ${R6_HUMAN_LABEL_MIN_COMPLETED_PAIRS}）`,
+		);
+	}
+	if (gaps.length > 0) {
 		return insufficientResult(
-			"G1",
+			"G0",
 			title,
 			counts,
 			values,
 			thresholds,
-			`完成配对 ${completed}（至少 ${R6_B1_MIN_COMPLETED_PAIRS}）、覆盖故事 ${coveredStories}（至少 ${R6_STORY_COUNT}），样本不足`,
+			`${gaps.join("；")}，样本不足`,
 		);
 	}
 	const reasons: string[] = [];
 	if (
-		values.excludedShare !== null &&
-		values.excludedShare > R6_MAX_EXCLUDED_SHARE
+		values.sameConfigExcludedShare !== null &&
+		values.sameConfigExcludedShare > R6_MAX_EXCLUDED_SHARE
 	) {
 		reasons.push(
-			`平、换序不一致与失败合计 ${formatPercent(values.excludedShare)} 超过 ${formatPercent(R6_MAX_EXCLUDED_SHARE)}`,
+			`A/A 平、换序不一致与失败合计 ${formatPercent(values.sameConfigExcludedShare)} 超过 ${formatPercent(R6_MAX_EXCLUDED_SHARE)}`,
 		);
 	}
 	if (
-		values.inconsistentShare !== null &&
-		values.inconsistentShare > R6_MAX_INCONSISTENT_SHARE
+		values.sameConfigInconsistentShare !== null &&
+		values.sameConfigInconsistentShare > R6_MAX_INCONSISTENT_SHARE
 	) {
 		reasons.push(
-			`换序不一致 ${formatPercent(values.inconsistentShare)} 超过 ${formatPercent(R6_MAX_INCONSISTENT_SHARE)}`,
+			`A/A 换序不一致 ${formatPercent(values.sameConfigInconsistentShare)} 超过 ${formatPercent(R6_MAX_INCONSISTENT_SHARE)}`,
 		);
 	}
 	if (
-		values.judgeFailureShare !== null &&
+		values.sameConfigJudgeFailureShare === null ||
+		values.sameConfigJudgeFailureShare > R6_MAX_JUDGE_FAILURE_SHARE
+	) {
+		reasons.push(
+			`A/A 裁判失败 ${formatPercent(values.sameConfigJudgeFailureShare)} 超过 ${formatPercent(R6_MAX_JUDGE_FAILURE_SHARE)}`,
+		);
+	}
+	if (
+		values.sameConfigWilsonLower === null ||
+		values.sameConfigWilsonUpper === null ||
+		values.sameConfigWilsonLower > R6_MIN_WIN_RATE ||
+		values.sameConfigWilsonUpper < R6_MIN_WIN_RATE
+	) {
+		reasons.push(
+			`A/A 胜率 ${formatPercent(values.sameConfigWinRate)} 的区间 ${formatPercent(values.sameConfigWilsonLower)}–${formatPercent(values.sameConfigWilsonUpper)} 不包含 50%`,
+		);
+	}
+	if (
+		values.humanLabelAgreement === null ||
+		values.humanLabelAgreement < R6_HUMAN_LABEL_MIN_AGREEMENT
+	) {
+		reasons.push(
+			`真人标注一致率 ${formatPercent(values.humanLabelAgreement)} 低于 ${formatPercent(R6_HUMAN_LABEL_MIN_AGREEMENT)}`,
+		);
+	}
+	if (
+		values.humanLabelWilsonLower === null ||
+		values.humanLabelWilsonLower <= R6_MIN_WIN_RATE
+	) {
+		reasons.push(
+			`真人标注一致率 Wilson 下界 ${formatPercent(values.humanLabelWilsonLower)} 不高于 ${formatPercent(R6_MIN_WIN_RATE)}`,
+		);
+	}
+	if (
+		values.humanLabelPositionBias === null ||
+		values.humanLabelPositionBias > R6_HUMAN_LABEL_MAX_POSITION_BIAS
+	) {
+		reasons.push(
+			`真人标注位置偏差 ${formatPercent(values.humanLabelPositionBias)} 超过 ${formatPercent(R6_HUMAN_LABEL_MAX_POSITION_BIAS)}`,
+		);
+	}
+	if (
+		values.humanLabelJudgeFailureShare === null ||
+		values.humanLabelJudgeFailureShare > R6_MAX_JUDGE_FAILURE_SHARE
+	) {
+		reasons.push(
+			`真人标注裁判失败 ${formatPercent(values.humanLabelJudgeFailureShare)} 超过 ${formatPercent(R6_MAX_JUDGE_FAILURE_SHARE)}`,
+		);
+	}
+	if (reasons.length > 0) {
+		return failResult("G0", title, counts, values, thresholds, reasons);
+	}
+	return passResult("G0", title, counts, values, thresholds);
+}
+
+function evaluateReplay(input: R6ReplayGateInput): R6GateResult {
+	const title = "重 roll 点回放胜率";
+	const groups = [
+		{
+			key: "abandoned",
+			label: "对放弃侧",
+			sample: input.abandoned,
+			minWinRate: R6_MIN_REPLAY_ABANDONED_WIN_RATE,
+		},
+		{
+			key: "accepted",
+			label: "对接受侧",
+			sample: input.accepted,
+			minWinRate: R6_MIN_REPLAY_ACCEPTED_WIN_RATE,
+		},
+	] as const;
+	const counts: Record<string, number> = {};
+	const values: Record<string, number | null> = {};
+	const gaps: string[] = [];
+	const reasons: string[] = [];
+	let judgeTotal = 0;
+	let judgeFailed = 0;
+	let completedTotal = 0;
+	let inconsistentTotal = 0;
+	for (const { key, label, sample, minWinRate } of groups) {
+		const completed = completedPairs(sample.pairs);
+		const decided = decidedPairs(sample.pairs);
+		const excluded = excludedCount(sample.pairs, sample.failures);
+		const wilson = wilsonInterval(sample.pairs.wins, decided);
+		const covered = sample.stories.filter(
+			(story) => story.completedPairs > 0,
+		).length;
+		const judgeOfGroup = sample.judgments.completed + sample.judgments.failed;
+		const winRate = decided === 0 ? null : sample.pairs.wins / decided;
+		const excludedShare =
+			sample.plannedPairs === 0 ? null : excluded / sample.plannedPairs;
+		const inconsistentShare =
+			completed === 0 ? null : sample.pairs.inconsistent / completed;
+		judgeTotal += judgeOfGroup;
+		judgeFailed += sample.judgments.failed;
+		completedTotal += completed;
+		inconsistentTotal += sample.pairs.inconsistent;
+		counts[`${key}PlannedPairs`] = sample.plannedPairs;
+		counts[`${key}Completed`] = completed;
+		counts[`${key}Decided`] = decided;
+		counts[`${key}Wins`] = sample.pairs.wins;
+		counts[`${key}Losses`] = sample.pairs.losses;
+		counts[`${key}Ties`] = sample.pairs.ties;
+		counts[`${key}Inconsistent`] = sample.pairs.inconsistent;
+		counts[`${key}Failures`] = sample.failures;
+		counts[`${key}Excluded`] = excluded;
+		counts[`${key}CoveredStories`] = covered;
+		counts[`${key}Judgements`] = judgeOfGroup;
+		counts[`${key}JudgeFailures`] = sample.judgments.failed;
+		values[`${key}WinRate`] = winRate;
+		values[`${key}WilsonLower`] = wilson?.lower ?? null;
+		values[`${key}WilsonUpper`] = wilson?.upper ?? null;
+		values[`${key}ExcludedShare`] = excludedShare;
+		values[`${key}InconsistentShare`] = inconsistentShare;
+		if (completed < R6_REPLAY_MIN_COMPLETED_PAIRS) {
+			gaps.push(
+				`${label}完成配对 ${completed}（至少 ${R6_REPLAY_MIN_COMPLETED_PAIRS}）`,
+			);
+		}
+		if (covered < R6_STORY_COUNT) {
+			gaps.push(`${label}覆盖故事 ${covered}（至少 ${R6_STORY_COUNT}）`);
+		}
+		for (const story of sample.stories) {
+			if (story.completedPairs < R6_REPLAY_MIN_STORY_PAIRS) {
+				gaps.push(
+					`${label}故事 ${story.story} 完成 ${story.completedPairs}（至少 ${R6_REPLAY_MIN_STORY_PAIRS}）`,
+				);
+			}
+		}
+		if (completed < R6_REPLAY_MIN_COMPLETED_PAIRS) continue;
+		if (excludedShare !== null && excludedShare > R6_MAX_EXCLUDED_SHARE) {
+			reasons.push(
+				`${label}平、换序不一致与失败合计 ${formatPercent(excludedShare)} 超过 ${formatPercent(R6_MAX_EXCLUDED_SHARE)}`,
+			);
+		}
+		if (winRate === null || winRate < minWinRate) {
+			reasons.push(
+				`${label}胜率 ${formatPercent(winRate)} 低于 ${formatPercent(minWinRate)}`,
+			);
+		}
+		if (key === "abandoned") {
+			if (
+				(values.abandonedWilsonLower ?? null) === null ||
+				(values.abandonedWilsonLower ?? 0) <= R6_MIN_WIN_RATE
+			) {
+				reasons.push(
+					`对放弃侧 Wilson 下界 ${formatPercent(values.abandonedWilsonLower ?? null)} 不高于 ${formatPercent(R6_MIN_WIN_RATE)}`,
+				);
+			}
+			if (
+				inconsistentShare !== null &&
+				inconsistentShare > R6_MAX_INCONSISTENT_SHARE
+			) {
+				reasons.push(
+					`对放弃侧换序不一致 ${formatPercent(inconsistentShare)} 超过 ${formatPercent(R6_MAX_INCONSISTENT_SHARE)}`,
+				);
+			}
+		}
+	}
+	counts.judgements = judgeTotal;
+	counts.judgeFailures = judgeFailed;
+	values.combinedInconsistentShare =
+		completedTotal === 0 ? null : inconsistentTotal / completedTotal;
+	values.judgeFailureShare = judgeTotal === 0 ? null : judgeFailed / judgeTotal;
+	if (
+		values.judgeFailureShare === null ||
 		values.judgeFailureShare > R6_MAX_JUDGE_FAILURE_SHARE
 	) {
 		reasons.push(
 			`裁判失败 ${formatPercent(values.judgeFailureShare)} 超过 ${formatPercent(R6_MAX_JUDGE_FAILURE_SHARE)}`,
 		);
 	}
-	if (values.winRate === null || values.winRate <= R6_MIN_WIN_RATE) {
-		reasons.push(
-			`胜率 ${formatPercent(values.winRate)} 不高于 ${formatPercent(R6_MIN_WIN_RATE)}`,
-		);
-	}
-	if (values.wilsonLower === null || values.wilsonLower <= R6_MIN_WIN_RATE) {
-		reasons.push(
-			`Wilson 下界 ${formatPercent(values.wilsonLower)} 不高于 ${formatPercent(R6_MIN_WIN_RATE)}`,
+	const thresholds = {
+		minCompletedPairs: R6_REPLAY_MIN_COMPLETED_PAIRS,
+		minStoryPairs: R6_REPLAY_MIN_STORY_PAIRS,
+		requiredStories: R6_STORY_COUNT,
+		minAbandonedWinRate: R6_MIN_REPLAY_ABANDONED_WIN_RATE,
+		minAcceptedWinRate: R6_MIN_REPLAY_ACCEPTED_WIN_RATE,
+		minWilsonLower: R6_MIN_WIN_RATE,
+		maxExcludedShare: R6_MAX_EXCLUDED_SHARE,
+		maxInconsistentShare: R6_MAX_INCONSISTENT_SHARE,
+		maxJudgeFailureShare: R6_MAX_JUDGE_FAILURE_SHARE,
+	};
+	if (gaps.length > 0) {
+		return insufficientResult(
+			"G1",
+			title,
+			counts,
+			values,
+			thresholds,
+			`${gaps.join("；")}，样本不足`,
 		);
 	}
 	if (reasons.length > 0) {
@@ -608,6 +912,7 @@ function evaluateDeep(input: R6DeepGateInput): R6GateResult {
 		excluded,
 		completedTurns: input.turns.completed,
 		failedTurns: input.turns.failed,
+		toolCalls: input.toolCalls,
 	};
 	const values = {
 		winRate: decided === 0 ? null : input.pairs.wins / decided,
@@ -622,7 +927,18 @@ function evaluateDeep(input: R6DeepGateInput): R6GateResult {
 		maxExcludedShare: R6_MAX_EXCLUDED_SHARE,
 		maxTurnFailureRate: R6_MAX_JUDGE_FAILURE_SHARE,
 		minWinRate: R6_MIN_WIN_RATE,
+		minToolCalls: 1,
 	};
+	if (input.toolCalls === 0) {
+		return notMeasurableResult(
+			"G5",
+			title,
+			counts,
+			values,
+			thresholds,
+			"深回合工具调用为 0，执行器增益无法测量",
+		);
+	}
 	if (completed < R6_DEEP_MIN_COMPLETED_PAIRS) {
 		return insufficientResult(
 			"G5",
@@ -730,39 +1046,104 @@ function formatDelta(value: number): string {
 /** 校验判定输入；缺项、负数、越界与自相矛盾都抛出带字段路径的错误。 */
 export function validateR6GateInput(input: R6GateInput): void {
 	const root = requireObject(input, "input");
-	const b1 = requireObject(root.b1, "b1");
-	const b1Pairs = validatePairCounts(b1.pairs, "b1.pairs");
-	const completed = completedPairs(b1Pairs);
-	const plannedPairs = requireNonNegativeInteger(
-		b1.plannedPairs,
-		"b1.plannedPairs",
+	const instrument = requireObject(root.instrument, "instrument");
+	const sameConfig = requireObject(
+		instrument.sameConfig,
+		"instrument.sameConfig",
 	);
-	const failures = requireNonNegativeInteger(b1.failures, "b1.failures");
-	if (completed + failures > plannedPairs) {
+	const samePairs = validatePairCounts(
+		sameConfig.pairs,
+		"instrument.sameConfig.pairs",
+	);
+	const sameCompleted = completedPairs(samePairs);
+	const samePlanned = requireNonNegativeInteger(
+		sameConfig.plannedPairs,
+		"instrument.sameConfig.plannedPairs",
+	);
+	const sameFailures = requireNonNegativeInteger(
+		sameConfig.failures,
+		"instrument.sameConfig.failures",
+	);
+	if (sameCompleted + sameFailures > samePlanned) {
 		throw new Error(
-			`b1 完成配对 ${completed} 与失败 ${failures} 之和超过计划配对 ${plannedPairs}`,
+			`instrument.sameConfig 完成配对 ${sameCompleted} 与失败 ${sameFailures} 之和超过计划配对 ${samePlanned}`,
 		);
 	}
-	validateStoryCoverage(b1.stories, "b1.stories", completed);
-	const judgments = requireObject(b1.judgments, "b1.judgments");
-	const judgmentCompleted = requireNonNegativeInteger(
-		judgments.completed,
-		"b1.judgments.completed",
+	const sameJudgments = requireObject(
+		sameConfig.judgments,
+		"instrument.sameConfig.judgments",
 	);
-	const judgmentFailed = requireNonNegativeInteger(
-		judgments.failed,
-		"b1.judgments.failed",
+	const sameJudgmentCompleted = requireNonNegativeInteger(
+		sameJudgments.completed,
+		"instrument.sameConfig.judgments.completed",
 	);
-	if (judgmentCompleted < completed * 2) {
+	const sameJudgmentFailed = requireNonNegativeInteger(
+		sameJudgments.failed,
+		"instrument.sameConfig.judgments.failed",
+	);
+	if (sameJudgmentCompleted < sameCompleted * 2) {
 		throw new Error(
-			`b1.judgments.completed 至少应为 ${completed * 2}（每对两种顺序各一次），收到 ${judgmentCompleted}`,
+			`instrument.sameConfig.judgments.completed 至少应为 ${sameCompleted * 2}（每对两种顺序各一次），收到 ${sameJudgmentCompleted}`,
 		);
 	}
-	if (judgmentFailed < failures) {
+	if (sameJudgmentFailed < sameFailures) {
 		throw new Error(
-			`b1.judgments.failed 不能少于失败配对 ${failures}，收到 ${judgmentFailed}`,
+			`instrument.sameConfig.judgments.failed 不能少于失败配对 ${sameFailures}，收到 ${sameJudgmentFailed}`,
 		);
 	}
+	const human = requireObject(instrument.humanLabels, "instrument.humanLabels");
+	const humanPlanned = requireNonNegativeInteger(
+		human.plannedPairs,
+		"instrument.humanLabels.plannedPairs",
+	);
+	const humanCompleted = requireNonNegativeInteger(
+		human.completedPairs,
+		"instrument.humanLabels.completedPairs",
+	);
+	const humanJudgments = requireNonNegativeInteger(
+		human.judgments,
+		"instrument.humanLabels.judgments",
+	);
+	const humanAccepted = requireNonNegativeInteger(
+		human.acceptedChoices,
+		"instrument.humanLabels.acceptedChoices",
+	);
+	const humanPositionA = requireNonNegativeInteger(
+		human.positionA,
+		"instrument.humanLabels.positionA",
+	);
+	const humanFailures = requireNonNegativeInteger(
+		human.failures,
+		"instrument.humanLabels.failures",
+	);
+	if (humanCompleted > humanPlanned) {
+		throw new Error(
+			`instrument.humanLabels 完成配对 ${humanCompleted} 超过计划配对 ${humanPlanned}`,
+		);
+	}
+	if (humanJudgments < humanCompleted * 2) {
+		throw new Error(
+			`instrument.humanLabels.judgments 至少应为 ${humanCompleted * 2}（每对两种顺序各一次），收到 ${humanJudgments}`,
+		);
+	}
+	if (humanAccepted > humanJudgments) {
+		throw new Error(
+			`instrument.humanLabels.acceptedChoices ${humanAccepted} 不能超过成功判断 ${humanJudgments}`,
+		);
+	}
+	if (humanPositionA > humanJudgments) {
+		throw new Error(
+			`instrument.humanLabels.positionA ${humanPositionA} 不能超过成功判断 ${humanJudgments}`,
+		);
+	}
+	if (humanCompleted + humanFailures > humanPlanned * 2) {
+		throw new Error(
+			`instrument.humanLabels 完成配对 ${humanCompleted} 与失败 ${humanFailures} 之和超过两倍计划配对 ${humanPlanned}`,
+		);
+	}
+	const replay = requireObject(root.replay, "replay");
+	validatePairingSample(replay.abandoned, "replay.abandoned");
+	validatePairingSample(replay.accepted, "replay.accepted");
 	validateSimilarityInput(root.repetition, "repetition");
 	validateSimilarityInput(root.progression, "progression");
 	const contradiction = requireObject(root.contradiction, "contradiction");
@@ -783,6 +1164,7 @@ export function validateR6GateInput(input: R6GateInput): void {
 	validatePairCounts(deep.pairs, "deep.pairs");
 	requireNonNegativeInteger(deep.plannedPairs, "deep.plannedPairs");
 	requireNonNegativeInteger(deep.failures, "deep.failures");
+	requireNonNegativeInteger(deep.toolCalls, "deep.toolCalls");
 	const turns = requireObject(deep.turns, "deep.turns");
 	const completedTurns = requireNonNegativeInteger(
 		turns.completed,
@@ -801,6 +1183,47 @@ export function validateR6GateInput(input: R6GateInput): void {
 	requireNonNegativeInteger(preference.ties, "preference.ties");
 	requireNonNegativeInteger(preference.inconsistent, "preference.inconsistent");
 	requireNonNegativeInteger(preference.failures, "preference.failures");
+}
+
+/** 校验一组配对样本，返回完成的配对数。 */
+function validatePairingSample(value: unknown, where: string): number {
+	const sample = requireObject(value, where);
+	const pairs = validatePairCounts(sample.pairs, `${where}.pairs`);
+	const completed = completedPairs(pairs);
+	const planned = requireNonNegativeInteger(
+		sample.plannedPairs,
+		`${where}.plannedPairs`,
+	);
+	const failures = requireNonNegativeInteger(
+		sample.failures,
+		`${where}.failures`,
+	);
+	if (completed + failures > planned) {
+		throw new Error(
+			`${where} 完成配对 ${completed} 与失败 ${failures} 之和超过计划配对 ${planned}`,
+		);
+	}
+	validateStoryCoverage(sample.stories, `${where}.stories`, completed);
+	const judgments = requireObject(sample.judgments, `${where}.judgments`);
+	const judgmentCompleted = requireNonNegativeInteger(
+		judgments.completed,
+		`${where}.judgments.completed`,
+	);
+	const judgmentFailed = requireNonNegativeInteger(
+		judgments.failed,
+		`${where}.judgments.failed`,
+	);
+	if (judgmentCompleted < completed * 2) {
+		throw new Error(
+			`${where}.judgments.completed 至少应为 ${completed * 2}（每对两种顺序各一次），收到 ${judgmentCompleted}`,
+		);
+	}
+	if (judgmentFailed < failures) {
+		throw new Error(
+			`${where}.judgments.failed 不能少于失败配对 ${failures}，收到 ${judgmentFailed}`,
+		);
+	}
+	return completed;
 }
 
 function validatePairCounts(value: unknown, where: string): R6PairCounts {

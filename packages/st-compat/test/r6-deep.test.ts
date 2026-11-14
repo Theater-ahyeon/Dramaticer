@@ -207,6 +207,7 @@ describe("R6 深回合批次", () => {
 			completed: 2,
 			failed: 0,
 			failureRate: 0,
+			toolCalls: 0,
 		});
 		expect(report.runs[0]?.status).toBe("done");
 		expect(report.runs[0]?.records).toHaveLength(4);
@@ -215,12 +216,37 @@ describe("R6 深回合批次", () => {
 		).toHaveLength(2);
 
 		const gate = evaluateR6Gates({
-			b1: {
-				plannedPairs: 0,
-				pairs: { wins: 0, losses: 0, ties: 0, inconsistent: 0 },
-				failures: 0,
-				stories: [{ story: "placeholder", completedPairs: 0 }],
-				judgments: { completed: 0, failed: 0 },
+			instrument: {
+				sameConfig: {
+					plannedPairs: 0,
+					pairs: { wins: 0, losses: 0, ties: 0, inconsistent: 0 },
+					failures: 0,
+					judgments: { completed: 0, failed: 0 },
+				},
+				humanLabels: {
+					plannedPairs: 0,
+					completedPairs: 0,
+					acceptedChoices: 0,
+					judgments: 0,
+					positionA: 0,
+					failures: 0,
+				},
+			},
+			replay: {
+				abandoned: {
+					plannedPairs: 0,
+					pairs: { wins: 0, losses: 0, ties: 0, inconsistent: 0 },
+					failures: 0,
+					stories: [{ story: "placeholder", completedPairs: 0 }],
+					judgments: { completed: 0, failed: 0 },
+				},
+				accepted: {
+					plannedPairs: 0,
+					pairs: { wins: 0, losses: 0, ties: 0, inconsistent: 0 },
+					failures: 0,
+					stories: [{ story: "placeholder", completedPairs: 0 }],
+					judgments: { completed: 0, failed: 0 },
+				},
 			},
 			repetition: {
 				stories: [
@@ -256,8 +282,10 @@ describe("R6 深回合批次", () => {
 			},
 		});
 		const g5 = gate.gates.find((entry) => entry.id === "G5");
-		expect(g5?.status).toBe("insufficient");
+		// G0 没有样本，仪器无效优先于 G5 自身的计数。
+		expect(g5?.status).toBe("invalid");
 		expect(g5?.counts.completed).toBe(2);
+		expect(gate.invalid).toEqual(["G1", "G5"]);
 	}, 30_000);
 
 	it("已完成的运行复用 sidecar，不发出新的生成请求", async () => {
@@ -337,6 +365,7 @@ describe("R6 深回合批次", () => {
 			completed: 0,
 			failed: 3,
 			failureRate: 1,
+			toolCalls: 0,
 		});
 		expect(report.summary.plannedPairs).toBe(1);
 		expect(report.summary.failures).toBe(1);
@@ -369,6 +398,7 @@ describe("R6 深回合批次", () => {
 			completed: 4,
 			failed: 0,
 			failureRate: 0,
+			toolCalls: 0,
 		});
 		expect(resumed.summary.completedPairs).toBe(1);
 	}, 30_000);

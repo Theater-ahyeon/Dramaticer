@@ -122,6 +122,8 @@ export interface R6DeepStorySummary {
 	readonly turns: {
 		readonly completed: number;
 		readonly failed: number;
+		/** 完成轮次的工具调用次数合计。 */
+		readonly toolCalls: number;
 	};
 	readonly cost: R6DeepCost;
 }
@@ -142,6 +144,8 @@ export interface R6DeepSummary {
 		readonly completed: number;
 		readonly failed: number;
 		readonly failureRate: number;
+		/** 完成轮次的工具调用次数合计；为 0 时 G5 不可测。 */
+		readonly toolCalls: number;
 	};
 	readonly cost: R6DeepCost & {
 		readonly writerRequestsPerTurn: number | null;
@@ -248,6 +252,7 @@ export function r6DeepGateInput(report: R6DeepReport): R6DeepGateInput {
 			completed: report.summary.turns.completed,
 			failed: report.summary.turns.failed,
 		},
+		toolCalls: report.summary.turns.toolCalls,
 	};
 }
 
@@ -270,6 +275,7 @@ export function summarizeR6Deep(input: {
 	const decided = pairs.wins + pairs.losses;
 	const turnCompleted = sum(stories, (story) => story.turns.completed);
 	const turnFailed = sum(stories, (story) => story.turns.failed);
+	const turnToolCalls = sum(stories, (story) => story.turns.toolCalls);
 	const turnTotal = turnCompleted + turnFailed;
 	const cost = sumCosts(stories.map((story) => story.cost));
 	const warmupRequests = sum(
@@ -295,6 +301,7 @@ export function summarizeR6Deep(input: {
 			completed: turnCompleted,
 			failed: turnFailed,
 			failureRate: turnTotal === 0 ? 0 : turnFailed / turnTotal,
+			toolCalls: turnToolCalls,
 		},
 		cost: {
 			...cost,
@@ -324,7 +331,7 @@ function summarizeStory(
 			failures: branches,
 			branchFailures: 0,
 			missingPairs: branches,
-			turns: { completed: 0, failed: 0 },
+			turns: { completed: 0, failed: 0, toolCalls: 0 },
 			cost: emptyCost(),
 		};
 	}
@@ -360,6 +367,7 @@ function summarizeStory(
 		turns: {
 			completed: summary.turns.completed,
 			failed: summary.turns.failed,
+			toolCalls: summary.turns.toolCalls.total,
 		},
 		cost: run.cost,
 	};
@@ -848,7 +856,7 @@ export function formatR6DeepReport(report: R6DeepReport): string {
 		`- 胜率：${formatPercent(summary.winRate)}（Wilson 95% ${formatInterval(summary.wilson)}）；换序不一致比例 ${formatPercent(summary.inconsistentShare)}；排除比例 ${formatPercent(summary.excludedShare)}`,
 	);
 	lines.push(
-		`- 深回合：完成 ${summary.turns.completed}，失败 ${summary.turns.failed}，失败率 ${formatPercent(summary.turns.failureRate)}`,
+		`- 深回合：完成 ${summary.turns.completed}，失败 ${summary.turns.failed}，失败率 ${formatPercent(summary.turns.failureRate)}；工具调用合计 ${summary.turns.toolCalls}`,
 	);
 	lines.push(
 		`- 成本：写作请求 ${summary.cost.writerRequests}（缓存 ${summary.cost.writerCachedRequests}）、用户请求 ${summary.cost.userRequests}、裁判请求 ${summary.cost.judgeRequests}、预热请求 ${summary.cost.warmupRequests}；输入 token ${summary.cost.promptTokens}、输出 token ${summary.cost.completionTokens}、合计 ${summary.cost.totalTokens}`,

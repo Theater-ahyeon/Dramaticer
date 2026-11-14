@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	type R6GateInput,
 	R6_B1_MIN_COMPLETED_PAIRS,
+	R6_B1_PLANNED_PAIRS,
 	R6_B2_MAX_GENERATIONS,
 	R6_B2_MAX_PER_ROUND,
 	R6_B2_MAX_TOTAL,
@@ -11,6 +12,10 @@ import {
 	R6_DEEP_MIN_COMPLETED_PAIRS,
 	R6_DEEP_ROUNDS,
 	R6_GATE_VERSION,
+	R6_HUMAN_LABEL_MAX_POSITION_BIAS,
+	R6_HUMAN_LABEL_MIN_AGREEMENT,
+	R6_HUMAN_LABEL_MIN_COMPLETED_PAIRS,
+	R6_HUMAN_LABEL_PLANNED_PAIRS,
 	R6_MAX_BRANCH_POINTS,
 	R6_MAX_CONTRADICTION_RATE,
 	R6_MAX_EVALUATION_ROUNDS,
@@ -24,10 +29,16 @@ import {
 	R6_MIN_PREFERENCE_PAIRS,
 	R6_MIN_PROGRESS_SAMPLES,
 	R6_MIN_REPETITION_PAIRS,
+	R6_MIN_REPLAY_ABANDONED_WIN_RATE,
+	R6_MIN_REPLAY_ACCEPTED_WIN_RATE,
 	R6_MIN_STORY_PROGRESS_DELTA,
 	R6_PROBE_INTERVAL_ROUNDS,
 	R6_PROBE_MAX_PER_RUN,
 	R6_PROBE_MIN_FACT_AGE,
+	R6_REPLAY_MIN_COMPLETED_PAIRS,
+	R6_REPLAY_MIN_STORY_PAIRS,
+	R6_REPLAY_PLANNED_PAIRS,
+	R6_SAME_CONFIG_MIN_COMPLETED_PAIRS,
 	R6_WARMUP_FLOORS,
 	evaluateR6Gates,
 	normalizePairOutcome,
@@ -37,16 +48,45 @@ import {
 
 function baseInput(): R6GateInput {
 	return {
-		b1: {
-			plannedPairs: 30,
-			pairs: { wins: 24, losses: 4, ties: 1, inconsistent: 1 },
-			failures: 0,
-			stories: [
-				{ story: "story-a", completedPairs: 10 },
-				{ story: "story-b", completedPairs: 10 },
-				{ story: "story-c", completedPairs: 10 },
-			],
-			judgments: { completed: 60, failed: 0 },
+		instrument: {
+			sameConfig: {
+				plannedPairs: 43,
+				pairs: { wins: 20, losses: 20, ties: 2, inconsistent: 1 },
+				failures: 0,
+				judgments: { completed: 86, failed: 0 },
+			},
+			humanLabels: {
+				plannedPairs: 195,
+				completedPairs: 195,
+				acceptedChoices: 286,
+				judgments: 390,
+				positionA: 211,
+				failures: 0,
+			},
+		},
+		replay: {
+			abandoned: {
+				plannedPairs: 43,
+				pairs: { wins: 30, losses: 8, ties: 2, inconsistent: 3 },
+				failures: 0,
+				stories: [
+					{ story: "story-a", completedPairs: 17 },
+					{ story: "story-b", completedPairs: 8 },
+					{ story: "story-c", completedPairs: 18 },
+				],
+				judgments: { completed: 86, failed: 0 },
+			},
+			accepted: {
+				plannedPairs: 43,
+				pairs: { wins: 20, losses: 18, ties: 3, inconsistent: 2 },
+				failures: 0,
+				stories: [
+					{ story: "story-a", completedPairs: 17 },
+					{ story: "story-b", completedPairs: 8 },
+					{ story: "story-c", completedPairs: 18 },
+				],
+				judgments: { completed: 86, failed: 0 },
+			},
 		},
 		repetition: {
 			stories: [
@@ -97,6 +137,7 @@ function baseInput(): R6GateInput {
 			pairs: { wins: 18, losses: 4, ties: 1, inconsistent: 1 },
 			failures: 0,
 			turns: { completed: 60, failed: 2 },
+			toolCalls: 12,
 		},
 		preference: {
 			accepted: 21,
@@ -114,9 +155,9 @@ function gate(input: R6GateInput, id: string) {
 	return result;
 }
 
-describe("R6 预注册常量", () => {
-	it("与 v1 文档逐项一致", () => {
-		expect(R6_GATE_VERSION).toBe("v1");
+describe("R6 预注册 v2 常量", () => {
+	it("与 v2 文档逐项一致", () => {
+		expect(R6_GATE_VERSION).toBe("v2");
 		expect(R6_MAX_BRANCH_POINTS).toBe(10);
 		expect(R6_C1_BRANCH_POINTS).toBe(3);
 		expect(R6_C1_ROUNDS).toBe(30);
@@ -126,6 +167,17 @@ describe("R6 预注册常量", () => {
 		expect(R6_PROBE_INTERVAL_ROUNDS).toBe(6);
 		expect(R6_PROBE_MIN_FACT_AGE).toBe(10);
 		expect(R6_PROBE_MAX_PER_RUN).toBe(5);
+		expect(R6_REPLAY_PLANNED_PAIRS).toBe(43);
+		expect(R6_REPLAY_MIN_COMPLETED_PAIRS).toBe(36);
+		expect(R6_REPLAY_MIN_STORY_PAIRS).toBe(6);
+		expect(R6_MIN_REPLAY_ABANDONED_WIN_RATE).toBe(0.6);
+		expect(R6_MIN_REPLAY_ACCEPTED_WIN_RATE).toBe(0.45);
+		expect(R6_SAME_CONFIG_MIN_COMPLETED_PAIRS).toBe(36);
+		expect(R6_HUMAN_LABEL_PLANNED_PAIRS).toBe(195);
+		expect(R6_HUMAN_LABEL_MIN_COMPLETED_PAIRS).toBe(165);
+		expect(R6_HUMAN_LABEL_MIN_AGREEMENT).toBe(0.65);
+		expect(R6_HUMAN_LABEL_MAX_POSITION_BIAS).toBe(0.1);
+		expect(R6_B1_PLANNED_PAIRS).toBe(30);
 		expect(R6_B1_MIN_COMPLETED_PAIRS).toBe(27);
 		expect(R6_DEEP_MIN_COMPLETED_PAIRS).toBe(24);
 		expect(R6_MIN_REPETITION_PAIRS).toBe(240);
@@ -183,11 +235,22 @@ describe("配对归一", () => {
 });
 
 describe("门槛判定", () => {
-	it("完整输入下 G1 至 G6 全部通过", () => {
+	it("完整输入下 G0 至 G6 全部通过", () => {
 		const report = evaluateR6Gates(baseInput());
 		expect(report.passed).toBe(true);
 		expect(report.failed).toEqual([]);
 		expect(report.insufficient).toEqual([]);
+		expect(report.invalid).toEqual([]);
+		expect(report.notMeasurable).toEqual([]);
+		expect(report.gates.map((entry) => entry.id)).toEqual([
+			"G0",
+			"G1",
+			"G2",
+			"G3",
+			"G4",
+			"G5",
+			"G6",
+		]);
 		for (const gateResult of report.gates) {
 			expect(gateResult.status).toBe("pass");
 		}
@@ -198,31 +261,126 @@ describe("门槛判定", () => {
 		expect(evaluateR6Gates(input)).toEqual(evaluateR6Gates(input));
 	});
 
-	it("G1 完成配对不足时样本不足", () => {
+	it("G0 A/A 完成配对不足时样本不足", () => {
 		const input = baseInput();
-		input.b1.pairs = { wins: 20, losses: 3, ties: 1, inconsistent: 1 };
-		input.b1.stories = [
-			{ story: "story-a", completedPairs: 10 },
-			{ story: "story-b", completedPairs: 10 },
-			{ story: "story-c", completedPairs: 5 },
+		input.instrument.sameConfig.pairs = {
+			wins: 15,
+			losses: 15,
+			ties: 2,
+			inconsistent: 1,
+		};
+		input.instrument.sameConfig.judgments = { completed: 66, failed: 0 };
+		expect(gate(input, "G0").status).toBe("insufficient");
+	});
+
+	it("G0 A/A 胜率区间不含 50% 时未通过", () => {
+		const input = baseInput();
+		input.instrument.sameConfig.pairs = {
+			wins: 32,
+			losses: 4,
+			ties: 3,
+			inconsistent: 1,
+		};
+		input.instrument.sameConfig.judgments = { completed: 80, failed: 0 };
+		const result = gate(input, "G0");
+		expect(result.status).toBe("fail");
+		expect(result.reason).toMatch(/不包含 50%/);
+	});
+
+	it("G0 真人标注一致率低于 65% 时未通过", () => {
+		const input = baseInput();
+		input.instrument.humanLabels.acceptedChoices = 240;
+		const result = gate(input, "G0");
+		expect(result.status).toBe("fail");
+		expect(result.reason).toMatch(/真人标注一致率/);
+	});
+
+	it("G0 真人标注位置偏差超过 10 个百分点时未通过", () => {
+		const input = baseInput();
+		input.instrument.humanLabels.positionA = 240;
+		const result = gate(input, "G0");
+		expect(result.status).toBe("fail");
+		expect(result.reason).toMatch(/位置偏差/);
+	});
+
+	it("G0 未通过时 G1 与 G5 记为仪器无效", () => {
+		const input = baseInput();
+		input.instrument.sameConfig.pairs = {
+			wins: 32,
+			losses: 4,
+			ties: 3,
+			inconsistent: 1,
+		};
+		input.instrument.sameConfig.judgments = { completed: 80, failed: 0 };
+		const report = evaluateR6Gates(input);
+		expect(report.passed).toBe(false);
+		expect(report.failed).toEqual(["G0"]);
+		expect(report.invalid).toEqual(["G1", "G5"]);
+		expect(gate(input, "G1").status).toBe("invalid");
+		expect(gate(input, "G1").reason).toMatch(/仪器无效/);
+		expect(gate(input, "G5").status).toBe("invalid");
+		expect(gate(input, "G2").status).toBe("pass");
+	});
+
+	it("G1 对放弃侧完成配对不足时样本不足", () => {
+		const input = baseInput();
+		input.replay.abandoned.pairs = {
+			wins: 20,
+			losses: 5,
+			ties: 2,
+			inconsistent: 1,
+		};
+		input.replay.abandoned.stories = [
+			{ story: "story-a", completedPairs: 17 },
+			{ story: "story-b", completedPairs: 8 },
+			{ story: "story-c", completedPairs: 3 },
 		];
-		input.b1.judgments = { completed: 50, failed: 0 };
+		input.replay.abandoned.judgments = { completed: 56, failed: 0 };
 		expect(gate(input, "G1").status).toBe("insufficient");
 	});
 
-	it("G1 平、换序不一致与失败合计超过 30% 时未通过", () => {
+	it("G1 任一故事完成配对少于 6 对时样本不足", () => {
 		const input = baseInput();
-		input.b1.pairs = { wins: 14, losses: 6, ties: 8, inconsistent: 2 };
-		input.b1.failures = 0;
-		expect(gate(input, "G1").status).toBe("fail");
-		expect(gate(input, "G1").reason).toMatch(/平、换序不一致与失败合计/);
+		input.replay.abandoned.pairs = {
+			wins: 30,
+			losses: 8,
+			ties: 2,
+			inconsistent: 3,
+		};
+		input.replay.abandoned.stories = [
+			{ story: "story-a", completedPairs: 32 },
+			{ story: "story-b", completedPairs: 5 },
+			{ story: "story-c", completedPairs: 6 },
+		];
+		const result = gate(input, "G1");
+		expect(result.status).toBe("insufficient");
+		expect(result.reason).toMatch(/story-b 完成 5/);
 	});
 
-	it("G1 换序不一致超过 20% 时未通过", () => {
+	it("G1 对放弃侧胜率低于 60% 时未通过", () => {
 		const input = baseInput();
-		input.b1.pairs = { wins: 19, losses: 4, ties: 0, inconsistent: 7 };
-		expect(gate(input, "G1").status).toBe("fail");
-		expect(gate(input, "G1").reason).toMatch(/换序不一致/);
+		input.replay.abandoned.pairs = {
+			wins: 22,
+			losses: 16,
+			ties: 2,
+			inconsistent: 3,
+		};
+		const result = gate(input, "G1");
+		expect(result.status).toBe("fail");
+		expect(result.reason).toMatch(/对放弃侧胜率/);
+	});
+
+	it("G1 对接受侧胜率低于 45% 时未通过", () => {
+		const input = baseInput();
+		input.replay.accepted.pairs = {
+			wins: 15,
+			losses: 22,
+			ties: 3,
+			inconsistent: 3,
+		};
+		const result = gate(input, "G1");
+		expect(result.status).toBe("fail");
+		expect(result.reason).toMatch(/对接受侧胜率/);
 	});
 
 	it("G2 原生档样本不足时样本不足", () => {
@@ -282,6 +440,17 @@ describe("门槛判定", () => {
 		expect(gate(input, "G4").reason).toMatch(/无法判断/);
 	});
 
+	it("G5 工具调用为 0 时记为不可测且不影响整体通过", () => {
+		const input = baseInput();
+		input.deep.toolCalls = 0;
+		const report = evaluateR6Gates(input);
+		expect(gate(input, "G5").status).toBe("not-measurable");
+		expect(gate(input, "G5").reason).toMatch(/工具调用为 0/);
+		expect(report.notMeasurable).toEqual(["G5"]);
+		expect(report.unproven).toEqual(["G5"]);
+		expect(report.passed).toBe(true);
+	});
+
 	it("G5 完成配对不足时样本不足", () => {
 		const input = baseInput();
 		input.deep.pairs = { wins: 17, losses: 4, ties: 1, inconsistent: 1 };
@@ -334,26 +503,42 @@ describe("门槛判定", () => {
 			/contradiction.failed/,
 		);
 
-		const missingB1 = baseInput() as unknown as {
-			b1: Record<string, unknown>;
+		const missingPairs = baseInput() as unknown as {
+			instrument: { sameConfig: Record<string, unknown> };
 		};
-		missingB1.b1.pairs = undefined;
-		expect(() => evaluateR6Gates(missingB1 as unknown as R6GateInput)).toThrow(
-			/b1.pairs/,
-		);
+		missingPairs.instrument.sameConfig.pairs = undefined;
+		expect(() =>
+			evaluateR6Gates(missingPairs as unknown as R6GateInput),
+		).toThrow(/instrument\.sameConfig\.pairs/);
+
+		const missingToolCalls = baseInput() as unknown as {
+			deep: Record<string, unknown>;
+		};
+		missingToolCalls.deep.toolCalls = undefined;
+		expect(() =>
+			validateR6GateInput(missingToolCalls as unknown as R6GateInput),
+		).toThrow(/deep\.toolCalls/);
 	});
 
 	it("故事完成数合计与配对合计不一致时抛错", () => {
 		const input = baseInput();
-		input.b1.stories[0].completedPairs = 9;
-		input.b1.stories[1].completedPairs = 9;
-		input.b1.stories[2].completedPairs = 9;
+		input.replay.abandoned.stories[0].completedPairs = 9;
+		input.replay.abandoned.stories[1].completedPairs = 9;
+		input.replay.abandoned.stories[2].completedPairs = 9;
 		expect(() => validateR6GateInput(input)).toThrow(/不一致/);
 	});
 
 	it("每对两种顺序都要有判定记录", () => {
 		const input = baseInput();
-		input.b1.judgments.completed = 59;
-		expect(() => validateR6GateInput(input)).toThrow(/至少应为 60/);
+		input.instrument.sameConfig.judgments.completed = 85;
+		expect(() => validateR6GateInput(input)).toThrow(/至少应为 86/);
+	});
+
+	it("真人标注的选择次数不能超过成功判断次数", () => {
+		const input = baseInput();
+		input.instrument.humanLabels.acceptedChoices = 391;
+		expect(() => validateR6GateInput(input)).toThrow(
+			/humanLabels\.acceptedChoices/,
+		);
 	});
 });

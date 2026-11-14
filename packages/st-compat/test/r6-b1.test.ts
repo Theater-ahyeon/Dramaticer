@@ -17,7 +17,6 @@ import {
 	R6_B1_FORMAT,
 	formatR6B1Report,
 	planR6B1Samples,
-	r6B1GateInput,
 	r6B1SampleId,
 	runR6B1,
 } from "../src/evalset/r6-b1.js";
@@ -304,11 +303,6 @@ describe("r6-b1", () => {
 			);
 			expect(originality?.mean).toBe(4);
 		}
-
-		const gateInput = r6B1GateInput(report.summary);
-		expect(gateInput.pairs.wins).toBe(2);
-		expect(gateInput.stories).toEqual([{ story: STORY, completedPairs: 2 }]);
-		expect(gateInput.judgments).toEqual({ completed: 4, failed: 0 });
 
 		const stored = sidecar(runDir, 6);
 		expect(stored.generatedNodeId).not.toBeNull();

@@ -19,7 +19,6 @@ import {
 } from "@dramaticer/core";
 import { resolveStoryContextTemplate } from "../chat/session.js";
 import {
-	type R6B1GateInput,
 	type R6PairCounts,
 	type R6PairOutcome,
 	type R6PairSide,
@@ -436,23 +435,6 @@ function summarizeHistoricalFamilies(
 			family: modelFamily(model),
 			samples: count,
 		}));
-}
-
-/** 把批次汇总换成 G1 的判定输入；其余门槛由 C1 与 C3 提供。 */
-export function r6B1GateInput(summary: R6B1Summary): R6B1GateInput {
-	return {
-		plannedPairs: summary.plannedPairs,
-		pairs: summary.pairs,
-		failures: summary.failures,
-		stories: summary.stories.map((story) => ({
-			story: story.story,
-			completedPairs: story.completedPairs,
-		})),
-		judgments: {
-			completed: summary.judgementsCompleted,
-			failed: summary.judgementsFailed,
-		},
-	};
 }
 
 async function planStories(
