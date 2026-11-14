@@ -127,6 +127,7 @@ describe("内置后台任务插件", () => {
 			"compression",
 			"npc_agenda",
 			"lore_prefilter",
+			"import_kind",
 			"settle",
 			"scene",
 			"user_will",
@@ -147,6 +148,7 @@ describe("内置后台任务插件", () => {
 			["compression", "confirmed", "deferred"],
 			["npc_agenda", "confirmed", "deferred"],
 			["lore_prefilter", "settled", "gap"],
+			["import_kind", "story", "gap"],
 			["settle", "settled", "gap"],
 			["scene", "settled", "gap"],
 			["user_will", "settled", "gap"],
@@ -165,6 +167,7 @@ describe("内置后台任务插件", () => {
 			expect(registry.get(kind)).toMatchObject({ enqueue, tier });
 		}
 		expect(registry.get("opening")?.needsRun).toBeTypeOf("function");
+		expect(registry.get("import_kind")?.needsRun).toBeTypeOf("function");
 		expect(registry.get("scene_archive")?.needsRun).toBeTypeOf("function");
 		expect(registry.get("settle")?.needsRun).toBeUndefined();
 	});

@@ -15,6 +15,7 @@ import {
 	DIRECTOR_CONFIG_KEYS,
 	type DirectorDecision,
 	type DirectorIntensity,
+	IMPORT_KIND_JOB_KIND,
 	type ImagePromptRequest,
 	ImageWorkflowInUseError,
 	type ImagesConfig,
@@ -48,6 +49,7 @@ import {
 	approveLedgerChangeCard,
 	assertComfyUiSlots,
 	assertDirectorIntensity,
+	buildImportAuditReport,
 	createBlockFormatSegment,
 	createDefaultContextTemplate,
 	detectComfyUiSlots,
@@ -56,6 +58,8 @@ import {
 	enqueueOpeningBackgroundJobs,
 	enqueueVisualProfileBackgroundJob,
 	fulfillLedgerClue,
+	importKindSuggestionsNeedRun,
+	isImportEntryKind,
 	isJsonObject,
 	isLedgerChangeCardStatus,
 	isOpeningCandidateStatus,
@@ -92,6 +96,10 @@ import {
 	type ImageProvidersView,
 	type ImageWorkflowDetectionView,
 	type ImageWorkflowsView,
+	type ImportAuditEntryKindUpdateRequest,
+	type ImportAuditEntryKindUpdateResult,
+	type ImportAuditReportView,
+	type ImportAuditSuggestionResult,
 	type ImportCharacterCard,
 	type ImportStoryRequest,
 	type ImportStoryResult,
@@ -126,6 +134,7 @@ import {
 	type StoryView,
 	type StoryVisualProfileGenerateResult,
 	type StoryVisualProfilesView,
+	isImportAuditPlayerSource,
 	isProposalDecisionAction,
 } from "@dramaticer/protocol";
 import {
@@ -350,6 +359,33 @@ export async function handleApiRequest(
 		if (third === "director" && parts.length === 4 && parts[3] === "plan") {
 			await handleDirectorPlan(req, res, method, options, storyId);
 			return;
+		}
+		if (third === "import-audit") {
+			if (parts.length === 3) {
+				requireMethod(method, ["GET"]);
+				handleImportAudit(res, options, storyId);
+				return;
+			}
+			if (parts.length === 4 && parts[3] === "suggestions") {
+				requireMethod(method, ["POST"]);
+				handleImportAuditSuggestions(res, options, storyId);
+				return;
+			}
+			if (
+				parts.length === 5 &&
+				parts[3] === "entries" &&
+				parts[4] !== undefined
+			) {
+				requireMethod(method, ["PATCH"]);
+				await handleImportAuditEntryUpdate(
+					req,
+					res,
+					options,
+					storyId,
+					parts[4],
+				);
+				return;
+			}
 		}
 	}
 	if (first === "channels") {
@@ -1269,6 +1305,100 @@ function handleStoryVisualProfilesGenerate(
 	}
 	options.scheduler?.schedule(storyId);
 	const view: StoryVisualProfileGenerateResult = {
+		storyId,
+		jobId: job.id,
+		kind: job.kind,
+	};
+	sendJson(res, 202, view);
+}
+
+/** 导入体检数据：条数、需要逐条查看的条目与常驻 token 的前后估算。 */
+function buildImportAuditReportView(
+	options: ApiRouteOptions,
+	storyId: string,
+): ImportAuditReportView {
+	return {
+		...buildImportAuditReport({
+			storyId,
+			entries: options.store.listImportAuditEntries(storyId),
+			loreEntries: options.store.listLoreEntries(storyId),
+		}),
+		importMode: options.store.getStorySettings(storyId).importMode,
+	};
+}
+
+function handleImportAudit(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	storyId: string,
+): void {
+	requireStory(options.store, storyId);
+	sendJson(res, 200, buildImportAuditReportView(options, storyId));
+}
+
+/** 玩家改一条条目的类型；`kindSource` 为 `rule` 时撤销改动回到规则判定。 */
+async function handleImportAuditEntryUpdate(
+	req: IncomingMessage,
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	storyId: string,
+	source: string,
+): Promise<void> {
+	requireStory(options.store, storyId);
+	const body = await readObjectBody(req, options.maxJsonBodyBytes);
+	assertKnownKeys(body, ["kind", "kindSource"]);
+	const kind = body.kind;
+	if (!isImportEntryKind(kind)) {
+		throw fieldError("kind", `导入分型的类型不合法：${String(kind)}`);
+	}
+	const kindSource = body.kindSource ?? "player";
+	if (!isImportAuditPlayerSource(kindSource)) {
+		throw fieldError("kindSource", "类型来源只能是 player 或 rule");
+	}
+	const existing = options.store
+		.listImportAuditEntries(storyId)
+		.find((entry) => entry.source === source);
+	if (existing === undefined) {
+		throw new HttpError(404, "not_found", `导入审计条目不存在：${source}`);
+	}
+	const request: ImportAuditEntryKindUpdateRequest = { kind, kindSource };
+	let entry: ImportAuditEntryKindUpdateResult["entry"];
+	try {
+		entry = options.store.setImportAuditEntryKind(
+			storyId,
+			source,
+			request.kind,
+			request.kindSource ?? "player",
+		);
+	} catch (error) {
+		throw toBadRequest(error, "kind");
+	}
+	const result: ImportAuditEntryKindUpdateResult = {
+		entry,
+		report: buildImportAuditReportView(options, storyId),
+	};
+	sendJson(res, 200, result);
+}
+
+/** 入队一次后台建议；建议在间隙执行，不改写条目正文。 */
+function handleImportAuditSuggestions(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	storyId: string,
+): void {
+	requireStory(options.store, storyId);
+	if (!importKindSuggestionsNeedRun(options.store, storyId)) {
+		throw new HttpError(409, "conflict", "没有等待建议的未识别条目");
+	}
+	const [job] = options.store.enqueueStoryBackgroundJobs({
+		storyId,
+		kinds: [IMPORT_KIND_JOB_KIND],
+	});
+	if (job === undefined) {
+		throw new Error(`故事 ${storyId} 的导入分型建议任务没有入队`);
+	}
+	options.scheduler?.schedule(storyId);
+	const view: ImportAuditSuggestionResult = {
 		storyId,
 		jobId: job.id,
 		kind: job.kind,

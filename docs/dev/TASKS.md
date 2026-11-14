@@ -1708,7 +1708,8 @@
   - `importWorldInfoLore` 在导入时按 `classifyWorldbookEntries` 为全部条目（含停用与空内容）写审计行，来源与 lore 条目一致；故事设置新增 `importMode`（`upgrade`、`raw`，默认 `upgrade`）。
   验收：导入后每条世界书条目都有审计行，停用条目也在；重复导入时 `rule` 来源的类型跟随新规则、`player` 与 `model` 保持不变；非法类型与非法来源直接报错；`pnpm check` 通过。
 
-- [ ] **W3-T02.b 体检数据与调整接口** | 依赖：W3-T02.a
+- [x] **W3-T02.b 体检数据与调整接口** | 依赖：W3-T02.a
+  完成：2026-11-14 core 新增 `memory/import-audit-report.ts`：`buildImportAuditReport` 按生效类型计数（11 类固定顺序），逐条清单只带标题、类型来源、规则首要类型与正文长度，未识别、作者选项、插件残留三组另带正文；token 前后用 `createTokenEstimator` 估算，两侧都只算真正导入成 lore 的条目，`before` 是常驻条目全文，`after` 是常识全文加实体档案的标题与关键词索引，不调用模型、不落盘。新增 `memory/import-kind-suggest.ts` 与故事级后台任务 `import_kind`（`story`、`gap` 档）：`needsRun` 只在还有规则判成 `unknown` 且没人改过的条目时为真；处理器按 40 条一批、每轮最多 8 批请求模型，响应必须只含本批来源、不重复、类型合法，送进提示词的正文截到 800 字，写入 `kind_source = model`，玩家与模型已改过的条目跳过。server 新增 `GET /api/stories/:id/import-audit`、`PATCH /api/stories/:id/import-audit/entries/:source`（`kindSource` 只接受 `player` 与 `rule`，调整后返回重算的整份体检）与 `POST /api/stories/:id/import-audit/suggestions`（没有待建议条目时 409，重复调用复用同一条任务）。测试 16 个：core 报告 4、建议 6，server 接口 6；`plugin-background-tools` 的注册表清单补 `import_kind`
   做什么：
   - server 提供体检数据接口：各类型条数、未识别条目、作者选项、插件残留条目、每轮常驻 token 的前后估算（分型后的注入集合：常识全文加实体档案索引，不调用模型）。
   - 逐条调整接口：玩家改类型（来源 `player`）；后台模型给 `unknown` 条目建议类型（来源 `model`），建议在间隙执行，不改写条目原文。

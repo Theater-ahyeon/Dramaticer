@@ -56,6 +56,11 @@ import {
 } from "../memory/embed.js";
 import { createEventExtractionHandler } from "../memory/extract.js";
 import {
+	IMPORT_KIND_JOB_KIND,
+	createImportKindSuggestionHandler,
+	importKindSuggestionsNeedRun,
+} from "../memory/import-kind-suggest.js";
+import {
 	LORE_PREFILTER_JOB_KIND,
 	createLorePrefilterHandler,
 } from "../memory/lore-prefilter.js";
@@ -89,6 +94,7 @@ export const SUMMARY_JOB_PLUGIN = "background.summary";
 export const COMPRESSION_JOB_PLUGIN = "background.compression";
 export const NPC_AGENDA_JOB_PLUGIN = "background.npc-agenda";
 export const LORE_PREFILTER_JOB_PLUGIN = "background.lore-prefilter";
+export const IMPORT_KIND_JOB_PLUGIN = "background.import-kind";
 export const SETTLE_JOB_PLUGIN = "background.settle";
 export const SCENE_JOB_PLUGIN = "background.scene";
 export const USER_WILL_JOB_PLUGIN = "background.user-will";
@@ -143,6 +149,12 @@ export const BACKGROUND_JOB_PLUGINS: readonly BackgroundJobPlugin[] = [
 		handler: createLorePrefilterHandler(),
 		enqueue: "settled",
 		tier: "gap",
+	}),
+	backgroundJobPlugin(IMPORT_KIND_JOB_PLUGIN, IMPORT_KIND_JOB_KIND, {
+		handler: createImportKindSuggestionHandler(),
+		enqueue: "story",
+		tier: "gap",
+		needsRun: importKindSuggestionsNeedRun,
 	}),
 	backgroundJobPlugin(SETTLE_JOB_PLUGIN, SETTLE_JOB_KIND, {
 		handler: createSettleHandler(),

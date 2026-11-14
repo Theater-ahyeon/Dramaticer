@@ -3,14 +3,14 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-14 会话 401：完成 W3-T02.a（分型结果持久化与导入模式字段）。core 新增 `packages/core/src/memory/import-audit.ts`：`IMPORT_ENTRY_KINDS` 固定十类加 `unknown` 的顺序（分型器改为引用它），`IMPORT_ENTRY_KIND_SOURCES` 为 `rule`/`model`/`player`，`assertImportEntryMatches` 校验命中类型不重复、`unknown` 不与其他类型并列。迁移 v55 新建 `import_audit_entries`（`story_id` + `source` 主键，标题、正文、命中类型 JSON、`rule_primary`、`kind`、`kind_source`、`constant`、创建与更新时间）并给 `story_settings` 加 `import_mode`（`upgrade`/`raw`，默认 `upgrade`）。store 新增 `saveImportAuditEntries`（重复导入更新正文与规则判定，`rule` 来源的类型跟随新规则，`player` 与 `model` 保持不变）、`listImportAuditEntries`、`setImportAuditEntryKind`（`rule` 表示回到规则判定，类型必须等于 `rulePrimary`）。`importWorldInfoLore` 在 lore 写入后为全部条目（含停用、没有名称与空内容）写审计行，来源与 lore 条目一致；新增 `packages/st-compat/src/import-audit.ts` 的 `buildWorldbookAuditEntries`。故事设置 `importMode` 已接进 store、设置接口与助手动作的字段白名单。测试：core `import-audit.test.ts` 4 个、st-compat `import-audit.test.ts` 3 个，fixture `test/fixtures/worldbook-audit.json` 5 条（含停用条目）。门禁通过（271 个测试文件、2,345 个测试、5 个跳过，约 120 秒）。
+- 2026-11-14 会话 402：完成 W3-T02.b（体检数据与调整接口）。core 新增 `packages/core/src/memory/import-audit-report.ts`：`buildImportAuditReport` 按生效类型计数（11 类固定顺序），逐条清单只带标题、类型、来源与正文长度，未识别、作者选项、插件残留三组另带正文；token 前后用 `createTokenEstimator` 估算，两侧都只算真正导入成 lore 的条目。新增 `packages/core/src/memory/import-kind-suggest.ts` 与故事级后台任务 `import_kind`（`story`、`gap` 档，注册在 `plugins/background-jobs.ts`）：`needsRun` 只在还有 `kind = unknown` 且 `kind_source = rule` 的条目时为真，处理器 40 条一批、每轮最多 8 批请求模型，响应只能含本批来源且类型合法，写入 `kind_source = model`。server 新增体检读取、逐条调整与建议入队三个接口；protocol 新增 `src/import-audit.ts`。测试新增 core 报告 4 个、建议 6 个、server 接口 6 个，`plugin-background-tools` 的注册表清单补 `import_kind`。
+- 2026-11-14 会话 401：完成 W3-T02.a（分型结果持久化与导入模式字段）。core 新增 `packages/core/src/memory/import-audit.ts`：`IMPORT_ENTRY_KINDS` 固定十类加 `unknown` 的顺序（分型器改为引用它），`IMPORT_ENTRY_KIND_SOURCES` 为 `rule`/`model`/`player`，`assertImportEntryMatches` 校验命中类型不重复、`unknown` 不与其他类型并列。迁移 v55 新建 `import_audit_entries`（`story_id` + `source` 主键，标题、正文、命中类型 JSON、`rule_primary`、`kind`、`kind_source`、`constant`、创建与更新时间）并给 `story_settings` 加 `import_mode`（`upgrade`/`raw`，默认 `upgrade`）。store 新增 `saveImportAuditEntries`（重复导入更新正文与规则判定，`rule` 来源的类型跟随新规则，`player` 与 `model` 保持不变）、`listImportAuditEntries`、`setImportAuditEntryKind`（`rule` 表示回到规则判定，类型必须等于 `rulePrimary`）。`importWorldInfoLore` 在 lore 写入后为全部条目（含停用、没有名称与空内容）写审计行，来源与 lore 条目一致；新增 `packages/st-compat/src/import-audit.ts` 的 `buildWorldbookAuditEntries`。故事设置 `importMode` 已接进 store、设置接口与助手动作的字段白名单。测试：core `import-audit.test.ts` 4 个、st-compat `import-audit.test.ts` 3 个，fixture `test/fixtures/worldbook-audit.json` 5 条（含停用条目）。
 - 2026-11-14 会话 400：完成 W3-T01（世界书条目分型器）。`packages/st-compat/src/worldbook-classify.ts`：`classifyWorldbookEntries` 按 27 条标题与内容规则把条目分入十类，规则 id 记为依据；无命中走 `fallbackMatch`（空内容、等于标题或键、名字清单、短常驻条目、带键短描述），再没有就记 `unknown`；一个条目可命中多类，`mixed` 标记混合条目，原文不拆不改。沙箱 80 本世界书加 63 张内嵌世界书的卡共 13,757 条：未识别 19.5%，主体是 YAML 式章节回顾与文风指南。
 - 2026-11-14 会话 398：完成 W2-T03（场记对照 CLI）：`evalset/scene-log-compare-batch.ts` 按固定楼层清单复制源库、逐楼层跑独立任务与场记，两边同一个模型、各用一个响应缓存目录；`scene-log-compare` 脚本支持 `--samples`、`--dir`、`--json`、`--report`、`--channels`、`--model`、`--cache`、`--window`、`--min-samples`。
-- 门禁通过：271 个测试文件、2,345 个测试、5 个跳过（约 120 秒）。本会话新增 2 个测试文件、迁移 v55。
 
-## 下一步（会话 402 先做）
-1. **W3-T02.b 体检数据与调整接口**（依赖 W3-T02.a，已满足）：server 提供体检数据接口（各类型条数、未识别条目、作者选项、插件残留条目、每轮常驻 token 前后估算）与逐条调整接口（玩家 `player`、后台模型建议 `model`，建议在间隙执行）。token 前后估算按分型后的注入集合计算（`before` 是 `constant` 条目的全文；`after` 是 `common` 全文加 `entity` 的标题与关键词索引），用 core 的 `createTokenEstimator`，不调用模型、不落盘。
-2. 之后 **W3-T02.c**（导入体检页，原型 `data-view="import"` 的结构）→ **W3-T02.d**（原样模式接 `createStWorldInfoProviders`、`importMode` 切换、插件残留一键转初始记忆、e2e）→ **W3-T03**（规则执行层）→ **W4-T01 至 W4-T03**。
+## 下一步（会话 403 先做）
+1. **W3-T02.c 导入体检页**（依赖 W3-T02.b，已满足）：web 新增导入体检页（原型 `data-view="import"` 的结构），直接读 `GET /api/stories/:id/import-audit`；逐条调整走 `PATCH /api/stories/:id/import-audit/entries/:source`，响应里带重算后的整份体检，不需要再请求一次；未识别条目可逐条展开正文；e2e 覆盖导入带世界书的卡后显示条数与 token 前后、调整后数字变化。
+2. 之后 **W3-T02.d**（原样模式接 `createStWorldInfoProviders`、`importMode` 切换、插件残留一键转初始记忆、e2e）→ **W3-T03**（规则执行层）→ **W4-T01 至 W4-T03**。
 3. R6 段：**R6-T07.b**（重 roll 点回放批次）、**R6-T07.c**（遗忘漏斗）、**R6-T07.d**（门槛判定 CLI）→ **R6-T99**；**R6-T06** 与 W2-T04 同样被 HUMAN-19 阻塞（`bg` 渠道额度 2026-11-17T11:44:35Z 重置）。
 4. **W2-T04** 继续被 HUMAN-19 阻塞。额度恢复后用它跑真实对照：`pnpm --filter @dramaticer/st-compat scene-log-compare`（默认读 `eval-private/reports/scene-log/samples.json`，24 个楼层 ≥ 20）。不达标时保留独立任务并写 ADR。
 5. R6 段之后继续 **W5-T01、W5-T02** → **W6-T01 至 W6-T03** → **W7-T01 至 W7-T03** → **W8-T01、W8-T02** → **W9-T01 至 W9-T99**。
@@ -22,11 +22,12 @@
 7. 阻塞检查：M6-T99 仍等 HUMAN-15；HUMAN-03、HUMAN-16、HUMAN-17、HUMAN-18、HUMAN-20、HUMAN-21 不阻塞；HUMAN-19 阻塞 R6-T06、R6-T99、W2-T04。
 
 ## 当前状态
-- 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1–P4、C-T01 至 C-T05、H-T00 至 H-T99、X1.a 至 X1.e、X2.a 至 X2.d、R6-T00 至 R6-T05、R6-T07、R6-T07.a、W0-T00、W0-T01、W1-T01、W2-T01、W2-T02、W2-T03、W3-T01、W3-T02.a。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- 设计版本 v0.4（ADR-0139）。W 阶段任务顺序：W0（完成）→ W1（完成）→ W2（T01–T03 完成，T04 被阻塞）→ W3（T01、T02.a 完成，T02 拆成 `.a`–`.d`）→ W4 → R6 段（T07.b、T07.c、T07.d、T99）→ W5 → W6 → W7 → W8 → W9。
-- 数据库 schema 版本 55（v51 `story_media`、v52 `story_settings.contextLayout`、v53 `scene_logs` 与 `scene_log_enabled`、v54 `scene_archives`、v55 `import_audit_entries` 与 `story_settings.import_mode`）。
+- 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1–P4、C-T01 至 C-T05、H-T00 至 H-T99、X1.a 至 X1.e、X2.a 至 X2.d、R6-T00 至 R6-T05、R6-T07、R6-T07.a、W0-T00、W0-T01、W1-T01、W2-T01、W2-T02、W2-T03、W3-T01、W3-T02.a、W3-T02.b。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 设计版本 v0.4（ADR-0139）。W 阶段任务顺序：W0（完成）→ W1（完成）→ W2（T01–T03 完成，T04 被阻塞）→ W3（T01、T02.a、T02.b 完成，T02 拆成 `.a`–`.d`）→ W4 → R6 段（T07.b、T07.c、T07.d、T99）→ W5 → W6 → W7 → W8 → W9。
+- 数据库 schema 版本 55（v51 `story_media`、v52 `story_settings.contextLayout`、v53 `scene_logs` 与 `scene_log_enabled`、v54 `scene_archives`、v55 `import_audit_entries` 与 `story_settings.import_mode`）。W3-T02.b 不需要新迁移。
 - 导入审计：`import_audit_entries` 每条对应一个世界书条目（含停用与空内容），主键 `(story_id, source)`，与 `lore_entries.source` 同构（`<前缀>:<世界书名称>:<条目键>`）；`matches` 存分型器给的规则命中，`rule_primary` 是规则首要类型，`kind` 是生效类型，`kind_source` 为 `rule`/`model`/`player`。重复导入只更新标题、正文、规则判定与 `constant`；只有 `kind_source = rule` 的 `kind` 跟着新规则变。
-- 世界书分型：`classifyWorldbookEntries(entries)` 只读 `StWorldInfoEntry`，返回 `{entries, counts}`；每条有 `matches[{kind, rules}]`、`primaryKind`、`mixed`。`primaryKind` 取 `IMPORT_ENTRY_KINDS` 顺序里第一个命中类型（`common` 最前，`unknown` 最后）。`WORLDBOOK_ENTRY_KINDS` 现在直接引用 core 的 `IMPORT_ENTRY_KINDS`。
+- 导入体检接口：`buildImportAuditReport` 输出 `{storyId,total,counts,entries,unknown,authorOptions,pluginResidue,tokens}`；`counts` 按 `IMPORT_ENTRY_KINDS` 顺序，每条 `{kind,count}`；`entries` 是轻量清单（`source,title,kind,kindSource,rulePrimary,constant,contentChars`）；三组审查条目带 `content`。`tokens` 是 `{before,after,beforeEntries,afterEntries}`。`GET /api/stories/:id/import-audit` 另加 `importMode`；`PATCH .../import-audit/entries/:source` 请求体 `{kind,kindSource?}`（`kindSource` 只接受 `player`，缺省即 `player`；`rule` 表示撤销改动、`kind` 必须等于 `rulePrimary`），响应 `{entry, report}`；`POST .../import-audit/suggestions` 返回 `{storyId,jobId,kind}`，没有待建议条目时 409。
+- 世界书分型：`classifyWorldbookEntries(entries)` 只读 `StWorldInfoEntry`，返回 `{entries, counts}`；每条有 `matches[{kind, rules}]`、`primaryKind`、`mixed`。`primaryKind` 取 `IMPORT_ENTRY_KINDS` 顺序里第一个命中类型（`common` 最前，`unknown` 最后）。
 - 场记：`scene_log` 默认关闭（`sceneLogEnabled`）；打开后与结算、现场分析、用户意志、小品条件并行运行，尚未替换它们（W2-T04 按对照结论切换）。`scene_logs` 一行一个助手楼层，`states` 存引文已核对的提案，`quotes` 记提交/核验数，`repairs` 记引文与形状拒绝加上结算器的非 `fill` 修复。
 - 场次：`readSceneSegments` 沿给定节点路径派生；`sceneEnds` 的楼层收尾这一场，否则到 `DEFAULT_MAX_SCENE_FLOORS`（12）个助手楼层强制收尾；场次不是节点，不写 `nodes`。`scene_archives` 以结束楼层为主键，`boundary` 记 `scene-ends` 或 `max-floors`；`start_node_id`、`floor_count`、`boundary` 共同用于判断存下来的归档是否与当前划分一致。
 - 场记对照：`compareSceneLog` 逐楼层跑独立任务（`settle`、`scene`、`user_will`、`director_bits`）与 `scene_log`；`runSceneLogCompareBatch` 负责复制源库、按故事汇总与样本判定。逐楼层结果里的 `quotes` 只有场记档有值，`independentRepairs`/`mergedRepairs` 不含 `fill`。`combineSceneLogCompare` 的比率按「交集总和 / 并集总和」重算，不能把各故事比率取平均。
@@ -52,6 +53,8 @@
 - 门禁：`pnpm check`。
 - 全量 e2e：`pnpm e2e`（会先构建 server 与 web；跑两个项目）。
 - 导入审计目标测试：`pnpm exec vitest run packages/core/test/import-audit.test.ts packages/st-compat/test/import-audit.test.ts`。
+- 导入体检目标测试：`pnpm exec vitest run packages/core/test/import-audit-report.test.ts packages/core/test/import-kind-suggest.test.ts packages/server/test/import-audit.test.ts`。
+- 后台任务注册表目标测试：`pnpm exec vitest run packages/core/test/plugin-background-tools.test.ts`。
 - 世界书分型目标测试：`pnpm exec vitest run packages/st-compat/test/worldbook-classify.test.ts`。
 - 沙箱世界书分型统计：`node .devloop/scratch/W3-T01/stats.mjs`（只读打开沙箱世界书与卡；先 `pnpm run typecheck` 让 `dist` 更新）。
 - 场记与对照目标测试：`pnpm exec vitest run packages/core/test/scene-log.test.ts packages/st-compat/test/scene-log-compare.test.ts packages/st-compat/test/scene-log-compare-batch.test.ts`。
@@ -90,8 +93,13 @@
 - 审计的 `source` 必须与 lore 条目同构；`importWorldInfoLore` 是唯一写审计的路径，`importCharacterBookLore` 通过它转发。不要绕过它在别处拼来源。
 - 审计写入在 lore 写入之后：lore 抛错时不留半截审计。重导入时 `created_at` 保留第一次导入的时间，`updated_at` 每次更新。
 - `kind_source = rule` 的条目不要用 `setImportAuditEntryKind` 写成别的类型；要改类型必须同时给出 `player` 或 `model`。回到规则判定时 `kind` 必须等于 `rule_primary`，否则直接报错。
+- 体检 token 两侧都只算真正导入成 lore 的条目（停用、没有名称、空内容不进入任何一侧）；`before` 是常驻条目全文，行格式与槽位一致（`【常驻】标题：正文`），`after` 是常识全文加实体档案的 `标题：关键词`（关键词取 lore 行的 `keywords`，没有关键词时只算标题）。头行 `世界书条目：` 只在有内容时计入。估算不调用模型、不落盘。
+- `PATCH .../import-audit/entries/:source` 的 `source` 含冒号，客户端必须 `encodeURIComponent`；`kindSource` 只接受 `player` 与 `rule`，`model` 只能由后台任务写。
+- `import_kind` 的 `needsRun` 只看 `kind = unknown` 且 `kind_source = rule` 的条目；模型回复 `unknown` 时也记 `kind_source = model`，因此不会因同一条目反复入队。
+- `import_kind` 每轮最多 320 条（40 条 × 8 批），剩下的由下一次 drain 继续；响应里出现本批之外的来源或重复来源整批拒绝，任务按框架重试。
+- `import_kind` 送进提示词的正文截到 800 字，只用于分类；审计行与 lore 的原文不变。
 - 世界书分型的 `counts` 是每类命中数，一个条目可计入多类，不要求和等于条目数；要条目数用 `entries.length`。`primaryKind` 按 `IMPORT_ENTRY_KINDS` 顺序取第一个命中，`unknown` 排最后。
-- 分型的规则只用标题与内容里的字面标记；沙箱实测未识别 19.5%，主体是 YAML 式章节回顾与文风指南。不要为了压低未识别率把这些标题词直接映射成实体，归 `unknown` 交给 W3-T02.b 的模型判定。
+- 分型的规则只用标题与内容里的字面标记；沙箱实测未识别 19.5%，主体是 YAML 式章节回顾与文风指南。不要为了压低未识别率把这些标题词直接映射成实体，归 `unknown` 交给 `import_kind` 与玩家判定。
 - 世界书分型是纯函数：不读磁盘、不调用模型、不改写入参；测试只用 fixture，不要拿沙箱条目写断言（I10）。
 - W 阶段的顺序写在 TASKS 里：W1–W4 → R6 段 → W5–W9。R6-T07.b 与 R6-T06 的真实批次需要 `background` 渠道，额度恢复前只能做代码与假客户端测试。
 - W2-T04 的切换条件是结算一致率不低于独立任务（ADR-0055 口径），不达标时保留独立任务并写 ADR；不得为了让场记上线而放宽对照。
