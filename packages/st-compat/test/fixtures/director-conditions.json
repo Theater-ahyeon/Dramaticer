@@ -1,0 +1,110 @@
+[
+	{
+		"id": "rain-text",
+		"bit": {
+			"id": "rain-text",
+			"condition": { "kind": "text", "text": "当前场景正在下雨" },
+			"instruction": "写一段雨中的场景。",
+			"priority": 0,
+			"cooldown": 0,
+			"after": null,
+			"repeatable": true,
+			"fallback": false
+		},
+		"floors": [
+			{ "role": "user", "raw": "我推开窗，暴雨砸在屋檐上。" },
+			{ "role": "assistant", "raw": "雨水顺着窗框流下，街上的灯都糊成一片。" }
+		],
+		"state": {},
+		"expected": true
+	},
+	{
+		"id": "sunny-text",
+		"bit": {
+			"id": "sunny-text",
+			"condition": { "kind": "text", "text": "当前场景是晴天" },
+			"instruction": "写一段晴天的场景。",
+			"priority": 0,
+			"cooldown": 0,
+			"after": null,
+			"repeatable": true,
+			"fallback": false
+		},
+		"floors": [
+			{ "role": "user", "raw": "乌云压得很低，雨下了一整夜。" },
+			{ "role": "assistant", "raw": "屋檐还在滴水，远处的山路一片泥泞。" }
+		],
+		"state": {},
+		"expected": false
+	},
+	{
+		"id": "open-clue",
+		"bit": {
+			"id": "open-clue",
+			"condition": {
+				"kind": "ledger",
+				"query": {
+					"kind": "state",
+					"path": ["clue", "c1", "status"],
+					"op": "equals",
+					"value": "open"
+				}
+			},
+			"instruction": "推进旧伤线索。",
+			"priority": 0,
+			"cooldown": 0,
+			"after": null,
+			"repeatable": true,
+			"fallback": false
+		},
+		"floors": [
+			{ "role": "user", "raw": "我问他肩上的旧伤。" },
+			{ "role": "assistant", "raw": "他按住肩膀，没有回答。" }
+		],
+		"state": { "clue": { "c1": { "status": "open" } } },
+		"expected": true
+	},
+	{
+		"id": "closed-clue",
+		"bit": {
+			"id": "closed-clue",
+			"condition": {
+				"kind": "ledger",
+				"query": {
+					"kind": "state",
+					"path": ["clue", "c1", "status"],
+					"op": "equals",
+					"value": "open"
+				}
+			},
+			"instruction": "推进旧伤线索。",
+			"priority": 0,
+			"cooldown": 0,
+			"after": null,
+			"repeatable": true,
+			"fallback": false
+		},
+		"floors": [
+			{ "role": "user", "raw": "旧伤的事已经说开了。" },
+			{ "role": "assistant", "raw": "他松了口气，把袖子放下来。" }
+		],
+		"state": { "clue": { "c1": { "status": "fulfilled" } } },
+		"expected": false
+	},
+	{
+		"id": "fallback",
+		"bit": {
+			"id": "fallback",
+			"condition": null,
+			"instruction": "推进日常场景。",
+			"priority": 0,
+			"cooldown": 0,
+			"after": null,
+			"repeatable": true,
+			"fallback": true
+		},
+		"floors": [{ "role": "assistant", "raw": "夜里没有别的动静。" }],
+		"state": {},
+		"expected": true
+	}
+]
