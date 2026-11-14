@@ -3,25 +3,27 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-14 会话 377：X2.d 实跑判定。长任务 X2.d-01（`node .devloop/scratch/X2.d/run-compare.mjs`，80.4 分钟，退出码 0）完成 3 个故事 × 2 个候选 × 3 次重复 × 8 轮，两个候选各 3/3 次重复完成，0 次运行失败。合计：重复度 `bits` 0.0578 对 `mechanisms` 0.0560，推进度 86.2% 对 86.0%，线索兑现率 5/7（71.4%）对 2/3（66.7%），盲测胜率 70.7%（99 胜、41 负、1 平，95% 区间 62.7%–77.6%），条件判断 27/27 正确（错误、缺失、失败都是 0）。逐故事：`xianxia` 重复度 0.0375 对 0.0211、推进度 89.0% 对 93.5%，`yuwang` 兑现率 1/2 对 2/3。主要指标“不劣于”没有成立，判定保持 `mechanisms`，`bits` 留在 `directorOrganization` 开关后。产出 ADR-0134、`docs/dev/reports/X2.md`、DESIGN §14.4 判定行、TASKS 把 X2.d 标 `[x]`；没有代码改动；门禁通过。私有原始数据（含回复与故事标题）在 `eval-private/reports/director-organization-compare/`。
+- 2026-11-14 会话 378：R6-T00 细化 R6 任务。预注册 `docs/dev/R6-PREREG.md` v1 与 ADR-0135 入库：3 个 legacy 对话、按路径深度 10% 到 100% 取最多 10 个分支点；C1 原生与朴素各 9 个分支点 × 30 轮并共用同一串玩家消息；C2 B1 计划 30 对、至少 27 对完成；C3 深回合 24 对；配对级 Wilson 95% 区间；重复度与推进度沿用字符 4-gram 口径；G4 台账探针矛盾率上限 30%；G6 偏好一致率是条件门槛（少于 30 对记未证实）；B2 申请模板与单次 60 次上限；最多三轮评测与自动改进任务；每个运行副本预热 12 楼（`settle` 与 `scene`）。DESIGN §14.2 同步；TASKS 把 R6 分成 R6-T01 至 R6-T06 与 R6-T99；没有代码改动；门禁通过（254 个测试文件、2,214 个测试、5 个跳过）。
 
-## 下一步（会话 378 先做）
-1. 选择 **R6-T00 细化 R6 任务**（依赖 R5-T99、R3b-T99、R1-T99.a、H-T00，全部已完成）。R6 是效果门槛：预注册 B1 对比胜率判定方式与置信区间、矛盾率上限、重复度与推进度口径、深回合增益口径、偏好一致率口径，再拆成具体任务。
-2. 需要重评 X2 时按 ADR-0134 的条件：先查 `bits` 在 `xianxia` 上重复度升高与推进度下降的原因，再用 `.devloop/scratch/X2.d/run-compare.mjs` 重跑（sidecar 会复用已完成的候选与重复，改输入或种子会导致校验失败并提示删除 sidecar），用 `.devloop/scratch/X2.d/summarize.mjs` 打印指标。重评门槛不变：至少 3 个故事上重复度不高于对照、推进度与兑现率不低于对照，盲测 95% 区间下界高于 50%，兑现率分母至少 10 条新建笔记。
-3. 阻塞检查：M6-T99 仍等 HUMAN-15（ComfyUI 与 API 格式 workflow）；HUMAN-03、HUMAN-16、HUMAN-17、HUMAN-18 不阻塞。
+## 下一步（会话 379 先做）
+1. 选择 **R6-T01 门槛常量与判定库**（依赖 R6-T00 已完成）。新增 `packages/st-compat/src/evalset/metrics.ts`（内容字符 4-gram、重复度、推进度）与 `gates.ts`（`R6_GATE_VERSION`、预注册常量、`wilsonInterval`、配对归一、`evaluateR6Gates`），X2 的对比运行器改用共享指标实现且数字不变；先读 `docs/dev/R6-PREREG.md` 第三节与 ADR-0135。
+2. 之后按 TASKS 顺序做 R6-T02（对比运行器）、R6-T03（B1 批次）、R6-T04（偏好一致率）、R6-T05（深回合批次，长任务）、R6-T06（C1 与 C2 长任务），最后 R6-T99 判定。T05 与 T06 写 `.devloop/jobs/` 申请并写 `WAITING`。
+3. 预注册文档在第一次批次运行后不得修改；必须调整时另写 v2、记 ADR、把评测轮次计数重置为 0。
+4. 阻塞检查：M6-T99 仍等 HUMAN-15（ComfyUI 与 API 格式 workflow）；HUMAN-03、HUMAN-16、HUMAN-17、HUMAN-18 不阻塞。
 
 ## 当前状态
-- 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1–P4、C-T01 至 C-T05、H-T00 至 H-T99、X1.a 至 X1.e、X2.a 至 X2.d。X 阶段完成。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1–P4、C-T01 至 C-T05、H-T00 至 H-T99、X1.a 至 X1.e、X2.a 至 X2.d、R6-T00。X 阶段完成。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
 - 兼容插件线：`st-content`、`st-mvu`、`st-ejs`、`st-helper-host` 全部完成（含一致性测试与共存评测）。
 - 数据库 schema 版本 50。本轮没有新增依赖。
 - 报告：`docs/dev/reports/P2.md`、`P3.md`、`P4.md`、`C-T01.md`、`C-T02.md`、`C-T03.md`、`C-T04.md`、`C-T05.md`、`H.md`、`X1.md`、`X2.md`。
+- R6 预注册：`docs/dev/R6-PREREG.md` v1、ADR-0135、DESIGN §14.2；门槛常量与判定由 R6-T01 实现，运行记录写入门槛版本。
 - 世界模型：默认 `ledger`；`wiki` 与 `temporal_graph` 已经可用，由故事设置 `worldModel` 选择，只有 `temporal_graph` 支持 `atStoryTime`。
 - 导演组织方式：默认 `mechanisms`（现有机制序列）；`bits` 已可用，由故事设置 `directorOrganization` 选择。X2 判定见 ADR-0134 与 `docs/dev/reports/X2.md`。
 - X2 的输入与运行脚本在 `.devloop/scratch/X2.d/`：`inputs/`（消息、小品、条件样本）、`run-compare.mjs`、`summarize.mjs`、`runs/<slug>/`（复制数据库、缓存与 sidecar）、`smoke/`（2 轮冒烟结果）。长任务状态在 `.devloop/jobs/X2.d-01.status.json`（退出码 0）与 `.log`。
 - X1 的原始数据在 `eval-private/reports/world-model-compare/`（含故事标题与回复，不进入仓库）；长任务脚本与 sidecar 在 `.devloop/scratch/X1.e/`。
 - 沙箱现状：`eval-private/st-sandbox/st` 有 36 个预设、68 张卡、89 个非驱动聊天片段；预设连接字段已被驱动改写为录制端点与桩模型。需要恢复原始预设时用 `sandbox --replace` 重建。
 - 私有比对批次：`compare-smoke4`（5 个组合，修复后）与更早的 `compare-smoke2`、`compare-smoke3`、`session324-sanitize`。
-- ADR-0088 至 ADR-0134 记录插件、沙箱、比对、兼容内容映射、EJS、沙箱执行、时间预算、流水线接入、模板生成、一致性评测、酒馆助手宿主、iframe 沙箱、STscript 子集、生成后台化、HTML 渲染、覆盖率口径、应用内助手、世界模型接口、实体档案、时序图谱、对比运行器、X1 判定、导演组织方式、剧情小品、X2 对比运行器与 X2 判定的决策。
+- ADR-0088 至 ADR-0135 记录插件、沙箱、比对、兼容内容映射、EJS、沙箱执行、时间预算、流水线接入、模板生成、一致性评测、酒馆助手宿主、iframe 沙箱、STscript 子集、生成后台化、HTML 渲染、覆盖率口径、应用内助手、世界模型接口、实体档案、时序图谱、对比运行器、X1 判定、导演组织方式、剧情小品、X2 对比运行器、X2 判定与 R6 预注册的决策。
 - HUMAN-03 待处理（不阻塞）：抽查 `eval-private/evalset/spotcheck.md` 里的事件题。
 - HUMAN-15 待处理（M6-T99 需要）：把秋叶整合包 v3.2 的 ComfyUI 启动在 `http://127.0.0.1:8188`，并导出一份 API 格式 workflow JSON 到 `eval-private/comfyui/` 或告知路径。
 - HUMAN-16、HUMAN-17、HUMAN-18 待处理（不阻塞）：临时目录清理、ST-Prompt-Template 与酒馆助手上游许可证确认。
@@ -34,23 +36,26 @@
 - X2.d 冒烟：把上面命令的 `--rounds` 改 2、`--repeat` 改 1、`--dir` 改 `.devloop/scratch/X2.d/smoke`。
 - X2.c 目标测试：`pnpm exec vitest run packages/st-compat/test/director-organization-compare.test.ts`。
 - X2.b 目标测试：`pnpm exec vitest run packages/core/test/director-bits.test.ts packages/core/test/director-organization.test.ts packages/core/test/card-extension.test.ts packages/core/test/plugin-background-tools.test.ts packages/st-compat/test/dramaticer-extension.test.ts packages/server/test/stories.test.ts`。
-- X2.a 目标测试：`pnpm exec vitest run packages/core/test/director-organization.test.ts packages/core/test/story-settings.test.ts packages/core/test/lore.test.ts packages/core/test/director.test.ts packages/core/test/assistant-store.test.ts packages/web/test/settings-form.test.ts`。
-- X1 目标测试：`pnpm exec vitest run packages/st-compat/test/world-model-compare.test.ts`。
 - X1 长任务（重跑会复用 sidecar）：`node .devloop/scratch/X1.e/run-compare.mjs`。
-- X1 单个故事：`node packages/st-compat/dist/evalset/world-model-compare-cli.js --db eval-private/world-model-compare/source/<slug>.db --story <故事> --messages .devloop/scratch/X1.e/inputs/<slug>.messages.json --questions .devloop/scratch/X1.e/inputs/<slug>.questions.jsonl --rounds 8 --repeat 3 --seed 1 --dir .devloop/scratch/X1.e/runs/<slug>`。
-- X1.e 目标测试：`pnpm exec vitest run packages/core/test/world-model.test.ts`。
-- X1.b 目标测试：`pnpm exec vitest run packages/core/test/world-model.test.ts packages/core/test/assistant-store.test.ts`。
-- X1.a 目标测试：`pnpm exec vitest run packages/core/test/world-model.test.ts packages/core/test/story-settings.test.ts packages/core/test/chat-providers.test.ts packages/web/test/settings-form.test.ts`。
+- X1 目标测试：`pnpm exec vitest run packages/st-compat/test/world-model-compare.test.ts`。
 - H-T99 真实渠道验收：`node .devloop/scratch/H-T99/live.mjs`。
 - 不变量检查：`node scripts/check-invariants.mjs`。
 - 重建沙箱数据：`pnpm --filter @dramaticer/st-compat build && node packages/st-compat/dist/st-bench/cli.js sandbox --source "D:/SillyTavern" --replace`。
 - 生成组合清单：`node packages/st-compat/dist/st-bench/cli.js plan --sandbox eval-private/st-sandbox/st --batch <批次>`。
 - 逐条比对：`node packages/st-compat/dist/st-bench/cli.js compare --sandbox eval-private/st-sandbox/st --batch <批次> [--limit <数量>]`。
-- 不变量：I1–I18 的定义见 `AGENTS.md`；世界模型与导演组织方式实验不改变 I5、I6、I9、I11、I12、I15。
+- R6 命令在 R6-T01 至 R6-T06 实现后补到这里；预注册里的命令形状见 `docs/dev/R6-PREREG.md` 第七节。
+- 不变量：I1–I18 的定义见 `AGENTS.md`；世界模型、导演组织方式与 R6 门槛实验不改变 I5、I6、I9、I11、I12、I15。
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
-- 私有数据（`eval-private/`、`data/`、`.env`）不能进入测试数据、提交、文档或日志；报告只写统计数字，不写对话原文。X1 与 X2 的 JSON 含回复与答案，只能放在私有目录。
+- 私有数据（`eval-private/`、`data/`、`.env`）不能进入测试数据、提交、文档或日志；报告只写统计数字，不写对话原文。X1、X2 与 R6 的 JSON 含回复与答案，只能放在私有目录。
+- R6 预注册 v1 在第一次批次运行后冻结：门槛、样本、指标、模型与种子都不改；必须调整时另写 v2、记 ADR、把评测轮次计数重置为 0。门槛常量与 `docs/dev/R6-PREREG.md` 必须逐项一致，`evaluateR6Gates` 不允许缺项回落。
+- R6 的分支点按路径深度取：主路径长度的 10% 到 100%，每个比例取最近的助手楼层，保留其后有非空玩家消息与历史回复的点，去重后每故事最多 10 个；C1 取首、中、末 3 个，B1 取全部。
+- R6 的 C1 两档必须共用同一串玩家消息：原生档先生成并写入 sidecar，朴素档逐字重放；sidecar 校验输入、种子与预热计数，输入变化时失败并提示删除。
+- R6 的每个运行副本在开跑前对分支点之前最近 12 个已生成完成的助手楼层执行 `settle` 与 `scene`，只写复制库；台账覆盖范围只到预热窗口，报告必须单列这一限制。
+- R6 探针只对原生档出题，每 6 轮一次、事实年龄至少 10 楼、每次运行最多 5 次；矛盾率的分母是一致加矛盾，无法判断单列。
+- R6 的胜率都按配对计数：两种展示顺序各判一次，胜率分母只含胜与负，平与换序不一致不计入分母；Wilson 95% 区间用配对计数计算。
+- R6 的 G6 是条件门槛：真实偏好配对少于 30 对时记未证实；B2 只在 B1 未通过且完成一轮改进后申请，单次不超过 60 次生成，必须先得到 HUMAN.md 确认。
 - ST 的原始安装目录只读：不得修改，不得复制出 `secrets.json`、`settings.json`、`cookie-secret.txt`；沙箱里不得配置真实模型端点，录制服务不持有模型客户端（I14）。
 - 测试文件里不能出现 I10 拦截的地址：只允许 `localhost`、`127.0.0.1`、`example.com`/`example.org`/`example.invalid` 作为主机名，不能出现 `eval-private` 字面量（用 `stBenchPaths(repoRoot).privateRoot`）。
 - Windows 上并行跑测试会显著变慢；`vitest.config.ts` 默认 `testTimeout` 60 秒、`maxWorkers` 8；`afterEach` 删除临时目录用 `rmSync` 时必须带 `maxRetries` 与 `retryDelay`。
