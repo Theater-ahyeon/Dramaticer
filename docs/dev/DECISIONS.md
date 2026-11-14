@@ -2018,3 +2018,17 @@
   - 新增 `packages/core/src/world-model/` 与 `packages/core/test/world-model.test.ts` 7 个测试；迁移 v47 给 `story_settings` 增加 `world_model`。
   - 状态槽位的 `packKey` 从 `state` 变为 `state:<kind>`；台账下渲染结果与 Trace 来源不变。
   - 没有新增依赖；`core` 不依赖其他工作区包（I15）；写入仍先经过台账校验，实验本身不改变 I5（状态按楼层存 diff）与 I12（写入经过校验）。
+
+## ADR-0127 实体档案候选的存储与读写（2026-11-14）
+
+- **背景**：X1.b 要在统一的世界模型接口下实现「台账加实体 Wiki 页」候选。档案是软知识（性格变化、关系史），需要保留历史版本与出处，分支切换时只看到当前路径上的版本；接口只有 `read(nodeId)` 与 `write(nodeId, writes)`，没有单独的档案读写方法。
+- **决定**：
+  - 迁移 v48 新增 `world_wiki_revisions(id, story_id, entity_id, node_id, text, story_time_start, story_time_end, source, created_at)`，只追加：修改由触发器拒绝，删除只在楼层已不存在时放行。`node_id` 既是写入楼层（路径归属），也是这一版的出处楼层；统一接口每次写入只带一个楼层，档案的「最早出处」由当前路径上最早的一版给出。
+  - 档案实体 id 取台账 `character.<id>` 里的人物 id。档案只能写给台账里已经存在的人物；同一批写入里先写人物字段再写档案也算已存在。未知人物、空正文、删除档案都在写入前抛错，错误信息带档案路径。
+  - 档案的写入路径固定为 `["profile", "<人物>"]`，`op` 只能是 `set`，`value` 是非空正文；其余路径仍然交给 `validateLedgerDiff` 后写台账 diff。`read` 返回的 `state` 是台账快照，`sections` 每个有档案的人物一段，正文是当前路径上最新一版，末尾一行写版本数、当前出处楼层与最早出处；段落按人物 id 排序，保证同一输入渲染稳定。
+  - 读取用递归 CTE 连接当前路径，与状态 diff、现场分析的分支口径一致；`wiki` 适配器不修改台账语义，也不复制状态快照。
+  - 状态槽位的 `source` 在 wiki 下为 `state:<n> 条 diff，档案 <m> 版`，`packKey` 仍由种类决定（`state:wiki`）。
+- **影响**：
+  - 新增 `packages/core/src/world-model/wiki.ts` 与 5 个测试；迁移 v48 新建表与索引、三个触发器；schema 版本变为 48。
+  - `WorldModelWrite` 增加一种档案路径，台账适配器会把它当成未知命名空间拒绝；时序知识图谱候选（X1.c）不受影响。
+  - 档案只追加、不删除，符合 I5 的楼层归属与 I12 的校验要求；`core` 不依赖其他工作区包（I15）。

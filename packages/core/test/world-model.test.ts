@@ -133,9 +133,210 @@ describe("世界模型接口", () => {
 	it("未实现的候选在选择时直接失败", () => {
 		const { store } = openTempStore();
 		seedPath(store);
-		expect(() => createWorldModel(store, "wiki")).toThrow("尚未实现");
 		expect(() => createWorldModel(store, "temporal_graph")).toThrow("尚未实现");
 		expect(() => createWorldModel(store, "nope" as never)).toThrow("不合法");
+	});
+});
+
+describe("wiki 候选", () => {
+	function seedCharacters(store: StoryStore): void {
+		store.appendStateDiffs([
+			{
+				storyId: "s1",
+				nodeId: "n-root",
+				path: ["character", "卫宫", "tier"],
+				op: "set",
+				value: "lead",
+				source: "model",
+			},
+			{
+				storyId: "s1",
+				nodeId: "n-root",
+				path: ["character", "卫宫", "identity"],
+				op: "set",
+				value: "剑士",
+				source: "model",
+			},
+		]);
+	}
+
+	it("写入两版后读取到最新正文、版本数与出处", () => {
+		const { store } = openTempStore();
+		seedPath(store);
+		seedCharacters(store);
+		const world = createWorldModel(store, "wiki");
+		expect(world.kind).toBe("wiki");
+		world.write("n-root", [
+			{
+				path: ["profile", "卫宫"],
+				op: "set",
+				value: "初见面时冷淡，习惯独来独往。",
+				source: "settler",
+			},
+		]);
+		world.write("n-reply", [
+			{
+				path: ["profile", "卫宫"],
+				op: "set",
+				value: "山门一战后对玩家放下戒心，愿意并肩。",
+				source: "settler",
+				storyTime: { start: "第三日", end: "第三日" },
+			},
+		]);
+		const view = world.read("n-reply");
+		expect(view.state).toEqual({
+			character: { 卫宫: { tier: "lead", identity: "剑士" } },
+		});
+		expect(view.source).toBe("state:2 条 diff，档案 2 版");
+		expect(view.sections).toEqual([
+			{
+				title: "档案：卫宫",
+				text: [
+					"山门一战后对玩家放下戒心，愿意并肩。",
+					"版本数：2；出处楼层：n-reply；最早出处：n-root",
+				].join("\n"),
+			},
+		]);
+		expect(store.listWikiRevisionsAlongPath("n-reply")[1]?.storyTime).toEqual({
+			start: "第三日",
+			end: "第三日",
+		});
+	});
+
+	it("分支切换后只出现当前路径上的版本", () => {
+		const { store } = openTempStore();
+		seedPath(store);
+		seedCharacters(store);
+		store.appendNode({
+			id: "n-a",
+			storyId: "s1",
+			parentId: "n-root",
+			role: "assistant",
+			raw: "A 线。",
+		});
+		store.appendNode({
+			id: "n-b",
+			storyId: "s1",
+			parentId: "n-root",
+			role: "assistant",
+			raw: "B 线。",
+		});
+		const world = createWorldModel(store, "wiki");
+		world.write("n-a", [
+			{
+				path: ["profile", "卫宫"],
+				op: "set",
+				value: "A 线的档案。",
+				source: "settler",
+			},
+		]);
+		world.write("n-b", [
+			{
+				path: ["profile", "卫宫"],
+				op: "set",
+				value: "B 线的档案。",
+				source: "settler",
+			},
+		]);
+		expect(world.read("n-a").sections[0]?.text).toContain("A 线的档案。");
+		expect(world.read("n-a").sections[0]?.text).toContain("版本数：1");
+		expect(world.read("n-b").sections[0]?.text).toContain("B 线的档案。");
+		expect(world.read("n-root").sections).toEqual([]);
+	});
+
+	it("空正文、未知人物与删除在写入时抛错并指出字段", () => {
+		const { store } = openTempStore();
+		seedPath(store);
+		seedCharacters(store);
+		const world = createWorldModel(store, "wiki");
+		expect(() =>
+			world.write("n-reply", [
+				{
+					path: ["profile", "卫宫"],
+					op: "set",
+					value: "   ",
+					source: "settler",
+				},
+			]),
+		).toThrow("正文");
+		expect(() =>
+			world.write("n-reply", [
+				{
+					path: ["profile", "不存在的角色"],
+					op: "set",
+					value: "档案。",
+					source: "settler",
+				},
+			]),
+		).toThrow("人物不存在");
+		expect(() =>
+			world.write("n-reply", [
+				{
+					path: ["profile", "卫宫"],
+					op: "delete",
+					source: "settler",
+				},
+			]),
+		).toThrow("只追加");
+		expect(store.listWikiRevisionsAlongPath("n-reply")).toEqual([]);
+	});
+
+	it("同一批写入里新建的人物可以直接写档案", () => {
+		const { store } = openTempStore();
+		seedPath(store);
+		const world = createWorldModel(store, "wiki");
+		world.write("n-reply", [
+			{
+				path: ["character", "林夕", "tier"],
+				op: "set",
+				value: "lead",
+				source: "model",
+			},
+			{
+				path: ["character", "林夕", "identity"],
+				op: "set",
+				value: "药铺学徒",
+				source: "model",
+			},
+			{
+				path: ["profile", "林夕"],
+				op: "set",
+				value: "说话很快，怕黑。",
+				source: "model",
+			},
+		]);
+		expect(world.read("n-reply").state).toEqual({
+			character: { 林夕: { tier: "lead", identity: "药铺学徒" } },
+		});
+		expect(world.read("n-reply").sections[0]?.title).toBe("档案：林夕");
+	});
+
+	it("状态槽位在 wiki 下包含档案段", async () => {
+		const { store } = openTempStore();
+		seedPath(store);
+		seedCharacters(store);
+		const world = createWorldModel(store, "wiki");
+		world.write("n-reply", [
+			{
+				path: ["profile", "卫宫"],
+				op: "set",
+				value: "对玩家仍有保留。",
+				source: "settler",
+			},
+		]);
+		const provider = createStateSlotProvider(store, { worldModel: "wiki" });
+		expect(provider.packKey).toBe("state:wiki");
+		const view = world.read("n-reply");
+		const content = await provider.provide(request("n-reply"));
+		expect(content?.source).toBe(view.source);
+		expect(content?.messages).toHaveLength(2);
+		expect(content?.messages[0]).toEqual({
+			role: "system",
+			content: `当前状态：\n${JSON.stringify(view.state, null, 2)}`,
+		});
+		expect(content?.messages[1]?.content).toBe(
+			"档案：卫宫：\n对玩家仍有保留。\n版本数：1；出处楼层：n-reply；最早出处：n-reply",
+		);
 	});
 });
 
@@ -164,7 +365,7 @@ describe("故事设置的世界模型", () => {
 		const content = await provider.provide(request("n-reply"));
 		expect(content).toBeNull();
 		expect(() =>
-			createStateSlotProvider(store, { worldModel: "wiki" }),
+			createStateSlotProvider(store, { worldModel: "temporal_graph" }),
 		).toThrow("尚未实现");
 	});
 });

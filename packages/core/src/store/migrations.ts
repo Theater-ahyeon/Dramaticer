@@ -1460,6 +1460,42 @@ export function buildMigrations(
 					DEFAULT 'ledger' CHECK (world_model IN ('ledger', 'wiki', 'temporal_graph'))`,
 			],
 		},
+		{
+			version: 48,
+			description: "实体档案修订：只追加的正文版本，按当前路径取最新一版",
+			statements: [
+				`CREATE TABLE world_wiki_revisions (
+					id INTEGER PRIMARY KEY,
+					story_id TEXT NOT NULL REFERENCES stories(id),
+					entity_id TEXT NOT NULL CHECK (length(trim(entity_id)) > 0),
+					node_id TEXT NOT NULL REFERENCES nodes(id),
+					text TEXT NOT NULL CHECK (length(trim(text)) > 0),
+					story_time_start TEXT,
+					story_time_end TEXT,
+					source TEXT NOT NULL CHECK (source IN ('model', 'settler', 'player', 'import')),
+					created_at TEXT NOT NULL
+				) STRICT`,
+				"CREATE INDEX world_wiki_revisions_path_idx ON world_wiki_revisions(story_id, node_id)",
+				`CREATE TRIGGER world_wiki_revisions_story_matches_node
+				BEFORE INSERT ON world_wiki_revisions
+				WHEN COALESCE((SELECT story_id FROM nodes WHERE id = NEW.node_id), '') <> NEW.story_id
+				BEGIN
+					SELECT RAISE(ABORT, '实体档案修订的 story_id 必须与所在楼层一致');
+				END`,
+				`CREATE TRIGGER world_wiki_revisions_append_only_update
+				BEFORE UPDATE ON world_wiki_revisions
+				BEGIN
+					SELECT RAISE(ABORT, '实体档案修订只追加，不能修改');
+				END`,
+				// 楼层仍然存在时拒绝删除；整段故事被清理后父行先消失，不会被挡住。
+				`CREATE TRIGGER world_wiki_revisions_append_only_delete
+				BEFORE DELETE ON world_wiki_revisions
+				WHEN EXISTS (SELECT 1 FROM nodes WHERE id = old.node_id)
+				BEGIN
+					SELECT RAISE(ABORT, '实体档案修订只追加，不能删除');
+				END`,
+			],
+		},
 	];
 }
 

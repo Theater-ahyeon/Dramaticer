@@ -3,28 +3,36 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-14 会话 367：完成 X1.a（世界模型读写接口与台账候选）。门禁通过（250 个测试文件、2,176 个测试、5 个跳过）。新增 `packages/core/src/world-model/` 的 `WorldModelKind`、`WorldModel` 与 `createWorldModel(store, kind)`；`ledger` 适配器读取复用 `readLedger` 与状态快照、写入复用 `validateLedgerDiff` 与 `appendStateDiffs`；故事设置新增 `worldModel`（迁移 v47，默认 `ledger`），状态槽位按设置选择实现，`packKey` 变为 `state:<kind>`，`ledger` 下消息与 `source` 与改动前一致；server、`dramaticer chat`、回放与评测入口传入设置；`wiki` 与 `temporal_graph` 在实现前由工厂直接失败。ADR-0126；新增 7 个测试。
+- 2026-11-14 会话 368：完成 X1.b（实体 Wiki 页候选）。门禁通过（250 个测试文件、2,181 个测试、5 个跳过）。迁移 v48 新增只追加的 `world_wiki_revisions`；新增 `packages/core/src/world-model/wiki.ts`（`WikiRevision`、`NewWikiRevision`、`WIKI_PROFILE_NAMESPACE`、`createWikiWorldModel`）；`StoryStore` 新增 `appendWikiRevisions` 与 `listWikiRevisionsAlongPath`；工厂接上 `wiki`，`temporal_graph` 仍然直接失败；ADR-0127；新增 5 个测试。
 
-## 下一步（会话 368 先做）
-1. **X1.b 实体 Wiki 页候选**：迁移新增只追加的 `world_wiki_revisions`（实体 id、楼层、正文、来源楼层与时间）；沿当前路径取每个实体的最新一版并保留版本数与最早出处；`wiki` 适配器读取台账状态加档案段（性格变化、关系史，带出处楼层与版本数），写入校验实体与正文后追加一版；分支切换只出现当前路径上的版本。
-2. 之后依次做 X1.c（时序知识图谱）、X1.d（对比运行器）、X1.e（在 3 个对话上实际运行并判定，长任务按 `.devloop/jobs/` 申请）。
+## 下一步（会话 369 先做）
+1. **X1.c 时序知识图谱候选**：`temporal_graph` 适配器从台账 diff 回放事实的有效区间——每次 set 开启区间，delete 关闭区间并保留最后值；读取返回当前事实与已失效事实（带起止楼层），不删除任何记录；支持按 `storyTime` 时间点查询，缺少时间的事实只在当前视图出现；分支切换只看到当前路径。状态槽位在 `temporal_graph` 下包含失效段。不新增表。
+2. 之后做 X1.d（对比运行器）、X1.e（在 3 个对话上实际运行并判定，长任务按 `.devloop/jobs/` 申请）。
 
-## X1 任务划分（ADR-0126）
+## X1 任务划分（ADR-0126、ADR-0127）
 - **X1.a（已完成）** 统一接口与台账候选；故事设置 `worldModel`；状态槽位接线；未实现候选在选择时失败。
-- **X1.b** Wiki 页候选与迁移。
+- **X1.b（已完成）** 实体档案修订表与 `wiki` 适配器：台账加只追加的人物档案。
 - **X1.c** 时序知识图谱候选：从台账 diff 回放有效区间，delete 关闭区间并保留最后值，支持按 `storyTime` 查询；不新增表。
 - **X1.d** 对比运行器 `packages/st-compat/src/evalset/world-model-compare.ts` 与 CLI：每个候选复制数据库、固定轮数自动试玩、同一批记忆题与探针、与候选 ① 盲测，指标表统一为矛盾率、编造回忆率、盲测胜率与每轮成本，默认重复 3 次，支持断点续跑。
 - **X1.e** 3 个对话、每种候选 3 次的实跑与判定（主要指标不劣于 ① 且盲测胜率明显高于 ① 才切换，否则保留 ①），结论写 ADR，未切换的候选留在开关后面。
 
+## X1.b 设计要点
+- 迁移 v48 `world_wiki_revisions(id, story_id, entity_id, node_id, text, story_time_start, story_time_end, source, created_at)`：修改由触发器拒绝，删除只在楼层已不存在时放行（为将来整段故事清理留路）。`node_id` 既是写入楼层也是这一版的出处楼层；统一接口每次写入只带一个楼层，最早出处由当前路径上最早的一版给出。
+- 档案实体 id 是台账 `character.<id>` 的人物 id。档案只能写给台账里已经存在的人物；同一批写入里先写人物字段再写档案也算已存在。人物字段必须逐项写（`character.<id>.<字段>`），整对象写入会被 `validateLedgerDiff` 拒绝。
+- 档案路径固定为 `["profile", "<人物>"]`，`op` 只能是 `set`，`value` 是非空正文；其余路径交给 `validateLedgerDiff` 后写台账 diff。未知人物、空正文、删除档案在写入前抛错，错误信息带档案路径。
+- 读取用递归 CTE 连接当前路径（与状态 diff、现场分析同口径），`sections` 每个有档案的人物一段：标题 `档案：<人物>`，正文是最新一版，末尾一行 `版本数：N；出处楼层：<nodeId>；最早出处：<nodeId>`；段落按人物 id 排序，同一输入渲染稳定。
+- `source` 在 wiki 下为 `state:<n> 条 diff，档案 <m> 版`；`packKey` 仍为 `state:wiki`。
+- 状态槽位 `createStateSlotProvider` 不需要改动：它只消费 `{state, sections, source}`，台账下 `sections` 为空。
+
 ## X1.a 设计要点
 - `packages/core/src/world-model/types.ts`：`WORLD_MODEL_KINDS`、`isWorldModelKind`、`assertWorldModelKind`、`WorldModelView {state, sections, source}`、`WorldModelWrite {path, op, value?, storyTime?, confidence?, reason?, source}`、`WorldModel {kind, read(nodeId), write(nodeId, writes)}`。
-- `factory.ts`：`createWorldModel(store, kind = "ledger")` 先校验种类；`wiki` 与 `temporal_graph` 抛“尚未实现”，不回落到台账。X1.b、X1.c 只改工厂与新增适配器，不改调用方。
+- `factory.ts`：`createWorldModel(store, kind = "ledger")` 先校验种类；`temporal_graph` 抛“尚未实现”，不回落到台账。X1.c 只改工厂与新增适配器，不改调用方。
 - `ledger.ts`：读取返回状态快照，`sections` 为空，`source` 为 `state:<n> 条 diff`；写入逐条 `validateLedgerDiff` 后一次 `appendStateDiffs`，未知路径的错误里带台账路径。写入接口供对比运行器把同一批事实灌进候选，结算器仍走自己的路径。
 - 故事设置：`StorySettings.worldModel`，`StorySettingsUpdate.worldModel`，`STORY_SETTINGS_UPDATE_KEYS` 包含它；校验消息包含 `worldModel`，server 的 PATCH 按字段名回 400。
 - 迁移 v47：`ALTER TABLE story_settings ADD COLUMN world_model TEXT NOT NULL DEFAULT 'ledger' CHECK (world_model IN ('ledger','wiki','temporal_graph'))`；`rowToStorySettings` 读取时校验；`getStorySettings` 未保存时返回默认值；更新 SQL 已包含该列。
 - 状态槽位：`createStateSlotProvider(store, {worldModel})`；`packKey` 从 `state` 改为 `state:<kind>`，避免不同表示共用同一个上下文包指纹。台账下只有一条 `当前状态：` 系统消息，内容与 `JSON.stringify(state, null, 2)` 不变；`sections` 每段渲染成一条 `<title>：\n<text>` 系统消息。
 - 设置传入点：`packages/server/src/runtime.ts`、`packages/st-compat/src/chat/cli.ts`、`chat/session.ts` 的 `CreateChatProvidersOptions`、`evalset/director-replay.ts`、`deep-eval-cli.ts`、`historical-replay-cli.ts`、`memory-eval.ts`、`playtest-cli.ts`；`st-bench/coexist.ts` 没有故事设置，使用默认台账。
-- 测试：`packages/core/test/world-model.test.ts` 7 条（种类与默认值、台账读取与状态槽位同源、写入与非法路径、删除、未实现候选、设置默认与读写、槽位选择）；`assistant-store.test.ts` 与 `story-settings.test.ts` 的 schema 版本与默认设置期望都改为 47 与 `ledger`；`web/test/settings-form.test.ts` 的 fixture 补 `worldModel`。
+- 测试：`packages/core/test/world-model.test.ts` 12 条（种类与默认值、台账读取与状态槽位同源、写入与非法路径、删除、未实现候选、wiki 的版本与出处、分支隔离、空正文与未知人物、同批新建人物、wiki 槽位档案段、设置默认与读写、槽位选择）；`assistant-store.test.ts` 的 schema 版本期望改为 48；`story-settings.test.ts` 的默认设置包含 `ledger`；`web/test/settings-form.test.ts` 的 fixture 有 `worldModel`。
 
 ## H 应用内助手（已完成，H-T01 至 H-T09、H-T99）
 - 助手会话独立于 `nodes`、`state_diffs`、`turn_runs`；消息与事件在助手表里，删除会话不触碰楼层、head 与状态 diff；助手运行不组装剧情上下文，正剧也不读助手消息。
@@ -35,13 +43,13 @@
 - 审阅面板与待确认数量同源：`refreshPendingActions` 同时读动作与变更卡；渠道字段只渲染白名单字段，不输出密钥或环境变量名。
 
 ## 当前状态
-- 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1、P2、P3、P4、C-T01 至 C-T05、H-T00 至 H-T09、H-T99、X1.a。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1、P2、P3、P4、C-T01 至 C-T05、H-T00 至 H-T09、H-T99、X1.a、X1.b。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
 - 兼容插件线：`st-content`、`st-mvu`、`st-ejs`、`st-helper-host` 全部完成（含一致性测试与共存评测）。
-- 数据库 schema 版本 47。本轮没有新增依赖。
+- 数据库 schema 版本 48。本轮没有新增依赖。
 - 报告：`docs/dev/reports/P2.md`、`P3.md`、`P4.md`、`C-T01.md`、`C-T02.md`、`C-T03.md`、`C-T04.md`、`C-T05.md`、`H.md`。
 - 沙箱现状：`eval-private/st-sandbox/st` 有 36 个预设、68 张卡、89 个非驱动聊天片段；预设连接字段已被驱动改写为录制端点与桩模型，全局 `openai_max_context` 已被驱动改为 2,000,000。需要恢复原始预设时用 `sandbox --replace` 重建。
 - 私有比对批次：`compare-smoke4`（5 个组合，修复后）与更早的 `compare-smoke2`、`compare-smoke3`、`session324-sanitize`；每个批次的 `compare/` 下有报告、差异清单与汇总。
-- ADR-0088 至 ADR-0126 记录插件、沙箱、比对、兼容内容映射、EJS、沙箱执行、时间预算、流水线接入、模板生成、一致性评测、酒馆助手宿主、iframe 沙箱、STscript 子集、生成后台化、HTML 渲染、覆盖率口径、应用内助手与世界模型接口的决策。
+- ADR-0088 至 ADR-0127 记录插件、沙箱、比对、兼容内容映射、EJS、沙箱执行、时间预算、流水线接入、模板生成、一致性评测、酒馆助手宿主、iframe 沙箱、STscript 子集、生成后台化、HTML 渲染、覆盖率口径、应用内助手、世界模型接口与实体档案的决策。
 - HUMAN-03 待处理（不阻塞）：抽查 `eval-private/evalset/spotcheck.md` 里的事件题。
 - HUMAN-14 已关闭（2026-11-12：人类取消）：取消 Vertex 真实调用的凭证配置与验证要求；`roles.writer` 继续使用 `main-fallback`。
 - HUMAN-15 待处理（M6-T99 需要）：把秋叶整合包 v3.2 的 ComfyUI 启动在 `http://127.0.0.1:8188`，并导出一份 API 格式 workflow JSON 到 `eval-private/comfyui/` 或告知路径。
@@ -51,6 +59,7 @@
 
 ## 可重复命令
 - 门禁：`pnpm check`。
+- X1.b 目标测试：`pnpm exec vitest run packages/core/test/world-model.test.ts packages/core/test/assistant-store.test.ts`。
 - X1.a 目标测试：`pnpm exec vitest run packages/core/test/world-model.test.ts packages/core/test/story-settings.test.ts packages/core/test/chat-providers.test.ts packages/web/test/settings-form.test.ts`。
 - H-T99 真实渠道验收：`node .devloop/scratch/H-T99/live.mjs`（脚本读取 `.env`、`data/channels.yaml` 与 `docs/`，数据库写在 `.devloop/scratch/H-T99/live.db`；结果同时写 `.devloop/scratch/H-T99/live.json`）。脚本是一次性验收工具，不需要长期保留。
 - H-T99 e2e：`pnpm --filter @dramaticer/server build && pnpm --filter @dramaticer/web build && pnpm --filter @dramaticer/web exec playwright test e2e/assistant.spec.ts`（desktop 与 mobile 各 5 条）。
@@ -88,7 +97,9 @@
 - 结构化 JSON 请求一律使用 `NO_CONTINUATION`；正文写作与散文类后台输出保留续写。上下文摘要按结构化请求处理，也使用 `NO_CONTINUATION`。
 - web 源码不能 import `@dramaticer/core` 的运行时值（会把 `better-sqlite3` 与 `node:*` 打进前端包导致整页白屏），类型导入可以；助手类型从 `@dramaticer/protocol` 取。
 - 世界模型只用故事设置 `worldModel` 选择；新增调用方传 `settings.worldModel`，不要自己判断种类或回落到台账。状态槽位的 `packKey` 必须带种类（`state:<kind>`），否则不同表示会共用上下文包指纹。
-- `wiki` 与 `temporal_graph` 在 X1.b、X1.c 完成前由 `createWorldModel` 直接失败；实现候选时只改工厂与适配器，不改槽位、server 与评测调用方。
+- `temporal_graph` 在 X1.c 完成前由 `createWorldModel` 直接失败；实现候选时只改工厂与适配器，不改槽位、server 与评测调用方。
+- 实体档案（`wiki`）的写入路径是 `["profile", "<人物>"]`，其余路径按台账 diff 校验；档案实体必须是台账 `character` 里的人物，人物字段逐项写，整对象写人物会被 `validateLedgerDiff` 拒绝。
+- `world_wiki_revisions` 只追加：没有更新与删除接口，修改由触发器拒绝；读取按当前路径的递归 CTE，分支切换不跨分支。
 - `WorldModel.write` 先逐条 `validateLedgerDiff` 再写，供对比运行器使用；剧情结算仍走 `applySettlementProposals`，不要用这个接口绕过结算器（I12）。
 - 助手搜索：标题使用 LIKE，消息正文在查询不少于三个字符时用 `assistant_message_text` 的 trigram，短于三个字符时退回 LIKE；命中片段用方括号标出。`assistant_message_text` 由消息表触发器同步，删除会话时先删消息再删会话，保证索引清理。
 - `assistant_events` 与 `assistant_compactions` 的删除触发器只在会话仍存在时拒绝，删除会话的级联删除不受影响；事件与压缩记录的修改始终被拒绝。

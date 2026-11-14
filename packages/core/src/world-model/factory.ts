@@ -6,9 +6,10 @@ import {
 	type WorldModelKind,
 	assertWorldModelKind,
 } from "./types.js";
+import { createWikiWorldModel } from "./wiki.js";
 
 /**
- * 按种类创建世界模型。`wiki` 与 `temporal_graph` 由 X1.b、X1.c 实现；
+ * 按种类创建世界模型。`temporal_graph` 由 X1.c 实现；
  * 未实现的种类在选择时直接失败，不回落到台账。
  */
 export function createWorldModel(
@@ -20,7 +21,7 @@ export function createWorldModel(
 		case "ledger":
 			return createLedgerWorldModel(store);
 		case "wiki":
-			throw new Error("世界模型 wiki 尚未实现");
+			return createWikiWorldModel(store);
 		case "temporal_graph":
 			throw new Error("世界模型 temporal_graph 尚未实现");
 	}

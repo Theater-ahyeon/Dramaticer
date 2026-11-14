@@ -276,6 +276,7 @@ import {
 	DEFAULT_WORLD_MODEL_KIND,
 	assertWorldModelKind,
 } from "../world-model/types.js";
+import type { NewWikiRevision, WikiRevision } from "../world-model/wiki.js";
 import { serializeJsonValue } from "./json-value.js";
 import {
 	DEFAULT_EMBEDDING_DIMENSIONS,
@@ -395,6 +396,18 @@ interface SceneAnalysisRow {
 	readonly story_id: string;
 	readonly text: string;
 	readonly token_count: number;
+	readonly created_at: string;
+}
+
+interface WikiRevisionRow {
+	readonly id: number;
+	readonly story_id: string;
+	readonly entity_id: string;
+	readonly node_id: string;
+	readonly text: string;
+	readonly story_time_start: string | null;
+	readonly story_time_end: string | null;
+	readonly source: string;
 	readonly created_at: string;
 }
 
@@ -1542,6 +1555,25 @@ function rowToSceneAnalysis(row: SceneAnalysisRow): SceneAnalysis {
 		storyId: row.story_id,
 		text: row.text,
 		tokenCount: row.token_count,
+		createdAt: row.created_at,
+	};
+}
+
+function rowToWikiRevision(row: WikiRevisionRow): WikiRevision {
+	if (!(LEDGER_SOURCES as readonly string[]).includes(row.source)) {
+		throw new Error(`实体档案修订 ${row.id} 的来源不合法：${row.source}`);
+	}
+	return {
+		id: row.id,
+		storyId: row.story_id,
+		entityId: row.entity_id,
+		nodeId: row.node_id,
+		text: row.text,
+		storyTime:
+			row.story_time_start === null && row.story_time_end === null
+				? null
+				: { start: row.story_time_start, end: row.story_time_end },
+		source: row.source as LedgerSource,
 		createdAt: row.created_at,
 	};
 }
@@ -3872,6 +3904,79 @@ export class StoryStore {
 			)
 			.get(nodeId) as SceneAnalysisRow | undefined;
 		return row === undefined ? null : rowToSceneAnalysis(row);
+	}
+
+	/**
+	 * 追加实体档案修订。只追加，不覆盖：同一实体在同一楼层可以有多个版本，
+	 * 读取时按当前路径取最新一版。
+	 */
+	appendWikiRevisions(inputs: readonly NewWikiRevision[]): WikiRevision[] {
+		if (!Array.isArray(inputs)) {
+			throw new Error("实体档案修订必须是数组");
+		}
+		if (inputs.length === 0) return [];
+		const normalised = inputs.map((input, index) =>
+			this.#normaliseWikiRevision(input, index),
+		);
+		const insert = this.#db.prepare(
+			`INSERT INTO world_wiki_revisions
+				(story_id, entity_id, node_id, text, story_time_start, story_time_end, source, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		);
+		const run = this.#db.transaction(
+			(revisions: readonly NewWikiRevision[]): WikiRevision[] => {
+				const stored: WikiRevision[] = [];
+				for (const revision of revisions) {
+					const createdAt = revision.createdAt ?? new Date().toISOString();
+					assertNonEmptyString(createdAt, "实体档案修订的创建时间");
+					const info = insert.run(
+						revision.storyId,
+						revision.entityId,
+						revision.nodeId,
+						revision.text,
+						revision.storyTime?.start ?? null,
+						revision.storyTime?.end ?? null,
+						revision.source,
+						createdAt,
+					);
+					stored.push({
+						id: Number(info.lastInsertRowid),
+						storyId: revision.storyId,
+						entityId: revision.entityId,
+						nodeId: revision.nodeId,
+						text: revision.text,
+						storyTime: revision.storyTime ?? null,
+						source: revision.source,
+						createdAt,
+					});
+				}
+				return stored;
+			},
+		);
+		return run(normalised);
+	}
+
+	/** 按当前路径取实体档案修订，根在前；越早的版本排在前面。 */
+	listWikiRevisionsAlongPath(nodeId: string): WikiRevision[] {
+		if (!this.getNode(nodeId)) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
+		const rows = this.#db
+			.prepare(
+				`WITH RECURSIVE chain(node_id, depth) AS (
+					SELECT id, 0 FROM nodes WHERE id = ?
+					UNION ALL
+					SELECT nodes.parent_id, chain.depth + 1
+					FROM nodes JOIN chain ON nodes.id = chain.node_id
+					WHERE nodes.parent_id IS NOT NULL
+				)
+				SELECT world_wiki_revisions.*
+				FROM world_wiki_revisions
+					JOIN chain ON world_wiki_revisions.node_id = chain.node_id
+				ORDER BY chain.depth DESC, world_wiki_revisions.id ASC`,
+			)
+			.all(nodeId) as WikiRevisionRow[];
+		return rows.map(rowToWikiRevision);
 	}
 
 	/** 写入一个楼层的导演手记修改；每个楼层只有一行，重复写入直接失败。 */
@@ -9013,6 +9118,45 @@ export class StoryStore {
 			everyChapters,
 			importance,
 			createdAt,
+		};
+	}
+
+	#normaliseWikiRevision(
+		input: NewWikiRevision,
+		index: number,
+	): NewWikiRevision {
+		const label = `实体档案修订[${index}]`;
+		if (input === null || typeof input !== "object" || Array.isArray(input)) {
+			throw new Error(`${label} 必须是对象`);
+		}
+		assertNonEmptyString(input.storyId, `${label} 的 storyId`);
+		assertNonEmptyString(input.entityId, `${label} 的 entityId`);
+		assertNonEmptyString(input.nodeId, `${label} 的 nodeId`);
+		if (!(LEDGER_SOURCES as readonly string[]).includes(input.source)) {
+			throw new Error(
+				`${label} 的 source 只能是 ${LEDGER_SOURCES.join("、")}，收到 ${JSON.stringify(input.source)}`,
+			);
+		}
+		const node = this.getNode(input.nodeId);
+		if (!node) {
+			throw new Error(`${label} 指向的楼层节点不存在：${input.nodeId}`);
+		}
+		if (node.storyId !== input.storyId) {
+			throw new Error(
+				`${label} 的 storyId 与楼层节点所属故事不一致：${input.storyId}`,
+			);
+		}
+		if (typeof input.text !== "string" || input.text.trim().length === 0) {
+			throw new Error(`${label} 的正文必须是非空字符串`);
+		}
+		return {
+			storyId: input.storyId,
+			entityId: input.entityId,
+			nodeId: input.nodeId,
+			text: input.text,
+			storyTime: normaliseStoryTime(input.storyTime, label),
+			source: input.source,
+			...(input.createdAt === undefined ? {} : { createdAt: input.createdAt }),
 		};
 	}
 
