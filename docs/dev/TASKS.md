@@ -1955,7 +1955,8 @@
   - 版本列表与回滚能定位到同一楼层上的某一批。
   验收：同一楼层连续写入两批都成功且按顺序累加；回滚到指定批次恢复该批之后的内容；版本楼层不变；分支隔离；`pnpm check` 通过。
 
-- [ ] **W7-T02.b 五个建议操作的后台任务与逐条接受** | 依赖：W7-T02.a
+- [x] **W7-T02.b 五个建议操作的后台任务与逐条接受** | 依赖：W7-T02.a
+  完成：2026-11-14 迁移 v66 新建 `blueprint_suggestion_requests` 与 `blueprint_suggestions`：请求记操作与补充说明，建议带标题、理由、`set`/`delete` 修改与 `pending`/`accepted`/`rejected` 状态；两张表的内容与归属不可改，只有状态与对应时间可写。core 新增 `blueprint/suggestions.ts`：五个操作（`complete`、`find-flaws`、`three-directions`、`expand-volume`、`recent-update`）与中文标签，模型输出 `{suggestions:[{title,reason,diffs}]}`（1 到 5 条），条目出处统一为 AI、锁定标记沿用当前条目；`filterLockedBlueprintDiffs` 是生成与接受共用的锁定过滤，剩下的修改为空时整条丢弃或拒绝。后台任务 `blueprint_suggestion` 故事级、`gap` 档、`planner` 客户端，`needsRun` 只看待处理请求；处理器一次取最早一条请求，读 head 蓝图与最近十二个楼层，一次调用后在同一事务里写建议并把请求标为 `done`，不写蓝图。`StoryStore` 新增请求登记与查询、`saveBlueprintSuggestions`、建议列表与读取、`acceptBlueprintSuggestion`（按当前蓝图重新校验、过滤锁定、用 `saveStoryBlueprint({source:"player"})` 追加一批并标 `accepted`，同一事务）与 `rejectBlueprintSuggestion`（只改状态）。新增 core 7 个测试；ADR-0155；`pnpm check` 通过（294 个测试文件、2,555 个测试、5 个跳过）。
   做什么：
   - 「帮我补全」「找漏洞」「给三种走向」「展开这一卷」「按最近剧情更新」五个操作走后台任务；任务读取当前的蓝图与最近剧情，返回数条建议，每条带标题、理由与一组蓝图修改。
   - 建议单独存放，生成时不写蓝图；玩家接受一条才用 `saveStoryBlueprint` 写成来源为玩家的记录，条目出处记为 AI；拒绝只改建议状态。

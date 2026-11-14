@@ -2537,3 +2537,22 @@
 - **影响**：
   - schema 升到 65，`assistant-store.test.ts` 与 `story-blueprint.test.ts` 同步。
   - W7-T02.b 的「接受一条建议写一次」走 `saveStoryBlueprint`，在 head 上连续接受不会互相覆盖；锁定检查仍在写入之前执行。
+
+## ADR-0155 蓝图建议独立存放，后台按请求生成，玩家逐条接受才写蓝图（2026-11-14）
+
+- **背景**：DESIGN §21 要求五个 AI 完善操作（帮我补全、找漏洞、给三种走向、展开这一卷、按最近剧情更新）以建议形式返回，每条带标题、理由与一组蓝图修改；生成时不写蓝图，玩家接受一条才写入，拒绝只改建议状态。W7-T02.a 已经让同一楼层可以按批次追加蓝图修改，但还没有建议的存储位置、后台任务与接受路径。
+- **选项**：
+  - 复用 `story_blueprints` 的 `source = ai` 记录：生成即写蓝图，违背「不接受不写」，也会让 AI 的草稿进入当前路径。
+  - 建议只放在后台任务的返回值里：drain 结束后无处读取，玩家拒绝或接受都要重新调用模型。
+  - 请求与建议各一张表：请求记录玩家发起的操作与补充说明，建议带标题、理由、修改与状态；后台任务按请求生成，玩家逐条决定。
+- **决定**：
+  - 迁移 v66 新建 `blueprint_suggestion_requests(id, story_id, operation, note, status, created_at, finished_at)` 与 `blueprint_suggestions(id, request_id, story_id, title, reason, diffs, status, created_at, decided_at)`。请求的 `status` 取 `pending` 或 `done`；建议的 `status` 取 `pending`、`accepted` 或 `rejected`。两个表的内容与归属不可改，只有状态与对应时间可以写入。
+  - 后台任务 `blueprint_suggestion` 是故事级、`gap` 档，使用 `planner` 客户端；`needsRun` 只看故事里有没有 `pending` 的请求。处理器一次取最早一条待处理请求，读 head 处的蓝图与最近十二个楼层，调用模型一次，把全部建议与请求状态在同一事务里写入，不写蓝图。
+  - 模型输出 `{suggestions:[{title, reason, diffs}]}`，1 到 5 条；`diffs` 与蓝图楼层修改同构。条目的出处统一改成 `ai`，锁定标记沿用当前条目，新条目为 false。
+  - 锁定过滤只有一处口径：`filterLockedBlueprintDiffs` 丢掉命中锁定条目的 `set` 与 `delete`。生成时模型改写锁定条目的建议被丢弃，整条没有剩余修改时这条建议不保存；接受时蓝图后来被锁定也按同一函数跳过，剩余修改为空则整条拒绝。
+  - `acceptBlueprintSuggestion` 读当前 head 处的蓝图，过滤锁定条目、用 `applyBlueprintDiffs` 重新校验，再在一个事务里用 `saveStoryBlueprint({source:"player"})` 写一批并把建议标为 `accepted`；蓝图已经变化导致修改不合法时整条拒绝，建议保持 `pending`。`rejectBlueprintSuggestion` 只把状态改成 `rejected`。
+  - 请求由 `createBlueprintSuggestionRequest` 登记；W7-T02.c 的接口在登记后直接调用已有的 `enqueueStoryBackgroundJobs`，不另写一条入队路径。
+- **影响**：
+  - schema 升到 66；`assistant-store.test.ts` 的版本断言同步。
+  - core 新增 `blueprint/suggestions.ts`（五个操作、请求与建议类型、锁定过滤、模型输出校验、后台处理器）与 `StoryStore` 的请求与建议方法、接受与拒绝路径；注册表新增 `blueprint_suggestion` 任务。
+  - 新增 core 测试 7 个，覆盖五个操作登记请求、生成不写蓝图、逐条接受与同楼层多批、生成与接受跳过锁定、蓝图变化后整条拒绝、拒绝只改状态。

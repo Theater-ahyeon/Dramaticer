@@ -3,21 +3,24 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-14 会话 423：完成 W7-T02.a（蓝图按楼层多批存储）。迁移 v65 把 `story_blueprints` 改成 `(node_id, seq)` 联合主键，已有行写成 `seq = 1`，只追加触发器保留。`saveStoryBlueprint` 每次追加一批并返回 `seq`，`getStoryBlueprintRecord` 取最后一批，新增 `listStoryBlueprintRecords`；`BlueprintVersion` 带 `seq`，`listBlueprintVersions` 按路径深度与批次序号排列；`rollbackStoryBlueprint` 用 `versionSeq` 定位同一楼层上的某一批，省略时取最后一批。新增 core 1 个测试（三批修改按序累加、回滚定位中间批次、非法批次序号拒绝）。ADR-0154；`pnpm check` 通过。
+- 2026-11-14 会话 424：完成 W7-T02.b（蓝图建议请求、后台生成与逐条接受）。迁移 v66 新建 `blueprint_suggestion_requests` 与 `blueprint_suggestions`；core 新增 `blueprint/suggestions.ts`，五个操作的模型输出是 `{suggestions:[{title,reason,diffs}]}`，条目出处统一改成 AI、锁定标记沿用当前条目，`filterLockedBlueprintDiffs` 是生成与接受共用的锁定过滤。后台任务 `blueprint_suggestion` 是故事级、`gap` 档、`planner` 客户端，`needsRun` 只看待处理请求；处理器一次取最早一条请求，读 head 蓝图与最近十二个楼层，一次调用后在事务里写建议并把请求标为 `done`，不写蓝图。`StoryStore` 新增请求登记与查询、建议保存与列表、`acceptBlueprintSuggestion`（按当前蓝图重新校验、过滤锁定、以玩家来源追加一批、同一事务改状态）与 `rejectBlueprintSuggestion`（只改状态）。新增 core 7 个测试；ADR-0155；`pnpm check` 通过（294 个测试文件、2,555 个测试、5 个跳过）。
 
-## 下一步（会话 424 先做）
-1. 选下一个可做的任务：**W7-T02.b 五个建议操作的后台任务与逐条接受**（依赖 W7-T02.a）→ **W7-T02.c 建议接口与客户端** → **W7-T02.d 里程碑铺垫进伏笔账与章级规划** → **W7-T02.e 写作上下文的蓝图摘要** → **W7-T02.f 拉力三档与偏离检查** → **W7-T03 剧透选项与蓝图导出** → **W8-T01、W8-T02** → **W9-T01 至 W9-T99**。W7-T02.b 先读 `docs/DESIGN.md` §21 与 ADR-0153、ADR-0154：五个操作（帮我补全、找漏洞、给三种走向、展开这一卷、按最近剧情更新）走后台任务；建议单独存放，生成时不写蓝图；玩家接受一条才写入，来源为玩家、条目出处为 AI；锁定条目跳过。后台任务用 story 入队条件 + `needsRun` 读待处理的请求行，模型只拿当前蓝图与最近剧情。
+## 下一步（会话 425 先做）
+1. 选下一个可做的任务：**W7-T02.c 蓝图建议接口与客户端**（依赖 W7-T02.b）→ **W7-T02.d 里程碑铺垫进伏笔账与章级规划** → **W7-T02.e 写作上下文的蓝图摘要** → **W7-T02.f 拉力三档与偏离检查** → **W7-T03 剧透选项与蓝图导出** → **W8-T01、W8-T02** → **W9-T01 至 W9-T99**。W7-T02.c 先读 `docs/DESIGN.md` §21 与 ADR-0155：接口是发起一个操作、列出请求与建议、接受与拒绝一条建议；非法操作、空想法与已决定的建议给出对应错误；登记请求后用已有的 `enqueueStoryBackgroundJobs` 推进后台任务，不另写入队路径；protocol 与 web 客户端提供类型与方法，蓝图页在 W9-T05 接入。
 2. **R6-T99** 仍被 HUMAN-19 阻塞（`bg` 渠道额度 2026-11-17T11:44:35Z 重置）。恢复后先跑 `r6-replay`、`r6-instrument`、`r6-compare`、`r6-deep`、`r6-preference`、`r6-funnel`，再用 `r6-gate --dir eval-private/reports/r6` 判定；报告写 `docs/dev/SCOREBOARD.md` 与 `docs/dev/reports/R6.md`，只写聚合数字与 slug。
 3. **W3-T02.e** 被 HUMAN-22 阻塞：原样模式目前按导入字段注入；完整酒馆激活需要原始世界书入库并把 `st-content` 接进 server 运行时。
 4. **W2-T04** 继续被 HUMAN-19 阻塞。额度恢复后用 `pnpm --filter @dramaticer/st-compat scene-log-compare`（默认读 `eval-private/reports/scene-log/samples.json`，24 个楼层 ≥ 20）跑真实对照。不达标时保留独立任务并写 ADR。
 5. 阻塞检查：M6-T99 仍等 HUMAN-15；HUMAN-03、HUMAN-16、HUMAN-17、HUMAN-18、HUMAN-20、HUMAN-21、HUMAN-22 不阻塞其他任务；HUMAN-19 阻塞 R6-T06、R6-T99、W2-T04。
 
 ## 当前状态
-- 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1–P4、C-T01 至 C-T05、H-T00 至 H-T99、X1.a 至 X1.e、X2.a 至 X2.d、R6-T00 至 R6-T05、R6-T07、R6-T07.a、R6-T07.b、R6-T07.c、R6-T07.d、W0-T00、W0-T01、W1-T01、W2-T01、W2-T02、W2-T03、W3-T01、W3-T02.a、W3-T02.b、W3-T02.c、W3-T02.d、W3-T03.a、W3-T03.b、W3-T03、W4-T01、W4-T02、W4-T03、W5-T01、W5-T02、W6-T01、W6-T02、W6-T03.a、W6-T03.b、W6-T03.c、W6-T03.d、W7-T01、W7-T02.a。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- 设计版本 v0.4（ADR-0139、ADR-0142、ADR-0143、ADR-0144、ADR-0145、ADR-0146、ADR-0147、ADR-0148、ADR-0149、ADR-0150、ADR-0151、ADR-0152、ADR-0153、ADR-0154）。W 阶段任务顺序：W0（完成）→ W1（完成）→ W2（T01–T03 完成，T04 被阻塞）→ W3（T01、T02.a–T02.d、T03.a、T03.b、T03 完成，T02.e 被 HUMAN-22 阻塞）→ W4（完成）→ R6 段（T07.a 至 T07.d 完成，T99 被 HUMAN-19 阻塞）→ W5（完成）→ W6（完成）→ W7（T01、T02.a 完成）→ W8 → W9。
-- 数据库 schema 版本 65（v51 `story_media`、v52 `story_settings.contextLayout`、v53 `scene_logs` 与 `scene_log_enabled`、v54 `scene_archives`、v55 `import_audit_entries` 与 `story_settings.import_mode`、v56 `import_audit_entries.memory`、v57 `story_rules`、v58 `director_lines`、v59 `director_chapter_reviews`、v60 `story_settings` 重建并允许 `director_organization = lines`、v61 `scene_logs.scene_card`、v62 `scene_controls` 与 `scene_archives` 重建、v63 `scene_archives.profiles` 与 `scene_archives.informed`、v64 `story_blueprints`、v65 `story_blueprints` 重建为 `(node_id, seq)`）。
+- 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1–P4、C-T01 至 C-T05、H-T00 至 H-T99、X1.a 至 X1.e、X2.a 至 X2.d、R6-T00 至 R6-T05、R6-T07、R6-T07.a、R6-T07.b、R6-T07.c、R6-T07.d、W0-T00、W0-T01、W1-T01、W2-T01、W2-T02、W2-T03、W3-T01、W3-T02.a、W3-T02.b、W3-T02.c、W3-T02.d、W3-T03.a、W3-T03.b、W3-T03、W4-T01、W4-T02、W4-T03、W5-T01、W5-T02、W6-T01、W6-T02、W6-T03.a、W6-T03.b、W6-T03.c、W6-T03.d、W7-T01、W7-T02.a、W7-T02.b。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 设计版本 v0.4（ADR-0139、ADR-0142、ADR-0143、ADR-0144、ADR-0145、ADR-0146、ADR-0147、ADR-0148、ADR-0149、ADR-0150、ADR-0151、ADR-0152、ADR-0153、ADR-0154、ADR-0155）。W 阶段任务顺序：W0（完成）→ W1（完成）→ W2（T01–T03 完成，T04 被阻塞）→ W3（T01、T02.a–T02.d、T03.a、T03.b、T03 完成，T02.e 被 HUMAN-22 阻塞）→ W4（完成）→ R6 段（T07.a 至 T07.d 完成，T99 被 HUMAN-19 阻塞）→ W5（完成）→ W6（完成）→ W7（T01、T02.a、T02.b 完成）→ W8 → W9。
+- 数据库 schema 版本 66（v51 `story_media`、v52 `story_settings.contextLayout`、v53 `scene_logs` 与 `scene_log_enabled`、v54 `scene_archives`、v55 `import_audit_entries` 与 `story_settings.import_mode`、v56 `import_audit_entries.memory`、v57 `story_rules`、v58 `director_lines`、v59 `director_chapter_reviews`、v60 `story_settings` 重建并允许 `director_organization = lines`、v61 `scene_logs.scene_card`、v62 `scene_controls` 与 `scene_archives` 重建、v63 `scene_archives.profiles` 与 `scene_archives.informed`、v64 `story_blueprints`、v65 `story_blueprints` 重建为 `(node_id, seq)`、v66 蓝图建议请求与建议）。
 - 故事蓝图：`blueprint/story-blueprint.ts` 是结构与校验的唯一来源；`BlueprintEntry` 是 `premise`（`coreQuestion`、`tone`、`endings`、`redLines`）、`volume`（`title`、`coreQuestion`、`startState`、`endState`）、`milestone`（`volumeId`、`want`、`prerequisites`、`after`、`hardness` 取 `hard`/`soft`）的联合；`BLUEPRINT_ENTRY_KIND_LABELS`、`BLUEPRINT_SOURCE_LABELS`、`BLUEPRINT_MILESTONE_HARDNESS_LABELS` 是中文措辞来源。`applyBlueprintDiffs` 依次应用 `set`/`delete` 并整批校验，`planBlueprintRollback` 给出「删多出来的、重写内容不同的」修改，`assertBlueprintWriteAllowed` 只拦 AI 对锁定条目的修改。
 - 蓝图存储：`story_blueprints(node_id, seq, story_id, source, diffs, created_at)`，主键是 `(node_id, seq)`，记录只追加；同一楼层可以有多批修改，`seq` 从 1 起递增。`saveStoryBlueprint` 在写入前校验故事归属、非空 diffs、来源、锁定与结果合法性，返回带 `seq` 的记录；`getStoryBlueprintRecord` 取该楼层最后一批，`listStoryBlueprintRecords` 取全部批次；`listBlueprintVersions` 沿当前路径从根开始累加，按路径深度与批次序号给每一版 `{nodeId, seq, source, diffs, createdAt, entries}`，`readBlueprintEntries` 取最后一版；`rollbackStoryBlueprint` 以玩家来源把某一版写成新楼层的记录，`versionSeq` 可定位同一楼层上的某一批，省略时取最后一批。分支之间互不影响。
+- 蓝图建议：`blueprint/suggestions.ts` 定义五个操作 `complete`、`find-flaws`、`three-directions`、`expand-volume`、`recent-update` 与 `BLUEPRINT_SUGGESTION_OPERATION_LABELS`（帮我补全、找漏洞、给三种走向、展开这一卷、按最近剧情更新）。请求表 `blueprint_suggestion_requests(id, story_id, operation, note, status, created_at, finished_at)`，状态只有 `pending` 与 `done`；建议表 `blueprint_suggestions(id, request_id, story_id, title, reason, diffs, status, created_at, decided_at)`，状态为 `pending`、`accepted`、`rejected`。两张表的内容与归属不可改，只有状态与对应时间可写。
+- 蓝图建议的生成：后台任务 `blueprint_suggestion` 是故事级、`gap` 档、使用 `planner` 客户端，`blueprintSuggestionNeedsRun` 只看故事里有没有 `pending` 请求。处理器一次取最早一条请求，读 head 处蓝图与 head 路径最后 `BLUEPRINT_SUGGESTION_WINDOW_FLOORS`（12）个楼层，调用模型一次；模型输出 `{suggestions:[{title,reason,diffs}]}`，1 到 5 条，条目标题 80 字、理由 500 字。`parseBlueprintSuggestionResponse` 把条目出处统一改成 `ai`、锁定标记沿用当前条目（新条目 false），并跳过锁定条目的修改；整条没有剩余修改时丢弃，全部被锁定则整次失败。`saveBlueprintSuggestions` 在一个事务里写全部建议并把请求标为 `done`。
+- 蓝图建议的接受：`acceptBlueprintSuggestion` 读当前楼层蓝图，用 `filterLockedBlueprintDiffs` 跳过锁定条目，再用 `applyBlueprintDiffs` 校验；修改为空或蓝图已变化而不合法时整条拒绝，建议保持 `pending`。合法时在同一事务里调用 `saveStoryBlueprint({source:"player"})` 追加一批（条目出处保持 AI）并把建议标为 `accepted`。`rejectBlueprintSuggestion` 只把状态改成 `rejected`。同一楼层连续接受多条建议会得到 `seq` 递增的多批记录。
 - 变更卡：`ledger/cards.ts` 的 `createPlayerLedgerChangeCard` 是玩家直接编辑的唯一入口；来源 `player`、`before` 取 head 快照、删除不存在的路径拒绝、同一 head 上内容相同的编辑复用同一张卡（id 由 `player-edit`、故事、head、说明与 `JSON.stringify(diffs)` 取摘要）。批准沿用 `approveLedgerChangeCard`：事实来源 `player`，玩家卡的说明同时写一条 `userWill` 纠正；拒绝只改状态；回滚按 `before` 追加反向 diff。
 - 变更卡接口：`POST /api/stories/:id/proposals` 建卡（201，返回 `{card, ledger}`，非法路径或值 400 且 `details.path = "diffs"`，缺说明 400 且为 `text`）；`GET /api/stories/:id/proposals[?status=]` 列出；`POST /api/proposals/:id/{approve,reject,rollback}` 决定。protocol 的 `StoryProposalCreateRequest`、`StoryProposalCreateResult` 与 web 客户端的 `createProposal` 已就位，连载页的可编辑记忆已接入。
 - 连载视图：`serial/view.ts` 的 `readSerialView` 是前情提要、章节目录、人物关系页与时间线的唯一派生入口；四块都只读，不调用模型、不写数据库。`SerialScene` 带序号、起止楼层、楼层数、边界、归档摘要、在场者、地点与故事时间，`SerialView.scenes` 按路径顺序给出全部场次（序号与 `chapters[].sceneOrdinals` 对应）；`SerialChapter` 带序数、起点、章末清点楼层（未收尾时 null）、楼层数、所属场次序号与 `focusLineIds`；`SerialCharacter` 带是否在场（最近一条场记，没有场记时取最后一场归档，与 `profile` 槽位同一口径）、台账档位/状态/位置、上次出场、带标签的档案条目、有方向的关系与不知情场次；`SerialTimelineEntry` 的 `kind` 取 `scene` 或 `time`，`ordinal` 是路径序号（从 1 起）。`SerialRecap.stale` 由当前路径最后一楼的 `createdAt` 与 `now` 比较得出，阈值 `staleHours` 默认 12；`recapScenes` 默认 3。时间线只把来源为 `player` 的 `time.current` 写入当跳跃，且跳过场次结束楼层上已有的时间事实。
@@ -69,7 +72,7 @@
 - 兼容插件线：`st-content`、`st-mvu`、`st-ejs`、`st-helper-host` 全部完成；`st-content` 的世界书激活只在共存评测里使用，没有接进 server 运行时。
 - 报告：`docs/dev/reports/P2.md`、`P3.md`、`P4.md`、`C-T01.md`、`C-T02.md`、`C-T03.md`、`C-T04.md`、`C-T05.md`、`H.md`、`X1.md`、`X2.md`。
 - 沙箱现状：`eval-private/st-sandbox/st` 有 36 个预设、68 张卡、89 个非驱动聊天片段；需要恢复原始预设时用 `sandbox --replace` 重建。
-- ADR-0088 至 ADR-0153 记录插件、沙箱、比对、兼容内容映射、EJS、沙箱执行、时间预算、流水线接入、模板生成、一致性评测、酒馆助手宿主、iframe 沙箱、STscript 子集、生成后台化、HTML 渲染、覆盖率口径、应用内助手、世界模型接口、实体档案、时序图谱、对比运行器、X1 判定、导演组织方式、剧情小品、X2 对比运行器、X2 判定、R6 预注册、评测调用输出预算、结算提示词楼层 id、v4 设计合并、故事图片、导入模式与初始记忆、规则声明与状态定义、线与八种动作的程序判断口径、推进三档与伏笔账与章末清点的程序口径、场面卡与章级规划的程序口径、重 roll 点回放与采样种子的程序口径、遗忘漏斗的归因口径与探针上下文记录、推进按钮与带原因的重 roll 的程序口径、就地纠正与场面控制的程序口径、场次归档人物档案与知情推导的程序口径、重逢注入按名字触发与注入内容的程序口径、蓝图按楼层存 diff 与锁定与版本回看的程序口径。
+- ADR-0088 至 ADR-0155 记录插件、沙箱、比对、兼容内容映射、EJS、沙箱执行、时间预算、流水线接入、模板生成、一致性评测、酒馆助手宿主、iframe 沙箱、STscript 子集、生成后台化、HTML 渲染、覆盖率口径、应用内助手、世界模型接口、实体档案、时序图谱、对比运行器、X1 判定、导演组织方式、剧情小品、X2 对比运行器、X2 判定、R6 预注册、评测调用输出预算、结算提示词楼层 id、v4 设计合并、故事图片、导入模式与初始记忆、规则声明与状态定义、线与八种动作的程序判断口径、推进三档与伏笔账与章末清点的程序口径、场面卡与章级规划的程序口径、重 roll 点回放与采样种子的程序口径、遗忘漏斗的归因口径与探针上下文记录、推进按钮与带原因的重 roll 的程序口径、就地纠正与场面控制的程序口径、场次归档人物档案与知情推导的程序口径、重逢注入按名字触发与注入内容的程序口径、蓝图按楼层存 diff 与锁定与版本回看的程序口径、蓝图建议独立存放与逐条接受的程序口径。
 - HUMAN-03 待处理（不阻塞）：抽查 `eval-private/evalset/spotcheck.md` 里的事件题。
 - HUMAN-15 待处理（M6-T99 需要）：把秋叶整合包 v3.2 的 ComfyUI 启动在 `http://127.0.0.1:8188`，并导出一份 API 格式 workflow JSON 到 `eval-private/comfyui/` 或告知路径。
 - HUMAN-16 至 HUMAN-18、HUMAN-20 至 HUMAN-22 待处理（HUMAN-22 阻塞 W3-T02.e，其余不阻塞）。
@@ -79,6 +82,7 @@
 - 门禁：`pnpm check`。
 - 全量 e2e：`pnpm e2e`（会先构建 server 与 web；跑两个项目）。
 - 蓝图结构、存储与版本目标测试：`pnpm exec vitest run packages/core/test/story-blueprint.test.ts`。
+- 蓝图建议目标测试：`pnpm exec vitest run packages/core/test/blueprint-suggestions.test.ts`。
 - 连载视图目标测试：`pnpm exec vitest run packages/core/test/serial.test.ts`。
 - 导出成书目标测试：`pnpm exec vitest run packages/core/test/serial-book.test.ts packages/server/test/serial.test.ts packages/web/test/api-client.test.ts`（server 用例先 `pnpm run typecheck`）。
 - 连载接口目标测试：`pnpm exec vitest run packages/server/test/serial.test.ts`（先 `pnpm run typecheck`）。
@@ -180,6 +184,12 @@
 - 每一批蓝图修改应用之后用 `assertBlueprintEntries` 整批校验：总纲最多一条、里程碑的 `volumeId` 指向存在的卷、`after` 指向存在的里程碑且不成环、id 不重复；要删卷就在同一批里处理掉它的里程碑，否则整批拒绝。
 - 蓝图的版本不另存表：`listBlueprintVersions` 沿路径逐楼、逐批累加，给每一批一版（含该批写完之后的 `entries`）；`readBlueprintEntries` 取最后一版。回滚用 `planBlueprintRollback` 算出修改再由 `rollbackStoryBlueprint` 以玩家来源写到新楼层，版本楼层本身不动；`versionSeq` 可定位同一楼层上的某一批，省略时取最后一批；当前已经等于目标版本时不写空记录，直接报错。
 - 蓝图的文本字段允许为空（玩家写到一半、等 AI 补全），列表项不允许空串与重复；单个文本 500 字、列表最多 12 条、一个楼层最多 50 条修改。里程碑不绑定楼层，先后约束按条目 id 引用。
+- 蓝图建议独立存放：生成只写 `blueprint_suggestions`，不调用 `saveStoryBlueprint`；玩家接受一条才用 `acceptBlueprintSuggestion` 写一批。不要为了让建议「立即生效」在生成路径里写蓝图。
+- 请求的 `status` 只有 `pending` 与 `done`，处理器一次只取最早一条；接线时登记请求后调用 `enqueueStoryBackgroundJobs`（类型 `blueprint_suggestion`），不要自己创建后台任务行。
+- 建议的条目出处固定为 `ai`、锁定标记固定为 false（生成时沿用当前条目的锁，实际锁定的修改已被过滤）；`saveBlueprintSuggestions` 会拒绝其它出处或自己加锁的条目。
+- 锁定过滤只走 `filterLockedBlueprintDiffs`：生成与接受都只丢掉命中锁定条目的 `set` 与 `delete`，剩下的修改为空时整条丢弃或拒绝，不要改成整批失败或静默放宽。
+- 接受时按当前蓝图重新校验：`acceptBlueprintSuggestion` 先 `applyBlueprintDiffs`，再在事务里 `saveStoryBlueprint`；蓝图变化导致建议不合法时整条拒绝并保持 `pending`。拒绝只改状态，不写蓝图。
+- 建议的标题 80 字、理由 500 字、补充说明 500 字；一次请求 1 到 5 条建议，每条最多 50 条修改。模型输出未知字段或形状错误整批拒绝，不要逐条跳过。
 - 场面卡的判定：开新场用 `readSceneSegments`，不要用「上一个助手楼层有没有场记」另写一套；槽位只在场次尚未结束（`endNodeId === null`）时注入。
 - 场面卡写入 `scene_logs.scene_card`（JSON 或 null），不写台账，也不进上下文包引用；重跑同一楼层覆盖同一行。
 - 动作的 `directive` 只写局面与人物意图；`DIRECTOR_SUFFIX_NOTE` 由槽位统一追加，不要在动作里再复述玩家优先。
@@ -237,7 +247,7 @@
 - 章标题固定写成 `## 第 N 章`（序号来自章节目录），首行是 `# <故事标题>`；块之间空一行、文件以一个换行结束。不要在导出里加时间戳、导出时间或数据库路径，否则「同一路径两次导出逐字节一致」不成立。
 - 场次摘要只写已归档的场次，按场次起点插在正文之前；未归档场次与没有摘要的场次只留正文。摘要里的文字原样输出，不要做 Markdown 转义。
 - 导出正文只取 `TimelineNode.raw`，不套用历史的块视图、正则或渲染管线（I8）；玩家楼层与助手楼层都按路径顺序导出。
-- 新迁移编号从 v66 起（v65 把 `story_blueprints` 重建为按批次保存）。
+- 新迁移编号从 v67 起（v66 新建蓝图建议请求与建议）。
 - `dramaticer explain` 的第 10 节使用默认上限 12；如果将来把 `maxSceneFloors` 做成故事设置，`explain` 必须改为从同一个来源读取。
 - 就地纠正只重写选中的一段：`quote` 必须逐字出现且只出现一次，出现多次直接 400；不要放宽成「取第一处」或模糊匹配，否则「其余逐字一致」就不成立。
 - 就地纠正的模型只收整楼原文、选中段与意见，只输出改写段；不要把整楼交给它重发。新楼层走 `editNode`（兄弟节点 + head 移动 + 一条 edit 偏好），旧楼层与旧 Trace 不动。

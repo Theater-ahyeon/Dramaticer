@@ -73,6 +73,24 @@ import {
 	assertBlueprintWriteAllowed,
 	planBlueprintRollback,
 } from "../blueprint/story-blueprint.js";
+import {
+	type AcceptBlueprintSuggestionInput,
+	type BlueprintSuggestion,
+	type BlueprintSuggestionAcceptance,
+	type BlueprintSuggestionRequest,
+	type BlueprintSuggestionRequestStatus,
+	type BlueprintSuggestionStatus,
+	MAX_BLUEPRINT_SUGGESTIONS,
+	type NewBlueprintSuggestionInput,
+	type NewBlueprintSuggestionRequestInput,
+	type RejectBlueprintSuggestionInput,
+	assertBlueprintSuggestionOperation,
+	assertBlueprintSuggestionRequestStatus,
+	assertBlueprintSuggestionStatus,
+	assertStoredBlueprintSuggestion,
+	filterLockedBlueprintDiffs,
+	readBlueprintSuggestionNote,
+} from "../blueprint/suggestions.js";
 import { type TurnMode, isTurnMode } from "../chat/mode.js";
 import { parseContextCondition } from "../context/condition.js";
 import {
@@ -587,6 +605,28 @@ interface StoryBlueprintRow {
 
 interface StoryBlueprintSeqRow {
 	readonly seq: number;
+}
+
+interface BlueprintSuggestionRequestRow {
+	readonly id: number;
+	readonly story_id: string;
+	readonly operation: string;
+	readonly note: string;
+	readonly status: string;
+	readonly created_at: string;
+	readonly finished_at: string | null;
+}
+
+interface BlueprintSuggestionRow {
+	readonly id: number;
+	readonly request_id: number;
+	readonly story_id: string;
+	readonly title: string;
+	readonly reason: string;
+	readonly diffs: string;
+	readonly status: string;
+	readonly created_at: string;
+	readonly decided_at: string | null;
 }
 
 interface GapPassRunRow {
@@ -1251,6 +1291,23 @@ export interface EnqueueBackgroundJobsInput {
 export interface EnqueueStoryBackgroundJobsInput {
 	readonly storyId: string;
 	readonly kinds: readonly string[];
+	readonly createdAt?: string;
+}
+
+export interface ListBlueprintSuggestionRequestsOptions {
+	readonly storyId: string;
+	readonly status?: BlueprintSuggestionRequestStatus;
+}
+
+export interface ListBlueprintSuggestionsOptions {
+	readonly storyId: string;
+	readonly requestId?: number;
+	readonly status?: BlueprintSuggestionStatus;
+}
+
+export interface SaveBlueprintSuggestionsInput {
+	readonly requestId: number;
+	readonly suggestions: readonly NewBlueprintSuggestionInput[];
 	readonly createdAt?: string;
 }
 
@@ -2003,6 +2060,57 @@ function rowToStoryBlueprint(row: StoryBlueprintRow): StoryBlueprintRecord {
 			`楼层 ${row.node_id} 的蓝图修改`,
 		),
 		createdAt: row.created_at,
+	};
+}
+
+function assertSuggestionId(value: number, label: string): void {
+	if (!Number.isInteger(value) || value < 1) {
+		throw new Error(`${label} 必须是正整数`);
+	}
+}
+
+function rowToBlueprintSuggestionRequest(
+	row: BlueprintSuggestionRequestRow,
+): BlueprintSuggestionRequest {
+	return {
+		id: row.id,
+		storyId: row.story_id,
+		operation: assertBlueprintSuggestionOperation(
+			row.operation,
+			`蓝图建议请求 ${row.id} 的操作`,
+		),
+		note: readBlueprintSuggestionNote(
+			row.note,
+			`蓝图建议请求 ${row.id} 的补充说明`,
+		),
+		status: assertBlueprintSuggestionRequestStatus(
+			row.status,
+			`蓝图建议请求 ${row.id} 的状态`,
+		),
+		createdAt: row.created_at,
+		finishedAt: row.finished_at,
+	};
+}
+
+function rowToBlueprintSuggestion(
+	row: BlueprintSuggestionRow,
+): BlueprintSuggestion {
+	return {
+		id: row.id,
+		requestId: row.request_id,
+		storyId: row.story_id,
+		title: row.title,
+		reason: row.reason,
+		diffs: assertBlueprintDiffs(
+			JSON.parse(row.diffs) as unknown,
+			`蓝图建议 ${row.id} 的修改`,
+		),
+		status: assertBlueprintSuggestionStatus(
+			row.status,
+			`蓝图建议 ${row.id} 的状态`,
+		),
+		createdAt: row.created_at,
+		decidedAt: row.decided_at,
 	};
 }
 
@@ -4876,6 +4984,267 @@ export class StoryStore {
 			diffs,
 			createdAt: input.createdAt,
 		});
+	}
+
+	/**
+	 * 登记一次蓝图建议请求；生成在后台间隙里进行。请求本身不写蓝图。
+	 */
+	createBlueprintSuggestionRequest(
+		input: NewBlueprintSuggestionRequestInput,
+	): BlueprintSuggestionRequest {
+		assertNonEmptyString(input.storyId, "蓝图建议请求的故事 id");
+		if (!this.getStory(input.storyId)) {
+			throw new Error(`故事不存在：${input.storyId}`);
+		}
+		const operation = assertBlueprintSuggestionOperation(input.operation);
+		const note = readBlueprintSuggestionNote(input.note ?? "");
+		const createdAt = input.createdAt ?? new Date().toISOString();
+		assertNonEmptyString(createdAt, "蓝图建议请求的创建时间");
+		const result = this.#db
+			.prepare(
+				`INSERT INTO blueprint_suggestion_requests
+					(story_id, operation, note, status, created_at, finished_at)
+				VALUES (?, ?, ?, 'pending', ?, NULL)`,
+			)
+			.run(input.storyId, operation, note, createdAt);
+		const request = this.getBlueprintSuggestionRequest(
+			Number(result.lastInsertRowid),
+		);
+		if (request === null) {
+			throw new Error("蓝图建议请求写入后读取失败");
+		}
+		return request;
+	}
+
+	getBlueprintSuggestionRequest(id: number): BlueprintSuggestionRequest | null {
+		assertSuggestionId(id, "蓝图建议请求 id");
+		const row = this.#db
+			.prepare("SELECT * FROM blueprint_suggestion_requests WHERE id = ?")
+			.get(id) as BlueprintSuggestionRequestRow | undefined;
+		return row === undefined ? null : rowToBlueprintSuggestionRequest(row);
+	}
+
+	listBlueprintSuggestionRequests(
+		options: ListBlueprintSuggestionRequestsOptions,
+	): BlueprintSuggestionRequest[] {
+		assertNonEmptyString(options.storyId, "蓝图建议请求的故事 id");
+		const where = ["story_id = ?"];
+		const params: unknown[] = [options.storyId];
+		if (options.status !== undefined) {
+			assertBlueprintSuggestionRequestStatus(
+				options.status,
+				"蓝图建议请求的筛选状态",
+			);
+			where.push("status = ?");
+			params.push(options.status);
+		}
+		const rows = this.#db
+			.prepare(
+				`SELECT * FROM blueprint_suggestion_requests
+				WHERE ${where.join(" AND ")}
+				ORDER BY created_at, id`,
+			)
+			.all(...params) as BlueprintSuggestionRequestRow[];
+		return rows.map(rowToBlueprintSuggestionRequest);
+	}
+
+	/** 最早一条等待生成的请求；后台任务一次只处理它。 */
+	findPendingBlueprintSuggestionRequest(
+		storyId: string,
+	): BlueprintSuggestionRequest | null {
+		assertNonEmptyString(storyId, "蓝图建议请求的故事 id");
+		const row = this.#db
+			.prepare(
+				`SELECT * FROM blueprint_suggestion_requests
+				WHERE story_id = ? AND status = 'pending'
+				ORDER BY created_at, id
+				LIMIT 1`,
+			)
+			.get(storyId) as BlueprintSuggestionRequestRow | undefined;
+		return row === undefined ? null : rowToBlueprintSuggestionRequest(row);
+	}
+
+	/** 一次请求的全部建议与请求状态在同一事务里写入。 */
+	saveBlueprintSuggestions(
+		input: SaveBlueprintSuggestionsInput,
+	): BlueprintSuggestion[] {
+		assertSuggestionId(input.requestId, "蓝图建议请求 id");
+		const request = this.getBlueprintSuggestionRequest(input.requestId);
+		if (request === null) {
+			throw new Error(`蓝图建议请求不存在：${input.requestId}`);
+		}
+		if (request.status !== "pending") {
+			throw new Error("这次蓝图建议请求已经生成过建议");
+		}
+		if (
+			input.suggestions.length === 0 ||
+			input.suggestions.length > MAX_BLUEPRINT_SUGGESTIONS
+		) {
+			throw new Error(
+				`一次请求必须生成 1 到 ${MAX_BLUEPRINT_SUGGESTIONS} 条建议`,
+			);
+		}
+		const suggestions = input.suggestions.map((suggestion, index) =>
+			assertStoredBlueprintSuggestion(suggestion, `蓝图建议[${index}]`),
+		);
+		const createdAt = input.createdAt ?? new Date().toISOString();
+		assertNonEmptyString(createdAt, "蓝图建议的创建时间");
+		const insert = this.#db.prepare(
+			`INSERT INTO blueprint_suggestions
+				(request_id, story_id, title, reason, diffs, status, created_at, decided_at)
+			VALUES (?, ?, ?, ?, ?, 'pending', ?, NULL)`,
+		);
+		this.#db.transaction(() => {
+			for (const suggestion of suggestions) {
+				insert.run(
+					request.id,
+					request.storyId,
+					suggestion.title,
+					suggestion.reason,
+					JSON.stringify(suggestion.diffs),
+					createdAt,
+				);
+			}
+			const finished = this.#db
+				.prepare(
+					`UPDATE blueprint_suggestion_requests
+					SET status = 'done', finished_at = ?
+					WHERE id = ? AND status = 'pending'`,
+				)
+				.run(createdAt, request.id);
+			if (finished.changes !== 1) {
+				throw new Error(`蓝图建议请求 ${request.id} 的状态更新失败`);
+			}
+		})();
+		return this.listBlueprintSuggestions({
+			storyId: request.storyId,
+			requestId: request.id,
+		});
+	}
+
+	listBlueprintSuggestions(
+		options: ListBlueprintSuggestionsOptions,
+	): BlueprintSuggestion[] {
+		assertNonEmptyString(options.storyId, "蓝图建议的故事 id");
+		const where = ["story_id = ?"];
+		const params: unknown[] = [options.storyId];
+		if (options.requestId !== undefined) {
+			assertSuggestionId(options.requestId, "蓝图建议请求 id");
+			where.push("request_id = ?");
+			params.push(options.requestId);
+		}
+		if (options.status !== undefined) {
+			assertBlueprintSuggestionStatus(options.status, "蓝图建议的筛选状态");
+			where.push("status = ?");
+			params.push(options.status);
+		}
+		const rows = this.#db
+			.prepare(
+				`SELECT * FROM blueprint_suggestions
+				WHERE ${where.join(" AND ")}
+				ORDER BY created_at, id`,
+			)
+			.all(...params) as BlueprintSuggestionRow[];
+		return rows.map(rowToBlueprintSuggestion);
+	}
+
+	getBlueprintSuggestion(id: number): BlueprintSuggestion | null {
+		assertSuggestionId(id, "蓝图建议 id");
+		const row = this.#db
+			.prepare("SELECT * FROM blueprint_suggestions WHERE id = ?")
+			.get(id) as BlueprintSuggestionRow | undefined;
+		return row === undefined ? null : rowToBlueprintSuggestion(row);
+	}
+
+	/**
+	 * 接受一条建议：按当前蓝图重新校验，跳过后来被锁定的条目，
+	 * 用玩家来源写成一批蓝图修改，条目出处保持 AI。写入与状态更新
+	 * 在同一事务里，任一步失败都不留下半条记录。
+	 */
+	acceptBlueprintSuggestion(
+		input: AcceptBlueprintSuggestionInput,
+	): BlueprintSuggestionAcceptance {
+		assertSuggestionId(input.id, "蓝图建议 id");
+		assertNonEmptyString(input.nodeId, "接受蓝图建议的楼层 id");
+		const suggestion = this.getBlueprintSuggestion(input.id);
+		if (suggestion === null) {
+			throw new Error(`蓝图建议不存在：${input.id}`);
+		}
+		if (suggestion.status !== "pending") {
+			throw new Error(`蓝图建议 ${input.id} 已经决定过，不能再接受`);
+		}
+		const node = this.getNode(input.nodeId);
+		if (node === null) {
+			throw new Error(`楼层节点不存在：${input.nodeId}`);
+		}
+		if (node.storyId !== suggestion.storyId) {
+			throw new Error(
+				`楼层节点 ${input.nodeId} 不属于故事 ${suggestion.storyId}`,
+			);
+		}
+		const current = this.readBlueprintEntries(input.nodeId);
+		const diffs = filterLockedBlueprintDiffs(current, suggestion.diffs);
+		if (diffs.length === 0) {
+			throw new Error("这条建议的修改都命中了锁定条目");
+		}
+		applyBlueprintDiffs(current, diffs);
+		const decidedAt = input.createdAt ?? new Date().toISOString();
+		assertNonEmptyString(decidedAt, "蓝图建议的决定时间");
+		return this.#db.transaction((): BlueprintSuggestionAcceptance => {
+			const record = this.saveStoryBlueprint({
+				nodeId: input.nodeId,
+				storyId: suggestion.storyId,
+				source: "player",
+				diffs,
+				createdAt: decidedAt,
+			});
+			const updated = this.#db
+				.prepare(
+					`UPDATE blueprint_suggestions
+					SET status = 'accepted', decided_at = ?
+					WHERE id = ? AND status = 'pending'`,
+				)
+				.run(decidedAt, suggestion.id);
+			if (updated.changes !== 1) {
+				throw new Error(`蓝图建议 ${suggestion.id} 的状态更新失败`);
+			}
+			const accepted = this.getBlueprintSuggestion(suggestion.id);
+			if (accepted === null) {
+				throw new Error(`蓝图建议 ${suggestion.id} 更新后读取失败`);
+			}
+			return { suggestion: accepted, record };
+		})();
+	}
+
+	/** 拒绝只改建议状态，不写蓝图。 */
+	rejectBlueprintSuggestion(
+		input: RejectBlueprintSuggestionInput,
+	): BlueprintSuggestion {
+		assertSuggestionId(input.id, "蓝图建议 id");
+		const suggestion = this.getBlueprintSuggestion(input.id);
+		if (suggestion === null) {
+			throw new Error(`蓝图建议不存在：${input.id}`);
+		}
+		if (suggestion.status !== "pending") {
+			throw new Error(`蓝图建议 ${input.id} 已经决定过，不能再拒绝`);
+		}
+		const decidedAt = input.decidedAt ?? new Date().toISOString();
+		assertNonEmptyString(decidedAt, "蓝图建议的决定时间");
+		const updated = this.#db
+			.prepare(
+				`UPDATE blueprint_suggestions
+				SET status = 'rejected', decided_at = ?
+				WHERE id = ? AND status = 'pending'`,
+			)
+			.run(decidedAt, suggestion.id);
+		if (updated.changes !== 1) {
+			throw new Error(`蓝图建议 ${suggestion.id} 的状态更新失败`);
+		}
+		const rejected = this.getBlueprintSuggestion(suggestion.id);
+		if (rejected === null) {
+			throw new Error(`蓝图建议 ${suggestion.id} 更新后读取失败`);
+		}
+		return rejected;
 	}
 
 	/**

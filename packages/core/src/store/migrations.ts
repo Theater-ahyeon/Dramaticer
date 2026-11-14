@@ -1935,6 +1935,84 @@ export function buildMigrations(
 				END`,
 			],
 		},
+		{
+			version: 66,
+			description: "蓝图建议请求与建议；生成时不写蓝图，玩家逐条接受",
+			statements: [
+				`CREATE TABLE blueprint_suggestion_requests (
+					id INTEGER PRIMARY KEY AUTOINCREMENT,
+					story_id TEXT NOT NULL REFERENCES stories(id),
+					operation TEXT NOT NULL CHECK (operation IN (
+						'complete', 'find-flaws', 'three-directions',
+						'expand-volume', 'recent-update'
+					)),
+					note TEXT NOT NULL,
+					status TEXT NOT NULL CHECK (status IN ('pending', 'done')),
+					created_at TEXT NOT NULL,
+					finished_at TEXT,
+					CHECK (
+						(status = 'pending' AND finished_at IS NULL)
+						OR (status = 'done' AND finished_at IS NOT NULL)
+					)
+				) STRICT`,
+				`CREATE INDEX blueprint_suggestion_requests_story_status_idx
+					ON blueprint_suggestion_requests(story_id, status, created_at)`,
+				`CREATE TRIGGER blueprint_suggestion_requests_identity_immutable
+				BEFORE UPDATE ON blueprint_suggestion_requests
+				WHEN NEW.id <> OLD.id
+					OR NEW.story_id <> OLD.story_id
+					OR NEW.operation <> OLD.operation
+					OR NEW.note <> OLD.note
+					OR NEW.created_at <> OLD.created_at
+					OR OLD.status <> 'pending'
+				BEGIN
+					SELECT RAISE(ABORT, '蓝图建议请求的内容与归属不可修改');
+				END`,
+				`CREATE TABLE blueprint_suggestions (
+					id INTEGER PRIMARY KEY AUTOINCREMENT,
+					request_id INTEGER NOT NULL
+						REFERENCES blueprint_suggestion_requests(id),
+					story_id TEXT NOT NULL REFERENCES stories(id),
+					title TEXT NOT NULL,
+					reason TEXT NOT NULL,
+					diffs TEXT NOT NULL,
+					status TEXT NOT NULL
+						CHECK (status IN ('pending', 'accepted', 'rejected')),
+					created_at TEXT NOT NULL,
+					decided_at TEXT,
+					CHECK (
+						(status = 'pending' AND decided_at IS NULL)
+						OR (status IN ('accepted', 'rejected') AND decided_at IS NOT NULL)
+					)
+				) STRICT`,
+				`CREATE INDEX blueprint_suggestions_story_status_idx
+					ON blueprint_suggestions(story_id, status, created_at)`,
+				`CREATE INDEX blueprint_suggestions_request_idx
+					ON blueprint_suggestions(request_id)`,
+				`CREATE TRIGGER blueprint_suggestions_story_matches_request
+				BEFORE INSERT ON blueprint_suggestions
+				WHEN COALESCE(
+					(SELECT story_id FROM blueprint_suggestion_requests WHERE id = NEW.request_id),
+					''
+				) <> NEW.story_id
+				BEGIN
+					SELECT RAISE(ABORT, '蓝图建议的 story_id 必须与请求一致');
+				END`,
+				`CREATE TRIGGER blueprint_suggestions_identity_immutable
+				BEFORE UPDATE ON blueprint_suggestions
+				WHEN NEW.id <> OLD.id
+					OR NEW.request_id <> OLD.request_id
+					OR NEW.story_id <> OLD.story_id
+					OR NEW.title <> OLD.title
+					OR NEW.reason <> OLD.reason
+					OR NEW.diffs <> OLD.diffs
+					OR NEW.created_at <> OLD.created_at
+					OR OLD.status <> 'pending'
+				BEGIN
+					SELECT RAISE(ABORT, '蓝图建议的内容与归属不可修改');
+				END`,
+			],
+		},
 	];
 }
 

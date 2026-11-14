@@ -2,6 +2,11 @@ import type { BackgroundJobEntry } from "../background/registry.js";
 import type { BackgroundJobRegistry } from "../background/types.js";
 import type { BackgroundJobType } from "../background/types.js";
 import {
+	BLUEPRINT_SUGGESTION_JOB_KIND,
+	blueprintSuggestionNeedsRun,
+	createBlueprintSuggestionHandler,
+} from "../blueprint/suggestions.js";
+import {
 	DIRECTOR_BITS_JOB_KIND,
 	createDirectorBitJudgmentsHandler,
 } from "../director/bit-judgments.js";
@@ -113,6 +118,8 @@ export const VISUAL_PROFILE_JOB_PLUGIN = "background.visual-profile";
 export const ILLUSTRATE_JOB_PLUGIN = "background.illustrate";
 export const DIRECTOR_PLAN_JOB_PLUGIN = "background.director-plan";
 export const CHAPTER_PLAN_JOB_PLUGIN = "background.chapter-plan";
+export const BLUEPRINT_SUGGESTION_JOB_PLUGIN =
+	"background.blueprint-suggestion";
 export const CANDIDATE_ACTIONS_JOB_PLUGIN = "background.candidate-actions";
 export const DIRECTOR_BITS_JOB_PLUGIN = "background.director-bits";
 export const EMBEDDINGS_JOB_PLUGIN = "background.embeddings";
@@ -260,6 +267,18 @@ export function createBackgroundJobPlugins(
 			tier: "deferred",
 			needsRun: chapterPlanNeedsRun,
 		}),
+		backgroundJobPlugin(
+			BLUEPRINT_SUGGESTION_JOB_PLUGIN,
+			BLUEPRINT_SUGGESTION_JOB_KIND,
+			{
+				handler: createBlueprintSuggestionHandler(
+					plannerOptions(plannerClient),
+				),
+				enqueue: "story",
+				tier: "gap",
+				needsRun: blueprintSuggestionNeedsRun,
+			},
+		),
 		backgroundJobPlugin(
 			CANDIDATE_ACTIONS_JOB_PLUGIN,
 			CANDIDATE_ACTIONS_JOB_KIND,
