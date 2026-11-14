@@ -1635,7 +1635,8 @@
   做什么：预注册门槛：B1 对比胜率的判定方式与置信区间、矛盾率上限、重复度与推进度口径、深回合增益口径、偏好一致率口径；B2 的申请模板与样本上限；未达标时自动生成改进任务并重评最多三轮，之后写入 HUMAN.md。分成具体任务并写清依赖与验收。
   验收：门槛在运行前写死；每项都有可复现的统计口径；`pnpm check` 通过。
 
-- [ ] **R6-T01 门槛常量与判定库** | 依赖：R6-T00 | DESIGN §14.2 | ADR-0135
+- [x] **R6-T01 门槛常量与判定库** | 依赖：R6-T00 | DESIGN §14.2 | ADR-0135
+  完成：2026-11-13 新增 `evalset/metrics.ts`（内容字符 4-gram、相邻回复 Jaccard、第 2 轮起推进度、按块重复度）与 `evalset/gates.ts`（`R6_GATE_VERSION` v1、预注册样本与阈值常量、`wilsonInterval`、`normalizePairOutcome`、`evaluateR6Gates`、输入校验）；X2 与 `director-eval` 改用共享实现，18 份 X2 运行记录的重复度汇总逐字节一致；两个模块从包入口导出；新增 30 个测试；门禁通过（256 个测试文件、2,244 个测试、5 个跳过）
   做什么：
   - 新增 `packages/st-compat/src/evalset/metrics.ts`：内容字符 4-gram、重复度（相邻回复 Jaccard 均值）与推进度（第 2 轮起新 4-gram 占比）的共享实现；X2 的对比运行器改用它，数字与现有报告一致。
   - 新增 `packages/st-compat/src/evalset/gates.ts`：`R6_GATE_VERSION`、预注册文档里的样本与阈值常量、`wilsonInterval`、配对归一（胜、负、平、换序不一致）、`evaluateR6Gates`（每项返回通过、未通过、样本不足，并带计数、阈值与原因）；输入缺项直接抛错，不回落到默认值。

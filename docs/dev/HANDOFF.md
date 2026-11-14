@@ -3,20 +3,20 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-14 会话 378：R6-T00 细化 R6 任务。预注册 `docs/dev/R6-PREREG.md` v1 与 ADR-0135 入库：3 个 legacy 对话、按路径深度 10% 到 100% 取最多 10 个分支点；C1 原生与朴素各 9 个分支点 × 30 轮并共用同一串玩家消息；C2 B1 计划 30 对、至少 27 对完成；C3 深回合 24 对；配对级 Wilson 95% 区间；重复度与推进度沿用字符 4-gram 口径；G4 台账探针矛盾率上限 30%；G6 偏好一致率是条件门槛（少于 30 对记未证实）；B2 申请模板与单次 60 次上限；最多三轮评测与自动改进任务；每个运行副本预热 12 楼（`settle` 与 `scene`）。DESIGN §14.2 同步；TASKS 把 R6 分成 R6-T01 至 R6-T06 与 R6-T99；没有代码改动；门禁通过（254 个测试文件、2,214 个测试、5 个跳过）。
+- 2026-11-13 会话 379：R6-T01 门槛常量与判定库。新增 `packages/st-compat/src/evalset/metrics.ts`：内容字符 4-gram、相邻回复 Jaccard、第 2 轮起的推进度、按块重复度；`director-eval` 与 X2 的对比运行器改用共享实现，18 份 X2 运行记录的重复度汇总逐字节一致。新增 `packages/st-compat/src/evalset/gates.ts`：`R6_GATE_VERSION` v1、预注册文档的样本与阈值常量、`wilsonInterval`、`normalizePairOutcome`、`evaluateR6Gates`、`validateR6GateInput`；G1–G6 返回通过、未通过、样本不足并带计数、阈值与原因；G6 少于 30 对记为未证实（样本不足），不影响其他项全部通过时的整体结论；输入缺项、负数、越界与故事完成数不一致直接抛错。两个模块从包入口导出；新增 30 个测试；门禁通过（256 个测试文件、2,244 个测试、5 个跳过）。
 
-## 下一步（会话 379 先做）
-1. 选择 **R6-T01 门槛常量与判定库**（依赖 R6-T00 已完成）。新增 `packages/st-compat/src/evalset/metrics.ts`（内容字符 4-gram、重复度、推进度）与 `gates.ts`（`R6_GATE_VERSION`、预注册常量、`wilsonInterval`、配对归一、`evaluateR6Gates`），X2 的对比运行器改用共享指标实现且数字不变；先读 `docs/dev/R6-PREREG.md` 第三节与 ADR-0135。
-2. 之后按 TASKS 顺序做 R6-T02（对比运行器）、R6-T03（B1 批次）、R6-T04（偏好一致率）、R6-T05（深回合批次，长任务）、R6-T06（C1 与 C2 长任务），最后 R6-T99 判定。T05 与 T06 写 `.devloop/jobs/` 申请并写 `WAITING`。
+## 下一步（会话 380 先做）
+1. 选择 **R6-T02 原生与朴素对比运行器**（依赖 R6-T01、R2-T02 已完成）。先读 `docs/dev/R6-PREREG.md` 第一节与 ADR-0135。新增 `packages/st-compat/src/evalset/r6-compare.ts` 与 CLI（`pnpm --filter @dramaticer/st-compat r6-compare`）：按路径深度 10%–100% 取最多 10 个分支点并取首、中、末 3 个；每个分支点复制源数据库两次（原生、朴素）；副本预热分支点之前最近 12 个已生成完成的助手楼层（`settle` 与 `scene`）；原生档先跑 30 轮并把模拟用户消息写入 sidecar，朴素档逐字重放；探针只对原生档，每 6 轮一次、事实年龄至少 10 楼、每次最多 5 次。假客户端测试覆盖两档消息相同、朴素档不写台账与不建后台任务、预热计数、探针排期、续跑与报告字段。
+2. 之后按 TASKS 顺序做 R6-T03（B1 批次）、R6-T04（偏好一致率）、R6-T05（深回合批次，长任务）、R6-T06（C1 与 C2 长任务），最后 R6-T99 判定。T05 与 T06 写 `.devloop/jobs/` 申请并写 `WAITING`。
 3. 预注册文档在第一次批次运行后不得修改；必须调整时另写 v2、记 ADR、把评测轮次计数重置为 0。
 4. 阻塞检查：M6-T99 仍等 HUMAN-15（ComfyUI 与 API 格式 workflow）；HUMAN-03、HUMAN-16、HUMAN-17、HUMAN-18 不阻塞。
 
 ## 当前状态
-- 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1–P4、C-T01 至 C-T05、H-T00 至 H-T99、X1.a 至 X1.e、X2.a 至 X2.d、R6-T00。X 阶段完成。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1–P4、C-T01 至 C-T05、H-T00 至 H-T99、X1.a 至 X1.e、X2.a 至 X2.d、R6-T00、R6-T01。X 阶段完成。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
 - 兼容插件线：`st-content`、`st-mvu`、`st-ejs`、`st-helper-host` 全部完成（含一致性测试与共存评测）。
 - 数据库 schema 版本 50。本轮没有新增依赖。
 - 报告：`docs/dev/reports/P2.md`、`P3.md`、`P4.md`、`C-T01.md`、`C-T02.md`、`C-T03.md`、`C-T04.md`、`C-T05.md`、`H.md`、`X1.md`、`X2.md`。
-- R6 预注册：`docs/dev/R6-PREREG.md` v1、ADR-0135、DESIGN §14.2；门槛常量与判定由 R6-T01 实现，运行记录写入门槛版本。
+- R6 预注册：`docs/dev/R6-PREREG.md` v1、ADR-0135、DESIGN §14.2；门槛常量与判定已由 R6-T01 实现，`R6_GATE_VERSION` 为 `v1`，运行记录写入门槛版本。
 - 世界模型：默认 `ledger`；`wiki` 与 `temporal_graph` 已经可用，由故事设置 `worldModel` 选择，只有 `temporal_graph` 支持 `atStoryTime`。
 - 导演组织方式：默认 `mechanisms`（现有机制序列）；`bits` 已可用，由故事设置 `directorOrganization` 选择。X2 判定见 ADR-0134 与 `docs/dev/reports/X2.md`。
 - X2 的输入与运行脚本在 `.devloop/scratch/X2.d/`：`inputs/`（消息、小品、条件样本）、`run-compare.mjs`、`summarize.mjs`、`runs/<slug>/`（复制数据库、缓存与 sidecar）、`smoke/`（2 轮冒烟结果）。长任务状态在 `.devloop/jobs/X2.d-01.status.json`（退出码 0）与 `.log`。
@@ -30,6 +30,7 @@
 
 ## 可重复命令
 - 门禁：`pnpm check`。
+- R6 门槛与指标的目标测试：`pnpm exec vitest run packages/st-compat/test/gates.test.ts packages/st-compat/test/metrics.test.ts`。
 - X2.d 重跑（断点续跑，已完成候选用 sidecar）：`node .devloop/scratch/X2.d/run-compare.mjs`。
 - X2.d 指标汇总：`node .devloop/scratch/X2.d/summarize.mjs`。
 - X2.d 单个故事：`node packages/st-compat/dist/evalset/director-organization-compare-cli.js --db <源库> --story <故事> --messages .devloop/scratch/X2.d/inputs/<slug>.messages.json --bits .devloop/scratch/X2.d/inputs/<slug>.bits.json --conditions .devloop/scratch/X2.d/inputs/<slug>.conditions.json --rounds 8 --repeat 3 --seed 1 --model main-fallback --judge-model judge --background-model background --dir .devloop/scratch/X2.d/runs/<slug>`。
@@ -43,13 +44,15 @@
 - 重建沙箱数据：`pnpm --filter @dramaticer/st-compat build && node packages/st-compat/dist/st-bench/cli.js sandbox --source "D:/SillyTavern" --replace`。
 - 生成组合清单：`node packages/st-compat/dist/st-bench/cli.js plan --sandbox eval-private/st-sandbox/st --batch <批次>`。
 - 逐条比对：`node packages/st-compat/dist/st-bench/cli.js compare --sandbox eval-private/st-sandbox/st --batch <批次> [--limit <数量>]`。
-- R6 命令在 R6-T01 至 R6-T06 实现后补到这里；预注册里的命令形状见 `docs/dev/R6-PREREG.md` 第七节。
+- R6-T02 起的命令按各任务实现后补到这里；预注册里的命令形状见 `docs/dev/R6-PREREG.md` 第七节。
 - 不变量：I1–I18 的定义见 `AGENTS.md`；世界模型、导演组织方式与 R6 门槛实验不改变 I5、I6、I9、I11、I12、I15。
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
 - 私有数据（`eval-private/`、`data/`、`.env`）不能进入测试数据、提交、文档或日志；报告只写统计数字，不写对话原文。X1、X2 与 R6 的 JSON 含回复与答案，只能放在私有目录。
 - R6 预注册 v1 在第一次批次运行后冻结：门槛、样本、指标、模型与种子都不改；必须调整时另写 v2、记 ADR、把评测轮次计数重置为 0。门槛常量与 `docs/dev/R6-PREREG.md` 必须逐项一致，`evaluateR6Gates` 不允许缺项回落。
+- `gates.ts` 的 G6 少于 30 对时状态为 `insufficient`，报告里同时出现在 `insufficient` 与 `unproven`；其他门槛 `insufficient` 会让 `passed` 为 false。G1 的故事覆盖按 `completedPairs > 0` 计数，故事完成数合计必须等于配对合计，否则输入校验抛错。
+- `metrics.ts` 的 `measureReplyRepetition` 是 R6 的相邻回复口径；`measureBlockRepetition` 是按行切块的 X2 与记分牌口径。两个口径不要混用，X2 的数字用后者保持不变。
 - R6 的分支点按路径深度取：主路径长度的 10% 到 100%，每个比例取最近的助手楼层，保留其后有非空玩家消息与历史回复的点，去重后每故事最多 10 个；C1 取首、中、末 3 个，B1 取全部。
 - R6 的 C1 两档必须共用同一串玩家消息：原生档先生成并写入 sidecar，朴素档逐字重放；sidecar 校验输入、种子与预热计数，输入变化时失败并提示删除。
 - R6 的每个运行副本在开跑前对分支点之前最近 12 个已生成完成的助手楼层执行 `settle` 与 `scene`，只写复制库；台账覆盖范围只到预热窗口，报告必须单列这一限制。

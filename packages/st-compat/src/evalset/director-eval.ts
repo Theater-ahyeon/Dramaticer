@@ -24,7 +24,6 @@ import {
 	isLegacyCorpus,
 	openSnapshot,
 } from "../health/manifest.js";
-import { analyzeReferenceText } from "../reference/text-stats.js";
 import { type StWorldInfo, parseWorldInfoFile } from "../world-info.js";
 import {
 	type ReplayTurn,
@@ -32,19 +31,21 @@ import {
 	runDirectorReplay,
 } from "./director-replay.js";
 import { buildStoryVectors } from "./memory-eval.js";
+import {
+	type RepetitionMeasurement,
+	type SimilaritySummary,
+	measureBlockRepetition,
+	summarize,
+} from "./metrics.js";
 import { storyIdOf } from "./question-files.js";
 
 export type ReplayMode = "on" | "off";
-
-export interface SimilaritySummary {
-	readonly count: number;
-	readonly mean: number;
-	readonly median: number;
-	readonly p90: number;
-	readonly p95: number;
-	readonly p99: number;
-	readonly max: number;
-}
+export {
+	measureBlockRepetition,
+	type RepetitionMeasurement,
+	type SimilaritySummary,
+	summarize,
+};
 
 export interface ReplayRunRecord {
 	readonly story: string;
@@ -569,31 +570,6 @@ export function selectBranchPoints(
 	return points;
 }
 
-export interface RepetitionMeasurement {
-	readonly blockCount: number;
-	readonly values: readonly number[];
-	readonly summary: SimilaritySummary;
-}
-
-/** 按参照文本的相邻块口径统计生成正文的重复度。 */
-export function measureBlockRepetition(
-	replies: readonly string[],
-): RepetitionMeasurement {
-	const blocks = replies
-		.map((reply) => reply.trim())
-		.filter((reply) => reply.length > 0);
-	if (blocks.length < 2) {
-		return { blockCount: blocks.length, values: [], summary: emptySummary() };
-	}
-	const analysis = analyzeReferenceText(blocks.join("\n\n"));
-	const values = analysis.duplication.pairs.map((pair) => pair.similarity);
-	return {
-		blockCount: analysis.blockCount,
-		values,
-		summary: summarize(values),
-	};
-}
-
 export interface BeatCosineMeasurement {
 	readonly missingVectorFloors: number;
 	readonly values: readonly number[];
@@ -630,42 +606,6 @@ export function measureBeatCosine(
 		values.push(cosineSimilarity(previous, current));
 	}
 	return { missingVectorFloors, values, summary: summarize(values) };
-}
-
-export function summarize(values: readonly number[]): SimilaritySummary {
-	if (values.length === 0) return emptySummary();
-	const sorted = [...values].sort((left, right) => left - right);
-	const mean =
-		values.reduce((total, value) => total + value, 0) / values.length;
-	return {
-		count: values.length,
-		mean,
-		median: nearestRank(sorted, 0.5),
-		p90: nearestRank(sorted, 0.9),
-		p95: nearestRank(sorted, 0.95),
-		p99: nearestRank(sorted, 0.99),
-		max: sorted[sorted.length - 1] as number,
-	};
-}
-
-function emptySummary(): SimilaritySummary {
-	return {
-		count: 0,
-		mean: 0,
-		median: 0,
-		p90: 0,
-		p95: 0,
-		p99: 0,
-		max: 0,
-	};
-}
-
-function nearestRank(sorted: readonly number[], quantile: number): number {
-	const index = Math.min(
-		sorted.length - 1,
-		Math.max(0, Math.ceil(sorted.length * quantile) - 1),
-	);
-	return sorted[index] as number;
 }
 
 function buildReport(input: {

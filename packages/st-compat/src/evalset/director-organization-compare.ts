@@ -44,12 +44,14 @@ import {
 	flattenConditionState,
 } from "./condition-samples.js";
 import { type PercentileSummary, summarizePercentiles } from "./deep-eval.js";
+import { noteMatchesReply } from "./director-eval.js";
 import {
 	type SimilaritySummary,
 	measureBlockRepetition,
-	noteMatchesReply,
+	novelRatio,
+	rememberGrams,
 	summarize as summarizeSimilarity,
-} from "./director-eval.js";
+} from "./metrics.js";
 import {
 	type PreferenceComparisonRecord,
 	type PreferenceComparisonSummary,
@@ -266,9 +268,6 @@ interface CandidateOptions extends DirectorOrganizationCompareOptions {
 	readonly log: (message: string) => void;
 	readonly now: () => number;
 }
-
-const GRAM_SIZE = 4;
-const CONTENT_CHAR = /[^\s\p{P}\p{S}]/u;
 
 /**
  * 两个导演组织方式在同一份数据库副本、同一串玩家消息上各跑固定轮数，
@@ -764,31 +763,6 @@ function fulfillNotes(input: {
 		fulfilled.push(note.id);
 	}
 	for (const noteId of fulfilled) input.openNotes.delete(noteId);
-}
-
-/** 内容字符的字符 4-gram；标点、空白与符号不参与。 */
-function contentGrams(text: string): Set<string> {
-	const chars = Array.from(text).filter((char) => CONTENT_CHAR.test(char));
-	const grams = new Set<string>();
-	for (let index = 0; index + GRAM_SIZE <= chars.length; index += 1) {
-		grams.add(chars.slice(index, index + GRAM_SIZE).join(""));
-	}
-	return grams;
-}
-
-/** 本条回复的新字符 4-gram 占比；没有内容字符时为 null。 */
-function novelRatio(seen: ReadonlySet<string>, text: string): number | null {
-	const grams = contentGrams(text);
-	if (grams.size === 0) return null;
-	let novel = 0;
-	for (const gram of grams) {
-		if (!seen.has(gram)) novel += 1;
-	}
-	return novel / grams.size;
-}
-
-function rememberGrams(seen: Set<string>, text: string): void {
-	for (const gram of contentGrams(text)) seen.add(gram);
 }
 
 async function judgePairs(input: {
