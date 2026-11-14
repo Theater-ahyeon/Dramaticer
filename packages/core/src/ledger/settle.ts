@@ -460,10 +460,10 @@ function buildUserContent(
 		"当前台账快照（截至窗口最后一楼）：",
 		JSON.stringify(snapshot),
 		"",
-		"冲突检查窗口（最近楼层的原文）：",
+		"冲突检查窗口（最近楼层的原文，只用来核对冲突，不是可写入的楼层）：",
 	];
 	for (const node of conflictWindow) {
-		lines.push(`<最近楼层 id="${node.id}" 角色="${node.role}">`);
+		lines.push(`<最近楼层 角色="${node.role}">`);
 		lines.push(node.raw);
 		lines.push("</最近楼层>");
 	}

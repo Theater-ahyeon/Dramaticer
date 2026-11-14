@@ -7,10 +7,12 @@ import {
 	type LlmResult,
 	SETTLE_JOB_KIND,
 	type StoryStore,
+	buildSettlementMessages,
 	createBackgroundJobRegistry,
 	createSettleHandler,
 	drainBackgroundJobs,
 	enqueueMissingJobs,
+	prepareSettlementForNodes,
 } from "../src/index.js";
 import { openTempStore } from "./temp-store.js";
 
@@ -765,10 +767,35 @@ describe("结算的实体解析、knowledge 去重与冲突拒绝", () => {
 		});
 
 		const content = requests[0]?.messages[1]?.content ?? "";
-		expect(content).toContain('<最近楼层 id="n8"');
-		expect(content).toContain('<最近楼层 id="n9"');
-		expect(content).not.toContain('<最近楼层 id="n7"');
+		expect(content).not.toContain("<最近楼层 id=");
+		expect(content).toContain('<最近楼层 角色="assistant">');
+		expect(content).toContain('<最近楼层 角色="user">');
 		expect(content).toContain("第八楼");
 		expect(content).toContain("第九楼");
+	});
+
+	it("可写入的楼层 id 只出现在结算窗口里", () => {
+		const { store } = openTempStore();
+		store.createStory({ id: "s1", title: "测试" });
+		let parentId: string | null = null;
+		for (let index = 1; index <= 9; index += 1) {
+			const id = `n${index}`;
+			store.appendNode({
+				id,
+				storyId: "s1",
+				parentId,
+				role: index % 2 === 0 ? "user" : "assistant",
+				raw: `第${index}楼`,
+			});
+			parentId = id;
+		}
+		const window = prepareSettlementForNodes(store, "s1", ["n7"], {
+			conflictWindowFloors: 3,
+		});
+		if (window === null) throw new Error("结算窗口不应为空");
+		const content = buildSettlementMessages(window)[1]?.content ?? "";
+		expect(content).toContain('<楼层 id="n7">');
+		expect(content).not.toContain("<最近楼层 id=");
+		expect(content.match(/<楼层 id=/g)).toHaveLength(1);
 	});
 });

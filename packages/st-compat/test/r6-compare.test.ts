@@ -449,6 +449,82 @@ describe("r6-compare", () => {
 		}
 	});
 
+	it("结算输出带回不可写入的楼层 id 时重试，重试请求附上一次的错误", async () => {
+		const dir = makeDir();
+		const source = buildSourceDb(dir);
+		const store = StoryStoreClass.open(source);
+		try {
+			const head = store.getHead(STORY);
+			if (head === null) throw new Error("测试数据库没有 head");
+			const settleRequests: LlmRequest[] = [];
+			const client: LlmClient = {
+				async complete(request) {
+					if (joined(request).includes("现场分析师")) {
+						return makeResult("现场分析。");
+					}
+					settleRequests.push(request);
+					return makeResult(
+						settleRequests.length === 1
+							? JSON.stringify([{ nodeId: "不在窗口里的楼层", diffs: [] }])
+							: "[]",
+					);
+				},
+			};
+			const warmup = await warmupR6Copy({
+				store,
+				storyId: STORY,
+				branchNodeId: head.id,
+				client,
+			});
+			expect(warmup.floorNodeIds).toHaveLength(12);
+			expect(warmup.settleRequests).toBe(4);
+			const first = joined(settleRequests[0] as LlmRequest);
+			const retry = joined(settleRequests[1] as LlmRequest);
+			expect(first).not.toContain("只能是结算窗口里的楼层 id");
+			expect(retry).toContain("不在结算窗口里");
+			expect(retry).toContain("只能是结算窗口里的楼层 id");
+			expect(retry.length).toBeGreaterThan(first.length);
+			for (const nodeId of warmup.floorNodeIds) {
+				expect(store.getLedgerSettlement(nodeId)).not.toBeNull();
+			}
+		} finally {
+			store.close();
+		}
+	});
+
+	it("结算输出连续三次不合规时预热失败，不写结算记录", async () => {
+		const dir = makeDir();
+		const source = buildSourceDb(dir);
+		const store = StoryStoreClass.open(source);
+		try {
+			const head = store.getHead(STORY);
+			if (head === null) throw new Error("测试数据库没有 head");
+			let settleCalls = 0;
+			const client: LlmClient = {
+				async complete(request) {
+					if (joined(request).includes("现场分析师")) {
+						return makeResult("现场分析。");
+					}
+					settleCalls += 1;
+					return makeResult(
+						JSON.stringify([{ nodeId: "不在窗口里的楼层", diffs: [] }]),
+					);
+				},
+			};
+			await expect(
+				warmupR6Copy({
+					store,
+					storyId: STORY,
+					branchNodeId: head.id,
+					client,
+				}),
+			).rejects.toThrow("不在结算窗口里");
+			expect(settleCalls).toBe(3);
+		} finally {
+			store.close();
+		}
+	});
+
 	it("探针只对原生档排期，每 6 轮一次、事实至少 10 楼", async () => {
 		const dir = makeDir();
 		const source = buildSourceDb(dir);

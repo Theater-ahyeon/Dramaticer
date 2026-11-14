@@ -14,6 +14,7 @@ import {
 	type BackgroundJobRegistry,
 	type ChatProfile,
 	type EmbeddingClient,
+	type FloorProposals,
 	type LlmCallOptions,
 	type LlmClient,
 	type LlmReasoningLevel,
@@ -22,9 +23,11 @@ import {
 	type LlmStream,
 	type LlmStreamingClient,
 	type LlmToolTransport,
+	MAX_BACKGROUND_JOB_ATTEMPTS,
 	NO_CONTINUATION,
 	SCENE_JOB_KIND,
 	SETTLE_WINDOW_FLOORS,
+	type SettlementWindow,
 	type StoryStore,
 	StoryStore as StoryStoreClass,
 	type StructuredOutputMode,
@@ -428,6 +431,43 @@ export interface R6WarmupOptions {
 	readonly now?: () => number;
 }
 
+/** 与后台任务的执行上限一致：结算输出不合规时最多请求 3 次。 */
+const SETTLE_ATTEMPTS = MAX_BACKGROUND_JOB_ATTEMPTS;
+
+/**
+ * 请求一次结算并解析。重试请求附带上一次的错误与可写楼层 id：同一条请求体
+ * 会命中响应缓存，原样重发只会拿回同一份坏输出。
+ */
+async function requestSettlement(
+	client: LlmClient,
+	window: SettlementWindow,
+): Promise<Map<string, FloorProposals>> {
+	const base = buildSettlementMessages(window);
+	let lastError: unknown = null;
+	for (let attempt = 1; attempt <= SETTLE_ATTEMPTS; attempt += 1) {
+		const messages =
+			lastError === null
+				? base
+				: [
+						...base,
+						{
+							role: "user" as const,
+							content: `上一次输出没有通过校验（${lastError instanceof Error ? lastError.message : String(lastError)}）。这是第 ${attempt} 次尝试，只输出一个 JSON 数组，nodeId 只能是结算窗口里的楼层 id：${window.nodeIds.join("、")}。`,
+						},
+					];
+		try {
+			const result = await client.complete(
+				{ messages, temperature: 0 },
+				NO_CONTINUATION,
+			);
+			return parseSettleResponse(result.text, window.nodeIds);
+		} catch (error) {
+			lastError = error;
+		}
+	}
+	throw lastError;
+}
+
 /**
  * 对分支点之前最近 12 个已生成完成的助手楼层执行 settle 与 scene；
  * 结算记录与现场分析已经存在时跳过，保证续跑不重复调用模型。
@@ -460,17 +500,10 @@ export async function warmupR6Copy(
 			batch,
 		);
 		if (window === null) continue;
-		const result = await counted.client.complete(
-			{
-				messages: buildSettlementMessages(window),
-				temperature: 0,
-			},
-			NO_CONTINUATION,
-		);
 		applySettlementProposals(
 			options.store,
 			window,
-			parseSettleResponse(result.text, window.nodeIds),
+			await requestSettlement(counted.client, window),
 		);
 	}
 	if (originalHead !== null) {
