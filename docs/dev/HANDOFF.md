@@ -3,11 +3,11 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-14 会话 406：完成 W3-T03.b（快回合检定工具）。新增 `packages/core/src/tools/rule-tools.ts`：`rule_check` 权限是 `propose`，参数只有 `ruleId`；按 `store.listStoryRules` 找到声明后由程序调用 `executeRuleCheck`，本回合此前的待提交写入先叠加到状态快照（同一回合连续检定不会重复扣减），结果与资源余量转成 `AcceptedStateUpdate` 进入 `proposedStateUpdates`，随楼层提交并由结算器校验（I12）。未知规则列出已声明的 id，资源不足与非法参数抛错，由执行器写成工具错误，不中断正文。工具注册进 `TOOL_PLUGINS` 的 `fast` 与 `deep` 两个阶段；`turn.ts` 按规则声明条数过滤：没有声明时不发给模型，`disabledTools` 带 `disabledReason`（「卡没有声明规则」或「本回合没有开放工具」），`DeepToolDefinition` 新增可选 `disabledReason`，执行器把它写进 Trace 与工具结果。web 的 `DEEP_TURN_TOOL_OPTIONS` 同步加 `rule_check`。新增 5 个测试（`packages/core/test/rule-tool.test.ts`：开放、不开放、未知规则与资源不足、同回合不重复扣减、非法参数），`deep-tools`、`plugin-background-tools` 的工具名单断言同步；`packages/web/test/deep-turn.test.ts` 通过。门禁通过（276 个测试文件、2,385 个测试、5 个跳过）。
+- 2026-11-14 会话 407：完成 W3-T03（规则执行层整体验收）。逐条核对 W3-T03.a/.b 的验收：`ledger-rules.test.ts` 覆盖 d20 达到与低于难度、资源扣减、无资源、资源不足与越界拒绝；`rule-tool.test.ts` 覆盖声明时开放、未声明时不开放（Trace 与工具结果带「卡没有声明规则」）、未知规则与资源不足、同回合不重复扣减、非法参数。新增一个用例「规则写入通过结算窗口校验，回合内不额外调用模型」：一次检定回合只有两次请求（主调用加工具轮），`prepareSettlementForNodes` 读回该楼层时 `covered` 是 `mvu.真气` 与 `rule.sword.result`、`invalid` 为空，证明规则写入走结算窗口的校验路径（I12）；工具是可选能力，提示词不强制调用（I13）。门禁通过（276 个测试文件、2,386 个测试、5 个跳过）。
 
-## 下一步（会话 407 先做）
-1. **W3-T03 整体验收**（依赖 W3-T03.a、.b，已满足）：逐条核对原任务验收（检定与资源数值、未声明时不开放工具、规则写入经过校验、回合内不额外调用模型），复核 I12 与 I13，把 W3-T03 标 `[x]`。需要的话补一个回合内后台客户端零调用的断言。
-2. **W4-T01 至 W4-T03**（导演：线与八种动作、推进三档、场面卡与章级规划）。
+## 下一步（会话 408 先做）
+1. **W4-T01 线与八种动作引擎**（依赖 W2-T02，已满足）：线对象与按楼层 diff 存储、八种动作选择纯函数、同一动作不连用三次、理由进 Trace 与 `explain`；在 `bits` 与 `mechanisms` 之上演进，`directorOrganization` 开关保留旧引擎。
+2. **W4-T02**（推进三档、伏笔账与章末清点）与 **W4-T03**（场面卡与章级规划）。
 3. R6 段：**R6-T07.b**（重 roll 点回放批次）、**R6-T07.c**（遗忘漏斗）、**R6-T07.d**（门槛判定 CLI）→ **R6-T99**；**R6-T06** 与 W2-T04 被 HUMAN-19 阻塞（`bg` 渠道额度 2026-11-17T11:44:35Z 重置）。
 4. **W3-T02.e** 被 HUMAN-22 阻塞：原样模式目前按导入字段注入；完整酒馆激活需要原始世界书入库并把 `st-content` 接进 server 运行时。
 5. **W2-T04** 继续被 HUMAN-19 阻塞。额度恢复后用 `pnpm --filter @dramaticer/st-compat scene-log-compare`（默认读 `eval-private/reports/scene-log/samples.json`，24 个楼层 ≥ 20）跑真实对照。不达标时保留独立任务并写 ADR。
@@ -20,8 +20,8 @@
 8. 阻塞检查：M6-T99 仍等 HUMAN-15；HUMAN-03、HUMAN-16、HUMAN-17、HUMAN-18、HUMAN-20、HUMAN-21 不阻塞；HUMAN-19 阻塞 R6-T06、R6-T99、W2-T04；HUMAN-22 阻塞 W3-T02.e。
 
 ## 当前状态
-- 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1–P4、C-T01 至 C-T05、H-T00 至 H-T99、X1.a 至 X1.e、X2.a 至 X2.d、R6-T00 至 R6-T05、R6-T07、R6-T07.a、W0-T00、W0-T01、W1-T01、W2-T01、W2-T02、W2-T03、W3-T01、W3-T02.a、W3-T02.b、W3-T02.c、W3-T02.d、W3-T03.a、W3-T03.b。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- 设计版本 v0.4（ADR-0139、ADR-0142）。W 阶段任务顺序：W0（完成）→ W1（完成）→ W2（T01–T03 完成，T04 被阻塞）→ W3（T01、T02.a–T02.d、T03.a、T03.b 完成，T02.e 被 HUMAN-22 阻塞，剩 T03 整体验收）→ W4 → R6 段（T07.b、T07.c、T07.d、T99）→ W5 → W6 → W7 → W8 → W9。
+- 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1–P4、C-T01 至 C-T05、H-T00 至 H-T99、X1.a 至 X1.e、X2.a 至 X2.d、R6-T00 至 R6-T05、R6-T07、R6-T07.a、W0-T00、W0-T01、W1-T01、W2-T01、W2-T02、W2-T03、W3-T01、W3-T02.a、W3-T02.b、W3-T02.c、W3-T02.d、W3-T03.a、W3-T03.b、W3-T03。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 设计版本 v0.4（ADR-0139、ADR-0142）。W 阶段任务顺序：W0（完成）→ W1（完成）→ W2（T01–T03 完成，T04 被阻塞）→ W3（T01、T02.a–T02.d、T03.a、T03.b、T03 完成，T02.e 被 HUMAN-22 阻塞）→ W4 → R6 段（T07.b、T07.c、T07.d、T99）→ W5 → W6 → W7 → W8 → W9。
 - 数据库 schema 版本 57（v51 `story_media`、v52 `story_settings.contextLayout`、v53 `scene_logs` 与 `scene_log_enabled`、v54 `scene_archives`、v55 `import_audit_entries` 与 `story_settings.import_mode`、v56 `import_audit_entries.memory`、v57 `story_rules`）。
 - 导入审计：`import_audit_entries` 每条对应一个世界书条目（含停用与空内容），主键 `(story_id, source)`，与 `lore_entries.source` 同构（`<前缀>:<世界书名称>:<条目键>`）；`matches` 存分型器给的规则命中，`rule_primary` 是规则首要类型，`kind` 是生效类型，`kind_source` 为 `rule`/`model`/`player`，`memory` 表示已转为初始记忆。重复导入只更新标题、正文、规则判定与 `constant`；只有 `kind_source = rule` 的 `kind` 跟着新规则变，`memory` 不变。
 - 导入模式：`story_settings.import_mode` 取 `upgrade`（默认）或 `raw`。核心的 `createLoreSlotProvider` 每轮读取设置与 `listImportAuditInjectionRules`：`raw` 用 lore 表的 `constant` 与关键词；`upgrade` 里常识全文、实体索引常驻，实体详情与规则命中时注入，其余类型不进入世界书段；`memory = 1` 的条目两种模式都不常驻、只按命中注入（标签【记忆】）；没有审计行的条目按 raw 处理。Trace 来源带「升级/原样」前缀。
@@ -29,7 +29,7 @@
 - 导入体检接口与页面：`buildImportAuditReport` 输出 `{storyId,total,counts,entries,unknown,authorOptions,pluginResidue,tokens}`；web 路由 `/stories/:id/audit`，三组审查条目、逐条改类型、恢复规则判定、升级/原样切换与插件残留转换都在这里。
 - 规则声明：`story_rules(story_id, rule_id, payload, created_at)` 存卡的 `extensions.dramaticer.rules`；`replaceStoryRules` 整批替换并在写入时校验，`listStoryRules` 读回时再校验。`DramaticerCardExtension.rules` 是解析后的声明；`importDramaticerExtension` 返回 `rules.replaced`，`ImportStoryCounts` 有 `rules`。
 - 规则执行：`executeRuleCheck(rule, {snapshot, roll?})` 返回 `{ruleId,label,target,roll,difficulty,success,resource,writes}`；骰子固定 d20，`difficulty` 1 到 20，成功条件是 `roll >= difficulty`。`writes` 先写 `mvu.<resource.path>` 的余量（`before - cost`），再写 `rule.<id>.result`。声明只在导入时替换，不按楼层存。
-- 检定工具：`rule_check` 的内置定义在 `tools/rule-tools.ts`，权限 `propose`，参数只有 `ruleId`；`executeRuleCheckTool` 先校验参数，未知规则列出已声明的 id，再按 `getStateSnapshot(beforeNodeId)` 加本回合已收集的 `proposedStateUpdates` 得到快照并调用 `executeRuleCheck`；返回工具文字与待提交写入。`turn.ts` 用 `store.listStoryRules(storyId).length` 决定是否把工具发给模型；没有声明时放进 `disabledTools` 并带 `disabledReason`。`tools/registry.ts` 的 `DeepToolDefinition` 新增可选 `disabledReason`，只有 `disabledTools` 里的定义会读它。内置工具注册表因此有十一个工具，快回合名单为四个只读工具加 `rule_check`。
+- 检定工具：`rule_check` 的内置定义在 `tools/rule-tools.ts`，权限 `propose`，参数只有 `ruleId`；`executeRuleCheckTool` 先校验参数，未知规则列出已声明的 id，再按 `getStateSnapshot(beforeNodeId)` 加本回合已收集的 `proposedStateUpdates` 得到快照并调用 `executeRuleCheck`；返回工具文字与待提交写入。`turn.ts` 用 `store.listStoryRules(storyId).length` 决定是否把工具发给模型；没有声明时放进 `disabledTools` 并带 `disabledReason`。`tools/registry.ts` 的 `DeepToolDefinition` 新增可选 `disabledReason`，只有 `disabledTools` 里的定义会读它。内置工具注册表因此有十一个工具，快回合名单为四个只读工具加 `rule_check`。规则写入的验收路径：`prepareSettlementForNodes` 的 `WindowFloor.covered` 含这两条、`invalid` 为空，`rule-tool.test.ts` 有对应用例。
 - 台账 `rule` 命名空间：只允许 `rule.<id>.result`，值为 `{roll,difficulty,success}`；`success` 必须等于 `roll >= difficulty`，未知字段与越界值都报错。`LEDGER_NAMESPACES` 现在是十个。
 - 状态定义：`SettlementWindow.stateDefinitions` 来自生效类型为 `state` 的审计条目；`buildSettlementMessages` 与 gap_pass 的系统提示词带「卡定义的状态定义」段，`formatStateDefinitions` 每条截 800 字、合计 4,000 字封顶并追加省略标记。状态变量由结算器按 `mvu.<变量路径>` 写入；升级模式的世界书段不含这些条目。
 - 世界书分型：`classifyWorldbookEntries(entries)` 只读 `StWorldInfoEntry`，返回 `{entries, counts}`；每条有 `matches[{kind, rules}]`、`primaryKind`、`mixed`。`primaryKind` 取 `IMPORT_ENTRY_KINDS` 顺序里第一个命中类型（`common` 最前，`unknown` 最后）。
@@ -101,6 +101,7 @@
 - `rule_check` 只做参数校验与声明查找，掷骰与资源扣减全部交给 `executeRuleCheck`；不要在工具层再掷一次，也不要自己算余量。
 - `rule_check` 的快照是本回合已收集的 `proposedStateUpdates` 叠加到 `getStateSnapshot(beforeNodeId)` 上；这样同一回合连续检定不会重复扣减，结算器仍按楼层 diff 复核（I12）。
 - 没有规则声明时不要把 `rule_check` 发给模型；`disabledTools` 里的定义带 `disabledReason`，执行器写进 Trace 与工具结果。`disabledReason` 只用于停用列表，不要加到启用工具的定义上。
+- 规则写入的校验断言用 `prepareSettlementForNodes(store, storyId, [nodeId])` 的 `WindowFloor`：`covered` 应含规则路径、`invalid` 为空；不要绕过结算窗口另写一套路径检查。
 - `rule.<id>.result` 的 `success` 必须与 `roll >= difficulty` 一致；不要放宽成任意布尔值，否则结算器与读取端会接受自相矛盾的事实。
 - 规则结果与资源余量是回合内写入，仍由后台结算窗口的 `readWindowFloor` 校验；非法条目会被删除并记入 `repairs`（I12）。
 - `executeRuleCheck` 的 `roll` 只在测试与回放里显式传入；生产由 `Math.random` 取 1 到 20。

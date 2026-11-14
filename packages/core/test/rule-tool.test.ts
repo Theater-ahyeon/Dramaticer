@@ -11,6 +11,7 @@ import {
 	createEventStream,
 	createHistorySlotProvider,
 	createStaticSlotProvider,
+	prepareSettlementForNodes,
 	runChatTurn,
 	validateLedgerDiff,
 } from "../src/index.js";
@@ -230,6 +231,31 @@ describe("rule_check 工具", () => {
 			mvu: { 真气: 3 },
 			rule: { sword: { result: value } },
 		});
+	});
+
+	it("规则写入通过结算窗口校验，回合内不额外调用模型", async () => {
+		const { store } = openTempStore();
+		seedStory(store, [sword(1, 2)], 5);
+		const { client, requests } = createScriptedClient([
+			{
+				text: "",
+				toolCalls: [
+					{ id: "call-1", name: "rule_check", arguments: { ruleId: "sword" } },
+				],
+			},
+			{ text: "剑光一闪。" },
+		]);
+
+		const result = await runFast({ store, client });
+
+		expect(requests).toHaveLength(2);
+		const window = prepareSettlementForNodes(store, "s1", [result.node.id]);
+		const floor = window?.floors[0];
+		expect(floor?.covered.map((item) => item.path.join(".")).sort()).toEqual([
+			"mvu.真气",
+			"rule.sword.result",
+		]);
+		expect(floor?.invalid).toEqual([]);
 	});
 
 	it("没有声明规则时不开放，调用被拒绝并记录原因", async () => {
