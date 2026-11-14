@@ -336,6 +336,16 @@ describe("一致性探针", () => {
 		expect(messages.at(-1)?.content).toContain("请回忆");
 		expect(judge.requests[0]?.messages[0]?.content).toContain("一致性裁判");
 		expect(judge.requests[0]?.messages[1]?.content).toContain(PROBE_ANSWER);
+		const stateSegment = probe.context.find(
+			(segment) => segment.slot === "state",
+		);
+		if (stateSegment === undefined) throw new Error("探针没有保存台账段");
+		expect(stateSegment.segmentId).toBe("state");
+		expect(stateSegment.source).toContain("diff");
+		expect(stateSegment.text).toContain("山门");
+		expect(probe.context.map((segment) => segment.segmentId)).toContain(
+			"history",
+		);
 		expect(store.getPathToHead(STORY_ID)).toHaveLength(27);
 		const first = records[0];
 		if (first === undefined || first.status !== "done") {

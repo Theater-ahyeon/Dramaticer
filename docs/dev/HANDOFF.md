@@ -3,28 +3,28 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-14 会话 411：完成 R6-T07.b（重 roll 点回放批次）。新增 `evalset/r6-replay.ts` 与 CLI `r6-replay`：`planR6Replay` 从路径与兄弟楼层表规划重 roll 点，被接受的是路径上的那一楼，放弃侧取 swipe 下标紧邻其下的那条（下标只从节点 id 后缀 `:s<N>` 读），更早的放弃 swipe 与「被接受不是最后一条 swipe」只计数；父楼层是助手楼层的兄弟楼层无法回放，只计入 `skippedAssistantParent`（真实数据 43 个点里有 1 个，可回放 42 个）。每个点复制源数据库、预热 12 楼，按种子 1 与种子 2 各生成一次（`generateAssistantTurn`，两个种子只差 `seed`），种子 1 的续写与被放弃侧、被接受侧各按两种顺序判一次；生成失败时两组各占两个失败槽位。sidecar 校验故事、玩家楼层、玩家消息、两侧节点与 swipe 下标、写作与裁判模型、两个种子，`running` 续跑、`done` 与 `failed` 复用；运行目录写出与 `r6-instrument` 同格式的 `aa-samples.jsonl`；汇总直接产出 `R6ReplayGateInput`。核心新增可选 `seed`：进入 `LlmRequest`、`requestCacheKey`、`LlmProviderRequest`、`ChatTurnOptions` 与 `ModelTurnOptions`，`PiLlmChannel` 用 pi 的 `samplingParams` 透传给 OpenAI 兼容适配器，不带种子时请求体与之前逐字节相同。ADR-0146。新增 9 个测试（含核心缓存键与路由透传）；门禁通过。
+- 2026-11-14 会话 412：完成 R6-T07.c（遗忘漏斗诊断）。`PlaytestProbeRecord` 新增 `context`（段 id、槽位名、来源与整段正文），`runPlaytestProbe` 在组装上下文之后、调用答题模型之前把 `assembled.segments` 写进记录，跳过与组装失败记空数组。新增 `evalset/r6-funnel.ts` 与 CLI `r6-funnel`：读 `r6-compare` 运行目录的 `runs/<故事>/<楼层>/native.json`，只取 `status = done` 且 `verdict = contradicted` 的探针，用同目录 `native.db` 只读归因。第一步读事实写入楼层及之前 6 楼（`SETTLE_CONFLICT_WINDOW_FLOORS`）原文：去空白后事实值整值出现记「有依据」，否则内容字符 4-gram 覆盖率 ≥ 0.5 记「弱依据」，都不成立记「无依据」；第二步只在 `slot = state` 的台账段里比对事实值与路径各段；三步按顺序判定、三类互斥，缺 `context` 的旧记录只计「无法归因」。报告只写三类条数、按故事分布、弱依据条数与改进方向，台账路径与裁判理由只进结果 JSON。ADR-0147。新增 7 个测试，`probe.test.ts` 补一条「探针记录带上下文段」断言；门禁通过（281 个测试文件、2,444 个测试、5 个跳过）。
 
-## 下一步（会话 412 先做）
-1. R6 段：**R6-T07.c**（遗忘漏斗诊断）、**R6-T07.d**（门槛判定 CLI）→ **R6-T99**。**R6-T06**、**R6-T99** 与 W2-T04 被 HUMAN-19 阻塞（`bg` 渠道额度 2026-11-17T11:44:35Z 重置）；T07.c 与 T07.d 的代码与假客户端测试照常进行。
-2. R6 段之后继续 **W5-T01、W5-T02** → **W6-T01 至 W6-T03** → **W7-T01 至 W7-T03** → **W8-T01、W8-T02** → **W9-T01 至 W9-T99**。W5-T01 的「推进」按钮直接把三档填进请求体的 `push`。
-3. **W3-T02.e** 被 HUMAN-22 阻塞：原样模式目前按导入字段注入；完整酒馆激活需要原始世界书入库并把 `st-content` 接进 server 运行时。
-4. **W2-T04** 继续被 HUMAN-19 阻塞。额度恢复后用 `pnpm --filter @dramaticer/st-compat scene-log-compare`（默认读 `eval-private/reports/scene-log/samples.json`，24 个楼层 ≥ 20）跑真实对照。不达标时保留独立任务并写 ADR。
-5. R6-T07.c 的实现要点：
-   - 探针记录要保存答题请求的上下文段（段 id、来源与文本），供「事实有没有进入 prompt」这一步使用；`PlaytestProbeRecord` 与 `runPlaytestProbe` 在 `evalset/probe.ts`。
-   - 新增 `evalset/r6-funnel.ts` 与 CLI `r6-funnel`：对每条判为矛盾的探针按三步归因（台账有无原文支撑、事实有没有进入答题上下文、进入 prompt 未答对），零写作调用，复用 `explain` 的读取路径；输出三类的条数与按故事分布。
-   - 现有 G4 的矛盾输入来自 `r6-compare` 的 `probes` 汇总与 `probe-report`；漏斗只做归因，不改门槛口径。
-6. R6-T07.d 的实现要点：`r6-gate` CLI 读 G0 的两份结果、G1 的两组配对、C1 的重复度与推进度、C3 的深回合结果与 G6 的偏好结果，组装 `R6GateInput` 交给 `evaluateR6Gates`；缺项直接失败并指出文件名，报告只写聚合数字与 slug。
-7. 阻塞检查：M6-T99 仍等 HUMAN-15；HUMAN-03、HUMAN-16、HUMAN-17、HUMAN-18、HUMAN-20、HUMAN-21、HUMAN-22 不阻塞其他任务；HUMAN-19 阻塞 R6-T06、R6-T99、W2-T04。
+## 下一步（会话 413 先做）
+1. R6 段只剩 **R6-T07.d**（门槛判定 CLI）→ **R6-T99**。**R6-T06**、**R6-T99** 与 W2-T04 被 HUMAN-19 阻塞（`bg` 渠道额度 2026-11-17T11:44:35Z 重置）；T07.d 的代码与假数据测试照常进行。
+2. R6-T07.d 的实现要点：
+   - 新增 `evalset/r6-gate.ts` 与 CLI `r6-gate`（`pnpm --filter @dramaticer/st-compat r6-gate --dir <私有运行目录>`）：读 G0 两份结果（`r6-instrument` 的 JSON、`r6-replay` 写出的 `aa-samples.jsonl` 经 instrument 的 A/A 结果）、G1 两组配对（`r6-replay` 的 JSON `summary.gateInput`）、C1 的重复度与推进度（`r6-compare` 每故事 JSON 的 `profiles[].repetition/progression`）、C3 深回合（`r6-deep` JSON）、G6 偏好（`r6-preference` JSON），组装 `R6GateInput` 交给 `evaluateR6Gates`。
+   - 缺任一项时直接失败并指出缺的文件名，不回落到默认值；报告写门槛表、B1 参考数字与遗忘漏斗表（漏斗读 `r6-funnel` 的 JSON）；只写聚合数字与 slug；同一输入重复运行逐字节相同（`generatedAt` 之外的时间字段要么省略要么由调用方传入固定值）。
+3. R6 段之后继续 **W5-T01、W5-T02** → **W6-T01 至 W6-T03** → **W7-T01 至 W7-T03** → **W8-T01、W8-T02** → **W9-T01 至 W9-T99**。W5-T01 的「推进」按钮直接把三档填进请求体的 `push`。
+4. **W3-T02.e** 被 HUMAN-22 阻塞：原样模式目前按导入字段注入；完整酒馆激活需要原始世界书入库并把 `st-content` 接进 server 运行时。
+5. **W2-T04** 继续被 HUMAN-19 阻塞。额度恢复后用 `pnpm --filter @dramaticer/st-compat scene-log-compare`（默认读 `eval-private/reports/scene-log/samples.json`，24 个楼层 ≥ 20）跑真实对照。不达标时保留独立任务并写 ADR。
+6. 阻塞检查：M6-T99 仍等 HUMAN-15；HUMAN-03、HUMAN-16、HUMAN-17、HUMAN-18、HUMAN-20、HUMAN-21、HUMAN-22 不阻塞其他任务；HUMAN-19 阻塞 R6-T06、R6-T99、W2-T04。
 
 ## 当前状态
-- 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1–P4、C-T01 至 C-T05、H-T00 至 H-T99、X1.a 至 X1.e、X2.a 至 X2.d、R6-T00 至 R6-T05、R6-T07、R6-T07.a、R6-T07.b、W0-T00、W0-T01、W1-T01、W2-T01、W2-T02、W2-T03、W3-T01、W3-T02.a、W3-T02.b、W3-T02.c、W3-T02.d、W3-T03.a、W3-T03.b、W3-T03、W4-T01、W4-T02、W4-T03。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- 设计版本 v0.4（ADR-0139、ADR-0142、ADR-0143、ADR-0144、ADR-0145、ADR-0146）。W 阶段任务顺序：W0（完成）→ W1（完成）→ W2（T01–T03 完成，T04 被阻塞）→ W3（T01、T02.a–T02.d、T03.a、T03.b、T03 完成，T02.e 被 HUMAN-22 阻塞）→ W4（完成）→ R6 段（T07.b 完成，T07.c、T07.d、T99 待做）→ W5 → W6 → W7 → W8 → W9。
+- 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1–P4、C-T01 至 C-T05、H-T00 至 H-T99、X1.a 至 X1.e、X2.a 至 X2.d、R6-T00 至 R6-T05、R6-T07、R6-T07.a、R6-T07.b、R6-T07.c、W0-T00、W0-T01、W1-T01、W2-T01、W2-T02、W2-T03、W3-T01、W3-T02.a、W3-T02.b、W3-T02.c、W3-T02.d、W3-T03.a、W3-T03.b、W3-T03、W4-T01、W4-T02、W4-T03。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 设计版本 v0.4（ADR-0139、ADR-0142、ADR-0143、ADR-0144、ADR-0145、ADR-0146、ADR-0147）。W 阶段任务顺序：W0（完成）→ W1（完成）→ W2（T01–T03 完成，T04 被阻塞）→ W3（T01、T02.a–T02.d、T03.a、T03.b、T03 完成，T02.e 被 HUMAN-22 阻塞）→ W4（完成）→ R6 段（T07.c 完成，T07.d、T99 待做）→ W5 → W6 → W7 → W8 → W9。
 - 数据库 schema 版本 61（v51 `story_media`、v52 `story_settings.contextLayout`、v53 `scene_logs` 与 `scene_log_enabled`、v54 `scene_archives`、v55 `import_audit_entries` 与 `story_settings.import_mode`、v56 `import_audit_entries.memory`、v57 `story_rules`、v58 `director_lines`、v59 `director_chapter_reviews`、v60 `story_settings` 重建并允许 `director_organization = lines`、v61 `scene_logs.scene_card`）。
 - 采样种子：`LlmRequest` 与 `LlmProviderRequest` 有可选 `seed`；`requestCacheKey` 把它写进请求体（不带种子时请求体不变），`LlmRouter` 透传，`PiLlmChannel` 转成 pi 的 `samplingParams`（只有 OpenAI 兼容适配器消费）。`ChatTurnOptions` 与 `ModelTurnOptions` 的 `seed` 一路传到请求。
 - 重 roll 回放：`evalset/r6-replay.ts`；`R6_REPLAY_FORMAT = "dramaticer.r6-replay"`，运行记录格式 `dramaticer.r6-replay-run`；`DEFAULT_R6_REPLAY_SEED = 1`、`R6_REPLAY_AA_SEED = 2`。`planR6Replay(story, path, siblingsByParent)` 返回 `{points, skippedAssistantParent}`；`R6ReplayPoint` 含 `sampleId`（`<故事>:<楼层>:reroll`）、`floor`、`parentUserNodeId`、`userText`、两侧节点与 swipe 下标、`extraAbandoned`、`acceptedIsLastSwipe`。`runR6Replay` 每个点复制一份数据库到 `<dir>/runs/<故事>/<楼层>/native.db`、sidecar 是同目录的 `replay.json`，A/A 样本写到 `<dir>/aa-samples.jsonl`。CLI 选项：`--db`、`--story`、`--floors`（单故事缩样）、`--dir`、`--json`、`--report`、`--aa`、`--model`、`--judge-model`、`--background-model`、`--channels`、`--cache`、`--seed`、`--budget`、`--max-tokens`。
 - 重 roll 回放的两组配对：`R6_REPLAY_GROUPS` 是 `abandoned`（对放弃侧）与 `accepted`（对接受侧）；判定复用 `judgeHistoricalReplaySample` 的两种顺序与 `normalizeB1Winner`/`normalizePairOutcome`；`summarizeR6Replay` 给出 `groups` 与 `gateInput`（`R6ReplayGateInput`）。生成失败时 `fillGenerationFailures` 写四条 `stage: "generation"` 的失败记录，`failures` 计入排除比例，`judgementsFailed` 也随之增加（`gates.ts` 要求判定失败数不少于失败配对）。
 - 真实数据的点分布：`xianxia` 24、`yuwang` 7（另有 1 个父楼层是助手楼层、无法回放）、`yinqi` 11，合计可回放 42 个；更早的放弃 swipe 共 5 条，全部点的被接受楼层都是最大 swipe 下标。
+- 遗忘漏斗：`evalset/r6-funnel.ts`，`R6_FUNNEL_FORMAT = "dramaticer.r6-funnel"`；`R6_FUNNEL_CLASSES` 是 `no-evidence`、`not-in-prompt`、`not-recalled`，标签在 `R6_FUNNEL_CLASS_LABELS`；`R6_FUNNEL_WEAK_EVIDENCE_COVERAGE = 0.5`。`attributeContradictedProbe({store, story, floor, probe})` 做三步归因，`runR6Funnel({dirs, log?, now?})` 扫 `runs/<故事>/<楼层>/native.json` 与同目录 `native.db`，`r6FunnelDirection(summary)` 取占比最大的一类，`formatR6FunnelReport` 只输出聚合数字。CLI 选项：`--dir`（可重复）、`--json`（默认 `eval-private/reports/r6/funnel.json`）、`--report`（默认 `eval-private/reports/r6/funnel.md`）。
+- 探针记录：`PlaytestProbeRecord.context` 是 `ProbeContextSegment[]`（`segmentId`、`slot`、`source`、`text`），来自答题请求实际用到的 `assembleContext(...).segments`；跳过与组装失败为空数组。旧 sidecar 没有这个字段，漏斗把它们的矛盾探针计入 `unattributed`。
 - 场面卡：`SceneLog.sceneCard` 为 `{present: [{who, want}], change}` 或 null；`assertSceneCard` 拒绝空在场者、空文本与重复人物。场记只在开新场的第一楼要求卡，其余楼层出现时整条丢弃并记 `repairs`（path 为 `["sceneCard"]`）。`createSceneCardSlotProvider` 用 `readSceneSegments` 找节点所属场次，场次已经结束（`endNodeId !== null`）或导演 `mode = "off"` 时返回 null，否则取该场第一个带卡的楼层，注入一条 system 消息：「场面卡：谁想要什么…这一场结束时应该改变：…」，来源为 `scene_card:楼层 <id>，<n> 人`。槽位名在 `CONTEXT_SLOT_NAMES` 里，默认模板两种排布置于 `scene` 与 `director` 之间（priority 52）。
 - 导演的线：`director_lines(node_id PRIMARY KEY, story_id, diffs, created_at)`，一行一个楼层的线修改；`set` 带完整线，`delete` 只带 id。存储层 `saveDirectorLines`（同楼层重复写入失败）、`getDirectorLines`、`readDirectorLineStates`；冷热由读取路径上的助手楼层数派生，其他分支不参与累加。线字段：`id`（≤64 字）、`kind`（`main`、`relationship`、`opposition`、`promise`）、`who`、`want`、`obstacle`、`countdown`（非负整数或 null）、`preparations`（最多三条、不重复、每条 ≤500 字）。单条文本 ≤500 字，每个楼层最多 50 条修改。
 - 伏笔账：`DirectorConfig.maxOpenPromises` 默认 5，`saveDirectorLines` 用 `assertPromiseBudget` 在写入前拒绝会让未兑现伏笔条数增加且超过上限的整批修改；`countOpenPromises` 是唯一的计数口径。超过上限的旧状态改内容、删除一条同时新建一条都允许。兑现优先级仍是「最老的 promise 线优先」。
@@ -54,7 +54,7 @@
 - 兼容插件线：`st-content`、`st-mvu`、`st-ejs`、`st-helper-host` 全部完成；`st-content` 的世界书激活只在共存评测里使用，没有接进 server 运行时。
 - 报告：`docs/dev/reports/P2.md`、`P3.md`、`P4.md`、`C-T01.md`、`C-T02.md`、`C-T03.md`、`C-T04.md`、`C-T05.md`、`H.md`、`X1.md`、`X2.md`。
 - 沙箱现状：`eval-private/st-sandbox/st` 有 36 个预设、68 张卡、89 个非驱动聊天片段；需要恢复原始预设时用 `sandbox --replace` 重建。
-- ADR-0088 至 ADR-0146 记录插件、沙箱、比对、兼容内容映射、EJS、沙箱执行、时间预算、流水线接入、模板生成、一致性评测、酒馆助手宿主、iframe 沙箱、STscript 子集、生成后台化、HTML 渲染、覆盖率口径、应用内助手、世界模型接口、实体档案、时序图谱、对比运行器、X1 判定、导演组织方式、剧情小品、X2 对比运行器、X2 判定、R6 预注册、评测调用输出预算、结算提示词楼层 id、v4 设计合并、故事图片、导入模式与初始记忆、规则声明与状态定义、线与八种动作的程序判断口径、推进三档与伏笔账与章末清点的程序口径、场面卡与章级规划的程序口径、重 roll 点回放与采样种子的程序口径。
+- ADR-0088 至 ADR-0147 记录插件、沙箱、比对、兼容内容映射、EJS、沙箱执行、时间预算、流水线接入、模板生成、一致性评测、酒馆助手宿主、iframe 沙箱、STscript 子集、生成后台化、HTML 渲染、覆盖率口径、应用内助手、世界模型接口、实体档案、时序图谱、对比运行器、X1 判定、导演组织方式、剧情小品、X2 对比运行器、X2 判定、R6 预注册、评测调用输出预算、结算提示词楼层 id、v4 设计合并、故事图片、导入模式与初始记忆、规则声明与状态定义、线与八种动作的程序判断口径、推进三档与伏笔账与章末清点的程序口径、场面卡与章级规划的程序口径、重 roll 点回放与采样种子的程序口径、遗忘漏斗的归因口径与探针上下文记录。
 - HUMAN-03 待处理（不阻塞）：抽查 `eval-private/evalset/spotcheck.md` 里的事件题。
 - HUMAN-15 待处理（M6-T99 需要）：把秋叶整合包 v3.2 的 ComfyUI 启动在 `http://127.0.0.1:8188`，并导出一份 API 格式 workflow JSON 到 `eval-private/comfyui/` 或告知路径。
 - HUMAN-16 至 HUMAN-18、HUMAN-20 至 HUMAN-22 待处理（HUMAN-22 阻塞 W3-T02.e，其余不阻塞）。
@@ -87,6 +87,8 @@
 - 采样种子目标测试：`pnpm exec vitest run packages/core/test/llm-router.test.ts packages/core/test/llm-cache.test.ts`。
 - 重 roll 点计划（三故事，打印点数与无法回放的点数）：`node .devloop/scratch/R6-T07.b/plan-real.mjs`（先 `pnpm run typecheck` 与 `pnpm --filter @dramaticer/st-compat build`）。
 - 重 roll 回放长任务：`pnpm --filter @dramaticer/st-compat r6-replay --db <源库> --story <id> --dir eval-private/reports/r6/replay [--floors <楼层>]`。
+- 遗忘漏斗目标测试：`pnpm exec vitest run packages/st-compat/test/r6-funnel.test.ts packages/st-compat/test/probe.test.ts`。
+- 遗忘漏斗：`pnpm --filter @dramaticer/st-compat r6-funnel --dir eval-private/reports/r6/c1/<slug> [--dir <path>] [--json <path>] [--report <path>]`。
 - R6 门槛与指标的目标测试：`pnpm exec vitest run packages/st-compat/test/gates.test.ts packages/st-compat/test/metrics.test.ts`。
 - R6 深回合目标测试：`pnpm exec vitest run packages/st-compat/test/r6-deep.test.ts packages/st-compat/test/deep-eval.test.ts`。
 - R6 B1 批次目标测试：`pnpm exec vitest run packages/st-compat/test/r6-b1.test.ts`（约 10 秒）。
@@ -114,6 +116,9 @@
 - 重 roll 回放的 sidecar 在 `<dir>/runs/<故事>/<楼层>/replay.json`，数据库是同目录的 `native.db`；`running` 续跑、`done` 与 `failed` 复用。文本或点变化后要删除 sidecar 才能重跑。
 - `planR6Replay` 遇到「被接受 swipe 的下标没有紧邻的兄弟楼层」直接抛错，不静默跳过；真实数据里没有这种点，出现时说明源库的 swipe 编号不连续。
 - 父楼层是助手楼层的兄弟楼层不能回放（生成需要玩家楼层作输入），只计入 `skippedAssistantParent`；G1 的门槛仍按 43 个计划点计，报告单列这一类点数。
+- 遗忘漏斗只读 `native.json` 与 `native.db`：第一步的比对窗口固定为事实写入楼层及之前 6 楼（`SETTLE_CONFLICT_WINDOW_FLOORS`），第二步只看 `slot = state` 的段；不要为漏斗另写一套上下文读取。
+- 探针的 `context` 是答题请求当时实际用到的段，不要事后重新组装；重新组装会拿到后来的槽位结果，第二步的结论就不成立。
+- 旧 sidecar 的探针没有 `context`，漏斗把它们计为 `unattributed`；要纳入三类统计必须重跑探针。
 - 导入审计的 `content` 是导入时的原文快照，与 `lore_entries.content`（去掉首尾空白）分开保存；体检页要显示条目正文时优先读审计行，停用条目没有 lore 行。
 - 审计的 `source` 必须与 lore 条目同构；`importWorldInfoLore` 是唯一写审计的路径，`importCharacterBookLore` 通过它转发。不要绕过它在别处拼来源。
 - `kind_source = rule` 的条目不要用 `setImportAuditEntryKind` 写成别的类型；回到规则判定时 `kind` 必须等于 `rule_primary`。

@@ -58,6 +58,15 @@ export interface ProbeJudgeVerdict {
 	readonly reason: string;
 }
 
+/** 答题请求里实际进入上下文的一段；遗忘漏斗据此判断事实有没有进 prompt。 */
+export interface ProbeContextSegment {
+	readonly segmentId: string;
+	readonly slot: string | null;
+	readonly source: string;
+	/** 这一段的全部消息正文，按顺序用空行拼接。 */
+	readonly text: string;
+}
+
 export interface PlaytestProbeRecord {
 	/** done 表示裁判给出判定；failed 表示探针或裁判出错；skipped 表示没有可出题的事实。 */
 	readonly status: "done" | "failed" | "skipped";
@@ -65,6 +74,8 @@ export interface PlaytestProbeRecord {
 	/** 探针执行时的 head；探针不改变它。 */
 	readonly nodeId: string;
 	readonly fact: ProbeFact | null;
+	/** 答题请求实际带上的上下文段；组装失败或跳过的探针为空数组。 */
+	readonly context: readonly ProbeContextSegment[];
 	readonly question: string | null;
 	readonly answer: string | null;
 	readonly verdict: ProbeVerdict | null;
@@ -398,6 +409,7 @@ export async function runPlaytestProbe(
 			round: input.round,
 			nodeId: input.headNodeId,
 			fact: null,
+			context: [],
 			question: null,
 			answer: null,
 			verdict: null,
@@ -414,6 +426,7 @@ export async function runPlaytestProbe(
 	}
 	let answer: string;
 	let answerUsage: LlmUsage | null;
+	let context: ProbeContextSegment[] = [];
 	try {
 		const assembled = await assembleContext({
 			template: input.template,
@@ -422,6 +435,12 @@ export async function runPlaytestProbe(
 			nodeId: input.headNodeId,
 			providers: input.providers,
 		});
+		context = assembled.segments.map((segment) => ({
+			segmentId: segment.segmentId,
+			slot: segment.slot,
+			source: segment.source,
+			text: segment.messages.map((message) => message.content).join("\n\n"),
+		}));
 		const result = await input.assistant.client.complete({
 			messages: [
 				...assembled.messages,
@@ -446,6 +465,7 @@ export async function runPlaytestProbe(
 			round: input.round,
 			nodeId: input.headNodeId,
 			fact,
+			context,
 			question,
 			answer: null,
 			verdict: null,
@@ -473,6 +493,7 @@ export async function runPlaytestProbe(
 		round: input.round,
 		nodeId: input.headNodeId,
 		fact,
+		context,
 		question,
 		answer,
 		verdict: judged.verdict,
