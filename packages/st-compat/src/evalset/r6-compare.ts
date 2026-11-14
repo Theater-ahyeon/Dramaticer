@@ -228,17 +228,17 @@ export interface R6CompareReport {
 	readonly runs: readonly R6CompareRunRecord[];
 }
 
-interface RequestStats {
+export interface RequestStats {
 	requests: number;
 	cachedRequests: number;
 }
 
-interface CountedClient {
+export interface CountedClient {
 	readonly client: LlmClient;
 	readonly stats: RequestStats;
 }
 
-interface CountedStreamingClient {
+export interface CountedStreamingClient {
 	readonly client: LlmStreamingClient;
 	readonly stats: RequestStats;
 }
@@ -1178,7 +1178,7 @@ function countClient(inner: LlmClient): CountedClient {
 	};
 }
 
-function countStreamingClient(
+export function countStreamingClient(
 	inner: LlmStreamingClient,
 ): CountedStreamingClient {
 	const stats: RequestStats = { requests: 0, cachedRequests: 0 };

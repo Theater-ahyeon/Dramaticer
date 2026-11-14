@@ -3,20 +3,20 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-13 会话 381：门禁修复。`packages/st-compat/test/st-ejs-sandbox.test.ts` 的“超时终止 worker，下一次执行重新启动”用例把预算设为 300 毫秒，在整轮并行门禁下第二次执行新建 worker 并 `require("ejs")` 的启动耗时超过预算，被判为超时；沙箱预算按墙钟计且包含 worker 启动，`runTurnHook` 的 `remainingMs()` 也按同一口径扣减，因此把该用例预算改为 2,000 毫秒并同步断言，没有改运行时。门禁通过（257 个测试文件、2,250 个测试、5 个跳过）。
+- 2026-11-14 会话 382：完成 R6-T03 B1 配对批次。新增 `packages/st-compat/src/evalset/r6-b1.ts` 与 CLI（`pnpm --filter @dramaticer/st-compat r6-b1`）：`planR6B1Samples` 复用 `planR6BranchPoints` 按路径深度取最多 10 个分支点，并定位其后第一条非空玩家消息与历史回复；每个分支点复制源数据库、预热 12 楼、用真实玩家消息生成一次原生续写，两种展示顺序各判一次，另做四项叙事质量评分。配对归一复用 `normalizeB1Winner` 与 `normalizePairOutcome`；生成失败、判定失败的样本单独记录，不阻断其他分支点；sidecar 校验故事、分支点、玩家消息、写作/裁判模型与种子，状态 `running` 时续跑，`done` 与 `failed` 直接复用。汇总输出计划/完成/胜/负/平/换序不一致/失败、Wilson 95% 区间、排除比例、换序不一致比例、裁判失败比例与样本不足判定，`r6B1GateInput` 直接作为 G1 输入；历史回复模型可用 JSON 映射补充并列出家族。`countStreamingClient` 从 `r6-compare.ts` 导出供复用。新增 5 个假客户端测试；门禁通过（258 个测试文件、2,255 个测试、5 个跳过）。
 
-## 下一步（会话 382 先做）
-1. 选择 **R6-T03 B1 配对批次**（依赖 R6-T01、R2-T05 已完成）。先读 `docs/dev/R6-PREREG.md` 第一、二、三节与 ADR-0135，并复用 `historical-replay` 的配对判定、`quality` 的质量评分与 R6-T02 的 `planR6BranchPoints`、`prepareR6RunCopy`、`warmupR6Copy`。新增 `evalset/r6-b1.ts` 与 CLI：全部分支点、每故事最多 10 个；每个分支点复制源库并预热 12 楼，用分支点之后第一条真实玩家消息生成一次原生续写，与当时的历史回复配对，两种顺序各判一次，再做叙事质量评分；记录胜、负、平、换序不一致与失败，sidecar 续跑，样本不足、判定失败与质量失败分别计数。
-2. 之后按 TASKS 顺序做 R6-T04（偏好一致率）、R6-T05（深回合批次，长任务）、R6-T06（C1 与 C2 长任务），最后 R6-T99 判定。T05 与 T06 写 `.devloop/jobs/` 申请并写 `WAITING`。
+## 下一步（会话 383 先做）
+1. 选择 **R6-T04 偏好一致率接线**（依赖 R6-T01、R2-T04.a 已完成）。先读 `docs/dev/R6-PREREG.md` 第一、二、三节与 ADR-0135，以及 `evalset/pairwise.ts`、`evalset/r6-b1.ts` 的配对归一。新增 `evalset/r6-preference.ts` 与 CLI：把 `preferences export` 的回复对交给 `pairwise`，两种顺序各判一次，换算成配对级一致（两种顺序都选中玩家接受侧）、不一致、平与换序不一致；真实配对少于 30 对时返回未证实（G6 条件门槛，不判未通过）。报告只含聚合数字。
+2. 之后按 TASKS 顺序做 R6-T05（深回合批次，长任务）与 R6-T06（C1 与 C2 长任务），最后 R6-T99 判定。T05 与 T06 写 `.devloop/jobs/` 申请并写 `WAITING`。
 3. 预注册文档在第一次批次运行后不得修改；必须调整时另写 v2、记 ADR、把评测轮次计数重置为 0。
 4. 阻塞检查：M6-T99 仍等 HUMAN-15（ComfyUI 与 API 格式 workflow）；HUMAN-03、HUMAN-16、HUMAN-17、HUMAN-18 不阻塞。
 
 ## 当前状态
-- 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1–P4、C-T01 至 C-T05、H-T00 至 H-T99、X1.a 至 X1.e、X2.a 至 X2.d、R6-T00、R6-T01、R6-T02。X 阶段完成。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1–P4、C-T01 至 C-T05、H-T00 至 H-T99、X1.a 至 X1.e、X2.a 至 X2.d、R6-T00、R6-T01、R6-T02、R6-T03。X 阶段完成。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
 - 兼容插件线：`st-content`、`st-mvu`、`st-ejs`、`st-helper-host` 全部完成（含一致性测试与共存评测）。
 - 数据库 schema 版本 50。本轮没有新增依赖。
 - 报告：`docs/dev/reports/P2.md`、`P3.md`、`P4.md`、`C-T01.md`、`C-T02.md`、`C-T03.md`、`C-T04.md`、`C-T05.md`、`H.md`、`X1.md`、`X2.md`。
-- R6 预注册：`docs/dev/R6-PREREG.md` v1、ADR-0135、DESIGN §14.2；门槛常量与判定由 R6-T01 实现，`R6_GATE_VERSION` 为 `v1`；C1 运行器由 R6-T02 实现，结果写入门槛版本。
+- R6 预注册：`docs/dev/R6-PREREG.md` v1、ADR-0135、DESIGN §14.2；门槛常量与判定由 R6-T01 实现，`R6_GATE_VERSION` 为 `v1`；C1 运行器由 R6-T02、B1 批次由 R6-T03 实现，结果写入门槛版本。
 - 世界模型：默认 `ledger`；`wiki` 与 `temporal_graph` 已经可用，由故事设置 `worldModel` 选择，只有 `temporal_graph` 支持 `atStoryTime`。
 - 导演组织方式：默认 `mechanisms`（现有机制序列）；`bits` 已可用，由故事设置 `directorOrganization` 选择。X2 判定见 ADR-0134 与 `docs/dev/reports/X2.md`。
 - X2 的输入与运行脚本在 `.devloop/scratch/X2.d/`：`inputs/`（消息、小品、条件样本）、`run-compare.mjs`、`summarize.mjs`、`runs/<slug>/`（复制数据库、缓存与 sidecar）、`smoke/`（2 轮冒烟结果）。长任务状态在 `.devloop/jobs/X2.d-01.status.json`（退出码 0）与 `.log`。
@@ -32,9 +32,12 @@
 - 门禁：`pnpm check`。
 - R6 门槛与指标的目标测试：`pnpm exec vitest run packages/st-compat/test/gates.test.ts packages/st-compat/test/metrics.test.ts`。
 - R6 C1 运行器目标测试：`pnpm exec vitest run packages/st-compat/test/r6-compare.test.ts`（约 40 秒）。
+- R6 B1 批次目标测试：`pnpm exec vitest run packages/st-compat/test/r6-b1.test.ts`（约 15 秒）。
 - EJS 沙箱与预算目标测试：`pnpm exec vitest run packages/st-compat/test/st-ejs-sandbox.test.ts packages/st-compat/test/st-ejs-budget.test.ts`。
 - R6 C1 单个故事（默认 30 轮、首中末 3 个分支点）：`pnpm --filter @dramaticer/st-compat r6-compare --db <源库> --story <id> --dir <运行目录> --json <结果 json> --report <报告 md>`。
 - R6 C1 缩样：在上面命令上加 `--rounds 2 --branches <楼层>`（`--branches` 只能配一个故事，楼层必须是规划结果里的助手楼层）。
+- R6 B1 全部样本：`pnpm --filter @dramaticer/st-compat r6-b1 --db <源库> --story <id> --dir <运行目录> --json <结果 json> --report <报告 md> [--historical-models <映射 json>]`。
+- R6 B1 缩样：在上面命令上加 `--branches <楼层>`（只能配一个故事，楼层必须是规划结果里的助手楼层）。
 - X2.d 重跑（断点续跑，已完成候选用 sidecar）：`node .devloop/scratch/X2.d/run-compare.mjs`。
 - X2.d 指标汇总：`node .devloop/scratch/X2.d/summarize.mjs`。
 - X2.d 单个故事：`node packages/st-compat/dist/evalset/director-organization-compare-cli.js --db <源库> --story <故事> --messages .devloop/scratch/X2.d/inputs/<slug>.messages.json --bits .devloop/scratch/X2.d/inputs/<slug>.bits.json --conditions .devloop/scratch/X2.d/inputs/<slug>.conditions.json --rounds 8 --repeat 3 --seed 1 --model main-fallback --judge-model judge --background-model background --dir .devloop/scratch/X2.d/runs/<slug>`。
@@ -48,7 +51,7 @@
 - 重建沙箱数据：`pnpm --filter @dramaticer/st-compat build && node packages/st-compat/dist/st-bench/cli.js sandbox --source "D:/SillyTavern" --replace`。
 - 生成组合清单：`node packages/st-compat/dist/st-bench/cli.js plan --sandbox eval-private/st-sandbox/st --batch <批次>`。
 - 逐条比对：`node packages/st-compat/dist/st-bench/cli.js compare --sandbox eval-private/st-sandbox/st --batch <批次> [--limit <数量>]`。
-- R6-T03 起的命令按各任务实现后补到这里；预注册里的命令形状见 `docs/dev/R6-PREREG.md` 第七节。
+- R6-T04 起的命令按各任务实现后补到这里；预注册里的命令形状见 `docs/dev/R6-PREREG.md` 第七节。
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
@@ -65,6 +68,8 @@
 - R6 的每个运行副本在开跑前对分支点之前最近 12 个已生成完成的助手楼层执行 `settle` 与 `scene`，只写复制库；台账覆盖范围只到预热窗口，报告必须单列这一限制。
 - R6 的胜率都按配对计数：两种展示顺序各判一次，胜率分母只含胜与负，平与换序不一致不计入分母；Wilson 95% 区间用配对计数计算。
 - R6 的 G6 是条件门槛：真实偏好配对少于 30 对时记未证实；B2 只在 B1 未通过且完成一轮改进后申请，单次不超过 60 次生成，必须先得到 HUMAN.md 确认。
+- R6-T03 的 B1 每个分支点只生成一轮：复制源数据库、预热 12 楼后，用分支点之后第一条非空玩家消息跑一次原生续写，回合后不执行后台任务；sidecar 在 `<dir>/runs/<故事>/<楼层>/b1.json`，数据库是同目录的 `native.db`。
+- R6-T03 的配对结果只用两种顺序都完成的样本：生成失败与判定失败都记入排除计数，`outcome` 为 null；质量评分失败只计入质量失败，不改变配对结果。历史回复模型从 DB 里读不到，CLI 的 `--historical-models` 接受 `{节点 id 或 "<故事>:<楼层>": "模型名"}` 的 JSON 映射；没有映射时家族清单为空并写明未记录。
 - ST 的原始安装目录只读：不得修改，不得复制出 `secrets.json`、`settings.json`、`cookie-secret.txt`；沙箱里不得配置真实模型端点，录制服务不持有模型客户端（I14）。
 - 测试文件里不能出现 I10 拦截的地址：只允许 `localhost`、`127.0.0.1`、`example.com`/`example.org`/`example.invalid` 作为主机名，不能出现 `eval-private` 字面量（用 `stBenchPaths(repoRoot).privateRoot`）。
 - Windows 上并行跑测试会显著变慢；`vitest.config.ts` 默认 `testTimeout` 60 秒、`maxWorkers` 8；`afterEach` 删除临时目录用 `rmSync` 时必须带 `maxRetries` 与 `retryDelay`。

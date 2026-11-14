@@ -36,6 +36,7 @@
 		"world-model-compare": "tsc -b && node dist/evalset/world-model-compare-cli.js",
 		"director-organization-compare": "tsc -b && node dist/evalset/director-organization-compare-cli.js",
 		"r6-compare": "tsc -b && node dist/evalset/r6-compare-cli.js",
+		"r6-b1": "tsc -b && node dist/evalset/r6-b1-cli.js",
 		"memory-eval": "tsc -b && node dist/evalset/memory-cli.js",
 		"playtest": "tsc -b && node dist/evalset/playtest-cli.js",
 		"deep-eval": "tsc -b && node dist/evalset/deep-eval-cli.js",
