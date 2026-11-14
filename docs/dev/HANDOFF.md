@@ -3,39 +3,32 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-14 会话 376：X2.d 实跑输入准备与长任务申请。为 3 个源数据库（`xianxia`、`yuwang`、`yinqi`）各准备 8 条玩家消息、8 条剧情小品与 9 条条件样本（基础 5 条加 4 条故事合成样本），全部在 `.devloop/scratch/X2.d/inputs/`；小品覆盖 text 与 ledger 两类条件、冷却、`after` 顺序、不可重复与兜底；条件样本的人工标注覆盖 text 真/假、ledger 真/假与兜底。用 2 轮、1 次重复、seed 1 做了一次实跑冒烟：两个候选各完成 2 轮，0 失败，`bits` 每轮 1 次判断请求（起始楼层 1 次加 2 轮），条件核对 9/9 正确，盲测 3 胜 1 负；冒烟的两个候选都没有产生剧情笔记，线索兑现率记为 null。随后申请长任务 **X2.d-01**（`node .devloop/scratch/X2.d/run-compare.mjs`，3 个故事 × 2 个候选 × 3 次重复 × 8 轮，600 分钟上限），结果写 `WAITING`。
+- 2026-11-14 会话 377：X2.d 实跑判定。长任务 X2.d-01（`node .devloop/scratch/X2.d/run-compare.mjs`，80.4 分钟，退出码 0）完成 3 个故事 × 2 个候选 × 3 次重复 × 8 轮，两个候选各 3/3 次重复完成，0 次运行失败。合计：重复度 `bits` 0.0578 对 `mechanisms` 0.0560，推进度 86.2% 对 86.0%，线索兑现率 5/7（71.4%）对 2/3（66.7%），盲测胜率 70.7%（99 胜、41 负、1 平，95% 区间 62.7%–77.6%），条件判断 27/27 正确（错误、缺失、失败都是 0）。逐故事：`xianxia` 重复度 0.0375 对 0.0211、推进度 89.0% 对 93.5%，`yuwang` 兑现率 1/2 对 2/3。主要指标“不劣于”没有成立，判定保持 `mechanisms`，`bits` 留在 `directorOrganization` 开关后。产出 ADR-0134、`docs/dev/reports/X2.md`、DESIGN §14.4 判定行、TASKS 把 X2.d 标 `[x]`；没有代码改动；门禁通过。私有原始数据（含回复与故事标题）在 `eval-private/reports/director-organization-compare/`。
 
-## 下一步（会话 377 先做）
-1. 先读 `.devloop/jobs/X2.d-01.status.json` 与 `.devloop/jobs/X2.d-01.log`：退出码 0 就进入判定；失败就按日志修复输入或运行器，换序号（`X2.d-02`）重新申请，不要删已完成候选的 sidecar。
-2. 判定数据：`eval-private/reports/director-organization-compare/<slug>.json`（含回复，私有）；三个故事的逐故事报告在同一目录的 `<slug>.md`。用 `node .devloop/scratch/X2.d/summarize.mjs` 打印指标表、逐条条件判定与合计，脚本只输出数字与条件 id。
-3. 判定规则（DESIGN §14.4 与 X2 总验收）：
-   - 主要指标是重复度、推进度、线索兑现率；`bits` 必须不劣于 `mechanisms`（重复度不更高、推进度与兑现率不更低）。
-   - 盲测胜率必须明显高于 50%：点估计高于 50%，且 95% 区间下界高于 50%；平局不计入胜负。
-   - 条件判断准确率按人工标注逐条记录，分母是样本总数，缺失与失败计入分母；裁判只作辅助证据。
-   - 满足全部条件才把默认 `directorOrganization` 切到 `bits`；否则保持 `mechanisms`，`bits` 留在开关后。
-   - 线索兑现率若两边都没有样本（运行内没有新建剧情笔记），照实记为 null 并说明这项没有产出证据，不要补造数据。
-4. 产出：ADR-0134（背景、结果、判定、重评条件）、`docs/dev/reports/X2.md`（统计数字、样本数、逐条条件判定摘要、判定对照）、TASKS 把 X2.d 标 `[x]` 并写完成行、DESIGN §14.4 增补 X2 判定行、HANDOFF 重写、LOG 追加、`.devloop/result.json` 写 `DONE`，最后跑 `pnpm check` 再提交。
-5. 如果长任务失败率较高（例如某个故事多次写作失败），先看日志里的错误类别；内容安全拒答与渠道错误的处理方式不同，不要盲目重跑整个批次，sidecar 会复用已完成部分。
+## 下一步（会话 378 先做）
+1. 选择 **R6-T00 细化 R6 任务**（依赖 R5-T99、R3b-T99、R1-T99.a、H-T00，全部已完成）。R6 是效果门槛：预注册 B1 对比胜率判定方式与置信区间、矛盾率上限、重复度与推进度口径、深回合增益口径、偏好一致率口径，再拆成具体任务。
+2. 需要重评 X2 时按 ADR-0134 的条件：先查 `bits` 在 `xianxia` 上重复度升高与推进度下降的原因，再用 `.devloop/scratch/X2.d/run-compare.mjs` 重跑（sidecar 会复用已完成的候选与重复，改输入或种子会导致校验失败并提示删除 sidecar），用 `.devloop/scratch/X2.d/summarize.mjs` 打印指标。重评门槛不变：至少 3 个故事上重复度不高于对照、推进度与兑现率不低于对照，盲测 95% 区间下界高于 50%，兑现率分母至少 10 条新建笔记。
+3. 阻塞检查：M6-T99 仍等 HUMAN-15（ComfyUI 与 API 格式 workflow）；HUMAN-03、HUMAN-16、HUMAN-17、HUMAN-18 不阻塞。
 
 ## 当前状态
-- 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1–P4、C-T01 至 C-T05、H-T00 至 H-T99、X1.a 至 X1.e、X2.a 至 X2.c。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1–P4、C-T01 至 C-T05、H-T00 至 H-T99、X1.a 至 X1.e、X2.a 至 X2.d。X 阶段完成。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
 - 兼容插件线：`st-content`、`st-mvu`、`st-ejs`、`st-helper-host` 全部完成（含一致性测试与共存评测）。
 - 数据库 schema 版本 50。本轮没有新增依赖。
-- 报告：`docs/dev/reports/P2.md`、`P3.md`、`P4.md`、`C-T01.md`、`C-T02.md`、`C-T03.md`、`C-T04.md`、`C-T05.md`、`H.md`、`X1.md`。
+- 报告：`docs/dev/reports/P2.md`、`P3.md`、`P4.md`、`C-T01.md`、`C-T02.md`、`C-T03.md`、`C-T04.md`、`C-T05.md`、`H.md`、`X1.md`、`X2.md`。
 - 世界模型：默认 `ledger`；`wiki` 与 `temporal_graph` 已经可用，由故事设置 `worldModel` 选择，只有 `temporal_graph` 支持 `atStoryTime`。
-- 导演组织方式：默认 `mechanisms`（现有机制序列）；`bits` 已可用，由故事设置 `directorOrganization` 选择。X2.d 的长任务 X2.d-01 正在等待执行，判定尚未得出。
-- X2.d 的输入与运行脚本在 `.devloop/scratch/X2.d/`：`inputs/`（消息、小品、条件样本）、`run-compare.mjs`、`summarize.mjs`、`runs/<slug>/`（复制数据库、缓存与 sidecar）、`smoke/`（2 轮冒烟结果）。
+- 导演组织方式：默认 `mechanisms`（现有机制序列）；`bits` 已可用，由故事设置 `directorOrganization` 选择。X2 判定见 ADR-0134 与 `docs/dev/reports/X2.md`。
+- X2 的输入与运行脚本在 `.devloop/scratch/X2.d/`：`inputs/`（消息、小品、条件样本）、`run-compare.mjs`、`summarize.mjs`、`runs/<slug>/`（复制数据库、缓存与 sidecar）、`smoke/`（2 轮冒烟结果）。长任务状态在 `.devloop/jobs/X2.d-01.status.json`（退出码 0）与 `.log`。
 - X1 的原始数据在 `eval-private/reports/world-model-compare/`（含故事标题与回复，不进入仓库）；长任务脚本与 sidecar 在 `.devloop/scratch/X1.e/`。
 - 沙箱现状：`eval-private/st-sandbox/st` 有 36 个预设、68 张卡、89 个非驱动聊天片段；预设连接字段已被驱动改写为录制端点与桩模型。需要恢复原始预设时用 `sandbox --replace` 重建。
 - 私有比对批次：`compare-smoke4`（5 个组合，修复后）与更早的 `compare-smoke2`、`compare-smoke3`、`session324-sanitize`。
-- ADR-0088 至 ADR-0133 记录插件、沙箱、比对、兼容内容映射、EJS、沙箱执行、时间预算、流水线接入、模板生成、一致性评测、酒馆助手宿主、iframe 沙箱、STscript 子集、生成后台化、HTML 渲染、覆盖率口径、应用内助手、世界模型接口、实体档案、时序图谱、对比运行器、X1 判定、导演组织方式、剧情小品与 X2 对比运行器的决策。
+- ADR-0088 至 ADR-0134 记录插件、沙箱、比对、兼容内容映射、EJS、沙箱执行、时间预算、流水线接入、模板生成、一致性评测、酒馆助手宿主、iframe 沙箱、STscript 子集、生成后台化、HTML 渲染、覆盖率口径、应用内助手、世界模型接口、实体档案、时序图谱、对比运行器、X1 判定、导演组织方式、剧情小品、X2 对比运行器与 X2 判定的决策。
 - HUMAN-03 待处理（不阻塞）：抽查 `eval-private/evalset/spotcheck.md` 里的事件题。
 - HUMAN-15 待处理（M6-T99 需要）：把秋叶整合包 v3.2 的 ComfyUI 启动在 `http://127.0.0.1:8188`，并导出一份 API 格式 workflow JSON 到 `eval-private/comfyui/` 或告知路径。
 - HUMAN-16、HUMAN-17、HUMAN-18 待处理（不阻塞）：临时目录清理、ST-Prompt-Template 与酒馆助手上游许可证确认。
 
 ## 可重复命令
 - 门禁：`pnpm check`。
-- X2.d 长任务（断点续跑，已完成候选复用 sidecar）：`node .devloop/scratch/X2.d/run-compare.mjs`。
+- X2.d 重跑（断点续跑，已完成候选用 sidecar）：`node .devloop/scratch/X2.d/run-compare.mjs`。
 - X2.d 指标汇总：`node .devloop/scratch/X2.d/summarize.mjs`。
 - X2.d 单个故事：`node packages/st-compat/dist/evalset/director-organization-compare-cli.js --db <源库> --story <故事> --messages .devloop/scratch/X2.d/inputs/<slug>.messages.json --bits .devloop/scratch/X2.d/inputs/<slug>.bits.json --conditions .devloop/scratch/X2.d/inputs/<slug>.conditions.json --rounds 8 --repeat 3 --seed 1 --model main-fallback --judge-model judge --background-model background --dir .devloop/scratch/X2.d/runs/<slug>`。
 - X2.d 冒烟：把上面命令的 `--rounds` 改 2、`--repeat` 改 1、`--dir` 改 `.devloop/scratch/X2.d/smoke`。
@@ -76,7 +69,8 @@
 - X2.c 的 `bits` 候选在开跑前对起始楼层判断一次，每轮结束对新助手楼层判断一次，走的是 `createDirectorBitJudgmentsHandler` 同一入口；判断请求计入每轮成本。判断失败只记错误，候选继续运行。
 - X2.c 的条件样本核对会为每条样本建独立临时故事，人工标注为准；`missing` 与 `failed` 都计入准确率分母，样本的 `bit.id` 必须等于样本 `id`，否则引擎明细按 id 取不到，会记为 `missing`。基础 fixture 是 `packages/st-compat/test/fixtures/director-conditions.json`，改动或追加样本不要引用私有原文。
 - X2.c 的推进度从第 2 轮起算：第 1 轮没有前文基准，不进入分母。线索兑现只看运行内新建的剧情笔记，运行前已有笔记不计入；结构化输出为 function-call 时，模型不调用写入工具就产生 0 条笔记，两边都可能是 null。
-- X2.d 的冒烟（2 轮）里两个候选都没有剧情笔记，线索兑现率是 null；8 轮实跑是否产生笔记以结果 JSON 为准，不要用冒烟结果推断。
+- X2.d 的 8 轮实跑里 `xianxia` 的对照没有新建笔记、`bits` 3/3 兑现，`yuwang` 2/3 对 1/2，`yinqi` 对照没有新建、`bits` 1/2；兑现率分母只有 1–3 条，判读时同时看分母（ADR-0134）。
+- X2.d 的盲测判定失败 3 条（`yuwang` 1、`yinqi` 2），只记入报告，不计入胜负与平局；裁判位置互换一致率为 `xianxia` 75.0%、`yuwang` 34.8%、`yinqi` 63.6%，盲测只作辅助证据。
 - `WorldModel.read` 的 `atStoryTime` 只有 `temporal_graph` 支持；台账与 wiki 会直接抛错。时间点标签必须是在当前路径上出现过的文字，顺序按首次出现建立（ADR-0128）；评测探针不要假设它等价于真实时间轴。
 - 时序图谱的失效段只在当前视图的 `sections` 里；时间点查询的 `state` 由命中的版本累加，`sections` 为空。`versions(nodeId)` 是调试与评测入口，不在状态槽位里使用。
 - 实体档案（`wiki`）的写入路径是 `["profile", "<人物>"]`，其余路径按台账 diff 校验；档案实体必须是台账 `character` 里的人物，人物字段逐项写，整对象写人物会被 `validateLedgerDiff` 拒绝。
