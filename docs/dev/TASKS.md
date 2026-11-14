@@ -1661,7 +1661,8 @@
   - 假客户端测试：配对归一、续跑、失败隔离、家族标记、样本不足判定。
   验收：假客户端下样本产出与配对结果可读；失败样本不污染其他样本；报告符合预注册字段；`pnpm check` 通过。
 
-- [ ] **R6-T04 偏好一致率接线** | 依赖：R6-T01、R2-T04.a | DESIGN §14.2、§14.5
+- [x] **R6-T04 偏好一致率接线** | 依赖：R6-T01、R2-T04.a | DESIGN §14.2、§14.5
+  完成：2026-11-14 新增 `evalset/r6-preference.ts` 与 CLI（`pnpm --filter @dramaticer/st-compat r6-preference`）：读取 `preferences export` 的 `.pairs.jsonl`，按故事校验后交给 `buildPreferenceSample` 与 `runPreferenceSample`，两种顺序各判一次；配对归一按两种顺序的接受/放弃/平结论换算成一致、不一致、平与换序不一致，缺少顺序或判定失败计入失败；记录写 `<dir>/records.jsonl` 并按样本与顺序续跑，裁判模型变化直接失败；汇总给出计划/完成/一致/不一致/平/换序不一致/失败、一致率、Wilson 95% 区间与判定失败比例，少于 30 对记未证实，`r6PreferenceGateInput` 直接作为 G6 输入；仓库报告只含聚合数字、故事 slug 与模型别名。新增 6 个测试（四种配对结果、少于 30 对、判定失败、缺失输入、续跑不调用裁判、源库不变）；门禁通过
   做什么：
   - 新增 `packages/st-compat/src/evalset/r6-preference.ts` 与 CLI：把 `preferences export` 的回复对交给 `pairwise`，按两种顺序判定，换算成配对级一致（两种顺序都选中玩家接受侧）、不一致、平与换序不一致；真实配对少于 30 对时返回未证实。
   - 测试用合成记录覆盖四种配对结果、少于 30 对、裁判失败与缺失输入。

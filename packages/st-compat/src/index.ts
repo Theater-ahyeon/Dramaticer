@@ -27,6 +27,7 @@ export * from "./evalset/quality.js";
 export * from "./evalset/question-files.js";
 export * from "./evalset/r6-compare.js";
 export * from "./evalset/r6-b1.js";
+export * from "./evalset/r6-preference.js";
 export * from "./evalset/scoreboard.js";
 export * from "./evalset/retrieval.js";
 export * from "./evalset/state-questions.js";
