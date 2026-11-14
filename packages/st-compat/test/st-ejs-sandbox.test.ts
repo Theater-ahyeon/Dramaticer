@@ -101,7 +101,8 @@ describe("EJS 沙箱", () => {
 
 	it("超时终止 worker，下一次执行重新启动", async () => {
 		const runtime = createStEjsRuntime();
-		const sandbox = sandboxed(runtime, { budgetMs: 300 });
+		// 预算包含 worker 启动与 require ejs 的耗时，Windows 上满载时启动可超过 300 毫秒
+		const sandbox = sandboxed(runtime, { budgetMs: 2_000 });
 		const startedAt = performance.now();
 		const result = await sandbox.run({
 			template: "<% while (true) {} %>",
@@ -112,7 +113,7 @@ describe("EJS 沙箱", () => {
 		expect(result.output).toBeNull();
 		expect(result.trace.outcome).toBe("timeout");
 		expect(result.trace.source).toBe("死循环");
-		expect(result.trace.reason).toContain("300");
+		expect(result.trace.reason).toContain("2000");
 		expect(result.trace.durationMs).toBeGreaterThanOrEqual(0);
 		expect(await runtime.render("<%= 1 + 1 %>")).toBe("2");
 	});

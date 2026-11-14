@@ -3,9 +3,9 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-13 会话 380：R6-T02 原生与朴素对比运行器。新增 `packages/st-compat/src/evalset/r6-compare.ts` 与 `r6-compare-cli.ts`（`pnpm --filter @dramaticer/st-compat r6-compare`）：`planR6BranchPoints` 按路径深度 10%–100% 取最近的助手楼层并过滤其后没有非空玩家消息与历史回复的点，`selectR6C1BranchPoints` 取首、中、末三个；每个分支点与档位各复制一份源数据库，预热逐楼执行 `settle` 与 `scene` 并单列请求；原生档先用模拟用户生成消息、写入 sidecar，朴素档逐字重放；探针只对原生档；报告池化重复度与推进度并给出成本、时延与失败。新增 6 个测试；门禁通过（257 个测试文件、2,250 个测试、5 个跳过）。
+- 2026-11-13 会话 381：门禁修复。`packages/st-compat/test/st-ejs-sandbox.test.ts` 的“超时终止 worker，下一次执行重新启动”用例把预算设为 300 毫秒，在整轮并行门禁下第二次执行新建 worker 并 `require("ejs")` 的启动耗时超过预算，被判为超时；沙箱预算按墙钟计且包含 worker 启动，`runTurnHook` 的 `remainingMs()` 也按同一口径扣减，因此把该用例预算改为 2,000 毫秒并同步断言，没有改运行时。门禁通过（257 个测试文件、2,250 个测试、5 个跳过）。
 
-## 下一步（会话 381 先做）
+## 下一步（会话 382 先做）
 1. 选择 **R6-T03 B1 配对批次**（依赖 R6-T01、R2-T05 已完成）。先读 `docs/dev/R6-PREREG.md` 第一、二、三节与 ADR-0135，并复用 `historical-replay` 的配对判定、`quality` 的质量评分与 R6-T02 的 `planR6BranchPoints`、`prepareR6RunCopy`、`warmupR6Copy`。新增 `evalset/r6-b1.ts` 与 CLI：全部分支点、每故事最多 10 个；每个分支点复制源库并预热 12 楼，用分支点之后第一条真实玩家消息生成一次原生续写，与当时的历史回复配对，两种顺序各判一次，再做叙事质量评分；记录胜、负、平、换序不一致与失败，sidecar 续跑，样本不足、判定失败与质量失败分别计数。
 2. 之后按 TASKS 顺序做 R6-T04（偏好一致率）、R6-T05（深回合批次，长任务）、R6-T06（C1 与 C2 长任务），最后 R6-T99 判定。T05 与 T06 写 `.devloop/jobs/` 申请并写 `WAITING`。
 3. 预注册文档在第一次批次运行后不得修改；必须调整时另写 v2、记 ADR、把评测轮次计数重置为 0。
@@ -32,6 +32,7 @@
 - 门禁：`pnpm check`。
 - R6 门槛与指标的目标测试：`pnpm exec vitest run packages/st-compat/test/gates.test.ts packages/st-compat/test/metrics.test.ts`。
 - R6 C1 运行器目标测试：`pnpm exec vitest run packages/st-compat/test/r6-compare.test.ts`（约 40 秒）。
+- EJS 沙箱与预算目标测试：`pnpm exec vitest run packages/st-compat/test/st-ejs-sandbox.test.ts packages/st-compat/test/st-ejs-budget.test.ts`。
 - R6 C1 单个故事（默认 30 轮、首中末 3 个分支点）：`pnpm --filter @dramaticer/st-compat r6-compare --db <源库> --story <id> --dir <运行目录> --json <结果 json> --report <报告 md>`。
 - R6 C1 缩样：在上面命令上加 `--rounds 2 --branches <楼层>`（`--branches` 只能配一个故事，楼层必须是规划结果里的助手楼层）。
 - X2.d 重跑（断点续跑，已完成候选用 sidecar）：`node .devloop/scratch/X2.d/run-compare.mjs`。
@@ -67,6 +68,7 @@
 - ST 的原始安装目录只读：不得修改，不得复制出 `secrets.json`、`settings.json`、`cookie-secret.txt`；沙箱里不得配置真实模型端点，录制服务不持有模型客户端（I14）。
 - 测试文件里不能出现 I10 拦截的地址：只允许 `localhost`、`127.0.0.1`、`example.com`/`example.org`/`example.invalid` 作为主机名，不能出现 `eval-private` 字面量（用 `stBenchPaths(repoRoot).privateRoot`）。
 - Windows 上并行跑测试会显著变慢；`vitest.config.ts` 默认 `testTimeout` 60 秒、`maxWorkers` 8；`afterEach` 删除临时目录用 `rmSync` 时必须带 `maxRetries` 与 `retryDelay`。
+- EJS 沙箱的时间预算按墙钟计，`StEjsSandbox.run` 从 dispatch 开始计时，包含新建 worker 与 worker 里 `require("ejs")` 的耗时；`runTurnHook` 的 `remainingMs()` 同样扣掉这部分。测试不要用接近 worker 启动耗时的预算（300 毫秒在整轮并行下会误判超时），要验证超时终止用 2 秒以上。
 - 整轮并行门禁连跑或与大量临时目录写入同时进行时，Windows 的系统扫描会拖慢文件与 SQLite 操作，出现过后台 worker 激活超时与 `gap-pass-compare` 的 30 秒用例超时；这些用例单独运行都通过。门禁失败先看失败是否只在整轮并行时出现，不要连续并发跑多轮整仓测试；`gap-pass-compare` 的 3 个用例上限已放宽到 180 秒。
 - `packages/st-compat` 与 `packages/server` 的测试通过 `@dramaticer/core` 的 `dist` 解析 core；只跑这些包的测试前先执行 `pnpm run typecheck`。
 - 结构化 JSON 请求一律使用 `NO_CONTINUATION`；正文写作与散文类后台输出保留续写。上下文摘要按结构化请求处理，也使用 `NO_CONTINUATION`。
