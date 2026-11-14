@@ -269,6 +269,30 @@ describe("ApiClient", () => {
 		});
 	});
 
+	it("连载视图的 nodeId 按参数拼查询串", async () => {
+		const { client, calls } = clientFor(() =>
+			jsonResponse({
+				storyId: "s1",
+				nodeId: null,
+				chapters: [],
+				cast: [],
+				timeline: [],
+				recap: {
+					stale: false,
+					staleHours: 12,
+					lastPlayedAt: null,
+					scenes: [],
+				},
+			}),
+		);
+		await client.getSerial("s1");
+		await client.getSerial("s1", "n 1");
+		expect(calls.map((call) => call.url)).toEqual([
+			"/api/stories/s1/serial",
+			"/api/stories/s1/serial?nodeId=n+1",
+		]);
+	});
+
 	it("中止信号按原样向上传递", async () => {
 		const controller = new AbortController();
 		const client = new ApiClient({

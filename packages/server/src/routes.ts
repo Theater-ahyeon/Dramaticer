@@ -87,6 +87,7 @@ import {
 	readLedger,
 	readLedgerFacts,
 	readSceneSegments,
+	readSerialView,
 	rejectLedgerChangeCard,
 	replaceDirectorPlan,
 	resolveImageProvider,
@@ -148,6 +149,7 @@ import {
 	type StoryOpeningsView,
 	type StoryPath,
 	type StoryProposalsView,
+	type StorySerialView,
 	type StoryTemplateView,
 	type StoryTree,
 	type StoryTreeNode,
@@ -333,6 +335,10 @@ export async function handleApiRequest(
 				case "clues":
 					requireMethod(method, ["GET"]);
 					handleStoryClues(res, options, storyId);
+					return;
+				case "serial":
+					requireMethod(method, ["GET"]);
+					handleStorySerial(res, options, storyId, url);
 					return;
 				case "entities":
 					requireMethod(method, ["GET"]);
@@ -1361,6 +1367,34 @@ function handleStoryClues(
 		clues:
 			head === null ? [] : listLedgerEntities(options.store, head.id).openClues,
 	};
+	sendJson(res, 200, view);
+}
+
+/**
+ * 连载视图。`nodeId` 省略时取当前 head；指定时只接受同一个故事的楼层，
+ * 分支回看与当前路径读的是同一套派生。
+ */
+function handleStorySerial(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	storyId: string,
+	url: URL,
+): void {
+	requireStory(options.store, storyId);
+	const raw = url.searchParams.get("nodeId");
+	let nodeId: string | undefined;
+	if (raw !== null) {
+		if (raw.length === 0) {
+			throw fieldError("nodeId", "nodeId 不能为空");
+		}
+		requireStoryNode(options.store, storyId, raw);
+		nodeId = raw;
+	}
+	const view: StorySerialView = readSerialView(
+		options.store,
+		storyId,
+		nodeId === undefined ? {} : { nodeId },
+	);
 	sendJson(res, 200, view);
 }
 

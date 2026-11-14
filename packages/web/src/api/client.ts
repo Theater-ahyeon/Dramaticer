@@ -59,6 +59,7 @@ import {
 	type StoryOpeningsView,
 	type StoryPath,
 	type StoryProposalsView,
+	type StorySerialView,
 	type StorySettings,
 	type StorySettingsUpdate,
 	type StoryTemplateView,
@@ -295,6 +296,15 @@ export class ApiClient {
 
 	async getClues(storyId: string): Promise<StoryCluesView> {
 		return this.json<StoryCluesView>("GET", `${storyPath(storyId)}/clues`);
+	}
+
+	async getSerial(storyId: string, nodeId?: string): Promise<StorySerialView> {
+		const query = new URLSearchParams();
+		if (nodeId !== undefined) query.set("nodeId", nodeId);
+		return this.json<StorySerialView>(
+			"GET",
+			`${storyPath(storyId)}/serial${queryText(query)}`,
+		);
 	}
 
 	async fulfillClue(

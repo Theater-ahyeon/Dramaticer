@@ -18,6 +18,7 @@ import type {
 	SceneControl,
 	ScenePace,
 	SceneSegment,
+	SerialView,
 	StateDiff,
 	Summary,
 	TimelineNode,
@@ -252,3 +253,9 @@ export interface StoryOpeningPickResult {
 	readonly node: TimelineNode;
 	readonly path: StoryPath;
 }
+
+/**
+ * `GET /api/stories/:id/serial`：前情提要、章节目录、人物关系页与时间线
+ * 共用的派生视图；查询参数 `nodeId` 省略时取当前 head。
+ */
+export type StorySerialView = SerialView;

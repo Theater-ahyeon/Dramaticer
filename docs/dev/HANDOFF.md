@@ -3,19 +3,21 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-14 会话 417：完成 W6-T02（重逢注入）。新增 `ledger/reunion.ts`：人物候选来自 `readCharacterProfiles`（上次出场取最后一场在场的归档），地点与物品取台账里仍存在的 `scene.places.<id>` 与 `item.<id>`（上次出场取最后一场 `stateChanges` 动过这条路径的归档，`change` 记那条变化），名字与别名用实体表扩充，规范化仍用 `normalizeEntityName`。`selectReunionMentions` 是纯程序判断：候选的任一名字/别名出现在当前楼层之前最近 20 楼原文里就不算久未出场；场记未结束时在场的人物也不注入；触发文本是本轮最后一条玩家消息，`lines` 组织方式下再加上同一套只读输入选出的动作建议（`readDirectorActionInput` + `selectDirectorAction`，不写决策记录）。注入走新增的 `reunion` 槽位，两种默认排布都排在 `profile` 与 `scene_card` 之间（priority 51），内容写上次出场的场次与摘要、当时的关系、最近三条未了结，地点与物品写最近变化与现况；推进档位随导演槽位一起重建。ADR-0152。新增 core 7 个测试；`pnpm check` 通过（288 个测试文件、2,503 个测试、5 个跳过）。
+- 2026-11-14 会话 418：完成 W6-T03.a（连载派生数据与接口）。先按 `AGENTS.md` 的上下文预算把 W6-T03 拆成 `.a`（派生数据与接口）、`.b`（可编辑记忆走变更卡）、`.c`（导出成书）、`.d`（连载页面与 e2e），本会话只做 `.a`。新增 core `serial/view.ts`：`readSerialView(store, storyId, {nodeId?, now?, recapScenes?, staleHours?})` 一次派生四块——章节目录取场次区间并按章末清点楼层收尾（清点落在哪一场，这一章就收在那一场）、前情提要取最近三场已归档场次的摘要与当时的处境、人物关系页合并 `readCharacterProfiles` 的档案、台账里人物档位/状态、`listLedgerEntities` 的有方向关系与 `readSceneKnowledge` 的不知情场次、时间线按路径顺序列出每场的故事时间与地点并补玩家跳时间（落场次结束楼层的跳跃不重复列）。场次的地点与故事时间读该场结束楼层（未结束时读视图楼层）的 `scene.current.place` 与 `time.current`。新增常量 `DEFAULT_SERIAL_RECAP_SCENES`（3）与 `DEFAULT_SERIAL_STALE_HOURS`（12）。接口 `GET /api/stories/:id/serial[?nodeId=]`，省略 `nodeId` 取 head，跨故事或不存在的楼层 404；protocol 新增 `StorySerialView`，web 客户端新增 `getSerial`。新增 core 6 个、server 3 个、web 1 个测试；`pnpm check` 通过（290 个测试文件、2,513 个测试、5 个跳过）。
 
-## 下一步（会话 418 先做）
-1. 选下一个可做的任务：**W6-T03 连载视图与前情提要** → **W7-T01 至 W7-T03** → **W8-T01、W8-T02** → **W9-T01 至 W9-T99**。W6-T03 做前情提要、章节目录、人物关系页、时间线、可编辑记忆与导出成书，依赖 W6-T01 与 W5-T01，现已满足。
+## 下一步（会话 419 先做）
+1. 选下一个可做的任务：**W6-T03.b 可编辑记忆走变更卡** → **W6-T03.c 导出成书** → **W6-T03.d 连载页面与 e2e** → **W7-T01 至 W7-T03** → **W8-T01、W8-T02** → **W9-T01 至 W9-T99**。W6-T03.b 的读取、批准、拒绝与回滚复用现有 `/proposals` 接口；只缺把玩家对台账路径的直接修改写成来源 `player` 的待定卡。
 2. **R6-T99** 仍被 HUMAN-19 阻塞（`bg` 渠道额度 2026-11-17T11:44:35Z 重置）。恢复后先跑 `r6-replay`、`r6-instrument`、`r6-compare`、`r6-deep`、`r6-preference`、`r6-funnel`，再用 `r6-gate --dir eval-private/reports/r6` 判定；报告写 `docs/dev/SCOREBOARD.md` 与 `docs/dev/reports/R6.md`，只写聚合数字与 slug。
 3. **W3-T02.e** 被 HUMAN-22 阻塞：原样模式目前按导入字段注入；完整酒馆激活需要原始世界书入库并把 `st-content` 接进 server 运行时。
 4. **W2-T04** 继续被 HUMAN-19 阻塞。额度恢复后用 `pnpm --filter @dramaticer/st-compat scene-log-compare`（默认读 `eval-private/reports/scene-log/samples.json`，24 个楼层 ≥ 20）跑真实对照。不达标时保留独立任务并写 ADR。
 5. 阻塞检查：M6-T99 仍等 HUMAN-15；HUMAN-03、HUMAN-16、HUMAN-17、HUMAN-18、HUMAN-20、HUMAN-21、HUMAN-22 不阻塞其他任务；HUMAN-19 阻塞 R6-T06、R6-T99、W2-T04。
 
 ## 当前状态
-- 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1–P4、C-T01 至 C-T05、H-T00 至 H-T99、X1.a 至 X1.e、X2.a 至 X2.d、R6-T00 至 R6-T05、R6-T07、R6-T07.a、R6-T07.b、R6-T07.c、R6-T07.d、W0-T00、W0-T01、W1-T01、W2-T01、W2-T02、W2-T03、W3-T01、W3-T02.a、W3-T02.b、W3-T02.c、W3-T02.d、W3-T03.a、W3-T03.b、W3-T03、W4-T01、W4-T02、W4-T03、W5-T01、W5-T02、W6-T01、W6-T02。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- 设计版本 v0.4（ADR-0139、ADR-0142、ADR-0143、ADR-0144、ADR-0145、ADR-0146、ADR-0147、ADR-0148、ADR-0149、ADR-0150、ADR-0151、ADR-0152）。W 阶段任务顺序：W0（完成）→ W1（完成）→ W2（T01–T03 完成，T04 被阻塞）→ W3（T01、T02.a–T02.d、T03.a、T03.b、T03 完成，T02.e 被 HUMAN-22 阻塞）→ W4（完成）→ R6 段（T07.a 至 T07.d 完成，T99 被 HUMAN-19 阻塞）→ W5（完成）→ W6（T01、T02 完成）→ W7 → W8 → W9。
-- 数据库 schema 版本 63（v51 `story_media`、v52 `story_settings.contextLayout`、v53 `scene_logs` 与 `scene_log_enabled`、v54 `scene_archives`、v55 `import_audit_entries` 与 `story_settings.import_mode`、v56 `import_audit_entries.memory`、v57 `story_rules`、v58 `director_lines`、v59 `director_chapter_reviews`、v60 `story_settings` 重建并允许 `director_organization = lines`、v61 `scene_logs.scene_card`、v62 `scene_controls` 与 `scene_archives` 重建、v63 `scene_archives.profiles` 与 `scene_archives.informed`）。W6-T02 没有迁移。
+- 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1–P4、C-T01 至 C-T05、H-T00 至 H-T99、X1.a 至 X1.e、X2.a 至 X2.d、R6-T00 至 R6-T05、R6-T07、R6-T07.a、R6-T07.b、R6-T07.c、R6-T07.d、W0-T00、W0-T01、W1-T01、W2-T01、W2-T02、W2-T03、W3-T01、W3-T02.a、W3-T02.b、W3-T02.c、W3-T02.d、W3-T03.a、W3-T03.b、W3-T03、W4-T01、W4-T02、W4-T03、W5-T01、W5-T02、W6-T01、W6-T02、W6-T03.a。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 设计版本 v0.4（ADR-0139、ADR-0142、ADR-0143、ADR-0144、ADR-0145、ADR-0146、ADR-0147、ADR-0148、ADR-0149、ADR-0150、ADR-0151、ADR-0152）。W 阶段任务顺序：W0（完成）→ W1（完成）→ W2（T01–T03 完成，T04 被阻塞）→ W3（T01、T02.a–T02.d、T03.a、T03.b、T03 完成，T02.e 被 HUMAN-22 阻塞）→ W4（完成）→ R6 段（T07.a 至 T07.d 完成，T99 被 HUMAN-19 阻塞）→ W5（完成）→ W6（T01、T02、T03.a 完成）→ W7 → W8 → W9。
+- 数据库 schema 版本 63（v51 `story_media`、v52 `story_settings.contextLayout`、v53 `scene_logs` 与 `scene_log_enabled`、v54 `scene_archives`、v55 `import_audit_entries` 与 `story_settings.import_mode`、v56 `import_audit_entries.memory`、v57 `story_rules`、v58 `director_lines`、v59 `director_chapter_reviews`、v60 `story_settings` 重建并允许 `director_organization = lines`、v61 `scene_logs.scene_card`、v62 `scene_controls` 与 `scene_archives` 重建、v63 `scene_archives.profiles` 与 `scene_archives.informed`）。W6-T03.a 没有迁移。
+- 连载视图：`serial/view.ts` 的 `readSerialView` 是前情提要、章节目录、人物关系页与时间线的唯一派生入口；四块都只读，不调用模型、不写数据库。`SerialScene` 带序号、起止楼层、楼层数、边界、归档摘要、在场者、地点与故事时间；`SerialChapter` 带序数、起点、章末清点楼层（未收尾时 null）、楼层数、所属场次序号与 `focusLineIds`；`SerialCharacter` 带是否在场（最近一条场记，没有场记时取最后一场归档，与 `profile` 槽位同一口径）、台账档位/状态/位置、上次出场、带标签的档案条目、有方向的关系与不知情场次；`SerialTimelineEntry` 的 `kind` 取 `scene` 或 `time`，`ordinal` 是路径序号（从 1 起）。`SerialRecap.stale` 由当前路径最后一楼的 `createdAt` 与 `now` 比较得出，阈值 `staleHours` 默认 12；`recapScenes` 默认 3。时间线只把来源为 `player` 的 `time.current` 写入当跳跃，且跳过场次结束楼层上已有的时间事实。
+- 连载接口：`GET /api/stories/:id/serial` 返回 `StorySerialView`（等于 core 的 `SerialView`）；`nodeId` 省略时取 head，指定时必须属于同一故事，否则 404；空 `nodeId` 返回 400。web 客户端的 `getSerial(storyId, nodeId?)` 已就位，页面在 W6-T03.d 接入。
 - 就地纠正：`chat/correction.ts` 的 `locateCorrectionSpan`（逐字、唯一）、`applyCorrectionSpan`（切片拼回、拒绝空输出与无变化）、`rewriteFloorSegment`（模型只收整楼原文 + 选中段 + 意见，只输出改写段；新楼层用 `editNode` 写成兄弟节点，同时写 `userWill.<id>`）。接口 `POST /api/nodes/:id/correct`，非法 `quote` 在调用模型前返回 400。
 - 场面控制：`ledger/scene-control.ts` 的 `endSceneAt`、`jumpSceneTime`、`setScenePace` 与 `SCENE_CONTROL_KINDS`、`SCENE_PACE_VALUES`。`scene_controls` 主键 `(node_id, kind)`，只接受当前路径的助手楼层。场次派生的第四个参数是 `playerEnds`，`boundary` 取 `player-ends`；场记判定优先于玩家结束，楼层上限最后。`SCENE_BOUNDARY_LABELS` 是 explain 与归档提示词的唯一措辞来源。
 - 调整节奏写进 `DirectorConfig.pace`（`slow` 0.6、`normal` 1、`fast` 1.6），故事设置是唯一存放处；`pace` 只影响节奏状态机的楼层需求，不新增开关。
@@ -70,6 +72,8 @@
 ## 可重复命令
 - 门禁：`pnpm check`。
 - 全量 e2e：`pnpm e2e`（会先构建 server 与 web；跑两个项目）。
+- 连载视图目标测试：`pnpm exec vitest run packages/core/test/serial.test.ts`。
+- 连载接口目标测试：`pnpm exec vitest run packages/server/test/serial.test.ts`（先 `pnpm run typecheck`）。
 - 线与动作目标测试：`pnpm exec vitest run packages/core/test/director-lines.test.ts`。
 - 场面卡与章级规划目标测试：`pnpm exec vitest run packages/core/test/scene-card.test.ts packages/core/test/chapter-plan.test.ts`。
 - 人物档案与知情标注目标测试：`pnpm exec vitest run packages/core/test/character-profile.test.ts packages/core/test/scene-archive.test.ts`。
@@ -202,6 +206,12 @@
 - 重逢注入的「最近窗口」只看当前楼层之前的原文，当前楼层（玩家消息）不算窗口；窗口楼数默认 20，改它要同步 `DEFAULT_REUNION_RECENT_FLOORS` 的说明。
 - 地点与物品的「上次出场」只认归档 `stateChanges` 里动过对应台账路径的那一场；归档没记到路径的条目不会被注入，补记录走归档提示词，不在读取端猜。
 - `lines` 组织方式下的导演建议只是触发文本，不写决策记录；不要为了重逢注入再调一次会写记录的 `engine.evaluate`。
+- 连载视图四块数据只从当前路径派生：章节目录的边界是章末清点楼层（清点落在哪一场，这一章就收在那一场），不是固定楼层数；没有清点时只剩一章（`endNodeId` 为 null）。
+- 连载视图里场次的地点与故事时间取该场结束楼层的 `scene.current.place` 与 `time.current`；未结束的场次取视图楼层。不要在序列化时另算一份台账。
+- 前情提要只收已归档场次（有 `summary` 的），未归档的当前场次只出现在章节目录与时间线里；`stale` 由视图楼层（通常是 head）的 `createdAt` 与计算时的时间比较，阈值默认 12 小时。
+- 人物关系页的在场口径与 `profile` 槽位一致（最近一条场记，没有时最后一场归档）；`uninformedScenes` 来自 `readSceneKnowledge`，当前场记里才出现的人不会被算进历史场的不知情名单。
+- 时间线只把来源 `player` 的 `time.current` 当跳跃；落场次结束楼层的跳跃不重复列（场次条目已经带故事时间）。扩展时间线条目种类时同步 `SerialTimelineKind`。
+- 连载接口的 `nodeId` 只做归属校验（同故事），不要求在当前路径上；查询空串返回 400，不存在的楼层与跨故事楼层 404。
 - 新迁移编号从 v64 起（v63 是 `scene_archives.profiles` 与 `scene_archives.informed`）。
 - `dramaticer explain` 的第 10 节使用默认上限 12；如果将来把 `maxSceneFloors` 做成故事设置，`explain` 必须改为从同一个来源读取。
 - 就地纠正只重写选中的一段：`quote` 必须逐字出现且只出现一次，出现多次直接 400；不要放宽成「取第一处」或模糊匹配，否则「其余逐字一致」就不成立。
