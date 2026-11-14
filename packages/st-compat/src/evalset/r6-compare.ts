@@ -1160,7 +1160,7 @@ function mean(values: readonly number[]): number | null {
 	return values.reduce((total, value) => total + value, 0) / values.length;
 }
 
-function countClient(inner: LlmClient): CountedClient {
+export function countClient(inner: LlmClient): CountedClient {
 	const stats: RequestStats = { requests: 0, cachedRequests: 0 };
 	return {
 		stats,

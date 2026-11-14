@@ -135,6 +135,8 @@ export interface DeepEvalOptions {
 	};
 	readonly turn: DeepEvalTurnConfig;
 	readonly existing?: readonly DeepEvalRecord[];
+	/** 连续失败达到这个数就终止该次运行；默认不终止。 */
+	readonly maxConsecutiveFailures?: number;
 	readonly onRecord: (record: DeepEvalRecord) => void | Promise<void>;
 	readonly log?: (message: string) => void;
 	readonly now?: () => number;
@@ -210,6 +212,25 @@ export function selectBranchRounds(turns: number, branches: number): number[] {
 	return unique;
 }
 
+/** 末尾连续失败的轮次；续跑时恢复“连续 3 轮失败终止”的计数。 */
+export function countTrailingTurnFailures(
+	records: readonly DeepEvalRecord[],
+): number {
+	const latest = new Map<number, DeepEvalRecord>();
+	for (const record of records) {
+		if (record.kind === "turn") latest.set(record.round, record);
+	}
+	const ordered = [...latest.entries()].sort(([left], [right]) => left - right);
+	let count = 0;
+	for (let index = ordered.length - 1; index >= 0; index -= 1) {
+		const record = ordered[index]?.[1];
+		if (record === undefined || record.kind !== "turn") break;
+		if (record.status !== "failed") break;
+		count += 1;
+	}
+	return count;
+}
+
 /** 依次跑深回合并做快/深分支点盲评；已有记录用于续跑。 */
 export async function runDeepEval(
 	options: DeepEvalOptions,
@@ -219,6 +240,16 @@ export async function runDeepEval(
 	}
 	if (!Number.isInteger(options.branches) || options.branches < 0) {
 		throw new Error("分支点数必须是非负整数");
+	}
+	const maxConsecutiveFailures =
+		options.maxConsecutiveFailures ?? Number.POSITIVE_INFINITY;
+	if (
+		maxConsecutiveFailures !== Number.POSITIVE_INFINITY &&
+		(!Number.isInteger(maxConsecutiveFailures) || maxConsecutiveFailures < 1)
+	) {
+		throw new Error(
+			`连续失败上限必须是正整数，收到 ${String(maxConsecutiveFailures)}`,
+		);
 	}
 	if (!options.store.getStory(options.storyId)) {
 		throw new Error(`故事不存在：${options.storyId}`);
@@ -236,6 +267,8 @@ export async function runDeepEval(
 	for (const round of completedTurns.keys()) {
 		lastRound = Math.max(lastRound, round);
 	}
+	let consecutiveFailures = countTrailingTurnFailures(records);
+	let stopped = false;
 	for (let round = lastRound + 1; round <= options.turns; round += 1) {
 		const startedAt = new Date(now()).toISOString();
 		const hint =
@@ -275,8 +308,14 @@ export async function runDeepEval(
 				error: error instanceof Error ? error.message : String(error),
 			};
 			records.push(record);
+			consecutiveFailures += 1;
 			await options.onRecord(record);
 			log(`第 ${round} 轮失败：${record.error}`);
+			if (consecutiveFailures >= maxConsecutiveFailures) {
+				stopped = true;
+				log(`连续 ${consecutiveFailures} 轮失败，终止该次运行`);
+				break;
+			}
 			continue;
 		}
 		const deep = result.trace.deep;
@@ -314,12 +353,26 @@ export async function runDeepEval(
 		};
 		records.push(record);
 		completedTurns.set(round, record);
+		consecutiveFailures = 0;
 		await options.onRecord(record);
 		log(
 			`第 ${round} 轮：楼层 ${record.nodeId}，首字 ${record.firstTokenMs ?? "—"} 毫秒，耗时 ${record.durationMs} 毫秒，工具 ${record.toolCallCount} 次，收束 ${record.stopReason}，漂移 ${record.drift ?? "无"}`,
 		);
 	}
-	if (options.branches > 0) {
+	const completedRounds = [...completedTurns.keys()].sort(
+		(left, right) => left - right,
+	);
+	if (stopped) {
+		log("运行已终止，不生成分支点");
+	} else if (
+		options.branches > 0 &&
+		completedRounds.length < options.branches
+	) {
+		throw new Error(
+			`分支点数 ${options.branches} 不能多于已完成轮数 ${completedRounds.length}`,
+		);
+	}
+	if (options.branches > 0 && !stopped) {
 		const head = options.store.getHead(options.storyId);
 		if (head === null) throw new Error("分支点盲评需要已有楼层");
 		const finished = new Set(
@@ -329,9 +382,6 @@ export async function runDeepEval(
 						record.kind === "branch" && !("status" in record),
 				)
 				.map((record) => record.sampleId),
-		);
-		const completedRounds = [...completedTurns.keys()].sort(
-			(left, right) => left - right,
 		);
 		const sampledRounds = selectBranchRounds(
 			completedRounds.length,
