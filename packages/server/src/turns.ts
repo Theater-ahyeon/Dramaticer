@@ -10,6 +10,7 @@ import {
 	LlmAllChannelsFailedError,
 	LlmProviderError,
 	type ParsedContent,
+	type RerollReason,
 	type StoryStore,
 	type TurnDraftSnapshot,
 	type TurnMode,
@@ -263,6 +264,7 @@ export async function handleRegenerateStream(
 	res: ServerResponse,
 	nodeId: string,
 	options: TurnRouteOptions,
+	rerollReason: RerollReason | null = null,
 ): Promise<void> {
 	const assistantNode = options.store.getNode(nodeId);
 	if (assistantNode === null) {
@@ -298,6 +300,7 @@ export async function handleRegenerateStream(
 			regenerateAssistantTurn({
 				...turnOptions(runtime, storyId, options),
 				assistantNodeId: nodeId,
+				rerollReason,
 				signal,
 				...hooks,
 			}),

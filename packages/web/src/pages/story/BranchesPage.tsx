@@ -236,6 +236,7 @@ export function BranchesPage() {
 			try {
 				for await (const event of api.streamRegenerate(
 					nodeId,
+					undefined,
 					controller.signal,
 				)) {
 					current = applyTurnEvent(current, event);

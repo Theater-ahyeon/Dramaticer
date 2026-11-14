@@ -2,10 +2,13 @@ import { expect, test } from "@playwright/test";
 import {
 	createImportedStory,
 	expectNoHorizontalOverflow,
+	latestAssistantNodeId,
+	latestUserNodeId,
 	login,
 	openStoryTab,
 	pathNodeCount,
 	readPreferenceCounts,
+	readSwipeReasons,
 	sendTurn,
 } from "./helpers";
 
@@ -50,11 +53,16 @@ test("两轮对话、思考折叠、选项偏好、读取工具与重新生成",
 		.last()
 		.getByRole("button", { name: "重新生成" })
 		.click();
+	await expect(page.locator(".reroll-reasons")).toBeVisible();
+	await page.locator(".reroll-reason", { hasText: "没推进" }).click();
 	await expect
 		.poll(() => readPreferenceCounts(storyId).get("swipe") ?? 0, {
 			timeout: 30_000,
 		})
 		.toBe(1);
+	await expect
+		.poll(() => readSwipeReasons(storyId))
+		.toEqual(["not-progressed"]);
 	expect(await pathNodeCount(page, storyId)).toBe(before);
 
 	await expectNoHorizontalOverflow(page);
@@ -116,5 +124,66 @@ test("深回合显示草稿、运行中追加要求与楼层运行时间线", as
 	await expect(timeline).toContainText("草稿替换");
 	await expect(timeline).toContainText("草稿提交");
 	await expect(timeline).toContainText("追加要求");
+	await expectNoHorizontalOverflow(page);
+});
+
+test("推进三档进入请求，原因重 roll 写进偏好与用户意志", async ({ page }) => {
+	const storyId = await createImportedStory(page, "推进与原因");
+	const organized = await page.request.put(`/api/stories/${storyId}/settings`, {
+		data: { directorOrganization: "lines" },
+	});
+	expect(organized.ok()).toBeTruthy();
+	await openStoryTab(page, storyId, "chat");
+
+	await sendTurn(page, storyId, "读取状态");
+
+	// 推进三档是单轮参数：三档各自把档位带进请求，导演据此选动作。
+	// 决策记录写在生成助手楼层的那条玩家楼层上。
+	for (const [label, kind] of [
+		["快速", "quick"],
+		["大幅", "jump"],
+		["推进", "advance"],
+	] as const) {
+		await page.locator(".composer-push-kind", { hasText: label }).click();
+		await expect(
+			page.locator(".composer-push-kind", { hasText: label }),
+		).toHaveAttribute("aria-pressed", "true");
+		const before = await pathNodeCount(page, storyId);
+		await page.locator(".composer-push-send").click();
+		await expect
+			.poll(() => pathNodeCount(page, storyId), { timeout: 30_000 })
+			.toBeGreaterThan(before);
+		await expect(page.locator(".composer-send")).toBeVisible({
+			timeout: 30_000,
+		});
+		const decision = await page.request.get(
+			`/api/nodes/${await latestUserNodeId(page, storyId)}/director`,
+		);
+		const decisionBody: unknown = await decision.json();
+		expect(JSON.stringify(decisionBody)).toContain(`"push":"${kind}"`);
+	}
+
+	// 原因重 roll：选中原因才开始重写，原因进入偏好信号与用户意志。
+	await page
+		.locator(".floor-assistant")
+		.last()
+		.getByRole("button", { name: "重新生成" })
+		.click();
+	await page.locator(".reroll-reason", { hasText: "太短" }).click();
+	await expect
+		.poll(() => readPreferenceCounts(storyId).get("swipe") ?? 0, {
+			timeout: 30_000,
+		})
+		.toBe(1);
+	expect(await readSwipeReasons(storyId)).toEqual(["too-short"]);
+
+	// 原因同时是一条长期纠正：它出现在新楼层的台账快照里。
+	const latest = await latestAssistantNodeId(page, storyId);
+	const ledger = await page.request.get(`/api/nodes/${latest}/ledger`);
+	expect(ledger.ok()).toBeTruthy();
+	const ledgerBody: unknown = await ledger.json();
+	expect(JSON.stringify(ledgerBody)).toContain("userWill");
+	expect(JSON.stringify(ledgerBody)).toContain("回复要写够分量");
+
 	await expectNoHorizontalOverflow(page);
 });

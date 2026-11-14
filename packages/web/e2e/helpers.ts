@@ -111,6 +111,28 @@ export function readPreferenceCounts(storyId: string): Map<string, number> {
 	}
 }
 
+/** 重 roll 记录的载荷；按写入顺序，最后一条是最近一次重 roll。 */
+export function readSwipeReasons(
+	storyId: string,
+): readonly (string | undefined)[] {
+	const db = new DatabaseSync(DB_PATH, { timeout: 5_000 });
+	try {
+		const rows = db
+			.prepare(
+				"SELECT payload FROM preference_events WHERE story_id = ? AND kind = 'swipe' ORDER BY created_at ASC, rowid ASC",
+			)
+			.all(storyId) as { payload: string }[];
+		return rows.map((row) => {
+			const payload: unknown = JSON.parse(row.payload);
+			if (typeof payload !== "object" || payload === null) return undefined;
+			if (!("reason" in payload)) return undefined;
+			return typeof payload.reason === "string" ? payload.reason : undefined;
+		});
+	} finally {
+		db.close();
+	}
+}
+
 export function insertChangeCard(input: {
 	readonly storyId: string;
 	readonly sourceNodeId: string;
@@ -152,6 +174,23 @@ export async function latestAssistantNodeId(page: Page, storyId: string) {
 		.find((node) => node.role === "assistant");
 	expect(assistant).toBeDefined();
 	return assistant?.id as string;
+}
+
+/** 路径上最后一条玩家楼层；导演决策记录写在这里。 */
+export async function latestUserNodeId(
+	page: Page,
+	storyId: string,
+): Promise<string> {
+	const response = await page.request.get(`/api/stories/${storyId}/path`, {
+		params: { limit: 200 },
+	});
+	expect(response.ok()).toBeTruthy();
+	const body = (await response.json()) as {
+		nodes: readonly { id: string; role: string }[];
+	};
+	const user = [...body.nodes].reverse().find((node) => node.role === "user");
+	expect(user).toBeDefined();
+	return user?.id as string;
 }
 
 export async function pathNodeCount(

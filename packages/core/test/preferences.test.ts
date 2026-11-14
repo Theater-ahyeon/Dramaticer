@@ -238,6 +238,19 @@ describe("偏好信号", () => {
 				payload: { beforeNodeId: assistant.id, afterNodeId: "n-other" },
 			}),
 		).toThrow(/必须等于记录的所在楼层/);
+		expect(() =>
+			store.recordPreference({
+				storyId: "story-1",
+				nodeId: assistant.id,
+				kind: "swipe",
+				// @ts-expect-error 未知原因必须在运行时拒绝
+				payload: {
+					abandonedNodeId: assistant.id,
+					acceptedNodeId: assistant.id,
+					reason: "shorter",
+				},
+			}),
+		).toThrow(/reason 只能是/);
 	});
 
 	it("数据库触发器拒绝修改与删除", () => {

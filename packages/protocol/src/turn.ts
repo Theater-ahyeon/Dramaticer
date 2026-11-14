@@ -1,9 +1,11 @@
 import type {
 	BlockDisplayStrategy,
 	DirectorIntensity,
+	DirectorPush,
 	LlmUsage,
 	ParsedContent,
 	PlotNote,
+	RerollReason,
 	StateDiff,
 	TimelineNode,
 	TurnMode,
@@ -17,6 +19,16 @@ export interface TurnRequest {
 	readonly mode?: TurnMode;
 	/** 单轮导演强度；省略时使用导演配置的强度。 */
 	readonly intensity?: DirectorIntensity;
+	/** 单轮推进档位；省略时是常规回合。 */
+	readonly push?: DirectorPush;
+}
+
+/**
+ * `POST /api/nodes/:id/regenerate` 的请求体：重 roll 的原因。
+ * 原因进入偏好信号、写成一条长期有效的纠正，并作为本次重写的即时指示。
+ */
+export interface NodeRegenerateRequest {
+	readonly reason?: RerollReason;
 }
 
 /** SSE 的 event 字段取值；客户端按这些名字分发。 */

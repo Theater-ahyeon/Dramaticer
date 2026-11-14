@@ -1,3 +1,4 @@
+import type { RerollReason } from "@dramaticer/core";
 import {
 	useCallback,
 	useEffect,
@@ -25,8 +26,12 @@ export interface ChatFloorListProps {
 	/** 每次加一表示页面要求跳到最新楼层。 */
 	readonly bottomSignal: number;
 	readonly retryingImageId: string | null;
+	/** 正在选重 roll 原因的楼层；null 表示没有打开。 */
+	readonly rerollNodeId: string | null;
 	readonly onLoadOlder: () => void;
 	readonly onRegenerate: (nodeId: string) => void;
+	readonly onPickRerollReason: (nodeId: string, reason: RerollReason) => void;
+	readonly onCancelReroll: () => void;
 	readonly onChooseOption: (nodeId: string, text: string) => void;
 	readonly onRetryImage: (nodeId: string, imageId: string) => void;
 }
@@ -191,7 +196,10 @@ export function ChatFloorList(props: ChatFloorListProps) {
 							props.draft === null && node.id === props.latestAssistantId
 						}
 						retryingImageId={props.retryingImageId}
+						rerollOpen={props.rerollNodeId === node.id}
 						onRegenerate={props.onRegenerate}
+						onPickRerollReason={props.onPickRerollReason}
+						onCancelReroll={props.onCancelReroll}
 						onChooseOption={props.onChooseOption}
 						onRetryImage={props.onRetryImage}
 						registerRow={registerRow}

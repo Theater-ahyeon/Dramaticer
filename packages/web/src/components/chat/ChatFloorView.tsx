@@ -1,3 +1,4 @@
+import type { RerollReason } from "@dramaticer/core";
 import { parseBlocks } from "@dramaticer/core/blocks";
 import { toDisplayedBlocks } from "@dramaticer/protocol";
 import { useMemo } from "react";
@@ -6,12 +7,17 @@ import type { ChatFloor } from "../../chat/path-state";
 import { BlockContent } from "./BlockContent";
 import { FloorImages } from "./FloorImages";
 import { FloorRunTimeline } from "./FloorRunTimeline";
+import { RerollReasonPicker } from "./RerollReasonPicker";
 
 export interface ChatFloorViewProps {
 	readonly node: ChatFloor;
 	readonly canRegenerate: boolean;
 	readonly retryingImageId: string | null;
+	/** 这一楼正在选重 roll 的原因；只有最新助手楼层会打开。 */
+	readonly rerollOpen: boolean;
 	readonly onRegenerate: (nodeId: string) => void;
+	readonly onPickRerollReason: (nodeId: string, reason: RerollReason) => void;
+	readonly onCancelReroll: () => void;
 	readonly onChooseOption: (nodeId: string, text: string) => void;
 	readonly onRetryImage: (nodeId: string, imageId: string) => void;
 	readonly registerRow: (nodeId: string, element: HTMLElement | null) => void;
@@ -22,7 +28,10 @@ export function ChatFloorView({
 	node,
 	canRegenerate,
 	retryingImageId,
+	rerollOpen,
 	onRegenerate,
+	onPickRerollReason,
+	onCancelReroll,
 	onChooseOption,
 	onRetryImage,
 	registerRow,
@@ -58,6 +67,13 @@ export function ChatFloorView({
 					</button>
 				) : null}
 			</header>
+			{rerollOpen ? (
+				<RerollReasonPicker
+					busy={!canRegenerate}
+					onPick={(reason) => onPickRerollReason(node.id, reason)}
+					onCancel={onCancelReroll}
+				/>
+			) : null}
 			<div className="floor-body">
 				{items === null ? (
 					<span className="text-segment">{node.raw}</span>

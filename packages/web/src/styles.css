@@ -929,6 +929,12 @@ button.candidate-scene-change {
 	border-color: var(--border);
 }
 
+button.candidate-self-driving {
+	background: var(--surface);
+	border-color: var(--accent);
+	color: var(--accent);
+}
+
 .candidate-kind {
 	color: var(--accent);
 	font-size: 0.8rem;
@@ -936,6 +942,76 @@ button.candidate-scene-change {
 
 .composer-stop {
 	background: var(--danger);
+}
+
+/* 推进：三档是互斥的按钮，主按钮只发一轮不带具体行动的回合。 */
+.composer-push {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+}
+
+.composer-push-kinds {
+	display: inline-flex;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	overflow: hidden;
+}
+
+button.composer-push-kind {
+	padding: 4px 10px;
+	border: 0;
+	border-radius: 0;
+	background: var(--surface);
+	color: var(--muted);
+	font-size: 0.8rem;
+}
+
+button.composer-push-kind[aria-pressed="true"] {
+	background: var(--accent-soft);
+	color: var(--accent);
+	font-weight: 600;
+}
+
+button.composer-push-send {
+	padding: 4px 12px;
+	border-color: var(--accent);
+	color: var(--accent);
+	font-size: 0.85rem;
+}
+
+.composer-push-hint {
+	font-size: 0.78rem;
+}
+
+/* 重 roll 的原因：选中即开始重写，取消不产生记录。 */
+.reroll-reasons {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
+	margin-top: 6px;
+	padding: 8px 10px;
+	border: 1px dashed var(--border);
+	border-radius: 10px;
+	background: var(--surface);
+	font-size: 0.82rem;
+}
+
+button.reroll-reason {
+	padding: 3px 9px;
+	border-radius: 999px;
+	background: var(--accent-soft);
+	border-color: #e4cdb8;
+	color: var(--text);
+	font-size: 0.8rem;
+}
+
+button.reroll-cancel {
+	padding: 3px 9px;
+	border-radius: 999px;
+	font-size: 0.8rem;
 }
 
 @media (min-width: 900px) {

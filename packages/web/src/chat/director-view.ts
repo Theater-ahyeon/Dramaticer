@@ -20,6 +20,7 @@ import type {
 	DirectorDecisionView,
 	NodeDirectorView,
 } from "@dramaticer/protocol";
+import { describeRerollReason } from "./reroll";
 
 export const DIRECTOR_MODE_CHOICES: readonly {
 	readonly value: DirectorMode;
@@ -519,6 +520,10 @@ export function buildTraceView(trace: TurnTrace): TraceView {
 			{ label: "楼层", value: trace.nodeId },
 			{ label: "回合模式", value: describeTurnMode(trace.turnMode) },
 			{ label: "对话档位", value: describeChatProfile(trace.profile) },
+			{
+				label: "重 roll 原因",
+				value: describeRerollReason(trace.rerollReason),
+			},
 			{ label: "模板", value: trace.templateId },
 			{ label: "生成时间", value: trace.createdAt },
 		],

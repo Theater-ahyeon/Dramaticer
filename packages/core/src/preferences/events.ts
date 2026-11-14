@@ -1,4 +1,5 @@
 import { assertPlainObject, rejectUnknownKeys } from "../json.js";
+import { REROLL_REASONS, type RerollReason, isRerollReason } from "./reroll.js";
 
 /** 偏好信号的四种来源；只用于评测与校准，不进入剧情上下文。 */
 export const PREFERENCE_EVENT_KINDS = [
@@ -20,6 +21,8 @@ export interface SwipePreferencePayload {
 	readonly abandonedNodeId: string;
 	/** 被接受的新回复楼层，必须也是记录的所在楼层。 */
 	readonly acceptedNodeId: string;
+	/** 玩家给出的重 roll 原因；不填表示没有说明。 */
+	readonly reason?: RerollReason;
 }
 
 export interface ChoicePreferencePayload {
@@ -120,7 +123,17 @@ export function assertPreferencePayload(
 	const object = assertPlainObject(payload, path);
 	switch (kind) {
 		case "swipe": {
-			rejectUnknownKeys(object, ["abandonedNodeId", "acceptedNodeId"], path);
+			rejectUnknownKeys(
+				object,
+				["abandonedNodeId", "acceptedNodeId", "reason"],
+				path,
+			);
+			const reason = object.reason;
+			if (reason !== undefined && !isRerollReason(reason)) {
+				throw new Error(
+					`${path}.reason 只能是 ${REROLL_REASONS.join("、")}，收到 ${JSON.stringify(reason)}`,
+				);
+			}
 			return {
 				abandonedNodeId: requireNonEmptyString(
 					object.abandonedNodeId,
@@ -130,6 +143,7 @@ export function assertPreferencePayload(
 					object.acceptedNodeId,
 					`${path}.acceptedNodeId`,
 				),
+				...(reason === undefined ? {} : { reason }),
 			};
 		}
 		case "choice": {

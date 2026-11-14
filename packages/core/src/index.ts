@@ -25,6 +25,7 @@ export * from "./memory/index.js";
 export * from "./opening/index.js";
 export * from "./plugins/index.js";
 export * from "./preferences/events.js";
+export * from "./preferences/reroll.js";
 export * from "./retrieval/chunk-index.js";
 export * from "./retrieval/chunk-text.js";
 export * from "./retrieval/hybrid.js";

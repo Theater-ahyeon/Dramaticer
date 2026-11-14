@@ -1,4 +1,4 @@
-import type { TurnMode } from "@dramaticer/core";
+import type { DirectorPush, RerollReason, TurnMode } from "@dramaticer/core";
 import type {
 	NodeActionsView,
 	NodeImagesView,
@@ -43,6 +43,7 @@ import {
 	emptyPathState,
 	markLoadingOlder,
 } from "../../chat/path-state";
+import { DEFAULT_PUSH, PUSH_TURN_TEXT } from "../../chat/push";
 import {
 	type TurnDraft,
 	applyTurnEvent,
@@ -106,6 +107,10 @@ export function ChatPage() {
 	);
 	const [actions, setActions] = useState<readonly CandidateActionItem[]>([]);
 	const [actionsError, setActionsError] = useState<unknown>(null);
+	/** 本轮的推进档位；只影响按下推进按钮的那一轮。 */
+	const [push, setPush] = useState<DirectorPush>(DEFAULT_PUSH);
+	/** 正在选重 roll 原因的助手楼层；null 表示没有打开。 */
+	const [rerollNodeId, setRerollNodeId] = useState<string | null>(null);
 	const [imageError, setImageError] = useState<unknown>(null);
 	const [retryingImageId, setRetryingImageId] = useState<string | null>(null);
 	/** 手动重试后立刻重新开始轮询。 */
@@ -408,7 +413,7 @@ export function ChatPage() {
 		});
 	};
 
-	const sendText = (text: string) => {
+	const sendText = (text: string, pushKind: DirectorPush | null = null) => {
 		if (storyId === undefined) return;
 		const trimmed = text.trim();
 		if (trimmed.length === 0) return;
@@ -416,17 +421,41 @@ export function ChatPage() {
 		void runStream(
 			storyId,
 			(signal) =>
-				api.streamTurn(storyId, { text: trimmed, mode: turnMode }, signal),
+				api.streamTurn(
+					storyId,
+					{
+						text: trimmed,
+						mode: turnMode,
+						...(pushKind === null ? {} : { push: pushKind }),
+					},
+					signal,
+				),
 			trimmed,
 			turnMode,
 		);
 	};
 
-	const regenerate = (nodeId: string) => {
+	/** 推进按钮：发一轮不带具体行动的回合，导演按档位选动作。 */
+	const pushTurn = () => {
+		sendText(PUSH_TURN_TEXT, push);
+	};
+
+	/** 重 roll 按钮：先问原因，选过原因才开始重写。 */
+	const requestReroll = (nodeId: string) => {
+		setRerollNodeId(nodeId);
+	};
+
+	const regenerate = (nodeId: string, reason: RerollReason | null = null) => {
 		if (storyId === undefined) return;
+		setRerollNodeId(null);
 		void runStream(
 			storyId,
-			(signal) => api.streamRegenerate(nodeId, signal),
+			(signal) =>
+				api.streamRegenerate(
+					nodeId,
+					reason === null ? undefined : { reason },
+					signal,
+				),
 			null,
 			null,
 		);
@@ -611,8 +640,13 @@ export function ChatPage() {
 				latestAssistantId={latestAssistantId}
 				bottomSignal={bottomSignal}
 				retryingImageId={retryingImageId}
+				rerollNodeId={rerollNodeId}
 				onLoadOlder={loadOlder}
-				onRegenerate={regenerate}
+				onRegenerate={requestReroll}
+				onPickRerollReason={(nodeId, reason) => {
+					regenerate(nodeId, reason);
+				}}
+				onCancelReroll={() => setRerollNodeId(null)}
 				onChooseOption={(nodeId, text) => {
 					void chooseOption(nodeId, text);
 				}}
@@ -624,7 +658,11 @@ export function ChatPage() {
 				<p className="turn-summary">{describeTurnSummary(summary)}</p>
 			)}
 			{draft === null ? (
-				<CandidateActions actions={actions} onPick={setInput} />
+				<CandidateActions
+					actions={actions}
+					onPick={setInput}
+					onPush={latestAssistantId === null ? undefined : pushTurn}
+				/>
 			) : null}
 			<ErrorNotice error={actionsError} />
 			<ErrorNotice error={imageError} />
@@ -682,6 +720,9 @@ export function ChatPage() {
 					streaming={streaming}
 					turnMode={turnMode}
 					onTurnModeChange={setTurnModeOverride}
+					push={push}
+					onPushChange={setPush}
+					onPush={pushTurn}
 					onChange={setInput}
 					onSend={() => sendText(input)}
 					onStop={() => abortRef.current?.abort()}

@@ -35,6 +35,7 @@ import {
 	type NodeEventsView,
 	type NodeImagesView,
 	type NodeLedgerView,
+	type NodeRegenerateRequest,
 	type NodeRetryRequest,
 	type NodeRunView,
 	type NodeTextRequest,
@@ -563,9 +564,16 @@ export class ApiClient {
 
 	async *streamRegenerate(
 		nodeId: string,
+		request?: NodeRegenerateRequest,
 		signal?: AbortSignal,
 	): AsyncGenerator<SseEvent> {
-		yield* this.stream(`${nodePath(nodeId)}/regenerate`, undefined, signal);
+		yield* this.stream(
+			`${nodePath(nodeId)}/regenerate`,
+			request === undefined || request.reason === undefined
+				? undefined
+				: { reason: request.reason },
+			signal,
+		);
 	}
 
 	/** 以已有的用户楼层重试这一轮；不追加新的用户楼层。 */

@@ -1004,6 +1004,59 @@ describe("POST /api/stories/:id/turns", () => {
 		expect(client.requests).toHaveLength(3);
 	});
 
+	it("重 roll 的原因进入偏好信号、用户意志与 Trace，非法原因在写楼层前拒绝", async () => {
+		const { running } = await startTurnServer([
+			{ text: "第一次回复" },
+			{ text: "重写后的回复" },
+		]);
+		const firstFrames = await new FrameStream(
+			await postTurn(running.origin, "开始。"),
+		).readAll();
+		const first = frameData(firstFrames, "turn.completed");
+
+		const response = await fetch(
+			`${running.origin}/api/nodes/${first.node.id}/regenerate`,
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ reason: "not-progressed" }),
+			},
+		);
+		expect(response.status).toBe(200);
+		const frames = await new FrameStream(response).readAll();
+		const regenerated = frameData(frames, "turn.completed");
+		expect(regenerated.trace.rerollReason).toBe("not-progressed");
+
+		const events = running.store.listPreferenceEvents("s1", { kind: "swipe" });
+		expect(events).toHaveLength(1);
+		expect(events[0]?.payload).toEqual({
+			abandonedNodeId: first.node.id,
+			acceptedNodeId: regenerated.node.id,
+			reason: "not-progressed",
+		});
+		const wills = running.store.getStateSnapshot(regenerated.node.id).state as {
+			userWill?: Record<string, unknown>;
+		};
+		expect(Object.keys(wills.userWill ?? {})).toHaveLength(1);
+
+		const before = running.store.listStoryNodes("s1").length;
+		const invalid = await fetch(
+			`${running.origin}/api/nodes/${regenerated.node.id}/regenerate`,
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ reason: "shorter" }),
+			},
+		);
+		expect(invalid.status).toBe(400);
+		const body = (await invalid.json()) as {
+			error: { code: string; details?: { path?: string } };
+		};
+		expect(body.error.code).toBe("bad_request");
+		expect(body.error.details?.path).toBe("reason");
+		expect(running.store.listStoryNodes("s1")).toHaveLength(before);
+	});
+
 	it("设置或渠道配置变化后重建运行时", async () => {
 		const { running, clientBuilds, setConfig } = await startTurnServer([
 			{ text: "一" },

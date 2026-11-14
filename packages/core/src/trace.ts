@@ -9,6 +9,7 @@ import type {
 	LlmUsage,
 } from "./llm/types.js";
 import type { TurnHookTraceEntry } from "./plugins/turn-hooks.js";
+import type { RerollReason } from "./preferences/reroll.js";
 import type { TurnRunStatus } from "./run-log.js";
 import type {
 	StructuredOutputIssue,
@@ -167,6 +168,11 @@ export interface TurnTrace {
 	readonly turnMode: TurnMode;
 	/** 本轮的对话档位：native 使用全部槽位，naive 是 B0 基线。 */
 	readonly profile: ChatProfile;
+	/**
+	 * 本轮是带原因的重写时，玩家给出的原因；其余情况为 null 或缺省。
+	 * 原因同时写进偏好信号与用户意志。
+	 */
+	readonly rerollReason?: RerollReason | null;
 	readonly createdAt: string;
 	readonly context: ContextTrace;
 	/** 实际生效的段落排布；自定义模板记 `custom`。旧 Trace 没有这个字段。 */

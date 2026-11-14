@@ -3,19 +3,18 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-14 会话 413：完成 R6-T07.d（门槛判定 CLI）。新增 `evalset/r6-gate.ts` 与 CLI `r6-gate`（`pnpm --filter @dramaticer/st-compat r6-gate --dir <私有运行目录>`）：读 G0 的 `r6-instrument.gateInput`、G1 的 `r6-replay.summary.gateInput`、全部 `compare-*.json` 的 `profiles[]`（重复度用 `pairs`、推进度用 `samples`、矛盾率用 native 档探针）、`r6-deep.summary`、`r6-preference.summary` 与 `r6-funnel.summary`，组装 `R6GateInput` 交给 `evaluateR6Gates`。缺项、`format` 不符、`gateVersion` 不是 v2、同一故事缺档位或重复档位都直接失败并指出文件名；`--dir` 与 `--json`、`--report` 的相对路径按仓库根目录解析。报告写门槛表（状态与原因）、全部计数与数值、B1 参考与遗忘漏斗表，只含聚合数字与 slug；结果 JSON 的 `inputs` 只记文件名；B1 合并多份结果时按合并计数重算 Wilson 区间；重复运行除 `generatedAt` 外逐字节相同。ADR-0148。新增 12 个测试；门禁通过（282 个测试文件、2,456 个测试、5 个跳过）。
+- 2026-11-14 会话 414：完成 W5-T01（推进按钮与带原因的重 roll）。输入区新增推进三档按钮与「让故事自己走」主按钮，档位只进下一轮请求体的 `push`；候选行动末尾固定一项「让故事自己走」。重 roll 先弹出六项原因（没推进、没听我的、太短、人设不对、格式乱、别推这条线），选中后才重写：原因进 swipe 偏好载荷的 `reason`、写成一条来源为玩家的长期纠正 `userWill.<id>`（同一原因只留一条），并以 system 消息追加在历史与导演之后；`TurnTrace.rerollReason` 记录原因。`POST /api/nodes/:id/regenerate` 接受可选 `{reason}`，非法原因在写楼层前返回 400（字段路径 `reason`）。ADR-0149。
 
-## 下一步（会话 414 先做）
-1. R6 段只剩 **R6-T99**（R6 验收），它被 HUMAN-19 阻塞（`bg` 渠道额度 2026-11-17T11:44:35Z 重置）：G0 的 A/A、G1 的重 roll 回放、C1 与 C3 的真实批次都要用 `background` 做预热结算与现场分析。额度恢复前按下面的顺序做 W5。
-2. 选下一个可做的任务：**W5-T01**（推进按钮与带原因的重 roll）→ **W5-T02** → **W6-T01 至 W6-T03** → **W7-T01 至 W7-T03** → **W8-T01、W8-T02** → **W9-T01 至 W9-T99**。W5-T01 的「推进」按钮直接把三档填进请求体的 `push`；重 roll 的六项原因随下一次生成进入用户意志并写入偏好信号（`preference_signals` 增加原因字段）。
-3. **R6-T99** 的执行要点（额度恢复后）：先跑 `r6-replay`、`r6-instrument`、`r6-compare`、`r6-deep`、`r6-preference`、`r6-funnel`，再用 `r6-gate --dir eval-private/reports/r6` 判定；报告写 `docs/dev/SCOREBOARD.md` 与 `docs/dev/reports/R6.md`，只写聚合数字与 slug。
-4. **W3-T02.e** 被 HUMAN-22 阻塞：原样模式目前按导入字段注入；完整酒馆激活需要原始世界书入库并把 `st-content` 接进 server 运行时。
-5. **W2-T04** 继续被 HUMAN-19 阻塞。额度恢复后用 `pnpm --filter @dramaticer/st-compat scene-log-compare`（默认读 `eval-private/reports/scene-log/samples.json`，24 个楼层 ≥ 20）跑真实对照。不达标时保留独立任务并写 ADR。
-6. 阻塞检查：M6-T99 仍等 HUMAN-15；HUMAN-03、HUMAN-16、HUMAN-17、HUMAN-18、HUMAN-20、HUMAN-21、HUMAN-22 不阻塞其他任务；HUMAN-19 阻塞 R6-T06、R6-T99、W2-T04。
+## 下一步（会话 415 先做）
+1. 选下一个可做的任务：**W5-T02**（就地纠正与场面控制）→ **W6-T01 至 W6-T03** → **W7-T01 至 W7-T03** → **W8-T01、W8-T02** → **W9-T01 至 W9-T99**。W5-T02 要做「选中正文一段后只重写该段并新建兄弟节点」与「结束这一场 / 跳到某个时间 / 调整节奏」，纠正同时记为用户意志。
+2. **R6-T99** 仍被 HUMAN-19 阻塞（`bg` 渠道额度 2026-11-17T11:44:35Z 重置）。恢复后先跑 `r6-replay`、`r6-instrument`、`r6-compare`、`r6-deep`、`r6-preference`、`r6-funnel`，再用 `r6-gate --dir eval-private/reports/r6` 判定；报告写 `docs/dev/SCOREBOARD.md` 与 `docs/dev/reports/R6.md`，只写聚合数字与 slug。
+3. **W3-T02.e** 被 HUMAN-22 阻塞：原样模式目前按导入字段注入；完整酒馆激活需要原始世界书入库并把 `st-content` 接进 server 运行时。
+4. **W2-T04** 继续被 HUMAN-19 阻塞。额度恢复后用 `pnpm --filter @dramaticer/st-compat scene-log-compare`（默认读 `eval-private/reports/scene-log/samples.json`，24 个楼层 ≥ 20）跑真实对照。不达标时保留独立任务并写 ADR。
+5. 阻塞检查：M6-T99 仍等 HUMAN-15；HUMAN-03、HUMAN-16、HUMAN-17、HUMAN-18、HUMAN-20、HUMAN-21、HUMAN-22 不阻塞其他任务；HUMAN-19 阻塞 R6-T06、R6-T99、W2-T04。
 
 ## 当前状态
-- 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1–P4、C-T01 至 C-T05、H-T00 至 H-T99、X1.a 至 X1.e、X2.a 至 X2.d、R6-T00 至 R6-T05、R6-T07、R6-T07.a、R6-T07.b、R6-T07.c、R6-T07.d、W0-T00、W0-T01、W1-T01、W2-T01、W2-T02、W2-T03、W3-T01、W3-T02.a、W3-T02.b、W3-T02.c、W3-T02.d、W3-T03.a、W3-T03.b、W3-T03、W4-T01、W4-T02、W4-T03。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- 设计版本 v0.4（ADR-0139、ADR-0142、ADR-0143、ADR-0144、ADR-0145、ADR-0146、ADR-0147、ADR-0148）。W 阶段任务顺序：W0（完成）→ W1（完成）→ W2（T01–T03 完成，T04 被阻塞）→ W3（T01、T02.a–T02.d、T03.a、T03.b、T03 完成，T02.e 被 HUMAN-22 阻塞）→ W4（完成）→ R6 段（T07.a 至 T07.d 完成，T99 被 HUMAN-19 阻塞）→ W5 → W6 → W7 → W8 → W9。
+- 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1–P4、C-T01 至 C-T05、H-T00 至 H-T99、X1.a 至 X1.e、X2.a 至 X2.d、R6-T00 至 R6-T05、R6-T07、R6-T07.a、R6-T07.b、R6-T07.c、R6-T07.d、W0-T00、W0-T01、W1-T01、W2-T01、W2-T02、W2-T03、W3-T01、W3-T02.a、W3-T02.b、W3-T02.c、W3-T02.d、W3-T03.a、W3-T03.b、W3-T03、W4-T01、W4-T02、W4-T03、W5-T01。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 设计版本 v0.4（ADR-0139、ADR-0142、ADR-0143、ADR-0144、ADR-0145、ADR-0146、ADR-0147、ADR-0148、ADR-0149）。W 阶段任务顺序：W0（完成）→ W1（完成）→ W2（T01–T03 完成，T04 被阻塞）→ W3（T01、T02.a–T02.d、T03.a、T03.b、T03 完成，T02.e 被 HUMAN-22 阻塞）→ W4（完成）→ R6 段（T07.a 至 T07.d 完成，T99 被 HUMAN-19 阻塞）→ W5（T01 完成）→ W6 → W7 → W8 → W9。
 - 数据库 schema 版本 61（v51 `story_media`、v52 `story_settings.contextLayout`、v53 `scene_logs` 与 `scene_log_enabled`、v54 `scene_archives`、v55 `import_audit_entries` 与 `story_settings.import_mode`、v56 `import_audit_entries.memory`、v57 `story_rules`、v58 `director_lines`、v59 `director_chapter_reviews`、v60 `story_settings` 重建并允许 `director_organization = lines`、v61 `scene_logs.scene_card`）。
 - 采样种子：`LlmRequest` 与 `LlmProviderRequest` 有可选 `seed`；`requestCacheKey` 把它写进请求体（不带种子时请求体不变），`LlmRouter` 透传，`PiLlmChannel` 转成 pi 的 `samplingParams`（只有 OpenAI 兼容适配器消费）。`ChatTurnOptions` 与 `ModelTurnOptions` 的 `seed` 一路传到请求。
 - 重 roll 回放：`evalset/r6-replay.ts`；`R6_REPLAY_FORMAT = "dramaticer.r6-replay"`，运行记录格式 `dramaticer.r6-replay-run`；`DEFAULT_R6_REPLAY_SEED = 1`、`R6_REPLAY_AA_SEED = 2`。`planR6Replay(story, path, siblingsByParent)` 返回 `{points, skippedAssistantParent}`；`R6ReplayPoint` 含 `sampleId`（`<故事>:<楼层>:reroll`）、`floor`、`parentUserNodeId`、`userText`、两侧节点与 swipe 下标、`extraAbandoned`、`acceptedIsLastSwipe`。`runR6Replay` 每个点复制一份数据库到 `<dir>/runs/<故事>/<楼层>/native.db`、sidecar 是同目录的 `replay.json`，A/A 样本写到 `<dir>/aa-samples.jsonl`。CLI 选项：`--db`、`--story`、`--floors`（单故事缩样）、`--dir`、`--json`、`--report`、`--aa`、`--model`、`--judge-model`、`--background-model`、`--channels`、`--cache`、`--seed`、`--budget`、`--max-tokens`。
@@ -53,7 +52,7 @@
 - 兼容插件线：`st-content`、`st-mvu`、`st-ejs`、`st-helper-host` 全部完成；`st-content` 的世界书激活只在共存评测里使用，没有接进 server 运行时。
 - 报告：`docs/dev/reports/P2.md`、`P3.md`、`P4.md`、`C-T01.md`、`C-T02.md`、`C-T03.md`、`C-T04.md`、`C-T05.md`、`H.md`、`X1.md`、`X2.md`。
 - 沙箱现状：`eval-private/st-sandbox/st` 有 36 个预设、68 张卡、89 个非驱动聊天片段；需要恢复原始预设时用 `sandbox --replace` 重建。
-- ADR-0088 至 ADR-0147 记录插件、沙箱、比对、兼容内容映射、EJS、沙箱执行、时间预算、流水线接入、模板生成、一致性评测、酒馆助手宿主、iframe 沙箱、STscript 子集、生成后台化、HTML 渲染、覆盖率口径、应用内助手、世界模型接口、实体档案、时序图谱、对比运行器、X1 判定、导演组织方式、剧情小品、X2 对比运行器、X2 判定、R6 预注册、评测调用输出预算、结算提示词楼层 id、v4 设计合并、故事图片、导入模式与初始记忆、规则声明与状态定义、线与八种动作的程序判断口径、推进三档与伏笔账与章末清点的程序口径、场面卡与章级规划的程序口径、重 roll 点回放与采样种子的程序口径、遗忘漏斗的归因口径与探针上下文记录。
+- ADR-0088 至 ADR-0147 记录插件、沙箱、比对、兼容内容映射、EJS、沙箱执行、时间预算、流水线接入、模板生成、一致性评测、酒馆助手宿主、iframe 沙箱、STscript 子集、生成后台化、HTML 渲染、覆盖率口径、应用内助手、世界模型接口、实体档案、时序图谱、对比运行器、X1 判定、导演组织方式、剧情小品、X2 对比运行器、X2 判定、R6 预注册、评测调用输出预算、结算提示词楼层 id、v4 设计合并、故事图片、导入模式与初始记忆、规则声明与状态定义、线与八种动作的程序判断口径、推进三档与伏笔账与章末清点的程序口径、场面卡与章级规划的程序口径、重 roll 点回放与采样种子的程序口径、遗忘漏斗的归因口径与探针上下文记录、推进按钮与带原因的重 roll 的程序口径。
 - HUMAN-03 待处理（不阻塞）：抽查 `eval-private/evalset/spotcheck.md` 里的事件题。
 - HUMAN-15 待处理（M6-T99 需要）：把秋叶整合包 v3.2 的 ComfyUI 启动在 `http://127.0.0.1:8188`，并导出一份 API 格式 workflow JSON 到 `eval-private/comfyui/` 或告知路径。
 - HUMAN-16 至 HUMAN-18、HUMAN-20 至 HUMAN-22 待处理（HUMAN-22 阻塞 W3-T02.e，其余不阻塞）。
@@ -66,6 +65,8 @@
 - 场面卡与章级规划目标测试：`pnpm exec vitest run packages/core/test/scene-card.test.ts packages/core/test/chapter-plan.test.ts`。
 - 组织方式与旧导演目标测试：`pnpm exec vitest run packages/core/test/director-organization.test.ts packages/core/test/director.test.ts packages/core/test/explain.test.ts`。
 - 推进档位接口目标测试：`pnpm exec vitest run packages/server/test/turns.test.ts -t "推进档位"`（先 `pnpm run typecheck`）。
+- 重 roll 原因目标测试：`pnpm exec vitest run packages/core/test/reroll-reason.test.ts packages/core/test/preferences.test.ts packages/server/test/turns.test.ts packages/web/test/api-client.test.ts packages/web/test/push-reroll.test.ts`。
+- 推进与重 roll 的 e2e：`cd packages/web && pnpm exec playwright test chat.spec.ts`（需要先 `pnpm --filter @dramaticer/server... --filter @dramaticer/web... build`；直接跑会用到旧 dist）。
 - X2 对比运行器目标测试：`pnpm exec vitest run packages/st-compat/test/director-organization-compare.test.ts`。
 - 检定工具与工具注册表目标测试：`pnpm exec vitest run packages/core/test/rule-tool.test.ts packages/core/test/plugin-background-tools.test.ts packages/core/test/deep-tools.test.ts packages/web/test/deep-turn.test.ts`。
 - 规则声明与状态定义目标测试：`pnpm exec vitest run packages/core/test/ledger-rules.test.ts packages/core/test/ledger.test.ts packages/st-compat/test/dramaticer-extension.test.ts`。
@@ -214,7 +215,7 @@
 - 台账页只在选中楼层后渲染故事级区块（实体、世界书），e2e 要显示立绘得先给故事补一层（`cover.spec.ts` 的 `seedFloor`）。
 - v4 起台账写入分硬状态与软知识；每条事实的 `sourceQuote` 必须逐字出现在源楼层，校验失败整条拒绝（W2-T01）。`knowledge` 不再新增写入。
 - 合并后台调用（场记）必须先通过结算一致率对照才能切默认；`gapPassEnabled` 与 `sceneLogEnabled` 在对照通过前保持关闭。
-- 重 roll 必须带原因，原因进入用户意志与偏好信号（W5）。
+- 重 roll 的原因可以省略；界面先弹出六项原因，选中后才重写。原因进 swipe 载荷的 `reason`、写成一条来源为玩家的长期纠正，并以 system 消息追加在历史与导演之后（ADR-0149）。
 - 结构化 JSON 请求一律使用 `NO_CONTINUATION`；正文写作与散文类后台输出保留续写。
 - 世界模型只用故事设置 `worldModel` 选择；状态槽位的 `packKey` 必须带种类（`state:<kind>`）。
 - 导演组织方式只用故事设置 `directorOrganization` 选择；单轮强度覆盖用 `engine` 重建槽位，单轮推进档位用同一个重建入口并写进 `packKey`。

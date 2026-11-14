@@ -35,6 +35,7 @@ import {
 	type NodeImageRecord,
 	OPENING_CANDIDATES_JOB_KIND,
 	OPENING_CANDIDATE_STATUSES,
+	type RerollReason,
 	STORY_SETTINGS_UPDATE_KEYS,
 	type StateDiff,
 	type Story,
@@ -51,6 +52,7 @@ import {
 	assertComfyUiSlots,
 	assertDirectorIntensity,
 	assertDirectorPush,
+	assertRerollReason,
 	buildImportAuditReport,
 	createBlockFormatSegment,
 	createDefaultContextTemplate,
@@ -158,7 +160,13 @@ import {
 } from "./assistant.js";
 import type { BackgroundScheduler } from "./background.js";
 import { renderCoverPlaceholder } from "./cover-placeholder.js";
-import { HttpError, readJsonBody, sendEmpty, sendJson } from "./http.js";
+import {
+	HttpError,
+	readJsonBody,
+	readOptionalJsonBody,
+	sendEmpty,
+	sendJson,
+} from "./http.js";
 import type { StoryRuntimeManager } from "./runtime.js";
 import {
 	readStoryMediaFile,
@@ -489,7 +497,7 @@ export async function handleApiRequest(
 				return;
 			case "regenerate":
 				requireMethod(method, ["POST"]);
-				await handleRegenerate(res, options, nodeId);
+				await handleRegenerate(req, res, options, nodeId);
 				return;
 			case "retry":
 				requireMethod(method, ["POST"]);
@@ -979,6 +987,7 @@ async function handleNodeChoice(
 }
 
 async function handleRegenerate(
+	req: IncomingMessage,
 	res: ServerResponse,
 	options: ApiRouteOptions,
 	nodeId: string,
@@ -987,7 +996,27 @@ async function handleRegenerate(
 	if (node.role !== "assistant") {
 		throw fieldError("nodeId", `楼层 ${nodeId} 不是助手楼层，不能重新生成`);
 	}
-	await handleRegenerateStream(res, nodeId, options);
+	const body = await readOptionalJsonBody(req, options.maxJsonBodyBytes);
+	const reason = readOptionalRerollReason(body);
+	await handleRegenerateStream(res, nodeId, options, reason);
+}
+
+/** 重 roll 的原因可以省略；给了就必须是已知取值。 */
+function readOptionalRerollReason(body: unknown): RerollReason | null {
+	if (body === null) return null;
+	if (!isJsonObject(body)) {
+		throw fieldError("body", "请求体必须是 JSON 对象");
+	}
+	assertKnownKeys(body, ["reason"]);
+	if (body.reason === undefined) return null;
+	try {
+		return assertRerollReason(body.reason, "重 roll 的 reason");
+	} catch (error) {
+		throw fieldError(
+			"reason",
+			error instanceof Error ? error.message : "重 roll 的 reason 不合法",
+		);
+	}
 }
 
 /** `POST /api/nodes/:id/retry`：只接受用户楼层，可带单轮模式。 */

@@ -39,6 +39,12 @@ import {
 	type TurnRequestRewriter,
 	assertTurnHookBudgetMs,
 } from "../plugins/turn-hooks.js";
+import {
+	type RerollReason,
+	applyRerollReasonWill,
+	assertRerollReason,
+	formatRerollCorrection,
+} from "../preferences/reroll.js";
 import type { TurnRunEventInput, TurnRunFinalStatus } from "../run-log.js";
 import type { StoryStore } from "../store/story-store.js";
 import {
@@ -164,11 +170,18 @@ export interface GenerateAssistantTurnOptions
 	readonly userNodeId: string;
 	/** 重新生成时被放弃的助手楼层；不设置时是普通生成，不写偏好记录。 */
 	readonly swipeFromNodeId?: string | null;
+	/**
+	 * 重 roll 的原因；只与被放弃楼层一起使用。原因进入偏好信号的载荷、
+	 * 写成一条长期有效的纠正，并作为本次重写的即时指示。
+	 */
+	readonly rerollReason?: RerollReason | null;
 }
 
 export interface RegenerateAssistantTurnOptions
 	extends Omit<ChatTurnOptions, "userText"> {
 	readonly assistantNodeId: string;
+	/** 玩家给出的重 roll 原因；不填表示没有说明。 */
+	readonly rerollReason?: RerollReason | null;
 }
 
 export interface ChatTurnResult {
@@ -430,6 +443,13 @@ export async function generateAssistantTurn(
 			`助手楼层需要以用户楼层为父节点：${userNode.id} 的角色是 ${userNode.role}`,
 		);
 	}
+	const rerollReason =
+		options.rerollReason === undefined || options.rerollReason === null
+			? null
+			: assertRerollReason(options.rerollReason);
+	if (rerollReason !== null && !options.swipeFromNodeId) {
+		throw new Error("重 roll 的原因只用于重新生成，普通生成不能带原因");
+	}
 	const resolved = applyTemplateDeepTurn(
 		options.template,
 		resolveTurnMode(
@@ -593,10 +613,21 @@ export async function generateAssistantTurn(
 					},
 	});
 	// 深回合在组装后的消息之后注入手记；快回合不注入。
-	const messages =
+	const noted =
 		notes === null
 			? rewritten.messages
 			: withDirectorNotes(options.store, rewritten.messages, userNode.id);
+	// 重 roll 的即时指示紧贴生成位置，排在历史与导演之后。
+	const messages =
+		rerollReason === null
+			? noted
+			: [
+					...noted,
+					{
+						role: "system" as const,
+						content: formatRerollCorrection(rerollReason),
+					},
+				];
 	const turnOptions = {
 		client: options.client,
 		messages,
@@ -729,6 +760,7 @@ export async function generateAssistantTurn(
 			raw: finalText,
 		});
 		recordRegeneratedSwipe(options, node);
+		recordRerollReasonWill(options, node, userNode, writesLedger);
 		if (notes !== null && notes.pending.length > 0) {
 			options.store.saveDirectorNotes({
 				storyId: options.storyId,
@@ -773,6 +805,7 @@ export async function generateAssistantTurn(
 			templateId: options.template.id,
 			turnMode: resolved.mode,
 			profile,
+			rerollReason,
 			createdAt: node.createdAt,
 			context: assembled.trace,
 			layout: detectContextLayout(options.template),
@@ -902,11 +935,39 @@ function recordRegeneratedSwipe(
 ): void {
 	const abandonedNodeId = options.swipeFromNodeId;
 	if (abandonedNodeId === undefined || abandonedNodeId === null) return;
+	const reason =
+		options.rerollReason === undefined || options.rerollReason === null
+			? null
+			: assertRerollReason(options.rerollReason);
 	options.store.recordPreference({
 		storyId: options.storyId,
 		nodeId: node.id,
 		kind: "swipe",
-		payload: { abandonedNodeId, acceptedNodeId: node.id },
+		payload: {
+			abandonedNodeId,
+			acceptedNodeId: node.id,
+			...(reason === null ? {} : { reason }),
+		},
+		createdAt: node.createdAt,
+	});
+}
+
+/** 重 roll 的原因写成长期有效的纠正；没有原因或本档不写台账时不写。 */
+function recordRerollReasonWill(
+	options: GenerateAssistantTurnOptions,
+	node: TimelineNode,
+	userNode: TimelineNode,
+	writesLedger: boolean,
+): void {
+	if (!writesLedger) return;
+	const reason = options.rerollReason;
+	if (reason === undefined || reason === null) return;
+	applyRerollReasonWill({
+		store: options.store,
+		storyId: options.storyId,
+		nodeId: node.id,
+		sourceNodeId: userNode.id,
+		reason,
 		createdAt: node.createdAt,
 	});
 }
@@ -987,6 +1048,7 @@ async function persistAbortedTurn(input: {
 			raw: error.partialText,
 		});
 		recordRegeneratedSwipe(options, node);
+		recordRerollReasonWill(options, node, userNode, input.profile === "native");
 		const runTrace = finishRunWithTrace(
 			options.store,
 			input.runId,
@@ -1000,6 +1062,7 @@ async function persistAbortedTurn(input: {
 			templateId: options.template.id,
 			turnMode: input.mode.mode,
 			profile: input.profile,
+			rerollReason: options.rerollReason ?? null,
 			createdAt: node.createdAt,
 			context: assembled.trace,
 			layout: detectContextLayout(options.template),

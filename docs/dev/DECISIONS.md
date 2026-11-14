@@ -2422,3 +2422,22 @@
   - R6-T99 与 `docs/dev/reports/R6.md` 直接引用本 CLI 的输出，判定口径只在 `gates.ts` 一处。
   - B1 合并多份结果时按合并计数重算 Wilson 区间，不沿用单份结果的区间。
   - 不新增依赖，不改变生产运行时。
+## ADR-0149 推进按钮与带原因的重 roll 的程序口径（2026-11-14）
+
+- **背景**：DESIGN §22 要求输入区有「推进」主按钮与三档强度、重 roll 时可选择六项原因，原因要进入偏好信号并带到下一次生成。W4-T02 已经把 `push` 做成单轮参数（`advance`、`quick`、`jump`），但界面上没有入口；偏好信号只有 swipe 的两侧楼层，没有原因字段；重 roll 请求也没有请求体。
+- **选项**：
+  - 把原因存成新的偏好信号种类：会改变「四种来源」的口径，评测侧按 kind 分组的统计要跟着改。
+  - 在 swipe 载荷上加一个可选 `reason`：既有统计按 kind 分组不受影响，缺字段的旧记录读回时仍合法。
+  - 原因只在本次请求里用、不落库：偏好信号里就查不到玩家为什么不满意，W5 的验收无法核对。
+- **决定**：
+  - 原因取值固定为六项：`not-progressed`（没推进）、`ignored-instruction`（没听我的）、`too-short`（太短）、`off-character`（人设不对）、`format`（格式乱）、`avoid-line`（别推这条线）。常量、标签与两套文案都在 `core/src/preferences/reroll.ts`。
+  - `SwipePreferencePayload` 增加可选 `reason`；校验拒绝未知取值，缺字段时载荷与改动前逐字段一致。原因随 `regenerateAssistantTurn` 的 `rerollReason` 一起传，写进同一条 swipe 记录的载荷与 `TurnTrace.rerollReason`。
+  - 原因同时写成一条长期有效的纠正：`userWill.<稳定 id>`，值 `{kind:"correction", text, sourceNodeId, createdAt}`，来源 `player`，挂在玩家楼层上，`reason` 写「重 roll 原因：<标签>」。同一句文案已经在这条路径上时跳过，因此连续用同一个原因只留一条。naive 档不写台账，这条写入也跟着关闭。
+  - 本次请求另有一条即时指示：`formatRerollCorrection` 生成的 system 消息追加在历史与导演之后、生成之前。长期说法与即时指示分开，前者不提「上一版」，后者明确说「上一版」。
+  - 重 roll 的原因只用于重新生成：普通生成带原因直接抛错；非法原因在写楼层之前拒绝（HTTP 400，字段路径 `reason`）。`POST /api/nodes/:id/regenerate` 的请求体可以省略，省略时不产生原因相关写入。
+  - 推进三档是单轮参数，不写故事设置：界面上的三档只改变下一轮请求体的 `push`；「让故事自己走」按钮与候选行动里的固定项都按当前档位发一轮文本 `（让故事自己走）` 的回合。
+- **影响**：
+  - 不新增迁移，不改数据库 schema；旧 swipe 记录读回时 `reason` 缺省。
+  - `POST /api/nodes/:id/regenerate` 从「不接受请求体」变成「可选 `{reason}`」；不带正文的请求仍按原路径处理。
+  - 用户意志里的原因会进入后续每一轮的上下文；这是设计要的「下一次生成带着这条纠正」。
+  - `st-compat` 的偏好导出不改：`reason` 只出现在 `preference_events.payload` 与事件 JSONL 里，配对样本仍按两侧楼层生成。

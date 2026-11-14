@@ -95,3 +95,34 @@ export async function readJsonBody(
 		throw new HttpError(400, "bad_request", "请求体不是合法 JSON");
 	}
 }
+
+/** 与 `readJsonBody` 相同，但没有请求体时返回 null；重 roll 的原因可以省略。 */
+export async function readOptionalJsonBody(
+	req: IncomingMessage,
+	limitBytes: number,
+): Promise<unknown> {
+	const chunks: Buffer[] = [];
+	let size = 0;
+	for await (const chunk of req) {
+		const buffer = Buffer.isBuffer(chunk)
+			? chunk
+			: Buffer.from(chunk as Uint8Array);
+		size += buffer.length;
+		if (size <= limitBytes) chunks.push(buffer);
+	}
+	if (size > limitBytes) {
+		throw new HttpError(
+			413,
+			"payload_too_large",
+			`请求体超过 ${limitBytes} 字节上限`,
+			{ limitBytes, size },
+		);
+	}
+	if (size === 0) return null;
+	const text = Buffer.concat(chunks).toString("utf8");
+	try {
+		return JSON.parse(text) as unknown;
+	} catch {
+		throw new HttpError(400, "bad_request", "请求体不是合法 JSON");
+	}
+}

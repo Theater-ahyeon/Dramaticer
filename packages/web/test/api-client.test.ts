@@ -174,6 +174,40 @@ describe("ApiClient", () => {
 		expect(call.init.body).toBeUndefined();
 	});
 
+	it("带原因的重 roll 只发原因字段", async () => {
+		const { client, calls } = clientFor(() =>
+			sseResponse(
+				'event: turn.started\ndata: {"storyId":"s1","userNodeId":"n1"}\n\n',
+			),
+		);
+		const iterator = client.streamRegenerate("n1", {
+			reason: "not-progressed",
+		});
+		await iterator.next();
+		const call = calls[0];
+		if (call === undefined) throw new Error("缺少请求");
+		expect(readBody(call.init)).toEqual({ reason: "not-progressed" });
+	});
+
+	it("推进档位随回合请求发送", async () => {
+		const { client, calls } = clientFor(() =>
+			sseResponse(
+				'event: turn.started\ndata: {"storyId":"s1","userNodeId":"n1"}\n\n',
+			),
+		);
+		const iterator = client.streamTurn("s1", {
+			text: "（让故事自己走）",
+			push: "jump",
+		});
+		await iterator.next();
+		const call = calls[0];
+		if (call === undefined) throw new Error("缺少请求");
+		expect(readBody(call.init)).toEqual({
+			text: "（让故事自己走）",
+			push: "jump",
+		});
+	});
+
 	it("渠道接口读取、整份更新与体检走固定路径", async () => {
 		const { client, calls } = clientFor(() => jsonResponse({}));
 		await client.getChannels();

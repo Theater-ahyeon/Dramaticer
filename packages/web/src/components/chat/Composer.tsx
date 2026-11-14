@@ -1,5 +1,6 @@
-import type { TurnMode } from "@dramaticer/core";
+import type { DirectorPush, TurnMode } from "@dramaticer/core";
 import type { KeyboardEvent } from "react";
+import { PUSH_CHOICES } from "../../chat/push";
 import { TURN_MODE_CHOICES } from "../../chat/settings-form";
 
 export interface ComposerProps {
@@ -8,6 +9,10 @@ export interface ComposerProps {
 	/** 本轮使用的回合模式；初值来自故事设置，玩家可以逐轮改写。 */
 	readonly turnMode: TurnMode;
 	readonly onTurnModeChange: (mode: TurnMode) => void;
+	/** 推进档位；按下推进按钮时用这一档发一轮不带具体行动的回合。 */
+	readonly push: DirectorPush;
+	readonly onPushChange: (push: DirectorPush) => void;
+	readonly onPush: () => void;
 	readonly onChange: (value: string) => void;
 	readonly onSend: () => void;
 	readonly onStop: () => void;
@@ -25,6 +30,9 @@ export function Composer({
 	streaming,
 	turnMode,
 	onTurnModeChange,
+	push,
+	onPushChange,
+	onPush,
 	onChange,
 	onSend,
 	onStop,
@@ -97,6 +105,34 @@ export function Composer({
 				onChange={(event) => onChange(event.target.value)}
 				onKeyDown={handleKeyDown}
 			/>
+			<fieldset className="composer-push" aria-label="推进档位">
+				<legend className="muted">推进档位</legend>
+				<div className="composer-push-kinds">
+					{PUSH_CHOICES.map((choice) => (
+						<button
+							key={choice.value}
+							type="button"
+							className="composer-push-kind"
+							aria-pressed={push === choice.value}
+							disabled={streaming}
+							onClick={() => onPushChange(choice.value)}
+						>
+							{choice.label}
+						</button>
+					))}
+				</div>
+				<button
+					className="composer-push-send"
+					type="button"
+					disabled={streaming}
+					onClick={onPush}
+				>
+					让故事自己走
+				</button>
+				<span className="muted composer-push-hint">
+					{PUSH_CHOICES.find((choice) => choice.value === push)?.hint ?? ""}
+				</span>
+			</fieldset>
 			<div className="composer-actions">
 				<label
 					className="composer-mode"
