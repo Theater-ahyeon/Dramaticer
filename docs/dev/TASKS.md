@@ -1587,7 +1587,10 @@
   - 指标表统一为矛盾率、编造回忆率、盲测胜率与每轮成本（请求数与时延），每种候选默认重复 3 次；结果写 JSON 与报告，支持断点续跑。
   验收：假客户端下三种候选各产出同一格式的指标表；重复次数与样本数写入结果；单次失败不丢其他候选结果；`pnpm check` 通过。
 
-- [ ] **X1.e 在 3 个对话上运行并判定** | 依赖：X1.d
+- [~] **X1.e 在 3 个对话上运行并判定** | 依赖：X1.d
+  等待长任务：X1.e-01（`node .devloop/scratch/X1.e/run-compare.mjs`，600 分钟）。
+  已完成：从 `eval-private/raw/manifest.json` 的 3 个 legacy 对话各取连续 8 条玩家消息（截断点之前的楼层导入源数据库）；源数据库 `eval-private/world-model-compare/source/<slug>.db` 各有 563、396、215 个楼层，导入卡与 lore，并各结算最后 4 个窗口，head 上可出题的台账事实分别为 55、27、146 条；时间点标签为 0。每个故事 12 道记忆题（从现成 50 道里按 id 排序取前 12 道，且证据楼层都在截断点之前）。preflight（`yuwang`、1 轮、1 次重复、1 条探针、2 道题）三种候选全部完成，召回探针与盲测都产出了判定。
+  剩余：长任务跑完后读 `.devloop/jobs/X1.e-01.status.json` 与 `eval-private/reports/world-model-compare/*.json`，按判定规则写 ADR、`docs/dev/reports/X1.md`，决定是否切换 `worldModel` 默认值。
   做什么：
   - 用 3 个评测对话、固定轮数、每种候选重复 3 次运行对比；按判定规则决定是否切换，结论写 ADR；未切换的候选保留在 `worldModel` 开关后面。
   验收：指标表与判定规则逐条对照；ADR 入库；报告只写统计数字；`pnpm check` 通过。

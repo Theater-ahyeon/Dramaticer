@@ -3,44 +3,23 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-14 会话 370：完成 X1.d（世界模型对比运行器）。新增 `packages/st-compat/src/evalset/world-model-compare.ts` 与 CLI（`pnpm --filter @dramaticer/st-compat world-model-compare`）：每个候选与每次重复复制同一份源数据库，固定快回合与同一串玩家消息、同一批记忆题与探针运行；实体档案候选在每轮后把涉及人物的档案修订通过 `WorldModel.write` 补写，台账与时序图谱不额外写入；时间点探针只对 `temporal_graph` 调 `read(nodeId, { atStoryTime })`，台账与 wiki 记为不适用；指标表统一为矛盾率、编造回忆率、盲测胜率与每轮请求数、首字与时延 P50/P90，默认重复 3 次；每个候选与重复写 sidecar，重跑复用，单次失败只进报告。ADR-0129；新增 3 个假客户端测试；门禁通过（251 个测试文件、2,189 个测试、5 个跳过）。
+- 2026-11-14 会话 371：X1.e 进入等待长任务。取 `eval-private/raw/manifest.json` 里 3 个 legacy 对话的尾部连续 8 条玩家消息作为固定发言；源数据库各导入截断点之前的楼层、卡与 lore，并各结算最后 4 个窗口，使 head 上有可出题的台账事实。preflight（`yuwang`、1 轮、1 次重复、1 条探针、2 道题）三种候选全部跑通，召回探针与盲测都产出了判定。申请 `.devloop/jobs/X1.e-01.json`（`node .devloop/scratch/X1.e/run-compare.mjs`，600 分钟）。
 
-## 下一步（会话 371 先做）
-1. **X1.e 在 3 个对话上运行并判定**：准备 3 个评测对话的源数据库（已导入故事、卡、实体与 lore，最好已经有带 `storyTime` 的台账事实），为每个对话准备固定玩家消息文件（JSON 数组，每轮一条）与可选记忆题文件；用 `pnpm --filter @dramaticer/st-compat world-model-compare` 对每种候选跑 3 次。硬跑预计超过 10 分钟，按 `.devloop/jobs/` 申请长任务，结果写 `WAITING`。
-2. 跑完后按规则判定：候选的主要指标不劣于 ①（`ledger`），且盲测胜率明显高于 ①才切换；否则保留 ①。结论写 ADR，指标表写报告（只写统计数字），未切换的候选留在 `worldModel` 开关后面。
-3. 如果时间点探针样本为 0，先检查源数据库路径上是否有 `storyTime` 标签；没有标签就如实写 0，不要补造。
+## 下一步（会话 372 先做）
+1. 读 `.devloop/jobs/X1.e-01.status.json` 与 `.devloop/jobs/X1.e-01.log`。成功则继续第 3 步；失败则按日志修复 `run-compare.mjs` 或 CLI 参数，换一个新的任务序号（`X1.e-02`）重新申请，已完成的 sidecar 会复用。
+2. 长任务在 3 个故事上各跑 3 种候选 × 3 次重复，结果在 `eval-private/reports/world-model-compare/{xianxia,yuwang,yinqi}.json` 与同名 `.md`；运行记录与模型回复在 `.devloop/scratch/X1.e/runs/<slug>/runs/<候选>/<序号>.json`。
+3. 按判定规则判定：`wiki` 与 `temporal_graph` 的主要指标（矛盾率、编造回忆率）不劣于 `ledger`，且盲测胜率明显高于 `ledger`（非平局判定中超过 50%，并给出样本数与区间）才切换默认 `worldModel`；否则保持 `ledger`。判定与数字写 ADR-0130，统计版报告写 `docs/dev/reports/X1.md`（只写数字、候选名与失败原因，不写对话原文），原始数据留在 `eval-private/reports/world-model-compare/`。
+4. 时间点探针样本在三个源数据库上都是 0：源事实没有 `storyTime` 标签，如实写 0，不补造。备忘录：若要补时间点样本，需要在 prep 阶段让结算输出带 `storyTime`，或从 `mvu` 的时间字段生成标签，不能事后伪造。
+5. 完成后把 X1.e 标 `[x]` 并写完成行，`pnpm check`，再按协议交接。
 
-## X1.d 设计要点
-- 输入是 `sourceDbPath`（已导入故事的数据库）、`story`、`rounds`、`messages`（同一串玩家消息）、`repetitions`（默认 3）、`dir`、写作与裁判客户端、模板、预算与结构化输出方式；`questions` 为同一批记忆题；`probeCount` 默认 4、`timeProbeCount` 默认 2。
-- 运行器只读打开源数据库一次，从源 head 的台账事实里按种子确定地挑选召回探针与时间点探针；之后每个候选与每次重复复制一份源数据库，改故事设置的 `worldModel`，用 `createStandardChatSlots` 建槽位。固定 `turnMode: "fast"`，避免候选之间混入深回合开销。
-- 回合写入仍走 `runChatTurn` 的结构化输出与结算路径；运行器只补写候选自己的表示：`wiki` 把本轮涉及的人物写成一条 `["profile", "<人物>"]` 修订，正文含楼层号与当前字段（层级、身份、外貌、衣着、状态、位置），来源 `settler`。`ledger` 与 `temporal_graph` 不额外写入。
-- 召回探针的参照值取候选自己的最终世界模型状态；记忆题在最终 head 上提问，证据楼层仍指向复制数据库里的原楼层。时间点探针的参照值只对 `temporal_graph` 用 `read(head, { atStoryTime })` 计算，`ledger` 与 `wiki` 直接记 `unsupported`，不调用模型。
-- 指标：矛盾率 = 召回探针与记忆题里矛盾数 /（一致 + 矛盾）；编造回忆率 = 编造题判矛盾数 / 被判定的编造题数；盲测胜率 = 候选在两种展示顺序下胜出的非平局判定占比；每轮成本 = 自动试玩期间写作客户端的非缓存请求数 / 轮数，首字与时延取 Trace 的 P50 与 P90。时间点探针单独列样本与判定数，不混入矛盾率。
-- 盲测用 `runPreferenceSample` 与 `summarizePreferenceComparisons`；接受侧是候选回复，放弃侧是同一重复、同一轮次的 `ledger` 回复；上下文只用玩家消息计划的前缀。两轮文本完全相同时裁判直接判平局，不调用模型。
-- 每个候选与重复完成后写 `runs/<候选>/<序号>.json`（临时文件加重命名）；重跑时校验格式、故事、候选、重复序号、轮数、玩家消息摘要与种子后复用。失败只记进报告，不写 sidecar，其他候选与重复继续。
-- 报告 JSON 含每个候选的指标、样本数与原始运行记录（含回复与答案，放在私有目录）；Markdown 报告只含数字、候选名与失败原因。
-- 已知限制：源 head 没有任何台账事实时召回探针为 0；源事实没有 `storyTime` 时时间点探针为 0；wiki 的档案正文由程序从台账字段生成，不是后台模型写的软知识。
-
-## X1 任务划分（ADR-0126 至 ADR-0129）
-- **X1.a（已完成）** 统一接口与台账候选；故事设置 `worldModel`；状态槽位接线；未实现候选在选择时失败。
-- **X1.b（已完成）** 实体档案修订表与 `wiki` 适配器：台账加只追加的人物档案。
-- **X1.c（已完成）** 时序知识图谱候选：从台账 diff 回放有效区间，读取带失效段，支持按故事时间点查询。
-- **X1.d（已完成）** 对比运行器与 CLI：每个候选复制数据库、固定快回合自动试玩、同一批记忆题与探针、与候选 ① 盲测；指标表统一；默认重复 3 次；sidecar 续跑。
-- **X1.e** 3 个对话、每种候选 3 次的实跑与判定（主要指标不劣于 ① 且盲测胜率明显高于 ① 才切换，否则保留 ①），结论写 ADR，未切换的候选留在开关后面。
-
-## X1.c 设计要点
-- `WorldModelReadOptions { atStoryTime?: string }` 是 `read(nodeId, options?)` 的第二个参数；不传时三个候选都返回当前视图。台账与 wiki 收到 `atStoryTime` 时由 `assertTimeQuerySupported` 直接抛错，不静默忽略。
-- `temporal_graph` 的有效区间完全来自当前路径上的台账 diff：同一路径的每次 set 开启一版；之后的 set 或 delete 关闭该路径及其下层的活动版本（`isPathPrefix`），delete 记 `endReason: "deleted"`、set 记 `"superseded"`，保留最后一版的值与起止楼层。关闭后再次 set 会开启新的一版。
-- 当前视图的 `state` 仍是台账快照，`sections` 只有一段「已失效事实」，每行是 `JSON(path) = JSON(value)（楼层 <start> → <end>；原因 已删除|被新值取代；来源 <source>；故事时间 <start> 至 <end>）`；`source` 为 `state:<n> 条 diff，已失效 <m> 条`。
-- 时间点查询只考虑自身 `storyTime` 非空的版本；标签是不透明文字，时间轴按标签在当前路径上第一次出现的顺序建立；版本的有效终点取自身 `storyTime.end` 与结束事件时间（`endStoryTime.start ?? end`）的较早者。查询标签必须在该路径上出现过，否则抛错；同一路径多版命中时取较晚的一版，选中的版本按写入顺序用 `applyDiffEntriesTo` 累加成 `state`，`source` 为 `state:时序图谱 <n> 条事实，故事时间 <label>`。
-- `createTemporalGraphWorldModel(...).versions(nodeId)` 返回全部版本（含仍成立的一版），`write` 直接委托台账适配器；工厂的 `temporal_graph` 分支返回该对象，`packKey` 自动为 `state:temporal_graph`。
-
-## X1.b 设计要点
-- 迁移 v48 `world_wiki_revisions(id, story_id, entity_id, node_id, text, story_time_start, story_time_end, source, created_at)`：修改由触发器拒绝，删除只在楼层已不存在时放行。`node_id` 既是写入楼层也是这一版的出处楼层。
-- 档案实体 id 是台账 `character.<id>` 的人物 id。档案只能写给台账里已经存在的人物；同一批写入里先写人物字段再写档案也算已存在。人物字段必须逐项写，整对象写入会被 `validateLedgerDiff` 拒绝。
-- 档案路径固定为 `["profile", "<人物>"]`，`op` 只能是 `set`，`value` 是非空正文；其余路径交给 `validateLedgerDiff` 后写台账 diff。未知人物、空正文、删除档案在写入前抛错。
-- 读取用递归 CTE 连接当前路径；`sections` 每个有档案的人物一段：标题 `档案：<人物>`，正文是最新一版，末尾一行 `版本数：N；出处楼层：<nodeId>；最早出处：<nodeId>`；段落按人物 id 排序。
-- `source` 在 wiki 下为 `state:<n> 条 diff，档案 <m> 版`；`packKey` 仍为 `state:wiki`。
+## X1.e 准备细节
+- 源数据库：`eval-private/world-model-compare/source/xianxia.db`（563 楼）、`yuwang.db`（396 楼）、`yinqi.db`（215 楼）。每个都导入截断点之前的对话、角色卡与世界书 lore，并对最后 4 个窗口（每窗口 4 个助手楼层）执行生产结算器，写入 `character`、`relation`、`item`、`scene`、`clue`、`knowledge` 与 `time` 命名空间。head 上可出题的短文本事实：55、27、146 条。
+- 玩家消息：`inputs/<slug>.messages.json`，每条是截断点之后、原对话里连续的 8 条玩家原文（包含当时注入的 UI 包装文字），三个候选与三次重复共用。
+- 记忆题：`inputs/<slug>.questions.jsonl`，从 `eval-private/evalset/memory-<故事>.jsonl` 的 50 道里按 id 排序取前 12 道，要求证据楼层都在截断点之前；每道题补上 `kind: "memory"` 后写出（解析后的对象不含 `kind`，直接序列化会生成非法文件）。
+- 对比参数：`--rounds 8 --repeat 3 --seed 1`，召回探针 4、时间点探针 2（实际为 0）；写作按 `writer` 角色（`main-fallback`），裁判按 `judge` 角色（`judge`）；每个故事独立目录，sidecar 在 `.devloop/scratch/X1.e/runs/<slug>/`。
+- 预跑结果：三种候选各 1 轮、1 次重复、1 条探针、2 道题全部完成；召回探针 `consistent`，盲测有判定。每轮请求 1 次，首字约 3–7 秒、时延约 22–26 秒，全量预计 2–4 小时。
+- 源数据库与学生消息都在私有目录；报告只能写数字，不能写原文。Windows 上文件名用 ASCII slug：全角文件名（`仙侠雌竞：…？.db`）在 Node 的 `fs.rmSync` 里会直接以 `0xC0000409` 终止进程，不要用它做源数据库文件名。
+- 长任务的 `run-compare.mjs` 用 `node packages/st-compat/dist/evalset/world-model-compare-cli.js` 直接调用，传绝对路径。经 `pnpm --filter ... world-model-compare` 调用时脚本的 cwd 是包目录，相对路径会指错。
 
 ## 当前状态
 - 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1–P4、C-T01 至 C-T05、H-T00 至 H-T99、X1.a 至 X1.d。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
@@ -49,21 +28,20 @@
 - 报告：`docs/dev/reports/P2.md`、`P3.md`、`P4.md`、`C-T01.md`、`C-T02.md`、`C-T03.md`、`C-T04.md`、`C-T05.md`、`H.md`。
 - 沙箱现状：`eval-private/st-sandbox/st` 有 36 个预设、68 张卡、89 个非驱动聊天片段；预设连接字段已被驱动改写为录制端点与桩模型。需要恢复原始预设时用 `sandbox --replace` 重建。
 - 私有比对批次：`compare-smoke4`（5 个组合，修复后）与更早的 `compare-smoke2`、`compare-smoke3`、`session324-sanitize`。
-- ADR-0088 至 ADR-0129 记录插件、沙箱、比对、兼容内容映射、EJS、沙箱执行、时间预算、流水线接入、模板生成、一致性评测、酒馆助手宿主、iframe 沙箱、STscript 子集、生成后台化、HTML 渲染、覆盖率口径、应用内助手、世界模型接口、实体档案、时序图谱与对比运行器的决策。
+- ADR-0088 至 ADR-0129 记录插件、沙箱、比对、兼容内容映射、EJS、沙箱执行、时间预算、流水线接入、模板生成、一致性评测、酒馆助手宿主、iframe 沙箱、STscript 子集、生成后台化、HTML 渲染、覆盖率口径、应用内助手、世界模型接口、实体档案、时序图谱与对比运行器的决策。ADR-0130 留给 X1.e 的判定。
 - HUMAN-03 待处理（不阻塞）：抽查 `eval-private/evalset/spotcheck.md` 里的事件题。
 - HUMAN-15 待处理（M6-T99 需要）：把秋叶整合包 v3.2 的 ComfyUI 启动在 `http://127.0.0.1:8188`，并导出一份 API 格式 workflow JSON 到 `eval-private/comfyui/` 或告知路径。
 - HUMAN-16、HUMAN-17、HUMAN-18 待处理（不阻塞）：临时目录清理、ST-Prompt-Template 与酒馆助手上游许可证确认。
 
 ## 可重复命令
 - 门禁：`pnpm check`。
+- X1.e 长任务：`node .devloop/scratch/X1.e/run-compare.mjs`。
+- X1.e 单个故事：`node packages/st-compat/dist/evalset/world-model-compare-cli.js --db eval-private/world-model-compare/source/<slug>.db --story <故事> --messages .devloop/scratch/X1.e/inputs/<slug>.messages.json --questions .devloop/scratch/X1.e/inputs/<slug>.questions.jsonl --rounds 8 --repeat 3 --seed 1 --dir .devloop/scratch/X1.e/runs/<slug>`。
 - X1.d 目标测试：`pnpm exec vitest run packages/st-compat/test/world-model-compare.test.ts`。
-- X1.d CLI：`pnpm --filter @dramaticer/st-compat world-model-compare --db <path> --story <id> --messages <玩家消息.json> [--questions <记忆题.jsonl>] [--repeat 3]`。
 - X1.c 目标测试：`pnpm exec vitest run packages/core/test/world-model.test.ts`。
 - X1.b 目标测试：`pnpm exec vitest run packages/core/test/world-model.test.ts packages/core/test/assistant-store.test.ts`。
 - X1.a 目标测试：`pnpm exec vitest run packages/core/test/world-model.test.ts packages/core/test/story-settings.test.ts packages/core/test/chat-providers.test.ts packages/web/test/settings-form.test.ts`。
 - H-T99 真实渠道验收：`node .devloop/scratch/H-T99/live.mjs`。
-- H-T99 e2e：`pnpm --filter @dramaticer/server build && pnpm --filter @dramaticer/web build && pnpm --filter @dramaticer/web exec playwright test e2e/assistant.spec.ts`（desktop 与 mobile 各 5 条）。
-- 共存评测：`node packages/st-compat/dist/st-bench/cli.js coexist --config <配置.json> [--out <目录>]`（已注册插件：`st-content`、`st-mvu`、`st-ejs`、`st-helper-host`）。
 - 不变量检查：`node scripts/check-invariants.mjs`。
 - 重建沙箱数据：`pnpm --filter @dramaticer/st-compat build && node packages/st-compat/dist/st-bench/cli.js sandbox --source "D:/SillyTavern" --replace`。
 - 生成组合清单：`node packages/st-compat/dist/st-bench/cli.js plan --sandbox eval-private/st-sandbox/st --batch <批次>`。
@@ -72,7 +50,7 @@
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
-- 私有数据（`eval-private/`、`data/`、`.env`）不能进入测试数据、提交、文档或日志；报告只写统计数字，不写对话原文。X1.d 的 JSON 含回复与答案，只能放在私有目录。
+- 私有数据（`eval-private/`、`data/`、`.env`）不能进入测试数据、提交、文档或日志；报告只写统计数字，不写对话原文。X1.e 的 JSON 含回复与答案，只能放在私有目录。
 - ST 的原始安装目录只读：不得修改，不得复制出 `secrets.json`、`settings.json`、`cookie-secret.txt`；沙箱里不得配置真实模型端点，录制服务不持有模型客户端（I14）。
 - 测试文件里不能出现 I10 拦截的地址：只允许 `localhost`、`127.0.0.1`、`example.com`/`example.org`/`example.invalid` 作为主机名，不能出现 `eval-private` 字面量（用 `stBenchPaths(repoRoot).privateRoot`）。
 - Windows 上并行跑测试会显著变慢；`vitest.config.ts` 默认 `testTimeout` 60 秒、`maxWorkers` 8；`afterEach` 删除临时目录用 `rmSync` 时必须带 `maxRetries` 与 `retryDelay`。
@@ -89,6 +67,7 @@
 - X1.d 的源数据库只读打开一次用于挑探针，随后关闭；所有写入都在复制出来的数据库里。重跑复用 `runs/<候选>/<序号>.json`，修改玩家消息或种子会导致校验失败并提示删除 sidecar。
 - X1.d 的盲测上下文只用玩家消息前缀，不包含候选各自的正文；两轮文本完全相同时裁判直接判平局，不调用模型。
 - X1.d 的每轮成本只统计写作客户端的非缓存请求与 Trace 耗时；记忆题、探针与盲测裁判的请求单独发生，不计入每轮成本。
+- 源数据库用 ASCII 文件名（见 X1.e 准备细节）；全角文件名在 Windows 的 Node `fs.rmSync` 上会直接终止进程。
 - `pnpm exec biome check --write <文件>` 处理格式；不要手写格式。
 - 修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 的请求写进 HUMAN.md。
 - 不变量：I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖其他工作区包，I17 回合内插件钩子有时间预算，I18 插件权限必须声明。
