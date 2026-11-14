@@ -7,6 +7,7 @@ import {
 	WORLD_MODEL_KINDS,
 	createLedgerWorldModel,
 	createStateSlotProvider,
+	createTemporalGraphWorldModel,
 	createWorldModel,
 	isWorldModelKind,
 } from "../src/index.js";
@@ -130,10 +131,12 @@ describe("世界模型接口", () => {
 		expect(world.read(nodeId).state).toEqual({ item: {} });
 	});
 
-	it("未实现的候选在选择时直接失败", () => {
+	it("未知种类在选择时直接失败，三个候选都可以创建", () => {
 		const { store } = openTempStore();
 		seedPath(store);
-		expect(() => createWorldModel(store, "temporal_graph")).toThrow("尚未实现");
+		for (const kind of WORLD_MODEL_KINDS) {
+			expect(createWorldModel(store, kind).kind).toBe(kind);
+		}
 		expect(() => createWorldModel(store, "nope" as never)).toThrow("不合法");
 	});
 });
@@ -340,6 +343,211 @@ describe("wiki 候选", () => {
 	});
 });
 
+describe("时序知识图谱候选", () => {
+	function seedThird(store: StoryStore): void {
+		store.appendNode({
+			id: "n-third",
+			storyId: "s1",
+			parentId: "n-reply",
+			role: "assistant",
+			raw: "剑断了。",
+		});
+	}
+
+	it("set 后 delete 的事实仍在读取结果里且带失效楼层与最后值", () => {
+		const { store } = openTempStore();
+		seedPath(store);
+		seedThird(store);
+		const world = createTemporalGraphWorldModel(store);
+		world.write("n-reply", [
+			{
+				path: ["item", "剑", "holder"],
+				op: "set",
+				value: "卫宫",
+				source: "model",
+				storyTime: { start: "第一天", end: null },
+			},
+		]);
+		world.write("n-third", [
+			{
+				path: ["item", "剑"],
+				op: "delete",
+				source: "settler",
+				storyTime: { start: "第三天", end: null },
+			},
+		]);
+		const view = world.read("n-third");
+		expect(view.state).toEqual({ item: {} });
+		expect(view.source).toBe("state:2 条 diff，已失效 1 条");
+		expect(view.sections).toEqual([
+			{
+				title: "已失效事实",
+				text: '["item","剑","holder"] = "卫宫"（楼层 n-reply → n-third；原因 已删除；来源 model；故事时间 第一天 至 …）',
+			},
+		]);
+		expect(world.versions("n-third")).toEqual([
+			{
+				path: ["item", "剑", "holder"],
+				value: "卫宫",
+				storyTime: { start: "第一天", end: null },
+				source: "model",
+				startNodeId: "n-reply",
+				endNodeId: "n-third",
+				endReason: "deleted",
+				endStoryTime: { start: "第三天", end: null },
+			},
+		]);
+	});
+
+	it("按时间点查询只返回该时间成立的事实，没有时间的事实只在当前视图出现", () => {
+		const { store } = openTempStore();
+		seedPath(store);
+		seedThird(store);
+		const world = createTemporalGraphWorldModel(store);
+		world.write("n-reply", [
+			{
+				path: ["relation", "凛", "卫宫", "stage"],
+				op: "set",
+				value: "警惕",
+				source: "model",
+				storyTime: { start: "第一天", end: null },
+			},
+			{
+				path: ["scene", "current", "place"],
+				op: "set",
+				value: "山门",
+				source: "model",
+			},
+		]);
+		world.write("n-third", [
+			{
+				path: ["relation", "凛", "卫宫", "stage"],
+				op: "set",
+				value: "并肩",
+				source: "settler",
+				storyTime: { start: "第三天", end: null },
+			},
+		]);
+		const past = world.read("n-third", { atStoryTime: "第一天" });
+		expect(past.state).toEqual({
+			relation: { 凛: { 卫宫: { stage: "警惕" } } },
+		});
+		expect(past.source).toBe("state:时序图谱 1 条事实，故事时间 第一天");
+		const later = world.read("n-third", { atStoryTime: "第三天" });
+		expect(later.state).toEqual({
+			relation: { 凛: { 卫宫: { stage: "并肩" } } },
+		});
+		expect(world.read("n-third").state).toEqual({
+			relation: { 凛: { 卫宫: { stage: "并肩" } } },
+			scene: { current: { place: "山门" } },
+		});
+		expect(() => world.read("n-third", { atStoryTime: "第九天" })).toThrow(
+			"没有记录",
+		);
+	});
+
+	it("分支切换只看到当前路径上的版本与失效段", () => {
+		const { store } = openTempStore();
+		seedPath(store);
+		store.appendNode({
+			id: "n-a",
+			storyId: "s1",
+			parentId: "n-root",
+			role: "assistant",
+			raw: "A 线拿到剑。",
+		});
+		store.appendNode({
+			id: "n-a2",
+			storyId: "s1",
+			parentId: "n-a",
+			role: "assistant",
+			raw: "A 线剑断了。",
+		});
+		store.appendNode({
+			id: "n-b",
+			storyId: "s1",
+			parentId: "n-root",
+			role: "assistant",
+			raw: "B 线拿到剑。",
+		});
+		const world = createTemporalGraphWorldModel(store);
+		world.write("n-a", [
+			{
+				path: ["item", "剑", "holder"],
+				op: "set",
+				value: "卫宫",
+				source: "model",
+			},
+		]);
+		world.write("n-a2", [
+			{ path: ["item", "剑"], op: "delete", source: "model" },
+		]);
+		world.write("n-b", [
+			{
+				path: ["item", "剑", "holder"],
+				op: "set",
+				value: "凛",
+				source: "model",
+			},
+		]);
+		expect(world.read("n-a2").state).toEqual({ item: {} });
+		expect(world.read("n-a2").sections[0]?.text).toContain(
+			"楼层 n-a → n-a2；原因 已删除",
+		);
+		expect(world.read("n-a2").sections[0]?.text).toContain('"卫宫"');
+		expect(world.read("n-b").state).toEqual({
+			item: { 剑: { holder: "凛" } },
+		});
+		expect(world.read("n-b").sections).toEqual([]);
+		expect(world.versions("n-b")).toHaveLength(1);
+		expect(world.versions("n-a2")).toHaveLength(1);
+	});
+
+	it("状态槽位在时序图谱下包含失效段", async () => {
+		const { store } = openTempStore();
+		seedPath(store);
+		seedThird(store);
+		const world = createTemporalGraphWorldModel(store);
+		world.write("n-reply", [
+			{
+				path: ["item", "剑", "holder"],
+				op: "set",
+				value: "卫宫",
+				source: "model",
+			},
+		]);
+		world.write("n-third", [
+			{ path: ["item", "剑"], op: "delete", source: "model" },
+		]);
+		const provider = createStateSlotProvider(store, {
+			worldModel: "temporal_graph",
+		});
+		expect(provider.packKey).toBe("state:temporal_graph");
+		const view = world.read("n-third");
+		const content = await provider.provide(request("n-third"));
+		expect(content?.source).toBe(view.source);
+		expect(content?.messages).toHaveLength(2);
+		expect(content?.messages[1]?.content).toBe(
+			`已失效事实：\n${view.sections[0]?.text}`,
+		);
+	});
+
+	it("台账与 wiki 收到时间点查询时直接失败", () => {
+		const { store } = openTempStore();
+		seedPath(store);
+		expect(() =>
+			createWorldModel(store, "ledger").read("n-reply", {
+				atStoryTime: "第一天",
+			}),
+		).toThrow("不支持按故事时间点查询");
+		expect(() =>
+			createWorldModel(store, "wiki").read("n-reply", {
+				atStoryTime: "第一天",
+			}),
+		).toThrow("不支持按故事时间点查询");
+	});
+});
+
 describe("故事设置的世界模型", () => {
 	it("默认值是台账，写入后读回，非法值被拒绝", () => {
 		const { store } = openTempStore();
@@ -356,16 +564,16 @@ describe("故事设置的世界模型", () => {
 		).toThrow("worldModel");
 	});
 
-	it("状态槽位按设置选择实现，未实现时在装载槽位时失败", async () => {
+	it("状态槽位按设置选择实现，空状态返回空", async () => {
 		const { store } = openTempStore();
 		seedPath(store);
-		store.updateStorySettings("s1", { worldModel: "ledger" });
-		const provider = createStateSlotProvider(store, { worldModel: "ledger" });
-		expect(provider.packKey).toBe("state:ledger");
-		const content = await provider.provide(request("n-reply"));
-		expect(content).toBeNull();
-		expect(() =>
-			createStateSlotProvider(store, { worldModel: "temporal_graph" }),
-		).toThrow("尚未实现");
+		const ledger = createStateSlotProvider(store, { worldModel: "ledger" });
+		expect(ledger.packKey).toBe("state:ledger");
+		expect(await ledger.provide(request("n-reply"))).toBeNull();
+		const temporal = createStateSlotProvider(store, {
+			worldModel: "temporal_graph",
+		});
+		expect(temporal.packKey).toBe("state:temporal_graph");
+		expect(await temporal.provide(request("n-reply"))).toBeNull();
 	});
 });

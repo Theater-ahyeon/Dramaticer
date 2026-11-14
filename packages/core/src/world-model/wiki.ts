@@ -3,12 +3,14 @@ import { readLedger } from "../ledger/read.js";
 import { type LedgerSource, validateLedgerDiff } from "../ledger/schema.js";
 import type { StoryStore } from "../store/story-store.js";
 import type { NewStateDiff, StoryTime } from "../timeline.js";
-import type {
-	WorldModel,
-	WorldModelSection,
-	WorldModelView,
-	WorldModelWrite,
-	WorldModelWriteResult,
+import {
+	type WorldModel,
+	type WorldModelReadOptions,
+	type WorldModelSection,
+	type WorldModelView,
+	type WorldModelWrite,
+	type WorldModelWriteResult,
+	assertTimeQuerySupported,
 } from "./types.js";
 
 /** 档案修订在写入路径里的第一段；台账命名空间之外的写都进档案。 */
@@ -43,7 +45,8 @@ export interface NewWikiRevision {
 export function createWikiWorldModel(store: StoryStore): WorldModel {
 	return {
 		kind: "wiki",
-		read(nodeId: string): WorldModelView {
+		read(nodeId: string, options?: WorldModelReadOptions): WorldModelView {
+			assertTimeQuerySupported("wiki", options);
 			const state = readLedger(store, nodeId);
 			if (!isJsonObject(state)) {
 				throw new Error(`台账快照 ${nodeId} 不是对象`);

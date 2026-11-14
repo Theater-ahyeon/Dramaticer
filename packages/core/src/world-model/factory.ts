@@ -1,5 +1,6 @@
 import type { StoryStore } from "../store/story-store.js";
 import { createLedgerWorldModel } from "./ledger.js";
+import { createTemporalGraphWorldModel } from "./temporal-graph.js";
 import {
 	DEFAULT_WORLD_MODEL_KIND,
 	type WorldModel,
@@ -8,10 +9,7 @@ import {
 } from "./types.js";
 import { createWikiWorldModel } from "./wiki.js";
 
-/**
- * 按种类创建世界模型。`temporal_graph` 由 X1.c 实现；
- * 未实现的种类在选择时直接失败，不回落到台账。
- */
+/** 按种类创建世界模型；三个候选共用同一组读写方法。 */
 export function createWorldModel(
 	store: StoryStore,
 	kind: WorldModelKind = DEFAULT_WORLD_MODEL_KIND,
@@ -23,6 +21,6 @@ export function createWorldModel(
 		case "wiki":
 			return createWikiWorldModel(store);
 		case "temporal_graph":
-			throw new Error("世界模型 temporal_graph 尚未实现");
+			return createTemporalGraphWorldModel(store);
 	}
 }

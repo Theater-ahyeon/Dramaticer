@@ -3,18 +3,21 @@ import { readLedger } from "../ledger/read.js";
 import { validateLedgerDiff } from "../ledger/schema.js";
 import type { StoryStore } from "../store/story-store.js";
 import type { NewStateDiff } from "../timeline.js";
-import type {
-	WorldModel,
-	WorldModelView,
-	WorldModelWrite,
-	WorldModelWriteResult,
+import {
+	type WorldModel,
+	type WorldModelReadOptions,
+	type WorldModelView,
+	type WorldModelWrite,
+	type WorldModelWriteResult,
+	assertTimeQuerySupported,
 } from "./types.js";
 
 /** 现有台账作为世界模型：读取状态快照，写入校验后追加 diff。 */
 export function createLedgerWorldModel(store: StoryStore): WorldModel {
 	return {
 		kind: "ledger",
-		read(nodeId: string): WorldModelView {
+		read(nodeId: string, options?: WorldModelReadOptions): WorldModelView {
+			assertTimeQuerySupported("ledger", options);
 			const state = readLedger(store, nodeId);
 			if (!isJsonObject(state)) {
 				throw new Error(`台账快照 ${nodeId} 不是对象`);

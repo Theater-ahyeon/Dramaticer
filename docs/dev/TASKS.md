@@ -1573,7 +1573,8 @@
   - `wiki` 适配器读取台账状态加实体档案段（性格变化、关系史，带出处楼层与版本数），写入校验实体与正文后追加一版；分支切换后只出现当前路径上的版本。
   验收：写入两版后读取到最新正文、版本数与出处；分支切换不跨分支；空正文与未知实体会话抛错并指出字段；状态槽位在 `wiki` 下包含档案段；`pnpm check` 通过。
 
-- [ ] **X1.c 时序知识图谱候选** | 依赖：X1.a
+- [x] **X1.c 时序知识图谱候选** | 依赖：X1.a
+  完成：2026-11-14 新增 `world-model/temporal-graph.ts`（`TemporalFactVersion`、`TemporalEndReason`、`TemporalGraphWorldModel`、`createTemporalGraphWorldModel`）：沿当前路径回放台账 diff，每次 set 开启一版、set 或 delete 关闭该路径及其下层的活动版本并保留最后一版的值、起止楼层、失效原因与结束事件时间；`read` 不传时间点时返回台账快照与一段「已失效事实」，`source` 为 `state:<n> 条 diff，已失效 <m> 条`；`WorldModel.read` 新增可选 `atStoryTime`，按标签首次出现顺序建立时间轴、只选自身带 `storyTime` 的版本，台账与 wiki 收到时间点查询直接抛错；`versions(nodeId)` 列出全部版本；工厂接上 `temporal_graph`，状态槽位自动带失效段；ADR-0128；新增 5 个测试；门禁通过（250 个测试文件、2,186 个测试、5 个跳过）
   做什么：
   - `temporal_graph` 适配器从台账 diff 回放事实的有效区间：每次 set 开启区间，delete 关闭区间并保留最后值；读取返回当前事实与已失效事实（带起止楼层），不删除任何记录。
   - 支持按故事内时间点查询：给定 `storyTime` 返回该时间点成立的事实，缺少时间的事实只在当前视图出现。

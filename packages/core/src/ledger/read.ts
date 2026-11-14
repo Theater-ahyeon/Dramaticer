@@ -290,7 +290,7 @@ function sortedKeys(object: JsonObject): string[] {
 	return Object.keys(object).sort();
 }
 
-function ledgerSourceOf(diff: StateDiff): LedgerSource {
+export function ledgerSourceOf(diff: StateDiff): LedgerSource {
 	const source = diff.source;
 	if (!(LEDGER_SOURCES as readonly string[]).includes(source)) {
 		throw new Error(

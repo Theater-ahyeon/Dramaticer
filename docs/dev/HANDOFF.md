@@ -3,18 +3,26 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-14 会话 368：完成 X1.b（实体 Wiki 页候选）。门禁通过（250 个测试文件、2,181 个测试、5 个跳过）。迁移 v48 新增只追加的 `world_wiki_revisions`；新增 `packages/core/src/world-model/wiki.ts`（`WikiRevision`、`NewWikiRevision`、`WIKI_PROFILE_NAMESPACE`、`createWikiWorldModel`）；`StoryStore` 新增 `appendWikiRevisions` 与 `listWikiRevisionsAlongPath`；工厂接上 `wiki`，`temporal_graph` 仍然直接失败；ADR-0127；新增 5 个测试。
+- 2026-11-14 会话 369：完成 X1.c（时序知识图谱候选）。门禁通过（250 个测试文件、2,186 个测试、5 个跳过）。新增 `packages/core/src/world-model/temporal-graph.ts`（`TemporalFactVersion`、`TemporalEndReason`、`TemporalGraphWorldModel`、`createTemporalGraphWorldModel`）：沿当前路径回放台账 diff，每次 set 开启一版，set 或 delete 关闭该路径及其下层的活动版本并保留最后一版的值、起止楼层、失效原因与结束事件时间；`read` 返回台账快照与一段「已失效事实」；`WorldModel.read` 增加可选 `atStoryTime`，台账与 wiki 收到时间点查询直接抛错；工厂接上 `temporal_graph`；ADR-0128；新增 5 个测试。
 
-## 下一步（会话 369 先做）
-1. **X1.c 时序知识图谱候选**：`temporal_graph` 适配器从台账 diff 回放事实的有效区间——每次 set 开启区间，delete 关闭区间并保留最后值；读取返回当前事实与已失效事实（带起止楼层），不删除任何记录；支持按 `storyTime` 时间点查询，缺少时间的事实只在当前视图出现；分支切换只看到当前路径。状态槽位在 `temporal_graph` 下包含失效段。不新增表。
-2. 之后做 X1.d（对比运行器）、X1.e（在 3 个对话上实际运行并判定，长任务按 `.devloop/jobs/` 申请）。
+## 下一步（会话 370 先做）
+1. **X1.d 对比运行器**：`packages/st-compat/src/evalset/world-model-compare.ts` 与 CLI。每个候选复制数据库、固定轮数自动试玩、同一批记忆题与探针、与候选 ① 盲测；指标表统一为矛盾率、编造回忆率、盲测胜率与每轮成本（请求数与时延），默认重复 3 次，支持断点续跑。写入走 `createWorldModel(store, kind).write`；时间点探针用 `read(nodeId, { atStoryTime })`，台账与 wiki 不支持时间点查询，探针按候选能力记录为不适用，不要伪造结果。
+2. 之后做 X1.e（3 个对话、每种候选 3 次的实跑与判定，长任务按 `.devloop/jobs/` 申请）。
 
-## X1 任务划分（ADR-0126、ADR-0127）
+## X1 任务划分（ADR-0126、ADR-0127、ADR-0128）
 - **X1.a（已完成）** 统一接口与台账候选；故事设置 `worldModel`；状态槽位接线；未实现候选在选择时失败。
 - **X1.b（已完成）** 实体档案修订表与 `wiki` 适配器：台账加只追加的人物档案。
-- **X1.c** 时序知识图谱候选：从台账 diff 回放有效区间，delete 关闭区间并保留最后值，支持按 `storyTime` 查询；不新增表。
+- **X1.c（已完成）** 时序知识图谱候选：从台账 diff 回放有效区间，读取带失效段，支持按故事时间点查询；不新增表。
 - **X1.d** 对比运行器 `packages/st-compat/src/evalset/world-model-compare.ts` 与 CLI：每个候选复制数据库、固定轮数自动试玩、同一批记忆题与探针、与候选 ① 盲测，指标表统一为矛盾率、编造回忆率、盲测胜率与每轮成本，默认重复 3 次，支持断点续跑。
 - **X1.e** 3 个对话、每种候选 3 次的实跑与判定（主要指标不劣于 ① 且盲测胜率明显高于 ① 才切换，否则保留 ①），结论写 ADR，未切换的候选留在开关后面。
+
+## X1.c 设计要点
+- `WorldModelReadOptions { atStoryTime?: string }` 是 `read(nodeId, options?)` 的第二个参数；不传时三个候选都返回当前视图。台账与 wiki 收到 `atStoryTime` 时由 `assertTimeQuerySupported` 直接抛错，不静默忽略。
+- `temporal_graph` 的有效区间完全来自当前路径上的台账 diff：同一路径的每次 set 开启一版；之后的 set 或 delete 关闭该路径及其下层的活动版本（`isPathPrefix`），delete 记 `endReason: "deleted"`、set 记 `"superseded"`，保留最后一版的值与起止楼层。关闭后再次 set 会开启新的一版。
+- 当前视图的 `state` 仍是台账快照，`sections` 只有一段「已失效事实」，每行是 `JSON(path) = JSON(value)（楼层 <start> → <end>；原因 已删除|被新值取代；来源 <source>；故事时间 <start> 至 <end>）`；`source` 为 `state:<n> 条 diff，已失效 <m> 条`。
+- 时间点查询只考虑自身 `storyTime` 非空的版本；标签是不透明文字，时间轴按标签在当前路径上第一次出现的顺序建立；版本的有效终点取自身 `storyTime.end` 与结束事件时间（`endStoryTime.start ?? end`）的较早者。查询标签必须在该路径上出现过，否则抛错；同一路径多版命中时取较晚的一版，选中的版本按写入顺序用 `applyDiffEntriesTo` 累加成 `state`，`source` 为 `state:时序图谱 <n> 条事实，故事时间 <label>`。
+- `createTemporalGraphWorldModel(...).versions(nodeId)` 返回全部版本（含仍成立的一版），`write` 直接委托台账适配器；工厂的 `temporal_graph` 分支返回该对象，`packKey` 自动为 `state:temporal_graph`。
+- 时间轴没有外部时钟可依据，标签乱序时查询结果跟着乱序（ADR-0128 已记录）；评测需要更严格的时间轴时先补可比较的时间字段或解析器。
 
 ## X1.b 设计要点
 - 迁移 v48 `world_wiki_revisions(id, story_id, entity_id, node_id, text, story_time_start, story_time_end, source, created_at)`：修改由触发器拒绝，删除只在楼层已不存在时放行（为将来整段故事清理留路）。`node_id` 既是写入楼层也是这一版的出处楼层；统一接口每次写入只带一个楼层，最早出处由当前路径上最早的一版给出。
@@ -25,14 +33,14 @@
 - 状态槽位 `createStateSlotProvider` 不需要改动：它只消费 `{state, sections, source}`，台账下 `sections` 为空。
 
 ## X1.a 设计要点
-- `packages/core/src/world-model/types.ts`：`WORLD_MODEL_KINDS`、`isWorldModelKind`、`assertWorldModelKind`、`WorldModelView {state, sections, source}`、`WorldModelWrite {path, op, value?, storyTime?, confidence?, reason?, source}`、`WorldModel {kind, read(nodeId), write(nodeId, writes)}`。
-- `factory.ts`：`createWorldModel(store, kind = "ledger")` 先校验种类；`temporal_graph` 抛“尚未实现”，不回落到台账。X1.c 只改工厂与新增适配器，不改调用方。
+- `packages/core/src/world-model/types.ts`：`WORLD_MODEL_KINDS`、`isWorldModelKind`、`assertWorldModelKind`、`WorldModelReadOptions`、`WorldModelView {state, sections, source}`、`WorldModelWrite {path, op, value?, storyTime?, confidence?, reason?, source}`、`WorldModel {kind, read(nodeId, options?), write(nodeId, writes)}`。
+- `factory.ts`：`createWorldModel(store, kind = "ledger")` 先校验种类，三个候选按种类返回，不回落到台账。
 - `ledger.ts`：读取返回状态快照，`sections` 为空，`source` 为 `state:<n> 条 diff`；写入逐条 `validateLedgerDiff` 后一次 `appendStateDiffs`，未知路径的错误里带台账路径。写入接口供对比运行器把同一批事实灌进候选，结算器仍走自己的路径。
 - 故事设置：`StorySettings.worldModel`，`StorySettingsUpdate.worldModel`，`STORY_SETTINGS_UPDATE_KEYS` 包含它；校验消息包含 `worldModel`，server 的 PATCH 按字段名回 400。
 - 迁移 v47：`ALTER TABLE story_settings ADD COLUMN world_model TEXT NOT NULL DEFAULT 'ledger' CHECK (world_model IN ('ledger','wiki','temporal_graph'))`；`rowToStorySettings` 读取时校验；`getStorySettings` 未保存时返回默认值；更新 SQL 已包含该列。
 - 状态槽位：`createStateSlotProvider(store, {worldModel})`；`packKey` 从 `state` 改为 `state:<kind>`，避免不同表示共用同一个上下文包指纹。台账下只有一条 `当前状态：` 系统消息，内容与 `JSON.stringify(state, null, 2)` 不变；`sections` 每段渲染成一条 `<title>：\n<text>` 系统消息。
 - 设置传入点：`packages/server/src/runtime.ts`、`packages/st-compat/src/chat/cli.ts`、`chat/session.ts` 的 `CreateChatProvidersOptions`、`evalset/director-replay.ts`、`deep-eval-cli.ts`、`historical-replay-cli.ts`、`memory-eval.ts`、`playtest-cli.ts`；`st-bench/coexist.ts` 没有故事设置，使用默认台账。
-- 测试：`packages/core/test/world-model.test.ts` 12 条（种类与默认值、台账读取与状态槽位同源、写入与非法路径、删除、未实现候选、wiki 的版本与出处、分支隔离、空正文与未知人物、同批新建人物、wiki 槽位档案段、设置默认与读写、槽位选择）；`assistant-store.test.ts` 的 schema 版本期望改为 48；`story-settings.test.ts` 的默认设置包含 `ledger`；`web/test/settings-form.test.ts` 的 fixture 有 `worldModel`。
+- 测试：`packages/core/test/world-model.test.ts` 17 条（种类与默认值、台账读取与状态槽位同源、写入与非法路径、删除、三个候选创建、wiki 的版本与出处、分支隔离、空正文与未知人物、同批新建人物、wiki 槽位档案段、时序图谱的失效段与版本、按时间点查询、时序分支隔离、时序槽位失效段、台账与 wiki 拒绝时间查询、设置默认与读写、槽位选择）；`assistant-store.test.ts` 的 schema 版本期望改为 48；`story-settings.test.ts` 的默认设置包含 `ledger`；`web/test/settings-form.test.ts` 的 fixture 有 `worldModel`。
 
 ## H 应用内助手（已完成，H-T01 至 H-T09、H-T99）
 - 助手会话独立于 `nodes`、`state_diffs`、`turn_runs`；消息与事件在助手表里，删除会话不触碰楼层、head 与状态 diff；助手运行不组装剧情上下文，正剧也不读助手消息。
@@ -43,13 +51,13 @@
 - 审阅面板与待确认数量同源：`refreshPendingActions` 同时读动作与变更卡；渠道字段只渲染白名单字段，不输出密钥或环境变量名。
 
 ## 当前状态
-- 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1、P2、P3、P4、C-T01 至 C-T05、H-T00 至 H-T09、H-T99、X1.a、X1.b。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1、P2、P3、P4、C-T01 至 C-T05、H-T00 至 H-T09、H-T99、X1.a、X1.b、X1.c。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
 - 兼容插件线：`st-content`、`st-mvu`、`st-ejs`、`st-helper-host` 全部完成（含一致性测试与共存评测）。
 - 数据库 schema 版本 48。本轮没有新增依赖。
 - 报告：`docs/dev/reports/P2.md`、`P3.md`、`P4.md`、`C-T01.md`、`C-T02.md`、`C-T03.md`、`C-T04.md`、`C-T05.md`、`H.md`。
 - 沙箱现状：`eval-private/st-sandbox/st` 有 36 个预设、68 张卡、89 个非驱动聊天片段；预设连接字段已被驱动改写为录制端点与桩模型，全局 `openai_max_context` 已被驱动改为 2,000,000。需要恢复原始预设时用 `sandbox --replace` 重建。
 - 私有比对批次：`compare-smoke4`（5 个组合，修复后）与更早的 `compare-smoke2`、`compare-smoke3`、`session324-sanitize`；每个批次的 `compare/` 下有报告、差异清单与汇总。
-- ADR-0088 至 ADR-0127 记录插件、沙箱、比对、兼容内容映射、EJS、沙箱执行、时间预算、流水线接入、模板生成、一致性评测、酒馆助手宿主、iframe 沙箱、STscript 子集、生成后台化、HTML 渲染、覆盖率口径、应用内助手、世界模型接口与实体档案的决策。
+- ADR-0088 至 ADR-0128 记录插件、沙箱、比对、兼容内容映射、EJS、沙箱执行、时间预算、流水线接入、模板生成、一致性评测、酒馆助手宿主、iframe 沙箱、STscript 子集、生成后台化、HTML 渲染、覆盖率口径、应用内助手、世界模型接口、实体档案与时序图谱的决策。
 - HUMAN-03 待处理（不阻塞）：抽查 `eval-private/evalset/spotcheck.md` 里的事件题。
 - HUMAN-14 已关闭（2026-11-12：人类取消）：取消 Vertex 真实调用的凭证配置与验证要求；`roles.writer` 继续使用 `main-fallback`。
 - HUMAN-15 待处理（M6-T99 需要）：把秋叶整合包 v3.2 的 ComfyUI 启动在 `http://127.0.0.1:8188`，并导出一份 API 格式 workflow JSON 到 `eval-private/comfyui/` 或告知路径。
@@ -59,6 +67,7 @@
 
 ## 可重复命令
 - 门禁：`pnpm check`。
+- X1.c 目标测试：`pnpm exec vitest run packages/core/test/world-model.test.ts`。
 - X1.b 目标测试：`pnpm exec vitest run packages/core/test/world-model.test.ts packages/core/test/assistant-store.test.ts`。
 - X1.a 目标测试：`pnpm exec vitest run packages/core/test/world-model.test.ts packages/core/test/story-settings.test.ts packages/core/test/chat-providers.test.ts packages/web/test/settings-form.test.ts`。
 - H-T99 真实渠道验收：`node .devloop/scratch/H-T99/live.mjs`（脚本读取 `.env`、`data/channels.yaml` 与 `docs/`，数据库写在 `.devloop/scratch/H-T99/live.db`；结果同时写 `.devloop/scratch/H-T99/live.json`）。脚本是一次性验收工具，不需要长期保留。
@@ -97,7 +106,8 @@
 - 结构化 JSON 请求一律使用 `NO_CONTINUATION`；正文写作与散文类后台输出保留续写。上下文摘要按结构化请求处理，也使用 `NO_CONTINUATION`。
 - web 源码不能 import `@dramaticer/core` 的运行时值（会把 `better-sqlite3` 与 `node:*` 打进前端包导致整页白屏），类型导入可以；助手类型从 `@dramaticer/protocol` 取。
 - 世界模型只用故事设置 `worldModel` 选择；新增调用方传 `settings.worldModel`，不要自己判断种类或回落到台账。状态槽位的 `packKey` 必须带种类（`state:<kind>`），否则不同表示会共用上下文包指纹。
-- `temporal_graph` 在 X1.c 完成前由 `createWorldModel` 直接失败；实现候选时只改工厂与适配器，不改槽位、server 与评测调用方。
+- `WorldModel.read` 的 `atStoryTime` 只有 `temporal_graph` 支持；台账与 wiki 会直接抛错。时间点标签必须是在当前路径上出现过的文字，顺序按首次出现建立（ADR-0128）；评测探针不要假设它等价于真实时间轴。
+- 时序图谱的失效段只在当前视图的 `sections` 里；时间点查询的 `state` 由命中的版本累加，`sections` 为空。`versions(nodeId)` 是调试与评测入口，不在状态槽位里使用。
 - 实体档案（`wiki`）的写入路径是 `["profile", "<人物>"]`，其余路径按台账 diff 校验；档案实体必须是台账 `character` 里的人物，人物字段逐项写，整对象写人物会被 `validateLedgerDiff` 拒绝。
 - `world_wiki_revisions` 只追加：没有更新与删除接口，修改由触发器拒绝；读取按当前路径的递归 CTE，分支切换不跨分支。
 - `WorldModel.write` 先逐条 `validateLedgerDiff` 再写，供对比运行器使用；剧情结算仍走 `applySettlementProposals`，不要用这个接口绕过结算器（I12）。
