@@ -12,6 +12,10 @@ import type {
 import type { ContextMessage } from "../context/template.js";
 import type { DirectorPush } from "../director/lines.js";
 import {
+	readDirectorActionInput,
+	selectDirectorAction,
+} from "../director/lines.js";
+import {
 	DEFAULT_DIRECTOR_ORGANIZATION,
 	type DirectorEngine,
 	type DirectorOrganizationKind,
@@ -33,6 +37,12 @@ import {
 	readSceneKnowledge,
 } from "../ledger/character-profile.js";
 import { readLedger } from "../ledger/read.js";
+import {
+	DEFAULT_REUNION_UNRESOLVED_LIMIT,
+	REUNION_KIND_LABELS,
+	formatReunionMention,
+	selectReunionMentions,
+} from "../ledger/reunion.js";
 import { readSceneSegments } from "../ledger/scenes.js";
 import { USER_WILL_KINDS, type UserWillKind } from "../ledger/schema.js";
 import type { EmbeddingClient } from "../llm/embeddings.js";
@@ -369,6 +379,106 @@ export function createProfileSlotProvider(
 			return {
 				messages: [{ role: "system", content: sections.join("\n\n") }],
 				source: `profile:${blocks.length} 人，知情标注 ${annotatedScenes.length} 场`,
+			};
+		},
+	};
+}
+
+/** 重逢注入的配置；导演建议只在线组织方式下作为「被安排登场」的触发文本。 */
+export interface ReunionSlotProviderOptions {
+	/** 「最近窗口」的楼数；不设置时与默认历史窗口一致。 */
+	readonly recentFloors?: number;
+	/** 每个人物最多列出的未了结事项条数，默认 3。 */
+	readonly unresolvedLimit?: number;
+	readonly directorConfig?: DirectorConfig;
+	readonly directorOrganization?: DirectorOrganizationKind;
+	/** 单轮推进档位；随导演槽位一起重建。 */
+	readonly directorPush?: DirectorPush | null;
+}
+
+export interface ReunionSlotProvider extends ContextSlotProvider {
+	readonly options: ReunionSlotProviderOptions;
+}
+
+export function isReunionSlotProvider(
+	value: ContextSlotProvider | undefined,
+): value is ReunionSlotProvider {
+	return value !== undefined && "options" in value;
+}
+
+/**
+ * 久未出场的人物、地点与物品被提到或被导演安排登场时，注入它们的档案：
+ * 上次出场的场次、当时的关系与未了结的事。触发是纯程序判断，不调用模型。
+ */
+export function createReunionSlotProvider(
+	store: StoryStore,
+	options: ReunionSlotProviderOptions = {},
+): ReunionSlotProvider {
+	const unresolvedLimit =
+		options.unresolvedLimit ?? DEFAULT_REUNION_UNRESOLVED_LIMIT;
+	if (!Number.isInteger(unresolvedLimit) || unresolvedLimit < 1) {
+		throw new Error("重逢注入的未了结条数上限必须是正整数");
+	}
+	const config = options.directorConfig ?? DEFAULT_DIRECTOR_CONFIG;
+	const organization =
+		options.directorOrganization ?? DEFAULT_DIRECTOR_ORGANIZATION;
+	const push = options.directorPush ?? null;
+	const providerOptions: ReunionSlotProviderOptions = {
+		...options,
+		recentFloors: options.recentFloors,
+		unresolvedLimit,
+		directorConfig: config,
+		directorOrganization: organization,
+		directorPush: push,
+	};
+	return {
+		options: providerOptions,
+		packKey: JSON.stringify({
+			recentFloors: providerOptions.recentFloors ?? null,
+			unresolvedLimit,
+			director: { config, organization, push },
+		}),
+		provide(request): ContextSlotContent | null {
+			const nodeId =
+				request.nodeId ?? store.getHead(request.storyId)?.id ?? null;
+			if (nodeId === null) return null;
+			const path = store.getPathToNode(nodeId);
+			const lastUser = [...path].reverse().find((node) => node.role === "user");
+			const trigger: string[] = [];
+			if (lastUser !== undefined) trigger.push(lastUser.raw);
+			if (organization === "lines" && config.mode !== "off") {
+				const selection = selectDirectorAction(
+					readDirectorActionInput(store, request.storyId, nodeId, config, push),
+				);
+				if (selection !== null) trigger.push(selection.directive);
+			}
+			if (trigger.length === 0) return null;
+			const mentions = selectReunionMentions({
+				store,
+				storyId: request.storyId,
+				nodeId,
+				triggerText: trigger.join("\n"),
+				...(providerOptions.recentFloors === undefined
+					? {}
+					: { recentFloors: providerOptions.recentFloors }),
+			});
+			if (mentions.length === 0) return null;
+			const counts = new Map<string, number>();
+			for (const mention of mentions) {
+				const label = REUNION_KIND_LABELS[mention.candidate.kind];
+				counts.set(label, (counts.get(label) ?? 0) + 1);
+			}
+			const summary = [...counts.entries()]
+				.map(([label, count]) => `${label} ${count}`)
+				.join("、");
+			return {
+				messages: [
+					{
+						role: "system",
+						content: `重逢档案：\n${mentions.map(formatReunionMention).join("\n\n")}`,
+					},
+				],
+				source: `reunion:${summary}`,
 			};
 		},
 	};

@@ -220,6 +220,7 @@ describe("dramaticer chat", () => {
 				"memory",
 				"scene",
 				"profile",
+				"reunion",
 				"scene_card",
 				"director",
 				"user_will",

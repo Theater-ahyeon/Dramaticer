@@ -110,6 +110,12 @@ const DEFAULT_SEGMENTS: Readonly<Record<string, ContextSegment>> = {
 		slot: "profile",
 		priority: 53,
 	},
+	reunion: {
+		id: "reunion",
+		kind: "slot",
+		slot: "reunion",
+		priority: 51,
+	},
 	scene_card: {
 		id: "scene_card",
 		kind: "slot",
@@ -141,6 +147,7 @@ export const DEFAULT_CONTEXT_SEGMENT_ORDER: Readonly<
 		"memory",
 		"scene",
 		"profile",
+		"reunion",
 		"scene_card",
 		"director",
 		"user_will",
@@ -154,6 +161,7 @@ export const DEFAULT_CONTEXT_SEGMENT_ORDER: Readonly<
 		"memory",
 		"scene",
 		"profile",
+		"reunion",
 		"scene_card",
 		"director",
 		"user_will",

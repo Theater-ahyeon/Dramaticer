@@ -26,6 +26,7 @@ import {
 	PERSONA_SLOT_PLUGIN,
 	PROFILE_SLOT_PLUGIN,
 	RAW_HISTORY_SLOT_PLUGIN,
+	REUNION_SLOT_PLUGIN,
 	SCENE_CARD_SLOT_PLUGIN,
 	SCENE_SLOT_PLUGIN,
 	STATE_SLOT_PLUGIN,
@@ -138,6 +139,11 @@ export async function createStandardChatSlots(
 		[LORE_SLOT_PLUGIN]: { store: options.store },
 		[SCENE_SLOT_PLUGIN]: { store: options.store },
 		[PROFILE_SLOT_PLUGIN]: { store: options.store },
+		[REUNION_SLOT_PLUGIN]: {
+			store: options.store,
+			config: options.directorConfig,
+			organization: options.directorOrganization,
+		},
 		[SCENE_CARD_SLOT_PLUGIN]: { store: options.store },
 		[DIRECTOR_SLOT_PLUGIN]: {
 			store: options.store,

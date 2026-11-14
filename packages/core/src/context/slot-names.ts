@@ -9,6 +9,7 @@ export const CONTEXT_SLOT_NAMES = [
 	"history",
 	"scene",
 	"profile",
+	"reunion",
 	"scene_card",
 	"director",
 	"user_will",

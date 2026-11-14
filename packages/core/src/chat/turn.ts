@@ -99,7 +99,9 @@ import {
 } from "./profile.js";
 import {
 	createDirectorSlotProvider,
+	createReunionSlotProvider,
 	isDirectorSlotProvider,
+	isReunionSlotProvider,
 } from "./providers.js";
 import { detectContextLayout } from "./template.js";
 
@@ -338,7 +340,7 @@ function selectDeepTurnTools(
 
 /**
  * 单轮强度与推进档位覆盖导演槽位上的值。槽位携带了评估用的配置与机制，
- * 这里只重建导演槽位，其它槽位原样复用。
+ * 这里只重建导演槽位与跟随它的重逢槽位，其它槽位原样复用。
  */
 function resolveTurnProviders(options: {
 	readonly store: StoryStore;
@@ -358,6 +360,21 @@ function resolveTurnProviders(options: {
 	if (!isDirectorSlotProvider(director)) {
 		throw new Error("指定了单轮导演参数，但导演槽位没有携带配置");
 	}
+	const reunion = options.providers?.reunion;
+	const reunionOverride =
+		requestedPush !== null &&
+		reunion !== undefined &&
+		isReunionSlotProvider(reunion)
+			? {
+					reunion: {
+						...createReunionSlotProvider(options.store, {
+							...reunion.options,
+							directorPush: requestedPush,
+						}),
+						...(reunion.plugin === undefined ? {} : { plugin: reunion.plugin }),
+					},
+				}
+			: {};
 	return {
 		...options.providers,
 		director: {
@@ -371,6 +388,7 @@ function resolveTurnProviders(options: {
 			}),
 			...(director.plugin === undefined ? {} : { plugin: director.plugin }),
 		},
+		...reunionOverride,
 	};
 }
 

@@ -8,6 +8,7 @@ import {
 	createPersonaSlotProvider,
 	createProfileSlotProvider,
 	createRawHistorySlotProvider,
+	createReunionSlotProvider,
 	createSceneCardSlotProvider,
 	createSceneSlotProvider,
 	createStateSlotProvider,
@@ -38,6 +39,7 @@ export const MEMORY_SLOT_PLUGIN = "slot.memory";
 export const LORE_SLOT_PLUGIN = "slot.lore";
 export const SCENE_SLOT_PLUGIN = "slot.scene";
 export const PROFILE_SLOT_PLUGIN = "slot.profile";
+export const REUNION_SLOT_PLUGIN = "slot.reunion";
 export const SCENE_CARD_SLOT_PLUGIN = "slot.scene-card";
 export const DIRECTOR_SLOT_PLUGIN = "slot.director";
 export const USER_WILL_SLOT_PLUGIN = "slot.user-will";
@@ -213,6 +215,24 @@ export const profileSlotPlugin: PluginDefinition = {
 	},
 };
 
+export const reunionSlotPlugin: PluginDefinition = {
+	name: REUNION_SLOT_PLUGIN,
+	apply(context, config) {
+		const values = slotConfig(REUNION_SLOT_PLUGIN, config);
+		context.slot(
+			"reunion",
+			createReunionSlotProvider(requireSlotStore(REUNION_SLOT_PLUGIN, values), {
+				recentFloors: values.recentFloors as number | undefined,
+				unresolvedLimit: values.unresolvedLimit as number | undefined,
+				directorConfig: values.config as DirectorConfig | undefined,
+				directorOrganization: values.organization as
+					| DirectorOrganizationKind
+					| undefined,
+			}),
+		);
+	},
+};
+
 export const sceneCardSlotPlugin: PluginDefinition = {
 	name: SCENE_CARD_SLOT_PLUGIN,
 	apply(context, config) {
@@ -319,6 +339,7 @@ export const SLOT_PLUGINS: readonly PluginDefinition[] = [
 	loreSlotPlugin,
 	sceneSlotPlugin,
 	profileSlotPlugin,
+	reunionSlotPlugin,
 	sceneCardSlotPlugin,
 	directorSlotPlugin,
 	userWillSlotPlugin,

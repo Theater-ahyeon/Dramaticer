@@ -5,6 +5,7 @@ export * from "./clues.js";
 export * from "./gap-pass.js";
 export * from "./pending.js";
 export * from "./read.js";
+export * from "./reunion.js";
 export * from "./revision.js";
 export * from "./rules.js";
 export * from "./schema.js";
