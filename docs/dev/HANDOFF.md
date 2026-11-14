@@ -3,18 +3,19 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-14 会话 375：X2.c 导演组织方式对比运行器。新增 `packages/st-compat/src/evalset/director-organization-compare.ts`、`condition-samples.ts` 与 CLI（`pnpm --filter @dramaticer/st-compat director-organization-compare`）：每个候选与每次重复复制源数据库，固定快回合、同一串玩家消息、同一批小品与同一个种子；`bits` 候选每轮后走 `director_bits` 同一入口判断条件，起始楼层先判断一次；指标统一为重复度、推进度、线索兑现率、盲测胜率与写作/判断请求及 Trace 时延；条件样本用仓库内合成 fixture `packages/st-compat/test/fixtures/director-conditions.json` 逐条核对，准确率分母是样本总数；每个运行写 sidecar，候选失败与单条样本失败互相隔离；ADR-0133；新增 4 个测试；门禁通过（254 个测试文件、2,214 个测试、5 个跳过）。
+- 2026-11-14 会话 376：X2.d 实跑输入准备与长任务申请。为 3 个源数据库（`xianxia`、`yuwang`、`yinqi`）各准备 8 条玩家消息、8 条剧情小品与 9 条条件样本（基础 5 条加 4 条故事合成样本），全部在 `.devloop/scratch/X2.d/inputs/`；小品覆盖 text 与 ledger 两类条件、冷却、`after` 顺序、不可重复与兜底；条件样本的人工标注覆盖 text 真/假、ledger 真/假与兜底。用 2 轮、1 次重复、seed 1 做了一次实跑冒烟：两个候选各完成 2 轮，0 失败，`bits` 每轮 1 次判断请求（起始楼层 1 次加 2 轮），条件核对 9/9 正确，盲测 3 胜 1 负；冒烟的两个候选都没有产生剧情笔记，线索兑现率记为 null。随后申请长任务 **X2.d-01**（`node .devloop/scratch/X2.d/run-compare.mjs`，3 个故事 × 2 个候选 × 3 次重复 × 8 轮，600 分钟上限），结果写 `WAITING`。
 
-## 下一步（会话 376 先做）
-1. 按 TASKS 从上往下，下一个可做任务是 **X2.d 在 3 个对话上运行并判定**。它依赖 X2.c。
-2. X2.d 用 3 个评测对话、固定轮数、每种候选重复 3 次运行 `director-organization-compare`；按判定规则决定是否切换默认 `directorOrganization`，结论写 ADR；未胜出的候选留在开关后。
-3. 运行前要准备的输入：
-   - 每个对话一份源数据库（已导入卡、lore、截断点之前的楼层，head 已是可续写的助手楼层）与同一串玩家消息 JSON；
-   - 每个故事一份小品 JSON（`--bits`）；源数据库里没有小品时必须传，两个候选会使用同一批小品。小品要能覆盖自然语言与台账查询两类条件，并带冷却、顺序、可否重复与兜底中的若干项；
-   - 条件判断样本 JSON（`--conditions`）。仓库里的 `director-conditions.json` 是基础清单；每个故事可以追加自己的合成样本，但不能引用私有对话原文。样本要覆盖 text 为真/假、ledger 为真/假、兜底，人工标注是准确率分母。
-   - 写作、裁判、条件判断三个模型别名分别由 `--model`、`--judge-model`、`--background-model` 指定；默认按 writer、judge、settler 角色解析。
-4. 运行命令：`pnpm --filter @dramaticer/st-compat director-organization-compare --db <源库> --story <id> --messages <消息.json> --bits <小品.json> --conditions <样本.json> --rounds <n> --repeat 3 --dir <运行目录>`。长任务按 AGENTS.md 写 `.devloop/jobs/X2.d-01.json`，结果写 `WAITING`；`.status.json` 出来后先读退出码与日志，再补跑或判定。
-5. 判定规则按 DESIGN §14.4 与 X2 总验收：`bits` 的主要指标（重复度、推进度、线索兑现率）不劣于 `mechanisms`，条件判断准确率有逐条记录，并且盲测胜率明显高于 50%，才切换默认；否则保持 `mechanisms`。结论写 ADR 与 `docs/dev/reports/X2.md`，统计版只写数字与样本数。
+## 下一步（会话 377 先做）
+1. 先读 `.devloop/jobs/X2.d-01.status.json` 与 `.devloop/jobs/X2.d-01.log`：退出码 0 就进入判定；失败就按日志修复输入或运行器，换序号（`X2.d-02`）重新申请，不要删已完成候选的 sidecar。
+2. 判定数据：`eval-private/reports/director-organization-compare/<slug>.json`（含回复，私有）；三个故事的逐故事报告在同一目录的 `<slug>.md`。用 `node .devloop/scratch/X2.d/summarize.mjs` 打印指标表、逐条条件判定与合计，脚本只输出数字与条件 id。
+3. 判定规则（DESIGN §14.4 与 X2 总验收）：
+   - 主要指标是重复度、推进度、线索兑现率；`bits` 必须不劣于 `mechanisms`（重复度不更高、推进度与兑现率不更低）。
+   - 盲测胜率必须明显高于 50%：点估计高于 50%，且 95% 区间下界高于 50%；平局不计入胜负。
+   - 条件判断准确率按人工标注逐条记录，分母是样本总数，缺失与失败计入分母；裁判只作辅助证据。
+   - 满足全部条件才把默认 `directorOrganization` 切到 `bits`；否则保持 `mechanisms`，`bits` 留在开关后。
+   - 线索兑现率若两边都没有样本（运行内没有新建剧情笔记），照实记为 null 并说明这项没有产出证据，不要补造数据。
+4. 产出：ADR-0134（背景、结果、判定、重评条件）、`docs/dev/reports/X2.md`（统计数字、样本数、逐条条件判定摘要、判定对照）、TASKS 把 X2.d 标 `[x]` 并写完成行、DESIGN §14.4 增补 X2 判定行、HANDOFF 重写、LOG 追加、`.devloop/result.json` 写 `DONE`，最后跑 `pnpm check` 再提交。
+5. 如果长任务失败率较高（例如某个故事多次写作失败），先看日志里的错误类别；内容安全拒答与渠道错误的处理方式不同，不要盲目重跑整个批次，sidecar 会复用已完成部分。
 
 ## 当前状态
 - 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1–P4、C-T01 至 C-T05、H-T00 至 H-T99、X1.a 至 X1.e、X2.a 至 X2.c。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
@@ -22,7 +23,8 @@
 - 数据库 schema 版本 50。本轮没有新增依赖。
 - 报告：`docs/dev/reports/P2.md`、`P3.md`、`P4.md`、`C-T01.md`、`C-T02.md`、`C-T03.md`、`C-T04.md`、`C-T05.md`、`H.md`、`X1.md`。
 - 世界模型：默认 `ledger`；`wiki` 与 `temporal_graph` 已经可用，由故事设置 `worldModel` 选择，只有 `temporal_graph` 支持 `atStoryTime`。
-- 导演组织方式：默认 `mechanisms`（现有机制序列）；`bits` 已可用，由故事设置 `directorOrganization` 选择。X2.c 的对比运行器已经就绪，X2.d 尚未运行。
+- 导演组织方式：默认 `mechanisms`（现有机制序列）；`bits` 已可用，由故事设置 `directorOrganization` 选择。X2.d 的长任务 X2.d-01 正在等待执行，判定尚未得出。
+- X2.d 的输入与运行脚本在 `.devloop/scratch/X2.d/`：`inputs/`（消息、小品、条件样本）、`run-compare.mjs`、`summarize.mjs`、`runs/<slug>/`（复制数据库、缓存与 sidecar）、`smoke/`（2 轮冒烟结果）。
 - X1 的原始数据在 `eval-private/reports/world-model-compare/`（含故事标题与回复，不进入仓库）；长任务脚本与 sidecar 在 `.devloop/scratch/X1.e/`。
 - 沙箱现状：`eval-private/st-sandbox/st` 有 36 个预设、68 张卡、89 个非驱动聊天片段；预设连接字段已被驱动改写为录制端点与桩模型。需要恢复原始预设时用 `sandbox --replace` 重建。
 - 私有比对批次：`compare-smoke4`（5 个组合，修复后）与更早的 `compare-smoke2`、`compare-smoke3`、`session324-sanitize`。
@@ -33,6 +35,10 @@
 
 ## 可重复命令
 - 门禁：`pnpm check`。
+- X2.d 长任务（断点续跑，已完成候选复用 sidecar）：`node .devloop/scratch/X2.d/run-compare.mjs`。
+- X2.d 指标汇总：`node .devloop/scratch/X2.d/summarize.mjs`。
+- X2.d 单个故事：`node packages/st-compat/dist/evalset/director-organization-compare-cli.js --db <源库> --story <故事> --messages .devloop/scratch/X2.d/inputs/<slug>.messages.json --bits .devloop/scratch/X2.d/inputs/<slug>.bits.json --conditions .devloop/scratch/X2.d/inputs/<slug>.conditions.json --rounds 8 --repeat 3 --seed 1 --model main-fallback --judge-model judge --background-model background --dir .devloop/scratch/X2.d/runs/<slug>`。
+- X2.d 冒烟：把上面命令的 `--rounds` 改 2、`--repeat` 改 1、`--dir` 改 `.devloop/scratch/X2.d/smoke`。
 - X2.c 目标测试：`pnpm exec vitest run packages/st-compat/test/director-organization-compare.test.ts`。
 - X2.b 目标测试：`pnpm exec vitest run packages/core/test/director-bits.test.ts packages/core/test/director-organization.test.ts packages/core/test/card-extension.test.ts packages/core/test/plugin-background-tools.test.ts packages/st-compat/test/dramaticer-extension.test.ts packages/server/test/stories.test.ts`。
 - X2.a 目标测试：`pnpm exec vitest run packages/core/test/director-organization.test.ts packages/core/test/story-settings.test.ts packages/core/test/lore.test.ts packages/core/test/director.test.ts packages/core/test/assistant-store.test.ts packages/web/test/settings-form.test.ts`。
@@ -51,7 +57,7 @@
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
-- 私有数据（`eval-private/`、`data/`、`.env`）不能进入测试数据、提交、文档或日志；报告只写统计数字，不写对话原文。X1 的 JSON 含回复与答案，只能放在私有目录。
+- 私有数据（`eval-private/`、`data/`、`.env`）不能进入测试数据、提交、文档或日志；报告只写统计数字，不写对话原文。X1 与 X2 的 JSON 含回复与答案，只能放在私有目录。
 - ST 的原始安装目录只读：不得修改，不得复制出 `secrets.json`、`settings.json`、`cookie-secret.txt`；沙箱里不得配置真实模型端点，录制服务不持有模型客户端（I14）。
 - 测试文件里不能出现 I10 拦截的地址：只允许 `localhost`、`127.0.0.1`、`example.com`/`example.org`/`example.invalid` 作为主机名，不能出现 `eval-private` 字面量（用 `stBenchPaths(repoRoot).privateRoot`）。
 - Windows 上并行跑测试会显著变慢；`vitest.config.ts` 默认 `testTimeout` 60 秒、`maxWorkers` 8；`afterEach` 删除临时目录用 `rmSync` 时必须带 `maxRetries` 与 `retryDelay`。
@@ -68,8 +74,9 @@
 - `replaceDirectorBits` 是整批替换，用于卡导入；不要逐条 upsert 后留下旧条目。导入结果里 `bits.replaced` 表示替换后的小品数。
 - X2.c 运行器只在复制数据库里写 `directorOrganization` 与小品；源库只读。`--bits` 不传时使用源库已有小品，两个候选共用同一批。小品指纹进入 sidecar 校验，改小品后旧运行结果会要求删除重跑。
 - X2.c 的 `bits` 候选在开跑前对起始楼层判断一次，每轮结束对新助手楼层判断一次，走的是 `createDirectorBitJudgmentsHandler` 同一入口；判断请求计入每轮成本。判断失败只记错误，候选继续运行。
-- X2.c 的条件样本核对会为每条样本建独立临时故事，人工标注为准；`missing` 与 `failed` 都计入准确率分母。基础 fixture 是 `packages/st-compat/test/fixtures/director-conditions.json`，改动或追加样本不要引用私有原文。
-- X2.c 的推进度从第 2 轮起算：第 1 轮没有前文基准，不进入分母。线索兑现只看运行内新建的剧情笔记，运行前已有笔记不计入。
+- X2.c 的条件样本核对会为每条样本建独立临时故事，人工标注为准；`missing` 与 `failed` 都计入准确率分母，样本的 `bit.id` 必须等于样本 `id`，否则引擎明细按 id 取不到，会记为 `missing`。基础 fixture 是 `packages/st-compat/test/fixtures/director-conditions.json`，改动或追加样本不要引用私有原文。
+- X2.c 的推进度从第 2 轮起算：第 1 轮没有前文基准，不进入分母。线索兑现只看运行内新建的剧情笔记，运行前已有笔记不计入；结构化输出为 function-call 时，模型不调用写入工具就产生 0 条笔记，两边都可能是 null。
+- X2.d 的冒烟（2 轮）里两个候选都没有剧情笔记，线索兑现率是 null；8 轮实跑是否产生笔记以结果 JSON 为准，不要用冒烟结果推断。
 - `WorldModel.read` 的 `atStoryTime` 只有 `temporal_graph` 支持；台账与 wiki 会直接抛错。时间点标签必须是在当前路径上出现过的文字，顺序按首次出现建立（ADR-0128）；评测探针不要假设它等价于真实时间轴。
 - 时序图谱的失效段只在当前视图的 `sections` 里；时间点查询的 `state` 由命中的版本累加，`sections` 为空。`versions(nodeId)` 是调试与评测入口，不在状态槽位里使用。
 - 实体档案（`wiki`）的写入路径是 `["profile", "<人物>"]`，其余路径按台账 diff 校验；档案实体必须是台账 `character` 里的人物，人物字段逐项写，整对象写人物会被 `validateLedgerDiff` 拒绝。
