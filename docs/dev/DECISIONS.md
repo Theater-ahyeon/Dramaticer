@@ -2405,3 +2405,20 @@
   - 探针记录变大（每条带答题上下文），`r6-compare` 的 sidecar 随之变大；旧 sidecar 仍可读，只是漏斗把它们的矛盾探针记为无法归因。
   - 归因不调用任何模型，也不写数据库；`r6-funnel` 可以在额度受限时随时重跑。
   - 改进方向只按占比最大的一类给出；要区分「模型没用上」与「裁判判错」仍需人工抽查（HUMAN 申请）。
+
+## ADR-0148 门槛判定 CLI 的输入口径（2026-11-14）
+
+- **背景**：R6 预注册 v2 的判定要读六份独立结果（G0 仪器、G1 重 roll 回放、C1 对比、G5 深回合、G6 偏好、遗忘漏斗），它们由不同 CLI 分别写出，文件名、字段位置与「哪个数字算哪一项」都不统一。手工拼 `R6GateInput` 容易漏项或把两个故事的结果错配，且报告需要固定包含 B1 参考与遗忘漏斗两张表。
+- **选项**：
+  - 让每个批次 CLI 自己写一份判定输入：判定逻辑分散，改门槛要动五个 CLI。
+  - 单独一个 `r6-gate` 读结果文件、组装输入、调用既有的 `evaluateR6Gates`：判定仍是唯一实现，CLI 只做读取与报告。
+- **决定**：
+  - 新增 `evalset/r6-gate.ts` 与 CLI `r6-gate`（`pnpm --filter @dramaticer/st-compat r6-gate --dir <私有运行目录>`），只读结果 JSON，不调用任何模型。
+  - 输入映射：G0 取 `r6-instrument` 的 `gateInput`；G1 取 `r6-replay` 的 `summary.gateInput`；G2 与 G3 取全部 `r6-compare` 结果的 `profiles[].repetition/progression`（native 与 naive 各一份，重复度用 `pairs` 作样本数、推进度用 `samples`）；G4 用 native 档 `probes` 的 `consistent/contradicted/unknown/failed`；G5 取 `r6-deep` 的 `summary`；G6 取 `r6-preference` 的 `summary`。
+  - 任一项缺失、`format` 不符或 `gateVersion` 不是当前预注册版本都直接失败并指出文件；同一故事缺一个档位、重复给出同一档位同样失败。B1 与遗忘漏斗不参与判定：B1 缺失时报告写「未提供 B1 结果」，遗忘漏斗按任务要求是报告的固定一节，缺失时同样失败并指出文件名。
+  - 报告写门槛表（状态与原因）、全部计数与数值、B1 参考、遗忘漏斗三类分布与按故事分布；只写聚合数字与故事 slug，不写运行目录、台账路径、正文与题目。结果 JSON 的 `inputs` 只记文件名。
+  - `generatedAt` 由调用方传入固定值或省略；其余字段全部来自输入，同一输入重复运行除时间外逐字节相同。
+- **影响**：
+  - R6-T99 与 `docs/dev/reports/R6.md` 直接引用本 CLI 的输出，判定口径只在 `gates.ts` 一处。
+  - B1 合并多份结果时按合并计数重算 Wilson 区间，不沿用单份结果的区间。
+  - 不新增依赖，不改变生产运行时。

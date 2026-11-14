@@ -30,6 +30,7 @@ export * from "./evalset/r6-compare.js";
 export * from "./evalset/r6-b1.js";
 export * from "./evalset/r6-deep.js";
 export * from "./evalset/r6-funnel.js";
+export * from "./evalset/r6-gate.js";
 export * from "./evalset/r6-instrument.js";
 export * from "./evalset/r6-preference.js";
 export * from "./evalset/r6-replay.js";

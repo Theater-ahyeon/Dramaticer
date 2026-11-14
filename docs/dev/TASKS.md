@@ -1861,7 +1861,8 @@
   - 新增 `evalset/r6-funnel.ts` 与 CLI：对每条判为矛盾的探针按三步归因（台账有无原文支撑、事实有无进入答题上下文、进入 prompt 未答对），零写作调用，复用 `explain` 的读取路径；输出三类的条数与按故事分布。
   验收：假客户端下三条路径各有样本且分类互斥；探针记录带上下文段；不调用写作模型；报告只写聚合数字；`pnpm check` 通过。
 
-- [ ] **R6-T07.d 门槛判定 CLI** | 依赖：R6-T07.a、R6-T07.b、R6-T07.c
+- [x] **R6-T07.d 门槛判定 CLI** | 依赖：R6-T07.a、R6-T07.b、R6-T07.c
+  完成：2026-11-14 新增 `evalset/r6-gate.ts` 与 CLI `r6-gate`：从运行目录读齐六份结果（G0 的 `r6-instrument` 的 `gateInput`、G1 的 `r6-replay` 的 `summary.gateInput`、C1 的 `compare-*.json` 的 `profiles[]` 分档取重复度与推进度与 native 档探针、G5 的 `r6-deep` 的 `summary`、G6 的 `r6-preference` 的 `summary`、遗忘漏斗的 `r6-funnel` 的 `summary`），组装 `R6GateInput` 交给 `evaluateR6Gates`；任一项缺失、`format` 不符或 `gateVersion` 不是 v2 都直接失败并指出文件名，同一故事缺档位或重复档位同样失败。报告写门槛表（状态与原因）、全部计数与数值、B1 参考与遗忘漏斗表，只含聚合数字与 slug；结果 JSON 的 `inputs` 只记文件名，B1 合并多份时按合并计数重算 Wilson 区间。`--dir` 与输出路径按仓库根目录解析，同一输入重复运行除 `generatedAt` 外逐字节相同。ADR-0148。新增 12 个测试（全部通过、G0 未通过时 G1 与 G5 仪器无效、G5 不可测、G6 样本不足、G2 与 G4 未通过、缺输入指出文件名、门槛版本不符、缺档位、CLI 重复运行逐字节相同且按文件名发现输入、报告不含运行目录）。`pnpm check` 通过。
   做什么：
   - 新增 `r6-gate` CLI：从私有运行目录读取 G0 的两份结果、G1 的两组配对、C1 的重复度与推进度、C3 的深回合结果与 G6 的偏好结果，组装成 `R6GateInput` 交给 `evaluateR6Gates`，写出门槛表、B1 参考数字与遗忘漏斗表。
   - 任一项输入缺失时直接失败并指出缺的是哪一份结果，不回落到默认值；报告只写聚合数字与 slug。
