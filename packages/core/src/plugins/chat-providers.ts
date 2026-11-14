@@ -24,6 +24,7 @@ import {
 	MEMORY_SLOT_PLUGIN,
 	NAIVE_SLOT_PLUGINS,
 	PERSONA_SLOT_PLUGIN,
+	PROFILE_SLOT_PLUGIN,
 	RAW_HISTORY_SLOT_PLUGIN,
 	SCENE_CARD_SLOT_PLUGIN,
 	SCENE_SLOT_PLUGIN,
@@ -136,6 +137,7 @@ export async function createStandardChatSlots(
 		},
 		[LORE_SLOT_PLUGIN]: { store: options.store },
 		[SCENE_SLOT_PLUGIN]: { store: options.store },
+		[PROFILE_SLOT_PLUGIN]: { store: options.store },
 		[SCENE_CARD_SLOT_PLUGIN]: { store: options.store },
 		[DIRECTOR_SLOT_PLUGIN]: {
 			store: options.store,

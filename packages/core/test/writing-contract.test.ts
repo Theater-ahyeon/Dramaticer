@@ -17,6 +17,7 @@ const DEFAULT_SEGMENT_ORDER = [
 	"state",
 	"memory",
 	"scene",
+	"profile",
 	"scene_card",
 	"director",
 	"user_will",
@@ -30,6 +31,7 @@ const FULL_SEGMENT_ORDER = [
 	"summary",
 	"memory",
 	"scene",
+	"profile",
 	"scene_card",
 	"director",
 	"user_will",
@@ -83,6 +85,7 @@ describe("写作契约段", () => {
 			{ id: "summary", kind: "slot", slot: "summary", priority: 70 },
 			{ id: "memory", kind: "slot", slot: "memory", priority: 60 },
 			{ id: "scene", kind: "slot", slot: "scene", priority: 55 },
+			{ id: "profile", kind: "slot", slot: "profile", priority: 53 },
 			{
 				id: "scene_card",
 				kind: "slot",

@@ -1871,6 +1871,14 @@ export function buildMigrations(
 				END`,
 			],
 		},
+		{
+			version: 63,
+			description: "场次归档增加人物档案与知情记录",
+			statements: [
+				"ALTER TABLE scene_archives ADD COLUMN profiles TEXT NOT NULL DEFAULT '[]'",
+				"ALTER TABLE scene_archives ADD COLUMN informed TEXT NOT NULL DEFAULT '[]'",
+			],
+		},
 	];
 }
 

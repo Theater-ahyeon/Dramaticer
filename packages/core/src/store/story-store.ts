@@ -191,6 +191,11 @@ import {
 	isLedgerChangeCardStatus,
 } from "../ledger/cards.js";
 import {
+	type SceneInformed,
+	assertSceneInformedList,
+	assertSceneProfileUpdates,
+} from "../ledger/character-profile.js";
+import {
 	type GapPassRun,
 	type NewGapPassRun,
 	assertGapPassDroppedEntries,
@@ -510,6 +515,8 @@ interface SceneArchiveRow {
 	readonly boundary: string;
 	readonly summary: string;
 	readonly present: string;
+	readonly profiles: string;
+	readonly informed: string;
 	readonly state_changes: string;
 	readonly clues_opened: string;
 	readonly clues_closed: string;
@@ -1829,6 +1836,14 @@ function rowToSceneArchive(row: SceneArchiveRow): SceneArchive {
 		boundary: row.boundary,
 		summary: row.summary,
 		present: readStringArray(row.present, `${label}.present`),
+		profiles: assertSceneProfileUpdates(
+			JSON.parse(row.profiles) as unknown,
+			`${label}.profiles`,
+		),
+		informed: assertSceneInformedList(
+			JSON.parse(row.informed) as unknown,
+			`${label}.informed`,
+		),
 		stateChanges: assertSceneStateChanges(
 			JSON.parse(row.state_changes) as unknown,
 			`${label}.stateChanges`,
@@ -1837,6 +1852,31 @@ function rowToSceneArchive(row: SceneArchiveRow): SceneArchive {
 		cluesClosed: readStringArray(row.clues_closed, `${label}.cluesClosed`),
 		createdAt: row.created_at,
 	};
+}
+
+/**
+ * 知情记录只能引用当前路径上更早的已归档场次；引用同一场或未来场次时
+ * 推导出的知情关系不成立，所以在写入前拒绝。
+ */
+function assertSceneArchiveInformedReferences(
+	informed: readonly SceneInformed[],
+	getArchive: (endNodeId: string) => SceneArchive | null,
+	endPosition: number,
+	path: readonly { readonly id: string }[],
+): void {
+	for (const entry of informed) {
+		const factPosition = path.findIndex((node) => node.id === entry.factId);
+		if (factPosition === -1 || factPosition >= endPosition) {
+			throw new Error(
+				`场次归档.informed 的 factId 必须是当前路径上更早的楼层：${entry.factId}`,
+			);
+		}
+		if (getArchive(entry.factId) === null) {
+			throw new Error(
+				`场次归档.informed 的 factId 还没有归档：${entry.factId}`,
+			);
+		}
+	}
 }
 
 function rowToSceneControl(row: SceneControlRow): SceneControl {
@@ -4914,30 +4954,41 @@ export class StoryStore {
 				`场次归档的起始楼层必须是助手楼层：${normalised.startNodeId}`,
 			);
 		}
-		if (
-			!this.getPathToNode(normalised.endNodeId).some(
-				(node) => node.id === normalised.startNodeId,
-			)
-		) {
+		const path = this.getPathToNode(normalised.endNodeId);
+		const endPosition = path.findIndex(
+			(node) => node.id === normalised.endNodeId,
+		);
+		const startPosition = path.findIndex(
+			(node) => node.id === normalised.startNodeId,
+		);
+		if (startPosition === -1) {
 			throw new Error(
 				`场次归档的起始楼层 ${normalised.startNodeId} 不在结束楼层 ${normalised.endNodeId} 的路径上`,
 			);
 		}
+		assertSceneArchiveInformedReferences(
+			normalised.informed,
+			(endNodeId) => this.getSceneArchive(endNodeId),
+			endPosition,
+			path,
+		);
 		const createdAt = input.createdAt ?? new Date().toISOString();
 		assertNonEmptyString(createdAt, "场次归档的创建时间");
 		this.#db
 			.prepare(
 				`INSERT INTO scene_archives
 					(end_node_id, story_id, start_node_id, floor_count, boundary,
-					 summary, present, state_changes, clues_opened, clues_closed,
-					 created_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+					 summary, present, profiles, informed, state_changes,
+					 clues_opened, clues_closed, created_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 				ON CONFLICT (end_node_id) DO UPDATE SET
 					start_node_id = excluded.start_node_id,
 					floor_count = excluded.floor_count,
 					boundary = excluded.boundary,
 					summary = excluded.summary,
 					present = excluded.present,
+					profiles = excluded.profiles,
+					informed = excluded.informed,
 					state_changes = excluded.state_changes,
 					clues_opened = excluded.clues_opened,
 					clues_closed = excluded.clues_closed,
@@ -4951,6 +5002,8 @@ export class StoryStore {
 				normalised.boundary,
 				normalised.summary,
 				JSON.stringify(normalised.present),
+				JSON.stringify(normalised.profiles),
+				JSON.stringify(normalised.informed),
 				JSON.stringify(normalised.stateChanges),
 				JSON.stringify(normalised.cluesOpened),
 				JSON.stringify(normalised.cluesClosed),
@@ -4968,6 +5021,28 @@ export class StoryStore {
 			.prepare("SELECT * FROM scene_archives WHERE end_node_id = ?")
 			.get(endNodeId) as SceneArchiveRow | undefined;
 		return row === undefined ? null : rowToSceneArchive(row);
+	}
+
+	/** 按路径顺序读出已经归档的场次；分支切换后只返回当前分支上的场次。 */
+	listSceneArchivesAlongPath(nodeId: string): SceneArchive[] {
+		if (!this.getNode(nodeId)) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
+		const rows = this.#db
+			.prepare(
+				`WITH RECURSIVE chain(node_id, depth) AS (
+					SELECT id, 0 FROM nodes WHERE id = ?
+					UNION ALL
+					SELECT nodes.parent_id, chain.depth + 1
+					FROM nodes JOIN chain ON nodes.id = chain.node_id
+					WHERE nodes.parent_id IS NOT NULL
+				)
+				SELECT scene_archives.*
+				FROM scene_archives JOIN chain ON scene_archives.end_node_id = chain.node_id
+				ORDER BY chain.depth DESC`,
+			)
+			.all(nodeId) as SceneArchiveRow[];
+		return rows.map(rowToSceneArchive);
 	}
 
 	/** 写入一条场面控制；同一楼层同一操作覆盖同一行。 */

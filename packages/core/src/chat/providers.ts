@@ -24,6 +24,14 @@ import {
 } from "../director/types.js";
 import { normalizeEntityName } from "../entity.js";
 import { isJsonObject } from "../json.js";
+import {
+	CHARACTER_PROFILE_FIELD_LABELS,
+	type CharacterProfile,
+	type CharacterProfileField,
+	type CharacterProfileNote,
+	readCharacterProfiles,
+	readSceneKnowledge,
+} from "../ledger/character-profile.js";
 import { readLedger } from "../ledger/read.js";
 import { readSceneSegments } from "../ledger/scenes.js";
 import { USER_WILL_KINDS, type UserWillKind } from "../ledger/schema.js";
@@ -257,6 +265,111 @@ export function createSceneCardSlotProvider(
 				};
 			}
 			return null;
+		},
+	};
+}
+
+/** 默认注入最近几场归档的知情标注。 */
+export const DEFAULT_PROFILE_KNOWLEDGE_SCENES = 3;
+
+/** 注入时最多列出的未了结事项条数。 */
+const PROFILE_UNRESOLVED_LIMIT = 3;
+
+/** 知情标注里摘要的截断长度。 */
+const PROFILE_SUMMARY_CLIP = 60;
+
+export interface ProfileSlotProviderOptions {
+	/** 知情标注覆盖最近几场归档，默认 3。 */
+	readonly knowledgeSceneLimit?: number;
+}
+
+function formatProfileNote(note: CharacterProfileNote): string {
+	return `- ${CHARACTER_PROFILE_FIELD_LABELS[note.field]}：${note.text}（场次 ${note.sceneEndNodeId}）`;
+}
+
+/** 想要、瞒着、说话样本取最新一条；上次出场与未了结单独排。 */
+function formatCharacterProfile(profile: CharacterProfile): string {
+	const latest = new Map<CharacterProfileField, CharacterProfileNote>();
+	for (const note of profile.notes) latest.set(note.field, note);
+	const lines: string[] = [];
+	for (const field of ["want", "hide", "speech"] as const) {
+		const note = latest.get(field);
+		if (note !== undefined) lines.push(formatProfileNote(note));
+	}
+	if (profile.lastScene !== null) {
+		lines.push(
+			`- 上次出场：场次 ${profile.lastScene.endNodeId}（起于 ${profile.lastScene.startNodeId}）`,
+		);
+	}
+	const unresolved = profile.notes
+		.filter((note) => note.field === "unresolved")
+		.slice(-PROFILE_UNRESOLVED_LIMIT);
+	if (unresolved.length > 0) {
+		lines.push(
+			`- 未了结：${unresolved
+				.map((note) => `${note.text}（场次 ${note.sceneEndNodeId}）`)
+				.join("；")}`,
+		);
+	}
+	return lines.join("\n");
+}
+
+function clipProfileSummary(summary: string): string {
+	const text = summary.replace(/\s+/g, " ").trim();
+	if (text.length <= PROFILE_SUMMARY_CLIP) return text;
+	return `${text.slice(0, PROFILE_SUMMARY_CLIP)}…`;
+}
+
+/**
+ * 当前在场人物的档案与最近几场的知情标注。档案全部来自场次归档；
+ * 还没有归档时不注入，避免空段。没有变化时返回 null。
+ */
+export function createProfileSlotProvider(
+	store: StoryStore,
+	options: ProfileSlotProviderOptions = {},
+): ContextSlotProvider {
+	const sceneLimit =
+		options.knowledgeSceneLimit ?? DEFAULT_PROFILE_KNOWLEDGE_SCENES;
+	if (!Number.isInteger(sceneLimit) || sceneLimit < 1) {
+		throw new Error("知情标注的场次数上限必须是正整数");
+	}
+	return {
+		packKey: `profile:${sceneLimit}`,
+		provide(request): ContextSlotContent | null {
+			if (request.nodeId === null) return null;
+			const nodeId = request.nodeId;
+			const archives = store.listSceneArchivesAlongPath(nodeId);
+			if (archives.length === 0) return null;
+			const latestScene = archives[archives.length - 1];
+			const log = store.getLatestSceneLogOnPath(nodeId);
+			const present = new Set(log?.present ?? latestScene?.present ?? []);
+			const blocks: string[] = [];
+			for (const profile of readCharacterProfiles(store, nodeId)) {
+				if (!present.has(profile.who)) continue;
+				const text = formatCharacterProfile(profile);
+				if (text.length === 0) continue;
+				blocks.push(`${profile.who}：\n${text}`);
+			}
+			const knowledge = readSceneKnowledge(store, nodeId);
+			const annotatedScenes = knowledge.facts
+				.slice(-sceneLimit)
+				.filter((fact) => fact.uninformed.length > 0);
+			const sections: string[] = [];
+			if (blocks.length > 0) {
+				sections.push(`人物档案：\n${blocks.join("\n\n")}`);
+			}
+			if (annotatedScenes.length > 0) {
+				const lines = annotatedScenes.map(
+					(fact) =>
+						`- 场次 ${fact.endNodeId}（${clipProfileSummary(fact.summary)}）：${fact.uninformed.join("、")}不在场、不知情`,
+				);
+				sections.push(`知情标注：\n${lines.join("\n")}`);
+			}
+			if (sections.length === 0) return null;
+			return {
+				messages: [{ role: "system", content: sections.join("\n\n") }],
+				source: `profile:${blocks.length} 人，知情标注 ${annotatedScenes.length} 场`,
+			};
 		},
 	};
 }

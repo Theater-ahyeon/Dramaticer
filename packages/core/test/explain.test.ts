@@ -491,6 +491,8 @@ describe("explainNode", () => {
 			boundary: "scene-ends",
 			summary: "卫宫没有回答。",
 			present: ["卫宫"],
+			profiles: [],
+			informed: [],
 			stateChanges: [],
 			cluesOpened: [],
 			cluesClosed: [],

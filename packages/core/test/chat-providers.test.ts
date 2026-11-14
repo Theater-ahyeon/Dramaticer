@@ -736,7 +736,7 @@ describe("角色与标准槽位", () => {
 		);
 	});
 
-	it("标准集合包含十个槽位，character 使用传入的提示词", async () => {
+	it("标准集合包含十一个槽位，character 使用传入的提示词", async () => {
 		const { store } = openTempStore();
 		store.createStory({ id: "s1", title: "山神" });
 		const { providers } = await createStandardChatSlots({
@@ -749,6 +749,7 @@ describe("角色与标准槽位", () => {
 			"history",
 			"lore",
 			"memory",
+			"profile",
 			"scene",
 			"scene_card",
 			"state",

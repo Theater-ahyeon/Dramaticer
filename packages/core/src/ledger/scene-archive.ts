@@ -3,6 +3,13 @@ import { assertPlainObject, isJsonObject, rejectUnknownKeys } from "../json.js";
 import { type LlmMessage, NO_CONTINUATION } from "../llm/types.js";
 import { parseJsonOutputObject } from "../memory/json-output.js";
 import type { StoryStore } from "../store/story-store.js";
+import {
+	type SceneInformed,
+	type SceneProfileUpdate,
+	assertSceneArchiveLinks,
+	assertSceneInformedList,
+	assertSceneProfileUpdates,
+} from "./character-profile.js";
 import { readLedger } from "./read.js";
 import {
 	DEFAULT_MAX_SCENE_FLOORS,
@@ -18,6 +25,8 @@ export const SCENE_ARCHIVE_JOB_KIND = "scene_archive";
 const RESPONSE_KEYS = [
 	"summary",
 	"present",
+	"profiles",
+	"informed",
 	"stateChanges",
 	"cluesOpened",
 	"cluesClosed",
@@ -26,6 +35,9 @@ const RESPONSE_KEYS = [
 const STATE_CHANGE_KEYS = ["path", "change"] as const;
 
 const SCENE_BOUNDARIES_TEXT = "scene-ends、max-floors 或 player-ends";
+
+/** 归档提示词里带上的之前场次数量上限；informed 只能引用这些 id。 */
+const PRIOR_SCENE_LIMIT = 6;
 
 /** 一条状态变化：这一场改过的台账路径与变化内容。 */
 export interface SceneStateChange {
@@ -42,6 +54,8 @@ export interface SceneArchive {
 	readonly boundary: SceneBoundary;
 	readonly summary: string;
 	readonly present: readonly string[];
+	readonly profiles: readonly SceneProfileUpdate[];
+	readonly informed: readonly SceneInformed[];
 	readonly stateChanges: readonly SceneStateChange[];
 	readonly cluesOpened: readonly string[];
 	readonly cluesClosed: readonly string[];
@@ -56,6 +70,8 @@ export interface NewSceneArchive {
 	readonly boundary: SceneBoundary;
 	readonly summary: string;
 	readonly present: readonly string[];
+	readonly profiles: readonly SceneProfileUpdate[];
+	readonly informed: readonly SceneInformed[];
 	readonly stateChanges: readonly SceneStateChange[];
 	readonly cluesOpened: readonly string[];
 	readonly cluesClosed: readonly string[];
@@ -66,6 +82,8 @@ export interface NewSceneArchive {
 export interface ParsedSceneArchive {
 	readonly summary: string;
 	readonly present: readonly string[];
+	readonly profiles: readonly SceneProfileUpdate[];
+	readonly informed: readonly SceneInformed[];
 	readonly stateChanges: readonly SceneStateChange[];
 	readonly cluesOpened: readonly string[];
 	readonly cluesClosed: readonly string[];
@@ -125,6 +143,16 @@ export function assertNewSceneArchive(input: NewSceneArchive): NewSceneArchive {
 	if (!Number.isInteger(input.floorCount) || input.floorCount < 1) {
 		throw new Error("场次归档的楼层数必须是正整数");
 	}
+	const present = readStringArray(input.present, "场次归档的 present");
+	const profiles = assertSceneProfileUpdates(
+		input.profiles,
+		"场次归档的 profiles",
+	);
+	const informed = assertSceneInformedList(
+		input.informed,
+		"场次归档的 informed",
+	);
+	assertSceneArchiveLinks(present, profiles, informed, "场次归档");
 	return {
 		endNodeId,
 		storyId: requireNonEmptyString(input.storyId, "场次归档的故事 id"),
@@ -132,7 +160,9 @@ export function assertNewSceneArchive(input: NewSceneArchive): NewSceneArchive {
 		floorCount: input.floorCount,
 		boundary: input.boundary,
 		summary: requireNonEmptyString(input.summary, "场次归档的摘要"),
-		present: readStringArray(input.present, "场次归档的 present"),
+		present,
+		profiles,
+		informed,
 		stateChanges: assertSceneStateChanges(
 			input.stateChanges,
 			"场次归档的 stateChanges",
@@ -157,6 +187,15 @@ export function parseSceneArchiveResponse(
 	rejectUnknownKeys(record, RESPONSE_KEYS, "场次归档");
 	const summary = requireNonEmptyString(record.summary, "场次归档.summary");
 	const present = readStringArray(record.present, "场次归档.present");
+	const profiles = assertSceneProfileUpdates(
+		record.profiles ?? [],
+		"场次归档.profiles",
+	);
+	const informed = assertSceneInformedList(
+		record.informed ?? [],
+		"场次归档.informed",
+	);
+	assertSceneArchiveLinks(present, profiles, informed, "场次归档");
 	const stateChanges = assertSceneStateChanges(
 		record.stateChanges,
 		"场次归档.stateChanges",
@@ -185,7 +224,15 @@ export function parseSceneArchiveResponse(
 			throw new Error(`场次归档.cluesClosed 里的线索没有兑现：${id}`);
 		}
 	}
-	return { summary, present, stateChanges, cluesOpened, cluesClosed };
+	return {
+		summary,
+		present,
+		profiles,
+		informed,
+		stateChanges,
+		cluesOpened,
+		cluesClosed,
+	};
 }
 
 export interface SceneArchiveHandlerOptions {
@@ -256,12 +303,14 @@ export function createSceneArchiveNeedsRun(
 
 function buildSystemPrompt(): string {
 	const shape =
-		'{"summary":"…","present":["凛"],"stateChanges":[{"path":["scene","current","place"],"change":"从教室换到走廊"}],"cluesOpened":["旧信"],"cluesClosed":[]}';
+		'{"summary":"…","present":["凛"],"profiles":[{"who":"凛","want":"拿回那封信","hide":null,"speech":"「把书还我。」","unresolved":"信还在老师手里"}],"informed":[{"who":"老师","factId":"a2","via":"told"}],"stateChanges":[{"path":["scene","current","place"],"change":"从教室换到走廊"}],"cluesOpened":["旧信"],"cluesClosed":[]}';
 	return [
 		"你是故事的档案员。一场戏结束时，你把这一场归档成一条记录。只输出一个 JSON 对象，不要解释、前后缀或代码块标记。",
 		shape,
 		"- summary：这一场发生了什么、结果如何，写给几章之后的自己看；不要照抄原文，不要写未来会发生的事。",
 		"- present：这一场里真正在场的人物名称，用卡里的写法。",
+		"- profiles：这一场里档案有变化的人物。who 必须出现在 present 里；want 是他想要什么，hide 是他瞒着什么，speech 是他在这一场里说过的一句话（逐字取原文），unresolved 是尚未了结的事；没有变化的字段写 null，每个字段不超过 500 字。没有档案变化就给空数组。",
+		"- informed：这一场里有人被明确告知以前某一场发生的事。who 必须在这一场的 present 里；factId 只能写「之前的场次」列表里的场次 id；via 取 told（当面被告知）或 relayed（听人转述）。没有就给空数组。",
 		"- stateChanges：这一场真正改变的硬状态，每条写台账路径与变化内容；没有变化就给空数组。",
 		"- cluesOpened：这一场里新开或继续推进的线索 id，只能写台账 clue 命名空间里已经存在的 id。",
 		"- cluesClosed：这一场里已经收束的线索 id，必须是台账里状态为 fulfilled 的线索。",
@@ -306,6 +355,20 @@ function buildUserContent(
 	const clues = readLedger(store, scene.segment.endNodeId, ["clue"]);
 	lines.push("", "这一场结束时的线索：");
 	lines.push(JSON.stringify(clues ?? {}));
+	const priorScenes = store
+		.listSceneArchivesAlongPath(scene.segment.endNodeId)
+		.filter((archive) => archive.endNodeId !== scene.segment.endNodeId)
+		.slice(-PRIOR_SCENE_LIMIT);
+	lines.push("", "之前的场次（informed 的 factId 只能从这里取）：");
+	if (priorScenes.length === 0) {
+		lines.push("没有。");
+	} else {
+		for (const archive of priorScenes) {
+			lines.push(
+				`- ${archive.endNodeId}（起于 ${archive.startNodeId}，在场者：${archive.present.join("、")}）：${archive.summary}`,
+			);
+		}
+	}
 	return lines.join("\n");
 }
 
@@ -360,6 +423,8 @@ export function createSceneArchiveHandler(
 			boundary: scene.boundary,
 			summary: parsed.summary,
 			present: parsed.present,
+			profiles: parsed.profiles,
+			informed: parsed.informed,
 			stateChanges: parsed.stateChanges,
 			cluesOpened: parsed.cluesOpened,
 			cluesClosed: parsed.cluesClosed,

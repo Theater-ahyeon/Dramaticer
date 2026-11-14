@@ -3,22 +3,25 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-14 会话 415：完成 W5-T02（就地纠正与场面控制）。`POST /api/nodes/:id/correct` 收 `{quote, instruction}`：选中的原文必须逐字出现且只出现一次，模型只重写这一段，`applyCorrectionSpan` 用切片拼回整楼、其余正文逐字保留；新楼层是旧楼层的兄弟节点，旧楼层与旧 Trace 不动；纠正意见写一条来源为玩家的 `userWill.<id>`（`kind = "correction"`），与新楼层同一事务。`POST /api/nodes/:id/scene-control` 收 `{kind}`（`end-scene`、`jump-time`、`pace`），只接受当前路径的助手楼层：结束这一场写 `scene_controls` 一行并让场次派生出 `player-ends` 边界，跳时间写来源 `player` 的 `time.current` 事实，调整节奏把三档换成导演配置的 `pace`（0.6 / 1 / 1.6）。迁移 v62 新建 `scene_controls` 并重建 `scene_archives` 允许 `player-ends`；`SCENE_BOUNDARIES` 与 `SCENE_BOUNDARY_LABELS` 是唯一来源。界面新增输入区上方的三个场面控制按钮与「就地纠正」入口。ADR-0150。
+- 2026-11-14 会话 416：完成 W6-T01（场次归档与知情标注）。迁移 v63 给 `scene_archives` 增加 `profiles` 与 `informed`：归档调用同时产出人物档案（`who` 必须在场，想要、瞒着、说话样本、未了结各可空，单字段 ≤500 字）与知情记录（`who` 必须在场，`factId` 只能是当前路径上更早的已归档场次，`via` 取 `told` 或 `relayed`）；归档提示词带上最近六场已归档场次的 id、在场者与摘要。`ledger/character-profile.ts` 提供 `readCharacterProfiles`（沿路径累加，每条带场次起止楼层，上次出场取最后一场在场）与 `readSceneKnowledge`（在场、之后被告知、旧 `knowledge` 事实三条来源推导不知情者）。上下文新增 `profile` 槽位，默认排在 `scene` 与 `scene_card` 之间（priority 53），注入当前在场人物的档案与最近三场的「某某不在场、不知情」；没有归档时槽位缺失。ADR-0151。
 
-## 下一步（会话 416 先做）
-1. 选下一个可做的任务：**W6-T01 至 W6-T03** → **W7-T01 至 W7-T03** → **W8-T01、W8-T02** → **W9-T01 至 W9-T99**。W6-T01 要做人物档案读写接口（每条带出处场次、按路径累加）与由在场推导的知情标注。
+## 下一步（会话 417 先做）
+1. 选下一个可做的任务：**W6-T02 与 W6-T03** → **W7-T01 至 W7-T03** → **W8-T01、W8-T02** → **W9-T01 至 W9-T99**。W6-T02 做重逢注入：人物、地点或物品在最近窗口未出现、现在被提到或被导演安排登场时，按名字与别名触发注入档案，触发判断是纯程序，全文检索只作兜底。W6-T03 做连载视图与前情提要，依赖 W6-T01 与 W5-T01，现在都已满足。
 2. **R6-T99** 仍被 HUMAN-19 阻塞（`bg` 渠道额度 2026-11-17T11:44:35Z 重置）。恢复后先跑 `r6-replay`、`r6-instrument`、`r6-compare`、`r6-deep`、`r6-preference`、`r6-funnel`，再用 `r6-gate --dir eval-private/reports/r6` 判定；报告写 `docs/dev/SCOREBOARD.md` 与 `docs/dev/reports/R6.md`，只写聚合数字与 slug。
 3. **W3-T02.e** 被 HUMAN-22 阻塞：原样模式目前按导入字段注入；完整酒馆激活需要原始世界书入库并把 `st-content` 接进 server 运行时。
 4. **W2-T04** 继续被 HUMAN-19 阻塞。额度恢复后用 `pnpm --filter @dramaticer/st-compat scene-log-compare`（默认读 `eval-private/reports/scene-log/samples.json`，24 个楼层 ≥ 20）跑真实对照。不达标时保留独立任务并写 ADR。
 5. 阻塞检查：M6-T99 仍等 HUMAN-15；HUMAN-03、HUMAN-16、HUMAN-17、HUMAN-18、HUMAN-20、HUMAN-21、HUMAN-22 不阻塞其他任务；HUMAN-19 阻塞 R6-T06、R6-T99、W2-T04。
 
 ## 当前状态
-- 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1–P4、C-T01 至 C-T05、H-T00 至 H-T99、X1.a 至 X1.e、X2.a 至 X2.d、R6-T00 至 R6-T05、R6-T07、R6-T07.a、R6-T07.b、R6-T07.c、R6-T07.d、W0-T00、W0-T01、W1-T01、W2-T01、W2-T02、W2-T03、W3-T01、W3-T02.a、W3-T02.b、W3-T02.c、W3-T02.d、W3-T03.a、W3-T03.b、W3-T03、W4-T01、W4-T02、W4-T03、W5-T01、W5-T02。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- 设计版本 v0.4（ADR-0139、ADR-0142、ADR-0143、ADR-0144、ADR-0145、ADR-0146、ADR-0147、ADR-0148、ADR-0149、ADR-0150）。W 阶段任务顺序：W0（完成）→ W1（完成）→ W2（T01–T03 完成，T04 被阻塞）→ W3（T01、T02.a–T02.d、T03.a、T03.b、T03 完成，T02.e 被 HUMAN-22 阻塞）→ W4（完成）→ R6 段（T07.a 至 T07.d 完成，T99 被 HUMAN-19 阻塞）→ W5（完成）→ W6 → W7 → W8 → W9。
-- 数据库 schema 版本 62（v51 `story_media`、v52 `story_settings.contextLayout`、v53 `scene_logs` 与 `scene_log_enabled`、v54 `scene_archives`、v55 `import_audit_entries` 与 `story_settings.import_mode`、v56 `import_audit_entries.memory`、v57 `story_rules`、v58 `director_lines`、v59 `director_chapter_reviews`、v60 `story_settings` 重建并允许 `director_organization = lines`、v61 `scene_logs.scene_card`、v62 `scene_controls` 与 `scene_archives` 重建）。
+- 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1–P4、C-T01 至 C-T05、H-T00 至 H-T99、X1.a 至 X1.e、X2.a 至 X2.d、R6-T00 至 R6-T05、R6-T07、R6-T07.a、R6-T07.b、R6-T07.c、R6-T07.d、W0-T00、W0-T01、W1-T01、W2-T01、W2-T02、W2-T03、W3-T01、W3-T02.a、W3-T02.b、W3-T02.c、W3-T02.d、W3-T03.a、W3-T03.b、W3-T03、W4-T01、W4-T02、W4-T03、W5-T01、W5-T02、W6-T01。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 设计版本 v0.4（ADR-0139、ADR-0142、ADR-0143、ADR-0144、ADR-0145、ADR-0146、ADR-0147、ADR-0148、ADR-0149、ADR-0150、ADR-0151）。W 阶段任务顺序：W0（完成）→ W1（完成）→ W2（T01–T03 完成，T04 被阻塞）→ W3（T01、T02.a–T02.d、T03.a、T03.b、T03 完成，T02.e 被 HUMAN-22 阻塞）→ W4（完成）→ R6 段（T07.a 至 T07.d 完成，T99 被 HUMAN-19 阻塞）→ W5（完成）→ W6（T01 完成）→ W7 → W8 → W9。
+- 数据库 schema 版本 63（v51 `story_media`、v52 `story_settings.contextLayout`、v53 `scene_logs` 与 `scene_log_enabled`、v54 `scene_archives`、v55 `import_audit_entries` 与 `story_settings.import_mode`、v56 `import_audit_entries.memory`、v57 `story_rules`、v58 `director_lines`、v59 `director_chapter_reviews`、v60 `story_settings` 重建并允许 `director_organization = lines`、v61 `scene_logs.scene_card`、v62 `scene_controls` 与 `scene_archives` 重建、v63 `scene_archives.profiles` 与 `scene_archives.informed`）。
 - 就地纠正：`chat/correction.ts` 的 `locateCorrectionSpan`（逐字、唯一）、`applyCorrectionSpan`（切片拼回、拒绝空输出与无变化）、`rewriteFloorSegment`（模型只收整楼原文 + 选中段 + 意见，只输出改写段；新楼层用 `editNode` 写成兄弟节点，同时写 `userWill.<id>`）。接口 `POST /api/nodes/:id/correct`，非法 `quote` 在调用模型前返回 400。
 - 场面控制：`ledger/scene-control.ts` 的 `endSceneAt`、`jumpSceneTime`、`setScenePace` 与 `SCENE_CONTROL_KINDS`、`SCENE_PACE_VALUES`。`scene_controls` 主键 `(node_id, kind)`，只接受当前路径的助手楼层。场次派生的第四个参数是 `playerEnds`，`boundary` 取 `player-ends`；场记判定优先于玩家结束，楼层上限最后。`SCENE_BOUNDARY_LABELS` 是 explain 与归档提示词的唯一措辞来源。
 - 调整节奏写进 `DirectorConfig.pace`（`slow` 0.6、`normal` 1、`fast` 1.6），故事设置是唯一存放处；`pace` 只影响节奏状态机的楼层需求，不新增开关。
+- 人物档案：`ledger/character-profile.ts` 的 `CHARACTER_PROFILE_FIELDS`（`want`、`hide`、`speech`、`unresolved`）、`CHARACTER_PROFILE_FIELD_LABELS`、`CHARACTER_PROFILE_TEXT_LIMIT`（500）。归档行 `scene_archives.profiles` 是 `{who, want, hide, speech, unresolved}[]`，`who` 必须在这一场的 `present` 里，至少一个字段非空；`informed` 是 `{who, factId, via}[]`，`via` 取 `SCENE_INFORMED_VIA` 的 `told` 或 `relayed`，`factId` 只能是当前路径上更早的已归档场次。`readCharacterProfiles` 沿路径累加，每条带 `sceneEndNodeId` 与 `sceneStartNodeId`，上次出场取最后一场在场；`readSceneKnowledge` 返回每场的 `uninformed`。
+- 知情标注的推导顺序：这一场的 `present` → 之后任意归档的 `informed`（当面告知或转述）→ 旧 `knowledge` 事实（`factId` 等于该场 id 或该场开出的线索 id，且写入楼层不早于该场）。删除的 `knowledge` 条目在读取时撤销；不要另写一份知情表。
+- `profile` 槽位：`createProfileSlotProvider` 只注入当前在场人物（在场取最近一条场记，没场记时取最后一场归档）的档案与最近三场有不知情者的标注，来源写成 `profile:<n> 人，知情标注 <m> 场`；没有归档时返回 null。默认模板把它排在 `scene` 与 `scene_card` 之间，priority 53；`CONTEXT_SLOT_NAMES`、两种内置排布与插件文档清单都已同步。
 - 采样种子：`LlmRequest` 与 `LlmProviderRequest` 有可选 `seed`；`requestCacheKey` 把它写进请求体（不带种子时请求体不变），`LlmRouter` 透传，`PiLlmChannel` 转成 pi 的 `samplingParams`（只有 OpenAI 兼容适配器消费）。`ChatTurnOptions` 与 `ModelTurnOptions` 的 `seed` 一路传到请求。
 - 重 roll 回放：`evalset/r6-replay.ts`；`R6_REPLAY_FORMAT = "dramaticer.r6-replay"`，运行记录格式 `dramaticer.r6-replay-run`；`DEFAULT_R6_REPLAY_SEED = 1`、`R6_REPLAY_AA_SEED = 2`。`planR6Replay(story, path, siblingsByParent)` 返回 `{points, skippedAssistantParent}`；`R6ReplayPoint` 含 `sampleId`（`<故事>:<楼层>:reroll`）、`floor`、`parentUserNodeId`、`userText`、两侧节点与 swipe 下标、`extraAbandoned`、`acceptedIsLastSwipe`。`runR6Replay` 每个点复制一份数据库到 `<dir>/runs/<故事>/<楼层>/native.db`、sidecar 是同目录的 `replay.json`，A/A 样本写到 `<dir>/aa-samples.jsonl`。CLI 选项：`--db`、`--story`、`--floors`（单故事缩样）、`--dir`、`--json`、`--report`、`--aa`、`--model`、`--judge-model`、`--background-model`、`--channels`、`--cache`、`--seed`、`--budget`、`--max-tokens`。
 - 重 roll 回放的两组配对：`R6_REPLAY_GROUPS` 是 `abandoned`（对放弃侧）与 `accepted`（对接受侧）；判定复用 `judgeHistoricalReplaySample` 的两种顺序与 `normalizeB1Winner`/`normalizePairOutcome`；`summarizeR6Replay` 给出 `groups` 与 `gateInput`（`R6ReplayGateInput`）。生成失败时 `fillGenerationFailures` 写四条 `stage: "generation"` 的失败记录，`failures` 计入排除比例，`judgementsFailed` 也随之增加（`gates.ts` 要求判定失败数不少于失败配对）。
@@ -66,6 +69,7 @@
 - 全量 e2e：`pnpm e2e`（会先构建 server 与 web；跑两个项目）。
 - 线与动作目标测试：`pnpm exec vitest run packages/core/test/director-lines.test.ts`。
 - 场面卡与章级规划目标测试：`pnpm exec vitest run packages/core/test/scene-card.test.ts packages/core/test/chapter-plan.test.ts`。
+- 人物档案与知情标注目标测试：`pnpm exec vitest run packages/core/test/character-profile.test.ts packages/core/test/scene-archive.test.ts`。
 - 组织方式与旧导演目标测试：`pnpm exec vitest run packages/core/test/director-organization.test.ts packages/core/test/director.test.ts packages/core/test/explain.test.ts`。
 - 推进档位接口目标测试：`pnpm exec vitest run packages/server/test/turns.test.ts -t "推进档位"`（先 `pnpm run typecheck`）。
 - 重 roll 原因目标测试：`pnpm exec vitest run packages/core/test/reroll-reason.test.ts packages/core/test/preferences.test.ts packages/server/test/turns.test.ts packages/web/test/api-client.test.ts packages/web/test/push-reroll.test.ts`。
@@ -185,8 +189,13 @@
 - 场次归档以**结束楼层**为主键；判断是否需要重跑时要同时比对 `startNodeId`、`floorCount` 与 `boundary`。
 - `scene_archive` 是故事级任务：`nodeId` 为 null，处理器不能调用 `requireJobNodeId`；执行一次只归档最早一场。
 - 归档的线索校验：`cluesOpened`/`cluesClosed` 的 id 必须出现在结束楼层的 `clue` 台账里，`cluesClosed` 还必须是 `fulfilled`；校验失败整次拒绝，3 次后任务标 failed。
+- 归档的 `profiles` 与 `informed` 只在归档调用里写：`profiles[].who` 与 `informed[].who` 必须出现在同一场的 `present` 里；`informed[].factId` 必须是当前路径上更早的已归档场次，引用同一场、未来场次或未归档楼层在 `saveSceneArchive` 里直接拒绝。归档提示词只带最近六场已归档场次，`factId` 只能从那份列表取。
+- 档案字段没有变化时写 `null`，不要写空字符串（空字符串整条拒绝）；单个字段超过 500 字拒绝。`profiles` 里同一个人只能出现一次，`informed` 里同一个人对同一 `factId` 只能有一条。
+- `readCharacterProfiles` 的出处是场次，不是单个楼层：每条带 `sceneEndNodeId` 与 `sceneStartNodeId`；上次出场取最后一场该人物在场的归档，不读 `scene_logs.present`。
+- 知情推导不调用模型、不写数据库；`readSceneKnowledge` 的 `cast` 是路径上所有归档出现过的在场者并集，`uninformed` 是其中不在场且之后没有被告知的人。旧 `knowledge` 的 `factId` 等于该场 id 或该场 `cluesOpened` 里的线索 id 都算知道，写入位置必须不早于该场。
+- `profile` 槽位的在场名单取最近一条场记，没场记时取最后一场归档；只注入有档案内容的在场者。没有归档时返回 null（不产生空段），有归档但没有内容时同样返回 null。
+- 新迁移编号从 v64 起（v63 是 `scene_archives.profiles` 与 `scene_archives.informed`）。
 - `dramaticer explain` 的第 10 节使用默认上限 12；如果将来把 `maxSceneFloors` 做成故事设置，`explain` 必须改为从同一个来源读取。
-- 新迁移编号从 v63 起（v62 是 `scene_controls` 与 `scene_archives` 重建）。
 - 就地纠正只重写选中的一段：`quote` 必须逐字出现且只出现一次，出现多次直接 400；不要放宽成「取第一处」或模糊匹配，否则「其余逐字一致」就不成立。
 - 就地纠正的模型只收整楼原文、选中段与意见，只输出改写段；不要把整楼交给它重发。新楼层走 `editNode`（兄弟节点 + head 移动 + 一条 edit 偏好），旧楼层与旧 Trace 不动。
 - 就地纠正的意见写 `userWill.<稳定 id>`，与新楼层同一事务；模型输出为空、只有换行或与选中段相同时拒绝，不写楼层也不写用户意志。

@@ -236,6 +236,75 @@ describe("场次归档", () => {
 		expect(row.count).toBe(1);
 	});
 
+	it("归档写入人物档案与知情记录，并列出之前的场次供引用", async () => {
+		const { store } = openTempStore();
+		seedScene(store);
+		store.appendNode({
+			id: "u2",
+			storyId: "s1",
+			parentId: "a2",
+			role: "user",
+			raw: "我又问了一遍。",
+		});
+		store.appendNode({
+			id: "a3",
+			storyId: "s1",
+			parentId: "u2",
+			role: "assistant",
+			raw: "老师把真相告诉商人。",
+		});
+		saveLog(store, "a2", true);
+		saveLog(store, "a3", true);
+		const first = JSON.stringify({
+			summary: "凛把信收起来。",
+			present: ["凛", "老师"],
+			profiles: [
+				{
+					who: "凛",
+					want: "拿回那封信",
+					hide: "她烧了信",
+					speech: "「把书还我。」",
+					unresolved: "信的下落",
+				},
+			],
+			informed: [],
+			stateChanges: [],
+			cluesOpened: [],
+			cluesClosed: [],
+		});
+		const second = JSON.stringify({
+			summary: "老师把真相告诉商人。",
+			present: ["老师", "商人"],
+			profiles: [],
+			informed: [{ who: "老师", factId: "a2", via: "told" }],
+			stateChanges: [],
+			cluesOpened: [],
+			cluesClosed: [],
+		});
+		const { client, requests } = createFakeClient([first, second]);
+
+		await createSceneArchiveHandler()({ store, client, job: storyJob() });
+		await createSceneArchiveHandler()({ store, client, job: storyJob() });
+
+		expect(store.getSceneArchive("a2")?.profiles).toEqual([
+			{
+				who: "凛",
+				want: "拿回那封信",
+				hide: "她烧了信",
+				speech: "「把书还我。」",
+				unresolved: "信的下落",
+			},
+		]);
+		expect(store.getSceneArchive("a3")?.informed).toEqual([
+			{ who: "老师", factId: "a2", via: "told" },
+		]);
+		expect(requests[1]?.messages[0]?.content).toContain("profiles");
+		expect(requests[1]?.messages[1]?.content).toContain(
+			"之前的场次（informed 的 factId 只能从这里取）",
+		);
+		expect(requests[1]?.messages[1]?.content).toContain("- a2（起于 a1");
+	});
+
 	it("线索必须是台账里的 id，标为收了的必须已兑现", async () => {
 		const { store } = openTempStore();
 		seedScene(store);

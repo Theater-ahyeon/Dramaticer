@@ -6,6 +6,7 @@ import {
 	createLoreSlotProvider,
 	createMemorySlotProvider,
 	createPersonaSlotProvider,
+	createProfileSlotProvider,
 	createRawHistorySlotProvider,
 	createSceneCardSlotProvider,
 	createSceneSlotProvider,
@@ -36,6 +37,7 @@ export const SUMMARY_SLOT_PLUGIN = "slot.summary";
 export const MEMORY_SLOT_PLUGIN = "slot.memory";
 export const LORE_SLOT_PLUGIN = "slot.lore";
 export const SCENE_SLOT_PLUGIN = "slot.scene";
+export const PROFILE_SLOT_PLUGIN = "slot.profile";
 export const SCENE_CARD_SLOT_PLUGIN = "slot.scene-card";
 export const DIRECTOR_SLOT_PLUGIN = "slot.director";
 export const USER_WILL_SLOT_PLUGIN = "slot.user-will";
@@ -200,6 +202,17 @@ export const sceneSlotPlugin: PluginDefinition = {
 	},
 };
 
+export const profileSlotPlugin: PluginDefinition = {
+	name: PROFILE_SLOT_PLUGIN,
+	apply(context, config) {
+		const values = slotConfig(PROFILE_SLOT_PLUGIN, config);
+		context.slot(
+			"profile",
+			createProfileSlotProvider(requireSlotStore(PROFILE_SLOT_PLUGIN, values)),
+		);
+	},
+};
+
 export const sceneCardSlotPlugin: PluginDefinition = {
 	name: SCENE_CARD_SLOT_PLUGIN,
 	apply(context, config) {
@@ -305,6 +318,7 @@ export const SLOT_PLUGINS: readonly PluginDefinition[] = [
 	memorySlotPlugin,
 	loreSlotPlugin,
 	sceneSlotPlugin,
+	profileSlotPlugin,
 	sceneCardSlotPlugin,
 	directorSlotPlugin,
 	userWillSlotPlugin,
