@@ -12,6 +12,7 @@ import {
 import { assertDirectorConfig, evaluateDirector } from "./evaluate.js";
 import {
 	DIRECTOR_ACTION_PRIORITY,
+	type DirectorPush,
 	readDirectorActionInput,
 	selectDirectorAction,
 } from "./lines.js";
@@ -59,6 +60,8 @@ export interface DirectorEngineInput {
 	readonly storyId: string;
 	readonly nodeId: string;
 	readonly config: DirectorConfig;
+	/** 单轮推进档位；不设置时是常规回合。 */
+	readonly push?: DirectorPush | null;
 }
 
 /**
@@ -321,7 +324,13 @@ function evaluateDirectorLines(
 		throw new Error(`楼层节点 ${nodeId} 属于另一个故事 ${node.storyId}`);
 	}
 	if (config.mode === "off") return null;
-	const actionInput = readDirectorActionInput(store, storyId, nodeId, config);
+	const actionInput = readDirectorActionInput(
+		store,
+		storyId,
+		nodeId,
+		config,
+		input.push ?? null,
+	);
 	const selection = selectDirectorAction(actionInput);
 	if (selection === null) {
 		store.saveDirectorDecision({
@@ -334,6 +343,7 @@ function evaluateDirectorLines(
 			signals: {
 				organization: "lines",
 				action: null,
+				push: input.push ?? null,
 				floorDepth: actionInput.floorDepth,
 				recentActions: [...actionInput.recentActions],
 			},

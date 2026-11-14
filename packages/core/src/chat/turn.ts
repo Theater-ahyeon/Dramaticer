@@ -12,6 +12,7 @@ import {
 	type DirectorIntensity,
 	resolveDirectorIntensity,
 } from "../director/intensity.js";
+import type { DirectorPush } from "../director/lines.js";
 import { formatDirectorNotes } from "../director/notes.js";
 import {
 	ILLUSTRATE_TOOL,
@@ -128,6 +129,8 @@ export interface ChatTurnOptions {
 	readonly maxReadRounds?: number | null;
 	/** 单轮导演强度；优先于导演槽位配置里的值。 */
 	readonly directorIntensity?: DirectorIntensity | null;
+	/** 单轮推进档位；优先于导演槽位上的值。 */
+	readonly directorPush?: DirectorPush | null;
 	/** 生图设置；工具可见性与频率检查都读这里。 */
 	readonly illustrate?: IllustrateTurnOptions | null;
 	readonly model?: string;
@@ -319,29 +322,37 @@ function selectDeepTurnTools(
 }
 
 /**
- * 单轮强度覆盖导演槽位配置里的值。槽位携带了评估用的配置与机制，
+ * 单轮强度与推进档位覆盖导演槽位上的值。槽位携带了评估用的配置与机制，
  * 这里只重建导演槽位，其它槽位原样复用。
  */
 function resolveTurnProviders(options: {
 	readonly store: StoryStore;
 	readonly providers?: ContextSlotProviders;
 	readonly directorIntensity?: DirectorIntensity | null;
+	readonly directorPush?: DirectorPush | null;
 }): ContextSlotProviders | undefined {
-	const requested = options.directorIntensity;
-	if (requested === null || requested === undefined) return options.providers;
+	const requestedIntensity = options.directorIntensity ?? null;
+	const requestedPush = options.directorPush ?? null;
+	if (requestedIntensity === null && requestedPush === null) {
+		return options.providers;
+	}
 	const director = options.providers?.director;
 	if (director === undefined) {
-		throw new Error("指定了单轮导演强度，但上下文槽位里没有导演槽位");
+		throw new Error("指定了单轮导演参数，但上下文槽位里没有导演槽位");
 	}
 	if (!isDirectorSlotProvider(director)) {
-		throw new Error("指定了单轮导演强度，但导演槽位没有携带配置");
+		throw new Error("指定了单轮导演参数，但导演槽位没有携带配置");
 	}
 	return {
 		...options.providers,
 		director: {
 			...createDirectorSlotProvider(options.store, {
-				config: resolveDirectorIntensity(director.config, requested),
+				config:
+					requestedIntensity === null
+						? director.config
+						: resolveDirectorIntensity(director.config, requestedIntensity),
 				engine: director.engine,
+				push: requestedPush ?? director.push,
 			}),
 			...(director.plugin === undefined ? {} : { plugin: director.plugin }),
 		},
@@ -383,6 +394,7 @@ export async function runChatTurn(
 		...options,
 		providers,
 		directorIntensity: null,
+		directorPush: null,
 		userNodeId: userNode.id,
 		turnMode: resolved.mode,
 		maxReadRounds: resolved.maxReadRounds,

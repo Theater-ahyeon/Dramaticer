@@ -91,6 +91,7 @@ export interface DirectorNumberField {
 export const DIRECTOR_NUMBER_KEYS = [
 	"clueAgeWarning",
 	"maxOpenClues",
+	"maxOpenPromises",
 	"stallFloors",
 	"surprise",
 	"similarityThreshold",
@@ -129,6 +130,12 @@ export const DIRECTOR_NUMBER_FIELDS: readonly DirectorNumberField[] = [
 		label: "同时打开的线索上限",
 		integer: true,
 		minimum: 1,
+	},
+	{
+		key: "maxOpenPromises",
+		label: "未兑现伏笔上限",
+		integer: true,
+		minimum: 0,
 	},
 	{ key: "stallFloors", label: "停滞判定楼层数", integer: true, minimum: 1 },
 	{

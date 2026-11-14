@@ -10,6 +10,7 @@ import type {
 	RetrievalInjectionTrace,
 } from "../context/assembler.js";
 import type { ContextMessage } from "../context/template.js";
+import type { DirectorPush } from "../director/lines.js";
 import {
 	DEFAULT_DIRECTOR_ORGANIZATION,
 	type DirectorEngine,
@@ -901,12 +902,15 @@ export interface DirectorSlotProviderOptions {
 	readonly organization?: DirectorOrganizationKind;
 	/** 复用已有引擎；单轮强度覆盖时用它保留同一套组织方式。 */
 	readonly engine?: DirectorEngine;
+	/** 单轮的推进档位；不设置时是常规回合。 */
+	readonly push?: DirectorPush | null;
 }
 
 /** 导演槽位把评估用的配置与引擎一起带出来，单轮强度覆盖时据此重建。 */
 export interface DirectorSlotProvider extends ContextSlotProvider {
 	readonly config: DirectorConfig;
 	readonly engine: DirectorEngine;
+	readonly push: DirectorPush | null;
 }
 
 export function isDirectorSlotProvider(
@@ -937,10 +941,12 @@ export function createDirectorSlotProvider(
 	return {
 		config,
 		engine,
+		push: options.push ?? null,
 		packKey: JSON.stringify({
 			config,
 			organization: engine.kind,
 			mechanisms: engine.mechanismNames,
+			push: options.push ?? null,
 		}),
 		provide(request): ContextSlotContent | null {
 			const nodeId =
@@ -951,6 +957,7 @@ export function createDirectorSlotProvider(
 				storyId: request.storyId,
 				nodeId,
 				config,
+				push: options.push ?? null,
 			});
 			if (suggestion === null) return null;
 			return {

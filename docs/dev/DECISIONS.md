@@ -2326,3 +2326,24 @@
   - `selectDirectorAction` 只接收内存里的观察，不读数据库、不调用模型；数据库读取集中在 `readDirectorActionInput`。
   - 场面目标与「这一场结束时应该改变什么」由 W4-T03 的场面卡补上；在那之前用场记的 `sceneEnds` 作为「场面目标已达成」的代理。
   - 线的写入路径目前只有存储与线引擎读取；后台规划器写线与章末清点分别是 W4-T03 与 W4-T02。
+
+## ADR-0144 推进三档、伏笔上限与章末清点的程序口径（2026-11-14）
+
+- **背景**：DESIGN §8.4 写了推进三档、伏笔账与章末清点，但没有规定三档各自落到哪种动作、上限在哪一层拒绝、清点记录用什么形状。口径不固定，后续的输入区按钮（W5-T01）与章级规划（W4-T03）会各自发明一套。另外，`story_settings.director_organization` 的数据库 CHECK 只允许 `mechanisms` 与 `bits`，W4-T01 新增的 `lines` 无法保存。
+- **选项**：
+  - 三档各自另写一套动作选择：与 W4-T01 的候选顺序重复，抑制规则会出现两份。
+  - 在既有候选顺序上按档位替换候选集合：保留同一套抑制与信号，测试只需比较候选列表。
+- **决定**：
+  - 单轮参数新增 `push`，取值 `advance`（推进）、`quick`（快速推进）、`jump`（大幅推进），不设置表示常规回合。它从 `POST /api/stories/:id/turns` 的请求体进入，经 `resolveTurnProviders` 重建导演槽位，写进槽位的 `packKey` 与决策记录的 `signals.push`；回合内仍然只做程序判断。
+  - 设置推进档位时，候选集合按档位替换，顺序仍然是「让位优先」：
+    - `advance`：接球与加码。场面没有收尾时接球在前，已经收尾时加码在前。
+    - `quick`：转场（这一场收尾、时间向前走一截），接球作候补，被抑制时仍能推进。
+    - `jump`：闯入最接近到点的那条线（余量最小，可以已经到点），转场作候补；没有任何带倒计时的线时退回收尾转场。
+  - 未兑现伏笔的上限进 `DirectorConfig.maxOpenPromises`（默认 5）。`saveDirectorLines` 在写入前用当前路径上的线状态模拟一次修改：修改后的伏笔条数超过上限且比修改前多时整批拒绝；已经处于超限状态的故事改内容仍然允许，删除一条再新建一条允许。
+  - 章末清点存进迁移 v59 新增的 `director_chapter_reviews`（楼层为主键、只追加，UPDATE 触发器直接拒绝）。内容是 `{promises: [{lineId, disposition}], focus: [lineId…]}`，`disposition` 取 `carry`（带到下一章）或 `retire`（作废），`focus` 固定 2–3 条。写入前核对当前路径：每条未兑现伏笔都要有处理、处理只能指向伏笔、聚焦的线必须存在且不能是同一份清点里作废的伏笔。
+  - 迁移 v60 重建 `story_settings`，把 `director_organization` 的 CHECK 扩到三个取值。
+- **影响**：
+  - 数据库 schema 升到 60。`DIRECTOR_CONFIG_KEYS` 与设置表单的数字字段增加 `maxOpenPromises`；旧故事读取时按默认值补齐。
+  - `selectDirectorAction` 的输入新增 `push`，其余调用方不传时按 `null` 处理，旧引擎的输出不变。
+  - 章末清点的内容由 W4-T03 的后台规划写入；本 ADR 只固定记录形状与校验，不规定谁生成。
+  - 现有的 `maxOpenClues` 继续给台账线索的机制使用，与伏笔上限是两个账本。

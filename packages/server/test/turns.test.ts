@@ -722,6 +722,46 @@ describe("POST /api/stories/:id/turns", () => {
 		expect(running.store.listStoryNodes("s1")).toHaveLength(before);
 	});
 
+	it("推进档位进入单轮参数，非法档位在写楼层前拒绝", async () => {
+		const { running } = await startTurnServer([{ text: "风停了。" }]);
+		running.store.updateStorySettings("s1", {
+			directorOrganization: "lines",
+		});
+		running.store.appendNode({
+			id: "a0",
+			storyId: "s1",
+			parentId: null,
+			role: "assistant",
+			raw: "开场。",
+		});
+
+		const response = await fetch(`${running.origin}/api/stories/s1/turns`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ text: "我等着。", push: "quick" }),
+		});
+		expect(response.status).toBe(200);
+		const frames = await new FrameStream(response).readAll();
+		const completed = frameData(frames, "turn.completed");
+		const decision = running.store.getDirectorDecision(completed.userNode.id);
+		expect(decision?.signals.push).toBe("quick");
+		expect(decision?.signals.action).toBe("transition");
+
+		const before = running.store.listStoryNodes("s1").length;
+		const invalid = await fetch(`${running.origin}/api/stories/s1/turns`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ text: "再来。", push: "sprint" }),
+		});
+		expect(invalid.status).toBe(400);
+		const body = (await invalid.json()) as {
+			error: { code: string; details?: { path?: string } };
+		};
+		expect(body.error.code).toBe("bad_request");
+		expect(body.error.details?.path).toBe("push");
+		expect(running.store.listStoryNodes("s1")).toHaveLength(before);
+	});
+
 	it("深回合执行工具前发送 turn.progress，同一阶段只发一次", async () => {
 		const { running, client } = await startTurnServer([
 			{

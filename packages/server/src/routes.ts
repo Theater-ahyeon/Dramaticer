@@ -15,6 +15,7 @@ import {
 	DIRECTOR_CONFIG_KEYS,
 	type DirectorDecision,
 	type DirectorIntensity,
+	type DirectorPush,
 	IMPORT_KIND_JOB_KIND,
 	type ImagePromptRequest,
 	ImageWorkflowInUseError,
@@ -49,6 +50,7 @@ import {
 	approveLedgerChangeCard,
 	assertComfyUiSlots,
 	assertDirectorIntensity,
+	assertDirectorPush,
 	buildImportAuditReport,
 	createBlockFormatSegment,
 	createDefaultContextTemplate,
@@ -702,10 +704,11 @@ async function handleTurns(
 ): Promise<void> {
 	requireStory(options.store, storyId);
 	const body = await readObjectBody(req, options.maxJsonBodyBytes);
-	assertKnownKeys(body, ["text", "mode", "intensity"]);
+	assertKnownKeys(body, ["text", "mode", "intensity", "push"]);
 	const text = requireText(body.text, "text");
 	await handleTurnStream(res, storyId, text, options, {
 		directorIntensity: readOptionalIntensity(body.intensity),
+		directorPush: readOptionalPush(body.push),
 		turnMode: readOptionalMode(body.mode),
 	});
 }
@@ -763,6 +766,18 @@ function readOptionalIntensity(value: unknown): DirectorIntensity | null {
 		throw fieldError(
 			"intensity",
 			error instanceof Error ? error.message : "回合的 intensity 不合法",
+		);
+	}
+}
+
+function readOptionalPush(value: unknown): DirectorPush | null {
+	if (value === undefined) return null;
+	try {
+		return assertDirectorPush(value, "回合的 push");
+	} catch (error) {
+		throw fieldError(
+			"push",
+			error instanceof Error ? error.message : "回合的 push 不合法",
 		);
 	}
 }

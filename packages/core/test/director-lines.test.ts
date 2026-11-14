@@ -9,8 +9,12 @@ import {
 	type DirectorLineState,
 	type StoryStore,
 	applyDirectorLineDiffs,
+	assertChapterReviewMatchesLines,
+	assertDirectorChapterReviewPayload,
 	assertDirectorLine,
 	assertDirectorLineDiffs,
+	assertPromiseBudget,
+	countOpenPromises,
 	createDirectorEngine,
 	createDirectorSlotProvider,
 	directorLineRemaining,
@@ -53,6 +57,7 @@ function makeInput(
 	return {
 		floorDepth: 4,
 		playerMessage: null,
+		push: null,
 		floors: [
 			{ beat: "试探", present: ["卫宫"], sceneEnds: false, stateChanges: 1 },
 		],
@@ -577,5 +582,343 @@ describe("线引擎接入", () => {
 		expect(store.getDirectorDecision("n1")?.signals.reason).toContain(
 			"具体行动",
 		);
+	});
+});
+
+describe("推进三档", () => {
+	it("三档选到不同动作，理由与档位写进信号", () => {
+		const input = makeInput({
+			floorDepth: 4,
+			lines: [makeState({ countdown: 5 }, 1, 4)],
+		});
+		const advance = selectDirectorAction({ ...input, push: "advance" });
+		expect(advance?.action).toBe("catch");
+		expect(advance?.signals.push).toBe("advance");
+
+		const quick = selectDirectorAction({ ...input, push: "quick" });
+		expect(quick?.action).toBe("transition");
+		expect(quick?.directive).toContain("这一场到此收尾");
+
+		const jump = selectDirectorAction({ ...input, push: "jump" });
+		expect(jump?.action).toBe("intrude");
+		expect(jump?.lineId).toBe("line-1");
+		expect(jump?.reason).toContain("大幅推进");
+		expect(jump?.signals.push).toBe("jump");
+		expect(jump?.signals.candidates).toEqual(["intrude", "transition"]);
+	});
+
+	it("这一场已经收尾时推进改选加码", () => {
+		const selection = selectDirectorAction(
+			makeInput({
+				push: "advance",
+				floors: [
+					{ beat: "收束", present: [], sceneEnds: true, stateChanges: 1 },
+				],
+				lines: [makeState({}, 1, 2), makeState({ id: "line-2" }, 1, 1)],
+			}),
+		);
+		expect(selection?.action).toBe("escalate");
+		expect(selection?.lineId).toBe("line-2");
+	});
+
+	it("没有带倒计时的线时大幅推进退回收尾转场", () => {
+		const selection = selectDirectorAction(
+			makeInput({ push: "jump", lines: [makeState({ countdown: null })] }),
+		);
+		expect(selection?.action).toBe("transition");
+		expect(selection?.reason).toContain("没有带倒计时的线");
+	});
+
+	it("让位在所有档位之前，被抑制的动作跳过候补", () => {
+		const directed = selectDirectorAction(
+			makeInput({
+				push: "jump",
+				playerMessage: "我推开窗，把信藏进抽屉，然后下楼",
+				lines: [makeState({ countdown: 5 }, 1, 4)],
+			}),
+		);
+		expect(directed?.action).toBe("yield");
+		expect(directed?.signals.candidates).toEqual([
+			"yield",
+			"intrude",
+			"transition",
+		]);
+
+		const suppressed = selectDirectorAction(
+			makeInput({
+				push: "quick",
+				lines: [makeState({ countdown: 5 }, 1, 4)],
+				recentActions: ["transition", "transition"],
+			}),
+		);
+		expect(suppressed?.action).toBe("catch");
+		expect(suppressed?.signals.blockedAction).toBe("transition");
+	});
+
+	it("没有线也没有场记时推进仍然给出接球", () => {
+		const selection = selectDirectorAction(
+			makeInput({ push: "advance", floors: [], lines: [] }),
+		);
+		expect(selection?.action).toBe("catch");
+		expect(selection?.lineId).toBeNull();
+	});
+});
+
+describe("伏笔账", () => {
+	function seedStory(store: StoryStore): void {
+		store.createStory({ id: "s1", title: "测试故事" });
+		store.appendNode({
+			id: "n0",
+			storyId: "s1",
+			parentId: null,
+			role: "assistant",
+			raw: "开场。",
+		});
+	}
+
+	function promises(count: number) {
+		return Array.from({ length: count }, (_, index) => ({
+			action: "set" as const,
+			line: makeLine({
+				id: `promise-${index + 1}`,
+				kind: "promise" as const,
+				countdown: null,
+				preparations: [],
+			}),
+		}));
+	}
+
+	it("默认上限是 5，超出的新建整批拒绝", () => {
+		const { store } = openTempStore();
+		seedStory(store);
+		expect(DEFAULT_DIRECTOR_CONFIG.maxOpenPromises).toBe(5);
+		expect(() =>
+			store.saveDirectorLines({
+				nodeId: "n0",
+				storyId: "s1",
+				diffs: promises(6),
+			}),
+		).toThrow("超过上限 5");
+		expect(store.getDirectorLines("n0")).toBeNull();
+
+		store.saveDirectorLines({
+			nodeId: "n0",
+			storyId: "s1",
+			diffs: promises(5),
+		});
+		store.appendNode({
+			id: "n1",
+			storyId: "s1",
+			parentId: "n0",
+			role: "assistant",
+			raw: "继续。",
+		});
+		store.saveDirectorLines({
+			nodeId: "n1",
+			storyId: "s1",
+			diffs: [
+				{
+					action: "set",
+					line: makeLine({
+						id: "promise-1",
+						kind: "promise",
+						countdown: null,
+						want: "换一个说法",
+						preparations: [],
+					}),
+				},
+			],
+		});
+		expect(countOpenPromises(store.readDirectorLineStates("n1"))).toBe(5);
+
+		store.appendNode({
+			id: "n2",
+			storyId: "s1",
+			parentId: "n1",
+			role: "assistant",
+			raw: "再继续。",
+		});
+		const replace = [
+			{ action: "delete" as const, id: "promise-1" },
+			{
+				action: "set" as const,
+				line: makeLine({
+					id: "promise-6",
+					kind: "promise" as const,
+					countdown: null,
+					preparations: [],
+				}),
+			},
+		];
+		store.saveDirectorLines({ nodeId: "n2", storyId: "s1", diffs: replace });
+		expect(countOpenPromises(store.readDirectorLineStates("n2"))).toBe(5);
+
+		expect(() =>
+			assertPromiseBudget(store.readDirectorLineStates("n2"), promises(1), 5),
+		).toThrow("超过上限 5");
+		expect(() => assertPromiseBudget([], promises(1), -1)).toThrow(
+			"伏笔上限必须是非负整数",
+		);
+	});
+});
+
+describe("章末清点", () => {
+	function seedChapter(store: StoryStore): void {
+		store.createStory({ id: "s1", title: "测试故事" });
+		store.appendNode({
+			id: "n0",
+			storyId: "s1",
+			parentId: null,
+			role: "assistant",
+			raw: "第一章结束。",
+		});
+		store.appendNode({
+			id: "n1",
+			storyId: "s1",
+			parentId: "n0",
+			role: "assistant",
+			raw: "另一条分支。",
+		});
+		store.saveDirectorLines({
+			nodeId: "n0",
+			storyId: "s1",
+			diffs: [
+				{ action: "set", line: makeLine({ id: "main" }) },
+				{
+					action: "set",
+					line: makeLine({
+						id: "promise-1",
+						kind: "promise",
+						countdown: null,
+					}),
+				},
+				{
+					action: "set",
+					line: makeLine({
+						id: "promise-2",
+						kind: "promise",
+						countdown: null,
+					}),
+				},
+			],
+		});
+	}
+
+	const PAYLOAD = {
+		promises: [
+			{ lineId: "promise-1", disposition: "carry" as const },
+			{ lineId: "promise-2", disposition: "retire" as const },
+		],
+		focus: ["main", "promise-1"],
+	};
+
+	it("写入后读回，重复写入被拒绝", () => {
+		const { store } = openTempStore();
+		seedChapter(store);
+		const saved = store.saveDirectorChapterReview({
+			nodeId: "n0",
+			storyId: "s1",
+			payload: PAYLOAD,
+		});
+		expect(saved.payload).toEqual(PAYLOAD);
+		expect(store.getDirectorChapterReview("n0")?.payload).toEqual(PAYLOAD);
+		expect(store.listDirectorChapterReviewsAlongPath("n0")).toHaveLength(1);
+		expect(store.listDirectorChapterReviewsAlongPath("n1")).toHaveLength(1);
+		expect(() =>
+			store.saveDirectorChapterReview({
+				nodeId: "n0",
+				storyId: "s1",
+				payload: PAYLOAD,
+			}),
+		).toThrow("已经有章末清点记录");
+	});
+
+	it("每条伏笔都要有处理，聚焦的线必须在场且没有作废", () => {
+		const { store } = openTempStore();
+		seedChapter(store);
+		const states = store.readDirectorLineStates("n0");
+		const firstPromise = {
+			lineId: "promise-1",
+			disposition: "carry" as const,
+		};
+		expect(() =>
+			assertChapterReviewMatchesLines(
+				{ promises: [firstPromise], focus: ["main", "promise-2"] },
+				states,
+			),
+		).toThrow("没有给出伏笔的处理：promise-2");
+		expect(() =>
+			assertChapterReviewMatchesLines(
+				{
+					promises: [
+						...PAYLOAD.promises,
+						{ lineId: "ghost", disposition: "carry" },
+					],
+					focus: ["main", "promise-2"],
+				},
+				states,
+			),
+		).toThrow("不存在的线：ghost");
+		expect(() =>
+			assertChapterReviewMatchesLines(
+				{
+					promises: [
+						{ lineId: "main", disposition: "carry" },
+						...PAYLOAD.promises,
+					],
+					focus: ["main", "promise-1"],
+				},
+				states,
+			),
+		).toThrow("不是未兑现的伏笔：main");
+		expect(() =>
+			assertChapterReviewMatchesLines(
+				{
+					promises: PAYLOAD.promises,
+					focus: ["main", "promise-2"],
+				},
+				states,
+			),
+		).toThrow("作废的伏笔：promise-2");
+	});
+
+	it("形状校验拒绝坏字段、重复与不合适的聚焦条数", () => {
+		expect(() =>
+			assertDirectorChapterReviewPayload({
+				promises: [{ lineId: "p1", disposition: "next" }],
+				focus: ["a", "b"],
+			}),
+		).toThrow("disposition 只能是 carry、retire");
+		expect(() =>
+			assertDirectorChapterReviewPayload({
+				promises: [
+					{ lineId: "p1", disposition: "carry" },
+					{ lineId: "p1", disposition: "retire" },
+				],
+				focus: ["a", "b"],
+			}),
+		).toThrow("与前面的伏笔重复：p1");
+		expect(() =>
+			assertDirectorChapterReviewPayload({ promises: [], focus: ["a"] }),
+		).toThrow("必须是 2 到 3 条线");
+		expect(() =>
+			assertDirectorChapterReviewPayload({
+				promises: [],
+				focus: ["a", "b", "c", "d"],
+			}),
+		).toThrow("必须是 2 到 3 条线");
+		expect(() =>
+			assertDirectorChapterReviewPayload({
+				promises: [],
+				focus: ["a", "a"],
+			}),
+		).toThrow("与前面的线重复：a");
+		expect(() =>
+			assertDirectorChapterReviewPayload({
+				promises: [],
+				focus: ["a", "b"],
+				x: 1,
+			}),
+		).toThrow("x 是未知字段");
 	});
 });

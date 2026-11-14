@@ -89,6 +89,13 @@ import {
 	type ReplaceDirectorCandidateActionsOptions,
 	isDirectorCandidateKind,
 } from "../director/candidates.js";
+import {
+	type DirectorChapterReview,
+	type DirectorChapterReviewPayload,
+	type NewDirectorChapterReviewInput,
+	assertChapterReviewMatchesLines,
+	assertDirectorChapterReviewPayload,
+} from "../director/chapter.js";
 import { assertDirectorConfig } from "../director/evaluate.js";
 import {
 	type DirectorLineRecord,
@@ -96,6 +103,7 @@ import {
 	type NewDirectorLineRecordInput,
 	applyDirectorLineDiffs,
 	assertDirectorLineDiffs,
+	assertPromiseBudget,
 } from "../director/lines.js";
 import {
 	type DirectorNoteDiff,
@@ -519,6 +527,13 @@ interface DirectorLineRow {
 	readonly node_id: string;
 	readonly story_id: string;
 	readonly diffs: string;
+	readonly created_at: string;
+}
+
+interface DirectorChapterReviewRow {
+	readonly node_id: string;
+	readonly story_id: string;
+	readonly payload: string;
 	readonly created_at: string;
 }
 
@@ -1848,6 +1863,20 @@ function rowToDirectorLine(row: DirectorLineRow): DirectorLineRecord {
 		diffs: assertDirectorLineDiffs(
 			JSON.parse(row.diffs) as unknown,
 			`楼层 ${row.node_id} 的线修改`,
+		),
+		createdAt: row.created_at,
+	};
+}
+
+function rowToDirectorChapterReview(
+	row: DirectorChapterReviewRow,
+): DirectorChapterReview {
+	return {
+		nodeId: row.node_id,
+		storyId: row.story_id,
+		payload: assertDirectorChapterReviewPayload(
+			JSON.parse(row.payload) as unknown,
+			`楼层 ${row.node_id} 的章末清点`,
 		),
 		createdAt: row.created_at,
 	};
@@ -4474,6 +4503,11 @@ export class StoryStore {
 		if (diffs.length === 0) {
 			throw new Error("线修改的 diffs 至少要有一条");
 		}
+		assertPromiseBudget(
+			this.readDirectorLineStates(input.nodeId),
+			diffs,
+			this.getStorySettings(input.storyId).directorConfig.maxOpenPromises,
+		);
 		const createdAt = input.createdAt ?? new Date().toISOString();
 		assertNonEmptyString(createdAt, "线修改的创建时间");
 		this.#db
@@ -4537,6 +4571,86 @@ export class StoryStore {
 			);
 		}
 		return states;
+	}
+
+	/**
+	 * 写入一个楼层的章末清点；记录只追加，同一楼层重复写入直接失败。
+	 * 写入前逐条核对当前路径上的伏笔与聚焦的线。
+	 */
+	saveDirectorChapterReview(
+		input: NewDirectorChapterReviewInput,
+	): DirectorChapterReview {
+		assertNonEmptyString(input.nodeId, "章末清点的楼层 id");
+		assertNonEmptyString(input.storyId, "章末清点的故事 id");
+		const node = this.getNode(input.nodeId);
+		if (!node) {
+			throw new Error(`楼层节点不存在：${input.nodeId}`);
+		}
+		if (node.storyId !== input.storyId) {
+			throw new Error(
+				`章末清点的 storyId 与楼层所属故事不一致：${input.storyId}`,
+			);
+		}
+		const payload = assertDirectorChapterReviewPayload(
+			input.payload,
+			"章末清点的 payload",
+		);
+		assertChapterReviewMatchesLines(
+			payload,
+			this.readDirectorLineStates(input.nodeId),
+			"章末清点的 payload",
+		);
+		if (this.getDirectorChapterReview(input.nodeId) !== null) {
+			throw new Error(`楼层 ${input.nodeId} 已经有章末清点记录`);
+		}
+		const createdAt = input.createdAt ?? new Date().toISOString();
+		assertNonEmptyString(createdAt, "章末清点的创建时间");
+		this.#db
+			.prepare(
+				`INSERT INTO director_chapter_reviews (node_id, story_id, payload, created_at)
+				VALUES (?, ?, ?, ?)`,
+			)
+			.run(input.nodeId, input.storyId, JSON.stringify(payload), createdAt);
+		return {
+			nodeId: input.nodeId,
+			storyId: input.storyId,
+			payload,
+			createdAt,
+		};
+	}
+
+	/** 读取一个楼层的章末清点；没有记录时返回 null。 */
+	getDirectorChapterReview(nodeId: string): DirectorChapterReview | null {
+		if (!this.getNode(nodeId)) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
+		const row = this.#db
+			.prepare("SELECT * FROM director_chapter_reviews WHERE node_id = ?")
+			.get(nodeId) as DirectorChapterReviewRow | undefined;
+		return row === undefined ? null : rowToDirectorChapterReview(row);
+	}
+
+	/** 沿节点所在的路径按从旧到新的顺序读出章末清点；其他分支不参与。 */
+	listDirectorChapterReviewsAlongPath(nodeId: string): DirectorChapterReview[] {
+		if (!this.getNode(nodeId)) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
+		const rows = this.#db
+			.prepare(
+				`WITH RECURSIVE chain(node_id, depth) AS (
+					SELECT id, 0 FROM nodes WHERE id = ?
+					UNION ALL
+					SELECT nodes.parent_id, chain.depth + 1
+					FROM nodes JOIN chain ON nodes.id = chain.node_id
+					WHERE nodes.parent_id IS NOT NULL
+				)
+				SELECT director_chapter_reviews.*
+				FROM director_chapter_reviews
+				JOIN chain ON director_chapter_reviews.node_id = chain.node_id
+				ORDER BY chain.depth DESC`,
+			)
+			.all(nodeId) as DirectorChapterReviewRow[];
+		return rows.map(rowToDirectorChapterReview);
 	}
 
 	/** 写入一个楼层的合并调用执行记录；同一楼层重复执行覆盖同一行。 */

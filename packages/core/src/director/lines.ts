@@ -256,6 +256,64 @@ export function directorLineRemaining(
 	return countdown - (depth - state.lastTouchedDepth);
 }
 
+/** 当前打开（未兑现）的伏笔条数。 */
+export function countOpenPromises(
+	states: readonly DirectorLineState[],
+): number {
+	return states.filter((state) => state.line.kind === "promise").length;
+}
+
+/**
+ * 未兑现伏笔的上限：新建伏笔超过上限时拒绝整批修改，
+ * 已经在超限状态里的伏笔改内容仍然允许。
+ */
+export function assertPromiseBudget(
+	states: readonly DirectorLineState[],
+	diffs: readonly DirectorLineDiff[],
+	maxOpenPromises: number,
+	label = "线修改",
+): void {
+	if (!Number.isInteger(maxOpenPromises) || maxOpenPromises < 0) {
+		throw new Error("伏笔上限必须是非负整数");
+	}
+	const before = countOpenPromises(states);
+	const after = countOpenPromises(applyDirectorLineDiffs(states, diffs, 0));
+	if (after <= maxOpenPromises || after <= before) return;
+	throw new Error(
+		`${label}会让未兑现伏笔达到 ${after} 条，超过上限 ${maxOpenPromises}`,
+	);
+}
+
+/** 玩家在选择推进档位；null 表示常规回合。 */
+export const DIRECTOR_PUSH_KINDS = ["advance", "quick", "jump"] as const;
+
+export type DirectorPush = (typeof DIRECTOR_PUSH_KINDS)[number];
+
+export const DIRECTOR_PUSH_LABELS: Record<DirectorPush, string> = {
+	advance: "推进",
+	quick: "快速推进",
+	jump: "大幅推进",
+};
+
+export function isDirectorPush(value: unknown): value is DirectorPush {
+	return (
+		typeof value === "string" &&
+		(DIRECTOR_PUSH_KINDS as readonly string[]).includes(value)
+	);
+}
+
+export function assertDirectorPush(
+	value: unknown,
+	label = "推进档位",
+): DirectorPush {
+	if (!isDirectorPush(value)) {
+		throw new Error(
+			`${label}只能是 ${DIRECTOR_PUSH_KINDS.join("、")}，收到 ${JSON.stringify(value)}`,
+		);
+	}
+	return value;
+}
+
 /** 线在写作模型眼里的简短写法：谁想要什么，阻碍是什么。 */
 export function formatDirectorLine(line: DirectorLine): string {
 	return `${line.who}想要${line.want}，阻碍是${line.obstacle}`;
@@ -328,6 +386,8 @@ export interface DirectorActionInput {
 	readonly floorDepth: number;
 	/** 本轮玩家消息；没有时为 null。 */
 	readonly playerMessage: string | null;
+	/** 玩家选择的推进档位；null 表示常规回合。 */
+	readonly push: DirectorPush | null;
 	/** 最近几个助手楼层的观察，最新在前。 */
 	readonly floors: readonly DirectorActionFloor[];
 	/** 沿路径累加后的线。 */
@@ -442,6 +502,7 @@ export function selectDirectorAction(
 		candidates.find((candidate) => candidate.action !== blocked) ?? null;
 	const signals: JsonObject = {
 		floorDepth,
+		push: input.push ?? null,
 		recentActions: [...input.recentActions],
 		blockedAction: blocked,
 		candidates: candidates.map((candidate) => candidate.action),
@@ -467,6 +528,131 @@ export function selectDirectorAction(
 	};
 }
 
+/** 玩家这一轮写了具体行动时的让位候选；让位在所有推进档位里都排第一。 */
+function playerDirectionCandidate(
+	input: DirectorActionInput,
+	hot: DirectorLineState | null,
+): ActionCandidate | null {
+	const length = normalizedLength(input.playerMessage);
+	if (length < PLAYER_DIRECTION_MIN_CHARS) return null;
+	return {
+		action: "yield",
+		reason: `玩家这一轮写了 ${length} 个字的具体行动`,
+		lineId: hot === null ? null : hot.line.id,
+		directive:
+			hot === null
+				? "玩家已经给出具体行动；本轮以玩家的行动为准。"
+				: `玩家已经给出具体行动；此处的局面是：${formatDirectorLine(hot.line)}。`,
+	};
+}
+
+function catchCandidate(hot: DirectorLineState | null): ActionCandidate {
+	return {
+		action: "catch",
+		lineId: hot === null ? null : hot.line.id,
+		reason: hot === null ? "场面还没有结束" : "场面还没有结束，接住最热的线",
+		directive:
+			hot === null
+				? "这一场还没有结束，眼前的事情还没了结。"
+				: `这一场还没有结束：${formatDirectorLine(hot.line)}。`,
+	};
+}
+
+function escalateCandidate(cold: DirectorLineState | null): ActionCandidate {
+	return {
+		action: "escalate",
+		lineId: cold === null ? null : cold.line.id,
+		reason:
+			cold === null
+				? "这一场已经收尾，下一件事还没有着落"
+				: `这一场已经收尾，从最冷的线「${cold.line.id}」取一条阻碍`,
+		directive:
+			cold === null
+				? "这一场已经收尾；下一件事还没有着落。"
+				: `局面过于顺利；${cold.line.who}的阻碍找上门来——${cold.line.obstacle}。`,
+	};
+}
+
+/** 倒计时余量最小的线；没有带倒计时的线时为 null。 */
+function soonestCountdownLine(
+	lines: readonly DirectorLineState[],
+	floorDepth: number,
+): { readonly state: DirectorLineState; readonly remaining: number } | null {
+	let best: { state: DirectorLineState; remaining: number } | null = null;
+	for (const state of lines) {
+		const remaining = directorLineRemaining(state, floorDepth);
+		if (remaining === null) continue;
+		if (best === null || remaining < best.remaining) {
+			best = { state, remaining };
+		}
+	}
+	return best;
+}
+
+/**
+ * 推进三档：推进选接球或加码，快速推进让这一场收尾并转场，
+ * 大幅推进跳到下一个倒计时到点的时刻。让位已由调用方排在最前。
+ */
+function buildPushCandidates(
+	input: DirectorActionInput,
+	hot: DirectorLineState | null,
+): ActionCandidate[] {
+	const { push, lines, floors, floorDepth } = input;
+	const latest = floors[0] ?? null;
+	const sceneEnded = latest?.sceneEnds === true;
+	if (push === "advance") {
+		return sceneEnded
+			? [escalateCandidate(readAnchorLine(lines, "cold")), catchCandidate(hot)]
+			: [catchCandidate(hot), escalateCandidate(readAnchorLine(lines, "cold"))];
+	}
+	if (push === "quick") {
+		return [
+			{
+				action: "transition",
+				lineId: hot === null ? null : hot.line.id,
+				reason: "玩家选择了快速推进：让这一场达成目标并转场",
+				directive:
+					hot === null
+						? "这一场到此收尾；时间向前走一截。"
+						: `这一场到此收尾：${formatDirectorLine(hot.line)}。时间向前走一截。`,
+			},
+			catchCandidate(hot),
+		];
+	}
+	const soonest = soonestCountdownLine(lines, floorDepth);
+	if (soonest === null) {
+		return [
+			{
+				action: "transition",
+				lineId: hot === null ? null : hot.line.id,
+				reason: "玩家选择了大幅推进；没有带倒计时的线，时间向前走一截",
+				directive:
+					hot === null
+						? "时间向前跳过一段空白。"
+						: `时间向前跳过一段空白；${formatDirectorLine(hot.line)}。`,
+			},
+			catchCandidate(hot),
+		];
+	}
+	return [
+		{
+			action: "intrude",
+			lineId: soonest.state.line.id,
+			reason: `玩家选择了大幅推进：跳到线「${soonest.state.line.id}」倒计时到点的时刻（余量 ${soonest.remaining}）`,
+			directive: `时间向前跳到线「${soonest.state.line.id}」到点的那一刻：${formatDirectorLine(soonest.state.line)}。`,
+		},
+		{
+			action: "transition",
+			lineId: hot === null ? null : hot.line.id,
+			reason: "玩家选择了大幅推进；时间向前走一截",
+			directive:
+				hot === null
+					? "时间向前走一截。"
+					: `时间向前走一截；${formatDirectorLine(hot.line)}。`,
+		},
+	];
+}
+
 function buildActionCandidates(input: DirectorActionInput): ActionCandidate[] {
 	const candidates: ActionCandidate[] = [];
 	const { floors, lines, config, floorDepth } = input;
@@ -474,16 +660,11 @@ function buildActionCandidates(input: DirectorActionInput): ActionCandidate[] {
 	const present = latest === null ? [] : latest.present;
 	const hot = readAnchorLine(lines, "hot");
 
-	if (normalizedLength(input.playerMessage) >= PLAYER_DIRECTION_MIN_CHARS) {
-		candidates.push({
-			action: "yield",
-			reason: `玩家这一轮写了 ${normalizedLength(input.playerMessage)} 个字的具体行动`,
-			lineId: hot === null ? null : hot.line.id,
-			directive:
-				hot === null
-					? "玩家已经给出具体行动；本轮以玩家的行动为准。"
-					: `玩家已经给出具体行动；此处的局面是：${formatDirectorLine(hot.line)}。`,
-		});
+	const direction = playerDirectionCandidate(input, hot);
+	if (direction !== null) candidates.push(direction);
+	if (input.push !== null && input.push !== undefined) {
+		candidates.push(...buildPushCandidates(input, hot));
+		return candidates;
 	}
 
 	let due: DirectorLineState | null = null;
@@ -626,6 +807,7 @@ export function readDirectorActionInput(
 	storyId: string,
 	nodeId: string,
 	config: DirectorActionConfig,
+	push: DirectorPush | null = null,
 ): DirectorActionInput {
 	if (!store.getStory(storyId)) {
 		throw new Error(`故事不存在：${storyId}`);
@@ -660,6 +842,7 @@ export function readDirectorActionInput(
 	return {
 		floorDepth: assistantFloors.length,
 		playerMessage: lastPlayer === undefined ? null : lastPlayer.raw,
+		push,
 		floors,
 		lines: store.readDirectorLineStates(nodeId),
 		recentActions: recentActions.slice(-MAX_CONSECUTIVE_DIRECTOR_ACTIONS + 1),

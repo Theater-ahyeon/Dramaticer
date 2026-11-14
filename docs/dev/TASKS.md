@@ -1762,7 +1762,8 @@
   - 同一动作不连用三次；理由写进 Trace 并可从 `explain` 读到；在 `bits` 与 `mechanisms` 之上演进，`directorOrganization` 开关保留旧引擎。
   验收：八种动作各有用例；连续三次抑制成立；零模型调用、零磁盘访问；旧引擎输出不变；`pnpm check` 通过。
 
-- [ ] **W4-T02 推进三档、伏笔账与章末清点** | 依赖：W4-T01
+- [x] **W4-T02 推进三档、伏笔账与章末清点** | 依赖：W4-T01 | ADR-0144
+  完成：2026-11-14 单轮参数新增 `push`（`advance`、`quick`、`jump`），从 `POST /api/stories/:id/turns` 的请求体进入，经 `resolveTurnProviders` 重建导演槽位并写进 `packKey` 与决策记录的 `signals.push`。`selectDirectorAction` 按档位替换候选集合：推进选接球（场面未收尾）或加码（已收尾），快速推进选转场、接球作候补，大幅推进选最接近到点的线（可已到点）作闯入、转场作候补，没有倒计时线时退回收尾转场；让位在所有档位里排第一，抑制规则不变。`DirectorConfig.maxOpenPromises`（默认 5）进入 `DIRECTOR_CONFIG_KEYS` 与设置表单；`saveDirectorLines` 在写入前模拟一次修改，新建伏笔超过上限且条数增加时整批拒绝，超限故事改内容与「删一条建一条」仍允许。迁移 v59 新增只追加的 `director_chapter_reviews`：每个楼层一份清点，内容是逐条伏笔处理（`carry`/`retire`）与 2–3 条下一章焦点，写入前核对当前路径上的全部未兑现伏笔、聚焦线存在且不是同一份清点里作废的伏笔，UPDATE 触发器直接拒绝修改。迁移 v60 重建 `story_settings`，把 `director_organization` 的 CHECK 扩到 `lines`（W4-T01 之后该值无法保存）。新增 core 9 个、server 1 个测试；门禁通过（282 个测试文件、2,415 个测试、5 个跳过）
   做什么：
   - 三档推进进入单轮参数并影响动作集合：推进选接球或加码，快速推进允许转场，大幅推进跳到下一个倒计时到点的时刻；玩家写了具体内容时选让位。
   - 未兑现伏笔上限默认 5，满了不再新建；章末清点输出每条旧伏笔的处理（下一章或作废）与下一章聚焦的 2–3 条线，写入只追加记录。

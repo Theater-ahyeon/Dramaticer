@@ -1716,6 +1716,88 @@ export function buildMigrations(
 				END`,
 			],
 		},
+		{
+			version: 59,
+			description: "章末清点：只追加的伏笔处理与下一章聚焦",
+			statements: [
+				`CREATE TABLE director_chapter_reviews (
+					node_id TEXT PRIMARY KEY REFERENCES nodes(id),
+					story_id TEXT NOT NULL REFERENCES stories(id),
+					payload TEXT NOT NULL,
+					created_at TEXT NOT NULL
+				) STRICT`,
+				"CREATE INDEX director_chapter_reviews_story_idx ON director_chapter_reviews(story_id)",
+				`CREATE TRIGGER director_chapter_reviews_story_matches_node
+				BEFORE INSERT ON director_chapter_reviews
+				WHEN COALESCE((SELECT story_id FROM nodes WHERE id = NEW.node_id), '') <> NEW.story_id
+				BEGIN
+					SELECT RAISE(ABORT, '章末清点的 story_id 必须与所在楼层一致');
+				END`,
+				`CREATE TRIGGER director_chapter_reviews_append_only
+				BEFORE UPDATE ON director_chapter_reviews
+				BEGIN
+					SELECT RAISE(ABORT, '章末清点记录只追加，不能修改');
+				END`,
+			],
+		},
+		{
+			version: 60,
+			description: "导演的组织方式允许线与动作引擎",
+			statements: [
+				`CREATE TABLE story_settings_next (
+					story_id TEXT PRIMARY KEY REFERENCES stories(id),
+					card_name TEXT,
+					character_prompt TEXT,
+					persona TEXT,
+					template_id TEXT,
+					model TEXT,
+					budget_tokens INTEGER NOT NULL CHECK (budget_tokens >= 0),
+					structured_output TEXT NOT NULL CHECK (structured_output IN ('function-call', 'text-tags')),
+					temperature REAL NOT NULL CHECK (temperature >= 0 AND temperature <= 2),
+					max_tokens INTEGER NOT NULL CHECK (max_tokens >= 1),
+					reasoning TEXT NOT NULL,
+					viewpoint TEXT,
+					director_config TEXT NOT NULL,
+					updated_at TEXT NOT NULL,
+					history_block_policy TEXT NOT NULL DEFAULT '{"mode":"default","overrides":{}}',
+					gap_pass_enabled INTEGER NOT NULL DEFAULT 0 CHECK (gap_pass_enabled IN (0, 1)),
+					gap_plan_seconds INTEGER NOT NULL DEFAULT 212 CHECK (gap_plan_seconds >= 0),
+					turn_mode TEXT NOT NULL DEFAULT 'fast' CHECK (turn_mode IN ('fast', 'deep')),
+					max_read_rounds INTEGER NOT NULL DEFAULT 3 CHECK (max_read_rounds >= 0),
+					image_config TEXT,
+					deep_max_tool_calls INTEGER NOT NULL DEFAULT 40 CHECK (deep_max_tool_calls BETWEEN 1 AND 200),
+					deep_timeout_ms INTEGER NOT NULL DEFAULT 600000 CHECK (deep_timeout_ms BETWEEN 60000 AND 3600000),
+					deep_context_token_limit INTEGER NOT NULL DEFAULT 48000 CHECK (deep_context_token_limit >= 1),
+					deep_recent_tool_steps INTEGER NOT NULL DEFAULT 4 CHECK (deep_recent_tool_steps BETWEEN 1 AND 20),
+					plugin_overrides TEXT NOT NULL DEFAULT '{}',
+					world_model TEXT NOT NULL DEFAULT 'ledger' CHECK (world_model IN ('ledger', 'wiki', 'temporal_graph')),
+					director_organization TEXT NOT NULL DEFAULT 'mechanisms' CHECK (director_organization IN ('mechanisms', 'bits', 'lines')),
+					context_layout TEXT NOT NULL DEFAULT 'volatility',
+					scene_log_enabled INTEGER NOT NULL DEFAULT 0 CHECK (scene_log_enabled IN (0, 1)),
+					import_mode TEXT NOT NULL DEFAULT 'upgrade' CHECK (import_mode IN ('upgrade', 'raw'))
+				) STRICT`,
+				`INSERT INTO story_settings_next
+					(story_id, card_name, character_prompt, persona, template_id, model,
+					 budget_tokens, structured_output, temperature, max_tokens, reasoning,
+					 viewpoint, director_config, updated_at, history_block_policy,
+					 gap_pass_enabled, gap_plan_seconds, turn_mode, max_read_rounds,
+					 image_config, deep_max_tool_calls, deep_timeout_ms,
+					 deep_context_token_limit, deep_recent_tool_steps, plugin_overrides,
+					 world_model, director_organization, context_layout,
+					 scene_log_enabled, import_mode)
+				SELECT story_id, card_name, character_prompt, persona, template_id, model,
+					 budget_tokens, structured_output, temperature, max_tokens, reasoning,
+					 viewpoint, director_config, updated_at, history_block_policy,
+					 gap_pass_enabled, gap_plan_seconds, turn_mode, max_read_rounds,
+					 image_config, deep_max_tool_calls, deep_timeout_ms,
+					 deep_context_token_limit, deep_recent_tool_steps, plugin_overrides,
+					 world_model, director_organization, context_layout,
+					 scene_log_enabled, import_mode
+				FROM story_settings`,
+				"DROP TABLE story_settings",
+				"ALTER TABLE story_settings_next RENAME TO story_settings",
+			],
+		},
 	];
 }
 

@@ -134,6 +134,7 @@
 | `mode` | `transparent` | `off`、`transparent`、`blind` |
 | `clueAgeWarning` | `12` | 非负整数 |
 | `maxOpenClues` | `5` | 正整数 |
+| `maxOpenPromises` | `5` | 非负整数；未兑现伏笔的上限，满了不再新建 |
 | `stallFloors` | `3` | 正整数 |
 | `surprise` | `1` | 0 到 1 的数字 |
 | `similarityThreshold` | `0.73` | 0 到 1 的数字 |
