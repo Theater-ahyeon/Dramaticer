@@ -7,6 +7,7 @@ import { ChannelsPage } from "./pages/story/ChannelsPage";
 import { ChatPage } from "./pages/story/ChatPage";
 import { DirectorPage } from "./pages/story/DirectorPage";
 import { ImagesPage } from "./pages/story/ImagesPage";
+import { ImportPage } from "./pages/story/ImportPage";
 import { LedgerPage } from "./pages/story/LedgerPage";
 import { SettingsPage } from "./pages/story/SettingsPage";
 
@@ -29,6 +30,7 @@ export function App() {
 					<Route path="/stories/:storyId" element={<StoryPage />}>
 						<Route index element={<Navigate to="chat" replace />} />
 						<Route path="chat" element={<ChatPage />} />
+						<Route path="import" element={<ImportPage />} />
 						<Route path="branches" element={<BranchesPage />} />
 						<Route path="ledger" element={<LedgerPage />} />
 						<Route path="director" element={<DirectorPage />} />

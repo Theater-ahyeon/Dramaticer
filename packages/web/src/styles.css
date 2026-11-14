@@ -169,8 +169,9 @@ button:disabled {
 
 .story-list a {
 	display: flex;
-	flex-direction: column;
-	gap: 2px;
+	flex-direction: row;
+	align-items: flex-start;
+	gap: 12px;
 	padding: 12px;
 	border: 1px solid var(--border);
 	border-radius: 8px;
@@ -181,6 +182,38 @@ button:disabled {
 .story-list a:hover {
 	text-decoration: none;
 	border-color: var(--accent);
+}
+
+.story-card-text {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 0;
+}
+
+.story-cover {
+	display: block;
+	flex: none;
+	width: 56px;
+	aspect-ratio: 2 / 3;
+	object-fit: cover;
+	border-radius: 4px;
+	border: 1px solid var(--border);
+	background: var(--accent-soft);
+}
+
+.story-cover-title {
+	width: 40px;
+}
+
+.story-cover-large {
+	width: 72px;
+}
+
+.story-title-row {
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
 }
 
 .story-title {
@@ -218,7 +251,7 @@ button:disabled {
 	bottom: 0;
 	z-index: 10;
 	display: grid;
-	grid-template-columns: repeat(6, minmax(0, 1fr));
+	grid-template-columns: repeat(8, minmax(0, 1fr));
 	background: var(--surface);
 	border-top: 1px solid var(--border);
 	padding-bottom: env(safe-area-inset-bottom);
@@ -2531,4 +2564,79 @@ button.branch-select:hover {
 		border-right: 0;
 		border-bottom: 1px solid var(--border);
 	}
+}
+
+/* 导入页与人物立绘 */
+.import-head {
+	display: flex;
+	align-items: flex-start;
+	gap: 14px;
+	margin-bottom: 12px;
+}
+
+.import-head h1 {
+	margin: 4px 0 6px;
+	overflow-wrap: anywhere;
+}
+
+.import-form {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 10px;
+}
+
+.import-field {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	font-size: 0.9rem;
+}
+
+.import-counts {
+	display: grid;
+	gap: 6px;
+	margin: 12px 0;
+}
+
+.import-counts div {
+	display: flex;
+	gap: 12px;
+}
+
+.import-counts dt {
+	min-width: 5em;
+	color: var(--muted);
+}
+
+.import-counts dd {
+	margin: 0;
+}
+
+.import-issues {
+	margin: 0;
+	padding-left: 1.2em;
+}
+
+.ledger-entity {
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
+}
+
+.ledger-entity-body {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	min-width: 0;
+}
+
+.ledger-portrait {
+	width: 48px;
+	aspect-ratio: 2 / 3;
+	object-fit: cover;
+	border-radius: 4px;
+	border: 1px solid var(--border);
+	background: var(--accent-soft);
+	flex: none;
 }

@@ -39,9 +39,18 @@ export function StoriesPage() {
 					{stories.map((story) => (
 						<li key={story.id}>
 							<Link to={`/stories/${encodeURIComponent(story.id)}`}>
-								<span className="story-title">{story.title}</span>
-								<span className="muted">
-									{story.headNodeId === null ? "还没有楼层" : "已有楼层"}
+								<img
+									className="story-cover"
+									src={api.storyCoverUrl(story.id)}
+									alt={`${story.title} 的封面`}
+									width={240}
+									height={360}
+								/>
+								<span className="story-card-text">
+									<span className="story-title">{story.title}</span>
+									<span className="muted">
+										{story.headNodeId === null ? "还没有楼层" : "已有楼层"}
+									</span>
 								</span>
 							</Link>
 						</li>

@@ -313,10 +313,27 @@ import {
 	isOpeningCandidateStatus,
 	parseStoryPluginOverrides,
 } from "./settings.js";
+import {
+	type NewStoryMediaInput,
+	type StoryMediaRecord,
+	type StoryMediaSlot,
+	assertNewStoryMediaInput,
+	isStoryMediaSlot,
+} from "./story-media.js";
 
 interface StoryRow {
 	readonly id: string;
 	readonly title: string;
+	readonly created_at: string;
+}
+
+interface StoryMediaRow {
+	readonly story_id: string;
+	readonly slot: string;
+	readonly name: string;
+	readonly file_name: string;
+	readonly media_type: string;
+	readonly byte_size: number;
 	readonly created_at: string;
 }
 
@@ -1367,6 +1384,21 @@ function rowToStory(row: StoryRow): Story {
 	};
 }
 
+function rowToStoryMedia(row: StoryMediaRow): StoryMediaRecord {
+	if (!isStoryMediaSlot(row.slot)) {
+		throw new Error(`故事 ${row.story_id} 的媒体位置不合法：${row.slot}`);
+	}
+	return {
+		storyId: row.story_id,
+		slot: row.slot,
+		name: row.name,
+		fileName: row.file_name,
+		mediaType: row.media_type,
+		byteSize: row.byte_size,
+		createdAt: row.created_at,
+	};
+}
+
 function rowToStorySettings(row: StorySettingsRow): StorySettings {
 	if (!isStructuredOutputMode(row.structured_output)) {
 		throw new Error(
@@ -2349,6 +2381,98 @@ export class StoryStore {
 			.prepare("SELECT id, title, created_at FROM stories ORDER BY rowid ASC")
 			.all() as StoryRow[];
 		return rows.map(rowToStory);
+	}
+
+	/**
+	 * 写入一张故事图片。同位置同名重复写入覆盖文件引用，用于重新导入同一张卡。
+	 * 事务由调用方负责：一次导入的删除与写入要一起生效。
+	 */
+	insertStoryMedia(
+		storyId: string,
+		input: NewStoryMediaInput,
+	): StoryMediaRecord {
+		assertNonEmptyString(storyId, "故事 id");
+		assertNewStoryMediaInput(input);
+		if (this.getStory(storyId) === null) {
+			throw new Error(`故事不存在：${storyId}`);
+		}
+		const createdAt = input.createdAt ?? new Date().toISOString();
+		this.#db
+			.prepare(
+				`INSERT INTO story_media
+					(story_id, slot, name, file_name, media_type, byte_size, created_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?)
+				ON CONFLICT (story_id, slot, name) DO UPDATE SET
+					file_name = excluded.file_name,
+					media_type = excluded.media_type,
+					byte_size = excluded.byte_size,
+					created_at = excluded.created_at`,
+			)
+			.run(
+				storyId,
+				input.slot,
+				input.name,
+				input.fileName,
+				input.mediaType,
+				input.byteSize,
+				createdAt,
+			);
+		const saved = this.getStoryMedia(storyId, input.slot, input.name);
+		if (saved === null) {
+			throw new Error(
+				`故事媒体写入后读取失败：${storyId}/${input.slot}/${input.name}`,
+			);
+		}
+		return saved;
+	}
+
+	/** 删除一个故事的全部图片记录；返回删除的行数。 */
+	clearStoryMedia(storyId: string): number {
+		assertNonEmptyString(storyId, "故事 id");
+		return this.#db
+			.prepare("DELETE FROM story_media WHERE story_id = ?")
+			.run(storyId).changes;
+	}
+
+	getStoryMedia(
+		storyId: string,
+		slot: StoryMediaSlot,
+		name: string,
+	): StoryMediaRecord | null {
+		assertNonEmptyString(storyId, "故事 id");
+		assertNonEmptyString(name, "故事媒体名称");
+		if (!isStoryMediaSlot(slot)) {
+			throw new Error(`故事媒体位置不合法：${String(slot)}`);
+		}
+		const row = this.#db
+			.prepare(
+				"SELECT * FROM story_media WHERE story_id = ? AND slot = ? AND name = ?",
+			)
+			.get(storyId, slot, name) as StoryMediaRow | undefined;
+		return row === undefined ? null : rowToStoryMedia(row);
+	}
+
+	/** 故事的图片记录；不传位置时返回封面与全部立绘。 */
+	listStoryMedia(storyId: string, slot?: StoryMediaSlot): StoryMediaRecord[] {
+		assertNonEmptyString(storyId, "故事 id");
+		if (slot !== undefined && !isStoryMediaSlot(slot)) {
+			throw new Error(`故事媒体位置不合法：${String(slot)}`);
+		}
+		const rows =
+			slot === undefined
+				? (this.#db
+						.prepare(
+							"SELECT * FROM story_media WHERE story_id = ? ORDER BY slot ASC, name ASC",
+						)
+						.all(storyId) as StoryMediaRow[])
+				: (this.#db
+						.prepare(
+							`SELECT * FROM story_media
+							WHERE story_id = ? AND slot = ?
+							ORDER BY name ASC`,
+						)
+						.all(storyId, slot) as StoryMediaRow[]);
+		return rows.map(rowToStoryMedia);
 	}
 
 	/** 读取一个代码插件的安装记录；没有安装过时返回 null。 */

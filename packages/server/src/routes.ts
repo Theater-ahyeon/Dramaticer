@@ -1,14 +1,6 @@
 import { randomUUID } from "node:crypto";
-import {
-	readFile,
-	realpath,
-	rename,
-	rm,
-	stat,
-	writeFile,
-} from "node:fs/promises";
+import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { isAbsolute, relative, resolve, sep } from "node:path";
 import {
 	type AssistantChannelsSnapshot,
 	type AssistantDocsIndex,
@@ -151,8 +143,14 @@ import {
 	handleAssistantRequest,
 } from "./assistant.js";
 import type { BackgroundScheduler } from "./background.js";
+import { renderCoverPlaceholder } from "./cover-placeholder.js";
 import { HttpError, readJsonBody, sendEmpty, sendJson } from "./http.js";
 import type { StoryRuntimeManager } from "./runtime.js";
+import {
+	readStoryMediaFile,
+	resolveMediaFile,
+	saveImportedCardMedia,
+} from "./story-media.js";
 import {
 	type TurnCoordinator,
 	type TurnRunRegistry,
@@ -248,6 +246,21 @@ export async function handleApiRequest(
 			}
 			requireMethod(method, ["POST"]);
 			await handleTurnSteering(req, res, options, storyId, runId);
+			return;
+		}
+		if (third === "media" && parts.length === 4 && parts[3] === "cover") {
+			requireMethod(method, ["GET"]);
+			await handleStoryCover(res, options, storyId);
+			return;
+		}
+		if (
+			third === "media" &&
+			parts.length === 5 &&
+			parts[3] === "portrait" &&
+			parts[4] !== undefined
+		) {
+			requireMethod(method, ["GET"]);
+			await handleStoryPortrait(res, options, storyId, parts[4]);
 			return;
 		}
 		if (parts.length === 3) {
@@ -558,11 +571,14 @@ async function handleImport(
 	const worlds = parseWorldPayload(body.worlds);
 	const request: ImportStoryRequest = { card, worlds };
 	let parsedCard: StCharacterCard;
+	let cardBytes: Uint8Array | null = null;
 	try {
-		parsedCard =
-			request.card.format === "png"
-				? parseCharacterCardPng(decodePngBase64(request.card.data))
-				: parseCharacterCardJson(request.card.data);
+		if (request.card.format === "png") {
+			cardBytes = decodePngBase64(request.card.data);
+			parsedCard = parseCharacterCardPng(cardBytes);
+		} else {
+			parsedCard = parseCharacterCardJson(request.card.data);
+		}
 	} catch (error) {
 		throw toBadRequest(error, "card");
 	}
@@ -576,7 +592,7 @@ async function handleImport(
 
 	let imported: ImportedCardContent;
 	try {
-		imported = await options.store.runInTransaction(() => {
+		imported = await options.store.runInTransaction(async () => {
 			const result = importCardContent(options.store, storyId, {
 				card: parsedCard,
 				worlds: parsedWorlds,
@@ -584,6 +600,13 @@ async function handleImport(
 			options.store.updateStorySettings(storyId, {
 				cardName: result.cardName,
 				characterPrompt: result.characterPrompt,
+			});
+			await saveImportedCardMedia({
+				store: options.store,
+				storyId,
+				mediaDir: options.imagesMediaDir,
+				cardName: parsedCard.name,
+				pngBytes: cardBytes,
 			});
 			return result;
 		});
@@ -2308,7 +2331,7 @@ async function handleImageFile(
 	) {
 		throw imageFileMissing();
 	}
-	const filePath = await resolveImageFile(
+	const filePath = await resolveMediaFile(
 		options.imagesMediaDir,
 		image.fileName,
 	);
@@ -2332,34 +2355,61 @@ function imageFileMissing(): HttpError {
 	return new HttpError(404, "not_found", "图片文件不存在");
 }
 
-async function resolveImageFile(
-	mediaDir: string,
-	fileName: string,
-): Promise<string | null> {
-	const target = resolve(mediaDir, fileName);
-	if (!isInsideDirectory(mediaDir, target)) return null;
-	let realTarget: string;
-	let realRoot: string;
-	try {
-		realRoot = await realpath(mediaDir);
-		realTarget = await realpath(target);
-	} catch {
-		return null;
+/** 封面：有导入的卡面图时原样返回，否则按标题生成 2:3 占位图。 */
+async function handleStoryCover(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	storyId: string,
+): Promise<void> {
+	const story = requireStory(options.store, storyId);
+	const record = options.store.getStoryMedia(storyId, "cover", "cover");
+	if (record !== null) {
+		const media = await readStoryMediaFile(options.imagesMediaDir, record);
+		if (media !== null) {
+			res.writeHead(200, {
+				"Content-Type": media.mediaType,
+				"Content-Length": media.bytes.length,
+				"X-Content-Type-Options": "nosniff",
+				// 同一地址可能因为重新导入换成别的图，不能长期缓存。
+				"Cache-Control": "private, no-cache",
+			});
+			res.end(media.bytes);
+			return;
+		}
 	}
-	if (!isInsideDirectory(realRoot, realTarget)) return null;
-	const info = await stat(realTarget).catch(() => null);
-	if (info === null || !info.isFile()) return null;
-	return realTarget;
+	const placeholder = Buffer.from(renderCoverPlaceholder(story.title), "utf8");
+	res.writeHead(200, {
+		"Content-Type": "image/svg+xml; charset=utf-8",
+		"Content-Length": placeholder.length,
+		"X-Content-Type-Options": "nosniff",
+		"Cache-Control": "private, no-cache",
+	});
+	res.end(placeholder);
 }
 
-function isInsideDirectory(root: string, candidate: string): boolean {
-	const relativePath = relative(root, candidate);
-	return (
-		relativePath.length > 0 &&
-		relativePath !== ".." &&
-		!relativePath.startsWith(`..${sep}`) &&
-		!isAbsolute(relativePath)
-	);
+/** 人物立绘；没有导入过这个人物时返回 404，前端不显示图片。 */
+async function handleStoryPortrait(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	storyId: string,
+	name: string,
+): Promise<void> {
+	requireStory(options.store, storyId);
+	const record = options.store.getStoryMedia(storyId, "portrait", name);
+	const media =
+		record === null
+			? null
+			: await readStoryMediaFile(options.imagesMediaDir, record);
+	if (media === null) {
+		throw new HttpError(404, "not_found", "人物立绘不存在");
+	}
+	res.writeHead(200, {
+		"Content-Type": media.mediaType,
+		"Content-Length": media.bytes.length,
+		"X-Content-Type-Options": "nosniff",
+		"Cache-Control": "private, no-cache",
+	});
+	res.end(media.bytes);
 }
 
 async function handleSettings(

@@ -1537,6 +1537,23 @@ export function buildMigrations(
 				END`,
 			],
 		},
+		{
+			version: 51,
+			description: "故事自带的封面与人物立绘（导入的角色卡图片）",
+			statements: [
+				`CREATE TABLE story_media (
+					story_id TEXT NOT NULL REFERENCES stories(id),
+					slot TEXT NOT NULL CHECK (slot IN ('cover', 'portrait')),
+					name TEXT NOT NULL CHECK (length(trim(name)) > 0),
+					file_name TEXT NOT NULL CHECK (length(trim(file_name)) > 0),
+					media_type TEXT NOT NULL CHECK (length(trim(media_type)) > 0),
+					byte_size INTEGER NOT NULL CHECK (byte_size > 0),
+					created_at TEXT NOT NULL,
+					PRIMARY KEY (story_id, slot, name)
+				) STRICT`,
+				"CREATE INDEX story_media_story_idx ON story_media(story_id)",
+			],
+		},
 	];
 }
 

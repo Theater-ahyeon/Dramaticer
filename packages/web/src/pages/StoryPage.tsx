@@ -12,6 +12,7 @@ import { ErrorNotice } from "../components/ErrorNotice";
 
 const TABS = [
 	{ path: "chat", label: "聊天" },
+	{ path: "import", label: "导入" },
 	{ path: "branches", label: "分支" },
 	{ path: "ledger", label: "台账" },
 	{ path: "director", label: "导演" },
@@ -116,8 +117,19 @@ export function StoryPage() {
 					<Link className="muted" to="/">
 						返回故事列表
 					</Link>
-					<h1>{story?.title ?? "故事"}</h1>
-					<p className="muted story-id">{storyId}</p>
+					<div className="story-title-row">
+						<img
+							className="story-cover story-cover-title"
+							src={api.storyCoverUrl(storyId)}
+							alt={`${story?.title ?? "故事"} 的封面`}
+							width={240}
+							height={360}
+						/>
+						<div>
+							<h1>{story?.title ?? "故事"}</h1>
+							<p className="muted story-id">{storyId}</p>
+						</div>
+					</div>
 				</div>
 				<ErrorNotice error={error} />
 				<nav className="story-tabs" aria-label="故事面板">

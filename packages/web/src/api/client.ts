@@ -130,6 +130,16 @@ export class ApiClient {
 		return this.json<StoryView>("GET", storyPath(storyId));
 	}
 
+	/** 封面图地址；没有卡面图时服务端返回按标题生成的占位图。 */
+	storyCoverUrl(storyId: string): string {
+		return `${this.baseUrl}/api/stories/${encodeURIComponent(storyId)}/media/cover`;
+	}
+
+	/** 人物立绘地址；没有立绘时返回 404，调用方按加载失败处理。 */
+	storyPortraitUrl(storyId: string, name: string): string {
+		return `${this.baseUrl}/api/stories/${encodeURIComponent(storyId)}/media/portrait/${encodeURIComponent(name)}`;
+	}
+
 	async updateStory(
 		storyId: string,
 		request: UpdateStoryRequest,

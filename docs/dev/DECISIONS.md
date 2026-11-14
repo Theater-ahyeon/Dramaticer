@@ -2246,3 +2246,23 @@
   - `docs/dev/TASKS.md` 的 W 阶段拆成 W1 至 W9（W9 按原型分页拆子任务），每项写依赖、做什么与验收；W0-T00 完成，W0-T01 保持在界面改版之前。
   - 新增 HUMAN-20（整批对比的先后确认）与 HUMAN-21（I12 文字），都不阻塞。
   - 只改文档，不新增依赖，不改变运行时行为；门禁的测试结果不受影响。
+
+## ADR-0140 卡面图与人物立绘的存储与读取（2026-11-14）
+
+- **背景**：W0-T01 按 DESIGN §12 实现导入的卡面图：PNG 卡本身作为故事封面，人物档案显示立绘，无图卡用 2:3 占位图，图片经认证的媒体接口读取。现有导入接口只从 PNG 里解析角色卡（`parseCharacterCardPng`），图片字节用完即弃；生图的 `node_images` 只服务楼层插图，不能表达故事级图片。
+- **选项**：
+  - 把图片放进 `node_images`：语义不符（楼层附属图，且媒体接口要求状态为 `done` 与 workflow），会让故事级图片依赖楼层。
+  - 复用故事的 `story_settings` 存 base64：把二进制塞进设置行，体积与迁移都失控，并且每次读设置都带上图片。
+  - 新增 `story_media` 表与媒体目录里的独立文件，数据库只存相对路径。
+- **决定**：
+  - 迁移 v51 新增 `story_media(story_id, slot, name, file_name, media_type, byte_size, created_at)`，主键 `(story_id, slot, name)`；`slot` 取 `cover` 与 `portrait`。封面固定用 `name = 'cover'`，立绘按人物名称各一行。
+  - 导入 PNG 卡时把原始字节按 SHA-256 前 32 位写进媒体目录的 `story-media/<故事 id 摘要>/<字节摘要>.png`，同一张卡重复导入复用同一个文件；封面行指向该文件，立绘行按卡里的角色名登记。故事 id 不直接拼进路径，目录取其摘要，图片字节只写入、不改写源文件。JSON 卡没有图，导入时清空该故事的媒体行，封面回落到占位图。
+  - 媒体接口：`GET /api/stories/:id/media/cover` 有图返回原图，没有图返回按标题生成的 SVG 占位图（600×900，颜色与月亮位置由标题决定）；`GET /api/stories/:id/media/portrait/<人物名>` 只在有立绘时返回图片，否则 404。两个接口都走现有的会话校验，响应里不出现文件路径。封面与立绘的地址在重新导入后不变，`Cache-Control` 用 `private, no-cache`，避免浏览器继续显示上一张卡。
+  - 占位图不写入磁盘，每次按标题渲染；标题按 8 字一行、最多 3 行，并转义 XML 字符。
+  - 卡里的 `assets` 资源表在 JSON 卡里只声明文件名，字节并没有随卡携带；PNG 卡的图标项（`ccdefault:`）就是这张 PNG，所以立绘与封面共用同一个文件，按角色名登记，不读取 `assets` 里的外部路径。
+  - web 增加导入页（`/stories/:id/import`，故事面板的「导入」页）：选 PNG 或 JSON 卡与可选世界书、导入后显示封面与各类条数。W3-T02 在这页上加分型、未识别条目与 token 前后对比。
+- **影响**：
+  - 数据库 schema 升到 51；`StateDiff`、楼层原文与既有媒体无关，I4、I8 不变。
+  - 新增 `packages/core/src/store/story-media.ts`（类型与校验）、`packages/server/src/story-media.ts`（写文件与路径检查，原 `resolveImageFile` 移到这里供生图复用）、`packages/server/src/cover-placeholder.ts`。
+  - 导入接口的写文件与媒体行登记放进同一个事务，失败一起回滚；媒体目录默认是数据库同目录的 `images/`，与生图共用，不新增配置项。
+  - 不新增依赖；e2e 新增 `cover.spec.ts`，覆盖界面导入、书架/游玩页/导入页封面、人物立绘、占位图与接口字节一致性。

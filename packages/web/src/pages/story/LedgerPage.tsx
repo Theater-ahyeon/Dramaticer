@@ -473,20 +473,35 @@ export function LedgerPage() {
 							) : (
 								<ul className="ledger-story-list">
 									{entities.map((entity) => (
-										<li key={entity.id} className="ledger-story-item">
-											<div className="ledger-diff-head">
-												<span className="ledger-path">{entity.name}</span>
-												<span className="ledger-tag">{entity.kind}</span>
+										<li
+											key={entity.id}
+											className="ledger-story-item ledger-entity"
+										>
+											{entity.kind === "character" && storyId !== undefined ? (
+												<img
+													className="ledger-portrait"
+													src={api.storyPortraitUrl(storyId, entity.name)}
+													alt={`${entity.name} 的立绘`}
+													onError={(event) => {
+														event.currentTarget.hidden = true;
+													}}
+												/>
+											) : null}
+											<div className="ledger-entity-body">
+												<div className="ledger-diff-head">
+													<span className="ledger-path">{entity.name}</span>
+													<span className="ledger-tag">{entity.kind}</span>
+												</div>
+												{entity.aliases.length === 0 ? null : (
+													<p className="ledger-meta">
+														别名：{entity.aliases.join("、")}
+													</p>
+												)}
+												{entity.description.length === 0 ? null : (
+													<LedgerValue value={entity.description} />
+												)}
+												<p className="ledger-meta">来源：{entity.source}</p>
 											</div>
-											{entity.aliases.length === 0 ? null : (
-												<p className="ledger-meta">
-													别名：{entity.aliases.join("、")}
-												</p>
-											)}
-											{entity.description.length === 0 ? null : (
-												<LedgerValue value={entity.description} />
-											)}
-											<p className="ledger-meta">来源：{entity.source}</p>
 										</li>
 									))}
 								</ul>

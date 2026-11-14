@@ -32,6 +32,7 @@ export * from "./run-log.js";
 export * from "./state.js";
 export { LATEST_SCHEMA_VERSION } from "./store/migrations.js";
 export * from "./store/settings.js";
+export * from "./store/story-media.js";
 export type {
 	AppendNodeInput,
 	ChunkSearchMatch,
