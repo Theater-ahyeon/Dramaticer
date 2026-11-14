@@ -21,6 +21,7 @@ import {
 	planR6BranchPoints,
 	runR6Compare,
 	selectR6C1BranchPoints,
+	warmupR6Copy,
 } from "../src/evalset/r6-compare.js";
 
 const STORY = "r6-compare-test";
@@ -412,10 +413,40 @@ describe("r6-compare", () => {
 		);
 		const native = report.runs[0] as R6CompareRunRecord;
 		expect(native.warmup.floorNodeIds).toHaveLength(12);
-		expect(native.warmup.settleRequests).toBe(12);
+		expect(native.warmup.settleRequests).toBe(3);
 		expect(native.warmup.sceneRequests).toBe(12);
 		const stored = sidecar(path.join(dir, "run"), 30, "native");
 		expect(stored.warmup).toEqual(native.warmup);
+	});
+
+	it("长历史之后预热只结算预热楼层，不结算更早的未结算楼层", async () => {
+		const dir = makeDir();
+		const source = buildSourceDb(dir, 200);
+		const store = StoryStoreClass.open(source);
+		try {
+			const head = store.getHead(STORY);
+			if (head === null) throw new Error("测试数据库没有 head");
+			const background = fakeBackground();
+			const warmup = await warmupR6Copy({
+				store,
+				storyId: STORY,
+				branchNodeId: head.id,
+				client: background.client,
+			});
+			expect(warmup.floorNodeIds).toHaveLength(12);
+			expect(warmup.settleRequests).toBe(3);
+			expect(warmup.sceneRequests).toBe(12);
+			for (const nodeId of warmup.floorNodeIds) {
+				expect(store.getLedgerSettlement(nodeId)).not.toBeNull();
+				expect(store.getSceneAnalysis(nodeId)).not.toBeNull();
+			}
+			const untouched = store.listUnsettledSettledAssistantNodes(STORY, 1);
+			expect(untouched).toHaveLength(1);
+			expect(warmup.floorNodeIds).not.toContain(untouched[0]);
+			expect(store.getHead(STORY)?.id).toBe(head.id);
+		} finally {
+			store.close();
+		}
 	});
 
 	it("探针只对原生档排期，每 6 轮一次、事实至少 10 楼", async () => {

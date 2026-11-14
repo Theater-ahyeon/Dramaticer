@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import type { StoryStore, TurnTrace } from "../src/index.js";
-import { validateLedgerDiff } from "../src/index.js";
+import { prepareSettlementForNodes, validateLedgerDiff } from "../src/index.js";
 import { openTempStore } from "./temp-store.js";
 
 const FIXED_ISO = "2026-11-07T12:00:00.000Z";
@@ -432,6 +432,23 @@ describe("结算窗口", () => {
 		expect(() => store.listUnsettledSettledAssistantNodes("s1", 0)).toThrow(
 			"正整数",
 		);
+	});
+
+	it("显式楼层窗口只包含给定楼层，超过窗口大小抛错", () => {
+		const { store } = openTempStore();
+		seedChain(store);
+		const window = prepareSettlementForNodes(store, "s1", ["n3"], {
+			windowSize: 4,
+		});
+		expect(window?.nodeIds).toEqual(["n3"]);
+		expect(window?.floors.map((floor) => floor.nodeId)).toEqual(["n3"]);
+		expect(window?.floors[0]?.raw).toBe("屋里很暗。");
+		expect(prepareSettlementForNodes(store, "s1", [])).toBeNull();
+		expect(() =>
+			prepareSettlementForNodes(store, "s1", ["n1", "n3", "n3", "n3", "n3"], {
+				windowSize: 4,
+			}),
+		).toThrow("最多 4 个楼层");
 	});
 });
 

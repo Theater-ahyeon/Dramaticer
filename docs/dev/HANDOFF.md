@@ -3,10 +3,10 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-14 会话 384：完成 R6-T05 的批次实现并申请真实长任务。新增 `packages/st-compat/src/evalset/r6-deep.ts` 与 CLI（`pnpm --filter @dramaticer/st-compat r6-deep`）：每个故事用 `prepareR6RunCopy` 复制源数据库、`warmupR6Copy` 预热 head 之前 12 楼，再在同一副本上跑 20 轮深回合；`selectBranchRounds(20, 8)` 的 8 个分支点用同一玩家楼层再生成一次快回合，两种展示顺序各判一次。配对归一从 `judgements` 取出两侧结果，按 `judgeSide` 换算成候选/基准/平，再交给 `normalizePairOutcome`；汇总给出计划/完成/胜/负/平/换序不一致/失败、分支失败、缺失配对、胜率、Wilson 区间、排除比例、换序不一致比例、深回合完成/失败与失败率、写作/用户/裁判/预热请求与 token 成本，`r6DeepGateInput` 直接作为 G5 输入。sidecar 在 `<dir>/runs/<故事安全名>-<hash>/deep.json`，数据库是同目录 `deep.db`，`running` 续跑、`done`/`failed` 复用；续跑按最后一条已完成深回合把 head 对齐，避免重复楼层。`deep-eval` 新增可选 `maxConsecutiveFailures`（默认不终止，R6 批次传 3），并导出 `countTrailingTurnFailures`；`r6-compare` 导出 `countClient`。新增 4 个测试（2 轮 × 2 分支点跑通并接 `evaluateR6Gates`、sidecar 复用、连续 3 轮失败终止、分支失败与换序不一致分别计数）；门禁通过（260 个测试文件、2,265 个测试、5 个跳过）。真实批次已写入 `.devloop/jobs/R6-T05-01.json`，脚本 `.devloop/scratch/R6-T05/run-deep.mjs`，本会话结果 `WAITING`。
+- 2026-11-14 会话 385：修复 R6-T05-01 真实批次在预热阶段的失败并重新申请长任务。日志显示第一个故事 `xianxia` 在 `warmupR6Copy` 的现场分析阶段抛 `BackgroundJobDeferredError`。原因是预热借用了后台结算处理器，而窗口查询按“沿路径最远的未结算楼层优先”取 4 楼，源数据库有 200 多个未结算的历史楼层时，12 次预热只结算到 `m32`–`m124`，分支点前的 12 楼始终没有结算记录。新增 core 导出 `prepareSettlementForNodes`：按显式楼层构建结算窗口，`prepareSettlement` 改为先查询再委托；预热按每 4 个预热楼层一次请求直接结算这 12 楼，请求数从 12 降到 3。新增长历史回归测试（200 个助手楼层后预热，断言预热楼层各有结算记录与现场分析、更早楼层不结算、head 复原）与 core 显式窗口测试；更新请求计数断言。修复后用真实源库的副本加假客户端复现：三批结算正好落在 `m538`–`m560`，现场分析全部通过。门禁通过（260 个测试文件、2,267 个测试、5 个跳过）。新长任务 `.devloop/jobs/R6-T05-02.json`，本会话结果 `WAITING`。
 
-## 下一步（会话 385 先做）
-1. 先读 `.devloop/jobs/R6-T05-01.status.json` 与 `.devloop/jobs/R6-T05-01.log`。退出码 0 时核对 `eval-private/reports/r6/deep/xianxia.json`、`yuwang.json`、`yinqi.json`：每个故事的 `summary.plannedPairs` 应为 8、`summary.turns.completed` 应为 20、分支记录齐全；把 R6-T05 标 `[x]` 并写完成记录（真实样本数、配对计数、胜率与区间、失败数、成本）。退出码非 0 时先在日志定位失败的阶段（预热、深回合、快回合或判定），修复后换新的任务序号重新申请，sidecar 会复用已完成的故事与轮次。
+## 下一步（会话 386 先做）
+1. 先读 `.devloop/jobs/R6-T05-02.status.json` 与 `.devloop/jobs/R6-T05-02.log`。退出码 0 时核对 `eval-private/reports/r6/deep/xianxia.json`、`yuwang.json`、`yinqi.json`：每个故事的 `summary.plannedPairs` 应为 8、`summary.turns.completed` 应为 20、分支记录齐全；把 R6-T05 标 `[x]` 并写完成记录（真实样本数、配对计数、胜率与区间、失败数、成本）。退出码非 0 时先在日志定位失败的阶段（预热、深回合、快回合或判定），修复后换新的任务序号重新申请。R6-T05-01 的副本没有 sidecar，R6-T05-02 会重新复制源数据库；`.devloop/scratch/R6-T05/` 下的检查脚本只在本地使用。
 2. 然后做 **R6-T06 C1 与 C2 批量运行**（依赖 R6-T02、R6-T03）。按预注册参数运行 C1（3 个故事 × 首中末 3 个分支点 × 2 档位 × 30 轮）与 C2（每故事全部最多 10 个分支点，至少 27 对），输入与结果写 `eval-private/reports/r6/`；同样写 `.devloop/jobs/R6-T06-01.json` 并结果写 `WAITING`。
 3. R6-T06 完成后做 R6-T99：把 C1、C2、C3、G6 的输入交给 `r6-gate` / `evaluateR6Gates`，按预注册判定 G1–G6。预注册文档在第一次批次运行后不得修改。
 4. 阻塞检查：M6-T99 仍等 HUMAN-15（ComfyUI 与 API 格式 workflow）；HUMAN-03、HUMAN-16、HUMAN-17、HUMAN-18 不阻塞。
@@ -17,7 +17,7 @@
 - 数据库 schema 版本 50。本轮没有新增依赖。
 - 报告：`docs/dev/reports/P2.md`、`P3.md`、`P4.md`、`C-T01.md`、`C-T02.md`、`C-T03.md`、`C-T04.md`、`C-T05.md`、`H.md`、`X1.md`、`X2.md`。
 - R6 预注册：`docs/dev/R6-PREREG.md` v1、ADR-0135、DESIGN §14.2；门槛常量与判定由 R6-T01 实现，`R6_GATE_VERSION` 为 `v1`；C1 运行器由 R6-T02、B1 批次由 R6-T03、偏好一致率由 R6-T04、深回合批次由 R6-T05 实现，结果写入门槛版本。
-- R6-T05 的真实运行：`.devloop/jobs/R6-T05-01.json` → `node .devloop/scratch/R6-T05/run-deep.mjs`，串行跑 `xianxia`、`yuwang`、`yinqi` 三个故事。源数据库是 `eval-private/world-model-compare/source/<slug>.db`；每个故事的结果在 `eval-private/reports/r6/deep/<slug>.json` 与 `.md`，运行副本和 sidecar 在 `eval-private/reports/r6/deep/<slug>/`。
+- R6-T05 的真实运行：`.devloop/jobs/R6-T05-02.json` → `node .devloop/scratch/R6-T05/run-deep.mjs`，串行跑 `xianxia`、`yuwang`、`yinqi` 三个故事。源数据库是 `eval-private/world-model-compare/source/<slug>.db`；每个故事的结果在 `eval-private/reports/r6/deep/<slug>.json` 与 `.md`，运行副本和 sidecar 在 `eval-private/reports/r6/deep/<slug>/`。预热按显式预热楼层构建结算窗口，每 4 楼一次请求，不再从最早未结算楼层开始。
 - 世界模型：默认 `ledger`；`wiki` 与 `temporal_graph` 已经可用，由故事设置 `worldModel` 选择，只有 `temporal_graph` 支持 `atStoryTime`。
 - 导演组织方式：默认 `mechanisms`（现有机制序列）；`bits` 已可用，由故事设置 `directorOrganization` 选择。X2 判定见 ADR-0134 与 `docs/dev/reports/X2.md`。
 - X2 的输入与运行脚本在 `.devloop/scratch/X2.d/`：`inputs/`（消息、小品、条件样本）、`run-compare.mjs`、`summarize.mjs`、`runs/<slug>/`（复制数据库、缓存与 sidecar）、`smoke/`（2 轮冒烟结果）。长任务状态在 `.devloop/jobs/X2.d-01.status.json`（退出码 0）与 `.log`。
@@ -72,6 +72,8 @@
 - R6-T02 的探针只对原生档：每 6 轮一次、事实年龄至少 10 楼、每次运行最多 5 次；答题用写作客户端，判定用裁判客户端，两者的请求都记在 `probeRequests`。
 - R6-T02 的报告把同一故事同一档位下所有运行的重复度与推进度原始值池化后取均值（sidecar 保存逐值），失败轮次不进入这两个指标。
 - R6 的每个运行副本在开跑前对分支点之前最近 12 个已生成完成的助手楼层执行 `settle` 与 `scene`，只写复制库；台账覆盖范围只到预热窗口，报告必须单列这一限制。
+- 预热的结算窗口用 `prepareSettlementForNodes` 按预热楼层显式构建，每 4 楼一次请求；不要改回后台结算处理器，它会按“沿路径最远的未结算楼层优先”取窗口，长历史下预热楼层轮不到，现场分析会一直退回 pending。
+- `prepareSettlementForNodes` 只校验窗口大小与楼层存在，不校验角色、落定状态与 head 路径；调用方要先把 head 移到窗口最后一楼，并按从旧到新的顺序传楼层。
 - R6 的胜率都按配对计数：两种展示顺序各判一次，胜率分母只含胜与负，平与换序不一致不计入分母；Wilson 95% 区间用配对计数计算。
 - R6 的 G6 是条件门槛：真实偏好配对少于 30 对时记未证实；B2 只在 B1 未通过且完成一轮改进后申请，单次不超过 60 次生成，必须先得到 HUMAN.md 确认。
 - R6-T03 的 B1 每个分支点只生成一轮：复制源数据库、预热 12 楼后，用分支点之后第一条非空玩家消息跑一次原生续写，回合后不执行后台任务；sidecar 在 `<dir>/runs/<故事>/<楼层>/b1.json`，数据库是同目录的 `native.db`。

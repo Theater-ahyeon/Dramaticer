@@ -1669,7 +1669,7 @@
   验收：配对级换算与预注册一致；少于 30 对返回未证实且不判未通过；报告只含聚合数字；`pnpm check` 通过。
 
 - [~] **R6-T05 深回合增益批次** | 依赖：R6-T01、R6-T02、R3b-T99 | DESIGN §14.2
-  等待长任务 R6-T05-01：实现与假客户端测试已完成；真实批次已申请 `.devloop/jobs/R6-T05-01.json`（`node .devloop/scratch/R6-T05/run-deep.mjs`，600 分钟）。跑完后读 `.devloop/jobs/R6-T05-01.status.json` 与 `.log`，确认 `eval-private/reports/r6/deep/<slug>.json` 三份结果与 G5 输入，再把本任务标 `[x]` 并进入 R6-T06。
+  等待长任务 R6-T05-02：R6-T05-01 在第一个故事的预热阶段退出码 1，原因是预热用后台结算处理器按“最早未结算优先”取窗口，历史楼层有大量未结算时预热楼层始终轮不到，现场分析抛 `BackgroundJobDeferredError`。已改为按预热楼层显式建结算窗口（`prepareSettlementForNodes`，每 4 楼一次请求）并新增回归测试；门禁通过（260 个测试文件、2267 个测试）。已重新申请 `.devloop/jobs/R6-T05-02.json`（`node .devloop/scratch/R6-T05/run-deep.mjs`，600 分钟）。跑完后读 `.devloop/jobs/R6-T05-02.status.json` 与 `.log`，确认 `eval-private/reports/r6/deep/<slug>.json` 三份结果与 G5 输入，再把本任务标 `[x]` 并进入 R6-T06。
   做什么：
   - 在 `deep-eval` 上固定批次参数：3 个故事各 20 轮深回合、8 个分支点、同一分支点再生成快回合、两种顺序各判一次；复用 R6-T02 的副本与预热函数。
   - 新增批次脚本与判定接线：把分支记录换算成配对级胜率、失败率与成本，交给 `evaluateR6Gates`；批次按故事与分支点续跑。

@@ -22,18 +22,22 @@ import {
 	type LlmStream,
 	type LlmStreamingClient,
 	type LlmToolTransport,
+	NO_CONTINUATION,
 	SCENE_JOB_KIND,
-	SETTLE_JOB_KIND,
+	SETTLE_WINDOW_FLOORS,
 	type StoryStore,
 	StoryStore as StoryStoreClass,
 	type StructuredOutputMode,
 	type TimelineNode,
+	applySettlementProposals,
+	buildSettlementMessages,
 	createNaiveChatSlots,
 	createNaiveContextTemplate,
 	createSceneHandler,
-	createSettleHandler,
 	createStandardChatSlots,
 	drainBackgroundJobs,
+	parseSettleResponse,
+	prepareSettlementForNodes,
 	resolveStoryBackgroundKinds,
 	runChatTurn,
 } from "@dramaticer/core";
@@ -437,21 +441,37 @@ export async function warmupR6Copy(
 		options.limit ?? R6_WARMUP_FLOORS,
 	);
 	const counted = countClient(options.client);
-	const settle = createSettleHandler();
 	const scene = createSceneHandler();
 	const now = options.now ?? Date.now;
 	// 结算窗口以 head 为终点；逐楼把 head 移到预热楼层，避免把窗口外的
-	// 更早楼层一起结算。
+	// 更早楼层一起结算。预热楼层可能远在历史之后，按明确楼层建窗口，
+	// 不走后台任务的“最早未结算优先”。
 	const originalHead = options.store.getHead(options.storyId);
 	const settleStart = counted.stats.requests;
-	for (const nodeId of floors) {
-		if (options.store.getLedgerSettlement(nodeId) !== null) continue;
-		options.store.setHead(options.storyId, nodeId);
-		await settle({
-			store: options.store,
-			client: counted.client,
-			job: jobOf(options.storyId, nodeId, SETTLE_JOB_KIND, now),
-		});
+	for (let start = 0; start < floors.length; start += SETTLE_WINDOW_FLOORS) {
+		const batch = floors
+			.slice(start, start + SETTLE_WINDOW_FLOORS)
+			.filter((nodeId) => options.store.getLedgerSettlement(nodeId) === null);
+		if (batch.length === 0) continue;
+		options.store.setHead(options.storyId, batch[batch.length - 1] as string);
+		const window = prepareSettlementForNodes(
+			options.store,
+			options.storyId,
+			batch,
+		);
+		if (window === null) continue;
+		const result = await counted.client.complete(
+			{
+				messages: buildSettlementMessages(window),
+				temperature: 0,
+			},
+			NO_CONTINUATION,
+		);
+		applySettlementProposals(
+			options.store,
+			window,
+			parseSettleResponse(result.text, window.nodeIds),
+		);
 	}
 	if (originalHead !== null) {
 		options.store.setHead(options.storyId, originalHead.id);

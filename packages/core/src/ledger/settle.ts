@@ -220,10 +220,30 @@ export function prepareSettlement(
 	storyId: string,
 	options: PrepareSettlementOptions = {},
 ): SettlementWindow | null {
-	const { windowSize, conflictWindowFloors } =
-		resolveSettlementOptions(options);
+	const { windowSize } = resolveSettlementOptions(options);
 	const nodeIds = store.listUnsettledSettledAssistantNodes(storyId, windowSize);
 	if (nodeIds.length === 0) return null;
+	return prepareSettlementForNodes(store, storyId, nodeIds, options);
+}
+
+/**
+ * 按显式楼层构建结算窗口，用于评测预热这类需要指定窗口的调用；楼层顺序
+ * 按路径从旧到新，调用方保证它们都在当前 head 路径上。
+ */
+export function prepareSettlementForNodes(
+	store: StoryStore,
+	storyId: string,
+	nodeIds: readonly string[],
+	options: PrepareSettlementOptions = {},
+): SettlementWindow | null {
+	if (nodeIds.length === 0) return null;
+	const { windowSize, conflictWindowFloors } =
+		resolveSettlementOptions(options);
+	if (nodeIds.length > windowSize) {
+		throw new Error(
+			`结算窗口最多 ${windowSize} 个楼层，收到 ${nodeIds.length} 个`,
+		);
+	}
 	const floors = nodeIds.map((nodeId) => readWindowFloor(store, nodeId));
 	const snapshotNodeId = nodeIds[nodeIds.length - 1] as string;
 	const snapshot = store.getStateSnapshot(snapshotNodeId).state;
