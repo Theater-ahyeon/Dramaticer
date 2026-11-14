@@ -8,6 +8,7 @@ export * from "./revision.js";
 export * from "./rules.js";
 export * from "./schema.js";
 export * from "./scene-archive.js";
+export * from "./scene-control.js";
 export * from "./scene-log.js";
 export * from "./scenes.js";
 export * from "./settle.js";

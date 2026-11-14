@@ -207,6 +207,13 @@ import {
 	assertSceneStateChanges,
 } from "../ledger/scene-archive.js";
 import {
+	type NewSceneControl,
+	type SceneControl,
+	type SceneControlKind,
+	assertSceneControlKind,
+	assertSceneControlPayload,
+} from "../ledger/scene-control.js";
+import {
 	type NewSceneLog,
 	type SceneLog,
 	assertNewSceneLog,
@@ -215,6 +222,7 @@ import {
 	assertSceneLogQuotes,
 	assertSceneLogStates,
 } from "../ledger/scene-log.js";
+import { isSceneBoundary } from "../ledger/scenes.js";
 import {
 	LEDGER_SOURCES,
 	type LedgerSource,
@@ -505,6 +513,14 @@ interface SceneArchiveRow {
 	readonly state_changes: string;
 	readonly clues_opened: string;
 	readonly clues_closed: string;
+	readonly created_at: string;
+}
+
+interface SceneControlRow {
+	readonly node_id: string;
+	readonly story_id: string;
+	readonly kind: string;
+	readonly payload: string;
 	readonly created_at: string;
 }
 
@@ -1802,7 +1818,7 @@ function rowToSceneLog(row: SceneLogRow): SceneLog {
 
 function rowToSceneArchive(row: SceneArchiveRow): SceneArchive {
 	const label = `楼层 ${row.end_node_id} 的场次归档`;
-	if (row.boundary !== "scene-ends" && row.boundary !== "max-floors") {
+	if (!isSceneBoundary(row.boundary)) {
 		throw new Error(`${label}.boundary 不合法：${row.boundary}`);
 	}
 	return {
@@ -1819,6 +1835,24 @@ function rowToSceneArchive(row: SceneArchiveRow): SceneArchive {
 		),
 		cluesOpened: readStringArray(row.clues_opened, `${label}.cluesOpened`),
 		cluesClosed: readStringArray(row.clues_closed, `${label}.cluesClosed`),
+		createdAt: row.created_at,
+	};
+}
+
+function rowToSceneControl(row: SceneControlRow): SceneControl {
+	const kind = assertSceneControlKind(
+		row.kind,
+		`楼层 ${row.node_id} 的场面控制种类`,
+	);
+	return {
+		nodeId: row.node_id,
+		storyId: row.story_id,
+		kind,
+		payload: assertSceneControlPayload(
+			kind,
+			JSON.parse(row.payload) as unknown,
+			`楼层 ${row.node_id} 的场面控制载荷`,
+		),
 		createdAt: row.created_at,
 	};
 }
@@ -4934,6 +4968,89 @@ export class StoryStore {
 			.prepare("SELECT * FROM scene_archives WHERE end_node_id = ?")
 			.get(endNodeId) as SceneArchiveRow | undefined;
 		return row === undefined ? null : rowToSceneArchive(row);
+	}
+
+	/** 写入一条场面控制；同一楼层同一操作覆盖同一行。 */
+	saveSceneControl(input: NewSceneControl): SceneControl {
+		assertNonEmptyString(input.storyId, "场面控制的故事 id");
+		assertNonEmptyString(input.nodeId, "场面控制的楼层 id");
+		const node = this.getNode(input.nodeId);
+		if (!node) {
+			throw new Error(`楼层节点不存在：${input.nodeId}`);
+		}
+		if (node.storyId !== input.storyId) {
+			throw new Error(
+				`场面控制的 storyId 与楼层所属故事不一致：${input.storyId}`,
+			);
+		}
+		const kind = assertSceneControlKind(input.kind);
+		const payload = assertSceneControlPayload(
+			kind,
+			input.payload,
+			"场面控制的载荷",
+		);
+		const createdAt = input.createdAt ?? new Date().toISOString();
+		assertNonEmptyString(createdAt, "场面控制的创建时间");
+		this.#db
+			.prepare(
+				`INSERT INTO scene_controls (node_id, story_id, kind, payload, created_at)
+				VALUES (?, ?, ?, ?, ?)
+				ON CONFLICT (node_id, kind) DO UPDATE SET
+					payload = excluded.payload,
+					created_at = excluded.created_at`,
+			)
+			.run(
+				input.nodeId,
+				input.storyId,
+				kind,
+				JSON.stringify(payload),
+				createdAt,
+			);
+		return {
+			nodeId: input.nodeId,
+			storyId: input.storyId,
+			kind,
+			payload,
+			createdAt,
+		};
+	}
+
+	/** 读取一个楼层的场面控制；没有时返回 null。 */
+	getSceneControl(nodeId: string, kind: SceneControlKind): SceneControl | null {
+		if (!this.getNode(nodeId)) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
+		const row = this.#db
+			.prepare("SELECT * FROM scene_controls WHERE node_id = ? AND kind = ?")
+			.get(nodeId, assertSceneControlKind(kind)) as SceneControlRow | undefined;
+		return row === undefined ? null : rowToSceneControl(row);
+	}
+
+	/** 沿楼层所在路径读出某一种场面控制落在哪些楼层。 */
+	listSceneControlKindsOnPath(
+		nodeId: string,
+		kind: SceneControlKind,
+	): ReadonlySet<string> {
+		if (!this.getNode(nodeId)) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
+		const rows = this.#db
+			.prepare(
+				`WITH RECURSIVE chain(node_id) AS (
+					SELECT id FROM nodes WHERE id = ?
+					UNION ALL
+					SELECT nodes.parent_id
+					FROM nodes JOIN chain ON nodes.id = chain.node_id
+					WHERE nodes.parent_id IS NOT NULL
+				)
+				SELECT scene_controls.node_id
+				FROM scene_controls JOIN chain ON scene_controls.node_id = chain.node_id
+				WHERE scene_controls.kind = ?`,
+			)
+			.all(nodeId, assertSceneControlKind(kind)) as {
+			readonly node_id: string;
+		}[];
+		return new Set(rows.map((row) => row.node_id));
 	}
 
 	/** 写入开局包；同一故事只保留一行，重复生成覆盖旧内容。 */

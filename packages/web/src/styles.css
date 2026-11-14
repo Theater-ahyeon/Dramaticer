@@ -1014,6 +1014,112 @@ button.reroll-cancel {
 	font-size: 0.8rem;
 }
 
+/* 场面控制：三个按钮展开一个输入框，操作落在最后一个助手楼层上。 */
+.scene-controls {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	margin-top: 8px;
+	font-size: 0.82rem;
+}
+
+.scene-controls-kinds {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+button.scene-control {
+	padding: 3px 9px;
+	border-radius: 999px;
+	font-size: 0.8rem;
+	background: var(--surface);
+}
+
+button.scene-control[aria-pressed="true"] {
+	border-color: var(--accent);
+	color: var(--accent);
+}
+
+.scene-control-form {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 10px;
+	border: 1px dashed var(--border);
+	border-radius: 10px;
+	background: var(--surface);
+}
+
+.scene-control-form label {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.scene-control-form input {
+	min-width: 12rem;
+}
+
+button.scene-control-submit,
+button.scene-control-pace {
+	padding: 3px 10px;
+	border-radius: 8px;
+	font-size: 0.8rem;
+}
+
+.scene-summary {
+	margin: 6px 0 0;
+	color: var(--muted);
+	font-size: 0.8rem;
+}
+
+/* 就地纠正：显示选中的片段与意见输入，提交后只重写这一段。 */
+.correction-panel {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin-top: 8px;
+	padding: 10px 12px;
+	border: 1px dashed var(--border);
+	border-radius: 10px;
+	background: var(--surface);
+	font-size: 0.85rem;
+}
+
+.correction-quote {
+	margin: 0;
+	padding: 6px 10px;
+	border-left: 3px solid var(--accent);
+	background: var(--accent-soft);
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+.correction-panel textarea {
+	width: 100%;
+	font: inherit;
+}
+
+.correction-error {
+	margin: 0;
+	color: var(--danger, #b3261e);
+}
+
+.correction-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+}
+
+button.composer-correct {
+	align-self: flex-end;
+	padding: 4px 10px;
+	font-size: 0.8rem;
+	background: var(--surface);
+}
+
 @media (min-width: 900px) {
 	.chat-panel {
 		height: calc(100dvh - 180px);

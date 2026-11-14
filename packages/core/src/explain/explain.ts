@@ -12,6 +12,7 @@ import type { LedgerFact } from "../ledger/read.js";
 import { readLedgerFacts } from "../ledger/read.js";
 import {
 	DEFAULT_MAX_SCENE_FLOORS,
+	SCENE_BOUNDARY_LABELS,
 	type SceneBoundary,
 	readSceneSegments,
 } from "../ledger/scenes.js";
@@ -140,6 +141,7 @@ export function explainNode(
 		| "getPathToNode"
 		| "getSceneLog"
 		| "getSceneArchive"
+		| "listSceneControlKindsOnPath"
 	>,
 	nodeId: string,
 ): ExplainReport {
@@ -216,7 +218,11 @@ export function explainNode(
 function buildSceneSection(
 	store: Pick<
 		StoryStore,
-		"getNode" | "getPathToNode" | "getSceneLog" | "getSceneArchive"
+		| "getNode"
+		| "getPathToNode"
+		| "getSceneLog"
+		| "getSceneArchive"
+		| "listSceneControlKindsOnPath"
 	>,
 	nodeId: string,
 ): ExplainSceneSection {
@@ -790,9 +796,7 @@ export function renderExplainReport(report: ExplainReport): string {
 		const boundary =
 			scene.boundary === null
 				? "进行中"
-				: scene.boundary === "scene-ends"
-					? "场记判定结束"
-					: "达到楼层上限";
+				: SCENE_BOUNDARY_LABELS[scene.boundary];
 		let status: string;
 		if (scene.endNodeId === null) {
 			status = "还没有归档";

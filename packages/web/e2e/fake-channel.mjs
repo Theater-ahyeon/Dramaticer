@@ -321,6 +321,10 @@ export async function startFakeChannel(options = {}) {
 					setTimeout(() => streamText(res, splitForStream(reply)), 1_200);
 					return;
 				}
+				if (systemText(body).includes("你在修订一段已经写好的剧情正文")) {
+					streamText(res, splitForStream("改过的这一段。"));
+					return;
+				}
 				if (userText.includes("读取状态") && !hasToolResult(body)) {
 					streamText(res, splitForStream('<tool name="state_get">{}</tool>'));
 					return;

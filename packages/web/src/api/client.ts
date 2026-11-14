@@ -31,6 +31,8 @@ import {
 	type NodeChoiceRequest,
 	type NodeChoiceResult,
 	type NodeCompressionsView,
+	type NodeCorrectRequest,
+	type NodeCorrectResult,
 	type NodeDirectorView,
 	type NodeEventsView,
 	type NodeImagesView,
@@ -42,6 +44,8 @@ import {
 	type ProposalDecisionAction,
 	type ProposalDecisionResult,
 	SSE_EVENT_NAMES,
+	type SceneControlRequest,
+	type SceneControlResult,
 	type SetHeadRequest,
 	type SseEvent,
 	type StoryCluesView,
@@ -413,6 +417,30 @@ export class ApiClient {
 		return this.json<NodeChoiceResult>(
 			"POST",
 			`${nodePath(nodeId)}/choice`,
+			request,
+		);
+	}
+
+	/** 就地纠正：只重写选中的片段，写成旧楼层的兄弟节点。 */
+	async correctNode(
+		nodeId: string,
+		request: NodeCorrectRequest,
+	): Promise<NodeCorrectResult> {
+		return this.json<NodeCorrectResult>(
+			"POST",
+			`${nodePath(nodeId)}/correct`,
+			request,
+		);
+	}
+
+	/** 场面控制：结束这一场、跳到某个时间或调整节奏。 */
+	async sceneControl(
+		nodeId: string,
+		request: SceneControlRequest,
+	): Promise<SceneControlResult> {
+		return this.json<SceneControlResult>(
+			"POST",
+			`${nodePath(nodeId)}/scene-control`,
 			request,
 		);
 	}

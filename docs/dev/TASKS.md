@@ -1885,7 +1885,8 @@
   - 重 roll 弹出六项原因（没推进、没听我的、太短、人设不对、格式乱、别推这条线）；原因随下一次生成作为纠正进入用户意志，并写入偏好信号（`preference_signals` 增加原因字段）。
   验收：三档请求参数不同；原因注入下一轮并可在 Trace 查到；偏好信号有原因；旧 swipe 原文不变；e2e 通过。
 
-- [ ] **W5-T02 就地纠正与场面控制** | 依赖：W5-T01
+- [x] **W5-T02 就地纠正与场面控制** | 依赖：W5-T01
+  完成：2026-11-14 就地纠正走 `POST /api/nodes/:id/correct`（`{quote, instruction}`）：选中的原文必须逐字出现且只出现一次，模型只重写这一段，`applyCorrectionSpan` 用切片拼回整楼、其余正文逐字保留，新楼层是旧楼层的兄弟节点（`editNode`），旧楼层与旧 Trace 不动；纠正意见写一条来源为玩家的 `userWill.<id>`（`kind = "correction"`），与新楼层同一事务。场面控制走 `POST /api/nodes/:id/scene-control`（`kind` 取 `end-scene`、`jump-time`、`pace`），只接受当前路径的助手楼层：结束这一场写 `scene_controls` 一行并让场次派生出 `player-ends` 边界（场记判定优先、楼层上限最后），跳时间写来源 `player` 的 `time.current` 事实，调整节奏把三档换成导演配置的 `pace`（0.6 / 1 / 1.6）。迁移 v62 新建 `scene_controls` 并重建 `scene_archives` 让 `boundary` 接受 `player-ends`；`SCENE_BOUNDARIES` 与 `SCENE_BOUNDARY_LABELS` 成为唯一来源，`explain` 第 10 节改读它。界面新增输入区上方三个场面控制按钮与「就地纠正」入口（选区由浏览器给出，唯一性由服务端判定）。新增 core 13 个、server 2 个、web 5 个测试与 1 个 e2e；ADR-0150；门禁通过。
   做什么：
   - 选中正文一段指出问题后，只重写该段并新建兄弟节点（I4），其余段落逐字不变；纠正同时记为用户意志。
   - 场面控制提供「结束这一场」「跳到某个时间」「调整节奏」；结束这一场把当前场次边界落在本楼，跳时间写入故事时间锚点。

@@ -4,6 +4,7 @@ import type {
 	ApiErrorResponse,
 	NodeActionResult,
 	NodeChoiceResult,
+	SceneControlResult,
 	StoryPath,
 	StoryTree,
 } from "@dramaticer/protocol";
@@ -218,6 +219,111 @@ describe("分支接口", () => {
 		expect(
 			running.store.listPreferenceEvents("s1", { kind: "choice" }),
 		).toHaveLength(1);
+	});
+
+	it("场面控制的三种操作写记录并重新划分场次，非法载荷不写任何东西", async () => {
+		const running = await startTestServer();
+		const seeded = seedStory(running);
+		const second = running.store.appendNode({
+			storyId: "s1",
+			parentId: seeded.replyId,
+			role: "user",
+			raw: "我又说了一句。",
+		});
+		const reply = running.store.appendNode({
+			storyId: "s1",
+			parentId: second.id,
+			role: "assistant",
+			raw: "门后仍然没有人。",
+		});
+
+		const ended = await post(
+			`${running.origin}/api/nodes/${seeded.replyId}/scene-control`,
+			{ kind: "end-scene", note: "收在这里" },
+		);
+		expect(ended.status).toBe(201);
+		const endedBody = (await ended.json()) as SceneControlResult;
+		expect(endedBody.control).toMatchObject({
+			nodeId: seeded.replyId,
+			kind: "end-scene",
+			payload: { note: "收在这里" },
+		});
+		expect(endedBody.scenes).toEqual([
+			{
+				startNodeId: seeded.rootId,
+				endNodeId: seeded.replyId,
+				floorIds: [seeded.rootId, seeded.replyId],
+				boundary: "player-ends",
+			},
+			{
+				startNodeId: reply.id,
+				endNodeId: null,
+				floorIds: [reply.id],
+				boundary: null,
+			},
+		]);
+		expect(endedBody.directorConfig).toBeNull();
+
+		const jumped = await post(
+			`${running.origin}/api/nodes/${reply.id}/scene-control`,
+			{ kind: "jump-time", time: "三天后的清晨" },
+		);
+		expect(jumped.status).toBe(201);
+		const jumpedBody = (await jumped.json()) as SceneControlResult;
+		expect(jumpedBody.control.payload).toEqual({ time: "三天后的清晨" });
+		expect(running.store.getStateDiffs(reply.id)).toEqual([
+			expect.objectContaining({
+				path: ["time", "current"],
+				value: "三天后的清晨",
+				source: "player",
+			}),
+		]);
+
+		const paced = await post(
+			`${running.origin}/api/nodes/${reply.id}/scene-control`,
+			{ kind: "pace", pace: "fast" },
+		);
+		expect(paced.status).toBe(201);
+		const pacedBody = (await paced.json()) as SceneControlResult;
+		expect(pacedBody.control.payload).toEqual({ pace: "fast" });
+		expect(pacedBody.directorConfig?.pace).toBe(1.6);
+
+		const before = running.store.listStoryNodes("s1").length;
+		const unknownKind = await post(
+			`${running.origin}/api/nodes/${reply.id}/scene-control`,
+			{ kind: "rewind" },
+		);
+		expect(unknownKind.status).toBe(400);
+		expect((await errorBody(unknownKind)).error.details).toEqual({
+			path: "kind",
+		});
+
+		const badPace = await post(
+			`${running.origin}/api/nodes/${reply.id}/scene-control`,
+			{ kind: "pace", pace: "turbo" },
+		);
+		expect(badPace.status).toBe(400);
+		expect((await errorBody(badPace)).error.details).toEqual({ path: "pace" });
+		expect(running.store.getStorySettings("s1").directorConfig.pace).toBe(1.6);
+
+		const emptyTime = await post(
+			`${running.origin}/api/nodes/${reply.id}/scene-control`,
+			{ kind: "jump-time", time: "  " },
+		);
+		expect(emptyTime.status).toBe(400);
+		expect((await errorBody(emptyTime)).error.details).toEqual({
+			path: "time",
+		});
+
+		const userFloor = await post(
+			`${running.origin}/api/nodes/${second.id}/scene-control`,
+			{ kind: "end-scene" },
+		);
+		expect(userFloor.status).toBe(400);
+		expect((await errorBody(userFloor)).error.details).toEqual({
+			path: "nodeId",
+		});
+		expect(running.store.listStoryNodes("s1")).toHaveLength(before);
 	});
 
 	it("切换 head 后路径按新分支返回", async () => {

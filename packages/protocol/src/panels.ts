@@ -1,5 +1,6 @@
 import type {
 	DirectorCandidateAction,
+	DirectorConfig,
 	DirectorMechanismRecord,
 	DirectorMode,
 	DirectorPlan,
@@ -14,6 +15,9 @@ import type {
 	OpeningCandidateRecord,
 	OpeningCandidateStatus,
 	PreferenceEvent,
+	SceneControl,
+	ScenePace,
+	SceneSegment,
 	StateDiff,
 	Summary,
 	TimelineNode,
@@ -33,6 +37,41 @@ export interface NodeActionResult {
 /** `POST /api/nodes/:id/swipe` 与 `POST /api/nodes/:id/edit` 的请求体。 */
 export interface NodeTextRequest {
 	readonly text: string;
+}
+
+/**
+ * `POST /api/nodes/:id/correct` 的请求体：选中的原文与玩家的意见。
+ * 只重写选中的片段，其余正文逐字保留。
+ */
+export interface NodeCorrectRequest {
+	readonly quote: string;
+	readonly instruction: string;
+}
+
+/** `POST /api/nodes/:id/correct` 的响应：新楼层、路径与写进用户意志的 id。 */
+export interface NodeCorrectResult {
+	readonly node: TimelineNode;
+	readonly path: StoryPath;
+	readonly beforeNodeId: string;
+	readonly replacement: string;
+	readonly willId: string | null;
+}
+
+/**
+ * `POST /api/nodes/:id/scene-control` 的请求体：三种操作各带自己的载荷。
+ * `end-scene` 可以附一句备注，`jump-time` 带目标时间，`pace` 带三档之一。
+ */
+export type SceneControlRequest =
+	| { readonly kind: "end-scene"; readonly note?: string }
+	| { readonly kind: "jump-time"; readonly time: string }
+	| { readonly kind: "pace"; readonly pace: ScenePace };
+
+/** 场面控制的结果：写入的记录与生效后的场次划分。 */
+export interface SceneControlResult {
+	readonly control: SceneControl;
+	readonly scenes: readonly SceneSegment[];
+	/** 调整节奏时是新的导演配置；其余操作为 null。 */
+	readonly directorConfig: DirectorConfig | null;
 }
 
 /**

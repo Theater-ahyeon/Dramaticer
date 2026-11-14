@@ -25,7 +25,7 @@ const RESPONSE_KEYS = [
 
 const STATE_CHANGE_KEYS = ["path", "change"] as const;
 
-const SCENE_BOUNDARIES_TEXT = "scene-ends 或 max-floors";
+const SCENE_BOUNDARIES_TEXT = "scene-ends、max-floors 或 player-ends";
 
 /** 一条状态变化：这一场改过的台账路径与变化内容。 */
 export interface SceneStateChange {
@@ -278,9 +278,11 @@ function buildUserContent(
 	}[],
 ): string {
 	const boundary =
-		scene.segment.boundary === "scene-ends"
-			? "场记判定这一场结束"
-			: `达到 ${scene.segment.floorIds.length} 楼上限，强制结束这一场`;
+		scene.segment.boundary === "player-ends"
+			? "玩家直接结束了这一场"
+			: scene.segment.boundary === "scene-ends"
+				? "场记判定这一场结束"
+				: `达到 ${scene.segment.floorIds.length} 楼上限，强制结束这一场`;
 	const lines: string[] = [
 		`这一场从楼层 ${scene.segment.startNodeId} 到 ${scene.segment.endNodeId}，共 ${scene.segment.floorIds.length} 个助手楼层（${boundary}）。`,
 		"",

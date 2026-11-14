@@ -15,7 +15,11 @@ import {
 	createBackgroundJobRegistry,
 	mergePlannedArcs,
 } from "@dramaticer/core";
-import type { SseEventMap, SseEventName } from "@dramaticer/protocol";
+import type {
+	NodeCorrectResult,
+	SseEventMap,
+	SseEventName,
+} from "@dramaticer/protocol";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { type RunningServer, startServer } from "../src/index.js";
 
@@ -110,8 +114,32 @@ class ScriptedClient implements LlmStreamingClient {
 		this.#onStream = onStream;
 	}
 
-	async complete(): Promise<LlmResult> {
-		throw new Error("回合不应该调用 complete");
+	async complete(request: LlmRequest): Promise<LlmResult> {
+		this.requests.push(request);
+		const reply = this.#replies.shift();
+		if (reply === undefined) {
+			throw new Error("测试没有准备这一轮回复");
+		}
+		return this.#resultOf(reply);
+	}
+
+	#resultOf(reply: FakeReply): LlmResult {
+		return {
+			text: reply.text,
+			reasoning: reply.thinking ?? "",
+			toolCalls: reply.toolCalls ?? [],
+			finishReason: (reply.toolCalls ?? []).length > 0 ? "tool_calls" : "stop",
+			stopReason: (reply.toolCalls ?? []).length > 0 ? "toolUse" : "stop",
+			model: "fake-model",
+			channel: "fake",
+			usage: USAGE,
+			raw: null,
+			cached: false,
+			attempts: 1,
+			rounds: 1,
+			truncation: null,
+			continuation: null,
+		};
 	}
 
 	stream(request: LlmRequest, _options?: LlmCallOptions): LlmStream {
@@ -128,22 +156,7 @@ class ScriptedClient implements LlmStreamingClient {
 		for (const char of reply.text) {
 			events.push({ type: "text_delta", delta: char });
 		}
-		const result: LlmResult = {
-			text: reply.text,
-			reasoning: reply.thinking ?? "",
-			toolCalls: reply.toolCalls ?? [],
-			finishReason: (reply.toolCalls ?? []).length > 0 ? "tool_calls" : "stop",
-			stopReason: (reply.toolCalls ?? []).length > 0 ? "toolUse" : "stop",
-			model: "fake-model",
-			channel: "fake",
-			usage: USAGE,
-			raw: null,
-			cached: false,
-			attempts: 1,
-			rounds: 1,
-			truncation: null,
-			continuation: null,
-		};
+		const result = this.#resultOf(reply);
 		let index = 0;
 		let waited = false;
 		return {
@@ -1055,6 +1068,74 @@ describe("POST /api/stories/:id/turns", () => {
 		expect(body.error.code).toBe("bad_request");
 		expect(body.error.details?.path).toBe("reason");
 		expect(running.store.listStoryNodes("s1")).toHaveLength(before);
+	});
+
+	it("就地纠正只改选中段，旧楼层保留并写进用户意志", async () => {
+		const { running, client } = await startTurnServer([
+			{ text: "门开了。\n\n灯灭了。" },
+			{ text: "灯忽然亮了。" },
+		]);
+		const firstFrames = await new FrameStream(
+			await postTurn(running.origin, "开始。"),
+		).readAll();
+		const first = frameData(firstFrames, "turn.completed");
+		const before = running.store.getNode(first.node.id)?.raw;
+
+		const response = await fetch(
+			`${running.origin}/api/nodes/${first.node.id}/correct`,
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					quote: "灯灭了。",
+					instruction: "这里让灯忽然亮起来",
+				}),
+			},
+		);
+		expect(response.status).toBe(201);
+		const body = (await response.json()) as NodeCorrectResult;
+		expect(body.beforeNodeId).toBe(first.node.id);
+		expect(body.node.id).not.toBe(first.node.id);
+		expect(body.node.raw).toBe("门开了。\n\n灯忽然亮了。");
+		expect(body.replacement).toBe("灯忽然亮了。");
+		expect(body.path.headNodeId).toBe(body.node.id);
+		expect(body.willId).toMatch(/^will-/);
+		expect(running.store.getNode(first.node.id)?.raw).toBe(before);
+		expect(client.requests).toHaveLength(2);
+		expect(client.requests[1]?.messages.at(-1)?.content).toContain(
+			"这里让灯忽然亮起来",
+		);
+		const ledger = running.store.getStateSnapshot(body.node.id).state as {
+			userWill?: Record<string, unknown>;
+		};
+		expect(Object.keys(ledger.userWill ?? {})).toEqual([body.willId]);
+
+		const beforeCount = running.store.listStoryNodes("s1").length;
+		const duplicate = await fetch(
+			`${running.origin}/api/nodes/${first.node.id}/correct`,
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ quote: "了。", instruction: "换个说法" }),
+			},
+		);
+		expect(duplicate.status).toBe(400);
+		const duplicateBody = (await duplicate.json()) as {
+			error: { code: string; details?: { path?: string } };
+		};
+		expect(duplicateBody.error.details?.path).toBe("quote");
+
+		const missing = await fetch(
+			`${running.origin}/api/nodes/${first.node.id}/correct`,
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ quote: "窗开了", instruction: "改一下" }),
+			},
+		);
+		expect(missing.status).toBe(400);
+		expect(running.store.listStoryNodes("s1")).toHaveLength(beforeCount);
+		expect(client.requests).toHaveLength(2);
 	});
 
 	it("设置或渠道配置变化后重建运行时", async () => {

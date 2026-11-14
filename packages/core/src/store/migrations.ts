@@ -1803,6 +1803,74 @@ export function buildMigrations(
 			description: "场记记录增加场面卡",
 			statements: ["ALTER TABLE scene_logs ADD COLUMN scene_card TEXT"],
 		},
+		{
+			version: 62,
+			description:
+				"场面控制：玩家在场楼直接结束这一场、跳时间与调整节奏；场次归档允许玩家结束",
+			statements: [
+				`CREATE TABLE scene_archives_next (
+					end_node_id TEXT PRIMARY KEY REFERENCES nodes(id),
+					story_id TEXT NOT NULL REFERENCES stories(id),
+					start_node_id TEXT NOT NULL REFERENCES nodes(id),
+					floor_count INTEGER NOT NULL CHECK (floor_count > 0),
+					boundary TEXT NOT NULL CHECK (
+						boundary IN ('scene-ends', 'max-floors', 'player-ends')
+					),
+					summary TEXT NOT NULL CHECK (length(trim(summary)) > 0),
+					present TEXT NOT NULL,
+					state_changes TEXT NOT NULL,
+					clues_opened TEXT NOT NULL,
+					clues_closed TEXT NOT NULL,
+					created_at TEXT NOT NULL
+				) STRICT`,
+				`INSERT INTO scene_archives_next
+					(end_node_id, story_id, start_node_id, floor_count, boundary, summary,
+					 present, state_changes, clues_opened, clues_closed, created_at)
+				SELECT end_node_id, story_id, start_node_id, floor_count, boundary, summary,
+					 present, state_changes, clues_opened, clues_closed, created_at
+				FROM scene_archives`,
+				"DROP TABLE scene_archives",
+				"ALTER TABLE scene_archives_next RENAME TO scene_archives",
+				"CREATE INDEX scene_archives_story_idx ON scene_archives(story_id)",
+				`CREATE TRIGGER scene_archives_story_matches_node
+				BEFORE INSERT ON scene_archives
+				WHEN COALESCE((SELECT story_id FROM nodes WHERE id = NEW.end_node_id), '') <> NEW.story_id
+				BEGIN
+					SELECT RAISE(ABORT, '场次归档的 story_id 必须与结束楼层一致');
+				END`,
+				`CREATE TRIGGER scene_archives_start_matches_story
+				BEFORE INSERT ON scene_archives
+				WHEN COALESCE((SELECT story_id FROM nodes WHERE id = NEW.start_node_id), '') <> NEW.story_id
+				BEGIN
+					SELECT RAISE(ABORT, '场次归档的起始楼层必须属于同一故事');
+				END`,
+				`CREATE TRIGGER scene_archives_identity_immutable
+				BEFORE UPDATE OF end_node_id, story_id ON scene_archives
+				BEGIN
+					SELECT RAISE(ABORT, '场次归档的结束楼层与故事不能修改');
+				END`,
+				`CREATE TABLE scene_controls (
+					node_id TEXT NOT NULL REFERENCES nodes(id),
+					story_id TEXT NOT NULL REFERENCES stories(id),
+					kind TEXT NOT NULL CHECK (kind IN ('end-scene', 'jump-time', 'pace')),
+					payload TEXT NOT NULL,
+					created_at TEXT NOT NULL,
+					PRIMARY KEY (node_id, kind)
+				) STRICT`,
+				"CREATE INDEX scene_controls_story_idx ON scene_controls(story_id)",
+				`CREATE TRIGGER scene_controls_story_matches_node
+				BEFORE INSERT ON scene_controls
+				WHEN COALESCE((SELECT story_id FROM nodes WHERE id = NEW.node_id), '') <> NEW.story_id
+				BEGIN
+					SELECT RAISE(ABORT, '场面控制的 story_id 必须与所在楼层一致');
+				END`,
+				`CREATE TRIGGER scene_controls_identity_immutable
+				BEFORE UPDATE OF node_id, story_id, kind ON scene_controls
+				BEGIN
+					SELECT RAISE(ABORT, '场面控制的楼层、故事与种类不能修改');
+				END`,
+			],
+		},
 	];
 }
 

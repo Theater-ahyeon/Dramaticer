@@ -2441,3 +2441,25 @@
   - `POST /api/nodes/:id/regenerate` 从「不接受请求体」变成「可选 `{reason}`」；不带正文的请求仍按原路径处理。
   - 用户意志里的原因会进入后续每一轮的上下文；这是设计要的「下一次生成带着这条纠正」。
   - `st-compat` 的偏好导出不改：`reason` 只出现在 `preference_events.payload` 与事件 JSONL 里，配对样本仍按两侧楼层生成。
+
+## ADR-0150 就地纠正与场面控制的程序口径（2026-11-14）
+
+- **背景**：DESIGN §22 要求「选中一段指出问题，只重写该段，并记为用户意志」与「结束这一场、跳到某个时间、调整节奏」。W5-T01 已经做了推进按钮与带原因的重 roll，但没有任何局部改写入口；场次边界只由场记判定与楼层数上限决定，玩家无法直接收尾一场；节奏只能通过故事设置的导演配置改。
+- **选项**：
+  - 局部改写复用 `editNode`（整楼替换）：模型仍要重发整楼正文，任何一处漂移都会连带改到没选中的段落，验收要求的「其余逐字一致」无法保证。
+  - 局部改写用程序拼接、模型只输出选中段：选中段由模型重写，前后文由字符串切片保留，能逐字保证其余部分不变。
+  - 结束这一场写进 `scene_logs.sceneEnds`：那是场记的模型输出，玩家操作混进去会让场记重跑覆盖掉玩家的决定。
+  - 结束这一场单独建一张边界表：玩家操作与场记判定互不覆盖，派生时同时读两个来源。
+- **决定**：
+  - 就地纠正：`POST /api/nodes/:id/correct` 收 `{quote, instruction}`。`quote` 必须逐字出现在楼层原文里且只出现一次，出现多次直接 400（字段 `quote`）——无法判定改哪一处时不做猜测。模型只收到「整楼原文 + 选中片段 + 意见」，只输出改写后的这一段；`applyCorrectionSpan` 用切片拼回整楼，前后文逐字保留。新楼层由 `editNode` 写成旧楼层的兄弟节点并移动 head，旧楼层与旧 Trace 不动（I4）。模型输出为空、只有换行或与选中段相同时拒绝，不写新楼层。
+  - 纠正意见同时写一条 `userWill.<稳定 id>`，`kind = "correction"`、来源 `player`、`sourceNodeId` 指向旧楼层，`reason` 写「就地纠正」。同一句意见重复提交时路径不变，`appendStateDiffs` 覆盖同一条事实，不会产生第二条。写入与新楼层在同一个事务里。
+  - 场面控制：`POST /api/nodes/:id/scene-control` 收 `{kind}` 与对应载荷，`kind` 取 `end-scene`、`jump-time`、`pace`。三者都只接受当前路径上的助手楼层；非法 `kind`、非法载荷与楼层不合格都在写入之前拒绝。
+  - `end-scene` 写 `scene_controls(node_id, kind, payload)` 一行，载荷是 `{note}`；场次派生多一个 `playerEnds` 谓词，命中时 `boundary` 记 `player-ends`。场记判定优先于玩家结束（同一楼层两者都有时按 `scene-ends`），楼层数上限最后。`SCENE_BOUNDARIES` 增加 `player-ends`，`scene_archives.boundary` 的 CHECK 随之重建。
+  - `jump-time` 写一条来源 `player` 的 `time.current` 事实，再记一条场面控制；两次写入同一个事务。
+  - `pace` 把三档换成导演配置的 `pace`（`slow` 0.6、`normal` 1、`fast` 1.6），并记一条场面控制。故事设置是导演配置的唯一存放处，节奏状态机与线引擎都读它，所以下一轮起生效；这里不引入第二套节奏开关。
+  - 场面控制记录只存玩家操作，不参与场记重跑；`scene_controls` 的主键是 `(node_id, kind)`，同一楼层同一操作覆盖同一行。
+- **影响**：
+  - 迁移 v62：新建 `scene_controls`（含故事一致性与不可改身份的触发器），重建 `scene_archives` 让 `boundary` 接受 `player-ends`。
+  - `ScenePathSource` 与 explain 的只读 pick 增加 `listSceneControlKindsOnPath`；`explain` 第 10 节的边界说法改为读 `SCENE_BOUNDARY_LABELS`，三种来源共用一套措辞。
+  - `POST /api/nodes/:id/correct` 是第一个在接口里直接调用正文模型的动作（不是回合、不写 SSE）；模型调用失败时不写任何楼层，返回 500。这条路径不进 `TurnTrace`，因为没有楼层可挂。
+  - 界面新增输入区上方的三个场面控制按钮与「就地纠正」按钮；选区由浏览器给出，是否唯一由服务端判定。

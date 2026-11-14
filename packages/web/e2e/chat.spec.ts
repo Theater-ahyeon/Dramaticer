@@ -187,3 +187,76 @@ test("推进三档进入请求，原因重 roll 写进偏好与用户意志", as
 
 	await expectNoHorizontalOverflow(page);
 });
+
+test("就地纠正只改选中段，场面控制改变场次与节奏", async ({ page }) => {
+	const storyId = await createImportedStory(page, "纠正与场面");
+	await openStoryTab(page, storyId, "chat");
+	await sendTurn(page, storyId, "读取状态");
+
+	const floor = page.locator(".floor-assistant").last();
+	const beforeId = await latestAssistantNodeId(page, storyId);
+	const beforeRaw = (await floor.locator(".floor-body").innerText()).trim();
+
+	// 在正文里选中一句话，再点「就地纠正」。
+	const segment = floor.locator(".text-segment").first();
+	await segment.evaluate((element) => {
+		const text = element.firstChild;
+		if (text === null) throw new Error("楼层没有正文节点");
+		const range = document.createRange();
+		range.setStart(text, 0);
+		range.setEnd(text, Math.min(6, text.textContent?.length ?? 0));
+		const selection = window.getSelection();
+		selection?.removeAllRanges();
+		selection?.addRange(range);
+	});
+	await page.locator(".composer-correct").click();
+	const panel = page.locator(".correction-panel");
+	await expect(panel.locator(".correction-quote")).toBeVisible();
+	await panel.getByLabel("这一段哪里不对").fill("这里改成另一个说法");
+	await panel.getByRole("button", { name: "只改这一段" }).click();
+
+	await expect
+		.poll(() => latestAssistantNodeId(page, storyId), { timeout: 30_000 })
+		.not.toBe(beforeId);
+	await expect(page.locator(".correction-panel")).toHaveCount(0);
+	const afterId = await latestAssistantNodeId(page, storyId);
+	const afterRaw = (
+		await page
+			.locator(".floor-assistant")
+			.last()
+			.locator(".floor-body")
+			.innerText()
+	).trim();
+	expect(afterRaw).not.toBe(beforeRaw);
+	// 只重写选中的那一段：替换文本与原文其余部分都在。
+	expect(afterRaw).toContain("改过的这一段。");
+	expect(afterRaw).toContain(beforeRaw.slice(6).slice(0, 12));
+
+	// 旧楼层仍然保留在树里，纠正意见写进用户意志。
+	const tree = await page.request.get(`/api/stories/${storyId}/tree`);
+	expect(JSON.stringify(await tree.json())).toContain(beforeId);
+	const ledger = await page.request.get(`/api/nodes/${afterId}/ledger`);
+	expect(JSON.stringify(await ledger.json())).toContain("这里改成另一个说法");
+
+	// 场面控制：结束这一场后场次数量与边界都变。
+	await page.locator(".scene-control", { hasText: "结束这一场" }).click();
+	await page.getByLabel("结束这一场的备注").fill("收在这里");
+	await page.locator(".scene-control-submit").click();
+	await expect(page.locator(".scene-summary")).toContainText("已结束 1 场");
+
+	await page.locator(".scene-control", { hasText: "跳到某个时间" }).click();
+	await page.getByLabel("跳到的时间").fill("三天后的清晨");
+	await page.locator(".scene-control-submit").click();
+	await expect(page.locator(".scene-summary")).toContainText("进行中");
+
+	await page.locator(".scene-control", { hasText: "调整节奏" }).click();
+	await page.locator(".scene-control-pace", { hasText: "加快" }).click();
+	await expect(page.locator(".scene-summary")).toContainText("节奏快慢 1.6");
+	const settings = await page.request.get(`/api/stories/${storyId}/settings`);
+	const settingsBody = (await settings.json()) as {
+		directorConfig: { pace: number };
+	};
+	expect(settingsBody.directorConfig.pace).toBe(1.6);
+
+	await expectNoHorizontalOverflow(page);
+});

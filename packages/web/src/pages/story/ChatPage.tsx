@@ -2,6 +2,8 @@ import type { DirectorPush, RerollReason, TurnMode } from "@dramaticer/core";
 import type {
 	NodeActionsView,
 	NodeImagesView,
+	SceneControlRequest,
+	SceneControlResult,
 	SseEvent,
 	StoryOpeningsView,
 	StoryPath,
@@ -45,6 +47,10 @@ import {
 } from "../../chat/path-state";
 import { DEFAULT_PUSH, PUSH_TURN_TEXT } from "../../chat/push";
 import {
+	describeSceneControlResult,
+	readCorrectionTarget,
+} from "../../chat/scene-control";
+import {
 	type TurnDraft,
 	applyTurnEvent,
 	createTurnDraft,
@@ -60,7 +66,9 @@ import { ErrorNotice } from "../../components/ErrorNotice";
 import { CandidateActions } from "../../components/chat/CandidateActions";
 import { ChatFloorList } from "../../components/chat/ChatFloorList";
 import { Composer } from "../../components/chat/Composer";
+import { CorrectionPanel } from "../../components/chat/CorrectionPanel";
 import { OpeningCandidates } from "../../components/chat/OpeningCandidates";
+import { SceneControls } from "../../components/chat/SceneControls";
 
 const PAGE_SIZE = 60;
 const RETRY_ATTEMPTS = 8;
@@ -111,6 +119,19 @@ export function ChatPage() {
 	const [push, setPush] = useState<DirectorPush>(DEFAULT_PUSH);
 	/** 正在选重 roll 原因的助手楼层；null 表示没有打开。 */
 	const [rerollNodeId, setRerollNodeId] = useState<string | null>(null);
+	/** 正在就地纠正的片段；null 表示没有打开。 */
+	const [correction, setCorrection] = useState<{
+		readonly nodeId: string | null;
+		readonly quote: string | null;
+	} | null>(null);
+	const [correctionBusy, setCorrectionBusy] = useState(false);
+	const [correctionError, setCorrectionError] = useState<unknown>(null);
+	/** 场面控制的最近一次结果与错误。 */
+	const [sceneSummary, setSceneSummary] = useState<SceneControlResult | null>(
+		null,
+	);
+	const [sceneBusy, setSceneBusy] = useState(false);
+	const [sceneError, setSceneError] = useState<unknown>(null);
 	const [imageError, setImageError] = useState<unknown>(null);
 	const [retryingImageId, setRetryingImageId] = useState<string | null>(null);
 	/** 手动重试后立刻重新开始轮询。 */
@@ -167,6 +188,12 @@ export function ChatPage() {
 		setTurnModeOverride(null);
 		setActions([]);
 		setActionsError(null);
+		setCorrection(null);
+		setCorrectionBusy(false);
+		setCorrectionError(null);
+		setSceneSummary(null);
+		setSceneBusy(false);
+		setSceneError(null);
 		setImageError(null);
 		setRetryingImageId(null);
 		setImagePollSignal(0);
@@ -490,6 +517,47 @@ export function ChatPage() {
 		}
 	};
 
+	/** 就地纠正：只重写选中的片段，新楼层成为当前 head。 */
+	const submitCorrection = async (instruction: string) => {
+		if (storyId === undefined || correction === null) return;
+		if (correction.nodeId === null || correction.quote === null) return;
+		setCorrectionBusy(true);
+		setCorrectionError(null);
+		try {
+			const result = await api.correctNode(correction.nodeId, {
+				quote: correction.quote,
+				instruction,
+			});
+			setPath((previous) => applyLatestPage(previous, result.path));
+			setBottomSignal((value) => value + 1);
+			setCorrection(null);
+		} catch (error) {
+			setCorrectionError(error);
+		} finally {
+			setCorrectionBusy(false);
+		}
+	};
+
+	/** 场面控制：三种操作都落在当前路径最后一个助手楼层上。 */
+	const applySceneControl = async (
+		nodeId: string,
+		request: SceneControlRequest,
+	) => {
+		if (storyId === undefined) return;
+		setSceneBusy(true);
+		setSceneError(null);
+		try {
+			const result = await api.sceneControl(nodeId, request);
+			const page = await api.getPath(storyId, { limit: PAGE_SIZE });
+			setPath((previous) => applyLatestPage(previous, page));
+			setSceneSummary(result);
+		} catch (error) {
+			setSceneError(error);
+		} finally {
+			setSceneBusy(false);
+		}
+	};
+
 	const loadOlder = () => {
 		if (storyId === undefined || loadingOlderRef.current) return;
 		const anchor = path.headNodeId;
@@ -714,7 +782,68 @@ export function ChatPage() {
 			) : null}
 			<ErrorNotice error={steeringError} />
 			<ErrorNotice error={composerError} />
+			{latestAssistantId === null ? null : (
+				<SceneControls
+					nodeId={latestAssistantId}
+					busy={sceneBusy || streaming}
+					onEndScene={(note) => {
+						void applySceneControl(latestAssistantId, {
+							kind: "end-scene",
+							...(note === null ? {} : { note }),
+						});
+					}}
+					onJumpTime={(time) => {
+						void applySceneControl(latestAssistantId, {
+							kind: "jump-time",
+							time,
+						});
+					}}
+					onPace={(pace) => {
+						void applySceneControl(latestAssistantId, { kind: "pace", pace });
+					}}
+				/>
+			)}
+			<ErrorNotice error={sceneError} />
+			{sceneSummary === null ? null : (
+				<p className="scene-summary">
+					{describeSceneControlResult(sceneSummary)}
+				</p>
+			)}
+			{correction === null ? null : (
+				<CorrectionPanel
+					quote={correction.quote}
+					busy={correctionBusy}
+					error={correctionError}
+					onSubmit={(instruction) => {
+						void submitCorrection(instruction);
+					}}
+					onCancel={() => {
+						setCorrection(null);
+						setCorrectionError(null);
+					}}
+				/>
+			)}
 			<div className="composer-row">
+				<button
+					type="button"
+					className="composer-correct"
+					disabled={streaming || correctionBusy}
+					title="先在正文里选中要改的那一段"
+					onClick={() => {
+						const target = readCorrectionTarget(
+							typeof window === "undefined" ? null : window.getSelection(),
+						);
+						if (target === null) {
+							setCorrection({ nodeId: null, quote: null });
+							setCorrectionError(null);
+							return;
+						}
+						setCorrection(target);
+						setCorrectionError(null);
+					}}
+				>
+					就地纠正
+				</button>
 				<Composer
 					value={input}
 					streaming={streaming}

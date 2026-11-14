@@ -37,6 +37,9 @@ import {
 	OPENING_CANDIDATE_STATUSES,
 	type RerollReason,
 	STORY_SETTINGS_UPDATE_KEYS,
+	type SceneControl,
+	type SceneControlKind,
+	type ScenePace,
 	type StateDiff,
 	type Story,
 	type StorySettings,
@@ -53,11 +56,14 @@ import {
 	assertDirectorIntensity,
 	assertDirectorPush,
 	assertRerollReason,
+	assertSceneControlKind,
+	assertScenePace,
 	buildImportAuditReport,
 	createBlockFormatSegment,
 	createDefaultContextTemplate,
 	detectComfyUiSlots,
 	emptyImagesConfig,
+	endSceneAt,
 	enqueueIllustrateBackgroundJob,
 	enqueueOpeningBackgroundJobs,
 	enqueueVisualProfileBackgroundJob,
@@ -68,8 +74,10 @@ import {
 	isLedgerChangeCardStatus,
 	isOpeningCandidateStatus,
 	isTurnMode,
+	jumpSceneTime,
 	listLedgerEntities,
 	loadImagesConfig,
+	locateCorrectionSpan,
 	parseChannelsConfig,
 	parseComfyUiWorkflow,
 	parseDirectorPlan,
@@ -78,12 +86,15 @@ import {
 	readDirectorPlan,
 	readLedger,
 	readLedgerFacts,
+	readSceneSegments,
 	rejectLedgerChangeCard,
 	replaceDirectorPlan,
 	resolveImageProvider,
 	resolveModelForRole,
+	rewriteFloorSegment,
 	rollbackLedgerChangeCard,
 	setModelProbeInText,
+	setScenePace,
 	validateImagePromptRequest,
 	validateRoleModelFamilies,
 } from "@dramaticer/core";
@@ -115,6 +126,7 @@ import {
 	type NodeActionsView,
 	type NodeChoiceResult,
 	type NodeCompressionsView,
+	type NodeCorrectResult,
 	type NodeDirectorView,
 	type NodeEventsView,
 	type NodeImage,
@@ -123,6 +135,7 @@ import {
 	type NodeRunView,
 	type ProposalDecisionAction,
 	type ProposalDecisionResult,
+	type SceneControlResult,
 	type SetHeadRequest,
 	type StoryCluesView,
 	type StoryDirectorPlanView,
@@ -494,6 +507,14 @@ export async function handleApiRequest(
 			case "choice":
 				requireMethod(method, ["POST"]);
 				await handleNodeChoice(req, res, options, nodeId);
+				return;
+			case "correct":
+				requireMethod(method, ["POST"]);
+				await handleNodeCorrect(req, res, options, nodeId);
+				return;
+			case "scene-control":
+				requireMethod(method, ["POST"]);
+				await handleSceneControl(req, res, options, nodeId);
 				return;
 			case "regenerate":
 				requireMethod(method, ["POST"]);
@@ -999,6 +1020,166 @@ async function handleRegenerate(
 	const body = await readOptionalJsonBody(req, options.maxJsonBodyBytes);
 	const reason = readOptionalRerollReason(body);
 	await handleRegenerateStream(res, nodeId, options, reason);
+}
+
+/**
+ * 就地纠正：只重写选中的片段，写成旧楼层的兄弟节点。旧楼层与它的 Trace
+ * 原样保留；纠正意见同时写进用户意志。选中的片段必须逐字出现在楼层里
+ * 且只出现一次，失败时按 400 拒绝并指出字段。
+ */
+async function handleNodeCorrect(
+	req: IncomingMessage,
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	nodeId: string,
+): Promise<void> {
+	const node = requireNode(options.store, nodeId);
+	if (node.role !== "assistant") {
+		throw fieldError("nodeId", `楼层 ${nodeId} 不是助手楼层，不能就地纠正`);
+	}
+	if (options.runtime === null) {
+		throw new HttpError(500, "internal", "服务端没有配置渠道");
+	}
+	const body = await readObjectBody(req, options.maxJsonBodyBytes);
+	assertKnownKeys(body, ["quote", "instruction"]);
+	const quote = requireRawText(body.quote, "quote");
+	const instruction = requireText(body.instruction, "instruction");
+	try {
+		locateCorrectionSpan(node.raw, quote);
+	} catch (error) {
+		throw fieldError(
+			"quote",
+			error instanceof Error ? error.message : "选中的片段不合法",
+		);
+	}
+	const runtime = await options.runtime.get(node.storyId);
+	const result = await rewriteFloorSegment({
+		store: options.store,
+		client: runtime.chatClient,
+		storyId: node.storyId,
+		nodeId: node.id,
+		quote,
+		instruction,
+		model: runtime.modelAlias,
+		maxTokens: runtime.maxTokens,
+		temperature: runtime.settings.temperature,
+	});
+	const view: NodeCorrectResult = {
+		node: result.node,
+		path: buildPath(
+			options.store,
+			node.storyId,
+			options.store.getPathToNode(result.node.id),
+		),
+		beforeNodeId: result.beforeNodeId,
+		replacement: result.replacement,
+		willId: result.willId,
+	};
+	sendJson(res, 201, view);
+}
+
+/**
+ * 场面控制：结束这一场、跳到某个时间、调整节奏。三种操作都落在当前路径的
+ * 助手楼层上；非法载荷在写入任何东西之前拒绝。
+ */
+async function handleSceneControl(
+	req: IncomingMessage,
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	nodeId: string,
+): Promise<void> {
+	const node = requireNode(options.store, nodeId);
+	if (node.role !== "assistant") {
+		throw fieldError("nodeId", `楼层 ${nodeId} 不是助手楼层，不能做场面控制`);
+	}
+	const body = await readObjectBody(req, options.maxJsonBodyBytes);
+	const kind = readSceneControlKind(body.kind);
+	const control = await applySceneControl(options, node, kind, body);
+	const head = options.store.getHead(node.storyId);
+	const scenes = readSceneSegments(options.store, head?.id ?? control.nodeId);
+	const view: SceneControlResult = {
+		control,
+		scenes,
+		directorConfig:
+			kind === "pace"
+				? options.store.getStorySettings(node.storyId).directorConfig
+				: null,
+	};
+	sendJson(res, 201, view);
+}
+
+/** 只读请求体里的 `kind`；未知取值按 400 拒绝。 */
+function readSceneControlKind(value: unknown): SceneControlKind {
+	try {
+		return assertSceneControlKind(value, "场面控制的 kind");
+	} catch (error) {
+		throw fieldError(
+			"kind",
+			error instanceof Error ? error.message : "场面控制的 kind 不合法",
+		);
+	}
+}
+
+async function applySceneControl(
+	options: ApiRouteOptions,
+	node: TimelineNode,
+	kind: SceneControlKind,
+	body: Record<string, unknown>,
+): Promise<SceneControl> {
+	switch (kind) {
+		case "end-scene": {
+			assertKnownKeys(body, ["kind", "note"]);
+			const note = body.note;
+			if (note !== undefined && typeof note !== "string") {
+				throw fieldError("note", "note 必须是字符串");
+			}
+			try {
+				return endSceneAt({
+					store: options.store,
+					storyId: node.storyId,
+					nodeId: node.id,
+					note: typeof note === "string" ? note : null,
+				});
+			} catch (error) {
+				throw toBadRequest(error, "kind");
+			}
+		}
+		case "jump-time": {
+			assertKnownKeys(body, ["kind", "time"]);
+			const time = requireText(body.time, "time");
+			try {
+				const result = await jumpSceneTime({
+					store: options.store,
+					storyId: node.storyId,
+					nodeId: node.id,
+					time,
+				});
+				return result.control;
+			} catch (error) {
+				throw toBadRequest(error, "time");
+			}
+		}
+		case "pace": {
+			assertKnownKeys(body, ["kind", "pace"]);
+			let pace: ScenePace;
+			try {
+				pace = assertScenePace(body.pace, "场面控制的 pace");
+			} catch (error) {
+				throw toBadRequest(error, "pace");
+			}
+			try {
+				const result = await setScenePace({
+					store: options.store,
+					storyId: node.storyId,
+					nodeId: node.id,
+					pace,
+				});
+				return result.control;
+			} catch (error) {
+				throw toBadRequest(error, "kind");
+			}
+		}
+	}
 }
 
 /** 重 roll 的原因可以省略；给了就必须是已知取值。 */
