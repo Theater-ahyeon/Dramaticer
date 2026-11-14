@@ -527,6 +527,7 @@ async function runStory(options: StoryRunOptions): Promise<R6DeepRunRecord> {
 			store,
 			settings.templateId,
 			options.structuredOutput,
+			settings.contextLayout,
 		);
 		const slots = await createStandardChatSlots({
 			store,

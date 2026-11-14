@@ -543,6 +543,7 @@ async function runSample(options: B1RunOptions): Promise<R6B1RunRecord> {
 			store,
 			settings.templateId,
 			options.structuredOutput,
+			settings.contextLayout,
 		);
 		const slots = await createStandardChatSlots({
 			store,

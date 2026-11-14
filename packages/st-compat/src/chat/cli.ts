@@ -202,7 +202,12 @@ export async function runChatCli(
 		const template =
 			parsed.profile === "naive"
 				? createNaiveContextTemplate()
-				: resolveStoryContextTemplate(store, settings.templateId, mode);
+				: resolveStoryContextTemplate(
+						store,
+						settings.templateId,
+						mode,
+						settings.contextLayout,
+					);
 		const budgetTokens =
 			parsed.budgetTokens ?? model.contextWindow - model.maxTokens;
 		if (budgetTokens <= 0) {

@@ -182,7 +182,12 @@ export async function runPlaytestCli(
 		const template =
 			parsed.profile === "naive"
 				? createNaiveContextTemplate()
-				: resolveStoryContextTemplate(store, settings.templateId, mode);
+				: resolveStoryContextTemplate(
+						store,
+						settings.templateId,
+						mode,
+						settings.contextLayout,
+					);
 		const directorConfig =
 			parsed.opening === "off"
 				? { ...settings.directorConfig, openingFloors: 0 }

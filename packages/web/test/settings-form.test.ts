@@ -64,6 +64,7 @@ function settingsFixture(
 		directorConfig: DIRECTOR,
 		directorOrganization: "mechanisms",
 		historyBlockPolicy: { mode: "default", overrides: {} },
+		contextLayout: "volatility",
 		gapPassEnabled: false,
 		gapPlanSeconds: 212,
 		imageConfig: {

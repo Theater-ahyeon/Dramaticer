@@ -3,14 +3,14 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-14 会话 394：完成 W0-T01（卡面图与人物立绘）。迁移 v51 新增 `story_media`；`StoryStore` 增加 `insertStoryMedia`/`clearStoryMedia`/`getStoryMedia`/`listStoryMedia`；PNG 卡导入时把原始字节按内容哈希写进媒体目录的 `story-media/<故事 id 摘要>/<字节摘要>.png`，在同一个导入事务里登记封面与按角色名的立绘，JSON 卡清空旧图；新增认证媒体接口 `GET /api/stories/:id/media/cover`（无图时返回按标题生成的 600×900 SVG 占位图）与 `/media/portrait/<人物>`（无立绘 404）；web 书架卡片、游玩页标题旁、新增的「导入」页头部显示封面，台账里的人物实体显示立绘；ADR-0140。旧故事在图片落库之前导入，没有原图可回填，读取时回落到占位图。
-- 门禁通过：263 个测试文件、2,299 个测试、5 个跳过（158 秒）。全量 e2e 通过：42 个用例、2 个跳过（playtest 需要真实渠道）。新增测试：`packages/core/test/story-media.test.ts`（3）、`packages/server/test/story-media.test.ts`（4）、`packages/web/e2e/cover.spec.ts`（2 个用例 × 2 个项目）。
+- 2026-11-14 会话 395：完成 W1-T01（模板按易变性重排与缓存统计）。`createDefaultContextTemplate` 新增 `layout`：默认 `volatility`（角色、常驻设定 → `summary`（章节档案）→ `history` → 每轮变化的 `state`、`memory`、`scene`、`director`、`user_will` → `block_format`（可选）→ `protocol`），`full` 保持 v4 之前的顺序逐字段不变；导出 `DEFAULT_CONTEXT_SEGMENT_ORDER` 与 `detectContextLayout`（默认模板记 `volatility`/`full`，自定义模板记 `custom`）。故事设置迁移 v52 新增 `contextLayout`，server 的运行时与模板接口、st-compat 的 `resolveStoryContextTemplate` 及全部评测 CLI 都按故事设置生成默认模板。`TurnTrace` 新增 `cache`（`hitTokens`/`promptTokens`/`source`，渠道没有缓存字段时数值为 null、`source` 为 `none`）与 `layout`、`segmentOrder`；`dramaticer explain` 文本输出新增「缓存」与「段落顺序」两行。渠道体检的「缓存统计是否可用」此前已实现（`probeCacheStats` 与 `cacheStats` 字段，web 体检表单显示），本任务未改判定。DESIGN §9 补充 `contextLayout` 的说明。
+- 门禁通过：264 个测试文件、2,305 个测试、5 个跳过（153 秒）。新增测试：`packages/core/test/context-layout.test.ts`（4 个：默认/`full`/朴素模板的排布判断、`block_format` 不参与判断、每轮变化的槽位不移动只追加前缀）；`chat-turn.test.ts` 增加 Trace 的 `layout`/`segmentOrder`/`cache` 与「渠道不返回缓存字段」两条断言；`server/test/stories.test.ts` 增加 `contextLayout` 切换与非法值的接口用例；同步 `writing-contract.test.ts`、`chat-cli.test.ts`、`story-settings.test.ts`、`assistant-store.test.ts`（schema 52）、web 设置 fixture 的顺序与字段。
 
-## 下一步（会话 395 先做）
-1. **W1-T01 模板按易变性重排与缓存统计**（依赖 W0-T00，已满足）：模板段落顺序改为「卡与常驻设定 → 只追加的章节档案 → 历史原文 → 每轮变化的槽位 → 玩家消息 → `protocol`」，保留 `full` 旧顺序做对照；`TurnTrace.cache` 与 `segmentOrder` 接渠道返回的缓存字段；渠道体检加「缓存统计是否可用」；`dramaticer explain` 可读。
-2. 之后从上往下做 **W2-T01**（场记调用与事实引文）→ **W2-T02**（场次边界与归档）→ **W2-T03**（场记对照工具，假客户端）→ **W3-T01 至 W3-T03**（分型器、体检页与升级向导、规则执行层）→ **W4-T01 至 W4-T03**（线加八种动作、推进三档与伏笔账、场面卡与章级规划）。
-3. W4 完成后到 R6 段：先 **R6-T07.b**（重 roll 点回放批次）、**R6-T07.c**（遗忘漏斗）、**R6-T07.d**（门槛判定 CLI），再 **R6-T99**。**R6-T06** 与 **W2-T04** 被 HUMAN-19 阻塞（`bg` 渠道额度 2026-11-17T11:44:35Z 重置）。
-4. R6 段之后继续 **W5-T01、W5-T02**（推进按钮与带原因的重 roll、就地纠正与场面控制）→ **W6-T01 至 W6-T03**（归档与知情标注、重逢注入、连载视图）→ **W7-T01 至 W7-T03**（蓝图结构、AI 建议、剧透与导出）→ **W8-T01、W8-T02**（三层开关、成本与补算）→ **W9-T01 至 W9-T99**（界面改版，按原型分页）。
+## 下一步（会话 396 先做）
+1. **W2-T01 场记调用与事实引文**（依赖 W1-T01、R1-T07.b.a，已满足）：新增后台任务 `scene_log`（入队 `settled`，间隙执行），一次小调用产出 `{beat, states, present, sceneEnds, bits, conditions}`；`states` 的每条 diff 必须带 `sourceQuote`，程序校验逐字出现在任务楼层原文里，对不上整条拒绝并记原因；写入复用 `applySettlementProposals` 与 `validateLedgerDiff`；新增 `StoryStore.saveSceneLog`（按楼层覆盖）与读取；故事设置 `sceneLogEnabled` 默认关闭；新增对照工具 `scene-log-compare` 的前半（假客户端覆盖四类字段、引文错误、空输出）。
+2. 之后从上往下做 **W2-T02**（场次边界与归档，迁移编号接在 v52 之后）→ **W2-T03**（场记对照 CLI 与假数据）→ **W3-T01 至 W3-T03** → **W4-T01 至 W4-T03**。
+3. 之后到 R6 段：先 **R6-T07.b**（重 roll 点回放批次）、**R6-T07.c**（遗忘漏斗）、**R6-T07.d**（门槛判定 CLI），再 **R6-T99**。**R6-T06** 与 **W2-T04** 被 HUMAN-19 阻塞（`bg` 渠道额度 2026-11-17T11:44:35Z 重置）。
+4. R6 段之后继续 **W5-T01、W5-T02** → **W6-T01 至 W6-T03** → **W7-T01 至 W7-T03** → **W8-T01、W8-T02** → **W9-T01 至 W9-T99**。
 5. R6-T07.b 的实现要点（旧交接保留）：
    - 新增 `evalset/r6-replay.ts` 与 CLI：从 `eval-private/world-model-compare/source/<slug>.db` 规划重 roll 点（`xianxia` 24、`yuwang` 8、`yinqi` 11），被接受的是 head 路径上的助手兄弟楼层（43 个点都是最大 swipe 下标），放弃侧取下标紧邻其下的那条，另有 5 条更早的放弃 swipe 只报告。
    - 每个点复制数据库、head 移到父玩家楼层、预热 12 楼，先按种子 1 生成一次原生续写（同时是 G1 的续写与 A/A 的第一次生成），再按种子 2 生成一次（只用于 A/A）；同一请求体只差种子，会命中响应缓存（ADR-0136）。
@@ -19,9 +19,10 @@
 6. 阻塞检查：M6-T99 仍等 HUMAN-15；HUMAN-03、HUMAN-16、HUMAN-17、HUMAN-18、HUMAN-20、HUMAN-21 不阻塞；HUMAN-19 阻塞 R6-T06、R6-T99 与 W2-T04。
 
 ## 当前状态
-- 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1–P4、C-T01 至 C-T05、H-T00 至 H-T99、X1.a 至 X1.e、X2.a 至 X2.d、R6-T00 至 R6-T05、R6-T07、R6-T07.a、W0-T00、W0-T01。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- 设计版本 v0.4（ADR-0139）。W 阶段任务顺序：W0（完成）→ W1 → W2 → W3 → W4 → R6 段（T07.b、T07.c、T07.d、T99）→ W5 → W6 → W7 → W8 → W9。
-- 数据库 schema 版本 51（ADR-0140 新增 `story_media`）。
+- 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1–P4、C-T01 至 C-T05、H-T00 至 H-T99、X1.a 至 X1.e、X2.a 至 X2.d、R6-T00 至 R6-T05、R6-T07、R6-T07.a、W0-T00、W0-T01、W1-T01。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 设计版本 v0.4（ADR-0139）。W 阶段任务顺序：W0（完成）→ W1（完成）→ W2 → W3 → W4 → R6 段（T07.b、T07.c、T07.d、T99）→ W5 → W6 → W7 → W8 → W9。
+- 数据库 schema 版本 52（ADR-0140 的 `story_media`；本任务的 `story_settings.context_layout`）。
+- 上下文排布：默认模板按易变性排布；`contextLayout` 取 `volatility`（默认）或 `full`（对照）。自定义模板不参与这个开关，Trace 的 `layout` 记为 `custom`。`segmentOrder` 是模板片段 id 的生效顺序，`cache.source` 为 `channel`（渠道报告了 `cachedTokens`，含 0）或 `none`（没有报告）；旧 Trace 没有这三个字段。
 - 故事图片：`story_media` 存相对路径，文件在媒体目录（默认数据库同目录的 `images/`）的 `story-media/<故事 id 摘要>/` 下，按内容哈希命名；封面缺失时由 `packages/server/src/cover-placeholder.ts` 渲染 SVG 占位图，不写磁盘。媒体接口走现有会话校验，`Cache-Control: private, no-cache`（同一地址会因重新导入换图）。
 - R6-T06 标 `[!]`（HUMAN-19）：剩余 C1 的 540 轮；B1 已完成的 `xianxia` 9 对作为参考样本，`yuwang` 与 `yinqi` 不补。
 - 兼容插件线：`st-content`、`st-mvu`、`st-ejs`、`st-helper-host` 全部完成（含一致性测试与共存评测）。
@@ -47,6 +48,8 @@
 ## 可重复命令
 - 门禁：`pnpm check`。
 - 全量 e2e：`pnpm e2e`（会先构建 server 与 web；跑两个项目）。
+- 上下文排布与缓存 Trace 目标测试：`pnpm exec vitest run packages/core/test/context-layout.test.ts packages/core/test/chat-turn.test.ts packages/core/test/writing-contract.test.ts`。
+- 设置与模板接口目标测试：`pnpm exec vitest run packages/server/test/stories.test.ts`。
 - 卡面图 e2e：`cd packages/web && pnpm exec playwright test e2e/cover.spec.ts`。
 - 故事媒体目标测试：`pnpm exec vitest run packages/server/test/story-media.test.ts packages/core/test/story-media.test.ts`。
 - `docs/proposals/` 下的原型页面用浏览器直接打开即可，不需要构建；仓库里不保留截图脚本。
@@ -174,3 +177,5 @@
 - 待确认数量与待确认视图必须同源：`refreshPendingActions` 同时读动作与变更卡。
 - 审阅面板的渠道字段只能渲染白名单字段；e2e 的审阅种子按 Playwright 项目名分开。
 - web 源码不能 import `@dramaticer/core` 的运行时值（会把 `better-sqlite3` 与 `node:*` 打进前端包导致整页白屏），类型导入可以；助手类型从 `@dramaticer/protocol` 取。
+- 上下文排布的设置只对内置默认模板生效；故事指向库里保存的模板时，`detectContextLayout` 记 `custom`，不要用 `contextLayout` 改写自定义模板。
+- 旧的 Trace 没有 `cache`、`layout`、`segmentOrder`；读取方必须允许缺字段（`explain` 显示「没有记录」）。

@@ -18,7 +18,9 @@ import {
 	isTurnMode,
 } from "../chat/mode.js";
 import {
+	type ContextLayout,
 	type ContextTemplate,
+	assertContextLayout,
 	assertContextTemplate,
 } from "../context/template.js";
 import { assertDirectorConfig } from "../director/evaluate.js";
@@ -88,6 +90,8 @@ export interface StorySettings {
 	readonly directorOrganization: DirectorOrganizationKind;
 	/** 历史槽位的块 prompt 视图策略。 */
 	readonly historyBlockPolicy: HistoryBlockPolicy;
+	/** 默认模板的段落排布；`full` 是 v4 之前的顺序，用于对照。 */
+	readonly contextLayout: ContextLayout;
 	/** 间隙里用一次合并调用代替几个独立后台任务；默认关闭。 */
 	readonly gapPassEnabled: boolean;
 	/** 执行可延后档后台任务所需的间隙秒数；默认 212。 */
@@ -122,6 +126,7 @@ export interface StorySettingsUpdate {
 	readonly directorConfig?: DirectorConfig;
 	readonly directorOrganization?: DirectorOrganizationKind;
 	readonly historyBlockPolicy?: HistoryBlockPolicy;
+	readonly contextLayout?: ContextLayout;
 	readonly gapPassEnabled?: boolean;
 	readonly gapPlanSeconds?: number;
 	readonly imageConfig?: ImageConfig;
@@ -151,6 +156,7 @@ export const STORY_SETTINGS_UPDATE_KEYS: readonly (keyof StorySettingsUpdate)[] 
 		"directorConfig",
 		"directorOrganization",
 		"historyBlockPolicy",
+		"contextLayout",
 		"gapPassEnabled",
 		"gapPlanSeconds",
 		"imageConfig",
@@ -174,6 +180,7 @@ export const DEFAULT_STORY_SETTINGS_VALUES = {
 	directorConfig: DEFAULT_DIRECTOR_CONFIG,
 	directorOrganization: DEFAULT_DIRECTOR_ORGANIZATION,
 	historyBlockPolicy: DEFAULT_HISTORY_BLOCK_POLICY,
+	contextLayout: "volatility",
 	gapPassEnabled: false,
 	gapPlanSeconds: 212,
 	imageConfig: DEFAULT_IMAGE_CONFIG,
@@ -411,6 +418,9 @@ export function assertStorySettingsUpdate(update: StorySettingsUpdate): void {
 			update.historyBlockPolicy,
 			"故事设置的 historyBlockPolicy",
 		);
+	}
+	if (update.contextLayout !== undefined) {
+		assertContextLayout(update.contextLayout, "故事设置的 contextLayout");
 	}
 	if (
 		update.gapPassEnabled !== undefined &&

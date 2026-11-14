@@ -113,6 +113,33 @@ export interface ContextTemplate {
 /** 写作契约片段固定使用的 id；契约始终是模板最后一个段落。 */
 export const WRITING_CONTRACT_SEGMENT_ID = "protocol";
 
+/**
+ * 默认模板的段落排布（DESIGN §9）：
+ * `volatility` 按易变性排布，前缀只追加；`full` 是 v4 之前的顺序，用于对照。
+ */
+export const CONTEXT_LAYOUTS = ["volatility", "full"] as const;
+
+export type ContextLayout = (typeof CONTEXT_LAYOUTS)[number];
+
+/** 实际生效的排布；故事改用自定义模板时不再对应某一种默认真序。 */
+export type ContextLayoutKind = ContextLayout | "custom";
+
+export function isContextLayout(value: unknown): value is ContextLayout {
+	return value === "volatility" || value === "full";
+}
+
+export function assertContextLayout(
+	value: unknown,
+	label = "上下文排布",
+): ContextLayout {
+	if (!isContextLayout(value)) {
+		throw new Error(
+			`${label}必须是 volatility 或 full，实际为 ${String(value)}`,
+		);
+	}
+	return value;
+}
+
 export function assertContextTemplate(template: ContextTemplate): void {
 	if (typeof template.id !== "string" || template.id.length === 0) {
 		throw new Error("上下文模板的 id 必须是非空字符串");

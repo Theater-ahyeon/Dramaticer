@@ -214,13 +214,13 @@ describe("dramaticer chat", () => {
 			expect(trace?.context.entries.map((entry) => entry.segmentId)).toEqual([
 				"character",
 				"lore",
-				"state",
 				"summary",
+				"history",
+				"state",
 				"memory",
 				"scene",
 				"director",
 				"user_will",
-				"history",
 				"protocol",
 			]);
 			expect(trace?.structured.acceptedStateUpdates).toBe(1);

@@ -114,6 +114,7 @@ export class StoryRuntimeManager {
 			this.#store,
 			settings.templateId,
 			settings.structuredOutput,
+			settings.contextLayout,
 		);
 		const embedder = config.embeddings.has(DEFAULT_EMBEDDING_ALIAS)
 			? this.#createEmbedder(config)
@@ -178,9 +179,10 @@ function resolveTemplate(
 	store: StoryStore,
 	templateId: string | null,
 	structuredOutput: StorySettings["structuredOutput"],
+	layout: StorySettings["contextLayout"],
 ): ContextTemplate {
 	if (templateId === null || templateId === DEFAULT_CONTEXT_TEMPLATE_ID) {
-		return createDefaultContextTemplate({ structuredOutput });
+		return createDefaultContextTemplate({ structuredOutput, layout });
 	}
 	const record = store.getContextTemplate(templateId);
 	if (record === null) {

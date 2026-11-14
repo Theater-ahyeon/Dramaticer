@@ -447,6 +447,36 @@ describe("设置接口", () => {
 		expect(fallback.blockFormatSegment.id).toBe("block_format");
 		expect(fallback.blockFormatSegment.text).toContain("<state_update>");
 
+		const switched = await put(
+			running.origin,
+			"/api/stories/story-1/settings",
+			{ contextLayout: "full" },
+		);
+		expect(switched.status).toBe(200);
+		const fullView = (await (
+			await request(running.origin, "/api/stories/story-1/template")
+		).json()) as { template: { segments: readonly { id: string }[] } };
+		expect(fullView.template.segments.map((segment) => segment.id)).toEqual([
+			"character",
+			"lore",
+			"state",
+			"summary",
+			"memory",
+			"scene",
+			"director",
+			"user_will",
+			"history",
+			"protocol",
+		]);
+
+		const invalid = await put(running.origin, "/api/stories/story-1/settings", {
+			contextLayout: "staggered",
+		});
+		expect(invalid.status).toBe(400);
+		expect((await errorBody(invalid)).error.details).toEqual({
+			path: "contextLayout",
+		});
+
 		const created = await post(running.origin, "/api/templates", {
 			name: "模板甲",
 			template: validTemplate,

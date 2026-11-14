@@ -2,6 +2,7 @@ import {
 	BUILTIN_PLUGINS,
 	type CardDependencyCatalog,
 	type CardDependencyReport,
+	type ContextLayout,
 	type ContextSlotProviders,
 	type ContextTemplate,
 	DEFAULT_CONTEXT_TEMPLATE_ID,
@@ -211,9 +212,13 @@ export function resolveStoryContextTemplate(
 	store: StoryStore,
 	templateId: string | null,
 	mode: StructuredOutputMode,
+	layout: ContextLayout = "volatility",
 ): ContextTemplate {
 	if (templateId === null || templateId === DEFAULT_CONTEXT_TEMPLATE_ID) {
-		return createDefaultContextTemplate({ structuredOutput: mode });
+		return createDefaultContextTemplate({
+			structuredOutput: mode,
+			layout,
+		});
 	}
 	const record = store.getContextTemplate(templateId);
 	if (record === null) {

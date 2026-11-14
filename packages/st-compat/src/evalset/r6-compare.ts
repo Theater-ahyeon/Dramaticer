@@ -775,6 +775,7 @@ async function runProfile(
 						store,
 						settings.templateId,
 						options.structuredOutput,
+						settings.contextLayout,
 					);
 		const slots =
 			options.profile === "naive"

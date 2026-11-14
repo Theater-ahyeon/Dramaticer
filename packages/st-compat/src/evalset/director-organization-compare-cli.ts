@@ -143,6 +143,7 @@ export async function runDirectorOrganizationCompareCli(
 				sourceStore,
 				settings.templateId,
 				structuredOutput,
+				settings.contextLayout,
 			);
 			const maxTokens =
 				options.maxTokens ??

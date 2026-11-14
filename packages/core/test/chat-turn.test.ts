@@ -30,6 +30,7 @@ interface FakeClientOptions {
 	readonly toolCalls?: readonly LlmToolCall[];
 	readonly reasoning?: string;
 	readonly stopReason?: LlmResult["stopReason"];
+	readonly usage?: LlmResult["usage"];
 }
 
 function splitChunks(text: string, size: number): string[] {
@@ -56,7 +57,7 @@ function createFakeClient(options: FakeClientOptions): {
 		stopReason: options.stopReason ?? "stop",
 		model: "fake-model",
 		channel: "fake-channel",
-		usage: USAGE,
+		usage: options.usage ?? USAGE,
 		raw: null,
 		cached: false,
 		attempts: 1,
@@ -214,15 +215,33 @@ describe("runChatTurn", () => {
 		).toEqual([
 			["character", "included"],
 			["lore", "missing-slot"],
-			["state", "missing-slot"],
 			["summary", "missing-slot"],
+			["history", "included"],
+			["state", "missing-slot"],
 			["memory", "missing-slot"],
 			["scene", "missing-slot"],
 			["director", "missing-slot"],
 			["user_will", "missing-slot"],
-			["history", "included"],
 			["protocol", "included"],
 		]);
+		expect(trace?.layout).toBe("volatility");
+		expect(trace?.segmentOrder).toEqual([
+			"character",
+			"lore",
+			"summary",
+			"history",
+			"state",
+			"memory",
+			"scene",
+			"director",
+			"user_will",
+			"protocol",
+		]);
+		expect(trace?.cache).toEqual({
+			hitTokens: 0,
+			promptTokens: 10,
+			source: "channel",
+		});
 		const protocolEntry = trace?.context.entries.at(-1);
 		expect(protocolEntry).toMatchObject({
 			segmentId: "protocol",
@@ -371,8 +390,9 @@ describe("runChatTurn", () => {
 		const messages = second.requests[0]?.messages ?? [];
 		expect(messages.at(-1)?.role).toBe("system");
 		expect(messages.at(-1)?.content).toContain("写作契约");
-		const historyRoles = messages.slice(-5, -1).map((message) => message.role);
+		const historyRoles = messages.slice(1, 5).map((message) => message.role);
 		expect(historyRoles).toEqual(["assistant", "user", "assistant", "user"]);
+		expect(messages[5]?.content).toContain("当前状态");
 		const previousReply = messages.find(
 			(message) =>
 				message.role === "assistant" &&
@@ -491,5 +511,36 @@ describe("runChatTurn", () => {
 		expect(result.stateDiffs).toEqual([]);
 		expect(store.getPathToHead("s1").at(-1)?.id).toBe(result.node.id);
 		expect(store.getTurnTrace(result.node.id)?.llm.stopReason).toBe("aborted");
+	});
+
+	it("渠道没有报告缓存字段时 Trace 记 null 且不报错", async () => {
+		const { store } = openTempStore();
+		seedStory(store);
+		const { client } = createFakeClient({
+			chunks: ["山门开了。"],
+			resultText: "山门开了。",
+			usage: {
+				promptTokens: null,
+				completionTokens: null,
+				totalTokens: null,
+				reasoningTokens: null,
+				cachedTokens: null,
+			},
+		});
+		const result = await runChatTurn({
+			store,
+			client,
+			storyId: "s1",
+			userText: "我推门。",
+			template: createDefaultContextTemplate({ structuredOutput: "text-tags" }),
+			providers: providers(store),
+			budgetTokens: 4_000,
+			structuredOutput: "text-tags",
+		});
+		expect(result.trace.cache).toEqual({
+			hitTokens: null,
+			promptTokens: null,
+			source: "none",
+		});
 	});
 });

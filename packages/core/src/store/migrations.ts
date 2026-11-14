@@ -1554,6 +1554,14 @@ export function buildMigrations(
 				"CREATE INDEX story_media_story_idx ON story_media(story_id)",
 			],
 		},
+		{
+			version: 52,
+			description: "默认模板的段落排布（按易变性排布或旧顺序）",
+			statements: [
+				`ALTER TABLE story_settings ADD COLUMN context_layout TEXT NOT NULL
+					DEFAULT 'volatility'`,
+			],
+		},
 	];
 }
 

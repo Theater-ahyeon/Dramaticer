@@ -61,7 +61,11 @@ import type {
 	DeepToolDefinition,
 	ToolProgressEvent,
 } from "../tools/registry.js";
-import type { TurnTrace, TurnTraceRun } from "../trace.js";
+import {
+	type TurnTrace,
+	type TurnTraceRun,
+	cacheTraceFromUsage,
+} from "../trace.js";
 import { type DeepTurnResult, runDeepTurn } from "./deep-turn.js";
 import { TurnDraftController, type TurnDraftSnapshot } from "./draft.js";
 import {
@@ -88,6 +92,7 @@ import {
 	createDirectorSlotProvider,
 	isDirectorSlotProvider,
 } from "./providers.js";
+import { detectContextLayout } from "./template.js";
 
 export interface ChatTurnOptions {
 	readonly store: StoryStore;
@@ -738,6 +743,8 @@ export async function generateAssistantTurn(
 			profile,
 			createdAt: node.createdAt,
 			context: assembled.trace,
+			layout: detectContextLayout(options.template),
+			segmentOrder: assembled.trace.entries.map((entry) => entry.segmentId),
 			llm: {
 				role: "writer",
 				model: result.model,
@@ -750,6 +757,7 @@ export async function generateAssistantTurn(
 				rounds: turn.modelRounds,
 				cached: turn.cached,
 			},
+			cache: cacheTraceFromUsage(turn.usage),
 			tools: {
 				transport,
 				rounds: turn.rounds,
@@ -962,6 +970,8 @@ async function persistAbortedTurn(input: {
 			profile: input.profile,
 			createdAt: node.createdAt,
 			context: assembled.trace,
+			layout: detectContextLayout(options.template),
+			segmentOrder: assembled.trace.entries.map((entry) => entry.segmentId),
 			llm: {
 				role: "writer",
 				model: options.model ?? "unknown",
@@ -974,6 +984,7 @@ async function persistAbortedTurn(input: {
 				rounds: 0,
 				cached: false,
 			},
+			cache: cacheTraceFromUsage(emptyUsage()),
 			tools: {
 				transport: input.transport,
 				rounds: 0,

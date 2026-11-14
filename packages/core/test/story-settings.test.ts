@@ -65,6 +65,7 @@ describe("故事设置", () => {
 			directorConfig: DEFAULT_DIRECTOR_CONFIG,
 			directorOrganization: "mechanisms",
 			historyBlockPolicy: DEFAULT_HISTORY_BLOCK_POLICY,
+			contextLayout: "volatility",
 			gapPassEnabled: false,
 			gapPlanSeconds: 212,
 			imageConfig: DEFAULT_IMAGE_CONFIG,

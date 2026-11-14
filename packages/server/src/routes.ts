@@ -2476,6 +2476,7 @@ function handleStoryTemplate(
 			stored === null
 				? createDefaultContextTemplate({
 						structuredOutput: settings.structuredOutput,
+						layout: settings.contextLayout,
 					})
 				: stored.template,
 		blockFormatSegment: createBlockFormatSegment(settings.structuredOutput),

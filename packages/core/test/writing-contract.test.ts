@@ -12,6 +12,19 @@ import { openTempStore } from "./temp-store.js";
 const DEFAULT_SEGMENT_ORDER = [
 	"character",
 	"lore",
+	"summary",
+	"history",
+	"state",
+	"memory",
+	"scene",
+	"director",
+	"user_will",
+	"protocol",
+];
+
+const FULL_SEGMENT_ORDER = [
+	"character",
+	"lore",
 	"state",
 	"summary",
 	"memory",
@@ -37,10 +50,29 @@ describe("写作契约段", () => {
 		},
 	);
 
-	it("block_format 关闭时除 protocol 之外与改动前一致", () => {
+	it("block_format 关闭时 volatility 排布只含默认段落", () => {
 		const template = createDefaultContextTemplate({
 			structuredOutput: "text-tags",
 			blockFormat: false,
+		});
+		expect(template.segments.map((segment) => segment.id)).toEqual(
+			DEFAULT_SEGMENT_ORDER,
+		);
+		const withFormat = createDefaultContextTemplate({
+			structuredOutput: "text-tags",
+			blockFormat: true,
+		});
+		expect(withFormat.segments.map((segment) => segment.id)).toEqual([
+			...DEFAULT_SEGMENT_ORDER.slice(0, -1),
+			"block_format",
+			"protocol",
+		]);
+	});
+
+	it("full 排布与改动前的段落顺序逐字段一致", () => {
+		const template = createDefaultContextTemplate({
+			structuredOutput: "text-tags",
+			layout: "full",
 		});
 		expect(template.segments.slice(0, -1)).toEqual([
 			{ id: "character", kind: "slot", slot: "character", priority: 90 },
@@ -53,13 +85,16 @@ describe("写作契约段", () => {
 			{ id: "user_will", kind: "slot", slot: "user_will", priority: 110 },
 			{ id: "history", kind: "slot", slot: "history", priority: 100 },
 		]);
-		expect(template.segments.at(-1)?.id).toBe("protocol");
+		expect(template.segments.map((segment) => segment.id)).toEqual(
+			FULL_SEGMENT_ORDER,
+		);
 		const withFormat = createDefaultContextTemplate({
 			structuredOutput: "text-tags",
+			layout: "full",
 			blockFormat: true,
 		});
 		expect(withFormat.segments.map((segment) => segment.id)).toEqual([
-			...DEFAULT_SEGMENT_ORDER.slice(0, -1),
+			...FULL_SEGMENT_ORDER.slice(0, -1),
 			"block_format",
 			"protocol",
 		]);

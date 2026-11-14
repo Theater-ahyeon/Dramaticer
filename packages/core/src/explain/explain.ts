@@ -14,7 +14,7 @@ import type { TurnHookTraceEntry } from "../plugins/turn-hooks.js";
 import type { TurnRunDetail } from "../run-log.js";
 import type { StoryStore } from "../store/story-store.js";
 import type { StateDiff, TimelineRole } from "../timeline.js";
-import type { TurnTrace } from "../trace.js";
+import type { TurnTrace, TurnTraceCache } from "../trace.js";
 
 /** 排障报告里的上下文分段：全部片段、被预算裁掉的片段、缺失槽位与条件不满足片段。 */
 export interface ExplainContextSection {
@@ -375,6 +375,25 @@ function statusLabel(status: ContextTraceEntry["status"]): string {
 	}
 }
 
+function describeCache(cache: TurnTraceCache | undefined): string {
+	if (cache === undefined) return "   缓存：没有记录。";
+	if (cache.source === "none") {
+		return `   缓存：渠道没有报告缓存字段（输入 ${cache.promptTokens ?? "没有记录"} token）。`;
+	}
+	return `   缓存：命中 ${cache.hitTokens ?? "没有记录"} / 输入 ${cache.promptTokens ?? "没有记录"} token（来源 ${cache.source}）。`;
+}
+
+function describeSegmentOrder(trace: TurnTrace | null): string {
+	if (
+		trace === null ||
+		trace.layout === undefined ||
+		trace.segmentOrder === undefined
+	) {
+		return "   段落顺序：没有记录。";
+	}
+	return `   段落顺序：${trace.layout}（${trace.segmentOrder.join(" → ")}）`;
+}
+
 /** 把排障报告渲染成中文文本；字段顺序与 `ExplainReport` 一致。 */
 export function renderExplainReport(report: ExplainReport): string {
 	const lines: string[] = [];
@@ -422,6 +441,7 @@ export function renderExplainReport(report: ExplainReport): string {
 		lines.push(
 			`   用量：输入 ${trace.llm.usage.promptTokens ?? "没有记录"} / 输出 ${trace.llm.usage.completionTokens ?? "没有记录"} / 合计 ${trace.llm.usage.totalTokens ?? "没有记录"} token；请求 ${trace.llm.attempts} 次，模型轮次 ${trace.llm.rounds}`,
 		);
+		lines.push(describeCache(trace.cache));
 		lines.push(
 			`   耗时：首字 ${trace.timing.firstTokenMs === null ? "没有记录" : `${trace.timing.firstTokenMs} 毫秒`}，总计 ${trace.timing.durationMs} 毫秒`,
 		);
@@ -442,6 +462,7 @@ export function renderExplainReport(report: ExplainReport): string {
 		lines.push(
 			`   合计 ${context.totalTokens} token，预算 ${context.budgetTokens} token`,
 		);
+		lines.push(describeSegmentOrder(trace));
 		if (context.entries.length === 0) lines.push("   没有记录。");
 		for (const entry of context.entries) {
 			const kindLabel =

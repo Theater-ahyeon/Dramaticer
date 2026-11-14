@@ -627,6 +627,7 @@ async function buildTurnContext(
 				store,
 				settings.templateId,
 				settings.structuredOutput,
+				settings.contextLayout,
 			),
 			providers: native,
 		},

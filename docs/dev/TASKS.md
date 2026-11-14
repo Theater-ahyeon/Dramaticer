@@ -1652,7 +1652,8 @@
 
 ### W1：上下文布局
 
-- [ ] **W1-T01 模板按易变性重排与缓存统计** | 依赖：W0-T00 | DESIGN §9 | ADR-0139
+- [x] **W1-T01 模板按易变性重排与缓存统计** | 依赖：W0-T00 | DESIGN §9 | ADR-0139
+  完成：2026-11-14 `createDefaultContextTemplate` 新增 `layout`，默认 `volatility`（character、lore、summary、history、state、memory、scene、director、user_will、protocol，`block_format` 插在 protocol 之前），`full` 保持 v4 之前的顺序逐字段不变；导出 `DEFAULT_CONTEXT_SEGMENT_ORDER` 与 `detectContextLayout`（默认模板记 `volatility`/`full`，自定义模板记 `custom`）；故事设置迁移 v52 新增 `contextLayout`，server 运行时的模板解析、模板接口与 st-compat 的 `resolveStoryContextTemplate` 及全部评测 CLI 都按故事设置生成默认模板；`TurnTrace` 新增 `cache`（命中 token、输入 token、来源 `channel`/`none`）、`layout` 与 `segmentOrder`，`dramaticer explain` 文本输出新增「缓存」与「段落顺序」；渠道体检的 `cacheStats` 与此前的缓存探测保持原判定；DESIGN §9 补充 `contextLayout`。门禁通过（264 个测试文件、2,305 个测试、5 个跳过）
   做什么：
   - `createDefaultContextTemplate` 的段落顺序改为「卡与常驻设定 → 只追加的章节档案（先复用现有 `summary` 段）→ 历史原文 → 每轮变化的槽位（ledger、scene、rejoin、dir）→ 玩家消息 → `protocol`」；`protocol` 仍是最后一段，模板校验不变；故事可以选择 `full` 旧顺序做对照，选择值与段落顺序写进 Trace。
   - 渠道响应没有缓存字段时记 `null`，有则记缓存命中的 token；`TurnTrace` 增加 `cache`（命中、总量、来源）与 `segmentOrder`；`dramaticer explain` 能读出这两项。

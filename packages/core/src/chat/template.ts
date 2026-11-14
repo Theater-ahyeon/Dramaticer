@@ -1,4 +1,8 @@
 import {
+	CONTEXT_LAYOUTS,
+	type ContextLayout,
+	type ContextLayoutKind,
+	type ContextSegment,
 	type ContextStaticSegment,
 	type ContextTemplate,
 	DEFAULT_CONTEXT_TEMPLATE_ID,
@@ -10,6 +14,8 @@ export interface DefaultContextTemplateOptions {
 	readonly structuredOutput: StructuredOutputMode;
 	/** 是否附上 state_update 与 plot_note 的格式说明段，默认关闭（I13）。 */
 	readonly blockFormat?: boolean;
+	/** 段落排布；默认按易变性排布，`full` 是 v4 之前的顺序，用于对照。 */
+	readonly layout?: ContextLayout;
 }
 
 /** 两种协议共用的写作契约；朴素模式只带这一段的文本。 */
@@ -89,7 +95,80 @@ export function createBlockFormatSegment(
 	};
 }
 
-/** 默认的原生上下文模板：角色、世界书、状态、摘要、记忆、现场分析、导演、历史。protocol 写作契约固定在最后。 */
+/** 默认模板的各个段落；顺序由 `DEFAULT_CONTEXT_SEGMENT_ORDER` 决定。 */
+const DEFAULT_SEGMENTS: Readonly<Record<string, ContextSegment>> = {
+	character: { id: "character", kind: "slot", slot: "character", priority: 90 },
+	lore: { id: "lore", kind: "slot", slot: "lore", priority: 80 },
+	summary: { id: "summary", kind: "slot", slot: "summary", priority: 70 },
+	history: { id: "history", kind: "slot", slot: "history", priority: 100 },
+	state: { id: "state", kind: "slot", slot: "state", priority: 85 },
+	memory: { id: "memory", kind: "slot", slot: "memory", priority: 60 },
+	scene: { id: "scene", kind: "slot", slot: "scene", priority: 55 },
+	director: { id: "director", kind: "slot", slot: "director", priority: 50 },
+	user_will: {
+		id: "user_will",
+		kind: "slot",
+		slot: "user_will",
+		priority: 110,
+	},
+};
+
+/**
+ * 默认模板在两种排布下的段落顺序（不含 `block_format`，它始终插在 `protocol` 之前）。
+ * `volatility` 把只追加的卡、常驻设定、章节档案与历史原文放在前缀，每轮变化的槽位排在后面。
+ */
+export const DEFAULT_CONTEXT_SEGMENT_ORDER: Readonly<
+	Record<ContextLayout, readonly string[]>
+> = {
+	volatility: [
+		"character",
+		"lore",
+		"summary",
+		"history",
+		"state",
+		"memory",
+		"scene",
+		"director",
+		"user_will",
+		WRITING_CONTRACT_SEGMENT_ID,
+	],
+	full: [
+		"character",
+		"lore",
+		"state",
+		"summary",
+		"memory",
+		"scene",
+		"director",
+		"user_will",
+		"history",
+		WRITING_CONTRACT_SEGMENT_ID,
+	],
+};
+
+/**
+ * 从模板的段落顺序判断它用的是哪种默认排布；两者都不匹配时返回 `custom`。
+ * `block_format` 不参与比较，它只是插在 `protocol` 之前的可选静态段。
+ */
+export function detectContextLayout(
+	template: ContextTemplate,
+): ContextLayoutKind {
+	const ids = template.segments
+		.map((segment) => segment.id)
+		.filter((id) => id !== "block_format");
+	for (const layout of CONTEXT_LAYOUTS) {
+		const expected = DEFAULT_CONTEXT_SEGMENT_ORDER[layout];
+		if (
+			ids.length === expected.length &&
+			expected.every((id, index) => ids[index] === id)
+		) {
+			return layout;
+		}
+	}
+	return "custom";
+}
+
+/** 默认的原生上下文模板：段落顺序按 `layout` 排布，protocol 写作契约固定在最后。 */
 export function createDefaultContextTemplate(
 	options: DefaultContextTemplateOptions,
 ): ContextTemplate {
@@ -97,18 +176,14 @@ export function createDefaultContextTemplate(
 		options.structuredOutput === "function-call"
 			? FUNCTION_CALL_PROTOCOL
 			: TEXT_TAG_PROTOCOL;
+	const layout = options.layout ?? "volatility";
+	const segments = DEFAULT_CONTEXT_SEGMENT_ORDER[layout]
+		.filter((id) => id !== WRITING_CONTRACT_SEGMENT_ID)
+		.map((id) => DEFAULT_SEGMENTS[id] as ContextSegment);
 	return {
 		id: DEFAULT_CONTEXT_TEMPLATE_ID,
 		segments: [
-			{ id: "character", kind: "slot", slot: "character", priority: 90 },
-			{ id: "lore", kind: "slot", slot: "lore", priority: 80 },
-			{ id: "state", kind: "slot", slot: "state", priority: 85 },
-			{ id: "summary", kind: "slot", slot: "summary", priority: 70 },
-			{ id: "memory", kind: "slot", slot: "memory", priority: 60 },
-			{ id: "scene", kind: "slot", slot: "scene", priority: 55 },
-			{ id: "director", kind: "slot", slot: "director", priority: 50 },
-			{ id: "user_will", kind: "slot", slot: "user_will", priority: 110 },
-			{ id: "history", kind: "slot", slot: "history", priority: 100 },
+			...segments,
 			...(options.blockFormat === true
 				? [createBlockFormatSegment(options.structuredOutput)]
 				: []),

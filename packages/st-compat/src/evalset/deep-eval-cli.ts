@@ -177,6 +177,7 @@ export async function runDeepEvalCli(
 			store,
 			settings.templateId,
 			mode,
+			settings.contextLayout,
 		);
 		const providers = (
 			await createStandardChatSlots({

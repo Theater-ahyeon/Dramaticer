@@ -134,6 +134,7 @@ export async function runWorldModelCompareCli(
 				sourceStore,
 				settings.templateId,
 				structuredOutput,
+				settings.contextLayout,
 			);
 			const maxTokens =
 				options.maxTokens ??

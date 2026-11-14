@@ -1,6 +1,7 @@
 import type { TurnMode } from "./chat/mode.js";
 import type { ChatProfile } from "./chat/profile.js";
 import type { ContextTrace } from "./context/assembler.js";
+import type { ContextLayoutKind } from "./context/template.js";
 import type { LlmModelRole, LlmToolTransport } from "./llm/channels.js";
 import type {
 	LlmStopReason,
@@ -30,11 +31,30 @@ export interface TurnTraceLlm {
 	readonly cached: boolean;
 }
 
+/** 渠道透传的前缀缓存统计；渠道没有报告缓存字段时两个数值都是 null。 */
+export interface TurnTraceCache {
+	/** 渠道报告命中的 token 数。 */
+	readonly hitTokens: number | null;
+	/** 输入侧的 token 总数，缓存命中率的分子分母都用它。 */
+	readonly promptTokens: number | null;
+	/** 数值来源：`channel` 表示渠道用量里带了缓存字段，`none` 表示没有报告。 */
+	readonly source: "channel" | "none";
+}
+
 export interface TurnTraceStructuredOutput {
 	readonly mode: StructuredOutputMode;
 	readonly acceptedStateUpdates: number;
 	readonly acceptedNotes: number;
 	readonly issues: readonly StructuredOutputIssue[];
+}
+
+/** 把本轮渠道用量换成 Trace 里的缓存统计；渠道没有报告缓存字段时记 null。 */
+export function cacheTraceFromUsage(usage: LlmUsage): TurnTraceCache {
+	return {
+		hitTokens: usage.cachedTokens,
+		promptTokens: usage.promptTokens,
+		source: usage.cachedTokens === null ? "none" : "channel",
+	};
 }
 
 export interface TurnTraceToolCall {
@@ -149,7 +169,13 @@ export interface TurnTrace {
 	readonly profile: ChatProfile;
 	readonly createdAt: string;
 	readonly context: ContextTrace;
+	/** 实际生效的段落排布；自定义模板记 `custom`。旧 Trace 没有这个字段。 */
+	readonly layout?: ContextLayoutKind;
+	/** 模板里的片段 id，按生效顺序排列。旧 Trace 没有这个字段。 */
+	readonly segmentOrder?: readonly string[];
 	readonly llm: TurnTraceLlm;
+	/** 本轮请求的缓存统计；旧 Trace 没有这个字段。 */
+	readonly cache?: TurnTraceCache;
 	readonly tools: TurnTraceTools;
 	readonly structured: TurnTraceStructuredOutput;
 	readonly images?: TurnTraceImages;

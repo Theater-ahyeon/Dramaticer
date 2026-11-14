@@ -74,6 +74,7 @@ import {
 	type ContextCondition,
 	type ContextTemplate,
 	DEFAULT_CONTEXT_TEMPLATE_ID,
+	assertContextLayout,
 } from "../context/template.js";
 import {
 	type DirectorBit,
@@ -359,6 +360,7 @@ interface StorySettingsRow {
 	readonly director_config: string;
 	readonly director_organization: string;
 	readonly history_block_policy: string;
+	readonly context_layout: string;
 	readonly gap_pass_enabled: number;
 	readonly gap_plan_seconds: number;
 	readonly image_config: string | null;
@@ -1449,6 +1451,10 @@ function rowToStorySettings(row: StorySettingsRow): StorySettings {
 			`故事 ${row.story_id} 的 directorOrganization`,
 		),
 		historyBlockPolicy: parsedHistoryBlockPolicy,
+		contextLayout: assertContextLayout(
+			row.context_layout,
+			`故事 ${row.story_id} 的 contextLayout`,
+		),
 		gapPassEnabled: readBooleanColumn(
 			row.gap_pass_enabled,
 			`故事 ${row.story_id} 的 gap_pass_enabled`,
@@ -2591,6 +2597,7 @@ export class StoryStore {
 			directorConfig: DEFAULT_STORY_SETTINGS_VALUES.directorConfig,
 			directorOrganization: DEFAULT_STORY_SETTINGS_VALUES.directorOrganization,
 			historyBlockPolicy: DEFAULT_STORY_SETTINGS_VALUES.historyBlockPolicy,
+			contextLayout: DEFAULT_STORY_SETTINGS_VALUES.contextLayout,
 			gapPassEnabled: DEFAULT_STORY_SETTINGS_VALUES.gapPassEnabled,
 			gapPlanSeconds: DEFAULT_STORY_SETTINGS_VALUES.gapPlanSeconds,
 			imageConfig: DEFAULT_STORY_SETTINGS_VALUES.imageConfig,
@@ -2701,6 +2708,10 @@ export class StoryStore {
 				update.historyBlockPolicy !== undefined
 					? update.historyBlockPolicy
 					: current.historyBlockPolicy,
+			contextLayout:
+				update.contextLayout !== undefined
+					? update.contextLayout
+					: current.contextLayout,
 			gapPassEnabled:
 				update.gapPassEnabled !== undefined
 					? update.gapPassEnabled
@@ -2730,10 +2741,10 @@ export class StoryStore {
 					 budget_tokens, structured_output, temperature, max_tokens, reasoning,
 					 turn_mode, max_read_rounds, deep_max_tool_calls, deep_timeout_ms,
 					 deep_context_token_limit, deep_recent_tool_steps, viewpoint,
-					 director_config, history_block_policy, gap_pass_enabled,
+					 director_config, history_block_policy, context_layout, gap_pass_enabled,
 					 gap_plan_seconds, image_config, plugin_overrides, world_model,
 					 director_organization, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 				ON CONFLICT(story_id) DO UPDATE SET
 					card_name = excluded.card_name,
 					character_prompt = excluded.character_prompt,
@@ -2754,6 +2765,7 @@ export class StoryStore {
 					viewpoint = excluded.viewpoint,
 					director_config = excluded.director_config,
 					history_block_policy = excluded.history_block_policy,
+					context_layout = excluded.context_layout,
 					gap_pass_enabled = excluded.gap_pass_enabled,
 					gap_plan_seconds = excluded.gap_plan_seconds,
 					image_config = excluded.image_config,
@@ -2783,6 +2795,7 @@ export class StoryStore {
 				next.viewpoint,
 				serializeDirectorConfig(next.directorConfig),
 				serializeHistoryBlockPolicy(next.historyBlockPolicy),
+				next.contextLayout,
 				next.gapPassEnabled ? 1 : 0,
 				next.gapPlanSeconds,
 				serializeJsonValue(next.imageConfig, "故事设置的 imageConfig"),
