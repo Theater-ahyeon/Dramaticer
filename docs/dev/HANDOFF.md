@@ -5,23 +5,24 @@
 ## 最近一次会话
 - 2026-11-14 会话 392：门禁修复。上一个会话结束后 devloop 的 autosave 把残留的一次性截图脚本 `packages/web/.v4shot.mjs`（`@playwright/test` 驱动、写死 `E:/agentcoding/Dramaticer/docs/proposals/v4-ui.html`，共 9 行）提交进仓库，`biome check` 在该文件上报 4 个 `useTemplate`、1 个格式错误、1 个其它格式项，`pnpm run lint` 失败，整条 `pnpm check` 因此失败。该脚本没有被任何文档、脚本或包配置引用（全仓搜索无命中），是给 v4 界面原型拍截图的临时工具，已从仓库删除。
 - 门禁现在通过：261 个测试文件、2,292 个测试、5 个跳过（耗时 170 秒）。类型检查与不变量检查没有被本次改动影响。
-- 本会话没有选任务；W0-T00 与 R6 的任务状态没有变化。
+- 本会话没有选任务；分拣了会话进行中人类新写入的 INBOX 条目（卡面图与人物立绘）为 W0-T01，依赖 W0-T00。
 
 ## 下一步（会话 393 先做）
 1. **W0-T00**（v4 设计合并）：人类在会话 391 进行中把 v4 提案写进 INBOX，已分拣为 TASKS 的 W 阶段任务——写 ADR、合并进 DESIGN、细化 W1–W9，并落实四条约束（不变量不动、场记先做对照、R6 额度批次先后写 ADR 与不阻塞的 HUMAN 确认、界面以 `docs/proposals/v4-ui.html` 为参考）。这是设计文档任务，不需要额度。
-2. 之后做 R6-T07.b（重 roll 点回放批次）；HUMAN-19 只阻塞真实批次，代码与假客户端测试不需要额度。
-3. R6-T07.b 要点：
+2. 之后做 **W0-T01**（卡面图与人物立绘）：人类在会话 392 进行中写入的 INBOX 条目，卡片 PNG 作故事封面、资源表立绘进人物档案、认证媒体接口、无图卡用占位图。排在界面改版之前，代码任务不需要额度。
+3. 之后做 R6-T07.b（重 roll 点回放批次）；HUMAN-19 只阻塞真实批次，代码与假客户端测试不需要额度。
+4. R6-T07.b 要点：
    - 新增 `evalset/r6-replay.ts` 与 CLI：从 `eval-private/world-model-compare/source/<slug>.db` 规划重 roll 点（`xianxia` 24、`yuwang` 8、`yinqi` 11），被接受的是 head 路径上的助手兄弟楼层（43 个点都是最大 swipe 下标），放弃侧取下标紧邻其下的那条，另有 5 条更早的放弃 swipe 只报告。
    - 每个点复制数据库、head 移到父玩家楼层、预热 12 楼，先按种子 1 生成一次原生续写（同时是 G1 的续写与 A/A 的第一次生成），再按种子 2 生成一次（只用于 A/A）；同一请求体只差种子，会命中响应缓存（ADR-0136）。
    - 每次生成后写 A/A 样本 JSONL（格式见下面「注意事项」），再调用 `runR6AaInstrument`（`dir` 用自己的运行目录）得到 G0 的 A/A 侧；G1 的两组配对（对放弃侧、对接受侧）各两种顺序判一次，汇总产出 `R6ReplayGateInput`。
    - sidecar 校验故事、分支点、玩家消息、swipe 下标、模型与种子；`done` 复用，`running` 与 `failed` 续跑；失败样本单独计数。
-4. 额度恢复（2026-11-17T11:44:35Z 之后）后，再申请 C1 长任务（`R6-T06-03`，9 个分支点 × 2 档位 × 30 轮）与 R6-T07.b 的批次长任务。
-5. 阻塞检查：M6-T99 仍等 HUMAN-15；HUMAN-03、HUMAN-16、HUMAN-17、HUMAN-18 不阻塞；HUMAN-19 阻塞真实批次。
+5. 额度恢复（2026-11-17T11:44:35Z 之后）后，再申请 C1 长任务（`R6-T06-03`，9 个分支点 × 2 档位 × 30 轮）与 R6-T07.b 的批次长任务。
+6. 阻塞检查：M6-T99 仍等 HUMAN-15；HUMAN-03、HUMAN-16、HUMAN-17、HUMAN-18 不阻塞；HUMAN-19 阻塞真实批次。
 
 ## 当前状态
 - 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1–P4、C-T01 至 C-T05、H-T00 至 H-T99、X1.a 至 X1.e、X2.a 至 X2.d、R6-T00 至 R6-T05、R6-T07、R6-T07.a。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
 - R6-T06 标 `[!]`（HUMAN-19）：剩余 C1 的 540 轮；B1 已完成的 `xianxia` 9 对作为参考样本，`yuwang` 与 `yinqi` 不补。
-- W0-T00 待做（`[ ]`），W1–W9 还未拆分；R6-T07.b 至 R6-T07.d 待做；R6-T99 依赖它们与 R6-T06。
+- W0-T00 待做（`[ ]`），W1–W9 还未拆分；W0-T01（卡面图与人物立绘）依赖 W0-T00；R6-T07.b 至 R6-T07.d 待做；R6-T99 依赖它们与 R6-T06。
 - 兼容插件线：`st-content`、`st-mvu`、`st-ejs`、`st-helper-host` 全部完成（含一致性测试与共存评测）。
 - 数据库 schema 版本 50。本轮没有新增依赖。
 - 报告：`docs/dev/reports/P2.md`、`P3.md`、`P4.md`、`C-T01.md`、`C-T02.md`、`C-T03.md`、`C-T04.md`、`C-T05.md`、`H.md`、`X1.md`、`X2.md`。
