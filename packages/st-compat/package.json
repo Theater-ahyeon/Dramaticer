@@ -39,6 +39,7 @@
 		"r6-b1": "tsc -b && node dist/evalset/r6-b1-cli.js",
 		"r6-deep": "tsc -b && node dist/evalset/r6-deep-cli.js",
 		"r6-preference": "tsc -b && node dist/evalset/r6-preference-cli.js",
+		"r6-instrument": "tsc -b && node dist/evalset/r6-instrument-cli.js",
 		"memory-eval": "tsc -b && node dist/evalset/memory-cli.js",
 		"playtest": "tsc -b && node dist/evalset/playtest-cli.js",
 		"deep-eval": "tsc -b && node dist/evalset/deep-eval-cli.js",
