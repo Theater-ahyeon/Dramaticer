@@ -452,6 +452,57 @@ describe("explainNode", () => {
 		expect(store.getNode("a1")?.raw).toBe("卫宫把杯子放下，没有回答。");
 	});
 
+	it("输出当前路径的场次划分与归档状态", () => {
+		const { store } = openTempStore();
+		seed(store);
+		store.saveSceneLog({
+			nodeId: "a1",
+			storyId: "s1",
+			beat: "试探",
+			present: ["卫宫"],
+			sceneEnds: true,
+			bits: [],
+			conditions: [],
+			states: [],
+			quotes: { submitted: 0, verified: 0 },
+			repairs: [],
+		});
+
+		const pending = explainNode(store, "a1");
+		expect(pending.scenes.maxSceneFloors).toBe(12);
+		expect(pending.scenes.scenes).toEqual([
+			{
+				startNodeId: "a1",
+				endNodeId: "a1",
+				floorCount: 1,
+				boundary: "scene-ends",
+				archive: null,
+				stale: false,
+			},
+		]);
+		expect(renderExplainReport(pending)).toContain("待归档");
+
+		store.saveSceneArchive({
+			endNodeId: "a1",
+			storyId: "s1",
+			startNodeId: "a1",
+			floorCount: 1,
+			boundary: "scene-ends",
+			summary: "卫宫没有回答。",
+			present: ["卫宫"],
+			stateChanges: [],
+			cluesOpened: [],
+			cluesClosed: [],
+		});
+
+		const archived = explainNode(store, "a1");
+		expect(archived.scenes.scenes[0]?.archive?.summary).toBe("卫宫没有回答。");
+		const text = renderExplainReport(archived);
+		expect(text).toContain("10. 场次划分与归档");
+		expect(text).toContain("每场最多 12 楼，共 1 场");
+		expect(text).toContain("已归档");
+	});
+
 	it("节点不存在时抛出错误", () => {
 		const { store } = openTempStore();
 		seed(store);

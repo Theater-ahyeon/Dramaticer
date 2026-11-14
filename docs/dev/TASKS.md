@@ -1670,7 +1670,8 @@
   - 新增对照工具 `scene-log-compare`：同一批楼层分别跑独立任务（`settle`、`scene`、`user_will`、小品条件）与 `scene_log`，比较路径集合、值与引文命中率，输出样本数与一致率；假客户端测试覆盖四种字段完整、引文错误、空输出。
   验收：假客户端下一次调用产出四类字段；引文对不上整条拒绝并记原因；回合内零调用；对照工具能输出一致率与样本数；`pnpm check` 通过。
 
-- [ ] **W2-T02 场次边界与归档** | 依赖：W2-T01
+- [x] **W2-T02 场次边界与归档** | 依赖：W2-T01
+  完成：2026-11-14 新增 `ledger/scenes.ts`（`DEFAULT_MAX_SCENE_FLOORS = 12`、`deriveSceneSegments`、`readSceneSegments`）：只按助手楼层切场，场记 `sceneEnds` 为 true 的楼层收尾这一场，否则数到 12 楼强制收尾，消息楼层不计数也不单独开场；场次是路径派生区间，不新增节点，分支切换后只按当前路径重算。新增后台任务 `scene_archive`（故事级、入队条件 `story`、`gap` 档）：`needsRun` 只在当前路径上存在已结束且没有归档（或归档与当前划分不一致）的场次时为 true；一次调用取最早一场，输入原文、这一场的台账变更与结束时线索快照，严格校验 `{summary,present,stateChanges,cluesOpened,cluesClosed}`，线索必须出现在台账 `clue` 命名空间、收了的必须已兑现，对不上整次拒绝交给任务框架重试。迁移 v54 新增 `scene_archives`（结束楼层主键、起始楼层与故事触发器、身份不可改）；`StoryStore` 新增 `saveSceneArchive`（按结束楼层覆盖）、`getSceneArchive`；开启场记时才注册 `scene_archive`（`resolveStoryBackgroundKinds` 与 `scene_log` 同一开关）。`dramaticer explain` 新增第 10 节输出当前路径的场次划分、结束原因与归档状态（待归档、待重新归档、已归档）。新增 9 个测试（`packages/core/test/scene-archive.test.ts`）与 1 个 explain 测试，同步 `plugin-background-tools.test.ts` 的注册表清单与开关过滤、`assistant-store.test.ts` 的 schema 54；门禁通过（267 个测试文件、2,325 个测试、5 个跳过）
   做什么：
   - 场次是路径上的派生区间，不新增节点：场记的 `sceneEnds` 加楼层数上限（`maxSceneFloors`，默认 12）决定边界；分支切换后按当前路径重算。
   - 场次结束时入队 `scene_archive`：一次归档调用产出摘要、在场者、状态变化、开了与收了哪些线索，写只追加的 `scene_archives` 表（迁移编号接在 v50 之后）；同一场次重复执行覆盖同一行，不新增。

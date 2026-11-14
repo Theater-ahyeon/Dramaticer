@@ -31,6 +31,11 @@ import {
 	createMemoryRevisionHandler,
 } from "../ledger/revision.js";
 import {
+	SCENE_ARCHIVE_JOB_KIND,
+	createSceneArchiveHandler,
+	createSceneArchiveNeedsRun,
+} from "../ledger/scene-archive.js";
+import {
 	SCENE_LOG_JOB_KIND,
 	createSceneLogHandler,
 } from "../ledger/scene-log.js";
@@ -90,6 +95,7 @@ export const USER_WILL_JOB_PLUGIN = "background.user-will";
 export const MEMORY_REVISION_JOB_PLUGIN = "background.memory-revision";
 export const GAP_PASS_JOB_PLUGIN = "background.gap-pass";
 export const SCENE_LOG_JOB_PLUGIN = "background.scene-log";
+export const SCENE_ARCHIVE_JOB_PLUGIN = "background.scene-archive";
 export const OPENING_JOB_PLUGIN = "background.opening";
 export const OPENING_CANDIDATES_JOB_PLUGIN = "background.opening-candidates";
 export const VISUAL_PROFILE_JOB_PLUGIN = "background.visual-profile";
@@ -161,6 +167,12 @@ export const BACKGROUND_JOB_PLUGINS: readonly BackgroundJobPlugin[] = [
 	backgroundJobPlugin(SCENE_LOG_JOB_PLUGIN, SCENE_LOG_JOB_KIND, {
 		handler: createSceneLogHandler(),
 		enqueue: "settled",
+	}),
+	backgroundJobPlugin(SCENE_ARCHIVE_JOB_PLUGIN, SCENE_ARCHIVE_JOB_KIND, {
+		handler: createSceneArchiveHandler(),
+		enqueue: "story",
+		tier: "gap",
+		needsRun: createSceneArchiveNeedsRun(),
 	}),
 	backgroundJobPlugin(OPENING_JOB_PLUGIN, OPENING_JOB_KIND, {
 		handler: createOpeningHandler(),

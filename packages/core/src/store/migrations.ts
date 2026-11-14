@@ -1598,6 +1598,44 @@ export function buildMigrations(
 				END`,
 			],
 		},
+		{
+			version: 54,
+			description:
+				"场次归档：每场结束时一次调用产出的摘要、在场者、状态变化与线索",
+			statements: [
+				`CREATE TABLE scene_archives (
+					end_node_id TEXT PRIMARY KEY REFERENCES nodes(id),
+					story_id TEXT NOT NULL REFERENCES stories(id),
+					start_node_id TEXT NOT NULL REFERENCES nodes(id),
+					floor_count INTEGER NOT NULL CHECK (floor_count > 0),
+					boundary TEXT NOT NULL CHECK (boundary IN ('scene-ends', 'max-floors')),
+					summary TEXT NOT NULL CHECK (length(trim(summary)) > 0),
+					present TEXT NOT NULL,
+					state_changes TEXT NOT NULL,
+					clues_opened TEXT NOT NULL,
+					clues_closed TEXT NOT NULL,
+					created_at TEXT NOT NULL
+				) STRICT`,
+				"CREATE INDEX scene_archives_story_idx ON scene_archives(story_id)",
+				`CREATE TRIGGER scene_archives_story_matches_node
+				BEFORE INSERT ON scene_archives
+				WHEN COALESCE((SELECT story_id FROM nodes WHERE id = NEW.end_node_id), '') <> NEW.story_id
+				BEGIN
+					SELECT RAISE(ABORT, '场次归档的 story_id 必须与结束楼层一致');
+				END`,
+				`CREATE TRIGGER scene_archives_start_matches_story
+				BEFORE INSERT ON scene_archives
+				WHEN COALESCE((SELECT story_id FROM nodes WHERE id = NEW.start_node_id), '') <> NEW.story_id
+				BEGIN
+					SELECT RAISE(ABORT, '场次归档的起始楼层必须属于同一故事');
+				END`,
+				`CREATE TRIGGER scene_archives_identity_immutable
+				BEFORE UPDATE OF end_node_id, story_id ON scene_archives
+				BEGIN
+					SELECT RAISE(ABORT, '场次归档的结束楼层与故事不能修改');
+				END`,
+			],
+		},
 	];
 }
 

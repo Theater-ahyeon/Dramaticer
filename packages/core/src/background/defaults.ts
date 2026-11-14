@@ -1,4 +1,5 @@
 import { GAP_PASS_JOB_KIND } from "../ledger/gap-pass.js";
+import { SCENE_ARCHIVE_JOB_KIND } from "../ledger/scene-archive.js";
 import { SCENE_LOG_JOB_KIND } from "../ledger/scene-log.js";
 import type { EmbeddingClient } from "../llm/embeddings.js";
 import type { LlmClient } from "../llm/types.js";
@@ -49,7 +50,8 @@ export function resolveStoryBackgroundKinds(
 			: [options.requested];
 	return kinds.filter(
 		(kind) =>
-			(options.sceneLogEnabled || kind !== SCENE_LOG_JOB_KIND) &&
+			(options.sceneLogEnabled ||
+				(kind !== SCENE_LOG_JOB_KIND && kind !== SCENE_ARCHIVE_JOB_KIND)) &&
 			(options.gapPassEnabled || kind !== GAP_PASS_JOB_KIND),
 	);
 }

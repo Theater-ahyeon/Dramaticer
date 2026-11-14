@@ -10,6 +10,11 @@ import {
 import type { DirectorDecision } from "../director/types.js";
 import type { LedgerFact } from "../ledger/read.js";
 import { readLedgerFacts } from "../ledger/read.js";
+import {
+	DEFAULT_MAX_SCENE_FLOORS,
+	type SceneBoundary,
+	readSceneSegments,
+} from "../ledger/scenes.js";
 import type { TurnHookTraceEntry } from "../plugins/turn-hooks.js";
 import type { TurnRunDetail } from "../run-log.js";
 import type { StoryStore } from "../store/story-store.js";
@@ -69,6 +74,31 @@ export interface ExplainSuggestion {
 	readonly evidence: string;
 }
 
+/** 一场的归档摘要；`stale` 表示存下来的归档与当前场次划分不一致。 */
+export interface ExplainSceneArchiveState {
+	readonly summary: string;
+	readonly stateChanges: number;
+	readonly cluesOpened: number;
+	readonly cluesClosed: number;
+	readonly createdAt: string;
+}
+
+/** 当前路径上的一场；没有结束时 `endNodeId` 为 null。 */
+export interface ExplainSceneRecord {
+	readonly startNodeId: string;
+	readonly endNodeId: string | null;
+	readonly floorCount: number;
+	readonly boundary: SceneBoundary | null;
+	readonly archive: ExplainSceneArchiveState | null;
+	readonly stale: boolean;
+}
+
+/** 场次是路径上的派生区间；这里给出划分与每场的归档状态。 */
+export interface ExplainSceneSection {
+	readonly maxSceneFloors: number;
+	readonly scenes: readonly ExplainSceneRecord[];
+}
+
 export interface ExplainReport {
 	readonly nodeId: string;
 	readonly storyId: string;
@@ -83,6 +113,8 @@ export interface ExplainReport {
 	readonly ledger: ExplainLedgerSection;
 	readonly director: ExplainDirectorSection | null;
 	readonly beats: ExplainBeatSection;
+	/** 当前路径的场次划分与每场归档状态。 */
+	readonly scenes: ExplainSceneSection;
 	/** 某一部分没有记录时的明确说明。 */
 	readonly notes: readonly string[];
 	readonly suggestions: readonly ExplainSuggestion[];
@@ -105,6 +137,9 @@ export function explainNode(
 		| "listTurnRunEvents"
 		| "listDirectorPlanEntries"
 		| "listDirectorBeatStatesAlongPath"
+		| "getPathToNode"
+		| "getSceneLog"
+		| "getSceneArchive"
 	>,
 	nodeId: string,
 ): ExplainReport {
@@ -171,10 +206,63 @@ export function explainNode(
 		},
 		director: decision === null ? null : { nodeId: decisionNodeId, decision },
 		beats: buildBeatSection(store, node.storyId, nodeId),
+		scenes: buildSceneSection(store, nodeId),
 		notes,
 		suggestions: [],
 	};
 	return { ...report, suggestions: buildSuggestions(report) };
+}
+
+function buildSceneSection(
+	store: Pick<
+		StoryStore,
+		"getNode" | "getPathToNode" | "getSceneLog" | "getSceneArchive"
+	>,
+	nodeId: string,
+): ExplainSceneSection {
+	const segments = readSceneSegments(store, nodeId, DEFAULT_MAX_SCENE_FLOORS);
+	const scenes = segments.map((segment): ExplainSceneRecord => {
+		if (segment.endNodeId === null) {
+			return {
+				startNodeId: segment.startNodeId,
+				endNodeId: null,
+				floorCount: segment.floorIds.length,
+				boundary: null,
+				archive: null,
+				stale: false,
+			};
+		}
+		const archive = store.getSceneArchive(segment.endNodeId);
+		if (archive === null) {
+			return {
+				startNodeId: segment.startNodeId,
+				endNodeId: segment.endNodeId,
+				floorCount: segment.floorIds.length,
+				boundary: segment.boundary,
+				archive: null,
+				stale: false,
+			};
+		}
+		const stale =
+			archive.startNodeId !== segment.startNodeId ||
+			archive.floorCount !== segment.floorIds.length ||
+			archive.boundary !== segment.boundary;
+		return {
+			startNodeId: segment.startNodeId,
+			endNodeId: segment.endNodeId,
+			floorCount: segment.floorIds.length,
+			boundary: segment.boundary,
+			archive: {
+				summary: archive.summary,
+				stateChanges: archive.stateChanges.length,
+				cluesOpened: archive.cluesOpened.length,
+				cluesClosed: archive.cluesClosed.length,
+				createdAt: archive.createdAt,
+			},
+			stale,
+		};
+	});
+	return { maxSceneFloors: DEFAULT_MAX_SCENE_FLOORS, scenes };
 }
 
 function buildBeatSection(
@@ -680,6 +768,44 @@ export function renderExplainReport(report: ExplainReport): string {
 				`   - #${event.seq} ${event.kind}：${JSON.stringify(event.payload)}`,
 			);
 		}
+	}
+
+	lines.push("");
+	lines.push("10. 场次划分与归档");
+	const sceneSection = report.scenes;
+	const openScenes = sceneSection.scenes.filter(
+		(scene) => scene.endNodeId === null,
+	).length;
+	lines.push(
+		`   每场最多 ${sceneSection.maxSceneFloors} 楼，共 ${sceneSection.scenes.length} 场，其中 ${openScenes} 场进行中。`,
+	);
+	if (sceneSection.scenes.length === 0) {
+		lines.push("   没有记录（当前路径上没有助手楼层）。");
+	}
+	for (const [index, scene] of sceneSection.scenes.entries()) {
+		const range =
+			scene.endNodeId === null
+				? `楼层 ${scene.startNodeId} 起`
+				: `楼层 ${scene.startNodeId} 到 ${scene.endNodeId}`;
+		const boundary =
+			scene.boundary === null
+				? "进行中"
+				: scene.boundary === "scene-ends"
+					? "场记判定结束"
+					: "达到楼层上限";
+		let status: string;
+		if (scene.endNodeId === null) {
+			status = "还没有归档";
+		} else if (scene.archive === null) {
+			status = "待归档";
+		} else if (scene.stale) {
+			status = "归档与当前划分不一致，待重新归档";
+		} else {
+			status = `已归档（摘要 ${scene.archive.summary.length} 字，状态变化 ${scene.archive.stateChanges} 条，开了线索 ${scene.archive.cluesOpened} 条、收了 ${scene.archive.cluesClosed} 条，写于 ${scene.archive.createdAt}）`;
+		}
+		lines.push(
+			`   - 场次 ${index + 1}：${range}（${scene.floorCount} 楼，${boundary}），${status}`,
+		);
 	}
 
 	if (report.notes.length > 0) {

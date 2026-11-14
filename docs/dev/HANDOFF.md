@@ -3,13 +3,14 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-14 会话 396：完成 W2-T01（场记调用与事实引文）。新增后台任务 `scene_log`（`ledger/scene-log.ts`，入队条件 `settled`、`gap` 档）：一次小调用产出 `{beat, states, present, sceneEnds, bits, conditions}`；`states` 的每条 diff 必须带 `sourceQuote`，解析时逐字比对任务楼层原文，对不上或形状非法都逐条拒绝并把原因记进 `SceneLog.repairs`；`SceneLog.quotes` 记提交数与核验通过数。写入复用 `applySettlementProposals`：`settle.ts` 的 `DIFF_FIELDS` 增加 `sourceQuote`，`planFloor` 对带引文的提案逐条校验（结算路径同样生效），`FloorProposals.beatCompleted` 改为 `boolean | null`，场记传 null 不写拍状态；`bits` 只能从 `listDirectorBits` 里选，未知 id 逐条拒绝；`conditions` 与剧情小品的文本条件共用 `parseDirectorBitJudgmentResponse`，并写回 `director_bit_judgments`。迁移 v53 新增 `scene_logs`（节点主键、同故事触发器、身份不可改）与 `story_settings.scene_log_enabled`（默认关闭）；`StoryStore` 新增 `saveSceneLog`（按楼层覆盖）、`getSceneLog`、`getLatestSceneLogOnPath`，重复执行同一楼层只更新场记行、不重复写 state diff。`resolveStoryBackgroundKinds` 增加 `sceneLogEnabled` 过滤，core CLI、server、playtest、r6-compare 四个调用点都已传入。新增 `packages/st-compat/src/evalset/scene-log-compare.ts`：同一批楼层在两侧独立数据库上分别跑结算、现场分析、用户意志、小品条件与场记，按 ADR-0055 口径比较路径/事实一致率，输出引文命中率、条件判断一致率、请求数与逐楼层失败，另有 `formatSceneLogCompare` 文本版。DESIGN §7.2 已描述场记与引文，本任务未改设计文档。
-- 门禁通过：266 个测试文件、2,315 个测试、5 个跳过（115 秒）。新增测试：`packages/core/test/scene-log.test.ts`（6 个：四类字段与结算写入、引文错误逐条拒绝、空输出整次失败、小品与条件判断、重复执行覆盖同一行、路径读取不跨分支）；`packages/st-compat/test/scene-log-compare.test.ts`（3 个：一致率 100%、引文错误只影响该条并计入命中率、空输出记为失败不进分母）。同步 `plugin-background-tools.test.ts`（注册表清单、`scene_log` 的 `settled`/`gap`、开关过滤）、`story-settings.test.ts`（默认值、往返、非法值）、`assistant-store.test.ts`（schema 53）、`settings-form.test.ts`（fixture 补字段）。
+- 2026-11-14 会话 397：完成 W2-T02（场次边界与归档）。新增 `packages/core/src/ledger/scenes.ts`：`DEFAULT_MAX_SCENE_FLOORS = 12`、`deriveSceneSegments`（只按助手楼层切场，场记 `sceneEnds` 为 true 的楼层收尾，否则数到 12 楼强制收尾；消息楼层不计数也不单独开场）、`readSceneSegments`（沿节点路径读场记记录，未记录的楼层按未结束处理）；场次是路径上的派生区间，不新增节点，分支切换后只按当前路径重算。新增后台任务 `scene_archive`（`ledger/scene-archive.ts`，故事级、入队条件 `story`、`gap` 档）：`needsRun` 只在当前路径上存在已结束且没有归档、或归档与当前划分不一致的场次时为 true；一次执行取最早一场，请求体带这一场的原文、这一场写下的台账变更与结束时 `clue` 快照；输出严格校验 `{summary,present,stateChanges,cluesOpened,cluesClosed}`，线索 id 必须在台账 `clue` 里存在、`cluesClosed` 还必须状态为 `fulfilled`，对不上整次拒绝交给任务框架重试（3 次后标记 failed）。迁移 v54 新增 `scene_archives`（`end_node_id` 主键、`start_node_id`、`floor_count`、`boundary` 取 `scene-ends`/`max-floors`、摘要、在场者、状态变化、开/收线索、创建时间；结束楼层与起始楼层都有同故事触发器，身份不可改）；`StoryStore` 新增 `saveSceneArchive`（按结束楼层覆盖同一行，校验起始楼层在结束楼层路径上且两者都是助手楼层）、`getSceneArchive`。`scene_archive` 与 `scene_log` 共用 `sceneLogEnabled` 开关过滤。`dramaticer explain` 新增第 10 节「场次划分与归档」，逐场给出起止楼层、楼层数、结束原因与归档状态（待归档、待重新归档、已归档及摘要字数与条数）。新增 9 个测试与 1 个 explain 测试；门禁通过（267 个测试文件、2,325 个测试、5 个跳过，116 秒）。
+- 2026-11-14 会话 396：完成 W2-T01（场记调用与事实引文）。新增后台任务 `scene_log`（入队 `settled`、`gap` 档）：一次小调用产出 `{beat, states, present, sceneEnds, bits, conditions}`；`states` 的每条 diff 必须带 `sourceQuote`，解析时逐字比对任务楼层原文，对不上或形状非法都逐条拒绝并把原因记进 `SceneLog.repairs`，`quotes` 记提交数与核验数；写入复用 `applySettlementProposals`，`settle.ts` 的 diff 字段增加 `sourceQuote` 并在 `planFloor` 逐条校验（结算路径同样生效），`FloorProposals.beatCompleted` 允许 null；`bits` 只能从故事的小品里选，`conditions` 与小品文本条件共用解析器并写回 `director_bit_judgments`。迁移 v53 新增 `scene_logs`（节点主键、同故事触发器、身份不可改）与 `story_settings.scene_log_enabled`（默认关闭）；`StoryStore` 新增 `saveSceneLog`、`getSceneLog`、`getLatestSceneLogOnPath`；新增 `evalset/scene-log-compare.ts`。
+- 门禁通过：267 个测试文件、2,325 个测试、5 个跳过（116 秒）。本会话新增 `packages/core/test/scene-archive.test.ts`（9 个：场记结束切分、12 楼上限、场记与上限同时到达按场记、分支重算、归档与重跑覆盖同一行、线索校验、needsRun、drain 入队与只归档一次、不新增楼层）与 `explain.test.ts` 的场次划分用例；同步 `plugin-background-tools.test.ts`（注册表清单、`scene_archive` 的 `story`/`gap`、开关过滤）、`assistant-store.test.ts`（schema 54）。
 
-## 下一步（会话 397 先做）
-1. **W2-T02 场次边界与归档**（依赖 W2-T01，已满足）：场次是路径上的派生区间，不新增节点；场记的 `sceneEnds` 加楼层数上限 `maxSceneFloors`（默认 12）决定边界，分支切换后按当前路径重算。场次结束时入队 `scene_archive`（一次归档调用产出摘要、在场者、状态变化、开了与收了哪些线索），写只追加的 `scene_archives`，同一场次重复执行覆盖同一行。迁移编号从 v54 起（v53 已被 W2-T01 占用；TASKS 里写的「接在 v50 之后」是旧编号，以本文件为准）。`dramaticer explain` 输出当前路径的场次划分与每场归档状态。
-2. 之后做 **W2-T03**（把 `scene-log-compare` 做成 CLI，`--dir`、`--samples`、`--json`、`--report`，样本来自 3 个 legacy 对话的固定楼层清单）→ **W3-T01 至 W3-T03** → **W4-T01 至 W4-T03**。
-3. 之后到 R6 段：先 **R6-T07.b**（重 roll 点回放批次）、**R6-T07.c**（遗忘漏斗）、**R6-T07.d**（门槛判定 CLI），再 **R6-T99**。**R6-T06** 与 **W2-T04** 被 HUMAN-19 阻塞（`bg` 渠道额度 2026-11-17T11:44:35Z 重置）。
+## 下一步（会话 398 先做）
+1. **W2-T03 场记对照的工具与假数据验收**（依赖 W2-T02，已满足）：把 `scene-log-compare` 做成 CLI，支持 `--dir`、`--samples`、`--json`、`--report`；样本来自 3 个 legacy 对话的固定楼层清单（只读源库，副本上运行），逐楼层记录两边 diff、引文命中、拒绝原因与成本。假客户端测试：两边各产出 diff 时一致率计算正确；单条非法只拒绝该条；样本不足时明确标注。参考现有评测 CLI 的结构（`r6-b1`、`r6-compare`、`scene-log-compare` 的库代码）。
+2. 之后做 **W3-T01 至 W3-T03** → **W4-T01 至 W4-T03**；**W2-T04** 被 HUMAN-19 阻塞（`bg` 渠道额度 2026-11-17T11:44:35Z 重置），真实对照前不做默认切换。
+3. 之后到 R6 段：先 **R6-T07.b**（重 roll 点回放批次）、**R6-T07.c**（遗忘漏斗）、**R6-T07.d**（门槛判定 CLI），再 **R6-T99**。**R6-T06** 与 **W2-T04** 被 HUMAN-19 阻塞。
 4. R6 段之后继续 **W5-T01、W5-T02** → **W6-T01 至 W6-T03** → **W7-T01 至 W7-T03** → **W8-T01、W8-T02** → **W9-T01 至 W9-T99**。
 5. R6-T07.b 的实现要点（旧交接保留）：
    - 新增 `evalset/r6-replay.ts` 与 CLI：从 `eval-private/world-model-compare/source/<slug>.db` 规划重 roll 点（`xianxia` 24、`yuwang` 8、`yinqi` 11），被接受的是 head 路径上的助手兄弟楼层（43 个点都是最大 swipe 下标），放弃侧取下标紧邻其下的那条，另有 5 条更早的放弃 swipe 只报告。
@@ -19,10 +20,12 @@
 6. 阻塞检查：M6-T99 仍等 HUMAN-15；HUMAN-03、HUMAN-16、HUMAN-17、HUMAN-18、HUMAN-20、HUMAN-21 不阻塞；HUMAN-19 阻塞 R6-T06、R6-T99 与 W2-T04。
 
 ## 当前状态
-- 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1–P4、C-T01 至 C-T05、H-T00 至 H-T99、X1.a 至 X1.e、X2.a 至 X2.d、R6-T00 至 R6-T05、R6-T07、R6-T07.a、W0-T00、W0-T01、W1-T01、W2-T01。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1–P4、C-T01 至 C-T05、H-T00 至 H-T99、X1.a 至 X1.e、X2.a 至 X2.d、R6-T00 至 R6-T05、R6-T07、R6-T07.a、W0-T00、W0-T01、W1-T01、W2-T01、W2-T02。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
 - 设计版本 v0.4（ADR-0139）。W 阶段任务顺序：W0（完成）→ W1（完成）→ W2（进行中）→ W3 → W4 → R6 段（T07.b、T07.c、T07.d、T99）→ W5 → W6 → W7 → W8 → W9。
-- 数据库 schema 版本 53（v51 `story_media`、v52 `story_settings.context_layout`、v53 `scene_logs` 与 `story_settings.scene_log_enabled`）。
+- 数据库 schema 版本 54（v51 `story_media`、v52 `story_settings.context_layout`、v53 `scene_logs` 与 `story_settings.scene_log_enabled`、v54 `scene_archives`）。
 - 场记：`scene_log` 默认关闭（`sceneLogEnabled`）；打开后与结算、现场分析、用户意志、小品条件并行运行，尚未替换它们（W2-T04 按对照结论切换）。`scene_logs` 一行一个助手楼层，`states` 存引文已核对的提案，`quotes` 记提交/核验数，`repairs` 记引文与形状拒绝加上结算器的非 `fill` 修复。
+- 场次：`readSceneSegments` 沿给定节点路径派生；`sceneEnds` 的楼层收尾这一场，否则到 `DEFAULT_MAX_SCENE_FLOORS`（12）个助手楼层强制收尾；场次不是节点，不写 `nodes`。`scene_archives` 以结束楼层为主键，`boundary` 记 `scene-ends` 或 `max-floors`；`start_node_id`、`floor_count`、`boundary` 共同用于判断存下来的归档是否与当前划分一致（不一致时 `scene_archive` 重跑并覆盖同一行）。
+- `scene_archive` 是故事级任务（`nodeId` 为 null），`needsRun` 决定是否补建；一次执行只归档最早一场，其余场次由后续 drain 继续。归档请求是结构化 JSON，带 `NO_CONTINUATION`，温度 0。
 - 上下文排布：默认模板按易变性排布；`contextLayout` 取 `volatility`（默认）或 `full`（对照）。自定义模板不参与这个开关，Trace 的 `layout` 记为 `custom`。`segmentOrder` 是模板片段 id 的生效顺序，`cache.source` 为 `channel`（渠道报告了 `cachedTokens`，含 0）或 `none`（没有报告）；旧 Trace 没有这三个字段。
 - 故事图片：`story_media` 存相对路径，文件在媒体目录（默认数据库同目录的 `images/`）的 `story-media/<故事 id 摘要>/` 下，按内容哈希命名；封面缺失时由 `packages/server/src/cover-placeholder.ts` 渲染 SVG 占位图，不写磁盘。媒体接口走现有会话校验，`Cache-Control: private, no-cache`（同一地址会因重新导入换图）。
 - R6-T06 标 `[!]`（HUMAN-19）：剩余 C1 的 540 轮；B1 已完成的 `xianxia` 9 对作为参考样本，`yuwang` 与 `yinqi` 不补。
@@ -50,6 +53,7 @@
 - 门禁：`pnpm check`。
 - 全量 e2e：`pnpm e2e`（会先构建 server 与 web；跑两个项目）。
 - 场记与对照目标测试：`pnpm exec vitest run packages/core/test/scene-log.test.ts packages/st-compat/test/scene-log-compare.test.ts`。
+- 场次与归档目标测试：`pnpm exec vitest run packages/core/test/scene-archive.test.ts packages/core/test/explain.test.ts`。
 - 后台任务注册表与开关目标测试：`pnpm exec vitest run packages/core/test/plugin-background-tools.test.ts packages/core/test/story-settings.test.ts`。
 - 上下文排布与缓存 Trace 目标测试：`pnpm exec vitest run packages/core/test/context-layout.test.ts packages/core/test/chat-turn.test.ts packages/core/test/writing-contract.test.ts`。
 - 设置与模板接口目标测试：`pnpm exec vitest run packages/server/test/stories.test.ts`。
@@ -89,13 +93,20 @@
 - 一次性脚本不要提交：devloop 的 autosave 会把仓库里的残留文件一起提交，残留文件会进 `biome check` 并让门禁失败。`.devloop/scratch/` 下的脚本放在被忽略的目录里。`docs/proposals/v4-ui.html` 是原型，不进入构建、不提交截图脚本。
 - W 阶段的顺序写在 TASKS 里：W1–W4 → R6 段 → W5–W9。R6-T07.b 与 R6-T06 的真实批次需要 `background` 渠道，额度恢复前只能做代码与假客户端测试。
 - W2-T04 的切换条件是结算一致率不低于独立任务（ADR-0055 口径），不达标时保留独立任务并写 ADR；不得为了让场记上线而放宽对照。
-- 场记与独立任务目前并行：打开 `sceneLogEnabled` 后 `scene_log` 与 `settle`、`scene`、`user_will`、`director_bits` 都会入队，切换只由 W2-T04 做；对照实验里场记一侧的库不要跑独立任务，否则两边会互相覆盖结算记录。
+- 场记与独立任务目前并行：打开 `sceneLogEnabled` 后 `scene_log`、`scene_archive` 与 `settle`、`scene`、`user_will`、`director_bits` 都会入队，切换只由 W2-T04 做；对照实验里场记一侧的库不要跑独立任务，否则两边会互相覆盖结算记录。
 - `scene_log` 的 `states` 每条必须带 `sourceQuote`，引文逐字比对**任务楼层的原文**（`node.raw`），不跨楼层；结算路径的 `settle` 模型如果也给了 `sourceQuote`，同样逐字校验，对不上整条拒绝。
 - `scene_log` 重跑同一楼层时 `getLedgerSettlement` 已有记录就跳过 `applySettlementProposals`，只覆盖场记行；不要在重跑路径上再调用带同一楼层的结算窗口写入，`recordLedgerSettlement` 会抛「已经结算过」。
 - `scene_log` 的 `bits` 只接受该故事 `listDirectorBits` 里有的 id；`conditions` 的 id 集来自小品文本条件（`collectDirectorBitJudgmentInput`），必须恰好覆盖，判完写回 `director_bit_judgments`（与 `director_bits` 任务同一张表）。
-- 场记的 `sceneEnds`、`present`、`beat` 目前只写进 `scene_logs`，还没有消费者；W2-T02 用 `sceneEnds` 加 `maxSceneFloors` 划场次，W4 用 `beat` 选动作。
+- 场记的 `beat` 与 `present` 目前只写进 `scene_logs`，还没有消费者；W4 用 `beat` 选动作，W6 用在场推导知情。
 - `scene-logs` 的读取：`getSceneLog(nodeId)` 按楼层，`getLatestSceneLogOnPath(nodeId)` 沿路径取最近一行；分支切换后后者不跨分支。
-- 新迁移编号从 v54 起（v53 是 `scene_logs`）；TASKS 里 W2-T02 的「接在 v50 之后」是旧编号。
+- 场次划分只数助手楼层：一场是 `[第一个助手楼层, 结束助手楼层]` 的闭区间；`sceneEnds` 为 true 的楼层是这一场最后一楼，达到 `DEFAULT_MAX_SCENE_FLOORS`（12）时同样强制收尾（场记判定优先）。消息楼层落在两场之间，不开启也不计数。
+- 场次归档以**结束楼层**为主键；判断是否需要重跑时要同时比对 `startNodeId`、`floorCount` 与 `boundary`，只比结束楼层会在插入更早的场次结束判定后复用过期归档。
+- `scene_archive` 是故事级任务：`nodeId` 为 null，处理器不能调用 `requireJobNodeId`；`needsRun` 为 true 才会补建，执行一次只归档最早一场，剩余场次由后续 drain 继续（`done` 的行会被 `insertStoryJob` 翻回 pending）。
+- 归档的线索校验：`cluesOpened`/`cluesClosed` 的 id 必须出现在结束楼层的 `clue` 台账里，`cluesClosed` 还必须是 `fulfilled`；校验失败整次拒绝，3 次后任务标 failed，不会留下半截归档。
+- `scene_archives` 触发器只检查楼层属于同一故事；起始楼层在结束楼层路径上、两者都是助手楼层由 `saveSceneArchive` 校验。不要绕过 `saveSceneArchive` 直接写表。
+- 归档请求的输出是结构化 JSON，使用 `NO_CONTINUATION`；归档不写楼层原文，也不新增楼层。
+- `dramaticer explain` 的第 10 节使用默认上限 12；如果将来把 `maxSceneFloors` 做成故事设置，`explain` 必须改为从同一个来源读取。
+- 新迁移编号从 v55 起（v54 是 `scene_archives`）；TASKS 里 W2-T02 的「接在 v50 之后」是旧编号。
 - R6 预注册 v2 在第一次 v2 批次运行后冻结：门槛、样本、指标、模型与种子都不改；必须调整时另写 v3、记 ADR、把评测轮次计数重置为 0。门槛常量与 `docs/dev/R6-PREREG.md` 必须逐项一致，`evaluateR6Gates` 不允许缺项回落。
 - v2 的判定状态：`pass`、`fail`、`insufficient`、`not-measurable`；G0 未通过或样本不足时 G1 与 G5 被替换成 `invalid`。`passed` 只在 G0 pass、G1–G4 pass、G5 pass 或不可测、G6 pass 或未证实时为 true；`unproven` = G5 不可测 + G6 未证实。
 - G0 的两项：A/A（43 个点、种子 1 与 2、完成 ≥ 36、Wilson 区间含 50%、换序不一致 ≤ 20%、排除 ≤ 30%、判定失败 ≤ 10%）与真人标注（F0-T03 同一批 195 对、完成 ≥ 165、一致率 ≥ 65%、Wilson 下界 > 50%、位置偏差 ≤ 10 个百分点、判定失败 ≤ 10%）。G0 失败时改进任务只指向裁判。
@@ -144,7 +155,6 @@
 - e2e 的 `serve.mjs` 启动时清空 `.devloop/scratch/e2e/work`；Playwright 的 mobile 与 desktop 两个项目共用同一个数据库，测试标题必须带唯一 id，否则书架定位会命中两条。
 - 台账页只在选中楼层后渲染故事级区块（实体、世界书），e2e 要显示立绘得先给故事补一层（`cover.spec.ts` 的 `seedFloor`）。
 - v4 起台账写入分硬状态与软知识；每条事实的 `sourceQuote` 必须逐字出现在源楼层，校验失败整条拒绝（W2-T01）。`knowledge` 不再新增写入，由在场推导的知情标注取代，旧事实继续可读。
-- 场次是路径上的派生区间，不新增节点；边界由场记判定，`maxSceneFloors` 默认 12；分支切换后重算（W2-T02）。
 - 合并后台调用（场记）必须先通过结算一致率对照才能切默认；`gapPassEnabled` 与 `sceneLogEnabled` 在对照通过前保持关闭。
 - 导演的八种动作由程序选择，同一动作不连用三次；理由进 Trace 与 `explain`（W4）。
 - 重 roll 必须带原因，原因进入用户意志与偏好信号（W5）。

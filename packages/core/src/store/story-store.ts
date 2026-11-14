@@ -180,6 +180,12 @@ import {
 	assertGapPassRejections,
 } from "../ledger/gap-pass.js";
 import {
+	type NewSceneArchive,
+	type SceneArchive,
+	assertNewSceneArchive,
+	assertSceneStateChanges,
+} from "../ledger/scene-archive.js";
+import {
 	type NewSceneLog,
 	type SceneLog,
 	assertNewSceneLog,
@@ -449,6 +455,20 @@ interface SceneLogRow {
 	readonly quote_submitted: number;
 	readonly quote_verified: number;
 	readonly repairs: string;
+	readonly created_at: string;
+}
+
+interface SceneArchiveRow {
+	readonly end_node_id: string;
+	readonly story_id: string;
+	readonly start_node_id: string;
+	readonly floor_count: number;
+	readonly boundary: string;
+	readonly summary: string;
+	readonly present: string;
+	readonly state_changes: string;
+	readonly clues_opened: string;
+	readonly clues_closed: string;
 	readonly created_at: string;
 }
 
@@ -1683,6 +1703,29 @@ function rowToSceneLog(row: SceneLogRow): SceneLog {
 			JSON.parse(row.repairs) as unknown,
 			`${label}.repairs`,
 		),
+		createdAt: row.created_at,
+	};
+}
+
+function rowToSceneArchive(row: SceneArchiveRow): SceneArchive {
+	const label = `楼层 ${row.end_node_id} 的场次归档`;
+	if (row.boundary !== "scene-ends" && row.boundary !== "max-floors") {
+		throw new Error(`${label}.boundary 不合法：${row.boundary}`);
+	}
+	return {
+		endNodeId: row.end_node_id,
+		storyId: row.story_id,
+		startNodeId: row.start_node_id,
+		floorCount: row.floor_count,
+		boundary: row.boundary,
+		summary: row.summary,
+		present: readStringArray(row.present, `${label}.present`),
+		stateChanges: assertSceneStateChanges(
+			JSON.parse(row.state_changes) as unknown,
+			`${label}.stateChanges`,
+		),
+		cluesOpened: readStringArray(row.clues_opened, `${label}.cluesOpened`),
+		cluesClosed: readStringArray(row.clues_closed, `${label}.cluesClosed`),
 		createdAt: row.created_at,
 	};
 }
@@ -4441,6 +4484,91 @@ export class StoryStore {
 			)
 			.get(nodeId) as SceneLogRow | undefined;
 		return row === undefined ? null : rowToSceneLog(row);
+	}
+
+	/** 写入一场的归档；同一场次（结束楼层）重复执行覆盖同一行。 */
+	saveSceneArchive(input: NewSceneArchive): SceneArchive {
+		const normalised = assertNewSceneArchive(input);
+		const end = this.getNode(normalised.endNodeId);
+		if (!end) {
+			throw new Error(`楼层节点不存在：${normalised.endNodeId}`);
+		}
+		if (end.storyId !== normalised.storyId) {
+			throw new Error(
+				`场次归档的 storyId 与结束楼层所属故事不一致：${normalised.storyId}`,
+			);
+		}
+		if (end.role !== "assistant") {
+			throw new Error(`场次归档只能挂在助手楼层上：${normalised.endNodeId}`);
+		}
+		const start = this.getNode(normalised.startNodeId);
+		if (!start) {
+			throw new Error(`楼层节点不存在：${normalised.startNodeId}`);
+		}
+		if (start.storyId !== normalised.storyId) {
+			throw new Error(
+				`场次归档的起始楼层 ${normalised.startNodeId} 属于另一个故事`,
+			);
+		}
+		if (start.role !== "assistant") {
+			throw new Error(
+				`场次归档的起始楼层必须是助手楼层：${normalised.startNodeId}`,
+			);
+		}
+		if (
+			!this.getPathToNode(normalised.endNodeId).some(
+				(node) => node.id === normalised.startNodeId,
+			)
+		) {
+			throw new Error(
+				`场次归档的起始楼层 ${normalised.startNodeId} 不在结束楼层 ${normalised.endNodeId} 的路径上`,
+			);
+		}
+		const createdAt = input.createdAt ?? new Date().toISOString();
+		assertNonEmptyString(createdAt, "场次归档的创建时间");
+		this.#db
+			.prepare(
+				`INSERT INTO scene_archives
+					(end_node_id, story_id, start_node_id, floor_count, boundary,
+					 summary, present, state_changes, clues_opened, clues_closed,
+					 created_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				ON CONFLICT (end_node_id) DO UPDATE SET
+					start_node_id = excluded.start_node_id,
+					floor_count = excluded.floor_count,
+					boundary = excluded.boundary,
+					summary = excluded.summary,
+					present = excluded.present,
+					state_changes = excluded.state_changes,
+					clues_opened = excluded.clues_opened,
+					clues_closed = excluded.clues_closed,
+					created_at = excluded.created_at`,
+			)
+			.run(
+				normalised.endNodeId,
+				normalised.storyId,
+				normalised.startNodeId,
+				normalised.floorCount,
+				normalised.boundary,
+				normalised.summary,
+				JSON.stringify(normalised.present),
+				JSON.stringify(normalised.stateChanges),
+				JSON.stringify(normalised.cluesOpened),
+				JSON.stringify(normalised.cluesClosed),
+				createdAt,
+			);
+		return { ...normalised, createdAt };
+	}
+
+	/** 读取一场的归档；没有时返回 null。 */
+	getSceneArchive(endNodeId: string): SceneArchive | null {
+		if (!this.getNode(endNodeId)) {
+			throw new Error(`楼层节点不存在：${endNodeId}`);
+		}
+		const row = this.#db
+			.prepare("SELECT * FROM scene_archives WHERE end_node_id = ?")
+			.get(endNodeId) as SceneArchiveRow | undefined;
+		return row === undefined ? null : rowToSceneArchive(row);
 	}
 
 	/** 写入开局包；同一故事只保留一行，重复生成覆盖旧内容。 */

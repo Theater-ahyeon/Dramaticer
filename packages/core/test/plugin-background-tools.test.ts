@@ -133,6 +133,7 @@ describe("内置后台任务插件", () => {
 			"memory_revision",
 			"gap_pass",
 			"scene_log",
+			"scene_archive",
 			"opening",
 			"opening_candidates",
 			"visual_profile",
@@ -152,6 +153,7 @@ describe("内置后台任务插件", () => {
 			["memory_revision", "settled", "gap"],
 			["gap_pass", "settled", "gap"],
 			["scene_log", "settled", "gap"],
+			["scene_archive", "story", "gap"],
 			["opening", "story", "gap"],
 			["opening_candidates", "story", "gap"],
 			["visual_profile", "story", "gap"],
@@ -163,6 +165,7 @@ describe("内置后台任务插件", () => {
 			expect(registry.get(kind)).toMatchObject({ enqueue, tier });
 		}
 		expect(registry.get("opening")?.needsRun).toBeTypeOf("function");
+		expect(registry.get("scene_archive")?.needsRun).toBeTypeOf("function");
 		expect(registry.get("settle")?.needsRun).toBeUndefined();
 	});
 
@@ -173,6 +176,7 @@ describe("内置后台任务插件", () => {
 			gapPassEnabled: false,
 		});
 		expect(off).not.toContain("scene_log");
+		expect(off).not.toContain("scene_archive");
 		expect(off).not.toContain("gap_pass");
 		expect(off).toContain("settle");
 		const on = resolveStoryBackgroundKinds(registry, {
@@ -180,6 +184,7 @@ describe("内置后台任务插件", () => {
 			gapPassEnabled: true,
 		});
 		expect(on).toContain("scene_log");
+		expect(on).toContain("scene_archive");
 		expect(on).toContain("gap_pass");
 		expect(on).toHaveLength(registry.size);
 	});
