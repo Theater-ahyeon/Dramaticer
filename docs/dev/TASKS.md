@@ -1678,7 +1678,8 @@
   - `dramaticer explain` 输出当前路径的场次划分与每场归档状态。
   验收：边界判定与 12 楼上限各有用例；同一场次重跑不新增行；分支切换后场次划分与归档不跨分支；归档不写楼层原文；`pnpm check` 通过。
 
-- [ ] **W2-T03 场记对照的工具与假数据验收** | 依赖：W2-T02
+- [x] **W2-T03 场记对照的工具与假数据验收** | 依赖：W2-T02
+  完成：2026-11-14 新增 `evalset/scene-log-compare-batch.ts`（`readSceneLogSamples` 读固定楼层清单并校验故事、楼层与助手角色，`runSceneLogCompareBatch` 每个故事把源库复制两份到 `<dir>/runs/<故事>/` 再跑对照，`combineSceneLogCompare` 按故事直接相加交集与并集，`formatSceneLogCompareBatchReport` 写逐故事与逐楼层表、拒绝原因与失败）与 `evalset/scene-log-compare-cli.ts`（`--samples`、`--dir`、`--json`、`--report`、`--channels`、`--model`、`--cache`、`--window`、`--min-samples`；两边各用一个响应缓存，同一模型）；`SceneLogFloorComparison` 增加逐楼层 diff、引文命中、拒绝原因与请求数；样本不足按清单楼层与两边都完成结算的楼层两个口径标注并写进结果与报告；私有样本清单 `eval-private/reports/scene-log/samples.json` 由 3 个 legacy 源库按固定规则取 24 个助手楼层（只读源库）；副本目录名为「可打印前缀 + 故事 id 摘要」避免中文 id 退化后互相覆盖；新增 7 个假客户端测试
   做什么：
   - 把 `scene-log-compare` 做成 CLI，支持 `--dir`、`--samples`、`--json`、`--report`；样本来自 3 个 legacy 对话的固定楼层清单（只读源库，副本上运行），逐楼层记录两边 diff、引文命中、拒绝原因与成本。
   - 假客户端测试：两边各产出 diff 时一致率计算正确；单条非法只拒绝该条；样本不足时明确标注。

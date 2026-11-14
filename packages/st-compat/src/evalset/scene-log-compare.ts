@@ -83,9 +83,21 @@ export interface SceneLogCompareResult {
 }
 
 export interface SceneLogFloorComparison {
+	readonly storyId: string;
 	readonly nodeId: string;
 	readonly independentPaths: readonly string[];
 	readonly mergedPaths: readonly string[];
+	/** 两边写入的路径、操作与值，逐条一个 JSON 字符串。 */
+	readonly independentDiffs: readonly string[];
+	readonly mergedDiffs: readonly string[];
+	/** 逐条拒绝原因，格式为「动作:路径:原因」。 */
+	readonly independentRepairs: readonly string[];
+	readonly mergedRepairs: readonly string[];
+	/** 场记档在这个楼层提交与核验通过的引文；独立档没有引文。 */
+	readonly quotes: SceneLogQuoteAgreement;
+	/** 这个楼层两边各自发出的模型请求数。 */
+	readonly independentRequests: number;
+	readonly mergedRequests: number;
 }
 
 interface CountingClient {
@@ -148,12 +160,19 @@ export async function compareSceneLog(
 	} = { independent: [], merged: [] };
 	const independentViews: SettlementFloorView[] = [];
 	const mergedViews: SettlementFloorView[] = [];
+	const floorDetails: {
+		quotes: SceneLogQuoteAgreement;
+		independentRequests: number;
+		mergedRequests: number;
+	}[] = [];
 	let quoteSubmitted = 0;
 	let quoteVerified = 0;
 	let conditionsCompared = 0;
 	let conditionsAgree = 0;
 
 	for (const nodeId of options.nodeIds) {
+		const independentRequestsBefore = independent.requests;
+		const mergedRequestsBefore = merged.requests;
 		await runStep(failures.independent, nodeId, "settle", async () => {
 			const window = prepareSettlementForNodes(
 				options.independent,
@@ -212,6 +231,15 @@ export async function compareSceneLog(
 		independentViews.push(independentView);
 		mergedViews.push(mergedView);
 		const mergedLog = options.merged.getSceneLog(nodeId);
+		const floorQuotes = quoteAgreement(
+			mergedLog?.quotes.submitted ?? 0,
+			mergedLog?.quotes.verified ?? 0,
+		);
+		floorDetails.push({
+			quotes: floorQuotes,
+			independentRequests: independent.requests - independentRequestsBefore,
+			mergedRequests: merged.requests - mergedRequestsBefore,
+		});
 		if (mergedLog !== null) {
 			quoteSubmitted += mergedLog.quotes.submitted;
 			quoteVerified += mergedLog.quotes.verified;
@@ -240,23 +268,109 @@ export async function compareSceneLog(
 		),
 		merged: regimeStats("场记", mergedViews, merged.requests, failures.merged),
 		agreement: compareFloors(independentViews, mergedViews),
-		quotes: {
-			submitted: quoteSubmitted,
-			verified: quoteVerified,
-			rejected: quoteSubmitted - quoteVerified,
-			hitRate: quoteSubmitted === 0 ? null : quoteVerified / quoteSubmitted,
-		},
+		quotes: quoteAgreement(quoteSubmitted, quoteVerified),
 		conditions: {
 			compared: conditionsCompared,
 			agree: conditionsAgree,
 			agreement:
 				conditionsCompared === 0 ? null : conditionsAgree / conditionsCompared,
 		},
-		perFloor: options.nodeIds.map((nodeId, index) => ({
-			nodeId,
-			independentPaths: independentViews[index]?.paths ?? [],
-			mergedPaths: mergedViews[index]?.paths ?? [],
-		})),
+		perFloor: options.nodeIds.map((nodeId, index) => {
+			const independentView = independentViews[index];
+			const mergedView = mergedViews[index];
+			const detail = floorDetails[index];
+			return {
+				storyId: options.storyId,
+				nodeId,
+				independentPaths: independentView?.paths ?? [],
+				mergedPaths: mergedView?.paths ?? [],
+				independentDiffs: independentView?.facts ?? [],
+				mergedDiffs: mergedView?.facts ?? [],
+				independentRepairs: independentView?.repairs ?? [],
+				mergedRepairs: mergedView?.repairs ?? [],
+				quotes: detail?.quotes ?? quoteAgreement(0, 0),
+				independentRequests: detail?.independentRequests ?? 0,
+				mergedRequests: detail?.mergedRequests ?? 0,
+			};
+		}),
+	};
+}
+
+function quoteAgreement(
+	submitted: number,
+	verified: number,
+): SceneLogQuoteAgreement {
+	return {
+		submitted,
+		verified,
+		rejected: submitted - verified,
+		hitRate: submitted === 0 ? null : verified / submitted,
+	};
+}
+
+/**
+ * 把多个故事的结果加成一份：楼层互不重叠，所以交集与并集可以直接相加，
+ * 汇总后的比率按总和重算。
+ */
+export function combineSceneLogCompare(
+	results: readonly SceneLogCompareResult[],
+): {
+	readonly independent: SceneLogRegimeStats;
+	readonly merged: SceneLogRegimeStats;
+	readonly agreement: CompareAgreement;
+	readonly quotes: SceneLogQuoteAgreement;
+	readonly conditions: SceneLogConditionAgreement;
+} {
+	const total = (pick: (result: SceneLogCompareResult) => number): number =>
+		results.reduce((sum, result) => sum + pick(result), 0);
+	const pathIntersection = total((result) => result.agreement.pathIntersection);
+	const pathUnion = total((result) => result.agreement.pathUnion);
+	const factIntersection = total((result) => result.agreement.factIntersection);
+	const factUnion = total((result) => result.agreement.factUnion);
+	const quoteSubmitted = total((result) => result.quotes.submitted);
+	const quoteVerified = total((result) => result.quotes.verified);
+	const conditionsCompared = total((result) => result.conditions.compared);
+	const conditionsAgree = total((result) => result.conditions.agree);
+	return {
+		independent: {
+			label: "独立任务",
+			floors: total((result) => result.independent.floors),
+			processedFloors: total((result) => result.independent.processedFloors),
+			diffs: total((result) => result.independent.diffs),
+			repairs: total((result) => result.independent.repairs),
+			requests: total((result) => result.independent.requests),
+			failures: results.flatMap((result) => result.independent.failures),
+		},
+		merged: {
+			label: "场记",
+			floors: total((result) => result.merged.floors),
+			processedFloors: total((result) => result.merged.processedFloors),
+			diffs: total((result) => result.merged.diffs),
+			repairs: total((result) => result.merged.repairs),
+			requests: total((result) => result.merged.requests),
+			failures: results.flatMap((result) => result.merged.failures),
+		},
+		agreement: {
+			floors: total((result) => result.agreement.floors),
+			floorsBothSettled: total((result) => result.agreement.floorsBothSettled),
+			pathIntersection,
+			pathUnion,
+			pathAgreement: pathUnion === 0 ? null : pathIntersection / pathUnion,
+			factIntersection,
+			factUnion,
+			factAgreement: factUnion === 0 ? null : factIntersection / factUnion,
+			floorsIdentical: total((result) => result.agreement.floorsIdentical),
+			floorsOneSideEmpty: total(
+				(result) => result.agreement.floorsOneSideEmpty,
+			),
+		},
+		quotes: quoteAgreement(quoteSubmitted, quoteVerified),
+		conditions: {
+			compared: conditionsCompared,
+			agree: conditionsAgree,
+			agreement:
+				conditionsCompared === 0 ? null : conditionsAgree / conditionsCompared,
+		},
 	};
 }
 
@@ -292,9 +406,11 @@ function readFloorView(
 	const repairs = [
 		...(store.getLedgerSettlement(nodeId)?.repairs ?? []),
 		...(label === "merged" ? (store.getSceneLog(nodeId)?.repairs ?? []) : []),
-	].map(
-		(repair) => `${repair.action}:${repair.path.join(".")}:${repair.reason}`,
-	);
+	]
+		.filter((repair) => repair.action !== "fill")
+		.map(
+			(repair) => `${repair.action}:${repair.path.join(".")}:${repair.reason}`,
+		);
 	return {
 		nodeId,
 		settled: store.getLedgerSettlement(nodeId) !== null,
