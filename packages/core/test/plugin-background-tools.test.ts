@@ -24,16 +24,21 @@ const FAST_TOOL_NAMES = [
 	"lore_lookup",
 	"state_get",
 	"ledger_read",
+	"rule_check",
 ];
 
 const DEEP_TOOL_NAMES = [
-	...FAST_TOOL_NAMES,
+	"memory_search",
+	"lore_lookup",
+	"state_get",
+	"ledger_read",
 	"history_read",
 	"note_read",
 	"ledger_write",
 	"note_write",
 	"draft_write",
 	"commit_draft",
+	"rule_check",
 ];
 
 describe("内置工具插件", () => {
@@ -57,7 +62,7 @@ describe("内置工具插件", () => {
 		).toEqual(FAST_TOOL_NAMES);
 	});
 
-	it("快回合与深回合的工具名单、权限与定义与改动前一致", () => {
+	it("快回合与深回合的工具名单、权限与定义与注册表一致", () => {
 		expect(FAST_TURN_TOOLS.tools.map((tool) => tool.name)).toEqual(
 			FAST_TOOL_NAMES,
 		);

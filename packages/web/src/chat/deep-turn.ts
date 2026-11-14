@@ -18,6 +18,7 @@ export const DEEP_TURN_TOOL_OPTIONS: readonly {
 	{ value: "note_write", label: "记录手记……（note_write）" },
 	{ value: "draft_write", label: "整理草稿……（draft_write）" },
 	{ value: "commit_draft", label: "提交正文……（commit_draft）" },
+	{ value: "rule_check", label: "执行检定……（rule_check）" },
 ];
 
 export const DEEP_TURN_TOOL_NAMES: readonly string[] =

@@ -4,6 +4,7 @@ export * from "./draft-tools.js";
 export * from "./note-tools.js";
 export * from "./read-tools.js";
 export * from "./registry.js";
+export * from "./rule-tools.js";
 export * from "./write-tools.js";
 
 /** 快回合可用的工具：内置工具插件里开放给快回合的那些。 */

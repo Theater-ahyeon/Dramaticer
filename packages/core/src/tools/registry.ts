@@ -26,6 +26,11 @@ export interface DeepToolDefinition extends LlmToolDefinition {
 	 * 内置工具没有这个字段，按工具名走内置实现。
 	 */
 	readonly execute?: (args: JsonObject) => unknown;
+	/**
+	 * 只用在 `disabledTools` 里：模型调用这个未启用的工具时，
+	 * 拒绝原因随工具错误一起写进 Trace 与工具结果。
+	 */
+	readonly disabledReason?: string;
 }
 
 /** 执行工具前发给界面的进度事件。 */

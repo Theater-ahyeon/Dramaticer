@@ -7,6 +7,7 @@ import {
 	type ToolPhase,
 	createDeepToolRegistry,
 } from "../tools/registry.js";
+import { RULE_CHECK_TOOL } from "../tools/rule-tools.js";
 import { LEDGER_WRITE_TOOL } from "../tools/write-tools.js";
 import type { PluginDefinition, PluginKernel } from "./contracts.js";
 import { createStaticKernel } from "./static-kernel.js";
@@ -27,6 +28,7 @@ export const LEDGER_WRITE_TOOL_PLUGIN = "tool.ledger-write";
 export const NOTE_WRITE_TOOL_PLUGIN = "tool.note-write";
 export const DRAFT_WRITE_TOOL_PLUGIN = "tool.draft-write";
 export const COMMIT_DRAFT_TOOL_PLUGIN = "tool.commit-draft";
+export const RULE_CHECK_TOOL_PLUGIN = "tool.rule-check";
 
 function toolPlugin(
 	plugin: string,
@@ -87,6 +89,7 @@ export const TOOL_PLUGINS: readonly ToolPlugin[] = [
 	toolPlugin(NOTE_WRITE_TOOL_PLUGIN, NOTE_WRITE_TOOL, ["deep"]),
 	toolPlugin(DRAFT_WRITE_TOOL_PLUGIN, DRAFT_WRITE_TOOL, ["deep"]),
 	toolPlugin(COMMIT_DRAFT_TOOL_PLUGIN, COMMIT_DRAFT_TOOL, ["deep"]),
+	toolPlugin(RULE_CHECK_TOOL_PLUGIN, RULE_CHECK_TOOL, ["fast", "deep"]),
 ];
 
 /** 只装载内置工具的内核；工具注册表从这里读出。 */

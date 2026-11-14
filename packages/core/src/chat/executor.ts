@@ -36,6 +36,10 @@ import type {
 	ToolProgressEvent,
 } from "../tools/registry.js";
 import {
+	RULE_CHECK_TOOL_NAME,
+	executeRuleCheckTool,
+} from "../tools/rule-tools.js";
+import {
 	LEDGER_WRITE_TOOL_NAME,
 	executeLedgerWriteTool,
 } from "../tools/write-tools.js";
@@ -481,7 +485,10 @@ export async function runModelTurns(
 				}
 				if (definition === undefined) {
 					if (disabled !== undefined) {
-						const error = `工具未启用：${call.name}`;
+						const error =
+							disabled.disabledReason === undefined
+								? `工具未启用：${call.name}`
+								: `工具未启用：${call.name}（${disabled.disabledReason}）`;
 						const trace: ToolCallTrace = {
 							name: call.name,
 							ok: false,
@@ -722,6 +729,11 @@ async function runTool(
 					ok: outcome.ok,
 					error: outcome.error,
 				};
+			}
+			if (definition.name === RULE_CHECK_TOOL_NAME) {
+				const outcome = executeRuleCheckTool(args, context, proposed);
+				proposed.push(...outcome.accepted);
+				return { content: outcome.content, ok: true, error: null };
 			}
 			if (definition.name !== LEDGER_WRITE_TOOL_NAME) {
 				throw new Error(

@@ -56,6 +56,8 @@ import {
 	FAST_TURN_TOOLS,
 	NOTE_READ_TOOL_NAME,
 	NOTE_WRITE_TOOL_NAME,
+	RULE_CHECK_TOOL,
+	RULE_CHECK_TOOL_NAME,
 } from "../tools/index.js";
 import type {
 	DeepToolDefinition,
@@ -485,19 +487,34 @@ export async function generateAssistantTurn(
 		resolved.mode === "deep"
 			? writesLedger
 			: writesLedger && (functionCall || transport === "text");
+	const declaredRuleCount = writesLedger
+		? options.store.listStoryRules(options.storyId).length
+		: 0;
 	const readTools = exposeReadTools
-		? resolved.mode === "deep"
-			? selectDeepTurnTools(resolved.deep)
-			: FAST_TURN_TOOLS.tools
+		? (resolved.mode === "deep"
+				? selectDeepTurnTools(resolved.deep)
+				: FAST_TURN_TOOLS.tools
+			).filter(
+				(tool) => tool.name !== RULE_CHECK_TOOL_NAME || declaredRuleCount > 0,
+			)
 		: [];
 	const tools =
 		readTools.length === 0 && illustrateTool === null
 			? undefined
 			: [...readTools, ...(illustrateTool === null ? [] : [illustrateTool])];
-	const disabledTools =
-		illustrateTool === null && (tools !== undefined || transport === "text")
-			? [ILLUSTRATE_TOOL]
-			: undefined;
+	const advertiseDisabled = tools !== undefined || transport === "text";
+	const disabledTools = [
+		...(illustrateTool === null && advertiseDisabled ? [ILLUSTRATE_TOOL] : []),
+		...(advertiseDisabled && !(exposeReadTools && declaredRuleCount > 0)
+			? [
+					{
+						...RULE_CHECK_TOOL,
+						disabledReason:
+							declaredRuleCount === 0 ? "卡没有声明规则" : "本回合没有开放工具",
+					},
+				]
+			: []),
+	];
 	// 运行表只记录深回合；快回合保持现有 Trace 语义，不写运行行。
 	const runId =
 		resolved.mode === "deep"
