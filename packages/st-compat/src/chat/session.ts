@@ -61,6 +61,7 @@ export interface ImportedCardContent {
 	readonly events: EventPoolUpsertResult;
 	readonly npcAgendas: NpcAgendaUpsertResult;
 	readonly bits: { readonly replaced: number };
+	readonly rules: { readonly replaced: number };
 	readonly dependencies: CardDependencyReport;
 }
 
@@ -158,6 +159,7 @@ export function importCardContent(
 		events: extension.events,
 		npcAgendas: extension.npcAgendas,
 		bits: extension.bits,
+		rules: extension.rules,
 		dependencies: checkCardDependencies(
 			{
 				requires: cardExtension.requires,

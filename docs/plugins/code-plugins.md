@@ -46,7 +46,7 @@
 | `network` | `hosts` | 主机名、`host:port` 或 `*.example.com`；无端口时匹配任意端口，`*.example.com` 只匹配子域，不匹配裸域 |
 | `files` | `access`、`paths` | `read` 或 `read-write`；路径是插件目录内的相对路径，目录按前缀匹配，`.` 表示整个插件目录 |
 | `model` | `roles` | `writer`、`settler`、`planner`、`judge` 之一或多个 |
-| `ledger-write` | `namespaces` | `character`、`relation`、`item`、`scene`、`time`、`clue`、`knowledge`、`userWill`、`mvu` 之一或多个 |
+| `ledger-write` | `namespaces` | `character`、`relation`、`item`、`scene`、`time`、`clue`、`knowledge`、`userWill`、`mvu`、`rule` 之一或多个 |
 
 安装记录里保存用户授予的权限；运行时要求授予的权限是清单声明的子集。权限类别缺失、范围之外的主机与路径、只读权限下的写入、未声明的模型角色与台账命名空间都返回错误给插件，同时写一条 `denied` Trace；插件继续运行。
 

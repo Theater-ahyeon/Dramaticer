@@ -2,6 +2,7 @@ import type { LedgerFact, MemoryEvent, StateDiff } from "@dramaticer/core";
 import { describe, expect, it } from "vitest";
 import {
 	EVENT_PAGE_SIZE,
+	LEDGER_NAMESPACE_LABELS,
 	appendEventPage,
 	buildNamespaceSlices,
 	describeEventMeta,
@@ -95,6 +96,7 @@ describe("台账命名空间切分", () => {
 			"clue",
 			"knowledge",
 			"userWill",
+			"rule",
 			"mvu",
 		]);
 		const character = slices[0];
@@ -131,7 +133,9 @@ describe("台账命名空间切分", () => {
 			[fact(["alpha", "x"]), fact(["zeta", "value"])],
 			[diff(1, ["alpha", "x"]), diff(2, ["alpha", "y"])],
 		);
-		const extras = slices.slice(8).map((slice) => slice.namespace);
+		const extras = slices
+			.slice(LEDGER_NAMESPACE_LABELS.length)
+			.map((slice) => slice.namespace);
 		expect(extras).toEqual(["alpha", "zeta"]);
 	});
 });

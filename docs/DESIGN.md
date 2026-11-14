@@ -173,6 +173,7 @@ v4 起写入分为两层（ADR-0139）：**硬状态**只保留写下一楼必�
 | `knowledge.<知情者>.<条目 id>` | `{factId, text}`；`factId` 指向事件或线索，同一知情者对同一 `factId` 只写一次 |
 | `userWill.<id>` | `{kind, text, sourceNodeId, createdAt}`，`kind` 取 `preference`、`boundary`、`correction` |
 | `mvu.<原始变量路径…>` | 任意 JSON 值 |
+| `rule.<规则 id>.result` | `{roll, difficulty, success}`；d20 检定结果，`success` 必须等于 `roll >= difficulty` |
 
 `validateLedgerDiff` 校验命名空间、路径段、值类型与范围，错误信息带完整路径；`readLedger` 与前缀读取复用楼层快照缓存；`listLedgerEntities` 返回人物、关系与未兑现线索。导入 MVU 时把原始变量路径加上 `mvu` 前缀；没有 MVU 的卡不产生 `mvu` 命名空间。
 
@@ -654,6 +655,10 @@ v4 起写入分为两层（ADR-0139）：**硬状态**只保留写下一楼必�
 ### 20.3 规则层
 
 状态表、检定、资源扣减由程序执行，模型叙述结果。只把能确定计算的规则结构化，其余保留为文字约束；规则条目声明了检定与资源时，回合内按用途开放检定工具（§10.1）。规则执行的结果同样是台账写入，必须经过结算器校验与修复（I12）；规则只读卡里的声明，不执行卡里的任意脚本。
+
+结构化声明写在卡的 `extensions.dramaticer.rules`：每条有 `id`、用途 `label`、目标 `target`、d20 难度 `difficulty`（1 到 20）与可选的资源 `resource`（`path` 是卡变量的路径，执行时映射到 `mvu.<path>`，`cost` 是每次检定的正整数消耗）。程序掷 d20，点数大于等于难度算成功；资源不足、当前值不是数字或参数非法时直接失败并指出字段。资源余量写入 `mvu.<path>`，这次检定的结果写入 `rule.<id>.result`，值为 `{roll, difficulty, success}`，成功标记必须与点数和难度一致。声明只在导入卡时整批替换，重复导入不保留旧声明。
+
+世界书里生效类型为 `state` 的条目进入硬状态层：结算与合并调用的提示词带上这些条目的标题与正文（每条约 800 字、合计约 4,000 字封顶），变量由结算器按 `mvu.<变量路径>` 写入。这些条目不再进入世界书槽位的正文注入（升级模式）。
 
 ## 21. 故事蓝图（v4）
 

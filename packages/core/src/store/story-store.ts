@@ -180,6 +180,10 @@ import {
 	assertGapPassRejections,
 } from "../ledger/gap-pass.js";
 import {
+	type DramaticerRuleDeclaration,
+	parseDramaticerRuleDeclarations,
+} from "../ledger/rules.js";
+import {
 	type NewSceneArchive,
 	type SceneArchive,
 	assertNewSceneArchive,
@@ -862,6 +866,13 @@ interface DirectorBitRow {
 	readonly bit_id: string;
 	readonly payload: string;
 	readonly source: string;
+	readonly created_at: string;
+}
+
+interface StoryRuleRow {
+	readonly story_id: string;
+	readonly rule_id: string;
+	readonly payload: string;
 	readonly created_at: string;
 }
 
@@ -6367,6 +6378,67 @@ export class StoryStore {
 			}
 		})();
 		return bits.length;
+	}
+
+	/**
+	 * 整批替换故事里的规则声明；同一个故事只有一份声明，重复导入以最新卡为准。
+	 */
+	replaceStoryRules(input: {
+		readonly storyId: string;
+		readonly rules: readonly DramaticerRuleDeclaration[];
+		readonly createdAt?: string;
+	}): number {
+		assertNonEmptyString(input.storyId, "规则声明的 storyId");
+		if (!this.getStory(input.storyId)) {
+			throw new Error(`故事不存在：${input.storyId}`);
+		}
+		const rules = parseDramaticerRuleDeclarations(
+			input.rules,
+			`故事 ${input.storyId} 的规则声明`,
+		);
+		const createdAt = input.createdAt ?? new Date().toISOString();
+		assertNonEmptyString(createdAt, "规则声明的创建时间");
+		this.#db.transaction(() => {
+			this.#db
+				.prepare("DELETE FROM story_rules WHERE story_id = ?")
+				.run(input.storyId);
+			const insert = this.#db.prepare(
+				`INSERT INTO story_rules (story_id, rule_id, payload, created_at)
+				VALUES (?, ?, ?, ?)`,
+			);
+			for (const rule of rules) {
+				insert.run(
+					input.storyId,
+					rule.id,
+					serializeJsonValue(rule, `规则声明 ${rule.id}`),
+					createdAt,
+				);
+			}
+		})();
+		return rules.length;
+	}
+
+	/** 读出故事的规则声明，按导入顺序；没有声明时返回空数组。 */
+	listStoryRules(storyId: string): DramaticerRuleDeclaration[] {
+		assertNonEmptyString(storyId, "故事 id");
+		if (!this.getStory(storyId)) {
+			throw new Error(`故事不存在：${storyId}`);
+		}
+		const rows = this.#db
+			.prepare(
+				"SELECT * FROM story_rules WHERE story_id = ? ORDER BY rowid ASC",
+			)
+			.all(storyId) as StoryRuleRow[];
+		return parseDramaticerRuleDeclarations(
+			rows.map((row) => {
+				try {
+					return JSON.parse(row.payload) as unknown;
+				} catch {
+					throw new Error(`规则声明 ${row.rule_id} 的 payload 不是合法 JSON`);
+				}
+			}),
+			`故事 ${storyId} 的规则声明`,
+		);
 	}
 
 	/** 读出故事的全部剧情小品，按导入顺序；保存时已经过完整校验。 */

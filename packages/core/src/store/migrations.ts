@@ -1673,6 +1673,24 @@ export function buildMigrations(
 					DEFAULT 0 CHECK (memory IN (0, 1))`,
 			],
 		},
+		{
+			version: 57,
+			description: "规则层：卡声明的检定与资源扣减",
+			statements: [
+				`CREATE TABLE story_rules (
+					story_id TEXT NOT NULL REFERENCES stories(id),
+					rule_id TEXT NOT NULL CHECK (length(rule_id) > 0),
+					payload TEXT NOT NULL,
+					created_at TEXT NOT NULL,
+					PRIMARY KEY (story_id, rule_id)
+				) STRICT`,
+				`CREATE TRIGGER story_rules_identity_immutable
+				BEFORE UPDATE OF story_id, rule_id ON story_rules
+				BEGIN
+					SELECT RAISE(ABORT, '规则声明的故事与 id 不能修改');
+				END`,
+			],
+		},
 	];
 }
 

@@ -18,6 +18,7 @@ export const LEDGER_NAMESPACE_LABELS = [
 	{ namespace: "clue", label: "线索" },
 	{ namespace: "knowledge", label: "知情表" },
 	{ namespace: "userWill", label: "用户意志" },
+	{ namespace: "rule", label: "规则" },
 ] as const;
 
 /** 事件分页每页条数。 */

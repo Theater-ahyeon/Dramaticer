@@ -15,6 +15,7 @@ export const LEDGER_NAMESPACES = [
 	"knowledge",
 	"userWill",
 	"mvu",
+	"rule",
 ] as const;
 
 export type LedgerNamespace = (typeof LEDGER_NAMESPACES)[number];
@@ -141,6 +142,9 @@ export function validateLedgerDiff(diff: LedgerDiffInput): void {
 			return;
 		case "mvu":
 			validateMvu(path, rest);
+			return;
+		case "rule":
+			validateRule(path, rest, diff);
 			return;
 	}
 }
@@ -387,6 +391,52 @@ function validateUserWill(
 	requireObjectText(value, "text", label);
 	requireObjectText(value, "sourceNodeId", label);
 	requireObjectText(value, "createdAt", label);
+}
+
+function validateRule(
+	path: readonly string[],
+	rest: readonly string[],
+	diff: LedgerDiffInput,
+): void {
+	if (rest.length !== 2 || rest[1] !== "result") {
+		fail(path, "rule 的路径必须是 rule.<id>.result");
+	}
+	if (diff.op === "delete") return;
+	const value = diff.value;
+	if (typeof value !== "object" || value === null || Array.isArray(value)) {
+		fail(path, "result 必须是对象");
+	}
+	const record = value as Record<string, unknown>;
+	rejectUnknownKeys(
+		record,
+		["roll", "difficulty", "success"],
+		`台账路径 ${pathLabel(path)} 的 result`,
+	);
+	const roll = record.roll;
+	if (
+		typeof roll !== "number" ||
+		!Number.isInteger(roll) ||
+		roll < 1 ||
+		roll > 20
+	) {
+		fail(path, "result.roll 必须是 1 到 20 之间的整数");
+	}
+	const difficulty = record.difficulty;
+	if (
+		typeof difficulty !== "number" ||
+		!Number.isInteger(difficulty) ||
+		difficulty < 1 ||
+		difficulty > 20
+	) {
+		fail(path, "result.difficulty 必须是 1 到 20 之间的整数");
+	}
+	const success = record.success;
+	if (typeof success !== "boolean") {
+		fail(path, "result.success 必须是布尔值");
+	}
+	if (success !== roll >= difficulty) {
+		fail(path, "result.success 与 roll 和 difficulty 不一致");
+	}
 }
 
 function validateMvu(path: readonly string[], rest: readonly string[]): void {

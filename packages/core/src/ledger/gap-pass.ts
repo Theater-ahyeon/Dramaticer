@@ -30,8 +30,10 @@ import {
 	LEDGER_PATH_GUIDE,
 	type PrepareSettlementOptions,
 	SETTLEMENT_BEAT_PROMPT,
+	type SettlementStateDefinition,
 	type SettlementWindow,
 	applySettlementProposals,
+	formatStateDefinitions,
 	parseSettleResponse,
 	prepareSettlement,
 } from "./settle.js";
@@ -251,6 +253,7 @@ export function createGapPassHandler(
 					userWill: players.length > 0,
 					revision: players.length > 0,
 					events: eventWindow !== null,
+					stateDefinitions: window?.stateDefinitions ?? [],
 				}),
 			},
 			{ role: "user", content: buildUserContent(inputs) },
@@ -382,7 +385,12 @@ function applySegment(
  * 只把本楼层有的段落写进提示词：没有结算窗口就不提 settlement，没有事件
  * 窗口就不提 events，没有玩家消息就不提 userWill 与 revision。
  */
-function buildSystemPrompt(requested: GapPassRequestedSegments): string {
+function buildSystemPrompt(
+	requested: GapPassRequestedSegments & {
+		readonly stateDefinitions: readonly SettlementStateDefinition[];
+	},
+): string {
+	const stateLines = formatStateDefinitions(requested.stateDefinitions);
 	const shape = [
 		...(requested.settlement ? ['"settlement":[…]'] : []),
 		'"scene":"…"',
@@ -423,6 +431,12 @@ function buildSystemPrompt(requested: GapPassRequestedSegments): string {
 			: []),
 		"命名空间与路径：",
 		...LEDGER_PATH_GUIDE,
+		...(stateLines.length === 0
+			? []
+			: [
+					"卡定义的状态定义（变量与更新规则；变量写入走 mvu.<变量路径>）：",
+					...stateLines,
+				]),
 	].join("\n");
 }
 

@@ -238,6 +238,7 @@ describe("导入接口", () => {
 			events: { inserted: 1, updated: 0 },
 			npcAgendas: { inserted: 1, updated: 0 },
 			bits: { replaced: 0 },
+			rules: { replaced: 0 },
 			dependencies: { satisfied: true, issues: [] },
 		});
 		expect(running.store.listEntities("story-1")).toHaveLength(3);

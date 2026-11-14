@@ -1,6 +1,10 @@
 import { normalizeEntityName } from "../entity.js";
 import { assertPlainObject, rejectUnknownKeys } from "../json.js";
 import {
+	type DramaticerRuleDeclaration,
+	parseDramaticerRuleDeclarations,
+} from "../ledger/rules.js";
+import {
 	type DeclarativePlugin,
 	type DeclarativeRequirements,
 	parseDeclarativePlugins,
@@ -28,6 +32,8 @@ export interface DramaticerCardExtension {
 	readonly npcAgendas: readonly DramaticerNpcAgendaDefinition[];
 	/** 弧线、序列与节拍，字段与 `DirectorPlan` 相同。 */
 	readonly arcs: readonly DirectorArc[];
+	/** 卡声明的检定与资源扣减；没有声明时不开放检定工具。 */
+	readonly rules: readonly DramaticerRuleDeclaration[];
 	/** 卡片随附的声明式插件；导入时与依赖声明一起展示。 */
 	readonly plugins: readonly DeclarativePlugin[];
 	/** 缺少时导入流程必须提示安装的插件与玩法包。 */
@@ -41,6 +47,7 @@ const EMPTY_EXTENSION: DramaticerCardExtension = {
 	bits: [],
 	npcAgendas: [],
 	arcs: [],
+	rules: [],
 	plugins: [],
 	requires: { plugins: [], playpacks: [] },
 	recommends: { plugins: [], playpacks: [] },
@@ -64,6 +71,7 @@ export function parseDramaticerCardExtension(
 			"bits",
 			"npcAgendas",
 			"arcs",
+			"rules",
 			"plugins",
 			"requires",
 			"recommends",
@@ -88,6 +96,10 @@ export function parseDramaticerCardExtension(
 		{ arcs: root.arcs ?? [] },
 		"extensions.dramaticer",
 	);
+	const rules = parseDramaticerRuleDeclarations(
+		root.rules,
+		"extensions.dramaticer.rules",
+	);
 	const plugins = parseDeclarativePlugins(
 		root.plugins,
 		"extensions.dramaticer.plugins",
@@ -105,6 +117,7 @@ export function parseDramaticerCardExtension(
 		bits,
 		npcAgendas,
 		arcs,
+		rules,
 		plugins,
 		requires,
 		recommends,

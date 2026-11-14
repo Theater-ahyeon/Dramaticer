@@ -82,6 +82,8 @@ export interface ImportStoryCounts {
 	readonly npcAgendas: { readonly inserted: number; readonly updated: number };
 	/** 卡片随附的剧情小品；重复导入时整批替换。 */
 	readonly bits: { readonly replaced: number };
+	/** 卡片声明的检定与资源扣减；重复导入时整批替换。 */
+	readonly rules: { readonly replaced: number };
 	/** 卡片声明的依赖核对结果；全部满足时 `issues` 为空。 */
 	readonly dependencies: CardDependencyReport;
 }

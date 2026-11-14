@@ -687,6 +687,7 @@ async function handleImport(
 			events: imported.events,
 			npcAgendas: imported.npcAgendas,
 			bits: imported.bits,
+			rules: imported.rules,
 			dependencies: imported.dependencies,
 		},
 	};

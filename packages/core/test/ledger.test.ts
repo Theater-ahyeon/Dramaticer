@@ -92,13 +92,18 @@ const validDiffs: readonly RawDiff[] = [
 			createdAt: "2026-11-07",
 		},
 	},
+	{
+		path: ["rule", "sword", "result"],
+		op: "set",
+		value: { roll: 12, difficulty: 10, success: true },
+	},
 	{ path: ["mvu", "stat_data", "hp"], op: "set", value: 100 },
 	{ path: ["mvu", "stat_data", "mood"], op: "set", value: "平静" },
 	{ path: ["mvu", "stat_data", "mood"], op: "delete" },
 ];
 
 describe("validateLedgerDiff", () => {
-	it("九个命名空间各有一条通过校验的 diff", () => {
+	it("十个命名空间各有一条通过校验的 diff", () => {
 		const covered = new Set(validDiffs.map((diff) => diff.path[0]));
 		expect([...covered].sort()).toEqual([...LEDGER_NAMESPACES].sort());
 		for (const diff of validDiffs) {
@@ -106,7 +111,7 @@ describe("validateLedgerDiff", () => {
 		}
 	});
 
-	it("九类事实都能带 storyTime 与 source", () => {
+	it("十类事实都能带 storyTime 与 source", () => {
 		for (const diff of validDiffs) {
 			expect(() =>
 				validateLedgerDiff({

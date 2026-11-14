@@ -103,16 +103,61 @@ const BASE_SYSTEM_PROMPT = [
 	"- 要写的事实如果与“冲突检查窗口”的原文明确矛盾，不要写进 diffs，写进同一楼层的 conflicts；conflicts 只写 path 与 reason，不写值。已有事实与最近原文一致时保留已有值。",
 ];
 
+/** 卡定义的状态表：只把标题与正文送进结算提示词，正文过长时截断。 */
+export interface SettlementStateDefinition {
+	readonly title: string;
+	readonly content: string;
+}
+
+export const STATE_DEFINITION_ENTRY_CHAR_LIMIT = 800;
+export const STATE_DEFINITION_TOTAL_CHAR_LIMIT = 4_000;
+
+/** 拼出状态定义段；条目为空时返回空数组，调用方决定是否加这段。 */
+export function formatStateDefinitions(
+	definitions: readonly SettlementStateDefinition[],
+): string[] {
+	const lines: string[] = [];
+	let used = 0;
+	let omitted = false;
+	for (const definition of definitions) {
+		if (used >= STATE_DEFINITION_TOTAL_CHAR_LIMIT) {
+			omitted = true;
+			break;
+		}
+		const title = definition.title.trim() || "未命名条目";
+		const remaining = STATE_DEFINITION_TOTAL_CHAR_LIMIT - used;
+		const limit = Math.min(STATE_DEFINITION_ENTRY_CHAR_LIMIT, remaining);
+		const content = definition.content.trim();
+		const clipped = content.length > limit;
+		const text = clipped ? `${content.slice(0, limit)}…` : content;
+		lines.push(`【${title}】${text}`);
+		used += text.length;
+		if (clipped) omitted = true;
+	}
+	if (omitted) lines.push("（其余状态定义已省略）");
+	return lines;
+}
+
 /** 存在当前拍时才出现的说明：完成判断是可选的，不要求模型每层都回答。 */
 export const SETTLEMENT_BEAT_PROMPT =
 	"- 楼层里给出“当前拍”时，如果你确信这一层的正文让该拍完成，可以把这一项的 beatCompleted 设为 true；没有完成、判断不了或者与这一层无关，就省略这个字段，不要为了填满字段而猜测。";
 
-function buildSettlementSystemPrompt(hasBeats: boolean): string {
+function buildSettlementSystemPrompt(
+	hasBeats: boolean,
+	stateDefinitions: readonly SettlementStateDefinition[],
+): string {
+	const stateLines = formatStateDefinitions(stateDefinitions);
 	return [
 		...BASE_SYSTEM_PROMPT,
 		...(hasBeats ? [SETTLEMENT_BEAT_PROMPT] : []),
 		"命名空间与路径：",
 		...LEDGER_PATH_GUIDE,
+		...(stateLines.length === 0
+			? []
+			: [
+					"卡定义的状态定义（变量与更新规则；变量写入走 mvu.<变量路径>）：",
+					...stateLines,
+				]),
 	].join("\n");
 }
 
@@ -213,6 +258,8 @@ export interface SettlementWindow {
 	readonly conflictWindow: readonly TimelineNode[];
 	/** 每个楼层对应的当前拍；没有计划或拍已耗尽时为 null。 */
 	readonly beats: readonly WindowBeat[] | null;
+	/** 卡定义的状态定义条目；结算器据此维护硬状态。 */
+	readonly stateDefinitions: readonly SettlementStateDefinition[];
 }
 
 /**
@@ -257,7 +304,19 @@ export function prepareSettlementForNodes(
 		conflictWindowFloors,
 	);
 	const beats = readWindowBeats(store, storyId, floors);
-	return { storyId, nodeIds, floors, snapshot, conflictWindow, beats };
+	const stateDefinitions = store
+		.listImportAuditEntries(storyId)
+		.filter((entry) => entry.kind === "state")
+		.map((entry) => ({ title: entry.title, content: entry.content }));
+	return {
+		storyId,
+		nodeIds,
+		floors,
+		snapshot,
+		conflictWindow,
+		beats,
+		stateDefinitions,
+	};
 }
 
 /** 结算请求的消息；合并调用自己组装提示词，但复用同一份窗口数据。 */
@@ -266,7 +325,10 @@ export function buildSettlementMessages(
 ): LlmMessage[] {
 	const hasBeats = window.beats !== null;
 	return [
-		{ role: "system", content: buildSettlementSystemPrompt(hasBeats) },
+		{
+			role: "system",
+			content: buildSettlementSystemPrompt(hasBeats, window.stateDefinitions),
+		},
 		{
 			role: "user",
 			content: buildUserContent(

@@ -8,6 +8,7 @@ describe("extensions.dramaticer 解析", () => {
 			bits: [],
 			npcAgendas: [],
 			arcs: [],
+			rules: [],
 			plugins: [],
 			requires: { plugins: [], playpacks: [] },
 			recommends: { plugins: [], playpacks: [] },

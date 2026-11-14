@@ -22,6 +22,7 @@ export interface DramaticerExtensionImportResult {
 	readonly events: EventPoolUpsertResult;
 	readonly npcAgendas: NpcAgendaUpsertResult;
 	readonly bits: { readonly replaced: number };
+	readonly rules: { readonly replaced: number };
 	readonly arcs: DirectorPlanMergeResult;
 }
 
@@ -91,6 +92,12 @@ export function importDramaticerExtension(
 				storyId,
 				bits: extension.bits,
 				source,
+			}),
+		},
+		rules: {
+			replaced: store.replaceStoryRules({
+				storyId,
+				rules: extension.rules,
 			}),
 		},
 		arcs: mergePlannedArcs(store, storyId, { arcs: extension.arcs }, "import"),

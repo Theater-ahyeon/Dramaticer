@@ -38,7 +38,7 @@
 
 ### `ledger-schema` 台账字段
 
-- `namespace` 取九个台账命名空间之一：`character`、`relation`、`item`、`scene`、`time`、`clue`、`knowledge`、`userWill`、`mvu`。
+- `namespace` 取十个台账命名空间之一：`character`、`relation`、`item`、`scene`、`time`、`clue`、`knowledge`、`userWill`、`mvu`、`rule`。
 - `fields` 必须是非空数组；`path` 是相对命名空间的非空字符串数组，空白路径段与重复路径都拒绝。
 
 | 字段类型 | 允许的约束 |

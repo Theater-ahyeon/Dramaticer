@@ -67,6 +67,7 @@ describe("extensions.dramaticer 导入", () => {
 			events: { inserted: 2, updated: 0 },
 			npcAgendas: { inserted: 1, updated: 0 },
 			bits: { replaced: 0 },
+			rules: { replaced: 0 },
 			arcs: { inserted: 0, updated: 0, skipped: 0 },
 		});
 
@@ -170,6 +171,7 @@ describe("extensions.dramaticer 导入", () => {
 			events: { inserted: 0, updated: 2 },
 			npcAgendas: { inserted: 0, updated: 1 },
 			bits: { replaced: 0 },
+			rules: { replaced: 0 },
 			arcs: { inserted: 0, updated: 0, skipped: 0 },
 		});
 
@@ -192,6 +194,7 @@ describe("extensions.dramaticer 导入", () => {
 			events: { inserted: 0, updated: 0 },
 			npcAgendas: { inserted: 0, updated: 0 },
 			bits: { replaced: 0 },
+			rules: { replaced: 0 },
 			arcs: { inserted: 0, updated: 0, skipped: 0 },
 		});
 		expect(store.listEventPool("s1")).toEqual([]);
@@ -362,5 +365,60 @@ describe("extensions.dramaticer 弧线导入", () => {
 		});
 		expect(result.arcs).toEqual({ inserted: 0, updated: 0, skipped: 0 });
 		expect(readDirectorPlan(store, "s1")).toEqual({ arcs: [] });
+	});
+
+	it("规则声明写入存储，重复导入整批替换", () => {
+		const first = parseCharacterCardJson(
+			cardJson({
+				rules: [
+					{
+						id: "sword",
+						label: "剑术检定",
+						target: "剑术",
+						difficulty: 12,
+						resource: { path: ["真气"], cost: 3 },
+					},
+				],
+			}),
+		);
+		importCharacterCardEntity(store, "s1", first);
+		expect(importDramaticerExtension(store, "s1", first).rules).toEqual({
+			replaced: 1,
+		});
+		expect(store.listStoryRules("s1")).toEqual([
+			{
+				id: "sword",
+				label: "剑术检定",
+				target: "剑术",
+				difficulty: 12,
+				resource: { path: ["真气"], cost: 3 },
+			},
+		]);
+
+		const second = parseCharacterCardJson(
+			cardJson({
+				rules: [
+					{
+						id: "bow",
+						label: "弓术检定",
+						target: "弓术",
+						difficulty: 15,
+					},
+				],
+			}),
+		);
+		importCharacterCardEntity(store, "s1", second);
+		expect(importDramaticerExtension(store, "s1", second).rules).toEqual({
+			replaced: 1,
+		});
+		expect(store.listStoryRules("s1")).toEqual([
+			{
+				id: "bow",
+				label: "弓术检定",
+				target: "弓术",
+				difficulty: 15,
+				resource: null,
+			},
+		]);
 	});
 });
