@@ -72,6 +72,7 @@ describe("故事设置", () => {
 			imageConfig: DEFAULT_IMAGE_CONFIG,
 			pluginOverrides: { config: {}, switches: {} },
 			worldModel: "ledger",
+			importMode: "upgrade",
 			updatedAt: createdAt,
 		});
 		close();
@@ -109,6 +110,7 @@ describe("故事设置", () => {
 			gapPassEnabled: true,
 			sceneLogEnabled: true,
 			gapPlanSeconds: 90,
+			importMode: "raw",
 		});
 		store.updateStorySettings("s1", { temperature: 0.1 });
 		close();
@@ -143,6 +145,7 @@ describe("故事设置", () => {
 				gapPassEnabled: true,
 				sceneLogEnabled: true,
 				gapPlanSeconds: 90,
+				importMode: "raw",
 			});
 		} finally {
 			reopened.close();
@@ -310,6 +313,7 @@ describe("故事设置", () => {
 			],
 			[{ historyBlockPolicy: { mode: "huge" } as never }, "historyBlockPolicy"],
 			[{ directorOrganization: "scripts" as never }, "directorOrganization"],
+			[{ importMode: "legacy" as never }, "importMode"],
 			[{ gapPassEnabled: "yes" as never }, "gapPassEnabled"],
 			[{ sceneLogEnabled: "yes" as never }, "sceneLogEnabled"],
 			[{ gapPlanSeconds: -1 }, "gapPlanSeconds"],

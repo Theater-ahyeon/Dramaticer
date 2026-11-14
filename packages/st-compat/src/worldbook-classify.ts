@@ -1,33 +1,12 @@
+import { IMPORT_ENTRY_KINDS, type ImportEntryKind } from "@dramaticer/core";
 import type { StWorldInfoEntry } from "./world-info.js";
 
 /** 世界书条目按运行时行为分型的结果（DESIGN §20.1）。 */
-export type WorldbookEntryKind =
-	| "common"
-	| "entity"
-	| "rule"
-	| "state"
-	| "conditional"
-	| "event"
-	| "writing"
-	| "presentation"
-	| "options"
-	| "plugin-residue"
-	| "unknown";
+export type WorldbookEntryKind = ImportEntryKind;
 
 /** 类型的固定顺序；输出的条目与计数字段都按这个顺序排列。 */
-export const WORLDBOOK_ENTRY_KINDS: readonly WorldbookEntryKind[] = [
-	"common",
-	"entity",
-	"rule",
-	"state",
-	"conditional",
-	"event",
-	"writing",
-	"presentation",
-	"options",
-	"plugin-residue",
-	"unknown",
-];
+export const WORLDBOOK_ENTRY_KINDS: readonly WorldbookEntryKind[] =
+	IMPORT_ENTRY_KINDS;
 
 export interface WorldbookEntryMatch {
 	readonly kind: WorldbookEntryKind;

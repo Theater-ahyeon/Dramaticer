@@ -3,50 +3,46 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-14 会话 400：完成 W3-T01（世界书条目分型器）。会话 399 写完了实现与测试后崩溃、没有交接，代码由 autosave 提交；本会话核对了实现，跑了 6 个目标测试与整仓门禁，并用沙箱的真实世界书统计分型结果，确认无需改动。`packages/st-compat/src/worldbook-classify.ts`：`classifyWorldbookEntries` 按 27 条标题与内容规则把条目分入十类，规则 id 记为依据；无命中走 `fallbackMatch`（空内容、等于标题或键、名字清单、短常驻条目、带键短描述），再没有就记 `unknown`；一个条目可命中多类，`mixed` 标记混合条目，原文不拆不改。`WorldbookClassification.counts` 是每类命中数（可重复计入，之和不等于条目数）。fixture `test/fixtures/worldbook-classify.json` 13 条覆盖十类、未知与一条三类混合条目；测试 `test/worldbook-classify.test.ts` 6 个。
-- 2026-11-14 会话 399：W3-T01 的实现、fixture 与测试写完并 autosave，之后会话中断（NO_RESULT），没有交接。
-- 2026-11-14 会话 398：完成 W2-T03（场记对照 CLI）。`evalset/scene-log-compare.ts` 的逐楼层结果增加 `storyId`、两边 diff（路径、操作与值）、拒绝原因（`fill` 以外的修复）、场记引文命中与两边请求数，新增 `combineSceneLogCompare` 把多个故事的交集与并集直接相加。新增 `evalset/scene-log-compare-batch.ts`：`readSceneLogSamples` 读固定楼层清单（`sourceDb` 相对样本文件解析；故事重复、楼层重复、楼层不存在或不是助手楼层都直接失败），`runSceneLogCompareBatch` 每个故事把源库复制到 `<dir>/runs/<故事>/independent.db` 与 `merged.db`（副本每次重建，源库只读），再逐楼层跑独立任务与场记；`formatSceneLogCompareBatchReport` 写总览、逐故事表、逐楼层表（两边 diff 数、请求数、引文核验/提交、修复数）、拒绝原因清单与失败。新增 `evalset/scene-log-compare-cli.ts` 与 `scene-log-compare` 脚本：`--samples`、`--dir`、`--json`、`--report`、`--channels`、`--model`、`--cache`、`--window`、`--min-samples`；两边同一个模型、各用一个响应缓存目录。样本不足按两个口径标注：清单总楼层少于下限，或两边都完成结算的楼层少于下限；标记写进结果 JSON 与报告的「样本判定」。私有固定楼层清单 `eval-private/reports/scene-log/samples.json`（24 个楼层 ≥ 20）。
-- 门禁通过：269 个测试文件、2,338 个测试、5 个跳过（约 122 秒）。本会话没有新增测试与迁移。
+- 2026-11-14 会话 401：完成 W3-T02.a（分型结果持久化与导入模式字段）。core 新增 `packages/core/src/memory/import-audit.ts`：`IMPORT_ENTRY_KINDS` 固定十类加 `unknown` 的顺序（分型器改为引用它），`IMPORT_ENTRY_KIND_SOURCES` 为 `rule`/`model`/`player`，`assertImportEntryMatches` 校验命中类型不重复、`unknown` 不与其他类型并列。迁移 v55 新建 `import_audit_entries`（`story_id` + `source` 主键，标题、正文、命中类型 JSON、`rule_primary`、`kind`、`kind_source`、`constant`、创建与更新时间）并给 `story_settings` 加 `import_mode`（`upgrade`/`raw`，默认 `upgrade`）。store 新增 `saveImportAuditEntries`（重复导入更新正文与规则判定，`rule` 来源的类型跟随新规则，`player` 与 `model` 保持不变）、`listImportAuditEntries`、`setImportAuditEntryKind`（`rule` 表示回到规则判定，类型必须等于 `rulePrimary`）。`importWorldInfoLore` 在 lore 写入后为全部条目（含停用、没有名称与空内容）写审计行，来源与 lore 条目一致；新增 `packages/st-compat/src/import-audit.ts` 的 `buildWorldbookAuditEntries`。故事设置 `importMode` 已接进 store、设置接口与助手动作的字段白名单。测试：core `import-audit.test.ts` 4 个、st-compat `import-audit.test.ts` 3 个，fixture `test/fixtures/worldbook-audit.json` 5 条（含停用条目）。门禁通过（271 个测试文件、2,345 个测试、5 个跳过，约 120 秒）。
+- 2026-11-14 会话 400：完成 W3-T01（世界书条目分型器）。`packages/st-compat/src/worldbook-classify.ts`：`classifyWorldbookEntries` 按 27 条标题与内容规则把条目分入十类，规则 id 记为依据；无命中走 `fallbackMatch`（空内容、等于标题或键、名字清单、短常驻条目、带键短描述），再没有就记 `unknown`；一个条目可命中多类，`mixed` 标记混合条目，原文不拆不改。沙箱 80 本世界书加 63 张内嵌世界书的卡共 13,757 条：未识别 19.5%，主体是 YAML 式章节回顾与文风指南。
+- 2026-11-14 会话 398：完成 W2-T03（场记对照 CLI）：`evalset/scene-log-compare-batch.ts` 按固定楼层清单复制源库、逐楼层跑独立任务与场记，两边同一个模型、各用一个响应缓存目录；`scene-log-compare` 脚本支持 `--samples`、`--dir`、`--json`、`--report`、`--channels`、`--model`、`--cache`、`--window`、`--min-samples`。
+- 门禁通过：271 个测试文件、2,345 个测试、5 个跳过（约 120 秒）。本会话新增 2 个测试文件、迁移 v55。
 
-## 下一步（会话 401 先做）
-1. **W3-T02 导入体检与升级向导**（依赖 W3-T01、W0-T01，均已满足）：导入结果保存 `classifyWorldbookEntries` 的分型结果、各类型条数、未识别条目、作者选项与插件残留条目；后台模型可以给拿不准的条目建议类型，来源标为 `model`，玩家可改。server 提供体检数据接口与逐类调整接口；web 新增导入体检页（原型 `data-view="import"` 的结构）；故事设置新增 `importMode`（`upgrade`、`raw`），原样模式走兼容插件路径。体检页显示每轮常驻 token 的前后估算（按条目分型后的注入集合计算，不调用模型），插件残留条目可一键转成初始记忆。要写 e2e。
-2. 之后 **W3-T03**（规则执行层）→ **W4-T01 至 W4-T03** → R6 段：**R6-T07.b**（重 roll 点回放批次）、**R6-T07.c**（遗忘漏斗）、**R6-T07.d**（门槛判定 CLI）→ **R6-T99**；**R6-T06** 与 W2-T04 同样被 HUMAN-19 阻塞。
-3. **W2-T04** 继续被 HUMAN-19 阻塞（`bg` 渠道额度 2026-11-17T11:44:35Z 重置）。额度恢复后用它跑真实对照：`pnpm --filter @dramaticer/st-compat scene-log-compare`（默认读 `eval-private/reports/scene-log/samples.json`，24 个楼层 ≥ 20）。不达标时保留独立任务并写 ADR。
-4. R6 段之后继续 **W5-T01、W5-T02** → **W6-T01 至 W6-T03** → **W7-T01 至 W7-T03** → **W8-T01、W8-T02** → **W9-T01 至 W9-T99**。
-5. R6-T07.b 的实现要点（旧交接保留）：
+## 下一步（会话 402 先做）
+1. **W3-T02.b 体检数据与调整接口**（依赖 W3-T02.a，已满足）：server 提供体检数据接口（各类型条数、未识别条目、作者选项、插件残留条目、每轮常驻 token 前后估算）与逐条调整接口（玩家 `player`、后台模型建议 `model`，建议在间隙执行）。token 前后估算按分型后的注入集合计算（`before` 是 `constant` 条目的全文；`after` 是 `common` 全文加 `entity` 的标题与关键词索引），用 core 的 `createTokenEstimator`，不调用模型、不落盘。
+2. 之后 **W3-T02.c**（导入体检页，原型 `data-view="import"` 的结构）→ **W3-T02.d**（原样模式接 `createStWorldInfoProviders`、`importMode` 切换、插件残留一键转初始记忆、e2e）→ **W3-T03**（规则执行层）→ **W4-T01 至 W4-T03**。
+3. R6 段：**R6-T07.b**（重 roll 点回放批次）、**R6-T07.c**（遗忘漏斗）、**R6-T07.d**（门槛判定 CLI）→ **R6-T99**；**R6-T06** 与 W2-T04 同样被 HUMAN-19 阻塞（`bg` 渠道额度 2026-11-17T11:44:35Z 重置）。
+4. **W2-T04** 继续被 HUMAN-19 阻塞。额度恢复后用它跑真实对照：`pnpm --filter @dramaticer/st-compat scene-log-compare`（默认读 `eval-private/reports/scene-log/samples.json`，24 个楼层 ≥ 20）。不达标时保留独立任务并写 ADR。
+5. R6 段之后继续 **W5-T01、W5-T02** → **W6-T01 至 W6-T03** → **W7-T01 至 W7-T03** → **W8-T01、W8-T02** → **W9-T01 至 W9-T99**。
+6. R6-T07.b 的实现要点（旧交接保留）：
    - 新增 `evalset/r6-replay.ts` 与 CLI：从 `eval-private/world-model-compare/source/<slug>.db` 规划重 roll 点（`xianxia` 24、`yuwang` 8、`yinqi` 11），被接受的是 head 路径上的助手兄弟楼层（43 个点都是最大 swipe 下标），放弃侧取下标紧邻其下的那条，另有 5 条更早的放弃 swipe 只报告。
    - 每个点复制数据库、head 移到父玩家楼层、预热 12 楼，先按种子 1 生成一次原生续写（同时是 G1 的续写与 A/A 的第一次生成），再按种子 2 生成一次（只用于 A/A）；同一请求体只差种子，会命中响应缓存（ADR-0136）。
-   - 每次生成后写 A/A 样本 JSONL（格式见下面「注意事项」），再调用 `runR6AaInstrument`（`dir` 用自己的运行目录）得到 G0 的 A/A 侧；G1 的两组配对（对放弃侧、对接受侧）各两种顺序判一次，汇总产出 `R6ReplayGateInput`。
+   - 每次生成后写 A/A 样本 JSONL，再调用 `runR6AaInstrument`（`dir` 用自己的运行目录）得到 G0 的 A/A 侧；G1 的两组配对（对放弃侧、对接受侧）各两种顺序判一次，汇总产出 `R6ReplayGateInput`。
    - sidecar 校验故事、分支点、玩家消息、swipe 下标、模型与种子；`done` 复用，`running` 与 `failed` 续跑；失败样本单独计数。
-6. 阻塞检查：M6-T99 仍等 HUMAN-15；HUMAN-03、HUMAN-16、HUMAN-17、HUMAN-18、HUMAN-20、HUMAN-21 不阻塞；HUMAN-19 阻塞 R6-T06、R6-T99 与 W2-T04。
+7. 阻塞检查：M6-T99 仍等 HUMAN-15；HUMAN-03、HUMAN-16、HUMAN-17、HUMAN-18、HUMAN-20、HUMAN-21 不阻塞；HUMAN-19 阻塞 R6-T06、R6-T99、W2-T04。
 
 ## 当前状态
-- 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1–P4、C-T01 至 C-T05、H-T00 至 H-T99、X1.a 至 X1.e、X2.a 至 X2.d、R6-T00 至 R6-T05、R6-T07、R6-T07.a、W0-T00、W0-T01、W1-T01、W2-T01、W2-T02、W2-T03、W3-T01。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- 设计版本 v0.4（ADR-0139）。W 阶段任务顺序：W0（完成）→ W1（完成）→ W2（T01–T03 完成，T04 被阻塞）→ W3（T01 完成）→ W4 → R6 段（T07.b、T07.c、T07.d、T99）→ W5 → W6 → W7 → W8 → W9。
-- 数据库 schema 版本 54（v51 `story_media`、v52 `story_settings.contextLayout`、v53 `scene_logs` 与 `story_settings.scene_log_enabled`、v54 `scene_archives`）。本会话没有迁移。
-- 世界书分型：`classifyWorldbookEntries(entries)` 只读 `StWorldInfoEntry`（`comment` 当标题、`content`、`keys`、`constant`、`sourceKey`），返回 `{entries, counts}`；每条有 `matches[{kind, rules}]`、`primaryKind`、`mixed`。`primaryKind` 取 `WORLDBOOK_ENTRY_KINDS` 顺序里第一个命中类型（common 最前，unknown 最后）。沙箱 80 本世界书加 63 张内嵌世界书的卡共 13,757 条：未识别 2,684（19.5%）、混合 3,450（25.1%）；实体 45.2%、规则 16.6%、条件内容 17.2%；未识别的主体是 YAML 式章节回顾与文风指南。
+- 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1–P4、C-T01 至 C-T05、H-T00 至 H-T99、X1.a 至 X1.e、X2.a 至 X2.d、R6-T00 至 R6-T05、R6-T07、R6-T07.a、W0-T00、W0-T01、W1-T01、W2-T01、W2-T02、W2-T03、W3-T01、W3-T02.a。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 设计版本 v0.4（ADR-0139）。W 阶段任务顺序：W0（完成）→ W1（完成）→ W2（T01–T03 完成，T04 被阻塞）→ W3（T01、T02.a 完成，T02 拆成 `.a`–`.d`）→ W4 → R6 段（T07.b、T07.c、T07.d、T99）→ W5 → W6 → W7 → W8 → W9。
+- 数据库 schema 版本 55（v51 `story_media`、v52 `story_settings.contextLayout`、v53 `scene_logs` 与 `scene_log_enabled`、v54 `scene_archives`、v55 `import_audit_entries` 与 `story_settings.import_mode`）。
+- 导入审计：`import_audit_entries` 每条对应一个世界书条目（含停用与空内容），主键 `(story_id, source)`，与 `lore_entries.source` 同构（`<前缀>:<世界书名称>:<条目键>`）；`matches` 存分型器给的规则命中，`rule_primary` 是规则首要类型，`kind` 是生效类型，`kind_source` 为 `rule`/`model`/`player`。重复导入只更新标题、正文、规则判定与 `constant`；只有 `kind_source = rule` 的 `kind` 跟着新规则变。
+- 世界书分型：`classifyWorldbookEntries(entries)` 只读 `StWorldInfoEntry`，返回 `{entries, counts}`；每条有 `matches[{kind, rules}]`、`primaryKind`、`mixed`。`primaryKind` 取 `IMPORT_ENTRY_KINDS` 顺序里第一个命中类型（`common` 最前，`unknown` 最后）。`WORLDBOOK_ENTRY_KINDS` 现在直接引用 core 的 `IMPORT_ENTRY_KINDS`。
 - 场记：`scene_log` 默认关闭（`sceneLogEnabled`）；打开后与结算、现场分析、用户意志、小品条件并行运行，尚未替换它们（W2-T04 按对照结论切换）。`scene_logs` 一行一个助手楼层，`states` 存引文已核对的提案，`quotes` 记提交/核验数，`repairs` 记引文与形状拒绝加上结算器的非 `fill` 修复。
 - 场次：`readSceneSegments` 沿给定节点路径派生；`sceneEnds` 的楼层收尾这一场，否则到 `DEFAULT_MAX_SCENE_FLOORS`（12）个助手楼层强制收尾；场次不是节点，不写 `nodes`。`scene_archives` 以结束楼层为主键，`boundary` 记 `scene-ends` 或 `max-floors`；`start_node_id`、`floor_count`、`boundary` 共同用于判断存下来的归档是否与当前划分一致。
 - 场记对照：`compareSceneLog` 逐楼层跑独立任务（`settle`、`scene`、`user_will`、`director_bits`）与 `scene_log`；`runSceneLogCompareBatch` 负责复制源库、按故事汇总与样本判定。逐楼层结果里的 `quotes` 只有场记档有值，`independentRepairs`/`mergedRepairs` 不含 `fill`。`combineSceneLogCompare` 的比率按「交集总和 / 并集总和」重算，不能把各故事比率取平均。
 - 私有样本清单：`eval-private/reports/scene-log/samples.json`，`minimumFloors` 20，3 个故事各 8 个助手楼层（共 24）；`sourceDb` 相对样本文件。重生成用 `.devloop/scratch/W2-T03/plan-samples.mjs`（只读打开源库）。
-- 上下文排布：默认模板按易变性排布；`contextLayout` 取 `volatility`（默认）或 `full`（对照）。自定义模板不参与这个开关，Trace 的 `layout` 记为 `custom`。`segmentOrder` 是模板片段 id 的生效顺序，`cache.source` 为 `channel`（渠道报告了 `cachedTokens`，含 0）或 `none`（没有报告）；旧 Trace 没有这三个字段。
-- 故事图片：`story_media` 存相对路径，文件在媒体目录（默认数据库同目录的 `images/`）的 `story-media/<故事 id 摘要>/` 下，按内容哈希命名；封面缺失时由 `packages/server/src/cover-placeholder.ts` 渲染 SVG 占位图，不写磁盘。媒体接口走现有会话校验，`Cache-Control: private, no-cache`。
+- 上下文排布：默认模板按易变性排布；`contextLayout` 取 `volatility`（默认）或 `full`（对照）。自定义模板不参与这个开关，Trace 的 `layout` 记为 `custom`。`segmentOrder` 是模板片段 id 的生效顺序，`cache.source` 为 `channel` 或 `none`；旧 Trace 没有这三个字段。
+- 故事图片：`story_media` 存相对路径，文件在媒体目录（默认数据库同目录的 `images/`）的 `story-media/<故事 id 摘要>/` 下，按内容哈希命名；封面缺失时由 `packages/server/src/cover-placeholder.ts` 渲染 SVG 占位图，不写磁盘。
 - R6-T06 标 `[!]`（HUMAN-19）：剩余 C1 的 540 轮；B1 已完成的 `xianxia` 9 对作为参考样本，`yuwang` 与 `yinqi` 不补。
 - 兼容插件线：`st-content`、`st-mvu`、`st-ejs`、`st-helper-host` 全部完成（含一致性测试与共存评测）。
 - 报告：`docs/dev/reports/P2.md`、`P3.md`、`P4.md`、`C-T01.md`、`C-T02.md`、`C-T03.md`、`C-T04.md`、`C-T05.md`、`H.md`、`X1.md`、`X2.md`。
-- R6 预注册：`docs/dev/R6-PREREG.md` v2（v1 归档在 `docs/dev/R6-PREREG-V1.md`）、ADR-0135、ADR-0138、DESIGN §14.2；门槛常量与判定由 R6-T01 实现并在 R6-T07 升到 v2，`R6_GATE_VERSION` 为 `v2`；C1 运行器由 R6-T02、B1 批次由 R6-T03（现为参考样本）、偏好一致率由 R6-T04、深回合批次由 R6-T05、G0 的两件仪器由 R6-T07.a 实现。
-- R6-T05 的真实结果在 `eval-private/reports/r6/deep/<slug>.json` 与 `.md`：24 对，胜 9、负 5、平 0、换序不一致 10；`xianxia` 4/3/0/1、`yuwang` 3/1/0/4、`yinqi` 2/1/0/5；深回合 60 轮全部完成、截断 2 轮（`yinqi`）、工具调用 0。v2 下这组数据对应的 G5 状态是「不可测」。
-- R6-T05 的运行目录 `eval-private/reports/r6/deep/<slug>/` 里有 `runs/<故事安全名>-<hash>/deep.json` sidecar 与 `deep.db`；重跑复用 `done`，`failed` 与 `running` 续跑。
-- R6 B1 的参考数据在 `eval-private/reports/r6/b1/xianxia.json` 与 `.md`（9 对、胜率 42.9%）；运行目录 `runs/<故事安全名>/<楼层>/b1.json` 与 `native.db`。故事安全名对中文标题会退化成 `_`。
-- R6 B1 缩样结果在 `.devloop/scratch/R6-T06/smoke/yuwang.json` 与 `.md`；批量脚本在同一目录（`run-b1.mjs`、`run-compare.mjs`、`plan-branches.mjs`）。`.devloop/` 已被 git 忽略。
-- R6 的结算提示词在本轮改过一次（ADR-0137）：冲突检查窗口不再带楼层 id。R6-T05 的深回合批次与 B1 的 `xianxia` 前 6 个样本在改前完成；预热结算只写各样本自己的副本。
+- R6 预注册：`docs/dev/R6-PREREG.md` v2（v1 归档在 `docs/dev/R6-PREREG-V1.md`）、ADR-0135、ADR-0138、DESIGN §14.2；门槛常量与判定由 R6-T01 实现并在 R6-T07 升到 v2，`R6_GATE_VERSION` 为 `v2`。
+- R6-T05 的真实结果在 `eval-private/reports/r6/deep/<slug>.json` 与 `.md`：24 对，胜 9、负 5、平 0、换序不一致 10；深回合 60 轮全部完成、截断 2 轮、工具调用 0。v2 下这组数据对应的 G5 状态是「不可测」。
+- R6 B1 的参考数据在 `eval-private/reports/r6/b1/xianxia.json` 与 `.md`（9 对、胜率 42.9%）；运行目录 `runs/<故事安全名>/<楼层>/b1.json` 与 `native.db`。
 - 世界模型：默认 `ledger`；`wiki` 与 `temporal_graph` 已经可用，由故事设置 `worldModel` 选择，只有 `temporal_graph` 支持 `atStoryTime`。
-- 导演组织方式：默认 `mechanisms`（现有机制序列）；`bits` 已可用，由故事设置 `directorOrganization` 选择。X2 判定见 ADR-0134 与 `docs/dev/reports/X2.md`。W4 会把两者演化为动作层加小品层。
-- X2 的输入与运行脚本在 `.devloop/scratch/X2.d/`：`inputs/`、`run-compare.mjs`、`summarize.mjs`、`runs/<slug>/`、`smoke/`。长任务状态在 `.devloop/jobs/X2.d-01.status.json`（退出码 0）。
-- X1 的原始数据在 `eval-private/reports/world-model-compare/`（含故事标题与回复，不进入仓库）；长任务脚本与 sidecar 在 `.devloop/scratch/X1.e/`。
+- 导演组织方式：默认 `mechanisms`；`bits` 已可用，由故事设置 `directorOrganization` 选择。W4 会把两者演化为动作层加小品层。
 - 沙箱现状：`eval-private/st-sandbox/st` 有 36 个预设、68 张卡、89 个非驱动聊天片段；需要恢复原始预设时用 `sandbox --replace` 重建。
-- 私有比对批次：`compare-smoke4`（5 个组合，修复后）与更早的 `compare-smoke2`、`compare-smoke3`、`session324-sanitize`。
-- ADR-0088 至 ADR-0140 记录插件、沙箱、比对、兼容内容映射、EJS、沙箱执行、时间预算、流水线接入、模板生成、一致性评测、酒馆助手宿主、iframe 沙箱、STscript 子集、生成后台化、HTML 渲染、覆盖率口径、应用内助手、世界模型接口、实体档案、时序图谱、对比运行器、X1 判定、导演组织方式、剧情小品、X2 对比运行器、X2 判定、R6 预注册（v1 与 v2 改写）、评测调用输出预算、结算提示词楼层 id、v4 设计合并、故事图片存储与媒体接口的决策。
+- ADR-0088 至 ADR-0140 记录插件、沙箱、比对、兼容内容映射、EJS、沙箱执行、时间预算、流水线接入、模板生成、一致性评测、酒馆助手宿主、iframe 沙箱、STscript 子集、生成后台化、HTML 渲染、覆盖率口径、应用内助手、世界模型接口、实体档案、时序图谱、对比运行器、X1 判定、导演组织方式、剧情小品、X2 对比运行器、X2 判定、R6 预注册、评测调用输出预算、结算提示词楼层 id、v4 设计合并、故事图片存储与媒体接口的决策。
 - HUMAN-03 待处理（不阻塞）：抽查 `eval-private/evalset/spotcheck.md` 里的事件题。
 - HUMAN-15 待处理（M6-T99 需要）：把秋叶整合包 v3.2 的 ComfyUI 启动在 `http://127.0.0.1:8188`，并导出一份 API 格式 workflow JSON 到 `eval-private/comfyui/` 或告知路径。
 - HUMAN-16 至 HUMAN-18、HUMAN-20、HUMAN-21 待处理（不阻塞）。
@@ -55,6 +51,7 @@
 ## 可重复命令
 - 门禁：`pnpm check`。
 - 全量 e2e：`pnpm e2e`（会先构建 server 与 web；跑两个项目）。
+- 导入审计目标测试：`pnpm exec vitest run packages/core/test/import-audit.test.ts packages/st-compat/test/import-audit.test.ts`。
 - 世界书分型目标测试：`pnpm exec vitest run packages/st-compat/test/worldbook-classify.test.ts`。
 - 沙箱世界书分型统计：`node .devloop/scratch/W3-T01/stats.mjs`（只读打开沙箱世界书与卡；先 `pnpm run typecheck` 让 `dist` 更新）。
 - 场记与对照目标测试：`pnpm exec vitest run packages/core/test/scene-log.test.ts packages/st-compat/test/scene-log-compare.test.ts packages/st-compat/test/scene-log-compare-batch.test.ts`。
@@ -62,10 +59,9 @@
 - 后台任务注册表与开关目标测试：`pnpm exec vitest run packages/core/test/plugin-background-tools.test.ts packages/core/test/story-settings.test.ts`。
 - 上下文排布与缓存 Trace 目标测试：`pnpm exec vitest run packages/core/test/context-layout.test.ts packages/core/test/chat-turn.test.ts packages/core/test/writing-contract.test.ts`。
 - 设置与模板接口目标测试：`pnpm exec vitest run packages/server/test/stories.test.ts`。
-- 卡面图 e2e：`cd packages/web && pnpm exec playwright test e2e/cover.spec.ts`。
 - 故事媒体目标测试：`pnpm exec vitest run packages/server/test/story-media.test.ts packages/core/test/story-media.test.ts`。
 - `docs/proposals/` 下的原型页面用浏览器直接打开即可，不需要构建；仓库里不保留截图脚本。
-- 场记对照（固定楼层清单、源库只读、副本运行）：`pnpm --filter @dramaticer/st-compat scene-log-compare [--samples <json>] [--dir <path>] [--json <path>] [--report <path>] [--model <alias>] [--window <n>] [--min-samples <n>]`。默认样本 `eval-private/reports/scene-log/samples.json`，结果与报告写在 `eval-private/reports/scene-log/`。
+- 场记对照（固定楼层清单、源库只读、副本运行）：`pnpm --filter @dramaticer/st-compat scene-log-compare [--samples <json>] [--dir <path>] [--json <path>] [--report <path>] [--model <alias>] [--window <n>] [--min-samples <n>]`。
 - 重新生成场记对照的固定楼层清单：`node .devloop/scratch/W2-T03/plan-samples.mjs`（只读打开 3 个源库）。
 - G0 仪器目标测试：`pnpm exec vitest run packages/st-compat/test/r6-instrument.test.ts`。
 - R6 门槛与指标的目标测试：`pnpm exec vitest run packages/st-compat/test/gates.test.ts packages/st-compat/test/metrics.test.ts`。
@@ -74,21 +70,14 @@
 - R6 C1 运行器目标测试：`pnpm exec vitest run packages/st-compat/test/r6-compare.test.ts`（约 55 秒）。
 - R6 偏好一致率目标测试：`pnpm exec vitest run packages/st-compat/test/r6-preference.test.ts`（约 2 秒）。
 - R6 分支计划（三故事，打印每故事的 9 个分支点楼层）：`node .devloop/scratch/R6-T06/plan-branches.mjs`。
-- R6 B1 三故事长任务：`node .devloop/scratch/R6-T06/run-b1.mjs`（复用 sidecar；`done` 与 `failed` 的样本直接复用，`running` 续跑）。
-- R6 C1 三故事长任务：`node .devloop/scratch/R6-T06/run-compare.mjs`（复用 sidecar；`done` 复用，`running` 与 `failed` 续跑）。
-- R6 B1 单个故事：`pnpm --filter @dramaticer/st-compat r6-b1 --db <源库> --story <id> --dir <运行目录> --json <结果 json> --report <报告 md> [--historical-models <映射 json>]`。
-- R6 C1 单个故事（默认 30 轮、首中末 3 个分支点）：`pnpm --filter @dramaticer/st-compat r6-compare --db <源库> --story <id> --dir <运行目录> --json <结果 json> --report <报告 md>`。
-- R6 C1 缩样：在上面命令上加 `--rounds 2 --branches <楼层>`（`--branches` 只能配一个故事，楼层必须是规划结果里的助手楼层）。
-- R6 深回合单故事（默认 20 轮、8 个分支点）：`pnpm --filter @dramaticer/st-compat r6-deep --db <源库> --story <id> --dir <运行目录> --json <结果 json> --report <报告 md>`。
+- R6 B1 三故事长任务：`node .devloop/scratch/R6-T06/run-b1.mjs`（复用 sidecar）。
+- R6 C1 三故事长任务：`node .devloop/scratch/R6-T06/run-compare.mjs`（复用 sidecar）。
 - R6 深回合三故事长任务：`node .devloop/scratch/R6-T05/run-deep.mjs`（复用 sidecar）。
 - G0 两件仪器：`pnpm --filter @dramaticer/st-compat r6-instrument --aa <aa-samples.jsonl> [--pairs <pairs>] [--label-records <judge>] [--dir <运行目录>] [--json <结果>] [--report <报告>]`。
 - R6 偏好一致率：先 `pnpm --filter @dramaticer/st-compat preferences export --db <源库> --out <导出目录>`，再 `pnpm --filter @dramaticer/st-compat r6-preference --db <源库> --pairs <导出目录> --dir <运行目录> --json <结果 json> --report <报告 md>`。
 - 判定与模拟用户重试目标测试：`pnpm exec vitest run packages/st-compat/test/pairwise.test.ts packages/st-compat/test/playtest.test.ts packages/st-compat/test/probe.test.ts`。
 - X2.d 重跑（断点续跑）：`node .devloop/scratch/X2.d/run-compare.mjs`；指标汇总：`node .devloop/scratch/X2.d/summarize.mjs`。
-- X2.c 目标测试：`pnpm exec vitest run packages/st-compat/test/director-organization-compare.test.ts`。
 - X1 长任务（重跑会复用 sidecar）：`node .devloop/scratch/X1.e/run-compare.mjs`。
-- X1 目标测试：`pnpm exec vitest run packages/st-compat/test/world-model-compare.test.ts`。
-- H-T99 真实渠道验收：`node .devloop/scratch/H-T99/live.mjs`。
 - 不变量检查：`node scripts/check-invariants.mjs`。
 - 重建沙箱数据：`pnpm --filter @dramaticer/st-compat build && node packages/st-compat/dist/st-bench/cli.js sandbox --source "D:/SillyTavern" --replace`。
 - 生成组合清单：`node packages/st-compat/dist/st-bench/cli.js plan --sandbox eval-private/st-sandbox/st --batch <批次>`。
@@ -96,10 +85,14 @@
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
-- 私有数据（`eval-private/`、`data/`、`.env`）不能进入测试数据、提交、文档或日志；报告只写统计数字，不写对话原文。X1、X2 与 R6 的 JSON 含回复与答案，只能放在私有目录；`eval-private/reports/r6/b1/<slug>.md` 含故事标题，属于私有报告，仓库报告只能用 slug。场记对照的报告含楼层 id 与台账值，只能放在 `eval-private/`。
-- 世界书分型是纯函数：不读磁盘、不调用模型、不改写入参；测试只用 `test/fixtures/worldbook-classify.json`，不要拿沙箱条目写断言（I10）。
-- 分型的 `counts` 是每类命中数，一个条目可计入多类，不要求和等于条目数；要条目数用 `entries.length`。`primaryKind` 按 `WORLDBOOK_ENTRY_KINDS` 顺序取第一个命中，`unknown` 排最后。
-- 分型的规则只用标题与内容里的字面标记；沙箱实测未识别 19.5%，主体是 YAML 式章节回顾与文风指南（`【产品档案】…`、`【世界】…`、`[InitVar]` 标题下的章节正文）。不要为了压低未识别率把这些标题词直接映射成实体：标题与内容不符的条目很多，归 `unknown` 交给 W3-T02 的模型判定。
+- 私有数据（`eval-private/`、`data/`、`.env`）不能进入测试数据、提交、文档或日志；报告只写统计数字，不写对话原文。R6 与 X1、X2 的 JSON 含回复与答案，只能放在私有目录。场记对照的报告含楼层 id 与台账值，只能放在 `eval-private/`。
+- 导入审计的 `content` 是导入时的原文快照，与 `lore_entries.content`（去掉首尾空白）分开保存；体检页要显示条目正文时优先读审计行，停用条目没有 lore 行。
+- 审计的 `source` 必须与 lore 条目同构；`importWorldInfoLore` 是唯一写审计的路径，`importCharacterBookLore` 通过它转发。不要绕过它在别处拼来源。
+- 审计写入在 lore 写入之后：lore 抛错时不留半截审计。重导入时 `created_at` 保留第一次导入的时间，`updated_at` 每次更新。
+- `kind_source = rule` 的条目不要用 `setImportAuditEntryKind` 写成别的类型；要改类型必须同时给出 `player` 或 `model`。回到规则判定时 `kind` 必须等于 `rule_primary`，否则直接报错。
+- 世界书分型的 `counts` 是每类命中数，一个条目可计入多类，不要求和等于条目数；要条目数用 `entries.length`。`primaryKind` 按 `IMPORT_ENTRY_KINDS` 顺序取第一个命中，`unknown` 排最后。
+- 分型的规则只用标题与内容里的字面标记；沙箱实测未识别 19.5%，主体是 YAML 式章节回顾与文风指南。不要为了压低未识别率把这些标题词直接映射成实体，归 `unknown` 交给 W3-T02.b 的模型判定。
+- 世界书分型是纯函数：不读磁盘、不调用模型、不改写入参；测试只用 fixture，不要拿沙箱条目写断言（I10）。
 - W 阶段的顺序写在 TASKS 里：W1–W4 → R6 段 → W5–W9。R6-T07.b 与 R6-T06 的真实批次需要 `background` 渠道，额度恢复前只能做代码与假客户端测试。
 - W2-T04 的切换条件是结算一致率不低于独立任务（ADR-0055 口径），不达标时保留独立任务并写 ADR；不得为了让场记上线而放宽对照。
 - 场记对照的样本清单是固定输入：`samples.json` 的 `minimumFloors` 与 `nodeIds` 改动后，新旧结果不可直接比较；`sourceDb` 相对样本文件，源库只读，副本写到运行目录的 `runs/<故事>/`，每次重建。
@@ -109,80 +102,70 @@
 - 样本不足有两个口径：清单楼层总数低于下限，或两边都完成结算的楼层低于下限；两个数字都写进结果，报告里用「样本判定：不足——原因」标注，不抛错。
 - 场记与独立任务目前并行：打开 `sceneLogEnabled` 后 `scene_log`、`scene_archive` 与 `settle`、`scene`、`user_will`、`director_bits` 都会入队，切换只由 W2-T04 做；对照实验里场记一侧的库不要跑独立任务，否则两边会互相覆盖结算记录。
 - `scene_log` 的 `states` 每条必须带 `sourceQuote`，引文逐字比对**任务楼层的原文**（`node.raw`），不跨楼层；结算路径的 `settle` 模型如果也给了 `sourceQuote`，同样逐字校验，对不上整条拒绝。
-- `scene_log` 重跑同一楼层时 `getLedgerSettlement` 已有记录就跳过 `applySettlementProposals`，只覆盖场记行；不要在重跑路径上再调用带同一楼层的结算窗口写入，`recordLedgerSettlement` 会抛「已经结算过」。
-- `scene_log` 的 `bits` 只接受该故事 `listDirectorBits` 里有的 id；`conditions` 的 id 集来自小品文本条件（`collectDirectorBitJudgmentInput`），必须恰好覆盖，判完写回 `director_bit_judgments`（与 `director_bits` 任务同一张表）。
+- `scene_log` 重跑同一楼层时 `getLedgerSettlement` 已有记录就跳过 `applySettlementProposals`，只覆盖场记行。
+- `scene_log` 的 `bits` 只接受该故事 `listDirectorBits` 里有的 id；`conditions` 的 id 集来自小品文本条件（`collectDirectorBitJudgmentInput`），必须恰好覆盖，判完写回 `director_bit_judgments`。
 - 场记的 `beat` 与 `present` 目前只写进 `scene_logs`，还没有消费者；W4 用 `beat` 选动作，W6 用在场推导知情。
 - `scene-logs` 的读取：`getSceneLog(nodeId)` 按楼层，`getLatestSceneLogOnPath(nodeId)` 沿路径取最近一行；分支切换后后者不跨分支。
-- 场次划分只数助手楼层：一场是 `[第一个助手楼层, 结束助手楼层]` 的闭区间；`sceneEnds` 为 true 的楼层是这一场最后一楼，达到 `DEFAULT_MAX_SCENE_FLOORS`（12）时同样强制收尾（场记判定优先）。消息楼层落在两场之间，不开启也不计数。
-- 场次归档以**结束楼层**为主键；判断是否需要重跑时要同时比对 `startNodeId`、`floorCount` 与 `boundary`，只比结束楼层会在插入更早的场次结束判定后复用过期归档。
-- `scene_archive` 是故事级任务：`nodeId` 为 null，处理器不能调用 `requireJobNodeId`；`needsRun` 为 true 才会补建，执行一次只归档最早一场，剩余场次由后续 drain 继续（`done` 的行会被 `insertStoryJob` 翻回 pending）。
-- 归档的线索校验：`cluesOpened`/`cluesClosed` 的 id 必须出现在结束楼层的 `clue` 台账里，`cluesClosed` 还必须是 `fulfilled`；校验失败整次拒绝，3 次后任务标 failed，不会留下半截归档。
+- 场次划分只数助手楼层：一场是 `[第一个助手楼层, 结束助手楼层]` 的闭区间；`sceneEnds` 为 true 的楼层是这一场最后一楼，达到 `DEFAULT_MAX_SCENE_FLOORS`（12）时同样强制收尾（场记判定优先）。
+- 场次归档以**结束楼层**为主键；判断是否需要重跑时要同时比对 `startNodeId`、`floorCount` 与 `boundary`。
+- `scene_archive` 是故事级任务：`nodeId` 为 null，处理器不能调用 `requireJobNodeId`；执行一次只归档最早一场，剩余场次由后续 drain 继续。
+- 归档的线索校验：`cluesOpened`/`cluesClosed` 的 id 必须出现在结束楼层的 `clue` 台账里，`cluesClosed` 还必须是 `fulfilled`；校验失败整次拒绝，3 次后任务标 failed。
 - `scene_archives` 触发器只检查楼层属于同一故事；起始楼层在结束楼层路径上、两者都是助手楼层由 `saveSceneArchive` 校验。不要绕过 `saveSceneArchive` 直接写表。
 - 归档请求的输出是结构化 JSON，使用 `NO_CONTINUATION`；归档不写楼层原文，也不新增楼层。
 - `dramaticer explain` 的第 10 节使用默认上限 12；如果将来把 `maxSceneFloors` 做成故事设置，`explain` 必须改为从同一个来源读取。
-- 新迁移编号从 v55 起（v54 是 `scene_archives`）。
-- R6 预注册 v2 在第一次 v2 批次运行后冻结：门槛、样本、指标、模型与种子都不改；必须调整时另写 v3、记 ADR、把评测轮次计数重置为 0。门槛常量与 `docs/dev/R6-PREREG.md` 必须逐项一致，`evaluateR6Gates` 不允许缺项回落。
-- v2 的判定状态：`pass`、`fail`、`insufficient`、`not-measurable`；G0 未通过或样本不足时 G1 与 G5 被替换成 `invalid`。`passed` 只在 G0 pass、G1–G4 pass、G5 pass 或不可测、G6 pass 或未证实时为 true；`unproven` = G5 不可测 + G6 未证实。
-- G0 的两项：A/A（43 个点、种子 1 与 2、完成 ≥ 36、Wilson 区间含 50%、换序不一致 ≤ 20%、排除 ≤ 30%、判定失败 ≤ 10%）与真人标注（F0-T03 同一批 195 对、完成 ≥ 165、一致率 ≥ 65%、Wilson 下界 > 50%、位置偏差 ≤ 10 个百分点、判定失败 ≤ 10%）。G0 失败时改进任务只指向裁判。
-- R6-T07.a 的 A/A 样本文件格式（R6-T07.b 按此写出）：每行 `{"sampleId","story","context","seed1":{"status":"done","text"} 或 {"status":"failed","error"},"seed2":{…}}`；`context` 是父玩家楼层最近对话的已格式化文本。文本变化会让旧 sidecar 拒绝复用（按 `sampleHash` 比对），重新生成后需要删除 `<dir>/aa.jsonl`。
-- A/A 的判定槽位固定为每对 2 个（两种顺序各一次）；生成失败与两次文本相同也各占 2 个失败槽位，因此 `judgments.failed` 包含它们，`judgeFailureShare` 是全部仪器失败的比例，「两次相同」的比例另列。
-- 真人标注分支读 F0-T03 判定记录里的配对 id（195 个），配对文本必须齐全；sidecar 里出现计划外配对或换裁判模型都直接抛错。
-- 43 个重 roll 点的统计来自 `eval-private/world-model-compare/source/<slug>.db`：`xianxia` 24、`yuwang` 8、`yinqi` 11；可用点的父楼层是玩家楼层且原文非空，同一楼层下至少有一条被放弃的助手兄弟楼层。
-- 兄弟楼层的 swipe 下标只能从节点 id 后缀 `:s<N>` 读；同一楼层的兄弟 `created_at` 完全相同，按创建时间排序会得到错误的「被接受」判定。本批 43 个点的被接受节点都是最大下标。
+- 新迁移编号从 v56 起（v55 是 `import_audit_entries` 与 `import_mode`）。
+- R6 预注册 v2 在第一次 v2 批次运行后冻结：门槛、样本、指标、模型与种子都不改；必须调整时另写 v3、记 ADR、把评测轮次计数重置为 0。
+- v2 的判定状态：`pass`、`fail`、`insufficient`、`not-measurable`；G0 未通过或样本不足时 G1 与 G5 被替换成 `invalid`。
+- G0 的两项：A/A（43 个点、种子 1 与 2、完成 ≥ 36、Wilson 区间含 50%、换序不一致 ≤ 20%、排除 ≤ 30%、判定失败 ≤ 10%）与真人标注（195 对、完成 ≥ 165、一致率 ≥ 65%、Wilson 下界 > 50%、位置偏差 ≤ 10 个百分点、判定失败 ≤ 10%）。
+- R6-T07.a 的 A/A 样本文件格式：每行 `{"sampleId","story","context","seed1":{…},"seed2":{…}}`；文本变化会让旧 sidecar 拒绝复用（按 `sampleHash` 比对），重新生成后需要删除 `<dir>/aa.jsonl`。
+- A/A 的判定槽位固定为每对 2 个；生成失败与两次文本相同也各占 2 个失败槽位。
+- 43 个重 roll 点的统计来自 `eval-private/world-model-compare/source/<slug>.db`：`xianxia` 24、`yuwang` 8、`yinqi` 11；本批 43 个点的被接受节点都是最大下标。
+- 兄弟楼层的 swipe 下标只能从节点 id 后缀 `:s<N>` 读；同一楼层的兄弟 `created_at` 完全相同，按创建时间排序会得到错误的「被接受」判定。
 - A/A 的两次生成只差种子；请求体相同会命中响应缓存（ADR-0136），两次文本完全相同的配对按失败计数并单独报告比例。
 - R6-T05 的深回合数据带 `gateVersion: v1`，在 v2 里只作为 G5 的输入证据；它的工具调用合计为 0，因此 G5 记「不可测」。
-- B1 只作参考样本，`r6-b1` 不再导出门槛输入；`R6_B1_MIN_COMPLETED_PAIRS` 仍用于它自己的样本不足说明。
-- `gates.ts` 的 G6 少于 30 对时状态为 `insufficient`，同时进入 `unproven`；G5 工具调用为 0 时状态为 `not-measurable`，也进入 `unproven`。其他门槛的 `insufficient` 会让 `passed` 为 false。
-- `evaluateR6Gates` 要求七项输入齐全，缺项直接抛错；单测门槛时构造完整的 `{instrument, replay, repetition, progression, contradiction, deep, preference}`。
+- B1 只作参考样本，`r6-b1` 不再导出门槛输入。
+- `gates.ts` 的 G6 少于 30 对时状态为 `insufficient`；G5 工具调用为 0 时状态为 `not-measurable`。`evaluateR6Gates` 要求七项输入齐全，缺项直接抛错。
 - 重 roll 点的生成与 B1 不同：B1 在分支助手楼层之后追加真实玩家消息，回放在父玩家楼层上直接生成；两者都复用 `prepareR6RunCopy` 与 `warmupR6Copy`。
-- B1 的计划配对来自 `planR6B1Samples`：每个故事按路径深度取最多 10 个分支点，保留其后有非空玩家消息与历史回复的点；三个源故事各得 9 个。第一个分支点（`yuwang` 57）之前只有 1 个助手楼层，预热 0 楼属于正常结果。
-- B1 的 sidecar 在 `<dir>/runs/<故事安全名>/<楼层>/b1.json`，数据库是同目录的 `native.db`；`done` 与 `failed` 直接复用，`running` 续跑，重试需要删除对应 sidecar。CLI 一次只读一个源库，三故事串行跑。
-- B1 每个分支点只生成一轮：复制源数据库、预热 12 楼后，用分支点之后第一条非空玩家消息跑一次原生续写，回合后不执行后台任务。
 - R6 的胜率都按配对计数：两种展示顺序各判一次，胜率分母只含胜与负，平与换序不一致不计入分母；Wilson 95% 区间用配对计数计算。
-- R6 的分支点按路径深度取：主路径长度的 10% 到 100%，每个比例取最近的助手楼层，保留其后有非空玩家消息与历史回复的点，去重后每故事最多 10 个；C1 取首、中、末 3 个。`--branches` 只接受规划结果里出现的助手楼层。
-- R6 的 C1 两档必须共用同一串玩家消息：原生档先生成并写入 sidecar，朴素档逐字重放；sidecar 校验故事、分支点、轮数、种子、写作/用户/裁判模型，朴素档还校验消息哈希。
-- R6-T02 的 sidecar 在 `<dir>/runs/<故事>/<楼层>/<档位>.json`，数据库是同目录的 `<档位>.db`；状态 `running` 时续跑，`done` 与 `failed` 直接复用。续跑按记录里的 `assistantNodeId` 把 head 对齐到记录末尾。
-- R6-T02 的预热逐楼把 head 移到预热楼层再调用 `settle`，把结算窗口限制在该楼层以内，结束后恢复到分支点；`scene` 对已有分析的楼层跳过。预热请求（`settleRequests` + `sceneRequests`）单列，不计入每轮成本。
-- R6 的预热结算按后台任务的次数重试：第 2、3 次请求末尾追加一条玩家消息，带上一次的错误与结算窗口里可写入的楼层 id（ADR-0137）。`settleRequests` 按实际请求计数。
-- R6-T02 的探针只对原生档：每 6 轮一次、事实年龄至少 10 楼、每次运行最多 5 次；答题用写作客户端，判定用裁判客户端，两者的请求都记在 `probeRequests`。
-- 预热的结算窗口用 `prepareSettlementForNodes` 按预热楼层显式构建，每 4 楼一次请求；不要改回后台结算处理器。
+- R6 的 C1 两档必须共用同一串玩家消息：原生档先生成并写入 sidecar，朴素档逐字重放。
+- R6-T02 的 sidecar 在 `<dir>/runs/<故事>/<楼层>/<档位>.json`，数据库是同目录的 `<档位>.db`；状态 `running` 时续跑，`done` 与 `failed` 直接复用。
+- R6-T02 的预热逐楼把 head 移到预热楼层再调用 `settle`，结束后恢复到分支点；预热请求单列，不计入每轮成本。
+- R6 的预热结算按后台任务的次数重试：第 2、3 次请求末尾追加一条玩家消息，带上一次的错误与结算窗口里可写入的楼层 id（ADR-0137）。
 - `prepareSettlementForNodes` 只校验窗口大小与楼层存在，调用方要先把 head 移到窗口最后一楼，并按从旧到新的顺序传楼层。
-- R6-T05 每个故事一个副本，运行从该故事的 head 开始；预热 head 之前最近 12 楼，再跑 20 轮深回合。分支点是轮次；sidecar 在 `<dir>/runs/<故事安全名>-<hash>/deep.json`，数据库是同目录的 `deep.db`；`done` 复用，`running` 与 `failed` 都续跑。
-- R6-T05 的续跑按最后一条已完成深回合的 `nodeId` 对齐 head；分支记录按 `sampleId` 去重；深回合连续失败 3 轮终止该次运行。
-- R6-T05 的配对归一只看 `judgements`：`deep-first` 的 A、`fast-first` 的 B 属于深回合侧，反之为快回合侧；两种顺序的侧再交给 `normalizePairOutcome`。
+- R6-T05 每个故事一个副本；sidecar 在 `<dir>/runs/<故事安全名>-<hash>/deep.json`，数据库是同目录的 `deep.db`；`done` 复用，`running` 与 `failed` 都续跑；连续失败 3 轮终止该次运行。
+- R6-T05 的配对归一只看 `judgements`：`deep-first` 的 A、`fast-first` 的 B 属于深回合侧，反之为快回合侧。
 - `metrics.ts` 的 `measureReplyRepetition` 是 R6 的相邻回复口径；`measureBlockRepetition` 是按行切块的 X2 与记分牌口径。两个口径不要混用。
-- 评测里的结构化判定与模拟用户调用（`pairwise`、`quality`、`turn-judge`、`probe` 裁判、`generateUserMessage`）默认不发送 `maxTokens`，由路由器使用模型在渠道里声明的上限（ADR-0136）；判定重试带尝试次数，模拟用户重试还会附上上一次原文。
+- 评测里的结构化判定与模拟用户调用默认不发送 `maxTokens`，由路由器使用模型在渠道里声明的上限（ADR-0136）。
 - `r6-deep-cli` 在任一故事状态为 `failed` 时退出码为 1；长任务脚本按退出码停止。
 - 长任务脚本只构建 `st-compat`，不会重建 `packages/core/dist`。改过 core 之后必须先跑 `pnpm run typecheck`（`tsc -b` 会重建 core 的 `dist`），再申请长任务。
-- ST 的原始安装目录只读：不得修改，不得复制出 `secrets.json`、`settings.json`、`cookie-secret.txt`；沙箱里不得配置真实模型端点，录制服务不持有模型客户端（I14）。
+- ST 的原始安装目录只读：不得修改，不得复制出 `secrets.json`、`settings.json`、`cookie-secret.txt`；沙箱里不得配置真实模型端点（I14）。
 - 测试文件里不能出现 I10 拦截的地址：只允许 `localhost`、`127.0.0.1`、`example.com`/`example.org`/`example.invalid` 作为主机名，不能出现 `eval-private` 字面量（用 `stBenchPaths(repoRoot).privateRoot`）。
 - Windows 上并行跑测试会显著变慢；`vitest.config.ts` 默认 `testTimeout` 60 秒、`maxWorkers` 8；`afterEach` 删除临时目录用 `rmSync` 时必须带 `maxRetries` 与 `retryDelay`。
 - 整轮并行门禁会撞上 vitest 的 `[vitest-worker]: Timeout calling "onTaskUpdate"`：先看是不是某个用例单文件耗时过长（`vitest run <文件>` 对照），不要连续无改动地跑整仓测试，也不要靠改门槛绕过。
 - `packages/st-compat` 与 `packages/server` 的测试通过 `@dramaticer/core` 的 `dist` 解析 core；只跑这些包的测试前先执行 `pnpm run typecheck`。
-- `.devloop/scratch/R6-T06/*.mjs` 直接 import `../../../packages/core/dist/index.js`，因为 `.devloop/` 下解析不到工作区包名；`.devloop/scratch/` 下的脚本要用 `createRequire` 指向 `packages/st-compat/package.json` 才能加载 `better-sqlite3`。长任务脚本每次先构建 `st-compat`。
+- `.devloop/scratch/` 下的脚本要用 `createRequire` 指向 `packages/st-compat/package.json` 才能加载 `better-sqlite3`；`.devloop/` 已被 git 忽略。
 - EJS 沙箱的时间预算按墙钟计；测试不要用接近 worker 启动耗时的预算，要验证超时终止用 2 秒以上。
 - `pnpm exec biome check --write <文件>` 处理格式；不要手写格式。
 - 修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 的请求写进 HUMAN.md。
 - 不变量：I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖其他工作区包，I17 回合内插件钩子有时间预算，I18 插件权限必须声明。
-- 故事图片：`story_media` 是唯一的图片索引，文件不放进数据库；立绘按卡里的角色名登记，其他人物查不到时媒体接口返回 404，前端用 `onError` 隐藏；封面在无图时永远返回占位图，所以前端不需要判断有没有封面。
+- 故事图片：`story_media` 是唯一的图片索引，文件不放进数据库；立绘按卡里的角色名登记，其他人物查不到时媒体接口返回 404；封面在无图时永远返回占位图。
 - 旧故事（W0-T01 之前导入的卡）没有保存过原图，封面是占位图；不要尝试从 `story_settings` 或卡文件恢复。
-- e2e 的 `serve.mjs` 启动时清空 `.devloop/scratch/e2e/work`；Playwright 的 mobile 与 desktop 两个项目共用同一个数据库，测试标题必须带唯一 id，否则书架定位会命中两条。
+- e2e 的 `serve.mjs` 启动时清空 `.devloop/scratch/e2e/work`；Playwright 的 mobile 与 desktop 两个项目共用同一个数据库，测试标题必须带唯一 id。
 - 台账页只在选中楼层后渲染故事级区块（实体、世界书），e2e 要显示立绘得先给故事补一层（`cover.spec.ts` 的 `seedFloor`）。
-- v4 起台账写入分硬状态与软知识；每条事实的 `sourceQuote` 必须逐字出现在源楼层，校验失败整条拒绝（W2-T01）。`knowledge` 不再新增写入，由在场推导的知情标注取代，旧事实继续可读。
+- v4 起台账写入分硬状态与软知识；每条事实的 `sourceQuote` 必须逐字出现在源楼层，校验失败整条拒绝（W2-T01）。`knowledge` 不再新增写入，由在场推导的知情标注取代。
 - 合并后台调用（场记）必须先通过结算一致率对照才能切默认；`gapPassEnabled` 与 `sceneLogEnabled` 在对照通过前保持关闭。
 - 导演的八种动作由程序选择，同一动作不连用三次；理由进 Trace 与 `explain`（W4）。
 - 重 roll 必须带原因，原因进入用户意志与偏好信号（W5）。
 - 结构化 JSON 请求一律使用 `NO_CONTINUATION`；正文写作与散文类后台输出保留续写。上下文摘要按结构化请求处理。
 - 世界模型只用故事设置 `worldModel` 选择；状态槽位的 `packKey` 必须带种类（`state:<kind>`）。
-- 导演组织方式只用故事设置 `directorOrganization` 选择；导演槽位持有 `DirectorEngine`，单轮强度覆盖用 `engine` 重建槽位。
+- 导演组织方式只用故事设置 `directorOrganization` 选择；单轮强度覆盖用 `engine` 重建槽位。
 - `DirectorEngine.evaluate` 负责写本楼层的决策记录；导演关闭时返回 null 且不写记录。
 - 剧情小品的条件是 `{kind:"text", text}` 或 `{kind:"ledger", query}`；兜底小品必须省略条件，普通小品必须提供条件；`after` 的悬空引用与顺序环在导入时拒绝。
 - `replaceDirectorBits` 是整批替换，用于卡导入。
 - X2.c 运行器只在复制数据库里写 `directorOrganization` 与小品；源库只读；小品指纹进入 sidecar 校验。
-- X2.d 的 8 轮实跑里 `xianxia` 的对照没有新建笔记、`bits` 3/3 兑现，`yuwang` 2/3 对 1/2，`yinqi` 对照没有新建、`bits` 1/2；兑现率分母只有 1–3 条。
 - `WorldModel.read` 的 `atStoryTime` 只有 `temporal_graph` 支持；台账与 wiki 会直接抛错。
-- 实体档案（`wiki`）的写入路径是 `["profile", "<人物>"]`；`world_wiki_revisions` 只追加；`WorldModel.write` 先逐条 `validateLedgerDiff` 再写，剧情结算仍走 `applySettlementProposals`。
-- X1.d 的源数据库只读打开一次用于挑探针；重跑复用 sidecar。X1 的源数据库用 ASCII 文件名（全角文件名在 Windows 的 `fs.rmSync` 上会以 `0xC0000409` 终止进程）。
+- 实体档案（`wiki`）的写入路径是 `["profile", "<人物>"]`；`world_wiki_revisions` 只追加；剧情结算仍走 `applySettlementProposals`。
+- X1 的源数据库用 ASCII 文件名（全角文件名在 Windows 的 `fs.rmSync` 上会以 `0xC0000409` 终止进程）。
 - X1 的矛盾率分母是召回探针加记忆题里被判为一致或矛盾的记录；比较时同时看样本数。
 - MVU 引擎的 `[值, 说明]` 判定与 MVU 一致：长度为 2 且第二个元素是字符串的普通数组也会被当成值加说明。
 - 显示状态只在当前会话；需要跨进程显示时由台账快照重新渲染。
@@ -196,7 +179,7 @@
 - `StEjsVariableStore` 接入 `backend` 后，不指定作用域的写进入 `initial`（台账 `mvu`）。
 - 模板生成只登记请求：`generate` 返回 id 不返回正文，宿主用 `createStEjsBackgroundGenerationRunner` 接后台客户端并在间隙 `drain`。
 - 酒馆助手的沙箱 API 全部异步；事件监听用整数 token；超时由宿主 `sweepTimeouts()` 驱动。
-- STscript：`triggerSlash` 只执行 `ST_HELPER_SLASH_COMMANDS` 里的命令；变量命令默认作用域与上游一致（`setvar` 是 chat/local）；`/gen` 与 `/genraw` 只登记后台请求。
+- STscript：`triggerSlash` 只执行 `ST_HELPER_SLASH_COMMANDS` 里的命令；变量命令默认作用域与上游一致；`/gen` 与 `/genraw` 只登记后台请求。
 - HTML 状态栏与开场页的渲染结果只在插件显示状态；状态栏自动重渲染由变量写入触发，默认上限 8 次。
 - 酒馆助手的 API 覆盖率快照以本机 JS-Slash-Runner 4.8.10 为准；升级上游版本时要重新生成名字清单。
 - 助手任务不要复用 `turn_runs`；助手运行状态与事件在 `assistant_conversations`、`assistant_events` 里。

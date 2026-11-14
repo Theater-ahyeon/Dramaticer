@@ -13,6 +13,7 @@ export * from "./chat-import.js";
 export * from "./chat-jsonl.js";
 export * from "./dramaticer-extension.js";
 export * from "./entity-import.js";
+export * from "./import-audit.js";
 export * from "./lore-import.js";
 export * from "./evalset/acu.js";
 export * from "./evalset/event-questions.js";

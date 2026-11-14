@@ -9,6 +9,7 @@ import {
 	usableAliases,
 	worldEntryName,
 } from "./entity-import.js";
+import { buildWorldbookAuditEntries } from "./import-audit.js";
 import { type StWorldInfo, worldInfoFromCharacterBook } from "./world-info.js";
 
 export interface LoreImportOptions {
@@ -73,6 +74,14 @@ export function importWorldInfoLore(
 		});
 	}
 	const inserted = store.insertLoreEntries(inputs);
+	// 审计覆盖全部条目（含停用与空内容），来源与 lore 条目一致；lore 写入失败时不留半截记录。
+	store.saveImportAuditEntries(
+		storyId,
+		buildWorldbookAuditEntries(worldInfo, {
+			source: sourcePrefix,
+			worldName,
+		}),
+	);
 	return {
 		inserted: inserted.length,
 		existing: inputs.length - inserted.length,

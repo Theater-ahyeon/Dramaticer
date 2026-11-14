@@ -1,0 +1,37 @@
+{
+	"entries": {
+		"0": {
+			"uid": 0,
+			"key": [],
+			"comment": "世界背景",
+			"content": "灵潮退去三百年后，修行者依靠旧时代的遗物行走世间。",
+			"constant": true
+		},
+		"1": {
+			"uid": 1,
+			"key": ["战斗", "交手"],
+			"comment": "战斗规则",
+			"content": "攻击检定：掷 d20，加攻击力，对抗难度。每次使用法术消耗 3 点灵力。"
+		},
+		"2": {
+			"uid": 2,
+			"key": ["旧账"],
+			"comment": "前情提要",
+			"content": "前情提要：上一轮玩家攻破了山门，但没有见到山神。",
+			"disable": true
+		},
+		"3": {
+			"uid": 3,
+			"key": [],
+			"comment": "变量初始值",
+			"content": "[InitVar]\n角色.灵力 = 100\n角色.声望 = 0",
+			"constant": true
+		},
+		"4": {
+			"uid": 4,
+			"key": ["苏瑾"],
+			"comment": "苏瑾",
+			"content": "苏瑾"
+		}
+	}
+}

@@ -1636,6 +1636,34 @@ export function buildMigrations(
 				END`,
 			],
 		},
+		{
+			version: 55,
+			description: "导入体检：分型结果逐条保存，故事记录升级或原样两种导入模式",
+			statements: [
+				`ALTER TABLE story_settings ADD COLUMN import_mode TEXT NOT NULL
+					DEFAULT 'upgrade' CHECK (import_mode IN ('upgrade', 'raw'))`,
+				`CREATE TABLE import_audit_entries (
+					story_id TEXT NOT NULL REFERENCES stories(id),
+					source TEXT NOT NULL CHECK (length(source) > 0),
+					title TEXT NOT NULL,
+					content TEXT NOT NULL,
+					matches TEXT NOT NULL,
+					rule_primary TEXT NOT NULL,
+					kind TEXT NOT NULL,
+					kind_source TEXT NOT NULL
+						CHECK (kind_source IN ('rule', 'model', 'player')),
+					constant INTEGER NOT NULL CHECK (constant IN (0, 1)),
+					created_at TEXT NOT NULL,
+					updated_at TEXT NOT NULL,
+					PRIMARY KEY (story_id, source)
+				) STRICT`,
+				`CREATE TRIGGER import_audit_entries_identity_immutable
+				BEFORE UPDATE OF story_id, source ON import_audit_entries
+				BEGIN
+					SELECT RAISE(ABORT, '导入审计的故事与来源不能修改');
+				END`,
+			],
+		},
 	];
 }
 

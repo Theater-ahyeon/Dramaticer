@@ -56,6 +56,33 @@ import {
 	assertWorldModelKind,
 } from "../world-model/types.js";
 
+/**
+ * 导入模式：`upgrade` 按分型结果分流注入；`raw` 按酒馆的方式注入，
+ * 不改写条目，是分型不适用时的保底出口（DESIGN §20.2）。
+ */
+export const IMPORT_MODES = ["upgrade", "raw"] as const;
+
+export type ImportMode = (typeof IMPORT_MODES)[number];
+
+export const DEFAULT_IMPORT_MODE: ImportMode = "upgrade";
+
+export function isImportMode(value: unknown): value is ImportMode {
+	return (
+		typeof value === "string" &&
+		(IMPORT_MODES as readonly string[]).includes(value)
+	);
+}
+
+export function assertImportMode(
+	value: unknown,
+	label = "导入模式",
+): ImportMode {
+	if (!isImportMode(value)) {
+		throw new Error(`${label}必须是 upgrade 或 raw，实际为 ${String(value)}`);
+	}
+	return value;
+}
+
 /** 每个故事独立保存的运行配置；字段与 `story_settings` 表一一对应。 */
 export interface StorySettings {
 	readonly storyId: string;
@@ -104,6 +131,8 @@ export interface StorySettings {
 	readonly pluginOverrides: PlaypackUserOverrides;
 	/** 世界模型的表示方式；默认台账，对比实验按它切换候选。 */
 	readonly worldModel: WorldModelKind;
+	/** 导入模式；默认按分型结果分流，raw 是保底出口。 */
+	readonly importMode: ImportMode;
 	readonly updatedAt: string;
 }
 
@@ -135,6 +164,7 @@ export interface StorySettingsUpdate {
 	readonly imageConfig?: ImageConfig;
 	readonly pluginOverrides?: PlaypackUserOverrides;
 	readonly worldModel?: WorldModelKind;
+	readonly importMode?: ImportMode;
 }
 
 export const STORY_SETTINGS_UPDATE_KEYS: readonly (keyof StorySettingsUpdate)[] =
@@ -166,6 +196,7 @@ export const STORY_SETTINGS_UPDATE_KEYS: readonly (keyof StorySettingsUpdate)[] 
 		"imageConfig",
 		"pluginOverrides",
 		"worldModel",
+		"importMode",
 	];
 
 /** 尚未保存设置时使用的数值与枚举；故事 id 与更新时间由调用方补齐。 */
@@ -191,6 +222,7 @@ export const DEFAULT_STORY_SETTINGS_VALUES = {
 	imageConfig: DEFAULT_IMAGE_CONFIG,
 	pluginOverrides: EMPTY_PLAYPACK_USER_OVERRIDES,
 	worldModel: DEFAULT_WORLD_MODEL_KIND,
+	importMode: DEFAULT_IMPORT_MODE,
 } as const;
 
 export interface ContextTemplateRecord {
@@ -452,6 +484,9 @@ export function assertStorySettingsUpdate(update: StorySettingsUpdate): void {
 	}
 	if (update.worldModel !== undefined) {
 		assertWorldModelKind(update.worldModel, "故事设置的 worldModel");
+	}
+	if (update.importMode !== undefined) {
+		assertImportMode(update.importMode, "故事设置的 importMode");
 	}
 }
 
