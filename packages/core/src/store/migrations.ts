@@ -1904,6 +1904,37 @@ export function buildMigrations(
 				END`,
 			],
 		},
+		{
+			version: 65,
+			description: "蓝图同一楼层保存多批修改，逐条接受建议时按批次追加",
+			statements: [
+				`CREATE TABLE story_blueprints_next (
+					node_id TEXT NOT NULL REFERENCES nodes(id),
+					seq INTEGER NOT NULL CHECK (seq >= 1),
+					story_id TEXT NOT NULL REFERENCES stories(id),
+					source TEXT NOT NULL CHECK (source IN ('player', 'ai')),
+					diffs TEXT NOT NULL,
+					created_at TEXT NOT NULL,
+					PRIMARY KEY (node_id, seq)
+				) STRICT`,
+				`INSERT INTO story_blueprints_next (node_id, seq, story_id, source, diffs, created_at)
+				SELECT node_id, 1, story_id, source, diffs, created_at FROM story_blueprints`,
+				"DROP TABLE story_blueprints",
+				"ALTER TABLE story_blueprints_next RENAME TO story_blueprints",
+				"CREATE INDEX story_blueprints_story_idx ON story_blueprints(story_id)",
+				`CREATE TRIGGER story_blueprints_story_matches_node
+				BEFORE INSERT ON story_blueprints
+				WHEN COALESCE((SELECT story_id FROM nodes WHERE id = NEW.node_id), '') <> NEW.story_id
+				BEGIN
+					SELECT RAISE(ABORT, '蓝图修改的 story_id 必须与所在楼层一致');
+				END`,
+				`CREATE TRIGGER story_blueprints_append_only
+				BEFORE UPDATE ON story_blueprints
+				BEGIN
+					SELECT RAISE(ABORT, '蓝图修改的记录只追加，不能修改');
+				END`,
+			],
+		},
 	];
 }
 

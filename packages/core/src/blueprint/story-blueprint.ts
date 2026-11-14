@@ -103,9 +103,14 @@ export type BlueprintDiff =
 	| { readonly action: "set"; readonly entry: BlueprintEntry }
 	| { readonly action: "delete"; readonly id: string };
 
-/** 一个楼层保存的蓝图修改集合。 */
+/**
+ * 一个楼层上的一批蓝图修改。同一楼层可以有多批：玩家逐条接受建议时，
+ * 每接受一条就追加一批，`seq` 从 1 起递增。
+ */
 export interface StoryBlueprintRecord {
 	readonly nodeId: string;
+	/** 这一批在该楼层上的顺序，从 1 起递增。 */
+	readonly seq: number;
 	readonly storyId: string;
 	/** 写这一批修改的是谁：玩家或 AI。 */
 	readonly source: BlueprintSource;
@@ -124,6 +129,8 @@ export interface NewStoryBlueprintRecordInput {
 /** 沿路径累加后的一版蓝图；条目与楼层上写的 diff 一起回看。 */
 export interface BlueprintVersion {
 	readonly nodeId: string;
+	/** 这一版对应的批次序号。 */
+	readonly seq: number;
 	readonly source: BlueprintSource;
 	readonly diffs: readonly BlueprintDiff[];
 	readonly createdAt: string;
@@ -138,6 +145,8 @@ export interface BlueprintRollbackInput {
 	readonly storyId: string;
 	/** 要回到的那一版所在的楼层。 */
 	readonly versionNodeId: string;
+	/** 该楼层上的批次序号；省略时取这个楼层的最后一批。 */
+	readonly versionSeq?: number;
 	readonly createdAt?: string;
 }
 

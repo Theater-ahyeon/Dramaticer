@@ -2522,3 +2522,18 @@
   - core 新增 `blueprint/story-blueprint.ts`（类型、校验、累加、锁定检查、回滚计划）与 `StoryStore.saveStoryBlueprint`、`getStoryBlueprintRecord`、`listBlueprintVersions`、`readBlueprintEntries`、`rollbackStoryBlueprint`。
   - 本任务不开放接口与界面；W7-T02 的 AI 建议走同一写入路径（来源 `ai`、锁定自动生效），W9-T05 的蓝图页读版本列表与本任务派生出的条目。
   - 新增 core 测试 8 个，覆盖三层校验、沿路径累加、分支隔离、锁定拒绝、版本回看与回滚。
+
+## ADR-0154 蓝图同一楼层按批次追加，版本定位到批次（2026-11-14）
+
+- **背景**：W7-T02 要求 AI 的修改以建议形式出现，玩家逐条接受；接受一条就写入一次。蓝图修改按楼层保存，而 W7-T01 只允许每层一行，玩家在同一楼层连续接受两条建议时第二次写入会被拒绝。逐条接受不能等到下一个楼层，也不能退回更早的楼层写入，否则改动会带到其他分支。
+- **选项**：
+  - 每次接受都要求先离开当前楼层：把界面的操作绑到下一个楼层，只读蓝图页无法使用。
+  - 把同一楼层的多次接受合并成一次写入：需要界面把「接受」缓存到离开页面时，进程结束或页面刷新就丢，「接受后才写」不再成立。
+  - 同一楼层保存多批，批次序号递增：写入仍然只追加，读取沿路径按楼层顺序与批次顺序累加。
+- **决定**：
+  - v65 把 `story_blueprints` 改成 `(node_id, seq)` 联合主键，`seq` 从 1 起递增；迁移把已有行写成 `seq = 1`。只追加触发器保留，更新仍然拒绝。
+  - `saveStoryBlueprint` 每次追加一批，返回带 `seq` 的记录；`getStoryBlueprintRecord` 取最后一批，新增 `listStoryBlueprintRecords` 取该楼层全部批次。
+  - `BlueprintVersion` 带 `seq`，`listBlueprintVersions` 按路径深度与批次序号排列；回滚的 `versionSeq` 省略时取该楼层最后一批。
+- **影响**：
+  - schema 升到 65，`assistant-store.test.ts` 与 `story-blueprint.test.ts` 同步。
+  - W7-T02.b 的「接受一条建议写一次」走 `saveStoryBlueprint`，在 head 上连续接受不会互相覆盖；锁定检查仍在写入之前执行。

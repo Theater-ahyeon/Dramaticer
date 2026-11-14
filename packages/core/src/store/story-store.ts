@@ -578,10 +578,15 @@ interface DirectorChapterReviewRow {
 
 interface StoryBlueprintRow {
 	readonly node_id: string;
+	readonly seq: number;
 	readonly story_id: string;
 	readonly source: string;
 	readonly diffs: string;
 	readonly created_at: string;
+}
+
+interface StoryBlueprintSeqRow {
+	readonly seq: number;
 }
 
 interface GapPassRunRow {
@@ -1990,6 +1995,7 @@ function rowToDirectorChapterReview(
 function rowToStoryBlueprint(row: StoryBlueprintRow): StoryBlueprintRecord {
 	return {
 		nodeId: row.node_id,
+		seq: row.seq,
 		storyId: row.story_id,
 		source: assertBlueprintSource(row.source, `楼层 ${row.node_id} 的蓝图来源`),
 		diffs: assertBlueprintDiffs(
@@ -4692,7 +4698,7 @@ export class StoryStore {
 	}
 
 	/**
-	 * 写入一个楼层的蓝图修改；每个楼层只有一行，重复写入直接失败。
+	 * 追加一个楼层的蓝图修改；同一楼层可以有多批，`seq` 从 1 起递增。
 	 * AI 来源的修改不能改动锁定的条目，校验在写入之前完成。
 	 */
 	saveStoryBlueprint(
@@ -4714,21 +4720,25 @@ export class StoryStore {
 		if (diffs.length === 0) {
 			throw new Error("蓝图修改的 diffs 至少要有一条");
 		}
-		if (this.getStoryBlueprintRecord(input.nodeId) !== null) {
-			throw new Error(`楼层 ${input.nodeId} 已经有蓝图修改记录`);
-		}
 		const current = this.readBlueprintEntries(input.nodeId);
 		assertBlueprintWriteAllowed(current, diffs, source, "蓝图修改");
 		applyBlueprintDiffs(current, diffs);
 		const createdAt = input.createdAt ?? new Date().toISOString();
 		assertNonEmptyString(createdAt, "蓝图修改的创建时间");
+		const next = this.#db
+			.prepare(
+				"SELECT COALESCE(MAX(seq), 0) + 1 AS seq FROM story_blueprints WHERE node_id = ?",
+			)
+			.get(input.nodeId) as StoryBlueprintSeqRow;
+		const seq = next.seq;
 		this.#db
 			.prepare(
-				`INSERT INTO story_blueprints (node_id, story_id, source, diffs, created_at)
-				VALUES (?, ?, ?, ?, ?)`,
+				`INSERT INTO story_blueprints (node_id, seq, story_id, source, diffs, created_at)
+				VALUES (?, ?, ?, ?, ?, ?)`,
 			)
 			.run(
 				input.nodeId,
+				seq,
 				input.storyId,
 				source,
 				JSON.stringify(diffs),
@@ -4736,6 +4746,7 @@ export class StoryStore {
 			);
 		return {
 			nodeId: input.nodeId,
+			seq,
 			storyId: input.storyId,
 			source,
 			diffs,
@@ -4743,20 +4754,33 @@ export class StoryStore {
 		};
 	}
 
-	/** 读取一个楼层的蓝图修改；没有记录时返回 null。 */
+	/** 读取一个楼层的最后一批蓝图修改；没有记录时返回 null。 */
 	getStoryBlueprintRecord(nodeId: string): StoryBlueprintRecord | null {
 		if (!this.getNode(nodeId)) {
 			throw new Error(`楼层节点不存在：${nodeId}`);
 		}
 		const row = this.#db
-			.prepare("SELECT * FROM story_blueprints WHERE node_id = ?")
+			.prepare(
+				"SELECT * FROM story_blueprints WHERE node_id = ? ORDER BY seq DESC LIMIT 1",
+			)
 			.get(nodeId) as StoryBlueprintRow | undefined;
 		return row === undefined ? null : rowToStoryBlueprint(row);
 	}
 
+	/** 一个楼层上的全部蓝图修改批次，按 `seq` 从旧到新。 */
+	listStoryBlueprintRecords(nodeId: string): StoryBlueprintRecord[] {
+		if (!this.getNode(nodeId)) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
+		const rows = this.#db
+			.prepare("SELECT * FROM story_blueprints WHERE node_id = ? ORDER BY seq")
+			.all(nodeId) as StoryBlueprintRow[];
+		return rows.map(rowToStoryBlueprint);
+	}
+
 	/**
-	 * 沿节点所在的路径按从旧到新的顺序列出每一版蓝图：每个楼层一条，
-	 * `entries` 是该楼层写完之后沿路径累加的结果。其他分支不参与。
+	 * 沿节点所在的路径按从旧到新的顺序列出每一版蓝图：每个楼层上的每一批
+	 * 修改算一版，`entries` 是该批写完之后沿路径累加的结果。其他分支不参与。
 	 */
 	listBlueprintVersions(nodeId: string): BlueprintVersion[] {
 		if (!this.getNode(nodeId)) {
@@ -4773,7 +4797,7 @@ export class StoryStore {
 				)
 				SELECT story_blueprints.*
 				FROM story_blueprints JOIN chain ON story_blueprints.node_id = chain.node_id
-				ORDER BY chain.depth DESC`,
+				ORDER BY chain.depth DESC, story_blueprints.seq ASC`,
 			)
 			.all(nodeId) as StoryBlueprintRow[];
 		const versions: BlueprintVersion[] = [];
@@ -4783,6 +4807,7 @@ export class StoryStore {
 			entries = applyBlueprintDiffs(entries, record.diffs);
 			versions.push({
 				nodeId: record.nodeId,
+				seq: record.seq,
 				source: record.source,
 				diffs: record.diffs,
 				createdAt: record.createdAt,
@@ -4801,24 +4826,45 @@ export class StoryStore {
 
 	/**
 	 * 把某一版蓝图照原样写成目标楼层的新记录；回滚本身也是一次修改，
-	 * 来源记为玩家，原版本楼层不动。
+	 * 来源记为玩家，原版本楼层不动。指定 `versionSeq` 时回到该楼层的
+	 * 某一批，省略时取最后一批。
 	 */
 	rollbackStoryBlueprint(input: BlueprintRollbackInput): StoryBlueprintRecord {
 		assertNonEmptyString(input.nodeId, "蓝图回滚的楼层 id");
 		assertNonEmptyString(input.storyId, "蓝图回滚的故事 id");
 		assertNonEmptyString(input.versionNodeId, "蓝图回滚的版本楼层 id");
-		const target = this.getStoryBlueprintRecord(input.versionNodeId);
-		if (target === null) {
-			throw new Error(`楼层 ${input.versionNodeId} 没有蓝图修改记录`);
+		if (
+			input.versionSeq !== undefined &&
+			(!Number.isInteger(input.versionSeq) || input.versionSeq < 1)
+		) {
+			throw new Error("蓝图回滚的批次序号必须是正整数");
 		}
-		if (target.storyId !== input.storyId) {
+		const versionNode = this.getNode(input.versionNodeId);
+		if (versionNode === null) {
+			throw new Error(`楼层节点不存在：${input.versionNodeId}`);
+		}
+		if (versionNode.storyId !== input.storyId) {
 			throw new Error(
 				`蓝图回滚的版本楼层不属于故事 ${input.storyId}：${input.versionNodeId}`,
 			);
 		}
+		const versions = this.listBlueprintVersions(input.versionNodeId).filter(
+			(version) => version.nodeId === input.versionNodeId,
+		);
+		const target =
+			input.versionSeq === undefined
+				? versions[versions.length - 1]
+				: versions.find((version) => version.seq === input.versionSeq);
+		if (target === undefined) {
+			throw new Error(
+				input.versionSeq === undefined
+					? `楼层 ${input.versionNodeId} 没有蓝图修改记录`
+					: `楼层 ${input.versionNodeId} 没有第 ${input.versionSeq} 批蓝图修改记录`,
+			);
+		}
 		const diffs = planBlueprintRollback(
 			this.readBlueprintEntries(input.nodeId),
-			this.readBlueprintEntries(input.versionNodeId),
+			target.entries,
 		);
 		if (diffs.length === 0) {
 			throw new Error("当前蓝图已经是这一版，没有可回滚的修改");

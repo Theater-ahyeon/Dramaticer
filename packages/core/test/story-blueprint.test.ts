@@ -284,14 +284,19 @@ describe("蓝图存储与版本", () => {
 		const other = store.readBlueprintEntries("branch-2");
 		expect(other.map((entry) => entry.id)).toEqual(["premise", "volume-1"]);
 
-		expect(() =>
-			store.saveStoryBlueprint({
-				nodeId: "n0",
-				storyId: "s1",
-				source: "player",
-				diffs: [{ action: "set", entry: makeVolume({ title: "重写" }) }],
-			}),
-		).toThrow("已经有蓝图修改记录");
+		const appended = store.saveStoryBlueprint({
+			nodeId: "n0",
+			storyId: "s1",
+			source: "player",
+			diffs: [{ action: "set", entry: makeVolume({ title: "重写" }) }],
+		});
+		expect(appended.seq).toBe(2);
+		expect(
+			store.listStoryBlueprintRecords("n0").map((record) => record.seq),
+		).toEqual([1, 2]);
+		expect(
+			store.readBlueprintEntries("n0").find((entry) => entry.id === "volume-1"),
+		).toMatchObject({ title: "重写" });
 		expect(() =>
 			store.saveStoryBlueprint({
 				nodeId: "n4",
@@ -475,5 +480,73 @@ describe("蓝图存储与版本", () => {
 				versionNodeId: "n1",
 			}),
 		).toThrow("没有蓝图修改记录");
+	});
+
+	it("同一楼层可以有多批修改，回滚能定位到其中一批", () => {
+		const { store } = openTempStore();
+		seedPath(store);
+
+		store.saveStoryBlueprint({
+			nodeId: "n4",
+			storyId: "s1",
+			source: "player",
+			diffs: [
+				{ action: "set", entry: makePremise() },
+				{ action: "set", entry: makeVolume() },
+			],
+		});
+		store.saveStoryBlueprint({
+			nodeId: "n4",
+			storyId: "s1",
+			source: "player",
+			diffs: [{ action: "set", entry: makeMilestone() }],
+		});
+		store.saveStoryBlueprint({
+			nodeId: "n4",
+			storyId: "s1",
+			source: "player",
+			diffs: [
+				{ action: "set", entry: makeMilestone({ want: "找到楼顶的旧锁" }) },
+			],
+		});
+
+		const versions = store.listBlueprintVersions("n4");
+		expect(versions.map((version) => [version.nodeId, version.seq])).toEqual([
+			["n4", 1],
+			["n4", 2],
+			["n4", 3],
+		]);
+		expect(versions.map((version) => version.entries.length)).toEqual([
+			2, 3, 3,
+		]);
+		expect(
+			versions[2]?.entries.find((entry) => entry.id === "milestone-1"),
+		).toMatchObject({ want: "找到楼顶的旧锁" });
+
+		const rollback = store.rollbackStoryBlueprint({
+			nodeId: "n5",
+			storyId: "s1",
+			versionNodeId: "n4",
+			versionSeq: 2,
+		});
+		expect(rollback.diffs).toEqual([{ action: "set", entry: makeMilestone() }]);
+		expect(store.readBlueprintEntries("n5")).toEqual(versions[1]?.entries);
+
+		expect(() =>
+			store.rollbackStoryBlueprint({
+				nodeId: "n5",
+				storyId: "s1",
+				versionNodeId: "n4",
+				versionSeq: 9,
+			}),
+		).toThrow("没有第 9 批蓝图修改记录");
+		expect(() =>
+			store.rollbackStoryBlueprint({
+				nodeId: "n5",
+				storyId: "s1",
+				versionNodeId: "n4",
+				versionSeq: 0,
+			}),
+		).toThrow("批次序号必须是正整数");
 	});
 });
