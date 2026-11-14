@@ -1562,6 +1562,42 @@ export function buildMigrations(
 					DEFAULT 'volatility'`,
 			],
 		},
+		{
+			version: 53,
+			description: "场记记录与开关：每楼一次调用的节拍、状态、在场者与场次边界",
+			statements: [
+				`ALTER TABLE story_settings ADD COLUMN scene_log_enabled INTEGER NOT NULL
+					DEFAULT 0 CHECK (scene_log_enabled IN (0, 1))`,
+				`CREATE TABLE scene_logs (
+					node_id TEXT PRIMARY KEY REFERENCES nodes(id),
+					story_id TEXT NOT NULL REFERENCES stories(id),
+					beat TEXT NOT NULL CHECK (length(trim(beat)) > 0),
+					present TEXT NOT NULL,
+					scene_ends INTEGER NOT NULL CHECK (scene_ends IN (0, 1)),
+					bits TEXT NOT NULL,
+					conditions TEXT NOT NULL,
+					states TEXT NOT NULL,
+					quote_submitted INTEGER NOT NULL CHECK (quote_submitted >= 0),
+					quote_verified INTEGER NOT NULL CHECK (
+						quote_verified >= 0 AND quote_verified <= quote_submitted
+					),
+					repairs TEXT NOT NULL,
+					created_at TEXT NOT NULL
+				) STRICT`,
+				"CREATE INDEX scene_logs_story_idx ON scene_logs(story_id)",
+				`CREATE TRIGGER scene_logs_story_matches_node
+				BEFORE INSERT ON scene_logs
+				WHEN COALESCE((SELECT story_id FROM nodes WHERE id = NEW.node_id), '') <> NEW.story_id
+				BEGIN
+					SELECT RAISE(ABORT, '场记记录的 story_id 必须与所在楼层一致');
+				END`,
+				`CREATE TRIGGER scene_logs_identity_immutable
+				BEFORE UPDATE OF node_id, story_id ON scene_logs
+				BEGIN
+					SELECT RAISE(ABORT, '场记记录的楼层与故事不能修改');
+				END`,
+			],
+		},
 	];
 }
 

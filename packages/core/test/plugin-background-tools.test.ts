@@ -16,6 +16,7 @@ import {
 	createStaticKernel,
 	createToolRegistryFromPlugins,
 	emptyImagesConfig,
+	resolveStoryBackgroundKinds,
 } from "../src/index.js";
 
 const FAST_TOOL_NAMES = [
@@ -131,6 +132,7 @@ describe("内置后台任务插件", () => {
 			"user_will",
 			"memory_revision",
 			"gap_pass",
+			"scene_log",
 			"opening",
 			"opening_candidates",
 			"visual_profile",
@@ -149,6 +151,7 @@ describe("内置后台任务插件", () => {
 			["user_will", "settled", "gap"],
 			["memory_revision", "settled", "gap"],
 			["gap_pass", "settled", "gap"],
+			["scene_log", "settled", "gap"],
 			["opening", "story", "gap"],
 			["opening_candidates", "story", "gap"],
 			["visual_profile", "story", "gap"],
@@ -161,6 +164,24 @@ describe("内置后台任务插件", () => {
 		}
 		expect(registry.get("opening")?.needsRun).toBeTypeOf("function");
 		expect(registry.get("settle")?.needsRun).toBeUndefined();
+	});
+
+	it("场记与合并调用按故事开关过滤，其余类型不受影响", () => {
+		const registry = createDefaultBackgroundJobRegistry();
+		const off = resolveStoryBackgroundKinds(registry, {
+			sceneLogEnabled: false,
+			gapPassEnabled: false,
+		});
+		expect(off).not.toContain("scene_log");
+		expect(off).not.toContain("gap_pass");
+		expect(off).toContain("settle");
+		const on = resolveStoryBackgroundKinds(registry, {
+			sceneLogEnabled: true,
+			gapPassEnabled: true,
+		});
+		expect(on).toContain("scene_log");
+		expect(on).toContain("gap_pass");
+		expect(on).toHaveLength(registry.size);
 	});
 
 	it("静态任务插件的注册表条目与插件清单一致", () => {

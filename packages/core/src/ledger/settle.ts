@@ -70,6 +70,7 @@ const DIFF_FIELDS = [
 	"reason",
 	"confidence",
 	"storyTime",
+	"sourceQuote",
 ];
 
 /**
@@ -122,6 +123,8 @@ interface SettlerProposal {
 		readonly value: unknown;
 		readonly storyTime: StoryTime | null;
 		readonly confidence: number;
+		/** 正文里支撑这条事实的原句；模型没给时为 null，给了就必须逐字出现在楼层原文里。 */
+		readonly sourceQuote: string | null;
 	};
 	readonly reason: string | null;
 }
@@ -134,8 +137,8 @@ export interface SettlerConflict {
 export interface FloorProposals {
 	readonly diffs: readonly unknown[];
 	readonly conflicts: readonly SettlerConflict[];
-	/** 模型判断这一层是否让当前拍完成；缺少该字段时为 false。 */
-	readonly beatCompleted: boolean;
+	/** 模型判断这一层是否让当前拍完成；缺少该字段时为 false，null 表示不写拍状态。 */
+	readonly beatCompleted: boolean | null;
 	/** beatCompleted 类型非法时的原因；非空时该楼层整条拒绝。 */
 	readonly beatCompletedError: string | null;
 }
@@ -843,6 +846,17 @@ function planFloor(
 		const path = canonicalizePath(proposal.diff.path, canonical);
 		const key = JSON.stringify(path);
 		if (covered.has(key)) continue;
+		if (
+			proposal.diff.sourceQuote !== null &&
+			!floor.raw.includes(proposal.diff.sourceQuote)
+		) {
+			rejections.push({
+				path,
+				action: "delete",
+				reason: `${label}.sourceQuote 不在楼层原文里：${proposal.diff.sourceQuote}`,
+			});
+			continue;
+		}
 		try {
 			const diff = rewriteClueStatus({ ...proposal.diff, path }, rewrites);
 			validateLedgerDiff({
@@ -952,6 +966,7 @@ function readProposal(value: unknown, label: string): SettlerProposal {
 	}
 	const storyTime = readStoryTime(record.storyTime, `${label}.storyTime`);
 	const reason = readReason(record.reason, `${label}.reason`);
+	const sourceQuote = readReason(record.sourceQuote, `${label}.sourceQuote`);
 	return {
 		diff: {
 			path,
@@ -959,6 +974,7 @@ function readProposal(value: unknown, label: string): SettlerProposal {
 			value: op === "set" ? record.value : null,
 			storyTime,
 			confidence,
+			sourceQuote,
 		},
 		reason,
 	};

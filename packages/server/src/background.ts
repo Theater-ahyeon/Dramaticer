@@ -119,6 +119,7 @@ export class BackgroundScheduler {
 		}
 		const registry = this.#createRegistry(runtime);
 		const kinds = resolveStoryBackgroundKinds(registry, {
+			sceneLogEnabled: this.#store.getStorySettings(storyId).sceneLogEnabled,
 			gapPassEnabled: this.#store.getStorySettings(storyId).gapPassEnabled,
 		});
 		if (kinds.length === 0) return;

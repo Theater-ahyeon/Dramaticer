@@ -1662,7 +1662,8 @@
 
 ### W2：场记
 
-- [ ] **W2-T01 场记调用与事实引文** | 依赖：W1-T01、R1-T07.b.a | DESIGN §7.2 | ADR-0139、ADR-0055
+- [x] **W2-T01 场记调用与事实引文** | 依赖：W1-T01、R1-T07.b.a | DESIGN §7.2 | ADR-0139、ADR-0055
+  完成：2026-11-14 新增后台任务 `scene_log`（入队 `settled`、`gap` 档），一次调用产出 `{beat, states, present, sceneEnds, bits, conditions}`；`states` 每条必须带 `sourceQuote`，解析时逐字比对任务楼层原文，对不上的条目整条拒绝并把原因记进 `repairs`，形状非法同样逐条拒绝；写入走 `applySettlementProposals` 与 `validateLedgerDiff`，`sourceQuote` 进入结算器的 diff 校验（结算路径给了引文也照此校验），`FloorProposals.beatCompleted` 允许 null 表示不写拍状态；`bits` 只能从故事的剧情小品里选，未知 id 逐条拒绝，`conditions` 与剧情小品的文本条件判定共用解析器并写回 `director_bit_judgments`；迁移 v53 新增 `scene_logs`（节点主键、同故事触发器、身份不可改）与 `story_settings.scene_log_enabled`（默认关闭），`StoryStore` 新增 `saveSceneLog`（按楼层覆盖）、`getSceneLog`、`getLatestSceneLogOnPath`；`resolveStoryBackgroundKinds` 按 `sceneLogEnabled` 过滤，core/server/playtest/r6-compare 的调用点都已传入；新增 `evalset/scene-log-compare.ts`（同一批楼层分别跑结算、现场分析、用户意志、小品条件与场记，按 ADR-0055 口径比较路径与事实一致率，输出引文命中率与条件判断一致率，并给出文本版结果）。门禁通过（266 个测试文件、2,315 个测试、5 个跳过）
   做什么：
   - 新增后台任务 `scene_log`（入队条件 `settled`，间隙执行）：一次小调用产出 `{beat, states, present, sceneEnds, bits, conditions}`；`states` 的每条 diff 必须带 `sourceQuote`，程序校验逐字出现在任务楼层的原文里，对不上整条拒绝并记录原因。
   - 写入复用 `applySettlementProposals` 与 `validateLedgerDiff`；新增 `StoryStore.saveSceneLog`（按楼层覆盖同一行）与读取接口；故事设置 `sceneLogEnabled` 默认关闭。

@@ -912,6 +912,7 @@ async function runProfile(
 			let backgroundRequests = 0;
 			if (options.profile === "native" && error === null) {
 				const kinds = resolveStoryBackgroundKinds(options.background.registry, {
+					sceneLogEnabled: settings.sceneLogEnabled,
 					gapPassEnabled: settings.gapPassEnabled,
 				});
 				await drainBackgroundJobs({

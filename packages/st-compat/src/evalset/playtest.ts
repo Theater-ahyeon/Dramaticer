@@ -521,6 +521,7 @@ async function runGapDrain(
 	if (background === null || options.profile === "naive") return null;
 	const settings = options.store.getStorySettings(options.storyId);
 	const kinds = resolveStoryBackgroundKinds(background.registry, {
+		sceneLogEnabled: settings.sceneLogEnabled,
 		gapPassEnabled: settings.gapPassEnabled,
 	});
 	const result = await drainBackgroundJobs({

@@ -180,6 +180,14 @@ import {
 	assertGapPassRejections,
 } from "../ledger/gap-pass.js";
 import {
+	type NewSceneLog,
+	type SceneLog,
+	assertNewSceneLog,
+	assertSceneLogConditions,
+	assertSceneLogQuotes,
+	assertSceneLogStates,
+} from "../ledger/scene-log.js";
+import {
 	LEDGER_SOURCES,
 	type LedgerSource,
 	assertLedgerConfidence,
@@ -361,6 +369,7 @@ interface StorySettingsRow {
 	readonly director_organization: string;
 	readonly history_block_policy: string;
 	readonly context_layout: string;
+	readonly scene_log_enabled: number;
 	readonly gap_pass_enabled: number;
 	readonly gap_plan_seconds: number;
 	readonly image_config: string | null;
@@ -425,6 +434,21 @@ interface SceneAnalysisRow {
 	readonly story_id: string;
 	readonly text: string;
 	readonly token_count: number;
+	readonly created_at: string;
+}
+
+interface SceneLogRow {
+	readonly node_id: string;
+	readonly story_id: string;
+	readonly beat: string;
+	readonly present: string;
+	readonly scene_ends: number;
+	readonly bits: string;
+	readonly conditions: string;
+	readonly states: string;
+	readonly quote_submitted: number;
+	readonly quote_verified: number;
+	readonly repairs: string;
 	readonly created_at: string;
 }
 
@@ -1455,6 +1479,10 @@ function rowToStorySettings(row: StorySettingsRow): StorySettings {
 			row.context_layout,
 			`故事 ${row.story_id} 的 contextLayout`,
 		),
+		sceneLogEnabled: readBooleanColumn(
+			row.scene_log_enabled,
+			`故事 ${row.story_id} 的 scene_log_enabled`,
+		),
 		gapPassEnabled: readBooleanColumn(
 			row.gap_pass_enabled,
 			`故事 ${row.story_id} 的 gap_pass_enabled`,
@@ -1625,6 +1653,51 @@ function rowToSceneAnalysis(row: SceneAnalysisRow): SceneAnalysis {
 		tokenCount: row.token_count,
 		createdAt: row.created_at,
 	};
+}
+
+function rowToSceneLog(row: SceneLogRow): SceneLog {
+	const label = `楼层 ${row.node_id} 的场记记录`;
+	return {
+		nodeId: row.node_id,
+		storyId: row.story_id,
+		beat: row.beat,
+		present: readStringArray(row.present, `${label}.present`),
+		sceneEnds: readBooleanColumn(row.scene_ends, `${label}.scene_ends`),
+		bits: readStringArray(row.bits, `${label}.bits`),
+		conditions: assertSceneLogConditions(
+			JSON.parse(row.conditions) as unknown,
+			`${label}.conditions`,
+		),
+		states: assertSceneLogStates(
+			JSON.parse(row.states) as unknown,
+			`${label}.states`,
+		),
+		quotes: assertSceneLogQuotes(
+			{
+				submitted: row.quote_submitted,
+				verified: row.quote_verified,
+			},
+			`${label}.quotes`,
+		),
+		repairs: assertLedgerRepairs(
+			JSON.parse(row.repairs) as unknown,
+			`${label}.repairs`,
+		),
+		createdAt: row.created_at,
+	};
+}
+
+function readStringArray(value: string, label: string): readonly string[] {
+	const parsed = JSON.parse(value) as unknown;
+	if (!Array.isArray(parsed)) {
+		throw new Error(`${label} 必须是数组`);
+	}
+	return parsed.map((item, index) => {
+		if (typeof item !== "string" || item.length === 0) {
+			throw new Error(`${label}[${index}] 必须是非空字符串`);
+		}
+		return item;
+	});
 }
 
 function rowToWikiRevision(row: WikiRevisionRow): WikiRevision {
@@ -2598,6 +2671,7 @@ export class StoryStore {
 			directorOrganization: DEFAULT_STORY_SETTINGS_VALUES.directorOrganization,
 			historyBlockPolicy: DEFAULT_STORY_SETTINGS_VALUES.historyBlockPolicy,
 			contextLayout: DEFAULT_STORY_SETTINGS_VALUES.contextLayout,
+			sceneLogEnabled: DEFAULT_STORY_SETTINGS_VALUES.sceneLogEnabled,
 			gapPassEnabled: DEFAULT_STORY_SETTINGS_VALUES.gapPassEnabled,
 			gapPlanSeconds: DEFAULT_STORY_SETTINGS_VALUES.gapPlanSeconds,
 			imageConfig: DEFAULT_STORY_SETTINGS_VALUES.imageConfig,
@@ -2712,6 +2786,10 @@ export class StoryStore {
 				update.contextLayout !== undefined
 					? update.contextLayout
 					: current.contextLayout,
+			sceneLogEnabled:
+				update.sceneLogEnabled !== undefined
+					? update.sceneLogEnabled
+					: current.sceneLogEnabled,
 			gapPassEnabled:
 				update.gapPassEnabled !== undefined
 					? update.gapPassEnabled
@@ -2741,10 +2819,10 @@ export class StoryStore {
 					 budget_tokens, structured_output, temperature, max_tokens, reasoning,
 					 turn_mode, max_read_rounds, deep_max_tool_calls, deep_timeout_ms,
 					 deep_context_token_limit, deep_recent_tool_steps, viewpoint,
-					 director_config, history_block_policy, context_layout, gap_pass_enabled,
-					 gap_plan_seconds, image_config, plugin_overrides, world_model,
-					 director_organization, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+					 director_config, history_block_policy, context_layout, scene_log_enabled,
+					 gap_pass_enabled, gap_plan_seconds, image_config, plugin_overrides,
+					 world_model, director_organization, updated_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 				ON CONFLICT(story_id) DO UPDATE SET
 					card_name = excluded.card_name,
 					character_prompt = excluded.character_prompt,
@@ -2766,6 +2844,7 @@ export class StoryStore {
 					director_config = excluded.director_config,
 					history_block_policy = excluded.history_block_policy,
 					context_layout = excluded.context_layout,
+					scene_log_enabled = excluded.scene_log_enabled,
 					gap_pass_enabled = excluded.gap_pass_enabled,
 					gap_plan_seconds = excluded.gap_plan_seconds,
 					image_config = excluded.image_config,
@@ -2796,6 +2875,7 @@ export class StoryStore {
 				serializeDirectorConfig(next.directorConfig),
 				serializeHistoryBlockPolicy(next.historyBlockPolicy),
 				next.contextLayout,
+				next.sceneLogEnabled ? 1 : 0,
 				next.gapPassEnabled ? 1 : 0,
 				next.gapPlanSeconds,
 				serializeJsonValue(next.imageConfig, "故事设置的 imageConfig"),
@@ -4278,6 +4358,89 @@ export class StoryStore {
 			.prepare("SELECT * FROM gap_pass_runs WHERE node_id = ?")
 			.get(nodeId) as GapPassRunRow | undefined;
 		return row === undefined ? null : rowToGapPassRun(row);
+	}
+
+	/** 写入一个楼层的场记记录；同一楼层重复执行覆盖同一行。 */
+	saveSceneLog(input: NewSceneLog): SceneLog {
+		const normalised = assertNewSceneLog(input);
+		const node = this.getNode(normalised.nodeId);
+		if (!node) {
+			throw new Error(`楼层节点不存在：${normalised.nodeId}`);
+		}
+		if (node.storyId !== normalised.storyId) {
+			throw new Error(
+				`场记记录的 storyId 与楼层所属故事不一致：${normalised.storyId}`,
+			);
+		}
+		const createdAt = input.createdAt ?? new Date().toISOString();
+		assertNonEmptyString(createdAt, "场记记录的创建时间");
+		this.#db
+			.prepare(
+				`INSERT INTO scene_logs
+					(node_id, story_id, beat, present, scene_ends, bits, conditions,
+					 states, quote_submitted, quote_verified, repairs, created_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				ON CONFLICT (node_id) DO UPDATE SET
+					beat = excluded.beat,
+					present = excluded.present,
+					scene_ends = excluded.scene_ends,
+					bits = excluded.bits,
+					conditions = excluded.conditions,
+					states = excluded.states,
+					quote_submitted = excluded.quote_submitted,
+					quote_verified = excluded.quote_verified,
+					repairs = excluded.repairs,
+					created_at = excluded.created_at`,
+			)
+			.run(
+				normalised.nodeId,
+				normalised.storyId,
+				normalised.beat,
+				JSON.stringify(normalised.present),
+				normalised.sceneEnds ? 1 : 0,
+				JSON.stringify(normalised.bits),
+				JSON.stringify(normalised.conditions),
+				JSON.stringify(normalised.states),
+				normalised.quotes.submitted,
+				normalised.quotes.verified,
+				JSON.stringify(normalised.repairs),
+				createdAt,
+			);
+		return { ...normalised, createdAt };
+	}
+
+	/** 读取一个楼层的场记记录；没有时返回 null。 */
+	getSceneLog(nodeId: string): SceneLog | null {
+		if (!this.getNode(nodeId)) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
+		const row = this.#db
+			.prepare("SELECT * FROM scene_logs WHERE node_id = ?")
+			.get(nodeId) as SceneLogRow | undefined;
+		return row === undefined ? null : rowToSceneLog(row);
+	}
+
+	/** 沿节点所在的路径取最近一层的场记记录；没有时返回 null。 */
+	getLatestSceneLogOnPath(nodeId: string): SceneLog | null {
+		if (!this.getNode(nodeId)) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
+		const row = this.#db
+			.prepare(
+				`WITH RECURSIVE chain(node_id, depth) AS (
+					SELECT id, 0 FROM nodes WHERE id = ?
+					UNION ALL
+					SELECT nodes.parent_id, chain.depth + 1
+					FROM nodes JOIN chain ON nodes.id = chain.node_id
+					WHERE nodes.parent_id IS NOT NULL
+				)
+				SELECT scene_logs.*
+				FROM scene_logs JOIN chain ON scene_logs.node_id = chain.node_id
+				ORDER BY chain.depth ASC
+				LIMIT 1`,
+			)
+			.get(nodeId) as SceneLogRow | undefined;
+		return row === undefined ? null : rowToSceneLog(row);
 	}
 
 	/** 写入开局包；同一故事只保留一行，重复生成覆盖旧内容。 */

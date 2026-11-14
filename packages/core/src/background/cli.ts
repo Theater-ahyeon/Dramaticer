@@ -142,6 +142,7 @@ export async function runWorkCli(
 		let discarded = 0;
 		for (const story of stories) {
 			const kinds = resolveStoryBackgroundKinds(registry, {
+				sceneLogEnabled: store.getStorySettings(story.id).sceneLogEnabled,
 				gapPassEnabled: store.getStorySettings(story.id).gapPassEnabled,
 				requested: parsed.kind,
 			});

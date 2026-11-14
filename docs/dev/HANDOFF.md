@@ -3,12 +3,12 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-14 会话 395：完成 W1-T01（模板按易变性重排与缓存统计）。`createDefaultContextTemplate` 新增 `layout`：默认 `volatility`（角色、常驻设定 → `summary`（章节档案）→ `history` → 每轮变化的 `state`、`memory`、`scene`、`director`、`user_will` → `block_format`（可选）→ `protocol`），`full` 保持 v4 之前的顺序逐字段不变；导出 `DEFAULT_CONTEXT_SEGMENT_ORDER` 与 `detectContextLayout`（默认模板记 `volatility`/`full`，自定义模板记 `custom`）。故事设置迁移 v52 新增 `contextLayout`，server 的运行时与模板接口、st-compat 的 `resolveStoryContextTemplate` 及全部评测 CLI 都按故事设置生成默认模板。`TurnTrace` 新增 `cache`（`hitTokens`/`promptTokens`/`source`，渠道没有缓存字段时数值为 null、`source` 为 `none`）与 `layout`、`segmentOrder`；`dramaticer explain` 文本输出新增「缓存」与「段落顺序」两行。渠道体检的「缓存统计是否可用」此前已实现（`probeCacheStats` 与 `cacheStats` 字段，web 体检表单显示），本任务未改判定。DESIGN §9 补充 `contextLayout` 的说明。
-- 门禁通过：264 个测试文件、2,305 个测试、5 个跳过（153 秒）。新增测试：`packages/core/test/context-layout.test.ts`（4 个：默认/`full`/朴素模板的排布判断、`block_format` 不参与判断、每轮变化的槽位不移动只追加前缀）；`chat-turn.test.ts` 增加 Trace 的 `layout`/`segmentOrder`/`cache` 与「渠道不返回缓存字段」两条断言；`server/test/stories.test.ts` 增加 `contextLayout` 切换与非法值的接口用例；同步 `writing-contract.test.ts`、`chat-cli.test.ts`、`story-settings.test.ts`、`assistant-store.test.ts`（schema 52）、web 设置 fixture 的顺序与字段。
+- 2026-11-14 会话 396：完成 W2-T01（场记调用与事实引文）。新增后台任务 `scene_log`（`ledger/scene-log.ts`，入队条件 `settled`、`gap` 档）：一次小调用产出 `{beat, states, present, sceneEnds, bits, conditions}`；`states` 的每条 diff 必须带 `sourceQuote`，解析时逐字比对任务楼层原文，对不上或形状非法都逐条拒绝并把原因记进 `SceneLog.repairs`；`SceneLog.quotes` 记提交数与核验通过数。写入复用 `applySettlementProposals`：`settle.ts` 的 `DIFF_FIELDS` 增加 `sourceQuote`，`planFloor` 对带引文的提案逐条校验（结算路径同样生效），`FloorProposals.beatCompleted` 改为 `boolean | null`，场记传 null 不写拍状态；`bits` 只能从 `listDirectorBits` 里选，未知 id 逐条拒绝；`conditions` 与剧情小品的文本条件共用 `parseDirectorBitJudgmentResponse`，并写回 `director_bit_judgments`。迁移 v53 新增 `scene_logs`（节点主键、同故事触发器、身份不可改）与 `story_settings.scene_log_enabled`（默认关闭）；`StoryStore` 新增 `saveSceneLog`（按楼层覆盖）、`getSceneLog`、`getLatestSceneLogOnPath`，重复执行同一楼层只更新场记行、不重复写 state diff。`resolveStoryBackgroundKinds` 增加 `sceneLogEnabled` 过滤，core CLI、server、playtest、r6-compare 四个调用点都已传入。新增 `packages/st-compat/src/evalset/scene-log-compare.ts`：同一批楼层在两侧独立数据库上分别跑结算、现场分析、用户意志、小品条件与场记，按 ADR-0055 口径比较路径/事实一致率，输出引文命中率、条件判断一致率、请求数与逐楼层失败，另有 `formatSceneLogCompare` 文本版。DESIGN §7.2 已描述场记与引文，本任务未改设计文档。
+- 门禁通过：266 个测试文件、2,315 个测试、5 个跳过（115 秒）。新增测试：`packages/core/test/scene-log.test.ts`（6 个：四类字段与结算写入、引文错误逐条拒绝、空输出整次失败、小品与条件判断、重复执行覆盖同一行、路径读取不跨分支）；`packages/st-compat/test/scene-log-compare.test.ts`（3 个：一致率 100%、引文错误只影响该条并计入命中率、空输出记为失败不进分母）。同步 `plugin-background-tools.test.ts`（注册表清单、`scene_log` 的 `settled`/`gap`、开关过滤）、`story-settings.test.ts`（默认值、往返、非法值）、`assistant-store.test.ts`（schema 53）、`settings-form.test.ts`（fixture 补字段）。
 
-## 下一步（会话 396 先做）
-1. **W2-T01 场记调用与事实引文**（依赖 W1-T01、R1-T07.b.a，已满足）：新增后台任务 `scene_log`（入队 `settled`，间隙执行），一次小调用产出 `{beat, states, present, sceneEnds, bits, conditions}`；`states` 的每条 diff 必须带 `sourceQuote`，程序校验逐字出现在任务楼层原文里，对不上整条拒绝并记原因；写入复用 `applySettlementProposals` 与 `validateLedgerDiff`；新增 `StoryStore.saveSceneLog`（按楼层覆盖）与读取；故事设置 `sceneLogEnabled` 默认关闭；新增对照工具 `scene-log-compare` 的前半（假客户端覆盖四类字段、引文错误、空输出）。
-2. 之后从上往下做 **W2-T02**（场次边界与归档，迁移编号接在 v52 之后）→ **W2-T03**（场记对照 CLI 与假数据）→ **W3-T01 至 W3-T03** → **W4-T01 至 W4-T03**。
+## 下一步（会话 397 先做）
+1. **W2-T02 场次边界与归档**（依赖 W2-T01，已满足）：场次是路径上的派生区间，不新增节点；场记的 `sceneEnds` 加楼层数上限 `maxSceneFloors`（默认 12）决定边界，分支切换后按当前路径重算。场次结束时入队 `scene_archive`（一次归档调用产出摘要、在场者、状态变化、开了与收了哪些线索），写只追加的 `scene_archives`，同一场次重复执行覆盖同一行。迁移编号从 v54 起（v53 已被 W2-T01 占用；TASKS 里写的「接在 v50 之后」是旧编号，以本文件为准）。`dramaticer explain` 输出当前路径的场次划分与每场归档状态。
+2. 之后做 **W2-T03**（把 `scene-log-compare` 做成 CLI，`--dir`、`--samples`、`--json`、`--report`，样本来自 3 个 legacy 对话的固定楼层清单）→ **W3-T01 至 W3-T03** → **W4-T01 至 W4-T03**。
 3. 之后到 R6 段：先 **R6-T07.b**（重 roll 点回放批次）、**R6-T07.c**（遗忘漏斗）、**R6-T07.d**（门槛判定 CLI），再 **R6-T99**。**R6-T06** 与 **W2-T04** 被 HUMAN-19 阻塞（`bg` 渠道额度 2026-11-17T11:44:35Z 重置）。
 4. R6 段之后继续 **W5-T01、W5-T02** → **W6-T01 至 W6-T03** → **W7-T01 至 W7-T03** → **W8-T01、W8-T02** → **W9-T01 至 W9-T99**。
 5. R6-T07.b 的实现要点（旧交接保留）：
@@ -19,9 +19,10 @@
 6. 阻塞检查：M6-T99 仍等 HUMAN-15；HUMAN-03、HUMAN-16、HUMAN-17、HUMAN-18、HUMAN-20、HUMAN-21 不阻塞；HUMAN-19 阻塞 R6-T06、R6-T99 与 W2-T04。
 
 ## 当前状态
-- 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1–P4、C-T01 至 C-T05、H-T00 至 H-T99、X1.a 至 X1.e、X2.a 至 X2.d、R6-T00 至 R6-T05、R6-T07、R6-T07.a、W0-T00、W0-T01、W1-T01。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
-- 设计版本 v0.4（ADR-0139）。W 阶段任务顺序：W0（完成）→ W1（完成）→ W2 → W3 → W4 → R6 段（T07.b、T07.c、T07.d、T99）→ W5 → W6 → W7 → W8 → W9。
-- 数据库 schema 版本 52（ADR-0140 的 `story_media`；本任务的 `story_settings.context_layout`）。
+- 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1–P4、C-T01 至 C-T05、H-T00 至 H-T99、X1.a 至 X1.e、X2.a 至 X2.d、R6-T00 至 R6-T05、R6-T07、R6-T07.a、W0-T00、W0-T01、W1-T01、W2-T01。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 设计版本 v0.4（ADR-0139）。W 阶段任务顺序：W0（完成）→ W1（完成）→ W2（进行中）→ W3 → W4 → R6 段（T07.b、T07.c、T07.d、T99）→ W5 → W6 → W7 → W8 → W9。
+- 数据库 schema 版本 53（v51 `story_media`、v52 `story_settings.context_layout`、v53 `scene_logs` 与 `story_settings.scene_log_enabled`）。
+- 场记：`scene_log` 默认关闭（`sceneLogEnabled`）；打开后与结算、现场分析、用户意志、小品条件并行运行，尚未替换它们（W2-T04 按对照结论切换）。`scene_logs` 一行一个助手楼层，`states` 存引文已核对的提案，`quotes` 记提交/核验数，`repairs` 记引文与形状拒绝加上结算器的非 `fill` 修复。
 - 上下文排布：默认模板按易变性排布；`contextLayout` 取 `volatility`（默认）或 `full`（对照）。自定义模板不参与这个开关，Trace 的 `layout` 记为 `custom`。`segmentOrder` 是模板片段 id 的生效顺序，`cache.source` 为 `channel`（渠道报告了 `cachedTokens`，含 0）或 `none`（没有报告）；旧 Trace 没有这三个字段。
 - 故事图片：`story_media` 存相对路径，文件在媒体目录（默认数据库同目录的 `images/`）的 `story-media/<故事 id 摘要>/` 下，按内容哈希命名；封面缺失时由 `packages/server/src/cover-placeholder.ts` 渲染 SVG 占位图，不写磁盘。媒体接口走现有会话校验，`Cache-Control: private, no-cache`（同一地址会因重新导入换图）。
 - R6-T06 标 `[!]`（HUMAN-19）：剩余 C1 的 540 轮；B1 已完成的 `xianxia` 9 对作为参考样本，`yuwang` 与 `yinqi` 不补。
@@ -48,6 +49,8 @@
 ## 可重复命令
 - 门禁：`pnpm check`。
 - 全量 e2e：`pnpm e2e`（会先构建 server 与 web；跑两个项目）。
+- 场记与对照目标测试：`pnpm exec vitest run packages/core/test/scene-log.test.ts packages/st-compat/test/scene-log-compare.test.ts`。
+- 后台任务注册表与开关目标测试：`pnpm exec vitest run packages/core/test/plugin-background-tools.test.ts packages/core/test/story-settings.test.ts`。
 - 上下文排布与缓存 Trace 目标测试：`pnpm exec vitest run packages/core/test/context-layout.test.ts packages/core/test/chat-turn.test.ts packages/core/test/writing-contract.test.ts`。
 - 设置与模板接口目标测试：`pnpm exec vitest run packages/server/test/stories.test.ts`。
 - 卡面图 e2e：`cd packages/web && pnpm exec playwright test e2e/cover.spec.ts`。
@@ -86,6 +89,13 @@
 - 一次性脚本不要提交：devloop 的 autosave 会把仓库里的残留文件一起提交，残留文件会进 `biome check` 并让门禁失败。`.devloop/scratch/` 下的脚本放在被忽略的目录里。`docs/proposals/v4-ui.html` 是原型，不进入构建、不提交截图脚本。
 - W 阶段的顺序写在 TASKS 里：W1–W4 → R6 段 → W5–W9。R6-T07.b 与 R6-T06 的真实批次需要 `background` 渠道，额度恢复前只能做代码与假客户端测试。
 - W2-T04 的切换条件是结算一致率不低于独立任务（ADR-0055 口径），不达标时保留独立任务并写 ADR；不得为了让场记上线而放宽对照。
+- 场记与独立任务目前并行：打开 `sceneLogEnabled` 后 `scene_log` 与 `settle`、`scene`、`user_will`、`director_bits` 都会入队，切换只由 W2-T04 做；对照实验里场记一侧的库不要跑独立任务，否则两边会互相覆盖结算记录。
+- `scene_log` 的 `states` 每条必须带 `sourceQuote`，引文逐字比对**任务楼层的原文**（`node.raw`），不跨楼层；结算路径的 `settle` 模型如果也给了 `sourceQuote`，同样逐字校验，对不上整条拒绝。
+- `scene_log` 重跑同一楼层时 `getLedgerSettlement` 已有记录就跳过 `applySettlementProposals`，只覆盖场记行；不要在重跑路径上再调用带同一楼层的结算窗口写入，`recordLedgerSettlement` 会抛「已经结算过」。
+- `scene_log` 的 `bits` 只接受该故事 `listDirectorBits` 里有的 id；`conditions` 的 id 集来自小品文本条件（`collectDirectorBitJudgmentInput`），必须恰好覆盖，判完写回 `director_bit_judgments`（与 `director_bits` 任务同一张表）。
+- 场记的 `sceneEnds`、`present`、`beat` 目前只写进 `scene_logs`，还没有消费者；W2-T02 用 `sceneEnds` 加 `maxSceneFloors` 划场次，W4 用 `beat` 选动作。
+- `scene-logs` 的读取：`getSceneLog(nodeId)` 按楼层，`getLatestSceneLogOnPath(nodeId)` 沿路径取最近一行；分支切换后后者不跨分支。
+- 新迁移编号从 v54 起（v53 是 `scene_logs`）；TASKS 里 W2-T02 的「接在 v50 之后」是旧编号。
 - R6 预注册 v2 在第一次 v2 批次运行后冻结：门槛、样本、指标、模型与种子都不改；必须调整时另写 v3、记 ADR、把评测轮次计数重置为 0。门槛常量与 `docs/dev/R6-PREREG.md` 必须逐项一致，`evaluateR6Gates` 不允许缺项回落。
 - v2 的判定状态：`pass`、`fail`、`insufficient`、`not-measurable`；G0 未通过或样本不足时 G1 与 G5 被替换成 `invalid`。`passed` 只在 G0 pass、G1–G4 pass、G5 pass 或不可测、G6 pass 或未证实时为 true；`unproven` = G5 不可测 + G6 未证实。
 - G0 的两项：A/A（43 个点、种子 1 与 2、完成 ≥ 36、Wilson 区间含 50%、换序不一致 ≤ 20%、排除 ≤ 30%、判定失败 ≤ 10%）与真人标注（F0-T03 同一批 195 对、完成 ≥ 165、一致率 ≥ 65%、Wilson 下界 > 50%、位置偏差 ≤ 10 个百分点、判定失败 ≤ 10%）。G0 失败时改进任务只指向裁判。

@@ -66,6 +66,7 @@ describe("故事设置", () => {
 			directorOrganization: "mechanisms",
 			historyBlockPolicy: DEFAULT_HISTORY_BLOCK_POLICY,
 			contextLayout: "volatility",
+			sceneLogEnabled: false,
 			gapPassEnabled: false,
 			gapPlanSeconds: 212,
 			imageConfig: DEFAULT_IMAGE_CONFIG,
@@ -106,6 +107,7 @@ describe("故事设置", () => {
 				overrides: { 选项: { kind: "drop" } },
 			},
 			gapPassEnabled: true,
+			sceneLogEnabled: true,
 			gapPlanSeconds: 90,
 		});
 		store.updateStorySettings("s1", { temperature: 0.1 });
@@ -139,6 +141,7 @@ describe("故事设置", () => {
 					overrides: { 选项: { kind: "drop" } },
 				},
 				gapPassEnabled: true,
+				sceneLogEnabled: true,
 				gapPlanSeconds: 90,
 			});
 		} finally {
@@ -308,6 +311,7 @@ describe("故事设置", () => {
 			[{ historyBlockPolicy: { mode: "huge" } as never }, "historyBlockPolicy"],
 			[{ directorOrganization: "scripts" as never }, "directorOrganization"],
 			[{ gapPassEnabled: "yes" as never }, "gapPassEnabled"],
+			[{ sceneLogEnabled: "yes" as never }, "sceneLogEnabled"],
 			[{ gapPlanSeconds: -1 }, "gapPlanSeconds"],
 			[{ gapPlanSeconds: 1.5 }, "gapPlanSeconds"],
 			[{ deepMaxToolCalls: 0 }, "deepMaxToolCalls"],

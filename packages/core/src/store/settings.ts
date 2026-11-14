@@ -92,6 +92,8 @@ export interface StorySettings {
 	readonly historyBlockPolicy: HistoryBlockPolicy;
 	/** 默认模板的段落排布；`full` 是 v4 之前的顺序，用于对照。 */
 	readonly contextLayout: ContextLayout;
+	/** 每楼一次场记调用；默认关闭，对照通过后才打开。 */
+	readonly sceneLogEnabled: boolean;
 	/** 间隙里用一次合并调用代替几个独立后台任务；默认关闭。 */
 	readonly gapPassEnabled: boolean;
 	/** 执行可延后档后台任务所需的间隙秒数；默认 212。 */
@@ -127,6 +129,7 @@ export interface StorySettingsUpdate {
 	readonly directorOrganization?: DirectorOrganizationKind;
 	readonly historyBlockPolicy?: HistoryBlockPolicy;
 	readonly contextLayout?: ContextLayout;
+	readonly sceneLogEnabled?: boolean;
 	readonly gapPassEnabled?: boolean;
 	readonly gapPlanSeconds?: number;
 	readonly imageConfig?: ImageConfig;
@@ -157,6 +160,7 @@ export const STORY_SETTINGS_UPDATE_KEYS: readonly (keyof StorySettingsUpdate)[] 
 		"directorOrganization",
 		"historyBlockPolicy",
 		"contextLayout",
+		"sceneLogEnabled",
 		"gapPassEnabled",
 		"gapPlanSeconds",
 		"imageConfig",
@@ -181,6 +185,7 @@ export const DEFAULT_STORY_SETTINGS_VALUES = {
 	directorOrganization: DEFAULT_DIRECTOR_ORGANIZATION,
 	historyBlockPolicy: DEFAULT_HISTORY_BLOCK_POLICY,
 	contextLayout: "volatility",
+	sceneLogEnabled: false,
 	gapPassEnabled: false,
 	gapPlanSeconds: 212,
 	imageConfig: DEFAULT_IMAGE_CONFIG,
@@ -421,6 +426,12 @@ export function assertStorySettingsUpdate(update: StorySettingsUpdate): void {
 	}
 	if (update.contextLayout !== undefined) {
 		assertContextLayout(update.contextLayout, "故事设置的 contextLayout");
+	}
+	if (
+		update.sceneLogEnabled !== undefined &&
+		typeof update.sceneLogEnabled !== "boolean"
+	) {
+		throw new Error("故事设置的 sceneLogEnabled 必须是布尔值");
 	}
 	if (
 		update.gapPassEnabled !== undefined &&
