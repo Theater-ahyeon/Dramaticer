@@ -82,6 +82,28 @@ describe("ApiClient", () => {
 		expect(call.init.method).toBe("POST");
 	});
 
+	it("玩家编辑台账发到故事下的 proposals 并带上编辑", async () => {
+		const { client, calls } = clientFor(() =>
+			jsonResponse({ card: { id: "card-1" }, ledger: null }),
+		);
+		await client.createProposal("s 1", {
+			text: "云裳现在很警觉",
+			diffs: [
+				{ path: ["character", "云裳", "status"], op: "set", value: "警觉" },
+			],
+		});
+		const call = calls[0];
+		if (call === undefined) throw new Error("缺少请求");
+		expect(call.url).toBe("/api/stories/s%201/proposals");
+		expect(call.init.method).toBe("POST");
+		expect(readBody(call.init)).toEqual({
+			text: "云裳现在很警觉",
+			diffs: [
+				{ path: ["character", "云裳", "status"], op: "set", value: "警觉" },
+			],
+		});
+	});
+
 	it("服务端错误转成 ApiError 并保留字段路径", async () => {
 		const { client } = clientFor(() =>
 			jsonResponse(

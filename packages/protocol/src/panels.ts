@@ -8,6 +8,7 @@ import type {
 	JsonObject,
 	JsonValue,
 	LedgerChangeCard,
+	LedgerChangeCardDiff,
 	LedgerClue,
 	LedgerFact,
 	LoreEntry,
@@ -195,6 +196,19 @@ export interface StoryProposalsView {
 	readonly storyId: string;
 	readonly status: string;
 	readonly proposals: readonly LedgerChangeCard[];
+}
+
+/** `POST /api/stories/:id/proposals` 的请求体：玩家直接编辑台账。 */
+export interface StoryProposalCreateRequest {
+	/** 修改说明；批准时同时记入用户意志。 */
+	readonly text: string;
+	readonly diffs: readonly LedgerChangeCardDiff[];
+}
+
+/** `POST /api/stories/:id/proposals` 的结果：待定卡与当前 head 的台账快照。 */
+export interface StoryProposalCreateResult {
+	readonly card: LedgerChangeCard;
+	readonly ledger: NodeLedgerView | null;
 }
 
 /** 变更卡可以执行的三个动作。 */

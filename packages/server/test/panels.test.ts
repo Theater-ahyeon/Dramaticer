@@ -17,6 +17,7 @@ import type {
 	StoryLoreView,
 	StoryOpeningPickResult,
 	StoryOpeningsView,
+	StoryProposalCreateResult,
 	StoryProposalsView,
 } from "@dramaticer/protocol";
 import { describe, expect, it, onTestFinished } from "vitest";
@@ -589,6 +590,119 @@ describe("节点面板接口", () => {
 			{ cardId: "card-1", decision: "approved" },
 			{ cardId: "card-2", decision: "rejected" },
 		]);
+	});
+
+	it("玩家编辑台账生成待定卡，批准后事实来源为玩家并可回滚", async () => {
+		const running = await startTestServer();
+		const seeded = seedStory(running);
+
+		const created = await post(running.origin, "/api/stories/s1/proposals", {
+			text: "云裳现在很警觉",
+			diffs: [
+				{ path: ["character", "云裳", "status"], op: "set", value: "警觉" },
+			],
+		});
+		expect(created.status).toBe(201);
+		const createdBody = (await created.json()) as StoryProposalCreateResult;
+		expect(createdBody.card).toMatchObject({
+			source: "player",
+			sourceNodeId: seeded.replyId,
+			text: "云裳现在很警觉",
+			status: "pending",
+		});
+		expect(createdBody.card.before).toEqual([
+			{
+				path: ["character", "云裳", "status"],
+				existed: true,
+				value: "平静",
+			},
+		]);
+		expect(createdBody.ledger?.state).toMatchObject({
+			character: { 云裳: { status: "平静" } },
+		});
+
+		const pending = await getJson<StoryProposalsView>(
+			running.origin,
+			"/api/stories/s1/proposals",
+		);
+		expect(pending.proposals.map((card) => card.id)).toEqual([
+			createdBody.card.id,
+		]);
+
+		const approvePath = `/api/proposals/${encodeURIComponent(createdBody.card.id)}/approve`;
+		const approved = await post(running.origin, approvePath, {});
+		expect(approved.status).toBe(200);
+		const approvedBody = (await approved.json()) as ProposalDecisionResult;
+		expect(approvedBody.card.status).toBe("approved");
+		expect(approvedBody.ledger?.state).toMatchObject({
+			character: { 云裳: { status: "警觉" } },
+		});
+		const facts = running.store
+			.getStateDiffs(seeded.replyId)
+			.filter((diff) => diff.path.join(".") === "character.云裳.status");
+		expect(
+			facts.map((fact) => ({
+				op: fact.op,
+				value: fact.value,
+				source: fact.source,
+			})),
+		).toEqual([{ op: "set", value: "警觉", source: "player" }]);
+
+		const rolledBack = await post(
+			running.origin,
+			`/api/proposals/${encodeURIComponent(createdBody.card.id)}/rollback`,
+			{},
+		);
+		expect(rolledBack.status).toBe(200);
+		const rolledBackBody = (await rolledBack.json()) as ProposalDecisionResult;
+		expect(rolledBackBody.card.status).toBe("rolled_back");
+		expect(rolledBackBody.ledger?.state).toMatchObject({
+			character: { 云裳: { status: "平静" } },
+		});
+	});
+
+	it("玩家编辑的非法路径、缺失说明与未知故事按 400、404 拒绝", async () => {
+		const running = await startTestServer();
+		seedStory(running);
+
+		const badPath = await post(running.origin, "/api/stories/s1/proposals", {
+			text: "乱写",
+			diffs: [{ path: ["nope", "x"], op: "set", value: 1 }],
+		});
+		expect(badPath.status).toBe(400);
+		const badPathBody = await errorBody(badPath);
+		expect(badPathBody.error.details).toEqual({ path: "diffs" });
+		expect(badPathBody.error.message).toContain("nope");
+
+		const missingText = await post(
+			running.origin,
+			"/api/stories/s1/proposals",
+			{ diffs: [] },
+		);
+		expect(missingText.status).toBe(400);
+		expect((await errorBody(missingText)).error.details).toEqual({
+			path: "text",
+		});
+
+		const emptyDiffs = await post(running.origin, "/api/stories/s1/proposals", {
+			text: "没有修改",
+			diffs: [],
+		});
+		expect(emptyDiffs.status).toBe(400);
+		expect((await errorBody(emptyDiffs)).error.details).toEqual({
+			path: "diffs",
+		});
+
+		const missingStory = await post(
+			running.origin,
+			"/api/stories/nope/proposals",
+			{
+				text: "乱写",
+				diffs: [{ path: ["item", "断剑"], op: "delete" }],
+			},
+		);
+		expect(missingStory.status).toBe(404);
+		expect(running.store.listLedgerChangeCards("s1")).toEqual([]);
 	});
 
 	it("开场候选可以列出、选中，跨故事选中返回 404", async () => {

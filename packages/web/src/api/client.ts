@@ -58,6 +58,8 @@ import {
 	type StoryOpeningPickResult,
 	type StoryOpeningsView,
 	type StoryPath,
+	type StoryProposalCreateRequest,
+	type StoryProposalCreateResult,
 	type StoryProposalsView,
 	type StorySerialView,
 	type StorySettings,
@@ -338,6 +340,17 @@ export class ApiClient {
 		return this.json<StoryProposalsView>(
 			"GET",
 			`${storyPath(storyId)}/proposals${queryText(query)}`,
+		);
+	}
+
+	async createProposal(
+		storyId: string,
+		request: StoryProposalCreateRequest,
+	): Promise<StoryProposalCreateResult> {
+		return this.json<StoryProposalCreateResult>(
+			"POST",
+			`${storyPath(storyId)}/proposals`,
+			request,
 		);
 	}
 

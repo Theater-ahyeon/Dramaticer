@@ -10,6 +10,7 @@ import {
 	approveLedgerChangeCard,
 	createBackgroundJobRegistry,
 	createMemoryRevisionHandler,
+	createPlayerLedgerChangeCard,
 	createSettleHandler,
 	drainBackgroundJobs,
 	readLedger,
@@ -429,6 +430,151 @@ describe("结算冲突转成待审变更卡", () => {
 		expect(readLedger(store, "a2", ["character", "凛", "location"])).toBe(
 			"屋顶",
 		);
+	});
+});
+
+describe("玩家直接编辑台账", () => {
+	const LOCATION = ["character", "凛", "location"] as const;
+
+	function seedLedger(store: StoryStore): void {
+		store.appendStateDiffs([
+			{
+				storyId: "s1",
+				nodeId: "a2",
+				path: LOCATION,
+				op: "set",
+				value: "教室",
+				source: "settler",
+			},
+		]);
+	}
+
+	it("改值生成来源为玩家的待定卡，批准前台账不变", () => {
+		const { store } = openTempStore();
+		seedStory(store);
+		seedLedger(store);
+
+		const card = createPlayerLedgerChangeCard(
+			store,
+			"s1",
+			{
+				text: "凛的所在地改成屋顶",
+				diffs: [{ path: LOCATION, op: "set", value: "屋顶" }],
+			},
+			{ createdAt: FIXED_AT },
+		);
+
+		expect(card).toMatchObject({
+			source: "player",
+			sourceNodeId: "a2",
+			text: "凛的所在地改成屋顶",
+			status: "pending",
+			rejectionReason: null,
+			decidedAt: null,
+			createdAt: FIXED_AT,
+		});
+		expect(card.before).toEqual([
+			{ path: LOCATION, existed: true, value: "教室" },
+		]);
+		expect(readLedger(store, "a2", LOCATION)).toBe("教室");
+	});
+
+	it("删除已有路径，批准后路径消失且事实来源为玩家", async () => {
+		const { store } = openTempStore();
+		seedStory(store);
+		seedLedger(store);
+		const card = createPlayerLedgerChangeCard(store, "s1", {
+			text: "凛的所在地不再记录",
+			diffs: [{ path: LOCATION, op: "delete" }],
+		});
+
+		await approveLedgerChangeCard(store, card.id, { decidedAt: FIXED_AT });
+
+		expect(readLedger(store, "a2", LOCATION)).toBeUndefined();
+		const diffs = store.getStateDiffs("a2");
+		expect(
+			diffs
+				.filter((diff) => diff.path.join(".") === LOCATION.join("."))
+				.map((diff) => ({ op: diff.op, source: diff.source })),
+		).toEqual([
+			{ op: "set", source: "settler" },
+			{ op: "delete", source: "player" },
+		]);
+	});
+
+	it("拒绝只改状态，不写台账", async () => {
+		const { store } = openTempStore();
+		seedStory(store);
+		seedLedger(store);
+		const card = createPlayerLedgerChangeCard(store, "s1", {
+			text: "凛的所在地改成屋顶",
+			diffs: [{ path: LOCATION, op: "set", value: "屋顶" }],
+		});
+
+		const rejected = await rejectLedgerChangeCard(store, card.id, {
+			decidedAt: FIXED_AT,
+		});
+
+		expect(rejected).toMatchObject({
+			status: "rejected",
+			decidedAt: FIXED_AT,
+		});
+		expect(readLedger(store, "a2", LOCATION)).toBe("教室");
+		expect(store.getStateDiffs("a2")).toHaveLength(1);
+	});
+
+	it("回滚恢复批准前的原值", async () => {
+		const { store } = openTempStore();
+		seedStory(store);
+		seedLedger(store);
+		const card = createPlayerLedgerChangeCard(store, "s1", {
+			text: "凛的所在地改成屋顶",
+			diffs: [{ path: LOCATION, op: "set", value: "屋顶" }],
+		});
+		await approveLedgerChangeCard(store, card.id, { decidedAt: FIXED_AT });
+
+		const rolledBack = await rollbackLedgerChangeCard(store, card.id, {
+			decidedAt: FIXED_AT,
+		});
+
+		expect(rolledBack).toMatchObject({ status: "rolled_back" });
+		expect(readLedger(store, "a2", LOCATION)).toBe("教室");
+	});
+
+	it("非法路径与不存在的删除在写入前拒绝", () => {
+		const { store } = openTempStore();
+		seedStory(store);
+		seedLedger(store);
+
+		expect(() =>
+			createPlayerLedgerChangeCard(store, "s1", {
+				text: "乱写",
+				diffs: [{ path: ["nope", "x"], op: "set", value: 1 }],
+			}),
+		).toThrow(/nope/);
+		expect(() =>
+			createPlayerLedgerChangeCard(store, "s1", {
+				text: "删掉不存在的条目",
+				diffs: [{ path: ["item", "灯"], op: "delete" }],
+			}),
+		).toThrow(/diffs\[0\]\.path/);
+		expect(store.listLedgerChangeCards("s1")).toEqual([]);
+	});
+
+	it("同一份编辑重复提交复用同一张卡", () => {
+		const { store } = openTempStore();
+		seedStory(store);
+		seedLedger(store);
+		const edit = {
+			text: "凛的所在地改成屋顶",
+			diffs: [{ path: LOCATION, op: "set", value: "屋顶" }] as const,
+		};
+
+		const first = createPlayerLedgerChangeCard(store, "s1", edit);
+		const second = createPlayerLedgerChangeCard(store, "s1", edit);
+
+		expect(second.id).toBe(first.id);
+		expect(store.listLedgerChangeCards("s1")).toHaveLength(1);
 	});
 });
 

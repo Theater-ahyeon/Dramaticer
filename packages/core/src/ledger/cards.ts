@@ -216,6 +216,68 @@ export function readBeforeEntry(
 	return { path: [...path], existed: true, value };
 }
 
+export interface PlayerLedgerEdit {
+	/** 玩家写下的修改说明；批准时同时作为用户意志的纠正记入。 */
+	readonly text: string;
+	readonly diffs: readonly LedgerChangeCardDiff[];
+}
+
+/**
+ * 玩家直接编辑台账：把改值与删除写成来源为 `player` 的待定变更卡，`before`
+ * 取当前 head 路径上的原值，批准前台账不变。删除不存在的路径直接拒绝；
+ * 同一个 head 上内容相同的编辑复用同一张卡，重复提交不新增。
+ */
+export function createPlayerLedgerChangeCard(
+	store: StoryStore,
+	storyId: string,
+	edit: PlayerLedgerEdit,
+	options: { readonly createdAt?: string } = {},
+): LedgerChangeCard {
+	const text = edit.text.trim();
+	if (text.length === 0) {
+		throw new Error("变更卡的说明必须是非空字符串");
+	}
+	const diffs = assertLedgerChangeCardDiffs(edit.diffs, "diffs");
+	if (diffs.length === 0) {
+		throw new Error("变更卡至少要有一条修改");
+	}
+	const head = store.getHead(storyId);
+	if (head === null) {
+		throw new Error(`故事 ${storyId} 还没有楼层，不能编辑台账`);
+	}
+	const state = store.getStateSnapshot(head.id).state;
+	const before = diffs.map((diff) => readBeforeEntry(state, diff.path));
+	for (const [index, entry] of before.entries()) {
+		const diff = diffs[index] as LedgerChangeCardDiff;
+		if (diff.op === "delete" && !entry.existed) {
+			throw new Error(
+				`diffs[${index}].path 指向的台账路径不存在：${JSON.stringify(diff.path)}`,
+			);
+		}
+	}
+	const id = ledgerChangeCardId([
+		"player-edit",
+		storyId,
+		head.id,
+		text,
+		JSON.stringify(diffs),
+	]);
+	const existing = store.getLedgerChangeCard(id);
+	if (existing !== null) return existing;
+	return store.insertLedgerChangeCard({
+		id,
+		storyId,
+		source: "player",
+		sourceNodeId: head.id,
+		text,
+		diffs,
+		before,
+		status: "pending",
+		createdAt: options.createdAt ?? new Date().toISOString(),
+		decidedAt: null,
+	});
+}
+
 export interface ChangeCardDecisionOptions {
 	/** 决定时间；缺省用当前时间。 */
 	readonly decidedAt?: string;

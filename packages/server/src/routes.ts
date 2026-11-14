@@ -55,12 +55,14 @@ import {
 	assertComfyUiSlots,
 	assertDirectorIntensity,
 	assertDirectorPush,
+	assertLedgerChangeCardDiffs,
 	assertRerollReason,
 	assertSceneControlKind,
 	assertScenePace,
 	buildImportAuditReport,
 	createBlockFormatSegment,
 	createDefaultContextTemplate,
+	createPlayerLedgerChangeCard,
 	detectComfyUiSlots,
 	emptyImagesConfig,
 	endSceneAt,
@@ -148,6 +150,7 @@ import {
 	type StoryOpeningPickResult,
 	type StoryOpeningsView,
 	type StoryPath,
+	type StoryProposalCreateResult,
 	type StoryProposalsView,
 	type StorySerialView,
 	type StoryTemplateView,
@@ -349,6 +352,10 @@ export async function handleApiRequest(
 					handleLore(res, options, storyId);
 					return;
 				case "proposals":
+					if (method === "POST") {
+						await handleCreateProposal(req, res, options, storyId);
+						return;
+					}
 					requireMethod(method, ["GET"]);
 					handleProposals(res, options, url, storyId);
 					return;
@@ -1509,6 +1516,36 @@ function toProposalDecisionError(error: unknown): HttpError {
 		return new HttpError(404, "not_found", error.message);
 	}
 	return new HttpError(409, "conflict", error.message);
+}
+
+async function handleCreateProposal(
+	req: IncomingMessage,
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	storyId: string,
+): Promise<void> {
+	requireStory(options.store, storyId);
+	const body = await readObjectBody(req, options.maxJsonBodyBytes);
+	assertKnownKeys(body, ["text", "diffs"]);
+	const text = requireText(body.text, "text");
+	if (!Array.isArray(body.diffs) || body.diffs.length === 0) {
+		throw fieldError("diffs", "diffs 必须是非空数组");
+	}
+	let card: LedgerChangeCard;
+	try {
+		card = createPlayerLedgerChangeCard(options.store, storyId, {
+			text,
+			diffs: assertLedgerChangeCardDiffs(body.diffs, "diffs"),
+		});
+	} catch (error) {
+		throw toBadRequest(error, "diffs");
+	}
+	const head = options.store.getHead(storyId);
+	const view: StoryProposalCreateResult = {
+		card,
+		ledger: head === null ? null : buildNodeLedgerView(options.store, head.id),
+	};
+	sendJson(res, 201, view);
 }
 
 function handleProposals(

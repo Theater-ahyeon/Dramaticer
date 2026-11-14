@@ -1919,7 +1919,8 @@
   - 接口 `GET /api/stories/:id/serial` 返回这份派生视图，`nodeId` 省略时取当前 head；非法楼层与跨故事楼层按不存在处理。
   验收：章节边界跟着章末清点走；前情提要只含已归档场次且阈值可配；人物关系页含出处场次、关系与不知情标注；时间线按路径顺序；分支隔离；`pnpm check` 通过。
 
-- [ ] **W6-T03.b 可编辑记忆走变更卡** | 依赖：W6-T03.a
+- [x] **W6-T03.b 可编辑记忆走变更卡** | 依赖：W6-T03.a
+  完成：2026-11-14 core 新增 `createPlayerLedgerChangeCard`：玩家对台账路径的改值与删除写成来源 `player` 的待定卡，`before` 取当前 head 的台账快照，每条修改复用 `assertLedgerChangeCardDiff`；删除不存在的路径在写入前拒绝，同一 head 上内容相同的编辑复用同一张卡。新增接口 `POST /api/stories/:id/proposals`（`{text, diffs}`，201 返回 `{card, ledger}`），非法路径或值 400 且字段路径为 `diffs`；读取、批准、拒绝与回滚仍走既有 `/proposals` 接口。protocol 新增 `StoryProposalCreateRequest`、`StoryProposalCreateResult`，web 客户端新增 `createProposal`。新增 core 6 个、server 2 个、web 1 个测试；`pnpm check` 通过。
   做什么：
   - 玩家对台账路径的直接修改（改值、删除）写成来源为 `player` 的待定变更卡，`before` 取当前 head 路径的值；校验复用 `validateLedgerDiff`，非法路径或值在写入前拒绝并指出字段。
   - 读取、批准、拒绝与回滚复用现有 `/proposals` 接口，不另开一套编辑记录。
