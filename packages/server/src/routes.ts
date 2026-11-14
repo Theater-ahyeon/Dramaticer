@@ -69,6 +69,7 @@ import {
 	enqueueIllustrateBackgroundJob,
 	enqueueOpeningBackgroundJobs,
 	enqueueVisualProfileBackgroundJob,
+	exportSerialBook,
 	fulfillLedgerClue,
 	importKindSuggestionsNeedRun,
 	isImportEntryKind,
@@ -140,6 +141,7 @@ import {
 	type ProposalDecisionResult,
 	type SceneControlResult,
 	type SetHeadRequest,
+	type StoryBookExport,
 	type StoryCluesView,
 	type StoryDirectorPlanView,
 	type StoryEntitiesView,
@@ -374,6 +376,11 @@ export async function handleApiRequest(
 		if (third === "openings" && parts.length === 4 && parts[3] === "generate") {
 			requireMethod(method, ["POST"]);
 			handleOpeningGenerate(res, options, storyId);
+			return;
+		}
+		if (third === "serial" && parts.length === 4 && parts[3] === "export") {
+			requireMethod(method, ["GET"]);
+			handleStorySerialExport(res, options, storyId, url);
 			return;
 		}
 		if (
@@ -1403,6 +1410,34 @@ function handleStorySerial(
 		nodeId === undefined ? {} : { nodeId },
 	);
 	sendJson(res, 200, view);
+}
+
+/**
+ * `GET /api/stories/:id/serial/export`：按章节目录导出当前路径的 Markdown。
+ * 正文逐字取楼层原文，只拼接派生标题与已归档场次摘要。
+ */
+function handleStorySerialExport(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	storyId: string,
+	url: URL,
+): void {
+	requireStory(options.store, storyId);
+	const raw = url.searchParams.get("nodeId");
+	let nodeId: string | undefined;
+	if (raw !== null) {
+		if (raw.length === 0) {
+			throw fieldError("nodeId", "nodeId 不能为空");
+		}
+		requireStoryNode(options.store, storyId, raw);
+		nodeId = raw;
+	}
+	const book: StoryBookExport = exportSerialBook(
+		options.store,
+		storyId,
+		nodeId === undefined ? {} : { nodeId },
+	);
+	sendJson(res, 200, book);
 }
 
 async function handleClueFulfill(

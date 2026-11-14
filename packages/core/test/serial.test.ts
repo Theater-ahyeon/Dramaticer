@@ -443,6 +443,7 @@ describe("连载视图", () => {
 		expect(readSerialView(store, "s1")).toEqual({
 			storyId: "s1",
 			nodeId: null,
+			scenes: [],
 			chapters: [],
 			cast: [],
 			timeline: [],

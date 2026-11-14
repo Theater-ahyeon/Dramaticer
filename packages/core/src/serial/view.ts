@@ -125,6 +125,8 @@ export interface SerialView {
 	readonly storyId: string;
 	/** 视图对应的楼层；故事没有楼层时为 null。 */
 	readonly nodeId: string | null;
+	/** 路径上的场次，序号与章节目录的 `sceneOrdinals` 对应。 */
+	readonly scenes: readonly SerialScene[];
 	readonly chapters: readonly SerialChapter[];
 	readonly cast: readonly SerialCharacter[];
 	readonly timeline: readonly SerialTimelineEntry[];
@@ -188,6 +190,7 @@ export function readSerialView(
 		return {
 			storyId,
 			nodeId: null,
+			scenes: [],
 			chapters: [],
 			cast: [],
 			timeline: [],
@@ -260,6 +263,7 @@ export function readSerialView(
 	return {
 		storyId,
 		nodeId,
+		scenes,
 		chapters,
 		cast,
 		timeline,

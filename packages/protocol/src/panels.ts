@@ -19,6 +19,7 @@ import type {
 	SceneControl,
 	ScenePace,
 	SceneSegment,
+	SerialBookExport,
 	SerialView,
 	StateDiff,
 	Summary,
@@ -273,3 +274,9 @@ export interface StoryOpeningPickResult {
  * 共用的派生视图；查询参数 `nodeId` 省略时取当前 head。
  */
 export type StorySerialView = SerialView;
+
+/**
+ * `GET /api/stories/:id/serial/export`：按章节目录导出的 Markdown 与
+ * 建议的文件名；正文逐字来自楼层原文。
+ */
+export type StoryBookExport = SerialBookExport;

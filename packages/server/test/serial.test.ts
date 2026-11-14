@@ -1,6 +1,10 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { ApiErrorResponse, StorySerialView } from "@dramaticer/protocol";
+import type {
+	ApiErrorResponse,
+	StoryBookExport,
+	StorySerialView,
+} from "@dramaticer/protocol";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { type RunningServer, startServer } from "../src/index.js";
 
@@ -197,5 +201,65 @@ describe("连载视图接口", () => {
 			`${running.origin}/api/stories/s1/serial?nodeId=x1`,
 		);
 		expect(crossStory.status).toBe(404);
+	});
+});
+
+describe("导出成书接口", () => {
+	it("按章节目录导出当前路径的 Markdown", async () => {
+		const running = await startTestServer();
+		seedStory(running);
+		const { status, body } = await getJson<StoryBookExport>(
+			`${running.origin}/api/stories/s1/serial/export`,
+		);
+		expect(status).toBe(200);
+		expect(body.nodeId).toBe("a2");
+		expect(body.fileName).toBe("连载接口.md");
+		expect(body.markdown).toBe(
+			`${[
+				"# 连载接口",
+				"## 第 1 章",
+				"> 凛在门口等你。",
+				"山门外的风很冷。",
+				"我推开山门。",
+				"门后传来脚步声。",
+			].join("\n\n")}\n`,
+		);
+	});
+
+	it("指定楼层时只导出那条分支的原文", async () => {
+		const running = await startTestServer();
+		seedStory(running);
+		const { status, body } = await getJson<StoryBookExport>(
+			`${running.origin}/api/stories/s1/serial/export?nodeId=b1`,
+		);
+		expect(status).toBe(200);
+		expect(body.nodeId).toBe("b1");
+		expect(body.markdown).toBe(
+			`${[
+				"# 连载接口",
+				"## 第 1 章",
+				"> 你转身离开了山门。",
+				"山门外的风很冷。",
+				"我推开山门。",
+				"你转身离开。",
+			].join("\n\n")}\n`,
+		);
+	});
+
+	it("不存在的故事、跨故事楼层与空楼层参数按错误处理", async () => {
+		const running = await startTestServer();
+		seedStory(running);
+		const missingStory = await getJson<ApiErrorResponse>(
+			`${running.origin}/api/stories/nope/serial/export`,
+		);
+		expect(missingStory.status).toBe(404);
+		const crossStory = await getJson<ApiErrorResponse>(
+			`${running.origin}/api/stories/s1/serial/export?nodeId=x1`,
+		);
+		expect(crossStory.status).toBe(404);
+		const emptyNode = await getJson<ApiErrorResponse>(
+			`${running.origin}/api/stories/s1/serial/export?nodeId=`,
+		);
+		expect(emptyNode.status).toBe(400);
 	});
 });

@@ -315,6 +315,22 @@ describe("ApiClient", () => {
 		]);
 	});
 
+	it("导出成书的 nodeId 按参数拼查询串", async () => {
+		const { client, calls } = clientFor(() =>
+			jsonResponse({
+				storyId: "s1",
+				nodeId: "n1",
+				fileName: "连载.md",
+				markdown: "# 连载\n",
+			}),
+		);
+		const book = await client.exportBook("s1", "n 1");
+		expect(book.fileName).toBe("连载.md");
+		expect(calls.map((call) => call.url)).toEqual([
+			"/api/stories/s1/serial/export?nodeId=n+1",
+		]);
+	});
+
 	it("中止信号按原样向上传递", async () => {
 		const controller = new AbortController();
 		const client = new ApiClient({

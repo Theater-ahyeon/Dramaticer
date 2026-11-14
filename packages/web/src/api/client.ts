@@ -48,6 +48,7 @@ import {
 	type SceneControlResult,
 	type SetHeadRequest,
 	type SseEvent,
+	type StoryBookExport,
 	type StoryCluesView,
 	type StoryDirectorPlanRequest,
 	type StoryDirectorPlanView,
@@ -306,6 +307,15 @@ export class ApiClient {
 		return this.json<StorySerialView>(
 			"GET",
 			`${storyPath(storyId)}/serial${queryText(query)}`,
+		);
+	}
+
+	async exportBook(storyId: string, nodeId?: string): Promise<StoryBookExport> {
+		const query = new URLSearchParams();
+		if (nodeId !== undefined) query.set("nodeId", nodeId);
+		return this.json<StoryBookExport>(
+			"GET",
+			`${storyPath(storyId)}/serial/export${queryText(query)}`,
 		);
 	}
 
