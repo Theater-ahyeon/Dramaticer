@@ -3,21 +3,22 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-14 会话 386：修复评测判定与模拟用户的输出预算与重试缺陷，重新申请 R6-T05 长任务。R6-T05-02 退出码 0 但结果不完整：`xianxia` 8/8 对、20 轮；`yuwang` 20 轮、7/8 对（分支点第 6 轮裁判连续三次没有输出合法 JSON）；`yinqi` 第 15 轮后模拟用户连续三次没有输出 `{message}`，运行失败、0 对。缓存里的响应显示：裁判与模拟用户请求固定 512 输出上限，思考模型把预算全部用在思考上、正文为空（`reasoningTokens` 511–512）；重试第 2、3 次请求逐字节相同，配合按请求体的响应缓存必然复现失败。按 ADR-0136 修复：判定与模拟用户调用在未显式配置时不发送 `maxTokens`（路由器使用模型声明上限），重试消息带尝试次数、模拟用户重试附上一次原文要求原样改成 JSON；`deep-eval` 把模拟用户输出失败记为失败轮次；深回合 sidecar 的 `failed` 状态改为续跑并清空上次错误；`r6-deep-cli` 在任一故事失败时退出码为 1。补充了判定输出上限、重试消息、模拟用户失败轮次与深回合 sidecar 续跑的回归断言，门禁通过（260 个测试文件、2,269 个测试、5 个跳过）。`yuwang` 的运行副本已删除重跑（缓存保留），`yinqi` 保留 sidecar 从第 16 轮续跑；写了 `.devloop/jobs/R6-T05-03.json`，本会话结果 `WAITING`。
+- 2026-11-14 会话 387：读取 `.devloop/jobs/R6-T05-03.status.json`（退出码 0，20.9 分钟）与日志，核对三份结果：每个故事 `plannedPairs` 为 8、`turns.completed` 为 20、8 条分支记录且两种展示顺序齐全。R6-T05 标 `[x]` 并写入真实数字（24 对，胜 9、负 5、平 0、换序不一致 10，胜率 64.3%，Wilson 95% 38.8%–83.7%；深回合 60 轮全部完成、截断 2 轮；写作请求 84、用户请求 64、裁判请求 54、预热请求 30，输入 1,769,200 token、输出 79,643 token）。按预注册口径 G5 的初次判定未通过：完成配对数达标，胜率点估计高于 0.50，但换序不一致比例 41.7% 超过 30% 上限、Wilson 下界 38.8% 不高于 0.50；改进任务由 R6-T99 按预注册第四节生成。本会话没有改代码，门禁维持通过（260 个测试文件、2,269 个测试、5 个跳过）。
 
-## 下一步（会话 387 先做）
-1. 读 `.devloop/jobs/R6-T05-03.status.json` 与 `.log`。退出码 0 时核对 `eval-private/reports/r6/deep/xianxia.json`、`yuwang.json`、`yinqi.json`：每个故事的 `summary.plannedPairs` 为 8、`summary.turns.completed` 为 20、分支记录齐全；把 R6-T05 标 `[x]` 并写完成记录（真实样本数、配对计数、胜率与区间、失败数、成本）。退出码非 0 时先在日志定位失败阶段（预热、深回合、快回合或判定），修复后换新的任务序号重新申请。`.devloop/scratch/R6-T05/` 下的检查脚本只在本地使用。
-2. 然后做 **R6-T06 C1 与 C2 批量运行**（依赖 R6-T02、R6-T03）。按预注册参数运行 C1（3 个故事 × 首中末 3 个分支点 × 2 档位 × 30 轮）与 C2（每故事全部最多 10 个分支点，至少 27 对），输入与结果写 `eval-private/reports/r6/`；写 `.devloop/jobs/R6-T06-01.json` 并结果写 `WAITING`。
-3. R6-T06 完成后做 R6-T99：把 C1、C2、C3、G6 的输入交给 `r6-gate` / `evaluateR6Gates`，按预注册判定 G1–G6。预注册文档在第一次批次运行后不得修改。
+## 下一步（会话 388 先做）
+1. 做 **R6-T06 C1 与 C2 批量运行**（依赖 R6-T02、R6-T03，均已 `[x]`）。先跑 C2（B1，快）：三个故事各按全部最多 10 个分支点、每点 1 次续写，计划 30 对、至少 27 对完成；命令见「可重复命令」的 `r6-b1`，结果写 `eval-private/reports/r6/b1/<slug>.json` 与 `.md`，运行目录同目录的 `<slug>/`。写成 `.devloop/scratch/R6-T06/run-b1.mjs`（串行三个故事，逐个 `spawnSync`，任一失败退出码 1），申请 `.devloop/jobs/R6-T06-01.json`，结果写 `WAITING`。
+2. C2 跑完后（会话 389）核对 `eval-private/reports/r6/b1/*.json`：配对完成数、排除计数、历史回复模型清单、成本；然后跑 C1（9 个分支点 × 2 档位 × 30 轮 = 540 轮），命令见 `r6-compare`，结果写 `eval-private/reports/r6/c1/<slug>.json` 与 `.md`，运行目录同目录的 `<slug>/`；同样写脚本、申请 `.devloop/jobs/R6-T06-02.json`。
+3. R6-T06 完成后做 **R6-T99**：把 C1、C2、C3（R6-T05，已就绪）与 G6 的输入交给 `r6-gate` / `evaluateR6Gates`，按预注册判定 G1–G6；G5 的初次判定已知未通过（换序不一致 41.7%、Wilson 下界 38.8%），按预注册第四节写 `docs/dev/R6-ROUND-1.md` 与 `R6-F1-*` 改进任务。预注册文档在第一次批次运行后不得修改。
 4. 阻塞检查：M6-T99 仍等 HUMAN-15（ComfyUI 与 API 格式 workflow）；HUMAN-03、HUMAN-16、HUMAN-17、HUMAN-18 不阻塞。
 
 ## 当前状态
-- 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1–P4、C-T01 至 C-T05、H-T00 至 H-T99、X1.a 至 X1.e、X2.a 至 X2.d、R6-T00、R6-T01、R6-T02、R6-T03、R6-T04。R6-T05 实现完成，等长任务 R6-T05-03。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1–P4、C-T01 至 C-T05、H-T00 至 H-T99、X1.a 至 X1.e、X2.a 至 X2.d、R6-T00、R6-T01、R6-T02、R6-T03、R6-T04、R6-T05。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
 - 兼容插件线：`st-content`、`st-mvu`、`st-ejs`、`st-helper-host` 全部完成（含一致性测试与共存评测）。
 - 数据库 schema 版本 50。本轮没有新增依赖。
 - 报告：`docs/dev/reports/P2.md`、`P3.md`、`P4.md`、`C-T01.md`、`C-T02.md`、`C-T03.md`、`C-T04.md`、`C-T05.md`、`H.md`、`X1.md`、`X2.md`。
 - R6 预注册：`docs/dev/R6-PREREG.md` v1、ADR-0135、DESIGN §14.2；门槛常量与判定由 R6-T01 实现，`R6_GATE_VERSION` 为 `v1`；C1 运行器由 R6-T02、B1 批次由 R6-T03、偏好一致率由 R6-T04、深回合批次由 R6-T05 实现，结果写入门槛版本。
-- R6-T05 的真实运行：`.devloop/jobs/R6-T05-03.json` → `node .devloop/scratch/R6-T05/run-deep.mjs`，串行跑 `xianxia`、`yuwang`、`yinqi` 三个故事。源数据库是 `eval-private/world-model-compare/source/<slug>.db`；每个故事的结果在 `eval-private/reports/r6/deep/<slug>.json` 与 `.md`，运行副本和 sidecar 在 `eval-private/reports/r6/deep/<slug>/`。预热按显式预热楼层构建结算窗口，每 4 楼一次请求，不再从最早未结算楼层开始。`xianxia` 复用上一轮完成的运行；`yuwang` 的运行副本已删除重跑；`yinqi` 从第 16 轮续跑。
+- R6-T05 的真实结果在 `eval-private/reports/r6/deep/<slug>.json` 与 `.md`：24 对，胜 9、负 5、平 0、换序不一致 10；`xianxia` 4/3/0/1、`yuwang` 3/1/0/4、`yinqi` 2/1/0/5；深回合 60 轮全部完成、截断 2 轮（`yinqi`）；G5 初次判定未通过（换序不一致 41.7% > 30%，Wilson 下界 38.8% ≤ 50%）。
+- R6-T05 的运行目录 `eval-private/reports/r6/deep/<slug>/` 里有 `runs/<故事安全名>-<hash>/deep.json` sidecar 与 `deep.db`；重跑复用 `done`，`failed` 与 `running` 续跑。`xianxia` 的 sidecar 来自 ADR-0136 修复前已完成的运行，8 对判定齐全；`yuwang` 与 `yinqi` 按修复后的参数运行。
 - 世界模型：默认 `ledger`；`wiki` 与 `temporal_graph` 已经可用，由故事设置 `worldModel` 选择，只有 `temporal_graph` 支持 `atStoryTime`。
 - 导演组织方式：默认 `mechanisms`（现有机制序列）；`bits` 已可用，由故事设置 `directorOrganization` 选择。X2 判定见 ADR-0134 与 `docs/dev/reports/X2.md`。
 - X2 的输入与运行脚本在 `.devloop/scratch/X2.d/`：`inputs/`（消息、小品、条件样本）、`run-compare.mjs`、`summarize.mjs`、`runs/<slug>/`（复制数据库、缓存与 sidecar）、`smoke/`（2 轮冒烟结果）。长任务状态在 `.devloop/jobs/X2.d-01.status.json`（退出码 0）与 `.log`。
@@ -51,7 +52,7 @@
 - X2.d 单个故事：`node packages/st-compat/dist/evalset/director-organization-compare-cli.js --db <源库> --story <故事> --messages .devloop/scratch/X2.d/inputs/<slug>.messages.json --bits .devloop/scratch/X2.d/inputs/<slug>.bits.json --conditions .devloop/scratch/X2.d/inputs/<slug>.conditions.json --rounds 8 --repeat 3 --seed 1 --model main-fallback --judge-model judge --background-model background --dir .devloop/scratch/X2.d/runs/<slug>`。
 - X2.d 冒烟：把上面命令的 `--rounds` 改 2、`--repeat` 改 1、`--dir` 改 `.devloop/scratch/X2.d/smoke`。
 - X2.c 目标测试：`pnpm exec vitest run packages/st-compat/test/director-organization-compare.test.ts`。
-- X2.b 目标测试：`pnpm exec vitest run packages/core/test/director-bits.test.ts packages/core/test/director-organization.test.ts packages/core/test/card-extension.test.ts packages/core/test/plugin-background-tools.test.ts packages/st-compat/test/dramaticer-extension.test.ts packages/server/test/stories.test.ts`。
+- X2.b 目标测试：`pnpm exec vitest run packages/st-compat/test/director-bits.test.ts packages/core/test/director-organization.test.ts packages/core/test/card-extension.test.ts packages/core/test/plugin-background-tools.test.ts packages/st-compat/test/dramaticer-extension.test.ts packages/server/test/stories.test.ts`。
 - X1 长任务（重跑会复用 sidecar）：`node .devloop/scratch/X1.e/run-compare.mjs`。
 - X1 目标测试：`pnpm exec vitest run packages/st-compat/test/world-model-compare.test.ts`。
 - H-T99 真实渠道验收：`node .devloop/scratch/H-T99/live.mjs`。
@@ -65,6 +66,7 @@
 - 私有数据（`eval-private/`、`data/`、`.env`）不能进入测试数据、提交、文档或日志；报告只写统计数字，不写对话原文。X1、X2 与 R6 的 JSON 含回复与答案，只能放在私有目录。
 - R6 预注册 v1 在第一次批次运行后冻结：门槛、样本、指标、模型与种子都不改；必须调整时另写 v2、记 ADR、把评测轮次计数重置为 0。门槛常量与 `docs/dev/R6-PREREG.md` 必须逐项一致，`evaluateR6Gates` 不允许缺项回落。
 - `gates.ts` 的 G6 少于 30 对时状态为 `insufficient`，报告里同时出现在 `insufficient` 与 `unproven`；其他门槛 `insufficient` 会让 `passed` 为 false。G1 的故事覆盖按 `completedPairs > 0` 计数，故事完成数合计必须等于配对合计，否则输入校验抛错。
+- `evaluateR6Gates` 要求六项输入齐全，缺项直接抛错；单测门槛时构造完整的 `{b1, repetition, advancement, contradiction, deep, preference}`，不要只传一项。
 - `metrics.ts` 的 `measureReplyRepetition` 是 R6 的相邻回复口径；`measureBlockRepetition` 是按行切块的 X2 与记分牌口径。两个口径不要混用，X2 的数字用后者保持不变。
 - R6 的分支点按路径深度取：主路径长度的 10% 到 100%，每个比例取最近的助手楼层，保留其后有非空玩家消息与历史回复的点，去重后每故事最多 10 个；C1 取首、中、末 3 个，B1 取全部。`--branches` 只接受规划结果里出现的助手楼层。
 - R6 的 C1 两档必须共用同一串玩家消息：原生档先生成并写入 sidecar，朴素档逐字重放；sidecar 校验故事、分支点、轮数、种子、写作/用户/裁判模型，朴素档还校验消息哈希，输入变化时失败并提示删除。
