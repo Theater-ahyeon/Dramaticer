@@ -66,6 +66,7 @@ describe("extensions.dramaticer 导入", () => {
 		expect(result).toEqual({
 			events: { inserted: 2, updated: 0 },
 			npcAgendas: { inserted: 1, updated: 0 },
+			bits: { replaced: 0 },
 			arcs: { inserted: 0, updated: 0, skipped: 0 },
 		});
 
@@ -91,6 +92,52 @@ describe("extensions.dramaticer 导入", () => {
 			importance: 0.8,
 			progress: "",
 		});
+	});
+
+	it("剧情小品随卡导入并整批替换", () => {
+		const first = parseCharacterCardJson(
+			cardJson({
+				bits: [
+					{
+						id: "opening",
+						instruction: "让山门外的雨更大",
+						condition: { kind: "text", text: "玩家提到天气" },
+					},
+				],
+			}),
+		);
+		importCharacterCardEntity(store, "s1", first);
+		const firstResult = importDramaticerExtension(store, "s1", first);
+		expect(firstResult.bits).toEqual({ replaced: 1 });
+		expect(store.listDirectorBits("s1")).toEqual([
+			{
+				id: "opening",
+				condition: { kind: "text", text: "玩家提到天气" },
+				instruction: "让山门外的雨更大",
+				priority: 0,
+				cooldown: 0,
+				after: null,
+				repeatable: true,
+				fallback: false,
+			},
+		]);
+
+		const second = parseCharacterCardJson(
+			cardJson({
+				bits: [
+					{
+						id: "quiet",
+						instruction: "留一段安静的空镜",
+						fallback: true,
+					},
+				],
+			}),
+		);
+		const secondResult = importDramaticerExtension(store, "s1", second);
+		expect(secondResult.bits).toEqual({ replaced: 1 });
+		expect(store.listDirectorBits("s1").map((bit) => bit.id)).toEqual([
+			"quiet",
+		]);
 	});
 
 	it("停用的事件保留在池里并标记为停用", () => {
@@ -122,6 +169,7 @@ describe("extensions.dramaticer 导入", () => {
 		expect(result).toEqual({
 			events: { inserted: 0, updated: 2 },
 			npcAgendas: { inserted: 0, updated: 1 },
+			bits: { replaced: 0 },
 			arcs: { inserted: 0, updated: 0, skipped: 0 },
 		});
 
@@ -143,6 +191,7 @@ describe("extensions.dramaticer 导入", () => {
 		expect(importDramaticerExtension(store, "s1", card)).toEqual({
 			events: { inserted: 0, updated: 0 },
 			npcAgendas: { inserted: 0, updated: 0 },
+			bits: { replaced: 0 },
 			arcs: { inserted: 0, updated: 0, skipped: 0 },
 		});
 		expect(store.listEventPool("s1")).toEqual([]);

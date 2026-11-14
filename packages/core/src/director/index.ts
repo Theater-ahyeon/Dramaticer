@@ -1,5 +1,7 @@
 export * from "./actions-cli.js";
 export * from "./beat.js";
+export * from "./bit-judgments.js";
+export * from "./bits.js";
 export * from "./card-extension.js";
 export * from "./candidates.js";
 export * from "./cli.js";

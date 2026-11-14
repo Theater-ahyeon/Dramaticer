@@ -5,6 +5,7 @@ describe("extensions.dramaticer 解析", () => {
 	it("没有字段时返回空扩展", () => {
 		const empty = {
 			events: [],
+			bits: [],
 			npcAgendas: [],
 			arcs: [],
 			plugins: [],
@@ -360,5 +361,182 @@ describe("extensions.dramaticer 解析", () => {
 		expect(() => parseDramaticerCardExtension({ events: {} })).toThrow(
 			"extensions.dramaticer.events 必须是数组",
 		);
+	});
+
+	it("解析剧情小品并套用默认值", () => {
+		const extension = parseDramaticerCardExtension({
+			bits: [
+				{
+					id: "open",
+					instruction: "让伤口重新裂开",
+					condition: { kind: "text", text: "玩家提到旧伤" },
+				},
+				{
+					id: "clue",
+					instruction: "推进线索",
+					condition: {
+						kind: "ledger",
+						query: {
+							kind: "state",
+							path: ["clue", "c1", "status"],
+							op: "equals",
+							value: "open",
+						},
+					},
+					priority: 3,
+					cooldown: 2,
+					after: "open",
+					repeatable: false,
+				},
+				{
+					id: "idle",
+					instruction: "给一个安静的空镜",
+					fallback: true,
+					priority: -1,
+				},
+			],
+		});
+		expect(extension.bits).toEqual([
+			{
+				id: "open",
+				condition: { kind: "text", text: "玩家提到旧伤" },
+				instruction: "让伤口重新裂开",
+				priority: 0,
+				cooldown: 0,
+				after: null,
+				repeatable: true,
+				fallback: false,
+			},
+			{
+				id: "clue",
+				condition: {
+					kind: "ledger",
+					query: {
+						kind: "state",
+						path: ["clue", "c1", "status"],
+						op: "equals",
+						value: "open",
+					},
+				},
+				instruction: "推进线索",
+				priority: 3,
+				cooldown: 2,
+				after: "open",
+				repeatable: false,
+				fallback: false,
+			},
+			{
+				id: "idle",
+				condition: null,
+				instruction: "给一个安静的空镜",
+				priority: -1,
+				cooldown: 0,
+				after: null,
+				repeatable: true,
+				fallback: true,
+			},
+		]);
+	});
+
+	it("非法剧情小品整批拒绝并指出路径", () => {
+		expect(() =>
+			parseDramaticerCardExtension({
+				bits: [{ id: "a", instruction: "指令", fallback: true, mood: "x" }],
+			}),
+		).toThrow("extensions.dramaticer.bits[0].mood 是未知字段");
+		expect(() =>
+			parseDramaticerCardExtension({
+				bits: [
+					{
+						id: "a",
+						instruction: "指令",
+						condition: { kind: "text", text: "x" },
+					},
+					{
+						id: "a",
+						instruction: "指令",
+						condition: { kind: "text", text: "y" },
+					},
+				],
+			}),
+		).toThrow("extensions.dramaticer.bits[1].id 重复：a");
+		expect(() =>
+			parseDramaticerCardExtension({
+				bits: [
+					{
+						id: "a",
+						instruction: "指令",
+						condition: {
+							kind: "ledger",
+							query: { kind: "state", path: ["场景", "地点"], op: "exists" },
+						},
+					},
+				],
+			}),
+		).toThrow(
+			"extensions.dramaticer.bits[0].condition.query.path[0] 必须是台账命名空间：场景",
+		);
+		expect(() =>
+			parseDramaticerCardExtension({
+				bits: [
+					{
+						id: "a",
+						instruction: "指令",
+						condition: { kind: "ledger", query: { kind: "switch", name: "x" } },
+					},
+				],
+			}),
+		).toThrow(
+			"extensions.dramaticer.bits[0].condition.query.kind 不能是 switch",
+		);
+		expect(() =>
+			parseDramaticerCardExtension({
+				bits: [{ id: "a", instruction: "指令" }],
+			}),
+		).toThrow(
+			"extensions.dramaticer.bits[0].condition 必须提供；兜底小品才可以省略条件",
+		);
+		expect(() =>
+			parseDramaticerCardExtension({
+				bits: [
+					{
+						id: "a",
+						instruction: "指令",
+						condition: { kind: "text", text: "x" },
+						fallback: true,
+					},
+				],
+			}),
+		).toThrow("extensions.dramaticer.bits[0].condition 在兜底小品里必须省略");
+		expect(() =>
+			parseDramaticerCardExtension({
+				bits: [
+					{
+						id: "a",
+						instruction: "指令",
+						condition: { kind: "text", text: "x" },
+						after: "missing",
+					},
+				],
+			}),
+		).toThrow("extensions.dramaticer.bits[0].after 指向不存在的小品：missing");
+		expect(() =>
+			parseDramaticerCardExtension({
+				bits: [
+					{
+						id: "a",
+						instruction: "指令",
+						condition: { kind: "text", text: "x" },
+						after: "b",
+					},
+					{
+						id: "b",
+						instruction: "指令",
+						condition: { kind: "text", text: "y" },
+						after: "a",
+					},
+				],
+			}),
+		).toThrow("extensions.dramaticer.bits 的顺序约束形成环：a");
 	});
 });

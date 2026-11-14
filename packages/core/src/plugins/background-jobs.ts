@@ -2,6 +2,10 @@ import type { BackgroundJobEntry } from "../background/registry.js";
 import type { BackgroundJobRegistry } from "../background/types.js";
 import type { BackgroundJobType } from "../background/types.js";
 import {
+	DIRECTOR_BITS_JOB_KIND,
+	createDirectorBitJudgmentsHandler,
+} from "../director/bit-judgments.js";
+import {
 	CANDIDATE_ACTIONS_JOB_KIND,
 	createCandidateActionsHandler,
 } from "../director/candidates.js";
@@ -87,6 +91,7 @@ export const VISUAL_PROFILE_JOB_PLUGIN = "background.visual-profile";
 export const ILLUSTRATE_JOB_PLUGIN = "background.illustrate";
 export const DIRECTOR_PLAN_JOB_PLUGIN = "background.director-plan";
 export const CANDIDATE_ACTIONS_JOB_PLUGIN = "background.candidate-actions";
+export const DIRECTOR_BITS_JOB_PLUGIN = "background.director-bits";
 export const EMBEDDINGS_JOB_PLUGIN = "background.embeddings";
 
 /** 建立插件定义；入队条件、档位与 needsRun 由内核注册表校验。 */
@@ -219,6 +224,11 @@ export function createBackgroundJobPlugins(
 				tier: "gap",
 			},
 		),
+		backgroundJobPlugin(DIRECTOR_BITS_JOB_PLUGIN, DIRECTOR_BITS_JOB_KIND, {
+			handler: createDirectorBitJudgmentsHandler(plannerOptions(plannerClient)),
+			enqueue: "settled",
+			tier: "gap",
+		}),
 	);
 	if (embedder !== null) {
 		plugins.push(

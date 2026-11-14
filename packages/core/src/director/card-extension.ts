@@ -6,6 +6,7 @@ import {
 	parseDeclarativePlugins,
 	parseDeclarativeRequirements,
 } from "../plugins/declarative.js";
+import { type DirectorBit, parseDirectorBitDefinitions } from "./bits.js";
 import {
 	type DramaticerEventDefinition,
 	parseDramaticerEventDefinitions,
@@ -22,6 +23,8 @@ export interface DramaticerNpcAgendaDefinition {
 
 export interface DramaticerCardExtension {
 	readonly events: readonly DramaticerEventDefinition[];
+	/** 导演组织方式 bits 使用的小品；只在导入时校验并保存。 */
+	readonly bits: readonly DirectorBit[];
 	readonly npcAgendas: readonly DramaticerNpcAgendaDefinition[];
 	/** 弧线、序列与节拍，字段与 `DirectorPlan` 相同。 */
 	readonly arcs: readonly DirectorArc[];
@@ -35,6 +38,7 @@ export interface DramaticerCardExtension {
 
 const EMPTY_EXTENSION: DramaticerCardExtension = {
 	events: [],
+	bits: [],
 	npcAgendas: [],
 	arcs: [],
 	plugins: [],
@@ -55,13 +59,25 @@ export function parseDramaticerCardExtension(
 	const root = assertPlainObject(value, "extensions.dramaticer");
 	rejectUnknownKeys(
 		root,
-		["events", "npcAgendas", "arcs", "plugins", "requires", "recommends"],
+		[
+			"events",
+			"bits",
+			"npcAgendas",
+			"arcs",
+			"plugins",
+			"requires",
+			"recommends",
+		],
 		"extensions.dramaticer",
 	);
 
 	const events = parseDramaticerEventDefinitions(
 		root.events,
 		"extensions.dramaticer.events",
+	);
+	const bits = parseDirectorBitDefinitions(
+		root.bits,
+		"extensions.dramaticer.bits",
 	);
 	const npcAgendas = parseArray(
 		root.npcAgendas,
@@ -84,7 +100,15 @@ export function parseDramaticerCardExtension(
 		root.recommends,
 		"extensions.dramaticer.recommends",
 	);
-	return { events, npcAgendas, arcs, plugins, requires, recommends };
+	return {
+		events,
+		bits,
+		npcAgendas,
+		arcs,
+		plugins,
+		requires,
+		recommends,
+	};
 }
 
 function parseArray<T>(

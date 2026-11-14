@@ -1504,6 +1504,39 @@ export function buildMigrations(
 					DEFAULT 'mechanisms' CHECK (director_organization IN ('mechanisms', 'bits'))`,
 			],
 		},
+		{
+			version: 50,
+			description: "剧情小品的定义与按楼层缓存的条件判断",
+			statements: [
+				`CREATE TABLE story_director_bits (
+					story_id TEXT NOT NULL REFERENCES stories(id),
+					bit_id TEXT NOT NULL CHECK (length(trim(bit_id)) > 0),
+					payload TEXT NOT NULL,
+					source TEXT NOT NULL,
+					created_at TEXT NOT NULL,
+					PRIMARY KEY (story_id, bit_id)
+				) STRICT`,
+				"CREATE INDEX story_director_bits_story_idx ON story_director_bits(story_id)",
+				`CREATE TABLE story_director_bit_judgments (
+					node_id TEXT PRIMARY KEY REFERENCES nodes(id),
+					story_id TEXT NOT NULL REFERENCES stories(id),
+					fingerprint TEXT NOT NULL CHECK (length(trim(fingerprint)) > 0),
+					judgments TEXT NOT NULL,
+					created_at TEXT NOT NULL
+				) STRICT`,
+				`CREATE TRIGGER story_director_bit_judgments_story_matches_node
+				BEFORE INSERT ON story_director_bit_judgments
+				WHEN COALESCE((SELECT story_id FROM nodes WHERE id = NEW.node_id), '') <> NEW.story_id
+				BEGIN
+					SELECT RAISE(ABORT, '剧情小品条件判断的 story_id 必须与所在楼层一致');
+				END`,
+				`CREATE TRIGGER story_director_bit_judgments_identity_immutable
+				BEFORE UPDATE OF node_id, story_id ON story_director_bit_judgments
+				BEGIN
+					SELECT RAISE(ABORT, '剧情小品条件判断的楼层与故事不能修改');
+				END`,
+			],
+		},
 	];
 }
 

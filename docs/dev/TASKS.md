@@ -1605,7 +1605,8 @@
   - 故事设置新增 `directorOrganization`（迁移 v49，默认 `mechanisms`），写入校验种类；server、`dramaticer chat`、回放与评测入口传 `settings.directorOrganization`。
   验收：默认设置解析为 `mechanisms`，非法种类抛错并指出字段；`mechanisms` 引擎的评估结果与决策记录与直接调用 `evaluateDirector` 一致；导演关闭时引擎返回 null 且不写记录；`bits` 在选择时抛错并指出 X2.b；槽位 `packKey` 区分组织方式；`pnpm check` 通过。
 
-- [ ] **X2.b 剧情小品引擎** | 依赖：X2.a | DESIGN §8、§14.4
+- [x] **X2.b 剧情小品引擎** | 依赖：X2.a | DESIGN §8、§14.4
+  完成：2026-11-14 新增 `director/bits.ts`（`DirectorBit` 单对象与严格解析）和 `director/bit-judgments.ts`（`director_bits` 后台任务，一次调用判断全部文本条件）；迁移 v50 新增 `story_director_bits` 与 `story_director_bit_judgments`，卡扩展 `extensions.dramaticer.bits` 导入时整批替换；`bits` 引擎按台账查询与楼层缓存求值，执行冷却、顺序、可否重复与兜底后只选最高优先级一条，决策记录写清每条命中与跳过原因；ADR-0132；新增 15 个测试；门禁通过（253 个测试文件、2,215 个测试、5 个跳过）
   做什么：
   - 定义剧情小品：只有一种对象，字段为 id、条件（自然语言或台账查询）、指令、优先级、冷却楼层、顺序约束、可否重复与兜底。卡作者在 `extensions.dramaticer` 里附带自己的小品，导入时按现有扩展校验规则解析；未知字段、重复 id 与非法条件抛错并指出路径。
   - `bits` 引擎按当前楼层与当前路径状态求值：程序能判定的台账查询直接判；自然语言条件在间隙里一次调用批量判断，判断结果按楼层缓存，回合内不调用模型（I9、I11）。冷却、顺序约束、可否重复与兜底由程序执行；同一层只给最高优先级的一条建议，决策记录写清命中与跳过原因。

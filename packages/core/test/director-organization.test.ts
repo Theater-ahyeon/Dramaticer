@@ -97,10 +97,27 @@ describe("导演组织方式", () => {
 		expect(store.getDirectorDecision(nodeId)).toBeNull();
 	});
 
-	it("剧情小品引擎尚未实现时直接失败", () => {
-		expect(() => createDirectorEngine("bits")).toThrow(
-			"导演组织方式 bits 尚未实现（X2.b）",
-		);
+	it("剧情小品引擎读取故事里的小品，没有小品时返回 null 并写记录", () => {
+		const { store } = openTempStore();
+		const nodeId = seed(store);
+		const engine = createDirectorEngine("bits");
+		expect(engine.kind).toBe("bits");
+		expect(engine.mechanismNames).toBeNull();
+		expect(
+			engine.evaluate({
+				store,
+				storyId: "s1",
+				nodeId,
+				config: DEFAULT_DIRECTOR_CONFIG,
+			}),
+		).toBeNull();
+		expect(store.getDirectorDecision(nodeId)?.mechanisms).toEqual([
+			{
+				name: "bits",
+				triggered: false,
+				reason: "没有可用的剧情小品",
+			},
+		]);
 	});
 
 	it("槽位按组织方式选择引擎，上下文包指纹带上种类", async () => {

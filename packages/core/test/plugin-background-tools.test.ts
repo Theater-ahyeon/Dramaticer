@@ -136,6 +136,7 @@ describe("内置后台任务插件", () => {
 			"visual_profile",
 			"director_plan",
 			"candidate_actions",
+			"director_bits",
 		]);
 		const expected = [
 			["events", "confirmed", "deferred"],
@@ -153,6 +154,7 @@ describe("内置后台任务插件", () => {
 			["visual_profile", "story", "gap"],
 			["director_plan", "story", "deferred"],
 			["candidate_actions", "settled", "gap"],
+			["director_bits", "settled", "gap"],
 		];
 		for (const [kind, enqueue, tier] of expected) {
 			expect(registry.get(kind)).toMatchObject({ enqueue, tier });

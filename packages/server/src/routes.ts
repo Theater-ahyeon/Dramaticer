@@ -603,6 +603,7 @@ async function handleImport(
 			lore: imported.lore,
 			events: imported.events,
 			npcAgendas: imported.npcAgendas,
+			bits: imported.bits,
 			dependencies: imported.dependencies,
 		},
 	};

@@ -2099,3 +2099,17 @@
   - 新增 `packages/core/src/director/organization.ts` 与 `packages/core/test/director-organization.test.ts` 6 个测试；迁移 v49 给 `story_settings` 增加 `director_organization`，schema 版本变为 49。
   - `DirectorSlotProvider` 的 `mechanisms` 字段改为 `engine`；单轮强度覆盖与槽位插件走同一接口。既有调用方传入的 `mechanisms` 仍然有效，会被包进机制型引擎。
   - 没有新增依赖；导演实时选择仍由程序完成，引擎的求值不调用模型（I9）；`bits` 的自然语言条件判断属于间隙后台工作，X2.b 按 I11 实现。
+
+## ADR-0132 剧情小品的对象、条件判断与选择规则（2026-11-14）
+
+- **背景**：X2.b 要在 `bits` 组织方式下用单一对象替代固定机制序列。条件既可以是卡作者写的自然语言，也可以是能直接读台账的查询；自然语言判断不能放进回合，否则会把模型调用塞进玩家等待的路径（I9、I11）。
+- **决定**：
+  - 对象只有 `DirectorBit`：`id`、`condition`、`instruction`、`priority`、`cooldown`、`after`、`repeatable`、`fallback`。`condition` 取 `{kind:"text", text}` 或 `{kind:"ledger", query}`；`query` 复用模板的 `ContextCondition`，并限制每条 `state` 路径的第一段必须是台账命名空间。兜底小品必须省略条件，其他小品必须提供条件。未知字段、重复 id、空字符串、非法条件、悬空的 `after` 引用与顺序环都在解析时拒绝，错误信息带 JSON 路径。
+  - 小品放在 `extensions.dramaticer.bits`，由 `parseDramaticerCardExtension` 解析；导入时整批替换故事里的小品（迁移 v50 的 `story_director_bits`），重复导入不保留旧条目。
+  - 自然语言条件由后台任务 `director_bits`（入队条件 `settled`、间隙档）一次调用判断本楼层全部文本条件，严格校验 id 不多不少、不重复，结果写入 `story_director_bit_judgments`（按楼层主键、带条件指纹）。小品文本改动后指纹不匹配，旧判断不再复用。回合内的 `bits` 引擎只读缓存与台账快照，不持有也不调用模型。
+  - 选择顺序：先判条件，再依次检查不可重复、冷却与 `after` 顺序约束；普通小品按优先级选一条，只有普通小品都没有命中时才比较兜底小品。同层只返回一条建议；决策记录为每个小品写一条原因，`signals` 记录 `selected` 与逐条 `evaluated`。没有小品时写入一条名为 `bits` 的未触发记录；导演关闭时不写记录。
+- **影响**：
+  - 新增 `packages/core/src/director/bits.ts`、`bit-judgments.ts` 与 `packages/core/test/director-bits.test.ts`；`card-extension`、`organization`、后台任务注册表、`st-compat` 导入结果、server 导入统计与协议类型同步。
+  - 迁移 v50 新增两张表，schema 版本变为 50；没有新增依赖。
+  - 自然语言条件在间隙里判断，回合内只有程序求值（I9、I11）；选择结果仍经决策记录留痕，未命中不写建议。
+  - X2.c 的固定条件清单直接按这里的判断入口与缓存语义构造，不需要另写一套判断器。

@@ -76,6 +76,14 @@ import {
 	DEFAULT_CONTEXT_TEMPLATE_ID,
 } from "../context/template.js";
 import {
+	type DirectorBit,
+	type DirectorBitJudgments,
+	type NewDirectorBitJudgmentsInput,
+	type ReplaceDirectorBitsInput,
+	assertDirectorBitJudgments,
+	parseDirectorBitDefinitions,
+} from "../director/bits.js";
+import {
 	type DirectorCandidateAction,
 	type ReplaceDirectorCandidateActionsOptions,
 	isDirectorCandidateKind,
@@ -770,6 +778,22 @@ interface DirectorDecisionRow {
 	readonly directive: string | null;
 	readonly mechanisms: string;
 	readonly signals: string;
+	readonly created_at: string;
+}
+
+interface DirectorBitRow {
+	readonly story_id: string;
+	readonly bit_id: string;
+	readonly payload: string;
+	readonly source: string;
+	readonly created_at: string;
+}
+
+interface DirectorBitJudgmentRow {
+	readonly node_id: string;
+	readonly story_id: string;
+	readonly fingerprint: string;
+	readonly judgments: string;
 	readonly created_at: string;
 }
 
@@ -5800,6 +5824,166 @@ export class StoryStore {
 			)
 			.all(nodeId) as DirectorDecisionRow[];
 		return rows.map(rowToDirectorDecision);
+	}
+
+	/**
+	 * 用一次导入的小品替换故事里的全部小品。表以 `(story_id, bit_id)` 为主键，
+	 * 重复导入不保留旧条目；判断缓存不在这里清理，指纹不匹配时自然失效。
+	 */
+	replaceDirectorBits(input: ReplaceDirectorBitsInput): number {
+		assertNonEmptyString(input.storyId, "剧情小品的 storyId");
+		if (!this.getStory(input.storyId)) {
+			throw new Error(`故事不存在：${input.storyId}`);
+		}
+		const bits = parseDirectorBitDefinitions(
+			input.bits,
+			`故事 ${input.storyId} 的剧情小品`,
+		);
+		const source = input.source ?? "card-extension";
+		assertNonEmptyString(source, "剧情小品的来源");
+		const createdAt = input.createdAt ?? new Date().toISOString();
+		assertNonEmptyString(createdAt, "剧情小品的创建时间");
+		this.#db.transaction(() => {
+			this.#db
+				.prepare("DELETE FROM story_director_bits WHERE story_id = ?")
+				.run(input.storyId);
+			const insert = this.#db.prepare(
+				`INSERT INTO story_director_bits
+					(story_id, bit_id, payload, source, created_at)
+				VALUES (?, ?, ?, ?, ?)`,
+			);
+			for (const bit of bits) {
+				insert.run(
+					input.storyId,
+					bit.id,
+					serializeJsonValue(bit, `剧情小品 ${bit.id}`),
+					source,
+					createdAt,
+				);
+			}
+		})();
+		return bits.length;
+	}
+
+	/** 读出故事的全部剧情小品，按导入顺序；保存时已经过完整校验。 */
+	listDirectorBits(storyId: string): DirectorBit[] {
+		assertNonEmptyString(storyId, "故事 id");
+		if (!this.getStory(storyId)) {
+			throw new Error(`故事不存在：${storyId}`);
+		}
+		const rows = this.#db
+			.prepare(
+				"SELECT * FROM story_director_bits WHERE story_id = ? ORDER BY rowid ASC",
+			)
+			.all(storyId) as DirectorBitRow[];
+		const payloads = rows.map((row) => {
+			try {
+				return JSON.parse(row.payload) as unknown;
+			} catch {
+				throw new Error(`剧情小品 ${row.bit_id} 的 payload 不是合法 JSON`);
+			}
+		});
+		const bits = parseDirectorBitDefinitions(
+			payloads,
+			`故事 ${storyId} 的剧情小品`,
+		);
+		return bits;
+	}
+
+	/**
+	 * 写入某个楼层的自然语言条件判断；同一楼层重复执行覆盖旧结果。
+	 * 条件文本变化由指纹识别，旧结果不再复用。
+	 */
+	saveDirectorBitJudgments(
+		input: NewDirectorBitJudgmentsInput,
+	): DirectorBitJudgments {
+		assertNonEmptyString(input.storyId, "条件判断的 storyId");
+		assertNonEmptyString(input.nodeId, "条件判断的 nodeId");
+		const node = this.getNode(input.nodeId);
+		if (!node) {
+			throw new Error(`楼层节点不存在：${input.nodeId}`);
+		}
+		if (node.storyId !== input.storyId) {
+			throw new Error(
+				`条件判断的 storyId 与楼层节点所属故事不一致：${input.storyId}`,
+			);
+		}
+		assertNonEmptyString(input.fingerprint, "条件判断的指纹");
+		const judgments = assertDirectorBitJudgments(
+			input.judgments,
+			"条件判断的 judgments",
+		);
+		const createdAt = input.createdAt ?? new Date().toISOString();
+		assertNonEmptyString(createdAt, "条件判断的创建时间");
+		this.#db
+			.prepare(
+				`INSERT INTO story_director_bit_judgments
+					(node_id, story_id, fingerprint, judgments, created_at)
+				VALUES (?, ?, ?, ?, ?)
+				ON CONFLICT(node_id) DO UPDATE SET
+					fingerprint = excluded.fingerprint,
+					judgments = excluded.judgments,
+					created_at = excluded.created_at`,
+			)
+			.run(
+				input.nodeId,
+				input.storyId,
+				input.fingerprint,
+				serializeJsonValue(judgments, "条件判断的 judgments"),
+				createdAt,
+			);
+		return {
+			storyId: input.storyId,
+			nodeId: input.nodeId,
+			fingerprint: input.fingerprint,
+			judgments,
+			createdAt,
+		};
+	}
+
+	/** 沿当前路径找最近一层（含自身）的自然语言条件判断；没有时返回 null。 */
+	findDirectorBitJudgments(nodeId: string): DirectorBitJudgments | null {
+		assertNonEmptyString(nodeId, "楼层节点 id");
+		const node = this.getNode(nodeId);
+		if (!node) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
+		const row = this.#db
+			.prepare(
+				`WITH RECURSIVE path(node_id, depth) AS (
+					SELECT id, 0 FROM nodes WHERE id = ?
+					UNION ALL
+					SELECT nodes.parent_id, path.depth + 1
+					FROM path JOIN nodes ON nodes.id = path.node_id
+					WHERE nodes.parent_id IS NOT NULL
+				)
+				SELECT j.*
+				FROM path
+				JOIN story_director_bit_judgments AS j ON j.node_id = path.node_id
+				ORDER BY path.depth ASC
+				LIMIT 1`,
+			)
+			.get(nodeId) as DirectorBitJudgmentRow | undefined;
+		if (row === undefined) return null;
+		if (row.story_id !== node.storyId) {
+			throw new Error(`楼层 ${nodeId} 的条件判断与楼层所属故事不一致`);
+		}
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(row.judgments);
+		} catch {
+			throw new Error(`楼层 ${row.node_id} 的条件判断不是合法 JSON`);
+		}
+		return {
+			storyId: row.story_id,
+			nodeId: row.node_id,
+			fingerprint: row.fingerprint,
+			judgments: assertDirectorBitJudgments(
+				parsed,
+				`楼层 ${row.node_id} 的条件判断`,
+			),
+			createdAt: row.created_at,
+		};
 	}
 
 	/**
