@@ -33,6 +33,7 @@
 		"evalset:events": "tsc -b && node dist/evalset/event-cli.js",
 		"events-backfill": "tsc -b && node dist/evalset/events-cli.js",
 		"gap-pass-compare": "tsc -b && node dist/evalset/gap-pass-compare-cli.js",
+		"world-model-compare": "tsc -b && node dist/evalset/world-model-compare-cli.js",
 		"memory-eval": "tsc -b && node dist/evalset/memory-cli.js",
 		"playtest": "tsc -b && node dist/evalset/playtest-cli.js",
 		"deep-eval": "tsc -b && node dist/evalset/deep-eval-cli.js",
