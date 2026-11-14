@@ -223,6 +223,7 @@ export async function runChatCli(
 							mode: parsed.directorMode,
 						},
 						historyBlockPolicy: settings.historyBlockPolicy,
+						worldModel: settings.worldModel,
 					});
 		const result = await runChatTurn({
 			store,

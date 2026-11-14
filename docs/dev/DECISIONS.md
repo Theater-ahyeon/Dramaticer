@@ -2005,3 +2005,16 @@
   - 迁移 v44 至 v46 分别用于会话与消息、待确认动作与变更卡来源、压缩记录；没有新增依赖。
   - `core` 不依赖 `protocol` 或其他工作区包（I15），web 只从 protocol 取类型；助手不写楼层、不改原文、不进入剧情上下文（I4、I8）；台账写入只经变更卡与现有结算路径（I12）；工具调用仍然只作为模型的选择，不强制输出结构（I13）；助手不调用本地 ST（I14）。
   - `docs/dev/reports/H.md` 在 H-T99 记录技能、权限、压缩与用量环的实测结果，只写数字与配置。
+
+## ADR-0126 世界模型对比实验的统一读写接口（2026-11-13）
+
+- **背景**：X1 要在现有台账、台账加实体 Wiki 页、时序知识图谱三个候选之间比较记忆效果。三个候选的存储形态不同，如果各自改上下文组装与结算器的调用点，实验会把调用方一起改掉，也无法保证三组只在表示方式上不同。
+- **决定**：
+  - 新增 `packages/core/src/world-model/`：`WorldModelKind` 取 `ledger`、`wiki`、`temporal_graph`，`WorldModel` 只暴露 `read(nodeId)` 与 `write(nodeId, writes)`。`read` 返回 `{state, sections, source}`，`state` 保持台账快照的形状，`sections` 放硬事实之外的段落（实体档案、已失效事实），`source` 进 Trace；`write` 接受与存储无关的事实数组，先校验再写。
+  - `ledger` 适配器读取复用 `readLedger` 与状态快照，写入复用 `validateLedgerDiff` 与 `appendStateDiffs`，`sections` 为空；状态槽位的消息与 `source` 与改动前逐字节一致。
+  - 故事设置新增 `worldModel`（迁移 v47），默认 `ledger`；状态槽位按设置选择实现，`packFactory` 的 `packKey` 带上种类，避免两种表示共用同一个上下文包指纹。server、`dramaticer chat` 与评测入口把设置传入槽位；`wiki` 与 `temporal_graph` 在 X1.b、X1.c 实现前由工厂直接失败，不回落到台账。
+  - 任务拆为 X1.a 至 X1.e：接口与台账候选、Wiki 候选、时序图候选、对比运行器、在 3 个对话上运行并判定。
+- **影响**：
+  - 新增 `packages/core/src/world-model/` 与 `packages/core/test/world-model.test.ts` 7 个测试；迁移 v47 给 `story_settings` 增加 `world_model`。
+  - 状态槽位的 `packKey` 从 `state` 变为 `state:<kind>`；台账下渲染结果与 Trace 来源不变。
+  - 没有新增依赖；`core` 不依赖其他工作区包（I15）；写入仍先经过台账校验，实验本身不改变 I5（状态按楼层存 diff）与 I12（写入经过校验）。

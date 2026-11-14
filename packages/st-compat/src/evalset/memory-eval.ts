@@ -616,6 +616,7 @@ export async function collectMemoryEval(
 						store,
 						characterPrompt: settings.characterPrompt,
 						directorConfig: DEFAULT_DIRECTOR_CONFIG,
+						worldModel: settings.worldModel,
 					})
 				).providers;
 				judgedRecords.push(

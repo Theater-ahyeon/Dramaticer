@@ -49,6 +49,7 @@ export * from "./timeline.js";
 export * from "./tokens.js";
 export * from "./tools/index.js";
 export * from "./trace.js";
+export * from "./world-model/index.js";
 
 export interface EngineVersion {
 	readonly major: number;

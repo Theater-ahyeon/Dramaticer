@@ -185,6 +185,7 @@ export async function runDeepEvalCli(
 				embedder,
 				directorConfig: DEFAULT_DIRECTOR_CONFIG,
 				historyBlockPolicy: settings.historyBlockPolicy,
+				worldModel: settings.worldModel,
 			})
 		).providers;
 		const existing = parsed.resume

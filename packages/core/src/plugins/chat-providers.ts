@@ -11,6 +11,7 @@ import type { DirectorConfig, DirectorMechanism } from "../director/types.js";
 import type { EmbeddingClient } from "../llm/embeddings.js";
 import type { RerankClient } from "../llm/rerank.js";
 import type { StoryStore } from "../store/story-store.js";
+import type { WorldModelKind } from "../world-model/types.js";
 import { BUILTIN_PLUGINS } from "./builtin.js";
 import type { PluginDefinition, PluginKernel } from "./contracts.js";
 import { createPluginKernel } from "./runtime.js";
@@ -103,6 +104,8 @@ export interface StandardChatSlotsOptions {
 	readonly mechanisms?: readonly DirectorMechanism[];
 	/** 块的 prompt 视图策略；不设置时使用默认策略。 */
 	readonly historyBlockPolicy?: HistoryBlockPolicy;
+	/** 世界模型的表示方式；不设置时使用台账。 */
+	readonly worldModel?: WorldModelKind;
 }
 
 /** 生产对话与回放评测共用的槽位集合；人设槽位由朴素模式装载。 */
@@ -118,7 +121,10 @@ export async function createStandardChatSlots(
 			store: options.store,
 			policy: options.historyBlockPolicy,
 		},
-		[STATE_SLOT_PLUGIN]: { store: options.store },
+		[STATE_SLOT_PLUGIN]: {
+			store: options.store,
+			worldModel: options.worldModel,
+		},
 		[SUMMARY_SLOT_PLUGIN]: { store: options.store },
 		[MEMORY_SLOT_PLUGIN]: {
 			store: options.store,

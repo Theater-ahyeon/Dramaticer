@@ -38,8 +38,8 @@ function seedStory(store: StoryStore): void {
 describe("助手会话存储", () => {
 	it("迁移 v44 建表建索引，事件只追加", () => {
 		const { store, path } = openTempStore();
-		expect(store.getSchemaVersion()).toBe(46);
-		expect(LATEST_SCHEMA_VERSION).toBe(46);
+		expect(store.getSchemaVersion()).toBe(47);
+		expect(LATEST_SCHEMA_VERSION).toBe(47);
 		const raw = new Database(path);
 		onTestFinished(() => raw.close());
 		const tables = raw

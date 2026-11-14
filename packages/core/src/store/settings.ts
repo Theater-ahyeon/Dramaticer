@@ -43,6 +43,11 @@ import {
 	isStructuredOutputMode,
 } from "../structured/types.js";
 import type { TimelineNode } from "../timeline.js";
+import {
+	DEFAULT_WORLD_MODEL_KIND,
+	type WorldModelKind,
+	assertWorldModelKind,
+} from "../world-model/types.js";
 
 /** 每个故事独立保存的运行配置；字段与 `story_settings` 表一一对应。 */
 export interface StorySettings {
@@ -84,6 +89,8 @@ export interface StorySettings {
 	readonly imageConfig: ImageConfig;
 	/** 故事级插件开关与配置覆盖；同一故事的所有分支共享。 */
 	readonly pluginOverrides: PlaypackUserOverrides;
+	/** 世界模型的表示方式；默认台账，对比实验按它切换候选。 */
+	readonly worldModel: WorldModelKind;
 	readonly updatedAt: string;
 }
 
@@ -111,6 +118,7 @@ export interface StorySettingsUpdate {
 	readonly gapPlanSeconds?: number;
 	readonly imageConfig?: ImageConfig;
 	readonly pluginOverrides?: PlaypackUserOverrides;
+	readonly worldModel?: WorldModelKind;
 }
 
 export const STORY_SETTINGS_UPDATE_KEYS: readonly (keyof StorySettingsUpdate)[] =
@@ -138,6 +146,7 @@ export const STORY_SETTINGS_UPDATE_KEYS: readonly (keyof StorySettingsUpdate)[] 
 		"gapPlanSeconds",
 		"imageConfig",
 		"pluginOverrides",
+		"worldModel",
 	];
 
 /** 尚未保存设置时使用的数值与枚举；故事 id 与更新时间由调用方补齐。 */
@@ -159,6 +168,7 @@ export const DEFAULT_STORY_SETTINGS_VALUES = {
 	gapPlanSeconds: 212,
 	imageConfig: DEFAULT_IMAGE_CONFIG,
 	pluginOverrides: EMPTY_PLAYPACK_USER_OVERRIDES,
+	worldModel: DEFAULT_WORLD_MODEL_KIND,
 } as const;
 
 export interface ContextTemplateRecord {
@@ -402,6 +412,9 @@ export function assertStorySettingsUpdate(update: StorySettingsUpdate): void {
 	}
 	if (update.pluginOverrides !== undefined) {
 		parseStoryPluginOverrides(update.pluginOverrides);
+	}
+	if (update.worldModel !== undefined) {
+		assertWorldModelKind(update.worldModel, "故事设置的 worldModel");
 	}
 }
 

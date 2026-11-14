@@ -15,6 +15,7 @@ import {
 	type RerankClient,
 	type StoryStore,
 	type StructuredOutputMode,
+	type WorldModelKind,
 	checkCardDependencies,
 	createDefaultContextTemplate,
 	createStandardChatSlots,
@@ -174,6 +175,8 @@ export interface CreateChatProvidersOptions {
 	readonly mechanisms?: readonly DirectorMechanism[];
 	/** 故事设置里的历史块策略；不设置时使用默认策略。 */
 	readonly historyBlockPolicy?: HistoryBlockPolicy;
+	/** 故事设置里的世界模型表示方式；不设置时使用台账。 */
+	readonly worldModel?: WorldModelKind;
 }
 
 /**
@@ -192,6 +195,7 @@ export async function createChatProviders(
 		directorConfig: options.directorConfig,
 		mechanisms: options.mechanisms,
 		historyBlockPolicy: options.historyBlockPolicy,
+		worldModel: options.worldModel,
 	});
 	return slots.providers;
 }

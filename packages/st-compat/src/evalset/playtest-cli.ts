@@ -208,6 +208,7 @@ export async function runPlaytestCli(
 							embedder,
 							directorConfig,
 							historyBlockPolicy: settings.historyBlockPolicy,
+							worldModel: settings.worldModel,
 						})
 					).providers;
 		await mkdir(path.dirname(parsed.outPath), { recursive: true });

@@ -3,88 +3,45 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-13 会话 366：完成 H-T99（H 验收）。门禁通过（249 个测试文件、2169 个测试、5 个跳过）；`e2e/assistant.spec.ts` 的 desktop 与 mobile 各 5 条通过。用 `.env` 的 `main` 渠道（`main-fallback`）跑通两条真实流程：排障问答（只读，11,207 毫秒，6 次工具调用，回答含楼层 id 与“没有记录”）与台账修订批准（确认级别，9,919 毫秒，3 次工具调用，1 张来源 `assistant` 的变更卡，批准后 `冷淡` → `亲近`、事实来源 `player`、楼层数 3 → 3、head 与原文不变、待批准数 0）。手动压缩把 40 条消息的估算从 1,122 降到 613 token，省略 30 条，消息行保留。逐条核对 H-T01 至 H-T09 与 I4、I8、I11、I12、I13、I14、I15；报告 `docs/dev/reports/H.md`，原始数字 `eval-private/reports/H-live.json`。H 里程碑完成。
+- 2026-11-14 会话 367：完成 X1.a（世界模型读写接口与台账候选）。门禁通过（250 个测试文件、2,176 个测试、5 个跳过）。新增 `packages/core/src/world-model/` 的 `WorldModelKind`、`WorldModel` 与 `createWorldModel(store, kind)`；`ledger` 适配器读取复用 `readLedger` 与状态快照、写入复用 `validateLedgerDiff` 与 `appendStateDiffs`；故事设置新增 `worldModel`（迁移 v47，默认 `ledger`），状态槽位按设置选择实现，`packKey` 变为 `state:<kind>`，`ledger` 下消息与 `source` 与改动前一致；server、`dramaticer chat`、回放与评测入口传入设置；`wiki` 与 `temporal_graph` 在实现前由工厂直接失败。ADR-0126；新增 7 个测试。
 
-## 下一步（会话 367 先做）
-1. **X1 世界模型表示方式对比**：依赖 R1-T99.a 与 R2-T99，均已完成。任务较大，先在 TASKS 里拆成子任务，只做第一个。候选是现有台账、台账加实体 Wiki 页、时序知识图谱；通过同一个读写接口切换，在 3 个对话上比较矛盾率、编造回忆率、盲测胜率与每轮成本，每种至少重复 3 次；判定规则不变。评测需要真实渠道时只使用 `.env`；本地 ST 额度按 I14 先在 HUMAN.md 申请。
-2. 之后可做任务：R6-T00（依赖已满足）、M6-T99（被 HUMAN-15 阻塞）、M5-T00（依赖 R6-T99）、P5（依赖 M5-T99）。
+## 下一步（会话 368 先做）
+1. **X1.b 实体 Wiki 页候选**：迁移新增只追加的 `world_wiki_revisions`（实体 id、楼层、正文、来源楼层与时间）；沿当前路径取每个实体的最新一版并保留版本数与最早出处；`wiki` 适配器读取台账状态加档案段（性格变化、关系史，带出处楼层与版本数），写入校验实体与正文后追加一版；分支切换只出现当前路径上的版本。
+2. 之后依次做 X1.c（时序知识图谱）、X1.d（对比运行器）、X1.e（在 3 个对话上实际运行并判定，长任务按 `.devloop/jobs/` 申请）。
 
-## H 的任务划分（ADR-0125）
-- **H-T01（已完成）** 迁移 v44：会话、消息、只追加事件与 trigram 索引；`StoryStore` 读写与搜索；protocol 类型；server 会话 CRUD、状态与事件续读接口；web 类型化客户端。
-- **H-T02（已完成）** `runAssistantTurn` 复用 `runDeepTurn`；只读工具；事件与状态持久化；消息 SSE、取消、并发 409 与重启后的 `interrupted`；不写楼层、不写 `turn_runs`、不进入剧情上下文。
-- **H-T03（已完成）** 迁移 v45：`assistant_actions` 与台账变更卡来源 `assistant`；三级权限映射；七类载荷校验与批准路径；动作列表、批准、拒绝接口；待确认动作阻止会话删除。
-- **H-T04（已完成）** 技能注册表、排障与使用指南；`docs_search` 从 `--docs-root` 读取文档，trigram 检索，目录缺失时启动失败；`GET /api/assistant/skills`。
-- **H-T05（已完成）** 台账修订与参谋：`propose_ledger_change` 生成来源 `assistant` 的变更卡，`propose_director_plan` 生成 `director_plan` 待确认动作；`summarize_recent` 只读摘要。
-- **H-T06（已完成）** 资料员、卡片工坊与设置向导；联网搜索显式开启；卡片读取与四类提案；渠道读取不含密钥。
-- **H-T07（已完成）** web 抽屉、会话搜索与改名、技能与权限选择、事件续读、关闭后继续运行与状态标记；重连不重复消息；取消后状态为 `cancelled`。
-- **H-T08（已完成）** 迁移 v46：`assistant_compactions`；自动与手动压缩、用量环；预算与正剧记忆独立。
-- **H-T09（已完成）** 待确认动作与台账变更卡审阅面板；按来源会话过滤；批准与拒绝失败保留条目并显示原因；徽标数量与面板一致。
-- **H-T99（已完成）** 验收与 `docs/dev/reports/H.md`。
+## X1 任务划分（ADR-0126）
+- **X1.a（已完成）** 统一接口与台账候选；故事设置 `worldModel`；状态槽位接线；未实现候选在选择时失败。
+- **X1.b** Wiki 页候选与迁移。
+- **X1.c** 时序知识图谱候选：从台账 diff 回放有效区间，delete 关闭区间并保留最后值，支持按 `storyTime` 查询；不新增表。
+- **X1.d** 对比运行器 `packages/st-compat/src/evalset/world-model-compare.ts` 与 CLI：每个候选复制数据库、固定轮数自动试玩、同一批记忆题与探针、与候选 ① 盲测，指标表统一为矛盾率、编造回忆率、盲测胜率与每轮成本，默认重复 3 次，支持断点续跑。
+- **X1.e** 3 个对话、每种候选 3 次的实跑与判定（主要指标不劣于 ① 且盲测胜率明显高于 ① 才切换，否则保留 ①），结论写 ADR，未切换的候选留在开关后面。
 
-## H 设计要点
-- 助手会话可以关联故事，也可以不关联；消息与事件独立于 `nodes`、`state_diffs`、`turn_runs`。
-- 助手运行不调用 `generateAssistantTurn`，不组装剧情上下文；正剧上下文也不读取助手消息。
-- 工具白名单不含草稿、提交、导演手记、正文写入、台账直接写入与生图。七个技能全部已注册。
-- 三级权限：只读只执行 `read`；确认执行 `read` 与 `control`，提案与外部影响写成待确认动作；自动级别只有 `channels` 直接执行，其余种类仍然待确认。台账修改永远只生成变更卡，任何级别都不能自动批准。
-- 待确认动作的载荷在创建与批准时各校验一次；批准失败保留 `pending`。同一会话内相同 `kind` 与规范化载荷的待定动作复用同一条记录。拒绝必须写原因。
-- 台账变更卡锚定当前 head：`source_node_id` 取 head，`before` 取 head 快照，批准复用 `approveLedgerChangeCard`，事实来源为 `player`；助手卡片记录 `assistant_conversation_id`。
-- 助手上下文预算默认 48,000 token，压缩阈值默认 0.8；压缩保留最近 10 条，较早消息合并成摘要。`percent` 是 `used / budget` 的比值，与阈值同一口径；用量环超过 0.8 显示警告色、0.95 显示危险色。
-- 助手默认模型是 `roles.writer` 解析到的别名，会话可以覆盖；不新增渠道角色。
-- 请求与响应类型放在 `packages/protocol`，运行时放在 `packages/core/src/assistant`，server 处理放在 `packages/server/src/assistant.ts`，web 放在 `packages/web/src/assistant`。
-- 待确认视图只读服务端状态：动作来自 `GET /api/assistant/actions?status=pending&storyId=`，变更卡来自 `GET /api/stories/:id/proposals?status=pending`；决定走 `POST /api/assistant/actions/:id/approve|reject` 与 `POST /api/proposals/:id/approve|reject`。面板不提供批量批准，也不自动批准台账卡。
+## X1.a 设计要点
+- `packages/core/src/world-model/types.ts`：`WORLD_MODEL_KINDS`、`isWorldModelKind`、`assertWorldModelKind`、`WorldModelView {state, sections, source}`、`WorldModelWrite {path, op, value?, storyTime?, confidence?, reason?, source}`、`WorldModel {kind, read(nodeId), write(nodeId, writes)}`。
+- `factory.ts`：`createWorldModel(store, kind = "ledger")` 先校验种类；`wiki` 与 `temporal_graph` 抛“尚未实现”，不回落到台账。X1.b、X1.c 只改工厂与新增适配器，不改调用方。
+- `ledger.ts`：读取返回状态快照，`sections` 为空，`source` 为 `state:<n> 条 diff`；写入逐条 `validateLedgerDiff` 后一次 `appendStateDiffs`，未知路径的错误里带台账路径。写入接口供对比运行器把同一批事实灌进候选，结算器仍走自己的路径。
+- 故事设置：`StorySettings.worldModel`，`StorySettingsUpdate.worldModel`，`STORY_SETTINGS_UPDATE_KEYS` 包含它；校验消息包含 `worldModel`，server 的 PATCH 按字段名回 400。
+- 迁移 v47：`ALTER TABLE story_settings ADD COLUMN world_model TEXT NOT NULL DEFAULT 'ledger' CHECK (world_model IN ('ledger','wiki','temporal_graph'))`；`rowToStorySettings` 读取时校验；`getStorySettings` 未保存时返回默认值；更新 SQL 已包含该列。
+- 状态槽位：`createStateSlotProvider(store, {worldModel})`；`packKey` 从 `state` 改为 `state:<kind>`，避免不同表示共用同一个上下文包指纹。台账下只有一条 `当前状态：` 系统消息，内容与 `JSON.stringify(state, null, 2)` 不变；`sections` 每段渲染成一条 `<title>：\n<text>` 系统消息。
+- 设置传入点：`packages/server/src/runtime.ts`、`packages/st-compat/src/chat/cli.ts`、`chat/session.ts` 的 `CreateChatProvidersOptions`、`evalset/director-replay.ts`、`deep-eval-cli.ts`、`historical-replay-cli.ts`、`memory-eval.ts`、`playtest-cli.ts`；`st-bench/coexist.ts` 没有故事设置，使用默认台账。
+- 测试：`packages/core/test/world-model.test.ts` 7 条（种类与默认值、台账读取与状态槽位同源、写入与非法路径、删除、未实现候选、设置默认与读写、槽位选择）；`assistant-store.test.ts` 与 `story-settings.test.ts` 的 schema 版本与默认设置期望都改为 47 与 `ledger`；`web/test/settings-form.test.ts` 的 fixture 补 `worldModel`。
 
-## 技能与工具
-- `packages/core/src/assistant/skills.ts`：`listAssistantSkills`、`getAssistantSkill`、`requireAssistantSkill`、`isAssistantSkillRegistered`；创建与 PATCH 会话都用注册表校验。七个技能：`troubleshoot`、`guide`、`ledger_revision`、`strategy`、`research`、`card_workshop`、`setup_wizard`。
-- `troubleshoot` 六个只读工具；`guide` 为 `docs_search`、`settings_read`、`template_read`、`plugin_list`；`ledger_revision` 为 `ledger_read`、`state_get`、`memory_search`、`propose_ledger_change`；`strategy` 为 `director_read`、`ledger_read`、`memory_search`、`state_get`、`summarize_recent`、`propose_director_plan`。
-- `research` 为 `web_search`、`lore_lookup`、`settings_read`、`propose_lore_entries`；`card_workshop` 为 `card_read`、`template_read`、`lore_lookup`、`settings_read`、`propose_card_change`、`propose_lore_entries`；`setup_wizard` 为 `settings_read`、`channels_read`、`plugin_list`、`propose_channels_change`、`propose_settings_change`。
-- 白名单里的工具名必须在本次运行实际注册，否则 `runAssistantTurn` 在切换运行状态之前抛错。`docs_search`、两个旧提案工具与 `createAssistantSetupTools` 生成的新工具都由 server 以 `extraTools` 注入。
-- `proposals.ts`：台账卡 id 由工具名、会话、head、解释与规范化 diffs 生成；head 改变后同内容会生成新卡。`propose_director_plan` 参数是 `{plan, summary?}`。
-- `setup.ts`：`web_search` 只在 `searchClient` 注入时生成；`channels_read` 只在 `readChannels` 注入时生成；`card_read` 需要关联故事。提案工具在 `read_only` 级别自行抛 `permission_denied`。
-- `propose_channels_change` 与 `PUT /api/channels` 一样是整段替换：四个段必须给全，未写的条目会被删除。`channels_read` 返回重建整段配置所需的非敏感字段，但不返回密钥值。
-- `--assistant-web-search <地址>` 只接受 http/https；未开启时不注册 `web_search`，此时运行 `research` 技能会在切换状态前报“助手工具未注册：web_search”。
-
-## 上下文压缩（H-T08）
-- `assistant_compactions(id, conversation_id, seq, summary, omitted_message_ids, before_tokens, after_tokens, created_at)`，同一会话 `seq` 递增且唯一；更新与单独删除都被触发器拒绝，删除会话时级联删除。
-- 消息没有单独的 id，`ordinal` 就是它的身份；`omitted_message_ids` 存顺序号数组，按升序去重。
-- 最新一条压缩决定后续请求：请求消息是系统提示、摘要、未被省略的消息；被省略的旧消息不再发送，但数据库行保留，界面显示完整消息流。
-- 多次压缩会把上一次的省略序号与新省略序号合并；摘要请求的输入包含已有摘要与新增被省略的消息，附加要求只在手动压缩时出现。
-- 待确认动作保护：取最早待确认动作的 `createdAt`，产生它的对话之后的消息不省略；没有待确认动作时只按最近 10 条划分。
-- 自动压缩在 server 的 `handleConversationMessage` 里、`runAssistantTurn` 之前执行，用量估算包含即将写入的用户消息；阈值以下不发压缩请求，没有可省略消息时不调用模型。
-- `AssistantCompactionCoordinator` 按会话互斥；自动压缩拿不到锁时跳过，手动压缩拿不到锁返回 409。手动压缩在会话运行中、或没有可省略消息时也返回 409。
-- 压缩失败：原消息不动，写 `compaction` 事件（`status: "failed"`），自动压缩继续本次运行，手动压缩返回 500。
-- SSE 事件名 `assistant.compaction`，载荷 `{status, compactionId, omittedCount, beforeTokens, afterTokens, error}`；持久事件按 `kind: "compaction"` 读回。
-- 直接调用 `runAssistantTurn` 不会自动压缩，但会按已有压缩过滤消息；自动压缩只发生在 server 的消息接口。
-
-## web 助手界面
-- `AssistantDrawer.tsx` 由 `StoryPage` 持有，`key={storyId}`；抽屉关闭时仍挂载，运行中的 SSE 继续写入状态。`ChatPage` 通过 outlet 上下文拿到 `openAssistant`，在 `Composer` 旁渲染 `.assistant-open-button`。
-- 焦点：抽屉打开时聚焦“关闭助手”；关闭后等两帧用 `document.querySelector(".assistant-open-button")` 把焦点送回触发按钮。键盘 `Ctrl+Shift+A` 开关，`Escape` 关闭。
-- 状态标记是 `.assistant-badge`，固定在右下角；运行中、失败与待确认动作数都从抽屉状态回调到 `StoryPage`。抽屉打开时不渲染标记。待确认数量是待确认动作与待确认变更卡之和。
-- `stream.ts` 的 `AssistantRunState` 保存正文、思考、工具活动、用量、状态、结束原因、错误与 `lastSeq`。持久事件按 `seq <= lastSeq` 去重；`selectLatestRunEvents` 只保留最后一次 `started` 之后的事件。重连时先读会话、`GET /status` 与全部事件，再按 `lastSeq` 用 `events?after=` 轮询。
-- 轮询把非运行状态的处理放在 `setStatus` 之前：先读会话把消息写入状态，最后改状态，否则状态变化触发 effect 清理会把消息更新丢掉。
-- 抽屉内的快照请求都走 `assistantApi`（包含 `/api/channels`、动作决定与变更卡接口）；类型只从 `@dramaticer/protocol` 导入，不 import `@dramaticer/core` 的运行时值。
-- 新建会话用 `ASSISTANT_CONVERSATION_DEFAULTS`：排障、修改前确认、`modelAlias: null`（跟随 `roles.writer`）、思考关闭。
-- 取消按钮只在 `status === "running"` 时出现；取消后重新读状态，界面显示“已取消”。待确认数量每 5 秒刷新一次，运行结束后立即刷新，批准或拒绝后也立即刷新。
-- 用量环 `.assistant-context` 读详情里的 `context`：显示百分比与 `used/budget`，`title` 列出四部分 token；颜色由 `context-usage.ts` 的 `contextLevel` 决定。
-- 摘要面板 `.assistant-compaction` 在消息流顶部，折叠显示摘要正文与合并后的省略序号；手动压缩表单 `.assistant-compact` 在输入框上方，要求可空。
-- 抽屉的持久状态只有 localStorage 里的活动会话 id（`dramaticer.assistant.active.<storyId>`）；消息、状态与事件都以 server 为准，不要缓存正文。
-
-## 待确认视图（H-T09）
-- 视图切换在抽屉头部：`对话` 与 `待确认（N）`；面板在右侧列，复用 `.assistant-conversation` 容器，列表类名 `.assistant-review-list`，每条 `.assistant-review-item` 带 `data-kind`（七类动作或 `ledger`）与 `data-id`。
-- `review.ts`：`ASSISTANT_ACTION_KIND_LABELS`、`describeAssistantActionFields`（channels、settings、card、template、lore、director_plan、image_config）、`describeLedgerRows`（按 `before` 路径配对原值）、`matchesReviewConversation`、`reviewConversationOptions`、`reviewConversationTitle`。
-- 渠道动作只展示模型别名与模型 id、渠道 id 的密钥状态、向量模型与密钥状态、岗位指向；`apiKey` 值与环境变量名都不渲染。密钥状态由 `apiKey` 或 `apiKeyEnv` 是否非空决定。
-- 台账卡复用 `formatLedgerPath` 与 `LedgerValue`；原值不存在时显示“（未记录）”，删除动作的新值显示“删除”。
-- 过滤只按来源会话：选项来自当前待确认动作与变更卡的会话 id，标题从会话列表与会话搜索结果合并查找；台账卡没有 `assistantConversationId` 时只出现在“全部来源”。
-- 拒绝助手动作必须先填原因（输入框 `.assistant-review-reject`），拒绝台账卡不需要原因。失败时 `.assistant-review-error` 显示服务端消息，条目保留。
-- e2e 的审阅数据按项目名分别种在 `e2e-assistant-review-mobile` 与 `e2e-assistant-review-desktop`：7 个待确认动作（覆盖七类）与 1 张待确认台账卡，初始数量 8。两个项目共用同一个服务端，所以不能用同一份会被修改的种子。
+## H 应用内助手（已完成，H-T01 至 H-T09、H-T99）
+- 助手会话独立于 `nodes`、`state_diffs`、`turn_runs`；消息与事件在助手表里，删除会话不触碰楼层、head 与状态 diff；助手运行不组装剧情上下文，正剧也不读助手消息。
+- 三级权限：`read_only` 只执行读；`confirm` 把提案与外部影响写成待确认动作；`auto` 只有渠道可用，台账修改永远只生成变更卡，任何级别都不能自动批准。
+- 工具白名单不含草稿、提交、导演手记、正文写入、台账直接写入与生图；七个技能已注册（`troubleshoot`、`guide`、`ledger_revision`、`strategy`、`research`、`card_workshop`、`setup_wizard`）。
+- 迁移 v44 至 v46：会话与消息、待确认动作与变更卡来源 `assistant`、上下文压缩记录。压缩保留最近 10 条与待确认动作引用的消息；自动压缩在 server 消息接口里、`runAssistantTurn` 之前执行，直接调用运行时只按已有压缩过滤消息。
+- web 抽屉的持久状态只有 localStorage 的活动会话 id；消息、事件与状态都以 server 为准，关闭抽屉后运行继续。
+- 审阅面板与待确认数量同源：`refreshPendingActions` 同时读动作与变更卡；渠道字段只渲染白名单字段，不输出密钥或环境变量名。
 
 ## 当前状态
-- 已完成：F0 全部、M0、M1、M2、M3、D、M4-T00 至 M4-T06、R0、R1 最小集（含 R1-T04.a）、R3、O、R2、E、R4、R5（含 R5-T99）、V-T01、M6-T00 至 M6-T05、R1 续（T03.a、T03.b、T04.b、T05.a、T05.b、T06、T08、T99.a）、R3b-T00 至 R3b-T10.b、R3b-T99.a 与 R3b-T99.b、P1.a、P1.b、P1.c、P2.a 至 P2.g、P3.a 至 P3.f、P4.a 至 P4.f、C-T01.a 至 C-T01.d、C-T02.a 至 C-T02.f、C-T03.a 至 C-T03.d、C-T04.a、C-T04.b.a、C-T04.b.b、C-T04.c.a、C-T04.c.b、C-T04.c.c、C-T04.c.d、C-T04.d、C-T05.a 至 C-T05.f、H-T00 至 H-T09、H-T99。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1、P2、P3、P4、C-T01 至 C-T05、H-T00 至 H-T09、H-T99、X1.a。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
 - 兼容插件线：`st-content`、`st-mvu`、`st-ejs`、`st-helper-host` 全部完成（含一致性测试与共存评测）。
-- 数据库 schema 版本 46。本轮没有新增依赖。
+- 数据库 schema 版本 47。本轮没有新增依赖。
 - 报告：`docs/dev/reports/P2.md`、`P3.md`、`P4.md`、`C-T01.md`、`C-T02.md`、`C-T03.md`、`C-T04.md`、`C-T05.md`、`H.md`。
 - 沙箱现状：`eval-private/st-sandbox/st` 有 36 个预设、68 张卡、89 个非驱动聊天片段；预设连接字段已被驱动改写为录制端点与桩模型，全局 `openai_max_context` 已被驱动改为 2,000,000。需要恢复原始预设时用 `sandbox --replace` 重建。
 - 私有比对批次：`compare-smoke4`（5 个组合，修复后）与更早的 `compare-smoke2`、`compare-smoke3`、`session324-sanitize`；每个批次的 `compare/` 下有报告、差异清单与汇总。
-- ADR-0088 至 ADR-0125 记录插件、沙箱、比对、兼容内容映射、EJS、沙箱执行、时间预算、流水线接入、模板生成、一致性评测、酒馆助手宿主、iframe 沙箱、STscript 子集、生成后台化、HTML 渲染、覆盖率口径与应用内助手的决策。
+- ADR-0088 至 ADR-0126 记录插件、沙箱、比对、兼容内容映射、EJS、沙箱执行、时间预算、流水线接入、模板生成、一致性评测、酒馆助手宿主、iframe 沙箱、STscript 子集、生成后台化、HTML 渲染、覆盖率口径、应用内助手与世界模型接口的决策。
 - HUMAN-03 待处理（不阻塞）：抽查 `eval-private/evalset/spotcheck.md` 里的事件题。
 - HUMAN-14 已关闭（2026-11-12：人类取消）：取消 Vertex 真实调用的凭证配置与验证要求；`roles.writer` 继续使用 `main-fallback`。
 - HUMAN-15 待处理（M6-T99 需要）：把秋叶整合包 v3.2 的 ComfyUI 启动在 `http://127.0.0.1:8188`，并导出一份 API 格式 workflow JSON 到 `eval-private/comfyui/` 或告知路径。
@@ -94,6 +51,7 @@
 
 ## 可重复命令
 - 门禁：`pnpm check`。
+- X1.a 目标测试：`pnpm exec vitest run packages/core/test/world-model.test.ts packages/core/test/story-settings.test.ts packages/core/test/chat-providers.test.ts packages/web/test/settings-form.test.ts`。
 - H-T99 真实渠道验收：`node .devloop/scratch/H-T99/live.mjs`（脚本读取 `.env`、`data/channels.yaml` 与 `docs/`，数据库写在 `.devloop/scratch/H-T99/live.db`；结果同时写 `.devloop/scratch/H-T99/live.json`）。脚本是一次性验收工具，不需要长期保留。
 - H-T99 e2e：`pnpm --filter @dramaticer/server build && pnpm --filter @dramaticer/web build && pnpm --filter @dramaticer/web exec playwright test e2e/assistant.spec.ts`（desktop 与 mobile 各 5 条）。
 - H-T09 目标测试：`pnpm exec vitest run packages/web/test/assistant-review.test.ts packages/web/test/assistant-api.test.ts`。
@@ -129,6 +87,9 @@
 - `packages/st-compat` 与 `packages/server` 的测试通过 `@dramaticer/core` 的 `dist` 解析 core；只跑这些包的测试前先执行 `pnpm run typecheck`。
 - 结构化 JSON 请求一律使用 `NO_CONTINUATION`；正文写作与散文类后台输出保留续写。上下文摘要按结构化请求处理，也使用 `NO_CONTINUATION`。
 - web 源码不能 import `@dramaticer/core` 的运行时值（会把 `better-sqlite3` 与 `node:*` 打进前端包导致整页白屏），类型导入可以；助手类型从 `@dramaticer/protocol` 取。
+- 世界模型只用故事设置 `worldModel` 选择；新增调用方传 `settings.worldModel`，不要自己判断种类或回落到台账。状态槽位的 `packKey` 必须带种类（`state:<kind>`），否则不同表示会共用上下文包指纹。
+- `wiki` 与 `temporal_graph` 在 X1.b、X1.c 完成前由 `createWorldModel` 直接失败；实现候选时只改工厂与适配器，不改槽位、server 与评测调用方。
+- `WorldModel.write` 先逐条 `validateLedgerDiff` 再写，供对比运行器使用；剧情结算仍走 `applySettlementProposals`，不要用这个接口绕过结算器（I12）。
 - 助手搜索：标题使用 LIKE，消息正文在查询不少于三个字符时用 `assistant_message_text` 的 trigram，短于三个字符时退回 LIKE；命中片段用方括号标出。`assistant_message_text` 由消息表触发器同步，删除会话时先删消息再删会话，保证索引清理。
 - `assistant_events` 与 `assistant_compactions` 的删除触发器只在会话仍存在时拒绝，删除会话的级联删除不受影响；事件与压缩记录的修改始终被拒绝。
 - 助手接口的 `storyId` 不存在返回 404，字段非法返回 400 并在 `details.path` 指出字段；删除会话不触碰楼层、head 与状态 diff。

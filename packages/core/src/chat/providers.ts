@@ -37,6 +37,7 @@ import type { SummaryLevel } from "../memory/summary.js";
 import { retrieveMemory } from "../retrieval/hybrid.js";
 import type { StoryStore } from "../store/story-store.js";
 import { type TokenEstimator, createTokenEstimator } from "../tokens.js";
+import { type WorldModelKind, createWorldModel } from "../world-model/index.js";
 
 export interface HistorySlotProviderOptions {
 	/** 最多带最近多少楼，默认 20。 */
@@ -155,26 +156,38 @@ export function createRawHistorySlotProvider(
 	};
 }
 
-/** 从状态快照读取当前状态，把结果渲染成系统消息。 */
+export interface StateSlotProviderOptions {
+	/** 世界模型的表示方式；默认台账。 */
+	readonly worldModel?: WorldModelKind;
+}
+
+/** 从世界模型读取当前状态，把硬事实与补充段落渲染成系统消息。 */
 export function createStateSlotProvider(
 	store: StoryStore,
+	options: StateSlotProviderOptions = {},
 ): ContextSlotProvider {
+	const worldModel = createWorldModel(store, options.worldModel);
 	return {
-		packKey: "state",
+		packKey: `state:${worldModel.kind}`,
 		provide(request): ContextSlotContent | null {
 			if (request.nodeId === null) return null;
-			const { state } = store.getStateSnapshot(request.nodeId);
-			if (Object.keys(state).length === 0) return null;
-			const diffCount = store.countStateDiffsAlongPath(request.nodeId);
-			return {
-				messages: [
-					{
-						role: "system",
-						content: `当前状态：\n${JSON.stringify(state, null, 2)}`,
-					},
-				],
-				source: `state:${diffCount} 条 diff`,
-			};
+			const view = worldModel.read(request.nodeId);
+			if (Object.keys(view.state).length === 0 && view.sections.length === 0) {
+				return null;
+			}
+			const messages: ContextMessage[] = [
+				{
+					role: "system",
+					content: `当前状态：\n${JSON.stringify(view.state, null, 2)}`,
+				},
+			];
+			for (const section of view.sections) {
+				messages.push({
+					role: "system",
+					content: `${section.title}：\n${section.text}`,
+				});
+			}
+			return { messages, source: view.source };
 		},
 	};
 }

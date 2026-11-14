@@ -129,6 +129,7 @@ export class StoryRuntimeManager {
 			reranker,
 			directorConfig: settings.directorConfig,
 			historyBlockPolicy: settings.historyBlockPolicy,
+			worldModel: settings.worldModel,
 		});
 		return {
 			settings,

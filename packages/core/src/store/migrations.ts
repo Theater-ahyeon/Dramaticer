@@ -1452,6 +1452,14 @@ export function buildMigrations(
 				END`,
 			],
 		},
+		{
+			version: 47,
+			description: "世界模型的表示方式：台账、实体档案或时序知识图谱",
+			statements: [
+				`ALTER TABLE story_settings ADD COLUMN world_model TEXT NOT NULL
+					DEFAULT 'ledger' CHECK (world_model IN ('ledger', 'wiki', 'temporal_graph'))`,
+			],
+		},
 	];
 }
 

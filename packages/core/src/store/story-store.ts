@@ -272,6 +272,10 @@ import type {
 } from "../timeline.js";
 import { createTokenEstimator } from "../tokens.js";
 import type { TurnTrace } from "../trace.js";
+import {
+	DEFAULT_WORLD_MODEL_KIND,
+	assertWorldModelKind,
+} from "../world-model/types.js";
 import { serializeJsonValue } from "./json-value.js";
 import {
 	DEFAULT_EMBEDDING_DIMENSIONS,
@@ -331,6 +335,7 @@ interface StorySettingsRow {
 	readonly gap_plan_seconds: number;
 	readonly image_config: string | null;
 	readonly plugin_overrides: string;
+	readonly world_model: string;
 	readonly updated_at: string;
 }
 
@@ -1378,6 +1383,10 @@ function rowToStorySettings(row: StorySettingsRow): StorySettings {
 		pluginOverrides: parseStoryPluginOverrides(
 			JSON.parse(row.plugin_overrides) as unknown,
 		),
+		worldModel: assertWorldModelKind(
+			row.world_model,
+			`故事 ${row.story_id} 的 worldModel`,
+		),
 		updatedAt: row.updated_at,
 	};
 }
@@ -2399,6 +2408,7 @@ export class StoryStore {
 			gapPlanSeconds: DEFAULT_STORY_SETTINGS_VALUES.gapPlanSeconds,
 			imageConfig: DEFAULT_STORY_SETTINGS_VALUES.imageConfig,
 			pluginOverrides: DEFAULT_STORY_SETTINGS_VALUES.pluginOverrides,
+			worldModel: DEFAULT_STORY_SETTINGS_VALUES.worldModel,
 			updatedAt: story.createdAt,
 		};
 	}
@@ -2516,6 +2526,10 @@ export class StoryStore {
 				update.pluginOverrides !== undefined
 					? update.pluginOverrides
 					: current.pluginOverrides,
+			worldModel:
+				update.worldModel !== undefined
+					? update.worldModel
+					: current.worldModel,
 		};
 		const updatedAt = new Date().toISOString();
 		this.#db
@@ -2526,8 +2540,9 @@ export class StoryStore {
 					 turn_mode, max_read_rounds, deep_max_tool_calls, deep_timeout_ms,
 					 deep_context_token_limit, deep_recent_tool_steps, viewpoint,
 					 director_config, history_block_policy, gap_pass_enabled,
-					 gap_plan_seconds, image_config, plugin_overrides, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+					 gap_plan_seconds, image_config, plugin_overrides, world_model,
+					 updated_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 				ON CONFLICT(story_id) DO UPDATE SET
 					card_name = excluded.card_name,
 					character_prompt = excluded.character_prompt,
@@ -2552,6 +2567,7 @@ export class StoryStore {
 					gap_plan_seconds = excluded.gap_plan_seconds,
 					image_config = excluded.image_config,
 					plugin_overrides = excluded.plugin_overrides,
+					world_model = excluded.world_model,
 					updated_at = excluded.updated_at`,
 			)
 			.run(
@@ -2582,6 +2598,7 @@ export class StoryStore {
 					parseStoryPluginOverrides(next.pluginOverrides),
 					"故事设置的 pluginOverrides",
 				),
+				next.worldModel,
 				updatedAt,
 			);
 		const saved = this.getStorySettings(storyId);

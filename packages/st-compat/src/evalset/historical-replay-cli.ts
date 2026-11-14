@@ -599,6 +599,7 @@ async function buildTurnContext(
 			embedder: null,
 			directorConfig: settings.directorConfig,
 			historyBlockPolicy: settings.historyBlockPolicy,
+			worldModel: settings.worldModel,
 		})
 	).providers;
 	const naive = (

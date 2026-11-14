@@ -68,6 +68,7 @@ describe("故事设置", () => {
 			gapPlanSeconds: 212,
 			imageConfig: DEFAULT_IMAGE_CONFIG,
 			pluginOverrides: { config: {}, switches: {} },
+			worldModel: "ledger",
 			updatedAt: createdAt,
 		});
 		close();

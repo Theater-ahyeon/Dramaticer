@@ -17,6 +17,7 @@ import type { EmbeddingClient } from "../llm/embeddings.js";
 import type { RerankClient } from "../llm/rerank.js";
 import type { StoryStore } from "../store/story-store.js";
 import type { TokenEstimator } from "../tokens.js";
+import type { WorldModelKind } from "../world-model/types.js";
 import type { PluginDefinition } from "./contracts.js";
 
 /**
@@ -177,7 +178,9 @@ export const stateSlotPlugin: PluginDefinition = {
 		const values = slotConfig(STATE_SLOT_PLUGIN, config);
 		context.slot(
 			"state",
-			createStateSlotProvider(requireSlotStore(STATE_SLOT_PLUGIN, values)),
+			createStateSlotProvider(requireSlotStore(STATE_SLOT_PLUGIN, values), {
+				worldModel: values.worldModel as WorldModelKind | undefined,
+			}),
 		);
 	},
 };
