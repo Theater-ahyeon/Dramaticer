@@ -4,6 +4,8 @@ import { IMPORT_KIND_JOB_KIND, createTokenEstimator } from "@dramaticer/core";
 import type {
 	ApiErrorResponse,
 	ImportAuditEntryKindUpdateResult,
+	ImportAuditEntryMemoryUpdateResult,
+	ImportAuditMemoryConvertResult,
 	ImportAuditReportView,
 	ImportAuditSuggestionResult,
 } from "@dramaticer/protocol";
@@ -55,6 +57,10 @@ function post(origin: string, path: string, body: unknown): Promise<Response> {
 
 function patch(origin: string, path: string, body: unknown): Promise<Response> {
 	return request(origin, path, { method: "PATCH", body: JSON.stringify(body) });
+}
+
+function put(origin: string, path: string, body: unknown): Promise<Response> {
+	return request(origin, path, { method: "PUT", body: JSON.stringify(body) });
 }
 
 async function errorBody(response: Response): Promise<ApiErrorResponse> {
@@ -273,6 +279,127 @@ describe("导入体检接口", () => {
 		);
 		expect(response.status).toBe(409);
 		expect((await errorBody(response)).error.code).toBe("conflict");
+	});
+
+	it("切换导入模式，插件残留一键转成初始记忆并可撤销", async () => {
+		const running = await startTestServer();
+		const created = await post(running.origin, "/api/stories", {
+			id: "s2",
+			title: "列岛",
+		});
+		expect(created.status).toBe(201);
+		const imported = await post(running.origin, "/api/stories/s2/import", {
+			card: {
+				format: "json",
+				data: JSON.stringify({
+					spec: "chara_card_v2",
+					spec_version: "2.0",
+					data: {
+						name: "列岛",
+						description: "潮汐之国",
+						first_mes: "潮水退了。",
+						character_book: {
+							name: "列岛",
+							entries: [
+								{
+									id: 1,
+									keys: [],
+									comment: "世界观",
+									content: "这是一个被潮汐分开的列岛世界。",
+									enabled: true,
+									constant: true,
+								},
+								{
+									id: 2,
+									keys: ["回顾"],
+									comment: "总结",
+									content: "前情提要：潮水退了，灯塔亮着。",
+									enabled: true,
+									constant: true,
+								},
+							],
+						},
+					},
+				}),
+			},
+		});
+		expect(imported.status).toBe(200);
+
+		const initial = (await (
+			await request(running.origin, "/api/stories/s2/import-audit")
+		).json()) as ImportAuditReportView;
+		expect(initial.importMode).toBe("upgrade");
+		expect(initial.pluginResidue).toHaveLength(1);
+		expect(initial.tokens.beforeEntries).toBe(2);
+
+		const settings = await put(running.origin, "/api/stories/s2/settings", {
+			importMode: "raw",
+		});
+		expect(settings.status).toBe(200);
+		const raw = (await (
+			await request(running.origin, "/api/stories/s2/import-audit")
+		).json()) as ImportAuditReportView;
+		expect(raw.importMode).toBe("raw");
+
+		const residue = raw.pluginResidue[0];
+		if (residue === undefined) throw new Error("没有插件残留条目");
+		const converted = await post(
+			running.origin,
+			"/api/stories/s2/import-audit/memory",
+			{},
+		);
+		expect(converted.status).toBe(200);
+		const convertedBody =
+			(await converted.json()) as ImportAuditMemoryConvertResult;
+		expect(convertedBody.converted).toBe(1);
+		expect(convertedBody.report.pluginResidue[0]).toMatchObject({
+			memory: true,
+		});
+		expect(convertedBody.report.tokens.beforeEntries).toBe(1);
+		expect(
+			convertedBody.report.entries.find(
+				(entry) => entry.source === residue.source,
+			),
+		).toMatchObject({ memory: true });
+
+		const entryPath = `/api/stories/s2/import-audit/entries/${encodeURIComponent(
+			residue.source,
+		)}`;
+		const restored = await put(running.origin, `${entryPath}/memory`, {
+			memory: false,
+		});
+		expect(restored.status).toBe(200);
+		const restoredBody =
+			(await restored.json()) as ImportAuditEntryMemoryUpdateResult;
+		expect(restoredBody.entry).toMatchObject({ memory: false });
+		expect(restoredBody.report.tokens.beforeEntries).toBe(2);
+
+		const common = initial.entries.find((entry) => entry.kind === "common");
+		if (common === undefined) throw new Error("没有常识条目");
+		const rejected = await put(
+			running.origin,
+			`/api/stories/s2/import-audit/entries/${encodeURIComponent(common.source)}/memory`,
+			{ memory: true },
+		);
+		expect(rejected.status).toBe(400);
+		expect((await errorBody(rejected)).error.details).toEqual({
+			path: "memory",
+		});
+
+		const badBody = await put(running.origin, `${entryPath}/memory`, {
+			memory: "yes",
+		});
+		expect(badBody.status).toBe(400);
+		expect((await errorBody(badBody)).error.details).toEqual({
+			path: "memory",
+		});
+
+		const missing = await put(
+			running.origin,
+			"/api/stories/s2/import-audit/entries/nope/memory",
+			{ memory: true },
+		);
+		expect(missing.status).toBe(404);
 	});
 
 	it("故事不存在时接口 404", async () => {

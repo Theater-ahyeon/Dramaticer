@@ -54,9 +54,19 @@ export interface ImportAuditEntry {
 	/** 生效的类型；玩家或模型改过时与 `rulePrimary` 不同 */
 	readonly kind: ImportEntryKind;
 	readonly kindSource: ImportEntryKindSource;
+	/** 导入时的条目是否常驻；重复导入会更新，玩家转换初始记忆不回写这一列 */
 	readonly constant: boolean;
+	/** 已转为初始记忆：不进入每轮的常驻集合，只在命中时按记忆注入 */
+	readonly memory: boolean;
 	readonly createdAt: string;
 	readonly updatedAt: string;
+}
+
+/** 世界书槽位判断注入方式只需要三个字段；逐轮读取不解析命中的规则。 */
+export interface ImportAuditInjectionRule {
+	readonly source: string;
+	readonly kind: ImportEntryKind;
+	readonly memory: boolean;
 }
 
 export interface NewImportAuditEntry {

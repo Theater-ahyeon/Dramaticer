@@ -2677,6 +2677,27 @@ button.branch-select:hover {
 	color: var(--muted);
 }
 
+.import-audit-mode {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.import-audit-mode button {
+	padding: 6px 12px;
+	border-color: var(--border);
+	background: var(--surface);
+	color: var(--text);
+	font-size: 0.9rem;
+}
+
+.import-audit-mode button[aria-pressed="true"] {
+	border-color: var(--accent);
+	background: var(--accent-soft);
+	color: var(--accent);
+	font-weight: 600;
+}
+
 .import-audit-section {
 	margin-top: 18px;
 }

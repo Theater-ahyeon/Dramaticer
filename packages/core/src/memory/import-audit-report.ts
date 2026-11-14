@@ -31,6 +31,8 @@ export interface ImportAuditEntrySummary {
 	readonly kindSource: ImportEntryKindSource;
 	readonly rulePrimary: ImportEntryKind;
 	readonly constant: boolean;
+	/** 已转为初始记忆的条目不再进入每轮常驻集合 */
+	readonly memory: boolean;
 	readonly contentChars: number;
 }
 
@@ -42,6 +44,7 @@ export interface ImportAuditReviewEntry {
 	readonly kind: ImportEntryKind;
 	readonly kindSource: ImportEntryKindSource;
 	readonly rulePrimary: ImportEntryKind;
+	readonly memory: boolean;
 }
 
 export interface ImportAuditReport {
@@ -68,8 +71,9 @@ export interface BuildImportAuditReportInput {
  * 每轮常驻 token 的前后估算。
  *
  * 前后两侧都只算真正导入成 lore 的条目（停用、没有名称或空内容的条目不会
- * 进入任何一侧）：`before` 是现在每轮注入的常驻条目全文，`after` 是按类型
- * 注入后的常识全文加实体档案的标题与关键词索引。
+ * 进入任何一侧），已转成初始记忆的条目两边都不算：`before` 是原样模式每轮
+ * 注入的常驻条目全文，`after` 是升级模式按类型注入后的常识全文加实体档案的
+ * 标题与关键词索引。
  */
 export function buildImportAuditReport(
 	input: BuildImportAuditReportInput,
@@ -97,6 +101,7 @@ export function buildImportAuditReport(
 			kindSource: entry.kindSource,
 			rulePrimary: entry.rulePrimary,
 			constant: entry.constant,
+			memory: entry.memory,
 			contentChars: entry.content.length,
 		});
 		const review: ImportAuditReviewEntry = {
@@ -106,6 +111,7 @@ export function buildImportAuditReport(
 			kind: entry.kind,
 			kindSource: entry.kindSource,
 			rulePrimary: entry.rulePrimary,
+			memory: entry.memory,
 		};
 		if (entry.kind === "unknown") unknown.push(review);
 		if (entry.kind === "options") authorOptions.push(review);
@@ -113,6 +119,7 @@ export function buildImportAuditReport(
 
 		const lore = loreBySource.get(entry.source);
 		if (lore === undefined) continue;
+		if (entry.memory) continue;
 		if (entry.constant) {
 			beforeLines.push(`【常驻】${entry.title}：${entry.content}`);
 		}

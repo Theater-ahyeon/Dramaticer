@@ -1664,6 +1664,15 @@ export function buildMigrations(
 				END`,
 			],
 		},
+		{
+			version: 56,
+			description:
+				"导入体检：插件残留可以转成初始记忆，转换后不再进入每轮常驻集合",
+			statements: [
+				`ALTER TABLE import_audit_entries ADD COLUMN memory INTEGER NOT NULL
+					DEFAULT 0 CHECK (memory IN (0, 1))`,
+			],
+		},
 	];
 }
 

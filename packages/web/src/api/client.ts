@@ -20,6 +20,9 @@ import {
 	type ImageWorkflowsView,
 	type ImportAuditEntryKindUpdateRequest,
 	type ImportAuditEntryKindUpdateResult,
+	type ImportAuditEntryMemoryUpdateRequest,
+	type ImportAuditEntryMemoryUpdateResult,
+	type ImportAuditMemoryConvertResult,
 	type ImportAuditReportView,
 	type ImportStoryRequest,
 	type ImportStoryResult,
@@ -177,6 +180,27 @@ export class ApiClient {
 			"PATCH",
 			`${storyPath(storyId)}/import-audit/entries/${encodeURIComponent(source)}`,
 			request,
+		);
+	}
+
+	async updateImportAuditEntryMemory(
+		storyId: string,
+		source: string,
+		request: ImportAuditEntryMemoryUpdateRequest,
+	): Promise<ImportAuditEntryMemoryUpdateResult> {
+		return this.json<ImportAuditEntryMemoryUpdateResult>(
+			"PUT",
+			`${storyPath(storyId)}/import-audit/entries/${encodeURIComponent(source)}/memory`,
+			request,
+		);
+	}
+
+	async convertImportAuditMemory(
+		storyId: string,
+	): Promise<ImportAuditMemoryConvertResult> {
+		return this.json<ImportAuditMemoryConvertResult>(
+			"POST",
+			`${storyPath(storyId)}/import-audit/memory`,
 		);
 	}
 

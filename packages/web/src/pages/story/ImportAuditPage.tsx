@@ -3,6 +3,7 @@ import type {
 	ImportAuditReviewEntry,
 	ImportEntryKind,
 	ImportEntryKindSource,
+	ImportMode,
 } from "@dramaticer/core";
 import type {
 	ImportAuditPlayerSource,
@@ -67,6 +68,8 @@ export function ImportAuditPage() {
 	const [report, setReport] = useState<ImportAuditReportView | null>(null);
 	const [loading, setLoading] = useState(false);
 	const [busySource, setBusySource] = useState<string | null>(null);
+	const [modeBusy, setModeBusy] = useState(false);
+	const [converting, setConverting] = useState(false);
 	const [error, setError] = useState<unknown>(null);
 
 	useEffect(() => {
@@ -76,6 +79,8 @@ export function ImportAuditPage() {
 		setReport(null);
 		setError(null);
 		setBusySource(null);
+		setModeBusy(false);
+		setConverting(false);
 		setLoading(true);
 		void (async () => {
 			try {
@@ -122,6 +127,49 @@ export function ImportAuditPage() {
 		}
 	};
 
+	const changeMode = async (mode: ImportMode) => {
+		setModeBusy(true);
+		setError(null);
+		try {
+			await api.updateSettings(storyId, { importMode: mode });
+			setReport((current) =>
+				current === null ? current : { ...current, importMode: mode },
+			);
+		} catch (value) {
+			setError(value);
+		} finally {
+			setModeBusy(false);
+		}
+	};
+
+	const toggleMemory = async (source: string, memory: boolean) => {
+		setBusySource(source);
+		setError(null);
+		try {
+			const result = await api.updateImportAuditEntryMemory(storyId, source, {
+				memory,
+			});
+			setReport(result.report);
+		} catch (value) {
+			setError(value);
+		} finally {
+			setBusySource(null);
+		}
+	};
+
+	const convertAllResidue = async () => {
+		setConverting(true);
+		setError(null);
+		try {
+			const result = await api.convertImportAuditMemory(storyId);
+			setReport(result.report);
+		} catch (value) {
+			setError(value);
+		} finally {
+			setConverting(false);
+		}
+	};
+
 	const groups: readonly ReviewGroup[] =
 		report === null
 			? []
@@ -141,7 +189,7 @@ export function ImportAuditPage() {
 					{
 						id: "plugin-residue",
 						title: "插件残留",
-						hint: "其他插件写进世界书的总结与表格。",
+						hint: "其他插件写进世界书的总结与表格。转成初始记忆后不再每轮注入，只在命中时按记忆注入，可以撤销。",
 						entries: report.pluginResidue,
 					},
 				];
@@ -188,6 +236,36 @@ export function ImportAuditPage() {
 							</ul>
 						</section>
 						<section>
+							<h2>注入方式</h2>
+							<div className="import-audit-mode">
+								<button
+									type="button"
+									aria-pressed={report.importMode === "upgrade"}
+									disabled={modeBusy}
+									onClick={() => {
+										void changeMode("upgrade");
+									}}
+								>
+									升级模式
+								</button>
+								<button
+									type="button"
+									aria-pressed={report.importMode === "raw"}
+									disabled={modeBusy}
+									onClick={() => {
+										void changeMode("raw");
+									}}
+								>
+									原样模式
+								</button>
+							</div>
+							<p className="muted">
+								{report.importMode === "upgrade"
+									? "常识全文与实体索引每轮注入，规则与实体详情在命中时注入。"
+									: "按导入时的常驻标记与关键词注入，不按分型过滤。"}
+							</p>
+						</section>
+						<section>
 							<h2>每轮常驻注入</h2>
 							<p className="import-audit-tokens">
 								<span className="import-audit-token-before">
@@ -211,7 +289,10 @@ export function ImportAuditPage() {
 							group={group}
 							kinds={report.counts.map((item) => item.kind)}
 							busySource={busySource}
+							converting={converting}
 							onChange={changeKind}
+							onToggleMemory={toggleMemory}
+							onConvertAll={convertAllResidue}
 						/>
 					))}
 					<AllEntriesSection
@@ -230,19 +311,38 @@ function ReviewSection({
 	group,
 	kinds,
 	busySource,
+	converting,
 	onChange,
+	onToggleMemory,
+	onConvertAll,
 }: {
 	readonly group: ReviewGroup;
 	readonly kinds: readonly ImportEntryKind[];
 	readonly busySource: string | null;
+	readonly converting: boolean;
 	readonly onChange: ChangeKind;
+	readonly onToggleMemory: (source: string, memory: boolean) => Promise<void>;
+	readonly onConvertAll: () => Promise<void>;
 }) {
 	if (group.entries.length === 0 && group.id !== "unknown") return null;
+	const isResidue = group.id === "plugin-residue";
+	const pendingResidue = group.entries.filter((entry) => !entry.memory).length;
 	return (
 		<section className="import-audit-section" data-group={group.id}>
 			<h2>
 				{group.title}
 				<span className="badge">{formatCount(group.entries.length)}</span>
+				{isResidue && pendingResidue > 0 ? (
+					<button
+						type="button"
+						disabled={converting}
+						onClick={() => {
+							void onConvertAll();
+						}}
+					>
+						全部转为初始记忆（{formatCount(pendingResidue)}）
+					</button>
+				) : null}
 			</h2>
 			<p className="muted">{group.hint}</p>
 			{group.entries.length === 0 ? (
@@ -250,13 +350,29 @@ function ReviewSection({
 			) : (
 				<ul className="import-audit-entries">
 					{group.entries.map((entry) => (
-						<li key={entry.source} className="import-audit-entry">
+						<li
+							key={entry.source}
+							className="import-audit-entry"
+							data-memory={entry.memory ? "true" : "false"}
+						>
 							<div className="import-audit-entry-head">
 								<span className="import-audit-entry-title">
 									{displayTitle(entry)}
 								</span>
 								<span className="badge">{KIND_LABELS[entry.kind]}</span>
 								<span className="muted">{SOURCE_LABELS[entry.kindSource]}</span>
+								{entry.memory ? <span className="badge">初始记忆</span> : null}
+								{isResidue ? (
+									<button
+										type="button"
+										disabled={busySource === entry.source}
+										onClick={() => {
+											void onToggleMemory(entry.source, !entry.memory);
+										}}
+									>
+										{entry.memory ? "撤销转换" : "转为初始记忆"}
+									</button>
+								) : null}
 								<KindControl
 									entry={entry}
 									label={`${displayTitle(entry)} 的类型`}
@@ -270,6 +386,11 @@ function ReviewSection({
 									规则判定的类型是 {KIND_LABELS[entry.rulePrimary]}。
 								</p>
 							)}
+							{entry.memory ? (
+								<p className="muted">
+									已转为初始记忆：不进入每轮的常驻集合，只在命中时按记忆注入。
+								</p>
+							) : null}
 							<details className="import-audit-content">
 								<summary>展开正文</summary>
 								<pre>{entry.content}</pre>
@@ -304,6 +425,7 @@ function AllEntriesSection({
 						</span>
 						<span className="badge">{KIND_LABELS[entry.kind]}</span>
 						<span className="muted">{SOURCE_LABELS[entry.kindSource]}</span>
+						{entry.memory ? <span className="badge">初始记忆</span> : null}
 						<span className="muted">{formatCount(entry.contentChars)} 字</span>
 						<KindControl
 							entry={entry}

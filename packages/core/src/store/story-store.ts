@@ -225,6 +225,7 @@ import {
 } from "../memory/event.js";
 import {
 	type ImportAuditEntry,
+	type ImportAuditInjectionRule,
 	type ImportEntryKind,
 	type ImportEntryKindSource,
 	type ImportEntryMatch,
@@ -960,6 +961,7 @@ interface ImportAuditEntryRow {
 	readonly kind: string;
 	readonly kind_source: string;
 	readonly constant: number;
+	readonly memory: number;
 	readonly created_at: string;
 	readonly updated_at: string;
 }
@@ -2373,6 +2375,7 @@ function rowToImportAuditEntry(row: ImportAuditEntryRow): ImportAuditEntry {
 			`${label} 的类型来源`,
 		),
 		constant: readBooleanColumn(row.constant, `${label} 的 constant`),
+		memory: readBooleanColumn(row.memory, `${label} 的 memory`),
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
 	};
@@ -3000,6 +3003,9 @@ export class StoryStore {
 				next.importMode,
 				updatedAt,
 			);
+		if (next.importMode !== current.importMode) {
+			this.clearContextPacks(storyId);
+		}
 		const saved = this.getStorySettings(storyId);
 		if (saved.updatedAt !== updatedAt) {
 			throw new Error(`故事设置写入后读取失败：${storyId}`);
@@ -6969,6 +6975,123 @@ export class StoryStore {
 	}
 
 	/**
+	 * 逐轮的注入判定只读来源、生效类型与记忆标记；不必解析命中的规则。
+	 */
+	listImportAuditInjectionRules(storyId: string): ImportAuditInjectionRule[] {
+		assertNonEmptyString(storyId, "导入审计的故事 id");
+		if (!this.getStory(storyId)) {
+			throw new Error(`故事不存在：${storyId}`);
+		}
+		const rows = this.#db
+			.prepare(
+				`SELECT source, kind, memory FROM import_audit_entries
+				WHERE story_id = ?
+				ORDER BY rowid ASC`,
+			)
+			.all(storyId) as {
+			readonly source: string;
+			readonly kind: string;
+			readonly memory: number;
+		}[];
+		return rows.map((row) => ({
+			source: row.source,
+			kind: assertImportEntryKind(
+				row.kind,
+				`导入审计 ${row.source} 的生效类型`,
+			),
+			memory: readBooleanColumn(row.memory, `导入审计 ${row.source} 的 memory`),
+		}));
+	}
+
+	/**
+	 * 把一条插件残留条目转成初始记忆，或撤销这次转换。
+	 * 转换后审计行记 `memory = 1`，对应的 lore 条目改为非常驻：不再进入每轮的
+	 * 常驻集合，只在关键词命中时按记忆注入。撤销时 lore 的常驻标记回到导入时的值。
+	 */
+	setImportAuditEntryMemory(
+		storyId: string,
+		source: string,
+		memory: boolean,
+	): ImportAuditEntry {
+		assertNonEmptyString(storyId, "导入审计的故事 id");
+		assertNonEmptyString(source, "导入审计的 source");
+		if (typeof memory !== "boolean") {
+			throw new Error("导入审计的 memory 必须是布尔值");
+		}
+		const row = this.#db
+			.prepare(
+				`SELECT * FROM import_audit_entries
+				WHERE story_id = ? AND source = ?`,
+			)
+			.get(storyId, source) as ImportAuditEntryRow | undefined;
+		if (row === undefined) {
+			throw new Error(`导入审计条目不存在：${source}`);
+		}
+		if (memory && row.kind !== "plugin-residue") {
+			throw new Error(`只有插件残留条目可以转成初始记忆：${source}`);
+		}
+		const updatedAt = new Date().toISOString();
+		const restoredConstant = readBooleanColumn(
+			row.constant,
+			`${source} 的 constant`,
+		);
+		this.#db.transaction(() => {
+			this.#db
+				.prepare(
+					`UPDATE import_audit_entries
+					SET memory = ?, updated_at = ?
+					WHERE story_id = ? AND source = ?`,
+				)
+				.run(memory ? 1 : 0, updatedAt, storyId, source);
+			this.#db
+				.prepare(
+					`UPDATE lore_entries SET constant = ?
+					WHERE story_id = ? AND source = ?`,
+				)
+				.run(memory ? 0 : Number(restoredConstant), storyId, source);
+			this.clearContextPacks(storyId);
+		})();
+		return rowToImportAuditEntry({
+			...row,
+			memory: memory ? 1 : 0,
+			updated_at: updatedAt,
+		});
+	}
+
+	/** 把所有仍是插件残留的条目一次转成初始记忆；返回本次转换的条数。 */
+	convertImportAuditPluginResidueToMemory(storyId: string): number {
+		assertNonEmptyString(storyId, "导入审计的故事 id");
+		if (!this.getStory(storyId)) {
+			throw new Error(`故事不存在：${storyId}`);
+		}
+		const rows = this.#db
+			.prepare(
+				`SELECT source FROM import_audit_entries
+				WHERE story_id = ? AND kind = 'plugin-residue' AND memory = 0
+				ORDER BY rowid ASC`,
+			)
+			.all(storyId) as { readonly source: string }[];
+		if (rows.length === 0) return 0;
+		const updatedAt = new Date().toISOString();
+		this.#db.transaction(() => {
+			const markMemory = this.#db.prepare(
+				`UPDATE import_audit_entries SET memory = 1, updated_at = ?
+				WHERE story_id = ? AND source = ?`,
+			);
+			const dropConstant = this.#db.prepare(
+				`UPDATE lore_entries SET constant = 0
+				WHERE story_id = ? AND source = ?`,
+			);
+			for (const row of rows) {
+				markMemory.run(updatedAt, storyId, row.source);
+				dropConstant.run(storyId, row.source);
+			}
+			this.clearContextPacks(storyId);
+		})();
+		return rows.length;
+	}
+
+	/**
 	 * 写入一个楼层的世界书预筛结果；同一楼层覆盖同一行。
 	 * 条目 id 必须是非空字符串且不重复，所属故事必须与楼层一致。
 	 */
@@ -7062,6 +7185,21 @@ export class StoryStore {
 			.prepare("SELECT * FROM context_packs WHERE node_id = ?")
 			.get(nodeId) as ContextPackRow | undefined;
 		return row === undefined ? null : rowToContextPack(row);
+	}
+
+	/**
+	 * 删除故事里缓存的上下文包。导入模式或世界书注入集合变化后，旧包里的
+	 * 世界书段已经过时，重生成时必须重新组装。
+	 */
+	clearContextPacks(storyId: string): number {
+		assertNonEmptyString(storyId, "上下文包的故事 id");
+		if (!this.getStory(storyId)) {
+			throw new Error(`故事不存在：${storyId}`);
+		}
+		const result = this.#db
+			.prepare("DELETE FROM context_packs WHERE story_id = ?")
+			.run(storyId);
+		return result.changes;
 	}
 
 	/**

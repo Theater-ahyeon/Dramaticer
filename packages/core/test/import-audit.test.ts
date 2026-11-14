@@ -196,4 +196,91 @@ describe("导入分型结果", () => {
 			),
 		).toThrow("导入审计条目不存在");
 	});
+
+	it("插件残留转成初始记忆后不再常驻，撤销后恢复，重复导入保留转换", () => {
+		const store = openStore();
+		const residue = auditEntry({
+			source: "character-book:山神:2",
+			title: "总结",
+			content: "前情提要：山门被攻破。",
+			matches: [{ kind: "plugin-residue", rules: ["title:plugin-residue"] }],
+			rulePrimary: "plugin-residue",
+			constant: true,
+		});
+		const secondResidue = auditEntry({
+			source: "character-book:山神:3",
+			title: "统计表",
+			content: "好感度统计。",
+			matches: [{ kind: "plugin-residue", rules: ["title:plugin-residue"] }],
+			rulePrimary: "plugin-residue",
+			constant: false,
+		});
+		store.saveImportAuditEntries("s1", [auditEntry(), residue, secondResidue]);
+		store.insertLoreEntries([
+			{
+				storyId: "s1",
+				name: "世界背景",
+				content: "灵潮退去三百年后。",
+				constant: true,
+				source: "character-book:山神:0",
+			},
+			{
+				storyId: "s1",
+				name: "总结",
+				content: "前情提要：山门被攻破。",
+				constant: true,
+				keywords: ["前情提要"],
+				source: "character-book:山神:2",
+			},
+		]);
+
+		expect(store.listImportAuditInjectionRules("s1")).toContainEqual({
+			source: "character-book:山神:2",
+			kind: "plugin-residue",
+			memory: false,
+		});
+		expect(() =>
+			store.setImportAuditEntryMemory("s1", "character-book:山神:0", true),
+		).toThrow("只有插件残留条目可以转成初始记忆");
+		expect(() =>
+			store.setImportAuditEntryMemory(
+				"s1",
+				"character-book:山神:2",
+				"yes" as never,
+			),
+		).toThrow("memory 必须是布尔值");
+
+		const converted = store.setImportAuditEntryMemory(
+			"s1",
+			"character-book:山神:2",
+			true,
+		);
+		expect(converted.memory).toBe(true);
+		expect(
+			store
+				.listLoreEntries("s1")
+				.find((entry) => entry.source === "character-book:山神:2")?.constant,
+		).toBe(false);
+
+		const reimported = store.saveImportAuditEntries("s1", [residue]);
+		expect(reimported[0]).toMatchObject({
+			memory: true,
+			constant: true,
+		});
+
+		expect(store.convertImportAuditPluginResidueToMemory("s1")).toBe(1);
+		expect(store.convertImportAuditPluginResidueToMemory("s1")).toBe(0);
+
+		const restored = store.setImportAuditEntryMemory(
+			"s1",
+			"character-book:山神:2",
+			false,
+		);
+		expect(restored.memory).toBe(false);
+		expect(
+			store
+				.listLoreEntries("s1")
+				.find((entry) => entry.source === "character-book:山神:2")?.constant,
+		).toBe(true);
+	});
 });

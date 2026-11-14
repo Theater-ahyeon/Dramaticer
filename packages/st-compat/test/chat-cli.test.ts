@@ -541,7 +541,7 @@ describe("dramaticer chat", () => {
 				(entry) => entry.segmentId === "lore",
 			);
 			expect(loreEntry?.status).toBe("included");
-			expect(loreEntry?.source).toBe("lore:常驻 1 条、检索 0 条");
+			expect(loreEntry?.source).toBe("lore:升级 常驻 1 条、检索 0 条");
 		} finally {
 			store.close();
 		}

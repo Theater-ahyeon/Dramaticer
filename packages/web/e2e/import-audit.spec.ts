@@ -34,6 +34,14 @@ const CARD = {
 					content: "还没有归类的段落，先放在这里。",
 					enabled: true,
 				},
+				{
+					id: 4,
+					keys: [],
+					comment: "总结",
+					content: "前情提要：潮水退了，林雪点亮了灯。",
+					enabled: true,
+					constant: true,
+				},
 			],
 		},
 	},
@@ -70,7 +78,7 @@ test.describe("导入体检", () => {
 		const panel = page.locator(".import-audit");
 		await panel.waitFor();
 		await expect(panel.locator("h1")).toContainText(title);
-		await expect(panel).toContainText("这张卡的世界书有 3 条");
+		await expect(panel).toContainText("这张卡的世界书有 4 条");
 
 		const count = (kind: string) =>
 			panel.locator(
@@ -79,6 +87,7 @@ test.describe("导入体检", () => {
 		await expect(count("common")).toHaveText("1");
 		await expect(count("entity")).toHaveText("1");
 		await expect(count("unknown")).toHaveText("1");
+		await expect(count("plugin-residue")).toHaveText("1");
 
 		const before = await panel
 			.locator(".import-audit-token-before")
@@ -120,4 +129,75 @@ test.describe("导入体检", () => {
 			)
 			.toBe(Number(after));
 	});
+
+	test("切换导入模式，插件残留转成初始记忆后不再常驻并可撤销", async ({
+		page,
+	}) => {
+		const id = `e2e-audit-mode-${randomUUID()}`;
+		const title = `潮汐列岛 ${id}`;
+		await createAuditedStory(page, id, title);
+
+		await page.goto(`/stories/${id}/audit`);
+		const panel = page.locator(".import-audit");
+		await panel.waitFor();
+
+		const upgrade = panel.getByRole("button", { name: "升级模式" });
+		const raw = panel.getByRole("button", { name: "原样模式" });
+		await expect(upgrade).toHaveAttribute("aria-pressed", "true");
+
+		const rawTokens = async (): Promise<number> =>
+			Number(await panel.locator(".import-audit-token-before").innerText());
+		const upgradeTokens = async (): Promise<number> =>
+			Number(await panel.locator(".import-audit-token-after").innerText());
+		const beforeRaw = await rawTokens();
+		const beforeUpgrade = await upgradeTokens();
+		expect(beforeRaw).toBeGreaterThan(beforeUpgrade);
+
+		await raw.click();
+		await expect(raw).toHaveAttribute("aria-pressed", "true");
+		await expect(upgrade).toHaveAttribute("aria-pressed", "false");
+		await expect(
+			fetchImportMode(page, `/api/stories/${id}/import-audit`),
+		).resolves.toBe("raw");
+
+		const residueSection = panel.locator(
+			'.import-audit-section[data-group="plugin-residue"]',
+		);
+		await expect(residueSection).toContainText("总结");
+		await expect(
+			residueSection.locator('.import-audit-entry[data-memory="false"]'),
+		).toHaveCount(1);
+
+		await residueSection
+			.getByRole("button", { name: /全部转为初始记忆/ })
+			.click();
+		await expect(
+			residueSection.locator('.import-audit-entry[data-memory="true"]'),
+		).toHaveCount(1);
+		await expect(residueSection).toContainText("初始记忆");
+		await expect.poll(rawTokens).toBeLessThan(beforeRaw);
+		await expect.poll(upgradeTokens).toBe(beforeUpgrade);
+
+		await residueSection.getByRole("button", { name: "撤销转换" }).click();
+		await expect(
+			residueSection.locator('.import-audit-entry[data-memory="false"]'),
+		).toHaveCount(1);
+		await expect.poll(rawTokens).toBe(beforeRaw);
+
+		await upgrade.click();
+		await expect(upgrade).toHaveAttribute("aria-pressed", "true");
+		await expect(
+			fetchImportMode(page, `/api/stories/${id}/settings`),
+		).resolves.toBe("upgrade");
+	});
 });
+
+async function fetchImportMode(page: Page, path: string): Promise<unknown> {
+	const response = await page.request.get(path);
+	expect(response.ok()).toBeTruthy();
+	const body: unknown = await response.json();
+	if (typeof body !== "object" || body === null || !("importMode" in body)) {
+		throw new Error(`${path} 的响应里没有 importMode`);
+	}
+	return body.importMode;
+}

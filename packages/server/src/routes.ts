@@ -98,6 +98,9 @@ import {
 	type ImageWorkflowsView,
 	type ImportAuditEntryKindUpdateRequest,
 	type ImportAuditEntryKindUpdateResult,
+	type ImportAuditEntryMemoryUpdateRequest,
+	type ImportAuditEntryMemoryUpdateResult,
+	type ImportAuditMemoryConvertResult,
 	type ImportAuditReportView,
 	type ImportAuditSuggestionResult,
 	type ImportCharacterCard,
@@ -369,6 +372,27 @@ export async function handleApiRequest(
 			if (parts.length === 4 && parts[3] === "suggestions") {
 				requireMethod(method, ["POST"]);
 				handleImportAuditSuggestions(res, options, storyId);
+				return;
+			}
+			if (parts.length === 4 && parts[3] === "memory") {
+				requireMethod(method, ["POST"]);
+				handleImportAuditMemoryConvert(res, options, storyId);
+				return;
+			}
+			if (
+				parts.length === 6 &&
+				parts[3] === "entries" &&
+				parts[4] !== undefined &&
+				parts[5] === "memory"
+			) {
+				requireMethod(method, ["PUT"]);
+				await handleImportAuditEntryMemory(
+					req,
+					res,
+					options,
+					storyId,
+					parts[4],
+				);
 				return;
 			}
 			if (
@@ -1375,6 +1399,60 @@ async function handleImportAuditEntryUpdate(
 	}
 	const result: ImportAuditEntryKindUpdateResult = {
 		entry,
+		report: buildImportAuditReportView(options, storyId),
+	};
+	sendJson(res, 200, result);
+}
+
+/** 转换或撤销一条插件残留条目的初始记忆状态。 */
+async function handleImportAuditEntryMemory(
+	req: IncomingMessage,
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	storyId: string,
+	source: string,
+): Promise<void> {
+	requireStory(options.store, storyId);
+	const body = await readObjectBody(req, options.maxJsonBodyBytes);
+	assertKnownKeys(body, ["memory"]);
+	if (typeof body.memory !== "boolean") {
+		throw fieldError("memory", "memory 必须是布尔值");
+	}
+	const existing = options.store
+		.listImportAuditEntries(storyId)
+		.find((entry) => entry.source === source);
+	if (existing === undefined) {
+		throw new HttpError(404, "not_found", `导入审计条目不存在：${source}`);
+	}
+	const request: ImportAuditEntryMemoryUpdateRequest = { memory: body.memory };
+	let entry: ImportAuditEntryMemoryUpdateResult["entry"];
+	try {
+		entry = options.store.setImportAuditEntryMemory(
+			storyId,
+			source,
+			request.memory,
+		);
+	} catch (error) {
+		throw toBadRequest(error, "memory");
+	}
+	const result: ImportAuditEntryMemoryUpdateResult = {
+		entry,
+		report: buildImportAuditReportView(options, storyId),
+	};
+	sendJson(res, 200, result);
+}
+
+/** 把全部插件残留条目一次转成初始记忆。 */
+function handleImportAuditMemoryConvert(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	storyId: string,
+): void {
+	requireStory(options.store, storyId);
+	const converted =
+		options.store.convertImportAuditPluginResidueToMemory(storyId);
+	const result: ImportAuditMemoryConvertResult = {
+		converted,
 		report: buildImportAuditReportView(options, storyId),
 	};
 	sendJson(res, 200, result);

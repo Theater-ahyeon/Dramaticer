@@ -40,6 +40,24 @@ export interface ImportAuditEntryKindUpdateResult {
 	readonly report: ImportAuditReportView;
 }
 
+/** `PUT /api/stories/:id/import-audit/entries/:source/memory` 的请求体。 */
+export interface ImportAuditEntryMemoryUpdateRequest {
+	/** 转换后条目不再进入每轮常驻集合，只在命中时按记忆注入 */
+	readonly memory: boolean;
+}
+
+/** 转换或撤销后返回更新后的条目与整份体检数据。 */
+export interface ImportAuditEntryMemoryUpdateResult {
+	readonly entry: ImportAuditEntry;
+	readonly report: ImportAuditReportView;
+}
+
+/** `POST /api/stories/:id/import-audit/memory` 的结果：本次转换的条数与整份体检数据。 */
+export interface ImportAuditMemoryConvertResult {
+	readonly converted: number;
+	readonly report: ImportAuditReportView;
+}
+
 /** `POST /api/stories/:id/import-audit/suggestions` 的结果；建议在间隙生成。 */
 export interface ImportAuditSuggestionResult {
 	readonly storyId: string;

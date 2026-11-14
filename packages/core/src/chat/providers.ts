@@ -32,6 +32,7 @@ import {
 	formatCompressionSections,
 } from "../memory/compression.js";
 import { MAX_MEMORY_EVENT_LIMIT } from "../memory/event.js";
+import type { ImportAuditInjectionRule } from "../memory/import-audit.js";
 import {
 	type LoreEntry,
 	type LorePrefilter,
@@ -613,15 +614,71 @@ export const DEFAULT_LORE_TOKEN_LIMIT = 800;
 
 interface SelectedLoreLine {
 	readonly id: string;
-	readonly constant: boolean;
+	/** 每轮都注入的常驻集合；超出预算时先删命中条目 */
+	readonly base: boolean;
 	readonly line: string;
 	readonly tokens: number;
 }
 
+interface LoreInjectionRole {
+	/** 每轮都注入的行；`index` 只带标题与关键词 */
+	readonly base: "full" | "index" | null;
+	/** 命中当前楼层时是否再注入一条 */
+	readonly matched: boolean;
+}
+
+/**
+ * 一条世界书条目在本轮的注入方式。没有分型记录的条目（不是从导入来的）与
+ * 原样模式都按导入时的常驻标记处理；升级模式按生效类型决定，已转成初始记忆
+ * 的条目只按命中注入。
+ */
+function resolveLoreInjectionRole(
+	entry: LoreEntry,
+	mode: "upgrade" | "raw",
+	rule: ImportAuditInjectionRule | undefined,
+): LoreInjectionRole {
+	if (rule?.memory === true) return { base: null, matched: true };
+	if (rule === undefined || mode === "raw") {
+		return entry.constant
+			? { base: "full", matched: false }
+			: { base: null, matched: true };
+	}
+	switch (rule.kind) {
+		case "common":
+			return { base: "full", matched: false };
+		case "entity":
+			return { base: "index", matched: true };
+		case "rule":
+			return { base: null, matched: true };
+		default:
+			return { base: null, matched: false };
+	}
+}
+
+function loreInjectionPrefix(
+	mode: "upgrade" | "raw",
+	rule: ImportAuditInjectionRule | undefined,
+	base: boolean,
+): string {
+	if (!base) {
+		if (rule?.memory === true) return "【记忆】";
+		if (mode === "upgrade" && rule !== undefined) {
+			if (rule.kind === "entity") return "【实体】";
+			if (rule.kind === "rule") return "【规则】";
+		}
+		return "【检索】";
+	}
+	if (mode === "upgrade" && rule !== undefined) {
+		return rule.kind === "entity" ? "【索引】" : "【常识】";
+	}
+	return "【常驻】";
+}
+
 /**
  * 常驻世界书条目每轮都注入；其余条目用当前楼层的原文匹配关键词与关联实体的
- * 名称和别名，只有命中的条目才出现。超出 token 上限时先从后往前删除检索条目，
- * 常驻条目最后才裁。
+ * 名称和别名，只有命中的条目才出现。升级模式按导入分型决定注入集合：常识全文
+ * 与实体索引常驻，规则与实体详情在命中时注入，已转成初始记忆的条目只按命中
+ * 注入。超出 token 上限时先从后往前删除命中条目，常驻条目最后才裁。
  */
 export function createLoreSlotProvider(
 	store: StoryStore,
@@ -651,24 +708,41 @@ export function createLoreSlotProvider(
 			const entries = store.listLoreEntries(request.storyId);
 			if (entries.length === 0) return null;
 
+			const mode = store.getStorySettings(request.storyId).importMode;
+			const rules = new Map(
+				store
+					.listImportAuditInjectionRules(request.storyId)
+					.map((rule) => [rule.source, rule] as const),
+			);
+			const roles = new Map(
+				entries.map((entry) => {
+					const rule = rules.get(entry.source);
+					return [
+						entry.id,
+						{ rule, role: resolveLoreInjectionRole(entry, mode, rule) },
+					] as const;
+				}),
+			);
+
 			const prefilter =
 				nodeId === null
 					? null
 					: readLorePrefilterForRequest(store, request.storyId, nodeId);
-			const orderedNonConstant: LoreEntry[] = [];
+			const matchedEntries: LoreEntry[] = [];
 			if (prefilter !== null) {
 				const byId = new Map(
 					entries.map((entry) => [entry.id, entry] as const),
 				);
 				for (const id of prefilter.entryIds) {
 					const entry = byId.get(id);
-					if (entry === undefined || entry.constant) continue;
-					orderedNonConstant.push(entry);
+					if (entry === undefined) continue;
+					if (!(roles.get(entry.id)?.role.matched ?? false)) continue;
+					matchedEntries.push(entry);
 				}
 			} else {
 				const scored: { entry: LoreEntry; score: number }[] = [];
 				for (const entry of entries) {
-					if (entry.constant) continue;
+					if (!(roles.get(entry.id)?.role.matched ?? false)) continue;
 					let entityAliases: readonly string[] = [];
 					if (entry.entityId !== null) {
 						const entity = store.getEntity(entry.entityId);
@@ -687,17 +761,16 @@ export function createLoreSlotProvider(
 					if (score > 0) scored.push({ entry, score });
 				}
 				scored.sort((left, right) => right.score - left.score);
-				orderedNonConstant.push(...scored.map((match) => match.entry));
+				matchedEntries.push(...scored.map((match) => match.entry));
 			}
 
-			const candidates = [
-				...entries.filter((entry) => entry.constant),
-				...orderedNonConstant,
-			];
+			const selected: SelectedLoreLine[] = [];
+			const selectedByEntryId = new Map<string, number>();
 			const seenEntities = new Set<string>();
 			const seenContents = new Set<string>();
-			const selected: SelectedLoreLine[] = [];
-			for (const entry of candidates) {
+			for (const entry of entries) {
+				const resolved = roles.get(entry.id);
+				if (resolved === undefined || resolved.role.base === null) continue;
 				if (entry.entityId !== null) {
 					if (seenEntities.has(entry.entityId)) continue;
 					seenEntities.add(entry.entityId);
@@ -705,11 +778,48 @@ export function createLoreSlotProvider(
 				const contentKey = loreEntryContentKey(entry);
 				if (seenContents.has(contentKey)) continue;
 				seenContents.add(contentKey);
-				const prefix = entry.constant ? "【常驻】" : "【检索】";
-				const line = `${prefix}${entry.name}：${entry.content}`;
+				const prefix = loreInjectionPrefix(mode, resolved.rule, true);
+				const body =
+					resolved.role.base === "index"
+						? entry.keywords.length === 0
+							? entry.name
+							: `${entry.name}：${entry.keywords.join("、")}`
+						: `${entry.name}：${entry.content}`;
+				const line = `${prefix}${body}`;
+				selectedByEntryId.set(entry.id, selected.length);
 				selected.push({
 					id: entry.id,
-					constant: entry.constant,
+					base: true,
+					line,
+					tokens: estimator(line),
+				});
+			}
+
+			for (const entry of matchedEntries) {
+				const resolved = roles.get(entry.id);
+				if (resolved === undefined) continue;
+				const prefix = loreInjectionPrefix(mode, resolved.rule, false);
+				const line = `${prefix}${entry.name}：${entry.content}`;
+				const existing = selectedByEntryId.get(entry.id);
+				if (existing !== undefined) {
+					selected[existing] = {
+						id: entry.id,
+						base: true,
+						line,
+						tokens: estimator(line),
+					};
+					continue;
+				}
+				if (entry.entityId !== null) {
+					if (seenEntities.has(entry.entityId)) continue;
+					seenEntities.add(entry.entityId);
+				}
+				const contentKey = loreEntryContentKey(entry);
+				if (seenContents.has(contentKey)) continue;
+				seenContents.add(contentKey);
+				selected.push({
+					id: entry.id,
+					base: false,
 					line,
 					tokens: estimator(line),
 				});
@@ -719,7 +829,7 @@ export function createLoreSlotProvider(
 			let total = estimator(header);
 			for (const item of selected) total += item.tokens;
 			while (total > tokenLimit) {
-				let index = lastIndexWhere(selected, (item) => !item.constant);
+				let index = lastIndexWhere(selected, (item) => !item.base);
 				if (index < 0) index = selected.length - 1;
 				if (index < 0) break;
 				total -= selected[index]?.tokens ?? 0;
@@ -727,8 +837,10 @@ export function createLoreSlotProvider(
 			}
 			if (selected.length === 0) return null;
 
-			const constantsKept = selected.filter((item) => item.constant).length;
-			const retrievedKept = selected.length - constantsKept;
+			const baseKept = selected.filter((item) => item.base).length;
+			const retrievedKept = selected.length - baseKept;
+			const modeTag =
+				rules.size === 0 ? "" : mode === "raw" ? "原样 " : "升级 ";
 			return {
 				messages: [
 					{
@@ -736,7 +848,7 @@ export function createLoreSlotProvider(
 						content: [header, ...selected.map((item) => item.line)].join("\n"),
 					},
 				],
-				source: `lore:常驻 ${constantsKept} 条、检索 ${retrievedKept} 条`,
+				source: `lore:${modeTag}常驻 ${baseKept} 条、检索 ${retrievedKept} 条`,
 				references: {
 					loreEntryIds: selected.map((item) => item.id),
 				},

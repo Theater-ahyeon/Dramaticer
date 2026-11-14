@@ -3,6 +3,7 @@ import {
 	type ContextSlotRequest,
 	DEFAULT_DIRECTOR_CONFIG,
 	DIRECTOR_SUFFIX_NOTE,
+	type NewImportAuditEntry,
 	type StoryStore,
 	createDirectorSlotProvider,
 	createLoreSlotProvider,
@@ -475,5 +476,147 @@ describe("createDirectorSlotProvider", () => {
 			openClues: 1,
 			selectedNoteId: mainNotes[0]?.id,
 		});
+	});
+});
+
+function seedAuditedLore(store: StoryStore): void {
+	store.createStory({ id: "audited", title: "分型故事" });
+	store.appendNode({
+		id: "au1",
+		storyId: "audited",
+		parentId: null,
+		role: "user",
+		raw: "我走进山门。",
+	});
+	store.insertLoreEntries([
+		{
+			id: "l-common",
+			storyId: "audited",
+			name: "世界观",
+			content: "灵气复苏三百年。",
+			constant: true,
+			source: "world-info:书:0",
+		},
+		{
+			id: "l-entity",
+			storyId: "audited",
+			name: "苏瑾",
+			content: "青云宗剑修，随身带着断剑。",
+			keywords: ["苏瑾"],
+			source: "world-info:书:1",
+		},
+		{
+			id: "l-rule",
+			storyId: "audited",
+			name: "境界",
+			content: "筑基之后可以御剑。",
+			keywords: ["境界"],
+			source: "world-info:书:2",
+		},
+		{
+			id: "l-residue",
+			storyId: "audited",
+			name: "总结",
+			content: "前情提要：山门被攻破。",
+			constant: true,
+			keywords: ["前情提要"],
+			source: "world-info:书:3",
+		},
+	]);
+	const audit = (
+		source: string,
+		title: string,
+		kind: NewImportAuditEntry["rulePrimary"],
+		constant: boolean,
+	): NewImportAuditEntry => ({
+		source,
+		title,
+		content: "分型审计正文",
+		matches: [{ kind, rules: ["test"] }],
+		rulePrimary: kind,
+		constant,
+	});
+	store.saveImportAuditEntries("audited", [
+		audit("world-info:书:0", "世界观", "common", true),
+		audit("world-info:书:1", "苏瑾", "entity", false),
+		audit("world-info:书:2", "境界", "rule", false),
+		audit("world-info:书:3", "总结", "plugin-residue", true),
+	]);
+}
+
+describe("世界书槽位的导入模式", () => {
+	it("升级模式只注入常识全文、实体索引与命中的规则", async () => {
+		const { store } = openTempStore();
+		seedAuditedLore(store);
+		const provider = createLoreSlotProvider(store);
+
+		const base = await provider.provide(request("audited", "au1", "lore"));
+		expect(base?.source).toBe("lore:升级 常驻 2 条、检索 0 条");
+		expect(base?.messages[0]?.content).toContain(
+			"【常识】世界观：灵气复苏三百年。",
+		);
+		expect(base?.messages[0]?.content).toContain("【索引】苏瑾：苏瑾");
+		expect(base?.messages[0]?.content).not.toContain("青云宗剑修");
+		expect(base?.messages[0]?.content).not.toContain("境界");
+		expect(base?.messages[0]?.content).not.toContain("前情提要");
+
+		store.appendNode({
+			id: "au2",
+			storyId: "audited",
+			parentId: "au1",
+			role: "user",
+			raw: "我问起苏瑾的境界。",
+		});
+		const matched = await provider.provide(request("audited", "au2", "lore"));
+		expect(matched?.source).toBe("lore:升级 常驻 2 条、检索 1 条");
+		expect(matched?.messages[0]?.content).toContain(
+			"【实体】苏瑾：青云宗剑修，随身带着断剑。",
+		);
+		expect(matched?.messages[0]?.content).toContain(
+			"【规则】境界：筑基之后可以御剑。",
+		);
+	});
+
+	it("原样模式按导入时的常驻标记注入，转换初始记忆后不再常驻且可撤销", async () => {
+		const { store } = openTempStore();
+		seedAuditedLore(store);
+		store.updateStorySettings("audited", { importMode: "raw" });
+		const provider = createLoreSlotProvider(store);
+
+		const raw = await provider.provide(request("audited", "au1", "lore"));
+		expect(raw?.source).toBe("lore:原样 常驻 2 条、检索 0 条");
+		expect(raw?.messages[0]?.content).toContain(
+			"【常驻】总结：前情提要：山门被攻破。",
+		);
+		expect(raw?.messages[0]?.content).not.toContain("【索引】");
+
+		store.setImportAuditEntryMemory("audited", "world-info:书:3", true);
+		const converted = await provider.provide(request("audited", "au1", "lore"));
+		expect(converted?.source).toBe("lore:原样 常驻 1 条、检索 0 条");
+		expect(converted?.messages[0]?.content).not.toContain("前情提要");
+		expect(
+			store.listLoreEntries("audited").find((entry) => entry.id === "l-residue")
+				?.constant,
+		).toBe(false);
+
+		store.appendNode({
+			id: "au3",
+			storyId: "audited",
+			parentId: "au1",
+			role: "user",
+			raw: "前情提要是真的吗？",
+		});
+		const recalled = await provider.provide(request("audited", "au3", "lore"));
+		expect(recalled?.messages[0]?.content).toContain(
+			"【记忆】总结：前情提要：山门被攻破。",
+		);
+
+		store.setImportAuditEntryMemory("audited", "world-info:书:3", false);
+		expect(
+			store.listLoreEntries("audited").find((entry) => entry.id === "l-residue")
+				?.constant,
+		).toBe(true);
+		const restored = await provider.provide(request("audited", "au1", "lore"));
+		expect(restored?.messages[0]?.content).toContain("【常驻】总结：");
 	});
 });

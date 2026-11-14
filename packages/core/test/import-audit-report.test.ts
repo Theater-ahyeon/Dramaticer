@@ -233,6 +233,63 @@ describe("导入体检数据", () => {
 		expect(report.tokens.after).toBeLessThan(report.tokens.before);
 	});
 
+	it("转成初始记忆的条目不再计入每轮常驻 token", () => {
+		const store = openStore();
+		store.saveImportAuditEntries("s1", [
+			auditEntry({
+				source: "world-info:旧世:0",
+				title: "世界背景",
+				content: "灵潮退去三百年。",
+				constant: true,
+			}),
+			auditEntry({
+				source: "world-info:旧世:1",
+				title: "总结",
+				content: "前情提要：山门被攻破。",
+				matches: [{ kind: "plugin-residue", rules: ["title:plugin-residue"] }],
+				rulePrimary: "plugin-residue",
+				constant: true,
+			}),
+		]);
+		store.insertLoreEntries([
+			{
+				storyId: "s1",
+				name: "世界背景",
+				content: "灵潮退去三百年。",
+				constant: true,
+				source: "world-info:旧世:0",
+			},
+			{
+				storyId: "s1",
+				name: "总结",
+				content: "前情提要：山门被攻破。",
+				constant: true,
+				keywords: ["前情提要"],
+				source: "world-info:旧世:1",
+			},
+		]);
+		const before = buildImportAuditReport({
+			storyId: "s1",
+			entries: store.listImportAuditEntries("s1"),
+			loreEntries: store.listLoreEntries("s1"),
+		});
+		expect(before.tokens.beforeEntries).toBe(2);
+		expect(before.pluginResidue[0]).toMatchObject({ memory: false });
+
+		store.setImportAuditEntryMemory("s1", "world-info:旧世:1", true);
+		const after = buildImportAuditReport({
+			storyId: "s1",
+			entries: store.listImportAuditEntries("s1"),
+			loreEntries: store.listLoreEntries("s1"),
+		});
+		expect(after.tokens.beforeEntries).toBe(1);
+		expect(after.tokens.before).toBeLessThan(before.tokens.before);
+		expect(after.pluginResidue[0]).toMatchObject({ memory: true });
+		expect(
+			after.entries.find((entry) => entry.source === "world-info:旧世:1"),
+		).toMatchObject({ memory: true });
+	});
+
 	it("没有条目时 token 估算为 0", () => {
 		const store = openStore();
 		const report = buildImportAuditReport({
