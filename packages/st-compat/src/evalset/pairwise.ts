@@ -10,7 +10,6 @@ import {
 import type { PreferencePair } from "../preferences/export.js";
 
 export const MAX_PAIRWISE_ATTEMPTS = 3;
-export const DEFAULT_PAIRWISE_MAX_TOKENS = 512;
 export const DEFAULT_PAIRWISE_CONTEXT_FLOORS = 6;
 
 /** 两种展示顺序：接受侧在回复甲，或接受侧在回复乙。 */
@@ -181,7 +180,7 @@ export async function judgePairwise(
 						...baseMessages,
 						{
 							role: "user",
-							content: `上一次输出不是合法的判定 JSON（${lastProblem}）。只输出 {"winner":"A"|"B"|"tie","reason":"…"}，不要代码块。`,
+							content: `上一次输出不是合法的判定 JSON（${lastProblem}）。这是第 ${attempt} 次尝试，只输出 {"winner":"A"|"B"|"tie","reason":"…"}，不要代码块，不要多余字段。`,
 						},
 					];
 		let text: string;
@@ -191,7 +190,9 @@ export async function judgePairwise(
 					messages,
 					model: input.judge.model,
 					temperature: 0,
-					maxTokens: input.judge.maxTokens ?? DEFAULT_PAIRWISE_MAX_TOKENS,
+					...(input.judge.maxTokens === undefined
+						? {}
+						: { maxTokens: input.judge.maxTokens }),
 				},
 				NO_CONTINUATION,
 			);

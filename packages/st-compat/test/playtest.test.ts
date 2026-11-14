@@ -302,6 +302,14 @@ describe("自动试玩", () => {
 		expect(writer.requests).toHaveLength(1);
 		expect(result.records).toHaveLength(1);
 		expect(records[0]?.user).toBe("我推门进去。");
+		expect(user.requests[0]?.maxTokens).toBeUndefined();
+		expect(user.requests[1]?.messages.at(-1)?.content).toContain(
+			"still not json",
+		);
+		expect(user.requests[1]?.messages.at(-1)?.content).toContain("第 2 次尝试");
+		expect(user.requests[2]?.messages.at(-1)?.content).not.toBe(
+			user.requests[1]?.messages.at(-1)?.content,
+		);
 		store.close();
 	});
 

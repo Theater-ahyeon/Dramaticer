@@ -7,7 +7,6 @@ import {
 } from "@dramaticer/core";
 
 export const MAX_TURN_JUDGE_ATTEMPTS = 3;
-export const DEFAULT_TURN_JUDGE_MAX_TOKENS = 512;
 const DEFAULT_CONTEXT_FLOORS = 6;
 const MAX_CARD_PROMPT_LENGTH = 1_500;
 
@@ -139,7 +138,7 @@ export async function judgePlaytestTurn(
 						...baseMessages,
 						{
 							role: "user",
-							content: `上一次输出不是合法的判定 JSON（${lastProblem}）。只输出 {"reroll":true|false,"followed":true|false,"reason":"…"}，不要代码块。`,
+							content: `上一次输出不是合法的判定 JSON（${lastProblem}）。这是第 ${attempt} 次尝试，只输出 {"reroll":true|false,"followed":true|false,"reason":"…"}，不要代码块。`,
 						},
 					];
 		let text: string;
@@ -149,7 +148,9 @@ export async function judgePlaytestTurn(
 					messages,
 					model: input.judge.model,
 					temperature: 0,
-					maxTokens: input.judge.maxTokens ?? DEFAULT_TURN_JUDGE_MAX_TOKENS,
+					...(input.judge.maxTokens === undefined
+						? {}
+						: { maxTokens: input.judge.maxTokens }),
 				},
 				NO_CONTINUATION,
 			);

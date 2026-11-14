@@ -578,6 +578,8 @@ export interface UserMessageOptions {
 	readonly client: LlmClient;
 	readonly model: string;
 	readonly hint: string;
+	/** 输出上限；不提供时用模型在渠道里声明的上限。 */
+	readonly maxTokens?: number;
 	readonly now: () => number;
 }
 
@@ -587,6 +589,7 @@ export async function generateUserMessage(
 ): Promise<string> {
 	const base = buildUserSimulatorMessages(options);
 	let lastProblem = "";
+	let lastText = "";
 	for (
 		let attempt = 1;
 		attempt <= MAX_PLAYTEST_USER_OUTPUT_ATTEMPTS;
@@ -599,7 +602,7 @@ export async function generateUserMessage(
 						...base,
 						{
 							role: "user",
-							content: `上一次输出不是合法 JSON（${lastProblem}）。只输出 {"message":"..."}，不要代码块。`,
+							content: retryInstruction(attempt, lastProblem, lastText),
 						},
 					];
 		const result = await options.client.complete(
@@ -607,15 +610,34 @@ export async function generateUserMessage(
 				messages,
 				model: options.model,
 				temperature: 0.8,
-				maxTokens: 512,
+				...(options.maxTokens === undefined
+					? {}
+					: { maxTokens: options.maxTokens }),
 			},
 			NO_CONTINUATION,
 		);
 		const message = parseUserMessage(result.text);
 		if (message !== null) return message;
 		lastProblem = "缺少 message 或包含多余字段";
+		lastText = result.text.trim();
 	}
 	throw new PlaytestUserOutputError(MAX_PLAYTEST_USER_OUTPUT_ATTEMPTS);
+}
+
+function retryInstruction(
+	attempt: number,
+	problem: string,
+	lastText: string,
+): string {
+	if (lastText.length === 0) {
+		return `上一次输出为空，可能把输出预算都用在了思考上。这是第 ${attempt} 次尝试，只输出 {"message":"..."}，不要代码块。`;
+	}
+	return [
+		`上一次输出不是合法 JSON（${problem}）。这是第 ${attempt} 次尝试。`,
+		"上一次的发言原文：",
+		lastText,
+		'把这段发言原样放进 {"message":"…"} 里，只输出 JSON，不要代码块，不要多余字段。',
+	].join("\n");
 }
 
 function buildUserSimulatorMessages(options: UserMessageOptions): LlmMessage[] {

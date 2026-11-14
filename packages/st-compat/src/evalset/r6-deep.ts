@@ -501,12 +501,12 @@ async function runStory(options: StoryRunOptions): Promise<R6DeepRunRecord> {
 	const existing = await loadSidecar(file);
 	if (existing !== null) {
 		validateSidecar(existing, file, options);
-		if (existing.status !== "running") {
+		if (existing.status === "done") {
 			options.log(`${options.story}：复用已完成的深回合运行`);
 			return existing;
 		}
 		options.log(
-			`${options.story}：从 sidecar 续跑，已有 ${existing.records.length} 条记录`,
+			`${options.story}：从 sidecar 续跑（上次 ${existing.status}），已有 ${existing.records.length} 条记录`,
 		);
 	}
 	const runDir = path.dirname(file);
@@ -563,7 +563,14 @@ async function runStory(options: StoryRunOptions): Promise<R6DeepRunRecord> {
 			};
 			await saveSidecar(file, run);
 		} else {
-			run = { ...existing, records: [...existing.records] };
+			run = {
+				...existing,
+				records: [...existing.records],
+				status: "running",
+				error: null,
+				finishedAt: null,
+			};
+			await saveSidecar(file, run);
 		}
 		alignHead(store, run);
 		const writer = countStreamingClient(options.writer.client);

@@ -328,7 +328,7 @@ export async function judgeAnswerConsistency(
 						...baseMessages,
 						{
 							role: "user",
-							content: `上一次输出不是合法的判定 JSON（${lastProblem}）。只输出 {"consistent":true|false|"unknown","reason":"…"}，不要代码块。`,
+							content: `上一次输出不是合法的判定 JSON（${lastProblem}）。这是第 ${attempt} 次尝试，只输出 {"consistent":true|false|"unknown","reason":"…"}，不要代码块，不要多余字段。`,
 						},
 					];
 		let result: LlmResult;
@@ -338,7 +338,9 @@ export async function judgeAnswerConsistency(
 					messages,
 					model: input.judge.model,
 					temperature: 0,
-					maxTokens: input.judge.maxTokens ?? 512,
+					...(input.judge.maxTokens === undefined
+						? {}
+						: { maxTokens: input.judge.maxTokens }),
 				},
 				NO_CONTINUATION,
 			);

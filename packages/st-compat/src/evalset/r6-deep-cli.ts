@@ -404,7 +404,7 @@ async function main(): Promise<void> {
 		console.log(USAGE);
 		return;
 	}
-	await runR6DeepCli({
+	const report = await runR6DeepCli({
 		...parsed,
 		dbPath: parsed.dbPath as string,
 		dir: parsed.dir as string,
@@ -413,6 +413,9 @@ async function main(): Promise<void> {
 		channelsPath: parsed.channelsPath as string,
 		envPath: path.join(repoRoot, ".env"),
 	});
+	if (report.runs.some((run) => run.status === "failed")) {
+		process.exitCode = 1;
+	}
 }
 
 const entryPath = process.argv[1];

@@ -283,6 +283,39 @@ describe("深回合验收评测", () => {
 		store.close();
 	}, 30_000);
 
+	it("模拟用户连续失败记入失败轮次，不终止整个评测", async () => {
+		const dir = makeDir();
+		const store = StoryStore.open(path.join(dir, "story.db"));
+		seedStory(store);
+		const user = createWriter(() => "这不是 JSON");
+		const records: DeepEvalRecord[] = [];
+		await runDeepEval(
+			await deepEvalOptions(store, {
+				turns: 2,
+				branches: 0,
+				user: { client: user.client, model: "background" },
+				assistant: {
+					client: createWriter(() => "深版本。").client,
+					model: "main",
+				},
+				onRecord: (record) => {
+					records.push(record);
+				},
+			}),
+		);
+		const turns = records.filter((record) => record.kind === "turn");
+		expect(turns).toHaveLength(2);
+		for (const record of turns) {
+			expect(record.status).toBe("failed");
+			if (record.kind === "turn" && record.status === "failed") {
+				expect(record.user).toBe("");
+				expect(record.error).toContain("连续 3 次");
+			}
+		}
+		expect(summarizeDeepEval(records).turns.failed).toBe(2);
+		store.close();
+	}, 30_000);
+
 	it("已有记录全部完成时不发出新的生成请求", async () => {
 		const dir = makeDir();
 		const store = StoryStore.open(path.join(dir, "story.db"));

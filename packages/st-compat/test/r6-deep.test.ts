@@ -341,6 +341,36 @@ describe("R6 深回合批次", () => {
 		expect(report.summary.plannedPairs).toBe(1);
 		expect(report.summary.failures).toBe(1);
 		expect(report.summary.missingPairs).toBe(1);
+
+		const retry = createWriter((call) =>
+			call <= 4 ? `深版本 ${call}：门开着。` : `快版本 ${call}：门开着。`,
+		);
+		const resumed = await runR6Deep({
+			sourceDbPath,
+			stories: [STORY_ID],
+			rounds: 4,
+			branches: 1,
+			dir: path.join(dir, "runs"),
+			writer: { client: retry.client, model: "main" },
+			user: { client: createUser().client, model: "background" },
+			judge: { client: createJudge().client, model: "judge" },
+			background: { client: retry.client },
+			structuredOutput: "text-tags",
+			budgetTokens: 4_000,
+			toolTransport: "native",
+			maxTokens: 512,
+			temperature: 0.8,
+			seed: 1,
+		});
+		expect(resumed.runs[0]?.status).toBe("done");
+		expect(resumed.runs[0]?.error).toBeNull();
+		expect(retry.requests).toHaveLength(5);
+		expect(resumed.summary.turns).toEqual({
+			completed: 4,
+			failed: 0,
+			failureRate: 0,
+		});
+		expect(resumed.summary.completedPairs).toBe(1);
 	}, 30_000);
 
 	it("分支失败与换序不一致分别计数，缺失配对计入失败", () => {

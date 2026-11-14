@@ -10,7 +10,6 @@ import {
 } from "./pairwise.js";
 
 export const MAX_QUALITY_ATTEMPTS = 3;
-export const DEFAULT_QUALITY_MAX_TOKENS = 512;
 
 export const QUALITY_DIMENSIONS = [
 	"originality",
@@ -151,7 +150,7 @@ export async function judgeQuality(
 						...baseMessages,
 						{
 							role: "user",
-							content: `上一次输出不是合法的评分 JSON（${lastProblem}）。只输出 {"originality":1-5,"character":1-5,"pacing":1-5,"dialogue":1-5,"reason":"…"}，不要代码块。`,
+							content: `上一次输出不是合法的评分 JSON（${lastProblem}）。这是第 ${attempt} 次尝试，只输出 {"originality":1-5,"character":1-5,"pacing":1-5,"dialogue":1-5,"reason":"…"}，不要代码块。`,
 						},
 					];
 		let text: string;
@@ -161,7 +160,9 @@ export async function judgeQuality(
 					messages,
 					model: input.judge.model,
 					temperature: 0,
-					maxTokens: input.judge.maxTokens ?? DEFAULT_QUALITY_MAX_TOKENS,
+					...(input.judge.maxTokens === undefined
+						? {}
+						: { maxTokens: input.judge.maxTokens }),
 				},
 				NO_CONTINUATION,
 			);

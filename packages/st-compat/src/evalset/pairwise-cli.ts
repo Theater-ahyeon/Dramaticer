@@ -12,7 +12,6 @@ import {
 	resolveModelForRole,
 } from "@dramaticer/core";
 import {
-	DEFAULT_PAIRWISE_MAX_TOKENS,
 	PAIRWISE_ORDERS,
 	type PairwiseJudge,
 	type PreferenceComparisonRecord,
@@ -49,7 +48,7 @@ const USAGE = [
 	"  --private-report <p>   私有版报告，默认 eval-private/reports/R2-pairwise.md",
 	"  --public-report <p>    统计版报告，默认 docs/dev/reports/R2-pairwise.md",
 	"  --judge-model <m>      裁判模型别名，默认按 roles.judge 解析",
-	`  --max-tokens <n>       裁判输出上限，默认 ${DEFAULT_PAIRWISE_MAX_TOKENS}`,
+	"  --max-tokens <n>       裁判输出上限，默认用模型在渠道里声明的上限",
 	"  --limit <n>            只评判前 n 个样本",
 	"  --resume               复用 JSONL 里已有的样本与顺序，不重新判定",
 	"  --report-only          不调用模型，只从已有 JSONL 重新生成报告",
@@ -91,7 +90,7 @@ interface ParsedArgs {
 	readonly privateReportPath: string;
 	readonly publicReportPath: string;
 	readonly judgeModel: string | null;
-	readonly maxTokens: number;
+	readonly maxTokens: number | null;
 	readonly limit: number | null;
 	readonly resume: boolean;
 	readonly reportOnly: boolean;
@@ -210,7 +209,7 @@ export async function runPairwiseCli(
 				const judge: PairwiseJudge = {
 					client: createClient(config, judgeModel),
 					model: judgeModel,
-					maxTokens: parsed.maxTokens,
+					...(parsed.maxTokens === null ? {} : { maxTokens: parsed.maxTokens }),
 				};
 				for (const sample of pending) {
 					const records = await runPreferenceSample(sample, judge, {
@@ -454,7 +453,7 @@ function parseArgs(args: readonly string[]): ParsedArgs {
 	}
 	const maxTokens =
 		values.get("max-tokens") === undefined
-			? DEFAULT_PAIRWISE_MAX_TOKENS
+			? null
 			: parsePositiveInt(values.get("max-tokens") as string, "--max-tokens");
 	const limit =
 		values.get("limit") === undefined

@@ -10,7 +10,6 @@ import {
 	loadDotEnv,
 	resolveModelForRole,
 } from "@dramaticer/core";
-import { DEFAULT_PAIRWISE_MAX_TOKENS } from "./pairwise.js";
 import {
 	type R6PreferenceReport,
 	formatR6PreferenceReport,
@@ -32,7 +31,7 @@ const USAGE = [
 	"  --json <path>        结果 JSON，默认 eval-private/reports/r6/preference.json",
 	"  --report <path>      报告，默认 eval-private/reports/r6/preference.md",
 	"  --judge-model <m>    裁判模型别名，默认按 roles.judge 解析",
-	`  --max-tokens <n>     裁判输出上限，默认 ${DEFAULT_PAIRWISE_MAX_TOKENS}`,
+	"  --max-tokens <n>     裁判输出上限，默认用模型在渠道里声明的上限",
 	"  --cache <path>       模型响应缓存目录，默认 <dir>/cache",
 	"  --channels <path>    渠道配置，默认 data/channels.yaml",
 	"  --help               显示本说明",
@@ -49,7 +48,7 @@ export interface R6PreferenceCliOptions {
 	readonly envPath: string;
 	readonly cacheDir: string | null;
 	readonly judgeModel: string | null;
-	readonly maxTokens: number;
+	readonly maxTokens: number | null;
 	readonly log?: (message: string) => void;
 	readonly loadEnv?: (filePath: string) => void;
 	readonly loadConfig?: (filePath: string) => Promise<LlmChannelsConfig>;
@@ -92,7 +91,7 @@ export async function runR6PreferenceCli(
 		judge: {
 			client: createClient(channels, judgeAlias, cacheDir),
 			model: judgeAlias,
-			maxTokens: options.maxTokens,
+			...(options.maxTokens === null ? {} : { maxTokens: options.maxTokens }),
 		},
 		log,
 	});
@@ -126,7 +125,7 @@ interface CliArgs {
 	readonly channelsPath: string | null;
 	readonly cacheDir: string | null;
 	readonly judgeModel: string | null;
-	readonly maxTokens: number;
+	readonly maxTokens: number | null;
 	readonly help: boolean;
 }
 
@@ -153,7 +152,7 @@ function parseArgs(args: readonly string[]): CliArgs {
 	let channelsPath: string | null = null;
 	let cacheDir: string | null = null;
 	let judgeModel: string | null = null;
-	let maxTokens = DEFAULT_PAIRWISE_MAX_TOKENS;
+	let maxTokens: number | null = null;
 	let help = false;
 	for (let index = 0; index < args.length; index += 1) {
 		const arg = args[index] as string;

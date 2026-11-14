@@ -281,6 +281,30 @@ describe("裁判调用", () => {
 		expect(fake.requests[2]?.messages.at(-1)?.content).toContain(
 			"上一次输出不是合法的判定 JSON",
 		);
+		expect(fake.requests[1]?.messages.at(-1)?.content).not.toBe(
+			fake.requests[2]?.messages.at(-1)?.content,
+		);
+	});
+
+	it("未配置输出上限时不传 maxTokens，配置时原样传递", async () => {
+		const uncapped = createOutputs(['{"winner":"A","reason":"甲更贴合"}']);
+		await judgePairwise({
+			task: "reroll",
+			context: "",
+			first: "甲",
+			second: "乙",
+			judge: { client: uncapped.client, model: "fake-judge" },
+		});
+		expect(uncapped.requests[0]?.maxTokens).toBeUndefined();
+		const capped = createOutputs(['{"winner":"A","reason":"甲更贴合"}']);
+		await judgePairwise({
+			task: "reroll",
+			context: "",
+			first: "甲",
+			second: "乙",
+			judge: { client: capped.client, model: "fake-judge", maxTokens: 64 },
+		});
+		expect(capped.requests[0]?.maxTokens).toBe(64);
 	});
 
 	it("连续三次非法输出记为失败", async () => {

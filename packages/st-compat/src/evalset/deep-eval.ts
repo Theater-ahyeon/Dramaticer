@@ -274,15 +274,39 @@ export async function runDeepEval(
 		const hint =
 			PLAYTEST_USER_HINTS[(round - 1) % PLAYTEST_USER_HINTS.length] ??
 			PLAYTEST_USER_HINTS[0];
-		const userMessage = await generateUserMessage({
-			store: options.store,
-			storyId: options.storyId,
-			client: options.user.client,
-			model: options.user.model,
-			hint,
-			now,
-		});
 		const headBefore = options.store.getHead(options.storyId);
+		let userMessage: string;
+		try {
+			userMessage = await generateUserMessage({
+				store: options.store,
+				storyId: options.storyId,
+				client: options.user.client,
+				model: options.user.model,
+				hint,
+				now,
+			});
+		} catch (error) {
+			const record: DeepEvalFailureRecord = {
+				kind: "turn",
+				status: "failed",
+				storyId: options.storyId,
+				model: options.assistant.model,
+				startedAt,
+				round,
+				user: "",
+				error: error instanceof Error ? error.message : String(error),
+			};
+			records.push(record);
+			consecutiveFailures += 1;
+			await options.onRecord(record);
+			log(`第 ${round} 轮失败：${record.error}`);
+			if (consecutiveFailures >= maxConsecutiveFailures) {
+				stopped = true;
+				log(`连续 ${consecutiveFailures} 轮失败，终止该次运行`);
+				break;
+			}
+			continue;
+		}
 		let result: ChatTurnResult;
 		try {
 			result = await runChatTurn({
