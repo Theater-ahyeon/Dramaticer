@@ -3,22 +3,25 @@
 > 每个会话结束前都要**完整重写**这个文件，不要往后追加。
 
 ## 最近一次会话
-- 2026-11-14 会话 387：读取 `.devloop/jobs/R6-T05-03.status.json`（退出码 0，20.9 分钟）与日志，核对三份结果：每个故事 `plannedPairs` 为 8、`turns.completed` 为 20、8 条分支记录且两种展示顺序齐全。R6-T05 标 `[x]` 并写入真实数字（24 对，胜 9、负 5、平 0、换序不一致 10，胜率 64.3%，Wilson 95% 38.8%–83.7%；深回合 60 轮全部完成、截断 2 轮；写作请求 84、用户请求 64、裁判请求 54、预热请求 30，输入 1,769,200 token、输出 79,643 token）。按预注册口径 G5 的初次判定未通过：完成配对数达标，胜率点估计高于 0.50，但换序不一致比例 41.7% 超过 30% 上限、Wilson 下界 38.8% 不高于 0.50；改进任务由 R6-T99 按预注册第四节生成。本会话没有改代码，门禁维持通过（260 个测试文件、2,269 个测试、5 个跳过）。
+- 2026-11-14 会话 388：做 **R6-T06** 的 C2（B1）批次准备。先用 `planR6B1Samples` 核对分支计划：每个故事 9 个分支点（`xianxia` 56、112、169、224、282、338、393、449、507；`yuwang` 57、78、118、158、197、238、276、317、356；`yinqi` 21、42、64、86、107、129、150、172、194），合计 27 对。新增批量脚本 `.devloop/scratch/R6-T06/run-b1.mjs`：先构建 `st-compat`，再按 `xianxia`、`yuwang`、`yinqi` 串行 `spawnSync` 调用 `dist/evalset/r6-b1-cli.js`，种子 1、写作 `main-fallback`、裁判 `judge`、预热 `background`，结果写 `eval-private/reports/r6/b1/<slug>.json` 与 `.md`，运行目录同目录的 `<slug>/`，任一故事失败退出码 1。用 `--branches 57` 在 `yuwang` 上跑 1 对缩样：54 秒完成，配对胜 1，报告写出配对计数、叙事质量表与排除计数；该分支点之前只有 1 个助手楼层，预热 0 楼属于选择规则的正常结果（其余分支点预热 10–12 楼）。已提交长任务 `.devloop/jobs/R6-T06-01.json`（`node .devloop/scratch/R6-T06/run-b1.mjs`，180 分钟），本会话结果写 `WAITING`。门禁通过（260 个测试文件、2,269 个测试、5 个跳过）。
 
-## 下一步（会话 388 先做）
-1. 做 **R6-T06 C1 与 C2 批量运行**（依赖 R6-T02、R6-T03，均已 `[x]`）。先跑 C2（B1，快）：三个故事各按全部最多 10 个分支点、每点 1 次续写，计划 30 对、至少 27 对完成；命令见「可重复命令」的 `r6-b1`，结果写 `eval-private/reports/r6/b1/<slug>.json` 与 `.md`，运行目录同目录的 `<slug>/`。写成 `.devloop/scratch/R6-T06/run-b1.mjs`（串行三个故事，逐个 `spawnSync`，任一失败退出码 1），申请 `.devloop/jobs/R6-T06-01.json`，结果写 `WAITING`。
-2. C2 跑完后（会话 389）核对 `eval-private/reports/r6/b1/*.json`：配对完成数、排除计数、历史回复模型清单、成本；然后跑 C1（9 个分支点 × 2 档位 × 30 轮 = 540 轮），命令见 `r6-compare`，结果写 `eval-private/reports/r6/c1/<slug>.json` 与 `.md`，运行目录同目录的 `<slug>/`；同样写脚本、申请 `.devloop/jobs/R6-T06-02.json`。
-3. R6-T06 完成后做 **R6-T99**：把 C1、C2、C3（R6-T05，已就绪）与 G6 的输入交给 `r6-gate` / `evaluateR6Gates`，按预注册判定 G1–G6；G5 的初次判定已知未通过（换序不一致 41.7%、Wilson 下界 38.8%），按预注册第四节写 `docs/dev/R6-ROUND-1.md` 与 `R6-F1-*` 改进任务。预注册文档在第一次批次运行后不得修改。
-4. 阻塞检查：M6-T99 仍等 HUMAN-15（ComfyUI 与 API 格式 workflow）；HUMAN-03、HUMAN-16、HUMAN-17、HUMAN-18 不阻塞。
+## 下一步（会话 389 先做）
+1. 读 `.devloop/jobs/R6-T06-01.status.json` 与 `.log`。退出码非 0 时先看日志定位失败样本；B1 的 sidecar 在 `eval-private/reports/r6/b1/<slug>/runs/<故事安全名>.../b1.json`（`done` 与 `failed` 复用，`running` 续跑），修好后重新申请新的序号（`R6-T06-03.json` 之类），不要覆盖旧状态文件。
+2. 核对 `eval-private/reports/r6/b1/{xianxia,yuwang,yinqi}.json`：每个故事 `plannedPairs` 为 9、`completedPairs` 合计 27、`failures` 有原因、`summary.stories` 的完成数合计等于配对合计；记录胜/负/平/换序不一致、胜率与 Wilson 区间、排除比例、裁判失败比例、历史回复模型清单与成本。G1 要求 27 对全部完成且 3 个故事全覆盖，任何失败都会使样本不足，需要按预注册口径处理，不要改门槛。
+3. B1 核对完成后跑 **C1**：写 `.devloop/scratch/R6-T06/run-compare.mjs`，三个故事串行调用 `dist/evalset/r6-compare-cli.js`，`--rounds 30`，不传 `--branches`（默认每故事取首、中、末 3 个分支点，合计 9 个 × 2 档位 = 540 轮），`--dir eval-private/reports/r6/c1/<slug>`、`--json <base>.json`、`--report <base>.md`，模型参数同 R6-T05（写作 `main-fallback`、模拟用户 `background`、裁判 `judge`、后台 `background`）；申请 `.devloop/jobs/R6-T06-02.json`（超时 600 分钟），结果写 `WAITING`。C1 每轮都有后台任务与探针，预计明显长于 B1。
+4. C1 跑完后在下一会话核对两份三个故事的 JSON（每档位至少 240 个相邻回复对与推进度样本，探针每运行最多 5 次、原生档可判定探针至少 30 条），再进入 **R6-T99**：把 C1、C2、C3（R6-T05，已就绪）与 G6 的输入交给 `r6-gate` / `evaluateR6Gates`，按预注册判定 G1–G6。G5 的初次判定已知未通过（换序不一致 41.7%、Wilson 下界 38.8%），按预注册第四节写 `docs/dev/R6-ROUND-1.md` 与 `R6-F1-*` 改进任务。预注册文档在第一次批次运行后不得修改。
+5. 阻塞检查：M6-T99 仍等 HUMAN-15（ComfyUI 与 API 格式 workflow）；HUMAN-03、HUMAN-16、HUMAN-17、HUMAN-18 不阻塞。
 
 ## 当前状态
 - 已完成：F0、M0–M3、D、M4-T00 至 M4-T06、R0、R1（含 R1-T99、R1-T99.a）、R3、O、R2、E、R4、R5、V-T01、M6-T00 至 M6-T05、R3b、P1–P4、C-T01 至 C-T05、H-T00 至 H-T99、X1.a 至 X1.e、X2.a 至 X2.d、R6-T00、R6-T01、R6-T02、R6-T03、R6-T04、R6-T05。完成记录见 `docs/dev/TASKS-archive.md` 与 `docs/dev/TASKS.md`。
+- R6-T06 标 `[~]`：B1 长任务已申请，C1 待 B1 核对后申请。
 - 兼容插件线：`st-content`、`st-mvu`、`st-ejs`、`st-helper-host` 全部完成（含一致性测试与共存评测）。
 - 数据库 schema 版本 50。本轮没有新增依赖。
 - 报告：`docs/dev/reports/P2.md`、`P3.md`、`P4.md`、`C-T01.md`、`C-T02.md`、`C-T03.md`、`C-T04.md`、`C-T05.md`、`H.md`、`X1.md`、`X2.md`。
 - R6 预注册：`docs/dev/R6-PREREG.md` v1、ADR-0135、DESIGN §14.2；门槛常量与判定由 R6-T01 实现，`R6_GATE_VERSION` 为 `v1`；C1 运行器由 R6-T02、B1 批次由 R6-T03、偏好一致率由 R6-T04、深回合批次由 R6-T05 实现，结果写入门槛版本。
 - R6-T05 的真实结果在 `eval-private/reports/r6/deep/<slug>.json` 与 `.md`：24 对，胜 9、负 5、平 0、换序不一致 10；`xianxia` 4/3/0/1、`yuwang` 3/1/0/4、`yinqi` 2/1/0/5；深回合 60 轮全部完成、截断 2 轮（`yinqi`）；G5 初次判定未通过（换序不一致 41.7% > 30%，Wilson 下界 38.8% ≤ 50%）。
 - R6-T05 的运行目录 `eval-private/reports/r6/deep/<slug>/` 里有 `runs/<故事安全名>-<hash>/deep.json` sidecar 与 `deep.db`；重跑复用 `done`，`failed` 与 `running` 续跑。`xianxia` 的 sidecar 来自 ADR-0136 修复前已完成的运行，8 对判定齐全；`yuwang` 与 `yinqi` 按修复后的参数运行。
+- R6 B1 缩样结果在 `.devloop/scratch/R6-T06/smoke/yuwang.json` 与 `.md`（1 对，胜 1，预热 0 楼）；批量脚本与分支计划脚本在同一目录（`run-b1.mjs`、`plan-branches.mjs`）。`.devloop/` 已被 git 忽略。
 - 世界模型：默认 `ledger`；`wiki` 与 `temporal_graph` 已经可用，由故事设置 `worldModel` 选择，只有 `temporal_graph` 支持 `atStoryTime`。
 - 导演组织方式：默认 `mechanisms`（现有机制序列）；`bits` 已可用，由故事设置 `directorOrganization` 选择。X2 判定见 ADR-0134 与 `docs/dev/reports/X2.md`。
 - X2 的输入与运行脚本在 `.devloop/scratch/X2.d/`：`inputs/`（消息、小品、条件样本）、`run-compare.mjs`、`summarize.mjs`、`runs/<slug>/`（复制数据库、缓存与 sidecar）、`smoke/`（2 轮冒烟结果）。长任务状态在 `.devloop/jobs/X2.d-01.status.json`（退出码 0）与 `.log`。
@@ -32,6 +35,7 @@
 
 ## 可重复命令
 - 门禁：`pnpm check`。
+- R6 分支计划（三故事，打印每故事的 9 个分支点楼层）：`node .devloop/scratch/R6-T06/plan-branches.mjs`。
 - R6 门槛与指标的目标测试：`pnpm exec vitest run packages/st-compat/test/gates.test.ts packages/st-compat/test/metrics.test.ts`。
 - R6 深回合批次目标测试：`pnpm exec vitest run packages/st-compat/test/r6-deep.test.ts packages/st-compat/test/deep-eval.test.ts`。
 - R6 深回合单故事（默认 20 轮、8 个分支点）：`pnpm --filter @dramaticer/st-compat r6-deep --db <源库> --story <id> --dir <运行目录> --json <结果 json> --report <报告 md>`。
@@ -41,11 +45,11 @@
 - R6 B1 批次目标测试：`pnpm exec vitest run packages/st-compat/test/r6-b1.test.ts`（约 15 秒）。
 - R6 偏好一致率目标测试：`pnpm exec vitest run packages/st-compat/test/r6-preference.test.ts`（约 2 秒）。
 - 判定与模拟用户重试目标测试：`pnpm exec vitest run packages/st-compat/test/pairwise.test.ts packages/st-compat/test/playtest.test.ts packages/st-compat/test/probe.test.ts`。
-- EJS 沙箱与预算目标测试：`pnpm exec vitest run packages/st-compat/test/st-ejs-sandbox.test.ts packages/st-compat/test/st-ejs-budget.test.ts`。
+- R6 B1 三故事长任务：`node .devloop/scratch/R6-T06/run-b1.mjs`（复用 sidecar；`done` 与 `failed` 的样本直接复用，`running` 续跑）。
+- R6 B1 单个故事：`pnpm --filter @dramaticer/st-compat r6-b1 --db <源库> --story <id> --dir <运行目录> --json <结果 json> --report <报告 md> [--historical-models <映射 json>]`。
+- R6 B1 缩样：在上面命令上加 `--branches <楼层>`（只能配一个故事，楼层必须是规划结果里的助手楼层，例如 `yuwang` 的 57）。
 - R6 C1 单个故事（默认 30 轮、首中末 3 个分支点）：`pnpm --filter @dramaticer/st-compat r6-compare --db <源库> --story <id> --dir <运行目录> --json <结果 json> --report <报告 md>`。
 - R6 C1 缩样：在上面命令上加 `--rounds 2 --branches <楼层>`（`--branches` 只能配一个故事，楼层必须是规划结果里的助手楼层）。
-- R6 B1 全部样本：`pnpm --filter @dramaticer/st-compat r6-b1 --db <源库> --story <id> --dir <运行目录> --json <结果 json> --report <报告 md> [--historical-models <映射 json>]`。
-- R6 B1 缩样：在上面命令上加 `--branches <楼层>`（只能配一个故事，楼层必须是规划结果里的助手楼层）。
 - R6 偏好一致率：先 `pnpm --filter @dramaticer/st-compat preferences export --db <源库> --out <导出目录>`，再 `pnpm --filter @dramaticer/st-compat r6-preference --db <源库> --pairs <导出目录> --dir <运行目录> --json <结果 json> --report <报告 md>`；记录在 `<运行目录>/records.jsonl`。
 - X2.d 重跑（断点续跑，已完成候选用 sidecar）：`node .devloop/scratch/X2.d/run-compare.mjs`。
 - X2.d 指标汇总：`node .devloop/scratch/X2.d/summarize.mjs`。
@@ -63,11 +67,15 @@
 
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
-- 私有数据（`eval-private/`、`data/`、`.env`）不能进入测试数据、提交、文档或日志；报告只写统计数字，不写对话原文。X1、X2 与 R6 的 JSON 含回复与答案，只能放在私有目录。
+- 私有数据（`eval-private/`、`data/`、`.env`）不能进入测试数据、提交、文档或日志；报告只写统计数字，不写对话原文。X1、X2 与 R6 的 JSON 含回复与答案，只能放在私有目录；`eval-private/reports/r6/b1/<slug>.md` 含故事标题，属于私有报告，仓库报告只能用 slug。
 - R6 预注册 v1 在第一次批次运行后冻结：门槛、样本、指标、模型与种子都不改；必须调整时另写 v2、记 ADR、把评测轮次计数重置为 0。门槛常量与 `docs/dev/R6-PREREG.md` 必须逐项一致，`evaluateR6Gates` 不允许缺项回落。
 - `gates.ts` 的 G6 少于 30 对时状态为 `insufficient`，报告里同时出现在 `insufficient` 与 `unproven`；其他门槛 `insufficient` 会让 `passed` 为 false。G1 的故事覆盖按 `completedPairs > 0` 计数，故事完成数合计必须等于配对合计，否则输入校验抛错。
 - `evaluateR6Gates` 要求六项输入齐全，缺项直接抛错；单测门槛时构造完整的 `{b1, repetition, advancement, contradiction, deep, preference}`，不要只传一项。
-- `metrics.ts` 的 `measureReplyRepetition` 是 R6 的相邻回复口径；`measureBlockRepetition` 是按行切块的 X2 与记分牌口径。两个口径不要混用，X2 的数字用后者保持不变。
+- B1 的计划配对来自 `planR6B1Samples`：每个故事按路径深度取最多 10 个分支点，保留其后有非空玩家消息与历史回复的点；三个源故事各得 9 个，计划 27 对。第一个分支点（`yuwang` 57）之前只有 1 个助手楼层，预热 0 楼属于正常结果，报告会写预热楼层数。
+- B1 的 sidecar 在 `<dir>/runs/<故事安全名>-<hash>/b1.json`，数据库是同目录的 `native.db`；`done` 与 `failed` 直接复用，`running` 续跑，重试需要删除对应 sidecar。CLI 一次只读一个源库，三故事串行跑；`--branches` 只能配一个故事。
+- B1 每个分支点只生成一轮：复制源数据库、预热 12 楼后，用分支点之后第一条非空玩家消息跑一次原生续写，回合后不执行后台任务；失败样本计入 `failures`，`outcome` 为 null。
+- B1 的历史回复模型从 DB 里读不到；`--historical-models` 接受 `{节点 id 或 "<故事>:<楼层>": "模型名"}` 的 JSON 映射，没有映射时家族清单为空并写明未记录。本批次没有提供映射。
+- R6 的胜率都按配对计数：两种展示顺序各判一次，胜率分母只含胜与负，平与换序不一致不计入分母；Wilson 95% 区间用配对计数计算。
 - R6 的分支点按路径深度取：主路径长度的 10% 到 100%，每个比例取最近的助手楼层，保留其后有非空玩家消息与历史回复的点，去重后每故事最多 10 个；C1 取首、中、末 3 个，B1 取全部。`--branches` 只接受规划结果里出现的助手楼层。
 - R6 的 C1 两档必须共用同一串玩家消息：原生档先生成并写入 sidecar，朴素档逐字重放；sidecar 校验故事、分支点、轮数、种子、写作/用户/裁判模型，朴素档还校验消息哈希，输入变化时失败并提示删除。
 - R6-T02 的 sidecar 在 `<dir>/runs/<故事>/<楼层>/<档位>.json`，数据库是同目录的 `<档位>.db`；状态 `running` 时续跑，`done` 与 `failed` 直接复用。续跑按记录里的 `assistantNodeId` 把 head 对齐到记录末尾，避免进程在写 sidecar 前退出造成重复楼层。
@@ -77,16 +85,11 @@
 - R6 的每个运行副本在开跑前对分支点之前最近 12 个已生成完成的助手楼层执行 `settle` 与 `scene`，只写复制库；台账覆盖范围只到预热窗口，报告必须单列这一限制。
 - 预热的结算窗口用 `prepareSettlementForNodes` 按预热楼层显式构建，每 4 楼一次请求；不要改回后台结算处理器，它会按“沿路径最远的未结算楼层优先”取窗口，长历史下预热楼层轮不到，现场分析会一直退回 pending。
 - `prepareSettlementForNodes` 只校验窗口大小与楼层存在，不校验角色、落定状态与 head 路径；调用方要先把 head 移到窗口最后一楼，并按从旧到新的顺序传楼层。
-- R6 的胜率都按配对计数：两种展示顺序各判一次，胜率分母只含胜与负，平与换序不一致不计入分母；Wilson 95% 区间用配对计数计算。
-- R6 的 G6 是条件门槛：真实偏好配对少于 30 对时记未证实；B2 只在 B1 未通过且完成一轮改进后申请，单次不超过 60 次生成，必须先得到 HUMAN.md 确认。
-- R6-T03 的 B1 每个分支点只生成一轮：复制源数据库、预热 12 楼后，用分支点之后第一条非空玩家消息跑一次原生续写，回合后不执行后台任务；sidecar 在 `<dir>/runs/<故事>/<楼层>/b1.json`，数据库是同目录的 `native.db`。
-- R6-T03 的配对结果只用两种顺序都完成的样本：生成失败与判定失败都记入排除计数，`outcome` 为 null；质量评分失败只计入质量失败，不改变配对结果。历史回复模型从 DB 里读不到，CLI 的 `--historical-models` 接受 `{节点 id 或 "<故事>:<楼层>": "模型名"}` 的 JSON 映射；没有映射时家族清单为空并写明未记录。
-- R6-T04 用 `preferences export` 的 `.pairs.jsonl`，记录在 `<dir>/records.jsonl`，按样本与顺序续跑；失败记录同样复用，重试需要删除记录文件。已有记录的裁判模型与本次不一致时直接失败。记录不属于当前样本（导出变化）时也直接失败，提示删除记录文件。
-- R6-T04 的 G6 输入只含配对数：一致、不一致、平、换序不一致与失败；一致率分母只含完成配对，少于 30 对时 `insufficient` 为 true，判定留给 `evaluateR6Gates` 的 `unproven`。仓库报告不列样本 id、正文或错误原文。
 - R6-T05 每个故事一个副本，运行从该故事的 head 开始；预热 head 之前最近 12 楼，再跑 20 轮深回合。分支点是轮次，不是源数据库里的楼层；`selectBranchRounds(completedRounds.length, 8)` 在全部轮次完成时等于 `selectBranchRounds(20, 8)`。sidecar 在 `<dir>/runs/<故事安全名>-<hash>/deep.json`，数据库是同目录的 `deep.db`；`done` 复用，`running` 与 `failed` 都续跑。
 - R6-T05 的续跑按最后一条已完成深回合的 `nodeId` 对齐 head；分支记录按 `sampleId`（`<故事>#round-<轮次>`）去重，已完成的样本不重复判定，失败的分支记录会在续跑时重试。深回合连续失败 3 轮终止该次运行（模拟用户输出失败也算一轮失败），`deep-eval` 的可选 `maxConsecutiveFailures` 默认不终止。
 - R6-T05 的配对归一只看 `judgements`：`deep-first` 的 A、`fast-first` 的 B 属于深回合侧，反之为快回合侧；两种顺序的侧再交给 `normalizePairOutcome`。计划配对是故事数 × 分支数，`failures = plannedPairs - completedPairs`，报告同时给出分支失败与缺失配对。
 - R6-T05 的报告成本只统计写作、用户、裁判与预热的请求数，token 来自深回合记录；快回合的 token 没有单独记录，写作请求数包含快回合。仓库报告不得出现故事标题或正文。
+- `metrics.ts` 的 `measureReplyRepetition` 是 R6 的相邻回复口径；`measureBlockRepetition` 是按行切块的 X2 与记分牌口径。两个口径不要混用，X2 的数字用后者保持不变。
 - 评测里的结构化判定与模拟用户调用（`pairwise`、`quality`、`turn-judge`、`probe` 裁判、`generateUserMessage`）默认不发送 `maxTokens`，由路由器使用模型在渠道里声明的上限（ADR-0136）；判定重试带尝试次数，模拟用户重试还会附上上一次原文。
 - `r6-deep-cli` 在任一故事状态为 `failed` 时退出码为 1；长任务脚本按退出码停止，不要再用日志里的“全部完成”判断成功。
 - ST 的原始安装目录只读：不得修改，不得复制出 `secrets.json`、`settings.json`、`cookie-secret.txt`；沙箱里不得配置真实模型端点，录制服务不持有模型客户端（I14）。
@@ -94,6 +97,7 @@
 - Windows 上并行跑测试会显著变慢；`vitest.config.ts` 默认 `testTimeout` 60 秒、`maxWorkers` 8；`afterEach` 删除临时目录用 `rmSync` 时必须带 `maxRetries` 与 `retryDelay`。
 - 整轮并行门禁连跑或与大量临时目录写入同时进行时，Windows 的系统扫描会拖慢文件与 SQLite 操作，出现过后台 worker 激活超时与 `gap-pass-compare` 的 30 秒用例超时；这些用例单独运行都通过。门禁失败先看失败是否只在整轮并行时出现，不要连续并发跑多轮整仓测试；`gap-pass-compare` 的 3 个用例上限已放宽到 180 秒。
 - `packages/st-compat` 与 `packages/server` 的测试通过 `@dramaticer/core` 的 `dist` 解析 core；只跑这些包的测试前先执行 `pnpm run typecheck`。
+- `.devloop/scratch/R6-T06/*.mjs` 直接 import `../../../packages/core/dist/index.js`，因为 `.devloop/` 下解析不到工作区包名；长任务脚本每次先构建 `st-compat`。
 - EJS 沙箱的时间预算按墙钟计，`StEjsSandbox.run` 从 dispatch 开始计时，包含新建 worker 与 worker 里 `require("ejs")` 的耗时；`runTurnHook` 的 `remainingMs()` 同样扣掉这部分。测试不要用接近 worker 启动耗时的预算（300 毫秒在整轮并行下会误判超时），要验证超时终止用 2 秒以上。
 - `pnpm exec biome check --write <文件>` 处理格式；不要手写格式。
 - 修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 的请求写进 HUMAN.md。
