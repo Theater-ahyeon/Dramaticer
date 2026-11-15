@@ -1,4 +1,10 @@
 import type { BackgroundJobHandler } from "../background/types.js";
+import {
+	type MilestoneProgress,
+	planMilestonePromiseDiffs,
+	readActiveMilestone,
+} from "../blueprint/milestones.js";
+import { BLUEPRINT_MILESTONE_HARDNESS_LABELS } from "../blueprint/story-blueprint.js";
 import { assertPlainObject, rejectUnknownKeys } from "../json.js";
 import { readSceneSegments } from "../ledger/scenes.js";
 import {
@@ -44,6 +50,7 @@ const SYSTEM_PROMPT = [
 	"- review.promises：逐条处理清点之前已经存在的未兑现伏笔（kind 为 promise 的线）；disposition 取 carry（带到下一章）或 retire（作废）。",
 	"- review.focus：下一章聚焦的线，2 到 3 条；必须已经出现在当前线清单里，不能是同一份清点里 retire 的伏笔，也不能在这批修改里被删除。",
 	"- 新建伏笔不能让未兑现伏笔超过输入里给出的上限。",
+	"- 输入给出最近的未达成里程碑时，这一章的方向以它为准：没有兑现的铺垫声明 carry，兑现了的声明 retire，不能改写铺垫的 want。",
 	"- 线的倒计时按助手楼层计；修改 countdown 就是重设时钟。",
 	"- 只写局面与人物意图，不要写写作指令。",
 ].join("\n");
@@ -61,6 +68,8 @@ export interface ChapterPlanInput {
 	readonly sceneCard: string | null;
 	readonly previousReview: DirectorChapterReviewPayload | null;
 	readonly maxOpenPromises: number;
+	/** 最近的未达成里程碑；没有蓝图或全部达成时为 null。 */
+	readonly milestone: MilestoneProgress | null;
 }
 
 /** 当前路径上最后一个助手楼层；章级规划写在它上面。 */
@@ -135,6 +144,18 @@ export function collectChapterPlanInput(
 	const floors = assistants.slice(-CHAPTER_PLAN_WINDOW_FLOORS);
 	const states = store.readDirectorLineStates(nodeId);
 	if (states.length === 0) return null;
+	const historyLineIds = store
+		.listDirectorLinesAlongPath(nodeId)
+		.flatMap((record) =>
+			record.diffs.map((diff) =>
+				diff.action === "set" ? diff.line.id : diff.id,
+			),
+		);
+	const milestone = readActiveMilestone(
+		store.readBlueprintEntries(nodeId),
+		states,
+		historyLineIds,
+	);
 	const reviews = store.listDirectorChapterReviewsAlongPath(nodeId);
 	const previousReview = reviews.at(-1)?.payload ?? null;
 	const previousFloor = reviews.at(-1);
@@ -176,6 +197,7 @@ export function collectChapterPlanInput(
 		previousReview,
 		maxOpenPromises:
 			store.getStorySettings(storyId).directorConfig.maxOpenPromises,
+		milestone,
 	};
 }
 
@@ -185,6 +207,23 @@ export function buildChapterPlanUserContent(input: ChapterPlanInput): string {
 		`当前路径共有 ${input.floorDepth} 个助手楼层，这一章覆盖最近 ${input.chapterFloors} 个。`,
 		`未兑现伏笔上限：${input.maxOpenPromises} 条。`,
 	];
+	if (input.milestone !== null) {
+		const milestone = input.milestone.milestone;
+		lines.push(
+			"",
+			`最近的未达成里程碑：${milestone.id}（${BLUEPRINT_MILESTONE_HARDNESS_LABELS[milestone.hardness]}）`,
+			`方向：${milestone.want.length === 0 ? "（还没有写）" : milestone.want}`,
+		);
+		if (milestone.prerequisites.length > 0) {
+			lines.push(`前提条件：${milestone.prerequisites.join("；")}`);
+		}
+		if (input.milestone.openLineIds.length > 0) {
+			lines.push(
+				`已经在伏笔账里的铺垫：${input.milestone.openLineIds.join("、")}；这一章的方向以它们为准，兑现了的声明 retire，没有兑现的声明 carry，不能改写 want。`,
+			);
+		}
+		lines.push("程序会把其余还没有写进伏笔账的前提条件补成伏笔线。");
+	}
 	lines.push("", "当前线：");
 	if (input.lines.length === 0) {
 		lines.push("无。");
@@ -278,6 +317,36 @@ export function chapterReviewLineDiffs(
 	return [...plan.diffs, ...retire];
 }
 
+/**
+ * 章级规划必须保留最近里程碑的方向：还开着的铺垫线不能被改写种类或 want。
+ * 兑现的铺垫可以在清点里声明 retire，由程序删线；没有兑现的按清点 carry。
+ */
+export function assertChapterPlanKeepsMilestone(
+	plan: ChapterPlan,
+	states: readonly DirectorLineState[],
+	active: MilestoneProgress | null,
+	label = "章级规划",
+): void {
+	if (active === null || active.openLineIds.length === 0) return;
+	const open = new Set(active.openLineIds);
+	const byId = new Map(
+		states.map((state) => [state.line.id, state.line] as const),
+	);
+	for (const diff of plan.diffs) {
+		if (diff.action !== "set") continue;
+		if (!open.has(diff.line.id)) continue;
+		const before = byId.get(diff.line.id);
+		if (before === undefined) {
+			throw new Error(`${label} 引用了不存在的线：${diff.line.id}`);
+		}
+		if (diff.line.kind !== "promise" || diff.line.want !== before.want) {
+			throw new Error(
+				`${label} 改写了里程碑「${active.milestone.id}」的方向：${diff.line.id}`,
+			);
+		}
+	}
+}
+
 export interface ChapterPlanHandlerOptions {
 	/** 覆盖任务上下文里的后台客户端；生产用 `planner` 角色的客户端。 */
 	readonly client?: LlmClient;
@@ -308,7 +377,11 @@ export function createChapterPlanHandler(
 			NO_CONTINUATION,
 		);
 		const plan = parseChapterPlanResponse(result.text);
-		const diffs = chapterReviewLineDiffs(plan);
+		assertChapterPlanKeepsMilestone(plan, input.lines, input.milestone);
+		const diffs = chapterReviewLineDiffs({
+			diffs: [...plan.diffs, ...planMilestonePromiseDiffs(input.milestone)],
+			review: plan.review,
+		});
 		store.saveDirectorChapterPlan({
 			nodeId,
 			storyId: job.storyId,

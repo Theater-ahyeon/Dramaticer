@@ -7,6 +7,7 @@ import {
 	type StoryStore,
 	chapterPlanNeedsRun,
 	createChapterPlanHandler,
+	milestonePromiseLineId,
 } from "../src/index.js";
 import { openTempStore } from "./temp-store.js";
 
@@ -114,6 +115,69 @@ function seedLines(store: StoryStore): void {
 			},
 		],
 	});
+}
+
+function seedBlueprint(
+	store: StoryStore,
+	prerequisites: readonly string[],
+): void {
+	store.saveStoryBlueprint({
+		nodeId: "a1",
+		storyId: "s1",
+		source: "player",
+		diffs: [
+			{
+				action: "set",
+				entry: {
+					id: "vol1",
+					kind: "volume",
+					source: "player",
+					locked: false,
+					title: "第一卷",
+					coreQuestion: "能不能进城",
+					startState: "",
+					endState: "",
+				},
+			},
+			{
+				action: "set",
+				entry: {
+					id: "ms1",
+					kind: "milestone",
+					source: "player",
+					locked: false,
+					volumeId: "vol1",
+					want: "进入王城",
+					prerequisites: [...prerequisites],
+					after: [],
+					hardness: "hard",
+				},
+			},
+		],
+	});
+}
+
+function seedMilestonePromise(store: StoryStore, prerequisite: string): string {
+	const id = milestonePromiseLineId("ms1", prerequisite);
+	store.saveDirectorLines({
+		nodeId: "a2",
+		storyId: "s1",
+		diffs: [
+			{
+				action: "set",
+				line: {
+					id,
+					kind: "promise",
+					who: "里程碑 ms1",
+					want: prerequisite,
+					obstacle: "还没有铺垫好",
+					countdown: null,
+					preparations: [],
+				},
+			},
+		],
+	});
+	return id;
 }
 
 function endScene(store: StoryStore, nodeId: string): void {
@@ -302,5 +366,145 @@ describe("章末规划", () => {
 
 		expect(planner.requests).toHaveLength(1);
 		expect(background.requests).toHaveLength(0);
+	});
+
+	it("把最近里程碑的前提条件补成伏笔线并写进提示词", async () => {
+		const { store } = openTempStore();
+		seedChain(store);
+		seedLines(store);
+		seedBlueprint(store, ["拿到通行证", "认识守卫"]);
+		endScene(store, "a5");
+		setChapterFloors(store, 3);
+		const { client, requests } = createFakeClient([PLAN]);
+
+		await createChapterPlanHandler()({ store, client, job: job() });
+
+		const prompt = requests[0]?.messages[1]?.content ?? "";
+		expect(prompt).toContain("最近的未达成里程碑：ms1");
+		expect(prompt).toContain("方向：进入王城");
+		expect(prompt).toContain("前提条件：拿到通行证；认识守卫");
+
+		const states = store.readDirectorLineStates("a5");
+		const seeded = states.filter((state) =>
+			state.line.id.startsWith("milestone."),
+		);
+		expect(seeded.map((state) => state.line.kind)).toEqual([
+			"promise",
+			"promise",
+		]);
+		expect(seeded.map((state) => state.line.want).sort()).toEqual([
+			"拿到通行证",
+			"认识守卫",
+		]);
+	});
+
+	it("兑现最近里程碑的铺垫时可以 retire，程序删线后里程碑不再挡在前面", async () => {
+		const { store } = openTempStore();
+		seedChain(store);
+		seedLines(store);
+		seedBlueprint(store, ["拿到通行证"]);
+		const lineId = seedMilestonePromise(store, "拿到通行证");
+		endScene(store, "a5");
+		setChapterFloors(store, 3);
+		const retiring = JSON.stringify({
+			lines: [],
+			review: {
+				promises: [
+					{ lineId: "promise-1", disposition: "retire" },
+					{ lineId, disposition: "retire" },
+				],
+				focus: ["main-1", "rel-1"],
+			},
+		});
+		const { client } = createFakeClient([retiring]);
+
+		await createChapterPlanHandler()({ store, client, job: job() });
+
+		expect(store.getDirectorChapterReview("a5")?.payload.promises).toEqual([
+			{ lineId: "promise-1", disposition: "retire" },
+			{ lineId, disposition: "retire" },
+		]);
+		expect(
+			store.readDirectorLineStates("a5").map((state) => state.line.id),
+		).toEqual(["main-1", "rel-1"]);
+	});
+
+	it("模型不能删除或改写最近里程碑的铺垫方向", async () => {
+		const { store } = openTempStore();
+		seedChain(store);
+		seedLines(store);
+		seedBlueprint(store, ["拿到通行证"]);
+		const lineId = seedMilestonePromise(store, "拿到通行证");
+		endScene(store, "a5");
+		setChapterFloors(store, 3);
+		const deleting = JSON.stringify({
+			lines: [{ action: "delete", id: lineId }],
+			review: {
+				promises: [
+					{ lineId: "promise-1", disposition: "retire" },
+					{ lineId, disposition: "carry" },
+				],
+				focus: ["main-1", "rel-1"],
+			},
+		});
+		const { client } = createFakeClient([deleting]);
+
+		await expect(
+			createChapterPlanHandler()({ store, client, job: job() }),
+		).rejects.toThrow("删除了声明带到下一章的伏笔");
+		expect(store.getDirectorChapterReview("a5")).toBeNull();
+
+		const rewriting = JSON.stringify({
+			lines: [
+				{
+					action: "set",
+					line: {
+						id: lineId,
+						kind: "promise",
+						who: "里程碑 ms1",
+						want: "换一个方向",
+						obstacle: "还没有铺垫好",
+						countdown: null,
+						preparations: [],
+					},
+				},
+			],
+			review: {
+				promises: [
+					{ lineId: "promise-1", disposition: "retire" },
+					{ lineId, disposition: "carry" },
+				],
+				focus: ["main-1", "rel-1"],
+			},
+		});
+		const second = createFakeClient([rewriting]);
+
+		await expect(
+			createChapterPlanHandler()({ store, client: second.client, job: job() }),
+		).rejects.toThrow("改写了里程碑「ms1」的方向");
+		expect(store.getDirectorChapterReview("a5")).toBeNull();
+	});
+
+	it("补写的铺垫仍受未兑现伏笔上限约束，超限时整批不写", async () => {
+		const { store } = openTempStore();
+		seedChain(store);
+		seedLines(store);
+		seedBlueprint(store, ["拿到通行证", "认识守卫"]);
+		endScene(store, "a5");
+		setChapterFloors(store, 3);
+		store.updateStorySettings("s1", {
+			directorConfig: {
+				...DEFAULT_DIRECTOR_CONFIG,
+				chapterFloors: 3,
+				maxOpenPromises: 0,
+			},
+		});
+		const { client } = createFakeClient([PLAN]);
+
+		await expect(
+			createChapterPlanHandler()({ store, client, job: job() }),
+		).rejects.toThrow("超过上限");
+		expect(store.getDirectorChapterReview("a5")).toBeNull();
+		expect(store.getDirectorLines("a5")).toBeNull();
 	});
 });

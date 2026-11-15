@@ -4805,6 +4805,28 @@ export class StoryStore {
 		return states;
 	}
 
+	/** 沿节点所在的路径按从旧到新的顺序读出线修改记录；其他分支不参与。 */
+	listDirectorLinesAlongPath(nodeId: string): DirectorLineRecord[] {
+		if (!this.getNode(nodeId)) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
+		const rows = this.#db
+			.prepare(
+				`WITH RECURSIVE chain(node_id, depth) AS (
+					SELECT id, 0 FROM nodes WHERE id = ?
+					UNION ALL
+					SELECT nodes.parent_id, chain.depth + 1
+					FROM nodes JOIN chain ON nodes.id = chain.node_id
+					WHERE nodes.parent_id IS NOT NULL
+				)
+				SELECT director_lines.*
+				FROM director_lines JOIN chain ON director_lines.node_id = chain.node_id
+				ORDER BY chain.depth DESC`,
+			)
+			.all(nodeId) as DirectorLineRow[];
+		return rows.map(rowToDirectorLine);
+	}
+
 	/**
 	 * 追加一个楼层的蓝图修改；同一楼层可以有多批，`seq` 从 1 起递增。
 	 * AI 来源的修改不能改动锁定的条目，校验在写入之前完成。

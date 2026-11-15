@@ -2556,3 +2556,22 @@
   - schema 升到 66；`assistant-store.test.ts` 的版本断言同步。
   - core 新增 `blueprint/suggestions.ts`（五个操作、请求与建议类型、锁定过滤、模型输出校验、后台处理器）与 `StoryStore` 的请求与建议方法、接受与拒绝路径；注册表新增 `blueprint_suggestion` 任务。
   - 新增 core 测试 7 个，覆盖五个操作登记请求、生成不写蓝图、逐条接受与同楼层多批、生成与接受跳过锁定、蓝图变化后整条拒绝、拒绝只改状态。
+
+## ADR-0156 里程碑的前提条件进伏笔账，章级规划以最近未达成里程碑为准（2026-11-14）
+
+- **背景**：DESIGN §21 要求里程碑需要的铺垫进入伏笔账、成为导演的待办，章级规划以最近的里程碑为准；W7-T02.d 要在不改楼层原文、不新增快照的前提下，把蓝图的 `prerequisites` 变成 `promise` 线，并让章级规划读到最后一条还没达成的里程碑。蓝图里没有任何「已达成」标记，伏笔账的 `director_lines` 每层一行、只追加，线在清点之后会被删除。
+- **选项**：
+  - 给里程碑增加 `achieved` 字段：需要改蓝图结构与建议提示词，且没有谁能可靠地写入这个字段；玩家手动标记也不在 W7-T02.d 的范围里。
+  - 由伏笔账的关闭情况推导：前提条件对应的线出现过、并且现在都不再打开，就认为里程碑已经达成；删除的里程碑不在条目里，自然不再生成线。
+  - 每章把所有里程碑的前提条件都补进伏笔账：未兑现上限会被一次占满，后面里程碑的铺垫反而排不进来。
+- **决定**：
+  - core 新增 `blueprint/milestones.ts`。每条前提条件生成一条稳定的 `promise` 线，id 是 `milestone.` 加 `sha256(里程碑 id + 换行 + 条件文本)` 的前 16 位十六进制；条件顺序变化或同批其它条件增删都不换 id，长度在线 id 的 64 字上限之内。线的 `who` 写「里程碑 <id>」，`want` 写条件原文，`obstacle` 固定写「还没有铺垫好」，`countdown` 为 null、`preparations` 为空。
+  - 里程碑按 `after` 排先后，同层按 id 排序。`readMilestoneProgress` 给出每条的 `lineIds`、还没出现过的 `missingLineIds`、仍然打开的 `openLineIds`；前提条件都写过而且都已经关闭时 `reached` 为 true。没有前提条件的里程碑无法由伏笔账证明达成，`reached` 恒为 false，它仍会作为最近方向，且不生成线。
+  - `selectActiveMilestone` 取排序后第一个 `!reached` 的里程碑；全部达成或蓝图里没有里程碑时为 null。`planMilestonePromiseDiffs` 只补写当前里程还没有出现过的 `missingLineIds`。
+  - 补写发生在章级规划里：`collectChapterPlanInput` 读 `readBlueprintEntries` 与 `listDirectorLinesAlongPath` 得到最近里程碑，`buildChapterPlanUserContent` 把方向、前提条件与已经打开的铺垫写进提示词；处理器把补写修改与模型输出合并成同一批，交给 `saveDirectorChapterPlan` 一次写入。新增只读方法 `StoryStore.listDirectorLinesAlongPath`，历史线 id 用它得到；否则已经关闭的铺垫会在下一章被重新补写。
+  - 章级规划必须保留最近里程碑的方向：模型对还开着的铺垫线只能更新阻碍、倒计时与预备，不能改种类或 `want`；兑现的铺垫在清点里声明 `retire`，由 `chapterReviewLineDiffs` 补 `delete` 后关闭，未兑现的声明 `carry`。`assertChapterPlanKeepsMilestone` 在写库之前执行，改写方向的整批拒绝。
+  - 未兑现上限不另算：合并后的修改仍由 `saveDirectorChapterPlan` 内的 `saveDirectorLines` 调用 `assertPromiseBudget`，超限时整批失败，清点与线都不落库。
+- **影响**：
+  - 不新增迁移，schema 仍是 66；不改变蓝图条目结构、建议接口与楼层原文。
+  - 补写只在章级规划运行时发生；没有积累到 `chapterFloors`、最近一楼没有收尾这一场或者路径上不足两条线时不会规划，也就不会补写（这些条件集中在 `chapterPlanNeedsRun`）。
+  - 新增 core 测试覆盖稳定 id、历史关闭不重复补写、删除的里程碑不生成线、无前提条件保持为方向、`after` 排序与已达成跳过；章级规划测试覆盖补写与提示词、兑现 retire、删除与改写方向拒绝、超限整批不写。

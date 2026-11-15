@@ -227,6 +227,13 @@ describe("线对象与存储", () => {
 		expect(other[0]?.openedDepth).toBe(1);
 		expect(other[0]?.line.countdown).toBe(2);
 
+		expect(
+			store.listDirectorLinesAlongPath("n2").map((record) => record.nodeId),
+		).toEqual(["n0", "n2"]);
+		expect(
+			store.listDirectorLinesAlongPath("n4").map((record) => record.nodeId),
+		).toEqual(["n0"]);
+
 		expect(() =>
 			store.saveDirectorLines({
 				nodeId: "n0",
