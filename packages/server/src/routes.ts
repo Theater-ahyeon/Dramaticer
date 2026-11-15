@@ -96,6 +96,7 @@ import {
 	readDirectorPlan,
 	readLedger,
 	readLedgerFacts,
+	readMilestoneDeviation,
 	readSceneSegments,
 	readSerialView,
 	rejectLedgerChangeCard,
@@ -150,6 +151,7 @@ import {
 	type ProposalDecisionResult,
 	type SceneControlResult,
 	type SetHeadRequest,
+	type StoryBlueprintDeviationView,
 	type StoryBlueprintSuggestionCreateResult,
 	type StoryBlueprintSuggestionsView,
 	type StoryBookExport,
@@ -400,6 +402,15 @@ export async function handleApiRequest(
 			parts[3] === "suggestions"
 		) {
 			await handleBlueprintSuggestions(req, res, method, options, url, storyId);
+			return;
+		}
+		if (
+			third === "blueprint" &&
+			parts.length === 4 &&
+			parts[3] === "deviation"
+		) {
+			requireMethod(method, ["GET"]);
+			handleBlueprintDeviation(res, options, storyId);
 			return;
 		}
 		if (
@@ -1633,6 +1644,28 @@ function handleProposals(
 			storyId,
 			status === "all" ? {} : { status },
 		),
+	};
+	sendJson(res, 200, view);
+}
+
+/**
+ * `GET /api/stories/:id/blueprint/deviation`：章末里程碑四态；受阻或已不可能
+ * 的条目带三个选择。只读派生，不改写蓝图。
+ */
+function handleBlueprintDeviation(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	storyId: string,
+): void {
+	requireStory(options.store, storyId);
+	const head = options.store.getHead(storyId);
+	const view: StoryBlueprintDeviationView = {
+		storyId,
+		nodeId: head === null ? null : head.id,
+		deviations:
+			head === null
+				? []
+				: readMilestoneDeviation(options.store, storyId, head.id),
 	};
 	sendJson(res, 200, view);
 }

@@ -361,11 +361,12 @@ const SYSTEM_PROMPT = [
 	'{"suggestions":[{"title":"…","reason":"…","diffs":[{"action":"set","entry":{…}}]}]}',
 	"- suggestions 是 1 到 5 条建议；title 不超过 80 字，reason 不超过 500 字。",
 	"- diffs 是这一条建议对当前蓝图的一组修改：set 必须带完整条目，delete 只带 id。",
-	"- premise 条目字段：id、kind、source、locked、coreQuestion、tone、endings、redLines。",
+	"- premise 条目字段：id、kind、source、locked、coreQuestion、tone、endings、redLines、tension。",
 	"- volume 条目字段：id、kind、source、locked、title、coreQuestion、startState、endState。",
 	"- milestone 条目字段：id、kind、source、locked、volumeId、want、prerequisites、after、hardness。",
 	"- source 固定写 ai，locked 固定写 false；不要修改当前蓝图里 locked 为 true 的条目。",
 	"- hardness 只能是 hard 或 soft；after 引用其他里程碑的 id，不能成环。",
+	"- tension 只能是 loose（松）、medium（中）、tight（紧）；没有写时按 medium。",
 	"- 文本可以为空，但列表项不能是空串；单个文本不超过 500 字，每个列表最多 12 条。",
 	"- 只写局面与人物意图，不要写写作指令。",
 ].join("\n");

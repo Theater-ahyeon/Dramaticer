@@ -18,6 +18,7 @@ import type {
 	LedgerFact,
 	LoreEntry,
 	MemoryEvent,
+	MilestoneDeviation,
 	OpeningCandidateRecord,
 	OpeningCandidateStatus,
 	PreferenceEvent,
@@ -324,4 +325,15 @@ export interface BlueprintSuggestionAcceptResult {
 /** `POST /api/blueprint-suggestions/:id/reject` 的结果：只改建议状态。 */
 export interface BlueprintSuggestionRejectResult {
 	readonly suggestion: BlueprintSuggestion;
+}
+
+/**
+ * `GET /api/stories/:id/blueprint/deviation`：章末里程碑四态；受阻或已不可能
+ * 的条目带三个选择。检查是只读派生，不改写蓝图。
+ */
+export interface StoryBlueprintDeviationView {
+	readonly storyId: string;
+	/** 检查所在的楼层；故事还没有楼层时为 null。 */
+	readonly nodeId: string | null;
+	readonly deviations: readonly MilestoneDeviation[];
 }

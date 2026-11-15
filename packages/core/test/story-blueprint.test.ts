@@ -23,6 +23,7 @@ function makePremise(
 		tone: "阴冷",
 		endings: ["救回妹妹", "妹妹成为代价"],
 		redLines: ["不写虐待儿童"],
+		tension: "medium",
 		...overrides,
 	};
 }
@@ -125,6 +126,23 @@ describe("蓝图结构", () => {
 			volume: "卷",
 			milestone: "里程碑",
 		});
+	});
+
+	it("总纲的拉力缺省按中档补齐，非法档位拒绝", () => {
+		const legacy: Record<string, unknown> = { ...makePremise() };
+		legacy.tension = undefined;
+		const parsed = assertBlueprintEntries([legacy]);
+		expect((parsed[0] as BlueprintPremise).tension).toBe("medium");
+		expect(() =>
+			assertBlueprintEntries([{ ...makePremise(), tension: "stormy" }]),
+		).toThrow("蓝图条目[0].tension 只能是 loose、medium、tight");
+		expect(
+			(
+				assertBlueprintEntries([makePremise({ tension: "tight" })])[0] as
+					| BlueprintPremise
+					| undefined
+			)?.tension,
+		).toBe("tight");
 	});
 
 	it("校验整套蓝图：总纲唯一、里程碑指向存在的卷、先后约束不成环", () => {

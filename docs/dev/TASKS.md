@@ -33,7 +33,7 @@
 | 兼容插件线 | 进行中 | 本文件 |
 | H 应用内助手 | 完成 | 本文件 |
 | X 对比实验 | 完成 | 本文件 |
-| W v4 改版 | 进行中（W0–W6 完成，W7-T01 完成；W3 剩 T02.e 被 HUMAN-22 阻塞） | 本文件 |
+| W v4 改版 | 进行中（W0–W6 完成，W7-T01、W7-T02.a–T02.f 完成；W3 剩 T02.e 被 HUMAN-22 阻塞） | 本文件 |
 | R6 效果门槛 | 进行中 | 本文件 |
 | M6b 生图第二批 | 待做（R6 之后） | 本文件 |
 | M5 公开 alpha | 待做 | 本文件 |
@@ -1983,7 +1983,8 @@
   - 写作模型只看到当前卷的核心问题、最近一个里程碑的方向与本章该埋的线；完整蓝图只留在导演层。
   验收：上下文段里有这三项；Trace 里没有完整蓝图条目；没有蓝图时不产生空段；`pnpm check` 通过。
 
-- [ ] **W7-T02.f 拉力三档与偏离检查** | 依赖：W7-T02.d、W7-T02.e
+- [x] **W7-T02.f 拉力三档与偏离检查** | 依赖：W7-T02.d、W7-T02.e
+  完成：2026-11-14 蓝图总纲新增 `tension`（`loose`、`medium`、`tight`，标签松、中、紧，字段缺失按 `medium` 补齐，非法值指出字段路径）。core 新增 `readBlueprintTension` 与 `BLUEPRINT_TENSION_LABELS`；导演动作引擎的输入新增可选 `tension`，`readDirectorActionInput` 从当前路径蓝图读入。拉力只调整候选动作的先后（紧档先推压力，松档先给喘息与接球，中档保持既有优先级），让位始终排第一；玩家手动选了推进档位时按推进档位执行，拉力不参与；决策记录写 `signals.tension`。core 新增 `blueprint/deviations.ts`：`checkMilestoneDeviation` 按规划顺序判定四态，章末清点作废的铺垫 → 已不可能，前提条件都写过并关闭 → 已达成，铺垫线达到 `clueAgeWarning` 楼没有被触及 → 受阻，其余 → 仍可达；受阻与已不可能返回 `adjust-blueprint`、`pull-back`、`abandon` 三个选择。`readMilestoneDeviation` 从路径线状态、历史线 id 与章末清点读出，只读不改蓝图；服务端新增 `GET /api/stories/:id/blueprint/deviation`，protocol 与 web 客户端同步。新增 core 14 个测试、服务端 2 个接口测试、web 1 个调用断言；ADR-0158；`pnpm check` 通过（298 个测试文件、2,592 个测试、5 个跳过）。
   做什么：
   - 拉力分松、中、紧三档，映射到导演的推进强度或候选集合；任何档位下玩家当轮的行动优先。
   - 每章结束检查里程碑状态（已达成、仍可达、受阻、已不可能）；受阻或不可能时给出三个选择：调整蓝图、把剧情拉回、放弃；系统不自动改写。

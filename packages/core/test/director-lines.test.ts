@@ -671,6 +671,128 @@ describe("推进三档", () => {
 	});
 });
 
+describe("拉力三档", () => {
+	const TENSION_CONFIG = { ...ACTION_CONFIG, clueAgeWarning: 2 };
+
+	function tensionInput(
+		overrides: Partial<DirectorActionInput> = {},
+	): DirectorActionInput {
+		return makeInput({
+			floorDepth: 4,
+			config: TENSION_CONFIG,
+			lines: [
+				makeState({ id: "promise", kind: "promise" }, 1, 1),
+				makeState({ id: "scheme", kind: "opposition", who: "对手" }, 1, 3),
+				makeState({ id: "main" }, 1, 2),
+			],
+			floors: [
+				{ beat: "对峙", present: ["对手"], sceneEnds: false, stateChanges: 2 },
+				{ beat: "对峙", present: ["对手"], sceneEnds: false, stateChanges: 2 },
+			],
+			...overrides,
+		});
+	}
+
+	it("三档给出不同的候选顺序，中档与没有拉力时一致", () => {
+		const plain = selectDirectorAction(tensionInput());
+		const medium = selectDirectorAction(tensionInput({ tension: "medium" }));
+		const loose = selectDirectorAction(tensionInput({ tension: "loose" }));
+		const tight = selectDirectorAction(tensionInput({ tension: "tight" }));
+
+		expect(medium?.signals.candidates).toEqual(plain?.signals.candidates);
+		expect(medium?.signals.candidates).toEqual([
+			"fulfill",
+			"reveal",
+			"breathe",
+			"catch",
+		]);
+		expect(loose?.signals.candidates).toEqual([
+			"breathe",
+			"catch",
+			"reveal",
+			"fulfill",
+		]);
+		expect(tight?.signals.candidates).toEqual([
+			"fulfill",
+			"reveal",
+			"catch",
+			"breathe",
+		]);
+		expect(loose?.action).toBe("breathe");
+		expect(medium?.action).toBe("fulfill");
+		expect(tight?.action).toBe("fulfill");
+		expect(loose?.signals.tension).toBe("loose");
+		expect(medium?.signals.tension).toBe("medium");
+		expect(tight?.signals.tension).toBe("tight");
+	});
+
+	it("任何档位下玩家这一轮写的具体行动都排第一", () => {
+		for (const tension of ["loose", "medium", "tight"] as const) {
+			const selection = selectDirectorAction(
+				tensionInput({
+					tension,
+					playerMessage: "我推开窗，把信藏进抽屉，然后下楼",
+				}),
+			);
+			expect(selection?.action).toBe("yield");
+		}
+	});
+
+	it("玩家手动选了推进档位时按推进档位的候选集合执行", () => {
+		const selection = selectDirectorAction(
+			tensionInput({ tension: "tight", push: "quick" }),
+		);
+		expect(selection?.signals.candidates).toEqual(["transition", "catch"]);
+		expect(selection?.action).toBe("transition");
+	});
+
+	it("拉力从蓝图总纲读出，没有蓝图时为空", () => {
+		const { store } = openTempStore();
+		store.createStory({ id: "s1", title: "测试故事" });
+		store.appendNode({
+			id: "n0",
+			storyId: "s1",
+			parentId: null,
+			role: "assistant",
+			raw: "开场。",
+		});
+		store.appendNode({
+			id: "n1",
+			storyId: "s1",
+			parentId: "n0",
+			role: "user",
+			raw: "我走进钟楼。",
+		});
+		expect(
+			readDirectorActionInput(store, "s1", "n1", ACTION_CONFIG).tension,
+		).toBeNull();
+		store.saveStoryBlueprint({
+			nodeId: "n0",
+			storyId: "s1",
+			source: "player",
+			diffs: [
+				{
+					action: "set",
+					entry: {
+						id: "premise",
+						kind: "premise",
+						source: "player",
+						locked: false,
+						coreQuestion: "她会不会留下",
+						tone: "压抑",
+						endings: [],
+						redLines: [],
+						tension: "tight",
+					},
+				},
+			],
+		});
+		expect(
+			readDirectorActionInput(store, "s1", "n1", ACTION_CONFIG).tension,
+		).toBe("tight");
+	});
+});
+
 describe("伏笔账", () => {
 	function seedStory(store: StoryStore): void {
 		store.createStory({ id: "s1", title: "测试故事" });

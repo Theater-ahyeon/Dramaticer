@@ -340,12 +340,14 @@ describe("ApiClient", () => {
 			note: "查一下矛盾",
 		});
 		await client.getBlueprintSuggestions("s 1", "accepted");
+		await client.getBlueprintDeviation("s 1");
 		await client.acceptBlueprintSuggestion(7, { nodeId: "n 1" });
 		await client.rejectBlueprintSuggestion(8);
 
 		expect(calls.map((call) => [call.init.method, call.url])).toEqual([
 			["POST", "/api/stories/s%201/blueprint/suggestions"],
 			["GET", "/api/stories/s%201/blueprint/suggestions?status=accepted"],
+			["GET", "/api/stories/s%201/blueprint/deviation"],
 			["POST", "/api/blueprint-suggestions/7/accept"],
 			["POST", "/api/blueprint-suggestions/8/reject"],
 		]);
@@ -355,7 +357,7 @@ describe("ApiClient", () => {
 			operation: "find-flaws",
 			note: "查一下矛盾",
 		});
-		const acceptCall = calls[2];
+		const acceptCall = calls[3];
 		if (acceptCall === undefined) throw new Error("缺少请求");
 		expect(readBody(acceptCall.init)).toEqual({ nodeId: "n 1" });
 	});

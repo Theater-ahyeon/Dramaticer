@@ -4,11 +4,16 @@ import {
 	BLUEPRINT_SUGGESTION_JOB_KIND,
 	BLUEPRINT_SUGGESTION_OPERATIONS,
 	type BlueprintDiff,
+	type BlueprintMilestone,
 	type BlueprintSuggestionAcceptResult,
+	type DirectorLine,
+	MILESTONE_DEVIATION_OPTIONS,
+	milestonePromiseLine,
 } from "@dramaticer/core";
 import type {
 	ApiErrorResponse,
 	BlueprintSuggestionRejectResult,
+	StoryBlueprintDeviationView,
 	StoryBlueprintSuggestionCreateResult,
 	StoryBlueprintSuggestionsView,
 } from "@dramaticer/protocol";
@@ -55,6 +60,18 @@ async function errorBody(response: Response): Promise<ApiErrorResponse> {
 	return (await response.json()) as ApiErrorResponse;
 }
 
+function directorLine(id: string, who: string, want: string): DirectorLine {
+	return {
+		id,
+		kind: "main",
+		who,
+		want,
+		obstacle: "没有被说出口",
+		countdown: null,
+		preparations: [],
+	};
+}
+
 function seedStory(running: RunningServer, storyId = "s1"): string {
 	running.store.createStory({ id: storyId, title: "蓝图建议测试" });
 	const root = running.store.appendNode({
@@ -90,6 +107,7 @@ function premiseDiff(): BlueprintDiff {
 			tone: "潮湿、克制",
 			endings: ["她留下来"],
 			redLines: ["她不能出事"],
+			tension: "medium",
 		},
 	};
 }
@@ -317,6 +335,7 @@ describe("蓝图建议接口", () => {
 						tone: "",
 						endings: [],
 						redLines: [],
+						tension: "medium",
 					},
 				},
 			],
@@ -369,5 +388,101 @@ describe("蓝图建议接口", () => {
 		const body = (await response.json()) as BlueprintSuggestionAcceptResult;
 		expect(body.record).toMatchObject({ nodeId: root.id, source: "player" });
 		expect(running.store.getNode(root.id)?.raw).toBe(root.raw);
+	});
+
+	it("章末偏离检查返回四态与三个选择，不改写蓝图", async () => {
+		const running = await startTestServer();
+		const headId = seedStory(running);
+		const milestone: BlueprintMilestone = {
+			id: "m1",
+			kind: "milestone",
+			source: "player",
+			locked: false,
+			volumeId: "vol1",
+			want: "拿到灯塔的钥匙",
+			prerequisites: ["找到看门人"],
+			after: [],
+			hardness: "soft",
+		};
+		running.store.saveStoryBlueprint({
+			nodeId: headId,
+			storyId: "s1",
+			source: "player",
+			diffs: [
+				{
+					action: "set",
+					entry: {
+						id: "vol1",
+						kind: "volume",
+						source: "player",
+						locked: false,
+						title: "第一卷 灯塔",
+						coreQuestion: "谁在塔顶",
+						startState: "",
+						endState: "",
+					},
+				},
+				{ action: "set", entry: milestone },
+			],
+		});
+		const promise = milestonePromiseLine(milestone, 0);
+		const mainOne = directorLine("main-1", "卫宫", "登上塔顶");
+		const mainTwo = directorLine("main-2", "海雾", "留住她");
+		running.store.saveDirectorLines({
+			nodeId: headId,
+			storyId: "s1",
+			diffs: [
+				{ action: "set", line: mainOne },
+				{ action: "set", line: mainTwo },
+				{ action: "set", line: promise },
+			],
+		});
+		running.store.saveDirectorChapterReview({
+			nodeId: headId,
+			storyId: "s1",
+			payload: {
+				promises: [{ lineId: promise.id, disposition: "retire" }],
+				focus: [mainOne.id, mainTwo.id],
+			},
+		});
+		const before = running.store.readBlueprintEntries(headId);
+
+		const response = await fetch(
+			`${running.origin}/api/stories/s1/blueprint/deviation`,
+		);
+		expect(response.status).toBe(200);
+		const view = (await response.json()) as StoryBlueprintDeviationView;
+		expect(view).toEqual({
+			storyId: "s1",
+			nodeId: headId,
+			deviations: [
+				{
+					milestoneId: "m1",
+					state: "lost",
+					reason: `铺垫线 ${promise.id} 在章末清点里被作废`,
+					options: [...MILESTONE_DEVIATION_OPTIONS],
+				},
+			],
+		});
+		expect(running.store.readBlueprintEntries(headId)).toEqual(before);
+	});
+
+	it("没有蓝图时偏离列表为空，不存在的故事 404", async () => {
+		const running = await startTestServer();
+		const headId = seedStory(running);
+		const response = await fetch(
+			`${running.origin}/api/stories/s1/blueprint/deviation`,
+		);
+		expect(response.status).toBe(200);
+		expect((await response.json()) as StoryBlueprintDeviationView).toEqual({
+			storyId: "s1",
+			nodeId: headId,
+			deviations: [],
+		});
+
+		const missing = await fetch(
+			`${running.origin}/api/stories/nope/blueprint/deviation`,
+		);
+		expect(missing.status).toBe(404);
 	});
 });

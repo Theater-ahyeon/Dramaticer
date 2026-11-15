@@ -54,6 +54,7 @@ import {
 	type SceneControlResult,
 	type SetHeadRequest,
 	type SseEvent,
+	type StoryBlueprintDeviationView,
 	type StoryBlueprintSuggestionCreateRequest,
 	type StoryBlueprintSuggestionCreateResult,
 	type StoryBlueprintSuggestionsView,
@@ -348,6 +349,15 @@ export class ApiClient {
 		return this.json<StoryBlueprintSuggestionsView>(
 			"GET",
 			`${storyPath(storyId)}/blueprint/suggestions${queryText(query)}`,
+		);
+	}
+
+	async getBlueprintDeviation(
+		storyId: string,
+	): Promise<StoryBlueprintDeviationView> {
+		return this.json<StoryBlueprintDeviationView>(
+			"GET",
+			`${storyPath(storyId)}/blueprint/deviation`,
 		);
 	}
 

@@ -1,4 +1,8 @@
 import {
+	type BlueprintTension,
+	readBlueprintTension,
+} from "../blueprint/story-blueprint.js";
+import {
 	type JsonObject,
 	assertPlainObject,
 	rejectUnknownKeys,
@@ -407,6 +411,8 @@ export interface DirectorActionInput {
 	readonly playerMessage: string | null;
 	/** 玩家选择的推进档位；null 表示常规回合。 */
 	readonly push: DirectorPush | null;
+	/** 蓝图里的拉力档位；没有蓝图时为 null，候选顺序保持常规。 */
+	readonly tension?: BlueprintTension | null;
 	/** 最近几个助手楼层的观察，最新在前。 */
 	readonly floors: readonly DirectorActionFloor[];
 	/** 沿路径累加后的线。 */
@@ -522,6 +528,7 @@ export function selectDirectorAction(
 	const signals: JsonObject = {
 		floorDepth,
 		push: input.push ?? null,
+		tension: input.tension ?? null,
 		recentActions: [...input.recentActions],
 		blockedAction: blocked,
 		candidates: candidates.map((candidate) => candidate.action),
@@ -706,6 +713,61 @@ function buildPushCandidates(
 	];
 }
 
+/**
+ * 拉力三档只调整候选动作的先后：紧档先推压力，松档先给喘息与接球。
+ * 玩家这一轮写的具体行动（让位）在任何档位都排第一；玩家手动选了推进
+ * 档位时按推进档位的候选集合执行，不再按拉力排序。
+ */
+const TENSION_ACTION_ORDER: Record<
+	BlueprintTension,
+	readonly DirectorActionKind[]
+> = {
+	loose: [
+		"yield",
+		"breathe",
+		"catch",
+		"transition",
+		"escalate",
+		"reveal",
+		"fulfill",
+		"intrude",
+	],
+	medium: [
+		"yield",
+		"intrude",
+		"fulfill",
+		"reveal",
+		"transition",
+		"breathe",
+		"escalate",
+		"catch",
+	],
+	tight: [
+		"yield",
+		"intrude",
+		"fulfill",
+		"reveal",
+		"escalate",
+		"transition",
+		"catch",
+		"breathe",
+	],
+};
+
+function orderCandidatesByTension(
+	candidates: readonly ActionCandidate[],
+	tension: BlueprintTension | null | undefined,
+): ActionCandidate[] {
+	if (tension === null || tension === undefined) return [...candidates];
+	const order = TENSION_ACTION_ORDER[tension];
+	const rank = new Map(order.map((kind, index) => [kind, index] as const));
+	return [...candidates].sort(
+		(left, right) =>
+			(rank.get(left.action) ?? order.length) -
+			(rank.get(right.action) ?? order.length),
+	);
+}
+
 function buildActionCandidates(input: DirectorActionInput): ActionCandidate[] {
 	const candidates: ActionCandidate[] = [];
 	const { floors, lines, config, floorDepth } = input;
@@ -859,7 +921,7 @@ function buildActionCandidates(input: DirectorActionInput): ActionCandidate[] {
 		});
 	}
 
-	return candidates;
+	return orderCandidatesByTension(candidates, input.tension);
 }
 
 /**
@@ -908,6 +970,7 @@ export function readDirectorActionInput(
 		floorDepth: assistantFloors.length,
 		playerMessage: lastPlayer === undefined ? null : lastPlayer.raw,
 		push,
+		tension: readBlueprintTension(store.readBlueprintEntries(nodeId)),
 		floors,
 		lines: store.readDirectorLineStates(nodeId),
 		recentActions: recentActions.slice(-MAX_CONSECUTIVE_DIRECTOR_ACTIONS + 1),

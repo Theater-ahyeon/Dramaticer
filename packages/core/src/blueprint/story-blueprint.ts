@@ -25,6 +25,20 @@ export const BLUEPRINT_SOURCE_LABELS: Record<BlueprintSource, string> = {
 	ai: "AI",
 };
 
+/** 蓝图拉力三档：松、中、紧。导演按它调整候选动作的顺序。 */
+export const BLUEPRINT_TENSIONS = ["loose", "medium", "tight"] as const;
+
+export type BlueprintTension = (typeof BLUEPRINT_TENSIONS)[number];
+
+export const BLUEPRINT_TENSION_LABELS: Record<BlueprintTension, string> = {
+	loose: "松",
+	medium: "中",
+	tight: "紧",
+};
+
+/** 没有写拉力时的默认档位；旧记录读出来也按这一档补齐。 */
+export const DEFAULT_BLUEPRINT_TENSION: BlueprintTension = "medium";
+
 /** 里程碑的硬性与软性。 */
 export const BLUEPRINT_MILESTONE_HARDNESS = ["hard", "soft"] as const;
 
@@ -63,13 +77,15 @@ interface BlueprintEntryBase {
 	readonly locked: boolean;
 }
 
-/** 总纲：核心问题、基调、候选结局与红线。 */
+/** 总纲：核心问题、基调、候选结局、红线与拉力。 */
 export interface BlueprintPremise extends BlueprintEntryBase {
 	readonly kind: "premise";
 	readonly coreQuestion: string;
 	readonly tone: string;
 	readonly endings: readonly string[];
 	readonly redLines: readonly string[];
+	/** 拉力：松、中、紧；只影响导演的候选顺序，不改变玩家当轮的行动。 */
+	readonly tension: BlueprintTension;
 }
 
 /** 一卷：这一卷的核心问题与起止状态。 */
@@ -160,6 +176,7 @@ const ENTRY_KEYS: Record<BlueprintEntryKind, readonly string[]> = {
 		"tone",
 		"endings",
 		"redLines",
+		"tension",
 	],
 	volume: [
 		"id",
@@ -198,6 +215,27 @@ export function isBlueprintSource(value: unknown): value is BlueprintSource {
 		typeof value === "string" &&
 		(BLUEPRINT_SOURCES as readonly string[]).includes(value)
 	);
+}
+
+export function isBlueprintTension(value: unknown): value is BlueprintTension {
+	return (
+		typeof value === "string" &&
+		(BLUEPRINT_TENSIONS as readonly string[]).includes(value)
+	);
+}
+
+/** 校验拉力档位；旧记录没有这个字段时按默认档位补齐。 */
+export function assertBlueprintTension(
+	value: unknown,
+	label = "蓝图拉力",
+): BlueprintTension {
+	if (value === undefined) return DEFAULT_BLUEPRINT_TENSION;
+	if (!isBlueprintTension(value)) {
+		throw new Error(
+			`${label} 只能是 ${BLUEPRINT_TENSIONS.join("、")}，收到 ${JSON.stringify(value)}`,
+		);
+	}
+	return value;
 }
 
 export function assertBlueprintSource(
@@ -296,6 +334,7 @@ export function assertBlueprintEntry(
 				tone: readText(record.tone, `${label}.tone`),
 				endings: readTextList(record.endings, `${label}.endings`),
 				redLines: readTextList(record.redLines, `${label}.redLines`),
+				tension: assertBlueprintTension(record.tension, `${label}.tension`),
 			};
 		case "volume":
 			return {
@@ -412,6 +451,18 @@ export function assertBlueprintEntries(
 	}
 	assertMilestoneOrderAcyclic(milestones, label);
 	return entries;
+}
+
+/**
+ * 蓝图里的拉力档位；没有总纲时为 null，导演据此保持常规行为。
+ */
+export function readBlueprintTension(
+	entries: readonly BlueprintEntry[],
+): BlueprintTension | null {
+	const premise = entries.find(
+		(entry): entry is BlueprintPremise => entry.kind === "premise",
+	);
+	return premise === undefined ? null : premise.tension;
 }
 
 /** 校验一条蓝图修改；`set` 必须带完整条目，`delete` 只带 id。 */

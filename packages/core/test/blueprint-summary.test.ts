@@ -26,6 +26,7 @@ const PREMISE: BlueprintPremise = {
 	tone: "阴冷",
 	endings: ["救回妹妹", "妹妹成为代价"],
 	redLines: ["不写虐待儿童"],
+	tension: "medium",
 };
 
 const VOLUME_ONE: BlueprintVolume = {
