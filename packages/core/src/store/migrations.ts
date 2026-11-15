@@ -2013,6 +2013,19 @@ export function buildMigrations(
 				END`,
 			],
 		},
+		{
+			version: 67,
+			description: "蓝图剧透设置与卡导入的默认蓝图",
+			statements: [
+				`ALTER TABLE story_settings ADD COLUMN blueprint_spoilers TEXT NOT NULL
+					DEFAULT 'show' CHECK (blueprint_spoilers IN ('show', 'hide'))`,
+				`CREATE TABLE story_blueprint_baselines (
+					story_id TEXT PRIMARY KEY REFERENCES stories(id),
+					entries TEXT NOT NULL,
+					created_at TEXT NOT NULL
+				) STRICT`,
+			],
+		},
 	];
 }
 

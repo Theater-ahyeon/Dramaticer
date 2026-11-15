@@ -61,6 +61,7 @@ import {
 	type HistoryBlockPolicy,
 	assertHistoryBlockPolicy,
 } from "../blocks/history.js";
+import { assertBlueprintSpoilerMode } from "../blueprint/spoilers.js";
 import {
 	type BlueprintEntry,
 	type BlueprintRollbackInput,
@@ -69,6 +70,7 @@ import {
 	type StoryBlueprintRecord,
 	applyBlueprintDiffs,
 	assertBlueprintDiffs,
+	assertBlueprintEntries,
 	assertBlueprintSource,
 	assertBlueprintWriteAllowed,
 	planBlueprintRollback,
@@ -459,6 +461,7 @@ interface StorySettingsRow {
 	readonly plugin_overrides: string;
 	readonly world_model: string;
 	readonly import_mode: string;
+	readonly blueprint_spoilers: string;
 	readonly updated_at: string;
 }
 
@@ -605,6 +608,12 @@ interface StoryBlueprintRow {
 
 interface StoryBlueprintSeqRow {
 	readonly seq: number;
+}
+
+interface StoryBlueprintBaselineRow {
+	readonly story_id: string;
+	readonly entries: string;
+	readonly created_at: string;
 }
 
 interface BlueprintSuggestionRequestRow {
@@ -1706,6 +1715,10 @@ function rowToStorySettings(row: StorySettingsRow): StorySettings {
 		importMode: assertImportMode(
 			row.import_mode,
 			`故事 ${row.story_id} 的 importMode`,
+		),
+		blueprintSpoilers: assertBlueprintSpoilerMode(
+			row.blueprint_spoilers,
+			`故事 ${row.story_id} 的 blueprintSpoilers`,
 		),
 		updatedAt: row.updated_at,
 	};
@@ -3085,6 +3098,7 @@ export class StoryStore {
 			pluginOverrides: DEFAULT_STORY_SETTINGS_VALUES.pluginOverrides,
 			worldModel: DEFAULT_STORY_SETTINGS_VALUES.worldModel,
 			importMode: DEFAULT_STORY_SETTINGS_VALUES.importMode,
+			blueprintSpoilers: DEFAULT_STORY_SETTINGS_VALUES.blueprintSpoilers,
 			updatedAt: story.createdAt,
 		};
 	}
@@ -3222,6 +3236,10 @@ export class StoryStore {
 				update.importMode !== undefined
 					? update.importMode
 					: current.importMode,
+			blueprintSpoilers:
+				update.blueprintSpoilers !== undefined
+					? update.blueprintSpoilers
+					: current.blueprintSpoilers,
 		};
 		const updatedAt = new Date().toISOString();
 		this.#db
@@ -3233,8 +3251,9 @@ export class StoryStore {
 					 deep_context_token_limit, deep_recent_tool_steps, viewpoint,
 					 director_config, history_block_policy, context_layout, scene_log_enabled,
 					 gap_pass_enabled, gap_plan_seconds, image_config, plugin_overrides,
-					 world_model, director_organization, import_mode, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+					 world_model, director_organization, import_mode, blueprint_spoilers,
+					 updated_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 				ON CONFLICT(story_id) DO UPDATE SET
 					card_name = excluded.card_name,
 					character_prompt = excluded.character_prompt,
@@ -3264,6 +3283,7 @@ export class StoryStore {
 					world_model = excluded.world_model,
 					director_organization = excluded.director_organization,
 					import_mode = excluded.import_mode,
+					blueprint_spoilers = excluded.blueprint_spoilers,
 					updated_at = excluded.updated_at`,
 			)
 			.run(
@@ -3299,6 +3319,7 @@ export class StoryStore {
 				next.worldModel,
 				next.directorOrganization,
 				next.importMode,
+				next.blueprintSpoilers,
 				updatedAt,
 			);
 		if (next.importMode !== current.importMode) {
@@ -4909,11 +4930,64 @@ export class StoryStore {
 	}
 
 	/**
+	 * 替换卡随世界包带进来的默认蓝图。默认蓝图是故事级、与楼层无关的起点；
+	 * 条目为空时删掉这一行。节点上的修改继续按路径累加在它之上。
+	 */
+	saveStoryBlueprintBaseline(
+		storyId: string,
+		entries: readonly BlueprintEntry[],
+		createdAt?: string,
+	): BlueprintEntry[] {
+		assertNonEmptyString(storyId, "默认蓝图的故事 id");
+		if (!this.getStory(storyId)) {
+			throw new Error(`故事不存在：${storyId}`);
+		}
+		const validated = assertBlueprintEntries(entries, "默认蓝图").sort(
+			(left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0),
+		);
+		if (validated.length === 0) {
+			this.#db
+				.prepare("DELETE FROM story_blueprint_baselines WHERE story_id = ?")
+				.run(storyId);
+			return [];
+		}
+		const writtenAt = createdAt ?? new Date().toISOString();
+		assertNonEmptyString(writtenAt, "默认蓝图的创建时间");
+		this.#db
+			.prepare(
+				`INSERT INTO story_blueprint_baselines (story_id, entries, created_at)
+				VALUES (?, ?, ?)
+				ON CONFLICT(story_id) DO UPDATE SET
+					entries = excluded.entries,
+					created_at = excluded.created_at`,
+			)
+			.run(storyId, JSON.stringify(validated), writtenAt);
+		return validated;
+	}
+
+	/** 卡导入的默认蓝图；没有时是空蓝图。 */
+	readStoryBlueprintBaseline(storyId: string): BlueprintEntry[] {
+		assertNonEmptyString(storyId, "默认蓝图的故事 id");
+		if (!this.getStory(storyId)) {
+			throw new Error(`故事不存在：${storyId}`);
+		}
+		const row = this.#db
+			.prepare("SELECT * FROM story_blueprint_baselines WHERE story_id = ?")
+			.get(storyId) as StoryBlueprintBaselineRow | undefined;
+		if (row === undefined) return [];
+		return assertBlueprintEntries(
+			JSON.parse(row.entries) as unknown,
+			`故事 ${storyId} 的默认蓝图`,
+		);
+	}
+
+	/**
 	 * 沿节点所在的路径按从旧到新的顺序列出每一版蓝图：每个楼层上的每一批
 	 * 修改算一版，`entries` 是该批写完之后沿路径累加的结果。其他分支不参与。
 	 */
 	listBlueprintVersions(nodeId: string): BlueprintVersion[] {
-		if (!this.getNode(nodeId)) {
+		const node = this.getNode(nodeId);
+		if (!node) {
 			throw new Error(`楼层节点不存在：${nodeId}`);
 		}
 		const rows = this.#db
@@ -4931,7 +5005,9 @@ export class StoryStore {
 			)
 			.all(nodeId) as StoryBlueprintRow[];
 		const versions: BlueprintVersion[] = [];
-		let entries: readonly BlueprintEntry[] = [];
+		let entries: readonly BlueprintEntry[] = this.readStoryBlueprintBaseline(
+			node.storyId,
+		);
 		for (const row of rows) {
 			const record = rowToStoryBlueprint(row);
 			entries = applyBlueprintDiffs(entries, record.diffs);
@@ -4947,11 +5023,16 @@ export class StoryStore {
 		return versions;
 	}
 
-	/** 沿节点所在的路径累加蓝图修改；没有记录时是空蓝图。 */
+	/** 沿节点所在的路径累加蓝图修改；没有记录时是卡导入的默认蓝图。 */
 	readBlueprintEntries(nodeId: string): BlueprintEntry[] {
 		const versions = this.listBlueprintVersions(nodeId);
 		const latest = versions[versions.length - 1];
-		return latest === undefined ? [] : [...latest.entries];
+		if (latest !== undefined) return [...latest.entries];
+		const node = this.getNode(nodeId);
+		if (!node) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
+		return this.readStoryBlueprintBaseline(node.storyId);
 	}
 
 	/**

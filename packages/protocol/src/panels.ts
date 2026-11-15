@@ -1,5 +1,7 @@
 import type {
 	BlueprintEntry,
+	BlueprintHiddenCounts,
+	BlueprintSpoilerMode,
 	BlueprintSuggestion,
 	BlueprintSuggestionOperation,
 	BlueprintSuggestionRequest,
@@ -336,4 +338,17 @@ export interface StoryBlueprintDeviationView {
 	/** 检查所在的楼层；故事还没有楼层时为 null。 */
 	readonly nodeId: string | null;
 	readonly deviations: readonly MilestoneDeviation[];
+}
+
+/**
+ * `GET /api/stories/:id/blueprint`：给玩家看的蓝图。剧透设置为 `hide` 时
+ * AI 补的条目只给条数；`hidden` 为 null 表示这次没有隐藏任何内容。
+ */
+export interface StoryBlueprintView {
+	readonly storyId: string;
+	/** 读取所在的楼层；故事还没有楼层时为 null，此时是卡导入的默认蓝图。 */
+	readonly nodeId: string | null;
+	readonly spoilers: BlueprintSpoilerMode;
+	readonly entries: readonly BlueprintEntry[];
+	readonly hidden: BlueprintHiddenCounts | null;
 }

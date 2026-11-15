@@ -2617,3 +2617,27 @@
   - 不新增迁移，schema 仍是 66；蓝图条目、建议接口、章级规划与写作摘要的既有口径不变。拉力字段进入建议提示词的字段清单，AI 生成建议时省略按中档。
   - `DirectorActionInput` 的 `tension` 是可选字段，省略等价于没有蓝图，旧调用与旧测试的行为不变。
   - 新增 core 9 个四态测试（含从章末清点读出作废铺垫、蓝图不变、非法阈值），core 4 个拉力测试（三档候选顺序不同、玩家行动优先、推进档位覆盖拉力、从蓝图读入），蓝图结构 1 个测试（缺省补齐与非法档位），服务端 2 个接口测试，web 客户端 1 个调用断言。
+
+## ADR-0159 蓝图剧透在读取视图里过滤，蓝图随卡扩展导出并恢复为故事级默认蓝图（2026-11-14）
+
+- **背景**：DESIGN §21 要求 AI 补的蓝图条目可以对玩家隐藏、只显示数量，蓝图能随世界包导出并在导入时恢复，导出不得改动卡里其他字段，酒馆要忽略这个扩展字段。W7-T01 与 W7-T02 的蓝图只按楼层存 diff，卡导入目前只读事件、NPC 议程、小品、规则与弧线；导入卡时故事还没有楼层，蓝图没有可以挂靠的节点。
+- **选项**：
+  - 剧透只在界面里隐藏：服务端仍返回全部内容，导出与日志都能看到，不满足「只显示数量」。
+  - 在服务端的读取视图里按条目出处过滤：导演与章级规划仍拿完整蓝图，玩家读到的只有自己的条目与条数。
+  - 卡里的蓝图写进故事设置：设置是运行配置，每次更新要整行重写，蓝图内容混进设置会让两种数据一起失效。
+  - 卡里的蓝图单独一张故事级表：与楼层的 diff 表分开读，读取顺序固定为「默认蓝图 → 楼层修改」，不需要为了恢复蓝图创建假楼层。
+  - 蓝图写进第一个楼层：导入时还没有楼层，创建假楼层会让它进入前缀、分支与上下文。
+- **决定**：
+  - 迁移 v67 给 `story_settings` 增加 `blueprint_spoilers`（`show`、`hide`，默认 `show`），新建 `story_blueprint_baselines(story_id PRIMARY KEY, entries, created_at)`。
+  - `saveStoryBlueprintBaseline` 用 `assertBlueprintEntries` 整批校验，按 id 排序后替换，条目为空时删掉这一行；`readStoryBlueprintBaseline` 没有记录时返回空蓝图。
+  - `listBlueprintVersions` 与 `readBlueprintEntries` 从默认蓝图开始累加；版本列表仍然只列楼层上的批次，默认蓝图不算一版。默认蓝图参加锁定检查，AI 来源的修改不能动卡里锁定的条目。
+  - core 新增 `blueprint/spoilers.ts`：`BLUEPRINT_SPOILER_MODES` 是 `show`、`hide`，默认 `show`；`readBlueprintView(entries, mode)` 在 `hide` 时不返回来源为 AI 的条目，`hidden` 给出 `{premise, volume, milestone, total}`，没有隐藏任何条目时为 null；玩家写的条目原样返回，不改写字段。视图只用于显示，不写回存储。
+  - 服务端新增 `GET /api/stories/:id/blueprint`，返回 `{storyId, nodeId, spoilers, entries, hidden}`；`nodeId` 省略时取 head，故事还没有楼层时取默认蓝图、`nodeId` 为 null。过滤只在这个读取入口生效；导演、章级规划、动作引擎与建议接受读完整蓝图。
+  - 卡扩展新增 `extensions.dramaticer.blueprint`，字段与楼层上的蓝图条目同构，用 `assertBlueprintEntries` 校验；`importDramaticerExtension` 导入时整批替换默认蓝图，结果多一个 `blueprint.entries` 条数。
+  - st-compat 新增 `attachBlueprintExtension(card, entries)`：深拷贝 `raw`，V1 写根节点、V2 与 V3 写 `data` 节点，只改 `extensions.dramaticer.blueprint`，其余字段逐字保留；条目为空时删掉这个字段。`readCardBlueprint(card)` 读回。
+  - 新增命令行 `pnpm --filter @dramaticer/st-compat blueprint-export --card <路径> --db <路径> --story <id> --out <路径> [--node <id>]`：读指定楼层或 head 的蓝图，写进原卡 JSON 导出新文件；还没有楼层时导出默认蓝图。
+- **影响**：
+  - schema 升到 67；`assistant-store.test.ts` 的版本断言同步。
+  - 默认蓝图是故事级内容，两个分支都从它开始；替换或清空默认蓝图不删除楼层上的修改记录。
+  - 剧透过滤只覆盖给玩家看的蓝图读取：建议列表由玩家主动发起、偏离检查只返回里程碑 id 与状态，两者都不按剧透过滤。
+  - 不新增依赖；新增 core 12 个测试（视图 5、默认蓝图 5、设置 2）、st-compat 9 个测试（导出与导入 6、命令行 3）、服务端 3 个接口测试、web 客户端 1 个调用断言。

@@ -12,6 +12,7 @@ describe("extensions.dramaticer 解析", () => {
 			plugins: [],
 			requires: { plugins: [], playpacks: [] },
 			recommends: { plugins: [], playpacks: [] },
+			blueprint: [],
 		};
 		expect(parseDramaticerCardExtension(undefined)).toEqual(empty);
 		expect(parseDramaticerCardExtension(null)).toEqual(empty);

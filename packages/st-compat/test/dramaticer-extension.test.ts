@@ -69,6 +69,7 @@ describe("extensions.dramaticer 导入", () => {
 			bits: { replaced: 0 },
 			rules: { replaced: 0 },
 			arcs: { inserted: 0, updated: 0, skipped: 0 },
+			blueprint: { entries: 0 },
 		});
 
 		const events = store.listEventPool("s1");
@@ -173,6 +174,7 @@ describe("extensions.dramaticer 导入", () => {
 			bits: { replaced: 0 },
 			rules: { replaced: 0 },
 			arcs: { inserted: 0, updated: 0, skipped: 0 },
+			blueprint: { entries: 0 },
 		});
 
 		const events = store.listEventPool("s1");
@@ -196,6 +198,7 @@ describe("extensions.dramaticer 导入", () => {
 			bits: { replaced: 0 },
 			rules: { replaced: 0 },
 			arcs: { inserted: 0, updated: 0, skipped: 0 },
+			blueprint: { entries: 0 },
 		});
 		expect(store.listEventPool("s1")).toEqual([]);
 		expect(store.listNpcAgendas("s1")).toEqual([]);

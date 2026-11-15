@@ -92,6 +92,7 @@ import {
 	parseDirectorPlan,
 	probeChannel,
 	readBlueprintSuggestionNote,
+	readBlueprintView,
 	readChannelsKeyRefs,
 	readDirectorPlan,
 	readLedger,
@@ -154,6 +155,7 @@ import {
 	type StoryBlueprintDeviationView,
 	type StoryBlueprintSuggestionCreateResult,
 	type StoryBlueprintSuggestionsView,
+	type StoryBlueprintView,
 	type StoryBookExport,
 	type StoryCluesView,
 	type StoryDirectorPlanView,
@@ -357,6 +359,10 @@ export async function handleApiRequest(
 				case "serial":
 					requireMethod(method, ["GET"]);
 					handleStorySerial(res, options, storyId, url);
+					return;
+				case "blueprint":
+					requireMethod(method, ["GET"]);
+					handleStoryBlueprint(res, options, storyId, url);
 					return;
 				case "entities":
 					requireMethod(method, ["GET"]);
@@ -1666,6 +1672,44 @@ function handleBlueprintDeviation(
 			head === null
 				? []
 				: readMilestoneDeviation(options.store, storyId, head.id),
+	};
+	sendJson(res, 200, view);
+}
+
+/**
+ * `GET /api/stories/:id/blueprint`：给玩家看的蓝图。剧透设置为 `hide` 时
+ * AI 补的条目只返回条数；`nodeId` 省略时取 head，还没有楼层时返回卡导入的默认蓝图。
+ */
+function handleStoryBlueprint(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	storyId: string,
+	url: URL,
+): void {
+	requireStory(options.store, storyId);
+	const raw = url.searchParams.get("nodeId");
+	let nodeId: string | null;
+	if (raw === null) {
+		nodeId = options.store.getHead(storyId)?.id ?? null;
+	} else {
+		if (raw.length === 0) {
+			throw fieldError("nodeId", "nodeId 不能为空");
+		}
+		requireStoryNode(options.store, storyId, raw);
+		nodeId = raw;
+	}
+	const settings = options.store.getStorySettings(storyId);
+	const entries =
+		nodeId === null
+			? options.store.readStoryBlueprintBaseline(storyId)
+			: options.store.readBlueprintEntries(nodeId);
+	const blueprint = readBlueprintView(entries, settings.blueprintSpoilers);
+	const view: StoryBlueprintView = {
+		storyId,
+		nodeId,
+		spoilers: settings.blueprintSpoilers,
+		entries: blueprint.entries,
+		hidden: blueprint.hidden,
 	};
 	sendJson(res, 200, view);
 }

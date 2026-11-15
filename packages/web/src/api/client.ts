@@ -58,6 +58,7 @@ import {
 	type StoryBlueprintSuggestionCreateRequest,
 	type StoryBlueprintSuggestionCreateResult,
 	type StoryBlueprintSuggestionsView,
+	type StoryBlueprintView,
 	type StoryBookExport,
 	type StoryCluesView,
 	type StoryDirectorPlanRequest,
@@ -358,6 +359,18 @@ export class ApiClient {
 		return this.json<StoryBlueprintDeviationView>(
 			"GET",
 			`${storyPath(storyId)}/blueprint/deviation`,
+		);
+	}
+
+	async getStoryBlueprint(
+		storyId: string,
+		nodeId?: string,
+	): Promise<StoryBlueprintView> {
+		const query = new URLSearchParams();
+		if (nodeId !== undefined) query.set("nodeId", nodeId);
+		return this.json<StoryBlueprintView>(
+			"GET",
+			`${storyPath(storyId)}/blueprint${queryText(query)}`,
 		);
 	}
 

@@ -1990,7 +1990,8 @@
   - 每章结束检查里程碑状态（已达成、仍可达、受阻、已不可能）；受阻或不可能时给出三个选择：调整蓝图、把剧情拉回、放弃；系统不自动改写。
   验收：三档有不同参数且玩家行动优先；四种状态判定有测试；偏离时返回三个选择且不改蓝图；`pnpm check` 通过。
 
-- [ ] **W7-T03 剧透选项与蓝图导出** | 依赖：W7-T01
+- [x] **W7-T03 剧透选项与蓝图导出** | 依赖：W7-T01
+  完成：2026-11-14 迁移 v67 给 `story_settings` 增加 `blueprint_spoilers`（`show`/`hide`，默认 `show`），新建 `story_blueprint_baselines(story_id PRIMARY KEY, entries, created_at)` 作为卡导入的默认蓝图。`StoryStore` 新增 `saveStoryBlueprintBaseline`（`assertBlueprintEntries` 整批校验、按 id 排序、空条目删行）与 `readStoryBlueprintBaseline`；`listBlueprintVersions` 与 `readBlueprintEntries` 从默认蓝图开始累加，版本列表仍只列楼层批次，锁定检查覆盖默认蓝图。core 新增 `blueprint/spoilers.ts`：`readBlueprintView(entries, mode)` 在 `hide` 时只返回玩家写的条目，`hidden` 给出 `{premise, volume, milestone, total}` 计数，没有隐藏任何内容时为 null。服务端新增 `GET /api/stories/:id/blueprint`（省略 `nodeId` 时取 head，还没有楼层时取默认蓝图），按故事的剧透设置过滤；protocol 与 web 客户端同步。卡扩展新增 `extensions.dramaticer.blueprint`，导入时整批恢复默认蓝图并报告条数；st-compat 新增 `attachBlueprintExtension`（深拷贝 `raw`，V1 写根节点、V2/V3 写 `data` 节点，只改这一个字段，空条目删掉字段）与 `readCardBlueprint`，以及命令行 `blueprint-export` 把蓝图写进原卡导出。ADR-0159；`pnpm check` 通过（301 个测试文件、2,616 个测试、5 个跳过）。
   做什么：
   - AI 补的部分可以对玩家隐藏，只显示数量；蓝图随世界包导出到 `extensions.dramaticer`，再导入时恢复；ST 会忽略未知字段。
   验收：隐藏时界面不泄露内容；导出再导入内容一致；不修改卡内其他字段；`pnpm check` 通过。

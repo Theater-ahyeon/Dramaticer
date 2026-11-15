@@ -24,6 +24,8 @@ export interface DramaticerExtensionImportResult {
 	readonly bits: { readonly replaced: number };
 	readonly rules: { readonly replaced: number };
 	readonly arcs: DirectorPlanMergeResult;
+	/** 卡带的默认蓝图：导入后写进故事级起点，已有条目整批替换。 */
+	readonly blueprint: { readonly entries: number };
 }
 
 /**
@@ -101,5 +103,9 @@ export function importDramaticerExtension(
 			}),
 		},
 		arcs: mergePlannedArcs(store, storyId, { arcs: extension.arcs }, "import"),
+		blueprint: {
+			entries: store.saveStoryBlueprintBaseline(storyId, extension.blueprint)
+				.length,
+		},
 	};
 }

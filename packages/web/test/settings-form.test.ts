@@ -79,6 +79,7 @@ function settingsFixture(
 		pluginOverrides: { config: {}, switches: {} },
 		worldModel: "ledger",
 		importMode: "upgrade",
+		blueprintSpoilers: "show",
 		updatedAt: "2026-11-08T10:00:00.000Z",
 		...overrides,
 	};

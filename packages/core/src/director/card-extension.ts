@@ -1,3 +1,7 @@
+import {
+	type BlueprintEntry,
+	assertBlueprintEntries,
+} from "../blueprint/story-blueprint.js";
 import { normalizeEntityName } from "../entity.js";
 import { assertPlainObject, rejectUnknownKeys } from "../json.js";
 import {
@@ -40,6 +44,8 @@ export interface DramaticerCardExtension {
 	readonly requires: DeclarativeRequirements;
 	/** 建议安装但不影响使用的插件与玩法包。 */
 	readonly recommends: DeclarativeRequirements;
+	/** 随卡带的默认蓝图；导入后成为故事级起点，楼层上的修改累加在它之上。 */
+	readonly blueprint: readonly BlueprintEntry[];
 }
 
 const EMPTY_EXTENSION: DramaticerCardExtension = {
@@ -51,6 +57,7 @@ const EMPTY_EXTENSION: DramaticerCardExtension = {
 	plugins: [],
 	requires: { plugins: [], playpacks: [] },
 	recommends: { plugins: [], playpacks: [] },
+	blueprint: [],
 };
 
 const AGENDA_KEYS = ["npc", "goal", "everyChapters", "importance"];
@@ -75,6 +82,7 @@ export function parseDramaticerCardExtension(
 			"plugins",
 			"requires",
 			"recommends",
+			"blueprint",
 		],
 		"extensions.dramaticer",
 	);
@@ -112,6 +120,10 @@ export function parseDramaticerCardExtension(
 		root.recommends,
 		"extensions.dramaticer.recommends",
 	);
+	const blueprint = assertBlueprintEntries(
+		root.blueprint ?? [],
+		"extensions.dramaticer.blueprint",
+	);
 	return {
 		events,
 		bits,
@@ -121,6 +133,7 @@ export function parseDramaticerCardExtension(
 		plugins,
 		requires,
 		recommends,
+		blueprint,
 	};
 }
 

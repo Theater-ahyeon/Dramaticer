@@ -73,6 +73,7 @@ describe("故事设置", () => {
 			pluginOverrides: { config: {}, switches: {} },
 			worldModel: "ledger",
 			importMode: "upgrade",
+			blueprintSpoilers: "show",
 			updatedAt: createdAt,
 		});
 		close();

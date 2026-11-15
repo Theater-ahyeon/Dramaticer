@@ -4,6 +4,11 @@ import {
 	assertHistoryBlockPolicy,
 } from "../blocks/history.js";
 import {
+	type BlueprintSpoilerMode,
+	DEFAULT_BLUEPRINT_SPOILER_MODE,
+	assertBlueprintSpoilerMode,
+} from "../blueprint/spoilers.js";
+import {
 	DEFAULT_DEEP_CONTEXT_TOKEN_LIMIT,
 	DEFAULT_DEEP_MAX_TOOL_CALLS,
 	DEFAULT_DEEP_RECENT_TOOL_STEPS,
@@ -133,6 +138,8 @@ export interface StorySettings {
 	readonly worldModel: WorldModelKind;
 	/** 导入模式；默认按分型结果分流，raw 是保底出口。 */
 	readonly importMode: ImportMode;
+	/** 蓝图剧透：hide 时 AI 补的条目只显示条数。 */
+	readonly blueprintSpoilers: BlueprintSpoilerMode;
 	readonly updatedAt: string;
 }
 
@@ -165,6 +172,7 @@ export interface StorySettingsUpdate {
 	readonly pluginOverrides?: PlaypackUserOverrides;
 	readonly worldModel?: WorldModelKind;
 	readonly importMode?: ImportMode;
+	readonly blueprintSpoilers?: BlueprintSpoilerMode;
 }
 
 export const STORY_SETTINGS_UPDATE_KEYS: readonly (keyof StorySettingsUpdate)[] =
@@ -197,6 +205,7 @@ export const STORY_SETTINGS_UPDATE_KEYS: readonly (keyof StorySettingsUpdate)[] 
 		"pluginOverrides",
 		"worldModel",
 		"importMode",
+		"blueprintSpoilers",
 	];
 
 /** 尚未保存设置时使用的数值与枚举；故事 id 与更新时间由调用方补齐。 */
@@ -223,6 +232,7 @@ export const DEFAULT_STORY_SETTINGS_VALUES = {
 	pluginOverrides: EMPTY_PLAYPACK_USER_OVERRIDES,
 	worldModel: DEFAULT_WORLD_MODEL_KIND,
 	importMode: DEFAULT_IMPORT_MODE,
+	blueprintSpoilers: DEFAULT_BLUEPRINT_SPOILER_MODE,
 } as const;
 
 export interface ContextTemplateRecord {
@@ -489,6 +499,12 @@ export function assertStorySettingsUpdate(update: StorySettingsUpdate): void {
 	}
 	if (update.importMode !== undefined) {
 		assertImportMode(update.importMode, "故事设置的 importMode");
+	}
+	if (update.blueprintSpoilers !== undefined) {
+		assertBlueprintSpoilerMode(
+			update.blueprintSpoilers,
+			"故事设置的 blueprintSpoilers",
+		);
 	}
 }
 

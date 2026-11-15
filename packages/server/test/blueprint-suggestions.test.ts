@@ -16,6 +16,7 @@ import type {
 	StoryBlueprintDeviationView,
 	StoryBlueprintSuggestionCreateResult,
 	StoryBlueprintSuggestionsView,
+	StoryBlueprintView,
 } from "@dramaticer/protocol";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { type RunningServer, startServer } from "../src/index.js";
@@ -484,5 +485,144 @@ describe("蓝图建议接口", () => {
 			`${running.origin}/api/stories/nope/blueprint/deviation`,
 		);
 		expect(missing.status).toBe(404);
+	});
+});
+
+describe("蓝图视图接口", () => {
+	function saveBlueprint(running: RunningServer, nodeId: string): void {
+		running.store.saveStoryBlueprint({
+			nodeId,
+			storyId: "s1",
+			source: "player",
+			diffs: [premiseDiff(), volumeDiff()],
+		});
+		running.store.saveStoryBlueprint({
+			nodeId,
+			storyId: "s1",
+			source: "player",
+			diffs: [
+				{
+					action: "set",
+					entry: {
+						id: "milestone-ai",
+						kind: "milestone",
+						source: "ai",
+						locked: false,
+						volumeId: "volume-1",
+						want: "灯塔的灯被人掐灭",
+						prerequisites: ["有人动过灯油"],
+						after: [],
+						hardness: "soft",
+					},
+				},
+				{
+					action: "set",
+					entry: {
+						id: "milestone-player",
+						kind: "milestone",
+						source: "player",
+						locked: false,
+						volumeId: "volume-1",
+						want: "玩家写的方向",
+						prerequisites: [],
+						after: [],
+						hardness: "soft",
+					},
+				},
+			],
+		});
+	}
+
+	it("默认显示全部条目，节点取 head", async () => {
+		const running = await startTestServer();
+		const headId = seedStory(running);
+		saveBlueprint(running, headId);
+		const response = await fetch(`${running.origin}/api/stories/s1/blueprint`);
+		expect(response.status).toBe(200);
+		const view = (await response.json()) as StoryBlueprintView;
+		expect(view.storyId).toBe("s1");
+		expect(view.nodeId).toBe(headId);
+		expect(view.spoilers).toBe("show");
+		expect(view.hidden).toBeNull();
+		expect(view.entries.map((entry) => entry.id).sort()).toEqual([
+			"milestone-ai",
+			"milestone-player",
+			"premise-1",
+			"volume-1",
+		]);
+	});
+
+	it("隐藏剧透后只返回玩家条目与按层的条数，不泄露 AI 内容", async () => {
+		const running = await startTestServer();
+		const headId = seedStory(running);
+		saveBlueprint(running, headId);
+		const settings = await fetch(`${running.origin}/api/stories/s1/settings`, {
+			method: "PUT",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ blueprintSpoilers: "hide" }),
+		});
+		expect(settings.status).toBe(200);
+
+		const response = await fetch(
+			`${running.origin}/api/stories/s1/blueprint?nodeId=${headId}`,
+		);
+		expect(response.status).toBe(200);
+		const text = await response.text();
+		expect(text).not.toContain("这座灯塔为谁而亮");
+		expect(text).not.toContain("灯塔的灯被人掐灭");
+		const view = JSON.parse(text) as StoryBlueprintView;
+		expect(view.spoilers).toBe("hide");
+		expect(view.entries).toEqual([
+			{
+				id: "milestone-player",
+				kind: "milestone",
+				source: "player",
+				locked: false,
+				volumeId: "volume-1",
+				want: "玩家写的方向",
+				prerequisites: [],
+				after: [],
+				hardness: "soft",
+			},
+		]);
+		expect(view.hidden).toEqual({
+			premise: 1,
+			volume: 1,
+			milestone: 1,
+			total: 3,
+		});
+	});
+
+	it("还没有楼层时返回卡导入的默认蓝图", async () => {
+		const running = await startTestServer();
+		running.store.createStory({ id: "sempty", title: "空的" });
+		running.store.saveStoryBlueprintBaseline("sempty", [
+			{
+				id: "premise",
+				kind: "premise",
+				source: "player",
+				locked: false,
+				coreQuestion: "卡里写的问题",
+				tone: "冷",
+				endings: [],
+				redLines: [],
+				tension: "medium",
+			},
+		]);
+		const response = await fetch(
+			`${running.origin}/api/stories/sempty/blueprint`,
+		);
+		expect(response.status).toBe(200);
+		const view = (await response.json()) as StoryBlueprintView;
+		expect(view.nodeId).toBeNull();
+		expect(view.entries).toHaveLength(1);
+		expect(view.entries[0]?.id).toBe("premise");
+
+		const missing = await fetch(`${running.origin}/api/stories/nope/blueprint`);
+		expect(missing.status).toBe(404);
+		const empty = await fetch(
+			`${running.origin}/api/stories/sempty/blueprint?nodeId=`,
+		);
+		expect(empty.status).toBe(400);
 	});
 });

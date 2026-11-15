@@ -59,7 +59,8 @@
 		"report": "tsc -b && node dist/health/cli.js",
 		"st-bench": "tsc -b && node dist/st-bench/cli.js",
 		"reference": "tsc -b && node dist/reference/cli.js",
-		"reference:cosine": "tsc -b && node dist/reference/cli.js --cosine"
+		"reference:cosine": "tsc -b && node dist/reference/cli.js --cosine",
+		"blueprint-export": "tsc -b && node dist/blueprint-export-cli.js"
 	},
 	"devDependencies": {
 		"@playwright/test": "1.63.0",
