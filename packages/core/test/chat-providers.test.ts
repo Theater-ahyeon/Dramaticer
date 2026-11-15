@@ -736,7 +736,7 @@ describe("角色与标准槽位", () => {
 		);
 	});
 
-	it("标准集合包含十二个槽位，character 使用传入的提示词", async () => {
+	it("标准集合包含十三个槽位，character 使用传入的提示词", async () => {
 		const { store } = openTempStore();
 		store.createStory({ id: "s1", title: "山神" });
 		const { providers } = await createStandardChatSlots({
@@ -744,6 +744,7 @@ describe("角色与标准槽位", () => {
 			characterPrompt: "你扮演山神。",
 		});
 		expect(Object.keys(providers).sort()).toEqual([
+			"blueprint",
 			"character",
 			"director",
 			"history",

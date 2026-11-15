@@ -1977,7 +1977,8 @@
   - 章级规划以最近一个未达成里程碑为准，规划输出保留它的方向。
   验收：前提条件生成 promise 线且不重复；未兑现上限仍由 `assertPromiseBudget` 执行；章级规划读最近里程碑；`pnpm check` 通过。
 
-- [ ] **W7-T02.e 写作上下文的蓝图摘要** | 依赖：W7-T02.b
+- [x] **W7-T02.e 写作上下文的蓝图摘要** | 依赖：W7-T02.b
+  完成：2026-11-14 core 新增 `blueprint/summary.ts` 的 `readWritingBlueprintSummary` 与 `formatWritingBlueprintSummary`：当前卷取最近一个未达成里程碑所属的卷（全部达成时取规划顺序里最后一个里程碑的卷，没有里程碑时取 id 最小的卷），方向取该里程碑的 `want`，本章该埋的线取它还没有写进伏笔账的前提条件；已经打开或已经关闭的铺垫不再列出。新增 `blueprint` 槽位（标准集合与插件 `slot.blueprint`，默认模板在 `scene_card` 之后、`director` 之前，两种排布同位置），提供者只注入这三项，Trace 来源只写卷与里程碑的 id 与待埋条数；三项都没有内容时返回 null，槽位记为 `missing-slot` 且不占预算。`director/lines.ts` 新增 `collectDirectorLineHistoryIds`，章级规划改用它；web 模板表单补「蓝图摘要」选项。新增 core 7 个测试；ADR-0157；`pnpm check` 通过（297 个测试文件、2,581 个测试、5 个跳过）。
   做什么：
   - 写作模型只看到当前卷的核心问题、最近一个里程碑的方向与本章该埋的线；完整蓝图只留在导演层。
   验收：上下文段里有这三项；Trace 里没有完整蓝图条目；没有蓝图时不产生空段；`pnpm check` 通过。

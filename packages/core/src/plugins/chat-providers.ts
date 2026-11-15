@@ -17,6 +17,7 @@ import { BUILTIN_PLUGINS } from "./builtin.js";
 import type { PluginDefinition, PluginKernel } from "./contracts.js";
 import { createPluginKernel } from "./runtime.js";
 import {
+	BLUEPRINT_SLOT_PLUGIN,
 	CHARACTER_SLOT_PLUGIN,
 	DIRECTOR_SLOT_PLUGIN,
 	HISTORY_SLOT_PLUGIN,
@@ -145,6 +146,7 @@ export async function createStandardChatSlots(
 			organization: options.directorOrganization,
 		},
 		[SCENE_CARD_SLOT_PLUGIN]: { store: options.store },
+		[BLUEPRINT_SLOT_PLUGIN]: { store: options.store },
 		[DIRECTOR_SLOT_PLUGIN]: {
 			store: options.store,
 			config: options.directorConfig,

@@ -4,6 +4,10 @@ import {
 } from "../blocks/history.js";
 import { parseBlocks } from "../blocks/parser.js";
 import { renderContextView } from "../blocks/view.js";
+import {
+	formatWritingBlueprintSummary,
+	readWritingBlueprintSummary,
+} from "../blueprint/summary.js";
 import type {
 	ContextSlotContent,
 	ContextSlotProvider,
@@ -12,6 +16,7 @@ import type {
 import type { ContextMessage } from "../context/template.js";
 import type { DirectorPush } from "../director/lines.js";
 import {
+	collectDirectorLineHistoryIds,
 	readDirectorActionInput,
 	selectDirectorAction,
 } from "../director/lines.js";
@@ -275,6 +280,34 @@ export function createSceneCardSlotProvider(
 				};
 			}
 			return null;
+		},
+	};
+}
+
+/**
+ * 写作模型只看到当前卷的核心问题、最近一个里程碑的方向与本章该埋的线；
+ * 完整蓝图留在导演层。没有可写的内容时返回 null，不产生空段。
+ */
+export function createBlueprintSlotProvider(
+	store: StoryStore,
+): ContextSlotProvider {
+	return {
+		packKey: "blueprint",
+		provide(request): ContextSlotContent | null {
+			if (request.nodeId === null) return null;
+			const nodeId = request.nodeId;
+			const summary = readWritingBlueprintSummary(
+				store.readBlueprintEntries(nodeId),
+				store.readDirectorLineStates(nodeId),
+				collectDirectorLineHistoryIds(store.listDirectorLinesAlongPath(nodeId)),
+			);
+			if (summary === null) return null;
+			const formatted = formatWritingBlueprintSummary(summary);
+			if (formatted === null) return null;
+			return {
+				messages: [{ role: "system", content: formatted.text }],
+				source: formatted.source,
+			};
 		},
 	};
 }

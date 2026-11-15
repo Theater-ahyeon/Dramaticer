@@ -11,6 +11,7 @@ export const CONTEXT_SLOT_NAMES = [
 	"profile",
 	"reunion",
 	"scene_card",
+	"blueprint",
 	"director",
 	"user_will",
 	"protocol",

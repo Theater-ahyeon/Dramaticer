@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	BLUEPRINT_SLOT_PLUGIN,
 	BUILTIN_PLUGINS,
 	CHARACTER_SLOT_PLUGIN,
 	type ContextSlotProviders,
@@ -76,10 +77,12 @@ describe("内置槽位插件", () => {
 			profile: [PROFILE_SLOT_PLUGIN],
 			reunion: [REUNION_SLOT_PLUGIN],
 			scene_card: [SCENE_CARD_SLOT_PLUGIN],
+			blueprint: [BLUEPRINT_SLOT_PLUGIN],
 			director: [DIRECTOR_SLOT_PLUGIN],
 			user_will: [USER_WILL_SLOT_PLUGIN],
 		});
 		expect(Object.keys(slots.providers).sort()).toEqual([
+			"blueprint",
 			"character",
 			"director",
 			"history",

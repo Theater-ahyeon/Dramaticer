@@ -1,5 +1,6 @@
 import type { HistoryBlockPolicy } from "../blocks/history.js";
 import {
+	createBlueprintSlotProvider,
 	createCharacterSlotProvider,
 	createDirectorSlotProvider,
 	createHistorySlotProvider,
@@ -41,6 +42,7 @@ export const SCENE_SLOT_PLUGIN = "slot.scene";
 export const PROFILE_SLOT_PLUGIN = "slot.profile";
 export const REUNION_SLOT_PLUGIN = "slot.reunion";
 export const SCENE_CARD_SLOT_PLUGIN = "slot.scene-card";
+export const BLUEPRINT_SLOT_PLUGIN = "slot.blueprint";
 export const DIRECTOR_SLOT_PLUGIN = "slot.director";
 export const USER_WILL_SLOT_PLUGIN = "slot.user-will";
 
@@ -246,6 +248,19 @@ export const sceneCardSlotPlugin: PluginDefinition = {
 	},
 };
 
+export const blueprintSlotPlugin: PluginDefinition = {
+	name: BLUEPRINT_SLOT_PLUGIN,
+	apply(context, config) {
+		const values = slotConfig(BLUEPRINT_SLOT_PLUGIN, config);
+		context.slot(
+			"blueprint",
+			createBlueprintSlotProvider(
+				requireSlotStore(BLUEPRINT_SLOT_PLUGIN, values),
+			),
+		);
+	},
+};
+
 export const userWillSlotPlugin: PluginDefinition = {
 	name: USER_WILL_SLOT_PLUGIN,
 	apply(context, config) {
@@ -341,6 +356,7 @@ export const SLOT_PLUGINS: readonly PluginDefinition[] = [
 	profileSlotPlugin,
 	reunionSlotPlugin,
 	sceneCardSlotPlugin,
+	blueprintSlotPlugin,
 	directorSlotPlugin,
 	userWillSlotPlugin,
 ];

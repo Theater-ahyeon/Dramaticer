@@ -35,6 +35,7 @@ export const SLOT_CHOICES: readonly {
 	{ value: "profile", label: "人物档案" },
 	{ value: "reunion", label: "重逢注入" },
 	{ value: "scene_card", label: "场面卡" },
+	{ value: "blueprint", label: "蓝图摘要" },
 	{ value: "director", label: "导演" },
 	{ value: "user_will", label: "用户意志" },
 	{ value: "protocol", label: "写作契约" },

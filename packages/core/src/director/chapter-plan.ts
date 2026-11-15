@@ -24,6 +24,7 @@ import {
 	type DirectorLineDiff,
 	type DirectorLineState,
 	assertDirectorLineDiffs,
+	collectDirectorLineHistoryIds,
 	directorLineRemaining,
 	formatDirectorLine,
 } from "./lines.js";
@@ -144,13 +145,9 @@ export function collectChapterPlanInput(
 	const floors = assistants.slice(-CHAPTER_PLAN_WINDOW_FLOORS);
 	const states = store.readDirectorLineStates(nodeId);
 	if (states.length === 0) return null;
-	const historyLineIds = store
-		.listDirectorLinesAlongPath(nodeId)
-		.flatMap((record) =>
-			record.diffs.map((diff) =>
-				diff.action === "set" ? diff.line.id : diff.id,
-			),
-		);
+	const historyLineIds = collectDirectorLineHistoryIds(
+		store.listDirectorLinesAlongPath(nodeId),
+	);
 	const milestone = readActiveMilestone(
 		store.readBlueprintEntries(nodeId),
 		states,

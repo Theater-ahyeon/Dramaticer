@@ -89,6 +89,22 @@ export interface DirectorLineState {
 	readonly lastTouchedDepth: number;
 }
 
+/**
+ * 路径上出现过的全部线 id，包括后来被删除的线。清理过的线不在
+ * `readDirectorLineStates` 里，判断一条铺垫是否已经写过要用这个集合。
+ */
+export function collectDirectorLineHistoryIds(
+	records: readonly DirectorLineRecord[],
+): string[] {
+	const ids: string[] = [];
+	for (const record of records) {
+		for (const diff of record.diffs) {
+			ids.push(diff.action === "set" ? diff.line.id : diff.id);
+		}
+	}
+	return ids;
+}
+
 const LINE_KEYS = [
 	"id",
 	"kind",

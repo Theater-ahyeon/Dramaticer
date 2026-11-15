@@ -467,6 +467,7 @@ describe("设置接口", () => {
 			"profile",
 			"reunion",
 			"scene_card",
+			"blueprint",
 			"director",
 			"user_will",
 			"history",

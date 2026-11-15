@@ -222,6 +222,7 @@ describe("dramaticer chat", () => {
 				"profile",
 				"reunion",
 				"scene_card",
+				"blueprint",
 				"director",
 				"user_will",
 				"protocol",
