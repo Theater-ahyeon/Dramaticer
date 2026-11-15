@@ -1,8 +1,14 @@
-import type { NodeImageRecord } from "@dramaticer/core";
+import type {
+	BlueprintSuggestionStatus,
+	NodeImageRecord,
+} from "@dramaticer/core";
 import {
 	API_ERROR_CODES,
 	type ApiErrorBody,
 	type ApiErrorResponse,
+	type BlueprintSuggestionAcceptRequest,
+	type BlueprintSuggestionAcceptResult,
+	type BlueprintSuggestionRejectResult,
 	type ChannelProbeRequest,
 	type ChannelProbeResult,
 	type ChannelsUpdateRequest,
@@ -48,6 +54,9 @@ import {
 	type SceneControlResult,
 	type SetHeadRequest,
 	type SseEvent,
+	type StoryBlueprintSuggestionCreateRequest,
+	type StoryBlueprintSuggestionCreateResult,
+	type StoryBlueprintSuggestionsView,
 	type StoryBookExport,
 	type StoryCluesView,
 	type StoryDirectorPlanRequest,
@@ -316,6 +325,49 @@ export class ApiClient {
 		return this.json<StoryBookExport>(
 			"GET",
 			`${storyPath(storyId)}/serial/export${queryText(query)}`,
+		);
+	}
+
+	async requestBlueprintSuggestions(
+		storyId: string,
+		request: StoryBlueprintSuggestionCreateRequest,
+	): Promise<StoryBlueprintSuggestionCreateResult> {
+		return this.json<StoryBlueprintSuggestionCreateResult>(
+			"POST",
+			`${storyPath(storyId)}/blueprint/suggestions`,
+			request,
+		);
+	}
+
+	async getBlueprintSuggestions(
+		storyId: string,
+		status?: BlueprintSuggestionStatus | "all",
+	): Promise<StoryBlueprintSuggestionsView> {
+		const query = new URLSearchParams();
+		if (status !== undefined) query.set("status", status);
+		return this.json<StoryBlueprintSuggestionsView>(
+			"GET",
+			`${storyPath(storyId)}/blueprint/suggestions${queryText(query)}`,
+		);
+	}
+
+	async acceptBlueprintSuggestion(
+		suggestionId: number,
+		request: BlueprintSuggestionAcceptRequest = {},
+	): Promise<BlueprintSuggestionAcceptResult> {
+		return this.json<BlueprintSuggestionAcceptResult>(
+			"POST",
+			`/api/blueprint-suggestions/${suggestionId}/accept`,
+			request,
+		);
+	}
+
+	async rejectBlueprintSuggestion(
+		suggestionId: number,
+	): Promise<BlueprintSuggestionRejectResult> {
+		return this.json<BlueprintSuggestionRejectResult>(
+			"POST",
+			`/api/blueprint-suggestions/${suggestionId}/reject`,
 		);
 	}
 

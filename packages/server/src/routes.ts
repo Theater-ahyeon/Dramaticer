@@ -5,6 +5,10 @@ import {
 	type AssistantChannelsSnapshot,
 	type AssistantDocsIndex,
 	type AssistantSearchClient,
+	BLUEPRINT_SUGGESTION_JOB_KIND,
+	BLUEPRINT_SUGGESTION_OPERATIONS,
+	BLUEPRINT_SUGGESTION_STATUSES,
+	type BlueprintSuggestionAcceptance,
 	type ChooseOpeningCandidateResult,
 	type ComfyUiSlots,
 	type ComfyUiWorkflow,
@@ -72,6 +76,8 @@ import {
 	exportSerialBook,
 	fulfillLedgerClue,
 	importKindSuggestionsNeedRun,
+	isBlueprintSuggestionOperation,
+	isBlueprintSuggestionStatus,
 	isImportEntryKind,
 	isJsonObject,
 	isLedgerChangeCardStatus,
@@ -85,6 +91,7 @@ import {
 	parseComfyUiWorkflow,
 	parseDirectorPlan,
 	probeChannel,
+	readBlueprintSuggestionNote,
 	readChannelsKeyRefs,
 	readDirectorPlan,
 	readLedger,
@@ -103,6 +110,8 @@ import {
 	validateRoleModelFamilies,
 } from "@dramaticer/core";
 import {
+	type BlueprintSuggestionAcceptResult,
+	type BlueprintSuggestionRejectResult,
 	type ChannelProbeResult,
 	type ChannelUpdateInput,
 	type ChannelsUpdateRequest,
@@ -141,6 +150,8 @@ import {
 	type ProposalDecisionResult,
 	type SceneControlResult,
 	type SetHeadRequest,
+	type StoryBlueprintSuggestionCreateResult,
+	type StoryBlueprintSuggestionsView,
 	type StoryBookExport,
 	type StoryCluesView,
 	type StoryDirectorPlanView,
@@ -384,6 +395,14 @@ export async function handleApiRequest(
 			return;
 		}
 		if (
+			third === "blueprint" &&
+			parts.length === 4 &&
+			parts[3] === "suggestions"
+		) {
+			await handleBlueprintSuggestions(req, res, method, options, url, storyId);
+			return;
+		}
+		if (
 			third === "openings" &&
 			parts.length === 5 &&
 			parts[4] === "pick" &&
@@ -512,6 +531,16 @@ export async function handleApiRequest(
 			await handleProposalDecision(res, options, second, action);
 			return;
 		}
+	}
+	if (
+		first === "blueprint-suggestions" &&
+		second !== undefined &&
+		parts.length === 3 &&
+		(third === "accept" || third === "reject")
+	) {
+		requireMethod(method, ["POST"]);
+		await handleBlueprintSuggestionDecision(req, res, options, second, third);
+		return;
 	}
 	if (first === "nodes" && second !== undefined && parts.length === 3) {
 		const nodeId = second;
@@ -1604,6 +1633,138 @@ function handleProposals(
 			storyId,
 			status === "all" ? {} : { status },
 		),
+	};
+	sendJson(res, 200, view);
+}
+
+/**
+ * `POST /api/stories/:id/blueprint/suggestions` 登记一次建议请求并推进后台
+ * 任务；建议在间隙生成，不写蓝图。`GET` 按状态列出建议。
+ */
+async function handleBlueprintSuggestions(
+	req: IncomingMessage,
+	res: ServerResponse,
+	method: string,
+	options: ApiRouteOptions,
+	url: URL,
+	storyId: string,
+): Promise<void> {
+	requireStory(options.store, storyId);
+	if (method === "GET") {
+		const status = url.searchParams.get("status") ?? "pending";
+		if (status !== "all" && !isBlueprintSuggestionStatus(status)) {
+			throw fieldError(
+				"status",
+				`status 只能是 all 或 ${BLUEPRINT_SUGGESTION_STATUSES.join("、")}`,
+			);
+		}
+		const view: StoryBlueprintSuggestionsView = {
+			storyId,
+			status,
+			suggestions: options.store.listBlueprintSuggestions(
+				status === "all" ? { storyId } : { storyId, status },
+			),
+		};
+		sendJson(res, 200, view);
+		return;
+	}
+	const body = await readObjectBody(req, options.maxJsonBodyBytes);
+	assertKnownKeys(body, ["operation", "note"]);
+	const operation = body.operation;
+	if (!isBlueprintSuggestionOperation(operation)) {
+		throw fieldError(
+			"operation",
+			`operation 必须是 ${BLUEPRINT_SUGGESTION_OPERATIONS.join("、")} 之一`,
+		);
+	}
+	let note = "";
+	if (body.note !== undefined) {
+		try {
+			note = readBlueprintSuggestionNote(body.note, "note");
+		} catch (error) {
+			throw toBadRequest(error, "note");
+		}
+	}
+	const request = options.store.createBlueprintSuggestionRequest({
+		storyId,
+		operation,
+		note,
+	});
+	const [job] = options.store.enqueueStoryBackgroundJobs({
+		storyId,
+		kinds: [BLUEPRINT_SUGGESTION_JOB_KIND],
+	});
+	if (job === undefined) {
+		throw new Error(`故事 ${storyId} 的蓝图建议任务没有入队`);
+	}
+	options.scheduler?.schedule(storyId);
+	const view: StoryBlueprintSuggestionCreateResult = {
+		request,
+		jobId: job.id,
+	};
+	sendJson(res, 201, view);
+}
+
+/**
+ * `POST /api/blueprint-suggestions/:id/accept|reject`：接受一条建议会在
+ * 指定楼层（省略时取 head）追加一批来源为玩家的蓝图修改，并返回更新后的
+ * 蓝图；拒绝只改建议状态。已决定的建议返回 409。
+ */
+async function handleBlueprintSuggestionDecision(
+	req: IncomingMessage,
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	idText: string,
+	action: "accept" | "reject",
+): Promise<void> {
+	const id = Number(idText);
+	if (!Number.isInteger(id) || id <= 0) {
+		throw new HttpError(404, "not_found", `蓝图建议不存在：${idText}`);
+	}
+	const suggestion = options.store.getBlueprintSuggestion(id);
+	if (suggestion === null) {
+		throw new HttpError(404, "not_found", `蓝图建议不存在：${id}`);
+	}
+	if (suggestion.status !== "pending") {
+		throw new HttpError(
+			409,
+			"conflict",
+			`蓝图建议 ${id} 已经决定过，状态是 ${suggestion.status}`,
+		);
+	}
+	if (action === "reject") {
+		const rejected = options.store.rejectBlueprintSuggestion({ id });
+		const view: BlueprintSuggestionRejectResult = { suggestion: rejected };
+		sendJson(res, 200, view);
+		return;
+	}
+	const body = await readObjectBody(req, options.maxJsonBodyBytes);
+	assertKnownKeys(body, ["nodeId"]);
+	const nodeId =
+		body.nodeId === undefined
+			? options.store.getHead(suggestion.storyId)?.id
+			: requireText(body.nodeId, "nodeId");
+	if (nodeId === undefined) {
+		throw new HttpError(409, "conflict", "故事还没有楼层，不能接受蓝图建议");
+	}
+	const node = options.store.getNode(nodeId);
+	if (node === null || node.storyId !== suggestion.storyId) {
+		throw fieldError("nodeId", `楼层 ${nodeId} 不属于这个故事`);
+	}
+	let acceptance: BlueprintSuggestionAcceptance;
+	try {
+		acceptance = options.store.acceptBlueprintSuggestion({ id, nodeId });
+	} catch (error) {
+		throw new HttpError(
+			409,
+			"conflict",
+			error instanceof Error ? error.message : String(error),
+		);
+	}
+	const view: BlueprintSuggestionAcceptResult = {
+		suggestion: acceptance.suggestion,
+		record: acceptance.record,
+		blueprint: options.store.readBlueprintEntries(nodeId),
 	};
 	sendJson(res, 200, view);
 }

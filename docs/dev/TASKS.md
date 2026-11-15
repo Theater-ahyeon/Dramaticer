@@ -1963,7 +1963,8 @@
   - 生成与接受都跳过锁定条目；接受时按当前蓝图重新校验，蓝图已经变化导致建议不合法时整条拒绝。
   验收：不接受时蓝图与楼层原文不变；接受后条目出现且出处为 AI；锁定的条目不接受建议覆盖；同一楼层连续接受多条不互相覆盖；`pnpm check` 通过。
 
-- [ ] **W7-T02.c 蓝图建议接口与客户端** | 依赖：W7-T02.b
+- [x] **W7-T02.c 蓝图建议接口与客户端** | 依赖：W7-T02.b
+  完成：2026-11-14 `POST /api/stories/:id/blueprint/suggestions` 登记请求后直接调用 `enqueueStoryBackgroundJobs` 推进 `blueprint_suggestion` 任务并返回 `{request, jobId}`（201）；`GET /api/stories/:id/blueprint/suggestions[?status=]` 按 `pending`、`accepted`、`rejected` 或 `all` 列出建议（默认 `pending`）；`POST /api/blueprint-suggestions/:id/accept` 在省略 `nodeId` 时写到 head，返回建议、写入批次与 `readBlueprintEntries` 的更新后蓝图；`POST /api/blueprint-suggestions/:id/reject` 只改状态。非法或缺失操作、非字符串或超长补充说明、非法状态各返回 400 并带字段路径；不存在的建议 404，已决定的建议 409；跨故事的 `nodeId` 400；接受时锁定过滤或蓝图变化导致整条不合法映射 409，建议保持 `pending`。protocol 新增 `StoryBlueprintSuggestionCreateRequest`、`StoryBlueprintSuggestionCreateResult`、`StoryBlueprintSuggestionsView`、`BlueprintSuggestionAcceptRequest`、`BlueprintSuggestionAcceptResult`、`BlueprintSuggestionRejectResult`；web 客户端新增 `requestBlueprintSuggestions`、`getBlueprintSuggestions`、`acceptBlueprintSuggestion`、`rejectBlueprintSuggestion`。新增 server 5 个与 web 1 个测试；`pnpm check` 通过（295 个测试文件、2,561 个测试、5 个跳过）。
   做什么：
   - 接口：发起一个操作、列出建议、接受与拒绝一条建议；非法操作、空想法与已决定的建议给出对应错误。
   - protocol 与 web 客户端提供对应类型与方法；蓝图页在 W9-T05 接入。

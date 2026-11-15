@@ -1,4 +1,9 @@
 import type {
+	BlueprintEntry,
+	BlueprintSuggestion,
+	BlueprintSuggestionOperation,
+	BlueprintSuggestionRequest,
+	BlueprintSuggestionStatus,
 	DirectorCandidateAction,
 	DirectorConfig,
 	DirectorMechanismRecord,
@@ -22,6 +27,7 @@ import type {
 	SerialBookExport,
 	SerialView,
 	StateDiff,
+	StoryBlueprintRecord,
 	Summary,
 	TimelineNode,
 	TurnMode,
@@ -280,3 +286,42 @@ export type StorySerialView = SerialView;
  * 建议的文件名；正文逐字来自楼层原文。
  */
 export type StoryBookExport = SerialBookExport;
+
+/** `GET /api/stories/:id/blueprint/suggestions`；`status` 为 `all` 时不过滤。 */
+export interface StoryBlueprintSuggestionsView {
+	readonly storyId: string;
+	readonly status: BlueprintSuggestionStatus | "all";
+	readonly suggestions: readonly BlueprintSuggestion[];
+}
+
+/**
+ * `POST /api/stories/:id/blueprint/suggestions` 的请求体：五个操作之一与
+ * 可选的补充说明。登记后由后台任务生成建议，生成时不写蓝图。
+ */
+export interface StoryBlueprintSuggestionCreateRequest {
+	readonly operation: BlueprintSuggestionOperation;
+	readonly note?: string;
+}
+
+/** 登记建议请求的结果：后台任务已经在队列里，建议随后生成。 */
+export interface StoryBlueprintSuggestionCreateResult {
+	readonly request: BlueprintSuggestionRequest;
+	readonly jobId: number;
+}
+
+/** `POST /api/blueprint-suggestions/:id/accept` 的请求体；`nodeId` 省略时取 head。 */
+export interface BlueprintSuggestionAcceptRequest {
+	readonly nodeId?: string;
+}
+
+/** 接受一条建议后的建议、写入楼层的批次与更新后的蓝图。 */
+export interface BlueprintSuggestionAcceptResult {
+	readonly suggestion: BlueprintSuggestion;
+	readonly record: StoryBlueprintRecord;
+	readonly blueprint: readonly BlueprintEntry[];
+}
+
+/** `POST /api/blueprint-suggestions/:id/reject` 的结果：只改建议状态。 */
+export interface BlueprintSuggestionRejectResult {
+	readonly suggestion: BlueprintSuggestion;
+}
