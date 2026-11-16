@@ -51,6 +51,14 @@ import {
 	parsePlaypackUserOverrides,
 } from "../plugins/playpack-overrides.js";
 import {
+	DEFAULT_FEATURE_TIER,
+	EMPTY_FEATURE_SWITCH_OVERRIDES,
+	type FeatureSwitchOverrides,
+	type FeatureTier,
+	assertFeatureSwitchOverrides,
+	assertFeatureTier,
+} from "../settings/features.js";
+import {
 	type StructuredOutputMode,
 	isStructuredOutputMode,
 } from "../structured/types.js";
@@ -140,6 +148,10 @@ export interface StorySettings {
 	readonly importMode: ImportMode;
 	/** 蓝图剧透：hide 时 AI 补的条目只显示条数。 */
 	readonly blueprintSpoilers: BlueprintSpoilerMode;
+	/** 功能开关的档位；切换档位会清掉故事级覆盖。 */
+	readonly featureTier: FeatureTier;
+	/** 故事级开关覆盖；没有出现的开关沿用档位默认值。 */
+	readonly featureSwitches: FeatureSwitchOverrides;
 	readonly updatedAt: string;
 }
 
@@ -173,6 +185,10 @@ export interface StorySettingsUpdate {
 	readonly worldModel?: WorldModelKind;
 	readonly importMode?: ImportMode;
 	readonly blueprintSpoilers?: BlueprintSpoilerMode;
+	/** 切换档位会清掉已有覆盖，除非同一次更新里给了新的覆盖。 */
+	readonly featureTier?: FeatureTier;
+	/** 局部覆盖按开关逐项合并；null 清空全部覆盖。 */
+	readonly featureSwitches?: FeatureSwitchOverrides | null;
 }
 
 export const STORY_SETTINGS_UPDATE_KEYS: readonly (keyof StorySettingsUpdate)[] =
@@ -206,6 +222,8 @@ export const STORY_SETTINGS_UPDATE_KEYS: readonly (keyof StorySettingsUpdate)[] 
 		"worldModel",
 		"importMode",
 		"blueprintSpoilers",
+		"featureTier",
+		"featureSwitches",
 	];
 
 /** 尚未保存设置时使用的数值与枚举；故事 id 与更新时间由调用方补齐。 */
@@ -233,6 +251,8 @@ export const DEFAULT_STORY_SETTINGS_VALUES = {
 	worldModel: DEFAULT_WORLD_MODEL_KIND,
 	importMode: DEFAULT_IMPORT_MODE,
 	blueprintSpoilers: DEFAULT_BLUEPRINT_SPOILER_MODE,
+	featureTier: DEFAULT_FEATURE_TIER,
+	featureSwitches: EMPTY_FEATURE_SWITCH_OVERRIDES,
 } as const;
 
 export interface ContextTemplateRecord {
@@ -504,6 +524,15 @@ export function assertStorySettingsUpdate(update: StorySettingsUpdate): void {
 		assertBlueprintSpoilerMode(
 			update.blueprintSpoilers,
 			"故事设置的 blueprintSpoilers",
+		);
+	}
+	if (update.featureTier !== undefined) {
+		assertFeatureTier(update.featureTier, "故事设置的 featureTier");
+	}
+	if (update.featureSwitches !== undefined && update.featureSwitches !== null) {
+		assertFeatureSwitchOverrides(
+			update.featureSwitches,
+			"故事设置的 featureSwitches",
 		);
 	}
 }

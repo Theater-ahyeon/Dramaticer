@@ -8,6 +8,15 @@ export type {
 	UpdateContextTemplateInput as UpdateContextTemplateRequest,
 } from "@dramaticer/core";
 
+export type {
+	FeatureSwitchChoice as StoryFeatureSwitchChoice,
+	FeatureSwitchGroup,
+	FeatureTier,
+	StoryFeatureGroupView,
+	StoryFeatureSwitchView,
+	StoryFeatureView,
+} from "@dramaticer/core";
+
 /**
  * `GET /api/stories/:id/template` 的响应：故事实际使用的模板。
  * `source` 为 `default` 时 `templateId` 为 null，模板是内置默认模板。

@@ -100,6 +100,7 @@ import {
 	readMilestoneDeviation,
 	readSceneSegments,
 	readSerialView,
+	readStoryFeatureView,
 	rejectLedgerChangeCard,
 	replaceDirectorPlan,
 	resolveImageProvider,
@@ -335,6 +336,11 @@ export async function handleApiRequest(
 				case "template":
 					requireMethod(method, ["GET"]);
 					handleStoryTemplate(res, options, storyId);
+					return;
+				case "features":
+					requireMethod(method, ["GET"]);
+					requireStory(options.store, storyId);
+					sendJson(res, 200, readStoryFeatureView(options.store, storyId));
 					return;
 				case "jobs":
 					requireMethod(method, ["GET"]);

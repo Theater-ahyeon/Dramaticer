@@ -2026,6 +2026,17 @@ export function buildMigrations(
 				) STRICT`,
 			],
 		},
+		{
+			version: 68,
+			description: "功能开关的档位与故事级覆盖",
+			statements: [
+				`ALTER TABLE story_settings ADD COLUMN feature_tier TEXT NOT NULL
+					DEFAULT 'standard'
+					CHECK (feature_tier IN ('lite', 'standard', 'immersive'))`,
+				`ALTER TABLE story_settings ADD COLUMN feature_switches TEXT NOT NULL
+					DEFAULT '{}'`,
+			],
+		},
 	];
 }
 

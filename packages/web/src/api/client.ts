@@ -64,6 +64,7 @@ import {
 	type StoryDirectorPlanRequest,
 	type StoryDirectorPlanView,
 	type StoryEntitiesView,
+	type StoryFeatureView,
 	type StoryJobsView,
 	type StoryLoreView,
 	type StoryOpeningGenerateResult,
@@ -372,6 +373,10 @@ export class ApiClient {
 			"GET",
 			`${storyPath(storyId)}/blueprint${queryText(query)}`,
 		);
+	}
+
+	async getStoryFeatures(storyId: string): Promise<StoryFeatureView> {
+		return this.json<StoryFeatureView>("GET", `${storyPath(storyId)}/features`);
 	}
 
 	async acceptBlueprintSuggestion(

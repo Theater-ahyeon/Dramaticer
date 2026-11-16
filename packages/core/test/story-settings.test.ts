@@ -74,6 +74,8 @@ describe("故事设置", () => {
 			worldModel: "ledger",
 			importMode: "upgrade",
 			blueprintSpoilers: "show",
+			featureTier: "standard",
+			featureSwitches: {},
 			updatedAt: createdAt,
 		});
 		close();

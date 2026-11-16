@@ -359,6 +359,11 @@ import {
 	isTurnRunFinalStatus,
 	isTurnRunStatus,
 } from "../run-log.js";
+import {
+	EMPTY_FEATURE_SWITCH_OVERRIDES,
+	assertFeatureSwitchOverrides,
+	assertFeatureTier,
+} from "../settings/features.js";
 import { applyStateDiffsTo } from "../state.js";
 import { isStructuredOutputMode } from "../structured/types.js";
 import type {
@@ -462,6 +467,8 @@ interface StorySettingsRow {
 	readonly world_model: string;
 	readonly import_mode: string;
 	readonly blueprint_spoilers: string;
+	readonly feature_tier: string;
+	readonly feature_switches: string;
 	readonly updated_at: string;
 }
 
@@ -1719,6 +1726,14 @@ function rowToStorySettings(row: StorySettingsRow): StorySettings {
 		blueprintSpoilers: assertBlueprintSpoilerMode(
 			row.blueprint_spoilers,
 			`故事 ${row.story_id} 的 blueprintSpoilers`,
+		),
+		featureTier: assertFeatureTier(
+			row.feature_tier,
+			`故事 ${row.story_id} 的 featureTier`,
+		),
+		featureSwitches: assertFeatureSwitchOverrides(
+			JSON.parse(row.feature_switches) as unknown,
+			`故事 ${row.story_id} 的 featureSwitches`,
 		),
 		updatedAt: row.updated_at,
 	};
@@ -3099,6 +3114,8 @@ export class StoryStore {
 			worldModel: DEFAULT_STORY_SETTINGS_VALUES.worldModel,
 			importMode: DEFAULT_STORY_SETTINGS_VALUES.importMode,
 			blueprintSpoilers: DEFAULT_STORY_SETTINGS_VALUES.blueprintSpoilers,
+			featureTier: DEFAULT_STORY_SETTINGS_VALUES.featureTier,
+			featureSwitches: DEFAULT_STORY_SETTINGS_VALUES.featureSwitches,
 			updatedAt: story.createdAt,
 		};
 	}
@@ -3240,6 +3257,23 @@ export class StoryStore {
 				update.blueprintSpoilers !== undefined
 					? update.blueprintSpoilers
 					: current.blueprintSpoilers,
+			featureTier:
+				update.featureTier !== undefined
+					? update.featureTier
+					: current.featureTier,
+			featureSwitches:
+				update.featureSwitches === undefined
+					? update.featureTier === undefined
+						? current.featureSwitches
+						: EMPTY_FEATURE_SWITCH_OVERRIDES
+					: update.featureSwitches === null
+						? EMPTY_FEATURE_SWITCH_OVERRIDES
+						: {
+								...(update.featureTier === undefined
+									? current.featureSwitches
+									: EMPTY_FEATURE_SWITCH_OVERRIDES),
+								...update.featureSwitches,
+							},
 		};
 		const updatedAt = new Date().toISOString();
 		this.#db
@@ -3252,8 +3286,8 @@ export class StoryStore {
 					 director_config, history_block_policy, context_layout, scene_log_enabled,
 					 gap_pass_enabled, gap_plan_seconds, image_config, plugin_overrides,
 					 world_model, director_organization, import_mode, blueprint_spoilers,
-					 updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+					 feature_tier, feature_switches, updated_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 				ON CONFLICT(story_id) DO UPDATE SET
 					card_name = excluded.card_name,
 					character_prompt = excluded.character_prompt,
@@ -3284,6 +3318,8 @@ export class StoryStore {
 					director_organization = excluded.director_organization,
 					import_mode = excluded.import_mode,
 					blueprint_spoilers = excluded.blueprint_spoilers,
+					feature_tier = excluded.feature_tier,
+					feature_switches = excluded.feature_switches,
 					updated_at = excluded.updated_at`,
 			)
 			.run(
@@ -3320,6 +3356,14 @@ export class StoryStore {
 				next.directorOrganization,
 				next.importMode,
 				next.blueprintSpoilers,
+				next.featureTier,
+				serializeJsonValue(
+					assertFeatureSwitchOverrides(
+						next.featureSwitches,
+						"故事设置的 featureSwitches",
+					),
+					"故事设置的 featureSwitches",
+				),
 				updatedAt,
 			);
 		if (next.importMode !== current.importMode) {

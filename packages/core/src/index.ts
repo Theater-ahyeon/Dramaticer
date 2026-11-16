@@ -32,6 +32,7 @@ export * from "./retrieval/chunk-text.js";
 export * from "./retrieval/hybrid.js";
 export * from "./run-log.js";
 export * from "./serial/index.js";
+export * from "./settings/index.js";
 export * from "./state.js";
 export { LATEST_SCHEMA_VERSION } from "./store/migrations.js";
 export * from "./store/settings.js";

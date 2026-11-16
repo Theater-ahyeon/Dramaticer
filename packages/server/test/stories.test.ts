@@ -8,6 +8,8 @@ import {
 import type {
 	ApiErrorResponse,
 	ImportStoryResult,
+	StoryFeatureView,
+	StorySettings,
 	StoryView,
 } from "@dramaticer/protocol";
 import { describe, expect, it, onTestFinished } from "vitest";
@@ -507,6 +509,127 @@ describe("设置接口", () => {
 		expect(view.blockFormatSegment.text).not.toContain("<state_update>");
 
 		const missing = await request(running.origin, "/api/stories/none/template");
+		expect(missing.status).toBe(404);
+	});
+});
+
+describe("功能开关接口", () => {
+	it("按卡的能力返回分组开关，档位与覆盖都写进故事设置", async () => {
+		const { running } = await startTestServer();
+		await post(running.origin, "/api/stories", {
+			id: "story-1",
+			title: "山门",
+		});
+
+		const empty = await request(
+			running.origin,
+			"/api/stories/story-1/features",
+		);
+		expect(empty.status).toBe(200);
+		const emptyView = (await empty.json()) as StoryFeatureView;
+		expect(emptyView.tier).toBe("standard");
+		expect(emptyView.groups.map((group) => group.group)).toEqual([
+			"memory",
+			"director",
+			"presentation",
+			"compat",
+		]);
+		expect(
+			emptyView.groups.flatMap((group) =>
+				group.switches.map((item) => item.id),
+			),
+		).toEqual([
+			"scribe",
+			"director",
+			"promiseLimit",
+			"choices",
+			"draw",
+			"think",
+			"tools",
+		]);
+
+		running.store.upsertEntity({
+			storyId: "story-1",
+			kind: "character",
+			name: "云裳",
+			source: "card",
+		});
+		running.store.saveImportAuditEntries("story-1", [
+			{
+				source: "world-info:旧世:0",
+				title: "属性",
+				content: "体力上限 10。",
+				matches: [{ kind: "state", rules: ["json:state"] }],
+				rulePrimary: "state",
+				constant: false,
+			},
+		]);
+		running.store.replaceStoryRules({
+			storyId: "story-1",
+			rules: [
+				{
+					id: "sword",
+					label: "剑术检定",
+					target: "剑术",
+					difficulty: 12,
+					resource: null,
+				},
+			],
+		});
+
+		const saved = await put(running.origin, "/api/stories/story-1/settings", {
+			featureTier: "lite",
+			featureSwitches: { draw: "manual" },
+		});
+		expect(saved.status).toBe(200);
+		const settings = (await saved.json()) as StorySettings;
+		expect(settings.featureTier).toBe("lite");
+		expect(settings.featureSwitches).toEqual({ draw: "manual" });
+
+		const filled = await request(
+			running.origin,
+			"/api/stories/story-1/features",
+		);
+		const filledView = (await filled.json()) as StoryFeatureView;
+		expect(filledView.tier).toBe("lite");
+		const switches = new Map(
+			filledView.groups.flatMap((group) =>
+				group.switches.map((item) => [item.id, item] as const),
+			),
+		);
+		expect(switches.get("draw")?.value).toBe("manual");
+		expect(switches.get("archive")?.value).toBe(false);
+		expect(switches.get("rules")?.value).toBe(false);
+		expect(switches.get("status")?.value).toBe(true);
+		expect(switches.get("promiseLimit")?.value).toBe(3);
+
+		const cleared = await put(running.origin, "/api/stories/story-1/settings", {
+			featureTier: "immersive",
+		});
+		expect(cleared.status).toBe(200);
+		expect(((await cleared.json()) as StorySettings).featureSwitches).toEqual(
+			{},
+		);
+
+		const badSwitch = await put(
+			running.origin,
+			"/api/stories/story-1/settings",
+			{ featureSwitches: { director: "sometimes" } },
+		);
+		expect(badSwitch.status).toBe(400);
+		expect((await errorBody(badSwitch)).error.details).toEqual({
+			path: "featureSwitches",
+		});
+
+		const badTier = await put(running.origin, "/api/stories/story-1/settings", {
+			featureTier: "huge",
+		});
+		expect(badTier.status).toBe(400);
+		expect((await errorBody(badTier)).error.details).toEqual({
+			path: "featureTier",
+		});
+
+		const missing = await request(running.origin, "/api/stories/none/features");
 		expect(missing.status).toBe(404);
 	});
 });

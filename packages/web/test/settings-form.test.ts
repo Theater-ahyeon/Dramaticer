@@ -80,6 +80,8 @@ function settingsFixture(
 		worldModel: "ledger",
 		importMode: "upgrade",
 		blueprintSpoilers: "show",
+		featureTier: "standard",
+		featureSwitches: {},
 		updatedAt: "2026-11-08T10:00:00.000Z",
 		...overrides,
 	};
