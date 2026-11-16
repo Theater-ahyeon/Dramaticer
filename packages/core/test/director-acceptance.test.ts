@@ -220,6 +220,7 @@ function directorProviders(store: StoryStore) {
 		history: createHistorySlotProvider(store),
 		director: createDirectorSlotProvider(store, {
 			config: store.getStorySettings("s1").directorConfig,
+			when: "always",
 		}),
 	};
 }
@@ -394,7 +395,7 @@ describe("R4 验收：玩家控制与注入模式", () => {
 			template,
 			providers: {
 				history: createHistorySlotProvider(store),
-				director: createDirectorSlotProvider(store, { config }),
+				director: createDirectorSlotProvider(store, { config, when: "always" }),
 			},
 			budgetTokens: 4_096,
 			structuredOutput: "text-tags",
@@ -429,7 +430,7 @@ describe("R4 验收：玩家控制与注入模式", () => {
 			template,
 			providers: {
 				history: createHistorySlotProvider(store),
-				director: createDirectorSlotProvider(store, { config }),
+				director: createDirectorSlotProvider(store, { config, when: "always" }),
 			},
 			budgetTokens: 4_096,
 			structuredOutput: "text-tags",

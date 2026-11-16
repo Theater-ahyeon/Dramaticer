@@ -178,6 +178,8 @@ export interface CreateChatProvidersOptions {
 	readonly embedder?: EmbeddingClient | null;
 	readonly reranker?: RerankClient | null;
 	readonly directorConfig?: DirectorConfig;
+	/** 导演何时出手；不设置时读故事的「导演」功能开关。 */
+	readonly directorWhen?: "off" | "push" | "always";
 	/** 故事设置里的导演组织方式；不设置时使用现有机制序列。 */
 	readonly directorOrganization?: DirectorOrganizationKind;
 	readonly mechanisms?: readonly DirectorMechanism[];
@@ -201,6 +203,7 @@ export async function createChatProviders(
 		embedder: options.embedder,
 		reranker: options.reranker,
 		directorConfig: options.directorConfig,
+		directorWhen: options.directorWhen,
 		directorOrganization: options.directorOrganization,
 		mechanisms: options.mechanisms,
 		historyBlockPolicy: options.historyBlockPolicy,

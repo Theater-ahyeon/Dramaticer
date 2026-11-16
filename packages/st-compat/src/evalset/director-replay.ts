@@ -178,6 +178,8 @@ export function createChatReplayGenerator(
 			card: options.card,
 			embedder: options.embedder,
 			directorConfig: options.directorConfig,
+			// 回放用的是历史里的玩家消息，要量的是导演出手时的效果。
+			directorWhen: "always",
 			directorOrganization: settings.directorOrganization,
 			mechanisms: options.mechanisms,
 			historyBlockPolicy: settings.historyBlockPolicy,

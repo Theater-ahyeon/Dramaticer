@@ -338,6 +338,7 @@ export const directorSlotPlugin: PluginDefinition = {
 				mechanisms: values.mechanisms as
 					| readonly DirectorMechanism[]
 					| undefined,
+				when: values.when as "off" | "push" | "always" | undefined,
 			}),
 		);
 	},

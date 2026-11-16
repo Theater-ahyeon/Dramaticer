@@ -14,7 +14,7 @@ import type {
 	RetrievalInjectionTrace,
 } from "../context/assembler.js";
 import type { ContextMessage } from "../context/template.js";
-import type { DirectorPush } from "../director/lines.js";
+import type { DirectorPush, DirectorWhen } from "../director/lines.js";
 import {
 	collectDirectorLineHistoryIds,
 	readDirectorActionInput,
@@ -66,6 +66,7 @@ import {
 } from "../memory/lore.js";
 import type { SummaryLevel } from "../memory/summary.js";
 import { retrieveMemory } from "../retrieval/hybrid.js";
+import { readStoryFeatureState } from "../settings/features.js";
 import type { StoryStore } from "../store/story-store.js";
 import { type TokenEstimator, createTokenEstimator } from "../tokens.js";
 import { type WorldModelKind, createWorldModel } from "../world-model/index.js";
@@ -479,11 +480,22 @@ export function createReunionSlotProvider(
 			const lastUser = [...path].reverse().find((node) => node.role === "user");
 			const trigger: string[] = [];
 			if (lastUser !== undefined) trigger.push(lastUser.raw);
-			if (organization === "lines" && config.mode !== "off") {
+			const when = readStoryFeatureState(store, request.storyId).values
+				.director;
+			if (organization === "lines" && config.mode !== "off" && when !== "off") {
 				const selection = selectDirectorAction(
-					readDirectorActionInput(store, request.storyId, nodeId, config, push),
+					readDirectorActionInput(
+						store,
+						request.storyId,
+						nodeId,
+						config,
+						push,
+						when,
+					),
 				);
-				if (selection !== null) trigger.push(selection.directive);
+				if (selection !== null && selection.directive !== "") {
+					trigger.push(selection.directive);
+				}
 			}
 			if (trigger.length === 0) return null;
 			const mentions = selectReunionMentions({
@@ -1201,6 +1213,8 @@ export interface DirectorSlotProviderOptions {
 	readonly engine?: DirectorEngine;
 	/** 单轮的推进档位；不设置时是常规回合。 */
 	readonly push?: DirectorPush | null;
+	/** 导演何时出手；不设置时读故事的「导演」功能开关。 */
+	readonly when?: "off" | DirectorWhen;
 }
 
 /** 导演槽位把评估用的配置与引擎一起带出来，单轮强度覆盖时据此重建。 */
@@ -1208,6 +1222,8 @@ export interface DirectorSlotProvider extends ContextSlotProvider {
 	readonly config: DirectorConfig;
 	readonly engine: DirectorEngine;
 	readonly push: DirectorPush | null;
+	/** 显式指定的出手时机；null 表示每次读故事的「导演」功能开关。 */
+	readonly when: "off" | DirectorWhen | null;
 }
 
 export function isDirectorSlotProvider(
@@ -1239,6 +1255,7 @@ export function createDirectorSlotProvider(
 		config,
 		engine,
 		push: options.push ?? null,
+		when: options.when ?? null,
 		packKey: JSON.stringify({
 			config,
 			organization: engine.kind,
@@ -1249,12 +1266,18 @@ export function createDirectorSlotProvider(
 			const nodeId =
 				request.nodeId ?? store.getHead(request.storyId)?.id ?? null;
 			if (nodeId === null) return null;
+			// 「导演」功能开关决定何时出手：关闭时不评估，仅推进时由引擎让位。
+			const when =
+				options.when ??
+				readStoryFeatureState(store, request.storyId).values.director;
+			if (when === "off") return null;
 			const suggestion = engine.evaluate({
 				store,
 				storyId: request.storyId,
 				nodeId,
 				config,
 				push: options.push ?? null,
+				when,
 			});
 			if (suggestion === null) return null;
 			return {

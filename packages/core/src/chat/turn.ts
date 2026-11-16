@@ -385,6 +385,7 @@ function resolveTurnProviders(options: {
 						: resolveDirectorIntensity(director.config, requestedIntensity),
 				engine: director.engine,
 				push: requestedPush ?? director.push,
+				...(director.when === null ? {} : { when: director.when }),
 			}),
 			...(director.plugin === undefined ? {} : { plugin: director.plugin }),
 		},

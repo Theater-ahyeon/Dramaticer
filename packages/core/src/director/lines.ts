@@ -368,8 +368,75 @@ export const DIRECTOR_ACTION_LABELS: Record<DirectorActionKind, string> = {
 /** 同一动作最多连用几次。 */
 export const MAX_CONSECUTIVE_DIRECTOR_ACTIONS = 3;
 
-/** 玩家消息去掉空白后达到这个字数才算写了具体行动。 */
+/** 「始终」档位下，玩家消息去掉空白后达到这个字数才算写了具体行动。 */
 export const PLAYER_DIRECTION_MIN_CHARS = 12;
+
+/** 导演何时出手：只在玩家交出方向时，或玩家写得很短时也补一点方向。 */
+export const DIRECTOR_WHEN_KINDS = ["push", "always"] as const;
+
+export type DirectorWhen = (typeof DIRECTOR_WHEN_KINDS)[number];
+
+/** 玩家这一轮的意图：交出方向、写了自己的行动，或者这一轮没有玩家消息。 */
+export type DirectorIntentKind = "push" | "free" | "none";
+
+export interface DirectorIntent {
+	readonly kind: DirectorIntentKind;
+	/** 交出方向时的推进档位；其余为 null。 */
+	readonly push: DirectorPush | null;
+	/** 判断依据，写进决策记录。 */
+	readonly basis: string;
+}
+
+/** 推进类说法去掉空白与标点后的最长字数；更长的一律当作玩家自己的行动。 */
+export const PUSH_PHRASE_MAX_CHARS = 10;
+
+const PUSH_PHRASES: readonly (readonly [DirectorPush, RegExp])[] = [
+	["jump", /^(大幅度?|大大)(推进|推动)(剧情)?(发展)?$/u],
+	["quick", /^(快速|加快|快点|快进)(推进|推动)?(剧情)?(发展)?$/u],
+	[
+		"advance",
+		/^(继续|接着|然后呢?|往下|下一步|推进|推动)(吧|写|剧情|推进|发展|剧情发展)?$|^(goon|continue|next)$/iu,
+	],
+];
+
+/**
+ * 看内容不看字数：按了推进按钮，或消息是「继续、推进剧情」这类固定说法，
+ * 才算把方向交给导演；其余自由输入不论长短都是玩家自己的决定。
+ */
+export function readPlayerIntent(
+	playerMessage: string | null,
+	push: DirectorPush | null,
+): DirectorIntent {
+	if (push !== null) {
+		return {
+			kind: "push",
+			push,
+			basis: `玩家按了「${DIRECTOR_PUSH_LABELS[push]}」`,
+		};
+	}
+	if (playerMessage === null) {
+		return { kind: "none", push: null, basis: "这一轮没有玩家消息" };
+	}
+	if (playerMessage.trim().length === 0) {
+		return { kind: "none", push: null, basis: "这一轮没有玩家消息" };
+	}
+	const bare = playerMessage.replace(/[\s\p{P}\p{S}]+/gu, "");
+	if (bare.length === 0) {
+		return { kind: "push", push: "advance", basis: "玩家只发了标点" };
+	}
+	if (bare.length <= PUSH_PHRASE_MAX_CHARS) {
+		for (const [kind, pattern] of PUSH_PHRASES) {
+			if (pattern.test(bare)) {
+				return {
+					kind: "push",
+					push: kind,
+					basis: `玩家说的是「${DIRECTOR_PUSH_LABELS[kind]}」这类说法`,
+				};
+			}
+		}
+	}
+	return { kind: "free", push: null, basis: "玩家写了自己的行动" };
+}
 
 /** 连续多少楼没有状态变化算「过于顺利」。 */
 export const DIRECTOR_SMOOTH_FLOORS = 2;
@@ -411,6 +478,8 @@ export interface DirectorActionInput {
 	readonly playerMessage: string | null;
 	/** 玩家选择的推进档位；null 表示常规回合。 */
 	readonly push: DirectorPush | null;
+	/** 导演何时出手；不设置时按「始终」处理，保持旧调用方的行为。 */
+	readonly when?: DirectorWhen;
 	/** 蓝图里的拉力档位；没有蓝图时为 null，候选顺序保持常规。 */
 	readonly tension?: BlueprintTension | null;
 	/** 最近几个助手楼层的观察，最新在前。 */
@@ -528,6 +597,8 @@ export function selectDirectorAction(
 	const signals: JsonObject = {
 		floorDepth,
 		push: input.push ?? null,
+		intent: readPlayerIntent(input.playerMessage, input.push ?? null).kind,
+		when: input.when ?? "always",
 		tension: input.tension ?? null,
 		recentActions: [...input.recentActions],
 		blockedAction: blocked,
@@ -555,22 +626,20 @@ export function selectDirectorAction(
 	};
 }
 
-/** 玩家这一轮写了具体行动时的让位候选；让位在所有推进档位里都排第一。 */
+/**
+ * 玩家写了自己的行动时的让位候选：指令为空，调用方不注入任何东西。
+ * 「始终」档位下只有写得够长才让位，短输入仍由导演补方向。
+ */
 function playerDirectionCandidate(
 	input: DirectorActionInput,
-	hot: DirectorLineState | null,
+	intent: DirectorIntent,
 ): ActionCandidate | null {
-	const length = normalizedLength(input.playerMessage);
-	if (length < PLAYER_DIRECTION_MIN_CHARS) return null;
-	return {
-		action: "yield",
-		reason: `玩家这一轮写了 ${length} 个字的具体行动`,
-		lineId: hot === null ? null : hot.line.id,
-		directive:
-			hot === null
-				? "玩家已经给出具体行动；本轮以玩家的行动为准。"
-				: `玩家已经给出具体行动；此处的局面是：${formatDirectorLine(hot.line)}。`,
-	};
+	if (intent.kind !== "free") return null;
+	if ((input.when ?? "always") === "always") {
+		const length = normalizedLength(input.playerMessage);
+		if (length < PLAYER_DIRECTION_MIN_CHARS) return null;
+	}
+	return { action: "yield", reason: intent.basis, lineId: null, directive: "" };
 }
 
 function formatSceneCard(card: SceneCard): string {
@@ -775,12 +844,9 @@ function buildActionCandidates(input: DirectorActionInput): ActionCandidate[] {
 	const present = latest === null ? [] : latest.present;
 	const hot = readAnchorLine(lines, "hot");
 
-	const direction = playerDirectionCandidate(input, hot);
-	if (direction !== null) candidates.push(direction);
-	if (input.push !== null && input.push !== undefined) {
-		candidates.push(...buildPushCandidates(input, hot));
-		return candidates;
-	}
+	const intent = readPlayerIntent(input.playerMessage, input.push ?? null);
+	const direction = playerDirectionCandidate(input, intent);
+	if (direction !== null) return [direction];
 
 	let due: DirectorLineState | null = null;
 	let dueRemaining: number | null = null;
@@ -791,6 +857,21 @@ function buildActionCandidates(input: DirectorActionInput): ActionCandidate[] {
 			due = state;
 			dueRemaining = remaining;
 		}
+	}
+	if (intent.push !== null) {
+		// 玩家自己写的回合里到点的线不打断他，留到这里随推进一起发生。
+		if (due !== null && intent.push !== "jump") {
+			candidates.push({
+				action: "intrude",
+				lineId: due.line.id,
+				reason: `线「${due.line.id}」早已到点，随这次推进发生`,
+				directive: `${due.line.who}的倒计时到点：${due.line.want}；${due.line.obstacle}。`,
+			});
+		}
+		candidates.push(
+			...buildPushCandidates({ ...input, push: intent.push }, hot),
+		);
+		return candidates;
 	}
 	if (due !== null) {
 		candidates.push({
@@ -934,6 +1015,7 @@ export function readDirectorActionInput(
 	nodeId: string,
 	config: DirectorActionConfig,
 	push: DirectorPush | null = null,
+	when: DirectorWhen = "always",
 ): DirectorActionInput {
 	if (!store.getStory(storyId)) {
 		throw new Error(`故事不存在：${storyId}`);
@@ -970,6 +1052,7 @@ export function readDirectorActionInput(
 		floorDepth: assistantFloors.length,
 		playerMessage: lastPlayer === undefined ? null : lastPlayer.raw,
 		push,
+		when,
 		tension: readBlueprintTension(store.readBlueprintEntries(nodeId)),
 		floors,
 		lines: store.readDirectorLineStates(nodeId),

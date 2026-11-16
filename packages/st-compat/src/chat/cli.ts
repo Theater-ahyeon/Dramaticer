@@ -227,6 +227,8 @@ export async function runChatCli(
 							...DEFAULT_DIRECTOR_CONFIG,
 							mode: parsed.directorMode,
 						},
+						// 命令行是排障与回放用的入口，没有推进按钮：导演照常评估每一轮。
+						directorWhen: "always",
 						historyBlockPolicy: settings.historyBlockPolicy,
 						worldModel: settings.worldModel,
 						directorOrganization: settings.directorOrganization,

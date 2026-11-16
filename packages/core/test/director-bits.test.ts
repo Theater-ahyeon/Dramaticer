@@ -412,6 +412,7 @@ describe("剧情小品引擎", () => {
 		});
 		const provider = createDirectorSlotProvider(store, {
 			organization: "bits",
+			when: "always",
 		});
 		expect(provider.engine.kind).toBe("bits");
 		expect(String(provider.packKey)).toContain('"organization":"bits"');

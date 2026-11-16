@@ -466,6 +466,8 @@ async function runCandidate(
 			store,
 			characterPrompt: settings.characterPrompt,
 			directorConfig: settings.directorConfig,
+			// 对比实验回放的是固定的玩家消息，要量的是导演出手时的效果。
+			directorWhen: "always",
 			directorOrganization: options.kind,
 			historyBlockPolicy: settings.historyBlockPolicy,
 			worldModel: settings.worldModel,

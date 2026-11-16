@@ -20,6 +20,7 @@ import {
 	directorLineRemaining,
 	isDirectorOrganizationKind,
 	readDirectorActionInput,
+	readPlayerIntent,
 	selectDirectorAction,
 } from "../src/index.js";
 import { openTempStore } from "./temp-store.js";
@@ -269,7 +270,7 @@ describe("八种动作", () => {
 		expect(isDirectorOrganizationKind("lines")).toBe(true);
 	});
 
-	it("玩家写了具体行动时让位，并锚定最热的线", () => {
+	it("玩家写了自己的行动时让位，不注入任何东西", () => {
 		const selection = selectDirectorAction(
 			makeInput({
 				playerMessage: "我推开窗，把信藏进抽屉，然后下楼",
@@ -281,9 +282,10 @@ describe("八种动作", () => {
 		);
 		expect(selection?.action).toBe("yield");
 		expect(selection?.label).toBe("让位");
-		expect(selection?.lineId).toBe("line-2");
-		expect(selection?.reason).toContain("具体行动");
-		expect(selection?.directive).toContain("凛");
+		expect(selection?.lineId).toBeNull();
+		expect(selection?.reason).toContain("自己的行动");
+		expect(selection?.directive).toBe("");
+		expect(selection?.signals.candidates).toEqual(["yield"]);
 	});
 
 	it("场面没有结束时接球", () => {
@@ -476,16 +478,15 @@ describe("线引擎接入", () => {
 			config: DEFAULT_DIRECTOR_CONFIG,
 		});
 		expect(engine.kind).toBe("lines");
-		expect(suggestion?.mechanism).toBe("action:yield");
-		expect(suggestion?.directive).toContain("具体行动");
+		expect(suggestion).toBeNull();
 
 		const decision = store.getDirectorDecision("n1");
-		expect(decision?.directive).toBe(suggestion?.directive);
+		expect(decision?.directive).toBeNull();
 		expect(decision?.mechanisms).toEqual([
 			{
 				name: "action",
 				triggered: true,
-				reason: expect.stringContaining("具体行动"),
+				reason: expect.stringContaining("自己的行动"),
 			},
 		]);
 		expect(decision?.signals.action).toBe("yield");
@@ -584,10 +585,9 @@ describe("线引擎接入", () => {
 			switches: {},
 			state: {},
 		});
-		expect(content?.source).toBe("director:action:yield");
-		expect(content?.suffix).toContain("【导演】");
+		expect(content).toBeNull();
 		expect(store.getDirectorDecision("n1")?.signals.reason).toContain(
-			"具体行动",
+			"自己的行动",
 		);
 	});
 });
@@ -639,17 +639,12 @@ describe("推进三档", () => {
 	it("让位在所有档位之前，被抑制的动作跳过候补", () => {
 		const directed = selectDirectorAction(
 			makeInput({
-				push: "jump",
 				playerMessage: "我推开窗，把信藏进抽屉，然后下楼",
 				lines: [makeState({ countdown: 5 }, 1, 4)],
 			}),
 		);
 		expect(directed?.action).toBe("yield");
-		expect(directed?.signals.candidates).toEqual([
-			"yield",
-			"intrude",
-			"transition",
-		]);
+		expect(directed?.signals.candidates).toEqual(["yield"]);
 
 		const suppressed = selectDirectorAction(
 			makeInput({
@@ -1049,5 +1044,53 @@ describe("章末清点", () => {
 				x: 1,
 			}),
 		).toThrow("x 是未知字段");
+	});
+});
+
+describe("玩家意图", () => {
+	it("看内容不看字数：短而明确的行动也是玩家自己的决定", () => {
+		expect(readPlayerIntent("去码头", null).kind).toBe("free");
+		expect(readPlayerIntent("接过钥匙，现在就上顶层", null).kind).toBe("free");
+		expect(readPlayerIntent("跳到第二天早上", null).kind).toBe("free");
+	});
+
+	it("固定说法与推进按钮等价，并对应三档", () => {
+		expect(readPlayerIntent("继续", null)).toMatchObject({
+			kind: "push",
+			push: "advance",
+		});
+		expect(readPlayerIntent("推进剧情。", null).push).toBe("advance");
+		expect(readPlayerIntent("快速推进剧情", null).push).toBe("quick");
+		expect(readPlayerIntent("大幅度推进剧情", null).push).toBe("jump");
+		expect(readPlayerIntent("……", null).push).toBe("advance");
+		expect(readPlayerIntent("随便写点什么", "quick").push).toBe("quick");
+		expect(readPlayerIntent(null, null).kind).toBe("none");
+	});
+
+	it("仅推进时：三个字的行动得到让位，候选里没有别的动作", () => {
+		const selection = selectDirectorAction(
+			makeInput({
+				when: "push",
+				playerMessage: "去码头",
+				lines: [makeState({ countdown: 0 }, 1, 1)],
+			}),
+		);
+		expect(selection?.action).toBe("yield");
+		expect(selection?.directive).toBe("");
+		expect(selection?.signals.candidates).toEqual(["yield"]);
+		expect(selection?.signals.intent).toBe("free");
+	});
+
+	it("玩家说继续时按推进处理，早已到点的线随这次推进发生", () => {
+		const selection = selectDirectorAction(
+			makeInput({
+				when: "push",
+				playerMessage: "继续",
+				lines: [makeState({ countdown: 0 }, 1, 1)],
+			}),
+		);
+		expect(selection?.action).toBe("intrude");
+		expect(selection?.reason).toContain("随这次推进发生");
+		expect(selection?.signals.intent).toBe("push");
 	});
 });

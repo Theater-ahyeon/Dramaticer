@@ -1,3 +1,5 @@
+> **已冻结（2026-11-15）**：后续工作在 `.scratch/`，总览见 `.scratch/README.md`。未完成的 W8、W9 由 `ui` 与 `writing-settings` 的工单取代；其余未完成项见 `.scratch/PARKED.md`。
+
 # 任务清单
 
 状态标记：`[ ]` 待做 · `[~]` 进行中 · `[x]` 完成 · `[!]` 被阻塞（括号里写阻塞它的 HUMAN 编号）

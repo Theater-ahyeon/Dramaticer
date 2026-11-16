@@ -108,6 +108,8 @@ export interface StandardChatSlotsOptions {
 	readonly directorConfig?: DirectorConfig;
 	readonly directorOrganization?: DirectorOrganizationKind;
 	readonly mechanisms?: readonly DirectorMechanism[];
+	/** 导演何时出手；不设置时读故事的「导演」功能开关（默认仅推进时）。 */
+	readonly directorWhen?: "off" | "push" | "always";
 	/** 块的 prompt 视图策略；不设置时使用默认策略。 */
 	readonly historyBlockPolicy?: HistoryBlockPolicy;
 	/** 世界模型的表示方式；不设置时使用台账。 */
@@ -152,6 +154,7 @@ export async function createStandardChatSlots(
 			config: options.directorConfig,
 			organization: options.directorOrganization,
 			mechanisms: options.mechanisms,
+			when: options.directorWhen,
 		},
 		[USER_WILL_SLOT_PLUGIN]: { store: options.store },
 	});

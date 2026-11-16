@@ -200,15 +200,16 @@ export const FEATURE_SWITCHES: readonly FeatureSwitchDefinition[] = [
 		id: "director",
 		group: "director",
 		label: "导演",
-		description: "玩家没给方向时，从线里选一个具体的下一步",
+		description: "你按推进时，从剧情线里挑一个具体的下一步",
 		capability: null,
 		kind: "choice",
 		choices: [
-			{ value: "off", label: "关闭" },
-			{ value: "push", label: "仅在按推进时" },
+			{ value: "off", label: "关" },
+			{ value: "push", label: "仅推进时" },
 			{ value: "always", label: "始终" },
 		],
-		tierValues: { lite: "push", standard: "always", immersive: "always" },
+		// 默认只在玩家交出方向时出手；「始终」要玩家自己打开。
+		tierValues: { lite: "push", standard: "push", immersive: "push" },
 		disabledValue: "off",
 	}),
 	defineSwitch({

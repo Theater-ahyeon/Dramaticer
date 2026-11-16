@@ -63,7 +63,7 @@ describe("功能开关目录", () => {
 			archive: true,
 			reunion: true,
 			search: false,
-			director: "always",
+			director: "push",
 			knows: true,
 			promiseLimit: 5,
 			rules: true,
@@ -81,7 +81,7 @@ describe("功能开关目录", () => {
 			archive: true,
 			reunion: true,
 			search: true,
-			director: "always",
+			director: "push",
 			knows: true,
 			promiseLimit: 8,
 			rules: true,
@@ -384,13 +384,13 @@ describe("卡片能力判断", () => {
 			.find((item) => item.id === "director");
 		expect(director).toMatchObject({
 			kind: "choice",
-			value: "always",
+			value: "push",
 			label: "导演",
-			description: "玩家没给方向时，从线里选一个具体的下一步",
+			description: "你按推进时，从剧情线里挑一个具体的下一步",
 		});
 		expect(director?.choices.map((choice) => choice.label)).toEqual([
-			"关闭",
-			"仅在按推进时",
+			"关",
+			"仅推进时",
 			"始终",
 		]);
 	});

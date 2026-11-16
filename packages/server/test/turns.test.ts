@@ -669,6 +669,7 @@ describe("POST /api/stories/:id/turns", () => {
 				...DEFAULT_DIRECTOR_CONFIG,
 				intensity: "detonate",
 			},
+			featureSwitches: { director: "always" },
 		});
 		mergePlannedArcs(
 			running.store,

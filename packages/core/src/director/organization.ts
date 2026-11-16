@@ -13,7 +13,9 @@ import { assertDirectorConfig, evaluateDirector } from "./evaluate.js";
 import {
 	DIRECTOR_ACTION_PRIORITY,
 	type DirectorPush,
+	type DirectorWhen,
 	readDirectorActionInput,
+	readPlayerIntent,
 	selectDirectorAction,
 } from "./lines.js";
 import type {
@@ -62,6 +64,8 @@ export interface DirectorEngineInput {
 	readonly config: DirectorConfig;
 	/** 单轮推进档位；不设置时是常规回合。 */
 	readonly push?: DirectorPush | null;
+	/** 导演何时出手；不设置时按「始终」处理。 */
+	readonly when?: DirectorWhen;
 }
 
 /**
@@ -95,6 +99,7 @@ export function createDirectorEngine(
 				kind,
 				mechanismNames: mechanisms.map((mechanism) => mechanism.name),
 				evaluate(input) {
+					if (yieldsToPlayer(input, kind)) return null;
 					return evaluateDirector({
 						store: input.store,
 						storyId: input.storyId,
@@ -110,6 +115,7 @@ export function createDirectorEngine(
 				kind,
 				mechanismNames: null,
 				evaluate(input) {
+					if (yieldsToPlayer(input, kind)) return null;
 					return evaluateDirectorBits(input);
 				},
 			};
@@ -122,6 +128,32 @@ export function createDirectorEngine(
 				},
 			};
 	}
+}
+
+/**
+ * 「仅推进时」的总闸：玩家这一轮写了自己的行动，导演什么都不加，
+ * 只留一条说明原因的决策记录。线引擎在动作选择里自己处理让位。
+ */
+function yieldsToPlayer(
+	input: DirectorEngineInput,
+	organization: DirectorOrganizationKind,
+): boolean {
+	if (input.when !== "push" || input.config.mode === "off") return false;
+	const path = input.store.getPathToNode(input.nodeId);
+	const lastPlayer = [...path].reverse().find((node) => node.role === "user");
+	const intent = readPlayerIntent(
+		lastPlayer === undefined ? null : lastPlayer.raw,
+		input.push ?? null,
+	);
+	if (intent.kind !== "free") return false;
+	input.store.saveDirectorDecision({
+		nodeId: input.nodeId,
+		storyId: input.storyId,
+		directive: null,
+		mechanisms: [{ name: "intent", triggered: false, reason: intent.basis }],
+		signals: { organization, intent: intent.kind, action: "yield" },
+	});
+	return true;
 }
 
 interface EligibleBit {
@@ -330,6 +362,7 @@ function evaluateDirectorLines(
 		nodeId,
 		config,
 		input.push ?? null,
+		input.when ?? "always",
 	);
 	const selection = selectDirectorAction(actionInput);
 	if (selection === null) {
@@ -354,13 +387,16 @@ function evaluateDirectorLines(
 		organization: "lines",
 		...selection.signals,
 	};
+	// 让位的指令为空：记下决策，不向写作模型注入任何东西。
+	const directive = selection.directive === "" ? null : selection.directive;
 	store.saveDirectorDecision({
 		nodeId,
 		storyId,
-		directive: selection.directive,
+		directive,
 		mechanisms: [{ name: "action", triggered: true, reason: selection.reason }],
 		signals,
 	});
+	if (directive === null) return null;
 	return {
 		mechanism: `action:${selection.action}`,
 		priority: DIRECTOR_ACTION_PRIORITY,
