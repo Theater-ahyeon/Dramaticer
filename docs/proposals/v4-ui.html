@@ -4,577 +4,678 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@400;600&family=ZCOOL+XiaoWei&display=swap">
 <style>
-/* 布局：中央是一页手稿（正文 + 页边的场记批注），右侧是导演台，底部是「推进」与输入。雾港的夜色配灯塔的金与潮水的青。 */
+/* 布局：左侧印章式导航，中央一页手稿（正文 + 页边批注），右侧停靠栏（导演 / 记忆 / 上下文），底部玻璃输入台。
+   雾港夜色打底，灯塔的金管「推进」，潮水的青管「记忆」；右上角一束缓慢扫过的灯塔光。 */
 :root{
-  --bg:#e7ecf0; --panel:#f3f6f8; --sheet:#fbfcfc; --ink:#17212c; --muted:#586676; --line:#cbd5dd; --line-soft:#dde4ea;
-  --gold:#b98414; --gold-ink:#7f5604; --gold-wash:#f5e9c8; --on-gold:#1b1405;
-  --teal:#1b7775; --teal-wash:#d8edeb; --bad:#ab412c; --bad-wash:#f5dfd8; --ok:#28744d; --ok-wash:#daefe3;
-  --shadow:0 1px 2px rgba(20,35,50,.06),0 8px 24px rgba(20,35,50,.07);
+  --bg:#e9eef2; --bg2:#dde5eb; --panel:#f4f7f9; --sheet:#fcfdfd; --ink:#131d28; --muted:#556474; --line:#c8d2db; --soft:#dae2e9;
+  --gold:#b47f10; --gold-ink:#7a5303; --gold-wash:#f5e8c4; --on-gold:#1b1405;
+  --teal:#17726f; --teal-wash:#d4ecea; --bad:#a93f2b; --bad-wash:#f5ded7; --ok:#27714b; --ok-wash:#d8eee1;
+  --glass:rgba(244,247,249,.84); --beam:rgba(180,127,16,.11); --glow:0 2px 10px rgba(180,127,16,.28);
+  --shadow:0 1px 2px rgba(20,35,50,.06),0 10px 30px rgba(20,35,50,.08);
   --f-display:"ZCOOL XiaoWei","Noto Serif SC","Songti SC",serif;
   --f-prose:"Noto Serif SC","Songti SC","SimSun",serif;
   --f-ui:"Noto Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
   --f-data:"IBM Plex Mono",ui-monospace,Consolas,monospace;
 }
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
-  --bg:#0d131a; --panel:#131b25; --sheet:#17202b; --ink:#e3e9ef; --muted:#8996a5; --line:#2b3745; --line-soft:#202b37;
-  --gold:#e3b04b; --gold-ink:#efc670; --gold-wash:#3a2e13; --on-gold:#1b1405;
-  --teal:#5fc4ba; --teal-wash:#133433; --bad:#e58268; --bad-wash:#3b1e17; --ok:#6fc797; --ok-wash:#15301f;
-  --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 28px rgba(0,0,0,.35); color-scheme:dark } }
+  --bg:#090f16; --bg2:#0e1722; --panel:#111a24; --sheet:#151e29; --ink:#e4eaf0; --muted:#8693a2; --line:#273442; --soft:#1b2632;
+  --gold:#e6b450; --gold-ink:#f1c871; --gold-wash:#3a2d11; --on-gold:#1b1405;
+  --teal:#62c8be; --teal-wash:#123332; --bad:#e6846a; --bad-wash:#3b1d16; --ok:#72c99a; --ok-wash:#14301f;
+  --glass:rgba(17,26,36,.8); --beam:rgba(230,180,80,.10); --glow:0 0 22px rgba(230,180,80,.38);
+  --shadow:0 1px 2px rgba(0,0,0,.35),0 14px 36px rgba(0,0,0,.4); color-scheme:dark } }
 :root[data-theme="dark"]{
-  --bg:#0d131a; --panel:#131b25; --sheet:#17202b; --ink:#e3e9ef; --muted:#8996a5; --line:#2b3745; --line-soft:#202b37;
-  --gold:#e3b04b; --gold-ink:#efc670; --gold-wash:#3a2e13; --on-gold:#1b1405;
-  --teal:#5fc4ba; --teal-wash:#133433; --bad:#e58268; --bad-wash:#3b1e17; --ok:#6fc797; --ok-wash:#15301f;
-  --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 28px rgba(0,0,0,.35); color-scheme:dark }
+  --bg:#090f16; --bg2:#0e1722; --panel:#111a24; --sheet:#151e29; --ink:#e4eaf0; --muted:#8693a2; --line:#273442; --soft:#1b2632;
+  --gold:#e6b450; --gold-ink:#f1c871; --gold-wash:#3a2d11; --on-gold:#1b1405;
+  --teal:#62c8be; --teal-wash:#123332; --bad:#e6846a; --bad-wash:#3b1d16; --ok:#72c99a; --ok-wash:#14301f;
+  --glass:rgba(17,26,36,.8); --beam:rgba(230,180,80,.10); --glow:0 0 22px rgba(230,180,80,.38);
+  --shadow:0 1px 2px rgba(0,0,0,.35),0 14px 36px rgba(0,0,0,.4); color-scheme:dark }
 
 *{box-sizing:border-box}
 [hidden]{display:none!important}
-body{background:var(--bg);color:var(--ink);font:14px/1.6 var(--f-ui);-webkit-font-smoothing:antialiased}
-body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:30;background:var(--bg)}
-button,textarea,input{font:inherit;color:inherit}
+body{background:var(--bg);color:var(--ink);font:14px/1.6 var(--f-ui);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:60;background:var(--bg)}
+button,textarea,input,select{font:inherit;color:inherit}
 button{cursor:pointer}
 :focus-visible{outline:2px solid var(--teal);outline-offset:2px}
 h1,h2,h3,p{margin:0}
-.wrap{max-width:1280px;margin-inline:auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+a{color:inherit}
+.beam{position:fixed;top:-70vmax;right:-70vmax;width:140vmax;height:140vmax;pointer-events:none;z-index:0;
+  background:conic-gradient(from 200deg,transparent 0 6deg,var(--beam) 11deg,transparent 19deg,transparent 180deg,var(--beam) 186deg,transparent 193deg);
+  animation:sweep 38s linear infinite}
+@keyframes sweep{to{transform:rotate(360deg)}}
 
-/* 顶栏 */
-.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--bg);border-bottom:1px solid var(--line)}
-.top .wrap{display:flex;align-items:center;gap:20px;height:56px}
-.brand{font:22px/1 var(--f-display);letter-spacing:.02em;white-space:nowrap}
-.brand b{color:var(--gold-ink);font-weight:400}
-.nav{display:flex;gap:2px;overflow-x:auto;min-width:0;flex:1;scrollbar-width:none}
-.nav a{padding:6px 12px;border-radius:999px;color:var(--muted);text-decoration:none;white-space:nowrap}
-.nav a[aria-current="page"]{background:var(--ink);color:var(--bg)}
-.demo{font:11px var(--f-data);color:var(--muted);border:1px dashed var(--line);padding:3px 8px;border-radius:4px;white-space:nowrap}
-@media (max-width:640px){.demo{display:none}.top .wrap{gap:12px}}
+/* 外壳 */
+.app{position:relative;z-index:1;display:grid;grid-template-columns:76px minmax(0,1fr);min-height:100vh}
+.rail{position:sticky;top:env(safe-area-inset-top,0px);height:calc(100vh - env(safe-area-inset-top,0px));display:flex;flex-direction:column;align-items:center;gap:6px;
+  padding:14px 0 14px env(safe-area-inset-left,0px);border-right:1px solid var(--line);background:var(--glass);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);z-index:30}
+.logo{font:26px/1 var(--f-display);color:var(--gold-ink);margin-bottom:10px;text-decoration:none}
+.rail a.nav{display:flex;flex-direction:column;align-items:center;gap:3px;width:60px;padding:7px 0;border-radius:10px;text-decoration:none;color:var(--muted);font-size:11.5px}
+.rail a.nav i{font:normal 19px/34px var(--f-display);width:34px;height:34px;text-align:center;border:1px solid var(--line);border-radius:7px;background:var(--sheet);color:var(--ink)}
+.rail a.nav[aria-current="page"]{color:var(--ink)}
+.rail a.nav[aria-current="page"] i{background:var(--gold);border-color:var(--gold);color:var(--on-gold);box-shadow:var(--glow)}
+.rail .sp{flex:1}
+.kbd{font:11px var(--f-data);border:1px solid var(--line);border-radius:5px;padding:2px 6px;color:var(--muted);background:var(--sheet)}
+.main{min-width:0;padding-block:24px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.inner{max-width:1260px;margin-inline:auto;padding-inline:clamp(0px,1.5vw,18px)}
+@media (max-width:760px){
+  .app{grid-template-columns:minmax(0,1fr)}
+  .rail{position:fixed;inset:auto 0 0 0;top:auto;height:auto;flex-direction:row;justify-content:space-around;border-right:0;border-top:1px solid var(--line);padding:6px max(8px,env(safe-area-inset-right,0px)) calc(6px + env(safe-area-inset-bottom,0px)) max(8px,env(safe-area-inset-left,0px))}
+  .logo,.rail .sp,.rail .kbdbtn{display:none}
+  .rail a.nav{width:auto;flex:1;padding:2px 0;font-size:10.5px}
+  .rail a.nav i{width:28px;height:28px;font-size:16px;line-height:28px}
+  .main{padding-bottom:110px}
+}
 
 /* 通用件 */
 .btn{border:1px solid var(--line);background:var(--sheet);border-radius:8px;padding:7px 14px;white-space:nowrap}
 .btn:hover{border-color:var(--muted)}
-.btn.gold{background:var(--gold);border-color:var(--gold);color:var(--on-gold);font-weight:700}
+.btn.gold{background:var(--gold);border-color:var(--gold);color:var(--on-gold);font-weight:700;box-shadow:var(--glow)}
 .btn.ghost{background:none;border-color:transparent;color:var(--muted);padding:5px 8px}
-.btn.ghost:hover{color:var(--ink);background:var(--line-soft)}
+.btn.ghost:hover{color:var(--ink);background:var(--soft)}
 .btn.sm{padding:4px 10px;font-size:12.5px}
-.chip{border:1px solid var(--line);background:var(--sheet);border-radius:999px;padding:5px 13px;font-size:13px;text-align:left}
-.chip:hover{border-color:var(--teal);color:var(--teal)}
+.chip{border:1px solid var(--line);background:var(--sheet);border-radius:999px;padding:5px 13px;font-size:13px;white-space:nowrap}
+.chip:hover,.chip[aria-pressed="true"]{border-color:var(--teal);color:var(--teal)}
+.chip[aria-pressed="true"]{background:var(--teal-wash)}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--sheet)}
 .seg button{border:0;background:none;padding:6px 12px;color:var(--muted);white-space:nowrap}
 .seg button+button{border-left:1px solid var(--line)}
 .seg button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.seg.sm button{padding:3px 10px;font-size:12px}
 .pill{display:inline-block;font-size:11.5px;line-height:1;padding:4px 8px;border-radius:999px;white-space:nowrap}
 .pill.ok{background:var(--ok-wash);color:var(--ok)} .pill.gold{background:var(--gold-wash);color:var(--gold-ink)}
 .pill.teal{background:var(--teal-wash);color:var(--teal)} .pill.bad{background:var(--bad-wash);color:var(--bad)}
-.pill.mute{background:var(--line-soft);color:var(--muted)}
+.pill.mute{background:var(--soft);color:var(--muted)}
 .label{font-size:11.5px;letter-spacing:.14em;color:var(--muted)}
 .num{font-family:var(--f-data);font-variant-numeric:tabular-nums}
-.sw{flex:none;width:38px;height:22px;border-radius:999px;border:1px solid var(--line);background:var(--line-soft);position:relative;padding:0}
+.sw{flex:none;width:38px;height:22px;border-radius:999px;border:1px solid var(--line);background:var(--soft);position:relative;padding:0}
 .sw::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--muted);transition:transform .15s}
 .sw[aria-checked="true"]{background:var(--teal);border-color:var(--teal)}
 .sw[aria-checked="true"]::after{transform:translateX(16px);background:var(--sheet)}
-.view{padding-block:28px 48px}
-.vh{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px 24px;margin-bottom:22px}
-.vh h1{font:400 30px/1.2 var(--f-display);text-wrap:balance}
+.vh{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px 24px;margin-bottom:20px}
+.vh h1{font:400 32px/1.2 var(--f-display);text-wrap:balance}
 .vh p{color:var(--muted);max-width:46em}
+.subtabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:20px;overflow-x:auto;scrollbar-width:none}
+.subtabs button{border:0;background:none;padding:9px 14px;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
+.subtabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--gold);font-weight:700}
+.rows{display:flex;flex-direction:column}
+.rows>div{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:9px 0;border-top:1px solid var(--soft);font-size:13.5px}
+.rows>div>span:first-child{min-width:0}
+.rows>div>span:last-child{color:var(--muted);white-space:nowrap;font-size:12.5px}
+.sec{display:flex;flex-direction:column;gap:10px}
+.sec>.label{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.card{background:var(--sheet);border:1px solid var(--line);border-radius:6px;padding:16px}
+.cover{display:block;flex:none;width:100%;height:auto;aspect-ratio:2/3;border-radius:4px;border:1px solid var(--line);background:var(--soft)}
+[contenteditable]{border-radius:3px;outline:0;cursor:text}
+[contenteditable]:hover{background:var(--soft)}
+[contenteditable]:focus{background:var(--gold-wash);box-shadow:0 0 0 2px var(--gold-wash)}
 
-/* 游玩 */
-.play{display:grid;grid-template-columns:minmax(0,1fr) 348px;gap:32px;align-items:start}
-.sheet{background:var(--sheet);border:1px solid var(--line);border-radius:4px;box-shadow:var(--shadow)}
-.sheet-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:6px 16px;padding:22px 28px 14px;border-bottom:1px solid var(--line-soft)}
-.sheet-head h1{font:400 26px/1.2 var(--f-display)}
-.recap{margin:18px 28px 0;border-left:3px solid var(--teal);background:var(--teal-wash);padding:12px 16px;border-radius:0 4px 4px 0}
-.recap summary{cursor:pointer;color:var(--teal);font-weight:500}
-.recap p{font:15px/1.85 var(--f-prose);margin-top:8px}
-.slate{display:flex;align-items:stretch;margin:24px 28px 6px;border:1px solid var(--ink);border-radius:3px;overflow:hidden;font-size:12.5px}
+/* 书架 */
+.hero{display:grid;grid-template-columns:200px minmax(0,1fr);gap:28px;padding:26px;background:linear-gradient(120deg,var(--sheet),var(--bg2));border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);margin-bottom:26px}
+.hero h1{font:400 40px/1.15 var(--f-display)}
+.hero .recap{font:16px/1.9 var(--f-prose);margin:12px 0 16px;max-width:36em}
+.hero .stats{display:flex;flex-wrap:wrap;gap:8px 22px;color:var(--muted);font-size:13px;margin-bottom:18px}
+.hero .stats b{font:600 18px var(--f-data);color:var(--ink);margin-right:4px}
+.shelf{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px}
+.book{display:grid;grid-template-columns:96px minmax(0,1fr);gap:16px;padding:16px;background:var(--sheet);border:1px solid var(--line);border-radius:6px;text-decoration:none;transition:transform .15s,box-shadow .15s}
+.book:hover{transform:translateY(-3px);box-shadow:var(--shadow)}
+.book h2{font:400 22px/1.2 var(--f-display);margin:4px 0 6px}
+.book p{font:14px/1.75 var(--f-prose);color:var(--muted)}
+.book.add{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;border-style:dashed;background:none;text-align:center;min-height:170px}
+@media (max-width:640px){.hero{grid-template-columns:minmax(0,1fr);padding:18px}.hero .cover{width:120px}.hero h1{font-size:30px}}
+
+/* 故事 */
+.play{display:grid;grid-template-columns:minmax(0,1fr) 356px;gap:28px;align-items:start}
+.sheet{background:var(--sheet);border:1px solid var(--line);border-radius:6px;box-shadow:var(--shadow)}
+.sheet-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px;padding:18px 28px 14px;border-bottom:1px solid var(--soft)}
+.ttl{display:flex;align-items:center;gap:14px;min-width:0}
+.ttl .cover{width:38px}
+.ttl h1{font:400 26px/1.2 var(--f-display)}
+.recapbox{margin:18px 28px 0;border-left:3px solid var(--teal);background:var(--teal-wash);padding:12px 16px;border-radius:0 4px 4px 0}
+.recapbox summary{cursor:pointer;color:var(--teal);font-weight:500}
+.recapbox p{font:15px/1.85 var(--f-prose);margin-top:8px}
+.slate{display:flex;align-items:stretch;margin:22px 28px 6px;border:1px solid var(--ink);border-radius:3px;overflow:hidden;font-size:12.5px}
 .slate i{flex:none;width:34px;background:repeating-linear-gradient(-55deg,var(--ink) 0 9px,var(--sheet) 9px 18px)}
 .slate span{padding:7px 12px;border-left:1px solid var(--line);white-space:nowrap}
 .slate span:first-of-type{border-left:1px solid var(--ink);font-weight:700}
 .slate .who{flex:1;white-space:normal;min-width:0}
-.floor{display:grid;grid-template-columns:minmax(0,1fr) 176px;gap:22px;padding:14px 28px}
-.floor.new{animation:rise .5s ease-out}
-@keyframes rise{from{opacity:0;transform:translateY(8px)}}
-@media (prefers-reduced-motion:reduce){.floor.new{animation:none}.sw::after{transition:none}}
+.floor{display:grid;grid-template-columns:minmax(0,1fr) 184px;gap:22px;padding:14px 28px}
+.nonotes .floor{grid-template-columns:minmax(0,1fr)} .nonotes .notes{display:none}
 .prose{max-width:36em}
-.prose p{font:17px/1.95 var(--f-prose);text-indent:2em;text-align:justify}
+.prose p{font:17px/1.95 var(--f-prose);text-indent:2em;text-align:justify;min-height:1em}
+.caret::after{content:"▍";color:var(--gold);animation:blink 1s steps(2) infinite}
+@keyframes blink{50%{opacity:0}}
 .notes{display:flex;flex-direction:column;gap:8px;padding-top:6px}
 .note{font-size:12px;line-height:1.5;color:var(--muted);border-top:1px solid var(--line);padding-top:6px}
 .note b{display:block;font-weight:500;color:var(--teal)}
 .note.gold b{color:var(--gold-ink)}
+.note button{margin-top:4px;border:0;background:none;padding:0;color:var(--muted);text-decoration:underline;font-size:11.5px}
 .fno{font:11px var(--f-data);color:var(--muted)}
+.stages{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px;font-size:12px}
+.stages span{padding:3px 10px;border-radius:999px;border:1px dashed var(--line);color:var(--muted);transition:all .25s}
+.stages span.on{border-style:solid;border-color:var(--gold);color:var(--gold-ink);background:var(--gold-wash)}
+.checks{font-size:12.5px;color:var(--muted);margin:0 0 10px;display:grid;gap:2px}
+.checks span::before{content:"✓ ";color:var(--ok)}
 .said{margin:6px 28px;padding:10px 16px;border-left:3px solid var(--gold);max-width:38em}
 .said .label{display:block;margin-bottom:2px}
 .said p{font:15.5px/1.8 var(--f-prose)}
 .pushmark{display:flex;align-items:center;gap:12px;margin:10px 28px;color:var(--gold-ink);font-size:12.5px;letter-spacing:.1em}
 .pushmark::before,.pushmark::after{content:"";flex:1;border-top:1px dashed var(--line)}
-.acts{display:flex;flex-wrap:wrap;gap:4px;padding:0 20px 6px}
+.acts{display:flex;flex-wrap:wrap;gap:4px;padding:0 20px 8px}
 .why{margin:4px 28px 10px;padding:12px 14px;background:var(--panel);border:1px solid var(--line);border-radius:6px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.why span{color:var(--muted);font-size:13px;margin-right:4px}
-
-.composer{position:sticky;bottom:0;z-index:5;background:var(--panel);border-top:1px solid var(--line);padding:14px 28px max(14px,env(safe-area-inset-bottom,0px));border-radius:0 0 4px 4px}
+.why>span{color:var(--muted);font-size:13px;margin-right:4px}
+.composer{position:sticky;bottom:0;z-index:5;background:var(--glass);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:1px solid var(--line);padding:14px 28px max(14px,env(safe-area-inset-bottom,0px));border-radius:0 0 6px 6px}
 .opts{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
 .push{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:10px}
 .push small{color:var(--muted);font-size:12.5px;min-width:0}
 .say{display:flex;gap:8px;align-items:flex-end}
 .say textarea{flex:1;min-width:0;resize:none;border:1px solid var(--line);background:var(--sheet);border-radius:8px;padding:9px 12px;font:15px/1.6 var(--f-prose)}
-.meta{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;margin-top:10px;color:var(--muted);font-size:12px}
+.meta{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;margin-top:10px;color:var(--muted);font-size:12px}
 .tog{border:1px solid var(--line);background:none;border-radius:999px;padding:2px 10px;font-size:12px;color:var(--muted)}
 .tog[aria-pressed="true"]{border-color:var(--teal);color:var(--teal);background:var(--teal-wash)}
-
-/* 右侧面板 */
-.side{position:sticky;top:calc(env(safe-area-inset-top,0px) + 72px);max-height:calc(100vh - 96px);overflow:auto;display:flex;flex-direction:column;gap:14px;padding-bottom:4px}
+.dock{position:sticky;top:calc(env(safe-area-inset-top,0px) + 20px);max-height:calc(100vh - 44px);overflow:auto;display:flex;flex-direction:column;gap:14px;scrollbar-width:thin}
 .tabs{display:flex;border-bottom:1px solid var(--line)}
 .tabs button{flex:1;border:0;background:none;padding:8px 4px;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px}
 .tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--gold);font-weight:700}
-.sec{display:flex;flex-direction:column;gap:10px}
-.sec>.label{display:flex;justify-content:space-between;align-items:center}
 .thread{display:grid;grid-template-columns:46px minmax(0,1fr);gap:12px;padding:12px;background:var(--panel);border:1px solid var(--line);border-radius:6px}
-.thread.muted{opacity:.5}
-.thread.pinned{border-color:var(--gold)}
-.thread h3{font:500 14px/1.45 var(--f-ui)}
+.thread.off{opacity:.45} .thread.pin{border-color:var(--gold)}
+.thread h3{font:500 14px/1.45 var(--f-ui);margin-top:4px}
 .thread p{font-size:12.5px;color:var(--muted);margin-top:2px}
 .thread .ctl{display:flex;gap:2px;margin-top:6px;margin-left:-8px}
-.clock path{fill:none;stroke-width:5}
+.clock path{fill:none;stroke-width:5;transition:stroke .4s}
 .clock .on{stroke:var(--gold)} .clock .off{stroke:var(--line)}
 .clock text{font:600 10px var(--f-data);fill:var(--ink)}
-.rows{display:flex;flex-direction:column}
-.rows>div{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-top:1px solid var(--line-soft);font-size:13px}
-.rows>div>span:first-child{min-width:0}
-.rows>div>span:last-child{color:var(--muted);white-space:nowrap}
-.who-card{padding:12px;background:var(--panel);border:1px solid var(--line);border-radius:6px}
-.who-card h3{font:400 18px var(--f-display)}
+.ctxbar{display:flex;height:26px;border-radius:5px;overflow:hidden;border:1px solid var(--line)}
+.ctxbar button{border:0;padding:0;min-width:3px;opacity:.85}
+.ctxbar button:hover,.ctxbar button[aria-pressed="true"]{opacity:1;outline:2px solid var(--ink);outline-offset:-2px}
+.ctxitems>div{align-items:center}
+.who-card h3{font:400 19px var(--f-display)}
 .who-card dl{margin:8px 0 0;display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;font-size:13px}
 .who-card dt{color:var(--muted)} .who-card dd{margin:0}
 .who-card q{font-family:var(--f-prose);quotes:"「" "」"}
-@media (max-width:1020px){
-  .play{grid-template-columns:minmax(0,1fr)}
-  .side{position:static;max-height:none}
-}
+@media (max-width:1040px){.play{grid-template-columns:minmax(0,1fr)}.dock{position:static;max-height:none}}
 @media (max-width:760px){
   .floor{grid-template-columns:minmax(0,1fr);gap:8px;padding:12px 16px}
   .notes{flex-direction:row;flex-wrap:wrap;padding-top:0}
   .note{border:1px solid var(--line);border-radius:6px;padding:5px 9px}
   .sheet-head,.composer{padding-inline:16px}
-  .recap,.slate,.said,.pushmark,.why{margin-inline:16px}
+  .composer{bottom:calc(56px + env(safe-area-inset-bottom,0px));padding-bottom:12px}
+  .recapbox,.slate,.said,.pushmark,.why{margin-inline:16px}
   .acts{padding-inline:8px}
   .slate{flex-wrap:wrap}.slate .who{flex-basis:100%;border-left:0;border-top:1px solid var(--line)}
-  .opts{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}.opts .chip{white-space:nowrap;flex:none}
-  #strengthHint,.meta .num{display:none}
+  .opts{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}.opts .chip{flex:none}
+  #stepHint,.meta .num{display:none}
   .prose p{font-size:16.5px;text-align:left}
 }
 
-/* 蓝图 */
+/* 记忆 */
+.wiki{display:grid;grid-template-columns:230px minmax(0,1fr);gap:28px;align-items:start}
+.plist{display:flex;flex-direction:column;gap:2px}
+.plist .label{margin:12px 0 4px}
+.plist button{border:0;background:none;text-align:left;padding:7px 10px;border-radius:6px;display:flex;justify-content:space-between;gap:8px}
+.plist button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.plist button small{opacity:.65;font-size:11.5px}
+.page h2{font:400 30px/1.2 var(--f-display)}
+.page .lead{font:16px/1.9 var(--f-prose);margin:10px 0 4px;max-width:38em}
+.page h3{font:500 13px var(--f-ui);letter-spacing:.14em;color:var(--muted);margin:22px 0 4px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+.st{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 16px;padding:10px 0;border-bottom:1px solid var(--soft)}
+.st p{font:15.5px/1.8 var(--f-prose)}
+.st.old p{color:var(--muted);text-decoration:line-through;text-decoration-color:var(--line)}
+.st .m{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:12px;color:var(--muted)}
+.st .raw{grid-column:1/-1;font:14px/1.8 var(--f-prose);color:var(--muted);border-left:2px solid var(--line);padding-left:12px}
+.st a,.lead a{color:var(--teal);text-decoration:none;border-bottom:1px dotted var(--teal)}
+.lock{border:0;background:none;padding:2px 4px;color:var(--muted);font-size:12px}
+.lock[aria-pressed="true"]{color:var(--gold-ink)}
+.tbl{width:100%;border-collapse:collapse;font-size:14px}
+.tbl th{text-align:left;font-weight:500;font-size:11.5px;letter-spacing:.12em;color:var(--muted);padding:8px 10px;border-bottom:1px solid var(--ink)}
+.tbl td{padding:10px;border-bottom:1px solid var(--soft);vertical-align:top}
+.tblwrap{overflow-x:auto}
+.spine{position:relative;padding-left:26px}
+.spine::before{content:"";position:absolute;left:7px;top:6px;bottom:6px;width:2px;background:var(--line)}
+.spine details{position:relative;padding:8px 0 14px}
+.spine details::before{content:"";position:absolute;left:-25px;top:13px;width:14px;height:14px;border-radius:50%;background:var(--sheet);border:2px solid var(--gold)}
+.spine summary{cursor:pointer;font:400 20px var(--f-display)}
+.spine summary small{font:12.5px var(--f-ui);color:var(--muted);margin-left:10px}
+.spine .sum{font:15px/1.85 var(--f-prose);margin:6px 0;max-width:40em}
+.spine li{font:14.5px/1.8 var(--f-prose);margin:2px 0}
+.spine li b{color:var(--gold-ink);font-weight:400;margin-right:4px}
+@media (max-width:820px){.wiki{grid-template-columns:minmax(0,1fr)}.plist{flex-direction:row;flex-wrap:wrap}.plist .label{flex-basis:100%;margin:6px 0 0}}
+
+/* 大纲 */
 .bp{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:32px;align-items:start}
-@media (max-width:1020px){.bp{grid-template-columns:minmax(0,1fr)}}
-.outline{display:flex;flex-direction:column;gap:22px}
+@media (max-width:1040px){.bp{grid-template-columns:minmax(0,1fr)}}
 .premise{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:6px;overflow:hidden}
 .premise div{background:var(--sheet);padding:14px 16px}
 .premise p{font:15px/1.7 var(--f-prose);margin-top:4px}
+.vol{margin-top:22px}
 .vol>header{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px;padding-bottom:8px;border-bottom:2px solid var(--ink)}
 .vol h2{font:400 22px var(--f-display)}
 .vol>header p{color:var(--muted);font-size:13px}
-.ms{display:grid;grid-template-columns:18px minmax(0,1fr);gap:14px;padding:14px 0;border-bottom:1px solid var(--line-soft)}
+.ms{display:grid;grid-template-columns:18px minmax(0,1fr);gap:14px;padding:14px 0;border-bottom:1px solid var(--soft)}
 .ms .dot{width:12px;height:12px;border-radius:50%;border:2px solid var(--muted);margin-top:6px;justify-self:center}
-.ms.done .dot{background:var(--ok);border-color:var(--ok)} .ms.block .dot{border-color:var(--bad)} .ms.live .dot{border-color:var(--gold);background:var(--gold)}
+.ms.done .dot{background:var(--ok);border-color:var(--ok)} .ms.block .dot{border-color:var(--bad)} .ms.live .dot{border-color:var(--gold);background:var(--gold);box-shadow:var(--glow)}
 .ms h3{font:600 16.5px/1.6 var(--f-prose)}
 .ms .tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;align-items:center}
 .ms .sub{font-size:13px;color:var(--muted);margin-top:6px}
 .ms .fix{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
 .spoiler .ms.ai h3,.spoiler .ms.ai .sub{filter:blur(6px);user-select:none}
-.lock[aria-pressed="true"]{color:var(--gold-ink)}
-.sug{padding:14px;border:1px solid var(--line);border-radius:6px;background:var(--panel)}
 .sug p{font-size:13.5px;margin:6px 0 10px}
-.sug .row{display:flex;gap:8px}
-.idea textarea{width:100%;min-height:92px;resize:vertical;border:1px solid var(--line);background:var(--sheet);border-radius:8px;padding:10px 12px;font:15px/1.7 var(--f-prose)}
-.idea .row{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.sug .row,.idea .row{display:flex;flex-wrap:wrap;gap:8px}
+.idea textarea{width:100%;min-height:92px;resize:vertical;border:1px solid var(--line);background:var(--sheet);border-radius:8px;padding:10px 12px;font:15px/1.7 var(--f-prose);margin:6px 0 8px}
 
-/* 导入体检 */
-.audit{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:32px;align-items:start}
-@media (max-width:900px){.audit{grid-template-columns:minmax(0,1fr)}}
-.bar{display:flex;height:22px;border-radius:4px;overflow:hidden;border:1px solid var(--line)}
+/* 设定 */
+.audit{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px 28px;align-items:center;margin-bottom:18px}
+.bar{display:flex;height:18px;border-radius:4px;overflow:hidden;border:1px solid var(--line)}
 .bar i{display:block;min-width:2px}
-.types{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:0 28px;margin-top:14px}
-.types>div{display:grid;grid-template-columns:12px minmax(0,1fr) auto;gap:10px;align-items:baseline;padding:10px 0;border-bottom:1px solid var(--line-soft)}
-.types i{width:10px;height:10px;border-radius:2px;align-self:center}
-.types small{display:block;color:var(--muted);font-size:12px}
-.cost{display:flex;align-items:center;gap:18px;padding:18px;background:var(--sheet);border:1px solid var(--line);border-radius:6px}
-.cost .big{font:600 30px/1 var(--f-data);font-variant-numeric:tabular-nums}
-.cost .was{color:var(--muted);text-decoration:line-through}
-.cost .arrow{color:var(--teal);font-size:20px}
+.cost{display:flex;align-items:baseline;gap:10px;white-space:nowrap}
+.cost .big{font:600 26px/1 var(--f-data)} .cost .was{color:var(--muted);text-decoration:line-through} .cost .arrow{color:var(--teal)}
+.filters{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+.entry{border-bottom:1px solid var(--soft)}
+.entry>.head{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:12px;align-items:center;padding:11px 0;cursor:pointer}
+.entry h3{font:500 14.5px var(--f-ui)}
+.entry .when{font-size:12.5px;color:var(--muted)}
+.entry .edit{padding:0 0 14px;display:grid;gap:8px}
+.entry textarea{width:100%;min-height:84px;border:1px solid var(--line);background:var(--sheet);border-radius:8px;padding:10px 12px;font:14.5px/1.75 var(--f-prose);resize:vertical}
+.entry .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.entry select{border:1px solid var(--line);background:var(--sheet);border-radius:8px;padding:5px 8px}
+@media (max-width:760px){.audit{grid-template-columns:minmax(0,1fr)}}
 
-/* 开关 */
-.grp{margin-top:26px}
-.grp>h2{font:400 20px var(--f-display);padding-bottom:6px;border-bottom:2px solid var(--ink)}
-.opt{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 20px;align-items:center;padding:13px 0;border-bottom:1px solid var(--line-soft)}
-.opt h3{font:500 14.5px var(--f-ui)}
-.opt p{color:var(--muted);font-size:13px}
-.opt .stat{display:flex;gap:14px;font-size:12px;color:var(--muted);margin-top:3px}
-.total{position:sticky;bottom:0;margin-top:24px;background:var(--ink);color:var(--bg);border-radius:8px;padding:12px 18px max(12px,env(safe-area-inset-bottom,0px));display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px 20px}
+/* 设置 */
+.dial{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 20px;align-items:center;padding:13px 0;border-bottom:1px solid var(--soft)}
+.dial h3{font:500 14.5px var(--f-ui)} .dial p{color:var(--muted);font-size:13px}
+.dial .stat{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--muted);margin-top:3px}
+.grp>h2{font:400 20px var(--f-display);padding-bottom:6px;border-bottom:2px solid var(--ink);margin-top:26px}
+.total{position:sticky;bottom:0;margin-top:22px;background:var(--ink);color:var(--bg);border-radius:8px;padding:12px 18px;display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px 20px}
+@media (max-width:760px){.dial{grid-template-columns:minmax(0,1fr)}.dial:has(>.sw),.dial:has(>.btn){grid-template-columns:minmax(0,1fr) auto}.total{bottom:calc(60px + env(safe-area-inset-bottom,0px))}}
 
-/* 书架 */
-.shelf{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:20px}
-.cover{display:block;flex:none;width:100%;height:auto;aspect-ratio:2/3;border-radius:3px;border:1px solid var(--line);background:var(--line-soft)}
-.ttl{display:flex;align-items:center;gap:14px;min-width:0}
-.ttl .cover{width:38px}.ttl .cover.lg{width:72px}
-.bk{display:flex;flex-direction:column;gap:10px;min-width:0}
-.book{display:grid;grid-template-columns:108px minmax(0,1fr);gap:18px;padding:18px;background:var(--sheet);border:1px solid var(--line);border-radius:4px;box-shadow:var(--shadow);text-decoration:none;color:inherit;border-top:4px solid var(--gold)}
-.book.t{border-top-color:var(--teal)}
-.book h2{font:400 24px/1.2 var(--f-display)}
-.book p{font:14.5px/1.8 var(--f-prose);color:var(--muted)}
-.book .foot{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-top:auto;padding-top:10px;border-top:1px solid var(--line-soft)}
-.book.add{display:flex;flex-direction:column;gap:10px;border:1px dashed var(--line);border-top:1px dashed var(--line);box-shadow:none;background:none;justify-content:center;align-items:center;text-align:center;min-height:180px}
-
-.toast{position:fixed;left:50%;bottom:calc(22px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:999px;font-size:13px;z-index:40;max-width:calc(100% - 32px);text-align:center}
+/* 命令面板与提示 */
+.scrim{position:fixed;inset:0;z-index:70;background:rgba(5,10,16,.55);display:grid;place-items:start center;padding:14vh 16px 0}
+.pal{width:min(560px,100%);background:var(--sheet);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);overflow:hidden}
+.pal input{width:100%;border:0;border-bottom:1px solid var(--line);background:none;padding:14px 16px;font-size:16px;outline:0}
+.pal ul{list-style:none;margin:0;padding:6px;max-height:46vh;overflow:auto}
+.pal li{display:flex;justify-content:space-between;gap:12px;padding:9px 10px;border-radius:6px;cursor:pointer}
+.pal li[aria-selected="true"]{background:var(--ink);color:var(--bg)}
+.pal li small{opacity:.6}
+.toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:999px;font-size:13px;z-index:80;max-width:calc(100% - 32px);text-align:center;box-shadow:var(--shadow)}
+.toast button{border:0;background:none;color:var(--gold);margin-left:10px;text-decoration:underline}
+@media (prefers-reduced-motion:reduce){.beam,.caret::after{animation:none}.sw::after,.book,.clock path,.stages span{transition:none}}
 </style>
 
-<header class="top"><div class="wrap">
-  <div class="brand">Drama<b>ticer</b></div>
-  <nav class="nav" aria-label="主导航">
-    <a href="#library">书架</a><a href="#play">游玩</a><a href="#blueprint">蓝图</a><a href="#import">导入体检</a><a href="#switches">开关</a>
-  </nav>
-  <span class="demo">原型 · 示例数据</span>
-</div></header>
+<div class="beam" aria-hidden="true"></div>
+<div class="app">
+<nav class="rail" aria-label="主导航">
+  <a class="logo" href="#library" aria-label="Dramaticer">D</a>
+  <a class="nav" href="#library"><i>书</i>书架</a>
+  <a class="nav" href="#play"><i>文</i>故事</a>
+  <a class="nav" href="#memory"><i>忆</i>记忆</a>
+  <a class="nav" href="#outline"><i>纲</i>大纲</a>
+  <a class="nav" href="#lore"><i>设</i>设定</a>
+  <a class="nav" href="#prefs"><i>调</i>设置</a>
+  <span class="sp"></span>
+  <button class="btn ghost kbdbtn" id="palBtn" aria-label="打开命令面板"><span class="kbd">Ctrl K</span></button>
+</nav>
+<main class="main"><div class="inner">
 
-<main class="wrap">
+<!-- 书架 -->
+<section data-view="library" hidden>
+  <div class="hero">
+    <canvas class="cover" width="400" height="600" data-seed="7" data-hue="205" role="img" aria-label="雾港纪事的卡面图"></canvas>
+    <div>
+      <span class="label">继续上次 · 第三章 退潮之前</span>
+      <h1>雾港纪事</h1>
+      <p class="recap">你在七号码头截下贺九的一箱货，箱里是一整套灯塔透镜的零件。阿蘅托人带话：旧灯塔，储油间，别走正门。</p>
+      <div class="stats"><span><b>43</b>楼</span><span><b>3</b>条剧情线在走</span><span><b>2</b>个伏笔没收</span><span>3 天前</span></div>
+      <a class="btn gold" href="#play" style="text-decoration:none">接着写 ▸</a>
+    </div>
+  </div>
+  <div class="shelf">
+    <a class="book" href="#play"><canvas class="cover" width="240" height="360" data-seed="113" data-hue="150" role="img" aria-label="青崖书院的卡面图"></canvas><div><span class="label">第一章 · 入山</span><h2>青崖书院</h2><p>山门前的石阶有九百级，你数到第四百级时，雨停了。</p></div></a>
+    <a class="book" href="#play"><canvas class="cover" width="240" height="360" data-seed="59" data-hue="275" role="img" aria-label="长夜驿站的卡面图"></canvas><div><span class="label">第二章 · 换马</span><h2>长夜驿站</h2><p>驿丞说今夜不留客。可后院的灯，亮了三盏。</p></div></a>
+    <a class="book add" href="#lore"><h2>导入一张卡</h2><p>卡、世界书、聊天记录都能带进来</p></a>
+  </div>
+</section>
 
-<!-- 游玩 -->
-<section class="view" data-view="play">
+<!-- 故事 -->
+<section data-view="play" hidden>
  <div class="play">
-  <div class="sheet">
+  <div class="sheet" id="sheet">
     <div class="sheet-head">
       <div class="ttl"><canvas class="cover" width="240" height="360" data-seed="7" data-hue="205" role="img" aria-label="雾港纪事的卡面图"></canvas><h1>雾港纪事</h1></div>
-      <span class="label">第三章 · 退潮之前 · 第 43 楼</span>
+      <span class="label">第三章 · 退潮之前 · 第 <span id="floorNo">43</span> 楼</span>
     </div>
-    <details class="recap" open>
-      <summary>上回说到</summary>
-      <p>你在七号码头截下贺九的一箱货，箱里不是烟土，是一整套灯塔透镜的零件。魏临督察要你天亮前交出报告。阿蘅托人带话：旧灯塔，储油间，别走正门。</p>
-    </details>
+    <details class="recapbox" open><summary>上回说到</summary>
+      <p>你在七号码头截下贺九的一箱货，箱里不是烟土，是一整套灯塔透镜的零件。魏临督察要你天亮前交出报告。阿蘅托人带话：旧灯塔，储油间，别走正门。</p></details>
     <div id="script">
       <div class="slate"><i></i><span>第 2 场</span><span>旧灯塔 · 储油间</span><span>夜</span><span class="who">在场：沈砚（你）、阿蘅</span></div>
-      <article class="floor">
-        <div class="prose">
+      <article class="floor"><div class="prose">
           <p>储油间比外面更冷。阿蘅没有点灯，只把窗板推开一条缝，让港口的雾光漏进来，刚好够看清她手里那把铜钥匙。</p>
           <p>“我爹失踪前一晚，把它缝在我的棉袄里。”她没有看你，“灯塔只有一把钥匙，在港务局的柜子里。这是第二把。”</p>
-          <p>她把钥匙放在油桶盖上，推过来一寸，又按住。</p>
-          <p>“你截的那箱透镜，是这座塔上拆下来的。贺九不是在走私，他是在把灯塔一点一点搬走。我想知道为什么，可我一个人上不去顶层。”</p>
-        </div>
-        <aside class="notes">
-          <span class="fno">第 41 楼</span>
-          <div class="note gold"><b>兑现伏笔</b>第二把钥匙（埋于第 12 楼）</div>
-          <div class="note"><b>关系</b>阿蘅对你：试探 → 托付</div>
-          <div class="note"><b>知情</b>魏临不在场，不知道有第二把钥匙</div>
-        </aside>
-      </article>
+          <p>她把钥匙放在油桶盖上，推过来一寸，又按住。</p></div>
+        <aside class="notes"><span class="fno">第 41 楼</span>
+          <div class="note gold"><b>收伏笔</b>第二把钥匙（埋于第 12 楼）</div>
+          <div class="note"><b>状态</b>阿蘅对你：试探 → 托付</div>
+          <div class="note"><b>秘密</b>魏临不知道有第二把钥匙</div></aside></article>
       <div class="said"><span class="label">沈砚</span><p>我没有去碰钥匙。“顶层有什么？”</p></div>
-      <article class="floor" id="last">
-        <div class="prose">
+      <article class="floor" id="last"><div class="prose">
           <p>“有一本值更簿。”阿蘅的手指仍压在钥匙上，“我爹每晚都记，记了三十一年。贺九的人翻遍了下面三层，没找到，说明它还在上面。”</p>
           <p>远处传来一声汽笛，短促，两响。她的肩膀明显紧了一下。</p>
-          <p>“那是白鹭号在试锅炉。”她终于抬头看你，“他们不会等到潮汐日了。”</p>
-        </div>
-        <aside class="notes">
-          <span class="fno">第 43 楼</span>
-          <div class="note"><b>导演 · 让位</b>你问了具体问题，本轮先回答</div>
-          <div class="note gold"><b>导演 · 闯入</b>贺九的船期提前，倒计时 4 → 5</div>
-        </aside>
-      </article>
+          <p>“那是白鹭号在试锅炉。”她终于抬头看你，“他们不会等到潮汐日了。”</p></div>
+        <aside class="notes"><span class="fno">第 43 楼</span>
+          <div class="note"><b>导演 · 不干预</b>你写了自己的行动，这一轮没有加任何安排</div></aside></article>
     </div>
-    <div class="acts" id="acts">
-      <button class="btn ghost sm" id="reroll">重写这一楼</button>
-      <button class="btn ghost sm" data-toast="选中正文里的一句话，写下哪里不对；系统只重写那一段，并把纠正记成长期有效的偏好">就地纠正</button>
-      <button class="btn ghost sm" data-toast="上下文 3.1K：常驻 0.4K · 章节档案 0.6K · 历史 1.7K · 本轮槽位 0.4K；导演选了「闯入」，因为贺九那条线已 6 楼没动">为什么这样写</button>
+    <div class="acts">
+      <button class="btn ghost sm" id="reroll">重写</button>
+      <button class="btn ghost sm" data-toast="选中正文里的一句，写下哪里不对；只重写那一段，并记进你的偏好">改这句</button>
+      <button class="btn ghost sm" id="whyBtn">它看到了什么</button>
     </div>
-    <div class="why" id="why" hidden>
-      <span>哪里不满意？</span>
-      <button class="chip" data-why="没推进">没推进</button><button class="chip" data-why="没听我的">没听我的</button><button class="chip" data-why="太短">太短</button><button class="chip" data-why="人设不对">人设不对</button><button class="chip" data-why="别推这条线">别推这条线</button>
-    </div>
+    <div class="why" id="why" hidden><span>哪里不满意？</span>
+      <button class="chip" data-why="没推进">没推进</button><button class="chip" data-why="没听我的">没听我的</button><button class="chip" data-why="太短">太短</button><button class="chip" data-why="人设不对">人设不对</button><button class="chip" data-why="别推这条线">别推这条线</button></div>
     <div class="composer">
-      <div class="opts" id="opts">
-        <button class="chip">接过钥匙，现在就上顶层</button>
-        <button class="chip">先问清她父亲和贺九的关系</button>
-        <button class="chip">提出把这件事报给魏临</button>
-      </div>
+      <div class="opts" id="opts"><button class="chip">接过钥匙，现在就上顶层</button><button class="chip">先问清她父亲和贺九的关系</button><button class="chip">提出把这件事报给魏临</button></div>
       <div class="push">
-        <div class="seg" id="strength" role="group" aria-label="推进强度">
-          <button aria-pressed="true" data-v="1">推进</button><button aria-pressed="false" data-v="2">快速</button><button aria-pressed="false" data-v="3">大幅</button>
-        </div>
-        <button class="btn gold" id="pushBtn">让故事自己走 ▸</button>
-        <small id="strengthHint">在这一场里往下走一步</small>
+        <button class="btn gold" id="pushBtn">推进 ▸</button>
+        <div class="seg" id="step" role="group" aria-label="推进多少"><button aria-pressed="true" data-v="1">一步</button><button aria-pressed="false" data-v="2">一场</button><button aria-pressed="false" data-v="3">跳跃</button></div>
+        <small id="stepHint">在这一场里往下走一步</small>
       </div>
-      <div class="say">
-        <textarea id="say" rows="1" placeholder="写下你的行动或台词。写了具体内容，导演会让位"></textarea>
-        <button class="btn" id="send">发送</button>
-      </div>
+      <div class="say"><textarea id="say" rows="1" placeholder="写下你的行动或台词。只要你写了，导演就不插手"></textarea><button class="btn" id="send">发送</button></div>
       <div class="meta">
-        <span>本轮</span>
-        <button class="tog" aria-pressed="true">导演</button><button class="tog" aria-pressed="false">出图</button><button class="tog" aria-pressed="true">页边批注</button>
-        <span class="num">上一轮 3.1K 入 · 0.9K 出 · 缓存命中 82% · 后台 0.6K</span>
+        <div class="seg sm" id="mode" role="group" aria-label="写法"><button aria-pressed="false" data-v="fast">快速</button><button aria-pressed="true" data-v="plan">规划</button><button aria-pressed="false" data-v="deep">深度</button></div>
+        <button class="tog" id="tDirector" aria-pressed="true">导演</button><button class="tog" aria-pressed="false">出图</button><button class="tog" id="tNotes" aria-pressed="true">批注</button>
+        <span class="num" id="costLine">上一轮 3.1K 入 · 0.9K 出 · 缓存 82% · 等了 0 秒</span>
       </div>
     </div>
   </div>
 
-  <aside class="side">
-    <div class="tabs" role="tablist">
-      <button role="tab" aria-selected="true" data-tab="dir">导演台</button>
-      <button role="tab" aria-selected="false" data-tab="cast">档案</button>
-      <button role="tab" aria-selected="false" data-tab="toc">目录</button>
-    </div>
+  <aside class="dock" id="dock">
+    <div class="tabs" role="tablist"><button role="tab" aria-selected="true" data-tab="dir">导演</button><button role="tab" aria-selected="false" data-tab="mem">记忆</button><button role="tab" aria-selected="false" data-tab="ctx">上下文</button></div>
     <div data-pane="dir" class="sec">
-      <div class="label"><span>线 · 倒计时按故事时间走</span><button class="btn ghost sm" data-toast="写一句你想看的事，例如「我想要一场背叛」，后台会把它整理成一条线">＋ 加一条</button></div>
+      <div class="label"><span>导演何时出手</span><div class="seg sm" id="dirMode" role="group" aria-label="导演何时出手"><button aria-pressed="false" data-v="off">关</button><button aria-pressed="true" data-v="push">仅推进时</button><button aria-pressed="false" data-v="on">始终</button></div></div>
+      <div class="label"><span>剧情线</span><button class="btn ghost sm" data-toast="写一句你想看的事，例如「我想要一场背叛」，会整理成一条剧情线">＋ 加一条</button></div>
       <div id="threads" class="sec"></div>
-      <div class="label"><span>伏笔账</span><span class="num">未兑现 2 / 上限 5</span></div>
-      <div class="rows">
-        <div><span>值更簿缺的那一页</span><span>已埋 · 第 27 楼</span></div>
-        <div><span>白鹭号的假船籍</span><span>待埋 · 蓝图需要</span></div>
-        <div><span>第二把钥匙</span><span>已兑现 · 第 41 楼</span></div>
-      </div>
-      <div class="label"><span>最近的动作</span></div>
-      <div class="rows" id="moves">
-        <div><span>闯入 · 贺九的船期</span><span>第 43 楼</span></div>
-        <div><span>兑现 · 第二把钥匙</span><span>第 41 楼</span></div>
-        <div><span>让位</span><span>第 39 楼</span></div>
-      </div>
+      <div class="label"><span>伏笔</span><span class="num">没收 2 / 上限 5</span></div>
+      <div class="rows"><div><span>值更簿缺的那一页</span><span>已埋 · 第 27 楼</span></div><div><span>白鹭号的假船籍</span><span>待埋 · 大纲需要</span></div><div><span>第二把钥匙</span><span>已收 · 第 41 楼</span></div></div>
+      <div class="label"><span>导演做过什么</span></div>
+      <div class="rows" id="moves"><div><span>不干预</span><span>第 43 楼</span></div><div><span>收伏笔 · 第二把钥匙</span><span>第 41 楼</span></div><div><span>不干预</span><span>第 39 楼</span></div></div>
     </div>
-    <div data-pane="cast" class="sec" hidden>
-      <div class="label"><span>在场</span></div>
-      <div class="who-card">
-        <h3>阿蘅</h3>
-        <dl>
-          <dt>想要</dt><dd>上顶层，找到父亲的值更簿</dd>
-          <dt>瞒着</dt><dd>她在父亲失踪前就见过贺九</dd>
-          <dt>此刻</dt><dd>储油间 · 旧棉袄 · 右手虎口有新伤</dd>
-          <dt>声音</dt><dd><q>我不求你信我，你自己上去看。</q></dd>
-        </dl>
-      </div>
-      <div class="label"><span>不在场，但快要相关</span></div>
-      <div class="rows">
-        <div><span>魏临 · 督察</span><span>上次出场 第 34 楼</span></div>
-        <div><span>贺九 · 白鹭号船主</span><span>上次出场 第 29 楼</span></div>
-      </div>
-      <p style="font-size:12.5px;color:var(--muted)">档案里的每一条都带原文出处，写错了可以直接改。久未出场的人物再次登场时，他的档案会自动带进上下文。</p>
+    <div data-pane="mem" class="sec" hidden>
+      <div class="label"><span>在场</span><a href="#memory" class="btn ghost sm" style="text-decoration:none">打开记忆 ›</a></div>
+      <div class="card who-card"><h3>阿蘅</h3><dl>
+        <dt>想要</dt><dd contenteditable>上顶层，找到父亲的值更簿</dd>
+        <dt>瞒着</dt><dd contenteditable>她在父亲失踪前就见过贺九</dd>
+        <dt>此刻</dt><dd contenteditable>储油间 · 旧棉袄 · 右手虎口有新伤</dd>
+        <dt>声音</dt><dd><q>我不求你信我，你自己上去看。</q></dd></dl></div>
+      <div class="label"><span>秘密</span></div>
+      <div class="rows"><div><span>灯塔有第二把钥匙</span><span>魏临不知道</span></div><div><span>阿蘅早就见过贺九</span><span>你不知道</span></div></div>
+      <div class="label"><span>快要相关</span></div>
+      <div class="rows"><div><span>魏临 · 督察</span><span>9 楼没出场</span></div><div><span>贺九 · 白鹭号船主</span><span>14 楼没出场</span></div></div>
     </div>
-    <div data-pane="toc" class="sec" hidden>
-      <div class="rows">
-        <div><span>第一章 · 雾起</span><span>5 场 · 18 楼</span></div>
-        <div><span>第二章 · 七号码头</span><span>4 场 · 16 楼</span></div>
-        <div><span><b>第三章 · 退潮之前</b></span><span>进行中 · 9 楼</span></div>
-      </div>
-      <button class="btn" data-toast="按章节导出为可读的小说文本">导出成书</button>
-      <button class="btn" data-toast="章末会给出前情提要和三个下一章方向，也可以选「让它自己走」">预览章末三选一</button>
+    <div data-pane="ctx" class="sec" hidden>
+      <div class="label"><span>这一轮它看到的</span><span class="num">3.1K</span></div>
+      <div class="ctxbar" id="ctxbar"></div>
+      <div class="rows ctxitems" id="ctxitems"></div>
+      <p style="font-size:12.5px;color:var(--muted)">点色块看这一类里有什么。每一条都能直接跳去修改，下一轮生效。</p>
     </div>
   </aside>
  </div>
 </section>
 
-<!-- 蓝图 -->
-<section class="view" data-view="blueprint" hidden>
-  <div class="vh">
-    <div><h1>故事蓝图</h1><p>定终点，不定路线。里程碑不绑定楼层；远的只写一句，只有下一章才展开。你写的条目可以锁定，AI 只能提建议。</p></div>
-    <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center">
-      <span class="label">拉力</span>
-      <div class="seg" role="group" aria-label="拉力"><button aria-pressed="false">松</button><button aria-pressed="true">中</button><button aria-pressed="false">紧</button></div>
-      <button class="tog" id="spoil" aria-pressed="false">AI 补的部分对我保密</button>
-    </div>
+<!-- 记忆 -->
+<section data-view="memory" hidden>
+  <div class="vh"><div><h1>记忆</h1><p>系统记下的每一样东西都在这里。点任何一句就能改；你改过的会锁定，不会再被自动覆盖。原文永远不动。</p></div>
+    <button class="btn" data-toast="会按章节导出成一组文本文件；在外面改完导回时逐条对比">导出为文件</button></div>
+  <div class="subtabs" id="memTabs"><button aria-selected="true" data-t="wiki">百科</button><button aria-selected="false" data-t="state">状态</button><button aria-selected="false" data-t="secret">秘密</button><button aria-selected="false" data-t="line">时间线</button><button aria-selected="false" data-t="rule">偏好</button></div>
+  <div data-mem="wiki" class="wiki"><div class="plist" id="plist"></div><article class="page" id="page"></article></div>
+  <div data-mem="state" hidden><div class="tblwrap"><table class="tbl"><thead><tr><th>谁 / 什么</th><th>项目</th><th>现在</th><th>最后变化</th></tr></thead><tbody id="stateBody"></tbody></table></div></div>
+  <div data-mem="secret" hidden><div class="tblwrap"><table class="tbl"><thead><tr><th>秘密</th><th>知道的人</th><th>不知道的人</th><th>来源</th></tr></thead><tbody id="secretBody"></tbody></table></div></div>
+  <div data-mem="line" hidden><div class="spine" id="spine"></div></div>
+  <div data-mem="rule" hidden>
+    <div class="rows" id="rules"></div>
+    <div class="say" style="margin-top:14px"><textarea id="ruleIn" rows="1" placeholder="加一条：例如「不要替我说话」"></textarea><button class="btn" id="ruleAdd">加上</button></div>
   </div>
+</section>
+
+<!-- 大纲 -->
+<section data-view="outline" hidden>
+  <div class="vh"><div><h1>大纲</h1><p>只定要发生什么，不定怎么走到那里。远的写一句就够，快到了再展开。你写的可以锁定，AI 只能提建议。</p></div>
+    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center"><span class="label">约束</span>
+      <div class="seg" role="group" aria-label="大纲约束"><button aria-pressed="true">弱</button><button aria-pressed="false">中</button><button aria-pressed="false">强</button></div>
+      <button class="tog" id="spoil" aria-pressed="false">AI 写的先别给我看</button></div></div>
   <div class="bp">
-    <div class="outline" id="outline">
-      <div class="premise">
-        <div><span class="label">核心问题</span><p>这座灯塔，究竟为谁而亮？</p></div>
-        <div><span class="label">基调</span><p>潮湿、克制，人人都有不肯说的半句话</p></div>
-        <div><span class="label">红线</span><p>第三卷之前，阿蘅不能出事</p></div>
-      </div>
+    <div id="outlineBox">
+      <div class="premise"><div><span class="label">核心问题</span><p contenteditable>这座灯塔，究竟为谁而亮？</p></div><div><span class="label">基调</span><p contenteditable>潮湿、克制，人人都有不肯说的半句话</p></div><div><span class="label">不要发生</span><p contenteditable>第三卷之前，阿蘅不能出事</p></div></div>
       <div id="vols"></div>
     </div>
     <aside class="sec">
-      <div class="idea">
-        <span class="label">写下你的想法，粗细都行</span>
-        <textarea id="idea" placeholder="例如：中期她会发现我一直瞒着她，最后在灯塔顶上和解">我想让魏临其实是站在我们这边的，只是他不能明说。</textarea>
-        <div class="row">
-          <button class="btn gold sm" id="fill">帮我补全</button>
-          <button class="btn sm" data-toast="对照已发生的 43 楼和卡的设定检查：发现 1 处矛盾，已列在下方">找漏洞</button>
-          <button class="btn sm" data-toast="会给出三种不同的后半程走向，各自列出需要改动的里程碑">给三种走向</button>
-          <button class="btn sm" data-toast="只把下一章展开到场面级别，更远的保持一句话">展开这一卷</button>
-        </div>
-      </div>
+      <div class="idea"><span class="label">写下你的想法，粗细都行</span>
+        <textarea id="idea">我想让魏临其实是站在我们这边的，只是他不能明说。</textarea>
+        <div class="row"><button class="btn gold sm" id="fill">帮我补全</button><button class="btn sm" data-toast="对照已写的 43 楼和设定检查：发现 1 处矛盾，列在下面">找漏洞</button><button class="btn sm" data-toast="会给三种不同的后半程走向，各自列出要改的地方">三种走向</button><button class="btn sm" data-toast="只把下一章展开到每一场，更远的保持一句话">展开这一卷</button></div></div>
       <div class="label"><span>AI 的建议 · 逐条决定</span></div>
       <div id="sugs" class="sec"></div>
     </aside>
   </div>
 </section>
 
-<!-- 导入体检 -->
-<section class="view" data-view="import" hidden>
-  <div class="vh">
-    <div class="ttl"><canvas class="cover lg" width="240" height="360" data-seed="31" data-hue="168" role="img" aria-label="潮汐列岛的卡面图"></canvas><div><h1>潮汐列岛 · 导入体检</h1><p>卡面图取自卡片文件本身。这张卡的世界书有 213 条。条目按它在运行时的用法分流，原文一字不改；随时可以切回原样模式。</p></div></div>
-    <div class="seg" id="mode" role="group" aria-label="导入模式"><button aria-pressed="true" data-v="up">升级模式</button><button aria-pressed="false" data-v="raw">原样模式</button></div>
-  </div>
-  <div class="audit">
-    <div>
-      <div class="bar" id="bar" role="img" aria-label="213 条的类型分布"></div>
-      <div class="types" id="types"></div>
-    </div>
-    <div class="sec">
-      <span class="label">每轮常驻注入</span>
-      <div class="cost"><span class="big was num">18.2K</span><span class="arrow">→</span><span class="big num" id="after">3.1K</span><span style="color:var(--muted);font-size:13px">token<br>每一轮都省</span></div>
-      <span class="label" style="margin-top:10px">作者留下的选项</span>
-      <div class="rows" id="authorOpts"></div>
-      <span class="label" style="margin-top:10px">需要你过目</span>
-      <div class="rows">
-        <div><span>5 条没认出来，暂按原样处理</span><span><button class="btn sm" data-toast="逐条显示标题和建议的类型，点一下改">查看</button></span></div>
-        <div><span>8 条是别的插件留下的总结</span><span><button class="btn sm" data-toast="已作为这个故事的初始记忆导入">转成记忆</button></span></div>
-      </div>
-      <a class="btn gold" href="#play" style="text-align:center;text-decoration:none">接受并开始</a>
-    </div>
-  </div>
+<!-- 设定 -->
+<section data-view="lore" hidden>
+  <div class="vh"><div class="ttl" style="align-items:flex-start"><canvas class="cover" style="width:64px" width="240" height="360" data-seed="31" data-hue="168" role="img" aria-label="潮汐列岛的卡面图"></canvas>
+    <div><h1>设定 · 潮汐列岛</h1><p>这张卡的世界书有 213 条，已按用法分好类。改的是这个故事自己的副本，卡库里的原卡不受影响。</p></div></div>
+    <div style="display:flex;flex-wrap:wrap;gap:10px"><div class="seg" id="imode" role="group" aria-label="导入方式"><button aria-pressed="true" data-v="up">优化</button><button aria-pressed="false" data-v="raw">原样</button></div>
+      <button class="btn" data-toast="已恢复成卡的原样（你的修改保留在历史里，可以找回）">恢复原卡</button></div></div>
+  <div class="audit"><div><div class="bar" id="bar" role="img" aria-label="213 条的类型分布"></div></div>
+    <div class="cost"><span class="label">每轮固定带入</span><span class="big was num">18.2K</span><span class="arrow">→</span><span class="big num" id="after">3.1K</span></div></div>
+  <div class="filters" id="filters"></div>
+  <div id="entries"></div>
+  <div class="label" style="margin-top:22px">作者留下的选项</div>
+  <div class="rows" id="authorOpts"></div>
 </section>
 
-<!-- 开关 -->
-<section class="view" data-view="switches" hidden>
-  <div class="vh">
-    <div><h1>功能开关</h1><p>每一项都可以中途开、中途关。故事原文不会被任何功能改动，晚开的功能会在后台补算前面的楼层。</p></div>
-    <div class="seg" id="tier" role="group" aria-label="档位"><button aria-pressed="false" data-v="lite">轻量</button><button aria-pressed="true" data-v="std">标准</button><button aria-pressed="false" data-v="full">沉浸</button></div>
-  </div>
-  <div id="groups"></div>
-  <div class="total"><span>按现在的开关，每轮后台开销约 <b class="num" id="sum">0</b> token</span><span class="num" id="sumNote"></span></div>
+<!-- 设置 -->
+<section data-view="prefs" hidden>
+  <div class="vh"><div><h1>设置</h1><p>每一项都能随时开、随时关。晚开的功能会在后台把前面的楼层补上。</p></div>
+    <div class="seg" id="tier" role="group" aria-label="档位"><button aria-pressed="false" data-v="lite">省</button><button aria-pressed="true" data-v="std">均衡</button><button aria-pressed="false" data-v="full">全开</button></div></div>
+  <div class="subtabs" id="prefTabs"><button aria-selected="true" data-t="write">写作</button><button aria-selected="false" data-t="feat">功能</button><button aria-selected="false" data-t="model">模型</button></div>
+  <div data-pref="write" id="dials"></div>
+  <div data-pref="feat" hidden><div id="groups"></div><div class="total"><span>按现在的开关，每轮后台约 <b class="num" id="sum">0</b> token</span><span class="num" id="sumNote"></span></div></div>
+  <div data-pref="model" hidden id="models"></div>
 </section>
 
-<!-- 书架 -->
-<section class="view" data-view="library" hidden>
-  <div class="vh"><div><h1>书架</h1><p>每个故事都是一本连载。隔几天回来，先看上回说到哪。</p></div></div>
-  <div class="shelf">
-    <a class="book" href="#play"><canvas class="cover" width="240" height="360" data-seed="7" data-hue="205" role="img" aria-label="雾港纪事的卡面图"></canvas><div class="bk"><span class="label">第三章 · 退潮之前</span><h2>雾港纪事</h2><p>你在七号码头截下的那箱货里，是灯塔的透镜。有人在把灯塔一点一点搬走。</p><div class="foot"><span>43 楼 · 3 条线在走</span><span>3 天前</span></div></div></a>
-    <a class="book t" href="#play"><canvas class="cover" width="240" height="360" data-seed="113" data-hue="150" role="img" aria-label="青崖书院的卡面图"></canvas><div class="bk"><span class="label">第一章 · 入山</span><h2>青崖书院</h2><p>山门前的石阶有九百级，你数到第四百级时，雨停了。</p><div class="foot"><span>6 楼 · 开局阶段</span><span>昨天</span></div></div></a>
-    <a class="book add" href="#import"><h2 style="font:400 22px var(--f-display)">导入一张卡</h2><p>酒馆的卡、世界书和聊天记录都可以带进来</p></a>
-  </div>
-</section>
-</main>
+</div></main>
+</div>
 
+<div class="scrim" id="scrim" hidden><div class="pal" role="dialog" aria-label="命令面板"><input id="palIn" placeholder="去哪里，或者做什么" autocomplete="off"><ul id="palList"></ul></div></div>
 <div class="toast" id="toast" hidden></div>
 
 <script>
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
-const el=html=>{const t=document.createElement('template');t.innerHTML=html.trim();return t.content.firstElementChild};
-let toastTimer;function toast(msg){const t=$('#toast');t.textContent=msg;t.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.hidden=true,3600)}
+const el=h=>{const t=document.createElement('template');t.innerHTML=h.trim();return t.content.firstElementChild};
+const calm=matchMedia('(prefers-reduced-motion: reduce)').matches;
+let tt;function toast(msg,undo){const t=$('#toast');t.textContent=msg;if(undo){const b=el('<button>撤销</button>');b.onclick=()=>{undo();t.hidden=true};t.append(b)}t.hidden=false;clearTimeout(tt);tt=setTimeout(()=>t.hidden=true,3800)}
 document.addEventListener('click',e=>{const b=e.target.closest('[data-toast]');if(b)toast(b.dataset.toast)});
 
 /* 卡面图：真实产品里读卡片 PNG 本身，这里用画出来的示例图代替 */
-function cover(c){const g=c.getContext("2d"),W=c.width,H=c.height,hu=+c.dataset.hue;let s=+c.dataset.seed;const R=()=>(s=s*16807%2147483647)/2147483647;
-  const sky=g.createLinearGradient(0,0,0,H);sky.addColorStop(0,`hsl(${hu} 45% 13%)`);sky.addColorStop(.6,`hsl(${hu+20} 40% 33%)`);sky.addColorStop(1,`hsl(${hu+50} 55% 62%)`);g.fillStyle=sky;g.fillRect(0,0,W,H);
-  g.fillStyle=`hsl(${hu+60} 80% 86% / .9)`;g.beginPath();g.arc(W*(.25+R()*.5),H*(.17+R()*.1),W*.09,0,7);g.fill();
-  const tx=W*(.5+R()*.25),tb=H*.6;
-  for(let i=0;i<5;i++){if(i===1){g.fillStyle=`hsl(${hu} 30% 8%)`;g.beginPath();g.moveTo(tx-10,tb+30);g.lineTo(tx-5,tb-80);g.lineTo(tx+5,tb-80);g.lineTo(tx+10,tb+30);g.fill();g.fillRect(tx-8,tb-93,16,13);g.fillStyle="hsl(45 90% 72%)";g.fillRect(tx-4,tb-90,8,7)}
-    const y=H*(.46+i*.11),a=8+R()*22,fr=.01+R()*.02,p=R()*6;g.fillStyle=`hsl(${hu+10} ${30-i*3}% ${40-i*7}% / ${.55+i*.1})`;g.beginPath();g.moveTo(0,H);for(let x=0;x<=W;x+=6)g.lineTo(x,y+Math.sin(x*fr+p)*a+Math.sin(x*fr*2.7+p)*a*.4);g.lineTo(W,H);g.fill()}}
-$$("canvas.cover").forEach(cover);
+function cover(c){const g=c.getContext('2d'),W=c.width,H=c.height,hu=+c.dataset.hue;let s=+c.dataset.seed;const R=()=>(s=s*16807%2147483647)/2147483647;
+  const sky=g.createLinearGradient(0,0,0,H);sky.addColorStop(0,`hsl(${hu} 50% 9%)`);sky.addColorStop(.55,`hsl(${hu+18} 42% 28%)`);sky.addColorStop(1,`hsl(${hu+48} 55% 58%)`);g.fillStyle=sky;g.fillRect(0,0,W,H);
+  for(let i=0;i<60;i++){g.fillStyle=`hsl(0 0% 100% / ${.15+R()*.5})`;g.fillRect(R()*W,R()*H*.45,1.4,1.4)}
+  const mx=W*(.2+R()*.5),my=H*(.16+R()*.1);g.fillStyle=`hsl(${hu+60} 80% 88% / .92)`;g.beginPath();g.arc(mx,my,W*.085,0,7);g.fill();
+  const tx=W*(.52+R()*.24),tb=H*.6,k=W/240;
+  for(let i=0;i<5;i++){if(i===1){g.fillStyle=`hsl(45 90% 70% / .16)`;g.beginPath();g.moveTo(tx,tb-86*k);g.lineTo(0,tb-150*k);g.lineTo(0,tb-60*k);g.fill();
+      g.fillStyle=`hsl(${hu} 30% 6%)`;g.beginPath();g.moveTo(tx-10*k,tb+30*k);g.lineTo(tx-5*k,tb-80*k);g.lineTo(tx+5*k,tb-80*k);g.lineTo(tx+10*k,tb+30*k);g.fill();g.fillRect(tx-8*k,tb-93*k,16*k,13*k);g.fillStyle='hsl(45 95% 74%)';g.fillRect(tx-4*k,tb-90*k,8*k,7*k)}
+    const y=H*(.46+i*.11),a=(8+R()*22)*k,fr=(.01+R()*.02)/k,p=R()*6;g.fillStyle=`hsl(${hu+10} ${30-i*3}% ${36-i*6}% / ${.55+i*.1})`;g.beginPath();g.moveTo(0,H);for(let x=0;x<=W;x+=6)g.lineTo(x,y+Math.sin(x*fr+p)*a+Math.sin(x*fr*2.7+p)*a*.4);g.lineTo(W,H);g.fill()}}
+$$('canvas.cover').forEach(cover);
 
 /* 路由 */
-const VIEWS=['play','blueprint','import','switches','library'];
+const VIEWS=['library','play','memory','outline','lore','prefs'];
 function route(){const v=VIEWS.includes(location.hash.slice(1))?location.hash.slice(1):'play';
-  $$('.view').forEach(s=>s.hidden=s.dataset.view!==v);
-  $$('.nav a').forEach(a=>a.getAttribute('href')==='#'+v?a.setAttribute('aria-current','page'):a.removeAttribute('aria-current'));
-  window.scrollTo(0,0)}
+  $$('[data-view]').forEach(s=>s.hidden=s.dataset.view!==v);
+  $$('.rail a.nav').forEach(a=>a.getAttribute('href')==='#'+v?a.setAttribute('aria-current','page'):a.removeAttribute('aria-current'));scrollTo(0,0)}
 addEventListener('hashchange',route);route();
 
-/* 分段按钮与小开关 */
-function seg(root,onChange){root.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;$$('button',root).forEach(x=>x.setAttribute('aria-pressed',x===b));onChange&&onChange(b.dataset.v,b)})}
+/* 小控件 */
+function seg(root,fn){root.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;$$('button',root).forEach(x=>x.setAttribute('aria-pressed',x===b));fn&&fn(b.dataset.v,b)})}
 $$('.seg').forEach(s=>{if(!s.id)seg(s)});
+function tabs(root,attr){root.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;$$('button',root).forEach(x=>x.setAttribute('aria-selected',x===b));$$('['+attr+']').forEach(p=>p.hidden=p.getAttribute(attr)!==(b.dataset.t||b.dataset.tab))})}
+tabs($('.tabs'),'data-pane');tabs($('#memTabs'),'data-mem');tabs($('#prefTabs'),'data-pref');
 document.addEventListener('click',e=>{const t=e.target.closest('.tog,.lock');if(t)t.setAttribute('aria-pressed',t.getAttribute('aria-pressed')!=='true')});
+/* 就地修改：改完标成「你改的」并锁定 */
+document.addEventListener('focusin',e=>{if(e.target.isContentEditable)e.target.dataset.before=e.target.textContent});
+document.addEventListener('focusout',e=>{const t=e.target;if(!t.isContentEditable||t.dataset.before===t.textContent)return;const old=t.dataset.before;
+  const st=t.closest('.st');if(st){const p=st.querySelector('.src');if(p){p.textContent='你改的';p.className='pill gold src'}const l=st.querySelector('.lock');if(l){l.setAttribute('aria-pressed','true');l.textContent='已锁定'}}
+  toast('已保存并锁定，下一轮生效',()=>{t.textContent=old})});
 
 /* 倒计时环 */
 function clock(n,t){const S=46,c=S/2,r=c-5,gap=.2;let s='';
   for(let i=0;i<t;i++){const a0=i/t*2*Math.PI-Math.PI/2+gap/2,a1=(i+1)/t*2*Math.PI-Math.PI/2-gap/2,p=a=>(c+r*Math.cos(a)).toFixed(2)+' '+(c+r*Math.sin(a)).toFixed(2);
     s+=`<path class="${i<n?'on':'off'}" d="M${p(a0)} A${r} ${r} 0 0 1 ${p(a1)}"/>`}
   return `<svg class="clock" viewBox="0 0 ${S} ${S}" width="${S}" height="${S}" role="img" aria-label="倒计时 ${n}/${t}">${s}<text x="${c}" y="${c+3.5}" text-anchor="middle">${n}/${t}</text></svg>`}
-
-/* 线 */
 const threads=[
- {id:'hejiu',kind:'对手的图谋',title:'贺九要在潮汐日前把灯塔搬空',sub:'下一步：白鹭号提前起锚',n:5,t:6,pinned:false,muted:false},
- {id:'aheng',kind:'人物线',title:'阿蘅在找失踪的父亲',sub:'下一步：值更簿里的最后一页',n:2,t:4,pinned:true,muted:false},
- {id:'weilin',kind:'压力',title:'魏临怀疑你私扣了那箱货',sub:'已经 9 楼没动，快到点了',n:3,t:8,pinned:false,muted:false}];
-function drawThreads(){$('#threads').replaceChildren(...threads.map(x=>{const n=el(`<div class="thread${x.muted?' muted':''}${x.pinned?' pinned':''}">${clock(x.n,x.t)}<div><span class="pill ${x.kind==='人物线'?'teal':x.kind==='压力'?'mute':'gold'}">${x.kind}</span><h3>${x.title}</h3><p>${x.sub}</p><div class="ctl"><button class="btn ghost sm" data-a="pin">${x.pinned?'取消置顶':'我想看这条'}</button><button class="btn ghost sm" data-a="mute">${x.muted?'恢复':'别再提了'}</button></div></div></div>`);
-  n.addEventListener('click',e=>{const a=e.target.dataset.a;if(!a)return;if(a==='pin')x.pinned=!x.pinned;else x.muted=!x.muted;drawThreads()});return n}))}
+ {kind:'对手',title:'贺九要在潮汐日前把灯塔搬空',sub:'到点后：白鹭号提前起锚（等你按推进才发生）',n:5,t:6},
+ {kind:'人物',title:'阿蘅在找失踪的父亲',sub:'下一步：值更簿里的最后一页',n:2,t:4,pin:true},
+ {kind:'压力',title:'魏临怀疑你私扣了那箱货',sub:'已经 9 楼没动',n:3,t:8}];
+function drawThreads(){$('#threads').replaceChildren(...threads.map(x=>{const n=el(`<div class="thread${x.off?' off':''}${x.pin?' pin':''}">${clock(x.n,x.t)}<div><span class="pill ${x.kind==='人物'?'teal':x.kind==='压力'?'mute':'gold'}">${x.kind}</span><h3 contenteditable>${x.title}</h3><p>${x.sub}</p><div class="ctl"><button class="btn ghost sm" data-a="pin">${x.pin?'取消置顶':'我想看这条'}</button><button class="btn ghost sm" data-a="off">${x.off?'恢复':'别再提了'}</button></div></div></div>`);
+  n.addEventListener('click',e=>{const a=e.target.dataset.a;if(!a)return;x[a]=!x[a];drawThreads()});return n}))}
 drawThreads();
 
-/* 标签页 */
-$('.tabs').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;$$('.tabs button').forEach(x=>x.setAttribute('aria-selected',x===b));$$('[data-pane]').forEach(p=>p.hidden=p.dataset.pane!==b.dataset.tab)});
+/* 上下文构成 */
+const CTX=[['偏好',.2,'--gold',[['不要替我说话','memory'],['少用比喻，多写动作','memory']]],['时间线',.6,'--muted',[['第一章 · 雾起（摘要）','memory'],['第二章 · 七号码头（摘要）','memory']]],['原文',1.6,'--line',[['最近 12 楼原文','play']]],['状态与秘密',.2,'--teal',[['阿蘅 · 位置 / 衣着 / 伤','memory'],['秘密 2 条','memory']]],['百科',.4,'--ok',[['阿蘅','memory'],['旧灯塔','memory']]],['设定',.1,'--bad',[['港务局的规矩','lore']]]];
+$('#ctxbar').innerHTML=CTX.map((c,i)=>`<button style="flex:${c[1]};background:var(${c[2]})" data-i="${i}" title="${c[0]} ${c[1]}K" aria-label="${c[0]} ${c[1]}K" aria-pressed="false"></button>`).join('');
+function drawCtx(i){$$('#ctxbar button').forEach(b=>b.setAttribute('aria-pressed',+b.dataset.i===i));const c=CTX[i];
+  $('#ctxitems').innerHTML=`<div><span><b>${c[0]}</b></span><span class="num">${c[1]}K</span></div>`+c[3].map(x=>`<div><span>${x[0]}</span><span><a class="btn ghost sm" style="text-decoration:none" href="#${x[1]}">去修改 ›</a></span></div>`).join('')}
+$('#ctxbar').addEventListener('click',e=>{const b=e.target.closest('button');if(b)drawCtx(+b.dataset.i)});drawCtx(4);
+$('#whyBtn').addEventListener('click',()=>{$('.tabs [data-tab="ctx"]').click();$('#dock').scrollIntoView({behavior:calm?'auto':'smooth',block:'nearest'})});
 
-/* 推进与发送 */
-let strength='1',floorNo=43;
-const HINT={1:'在这一场里往下走一步',2:'让这一场达成目标，然后转场',3:'跳到下一个倒计时到点的时刻，中间几句带过'};
-seg($('#strength'),v=>{strength=v;$('#strengthHint').textContent=HINT[v]});
+/* 写一楼：按写法演示等待方式，再逐字写出 */
+let step='1',mode='plan',floor=43,busy=null;
+const HINT={1:'在这一场里往下走一步',2:'把这一场走完，换下一场',3:'跳到下一件大事发生的时刻'};
+seg($('#step'),v=>{step=v;$('#stepHint').textContent=HINT[v]});
+seg($('#mode'),v=>{mode=v;toast({fast:'快速：写一遍就交',plan:'规划：先理清再写；你点推进或选项时已经提前备好',deep:'深度：起草、自查、修改后再交，最慢最细'}[v])});
+seg($('#dirMode'),v=>toast({off:'导演关闭',push:'只有你按推进时，导演才安排剧情',on:'你写得很短时，导演也会补一点方向'}[v]));
+$('#tNotes').addEventListener('click',()=>setTimeout(()=>$('#sheet').classList.toggle('nonotes',$('#tNotes').getAttribute('aria-pressed')!=='true')));
+const wait=ms=>new Promise(r=>setTimeout(r,calm?0:ms));
+async function type(ps,texts){for(let i=0;i<ps.length;i++){const p=ps[i],t=texts[i];if(calm||busy.skip){p.textContent=t;continue}p.classList.add('caret');for(let k=0;k<=t.length;k+=2){if(busy.skip)break;p.textContent=t.slice(0,k);await wait(14)}p.textContent=t;p.classList.remove('caret')}}
+async function writeFloor(texts,notes,pre,prepared){if(busy){busy.skip=true;await busy.done}let fin;busy={skip:false,done:new Promise(r=>fin=r)};
+  const s=$('#script');$('#last')?.removeAttribute('id');pre.forEach(n=>s.append(n));floor+=2;$('#floorNo').textContent=floor;$('#why').hidden=true;$('#opts').replaceChildren();
+  const f=el(`<article class="floor" id="last"><div class="prose"></div><aside class="notes"><span class="fno">第 ${floor} 楼</span>${notes}</aside></article>`),pr=f.firstElementChild;s.append(f);
+  f.scrollIntoView({behavior:calm?'auto':'smooth',block:'center'});const t0=performance.now();
+  if(mode==='deep'){const st=el('<div class="stages"><span>起草</span><span>自查</span><span>修改</span><span>交稿</span></div>'),ck=el('<div class="checks"></div>');pr.append(st,ck);
+    const C=['位置、衣着、伤势对得上','没有写出不在场的人知道的事','上两楼是「试探、安抚」，这一楼换了节拍','没有替你说话','这一章该埋的伏笔：已埋 1 处'];
+    for(let i=0;i<4;i++){st.children[i].classList.add('on');if(i===1)for(const c of C){ck.append(el(`<span>${c}</span>`));await wait(260)}await wait(520)}}
+  else if(mode==='plan'&&!prepared){const st=el('<div class="stages"><span>挑记忆</span><span>定计划</span></div>');pr.append(st);for(const c of st.children){c.classList.add('on');await wait(480)}}
+  else if(mode==='plan'){pr.append(el('<div class="stages"><span class="on">已提前备好</span></div>'))}
+  const ps=texts.map(()=>{const p=document.createElement('p');pr.append(p);return p});await type(ps,texts);
+  const sec=calm?0:Math.round((performance.now()-t0)/100)/10;$('#costLine').textContent=`上一轮 3.${1+floor%4}K 入 · 0.${6+floor%4}K 出 · 缓存 ${78+floor%9}% · 等了 ${mode==='plan'&&prepared?0:mode==='deep'?'4.2':'0.9'} 秒`;fin();busy=null}
+function logMove(t){$('#moves').prepend(el(`<div><span>${t}</span><span>第 ${floor+2} 楼</span></div>`))}
+const dnote=(act,why,line)=>`<div class="note gold"><b>导演 · ${act}</b>${why}<br><button data-nope="${line??''}">这不是我要的</button></div>`;
 const NEXT={
- 1:{mark:'推进',move:'接球 · 这一场的目标是拿到钥匙',ps:['阿蘅把手从钥匙上拿开了。铜面上留着她掌心的一点潮气，很快被冷空气收走。','“西墙有一道检修梯，”她压低声音，“从储油间的天窗出去，不经过正门的锁。我爹带我走过一次。”','她先一步踩上油桶，回头看你，像是在等你决定要不要把钥匙拿起来。'],note:'阿蘅 → 交出第二把钥匙'},
- 2:{mark:'快速推进',slate:['第 3 场','旧灯塔 · 顶层灯室','夜 · 起风','在场：沈砚（你）、阿蘅'],move:'转场 · 上一场的目标已达成',ps:['检修梯有一百一十七级，最后十级没有扶手。你们钻进灯室时，风正从缺了透镜的那一面灌进来。','值更簿不在柜子里。阿蘅跪在地上，用钥匙撬开了第三块地板，从底下抽出一本用油布包着的册子。','她翻到最后一页，手停住了。那一页被整整齐齐地裁掉了。'],note:'兑现 · 值更簿缺的那一页（埋于第 27 楼）',gold:true},
- 3:{mark:'大幅推进',slate:['第四章 · 第 1 场','七号码头','潮汐日前夜','在场：沈砚（你）、魏临'],move:'跳跃 · 落点是贺九那条线到点的时刻',ps:['之后的两天，你把值更簿抄了一份，原件留在阿蘅手里；魏临的报告期限你拖了一次，又拖了一次。','潮汐日前夜，七号码头的灯全灭了，只有白鹭号的舷窗亮着。锅炉已经烧足了气。','“你迟了两天。”魏临从货堆后面走出来，没有带人，“现在说吧，那箱透镜到底是谁的。”'],note:'闯入 · 贺九的倒计时走满 6/6',gold:true,tick:true}};
-function addFloor(ps,notes,pre){const s=$('#script');$('#last')?.removeAttribute('id');pre.forEach(n=>s.append(n));floorNo+=2;
-  const f=el(`<article class="floor new" id="last"><div class="prose">${ps.map(p=>`<p>${p}</p>`).join('')}</div><aside class="notes"><span class="fno">第 ${floorNo} 楼</span>${notes}</aside></article>`);
-  s.append(f);$('#why').hidden=true;f.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'center'})}
-function logMove(text){$('#moves').prepend(el(`<div><span>${text}</span><span>第 ${floorNo} 楼</span></div>`))}
+ 1:{mark:'推进 · 一步',act:'顺势',why:'这一场的目标是拿到钥匙',ps:['阿蘅把手从钥匙上拿开了。铜面上留着她掌心的一点潮气，很快被冷空气收走。','“西墙有一道检修梯，”她压低声音，“从储油间的天窗出去，不经过正门的锁。我爹带我走过一次。”','她先一步踩上油桶，回头看你，像是在等你决定要不要把钥匙拿起来。'],extra:'<div class="note"><b>状态</b>第二把钥匙：阿蘅 → 油桶盖上</div>'},
+ 2:{mark:'推进 · 一场',act:'换场',why:'上一场的目标已经达成',slate:['第 3 场','旧灯塔 · 顶层灯室','夜 · 起风','在场：沈砚（你）、阿蘅'],ps:['检修梯有一百一十七级，最后十级没有扶手。你们钻进灯室时，风正从缺了透镜的那一面灌进来。','值更簿不在柜子里。阿蘅跪在地上，用钥匙撬开了第三块地板，从底下抽出一本用油布包着的册子。','她翻到最后一页，手停住了。那一页被整整齐齐地裁掉了。'],extra:'<div class="note gold"><b>收伏笔</b>值更簿缺的那一页（埋于第 27 楼）</div>'},
+ 3:{mark:'推进 · 跳跃',act:'突发',why:'贺九那条线到点了，等到你按推进才发生',line:0,slate:['第四章 · 第 1 场','七号码头','潮汐日前夜','在场：沈砚（你）、魏临'],ps:['之后的两天，你把值更簿抄了一份，原件留在阿蘅手里；魏临的报告期限你拖了一次，又拖了一次。','潮汐日前夜，七号码头的灯全灭了，只有白鹭号的舷窗亮着。锅炉已经烧足了气。','“你迟了两天。”魏临从货堆后面走出来，没有带人，“现在说吧，那箱透镜到底是谁的。”'],extra:'<div class="note"><b>时间</b>跳过两天 → 潮汐日前夜</div>',tick:true}};
 const used=new Set();
-$('#pushBtn').addEventListener('click',()=>{if(used.has(strength)){toast('原型里这一档只备了一段示例，换一档试试');return}used.add(strength);const x=NEXT[strength];
-  const pre=[el(`<div class="pushmark">▸ ${x.mark}</div>`)];
-  if(x.slate)pre.push(el(`<div class="slate"><i></i><span>${x.slate[0]}</span><span>${x.slate[1]}</span><span>${x.slate[2]}</span><span class="who">${x.slate[3]}</span></div>`));
-  addFloor(x.ps,`<div class="note"><b>导演 · ${x.move.split(' · ')[0]}</b>${x.move.split(' · ')[1]}</div><div class="note${x.gold?' gold':''}"><b>场记</b>${x.note}</div>`,pre);
-  logMove(x.move.split(' · ')[0]+' · '+x.mark);if(x.tick){threads[0].n=6;threads[0].sub='到点了：白鹭号今夜起锚';drawThreads()}
-  $('#opts').replaceChildren()});
-function send(){const v=$('#say').value.trim();if(!v){toast('先写点什么，或者直接按「让故事自己走」');return}
-  const said=el('<div class="said"><span class="label">沈砚</span><p></p></div>');said.querySelector('p').textContent=v;$('#say').value='';
-  addFloor(['阿蘅看了你很久，像是在掂量这句话值多少。','然后她松开了按着钥匙的手。“跟我来，”她说，“路上我告诉你。”'],'<div class="note"><b>导演 · 让位</b>你写了具体内容，本轮不加建议</div>',[said]);logMove('让位');$('#opts').replaceChildren()}
-$('#send').addEventListener('click',send);
-$('#say').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();send()}});
-$('#opts').addEventListener('click',e=>{const c=e.target.closest('.chip');if(c){$('#say').value=c.textContent;$('#say').focus()}});
-
-/* 带原因的重写 */
+$('#pushBtn').addEventListener('click',()=>{if($('#tDirector').getAttribute('aria-pressed')!=='true'){toast('这一轮关了导演：推进只会顺着当前场面往下写');}
+  if(used.has(step)){toast('原型里这一档只备了一段示例，换一档试试');return}used.add(step);const x=NEXT[step];
+  const pre=[el(`<div class="pushmark">▸ ${x.mark}</div>`)];if(x.slate)pre.push(el(`<div class="slate"><i></i><span>${x.slate[0]}</span><span>${x.slate[1]}</span><span>${x.slate[2]}</span><span class="who">${x.slate[3]}</span></div>`));
+  if(x.tick){threads[0].n=6;threads[0].sub='到点了：白鹭号今夜起锚';drawThreads()}
+  logMove(x.act+' · '+x.mark.split(' · ')[1]);writeFloor(x.ps,dnote(x.act,x.why,x.line)+x.extra,pre,true)});
+function send(prepared){const v=$('#say').value.trim();if(!v){toast('先写点什么，或者直接按「推进」');return}
+  const said=el('<div class="said"><span class="label">沈砚</span><p></p></div>');said.querySelector('p').textContent=v;$('#say').value='';logMove('不干预');
+  writeFloor(['阿蘅看了你很久，像是在掂量这句话值多少。','然后她松开了按着钥匙的手。“跟我来，”她说，“路上我告诉你。”'],'<div class="note"><b>导演 · 不干预</b>你写了自己的行动，这一轮没有加任何安排</div>',[said],prepared)}
+let picked=false;
+$('#send').addEventListener('click',()=>{send(picked);picked=false});
+$('#say').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();send(picked);picked=false}});
+$('#say').addEventListener('input',()=>picked=false);
+$('#opts').addEventListener('click',e=>{const c=e.target.closest('.chip');if(c){$('#say').value=c.textContent;picked=true;$('#say').focus()}});
+$('#script').addEventListener('click',e=>{const b=e.target.closest('[data-nope]');if(!b)return;const i=b.dataset.nope;if(i!==''){threads[+i].off=true;drawThreads()}
+  b.closest('.note').innerHTML='<b>导演 · 已撤回</b>这条安排不会再出现；原因已记入偏好';toast('已记下。要重写这一楼吗？点「重写」')});
 $('#reroll').addEventListener('click',()=>{$('#why').hidden=!$('#why').hidden});
-$('#why').addEventListener('click',e=>{const c=e.target.closest('[data-why]');if(!c)return;const why=c.dataset.why,last=$('#last');
-  last.querySelector('.prose').innerHTML=['“值更簿。”阿蘅不再绕弯子，直接把钥匙塞进你手里，“我爹记了三十一年，最后一页写的是贺九的名字。我亲眼看见的。”','汽笛响了两声。她已经踩上油桶，推开了天窗。','“白鹭号在试锅炉，我们只有今晚。上不上来，你现在就得定。”'].map(p=>`<p>${p}</p>`).join('');
-  last.querySelector('.notes').append(el(`<div class="note gold"><b>重写</b>按「${why}」调整；这条原因已记入你的偏好</div>`));
-  last.classList.remove('new');void last.offsetWidth;last.classList.add('new');$('#why').hidden=true;
-  if(why==='别推这条线'){threads[0].muted=true;drawThreads();toast('已重写，并把「贺九」这条线静音')}else toast('已带着「'+why+'」重写这一楼')});
+$('#why').addEventListener('click',async e=>{const c=e.target.closest('[data-why]');if(!c)return;const why=c.dataset.why,last=$('#last'),pr=last.querySelector('.prose');$('#why').hidden=true;
+  if(why==='别推这条线'){threads[0].off=true;drawThreads()}
+  const T=['“值更簿。”阿蘅不再绕弯子，直接把钥匙塞进你手里，“我爹记了三十一年，最后一页写的是贺九的名字。我亲眼看见的。”','汽笛响了两声。她已经踩上油桶，推开了天窗。','“我们只有今晚。上不上来，你现在就得定。”'];
+  pr.replaceChildren();last.querySelector('.notes').append(el(`<div class="note gold"><b>重写</b>按「${why}」调整，已记入你的偏好</div>`));
+  busy={skip:false,done:Promise.resolve()};const ps=T.map(()=>{const p=document.createElement('p');pr.append(p);return p});await type(ps,T);busy=null;toast('已带着「'+why+'」重写。上一版还在，可以切回去')});
 
-/* 蓝图 */
-const vols=[
- {name:'卷一 · 雾起',q:'那箱货里到底是什么',state:'已完成',ms:[
-  {s:'done',t:'在七号码头截下贺九的第一箱货',by:'you',sub:'达成于第 18 楼'}]},
- {name:'卷二 · 退潮',q:'谁在搬走灯塔，为什么',state:'进行中',ms:[
-  {s:'live',t:'拿到阿蘅父亲的值更簿',by:'you',lock:true,sub:'前提：得到第二把钥匙 ✓ · 登上顶层 —'},
-  {s:'open',t:'阿蘅发现你一直没把报告的事告诉她',by:'ai',soft:true,sub:'铺垫：魏临的报告期限（已埋 · 第 31 楼）'},
-  {s:'block',t:'在码头当众揭穿贺九',by:'you',sub:'受阻：第 40 楼之后贺九不再在码头露面',fix:true}]},
- {name:'卷三 · 灯灭',q:'这座灯塔为谁而亮',state:'远期 · 只写一句',ms:[
-  {s:'open',t:'灯塔熄灭的那一夜',by:'you',lock:true,sub:'铺垫：白鹭号的假船籍（待埋）'},
-  {s:'open',t:'结局方向：你留在雾港，或者跟船走',by:'you',sub:'两个候选，暂不定'},
-  {s:'open',t:'魏临在最后一刻放走了一个不该放的人',by:'ai',soft:true,sub:'AI 根据你刚写的想法补的'}]}];
-const ST={done:['ok','已达成'],live:['gold','最近的目标'],open:['mute','仍可达'],block:['bad','受阻']};
-function drawVols(){$('#vols').replaceChildren(...vols.map(v=>{const n=el(`<div class="vol" style="margin-top:22px"><header><h2>${v.name}</h2><p>${v.q} · ${v.state}</p></header></div>`);
-  v.ms.forEach(m=>{const r=el(`<div class="ms ${m.s}${m.by==='ai'?' ai':''}"><span class="dot"></span><div><h3>${m.t}</h3><div class="tags"><span class="pill ${ST[m.s][0]}">${ST[m.s][1]}</span><span class="pill ${m.by==='ai'?'teal':'mute'}">${m.by==='ai'?'AI 补的':'你写的'}</span><span class="pill mute">${m.soft?'软性':'硬性'}</span><button class="btn ghost sm lock" aria-pressed="${!!m.lock}">${m.lock?'已锁定':'锁定'}</button></div><p class="sub">${m.sub}</p>${m.fix?'<div class="fix"><button class="btn sm" data-fix="改道：换成在白鹭号上揭穿，AI 已给出需要补的两条铺垫">调整蓝图</button><button class="btn sm" data-fix="拉回：导演会加大拉力，设法让贺九回到码头">把剧情拉回</button><button class="btn sm" data-fix="已放弃这个里程碑，相关铺垫作废">放弃</button></div>':''}</div></div>`);
-   r.addEventListener('click',e=>{const f=e.target.dataset.fix;if(f){toast(f);m.s='open';m.fix=false;m.sub='已处理：'+f.split('：')[0];drawVols()}
-     const l=e.target.closest('.lock');if(l){m.lock=!m.lock;l.textContent=m.lock?'已锁定':'锁定'}});n.append(r)});return n}))}
+/* 记忆：百科 */
+const PAGES=[
+ {id:'aheng',kind:'人物',name:'阿蘅',upto:'第三章',lead:'灯塔看守的女儿，二十出头。父亲失踪后独自守着<a data-p="tower">旧灯塔</a>，不信港务局的任何人。',secs:[
+  ['现在',[['对你：托付。她把第二把钥匙交了出来。','第 41 楼','自动',false,'“我想知道为什么，可我一个人上不去顶层。”'],['想要：上顶层，找到父亲的值更簿。','第 43 楼','自动'],['右手虎口有新伤，她没解释。','第 38 楼','你改的',true]]],
+  ['演变',[['对你：试探。只肯隔着门说话。','至第二章','自动',false,null,true],['第二章末，她第一次主动找你，起因是<a data-p="hejiu">贺九</a>的人上门翻过灯塔。','第 34 楼','自动']]],
+  ['她瞒着的',[['父亲失踪之前，她就见过贺九。','第 29 楼','自动']]]]},
+ {id:'weilin',kind:'人物',name:'魏临',upto:'第三章',lead:'港务局督察，你的上司。说话从不超过两句，报告要得很急。',secs:[['现在',[['怀疑你私扣了七号码头那箱货。','第 31 楼','自动'],['不知道灯塔有第二把钥匙。','第 41 楼','自动']]],['演变',[['第一章对你：公事公办。','至第一章','自动',false,null,true]]]]},
+ {id:'hejiu',kind:'人物',name:'贺九',upto:'第二章',lead:'白鹭号的船主。码头上的人说他走私，但没人见过他卖过一两烟土。',secs:[['现在',[['第 40 楼之后不再在码头露面。','第 40 楼','自动'],['在把<a data-p="tower">旧灯塔</a>的透镜一箱一箱运走。','第 41 楼','自动']]]]},
+ {id:'tower',kind:'地点',name:'旧灯塔',upto:'第三章',lead:'雾港西角的石塔，四层。储油间在底层，灯室在顶层，中间两层已被翻乱。',secs:[['现在',[['顶层的透镜缺了一面。','第 41 楼','自动'],['西墙有一道检修梯，可以绕开正门的锁。','第 45 楼','自动']]]]},
+ {id:'l1',kind:'剧情线',name:'灯塔被搬空',upto:'第三章',lead:'<a data-p="hejiu">贺九</a>在潮汐日之前要把灯塔的透镜全部运走。原因还不清楚。',secs:[['经过',[['你在七号码头截下第一箱。','第 18 楼','自动'],['<a data-p="aheng">阿蘅</a>告诉你货是从灯塔上拆下来的。','第 41 楼','自动']]]]}];
+let curPage='aheng';
+function drawPages(){let h='',k='';for(const p of PAGES){if(p.kind!==k){k=p.kind;h+=`<span class="label">${k}</span>`}h+=`<button data-p="${p.id}" aria-pressed="${p.id===curPage}"><span>${p.name}</span><small>${p.upto}</small></button>`}$('#plist').innerHTML=h;
+  const p=PAGES.find(x=>x.id===curPage);
+  $('#page').innerHTML=`<div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px"><h2>${p.name}</h2><span class="pill teal">${p.kind}</span><span class="pill mute">写到${p.upto}</span><button class="btn ghost sm" data-toast="会从原文重新整理这一页；你锁定的句子保持不变">重新整理</button></div><p class="lead">${p.lead}</p>`+
+   p.secs.map(s=>`<h3>${s[0]}</h3>`+s[1].map(x=>`<div class="st${x[5]?' old':''}"><p contenteditable>${x[0]}</p><div class="m"><span class="num">${x[1]}</span><span class="pill ${x[2]==='你改的'?'gold':'mute'} src">${x[2]}</span>${x[4]?'<button class="btn ghost sm" data-raw>原文</button>':''}<button class="lock" aria-pressed="${!!x[3]}">${x[3]?'已锁定':'锁定'}</button></div>${x[4]?`<div class="raw" hidden>${x[4]}</div>`:''}</div>`).join('')).join('')}
+drawPages();
+$('#plist').addEventListener('click',e=>{const b=e.target.closest('[data-p]');if(b){curPage=b.dataset.p;drawPages()}});
+$('#page').addEventListener('click',e=>{const a=e.target.closest('a[data-p]');if(a){e.preventDefault();curPage=a.dataset.p;drawPages();return}
+  const r=e.target.closest('[data-raw]');if(r){const x=r.closest('.st').querySelector('.raw');x.hidden=!x.hidden}
+  const l=e.target.closest('.lock');if(l)setTimeout(()=>l.textContent=l.getAttribute('aria-pressed')==='true'?'已锁定':'锁定')});
+/* 状态、秘密、时间线、偏好 */
+$('#stateBody').innerHTML=[['阿蘅','位置','旧灯塔 · 储油间','第 41 楼'],['阿蘅','衣着','旧棉袄，袖口有油渍','第 38 楼'],['阿蘅','伤','右手虎口新伤','第 38 楼'],['你','位置','旧灯塔 · 储油间','第 41 楼'],['你','带着','港务局稽查证、半截铅笔','第 22 楼'],['第二把钥匙','在谁手里','阿蘅（按在油桶盖上）','第 41 楼'],['时间','现在','潮汐日前三天 · 夜','第 40 楼']].map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td><td contenteditable>${r[2]}</td><td class="num" style="color:var(--muted)">${r[3]}</td></tr>`).join('');
+$('#secretBody').innerHTML=[['灯塔有第二把钥匙','阿蘅、你','魏临、贺九','第 41 楼'],['阿蘅早就见过贺九','阿蘅、贺九','你、魏临','第 29 楼'],['那箱货里是灯塔的透镜','你、阿蘅、贺九','魏临（只知道你扣了货）','第 18 楼']].map(r=>`<tr><td contenteditable>${r[0]}</td><td contenteditable>${r[1]}</td><td contenteditable>${r[2]}</td><td class="num" style="color:var(--muted)">${r[3]}</td></tr>`).join('');
+$('#spine').innerHTML=[['第一章 · 雾起','5 场 · 18 楼','你调到雾港的第一个月。码头上人人都认得贺九，却没人肯说他运的是什么。月底，你在七号码头截下了他的一箱货。',[['◆','截下第一箱货，箱里是灯塔透镜'],['','第一次见到魏临，他只问了两句话']]],['第二章 · 七号码头','4 场 · 16 楼','报告迟迟写不出来。贺九的人翻了旧灯塔，阿蘅第一次主动来找你。',[['◆','阿蘅上门，隔着门说了灯塔的事'],['◆','魏临给出期限：天亮前交报告'],['','贺九从码头消失']]],['第三章 · 退潮之前','进行中 · 9 楼','阿蘅约你在储油间见面，拿出了第二把钥匙。',[['◆','第二把钥匙出现']]]].map((c,i)=>`<details ${i===2?'open':''}><summary>${c[0]}<small>${c[1]}</small></summary><p class="sum" contenteditable>${c[2]}</p><ul>${c[3].map(e=>`<li>${e[0]?'<b>◆</b>':''}${e[1]}</li>`).join('')}</ul></details>`).join('');
+const rules=[['不要替我说话','你在第 9 楼说过'],['少用比喻，多写动作','重写时选过 3 次「人设不对」后总结'],['阿蘅不会撒娇','你在第 36 楼改过一句']];
+function drawRules(){$('#rules').innerHTML=rules.map((r,i)=>`<div><span contenteditable>${r[0]}</span><span>${r[1]} <button class="btn ghost sm" data-del="${i}">不用了</button></span></div>`).join('')}drawRules();
+$('#rules').addEventListener('click',e=>{const d=e.target.dataset.del;if(d===undefined)return;const [x]=rules.splice(+d,1);drawRules();toast('已停用这一条',()=>{rules.splice(+d,0,x);drawRules()})});
+$('#ruleAdd').addEventListener('click',()=>{const v=$('#ruleIn').value.trim();if(!v)return;rules.unshift([v,'你刚加的']);$('#ruleIn').value='';drawRules();toast('已加上，下一轮生效')});
+
+/* 大纲 */
+const vols=[{name:'卷一 · 雾起',q:'那箱货里到底是什么',state:'已完成',ms:[{s:'done',t:'在七号码头截下贺九的第一箱货',by:'you',sub:'发生在第 18 楼'}]},
+ {name:'卷二 · 退潮',q:'谁在搬走灯塔，为什么',state:'进行中',ms:[{s:'live',t:'拿到阿蘅父亲的值更簿',by:'you',lock:true,sub:'还差：登上顶层'},{s:'open',t:'阿蘅发现你一直没把报告的事告诉她',by:'ai',soft:true,sub:'要先埋：魏临的报告期限（已埋 · 第 31 楼）'},{s:'block',t:'在码头当众揭穿贺九',by:'you',sub:'走不通了：第 40 楼之后贺九不再在码头露面',fix:true}]},
+ {name:'卷三 · 灯灭',q:'这座灯塔为谁而亮',state:'还远 · 只写一句',ms:[{s:'open',t:'灯塔熄灭的那一夜',by:'you',lock:true,sub:'要先埋：白鹭号的假船籍（还没埋）'},{s:'open',t:'结局：你留在雾港，或者跟船走',by:'you',sub:'两个候选，先不定'},{s:'open',t:'魏临在最后一刻放走了一个不该放的人',by:'ai',soft:true,sub:'AI 根据你刚写的想法补的'}]}];
+const ST={done:['ok','已发生'],live:['gold','下一个'],open:['mute','还能走到'],block:['bad','走不通了']};
+function drawVols(){$('#vols').replaceChildren(...vols.map(v=>{const n=el(`<div class="vol"><header><h2>${v.name}</h2><p>${v.q} · ${v.state}</p></header></div>`);
+  v.ms.forEach(m=>{const r=el(`<div class="ms ${m.s}${m.by==='ai'?' ai':''}"><span class="dot"></span><div><h3 contenteditable>${m.t}</h3><div class="tags"><span class="pill ${ST[m.s][0]}">${ST[m.s][1]}</span><span class="pill ${m.by==='ai'?'teal':'mute'}">${m.by==='ai'?'AI 写的':'你写的'}</span><span class="pill mute">${m.soft?'有机会就发生':'一定要发生'}</span><button class="lock" aria-pressed="${!!m.lock}">${m.lock?'已锁定':'锁定'}</button></div><p class="sub">${m.sub}</p>${m.fix?'<div class="fix"><button class="btn sm" data-fix="已改大纲：换成在白鹭号上揭穿">改大纲</button><button class="btn sm" data-fix="导演会设法让贺九回到码头">把剧情拉回来</button><button class="btn sm" data-fix="已放弃这件事">不要了</button></div>':''}</div></div>`);
+   r.addEventListener('click',e=>{const f=e.target.dataset.fix;if(f){toast(f);m.s='open';m.fix=false;m.sub='已处理：'+f;drawVols()}const l=e.target.closest('.lock');if(l){m.lock=!m.lock;setTimeout(()=>l.textContent=m.lock?'已锁定':'锁定')}});n.append(r)});return n}))}
 drawVols();
-$('#spoil').addEventListener('click',()=>setTimeout(()=>$('#outline').classList.toggle('spoiler',$('#spoil').getAttribute('aria-pressed')==='true')));
-const sugs=[
- {k:'补铺垫',t:'要让「灯塔熄灭的那一夜」可信，建议在第三章里埋下：白鹭号用的是假船籍。',ok:'已加入伏笔账，导演会找合适的场景埋下'},
- {k:'查矛盾',t:'「阿蘅不知道报告的事」与第 33 楼冲突：那一楼她在场，听见了魏临的话。建议改成「她知道有报告，但不知道期限」。',ok:'已按建议改写这一条的前提'}];
-function drawSugs(){$('#sugs').replaceChildren(...(sugs.length?sugs.map((s,i)=>{const n=el(`<div class="sug"><span class="pill ${s.k==='查矛盾'?'bad':'teal'}">${s.k}</span><p>${s.t}</p><div class="row"><button class="btn sm gold">接受</button><button class="btn sm">不要</button></div></div>`);
+$('#spoil').addEventListener('click',()=>setTimeout(()=>$('#outlineBox').classList.toggle('spoiler',$('#spoil').getAttribute('aria-pressed')==='true')));
+const sugs=[{k:'补伏笔',t:'要让「灯塔熄灭的那一夜」可信，建议在第三章埋下：白鹭号用的是假船籍。',ok:'已加入伏笔，导演会找合适的场面埋下'},{k:'有矛盾',t:'「阿蘅不知道报告的事」和第 33 楼冲突：那一楼她在场。建议改成「她知道有报告，但不知道期限」。',ok:'已按建议修改'}];
+function drawSugs(){$('#sugs').replaceChildren(...(sugs.length?sugs.map((s,i)=>{const n=el(`<div class="card sug"><span class="pill ${s.k==='有矛盾'?'bad':'teal'}">${s.k}</span><p>${s.t}</p><div class="row"><button class="btn sm gold">接受</button><button class="btn sm">不要</button></div></div>`);
   n.addEventListener('click',e=>{if(e.target.tagName!=='BUTTON')return;toast(e.target.classList.contains('gold')?s.ok:'已忽略，不会再提');sugs.splice(i,1);drawSugs()});return n}):[el('<p style="color:var(--muted);font-size:13px">没有待处理的建议。</p>')]))}
 drawSugs();
-$('#fill').addEventListener('click',()=>{sugs.unshift({k:'补铺垫',t:'如果魏临其实站在你这边，前面需要一次他「本可以抓你却没抓」的时刻。建议放在第三章末尾。',ok:'已加为卷二的软性里程碑，标记为 AI 补的'});drawSugs();toast('根据你写的想法生成了 1 条建议')});
+$('#fill').addEventListener('click',()=>{sugs.unshift({k:'补伏笔',t:'如果魏临其实站在你这边，前面需要一次他「本可以抓你却没抓」的时刻。建议放在第三章末尾。',ok:'已加进卷二，标记为 AI 写的'});drawSugs();toast('根据你写的想法给了 1 条建议')});
 
-/* 导入体检 */
-const TYPES=[['实体档案',78,'人物、地点、物品：出场时才带入','--teal'],['状态定义',41,'变量与更新规则：改由后台记账','--gold'],['条件内容',26,'满足条件才出现的设定','--ok'],['事件与舞台',14,'交给导演，成为线','--bad'],['写作指令',12,'文风层，可整体开关','--muted'],['规则',9,'情境出现时注入，能算的由程序算','--gold-ink'],['表现资源',8,'插画与配乐表','--line'],['插件残留',8,'别的插件留下的总结','--line'],['常识',6,'很短，始终带着','--ink'],['作者选项',6,'做成一页选项面板','--teal'],['未识别',5,'暂按原样处理','--line-soft']];
-$('#bar').innerHTML=TYPES.map(t=>`<i style="flex:${t[1]};background:var(${t[3]})" title="${t[0]} ${t[1]}"></i>`).join('');
-$('#types').innerHTML=TYPES.map(t=>`<div><i style="background:var(${t[3]})"></i><span>${t[0]}<small>${t[2]}</small></span><b class="num">${t[1]}</b></div>`).join('');
-const AOPTS=[['硬核生存模式',false],['扩展：北岛航线',true],['叙事视角：第二人称',true]];
-$('#authorOpts').innerHTML=AOPTS.map((o,i)=>`<div><span>${o[0]}</span><span><button class="sw" role="switch" aria-checked="${o[1]}" aria-label="${o[0]}"></button></span></div>`).join('');
-seg($('#mode'),v=>{$('#after').textContent=v==='up'?'3.1K':'18.2K';toast(v==='up'?'升级模式：条目按用法分流':'原样模式：按酒馆的方式运行，脚本与正则照常生效')});
+/* 设定 */
+const TYPES=[['人物地点',78,'--teal'],['数值',41,'--gold'],['有条件',26,'--ok'],['事件',14,'--bad'],['文风',12,'--muted'],['规则',9,'--gold-ink'],['素材',8,'--line'],['旧总结',8,'--line'],['常识',6,'--ink'],['选项',6,'--teal'],['没认出',5,'--soft']];
+$('#bar').innerHTML=TYPES.map(t=>`<i style="flex:${t[1]};background:var(${t[2]})" title="${t[0]} ${t[1]}"></i>`).join('');
+const ENT=[['潮汐列岛总览','常识','每一轮都带','0.4K',true,'七座岛，三条航线，一个只在潮汐日开放的内港。'],['阿蘅','人物地点','她在场或被提到时','0.5K',true,'灯塔看守的女儿。说话短，先看人的手再看人的脸。'],['旧灯塔','人物地点','故事发生在这里时','0.4K',true,'雾港西角的石塔，四层。'],['港务局的规矩','规则','涉及查货、扣货时','0.3K',true,'稽查员扣货必须在十二个时辰内交报告。'],['贺九 · 摊牌之后','有条件','「对贺九的了解」到第 3 级后','0.6K',true,'他不是走私贩。他在替一个已经不存在的机构收尾。'],['信任度','数值','由程序记账，不占正文','—',true,'阿蘅.信任：0–5，当前 3'],['潮汐日事件表','事件','交给导演，成为剧情线','—',true,'潮汐日当天内港开放，所有船只必须在子时前离港。'],['文风：冷叙述','文风','整体开关','0.5K',false,'少形容词，多动作与物件。']];
+let filt='全部';
+function drawLore(){$('#filters').innerHTML=['全部',...TYPES.map(t=>t[0])].map(t=>`<button class="chip" aria-pressed="${t===filt}">${t}</button>`).join('');
+  $('#entries').innerHTML=ENT.filter(e=>filt==='全部'||e[1]===filt).map(e=>`<div class="entry"><div class="head"><div><h3>${e[0]} <span class="pill mute">${e[1]}</span></h3><div class="when">什么时候带上：${e[2]}</div></div><span class="num" style="color:var(--muted)">${e[3]}</span><button class="sw" role="switch" aria-checked="${e[4]}" aria-label="启用 ${e[0]}"></button></div><div class="edit" hidden><textarea>${e[5]}</textarea><div class="row"><span class="label">类型</span><select>${TYPES.map(t=>`<option${t[0]===e[1]?' selected':''}>${t[0]}</option>`).join('')}</select><button class="btn sm gold" data-toast="已保存，下一轮生效。只改了这个故事的副本">保存</button><button class="btn sm" data-toast="按现在的场面检查：这一条这一轮会被带上">现在会带上吗</button></div></div></div>`).join('')||'<p style="color:var(--muted);padding:14px 0">这一类里没有示例条目。</p>'}
+drawLore();
+$('#filters').addEventListener('click',e=>{const c=e.target.closest('.chip');if(c){filt=c.textContent;drawLore()}});
+$('#entries').addEventListener('click',e=>{if(e.target.closest('.sw,.edit'))return;const h=e.target.closest('.head');if(h){const x=h.nextElementSibling;x.hidden=!x.hidden}});
+$('#authorOpts').innerHTML=[['硬核生存模式',false],['扩展：北岛航线',true],['用第二人称叙述',true]].map(o=>`<div><span>${o[0]}</span><span><button class="sw" role="switch" aria-checked="${o[1]}" aria-label="${o[0]}"></button></span></div>`).join('');
+seg($('#imode'),v=>{$('#after').textContent=v==='up'?'3.1K':'18.2K';toast(v==='up'?'优化：条目按用法分开处理':'原样：照酒馆的方式运行，脚本和正则照常生效')});
 
-/* 开关 */
-const GROUPS=[
- ['记忆',[['scribe','场记','每楼落定后记下状态变化、在场者和这一楼的节拍',600,'记录了 37 次状态变化'],['archive','档案归档','一场戏结束时写一份摘要，更新人物档案',200,'归档了 9 场'],['reunion','重逢注入','久未出场的人物再次登场时，自动带上他的档案',0,'触发 4 次'],['search','全文检索','兜底：在全部楼层里查找相关段落',100,'命中 2 次']]],
- ['导演',[['director','导演','玩家没给方向时，从线里选一个具体的下一步',0,'给过 21 次建议，你采纳 14 次'],['knows','知情标注','提醒模型谁不在场、谁不知情',0,'标注了 6 条'],['plan','章级规划','每章结束时清点所有线和伏笔',150,'规划了 2 章']]],
- ['表现',[['status','状态面板','由程序根据状态绘制，不让模型输出',0,'这张卡有 41 个变量'],['choices','行动选项','每轮备好三四个可点的行动',120,'你点过 11 次'],['draw','章节插图','归档时提名值得画的瞬间，数量由剧情决定',0,'提名 5 张，已画 3 张'],['bgm','背景音乐','按场景从卡的配乐表里匹配',0,'这张卡带 8 首']]],
- ['模型与兼容',[['think','高档思考','写之前多想一会，延迟更长',0,'—'],['tools','工具查阅','设定库很大时让模型自己查一条设定',0,'本渠道的模型不会主动调用工具'],['style','写作指令层','卡自带的文风与格式要求',0,'12 条'],['raw','原样兼容','照酒馆的方式执行卡里的脚本与正则',0,'—']]]];
-const PRESET={lite:['director','status','style'],std:['scribe','archive','reunion','director','knows','plan','status','choices','style'],full:['scribe','archive','reunion','search','director','knows','plan','status','choices','draw','bgm','think','style']};
+/* 设置 */
+const DIALS=[['文风','跟着卡 / 冷叙述 / 细腻 / 口语',['跟着卡','冷叙述','细腻','口语'],0],['人称','叙述时怎么称呼你',['你','我','他'],0],['长度','每一楼写多少',['短','中','长'],1],['节奏','没有你指示时走多快',['慢','适中','快'],1],['尺度','跟着卡的设定，或者收一点',['跟着卡','收敛'],0],['思考','写之前想多久',['不想','想一下','多想'],1]];
+$('#dials').innerHTML=DIALS.map(d=>`<div class="dial"><div><h3>${d[0]}</h3><p>${d[1]}</p></div><div class="seg" role="group" aria-label="${d[0]}">${d[2].map((o,i)=>`<button aria-pressed="${i===d[3]}">${o}</button>`).join('')}</div></div>`).join('')+`<div class="dial"><div><h3>替我行动</h3><p>关掉后，角色不会替你说话或做决定</p></div><button class="sw" role="switch" aria-checked="false" aria-label="替我行动"></button></div><div class="dial"><div><h3>导入的预设</h3><p>131 条里 86 条已对应到上面的选项，其余 45 条作为文风包整体开关</p></div><button class="sw" role="switch" aria-checked="true" aria-label="文风包"></button></div>`;
+$$('#dials .seg').forEach(s=>seg(s));
+const GROUPS=[['记忆',[['log','自动记录','每楼写完后记下发生了什么、谁在场',600,'记了 212 条'],['wiki','百科','每一场结束时整理人物和地点的页面',200,'9 场 · 5 页'],['meet','重逢提醒','久未出场的人再出现时，带上他的页面',0,'用了 4 次'],['pick','让模型再挑一遍','从目录里补选几页，更准但多一次调用',300,'—'],['search','全文搜索','兜底：在全部楼层里找',100,'命中 2 次']]],
+ ['导演',[['dir','导演','你按推进时，从剧情线里挑一个具体的下一步',0,'安排过 21 次，你撤回 2 次'],['who','谁不知情','提醒模型谁不在场、谁不知道',0,'标了 6 条'],['plan','每章规划','一章结束时清点剧情线和伏笔',150,'规划了 2 章'],['pre','提前备好','趁你在想的时候，把推进和每个选项先准备好',900,'命中 31 / 40 次']]],
+ ['显示',[['panel','状态面板','由程序画，不让模型输出',0,'41 个数值'],['opt','行动选项','每轮给三四个能点的行动',120,'你点过 11 次'],['img','插图','每场结束时挑值得画的画面',0,'挑了 5 张，画了 3 张'],['bgm','配乐','按场面从卡的曲目里选',0,'8 首']]],
+ ['兼容',[['style','卡自带的文风要求','',0,'12 条'],['raw','酒馆脚本与正则','照酒馆的方式执行',0,'—']]]];
+const PRESET={lite:['dir','panel','style'],std:['log','wiki','meet','dir','who','plan','panel','opt','style'],full:['log','wiki','meet','pick','search','dir','who','plan','pre','panel','opt','img','bgm','style']};
 const on=new Set(PRESET.std);
-function drawGroups(){$('#groups').innerHTML=GROUPS.map(g=>`<div class="grp"><h2>${g[0]}</h2>${g[1].map(o=>`<div class="opt"><div><h3>${o[1]}</h3><p>${o[2]}</p><div class="stat"><span class="num">${o[3]?'每轮约 '+o[3]+' token':'不花额外 token'}</span><span>${o[4]}</span></div></div><button class="sw" role="switch" aria-checked="${on.has(o[0])}" aria-label="${o[1]}" data-k="${o[0]}"></button></div>`).join('')}</div>`).join('');
-  let s=0,c=0;GROUPS.forEach(g=>g[1].forEach(o=>{if(on.has(o[0])){s+=o[3];c++}}));$('#sum').textContent=s.toLocaleString();$('#sumNote').textContent='已开 '+c+' 项 · 正文调用另计'}
+function drawGroups(){$('#groups').innerHTML=GROUPS.map(g=>`<div class="grp"><h2>${g[0]}</h2>${g[1].map(o=>`<div class="dial"><div><h3>${o[1]}</h3>${o[2]?`<p>${o[2]}</p>`:''}<div class="stat"><span class="num">${o[3]?'每轮约 '+o[3]+' token':'不多花'}</span><span>${o[4]}</span></div></div><button class="sw" role="switch" aria-checked="${on.has(o[0])}" aria-label="${o[1]}" data-k="${o[0]}"></button></div>`).join('')}</div>`).join('');
+  let s=0,c=0;GROUPS.forEach(g=>g[1].forEach(o=>{if(on.has(o[0])){s+=o[3];c++}}));$('#sum').textContent=s.toLocaleString();$('#sumNote').textContent='开了 '+c+' 项 · 正文另算'}
 drawGroups();
 document.addEventListener('click',e=>{const s=e.target.closest('.sw');if(!s)return;const v=s.getAttribute('aria-checked')!=='true';s.setAttribute('aria-checked',v);
   if(s.dataset.k){v?on.add(s.dataset.k):on.delete(s.dataset.k);drawGroups();$$('#tier button').forEach(b=>b.setAttribute('aria-pressed','false'))}});
-seg($('#tier'),v=>{on.clear();PRESET[v].forEach(k=>on.add(k));drawGroups()});
+seg($('#tier'),v=>{on.clear();PRESET[v].forEach(k=>on.add(k));drawGroups();toast({lite:'省：只留导演和状态面板',std:'均衡：记忆和导演都开',full:'全开：加上提前备好、插图和配乐'}[v])});
+$('#models').innerHTML=[['写正文','主模型 A','会用工具：否 · 缓存：有','推荐写法：规划'],['后台记账','小模型 B','每分钟 30 次','用于自动记录、百科'],['每章规划','主模型 A','很少调用','可以换成更强的模型']].map(m=>`<div class="dial"><div><h3>${m[0]}</h3><p>${m[2]}</p><div class="stat"><span>${m[3]}</span></div></div><button class="btn" data-toast="在这里选渠道和模型；密钥只存在本机">${m[1]} ›</button></div>`).join('');
+
+/* 命令面板 */
+const CMDS=[['去书架','#library'],['继续写故事','#play'],['打开记忆 · 百科','#memory'],['打开大纲','#outline'],['改设定','#lore'],['设置 · 写作','#prefs'],['推进一步',()=>{location.hash='play';$('#pushBtn').click()}],['这一轮关掉导演',()=>{location.hash='play';$('#tDirector').setAttribute('aria-pressed','false');toast('这一轮导演不出手')}],['看它这一轮看到了什么',()=>{location.hash='play';$('#whyBtn').click()}]];
+let sel=0,shown=CMDS;
+function drawPal(){const q=$('#palIn').value.trim();shown=CMDS.filter(c=>c[0].includes(q));sel=Math.min(sel,Math.max(shown.length-1,0));$('#palList').innerHTML=shown.map((c,i)=>`<li role="option" aria-selected="${i===sel}" data-i="${i}"><span>${c[0]}</span><small>${typeof c[1]==='string'?'前往':'执行'}</small></li>`).join('')}
+function openPal(v){$('#scrim').hidden=!v;if(v){$('#palIn').value='';sel=0;drawPal();$('#palIn').focus()}}
+function runCmd(i){const c=shown[i];if(!c)return;openPal(false);typeof c[1]==='string'?location.hash=c[1]:c[1]()}
+$('#palBtn').addEventListener('click',()=>openPal(true));
+$('#scrim').addEventListener('click',e=>{if(e.target.id==='scrim')openPal(false);const li=e.target.closest('li');if(li)runCmd(+li.dataset.i)});
+$('#palIn').addEventListener('input',()=>{sel=0;drawPal()});
+document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();openPal($('#scrim').hidden)}
+  if($('#scrim').hidden)return;if(e.key==='Escape')openPal(false);if(e.key==='ArrowDown'){e.preventDefault();sel=Math.min(sel+1,shown.length-1);drawPal()}if(e.key==='ArrowUp'){e.preventDefault();sel=Math.max(sel-1,0);drawPal()}if(e.key==='Enter'){e.preventDefault();runCmd(sel)}});
 </script>

@@ -7,14 +7,14 @@
 
 现在请严格按照仓库根目录 `AGENTS.md` 里的「会话协议」执行：
 
-1. 读取 `AGENTS.md`、`docs/dev/HANDOFF.md`、`docs/dev/TASKS.md`、`docs/dev/INBOX.md`、`docs/dev/HUMAN.md`，并查看 git 状态
+1. 读取 `AGENTS.md`、`docs/dev/HANDOFF.md`、`.scratch/README.md`、`docs/dev/INBOX.md`，并查看 git 状态。不要读 `docs/dev/TASKS.md`、`DECISIONS.md`、`LOG.md`
 2. 如果门禁失败，本会话只修复门禁
-3. 否则选出**一个**任务，并且只做这一个
-4. 实现，然后运行 `pnpm check` 验证
-5. 交接：更新 TASKS、重写 HANDOFF、追加 LOG、提交 git
-6. 写 `.devloop/result.json`
-7. 用一句话总结，然后结束
+3. 否则按 `.scratch/README.md` 的顺序取第一张可以做的工单，先把它标成 `Status: claimed`
+4. 先核对现状再实现；过程中只跑相关测试，结束前跑一次 `pnpm check`
+5. 收尾：工单标 `done`、重写 HANDOFF（不超过 40 行）、追加 LOG、提交 git
+6. 上下文还宽裕就接着做下一张，一个会话最多 3 张
+7. 写 `.devloop/result.json`，用一句话总结，然后结束
 
-预计超过 10 分钟的命令（长程试玩、整批评测、批量抽取）不要在会话里等待，也不要自己在后台启动：按 `AGENTS.md` 的"长任务"一节写 `.devloop/jobs/<id>.json` 申请，结果写 `WAITING`。如果 `.devloop/jobs/` 里有你之前申请的长任务已经跑完（有 `.status.json`），先读它的结果和日志。
+预计超过 10 分钟的命令不要在会话里等待，也不要自己在后台启动：只有工单明确要求时才按 `AGENTS.md` 的「长任务」一节申请，结果写 `WAITING`。
 
 记住设计不变量和安全红线。不要修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 下的任何文件；觉得它们需要修改时，写进 HUMAN.md。
