@@ -540,9 +540,9 @@ export function readMemoryTimeline(
 }
 
 const USER_WILL_KIND_LABELS: Readonly<Record<string, string>> = {
-	correction: "你纠正过",
+	preference: "你的偏好",
 	boundary: "你的底线",
-	wish: "你想看的",
+	correction: "你纠正过",
 };
 
 /** 偏好：台账里的用户意志；停用的条目从台账移除，但留在修改表里可以恢复。 */
