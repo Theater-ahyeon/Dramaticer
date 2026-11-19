@@ -4,8 +4,10 @@ import {
 	type JsonValue,
 	type PlayerEditKind,
 	assertDirectorLine,
+	assertSceneCard,
 	compileWikiPages,
 	createTokenEstimator,
+	editSceneGoal,
 	editState,
 	editWikiStatement,
 	isPlayerEditKind,
@@ -21,6 +23,7 @@ import {
 	readMemoryState,
 	readMemoryTimeline,
 	readPinnedLineIds,
+	readSceneGoal,
 	readWritingView,
 	resetToCardRecommended,
 	resolveLoreInjectionRole,
@@ -283,6 +286,26 @@ export async function handleMemoryRoute(
 		}
 	}
 
+	if (third === "director" && fourth === "scene" && parts.length === 4) {
+		allow(method, ["POST"]);
+		requireStory(options, storyId);
+		const body = await readObject(req, options);
+		try {
+			saveSceneGoalEdit(options, storyId, body);
+		} catch (error) {
+			if (error instanceof HttpError) throw error;
+			throw bad(
+				"scene",
+				error instanceof Error ? error.message : String(error),
+			);
+		}
+		sendJson(res, 200, {
+			ok: true,
+			sceneGoal: sceneGoalView(options, storyId),
+		});
+		return true;
+	}
+
 	if (third === "director" && fourth === "line" && parts.length === 4) {
 		allow(method, ["POST"]);
 		requireStory(options, storyId);
@@ -509,6 +532,36 @@ function saveLineEdit(
 	});
 }
 
+function saveSceneGoalEdit(
+	options: ApiRouteOptions,
+	storyId: string,
+	body: Record<string, unknown>,
+): void {
+	const store = options.store;
+	const nodeId = store.getHead(storyId)?.id ?? null;
+	if (nodeId === null) {
+		throw bad("scene", "故事还没有楼层，先写第一楼再改本场目标");
+	}
+	const current = readSceneGoal(store, storyId, nodeId);
+	if (current === null) {
+		throw bad("scene", "这一场还没有目标，先等场记写下场面卡");
+	}
+	const present =
+		body.present === undefined
+			? current.present
+			: Array.isArray(body.present)
+				? body.present
+				: null;
+	if (present === null) {
+		throw bad("present", "present 必须是在场者的数组");
+	}
+	const change = typeof body.change === "string" ? body.change : current.change;
+	const card = assertSceneCard({ present, change }, "本场目标");
+	editSceneGoal(store, storyId, nodeId, card, {
+		locked: typeof body.locked === "boolean" ? body.locked : true,
+	});
+}
+
 function loreCopyView(options: ApiRouteOptions, storyId: string) {
 	const store = options.store;
 	const estimate = createTokenEstimator();
@@ -648,6 +701,20 @@ function lorePreview(
 	};
 }
 
+function sceneGoalView(options: ApiRouteOptions, storyId: string) {
+	const head = options.store.getHead(storyId);
+	if (head === null) return null;
+	const goal = readSceneGoal(options.store, storyId, head.id);
+	if (goal === null) return null;
+	return {
+		nodeId: goal.nodeId,
+		present: goal.present,
+		change: goal.change,
+		source: goal.source,
+		locked: goal.locked,
+	};
+}
+
 /** 故事页停靠栏的「记忆」一页：在场的人、秘密、快要相关的人。 */
 function dockView(options: ApiRouteOptions, storyId: string) {
 	const store = options.store;
@@ -665,12 +732,11 @@ function dockView(options: ApiRouteOptions, storyId: string) {
 	const path = store.getPathToNode(head.id);
 	const scene = store.getLatestSceneLogOnPath(head.id);
 	const presentNames = scene?.present ?? [];
+	const goal = sceneGoalView(options, storyId);
 	const pages = compileWikiPages(store, storyId);
 	const state = readMemoryState(store, storyId);
 	const wants = new Map(
-		(scene?.sceneCard?.present ?? []).map(
-			(actor) => [actor.who, actor.want] as const,
-		),
+		(goal?.present ?? []).map((actor) => [actor.who, actor.want] as const),
 	);
 	const secrets = readMemorySecrets(store, storyId);
 	const present = presentNames.map((name) => {
@@ -728,7 +794,7 @@ function dockView(options: ApiRouteOptions, storyId: string) {
 		present,
 		secrets: secrets.slice(0, 8),
 		soon,
-		sceneGoal: scene?.sceneCard?.change ?? null,
+		sceneGoal: goal,
 		recap: readMemoryTimeline(store, storyId).at(-1)?.summary ?? null,
 	};
 }
