@@ -101,6 +101,12 @@ describe("线对象与存储", () => {
 		expect(() =>
 			assertDirectorLine({ ...makeLine(), owner: "卫宫" }, "线"),
 		).toThrow("线.owner 是未知字段");
+		expect(
+			assertDirectorLine({ ...makeLine(), mustInterrupt: true }, "线"),
+		).toEqual({ ...makeLine(), mustInterrupt: true });
+		expect(() =>
+			assertDirectorLine({ ...makeLine(), mustInterrupt: "yes" }, "线"),
+		).toThrow("线.mustInterrupt 必须是布尔值");
 	});
 
 	it("校验修改动作的两种形状", () => {
@@ -286,6 +292,47 @@ describe("八种动作", () => {
 		expect(selection?.reason).toContain("自己的行动");
 		expect(selection?.directive).toBe("");
 		expect(selection?.signals.candidates).toEqual(["yield"]);
+	});
+
+	it("必须打断的线到点时盖过让位，信号记下打断", () => {
+		const selection = selectDirectorAction(
+			makeInput({
+				when: "push",
+				playerMessage: "去码头",
+				lines: [makeState({ countdown: 0, mustInterrupt: true }, 1, 1)],
+			}),
+		);
+		expect(selection?.action).toBe("intrude");
+		expect(selection?.lineId).toBe("line-1");
+		expect(selection?.reason).toContain("这一场还没有打断过");
+		expect(selection?.signals.interrupt).toBe(true);
+		expect(selection?.directive).toContain("倒计时到点");
+	});
+
+	it("必须打断的线没有到点时不打断", () => {
+		const selection = selectDirectorAction(
+			makeInput({
+				when: "push",
+				playerMessage: "去码头",
+				lines: [makeState({ countdown: 5, mustInterrupt: true }, 1, 1)],
+			}),
+		);
+		expect(selection?.action).toBe("yield");
+		expect(selection?.signals.interrupt).toBeUndefined();
+	});
+
+	it("这一场已经打断过一次时，必须打断的线也延后", () => {
+		const selection = selectDirectorAction(
+			makeInput({
+				when: "push",
+				playerMessage: "去码头",
+				lines: [makeState({ countdown: 0, mustInterrupt: true }, 1, 1)],
+				interruptedThisScene: true,
+			}),
+		);
+		expect(selection?.action).toBe("yield");
+		expect(selection?.directive).toBe("");
+		expect(selection?.signals.interrupt).toBeUndefined();
 	});
 
 	it("场面没有结束时接球", () => {
@@ -491,6 +538,102 @@ describe("线引擎接入", () => {
 		]);
 		expect(decision?.signals.action).toBe("yield");
 		expect(decision?.signals.organization).toBe("lines");
+	});
+
+	it("同一场里读到已经打断过的记录", () => {
+		const { store } = openTempStore();
+		seedStory(store);
+		store.appendNode({
+			id: "n2",
+			storyId: "s1",
+			parentId: "n1",
+			role: "assistant",
+			raw: "她没有回答。",
+		});
+		store.appendNode({
+			id: "n3",
+			storyId: "s1",
+			parentId: "n2",
+			role: "user",
+			raw: "我等他开口。",
+		});
+		store.saveDirectorDecision({
+			nodeId: "n1",
+			storyId: "s1",
+			directive: "钟声提前响了。",
+			mechanisms: [{ name: "action", triggered: true, reason: "必须打断" }],
+			signals: { organization: "lines", action: "intrude", interrupt: true },
+		});
+
+		const input = readDirectorActionInput(
+			store,
+			"s1",
+			"n3",
+			DEFAULT_DIRECTOR_CONFIG,
+		);
+		expect(input.interruptedThisScene).toBe(true);
+	});
+
+	it("上一场结束时打断计数归零，新的必须打断可以再打断", () => {
+		const { store } = openTempStore();
+		seedStory(store);
+		store.appendNode({
+			id: "n2",
+			storyId: "s1",
+			parentId: "n1",
+			role: "assistant",
+			raw: "她关上门。",
+		});
+		store.saveSceneLog({
+			nodeId: "n2",
+			storyId: "s1",
+			beat: "收束",
+			present: [],
+			sceneEnds: true,
+			sceneCard: null,
+			bits: [],
+			conditions: [],
+			states: [],
+			quotes: { submitted: 0, verified: 0 },
+			repairs: [],
+		});
+		store.appendNode({
+			id: "n3",
+			storyId: "s1",
+			parentId: "n2",
+			role: "user",
+			raw: "我推门进去。",
+		});
+		store.saveDirectorDecision({
+			nodeId: "n1",
+			storyId: "s1",
+			directive: "钟声提前响了。",
+			mechanisms: [{ name: "action", triggered: true, reason: "必须打断" }],
+			signals: { organization: "lines", action: "intrude", interrupt: true },
+		});
+		store.saveDirectorLines({
+			nodeId: "n2",
+			storyId: "s1",
+			diffs: [
+				{
+					action: "set",
+					line: makeLine({ countdown: 0, mustInterrupt: true }),
+				},
+			],
+		});
+
+		const input = readDirectorActionInput(
+			store,
+			"s1",
+			"n3",
+			DEFAULT_DIRECTOR_CONFIG,
+			null,
+			"push",
+		);
+		expect(input.interruptedThisScene).toBe(false);
+		const selection = selectDirectorAction(input);
+		expect(selection?.action).toBe("intrude");
+		expect(selection?.signals.interrupt).toBe(true);
 	});
 
 	it("导演关闭时不写决策记录", () => {
