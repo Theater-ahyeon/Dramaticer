@@ -4,7 +4,7 @@
 
 **Blocked by:** refactor/01
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 - [ ] 每个开关都有一条测试：开关取不同值时，槽位内容、后台任务列表或工具列表随之变化
 - [ ] 「本轮临时开关」同样生效（`readStoryFeatureState` 的 `turnOverrides`）
@@ -15,3 +15,13 @@
 规格：`.scratch/refactor/spec.md`；DESIGN §22
 
 ## Comments
+
+2026-11-19 进展：已接通 重逢注入、知情标注、伏笔上限（`readStoryPromiseLimit`，取代 `directorConfig.maxOpenPromises`）、规则执行、行动选项；每个都有测试。功能页新增 `wired` 字段，其余开关显示「尚未生效」。`pnpm check` 2753 通过；`v4-prefs` 与 `director` 两个 e2e 通过。
+剩余工作（需要人类决定，见 HUMAN-25）：
+- 全文检索：标准档默认关，而现在记忆检索一直开着；硬接会让标准档的长故事失去检索。
+- 工具查阅：标准档默认关，而快速写法现在默认开放读取工具（3 轮）。
+- 思考：与写作页的「思考」（`reasoning`）是同一件事的两份配置。
+- 文风层：优化模式下文风类条目现在完全不注入，开关打开时注入到哪里还没设计。
+- 原样兼容：与导入方式（`importMode`）重复。
+- 状态面板、出图、背景音乐：显示层，web 还没有读开关。
+- 本轮临时开关：后端支持 `turnOverrides`，但回合请求与界面都没有传。

@@ -47,6 +47,7 @@ import {
 	formatRerollCorrection,
 } from "../preferences/reroll.js";
 import type { TurnRunEventInput, TurnRunFinalStatus } from "../run-log.js";
+import { readStoryFeatureState } from "../settings/features.js";
 import { formatWritingDials } from "../settings/writing.js";
 import type { StoryStore } from "../store/story-store.js";
 import {
@@ -589,9 +590,11 @@ export async function generateAssistantTurn(
 		resolved.mode === "deep"
 			? writesLedger
 			: writesLedger && (functionCall || transport === "text");
-	const declaredRuleCount = writesLedger
-		? options.store.listStoryRules(options.storyId).length
-		: 0;
+	const declaredRuleCount =
+		writesLedger &&
+		readStoryFeatureState(options.store, options.storyId).values.rules === true
+			? options.store.listStoryRules(options.storyId).length
+			: 0;
 	const readTools = exposeReadTools
 		? (resolved.mode === "deep"
 				? selectDeepTurnTools(resolved.deep)

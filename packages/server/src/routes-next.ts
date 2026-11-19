@@ -9,6 +9,7 @@ import {
 	readEffectiveEdits,
 	readPinnedLineIds,
 	readSceneSegments,
+	readStoryPromiseLimit,
 	undoDirectorArrangement,
 } from "@dramaticer/core";
 import { HttpError, readJsonBody, sendJson } from "./http.js";
@@ -134,8 +135,7 @@ function directorLinesView(options: ApiRouteOptions, storyId: string) {
 		headNodeId: head?.id ?? null,
 		muted,
 		pinned,
-		maxOpenPromises:
-			options.store.getStorySettings(storyId).directorConfig.maxOpenPromises,
+		maxOpenPromises: readStoryPromiseLimit(options.store, storyId),
 		lines: states.map((state) => ({
 			...state.line,
 			pinned: pinned.includes(state.line.id),

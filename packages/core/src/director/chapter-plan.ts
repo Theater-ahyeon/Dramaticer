@@ -20,6 +20,7 @@ import {
 } from "../llm/types.js";
 import { parseJsonOutputObject } from "../memory/json-output.js";
 import { appendReflectionRecord } from "../memory/view.js";
+import { readStoryPromiseLimit } from "../settings/features.js";
 import type { StoryStore } from "../store/story-store.js";
 import type { TimelineNode } from "../timeline.js";
 import {
@@ -226,8 +227,7 @@ export function collectChapterPlanInput(
 		floors,
 		sceneCard,
 		previousReview,
-		maxOpenPromises:
-			store.getStorySettings(storyId).directorConfig.maxOpenPromises,
+		maxOpenPromises: readStoryPromiseLimit(store, storyId),
 		milestone,
 	};
 }

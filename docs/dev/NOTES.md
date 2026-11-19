@@ -146,7 +146,9 @@
 
 - 功能页的值必须就是运行时的值。读开关一律用 `readStoryFeatureState(store, storyId[, turnOverrides])`，不要直接读 `settings.featureSwitches`（那只是玩家的覆盖，没有叠加档位与卡能力）。
 - 后台任务类型的开关用 `readStoryBackgroundSwitches` 解析，再交给 `resolveStoryBackgroundKinds`：场记 = 功能页「场记」或旧设置 `sceneLogEnabled`；归档 = 场记开且（功能页「档案归档」或 `sceneLogEnabled`）。「档案归档」需要卡有实体能力，没有实体时功能页不显示也不运行。
-- 截至 2026-11-19，运行时只接通了 场记、档案归档、提前备好、复查、导演；其余开关见 `.scratch/refactor/issues/02-*.md`。
+- 已接通的开关登记在 `WIRED_FEATURE_SWITCHES`（`settings/features.ts`），功能页据此标「尚未生效」。接通新开关时把它加进去并补一条运行时测试。
+- 伏笔上限一律用 `readStoryPromiseLimit`；`directorConfig.maxOpenPromises` 已不再生效。
+- 重逢注入、知情标注、档案归档的开关需要故事有实体能力；测试夹具要 `upsertEntity` 一个实体，否则这些开关取关闭值。
 
 ## 新界面的视觉层（2026-11-16 起）
 - 页面只通过 `v4/stage.ts` 跟背景打交道：`stage.pulse()` 让海面荡一圈光，`stage.setWriting()` 表示正在写。背景（`scene.ts`）读这些状态，不反过来依赖页面。

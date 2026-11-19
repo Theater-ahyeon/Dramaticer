@@ -1,3 +1,4 @@
+import { CANDIDATE_ACTIONS_JOB_KIND } from "../director/candidates.js";
 import { GAP_PASS_JOB_KIND } from "../ledger/gap-pass.js";
 import { SCENE_ARCHIVE_JOB_KIND } from "../ledger/scene-archive.js";
 import { SCENE_LOG_JOB_KIND } from "../ledger/scene-log.js";
@@ -35,6 +36,8 @@ export interface StoryBackgroundKindsOptions {
 	readonly sceneLogEnabled: boolean;
 	/** 场次归档；依赖场记。不设置时跟随 `sceneLogEnabled`。 */
 	readonly archiveEnabled?: boolean;
+	/** 候选行动（功能页「行动选项」）；不设置时照常运行。 */
+	readonly choicesEnabled?: boolean;
 	readonly gapPassEnabled: boolean;
 	/** 只跑指定类型；不设置时使用注册表里的全部类型。 */
 	readonly requested?: string | null;
@@ -59,6 +62,8 @@ export function resolveStoryBackgroundKinds(
 		(kind) =>
 			(options.sceneLogEnabled || kind !== SCENE_LOG_JOB_KIND) &&
 			(archiveEnabled || kind !== SCENE_ARCHIVE_JOB_KIND) &&
+			(options.choicesEnabled !== false ||
+				kind !== CANDIDATE_ACTIONS_JOB_KIND) &&
 			(options.gapPassEnabled || kind !== GAP_PASS_JOB_KIND),
 	);
 }
@@ -73,13 +78,14 @@ export function readStoryBackgroundSwitches(
 	storyId: string,
 ): Pick<
 	StoryBackgroundKindsOptions,
-	"sceneLogEnabled" | "archiveEnabled" | "gapPassEnabled"
+	"sceneLogEnabled" | "archiveEnabled" | "choicesEnabled" | "gapPassEnabled"
 > {
 	const settings = store.getStorySettings(storyId);
 	const features = readStoryFeatureState(store, storyId).values;
 	return {
 		sceneLogEnabled: settings.sceneLogEnabled || features.scribe === true,
 		archiveEnabled: settings.sceneLogEnabled || features.archive === true,
+		choicesEnabled: features.choices === true,
 		gapPassEnabled: settings.gapPassEnabled,
 	};
 }

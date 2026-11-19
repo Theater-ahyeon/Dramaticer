@@ -413,7 +413,17 @@ export function Prefs() {
 									return (
 										<div className="dial" key={item.id}>
 											<div>
-												<h3>{item.label}</h3>
+												<h3>
+													{item.label}
+													{item.wired ? null : (
+														<span
+															className="pending-tag"
+															title="这个开关的值已保存，但运行时还没有读取它"
+														>
+															尚未生效
+														</span>
+													)}
+												</h3>
 												{item.description ? <p>{item.description}</p> : null}
 												<div className="stat">
 													<span className="num">

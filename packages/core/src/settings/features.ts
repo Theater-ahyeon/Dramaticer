@@ -535,6 +535,8 @@ export interface StoryFeatureSwitchView {
 	readonly choices: readonly FeatureSwitchChoice[];
 	readonly minimum: number | null;
 	readonly maximum: number | null;
+	/** 运行时是否已经读取这个开关；为 false 时界面标「尚未生效」。 */
+	readonly wired: boolean;
 }
 
 export interface StoryFeatureGroupView {
@@ -570,6 +572,7 @@ export function buildStoryFeatureView(
 			choices: definition.choices,
 			minimum: definition.minimum,
 			maximum: definition.maximum,
+			wired: WIRED_FEATURE_SWITCHES.has(definition.id),
 		})),
 	}));
 	return { storyId, tier: assertFeatureTier(tier), groups };
@@ -615,4 +618,31 @@ export function readStoryFeatureView(
 	const settings = store.getStorySettings(storyId);
 	const state = readStoryFeatureState(store, storyId);
 	return buildStoryFeatureView(storyId, settings.featureTier, state);
+}
+
+/**
+ * 运行时已经接通的开关。功能页对其余开关标「尚未生效」，不显示成已生效
+ * （DESIGN §22）。接通一个开关时把它加进来，并补一条运行时测试。
+ */
+export const WIRED_FEATURE_SWITCHES: ReadonlySet<FeatureSwitchId> =
+	new Set<FeatureSwitchId>([
+		"scribe",
+		"archive",
+		"reunion",
+		"prepare",
+		"review",
+		"director",
+		"knows",
+		"promiseLimit",
+		"rules",
+		"choices",
+	]);
+
+/** 未兑现伏笔上限以功能页为准；`directorConfig.maxOpenPromises` 不再生效。 */
+export function readStoryPromiseLimit(
+	store: StoryStore,
+	storyId: string,
+): number {
+	const value = readStoryFeatureState(store, storyId).values.promiseLimit;
+	return typeof value === "number" ? value : 1;
 }

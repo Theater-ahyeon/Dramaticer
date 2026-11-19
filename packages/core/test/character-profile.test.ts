@@ -224,6 +224,30 @@ describe("人物档案", () => {
 		expect(after?.uninformed).not.toContain("门卫");
 	});
 
+	it("知情标注开关关掉时只注入档案", async () => {
+		const { store } = openTempStore();
+		seedStory(store);
+		seedArchives(store);
+		store.upsertEntity({
+			storyId: "s1",
+			kind: "character",
+			name: "凛",
+			description: "测试实体",
+			source: "test",
+			aliases: [],
+		});
+		store.updateStorySettings("s1", { featureSwitches: { knows: false } });
+		const content = await createProfileSlotProvider(store).provide({
+			slot: "profile",
+			storyId: "s1",
+			nodeId: "a4",
+			switches: {},
+			state: undefined,
+		});
+		expect(content?.messages[0]?.content).toContain("人物档案：");
+		expect(content?.messages[0]?.content).not.toContain("知情标注");
+	});
+
 	it("没有归档时不注入，有归档时档案与知情标注进入上下文 Trace", async () => {
 		const empty = openTempStore();
 		seedStory(empty.store);
@@ -240,6 +264,15 @@ describe("人物档案", () => {
 		const { store } = openTempStore();
 		seedStory(store);
 		seedArchives(store);
+		// 知情标注是功能页开关，需要故事有实体能力（DESIGN §22）。
+		store.upsertEntity({
+			storyId: "s1",
+			kind: "character",
+			name: "凛",
+			description: "测试实体",
+			source: "test",
+			aliases: [],
+		});
 		const provider = createProfileSlotProvider(store);
 		const content = await provider.provide({
 			slot: "profile",

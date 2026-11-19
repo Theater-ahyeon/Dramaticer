@@ -536,10 +536,13 @@ export function createProfileSlotProvider(
 					),
 				);
 			}
-			const knowledge = readSceneKnowledge(store, nodeId);
-			const annotatedScenes = knowledge.facts
-				.slice(-sceneLimit)
-				.filter((fact) => fact.uninformed.length > 0);
+			const knows =
+				readStoryFeatureState(store, request.storyId).values.knows === true;
+			const annotatedScenes = knows
+				? readSceneKnowledge(store, nodeId)
+						.facts.slice(-sceneLimit)
+						.filter((fact) => fact.uninformed.length > 0)
+				: [];
 			const sections: string[] = [];
 			if (blocks.length > 0) {
 				sections.push(`人物档案：\n${blocks.join("\n\n")}`);
@@ -631,6 +634,8 @@ export function createReunionSlotProvider(
 			const nodeId =
 				request.nodeId ?? store.getHead(request.storyId)?.id ?? null;
 			if (nodeId === null) return null;
+			if (readStoryFeatureState(store, request.storyId).values.reunion !== true)
+				return null;
 			const path = store.getPathToNode(nodeId);
 			const lastUser = [...path].reverse().find((node) => node.role === "user");
 			const trigger: string[] = [];

@@ -227,6 +227,14 @@ describe("重逢注入", () => {
 		expect(provider.provide(request("u5"))).toBeNull();
 	});
 
+	it("功能页关掉重逢注入时槽位为空", () => {
+		const store = seed();
+		append(store, "u5", "a4", "user", "我走回老教室。");
+		store.updateStorySettings("s1", { featureSwitches: { reunion: false } });
+		const provider = createReunionSlotProvider(store, { recentFloors: 2 });
+		expect(provider.provide(request("u5"))).toBeNull();
+	});
+
 	it("槽位返回一条 system 消息，来源带种类计数", () => {
 		const store = seed();
 		append(store, "u5", "a4", "user", "我走回老教室。");

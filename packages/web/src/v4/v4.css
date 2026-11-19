@@ -2789,6 +2789,15 @@ img.cover {
 .dial h3 {
 	font: 500 14.5px var(--f-ui);
 }
+.dial .pending-tag {
+	margin-left: 8px;
+	padding: 1px 7px;
+	border-radius: 999px;
+	font: 500 11.5px var(--f-ui);
+	color: var(--muted);
+	background: var(--soft);
+	vertical-align: 1px;
+}
 .dial p {
 	color: var(--muted);
 	font-size: 13px;

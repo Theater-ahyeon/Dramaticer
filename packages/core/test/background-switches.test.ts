@@ -5,6 +5,8 @@ import {
 	StoryStore,
 	createDefaultBackgroundJobRegistry,
 	readStoryBackgroundSwitches,
+	readStoryFeatureView,
+	readStoryPromiseLimit,
 	resolveStoryBackgroundKinds,
 } from "../src/index.js";
 
@@ -88,5 +90,45 @@ describe("后台开关跟随功能页", () => {
 		);
 		expect(kinds).toContain("scene_log");
 		expect(kinds).toContain("scene_archive");
+	});
+});
+
+describe("其余接通的功能开关", () => {
+	it("行动选项开关决定是否生成候选行动", () => {
+		const store = openStory();
+		const registry = createDefaultBackgroundJobRegistry();
+		const on = resolveStoryBackgroundKinds(
+			registry,
+			readStoryBackgroundSwitches(store, "s1"),
+		);
+		expect(on).toContain("candidate_actions");
+		store.updateStorySettings("s1", { featureSwitches: { choices: false } });
+		const off = resolveStoryBackgroundKinds(
+			registry,
+			readStoryBackgroundSwitches(store, "s1"),
+		);
+		expect(off).not.toContain("candidate_actions");
+	});
+
+	it("伏笔上限跟随档位与玩家覆盖", () => {
+		const store = openStory();
+		expect(readStoryPromiseLimit(store, "s1")).toBe(5);
+		store.updateStorySettings("s1", { featureTier: "lite" });
+		expect(readStoryPromiseLimit(store, "s1")).toBe(3);
+		store.updateStorySettings("s1", { featureSwitches: { promiseLimit: 8 } });
+		expect(readStoryPromiseLimit(store, "s1")).toBe(8);
+	});
+
+	it("功能页标出哪些开关已经生效", () => {
+		const store = openStory();
+		addEntity(store);
+		const switches = readStoryFeatureView(store, "s1").groups.flatMap(
+			(group) => group.switches,
+		);
+		const wired = new Map(switches.map((item) => [item.id, item.wired]));
+		expect(wired.get("scribe")).toBe(true);
+		expect(wired.get("reunion")).toBe(true);
+		expect(wired.get("choices")).toBe(true);
+		expect(wired.get("think")).toBe(false);
 	});
 });

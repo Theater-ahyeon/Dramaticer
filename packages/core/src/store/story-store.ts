@@ -371,6 +371,7 @@ import {
 	EMPTY_FEATURE_SWITCH_OVERRIDES,
 	assertFeatureSwitchOverrides,
 	assertFeatureTier,
+	readStoryPromiseLimit,
 } from "../settings/features.js";
 import { applyStateDiffsTo } from "../state.js";
 import { isStructuredOutputMode } from "../structured/types.js";
@@ -4840,7 +4841,7 @@ export class StoryStore {
 		assertPromiseBudget(
 			this.readDirectorLineStates(input.nodeId),
 			diffs,
-			this.getStorySettings(input.storyId).directorConfig.maxOpenPromises,
+			readStoryPromiseLimit(this, input.storyId),
 		);
 		const createdAt = input.createdAt ?? new Date().toISOString();
 		assertNonEmptyString(createdAt, "线修改的创建时间");

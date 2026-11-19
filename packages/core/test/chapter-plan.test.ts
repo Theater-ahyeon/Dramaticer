@@ -781,12 +781,13 @@ describe("章末规划", () => {
 		seedBlueprint(store, ["拿到通行证", "认识守卫"]);
 		endScene(store, "a5");
 		setChapterFloors(store, 3);
+		// 伏笔上限以功能页为准（ADR-0161），最小值是 1。
 		store.updateStorySettings("s1", {
 			directorConfig: {
 				...DEFAULT_DIRECTOR_CONFIG,
 				chapterFloors: 3,
-				maxOpenPromises: 0,
 			},
+			featureSwitches: { promiseLimit: 1 },
 		});
 		const { client } = createFakeClient([PLAN]);
 

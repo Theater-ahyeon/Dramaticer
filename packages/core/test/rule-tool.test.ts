@@ -258,6 +258,20 @@ describe("rule_check 工具", () => {
 		expect(floor?.invalid).toEqual([]);
 	});
 
+	it("功能页关掉规则执行时即使声明了规则也不开放", async () => {
+		const { store } = openTempStore();
+		seedStory(store, [sword(10, 2)], 5);
+		store.updateStorySettings("s1", { featureSwitches: { rules: false } });
+		const { client, requests } = createScriptedClient([{ text: "剑光一闪。" }]);
+
+		const result = await runFast({ store, client });
+
+		expect(requests[0]?.tools?.map((tool) => tool.name)).not.toContain(
+			"rule_check",
+		);
+		expect(result.node.raw).toBe("剑光一闪。");
+	});
+
 	it("没有声明规则时不开放，调用被拒绝并记录原因", async () => {
 		const { store } = openTempStore();
 		seedStory(store, [], 5);
