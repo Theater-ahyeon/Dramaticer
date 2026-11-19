@@ -315,6 +315,44 @@ describe("章末规划", () => {
 		expect(states[0]?.line.countdown).toBe(2);
 	});
 
+	it("规划产出的必须打断字段保存到线里", async () => {
+		const { store } = openTempStore();
+		seedChain(store);
+		seedLines(store);
+		endScene(store, "a5");
+		setChapterFloors(store, 3);
+		const urgent = JSON.stringify({
+			lines: [
+				{
+					action: "set",
+					line: {
+						id: "main-1",
+						kind: "main",
+						who: "卫宫",
+						want: "阻止仪式",
+						obstacle: "仪式已经开始",
+						countdown: 2,
+						preparations: ["钟楼先响了一声"],
+						mustInterrupt: true,
+					},
+				},
+			],
+			review: {
+				promises: [{ lineId: "promise-1", disposition: "retire" }],
+				focus: ["main-1", "rel-1"],
+			},
+		});
+		const { client } = createFakeClient([urgent]);
+
+		await createChapterPlanHandler()({ store, client, job: job() });
+
+		const states = store.readDirectorLineStates("a5");
+		const urgentLine = states.find((state) => state.line.id === "main-1");
+		expect(urgentLine?.line.mustInterrupt).toBe(true);
+		const plainLine = states.find((state) => state.line.id === "rel-1");
+		expect(plainLine?.line.mustInterrupt).toBeUndefined();
+	});
+
 	it("重复执行不追加记录也不再调用模型", async () => {
 		const { store } = openTempStore();
 		seedChain(store);

@@ -1,0 +1,68 @@
+{
+	"name": "清风预设",
+	"prompts": [
+		{
+			"identifier": "style_cold",
+			"name": "文风：冷叙述",
+			"content": "用冷峻克制的白描写法，少形容词。",
+			"marker": false,
+			"enabled": true
+		},
+		{
+			"identifier": "person_first",
+			"name": "人称",
+			"content": "用第一人称叙述。",
+			"marker": false,
+			"enabled": true
+		},
+		{
+			"identifier": "length",
+			"name": "字数要求",
+			"content": "每楼 1200 字左右。",
+			"marker": false,
+			"enabled": true
+		},
+		{
+			"identifier": "scenery",
+			"name": "景物描写",
+			"content": "多写眼前的景物。",
+			"marker": false,
+			"enabled": true
+		},
+		{
+			"identifier": "tone",
+			"name": "语气",
+			"content": "语气温和，不用感叹号。",
+			"marker": false,
+			"enabled": true
+		},
+		{
+			"identifier": "worldInfoBefore",
+			"name": "世界书前",
+			"content": "",
+			"system_prompt": true,
+			"marker": true
+		},
+		{
+			"identifier": "extra",
+			"name": "停用的条目",
+			"content": "这条已经停用。",
+			"marker": false,
+			"enabled": false
+		}
+	],
+	"prompt_order": [
+		{
+			"character_id": 100001,
+			"order": [
+				{ "identifier": "style_cold", "enabled": true },
+				{ "identifier": "person_first", "enabled": true },
+				{ "identifier": "length", "enabled": true },
+				{ "identifier": "scenery", "enabled": true },
+				{ "identifier": "tone", "enabled": true },
+				{ "identifier": "worldInfoBefore", "enabled": true },
+				{ "identifier": "extra", "enabled": false }
+			]
+		}
+	]
+}
