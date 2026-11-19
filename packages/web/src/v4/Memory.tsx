@@ -163,7 +163,6 @@ function LinkedText({
 	const [editing, setEditing] = useState(false);
 	if (!editing) {
 		return (
-			// biome-ignore lint/a11y/useKeyWithClickEvents: 修改入口，键盘用户用 Tab 进入后回车
 			<p
 				className={className}
 				// biome-ignore lint/a11y/noNoninteractiveTabindex: 可以聚焦后进入修改
@@ -721,38 +720,38 @@ export function Memory() {
 				<div>
 					<div className="rows">
 						{data.prefs.map((pref) => (
-							<div
-								key={pref.id}
-								style={pref.disabled ? { opacity: 0.5 } : undefined}
-							>
-								<Editable
-									as="span"
-									value={pref.text}
-									onCommit={(text) =>
-										write(pref.id, "/memory/prefs", { id: pref.id, text })
-									}
-								/>
-								<span>
-									{pref.origin}{" "}
-									<button
-										type="button"
-										className="btn ghost sm"
-										onClick={() =>
-											write(
-												pref.id,
-												"/memory/prefs",
-												{ id: pref.id, disabled: !pref.disabled },
-												{
-													path: "/memory/prefs",
-													body: { id: pref.id, disabled: pref.disabled },
-												},
-											)
+							<Fragment key={pref.id}>
+								<div style={pref.disabled ? { opacity: 0.5 } : undefined}>
+									<Editable
+										as="span"
+										value={pref.text}
+										onCommit={(text) =>
+											write(pref.id, "/memory/prefs", { id: pref.id, text })
 										}
-									>
-										{pref.disabled ? "恢复" : "不用了"}
-									</button>
-								</span>
-							</div>
+									/>
+									<span>
+										{pref.origin}{" "}
+										<button
+											type="button"
+											className="btn ghost sm"
+											onClick={() =>
+												write(
+													pref.id,
+													"/memory/prefs",
+													{ id: pref.id, disabled: !pref.disabled },
+													{
+														path: "/memory/prefs",
+														body: { id: pref.id, disabled: pref.disabled },
+													},
+												)
+											}
+										>
+											{pref.disabled ? "恢复" : "不用了"}
+										</button>
+									</span>
+								</div>
+								{problem(pref.id)}
+							</Fragment>
 						))}
 					</div>
 					{problem("new-rule")}
