@@ -272,7 +272,7 @@ export function createBackgroundJobPlugins(
 		backgroundJobPlugin("job:plan-prepare", PLAN_PREPARE_JOB_KIND, {
 			handler: createPlanPrepareHandler(),
 			enqueue: "story",
-			tier: "deferred",
+			tier: "gap",
 			needsRun: planPrepareNeedsRun,
 		}),
 		backgroundJobPlugin("job:plan-review", PLAN_REVIEW_JOB_KIND, {
