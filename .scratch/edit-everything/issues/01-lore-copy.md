@@ -4,13 +4,15 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] 修改不影响卡库与其他故事
-- [ ] 恢复原卡后历史仍可找回
-- [ ] 预览给出类型、条件与当前是否命中
-- [ ] `pnpm check` 通过
+- [x] 修改不影响卡库与其他故事
+- [x] 恢复原卡后历史仍可找回
+- [x] 预览给出类型、条件与当前是否命中
+- [x] `pnpm check` 通过
 
 规格：`.scratch/edit-everything/spec.md`
 
 ## Comments
+
+完成：2026-11-19 设定的故事副本支持改内容、类型、条件与启停，恢复原卡后历史可查可回滚，预览按实际注入规则给出类型、条件与是否命中。

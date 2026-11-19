@@ -931,7 +931,7 @@ interface SelectedLoreLine {
 	readonly tokens: number;
 }
 
-interface LoreInjectionRole {
+export interface LoreInjectionRole {
 	/** 每轮都注入的行；`index` 只带标题与关键词 */
 	readonly base: "full" | "index" | null;
 	/** 命中当前楼层时是否再注入一条 */
@@ -943,7 +943,7 @@ interface LoreInjectionRole {
  * 原样模式都按导入时的常驻标记处理；升级模式按生效类型决定，已转成初始记忆
  * 的条目只按命中注入。
  */
-function resolveLoreInjectionRole(
+export function resolveLoreInjectionRole(
 	entry: LoreEntry,
 	mode: "upgrade" | "raw",
 	rule: ImportAuditInjectionRule | undefined,
