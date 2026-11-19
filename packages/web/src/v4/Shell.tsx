@@ -113,13 +113,24 @@ export function Shell() {
 			go("继续写故事", "play");
 			go("打开记忆 · 百科", "memory");
 			go("打开记忆 · 状态", "memory?tab=state");
+			go("打开记忆 · 秘密", "memory?tab=secret");
+			go("打开记忆 · 时间线", "memory?tab=line");
 			go("打开记忆 · 偏好", "memory?tab=rule");
 			go("打开大纲", "outline");
 			go("改设定", "lore");
 			go("设置 · 写作", "prefs");
 			go("设置 · 功能", "prefs?tab=feat");
+			go("设置 · 模型", "prefs?tab=model");
 			go("导入卡或世界书", "import");
+			go("导入体检", "audit");
 			go("分支", "branches");
+			go("台账", "ledger");
+			go("连载", "serial");
+			go("导演面板", "director");
+			go("生图", "images");
+			go("高级设置", "settings");
+			go("渠道与模型", "channels");
+			go("旧版对话", "chat");
 		}
 		if (palette) {
 			for (const provider of pageCommands) {

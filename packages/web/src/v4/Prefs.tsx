@@ -1,7 +1,8 @@
 import type { FeatureTier, StoryFeatureSwitchView } from "@dramaticer/core";
-import { useRef } from "react";
+import { useCallback, useRef } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
+import { usePaletteCommands } from "./Shell";
 import { Seg, Sw, sp, useAct, useLoad, useToast } from "./ui";
 
 interface WritingView {
@@ -145,6 +146,38 @@ export function Prefs() {
 				}),
 			() => features.reload(),
 		);
+	const setTier = useCallback(
+		(tier: FeatureTier) =>
+			act(
+				() =>
+					api.updateSettings(storyId, {
+						featureTier: tier,
+						featureSwitches: null,
+					}),
+				() => {
+					features.reload();
+					toast(
+						{
+							lite: "省：只留最必要的几项",
+							standard: "均衡：记忆和导演都开",
+							immersive: "全开：加上提前备好、插图和配乐",
+						}[tier],
+					);
+				},
+			),
+		[act, features.reload, storyId, toast],
+	);
+
+	usePaletteCommands(
+		useCallback(
+			() => [
+				{ label: "档位 · 省", run: () => setTier("lite") },
+				{ label: "档位 · 均衡", run: () => setTier("standard") },
+				{ label: "档位 · 全开", run: () => setTier("immersive") },
+			],
+			[setTier],
+		),
+	);
 
 	let total = 0;
 	let enabled = 0;
@@ -172,25 +205,7 @@ export function Prefs() {
 						{ v: "standard", label: "均衡" },
 						{ v: "immersive", label: "全开" },
 					]}
-					onChange={(tier) =>
-						act(
-							() =>
-								api.updateSettings(storyId, {
-									featureTier: tier,
-									featureSwitches: null,
-								}),
-							() => {
-								features.reload();
-								toast(
-									{
-										lite: "省：只留最必要的几项",
-										standard: "均衡：记忆和导演都开",
-										immersive: "全开：加上提前备好、插图和配乐",
-									}[tier],
-								);
-							},
-						)
-					}
+					onChange={setTier}
 				/>
 			</div>
 			<div className="subtabs">

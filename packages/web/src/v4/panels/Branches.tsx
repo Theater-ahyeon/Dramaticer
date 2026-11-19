@@ -21,7 +21,7 @@ import { ErrorNotice } from "../../components/ErrorNotice";
 import { BranchTree } from "../../components/branches/BranchTree";
 import { StreamingBubble } from "../../components/chat/StreamingBubble";
 
-export function BranchesPage() {
+export function BranchesTool() {
 	const { storyId } = useParams();
 	const [tree, setTree] = useState<StoryTree | null>(null);
 	const [pathNodeIds, setPathNodeIds] = useState<readonly string[]>([]);

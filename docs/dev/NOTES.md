@@ -128,7 +128,7 @@
 - 渠道读取不返回密钥值；`propose_channels_change` 四个段必须给全。压缩记录只追加。
 - web 源码不能 import `@dramaticer/core` 的运行时值（会把 `better-sqlite3` 与 `node:*` 打进前端包导致整页白屏），类型导入可以；助手类型从 `@dramaticer/protocol` 取。
 - 上下文排布的设置只对内置默认模板生效；模板表单的 `SLOT_CHOICES` 必须覆盖 `CONTEXT_SLOT_NAMES` 的全部槽位。
-- 移动端故事导航是固定 10 列栅格（聊天、导入、体检、分支、台账、连载、导演、生图、设置、渠道）；新增 tab 时同步改 `styles.css` 的 `repeat(10, …)` 与 `StoryPage` 的 `TABS`。
+- 移动端工具导航是固定 10 列栅格（聊天、导入、体检、分支、台账、连载、导演、生图、设置、渠道）；新增 tab 时同步改 `styles.css` 的 `repeat(10, …)` 与 `v4/StoryTool.tsx` 的 `TABS`。
 - 深度的故事数据文件树由 `tools/workspace-tools.ts` 从存储现算，故事文件只读；只有 `草稿.md` 能写与打补丁。新增文件要同时出现在 `listWorkspacePaths` 与 `readWorkspaceFile`，路径改动要同步 `web/src/chat/deep-turn.ts` 的工具文字。
 
 ## 导演（2026-11-15 起）
@@ -146,6 +146,7 @@
 - 样式的先后顺序是定死的：`main.tsx` 先引 `styles.css`，再引 `App`（带进 `v4.css`）。`v4.css` 里有全局的 `button`、`input` 基础样式和工具页的覆盖规则，顺序反了旧规则会盖回来。颜色变量写在 `html:root` 上，旧页面的 `--surface`、`--text` 等也在这里接到新变量。
 - 带 `backdrop-filter` 的玻璃面板不要加三维变换（`perspective`、`rotateX/Y`），否则模糊会失效；要倾斜就只倾斜里面的图。
 - 场景的着色器直接输出显示用的颜色，`scene.ts` 里关了 three 的色彩管理；天空和水面的倒影共用 `skyColor`，改天空要两边一起看。机器带不动时场景会自己降渲染分辨率。
+- 新页面与工具面板都在 `v4/`：主页面是 `v4/*.tsx`，仍在用的旧工具面板在 `v4/panels/`，由 `v4/StoryTool.tsx` 提供助手抽屉与 `.story-content` 外壳。目录不要命名为 `tools/`，biome 的忽略规则会跳过它。
 - 承载内容的大块统一用「玻璃面板」那组选择器；新加页面的容器要加进去，否则文字直接落在动的背景上。
 - 系统设了「减少动效」时：背景不跑循环，只在换页时重画；转场和入场动画关闭。新加动效要守这一条。
 - 给新界面截图：起 `node e2e/serve.mjs`，用 Playwright 的 chromium 加 `--enable-unsafe-swiftshader` 才有 WebGL。

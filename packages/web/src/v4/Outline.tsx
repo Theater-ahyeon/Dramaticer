@@ -7,9 +7,10 @@ import type {
 	BlueprintTension,
 	BlueprintVolume,
 } from "@dramaticer/core";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api } from "../api";
+import { usePaletteCommands } from "./Shell";
 import { Editable, Seg, Tog, useAct, useLoad, useToast } from "./ui";
 
 const STATE_PILL: Record<string, [string, string]> = {
@@ -53,6 +54,34 @@ export function Outline() {
 	);
 	const versions = useLoad(() => api.getBlueprintVersions(storyId), [storyId]);
 	const [idea, setIdea] = useState("");
+
+	usePaletteCommands(
+		useCallback(
+			() => [
+				{
+					label: "让 AI 补全大纲",
+					run: () => {
+						void api
+							.requestBlueprintSuggestions(storyId, { operation: "complete" })
+							.then(() => toast("已经交给后台，建议生成后会出现在大纲页"))
+							.catch(() => toast("没能交给后台，稍后再试"));
+					},
+				},
+				{
+					label: "让 AI 找大纲的漏洞",
+					run: () => {
+						void api
+							.requestBlueprintSuggestions(storyId, {
+								operation: "find-flaws",
+							})
+							.then(() => toast("已经交给后台，建议生成后会出现在大纲页"))
+							.catch(() => toast("没能交给后台，稍后再试"));
+					},
+				},
+			],
+			[storyId, toast],
+		),
+	);
 
 	if (blueprint.error !== null)
 		return <div className="v4err">{blueprint.error}</div>;

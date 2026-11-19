@@ -1,6 +1,13 @@
-import { Fragment, type ReactNode, useEffect, useState } from "react";
+import {
+	Fragment,
+	type ReactNode,
+	useCallback,
+	useEffect,
+	useState,
+} from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
+import { usePaletteCommands } from "./Shell";
 import {
 	Editable,
 	errorText,
@@ -217,6 +224,20 @@ export function Memory() {
 		text: string;
 	} | null>(null);
 	const [rule, setRule] = useState("");
+
+	const goTab = useCallback((id: Tab) => setSearch({ tab: id }), [setSearch]);
+	usePaletteCommands(
+		useCallback(
+			() => [
+				{ label: "记忆 · 百科", run: () => goTab("wiki") },
+				{ label: "记忆 · 状态", run: () => goTab("state") },
+				{ label: "记忆 · 秘密", run: () => goTab("secret") },
+				{ label: "记忆 · 时间线", run: () => goTab("line") },
+				{ label: "记忆 · 偏好", run: () => goTab("rule") },
+			],
+			[goTab],
+		),
+	);
 
 	const data = memory.data;
 	useEffect(() => {

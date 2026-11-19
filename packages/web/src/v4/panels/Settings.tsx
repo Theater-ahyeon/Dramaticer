@@ -72,7 +72,7 @@ function Field({
 	);
 }
 
-export function SettingsPage() {
+export function SettingsTool() {
 	const { storyId } = useParams();
 	const [settings, setSettings] = useState<StorySettings | null>(null);
 	const [draft, setDraft] = useState<SettingsFormDraft | null>(null);

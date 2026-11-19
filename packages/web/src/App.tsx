@@ -1,24 +1,24 @@
 import { Link, Navigate, Route, Routes } from "react-router-dom";
-import { LoginPage } from "./pages/LoginPage";
-import { StoryPage } from "./pages/StoryPage";
-import { BranchesPage } from "./pages/story/BranchesPage";
-import { ChannelsPage } from "./pages/story/ChannelsPage";
-import { ChatPage } from "./pages/story/ChatPage";
-import { DirectorPage } from "./pages/story/DirectorPage";
-import { ImagesPage } from "./pages/story/ImagesPage";
-import { ImportAuditPage } from "./pages/story/ImportAuditPage";
-import { ImportPage } from "./pages/story/ImportPage";
-import { LedgerPage } from "./pages/story/LedgerPage";
-import { SerialPage } from "./pages/story/SerialPage";
-import { SettingsPage } from "./pages/story/SettingsPage";
 import { Backdrop } from "./v4/Backdrop";
 import { Library } from "./v4/Library";
+import { Login } from "./v4/Login";
 import { Lore } from "./v4/Lore";
 import { Memory } from "./v4/Memory";
 import { Outline } from "./v4/Outline";
 import { Play } from "./v4/Play";
 import { Prefs } from "./v4/Prefs";
 import { Shell } from "./v4/Shell";
+import { StoryTool } from "./v4/StoryTool";
+import { AuditTool } from "./v4/panels/Audit";
+import { BranchesTool } from "./v4/panels/Branches";
+import { ChannelsTool } from "./v4/panels/Channels";
+import { ChatTool } from "./v4/panels/Chat";
+import { DirectorTool } from "./v4/panels/Director";
+import { ImagesTool } from "./v4/panels/Images";
+import { ImportTool } from "./v4/panels/Import";
+import { LedgerTool } from "./v4/panels/Ledger";
+import { SerialTool } from "./v4/panels/Serial";
+import { SettingsTool } from "./v4/panels/Settings";
 
 export function App() {
 	return (
@@ -32,7 +32,7 @@ export function App() {
 function AppRoutes() {
 	return (
 		<Routes>
-			<Route path="/login" element={<LoginPage />} />
+			<Route path="/login" element={<Login />} />
 			<Route element={<Shell />}>
 				<Route path="/" element={<Library />} />
 				<Route path="/stories/:storyId/play" element={<Play />} />
@@ -40,19 +40,18 @@ function AppRoutes() {
 				<Route path="/stories/:storyId/outline" element={<Outline />} />
 				<Route path="/stories/:storyId/lore" element={<Lore />} />
 				<Route path="/stories/:storyId/prefs" element={<Prefs />} />
-				{/* 导入、分支、渠道等工具页：结构沿用旧的，外壳与样式用新的。 */}
-				<Route path="/stories/:storyId" element={<StoryPage />}>
+				<Route path="/stories/:storyId" element={<StoryTool />}>
 					<Route index element={<Navigate to="play" replace />} />
-					<Route path="chat" element={<ChatPage />} />
-					<Route path="import" element={<ImportPage />} />
-					<Route path="audit" element={<ImportAuditPage />} />
-					<Route path="branches" element={<BranchesPage />} />
-					<Route path="ledger" element={<LedgerPage />} />
-					<Route path="serial" element={<SerialPage />} />
-					<Route path="director" element={<DirectorPage />} />
-					<Route path="images" element={<ImagesPage />} />
-					<Route path="settings" element={<SettingsPage />} />
-					<Route path="channels" element={<ChannelsPage />} />
+					<Route path="chat" element={<ChatTool />} />
+					<Route path="import" element={<ImportTool />} />
+					<Route path="audit" element={<AuditTool />} />
+					<Route path="branches" element={<BranchesTool />} />
+					<Route path="ledger" element={<LedgerTool />} />
+					<Route path="serial" element={<SerialTool />} />
+					<Route path="director" element={<DirectorTool />} />
+					<Route path="images" element={<ImagesTool />} />
+					<Route path="settings" element={<SettingsTool />} />
+					<Route path="channels" element={<ChannelsTool />} />
 				</Route>
 				<Route path="*" element={<NotFoundPage />} />
 			</Route>

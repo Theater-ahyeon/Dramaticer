@@ -89,7 +89,7 @@ interface FailedTurn {
 	readonly mode: TurnMode | null;
 }
 
-export function ChatPage() {
+export function ChatTool() {
 	const { storyId } = useParams();
 	const assistant = useStoryAssistant();
 	const [path, setPath] = useState(emptyPathState);

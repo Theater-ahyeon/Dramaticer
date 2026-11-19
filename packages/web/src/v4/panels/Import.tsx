@@ -16,7 +16,7 @@ type CardFile =
 			readonly data: string;
 	  };
 
-export function ImportPage() {
+export function ImportTool() {
 	const { storyId } = useParams();
 	const [story, setStory] = useState<StoryView | null>(null);
 	const [cardFile, setCardFile] = useState<CardFile | null>(null);
