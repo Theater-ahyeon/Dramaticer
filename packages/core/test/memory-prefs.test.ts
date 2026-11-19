@@ -180,6 +180,7 @@ describe("偏好可以停用与恢复", () => {
 				kind: "correction",
 				origin: "已停用",
 				disabled: true,
+				locked: true,
 			},
 		]);
 		expect(await contextText(store, "a2")).not.toContain("不要替我说话");
