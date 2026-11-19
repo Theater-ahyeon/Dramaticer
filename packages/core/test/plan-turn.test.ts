@@ -571,6 +571,13 @@ describe("规划写法", () => {
 		seedPlanStory(store);
 		store.setStoryValue("s1", "writingMode", "plan");
 		expect(planPrepareNeedsRun(store, "s1")).toBe(false);
+		const offClient = scriptedClient();
+		await createPlanPrepareHandler({ client: offClient.client })({
+			store,
+			client: offClient.client,
+			job: jobFor("s1", PLAN_PREPARE_JOB_KIND),
+		});
+		expect(offClient.requests).toHaveLength(0);
 
 		store.updateStorySettings("s1", { featureTier: "immersive" });
 		expect(planPrepareNeedsRun(store, "s1")).toBe(true);

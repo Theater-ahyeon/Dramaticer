@@ -422,6 +422,7 @@ export function createPlanPrepareHandler(
 	options: { readonly client?: LlmClient } = {},
 ): BackgroundJobHandler {
 	return async ({ store, client, job, signal }) => {
+		if (!isPlanPrepareEnabled(store, job.storyId)) return;
 		const anchor = prepareAnchor(store, job.storyId);
 		if (anchor === null) return;
 		if (store.getStoryValue(job.storyId, preparedKey(anchor)) !== null) return;
