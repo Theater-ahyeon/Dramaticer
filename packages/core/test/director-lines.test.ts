@@ -260,7 +260,7 @@ describe("线对象与存储", () => {
 });
 
 describe("八种动作", () => {
-	it("八种动作都有标签，默认组织方式不变", () => {
+	it("八种动作都有标签，新故事默认用线与动作", () => {
 		expect(DIRECTOR_ACTION_KINDS).toEqual([
 			"yield",
 			"catch",
@@ -272,7 +272,7 @@ describe("八种动作", () => {
 			"transition",
 		]);
 		expect(DIRECTOR_ACTION_LABELS.reveal).toBe("揭示");
-		expect(DEFAULT_DIRECTOR_ORGANIZATION).toBe("mechanisms");
+		expect(DEFAULT_DIRECTOR_ORGANIZATION).toBe("lines");
 		expect(isDirectorOrganizationKind("lines")).toBe(true);
 	});
 

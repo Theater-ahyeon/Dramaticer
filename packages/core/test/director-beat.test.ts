@@ -468,6 +468,7 @@ describe("短线层拍建议", () => {
 		appendChain(store, 1);
 		const providers = {
 			director: createDirectorSlotProvider(store, {
+				organization: "mechanisms",
 				when: "always",
 				config: config({ intensity: "detonate" }),
 			}),
@@ -553,7 +554,10 @@ describe("短线层拍建议", () => {
 			template,
 			providers: {
 				history: createHistorySlotProvider(store),
-				director: createDirectorSlotProvider(store, { when: "always" }),
+				director: createDirectorSlotProvider(store, {
+					organization: "mechanisms",
+					when: "always",
+				}),
 			},
 			budgetTokens: 4_096,
 			structuredOutput: "text-tags",

@@ -3,29 +3,21 @@
 > 每次收尾时完整重写，不超过 40 行。长期有效的注意事项写进 `docs/dev/NOTES.md`。
 
 ## 最近一次
-- 2026-11-19（人工会话，按 implement-spec 实现 `.scratch` 的全部工单）：
-  - 27 张工单全部 `done`（含此前的 director-yield/01）。实现都在集成分支 `spec/v4-remaining`，基线提交 `6fcadcb`，从 `main` 的 `af9046c` 分出。
-  - 导演：按内容判断意图、突发延后与每场一次的必须打断、章末按玩家行动重排、撤回与干扰统计、默认仅推进与大纲约束弱。
-  - 记忆：只追加记录与逐字出处校验、状态与秘密投影、按在场检索与故事时间排序、百科汇编与章末反思、偏好、本轮上下文来源（Trace `context.entries[].items`）。
-  - 一切可改：设定副本与恢复原卡、记忆就地修改（校验、锁定、回滚）、规划对象锁定与回滚。
-  - 三种写法：规划固定阶段与可切换复查、间隙提前备好、深度草稿工作区与文件工具、写法对照 CLI。
-  - 写作与卡：写作选项与预设映射、卡推荐配置与故事固定版本（卡不再替玩家切写法，I6）。
-  - 新界面：外壳与书架、故事页与停靠栏、记忆页、大纲页、设定页、设置页、命令面板与手机全流程；`packages/web/src/pages/` 已删，工具面板迁到 `v4/panels/`。
-- 门禁：`pnpm check` 通过（322 个测试文件、2744 用例、6 条 live 跳过）；全量 `pnpm e2e` 通过（70 条）。迁移到 v72。
-- 深度写法真实渠道抽查通过：16 轮深度回合 0 失败、工具调用 1 轮（`file_read`），单轮冒烟里首轮 8 次调用含 `draft_write` 与 `commit_draft`；turn-modes/03 的两条真实渠道验收项已按实测签字。
-- 两轴代码审查（标准与规格）的 10 条问题已全部修复并合入。
-
-## 未验证 / 已知限制
-- 真实渠道上后续回合多数直接写正文，草稿工作区只在首轮被使用（I13 允许）；要让草稿循环成为常态需要收紧深度提示词，另开改进项。
-- turn-modes/04 的真实对照批次没跑（`PARKED.md` 写明等需要时再跑）。
-- 旧工具面板（聊天、导演、设置、分支、台账、连载、生图、渠道）只迁移了位置，内部结构未重写。
+- 2026-11-19（人工会话，全量架构审查）。人类要求：先做完整 MVP 再慢慢优化，允许大改。
+  - **发现**：新故事默认没有用上 v4。导演默认是旧引擎 `mechanisms`（director-yield 的改动只在 `lines` 里生效）；自动记录 `sceneLogEnabled` 默认关（场次、归档、百科、秘密都不产生）；功能页 18 个开关里运行时只读 3 个，页面显示「场记 开」，后台其实没跑。
+  - **已修（refactor/01，ADR-0161）**：默认 `directorOrganization: lines`；新增 `readStoryBackgroundSwitches`，功能页「场记」「档案归档」驱动后台；测 v3 行为的 15 个用例改成显式 `mechanisms`；`dramaticer chat` 新建故事时显式用 `mechanisms`。
+  - **文档**：`docs/DESIGN.md` 重写为只描述现状的 v1.0（章节编号不变），新增 MVP 定义（§15.2）、北极星指标（§14.1）、记忆的参考与取舍（§7.7）；旧稿在 `docs/archive/DESIGN-v0.4.md`。
+  - **新工单**：`.scratch/refactor/` 01–08（01–04 是 MVP 收口，05–08 是 MVP 之后的整理）。
+- 仍在分支 `spec/v4-remaining`，没有合并到 `main`。
 
 ## 下一步
-1. 把 `spec/v4-remaining` 合并回 `main`（或先审阅提交）。
-2. 用真实渠道跑一次深度写法与写法对照，给 turn-modes/03、04 的两条验收项签字。
-3. 旧工具面板按新设计逐步替换。
+1. `refactor/02`：其余功能开关接通运行时（MVP 第 2 条）。
+2. `refactor/03`：后台渠道保底与失败可见；`refactor/04`：北极星指标。
+3. 等人类回复 HUMAN-24（要哪种 Vertex）再建工单；HUMAN-23 由人类改 AGENTS.md 的文档地图。
+4. 人类确认后把 `spec/v4-remaining` 合并到 `main`。
 
 ## 眼下要注意
-- 实现用的 worktree 在 `.worktrees/`（已 gitignore），会话结束时已清理；分支 `ticket/*` 保留。
-- `vitest.config.ts`：`testTimeout` 300 秒、`maxWorkers` 8、排除 `**/.worktrees/**`；`.gitattributes` 统一 LF。
-- 端到端用例共用一份数据库，书架「继续上次」的排序依赖楼层时间；新用例要自己种比现有楼层更新的时间，别依赖墙钟。
+- 已有故事保存的 `directorOrganization` 不迁移，仍是 `mechanisms`；只有新故事用 `lines`。
+- `lines` 引擎还没有和旧引擎做同口径对照（X2 只比了 `mechanisms` 与 `bits`）；`refactor/08` 删旧引擎之前要先有 04 的数字。
+- 标准档新故事每楼多一次后台调用（场记），有实体时每场多一次归档；后台渠道额度要够（HUMAN-19）。
+- server 读的是 core 的 `dist`：改了 core 的导出之后，先 `pnpm --filter @dramaticer/core run build` 再跑 server 的类型检查。

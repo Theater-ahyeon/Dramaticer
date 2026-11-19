@@ -218,7 +218,9 @@ const template = createDefaultContextTemplate({
 function directorProviders(store: StoryStore) {
 	return {
 		history: createHistorySlotProvider(store),
+		// R4 验收的是方案与序列引擎；新故事的库默认是线与动作（ADR-0161）。
 		director: createDirectorSlotProvider(store, {
+			organization: "mechanisms",
 			config: store.getStorySettings("s1").directorConfig,
 			when: "always",
 		}),
@@ -395,7 +397,11 @@ describe("R4 验收：玩家控制与注入模式", () => {
 			template,
 			providers: {
 				history: createHistorySlotProvider(store),
-				director: createDirectorSlotProvider(store, { config, when: "always" }),
+				director: createDirectorSlotProvider(store, {
+					organization: "mechanisms",
+					config,
+					when: "always",
+				}),
 			},
 			budgetTokens: 4_096,
 			structuredOutput: "text-tags",
@@ -430,7 +436,11 @@ describe("R4 验收：玩家控制与注入模式", () => {
 			template,
 			providers: {
 				history: createHistorySlotProvider(store),
-				director: createDirectorSlotProvider(store, { config, when: "always" }),
+				director: createDirectorSlotProvider(store, {
+					organization: "mechanisms",
+					config,
+					when: "always",
+				}),
 			},
 			budgetTokens: 4_096,
 			structuredOutput: "text-tags",

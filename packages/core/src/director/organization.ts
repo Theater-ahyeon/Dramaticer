@@ -35,8 +35,11 @@ export const DIRECTOR_ORGANIZATION_KINDS = [
 export type DirectorOrganizationKind =
 	(typeof DIRECTOR_ORGANIZATION_KINDS)[number];
 
-export const DEFAULT_DIRECTOR_ORGANIZATION: DirectorOrganizationKind =
-	"mechanisms";
+/**
+ * 新故事默认用 v4 的线与动作引擎：功能页的「导演」开关、不干预与突发延后
+ * 只在这套引擎里生效（ADR-0161）。已有故事保存的值不变。
+ */
+export const DEFAULT_DIRECTOR_ORGANIZATION: DirectorOrganizationKind = "lines";
 
 export function isDirectorOrganizationKind(
 	value: unknown,

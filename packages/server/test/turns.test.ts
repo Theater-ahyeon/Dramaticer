@@ -665,6 +665,8 @@ describe("POST /api/stories/:id/turns", () => {
 	it("回合请求的 intensity 覆盖故事设置，非法值返回 400 且不建楼层", async () => {
 		const { running } = await startTurnServer([{ text: "收到。" }]);
 		running.store.updateStorySettings("s1", {
+			// 拍强度属于方案与序列引擎。
+			directorOrganization: "mechanisms",
 			directorConfig: {
 				...DEFAULT_DIRECTOR_CONFIG,
 				intensity: "detonate",

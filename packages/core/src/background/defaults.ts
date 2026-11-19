@@ -8,6 +8,8 @@ import {
 	createBackgroundJobPlugins,
 	createBackgroundJobRegistryFromPlugins,
 } from "../plugins/background-jobs.js";
+import { readStoryFeatureState } from "../settings/features.js";
+import type { StoryStore } from "../store/story-store.js";
 import type { BackgroundJobRegistry } from "./types.js";
 
 export interface DefaultBackgroundRegistryOptions {
@@ -31,6 +33,8 @@ export function createDefaultBackgroundJobRegistry(
 export interface StoryBackgroundKindsOptions {
 	/** 每楼一次场记调用；关闭时这一类型既不建任务也不执行。 */
 	readonly sceneLogEnabled: boolean;
+	/** 场次归档；依赖场记。不设置时跟随 `sceneLogEnabled`。 */
+	readonly archiveEnabled?: boolean;
 	readonly gapPassEnabled: boolean;
 	/** 只跑指定类型；不设置时使用注册表里的全部类型。 */
 	readonly requested?: string | null;
@@ -48,10 +52,34 @@ export function resolveStoryBackgroundKinds(
 		options.requested === undefined || options.requested === null
 			? [...registry.keys()]
 			: [options.requested];
+	const archiveEnabled =
+		options.sceneLogEnabled &&
+		(options.archiveEnabled ?? options.sceneLogEnabled);
 	return kinds.filter(
 		(kind) =>
-			(options.sceneLogEnabled ||
-				(kind !== SCENE_LOG_JOB_KIND && kind !== SCENE_ARCHIVE_JOB_KIND)) &&
+			(options.sceneLogEnabled || kind !== SCENE_LOG_JOB_KIND) &&
+			(archiveEnabled || kind !== SCENE_ARCHIVE_JOB_KIND) &&
 			(options.gapPassEnabled || kind !== GAP_PASS_JOB_KIND),
 	);
+}
+
+/**
+ * 故事的后台开关：功能页的「场记」「档案归档」与旧的 `sceneLogEnabled` 设置
+ * 任一打开就运行。功能页是玩家看得见的那份，必须真的生效；旧设置保留给
+ * CLI 与评测脚本强制打开。
+ */
+export function readStoryBackgroundSwitches(
+	store: StoryStore,
+	storyId: string,
+): Pick<
+	StoryBackgroundKindsOptions,
+	"sceneLogEnabled" | "archiveEnabled" | "gapPassEnabled"
+> {
+	const settings = store.getStorySettings(storyId);
+	const features = readStoryFeatureState(store, storyId).values;
+	return {
+		sceneLogEnabled: settings.sceneLogEnabled || features.scribe === true,
+		archiveEnabled: settings.sceneLogEnabled || features.archive === true,
+		gapPassEnabled: settings.gapPassEnabled,
+	};
 }

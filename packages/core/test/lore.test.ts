@@ -370,7 +370,10 @@ describe("createDirectorSlotProvider", () => {
 		]);
 		const current = appendChain(store, 13, "u1");
 
-		const provider = createDirectorSlotProvider(store, { when: "always" });
+		const provider = createDirectorSlotProvider(store, {
+			organization: "mechanisms",
+			when: "always",
+		});
 		const content = await provider.provide(request("s1", current, "director"));
 		expect(content?.source).toBe("director:clue");
 		expect(content?.messages).toHaveLength(0);
@@ -415,7 +418,10 @@ describe("createDirectorSlotProvider", () => {
 		store.insertPlotNotes([
 			{ storyId: "s1", sourceNodeId: "u1", text: "刚埋下的伏笔" },
 		]);
-		const provider = createDirectorSlotProvider(store, { when: "always" });
+		const provider = createDirectorSlotProvider(store, {
+			organization: "mechanisms",
+			when: "always",
+		});
 		expect(await provider.provide(request("s1", "u1", "director"))).toBeNull();
 		const decision = store.getDirectorDecision("u1");
 		expect(decision?.directive).toBeNull();
@@ -430,6 +436,7 @@ describe("createDirectorSlotProvider", () => {
 		]);
 		const current = appendChain(store, 13, "u1");
 		const provider = createDirectorSlotProvider(store, {
+			organization: "mechanisms",
 			when: "always",
 			config: { ...DEFAULT_DIRECTOR_CONFIG, mode: "off" },
 		});
@@ -465,6 +472,7 @@ describe("createDirectorSlotProvider", () => {
 		store.setHead("s1", "a2");
 
 		const provider = createDirectorSlotProvider(store, {
+			organization: "mechanisms",
 			when: "always",
 			config: {
 				...DEFAULT_DIRECTOR_CONFIG,

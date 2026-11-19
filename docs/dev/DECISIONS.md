@@ -2647,3 +2647,9 @@
 - **背景**：人工会话要求重做新界面的视觉：三维背景、页面转场、精致的组件。
 - **决定**：`packages/web` 新增 `three`（背景场景，动态 import 单独分包，没有 WebGL 时退回 CSS 光束）、`@fontsource-variable/noto-serif-sc` 与 `@fontsource/zcool-xiaowei`（字体随应用打包，不请求外部字体服务）。页面转场用浏览器的 View Transitions，不支持时直接换页。
 - **影响**：只动 `packages/web` 的显示层，类名、接口与数据模型不变；系统设了「减少动效」时背景只画静止画面、转场关闭。构建产物多出约 137 KB（gzip）的场景分包和按字分片的字体文件。
+
+## ADR-0161 MVP 优先：默认接通 v4 记忆与导演，DESIGN 重写为 v1.0（2026-11-19）
+
+- **背景**：架构审查发现新故事的默认设置没有用上 v4：`directorOrganization` 默认 `mechanisms`，director-yield 的改动只在 `lines` 里生效；`sceneLogEnabled` 默认关，场次、归档、百科与秘密都不产生；功能页 18 个开关里运行时只读 3 个，页面显示「场记 开」而后台没跑。DESIGN 叠了 v2–v4 三层，原则 6 与 I6 自相矛盾。人类要求先做完整 MVP 再慢慢优化，并允许大改。
+- **决定**：新故事默认 `directorOrganization: lines`；自动记录与场次归档跟随功能页的「场记」「档案归档」，旧设置 `sceneLogEnabled` 保留为强制打开；已有故事保存的值不迁移。`docs/DESIGN.md` 重写为只描述现状的 v1.0（章节编号不变），旧稿归档到 `docs/archive/DESIGN-v0.4.md`，新增 MVP 定义（§15.2）与北极星指标（§14.1）。工程整理进 `.scratch/refactor/`。
+- **影响**：标准档的新故事每楼多一次后台调用（场记），有实体时每场多一次归档。X2 的结论（ADR-0134）只对 `mechanisms` 与 `bits` 两者有效，`lines` 是 v4 W4 的实现，尚未做同口径对照。AGENTS.md 的文档地图需要人类同步（HUMAN-23）。

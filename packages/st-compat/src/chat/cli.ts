@@ -147,6 +147,11 @@ export async function runChatCli(
 				id: parsed.storyId,
 				title: card.name.trim().length > 0 ? card.name : parsed.storyId,
 			});
+			// --director 的透明 / 盲盒与 --intensity 只对方案与序列引擎有意义；
+			// 新故事的库默认是线与动作（ADR-0161），这里显式保留 CLI 的语义。
+			store.updateStorySettings(parsed.storyId, {
+				directorOrganization: "mechanisms",
+			});
 			const greeting = card.firstMessage.trim();
 			if (greeting.length > 0) {
 				store.appendNode({

@@ -63,7 +63,7 @@ describe("故事设置", () => {
 			deepRecentToolSteps: 4,
 			viewpoint: null,
 			directorConfig: DEFAULT_DIRECTOR_CONFIG,
-			directorOrganization: "mechanisms",
+			directorOrganization: "lines",
 			historyBlockPolicy: DEFAULT_HISTORY_BLOCK_POLICY,
 			contextLayout: "volatility",
 			sceneLogEnabled: false,

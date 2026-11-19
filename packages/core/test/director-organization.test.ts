@@ -45,8 +45,8 @@ function fixedMechanism(name: string): DirectorMechanism {
 }
 
 describe("导演组织方式", () => {
-	it("默认沿用现有机制序列，非法种类抛错并指出标签", () => {
-		expect(DEFAULT_DIRECTOR_ORGANIZATION).toBe("mechanisms");
+	it("新故事默认用线与动作引擎，非法种类抛错并指出标签", () => {
+		expect(DEFAULT_DIRECTOR_ORGANIZATION).toBe("lines");
 		expect(isDirectorOrganizationKind("mechanisms")).toBe(true);
 		expect(isDirectorOrganizationKind("bits")).toBe(true);
 		expect(isDirectorOrganizationKind("scripts")).toBe(false);
@@ -148,6 +148,7 @@ describe("导演组织方式", () => {
 		const { store } = openTempStore();
 		const nodeId = seed(store);
 		const provider = createDirectorSlotProvider(store, {
+			organization: "mechanisms",
 			mechanisms: [fixedMechanism("custom")],
 		});
 		expect(provider.engine.kind).toBe("mechanisms");

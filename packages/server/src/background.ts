@@ -6,6 +6,7 @@ import {
 	type StoryStore,
 	createDefaultBackgroundJobRegistry,
 	drainBackgroundJobs,
+	readStoryBackgroundSwitches,
 	resolveStoryBackgroundKinds,
 } from "@dramaticer/core";
 
@@ -118,10 +119,10 @@ export class BackgroundScheduler {
 			return;
 		}
 		const registry = this.#createRegistry(runtime);
-		const kinds = resolveStoryBackgroundKinds(registry, {
-			sceneLogEnabled: this.#store.getStorySettings(storyId).sceneLogEnabled,
-			gapPassEnabled: this.#store.getStorySettings(storyId).gapPassEnabled,
-		});
+		const kinds = resolveStoryBackgroundKinds(
+			registry,
+			readStoryBackgroundSwitches(this.#store, storyId),
+		);
 		if (kinds.length === 0) return;
 		const result = await drainBackgroundJobs({
 			store: this.#store,

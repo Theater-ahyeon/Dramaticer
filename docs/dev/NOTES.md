@@ -140,6 +140,14 @@
 - 线可以带 `mustInterrupt: true`：玩家自由输入时这条线倒计时到点会盖过让位，决策信号带 `interrupt`；每场只允许一次，计数从当前路径往回数到上一场结束（`readDirectorActionInput` 的 `interruptedThisScene`）。
 - 撤回导演安排（`undoDirectorArrangement`）在同一个事务里静音那条线，并写一条 `avoid-line` 的长期偏好；重复撤回不会重复写同一句偏好。恢复用 `unmuteDirectorLine`，之后这条线重新参与选择。干扰统计只数 swipe 偏好里的「没听我的」「别推这条线」，按被放弃的回复上有没有决策记录分成导演开、关两组。
 
+- 新故事默认 `directorOrganization: lines`（ADR-0161）。测 v3 方案与序列、剧情小品行为的测试与工具必须显式传 `organization: "mechanisms"` / `"bits"`，或在故事设置里写明；`dramaticer chat` 新建故事时自己写成 `mechanisms`，因为 `--director`、`--intensity` 只对它有意义。
+
+## 功能开关与后台任务（2026-11-19 起）
+
+- 功能页的值必须就是运行时的值。读开关一律用 `readStoryFeatureState(store, storyId[, turnOverrides])`，不要直接读 `settings.featureSwitches`（那只是玩家的覆盖，没有叠加档位与卡能力）。
+- 后台任务类型的开关用 `readStoryBackgroundSwitches` 解析，再交给 `resolveStoryBackgroundKinds`：场记 = 功能页「场记」或旧设置 `sceneLogEnabled`；归档 = 场记开且（功能页「档案归档」或 `sceneLogEnabled`）。「档案归档」需要卡有实体能力，没有实体时功能页不显示也不运行。
+- 截至 2026-11-19，运行时只接通了 场记、档案归档、提前备好、复查、导演；其余开关见 `.scratch/refactor/issues/02-*.md`。
+
 ## 新界面的视觉层（2026-11-16 起）
 - 页面只通过 `v4/stage.ts` 跟背景打交道：`stage.pulse()` 让海面荡一圈光，`stage.setWriting()` 表示正在写。背景（`scene.ts`）读这些状态，不反过来依赖页面。
 - 站内跳转用 `ui.tsx` 的 `TLink` 或 `travel()` 才有转场；普通 `Link` 也能用，只是直接换页。路由更新走 React 的 transition，所以 `travel` 要等 `Shell` 的 layout effect 调 `routeCommitted()` 才让浏览器拍新画面。

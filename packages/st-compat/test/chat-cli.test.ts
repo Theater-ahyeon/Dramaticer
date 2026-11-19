@@ -146,6 +146,8 @@ function dependencies(
 function seedClueChain(dbPath: string): void {
 	const seed = StoryStore.open(dbPath);
 	seed.createStory({ id: "s1", title: "山神" });
+	// 线索到期、透明 / 盲盒与拍强度都属于方案与序列引擎。
+	seed.updateStorySettings("s1", { directorOrganization: "mechanisms" });
 	let parentId: string | null = seed.appendNode({
 		storyId: "s1",
 		parentId: null,
@@ -723,6 +725,7 @@ describe("dramaticer chat", () => {
 		const dbPath = createTempDb();
 		const seed = StoryStore.open(dbPath);
 		seed.createStory({ id: "s1", title: "山神" });
+		seed.updateStorySettings("s1", { directorOrganization: "mechanisms" });
 		seed.appendNode({
 			id: "a0",
 			storyId: "s1",

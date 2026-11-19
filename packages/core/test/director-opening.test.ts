@@ -160,7 +160,10 @@ describe("开场导演", () => {
 		savePack(store);
 		const nodeId = buildOpeningPath(store, 3);
 
-		const provider = createDirectorSlotProvider(store, { when: "always" });
+		const provider = createDirectorSlotProvider(store, {
+			organization: "mechanisms",
+			when: "always",
+		});
 		const content = await provider.provide({
 			slot: "director",
 			storyId: "s1",

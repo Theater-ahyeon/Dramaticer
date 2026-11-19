@@ -383,6 +383,8 @@ describe("createChatReplayGenerator 与导演开关", () => {
 function seedDirectorStory(): StoryStore {
 	const store = StoryStoreClass.open(":memory:");
 	store.createStory({ id: "s1", title: "回放" });
+	// 这组用例量的是方案与序列引擎的线索到期注入。
+	store.updateStorySettings("s1", { directorOrganization: "mechanisms" });
 	store.appendNode({
 		id: "n-greeting",
 		storyId: "s1",

@@ -20,6 +20,7 @@ import { StoryStore } from "../store/story-store.js";
 import { type GapWorkBacklog, readGapWorkBacklog } from "./backlog.js";
 import {
 	createDefaultBackgroundJobRegistry,
+	readStoryBackgroundSwitches,
 	resolveStoryBackgroundKinds,
 } from "./defaults.js";
 import {
@@ -142,8 +143,7 @@ export async function runWorkCli(
 		let discarded = 0;
 		for (const story of stories) {
 			const kinds = resolveStoryBackgroundKinds(registry, {
-				sceneLogEnabled: store.getStorySettings(story.id).sceneLogEnabled,
-				gapPassEnabled: store.getStorySettings(story.id).gapPassEnabled,
+				...readStoryBackgroundSwitches(store, story.id),
 				requested: parsed.kind,
 			});
 			if (kinds.length === 0) continue;
