@@ -121,6 +121,7 @@
 - 导演何时出手由故事的「导演」功能开关决定，三个档位默认都是「仅推进时」。玩家的自由输入不论长短都让位，让位时不注入任何东西；只有推进按钮或「继续、推进剧情」这类固定说法才出手（`readPlayerIntent`）。
 - 直接调用 `createDirectorSlotProvider` 或 `createStandardChatSlots` 的测试与工具，如果要让导演在自由输入的回合里评估，传 `when: "always"` / `directorWhen: "always"`。命令行 chat、导演回放与组织方式对比已经这样做。
 - 让位的动作选择返回空指令；引擎写决策记录（`signals.action` 为 `yield`），不返回建议。
+- 线可以带 `mustInterrupt: true`：玩家自由输入时这条线倒计时到点会盖过让位，决策信号带 `interrupt`；每场只允许一次，计数从当前路径往回数到上一场结束（`readDirectorActionInput` 的 `interruptedThisScene`）。
 
 ## 新界面的视觉层（2026-11-16 起）
 - 页面只通过 `v4/stage.ts` 跟背景打交道：`stage.pulse()` 让海面荡一圈光，`stage.setWriting()` 表示正在写。背景（`scene.ts`）读这些状态，不反过来依赖页面。
