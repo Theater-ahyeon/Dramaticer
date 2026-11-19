@@ -360,6 +360,7 @@ describe("assembleContext", () => {
 			nodeId: "node-3",
 			switches: { memory: true },
 			state: { 角色: { 好感度: 5 } },
+			budgetTokens: 100,
 		});
 		expect(result.messages).toEqual([{ role: "system", content: "好感度 5" }]);
 	});

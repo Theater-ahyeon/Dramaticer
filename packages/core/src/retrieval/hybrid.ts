@@ -51,6 +51,8 @@ export interface RetrieveMemoryOptions {
 	readonly beforeNodeId?: string | null;
 	/** 知情者过滤的视角；为空时返回全知结果 */
 	readonly viewpoint?: string | null;
+	/** 在场者等不在查询文本里的名字，同样驱动实体这一路。 */
+	readonly entityNames?: readonly string[];
 	readonly limit?: number;
 	/** 融合后的可选重排序；为空时直接用融合顺序。 */
 	readonly reranker?: RerankClient | null;
@@ -270,6 +272,15 @@ export async function rankMemoryRoutes(
 	if (typeof query !== "string") {
 		throw new Error("检索语句必须是字符串");
 	}
+	const entityNames = options.entityNames ?? [];
+	if (!Array.isArray(entityNames)) {
+		throw new Error("驱动实体一路的名字必须是数组");
+	}
+	for (const name of entityNames) {
+		if (typeof name !== "string" || name.trim().length === 0) {
+			throw new Error("驱动实体一路的名字必须是非空字符串");
+		}
+	}
 	const beforeNodeId = options.beforeNodeId ?? null;
 	if (beforeNodeId !== null) {
 		if (typeof beforeNodeId !== "string" || beforeNodeId.length === 0) {
@@ -355,7 +366,7 @@ export async function rankMemoryRoutes(
 			}
 		}
 
-		const entityMatches = matchEntities(store, storyId, query);
+		const entityMatches = matchEntities(store, storyId, query, entityNames);
 		if (entityMatches.length > 0) {
 			routes.push({
 				route: "entity",
@@ -440,9 +451,15 @@ function matchEntities(
 	store: StoryStore,
 	storyId: string,
 	query: string,
+	entityNames: readonly string[],
 ): EntityMatch[] {
 	const normalizedQuery = normalizeEntityName(query);
-	if (normalizedQuery.length === 0) return [];
+	const namedAliases = new Set(
+		entityNames
+			.map((name) => normalizeEntityName(name))
+			.filter((name) => name.length > 0),
+	);
+	if (normalizedQuery.length === 0 && namedAliases.size === 0) return [];
 	const matches: EntityMatch[] = [];
 	for (const entity of store.listEntities(storyId)) {
 		let matchedLength = 0;
@@ -451,6 +468,9 @@ function matchEntities(
 				normalized.length > matchedLength &&
 				normalizedQuery.includes(normalized)
 			) {
+				matchedLength = normalized.length;
+			}
+			if (normalized.length > matchedLength && namedAliases.has(normalized)) {
 				matchedLength = normalized.length;
 			}
 		}
@@ -481,7 +501,7 @@ function entityRouteItems(input: {
 	const aliasSets = input.matches.map(
 		(match) => new Set(normalizedAliases(match.entity)),
 	);
-	const recalled = orderEvents(
+	const recalled = orderEventsByStoryTime(
 		input.events.filter((event) =>
 			event.participants.some((participant) => {
 				const normalized = normalizeEntityName(participant);
@@ -561,6 +581,29 @@ function orderEvents(
 		const rightPosition = positions.get(right.sourceNodeId) ?? -1;
 		if (leftPosition !== rightPosition) return rightPosition - leftPosition;
 		if (left.ordinal !== right.ordinal) return right.ordinal - left.ordinal;
+		return compareText(left.id, right.id);
+	});
+}
+
+/** 故事时间在前，没有写明故事时间的按楼层先后；同一件事的新旧由这个顺序解决。 */
+function orderEventsByStoryTime(
+	events: readonly MemoryEvent[],
+	pathNodes: readonly TimelineNode[],
+): MemoryEvent[] {
+	const positions = new Map<string, number>();
+	pathNodes.forEach((node, index) => positions.set(node.id, index));
+	return [...events].sort((left, right) => {
+		const leftTime = left.storyTime?.trim() ?? "";
+		const rightTime = right.storyTime?.trim() ?? "";
+		if (leftTime !== rightTime) {
+			if (leftTime.length === 0) return 1;
+			if (rightTime.length === 0) return -1;
+			return compareText(leftTime, rightTime);
+		}
+		const leftPosition = positions.get(left.sourceNodeId) ?? -1;
+		const rightPosition = positions.get(right.sourceNodeId) ?? -1;
+		if (leftPosition !== rightPosition) return leftPosition - rightPosition;
+		if (left.ordinal !== right.ordinal) return left.ordinal - right.ordinal;
 		return compareText(left.id, right.id);
 	});
 }
