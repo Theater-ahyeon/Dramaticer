@@ -72,6 +72,29 @@ function seedChain(store: StoryStore, floors = FLOORS): void {
 	}
 }
 
+function seedChainAfterA1(store: StoryStore, parentId: string): void {
+	let parent = parentId;
+	for (let index = 2; index <= FLOORS; index += 1) {
+		const userId = `u${index - 1}`;
+		store.appendNode({
+			id: userId,
+			storyId: "s1",
+			parentId: parent,
+			role: "user",
+			raw: `第 ${index - 1} 次行动。`,
+		});
+		const id = `a${index}`;
+		store.appendNode({
+			id,
+			storyId: "s1",
+			parentId: userId,
+			role: "assistant",
+			raw: `第 ${index} 楼的正文。`,
+		});
+		parent = id;
+	}
+}
+
 function seedLines(store: StoryStore): void {
 	store.saveDirectorLines({
 		nodeId: "a1",
@@ -483,6 +506,192 @@ describe("章末规划", () => {
 			createChapterPlanHandler()({ store, client: second.client, job: job() }),
 		).rejects.toThrow("改写了里程碑「ms1」的方向");
 		expect(store.getDirectorChapterReview("a5")).toBeNull();
+	});
+
+	it("章末清点只读取这一章玩家自己写的变化，推进与上一章不算", async () => {
+		const { store } = openTempStore();
+		store.createStory({ id: "s1", title: "测试" });
+		store.appendNode({
+			id: "a1",
+			storyId: "s1",
+			parentId: null,
+			role: "assistant",
+			raw: "第 1 楼的正文。",
+		});
+		seedLines(store);
+		store.appendNode({
+			id: "u1",
+			storyId: "s1",
+			parentId: "a1",
+			role: "user",
+			raw: "上一章我把剑扔进了河里",
+		});
+		store.appendNode({
+			id: "a2",
+			storyId: "s1",
+			parentId: "u1",
+			role: "assistant",
+			raw: "第 2 楼的正文。",
+		});
+		store.saveDirectorChapterPlan({
+			nodeId: "a2",
+			storyId: "s1",
+			diffs: [],
+			review: {
+				promises: [{ lineId: "promise-1", disposition: "carry" }],
+				focus: ["main-1", "rel-1"],
+			},
+		});
+		store.appendNode({
+			id: "u2",
+			storyId: "s1",
+			parentId: "a2",
+			role: "user",
+			raw: "继续",
+		});
+		store.appendNode({
+			id: "a3",
+			storyId: "s1",
+			parentId: "u2",
+			role: "assistant",
+			raw: "第 3 楼的正文。",
+		});
+		store.appendNode({
+			id: "u3",
+			storyId: "s1",
+			parentId: "a3",
+			role: "user",
+			raw: "我把信烧了",
+		});
+		store.appendNode({
+			id: "a4",
+			storyId: "s1",
+			parentId: "u3",
+			role: "assistant",
+			raw: "第 4 楼的正文。",
+		});
+		store.appendNode({
+			id: "a5",
+			storyId: "s1",
+			parentId: "a4",
+			role: "assistant",
+			raw: "第 5 楼的正文。",
+		});
+		endScene(store, "a5");
+		setChapterFloors(store, 3);
+		const { client, requests } = createFakeClient([PLAN]);
+
+		await createChapterPlanHandler()({ store, client, job: job() });
+
+		const prompt = requests[0]?.messages[1]?.content ?? "";
+		expect(prompt).toContain("这一章玩家造成的变化");
+		expect(prompt).toContain("我把信烧了");
+		expect(prompt).not.toContain("上一章我把剑扔进了河里");
+		expect(prompt).not.toContain("继续");
+	});
+
+	it("玩家的变化可以让线了结、转向或作废，清点按模型输出重排剧情线", async () => {
+		const { store } = openTempStore();
+		store.createStory({ id: "s1", title: "测试" });
+		store.appendNode({
+			id: "a1",
+			storyId: "s1",
+			parentId: null,
+			role: "assistant",
+			raw: "第 1 楼的正文。",
+		});
+		store.saveDirectorLines({
+			nodeId: "a1",
+			storyId: "s1",
+			diffs: [
+				{
+					action: "set",
+					line: {
+						id: "main-1",
+						kind: "main",
+						who: "卫宫",
+						want: "阻止仪式",
+						obstacle: "时间只剩一夜",
+						countdown: 6,
+						preparations: [],
+					},
+				},
+				{
+					action: "set",
+					line: {
+						id: "promise-1",
+						kind: "promise",
+						who: "凛",
+						want: "拿回那封信",
+						obstacle: "信在管家手里",
+						countdown: null,
+						preparations: [],
+					},
+				},
+				{
+					action: "set",
+					line: {
+						id: "rel-1",
+						kind: "relationship",
+						who: "凛",
+						want: "与卫宫并肩",
+						obstacle: "两人还没有互信",
+						countdown: null,
+						preparations: [],
+					},
+				},
+				{
+					action: "set",
+					line: {
+						id: "opp-1",
+						kind: "opposition",
+						who: "管家",
+						want: "守住那封信",
+						obstacle: "凛已经起疑",
+						countdown: null,
+						preparations: [],
+					},
+				},
+			],
+		});
+		seedChainAfterA1(store, "a1");
+		endScene(store, "a5");
+		setChapterFloors(store, 3);
+		const reshaping = JSON.stringify({
+			lines: [
+				{ action: "delete", id: "main-1" },
+				{
+					action: "set",
+					line: {
+						id: "rel-1",
+						kind: "relationship",
+						who: "凛",
+						want: "留在城里陪卫宫",
+						obstacle: "管家的眼线还在",
+						countdown: null,
+						preparations: [],
+					},
+				},
+			],
+			review: {
+				promises: [{ lineId: "promise-1", disposition: "retire" }],
+				focus: ["rel-1", "opp-1"],
+			},
+		});
+		const { client } = createFakeClient([reshaping]);
+
+		await createChapterPlanHandler()({ store, client, job: job() });
+
+		const states = store.readDirectorLineStates("a5");
+		const byId = new Map(
+			states.map((state) => [state.line.id, state] as const),
+		);
+		expect([...byId.keys()].sort()).toEqual(["opp-1", "rel-1"]);
+		expect(byId.get("rel-1")?.line.want).toBe("留在城里陪卫宫");
+		expect(store.getDirectorChapterReview("a5")?.payload.focus).toEqual([
+			"rel-1",
+			"opp-1",
+		]);
 	});
 
 	it("补写的铺垫仍受未兑现伏笔上限约束，超限时整批不写", async () => {

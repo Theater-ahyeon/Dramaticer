@@ -346,6 +346,12 @@ describe("卡片能力判断", () => {
 		});
 	});
 
+	it("新故事默认导演只在玩家按推进时出手", () => {
+		const store = openStore();
+		store.createStory({ id: "s1", title: "新故事" });
+		expect(readStoryFeatureState(store, "s1").values.director).toBe("push");
+	});
+
 	it("故事设置里的开关按档位与覆盖读出", () => {
 		const store = openStore();
 		store.createStory({ id: "s1", title: "山门" });
