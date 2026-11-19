@@ -283,6 +283,8 @@ function backgroundResponse(body) {
 export async function startFakeChannel(options = {}) {
 	const host = options.host ?? "127.0.0.1";
 	const port = options.port ?? 0;
+	// 流式响应的间隔让界面有机会把中间状态画出来；0 表示尽快发完。
+	const streamDelayMs = options.streamDelayMs ?? 0;
 	const server = createServer((req, res) => {
 		if (req.method !== "POST") {
 			res.writeHead(404);
