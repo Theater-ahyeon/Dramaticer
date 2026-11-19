@@ -14,8 +14,10 @@ import type {
 	ApiErrorResponse,
 	BlueprintSuggestionRejectResult,
 	StoryBlueprintDeviationView,
+	StoryBlueprintEditResult,
 	StoryBlueprintSuggestionCreateResult,
 	StoryBlueprintSuggestionsView,
+	StoryBlueprintVersionsView,
 	StoryBlueprintView,
 } from "@dramaticer/protocol";
 import { describe, expect, it, onTestFinished } from "vitest";
@@ -624,5 +626,90 @@ describe("蓝图视图接口", () => {
 			`${running.origin}/api/stories/sempty/blueprint?nodeId=`,
 		);
 		expect(empty.status).toBe(400);
+	});
+});
+
+describe("大纲编辑接口", () => {
+	it("写一批修改后能读回，修改历史记下变化数", async () => {
+		const running = await startTestServer();
+		const headId = seedStory(running);
+		const edited = await post(
+			running.origin,
+			"/api/stories/s1/blueprint/edit",
+			{ diffs: [premiseDiff()] },
+		);
+		expect(edited.status).toBe(200);
+		const result = (await edited.json()) as StoryBlueprintEditResult;
+		expect(result.nodeId).toBe(headId);
+		expect(result.record.source).toBe("player");
+		expect(result.entries.map((entry) => entry.id)).toEqual(["premise-1"]);
+
+		const versions = await fetch(
+			`${running.origin}/api/stories/s1/blueprint/versions`,
+		);
+		expect(versions.status).toBe(200);
+		const view = (await versions.json()) as StoryBlueprintVersionsView;
+		expect(view.nodeId).toBe(headId);
+		expect(view.versions).toHaveLength(1);
+		expect(view.versions[0]).toMatchObject({
+			nodeId: headId,
+			seq: 1,
+			source: "player",
+			changes: 1,
+		});
+	});
+
+	it("回到某一版会成为新的一批修改", async () => {
+		const running = await startTestServer();
+		seedStory(running);
+		await post(running.origin, "/api/stories/s1/blueprint/edit", {
+			diffs: [premiseDiff()],
+		});
+		const first = await fetch(`${running.origin}/api/stories/s1/blueprint`);
+		const firstView = (await first.json()) as StoryBlueprintView;
+		const changed: BlueprintDiff = {
+			action: "set",
+			entry: {
+				id: "premise-1",
+				kind: "premise",
+				source: "ai",
+				locked: false,
+				coreQuestion: "这座灯塔为谁而亮？",
+				tone: "潮湿、克制",
+				endings: ["她留下来"],
+				redLines: ["她不能出事"],
+				tension: "tight",
+			},
+		};
+		await post(running.origin, "/api/stories/s1/blueprint/edit", {
+			diffs: [changed],
+		});
+		const second = await fetch(`${running.origin}/api/stories/s1/blueprint`);
+		const secondView = (await second.json()) as StoryBlueprintView;
+		expect(secondView.entries[0]).toMatchObject({ tension: "tight" });
+
+		const rolled = await post(
+			running.origin,
+			"/api/stories/s1/blueprint/edit",
+			{ versionNodeId: firstView.nodeId, versionSeq: 1 },
+		);
+		expect(rolled.status).toBe(200);
+		const current = await fetch(`${running.origin}/api/stories/s1/blueprint`);
+		const currentView = (await current.json()) as StoryBlueprintView;
+		expect(currentView.entries[0]).toMatchObject({
+			id: "premise-1",
+			tension: "medium",
+		});
+	});
+
+	it("diffs 与 versionNodeId 必须给出其中一个", async () => {
+		const running = await startTestServer();
+		seedStory(running);
+		const response = await post(
+			running.origin,
+			"/api/stories/s1/blueprint/edit",
+			{},
+		);
+		expect(response.status).toBe(400);
 	});
 });

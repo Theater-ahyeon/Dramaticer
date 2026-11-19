@@ -79,10 +79,13 @@ export interface WikiStatement {
 	readonly text: string;
 	readonly nodeId: string | null;
 	readonly floorNo: number | null;
+	/** 这条语句来自哪条记录；与 readMemoryRecords 里的 id 一致。 */
+	readonly recordId: string | null;
 	readonly source: "auto" | "player";
 	readonly locked: boolean;
-	/** 旧说法：不删，只标出它到哪一楼为止有效。 */
+	/** 旧说法：不删，只标出它从哪一楼到哪一楼有效。 */
 	readonly old: boolean;
+	readonly validFromFloor: number | null;
 	readonly validUntilFloor: number | null;
 	readonly quote: string | null;
 }
@@ -361,42 +364,49 @@ export function readMemorySecrets(
 	return secrets;
 }
 
-function applyStatementEdit(
-	pageId: string,
-	statement: WikiStatement,
-	edits: ReadonlyMap<string, PlayerEdit>,
-): WikiStatement | null {
-	const edit = edits.get(`${pageId}|${statement.id}`);
-	if (edit === undefined) return statement;
-	if (edit.disabled) return null;
-	const text =
-		isJsonObject(edit.value) && typeof edit.value.text === "string"
-			? edit.value.text
-			: null;
-	return {
-		...statement,
-		text: text ?? statement.text,
-		source: text === null ? statement.source : "player",
-		locked: edit.locked,
-	};
+const WIKI_SECTION_RANK: Readonly<Record<string, number>> = {
+	现在: 0,
+	经过: 1,
+	演变: 2,
+	反思: 3,
+};
+
+interface WikiStateGroup {
+	readonly path: readonly string[];
+	readonly diffs: readonly StateDiff[];
+}
+
+function groupStateDiffs(store: StoryStore, anchor: string): WikiStateGroup[] {
+	const groups = new Map<
+		string,
+		{ path: readonly string[]; diffs: StateDiff[] }
+	>();
+	for (const diff of store.getStateDiffsAlongPath(anchor)) {
+		if (NON_STATE_NAMESPACES.has(diff.path[0] ?? "")) continue;
+		const target = stateTargetOf(diff.path);
+		const group = groups.get(target);
+		if (group === undefined) {
+			groups.set(target, { path: diff.path, diffs: [diff] });
+		} else {
+			group.diffs.push(diff);
+		}
+	}
+	return [...groups.values()];
 }
 
 /**
- * 百科页面：每个实体一页，由记录汇编。每句话带着它出自哪一楼；被新值取代的
- * 旧说法留在「演变」里并标出有效范围。玩家改过或锁定的句子在重新汇编后不变。
+ * 汇编一页时不带玩家的修改。语句的 id 只由记录决定，所以重新汇编之后
+ * 玩家改过或锁定的句子还能按同一个 id 找回来。
  */
-export function compileWikiPages(
+function buildWikiPages(
 	store: StoryStore,
 	storyId: string,
-	nodeId: string | null = null,
+	anchor: string,
 ): WikiPage[] {
-	const anchor = requireAnchor(store, storyId, nodeId);
-	if (anchor === null) return [];
 	const index = indexPath(store, anchor);
-	const edits = readEffectiveEdits(store, storyId, anchor, "wiki");
 	const quotes = store.getMemoryEventQuotes(storyId);
 	const events = store.getEventsForPath(anchor, { limit: 1000 });
-	const state = readMemoryState(store, storyId, anchor);
+	const stateGroups = groupStateDiffs(store, anchor);
 	const pages: WikiPage[] = [];
 	for (const entity of store.listEntities(storyId)) {
 		const names = new Set(
@@ -411,39 +421,41 @@ export function compileWikiPages(
 		};
 		const now: WikiStatement[] = [];
 		const past: WikiStatement[] = [];
-		for (const item of state) {
+		for (const group of stateGroups) {
 			if (
-				!item.path
+				!group.path
 					.slice(0, -1)
 					.some((segment) => names.has(normalizeEntityName(segment)))
 			) {
 				continue;
 			}
-			now.push({
-				id: `state:${item.target}`,
-				text: `${item.item}：${show(item.value)}`,
-				nodeId: item.nodeId,
-				floorNo: item.floorNo,
-				source: item.source === "player" ? "player" : "auto",
-				locked: item.locked,
-				old: false,
-				validUntilFloor: null,
-				quote: null,
-			});
-			item.history.slice(0, -1).forEach((version, position) => {
-				if (version.value === null) return;
-				const next = item.history[position + 1];
-				past.push({
-					id: `state:${item.target}@${position}`,
-					text: `${item.item}：${show(version.value)}`,
-					nodeId: version.nodeId,
-					floorNo: version.floorNo,
-					source: version.source === "player" ? "player" : "auto",
+			const item = group.path[group.path.length - 1] ?? "";
+			const target = stateTargetOf(group.path);
+			group.diffs.forEach((diff, position) => {
+				if (diff.op === "delete") return;
+				const next = group.diffs[position + 1];
+				const floorNo = index.floorOf.get(diff.nodeId) ?? null;
+				const statement: WikiStatement = {
+					id:
+						next === undefined
+							? `state:${target}`
+							: `state:${target}@${position}`,
+					text: `${item}：${show(diff.value)}`,
+					nodeId: diff.nodeId,
+					floorNo,
+					recordId: `fact:${diff.id}`,
+					source: diff.source === "player" ? "player" : "auto",
 					locked: false,
-					old: true,
-					validUntilFloor: next?.floorNo ?? null,
+					old: next !== undefined,
+					validFromFloor: floorNo,
+					validUntilFloor:
+						next === undefined
+							? null
+							: (index.floorOf.get(next.nodeId) ?? null),
 					quote: null,
-				});
+				};
+				if (next === undefined) now.push(statement);
+				else past.push(statement);
 			});
 		}
 		const course: WikiStatement[] = [];
@@ -454,14 +466,17 @@ export function compileWikiPages(
 					names.has(normalizeEntityName(name)),
 				) || mentions(event.text);
 			if (!involved) continue;
+			const floorNo = index.floorOf.get(event.sourceNodeId) ?? null;
 			const statement: WikiStatement = {
 				id: `event:${event.id}`,
 				text: event.text,
 				nodeId: event.sourceNodeId,
-				floorNo: index.floorOf.get(event.sourceNodeId) ?? null,
+				floorNo,
+				recordId: event.id,
 				source: "auto",
 				locked: false,
 				old: false,
+				validFromFloor: floorNo,
 				validUntilFloor: null,
 				quote: quotes.get(event.id) ?? null,
 			};
@@ -473,41 +488,238 @@ export function compileWikiPages(
 			{ title: "经过", statements: course },
 			{ title: "演变", statements: past },
 			{ title: "反思", statements: reflections },
-		]
-			.map((section) => ({
-				title: section.title,
-				statements: section.statements
-					.map((statement) => applyStatementEdit(entity.id, statement, edits))
-					.filter(
-						(statement): statement is WikiStatement => statement !== null,
-					),
-			}))
-			.filter((section) => section.statements.length > 0);
+		].filter((section) => section.statements.length > 0);
 		if (sections.length === 0 && entity.description.trim().length === 0)
 			continue;
-		const leadEdit = edits.get(`${entity.id}|lead`);
-		const lead =
-			isJsonObject(leadEdit?.value) && typeof leadEdit.value.text === "string"
-				? leadEdit.value.text
-				: entity.description;
-		let upto = 0;
-		for (const section of sections) {
-			for (const statement of section.statements) {
-				upto = Math.max(upto, statement.floorNo ?? 0);
-			}
-		}
 		pages.push({
 			id: entity.id,
 			kind: ENTITY_KIND_LABELS[entity.kind] ?? "其他",
 			name: entity.name,
 			aliases: entity.aliases,
-			uptoFloor: upto,
-			lead,
-			leadLocked: leadEdit?.locked === true,
-			sections,
+			uptoFloor: 0,
+			lead: entity.description,
+			leadLocked: false,
+			sections: sections.map((section) => ({
+				title: section.title,
+				statements: section.statements,
+			})),
 		});
 	}
 	return pages;
+}
+
+/**
+ * 玩家的修改叠在汇编结果上。锁定的句子连同出处一起冻结；底下的记录后来
+ * 变了或被删掉，这一句仍然留在页面上，不会被重新汇编抹掉。
+ */
+function applyWikiEdits(
+	page: WikiPage,
+	edits: ReadonlyMap<string, PlayerEdit>,
+): WikiPage {
+	const seen = new Set<string>();
+	const sections: { title: string; statements: WikiStatement[] }[] =
+		page.sections.map((section) => ({
+			title: section.title,
+			statements: section.statements.flatMap((statement) => {
+				seen.add(statement.id);
+				const edit = edits.get(`${page.id}|${statement.id}`);
+				if (edit === undefined) return [statement];
+				if (edit.disabled) return [];
+				const value = isJsonObject(edit.value) ? edit.value : null;
+				const text =
+					typeof value?.text === "string" ? value.text : statement.text;
+				const source =
+					value !== null &&
+					typeof value.text === "string" &&
+					value.source !== "auto"
+						? ("player" as const)
+						: statement.source;
+				return [{ ...statement, text, source, locked: edit.locked }];
+			}),
+		}));
+	const orphaned = new Map<string, WikiStatement[]>();
+	for (const [target, edit] of edits) {
+		if (edit.disabled || !target.startsWith(`${page.id}|`)) continue;
+		const statementId = target.slice(page.id.length + 1);
+		if (seen.has(statementId)) continue;
+		const value = isJsonObject(edit.value) ? edit.value : null;
+		if (value === null || typeof value.text !== "string") continue;
+		const title =
+			typeof value.section === "string" && value.section in WIKI_SECTION_RANK
+				? value.section
+				: "现在";
+		const list = orphaned.get(title) ?? [];
+		list.push({
+			id: statementId,
+			text: value.text,
+			nodeId: typeof value.nodeId === "string" ? value.nodeId : null,
+			floorNo: typeof value.floorNo === "number" ? value.floorNo : null,
+			recordId: typeof value.recordId === "string" ? value.recordId : null,
+			source: value.source === "player" ? "player" : "auto",
+			locked: edit.locked,
+			old: false,
+			validFromFloor:
+				typeof value.validFromFloor === "number" ? value.validFromFloor : null,
+			validUntilFloor:
+				typeof value.validUntilFloor === "number"
+					? value.validUntilFloor
+					: null,
+			quote: null,
+		});
+		orphaned.set(title, list);
+	}
+	for (const [title, statements] of orphaned) {
+		const existing = sections.find((section) => section.title === title);
+		if (existing === undefined) sections.push({ title, statements });
+		else existing.statements.push(...statements);
+	}
+	sections.sort(
+		(left, right) =>
+			(WIKI_SECTION_RANK[left.title] ?? 9) -
+			(WIKI_SECTION_RANK[right.title] ?? 9),
+	);
+	const kept = sections.filter((section) => section.statements.length > 0);
+	let upto = page.uptoFloor;
+	for (const section of kept) {
+		for (const statement of section.statements) {
+			upto = Math.max(upto, statement.floorNo ?? 0);
+		}
+	}
+	const leadEdit = edits.get(`${page.id}|lead`);
+	const lead =
+		isJsonObject(leadEdit?.value) && typeof leadEdit.value.text === "string"
+			? leadEdit.value.text
+			: page.lead;
+	return {
+		...page,
+		uptoFloor: upto,
+		lead,
+		leadLocked: leadEdit?.locked === true,
+		sections: kept,
+	};
+}
+
+/**
+ * 百科页面：每个实体一页，由记录汇编。每句话带着它出自哪条记录、哪一楼；
+ * 被新值取代的旧说法留在「演变」里并标出有效范围。玩家锁定的句子在重新
+ * 汇编后不变。
+ */
+export function compileWikiPages(
+	store: StoryStore,
+	storyId: string,
+	nodeId: string | null = null,
+): WikiPage[] {
+	const anchor = requireAnchor(store, storyId, nodeId);
+	if (anchor === null) return [];
+	const edits = readEffectiveEdits(store, storyId, anchor, "wiki");
+	return buildWikiPages(store, storyId, anchor).map((page) =>
+		applyWikiEdits(page, edits),
+	);
+}
+
+/** 只重新汇编一页；页面的 id 不存在时返回 null。 */
+export function compileWikiPage(
+	store: StoryStore,
+	storyId: string,
+	pageId: string,
+	nodeId: string | null = null,
+): WikiPage | null {
+	return (
+		compileWikiPages(store, storyId, nodeId).find(
+			(page) => page.id === pageId,
+		) ?? null
+	);
+}
+
+export interface WikiStatementEdit {
+	readonly pageId: string;
+	readonly statementId: string;
+	readonly text?: string;
+	readonly locked?: boolean;
+	readonly disabled?: boolean;
+	/** 修改从哪一楼起生效；不给时是当前 head。 */
+	readonly nodeId?: string | null;
+}
+
+/**
+ * 改一句百科语句。只锁不改时，把当前这句话连同出处一起存下来，之后重新
+ * 汇编不会让它的内容被新记录改写。
+ */
+export function editWikiStatement(
+	store: StoryStore,
+	storyId: string,
+	input: WikiStatementEdit,
+): PlayerEdit {
+	const anchor = requireAnchor(store, storyId, input.nodeId ?? null);
+	if (anchor === null) throw new Error("故事还没有楼层，无法修改百科");
+	const target = `${input.pageId}|${input.statementId}`;
+	const current = readEffectiveEdits(store, storyId, anchor, "wiki").get(
+		target,
+	);
+	const currentValue = isJsonObject(current?.value) ? current.value : null;
+	const page = buildWikiPages(store, storyId, anchor).find(
+		(candidate) => candidate.id === input.pageId,
+	);
+	let section: string | null = null;
+	let base: WikiStatement | null = null;
+	for (const candidate of page?.sections ?? []) {
+		const statement = candidate.statements.find(
+			(item) => item.id === input.statementId,
+		);
+		if (statement === undefined) continue;
+		base = statement;
+		section = candidate.title;
+		break;
+	}
+	const explicitText = input.text !== undefined;
+	const text =
+		input.text?.trim() ??
+		(typeof currentValue?.text === "string" ? currentValue.text : base?.text);
+	if (text === undefined || text.length === 0) {
+		throw new Error("找不到要修改的百科语句");
+	}
+	const storedSection =
+		(typeof currentValue?.section === "string"
+			? currentValue.section
+			: section) ?? "现在";
+	const value = {
+		text,
+		source: explicitText
+			? "player"
+			: typeof currentValue?.source === "string"
+				? currentValue.source
+				: (base?.source ?? "auto"),
+		section: storedSection,
+		nodeId:
+			typeof currentValue?.nodeId === "string"
+				? currentValue.nodeId
+				: (base?.nodeId ?? null),
+		floorNo:
+			typeof currentValue?.floorNo === "number"
+				? currentValue.floorNo
+				: (base?.floorNo ?? null),
+		recordId:
+			typeof currentValue?.recordId === "string"
+				? currentValue.recordId
+				: (base?.recordId ?? null),
+		validFromFloor:
+			typeof currentValue?.validFromFloor === "number"
+				? currentValue.validFromFloor
+				: (base?.validFromFloor ?? null),
+		validUntilFloor:
+			typeof currentValue?.validUntilFloor === "number"
+				? currentValue.validUntilFloor
+				: (base?.validUntilFloor ?? null),
+	};
+	return store.savePlayerEdit({
+		storyId,
+		nodeId: anchor,
+		kind: "wiki",
+		target,
+		value,
+		locked: input.locked ?? current?.locked ?? explicitText,
+		disabled: input.disabled ?? current?.disabled ?? false,
+	});
 }
 
 /** 时间线：当前路径上每一场的摘要；玩家改过的摘要以修改为准。 */
@@ -540,9 +752,9 @@ export function readMemoryTimeline(
 }
 
 const USER_WILL_KIND_LABELS: Readonly<Record<string, string>> = {
-	correction: "你纠正过",
+	preference: "你的偏好",
 	boundary: "你的底线",
-	wish: "你想看的",
+	correction: "你纠正过",
 };
 
 /** 偏好：台账里的用户意志；停用的条目从台账移除，但留在修改表里可以恢复。 */

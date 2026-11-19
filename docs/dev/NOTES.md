@@ -68,6 +68,9 @@
 - 蓝图建议独立存放：生成只写 `blueprint_suggestions`，玩家接受一条才用 `acceptBlueprintSuggestion` 写一批。锁定过滤只走 `filterLockedBlueprintDiffs`。
 - 建议的标题 80 字、理由 500 字、补充说明 500 字；一次请求 1 到 5 条建议，每条最多 50 条修改。模型输出未知字段或形状错误整批拒绝。
 - 线的存储写法与导演手记一致：每个楼层一行、`diffs` 是 `set`/`delete` 数组、沿路径从根开始累加；同一楼层重复写入直接失败。倒计时的有效余量用 `directorLineRemaining`。
+- 规划对象的玩家修改都走 `player_edits`：剧情线与伏笔的 kind 是 `line`，本场目标是 `scene`。本场目标挂在当前场次开始的楼层上，读取时以当前楼层为路径锚点；换一场后旧的修改自动不再生效。
+- `saveDirectorLines` 拒绝改动玩家锁定的线，锁定后的章级规划只留下 `rejected` 记录，不再写入线；场记写本场目标时同样先用 `guardBackgroundWrite`，被挡下的内容只留作建议。
+- 导演动作输入只把当前场次的本场目标放在最新一楼；历史的楼层保留当时写下的那张卡。回滚剧情线或本场目标后，下一次 `readDirectorActionInput` 直接读到恢复的内容。
 - 八种动作的判定口径、优先级与常量写在 ADR-0143；`selectDirectorAction` 只接受内存输入，不读数据库、不调用模型。需要读场记、线与决策记录时用 `readDirectorActionInput`。
 - 推进档位是**单轮参数**，不写故事设置；`push` 只接受 `advance`、`quick`、`jump`，`null` 表示常规回合。
 - 章末清点记录只追加：同一楼层第二次写入直接失败，UPDATE 被触发器拒绝。写入前必须用 `assertChapterReviewMatchesLines` 对照当前路径。
@@ -102,6 +105,7 @@
 - 修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 的请求写进 HUMAN.md。
 - 不变量：I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I8 显示与 prompt 从原文派生，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖其他工作区包，I16–I18 插件约束。
 - 规划写法的阶段顺序由 `PLAN_TURN_STEPS` 决定：三个准备阶段、正文、可选复查；Trace 的 `plan.schedule` 记的就是它。角色意图每个在场角色单独一次调用，只带他自己知道的公开事件、自身状态与被告知的秘密，不要把全部角色的材料合进一次调用。复查是 `plan_review` 后台任务，结果写成兄弟楼层且不移动 head，玩家自己切换过去。
+- 提前备好是 `plan_prepare` 后台任务：`prepare` 开关打开时，在间隙对推进三档与当前楼层的每条候选行动各跑一遍准备阶段，结果按前一楼与输入存进故事值；命中时回合内只剩正文调用，自由输入时在回合内准备并把阶段进度写进 `turn.progress`。开关关掉后既不建任务，也不使用以前备下的结果。候选行动固定四条加一条场景变化，准备上限按五条算。
 - 故事图片：`story_media` 是唯一的图片索引，文件不放进数据库；封面无图时永远返回占位图。
 - e2e 的 `serve.mjs` 启动时清空 `.devloop/scratch/e2e/work`；Playwright 的 mobile 与 desktop 两个项目共用同一个数据库，测试标题必须带唯一 id。`serial.spec.ts` 用固定故事 `e2e-serial`。
 - 台账页只在选中楼层后渲染故事级区块；e2e 要显示立绘得先给故事补一层。

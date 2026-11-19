@@ -1,6 +1,8 @@
 import type {
+	BlueprintDiff,
 	BlueprintEntry,
 	BlueprintHiddenCounts,
+	BlueprintSource,
 	BlueprintSpoilerMode,
 	BlueprintSuggestion,
 	BlueprintSuggestionOperation,
@@ -351,4 +353,45 @@ export interface StoryBlueprintView {
 	readonly spoilers: BlueprintSpoilerMode;
 	readonly entries: readonly BlueprintEntry[];
 	readonly hidden: BlueprintHiddenCounts | null;
+}
+
+/**
+ * `POST /api/stories/:id/blueprint/edit` 的请求体：写一批修改，或回到某一版。
+ * `nodeId` 省略时写到当前 head。
+ */
+export type StoryBlueprintEditRequest =
+	| {
+			readonly nodeId?: string;
+			readonly diffs: readonly BlueprintDiff[];
+	  }
+	| {
+			readonly nodeId?: string;
+			readonly versionNodeId: string;
+			readonly versionSeq?: number;
+	  };
+
+/** 编辑之后的批次与这个楼层的蓝图。 */
+export interface StoryBlueprintEditResult {
+	readonly storyId: string;
+	readonly nodeId: string;
+	readonly record: StoryBlueprintRecord;
+	readonly entries: readonly BlueprintEntry[];
+}
+
+/** 修改历史里的一版；条目仍然由蓝图接口读取。 */
+export interface StoryBlueprintVersionSummary {
+	readonly nodeId: string;
+	readonly seq: number;
+	readonly source: BlueprintSource;
+	readonly createdAt: string;
+	/** 这一版改了几处。 */
+	readonly changes: number;
+}
+
+/** `GET /api/stories/:id/blueprint/versions`：当前路径上的修改历史。 */
+export interface StoryBlueprintVersionsView {
+	readonly storyId: string;
+	/** 读取所在的楼层；故事还没有楼层时为 null，此时没有版本。 */
+	readonly nodeId: string | null;
+	readonly versions: readonly StoryBlueprintVersionSummary[];
 }
