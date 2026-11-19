@@ -55,9 +55,12 @@ import {
 	type SetHeadRequest,
 	type SseEvent,
 	type StoryBlueprintDeviationView,
+	type StoryBlueprintEditRequest,
+	type StoryBlueprintEditResult,
 	type StoryBlueprintSuggestionCreateRequest,
 	type StoryBlueprintSuggestionCreateResult,
 	type StoryBlueprintSuggestionsView,
+	type StoryBlueprintVersionsView,
 	type StoryBlueprintView,
 	type StoryBookExport,
 	type StoryCluesView,
@@ -372,6 +375,29 @@ export class ApiClient {
 		return this.json<StoryBlueprintView>(
 			"GET",
 			`${storyPath(storyId)}/blueprint${queryText(query)}`,
+		);
+	}
+
+	async editStoryBlueprint(
+		storyId: string,
+		request: StoryBlueprintEditRequest,
+	): Promise<StoryBlueprintEditResult> {
+		return this.json<StoryBlueprintEditResult>(
+			"POST",
+			`${storyPath(storyId)}/blueprint/edit`,
+			request,
+		);
+	}
+
+	async getBlueprintVersions(
+		storyId: string,
+		nodeId?: string,
+	): Promise<StoryBlueprintVersionsView> {
+		const query = new URLSearchParams();
+		if (nodeId !== undefined) query.set("nodeId", nodeId);
+		return this.json<StoryBlueprintVersionsView>(
+			"GET",
+			`${storyPath(storyId)}/blueprint/versions${queryText(query)}`,
 		);
 	}
 

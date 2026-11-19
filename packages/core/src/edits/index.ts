@@ -15,6 +15,7 @@ export const PLAYER_EDIT_KINDS = [
 	"pref",
 	"lore",
 	"line",
+	"scene",
 	"outline",
 	"writing",
 	"card",

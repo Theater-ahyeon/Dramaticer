@@ -7,6 +7,7 @@ import {
 import { readEffectiveLore } from "../edits/index.js";
 import { normalizeEntityName } from "../entity.js";
 import { type JsonValue, isJsonObject } from "../json.js";
+import { readSceneGoal } from "../ledger/scene-goal.js";
 import {
 	type LlmClient,
 	type LlmMessage,
@@ -226,6 +227,7 @@ export async function runPlanPhases(
 		(entry) => !entry.constant,
 	);
 	const scene = store.getLatestSceneLogOnPath(anchorNodeId);
+	const sceneGoal = readSceneGoal(store, storyId, anchorNodeId);
 	const present = (scene?.present ?? []).slice(0, MAX_INTENT_CHARACTERS);
 	const sections: string[] = [];
 
@@ -303,8 +305,7 @@ export async function runPlanPhases(
 					.slice(0, 8)
 					.map((item) => `- ${item.item}：${show(item.value)}`);
 				const want =
-					scene?.sceneCard?.present.find((actor) => actor.who === name)?.want ??
-					null;
+					sceneGoal?.present.find((actor) => actor.who === name)?.want ?? null;
 				const material = [
 					`【${name}】`,
 					want === null ? "" : `这一场想要：${want}`,
@@ -389,8 +390,16 @@ export function isPlanWritingMode(store: StoryStore, storyId: string): boolean {
 /** 后台任务类型：回复落定后把推进三档与每个行动选项的准备阶段先跑完。 */
 export const PLAN_PREPARE_JOB_KIND = "plan_prepare";
 
-/** 一次最多为几个行动选项提前准备。 */
-const MAX_PREPARED_ACTIONS = 4;
+/** 「提前备好」开关：关掉时既不备，也不吃以前备下的结果。 */
+export function isPlanPrepareEnabled(
+	store: StoryStore,
+	storyId: string,
+): boolean {
+	return readStoryFeatureState(store, storyId).values.prepare === true;
+}
+
+/** 一次最多为几个行动选项提前准备：候选固定的四条行动加一条场景变化。 */
+const MAX_PREPARED_ACTIONS = 5;
 
 function prepareAnchor(store: StoryStore, storyId: string): string | null {
 	const head = store.getHead(storyId);
@@ -403,8 +412,7 @@ export function planPrepareNeedsRun(
 	storyId: string,
 ): boolean {
 	if (!isPlanWritingMode(store, storyId)) return false;
-	if (readStoryFeatureState(store, storyId).values.prepare !== true)
-		return false;
+	if (!isPlanPrepareEnabled(store, storyId)) return false;
 	const anchor = prepareAnchor(store, storyId);
 	if (anchor === null) return false;
 	return store.getStoryValue(storyId, preparedKey(anchor)) === null;
@@ -415,6 +423,7 @@ export function createPlanPrepareHandler(
 	options: { readonly client?: LlmClient } = {},
 ): BackgroundJobHandler {
 	return async ({ store, client, job, signal }) => {
+		if (!isPlanPrepareEnabled(store, job.storyId)) return;
 		const anchor = prepareAnchor(store, job.storyId);
 		if (anchor === null) return;
 		if (store.getStoryValue(job.storyId, preparedKey(anchor)) !== null) return;
