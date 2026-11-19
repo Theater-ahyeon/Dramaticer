@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { ContextItemSource } from "../context/assembler.js";
 import {
 	type PlayerEdit,
 	editState,
@@ -851,19 +852,24 @@ export function writeMemoryPref(
 	});
 }
 
-/** 上下文里的一类：它占了多少 token，里面每一条来自哪里、去哪里改。 */
+/** 上下文里的一条内容：多少 token，来自哪个对象，去哪里改。 */
+export interface ContextBreakdownItem {
+	readonly label: string;
+	readonly tokens: number;
+	readonly status: string;
+	/** 来源对象；能直接定位到设定、记录、百科页或状态项。 */
+	readonly source: ContextItemSource;
+	/** 去哪一页修改，以及那一页里的哪个分页或对象。 */
+	readonly page: "memory" | "lore" | "play" | "outline" | "prefs";
+	readonly tab: string | null;
+}
+
+/** 上下文里的一类：它占了多少 token，里面有哪些内容。 */
 export interface ContextBreakdownCategory {
 	readonly id: string;
 	readonly label: string;
 	readonly tokens: number;
-	readonly items: readonly {
-		readonly label: string;
-		readonly tokens: number;
-		readonly status: string;
-		/** 去哪一页修改，以及那一页里的哪个分页或对象。 */
-		readonly page: "memory" | "lore" | "play" | "outline" | "prefs";
-		readonly tab: string | null;
-	}[];
+	readonly items: readonly ContextBreakdownItem[];
 }
 
 const CONTEXT_CATEGORIES: readonly {
@@ -896,9 +902,16 @@ const CONTEXT_CATEGORIES: readonly {
 		tab: "state",
 	},
 	{
+		id: "record",
+		label: "记录",
+		slots: ["memory"],
+		page: "memory",
+		tab: "wiki",
+	},
+	{
 		id: "wiki",
 		label: "百科",
-		slots: ["memory", "profile", "reunion"],
+		slots: ["profile", "reunion"],
 		page: "memory",
 		tab: "wiki",
 	},
@@ -918,6 +931,13 @@ const CONTEXT_CATEGORIES: readonly {
 	},
 ];
 
+interface ContextBreakdownBucket {
+	id: string;
+	label: string;
+	tokens: number;
+	items: ContextBreakdownItem[];
+}
+
 /** 某一楼生成时模型实际看到的内容，按类别给出大小与每一条的来源。 */
 export function readContextBreakdown(
 	store: StoryStore,
@@ -930,12 +950,7 @@ export function readContextBreakdown(
 } | null {
 	const trace = store.getTurnTrace(nodeId);
 	if (trace === null) return null;
-	const categories = new Map<
-		string,
-		ContextBreakdownCategory & {
-			items: ContextBreakdownCategory["items"][number][];
-		}
-	>();
+	const categories = new Map<string, ContextBreakdownBucket>();
 	const other = {
 		id: "other",
 		label: "写作要求与其他",
@@ -953,15 +968,32 @@ export function readContextBreakdown(
 			bucket = { id: category.id, label: category.label, tokens: 0, items: [] };
 			categories.set(category.id, bucket);
 		}
-		(bucket as { tokens: number }).tokens += entry.tokens;
-		bucket.items.push({
-			label:
-				entry.slot === null ? entry.source : `${entry.slot} · ${entry.source}`,
-			tokens: entry.tokens,
-			status: entry.status,
-			page: category.page,
-			tab: category.tab,
-		});
+		bucket.tokens += entry.tokens;
+		const items = entry.items ?? [];
+		if (items.length === 0) {
+			bucket.items.push({
+				label:
+					entry.slot === null
+						? entry.source
+						: `${entry.slot} · ${entry.source}`,
+				tokens: entry.tokens,
+				status: entry.status,
+				page: category.page,
+				tab: category.tab,
+				source: { kind: "segment", segmentId: entry.segmentId },
+			});
+			continue;
+		}
+		for (const item of items) {
+			bucket.items.push({
+				label: item.label,
+				tokens: item.tokens,
+				status: entry.status,
+				page: category.page,
+				tab: category.tab,
+				source: item.source,
+			});
+		}
 	}
 	return {
 		nodeId,

@@ -48,12 +48,48 @@ export interface ContextSlotContent {
 	readonly suffix?: string;
 	/** 写进 Trace 的来源描述，例如"世界书：2 条常驻、3 条检索"。 */
 	readonly source: string;
+	/** 这一类内容逐条的来源对象；没有逐条来源的槽位不产生这个字段。 */
+	readonly items?: readonly ContextTraceItem[];
 	/** 历史槽位的块视图统计；其它槽位不产生这个字段。 */
 	readonly history?: HistoryViewTrace;
 	/** 记忆检索的每一路名次、融合结果与实际注入的楼层。 */
 	readonly retrieval?: ContextRetrievalTrace;
 	/** 上下文包需要复核的引用；没有引用的槽位不产生这个字段。 */
 	readonly references?: ContextSlotReferences;
+}
+
+/**
+ * 上下文里一条内容的来源对象。`id` 能直接定位到设定、记录、百科页或状态项；
+ * 原文楼、场次与摘要各有自己的定位方式。
+ */
+export type ContextItemSource =
+	| { readonly kind: "lore"; readonly id: string; readonly name: string }
+	| {
+			readonly kind: "record";
+			readonly ids: readonly string[];
+			readonly nodeId: string;
+			readonly floorNo: number;
+	  }
+	| { readonly kind: "wiki"; readonly id: string; readonly name: string }
+	| { readonly kind: "state"; readonly target: string; readonly label: string }
+	| {
+			readonly kind: "floor";
+			readonly nodeId: string;
+			readonly floorNo: number;
+	  }
+	| { readonly kind: "scene"; readonly nodeId: string }
+	| { readonly kind: "summary"; readonly id: string }
+	| { readonly kind: "pref"; readonly id: string }
+	| { readonly kind: "card"; readonly id: "character" | "persona" }
+	| { readonly kind: "outline"; readonly id: string }
+	| { readonly kind: "slot"; readonly slot: ContextSlotName }
+	| { readonly kind: "segment"; readonly segmentId: string };
+
+/** 上下文里一条可单独定位的内容；tokens 由槽位提供者估算。 */
+export interface ContextTraceItem {
+	readonly label: string;
+	readonly tokens: number;
+	readonly source: ContextItemSource;
 }
 
 /** 一次注入的范围：父段只包含楼层的一部分，整楼是整层原文。 */
@@ -123,6 +159,8 @@ export interface ContextTraceEntry {
 	readonly priority: number;
 	readonly tokens: number;
 	readonly status: ContextTraceStatus;
+	/** 这一片段里逐条内容的来源对象；旧 Trace 没有这个字段。 */
+	readonly items?: readonly ContextTraceItem[];
 	/** suffix 实际拼接到最后一条 user 消息时记录；没有玩家消息时槽位记为 missing-slot。 */
 	readonly appendedTo?: "last-user";
 	/** 历史槽位生效的块视图策略与省略量；没有省略时 omitted 为空。 */
@@ -181,6 +219,7 @@ interface ResolvedSegment {
 	readonly history?: HistoryViewTrace;
 	readonly retrieval?: ContextRetrievalTrace;
 	readonly references?: ContextSlotReferences;
+	readonly items?: readonly ContextTraceItem[];
 	/** 槽位提供者经过内核注册时的耗时记录；直接构造的提供者没有。 */
 	readonly hook?: TurnHookTraceEntry;
 }
@@ -303,6 +342,7 @@ export async function assembleContext(
 				: {}),
 			...(item.history === undefined ? {} : { history: item.history }),
 			...(item.retrieval === undefined ? {} : { retrieval: item.retrieval }),
+			...(item.items === undefined ? {} : { items: item.items }),
 		});
 		if (status === "included") {
 			segments.push({
@@ -427,6 +467,7 @@ async function resolveSegment(
 		...(content.references === undefined
 			? {}
 			: { references: content.references }),
+		...(content.items === undefined ? {} : { items: content.items }),
 	};
 }
 
@@ -453,6 +494,26 @@ function assertSlotContent(
 	if (content.suffix !== undefined) {
 		if (typeof content.suffix !== "string" || content.suffix.length === 0) {
 			throw new Error(`槽位 ${slot} 的 suffix 必须是非空字符串`);
+		}
+	}
+	if (content.items !== undefined) {
+		if (!Array.isArray(content.items)) {
+			throw new Error(`槽位 ${slot} 的 items 必须是数组`);
+		}
+		for (const item of content.items) {
+			if (typeof item.label !== "string" || item.label.length === 0) {
+				throw new Error(`槽位 ${slot} 的 items.label 必须是非空字符串`);
+			}
+			if (
+				typeof item.tokens !== "number" ||
+				!Number.isFinite(item.tokens) ||
+				item.tokens < 0
+			) {
+				throw new Error(`槽位 ${slot} 的 items.tokens 必须是非负有限数字`);
+			}
+			if (typeof item.source?.kind !== "string") {
+				throw new Error(`槽位 ${slot} 的 items.source 必须带 kind`);
+			}
 		}
 	}
 	if (content.references !== undefined) {
