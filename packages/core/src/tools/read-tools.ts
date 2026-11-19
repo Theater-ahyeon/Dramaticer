@@ -1,5 +1,6 @@
 import { parseBlocks } from "../blocks/parser.js";
 import { renderContextView } from "../blocks/view.js";
+import type { TurnDraftController } from "../chat/draft.js";
 import type { TurnNoteController } from "../chat/notes.js";
 import {
 	applyDirectorNoteDiffs,
@@ -208,6 +209,8 @@ export interface ReadToolContext {
 	readonly viewpoint?: string | null;
 	/** 当前运行的待提交手记修改；深回合的 note_read 用它显示未提交内容。 */
 	readonly notes?: TurnNoteController | null;
+	/** 当前运行的草稿；深回合的文件工具读它、改它。 */
+	readonly draft?: TurnDraftController | null;
 }
 
 /**

@@ -124,6 +124,7 @@
 - web 源码不能 import `@dramaticer/core` 的运行时值（会把 `better-sqlite3` 与 `node:*` 打进前端包导致整页白屏），类型导入可以；助手类型从 `@dramaticer/protocol` 取。
 - 上下文排布的设置只对内置默认模板生效；模板表单的 `SLOT_CHOICES` 必须覆盖 `CONTEXT_SLOT_NAMES` 的全部槽位。
 - 移动端故事导航是固定 10 列栅格（聊天、导入、体检、分支、台账、连载、导演、生图、设置、渠道）；新增 tab 时同步改 `styles.css` 的 `repeat(10, …)` 与 `StoryPage` 的 `TABS`。
+- 深度的故事数据文件树由 `tools/workspace-tools.ts` 从存储现算，故事文件只读；只有 `草稿.md` 能写与打补丁。新增文件要同时出现在 `listWorkspacePaths` 与 `readWorkspaceFile`，路径改动要同步 `web/src/chat/deep-turn.ts` 的工具文字。
 
 ## 导演（2026-11-15 起）
 

@@ -40,6 +40,15 @@ import {
 	executeRuleCheckTool,
 } from "../tools/rule-tools.js";
 import {
+	FILE_PATCH_TOOL_NAME,
+	FILE_WRITE_TOOL_NAME,
+	executeWorkspacePatchTool,
+	executeWorkspaceReadTool,
+	executeWorkspaceWriteTool,
+	isWorkspaceReadToolName,
+	workspaceContextOf,
+} from "../tools/workspace-tools.js";
+import {
 	LEDGER_WRITE_TOOL_NAME,
 	executeLedgerWriteTool,
 } from "../tools/write-tools.js";
@@ -708,6 +717,18 @@ async function runTool(
 				const content = formatToolExecuteResult(await definition.execute(args));
 				return { content, ok: true, error: null };
 			}
+			if (isWorkspaceReadToolName(definition.name)) {
+				const outcome = executeWorkspaceReadTool(
+					definition.name,
+					args,
+					workspaceContextOf(context),
+				);
+				return {
+					content: outcome.content,
+					ok: outcome.ok,
+					error: outcome.error,
+				};
+			}
 			if (!isReadToolName(definition.name)) {
 				throw new Error(
 					`工具 ${definition.name} 声明为只读，但没有对应的读取实现`,
@@ -767,6 +788,12 @@ async function runTool(
 			}
 			if (definition.name === COMMIT_DRAFT_TOOL_NAME) {
 				return executeDraftCommitTool(args, draft);
+			}
+			if (definition.name === FILE_WRITE_TOOL_NAME) {
+				return executeWorkspaceWriteTool(args, draft);
+			}
+			if (definition.name === FILE_PATCH_TOOL_NAME) {
+				return executeWorkspacePatchTool(args, draft);
 			}
 			throw new Error(
 				`工具 ${definition.name} 声明为控制工具，但没有对应的运行句柄实现`,
