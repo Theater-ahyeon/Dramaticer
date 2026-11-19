@@ -10,8 +10,6 @@ import {
 	travel,
 } from "./stage";
 import { TLink, ToastProvider } from "./ui";
-import "@fontsource-variable/noto-serif-sc/wght.css";
-import "@fontsource/zcool-xiaowei/index.css";
 import "./v4.css";
 
 const LAST_STORY_KEY = "dramaticer.lastStory";

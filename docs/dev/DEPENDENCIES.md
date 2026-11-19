@@ -39,10 +39,6 @@
 | `react` | `packages/web` | runtime | 界面组件（DESIGN §13） |
 | `react-dom` | `packages/web` | runtime | 浏览器渲染 |
 | `react-router-dom` | `packages/web` | runtime | 页面路由 |
-| `three` | `packages/web` | runtime | 新界面的三维背景（雾港、灯塔、潮水）；单独分包，按需加载（ADR-0160） |
-| `@types/three` | `packages/web` | dev | `three` 的类型声明 |
-| `@fontsource-variable/noto-serif-sc` | `packages/web` | runtime | 正文用的思源宋体，随应用自带，不依赖外部字体服务（ADR-0160） |
-| `@fontsource/zcool-xiaowei` | `packages/web` | runtime | 标题用的站酷小薇体，随应用自带（ADR-0160） |
 | `vite` | `packages/web` | dev | 开发服务器与前端构建（DESIGN §13） |
 | `@vitejs/plugin-react` | `packages/web` | dev | JSX 转换 |
 | `@types/react` | `packages/web` | dev | React 类型 |

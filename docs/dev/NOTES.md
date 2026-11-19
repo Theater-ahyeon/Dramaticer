@@ -151,6 +151,8 @@
 - 重逢注入、知情标注、档案归档的开关需要故事有实体能力；测试夹具要 `upsertEntity` 一个实体，否则这些开关取关闭值。
 
 ## 新界面的视觉层（2026-11-16 起）
+
+- 2026-11-19 起（ADR-0162、`ui-lite`）：没有 three.js 场景、指针光、卡片倾斜与开场动画，也不打包字体；`stage.pulse` / `setWriting` 保留为空操作级别的接口，页面可以照常调用。下面关于三维背景的旧条目已过时，以 `.scratch/ui-lite/spec.md` 为准。
 - 页面只通过 `v4/stage.ts` 跟背景打交道：`stage.pulse()` 让海面荡一圈光，`stage.setWriting()` 表示正在写。背景（`scene.ts`）读这些状态，不反过来依赖页面。
 - 站内跳转用 `ui.tsx` 的 `TLink` 或 `travel()` 才有转场；普通 `Link` 也能用，只是直接换页。路由更新走 React 的 transition，所以 `travel` 要等 `Shell` 的 layout effect 调 `routeCommitted()` 才让浏览器拍新画面。
 - 样式的先后顺序是定死的：`main.tsx` 先引 `styles.css`，再引 `App`（带进 `v4.css`）。`v4.css` 里有全局的 `button`、`input` 基础样式和工具页的覆盖规则，顺序反了旧规则会盖回来。颜色变量写在 `html:root` 上，旧页面的 `--surface`、`--text` 等也在这里接到新变量。

@@ -2653,3 +2653,9 @@
 - **背景**：架构审查发现新故事的默认设置没有用上 v4：`directorOrganization` 默认 `mechanisms`，director-yield 的改动只在 `lines` 里生效；`sceneLogEnabled` 默认关，场次、归档、百科与秘密都不产生；功能页 18 个开关里运行时只读 3 个，页面显示「场记 开」而后台没跑。DESIGN 叠了 v2–v4 三层，原则 6 与 I6 自相矛盾。人类要求先做完整 MVP 再慢慢优化，并允许大改。
 - **决定**：新故事默认 `directorOrganization: lines`；自动记录与场次归档跟随功能页的「场记」「档案归档」，旧设置 `sceneLogEnabled` 保留为强制打开；已有故事保存的值不迁移。`docs/DESIGN.md` 重写为只描述现状的 v1.0（章节编号不变），旧稿归档到 `docs/archive/DESIGN-v0.4.md`，新增 MVP 定义（§15.2）与北极星指标（§14.1）。工程整理进 `.scratch/refactor/`。
 - **影响**：标准档的新故事每楼多一次后台调用（场记），有实体时每场多一次归档。X2 的结论（ADR-0134）只对 `mechanisms` 与 `bits` 两者有效，`lines` 是 v4 W4 的实现，尚未做同口径对照。AGENTS.md 的文档地图需要人类同步（HUMAN-23）。
+
+## ADR-0162 前端减重：移除三维背景与打包字体（2026-11-19）
+
+- **背景**：人类要求轻量、美观的前端。构建产物里 three.js 背景分包 558 KB、187 个字体分片约 14 MB、CSS 342 KB；指针光、卡片倾斜与每次打开的开场动画在手机上掉帧，也和长时间阅读冲突。
+- **决定**：移除 `three`、`@types/three`、`@fontsource-variable/noto-serif-sc`、`@fontsource/zcool-xiaowei`（部分取代 ADR-0160）。背景改为纯 CSS 静态底色；字体只用本机字体栈；保留 View Transitions 页面转场与 `stage` 的公开接口。视觉重做按 `.scratch/ui-lite/` 继续。
+- **影响**：前端产物从 14 MB 以上降到约 0.7 MB；CSS 99 KB（gzip 20 KB）。没装思源宋体的电脑上正文退回宋体。
