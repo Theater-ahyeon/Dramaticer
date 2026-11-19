@@ -89,12 +89,12 @@
 - 长任务脚本只构建 `st-compat`，不会重建 `packages/core/dist`。改过 core 之后必须先跑 `pnpm run typecheck`。
 - ST 的原始安装目录只读：不得修改，不得复制出 `secrets.json`、`settings.json`、`cookie-secret.txt`；沙箱里不得配置真实模型端点（I14）。
 - 测试文件里不能出现 I10 拦截的地址：只允许 `localhost`、`127.0.0.1`、`example.com`/`example.org`/`example.invalid` 作为主机名，不能出现 `eval-private` 字面量（用 `stBenchPaths(repoRoot).privateRoot`）。
-- Windows 上并行跑测试会显著变慢；`vitest.config.ts` 默认 `testTimeout` 60 秒、`maxWorkers` 8；`afterEach` 删除临时目录用 `rmSync` 时必须带 `maxRetries` 与 `retryDelay`。
+- Windows 上并行跑测试会显著变慢；`vitest.config.ts` 默认 `testTimeout` 300 秒、`maxWorkers` 8，并排除 `**/.worktrees/**`；`afterEach` 删除临时目录用 `rmSync` 时必须带 `maxRetries` 与 `retryDelay`。
 - 整轮并行门禁会撞上 vitest 的 `[vitest-worker]: Timeout calling "onTaskUpdate"`：先看是不是某个用例单文件耗时过长，不要连续无改动地跑整仓测试。
 - `packages/st-compat` 与 `packages/server` 的测试通过 `@dramaticer/core` 的 `dist` 解析 core；只跑这些包的测试前先执行 `pnpm run typecheck`。
 - `.devloop/scratch/` 下的脚本要用 `createRequire` 指向 `packages/st-compat/package.json` 才能加载 `better-sqlite3`；`.devloop/` 已被 git 忽略。
 - EJS 沙箱的时间预算按墙钟计；测试不要用接近 worker 启动耗时的预算。
-- `pnpm exec biome check --write <文件>` 处理格式；不要手写格式。新建文件用 LF 写入后 biome 会改成仓库的 CRLF，提交前必须跑一次。
+- 换行统一用 LF：`.gitattributes` 声明 `* text=auto eol=lf`，biome 的默认换行也是 LF。新建文件用 LF 写入，提交前跑一次 `pnpm exec biome check --write <文件>`。
 - 修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 的请求写进 HUMAN.md。
 - 不变量：I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I8 显示与 prompt 从原文派生，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖其他工作区包，I16–I18 插件约束。
 - 规划写法的阶段顺序由 `PLAN_TURN_STEPS` 决定：三个准备阶段、正文、可选复查；Trace 的 `plan.schedule` 记的就是它。角色意图每个在场角色单独一次调用，只带他自己知道的公开事件、自身状态与被告知的秘密，不要把全部角色的材料合进一次调用。复查是 `plan_review` 后台任务，结果写成兄弟楼层且不移动 head，玩家自己切换过去。
