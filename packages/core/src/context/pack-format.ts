@@ -245,6 +245,90 @@ function assertTraceEntry(value: unknown, label: string): void {
 	) {
 		throw new Error(`${label}.status 不合法：${String(value.status)}`);
 	}
+	if (value.items !== undefined) {
+		assertTraceItems(value.items, `${label}.items`);
+	}
+}
+
+function assertTraceItems(value: unknown, label: string): void {
+	if (!Array.isArray(value)) {
+		throw new Error(`${label} 必须是数组`);
+	}
+	value.forEach((item, index) => {
+		const itemLabel = `${label}[${index}]`;
+		if (!isJsonObject(item)) {
+			throw new Error(`${itemLabel} 必须是对象`);
+		}
+		if (typeof item.label !== "string" || item.label.length === 0) {
+			throw new Error(`${itemLabel}.label 必须是非空字符串`);
+		}
+		if (
+			typeof item.tokens !== "number" ||
+			!Number.isFinite(item.tokens) ||
+			item.tokens < 0
+		) {
+			throw new Error(`${itemLabel}.tokens 必须是非负有限数字`);
+		}
+		const source = item.source;
+		if (!isJsonObject(source) || typeof source.kind !== "string") {
+			throw new Error(`${itemLabel}.source 必须带 kind`);
+		}
+		const sourceLabel = `${itemLabel}.source`;
+		switch (source.kind) {
+			case "record": {
+				const ids = source.ids;
+				assertStringArray(ids, `${sourceLabel}.ids`);
+				if (!Array.isArray(ids) || ids.length === 0) {
+					throw new Error(`${sourceLabel}.ids 不能为空`);
+				}
+				assertNonEmptyStringField(source.nodeId, `${sourceLabel}.nodeId`);
+				assertNumberField(source.floorNo, `${sourceLabel}.floorNo`);
+				return;
+			}
+			case "lore":
+			case "wiki":
+				assertNonEmptyStringField(source.id, `${sourceLabel}.id`);
+				assertNonEmptyStringField(source.name, `${sourceLabel}.name`);
+				return;
+			case "state":
+				assertNonEmptyStringField(source.target, `${sourceLabel}.target`);
+				assertNonEmptyStringField(source.label, `${sourceLabel}.label`);
+				return;
+			case "floor":
+				assertNonEmptyStringField(source.nodeId, `${sourceLabel}.nodeId`);
+				assertNumberField(source.floorNo, `${sourceLabel}.floorNo`);
+				return;
+			case "scene":
+				assertNonEmptyStringField(source.nodeId, `${sourceLabel}.nodeId`);
+				return;
+			case "segment":
+				assertNonEmptyStringField(source.segmentId, `${sourceLabel}.segmentId`);
+				return;
+			case "slot":
+				assertNonEmptyStringField(source.slot, `${sourceLabel}.slot`);
+				return;
+			case "summary":
+			case "pref":
+			case "card":
+			case "outline":
+				assertNonEmptyStringField(source.id, `${sourceLabel}.id`);
+				return;
+			default:
+				throw new Error(`${sourceLabel}.kind 不合法：${source.kind}`);
+		}
+	});
+}
+
+function assertNonEmptyStringField(value: unknown, label: string): void {
+	if (typeof value !== "string" || value.length === 0) {
+		throw new Error(`${label} 必须是非空字符串`);
+	}
+}
+
+function assertNumberField(value: unknown, label: string): void {
+	if (typeof value !== "number" || !Number.isFinite(value)) {
+		throw new Error(`${label} 必须是有限数字`);
+	}
 }
 
 function assertInjectedReferences(value: unknown, label: string): void {

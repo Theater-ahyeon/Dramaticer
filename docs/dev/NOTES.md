@@ -87,6 +87,7 @@
 - 场次划分只数助手楼层；场次归档以结束楼层为主键。`readCharacterProfiles` 的出处是场次，不是单个楼层。
 - `profile` 槽位的在场名单取最近一条场记，没场记时取最后一场归档；重逢注入的「最近窗口」只看当前楼层之前的原文。
 - 记忆槽位的实体路由由玩家本轮原文与在场者名字一起驱动；命中的记录按故事时间排序，新旧说法都保留。`ContextSlotRequest.budgetTokens` 放得下整条原文窗口时（不超过默认历史窗口）不检索，避免重复注入。
+- 上下文 Trace 的 `context.entries[].items` 记录逐条来源对象；新增槽位提供者要同时给 `items`，否则本轮上下文只能定位到片段。旧 Trace 没有 `items`，读取时回落到片段来源。
 - 重逢档案的原文摘录只取 `memory_event_quotes` 里与候选实体有关、带逐字出处的记录；没有出处的记录不补摘录。
 - 玩家直接编辑台账：正文旁的变更卡走 `createPlayerLedgerChangeCard`；记忆页的即时修改走 `editState`，两者都写来源 `player` 的台账 diff。
 - 玩家的记忆修改只追加到 `player_edits`，按 `node_id` 沿当前路径生效；状态与偏好另写一条来源 `player` 的台账 diff，后台再写向锁定路径时由 `appendStateDiffs` 丢弃并记到 `memory_rejections`。
@@ -126,6 +127,7 @@
 - web 源码不能 import `@dramaticer/core` 的运行时值（会把 `better-sqlite3` 与 `node:*` 打进前端包导致整页白屏），类型导入可以；助手类型从 `@dramaticer/protocol` 取。
 - 上下文排布的设置只对内置默认模板生效；模板表单的 `SLOT_CHOICES` 必须覆盖 `CONTEXT_SLOT_NAMES` 的全部槽位。
 - 移动端故事导航是固定 10 列栅格（聊天、导入、体检、分支、台账、连载、导演、生图、设置、渠道）；新增 tab 时同步改 `styles.css` 的 `repeat(10, …)` 与 `StoryPage` 的 `TABS`。
+- 深度的故事数据文件树由 `tools/workspace-tools.ts` 从存储现算，故事文件只读；只有 `草稿.md` 能写与打补丁。新增文件要同时出现在 `listWorkspacePaths` 与 `readWorkspaceFile`，路径改动要同步 `web/src/chat/deep-turn.ts` 的工具文字。
 
 ## 导演（2026-11-15 起）
 
@@ -134,6 +136,7 @@
 - 让位的动作选择返回空指令；引擎写决策记录（`signals.action` 为 `yield`），不返回建议。
 - 章末清点只把上一次清点之后、玩家自己写的自由输入当作这一章的变化；推进类固定说法不算。这些变化写进提示词，模型据此删线、改写 want 与 obstacle，或把伏笔声明为 retire。
 - 线可以带 `mustInterrupt: true`：玩家自由输入时这条线倒计时到点会盖过让位，决策信号带 `interrupt`；每场只允许一次，计数从当前路径往回数到上一场结束（`readDirectorActionInput` 的 `interruptedThisScene`）。
+- 撤回导演安排（`undoDirectorArrangement`）在同一个事务里静音那条线，并写一条 `avoid-line` 的长期偏好；重复撤回不会重复写同一句偏好。恢复用 `unmuteDirectorLine`，之后这条线重新参与选择。干扰统计只数 swipe 偏好里的「没听我的」「别推这条线」，按被放弃的回复上有没有决策记录分成导演开、关两组。
 
 ## 新界面的视觉层（2026-11-16 起）
 - 页面只通过 `v4/stage.ts` 跟背景打交道：`stage.pulse()` 让海面荡一圈光，`stage.setWriting()` 表示正在写。背景（`scene.ts`）读这些状态，不反过来依赖页面。

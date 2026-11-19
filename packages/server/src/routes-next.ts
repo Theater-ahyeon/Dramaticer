@@ -4,10 +4,12 @@ import {
 	countOpenPromises,
 	isDirectorActionKind,
 	isJsonObject,
+	readDirectorArrangementLineId,
 	readDirectorInterferenceStats,
 	readEffectiveEdits,
 	readPinnedLineIds,
 	readSceneSegments,
+	undoDirectorArrangement,
 } from "@dramaticer/core";
 import { HttpError, readJsonBody, sendJson } from "./http.js";
 import { handleCardRoute } from "./routes-card.js";
@@ -89,16 +91,20 @@ export async function handleNextStoryRoute(
 				throw new HttpError(404, "not_found", `楼层节点不存在：${nodeId}`);
 			}
 			// 决策记在玩家楼层上；界面传回复楼层时往上找一层。
-			const decision =
-				options.store.getDirectorDecision(nodeId) ??
-				(node.parentId === null
-					? null
-					: options.store.getDirectorDecision(node.parentId));
-			const lineId = decision?.signals.lineId;
-			if (typeof lineId !== "string" || lineId.length === 0) {
+			const lineId = readDirectorArrangementLineId(
+				options.store,
+				storyId,
+				nodeId,
+			);
+			if (lineId === null) {
 				throw bad("nodeId", "这一楼的导演安排没有对应的剧情线，无法撤回");
 			}
-			options.store.muteDirectorLine(storyId, lineId, nodeId);
+			await undoDirectorArrangement({
+				store: options.store,
+				storyId,
+				nodeId,
+				lineId,
+			});
 			sendJson(res, 200, {
 				...directorLinesView(options, storyId),
 				mutedLineId: lineId,

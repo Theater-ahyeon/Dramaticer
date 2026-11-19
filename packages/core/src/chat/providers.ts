@@ -9,8 +9,10 @@ import {
 	readWritingBlueprintSummary,
 } from "../blueprint/summary.js";
 import type {
+	ContextItemSource,
 	ContextSlotContent,
 	ContextSlotProvider,
+	ContextTraceItem,
 	RetrievalInjectionTrace,
 } from "../context/assembler.js";
 import type { ContextMessage } from "../context/template.js";
@@ -33,7 +35,7 @@ import {
 } from "../director/types.js";
 import { readEffectiveLore } from "../edits/index.js";
 import { normalizeEntityName } from "../entity.js";
-import { isJsonObject } from "../json.js";
+import { type JsonObject, type JsonValue, isJsonObject } from "../json.js";
 import {
 	CHARACTER_PROFILE_FIELD_LABELS,
 	type CharacterProfile,
@@ -86,6 +88,44 @@ export interface HistorySlotProviderOptions {
 
 export const DEFAULT_HISTORY_LIMIT = 20;
 
+function contextItem(
+	label: string,
+	tokens: number,
+	source: ContextItemSource,
+): ContextTraceItem {
+	return { label, tokens, source };
+}
+
+/** 状态槽位注入的是台账快照；逐条来源按叶子路径拆开。 */
+function stateItems(
+	state: JsonObject,
+	estimator: TokenEstimator,
+): ContextTraceItem[] {
+	const items: ContextTraceItem[] = [];
+	const walk = (value: JsonValue, path: readonly string[]): void => {
+		const namespace = path[0] ?? "";
+		if (namespace === "userWill") return;
+		if (isJsonObject(value)) {
+			for (const [key, child] of Object.entries(value)) {
+				walk(child as JsonValue, [...path, key]);
+			}
+			return;
+		}
+		if (path.length === 0) return;
+		const label = path.slice(1).join(" · ") || path[0] || "";
+		const text = `${label}：${JSON.stringify(value)}`;
+		items.push(
+			contextItem(label, estimator(text), {
+				kind: "state",
+				target: JSON.stringify(path),
+				label,
+			}),
+		);
+	};
+	walk(state as JsonValue, []);
+	return items;
+}
+
 /** 把固定的消息集合包装成槽位提供者，例如角色卡生成的系统提示词。 */
 export function createStaticSlotProvider(
 	messages: readonly ContextMessage[],
@@ -120,6 +160,7 @@ export function createHistorySlotProvider(
 	if (!Number.isInteger(limit) || limit < 1) {
 		throw new Error("历史槽位的楼数上限必须是正整数");
 	}
+	const estimator = options.estimator ?? createTokenEstimator();
 	return {
 		packKey: JSON.stringify({
 			limit,
@@ -129,6 +170,9 @@ export function createHistorySlotProvider(
 		provide(request): ContextSlotContent | null {
 			if (request.nodeId === null) return null;
 			const path = store.getPathToNode(request.nodeId);
+			const positions = new Map(
+				path.map((node, index) => [node.id, index + 1] as const),
+			);
 			const nodes = path.slice(-limit);
 			const view = renderHistoryView(
 				nodes.map((node, index) => ({
@@ -142,16 +186,26 @@ export function createHistorySlotProvider(
 				},
 			);
 			const messages: ContextMessage[] = [];
+			const items: ContextTraceItem[] = [];
 			nodes.forEach((node, index) => {
 				const text = view.texts[index] ?? "";
 				if (text.trim().length === 0) return;
 				messages.push({ role: node.role, content: text });
+				const floorNo = positions.get(node.id) ?? 0;
+				items.push(
+					contextItem(`第 ${floorNo} 楼`, estimator(text), {
+						kind: "floor",
+						nodeId: node.id,
+						floorNo,
+					}),
+				);
 			});
 			if (messages.length === 0) return null;
 			return {
 				messages,
 				source: `history:最近 ${messages.length} 楼`,
 				history: view.trace,
+				items,
 			};
 		},
 	};
@@ -171,20 +225,34 @@ export function createRawHistorySlotProvider(
 	if (!Number.isInteger(limit) || limit < 1) {
 		throw new Error("历史槽位的楼数上限必须是正整数");
 	}
+	const estimator = createTokenEstimator();
 	return {
 		packKey: `raw-history:${limit}`,
 		provide(request): ContextSlotContent | null {
 			if (request.nodeId === null) return null;
 			const path = store.getPathToNode(request.nodeId);
+			const positions = new Map(
+				path.map((node, index) => [node.id, index + 1] as const),
+			);
 			const messages: ContextMessage[] = [];
+			const items: ContextTraceItem[] = [];
 			for (const node of path.slice(-limit)) {
 				if (node.raw.trim().length === 0) continue;
 				messages.push({ role: node.role, content: node.raw });
+				const floorNo = positions.get(node.id) ?? 0;
+				items.push(
+					contextItem(`第 ${floorNo} 楼`, estimator(node.raw), {
+						kind: "floor",
+						nodeId: node.id,
+						floorNo,
+					}),
+				);
 			}
 			if (messages.length === 0) return null;
 			return {
 				messages,
 				source: `history:最近 ${messages.length} 楼原文`,
+				items,
 			};
 		},
 	};
@@ -201,6 +269,7 @@ export function createStateSlotProvider(
 	options: StateSlotProviderOptions = {},
 ): ContextSlotProvider {
 	const worldModel = createWorldModel(store, options.worldModel);
+	const estimator = createTokenEstimator();
 	return {
 		packKey: `state:${worldModel.kind}`,
 		provide(request): ContextSlotContent | null {
@@ -215,13 +284,21 @@ export function createStateSlotProvider(
 					content: `当前状态：\n${JSON.stringify(view.state, null, 2)}`,
 				},
 			];
+			const items = stateItems(view.state, estimator);
 			for (const section of view.sections) {
 				messages.push({
 					role: "system",
 					content: `${section.title}：\n${section.text}`,
 				});
+				items.push(
+					contextItem(section.title, estimator(section.text), {
+						kind: "state",
+						target: JSON.stringify(["section", section.title]),
+						label: section.title,
+					}),
+				);
 			}
-			return { messages, source: view.source };
+			return { messages, source: view.source, items };
 		},
 	};
 }
@@ -242,6 +319,12 @@ export function createSceneSlotProvider(
 				messages: [{ role: "system", content: `现场分析：\n${analysis.text}` }],
 				source: `scene:楼层 ${analysis.nodeId}，估算 ${analysis.tokenCount} token`,
 				references: { sceneAnalysisNodeId: analysis.nodeId },
+				items: [
+					contextItem("现场分析", analysis.tokenCount, {
+						kind: "scene",
+						nodeId: analysis.nodeId,
+					}),
+				],
 			};
 		},
 	};
@@ -254,6 +337,7 @@ export function createSceneSlotProvider(
 export function createSceneCardSlotProvider(
 	store: StoryStore,
 ): ContextSlotProvider {
+	const estimator = createTokenEstimator();
 	return {
 		packKey: "sceneCard",
 		provide(request): ContextSlotContent | null {
@@ -271,14 +355,21 @@ export function createSceneCardSlotProvider(
 			const lines = card.present.map(
 				(actor) => `${actor.who}想要${actor.want}`,
 			);
+			const content = `场面卡：\n${lines.join("\n")}\n这一场结束时应该改变：${card.change}`;
 			return {
 				messages: [
 					{
 						role: "system",
-						content: `场面卡：\n${lines.join("\n")}\n这一场结束时应该改变：${card.change}`,
+						content,
 					},
 				],
 				source: `scene_card:楼层 ${current.startNodeId}，${card.present.length} 人`,
+				items: [
+					contextItem("场面卡", estimator(content), {
+						kind: "scene",
+						nodeId: current.startNodeId,
+					}),
+				],
 			};
 		},
 	};
@@ -291,6 +382,7 @@ export function createSceneCardSlotProvider(
 export function createBlueprintSlotProvider(
 	store: StoryStore,
 ): ContextSlotProvider {
+	const estimator = createTokenEstimator();
 	return {
 		packKey: "blueprint",
 		provide(request): ContextSlotContent | null {
@@ -304,9 +396,41 @@ export function createBlueprintSlotProvider(
 			if (summary === null) return null;
 			const formatted = formatWritingBlueprintSummary(summary);
 			if (formatted === null) return null;
+			const items: ContextTraceItem[] = [];
+			if (summary.volume !== null) {
+				const { id, title, coreQuestion } = summary.volume;
+				if (title.length > 0 || coreQuestion.length > 0) {
+					items.push(
+						contextItem(
+							title.length === 0 ? "当前卷" : `当前卷：${title}`,
+							estimator(`${title}${coreQuestion}`),
+							{ kind: "outline", id },
+						),
+					);
+				}
+			}
+			if (summary.milestone !== null) {
+				items.push(
+					contextItem("最近的里程碑", estimator(summary.milestone.want), {
+						kind: "outline",
+						id: summary.milestone.id,
+					}),
+				);
+			}
+			if (summary.seeds.length > 0) {
+				const id = summary.milestone?.id ?? summary.volume?.id ?? "blueprint";
+				items.push(
+					contextItem(
+						`本章该埋的线 ${summary.seeds.length} 条`,
+						estimator(summary.seeds.join("\n")),
+						{ kind: "outline", id },
+					),
+				);
+			}
 			return {
 				messages: [{ role: "system", content: formatted.text }],
 				source: formatted.source,
+				items,
 			};
 		},
 	};
@@ -376,6 +500,7 @@ export function createProfileSlotProvider(
 	if (!Number.isInteger(sceneLimit) || sceneLimit < 1) {
 		throw new Error("知情标注的场次数上限必须是正整数");
 	}
+	const estimator = createTokenEstimator();
 	return {
 		packKey: `profile:${sceneLimit}`,
 		provide(request): ContextSlotContent | null {
@@ -387,11 +512,29 @@ export function createProfileSlotProvider(
 			const log = store.getLatestSceneLogOnPath(nodeId);
 			const present = new Set(log?.present ?? latestScene?.present ?? []);
 			const blocks: string[] = [];
+			const items: ContextTraceItem[] = [];
 			for (const profile of readCharacterProfiles(store, nodeId)) {
 				if (!present.has(profile.who)) continue;
 				const text = formatCharacterProfile(profile);
 				if (text.length === 0) continue;
-				blocks.push(`${profile.who}：\n${text}`);
+				const block = `${profile.who}：\n${text}`;
+				blocks.push(block);
+				const entity = store.findEntityByName(request.storyId, profile.who);
+				items.push(
+					contextItem(
+						profile.who,
+						estimator(block),
+						entity === null
+							? {
+									kind: "scene",
+									nodeId:
+										profile.lastScene?.endNodeId ??
+										archives[0]?.endNodeId ??
+										nodeId,
+								}
+							: { kind: "wiki", id: entity.id, name: profile.who },
+					),
+				);
 			}
 			const knowledge = readSceneKnowledge(store, nodeId);
 			const annotatedScenes = knowledge.facts
@@ -407,11 +550,23 @@ export function createProfileSlotProvider(
 						`- 场次 ${fact.endNodeId}（${clipProfileSummary(fact.summary)}）：${fact.uninformed.join("、")}不在场、不知情`,
 				);
 				sections.push(`知情标注：\n${lines.join("\n")}`);
+				for (const fact of annotatedScenes) {
+					items.push(
+						contextItem(
+							`场次 ${fact.endNodeId} 的知情标注`,
+							estimator(
+								`${clipProfileSummary(fact.summary)}：${fact.uninformed.join("、")}`,
+							),
+							{ kind: "scene", nodeId: fact.endNodeId },
+						),
+					);
+				}
 			}
 			if (sections.length === 0) return null;
 			return {
 				messages: [{ role: "system", content: sections.join("\n\n") }],
 				source: `profile:${blocks.length} 人，知情标注 ${annotatedScenes.length} 场`,
+				items,
 			};
 		},
 	};
@@ -464,6 +619,7 @@ export function createReunionSlotProvider(
 		directorOrganization: organization,
 		directorPush: push,
 	};
+	const estimator = createTokenEstimator();
 	return {
 		options: providerOptions,
 		packKey: JSON.stringify({
@@ -515,6 +671,17 @@ export function createReunionSlotProvider(
 			const summary = [...counts.entries()]
 				.map(([label, count]) => `${label} ${count}`)
 				.join("、");
+			const items = mentions.map((mention) => {
+				const candidate = mention.candidate;
+				const entity = store.findEntityByName(request.storyId, candidate.name);
+				return contextItem(
+					candidate.name,
+					estimator(formatReunionMention(mention)),
+					entity === null
+						? { kind: "scene", nodeId: candidate.lastScene.endNodeId }
+						: { kind: "wiki", id: entity.id, name: candidate.name },
+				);
+			});
 			return {
 				messages: [
 					{
@@ -523,6 +690,7 @@ export function createReunionSlotProvider(
 					},
 				],
 				source: `reunion:${summary}`,
+				items,
 			};
 		},
 	};
@@ -549,6 +717,7 @@ interface UserWillLine {
 export function createUserWillSlotProvider(
 	store: StoryStore,
 ): ContextSlotProvider {
+	const estimator = createTokenEstimator();
 	return {
 		packKey: "userWill",
 		provide(request): ContextSlotContent | null {
@@ -585,6 +754,13 @@ export function createUserWillSlotProvider(
 					{ role: "system", content: `用户意志：\n${lines.join("\n")}` },
 				],
 				source: `userWill:${entries.length} 条`,
+				items: entries.map((entry, index) =>
+					contextItem(
+						`${USER_WILL_LABELS[entry.kind]}：${entry.text}`,
+						estimator(lines[index] ?? entry.text),
+						{ kind: "pref", id: entry.id },
+					),
+				),
 			};
 		},
 	};
@@ -650,16 +826,18 @@ export function createMemorySlotProvider(
 				);
 				if (storyTokens <= request.budgetTokens) return null;
 			}
-			const eventsByNode = new Map<string, string[]>();
+			const eventsByNode = new Map<string, { id: string; text: string }[]>();
 			const eventTimes = new Map<string, string | null>();
 			for (const event of store.getEventsForPath(lastBefore.id, {
 				limit: MAX_MEMORY_EVENT_LIMIT,
 			})) {
-				const texts = eventsByNode.get(event.sourceNodeId);
-				if (texts === undefined) {
-					eventsByNode.set(event.sourceNodeId, [event.text]);
+				const events = eventsByNode.get(event.sourceNodeId);
+				if (events === undefined) {
+					eventsByNode.set(event.sourceNodeId, [
+						{ id: event.id, text: event.text },
+					]);
 				} else {
-					texts.push(event.text);
+					events.push({ id: event.id, text: event.text });
 				}
 				if (!eventTimes.has(event.sourceNodeId)) {
 					eventTimes.set(event.sourceNodeId, event.storyTime);
@@ -705,6 +883,7 @@ export function createMemorySlotProvider(
 				const rightPosition = positions.get(right.nodeId) ?? -1;
 				return leftPosition - rightPosition;
 			});
+			const items: ContextTraceItem[] = [];
 			for (const hit of orderedHits) {
 				if (seen.has(hit.nodeId)) continue;
 				seen.add(hit.nodeId);
@@ -714,13 +893,13 @@ export function createMemorySlotProvider(
 				}
 				let text: string;
 				if (hit.kind === "event") {
-					const texts = eventsByNode.get(hit.nodeId);
-					if (texts === undefined) {
+					const events = eventsByNode.get(hit.nodeId);
+					if (events === undefined) {
 						throw new Error(
 							`检索结果把楼层 ${hit.nodeId} 标为事件，但该楼层没有事件正文`,
 						);
 					}
-					text = texts.join("；");
+					text = events.map((event) => event.text).join("；");
 				} else if (hit.parentText !== null) {
 					text = hit.parentText;
 				} else {
@@ -748,7 +927,28 @@ export function createMemorySlotProvider(
 					parentOrdinal: hit.parentOrdinal,
 				});
 				const kind = hit.kind === "event" ? "事件" : "原文块";
-				lines.push(`- 楼层 ${hit.nodeId}（${kind}）：${text}`);
+				const line = `- 楼层 ${hit.nodeId}（${kind}）：${text}`;
+				lines.push(line);
+				const floorNo = (positions.get(hit.nodeId) ?? -1) + 1;
+				if (hit.kind === "event") {
+					const events = eventsByNode.get(hit.nodeId) ?? [];
+					items.push(
+						contextItem(`第 ${floorNo} 楼 · 事件`, estimator(text), {
+							kind: "record",
+							ids: events.map((event) => event.id),
+							nodeId: hit.nodeId,
+							floorNo,
+						}),
+					);
+				} else {
+					items.push(
+						contextItem(`第 ${floorNo} 楼 · 原文`, estimator(text), {
+							kind: "floor",
+							nodeId: hit.nodeId,
+							floorNo,
+						}),
+					);
+				}
 			}
 			if (lines.length === 0) return null;
 			return {
@@ -765,6 +965,7 @@ export function createMemorySlotProvider(
 					injectedNodeIds,
 					injected,
 				},
+				items,
 			};
 		},
 	};
@@ -846,14 +1047,32 @@ function buildCompressionSlotContent(
 		latestChapter !== undefined &&
 		(full.has(latestChapter.id) || willOnly.has(latestChapter.id));
 	const lines = [COMPRESSION_HEADER];
+	const items: ContextTraceItem[] = [];
 	for (const compression of keptMainlines) {
-		lines.push(
-			formatCompressionForPrompt(compression, !full.has(compression.id)),
+		const text = formatCompressionForPrompt(
+			compression,
+			!full.has(compression.id),
+		);
+		lines.push(text);
+		items.push(
+			contextItem(
+				compression.level === "mainline" ? "主线压缩" : "章节压缩",
+				estimator(text),
+				{ kind: "summary", id: compression.id },
+			),
 		);
 	}
 	if (chapterKept && latestChapter !== undefined) {
-		lines.push(
-			formatCompressionForPrompt(latestChapter, !full.has(latestChapter.id)),
+		const text = formatCompressionForPrompt(
+			latestChapter,
+			!full.has(latestChapter.id),
+		);
+		lines.push(text);
+		items.push(
+			contextItem("章节压缩", estimator(text), {
+				kind: "summary",
+				id: latestChapter.id,
+			}),
 		);
 	}
 	const levels: SummaryLevel[] = [];
@@ -862,6 +1081,7 @@ function buildCompressionSlotContent(
 	return {
 		messages: [{ role: "system", content: lines.join("\n") }],
 		source: `compression:${levels.join("+")}`,
+		items,
 	};
 }
 
@@ -924,15 +1144,18 @@ export function createSummarySlotProvider(
 			);
 			let used = estimator(header);
 			const kept = new Set<string>();
+			const keptTokens = new Map<string, number>();
 			for (const summary of byRecency) {
 				const tokens = estimator(summary.text);
 				if (used + tokens > tokenLimit) continue;
 				used += tokens;
 				kept.add(summary.id);
+				keptTokens.set(summary.id, tokens);
 			}
 			if (kept.size === 0) return null;
 
 			const lines = [header];
+			const items: ContextTraceItem[] = [];
 			const keptMainlines = mainlines.filter((summary) => kept.has(summary.id));
 			for (const summary of keptMainlines) {
 				lines.push(`【主线】${summary.text}`);
@@ -942,12 +1165,29 @@ export function createSummarySlotProvider(
 			if (chapterKept && latestChapter !== undefined) {
 				lines.push(`【章节】${latestChapter.text}`);
 			}
+			for (const summary of keptMainlines) {
+				items.push(
+					contextItem("主线摘要", keptTokens.get(summary.id) ?? 0, {
+						kind: "summary",
+						id: summary.id,
+					}),
+				);
+			}
+			if (chapterKept && latestChapter !== undefined) {
+				items.push(
+					contextItem("章节摘要", keptTokens.get(latestChapter.id) ?? 0, {
+						kind: "summary",
+						id: latestChapter.id,
+					}),
+				);
+			}
 			const levels: SummaryLevel[] = [];
 			if (keptMainlines.length > 0) levels.push("mainline");
 			if (chapterKept) levels.push("chapter");
 			return {
 				messages: [{ role: "system", content: lines.join("\n") }],
 				source: `summary:${levels.join("+")}`,
+				items,
 			};
 		},
 	};
@@ -1190,6 +1430,21 @@ export function createLoreSlotProvider(
 			const retrievedKept = selected.length - baseKept;
 			const modeTag =
 				rules.size === 0 ? "" : mode === "raw" ? "原样 " : "升级 ";
+			const entryById = new Map(
+				entries.map((entry) => [entry.id, entry] as const),
+			);
+			const items: ContextTraceItem[] = [];
+			for (const item of selected) {
+				const entry = entryById.get(item.id);
+				if (entry === undefined) continue;
+				items.push(
+					contextItem(item.line, item.tokens, {
+						kind: "lore",
+						id: entry.id,
+						name: entry.name,
+					}),
+				);
+			}
 			return {
 				messages: [
 					{
@@ -1201,6 +1456,7 @@ export function createLoreSlotProvider(
 				references: {
 					loreEntryIds: selected.map((item) => item.id),
 				},
+				items,
 			};
 		},
 	};
@@ -1290,6 +1546,7 @@ export function createDirectorSlotProvider(
 			options.organization ?? DEFAULT_DIRECTOR_ORGANIZATION,
 			{ mechanisms: options.mechanisms },
 		);
+	const estimator = createTokenEstimator();
 	return {
 		config,
 		engine,
@@ -1319,10 +1576,17 @@ export function createDirectorSlotProvider(
 				when,
 			});
 			if (suggestion === null) return null;
+			const suffix = `【导演】${suggestion.directive}\n${DIRECTOR_SUFFIX_NOTE}`;
 			return {
 				messages: [],
-				suffix: `【导演】${suggestion.directive}\n${DIRECTOR_SUFFIX_NOTE}`,
+				suffix,
 				source: `director:${suggestion.mechanism}`,
+				items: [
+					contextItem(suggestion.mechanism, estimator(suffix), {
+						kind: "outline",
+						id: "director",
+					}),
+				],
 			};
 		},
 	};
@@ -1338,12 +1602,19 @@ export function createCharacterSlotProvider(
 	) {
 		throw new Error("角色提示词必须是非空字符串");
 	}
+	const estimator = createTokenEstimator();
 	return {
 		packKey: `character:${characterPrompt}`,
 		provide(): ContextSlotContent {
 			return {
 				messages: [{ role: "system", content: characterPrompt }],
 				source: `character:${characterPrompt.length} 字符`,
+				items: [
+					contextItem("角色卡", estimator(characterPrompt), {
+						kind: "card",
+						id: "character",
+					}),
+				],
 			};
 		},
 	};
@@ -1356,12 +1627,19 @@ export function createPersonaSlotProvider(
 	if (typeof persona !== "string" || persona.trim().length === 0) {
 		throw new Error("persona 必须是非空字符串");
 	}
+	const estimator = createTokenEstimator();
 	return {
 		packKey: `persona:${persona}`,
 		provide(): ContextSlotContent {
 			return {
 				messages: [{ role: "system", content: persona }],
 				source: `persona:${persona.length} 字符`,
+				items: [
+					contextItem("玩家人设", estimator(persona), {
+						kind: "card",
+						id: "persona",
+					}),
+				],
 			};
 		},
 	};

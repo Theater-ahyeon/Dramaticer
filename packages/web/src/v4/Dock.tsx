@@ -101,6 +101,7 @@ const CTX_COLOR: Record<string, string> = {
 	timeline: "--muted",
 	raw: "--line",
 	state: "--teal",
+	record: "--ok",
 	wiki: "--ok",
 	lore: "--bad",
 	director: "--gold-ink",
@@ -741,7 +742,6 @@ export function Dock({
 									<span className="num">{formatTokens(active.tokens)}</span>
 								</div>
 								{active.items.map((item, index) => (
-									// biome-ignore lint/suspicious/noArrayIndexKey: 同一来源可能出现多次
 									<div key={`${item.label}-${index}`}>
 										<span>
 											{item.label}{" "}
