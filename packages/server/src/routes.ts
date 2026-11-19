@@ -54,6 +54,7 @@ import {
 	type TurnMode,
 	type UpdateContextTemplateInput,
 	VISUAL_PROFILE_JOB_KIND,
+	WRITING_MODE_KEY,
 	applyChannelsUpdate,
 	approveLedgerChangeCard,
 	assertComfyUiSlots,
@@ -82,6 +83,7 @@ import {
 	isJsonObject,
 	isLedgerChangeCardStatus,
 	isOpeningCandidateStatus,
+	isPlanWritingMode,
 	isTurnMode,
 	jumpSceneTime,
 	listLedgerEntities,
@@ -203,6 +205,8 @@ import {
 	sendEmpty,
 	sendJson,
 } from "./http.js";
+import { afterCardImport } from "./routes-card.js";
+import { handleNextStoryRoute } from "./routes-next.js";
 import type { StoryRuntimeManager } from "./runtime.js";
 import {
 	readStoryMediaFile,
@@ -442,6 +446,11 @@ export async function handleApiRequest(
 		) {
 			requireMethod(method, ["POST"]);
 			handleStoryVisualProfilesGenerate(res, options, storyId);
+			return;
+		}
+		if (
+			await handleNextStoryRoute(req, res, method, options, storyId, parts, url)
+		) {
 			return;
 		}
 		if (third === "director" && parts.length === 4 && parts[3] === "plan") {
@@ -777,6 +786,7 @@ async function handleImport(
 		throw toBadRequest(error, "card");
 	}
 
+	afterCardImport(options.store, storyId, parsedCard, request.card.data);
 	enqueueOpeningBackgroundJobs(options.store, storyId);
 	enqueueVisualProfileBackgroundJob(options.store, storyId);
 	options.scheduler?.schedule(storyId);
@@ -807,6 +817,7 @@ async function handleTurns(
 	const body = await readObjectBody(req, options.maxJsonBodyBytes);
 	assertKnownKeys(body, ["text", "mode", "intensity", "push"]);
 	const text = requireText(body.text, "text");
+	rememberWritingMode(options.store, storyId, body.mode);
 	await handleTurnStream(res, storyId, text, options, {
 		directorIntensity: readOptionalIntensity(body.intensity),
 		directorPush: readOptionalPush(body.push),
@@ -853,10 +864,32 @@ async function handleTurnSteering(
 
 function readOptionalMode(value: unknown): TurnMode | null {
 	if (value === undefined) return null;
+	// 规划写法在存储层是快速回合加一组固定的准备阶段。
+	if (value === "plan") return "fast";
 	if (!isTurnMode(value)) {
-		throw fieldError("mode", "回合的 mode 只接受 fast 或 deep");
+		throw fieldError("mode", "回合的 mode 只接受 fast、plan 或 deep");
 	}
 	return value;
+}
+
+/** 玩家在这一轮选的写法就是之后的写法；程序不自己切换（I6）。 */
+function rememberWritingMode(
+	store: StoryStore,
+	storyId: string,
+	mode: unknown,
+): void {
+	if (mode === "plan") store.setStoryValue(storyId, WRITING_MODE_KEY, "plan");
+	else if (mode === "fast" || mode === "deep") {
+		store.setStoryValue(storyId, WRITING_MODE_KEY, null);
+	}
+}
+
+/** 故事设置里的写法：玩家选了规划时，对界面报告 plan。 */
+function withWritingMode(store: StoryStore, settings: StorySettings): unknown {
+	return settings.turnMode === "fast" &&
+		isPlanWritingMode(store, settings.storyId)
+		? { ...settings, turnMode: "plan" }
+		: settings;
 }
 
 function readOptionalIntensity(value: unknown): DirectorIntensity | null {
@@ -3206,11 +3239,19 @@ async function handleSettings(
 	requireMethod(method, ["GET", "PUT"]);
 	requireStory(options.store, storyId);
 	if (method === "GET") {
-		sendJson(res, 200, options.store.getStorySettings(storyId));
+		sendJson(
+			res,
+			200,
+			withWritingMode(options.store, options.store.getStorySettings(storyId)),
+		);
 		return;
 	}
 	const body = await readObjectBody(req, options.maxJsonBodyBytes);
 	assertKnownKeys(body, STORY_SETTINGS_UPDATE_KEYS);
+	if (body.turnMode !== undefined) {
+		rememberWritingMode(options.store, storyId, body.turnMode);
+		if (body.turnMode === "plan") body.turnMode = "fast";
+	}
 	if (Object.keys(body).length === 0) {
 		throw fieldError("body", "设置更新至少要包含一个字段");
 	}
@@ -3231,7 +3272,7 @@ async function handleSettings(
 	} catch (error) {
 		throw toBadRequest(error, inferSettingsPath(error));
 	}
-	sendJson(res, 200, settings);
+	sendJson(res, 200, withWritingMode(options.store, settings));
 }
 
 /** 返回故事实际使用的上下文模板；故事使用内置默认模板时 source 为 default。 */

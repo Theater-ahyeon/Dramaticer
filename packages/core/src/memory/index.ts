@@ -12,3 +12,4 @@ export * from "./plot-note.js";
 export * from "./scene.js";
 export * from "./summarize.js";
 export * from "./summary.js";
+export * from "./view.js";

@@ -37,7 +37,8 @@ export const BLUEPRINT_TENSION_LABELS: Record<BlueprintTension, string> = {
 };
 
 /** 没有写拉力时的默认档位；旧记录读出来也按这一档补齐。 */
-export const DEFAULT_BLUEPRINT_TENSION: BlueprintTension = "medium";
+// 大纲约束默认弱：走偏时大纲跟着玩家改，而不是把玩家拉回来。
+export const DEFAULT_BLUEPRINT_TENSION: BlueprintTension = "loose";
 
 /** 里程碑的硬性与软性。 */
 export const BLUEPRINT_MILESTONE_HARDNESS = ["hard", "soft"] as const;

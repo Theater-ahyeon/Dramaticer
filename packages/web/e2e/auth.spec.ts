@@ -15,5 +15,5 @@ test("未登录访问故事被拒绝，密码错误有提示，正确密码进�
 	await page.getByLabel("访问密码").fill(PASSWORD);
 	await page.getByRole("button", { name: "登录" }).click();
 	await page.waitForURL("**/");
-	await expect(page.getByRole("heading", { name: "故事" })).toBeVisible();
+	await expect(page.locator('[data-view="library"]')).toBeVisible();
 });

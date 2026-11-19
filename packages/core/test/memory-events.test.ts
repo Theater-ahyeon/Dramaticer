@@ -175,6 +175,7 @@ describe("事件解析", () => {
 				importance: 0.8,
 				storyTime: "第三日",
 				location: "山门",
+				quote: null,
 			},
 			{
 				text: "城门关闭",
@@ -183,6 +184,7 @@ describe("事件解析", () => {
 				importance: 0,
 				storyTime: null,
 				location: null,
+				quote: null,
 			},
 		]);
 	});

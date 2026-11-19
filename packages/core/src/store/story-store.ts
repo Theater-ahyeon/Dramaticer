@@ -136,6 +136,7 @@ import {
 	type DirectorLineState,
 	type NewDirectorLineRecordInput,
 	applyDirectorLineDiffs,
+	assertDirectorLine,
 	assertDirectorLineDiffs,
 	assertPromiseBudget,
 } from "../director/lines.js";
@@ -178,6 +179,13 @@ import {
 	type DirectorMechanismRecord,
 	type NewDirectorDecisionInput,
 } from "../director/types.js";
+import {
+	type NewPlayerEdit,
+	type PlayerEdit,
+	type PlayerEditKind,
+	type PlayerEditSource,
+	isPlayerEditKind,
+} from "../edits/index.js";
 import {
 	type Entity,
 	type EntityKind,
@@ -4067,10 +4075,11 @@ export class StoryStore {
 		return stored;
 	}
 
-	appendStateDiffs(inputs: readonly NewStateDiff[]): StateDiff[] {
-		if (!Array.isArray(inputs)) {
+	appendStateDiffs(rawInputs: readonly NewStateDiff[]): StateDiff[] {
+		if (!Array.isArray(rawInputs)) {
 			throw new Error("状态 diff 必须是数组");
 		}
+		const inputs = this.#dropLockedStateDiffs(rawInputs);
 		if (inputs.length === 0) {
 			return [];
 		}
@@ -4816,6 +4825,307 @@ export class StoryStore {
 		return { nodeId: input.nodeId, storyId: input.storyId, diffs, createdAt };
 	}
 
+	/** 追加一条玩家修改；这张表没有更新与删除接口。 */
+	savePlayerEdit(input: NewPlayerEdit): PlayerEdit {
+		assertNonEmptyString(input.storyId, "修改的故事 id");
+		assertNonEmptyString(input.target, "修改的对象");
+		if (!isPlayerEditKind(input.kind)) {
+			throw new Error(`修改的种类不合法：${String(input.kind)}`);
+		}
+		if (!this.getStory(input.storyId)) {
+			throw new Error(`故事不存在：${input.storyId}`);
+		}
+		const nodeId = input.nodeId ?? null;
+		if (nodeId !== null && this.getNode(nodeId)?.storyId !== input.storyId) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
+		const value = input.value ?? null;
+		const createdAt = new Date().toISOString();
+		const source = input.source ?? "player";
+		const result = this.#db
+			.prepare(
+				`INSERT INTO player_edits (story_id, node_id, kind, target, value, locked, disabled, source, note, created_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			)
+			.run(
+				input.storyId,
+				nodeId,
+				input.kind,
+				input.target,
+				value === null ? null : JSON.stringify(value),
+				input.locked === true ? 1 : 0,
+				input.disabled === true ? 1 : 0,
+				source,
+				input.note ?? null,
+				createdAt,
+			);
+		return {
+			id: Number(result.lastInsertRowid),
+			storyId: input.storyId,
+			nodeId,
+			kind: input.kind,
+			target: input.target,
+			value,
+			locked: input.locked === true,
+			disabled: input.disabled === true,
+			source,
+			note: input.note ?? null,
+			createdAt,
+		};
+	}
+
+	/** 故事里的全部修改，按写入顺序；可以按种类与对象过滤。 */
+	listPlayerEdits(
+		storyId: string,
+		filter: { kind?: PlayerEditKind; target?: string } = {},
+	): PlayerEdit[] {
+		const where = ["story_id = ?"];
+		const args: string[] = [storyId];
+		if (filter.kind !== undefined) {
+			where.push("kind = ?");
+			args.push(filter.kind);
+		}
+		if (filter.target !== undefined) {
+			where.push("target = ?");
+			args.push(filter.target);
+		}
+		const rows = this.#db
+			.prepare(
+				`SELECT * FROM player_edits WHERE ${where.join(" AND ")} ORDER BY id`,
+			)
+			.all(...args) as {
+			id: number;
+			story_id: string;
+			node_id: string | null;
+			kind: string;
+			target: string;
+			value: string | null;
+			locked: number;
+			disabled: number;
+			source: string;
+			note: string | null;
+			created_at: string;
+		}[];
+		return rows.map((row) => ({
+			id: row.id,
+			storyId: row.story_id,
+			nodeId: row.node_id,
+			kind: row.kind as PlayerEditKind,
+			target: row.target,
+			value: row.value === null ? null : (JSON.parse(row.value) as JsonValue),
+			locked: row.locked === 1,
+			disabled: row.disabled === 1,
+			source: row.source as PlayerEditSource,
+			note: row.note,
+			createdAt: row.created_at,
+		}));
+	}
+
+	/** 记录的逐字出处；与事件表分开存，事件表保持只追加。 */
+	saveMemoryEventQuotes(
+		storyId: string,
+		items: readonly { eventId: string; quote: string }[],
+	): void {
+		const insert = this.#db.prepare(
+			"INSERT OR IGNORE INTO memory_event_quotes (event_id, story_id, quote) VALUES (?, ?, ?)",
+		);
+		this.#db.transaction(() => {
+			for (const item of items) insert.run(item.eventId, storyId, item.quote);
+		})();
+	}
+
+	getMemoryEventQuotes(storyId: string): Map<string, string> {
+		const rows = this.#db
+			.prepare(
+				"SELECT event_id, quote FROM memory_event_quotes WHERE story_id = ?",
+			)
+			.all(storyId) as { event_id: string; quote: string }[];
+		return new Map(rows.map((row) => [row.event_id, row.quote] as const));
+	}
+
+	/** 被拒绝的记忆写入：出处对不上的记录、写向锁定项的后台修改。 */
+	recordMemoryRejection(input: {
+		storyId: string;
+		nodeId: string | null;
+		kind: string;
+		text: string;
+		reason: string;
+	}): void {
+		this.#db
+			.prepare(
+				`INSERT INTO memory_rejections (story_id, node_id, kind, text, reason, created_at)
+				VALUES (?, ?, ?, ?, ?, ?)`,
+			)
+			.run(
+				input.storyId,
+				input.nodeId,
+				input.kind,
+				input.text,
+				input.reason,
+				new Date().toISOString(),
+			);
+	}
+
+	listMemoryRejections(
+		storyId: string,
+		limit = 50,
+	): {
+		id: number;
+		nodeId: string | null;
+		kind: string;
+		text: string;
+		reason: string;
+		createdAt: string;
+	}[] {
+		const rows = this.#db
+			.prepare(
+				"SELECT * FROM memory_rejections WHERE story_id = ? ORDER BY id DESC LIMIT ?",
+			)
+			.all(storyId, limit) as {
+			id: number;
+			node_id: string | null;
+			kind: string;
+			text: string;
+			reason: string;
+			created_at: string;
+		}[];
+		return rows.map((row) => ({
+			id: row.id,
+			nodeId: row.node_id,
+			kind: row.kind,
+			text: row.text,
+			reason: row.reason,
+			createdAt: row.created_at,
+		}));
+	}
+
+	/** 故事级的小配置：写作选项、卡的固定版本、提前备好的结果等。 */
+	getStoryValue(storyId: string, key: string): JsonValue | null {
+		const row = this.#db
+			.prepare("SELECT value FROM story_kv WHERE story_id = ? AND key = ?")
+			.get(storyId, key) as { value: string } | undefined;
+		return row === undefined ? null : (JSON.parse(row.value) as JsonValue);
+	}
+
+	setStoryValue(storyId: string, key: string, value: JsonValue | null): void {
+		if (value === null) {
+			this.#db
+				.prepare("DELETE FROM story_kv WHERE story_id = ? AND key = ?")
+				.run(storyId, key);
+			return;
+		}
+		this.#db
+			.prepare(
+				`INSERT INTO story_kv (story_id, key, value, updated_at) VALUES (?, ?, ?, ?)
+				ON CONFLICT (story_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+			)
+			.run(storyId, key, JSON.stringify(value), new Date().toISOString());
+	}
+
+	/**
+	 * 后台写向玩家锁定的状态路径时丢弃这一条并留痕；玩家自己的写入不受限。
+	 * 锁定按写入楼层所在的路径判断，另一条分支上的锁不生效。
+	 */
+	#dropLockedStateDiffs(inputs: readonly NewStateDiff[]): NewStateDiff[] {
+		const first = inputs[0];
+		if (
+			first === undefined ||
+			inputs.every((item) => item.source === "player")
+		) {
+			return [...inputs];
+		}
+		const rows = this.#db
+			.prepare(
+				"SELECT node_id, target, locked, source FROM player_edits WHERE story_id = ? AND kind = 'state' ORDER BY id",
+			)
+			.all(first.storyId) as {
+			node_id: string | null;
+			target: string;
+			locked: number;
+			source: string;
+		}[];
+		if (rows.length === 0) return [...inputs];
+		const paths = new Map<string, Set<string>>();
+		const kept: NewStateDiff[] = [];
+		for (const input of inputs) {
+			if (input.source === "player") {
+				kept.push(input);
+				continue;
+			}
+			let ids = paths.get(input.nodeId);
+			if (ids === undefined) {
+				ids = new Set(this.getPathToNode(input.nodeId).map((node) => node.id));
+				paths.set(input.nodeId, ids);
+			}
+			const target = JSON.stringify(input.path);
+			let locked = false;
+			for (const row of rows) {
+				if (row.target !== target || row.source === "rejected") continue;
+				if (row.node_id !== null && !ids.has(row.node_id)) continue;
+				locked = row.locked === 1;
+			}
+			if (!locked) {
+				kept.push(input);
+				continue;
+			}
+			this.recordMemoryRejection({
+				storyId: input.storyId,
+				nodeId: input.nodeId,
+				kind: "state",
+				text: `${input.path.join(".")} ← ${input.op === "set" ? JSON.stringify(input.value) : "删除"}`,
+				reason: `这一项被玩家锁定，${input.source} 的写入没有生效`,
+			});
+		}
+		return kept;
+	}
+
+	/** 玩家撤回一条线：恢复之前导演不再选它。重复撤回只保留第一次。 */
+	muteDirectorLine(
+		storyId: string,
+		lineId: string,
+		nodeId: string | null,
+	): void {
+		assertNonEmptyString(storyId, "撤回剧情线的故事 id");
+		assertNonEmptyString(lineId, "撤回的剧情线 id");
+		if (!this.getStory(storyId)) throw new Error(`故事不存在：${storyId}`);
+		this.#db
+			.prepare(
+				`INSERT OR IGNORE INTO director_muted_lines (story_id, line_id, node_id, created_at)
+				VALUES (?, ?, ?, ?)`,
+			)
+			.run(storyId, lineId, nodeId, new Date().toISOString());
+	}
+
+	/** 恢复一条被撤回的线；返回是否真的恢复了。 */
+	unmuteDirectorLine(storyId: string, lineId: string): boolean {
+		return (
+			this.#db
+				.prepare(
+					"DELETE FROM director_muted_lines WHERE story_id = ? AND line_id = ?",
+				)
+				.run(storyId, lineId).changes > 0
+		);
+	}
+
+	listMutedDirectorLines(
+		storyId: string,
+	): { lineId: string; nodeId: string | null; createdAt: string }[] {
+		const rows = this.#db
+			.prepare(
+				"SELECT line_id, node_id, created_at FROM director_muted_lines WHERE story_id = ? ORDER BY created_at, line_id",
+			)
+			.all(storyId) as {
+			line_id: string;
+			node_id: string | null;
+			created_at: string;
+		}[];
+		return rows.map((row) => ({
+			lineId: row.line_id,
+			nodeId: row.node_id,
+			createdAt: row.created_at,
+		}));
+	}
+
 	/** 读取一个楼层的线修改；没有记录时返回 null。 */
 	getDirectorLines(nodeId: string): DirectorLineRecord | null {
 		if (!this.getNode(nodeId)) {
@@ -4867,7 +5177,46 @@ export class StoryStore {
 				rowDepth,
 			);
 		}
-		return states;
+		return this.#applyLineEdits(nodeId, states, depth);
+	}
+
+	/**
+	 * 玩家对剧情线的直接修改叠在规划结果上：改过的线以玩家的内容为准，
+	 * 停用的线不再出现。只看当前路径上的修改，另一条分支不受影响。
+	 */
+	#applyLineEdits(
+		nodeId: string,
+		states: DirectorLineState[],
+		depth: number,
+	): DirectorLineState[] {
+		const node = this.getNode(nodeId);
+		if (!node) return states;
+		const edits = this.listPlayerEdits(node.storyId, { kind: "line" });
+		if (edits.length === 0) return states;
+		const ids = new Set(this.getPathToNode(nodeId).map((item) => item.id));
+		const latest = new Map<string, PlayerEdit>();
+		for (const edit of edits) {
+			if (edit.source === "rejected") continue;
+			if (edit.nodeId !== null && !ids.has(edit.nodeId)) continue;
+			latest.set(edit.target, edit);
+		}
+		const map = new Map(states.map((state) => [state.line.id, state] as const));
+		for (const [target, edit] of latest) {
+			if (edit.disabled) {
+				map.delete(target);
+				continue;
+			}
+			if (edit.value === null) continue;
+			const existing = map.get(target);
+			map.set(target, {
+				line: assertDirectorLine(edit.value, `剧情线 ${target} 的修改`),
+				openedDepth: existing?.openedDepth ?? depth,
+				lastTouchedDepth: existing?.lastTouchedDepth ?? depth,
+			});
+		}
+		return [...map.values()].sort((left, right) =>
+			left.line.id < right.line.id ? -1 : left.line.id > right.line.id ? 1 : 0,
+		);
 	}
 
 	/** 沿节点所在的路径按从旧到新的顺序读出线修改记录；其他分支不参与。 */

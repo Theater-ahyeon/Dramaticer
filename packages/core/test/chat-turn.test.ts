@@ -152,12 +152,14 @@ describe("runChatTurn", () => {
 			"assistant",
 			"user",
 			"system",
+			"system",
 		]);
 		expect(request.messages[0]?.content).toBe("你扮演山神。");
 		expect(request.messages[1]?.content).toBe("你好，旅人。");
 		expect(request.messages[2]?.content).toBe("我推开山门。");
 		expect(request.messages[3]?.content).toContain("写作契约");
 		expect(request.messages[3]?.content).toContain("<state_update>");
+		expect(request.messages[4]?.content).toContain("【写作要求】");
 		expect(options[0]?.continuation?.expectedTags).toEqual([
 			"state_update",
 			"plot_note",
@@ -396,8 +398,10 @@ describe("runChatTurn", () => {
 		});
 
 		const messages = second.requests[0]?.messages ?? [];
-		expect(messages.at(-1)?.role).toBe("system");
-		expect(messages.at(-1)?.content).toContain("写作契约");
+		const protocol = messages.find((message) =>
+			message.content.includes("写作契约"),
+		);
+		expect(protocol?.role).toBe("system");
 		const historyRoles = messages.slice(1, 5).map((message) => message.role);
 		expect(historyRoles).toEqual(["assistant", "user", "assistant", "user"]);
 		expect(messages[5]?.content).toContain("当前状态");

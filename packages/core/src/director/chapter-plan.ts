@@ -5,7 +5,12 @@ import {
 	readActiveMilestone,
 } from "../blueprint/milestones.js";
 import { BLUEPRINT_MILESTONE_HARDNESS_LABELS } from "../blueprint/story-blueprint.js";
-import { assertPlainObject, rejectUnknownKeys } from "../json.js";
+import { guardBackgroundWrite, readEffectiveEdits } from "../edits/index.js";
+import {
+	type JsonValue,
+	assertPlainObject,
+	rejectUnknownKeys,
+} from "../json.js";
 import { readSceneSegments } from "../ledger/scenes.js";
 import {
 	type LlmClient,
@@ -13,6 +18,7 @@ import {
 	NO_CONTINUATION,
 } from "../llm/types.js";
 import { parseJsonOutputObject } from "../memory/json-output.js";
+import { appendReflectionRecord } from "../memory/view.js";
 import type { StoryStore } from "../store/story-store.js";
 import type { TimelineNode } from "../timeline.js";
 import {
@@ -27,6 +33,7 @@ import {
 	collectDirectorLineHistoryIds,
 	directorLineRemaining,
 	formatDirectorLine,
+	readPlayerIntent,
 } from "./lines.js";
 
 /** 后台任务类型：章末在间隙里清点伏笔、规划下一章并更新线。 */
@@ -35,13 +42,18 @@ export const CHAPTER_PLAN_JOB_KIND = "chapter_plan";
 /** 章级规划读取的最近楼层数。 */
 export const CHAPTER_PLAN_WINDOW_FLOORS = 12;
 
+/** 章级规划里每条玩家行动最多带进去的字数。 */
+export const CHAPTER_PLAN_PLAYER_CHARS = 300;
+
 /** 模型输出：这一批线修改与章末清点。 */
 export interface ChapterPlan {
 	readonly diffs: readonly DirectorLineDiff[];
 	readonly review: DirectorChapterReviewPayload;
+	/** 章末反思：这一章里人物与局面发生了什么变化；没有时为 null。 */
+	readonly reflection?: string | null;
 }
 
-const RESPONSE_KEYS = ["lines", "review"] as const;
+const RESPONSE_KEYS = ["lines", "review", "reflection"] as const;
 
 const SYSTEM_PROMPT = [
 	"你是故事的长线规划者。一章结束时，你清点伏笔、确定下一章聚焦的线，并更新线的倒计时与预备发展。只输出一个 JSON 对象，不要解释、前后缀或代码块标记。",
@@ -53,6 +65,9 @@ const SYSTEM_PROMPT = [
 	"- 新建伏笔不能让未兑现伏笔超过输入里给出的上限。",
 	"- 输入给出最近的未达成里程碑时，这一章的方向以它为准：没有兑现的铺垫声明 carry，兑现了的声明 retire，不能改写铺垫的 want。",
 	"- 线的倒计时按助手楼层计；修改 countdown 就是重设时钟。",
+	"- 线可以带可选字段 mustInterrupt（true）：只给玩家不处理就会出大事的线，到点时即使玩家正在自己行动也会发生。绝大多数线不要带。",
+	"- 输入里的「这一章玩家造成的变化」优先于原先的打算：玩家已经办成的线 delete（伏笔在清点里 retire），玩家让局面转向的线用 set 改写 want 与 obstacle，玩家明确放弃或绕开的线 delete。",
+	"- reflection：可选的一段话，回顾这一章里人物关系与局面的变化（谁对谁的态度变了、为什么）；会作为一条记录保存。",
 	"- 只写局面与人物意图，不要写写作指令。",
 ].join("\n");
 
@@ -71,6 +86,8 @@ export interface ChapterPlanInput {
 	readonly maxOpenPromises: number;
 	/** 最近的未达成里程碑；没有蓝图或全部达成时为 null。 */
 	readonly milestone: MilestoneProgress | null;
+	/** 这一章里玩家自己写的行动，按先后；章末据此了结、转向或作废剧情线。 */
+	readonly playerChanges?: readonly string[];
 }
 
 /** 当前路径上最后一个助手楼层；章级规划写在它上面。 */
@@ -183,9 +200,27 @@ export function collectChapterPlanInput(
 			break;
 		}
 	}
+	const chapterStart =
+		previousFloor === undefined
+			? 0
+			: path.findIndex((item) => item.id === previousFloor.nodeId) + 1;
+	const playerChanges = path
+		.slice(chapterStart)
+		.filter(
+			(item) =>
+				item.role === "user" &&
+				readPlayerIntent(item.raw, null).kind === "free",
+		)
+		.slice(-CHAPTER_PLAN_WINDOW_FLOORS)
+		.map((item) =>
+			item.raw.length > CHAPTER_PLAN_PLAYER_CHARS
+				? `${item.raw.slice(0, CHAPTER_PLAN_PLAYER_CHARS)}…`
+				: item.raw,
+		);
 	return {
 		nodeId,
 		storyId,
+		playerChanges,
 		floorDepth: assistants.length,
 		chapterFloors,
 		lines: states,
@@ -248,6 +283,10 @@ export function buildChapterPlanUserContent(input: ChapterPlanInput): string {
 	} else {
 		lines.push(JSON.stringify(input.previousReview));
 	}
+	if (input.playerChanges !== undefined && input.playerChanges.length > 0) {
+		lines.push("", "这一章玩家造成的变化（玩家自己写的行动，按先后）：");
+		for (const change of input.playerChanges) lines.push(`- ${change}`);
+	}
 	lines.push("", "这一章最近楼层的原文：");
 	for (const node of input.floors) {
 		lines.push(`<楼层 id="${node.id}" 角色="${node.role}">`);
@@ -269,7 +308,11 @@ export function parseChapterPlanResponse(text: string): ChapterPlan {
 		record.review,
 		"章级规划.review",
 	);
-	return { diffs, review };
+	const reflection =
+		typeof record.reflection === "string" && record.reflection.trim() !== ""
+			? record.reflection.trim()
+			: null;
+	return { diffs, review, reflection };
 }
 
 /**
@@ -375,10 +418,32 @@ export function createChapterPlanHandler(
 		);
 		const plan = parseChapterPlanResponse(result.text);
 		assertChapterPlanKeepsMilestone(plan, input.lines, input.milestone);
+		// 玩家锁定的线，AI 只能提建议：这条修改不生效，留在修改历史里供玩家查看。
+		const allowed = plan.diffs.filter((diff) =>
+			guardBackgroundWrite(
+				store,
+				job.storyId,
+				nodeId,
+				"line",
+				diff.action === "set" ? diff.line.id : diff.id,
+				diff.action === "set"
+					? (JSON.parse(JSON.stringify(diff.line)) as JsonValue)
+					: null,
+				"章级规划",
+			),
+		);
 		const diffs = chapterReviewLineDiffs({
-			diffs: [...plan.diffs, ...planMilestonePromiseDiffs(input.milestone)],
+			diffs: [...allowed, ...planMilestonePromiseDiffs(input.milestone)],
 			review: plan.review,
-		});
+		}).filter(
+			(diff) =>
+				diff.action === "set" ||
+				readEffectiveEdits(store, job.storyId, nodeId, "line").get(diff.id)
+					?.locked !== true,
+		);
+		if (plan.reflection !== null && plan.reflection !== undefined) {
+			appendReflectionRecord(store, job.storyId, nodeId, plan.reflection);
+		}
 		store.saveDirectorChapterPlan({
 			nodeId,
 			storyId: job.storyId,

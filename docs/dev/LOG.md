@@ -479,3 +479,5 @@
 - 2026-11-14 | S429 | W7-T03 | DONE | 迁移 v67 给故事设置增加 `blueprint_spoilers`（`show`/`hide`，默认 `show`），新建 `story_blueprint_baselines(story_id PRIMARY KEY, entries, created_at)` 作为卡导入的默认蓝图；`saveStoryBlueprintBaseline` 整批校验并按 id 排序替换，空条目删行，`listBlueprintVersions` 与 `readBlueprintEntries` 从默认蓝图开始累加，版本列表只列楼层批次。core 新增 `blueprint/spoilers.ts`：`readBlueprintView` 在 `hide` 时只返回玩家条目并给出按层条数，没有隐藏时为 null；服务端新增 `GET /api/stories/:id/blueprint` 按故事设置过滤，protocol 与 web 客户端同步。卡扩展新增 `extensions.dramaticer.blueprint`，导入时恢复默认蓝图；st-compat 新增 `attachBlueprintExtension`、`readCardBlueprint` 与 `blueprint-export` 命令行，导出只改这一个字段。ADR-0159；`pnpm check` 通过（301 个测试文件、2,616 个测试、5 个跳过）。
 
 - 2026-11-15 人工会话（Claude Code）：改为规格加工单；提交会话 430 的功能开关底座；完成 director-yield/01，director-yield/02 部分完成；门禁通过。
+- 2026-11-16 人工会话（Claude Code）：重做新界面视觉层（three.js 背景、View Transitions 转场、v4.css 重写、ADR-0160）；未提交；门禁的测试一步有 12 个 core/server 的旧失败。
+- 2026-11-16 人工会话（Claude Code）第二轮：场景重写为着色水面加星空极光与日出；工具页并入新外壳，登录页重做，开场动画与指针光晕；未提交。

@@ -128,11 +128,11 @@ describe("蓝图结构", () => {
 		});
 	});
 
-	it("总纲的拉力缺省按中档补齐，非法档位拒绝", () => {
+	it("总纲的拉力缺省按弱档补齐，非法档位拒绝", () => {
 		const legacy: Record<string, unknown> = { ...makePremise() };
 		legacy.tension = undefined;
 		const parsed = assertBlueprintEntries([legacy]);
-		expect((parsed[0] as BlueprintPremise).tension).toBe("medium");
+		expect((parsed[0] as BlueprintPremise).tension).toBe("loose");
 		expect(() =>
 			assertBlueprintEntries([{ ...makePremise(), tension: "stormy" }]),
 		).toThrow("蓝图条目[0].tension 只能是 loose、medium、tight");

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type {
 	BackgroundJob,
 	BackgroundJobHandler,
@@ -15,6 +16,8 @@ export interface ExtractedEvent {
 	readonly importance: number;
 	readonly storyTime: string | null;
 	readonly location: string | null;
+	/** 逐字摘自源楼层的一句原话；旧输出没有这个字段。 */
+	readonly quote?: string | null;
 }
 
 /** 一次请求里某个助手楼层的抽取结果；没有事件时 `events` 为空数组。 */
@@ -37,6 +40,7 @@ const EVENT_FIELDS: Readonly<Record<string, true>> = {
 	importance: true,
 	storyTime: true,
 	location: true,
+	quote: true,
 };
 
 const BATCH_FIELDS: Readonly<Record<string, true>> = {
@@ -48,13 +52,14 @@ const SYSTEM_PROMPT = [
 	"你是故事记忆抽取器。阅读给定的楼层，只从窗口内的助手楼层抽取之后仍可能被提起的事实性事件。",
 	"只输出一个 JSON 数组，不要输出解释、前后缀或代码块标记。",
 	"数组的每一项对应一个窗口内的助手楼层，格式：",
-	'{"nodeId":"窗口内助手楼层的 id","events":[{"text":"事件的一句话描述","participants":["参与者"],"knowers":["知情者"],"importance":0.5,"storyTime":"故事内时间","location":"地点"}]}',
+	'{"nodeId":"窗口内助手楼层的 id","events":[{"text":"事件的一句话描述","participants":["参与者"],"knowers":["知情者"],"importance":0.5,"storyTime":"故事内时间","location":"地点","quote":"原文里的一句原话"}]}',
 	"- nodeId 必须原样使用窗口里 role 为 assistant 的楼层 id；每个楼层最多出现一次。",
 	"- 上下文楼层只用来理解前后经过，不要为它们输出记录。",
 	"- text：非空字符串。",
 	'- participants 与 knowers：字符串数组，元素都不能为空。knowers 为空数组表示公开事件；不确定谁知道时用 ["*"]。',
 	"- importance：0 到 1 之间的数字，越重要越接近 1。",
 	"- storyTime 与 location：可选；不确定就省略。",
+	"- quote：从该楼层原文里逐字复制的一句话，作为这条记录的出处；必须一字不差，对不上的记录会被拒绝。",
 	"事件描述用克制、非露骨的中性表述概括发生了什么与谁参与，不要复制原文中的露骨措辞。",
 	"没有值得记住的事件时省略该楼层；一个事件都没有时输出 []。不要把楼层里没有出现的信息编进事件。",
 ].join("\n");
@@ -126,6 +131,7 @@ function parseEvent(value: unknown, label: string): ExtractedEvent {
 		importance: requireImportance(record.importance, `${label}.importance`),
 		storyTime: optionalString(record.storyTime, `${label}.storyTime`),
 		location: optionalString(record.location, `${label}.location`),
+		quote: optionalString(record.quote, `${label}.quote`),
 	};
 }
 
@@ -238,9 +244,27 @@ export function recordExtractedEvents(
 	batches: readonly BatchExtractedEvents[],
 ): void {
 	const events: NewMemoryEventInput[] = [];
+	const quotes: { eventId: string; quote: string }[] = [];
 	for (const batch of batches) {
-		batch.events.forEach((event, ordinal) => {
+		const raw = store.getNode(batch.nodeId)?.raw ?? "";
+		let ordinal = 0;
+		for (const event of batch.events) {
+			const quote = event.quote ?? null;
+			// 出处必须是源楼层里的原话：对不上的记录不写入，只留下拒绝原因。
+			if (quote !== null && !raw.includes(quote.trim())) {
+				store.recordMemoryRejection({
+					storyId,
+					nodeId: batch.nodeId,
+					kind: "record",
+					text: event.text,
+					reason: `出处不是这一楼的原话：${quote}`,
+				});
+				continue;
+			}
+			const id = randomUUID();
+			if (quote !== null) quotes.push({ eventId: id, quote: quote.trim() });
 			events.push({
+				id,
 				storyId,
 				sourceNodeId: batch.nodeId,
 				ordinal,
@@ -251,13 +275,15 @@ export function recordExtractedEvents(
 				knowers: event.knowers,
 				text: event.text,
 			});
-		});
+			ordinal += 1;
+		}
 	}
 	store.recordEventExtractions({
 		storyId,
 		nodeIds: window.floors.map((node) => node.id),
 		events,
 	});
+	store.saveMemoryEventQuotes(storyId, quotes);
 }
 
 export interface EventWindow {

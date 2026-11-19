@@ -366,7 +366,7 @@ const SYSTEM_PROMPT = [
 	"- milestone 条目字段：id、kind、source、locked、volumeId、want、prerequisites、after、hardness。",
 	"- source 固定写 ai，locked 固定写 false；不要修改当前蓝图里 locked 为 true 的条目。",
 	"- hardness 只能是 hard 或 soft；after 引用其他里程碑的 id，不能成环。",
-	"- tension 只能是 loose（松）、medium（中）、tight（紧）；没有写时按 medium。",
+	"- tension 只能是 loose（松）、medium（中）、tight（紧）；没有写时按 loose。",
 	"- 文本可以为空，但列表项不能是空串；单个文本不超过 500 字，每个列表最多 12 条。",
 	"- 只写局面与人物意图，不要写写作指令。",
 ].join("\n");

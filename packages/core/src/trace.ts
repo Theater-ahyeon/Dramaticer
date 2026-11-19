@@ -166,6 +166,16 @@ export interface TurnTrace {
 	readonly templateId: string;
 	/** 本轮的回合模式；由玩家选择，程序不自动切换。 */
 	readonly turnMode: TurnMode;
+	/** 规划写法走过的阶段；其余写法没有这个字段。 */
+	readonly plan?: {
+		readonly prepared: boolean;
+		readonly phases: readonly {
+			readonly name: string;
+			readonly durationMs: number;
+			readonly promptTokens: number | null;
+			readonly completionTokens: number | null;
+		}[];
+	};
 	/** 本轮的对话档位：native 使用全部槽位，naive 是 B0 基线。 */
 	readonly profile: ChatProfile;
 	/**

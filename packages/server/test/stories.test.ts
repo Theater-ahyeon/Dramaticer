@@ -540,6 +540,7 @@ describe("功能开关接口", () => {
 			),
 		).toEqual([
 			"scribe",
+			"prepare",
 			"director",
 			"promiseLimit",
 			"choices",

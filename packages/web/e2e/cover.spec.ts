@@ -134,10 +134,9 @@ test.describe("卡面图与人物立绘", () => {
 		expect(Buffer.from(await cover.body())).toEqual(png);
 
 		await page.goto("/");
-		const shelfCover = page
-			.locator(".story-list a")
-			.filter({ hasText: title })
-			.locator("img.story-cover");
+		const shelfCover = page.locator(
+			`[data-view="library"] img.cover[alt="${title}的卡面图"]`,
+		);
 		await expectImageLoaded(shelfCover);
 
 		await page.goto(`/stories/${id}/chat`);
@@ -167,10 +166,9 @@ test.describe("卡面图与人物立绘", () => {
 		expect(svg).toContain('width="600" height="900"');
 
 		await page.goto("/");
-		const shelfCover = page
-			.locator(".story-list a")
-			.filter({ hasText: title })
-			.locator("img.story-cover");
+		const shelfCover = page.locator(
+			`[data-view="library"] img.cover[alt="${title}的卡面图"]`,
+		);
 		await expectImageLoaded(shelfCover);
 	});
 });

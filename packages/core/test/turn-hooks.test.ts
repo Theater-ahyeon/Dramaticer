@@ -412,7 +412,8 @@ describe("回合内钩子", () => {
 		expect(sent.some((message) => message.content.includes("慢记忆"))).toBe(
 			false,
 		);
-		expect(sent.at(-1)?.content).toBe("改写标记");
+		expect(sent.some((message) => message.content === "改写标记")).toBe(true);
+		expect(sent.at(-1)?.content).toContain("【写作要求】");
 		expect(result.node.raw).toBe("山门打开。");
 		const hooks = result.trace.hooks ?? [];
 		expect(hooks.map((hook) => hook.plugin)).toEqual(

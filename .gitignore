@@ -10,3 +10,5 @@ packages/*/test/.tmp-*/
 .devloop/
 /.tmp-*
 *.log
+.alma-snapshots
+.worktrees/

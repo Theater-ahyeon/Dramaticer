@@ -726,6 +726,15 @@ export class ApiClient {
 		yield* this.stream(`${nodePath(nodeId)}/retry`, request, signal);
 	}
 
+	/** v4 界面用的通用读写；路径以 `/api/` 开头。 */
+	async get<T>(path: string): Promise<T> {
+		return this.json<T>("GET", path);
+	}
+
+	async call<T>(method: string, path: string, body?: unknown): Promise<T> {
+		return this.json<T>(method, path, body);
+	}
+
 	private async json<T>(
 		method: string,
 		path: string,

@@ -7,6 +7,11 @@ import {
 	createBlueprintSuggestionHandler,
 } from "../blueprint/suggestions.js";
 import {
+	PLAN_PREPARE_JOB_KIND,
+	createPlanPrepareHandler,
+	planPrepareNeedsRun,
+} from "../chat/plan-turn.js";
+import {
 	DIRECTOR_BITS_JOB_KIND,
 	createDirectorBitJudgmentsHandler,
 } from "../director/bit-judgments.js";
@@ -260,6 +265,12 @@ export function createBackgroundJobPlugins(
 			enqueue: "story",
 			tier: "deferred",
 			needsRun: directorPlanNeedsRun,
+		}),
+		backgroundJobPlugin("job:plan-prepare", PLAN_PREPARE_JOB_KIND, {
+			handler: createPlanPrepareHandler(),
+			enqueue: "story",
+			tier: "deferred",
+			needsRun: planPrepareNeedsRun,
 		}),
 		backgroundJobPlugin(CHAPTER_PLAN_JOB_PLUGIN, CHAPTER_PLAN_JOB_KIND, {
 			handler: createChapterPlanHandler(plannerOptions(plannerClient)),

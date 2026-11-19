@@ -45,7 +45,7 @@
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
 - 私有数据（`eval-private/`、`data/`、`.env`）不能进入测试数据、提交、文档或日志；报告只写统计数字，不写对话原文。R6 与 X1、X2 的 JSON 含回复与答案，只能放在私有目录。场记对照的报告含楼层 id 与台账值，只能放在 `eval-private/`。
-- 迁移 v67 之后 `assistant-store.test.ts` 的版本断言是 67；新增迁移要同步这个数字。
+- 迁移 v70 之后 `assistant-store.test.ts` 的版本断言是 70；新增迁移要同步这个数字。
 - 默认蓝图只由卡导入写入（`saveStoryBlueprintBaseline`），是故事级、与楼层无关的起点；不要把它写成楼层记录，也不要为了导入蓝图创建假楼层。条目按 id 排序后保存，读取顺序与 `applyBlueprintDiffs` 一致。
 - 默认蓝图参加锁定检查：AI 不能改卡里锁定的条目。替换或清空默认蓝图不删除楼层上的修改记录；版本列表不把默认蓝图算成一版。
 - 剧透过滤只在 `GET /api/stories/:id/blueprint` 上生效；不要把 `readBlueprintView` 的过滤结果写回存储，也不要让导演、章级规划、动作引擎或建议接受读过滤后的视图。建议列表是玩家主动发起的，不按剧透隐藏。
@@ -56,7 +56,7 @@
 - 四态检查里 `lost` 先于 `achieved` 判定：章末清点显式 `retire` 的前提条件意味着方向已被放弃。只有 `blocked` 与 `lost` 带三个选择；检查本身不改写蓝图，也不该在任何后台任务里自动采纳其中一个。
 - 历史线 id 只能从 `listDirectorLinesAlongPath` 取；不要用 `readDirectorLineStates` 判断「是否出现过」。
 - 拉力只在 `lines` 组织方式、且玩家没有手动选推进档位时生效；`push` 的候选集合完全由推进档位决定。
-- 蓝图总纲的 `tension` 是必填字段，但解析时缺失按 `medium` 补齐；新增总纲条目时写明档位。
+- 蓝图总纲的 `tension` 是必填字段，但解析时缺失按 `loose` 补齐；新增总纲条目时写明档位。
 - 写作上下文的蓝图摘要只注入三项：当前卷的核心问题、最近里程碑的方向、本章该埋的线。不要把 `premise` 的候选结局与红线、后面卷的里程碑或完整条目放进消息与 Trace 的来源描述。
 - 摘要里的「本章该埋的线」只列 `missingLineIds` 对应的前提条件；前提条件通过 `active.lineIds` 的下标与 `prerequisites` 对齐，不要另算线 id。
 - 新增上下文槽位要同步四处：`CONTEXT_SLOT_NAMES`、`chat/template.ts` 的段落与两种排布、`plugins/slots.ts` 与 `chat-providers.ts` 的装载、web 的 `SLOT_CHOICES`；`docs/plugins/code-plugins.md` 与 `docs/plugins/declarative-plugins.md` 的槽位清单由测试逐项核对。
@@ -121,3 +121,13 @@
 - 导演何时出手由故事的「导演」功能开关决定，三个档位默认都是「仅推进时」。玩家的自由输入不论长短都让位，让位时不注入任何东西；只有推进按钮或「继续、推进剧情」这类固定说法才出手（`readPlayerIntent`）。
 - 直接调用 `createDirectorSlotProvider` 或 `createStandardChatSlots` 的测试与工具，如果要让导演在自由输入的回合里评估，传 `when: "always"` / `directorWhen: "always"`。命令行 chat、导演回放与组织方式对比已经这样做。
 - 让位的动作选择返回空指令；引擎写决策记录（`signals.action` 为 `yield`），不返回建议。
+
+## 新界面的视觉层（2026-11-16 起）
+- 页面只通过 `v4/stage.ts` 跟背景打交道：`stage.pulse()` 让海面荡一圈光，`stage.setWriting()` 表示正在写。背景（`scene.ts`）读这些状态，不反过来依赖页面。
+- 站内跳转用 `ui.tsx` 的 `TLink` 或 `travel()` 才有转场；普通 `Link` 也能用，只是直接换页。路由更新走 React 的 transition，所以 `travel` 要等 `Shell` 的 layout effect 调 `routeCommitted()` 才让浏览器拍新画面。
+- 样式的先后顺序是定死的：`main.tsx` 先引 `styles.css`，再引 `App`（带进 `v4.css`）。`v4.css` 里有全局的 `button`、`input` 基础样式和工具页的覆盖规则，顺序反了旧规则会盖回来。颜色变量写在 `html:root` 上，旧页面的 `--surface`、`--text` 等也在这里接到新变量。
+- 带 `backdrop-filter` 的玻璃面板不要加三维变换（`perspective`、`rotateX/Y`），否则模糊会失效；要倾斜就只倾斜里面的图。
+- 场景的着色器直接输出显示用的颜色，`scene.ts` 里关了 three 的色彩管理；天空和水面的倒影共用 `skyColor`，改天空要两边一起看。机器带不动时场景会自己降渲染分辨率。
+- 承载内容的大块统一用「玻璃面板」那组选择器；新加页面的容器要加进去，否则文字直接落在动的背景上。
+- 系统设了「减少动效」时：背景不跑循环，只在换页时重画；转场和入场动画关闭。新加动效要守这一条。
+- 给新界面截图：起 `node e2e/serve.mjs`，用 Playwright 的 chromium 加 `--enable-unsafe-swiftshader` 才有 WebGL。

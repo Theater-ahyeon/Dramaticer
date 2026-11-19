@@ -47,6 +47,7 @@ describe("功能开关目录", () => {
 			search: false,
 			director: "push",
 			knows: false,
+			prepare: false,
 			promiseLimit: 3,
 			rules: false,
 			status: true,
@@ -65,6 +66,7 @@ describe("功能开关目录", () => {
 			search: false,
 			director: "push",
 			knows: true,
+			prepare: false,
 			promiseLimit: 5,
 			rules: true,
 			status: true,
@@ -83,6 +85,7 @@ describe("功能开关目录", () => {
 			search: true,
 			director: "push",
 			knows: true,
+			prepare: true,
 			promiseLimit: 8,
 			rules: true,
 			status: true,
@@ -159,6 +162,7 @@ describe("功能开关解析", () => {
 		});
 		expect(state.visible).toEqual([
 			"scribe",
+			"prepare",
 			"director",
 			"promiseLimit",
 			"choices",
@@ -171,6 +175,7 @@ describe("功能开关解析", () => {
 		expect(state.values.think).toBe("high");
 		expect(state.values.promiseLimit).toBe(8);
 		expect(state.values.scribe).toBe(true);
+		expect(state.values.prepare).toBe(true);
 		expect(state.values.raw).toBe(false);
 		expect(state.values.rules).toBe(false);
 		expect(state.values.status).toBe(false);
@@ -256,6 +261,7 @@ describe("卡片能力判断", () => {
 		);
 		expect(ids).toEqual([
 			"scribe",
+			"prepare",
 			"director",
 			"promiseLimit",
 			"choices",

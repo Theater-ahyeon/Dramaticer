@@ -62,6 +62,8 @@ export interface DirectorLine {
 	readonly countdown: number | null;
 	/** 后台预备的两三种发展。 */
 	readonly preparations: readonly string[];
+	/** 到点时即使玩家正在自己写也可以打断；每场最多一次。只在为真时出现。 */
+	readonly mustInterrupt?: boolean;
 }
 
 /** 楼层上的一条线修改；`set` 带完整线，`delete` 只带 id。 */
@@ -117,6 +119,7 @@ const LINE_KEYS = [
 	"obstacle",
 	"countdown",
 	"preparations",
+	"mustInterrupt",
 ];
 
 export function isDirectorLineKind(value: unknown): value is DirectorLineKind {
@@ -175,6 +178,10 @@ export function assertDirectorLine(
 			`${label}.preparations 最多 ${MAX_DIRECTOR_LINE_PREPARATIONS} 条`,
 		);
 	}
+	const mustInterrupt = record.mustInterrupt;
+	if (mustInterrupt !== undefined && typeof mustInterrupt !== "boolean") {
+		throw new Error(`${label}.mustInterrupt 必须是布尔值`);
+	}
 	const seen = new Set<string>();
 	const parsedPreparations = preparations.map((item, index) => {
 		const text = readText(item, `${label}.preparations[${index}]`);
@@ -192,6 +199,7 @@ export function assertDirectorLine(
 		obstacle,
 		countdown: countdown as number | null,
 		preparations: parsedPreparations,
+		...(mustInterrupt === true ? { mustInterrupt: true } : {}),
 	};
 }
 
@@ -489,6 +497,12 @@ export interface DirectorActionInput {
 	/** 最近用过的动作，最新在前。 */
 	readonly recentActions: readonly DirectorActionKind[];
 	readonly config: DirectorActionConfig;
+	/** 这一场里已经有过一次必须打断的事件。 */
+	readonly interruptedThisScene?: boolean;
+	/** 玩家撤回过的线；恢复之前不参与任何动作。 */
+	readonly mutedLineIds?: readonly string[];
+	/** 玩家置顶的线：接球与推进优先锚在它上面。 */
+	readonly pinnedLineIds?: readonly string[];
 }
 
 export interface DirectorActionSelection {
@@ -507,6 +521,7 @@ interface ActionCandidate {
 	readonly reason: string;
 	readonly lineId: string | null;
 	readonly directive: string;
+	readonly interrupt?: boolean;
 }
 
 export function isDirectorActionKind(
@@ -568,8 +583,16 @@ function readAnchorLine(
  * 顺序即优先级：让位、闯入、兑现、揭示、转场、喘息、加码、接球。
  */
 export function selectDirectorAction(
-	input: DirectorActionInput,
+	rawInput: DirectorActionInput,
 ): DirectorActionSelection | null {
+	const muted = new Set(rawInput.mutedLineIds ?? []);
+	const input: DirectorActionInput =
+		muted.size === 0
+			? rawInput
+			: {
+					...rawInput,
+					lines: rawInput.lines.filter((state) => !muted.has(state.line.id)),
+				};
 	const { floors, lines, config, floorDepth } = input;
 	if (!Number.isInteger(floorDepth) || floorDepth < 0) {
 		throw new Error(
@@ -606,6 +629,7 @@ export function selectDirectorAction(
 		present: [...present],
 		sceneGoal: latest?.sceneCard?.change ?? null,
 		lineCount: lines.length,
+		mutedLineIds: [...muted],
 		stallFloors: config.stallFloors,
 		clueAgeWarning: config.clueAgeWarning,
 	};
@@ -622,6 +646,7 @@ export function selectDirectorAction(
 			label: DIRECTOR_ACTION_LABELS[chosen.action],
 			reason: chosen.reason,
 			lineId: chosen.lineId,
+			...(chosen.interrupt === true ? { interrupt: true } : {}),
 		},
 	};
 }
@@ -842,11 +867,36 @@ function buildActionCandidates(input: DirectorActionInput): ActionCandidate[] {
 	const { floors, lines, config, floorDepth } = input;
 	const latest = floors[0] ?? null;
 	const present = latest === null ? [] : latest.present;
-	const hot = readAnchorLine(lines, "hot");
+	const pinned = new Set(input.pinnedLineIds ?? []);
+	const hot =
+		lines.find((state) => pinned.has(state.line.id)) ??
+		readAnchorLine(lines, "hot");
 
 	const intent = readPlayerIntent(input.playerMessage, input.push ?? null);
 	const direction = playerDirectionCandidate(input, intent);
-	if (direction !== null) return [direction];
+	if (direction !== null) {
+		// 必须打断的事件到点时可以盖过让位，但一场只有一次。
+		if (input.interruptedThisScene !== true) {
+			const urgent = lines.find((state) => {
+				if (state.line.mustInterrupt !== true) return false;
+				const remaining = directorLineRemaining(state, floorDepth);
+				return remaining !== null && remaining <= 0;
+			});
+			if (urgent !== undefined) {
+				return [
+					{
+						action: "intrude",
+						lineId: urgent.line.id,
+						interrupt: true,
+						reason: `线「${urgent.line.id}」标记为必须打断，倒计时到点；这一场还没有打断过`,
+						directive: `${urgent.line.who}的倒计时到点：${urgent.line.want}；${urgent.line.obstacle}。`,
+					},
+					direction,
+				];
+			}
+		}
+		return [direction];
+	}
 
 	let due: DirectorLineState | null = null;
 	let dueRemaining: number | null = null;
@@ -1048,6 +1098,25 @@ export function readDirectorActionInput(
 		if (!isDirectorActionKind(action)) continue;
 		recentActions.push(action);
 	}
+	// 从最近一楼往回数到上一场结束：这段里出现过打断，这一场就不再打断。
+	const sceneNodeIds = new Set<string>();
+	for (let index = path.length - 1; index >= 0; index -= 1) {
+		const item = path[index];
+		if (item === undefined) break;
+		if (item.role === "assistant" && item.id !== nodeId) {
+			if (store.getSceneLog(item.id)?.sceneEnds === true) break;
+		}
+		sceneNodeIds.add(item.id);
+		if (sceneNodeIds.size >= 200) break;
+	}
+	const interruptedThisScene = store
+		.getDirectorDecisionsAlongPath(nodeId)
+		.some(
+			(decision) =>
+				decision.nodeId !== nodeId &&
+				decision.signals.interrupt === true &&
+				sceneNodeIds.has(decision.nodeId),
+		);
 	return {
 		floorDepth: assistantFloors.length,
 		playerMessage: lastPlayer === undefined ? null : lastPlayer.raw,
@@ -1058,5 +1127,21 @@ export function readDirectorActionInput(
 		lines: store.readDirectorLineStates(nodeId),
 		recentActions: recentActions.slice(-MAX_CONSECUTIVE_DIRECTOR_ACTIONS + 1),
 		config,
+		interruptedThisScene,
+		mutedLineIds: store
+			.listMutedDirectorLines(storyId)
+			.map((item) => item.lineId),
+		pinnedLineIds: readPinnedLineIds(store, storyId),
 	};
+}
+
+/** 玩家置顶的线，存在故事级的小配置里。 */
+export function readPinnedLineIds(
+	store: StoryStore,
+	storyId: string,
+): string[] {
+	const value = store.getStoryValue(storyId, "pinnedLines");
+	return Array.isArray(value)
+		? value.filter((item): item is string => typeof item === "string")
+		: [];
 }

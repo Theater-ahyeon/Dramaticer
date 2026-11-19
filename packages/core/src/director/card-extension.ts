@@ -3,7 +3,7 @@ import {
 	assertBlueprintEntries,
 } from "../blueprint/story-blueprint.js";
 import { normalizeEntityName } from "../entity.js";
-import { assertPlainObject, rejectUnknownKeys } from "../json.js";
+import { assertPlainObject, isJsonObject, rejectUnknownKeys } from "../json.js";
 import {
 	type DramaticerRuleDeclaration,
 	parseDramaticerRuleDeclarations,
@@ -44,6 +44,11 @@ export interface DramaticerCardExtension {
 	readonly requires: DeclarativeRequirements;
 	/** 建议安装但不影响使用的插件与玩法包。 */
 	readonly recommends: DeclarativeRequirements;
+	/**
+	 * 卡的推荐配置：写作选项、写法、功能档位与开关。载入时应用，
+	 * 玩家的调整叠在上面；内容在使用处逐项校验，不认识的字段忽略。
+	 */
+	readonly config?: Readonly<Record<string, unknown>> | null;
 	/** 随卡带的默认蓝图；导入后成为故事级起点，楼层上的修改累加在它之上。 */
 	readonly blueprint: readonly BlueprintEntry[];
 }
@@ -83,6 +88,7 @@ export function parseDramaticerCardExtension(
 			"requires",
 			"recommends",
 			"blueprint",
+			"config",
 		],
 		"extensions.dramaticer",
 	);
@@ -134,6 +140,7 @@ export function parseDramaticerCardExtension(
 		requires,
 		recommends,
 		blueprint,
+		config: isJsonObject(root.config) ? root.config : null,
 	};
 }
 

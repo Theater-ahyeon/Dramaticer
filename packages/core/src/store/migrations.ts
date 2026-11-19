@@ -2037,6 +2037,60 @@ export function buildMigrations(
 					DEFAULT '{}'`,
 			],
 		},
+		{
+			version: 69,
+			description: "玩家撤回的剧情线",
+			statements: [
+				`CREATE TABLE director_muted_lines (
+					story_id TEXT NOT NULL REFERENCES stories(id),
+					line_id TEXT NOT NULL,
+					node_id TEXT,
+					created_at TEXT NOT NULL,
+					PRIMARY KEY (story_id, line_id)
+				) STRICT`,
+			],
+		},
+		{
+			version: 70,
+			description: "玩家的直接修改、记录的逐字出处与被拒绝的写入",
+			statements: [
+				`CREATE TABLE player_edits (
+					id INTEGER PRIMARY KEY AUTOINCREMENT,
+					story_id TEXT NOT NULL REFERENCES stories(id),
+					node_id TEXT,
+					kind TEXT NOT NULL,
+					target TEXT NOT NULL,
+					value TEXT,
+					locked INTEGER NOT NULL DEFAULT 0,
+					disabled INTEGER NOT NULL DEFAULT 0,
+					source TEXT NOT NULL,
+					note TEXT,
+					created_at TEXT NOT NULL
+				) STRICT`,
+				"CREATE INDEX player_edits_lookup ON player_edits (story_id, kind, target)",
+				`CREATE TABLE memory_event_quotes (
+					event_id TEXT PRIMARY KEY,
+					story_id TEXT NOT NULL REFERENCES stories(id),
+					quote TEXT NOT NULL
+				) STRICT`,
+				`CREATE TABLE memory_rejections (
+					id INTEGER PRIMARY KEY AUTOINCREMENT,
+					story_id TEXT NOT NULL REFERENCES stories(id),
+					node_id TEXT,
+					kind TEXT NOT NULL,
+					text TEXT NOT NULL,
+					reason TEXT NOT NULL,
+					created_at TEXT NOT NULL
+				) STRICT`,
+				`CREATE TABLE story_kv (
+					story_id TEXT NOT NULL REFERENCES stories(id),
+					key TEXT NOT NULL,
+					value TEXT NOT NULL,
+					updated_at TEXT NOT NULL,
+					PRIMARY KEY (story_id, key)
+				) STRICT`,
+			],
+		},
 	];
 }
 

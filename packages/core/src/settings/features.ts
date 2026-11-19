@@ -87,6 +87,7 @@ export interface FeatureSwitchValueMap {
 	readonly search: boolean;
 	readonly director: FeatureDirectorValue;
 	readonly knows: boolean;
+	readonly prepare: boolean;
 	readonly promiseLimit: number;
 	readonly rules: boolean;
 	readonly status: boolean;
@@ -193,6 +194,17 @@ export const FEATURE_SWITCHES: readonly FeatureSwitchDefinition[] = [
 		description: "在全部楼层里查找相关段落，作为记忆的补充",
 		capability: "importedContent",
 		kind: "toggle",
+		tierValues: { lite: false, standard: false, immersive: true },
+		disabledValue: false,
+	}),
+	defineSwitch({
+		id: "prepare",
+		group: "director",
+		label: "提前备好",
+		description: "规划写法下，趁你在想的时候把推进和每个选项先准备好",
+		capability: null,
+		kind: "toggle",
+		// 每一楼之后要多跑一批准备调用，只在全开档默认打开。
 		tierValues: { lite: false, standard: false, immersive: true },
 		disabledValue: false,
 	}),

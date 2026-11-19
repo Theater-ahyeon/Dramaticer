@@ -46,6 +46,7 @@ import {
 	formatRerollCorrection,
 } from "../preferences/reroll.js";
 import type { TurnRunEventInput, TurnRunFinalStatus } from "../run-log.js";
+import { formatWritingDials } from "../settings/writing.js";
 import type { StoryStore } from "../store/story-store.js";
 import {
 	collectStructuredOutputFromText,
@@ -92,6 +93,15 @@ import {
 	assertMaxReadRounds,
 } from "./mode.js";
 import { TurnNoteController } from "./notes.js";
+import {
+	PLAN_PREP_PHASES,
+	type PlanTurnTrace,
+	buildSelfCheckList,
+	formatSelfCheckList,
+	isPlanWritingMode,
+	readPreparedPlan,
+	runPlanPhases,
+} from "./plan-turn.js";
 import {
 	type ChatProfile,
 	DEFAULT_CHAT_PROFILE,
@@ -632,10 +642,75 @@ export async function generateAssistantTurn(
 					},
 	});
 	// 深回合在组装后的消息之后注入手记；快回合不注入。
-	const noted =
+	const notedBase =
 		notes === null
 			? rewritten.messages
 			: withDirectorNotes(options.store, rewritten.messages, userNode.id);
+	// 写作选项紧贴生成位置：玩家改了选项，下一楼的上下文就不一样。
+	// 朴素基线（B0）保持原样上下文，不加写作要求。
+	const writing = writesLedger
+		? formatWritingDials(options.store, userNode.storyId)
+		: null;
+	const extra: LlmMessage[] = [];
+	if (writing !== null) extra.push({ role: "system", content: writing });
+	// 规划写法：固定的准备阶段先理清材料，再交给同一次正文调用。
+	// 间隙里已经备好时直接用，回合内不再有准备调用。
+	let planTrace: PlanTurnTrace | null = null;
+	if (
+		resolved.mode === "fast" &&
+		writesLedger &&
+		isPlanWritingMode(options.store, options.storyId)
+	) {
+		const anchorNodeId = userNode.parentId ?? userNode.id;
+		const progress = (phase: string, detail: string): void =>
+			options.onToolProgress?.({ type: "progress", phase, detail });
+		let preparation = readPreparedPlan(
+			options.store,
+			options.storyId,
+			anchorNodeId,
+			userNode.raw,
+			options.directorPush ?? null,
+		);
+		if (preparation !== null) {
+			for (const name of PLAN_PREP_PHASES) progress(name, "");
+		} else {
+			preparation = await runPlanPhases({
+				store: options.store,
+				client: options.client,
+				storyId: options.storyId,
+				anchorNodeId,
+				playerMessage: userNode.raw,
+				push: options.directorPush ?? null,
+				signal: options.signal,
+				onProgress: progress,
+			});
+		}
+		planTrace = preparation.trace;
+		if (preparation.text !== "") {
+			extra.push({ role: "system", content: preparation.text });
+		}
+	}
+	// 深度写法：程序生成的自查清单交给模型，交稿前逐项核对草稿。
+	if (resolved.mode === "deep") {
+		const checks = buildSelfCheckList(
+			options.store,
+			options.storyId,
+			userNode.id,
+		);
+		const checklist = formatSelfCheckList(checks);
+		if (checklist !== null) {
+			extra.push({ role: "system", content: checklist });
+			for (const item of checks) {
+				options.onToolProgress?.({
+					type: "progress",
+					phase: "自查清单",
+					detail: item.length > 60 ? `${item.slice(0, 60)}…` : item,
+				});
+			}
+		}
+	}
+	const noted: readonly LlmMessage[] =
+		extra.length === 0 ? notedBase : [...notedBase, ...extra];
 	// 重 roll 的即时指示紧贴生成位置，排在历史与导演之后。
 	const messages =
 		rerollReason === null
@@ -823,6 +898,7 @@ export async function generateAssistantTurn(
 			parentNodeId: userNode.id,
 			templateId: options.template.id,
 			turnMode: resolved.mode,
+			...(planTrace === null ? {} : { plan: planTrace }),
 			profile,
 			rerollReason,
 			createdAt: node.createdAt,

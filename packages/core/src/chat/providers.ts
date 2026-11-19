@@ -31,6 +31,7 @@ import {
 	type DirectorConfig,
 	type DirectorMechanism,
 } from "../director/types.js";
+import { readEffectiveLore } from "../edits/index.js";
 import { normalizeEntityName } from "../entity.js";
 import { isJsonObject } from "../json.js";
 import {
@@ -1015,7 +1016,7 @@ export function createLoreSlotProvider(
 				}
 				normalizedQuery = normalizeEntityName(node.raw);
 			}
-			const entries = store.listLoreEntries(request.storyId);
+			const entries = readEffectiveLore(store, request.storyId, nodeId);
 			if (entries.length === 0) return null;
 
 			const mode = store.getStorySettings(request.storyId).importMode;
