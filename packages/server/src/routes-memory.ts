@@ -416,7 +416,7 @@ function saveEdit(
 	if (typeof target !== "string" || target.length === 0) {
 		throw bad("target", "必须指明要改的对象");
 	}
-	if (kind === "wiki") {
+	if (kind === "wiki" && body.reset !== true) {
 		const separator = target.lastIndexOf("|");
 		const statementId = separator === -1 ? "" : target.slice(separator + 1);
 		if (separator > 0 && statementId !== "lead") {
@@ -467,6 +467,20 @@ function saveEdit(
 				: undefined;
 		if (typeof text !== "string" || text.trim().length === 0) {
 			throw bad("value", "内容不能为空；不想要这一条可以删掉它");
+		}
+		if (kind === "secret" && next !== null && typeof next === "object") {
+			for (const field of ["knowers", "unaware"] as const) {
+				const names = (next as Record<string, unknown>)[field];
+				if (names === undefined) continue;
+				if (
+					!Array.isArray(names) ||
+					names.some(
+						(name) => typeof name !== "string" || name.trim().length === 0,
+					)
+				) {
+					throw bad("value", `${field} 必须是名字组成的数组`);
+				}
+			}
 		}
 		value = next;
 	}

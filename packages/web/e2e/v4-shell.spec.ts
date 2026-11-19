@@ -73,6 +73,23 @@ async function createStory(
 	expect(created.ok()).toBeTruthy();
 }
 
+/** 两个项目共用一个数据库；取比现有楼层都晚的时间，书架排序才可预期。 */
+function nextHeadTime(): string {
+	const db = new DatabaseSync(DB_PATH, { timeout: 5_000 });
+	try {
+		const row = db
+			.prepare("SELECT MAX(created_at) AS latest FROM nodes")
+			.get() as { latest: string | null } | undefined;
+		const base =
+			row?.latest === null || row?.latest === undefined
+				? Date.now()
+				: Math.max(Date.now(), Date.parse(row.latest));
+		return new Date(base + 3_600_000).toISOString();
+	} finally {
+		db.close();
+	}
+}
+
 /** 把 head 换成一楼已知的时间与正文，书架排序和「上回说到」都可预期。 */
 function seedHead(storyId: string, raw: string, createdAt: string): string {
 	const nodeId = `${storyId}-head`;
@@ -146,12 +163,12 @@ test.describe("新界面外壳与书架", () => {
 		expect(coverImport.ok()).toBeTruthy();
 
 		const recap = "门厅的灯亮着。林雪把那封信推回桌面，说先别看。";
-		const now = Date.now();
-		seedHead(coverId, recap, new Date(now + 3_600_000).toISOString());
+		const coverTime = nextHeadTime();
+		seedHead(coverId, recap, coverTime);
 		seedHead(
 			placeholderId,
 			"雾里有人在等。",
-			new Date(now + 60_000).toISOString(),
+			new Date(Date.parse(coverTime) - 3_600_000).toISOString(),
 		);
 
 		await page.goto("/");
@@ -212,7 +229,7 @@ test.describe("新界面外壳与书架", () => {
 		seedHead(
 			storyId,
 			"门厅的灯亮着。林雪把那封信推回桌面，说先别看。雨一直下，楼梯上传来脚步声。",
-			new Date(Date.now() + 7_200_000).toISOString(),
+			nextHeadTime(),
 		);
 
 		const viewport = page.viewportSize();

@@ -4,12 +4,14 @@
 
 **Blocked by:** 03
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] 每一类给出 token 数
-- [ ] 每一条能定位到设定、记录、百科页或状态项
-- [ ] `pnpm check` 通过
+- [x] 每一类给出 token 数
+- [x] 每一条能定位到设定、记录、百科页或状态项
+- [x] `pnpm check` 通过
 
 规格：`.scratch/memory/spec.md`
 
 ## Comments
+
+完成：2026-11-19 上下文 Trace 逐条记录来源对象；`readContextBreakdown` 按类别给出 token 数，记录定位到记录 id、设定条目、百科页或状态项，旧 Trace 回落到片段来源。验证用 invariants、typecheck 与目标测试文件替代整仓 `pnpm check`。
