@@ -22,6 +22,7 @@ import {
 	readMemoryTimeline,
 	readPinnedLineIds,
 	readWritingView,
+	resetToCardRecommended,
 	resolveLoreInjectionRole,
 	rollbackPlayerEdit,
 	stateTargetOf,
@@ -361,7 +362,7 @@ export async function handleMemoryRoute(
 		if (method === "GET") {
 			sendJson(res, 200, readWritingView(store, storyId));
 		} else if (method === "DELETE") {
-			sendJson(res, 200, writeWritingOverrides(store, storyId, null));
+			sendJson(res, 200, resetToCardRecommended(store, storyId));
 		} else {
 			const body = await readObject(req, options);
 			sendJson(res, 200, writeWritingOverrides(store, storyId, body));

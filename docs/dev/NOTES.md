@@ -57,6 +57,8 @@
 - 历史线 id 只能从 `listDirectorLinesAlongPath` 取；不要用 `readDirectorLineStates` 判断「是否出现过」。
 - 拉力只在 `lines` 组织方式、且玩家没有手动选推进档位时生效；`push` 的候选集合完全由推进档位决定。
 - 蓝图总纲的 `tension` 是必填字段，但解析时缺失按 `loose` 补齐；新增总纲条目时写明档位。
+- 写作选项与卡的推荐（`packages/core/src/settings/card-config.ts`）：写作选项存在 `writing.recommended` / `writing.overrides`，写法与开关的推荐存在 `card.recommended`，卡版本存在 `card`。卡载入时只有第一次应用写法与开关；升级只换推荐和 `card.version`，玩家的调整保留。`DELETE /api/stories/:id/writing` 同时清写作调整并重新应用推荐，别改成只清写作。
+- 卡的推荐配置对应测试：`pnpm exec vitest run packages/core/test/card-recommended.test.ts packages/server/test/stories.test.ts`（server 用例先 `pnpm run typecheck`）。
 - 写作上下文的蓝图摘要只注入三项：当前卷的核心问题、最近里程碑的方向、本章该埋的线。不要把 `premise` 的候选结局与红线、后面卷的里程碑或完整条目放进消息与 Trace 的来源描述。
 - 摘要里的「本章该埋的线」只列 `missingLineIds` 对应的前提条件；前提条件通过 `active.lineIds` 的下标与 `prerequisites` 对齐，不要另算线 id。
 - 新增上下文槽位要同步四处：`CONTEXT_SLOT_NAMES`、`chat/template.ts` 的段落与两种排布、`plugins/slots.ts` 与 `chat-providers.ts` 的装载、web 的 `SLOT_CHOICES`；`docs/plugins/code-plugins.md` 与 `docs/plugins/declarative-plugins.md` 的槽位清单由测试逐项核对。
@@ -124,6 +126,7 @@
 - 导演何时出手由故事的「导演」功能开关决定，三个档位默认都是「仅推进时」。玩家的自由输入不论长短都让位，让位时不注入任何东西；只有推进按钮或「继续、推进剧情」这类固定说法才出手（`readPlayerIntent`）。
 - 直接调用 `createDirectorSlotProvider` 或 `createStandardChatSlots` 的测试与工具，如果要让导演在自由输入的回合里评估，传 `when: "always"` / `directorWhen: "always"`。命令行 chat、导演回放与组织方式对比已经这样做。
 - 让位的动作选择返回空指令；引擎写决策记录（`signals.action` 为 `yield`），不返回建议。
+- 章末清点只把上一次清点之后、玩家自己写的自由输入当作这一章的变化；推进类固定说法不算。这些变化写进提示词，模型据此删线、改写 want 与 obstacle，或把伏笔声明为 retire。
 - 线可以带 `mustInterrupt: true`：玩家自由输入时这条线倒计时到点会盖过让位，决策信号带 `interrupt`；每场只允许一次，计数从当前路径往回数到上一场结束（`readDirectorActionInput` 的 `interruptedThisScene`）。
 
 ## 新界面的视觉层（2026-11-16 起）

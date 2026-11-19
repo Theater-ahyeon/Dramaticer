@@ -11,7 +11,9 @@ const appPort = Number(process.env.E2E_APP_PORT ?? 4517);
 rmSync(workDir, { recursive: true, force: true });
 mkdirSync(workDir, { recursive: true });
 
-const fake = await startFakeChannel();
+const fake = await startFakeChannel({
+	streamDelayMs: Number(process.env.E2E_FAKE_STREAM_DELAY_MS ?? "0"),
+});
 const channelsPath = join(workDir, "channels.yaml");
 writeFileSync(
 	channelsPath,
