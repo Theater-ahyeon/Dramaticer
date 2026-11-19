@@ -4,12 +4,14 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] 撤回后那条线不再被选中，直到玩家恢复
-- [ ] 统计接口给出两种情况下的次数与比例
+- [x] 撤回后那条线不再被选中，直到玩家恢复
+- [x] 统计接口给出两种情况下的次数与比例
 - [ ] `pnpm check` 通过
 
 规格：`.scratch/director-yield/spec.md`
 
 ## Comments
+
+完成：2026-11-19 撤回在同一个事务里静音剧情线并写一条 `avoid-line` 长期偏好，恢复后重新参与选择；干扰统计接口按导演开、关分组给出两项次数与比例。整仓 `pnpm check` 按 `CONTRACT.md` 留给集成分支，本地跑过 `pnpm run invariants`、`pnpm run typecheck`、biome 与 director-lines、preferences、reroll-reason、director-undo 相关单测。

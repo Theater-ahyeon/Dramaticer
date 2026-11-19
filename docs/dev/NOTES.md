@@ -128,6 +128,7 @@
 - 让位的动作选择返回空指令；引擎写决策记录（`signals.action` 为 `yield`），不返回建议。
 - 章末清点只把上一次清点之后、玩家自己写的自由输入当作这一章的变化；推进类固定说法不算。这些变化写进提示词，模型据此删线、改写 want 与 obstacle，或把伏笔声明为 retire。
 - 线可以带 `mustInterrupt: true`：玩家自由输入时这条线倒计时到点会盖过让位，决策信号带 `interrupt`；每场只允许一次，计数从当前路径往回数到上一场结束（`readDirectorActionInput` 的 `interruptedThisScene`）。
+- 撤回导演安排（`undoDirectorArrangement`）在同一个事务里静音那条线，并写一条 `avoid-line` 的长期偏好；重复撤回不会重复写同一句偏好。恢复用 `unmuteDirectorLine`，之后这条线重新参与选择。干扰统计只数 swipe 偏好里的「没听我的」「别推这条线」，按被放弃的回复上有没有决策记录分成导演开、关两组。
 
 ## 新界面的视觉层（2026-11-16 起）
 - 页面只通过 `v4/stage.ts` 跟背景打交道：`stage.pulse()` 让海面荡一圈光，`stage.setWriting()` 表示正在写。背景（`scene.ts`）读这些状态，不反过来依赖页面。
