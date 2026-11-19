@@ -88,6 +88,7 @@ export interface FeatureSwitchValueMap {
 	readonly director: FeatureDirectorValue;
 	readonly knows: boolean;
 	readonly prepare: boolean;
+	readonly review: boolean;
 	readonly promiseLimit: number;
 	readonly rules: boolean;
 	readonly status: boolean;
@@ -206,6 +207,18 @@ export const FEATURE_SWITCHES: readonly FeatureSwitchDefinition[] = [
 		kind: "toggle",
 		// 每一楼之后要多跑一批准备调用，只在全开档默认打开。
 		tierValues: { lite: false, standard: false, immersive: true },
+		disabledValue: false,
+	}),
+	defineSwitch({
+		id: "review",
+		group: "director",
+		label: "复查",
+		description:
+			"规划写法下，写完后检查状态矛盾与串戏；有问题时存成可切换的版本",
+		capability: null,
+		kind: "toggle",
+		// 每楼多一次后台调用，只在标准与全开档默认打开。
+		tierValues: { lite: false, standard: true, immersive: true },
 		disabledValue: false,
 	}),
 	defineSwitch({
