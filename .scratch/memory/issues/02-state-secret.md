@@ -4,7 +4,7 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 - [ ] 同一个键多次变化时读到最新值，历史可查
 - [ ] 卡声明的类型进入状态
