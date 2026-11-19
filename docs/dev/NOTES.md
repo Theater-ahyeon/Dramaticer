@@ -153,6 +153,8 @@
 ## 新界面的视觉层（2026-11-16 起）
 
 - 2026-11-19 起（ADR-0162、`ui-lite`）：没有 three.js 场景、指针光、卡片倾斜与开场动画，也不打包字体；`stage.pulse` / `setWriting` 保留为空操作级别的接口，页面可以照常调用。下面关于三维背景的旧条目已过时，以 `.scratch/ui-lite/spec.md` 为准。
+- 2026-11-19 起（ui-lite/02）设计系统是「纸与墨」：`v4.css` 开头的 `html:root` 定义颜色（`--bg`、`--sheet`、`--raise`、`--field`、`--ink`、`--muted`、`--line`、`--line-strong`、`--cinnabar*`）、字号（`--t-*`、`--lh-*`）、间距（`--s-*`）、圆角（`--r-*`）与 `--dur`。`--gold*`、`--teal` 等旧名只是别名，新样式直接用新名字。改颜色要同时改两处暗色定义（媒体查询与 `data-theme="dark"`），`packages/web/test/design-tokens.test.ts` 会比对两处并检查 WCAG AA 对比度、没有 `backdrop-filter`、CSS 压缩后 ≤ 40 KB。朱砂只给主操作、当前位置与导演的痕迹；不用玻璃模糊、装饰渐变和入场动画。下面关于玻璃、入场动画的旧条目已过时。
+- 主题由 `stage.ts` 的 `setTheme` 设置，导航栏按钮与设置页「外观」通过 `onThemeChange` 同步；手机上导航栏没有主题按钮，只能在设置页改。
 - 页面只通过 `v4/stage.ts` 跟背景打交道：`stage.pulse()` 让海面荡一圈光，`stage.setWriting()` 表示正在写。背景（`scene.ts`）读这些状态，不反过来依赖页面。
 - 站内跳转用 `ui.tsx` 的 `TLink` 或 `travel()` 才有转场；普通 `Link` 也能用，只是直接换页。路由更新走 React 的 transition，所以 `travel` 要等 `Shell` 的 layout effect 调 `routeCommitted()` 才让浏览器拍新画面。
 - 样式的先后顺序是定死的：`main.tsx` 先引 `styles.css`，再引 `App`（带进 `v4.css`）。`v4.css` 里有全局的 `button`、`input` 基础样式和工具页的覆盖规则，顺序反了旧规则会盖回来。颜色变量写在 `html:root` 上，旧页面的 `--surface`、`--text` 等也在这里接到新变量。

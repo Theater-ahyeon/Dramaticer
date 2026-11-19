@@ -4,6 +4,7 @@ import { Mark } from "./Backdrop";
 import {
 	type Theme,
 	nextTheme,
+	onThemeChange,
 	routeCommitted,
 	setTheme,
 	storedTheme,
@@ -40,8 +41,8 @@ const NAV = [
 
 const THEME_LABEL: Record<Theme, string> = {
 	auto: "跟随系统",
-	dark: "夜色",
-	light: "晨雾",
+	dark: "暗",
+	light: "亮",
 };
 
 /** 命令面板里除了跳转之外的动作，由当前页面登记。 */
@@ -74,6 +75,8 @@ export function Shell() {
 	const [query, setQuery] = useState("");
 	const [selected, setSelected] = useState(0);
 	const [theme, setThemeState] = useState<Theme>(storedTheme);
+
+	useEffect(() => onThemeChange(setThemeState), []);
 
 	useEffect(() => {
 		if (params.storyId !== undefined) rememberStory(params.storyId);
@@ -205,17 +208,13 @@ export function Shell() {
 					<button
 						type="button"
 						className="btn ghost themebtn"
-						aria-label={`主题：${THEME_LABEL[theme]}，点一下切换`}
-						title={`主题：${THEME_LABEL[theme]}`}
+						aria-label={`外观：${THEME_LABEL[theme]}，点一下切换`}
+						title={`外观：${THEME_LABEL[theme]}`}
 						data-mode={theme}
-						onClick={(event) => {
+						onClick={() => {
 							const value = nextTheme(theme);
-							const box = event.currentTarget.getBoundingClientRect();
 							setThemeState(value);
-							setTheme(value, {
-								x: box.left + box.width / 2,
-								y: box.top + box.height / 2,
-							});
+							setTheme(value);
 						}}
 					>
 						<span className="orb" />
@@ -239,7 +238,6 @@ export function Shell() {
 					</div>
 				</main>
 			</div>
-			<div className="sweep" key={location.pathname} aria-hidden="true" />
 			{palette ? (
 				// biome-ignore lint/a11y/useKeyWithClickEvents: 键盘操作在输入框里处理
 				<div

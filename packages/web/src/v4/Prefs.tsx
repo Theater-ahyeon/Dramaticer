@@ -1,8 +1,9 @@
 import type { FeatureTier, StoryFeatureSwitchView } from "@dramaticer/core";
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { usePaletteCommands } from "./Shell";
+import { type Theme, onThemeChange, setTheme, storedTheme } from "./stage";
 import { Seg, Sw, sp, useAct, useLoad, useToast } from "./ui";
 
 interface WritingView {
@@ -128,6 +129,8 @@ export function Prefs() {
 		[storyId],
 	);
 	const presetFile = useRef<HTMLInputElement | null>(null);
+	const [theme, setThemeState] = useState<Theme>(storedTheme);
+	useEffect(() => onThemeChange(setThemeState), []);
 	const cardFile = useRef<HTMLInputElement | null>(null);
 
 	const setDial = (patch: Record<string, string | boolean>) =>
@@ -223,6 +226,25 @@ export function Prefs() {
 
 			{tab === "write" && writing.data !== null ? (
 				<div id="dials">
+					<div className="dial">
+						<div>
+							<h3>外观</h3>
+							<p>亮是纸，暗是墨；跟随系统时随设备的深浅色自动切换</p>
+						</div>
+						<Seg<Theme>
+							label="外观"
+							value={theme}
+							options={[
+								{ v: "auto", label: "跟随系统" },
+								{ v: "light", label: "亮" },
+								{ v: "dark", label: "暗" },
+							]}
+							onChange={(value) => {
+								setThemeState(value);
+								setTheme(value);
+							}}
+						/>
+					</div>
 					{DIALS.map((dial) => (
 						<div className="dial" key={dial.id}>
 							<div>

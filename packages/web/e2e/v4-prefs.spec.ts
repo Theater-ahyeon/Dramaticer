@@ -42,6 +42,23 @@ test.describe("新界面设置页", () => {
 				.getByRole("button", { name: "我" }),
 		).toHaveAttribute("aria-pressed", "true");
 
+		// 外观：固定成暗色后刷新仍然生效，改回跟随系统就去掉固定。
+		const looks = page.getByRole("group", { name: "外观" });
+		await looks.getByRole("button", { name: "暗" }).click();
+		await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+		await page.reload();
+		await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+		await expect(
+			page
+				.getByRole("group", { name: "外观" })
+				.getByRole("button", { name: "暗" }),
+		).toHaveAttribute("aria-pressed", "true");
+		await page
+			.getByRole("group", { name: "外观" })
+			.getByRole("button", { name: "跟随系统" })
+			.click();
+		await expect(page.locator("html")).not.toHaveAttribute("data-theme", /.+/);
+
 		// 功能页：默认均衡档。
 		await page
 			.locator(".subtabs")

@@ -75,24 +75,14 @@ export function Library() {
 		<section data-view="library">
 			{latest === undefined ? null : (
 				<div className="hero">
-					<img
-						className="hero-amb"
-						src={api.storyCoverUrl(latest.id)}
-						alt=""
-						aria-hidden="true"
-					/>
 					<TLink
-						className="hero-cover tilt"
+						className="hero-cover"
 						to={link(latest)}
 						aria-label={`打开${latest.title}`}
 						tabIndex={-1}
 					>
 						<Cover storyId={latest.id} title={latest.title} />
-						<span className="shine" />
 					</TLink>
-					<span className="hero-no" aria-hidden="true">
-						{String(latestOverview?.chapter ?? 1).padStart(2, "0")}
-					</span>
 					<div className="hero-body">
 						<span className="label">
 							继续上次 · 第 {latestOverview?.chapter ?? 1} 章

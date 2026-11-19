@@ -133,27 +133,28 @@ function applyTheme(theme: Theme): void {
 	else root.dataset.theme = theme;
 }
 
-/** 换主题：从按钮的位置起，新主题像灯光一样一圈铺开。 */
-export function setTheme(
-	theme: Theme,
-	origin?: { x: number; y: number },
-): void {
+const THEME_EVENT = "dramaticer:theme";
+
+/** 导航栏的按钮和设置页的「外观」都能改主题，改了互相通知。 */
+export function onThemeChange(listener: (theme: Theme) => void): () => void {
+	const handle = () => listener(storedTheme());
+	window.addEventListener(THEME_EVENT, handle);
+	return () => window.removeEventListener(THEME_EVENT, handle);
+}
+
+/** 换主题：整页淡入新主题；系统要求减少动效时直接切换。 */
+export function setTheme(theme: Theme): void {
 	try {
 		localStorage.setItem(THEME_KEY, theme);
 	} catch {
 		// 存不了就只在这一次生效。
 	}
-	if (
-		origin === undefined ||
-		reducedMotion() ||
-		typeof document.startViewTransition !== "function"
-	) {
+	window.dispatchEvent(new Event(THEME_EVENT));
+	if (reducedMotion() || typeof document.startViewTransition !== "function") {
 		applyTheme(theme);
 		return;
 	}
 	const root = document.documentElement;
-	root.style.setProperty("--tx", `${origin.x}px`);
-	root.style.setProperty("--ty", `${origin.y}px`);
 	root.classList.add("theme-swap");
 	const transition = document.startViewTransition(() => applyTheme(theme));
 	transition.finished.finally(() => root.classList.remove("theme-swap"));

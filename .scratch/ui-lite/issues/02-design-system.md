@@ -4,13 +4,15 @@
 
 **Blocked by:** ui-lite/01
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] 两套主题都满足正文与界面文字的 WCAG AA 对比度
-- [ ] CSS（gzip）≤ 40 KB
-- [ ] 类名尽量不变；改动的选择器在 e2e 里同步
-- [ ] `pnpm check` 与 `pnpm e2e` 通过
+- [x] 两套主题都满足正文与界面文字的 WCAG AA 对比度
+- [x] CSS（gzip）≤ 40 KB
+- [x] 类名尽量不变；改动的选择器在 e2e 里同步
+- [x] `pnpm check` 与 `pnpm e2e` 通过
 
 规格：`.scratch/ui-lite/spec.md`
 
 ## Comments
+
+完成：2026-11-19 重写 `v4.css` 为纸与墨设计系统（朱砂单强调色、字号/间距/圆角刻度、去掉玻璃与装饰渐变和入场动画），`styles.css` 删去 15 条无人使用的规则，设置页加「外观」；`design-tokens.test.ts` 机器检查 AA 对比度与 CSS 预算（构建产物 15.3 KB gzip）；类名未改，e2e 只新增外观一步，70 通过。
