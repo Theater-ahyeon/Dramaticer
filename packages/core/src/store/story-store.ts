@@ -6140,7 +6140,11 @@ export class StoryStore {
 			lockedSummary.text.trim().length > 0
 				? lockedSummary.text
 				: null;
-		const summary = playerSummary ?? normalised.summary;
+		// 锁定时保留上一份自动摘要：玩家的版本由投影叠加显示，恢复时还能回到自动内容。
+		const summary =
+			playerSummary === null
+				? normalised.summary
+				: (previousSummary ?? normalised.summary);
 		this.#db
 			.prepare(
 				`INSERT INTO scene_archives

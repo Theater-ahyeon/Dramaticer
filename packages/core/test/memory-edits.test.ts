@@ -377,12 +377,24 @@ describe("玩家直接修改记忆", () => {
 		expect(readMemoryTimeline(store, "s1", "n2")[0]?.summary).toBe(
 			"玩家写的摘要。",
 		);
-		expect(store.getSceneArchive("n2")?.summary).toBe("玩家写的摘要。");
+		expect(store.getSceneArchive("n2")?.summary).toBe("他们找到了钥匙。");
 		const rejections = store.listMemoryRejections("s1");
 		expect(rejections).toHaveLength(1);
 		expect(rejections[0]).toMatchObject({ kind: "summary", nodeId: "n2" });
 		expect(rejections[0]?.text).toContain("后台重新整理的摘要");
 		expect(rejections[0]?.reason).toContain("锁定");
+
+		store.savePlayerEdit({
+			storyId: "s1",
+			nodeId: "n2",
+			kind: "summary",
+			target: "n2",
+			value: null,
+			source: "restore",
+		});
+		expect(readMemoryTimeline(store, "s1", "n2")[0]?.summary).toBe(
+			"他们找到了钥匙。",
+		);
 	});
 
 	it("偏好改完即锁定，停用后回滚到旧的文本会重新生效", () => {
