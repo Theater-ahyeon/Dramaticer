@@ -20,6 +20,7 @@ import {
 	readMemoryState,
 } from "../memory/view.js";
 import { readStoryFeatureState } from "../settings/features.js";
+import { WRITING_MODE_KEY } from "../settings/writing.js";
 import type { StoryStore } from "../store/story-store.js";
 
 /**
@@ -42,9 +43,6 @@ const CLIP = 400;
 
 /** 一次角色意图最多考虑的在场角色数；每个角色单独一次调用。 */
 const MAX_INTENT_CHARACTERS = 4;
-
-/** 故事级配置里记「玩家选了规划写法」的键；存储层的回合模式仍是快速或深度。 */
-export const WRITING_MODE_KEY = "writingMode";
 
 export interface PlanPhaseTrace {
 	readonly name: string;
