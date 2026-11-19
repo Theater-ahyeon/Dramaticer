@@ -8,8 +8,11 @@ import {
 } from "../blueprint/suggestions.js";
 import {
 	PLAN_PREPARE_JOB_KIND,
+	PLAN_REVIEW_JOB_KIND,
 	createPlanPrepareHandler,
+	createPlanReviewHandler,
 	planPrepareNeedsRun,
+	planReviewNeedsRun,
 } from "../chat/plan-turn.js";
 import {
 	DIRECTOR_BITS_JOB_KIND,
@@ -271,6 +274,12 @@ export function createBackgroundJobPlugins(
 			enqueue: "story",
 			tier: "deferred",
 			needsRun: planPrepareNeedsRun,
+		}),
+		backgroundJobPlugin("job:plan-review", PLAN_REVIEW_JOB_KIND, {
+			handler: createPlanReviewHandler(),
+			enqueue: "story",
+			tier: "gap",
+			needsRun: planReviewNeedsRun,
 		}),
 		backgroundJobPlugin(CHAPTER_PLAN_JOB_PLUGIN, CHAPTER_PLAN_JOB_KIND, {
 			handler: createChapterPlanHandler(plannerOptions(plannerClient)),
