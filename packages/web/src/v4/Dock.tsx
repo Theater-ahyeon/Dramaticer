@@ -72,6 +72,37 @@ interface DockView {
 	} | null;
 }
 
+type ContextSource =
+	| { readonly kind: "lore"; readonly id: string; readonly name: string }
+	| {
+			readonly kind: "record";
+			readonly ids: readonly string[];
+			readonly nodeId: string;
+			readonly floorNo: number;
+	  }
+	| { readonly kind: "wiki"; readonly id: string; readonly name: string }
+	| { readonly kind: "state"; readonly target: string; readonly label: string }
+	| {
+			readonly kind: "floor";
+			readonly nodeId: string;
+			readonly floorNo: number;
+	  }
+	| { readonly kind: "scene"; readonly nodeId: string }
+	| { readonly kind: "summary"; readonly id: string }
+	| { readonly kind: "pref"; readonly id: string }
+	| { readonly kind: "card"; readonly id: "character" | "persona" }
+	| { readonly kind: "outline"; readonly id: string }
+	| { readonly kind: "slot"; readonly slot: string }
+	| { readonly kind: "segment"; readonly segmentId: string };
+
+interface ContextItemView {
+	readonly label: string;
+	readonly tokens: number;
+	readonly page: string;
+	readonly tab: string | null;
+	readonly source: ContextSource;
+}
+
 interface ContextView {
 	readonly breakdown: {
 		readonly totalTokens: number;
@@ -79,12 +110,7 @@ interface ContextView {
 			readonly id: string;
 			readonly label: string;
 			readonly tokens: number;
-			readonly items: readonly {
-				readonly label: string;
-				readonly tokens: number;
-				readonly page: string;
-				readonly tab: string | null;
-			}[];
+			readonly items: readonly ContextItemView[];
 		}[];
 	} | null;
 }
@@ -95,6 +121,32 @@ const KIND_LABEL: Record<Line["kind"], { text: string; pill: string }> = {
 	opposition: { text: "对手", pill: "gold" },
 	promise: { text: "伏笔", pill: "mute" },
 };
+
+/** 这一条在哪个页面、哪一处能改；拿不到具体对象时回到它所属的分页。 */
+function contextHref(base: string, item: ContextItemView): string {
+	const source = item.source;
+	switch (source.kind) {
+		case "lore":
+			return `${base}/lore?entry=${encodeURIComponent(source.id)}`;
+		case "wiki":
+			return `${base}/memory?tab=wiki&page=${encodeURIComponent(source.id)}`;
+		case "state":
+			return `${base}/memory?tab=state&focus=${encodeURIComponent(source.target)}`;
+		case "summary":
+			return `${base}/memory?tab=line&focus=${encodeURIComponent(source.id)}`;
+		case "pref":
+			return `${base}/memory?tab=rule&focus=${encodeURIComponent(source.id)}`;
+		case "outline":
+			return `${base}/outline?focus=${encodeURIComponent(source.id)}`;
+		case "floor":
+		case "scene":
+			return `${base}/play?node=${encodeURIComponent(source.nodeId)}`;
+		case "card":
+			return `${base}/prefs?tab=model`;
+		default:
+			return `${base}/${item.page}${item.tab === null ? "" : `?tab=${item.tab}`}`;
+	}
+}
 
 const CTX_COLOR: Record<string, string> = {
 	pref: "--gold",
@@ -188,7 +240,13 @@ export function Dock({
 	readonly tab: DockTab;
 	readonly onTab: (tab: DockTab) => void;
 	readonly tick: number;
-	readonly moves: readonly { key: string; label: string; no: number }[];
+	readonly moves: readonly {
+		key: string;
+		label: string;
+		no: number;
+		nodeId: string;
+		undoLineId?: string;
+	}[];
 	readonly onChanged: () => void;
 }) {
 	const act = useAct();
@@ -258,9 +316,11 @@ export function Dock({
 			},
 		);
 
-	const threads = (lines.data?.lines ?? []).filter(
-		(line) => line.kind !== "promise",
-	);
+	const threads = (lines.data?.lines ?? [])
+		.filter((line) => line.kind !== "promise")
+		.sort((left, right) =>
+			left.pinned === right.pinned ? 0 : left.pinned ? -1 : 1,
+		);
 	const promises = (lines.data?.lines ?? []).filter(
 		(line) => line.kind === "promise",
 	);
@@ -617,6 +677,27 @@ export function Dock({
 							<div key={move.key}>
 								<span>{move.label}</span>
 								<span>第 {move.no} 楼</span>
+								{move.undoLineId === undefined ? null : (
+									<button
+										type="button"
+										className="btn ghost sm"
+										onClick={() =>
+											act(
+												() =>
+													api.call("POST", sp(storyId, "/director/undo"), {
+														nodeId: move.nodeId,
+													}),
+												() => {
+													lines.reload();
+													memory.reload();
+													onChanged();
+												},
+											)
+										}
+									>
+										撤回
+									</button>
+								)}
 							</div>
 						))}
 					</div>
@@ -751,7 +832,7 @@ export function Dock({
 											<Link
 												className="btn ghost sm"
 												style={{ textDecoration: "none" }}
-												to={`${base}/${item.page}${item.tab === null ? "" : `?tab=${item.tab}`}`}
+												to={contextHref(base, item)}
 											>
 												去修改 ›
 											</Link>

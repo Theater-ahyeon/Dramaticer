@@ -206,7 +206,9 @@ export function Memory() {
 	const tab = (
 		TABS.some(([id]) => id === search.get("tab")) ? search.get("tab") : "wiki"
 	) as Tab;
-	const [pageId, setPageId] = useState<string | null>(null);
+	const pageParam = search.get("page");
+	const focus = search.get("focus");
+	const [pageId, setPageId] = useState<string | null>(pageParam);
 	const [raw, setRaw] = useState<ReadonlySet<string>>(new Set());
 	const [history, setHistory] = useState<string | null>(null);
 	const [fieldError, setFieldError] = useState<{
@@ -222,6 +224,18 @@ export function Memory() {
 			setPageId(data.pages[0]?.id ?? null);
 		}
 	}, [data, pageId]);
+	useEffect(() => {
+		if (pageParam === null) return;
+		setPageId(pageParam);
+	}, [pageParam]);
+	// 从上下文跳过来时，翻到这一条对应的行或语句。
+	const focusReady = data !== null;
+	useEffect(() => {
+		if (focus === null || !focusReady) return;
+		document
+			.querySelector(`[data-focus="${CSS.escape(focus)}"]`)
+			?.scrollIntoView({ block: "center" });
+	}, [focus, focusReady]);
 
 	/** 写一次修改；失败的原因显示在被改的那一处。 */
 	const write = async (
@@ -317,7 +331,10 @@ export function Memory() {
 						})}
 					</div>
 					{page === null ? null : (
-						<article className="page">
+						<article
+							className={page.id === pageParam ? "page is-focus" : "page"}
+							data-focus={page.id}
+						>
 							<div
 								style={{
 									display: "flex",
@@ -475,7 +492,10 @@ export function Memory() {
 						<tbody>
 							{data.state.map((item) => (
 								<Fragment key={item.target}>
-									<tr>
+									<tr
+										className={focus === item.target ? "is-focus" : undefined}
+										data-focus={item.target}
+									>
 										<td>{item.owner}</td>
 										<td>{item.item}</td>
 										<Editable
@@ -679,7 +699,12 @@ export function Memory() {
 						<p className="v4empty">一场结束后，这里会出现它的摘要。</p>
 					) : null}
 					{data.timeline.map((scene, index) => (
-						<details key={scene.id} open={index === data.timeline.length - 1}>
+						<details
+							key={scene.id}
+							open={focus === scene.id || index === data.timeline.length - 1}
+							className={focus === scene.id ? "is-focus" : undefined}
+							data-focus={scene.id}
+						>
 							<summary>
 								{scene.title}
 								<small>
@@ -721,7 +746,11 @@ export function Memory() {
 					<div className="rows">
 						{data.prefs.map((pref) => (
 							<Fragment key={pref.id}>
-								<div style={pref.disabled ? { opacity: 0.5 } : undefined}>
+								<div
+									className={focus === pref.id ? "is-focus" : undefined}
+									data-focus={pref.id}
+									style={pref.disabled ? { opacity: 0.5 } : undefined}
+								>
 									<Editable
 										as="span"
 										value={pref.text}

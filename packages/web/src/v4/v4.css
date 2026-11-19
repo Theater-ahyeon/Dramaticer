@@ -1099,6 +1099,21 @@ html.theme-swap::view-transition-new(root) {
 	white-space: nowrap;
 	font-size: 12.5px;
 }
+/* 从上下文跳过来时标出要改的那一处。 */
+.is-focus {
+	outline: 2px solid color-mix(in srgb, var(--gold) 70%, transparent);
+	outline-offset: 2px;
+	border-radius: 8px;
+	animation: focus-pulse 1.2s var(--ease) 1;
+}
+@keyframes focus-pulse {
+	0% {
+		background: color-mix(in srgb, var(--gold) 22%, transparent);
+	}
+	100% {
+		background: transparent;
+	}
+}
 .sec {
 	display: flex;
 	flex-direction: column;
