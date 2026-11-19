@@ -35,6 +35,7 @@
 		"gap-pass-compare": "tsc -b && node dist/evalset/gap-pass-compare-cli.js",
 		"world-model-compare": "tsc -b && node dist/evalset/world-model-compare-cli.js",
 		"director-organization-compare": "tsc -b && node dist/evalset/director-organization-compare-cli.js",
+		"turn-mode-compare": "tsc -b && node dist/evalset/turn-mode-compare-cli.js",
 		"r6-compare": "tsc -b && node dist/evalset/r6-compare-cli.js",
 		"r6-b1": "tsc -b && node dist/evalset/r6-b1-cli.js",
 		"r6-deep": "tsc -b && node dist/evalset/r6-deep-cli.js",

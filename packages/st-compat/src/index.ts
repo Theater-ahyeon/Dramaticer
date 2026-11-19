@@ -36,6 +36,7 @@ export * from "./evalset/r6-instrument.js";
 export * from "./evalset/r6-preference.js";
 export * from "./evalset/r6-replay.js";
 export * from "./evalset/scoreboard.js";
+export * from "./evalset/turn-mode-compare.js";
 export * from "./evalset/scene-log-compare.js";
 export * from "./evalset/scene-log-compare-batch.js";
 export * from "./evalset/retrieval.js";

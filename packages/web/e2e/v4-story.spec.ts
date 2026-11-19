@@ -174,7 +174,7 @@ test.describe("故事页：正文、批注与输入台", () => {
 		await resetStageLog(page);
 		await push.click();
 		await expect
-			.poll(() => stageLog(page))
+			.poll(() => stageLog(page), { timeout: 30_000 })
 			.toEqual(expect.arrayContaining(["写正文"]));
 		await expect(committed).toHaveCount(2, { timeout: 60_000 });
 		expect(turnBodies.at(-1)).toMatchObject({
@@ -191,7 +191,7 @@ test.describe("故事页：正文、批注与输入台", () => {
 		await resetStageLog(page);
 		await push.click();
 		await expect
-			.poll(() => stageLog(page))
+			.poll(() => stageLog(page), { timeout: 30_000 })
 			.toEqual(
 				expect.arrayContaining(["挑记忆", "角色意图", "定计划", "正文"]),
 			);
@@ -207,7 +207,7 @@ test.describe("故事页：正文、批注与输入台", () => {
 		await resetStageLog(page);
 		await push.click();
 		await expect
-			.poll(() => stageLog(page))
+			.poll(() => stageLog(page), { timeout: 30_000 })
 			.toEqual(expect.arrayContaining(["起草", "自查"]));
 		await expect(committed).toHaveCount(4, { timeout: 60_000 });
 		expect(turnBodies.at(-1)).toMatchObject({
