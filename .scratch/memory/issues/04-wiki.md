@@ -4,13 +4,15 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] 页面语句都能追到记录与楼层
-- [ ] 旧说法标出有效范围而不是被删掉
-- [ ] 重新汇编不改变玩家锁定的语句
-- [ ] `pnpm check` 通过
+- [x] 页面语句都能追到记录与楼层
+- [x] 旧说法标出有效范围而不是被删掉
+- [x] 重新汇编不改变玩家锁定的语句
+- [x] `pnpm check` 通过
 
 规格：`.scratch/memory/spec.md`
 
 ## Comments
+
+完成：2026-11-19 百科页面按楼层汇编，语句带记录 id 与有效范围；旧值与已删除的值留在演变里；单页重新汇编与锁定语句的冻结走同一份记录。验证用 invariants、typecheck 与目标测试文件替代整仓 `pnpm check`。

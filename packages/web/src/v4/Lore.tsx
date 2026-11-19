@@ -35,6 +35,22 @@ interface LoreView {
 	readonly fixedTokens: { before: number; after: number };
 }
 
+interface EditRecord {
+	readonly id: number;
+	readonly value: { readonly content?: string } | null;
+	readonly disabled: boolean;
+	readonly source: "player" | "restore" | "ai" | "rejected";
+	readonly note: string | null;
+	readonly createdAt: string;
+}
+
+const EDIT_SOURCE: Record<EditRecord["source"], string> = {
+	player: "你改的",
+	restore: "恢复原卡",
+	ai: "卡升级",
+	rejected: "被挡下的写入",
+};
+
 const KIND: Record<string, { label: string; color: string; when: string }> = {
 	common: { label: "常识", color: "--ink", when: "每一轮都带" },
 	entity: { label: "人物地点", color: "--teal", when: "在场或被提到时" },
@@ -62,9 +78,17 @@ export function Lore() {
 	const [filter, setFilter] = useState<string>("all");
 	const [open, setOpen] = useState<string | null>(null);
 	const [draft, setDraft] = useState("");
-	const [preview, setPreview] = useState<{ id: string; text: string } | null>(
-		null,
-	);
+	const [preview, setPreview] = useState<{
+		id: string;
+		kind: string;
+		condition: string;
+		hit: boolean;
+		reason: string;
+	} | null>(null);
+	const [history, setHistory] = useState<{
+		id: string;
+		edits: readonly EditRecord[];
+	} | null>(null);
 
 	if (lore.error !== null) return <div className="v4err">{lore.error}</div>;
 	if (lore.data === null) return <p className="v4empty">正在读取设定…</p>;
@@ -89,6 +113,27 @@ export function Lore() {
 			() => {
 				lore.reload();
 				toast(message);
+			},
+		);
+
+	const loadHistory = (entry: Entry) =>
+		api
+			.get<{ edits: readonly EditRecord[] }>(
+				sp(
+					storyId,
+					`/memory/history?kind=lore&target=${encodeURIComponent(entry.id)}`,
+				),
+			)
+			.then((result) => setHistory({ id: entry.id, edits: result.edits }))
+			.catch(() => setHistory(null));
+
+	const rollback = (entry: Entry, editId: number) =>
+		act(
+			() => api.call("POST", sp(storyId, "/memory/rollback"), { editId }),
+			() => {
+				lore.reload();
+				void loadHistory(entry);
+				toast("已回到那一版");
 			},
 		);
 
@@ -224,6 +269,7 @@ export function Lore() {
 								setOpen(open === entry.id ? null : entry.id);
 								setDraft(entry.content);
 								setPreview(null);
+								setHistory(null);
 							}}
 						>
 							<div>
@@ -336,7 +382,12 @@ export function Lore() {
 										className="btn sm"
 										onClick={() =>
 											api
-												.get<{ hit: boolean; reason: string }>(
+												.get<{
+													kind: string;
+													condition: string;
+													hit: boolean;
+													reason: string;
+												}>(
 													sp(
 														storyId,
 														`/lore-copy/${encodeURIComponent(entry.id)}/preview`,
@@ -345,13 +396,27 @@ export function Lore() {
 												.then((result) =>
 													setPreview({
 														id: entry.id,
-														text: `${result.hit ? "这一轮会带上" : "这一轮不会带上"}：${result.reason}`,
+														kind: result.kind,
+														condition: result.condition,
+														hit: result.hit,
+														reason: result.reason,
 													}),
 												)
 												.catch(() => {})
 										}
 									>
 										现在会带上吗
+									</button>
+									<button
+										type="button"
+										className="btn sm"
+										onClick={() =>
+											history?.id === entry.id
+												? setHistory(null)
+												: void loadHistory(entry)
+										}
+									>
+										修改历史
 									</button>
 									{entry.edited || entry.disabled ? (
 										<button
@@ -370,7 +435,39 @@ export function Lore() {
 									) : null}
 								</div>
 								{preview?.id === entry.id ? (
-									<div className="when">{preview.text}</div>
+									<div className="when">
+										类型：{KIND[preview.kind]?.label ?? preview.kind} · 条件：
+										{preview.condition} ·{" "}
+										{preview.hit ? "这一轮会带上" : "这一轮不会带上"}：
+										{preview.reason}
+									</div>
+								) : null}
+								{history?.id === entry.id ? (
+									<div className="when">
+										{history.edits.length === 0
+											? "还没有修改记录。"
+											: history.edits.map((edit, index) => (
+													<div key={edit.id}>
+														<span>
+															#{edit.id} {EDIT_SOURCE[edit.source]}
+														</span>{" "}
+														<span>
+															{edit.disabled
+																? "已停用"
+																: (edit.value?.content ?? "恢复原卡")}
+														</span>{" "}
+														{index < history.edits.length - 1 ? (
+															<button
+																type="button"
+																className="btn sm"
+																onClick={() => rollback(entry, edit.id)}
+															>
+																回到这一版
+															</button>
+														) : null}
+													</div>
+												))}
+									</div>
 								) : null}
 							</div>
 						) : null}

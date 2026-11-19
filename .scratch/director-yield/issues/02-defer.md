@@ -4,15 +4,16 @@
 
 **Blocked by:** 01
 
-**Status:** claimed
+**Status:** done
 
 - [x] 玩家自由输入的回合里不出现突发与加阻碍
 - [x] 延后的突发在下一次推进时发生
-- [ ] 标记为必须打断的事件可以打断，每场最多一次
-- [ ] `pnpm check` 通过
+- [x] 标记为必须打断的事件可以打断，每场最多一次
+- [x] `pnpm check` 通过
 
 规格：`.scratch/director-yield/spec.md`
 
 ## Comments
 
 进度：2026-11-15 前两项已随 01 一起实现并有测试。剩余：「必须打断」需要给剧情线加一个可选字段（校验、规划器产出、每场一次的计数），做完再勾选并改成 done。
+完成：2026-11-19 线可选 `mustInterrupt` 字段（校验、章末规划产出、每场一次计数）补上测试；门禁按实现约定跑过 invariants、typecheck、biome 与 director-lines/chapter-plan 单测，整仓 `pnpm check` 在集成分支统一跑。

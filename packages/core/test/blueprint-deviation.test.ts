@@ -135,6 +135,7 @@ describe("里程碑四态检查", () => {
 			`铺垫线 ${line.id} 已经至少 4 楼没有被触及`,
 		);
 		expect(deviations[0]?.options).toEqual([...MILESTONE_DEVIATION_OPTIONS]);
+		expect(deviations[0]?.options[0]).toBe("adjust-blueprint");
 	});
 
 	it("铺垫刚被推进过时仍然是仍可达", () => {
