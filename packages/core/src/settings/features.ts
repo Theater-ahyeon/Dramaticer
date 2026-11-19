@@ -193,9 +193,10 @@ export const FEATURE_SWITCHES: readonly FeatureSwitchDefinition[] = [
 		group: "memory",
 		label: "全文检索",
 		description: "在全部楼层里查找相关段落，作为记忆的补充",
-		capability: "importedContent",
+		// 检索的是楼层原文，不需要导入内容；标准档保持现有的「一直检索」（ADR-0163）。
+		capability: null,
 		kind: "toggle",
-		tierValues: { lite: false, standard: false, immersive: true },
+		tierValues: { lite: false, standard: true, immersive: true },
 		disabledValue: false,
 	}),
 	defineSwitch({
@@ -337,7 +338,8 @@ export const FEATURE_SWITCHES: readonly FeatureSwitchDefinition[] = [
 		description: "设定库很大时让模型自己查一条设定",
 		capability: null,
 		kind: "toggle",
-		tierValues: { lite: false, standard: false, immersive: true },
+		// 快速写法默认开放读取工具（软上限 3 轮），标准档保持这一行为（ADR-0163）。
+		tierValues: { lite: false, standard: true, immersive: true },
 		disabledValue: false,
 	}),
 	defineSwitch({
@@ -562,7 +564,10 @@ export function buildStoryFeatureView(
 		group,
 		label: FEATURE_SWITCH_GROUP_LABELS[group],
 		switches: FEATURE_SWITCHES.filter(
-			(definition) => definition.group === group && visible.has(definition.id),
+			(definition) =>
+				definition.group === group &&
+				visible.has(definition.id) &&
+				!HIDDEN_FEATURE_SWITCHES.has(definition.id),
 		).map((definition) => ({
 			id: definition.id,
 			label: definition.label,
@@ -636,7 +641,16 @@ export const WIRED_FEATURE_SWITCHES: ReadonlySet<FeatureSwitchId> =
 		"promiseLimit",
 		"rules",
 		"choices",
+		"search",
+		"tools",
 	]);
+
+/**
+ * 与别处重复的开关不在功能页显示：思考由写作页的 `reasoning` 负责，原样兼容由
+ * 导入方式 `importMode` 负责（ADR-0163）。定义保留，旧的覆盖值照常能读。
+ */
+export const HIDDEN_FEATURE_SWITCHES: ReadonlySet<FeatureSwitchId> =
+	new Set<FeatureSwitchId>(["think", "raw"]);
 
 /** 未兑现伏笔上限以功能页为准；`directorConfig.maxOpenPromises` 不再生效。 */
 export function readStoryPromiseLimit(

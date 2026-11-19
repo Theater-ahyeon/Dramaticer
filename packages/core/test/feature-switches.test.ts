@@ -64,7 +64,7 @@ describe("功能开关目录", () => {
 			scribe: true,
 			archive: true,
 			reunion: true,
-			search: false,
+			search: true,
 			director: "push",
 			knows: true,
 			prepare: false,
@@ -76,7 +76,7 @@ describe("功能开关目录", () => {
 			draw: "off",
 			bgm: false,
 			think: "low",
-			tools: false,
+			tools: true,
 			style: true,
 			raw: false,
 		});
@@ -165,6 +165,7 @@ describe("功能开关解析", () => {
 		});
 		expect(state.visible).toEqual([
 			"scribe",
+			"search",
 			"prepare",
 			"review",
 			"director",
@@ -187,7 +188,8 @@ describe("功能开关解析", () => {
 		expect(state.values.style).toBe(false);
 		expect(state.values.archive).toBe(false);
 		expect(state.values.reunion).toBe(false);
-		expect(state.values.search).toBe(false);
+		// 全文检索不需要导入内容（ADR-0163），全开档默认开。
+		expect(state.values.search).toBe(true);
 		expect(state.values.knows).toBe(false);
 	});
 
@@ -265,13 +267,13 @@ describe("卡片能力判断", () => {
 		);
 		expect(ids).toEqual([
 			"scribe",
+			"search",
 			"prepare",
 			"review",
 			"director",
 			"promiseLimit",
 			"choices",
 			"draw",
-			"think",
 			"tools",
 		]);
 	});

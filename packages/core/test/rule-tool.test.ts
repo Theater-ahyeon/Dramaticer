@@ -272,6 +272,20 @@ describe("rule_check 工具", () => {
 		expect(result.node.raw).toBe("剑光一闪。");
 	});
 
+	it("功能页关掉工具查阅时快速写法不开放读取工具", async () => {
+		const { store } = openTempStore();
+		seedStory(store, [sword(10, 2)], 5);
+		store.updateStorySettings("s1", { featureSwitches: { tools: false } });
+		const { client, requests } = createScriptedClient([{ text: "剑光一闪。" }]);
+
+		const result = await runFast({ store, client });
+
+		expect(requests[0]?.tools?.map((tool) => tool.name) ?? []).not.toContain(
+			"memory_search",
+		);
+		expect(result.node.raw).toBe("剑光一闪。");
+	});
+
 	it("没有声明规则时不开放，调用被拒绝并记录原因", async () => {
 		const { store } = openTempStore();
 		seedStory(store, [], 5);

@@ -589,7 +589,10 @@ export async function generateAssistantTurn(
 	const exposeReadTools =
 		resolved.mode === "deep"
 			? writesLedger
-			: writesLedger && (functionCall || transport === "text");
+			: writesLedger &&
+				(functionCall || transport === "text") &&
+				readStoryFeatureState(options.store, options.storyId).values.tools ===
+					true;
 	const declaredRuleCount =
 		writesLedger &&
 		readStoryFeatureState(options.store, options.storyId).values.rules === true

@@ -827,13 +827,13 @@ describe("功能开关接口", () => {
 			),
 		).toEqual([
 			"scribe",
+			"search",
 			"prepare",
 			"review",
 			"director",
 			"promiseLimit",
 			"choices",
 			"draw",
-			"think",
 			"tools",
 		]);
 

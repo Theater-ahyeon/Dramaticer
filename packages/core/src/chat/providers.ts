@@ -807,6 +807,8 @@ export function createMemorySlotProvider(
 		}),
 		async provide(request): Promise<ContextSlotContent | null> {
 			if (request.nodeId === null) return null;
+			if (readStoryFeatureState(store, request.storyId).values.search !== true)
+				return null;
 			const current = store.getNode(request.nodeId);
 			if (!current) {
 				throw new Error(`楼层节点不存在：${request.nodeId}`);
