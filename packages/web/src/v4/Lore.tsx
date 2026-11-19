@@ -1,4 +1,4 @@
-import type { ImportEntryKind } from "@dramaticer/core";
+import type { ImportEntryKind, ImportMode } from "@dramaticer/core";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../api";
@@ -6,6 +6,7 @@ import {
 	Cover,
 	Seg,
 	Sw,
+	errorText,
 	formatTokens,
 	sp,
 	useAct,
@@ -29,7 +30,7 @@ interface Entry {
 
 interface LoreView {
 	readonly cardName: string | null;
-	readonly importMode: string;
+	readonly importMode: ImportMode;
 	readonly entries: readonly Entry[];
 	readonly kinds: readonly { kind: ImportEntryKind; count: number }[];
 	readonly fixedTokens: { before: number; after: number };
@@ -125,7 +126,10 @@ export function Lore() {
 				),
 			)
 			.then((result) => setHistory({ id: entry.id, edits: result.edits }))
-			.catch(() => setHistory(null));
+			.catch((error: unknown) => {
+				setHistory(null);
+				toast(errorText(error));
+			});
 
 	const rollback = (entry: Entry, editId: number) =>
 		act(
@@ -152,19 +156,16 @@ export function Lore() {
 					</div>
 				</div>
 				<div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-					<Seg<string>
+					<Seg<ImportMode>
 						label="导入方式"
 						value={data.importMode}
 						options={[
-							{ v: "optimized", label: "优化" },
+							{ v: "upgrade", label: "优化" },
 							{ v: "raw", label: "原样" },
 						]}
 						onChange={(value) =>
 							act(
-								() =>
-									api.updateSettings(storyId, {
-										importMode: value as "raw",
-									}),
+								() => api.updateSettings(storyId, { importMode: value }),
 								() => {
 									lore.reload();
 									toast(
@@ -402,7 +403,7 @@ export function Lore() {
 														reason: result.reason,
 													}),
 												)
-												.catch(() => {})
+												.catch((error: unknown) => toast(errorText(error)))
 										}
 									>
 										现在会带上吗

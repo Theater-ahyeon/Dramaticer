@@ -8,6 +8,7 @@ import {
 	BLUEPRINT_SUGGESTION_JOB_KIND,
 	BLUEPRINT_SUGGESTION_OPERATIONS,
 	BLUEPRINT_SUGGESTION_STATUSES,
+	type BlueprintDiff,
 	type BlueprintSuggestionAcceptance,
 	type ChooseOpeningCandidateResult,
 	type ComfyUiSlots,
@@ -46,6 +47,7 @@ import {
 	type ScenePace,
 	type StateDiff,
 	type Story,
+	type StoryBlueprintRecord,
 	type StorySettings,
 	type StorySettingsUpdate,
 	type StoryStore,
@@ -156,8 +158,10 @@ import {
 	type SceneControlResult,
 	type SetHeadRequest,
 	type StoryBlueprintDeviationView,
+	type StoryBlueprintEditResult,
 	type StoryBlueprintSuggestionCreateResult,
 	type StoryBlueprintSuggestionsView,
+	type StoryBlueprintVersionsView,
 	type StoryBlueprintView,
 	type StoryBookExport,
 	type StoryCluesView,
@@ -410,6 +414,20 @@ export async function handleApiRequest(
 		if (third === "serial" && parts.length === 4 && parts[3] === "export") {
 			requireMethod(method, ["GET"]);
 			handleStorySerialExport(res, options, storyId, url);
+			return;
+		}
+		if (third === "blueprint" && parts.length === 4 && parts[3] === "edit") {
+			requireMethod(method, ["POST"]);
+			await handleStoryBlueprintEdit(req, res, options, storyId);
+			return;
+		}
+		if (
+			third === "blueprint" &&
+			parts.length === 4 &&
+			parts[3] === "versions"
+		) {
+			requireMethod(method, ["GET"]);
+			handleStoryBlueprintVersions(res, options, storyId, url);
 			return;
 		}
 		if (
@@ -1749,6 +1767,111 @@ function handleStoryBlueprint(
 		spoilers: settings.blueprintSpoilers,
 		entries: blueprint.entries,
 		hidden: blueprint.hidden,
+	};
+	sendJson(res, 200, view);
+}
+
+/**
+ * `POST /api/stories/:id/blueprint/edit`：玩家在大纲页写的修改。请求体带
+ * `diffs` 时写一批修改，带 `versionNodeId` 时回到某一版；两者都是有楼层的
+ * 记录，省略 `nodeId` 时写在 head 上。锁定的条目对玩家仍然可改。
+ */
+async function handleStoryBlueprintEdit(
+	req: IncomingMessage,
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	storyId: string,
+): Promise<void> {
+	requireStory(options.store, storyId);
+	const body = await readObjectBody(req, options.maxJsonBodyBytes);
+	assertKnownKeys(body, ["nodeId", "diffs", "versionNodeId", "versionSeq"]);
+	const head = options.store.getHead(storyId);
+	const nodeId =
+		body.nodeId === undefined
+			? head?.id
+			: requireStoryNode(
+					options.store,
+					storyId,
+					requireText(body.nodeId, "nodeId"),
+				).id;
+	if (nodeId === undefined) {
+		throw new HttpError(409, "conflict", "故事还没有楼层，不能改大纲");
+	}
+	const hasDiffs = body.diffs !== undefined;
+	const hasVersion = body.versionNodeId !== undefined;
+	if (hasDiffs === hasVersion) {
+		throw fieldError("body", "diffs 与 versionNodeId 必须给出其中一个");
+	}
+	let record: StoryBlueprintRecord;
+	if (hasVersion) {
+		if (body.versionSeq !== undefined && typeof body.versionSeq !== "number") {
+			throw fieldError("versionSeq", "versionSeq 必须是正整数");
+		}
+		try {
+			record = options.store.rollbackStoryBlueprint({
+				nodeId,
+				storyId,
+				versionNodeId: requireText(body.versionNodeId, "versionNodeId"),
+				...(body.versionSeq === undefined
+					? {}
+					: { versionSeq: body.versionSeq }),
+			});
+		} catch (error) {
+			throw toBadRequest(error, "versionNodeId");
+		}
+	} else {
+		if (!Array.isArray(body.diffs)) {
+			throw fieldError("diffs", "diffs 必须是数组");
+		}
+		try {
+			record = options.store.saveStoryBlueprint({
+				nodeId,
+				storyId,
+				source: "player",
+				diffs: body.diffs as readonly BlueprintDiff[],
+			});
+		} catch (error) {
+			throw toBadRequest(error, "diffs");
+		}
+	}
+	const view: StoryBlueprintEditResult = {
+		storyId,
+		nodeId,
+		record,
+		entries: options.store.readBlueprintEntries(nodeId),
+	};
+	sendJson(res, 200, view);
+}
+
+/**
+ * `GET /api/stories/:id/blueprint/versions`：当前路径上的修改历史，从旧到新。
+ * 故事还没有楼层时没有版本。
+ */
+function handleStoryBlueprintVersions(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	storyId: string,
+	url: URL,
+): void {
+	requireStory(options.store, storyId);
+	const raw = url.searchParams.get("nodeId");
+	const nodeId =
+		raw === null
+			? (options.store.getHead(storyId)?.id ?? null)
+			: requireStoryNode(options.store, storyId, raw).id;
+	const view: StoryBlueprintVersionsView = {
+		storyId,
+		nodeId,
+		versions:
+			nodeId === null
+				? []
+				: options.store.listBlueprintVersions(nodeId).map((version) => ({
+						nodeId: version.nodeId,
+						seq: version.seq,
+						source: version.source,
+						createdAt: version.createdAt,
+						changes: version.diffs.length,
+					})),
 	};
 	sendJson(res, 200, view);
 }

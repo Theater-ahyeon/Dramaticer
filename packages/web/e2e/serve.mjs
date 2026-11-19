@@ -452,6 +452,127 @@ seedStore.saveDirectorChapterReview({
 	},
 });
 
+// 大纲页的固定样本：两个视口各有一个故事，默认约束为弱、剧透显示，
+// 带一条 AI 补的里程碑与一条已经走不通的里程碑。
+for (const project of ["mobile", "desktop"]) {
+	const storyId = `e2e-outline-${project}`;
+	seedStore.createStory({ id: storyId, title: `大纲页 ${project}` });
+	const head = seedStore.appendNode({
+		storyId,
+		parentId: null,
+		role: "assistant",
+		raw: "雾港的灯在雨里亮了三次。",
+	});
+	seedStore.setHead(storyId, head.id);
+	const lost = {
+		id: "m-lost",
+		kind: "milestone",
+		source: "player",
+		locked: false,
+		volumeId: "vol-2",
+		want: "在码头当众揭穿贺九",
+		prerequisites: ["拿到值更簿", "贺九还在码头"],
+		after: [],
+		hardness: "hard",
+	};
+	seedStore.saveStoryBlueprintBaseline(storyId, [
+		{
+			id: "premise",
+			kind: "premise",
+			source: "player",
+			locked: true,
+			coreQuestion: "这座灯塔，究竟为谁而亮？",
+			tone: "潮湿、克制",
+			endings: [],
+			redLines: ["第三卷之前，阿蘅不能出事"],
+			tension: "loose",
+		},
+		{
+			id: "vol-1",
+			kind: "volume",
+			source: "player",
+			locked: false,
+			title: "卷一 · 雾起",
+			coreQuestion: "那箱货里到底是什么",
+			startState: "你刚到雾港",
+			endState: "第一箱货被截下",
+		},
+		{
+			id: "vol-2",
+			kind: "volume",
+			source: "player",
+			locked: false,
+			title: "卷二 · 退潮",
+			coreQuestion: "谁在搬走灯塔，为什么",
+			startState: "报告还没写",
+			endState: "第二把钥匙出现",
+		},
+		{
+			id: "m-player",
+			kind: "milestone",
+			source: "player",
+			locked: true,
+			volumeId: "vol-1",
+			want: "在七号码头截下贺九的第一箱货",
+			prerequisites: [],
+			after: [],
+			hardness: "hard",
+		},
+		{
+			id: "m-ai",
+			kind: "milestone",
+			source: "ai",
+			locked: false,
+			volumeId: "vol-2",
+			want: "阿蘅发现你一直没把报告的事告诉她",
+			prerequisites: [],
+			after: [],
+			hardness: "soft",
+		},
+		lost,
+	]);
+	const promise = core.milestonePromiseLine(lost, 0);
+	seedStore.saveDirectorLines({
+		nodeId: head.id,
+		storyId,
+		diffs: [
+			{ action: "set", line: promise },
+			{
+				action: "set",
+				line: {
+					id: "main-1",
+					kind: "main",
+					who: "贺九",
+					want: "把货送上船",
+					obstacle: "码头被盯上了",
+					countdown: null,
+					preparations: [],
+				},
+			},
+			{
+				action: "set",
+				line: {
+					id: "main-2",
+					kind: "main",
+					who: "阿蘅",
+					want: "把值更簿交给你",
+					obstacle: "她还没拿定主意",
+					countdown: null,
+					preparations: [],
+				},
+			},
+		],
+	});
+	seedStore.saveDirectorChapterReview({
+		nodeId: head.id,
+		storyId,
+		payload: {
+			promises: [{ lineId: promise.id, disposition: "retire" }],
+			focus: ["main-1", "main-2"],
+		},
+	});
+}
+
 seedStore.close();
 
 const serverModule = await import(
