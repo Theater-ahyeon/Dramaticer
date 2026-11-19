@@ -7,6 +7,7 @@ import {
 	compileWikiPages,
 	createTokenEstimator,
 	editState,
+	editWikiStatement,
 	isPlayerEditKind,
 	loreEntryMatchScore,
 	normalizeEntityName,
@@ -21,6 +22,7 @@ import {
 	readMemoryTimeline,
 	readPinnedLineIds,
 	readWritingView,
+	resetToCardRecommended,
 	resolveLoreInjectionRole,
 	rollbackPlayerEdit,
 	stateTargetOf,
@@ -360,7 +362,7 @@ export async function handleMemoryRoute(
 		if (method === "GET") {
 			sendJson(res, 200, readWritingView(store, storyId));
 		} else if (method === "DELETE") {
-			sendJson(res, 200, writeWritingOverrides(store, storyId, null));
+			sendJson(res, 200, resetToCardRecommended(store, storyId));
 		} else {
 			const body = await readObject(req, options);
 			sendJson(res, 200, writeWritingOverrides(store, storyId, body));
@@ -390,6 +392,34 @@ function saveEdit(
 	}
 	if (typeof target !== "string" || target.length === 0) {
 		throw bad("target", "必须指明要改的对象");
+	}
+	if (kind === "wiki") {
+		const separator = target.lastIndexOf("|");
+		const statementId = separator === -1 ? "" : target.slice(separator + 1);
+		if (separator > 0 && statementId !== "lead") {
+			let text: string | undefined;
+			if (body.value !== undefined) {
+				const next = body.value as JsonValue;
+				const nextText =
+					next !== null && typeof next === "object" && !Array.isArray(next)
+						? next.text
+						: undefined;
+				if (typeof nextText !== "string" || nextText.trim().length === 0) {
+					throw bad("value", "内容不能为空；不想要这一条可以删掉它");
+				}
+				text = nextText;
+			}
+			editWikiStatement(store, storyId, {
+				pageId: target.slice(0, separator),
+				statementId,
+				...(text === undefined ? {} : { text }),
+				...(typeof body.locked === "boolean" ? { locked: body.locked } : {}),
+				...(typeof body.disabled === "boolean"
+					? { disabled: body.disabled }
+					: {}),
+			});
+			return;
+		}
 	}
 	const nodeId = store.getHead(storyId)?.id ?? null;
 	const current = readEffectiveEdits(store, storyId, nodeId, kind).get(target);

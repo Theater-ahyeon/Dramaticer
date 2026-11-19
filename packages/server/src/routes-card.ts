@@ -1,19 +1,22 @@
-import { createHash } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
-	type FeatureSwitchOverrides,
 	type JsonValue,
 	type StoryStore,
-	isFeatureTier,
+	applyCardRecommendedConfig,
 	isJsonObject,
+	parseCardRecommendedConfig,
+	parseDramaticerCardExtension,
 	readEffectiveEdits,
 	readLoreCopy,
 	readMemorySecrets,
-	saveRecommendedWriting,
+	readStoryCardSnapshot,
+	saveStoryCardSnapshot,
 	saveWritingPreset,
+	storyCardVersion,
 } from "@dramaticer/core";
 import {
 	type StCharacterCard,
+	importCharacterBookLore,
 	mapPresetToWritingDials,
 	parseCharacterCardJson,
 	parseCharacterCardPng,
@@ -24,8 +27,6 @@ import { sendJson } from "./http.js";
 import { allow, bad, readObject, requireStory } from "./routes-next.js";
 import type { ApiRouteOptions } from "./routes.js";
 
-const CARD_KEY = "card";
-
 /** 每个功能开关每轮在后台大约多花的 token；只用于设置页的合计。 */
 const FEATURE_COSTS: Readonly<Record<string, number>> = {
 	scribe: 600,
@@ -35,10 +36,6 @@ const FEATURE_COSTS: Readonly<Record<string, number>> = {
 	choices: 120,
 	tools: 300,
 };
-
-function cardVersion(data: string): string {
-	return createHash("sha256").update(data).digest("hex").slice(0, 16);
-}
 
 function parseCard(payload: unknown): { card: StCharacterCard; data: string } {
 	if (!isJsonObject(payload) || typeof payload.data !== "string") {
@@ -57,7 +54,8 @@ function parseCard(payload: unknown): { card: StCharacterCard; data: string } {
 
 /**
  * 载入卡之后：记下故事固定的卡版本，并应用卡带的推荐配置。
- * 推荐的写法与档位只在第一次载入时应用，之后玩家的选择不被覆盖。
+ * 推荐的写法与开关只在第一次载入时应用，之后玩家的选择不被覆盖；
+ * 升级只更新推荐本身，「回到推荐」时才重新应用。
  */
 export function afterCardImport(
 	store: StoryStore,
@@ -65,39 +63,18 @@ export function afterCardImport(
 	card: StCharacterCard,
 	data: string,
 ): void {
-	const first = store.getStoryValue(storyId, CARD_KEY) === null;
-	const extension = card.extensions.dramaticer;
-	const config =
-		isJsonObject(extension) && isJsonObject(extension.config)
-			? extension.config
-			: null;
-	store.setStoryValue(storyId, CARD_KEY, {
+	const firstLoad = readStoryCardSnapshot(store, storyId) === null;
+	const extension = parseDramaticerCardExtension(card.extensions.dramaticer);
+	const config = extension.config ?? null;
+	const recommendation = parseCardRecommendedConfig(config);
+	saveStoryCardSnapshot(store, storyId, {
 		name: card.name,
-		version: cardVersion(data),
-		importedAt: new Date().toISOString(),
-		recommendedMode:
-			typeof config?.turnMode === "string" ? config.turnMode : null,
+		version: storyCardVersion(data),
+		recommendedMode: recommendation.mode,
 	});
-	saveRecommendedWriting(store, storyId, config?.writing ?? null);
-	if (!first || config === null) return;
-	try {
-		if (config.turnMode === "plan") {
-			store.setStoryValue(storyId, "writingMode", "plan");
-		} else if (config.turnMode === "deep" || config.turnMode === "fast") {
-			store.updateStorySettings(storyId, { turnMode: config.turnMode });
-		}
-		const features = isJsonObject(config.features) ? config.features : null;
-		if (features !== null) {
-			store.updateStorySettings(storyId, {
-				...(isFeatureTier(features.tier) ? { featureTier: features.tier } : {}),
-				...(isJsonObject(features.switches)
-					? { featureSwitches: features.switches as FeatureSwitchOverrides }
-					: {}),
-			});
-		}
-	} catch {
-		// 卡里写错的推荐值不让导入失败：推荐只是起点，玩家可以自己调。
-	}
+	applyCardRecommendedConfig(store, storyId, config, {
+		applySettings: firstLoad,
+	});
 }
 
 export async function handleCardRoute(
@@ -114,14 +91,11 @@ export async function handleCardRoute(
 	if (third === "card" && parts.length === 3) {
 		allow(method, ["GET"]);
 		requireStory(options, storyId);
-		const card = store.getStoryValue(storyId, CARD_KEY);
+		const card = readStoryCardSnapshot(store, storyId);
 		sendJson(res, 200, {
 			storyId,
-			card: isJsonObject(card) ? card : null,
-			recommendedMode:
-				isJsonObject(card) && typeof card.recommendedMode === "string"
-					? card.recommendedMode
-					: null,
+			card,
+			recommendedMode: card?.recommendedMode ?? null,
 		});
 		return true;
 	}
@@ -131,9 +105,17 @@ export async function handleCardRoute(
 		requireStory(options, storyId);
 		const body = await readObject(req, options);
 		const { card, data } = parseCard(body.card);
-		const current = store.getStoryValue(storyId, CARD_KEY);
-		const same = isJsonObject(current) && current.version === cardVersion(data);
-		const incoming = new Map<string, { name: string; content: string }>();
+		const current = readStoryCardSnapshot(store, storyId);
+		const same = current !== null && current.version === storyCardVersion(data);
+		const incoming = new Map<
+			string,
+			{
+				name: string;
+				content: string;
+				constant: boolean;
+				keywords: readonly string[];
+			}
+		>();
 		if (card.characterBook !== null) {
 			for (const entry of worldInfoFromCharacterBook(
 				card.characterBook,
@@ -143,6 +125,8 @@ export async function handleCardRoute(
 				incoming.set(`character-book:${card.name}:${entry.sourceKey}`, {
 					name: entry.comment || entry.keys[0] || entry.sourceKey,
 					content: entry.content.trim(),
+					constant: entry.constant,
+					keywords: [...entry.keys],
 				});
 			}
 		}
@@ -161,8 +145,9 @@ export async function handleCardRoute(
 				added.push(entry.name);
 				continue;
 			}
-			if (existing.original.content.trim() === entry.content) continue;
-			changed.push(existing.original.name);
+			// 和故事里现在生效的内容比；上次升级叠上去的修改也算。
+			if (existing.entry.content.trim() === entry.content) continue;
+			changed.push(existing.entry.name);
 			// 升级时把新版内容叠到副本上；玩家锁定的条目保持玩家的内容。
 			if (body.apply === true && !existing.locked) {
 				store.savePlayerEdit({
@@ -171,10 +156,10 @@ export async function handleCardRoute(
 					kind: "lore",
 					target: existing.original.id,
 					value: {
-						name: existing.entry.name,
+						name: entry.name,
 						content: entry.content,
-						constant: existing.entry.constant,
-						keywords: [...existing.entry.keywords],
+						constant: entry.constant,
+						keywords: [...entry.keywords],
 					},
 					source: "ai",
 					note: "卡升级到新版",
@@ -184,6 +169,31 @@ export async function handleCardRoute(
 		const removed = copy
 			.filter((item) => !incoming.has(item.original.source))
 			.map((item) => item.original.name);
+		if (body.apply === true) {
+			if (card.characterBook !== null) {
+				importCharacterBookLore(store, storyId, card.characterBook, card.name);
+			}
+			for (const item of copy) {
+				if (incoming.has(item.original.source)) continue;
+				if (item.locked || item.disabled) continue;
+				store.savePlayerEdit({
+					storyId,
+					nodeId: head,
+					kind: "lore",
+					target: item.original.id,
+					value: {
+						name: item.entry.name,
+						content: item.entry.content,
+						constant: item.entry.constant,
+						keywords: [...item.entry.keywords],
+					},
+					disabled: true,
+					source: "ai",
+					note: "卡升级后不再包含这条",
+				});
+			}
+			afterCardImport(store, storyId, card, data);
+		}
 		sendJson(res, 200, { storyId, same, added, changed, removed });
 		return true;
 	}
