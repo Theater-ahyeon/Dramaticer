@@ -66,6 +66,7 @@ import {
 	NOTE_WRITE_TOOL_NAME,
 	RULE_CHECK_TOOL,
 	RULE_CHECK_TOOL_NAME,
+	formatWorkspaceGuide,
 } from "../tools/index.js";
 import type {
 	DeepToolDefinition,
@@ -708,6 +709,16 @@ export async function generateAssistantTurn(
 				});
 			}
 		}
+		extra.push({
+			role: "system",
+			content: formatWorkspaceGuide({
+				store: options.store,
+				storyId: options.storyId,
+				anchorNodeId: userNode.id,
+				draft,
+				notes,
+			}),
+		});
 	}
 	const noted: readonly LlmMessage[] =
 		extra.length === 0 ? notedBase : [...notedBase, ...extra];
@@ -737,6 +748,7 @@ export async function generateAssistantTurn(
 			reranker: options.reranker ?? null,
 			viewpoint: options.viewpoint ?? null,
 			notes,
+			draft,
 		},
 		model: options.model,
 		maxTokens: options.maxTokens,
