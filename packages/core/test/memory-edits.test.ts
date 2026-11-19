@@ -341,6 +341,50 @@ describe("玩家直接修改记忆", () => {
 		});
 	});
 
+	it("锁定的时间线摘要挡住后台重新归档并留下记录", () => {
+		const { store } = openTempStore();
+		store.createStory({ id: "s1", title: "测试" });
+		append(store, "n1", null, "assistant", "凛在教室。");
+		append(store, "n2", "n1", "assistant", "凛走到钟楼。");
+		const archive = {
+			storyId: "s1",
+			endNodeId: "n2",
+			startNodeId: "n1",
+			floorCount: 2,
+			boundary: "scene-ends" as const,
+			summary: "他们找到了钥匙。",
+			present: [],
+			profiles: [],
+			informed: [],
+			stateChanges: [],
+			cluesOpened: [],
+			cluesClosed: [],
+		};
+		store.saveSceneArchive(archive);
+		store.savePlayerEdit({
+			storyId: "s1",
+			nodeId: "n2",
+			kind: "summary",
+			target: "n2",
+			value: { text: "玩家写的摘要。" },
+			locked: true,
+		});
+		expect(readMemoryTimeline(store, "s1", "n2")[0]?.summary).toBe(
+			"玩家写的摘要。",
+		);
+
+		store.saveSceneArchive({ ...archive, summary: "后台重新整理的摘要。" });
+		expect(readMemoryTimeline(store, "s1", "n2")[0]?.summary).toBe(
+			"玩家写的摘要。",
+		);
+		expect(store.getSceneArchive("n2")?.summary).toBe("玩家写的摘要。");
+		const rejections = store.listMemoryRejections("s1");
+		expect(rejections).toHaveLength(1);
+		expect(rejections[0]).toMatchObject({ kind: "summary", nodeId: "n2" });
+		expect(rejections[0]?.text).toContain("后台重新整理的摘要");
+		expect(rejections[0]?.reason).toContain("锁定");
+	});
+
 	it("偏好改完即锁定，停用后回滚到旧的文本会重新生效", () => {
 		const { store } = openTempStore();
 		store.createStory({ id: "s1", title: "测试" });

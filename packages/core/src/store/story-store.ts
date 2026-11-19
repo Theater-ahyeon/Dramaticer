@@ -6045,6 +6045,39 @@ export class StoryStore {
 		return row === undefined ? null : rowToSceneLog(row);
 	}
 
+	/**
+	 * 某一类对象在当前路径上被玩家锁定的值；后台写入前用它判断是否只能留作建议。
+	 * 只查修改表，避免存储层反过来引用投影模块。
+	 */
+	#lockedEditValue(
+		storyId: string,
+		kind: PlayerEditKind,
+		target: string,
+		nodeId: string,
+	): JsonValue | null {
+		const rows = this.#db
+			.prepare(
+				`SELECT node_id, value, locked FROM player_edits
+				WHERE story_id = ? AND kind = ? AND target = ? AND source != 'rejected'
+				ORDER BY id`,
+			)
+			.all(storyId, kind, target) as {
+			node_id: string | null;
+			value: string | null;
+			locked: number;
+		}[];
+		if (rows.length === 0) return null;
+		const pathIds = new Set(this.getPathToNode(nodeId).map((node) => node.id));
+		let locked = false;
+		let value: JsonValue | null = null;
+		for (const row of rows) {
+			if (row.node_id !== null && !pathIds.has(row.node_id)) continue;
+			locked = row.locked === 1;
+			value = row.value === null ? null : (JSON.parse(row.value) as JsonValue);
+		}
+		return locked ? value : null;
+	}
+
 	/** 写入一场的归档；同一场次（结束楼层）重复执行覆盖同一行。 */
 	saveSceneArchive(input: NewSceneArchive): SceneArchive {
 		const normalised = assertNewSceneArchive(input);
@@ -6094,6 +6127,20 @@ export class StoryStore {
 		);
 		const createdAt = input.createdAt ?? new Date().toISOString();
 		assertNonEmptyString(createdAt, "场次归档的创建时间");
+		const previousSummary = this.getSceneArchive(normalised.endNodeId)?.summary;
+		const lockedSummary = this.#lockedEditValue(
+			normalised.storyId,
+			"summary",
+			normalised.endNodeId,
+			normalised.endNodeId,
+		);
+		const playerSummary =
+			isJsonObject(lockedSummary) &&
+			typeof lockedSummary.text === "string" &&
+			lockedSummary.text.trim().length > 0
+				? lockedSummary.text
+				: null;
+		const summary = playerSummary ?? normalised.summary;
 		this.#db
 			.prepare(
 				`INSERT INTO scene_archives
@@ -6120,7 +6167,7 @@ export class StoryStore {
 				normalised.startNodeId,
 				normalised.floorCount,
 				normalised.boundary,
-				normalised.summary,
+				summary,
 				JSON.stringify(normalised.present),
 				JSON.stringify(normalised.profiles),
 				JSON.stringify(normalised.informed),
@@ -6129,7 +6176,16 @@ export class StoryStore {
 				JSON.stringify(normalised.cluesClosed),
 				createdAt,
 			);
-		return { ...normalised, createdAt };
+		if (playerSummary !== null && previousSummary !== normalised.summary) {
+			this.recordMemoryRejection({
+				storyId: normalised.storyId,
+				nodeId: normalised.endNodeId,
+				kind: "summary",
+				text: normalised.summary,
+				reason: "场次摘要被玩家锁定，后台整理的内容只留作未采用的版本",
+			});
+		}
+		return { ...normalised, summary, createdAt };
 	}
 
 	/** 读取一场的归档；没有时返回 null。 */
