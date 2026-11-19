@@ -6,19 +6,25 @@ import {
 	type LlmStream,
 	type LlmStreamingClient,
 	MAX_PLAN_PHASES,
+	PLAN_PREPARE_JOB_KIND,
+	PLAN_PREP_PHASES,
 	PLAN_REVIEW_JOB_KIND,
 	PLAN_TURN_STEPS,
 	createDefaultContextTemplate,
+	createDirectorSlotProvider,
 	createHistorySlotProvider,
+	createPlanPrepareHandler,
 	createPlanReviewHandler,
 	createStateSlotProvider,
 	createStaticSlotProvider,
+	planPrepareNeedsRun,
 	planReviewNeedsRun,
 	readPlanReview,
+	readPreparedPlan,
 	runChatTurn,
 	runPlanPhases,
 } from "../src/index.js";
-import type { StoryStore } from "../src/index.js";
+import type { DirectorPush, StoryStore } from "../src/index.js";
 import { openTempStore } from "./temp-store.js";
 
 const USAGE = {
@@ -183,12 +189,12 @@ function providers(store: StoryStore) {
 	};
 }
 
-function jobFor(storyId: string) {
+function jobFor(storyId: string, kind = PLAN_REVIEW_JOB_KIND) {
 	return {
 		id: 1,
 		storyId,
 		nodeId: null,
-		kind: PLAN_REVIEW_JOB_KIND,
+		kind,
 		status: "running" as const,
 		attempts: 1,
 		lastError: null,
@@ -442,5 +448,163 @@ describe("规划写法", () => {
 		expect(store.getTurnTrace(result.node.id)?.plan).toBeDefined();
 		expect(other.store.getTurnTrace(fast.node.id)?.plan).toBeUndefined();
 		expect(planReviewNeedsRun(other.store, "s1")).toBe(false);
+	});
+
+	it("间隙里备好推进三档与每个行动选项，命中时回合内只剩正文", async () => {
+		const { store } = openTempStore();
+		seedPlanStory(store);
+		store.setStoryValue("s1", "writingMode", "plan");
+		store.updateStorySettings("s1", { featureSwitches: { prepare: true } });
+		const optionTexts = [
+			"推门进去",
+			"问甲密道在哪",
+			"沿墙摸一圈",
+			"叫乙别出声",
+			"天亮时离开",
+		];
+		store.replaceDirectorCandidateActions({
+			storyId: "s1",
+			nodeId: "a1",
+			actions: [
+				...optionTexts
+					.slice(0, 4)
+					.map((text) => ({ kind: "action" as const, text })),
+				{ kind: "scene_change" as const, text: optionTexts[4] as string },
+			],
+		});
+		const prepare = scriptedClient();
+		await createPlanPrepareHandler({ client: prepare.client })({
+			store,
+			client: prepare.client,
+			job: jobFor("s1", PLAN_PREPARE_JOB_KIND),
+		});
+
+		const pushes: readonly DirectorPush[] = ["advance", "quick", "jump"];
+		for (const push of pushes) {
+			expect(
+				readPreparedPlan(store, "s1", "a1", "(让故事自己走)", push)?.text,
+			).toContain("本轮准备");
+		}
+		for (const text of optionTexts) {
+			expect(readPreparedPlan(store, "s1", "a1", text, null)?.text).toContain(
+				"本轮准备",
+			);
+		}
+		expect(planPrepareNeedsRun(store, "s1")).toBe(false);
+
+		const turn = scriptedClient();
+		const result = await runChatTurn({
+			store,
+			client: turn.client,
+			storyId: "s1",
+			userText: optionTexts[0] as string,
+			template: createDefaultContextTemplate({ structuredOutput: "text-tags" }),
+			providers: providers(store),
+			budgetTokens: 40_000,
+			structuredOutput: "text-tags",
+			model: "fake",
+		});
+
+		expect(turn.requests).toHaveLength(1);
+		expect(requestText(turn.requests[0] as LlmRequest)).toContain(
+			"【本轮准备】",
+		);
+		expect(store.getTurnTrace(result.node.id)?.plan?.prepared).toBe(true);
+
+		for (const push of pushes) {
+			store.setHead("s1", "a1");
+			const pushTurn = scriptedClient();
+			const pushed = await runChatTurn({
+				store,
+				client: pushTurn.client,
+				storyId: "s1",
+				userText: "(让故事自己走)",
+				directorPush: push,
+				template: createDefaultContextTemplate({
+					structuredOutput: "text-tags",
+				}),
+				providers: {
+					...providers(store),
+					director: createDirectorSlotProvider(store),
+				},
+				budgetTokens: 40_000,
+				structuredOutput: "text-tags",
+				model: "fake",
+			});
+			expect(pushTurn.requests).toHaveLength(1);
+			expect(store.getTurnTrace(pushed.node.id)?.plan?.prepared).toBe(true);
+		}
+	});
+
+	it("自由输入时在回合内准备，阶段进度推给界面", async () => {
+		const { store } = openTempStore();
+		seedPlanStory(store);
+		store.setStoryValue("s1", "writingMode", "plan");
+		store.updateStorySettings("s1", { featureSwitches: { prepare: true } });
+		const turn = scriptedClient();
+		const progress: { phase: string; detail: string }[] = [];
+		const result = await runChatTurn({
+			store,
+			client: turn.client,
+			storyId: "s1",
+			userText: "我看向殿门。",
+			template: createDefaultContextTemplate({ structuredOutput: "text-tags" }),
+			providers: providers(store),
+			budgetTokens: 40_000,
+			structuredOutput: "text-tags",
+			model: "fake",
+			onToolProgress: (event) => {
+				progress.push({ phase: event.phase, detail: event.detail });
+			},
+		});
+
+		expect(progress.map((item) => item.phase)).toEqual(
+			expect.arrayContaining([...PLAN_PREP_PHASES]),
+		);
+		expect(progress.every((item) => item.detail.length > 0)).toBe(true);
+		expect(turn.requests).toHaveLength(5);
+		expect(store.getTurnTrace(result.node.id)?.plan?.prepared).toBe(false);
+	});
+
+	it("提前备好默认只在全开档开启，关掉后不再吃旧结果", async () => {
+		const { store } = openTempStore();
+		seedPlanStory(store);
+		store.setStoryValue("s1", "writingMode", "plan");
+		expect(planPrepareNeedsRun(store, "s1")).toBe(false);
+
+		store.updateStorySettings("s1", { featureTier: "immersive" });
+		expect(planPrepareNeedsRun(store, "s1")).toBe(true);
+		const prepare = scriptedClient();
+		await createPlanPrepareHandler({ client: prepare.client })({
+			store,
+			client: prepare.client,
+			job: jobFor("s1", PLAN_PREPARE_JOB_KIND),
+		});
+		expect(
+			readPreparedPlan(store, "s1", "a1", "(让故事自己走)", "advance"),
+		).not.toBeNull();
+
+		store.updateStorySettings("s1", { featureSwitches: { prepare: false } });
+		expect(planPrepareNeedsRun(store, "s1")).toBe(false);
+
+		const turn = scriptedClient();
+		const progress: string[] = [];
+		const result = await runChatTurn({
+			store,
+			client: turn.client,
+			storyId: "s1",
+			userText: "我看向殿门。",
+			template: createDefaultContextTemplate({ structuredOutput: "text-tags" }),
+			providers: providers(store),
+			budgetTokens: 40_000,
+			structuredOutput: "text-tags",
+			model: "fake",
+			onToolProgress: (event) => {
+				progress.push(event.phase);
+			},
+		});
+		expect(turn.requests).toHaveLength(5);
+		expect(progress).toEqual(expect.arrayContaining([...PLAN_PREP_PHASES]));
+		expect(store.getTurnTrace(result.node.id)?.plan?.prepared).toBe(false);
 	});
 });

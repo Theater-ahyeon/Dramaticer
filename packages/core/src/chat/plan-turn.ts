@@ -391,8 +391,16 @@ export function isPlanWritingMode(store: StoryStore, storyId: string): boolean {
 /** 后台任务类型：回复落定后把推进三档与每个行动选项的准备阶段先跑完。 */
 export const PLAN_PREPARE_JOB_KIND = "plan_prepare";
 
-/** 一次最多为几个行动选项提前准备。 */
-const MAX_PREPARED_ACTIONS = 4;
+/** 「提前备好」开关：关掉时既不备，也不吃以前备下的结果。 */
+export function isPlanPrepareEnabled(
+	store: StoryStore,
+	storyId: string,
+): boolean {
+	return readStoryFeatureState(store, storyId).values.prepare === true;
+}
+
+/** 一次最多为几个行动选项提前准备：候选固定的四条行动加一条场景变化。 */
+const MAX_PREPARED_ACTIONS = 5;
 
 function prepareAnchor(store: StoryStore, storyId: string): string | null {
 	const head = store.getHead(storyId);
@@ -405,8 +413,7 @@ export function planPrepareNeedsRun(
 	storyId: string,
 ): boolean {
 	if (!isPlanWritingMode(store, storyId)) return false;
-	if (readStoryFeatureState(store, storyId).values.prepare !== true)
-		return false;
+	if (!isPlanPrepareEnabled(store, storyId)) return false;
 	const anchor = prepareAnchor(store, storyId);
 	if (anchor === null) return false;
 	return store.getStoryValue(storyId, preparedKey(anchor)) === null;
