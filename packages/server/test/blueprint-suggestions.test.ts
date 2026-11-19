@@ -659,6 +659,32 @@ describe("大纲编辑接口", () => {
 		});
 	});
 
+	it("显式给出的 nodeId 写在那一楼，版本历史也按它读", async () => {
+		const running = await startTestServer();
+		const headId = seedStory(running);
+		const root = running.store.getPathToNode(headId)[0];
+		if (root === undefined) throw new Error("故事没有根楼层");
+
+		const edited = await post(
+			running.origin,
+			"/api/stories/s1/blueprint/edit",
+			{ nodeId: root.id, diffs: [premiseDiff()] },
+		);
+		expect(edited.status).toBe(200);
+		const result = (await edited.json()) as StoryBlueprintEditResult;
+		expect(result.nodeId).toBe(root.id);
+		expect(result.entries.map((entry) => entry.id)).toEqual(["premise-1"]);
+
+		const versions = await fetch(
+			`${running.origin}/api/stories/s1/blueprint/versions?nodeId=${root.id}`,
+		);
+		expect(versions.status).toBe(200);
+		const view = (await versions.json()) as StoryBlueprintVersionsView;
+		expect(view.nodeId).toBe(root.id);
+		expect(view.versions).toHaveLength(1);
+		expect(view.versions[0]?.nodeId).toBe(root.id);
+	});
+
 	it("回到某一版会成为新的一批修改", async () => {
 		const running = await startTestServer();
 		seedStory(running);

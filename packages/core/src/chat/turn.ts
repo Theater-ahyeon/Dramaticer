@@ -1,8 +1,9 @@
 import { parseBlocks } from "../blocks/parser.js";
 import type { ParsedContent } from "../blocks/types.js";
 import {
-	type AssembledContext,
 	type ContextSlotProviders,
+	type ContextTrace,
+	type ContextTraceEntry,
 	assembleContext,
 } from "../context/assembler.js";
 import { contextPackFingerprint } from "../context/pack-format.js";
@@ -59,6 +60,7 @@ import type {
 	StructuredOutputMode,
 } from "../structured/types.js";
 import type { NewStateDiff, StateDiff, TimelineNode } from "../timeline.js";
+import { createTokenEstimator } from "../tokens.js";
 import {
 	DEEP_TURN_TOOLS,
 	FAST_TURN_TOOLS,
@@ -405,6 +407,39 @@ function resolveTurnProviders(options: {
 	};
 }
 
+interface ExtraContextEntry {
+	/** 写进上下文构成的来源，例如 `writing:写作选项`。 */
+	readonly source: string;
+	readonly text: string;
+}
+
+/**
+ * 组装之后追加的系统消息（写作要求、准备阶段、自查清单、工作区说明）
+ * 同样是模型看到的上下文；按条目补进 Trace，才能在本轮上下文里读到。
+ */
+function withExtraContextEntries(
+	trace: ContextTrace,
+	extras: readonly ExtraContextEntry[],
+): ContextTrace {
+	if (extras.length === 0) return trace;
+	const estimator = createTokenEstimator();
+	const entries: ContextTraceEntry[] = extras.map((extra) => ({
+		segmentId: extra.source,
+		kind: "static",
+		slot: null,
+		source: extra.source,
+		priority: 0,
+		tokens: estimator(extra.text),
+		status: "included",
+	}));
+	const addedTokens = entries.reduce((sum, entry) => sum + entry.tokens, 0);
+	return {
+		budgetTokens: trace.budgetTokens,
+		totalTokens: trace.totalTokens + addedTokens,
+		entries: [...trace.entries, ...entries],
+	};
+}
+
 /**
  * 单轮生成：追加用户楼层，组装上下文，流式生成并解析块，
  * 把回复、状态 diff 与 Trace 一起写进楼层树。
@@ -656,7 +691,12 @@ export async function generateAssistantTurn(
 		? formatWritingDials(options.store, userNode.storyId)
 		: null;
 	const extra: LlmMessage[] = [];
-	if (writing !== null) extra.push({ role: "system", content: writing });
+	const extraTrace: ExtraContextEntry[] = [];
+	const appendExtra = (source: string, content: string): void => {
+		extra.push({ role: "system", content });
+		extraTrace.push({ source, text: content });
+	};
+	if (writing !== null) appendExtra("writing:写作选项", writing);
 	// 规划写法：固定的准备阶段先理清材料，再交给同一次正文调用。
 	// 间隙里已经备好时直接用，回合内不再有准备调用。
 	let planTrace: PlanTurnTrace | null = null;
@@ -693,7 +733,7 @@ export async function generateAssistantTurn(
 		}
 		planTrace = preparation.trace;
 		if (preparation.text !== "") {
-			extra.push({ role: "system", content: preparation.text });
+			appendExtra("plan:本轮准备", preparation.text);
 		}
 	}
 	// 深度写法：程序生成的自查清单交给模型，交稿前逐项核对草稿。
@@ -705,7 +745,7 @@ export async function generateAssistantTurn(
 		);
 		const checklist = formatSelfCheckList(checks);
 		if (checklist !== null) {
-			extra.push({ role: "system", content: checklist });
+			appendExtra("deep:自查清单", checklist);
 			for (const item of checks) {
 				options.onToolProgress?.({
 					type: "progress",
@@ -714,19 +754,20 @@ export async function generateAssistantTurn(
 				});
 			}
 		}
-		extra.push({
-			role: "system",
-			content: formatWorkspaceGuide({
+		appendExtra(
+			"deep:工作区说明",
+			formatWorkspaceGuide({
 				store: options.store,
 				storyId: options.storyId,
 				anchorNodeId: userNode.id,
 				draft,
 				notes,
 			}),
-		});
+		);
 	}
 	const noted: readonly LlmMessage[] =
 		extra.length === 0 ? notedBase : [...notedBase, ...extra];
+	const contextTrace = withExtraContextEntries(assembled.trace, extraTrace);
 	// 重 roll 的即时指示紧贴生成位置，排在历史与导演之后。
 	const messages =
 		rerollReason === null
@@ -814,7 +855,7 @@ export async function generateAssistantTurn(
 			return persistAbortedTurn({
 				options,
 				userNode,
-				assembled,
+				contextTrace,
 				hooks: turnHooks,
 				startedAt,
 				error,
@@ -919,9 +960,9 @@ export async function generateAssistantTurn(
 			profile,
 			rerollReason,
 			createdAt: node.createdAt,
-			context: assembled.trace,
+			context: contextTrace,
 			layout: detectContextLayout(options.template),
-			segmentOrder: assembled.trace.entries.map((entry) => entry.segmentId),
+			segmentOrder: contextTrace.entries.map((entry) => entry.segmentId),
 			llm: {
 				role: "writer",
 				model: result.model,
@@ -1139,7 +1180,7 @@ function resolveTurnBody(input: {
 async function persistAbortedTurn(input: {
 	readonly options: GenerateAssistantTurnOptions;
 	readonly userNode: TimelineNode;
-	readonly assembled: AssembledContext;
+	readonly contextTrace: ContextTrace;
 	readonly hooks: readonly TurnHookTraceEntry[];
 	readonly startedAt: number;
 	readonly error: TurnAbortedError;
@@ -1150,7 +1191,7 @@ async function persistAbortedTurn(input: {
 	/** 深回合的运行 id；快回合为 null。 */
 	readonly runId: string | null;
 }): Promise<ChatTurnResult> {
-	const { options, userNode, assembled, error } = input;
+	const { options, userNode, contextTrace, error } = input;
 	const completedAt = input.now();
 	return await options.store.runInTransaction(() => {
 		const node = options.store.appendNode({
@@ -1176,9 +1217,9 @@ async function persistAbortedTurn(input: {
 			profile: input.profile,
 			rerollReason: options.rerollReason ?? null,
 			createdAt: node.createdAt,
-			context: assembled.trace,
+			context: contextTrace,
 			layout: detectContextLayout(options.template),
-			segmentOrder: assembled.trace.entries.map((entry) => entry.segmentId),
+			segmentOrder: contextTrace.entries.map((entry) => entry.segmentId),
 			llm: {
 				role: "writer",
 				model: options.model ?? "unknown",

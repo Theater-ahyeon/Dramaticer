@@ -389,6 +389,48 @@ describe("章末规划", () => {
 		expect(store.getDirectorLines("a5")).toBeNull();
 	});
 
+	it("写入失败时反思不单独留下", async () => {
+		const { store } = openTempStore();
+		seedChain(store);
+		seedLines(store);
+		endScene(store, "a5");
+		setChapterFloors(store, 3);
+		// 这一楼已经有一批线修改：后面的写入会失败，反思必须跟着回滚。
+		store.saveDirectorLines({
+			nodeId: "a5",
+			storyId: "s1",
+			diffs: [
+				{
+					action: "set",
+					line: {
+						id: "extra-1",
+						kind: "main",
+						who: "管家",
+						want: "关门",
+						obstacle: "钥匙不在手上",
+						countdown: null,
+						preparations: [],
+					},
+				},
+			],
+		});
+		const withReflection = JSON.stringify({
+			...(JSON.parse(PLAN) as Record<string, unknown>),
+			reflection: "凛开始信任卫宫。",
+		});
+		const { client } = createFakeClient([withReflection]);
+
+		await expect(
+			createChapterPlanHandler()({ store, client, job: job() }),
+		).rejects.toThrow();
+		expect(store.getDirectorChapterReview("a5")).toBeNull();
+		expect(
+			store
+				.getEventsForPath("a5", { limit: 1000 })
+				.filter((event) => event.source === "reflection"),
+		).toEqual([]);
+	});
+
 	it("声明带到下一章的伏笔不能被这批修改删除", async () => {
 		const { store } = openTempStore();
 		seedChain(store);

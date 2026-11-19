@@ -46,7 +46,7 @@
 ## 注意事项
 - `.env` 已由人类填写，**不要覆盖**。
 - 私有数据（`eval-private/`、`data/`、`.env`）不能进入测试数据、提交、文档或日志；报告只写统计数字，不写对话原文。R6 与 X1、X2 的 JSON 含回复与答案，只能放在私有目录。场记对照的报告含楼层 id 与台账值，只能放在 `eval-private/`。
-- 迁移 v70 之后 `assistant-store.test.ts` 的版本断言是 70；新增迁移要同步这个数字。
+- 迁移 v72 之后 `assistant-store.test.ts` 的版本断言是 72；新增迁移要同步这个数字。`player_edits`、`memory_rejections`、`memory_event_quotes` 都只有 INSERT 与 SELECT 接口，UPDATE/DELETE 由触发器拒绝；回滚是再追加一条修改。
 - 默认蓝图只由卡导入写入（`saveStoryBlueprintBaseline`），是故事级、与楼层无关的起点；不要把它写成楼层记录，也不要为了导入蓝图创建假楼层。条目按 id 排序后保存，读取顺序与 `applyBlueprintDiffs` 一致。
 - 默认蓝图参加锁定检查：AI 不能改卡里锁定的条目。替换或清空默认蓝图不删除楼层上的修改记录；版本列表不把默认蓝图算成一版。
 - 剧透过滤只在 `GET /api/stories/:id/blueprint` 上生效；不要把 `readBlueprintView` 的过滤结果写回存储，也不要让导演、章级规划、动作引擎或建议接受读过滤后的视图。建议列表是玩家主动发起的，不按剧透隐藏。
@@ -134,7 +134,7 @@
 ## 导演（2026-11-15 起）
 
 - 导演何时出手由故事的「导演」功能开关决定，三个档位默认都是「仅推进时」。玩家的自由输入不论长短都让位，让位时不注入任何东西；只有推进按钮或「继续、推进剧情」这类固定说法才出手（`readPlayerIntent`）。
-- 直接调用 `createDirectorSlotProvider` 或 `createStandardChatSlots` 的测试与工具，如果要让导演在自由输入的回合里评估，传 `when: "always"` / `directorWhen: "always"`。命令行 chat、导演回放与组织方式对比已经这样做。
+- `when` 只决定这一轮没有玩家消息时是否接手：`push` 不出手，`always` 才评估；玩家写了自己的行动时两种档位都让位，不看字数。直接调用 `createDirectorSlotProvider` 或 `createStandardChatSlots` 的测试与工具需要在没有玩家消息的回合里驱动导演时，传 `when: "always"` / `directorWhen: "always"`。
 - 让位的动作选择返回空指令；引擎写决策记录（`signals.action` 为 `yield`），不返回建议。
 - 章末清点只把上一次清点之后、玩家自己写的自由输入当作这一章的变化；推进类固定说法不算。这些变化写进提示词，模型据此删线、改写 want 与 obstacle，或把伏笔声明为 retire。
 - 线可以带 `mustInterrupt: true`：玩家自由输入时这条线倒计时到点会盖过让位，决策信号带 `interrupt`；每场只允许一次，计数从当前路径往回数到上一场结束（`readDirectorActionInput` 的 `interruptedThisScene`）。

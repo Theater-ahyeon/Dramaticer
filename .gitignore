@@ -2,6 +2,8 @@ node_modules/
 dist/
 *.tsbuildinfo
 data/
+!docs/plugins/examples/code-travel-log/data/
+!docs/plugins/examples/code-travel-log/data/travel.md
 eval-private/
 packages/*/test/.tmp-*/
 .env

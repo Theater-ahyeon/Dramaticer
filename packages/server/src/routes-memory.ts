@@ -1,6 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
-	type BlueprintDiff,
 	type JsonValue,
 	type PlayerEditKind,
 	assertDirectorLine,
@@ -36,7 +35,7 @@ import { HttpError, sendJson } from "./http.js";
 import { allow, bad, readObject, requireStory } from "./routes-next.js";
 import type { ApiRouteOptions } from "./routes.js";
 
-/** 记忆、设定副本、剧情线修改、大纲修改与写作选项的接口。返回 true 表示已处理。 */
+/** 记忆、设定副本、剧情线修改与写作选项的接口。返回 true 表示已处理。 */
 export async function handleMemoryRoute(
 	req: IncomingMessage,
 	res: ServerResponse,
@@ -317,65 +316,6 @@ export async function handleMemoryRoute(
 			throw bad("line", error instanceof Error ? error.message : String(error));
 		}
 		sendJson(res, 200, { ok: true });
-		return true;
-	}
-
-	if (third === "blueprint" && fourth === "edit" && parts.length === 4) {
-		allow(method, ["POST"]);
-		requireStory(options, storyId);
-		const body = await readObject(req, options);
-		const nodeId = head();
-		if (nodeId === null)
-			throw bad("body", "故事还没有楼层，先写第一楼再改大纲");
-		try {
-			if (typeof body.versionNodeId === "string") {
-				store.rollbackStoryBlueprint({
-					nodeId,
-					storyId,
-					versionNodeId: body.versionNodeId,
-					...(typeof body.versionSeq === "number"
-						? { versionSeq: body.versionSeq }
-						: {}),
-				});
-			} else {
-				store.saveStoryBlueprint({
-					nodeId,
-					storyId,
-					source: "player",
-					diffs: body.diffs as BlueprintDiff[],
-				});
-			}
-		} catch (error) {
-			throw bad(
-				"diffs",
-				error instanceof Error ? error.message : String(error),
-			);
-		}
-		sendJson(res, 200, {
-			storyId,
-			nodeId,
-			entries: store.readBlueprintEntries(nodeId),
-		});
-		return true;
-	}
-
-	if (third === "blueprint" && fourth === "versions" && parts.length === 4) {
-		allow(method, ["GET"]);
-		requireStory(options, storyId);
-		const nodeId = head();
-		sendJson(res, 200, {
-			storyId,
-			versions:
-				nodeId === null
-					? []
-					: store.listBlueprintVersions(nodeId).map((version) => ({
-							nodeId: version.nodeId,
-							seq: version.seq,
-							source: version.source,
-							createdAt: version.createdAt,
-							changes: version.diffs.length,
-						})),
-		});
 		return true;
 	}
 

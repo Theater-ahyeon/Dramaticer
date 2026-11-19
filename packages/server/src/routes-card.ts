@@ -52,9 +52,43 @@ function parseCard(payload: unknown): { card: StCharacterCard; data: string } {
 	}
 }
 
+function keywordsMatch(
+	left: readonly string[],
+	right: readonly string[],
+): boolean {
+	if (left.length !== right.length) return false;
+	const sortedLeft = [...left].sort();
+	const sortedRight = [...right].sort();
+	return sortedLeft.every((item, index) => item === sortedRight[index]);
+}
+
+/** 升级差异比名称、正文、常驻与关键词；顺序不影响判断。 */
+function sameCardLoreEntry(
+	existing: {
+		readonly name: string;
+		readonly content: string;
+		readonly constant: boolean;
+		readonly keywords: readonly string[];
+	},
+	incoming: {
+		readonly name: string;
+		readonly content: string;
+		readonly constant: boolean;
+		readonly keywords: readonly string[];
+	},
+): boolean {
+	return (
+		existing.name === incoming.name &&
+		existing.content.trim() === incoming.content &&
+		existing.constant === incoming.constant &&
+		keywordsMatch(existing.keywords, incoming.keywords)
+	);
+}
+
 /**
- * 载入卡之后：记下故事固定的卡版本，并应用卡带的推荐配置。
- * 推荐的写法与开关只在第一次载入时应用，之后玩家的选择不被覆盖；
+ * 载入卡之后：记下故事固定的卡版本，并记下卡带的推荐配置。
+ * 写法只能由玩家切换（I6），卡推荐的三档写法只供界面展示；
+ * 写作选项与功能开关的推荐只在第一次载入时应用，之后玩家的选择不被覆盖；
  * 升级只更新推荐本身，「回到推荐」时才重新应用。
  */
 export function afterCardImport(
@@ -145,8 +179,8 @@ export async function handleCardRoute(
 				added.push(entry.name);
 				continue;
 			}
-			// 和故事里现在生效的内容比；上次升级叠上去的修改也算。
-			if (existing.entry.content.trim() === entry.content) continue;
+			// 和故事里现在生效的条目比；上次升级叠上去的修改也算。
+			if (sameCardLoreEntry(existing.entry, entry)) continue;
 			changed.push(existing.entry.name);
 			// 升级时把新版内容叠到副本上；玩家锁定的条目保持玩家的内容。
 			if (body.apply === true && !existing.locked) {

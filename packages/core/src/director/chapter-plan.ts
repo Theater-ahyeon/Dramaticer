@@ -440,14 +440,17 @@ export function createChapterPlanHandler(
 				readEffectiveEdits(store, job.storyId, nodeId, "line").get(diff.id)
 					?.locked !== true,
 		);
-		if (plan.reflection !== null && plan.reflection !== undefined) {
-			appendReflectionRecord(store, job.storyId, nodeId, plan.reflection);
-		}
-		store.saveDirectorChapterPlan({
-			nodeId,
-			storyId: job.storyId,
-			diffs,
-			review: plan.review,
+		// 反思、清点与线修改一起提交：任何一步失败都不留下半截记录。
+		await store.runInTransaction(() => {
+			if (plan.reflection !== null && plan.reflection !== undefined) {
+				appendReflectionRecord(store, job.storyId, nodeId, plan.reflection);
+			}
+			store.saveDirectorChapterPlan({
+				nodeId,
+				storyId: job.storyId,
+				diffs,
+				review: plan.review,
+			});
 		});
 	};
 }

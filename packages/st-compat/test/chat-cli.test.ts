@@ -226,6 +226,7 @@ describe("dramaticer chat", () => {
 				"director",
 				"user_will",
 				"protocol",
+				"writing:写作选项",
 			]);
 			expect(trace?.structured.acceptedStateUpdates).toBe(1);
 			const decision = store.getDirectorDecision(result.userNode.id);

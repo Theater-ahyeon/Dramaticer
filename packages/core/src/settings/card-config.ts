@@ -8,7 +8,6 @@ import {
 	sanitizeFeatureSwitchOverrides,
 } from "./features.js";
 import {
-	WRITING_MODE_KEY,
 	type WritingDials,
 	type WritingView,
 	readWritingView,
@@ -101,28 +100,11 @@ export function readCardRecommendedConfig(
 	};
 }
 
-function applyWritingMode(
-	store: StoryStore,
-	storyId: string,
-	mode: CardWritingMode,
-): void {
-	if (mode === "plan") {
-		store.setStoryValue(storyId, WRITING_MODE_KEY, "plan");
-		store.updateStorySettings(storyId, { turnMode: "fast" });
-		return;
-	}
-	store.setStoryValue(storyId, WRITING_MODE_KEY, null);
-	store.updateStorySettings(storyId, { turnMode: mode });
-}
-
 function applyRecommendedSettings(
 	store: StoryStore,
 	storyId: string,
 	config: CardRecommendedConfig,
 ): void {
-	if (config.mode !== null) {
-		applyWritingMode(store, storyId, config.mode);
-	}
 	if (
 		config.featureTier !== null ||
 		Object.keys(config.featureSwitches).length > 0
@@ -137,7 +119,8 @@ function applyRecommendedSettings(
 }
 
 /**
- * 载入卡时应用推荐。升级时只更新推荐（`applySettings: false`），
+ * 载入卡时记下推荐。写法只能由玩家手动切换（I6），卡推荐的三档写法只从
+ * `readCardRecommendedConfig` 读出后展示；升级时只更新推荐（`applySettings: false`），
  * 玩家已经选好的写法与开关不被覆盖。
  */
 export function applyCardRecommendedConfig(
@@ -154,8 +137,8 @@ export function applyCardRecommendedConfig(
 }
 
 /**
- * 一键回到卡的推荐：清掉写作选项上的调整，写法与功能开关换成卡的推荐。
- * 卡没有推荐的项保持玩家现在的值。
+ * 一键回到卡的推荐：清掉写作选项上的调整，功能开关换成卡的推荐。
+ * 写法不自动切换；卡没有推荐的项保持玩家现在的值。
  */
 export function resetToCardRecommended(
 	store: StoryStore,

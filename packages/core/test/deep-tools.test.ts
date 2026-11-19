@@ -16,6 +16,7 @@ import {
 	executeLedgerWriteTool,
 	runChatTurn,
 	validateLedgerWriteArguments,
+	writeMemoryPref,
 } from "../src/index.js";
 import { openTempStore } from "./temp-store.js";
 
@@ -461,5 +462,26 @@ describe("深回合内的台账写入", () => {
 		});
 
 		expect(phases).toEqual(["回忆中……:memory_search", "读取状态……:state_get"]);
+	});
+
+	it("自查清单与工作区说明记进上下文构成", async () => {
+		const { store } = openTempStore();
+		seedStory(store);
+		writeMemoryPref(store, "s1", { text: "别替我做决定" });
+		const { client } = createScriptedClient([{ text: "我记下了。" }]);
+
+		const turn = await runDeep({ store, client, userText: "我想想。" });
+
+		const entries = turn.trace.context.entries;
+		const checklist = entries.find(
+			(entry) => entry.segmentId === "deep:自查清单",
+		);
+		expect(checklist?.status).toBe("included");
+		expect(checklist?.tokens).toBeGreaterThan(0);
+		const guide = entries.find(
+			(entry) => entry.segmentId === "deep:工作区说明",
+		);
+		expect(guide?.status).toBe("included");
+		expect(guide?.tokens).toBeGreaterThan(0);
 	});
 });

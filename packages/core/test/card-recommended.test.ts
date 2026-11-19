@@ -18,7 +18,7 @@ const CONFIG = {
 };
 
 describe("卡的推荐配置", () => {
-	it("载入时应用写作选项、写法与功能开关", () => {
+	it("载入时记下推荐，写法留给玩家手动切换", () => {
 		const { store } = openTempStore();
 		store.createStory({ id: "s1", title: "测试" });
 
@@ -34,7 +34,8 @@ describe("卡的推荐配置", () => {
 			length: "long",
 			person: "third",
 		});
-		expect(store.getStoryValue("s1", WRITING_MODE_KEY)).toBe("plan");
+		// 写法只能由玩家切换（I6）：导入不写回合模式。
+		expect(store.getStoryValue("s1", WRITING_MODE_KEY)).toBeNull();
 		const settings = store.getStorySettings("s1");
 		expect(settings.turnMode).toBe("fast");
 		expect(settings.featureTier).toBe("immersive");
@@ -56,16 +57,16 @@ describe("卡的推荐配置", () => {
 			featureTier: "lite",
 			featureSwitches: { search: false },
 		});
-		store.setStoryValue("s1", WRITING_MODE_KEY, null);
 		expect(readWritingView(store, "s1").dials.length).toBe("short");
 
 		const view = resetToCardRecommended(store, "s1");
 
 		expect(view.dials).toMatchObject({ length: "long", person: "third" });
 		expect(view.overrides).toEqual({});
-		expect(store.getStoryValue("s1", WRITING_MODE_KEY)).toBe("plan");
+		// 回到推荐不切换写法：玩家选的深度保留。
+		expect(store.getStoryValue("s1", WRITING_MODE_KEY)).toBeNull();
 		const settings = store.getStorySettings("s1");
-		expect(settings.turnMode).toBe("fast");
+		expect(settings.turnMode).toBe("deep");
 		expect(settings.featureTier).toBe("immersive");
 		expect(settings.featureSwitches).toEqual({
 			search: true,
@@ -123,6 +124,6 @@ describe("卡的推荐配置", () => {
 		});
 		expect(readWritingView(store, "s1").overrides).toEqual({ length: "short" });
 		expect(readWritingView(store, "s1").dials.length).toBe("short");
-		expect(store.getStoryValue("s1", WRITING_MODE_KEY)).toBe("plan");
+		expect(store.getStoryValue("s1", WRITING_MODE_KEY)).toBeNull();
 	});
 });
