@@ -377,10 +377,7 @@ export const DIRECTOR_ACTION_LABELS: Record<DirectorActionKind, string> = {
 /** 同一动作最多连用几次。 */
 export const MAX_CONSECUTIVE_DIRECTOR_ACTIONS = 3;
 
-/** 「始终」档位下，玩家消息去掉空白后达到这个字数才算写了具体行动。 */
-export const PLAYER_DIRECTION_MIN_CHARS = 12;
-
-/** 导演何时出手：只在玩家交出方向时，或玩家写得很短时也补一点方向。 */
+/** 导演何时出手：只在玩家交出方向时，或这一轮没有玩家消息时也接手。 */
 export const DIRECTOR_WHEN_KINDS = ["push", "always"] as const;
 
 export type DirectorWhen = (typeof DIRECTOR_WHEN_KINDS)[number];
@@ -534,11 +531,6 @@ export function isDirectorActionKind(
 	);
 }
 
-function normalizedLength(value: string | null): number {
-	if (value === null) return 0;
-	return value.replace(/\s+/gu, "").length;
-}
-
 /** 最近两个动作相同且会变成第三个时，禁止再选这个动作。 */
 export function blockedDirectorAction(
 	recentActions: readonly DirectorActionKind[],
@@ -654,17 +646,13 @@ export function selectDirectorAction(
 
 /**
  * 玩家写了自己的行动时的让位候选：指令为空，调用方不注入任何东西。
- * 「始终」档位下只有写得够长才让位，短输入仍由导演补方向。
+ * 只看内容不看长短；「始终」档只额外覆盖这一轮没有玩家消息的情况。
  */
 function playerDirectionCandidate(
 	input: DirectorActionInput,
 	intent: DirectorIntent,
 ): ActionCandidate | null {
 	if (intent.kind !== "free") return null;
-	if ((input.when ?? "always") === "always") {
-		const length = normalizedLength(input.playerMessage);
-		if (length < PLAYER_DIRECTION_MIN_CHARS) return null;
-	}
 	return { action: "yield", reason: intent.basis, lineId: null, directive: "" };
 }
 
@@ -897,6 +885,10 @@ function buildActionCandidates(input: DirectorActionInput): ActionCandidate[] {
 			}
 		}
 		return [direction];
+	}
+	// 「仅推进时」只响应交出的方向；这一轮没有玩家消息时只由「始终」档接手。
+	if (intent.kind === "none" && (input.when ?? "always") === "push") {
+		return [];
 	}
 
 	let due: DirectorLineState | null = null;

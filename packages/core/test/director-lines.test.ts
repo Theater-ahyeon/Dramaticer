@@ -294,6 +294,27 @@ describe("八种动作", () => {
 		expect(selection?.signals.candidates).toEqual(["yield"]);
 	});
 
+	it("三个字的行动也让位，不看字数", () => {
+		const selection = selectDirectorAction(
+			makeInput({
+				when: "always",
+				playerMessage: "去码头",
+				lines: [makeState({ countdown: 0 }, 1, 1)],
+			}),
+		);
+		expect(selection?.action).toBe("yield");
+		expect(selection?.directive).toBe("");
+		expect(selection?.signals.candidates).toEqual(["yield"]);
+	});
+
+	it("仅推进时碰到没有玩家消息就不出手，始终档才接手", () => {
+		const input = { ...makeInput(), playerMessage: null };
+		expect(selectDirectorAction({ ...input, when: "push" })).toBeNull();
+		expect(selectDirectorAction({ ...input, when: "always" })?.action).toBe(
+			"catch",
+		);
+	});
+
 	it("必须打断的线到点时盖过让位，信号记下打断", () => {
 		const selection = selectDirectorAction(
 			makeInput({

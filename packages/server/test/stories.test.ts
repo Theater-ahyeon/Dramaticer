@@ -350,7 +350,7 @@ describe("卡的推荐与固定版本", () => {
 		};
 	}
 
-	it("载入卡时应用推荐配置，一键回到推荐会清掉玩家的调整", async () => {
+	it("载入卡时记下推荐配置，一键回到推荐会清掉写作上的调整", async () => {
 		const { running } = await startTestServer();
 		await post(running.origin, "/api/stories", {
 			id: "story-1",
@@ -402,6 +402,11 @@ describe("卡的推荐与固定版本", () => {
 		expect(cardView.card?.name).toBe("云裳");
 		expect(cardView.card?.version).toMatch(/^[0-9a-f]{16}$/);
 		expect(cardView.recommendedMode).toBe("plan");
+		// 卡推荐的写法只是展示值；导入不替玩家切换回合模式。
+		const importedSettings = (await (
+			await request(running.origin, "/api/stories/story-1/settings")
+		).json()) as { turnMode: string };
+		expect(importedSettings.turnMode).toBe("fast");
 
 		const features = (await (
 			await request(running.origin, "/api/stories/story-1/features")
@@ -453,7 +458,75 @@ describe("卡的推荐与固定版本", () => {
 		const settings = (await (
 			await request(running.origin, "/api/stories/story-1/settings")
 		).json()) as { turnMode: string };
-		expect(settings.turnMode).toBe("plan");
+		expect(settings.turnMode).toBe("deep");
+	});
+
+	it("升级差异也看名称、关键词与常驻", async () => {
+		const { running } = await startTestServer();
+		await post(running.origin, "/api/stories", {
+			id: "story-1",
+			title: "山门",
+		});
+		const entry = {
+			id: 1,
+			keys: ["剑冢"],
+			comment: "剑冢",
+			content: "山后埋着历代断剑。",
+			enabled: true,
+		};
+		await post(running.origin, "/api/stories/story-1/import", {
+			card: {
+				format: "json",
+				data: JSON.stringify(cardWith([entry])),
+			},
+		});
+
+		const keywords = cardWith([{ ...entry, keys: ["剑冢", "断剑"] }]);
+		const keywordsDiff = await post(
+			running.origin,
+			"/api/stories/story-1/card/diff",
+			{ card: { format: "json", data: JSON.stringify(keywords) }, apply: true },
+		);
+		expect(await keywordsDiff.json()).toMatchObject({
+			changed: ["剑冢"],
+			added: [],
+			removed: [],
+		});
+		expect(readLoreCopy(running.store, "story-1")[0]?.entry.keywords).toEqual([
+			"剑冢",
+			"断剑",
+		]);
+
+		const constant = cardWith([
+			{ ...entry, keys: ["剑冢", "断剑"], constant: true },
+		]);
+		const constantDiff = await post(
+			running.origin,
+			"/api/stories/story-1/card/diff",
+			{ card: { format: "json", data: JSON.stringify(constant) }, apply: true },
+		);
+		expect(await constantDiff.json()).toMatchObject({ changed: ["剑冢"] });
+		expect(readLoreCopy(running.store, "story-1")[0]?.entry.constant).toBe(
+			true,
+		);
+
+		const renamed = cardWith([
+			{
+				...entry,
+				comment: "旧剑冢",
+				keys: ["剑冢", "断剑"],
+				constant: true,
+			},
+		]);
+		const renamedDiff = await post(
+			running.origin,
+			"/api/stories/story-1/card/diff",
+			{ card: { format: "json", data: JSON.stringify(renamed) }, apply: true },
+		);
+		expect(await renamedDiff.json()).toMatchObject({ changed: ["剑冢"] });
+		expect(readLoreCopy(running.store, "story-1")[0]?.entry.name).toBe(
+			"旧剑冢",
+		);
 	});
 
 	it("卡库里的新版不自动进入故事，玩家选择升级后才更新", async () => {
@@ -944,5 +1017,39 @@ describe("模板接口", () => {
 
 		const missing = await request(running.origin, "/api/templates/missing");
 		expect(missing.status).toBe(404);
+	});
+});
+
+describe("书架楼层编号", () => {
+	it("超过 80 楼时编号接着整条路径往下数，不从头重来", async () => {
+		const { running } = await startTestServer();
+		await post(running.origin, "/api/stories", {
+			id: "story-1",
+			title: "长路",
+		});
+		let parentId: string | null = null;
+		for (let index = 1; index <= 85; index += 1) {
+			const node = running.store.appendNode({
+				storyId: "story-1",
+				parentId,
+				role: "assistant",
+				raw: `第 ${index} 楼的正文。`,
+			});
+			parentId = node.id;
+		}
+
+		const response = await request(
+			running.origin,
+			"/api/stories/story-1/floors",
+		);
+		expect(response.status).toBe(200);
+		const view = (await response.json()) as {
+			headNodeId: string;
+			floors: { nodeId: string; no: number }[];
+		};
+		expect(view.floors).toHaveLength(80);
+		expect(view.floors[0]?.no).toBe(6);
+		expect(view.floors.at(-1)?.no).toBe(85);
+		expect(view.floors.at(-1)?.nodeId).toBe(view.headNodeId);
 	});
 });

@@ -96,7 +96,10 @@ const DIAL_SENTENCES: {
 	rating: {
 		restrained: "尺度：收敛。亲密与暴力的内容点到为止，不做露骨描写。",
 	},
-	thinking: {},
+	thinking: {
+		off: "思考：不用在正文前推理，直接写眼前的场面。",
+		high: "思考：动笔前多想一步，理清人物的动机与这一楼的因果。",
+	},
 };
 
 const KV_OVERRIDES = "writing.overrides";

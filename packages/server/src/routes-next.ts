@@ -230,7 +230,9 @@ function storyFloors(options: ApiRouteOptions, storyId: string) {
 	const store = options.store;
 	const head = store.getHead(storyId);
 	if (head === null) return { storyId, headNodeId: null, floors: [] };
-	const path = store.getPathToNode(head.id).slice(-80);
+	const fullPath = store.getPathToNode(head.id);
+	const path = fullPath.slice(-80);
+	const firstFloorNo = fullPath.length - path.length + 1;
 	const muted = new Set(
 		store.listMutedDirectorLines(storyId).map((item) => item.lineId),
 	);
@@ -319,7 +321,7 @@ function storyFloors(options: ApiRouteOptions, storyId: string) {
 		return {
 			nodeId: node.id,
 			role: node.role,
-			no: index + 1,
+			no: firstFloorNo + index,
 			slate,
 			notes,
 			cost,

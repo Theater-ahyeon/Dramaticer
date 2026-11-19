@@ -536,6 +536,43 @@ describe("规划写法", () => {
 		}
 	});
 
+	it("玩家键入继续这类固定说法时命中备好的推进结果", async () => {
+		const { store } = openTempStore();
+		seedPlanStory(store);
+		store.setStoryValue("s1", "writingMode", "plan");
+		store.updateStorySettings("s1", { featureSwitches: { prepare: true } });
+		const prepare = scriptedClient();
+		await createPlanPrepareHandler({ client: prepare.client })({
+			store,
+			client: prepare.client,
+			job: jobFor("s1", PLAN_PREPARE_JOB_KIND),
+		});
+		expect(readPreparedPlan(store, "s1", "a1", "继续", null)?.text).toContain(
+			"本轮准备",
+		);
+
+		const turn = scriptedClient();
+		const result = await runChatTurn({
+			store,
+			client: turn.client,
+			storyId: "s1",
+			userText: "继续",
+			template: createDefaultContextTemplate({ structuredOutput: "text-tags" }),
+			providers: providers(store),
+			budgetTokens: 40_000,
+			structuredOutput: "text-tags",
+			model: "fake",
+		});
+
+		expect(turn.requests).toHaveLength(1);
+		expect(store.getTurnTrace(result.node.id)?.plan?.prepared).toBe(true);
+		expect(
+			store
+				.getTurnTrace(result.node.id)
+				?.context.entries.some((entry) => entry.segmentId === "plan:本轮准备"),
+		).toBe(true);
+	});
+
 	it("自由输入时在回合内准备，阶段进度推给界面", async () => {
 		const { store } = openTempStore();
 		seedPlanStory(store);

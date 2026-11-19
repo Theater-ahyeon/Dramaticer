@@ -39,7 +39,7 @@ describe("助手会话存储", () => {
 	it("迁移 v44 建表建索引，事件只追加", () => {
 		const { store, path } = openTempStore();
 		expect(store.getSchemaVersion()).toBe(LATEST_SCHEMA_VERSION);
-		expect(LATEST_SCHEMA_VERSION).toBe(71);
+		expect(LATEST_SCHEMA_VERSION).toBe(72);
 		const raw = new Database(path);
 		onTestFinished(() => raw.close());
 		const tables = raw
@@ -470,5 +470,40 @@ describe("助手会话存储", () => {
 				storyId: "missing",
 			}),
 		).toThrow(/故事不存在/);
+	});
+
+	it("玩家的修改与被拒绝的记录只追加", () => {
+		const { store, path } = openTempStore();
+		store.createStory({ id: "story-1", title: "测试故事" });
+		store.savePlayerEdit({
+			storyId: "story-1",
+			nodeId: null,
+			kind: "state",
+			target: "character.凛.status",
+			value: "警觉",
+			source: "ai",
+		});
+		store.recordMemoryRejection({
+			storyId: "story-1",
+			nodeId: null,
+			kind: "event",
+			text: "凛在门口等人",
+			reason: "出处对不上",
+		});
+
+		const raw = new Database(path);
+		onTestFinished(() => raw.close());
+		expect(() =>
+			raw.prepare("UPDATE player_edits SET target = '改'").run(),
+		).toThrow("玩家的修改不可修改");
+		expect(() => raw.prepare("DELETE FROM player_edits").run()).toThrow(
+			"玩家的修改不可删除",
+		);
+		expect(() =>
+			raw.prepare("UPDATE memory_rejections SET text = '改'").run(),
+		).toThrow("被拒绝的记录不可修改");
+		expect(() => raw.prepare("DELETE FROM memory_rejections").run()).toThrow(
+			"被拒绝的记录不可删除",
+		);
 	});
 });

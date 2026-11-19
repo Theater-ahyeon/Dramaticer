@@ -229,6 +229,7 @@ describe("runChatTurn", () => {
 			["director", "missing-slot"],
 			["user_will", "missing-slot"],
 			["protocol", "included"],
+			["writing:写作选项", "included"],
 		]);
 		expect(trace?.layout).toBe("volatility");
 		expect(trace?.segmentOrder).toEqual([
@@ -246,13 +247,16 @@ describe("runChatTurn", () => {
 			"director",
 			"user_will",
 			"protocol",
+			"writing:写作选项",
 		]);
 		expect(trace?.cache).toEqual({
 			hitTokens: 0,
 			promptTokens: 10,
 			source: "channel",
 		});
-		const protocolEntry = trace?.context.entries.at(-1);
+		const protocolEntry = trace?.context.entries.find(
+			(entry) => entry.segmentId === "protocol",
+		);
 		expect(protocolEntry).toMatchObject({
 			segmentId: "protocol",
 			kind: "static",

@@ -3,6 +3,7 @@ import {
 	DIRECTOR_PUSH_LABELS,
 	type DirectorPush,
 	formatDirectorLine,
+	readPlayerIntent,
 } from "../director/lines.js";
 import { readEffectiveLore } from "../edits/index.js";
 import { normalizeEntityName } from "../entity.js";
@@ -103,14 +104,18 @@ function eventKnownTo(
 	);
 }
 
-/** 提前备好的结果按玩家的输入取：推进三档各一个键，行动选项按文字。 */
+/** 提前备好的结果按归一化后的意图取：推进三档各一个键，行动选项按文字。 */
 export function planInputKey(
 	playerMessage: string,
 	push: DirectorPush | null,
 ): string {
-	return push !== null
-		? `push:${push}`
-		: `text:${normalizeEntityName(playerMessage).slice(0, 120)}`;
+	const intent = readPlayerIntent(
+		playerMessage.length === 0 ? null : playerMessage,
+		push,
+	);
+	if (intent.kind === "push") return `push:${intent.push}`;
+	if (intent.kind === "none") return "none";
+	return `text:${normalizeEntityName(playerMessage).slice(0, 120)}`;
 }
 
 function preparedKey(anchorNodeId: string): string {

@@ -2107,6 +2107,32 @@ export function buildMigrations(
 				END`,
 			],
 		},
+		{
+			version: 72,
+			description: "玩家的修改与被拒绝的记录只追加",
+			statements: [
+				`CREATE TRIGGER player_edits_immutable
+				BEFORE UPDATE ON player_edits
+				BEGIN
+					SELECT RAISE(ABORT, '玩家的修改不可修改');
+				END`,
+				`CREATE TRIGGER player_edits_no_delete
+				BEFORE DELETE ON player_edits
+				BEGIN
+					SELECT RAISE(ABORT, '玩家的修改不可删除');
+				END`,
+				`CREATE TRIGGER memory_rejections_immutable
+				BEFORE UPDATE ON memory_rejections
+				BEGIN
+					SELECT RAISE(ABORT, '被拒绝的记录不可修改');
+				END`,
+				`CREATE TRIGGER memory_rejections_no_delete
+				BEFORE DELETE ON memory_rejections
+				BEGIN
+					SELECT RAISE(ABORT, '被拒绝的记录不可删除');
+				END`,
+			],
+		},
 	];
 }
 

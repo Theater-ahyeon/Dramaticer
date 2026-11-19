@@ -10,6 +10,7 @@ import {
 	createStateSlotProvider,
 	createStaticSlotProvider,
 	formatWritingDials,
+	readContextBreakdown,
 	readWritingView,
 	runChatTurn,
 	saveRecommendedWriting,
@@ -223,5 +224,55 @@ describe("卡的推荐与玩家的调整", () => {
 			stylePack: "也许是",
 		});
 		expect(view.overrides).toEqual({ length: "long" });
+	});
+});
+
+describe("思考档位进入写作要求", () => {
+	it("默认不产生文字，选不想与多想各有一句要求", () => {
+		const { store } = openTempStore();
+		seedStory(store);
+		expect(formatWritingDials(store, "s1")).not.toContain("思考：");
+
+		writeWritingOverrides(store, "s1", { thinking: "off" });
+		expect(formatWritingDials(store, "s1")).toContain("不用在正文前推理");
+
+		writeWritingOverrides(store, "s1", { thinking: "high" });
+		const high = formatWritingDials(store, "s1") ?? "";
+		expect(high).toContain("动笔前多想一步");
+		expect(high).not.toContain("不用在正文前推理");
+	});
+});
+
+describe("写作要求记进上下文构成", () => {
+	it("追加的写作要求带类别、token 与来源", async () => {
+		const { store } = openTempStore();
+		seedStory(store);
+		const { client } = createFakeClient();
+		const result = await runChatTurn({
+			store,
+			client,
+			storyId: "s1",
+			userText: "我推开山门。",
+			template: createDefaultContextTemplate({ structuredOutput: "text-tags" }),
+			providers: providers(store),
+			budgetTokens: 4_000,
+			structuredOutput: "text-tags",
+			model: "fake",
+		});
+
+		const breakdown = readContextBreakdown(store, result.node.id);
+		if (breakdown === null) throw new Error("缺少上下文构成");
+		const other = breakdown.categories.find((item) => item.id === "other");
+		const writing = other?.items.find(
+			(item) =>
+				item.source.kind === "segment" &&
+				item.source.segmentId === "writing:写作选项",
+		);
+		expect(writing?.label).toBe("writing:写作选项");
+		expect(writing?.tokens).toBeGreaterThan(0);
+		expect(other?.tokens).toBeGreaterThan(0);
+		expect(
+			breakdown.categories.reduce((sum, item) => sum + item.tokens, 0),
+		).toBe(breakdown.totalTokens);
 	});
 });
