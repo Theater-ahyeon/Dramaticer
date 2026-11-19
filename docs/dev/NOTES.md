@@ -37,6 +37,7 @@
 - 遗忘漏斗目标测试：`pnpm exec vitest run packages/st-compat/test/r6-funnel.test.ts packages/st-compat/test/probe.test.ts`。
 - 门槛判定目标测试：`pnpm exec vitest run packages/st-compat/test/r6-gate.test.ts`。
 - 门槛判定：`pnpm --filter @dramaticer/st-compat r6-gate --dir eval-private/reports/r6 [--instrument <path>] [--replay <path>] [--compare <path>]… [--deep <path>] [--preference <path>] [--funnel <path>] [--b1 <path>]… [--json <path>] [--report <path>]`。
+- 写法对照：`pnpm --filter @dramaticer/st-compat turn-mode-compare --db <路径> --story <id> --messages <路径> --instrument <r6-instrument 结果> [--repeat <n>] [--branch <楼层>]… [--dir <路径>] [--json <路径>] [--report <路径>]`。
 - 蓝图导出到卡：`pnpm --filter @dramaticer/st-compat blueprint-export --card <路径> --db <路径> --story <id> --out <路径> [--node <id>]`。
 - X2.d 重跑（断点续跑）：`node .devloop/scratch/X2.d/run-compare.mjs`；指标汇总：`node .devloop/scratch/X2.d/summarize.mjs`。
 - 不变量检查：`node scripts/check-invariants.mjs`。
@@ -89,7 +90,9 @@
 - 记忆槽位的实体路由由玩家本轮原文与在场者名字一起驱动；命中的记录按故事时间排序，新旧说法都保留。`ContextSlotRequest.budgetTokens` 放得下整条原文窗口时（不超过默认历史窗口）不检索，避免重复注入。
 - 上下文 Trace 的 `context.entries[].items` 记录逐条来源对象；新增槽位提供者要同时给 `items`，否则本轮上下文只能定位到片段。旧 Trace 没有 `items`，读取时回落到片段来源。
 - 重逢档案的原文摘录只取 `memory_event_quotes` 里与候选实体有关、带逐字出处的记录；没有出处的记录不补摘录。
-- 玩家直接编辑台账只走 `createPlayerLedgerChangeCard`；批准后事实来源为 `player`，说明同时写一条 `userWill` 纠正。
+- 玩家直接编辑台账：正文旁的变更卡走 `createPlayerLedgerChangeCard`；记忆页的即时修改走 `editState`，两者都写来源 `player` 的台账 diff。
+- 玩家的记忆修改只追加到 `player_edits`，按 `node_id` 沿当前路径生效；状态与偏好另写一条来源 `player` 的台账 diff，后台再写向锁定路径时由 `appendStateDiffs` 丢弃并记到 `memory_rejections`。
+- 回滚是再追加一条内容相同的修改；`rollbackPlayerEdit` 只接受当前分支可见、且不是 `rejected` 的历史。状态与偏好回滚会同时写回台账，其余种类靠投影叠加。
 - 连载视图四块数据只从当前路径派生；前情提要只收已归档场次；时间线只把来源 `player` 的 `time.current` 当跳跃。同一路径两次导出逐字节一致。
 - 就地纠正的 `quote` 必须逐字出现且只出现一次；模型只输出改写段。场面控制只接受当前路径的助手楼层。
 - `scene_archives.profiles` 与 `.informed` 的校验在 `saveSceneArchive`；档案字段没有变化时写 `null`。
@@ -107,6 +110,7 @@
 - 不变量：I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I8 显示与 prompt 从原文派生，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖其他工作区包，I16–I18 插件约束。
 - 规划写法的阶段顺序由 `PLAN_TURN_STEPS` 决定：三个准备阶段、正文、可选复查；Trace 的 `plan.schedule` 记的就是它。角色意图每个在场角色单独一次调用，只带他自己知道的公开事件、自身状态与被告知的秘密，不要把全部角色的材料合进一次调用。复查是 `plan_review` 后台任务，结果写成兄弟楼层且不移动 head，玩家自己切换过去。
 - 提前备好是 `plan_prepare` 后台任务：`prepare` 开关打开时，在间隙对推进三档与当前楼层的每条候选行动各跑一遍准备阶段，结果按前一楼与输入存进故事值；命中时回合内只剩正文调用，自由输入时在回合内准备并把阶段进度写进 `turn.progress`。开关关掉后既不建任务，也不使用以前备下的结果。候选行动固定四条加一条场景变化，准备上限按五条算。
+- 写法对照的三种写法落在同一次运行里：快速是 `turnMode: "fast"` 且清掉 `writingMode`，规划是快速加 `writingMode: "plan"`，深度是 `turnMode: "deep"`。每个分支点、写法与重复各复制一份数据库，玩家消息固定不重新生成。胜率以快速为对照；矛盾率用各写法自己的台账探针，分母只含一致与矛盾；每楼调用数是写作客户端的非缓存请求数，含规划准备与深度工具往返。G0 未通过时 `turn-mode-compare` 在任何模型调用前失败。
 - 故事图片：`story_media` 是唯一的图片索引，文件不放进数据库；封面无图时永远返回占位图。
 - e2e 的 `serve.mjs` 启动时清空 `.devloop/scratch/e2e/work`；Playwright 的 mobile 与 desktop 两个项目共用同一个数据库，测试标题必须带唯一 id。`serial.spec.ts` 用固定故事 `e2e-serial`。
 - 台账页只在选中楼层后渲染故事级区块；e2e 要显示立绘得先给故事补一层。

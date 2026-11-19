@@ -14,6 +14,11 @@ test.beforeEach(async ({ page }) => {
 
 test("导演决策、候选行动、Trace、计划编辑与线索兑现", async ({ page }) => {
 	const storyId = await createImportedStory(page, "导演端到端");
+	// 这个用例看的是导演面板，不测让位；把这一故事的导演档位设成始终出手。
+	const settings = await page.request.put(`/api/stories/${storyId}/settings`, {
+		data: { featureSwitches: { director: "always" } },
+	});
+	expect(settings.ok()).toBeTruthy();
 	await expect
 		.poll(
 			async () => {

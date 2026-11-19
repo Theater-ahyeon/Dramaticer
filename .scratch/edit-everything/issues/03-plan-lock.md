@@ -8,7 +8,7 @@
 
 - [x] AI 对锁定项只能生成建议
 - [x] 回滚后导演使用恢复后的内容
-- [ ] `pnpm check` 通过
+- [x] `pnpm check` 通过（集成分支整仓门禁通过：326 个测试文件、2730 个用例）
 
 规格：`.scratch/edit-everything/spec.md`
 

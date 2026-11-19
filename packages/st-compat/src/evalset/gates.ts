@@ -390,6 +390,17 @@ function withInstrument(valid: boolean, gate: R6GateResult): R6GateResult {
 	};
 }
 
+/**
+ * 只判 G0：其他评测复用同一份裁判有效性检查，避免各自定义门槛。
+ * 不通过时调用方必须先停下来，不能带着无效仪器输出胜率。
+ */
+export function evaluateR6InstrumentGate(
+	input: R6InstrumentGateInput,
+): R6GateResult {
+	validateR6InstrumentInput(input);
+	return evaluateInstrument(input);
+}
+
 function evaluateInstrument(input: R6InstrumentGateInput): R6GateResult {
 	const title = "仪器有效性";
 	const sameCompleted = completedPairs(input.sameConfig.pairs);
@@ -1044,9 +1055,8 @@ function formatDelta(value: number): string {
 }
 
 /** 校验判定输入；缺项、负数、越界与自相矛盾都抛出带字段路径的错误。 */
-export function validateR6GateInput(input: R6GateInput): void {
-	const root = requireObject(input, "input");
-	const instrument = requireObject(root.instrument, "instrument");
+export function validateR6InstrumentInput(input: R6InstrumentGateInput): void {
+	const instrument = requireObject(input, "input");
 	const sameConfig = requireObject(
 		instrument.sameConfig,
 		"instrument.sameConfig",
@@ -1141,6 +1151,17 @@ export function validateR6GateInput(input: R6GateInput): void {
 			`instrument.humanLabels 完成配对 ${humanCompleted} 与失败 ${humanFailures} 之和超过两倍计划配对 ${humanPlanned}`,
 		);
 	}
+}
+
+/** 校验完整判定输入；仪器部分复用单独的门槛检查。 */
+export function validateR6GateInput(input: R6GateInput): void {
+	const root = requireObject(input, "input");
+	validateR6InstrumentInput(
+		requireObject(
+			root.instrument,
+			"instrument",
+		) as unknown as R6InstrumentGateInput,
+	);
 	const replay = requireObject(root.replay, "replay");
 	validatePairingSample(replay.abandoned, "replay.abandoned");
 	validatePairingSample(replay.accepted, "replay.accepted");
