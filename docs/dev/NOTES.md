@@ -40,7 +40,7 @@
 - 写法对照：`pnpm --filter @dramaticer/st-compat turn-mode-compare --db <路径> --story <id> --messages <路径> --instrument <r6-instrument 结果> [--repeat <n>] [--branch <楼层>]… [--dir <路径>] [--json <路径>] [--report <路径>]`。
 - 蓝图导出到卡：`pnpm --filter @dramaticer/st-compat blueprint-export --card <路径> --db <路径> --story <id> --out <路径> [--node <id>]`。
 - X2.d 重跑（断点续跑）：`node .devloop/scratch/X2.d/run-compare.mjs`；指标汇总：`node .devloop/scratch/X2.d/summarize.mjs`。
-- 不变量检查：`node scripts/check-invariants.mjs`。
+- 深度写法真实渠道抽查：`DRAMATICER_LIVE=1 DRAMATICER_DEEP_TURNS=16 pnpm exec vitest run packages/st-compat/test/deep-live.test.ts`（要 `data/channels.yaml` 的 `writer` 渠道可用；输出每轮楼层、失败原因与汇总）。
 - 重建沙箱数据：`pnpm --filter @dramaticer/st-compat build && node packages/st-compat/dist/st-bench/cli.js sandbox --source "D:/SillyTavern" --replace`。
 
 ## 注意事项
