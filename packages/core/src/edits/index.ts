@@ -161,9 +161,30 @@ export function rollbackPlayerEdit(
 		.listPlayerEdits(storyId)
 		.find((edit) => edit.id === editId);
 	if (source === undefined) throw new Error(`修改记录不存在：${editId}`);
-	const edit = store.savePlayerEdit({
+	if (source.source === "rejected") {
+		throw new Error(`被拒绝的写入不能回滚：#${editId}`);
+	}
+	const anchor = nodeId ?? store.getHead(storyId)?.id ?? null;
+	if (
+		source.nodeId !== null &&
+		!editPathIds(store, storyId, anchor).has(source.nodeId)
+	) {
+		throw new Error(`修改记录 #${editId} 不在这条分支上`);
+	}
+	if (source.kind === "state") {
+		applyStateEdit(store, storyId, anchor, source.target, source.value);
+	} else if (source.kind === "pref") {
+		applyPrefEdit(
+			store,
+			storyId,
+			anchor,
+			source.target,
+			source.disabled ? null : source.value,
+		);
+	}
+	return store.savePlayerEdit({
 		storyId,
-		nodeId,
+		nodeId: anchor,
 		kind: source.kind,
 		target: source.target,
 		value: source.value,
@@ -172,10 +193,6 @@ export function rollbackPlayerEdit(
 		source: "player",
 		note: `回滚到 #${editId}`,
 	});
-	if (source.kind === "state") {
-		applyStateEdit(store, storyId, nodeId, source.target, source.value);
-	}
-	return edit;
 }
 
 export function stateTargetOf(path: readonly string[]): string {
@@ -200,6 +217,27 @@ function applyStateEdit(
 	if (isLedgerNamespace(path[0] ?? "")) validateLedgerDiff(diff);
 	store.appendStateDiffs([
 		{ ...diff, storyId, nodeId: anchor, reason: "玩家直接修改" },
+	]);
+}
+
+/** 偏好存在台账的 userWill 里；回滚要同时把台账恢复到那一版。 */
+function applyPrefEdit(
+	store: StoryStore,
+	storyId: string,
+	nodeId: string | null,
+	id: string,
+	value: JsonValue | null,
+): void {
+	const anchor = nodeId ?? store.getHead(storyId)?.id ?? null;
+	if (anchor === null) throw new Error("故事还没有楼层，无法修改偏好");
+	const path = ["userWill", id];
+	const diff =
+		value === null
+			? ({ path, op: "delete", source: "player" } as const)
+			: ({ path, op: "set", value, source: "player" } as const);
+	validateLedgerDiff(diff);
+	store.appendStateDiffs([
+		{ ...diff, storyId, nodeId: anchor, reason: "玩家回滚偏好" },
 	]);
 }
 

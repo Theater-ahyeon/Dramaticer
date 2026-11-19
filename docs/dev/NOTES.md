@@ -85,7 +85,9 @@
 - `profile` 槽位的在场名单取最近一条场记，没场记时取最后一场归档；重逢注入的「最近窗口」只看当前楼层之前的原文。
 - 记忆槽位的实体路由由玩家本轮原文与在场者名字一起驱动；命中的记录按故事时间排序，新旧说法都保留。`ContextSlotRequest.budgetTokens` 放得下整条原文窗口时（不超过默认历史窗口）不检索，避免重复注入。
 - 重逢档案的原文摘录只取 `memory_event_quotes` 里与候选实体有关、带逐字出处的记录；没有出处的记录不补摘录。
-- 玩家直接编辑台账只走 `createPlayerLedgerChangeCard`；批准后事实来源为 `player`，说明同时写一条 `userWill` 纠正。
+- 玩家直接编辑台账：正文旁的变更卡走 `createPlayerLedgerChangeCard`；记忆页的即时修改走 `editState`，两者都写来源 `player` 的台账 diff。
+- 玩家的记忆修改只追加到 `player_edits`，按 `node_id` 沿当前路径生效；状态与偏好另写一条来源 `player` 的台账 diff，后台再写向锁定路径时由 `appendStateDiffs` 丢弃并记到 `memory_rejections`。
+- 回滚是再追加一条内容相同的修改；`rollbackPlayerEdit` 只接受当前分支可见、且不是 `rejected` 的历史。状态与偏好回滚会同时写回台账，其余种类靠投影叠加。
 - 连载视图四块数据只从当前路径派生；前情提要只收已归档场次；时间线只把来源 `player` 的 `time.current` 当跳跃。同一路径两次导出逐字节一致。
 - 就地纠正的 `quote` 必须逐字出现且只出现一次；模型只输出改写段。场面控制只接受当前路径的助手楼层。
 - `scene_archives.profiles` 与 `.informed` 的校验在 `saveSceneArchive`；档案字段没有变化时写 `null`。
