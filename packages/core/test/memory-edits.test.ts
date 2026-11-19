@@ -308,6 +308,25 @@ describe("玩家直接修改记忆", () => {
 		store.savePlayerEdit({
 			storyId: "s1",
 			nodeId: "n2",
+			kind: "wiki",
+			target: `${page.id}|lead`,
+			value: { text: "凛是钟楼的新看守。" },
+			locked: true,
+		});
+		const leadPage = compileWikiPage(store, "s1", page.id, "n2");
+		expect(leadPage).toMatchObject({
+			lead: "凛是钟楼的新看守。",
+			leadLocked: true,
+		});
+		expect(
+			leadPage?.sections
+				.flatMap((section) => section.statements)
+				.some((item) => item.text === "凛是钟楼的新看守。"),
+		).toBe(false);
+
+		store.savePlayerEdit({
+			storyId: "s1",
+			nodeId: "n2",
 			kind: "secret",
 			target: secret.id,
 			value: {
@@ -405,7 +424,11 @@ describe("玩家直接修改记忆", () => {
 		writeMemoryPref(store, "s1", { text: "不要替我回答" });
 		const [pref] = readMemoryPrefs(store, "s1", "n1");
 		if (pref === undefined) throw new Error("偏好没有写入");
-		expect(pref).toMatchObject({ text: "不要替我回答", disabled: false });
+		expect(pref).toMatchObject({
+			text: "不要替我回答",
+			disabled: false,
+			locked: true,
+		});
 
 		writeMemoryPref(store, "s1", { id: pref.id, text: "不要替我说话" });
 		const edited = readEditHistory(store, "s1", "n1", "pref", pref.id).at(-1);

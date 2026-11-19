@@ -80,6 +80,7 @@ interface MemoryView {
 		readonly text: string;
 		readonly origin: string;
 		readonly disabled: boolean;
+		readonly locked: boolean;
 	}[];
 	readonly rejections: readonly {
 		readonly id: number;
@@ -349,13 +350,59 @@ export function Memory() {
 								self={page.id}
 								open={setPageId}
 								onCommit={(text) =>
-									write(`${page.id}|lead`, "/memory/edit", {
-										kind: "wiki",
-										target: `${page.id}|lead`,
-										value: { text },
-									})
+									write(
+										`${page.id}|lead`,
+										"/memory/edit",
+										{
+											kind: "wiki",
+											target: `${page.id}|lead`,
+											value: { text },
+										},
+										{
+											path: "/memory/edit",
+											body: {
+												kind: "wiki",
+												target: `${page.id}|lead`,
+												reset: true,
+											},
+										},
+									)
 								}
 							/>
+							<div
+								style={{
+									display: "flex",
+									alignItems: "center",
+									gap: 10,
+									marginTop: 8,
+								}}
+							>
+								<span className="num">来自设定</span>
+								<button
+									type="button"
+									className="lock"
+									aria-pressed={page.leadLocked}
+									onClick={() =>
+										write(
+											`${page.id}|lead`,
+											"/memory/edit",
+											page.leadLocked
+												? {
+														kind: "wiki",
+														target: `${page.id}|lead`,
+														reset: true,
+													}
+												: {
+														kind: "wiki",
+														target: `${page.id}|lead`,
+														value: { text: page.lead },
+													},
+										)
+									}
+								>
+									{page.leadLocked ? "已锁定" : "锁定"}
+								</button>
+							</div>
 							{problem(`${page.id}|lead`)}
 							{page.sections.map((section) => (
 								<Fragment key={section.title}>
@@ -622,7 +669,7 @@ export function Memory() {
 												{secret.floorNo === null
 													? "你加的"
 													: `第 ${secret.floorNo} 楼`}{" "}
-												{secret.edited ? (
+												{secret.locked ? (
 													<span className="pill gold">已锁定</span>
 												) : null}{" "}
 												<button
@@ -726,11 +773,26 @@ export function Memory() {
 										as="span"
 										value={pref.text}
 										onCommit={(text) =>
-											write(pref.id, "/memory/prefs", { id: pref.id, text })
+											write(
+												pref.id,
+												"/memory/prefs",
+												{ id: pref.id, text },
+												{
+													path: "/memory/prefs",
+													body: {
+														id: pref.id,
+														text: pref.text,
+														disabled: pref.disabled,
+													},
+												},
+											)
 										}
 									/>
 									<span>
 										{pref.origin}{" "}
+										{pref.locked ? (
+											<span className="pill gold">已锁定</span>
+										) : null}{" "}
 										<button
 											type="button"
 											className="btn ghost sm"
