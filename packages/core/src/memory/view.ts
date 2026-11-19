@@ -121,6 +121,7 @@ export interface MemoryPref {
 	readonly kind: string;
 	readonly origin: string;
 	readonly disabled: boolean;
+	readonly locked: boolean;
 }
 
 interface PathIndex {
@@ -542,7 +543,7 @@ function applyWikiEdits(
 	for (const [target, edit] of edits) {
 		if (edit.disabled || !target.startsWith(`${page.id}|`)) continue;
 		const statementId = target.slice(page.id.length + 1);
-		if (seen.has(statementId)) continue;
+		if (seen.has(statementId) || statementId === "lead") continue;
 		const value = isJsonObject(edit.value) ? edit.value : null;
 		if (value === null || typeof value.text !== "string") continue;
 		const title =
@@ -769,6 +770,7 @@ export function readMemoryPrefs(
 	const index = indexPath(store, anchor);
 	const prefs: MemoryPref[] = [];
 	const active = new Set<string>();
+	const edits = readEffectiveEdits(store, storyId, anchor, "pref");
 	const state = store.getStateSnapshot(anchor).state as unknown;
 	const wills = isJsonObject(state) ? state.userWill : undefined;
 	if (isJsonObject(wills)) {
@@ -786,15 +788,11 @@ export function readMemoryPrefs(
 				kind,
 				origin: `${USER_WILL_KIND_LABELS[kind] ?? "偏好"}${floor === undefined ? "" : ` · 第 ${floor} 楼`}`,
 				disabled: false,
+				locked: edits.get(id)?.locked === true,
 			});
 		}
 	}
-	for (const [target, edit] of readEffectiveEdits(
-		store,
-		storyId,
-		anchor,
-		"pref",
-	)) {
+	for (const [target, edit] of edits) {
 		if (active.has(target) || !edit.disabled || !isJsonObject(edit.value))
 			continue;
 		if (typeof edit.value.text !== "string") continue;
@@ -805,6 +803,7 @@ export function readMemoryPrefs(
 				typeof edit.value.kind === "string" ? edit.value.kind : "correction",
 			origin: "已停用",
 			disabled: true,
+			locked: edit.locked,
 		});
 	}
 	return prefs;
