@@ -1220,6 +1220,8 @@ export interface AppendNodeInput {
 	readonly role: TimelineRole;
 	readonly raw: string;
 	readonly createdAt?: string;
+	/** 为 false 时只写入楼层、不移动 head；后台存下的回复版本用它。 */
+	readonly moveHead?: boolean;
 }
 
 export interface SearchNodeTextOptions {
@@ -3759,7 +3761,7 @@ export class StoryStore {
 				input.raw,
 				createdAt,
 			);
-			moveHead.run(id, input.storyId);
+			if (input.moveHead !== false) moveHead.run(id, input.storyId);
 			this.#indexNodeChunks({
 				id,
 				storyId: input.storyId,
@@ -3876,6 +3878,25 @@ export class StoryStore {
 			});
 			return node;
 		})();
+	}
+
+	/** 以某个楼层为参照新建一条回复版本；head 不动，玩家自己切换过去。 */
+	appendReplyVariant(nodeId: string, raw: string): TimelineNode {
+		assertNonEmptyString(nodeId, "楼层节点 id");
+		if (typeof raw !== "string" || raw.trim().length === 0) {
+			throw new Error("回复版本的原文必须是非空字符串");
+		}
+		const original = this.getNode(nodeId);
+		if (!original) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
+		return this.appendNode({
+			storyId: original.storyId,
+			parentId: original.parentId,
+			role: original.role,
+			raw,
+			moveHead: false,
+		});
 	}
 
 	/** 编辑某条回复：旧节点保留为兄弟节点，编辑后的内容写入新节点。 */
@@ -9424,8 +9445,14 @@ export class StoryStore {
 			throw new Error(`楼层 ${nodeId} 的 Trace 记录与楼层不一致`);
 		}
 		const trace = parsed as unknown as TurnTrace;
-		// v40 之前的 Trace 没有 run 段，读回时补成 null。
-		return { ...trace, run: trace.run ?? null };
+		// v40 之前的 Trace 没有 run 段，读回时补成 null；规划写法早期没有 schedule。
+		return {
+			...trace,
+			run: trace.run ?? null,
+			...(trace.plan === undefined
+				? {}
+				: { plan: { ...trace.plan, schedule: trace.plan.schedule ?? [] } }),
+		};
 	}
 
 	/** 为一次深回合运行建行；用户楼层必须存在且属于该故事。 */

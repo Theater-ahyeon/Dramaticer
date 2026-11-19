@@ -22,6 +22,7 @@ import {
 	readPinnedLineIds,
 	readWritingView,
 	resetToCardRecommended,
+	resolveLoreInjectionRole,
 	rollbackPlayerEdit,
 	stateTargetOf,
 	writeMemoryPref,
@@ -547,11 +548,25 @@ function lorePreview(
 	if (item === undefined) {
 		throw new HttpError(404, "not_found", `设定条目不存在：${entryId}`);
 	}
-	const kind =
-		store
-			.listImportAuditEntries(storyId)
-			.find((entry) => entry.source === item.original.source)?.kind ??
-		"unknown";
+	const rule = store
+		.listImportAuditInjectionRules(storyId)
+		.find((entry) => entry.source === item.original.source);
+	const kind = rule?.kind ?? "unknown";
+	const role = resolveLoreInjectionRole(
+		item.entry,
+		store.getStorySettings(storyId).importMode,
+		rule,
+	);
+	let entityAliases: readonly string[] = [];
+	if (item.entry.entityId !== null) {
+		const entity = store.getEntity(item.entry.entityId);
+		if (entity === null) {
+			throw new Error(
+				`世界书条目 ${item.entry.id} 关联的实体不存在：${item.entry.entityId}`,
+			);
+		}
+		entityAliases = entity.aliases;
+	}
 	const head = store.getHead(storyId);
 	const recent =
 		head === null
@@ -564,21 +579,33 @@ function lorePreview(
 	const score = loreEntryMatchScore(
 		item.entry,
 		normalizeEntityName(recent),
-		[],
+		entityAliases,
 	);
-	let hit = false;
+	const baseHit = role.base !== null;
+	const matchedHit = role.matched && score > 0;
+	const hit = !item.disabled && (baseHit || matchedHit);
+	const condition = item.disabled
+		? "已停用，不会带上"
+		: role.base === "full"
+			? "每一轮都带"
+			: role.base === "index"
+				? "每一轮带标题与关键词；提到时带全文"
+				: role.matched
+					? "提到关键词或关联人物时带上"
+					: "这个类型不进入每轮上下文";
 	let reason: string;
 	if (item.disabled) reason = "这一条已停用，不会带上";
-	else if (item.entry.constant) {
-		hit = true;
-		reason = "常驻条目，每一轮都带";
-	} else if (score > 0) {
-		hit = true;
-		reason = "最近几楼提到了它的关键词，这一轮会带上";
+	else if (role.base === "full") reason = "每轮固定带入的条目，这一轮会带上";
+	else if (role.base === "index") {
+		reason = "每轮带入标题与关键词，这一轮会带上";
+	} else if (matchedHit) {
+		reason = "最近几楼提到了它的关键词或关联人物，这一轮会带上";
+	} else if (!role.matched) {
+		reason = "这个类型不进入每轮上下文，不会带上";
 	} else {
 		reason =
 			item.entry.keywords.length === 0
-				? "没有关键词，只在检索命中时带上"
+				? "没有关键词，最近几楼也没有提到关联人物"
 				: `最近几楼没有提到：${item.entry.keywords.slice(0, 6).join("、")}`;
 	}
 	return {
@@ -586,6 +613,7 @@ function lorePreview(
 		kind,
 		constant: item.entry.constant,
 		keywords: item.entry.keywords,
+		condition,
 		hit,
 		reason,
 	};

@@ -25,6 +25,8 @@ export interface ContextSlotRequest {
 	readonly nodeId: string | null;
 	readonly switches: Readonly<Record<string, boolean>>;
 	readonly state: unknown;
+	/** 本回合组装上下文的总 token 预算；提供者据此判断内容是否还放得下。 */
+	readonly budgetTokens?: number;
 	/** 插件槽位的时间预算；提供者按剩余时间决定做到哪里，模板执行记进 Trace。 */
 	readonly budget?: TurnHookBudget;
 }
@@ -375,6 +377,7 @@ async function resolveSegment(
 		nodeId: input.nodeId ?? null,
 		switches: facts.switches,
 		state: facts.state,
+		budgetTokens: input.budgetTokens,
 	};
 	let content: ContextSlotContent | null;
 	let hook: TurnHookTraceEntry | undefined;

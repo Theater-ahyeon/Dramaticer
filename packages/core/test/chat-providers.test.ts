@@ -509,9 +509,16 @@ describe("记忆与摘要槽位", () => {
 			raw: "守卫点头。",
 		});
 		store.appendNode({
-			id: "n-ask",
+			id: "n-long",
 			storyId: "s1",
 			parentId: "n2",
+			role: "assistant",
+			raw: "雨".repeat(9_000),
+		});
+		store.appendNode({
+			id: "n-ask",
+			storyId: "s1",
+			parentId: "n-long",
 			role: "user",
 			raw: "山门口",
 		});
