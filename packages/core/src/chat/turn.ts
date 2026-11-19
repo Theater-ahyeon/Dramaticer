@@ -66,6 +66,7 @@ import {
 	NOTE_WRITE_TOOL_NAME,
 	RULE_CHECK_TOOL,
 	RULE_CHECK_TOOL_NAME,
+	formatWorkspaceGuide,
 } from "../tools/index.js";
 import type {
 	DeepToolDefinition,
@@ -98,6 +99,7 @@ import {
 	type PlanTurnTrace,
 	buildSelfCheckList,
 	formatSelfCheckList,
+	isPlanPrepareEnabled,
 	isPlanWritingMode,
 	readPreparedPlan,
 	runPlanPhases,
@@ -438,7 +440,9 @@ export async function runChatTurn(
 		...options,
 		providers,
 		directorIntensity: null,
-		directorPush: null,
+		// 导演槽位已经按这一轮的档位重建；推进档位还要给规划准备用，
+		// 生成过程本身不再按它重建槽位。
+		directorPush: options.directorPush ?? null,
 		userNodeId: userNode.id,
 		turnMode: resolved.mode,
 		maxReadRounds: resolved.maxReadRounds,
@@ -664,13 +668,15 @@ export async function generateAssistantTurn(
 		const anchorNodeId = userNode.parentId ?? userNode.id;
 		const progress = (phase: string, detail: string): void =>
 			options.onToolProgress?.({ type: "progress", phase, detail });
-		let preparation = readPreparedPlan(
-			options.store,
-			options.storyId,
-			anchorNodeId,
-			userNode.raw,
-			options.directorPush ?? null,
-		);
+		let preparation = isPlanPrepareEnabled(options.store, options.storyId)
+			? readPreparedPlan(
+					options.store,
+					options.storyId,
+					anchorNodeId,
+					userNode.raw,
+					options.directorPush ?? null,
+				)
+			: null;
 		if (preparation !== null) {
 			for (const name of PLAN_PREP_PHASES) progress(name, "");
 		} else {
@@ -708,6 +714,16 @@ export async function generateAssistantTurn(
 				});
 			}
 		}
+		extra.push({
+			role: "system",
+			content: formatWorkspaceGuide({
+				store: options.store,
+				storyId: options.storyId,
+				anchorNodeId: userNode.id,
+				draft,
+				notes,
+			}),
+		});
 	}
 	const noted: readonly LlmMessage[] =
 		extra.length === 0 ? notedBase : [...notedBase, ...extra];
@@ -737,6 +753,7 @@ export async function generateAssistantTurn(
 			reranker: options.reranker ?? null,
 			viewpoint: options.viewpoint ?? null,
 			notes,
+			draft,
 		},
 		model: options.model,
 		maxTokens: options.maxTokens,

@@ -60,7 +60,16 @@ interface DockView {
 		readonly name: string;
 		readonly floorsAgo: number;
 	}[];
-	readonly sceneGoal: string | null;
+	readonly sceneGoal: {
+		readonly nodeId: string;
+		readonly present: readonly {
+			readonly who: string;
+			readonly want: string;
+		}[];
+		readonly change: string;
+		readonly source: "player" | "ai";
+		readonly locked: boolean;
+	} | null;
 }
 
 interface ContextView {
@@ -101,6 +110,71 @@ const CTX_COLOR: Record<string, string> = {
 
 type DirectorWhen = "off" | "push" | "always";
 
+interface EditHistoryView {
+	readonly edits: readonly {
+		readonly id: number;
+		readonly source: "player" | "restore" | "ai" | "rejected";
+		readonly note: string | null;
+		readonly createdAt: string;
+	}[];
+}
+
+/** 规划对象的修改历史：玩家改过的每一版都能回到。 */
+function EditHistory({
+	storyId,
+	kind,
+	target,
+	onRollback,
+}: {
+	readonly storyId: string;
+	readonly kind: "line" | "scene";
+	readonly target: string;
+	readonly onRollback: () => void;
+}) {
+	const act = useAct();
+	const history = useLoad<EditHistoryView>(
+		() =>
+			api.get(
+				sp(
+					storyId,
+					`/memory/history?kind=${kind}&target=${encodeURIComponent(target)}`,
+				),
+			),
+		[storyId, kind, target],
+	);
+	const versions = (history.data?.edits ?? []).filter(
+		(edit) => edit.source !== "rejected",
+	);
+	if (versions.length === 0) {
+		return <div className="hist">还没有你改过的版本。</div>;
+	}
+	return (
+		<div className="hist">
+			{[...versions].reverse().map((edit) => (
+				<span key={edit.id}>
+					{new Date(edit.createdAt).toLocaleString()} ·{" "}
+					{edit.source === "player" ? "你" : "自动"}
+					{edit.note === null ? "" : ` · ${edit.note}`}{" "}
+					<button
+						type="button"
+						onClick={() =>
+							act(
+								() =>
+									api.call("POST", sp(storyId, "/memory/rollback"), {
+										editId: edit.id,
+									}),
+								() => onRollback(),
+							)
+						}
+					>
+						回到这一版
+					</button>
+				</span>
+			))}
+		</div>
+	);
+}
+
 /** 故事页右侧的停靠栏：导演、记忆、上下文三页。 */
 export function Dock({
 	storyId,
@@ -136,6 +210,7 @@ export function Dock({
 	);
 	const [category, setCategory] = useState<string | null>(null);
 	const [adding, setAdding] = useState<string | null>(null);
+	const [history, setHistory] = useState<string | null>(null);
 
 	const categories = context.data?.breakdown?.categories ?? [];
 	useEffect(() => {
@@ -171,12 +246,25 @@ export function Dock({
 			},
 		);
 
+	const saveScene = (patch: { change?: string; locked?: boolean }) =>
+		act(
+			() =>
+				api.call("POST", sp(storyId, "/director/scene"), {
+					...patch,
+				}),
+			() => {
+				memory.reload();
+				onChanged();
+			},
+		);
+
 	const threads = (lines.data?.lines ?? []).filter(
 		(line) => line.kind !== "promise",
 	);
 	const promises = (lines.data?.lines ?? []).filter(
 		(line) => line.kind === "promise",
 	);
+	const sceneGoal = memory.data?.sceneGoal ?? null;
 	const active = categories.find((item) => item.id === category) ?? null;
 
 	return (
@@ -225,9 +313,53 @@ export function Dock({
 							}
 						/>
 					</div>
-					{memory.data?.sceneGoal ? (
+					{sceneGoal ? (
 						<div className="label">
-							<span>本场目标：{memory.data.sceneGoal}</span>
+							<span>
+								本场目标：
+								<Editable
+									as="span"
+									value={sceneGoal.change}
+									onCommit={(text) => saveScene({ change: text })}
+								/>
+							</span>
+							<span
+								className={`pill ${sceneGoal.source === "player" ? "gold" : "mute"}`}
+							>
+								{sceneGoal.source === "player" ? "你改的" : "AI 写的"}
+							</span>
+							<button
+								type="button"
+								className="lock"
+								aria-pressed={sceneGoal.locked}
+								onClick={() => saveScene({ locked: !sceneGoal.locked })}
+							>
+								{sceneGoal.locked ? "已锁定" : "锁定"}
+							</button>
+							<button
+								type="button"
+								className="btn ghost sm"
+								onClick={() =>
+									setHistory(
+										history === `scene:${sceneGoal.nodeId}`
+											? null
+											: `scene:${sceneGoal.nodeId}`,
+									)
+								}
+							>
+								历史
+							</button>
+							{history === `scene:${sceneGoal.nodeId}` ? (
+								<EditHistory
+									storyId={storyId}
+									kind="scene"
+									target={sceneGoal.nodeId}
+									onRollback={() => {
+										memory.reload();
+										onChanged();
+									}}
+								/>
+							) : null}
 						</div>
 					) : null}
 					<div className="label">
@@ -382,7 +514,31 @@ export function Dock({
 											>
 												{line.locked ? "已锁定" : "锁定"}
 											</button>
+											<button
+												type="button"
+												className="btn ghost sm"
+												onClick={() =>
+													setHistory(
+														history === `line:${line.id}`
+															? null
+															: `line:${line.id}`,
+													)
+												}
+											>
+												历史
+											</button>
 										</div>
+										{history === `line:${line.id}` ? (
+											<EditHistory
+												storyId={storyId}
+												kind="line"
+												target={line.id}
+												onRollback={() => {
+													lines.reload();
+													onChanged();
+												}}
+											/>
+										) : null}
 									</div>
 								</div>
 							);
@@ -397,8 +553,59 @@ export function Dock({
 					<div className="rows">
 						{promises.map((line) => (
 							<div key={line.id}>
-								<span>{line.want}</span>
-								<span>{line.muted ? "已静音" : `${line.who}`}</span>
+								<Editable
+									as="span"
+									value={line.want}
+									onCommit={(text) => saveLine(line, { want: text })}
+								/>
+								<span
+									className={`pill ${line.by === "player" ? "gold" : "mute"}`}
+								>
+									{line.by === "player" ? "你改的" : "AI 写的"}
+								</span>
+								<span>
+									{line.muted ? "已静音" : line.who}
+									{line.locked ? " · 已锁定" : ""}
+								</span>
+								<button
+									type="button"
+									className="lock"
+									aria-pressed={line.locked}
+									onClick={() =>
+										act(
+											() =>
+												api.call("POST", sp(storyId, "/director/line"), {
+													id: line.id,
+													locked: !line.locked,
+												}),
+											() => lines.reload(),
+										)
+									}
+								>
+									{line.locked ? "已锁定" : "锁定"}
+								</button>
+								<button
+									type="button"
+									className="btn ghost sm"
+									onClick={() =>
+										setHistory(
+											history === `line:${line.id}` ? null : `line:${line.id}`,
+										)
+									}
+								>
+									历史
+								</button>
+								{history === `line:${line.id}` ? (
+									<EditHistory
+										storyId={storyId}
+										kind="line"
+										target={line.id}
+										onRollback={() => {
+											lines.reload();
+											onChanged();
+										}}
+									/>
+								) : null}
 							</div>
 						))}
 					</div>

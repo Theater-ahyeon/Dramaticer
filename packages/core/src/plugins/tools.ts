@@ -8,6 +8,12 @@ import {
 	createDeepToolRegistry,
 } from "../tools/registry.js";
 import { RULE_CHECK_TOOL } from "../tools/rule-tools.js";
+import {
+	FILE_PATCH_TOOL,
+	FILE_READ_TOOL,
+	FILE_SEARCH_TOOL,
+	FILE_WRITE_TOOL,
+} from "../tools/workspace-tools.js";
 import { LEDGER_WRITE_TOOL } from "../tools/write-tools.js";
 import type { PluginDefinition, PluginKernel } from "./contracts.js";
 import { createStaticKernel } from "./static-kernel.js";
@@ -28,6 +34,10 @@ export const LEDGER_WRITE_TOOL_PLUGIN = "tool.ledger-write";
 export const NOTE_WRITE_TOOL_PLUGIN = "tool.note-write";
 export const DRAFT_WRITE_TOOL_PLUGIN = "tool.draft-write";
 export const COMMIT_DRAFT_TOOL_PLUGIN = "tool.commit-draft";
+export const FILE_READ_TOOL_PLUGIN = "tool.file-read";
+export const FILE_SEARCH_TOOL_PLUGIN = "tool.file-search";
+export const FILE_WRITE_TOOL_PLUGIN = "tool.file-write";
+export const FILE_PATCH_TOOL_PLUGIN = "tool.file-patch";
 export const RULE_CHECK_TOOL_PLUGIN = "tool.rule-check";
 
 function toolPlugin(
@@ -87,6 +97,10 @@ export const TOOL_PLUGINS: readonly ToolPlugin[] = [
 	),
 	toolPlugin(LEDGER_WRITE_TOOL_PLUGIN, LEDGER_WRITE_TOOL, ["deep"]),
 	toolPlugin(NOTE_WRITE_TOOL_PLUGIN, NOTE_WRITE_TOOL, ["deep"]),
+	toolPlugin(FILE_READ_TOOL_PLUGIN, FILE_READ_TOOL, ["deep"]),
+	toolPlugin(FILE_SEARCH_TOOL_PLUGIN, FILE_SEARCH_TOOL, ["deep"]),
+	toolPlugin(FILE_WRITE_TOOL_PLUGIN, FILE_WRITE_TOOL, ["deep"]),
+	toolPlugin(FILE_PATCH_TOOL_PLUGIN, FILE_PATCH_TOOL, ["deep"]),
 	toolPlugin(DRAFT_WRITE_TOOL_PLUGIN, DRAFT_WRITE_TOOL, ["deep"]),
 	toolPlugin(COMMIT_DRAFT_TOOL_PLUGIN, COMMIT_DRAFT_TOOL, ["deep"]),
 	toolPlugin(RULE_CHECK_TOOL_PLUGIN, RULE_CHECK_TOOL, ["fast", "deep"]),

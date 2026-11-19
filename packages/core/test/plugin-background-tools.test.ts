@@ -169,7 +169,7 @@ describe("内置后台任务插件", () => {
 			["opening_candidates", "story", "gap"],
 			["visual_profile", "story", "gap"],
 			["director_plan", "story", "deferred"],
-			["plan_prepare", "story", "deferred"],
+			["plan_prepare", "story", "gap"],
 			["plan_review", "story", "gap"],
 			["chapter_plan", "story", "deferred"],
 			["blueprint_suggestion", "story", "gap"],

@@ -51,6 +51,7 @@ import {
 	formatReunionMention,
 	selectReunionMentions,
 } from "../ledger/reunion.js";
+import { readSceneGoal } from "../ledger/scene-goal.js";
 import { readSceneSegments } from "../ledger/scenes.js";
 import { USER_WILL_KINDS, type UserWillKind } from "../ledger/schema.js";
 import type { EmbeddingClient } from "../llm/embeddings.js";
@@ -349,30 +350,27 @@ export function createSceneCardSlotProvider(
 				segment.floorIds.includes(nodeId),
 			);
 			if (current === undefined || current.endNodeId !== null) return null;
-			for (const id of current.floorIds) {
-				const card = store.getSceneLog(id)?.sceneCard ?? null;
-				if (card === null) continue;
-				const lines = card.present.map(
-					(actor) => `${actor.who}想要${actor.want}`,
-				);
-				const content = `场面卡：\n${lines.join("\n")}\n这一场结束时应该改变：${card.change}`;
-				return {
-					messages: [
-						{
-							role: "system",
-							content,
-						},
-					],
-					source: `scene_card:楼层 ${id}，${card.present.length} 人`,
-					items: [
-						contextItem("场面卡", estimator(content), {
-							kind: "scene",
-							nodeId: id,
-						}),
-					],
-				};
-			}
-			return null;
+			const card = readSceneGoal(store, request.storyId, nodeId);
+			if (card === null) return null;
+			const lines = card.present.map(
+				(actor) => `${actor.who}想要${actor.want}`,
+			);
+			const content = `场面卡：\n${lines.join("\n")}\n这一场结束时应该改变：${card.change}`;
+			return {
+				messages: [
+					{
+						role: "system",
+						content,
+					},
+				],
+				source: `scene_card:楼层 ${current.startNodeId}，${card.present.length} 人`,
+				items: [
+					contextItem("场面卡", estimator(content), {
+						kind: "scene",
+						nodeId: current.startNodeId,
+					}),
+				],
+			};
 		},
 	};
 }

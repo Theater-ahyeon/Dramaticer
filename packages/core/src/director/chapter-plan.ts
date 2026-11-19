@@ -11,6 +11,7 @@ import {
 	assertPlainObject,
 	rejectUnknownKeys,
 } from "../json.js";
+import { readSceneGoal } from "../ledger/scene-goal.js";
 import { readSceneSegments } from "../ledger/scenes.js";
 import {
 	type LlmClient,
@@ -190,14 +191,12 @@ export function collectChapterPlanInput(
 	);
 	let sceneCard: string | null = null;
 	if (segment !== undefined) {
-		for (const id of segment.floorIds) {
-			const card = store.getSceneLog(id)?.sceneCard ?? null;
-			if (card === null) continue;
+		const card = readSceneGoal(store, storyId, nodeId);
+		if (card !== null) {
 			const wants = card.present
 				.map((actor) => `${actor.who}想要${actor.want}`)
 				.join("；");
 			sceneCard = `${wants}。这一场结束时应该改变：${card.change}`;
-			break;
 		}
 	}
 	const chapterStart =
