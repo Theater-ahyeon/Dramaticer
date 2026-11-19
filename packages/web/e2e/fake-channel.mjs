@@ -331,11 +331,15 @@ export async function startFakeChannel(options = {}) {
 					streamText(res, splitForStream('<tool name="state_get">{}</tool>'));
 					return;
 				}
-				streamText(res, splitForStream(writerText(userText)));
+				streamText(res, splitForStream(writerText(userText)), streamDelayMs);
 				return;
 			}
 			if (req.url === BACKGROUND_PATH) {
-				streamText(res, splitForStream(backgroundResponse(body)));
+				streamText(
+					res,
+					splitForStream(backgroundResponse(body)),
+					streamDelayMs,
+				);
 				return;
 			}
 			res.writeHead(404);
