@@ -41,6 +41,10 @@ export default defineConfig({
 				url: `http://127.0.0.1:${appPort}/api/health`,
 				reuseExistingServer: false,
 				timeout: 60_000,
-				env: { ...process.env, E2E_APP_PORT: String(appPort) },
+				env: {
+					...process.env,
+					E2E_APP_PORT: String(appPort),
+					E2E_FAKE_STREAM_DELAY_MS: "120",
+				},
 			},
 });

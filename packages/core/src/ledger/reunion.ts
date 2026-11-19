@@ -1,5 +1,6 @@
 import { normalizeEntityName } from "../entity.js";
 import { isJsonObject } from "../json.js";
+import { MAX_MEMORY_EVENT_LIMIT, type MemoryEvent } from "../memory/event.js";
 import type { StoryStore } from "../store/story-store.js";
 import {
 	type CharacterProfileField,
@@ -51,6 +52,12 @@ export interface ReunionUnresolved {
 	readonly sceneEndNodeId: string;
 }
 
+/** 记录里的逐字原文摘录；重逢时让写作模型看见上次的原话。 */
+export interface ReunionExcerpt {
+	readonly nodeId: string;
+	readonly text: string;
+}
+
 /** 一个久未出场、现在被提到的实体及其档案。全部来自场次归档与台账。 */
 export interface ReunionCandidate {
 	readonly kind: ReunionEntityKind;
@@ -66,6 +73,8 @@ export interface ReunionCandidate {
 	readonly change: string | null;
 	/** 地点描述或物品当前持有人与位置。 */
 	readonly description: string | null;
+	/** 与这个实体有关的记录出处，按故事时间先后排列。 */
+	readonly excerpts: readonly ReunionExcerpt[];
 }
 
 export interface ReunionMention {
@@ -225,12 +234,40 @@ function findLastSceneForPath(
 	return null;
 }
 
+const REUNION_EXCERPT_LIMIT = 2;
+
+/** 记录里与这个实体有关、并且带逐字出处的原文；最新的留在上限内。 */
+function readExcerpts(
+	events: readonly MemoryEvent[],
+	quotes: ReadonlyMap<string, string>,
+	aliases: readonly string[],
+): ReunionExcerpt[] {
+	const aliasSet = new Set(
+		aliases
+			.map((alias) => normalizeEntityName(alias))
+			.filter((alias) => alias.length > 0),
+	);
+	const excerpts: ReunionExcerpt[] = [];
+	for (const event of events) {
+		const quote = quotes.get(event.id);
+		if (quote === undefined) continue;
+		const involved = event.participants.some((participant) =>
+			aliasSet.has(normalizeEntityName(participant)),
+		);
+		if (!involved) continue;
+		excerpts.push({ nodeId: event.sourceNodeId, text: quote });
+	}
+	return excerpts.slice(-REUNION_EXCERPT_LIMIT);
+}
+
 function readCharacterCandidates(
 	store: StoryStore,
 	nodeId: string,
 	archives: readonly ReunionSceneRow[],
 	index: ReadonlyMap<string, AliasEntry>,
 	unresolvedLimit: number,
+	events: readonly MemoryEvent[],
+	quotes: ReadonlyMap<string, string>,
 ): readonly ReunionCandidate[] {
 	const byEnd = new Map(
 		archives.map((archive) => [archive.endNodeId, archive]),
@@ -240,10 +277,11 @@ function readCharacterCandidates(
 		const lastScene = profile.lastScene;
 		if (lastScene === null) continue;
 		const archive = byEnd.get(lastScene.endNodeId);
+		const aliases = aliasesOf(index, "character", profile.who);
 		candidates.push({
 			kind: "character",
 			name: profile.who,
-			aliases: aliasesOf(index, "character", profile.who),
+			aliases,
 			lastScene: {
 				endNodeId: lastScene.endNodeId,
 				startNodeId: lastScene.startNodeId,
@@ -253,6 +291,7 @@ function readCharacterCandidates(
 			unresolved: unresolvedOf(profile.notes, unresolvedLimit),
 			change: null,
 			description: null,
+			excerpts: readExcerpts(events, quotes, aliases),
 		});
 	}
 	return candidates;
@@ -263,6 +302,8 @@ function readPlaceCandidates(
 	nodeId: string,
 	archives: readonly ReunionSceneRow[],
 	index: ReadonlyMap<string, AliasEntry>,
+	events: readonly MemoryEvent[],
+	quotes: ReadonlyMap<string, string>,
 ): readonly ReunionCandidate[] {
 	const places = readLedger(store, nodeId, ["scene", "places"]);
 	if (!isJsonObject(places)) return [];
@@ -276,10 +317,11 @@ function readPlaceCandidates(
 		const scene = findLastSceneForPath(archives, ["scene", "places", id]);
 		if (scene === null) continue;
 		const description = isJsonObject(value) ? value.description : undefined;
+		const aliases = aliasesOf(index, "place", id);
 		candidates.push({
 			kind: "place",
 			name: id,
-			aliases: aliasesOf(index, "place", id),
+			aliases,
 			lastScene: {
 				endNodeId: scene.archive.endNodeId,
 				startNodeId: scene.archive.startNodeId,
@@ -294,6 +336,7 @@ function readPlaceCandidates(
 					: typeof description === "string" && description.trim().length > 0
 						? clipReunionText(description)
 						: null,
+			excerpts: readExcerpts(events, quotes, aliases),
 		});
 	}
 	return candidates;
@@ -304,6 +347,8 @@ function readItemCandidates(
 	nodeId: string,
 	archives: readonly ReunionSceneRow[],
 	index: ReadonlyMap<string, AliasEntry>,
+	events: readonly MemoryEvent[],
+	quotes: ReadonlyMap<string, string>,
 ): readonly ReunionCandidate[] {
 	const items = readLedger(store, nodeId, ["item"]);
 	if (!isJsonObject(items)) return [];
@@ -322,10 +367,11 @@ function readItemCandidates(
 				details.push(`位置 ${location.trim()}`);
 			}
 		}
+		const aliases = aliasesOf(index, "item", id);
 		candidates.push({
 			kind: "item",
 			name: id,
-			aliases: aliasesOf(index, "item", id),
+			aliases,
 			lastScene: {
 				endNodeId: scene.archive.endNodeId,
 				startNodeId: scene.archive.startNodeId,
@@ -335,6 +381,7 @@ function readItemCandidates(
 			unresolved: [],
 			change: scene.change,
 			description: details.length === 0 ? null : details.join("；"),
+			excerpts: readExcerpts(events, quotes, aliases),
 		});
 	}
 	return candidates;
@@ -358,10 +405,22 @@ export function readReunionCandidates(
 	if (!Number.isInteger(unresolvedLimit) || unresolvedLimit < 1) {
 		throw new Error("重逢注入的未了结条数上限必须是正整数");
 	}
+	const events = store.getEventsForPath(nodeId, {
+		limit: MAX_MEMORY_EVENT_LIMIT,
+	});
+	const quotes = store.getMemoryEventQuotes(storyId);
 	return [
-		...readCharacterCandidates(store, nodeId, archives, index, unresolvedLimit),
-		...readPlaceCandidates(store, nodeId, archives, index),
-		...readItemCandidates(store, nodeId, archives, index),
+		...readCharacterCandidates(
+			store,
+			nodeId,
+			archives,
+			index,
+			unresolvedLimit,
+			events,
+			quotes,
+		),
+		...readPlaceCandidates(store, nodeId, archives, index, events, quotes),
+		...readItemCandidates(store, nodeId, archives, index, events, quotes),
 	];
 }
 
@@ -484,6 +543,9 @@ export function formatReunionMention(mention: ReunionMention): string {
 	}
 	if (candidate.description !== null) {
 		lines.push(`- 现在：${candidate.description}`);
+	}
+	for (const excerpt of candidate.excerpts) {
+		lines.push(`- 原文摘录：${excerpt.text}（楼层 ${excerpt.nodeId}）`);
 	}
 	return lines.join("\n");
 }

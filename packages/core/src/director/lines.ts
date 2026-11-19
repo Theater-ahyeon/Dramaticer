@@ -7,6 +7,7 @@ import {
 	assertPlainObject,
 	rejectUnknownKeys,
 } from "../json.js";
+import { readSceneGoal } from "../ledger/scene-goal.js";
 import type { SceneCard } from "../ledger/scene-log.js";
 import type { StoryStore } from "../store/story-store.js";
 import type { DirectorConfig } from "./types.js";
@@ -1080,16 +1081,20 @@ export function readDirectorActionInput(
 	const path = store.getPathToNode(nodeId);
 	const assistantFloors = path.filter((item) => item.role === "assistant");
 	const window = assistantFloors.slice(-DIRECTOR_ACTION_FLOOR_WINDOW);
-	const floors = [...window].reverse().map((item): DirectorActionFloor => {
-		const scene = store.getSceneLog(item.id);
-		return {
-			beat: scene === null ? null : scene.beat,
-			present: scene === null ? [] : scene.present,
-			sceneEnds: scene === null ? false : scene.sceneEnds,
-			sceneCard: scene === null ? null : scene.sceneCard,
-			stateChanges: store.getStateDiffs(item.id).length,
-		};
-	});
+	const currentGoal = readSceneGoal(store, storyId, nodeId);
+	const floors = [...window]
+		.reverse()
+		.map((item, index): DirectorActionFloor => {
+			const scene = store.getSceneLog(item.id);
+			return {
+				beat: scene === null ? null : scene.beat,
+				present: scene === null ? [] : scene.present,
+				sceneEnds: scene === null ? false : scene.sceneEnds,
+				// 最新一楼用当前路径上的本场目标；更早的楼层保留当时写下的一张。
+				sceneCard: index === 0 ? currentGoal : (scene?.sceneCard ?? null),
+				stateChanges: store.getStateDiffs(item.id).length,
+			};
+		});
 	const lastPlayer = [...path].reverse().find((item) => item.role === "user");
 	const recentActions: DirectorActionKind[] = [];
 	for (const decision of store.getDirectorDecisionsAlongPath(nodeId)) {

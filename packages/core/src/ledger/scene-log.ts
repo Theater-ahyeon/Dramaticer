@@ -7,6 +7,7 @@ import {
 	parseDirectorBitJudgmentResponse,
 } from "../director/bit-judgments.js";
 import type { DirectorBit } from "../director/bits.js";
+import { guardBackgroundWrite } from "../edits/index.js";
 import {
 	type JsonObject,
 	assertPlainObject,
@@ -646,13 +647,27 @@ export function createSceneLogHandler(
 		const settlementRepairs = settlement?.repairs.filter(
 			(repair) => repair.action !== "fill",
 		);
+		// 玩家锁定的本场目标，场记只能把这次写下的内容留作建议。
+		const sceneCard =
+			parsed.sceneCard === null ||
+			guardBackgroundWrite(
+				store,
+				job.storyId,
+				nodeId,
+				"scene",
+				segment?.startNodeId ?? nodeId,
+				JSON.parse(JSON.stringify(parsed.sceneCard)),
+				"场记",
+			)
+				? parsed.sceneCard
+				: null;
 		store.saveSceneLog({
 			nodeId,
 			storyId: job.storyId,
 			beat: parsed.beat,
 			present: parsed.present,
 			sceneEnds: parsed.sceneEnds,
-			sceneCard: parsed.sceneCard,
+			sceneCard,
 			bits: parsed.bits,
 			conditions: parsed.conditions,
 			states: parsed.states,

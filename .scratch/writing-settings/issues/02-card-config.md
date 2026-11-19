@@ -4,13 +4,14 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] 玩家可以一键回到卡的推荐
-- [ ] 卡库更新不影响进行中的故事
-- [ ] 玩家可以选择升级到新版并看到差异
-- [ ] `pnpm check` 通过
+- [x] 玩家可以一键回到卡的推荐
+- [x] 卡库更新不影响进行中的故事
+- [x] 玩家可以选择升级到新版并看到差异
+- [x] `pnpm check` 通过
 
 规格：`.scratch/writing-settings/spec.md`
 
 ## Comments
+完成：2026-11-19 卡载入时应用推荐（写作选项、写法、功能开关），可一键回到推荐；故事固定卡版本，升级经差异对比后应用。

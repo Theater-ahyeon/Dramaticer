@@ -1220,6 +1220,8 @@ export interface AppendNodeInput {
 	readonly role: TimelineRole;
 	readonly raw: string;
 	readonly createdAt?: string;
+	/** 为 false 时只写入楼层、不移动 head；后台存下的回复版本用它。 */
+	readonly moveHead?: boolean;
 }
 
 export interface SearchNodeTextOptions {
@@ -3759,7 +3761,7 @@ export class StoryStore {
 				input.raw,
 				createdAt,
 			);
-			moveHead.run(id, input.storyId);
+			if (input.moveHead !== false) moveHead.run(id, input.storyId);
 			this.#indexNodeChunks({
 				id,
 				storyId: input.storyId,
@@ -3876,6 +3878,25 @@ export class StoryStore {
 			});
 			return node;
 		})();
+	}
+
+	/** 以某个楼层为参照新建一条回复版本；head 不动，玩家自己切换过去。 */
+	appendReplyVariant(nodeId: string, raw: string): TimelineNode {
+		assertNonEmptyString(nodeId, "楼层节点 id");
+		if (typeof raw !== "string" || raw.trim().length === 0) {
+			throw new Error("回复版本的原文必须是非空字符串");
+		}
+		const original = this.getNode(nodeId);
+		if (!original) {
+			throw new Error(`楼层节点不存在：${nodeId}`);
+		}
+		return this.appendNode({
+			storyId: original.storyId,
+			parentId: original.parentId,
+			role: original.role,
+			raw,
+			moveHead: false,
+		});
 	}
 
 	/** 编辑某条回复：旧节点保留为兄弟节点，编辑后的内容写入新节点。 */
@@ -4809,6 +4830,13 @@ export class StoryStore {
 		if (diffs.length === 0) {
 			throw new Error("线修改的 diffs 至少要有一条");
 		}
+		const edits = this.#lineEditsOnPath(input.nodeId, input.storyId);
+		for (const diff of diffs) {
+			const id = diff.action === "set" ? diff.line.id : diff.id;
+			if (edits.get(id)?.locked === true) {
+				throw new Error(`剧情线 ${id} 已被玩家锁定，后台只能提建议`);
+			}
+		}
 		assertPromiseBudget(
 			this.readDirectorLineStates(input.nodeId),
 			diffs,
@@ -5191,15 +5219,8 @@ export class StoryStore {
 	): DirectorLineState[] {
 		const node = this.getNode(nodeId);
 		if (!node) return states;
-		const edits = this.listPlayerEdits(node.storyId, { kind: "line" });
-		if (edits.length === 0) return states;
-		const ids = new Set(this.getPathToNode(nodeId).map((item) => item.id));
-		const latest = new Map<string, PlayerEdit>();
-		for (const edit of edits) {
-			if (edit.source === "rejected") continue;
-			if (edit.nodeId !== null && !ids.has(edit.nodeId)) continue;
-			latest.set(edit.target, edit);
-		}
+		const latest = this.#lineEditsOnPath(nodeId, node.storyId);
+		if (latest.size === 0) return states;
 		const map = new Map(states.map((state) => [state.line.id, state] as const));
 		for (const [target, edit] of latest) {
 			if (edit.disabled) {
@@ -5217,6 +5238,20 @@ export class StoryStore {
 		return [...map.values()].sort((left, right) =>
 			left.line.id < right.line.id ? -1 : left.line.id > right.line.id ? 1 : 0,
 		);
+	}
+
+	/** 当前路径上每条线最后一条生效的玩家修改；被挡下的后台写入不算。 */
+	#lineEditsOnPath(nodeId: string, storyId: string): Map<string, PlayerEdit> {
+		const latest = new Map<string, PlayerEdit>();
+		const edits = this.listPlayerEdits(storyId, { kind: "line" });
+		if (edits.length === 0) return latest;
+		const ids = new Set(this.getPathToNode(nodeId).map((item) => item.id));
+		for (const edit of edits) {
+			if (edit.source === "rejected") continue;
+			if (edit.nodeId !== null && !ids.has(edit.nodeId)) continue;
+			latest.set(edit.target, edit);
+		}
+		return latest;
 	}
 
 	/** 沿节点所在的路径按从旧到新的顺序读出线修改记录；其他分支不参与。 */
@@ -9424,8 +9459,14 @@ export class StoryStore {
 			throw new Error(`楼层 ${nodeId} 的 Trace 记录与楼层不一致`);
 		}
 		const trace = parsed as unknown as TurnTrace;
-		// v40 之前的 Trace 没有 run 段，读回时补成 null。
-		return { ...trace, run: trace.run ?? null };
+		// v40 之前的 Trace 没有 run 段，读回时补成 null；规划写法早期没有 schedule。
+		return {
+			...trace,
+			run: trace.run ?? null,
+			...(trace.plan === undefined
+				? {}
+				: { plan: { ...trace.plan, schedule: trace.plan.schedule ?? [] } }),
+		};
 	}
 
 	/** 为一次深回合运行建行；用户楼层必须存在且属于该故事。 */

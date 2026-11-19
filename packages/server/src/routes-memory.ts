@@ -4,9 +4,12 @@ import {
 	type JsonValue,
 	type PlayerEditKind,
 	assertDirectorLine,
+	assertSceneCard,
 	compileWikiPages,
 	createTokenEstimator,
+	editSceneGoal,
 	editState,
+	editWikiStatement,
 	isPlayerEditKind,
 	loreEntryMatchScore,
 	normalizeEntityName,
@@ -20,7 +23,10 @@ import {
 	readMemoryState,
 	readMemoryTimeline,
 	readPinnedLineIds,
+	readSceneGoal,
 	readWritingView,
+	resetToCardRecommended,
+	resolveLoreInjectionRole,
 	rollbackPlayerEdit,
 	stateTargetOf,
 	writeMemoryPref,
@@ -280,6 +286,26 @@ export async function handleMemoryRoute(
 		}
 	}
 
+	if (third === "director" && fourth === "scene" && parts.length === 4) {
+		allow(method, ["POST"]);
+		requireStory(options, storyId);
+		const body = await readObject(req, options);
+		try {
+			saveSceneGoalEdit(options, storyId, body);
+		} catch (error) {
+			if (error instanceof HttpError) throw error;
+			throw bad(
+				"scene",
+				error instanceof Error ? error.message : String(error),
+			);
+		}
+		sendJson(res, 200, {
+			ok: true,
+			sceneGoal: sceneGoalView(options, storyId),
+		});
+		return true;
+	}
+
 	if (third === "director" && fourth === "line" && parts.length === 4) {
 		allow(method, ["POST"]);
 		requireStory(options, storyId);
@@ -359,7 +385,7 @@ export async function handleMemoryRoute(
 		if (method === "GET") {
 			sendJson(res, 200, readWritingView(store, storyId));
 		} else if (method === "DELETE") {
-			sendJson(res, 200, writeWritingOverrides(store, storyId, null));
+			sendJson(res, 200, resetToCardRecommended(store, storyId));
 		} else {
 			const body = await readObject(req, options);
 			sendJson(res, 200, writeWritingOverrides(store, storyId, body));
@@ -389,6 +415,34 @@ function saveEdit(
 	}
 	if (typeof target !== "string" || target.length === 0) {
 		throw bad("target", "必须指明要改的对象");
+	}
+	if (kind === "wiki") {
+		const separator = target.lastIndexOf("|");
+		const statementId = separator === -1 ? "" : target.slice(separator + 1);
+		if (separator > 0 && statementId !== "lead") {
+			let text: string | undefined;
+			if (body.value !== undefined) {
+				const next = body.value as JsonValue;
+				const nextText =
+					next !== null && typeof next === "object" && !Array.isArray(next)
+						? next.text
+						: undefined;
+				if (typeof nextText !== "string" || nextText.trim().length === 0) {
+					throw bad("value", "内容不能为空；不想要这一条可以删掉它");
+				}
+				text = nextText;
+			}
+			editWikiStatement(store, storyId, {
+				pageId: target.slice(0, separator),
+				statementId,
+				...(text === undefined ? {} : { text }),
+				...(typeof body.locked === "boolean" ? { locked: body.locked } : {}),
+				...(typeof body.disabled === "boolean"
+					? { disabled: body.disabled }
+					: {}),
+			});
+			return;
+		}
 	}
 	const nodeId = store.getHead(storyId)?.id ?? null;
 	const current = readEffectiveEdits(store, storyId, nodeId, kind).get(target);
@@ -478,6 +532,36 @@ function saveLineEdit(
 	});
 }
 
+function saveSceneGoalEdit(
+	options: ApiRouteOptions,
+	storyId: string,
+	body: Record<string, unknown>,
+): void {
+	const store = options.store;
+	const nodeId = store.getHead(storyId)?.id ?? null;
+	if (nodeId === null) {
+		throw bad("scene", "故事还没有楼层，先写第一楼再改本场目标");
+	}
+	const current = readSceneGoal(store, storyId, nodeId);
+	if (current === null) {
+		throw bad("scene", "这一场还没有目标，先等场记写下场面卡");
+	}
+	const present =
+		body.present === undefined
+			? current.present
+			: Array.isArray(body.present)
+				? body.present
+				: null;
+	if (present === null) {
+		throw bad("present", "present 必须是在场者的数组");
+	}
+	const change = typeof body.change === "string" ? body.change : current.change;
+	const card = assertSceneCard({ present, change }, "本场目标");
+	editSceneGoal(store, storyId, nodeId, card, {
+		locked: typeof body.locked === "boolean" ? body.locked : true,
+	});
+}
+
 function loreCopyView(options: ApiRouteOptions, storyId: string) {
 	const store = options.store;
 	const estimate = createTokenEstimator();
@@ -546,11 +630,25 @@ function lorePreview(
 	if (item === undefined) {
 		throw new HttpError(404, "not_found", `设定条目不存在：${entryId}`);
 	}
-	const kind =
-		store
-			.listImportAuditEntries(storyId)
-			.find((entry) => entry.source === item.original.source)?.kind ??
-		"unknown";
+	const rule = store
+		.listImportAuditInjectionRules(storyId)
+		.find((entry) => entry.source === item.original.source);
+	const kind = rule?.kind ?? "unknown";
+	const role = resolveLoreInjectionRole(
+		item.entry,
+		store.getStorySettings(storyId).importMode,
+		rule,
+	);
+	let entityAliases: readonly string[] = [];
+	if (item.entry.entityId !== null) {
+		const entity = store.getEntity(item.entry.entityId);
+		if (entity === null) {
+			throw new Error(
+				`世界书条目 ${item.entry.id} 关联的实体不存在：${item.entry.entityId}`,
+			);
+		}
+		entityAliases = entity.aliases;
+	}
 	const head = store.getHead(storyId);
 	const recent =
 		head === null
@@ -563,21 +661,33 @@ function lorePreview(
 	const score = loreEntryMatchScore(
 		item.entry,
 		normalizeEntityName(recent),
-		[],
+		entityAliases,
 	);
-	let hit = false;
+	const baseHit = role.base !== null;
+	const matchedHit = role.matched && score > 0;
+	const hit = !item.disabled && (baseHit || matchedHit);
+	const condition = item.disabled
+		? "已停用，不会带上"
+		: role.base === "full"
+			? "每一轮都带"
+			: role.base === "index"
+				? "每一轮带标题与关键词；提到时带全文"
+				: role.matched
+					? "提到关键词或关联人物时带上"
+					: "这个类型不进入每轮上下文";
 	let reason: string;
 	if (item.disabled) reason = "这一条已停用，不会带上";
-	else if (item.entry.constant) {
-		hit = true;
-		reason = "常驻条目，每一轮都带";
-	} else if (score > 0) {
-		hit = true;
-		reason = "最近几楼提到了它的关键词，这一轮会带上";
+	else if (role.base === "full") reason = "每轮固定带入的条目，这一轮会带上";
+	else if (role.base === "index") {
+		reason = "每轮带入标题与关键词，这一轮会带上";
+	} else if (matchedHit) {
+		reason = "最近几楼提到了它的关键词或关联人物，这一轮会带上";
+	} else if (!role.matched) {
+		reason = "这个类型不进入每轮上下文，不会带上";
 	} else {
 		reason =
 			item.entry.keywords.length === 0
-				? "没有关键词，只在检索命中时带上"
+				? "没有关键词，最近几楼也没有提到关联人物"
 				: `最近几楼没有提到：${item.entry.keywords.slice(0, 6).join("、")}`;
 	}
 	return {
@@ -585,8 +695,23 @@ function lorePreview(
 		kind,
 		constant: item.entry.constant,
 		keywords: item.entry.keywords,
+		condition,
 		hit,
 		reason,
+	};
+}
+
+function sceneGoalView(options: ApiRouteOptions, storyId: string) {
+	const head = options.store.getHead(storyId);
+	if (head === null) return null;
+	const goal = readSceneGoal(options.store, storyId, head.id);
+	if (goal === null) return null;
+	return {
+		nodeId: goal.nodeId,
+		present: goal.present,
+		change: goal.change,
+		source: goal.source,
+		locked: goal.locked,
 	};
 }
 
@@ -607,12 +732,11 @@ function dockView(options: ApiRouteOptions, storyId: string) {
 	const path = store.getPathToNode(head.id);
 	const scene = store.getLatestSceneLogOnPath(head.id);
 	const presentNames = scene?.present ?? [];
+	const goal = sceneGoalView(options, storyId);
 	const pages = compileWikiPages(store, storyId);
 	const state = readMemoryState(store, storyId);
 	const wants = new Map(
-		(scene?.sceneCard?.present ?? []).map(
-			(actor) => [actor.who, actor.want] as const,
-		),
+		(goal?.present ?? []).map((actor) => [actor.who, actor.want] as const),
 	);
 	const secrets = readMemorySecrets(store, storyId);
 	const present = presentNames.map((name) => {
@@ -670,7 +794,7 @@ function dockView(options: ApiRouteOptions, storyId: string) {
 		present,
 		secrets: secrets.slice(0, 8),
 		soon,
-		sceneGoal: scene?.sceneCard?.change ?? null,
+		sceneGoal: goal,
 		recap: readMemoryTimeline(store, storyId).at(-1)?.summary ?? null,
 	};
 }

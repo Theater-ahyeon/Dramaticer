@@ -2091,6 +2091,22 @@ export function buildMigrations(
 				) STRICT`,
 			],
 		},
+		{
+			version: 71,
+			description: "记录的逐字出处与记录本身一样只追加",
+			statements: [
+				`CREATE TRIGGER memory_event_quotes_immutable
+				BEFORE UPDATE ON memory_event_quotes
+				BEGIN
+					SELECT RAISE(ABORT, '记录的出处不可修改');
+				END`,
+				`CREATE TRIGGER memory_event_quotes_no_delete
+				BEFORE DELETE ON memory_event_quotes
+				BEGIN
+					SELECT RAISE(ABORT, '记录的出处不可删除');
+				END`,
+			],
+		},
 	];
 }
 
