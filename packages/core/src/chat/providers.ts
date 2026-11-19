@@ -597,6 +597,8 @@ export interface MemorySlotProviderOptions {
 	readonly embedder?: EmbeddingClient | null;
 	/** 融合后的可选重排序客户端。 */
 	readonly reranker?: RerankClient | null;
+	/** 判断整个故事是否还放得下上下文时使用；默认按字符估算。 */
+	readonly tokenEstimator?: TokenEstimator;
 }
 
 export const DEFAULT_MEMORY_SLOT_LIMIT = 6;
@@ -615,6 +617,7 @@ export function createMemorySlotProvider(
 	}
 	const embedder = options.embedder ?? null;
 	const reranker = options.reranker ?? null;
+	const estimator = options.tokenEstimator ?? createTokenEstimator();
 	return {
 		packKey: JSON.stringify({
 			limit,
@@ -636,7 +639,19 @@ export function createMemorySlotProvider(
 			if (pathBefore.length === 0) return null;
 			const lastBefore = pathBefore[pathBefore.length - 1];
 			if (lastBefore === undefined) return null;
+			// 整个故事都放得下、并且原文窗口能带全时，检索只会重复注入同一批内容。
+			if (
+				request.budgetTokens !== undefined &&
+				pathBefore.length <= DEFAULT_HISTORY_LIMIT
+			) {
+				const storyTokens = pathBefore.reduce(
+					(total, node) => total + estimator(node.raw),
+					0,
+				);
+				if (storyTokens <= request.budgetTokens) return null;
+			}
 			const eventsByNode = new Map<string, string[]>();
+			const eventTimes = new Map<string, string | null>();
 			for (const event of store.getEventsForPath(lastBefore.id, {
 				limit: MAX_MEMORY_EVENT_LIMIT,
 			})) {
@@ -646,6 +661,18 @@ export function createMemorySlotProvider(
 				} else {
 					texts.push(event.text);
 				}
+				if (!eventTimes.has(event.sourceNodeId)) {
+					eventTimes.set(event.sourceNodeId, event.storyTime);
+				}
+			}
+			const presentNames: string[] = [];
+			const sceneLog = store.getLatestSceneLogOnPath(request.nodeId);
+			if (sceneLog !== null) {
+				presentNames.push(...sceneLog.present);
+			} else {
+				const archives = store.listSceneArchivesAlongPath(request.nodeId);
+				const latest = archives[archives.length - 1];
+				if (latest !== undefined) presentNames.push(...latest.present);
 			}
 
 			const result = await retrieveMemory({
@@ -656,6 +683,7 @@ export function createMemorySlotProvider(
 				query: current.raw,
 				beforeNodeId: request.nodeId,
 				limit,
+				entityNames: presentNames,
 			});
 
 			const positions = new Map(
@@ -665,7 +693,19 @@ export function createMemorySlotProvider(
 			const injectedNodeIds: string[] = [];
 			const injected: RetrievalInjectionTrace[] = [];
 			const lines: string[] = [];
-			for (const hit of result.hits) {
+			const orderedHits = [...result.hits].sort((left, right) => {
+				const leftTime = eventTimes.get(left.nodeId)?.trim() ?? "";
+				const rightTime = eventTimes.get(right.nodeId)?.trim() ?? "";
+				if (leftTime !== rightTime) {
+					if (leftTime.length === 0) return 1;
+					if (rightTime.length === 0) return -1;
+					return leftTime < rightTime ? -1 : 1;
+				}
+				const leftPosition = positions.get(left.nodeId) ?? -1;
+				const rightPosition = positions.get(right.nodeId) ?? -1;
+				return leftPosition - rightPosition;
+			});
+			for (const hit of orderedHits) {
 				if (seen.has(hit.nodeId)) continue;
 				seen.add(hit.nodeId);
 				const sourceNode = store.getNode(hit.nodeId);
@@ -715,7 +755,7 @@ export function createMemorySlotProvider(
 				messages: [
 					{
 						role: "system",
-						content: `相关记忆（按相关度排序）：\n${lines.join("\n")}`,
+						content: `相关记忆（按故事时间排序）：\n${lines.join("\n")}`,
 					},
 				],
 				source: `memory:${lines.length}`,
@@ -929,7 +969,7 @@ interface SelectedLoreLine {
 	readonly tokens: number;
 }
 
-interface LoreInjectionRole {
+export interface LoreInjectionRole {
 	/** 每轮都注入的行；`index` 只带标题与关键词 */
 	readonly base: "full" | "index" | null;
 	/** 命中当前楼层时是否再注入一条 */
@@ -941,7 +981,7 @@ interface LoreInjectionRole {
  * 原样模式都按导入时的常驻标记处理；升级模式按生效类型决定，已转成初始记忆
  * 的条目只按命中注入。
  */
-function resolveLoreInjectionRole(
+export function resolveLoreInjectionRole(
 	entry: LoreEntry,
 	mode: "upgrade" | "raw",
 	rule: ImportAuditInjectionRule | undefined,

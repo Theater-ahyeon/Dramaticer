@@ -73,16 +73,63 @@ const MODE_HINT: Record<Mode, string> = {
 	deep: "深度：起草、自查、修改后再交，最慢最细",
 };
 
+/** 每种写法在写作期间依次点亮的阶段；快速写法只有正文一段。 */
+const MODE_STAGES: Record<Mode, readonly string[]> = {
+	fast: ["写正文"],
+	plan: ["挑记忆", "角色意图", "定计划", "正文"],
+	deep: ["起草", "自查", "修改", "交稿"],
+};
+
+/** 深度写法的服务端进度按工具标签发出，映射回阶段条上的位置。 */
+const DEEP_PROGRESS_STAGES: readonly {
+	readonly needle: string;
+	readonly stage: number;
+}[] = [
+	{ needle: "自查", stage: 1 },
+	{ needle: "草稿", stage: 2 },
+	{ needle: "手记", stage: 2 },
+	{ needle: "提交", stage: 3 },
+];
+
+function reachedStage(
+	mode: Mode,
+	phases: readonly string[],
+	writing: boolean,
+): number {
+	const stages = MODE_STAGES[mode];
+	if (mode === "fast") return writing ? 0 : -1;
+	if (mode === "plan") {
+		const settled = stages.length - 1;
+		let reached = writing ? settled : -1;
+		for (const phase of phases) {
+			const index = stages.indexOf(phase);
+			if (index >= 0 && index < settled) reached = Math.max(reached, index);
+		}
+		return reached;
+	}
+	let reached = writing ? 0 : -1;
+	for (const phase of phases) {
+		for (const rule of DEEP_PROGRESS_STAGES) {
+			if (phase.includes(rule.needle)) reached = Math.max(reached, rule.stage);
+		}
+	}
+	// 自查之后还在出的正文就是改过的稿子，所以「修改」也亮了。
+	if (writing && reached >= 1) reached = Math.max(reached, 2);
+	return reached;
+}
+
 const WHY: readonly { reason: RerollReason; label: string }[] = [
 	{ reason: "not-progressed", label: "没推进" },
 	{ reason: "ignored-instruction", label: "没听我的" },
 	{ reason: "too-short", label: "太短" },
 	{ reason: "off-character", label: "人设不对" },
+	{ reason: "format", label: "格式乱" },
 	{ reason: "avoid-line", label: "别推这条线" },
 ];
 
 /** 一楼写作过程里界面看到的东西：阶段、自查项、草稿与正文。 */
 interface Streaming {
+	readonly mode: Mode;
 	readonly said: string | null;
 	readonly pushLabel: string | null;
 	readonly text: string;
@@ -323,6 +370,7 @@ export function Play() {
 				controller.signal,
 			),
 			{
+				mode,
 				said: push === null ? message : null,
 				pushLabel:
 					push === null
@@ -355,6 +403,7 @@ export function Play() {
 		void consume(
 			api.streamRegenerate(lastAssistant.id, { reason }, controller.signal),
 			{
+				mode,
 				said: null,
 				pushLabel: `重写 · ${label}`,
 				text: "",
@@ -424,12 +473,15 @@ export function Play() {
 	const title = story.data?.title ?? "";
 	const lastMeta =
 		lastAssistant === undefined ? undefined : metaById.get(lastAssistant.id);
-	const stageNames =
-		mode === "deep"
-			? ["起草", "自查", "修改", "交稿"]
-			: mode === "plan"
-				? ["挑记忆", "角色意图", "定计划", "正文"]
-				: [];
+	const stageNames = streaming === null ? [] : MODE_STAGES[streaming.mode];
+	const stageReached =
+		streaming === null
+			? -1
+			: reachedStage(
+					streaming.mode,
+					streaming.stages,
+					streaming.text !== "" || streaming.blocks !== null,
+				);
 
 	return (
 		<section data-view="play">
@@ -537,13 +589,7 @@ export function Play() {
 												{stageNames.map((name, index) => (
 													<span
 														key={name}
-														className={
-															streaming.stages.length > index ||
-															(index === stageNames.length - 1 &&
-																streaming.text !== "")
-																? "on"
-																: undefined
-														}
+														className={index <= stageReached ? "on" : undefined}
 													>
 														{name}
 													</span>

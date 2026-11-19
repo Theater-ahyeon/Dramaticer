@@ -169,6 +169,8 @@ export interface TurnTrace {
 	/** 规划写法走过的阶段；其余写法没有这个字段。 */
 	readonly plan?: {
 		readonly prepared: boolean;
+		/** 程序规定的阶段顺序；数量有上限。 */
+		readonly schedule: readonly string[];
 		readonly phases: readonly {
 			readonly name: string;
 			readonly durationMs: number;

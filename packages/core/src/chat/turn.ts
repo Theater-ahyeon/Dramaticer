@@ -98,6 +98,7 @@ import {
 	type PlanTurnTrace,
 	buildSelfCheckList,
 	formatSelfCheckList,
+	isPlanPrepareEnabled,
 	isPlanWritingMode,
 	readPreparedPlan,
 	runPlanPhases,
@@ -438,7 +439,9 @@ export async function runChatTurn(
 		...options,
 		providers,
 		directorIntensity: null,
-		directorPush: null,
+		// 导演槽位已经按这一轮的档位重建；推进档位还要给规划准备用，
+		// 生成过程本身不再按它重建槽位。
+		directorPush: options.directorPush ?? null,
 		userNodeId: userNode.id,
 		turnMode: resolved.mode,
 		maxReadRounds: resolved.maxReadRounds,
@@ -664,13 +667,15 @@ export async function generateAssistantTurn(
 		const anchorNodeId = userNode.parentId ?? userNode.id;
 		const progress = (phase: string, detail: string): void =>
 			options.onToolProgress?.({ type: "progress", phase, detail });
-		let preparation = readPreparedPlan(
-			options.store,
-			options.storyId,
-			anchorNodeId,
-			userNode.raw,
-			options.directorPush ?? null,
-		);
+		let preparation = isPlanPrepareEnabled(options.store, options.storyId)
+			? readPreparedPlan(
+					options.store,
+					options.storyId,
+					anchorNodeId,
+					userNode.raw,
+					options.directorPush ?? null,
+				)
+			: null;
 		if (preparation !== null) {
 			for (const name of PLAN_PREP_PHASES) progress(name, "");
 		} else {

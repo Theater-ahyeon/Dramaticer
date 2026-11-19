@@ -48,6 +48,7 @@ describe("功能开关目录", () => {
 			director: "push",
 			knows: false,
 			prepare: false,
+			review: false,
 			promiseLimit: 3,
 			rules: false,
 			status: true,
@@ -67,6 +68,7 @@ describe("功能开关目录", () => {
 			director: "push",
 			knows: true,
 			prepare: false,
+			review: true,
 			promiseLimit: 5,
 			rules: true,
 			status: true,
@@ -86,6 +88,7 @@ describe("功能开关目录", () => {
 			director: "push",
 			knows: true,
 			prepare: true,
+			review: true,
 			promiseLimit: 8,
 			rules: true,
 			status: true,
@@ -163,6 +166,7 @@ describe("功能开关解析", () => {
 		expect(state.visible).toEqual([
 			"scribe",
 			"prepare",
+			"review",
 			"director",
 			"promiseLimit",
 			"choices",
@@ -262,6 +266,7 @@ describe("卡片能力判断", () => {
 		expect(ids).toEqual([
 			"scribe",
 			"prepare",
+			"review",
 			"director",
 			"promiseLimit",
 			"choices",
@@ -344,6 +349,12 @@ describe("卡片能力判断", () => {
 			presentation: true,
 			importedContent: true,
 		});
+	});
+
+	it("新故事默认导演只在玩家按推进时出手", () => {
+		const store = openStore();
+		store.createStory({ id: "s1", title: "新故事" });
+		expect(readStoryFeatureState(store, "s1").values.director).toBe("push");
 	});
 
 	it("故事设置里的开关按档位与覆盖读出", () => {

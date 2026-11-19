@@ -9,6 +9,7 @@ import {
 	createTokenEstimator,
 	editSceneGoal,
 	editState,
+	editWikiStatement,
 	isPlayerEditKind,
 	loreEntryMatchScore,
 	normalizeEntityName,
@@ -24,6 +25,8 @@ import {
 	readPinnedLineIds,
 	readSceneGoal,
 	readWritingView,
+	resetToCardRecommended,
+	resolveLoreInjectionRole,
 	rollbackPlayerEdit,
 	stateTargetOf,
 	writeMemoryPref,
@@ -382,7 +385,7 @@ export async function handleMemoryRoute(
 		if (method === "GET") {
 			sendJson(res, 200, readWritingView(store, storyId));
 		} else if (method === "DELETE") {
-			sendJson(res, 200, writeWritingOverrides(store, storyId, null));
+			sendJson(res, 200, resetToCardRecommended(store, storyId));
 		} else {
 			const body = await readObject(req, options);
 			sendJson(res, 200, writeWritingOverrides(store, storyId, body));
@@ -412,6 +415,34 @@ function saveEdit(
 	}
 	if (typeof target !== "string" || target.length === 0) {
 		throw bad("target", "必须指明要改的对象");
+	}
+	if (kind === "wiki") {
+		const separator = target.lastIndexOf("|");
+		const statementId = separator === -1 ? "" : target.slice(separator + 1);
+		if (separator > 0 && statementId !== "lead") {
+			let text: string | undefined;
+			if (body.value !== undefined) {
+				const next = body.value as JsonValue;
+				const nextText =
+					next !== null && typeof next === "object" && !Array.isArray(next)
+						? next.text
+						: undefined;
+				if (typeof nextText !== "string" || nextText.trim().length === 0) {
+					throw bad("value", "内容不能为空；不想要这一条可以删掉它");
+				}
+				text = nextText;
+			}
+			editWikiStatement(store, storyId, {
+				pageId: target.slice(0, separator),
+				statementId,
+				...(text === undefined ? {} : { text }),
+				...(typeof body.locked === "boolean" ? { locked: body.locked } : {}),
+				...(typeof body.disabled === "boolean"
+					? { disabled: body.disabled }
+					: {}),
+			});
+			return;
+		}
 	}
 	const nodeId = store.getHead(storyId)?.id ?? null;
 	const current = readEffectiveEdits(store, storyId, nodeId, kind).get(target);
@@ -599,11 +630,25 @@ function lorePreview(
 	if (item === undefined) {
 		throw new HttpError(404, "not_found", `设定条目不存在：${entryId}`);
 	}
-	const kind =
-		store
-			.listImportAuditEntries(storyId)
-			.find((entry) => entry.source === item.original.source)?.kind ??
-		"unknown";
+	const rule = store
+		.listImportAuditInjectionRules(storyId)
+		.find((entry) => entry.source === item.original.source);
+	const kind = rule?.kind ?? "unknown";
+	const role = resolveLoreInjectionRole(
+		item.entry,
+		store.getStorySettings(storyId).importMode,
+		rule,
+	);
+	let entityAliases: readonly string[] = [];
+	if (item.entry.entityId !== null) {
+		const entity = store.getEntity(item.entry.entityId);
+		if (entity === null) {
+			throw new Error(
+				`世界书条目 ${item.entry.id} 关联的实体不存在：${item.entry.entityId}`,
+			);
+		}
+		entityAliases = entity.aliases;
+	}
 	const head = store.getHead(storyId);
 	const recent =
 		head === null
@@ -616,21 +661,33 @@ function lorePreview(
 	const score = loreEntryMatchScore(
 		item.entry,
 		normalizeEntityName(recent),
-		[],
+		entityAliases,
 	);
-	let hit = false;
+	const baseHit = role.base !== null;
+	const matchedHit = role.matched && score > 0;
+	const hit = !item.disabled && (baseHit || matchedHit);
+	const condition = item.disabled
+		? "已停用，不会带上"
+		: role.base === "full"
+			? "每一轮都带"
+			: role.base === "index"
+				? "每一轮带标题与关键词；提到时带全文"
+				: role.matched
+					? "提到关键词或关联人物时带上"
+					: "这个类型不进入每轮上下文";
 	let reason: string;
 	if (item.disabled) reason = "这一条已停用，不会带上";
-	else if (item.entry.constant) {
-		hit = true;
-		reason = "常驻条目，每一轮都带";
-	} else if (score > 0) {
-		hit = true;
-		reason = "最近几楼提到了它的关键词，这一轮会带上";
+	else if (role.base === "full") reason = "每轮固定带入的条目，这一轮会带上";
+	else if (role.base === "index") {
+		reason = "每轮带入标题与关键词，这一轮会带上";
+	} else if (matchedHit) {
+		reason = "最近几楼提到了它的关键词或关联人物，这一轮会带上";
+	} else if (!role.matched) {
+		reason = "这个类型不进入每轮上下文，不会带上";
 	} else {
 		reason =
 			item.entry.keywords.length === 0
-				? "没有关键词，只在检索命中时带上"
+				? "没有关键词，最近几楼也没有提到关联人物"
 				: `最近几楼没有提到：${item.entry.keywords.slice(0, 6).join("、")}`;
 	}
 	return {
@@ -638,6 +695,7 @@ function lorePreview(
 		kind,
 		constant: item.entry.constant,
 		keywords: item.entry.keywords,
+		condition,
 		hit,
 		reason,
 	};

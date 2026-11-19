@@ -4,12 +4,14 @@
 
 **Blocked by:** 01、edit-everything/01
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] 修改只作用于这个故事
-- [ ] 可以恢复原卡
-- [ ] `pnpm check` 通过
+- [x] 修改只作用于这个故事
+- [x] 可以恢复原卡
+- [x] `pnpm check` 通过
 
 规格：`.scratch/ui/spec.md`
 
 ## Comments
+
+完成：2026-11-19 设定页接线故事副本、恢复原卡与作者选项，修正导入方式取值，补桌面与手机端到端用例。

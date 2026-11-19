@@ -13,6 +13,7 @@ import {
 	type LlmMessage,
 	NO_CONTINUATION,
 } from "../llm/types.js";
+import { parseJsonOutputObject } from "../memory/json-output.js";
 import {
 	compileWikiPages,
 	readMemoryPrefs,
@@ -20,6 +21,7 @@ import {
 	readMemoryState,
 } from "../memory/view.js";
 import { readStoryFeatureState } from "../settings/features.js";
+import { WRITING_MODE_KEY } from "../settings/writing.js";
 import type { StoryStore } from "../store/story-store.js";
 
 /**
@@ -28,17 +30,20 @@ import type { StoryStore } from "../store/story-store.js";
  */
 export const PLAN_PREP_PHASES = ["挑记忆", "角色意图", "定计划"] as const;
 
+/**
+ * 规划写法一楼的固定顺序：写完计划再写正文，最后由后台复查。
+ * 顺序与阶段上限都由这个常量决定，写进 Trace 的就是它。
+ */
+export const PLAN_TURN_STEPS = [...PLAN_PREP_PHASES, "正文", "复查"] as const;
+
 /** 规划写法一楼的阶段上限：三个准备阶段、正文、可选的复查。 */
-export const MAX_PLAN_PHASES = 5;
+export const MAX_PLAN_PHASES = PLAN_TURN_STEPS.length;
 
 /** 准备阶段里每段材料最多带进去的字数；只防失控，不为省字数压缩内容。 */
 const CLIP = 400;
 
-/** 一次角色意图最多考虑的在场角色数。 */
+/** 一次角色意图最多考虑的在场角色数；每个角色单独一次调用。 */
 const MAX_INTENT_CHARACTERS = 4;
-
-/** 故事级配置里记「玩家选了规划写法」的键；存储层的回合模式仍是快速或深度。 */
-export const WRITING_MODE_KEY = "writingMode";
 
 export interface PlanPhaseTrace {
 	readonly name: string;
@@ -47,9 +52,11 @@ export interface PlanPhaseTrace {
 	readonly completionTokens: number | null;
 }
 
-/** 写进 Trace 的规划记录：走了哪些阶段，是不是用了提前备好的结果。 */
+/** 写进 Trace 的规划记录：固定的阶段顺序、实际走过的阶段，是不是用了提前备好的结果。 */
 export interface PlanTurnTrace {
 	readonly prepared: boolean;
+	/** 程序规定的阶段顺序；数量由 MAX_PLAN_PHASES 封顶。 */
+	readonly schedule: readonly string[];
 	readonly phases: readonly PlanPhaseTrace[];
 }
 
@@ -77,6 +84,23 @@ function clip(text: string, max = CLIP): string {
 
 function show(value: unknown): string {
 	return typeof value === "string" ? value : (JSON.stringify(value) ?? "");
+}
+
+/**
+ * 一个角色是否知道某条事件：公开事件（没有知情者或标了 *）人人知道，
+ * 其余只算知情者与参与者。自己的状态另由路径判断。
+ */
+function eventKnownTo(
+	event: {
+		readonly knowers: readonly string[];
+		readonly participants: readonly string[];
+	},
+	key: string,
+): boolean {
+	if (event.knowers.length === 0 || event.knowers.includes("*")) return true;
+	return [...event.knowers, ...event.participants].some(
+		(who) => normalizeEntityName(who) === key,
+	);
 }
 
 /** 提前备好的结果按玩家的输入取：推进三档各一个键，行动选项按文字。 */
@@ -109,10 +133,49 @@ export function readPreparedPlan(
 		text: hit.text,
 		trace: {
 			prepared: true,
+			schedule: PLAN_TURN_STEPS,
 			phases: Array.isArray(hit.phases)
 				? (hit.phases as unknown as PlanPhaseTrace[])
 				: [],
 		},
+	};
+}
+
+function addTokens(
+	previous: number | null,
+	next: number | null,
+): number | null {
+	if (previous === null && next === null) return null;
+	return (previous ?? 0) + (next ?? 0);
+}
+
+/**
+ * 一个阶段里可能有多角色各一次调用；同名阶段合并成一条记录，
+ * Trace 里的阶段数与顺序仍然只由 PLAN_TURN_STEPS 决定。
+ */
+function addPhaseTrace(
+	phases: PlanPhaseTrace[],
+	name: string,
+	durationMs: number,
+	usage: {
+		readonly promptTokens: number | null;
+		readonly completionTokens: number | null;
+	} | null,
+): void {
+	const index = phases.findIndex((phase) => phase.name === name);
+	const promptTokens = usage?.promptTokens ?? null;
+	const completionTokens = usage?.completionTokens ?? null;
+	if (index < 0) {
+		phases.push({ name, durationMs, promptTokens, completionTokens });
+		return;
+	}
+	const previous = phases[index];
+	if (previous === undefined) return;
+	phases[index] = {
+		name,
+		durationMs: previous.durationMs + durationMs,
+		promptTokens: addTokens(previous.promptTokens, promptTokens),
+		completionTokens: addTokens(previous.completionTokens, completionTokens),
 	};
 }
 
@@ -132,12 +195,7 @@ async function ask(
 		{ messages, temperature: 0.3, signal: input.signal },
 		NO_CONTINUATION,
 	);
-	phases.push({
-		name,
-		durationMs: Date.now() - started,
-		promptTokens: result.usage?.promptTokens ?? null,
-		completionTokens: result.usage?.completionTokens ?? null,
-	});
+	addPhaseTrace(phases, name, Date.now() - started, result.usage);
 	return result.text.trim();
 }
 
@@ -220,23 +278,24 @@ export async function runPlanPhases(
 			);
 		}
 
-		// 阶段二：在场角色各凭自己知道的事提出意图；不知道的事不出现在他那一段里。
+		// 阶段二：在场角色各凭自己知道的事提出意图。每个角色单独一次调用，
+		// 调用里只有他自己知道的事（含他被告知的秘密），别人的材料根本不出现。
 		if (present.length > 0) {
 			input.onProgress?.("角色意图", `${present.join("、")}各自想做什么`);
 			const events = store.getEventsForPath(anchorNodeId, { limit: 1000 });
-			const blocks = present.map((name) => {
+			const intents: string[] = [];
+			for (const name of present) {
 				const key = normalizeEntityName(name);
 				const known = events
-					.filter(
-						(event) =>
-							event.knowers.length === 0 ||
-							event.knowers.includes("*") ||
-							[...event.knowers, ...event.participants].some(
-								(who) => normalizeEntityName(who) === key,
-							),
-					)
+					.filter((event) => eventKnownTo(event, key))
 					.slice(-10)
 					.map((event) => `- ${event.text}`);
+				const told = secrets
+					.filter((secret) =>
+						secret.knowers.some((who) => normalizeEntityName(who) === key),
+					)
+					.slice(0, 6)
+					.map((secret) => `- ${secret.text}`);
 				const own = state
 					.filter((item) =>
 						item.path
@@ -247,25 +306,29 @@ export async function runPlanPhases(
 					.map((item) => `- ${item.item}：${show(item.value)}`);
 				const want =
 					sceneGoal?.present.find((actor) => actor.who === name)?.want ?? null;
-				return [
+				const material = [
 					`【${name}】`,
 					want === null ? "" : `这一场想要：${want}`,
 					own.length > 0 ? `自己的状态：\n${own.join("\n")}` : "",
 					known.length > 0
 						? `知道的事：\n${known.join("\n")}`
 						: "知道的事：没有记录",
+					told.length > 0 ? `自己知道、别人未必知道：\n${told.join("\n")}` : "",
 				]
 					.filter((line) => line !== "")
 					.join("\n");
-			});
-			const intents = await ask(
-				input,
-				"角色意图",
-				"下面每一段是一个在场角色自己知道的事。逐个角色写一句他此刻想做什么、会怎么做。写某个角色时只能用他那一段里的内容，不能用别人那一段里的事。每个角色一行，格式「名字：意图」，不要多写。",
-				`${playerLine}\n\n最近的楼层：\n${recent}\n\n${blocks.join("\n\n")}`,
-				phases,
-			);
-			if (intents !== "") sections.push(`在场角色的意图：\n${intents}`);
+				const intent = await ask(
+					input,
+					"角色意图",
+					`你只写「${name}」一个人此刻想做什么、会怎么做。下面只有「${name}」自己知道的事；不要提到这一段之外的人、事或秘密。只输出一行，格式「${name}：意图」，不要解释。`,
+					`${playerLine}\n\n${material}`,
+					phases,
+				);
+				if (intent !== "") intents.push(intent);
+			}
+			if (intents.length > 0) {
+				sections.push(`在场角色的意图：\n${intents.join("\n")}`);
+			}
 		}
 
 		// 阶段三：把上面的材料收成这一楼的计划。只写局面，不写写作命令。
@@ -304,12 +367,18 @@ export async function runPlanPhases(
 		input.onProgress?.("定计划", "准备阶段没有走完，直接写正文");
 	}
 
+	if (phases.length > MAX_PLAN_PHASES) {
+		throw new Error(
+			`规划写法一楼最多 ${MAX_PLAN_PHASES} 个阶段，实际记了 ${phases.length} 个`,
+		);
+	}
+
 	return {
 		text:
 			sections.length === 0
 				? ""
 				: `【本轮准备】以下是写这一楼之前理出来的材料，供参考，可以不照着写。\n\n${sections.join("\n\n")}`,
-		trace: { prepared: false, phases },
+		trace: { prepared: false, schedule: PLAN_TURN_STEPS, phases },
 	};
 }
 
@@ -321,8 +390,16 @@ export function isPlanWritingMode(store: StoryStore, storyId: string): boolean {
 /** 后台任务类型：回复落定后把推进三档与每个行动选项的准备阶段先跑完。 */
 export const PLAN_PREPARE_JOB_KIND = "plan_prepare";
 
-/** 一次最多为几个行动选项提前准备。 */
-const MAX_PREPARED_ACTIONS = 4;
+/** 「提前备好」开关：关掉时既不备，也不吃以前备下的结果。 */
+export function isPlanPrepareEnabled(
+	store: StoryStore,
+	storyId: string,
+): boolean {
+	return readStoryFeatureState(store, storyId).values.prepare === true;
+}
+
+/** 一次最多为几个行动选项提前准备：候选固定的四条行动加一条场景变化。 */
+const MAX_PREPARED_ACTIONS = 5;
 
 function prepareAnchor(store: StoryStore, storyId: string): string | null {
 	const head = store.getHead(storyId);
@@ -335,8 +412,7 @@ export function planPrepareNeedsRun(
 	storyId: string,
 ): boolean {
 	if (!isPlanWritingMode(store, storyId)) return false;
-	if (readStoryFeatureState(store, storyId).values.prepare !== true)
-		return false;
+	if (!isPlanPrepareEnabled(store, storyId)) return false;
 	const anchor = prepareAnchor(store, storyId);
 	if (anchor === null) return false;
 	return store.getStoryValue(storyId, preparedKey(anchor)) === null;
@@ -347,6 +423,7 @@ export function createPlanPrepareHandler(
 	options: { readonly client?: LlmClient } = {},
 ): BackgroundJobHandler {
 	return async ({ store, client, job, signal }) => {
+		if (!isPlanPrepareEnabled(store, job.storyId)) return;
 		const anchor = prepareAnchor(store, job.storyId);
 		if (anchor === null) return;
 		if (store.getStoryValue(job.storyId, preparedKey(anchor)) !== null) return;
@@ -379,6 +456,182 @@ export function createPlanPrepareHandler(
 			};
 		}
 		store.setStoryValue(job.storyId, preparedKey(anchor), prepared);
+	};
+}
+
+/** 后台任务类型：正文落定后复查状态矛盾与串戏，结果存成可切换的版本。 */
+export const PLAN_REVIEW_JOB_KIND = "plan_review";
+
+/** 复查结果：没有问题时 variantNodeId 为 null，有问题时指向兄弟楼层。 */
+export interface PlanReviewRecord {
+	readonly nodeId: string;
+	readonly issues: readonly string[];
+	readonly variantNodeId: string | null;
+	readonly phase: PlanPhaseTrace;
+	readonly checkedAt: string;
+}
+
+function reviewKey(nodeId: string): string {
+	return `planReview:${nodeId}`;
+}
+
+function readReviewIssues(value: unknown): string[] {
+	if (!Array.isArray(value)) {
+		throw new Error("规划复查输出.issues 必须是数组");
+	}
+	return value.map((item, index) => {
+		if (typeof item !== "string" || item.trim() === "") {
+			throw new Error(`规划复查输出.issues[${index}] 必须是非空字符串`);
+		}
+		return item.trim();
+	});
+}
+
+/** 读取某一楼的复查结果；没有复查过时返回 null。 */
+export function readPlanReview(
+	store: StoryStore,
+	storyId: string,
+	nodeId: string,
+): PlanReviewRecord | null {
+	const value = store.getStoryValue(storyId, reviewKey(nodeId));
+	if (!isJsonObject(value)) return null;
+	const issues = Array.isArray(value.issues)
+		? value.issues.filter((item): item is string => typeof item === "string")
+		: [];
+	const phase = isJsonObject(value.phase) ? value.phase : null;
+	if (
+		phase === null ||
+		typeof phase.name !== "string" ||
+		typeof phase.durationMs !== "number"
+	) {
+		return null;
+	}
+	return {
+		nodeId,
+		issues,
+		variantNodeId:
+			typeof value.variantNodeId === "string" ? value.variantNodeId : null,
+		phase: {
+			name: phase.name,
+			durationMs: phase.durationMs,
+			promptTokens:
+				typeof phase.promptTokens === "number" ? phase.promptTokens : null,
+			completionTokens:
+				typeof phase.completionTokens === "number"
+					? phase.completionTokens
+					: null,
+		},
+		checkedAt: typeof value.checkedAt === "string" ? value.checkedAt : "",
+	};
+}
+
+/** 入队判定：规划写法、打开了「复查」，head 是规划写出来的一楼且还没复查过。 */
+export function planReviewNeedsRun(
+	store: StoryStore,
+	storyId: string,
+): boolean {
+	if (!isPlanWritingMode(store, storyId)) return false;
+	if (readStoryFeatureState(store, storyId).values.review !== true)
+		return false;
+	const anchor = prepareAnchor(store, storyId);
+	if (anchor === null) return false;
+	if (store.getTurnTrace(anchor)?.plan === undefined) return false;
+	return store.getStoryValue(storyId, reviewKey(anchor)) === null;
+}
+
+const REVIEW_SYSTEM_PROMPT = [
+	"你是规划写法的复查阶段。检查这一楼正文有没有状态矛盾与串戏。",
+	"状态矛盾指位置、衣着、伤势、物品、在场者与前文或台账对不上；串戏指写出了某人不知道的事，或让不在场的人出现。",
+	"只根据给出的材料判断，不要新增设定。",
+	'只输出一个 JSON 对象：{"issues":["..."],"rewrite":"修正后的完整正文"}。',
+	"没有问题时空数组与空字符串；有问题时 rewrite 输出修正后的完整正文，长度与文风接近原文，只改有矛盾的地方。",
+	"不要输出代码块标记、解释或 JSON 之外的任何内容。",
+].join("\n");
+
+/**
+ * 复查在正文之后单独跑一次后台调用，结果写成兄弟楼层；
+ * head 不动，玩家自己切换过去（I7：不阻塞正文显示）。
+ */
+export function createPlanReviewHandler(
+	options: { readonly client?: LlmClient } = {},
+): BackgroundJobHandler {
+	return async ({ store, client, job, signal }) => {
+		const anchor = prepareAnchor(store, job.storyId);
+		if (anchor === null) return;
+		if (store.getTurnTrace(anchor)?.plan === undefined) return;
+		if (store.getStoryValue(job.storyId, reviewKey(anchor)) !== null) return;
+		if (readStoryFeatureState(store, job.storyId).values.review !== true) {
+			return;
+		}
+		const node = store.getNode(anchor);
+		if (node === null) return;
+		const present = store.getLatestSceneLogOnPath(anchor)?.present ?? [];
+		const keys = new Set(present.map((name) => normalizeEntityName(name)));
+		const state = readMemoryState(store, job.storyId, anchor)
+			.filter((item) =>
+				item.path
+					.slice(0, -1)
+					.some((segment) => keys.has(normalizeEntityName(segment))),
+			)
+			.slice(0, 10)
+			.map((item) => `- ${item.owner} 的${item.item}：${show(item.value)}`);
+		const secrets = readMemorySecrets(store, job.storyId, anchor)
+			.filter((secret) => secret.unaware.some((name) => present.includes(name)))
+			.slice(0, 6)
+			.map(
+				(secret) => `- ${secret.text}（${secret.unaware.join("、")}不知道）`,
+			);
+		const user = [
+			`这一楼的正文：\n${node.raw}`,
+			present.length > 0 ? `在场者：${present.join("、")}` : "",
+			state.length > 0 ? `在场者的状态：\n${state.join("\n")}` : "",
+			secrets.length > 0 ? `要守住的秘密：\n${secrets.join("\n")}` : "",
+		]
+			.filter((part) => part !== "")
+			.join("\n\n");
+		const started = Date.now();
+		const result = await (options.client ?? client).complete(
+			{
+				messages: [
+					{ role: "system", content: REVIEW_SYSTEM_PROMPT },
+					{ role: "user", content: user },
+				],
+				temperature: 0.2,
+				signal,
+			},
+			NO_CONTINUATION,
+		);
+		const phase: PlanPhaseTrace = {
+			name: "复查",
+			durationMs: Date.now() - started,
+			promptTokens: result.usage?.promptTokens ?? null,
+			completionTokens: result.usage?.completionTokens ?? null,
+		};
+		const parsed = parseJsonOutputObject(result.text, "规划复查输出");
+		const issues = readReviewIssues(parsed.issues);
+		if (typeof parsed.rewrite !== "string") {
+			throw new Error("规划复查输出.rewrite 必须是字符串");
+		}
+		const rewrite = parsed.rewrite.trim();
+		if (issues.length > 0 && rewrite === "") {
+			throw new Error("规划复查发现了问题，但没有给出修正后的正文");
+		}
+		const variantNodeId =
+			issues.length > 0 && rewrite !== node.raw
+				? store.appendReplyVariant(node.id, rewrite).id
+				: null;
+		const record: PlanReviewRecord = {
+			nodeId: node.id,
+			issues,
+			variantNodeId,
+			phase,
+			checkedAt: new Date().toISOString(),
+		};
+		store.setStoryValue(
+			job.storyId,
+			reviewKey(node.id),
+			record as unknown as JsonValue,
+		);
 	};
 }
 

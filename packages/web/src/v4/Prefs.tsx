@@ -349,11 +349,13 @@ export function Prefs() {
 											) {
 												return;
 											}
-											await api.call("POST", sp(storyId, "/import"), {
+											await api.call("POST", sp(storyId, "/card/diff"), {
 												card: payload,
+												apply: true,
 											});
 											writing.reload();
 											card.reload();
+											features.reload();
 											toast("已升级到新版");
 										} catch (error) {
 											toast(
@@ -373,6 +375,7 @@ export function Prefs() {
 									() => api.call("DELETE", sp(storyId, "/writing")),
 									() => {
 										writing.reload();
+										features.reload();
 										toast("已回到卡的推荐");
 									},
 								)

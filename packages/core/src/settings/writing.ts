@@ -14,6 +14,9 @@ export const WRITING_DIAL_CHOICES = {
 	thinking: ["off", "low", "high"],
 } as const;
 
+/** 故事级配置里记「玩家选了规划写法」的键；存储层的回合模式仍是快速或深度。 */
+export const WRITING_MODE_KEY = "writingMode";
+
 export type WritingDialId = keyof typeof WRITING_DIAL_CHOICES;
 
 export type WritingDials = {
