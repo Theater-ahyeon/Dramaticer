@@ -8,7 +8,7 @@
 
 - [x] 撤回后那条线不再被选中，直到玩家恢复
 - [x] 统计接口给出两种情况下的次数与比例
-- [ ] `pnpm check` 通过
+- [x] `pnpm check` 通过（集成分支整仓门禁通过：326 个测试文件、2730 个用例）
 
 规格：`.scratch/director-yield/spec.md`
 
