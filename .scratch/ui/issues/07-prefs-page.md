@@ -4,12 +4,14 @@
 
 **Blocked by:** 01、writing-settings/01
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] 档位一键切换一组开关
-- [ ] 底部显示每轮后台开销的合计
-- [ ] `pnpm check` 通过
+- [x] 档位一键切换一组开关
+- [x] 底部显示每轮后台开销的合计
+- [x] `pnpm check` 通过
 
 规格：`.scratch/ui/spec.md`
 
 ## Comments
+
+完成：2026-11-19 复用设置页初稿，补齐设置页端到端用例（桌面与手机）：档位切换、逐项开关、合计变化、写作选项落定。
