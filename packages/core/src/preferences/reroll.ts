@@ -84,7 +84,11 @@ export interface RerollReasonWillInput {
 	readonly nodeId: string;
 	/** 玩家选择原因时所在的消息楼层。 */
 	readonly sourceNodeId: string;
+	/** 检查是否已有同一句话的楼层；默认与 sourceNodeId 相同。 */
+	readonly dedupeNodeId?: string;
 	readonly reason: RerollReason;
+	/** 写进状态 diff 的原因；默认按重 roll 的说法。 */
+	readonly diffReason?: string;
 	readonly createdAt?: string;
 }
 
@@ -95,9 +99,11 @@ export interface RerollReasonWillInput {
 export function applyRerollReasonWill(input: RerollReasonWillInput): boolean {
 	const text = REROLL_REASON_WILLS[input.reason];
 	const id = userWillStableId(text);
-	const existing = readLedger(input.store, input.sourceNodeId, [
-		USER_WILL_NAMESPACE,
-	]);
+	const existing = readLedger(
+		input.store,
+		input.dedupeNodeId ?? input.sourceNodeId,
+		[USER_WILL_NAMESPACE],
+	);
 	if (isJsonObject(existing) && Object.hasOwn(existing, id)) return false;
 	const path = [USER_WILL_NAMESPACE, id];
 	const value = {
@@ -115,7 +121,9 @@ export function applyRerollReasonWill(input: RerollReasonWillInput): boolean {
 			op: "set",
 			value,
 			source: "player",
-			reason: `重 roll 原因：${REROLL_REASON_LABELS[input.reason]}`,
+			reason:
+				input.diffReason ??
+				`重 roll 原因：${REROLL_REASON_LABELS[input.reason]}`,
 		},
 	]);
 	return true;
