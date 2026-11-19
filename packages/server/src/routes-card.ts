@@ -107,7 +107,15 @@ export async function handleCardRoute(
 		const { card, data } = parseCard(body.card);
 		const current = readStoryCardSnapshot(store, storyId);
 		const same = current !== null && current.version === storyCardVersion(data);
-		const incoming = new Map<string, { name: string; content: string }>();
+		const incoming = new Map<
+			string,
+			{
+				name: string;
+				content: string;
+				constant: boolean;
+				keywords: readonly string[];
+			}
+		>();
 		if (card.characterBook !== null) {
 			for (const entry of worldInfoFromCharacterBook(
 				card.characterBook,
@@ -117,6 +125,8 @@ export async function handleCardRoute(
 				incoming.set(`character-book:${card.name}:${entry.sourceKey}`, {
 					name: entry.comment || entry.keys[0] || entry.sourceKey,
 					content: entry.content.trim(),
+					constant: entry.constant,
+					keywords: [...entry.keys],
 				});
 			}
 		}
@@ -146,10 +156,10 @@ export async function handleCardRoute(
 					kind: "lore",
 					target: existing.original.id,
 					value: {
-						name: existing.entry.name,
+						name: entry.name,
 						content: entry.content,
-						constant: existing.entry.constant,
-						keywords: [...existing.entry.keywords],
+						constant: entry.constant,
+						keywords: [...entry.keywords],
 					},
 					source: "ai",
 					note: "卡升级到新版",
