@@ -35,7 +35,7 @@ import { DirectorDecision } from "../../components/director/DirectorDecision";
 import { DirectorPlanEditor } from "../../components/director/PlanEditor";
 import { TracePanel } from "../../components/director/TracePanel";
 
-export function DirectorPage() {
+export function DirectorTool() {
 	const { storyId } = useParams();
 	const navigate = useNavigate();
 	const [tree, setTree] = useState<StoryTree | null>(null);

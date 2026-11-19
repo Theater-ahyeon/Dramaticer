@@ -23,7 +23,7 @@ const TABS = [
 	{ path: "channels", label: "渠道" },
 ] as const;
 
-export function StoryPage() {
+export function StoryTool() {
 	const { storyId } = useParams();
 	const [story, setStory] = useState<StoryView | null>(null);
 	const [error, setError] = useState<unknown>(null);

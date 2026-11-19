@@ -62,7 +62,7 @@ interface ReviewGroup {
 	readonly entries: readonly ImportAuditReviewEntry[];
 }
 
-export function ImportAuditPage() {
+export function AuditTool() {
 	const { storyId } = useParams();
 	const [story, setStory] = useState<StoryView | null>(null);
 	const [report, setReport] = useState<ImportAuditReportView | null>(null);

@@ -81,7 +81,7 @@ function ProviderRow({ provider }: { readonly provider: ImageProviderView }) {
 	);
 }
 
-export function ImagesPage() {
+export function ImagesTool() {
 	const { storyId } = useParams();
 	const [providers, setProviders] = useState<readonly ImageProviderView[]>([]);
 	const [workflows, setWorkflows] = useState<readonly ImageWorkflowView[]>([]);

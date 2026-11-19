@@ -91,7 +91,7 @@ function ProbeSummary({ probe }: { readonly probe: LlmModelProbe }) {
 	);
 }
 
-export function ChannelsPage() {
+export function ChannelsTool() {
 	const [view, setView] = useState<ChannelsView | null>(null);
 	const [draft, setDraft] = useState<ChannelsFormDraft | null>(null);
 	const [loadError, setLoadError] = useState<unknown>(null);

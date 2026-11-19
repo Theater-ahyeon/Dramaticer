@@ -46,7 +46,7 @@ import { LedgerValue } from "../../components/ledger/LedgerValue";
 import { ProposalList } from "../../components/ledger/ProposalList";
 import { StateTree } from "../../components/ledger/StateTree";
 
-export function LedgerPage() {
+export function LedgerTool() {
 	const { storyId } = useParams();
 	const [tree, setTree] = useState<StoryTree | null>(null);
 	const [pathNodeIds, setPathNodeIds] = useState<readonly string[]>([]);

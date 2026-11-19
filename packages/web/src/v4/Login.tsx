@@ -2,11 +2,11 @@ import { type FormEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { ErrorNotice } from "../components/ErrorNotice";
-import { Mark } from "../v4/Backdrop";
-import { stage, travel } from "../v4/stage";
+import { Mark } from "./Backdrop";
+import { stage, travel } from "./stage";
 
 /** 登录页：整片夜海做背景，中间一张玻璃卡。 */
-export function LoginPage() {
+export function Login() {
 	const navigate = useNavigate();
 	const [password, setPassword] = useState("");
 	const [error, setError] = useState<unknown>(null);

@@ -22,7 +22,7 @@ import { ErrorNotice } from "../../components/ErrorNotice";
 import { ProposalList } from "../../components/ledger/ProposalList";
 
 /** 连载页：四块派生数据与可编辑记忆共用一个 `GET /serial` 响应。 */
-export function SerialPage() {
+export function SerialTool() {
 	const { storyId } = useParams();
 	const [view, setView] = useState<StorySerialView | null>(null);
 	const [tab, setTab] = useState<SerialTabId>("recap");
