@@ -1,4 +1,5 @@
 import type {
+	BlueprintDiff,
 	BlueprintEntry,
 	BlueprintMilestone,
 	BlueprintPremise,
@@ -9,7 +10,7 @@ import type {
 import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { api } from "../api";
-import { Editable, Seg, Tog, sp, useAct, useLoad, useToast } from "./ui";
+import { Editable, Seg, Tog, useAct, useLoad, useToast } from "./ui";
 
 const STATE_PILL: Record<string, [string, string]> = {
 	achieved: ["ok", "已发生"],
@@ -24,16 +25,6 @@ const STATE_CLASS: Record<string, string> = {
 	blocked: "blocked",
 	lost: "blocked",
 };
-
-interface Versions {
-	readonly versions: readonly {
-		readonly nodeId: string;
-		readonly seq: number;
-		readonly source: string;
-		readonly createdAt: string;
-		readonly changes: number;
-	}[];
-}
 
 const OPERATIONS: readonly {
 	op: BlueprintSuggestionOperation;
@@ -60,10 +51,7 @@ export function Outline() {
 		() => api.getBlueprintSuggestions(storyId, "pending"),
 		[storyId],
 	);
-	const versions = useLoad<Versions>(
-		() => api.get(sp(storyId, "/blueprint/versions")),
-		[storyId],
-	);
+	const versions = useLoad(() => api.getBlueprintVersions(storyId), [storyId]);
 	const [idea, setIdea] = useState("");
 
 	if (blueprint.error !== null)
@@ -93,43 +81,20 @@ export function Outline() {
 		deviation.reload();
 		versions.reload();
 	};
+	/** 写一批修改；成功后重新读取并可选地提示。 */
+	const write = (diffs: readonly BlueprintDiff[], message?: string) =>
+		act(
+			() => api.editStoryBlueprint(storyId, { diffs }),
+			() => {
+				reload();
+				if (message !== undefined) toast(message);
+			},
+		);
 	/** 玩家的修改：来源记为玩家并自动锁定。 */
 	const save = (entry: BlueprintEntry, message = "已保存并锁定") =>
-		act(
-			() =>
-				api.call("POST", sp(storyId, "/blueprint/edit"), {
-					diffs: [
-						{
-							action: "set",
-							entry: { ...entry, source: "player", locked: true },
-						},
-					],
-				}),
-			() => {
-				reload();
-				toast(message);
-			},
-		);
-	const setLock = (entry: BlueprintEntry, locked: boolean) =>
-		act(
-			() =>
-				api.call("POST", sp(storyId, "/blueprint/edit"), {
-					diffs: [
-						{ action: "set", entry: { ...entry, source: "player", locked } },
-					],
-				}),
-			reload,
-		);
-	const remove = (id: string, message: string) =>
-		act(
-			() =>
-				api.call("POST", sp(storyId, "/blueprint/edit"), {
-					diffs: [{ action: "delete", id }],
-				}),
-			() => {
-				reload();
-				toast(message);
-			},
+		write(
+			[{ action: "set", entry: { ...entry, source: "player", locked: true } }],
+			message,
 		);
 	const basePremise: BlueprintPremise = premise ?? {
 		id: "premise",
@@ -294,11 +259,18 @@ export function Outline() {
 															className="pill mute"
 															style={{ border: 0 }}
 															onClick={() =>
-																save({
-																	...item,
-																	hardness:
-																		item.hardness === "hard" ? "soft" : "hard",
-																})
+																write([
+																	{
+																		action: "set",
+																		entry: {
+																			...item,
+																			hardness:
+																				item.hardness === "hard"
+																					? "soft"
+																					: "hard",
+																		},
+																	},
+																])
 															}
 														>
 															{item.hardness === "hard"
@@ -309,7 +281,14 @@ export function Outline() {
 															type="button"
 															className="lock"
 															aria-pressed={item.locked}
-															onClick={() => setLock(item, !item.locked)}
+															onClick={() =>
+																write([
+																	{
+																		action: "set",
+																		entry: { ...item, locked: !item.locked },
+																	},
+																])
+															}
 														>
 															{item.locked ? "已锁定" : "锁定"}
 														</button>
@@ -360,7 +339,12 @@ export function Outline() {
 															<button
 																type="button"
 																className="btn sm"
-																onClick={() => remove(item.id, "已放弃这件事")}
+																onClick={() =>
+																	write(
+																		[{ action: "delete", id: item.id }],
+																		"已放弃这件事",
+																	)
+																}
 															>
 																不要了
 															</button>
@@ -437,14 +421,10 @@ export function Outline() {
 													onClick={() =>
 														act(
 															() =>
-																api.call(
-																	"POST",
-																	sp(storyId, "/blueprint/edit"),
-																	{
-																		versionNodeId: version.nodeId,
-																		versionSeq: version.seq,
-																	},
-																),
+																api.editStoryBlueprint(storyId, {
+																	versionNodeId: version.nodeId,
+																	versionSeq: version.seq,
+																}),
 															() => {
 																reload();
 																toast("已回到这一版，导演从下一轮起按它来");
