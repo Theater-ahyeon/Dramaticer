@@ -145,3 +145,4 @@
 - 承载内容的大块统一用「玻璃面板」那组选择器；新加页面的容器要加进去，否则文字直接落在动的背景上。
 - 系统设了「减少动效」时：背景不跑循环，只在换页时重画；转场和入场动画关闭。新加动效要守这一条。
 - 给新界面截图：起 `node e2e/serve.mjs`，用 Playwright 的 chromium 加 `--enable-unsafe-swiftshader` 才有 WebGL。
+- 上下文条目跳到修改处的约定：设定用 `lore?entry=<id>` 展开条目，百科用 `memory?tab=wiki&page=<id>` 选中页面，状态、时间线、偏好用 `focus=<target>` 标出那一行，原文与场次用 `play?node=<nodeId>` 翻到那一楼。目标页只读这些查询参数，不改数据的存放方式。

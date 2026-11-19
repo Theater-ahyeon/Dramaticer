@@ -8,7 +8,7 @@ import {
 	toDisplayedBlocks,
 } from "@dramaticer/protocol";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { blockViewKind, optionLinesOf, plainTextOf } from "../chat/blocks";
 import { PUSH_TURN_TEXT } from "../chat/push";
@@ -239,6 +239,8 @@ export function Play() {
 	const [actions, setActions] = useState<readonly string[]>([]);
 	const [dockTab, setDockTab] = useState<DockTab>("dir");
 	const [dockTick, setDockTick] = useState(0);
+	const [search] = useSearchParams();
+	const focusNode = search.get("node");
 	const abort = useRef<AbortController | null>(null);
 	const lastRef = useRef<HTMLElement | null>(null);
 	const dockRef = useRef<HTMLDivElement | null>(null);
@@ -271,6 +273,16 @@ export function Play() {
 			),
 		[nodes],
 	);
+
+	// 从上下文跳过来时，直接翻到这一条对应的楼层。
+	useEffect(() => {
+		if (focusNode === null) return;
+		const node = nodes.find((item) => item.id === focusNode);
+		if (node === undefined) return;
+		document
+			.getElementById(`floor-${node.id}`)
+			?.scrollIntoView({ block: "center" });
+	}, [focusNode, nodes]);
 
 	const lastId = lastAssistant?.id ?? null;
 	useEffect(() => {
@@ -533,6 +545,7 @@ export function Play() {
 									) : null}
 									<article
 										className="flr"
+										id={`floor-${node.id}`}
 										ref={node.id === lastId ? lastRef : undefined}
 									>
 										<div className="prose">
@@ -775,6 +788,10 @@ export function Play() {
 										key: `${meta.nodeId}:${note.title}`,
 										label: note.title.replace("导演 · ", ""),
 										no: meta.no,
+										nodeId: meta.nodeId,
+										...(note.undoLineId === undefined
+											? {}
+											: { undoLineId: note.undoLineId }),
 									})),
 							)
 							.reverse()

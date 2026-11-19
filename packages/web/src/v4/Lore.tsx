@@ -1,6 +1,6 @@
 import type { ImportEntryKind, ImportMode } from "@dramaticer/core";
-import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import {
 	Cover,
@@ -90,6 +90,19 @@ export function Lore() {
 		id: string;
 		edits: readonly EditRecord[];
 	} | null>(null);
+	const [search] = useSearchParams();
+	const entryParam = search.get("entry");
+	// 从上下文跳过来时，打开这一条并翻到它。
+	useEffect(() => {
+		if (entryParam === null || lore.data === null) return;
+		const entry = lore.data.entries.find((item) => item.id === entryParam);
+		if (entry === undefined) return;
+		setOpen(entry.id);
+		setDraft(entry.content);
+		document
+			.getElementById(`entry-${entry.id}`)
+			?.scrollIntoView({ block: "center" });
+	}, [entryParam, lore.data]);
 
 	if (lore.error !== null) return <div className="v4err">{lore.error}</div>;
 	if (lore.data === null) return <p className="v4empty">正在读取设定…</p>;
@@ -261,7 +274,7 @@ export function Lore() {
 					</p>
 				) : null}
 				{shown.slice(0, 300).map((entry) => (
-					<div className="entry" key={entry.id}>
+					<div className="entry" key={entry.id} id={`entry-${entry.id}`}>
 						{/* biome-ignore lint/a11y/useKeyWithClickEvents: 展开入口，里面的控件都能用键盘 */}
 						<div
 							className="head"
