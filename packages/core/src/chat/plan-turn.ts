@@ -7,6 +7,7 @@ import {
 import { readEffectiveLore } from "../edits/index.js";
 import { normalizeEntityName } from "../entity.js";
 import { type JsonValue, isJsonObject } from "../json.js";
+import { readSceneGoal } from "../ledger/scene-goal.js";
 import {
 	type LlmClient,
 	type LlmMessage,
@@ -168,6 +169,7 @@ export async function runPlanPhases(
 		(entry) => !entry.constant,
 	);
 	const scene = store.getLatestSceneLogOnPath(anchorNodeId);
+	const sceneGoal = readSceneGoal(store, storyId, anchorNodeId);
 	const present = (scene?.present ?? []).slice(0, MAX_INTENT_CHARACTERS);
 	const sections: string[] = [];
 
@@ -244,8 +246,7 @@ export async function runPlanPhases(
 					.slice(0, 8)
 					.map((item) => `- ${item.item}：${show(item.value)}`);
 				const want =
-					scene?.sceneCard?.present.find((actor) => actor.who === name)?.want ??
-					null;
+					sceneGoal?.present.find((actor) => actor.who === name)?.want ?? null;
 				return [
 					`【${name}】`,
 					want === null ? "" : `这一场想要：${want}`,

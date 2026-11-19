@@ -4809,6 +4809,13 @@ export class StoryStore {
 		if (diffs.length === 0) {
 			throw new Error("线修改的 diffs 至少要有一条");
 		}
+		const edits = this.#lineEditsOnPath(input.nodeId, input.storyId);
+		for (const diff of diffs) {
+			const id = diff.action === "set" ? diff.line.id : diff.id;
+			if (edits.get(id)?.locked === true) {
+				throw new Error(`剧情线 ${id} 已被玩家锁定，后台只能提建议`);
+			}
+		}
 		assertPromiseBudget(
 			this.readDirectorLineStates(input.nodeId),
 			diffs,
@@ -5191,15 +5198,8 @@ export class StoryStore {
 	): DirectorLineState[] {
 		const node = this.getNode(nodeId);
 		if (!node) return states;
-		const edits = this.listPlayerEdits(node.storyId, { kind: "line" });
-		if (edits.length === 0) return states;
-		const ids = new Set(this.getPathToNode(nodeId).map((item) => item.id));
-		const latest = new Map<string, PlayerEdit>();
-		for (const edit of edits) {
-			if (edit.source === "rejected") continue;
-			if (edit.nodeId !== null && !ids.has(edit.nodeId)) continue;
-			latest.set(edit.target, edit);
-		}
+		const latest = this.#lineEditsOnPath(nodeId, node.storyId);
+		if (latest.size === 0) return states;
 		const map = new Map(states.map((state) => [state.line.id, state] as const));
 		for (const [target, edit] of latest) {
 			if (edit.disabled) {
@@ -5217,6 +5217,20 @@ export class StoryStore {
 		return [...map.values()].sort((left, right) =>
 			left.line.id < right.line.id ? -1 : left.line.id > right.line.id ? 1 : 0,
 		);
+	}
+
+	/** 当前路径上每条线最后一条生效的玩家修改；被挡下的后台写入不算。 */
+	#lineEditsOnPath(nodeId: string, storyId: string): Map<string, PlayerEdit> {
+		const latest = new Map<string, PlayerEdit>();
+		const edits = this.listPlayerEdits(storyId, { kind: "line" });
+		if (edits.length === 0) return latest;
+		const ids = new Set(this.getPathToNode(nodeId).map((item) => item.id));
+		for (const edit of edits) {
+			if (edit.source === "rejected") continue;
+			if (edit.nodeId !== null && !ids.has(edit.nodeId)) continue;
+			latest.set(edit.target, edit);
+		}
+		return latest;
 	}
 
 	/** 沿节点所在的路径按从旧到新的顺序读出线修改记录；其他分支不参与。 */

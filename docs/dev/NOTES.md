@@ -66,6 +66,9 @@
 - 蓝图建议独立存放：生成只写 `blueprint_suggestions`，玩家接受一条才用 `acceptBlueprintSuggestion` 写一批。锁定过滤只走 `filterLockedBlueprintDiffs`。
 - 建议的标题 80 字、理由 500 字、补充说明 500 字；一次请求 1 到 5 条建议，每条最多 50 条修改。模型输出未知字段或形状错误整批拒绝。
 - 线的存储写法与导演手记一致：每个楼层一行、`diffs` 是 `set`/`delete` 数组、沿路径从根开始累加；同一楼层重复写入直接失败。倒计时的有效余量用 `directorLineRemaining`。
+- 规划对象的玩家修改都走 `player_edits`：剧情线与伏笔的 kind 是 `line`，本场目标是 `scene`。本场目标挂在当前场次开始的楼层上，读取时以当前楼层为路径锚点；换一场后旧的修改自动不再生效。
+- `saveDirectorLines` 拒绝改动玩家锁定的线，锁定后的章级规划只留下 `rejected` 记录，不再写入线；场记写本场目标时同样先用 `guardBackgroundWrite`，被挡下的内容只留作建议。
+- 导演动作输入只把当前场次的本场目标放在最新一楼；历史的楼层保留当时写下的那张卡。回滚剧情线或本场目标后，下一次 `readDirectorActionInput` 直接读到恢复的内容。
 - 八种动作的判定口径、优先级与常量写在 ADR-0143；`selectDirectorAction` 只接受内存输入，不读数据库、不调用模型。需要读场记、线与决策记录时用 `readDirectorActionInput`。
 - 推进档位是**单轮参数**，不写故事设置；`push` 只接受 `advance`、`quick`、`jump`，`null` 表示常规回合。
 - 章末清点记录只追加：同一楼层第二次写入直接失败，UPDATE 被触发器拒绝。写入前必须用 `assertChapterReviewMatchesLines` 对照当前路径。

@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 - [ ] AI 对锁定项只能生成建议
 - [ ] 回滚后导演使用恢复后的内容
