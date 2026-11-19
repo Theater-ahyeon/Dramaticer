@@ -369,48 +369,69 @@ export function isFeatureSwitchId(value: unknown): value is FeatureSwitchId {
 	);
 }
 
+/** 合法的覆盖值；类型或取值不对时返回 null。 */
+function readFeatureSwitchValue(
+	definition: FeatureSwitchDefinition,
+	value: unknown,
+): FeatureSwitchValue | null {
+	switch (definition.kind) {
+		case "toggle":
+			return typeof value === "boolean" ? value : null;
+		case "choice": {
+			const allowed = definition.choices.map((choice) => choice.value);
+			return typeof value === "string" && allowed.includes(value)
+				? (value as FeatureSwitchValue)
+				: null;
+		}
+		case "number": {
+			const { minimum, maximum } = definition;
+			if (minimum === null || maximum === null) return null;
+			return typeof value === "number" &&
+				Number.isInteger(value) &&
+				value >= minimum &&
+				value <= maximum
+				? value
+				: null;
+		}
+	}
+}
+
 /** 校验一条覆盖值；错误信息带上开关 id，服务端据此返回字段路径。 */
 function assertFeatureSwitchValue(
 	definition: FeatureSwitchDefinition,
 	value: unknown,
 	path: string,
 ): FeatureSwitchValue {
+	const resolved = readFeatureSwitchValue(definition, value);
+	if (resolved !== null) return resolved;
 	switch (definition.kind) {
 		case "toggle":
-			if (typeof value !== "boolean") {
-				throw new Error(
-					`${path} 必须是布尔值，实际为 ${JSON.stringify(value)}`,
-				);
-			}
-			return value;
-		case "choice": {
-			const allowed = definition.choices.map((choice) => choice.value);
-			if (typeof value !== "string" || !allowed.includes(value)) {
-				throw new Error(
-					`${path} 必须是 ${allowed.join("、")} 之一，实际为 ${JSON.stringify(value)}`,
-				);
-			}
-			// 目录里的选项值与开关的取值类型一一对应。
-			return value as FeatureSwitchValue;
-		}
-		case "number": {
-			const { minimum, maximum } = definition;
-			if (minimum === null || maximum === null) {
-				throw new Error(`开关 ${definition.id} 缺少数值范围`);
-			}
-			if (
-				typeof value !== "number" ||
-				!Number.isInteger(value) ||
-				value < minimum ||
-				value > maximum
-			) {
-				throw new Error(
-					`${path} 必须是 ${minimum} 到 ${maximum} 之间的整数，实际为 ${JSON.stringify(value)}`,
-				);
-			}
-			return value;
-		}
+			throw new Error(`${path} 必须是布尔值，实际为 ${JSON.stringify(value)}`);
+		case "choice":
+			throw new Error(
+				`${path} 必须是 ${definition.choices.map((choice) => choice.value).join("、")} 之一，实际为 ${JSON.stringify(value)}`,
+			);
+		case "number":
+			throw new Error(
+				`${path} 必须是 ${definition.minimum} 到 ${definition.maximum} 之间的整数，实际为 ${JSON.stringify(value)}`,
+			);
 	}
+}
+
+/** 卡带来的开关推荐：不认识的开关与非法值跳过，不阻塞导入。 */
+export function sanitizeFeatureSwitchOverrides(
+	value: unknown,
+): FeatureSwitchOverrides {
+	if (typeof value !== "object" || value === null || Array.isArray(value)) {
+		return {};
+	}
+	const result: Partial<Record<FeatureSwitchId, FeatureSwitchValue>> = {};
+	for (const [id, raw] of Object.entries(value)) {
+		if (!isFeatureSwitchId(id)) continue;
+		const resolved = readFeatureSwitchValue(getFeatureSwitch(id), raw);
+		if (resolved !== null) result[id] = resolved;
+	}
+	return result as FeatureSwitchOverrides;
 }
 
 /** 解析并校验一份部分覆盖表；未出现的开关不进入结果。 */

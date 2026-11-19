@@ -4,6 +4,7 @@ import { crc32, deflateSync } from "node:zlib";
 import {
 	DEFAULT_DIRECTOR_CONFIG,
 	VISUAL_PROFILE_JOB_KIND,
+	readLoreCopy,
 } from "@dramaticer/core";
 import type {
 	ApiErrorResponse,
@@ -329,6 +330,219 @@ describe("导入接口", () => {
 			card: { format: "json", data: JSON.stringify(cardData) },
 		});
 		expect(missing.status).toBe(404);
+	});
+});
+
+describe("卡的推荐与固定版本", () => {
+	function cardWith(entries: readonly unknown[], config?: unknown): unknown {
+		return {
+			spec: "chara_card_v2",
+			spec_version: "2.0",
+			data: {
+				name: "云裳",
+				description: "青云宗剑修",
+				first_mes: "山门外的风很冷。",
+				character_book: { name: "云裳的世界", entries },
+				extensions: {
+					dramaticer: config === undefined ? {} : { config },
+				},
+			},
+		};
+	}
+
+	it("载入卡时应用推荐配置，一键回到推荐会清掉玩家的调整", async () => {
+		const { running } = await startTestServer();
+		await post(running.origin, "/api/stories", {
+			id: "story-1",
+			title: "山门",
+		});
+		const imported = await post(running.origin, "/api/stories/story-1/import", {
+			card: {
+				format: "json",
+				data: JSON.stringify(
+					cardWith(
+						[
+							{
+								id: 1,
+								keys: ["剑冢"],
+								comment: "剑冢",
+								content: "山后埋着历代断剑。",
+								enabled: true,
+							},
+						],
+						{
+							writing: { length: "long", person: "third" },
+							turnMode: "plan",
+							features: {
+								tier: "immersive",
+								switches: { search: true },
+							},
+						},
+					),
+				),
+			},
+		});
+		expect(imported.status).toBe(200);
+
+		const writing = (await (
+			await request(running.origin, "/api/stories/story-1/writing")
+		).json()) as {
+			dials: Record<string, unknown>;
+			recommended: Record<string, unknown> | null;
+			overrides: Record<string, unknown>;
+		};
+		expect(writing.dials).toMatchObject({ length: "long", person: "third" });
+		expect(writing.recommended).toMatchObject({ length: "long" });
+		const cardView = (await (
+			await request(running.origin, "/api/stories/story-1/card")
+		).json()) as {
+			card: { name: string; version: string } | null;
+			recommendedMode: string | null;
+		};
+		expect(cardView.card?.name).toBe("云裳");
+		expect(cardView.card?.version).toMatch(/^[0-9a-f]{16}$/);
+		expect(cardView.recommendedMode).toBe("plan");
+
+		const features = (await (
+			await request(running.origin, "/api/stories/story-1/features")
+		).json()) as {
+			tier: string;
+			groups: { switches: { id: string; value: unknown }[] }[];
+		};
+		expect(features.tier).toBe("immersive");
+		expect(
+			features.groups
+				.flatMap((group) => group.switches)
+				.find((item) => item.id === "search")?.value,
+		).toBe(true);
+
+		await put(running.origin, "/api/stories/story-1/writing", {
+			length: "short",
+		});
+		await put(running.origin, "/api/stories/story-1/settings", {
+			turnMode: "deep",
+			featureTier: "lite",
+			featureSwitches: { search: false },
+		});
+
+		const reset = await request(
+			running.origin,
+			"/api/stories/story-1/writing",
+			{ method: "DELETE" },
+		);
+		expect(reset.status).toBe(200);
+		const restored = (await reset.json()) as {
+			dials: Record<string, unknown>;
+			overrides: Record<string, unknown>;
+		};
+		expect(restored.dials.length).toBe("long");
+		expect(restored.overrides).toEqual({});
+
+		const resetFeatures = (await (
+			await request(running.origin, "/api/stories/story-1/features")
+		).json()) as {
+			tier: string;
+			groups: { switches: { id: string; value: unknown }[] }[];
+		};
+		expect(resetFeatures.tier).toBe("immersive");
+		expect(
+			resetFeatures.groups
+				.flatMap((group) => group.switches)
+				.find((item) => item.id === "search")?.value,
+		).toBe(true);
+		const settings = (await (
+			await request(running.origin, "/api/stories/story-1/settings")
+		).json()) as { turnMode: string };
+		expect(settings.turnMode).toBe("plan");
+	});
+
+	it("卡库里的新版不自动进入故事，玩家选择升级后才更新", async () => {
+		const { running } = await startTestServer();
+		await post(running.origin, "/api/stories", {
+			id: "story-1",
+			title: "山门",
+		});
+		const v1 = cardWith([
+			{
+				id: 1,
+				keys: ["剑冢"],
+				comment: "剑冢",
+				content: "山后埋着历代断剑。",
+				enabled: true,
+			},
+		]);
+		await post(running.origin, "/api/stories/story-1/import", {
+			card: { format: "json", data: JSON.stringify(v1) },
+		});
+		const before = (await (
+			await request(running.origin, "/api/stories/story-1/card")
+		).json()) as { card: { version: string } };
+		const v2 = cardWith([
+			{
+				id: 1,
+				keys: ["剑冢"],
+				comment: "剑冢",
+				content: "山后埋着历代断剑，夜里会响。",
+				enabled: true,
+			},
+			{
+				id: 2,
+				keys: ["新碑"],
+				comment: "新碑",
+				content: "山门旁立了一块新碑。",
+				enabled: true,
+			},
+		]);
+		const payload = { format: "json", data: JSON.stringify(v2) };
+
+		const diffResponse = await post(
+			running.origin,
+			"/api/stories/story-1/card/diff",
+			{ card: payload },
+		);
+		expect(diffResponse.status).toBe(200);
+		expect(await diffResponse.json()).toEqual({
+			storyId: "story-1",
+			same: false,
+			added: ["新碑"],
+			changed: ["剑冢"],
+			removed: [],
+		});
+		const afterDiff = (await (
+			await request(running.origin, "/api/stories/story-1/card")
+		).json()) as { card: { version: string } };
+		expect(afterDiff.card.version).toBe(before.card.version);
+		expect(
+			readLoreCopy(running.store, "story-1").map((item) => item.entry.content),
+		).toEqual(["山后埋着历代断剑。"]);
+
+		const upgrade = await post(
+			running.origin,
+			"/api/stories/story-1/card/diff",
+			{ card: payload, apply: true },
+		);
+		expect(upgrade.status).toBe(200);
+		expect(
+			readLoreCopy(running.store, "story-1")
+				.map((item) => item.entry.content)
+				.sort(),
+		).toEqual(["山后埋着历代断剑，夜里会响。", "山门旁立了一块新碑。"]);
+		const afterUpgrade = (await (
+			await request(running.origin, "/api/stories/story-1/card")
+		).json()) as { card: { version: string } };
+		expect(afterUpgrade.card.version).not.toBe(before.card.version);
+
+		const repeat = await post(
+			running.origin,
+			"/api/stories/story-1/card/diff",
+			{ card: payload },
+		);
+		expect(await repeat.json()).toMatchObject({
+			same: true,
+			added: [],
+			changed: [],
+			removed: [],
+		});
 	});
 });
 
