@@ -92,17 +92,33 @@ export function Shell() {
 	const base =
 		storyId === null ? null : `/stories/${encodeURIComponent(storyId)}`;
 	const current =
-		location.pathname === "/" ? "library" : location.pathname.split("/")[3];
+		location.pathname === "/"
+			? "library"
+			: location.pathname.startsWith("/settings")
+				? "settings"
+				: location.pathname.split("/")[3];
 	const viewIndex = NAV.findIndex((item) => item.view === current);
-	// 书架第 0 格，五个主页面第 1 到 5 格，其余工具页都算在「更多」那一格。
+	// 书架第 0 格，五个主页面第 1 到 5 格，「更多」第 6 格，全局设置最后一格。
 	const activeIndex =
-		current === "library" ? 0 : viewIndex >= 0 ? viewIndex + 1 : NAV.length + 1;
-	const onTools = current !== "library" && viewIndex < 0;
+		current === "library"
+			? 0
+			: current === "settings"
+				? NAV.length + 2
+				: viewIndex >= 0
+					? viewIndex + 1
+					: NAV.length + 1;
+	const onTools =
+		current !== "library" && current !== "settings" && viewIndex < 0;
 
 	const commands = useMemo(() => {
 		const visit = (path: string) => travel(path, () => navigate(path));
 		const list: { label: string; kind: string; run: () => void }[] = [
 			{ label: "去书架", kind: "前往", run: () => visit("/") },
+			{
+				label: "设置 · 模型与渠道",
+				kind: "前往",
+				run: () => visit("/settings"),
+			},
 		];
 		if (base !== null) {
 			const go = (label: string, path: string) =>
@@ -130,7 +146,6 @@ export function Shell() {
 			go("导演面板", "director");
 			go("生图", "images");
 			go("高级设置", "settings");
-			go("渠道与模型", "channels");
 			go("旧版对话", "chat");
 		}
 		if (palette) {
@@ -202,6 +217,14 @@ export function Shell() {
 						>
 							<i>匣</i>
 							更多
+						</TLink>
+						<TLink
+							className="nav"
+							to="/settings"
+							aria-current={current === "settings" ? "page" : undefined}
+						>
+							<i>⚙</i>
+							全局
 						</TLink>
 					</div>
 					<span className="sp" />

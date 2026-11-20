@@ -1,5 +1,6 @@
 import { Link, Navigate, Route, Routes } from "react-router-dom";
 import { Backdrop } from "./v4/Backdrop";
+import { GlobalSettings } from "./v4/GlobalSettings";
 import { Library } from "./v4/Library";
 import { Login } from "./v4/Login";
 import { Lore } from "./v4/Lore";
@@ -11,7 +12,6 @@ import { Shell } from "./v4/Shell";
 import { StoryTool } from "./v4/StoryTool";
 import { AuditTool } from "./v4/panels/Audit";
 import { BranchesTool } from "./v4/panels/Branches";
-import { ChannelsTool } from "./v4/panels/Channels";
 import { ChatTool } from "./v4/panels/Chat";
 import { DirectorTool } from "./v4/panels/Director";
 import { ImagesTool } from "./v4/panels/Images";
@@ -35,6 +35,7 @@ function AppRoutes() {
 			<Route path="/login" element={<Login />} />
 			<Route element={<Shell />}>
 				<Route path="/" element={<Library />} />
+				<Route path="/settings" element={<GlobalSettings />} />
 				<Route path="/stories/:storyId/play" element={<Play />} />
 				<Route path="/stories/:storyId/memory" element={<Memory />} />
 				<Route path="/stories/:storyId/outline" element={<Outline />} />
@@ -51,7 +52,10 @@ function AppRoutes() {
 					<Route path="director" element={<DirectorTool />} />
 					<Route path="images" element={<ImagesTool />} />
 					<Route path="settings" element={<SettingsTool />} />
-					<Route path="channels" element={<ChannelsTool />} />
+					<Route
+						path="channels"
+						element={<Navigate to="/settings" replace />}
+					/>
 				</Route>
 				<Route path="*" element={<NotFoundPage />} />
 			</Route>

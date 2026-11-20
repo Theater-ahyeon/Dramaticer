@@ -9,6 +9,8 @@
 - CI：`.github/workflows/check.yml` 在 push 与 PR 到 `main` 时于 Ubuntu 上跑 `pnpm check`。
 - 早期一次性脚本（F0、R1、R2、R5）在 `scripts/archive/`，不再有 `package.json` 命令名。
 - 全量 e2e：`pnpm e2e`（会先构建 server 与 web；跑两个项目）。
+- 走查截图：`cd packages/web && npx playwright test -c .walk/walk.config.ts`（`.walk/` 不入库，vitest 已排除；截图落在 `.devloop/scratch/walk/`）。界面工单验收前重拍并逐张看。
+- 渠道向导接口：`POST /api/channels/keys` 把密钥写进服务端启动时读的 `.env`（`ServerChannelsOptions.envFile`）并立即生效，响应不回传值；`POST /api/channels/models` 用已保存的密钥取 `/models`。没有 `channels.yaml` 时服务照常启动，`GET /api/channels` 返回空视图，首次 `PUT` 创建文件。
 - 蓝图结构与存储目标测试：`pnpm exec vitest run packages/core/test/story-blueprint.test.ts`。
 - 蓝图剧透、默认蓝图与剧透设置目标测试：`pnpm exec vitest run packages/core/test/blueprint-spoilers.test.ts`。
 - 蓝图导出与导入目标测试：`pnpm exec vitest run packages/st-compat/test/blueprint-export.test.ts packages/st-compat/test/blueprint-export-cli.test.ts`。

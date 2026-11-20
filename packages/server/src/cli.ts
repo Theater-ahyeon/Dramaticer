@@ -24,7 +24,7 @@ async function main(args: readonly string[]): Promise<void> {
 						baseUrl: config.assistantWebSearch,
 					}),
 				}),
-		channels: { path: config.channelsPath },
+		channels: { path: config.channelsPath, envFile: envPath },
 		images: { path: config.imagesPath, mediaDir: config.mediaDir },
 	});
 	console.log(`服务已启动：${running.origin}`);

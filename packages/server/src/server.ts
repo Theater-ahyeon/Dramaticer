@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
@@ -64,6 +65,10 @@ export interface ServerChannelsOptions {
 	readonly load?: () => Promise<LlmChannelsConfig>;
 	/** 解析 `${VAR}` 与报告密钥是否已设置时使用的环境变量。 */
 	readonly env?: Readonly<Record<string, string | undefined>>;
+	/** 设置页保存的密钥写到这个 env 文件；不设置时只能手动编辑 .env。 */
+	readonly envFile?: string;
+	/** 获取模型列表用；测试注入假实现。 */
+	readonly fetch?: (url: string, init?: RequestInit) => Promise<Response>;
 	readonly createClient?: RuntimeClientFactory;
 	readonly createEmbedder?: RuntimeEmbedderFactory;
 	/** 渠道体检用的适配器；测试注入假通道。 */
@@ -122,7 +127,9 @@ interface HandlerOptions {
 	readonly runs: TurnRunRegistry;
 	readonly scheduler: BackgroundScheduler | null;
 	readonly channelsPath: string | null;
-	readonly channelsEnv: Readonly<Record<string, string | undefined>>;
+	readonly channelsEnv: Record<string, string | undefined>;
+	readonly envFile: string | null;
+	readonly fetch?: (url: string, init?: RequestInit) => Promise<Response>;
 	readonly imagesPath: string | null;
 	readonly imagesEnv: Readonly<Record<string, string | undefined>>;
 	readonly imagesConfig: ImagesConfig;
@@ -148,14 +155,28 @@ export async function startServer(
 	const assistantSearch = options.assistantSearch ?? null;
 	const channels = options.channels ?? null;
 	const images = options.images ?? null;
-	const loadConfig = channels === null ? null : resolveChannelsLoader(channels);
-	const initialConfig = loadConfig === null ? null : await loadConfig();
+	// 设置页保存的密钥要立即生效，所以环境变量用一份可写的表；测试传入的表复制一份再改。
+	const channelsEnv: Record<string, string | undefined> =
+		channels?.env === undefined ? process.env : { ...channels.env };
+	const loadConfig =
+		channels === null ? null : resolveChannelsLoader(channels, channelsEnv);
+	// 新装环境还没有渠道文件时照常启动，由设置页的向导创建；文件写错了仍然启动失败。
+	const channelsFileMissing =
+		channels !== null &&
+		channels.load === undefined &&
+		channels.path !== undefined &&
+		!existsSync(channels.path);
+	if (channelsFileMissing) {
+		log("还没有配置模型渠道：在「设置 · 模型与渠道」里添加");
+	}
+	const initialConfig =
+		loadConfig === null || channelsFileMissing ? null : await loadConfig();
 	if (initialConfig !== null) {
 		for (const warning of readChannelWarnings(initialConfig)) {
 			log(`渠道配置提醒：${warning}`);
 		}
 	}
-	const imagesEnv = images?.env ?? channels?.env ?? process.env;
+	const imagesEnv = images?.env ?? channelsEnv;
 	const imagesConfig =
 		images === null
 			? emptyImagesConfig()
@@ -229,7 +250,9 @@ export async function startServer(
 			runs,
 			scheduler,
 			channelsPath: channels?.path ?? null,
-			channelsEnv: channels?.env ?? process.env,
+			channelsEnv,
+			envFile: channels?.envFile ?? null,
+			...(channels?.fetch === undefined ? {} : { fetch: channels.fetch }),
 			imagesPath: images?.path ?? null,
 			imagesEnv,
 			imagesConfig,
@@ -364,6 +387,8 @@ async function handleRequest(
 			scheduler: options.scheduler,
 			channelsPath: options.channelsPath,
 			channelsEnv: options.channelsEnv,
+			envFile: options.envFile,
+			...(options.fetch === undefined ? {} : { fetch: options.fetch }),
 			imagesPath: options.imagesPath,
 			imagesEnv: options.imagesEnv,
 			imagesConfig: options.imagesConfig,
@@ -433,13 +458,13 @@ function listen(
 
 function resolveChannelsLoader(
 	options: ServerChannelsOptions,
+	env: Readonly<Record<string, string | undefined>>,
 ): () => Promise<LlmChannelsConfig> {
 	if (options.load !== undefined) return options.load;
 	const path = options.path;
 	if (path === undefined) {
 		throw new Error("channels 需要 path 或 load");
 	}
-	const env = options.env ?? process.env;
 	return () => loadChannelsConfig(path, env);
 }
 

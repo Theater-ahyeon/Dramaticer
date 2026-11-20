@@ -45,6 +45,8 @@ export default defineConfig({
 		exclude: [
 			...configDefaults.exclude,
 			"packages/web/e2e/**",
+			// 本机走查截图脚本（Playwright，不入库）。
+			"packages/web/.walk/**",
 			"**/.worktrees/**",
 		],
 		// Windows 上并行跑整个仓库时，单个文件与文件系统、数据库的测试会比单独运行慢十几倍；

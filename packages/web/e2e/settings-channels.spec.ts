@@ -58,8 +58,8 @@ test("故事设置保存后刷新仍在，模板复制后编辑并保存", async
 });
 
 test("渠道面板修改保存后刷新仍在，且不显示密钥值", async ({ page }) => {
-	const storyId = await createImportedStory(page, "渠道端到端");
-	await openStoryTab(page, storyId, "channels");
+	await page.goto("/settings");
+	await page.getByText("高级配置", { exact: false }).click();
 	await expect(
 		page.getByRole("heading", { name: "渠道与模型岗位" }),
 	).toBeVisible();
@@ -73,6 +73,7 @@ test("渠道面板修改保存后刷新仍在，且不显示密钥值", async ({
 	await page.getByRole("button", { name: "保存渠道配置" }).click();
 	await page.getByText("已保存", { exact: true }).waitFor();
 	await page.reload();
+	await page.getByText("高级配置", { exact: false }).click();
 	await expect(
 		page
 			.locator('section[aria-label="渠道"] .channel-card')

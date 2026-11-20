@@ -430,7 +430,7 @@ describe("PUT /api/channels", () => {
 		expect(error.details).toMatchObject({ path: "roles.writer" });
 	});
 
-	it("writer 与 judge 同家族返回 400 并指出两个角色", async () => {
+	it("writer 与 judge 同家族时照常保存，只在视图里提醒", async () => {
 		const { running } = await startChannelsServer();
 		const response = await send(
 			running.origin,
@@ -438,14 +438,9 @@ describe("PUT /api/channels", () => {
 			"PUT",
 			updateBody({ roles: { writer: "main", judge: "main" } }),
 		);
-		expect(response.status).toBe(400);
-		const error = await errorOf(response);
-		expect(error.message).toContain("judge");
-		expect(error.message).toContain("writer");
-		expect(error.details).toMatchObject({
-			path: "roles.judge",
-			roles: ["judge", "writer"],
-		});
+		expect(response.status).toBe(200);
+		const view = (await response.json()) as ChannelsView;
+		expect(view.warnings.join("\n")).toContain("不影响游玩");
 	});
 
 	it("重复引用同一个渠道返回 400", async () => {

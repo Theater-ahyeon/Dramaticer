@@ -711,6 +711,29 @@ export class ApiClient {
 		return this.json<ChannelsView>("PUT", "/api/channels", request);
 	}
 
+	/** 保存密钥到服务端的 env 文件；响应不含密钥值。 */
+	async saveChannelKey(name: string, value: string): Promise<void> {
+		await this.json<{ name: string; set: boolean }>(
+			"POST",
+			"/api/channels/keys",
+			{ name, value },
+		);
+	}
+
+	/** 用已保存的密钥向供应商要模型列表。 */
+	async listChannelModels(request: {
+		readonly api: string;
+		readonly baseUrl: string;
+		readonly apiKeyEnv: string;
+	}): Promise<readonly string[]> {
+		const result = await this.json<{ models: string[] }>(
+			"POST",
+			"/api/channels/models",
+			request,
+		);
+		return result.models;
+	}
+
 	async probeChannel(
 		request: ChannelProbeRequest,
 	): Promise<ChannelProbeResult> {

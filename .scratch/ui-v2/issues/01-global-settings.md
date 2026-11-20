@@ -4,13 +4,14 @@
 
 **Blocked by:** 无
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] 新装环境不建故事就能配好渠道并测试通过
-- [ ] 新建故事两种方式各一条 e2e，结束时停在故事页
-- [ ] 不再出现 `window.prompt` 与整页刷新跳转
-- [ ] `pnpm check` 通过；动到 server 或 web 的跑相关 e2e，并用走查脚本（`packages/web/.walk/`）重新截图逐页确认
+- [x] 新装环境不建故事就能配好渠道并测试通过
+- [x] 新建故事两种方式各一条 e2e，结束时停在故事页
+- [x] 不再出现 `window.prompt` 与整页刷新跳转
+- [x] `pnpm check` 通过；动到 server 或 web 的跑相关 e2e，并用走查脚本（`packages/web/.walk/`）重新截图逐页确认
 
 规格：`.scratch/ui-v2/spec.md`；方案：`docs/proposals/v5.md`
 
 ## Comments
+完成：2026-11-20 全局设置页（连接向导 + 高级配置 + 外观）与书架新建故事弹窗；服务端新增保存密钥、获取模型列表，没有渠道文件也能启动；评测裁判同家族降为提醒（ADR-0169）。注意：「全局」导航让手机底栏变成 8 项，`ui-v2/05` 拆掉「更多」后回到 7 项；「新装环境」由服务端单元测试覆盖（e2e 服务共用一份已有配置）。

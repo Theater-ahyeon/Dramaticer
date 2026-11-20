@@ -554,7 +554,7 @@ export function Prefs() {
 						<Link
 							className="btn"
 							style={{ textDecoration: "none" }}
-							to={`/stories/${encodeURIComponent(storyId)}/channels`}
+							to="/settings"
 						>
 							选渠道和模型 ›
 						</Link>

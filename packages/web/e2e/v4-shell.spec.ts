@@ -268,7 +268,7 @@ test.describe("新界面外壳与书架", () => {
 			}
 
 			const items = rail.locator("a.nav");
-			await expect(items).toHaveCount(7);
+			await expect(items).toHaveCount(8);
 			for (const item of await items.all()) {
 				const itemBox = await item.boundingBox();
 				expect(itemBox).not.toBeNull();

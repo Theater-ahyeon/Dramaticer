@@ -286,6 +286,14 @@ export async function startFakeChannel(options = {}) {
 	// 流式响应的间隔让界面有机会把中间状态画出来；0 表示尽快发完。
 	const streamDelayMs = options.streamDelayMs ?? 0;
 	const server = createServer((req, res) => {
+		// 设置页向导获取模型列表时请求 `/models`。
+		if (req.method === "GET" && req.url?.endsWith("/v1/models")) {
+			res.writeHead(200, { "Content-Type": "application/json" });
+			res.end(
+				JSON.stringify({ data: [{ id: "fake-writer" }, { id: "fake-alt" }] }),
+			);
+			return;
+		}
 		if (req.method !== "POST") {
 			res.writeHead(404);
 			res.end();

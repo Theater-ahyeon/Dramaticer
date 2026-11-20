@@ -2,6 +2,7 @@ import type { StoryView } from "@dramaticer/protocol";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
+import { NewStoryDialog } from "./NewStoryDialog";
 import { Cover, Num, TLink, sp, useLoad } from "./ui";
 
 interface Overview {
@@ -24,6 +25,10 @@ function ago(iso: string | null): string {
 /** 书架：最近写过的故事放在最上面，其余排成书脊；卡面图来自卡片本身。 */
 export function Library() {
 	const stories = useLoad(() => api.listStories(), []);
+	const channels = useLoad(() => api.getChannels(), []);
+	const needsModel =
+		channels.data !== null && channels.data.roles.writer === null;
+	const [creating, setCreating] = useState(false);
 	const [overviews, setOverviews] = useState<ReadonlyMap<string, Overview>>(
 		new Map(),
 	);
@@ -67,12 +72,30 @@ export function Library() {
 	});
 	const [latest, ...rest] = sorted;
 	const link = (story: StoryView) =>
-		`/stories/${encodeURIComponent(story.id)}/${story.headNodeId === null ? "import" : "play"}`;
+		`/stories/${encodeURIComponent(story.id)}/play`;
 	const latestOverview =
 		latest === undefined ? undefined : overviews.get(latest.id);
 
 	return (
 		<section data-view="library">
+			<div className="lib-bar">
+				<button
+					type="button"
+					className="btn gold"
+					onClick={() => setCreating(true)}
+				>
+					＋ 新建故事
+				</button>
+			</div>
+			{creating ? <NewStoryDialog onClose={() => setCreating(false)} /> : null}
+			{needsModel ? (
+				<output className="setup-banner">
+					<span>还没有连接模型，连接后才能开始写。</span>
+					<TLink className="btn gold sm" to="/settings">
+						连接模型
+					</TLink>
+				</output>
+			) : null}
 			{latest === undefined ? null : (
 				<div className="hero">
 					<TLink
@@ -90,7 +113,7 @@ export function Library() {
 						<h1>{latest.title}</h1>
 						<p className="recap">
 							{latestOverview === undefined || latestOverview.recap === ""
-								? "还没有写下第一楼。导入一张卡，或者直接开始。"
+								? "暂无内容"
 								: latestOverview.recap}
 						</p>
 						<div className="stats">
@@ -141,36 +164,20 @@ export function Library() {
 						</TLink>
 					);
 				})}
-				<NewStory onCreated={stories.reload} />
+				<NewStoryCard onOpen={() => setCreating(true)} />
 			</div>
 		</section>
 	);
 }
 
-function NewStory({ onCreated }: { readonly onCreated: () => void }) {
-	const [busy, setBusy] = useState(false);
-	const [error, setError] = useState<string | null>(null);
-	const create = async () => {
-		const title = window.prompt("给新故事起个名字（之后可以改）", "新故事");
-		if (title === null || title.trim() === "") return;
-		setBusy(true);
-		try {
-			const story = await api.createStory({ title: title.trim() });
-			window.location.assign(`/stories/${encodeURIComponent(story.id)}/import`);
-		} catch (value) {
-			setError(value instanceof Error ? value.message : String(value));
-			setBusy(false);
-			onCreated();
-		}
-	};
+function NewStoryCard({ onOpen }: { readonly onOpen: () => void }) {
 	return (
-		<button type="button" className="book add" onClick={create} disabled={busy}>
+		<button type="button" className="book add" onClick={onOpen}>
 			<span className="plus" aria-hidden="true">
 				＋
 			</span>
-			<h2>导入一张卡</h2>
-			<p>卡、世界书、聊天记录都能带进来</p>
-			{error === null ? null : <p className="v4err">{error}</p>}
+			<h2>新建故事</h2>
+			<p>导入角色卡，或空白开局</p>
 		</button>
 	);
 }

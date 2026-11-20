@@ -19,6 +19,8 @@ import type { BackgroundScheduler } from "./background.js";
 import { HttpError, sendJson } from "./http.js";
 import {
 	applyChannelsActionPayload,
+	handleChannelKey,
+	handleChannelModelList,
 	handleChannelProbe,
 	handleChannels,
 	readAssistantChannelsSnapshot,
@@ -122,7 +124,12 @@ export interface ApiRouteOptions {
 	readonly now?: () => number;
 	/** 渠道配置文件的路径；没有配置时管理接口返回 404。 */
 	readonly channelsPath: string | null;
-	readonly channelsEnv: Readonly<Record<string, string | undefined>>;
+	/** 可写：设置页保存密钥后立即生效。 */
+	readonly channelsEnv: Record<string, string | undefined>;
+	/** 设置页保存密钥写入的 env 文件；为 null 时只能手动编辑 .env。 */
+	readonly envFile: string | null;
+	/** 获取模型列表用；测试注入假实现。 */
+	readonly fetch?: (url: string, init?: RequestInit) => Promise<Response>;
 	/** 生图配置文件的路径；没有配置时 provider 列表为空。 */
 	readonly imagesPath: string | null;
 	readonly imagesEnv: Readonly<Record<string, string | undefined>>;
@@ -411,6 +418,16 @@ export async function handleApiRequest(
 		if (second === "probe" && parts.length === 2) {
 			requireMethod(method, ["POST"]);
 			await handleChannelProbe(req, res, options);
+			return;
+		}
+		if (second === "keys" && parts.length === 2) {
+			requireMethod(method, ["POST"]);
+			await handleChannelKey(req, res, options);
+			return;
+		}
+		if (second === "models" && parts.length === 2) {
+			requireMethod(method, ["POST"]);
+			await handleChannelModelList(req, res, options);
 			return;
 		}
 	}

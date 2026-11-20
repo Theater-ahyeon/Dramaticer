@@ -3,24 +3,21 @@
 > 每次收尾时完整重写，不超过 40 行。长期有效的注意事项写进 `docs/dev/NOTES.md`。
 
 ## 最近一次
-- 2026-11-20（人工会话，项目整理）。人类要求「全部解决」上次盘点出的优化项，并逐项拍板：
-  - 许可证：AGPL-3.0-only。根目录 `LICENSE`（GNU 官方全文），各 `package.json` 加 `license`，README 许可证一节改写。
-  - `AGENTS.md`（人类授权）：开头定位与 DESIGN §0 一致；文档地图改为「DESIGN 是唯一设计权威」；I6 注明快速、规划、深度；I12 改为「台账是唯一的结构化视图，写入须有原文出处」。`.devloop/protected.sha` 与快照已同步。
-  - HUMAN：03、15 取消；20、21、23 完成。17、18（两个兼容插件的上游许可证）人类本次未表态，仍待处理。
-  - CI：`.github/workflows/check.yml`（Ubuntu、Node 22、`pnpm check`）。**还没在 GitHub 上跑过**，首次推送后看结果；Linux 上若有只在 Windows 成立的路径假设会在这里暴露。
-  - 门禁拆分：vitest `unit` / `eval` 两个项目，`pnpm test` 只跑 unit（301 个文件），`pnpm test:eval` 跑 33 个评测测试文件。本次 eval 项目未单独跑（测试本身没改）。
-  - 早期脚本 `scripts/f0-*`、`r1-*`、`r2-*`、`r5-*` 移到 `scripts/archive/`，删掉对应 `package.json` 命令名。
-  - 同期人类自己在改 README 与 `.gitignore`（`dist-release/`）、新增 `package:release` 脚本，已一并提交。
-- 门禁：`pnpm check` 通过（unit：2565 通过，6 跳过）。本机这次耗时 182 秒，没有变快，主要瓶颈仍是 Windows 杀毒扫描临时目录（HUMAN-16）。
+- 2026-11-20（人工会话，很长）。人类确认 v5 方案（`docs/proposals/v5.md` 定稿，ADR-0168），工单在 `.scratch/` 的 `ui-v2`、`memory-v5`、`direction-v5`、`canon`、`image-v2`、`card-ui`，共 25 张。
+- 本会话做完：
+  - 许可证 AGPL-3.0、GitHub Actions 门禁、vitest 拆 unit/eval、旧脚本归档。
+  - 写作条目（预设的位置与深度注入）与 NovelAI 基础后端（ADR-0167）。
+  - AGENTS.md 的 I6、I9、I11 按人类授权改写（HUMAN-26）；未动 `.devloop/protected.sha`，devloop 下次启动自动接受。
+  - **ui-v2/01 完成**：全局设置页 `/settings`（连接向导、高级配置、外观）、书架新建故事弹窗、保存密钥与模型列表接口、无渠道文件可启动（ADR-0169）。
+- 门禁：`pnpm check` 通过（unit 298 文件）；ui-v2/01 相关 e2e 全过，此前一次全量 e2e 83 过、3 跳过（之后只改了书架按钮与外壳，相关用例已重跑）。
 
-## 下一步（都需要人类）
-1. 配后台跨供应商保底（HUMAN-19，人类选择自己配）：`channels.example.yaml` 的 `bg2` 示例。
-2. 试玩 2–3 个故事，跑 `stats rerolls` 拿北极星数字；之后另开工单决定是否删除 `mechanisms`。
-3. 回复 HUMAN-17、18；HUMAN-16（Defender 排除 `Temp` 与仓库目录）。
-4. 推送后检查 CI 首跑。
+## 下一步
+1. `ui-v2/02` 故事页输入台与楼层操作（v5 §8.2）。动手前读人类 TauriTavern 的界面设置作参照（只读 settings，不读 secrets）。
+2. 之后按 `.scratch/README.md` 的 v5 顺序：ui-v2 03–05 → memory-v5 → canon → card-ui / image-v2 → ui-v2/06。
 
 ## 眼下要注意
-- 远端：`origin` = GitHub 公开仓库，只推 `main`；本地 `backup/main-original` 与旧 `spec/*`、`ticket/*` 分支是旧邮箱，不要推。
-- 新增评测类测试要加进 `vitest.config.ts` 的 `evalTests`，否则会进默认门禁。
+- 手机底栏现在 8 项（多了「全局」），`ui-v2/05` 拆「更多」后回到 7 项；`v4-shell.spec.ts` 的数量与 `.navs .ind` 宽度要一起改。
+- 读人类本机 ST 数据时：settings.json 有 19 MB，只用脚本列结构并打码；打码规则要覆盖 `novelaiApi` 这类不含 key 字样的字段。
+- 远端：只推 `main`；`backup/main-original` 与旧 `spec/*`、`ticket/*` 分支不要推。
 - 新存储方法写进领域仓储并加进 `story-store.ts` 的 `Pick<…>` 与 `DELEGATES`；新路由参数校验只用 `routes-common.ts`。
-- server 读 core 的 `dist`：改了 core 导出后先 `pnpm --filter @dramaticer/core run build`。
+- server 读 core 的 `dist`：改了 core 导出后先构建 core；单跑 e2e 前先构建 web 与 server。

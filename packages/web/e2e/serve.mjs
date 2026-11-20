@@ -587,6 +587,7 @@ const running = await serverModule.startServer({
 	channels: {
 		path: channelsPath,
 		env: { E2E_FAKE_KEY: "e2e-key" },
+		envFile: join(workDir, ".env"),
 	},
 	log: (line) => console.log(`[e2e] ${line}`),
 });
