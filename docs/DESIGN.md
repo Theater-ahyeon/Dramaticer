@@ -330,7 +330,7 @@ MVP 之前的工作只做让上面六条成立的事；其余进 §15.3 或 §18
 
 ### 15.3 MVP 之后的工程整理
 
-见 `.scratch/refactor/`：拆分 `StoryStore`（单文件约 1.2 万行）与 `server/src/routes.ts`；把评测工具从 `st-compat` 移到独立的 `packages/eval`；删除未胜出的实验候选（X1 的 `wiki`、`temporal_graph`，X2 的 `mechanisms`、`bits`）；其余功能开关逐个接通运行时。
+见 `.scratch/refactor/`。2026-11-19 进度：`StoryStore` 已按领域拆成 `store/repos/`、server 路由已拆成 `routes-<领域>.ts`；X1 的 `wiki`、`temporal_graph` 与 X2 的 `bits` 已删除（ADR-0166），v3 的 `mechanisms` 在北极星数据出来前暂留；功能开关已全部接通或标「尚未生效」（ADR-0163、0164）；后台跨供应商保底已实现（ADR-0165）。评测工具移到 `packages/eval` 暂缓。
 
 ### 15.4 再之后
 
