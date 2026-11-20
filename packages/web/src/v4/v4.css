@@ -2405,6 +2405,111 @@ img.cover {
 	}
 }
 
+/* ---- 重写率（北极星，refactor/04） ---- */
+.rr-lead {
+	margin: 10px 0 12px;
+	color: var(--muted);
+	font-size: var(--t-sm);
+}
+.rr-lead b {
+	color: var(--ink);
+	font-size: var(--t-lg);
+}
+.rr-wrap {
+	padding: 0;
+	border: 0;
+	box-shadow: none;
+	background: none;
+}
+.rr td small {
+	margin-left: 4px;
+	color: var(--muted);
+}
+.rr tfoot td {
+	padding: 10px;
+	border-top: 1px solid var(--line);
+	font-weight: 600;
+}
+.rr-groups {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+	gap: 12px;
+	margin: 14px 0 6px;
+}
+.rr-groups > div {
+	display: grid;
+	gap: 2px;
+	padding: 12px 14px;
+	border: 1px solid var(--line);
+	border-radius: var(--r-md);
+}
+.rr-groups b {
+	font-size: var(--t-xl);
+	font-weight: 400;
+}
+.rr-groups small {
+	color: var(--muted);
+}
+
+/* ---- 后台暂停提示与渠道提醒（refactor/03） ---- */
+.bgnotice {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 10px 14px;
+	margin-bottom: var(--s-4);
+	padding: 12px 16px;
+	border: 1px solid color-mix(in srgb, var(--bad) 35%, transparent);
+	border-left: 3px solid var(--bad);
+	border-radius: var(--r-md);
+	background: var(--bad-wash);
+}
+.bgnotice > div {
+	flex: 1;
+	min-width: min(100%, 260px);
+}
+.bgnotice b {
+	color: var(--bad);
+}
+.bgnotice p {
+	margin: 2px 0 0;
+	font-size: var(--t-sm);
+	color: var(--ink);
+	overflow-wrap: anywhere;
+}
+.channel-warnings {
+	margin: 10px 0 0;
+	padding: 10px 14px 10px 30px;
+	border: 1px solid color-mix(in srgb, var(--cinnabar) 30%, transparent);
+	border-radius: var(--r-md);
+	background: var(--cinnabar-wash);
+	color: var(--ink);
+	font-size: var(--t-sm);
+}
+.channel-warnings li + li {
+	margin-top: 4px;
+}
+.role-probes {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin: 12px 0;
+}
+.role-probe {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px 12px;
+	font-size: var(--t-sm);
+}
+.role-probe-ok {
+	color: var(--ok);
+}
+.role-probe-bad {
+	color: var(--bad);
+	overflow-wrap: anywhere;
+}
+
 /* ---- 对话框（命令面板）、抽屉与提示 ---- */
 .scrim {
 	position: fixed;

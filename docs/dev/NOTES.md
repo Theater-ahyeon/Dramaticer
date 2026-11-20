@@ -3,6 +3,8 @@
 > 从旧的 HANDOFF 整体搬来（截至会话 429），按需搜索，不通读。新增的长期注意事项按模块追加到末尾。
 
 ## 可重复命令
+
+- 北极星指标：`pnpm --filter @dramaticer/st-compat build && node packages/st-compat/dist/cli.js stats rerolls --db data/dramaticer.db [--story <id>] [--json]`（只读，只输出数字）。
 - 门禁：`pnpm check`。
 - 全量 e2e：`pnpm e2e`（会先构建 server 与 web；跑两个项目）。
 - 蓝图结构与存储目标测试：`pnpm exec vitest run packages/core/test/story-blueprint.test.ts`。
@@ -150,6 +152,7 @@
 - 已接通的开关登记在 `WIRED_FEATURE_SWITCHES`（`settings/features.ts`），功能页据此标「尚未生效」。接通新开关时把它加进去并补一条运行时测试。
 - 伏笔上限一律用 `readStoryPromiseLimit`；`directorConfig.maxOpenPromises` 已不再生效。
 - 重逢注入、知情标注、档案归档的开关需要故事有实体能力；测试夹具要 `upsertEntity` 一个实体，否则这些开关取关闭值。
+- 后台保底（ADR-0165）：模型的 `fallback` 只对后台岗位生效（`StoryRuntimeManager` 的 `#backgroundClient`），只在 `LlmAllChannelsFailedError` 时切换，流式请求已经推送内容就不切。后台是否暂停由 `readBackgroundHealth` 从任务表算，只认「模型 X 的所有渠道都失败了」这类错误，解析错误不算；新错误格式要同步那条正则。错误摘要会截短并去掉像密钥的长串，但仍不要把密钥写进错误信息。
 
 ## 新界面的视觉层（2026-11-16 起）
 

@@ -83,6 +83,11 @@ export interface LlmModelConfig {
 	readonly tools: LlmModelToolsConfig | null;
 	/** 上次渠道体检的结果；没有跑过时为 null。 */
 	readonly probe: LlmModelProbe | null;
+	/**
+	 * 保底模型别名：后台岗位用这个模型时，所有渠道都失败后改用它（refactor/03）。
+	 * 没有配置时为 null 或缺省。
+	 */
+	readonly fallback?: string | null;
 }
 
 /** 按岗位区分的模型角色。 */
@@ -330,6 +335,18 @@ export function parseChannelsConfig(
 	}
 	if (models.size === 0) {
 		throw new Error(`${label}.models 不能为空`);
+	}
+	for (const model of models.values()) {
+		const fallback = model.fallback ?? null;
+		if (fallback === null) continue;
+		if (fallback === model.alias) {
+			throw new Error(`${label}.models.${model.alias}.fallback 不能指向自己`);
+		}
+		if (!models.has(fallback)) {
+			throw new Error(
+				`${label}.models.${model.alias}.fallback 引用了不存在的模型 ${fallback}`,
+			);
+		}
 	}
 	const roles = parseRoles(root.roles, models, label);
 	const rawEmbeddings =
@@ -632,6 +649,10 @@ function parseModel(
 		channels: selected,
 		tools: parseModelTools(value.tools, `${label}.tools`),
 		probe: parseProbe(value.probe, `${label}.probe`),
+		fallback:
+			value.fallback === undefined || value.fallback === null
+				? null
+				: requireString(value.fallback, `${label}.fallback`),
 	};
 }
 

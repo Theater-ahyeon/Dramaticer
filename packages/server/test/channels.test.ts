@@ -544,6 +544,39 @@ describe("POST /api/channels/probe", () => {
 		).not.toBeNull();
 	});
 
+	it("按岗位体检：体检这个岗位当前生效的模型并写回", async () => {
+		const { running, file } = await startChannelsServer();
+		const response = await send(running.origin, "/api/channels/probe", "POST", {
+			role: "settler",
+		});
+		expect(response.status).toBe(200);
+		const result = (await response.json()) as ChannelProbeResult;
+		expect(result.alias).toBe("background");
+		expect(readFileSync(file, "utf8")).toContain("probedAt:");
+		const both = await send(running.origin, "/api/channels/probe", "POST", {
+			role: "settler",
+			alias: "main",
+		});
+		expect(both.status).toBe(400);
+		const unknown = await send(running.origin, "/api/channels/probe", "POST", {
+			role: "cook",
+		});
+		expect(unknown.status).toBe(400);
+	});
+
+	it("渠道视图带上配置提醒：后台模型没有保底", async () => {
+		const { running } = await startChannelsServer();
+		const view = (await (
+			await request(running.origin, "/api/channels")
+		).json()) as ChannelsView;
+		expect(view.warnings.some((item) => item.includes("没有配置保底"))).toBe(
+			true,
+		);
+		expect(
+			view.models.find((model) => model.alias === "background"),
+		).toMatchObject({ fallback: null });
+	});
+
 	it("未知模型与没有配置的渠道返回 400", async () => {
 		const { running } = await startChannelsServer();
 		const unknownAlias = await send(
@@ -573,5 +606,98 @@ describe("POST /api/channels/probe", () => {
 		const error = await errorOf(response);
 		expect(error.message).toBe("渠道体检失败：体检通道不可用：连接被拒绝");
 		expect(error.details).toEqual({ path: "alias" });
+	});
+});
+
+describe("GET /api/stories/:id/background/health", () => {
+	it("连续渠道失败时报告暂停、岗位、渠道与错误摘要，成功后恢复", async () => {
+		const { running } = await startChannelsServer();
+		const store = running.store;
+		store.createStory({ id: "s1", title: "测试" });
+		const fail = (kind: string) => {
+			const [job] = store.enqueueStoryBackgroundJobs({
+				storyId: "s1",
+				kinds: [kind],
+			});
+			if (job === undefined) throw new Error("任务没有入队");
+			store.startBackgroundJob(job.id);
+			store.failBackgroundJob(job.id, {
+				error:
+					"模型 agy-gemini-3.8-flash-medium 的所有渠道都失败了：gateway：402 insufficient_balance",
+				maxAttempts: 1,
+			});
+		};
+		for (const kind of ["a", "b", "c"]) {
+			fail(kind);
+			await new Promise((resolve) => setTimeout(resolve, 5));
+		}
+		const health = (await (
+			await request(running.origin, "/api/stories/s1/background/health")
+		).json()) as {
+			paused: boolean;
+			roles: string[];
+			channel: string | null;
+			error: string | null;
+		};
+		expect(health.paused).toBe(true);
+		expect(health.roles).toEqual(["settler", "planner"]);
+		expect(health.channel).toBe("gateway");
+		expect(health.error).toContain("402");
+		expect(JSON.stringify(health)).not.toContain("secret-value");
+
+		const [ok] = store.enqueueStoryBackgroundJobs({
+			storyId: "s1",
+			kinds: ["d"],
+		});
+		if (ok === undefined) throw new Error("任务没有入队");
+		store.startBackgroundJob(ok.id);
+		store.finishBackgroundJob(ok.id);
+		const recovered = (await (
+			await request(running.origin, "/api/stories/s1/background/health")
+		).json()) as { paused: boolean };
+		expect(recovered.paused).toBe(false);
+	});
+});
+
+describe("GET /api/stories/:id/stats/rerolls", () => {
+	it("给出每百楼重写率与原因分布，不含楼层原文", async () => {
+		const { running } = await startChannelsServer();
+		const store = running.store;
+		store.createStory({ id: "s1", title: "测试" });
+		store.appendNode({
+			id: "u1",
+			storyId: "s1",
+			parentId: null,
+			role: "user",
+			raw: "私密一",
+		});
+		store.appendNode({
+			id: "a1",
+			storyId: "s1",
+			parentId: "u1",
+			role: "assistant",
+			raw: "私密二",
+		});
+		store.recordPreference({
+			storyId: "s1",
+			nodeId: "a1",
+			kind: "swipe",
+			payload: {
+				abandonedNodeId: "a1",
+				acceptedNodeId: "a1",
+				reason: "too-short",
+			},
+		});
+		const response = await request(
+			running.origin,
+			"/api/stories/s1/stats/rerolls",
+		);
+		expect(response.status).toBe(200);
+		const text = await response.text();
+		expect(text).not.toContain("私密");
+		const report = JSON.parse(text) as {
+			total: { floors: number; rerolls: number; perHundred: number };
+		};
+		expect(report.total).toEqual({ floors: 1, rerolls: 1, perHundred: 100 });
 	});
 });

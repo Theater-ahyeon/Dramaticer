@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import {
+	LlmAllChannelsFailedError,
 	type LlmChannelsConfig,
 	type LlmModelConfig,
 	type LlmStreamingClient,
@@ -198,5 +199,51 @@ describe("StoryRuntimeManager 计算输出上限", () => {
 				1_500,
 			),
 		).toBe(1_500);
+	});
+});
+
+describe("后台岗位的保底（refactor/03）", () => {
+	it("后台模型配了 fallback 时，主模型所有渠道失败后改用保底；正文不受影响", async () => {
+		const store = tempStore();
+		const created: string[] = [];
+		const answer = (alias: string): LlmStreamingClient => ({
+			stream() {
+				throw new Error("测试不走流式");
+			},
+			async complete() {
+				if (alias === "background") {
+					throw new LlmAllChannelsFailedError("deepseek/v4", [
+						{ channel: "gateway", error: new Error("402") },
+					]);
+				}
+				return {
+					text: `${alias} 回答`,
+					reasoning: "",
+					stopReason: "stop",
+				} as never;
+			},
+		});
+		const manager = new StoryRuntimeManager({
+			store,
+			loadConfig: async () =>
+				configWith([
+					model("main", "writer-x"),
+					{ ...model("background", "deepseek/v4"), fallback: "bg-fallback" },
+					model("bg-fallback", "qwen/q3"),
+				]),
+			createClient: (_config, alias) => {
+				created.push(alias);
+				return answer(alias);
+			},
+		});
+		const runtime = await manager.get("s1");
+		const done = await runtime.backgroundClient?.complete({
+			messages: [{ role: "user", content: "结算" }],
+		} as never);
+		expect(done?.text).toBe("bg-fallback 回答");
+		expect(created).toContain("bg-fallback");
+		await expect(
+			runtime.chatClient.complete({ messages: [] } as never),
+		).resolves.toMatchObject({ text: "main 回答" });
 	});
 });

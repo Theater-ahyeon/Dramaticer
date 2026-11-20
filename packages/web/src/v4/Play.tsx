@@ -13,6 +13,7 @@ import { api } from "../api";
 import { blockViewKind, optionLinesOf, plainTextOf } from "../chat/blocks";
 import { PUSH_TURN_TEXT } from "../chat/push";
 import { BlockContent } from "../components/chat/BlockContent";
+import { BackgroundNotice } from "./BackgroundNotice";
 import { Dock, type DockTab } from "./Dock";
 import { usePaletteCommands } from "./Shell";
 import {
@@ -608,6 +609,7 @@ export function Play() {
 
 	return (
 		<section data-view="play">
+			<BackgroundNotice storyId={storyId} tick={dockTick} />
 			<div className="play">
 				<div className={notesOn ? "sheet" : "sheet nonotes"} id="sheet">
 					<div className="sheet-head">

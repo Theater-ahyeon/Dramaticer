@@ -2,6 +2,7 @@ import type { FeatureTier, StoryFeatureSwitchView } from "@dramaticer/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
+import { RerollStats } from "./RerollStats";
 import { usePaletteCommands } from "./Shell";
 import { type Theme, onThemeChange, setTheme, storedTheme } from "./stage";
 import { Seg, Sw, sp, useAct, useLoad, useToast } from "./ui";
@@ -123,6 +124,17 @@ export function Prefs() {
 	const stats = useLoad<FeatureStats>(
 		() => api.get(sp(storyId, "/features/stats")),
 		[storyId],
+	);
+	// 渠道配置提醒（例如后台保底与主模型共用渠道）；没有渠道文件时为空。
+	const channelWarnings = useLoad<readonly string[]>(
+		() =>
+			tab === "model"
+				? api
+						.getChannels()
+						.then((view) => view.warnings)
+						.catch(() => [])
+				: Promise.resolve([]),
+		[tab],
 	);
 	const card = useLoad<CardView>(
 		() => api.get(sp(storyId, "/card")),
@@ -496,6 +508,7 @@ export function Prefs() {
 							</div>
 						))}
 					</div>
+					<RerollStats storyId={storyId} />
 					<div className="total">
 						<span>
 							按现在的开关，每轮后台约{" "}
@@ -512,6 +525,13 @@ export function Prefs() {
 						<div>
 							<h3>渠道与模型</h3>
 							<p>写正文、后台记账、每章规划各用哪个模型；密钥只存在本机。</p>
+							{(channelWarnings.data ?? []).length > 0 ? (
+								<ul className="channel-warnings" aria-label="渠道配置提醒">
+									{(channelWarnings.data ?? []).map((warning) => (
+										<li key={warning}>{warning}</li>
+									))}
+								</ul>
+							) : null}
 							<div className="stat">
 								<span>
 									{card.data?.recommendedMode

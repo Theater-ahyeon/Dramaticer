@@ -11,6 +11,16 @@ channels:
     maxRetries: 2
     retryBaseDelayMs: 1000
     timeoutMs: 300000
+  # 后台保底：建议是另一家供应商。主后台渠道额度耗尽（402）、被停用（403）或
+  # 持续 5xx 时，后台岗位改用 bg-fallback（见 models.background.fallback）。
+  bg2:
+    api: openai-completions
+    baseUrl: ${DRAMATICER_BG2_BASE_URL}
+    apiKey: ${DRAMATICER_BG2_API_KEY}
+    requestsPerMinute: 20
+    maxRetries: 2
+    retryBaseDelayMs: 1000
+    timeoutMs: 300000
   main:
     api: openai-completions
     baseUrl: ${DRAMATICER_MAIN_BASE_URL}
@@ -42,6 +52,9 @@ models:
     maxTokens: 32768
     reasoning: true
     channels: [bg]
+    # 主模型所有渠道都失败后，后台岗位（结算、规划）改用这个模型；正文写作不会
+    # 自动换模型。保底和它共用渠道时启动日志与设置页会提醒。
+    fallback: bg-fallback
   main:
     id: ${DRAMATICER_MAIN_MODEL}
     contextWindow: 131072
@@ -66,11 +79,12 @@ models:
     tools:
       transport: native
   bg-fallback:
-    id: auto/deepseek-v4.1-flash
+    id: ${DRAMATICER_BG2_MODEL}
     contextWindow: 131072
-    maxTokens: 8192
+    maxTokens: 32768
     reasoning: true
-    channels: [bg]
+    # 走另一家供应商的渠道；写 [bg] 会和主后台模型一起停。
+    channels: [bg2]
   codex:
     id: codex/gpt-6.1-terra
     contextWindow: 500000

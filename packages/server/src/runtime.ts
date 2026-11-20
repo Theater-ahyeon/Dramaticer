@@ -12,6 +12,7 @@ import {
 	type TurnRequestRewriter,
 	createDefaultContextTemplate,
 	createEmbeddingClient,
+	createFallbackClient,
 	createLlmClient,
 	createRerankClient,
 	createStandardChatSlots,
@@ -94,6 +95,27 @@ export class StoryRuntimeManager {
 		return runtime;
 	}
 
+	/**
+	 * 后台岗位的客户端：模型配了 `fallback` 且保底可用时包一层，主模型所有渠道
+	 * 都失败后改用保底（refactor/03）。正文写作不走这里。
+	 */
+	#backgroundClient(
+		config: LlmChannelsConfig,
+		alias: string,
+	): LlmStreamingClient {
+		const primary = this.#createClient(config, alias);
+		const fallbackAlias = config.models.get(alias)?.fallback ?? null;
+		const fallback =
+			fallbackAlias === null ? undefined : config.models.get(fallbackAlias);
+		if (fallbackAlias === null || fallback === undefined || !fallback.enabled) {
+			return primary;
+		}
+		return createFallbackClient({
+			primary,
+			fallback: this.#createClient(config, fallbackAlias),
+		});
+	}
+
 	async #build(
 		storyId: string,
 		settings: StorySettings,
@@ -143,9 +165,13 @@ export class StoryRuntimeManager {
 			requestRewriter: slots.kernel,
 			chatClient: this.#createClient(config, modelAlias),
 			backgroundClient:
-				settlerAlias === null ? null : this.#createClient(config, settlerAlias),
+				settlerAlias === null
+					? null
+					: this.#backgroundClient(config, settlerAlias),
 			plannerClient:
-				plannerAlias === null ? null : this.#createClient(config, plannerAlias),
+				plannerAlias === null
+					? null
+					: this.#backgroundClient(config, plannerAlias),
 			embedder,
 			reranker,
 		};

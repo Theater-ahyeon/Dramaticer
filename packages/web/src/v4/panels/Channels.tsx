@@ -104,6 +104,10 @@ export function ChannelsTool() {
 	const [probeErrors, setProbeErrors] = useState<
 		Readonly<Record<string, unknown>>
 	>({});
+	// 按岗位体检的结果：岗位 → 一句结论或错误。
+	const [roleProbe, setRoleProbe] = useState<
+		Readonly<Record<string, { readonly ok: boolean; readonly text: string }>>
+	>({});
 
 	useEffect(() => {
 		let active = true;
@@ -216,6 +220,57 @@ export function ChannelsTool() {
 		setSaved(false);
 	};
 
+	/** 按岗位体检：服务端取这个岗位当前生效的模型，体检结果写回渠道配置。 */
+	const probeRole = (role: (typeof MODEL_ROLE_CHOICES)[number]["value"]) => {
+		if (probing !== null) return;
+		setProbing(`role:${role}`);
+		void api
+			.probeChannel({ role })
+			.then((result) => {
+				setView((previous) =>
+					previous === null
+						? previous
+						: {
+								...previous,
+								models: previous.models.map((item) =>
+									item.alias === result.alias
+										? { ...item, probe: result.probe }
+										: item,
+								),
+							},
+				);
+				setDraft((previous) =>
+					previous === null
+						? previous
+						: {
+								...previous,
+								models: previous.models.map((item) =>
+									item.alias.trim() === result.alias
+										? { ...item, probe: result.probe }
+										: item,
+								),
+							},
+				);
+				setRoleProbe((previous) => ({
+					...previous,
+					[role]: {
+						ok: true,
+						text: `${result.alias} 经渠道 ${result.channel} 体检通过`,
+					},
+				}));
+			})
+			.catch((error: unknown) => {
+				setRoleProbe((previous) => ({
+					...previous,
+					[role]: {
+						ok: false,
+						text: error instanceof Error ? error.message : String(error),
+					},
+				}));
+			})
+			.finally(() => setProbing(null));
+	};
+
 	const probe = (model: ModelFormDraft, index: number): void => {
 		const alias = model.alias.trim();
 		if (alias.length === 0 || probing !== null) return;
@@ -304,6 +359,13 @@ export function ChannelsTool() {
 				</p>
 			</header>
 			<ErrorNotice error={loadError} />
+			{view !== null && view.warnings.length > 0 ? (
+				<ul className="channel-warnings" aria-label="渠道配置提醒">
+					{view.warnings.map((warning) => (
+						<li key={warning}>{warning}</li>
+					))}
+				</ul>
+			) : null}
 			{view === null || draft === null ? (
 				<p className="muted">正在读取渠道配置…</p>
 			) : (
@@ -342,6 +404,33 @@ export function ChannelsTool() {
 									</select>
 								</Field>
 							))}
+						</div>
+						<div className="role-probes">
+							{MODEL_ROLE_CHOICES.map((choice) => {
+								const outcome = roleProbe[choice.value];
+								return (
+									<div className="role-probe" key={choice.value}>
+										<button
+											type="button"
+											onClick={() => probeRole(choice.value)}
+											disabled={busy || probing !== null}
+										>
+											{probing === `role:${choice.value}`
+												? "体检中…"
+												: `体检「${choice.label}」`}
+										</button>
+										{outcome === undefined ? null : (
+											<span
+												className={
+													outcome.ok ? "role-probe-ok" : "role-probe-bad"
+												}
+											>
+												{outcome.text}
+											</span>
+										)}
+									</div>
+								);
+							})}
 						</div>
 						<p className="muted">
 							评测裁判与正文写作必须来自不同的模型家族（按模型 id

@@ -30,6 +30,8 @@ export interface ModelView {
 	/** 渠道 id，按优先级从高到低。 */
 	readonly channels: readonly string[];
 	readonly probe: LlmModelProbe | null;
+	/** 保底模型别名：后台岗位主模型所有渠道失败后改用它；没有配置时为 null。 */
+	readonly fallback: string | null;
 }
 
 export interface EmbeddingView {
@@ -55,6 +57,8 @@ export interface ChannelsView {
 	readonly roles: Readonly<Record<LlmModelRole, string | null>>;
 	/** 显式配置的岗位指向；没有列出的岗位按缺省回落。 */
 	readonly configuredRoles: Readonly<Partial<Record<LlmModelRole, string>>>;
+	/** 配置里值得提醒的地方（例如保底与主模型共用渠道）；不影响保存。 */
+	readonly warnings: readonly string[];
 }
 
 export interface ChannelUpdateInput {
@@ -101,7 +105,10 @@ export interface ChannelsUpdateRequest {
 
 /** 渠道体检请求；`channel` 缺省时用模型优先级最高的渠道。 */
 export interface ChannelProbeRequest {
-	readonly alias: string;
+	/** 要体检的模型别名；和 `role` 二选一。 */
+	readonly alias?: string;
+	/** 按岗位体检：体检这个岗位当前生效的模型。 */
+	readonly role?: LlmModelRole;
 	readonly channel?: string;
 }
 

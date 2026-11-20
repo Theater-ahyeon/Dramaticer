@@ -27,6 +27,7 @@ const PROBE: LlmModelProbe = {
 
 function viewFixture(overrides: Partial<ChannelsView> = {}): ChannelsView {
 	return {
+		warnings: [],
 		channels: [
 			{
 				id: "gateway",
@@ -61,6 +62,7 @@ function viewFixture(overrides: Partial<ChannelsView> = {}): ChannelsView {
 				enabled: true,
 				channels: ["gateway", "backup"],
 				probe: PROBE,
+				fallback: null,
 			},
 			{
 				alias: "background",
@@ -71,6 +73,7 @@ function viewFixture(overrides: Partial<ChannelsView> = {}): ChannelsView {
 				enabled: true,
 				channels: ["gateway"],
 				probe: null,
+				fallback: null,
 			},
 		],
 		embeddings: [

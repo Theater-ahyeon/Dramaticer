@@ -4,14 +4,16 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] 复用 `core/src/preferences/reroll.ts` 与 `director/interference.ts` 的数据，不新增存储
-- [ ] `dramaticer stats rerolls --db <path> [--story <id>] [--json]`，只读、零模型调用
-- [ ] 设置页「功能」分页底部显示同一张表
-- [ ] 报告只含数字，不含楼层原文（私有数据规则）
-- [ ] `pnpm check` 通过
+- [x] 复用 `core/src/preferences/reroll.ts` 与 `director/interference.ts` 的数据，不新增存储
+- [x] `dramaticer stats rerolls --db <path> [--story <id>] [--json]`，只读、零模型调用
+- [x] 设置页「功能」分页底部显示同一张表
+- [x] 报告只含数字，不含楼层原文（私有数据规则）
+- [x] `pnpm check` 通过
 
 规格：`.scratch/refactor/spec.md`；DESIGN §14.1
 
 ## Comments
+
+完成：2026-11-19 `readRerollRates` 复用 swipe 偏好记录与导演干扰统计，不新增存储；`dramaticer stats rerolls --db <path> [--story <id>] [--json]` 只读、零模型调用；设置页「功能」分页底部显示同一张表；报告只含数字。

@@ -1,15 +1,23 @@
+import { readFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
+	type BackgroundHealth,
 	DIRECTOR_ACTION_LABELS,
+	LLM_MODEL_ROLE_NAMES,
+	type LlmModelRole,
 	countOpenPromises,
 	isDirectorActionKind,
 	isJsonObject,
+	parseChannelsConfig,
+	readBackgroundHealth,
 	readDirectorArrangementLineId,
 	readDirectorInterferenceStats,
 	readEffectiveEdits,
 	readPinnedLineIds,
+	readRerollRates,
 	readSceneSegments,
 	readStoryPromiseLimit,
+	resolveModelForRole,
 	undoDirectorArrangement,
 } from "@dramaticer/core";
 import { HttpError, readJsonBody, sendJson } from "./http.js";
@@ -35,6 +43,18 @@ export async function handleNextStoryRoute(
 		return true;
 	}
 	if (await handleCardRoute(req, res, method, options, storyId, parts)) {
+		return true;
+	}
+	if (third === "stats" && fourth === "rerolls" && parts.length === 4) {
+		allow(method, ["GET"]);
+		requireStory(options, storyId);
+		sendJson(res, 200, readRerollRates(options.store, storyId));
+		return true;
+	}
+	if (third === "background" && fourth === "health" && parts.length === 4) {
+		allow(method, ["GET"]);
+		requireStory(options, storyId);
+		sendJson(res, 200, await backgroundHealthView(options, storyId));
 		return true;
 	}
 	if (third === "overview" && parts.length === 3) {
@@ -334,4 +354,35 @@ function summarize(value: unknown): string {
 	const text = typeof value === "string" ? value : JSON.stringify(value);
 	if (text === undefined) return "";
 	return text.length > 60 ? `${text.slice(0, 60)}…` : text;
+}
+
+/** 后台是否暂停，加上用到出错模型的岗位；渠道文件读不了时岗位留空。 */
+async function backgroundHealthView(
+	options: ApiRouteOptions,
+	storyId: string,
+): Promise<BackgroundHealth & { readonly roles: readonly LlmModelRole[] }> {
+	const health = readBackgroundHealth(options.store, storyId);
+	if (health.model === null || options.channelsPath === null) {
+		return { ...health, roles: [] };
+	}
+	try {
+		const config = parseChannelsConfig(
+			await readFile(options.channelsPath, "utf8"),
+			options.channelsEnv,
+			options.channelsPath,
+		);
+		const roles = LLM_MODEL_ROLE_NAMES.filter((role) => {
+			try {
+				return (
+					config.models.get(resolveModelForRole(config, role))?.id ===
+					health.model
+				);
+			} catch {
+				return false;
+			}
+		});
+		return { ...health, roles };
+	} catch {
+		return { ...health, roles: [] };
+	}
 }

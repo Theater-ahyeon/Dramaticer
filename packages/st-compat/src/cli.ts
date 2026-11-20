@@ -6,12 +6,13 @@ import {
 	runLedgerCli,
 	runOpeningCli,
 	runProbeCli,
+	runStatsCli,
 	runWorkCli,
 } from "@dramaticer/core";
 import { runChatCli } from "./chat/cli.js";
 
 const USAGE =
-	"用法：dramaticer <probe|chat|work|ledger|open|director|actions|explain|images> ...";
+	"用法：dramaticer <probe|chat|work|ledger|open|director|actions|explain|images|stats> ...";
 
 async function main(args: readonly string[]): Promise<void> {
 	const command = args[0];
@@ -45,6 +46,10 @@ async function main(args: readonly string[]): Promise<void> {
 	}
 	if (command === "explain") {
 		await runExplainCli(args);
+		return;
+	}
+	if (command === "stats") {
+		await runStatsCli(args);
 		return;
 	}
 	if (command === "images") {

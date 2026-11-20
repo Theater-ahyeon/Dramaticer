@@ -99,6 +99,7 @@ import {
 	probeChannel,
 	readBlueprintSuggestionNote,
 	readBlueprintView,
+	readChannelWarnings,
 	readChannelsKeyRefs,
 	readDirectorPlan,
 	readLedger,
@@ -2503,10 +2504,10 @@ async function handleChannelProbe(
 	}
 	const filePath = options.channelsPath;
 	const body = await readObjectBody(req, options.maxJsonBodyBytes);
-	assertKnownKeys(body, ["alias", "channel"]);
-	const alias = requireText(body.alias, "alias");
+	assertKnownKeys(body, ["alias", "role", "channel"]);
 	const text = await readChannelsText(filePath);
 	const config = parseChannelsText(text, options, filePath);
+	const alias = probeAlias(config, body);
 	const model = config.models.get(alias);
 	if (model === undefined) {
 		throw fieldError("alias", `没有模型 ${alias}`);
@@ -2554,6 +2555,29 @@ async function handleChannelProbe(
 	await writeChannelsText(filePath, candidate);
 	const result: ChannelProbeResult = { alias, channel: channelId, probe };
 	sendJson(res, 200, result);
+}
+
+/** 体检目标：直接给模型别名，或给岗位、取它当前生效的模型。 */
+function probeAlias(
+	config: LlmChannelsConfig,
+	body: Readonly<Record<string, unknown>>,
+): string {
+	if (body.role === undefined) return requireText(body.alias, "alias");
+	if (body.alias !== undefined) {
+		throw fieldError("role", "alias 与 role 只能给一个");
+	}
+	const role = requireText(body.role, "role");
+	if (!(LLM_MODEL_ROLE_NAMES as readonly string[]).includes(role)) {
+		throw fieldError("role", `不是已知岗位：${role}`);
+	}
+	try {
+		return resolveModelForRole(config, role as LlmModelRole);
+	} catch (error) {
+		throw fieldError(
+			"role",
+			error instanceof Error ? error.message : String(error),
+		);
+	}
 }
 
 async function readChannelsText(filePath: string): Promise<string> {
@@ -2669,6 +2693,7 @@ function buildChannelsView(
 			enabled: model.enabled,
 			channels: [...model.channels],
 			probe: model.probe,
+			fallback: model.fallback ?? null,
 		})),
 		embeddings: [...config.embeddings.values()].map((embedding) => {
 			const envName = refs.embeddings.get(embedding.id) ?? null;
@@ -2699,6 +2724,7 @@ function buildChannelsView(
 		configuredRoles: Object.fromEntries(config.roles.entries()) as Partial<
 			Record<LlmModelRole, string>
 		>,
+		warnings: readChannelWarnings(config),
 	};
 }
 

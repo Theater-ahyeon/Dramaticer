@@ -4,3 +4,4 @@ export * from "./defaults.js";
 export * from "./drain.js";
 export * from "./registry.js";
 export * from "./types.js";
+export * from "./health.js";

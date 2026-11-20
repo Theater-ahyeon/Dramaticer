@@ -66,6 +66,11 @@ test.describe("新界面设置页", () => {
 			.click();
 		const groups = page.locator("#groups");
 		await expect(groups).toBeVisible();
+		// 功能分页底部：北极星指标，每百楼带原因重写率（refactor/04）。
+		const rerolls = page.locator("#rerolls");
+		await expect(rerolls).toContainText("重写率");
+		await expect(rerolls.locator("tbody tr")).toHaveCount(7);
+		await expect(rerolls).toContainText("未选原因");
 		const tier = page.locator(".vh .seg");
 		await expect(tier.getByRole("button", { name: "均衡" })).toHaveAttribute(
 			"aria-pressed",

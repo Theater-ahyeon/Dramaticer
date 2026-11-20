@@ -15,3 +15,5 @@
 规格：`.scratch/refactor/spec.md`
 
 ## Comments
+
+2026-11-19 暂缓：人类说「暂时不用评测」。核对现状时发现耦合比工单写的大——除 `evalset/` 与 `st-bench/` 外，`st-compat` 的 `health/`、`reference/`、`index.ts` 与 `st-bench/coexist.ts` 都反向依赖 `evalset`，41 个测试文件、`package.json` 的 30 多个脚本、`R6-PREREG.md` 与 NOTES 的命令都要同步。纯搬家、没有产品收益，等需要评测时再做；做时先把 `health/`、`reference/` 一并归入评测包，或让它们只依赖 core。`st-bench/` 是兼容插件自己的验收台（I15），建议留在 st-compat。

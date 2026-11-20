@@ -15,6 +15,7 @@ import {
 	isJsonObject,
 	loadChannelsConfig,
 	loadImagesConfig,
+	readChannelWarnings,
 } from "@dramaticer/core";
 import { AssistantRuntimeManager } from "./assistant-runtime.js";
 import {
@@ -149,6 +150,11 @@ export async function startServer(
 	const images = options.images ?? null;
 	const loadConfig = channels === null ? null : resolveChannelsLoader(channels);
 	const initialConfig = loadConfig === null ? null : await loadConfig();
+	if (initialConfig !== null) {
+		for (const warning of readChannelWarnings(initialConfig)) {
+			log(`渠道配置提醒：${warning}`);
+		}
+	}
 	const imagesEnv = images?.env ?? channels?.env ?? process.env;
 	const imagesConfig =
 		images === null
