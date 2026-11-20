@@ -19,11 +19,11 @@ import {
 	parseBlocks,
 	renderContextView,
 	runModelTurns,
-} from "../packages/core/dist/index.js";
+} from "../../packages/core/dist/index.js";
 import {
 	buildStoryVectors,
 	importChatFileToStore,
-} from "../packages/st-compat/dist/index.js";
+} from "../../packages/st-compat/dist/index.js";
 import {
 	JUDGE_ORDERS,
 	PROBE_LEVELS,

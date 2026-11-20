@@ -1,5 +1,5 @@
 // F0-T02.a：回复构成、编辑分类与楼层深度分桶。统计口径见 docs/dev/reports/F0-corpus.md。
-import { parseBlocks } from "../packages/core/dist/blocks/index.js";
+import { parseBlocks } from "../../packages/core/dist/blocks/index.js";
 
 export const DEPTH_BUCKETS = Object.freeze([
 	{ label: "1–10", min: 1, max: 10 },

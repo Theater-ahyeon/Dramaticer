@@ -7,9 +7,9 @@ import {
 	loadChannelsConfig,
 	loadDotEnv,
 	resolveModelForRole,
-} from "../packages/core/dist/index.js";
-import { judgePlaytestTurn } from "../packages/st-compat/dist/evalset/turn-judge.js";
-import { parsePlaytestJsonl } from "../packages/st-compat/dist/evalset/playtest.js";
+} from "../../packages/core/dist/index.js";
+import { judgePlaytestTurn } from "../../packages/st-compat/dist/evalset/turn-judge.js";
+import { parsePlaytestJsonl } from "../../packages/st-compat/dist/evalset/playtest.js";
 import {
 	JUDGE_ORDERS,
 	buildChoiceMessages,

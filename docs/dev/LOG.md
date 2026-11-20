@@ -498,3 +498,4 @@
 - 2026-11-19 人工会话（续）：完成 refactor/08（ADR-0166）删除未胜出的世界模型候选与小品引擎，mechanisms 暂留。
 - 2026-11-19 人工会话（续）：新增 README.md，更新 DESIGN §15.3 与 HANDOFF。
 - 2026-11-19 人工会话（续）：spec/v4-finish 合入 main；按人类要求把历史作者邮箱换成 GitHub 隐私邮箱，新建公开仓库并推送 main。
+- 2026-11-20 人工会话：AGPL-3.0 许可证、AGENTS.md 按人类授权更新（HUMAN-21/23）、关闭 HUMAN-03/15/20、新增 GitHub Actions 门禁、vitest 拆 unit/eval、早期脚本归档。

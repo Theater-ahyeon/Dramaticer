@@ -6,7 +6,7 @@ import {
 	createLlmClient,
 	loadChannelsConfig,
 	loadDotEnv,
-} from "../packages/core/dist/index.js";
+} from "../../packages/core/dist/index.js";
 import {
 	JUDGE_ORDERS,
 	buildChoiceMessages,

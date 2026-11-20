@@ -4,17 +4,17 @@ import { spawn } from "node:child_process";
 import { closeSync, copyFileSync, existsSync, mkdirSync, openSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { StoryStore } from "../packages/core/dist/index.js";
-import { parseCharacterCardFile } from "../packages/st-compat/dist/character-card.js";
-import { importChatFileToStore } from "../packages/st-compat/dist/chat-import.js";
-import { importCardContent } from "../packages/st-compat/dist/chat/session.js";
-import { storyIdOf } from "../packages/st-compat/dist/evalset/question-files.js";
-import { runPlaytestCli } from "../packages/st-compat/dist/evalset/playtest-cli.js";
+import { StoryStore } from "../../packages/core/dist/index.js";
+import { parseCharacterCardFile } from "../../packages/st-compat/dist/character-card.js";
+import { importChatFileToStore } from "../../packages/st-compat/dist/chat-import.js";
+import { importCardContent } from "../../packages/st-compat/dist/chat/session.js";
+import { storyIdOf } from "../../packages/st-compat/dist/evalset/question-files.js";
+import { runPlaytestCli } from "../../packages/st-compat/dist/evalset/playtest-cli.js";
 import {
 	isLegacyCorpus,
 	openSnapshot,
-} from "../packages/st-compat/dist/health/manifest.js";
-import { parseWorldInfoFile } from "../packages/st-compat/dist/world-info.js";
+} from "../../packages/st-compat/dist/health/manifest.js";
+import { parseWorldInfoFile } from "../../packages/st-compat/dist/world-info.js";
 
 const ROOT = process.cwd();
 const RAW_ROOT = path.join(ROOT, "eval-private", "raw");
@@ -383,6 +383,6 @@ else if (command === "run-all") await runAll(options);
 else if (command === "finalize") await finalizeRuns();
 else {
 	throw new Error(
-		"用法：node scripts/r2-legacy-forgetting.mjs import|branches|run --story-index <n> --depth <119|219> --profile <naive|native>",
+		"用法：node scripts/archive/r2-legacy-forgetting.mjs import|branches|run --story-index <n> --depth <119|219> --profile <naive|native>",
 	);
 }

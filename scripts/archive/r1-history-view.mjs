@@ -7,8 +7,8 @@ import {
 	DEFAULT_HISTORY_BLOCK_POLICY,
 	createTokenEstimator,
 	renderHistoryView,
-} from "../packages/core/dist/index.js";
-import { parseChatJsonlFile } from "../packages/st-compat/dist/chat-jsonl.js";
+} from "../../packages/core/dist/index.js";
+import { parseChatJsonlFile } from "../../packages/st-compat/dist/chat-jsonl.js";
 import { TAG_CATEGORIES } from "./f0-composition.mjs";
 
 const ROOT = process.cwd();

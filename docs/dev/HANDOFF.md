@@ -3,28 +3,24 @@
 > 每次收尾时完整重写，不超过 40 行。长期有效的注意事项写进 `docs/dev/NOTES.md`。
 
 ## 最近一次
-- 2026-11-19（人工会话，连续推进）。人类要求：把 `spec/v4-remaining` 合进 `main`，做完剩余工单，最后整理推送并写详尽 README。
-  - `ui-lite` 01–06 全部完成（纸与墨设计系统、阅读体验、页面统一、旧面板、体积预算与可访问性）。
-  - `refactor/02`：文风层、状态面板接通；本轮临时开关进回合请求 `features` 与输入台「本轮」面板（ADR-0164）。
-  - `refactor/03`：后台岗位跨供应商保底 `fallback`、配置提醒、后台暂停提示、按岗位体检（ADR-0165）。
-  - `refactor/04`：北极星指标 `dramaticer stats rerolls` 与设置页「重写率」表。
-  - `refactor/05`：`StoryStore` 拆成 `core/src/store/repos/` 15 个领域仓储，外观委托，调用方零改动。
-  - `refactor/06`：server 路由拆成 `routes-<领域>.ts`，共用校验在 `routes-common.ts`。
-  - `refactor/08`：删除 `wiki`、`temporal_graph` 世界模型与 `bits` 小品引擎（ADR-0166）；`mechanisms` 暂留。
-  - `refactor/07` 暂缓：人类说「暂时不用评测」，评测工具与 health/reference 纠缠，见工单 Comments。
-  - 根目录新增 `README.md`。修好 `e2e/ledger.spec.ts` 的不稳定（等后台抽取时重新加载）。
-- 门禁：`pnpm check` 2832 通过；`pnpm e2e` 79 通过（3 个跳过：2 个实时试玩、手机上的键盘用例）。
+- 2026-11-20（人工会话，项目整理）。人类要求「全部解决」上次盘点出的优化项，并逐项拍板：
+  - 许可证：AGPL-3.0-only。根目录 `LICENSE`（GNU 官方全文），各 `package.json` 加 `license`，README 许可证一节改写。
+  - `AGENTS.md`（人类授权）：开头定位与 DESIGN §0 一致；文档地图改为「DESIGN 是唯一设计权威」；I6 注明快速、规划、深度；I12 改为「台账是唯一的结构化视图，写入须有原文出处」。`.devloop/protected.sha` 与快照已同步。
+  - HUMAN：03、15 取消；20、21、23 完成。17、18（两个兼容插件的上游许可证）人类本次未表态，仍待处理。
+  - CI：`.github/workflows/check.yml`（Ubuntu、Node 22、`pnpm check`）。**还没在 GitHub 上跑过**，首次推送后看结果；Linux 上若有只在 Windows 成立的路径假设会在这里暴露。
+  - 门禁拆分：vitest `unit` / `eval` 两个项目，`pnpm test` 只跑 unit（301 个文件），`pnpm test:eval` 跑 33 个评测测试文件。本次 eval 项目未单独跑（测试本身没改）。
+  - 早期脚本 `scripts/f0-*`、`r1-*`、`r2-*`、`r5-*` 移到 `scripts/archive/`，删掉对应 `package.json` 命令名。
+  - 同期人类自己在改 README 与 `.gitignore`（`dist-release/`）、新增 `package:release` 脚本，已一并提交。
+- 门禁：`pnpm check` 通过（unit：2565 通过，6 跳过）。本机这次耗时 182 秒，没有变快，主要瓶颈仍是 Windows 杀毒扫描临时目录（HUMAN-16）。
 
-## 下一步
-1. 作者本人用真实大卡连续试玩 2–3 个故事，用 `stats rerolls` 拿北极星数字（MVP 第 6 条）。
-2. 有了数字后另开工单删除 `mechanisms`（连同插件机制注册表一起决定）。
-3. 需要评测时做 `refactor/07`。
-4. 选定开源许可证（README 里写明尚未选定）。
+## 下一步（都需要人类）
+1. 配后台跨供应商保底（HUMAN-19，人类选择自己配）：`channels.example.yaml` 的 `bg2` 示例。
+2. 试玩 2–3 个故事，跑 `stats rerolls` 拿北极星数字；之后另开工单决定是否删除 `mechanisms`。
+3. 回复 HUMAN-17、18；HUMAN-16（Defender 排除 `Temp` 与仓库目录）。
+4. 推送后检查 CI 首跑。
 
 ## 眼下要注意
-- 远端：`origin` = GitHub 公开仓库 Theater-ahyeon/Dramaticer，只推 `main`。推送前历史的作者邮箱已按人类要求换成 GitHub 隐私邮箱，本仓库 `user.email` 也已改成隐私邮箱；改写前的旧 `main` 留在本地分支 `backup/main-original`（不要推）。旧的 `spec/*`、`ticket/*` 分支仍是旧邮箱，不要推。
-- 新存储方法：写进对应领域仓储，再把名字加进 `story-store.ts` 的 `Pick<…>` 与 `DELEGATES`。
-- 新路由：参数校验只用 `routes-common.ts`。
-- server 读 core 的 `dist`：改了 core 导出后先 `pnpm --filter @dramaticer/core run build`；单跑 e2e 前先构建 web 与 server。
-- 已有故事保存的 `directorOrganization` 仍可能是 `mechanisms`；`bits` 与已删世界模型的旧值按默认运行，Trace 来源注明。
-- 人类的 `data/channels.yaml` 还没配后台保底，启动日志会提醒（HUMAN-19 已写配置方法）。
+- 远端：`origin` = GitHub 公开仓库，只推 `main`；本地 `backup/main-original` 与旧 `spec/*`、`ticket/*` 分支是旧邮箱，不要推。
+- 新增评测类测试要加进 `vitest.config.ts` 的 `evalTests`，否则会进默认门禁。
+- 新存储方法写进领域仓储并加进 `story-store.ts` 的 `Pick<…>` 与 `DELEGATES`；新路由参数校验只用 `routes-common.ts`。
+- server 读 core 的 `dist`：改了 core 导出后先 `pnpm --filter @dramaticer/core run build`。

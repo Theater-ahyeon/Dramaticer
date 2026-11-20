@@ -5,7 +5,7 @@ import { createReadStream } from "node:fs";
 import { mkdir, readdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import readline from "node:readline";
-import { createTokenEstimator } from "../packages/core/dist/tokens.js";
+import { createTokenEstimator } from "../../packages/core/dist/tokens.js";
 import {
 	DEPTH_BUCKETS,
 	EDIT_CATEGORIES,

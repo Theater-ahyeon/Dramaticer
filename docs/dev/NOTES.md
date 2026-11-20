@@ -5,7 +5,9 @@
 ## 可重复命令
 
 - 北极星指标：`pnpm --filter @dramaticer/st-compat build && node packages/st-compat/dist/cli.js stats rerolls --db data/dramaticer.db [--story <id>] [--json]`（只读，只输出数字）。
-- 门禁：`pnpm check`。
+- 门禁：`pnpm check`（单元测试只跑 vitest 的 `unit` 项目）。评测、裁判、试玩与门槛判定的测试在 `eval` 项目：`pnpm test:eval`；全部：`pnpm test:all`。名单在根目录 `vitest.config.ts` 的 `evalTests`，新增评测测试要加进去；兼容插件的 `*-coexist` 是插件验收（I15），留在 `unit`。
+- CI：`.github/workflows/check.yml` 在 push 与 PR 到 `main` 时于 Ubuntu 上跑 `pnpm check`。
+- 早期一次性脚本（F0、R1、R2、R5）在 `scripts/archive/`，不再有 `package.json` 命令名。
 - 全量 e2e：`pnpm e2e`（会先构建 server 与 web；跑两个项目）。
 - 蓝图结构与存储目标测试：`pnpm exec vitest run packages/core/test/story-blueprint.test.ts`。
 - 蓝图剧透、默认蓝图与剧透设置目标测试：`pnpm exec vitest run packages/core/test/blueprint-spoilers.test.ts`。

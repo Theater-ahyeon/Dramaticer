@@ -279,7 +279,7 @@ flowchart TB
 
 - TypeScript strict、ESM、Node ≥ 22.19、pnpm workspace；vitest；biome；better-sqlite3 + FTS5 + sqlite-vec。
 - 数据目录默认 `data/`；默认只监听 127.0.0.1，局域网访问必须设密码；API key 只在服务端。
-- 门禁 `pnpm check`：类型检查、biome、不变量脚本、全部单元测试；端到端 `pnpm e2e`（Playwright）。
+- 门禁 `pnpm check`：类型检查、biome、不变量脚本、单元测试（评测类测试单独用 `pnpm test:eval`），CI 在 GitHub Actions 上同样执行；端到端 `pnpm e2e`（Playwright）。
 - 协议 MIT。以后用 Tauri 打包桌面与移动端。
 
 ## 14. 评测与成功标准

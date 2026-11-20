@@ -1,5 +1,6 @@
 {
 	"name": "dramaticer-monorepo",
+	"license": "AGPL-3.0-only",
 	"private": true,
 	"type": "module",
 	"engines": {
@@ -10,15 +11,11 @@
 		"invariants": "node scripts/check-invariants.mjs",
 		"typecheck": "tsc -b && pnpm --filter @dramaticer/web typecheck",
 		"lint": "biome check .",
-		"test": "vitest run",
+		"test": "vitest run --project unit",
+		"test:eval": "vitest run --project eval",
+		"test:all": "vitest run",
 		"build": "tsc -b && pnpm --filter @dramaticer/web build",
 		"snapshot": "node scripts/snapshot-private-data.mjs",
-		"f0:corpus": "node scripts/f0-corpus.mjs",
-		"f0:attribution": "node scripts/f0-attribution.mjs",
-		"f0:judge": "node scripts/f0-judge.mjs",
-		"r2:judge": "node scripts/r2-judge.mjs",
-		"f0:fulltext": "node scripts/f0-fulltext.mjs",
-		"r1:history-view": "node scripts/r1-history-view.mjs",
 		"probe": "pnpm --filter @dramaticer/st-compat build && node packages/st-compat/dist/cli.js probe",
 		"chat": "pnpm --filter @dramaticer/st-compat build && node packages/st-compat/dist/cli.js chat",
 		"work": "pnpm --filter @dramaticer/st-compat build && node packages/st-compat/dist/cli.js work",
@@ -26,6 +23,7 @@
 		"e2e": "pnpm --filter @dramaticer/web e2e",
 		"playtest": "pnpm --filter @dramaticer/web playtest",
 		"dramaticer": "pnpm --filter @dramaticer/st-compat build && node packages/st-compat/dist/cli.js",
+		"package:release": "node scripts/package-release.mjs",
 		"check": "pnpm run invariants && pnpm run typecheck && pnpm run lint && pnpm run test"
 	},
 	"devDependencies": {

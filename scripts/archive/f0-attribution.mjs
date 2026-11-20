@@ -6,8 +6,8 @@ import {
 	createLlmClient,
 	loadChannelsConfig,
 	loadDotEnv,
-} from "../packages/core/dist/index.js";
-import { parseChatJsonlFile } from "../packages/st-compat/dist/index.js";
+} from "../../packages/core/dist/index.js";
+import { parseChatJsonlFile } from "../../packages/st-compat/dist/index.js";
 import {
 	FAILURE_CATEGORIES,
 	PAIR_DEPTH_BUCKETS,
