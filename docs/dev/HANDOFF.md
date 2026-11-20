@@ -11,18 +11,19 @@
   - 新测试 `packages/web/test/design-tokens.test.ts`：两套主题文字 AA、两处暗色定义一致、没有 backdrop-filter、CSS gzip ≤ 40 KB。
   - 接着 `ui-lite/03` 完成：书页排版（18px、1.9 倍行高、1440px 每行 30–38 字、对话段顶格，`v4/prose.ts`）、批注页边常驻且手机上折叠为楼末「批注 N」、「正在写」状态、输入台层级；手机上停靠栏是底部抽屉，打字或抽屉打开时收起底部导航；停靠栏宽 372 → 340px。
   - 接着 `ui-lite/04` 完成：书架改为卡面封面网格，「继续上次」统计去框；数字用界面字体等宽数字；`Editable` 加 `placeholder`；分组标题统一字号。
-- 门禁：`pnpm check` 2828 通过；`pnpm e2e` 72 通过（2 个实时试玩照旧跳过）。构建 CSS 19.5 → 约 16 KB gzip。
+  - 接着 `ui-lite/05` 完成：删除 `styles.css`，旧面板样式变成 `v4/panels.css`（`v4.css` 开头 `@import`），颜色全换成设计变量，分组框、标题、候选行动、文件按钮统一。
+- 门禁：`pnpm check` 2829 通过；`pnpm e2e` 72 通过（2 个实时试玩照旧跳过）。构建 CSS 19.5 → 约 16 KB gzip。
 - 仍在分支 `spec/v4-remaining`，没有合并到 `main`。
 
 ## 下一步
-1. `ui-lite/05`：旧面板换皮并删 `styles.css`（里面还有写死的 `#fff` 等颜色，暗色下会不协调）。
+1. `ui-lite/06`：体积预算写进检查脚本、可访问性验收（ui-lite 最后一张）。
 2. `refactor/03`（后台渠道保底）、`refactor/04`（北极星指标）；`refactor/02` 剩余：文风层注入位置、本轮临时开关。
-3. 全部 03–05 完成后做 `ui-lite/06`（体积预算检查与可访问性验收）。
 
 ## 眼下要注意
 - 新样式直接用新变量名（`--cinnabar`、`--sheet`、`--t-*`、`--s-*`、`--r-*`）；`--gold*`、`--teal` 只是给旧规则的别名。改颜色要同时改两处暗色定义，测试会比对。
 - 已有故事保存的 `directorOrganization` 不迁移，仍是 `mechanisms`。
 - 伏笔上限只看功能页（`readStoryPromiseLimit`），`directorConfig.maxOpenPromises` 不再生效。
 - server 读的是 core 的 `dist`：改了 core 导出后先 `pnpm --filter @dramaticer/core run build`。
+- `e2e/ledger.spec.ts` 偶发失败（`.ledger-event` 没出现，后台抽取时序），`--repeat-each=3` 时第三次必挂，ui-lite/05 之前就如此；全量跑偶尔撞上，重跑即过。值得单独查。
 - 手机上停靠栏的 e2e 要先 `openDock`；单跑 e2e 前先构建 web（Playwright 用 dist）。
 - 截图验收：临时写一个 `e2e/*.spec.ts` 用 `page.emulateMedia({ colorScheme })` 截亮暗两套，跑完删掉。

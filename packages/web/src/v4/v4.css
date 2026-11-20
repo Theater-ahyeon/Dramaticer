@@ -1,8 +1,9 @@
 /* 纸与墨：亮色是温暖的纸，暗色是墨；朱砂是唯一的强调色，只用在主操作、当前位置与导演的痕迹上，
    其余靠灰阶、细边线和背景明度差分层级。不用玻璃模糊与装饰渐变（ui-lite/02）。
    布局不变：左侧印章式导航，中央一页手稿（正文 + 页边批注），右侧停靠栏，底部输入台。
-   令牌用 html:root 提高优先级，旧页面的样式表（styles.css）里同名的变量才盖不掉它。
+   令牌用 html:root 提高优先级；旧面板的样式在 panels.css，由下面的 @import 排在最前，同名规则以本文件为准。
    颜色改动后跑 packages/web/test/design-tokens.test.ts：两套主题的文字都要过 WCAG AA。 */
+@import "./panels.css";
 
 html:root {
 	/* ---- 颜色：纸 ---- */
@@ -218,6 +219,16 @@ input[type="range"] {
 }
 input[type="file"] {
 	border-style: dashed;
+}
+input[type="file"]::file-selector-button {
+	margin-right: 10px;
+	padding: 4px 12px;
+	border: 1px solid var(--line-strong);
+	border-radius: var(--r-sm);
+	background: var(--sheet);
+	color: var(--ink);
+	font: inherit;
+	cursor: pointer;
 }
 option {
 	background: var(--sheet);
@@ -2623,6 +2634,7 @@ img.cover {
 }
 .app .story-id {
 	font: 11px var(--f-data);
+	overflow-wrap: anywhere;
 }
 .app .story-cover {
 	height: auto;
@@ -2677,9 +2689,6 @@ img.cover {
 }
 .panel h1 {
 	font: 400 var(--t-2xl) / var(--lh-tight) var(--f-display);
-}
-.panel h2 {
-	font: 400 var(--t-xl) / 1.3 var(--f-display);
 }
 .panel.lost {
 	max-width: 520px;

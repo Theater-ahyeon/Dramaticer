@@ -159,6 +159,7 @@
 - 数字一律用 `.num`（界面字体 + `tabular-nums`）；`--f-data` 等宽字体只给代码与 `.kbd`，配中文时字距会散。就地编辑的空状态用 `Editable` 的 `placeholder`（`data-placeholder` + `:empty::before`），不要把「（点这里写）」当成值传进去。
 - 页面只通过 `v4/stage.ts` 跟背景打交道：`stage.pulse()` 让海面荡一圈光，`stage.setWriting()` 表示正在写。背景（`scene.ts`）读这些状态，不反过来依赖页面。
 - 站内跳转用 `ui.tsx` 的 `TLink` 或 `travel()` 才有转场；普通 `Link` 也能用，只是直接换页。路由更新走 React 的 transition，所以 `travel` 要等 `Shell` 的 layout effect 调 `routeCommitted()` 才让浏览器拍新画面。
+- 2026-11-19 起（ui-lite/05）没有 `styles.css`：旧面板样式在 `v4/panels.css`，由 `v4.css` 开头 `@import`，面板规则在前、v4 在后；面板里不要写死颜色（`design-tokens.test.ts` 会查）。下面一条的文件名已过时，顺序原则不变。
 - 样式的先后顺序是定死的：`main.tsx` 先引 `styles.css`，再引 `App`（带进 `v4.css`）。`v4.css` 里有全局的 `button`、`input` 基础样式和工具页的覆盖规则，顺序反了旧规则会盖回来。颜色变量写在 `html:root` 上，旧页面的 `--surface`、`--text` 等也在这里接到新变量。
 - 带 `backdrop-filter` 的玻璃面板不要加三维变换（`perspective`、`rotateX/Y`），否则模糊会失效；要倾斜就只倾斜里面的图。
 - 场景的着色器直接输出显示用的颜色，`scene.ts` 里关了 three 的色彩管理；天空和水面的倒影共用 `skyColor`，改天空要两边一起看。机器带不动时场景会自己降渲染分辨率。

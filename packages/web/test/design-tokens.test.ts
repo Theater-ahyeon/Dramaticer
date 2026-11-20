@@ -5,8 +5,8 @@ import { describe, expect, it } from "vitest";
 // 设计系统的硬约束（ui-lite/02）：两套主题的文字都过 WCAG AA，暗色的两处定义一致，
 // 不用玻璃模糊，样式表压缩后不超过预算。
 const v4 = readFileSync(new URL("../src/v4/v4.css", import.meta.url), "utf8");
-const legacy = readFileSync(
-	new URL("../src/styles.css", import.meta.url),
+const panels = readFileSync(
+	new URL("../src/v4/panels.css", import.meta.url),
 	"utf8",
 );
 
@@ -131,11 +131,15 @@ describe("样式表", () => {
 
 	it("不使用玻璃模糊", () => {
 		expect(v4).not.toMatch(/backdrop-filter/);
-		expect(legacy).not.toMatch(/backdrop-filter/);
+		expect(panels).not.toMatch(/backdrop-filter/);
+	});
+
+	it("旧面板的样式不写死颜色", () => {
+		expect(panels.match(/#[0-9a-f]{3,8}\b/gi) ?? []).toEqual([]);
 	});
 
 	it("压缩后不超过 40 KB", () => {
-		const size = gzipSync(v4 + legacy, { level: 9 }).length;
+		const size = gzipSync(v4 + panels, { level: 9 }).length;
 		expect(size).toBeLessThanOrEqual(40 * 1024);
 	});
 });
