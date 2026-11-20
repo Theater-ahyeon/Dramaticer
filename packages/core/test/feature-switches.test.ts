@@ -273,7 +273,7 @@ describe("卡片能力判断", () => {
 			"director",
 			"promiseLimit",
 			"choices",
-			"draw",
+			// 出图由生图设置负责，不在功能页显示（ADR-0164）。
 			"tools",
 		]);
 	});

@@ -6,10 +6,10 @@ import {
 	isJsonObject,
 	parseCardRecommendedConfig,
 	parseDramaticerCardExtension,
-	readEffectiveEdits,
 	readLoreCopy,
 	readMemorySecrets,
 	readStoryCardSnapshot,
+	readStoryFeatureState,
 	saveStoryCardSnapshot,
 	saveWritingPreset,
 	storyCardVersion,
@@ -305,8 +305,18 @@ function featureUses(
 		(node) => store.getTurnTrace(node.id)?.plan !== undefined,
 	).length;
 	if (planned > 0) uses.prepare = `命中 ${prepared} / ${planned} 次`;
-	const loreEdits = readEffectiveEdits(store, storyId, null, "lore").size;
-	if (loreEdits > 0) uses.style = `你改过 ${loreEdits} 条设定`;
+	const writing = store
+		.listImportAuditInjectionRules(storyId)
+		.filter((rule) => rule.kind === "writing" && rule.memory !== true).length;
+	if (writing > 0) uses.style = `每轮带 ${writing} 条文风`;
+	// 关着的开关不显示「起过作用」，免得看起来还在生效（refactor/02）。
+	const values = readStoryFeatureState(store, storyId).values as Readonly<
+		Record<string, unknown>
+	>;
+	for (const id of Object.keys(uses)) {
+		const value = values[id];
+		if (value === false || value === "off" || value === 0) delete uses[id];
+	}
 	return uses;
 }
 

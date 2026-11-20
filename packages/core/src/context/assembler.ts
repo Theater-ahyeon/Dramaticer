@@ -8,6 +8,7 @@ import type {
 	RetrievalHit,
 	RetrievalRouteRanking,
 } from "../retrieval/hybrid.js";
+import type { FeatureSwitchOverrides } from "../settings/features.js";
 import { type TokenEstimator, createTokenEstimator } from "../tokens.js";
 import {
 	type ContextConditionFacts,
@@ -29,6 +30,8 @@ export interface ContextSlotRequest {
 	readonly budgetTokens?: number;
 	/** 插件槽位的时间预算；提供者按剩余时间决定做到哪里，模板执行记进 Trace。 */
 	readonly budget?: TurnHookBudget;
+	/** 本轮临时开关；提供者读功能开关时叠在故事设置上（DESIGN §22）。 */
+	readonly featureOverrides?: FeatureSwitchOverrides;
 }
 
 /** 槽位内容里需要随上下文包复核的引用。 */
@@ -143,6 +146,8 @@ export interface ContextAssemblyInput {
 	readonly tokenEstimator?: TokenEstimator;
 	/** 每个槽位提供者的时间预算；不设置时使用默认值。 */
 	readonly hookBudgetMs?: number;
+	/** 本轮临时开关，原样交给每个槽位提供者。 */
+	readonly featureOverrides?: FeatureSwitchOverrides;
 }
 
 export type ContextTraceStatus =
@@ -418,6 +423,9 @@ async function resolveSegment(
 		switches: facts.switches,
 		state: facts.state,
 		budgetTokens: input.budgetTokens,
+		...(input.featureOverrides === undefined
+			? {}
+			: { featureOverrides: input.featureOverrides }),
 	};
 	let content: ContextSlotContent | null;
 	let hook: TurnHookTraceEntry | undefined;

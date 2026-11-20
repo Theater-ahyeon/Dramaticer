@@ -4,6 +4,7 @@ import {
 	DeepTurnWithoutCommitError,
 	type DirectorIntensity,
 	type DirectorPush,
+	type FeatureSwitchOverrides,
 	type GenerateAssistantTurnOptions,
 	type IllustrateTurnOptions,
 	type ImagesConfig,
@@ -157,6 +158,8 @@ export interface TurnRequestInputs {
 	readonly directorPush?: DirectorPush | null;
 	/** 单轮模式；请求没给时为 null，使用故事设置。 */
 	readonly turnMode?: TurnMode | null;
+	/** 本轮临时开关；请求没给时为 null。 */
+	readonly featureOverrides?: FeatureSwitchOverrides | null;
 }
 
 /**
@@ -206,6 +209,7 @@ export async function handleTurnStream(
 				turnMode,
 				directorIntensity: inputs.directorIntensity ?? null,
 				directorPush: inputs.directorPush ?? null,
+				featureOverrides: inputs.featureOverrides ?? null,
 				signal,
 				...hooks,
 			});

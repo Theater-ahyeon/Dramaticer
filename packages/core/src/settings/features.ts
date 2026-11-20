@@ -643,14 +643,19 @@ export const WIRED_FEATURE_SWITCHES: ReadonlySet<FeatureSwitchId> =
 		"choices",
 		"search",
 		"tools",
+		// 文风类设定条目的注入由它决定（providers 的世界书槽位）。
+		"style",
+		// 显示层：web 读它决定故事页是否显示状态栏块。
+		"status",
 	]);
 
 /**
  * 与别处重复的开关不在功能页显示：思考由写作页的 `reasoning` 负责，原样兼容由
- * 导入方式 `importMode` 负责（ADR-0163）。定义保留，旧的覆盖值照常能读。
+ * 导入方式 `importMode` 负责，出图由生图设置的 `imageConfig.mode` 负责
+ * （ADR-0163 及其补充）。定义保留，旧的覆盖值照常能读。
  */
 export const HIDDEN_FEATURE_SWITCHES: ReadonlySet<FeatureSwitchId> =
-	new Set<FeatureSwitchId>(["think", "raw"]);
+	new Set<FeatureSwitchId>(["think", "raw", "draw"]);
 
 /** 未兑现伏笔上限以功能页为准；`directorConfig.maxOpenPromises` 不再生效。 */
 export function readStoryPromiseLimit(

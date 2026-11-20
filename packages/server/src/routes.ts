@@ -21,6 +21,7 @@ import {
 	type DirectorDecision,
 	type DirectorIntensity,
 	type DirectorPush,
+	type FeatureSwitchOverrides,
 	IMPORT_KIND_JOB_KIND,
 	type ImagePromptRequest,
 	ImageWorkflowInUseError,
@@ -62,6 +63,7 @@ import {
 	assertComfyUiSlots,
 	assertDirectorIntensity,
 	assertDirectorPush,
+	assertFeatureSwitchOverrides,
 	assertLedgerChangeCardDiffs,
 	assertRerollReason,
 	assertSceneControlKind,
@@ -833,14 +835,29 @@ async function handleTurns(
 ): Promise<void> {
 	requireStory(options.store, storyId);
 	const body = await readObjectBody(req, options.maxJsonBodyBytes);
-	assertKnownKeys(body, ["text", "mode", "intensity", "push"]);
+	assertKnownKeys(body, ["text", "mode", "intensity", "push", "features"]);
 	const text = requireText(body.text, "text");
 	rememberWritingMode(options.store, storyId, body.mode);
 	await handleTurnStream(res, storyId, text, options, {
 		directorIntensity: readOptionalIntensity(body.intensity),
 		directorPush: readOptionalPush(body.push),
 		turnMode: readOptionalMode(body.mode),
+		featureOverrides: readOptionalFeatures(body.features),
 	});
+}
+
+/** 本轮临时开关：不认识的开关或非法值按 400 拒绝，不悄悄忽略。 */
+function readOptionalFeatures(value: unknown): FeatureSwitchOverrides | null {
+	if (value === undefined || value === null) return null;
+	try {
+		return assertFeatureSwitchOverrides(value, "features");
+	} catch (error) {
+		throw new HttpError(
+			400,
+			"bad_request",
+			error instanceof Error ? error.message : String(error),
+		);
+	}
 }
 
 /**

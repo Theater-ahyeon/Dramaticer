@@ -23,6 +23,7 @@ import {
 	readMemoryTimeline,
 	readPinnedLineIds,
 	readSceneGoal,
+	readStoryFeatureState,
 	readWritingView,
 	resetToCardRecommended,
 	resolveLoreInjectionRole,
@@ -592,6 +593,7 @@ function lorePreview(
 		item.entry,
 		store.getStorySettings(storyId).importMode,
 		rule,
+		{ style: readStoryFeatureState(store, storyId).values.style === true },
 	);
 	let entityAliases: readonly string[] = [];
 	if (item.entry.entityId !== null) {

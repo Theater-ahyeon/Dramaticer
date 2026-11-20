@@ -12,6 +12,7 @@ interface FloorRequest {
 	readonly mode?: string;
 	readonly push?: string;
 	readonly text?: string;
+	readonly features?: Record<string, unknown>;
 }
 
 declare global {
@@ -326,5 +327,42 @@ test.describe("故事页：正文、批注与输入台", () => {
 		await expect(page.locator("#dock")).toBeVisible();
 		await page.keyboard.press("Escape");
 		await expect(page.locator("#dock")).toBeHidden();
+	});
+
+	test("本轮临时开关只随下一次发送，发完清空", async ({ page }) => {
+		const stamp = Date.now();
+		const storyId = `e2e-v4-once-${stamp}`;
+		await createStory(page, storyId, `本轮 ${stamp}`);
+		seedFirstFloor(storyId);
+		const bodies: FloorRequest[] = [];
+		page.on("request", (request) => {
+			if (
+				request.method() === "POST" &&
+				new URL(request.url()).pathname === `/api/stories/${storyId}/turns`
+			) {
+				bodies.push(request.postDataJSON() as FloorRequest);
+			}
+		});
+		await page.goto(`/stories/${storyId}/play`);
+		const once = page.locator(".once");
+		await once.locator("summary").click();
+		const tools = once.getByRole("button", { name: "工具查阅" });
+		await expect(tools).toHaveAttribute("aria-pressed", "true");
+		await tools.click();
+		await expect(tools).toHaveAttribute("aria-pressed", "false");
+		await expect(once.locator("summary")).toHaveText("本轮 · 改了 1 项");
+
+		const push = page.getByRole("button", { name: /^推进/ });
+		const committed = page
+			.locator(".notes .fno")
+			.filter({ hasText: /^第 \d+ 楼$/ });
+		await push.click();
+		await expect(committed).toHaveCount(2, { timeout: 60_000 });
+		expect(bodies.at(-1)?.features).toEqual({ tools: false });
+		await expect(once.locator("summary")).toHaveText("本轮");
+
+		await push.click();
+		await expect(committed).toHaveCount(3, { timeout: 60_000 });
+		expect(bodies.at(-1)?.features).toBeUndefined();
 	});
 });

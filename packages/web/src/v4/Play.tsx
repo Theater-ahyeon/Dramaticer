@@ -1,4 +1,4 @@
-import type { RerollReason } from "@dramaticer/core";
+import type { RerollReason, StoryFeatureSwitchView } from "@dramaticer/core";
 import { parseBlocks } from "@dramaticer/core/blocks";
 import {
 	type DisplayedContent,
@@ -15,6 +15,12 @@ import { PUSH_TURN_TEXT } from "../chat/push";
 import { BlockContent } from "../components/chat/BlockContent";
 import { Dock, type DockTab } from "./Dock";
 import { usePaletteCommands } from "./Shell";
+import {
+	ONCE_SWITCH_IDS,
+	type OnceOverrides,
+	onceValue,
+	toggleOnce,
+} from "./once";
 import { isDialogueLine } from "./prose";
 import { stage } from "./stage";
 import {
@@ -140,6 +146,46 @@ interface Streaming {
 	readonly error: string | null;
 }
 
+/** 输入台的「本轮」：几个影响这一轮怎么写的开关，只随下一次发送生效。 */
+function OncePanel({
+	switches,
+	once,
+	onChange,
+}: {
+	readonly switches: ReadonlyMap<string, StoryFeatureSwitchView>;
+	readonly once: OnceOverrides;
+	readonly onChange: (next: OnceOverrides) => void;
+}) {
+	const items = ONCE_SWITCH_IDS.flatMap((id) => {
+		const view = switches.get(id);
+		return view !== undefined && view.kind === "toggle" && view.wired
+			? [{ id, view, story: view.value === true }]
+			: [];
+	});
+	if (items.length === 0) return null;
+	const count = Object.keys(once).length;
+	return (
+		<details className="once">
+			<summary>{count === 0 ? "本轮" : `本轮 · 改了 ${count} 项`}</summary>
+			<div className="once-list">
+				{items.map(({ id, view, story }) => (
+					<button
+						type="button"
+						key={id}
+						className="tog"
+						aria-pressed={onceValue(once, id, story)}
+						data-changed={once[id] === undefined ? undefined : ""}
+						title={view.description}
+						onClick={() => onChange(toggleOnce(once, id, story))}
+					>
+						{view.label}
+					</button>
+				))}
+			</div>
+		</details>
+	);
+}
+
 /** 与样式表里手机布局的断点一致。 */
 function narrowScreen(): boolean {
 	return window.matchMedia("(max-width: 760px)").matches;
@@ -148,9 +194,12 @@ function narrowScreen(): boolean {
 function Prose({
 	items,
 	nodeId,
+	hideStatus = false,
 }: {
 	readonly items: readonly DisplayedContent[];
 	readonly nodeId: string | null;
+	/** 功能页关掉「状态面板」时不显示状态栏块。 */
+	readonly hideStatus?: boolean;
 }) {
 	return (
 		<>
@@ -174,6 +223,7 @@ function Prose({
 				const kind = blockViewKind(item);
 				// 行动选项放到输入台上，不在正文里重复。
 				if (kind === "options" || kind === "hidden") return null;
+				if (kind === "status" && hideStatus) return null;
 				if (kind === "thinking") {
 					return (
 						<details key={key}>
@@ -183,7 +233,14 @@ function Prose({
 					);
 				}
 				if (kind === "narration" || kind === "raw") {
-					return <Prose key={key} items={item.content} nodeId={nodeId} />;
+					return (
+						<Prose
+							key={key}
+							items={item.content}
+							nodeId={nodeId}
+							hideStatus={hideStatus}
+						/>
+					);
 				}
 				return (
 					<BlockContent
@@ -234,6 +291,18 @@ export function Play() {
 		[storyId],
 	);
 	const settings = useLoad(() => api.getSettings(storyId), [storyId]);
+	const features = useLoad(() => api.getStoryFeatures(storyId), [storyId]);
+	const switchView = useMemo(
+		() =>
+			new Map(
+				(features.data?.groups ?? []).flatMap((group) =>
+					group.switches.map((item) => [item.id, item] as const),
+				),
+			),
+		[features.data],
+	);
+	const statusOn = switchView.get("status")?.value !== false;
+	const [once, setOnce] = useState<OnceOverrides>({});
 	const dock = useLoad<{ recap: string | null }>(
 		() => api.get(sp(storyId, "/dock")),
 		[storyId],
@@ -384,6 +453,7 @@ export function Play() {
 		const controller = new AbortController();
 		abort.current = controller;
 		stage.pulse(push === null ? 0.8 : 1.3);
+		setOnce({});
 		void consume(
 			api.streamTurn(
 				storyId,
@@ -392,6 +462,8 @@ export function Play() {
 					text: message,
 					mode: mode as "fast",
 					...(push === null ? {} : { push }),
+					// 本轮临时开关只随这一次发送，发完清空。
+					...(Object.keys(once).length === 0 ? {} : { features: once }),
 				},
 				controller.signal,
 			),
@@ -600,6 +672,7 @@ export function Play() {
 											<Prose
 												items={parsed.get(node.id) ?? []}
 												nodeId={node.id}
+												hideStatus={!statusOn}
 											/>
 										</div>
 										<aside
@@ -679,7 +752,11 @@ export function Play() {
 											</div>
 										) : null}
 										{streaming.blocks !== null ? (
-											<Prose items={streaming.blocks} nodeId={null} />
+											<Prose
+												items={streaming.blocks}
+												nodeId={null}
+												hideStatus={!statusOn}
+											/>
 										) : (
 											streaming.text
 												.split(/\n+/)
@@ -850,6 +927,7 @@ export function Play() {
 							<Tog pressed={notesOn} onChange={setNotesOn}>
 								批注
 							</Tog>
+							<OncePanel switches={switchView} once={once} onChange={setOnce} />
 							<span className="num">{costLine(lastMeta)}</span>
 						</div>
 					</div>

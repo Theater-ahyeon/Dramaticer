@@ -55,9 +55,14 @@ test("台账展示本楼写入、线索、事件与故事级记忆，变更卡�
 	);
 	await expect(page.getByText("林雪", { exact: true }).first()).toBeVisible();
 	await expect(page.getByText("门厅", { exact: false }).first()).toBeVisible();
-	await expect(page.locator(".ledger-event").first()).toBeVisible({
-		timeout: 30_000,
-	});
+	// 事件由后台抽取写入，台账页只在打开时读一次；全量并行跑时后台队列可能比页面慢，
+	// 所以抽取完成前重新加载再看，不靠一次性的等待。
+	await expect(async () => {
+		await page.reload();
+		await expect(page.locator(".ledger-event").first()).toBeVisible({
+			timeout: 3_000,
+		});
+	}).toPass({ timeout: 90_000 });
 	await expect(page.locator(".ledger-event").first()).toContainText("门被推开");
 	await expect(page.locator(".ledger-proposal")).toHaveCount(2);
 

@@ -47,7 +47,10 @@ import {
 	formatRerollCorrection,
 } from "../preferences/reroll.js";
 import type { TurnRunEventInput, TurnRunFinalStatus } from "../run-log.js";
-import { readStoryFeatureState } from "../settings/features.js";
+import {
+	type FeatureSwitchOverrides,
+	readStoryFeatureState,
+} from "../settings/features.js";
 import { formatWritingDials } from "../settings/writing.js";
 import type { StoryStore } from "../store/story-store.js";
 import {
@@ -154,6 +157,8 @@ export interface ChatTurnOptions {
 	readonly directorIntensity?: DirectorIntensity | null;
 	/** 单轮推进档位；优先于导演槽位上的值。 */
 	readonly directorPush?: DirectorPush | null;
+	/** 本轮临时开关：只影响这一轮，叠在功能页的设置上（DESIGN §22）。 */
+	readonly featureOverrides?: FeatureSwitchOverrides | null;
 	/** 生图设置；工具可见性与频率检查都读这里。 */
 	readonly illustrate?: IllustrateTurnOptions | null;
 	readonly model?: string;
@@ -542,6 +547,7 @@ export async function generateAssistantTurn(
 		profile,
 		directorIntensity: options.directorIntensity ?? null,
 		providers,
+		featureOverrides: options.featureOverrides ?? null,
 	});
 	const cached = loadReusableContextPack(
 		options.store,
@@ -558,6 +564,10 @@ export async function generateAssistantTurn(
 			nodeId: userNode.id,
 			providers,
 			hookBudgetMs: options.hookBudgetMs,
+			...(options.featureOverrides === undefined ||
+			options.featureOverrides === null
+				? {}
+				: { featureOverrides: options.featureOverrides }),
 		}));
 	const slotHooks = assembled.hooks ?? [];
 	// 跳过的提供者按缺失处理，缺了槽位的包不能被后续回合复用。
@@ -591,11 +601,18 @@ export async function generateAssistantTurn(
 			? writesLedger
 			: writesLedger &&
 				(functionCall || transport === "text") &&
-				readStoryFeatureState(options.store, options.storyId).values.tools ===
-					true;
+				readStoryFeatureState(
+					options.store,
+					options.storyId,
+					options.featureOverrides ?? undefined,
+				).values.tools === true;
 	const declaredRuleCount =
 		writesLedger &&
-		readStoryFeatureState(options.store, options.storyId).values.rules === true
+		readStoryFeatureState(
+			options.store,
+			options.storyId,
+			options.featureOverrides ?? undefined,
+		).values.rules === true
 			? options.store.listStoryRules(options.storyId).length
 			: 0;
 	const readTools = exposeReadTools

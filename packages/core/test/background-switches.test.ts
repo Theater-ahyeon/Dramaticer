@@ -131,7 +131,8 @@ describe("其余接通的功能开关", () => {
 		expect(wired.get("scribe")).toBe(true);
 		expect(wired.get("reunion")).toBe(true);
 		expect(wired.get("choices")).toBe(true);
-		expect(wired.get("draw")).toBe(false);
+		// 出图以生图设置为准，不在功能页显示（ADR-0164）。
+		expect(wired.has("draw")).toBe(false);
 	});
 
 	it("检索与工具查阅在标准档开、省档关；思考与原样兼容不在功能页显示", () => {

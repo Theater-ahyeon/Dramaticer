@@ -2,6 +2,7 @@ import type {
 	BlockDisplayStrategy,
 	DirectorIntensity,
 	DirectorPush,
+	FeatureSwitchOverrides,
 	LlmUsage,
 	ParsedContent,
 	PlotNote,
@@ -21,6 +22,8 @@ export interface TurnRequest {
 	readonly intensity?: DirectorIntensity;
 	/** 单轮推进档位；省略时是常规回合。 */
 	readonly push?: DirectorPush;
+	/** 本轮临时开关：只影响这一轮，叠在功能页的设置上；省略时按功能页。 */
+	readonly features?: FeatureSwitchOverrides;
 }
 
 /**

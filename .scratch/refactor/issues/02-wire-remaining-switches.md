@@ -4,13 +4,13 @@
 
 **Blocked by:** refactor/01
 
-**Status:** claimed
+**Status:** done
 
-- [ ] 每个开关都有一条测试：开关取不同值时，槽位内容、后台任务列表或工具列表随之变化
-- [ ] 「本轮临时开关」同样生效（`readStoryFeatureState` 的 `turnOverrides`）
-- [ ] 功能页显示的「起过几次作用」与开关是否生效一致
-- [ ] 旧的独立设置（`sceneLogEnabled`、`turnMode` 以外的重复项）不再与功能页冲突：两者都存在时以 DESIGN §22 的规则为准并写进 NOTES
-- [ ] `pnpm check` 与 `pnpm e2e` 通过
+- [x] 每个开关都有一条测试：开关取不同值时，槽位内容、后台任务列表或工具列表随之变化
+- [x] 「本轮临时开关」同样生效（`readStoryFeatureState` 的 `turnOverrides`）
+- [x] 功能页显示的「起过几次作用」与开关是否生效一致
+- [x] 旧的独立设置（`sceneLogEnabled`、`turnMode` 以外的重复项）不再与功能页冲突：两者都存在时以 DESIGN §22 的规则为准并写进 NOTES
+- [x] `pnpm check` 与 `pnpm e2e` 通过
 
 规格：`.scratch/refactor/spec.md`；DESIGN §22
 
@@ -29,3 +29,4 @@
 2026-11-19 进展二：按 ADR-0163 接通全文检索与工具查阅，「思考」「原样兼容」从功能页隐藏。`pnpm check` 2756 通过；`v4-prefs`、`v4-polish` e2e 通过。
 仍剩：文风层（注入位置待设计）、状态面板 / 出图 / 背景音乐（显示层读开关，随 ui-lite 一起做）、本轮临时开关（回合请求与界面要传 `turnOverrides`）。
 
+完成：2026-11-19 文风层接通（文风类条目在世界书槽位常驻，前缀【文风】）；状态面板由故事页读取（关掉时不显示状态栏块）；出图与思考、原样兼容一样以别处为准、功能页隐藏；背景音乐功能本身未实现，继续标「尚未生效」（ADR-0164）。本轮临时开关打通：回合请求 `features` → 回合选项 `featureOverrides` → 槽位请求，上下文包指纹带上它；输入台加「本轮」面板，只随下一次发送。「起过几次作用」只给开着的开关显示。顺手修了 `ledger.spec` 的不稳定（等后台抽取时重新加载页面）。check 2842、e2e 77 通过。

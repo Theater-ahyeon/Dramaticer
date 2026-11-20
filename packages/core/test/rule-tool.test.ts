@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	type DramaticerRuleDeclaration,
+	type FeatureSwitchOverrides,
 	type LlmCallOptions,
 	type LlmRequest,
 	type LlmResult,
@@ -132,8 +133,12 @@ const sword = (
 async function runFast(input: {
 	readonly store: StoryStore;
 	readonly client: LlmStreamingClient;
+	readonly featureOverrides?: FeatureSwitchOverrides;
 }) {
 	return runChatTurn({
+		...(input.featureOverrides === undefined
+			? {}
+			: { featureOverrides: input.featureOverrides }),
 		store: input.store,
 		client: input.client,
 		storyId: "s1",
@@ -284,6 +289,29 @@ describe("rule_check 工具", () => {
 			"memory_search",
 		);
 		expect(result.node.raw).toBe("剑光一闪。");
+	});
+
+	it("本轮临时开关只在这一轮关掉工具查阅与规则执行", async () => {
+		const { store } = openTempStore();
+		seedStory(store, [sword(10, 2)], 5);
+		const { client, requests } = createScriptedClient([
+			{ text: "剑光一闪。" },
+			{ text: "剑又亮了一下。" },
+		]);
+
+		await runFast({
+			store,
+			client,
+			featureOverrides: { tools: false, rules: false },
+		});
+		await runFast({ store, client });
+
+		const names = (index: number) =>
+			requests[index]?.tools?.map((tool) => tool.name) ?? [];
+		expect(names(0)).not.toContain("memory_search");
+		expect(names(0)).not.toContain("rule_check");
+		expect(names(1)).toContain("memory_search");
+		expect(names(1)).toContain("rule_check");
 	});
 
 	it("没有声明规则时不开放，调用被拒绝并记录原因", async () => {

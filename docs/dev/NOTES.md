@@ -145,6 +145,7 @@
 ## 功能开关与后台任务（2026-11-19 起）
 
 - 功能页的值必须就是运行时的值。读开关一律用 `readStoryFeatureState(store, storyId[, turnOverrides])`，不要直接读 `settings.featureSwitches`（那只是玩家的覆盖，没有叠加档位与卡能力）。
+- 功能开关与旧的独立设置冲突时（DESIGN §22，ADR-0163/0164）：功能页为准的有 场记（与 `sceneLogEnabled` 取「或」，见下一条）、伏笔上限（`promiseLimit` 取代 `directorConfig.maxOpenPromises`）；别处为准、功能页隐藏的有 思考（写作页 `reasoning`）、原样兼容（`importMode`）、出图（`imageConfig.mode`）。新开关接通时加进 `WIRED_FEATURE_SWITCHES` 并补运行时测试；槽位与回合读开关一律带上 `request.featureOverrides` / `options.featureOverrides`（本轮临时开关）。「起过几次作用」只给开着的开关显示。
 - 后台任务类型的开关用 `readStoryBackgroundSwitches` 解析，再交给 `resolveStoryBackgroundKinds`：场记 = 功能页「场记」或旧设置 `sceneLogEnabled`；归档 = 场记开且（功能页「档案归档」或 `sceneLogEnabled`）。「档案归档」需要卡有实体能力，没有实体时功能页不显示也不运行。
 - 已接通的开关登记在 `WIRED_FEATURE_SWITCHES`（`settings/features.ts`），功能页据此标「尚未生效」。接通新开关时把它加进去并补一条运行时测试。
 - 伏笔上限一律用 `readStoryPromiseLimit`；`directorConfig.maxOpenPromises` 已不再生效。

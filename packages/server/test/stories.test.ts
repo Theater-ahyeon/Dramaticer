@@ -833,7 +833,6 @@ describe("功能开关接口", () => {
 			"director",
 			"promiseLimit",
 			"choices",
-			"draw",
 			"tools",
 		]);
 
@@ -886,7 +885,8 @@ describe("功能开关接口", () => {
 				group.switches.map((item) => [item.id, item] as const),
 			),
 		);
-		expect(switches.get("draw")?.value).toBe("manual");
+		// 出图以生图设置为准，功能页不显示；已存的覆盖值照常保存（ADR-0164）。
+		expect(switches.get("draw")).toBeUndefined();
 		expect(switches.get("archive")?.value).toBe(false);
 		expect(switches.get("rules")?.value).toBe(false);
 		expect(switches.get("status")?.value).toBe(true);

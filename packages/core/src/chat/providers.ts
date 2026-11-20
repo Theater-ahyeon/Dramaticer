@@ -537,7 +537,8 @@ export function createProfileSlotProvider(
 				);
 			}
 			const knows =
-				readStoryFeatureState(store, request.storyId).values.knows === true;
+				readStoryFeatureState(store, request.storyId, request.featureOverrides)
+					.values.knows === true;
 			const annotatedScenes = knows
 				? readSceneKnowledge(store, nodeId)
 						.facts.slice(-sceneLimit)
@@ -634,14 +635,20 @@ export function createReunionSlotProvider(
 			const nodeId =
 				request.nodeId ?? store.getHead(request.storyId)?.id ?? null;
 			if (nodeId === null) return null;
-			if (readStoryFeatureState(store, request.storyId).values.reunion !== true)
+			if (
+				readStoryFeatureState(store, request.storyId, request.featureOverrides)
+					.values.reunion !== true
+			)
 				return null;
 			const path = store.getPathToNode(nodeId);
 			const lastUser = [...path].reverse().find((node) => node.role === "user");
 			const trigger: string[] = [];
 			if (lastUser !== undefined) trigger.push(lastUser.raw);
-			const when = readStoryFeatureState(store, request.storyId).values
-				.director;
+			const when = readStoryFeatureState(
+				store,
+				request.storyId,
+				request.featureOverrides,
+			).values.director;
 			if (organization === "lines" && config.mode !== "off" && when !== "off") {
 				const selection = selectDirectorAction(
 					readDirectorActionInput(
@@ -807,7 +814,10 @@ export function createMemorySlotProvider(
 		}),
 		async provide(request): Promise<ContextSlotContent | null> {
 			if (request.nodeId === null) return null;
-			if (readStoryFeatureState(store, request.storyId).values.search !== true)
+			if (
+				readStoryFeatureState(store, request.storyId, request.featureOverrides)
+					.values.search !== true
+			)
 				return null;
 			const current = store.getNode(request.nodeId);
 			if (!current) {
@@ -1232,6 +1242,7 @@ export function resolveLoreInjectionRole(
 	entry: LoreEntry,
 	mode: "upgrade" | "raw",
 	rule: ImportAuditInjectionRule | undefined,
+	options: { readonly style?: boolean } = {},
 ): LoreInjectionRole {
 	if (rule?.memory === true) return { base: null, matched: true };
 	if (rule === undefined || mode === "raw") {
@@ -1246,6 +1257,12 @@ export function resolveLoreInjectionRole(
 			return { base: "index", matched: true };
 		case "rule":
 			return { base: null, matched: true };
+		// 文风类条目（卡自带的文风与格式要求）只由功能页的「写作指令层」决定：
+		// 开着时每轮常驻，关着时不注入（DESIGN §22）。
+		case "writing":
+			return options.style === true
+				? { base: "full", matched: false }
+				: { base: null, matched: false };
 		default:
 			return { base: null, matched: false };
 	}
@@ -1265,6 +1282,7 @@ function loreInjectionPrefix(
 		return "【检索】";
 	}
 	if (mode === "upgrade" && rule !== undefined) {
+		if (rule.kind === "writing") return "【文风】";
 		return rule.kind === "entity" ? "【索引】" : "【常识】";
 	}
 	return "【常驻】";
@@ -1305,6 +1323,9 @@ export function createLoreSlotProvider(
 			if (entries.length === 0) return null;
 
 			const mode = store.getStorySettings(request.storyId).importMode;
+			const style =
+				readStoryFeatureState(store, request.storyId, request.featureOverrides)
+					.values.style === true;
 			const rules = new Map(
 				store
 					.listImportAuditInjectionRules(request.storyId)
@@ -1315,7 +1336,10 @@ export function createLoreSlotProvider(
 					const rule = rules.get(entry.source);
 					return [
 						entry.id,
-						{ rule, role: resolveLoreInjectionRole(entry, mode, rule) },
+						{
+							rule,
+							role: resolveLoreInjectionRole(entry, mode, rule, { style }),
+						},
 					] as const;
 				}),
 			);
@@ -1572,7 +1596,8 @@ export function createDirectorSlotProvider(
 			// 「导演」功能开关决定何时出手：关闭时不评估，仅推进时由引擎让位。
 			const when =
 				options.when ??
-				readStoryFeatureState(store, request.storyId).values.director;
+				readStoryFeatureState(store, request.storyId, request.featureOverrides)
+					.values.director;
 			if (when === "off") return null;
 			const suggestion = engine.evaluate({
 				store,

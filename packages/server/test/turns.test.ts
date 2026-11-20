@@ -776,6 +776,28 @@ describe("POST /api/stories/:id/turns", () => {
 		expect(body.error.code).toBe("bad_request");
 		expect(body.error.details?.path).toBe("push");
 		expect(running.store.listStoryNodes("s1")).toHaveLength(before);
+
+		// 本轮临时开关：不认识的开关按 400 拒绝，不建楼层；合法的不改故事设置。
+		const unknownSwitch = await fetch(
+			`${running.origin}/api/stories/s1/turns`,
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ text: "再来。", features: { bogus: true } }),
+			},
+		);
+		expect(unknownSwitch.status).toBe(400);
+		expect(running.store.listStoryNodes("s1")).toHaveLength(before);
+		const once = await fetch(`${running.origin}/api/stories/s1/turns`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ text: "再来。", features: { tools: false } }),
+		});
+		expect(once.status).toBe(200);
+		await new FrameStream(once).readAll();
+		expect(
+			running.store.getStorySettings("s1").featureSwitches.tools,
+		).toBeUndefined();
 	});
 
 	it("深回合执行工具前发送 turn.progress，同一阶段只发一次", async () => {

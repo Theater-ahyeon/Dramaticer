@@ -50,6 +50,8 @@ export interface ContextPackFingerprintInput {
 	readonly profile: ChatProfile;
 	readonly directorIntensity: string | null;
 	readonly providers: ContextSlotProviders | undefined;
+	/** 本轮临时开关；不同的临时开关不复用同一个包。 */
+	readonly featureOverrides?: Readonly<Record<string, unknown>> | null;
 }
 
 /**
@@ -67,6 +69,14 @@ function providerKeys(
 	]);
 }
 
+function sortedEntries(
+	value: Readonly<Record<string, unknown>>,
+): readonly (readonly [string, unknown])[] {
+	return Object.keys(value)
+		.sort()
+		.map((key) => [key, value[key]]);
+}
+
 /** 组装输入的稳定指纹；同一节点只在指纹一致时复用旧包。 */
 export function contextPackFingerprint(
 	input: ContextPackFingerprintInput,
@@ -77,6 +87,11 @@ export function contextPackFingerprint(
 		profile: input.profile,
 		directorIntensity: input.directorIntensity,
 		providers: providerKeys(input.providers),
+		...(input.featureOverrides === undefined ||
+		input.featureOverrides === null ||
+		Object.keys(input.featureOverrides).length === 0
+			? {}
+			: { featureOverrides: sortedEntries(input.featureOverrides) }),
 	});
 	return createHash("sha256").update(serialised).digest("hex");
 }
