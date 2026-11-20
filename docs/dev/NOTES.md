@@ -46,6 +46,8 @@
 - 重建沙箱数据：`pnpm --filter @dramaticer/st-compat build && node packages/st-compat/dist/st-bench/cli.js sandbox --source "D:/SillyTavern" --replace`。
 
 ## 注意事项
+
+- 存储层文件地图（2026-11-19 起，refactor/05）：`core/src/store/story-store.ts` 只是外观——打开数据库、迁移、事务，以及把公开方法委托给 `store/repos/<领域>.ts`：`stories`（故事、媒体、代码插件安装、设置、模板）、`nodes`（楼层树、head、偏好记录）、`entities`、`ledger`（状态 diff、结算、变更卡、快照、玩家修改）、`scenes`（现场分析、百科修订、场记、场次归档与控制、摘要、章节压缩）、`memory`（事件、分块、向量、检索）、`director-lines`、`director-plan`、`outline`、`openings`、`images`、`lore`、`turns`、`assistant`、`background`；共用的行类型与校验在 `repos/shared.ts`。新方法写进对应领域的仓储类，再把方法名加进 `story-store.ts` 里该领域的 `Pick<…>` 与 `DELEGATES`（两处要一致，少写一处会是类型错误或运行时 undefined）。跨领域调用一律 `this.store.x()`，不要在仓储之间互相 import 实例。
 - `.env` 已由人类填写，**不要覆盖**。
 - 私有数据（`eval-private/`、`data/`、`.env`）不能进入测试数据、提交、文档或日志；报告只写统计数字，不写对话原文。R6 与 X1、X2 的 JSON 含回复与答案，只能放在私有目录。场记对照的报告含楼层 id 与台账值，只能放在 `eval-private/`。
 - 迁移 v72 之后 `assistant-store.test.ts` 的版本断言是 72；新增迁移要同步这个数字。`player_edits`、`memory_rejections`、`memory_event_quotes` 都只有 INSERT 与 SELECT 接口，UPDATE/DELETE 由触发器拒绝；回滚是再追加一条修改。
