@@ -1013,7 +1013,7 @@ img.cover {
 /* ---- 故事 ---- */
 .play {
 	display: grid;
-	grid-template-columns: minmax(0, 1fr) 372px;
+	grid-template-columns: minmax(0, 1fr) 340px;
 	gap: 24px;
 	align-items: start;
 }
@@ -1093,12 +1093,13 @@ img.cover {
 	min-width: 0;
 	color: var(--muted);
 }
+/* 书页：正文一栏 30–38 个字，批注在右侧页边。 */
 .flr {
 	position: relative;
 	display: grid;
-	grid-template-columns: minmax(0, 1fr) 190px;
+	grid-template-columns: minmax(0, 1fr) 168px;
 	gap: 24px;
-	padding: 16px 32px;
+	padding: 18px 28px;
 }
 .flr:hover::before {
 	opacity: 1;
@@ -1122,13 +1123,24 @@ img.cover {
 	display: none;
 }
 .prose {
-	max-width: 37em;
+	max-width: 35em;
+	margin-inline: auto;
+	width: 100%;
+	font-size: 18px;
 }
 .prose p {
-	font: 17.5px / 2.05 var(--f-prose);
+	font: 18px / var(--lh-prose) var(--f-prose);
 	text-indent: 2em;
 	text-align: justify;
 	min-height: 1em;
+	margin: 0;
+}
+.prose p + p {
+	margin-top: 0.55em;
+}
+/* 引号或破折号开头的对话段顶格。 */
+.prose p.dlg {
+	text-indent: 0;
 }
 .prose .text-segment {
 	white-space: pre-wrap;
@@ -1138,7 +1150,7 @@ img.cover {
 	color: var(--muted);
 	margin: 6px 0;
 }
-/* 正在写的段落：一段一段浮上来。 */
+/* 正在写：最后一段末尾一根闪烁的光标。 */
 .caret::after {
 	content: "";
 	display: inline-block;
@@ -1159,7 +1171,14 @@ img.cover {
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
-	padding-top: 8px;
+	padding-top: 10px;
+	align-self: start;
+	position: sticky;
+	top: 20px;
+}
+/* 手机上的折叠标记；桌面上批注常开，不需要它。 */
+.nmark {
+	display: none;
 }
 .note {
 	font-size: 12px;
@@ -1271,8 +1290,26 @@ img.cover {
 .acts {
 	display: flex;
 	flex-wrap: wrap;
+	align-items: center;
 	gap: 4px;
 	padding: 0 24px 8px;
+}
+.writing {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	margin-left: auto;
+	color: var(--gold-ink);
+	font-size: var(--t-sm);
+	letter-spacing: 0.08em;
+}
+.writing::before {
+	content: "";
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: var(--gold);
+	animation: busy 1.2s ease-in-out infinite;
 }
 .why {
 	margin: 4px 32px 12px;
@@ -1291,7 +1328,7 @@ img.cover {
 	margin-right: 4px;
 }
 
-/* 输入台：浮在书页底部的一块玻璃；聚焦或正在写时，一圈光沿着边缘走。 */
+/* 输入台：从上到下是行动选项（次要）、推进三档（主操作）、自由输入；写法与批注开关最轻。 */
 .cmp {
 	position: sticky;
 	bottom: 14px;
@@ -1323,6 +1360,12 @@ img.cover {
 	max-width: 100%;
 	overflow: hidden;
 	text-overflow: ellipsis;
+	background: var(--raise);
+	border-color: transparent;
+	font-family: var(--f-prose);
+}
+.opts .chip:hover {
+	border-color: var(--line-strong);
 }
 .push {
 	display: flex;
@@ -1397,6 +1440,8 @@ img.cover {
 	gap: 6px 12px;
 	align-items: center;
 	margin-top: 10px;
+	padding-top: 10px;
+	border-top: 1px solid var(--soft);
 	color: var(--muted);
 	font-size: 12px;
 }
@@ -1415,7 +1460,12 @@ img.cover {
 	background: var(--soft);
 }
 
-/* 停靠栏 */
+/* 停靠栏：桌面常驻在右侧；手机上是底部抽屉（见下面的手机布局）。 */
+.dockbtn,
+.dockclose,
+.dockscrim {
+	display: none;
+}
 .dock {
 	position: sticky;
 	top: calc(env(safe-area-inset-top, 0px) + 20px);
@@ -1560,15 +1610,46 @@ img.cover {
 	.flr::before {
 		display: none;
 	}
+	/* 批注折叠到每楼末尾：一行楼号加「批注 N」，点开才展开。 */
 	.notes {
+		position: static;
 		flex-direction: row;
 		flex-wrap: wrap;
+		align-items: center;
+		gap: 4px 10px;
 		padding-top: 0;
 	}
-	.note {
-		border: 1px solid var(--line);
-		border-radius: var(--r-md);
-		padding: 5px 9px;
+	.notes .note {
+		display: none;
+		flex-basis: 100%;
+	}
+	.notes.open .note {
+		display: block;
+	}
+	.nmark {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		min-height: 44px;
+		padding: 0 4px;
+		border: 0;
+		background: none;
+		color: var(--muted);
+		font-size: var(--t-xs);
+	}
+	.nmark::before {
+		content: "";
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: var(--gold);
+	}
+	.nmark::after {
+		content: "▾";
+		transition: transform var(--dur);
+	}
+	.nmark[aria-expanded="true"]::after {
+		transform: rotate(180deg);
 	}
 	.sheet-head {
 		padding-inline: 18px;
@@ -1576,7 +1657,103 @@ img.cover {
 	.cmp {
 		bottom: calc(82px + env(safe-area-inset-bottom, 0px));
 		margin-inline: 8px;
-		padding: 12px;
+		padding: 10px;
+	}
+	/* 单手操作：输入台与正文旁的按钮触控高度都不低于 44px。 */
+	.cmp .btn,
+	.cmp .chip,
+	.cmp .tog,
+	.acts .btn,
+	.dockbtn {
+		min-height: 44px;
+	}
+	.cmp .seg {
+		padding: 2px;
+	}
+	.cmp .seg button {
+		min-height: 40px;
+	}
+	.push,
+	.opts {
+		margin-bottom: 8px;
+	}
+	.push .seg {
+		flex: 1;
+	}
+	.push .seg button {
+		flex: 1;
+	}
+	.meta {
+		margin-top: 8px;
+		padding-top: 8px;
+	}
+	/* 打字时键盘顶起页面：收起底部导航，输入台贴着键盘。 */
+	body:has(.say textarea:focus) .rail,
+	body:has(.dockwrap.open) .rail {
+		display: none;
+	}
+	body:has(.say textarea:focus) .cmp {
+		bottom: 8px;
+	}
+	/* 停靠栏变成底部抽屉。 */
+	.dockbtn {
+		display: inline-flex;
+		align-items: center;
+	}
+	.dockscrim {
+		display: block;
+		position: fixed;
+		inset: 0;
+		z-index: 45;
+		background: color-mix(in srgb, var(--ink) 28%, transparent);
+		animation: fade 0.16s ease;
+	}
+	.play > .dockwrap {
+		position: fixed;
+		inset: auto 0 0 0;
+		z-index: 50;
+		max-height: 82dvh;
+		overflow: auto;
+		overscroll-behavior: contain;
+		padding-bottom: env(safe-area-inset-bottom, 0px);
+		border: 1px solid var(--line);
+		border-bottom: 0;
+		border-radius: var(--r-lg) var(--r-lg) 0 0;
+		background: var(--sheet);
+		box-shadow: var(--lift);
+		transform: translateY(100%);
+		visibility: hidden;
+		transition: transform 0.24s var(--ease), visibility 0.24s;
+	}
+	.play > .dockwrap.open {
+		transform: none;
+		visibility: visible;
+	}
+	.dockclose {
+		display: block;
+		position: sticky;
+		top: 0;
+		z-index: 1;
+		width: 100%;
+		height: 28px;
+		border: 0;
+		border-radius: 0;
+		background: var(--sheet);
+	}
+	.dockclose::before {
+		content: "";
+		display: block;
+		width: 40px;
+		height: 4px;
+		margin: 0 auto;
+		border-radius: 2px;
+		background: var(--line-strong);
+	}
+	.dockwrap .dock {
+		border: 0;
+		border-radius: 0;
+		box-shadow: none;
+		padding-top: 0;
 	}
 	.recapbox,
 	.slate,
@@ -1610,7 +1787,7 @@ img.cover {
 		display: none;
 	}
 	.prose p {
-		font-size: 16.5px;
+		font-size: 17px;
 		text-align: left;
 	}
 }

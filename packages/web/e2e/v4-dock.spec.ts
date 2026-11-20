@@ -25,6 +25,15 @@ const CARD = {
 	},
 } as const;
 
+/** 手机上停靠栏是底部抽屉，先从书页顶上的按钮打开；桌面上它一直在。 */
+async function openDock(page: Page): Promise<void> {
+	const opener = page.locator(".dockbtn");
+	if (await opener.isVisible()) {
+		await opener.click();
+		await expect(page.locator(".dockwrap")).toHaveClass(/open/);
+	}
+}
+
 async function createDockStory(page: Page, title: string): Promise<string> {
 	const id = `e2e-dock-${randomUUID()}`;
 	const created = await page.request.post("/api/stories", {
@@ -309,6 +318,7 @@ test.describe("故事页停靠栏：导演、记忆与上下文", () => {
 		const nodeId = seedDockStory(storyId, loreId);
 
 		await page.goto(`/stories/${storyId}/play`);
+		await openDock(page);
 		const dock = page.locator("#dock");
 		await expect(dock).toBeVisible();
 		await expectNoHorizontalOverflow(page);
@@ -371,6 +381,7 @@ test.describe("故事页停靠栏：导演、记忆与上下文", () => {
 
 		// 返回后看百科条目：跳到记忆页并选中老周这一页。
 		await page.goto(`/stories/${storyId}/play`);
+		await openDock(page);
 		await page.locator("#dock").getByRole("tab", { name: "上下文" }).click();
 		await page
 			.locator("#dock")
@@ -388,6 +399,7 @@ test.describe("故事页停靠栏：导演、记忆与上下文", () => {
 
 		// 状态：跳到记忆页的状态分页并标出那一行。
 		await page.goto(`/stories/${storyId}/play`);
+		await openDock(page);
 		await page.locator("#dock").getByRole("tab", { name: "上下文" }).click();
 		await page
 			.locator("#dock")
@@ -403,6 +415,7 @@ test.describe("故事页停靠栏：导演、记忆与上下文", () => {
 
 		// 原文：跳回故事页并翻到那一楼。
 		await page.goto(`/stories/${storyId}/play`);
+		await openDock(page);
 		await page.locator("#dock").getByRole("tab", { name: "上下文" }).click();
 		await page
 			.locator("#dock")

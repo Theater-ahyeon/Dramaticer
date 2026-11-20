@@ -15,6 +15,7 @@ import { PUSH_TURN_TEXT } from "../chat/push";
 import { BlockContent } from "../components/chat/BlockContent";
 import { Dock, type DockTab } from "./Dock";
 import { usePaletteCommands } from "./Shell";
+import { isDialogueLine } from "./prose";
 import { stage } from "./stage";
 import {
 	Cover,
@@ -139,6 +140,11 @@ interface Streaming {
 	readonly error: string | null;
 }
 
+/** 与样式表里手机布局的断点一致。 */
+function narrowScreen(): boolean {
+	return window.matchMedia("(max-width: 760px)").matches;
+}
+
 function Prose({
 	items,
 	nodeId,
@@ -156,8 +162,13 @@ function Prose({
 						.map((line) => line.trim())
 						.filter((line) => line.length > 0)
 						.map((line, position) => (
-							// biome-ignore lint/suspicious/noArrayIndexKey: 段落没有稳定的 id
-							<p key={`${key}-${position}`}>{line}</p>
+							<p
+								// biome-ignore lint/suspicious/noArrayIndexKey: 段落没有稳定的 id
+								key={`${key}-${position}`}
+								className={isDialogueLine(line) ? "dlg" : undefined}
+							>
+								{line}
+							</p>
 						));
 				}
 				const kind = blockViewKind(item);
@@ -239,6 +250,9 @@ export function Play() {
 	const [actions, setActions] = useState<readonly string[]>([]);
 	const [dockTab, setDockTab] = useState<DockTab>("dir");
 	const [dockTick, setDockTick] = useState(0);
+	// 手机上停靠栏是底部抽屉，批注折叠成每楼末尾的小标记。
+	const [dockOpen, setDockOpen] = useState(false);
+	const [openNotes, setOpenNotes] = useState<ReadonlySet<string>>(new Set());
 	const [search] = useSearchParams();
 	const focusNode = search.get("node");
 	const abort = useRef<AbortController | null>(null);
@@ -447,8 +461,33 @@ export function Play() {
 
 	const showContext = useCallback(() => {
 		setDockTab("ctx");
-		dockRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+		if (narrowScreen()) setDockOpen(true);
+		else
+			dockRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
 	}, []);
+
+	useEffect(() => {
+		if (!dockOpen) return;
+		const close = (event: KeyboardEvent) => {
+			if (event.key === "Escape") setDockOpen(false);
+		};
+		window.addEventListener("keydown", close);
+		return () => window.removeEventListener("keydown", close);
+	}, [dockOpen]);
+
+	// 从抽屉里跳到某一楼时，抽屉让开。
+	// biome-ignore lint/correctness/useExhaustiveDependencies: 只在目标楼层变化时收起
+	useEffect(() => {
+		setDockOpen(false);
+	}, [focusNode]);
+
+	const toggleNotes = (nodeId: string) =>
+		setOpenNotes((current) => {
+			const next = new Set(current);
+			if (next.has(nodeId)) next.delete(nodeId);
+			else next.add(nodeId);
+			return next;
+		});
 
 	usePaletteCommands(
 		// biome-ignore lint/correctness/useExhaustiveDependencies: send 每次渲染都是新的，用它依赖的状态代替
@@ -505,6 +544,15 @@ export function Play() {
 							<h1>{title}</h1>
 						</div>
 						<span className="label">第 {nodes.length} 楼</span>
+						<button
+							type="button"
+							className="btn sm dockbtn"
+							aria-expanded={dockOpen}
+							aria-controls="dock"
+							onClick={() => setDockOpen(true)}
+						>
+							导演 · 记忆 · 上下文
+						</button>
 					</div>
 					{dock.data?.recap ? (
 						<details className="recapbox" open>
@@ -554,8 +602,22 @@ export function Play() {
 												nodeId={node.id}
 											/>
 										</div>
-										<aside className="notes">
+										<aside
+											className={
+												openNotes.has(node.id) ? "notes open" : "notes"
+											}
+										>
 											<span className="fno">第 {meta?.no ?? "?"} 楼</span>
+											{(meta?.notes ?? []).length > 0 ? (
+												<button
+													type="button"
+													className="nmark"
+													aria-expanded={openNotes.has(node.id)}
+													onClick={() => toggleNotes(node.id)}
+												>
+													批注 {meta?.notes.length}
+												</button>
+											) : null}
 											{(meta?.notes ?? []).map((note, index) => (
 												<div
 													// biome-ignore lint/suspicious/noArrayIndexKey: 批注没有稳定的 id
@@ -627,7 +689,12 @@ export function Play() {
 														// biome-ignore lint/suspicious/noArrayIndexKey: 流式段落
 														key={index}
 														className={
-															index === all.length - 1 ? "caret" : undefined
+															[
+																isDialogueLine(line) ? "dlg" : "",
+																index === all.length - 1 ? "caret" : "",
+															]
+																.join(" ")
+																.trim() || undefined
 														}
 													>
 														{line}
@@ -671,13 +738,16 @@ export function Play() {
 							它看到了什么
 						</button>
 						{busy ? (
-							<button
-								type="button"
-								className="btn ghost sm"
-								onClick={() => abort.current?.abort()}
-							>
-								停下
-							</button>
+							<>
+								<output className="writing">正在写</output>
+								<button
+									type="button"
+									className="btn ghost sm"
+									onClick={() => abort.current?.abort()}
+								>
+									停下
+								</button>
+							</>
 						) : null}
 					</div>
 					{whyOpen ? (
@@ -695,7 +765,17 @@ export function Play() {
 							))}
 						</div>
 					) : null}
-					<div className="cmp" data-busy={busy ? "" : undefined}>
+					{/* 输入台里的按钮不抢走输入框的焦点：手机键盘不收起，打字时收起的导航也不会
+					    在按下与松开之间弹回来，让点击落空。键盘的 Tab 照常能聚焦按钮。 */}
+					<div
+						className="cmp"
+						data-busy={busy ? "" : undefined}
+						onMouseDown={(event) => {
+							if ((event.target as HTMLElement).closest("button") !== null) {
+								event.preventDefault();
+							}
+						}}
+					>
 						<div className="opts">
 							{actions.slice(0, 5).map((action) => (
 								<button
@@ -774,7 +854,21 @@ export function Play() {
 						</div>
 					</div>
 				</div>
-				<div ref={dockRef}>
+				{dockOpen ? (
+					// biome-ignore lint/a11y/useKeyWithClickEvents: Esc 在窗口上处理
+					<div
+						className="dockscrim"
+						aria-hidden="true"
+						onClick={() => setDockOpen(false)}
+					/>
+				) : null}
+				<div ref={dockRef} className={dockOpen ? "dockwrap open" : "dockwrap"}>
+					<button
+						type="button"
+						className="dockclose"
+						aria-label="收起停靠栏"
+						onClick={() => setDockOpen(false)}
+					/>
 					<Dock
 						storyId={storyId}
 						tab={dockTab}

@@ -245,4 +245,86 @@ test.describe("故事页：正文、批注与输入台", () => {
 		await expect(page.locator("#sheet")).not.toHaveClass(/nonotes/);
 		await expect(page.locator(".notes").first()).toBeVisible();
 	});
+
+	test("手机 375px 单手可用，桌面 1440px 正文居中、批注在页边、停靠栏常驻", async ({
+		page,
+	}) => {
+		const stamp = Date.now();
+		const storyId = `e2e-v4-layout-${stamp}`;
+		await createStory(page, storyId, `排版 ${stamp}`);
+		seedFirstFloor(storyId);
+
+		// 桌面：正文一栏居中，批注在正文右边，停靠栏在书页右侧且不用滚动就能看到。
+		await page.setViewportSize({ width: 1440, height: 900 });
+		await page.goto(`/stories/${storyId}/play`);
+		const prose = page.locator("#script .prose").first();
+		await expect(prose).toBeVisible();
+		const proseBox = await prose.boundingBox();
+		const noteBox = await page.locator(".notes").first().boundingBox();
+		const sheetBox = await page.locator("#sheet").boundingBox();
+		const dockBox = await page.locator("#dock").boundingBox();
+		expect(noteBox?.x ?? 0).toBeGreaterThan(
+			(proseBox?.x ?? 0) + (proseBox?.width ?? 0),
+		);
+		expect(dockBox?.x ?? 0).toBeGreaterThan(
+			(sheetBox?.x ?? 0) + (sheetBox?.width ?? 0),
+		);
+		expect(dockBox?.y ?? 900).toBeLessThan(900);
+		await expect(page.locator(".dockbtn")).toBeHidden();
+		await expect(page.locator(".notes .note").first()).toBeVisible();
+		const fontSize = await page
+			.locator("#script .prose p")
+			.first()
+			.evaluate((el) => Number.parseFloat(getComputedStyle(el).fontSize));
+		const perLine = (proseBox?.width ?? 0) / fontSize;
+		expect(perLine).toBeGreaterThanOrEqual(30);
+		expect(perLine).toBeLessThanOrEqual(38);
+
+		// 手机：批注折叠成楼末的小标记，点开才展开。
+		await page.setViewportSize({ width: 375, height: 667 });
+		await page.goto(`/stories/${storyId}/play`);
+		await expectNoHorizontalOverflow(page);
+		const note = page.locator(".notes .note").first();
+		const mark = page.locator(".nmark").first();
+		await expect(note).toBeHidden();
+		await mark.click();
+		await expect(mark).toHaveAttribute("aria-expanded", "true");
+		await expect(note).toBeVisible();
+
+		// 输入台在屏幕里、在底部导航之上，主要按钮都够大。
+		const cmpBox = await page.locator(".cmp").boundingBox();
+		const railBox = await page.locator(".rail").boundingBox();
+		expect((cmpBox?.y ?? 0) + (cmpBox?.height ?? 0)).toBeLessThanOrEqual(
+			railBox?.y ?? 0,
+		);
+		for (const name of [/^推进/, "发送"]) {
+			const box = await page.getByRole("button", { name }).boundingBox();
+			expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+		}
+
+		// 打字时收起底部导航，输入台贴到底部。
+		await page.locator(".say textarea").focus();
+		await expect(page.locator(".rail")).toBeHidden();
+		const typingBox = await page.locator(".cmp").boundingBox();
+		expect((typingBox?.y ?? 0) + (typingBox?.height ?? 0)).toBeLessThanOrEqual(
+			667,
+		);
+		await page.locator(".say textarea").blur();
+
+		// 停靠栏是底部抽屉：「它看到了什么」直接打开上下文，拉手收起。
+		const drawer = page.locator(".dockwrap");
+		await expect(page.locator("#dock")).toBeHidden();
+		await page.getByRole("button", { name: "它看到了什么" }).click();
+		await expect(drawer).toHaveClass(/open/);
+		await expect(page.locator("#dock")).toBeVisible();
+		await expect(
+			page.locator("#dock").getByRole("tab", { name: "上下文" }),
+		).toHaveAttribute("aria-selected", "true");
+		await page.getByRole("button", { name: "收起停靠栏" }).click();
+		await expect(page.locator("#dock")).toBeHidden();
+		await page.locator(".dockbtn").click();
+		await expect(page.locator("#dock")).toBeVisible();
+		await page.keyboard.press("Escape");
+		await expect(page.locator("#dock")).toBeHidden();
+	});
 });
