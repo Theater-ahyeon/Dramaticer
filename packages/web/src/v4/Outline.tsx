@@ -207,7 +207,8 @@ export function Outline() {
 						<div>
 							<span className="label">核心问题</span>
 							<Editable
-								value={basePremise.coreQuestion || "（点这里写）"}
+								value={basePremise.coreQuestion}
+								placeholder="点这里写"
 								onCommit={(text) =>
 									save({ ...basePremise, coreQuestion: text })
 								}
@@ -216,17 +217,16 @@ export function Outline() {
 						<div>
 							<span className="label">基调</span>
 							<Editable
-								value={basePremise.tone || "（点这里写）"}
+								value={basePremise.tone}
+								placeholder="点这里写"
 								onCommit={(text) => save({ ...basePremise, tone: text })}
 							/>
 						</div>
 						<div>
 							<span className="label">不要发生</span>
 							<Editable
-								value={
-									basePremise.redLines.join("；") ||
-									"（点这里写，多条用分号隔开）"
-								}
+								value={basePremise.redLines.join("；")}
+								placeholder="点这里写，多条用分号隔开"
 								onCommit={(text) =>
 									save({
 										...basePremise,

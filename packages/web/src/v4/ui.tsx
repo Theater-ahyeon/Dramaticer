@@ -206,16 +206,20 @@ export function Editable({
 	onCommit,
 	as = "p",
 	className,
+	placeholder,
 }: {
 	readonly value: string;
 	readonly onCommit: (text: string) => void;
 	readonly as?: "p" | "h3" | "span" | "dd" | "td";
 	readonly className?: string;
+	/** 空的时候显示的浅色提示；不算内容，也不会被保存。 */
+	readonly placeholder?: string;
 }) {
 	const Tag = as;
 	return (
 		<Tag
 			className={className}
+			data-placeholder={placeholder}
 			contentEditable
 			suppressContentEditableWarning
 			onBlur={(event) => {

@@ -636,8 +636,9 @@ html.theme-swap img.cover {
 	letter-spacing: 0.14em;
 	color: var(--muted);
 }
+/* 数字用界面字体的等宽数字；等宽字体配中文会把「第 4 楼」撑得很散。 */
 .num {
-	font-family: var(--f-data);
+	font-family: var(--f-ui);
 	font-variant-numeric: tabular-nums;
 }
 /* 开关：开着是墨色。 */
@@ -856,6 +857,11 @@ img.cover {
 	background: var(--soft);
 	box-shadow: 0 0 0 3px var(--soft);
 }
+/* 就地编辑的空白处显示浅色提示，不当成真内容。 */
+[contenteditable]:empty::before {
+	content: attr(data-placeholder);
+	color: var(--muted);
+}
 [contenteditable]:focus {
 	background: var(--cinnabar-wash);
 	box-shadow: 0 0 0 3px var(--cinnabar-wash), 0 0 0 4px var(--cinnabar);
@@ -907,106 +913,104 @@ img.cover {
 	-webkit-box-orient: vertical;
 	overflow: hidden;
 }
+/* 统计：数字加一行小字，不加框，免得抢了「接着写」。 */
 .hero .stats {
 	display: flex;
 	flex-wrap: wrap;
-	align-items: stretch;
-	gap: 10px;
+	align-items: flex-end;
+	gap: 12px 28px;
 	color: var(--muted);
-	font-size: 12.5px;
-	margin-bottom: 26px;
+	font-size: var(--t-xs);
+	margin-bottom: var(--s-5);
 }
 .hero .stats span {
 	display: flex;
 	flex-direction: column;
-	justify-content: flex-end;
-	min-width: 86px;
-	padding: 10px 14px;
-	border: 1px solid var(--line);
-	border-radius: var(--r-lg);
-	background: var(--raise);
+	gap: 2px;
 }
 .hero .stats b {
-	font: 600 26px / 1.1 var(--f-data);
+	font: 400 var(--t-2xl) / 1.1 var(--f-display);
 	font-variant-numeric: tabular-nums;
 	color: var(--ink);
 }
+/* 书架：卡面图排成封面网格，书名与进度在封面下面。 */
 .shelf {
 	display: grid;
-	grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-	gap: 20px;
+	grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+	gap: 32px 22px;
 }
 .book {
-	display: grid;
-	grid-template-columns: 104px minmax(0, 1fr);
-	gap: 18px;
-	padding: 16px;
-	background: var(--sheet);
-	border: 1px solid var(--line);
-	border-radius: var(--r-lg);
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	min-width: 0;
+	color: inherit;
 	text-decoration: none;
-	box-shadow: var(--shadow);
 }
 .book .cover {
 	border-radius: var(--r-sm);
 	box-shadow: var(--shadow);
+	transition: box-shadow var(--dur), transform 0.22s var(--ease);
 }
-.book:hover {
-	border-color: var(--line-strong);
+.book:hover .cover {
 	box-shadow: var(--lift);
+	transform: translateY(-3px);
 }
 .book h2 {
-	font: 400 23px / 1.25 var(--f-display);
-	margin: 6px 0 8px;
+	font: 400 var(--t-lg) / 1.35 var(--f-display);
+	margin: 2px 0 4px;
+	overflow-wrap: anywhere;
 }
 .book p {
-	font: 14px / 1.8 var(--f-prose);
+	font: var(--t-sm) / 1.7 var(--f-prose);
 	color: var(--muted);
 	display: -webkit-box;
-	-webkit-line-clamp: 3;
+	-webkit-line-clamp: 2;
 	-webkit-box-orient: vertical;
 	overflow: hidden;
 }
+/* 「导入一张卡」占一个封面的位置。 */
 .book.add {
-	display: flex;
-	flex-direction: column;
 	align-items: center;
 	justify-content: center;
 	gap: 6px;
-	border-style: dashed;
+	aspect-ratio: 2 / 3;
+	padding: var(--s-4);
+	border: 1px dashed var(--line-strong);
+	border-radius: var(--r-sm);
 	background: none;
 	text-align: center;
-	min-height: 188px;
-	color: inherit;
 	font: inherit;
-	transition: border-color var(--dur), box-shadow var(--dur);
+	transition: border-color var(--dur), background var(--dur);
+}
+.book.add:hover {
+	border-color: var(--gold);
+	background: var(--gold-wash);
+}
+.book.add h2 {
+	font-size: var(--t-md);
 }
 .book.add .plus {
 	display: grid;
 	place-items: center;
-	width: 46px;
-	height: 46px;
+	width: 44px;
+	height: 44px;
 	border-radius: 50%;
-	border: 1px solid var(--line);
+	border: 1px solid var(--line-strong);
 	color: var(--gold-ink);
 	font-size: 22px;
 	margin-bottom: 6px;
-	transition: background var(--dur);
-}
-.book.add:hover .plus {
-	background: var(--gold-wash);
 }
 @media (max-width: 640px) {
 	.hero {
 		grid-template-columns: minmax(0, 1fr);
-		border-radius: var(--r-lg);
 	}
 	.hero-cover {
-		width: 132px;
+		width: 116px;
 	}
-	.hero .stats span {
-		min-width: 0;
-		flex: 1;
+	.shelf {
+		grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+		gap: 24px 16px;
 	}
 }
 
@@ -1220,7 +1224,8 @@ img.cover {
 	color: var(--bad);
 }
 .fno {
-	font: 11px var(--f-data);
+	font: var(--t-xs) var(--f-ui);
+	font-variant-numeric: tabular-nums;
 	color: var(--muted);
 	letter-spacing: 0.06em;
 }
@@ -2066,7 +2071,7 @@ img.cover {
 	border-bottom: 1px solid var(--line);
 }
 .vol h2 {
-	font: 400 24px var(--f-display);
+	font: 400 var(--t-xl) var(--f-display);
 }
 .vol > header p {
 	color: var(--muted);
@@ -2178,7 +2183,8 @@ img.cover {
 	white-space: nowrap;
 }
 .cost .big {
-	font: 600 28px / 1 var(--f-data);
+	font: 400 var(--t-2xl) / 1 var(--f-display);
+	font-variant-numeric: tabular-nums;
 }
 .cost .big:last-child {
 	color: var(--ink);
@@ -2308,7 +2314,7 @@ img.cover {
 	margin-top: 0;
 }
 .grp > h2 {
-	font: 400 22px var(--f-display);
+	font: 400 var(--t-xl) var(--f-display);
 	padding-bottom: 8px;
 	border-bottom: 1px solid var(--line);
 }
