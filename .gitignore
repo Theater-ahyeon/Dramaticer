@@ -15,3 +15,4 @@ packages/*/test/.tmp-*/
 *.log
 .alma-snapshots
 .worktrees/
+packages/web/.walk/
