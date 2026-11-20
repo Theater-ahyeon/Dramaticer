@@ -494,3 +494,4 @@
 - 2026-11-19 人工会话（续）：spec/v4-remaining 快进合入 main；完成 refactor/02（文风层、状态面板、本轮临时开关，ADR-0164），修好 ledger.spec 不稳定；check 2842、e2e 77 通过。
 - 2026-11-19 人工会话（续）：完成 refactor/03 后台保底与失败可见（ADR-0165）、refactor/04 北极星指标（stats rerolls 命令与设置页表）。
 - 2026-11-19 人工会话（续）：完成 refactor/05，StoryStore 拆成 15 个领域仓储，外观委托，调用方零改动；check 2860 通过。refactor/07 按人类「暂时不用评测」暂缓。
+- 2026-11-19 人工会话（续）：完成 refactor/06，server 路由按领域拆分，共用校验集中到 routes-common。

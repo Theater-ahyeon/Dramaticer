@@ -7,7 +7,6 @@ import {
 	type LlmModelRole,
 	countOpenPromises,
 	isDirectorActionKind,
-	isJsonObject,
 	parseChannelsConfig,
 	readBackgroundHealth,
 	readDirectorArrangementLineId,
@@ -20,8 +19,14 @@ import {
 	resolveModelForRole,
 	undoDirectorArrangement,
 } from "@dramaticer/core";
-import { HttpError, readJsonBody, sendJson } from "./http.js";
+import { HttpError, sendJson } from "./http.js";
 import { handleCardRoute } from "./routes-card.js";
+import {
+	fieldError,
+	readObjectBody,
+	requireMethod,
+	requireStory,
+} from "./routes-common.js";
 import { handleMemoryRoute } from "./routes-memory.js";
 import type { ApiRouteOptions } from "./routes.js";
 
@@ -46,51 +51,51 @@ export async function handleNextStoryRoute(
 		return true;
 	}
 	if (third === "stats" && fourth === "rerolls" && parts.length === 4) {
-		allow(method, ["GET"]);
-		requireStory(options, storyId);
+		requireMethod(method, ["GET"]);
+		requireStory(options.store, storyId);
 		sendJson(res, 200, readRerollRates(options.store, storyId));
 		return true;
 	}
 	if (third === "background" && fourth === "health" && parts.length === 4) {
-		allow(method, ["GET"]);
-		requireStory(options, storyId);
+		requireMethod(method, ["GET"]);
+		requireStory(options.store, storyId);
 		sendJson(res, 200, await backgroundHealthView(options, storyId));
 		return true;
 	}
 	if (third === "overview" && parts.length === 3) {
-		allow(method, ["GET"]);
-		requireStory(options, storyId);
+		requireMethod(method, ["GET"]);
+		requireStory(options.store, storyId);
 		sendJson(res, 200, storyOverview(options, storyId));
 		return true;
 	}
 	if (third === "floors" && parts.length === 3) {
-		allow(method, ["GET"]);
-		requireStory(options, storyId);
+		requireMethod(method, ["GET"]);
+		requireStory(options.store, storyId);
 		sendJson(res, 200, storyFloors(options, storyId));
 		return true;
 	}
 	if (third === "director") {
 		if (fourth === "stats" && parts.length === 4) {
-			allow(method, ["GET"]);
-			requireStory(options, storyId);
+			requireMethod(method, ["GET"]);
+			requireStory(options.store, storyId);
 			sendJson(res, 200, readDirectorInterferenceStats(options.store, storyId));
 			return true;
 		}
 		if (fourth === "lines" && parts.length === 4) {
-			allow(method, ["GET"]);
-			requireStory(options, storyId);
+			requireMethod(method, ["GET"]);
+			requireStory(options.store, storyId);
 			sendJson(res, 200, directorLinesView(options, storyId));
 			return true;
 		}
 		if (fourth === "muted" && parts.length === 4) {
-			allow(method, ["GET"]);
-			requireStory(options, storyId);
+			requireMethod(method, ["GET"]);
+			requireStory(options.store, storyId);
 			sendJson(res, 200, directorLinesView(options, storyId));
 			return true;
 		}
 		if (fourth === "muted" && fifth !== undefined && parts.length === 5) {
-			allow(method, ["PUT", "DELETE"]);
-			requireStory(options, storyId);
+			requireMethod(method, ["PUT", "DELETE"]);
+			requireStory(options.store, storyId);
 			if (method === "PUT") {
 				options.store.muteDirectorLine(storyId, fifth, null);
 			} else {
@@ -100,12 +105,12 @@ export async function handleNextStoryRoute(
 			return true;
 		}
 		if (fourth === "undo" && parts.length === 4) {
-			allow(method, ["POST"]);
-			requireStory(options, storyId);
-			const body = await readObject(req, options);
+			requireMethod(method, ["POST"]);
+			requireStory(options.store, storyId);
+			const body = await readObjectBody(req, options.maxJsonBodyBytes);
 			const nodeId = body.nodeId;
 			if (typeof nodeId !== "string" || nodeId.length === 0) {
-				throw bad("nodeId", "撤回导演安排必须提供 nodeId");
+				throw fieldError("nodeId", "撤回导演安排必须提供 nodeId");
 			}
 			const node = options.store.getNode(nodeId);
 			if (node === null || node.storyId !== storyId) {
@@ -118,7 +123,10 @@ export async function handleNextStoryRoute(
 				nodeId,
 			);
 			if (lineId === null) {
-				throw bad("nodeId", "这一楼的导演安排没有对应的剧情线，无法撤回");
+				throw fieldError(
+					"nodeId",
+					"这一楼的导演安排没有对应的剧情线，无法撤回",
+				);
 			}
 			await undoDirectorArrangement({
 				store: options.store,
@@ -170,31 +178,6 @@ function directorLinesView(options: ApiRouteOptions, storyId: string) {
 			muted: mutedIds.has(state.line.id),
 		})),
 	};
-}
-
-export function allow(method: string, allowed: readonly string[]): void {
-	if (!allowed.includes(method)) {
-		throw new HttpError(405, "bad_request", `不支持的请求方法：${method}`);
-	}
-}
-
-export function requireStory(options: ApiRouteOptions, storyId: string): void {
-	if (options.store.getStory(storyId) === null) {
-		throw new HttpError(404, "not_found", `故事不存在：${storyId}`);
-	}
-}
-
-export function bad(path: string, message: string): HttpError {
-	return new HttpError(400, "bad_request", message, { path });
-}
-
-export async function readObject(
-	req: IncomingMessage,
-	options: ApiRouteOptions,
-): Promise<Record<string, unknown>> {
-	const body = await readJsonBody(req, options.maxJsonBodyBytes);
-	if (!isJsonObject(body)) throw bad("body", "请求体必须是 JSON 对象");
-	return body as Record<string, unknown>;
 }
 
 /** 去掉块标签后的正文开头，给书架与「上回说到」用。 */

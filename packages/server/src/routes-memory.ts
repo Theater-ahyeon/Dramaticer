@@ -33,7 +33,12 @@ import {
 	writeWritingOverrides,
 } from "@dramaticer/core";
 import { HttpError, sendJson } from "./http.js";
-import { allow, bad, readObject, requireStory } from "./routes-next.js";
+import {
+	fieldError,
+	readObjectBody,
+	requireMethod,
+	requireStory,
+} from "./routes-common.js";
 import type { ApiRouteOptions } from "./routes.js";
 
 /** 记忆、设定副本、剧情线修改与写作选项的接口。返回 true 表示已处理。 */
@@ -51,9 +56,9 @@ export async function handleMemoryRoute(
 	const head = () => store.getHead(storyId)?.id ?? null;
 
 	if (third === "memory") {
-		requireStory(options, storyId);
+		requireStory(options.store, storyId);
 		if (parts.length === 3) {
-			allow(method, ["GET"]);
+			requireMethod(method, ["GET"]);
 			sendJson(res, 200, {
 				storyId,
 				headNodeId: head(),
@@ -67,7 +72,7 @@ export async function handleMemoryRoute(
 			return true;
 		}
 		if (fourth === "records" && parts.length === 4) {
-			allow(method, ["GET"]);
+			requireMethod(method, ["GET"]);
 			sendJson(res, 200, {
 				storyId,
 				records: readMemoryRecords(store, storyId),
@@ -75,11 +80,11 @@ export async function handleMemoryRoute(
 			return true;
 		}
 		if (fourth === "history" && parts.length === 4) {
-			allow(method, ["GET"]);
+			requireMethod(method, ["GET"]);
 			const kind = url.searchParams.get("kind");
 			const target = url.searchParams.get("target");
 			if (!isPlayerEditKind(kind) || target === null) {
-				throw bad("kind", "查看历史必须提供 kind 与 target");
+				throw fieldError("kind", "查看历史必须提供 kind 与 target");
 			}
 			sendJson(res, 200, {
 				storyId,
@@ -96,8 +101,8 @@ export async function handleMemoryRoute(
 			return true;
 		}
 		if (parts.length === 4) {
-			allow(method, ["POST"]);
-			const body = await readObject(req, options);
+			requireMethod(method, ["POST"]);
+			const body = await readObjectBody(req, options.maxJsonBodyBytes);
 			try {
 				switch (fourth) {
 					case "state": {
@@ -106,7 +111,7 @@ export async function handleMemoryRoute(
 							!Array.isArray(path) ||
 							path.some((item) => typeof item !== "string")
 						) {
-							throw bad("path", "path 必须是字符串数组");
+							throw fieldError("path", "path 必须是字符串数组");
 						}
 						editState(
 							store,
@@ -142,7 +147,7 @@ export async function handleMemoryRoute(
 								body.value === undefined ? null : (body.value as JsonValue),
 							);
 						} else {
-							throw bad(
+							throw fieldError(
 								"editId",
 								"回滚必须提供 editId，或状态的 target 与 value",
 							);
@@ -155,7 +160,7 @@ export async function handleMemoryRoute(
 			} catch (error) {
 				// 校验失败的原因原样带回去，界面在原处显示。
 				if (error instanceof HttpError) throw error;
-				throw bad(
+				throw fieldError(
 					fourth ?? "body",
 					error instanceof Error ? error.message : String(error),
 				);
@@ -166,8 +171,8 @@ export async function handleMemoryRoute(
 	}
 
 	if (third === "context" && parts.length === 3) {
-		allow(method, ["GET"]);
-		requireStory(options, storyId);
+		requireMethod(method, ["GET"]);
+		requireStory(options.store, storyId);
 		const requested = url.searchParams.get("nodeId");
 		let nodeId = requested;
 		if (nodeId === null) {
@@ -186,21 +191,21 @@ export async function handleMemoryRoute(
 	}
 
 	if (third === "dock" && parts.length === 3) {
-		allow(method, ["GET"]);
-		requireStory(options, storyId);
+		requireMethod(method, ["GET"]);
+		requireStory(options.store, storyId);
 		sendJson(res, 200, dockView(options, storyId));
 		return true;
 	}
 
 	if (third === "lore-copy") {
-		requireStory(options, storyId);
+		requireStory(options.store, storyId);
 		if (parts.length === 3) {
-			allow(method, ["GET"]);
+			requireMethod(method, ["GET"]);
 			sendJson(res, 200, loreCopyView(options, storyId));
 			return true;
 		}
 		if (fourth === "restore" && parts.length === 4) {
-			allow(method, ["POST"]);
+			requireMethod(method, ["POST"]);
 			for (const item of readLoreCopy(store, storyId)) {
 				if (!item.edited && !item.disabled) continue;
 				store.savePlayerEdit({
@@ -217,8 +222,8 @@ export async function handleMemoryRoute(
 			return true;
 		}
 		if (fourth !== undefined && parts.length === 4) {
-			allow(method, ["POST"]);
-			const body = await readObject(req, options);
+			requireMethod(method, ["POST"]);
+			const body = await readObjectBody(req, options.maxJsonBodyBytes);
 			const current = readLoreCopy(store, storyId).find(
 				(item) => item.original.id === fourth,
 			);
@@ -241,7 +246,7 @@ export async function handleMemoryRoute(
 						? body.content
 						: current.entry.content;
 				if (content.trim().length === 0) {
-					throw bad("content", "条目内容不能为空；不想用它可以停用");
+					throw fieldError("content", "条目内容不能为空；不想用它可以停用");
 				}
 				store.savePlayerEdit({
 					storyId,
@@ -273,12 +278,12 @@ export async function handleMemoryRoute(
 			return true;
 		}
 		if (fourth !== undefined && fifth === "preview" && parts.length === 5) {
-			allow(method, ["GET"]);
+			requireMethod(method, ["GET"]);
 			sendJson(res, 200, lorePreview(options, storyId, fourth));
 			return true;
 		}
 		if (fourth !== undefined && fifth === "history" && parts.length === 5) {
-			allow(method, ["GET"]);
+			requireMethod(method, ["GET"]);
 			sendJson(res, 200, {
 				edits: readEditHistory(store, storyId, null, "lore", fourth),
 			});
@@ -287,14 +292,14 @@ export async function handleMemoryRoute(
 	}
 
 	if (third === "director" && fourth === "scene" && parts.length === 4) {
-		allow(method, ["POST"]);
-		requireStory(options, storyId);
-		const body = await readObject(req, options);
+		requireMethod(method, ["POST"]);
+		requireStory(options.store, storyId);
+		const body = await readObjectBody(req, options.maxJsonBodyBytes);
 		try {
 			saveSceneGoalEdit(options, storyId, body);
 		} catch (error) {
 			if (error instanceof HttpError) throw error;
-			throw bad(
+			throw fieldError(
 				"scene",
 				error instanceof Error ? error.message : String(error),
 			);
@@ -307,28 +312,31 @@ export async function handleMemoryRoute(
 	}
 
 	if (third === "director" && fourth === "line" && parts.length === 4) {
-		allow(method, ["POST"]);
-		requireStory(options, storyId);
-		const body = await readObject(req, options);
+		requireMethod(method, ["POST"]);
+		requireStory(options.store, storyId);
+		const body = await readObjectBody(req, options.maxJsonBodyBytes);
 		try {
 			saveLineEdit(options, storyId, body);
 		} catch (error) {
 			if (error instanceof HttpError) throw error;
-			throw bad("line", error instanceof Error ? error.message : String(error));
+			throw fieldError(
+				"line",
+				error instanceof Error ? error.message : String(error),
+			);
 		}
 		sendJson(res, 200, { ok: true });
 		return true;
 	}
 
 	if (third === "writing" && parts.length === 3) {
-		allow(method, ["GET", "PUT", "DELETE"]);
-		requireStory(options, storyId);
+		requireMethod(method, ["GET", "PUT", "DELETE"]);
+		requireStory(options.store, storyId);
 		if (method === "GET") {
 			sendJson(res, 200, readWritingView(store, storyId));
 		} else if (method === "DELETE") {
 			sendJson(res, 200, resetToCardRecommended(store, storyId));
 		} else {
-			const body = await readObject(req, options);
+			const body = await readObjectBody(req, options.maxJsonBodyBytes);
 			sendJson(res, 200, writeWritingOverrides(store, storyId, body));
 		}
 		return true;
@@ -352,10 +360,10 @@ function saveEdit(
 	const kind = body.kind;
 	const target = body.target;
 	if (!isPlayerEditKind(kind) || !EDIT_TEXT_KINDS.includes(kind)) {
-		throw bad("kind", "kind 只能是 secret、wiki 或 summary");
+		throw fieldError("kind", "kind 只能是 secret、wiki 或 summary");
 	}
 	if (typeof target !== "string" || target.length === 0) {
-		throw bad("target", "必须指明要改的对象");
+		throw fieldError("target", "必须指明要改的对象");
 	}
 	if (kind === "wiki" && body.reset !== true) {
 		const separator = target.lastIndexOf("|");
@@ -369,7 +377,7 @@ function saveEdit(
 						? next.text
 						: undefined;
 				if (typeof nextText !== "string" || nextText.trim().length === 0) {
-					throw bad("value", "内容不能为空；不想要这一条可以删掉它");
+					throw fieldError("value", "内容不能为空；不想要这一条可以删掉它");
 				}
 				text = nextText;
 			}
@@ -407,7 +415,7 @@ function saveEdit(
 				? next.text
 				: undefined;
 		if (typeof text !== "string" || text.trim().length === 0) {
-			throw bad("value", "内容不能为空；不想要这一条可以删掉它");
+			throw fieldError("value", "内容不能为空；不想要这一条可以删掉它");
 		}
 		if (kind === "secret" && next !== null && typeof next === "object") {
 			for (const field of ["knowers", "unaware"] as const) {
@@ -419,7 +427,7 @@ function saveEdit(
 						(name) => typeof name !== "string" || name.trim().length === 0,
 					)
 				) {
-					throw bad("value", `${field} 必须是名字组成的数组`);
+					throw fieldError("value", `${field} 必须是名字组成的数组`);
 				}
 			}
 		}
@@ -447,7 +455,7 @@ function saveLineEdit(
 	const store = options.store;
 	const nodeId = store.getHead(storyId)?.id ?? null;
 	if (nodeId === null)
-		throw bad("line", "故事还没有楼层，先写第一楼再加剧情线");
+		throw fieldError("line", "故事还没有楼层，先写第一楼再加剧情线");
 	if (typeof body.pin === "string") {
 		const pinned = new Set(readPinnedLineIds(store, storyId));
 		if (pinned.has(body.pin)) pinned.delete(body.pin);
@@ -462,7 +470,7 @@ function saveLineEdit(
 				? (body.line as { id?: unknown }).id
 				: undefined;
 	if (typeof id !== "string" || id.length === 0) {
-		throw bad("id", "必须指明是哪一条剧情线");
+		throw fieldError("id", "必须指明是哪一条剧情线");
 	}
 	const current = readEffectiveEdits(store, storyId, nodeId, "line").get(id);
 	const existing = store
@@ -495,11 +503,11 @@ function saveSceneGoalEdit(
 	const store = options.store;
 	const nodeId = store.getHead(storyId)?.id ?? null;
 	if (nodeId === null) {
-		throw bad("scene", "故事还没有楼层，先写第一楼再改本场目标");
+		throw fieldError("scene", "故事还没有楼层，先写第一楼再改本场目标");
 	}
 	const current = readSceneGoal(store, storyId, nodeId);
 	if (current === null) {
-		throw bad("scene", "这一场还没有目标，先等场记写下场面卡");
+		throw fieldError("scene", "这一场还没有目标，先等场记写下场面卡");
 	}
 	const present =
 		body.present === undefined
@@ -508,7 +516,7 @@ function saveSceneGoalEdit(
 				? body.present
 				: null;
 	if (present === null) {
-		throw bad("present", "present 必须是在场者的数组");
+		throw fieldError("present", "present 必须是在场者的数组");
 	}
 	const change = typeof body.change === "string" ? body.change : current.change;
 	const card = assertSceneCard({ present, change }, "本场目标");

@@ -24,7 +24,12 @@ import {
 	worldInfoFromCharacterBook,
 } from "@dramaticer/st-compat";
 import { sendJson } from "./http.js";
-import { allow, bad, readObject, requireStory } from "./routes-next.js";
+import {
+	fieldError,
+	readObjectBody,
+	requireMethod,
+	requireStory,
+} from "./routes-common.js";
 import type { ApiRouteOptions } from "./routes.js";
 
 /** 每个功能开关每轮在后台大约多花的 token；只用于设置页的合计。 */
@@ -39,7 +44,7 @@ const FEATURE_COSTS: Readonly<Record<string, number>> = {
 
 function parseCard(payload: unknown): { card: StCharacterCard; data: string } {
 	if (!isJsonObject(payload) || typeof payload.data !== "string") {
-		throw bad("card", "必须提供卡片内容");
+		throw fieldError("card", "必须提供卡片内容");
 	}
 	try {
 		const card =
@@ -48,7 +53,10 @@ function parseCard(payload: unknown): { card: StCharacterCard; data: string } {
 				: parseCharacterCardJson(payload.data);
 		return { card, data: payload.data };
 	} catch (error) {
-		throw bad("card", error instanceof Error ? error.message : String(error));
+		throw fieldError(
+			"card",
+			error instanceof Error ? error.message : String(error),
+		);
 	}
 }
 
@@ -123,8 +131,8 @@ export async function handleCardRoute(
 	const store = options.store;
 
 	if (third === "card" && parts.length === 3) {
-		allow(method, ["GET"]);
-		requireStory(options, storyId);
+		requireMethod(method, ["GET"]);
+		requireStory(options.store, storyId);
 		const card = readStoryCardSnapshot(store, storyId);
 		sendJson(res, 200, {
 			storyId,
@@ -135,9 +143,9 @@ export async function handleCardRoute(
 	}
 
 	if (third === "card" && fourth === "diff" && parts.length === 4) {
-		allow(method, ["POST"]);
-		requireStory(options, storyId);
-		const body = await readObject(req, options);
+		requireMethod(method, ["POST"]);
+		requireStory(options.store, storyId);
+		const body = await readObjectBody(req, options.maxJsonBodyBytes);
 		const { card, data } = parseCard(body.card);
 		const current = readStoryCardSnapshot(store, storyId);
 		const same = current !== null && current.version === storyCardVersion(data);
@@ -233,11 +241,11 @@ export async function handleCardRoute(
 	}
 
 	if (third === "writing" && fourth === "preset" && parts.length === 4) {
-		allow(method, ["POST"]);
-		requireStory(options, storyId);
-		const body = await readObject(req, options);
+		requireMethod(method, ["POST"]);
+		requireStory(options.store, storyId);
+		const body = await readObjectBody(req, options.maxJsonBodyBytes);
 		if (typeof body.preset !== "string")
-			throw bad("preset", "必须提供预设文件的内容");
+			throw fieldError("preset", "必须提供预设文件的内容");
 		let result: ReturnType<typeof mapPresetToWritingDials>;
 		try {
 			result = mapPresetToWritingDials(
@@ -245,7 +253,7 @@ export async function handleCardRoute(
 				typeof body.name === "string" ? body.name : "预设",
 			);
 		} catch (error) {
-			throw bad(
+			throw fieldError(
 				"preset",
 				error instanceof Error ? error.message : String(error),
 			);
@@ -261,8 +269,8 @@ export async function handleCardRoute(
 	}
 
 	if (third === "features" && fourth === "stats" && parts.length === 4) {
-		allow(method, ["GET"]);
-		requireStory(options, storyId);
+		requireMethod(method, ["GET"]);
+		requireStory(options.store, storyId);
 		sendJson(res, 200, {
 			storyId,
 			costs: FEATURE_COSTS,

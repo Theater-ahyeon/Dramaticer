@@ -47,6 +47,8 @@
 
 ## 注意事项
 
+- server 路由文件地图（2026-11-19 起，refactor/06）：`routes.ts` 只有 `ApiRouteOptions` 与分发入口 `handleApiRequest`；处理函数在 `routes-stories`（故事、导入、楼层树与路径、实体、设定、后台任务、连载）、`routes-turns`（回合、追加要求、重写、就地纠正、场面控制）、`routes-nodes`（单个楼层的正文、Trace、台账、事件、导演、变更卡）、`routes-outline`（大纲、AI 建议、导演计划）、`routes-setup`（开场、导入体检、角色外观、设置与模板）、`routes-channels`、`routes-media`；v4 新接口仍在 `routes-next` / `routes-memory` / `routes-card`。参数校验与错误响应只用 `routes-common.ts`（`requireMethod`、`requireStory`、`readObjectBody`、`assertKnownKeys`、`fieldError` 等），不要在新文件里再写一份。
+
 - 存储层文件地图（2026-11-19 起，refactor/05）：`core/src/store/story-store.ts` 只是外观——打开数据库、迁移、事务，以及把公开方法委托给 `store/repos/<领域>.ts`：`stories`（故事、媒体、代码插件安装、设置、模板）、`nodes`（楼层树、head、偏好记录）、`entities`、`ledger`（状态 diff、结算、变更卡、快照、玩家修改）、`scenes`（现场分析、百科修订、场记、场次归档与控制、摘要、章节压缩）、`memory`（事件、分块、向量、检索）、`director-lines`、`director-plan`、`outline`、`openings`、`images`、`lore`、`turns`、`assistant`、`background`；共用的行类型与校验在 `repos/shared.ts`。新方法写进对应领域的仓储类，再把方法名加进 `story-store.ts` 里该领域的 `Pick<…>` 与 `DELEGATES`（两处要一致，少写一处会是类型错误或运行时 undefined）。跨领域调用一律 `this.store.x()`，不要在仓储之间互相 import 实例。
 - `.env` 已由人类填写，**不要覆盖**。
 - 私有数据（`eval-private/`、`data/`、`.env`）不能进入测试数据、提交、文档或日志；报告只写统计数字，不写对话原文。R6 与 X1、X2 的 JSON 含回复与答案，只能放在私有目录。场记对照的报告含楼层 id 与台账值，只能放在 `eval-private/`。
