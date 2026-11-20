@@ -2,7 +2,7 @@
 
 **What to build:** 推进时显示 2–3 个方向（后台场末或间隙里备好，只预跑推进一条）；删除八种动作的程序选择、`mechanisms` 引擎、提前备好的选项预跑；规划、深度写法移入实验区。
 
-**Blocked by:** direction-v5/01；HUMAN-26（AGENTS.md 的 I9、I11 改写）
+**Blocked by:** direction-v5/01
 
 **Status:** ready-for-agent
 

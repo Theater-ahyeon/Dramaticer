@@ -9,7 +9,7 @@
 > 2026-11-20 起：按 `docs/proposals/v5.md`（人类已确认）执行。下面 v5 的顺序优先于旧顺序；旧功能已全部完成。
 
 v5-1. M-A 骨架：`ui-v2` 01–05
-v5-2. M-B 记忆：`memory-v5` 01–05、`direction-v5` 01–02（`direction-v5/02` 需要 HUMAN-26 先完成）
+v5-2. M-B 记忆：`memory-v5` 01–05、`direction-v5` 01–02
 v5-3. M-C 原著：`canon` 01–06
 v5-4. M-D 呈现：`card-ui` 01–02、`image-v2` 01–04
 v5-5. M-E 收尾：`ui-v2` 06（全站文案清洗）
