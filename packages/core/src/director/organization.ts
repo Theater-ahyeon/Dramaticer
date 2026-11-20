@@ -1,14 +1,6 @@
-import { evaluateContextCondition } from "../context/template.js";
 import type { JsonObject } from "../json.js";
 import { DEFAULT_MECHANISM_KERNEL } from "../plugins/mechanisms.js";
 import type { StoryStore } from "../store/story-store.js";
-import {
-	DIRECTOR_BIT_RECORD_NAME,
-	type DirectorBit,
-	type DirectorBitJudgment,
-	directorBitTextFingerprint,
-	readSelectedDirectorBit,
-} from "./bits.js";
 import { assertDirectorConfig, evaluateDirector } from "./evaluate.js";
 import {
 	DIRECTOR_ACTION_PRIORITY,
@@ -21,11 +13,13 @@ import {
 import type {
 	DirectorConfig,
 	DirectorMechanism,
-	DirectorMechanismRecord,
 	DirectorSuggestion,
 } from "./types.js";
 
-/** 导演的组织方式；X2 的两个候选与 v4 的线与动作引擎。 */
+/**
+ * 导演的组织方式：v3 的机制序列（已有故事仍在用）与 v4 的线与动作引擎。
+ * `bits` 只为读旧库保留，运行时按 `lines` 处理（ADR-0166）。
+ */
 export const DIRECTOR_ORGANIZATION_KINDS = [
 	"mechanisms",
 	"bits",
@@ -77,6 +71,11 @@ export interface DirectorEngineInput {
  */
 export interface DirectorEngine {
 	readonly kind: DirectorOrganizationKind;
+	/**
+	 * 故事设置里存的是已删除的组织方式（目前是 `bits`，ADR-0166）时为那个旧值，
+	 * 引擎按 `lines` 运行；Trace 据此注明。正常时为 null。
+	 */
+	readonly retiredKind: DirectorOrganizationKind | null;
 	/** 机制型引擎的机制名，用于上下文包指纹；其他组织形式为 null。 */
 	readonly mechanismNames: readonly string[] | null;
 	/** 评估并写入本楼层的决策记录；导演关闭时返回 null 且不写记录。 */
@@ -100,6 +99,7 @@ export function createDirectorEngine(
 				options.mechanisms ?? DEFAULT_MECHANISM_KERNEL.mechanisms();
 			return {
 				kind,
+				retiredKind: null,
 				mechanismNames: mechanisms.map((mechanism) => mechanism.name),
 				evaluate(input) {
 					if (yieldsToPlayer(input, kind)) return null;
@@ -113,18 +113,12 @@ export function createDirectorEngine(
 				},
 			};
 		}
+		// X2 的小品引擎未胜出并已删除（ADR-0134、ADR-0166）；旧值按线引擎运行。
 		case "bits":
-			return {
-				kind,
-				mechanismNames: null,
-				evaluate(input) {
-					if (yieldsToPlayer(input, kind)) return null;
-					return evaluateDirectorBits(input);
-				},
-			};
 		case "lines":
 			return {
-				kind,
+				kind: "lines",
+				retiredKind: kind === "bits" ? kind : null,
 				mechanismNames: null,
 				evaluate(input) {
 					return evaluateDirectorLines(input);
@@ -157,186 +151,6 @@ function yieldsToPlayer(
 		signals: { organization, intent: intent.kind, action: "yield" },
 	});
 	return true;
-}
-
-interface EligibleBit {
-	readonly bit: DirectorBit;
-	readonly reason: string;
-}
-
-/**
- * 剧情小品引擎：台账查询当场判定，自然语言条件读间隙里写入的楼层缓存；
- * 冷却、顺序约束、可否重复与兜底全部由程序执行。整个过程不调用模型。
- */
-function evaluateDirectorBits(
-	input: DirectorEngineInput,
-): DirectorSuggestion | null {
-	const { store, storyId, nodeId, config } = input;
-	assertDirectorConfig(config);
-	if (!store.getStory(storyId)) {
-		throw new Error(`故事不存在：${storyId}`);
-	}
-	const node = store.getNode(nodeId);
-	if (!node) {
-		throw new Error(`楼层节点不存在：${nodeId}`);
-	}
-	if (node.storyId !== storyId) {
-		throw new Error(`楼层节点 ${nodeId} 属于另一个故事 ${node.storyId}`);
-	}
-	if (config.mode === "off") return null;
-	const bits = store.listDirectorBits(storyId);
-	const reasons = new Map<string, string>();
-	const details: JsonObject[] = [];
-	const eligible: EligibleBit[] = [];
-
-	if (bits.length === 0) {
-		store.saveDirectorDecision({
-			nodeId,
-			storyId,
-			directive: null,
-			mechanisms: [
-				{
-					name: DIRECTOR_BIT_RECORD_NAME,
-					triggered: false,
-					reason: "没有可用的剧情小品",
-				},
-			],
-			signals: { organization: "bits", selected: null, evaluated: [] },
-		});
-		return null;
-	}
-
-	const path = store.getPathToNode(nodeId);
-	const positions = new Map(
-		path.map((node, index) => [node.id, index] as const),
-	);
-	const currentPosition = path.length - 1;
-	const lastFired = new Map<string, number>();
-	for (const decision of store.getDirectorDecisionsAlongPath(nodeId)) {
-		if (decision.nodeId === nodeId) continue;
-		const selected = readSelectedDirectorBit(decision.signals);
-		if (selected === null) continue;
-		const position = positions.get(decision.nodeId);
-		if (position === undefined) continue;
-		const previous = lastFired.get(selected);
-		if (previous === undefined || position > previous) {
-			lastFired.set(selected, position);
-		}
-	}
-
-	const fingerprint = directorBitTextFingerprint(bits);
-	const cached = store.findDirectorBitJudgments(nodeId);
-	const judgments =
-		cached !== null &&
-		cached.storyId === storyId &&
-		cached.fingerprint === fingerprint
-			? new Map(cached.judgments.map((item) => [item.id, item] as const))
-			: new Map<string, DirectorBitJudgment>();
-	const state = store.getStateSnapshot(nodeId).state;
-
-	for (const bit of bits) {
-		const detail: JsonObject = {
-			id: bit.id,
-			priority: bit.priority,
-			condition: bit.condition?.kind ?? "fallback",
-			matched: null,
-			triggered: false,
-			reason: "",
-		};
-		const conditionReason = evaluateBitCondition(bit, state, judgments);
-		if (conditionReason.kind === "missing") {
-			reasons.set(bit.id, conditionReason.reason);
-			detail.reason = conditionReason.reason;
-			details.push(detail);
-			continue;
-		}
-		detail.matched = conditionReason.matched;
-		if (!conditionReason.matched) {
-			reasons.set(bit.id, conditionReason.reason);
-			detail.reason = conditionReason.reason;
-			details.push(detail);
-			continue;
-		}
-		if (!bit.repeatable && lastFired.has(bit.id)) {
-			reasons.set(bit.id, "不可重复且已经在当前路径上触发");
-			detail.reason = "不可重复且已经在当前路径上触发";
-			details.push(detail);
-			continue;
-		}
-		const last = lastFired.get(bit.id);
-		if (last !== undefined && currentPosition - last <= bit.cooldown) {
-			const remaining = bit.cooldown - (currentPosition - last) + 1;
-			const reason = `仍在冷却，还需 ${remaining} 个楼层`;
-			reasons.set(bit.id, reason);
-			detail.reason = reason;
-			details.push(detail);
-			continue;
-		}
-		if (bit.after !== null && !lastFired.has(bit.after)) {
-			const reason = `顺序约束未满足：${bit.after} 尚未触发`;
-			reasons.set(bit.id, reason);
-			detail.reason = reason;
-			details.push(detail);
-			continue;
-		}
-		reasons.set(bit.id, conditionReason.reason);
-		detail.reason = conditionReason.reason;
-		details.push(detail);
-		eligible.push({ bit, reason: conditionReason.reason });
-	}
-
-	const regular = eligible.filter((item) => !item.bit.fallback);
-	const fallbacks = eligible.filter((item) => item.bit.fallback);
-	const chosen = highestPriority(regular) ?? highestPriority(fallbacks) ?? null;
-	if (chosen !== null) {
-		const previous = reasons.get(chosen.bit.id) ?? "条件成立";
-		reasons.set(chosen.bit.id, `命中：${previous}`);
-	}
-	for (const item of eligible) {
-		if (chosen !== null && item.bit.id === chosen.bit.id) continue;
-		reasons.set(
-			item.bit.id,
-			item.bit.fallback && regular.length > 0
-				? "兜底小品：已有普通小品命中"
-				: `优先级低于 ${chosen?.bit.id ?? "其他小品"}`,
-		);
-	}
-	const records: DirectorMechanismRecord[] = bits.map((bit) => ({
-		name: bit.id,
-		triggered: chosen !== null && chosen.bit.id === bit.id,
-		reason: reasons.get(bit.id) ?? "未评估",
-	}));
-	for (const detail of details) {
-		const id = detail.id;
-		if (typeof id !== "string") continue;
-		detail.triggered = chosen !== null && chosen.bit.id === id;
-		detail.reason = reasons.get(id) ?? detail.reason;
-	}
-	const suggestion =
-		chosen === null
-			? null
-			: {
-					mechanism: chosen.bit.id,
-					priority: chosen.bit.priority,
-					directive: chosen.bit.instruction,
-					signals: {
-						bitId: chosen.bit.id,
-						condition: chosen.bit.condition?.kind ?? "fallback",
-					},
-				};
-
-	store.saveDirectorDecision({
-		nodeId,
-		storyId,
-		directive: suggestion === null ? null : suggestion.directive,
-		mechanisms: records,
-		signals: {
-			organization: "bits",
-			selected: chosen === null ? null : chosen.bit.id,
-			evaluated: details,
-		},
-	});
-	return suggestion;
 }
 
 /**
@@ -405,58 +219,5 @@ function evaluateDirectorLines(
 		priority: DIRECTOR_ACTION_PRIORITY,
 		directive: selection.directive,
 		signals,
-	};
-}
-
-function highestPriority(items: readonly EligibleBit[]): EligibleBit | null {
-	let best: EligibleBit | null = null;
-	for (const item of items) {
-		if (best === null || item.bit.priority > best.bit.priority) {
-			best = item;
-		}
-	}
-	return best;
-}
-
-interface BitConditionResult {
-	readonly kind: "judged" | "missing";
-	readonly matched: boolean;
-	readonly reason: string;
-}
-
-function evaluateBitCondition(
-	bit: DirectorBit,
-	state: unknown,
-	judgments: ReadonlyMap<string, DirectorBitJudgment>,
-): BitConditionResult {
-	if (bit.fallback) {
-		return { kind: "judged", matched: true, reason: "兜底小品" };
-	}
-	if (bit.condition === null) {
-		throw new Error(`剧情小品 ${bit.id} 没有条件也没有标记为兜底`);
-	}
-	if (bit.condition.kind === "ledger") {
-		const matched = evaluateContextCondition(bit.condition.query, {
-			switches: {},
-			state,
-		});
-		return {
-			kind: "judged",
-			matched,
-			reason: matched ? "台账条件成立" : "台账条件不成立",
-		};
-	}
-	const judgment = judgments.get(bit.id);
-	if (judgment === undefined) {
-		return {
-			kind: "missing",
-			matched: false,
-			reason: "自然语言条件的判断结果缺失",
-		};
-	}
-	return {
-		kind: "judged",
-		matched: judgment.matched,
-		reason: judgment.reason,
 	};
 }

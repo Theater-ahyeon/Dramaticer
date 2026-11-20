@@ -97,27 +97,13 @@ describe("导演组织方式", () => {
 		expect(store.getDirectorDecision(nodeId)).toBeNull();
 	});
 
-	it("剧情小品引擎读取故事里的小品，没有小品时返回 null 并写记录", () => {
-		const { store } = openTempStore();
-		const nodeId = seed(store);
+	it("已删除的小品引擎：旧库里的 bits 按线引擎运行，并记下旧值", () => {
 		const engine = createDirectorEngine("bits");
-		expect(engine.kind).toBe("bits");
+		expect(engine.kind).toBe("lines");
+		expect(engine.retiredKind).toBe("bits");
 		expect(engine.mechanismNames).toBeNull();
-		expect(
-			engine.evaluate({
-				store,
-				storyId: "s1",
-				nodeId,
-				config: DEFAULT_DIRECTOR_CONFIG,
-			}),
-		).toBeNull();
-		expect(store.getDirectorDecision(nodeId)?.mechanisms).toEqual([
-			{
-				name: "bits",
-				triggered: false,
-				reason: "没有可用的剧情小品",
-			},
-		]);
+		expect(createDirectorEngine("lines").retiredKind).toBeNull();
+		expect(createDirectorEngine("mechanisms").retiredKind).toBeNull();
 	});
 
 	it("槽位按组织方式选择引擎，上下文包指纹带上种类", async () => {
@@ -125,6 +111,7 @@ describe("导演组织方式", () => {
 		const nodeId = seed(store);
 		const engine: DirectorEngine = {
 			kind: "bits",
+			retiredKind: null,
 			mechanismNames: null,
 			evaluate() {
 				return null;

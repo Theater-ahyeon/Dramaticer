@@ -73,7 +73,11 @@ import { retrieveMemory } from "../retrieval/hybrid.js";
 import { readStoryFeatureState } from "../settings/features.js";
 import type { StoryStore } from "../store/story-store.js";
 import { type TokenEstimator, createTokenEstimator } from "../tokens.js";
-import { type WorldModelKind, createWorldModel } from "../world-model/index.js";
+import {
+	type WorldModelKind,
+	createWorldModel,
+	isRetiredWorldModelKind,
+} from "../world-model/index.js";
 
 export interface HistorySlotProviderOptions {
 	/** 最多带最近多少楼，默认 20。 */
@@ -269,6 +273,11 @@ export function createStateSlotProvider(
 	options: StateSlotProviderOptions = {},
 ): ContextSlotProvider {
 	const worldModel = createWorldModel(store, options.worldModel);
+	const retired =
+		options.worldModel !== undefined &&
+		isRetiredWorldModelKind(options.worldModel)
+			? `（旧设置 ${options.worldModel} 已按台账处理）`
+			: "";
 	const estimator = createTokenEstimator();
 	return {
 		packKey: `state:${worldModel.kind}`,
@@ -298,7 +307,7 @@ export function createStateSlotProvider(
 					}),
 				);
 			}
-			return { messages, source: view.source, items };
+			return { messages, source: `${view.source}${retired}`, items };
 		},
 	};
 }
@@ -1609,10 +1618,14 @@ export function createDirectorSlotProvider(
 			});
 			if (suggestion === null) return null;
 			const suffix = `【导演】${suggestion.directive}\n${DIRECTOR_SUFFIX_NOTE}`;
+			const retired =
+				engine.retiredKind === null
+					? ""
+					: `（旧设置 ${engine.retiredKind} 已按 lines 运行）`;
 			return {
 				messages: [],
 				suffix,
-				source: `director:${suggestion.mechanism}`,
+				source: `director:${suggestion.mechanism}${retired}`,
 				items: [
 					contextItem(suggestion.mechanism, estimator(suffix), {
 						kind: "outline",

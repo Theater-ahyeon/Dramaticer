@@ -2,7 +2,10 @@ import type { JsonObject } from "../json.js";
 import type { LedgerSource } from "../ledger/schema.js";
 import type { StateDiffOp, StoryTime } from "../timeline.js";
 
-/** 世界模型的表示方式；对比实验 X1 的三个候选。 */
+/**
+ * 世界模型的表示方式。X1 的 `wiki`、`temporal_graph` 未胜出（ADR-0130），实现已删除
+ * （ADR-0166）；这两个值只为读旧库保留，运行时一律按台账处理。
+ */
 export const WORLD_MODEL_KINDS = ["ledger", "wiki", "temporal_graph"] as const;
 export type WorldModelKind = (typeof WORLD_MODEL_KINDS)[number];
 
@@ -72,12 +75,39 @@ export interface WorldModel {
 	): WorldModelWriteResult;
 }
 
-/** 只有时序图谱支持按时间点查询；其余候选收到查询时直接失败，不静默忽略。 */
+/** 台账不支持按故事时间点查询；收到查询时直接失败，不静默忽略。 */
 export function assertTimeQuerySupported(
 	kind: WorldModelKind,
 	options?: WorldModelReadOptions,
 ): void {
 	if (options?.atStoryTime === undefined) return;
-	if (kind === "temporal_graph") return;
 	throw new Error(`世界模型 ${kind} 不支持按故事时间点查询`);
+}
+
+/** 旧库里存的已删除候选；运行时按台账处理，Trace 里注明一次。 */
+export function isRetiredWorldModelKind(kind: WorldModelKind): boolean {
+	return kind !== DEFAULT_WORLD_MODEL_KIND;
+}
+
+// 旧的 wiki 候选写过的档案修订；表与存取方法保留，旧数据还能读。
+/** 一条实体档案修订；正文与出处楼层只追加，不覆盖。 */
+export interface WikiRevision {
+	readonly id: number;
+	readonly storyId: string;
+	readonly entityId: string;
+	readonly nodeId: string;
+	readonly text: string;
+	readonly storyTime: StoryTime | null;
+	readonly source: LedgerSource;
+	readonly createdAt: string;
+}
+
+export interface NewWikiRevision {
+	readonly storyId: string;
+	readonly entityId: string;
+	readonly nodeId: string;
+	readonly text: string;
+	readonly storyTime?: StoryTime | null;
+	readonly source: LedgerSource;
+	readonly createdAt?: string;
 }

@@ -2677,3 +2677,10 @@
 - **背景**：HUMAN-19：后台渠道额度耗尽时结算、记忆、导演全部停摆，界面看不出来；`bg-fallback` 走同一个 `bg` 渠道，换它无效。ADR-0042 规定路由器只在同一个模型的渠道之间切换。
 - **决定**：`channels.yaml` 的模型可写 `fallback: <别名>`；只有后台岗位（结算、规划）的客户端包一层 `createFallbackClient`，主模型「所有渠道都失败」后改用保底，正文写作仍不隐式换模型（ADR-0042 不变）。`readChannelWarnings` 在启动日志、`GET /api/channels` 的 `warnings` 与设置页提醒保底与主模型共用渠道、后台模型没有保底。`GET /api/stories/:id/background/health` 从任务表算「最近连续 3 条渠道失败」= 暂停，故事页顶部显示可关闭提示，成功一条即恢复。渠道体检接受 `role`。
 - **影响**：协议 `ChannelsView` 多 `warnings`、`ModelView` 多 `fallback`、`ChannelProbeRequest` 的 `alias` 改为可选并多 `role`；示例配置新增 `bg2` 渠道。不新增存储。
+
+## ADR-0166 删除未胜出的世界模型候选与小品引擎；机制序列暂留（2026-11-19）
+
+- **背景**：refactor/08。X1 的 `wiki`、`temporal_graph` 在 ADR-0130 未胜出；X2 的小品引擎 `bits` 在 ADR-0134 未达到切换门槛，ADR-0161 起新故事默认 `lines`。人类 2026-11-19 说「暂时不用评测」，北极星数字（refactor/04）还没有足够的真实数据。
+- **决定**：删除 `world-model/wiki.ts`、`world-model/temporal-graph.ts` 与小品引擎的评估代码、`director_bits` 后台任务，以及只为它们服务的两个对照评测脚本（报告与 ADR 保留）。`worldModel`、`directorOrganization` 仍接受旧值以便读旧库：`wiki`/`temporal_graph` 按台账、`bits` 按 `lines` 运行，状态槽位与导演槽位的 Trace 来源里注明「旧设置 X 已按…」。迁移、表结构（`wiki_revisions`、`director_bits` 等）与存取方法不动，旧数据仍可读；场记里的小品字段保留但不再有内容。
+- **暂留**：v3 的机制序列 `mechanisms` 仍是已有故事的设置，十几组导演测试与导演 e2e 依赖它，插件的机制注册表也只服务它；没有北极星数据证明 `lines` 不差之前不删，删除时连同插件机制注册表一起决定。
+- **影响**：少一类后台模型调用；旧库里选了已删候选的故事改用默认实现。

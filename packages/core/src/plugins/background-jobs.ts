@@ -14,10 +14,7 @@ import {
 	planPrepareNeedsRun,
 	planReviewNeedsRun,
 } from "../chat/plan-turn.js";
-import {
-	DIRECTOR_BITS_JOB_KIND,
-	createDirectorBitJudgmentsHandler,
-} from "../director/bit-judgments.js";
+import {} from "../director/bit-judgments.js";
 import {
 	CANDIDATE_ACTIONS_JOB_KIND,
 	createCandidateActionsHandler,
@@ -129,7 +126,6 @@ export const CHAPTER_PLAN_JOB_PLUGIN = "background.chapter-plan";
 export const BLUEPRINT_SUGGESTION_JOB_PLUGIN =
 	"background.blueprint-suggestion";
 export const CANDIDATE_ACTIONS_JOB_PLUGIN = "background.candidate-actions";
-export const DIRECTOR_BITS_JOB_PLUGIN = "background.director-bits";
 export const EMBEDDINGS_JOB_PLUGIN = "background.embeddings";
 
 /** 建立插件定义；入队条件、档位与 needsRun 由内核注册表校验。 */
@@ -308,11 +304,6 @@ export function createBackgroundJobPlugins(
 				tier: "gap",
 			},
 		),
-		backgroundJobPlugin(DIRECTOR_BITS_JOB_PLUGIN, DIRECTOR_BITS_JOB_KIND, {
-			handler: createDirectorBitJudgmentsHandler(plannerOptions(plannerClient)),
-			enqueue: "settled",
-			tier: "gap",
-		}),
 	);
 	if (embedder !== null) {
 		plugins.push(

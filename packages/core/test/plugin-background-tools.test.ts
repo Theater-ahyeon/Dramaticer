@@ -153,7 +153,6 @@ describe("内置后台任务插件", () => {
 			"chapter_plan",
 			"blueprint_suggestion",
 			"candidate_actions",
-			"director_bits",
 		]);
 		const expected = [
 			["events", "confirmed", "deferred"],
@@ -178,8 +177,9 @@ describe("内置后台任务插件", () => {
 			["chapter_plan", "story", "deferred"],
 			["blueprint_suggestion", "story", "gap"],
 			["candidate_actions", "settled", "gap"],
-			["director_bits", "settled", "gap"],
 		];
+		// 小品引擎已删除，判断小品条件的任务不再注册（ADR-0166）。
+		expect(registry.has("director_bits")).toBe(false);
 		for (const [kind, enqueue, tier] of expected) {
 			expect(registry.get(kind)).toMatchObject({ enqueue, tier });
 		}

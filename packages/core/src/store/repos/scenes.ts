@@ -53,7 +53,7 @@ import {
 	isSummaryLevel,
 } from "../../memory/summary.js";
 import { createTokenEstimator } from "../../tokens.js";
-import type { NewWikiRevision, WikiRevision } from "../../world-model/wiki.js";
+import type { NewWikiRevision, WikiRevision } from "../../world-model/types.js";
 import { StoreRepo } from "./base.js";
 import {
 	assertNonEmptyString,
