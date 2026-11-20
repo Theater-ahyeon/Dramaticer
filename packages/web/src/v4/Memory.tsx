@@ -196,6 +196,18 @@ function LinkedText({
 				setEditing(false);
 				if (next !== text.trim()) onCommit(next);
 			}}
+			// 键盘也能完成修改：回车提交，Esc 放弃。
+			onKeyDown={(event) => {
+				if (event.nativeEvent.isComposing) return;
+				if (event.key === "Enter" && !event.shiftKey) {
+					event.preventDefault();
+					event.currentTarget.blur();
+				}
+				if (event.key === "Escape") {
+					event.currentTarget.textContent = text;
+					event.currentTarget.blur();
+				}
+			}}
 		>
 			{text}
 		</p>

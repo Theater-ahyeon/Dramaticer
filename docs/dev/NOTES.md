@@ -157,6 +157,7 @@
 - 主题由 `stage.ts` 的 `setTheme` 设置，导航栏按钮与设置页「外观」通过 `onThemeChange` 同步；手机上导航栏没有主题按钮，只能在设置页改。
 - 故事页手机布局（ui-lite/03）：停靠栏是 `.dockwrap` 底部抽屉（`.dockbtn` 打开，拉手 `.dockclose`、遮罩或 Esc 收起），抽屉打开或输入框聚焦时隐藏底部导航——`.inner` 带 view-transition-name，是独立的层叠上下文，里面的 z-index 盖不过导航。输入台 `.cmp` 在鼠标按下时阻止按钮抢焦点：否则手机上点按钮会让输入框失焦、导航弹回、输入台跳动，点击落空。e2e 在手机项目里要先 `openDock` 再操作停靠栏；改了样式跑单个 e2e 前先 `pnpm --filter @dramaticer/web build`，Playwright 用的是 dist。
 - 数字一律用 `.num`（界面字体 + `tabular-nums`）；`--f-data` 等宽字体只给代码与 `.kbd`，配中文时字距会散。就地编辑的空状态用 `Editable` 的 `placeholder`（`data-placeholder` + `:empty::before`），不要把「（点这里写）」当成值传进去。
+- 体积预算由 `packages/web/scripts/budget.mjs` 在 `pnpm e2e` 构建后检查（首屏 JS ≤ 200 KB、CSS ≤ 40 KB gzip、无字体文件），不在 `pnpm check` 里。新加大依赖或页面时先跑 `node scripts/budget.mjs`；按需分包（`import()`）不算首屏。e2e 的数据库是共享的，书架上「继续上次」可能是别的用例的故事，按链接地址找自己的故事。
 - 页面只通过 `v4/stage.ts` 跟背景打交道：`stage.pulse()` 让海面荡一圈光，`stage.setWriting()` 表示正在写。背景（`scene.ts`）读这些状态，不反过来依赖页面。
 - 站内跳转用 `ui.tsx` 的 `TLink` 或 `travel()` 才有转场；普通 `Link` 也能用，只是直接换页。路由更新走 React 的 transition，所以 `travel` 要等 `Shell` 的 layout effect 调 `routeCommitted()` 才让浏览器拍新画面。
 - 2026-11-19 起（ui-lite/05）没有 `styles.css`：旧面板样式在 `v4/panels.css`，由 `v4.css` 开头 `@import`，面板规则在前、v4 在后；面板里不要写死颜色（`design-tokens.test.ts` 会查）。下面一条的文件名已过时，顺序原则不变。

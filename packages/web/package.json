@@ -7,7 +7,7 @@
 		"dev": "pnpm --filter @dramaticer/protocol... build && vite",
 		"typecheck": "pnpm --filter @dramaticer/protocol... build && tsc -p tsconfig.json --noEmit",
 		"build": "pnpm --filter @dramaticer/protocol... build && tsc -p tsconfig.json --noEmit && vite build",
-		"e2e": "pnpm --filter @dramaticer/server... --filter @dramaticer/web... build && playwright test",
+		"e2e": "pnpm --filter @dramaticer/server... --filter @dramaticer/web... build && node scripts/budget.mjs && playwright test",
 		"playtest": "pnpm --filter @dramaticer/server... --filter @dramaticer/web... build && node e2e/playtest/cli.mjs",
 		"preview": "vite preview"
 	},
