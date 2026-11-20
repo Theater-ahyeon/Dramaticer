@@ -7,3 +7,11 @@ providers:
     apiKey: ""
     timeoutMs: 300000
     pollIntervalMs: 1000
+  # NovelAI：apiKey 填持久令牌（网页端 账户设置 → 获取持久 API 令牌，pst- 开头），
+  # 写进 .env 的 NOVELAI_API_KEY。baseUrl 不写时用官方地址，也可以填兼容的中转地址。
+  # 配好后在「生图」页新建 NovelAI 模板，再在故事设置里选这个模板。
+  # 环境变量没设置时整个文件会读取失败，所以默认注释掉，需要时去掉行首的 #。
+  # novelai:
+  #   api: novelai
+  #   apiKey: ${NOVELAI_API_KEY}
+  #   timeoutMs: 120000

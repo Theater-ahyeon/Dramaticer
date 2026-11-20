@@ -34,6 +34,7 @@ import {
 	handleImageWorkflows,
 	handleNodeImageList,
 	handleNodeImages,
+	handleNovelAiTemplateSave,
 	handleStoryCover,
 	handleStoryPortrait,
 } from "./routes-media.js";
@@ -428,6 +429,11 @@ export async function handleApiRequest(
 			if (parts.length === 3 && third === "detect") {
 				requireMethod(method, ["POST"]);
 				await handleImageWorkflowDetect(req, res, options);
+				return;
+			}
+			if (parts.length === 3 && third === "novelai") {
+				requireMethod(method, ["POST"]);
+				await handleNovelAiTemplateSave(req, res, options);
 				return;
 			}
 			if (parts.length === 3 && third === "import") {

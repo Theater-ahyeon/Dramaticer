@@ -55,7 +55,7 @@ describe("parseImagesConfig", () => {
 		expect(() => parseImagesConfig("providers: {}\nextra: 1\n", env)).toThrow(
 			/images\.yaml\.extra/,
 		);
-		const unknownApi = configText().replace("api: comfyui", "api: novelai");
+		const unknownApi = configText().replace("api: comfyui", "api: midjourney");
 		expect(() => parseImagesConfig(unknownApi, env)).toThrow(
 			/images\.yaml\.providers\.comfy\.api/,
 		);

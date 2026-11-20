@@ -51,7 +51,11 @@ import {
 	type FeatureSwitchOverrides,
 	readStoryFeatureState,
 } from "../settings/features.js";
-import { formatWritingDials } from "../settings/writing.js";
+import {
+	applyWritingEntries,
+	readWritingEntries,
+} from "../settings/writing-entries.js";
+import { formatWritingDials, readWritingView } from "../settings/writing.js";
 import type { StoryStore } from "../store/story-store.js";
 import {
 	collectStructuredOutputFromText,
@@ -704,17 +708,28 @@ export async function generateAssistantTurn(
 					},
 	});
 	// 深回合在组装后的消息之后注入手记；快回合不注入。
-	const notedBase =
+	const notedRaw =
 		notes === null
 			? rewritten.messages
 			: withDirectorNotes(options.store, rewritten.messages, userNode.id);
+	// 写作条目按各自的位置与角色插进历史前后或历史中；与文风包共用一个开关。
+	// 朴素基线（B0）保持原样上下文。
+	const placed =
+		writesLedger &&
+		readWritingView(options.store, userNode.storyId).dials.stylePack
+			? applyWritingEntries(
+					notedRaw,
+					readWritingEntries(options.store, userNode.storyId),
+				)
+			: { messages: [...notedRaw], trace: [] };
+	const notedBase = placed.messages;
 	// 写作选项紧贴生成位置：玩家改了选项，下一楼的上下文就不一样。
 	// 朴素基线（B0）保持原样上下文，不加写作要求。
 	const writing = writesLedger
 		? formatWritingDials(options.store, userNode.storyId)
 		: null;
 	const extra: LlmMessage[] = [];
-	const extraTrace: ExtraContextEntry[] = [];
+	const extraTrace: ExtraContextEntry[] = [...placed.trace];
 	const appendExtra = (source: string, content: string): void => {
 		extra.push({ role: "system", content });
 		extraTrace.push({ source, text: content });

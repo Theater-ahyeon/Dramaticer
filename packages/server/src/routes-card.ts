@@ -13,6 +13,7 @@ import {
 	saveStoryCardSnapshot,
 	saveWritingPreset,
 	storyCardVersion,
+	writeWritingEntries,
 } from "@dramaticer/core";
 import {
 	type StCharacterCard,
@@ -248,9 +249,11 @@ export async function handleCardRoute(
 			throw fieldError("preset", "必须提供预设文件的内容");
 		let result: ReturnType<typeof mapPresetToWritingDials>;
 		try {
+			const cardName = store.getStorySettings(storyId)?.cardName ?? null;
 			result = mapPresetToWritingDials(
 				parsePresetJson(body.preset),
 				typeof body.name === "string" ? body.name : "预设",
+				cardName === null ? {} : { char: cardName },
 			);
 		} catch (error) {
 			throw fieldError(
@@ -258,13 +261,15 @@ export async function handleCardRoute(
 				error instanceof Error ? error.message : String(error),
 			);
 		}
+		// 预设里对应不上选项的条目按原来的位置与角色成为写作条目，替换上一份预设的条目。
+		writeWritingEntries(store, storyId, result.entries);
 		const view = saveWritingPreset(
 			store,
 			storyId,
 			result.mapping,
 			result.dials,
 		);
-		sendJson(res, 200, view);
+		sendJson(res, 200, { ...view, report: result.report });
 		return true;
 	}
 

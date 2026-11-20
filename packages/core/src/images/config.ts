@@ -3,7 +3,7 @@ import { parse as parseYaml } from "yaml";
 import { interpolateEnvRefs, parseApiKeyRef } from "../env-ref.js";
 import { isJsonObject, rejectUnknownKeys } from "../json.js";
 
-export const IMAGE_PROVIDER_APIS = ["comfyui"] as const;
+export const IMAGE_PROVIDER_APIS = ["comfyui", "novelai"] as const;
 
 export type ImageProviderApi = (typeof IMAGE_PROVIDER_APIS)[number];
 
@@ -17,9 +17,24 @@ export interface ComfyUiProviderConfig {
 	readonly pollIntervalMs: number;
 }
 
-export interface ImagesConfig {
-	readonly providers: ReadonlyMap<string, ComfyUiProviderConfig>;
+/** `images.yaml` 配置的 NovelAI 后端；`apiKey` 是 NovelAI 的持久令牌（pst- 开头）。 */
+export interface NovelAiProviderConfig {
+	readonly id: string;
+	readonly api: "novelai";
+	/** 默认官方地址；也可以填兼容的中转地址。 */
+	readonly baseUrl: string;
+	readonly apiKey: string;
+	readonly timeoutMs: number;
 }
+
+export type ImageProviderConfig = ComfyUiProviderConfig | NovelAiProviderConfig;
+
+export interface ImagesConfig {
+	readonly providers: ReadonlyMap<string, ImageProviderConfig>;
+}
+
+export const NOVELAI_DEFAULT_BASE_URL = "https://image.novelai.net";
+const NOVELAI_DEFAULT_TIMEOUT_MS = 120_000;
 
 const DEFAULT_TIMEOUT_MS = 300_000;
 const DEFAULT_POLL_INTERVAL_MS = 1_000;
@@ -76,7 +91,7 @@ export function parseImagesConfig(
 	if (!isJsonObject(rawProviders)) {
 		throw new Error(`${label}.providers 必须是对象`);
 	}
-	const providers = new Map<string, ComfyUiProviderConfig>();
+	const providers = new Map<string, ImageProviderConfig>();
 	for (const [id, value] of Object.entries(rawProviders)) {
 		providers.set(
 			id,
@@ -91,7 +106,7 @@ function parseProvider(
 	value: unknown,
 	env: Readonly<Record<string, string | undefined>>,
 	label: string,
-): ComfyUiProviderConfig {
+): ImageProviderConfig {
 	if (id.trim().length === 0) {
 		throw new Error(`${label} 的 provider id 不能为空`);
 	}
@@ -100,8 +115,37 @@ function parseProvider(
 	}
 	rejectUnknownKeys(value, PROVIDER_KEYS, label);
 	const api = value.api;
+	if (api === "novelai") {
+		const baseUrl = interpolateEnvRefs(
+			value.baseUrl === undefined
+				? NOVELAI_DEFAULT_BASE_URL
+				: requireString(value.baseUrl, `${label}.baseUrl`),
+			env,
+			`${label}.baseUrl`,
+		);
+		assertHttpUrl(baseUrl, `${label}.baseUrl`);
+		if (value.pollIntervalMs !== undefined) {
+			throw new Error(`${label}.pollIntervalMs 只对 comfyui 有效`);
+		}
+		const apiKey = parseApiKeyRef(
+			requireString(value.apiKey, `${label}.apiKey`),
+			env,
+			`${label}.apiKey`,
+		);
+		return {
+			id,
+			api,
+			baseUrl,
+			apiKey,
+			timeoutMs: optionalPositiveInt(
+				value.timeoutMs,
+				`${label}.timeoutMs`,
+				NOVELAI_DEFAULT_TIMEOUT_MS,
+			),
+		};
+	}
 	if (api !== "comfyui") {
-		throw new Error(`${label}.api 只能是 comfyui`);
+		throw new Error(`${label}.api 只能是 ${IMAGE_PROVIDER_APIS.join("、")}`);
 	}
 	const baseUrl = interpolateEnvRefs(
 		requireString(value.baseUrl, `${label}.baseUrl`),

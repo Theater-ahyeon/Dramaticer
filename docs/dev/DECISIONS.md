@@ -2684,3 +2684,9 @@
 - **决定**：删除 `world-model/wiki.ts`、`world-model/temporal-graph.ts` 与小品引擎的评估代码、`director_bits` 后台任务，以及只为它们服务的两个对照评测脚本（报告与 ADR 保留）。`worldModel`、`directorOrganization` 仍接受旧值以便读旧库：`wiki`/`temporal_graph` 按台账、`bits` 按 `lines` 运行，状态槽位与导演槽位的 Trace 来源里注明「旧设置 X 已按…」。迁移、表结构（`wiki_revisions`、`director_bits` 等）与存取方法不动，旧数据仍可读；场记里的小品字段保留但不再有内容。
 - **暂留**：v3 的机制序列 `mechanisms` 仍是已有故事的设置，十几组导演测试与导演 e2e 依赖它，插件的机制注册表也只服务它；没有北极星数据证明 `lines` 不差之前不删，删除时连同插件机制注册表一起决定。
 - **影响**：少一类后台模型调用；旧库里选了已删候选的故事改用默认实现。
+
+## ADR-0167 写作条目与 NovelAI 生图提前（2026-11-20）
+
+- **背景**：人类要求原生支持导入预设里的提示词注入（按深度、角色、相对历史的位置），以及能用 NovelAI 生图。此前预设里对应不上选项的条目全部拼成一段文风包，位置与角色丢失；NovelAI 原排在 §15.4「生图第二批」。
+- **决定**：core 新增原生概念「写作条目」（`settings/writing-entries.ts`）：内容、角色、位置（历史前 / 历史后 / 历史中倒数第 N 条前）、顺序、开关，存故事 KV `writing.entries`，回合组装时插入，来源写进 Trace；st-compat 的预设导入把对应不上选项的条目转成写作条目（替换 `{{char}}`/`{{user}}`，去掉注释宏）。有条目时不再拼文风包；「文风包」开关同时控制条目。NovelAI 作为 `images.yaml` 的 `api: novelai` 后端，出图模板表加 `kind` 列（迁移 73），模板保存 NovelAI 参数。
+- **影响**：core 不出现 ST 概念（I1）；不改原文与结算路径；新增接口 `PUT /stories/:id/writing/entries`、`POST /images/workflows/novelai`；ComfyUI 客户端改为每张图新建（修正截止时间在客户端创建时计算的问题）。

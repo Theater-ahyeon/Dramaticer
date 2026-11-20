@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 // 生成 Windows 绿色便携整合包（dist-release/dramaticer-v<version>-<platform>-<arch> 及 .zip）。
-// 零新增外部依赖：只使用 Node 内置模块、pnpm 与系统 tar.exe。
+// 零新增外部依赖：只使用 Node 内置模块、pnpm 与 .NET ZipFile。
 import { execFileSync, execSync } from "node:child_process";
 import {
 	cpSync,
 	existsSync,
 	mkdirSync,
 	readFileSync,
+	readdirSync,
 	rmSync,
 	writeFileSync,
 } from "node:fs";
@@ -34,17 +35,35 @@ execSync(
 	{ cwd: repoRoot, stdio: "inherit" },
 );
 
-console.log("[3/4] 组装工作区构建产物、前端资源与启动脚本...");
-// pnpm deploy 的根目录是 @dramaticer/server 的内容，整理为统一的 monorepo 布局
+console.log("[3/4] 组装工作区构建产物、精简无关文件与生成启动脚本...");
 rmSync(join(bundleDir, "dist"), { recursive: true, force: true });
 rmSync(join(bundleDir, "src"), { recursive: true, force: true });
 rmSync(join(bundleDir, "test"), { recursive: true, force: true });
 rmSync(join(bundleDir, "tsconfig.json"), { force: true });
-// 清理 pnpm 虚拟存储里的冗余 hoisting 目录，大幅减小文件数与压缩包体积
 rmSync(join(bundleDir, "node_modules", ".pnpm", "node_modules"), {
 	recursive: true,
 	force: true,
 });
+
+// 清理 .pnpm 虚拟存储里工作区包的 src/、test/ 与第三方包的 .d.ts/.map，大幅减小体积
+const pnpmDir = join(bundleDir, "node_modules", ".pnpm");
+if (existsSync(pnpmDir)) {
+	for (const entry of readdirSync(pnpmDir)) {
+		if (!entry.startsWith("@dramaticer+")) continue;
+		const pkgRoot = join(
+			pnpmDir,
+			entry,
+			"node_modules",
+			"@dramaticer",
+			entry.split("+")[1]?.split("@")[0] ?? "",
+		);
+		if (existsSync(pkgRoot)) {
+			rmSync(join(pkgRoot, "src"), { recursive: true, force: true });
+			rmSync(join(pkgRoot, "test"), { recursive: true, force: true });
+			rmSync(join(pkgRoot, "tsconfig.json"), { force: true });
+		}
+	}
+}
 
 const runtimePackages = ["core", "protocol", "st-compat", "server"];
 for (const name of runtimePackages) {
@@ -185,12 +204,19 @@ writeFileSync(join(bundleDir, "start.ps1"), startPs1, "utf8");
 
 console.log(`[4/4] 压缩生成安装包 ${zipPath}...`);
 if (process.platform === "win32") {
+	const pwsh = existsSync("C:\\Program Files\\PowerShell\\7\\pwsh.exe")
+		? "C:\\Program Files\\PowerShell\\7\\pwsh.exe"
+		: "powershell.exe";
 	execFileSync(
-		"tar.exe",
-		["-a", "-cf", zipPath, "-C", releaseRoot, releaseName],
-		{
-			stdio: "inherit",
-		},
+		pwsh,
+		[
+			"-NoLogo",
+			"-NoProfile",
+			"-NonInteractive",
+			"-Command",
+			`Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::CreateFromDirectory('${bundleDir}', '${zipPath}', [System.IO.Compression.CompressionLevel]::Fastest, $true)`,
+		],
+		{ stdio: "inherit" },
 	);
 } else {
 	execFileSync(

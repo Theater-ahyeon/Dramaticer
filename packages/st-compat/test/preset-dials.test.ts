@@ -40,3 +40,95 @@ describe("导入预设时的写作选项对应", () => {
 		expect(mapping.name).toBe("手写的预设");
 	});
 });
+
+describe("导入预设时的写作条目", () => {
+	const text = JSON.stringify({
+		name: "注入预设",
+		prompts: [
+			{
+				identifier: "main",
+				name: "主提示",
+				content: "你是{{char}}，陪{{user}}演一场戏。{{// 作者注释}}",
+				role: "system",
+			},
+			{
+				identifier: "chatHistory",
+				name: "历史",
+				system_prompt: true,
+				marker: true,
+			},
+			{
+				identifier: "jailbreak",
+				name: "收尾",
+				content: "继续写下去。",
+				role: "user",
+			},
+			{
+				identifier: "deep",
+				name: "深处提醒",
+				content: "记得{{random::甲::乙}}。",
+				role: "assistant",
+				injection_position: 1,
+				injection_depth: 2,
+				injection_order: 50,
+			},
+			{ identifier: "off", name: "停用", content: "不要出现", enabled: false },
+		],
+		prompt_order: [
+			{
+				character_id: 100001,
+				order: [
+					{ identifier: "main", enabled: true },
+					{ identifier: "chatHistory", enabled: true },
+					{ identifier: "jailbreak", enabled: true },
+					{ identifier: "deep", enabled: true },
+					{ identifier: "off", enabled: false },
+				],
+			},
+		],
+	});
+
+	it("保留位置、深度与角色，替换名字宏，去掉注释", () => {
+		const { entries, report } = mapPresetToWritingDials(
+			parsePresetJson(text),
+			"预设",
+			{ char: "山神" },
+		);
+		expect(
+			entries.map(({ name, content, role, placement, depth, order }) => ({
+				name,
+				content,
+				role,
+				placement,
+				depth,
+				order,
+			})),
+		).toEqual([
+			{
+				name: "主提示",
+				content: "你是山神，陪玩家演一场戏。",
+				role: "system",
+				placement: "before-history",
+				depth: 0,
+				order: 0,
+			},
+			{
+				name: "收尾",
+				content: "继续写下去。",
+				role: "user",
+				placement: "after-history",
+				depth: 0,
+				order: 2,
+			},
+			{
+				name: "深处提醒",
+				content: "记得{{random::甲::乙}}。",
+				role: "assistant",
+				placement: "in-history",
+				depth: 2,
+				order: 50,
+			},
+		]);
+		expect(report).toEqual({ inHistory: 1, unresolvedMacros: 1, dropped: 0 });
+	});
+});

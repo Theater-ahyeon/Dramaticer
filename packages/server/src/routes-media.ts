@@ -14,6 +14,7 @@ import {
 	loadImagesConfig,
 	parseComfyUiWorkflow,
 	resolveImageProvider,
+	saveNovelAiTemplate,
 	validateImagePromptRequest,
 } from "@dramaticer/core";
 import type {
@@ -69,7 +70,7 @@ export async function handleImageProviders(
 			baseUrl: provider.baseUrl,
 			configured: true,
 			timeoutMs: provider.timeoutMs,
-			pollIntervalMs: provider.pollIntervalMs,
+			pollIntervalMs: provider.api === "comfyui" ? provider.pollIntervalMs : 0,
 		})),
 	};
 	sendJson(res, 200, view);
@@ -141,7 +142,7 @@ export async function handleImageWorkflowImport(
 			: await loadImagesConfig(options.imagesPath, options.imagesEnv);
 	let providerId: string;
 	try {
-		providerId = resolveImageProvider(config).id;
+		providerId = resolveImageProvider(config, undefined, "comfyui").id;
 	} catch (error) {
 		throw toBadRequest(error, "provider");
 	}
@@ -155,6 +156,34 @@ export async function handleImageWorkflowImport(
 		sendJson(res, 200, saved);
 	} catch (error) {
 		throw toBadRequest(error, "slots");
+	}
+}
+
+/** `POST /api/images/workflows/novelai`：保存 NovelAI 出图模板（同名更新）。 */
+export async function handleNovelAiTemplateSave(
+	req: IncomingMessage,
+	res: ServerResponse,
+	options: ApiRouteOptions,
+): Promise<void> {
+	const body = await readObjectBody(req, options.maxJsonBodyBytes);
+	assertKnownKeys(body, ["name", "parameters", "provider"]);
+	const name = requireText(body.name, "name");
+	if (body.provider !== undefined && typeof body.provider !== "string") {
+		throw fieldError("provider", "provider 必须是字符串");
+	}
+	const config =
+		options.imagesPath === null
+			? emptyImagesConfig()
+			: await loadImagesConfig(options.imagesPath, options.imagesEnv);
+	try {
+		const saved = saveNovelAiTemplate(options.store, config, {
+			name,
+			parameters: body.parameters,
+			...(typeof body.provider === "string" ? { provider: body.provider } : {}),
+		});
+		sendJson(res, 200, saved);
+	} catch (error) {
+		throw toBadRequest(error, "parameters");
 	}
 }
 

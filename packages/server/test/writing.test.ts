@@ -135,7 +135,11 @@ describe("写作选项接口", () => {
 			length: "long",
 			stylePack: true,
 		});
-		expect(await writing(running.origin)).toEqual(view);
+		const { report, ...stored } = view as WritingResponse & {
+			report?: unknown;
+		};
+		expect(report).toEqual({ inHistory: 0, unresolvedMacros: 0, dropped: 0 });
+		expect(await writing(running.origin)).toEqual(stored);
 	});
 
 	it("文风包可以整体开关，关掉后导入结果仍在", async () => {

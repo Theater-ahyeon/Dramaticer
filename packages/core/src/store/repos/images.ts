@@ -1,6 +1,7 @@
 // StoryStore 的领域仓储：出图工作流与楼层插图（refactor/05）。
 // 公开方法由 StoryStore 原样委托过来，签名不变；跨领域调用经 this.store。
 import { randomUUID } from "node:crypto";
+import { assertNovelAiParameters } from "../../images/novelai-params.js";
 import { validateImagePromptRequest } from "../../images/request.js";
 import {
 	assertComfyUiSlots,
@@ -14,6 +15,7 @@ import {
 	type SaveImageWorkflowInput,
 	isNodeImageStatus,
 } from "../../images/types.js";
+import type { JsonValue } from "../../json.js";
 import { serializeJsonValue } from "../json-value.js";
 import { StoreRepo } from "./base.js";
 import { assertNonEmptyString } from "./shared.js";
@@ -24,6 +26,7 @@ interface ImageWorkflowRow {
 	readonly provider: string;
 	readonly payload: string;
 	readonly slots: string;
+	readonly kind: string;
 	readonly created_at: string;
 	readonly updated_at: string;
 }
@@ -50,6 +53,21 @@ interface NodeImageRow {
 }
 
 function rowToImageWorkflow(row: ImageWorkflowRow): ImageWorkflowRecord {
+	if (row.kind === "novelai") {
+		return {
+			id: row.id,
+			kind: "novelai",
+			name: row.name,
+			provider: row.provider,
+			payload: assertNovelAiParameters(
+				JSON.parse(row.payload) as unknown,
+				`出图模板 ${row.id} 的参数`,
+			),
+			slots: null,
+			createdAt: row.created_at,
+			updatedAt: row.updated_at,
+		};
+	}
 	const workflow = parseComfyUiWorkflow(
 		JSON.parse(row.payload) as unknown,
 		`图片 workflow ${row.id} 的 payload`,
@@ -61,6 +79,7 @@ function rowToImageWorkflow(row: ImageWorkflowRow): ImageWorkflowRecord {
 	);
 	return {
 		id: row.id,
+		kind: "comfyui",
 		name: row.name,
 		provider: row.provider,
 		payload: workflow,
@@ -127,23 +146,38 @@ export class ImagesRepo extends StoreRepo {
 		if (provider.length === 0) {
 			throw new Error("图片 workflow 的 provider 必须是非空字符串");
 		}
-		const workflow = parseComfyUiWorkflow(
-			input.payload,
-			"图片 workflow 的 payload",
-		);
-		const slots = assertComfyUiSlots(
-			workflow,
-			input.slots,
-			"图片 workflow 的 slots",
-		);
+		let kind: "comfyui" | "novelai";
+		let payload: JsonValue;
+		let slots: JsonValue;
+		if (input.kind === "novelai") {
+			kind = "novelai";
+			payload = assertNovelAiParameters(
+				input.payload,
+				"出图模板的参数",
+			) as unknown as JsonValue;
+			slots = null;
+		} else {
+			kind = "comfyui";
+			const workflow = parseComfyUiWorkflow(
+				input.payload,
+				"图片 workflow 的 payload",
+			);
+			payload = workflow as unknown as JsonValue;
+			slots = assertComfyUiSlots(
+				workflow,
+				input.slots,
+				"图片 workflow 的 slots",
+			) as unknown as JsonValue;
+		}
 		const now = new Date().toISOString();
 		this.db
 			.prepare(
 				`INSERT INTO image_workflows
-					(id, name, provider, payload, slots, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?)
+					(id, name, provider, payload, slots, kind, created_at, updated_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 				ON CONFLICT(name) DO UPDATE SET
 					provider = excluded.provider,
+					kind = excluded.kind,
 					payload = excluded.payload,
 					slots = excluded.slots,
 					updated_at = excluded.updated_at`,
@@ -152,8 +186,9 @@ export class ImagesRepo extends StoreRepo {
 				randomUUID(),
 				name,
 				provider,
-				serializeJsonValue(workflow, "图片 workflow 的 payload"),
-				serializeJsonValue(slots, "图片 workflow 的 slots"),
+				serializeJsonValue(payload, "出图模板的 payload"),
+				serializeJsonValue(slots, "出图模板的 slots"),
+				kind,
 				now,
 				now,
 			);

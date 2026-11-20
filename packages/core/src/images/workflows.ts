@@ -1,5 +1,10 @@
 import type { StoryStore } from "../store/story-store.js";
-import type { ComfyUiProviderConfig, ImagesConfig } from "./config.js";
+import type {
+	ImageProviderApi,
+	ImageProviderConfig,
+	ImagesConfig,
+} from "./config.js";
+import { assertNovelAiParameters } from "./novelai-params.js";
 import {
 	assertComfyUiSlots,
 	parseComfyUiWorkflow,
@@ -16,31 +21,41 @@ export interface ImportImageWorkflowInput {
 	readonly provider?: string;
 }
 
-/** 取导入 workflow 使用的 provider：显式指定优先，否则要求配置里只有一个。 */
+/**
+ * 取模板使用的 provider：显式指定优先，否则要求（同一种后端里）只配置了一个。
+ * `api` 限定后端种类：导入 ComfyUI workflow 时只在 comfyui 里找。
+ */
 export function resolveImageProvider(
 	config: ImagesConfig,
 	requested?: string,
-): ComfyUiProviderConfig {
+	api?: ImageProviderApi,
+): ImageProviderConfig {
 	if (requested !== undefined) {
 		const provider = config.providers.get(requested);
 		if (provider === undefined) {
 			throw new Error(`没有配置图像 provider：${requested}`);
 		}
+		if (api !== undefined && provider.api !== api) {
+			throw new Error(
+				`图像 provider ${requested} 是 ${provider.api}，不是 ${api}`,
+			);
+		}
 		return provider;
 	}
-	if (config.providers.size === 0) {
-		throw new Error("没有配置图像 provider，生图功能关闭");
-	}
-	if (config.providers.size > 1) {
+	const candidates = [...config.providers.values()].filter(
+		(provider) => api === undefined || provider.api === api,
+	);
+	if (candidates.length === 0) {
 		throw new Error(
-			"配置了多个图像 provider，导入 workflow 时必须指定 provider",
+			api === undefined
+				? "没有配置图像 provider，生图功能关闭"
+				: `没有配置 ${api} 图像 provider`,
 		);
 	}
-	const provider = config.providers.values().next().value;
-	if (provider === undefined) {
-		throw new Error("没有配置图像 provider，生图功能关闭");
+	if (candidates.length > 1) {
+		throw new Error("配置了多个图像 provider，必须指定 provider");
 	}
-	return provider;
+	return candidates[0] as ImageProviderConfig;
 }
 
 /** 解析、校验并保存 workflow；同名导入更新同一行。 */
@@ -49,7 +64,7 @@ export function importImageWorkflow(
 	config: ImagesConfig,
 	input: ImportImageWorkflowInput,
 ): ImageWorkflowRecord {
-	const provider = resolveImageProvider(config, input.provider);
+	const provider = resolveImageProvider(config, input.provider, "comfyui");
 	const workflow = parseComfyUiWorkflow(input.workflow, "workflow");
 	const slots =
 		input.slots === undefined
@@ -60,5 +75,27 @@ export function importImageWorkflow(
 		provider: provider.id,
 		payload: workflow,
 		slots,
+	});
+}
+
+export interface SaveNovelAiTemplateInput {
+	readonly name: string;
+	/** 缺省字段取默认值。 */
+	readonly parameters?: unknown;
+	readonly provider?: string;
+}
+
+/** 保存 NovelAI 出图模板；同名保存更新同一行。 */
+export function saveNovelAiTemplate(
+	store: StoryStore,
+	config: ImagesConfig,
+	input: SaveNovelAiTemplateInput,
+): ImageWorkflowRecord {
+	const provider = resolveImageProvider(config, input.provider, "novelai");
+	return store.saveImageWorkflow({
+		kind: "novelai",
+		name: input.name,
+		provider: provider.id,
+		payload: assertNovelAiParameters(input.parameters ?? {}, "parameters"),
 	});
 }

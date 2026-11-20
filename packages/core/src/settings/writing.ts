@@ -1,5 +1,6 @@
 import { type JsonValue, isJsonObject } from "../json.js";
 import type { StoryStore } from "../store/story-store.js";
+import { type WritingEntry, readWritingEntries } from "./writing-entries.js";
 
 /**
  * 写作选项：玩家用几个明确的选项定下文风、人称、长度、节奏、尺度、思考与
@@ -123,6 +124,8 @@ export interface WritingView {
 	/** 玩家叠在推荐之上的调整。 */
 	readonly overrides: Partial<WritingDials>;
 	readonly preset: Omit<WritingPresetMapping, "packText"> | null;
+	/** 写作条目：按位置与角色放进上下文的写作指令（导入预设或玩家自建）。 */
+	readonly entries: readonly WritingEntry[];
 }
 
 /** 只留下合法的选项值；来历不明的字段直接丢掉。 */
@@ -183,6 +186,7 @@ export function readWritingView(
 						mapped: preset.mapped,
 						packCount: preset.packCount,
 					},
+		entries: readWritingEntries(store, storyId),
 	};
 }
 
@@ -249,7 +253,11 @@ export function formatWritingDials(
 			"不要替玩家角色说话、行动或做决定；写到需要玩家回应的地方就停。",
 		);
 	}
-	const preset = view.dials.stylePack ? readPreset(store, storyId) : null;
+	// 有写作条目时，预设里对应不上的内容已经按条目各自的位置放进上下文，不再拼成文风包。
+	const preset =
+		view.dials.stylePack && readWritingEntries(store, storyId).length === 0
+			? readPreset(store, storyId)
+			: null;
 	if (preset !== null && preset.packText.trim().length > 0) {
 		lines.push(`文风包（${preset.name}）：\n${preset.packText}`);
 	}

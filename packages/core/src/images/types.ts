@@ -1,5 +1,6 @@
 import { normalizeEntityName } from "../entity.js";
 import { assertPlainObject, rejectUnknownKeys } from "../json.js";
+import type { NovelAiParameters } from "./novelai-params.js";
 import type { ImagePromptRequest } from "./prompt.js";
 import type { ComfyUiSlots, ComfyUiWorkflow } from "./slots.js";
 
@@ -135,23 +136,49 @@ export interface NewNodeImageInput {
 	readonly createdAt?: string;
 }
 
-/** 保存在数据库里的 workflow 模板；`payload` 是原始 API 格式 JSON。 */
-export interface ImageWorkflowRecord {
+export const IMAGE_WORKFLOW_KINDS = ["comfyui", "novelai"] as const;
+
+export type ImageWorkflowKind = (typeof IMAGE_WORKFLOW_KINDS)[number];
+
+interface ImageWorkflowBase {
 	readonly id: string;
 	readonly name: string;
 	readonly provider: string;
-	readonly payload: ComfyUiWorkflow;
-	readonly slots: ComfyUiSlots;
 	readonly createdAt: string;
 	readonly updatedAt: string;
 }
 
-export interface SaveImageWorkflowInput {
-	readonly name: string;
-	readonly provider: string;
+/** ComfyUI 的 workflow 模板；`payload` 是原始 API 格式 JSON。 */
+export interface ComfyUiWorkflowRecord extends ImageWorkflowBase {
+	readonly kind: "comfyui";
 	readonly payload: ComfyUiWorkflow;
 	readonly slots: ComfyUiSlots;
 }
+
+/** NovelAI 的出图模板：模型、尺寸、采样等参数；提示词由出图任务填入。 */
+export interface NovelAiWorkflowRecord extends ImageWorkflowBase {
+	readonly kind: "novelai";
+	readonly payload: NovelAiParameters;
+	readonly slots: null;
+}
+
+/** 保存在数据库里的出图模板，按 `kind` 区分后端。 */
+export type ImageWorkflowRecord = ComfyUiWorkflowRecord | NovelAiWorkflowRecord;
+
+export type SaveImageWorkflowInput =
+	| {
+			readonly kind?: "comfyui";
+			readonly name: string;
+			readonly provider: string;
+			readonly payload: ComfyUiWorkflow;
+			readonly slots: ComfyUiSlots;
+	  }
+	| {
+			readonly kind: "novelai";
+			readonly name: string;
+			readonly provider: string;
+			readonly payload: NovelAiParameters;
+	  };
 
 /**
  * 角色视觉档案：生图提示词的基础素材。`backends` 留给各图像后端自己的

@@ -1,9 +1,14 @@
-import type { FeatureTier, StoryFeatureSwitchView } from "@dramaticer/core";
+import type {
+	FeatureTier,
+	StoryFeatureSwitchView,
+	WritingEntry,
+} from "@dramaticer/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { RerollStats } from "./RerollStats";
 import { usePaletteCommands } from "./Shell";
+import { WritingEntries } from "./WritingEntries";
 import { type Theme, onThemeChange, setTheme, storedTheme } from "./stage";
 import { Seg, Sw, sp, useAct, useLoad, useToast } from "./ui";
 
@@ -17,6 +22,7 @@ interface WritingView {
 		readonly mapped: number;
 		readonly packCount: number;
 	} | null;
+	readonly entries?: readonly WritingEntry[];
 }
 
 interface FeatureStats {
@@ -293,8 +299,8 @@ export function Prefs() {
 							<h3>导入的预设</h3>
 							<p>
 								{writing.data.preset === null
-									? "还没有导入预设。导入后，能对应上的条目会变成上面的选项，其余作为文风包整体开关。"
-									: `「${writing.data.preset.name}」${writing.data.preset.total} 条里 ${writing.data.preset.mapped} 条已对应到上面的选项，其余 ${writing.data.preset.packCount} 条作为文风包整体开关`}
+									? "还没有导入预设。导入后，能对应上的条目会变成上面的选项，其余成为下面的写作条目。"
+									: `「${writing.data.preset.name}」共 ${writing.data.preset.total} 条：${writing.data.preset.mapped} 条变成了上面的选项，${writing.data.preset.packCount} 条成为写作条目。开关关掉后写作条目全部不发。`}
 							</p>
 							<div className="stat">
 								<button
@@ -335,6 +341,11 @@ export function Prefs() {
 							onChange={(value) => setDial({ stylePack: value })}
 						/>
 					</div>
+					<WritingEntries
+						storyId={storyId}
+						entries={writing.data.entries ?? []}
+						onSaved={writing.reload}
+					/>
 					<div className="dial">
 						<div>
 							<h3>卡的推荐</h3>

@@ -23,6 +23,7 @@ import {
 } from "../../chat/image-form";
 import { settingsErrorsFromFailure } from "../../chat/settings-form";
 import { ErrorNotice } from "../../components/ErrorNotice";
+import { NovelAiTemplateForm } from "./NovelAiTemplate";
 
 type VisualProfile = StoryVisualProfilesView["profiles"][number];
 
@@ -49,6 +50,10 @@ function Field({
 }
 
 function describeWorkflowSlots(workflow: ImageWorkflowView): string {
+	if (workflow.kind === "novelai") {
+		const p = workflow.payload;
+		return `NovelAI ${p.model}，${p.width}×${p.height}，${p.steps} 步，引导 ${p.scale}，${p.sampler}`;
+	}
 	const slots = workflow.slots;
 	const parts = [
 		`正向 ${slotRefLabel(slots.positive.nodeId, slots.positive.input)}`,
@@ -368,6 +373,14 @@ export function ImagesTool() {
 					</>
 				)}
 			</section>
+			{providers.some((provider) => provider.api === "novelai") ? (
+				<NovelAiTemplateForm
+					providers={providers
+						.filter((provider) => provider.api === "novelai")
+						.map((provider) => provider.id)}
+					onSaved={() => void reloadWorkflows()}
+				/>
+			) : null}
 			<section className="director-section" aria-label="workflow 列表">
 				<header className="director-section-head">
 					<h2>已保存的 workflow</h2>

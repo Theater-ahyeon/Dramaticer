@@ -2357,6 +2357,100 @@ img.cover {
 	color: var(--muted);
 	font-size: 13px;
 }
+/* 写作条目：整行占满，列表在说明下面。 */
+.dial.entries {
+	display: block;
+}
+.dial.entries:hover {
+	background: none;
+}
+.entries-head {
+	display: flex;
+	justify-content: space-between;
+	align-items: flex-start;
+	gap: 12px;
+}
+.entry-list {
+	list-style: none;
+	margin: 10px 0 0;
+	padding: 0;
+	display: grid;
+	gap: 4px;
+}
+.entry-list > li {
+	border: 1px solid var(--line);
+	border-radius: var(--r-md);
+	background: var(--field);
+}
+.entry-list > li[data-off] .entry-name {
+	opacity: 0.55;
+}
+.entry-line {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 6px 10px;
+}
+.entry-name {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 2px;
+	padding: 2px 0;
+	border: 0;
+	background: none;
+	color: inherit;
+	text-align: left;
+	cursor: pointer;
+	font: inherit;
+}
+.entry-name strong {
+	font: 500 13.5px var(--f-ui);
+}
+.entry-name span {
+	font-size: 12px;
+	color: var(--muted);
+}
+.entry-edit {
+	display: grid;
+	gap: 10px;
+	padding: 12px;
+}
+.entry-edit label {
+	display: grid;
+	gap: 4px;
+	font-size: 12.5px;
+	color: var(--muted);
+}
+.entry-edit label.inline {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+.entry-edit input,
+.entry-edit textarea {
+	font: 14px var(--f-ui);
+	color: var(--ink);
+	background: var(--sheet);
+	border: 1px solid var(--line);
+	border-radius: var(--r-md);
+	padding: 6px 8px;
+}
+.entry-edit label.inline input {
+	width: 5em;
+}
+.entry-row,
+.entry-actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px 14px;
+}
+.btn.danger {
+	color: var(--bad);
+}
 .dial .stat {
 	display: flex;
 	flex-wrap: wrap;

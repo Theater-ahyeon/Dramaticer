@@ -30,6 +30,7 @@ import {
 	rollbackPlayerEdit,
 	stateTargetOf,
 	writeMemoryPref,
+	writeWritingEntries,
 	writeWritingOverrides,
 } from "@dramaticer/core";
 import { HttpError, sendJson } from "./http.js";
@@ -325,6 +326,22 @@ export async function handleMemoryRoute(
 			);
 		}
 		sendJson(res, 200, { ok: true });
+		return true;
+	}
+
+	if (third === "writing" && fourth === "entries" && parts.length === 4) {
+		requireMethod(method, ["PUT"]);
+		requireStory(options.store, storyId);
+		const body = await readObjectBody(req, options.maxJsonBodyBytes);
+		try {
+			writeWritingEntries(store, storyId, body.entries);
+		} catch (error) {
+			throw fieldError(
+				"entries",
+				error instanceof Error ? error.message : String(error),
+			);
+		}
+		sendJson(res, 200, readWritingView(store, storyId));
 		return true;
 	}
 

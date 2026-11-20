@@ -2133,6 +2133,13 @@ export function buildMigrations(
 				END`,
 			],
 		},
+		{
+			version: 73,
+			description: "出图模板区分后端：comfyui 或 novelai",
+			statements: [
+				"ALTER TABLE image_workflows ADD COLUMN kind TEXT NOT NULL DEFAULT 'comfyui' CHECK (kind IN ('comfyui', 'novelai'))",
+			],
+		},
 	];
 }
 

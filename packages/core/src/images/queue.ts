@@ -109,8 +109,7 @@ async function runOneImage(input: {
 	});
 	try {
 		const generated = await input.clientFor(provider).generate({
-			workflow: workflow.payload,
-			slots: workflow.slots,
+			template: workflow,
 			prompt: compiled.prompt,
 			negativePrompt: compiled.negativePrompt,
 			seed: running.seed ?? 0,
