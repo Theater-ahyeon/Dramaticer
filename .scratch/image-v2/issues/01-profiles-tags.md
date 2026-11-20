@@ -1,0 +1,16 @@
+# 01：分格视觉档案、服装与标签库
+
+**What to build:** 视觉档案扩展为分格外貌（脸 / 上身 / 全身 × 正 / 背 × 着装 / 裸露）与独立服装（归属人物）；标签库（分类条目 + 触发词，与写作条目同构）；设定页可编辑；兼容插件可导入智绘姬的角色 / 服装导出文件。
+
+**Blocked by:** 无
+
+**Status:** ready-for-agent
+
+- [ ] 分格展开按可见性取对应格
+- [ ] 标签库按关键词触发进整理输入
+- [ ] 导入合成的智绘姬格式文件成功
+- [ ] `pnpm check` 通过；动到 server 或 web 的跑相关 e2e，并用走查脚本（`packages/web/.walk/`）重新截图逐页确认
+
+规格：`.scratch/image-v2/spec.md`；方案：`docs/proposals/v5.md`
+
+## Comments
