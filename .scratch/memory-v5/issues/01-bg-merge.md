@@ -1,0 +1,15 @@
+# 01：后台合并与调用预算
+
+**What to build:** 每楼一次「局面更新」调用（输出局面增量与行动选项），替代场记、结算补写、事件抽取、选项的分散调用；场末一次「场末整理」（场摘要、记事补丁、入库、剧情走向更新）。检视器显示每楼平均后台调用数与 token。
+
+**Blocked by:** 无
+
+**Status:** ready-for-agent
+
+- [ ] 假模型下每楼后台调用 ≤ 1（场末另加 1）
+- [ ] 旧开关关闭时对应部分跳过，不报错
+- [ ] `pnpm check` 通过；动到 server 或 web 的跑相关 e2e，并用走查脚本（`packages/web/.walk/`）重新截图逐页确认
+
+规格：`.scratch/memory-v5/spec.md`；方案：`docs/proposals/v5.md`
+
+## Comments

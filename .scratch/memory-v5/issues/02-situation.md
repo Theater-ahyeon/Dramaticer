@@ -1,0 +1,16 @@
+# 02：此刻局面卡与世界索引
+
+**What to build:** 程序把状态、在场者、秘密知情边界渲染成 ≤ 500 token 的自然语言卡片；从记事页简介拼出世界索引（约 200 字）；两者进上下文，替代原有的状态、在场、秘密槽位。记事页「此刻局面」可直接编辑，改过的锁定。
+
+**Blocked by:** memory-v5/01
+
+**Status:** ready-for-agent
+
+- [ ] 局面卡与索引出现在上下文且有 Trace 来源
+- [ ] 未知情者的秘密不出现在该人物视角的局面描述里
+- [ ] 锁定的事实不被下一楼更新覆盖
+- [ ] `pnpm check` 通过；动到 server 或 web 的跑相关 e2e，并用走查脚本（`packages/web/.walk/`）重新截图逐页确认
+
+规格：`.scratch/memory-v5/spec.md`；方案：`docs/proposals/v5.md`
+
+## Comments
