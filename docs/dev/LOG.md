@@ -497,3 +497,4 @@
 - 2026-11-19 人工会话（续）：完成 refactor/06，server 路由按领域拆分，共用校验集中到 routes-common。
 - 2026-11-19 人工会话（续）：完成 refactor/08（ADR-0166）删除未胜出的世界模型候选与小品引擎，mechanisms 暂留。
 - 2026-11-19 人工会话（续）：新增 README.md，更新 DESIGN §15.3 与 HANDOFF。
+- 2026-11-19 人工会话（续）：spec/v4-finish 合入 main；按人类要求把历史作者邮箱换成 GitHub 隐私邮箱，新建公开仓库并推送 main。

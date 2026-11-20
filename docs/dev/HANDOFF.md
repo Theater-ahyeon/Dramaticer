@@ -22,6 +22,7 @@
 4. 选定开源许可证（README 里写明尚未选定）。
 
 ## 眼下要注意
+- 远端：`origin` = GitHub 公开仓库 Theater-ahyeon/Dramaticer，只推 `main`。推送前历史的作者邮箱已按人类要求换成 GitHub 隐私邮箱，本仓库 `user.email` 也已改成隐私邮箱；改写前的旧 `main` 留在本地分支 `backup/main-original`（不要推）。旧的 `spec/*`、`ticket/*` 分支仍是旧邮箱，不要推。
 - 新存储方法：写进对应领域仓储，再把名字加进 `story-store.ts` 的 `Pick<…>` 与 `DELEGATES`。
 - 新路由：参数校验只用 `routes-common.ts`。
 - server 读 core 的 `dist`：改了 core 导出后先 `pnpm --filter @dramaticer/core run build`；单跑 e2e 前先构建 web 与 server。
