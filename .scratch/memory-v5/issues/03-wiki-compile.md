@@ -4,15 +4,17 @@
 
 **Blocked by:** memory-v5/01
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] 假模型下场末产生补丁、版本可回看与回滚
-- [ ] 锁定节不变
-- [ ] 旧库迁移后每个实体有初版页面
-- [ ] 记事页版本记录产生它的楼层，切到旧分支时取该路径上最近的版本
-- [ ] 刷新「现在」产生新版本，不改旧版本与底层记录（DESIGN §16）
-- [ ] `pnpm check` 通过；动到 server 或 web 的跑相关 e2e，并用走查脚本（`packages/web/.walk/`）重新截图逐页确认
+- [x] 假模型下场末产生补丁、版本可回看与回滚
+- [x] 锁定节不变
+- [x] 旧库迁移后每个实体有初版页面
+- [x] 记事页版本记录产生它的楼层，切到旧分支时取该路径上最近的版本
+- [x] 刷新「现在」产生新版本，不改旧版本与底层记录（DESIGN §16）
+- [x] `pnpm check` 通过；动到 server 或 web 的跑相关 e2e，并用走查脚本（`packages/web/.walk/`）重新截图逐页确认
 
 规格：`.scratch/memory-v5/spec.md`；方案：`docs/proposals/v5.md`
 
 ## Comments
+完成：2026-11-24 迁移 75 
+otebook_versions；场末整理（scene_archive）同一次调用输出记事补丁；记事页「故事记事」分页显示三节，可就地改、锁定、看版本与回滚；旧的百科语句保留在页下方。

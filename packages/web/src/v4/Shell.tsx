@@ -165,7 +165,7 @@ export function Shell() {
 					run: () => visit(`${base}/${path}`),
 				});
 			go("继续写故事", "play");
-			go("打开记忆 · 百科", "memory");
+			go("打开记忆 · 故事记事", "memory");
 			go("打开记忆 · 此刻局面", "memory?tab=state");
 			go("打开记忆 · 秘密", "memory?tab=secret");
 			go("打开记忆 · 时间线", "memory?tab=line");

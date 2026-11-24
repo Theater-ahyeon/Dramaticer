@@ -269,6 +269,8 @@ export interface StoryStore
 		>,
 		Pick<
 			MemoryRepo,
+			| "appendNotebookVersion"
+			| "listNotebookVersions"
 			| "insertMemoryEvents"
 			| "listExtractedEventNodeIds"
 			| "recordEventExtractions"
@@ -707,6 +709,8 @@ const DELEGATES: Readonly<Record<keyof Repos, readonly string[]>> = {
 		"retryNodeImage",
 	],
 	memory: [
+		"appendNotebookVersion",
+		"listNotebookVersions",
 		"insertMemoryEvents",
 		"listExtractedEventNodeIds",
 		"recordEventExtractions",

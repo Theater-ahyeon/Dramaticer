@@ -18,6 +18,68 @@ import {
 	parseStoredNameArray,
 } from "./shared.js";
 
+/** 记事页的一个版本：整页快照，挂在产生它的楼层上（v5 §3.1、§3.6）。 */
+export interface NotebookVersion {
+	readonly id: number;
+	readonly storyId: string;
+	readonly entityId: string;
+	/** 初版建在当前路径的末端；null 表示对所有分支都可见。 */
+	readonly nodeId: string | null;
+	readonly base: string;
+	readonly now: string;
+	readonly past: readonly NotebookPastEntry[];
+	readonly locked: readonly NotebookSection[];
+	readonly source: "init" | "compile" | "player" | "rollback";
+	readonly note: string | null;
+	readonly createdAt: string;
+}
+
+export const NOTEBOOK_SECTIONS = ["base", "now", "past"] as const;
+export type NotebookSection = (typeof NOTEBOOK_SECTIONS)[number];
+
+/** 「经历」里的一条：压缩后的事件，带楼层锚点。 */
+export interface NotebookPastEntry {
+	readonly text: string;
+	readonly fromFloor: number | null;
+	readonly toFloor: number | null;
+	/** 产生它的场末楼层；同一场重编译时按它替换，不重复追加。 */
+	readonly nodeId: string | null;
+}
+
+export type NewNotebookVersion = Omit<NotebookVersion, "id" | "createdAt"> & {
+	readonly createdAt?: string;
+};
+
+interface NotebookVersionRow {
+	readonly id: number;
+	readonly story_id: string;
+	readonly entity_id: string;
+	readonly node_id: string | null;
+	readonly base: string;
+	readonly now: string;
+	readonly past: string;
+	readonly locked: string;
+	readonly source: NotebookVersion["source"];
+	readonly note: string | null;
+	readonly created_at: string;
+}
+
+function rowToNotebookVersion(row: NotebookVersionRow): NotebookVersion {
+	return {
+		id: row.id,
+		storyId: row.story_id,
+		entityId: row.entity_id,
+		nodeId: row.node_id,
+		base: row.base,
+		now: row.now,
+		past: JSON.parse(row.past) as NotebookPastEntry[],
+		locked: JSON.parse(row.locked) as NotebookSection[],
+		source: row.source,
+		note: row.note,
+		createdAt: row.created_at,
+	};
+}
+
 interface NodeTextRow {
 	readonly node_id: string;
 	readonly story_id: string;
@@ -215,6 +277,54 @@ function rowToMemoryEvent(row: MemoryEventRow): MemoryEvent {
 }
 
 export class MemoryRepo extends StoreRepo {
+	/** 追加一个记事页版本；版本只追加，回滚也是追加。 */
+	appendNotebookVersion(input: NewNotebookVersion): NotebookVersion {
+		assertNonEmptyString(input.storyId, "故事 id");
+		assertNonEmptyString(input.entityId, "实体 id");
+		const createdAt = input.createdAt ?? new Date().toISOString();
+		const result = this.db
+			.prepare(
+				`INSERT INTO notebook_versions
+					(story_id, entity_id, node_id, base, now, past, locked, source, note, created_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			)
+			.run(
+				input.storyId,
+				input.entityId,
+				input.nodeId,
+				input.base,
+				input.now,
+				JSON.stringify(input.past),
+				JSON.stringify(input.locked),
+				input.source,
+				input.note,
+				createdAt,
+			);
+		const row = this.db
+			.prepare("SELECT * FROM notebook_versions WHERE id = ?")
+			.get(Number(result.lastInsertRowid)) as NotebookVersionRow;
+		return rowToNotebookVersion(row);
+	}
+
+	/** 按创建顺序列出故事的记事页版本；给了实体时只列这一页。 */
+	listNotebookVersions(storyId: string, entityId?: string): NotebookVersion[] {
+		assertNonEmptyString(storyId, "故事 id");
+		const rows = (
+			entityId === undefined
+				? this.db
+						.prepare(
+							"SELECT * FROM notebook_versions WHERE story_id = ? ORDER BY id",
+						)
+						.all(storyId)
+				: this.db
+						.prepare(
+							"SELECT * FROM notebook_versions WHERE story_id = ? AND entity_id = ? ORDER BY id",
+						)
+						.all(storyId, entityId)
+		) as NotebookVersionRow[];
+		return rows.map(rowToNotebookVersion);
+	}
+
 	/**
 	 * 在一个事务里写入某个楼层抽取出的全部事件。任一条非法时整批回滚。
 	 */

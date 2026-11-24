@@ -2149,6 +2149,32 @@ export function buildMigrations(
 				"ALTER TABLE background_jobs ADD COLUMN llm_tokens INTEGER NOT NULL DEFAULT 0 CHECK (llm_tokens >= 0)",
 			],
 		},
+		{
+			version: 75,
+			description:
+				"记事页版本（v5 §3.1）：每个实体一页，底色、现在、经历三节；每个版本是整页快照，挂在产生它的楼层上，只追加",
+			statements: [
+				`CREATE TABLE notebook_versions (
+					id INTEGER PRIMARY KEY AUTOINCREMENT,
+					story_id TEXT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+					entity_id TEXT NOT NULL,
+					node_id TEXT REFERENCES nodes(id) ON DELETE CASCADE,
+					base TEXT NOT NULL,
+					now TEXT NOT NULL,
+					past TEXT NOT NULL,
+					locked TEXT NOT NULL DEFAULT '[]',
+					source TEXT NOT NULL CHECK (source IN ('init', 'compile', 'player', 'rollback')),
+					note TEXT,
+					created_at TEXT NOT NULL
+				)`,
+				"CREATE INDEX notebook_versions_story_entity ON notebook_versions(story_id, entity_id, id)",
+				`CREATE TRIGGER notebook_versions_immutable
+				BEFORE UPDATE ON notebook_versions
+				BEGIN
+					SELECT RAISE(ABORT, '记事页版本只追加，不可修改');
+				END`,
+			],
+		},
 	];
 }
 

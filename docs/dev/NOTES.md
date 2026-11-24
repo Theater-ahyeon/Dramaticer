@@ -167,6 +167,8 @@
 
 - 此刻局面与世界索引（memory-v5/02，`memory/situation.ts`）：默认模板用 `world_index` 与 `situation` 两段取代 `state`、`scene`、`scene_card`（这三个槽位仍注册，自定义模板照用）。局面卡由程序从 `readMemoryState`、场记在场者、场面目标与 `readMemorySecrets` 拼成，超 500 token 时按优先级丢行；卡有 `mvu.*` 时只留在场者、已死之人与知情边界，并把卡的变量原样带上（不计入裁剪，MVU 只从这里进上下文）；台账命名空间以外的模型自记状态原样列出。功能页「此刻局面」「故事记事」两个开关分别关掉两段。上下文分类「状态与秘密」改名「此刻局面」。
 
+- 故事记事（memory-v5/03，`memory/notebook.ts`）：`notebook_versions` 只追加（触发器禁止改），每版是整页快照（现在、底色、经历），挂在产生它的楼层上，沿路径取最近一版；初版由 `ensureNotebookInit`（GET /memory 与故事级任务 `notebook_init`，不调模型）从卡描述、台账与已归档场次拼出。场末整理（`scene_archive` 同一次调用）输出 `notebook` 补丁，`applyNotebookPatches` 跳过锁定节，同一场重编译按场末楼层替换经历。世界索引的一行简介优先取记事页「现在」。
+
 ## 新界面的视觉层（2026-11-16 起）
 
 - 2026-11-19 起（ADR-0162、`ui-lite`）：没有 three.js 场景、指针光、卡片倾斜与开场动画，也不打包字体；`stage.pulse` / `setWriting` 保留为空操作级别的接口，页面可以照常调用。下面关于三维背景的旧条目已过时，以 `.scratch/ui-lite/spec.md` 为准。

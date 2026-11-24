@@ -3,6 +3,7 @@ import { type JsonValue, isJsonObject } from "../json.js";
 import { readSceneGoal } from "../ledger/scene-goal.js";
 import type { StoryStore } from "../store/story-store.js";
 import { type TokenEstimator, createTokenEstimator } from "../tokens.js";
+import { readNotebookPages } from "./notebook.js";
 import {
 	type MemoryStateItem,
 	compileWikiPages,
@@ -319,11 +320,24 @@ export function renderWorldIndex(
 ): WorldIndex | null {
 	const maxChars = options.maxChars ?? WORLD_INDEX_MAX_CHARS;
 	const lines: WorldIndexLine[] = [];
+	// 一行简介优先取记事页的「现在」，其次底色；还没有记事页的实体用百科简介。
+	const notebook = new Map(
+		readNotebookPages(store, storyId, nodeId).map((page) => [page.name, page]),
+	);
 	const pages = [...compileWikiPages(store, storyId, nodeId)].sort(
 		(left, right) => right.uptoFloor - left.uptoFloor,
 	);
 	for (const page of pages) {
-		const lead = firstSentence(page.lead);
+		const note = notebook.get(page.name);
+		const lead = firstSentence(
+			note === undefined
+				? page.lead
+				: note.now.trim().length > 0
+					? note.now
+					: note.base.trim().length > 0
+						? note.base
+						: page.lead,
+		);
 		lines.push({
 			text: lead.length === 0 ? page.name : `${page.name}——${lead}`,
 			source: { kind: "wiki", id: page.id, name: page.name },

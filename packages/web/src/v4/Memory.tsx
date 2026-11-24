@@ -70,6 +70,7 @@ interface Secret {
 }
 
 interface MemoryView {
+	readonly notebook: readonly NotebookPage[];
 	readonly pages: readonly Page[];
 	readonly situation: { readonly text: string } | null;
 	readonly state: readonly StateItem[];
@@ -99,7 +100,7 @@ interface MemoryView {
 }
 
 const TABS = [
-	["wiki", "百科"],
+	["wiki", "故事记事"],
 	["state", "此刻局面"],
 	["secret", "秘密"],
 	["line", "时间线"],
@@ -154,6 +155,199 @@ function linkify(
 }
 
 /** 平时显示带链接的句子，点一下进入修改。 */
+interface NotebookPage {
+	readonly entityId: string;
+	readonly name: string;
+	readonly base: string;
+	readonly now: string;
+	readonly past: readonly {
+		readonly text: string;
+		readonly fromFloor: number | null;
+		readonly toFloor: number | null;
+		readonly nodeId: string | null;
+	}[];
+	readonly locked: readonly string[];
+	readonly versionId: number;
+}
+
+interface NotebookVersionView {
+	readonly id: number;
+	readonly now: string;
+	readonly source: string;
+	readonly note: string | null;
+	readonly createdAt: string;
+}
+
+const NB_SOURCE: Readonly<Record<string, string>> = {
+	init: "初版",
+	compile: "场末整理",
+	player: "你改的",
+	rollback: "回滚",
+};
+
+function anchor(from: number | null, to: number | null): string {
+	if (from === null && to === null) return "";
+	if (from === to || to === null) return `[F${from}]`;
+	if (from === null) return `[F${to}]`;
+	return `[F${from}–F${to}]`;
+}
+
+/** 记事页三节：底色、现在、经历。改过的节锁定，场末整理跳过；版本可回看与回滚。 */
+function NotebookBlock({
+	storyId,
+	page,
+	onChanged,
+}: {
+	readonly storyId: string;
+	readonly page: NotebookPage;
+	readonly onChanged: () => void;
+}) {
+	const toast = useToast();
+	const [versions, setVersions] = useState<
+		readonly NotebookVersionView[] | null
+	>(null);
+	const save = async (body: Record<string, unknown>) => {
+		try {
+			await api.call("POST", sp(storyId, "/memory/notebook"), {
+				entityId: page.entityId,
+				...body,
+			});
+			setVersions(null);
+			onChanged();
+			toast("已保存并锁定");
+		} catch (error) {
+			toast(errorText(error));
+		}
+	};
+	const loadVersions = async () => {
+		if (versions !== null) {
+			setVersions(null);
+			return;
+		}
+		try {
+			const view = await api.get<{ versions: readonly NotebookVersionView[] }>(
+				sp(
+					storyId,
+					`/memory/notebook/history?entity=${encodeURIComponent(page.entityId)}`,
+				),
+			);
+			setVersions(view.versions);
+		} catch (error) {
+			toast(errorText(error));
+		}
+	};
+	const rollback = async (versionId: number) => {
+		try {
+			await api.call("POST", sp(storyId, "/memory/notebook/rollback"), {
+				versionId,
+			});
+			setVersions(null);
+			onChanged();
+			toast("已回到那一版");
+		} catch (error) {
+			toast(errorText(error));
+		}
+	};
+	const lockButton = (section: string) => (
+		<button
+			type="button"
+			className="lock"
+			aria-pressed={page.locked.includes(section)}
+			onClick={() =>
+				void save({ section, locked: !page.locked.includes(section) })
+			}
+		>
+			{page.locked.includes(section) ? "已锁定" : "锁定"}
+		</button>
+	);
+	return (
+		<section className="nb" aria-label="故事记事">
+			<div className="nbsec">
+				<div className="nbhead">
+					<span className="label">现在</span>
+					{lockButton("now")}
+				</div>
+				<Editable
+					value={page.now}
+					placeholder="此刻的处境与打算"
+					onCommit={(text) => void save({ section: "now", text })}
+				/>
+			</div>
+			<div className="nbsec">
+				<div className="nbhead">
+					<span className="label">底色</span>
+					{lockButton("base")}
+				</div>
+				<Editable
+					value={page.base}
+					placeholder="卡里的设定与不可逆的转折"
+					onCommit={(text) => void save({ section: "base", text })}
+				/>
+			</div>
+			<div className="nbsec">
+				<div className="nbhead">
+					<span className="label">经历</span>
+					{lockButton("past")}
+				</div>
+				{page.past.length === 0 ? (
+					<p className="muted">暂无</p>
+				) : (
+					<ul className="nbpast">
+						{page.past.map((entry, index) => (
+							<li key={`${entry.nodeId ?? ""}-${index}`}>
+								<span className="num">
+									{anchor(entry.fromFloor, entry.toFloor)}
+								</span>{" "}
+								<Editable
+									as="span"
+									value={entry.text}
+									onCommit={(text) =>
+										void save({
+											section: "past",
+											past: page.past.map((item, at) =>
+												at === index ? { ...item, text } : item,
+											),
+										})
+									}
+								/>
+							</li>
+						))}
+					</ul>
+				)}
+			</div>
+			<button
+				type="button"
+				className="btn ghost sm"
+				aria-expanded={versions !== null}
+				onClick={() => void loadVersions()}
+			>
+				版本
+			</button>
+			{versions === null ? null : (
+				<ol className="nbversions">
+					{versions.map((version, index) => (
+						<li key={version.id}>
+							<span className="pill mute">
+								{NB_SOURCE[version.source] ?? version.source}
+							</span>{" "}
+							<span>{version.now || "（现在为空）"}</span>{" "}
+							{index === 0 ? null : (
+								<button
+									type="button"
+									className="btn sm"
+									onClick={() => void rollback(version.id)}
+								>
+									回到这一版
+								</button>
+							)}
+						</li>
+					))}
+				</ol>
+			)}
+		</section>
+	);
+}
+
 function LinkedText({
 	text,
 	className,
@@ -242,7 +436,7 @@ export function Memory() {
 	usePaletteCommands(
 		useCallback(
 			() => [
-				{ label: "记忆 · 百科", run: () => goTab("wiki") },
+				{ label: "记忆 · 故事记事", run: () => goTab("wiki") },
 				{ label: "记忆 · 此刻局面", run: () => goTab("state") },
 				{ label: "记忆 · 秘密", run: () => goTab("secret") },
 				{ label: "记忆 · 时间线", run: () => goTab("line") },
@@ -467,6 +661,19 @@ export function Memory() {
 								</button>
 							</div>
 							{problem(`${page.id}|lead`)}
+							{(() => {
+								const note = data.notebook.find(
+									(item) => item.name === page.name,
+								);
+								return note === undefined ? null : (
+									<NotebookBlock
+										key={note.versionId}
+										storyId={storyId}
+										page={note}
+										onChanged={memory.reload}
+									/>
+								);
+							})()}
 							{page.sections.map((section) => (
 								<Fragment key={section.title}>
 									<h3>{section.title}</h3>

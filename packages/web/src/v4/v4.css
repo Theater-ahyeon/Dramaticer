@@ -3548,3 +3548,32 @@ div:hover > .flr-acts,
 	line-height: 1.8;
 	white-space: pre-wrap;
 }
+
+/* 故事记事：现在、底色、经历三节，改过的节锁定。 */
+.nb {
+	display: grid;
+	gap: 12px;
+	margin: 14px 0 18px;
+	padding: 14px 16px;
+	border: 1px solid var(--line);
+	border-radius: var(--r-lg);
+	background: var(--sheet);
+}
+.nbhead {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+.nbsec [contenteditable] {
+	margin: 4px 0 0;
+	line-height: 1.8;
+}
+.nbpast,
+.nbversions {
+	margin: 4px 0 0;
+	padding-left: 18px;
+	line-height: 1.8;
+}
+.nb > .btn {
+	justify-self: start;
+}

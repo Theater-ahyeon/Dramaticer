@@ -81,6 +81,11 @@ import {
 	createLorePrefilterHandler,
 } from "../memory/lore-prefilter.js";
 import {
+	NOTEBOOK_INIT_JOB_KIND,
+	ensureNotebookInit,
+	notebookInitNeedsRun,
+} from "../memory/notebook.js";
+import {
 	NPC_AGENDA_JOB_KIND,
 	createNpcAgendaHandler,
 } from "../memory/npc-agenda.js";
@@ -128,6 +133,7 @@ export const BLUEPRINT_SUGGESTION_JOB_PLUGIN =
 	"background.blueprint-suggestion";
 export const CANDIDATE_ACTIONS_JOB_PLUGIN = "background.candidate-actions";
 export const EMBEDDINGS_JOB_PLUGIN = "background.embeddings";
+export const NOTEBOOK_INIT_JOB_PLUGIN = "background.notebook-init";
 
 /** 建立插件定义；入队条件、档位与 needsRun 由内核注册表校验。 */
 export function backgroundJobPlugin(
@@ -203,6 +209,14 @@ export const BACKGROUND_JOB_PLUGINS: readonly BackgroundJobPlugin[] = [
 		enqueue: "story",
 		tier: "gap",
 		needsRun: createSceneArchiveNeedsRun(),
+	}),
+	backgroundJobPlugin(NOTEBOOK_INIT_JOB_PLUGIN, NOTEBOOK_INIT_JOB_KIND, {
+		handler: ({ store, job }) => {
+			ensureNotebookInit(store, job.storyId);
+		},
+		enqueue: "story",
+		tier: "gap",
+		needsRun: notebookInitNeedsRun,
 	}),
 	backgroundJobPlugin(OPENING_JOB_PLUGIN, OPENING_JOB_KIND, {
 		handler: createOpeningHandler(),

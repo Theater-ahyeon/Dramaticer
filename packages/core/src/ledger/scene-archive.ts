@@ -2,6 +2,10 @@ import type { BackgroundJobHandler } from "../background/types.js";
 import { assertPlainObject, isJsonObject, rejectUnknownKeys } from "../json.js";
 import { type LlmMessage, NO_CONTINUATION } from "../llm/types.js";
 import { parseJsonOutputObject } from "../memory/json-output.js";
+import {
+	type NotebookPatch,
+	applyNotebookPatches,
+} from "../memory/notebook.js";
 import type { StoryStore } from "../store/story-store.js";
 import {
 	type SceneInformed,
@@ -30,7 +34,10 @@ const RESPONSE_KEYS = [
 	"stateChanges",
 	"cluesOpened",
 	"cluesClosed",
+	"notebook",
 ] as const;
+
+const NOTEBOOK_KEYS = ["who", "now", "past", "base"] as const;
 
 const STATE_CHANGE_KEYS = ["path", "change"] as const;
 
@@ -87,6 +94,7 @@ export interface ParsedSceneArchive {
 	readonly stateChanges: readonly SceneStateChange[];
 	readonly cluesOpened: readonly string[];
 	readonly cluesClosed: readonly string[];
+	readonly notebook: readonly NotebookPatch[];
 }
 
 /** 校验存储里的一条状态变化；路径只查形状。 */
@@ -232,7 +240,43 @@ export function parseSceneArchiveResponse(
 		stateChanges,
 		cluesOpened,
 		cluesClosed,
+		notebook: readNotebookPatches(record.notebook, present),
 	};
+}
+
+/**
+ * 记事页补丁格式不对时只丢掉那一条（v5：格式问题由程序修复，不打回）；
+ * 补丁的人物必须在这一场在场。
+ */
+function readNotebookPatches(
+	value: unknown,
+	present: readonly string[],
+): NotebookPatch[] {
+	if (!Array.isArray(value)) return [];
+	const patches: NotebookPatch[] = [];
+	for (const item of value) {
+		if (!isJsonObject(item)) continue;
+		if (
+			Object.keys(item).some(
+				(key) => !(NOTEBOOK_KEYS as readonly string[]).includes(key),
+			)
+		) {
+			continue;
+		}
+		const who = typeof item.who === "string" ? item.who.trim() : "";
+		if (who.length === 0 || !present.includes(who)) continue;
+		const text = (field: unknown): string | null =>
+			typeof field === "string" && field.trim().length > 0
+				? field.trim()
+				: null;
+		patches.push({
+			who,
+			now: text(item.now),
+			past: text(item.past),
+			base: text(item.base),
+		});
+	}
+	return patches;
 }
 
 export interface SceneArchiveHandlerOptions {
@@ -306,7 +350,7 @@ export function createSceneArchiveNeedsRun(
 
 function buildSystemPrompt(): string {
 	const shape =
-		'{"summary":"…","present":["凛"],"profiles":[{"who":"凛","want":"拿回那封信","hide":null,"speech":"「把书还我。」","unresolved":"信还在老师手里"}],"informed":[{"who":"老师","factId":"a2","via":"told"}],"stateChanges":[{"path":["scene","current","place"],"change":"从教室换到走廊"}],"cluesOpened":["旧信"],"cluesClosed":[]}';
+		'{"summary":"…","notebook":[{"who":"凛","now":"凛还在等那封信的下落。","past":"在教室试探玩家，没拿回信","base":null}],"present":["凛"],"profiles":[{"who":"凛","want":"拿回那封信","hide":null,"speech":"「把书还我。」","unresolved":"信还在老师手里"}],"informed":[{"who":"老师","factId":"a2","via":"told"}],"stateChanges":[{"path":["scene","current","place"],"change":"从教室换到走廊"}],"cluesOpened":["旧信"],"cluesClosed":[]}';
 	return [
 		"你是故事的档案员。一场戏结束时，你把这一场归档成一条记录。只输出一个 JSON 对象，不要解释、前后缀或代码块标记。",
 		shape,
@@ -317,6 +361,7 @@ function buildSystemPrompt(): string {
 		"- stateChanges：这一场真正改变的硬状态，每条写台账路径与变化内容；没有变化就给空数组。",
 		"- cluesOpened：这一场里新开或继续推进的线索 id，只能写台账 clue 命名空间里已经存在的 id。",
 		"- cluesClosed：这一场里已经收束的线索 id，必须是台账里状态为 fulfilled 的线索。",
+		"- notebook：在场人物的记事页补丁。now 用 2–3 句写他此刻的处境与打算（会替换旧的「现在」）；past 用一句话写他在这一场的经历；base 只在发生不可逆的转折（身份、生死、立场彻底改变）时写一句，否则 null。who 必须在 present 里。",
 	].join("\n");
 }
 
@@ -432,6 +477,13 @@ export function createSceneArchiveHandler(
 			cluesOpened: parsed.cluesOpened,
 			cluesClosed: parsed.cluesClosed,
 		});
+		// 同一次调用顺带的记事页补丁：刷新现在、追加经历，锁定的节跳过。
+		applyNotebookPatches(
+			store,
+			job.storyId,
+			{ endNodeId: scene.endNodeId, startNodeId: scene.startNodeId },
+			parsed.notebook,
+		);
 	};
 }
 

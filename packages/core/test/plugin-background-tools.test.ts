@@ -145,6 +145,7 @@ describe("内置后台任务插件", () => {
 			"gap_pass",
 			"scene_log",
 			"scene_archive",
+			"notebook_init",
 			"opening",
 			"opening_candidates",
 			"visual_profile",

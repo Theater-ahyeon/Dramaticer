@@ -1,15 +1,21 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
 	type JsonValue,
+	NOTEBOOK_SECTIONS,
+	type NotebookPastEntry,
+	type NotebookSection,
 	type PlayerEditKind,
 	assertDirectorLine,
 	assertSceneCard,
 	compileWikiPages,
 	createTokenEstimator,
+	editNotebookSection,
 	editSceneGoal,
 	editState,
 	editWikiStatement,
+	ensureNotebookInit,
 	isPlayerEditKind,
+	listNotebookHistory,
 	loreEntryMatchScore,
 	normalizeEntityName,
 	readContextBreakdown,
@@ -21,6 +27,7 @@ import {
 	readMemorySecrets,
 	readMemoryState,
 	readMemoryTimeline,
+	readNotebookPages,
 	readPinnedLineIds,
 	readSceneGoal,
 	readStoryFeatureState,
@@ -28,6 +35,7 @@ import {
 	renderSituationCard,
 	resetToCardRecommended,
 	resolveLoreInjectionRole,
+	rollbackNotebook,
 	rollbackPlayerEdit,
 	stateTargetOf,
 	writeMemoryPref,
@@ -61,9 +69,12 @@ export async function handleMemoryRoute(
 		requireStory(options.store, storyId);
 		if (parts.length === 3) {
 			requireMethod(method, ["GET"]);
+			// 旧故事第一次打开时，用已有记录给每个实体建初版记事页（不调用模型）。
+			ensureNotebookInit(store, storyId);
 			sendJson(res, 200, {
 				storyId,
 				headNodeId: head(),
+				notebook: readNotebookPages(store, storyId, head()),
 				pages: compileWikiPages(store, storyId),
 				situation: (() => {
 					const nodeId = head();
@@ -78,6 +89,68 @@ export async function handleMemoryRoute(
 				timeline: readMemoryTimeline(store, storyId),
 				prefs: readMemoryPrefs(store, storyId),
 				rejections: store.listMemoryRejections(storyId, 30),
+			});
+			return true;
+		}
+		if (fourth === "notebook" && fifth === "history" && parts.length === 5) {
+			requireMethod(method, ["GET"]);
+			const entityId = url.searchParams.get("entity");
+			if (entityId === null || entityId.length === 0) {
+				throw fieldError("entity", "查看记事页历史必须提供 entity");
+			}
+			sendJson(res, 200, {
+				storyId,
+				entityId,
+				versions: listNotebookHistory(store, storyId, entityId, head()),
+			});
+			return true;
+		}
+		if (fourth === "notebook" && fifth === "rollback" && parts.length === 5) {
+			requireMethod(method, ["POST"]);
+			const body = await readObjectBody(req, options.maxJsonBodyBytes);
+			if (typeof body.versionId !== "number") {
+				throw fieldError("versionId", "versionId 必须是数字");
+			}
+			try {
+				rollbackNotebook(store, storyId, body.versionId, head());
+			} catch (error) {
+				throw new HttpError(
+					404,
+					"not_found",
+					error instanceof Error ? error.message : String(error),
+				);
+			}
+			sendJson(res, 200, {
+				storyId,
+				notebook: readNotebookPages(store, storyId, head()),
+			});
+			return true;
+		}
+		if (fourth === "notebook" && parts.length === 4) {
+			requireMethod(method, ["POST"]);
+			const body = await readObjectBody(req, options.maxJsonBodyBytes);
+			const section = body.section;
+			if (
+				typeof section !== "string" ||
+				!(NOTEBOOK_SECTIONS as readonly string[]).includes(section)
+			) {
+				throw fieldError("section", "section 只能是 base、now 或 past");
+			}
+			if (typeof body.entityId !== "string") {
+				throw fieldError("entityId", "entityId 必须是字符串");
+			}
+			editNotebookSection(store, storyId, {
+				entityId: body.entityId,
+				section: section as NotebookSection,
+				...(typeof body.text === "string" ? { text: body.text } : {}),
+				...(Array.isArray(body.past)
+					? { past: body.past as NotebookPastEntry[] }
+					: {}),
+				...(typeof body.locked === "boolean" ? { locked: body.locked } : {}),
+			});
+			sendJson(res, 200, {
+				storyId,
+				notebook: readNotebookPages(store, storyId, head()),
 			});
 			return true;
 		}
