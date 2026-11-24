@@ -24,6 +24,7 @@ import {
 	toggleOnce,
 } from "./once";
 import { isDialogueLine } from "./prose";
+import { useShellActions } from "./shell-actions";
 import { stage } from "./stage";
 import {
 	Cover,
@@ -284,22 +285,11 @@ function collectOptions(items: readonly DisplayedContent[]): string[] {
 	return lines;
 }
 
-function costLine(meta: FloorMeta | undefined): string {
-	const cost = meta?.cost;
-	if (cost === null || cost === undefined) return "";
-	const cache =
-		cost.cached !== null && cost.input !== null && cost.input > 0
-			? ` · 缓存 ${Math.round((cost.cached / cost.input) * 100)}%`
-			: "";
-	const wait =
-		cost.waitMs === null ? "" : ` · 等了 ${(cost.waitMs / 1000).toFixed(1)} 秒`;
-	return `上一轮 ${formatTokens(cost.input)} 入 · ${formatTokens(cost.output)} 出${cache}${wait}`;
-}
-
 /** 故事页：书页式正文、页边批注、玻璃输入台，右侧是停靠栏。 */
 export function Play() {
 	const { storyId = "" } = useParams();
 	const toast = useToast();
+	const shell = useShellActions();
 	const story = useLoad<StoryView>(() => api.getStory(storyId), [storyId]);
 	const path = useLoad<StoryPath>(
 		() => api.getPath(storyId, { limit: 60 }),
@@ -713,8 +703,6 @@ export function Play() {
 
 	if (path.error !== null) return <div className="v4err">{path.error}</div>;
 	const title = story.data?.title ?? "";
-	const lastMeta =
-		lastAssistant === undefined ? undefined : metaById.get(lastAssistant.id);
 	const stageNames = streaming === null ? [] : MODE_STAGES[streaming.mode];
 	const stageReached =
 		streaming === null
@@ -1215,7 +1203,20 @@ export function Play() {
 									once={once}
 									onChange={setOnce}
 								/>
-								<span className="num">{costLine(lastMeta)}</span>
+								<button
+									type="button"
+									className="btn ghost sm"
+									onClick={shell.openInspector}
+								>
+									检视器
+								</button>
+								<button
+									type="button"
+									className="btn ghost sm"
+									onClick={shell.openAssistant}
+								>
+									助手
+								</button>
 							</div>
 						) : null}
 					</div>

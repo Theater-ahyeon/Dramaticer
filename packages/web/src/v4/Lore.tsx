@@ -305,9 +305,6 @@ export function Lore() {
 											: (KIND[entry.kind]?.when ?? "命中时")}
 								</div>
 							</div>
-							<span className="num" style={{ color: "var(--muted)" }}>
-								{formatTokens(entry.tokens)}
-							</span>
 							<Sw
 								checked={!entry.disabled}
 								label={`启用 ${entry.name}`}

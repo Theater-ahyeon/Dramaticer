@@ -34,6 +34,16 @@ export interface StoryJobsView {
 	readonly counts: BackgroundJobCounts;
 	/** 按最近一次错误时间倒序，最多 5 条。 */
 	readonly recentErrors: readonly StoryJobErrorView[];
+	/**
+	 * 后台调用次数（按任务尝试次数计），分三类：跟楼层走的、一次性的故事级任务（开局、
+	 * 导入分型、角色外观）、玩家开的插图。`floors` 是助手楼层数，用来算每楼平均。
+	 */
+	readonly calls: {
+		readonly perFloor: number;
+		readonly oneTime: number;
+		readonly images: number;
+		readonly floors: number;
+	};
 }
 
 export interface CreateStoryRequest {

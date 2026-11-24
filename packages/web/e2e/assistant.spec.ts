@@ -11,7 +11,8 @@ test.beforeEach(async ({ page }) => {
 });
 
 async function openDrawer(page: Page): Promise<void> {
-	await page.locator(".assistant-open-button").click();
+	// 助手挂在外壳上：任何页面都用同一个快捷键叫出来。
+	await page.keyboard.press("Control+Shift+A");
 	await expect(page.locator(".assistant-drawer")).toBeVisible();
 }
 
@@ -50,15 +51,15 @@ test("打开、关闭后继续运行、路由切换与刷新后恢复会话", as
 
 	await page.keyboard.press("Escape");
 	await expect(page.locator(".assistant-drawer")).toBeHidden();
-	await expect(page.locator(".assistant-open-button")).toBeFocused();
 	const badge = page.locator(".assistant-badge");
 	await expect(badge).toContainText("助手运行中");
 
 	await page.locator(".story-tabs").getByRole("link", { name: "台账" }).click();
 	await expect(badge).toContainText("助手运行中");
-	await expect(badge).not.toContainText("运行中", { timeout: 20_000 });
+	// 跑完之后状态徽标收起，从快捷键再打开。
+	await expect(badge).toHaveCount(0, { timeout: 20_000 });
 
-	await badge.click();
+	await page.keyboard.press("Control+Shift+A");
 	await expect(page.locator(".assistant-drawer")).toBeVisible();
 	await expect(page.locator(".assistant-messages")).toContainText(
 		"慢速助手的完整回答",
@@ -66,8 +67,7 @@ test("打开、关闭后继续运行、路由切换与刷新后恢复会话", as
 
 	await page.getByRole("button", { name: "关闭助手" }).click();
 	await page.reload();
-	await expect(page.locator(".assistant-badge")).toContainText("助手");
-	await page.locator(".assistant-badge").click();
+	await page.keyboard.press("Control+Shift+A");
 	await expect(page.locator(".assistant-drawer")).toBeVisible();
 	await expect(page.locator(".assistant-conversation-list")).toContainText(
 		"新会话",
@@ -92,10 +92,10 @@ test("刷新后从 status 与 after 续读正在运行的助手", async ({ page 
 	await expect(page.locator(".assistant-badge")).toContainText("助手运行中", {
 		timeout: 20_000,
 	});
-	await expect(page.locator(".assistant-badge")).not.toContainText("运行中", {
+	await expect(page.locator(".assistant-badge")).toHaveCount(0, {
 		timeout: 20_000,
 	});
-	await page.locator(".assistant-badge").click();
+	await page.keyboard.press("Control+Shift+A");
 	await expect(page.locator(".assistant-messages")).toContainText(
 		"慢速助手的完整回答",
 	);

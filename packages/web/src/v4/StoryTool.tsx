@@ -1,14 +1,10 @@
 import type { StoryView } from "@dramaticer/protocol";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, NavLink, Outlet, useParams } from "react-router-dom";
 import { api } from "../api";
-import {
-	AssistantDrawer,
-	type AssistantSummary,
-	EMPTY_ASSISTANT_SUMMARY,
-} from "../assistant/AssistantDrawer";
 import type { StoryAssistantContext } from "../assistant/context";
 import { ErrorNotice } from "../components/ErrorNotice";
+import { useShellActions } from "./shell-actions";
 
 const TABS = [
 	{ path: "chat", label: "聊天" },
@@ -26,65 +22,11 @@ export function StoryTool() {
 	const { storyId } = useParams();
 	const [story, setStory] = useState<StoryView | null>(null);
 	const [error, setError] = useState<unknown>(null);
-	const [assistantOpen, setAssistantOpen] = useState(false);
-	const [assistantSummary, setAssistantSummary] = useState<AssistantSummary>(
-		EMPTY_ASSISTANT_SUMMARY,
-	);
-	const assistantOpenRef = useRef(false);
-	assistantOpenRef.current = assistantOpen;
-	const assistantWasOpenRef = useRef(false);
-
-	const openAssistant = useCallback(() => {
-		setAssistantOpen(true);
-	}, []);
-
-	const closeAssistant = useCallback(() => {
-		setAssistantOpen(false);
-	}, []);
-
+	const { openAssistant } = useShellActions();
 	const assistantContext = useMemo<StoryAssistantContext>(
 		() => ({ openAssistant }),
 		[openAssistant],
 	);
-
-	useEffect(() => {
-		const onKeyDown = (event: KeyboardEvent): void => {
-			if (event.key === "Escape") {
-				if (!assistantOpenRef.current) return;
-				setAssistantOpen(false);
-				return;
-			}
-			if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "a") {
-				event.preventDefault();
-				setAssistantOpen(!assistantOpenRef.current);
-			}
-		};
-		window.addEventListener("keydown", onKeyDown);
-		return () => window.removeEventListener("keydown", onKeyDown);
-	}, []);
-
-	// 隐藏抽屉后浏览器会把焦点退到 body；等这一帧结束再把焦点送回触发按钮。
-	useEffect(() => {
-		if (assistantWasOpenRef.current && !assistantOpen) {
-			const frame = requestAnimationFrame(() => {
-				requestAnimationFrame(() => {
-					document
-						.querySelector<HTMLButtonElement>(".assistant-open-button")
-						?.focus();
-				});
-			});
-			assistantWasOpenRef.current = assistantOpen;
-			return () => cancelAnimationFrame(frame);
-		}
-		assistantWasOpenRef.current = assistantOpen;
-	}, [assistantOpen]);
-
-	useEffect(() => {
-		if (storyId === undefined) return;
-		setAssistantSummary(EMPTY_ASSISTANT_SUMMARY);
-		setAssistantOpen(false);
-	}, [storyId]);
-
 	useEffect(() => {
 		if (storyId === undefined) return;
 		let active = true;
@@ -150,40 +92,6 @@ export function StoryTool() {
 			<section className="story-content">
 				<Outlet context={assistantContext} />
 			</section>
-			<AssistantDrawer
-				key={storyId}
-				storyId={storyId}
-				open={assistantOpen}
-				onClose={closeAssistant}
-				onSummaryChange={setAssistantSummary}
-			/>
-			{assistantOpen ? null : (
-				<button
-					type="button"
-					className={assistantBadgeClass(assistantSummary)}
-					onClick={openAssistant}
-					aria-label="打开助手"
-				>
-					<span>{assistantBadgeLabel(assistantSummary)}</span>
-					{assistantSummary.pendingActions > 0 ? (
-						<span className="assistant-badge-count">
-							{assistantSummary.pendingActions}
-						</span>
-					) : null}
-				</button>
-			)}
 		</div>
 	);
-}
-
-function assistantBadgeClass(summary: AssistantSummary): string {
-	if (summary.running) return "assistant-badge running";
-	if (summary.failed) return "assistant-badge failed";
-	return "assistant-badge";
-}
-
-function assistantBadgeLabel(summary: AssistantSummary): string {
-	if (summary.running) return "助手运行中";
-	if (summary.failed) return "助手失败";
-	return "助手";
 }

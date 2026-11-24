@@ -787,14 +787,11 @@ export function Dock({
 			{tab === "ctx" ? (
 				<div className="sec">
 					<div className="label">
-						<span>这一轮它看到的</span>
-						<span className="num">
-							{formatTokens(context.data?.breakdown?.totalTokens)}
-						</span>
+						<span>本轮上下文</span>
 					</div>
 					{context.data !== null && context.data.breakdown === null ? (
 						<p className="v4empty" style={{ padding: 0 }}>
-							还没有写过一楼，没有上下文可看。
+							暂无
 						</p>
 					) : null}
 					<div className="ctxbar">
@@ -806,8 +803,8 @@ export function Dock({
 									flex: Math.max(item.tokens, 1),
 									background: `var(${CTX_COLOR[item.id] ?? "--soft"})`,
 								}}
-								title={`${item.label} ${formatTokens(item.tokens)}`}
-								aria-label={`${item.label} ${formatTokens(item.tokens)}`}
+								title={item.label}
+								aria-label={item.label}
 								aria-pressed={item.id === category}
 								onClick={() => setCategory(item.id)}
 							/>
@@ -820,14 +817,10 @@ export function Dock({
 									<span>
 										<b>{active.label}</b>
 									</span>
-									<span className="num">{formatTokens(active.tokens)}</span>
 								</div>
 								{active.items.map((item, index) => (
 									<div key={`${item.label}-${index}`}>
-										<span>
-											{item.label}{" "}
-											<span className="num">{formatTokens(item.tokens)}</span>
-										</span>
+										<span>{item.label}</span>
 										<span>
 											<Link
 												className="btn ghost sm"
@@ -842,9 +835,6 @@ export function Dock({
 							</>
 						)}
 					</div>
-					<p style={{ fontSize: 12.5, color: "var(--muted)" }}>
-						点色块看这一类里有什么。每一条都能直接跳去修改，下一轮生效。
-					</p>
 				</div>
 			) : null}
 		</aside>

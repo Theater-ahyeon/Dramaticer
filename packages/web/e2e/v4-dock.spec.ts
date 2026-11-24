@@ -360,10 +360,11 @@ test.describe("故事页停靠栏：导演、记忆与上下文", () => {
 
 		// 上下文：每一条带着自己的去向。
 		await dock.getByRole("tab", { name: "上下文" }).click();
-		await expect(dock).toContainText("这一轮它看到的");
+		await expect(dock).toContainText("本轮上下文");
+		await expect(dock).not.toContainText("token");
 
 		// 设定条目：跳到设定页并展开这一条。
-		await dock.getByRole("button", { name: /^设定 / }).click();
+		await dock.getByRole("button", { name: "设定", exact: true }).click();
 		const loreLink = dock
 			.locator(".ctxitems > div")
 			.filter({ hasText: "门厅" })
@@ -385,7 +386,7 @@ test.describe("故事页停靠栏：导演、记忆与上下文", () => {
 		await page.locator("#dock").getByRole("tab", { name: "上下文" }).click();
 		await page
 			.locator("#dock")
-			.getByRole("button", { name: /^百科 / })
+			.getByRole("button", { name: "百科", exact: true })
 			.click();
 		const wikiLink = page
 			.locator("#dock .ctxitems > div")
@@ -403,7 +404,7 @@ test.describe("故事页停靠栏：导演、记忆与上下文", () => {
 		await page.locator("#dock").getByRole("tab", { name: "上下文" }).click();
 		await page
 			.locator("#dock")
-			.getByRole("button", { name: /^状态与秘密 / })
+			.getByRole("button", { name: "状态与秘密", exact: true })
 			.click();
 		await page
 			.locator("#dock .ctxitems > div")
@@ -419,7 +420,7 @@ test.describe("故事页停靠栏：导演、记忆与上下文", () => {
 		await page.locator("#dock").getByRole("tab", { name: "上下文" }).click();
 		await page
 			.locator("#dock")
-			.getByRole("button", { name: /^原文 / })
+			.getByRole("button", { name: "原文", exact: true })
 			.click();
 		await page
 			.locator("#dock .ctxitems > div")

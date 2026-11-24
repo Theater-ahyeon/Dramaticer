@@ -6,7 +6,6 @@ import type {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
-import { RerollStats } from "./RerollStats";
 import { usePaletteCommands } from "./Shell";
 import { WritingEntries } from "./WritingEntries";
 import { type Theme, onThemeChange, setTheme, storedTheme } from "./stage";
@@ -200,14 +199,12 @@ export function Prefs() {
 		),
 	);
 
-	let total = 0;
 	let enabled = 0;
 	for (const group of features.data?.groups ?? []) {
 		for (const item of group.switches) {
 			const on = item.value !== false && item.value !== "off";
 			if (!on) continue;
 			enabled += 1;
-			total += stats.data?.costs[item.id] ?? 0;
 		}
 	}
 
@@ -454,7 +451,6 @@ export function Prefs() {
 							<div className="grp" key={group.group}>
 								<h2>{group.label}</h2>
 								{group.switches.map((item) => {
-									const cost = stats.data?.costs[item.id] ?? 0;
 									return (
 										<div className="dial" key={item.id}>
 											<div>
@@ -471,9 +467,6 @@ export function Prefs() {
 												</h3>
 												{item.description ? <p>{item.description}</p> : null}
 												<div className="stat">
-													<span className="num">
-														{cost > 0 ? `每轮约 ${cost} token` : "不多花"}
-													</span>
 													<span>{stats.data?.uses[item.id] ?? "—"}</span>
 												</div>
 											</div>
@@ -519,13 +512,8 @@ export function Prefs() {
 							</div>
 						))}
 					</div>
-					<RerollStats storyId={storyId} />
 					<div className="total">
-						<span>
-							按现在的开关，每轮后台约{" "}
-							<b className="num">{total.toLocaleString()}</b> token
-						</span>
-						<span className="num">开了 {enabled} 项 · 正文另算</span>
+						<span className="num">开了 {enabled} 项</span>
 					</div>
 				</div>
 			) : null}

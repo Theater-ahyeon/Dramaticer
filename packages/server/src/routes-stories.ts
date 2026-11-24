@@ -1,6 +1,7 @@
 // server 路由：故事、导入、楼层树与路径、实体、设定、后台任务、连载（refactor/06 从 routes.ts 拆出）。
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
+	ILLUSTRATE_JOB_KIND,
 	type StateDiff,
 	type Story,
 	type StoryStore,
@@ -208,8 +209,17 @@ export function handleJobs(
 ): void {
 	requireStory(options.store, storyId);
 	const counts = options.store.countBackgroundJobs({ storyId });
-	const recentErrors: StoryJobErrorView[] = options.store
-		.listBackgroundJobs({ storyId })
+	const jobs = options.store.listBackgroundJobs({ storyId });
+	const calls = { perFloor: 0, oneTime: 0, images: 0, floors: 0 };
+	for (const job of jobs) {
+		if (job.kind === ILLUSTRATE_JOB_KIND) calls.images += job.attempts;
+		else if (job.nodeId === null) calls.oneTime += job.attempts;
+		else calls.perFloor += job.attempts;
+	}
+	calls.floors = options.store
+		.listStoryNodes(storyId)
+		.filter((node) => node.role === "assistant").length;
+	const recentErrors: StoryJobErrorView[] = jobs
 		.filter((job) => job.lastError !== null)
 		.sort((left, right) => {
 			const byTime = errorTime(right).localeCompare(errorTime(left));
@@ -225,7 +235,7 @@ export function handleJobs(
 			error: job.lastError ?? "",
 			recordedAt: errorTime(job),
 		}));
-	const view: StoryJobsView = { storyId, counts, recentErrors };
+	const view: StoryJobsView = { storyId, counts, recentErrors, calls };
 	sendJson(res, 200, view);
 }
 

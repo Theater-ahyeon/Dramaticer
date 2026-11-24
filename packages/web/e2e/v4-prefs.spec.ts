@@ -5,8 +5,9 @@ import {
 	login,
 } from "./helpers";
 
-async function sumTokens(page: Page): Promise<number> {
-	const text = await page.locator(".total b.num").textContent();
+/** 底部「开了 N 项」；token 估算挪到了检视器，这里只数开关。 */
+async function enabledCount(page: Page): Promise<number> {
+	const text = await page.locator(".total .num").textContent();
 	return Number((text ?? "").replace(/[^\d]/g, ""));
 }
 
@@ -66,11 +67,16 @@ test.describe("新界面设置页", () => {
 			.click();
 		const groups = page.locator("#groups");
 		await expect(groups).toBeVisible();
-		// 功能分页底部：北极星指标，每百楼带原因重写率（refactor/04）。
-		const rerolls = page.locator("#rerolls");
+		// 北极星指标（每百楼带原因重写率）在检视器里，不在设置页。
+		await expect(page.locator("#groups #rerolls")).toHaveCount(0);
+		await page.keyboard.press("Control+.");
+		const rerolls = page
+			.getByRole("dialog", { name: "检视器" })
+			.locator("#rerolls");
 		await expect(rerolls).toContainText("重写率");
 		await expect(rerolls.locator("tbody tr")).toHaveCount(7);
 		await expect(rerolls).toContainText("未选原因");
+		await page.keyboard.press("Escape");
 		const tier = page.locator(".vh .seg");
 		await expect(tier.getByRole("button", { name: "均衡" })).toHaveAttribute(
 			"aria-pressed",
@@ -78,7 +84,7 @@ test.describe("新界面设置页", () => {
 		);
 		const scribe = page.getByRole("switch", { name: "场记" });
 		await expect(scribe).toHaveAttribute("aria-checked", "true");
-		const standardSum = await sumTokens(page);
+		const standardSum = await enabledCount(page);
 		expect(standardSum).toBeGreaterThan(0);
 
 		// 全开：一批开关被打开，合计变大。
@@ -86,27 +92,27 @@ test.describe("新界面设置页", () => {
 		await expect(scribe).toHaveAttribute("aria-checked", "true");
 		const prepare = page.getByRole("switch", { name: "提前备好" });
 		await expect(prepare).toHaveAttribute("aria-checked", "true");
-		const immersiveSum = await sumTokens(page);
+		const immersiveSum = await enabledCount(page);
 		expect(immersiveSum).toBeGreaterThan(standardSum);
 
 		// 省：同一批开关被关掉，合计变小。
 		await tier.getByRole("button", { name: "省" }).click();
 		await expect(scribe).toHaveAttribute("aria-checked", "false");
 		await expect(prepare).toHaveAttribute("aria-checked", "false");
-		const liteSum = await sumTokens(page);
+		const liteSum = await enabledCount(page);
 		expect(liteSum).toBeLessThan(standardSum);
 
 		const total = page.locator(".total");
-		await expect(total).toContainText("每轮后台约");
 		await expect(total).toContainText("开了");
+		await expect(total).not.toContainText("token");
 
-		// 逐项开关：关掉场记后合计少 600，刷新后保持。
+		// 逐项开关：关掉场记后少一项，刷新后保持。
 		await tier.getByRole("button", { name: "均衡" }).click();
 		await expect(scribe).toHaveAttribute("aria-checked", "true");
-		const beforeToggle = await sumTokens(page);
+		const beforeToggle = await enabledCount(page);
 		await scribe.click();
 		await expect(scribe).toHaveAttribute("aria-checked", "false");
-		await expect.poll(() => sumTokens(page)).toBe(beforeToggle - 600);
+		await expect.poll(() => enabledCount(page)).toBe(beforeToggle - 1);
 		await page.reload();
 		await page
 			.locator(".subtabs")
@@ -116,7 +122,7 @@ test.describe("新界面设置页", () => {
 			"aria-checked",
 			"false",
 		);
-		expect(await sumTokens(page)).toBe(beforeToggle - 600);
+		expect(await enabledCount(page)).toBe(beforeToggle - 1);
 
 		// 合计贴在页面底部，窄屏也不横向溢出。
 		const box = await page.locator(".total").boundingBox();

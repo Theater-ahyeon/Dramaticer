@@ -3,6 +3,7 @@
 > 每次收尾时完整重写，不超过 40 行。长期有效的注意事项写进 `docs/dev/NOTES.md`。
 
 ## 最近一次
+- 2026-11-24：**ui-v2/04 完成**：检视器（`v4/Inspector.tsx`）与助手挂到外壳（`v4/shell-actions.ts` 提供 `openAssistant`/`openInspector`）；一级界面去掉 token 与耗时数字；`StoryTool` 不再自带助手。
 - 2026-11-23 续：INBOX 两条已分拣（ADR-0170 / DESIGN 原则 12「面向所有玩家」；少解释文案写进 ui-v2 规格）。**ui-v2/03 完成**：导卡后开场白即首楼，开玩前可换开场白、选开局候选卡片、换一批（`core/src/opening/greetings.ts`）。
 - 2026-11-23（人工会话）。**ui-v2/02 完成**：故事页输入台与楼层操作（发送/推进切换、推进档位下拉、选项直发与铅笔填入、「⋯」收写法与批注且批注默认关、每楼重写/改这句/从这里分支/上下文、撤回导演安排二选一、标题旁分支下拉）；状态批注改人话（`routes-next.ts` 的 `stateNote`），状态块改短标签。
 - 人类会话中提了两条要求，已登记在 `INBOX.md` 未处理：
@@ -11,7 +12,7 @@
 - 门禁：`pnpm check` 通过（unit 298 文件）。全量 e2e 80 过、7 败；失败已逐个处理：a11y 与 v4-story 改用例并修了手机「本轮」浮层溢出；director/ledger/openings 单独重跑通过（当时与 `pnpm check` 并发争用）。故事页相关 5 个 spec 两个视口 17 过。
 
 ## 下一步
-1. `ui-v2/04` 检视器，之后按 `.scratch/README.md` 的 v5 顺序：ui-v2 03–05 → memory-v5 → canon → card-ui / image-v2 → ui-v2/06。
+1. `ui-v2/05` 拆除「更多」（手机上记事 / 设定页要补检视器与助手入口），之后按 `.scratch/README.md` 的 v5 顺序：ui-v2 03–05 → memory-v5 → canon → card-ui / image-v2 → ui-v2/06。
 
 ## 眼下要注意
 - 全量 e2e 后段桌面端 director / ledger / openings 会因后台队列积压假失败，单独重跑确认（见 NOTES「开场」）。导卡建的故事现在一开始就有 1 楼开场白。

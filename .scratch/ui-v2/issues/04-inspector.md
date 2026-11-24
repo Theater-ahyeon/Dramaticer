@@ -4,12 +4,13 @@
 
 **Blocked by:** ui-v2/02
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] 故事、记事、设定页都能呼出助手与检视器
-- [ ] 一级界面不再出现 token、缓存命中、耗时数字
-- [ ] `pnpm check` 通过；动到 server 或 web 的跑相关 e2e，并用走查脚本（`packages/web/.walk/`）重新截图逐页确认
+- [x] 故事、记事、设定页都能呼出助手与检视器
+- [x] 一级界面不再出现 token、缓存命中、耗时数字
+- [x] `pnpm check` 通过；动到 server 或 web 的跑相关 e2e，并用走查脚本（`packages/web/.walk/`）重新截图逐页确认
 
 规格：`.scratch/ui-v2/spec.md`；方案：`docs/proposals/v5.md`
 
 ## Comments
+完成：2026-11-24 外壳挂检视器抽屉（Ctrl+. / 导航「检」/ 输入台「⋯」）：本轮开销、上下文分类、后台任务与每楼调用数（`/jobs` 新增 `calls`，分跟楼、一次性、插图三类）、拒收、渠道体检、重写率；助手抽屉挂到外壳（Ctrl+Shift+A / 导航「助」/「⋯」），有状态时才浮出徽标。故事页、停靠栏、设定条目、设置页的 token 与耗时数字全部移走（导入体检页的前后 token 对比保留，那是体检本身）。手机上记事、设定页没有导航按钮，只能靠快捷键或故事页「⋯」，待 ui-v2/05 精简底栏时再给入口。

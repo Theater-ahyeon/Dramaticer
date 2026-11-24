@@ -194,9 +194,14 @@ test.describe("故事页：正文、批注与输入台", () => {
 			mode: "fast",
 			push: "quick",
 		});
-		await expect(page.locator(".meta .num")).toContainText(
-			"上一轮 120 入 · 40 出",
-		);
+		// 开销数字只在检视器里。
+		await page.keyboard.press("Control+.");
+		const spent = page
+			.getByRole("dialog", { name: "检视器" })
+			.getByRole("region", { name: "本轮" });
+		await expect(spent).toContainText("120");
+		await expect(spent).toContainText("40");
+		await page.keyboard.press("Escape");
 
 		// 规划写法：请求带 plan，进度按挑记忆、角色意图、定计划依次出现。
 		await modeGroup.getByRole("button", { name: "规划" }).click();
