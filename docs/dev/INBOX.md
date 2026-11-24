@@ -4,11 +4,12 @@
 
 ## 未处理
 
-- 2026-11-23（人类，会话中口述，agent 代记）：设计和思考方案时不要光以人类自己的数据为准，那只能作为参考的一部分；目标是面向所有人的最好的 AIRP 项目，目前有点过于依赖和过拟合人类的个人习惯。待分拣：写进 DESIGN 的设计原则（加一条 ADR），并复查 `docs/proposals/v5.md` 与 `.scratch/` 各规格里以人类本机数据为唯一依据的地方（已先改 `ui-v2/spec.md` 的参照说明）。
-- 2026-11-23（人类，同上）：前端界面里不要那么多解释性文案。已写进 `ui-v2/spec.md` 的原则，并在 ui-v2/02 里先收紧故事页；其余页面随 ui-v2 后续工单处理。
+（无）
 
 ## 已处理
 
+- （已转为 `ui-v2/spec.md` 原则）2026-11-23（人类）：前端界面里不要那么多解释性文案。已写进 `ui-v2/spec.md` 的原则，并在 ui-v2/02 里先收紧故事页；其余页面随 ui-v2 后续工单处理。
+- （已转为 ADR-0170 与 DESIGN 原则 12）2026-11-23（人类，会话中口述，agent 代记）：设计和思考方案时不要光以人类自己的数据为准，那只能作为参考的一部分；目标是面向所有人的最好的 AIRP 项目，目前有点过于依赖和过拟合人类的个人习惯。待分拣：写进 DESIGN 的设计原则（加一条 ADR），并复查 `docs/proposals/v5.md` 与 `.scratch/` 各规格里以人类本机数据为唯一依据的地方（已先改 `ui-v2/spec.md` 的参照说明）。
 - （已转为 `.scratch/refactor/` 与 ADR-0161）2026-11-19（人类）：MVP 优先、允许大改、重写设计文档、核查记忆参考、Vertex 渠道。Vertex 现状：`google-vertex` 渠道已经通过 pi-ai 支持服务账号 / ADC 与 API key（Express）两种认证，但从未真实验证（HUMAN-14 取消过）；需要补哪一种（真实验证 Gemini、Vertex 上的 Claude、Vertex 的 OpenAI 兼容端点）等人类确认后再建工单。
 - （读过）2026-11-15（人类）：**开发方式改为规格加工单**，后续工作在 `.scratch/`（总览 `.scratch/README.md`，共 27 张工单），不再往 `TASKS.md` 加任务；`AGENTS.md` 的会话协议与 `tools/devloop/session-prompt.md` 已由人类改写。本批同时确认了三件事，都已写进提案与工单：① 记忆层定稿（`docs/proposals/v4.md` 第十六节，工单 `memory/*`）；② 导演不干扰玩家（第十七节，工单 `director-yield/*`）；③ 全部命名换成根目录 `GLOSSARY.md` 里的名字，界面原型 `docs/proposals/v4-ui.html` 已重写为第二版（工单 `ui/*`）。此前两条未处理的条目（第十四节增补、玩家可改一切）已落成 `turn-modes/*`、`writing-settings/*`、`edit-everything/*`。这一条不需要再分拣，读过后移到「已处理」。
 
