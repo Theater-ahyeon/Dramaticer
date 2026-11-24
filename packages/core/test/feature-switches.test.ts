@@ -43,6 +43,8 @@ describe("功能开关目录", () => {
 		expect(readFeatureTierDefaults("lite")).toEqual({
 			scribe: false,
 			archive: false,
+			situation: true,
+			notebook: true,
 			reunion: false,
 			search: false,
 			director: "push",
@@ -63,6 +65,8 @@ describe("功能开关目录", () => {
 		expect(readFeatureTierDefaults("standard")).toEqual({
 			scribe: true,
 			archive: true,
+			situation: true,
+			notebook: true,
 			reunion: true,
 			search: true,
 			director: "push",
@@ -83,6 +87,8 @@ describe("功能开关目录", () => {
 		expect(readFeatureTierDefaults("immersive")).toEqual({
 			scribe: true,
 			archive: true,
+			situation: true,
+			notebook: true,
 			reunion: true,
 			search: true,
 			director: "push",
@@ -165,6 +171,8 @@ describe("功能开关解析", () => {
 		});
 		expect(state.visible).toEqual([
 			"scribe",
+			"situation",
+			"notebook",
 			"search",
 			"prepare",
 			"review",
@@ -267,6 +275,8 @@ describe("卡片能力判断", () => {
 		);
 		expect(ids).toEqual([
 			"scribe",
+			"situation",
+			"notebook",
 			"search",
 			"prepare",
 			"review",

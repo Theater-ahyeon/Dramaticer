@@ -68,6 +68,7 @@ import {
 	loreEntryContentKey,
 	loreEntryMatchScore,
 } from "../memory/lore.js";
+import { renderSituationCard, renderWorldIndex } from "../memory/situation.js";
 import type { SummaryLevel } from "../memory/summary.js";
 import { retrieveMemory } from "../retrieval/hybrid.js";
 import { readStoryFeatureState } from "../settings/features.js";
@@ -308,6 +309,74 @@ export function createStateSlotProvider(
 				);
 			}
 			return { messages, source: `${view.source}${retired}`, items };
+		},
+	};
+}
+
+/**
+ * 此刻局面卡（v5 §3.1）：时间地点、在场者、关键物品、当前冲突、已死之人与
+ * 知情边界，程序拼成不超过 500 token 的自然语言。功能页「此刻局面」关掉时不注入。
+ */
+export function createSituationSlotProvider(
+	store: StoryStore,
+): ContextSlotProvider {
+	const estimator = createTokenEstimator();
+	return {
+		packKey: "situation",
+		provide(request): ContextSlotContent | null {
+			if (request.nodeId === null) return null;
+			const on =
+				readStoryFeatureState(store, request.storyId, request.featureOverrides)
+					.values.situation !== false;
+			if (!on) return null;
+			const card = renderSituationCard(store, request.storyId, request.nodeId, {
+				estimator,
+			});
+			if (card === null) return null;
+			return {
+				messages: [{ role: "system", content: card.text }],
+				source: `situation:${card.lines.length} 行${card.cardStateful ? "，卡自带状态，只留卡没覆盖的部分" : ""}`,
+				items: card.lines.map((line) =>
+					contextItem(
+						line.text.split("：")[0] ?? "",
+						estimator(line.text),
+						line.source,
+					),
+				),
+			};
+		},
+	};
+}
+
+/**
+ * 世界索引（v5 §3.1）：每个实体与每条未收的线一行，约 200 字，常驻上下文。
+ * 功能页「故事记事」关掉时不注入。
+ */
+export function createWorldIndexSlotProvider(
+	store: StoryStore,
+): ContextSlotProvider {
+	const estimator = createTokenEstimator();
+	return {
+		packKey: "world_index",
+		provide(request): ContextSlotContent | null {
+			if (request.nodeId === null) return null;
+			const on =
+				readStoryFeatureState(store, request.storyId, request.featureOverrides)
+					.values.notebook !== false;
+			if (!on) return null;
+			const index = renderWorldIndex(store, request.storyId, request.nodeId);
+			if (index === null) return null;
+			return {
+				messages: [{ role: "system", content: index.text }],
+				source: `world_index:${index.lines.length} 行`,
+				items: index.lines.map((line) =>
+					contextItem(
+						line.text.split("——")[0] ?? "",
+						estimator(line.text),
+						line.source,
+					),
+				),
+			};
 		},
 	};
 }

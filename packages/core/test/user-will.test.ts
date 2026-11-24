@@ -11,6 +11,7 @@ import {
 	createBackgroundJobRegistry,
 	createDefaultContextTemplate,
 	createHistorySlotProvider,
+	createSituationSlotProvider,
 	createStateSlotProvider,
 	createTokenEstimator,
 	createUserWillHandler,
@@ -559,7 +560,7 @@ describe("用户意志槽位", () => {
 
 		const providers = {
 			user_will: createUserWillSlotProvider(store),
-			state: createStateSlotProvider(store),
+			situation: createSituationSlotProvider(store),
 			history: createHistorySlotProvider(store),
 		};
 		const estimator = createTokenEstimator();
@@ -576,7 +577,7 @@ describe("用户意志槽位", () => {
 			context.trace.entries.map((entry) => [entry.segmentId, entry.status]),
 		);
 		expect(status.get("user_will")).toBe("included");
-		expect(status.get("state")).toBe("budget-dropped");
+		expect(status.get("situation")).toBe("budget-dropped");
 		expect(status.get("history")).toBe("budget-dropped");
 	});
 });

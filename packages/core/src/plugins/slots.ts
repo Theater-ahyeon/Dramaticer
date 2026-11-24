@@ -12,9 +12,11 @@ import {
 	createReunionSlotProvider,
 	createSceneCardSlotProvider,
 	createSceneSlotProvider,
+	createSituationSlotProvider,
 	createStateSlotProvider,
 	createSummarySlotProvider,
 	createUserWillSlotProvider,
+	createWorldIndexSlotProvider,
 } from "../chat/providers.js";
 import type { DirectorOrganizationKind } from "../director/organization.js";
 import type { DirectorConfig, DirectorMechanism } from "../director/types.js";
@@ -45,6 +47,8 @@ export const SCENE_CARD_SLOT_PLUGIN = "slot.scene-card";
 export const BLUEPRINT_SLOT_PLUGIN = "slot.blueprint";
 export const DIRECTOR_SLOT_PLUGIN = "slot.director";
 export const USER_WILL_SLOT_PLUGIN = "slot.user-will";
+export const SITUATION_SLOT_PLUGIN = "slot.situation";
+export const WORLD_INDEX_SLOT_PLUGIN = "slot.world-index";
 
 export interface CharacterSlotConfig {
 	/** 为空表示故事没有导入角色卡，插件不注册槽位。 */
@@ -191,6 +195,32 @@ export const stateSlotPlugin: PluginDefinition = {
 			createStateSlotProvider(requireSlotStore(STATE_SLOT_PLUGIN, values), {
 				worldModel: values.worldModel as WorldModelKind | undefined,
 			}),
+		);
+	},
+};
+
+export const situationSlotPlugin: PluginDefinition = {
+	name: SITUATION_SLOT_PLUGIN,
+	apply(context, config) {
+		const values = slotConfig(SITUATION_SLOT_PLUGIN, config);
+		context.slot(
+			"situation",
+			createSituationSlotProvider(
+				requireSlotStore(SITUATION_SLOT_PLUGIN, values),
+			),
+		);
+	},
+};
+
+export const worldIndexSlotPlugin: PluginDefinition = {
+	name: WORLD_INDEX_SLOT_PLUGIN,
+	apply(context, config) {
+		const values = slotConfig(WORLD_INDEX_SLOT_PLUGIN, config);
+		context.slot(
+			"world_index",
+			createWorldIndexSlotProvider(
+				requireSlotStore(WORLD_INDEX_SLOT_PLUGIN, values),
+			),
 		);
 	},
 };
@@ -350,6 +380,8 @@ export const SLOT_PLUGINS: readonly PluginDefinition[] = [
 	personaSlotPlugin,
 	historySlotPlugin,
 	stateSlotPlugin,
+	situationSlotPlugin,
+	worldIndexSlotPlugin,
 	summarySlotPlugin,
 	memorySlotPlugin,
 	loreSlotPlugin,

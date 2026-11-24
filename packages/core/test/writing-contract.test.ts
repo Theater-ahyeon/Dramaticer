@@ -14,12 +14,11 @@ const DEFAULT_SEGMENT_ORDER = [
 	"lore",
 	"summary",
 	"history",
-	"state",
+	"world_index",
+	"situation",
 	"memory",
-	"scene",
 	"profile",
 	"reunion",
-	"scene_card",
 	"blueprint",
 	"director",
 	"user_will",
@@ -29,13 +28,12 @@ const DEFAULT_SEGMENT_ORDER = [
 const FULL_SEGMENT_ORDER = [
 	"character",
 	"lore",
-	"state",
+	"world_index",
+	"situation",
 	"summary",
 	"memory",
-	"scene",
 	"profile",
 	"reunion",
-	"scene_card",
 	"blueprint",
 	"director",
 	"user_will",
@@ -77,7 +75,7 @@ describe("写作契约段", () => {
 		]);
 	});
 
-	it("full 排布沿用 v4 之前的顺序，场面卡仍在导演之前", () => {
+	it("full 排布沿用 v4 之前的顺序，局面与索引在设定之后", () => {
 		const template = createDefaultContextTemplate({
 			structuredOutput: "text-tags",
 			layout: "full",
@@ -85,18 +83,17 @@ describe("写作契约段", () => {
 		expect(template.segments.slice(0, -1)).toEqual([
 			{ id: "character", kind: "slot", slot: "character", priority: 90 },
 			{ id: "lore", kind: "slot", slot: "lore", priority: 80 },
-			{ id: "state", kind: "slot", slot: "state", priority: 85 },
+			{
+				id: "world_index",
+				kind: "slot",
+				slot: "world_index",
+				priority: 84,
+			},
+			{ id: "situation", kind: "slot", slot: "situation", priority: 86 },
 			{ id: "summary", kind: "slot", slot: "summary", priority: 70 },
 			{ id: "memory", kind: "slot", slot: "memory", priority: 60 },
-			{ id: "scene", kind: "slot", slot: "scene", priority: 55 },
 			{ id: "profile", kind: "slot", slot: "profile", priority: 53 },
 			{ id: "reunion", kind: "slot", slot: "reunion", priority: 51 },
-			{
-				id: "scene_card",
-				kind: "slot",
-				slot: "scene_card",
-				priority: 52,
-			},
 			{ id: "blueprint", kind: "slot", slot: "blueprint", priority: 54 },
 			{ id: "director", kind: "slot", slot: "director", priority: 50 },
 			{ id: "user_will", kind: "slot", slot: "user_will", priority: 110 },

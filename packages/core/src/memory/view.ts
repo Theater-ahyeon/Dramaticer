@@ -895,8 +895,8 @@ const CONTEXT_CATEGORIES: readonly {
 	{ id: "raw", label: "原文", slots: ["history"], page: "play", tab: null },
 	{
 		id: "state",
-		label: "状态与秘密",
-		slots: ["state", "scene", "scene_card"],
+		label: "此刻局面",
+		slots: ["situation", "state", "scene", "scene_card"],
 		page: "memory",
 		tab: "state",
 	},
@@ -910,7 +910,7 @@ const CONTEXT_CATEGORIES: readonly {
 	{
 		id: "wiki",
 		label: "百科",
-		slots: ["profile", "reunion"],
+		slots: ["world_index", "profile", "reunion"],
 		page: "memory",
 		tab: "wiki",
 	},

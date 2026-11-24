@@ -14,10 +14,12 @@ import {
 	REUNION_SLOT_PLUGIN,
 	SCENE_CARD_SLOT_PLUGIN,
 	SCENE_SLOT_PLUGIN,
+	SITUATION_SLOT_PLUGIN,
 	STATE_SLOT_PLUGIN,
 	SUMMARY_SLOT_PLUGIN,
 	type StoryStore,
 	USER_WILL_SLOT_PLUGIN,
+	WORLD_INDEX_SLOT_PLUGIN,
 	assembleContext,
 	collectSlotProviders,
 	createDefaultContextTemplate,
@@ -70,6 +72,8 @@ describe("内置槽位插件", () => {
 			character: [CHARACTER_SLOT_PLUGIN],
 			history: [HISTORY_SLOT_PLUGIN],
 			state: [STATE_SLOT_PLUGIN],
+			situation: [SITUATION_SLOT_PLUGIN],
+			world_index: [WORLD_INDEX_SLOT_PLUGIN],
 			summary: [SUMMARY_SLOT_PLUGIN],
 			memory: [MEMORY_SLOT_PLUGIN],
 			lore: [LORE_SLOT_PLUGIN],
@@ -92,9 +96,11 @@ describe("内置槽位插件", () => {
 			"reunion",
 			"scene",
 			"scene_card",
+			"situation",
 			"state",
 			"summary",
 			"user_will",
+			"world_index",
 		]);
 
 		await slots.kernel.dispose();
@@ -166,9 +172,9 @@ describe("内置槽位插件", () => {
 		);
 		expect(history?.status).toBe("missing-slot");
 		expect(history?.source).toBe("slot:history");
-		expect(after.trace.entries.some((entry) => entry.slot === "scene")).toBe(
-			true,
-		);
+		expect(
+			after.trace.entries.some((entry) => entry.slot === "situation"),
+		).toBe(true);
 
 		await slots.kernel.dispose();
 	});

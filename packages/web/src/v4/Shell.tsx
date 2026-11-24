@@ -166,7 +166,7 @@ export function Shell() {
 				});
 			go("继续写故事", "play");
 			go("打开记忆 · 百科", "memory");
-			go("打开记忆 · 状态", "memory?tab=state");
+			go("打开记忆 · 此刻局面", "memory?tab=state");
 			go("打开记忆 · 秘密", "memory?tab=secret");
 			go("打开记忆 · 时间线", "memory?tab=line");
 			go("打开记忆 · 偏好", "memory?tab=rule");

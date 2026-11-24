@@ -5,6 +5,8 @@ export const CONTEXT_SLOT_NAMES = [
 	"persona",
 	"summary",
 	"state",
+	"situation",
+	"world_index",
 	"memory",
 	"history",
 	"scene",

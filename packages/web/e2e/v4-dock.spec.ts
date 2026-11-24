@@ -404,7 +404,7 @@ test.describe("故事页停靠栏：导演、记忆与上下文", () => {
 		await page.locator("#dock").getByRole("tab", { name: "上下文" }).click();
 		await page
 			.locator("#dock")
-			.getByRole("button", { name: "状态与秘密", exact: true })
+			.getByRole("button", { name: "此刻局面", exact: true })
 			.click();
 		await page
 			.locator("#dock .ctxitems > div")

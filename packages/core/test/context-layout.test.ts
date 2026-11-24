@@ -79,23 +79,13 @@ describe("上下文排布", () => {
 				"summary:1 章",
 			),
 			history: createHistorySlotProvider(store),
-			state: {
+			situation: {
 				provide() {
 					return {
 						messages: [
-							{ role: "system" as const, content: `当前状态：${variant}` },
+							{ role: "system" as const, content: `此刻局面：${variant}` },
 						],
-						source: "state:台账",
-					};
-				},
-			},
-			scene: {
-				provide() {
-					return {
-						messages: [
-							{ role: "system" as const, content: `现场分析：${variant}` },
-						],
-						source: "scene:本楼",
+						source: "situation:台账",
 					};
 				},
 			},
@@ -119,8 +109,7 @@ describe("上下文排布", () => {
 					id === "lore" ||
 					id === "summary" ||
 					id === "history" ||
-					id === "state" ||
-					id === "scene" ||
+					id === "situation" ||
 					id === "protocol",
 			),
 		);
@@ -134,8 +123,8 @@ describe("上下文排布", () => {
 		expect(second.messages.slice(0, prefixLength)).toEqual(
 			first.messages.slice(0, prefixLength),
 		);
-		expect(first.messages[prefixLength]?.content).toBe("当前状态：1");
-		expect(second.messages[prefixLength]?.content).toBe("当前状态：2");
+		expect(first.messages[prefixLength]?.content).toBe("此刻局面：1");
+		expect(second.messages[prefixLength]?.content).toBe("此刻局面：2");
 		expect(first.messages.at(-1)?.content).toContain("写作契约");
 	});
 });

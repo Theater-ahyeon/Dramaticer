@@ -25,6 +25,7 @@ import {
 	readSceneGoal,
 	readStoryFeatureState,
 	readWritingView,
+	renderSituationCard,
 	resetToCardRecommended,
 	resolveLoreInjectionRole,
 	rollbackPlayerEdit,
@@ -64,6 +65,14 @@ export async function handleMemoryRoute(
 				storyId,
 				headNodeId: head(),
 				pages: compileWikiPages(store, storyId),
+				situation: (() => {
+					const nodeId = head();
+					if (nodeId === null) return null;
+					const card = renderSituationCard(store, storyId, nodeId);
+					return card === null
+						? null
+						: { text: card.text, cardStateful: card.cardStateful };
+				})(),
 				state: readMemoryState(store, storyId),
 				secrets: readMemorySecrets(store, storyId),
 				timeline: readMemoryTimeline(store, storyId),

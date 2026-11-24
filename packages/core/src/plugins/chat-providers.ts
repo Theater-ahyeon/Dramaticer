@@ -30,9 +30,11 @@ import {
 	REUNION_SLOT_PLUGIN,
 	SCENE_CARD_SLOT_PLUGIN,
 	SCENE_SLOT_PLUGIN,
+	SITUATION_SLOT_PLUGIN,
 	STATE_SLOT_PLUGIN,
 	SUMMARY_SLOT_PLUGIN,
 	USER_WILL_SLOT_PLUGIN,
+	WORLD_INDEX_SLOT_PLUGIN,
 } from "./slots.js";
 
 /** 一组槽位插件装载后的产物：内核负责生命周期，提供者快照供组装器使用。 */
@@ -133,6 +135,8 @@ export async function createStandardChatSlots(
 			store: options.store,
 			worldModel: options.worldModel,
 		},
+		[SITUATION_SLOT_PLUGIN]: { store: options.store },
+		[WORLD_INDEX_SLOT_PLUGIN]: { store: options.store },
 		[SUMMARY_SLOT_PLUGIN]: { store: options.store },
 		[MEMORY_SLOT_PLUGIN]: {
 			store: options.store,

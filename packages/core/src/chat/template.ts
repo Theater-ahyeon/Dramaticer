@@ -102,6 +102,18 @@ const DEFAULT_SEGMENTS: Readonly<Record<string, ContextSegment>> = {
 	summary: { id: "summary", kind: "slot", slot: "summary", priority: 70 },
 	history: { id: "history", kind: "slot", slot: "history", priority: 100 },
 	state: { id: "state", kind: "slot", slot: "state", priority: 85 },
+	situation: {
+		id: "situation",
+		kind: "slot",
+		slot: "situation",
+		priority: 86,
+	},
+	world_index: {
+		id: "world_index",
+		kind: "slot",
+		slot: "world_index",
+		priority: 84,
+	},
 	memory: { id: "memory", kind: "slot", slot: "memory", priority: 60 },
 	scene: { id: "scene", kind: "slot", slot: "scene", priority: 55 },
 	profile: {
@@ -144,17 +156,17 @@ const DEFAULT_SEGMENTS: Readonly<Record<string, ContextSegment>> = {
 export const DEFAULT_CONTEXT_SEGMENT_ORDER: Readonly<
 	Record<ContextLayout, readonly string[]>
 > = {
+	// v5 §3.1：原来的状态、现场分析与场面卡由世界索引与此刻局面取代。
 	volatility: [
 		"character",
 		"lore",
 		"summary",
 		"history",
-		"state",
+		"world_index",
+		"situation",
 		"memory",
-		"scene",
 		"profile",
 		"reunion",
-		"scene_card",
 		"blueprint",
 		"director",
 		"user_will",
@@ -163,13 +175,12 @@ export const DEFAULT_CONTEXT_SEGMENT_ORDER: Readonly<
 	full: [
 		"character",
 		"lore",
-		"state",
+		"world_index",
+		"situation",
 		"summary",
 		"memory",
-		"scene",
 		"profile",
 		"reunion",
-		"scene_card",
 		"blueprint",
 		"director",
 		"user_will",

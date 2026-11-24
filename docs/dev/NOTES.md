@@ -165,6 +165,8 @@
 - 场末整理（`scene_archive`）滞后一楼：场末那一楼还是 head 时不编译，玩家在它之后再输入才编译。测试里要给场末楼层接一条玩家楼层。
 - 每个后台任务记下实际的模型调用与 token（`background_jobs.llm_calls/llm_tokens`，迁移 74，由 drain 给处理器套计数客户端）；检视器按 `ONE_TIME_JOB_KINDS`（开局、导入分型、角色外观，原著导入加在这里）与插图分三类。e2e 假渠道按场记提示词里出现的「- options：」等行作答。
 
+- 此刻局面与世界索引（memory-v5/02，`memory/situation.ts`）：默认模板用 `world_index` 与 `situation` 两段取代 `state`、`scene`、`scene_card`（这三个槽位仍注册，自定义模板照用）。局面卡由程序从 `readMemoryState`、场记在场者、场面目标与 `readMemorySecrets` 拼成，超 500 token 时按优先级丢行；卡有 `mvu.*` 时只留在场者、已死之人与知情边界，并把卡的变量原样带上（不计入裁剪，MVU 只从这里进上下文）；台账命名空间以外的模型自记状态原样列出。功能页「此刻局面」「故事记事」两个开关分别关掉两段。上下文分类「状态与秘密」改名「此刻局面」。
+
 ## 新界面的视觉层（2026-11-16 起）
 
 - 2026-11-19 起（ADR-0162、`ui-lite`）：没有 three.js 场景、指针光、卡片倾斜与开场动画，也不打包字体；`stage.pulse` / `setWriting` 保留为空操作级别的接口，页面可以照常调用。下面关于三维背景的旧条目已过时，以 `.scratch/ui-lite/spec.md` 为准。

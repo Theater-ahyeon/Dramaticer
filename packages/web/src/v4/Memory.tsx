@@ -71,6 +71,7 @@ interface Secret {
 
 interface MemoryView {
 	readonly pages: readonly Page[];
+	readonly situation: { readonly text: string } | null;
 	readonly state: readonly StateItem[];
 	readonly secrets: readonly Secret[];
 	readonly timeline: readonly {
@@ -99,7 +100,7 @@ interface MemoryView {
 
 const TABS = [
 	["wiki", "百科"],
-	["state", "状态"],
+	["state", "此刻局面"],
 	["secret", "秘密"],
 	["line", "时间线"],
 	["rule", "偏好"],
@@ -242,7 +243,7 @@ export function Memory() {
 		useCallback(
 			() => [
 				{ label: "记忆 · 百科", run: () => goTab("wiki") },
-				{ label: "记忆 · 状态", run: () => goTab("state") },
+				{ label: "记忆 · 此刻局面", run: () => goTab("state") },
 				{ label: "记忆 · 秘密", run: () => goTab("secret") },
 				{ label: "记忆 · 时间线", run: () => goTab("line") },
 				{ label: "记忆 · 偏好", run: () => goTab("rule") },
@@ -570,6 +571,11 @@ export function Memory() {
 				</div>
 			) : null}
 
+			{tab === "state" && data.situation !== null ? (
+				<pre className="situation" aria-label="此刻局面">
+					{data.situation.text.replace(/^此刻局面：\n/, "")}
+				</pre>
+			) : null}
 			{tab === "state" ? (
 				<div className="tblwrap">
 					<table className="tbl">

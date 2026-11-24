@@ -29,6 +29,8 @@ export const SLOT_CHOICES: readonly {
 	{ value: "persona", label: "玩家扮演" },
 	{ value: "summary", label: "摘要" },
 	{ value: "state", label: "状态" },
+	{ value: "situation", label: "此刻局面" },
+	{ value: "world_index", label: "世界索引" },
 	{ value: "memory", label: "记忆" },
 	{ value: "history", label: "历史" },
 	{ value: "scene", label: "现场分析" },

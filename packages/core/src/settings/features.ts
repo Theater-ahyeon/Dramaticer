@@ -83,6 +83,8 @@ export type FeatureThinkValue = "off" | "low" | "high";
 export interface FeatureSwitchValueMap {
 	readonly scribe: boolean;
 	readonly archive: boolean;
+	readonly situation: boolean;
+	readonly notebook: boolean;
 	readonly reunion: boolean;
 	readonly search: boolean;
 	readonly director: FeatureDirectorValue;
@@ -176,6 +178,26 @@ export const FEATURE_SWITCHES: readonly FeatureSwitchDefinition[] = [
 		capability: "entities",
 		kind: "toggle",
 		tierValues: { lite: false, standard: true, immersive: true },
+		disabledValue: false,
+	}),
+	defineSwitch({
+		id: "situation",
+		group: "memory",
+		label: "此刻局面",
+		description: "每轮带上时间地点、在场者与知情边界",
+		capability: null,
+		kind: "toggle",
+		tierValues: { lite: true, standard: true, immersive: true },
+		disabledValue: false,
+	}),
+	defineSwitch({
+		id: "notebook",
+		group: "memory",
+		label: "故事记事",
+		description: "每轮带上世界索引与在场人物的记事页",
+		capability: null,
+		kind: "toggle",
+		tierValues: { lite: true, standard: true, immersive: true },
 		disabledValue: false,
 	}),
 	defineSwitch({
@@ -633,6 +655,8 @@ export const WIRED_FEATURE_SWITCHES: ReadonlySet<FeatureSwitchId> =
 	new Set<FeatureSwitchId>([
 		"scribe",
 		"archive",
+		"situation",
+		"notebook",
 		"reunion",
 		"prepare",
 		"review",

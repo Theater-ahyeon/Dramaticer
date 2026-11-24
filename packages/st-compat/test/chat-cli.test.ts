@@ -218,12 +218,11 @@ describe("dramaticer chat", () => {
 				"lore",
 				"summary",
 				"history",
-				"state",
+				"world_index",
+				"situation",
 				"memory",
-				"scene",
 				"profile",
 				"reunion",
-				"scene_card",
 				"blueprint",
 				"director",
 				"user_will",
@@ -499,10 +498,9 @@ describe("dramaticer chat", () => {
 			]);
 			const trace = store.getTurnTrace(second.node.id);
 			const stateEntry = trace?.context.entries.find(
-				(entry) => entry.segmentId === "state",
+				(entry) => entry.segmentId === "situation",
 			);
 			expect(stateEntry?.status).toBe("included");
-			expect(stateEntry?.source).toBe("state:1 条 diff");
 		} finally {
 			store.close();
 		}

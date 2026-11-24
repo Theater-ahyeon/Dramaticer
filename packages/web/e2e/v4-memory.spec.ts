@@ -203,7 +203,7 @@ test.describe("新界面记忆页", () => {
 		// 状态：就地改一项，显示锁定，历史可以回到旧值。
 		await memory
 			.locator(".subtabs")
-			.getByRole("button", { name: "状态" })
+			.getByRole("button", { name: "此刻局面" })
 			.click();
 		const stateRow = memory
 			.locator(".tbl tbody tr")

@@ -5,6 +5,7 @@ import {
 	type ContextSlotContent,
 	type ContextSlotProvider,
 	type ContextSlotRequest,
+	type ContextTemplate,
 	LATEST_SCHEMA_VERSION,
 	type LlmRequest,
 	type LlmResult,
@@ -155,9 +156,18 @@ function seed(store: StoryStore): void {
 	});
 }
 
-const TEMPLATE = createDefaultContextTemplate({
+const BASE_TEMPLATE = createDefaultContextTemplate({
 	structuredOutput: "text-tags",
 });
+// 现场分析不在 v5 的默认模板里；这组用例测引用失效，自己在协议段前补上这一段。
+const TEMPLATE: ContextTemplate = {
+	...BASE_TEMPLATE,
+	segments: [
+		...BASE_TEMPLATE.segments.slice(0, -1),
+		{ id: "scene", kind: "slot", slot: "scene", priority: 55 },
+		...BASE_TEMPLATE.segments.slice(-1),
+	],
+};
 
 function turnOptions(store: StoryStore, client: LlmStreamingClient) {
 	return {
