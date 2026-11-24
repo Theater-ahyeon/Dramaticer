@@ -181,3 +181,10 @@
 - 系统设了「减少动效」时：背景不跑循环，只在换页时重画；转场和入场动画关闭。新加动效要守这一条。
 - 给新界面截图：起 `node e2e/serve.mjs`，用 Playwright 的 chromium 加 `--enable-unsafe-swiftshader` 才有 WebGL。
 - 上下文条目跳到修改处的约定：设定用 `lore?entry=<id>` 展开条目，百科用 `memory?tab=wiki&page=<id>` 选中页面，状态、时间线、偏好用 `focus=<target>` 标出那一行，原文与场次用 `play?node=<nodeId>` 翻到那一楼。目标页只读这些查询参数，不改数据的存放方式。
+
+## 开场（2026-11-23 起，ui-v2/03）
+
+- 导卡时 `afterCardImport` 把卡的开场白（首条加备用）存进故事值 `opening.greetings`，空故事立即用第一条建根部助手楼层；`{{char}}` 换卡名、`{{user}}` 换「你」，其余宏原样。
+- 「还在开场」= 所有楼层都是根部助手楼层（`core/src/opening/greetings.ts` 的 `storyAtOpening`）。这期间可以换开场白（`POST /greetings/:index`，同正文的根楼层复用）、选候选（新建根楼层并设为 head）、重新生成候选；玩家一开口就结束。
+- 用 `createImportedStory` 建的 e2e 故事一开始就有 1 楼（开场白），数楼层的断言要算上它。
+- 全量 e2e 跑到后段时，桌面端的 director / ledger / openings 常因后台队列积压（前面用例留下的任务）等不到候选或事件而失败，单独重跑能过；这是测试环境问题，不是功能回归。根治要给 e2e 的后台调度加按故事隔离或清队列，尚未做。

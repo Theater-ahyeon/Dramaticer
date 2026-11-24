@@ -16,9 +16,13 @@ import {
 	buildImportAuditReport,
 	createBlockFormatSegment,
 	createDefaultContextTemplate,
+	currentGreetingIndex,
 	importKindSuggestionsNeedRun,
 	isImportEntryKind,
 	isOpeningCandidateStatus,
+	readStoryGreetings,
+	storyAtOpening,
+	switchStoryGreeting,
 } from "@dramaticer/core";
 import {
 	type CreateContextTemplateRequest,
@@ -29,6 +33,8 @@ import {
 	type ImportAuditMemoryConvertResult,
 	type ImportAuditReportView,
 	type ImportAuditSuggestionResult,
+	type StoryGreetingUseResult,
+	type StoryGreetingsView,
 	type StoryOpeningGenerateResult,
 	type StoryOpeningPickResult,
 	type StoryOpeningsView,
@@ -267,11 +273,11 @@ export function handleOpeningGenerate(
 	storyId: string,
 ): void {
 	requireStory(options.store, storyId);
-	if (options.store.getHead(storyId) !== null) {
+	if (!storyAtOpening(options.store, storyId)) {
 		throw new HttpError(
 			409,
 			"conflict",
-			`故事 ${storyId} 已经有楼层，不能再重新生成开场候选`,
+			`故事 ${storyId} 已经开始，不能再重新生成开场候选`,
 		);
 	}
 	const [job] = options.store.enqueueStoryBackgroundJobs({
@@ -506,4 +512,50 @@ export async function handleTemplate(
 		);
 	}
 	sendJson(res, 200, saved);
+}
+
+export function handleGreetings(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	storyId: string,
+): void {
+	requireStory(options.store, storyId);
+	const view: StoryGreetingsView = {
+		storyId,
+		greetings: readStoryGreetings(options.store, storyId),
+		current: currentGreetingIndex(options.store, storyId),
+		atOpening: storyAtOpening(options.store, storyId),
+	};
+	sendJson(res, 200, view);
+}
+
+export function handleGreetingUse(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	storyId: string,
+	indexText: string,
+): void {
+	requireStory(options.store, storyId);
+	const index = Number(indexText);
+	const count = readStoryGreetings(options.store, storyId).length;
+	if (!Number.isInteger(index) || index < 0 || index >= count) {
+		throw new HttpError(404, "not_found", `开场白不存在：${indexText}`);
+	}
+	if (!storyAtOpening(options.store, storyId)) {
+		throw new HttpError(
+			409,
+			"conflict",
+			`故事 ${storyId} 已经开始，不能再换开场白`,
+		);
+	}
+	const node = switchStoryGreeting(options.store, storyId, index);
+	const view: StoryGreetingUseResult = {
+		node,
+		path: buildPath(
+			options.store,
+			storyId,
+			options.store.getPathToNode(node.id),
+		),
+	};
+	sendJson(res, 200, view);
 }

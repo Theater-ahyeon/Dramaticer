@@ -15,6 +15,7 @@ import { PUSH_TURN_TEXT } from "../chat/push";
 import { BlockContent } from "../components/chat/BlockContent";
 import { BackgroundNotice } from "./BackgroundNotice";
 import { Dock, type DockTab } from "./Dock";
+import { Opening } from "./Opening";
 import { usePaletteCommands } from "./Shell";
 import {
 	ONCE_SWITCH_IDS,
@@ -991,6 +992,14 @@ export function Play() {
 								</div>
 							);
 						})}
+						{streaming === null ? (
+							<Opening
+								storyId={storyId}
+								tick={dockTick}
+								busy={busy}
+								onChanged={refresh}
+							/>
+						) : null}
 						{streaming === null ? null : (
 							<>
 								{streaming.pushLabel === null ? null : (

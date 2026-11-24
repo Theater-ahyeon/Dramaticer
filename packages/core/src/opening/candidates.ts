@@ -8,6 +8,7 @@ import {
 import { parseJsonOutputObject } from "../memory/json-output.js";
 import type { OpeningCandidateRecord } from "../store/settings.js";
 import type { StoryStore } from "../store/story-store.js";
+import { storyAtOpening } from "./greetings.js";
 import { buildOpeningUserContent, collectOpeningInput } from "./opening.js";
 
 export const OPENING_CANDIDATES_JOB_KIND = "opening_candidates";
@@ -125,7 +126,7 @@ export async function generateOpeningCandidates(
 }
 
 /**
- * 入队条件为 story 的判定：有素材、故事还没有任何楼层，并且没有待选候选。
+ * 入队条件为 story 的判定：有素材、故事还停在开场（见 `storyAtOpening`），并且没有待选候选。
  * 已经有待选候选时不再自动建任务；手动重新生成走生成接口或 CLI。
  */
 export function openingCandidatesNeedRun(
@@ -133,7 +134,7 @@ export function openingCandidatesNeedRun(
 	storyId: string,
 ): boolean {
 	if (collectOpeningInput(store, storyId) === null) return false;
-	if (store.getHead(storyId) !== null) return false;
+	if (!storyAtOpening(store, storyId)) return false;
 	return (
 		store.listOpeningCandidates(storyId, { status: "pending" }).length === 0
 	);
@@ -155,7 +156,7 @@ export function createOpeningCandidatesHandler(
 		options.count ?? DEFAULT_OPENING_CANDIDATE_COUNT,
 	);
 	return async ({ store, client, job, signal }) => {
-		if (store.getHead(job.storyId) !== null) return;
+		if (!storyAtOpening(store, job.storyId)) return;
 		const input = collectOpeningInput(store, job.storyId);
 		if (input === null) return;
 		await generateOpeningCandidates({

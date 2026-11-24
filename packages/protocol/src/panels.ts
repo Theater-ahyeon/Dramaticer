@@ -281,6 +281,23 @@ export interface StoryOpeningPickResult {
 }
 
 /**
+ * `GET /api/stories/:id/greetings`：卡里的开场白（开场白与备用开场白）。
+ * `atOpening` 为 false 时已经开玩，不能再换；`current` 是当前开场用的第几条。
+ */
+export interface StoryGreetingsView {
+	readonly storyId: string;
+	readonly greetings: readonly string[];
+	readonly current: number | null;
+	readonly atOpening: boolean;
+}
+
+/** `POST /api/stories/:id/greetings/:index`：换成这一条开场白后的路径。 */
+export interface StoryGreetingUseResult {
+	readonly node: TimelineNode;
+	readonly path: StoryPath;
+}
+
+/**
  * `GET /api/stories/:id/serial`：前情提要、章节目录、人物关系页与时间线
  * 共用的派生视图；查询参数 `nodeId` 省略时取当前 head。
  */

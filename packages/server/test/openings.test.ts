@@ -19,6 +19,8 @@ import {
 } from "@dramaticer/core";
 import type {
 	ApiErrorResponse,
+	StoryGreetingUseResult,
+	StoryGreetingsView,
 	StoryOpeningGenerateResult,
 	StoryOpeningPickResult,
 	StoryOpeningsView,
@@ -162,6 +164,7 @@ const cardData = {
 		name: "云裳",
 		description: "青云宗剑修",
 		first_mes: "山门外的风很冷。",
+		alternate_greetings: ["{{char}}在剑冢前等{{user}}。"],
 	},
 };
 
@@ -211,7 +214,7 @@ async function errorBody(response: Response): Promise<ApiErrorResponse> {
 }
 
 describe("开局任务入队", () => {
-	it("导入卡后立即入队两条故事级任务，选中候选后生成接口返回 409", async () => {
+	it("导入卡后开场白成为开场楼层并入队两条任务；开玩之前可换开场白、选候选，开玩后生成接口返回 409", async () => {
 		const { running, gate } = await startTestServer();
 		const store = running.store;
 
@@ -240,6 +243,35 @@ describe("开局任务入队", () => {
 			OPENING_CANDIDATES_JOB_KIND,
 		]);
 		expect(queued.every((job) => job.nodeId === null)).toBe(true);
+		expect(store.getHead("s1")?.raw).toBe("山门外的风很冷。");
+
+		// 多条开场白：可以换，占位名换成卡名与「你」，旧开场留在树里。
+		const greetings = (await (
+			await fetch(`${running.origin}/api/stories/s1/greetings`)
+		).json()) as StoryGreetingsView;
+		expect(greetings).toMatchObject({
+			greetings: ["山门外的风很冷。", "云裳在剑冢前等你。"],
+			current: 0,
+			atOpening: true,
+		});
+		const switched = await post(
+			running.origin,
+			"/api/stories/s1/greetings/1",
+			{},
+		);
+		expect(switched.status).toBe(200);
+		const switchedBody = (await switched.json()) as StoryGreetingUseResult;
+		expect(switchedBody.path.nodes.map((node) => node.raw)).toEqual([
+			"云裳在剑冢前等你。",
+		]);
+		const back = await post(running.origin, "/api/stories/s1/greetings/0", {});
+		expect(((await back.json()) as StoryGreetingUseResult).node.raw).toBe(
+			"山门外的风很冷。",
+		);
+		expect(store.listStoryNodes("s1")).toHaveLength(2);
+		expect(
+			(await post(running.origin, "/api/stories/s1/greetings/9", {})).status,
+		).toBe(404);
 		expect(store.getOpeningPack("s1")).toBeNull();
 		expect(store.listOpeningCandidates("s1")).toEqual([]);
 
@@ -306,12 +338,28 @@ describe("开局任务入队", () => {
 				.map((item) => item.id),
 		).toEqual(candidates.slice(1).map((item) => item.id));
 
+		// 选中候选之后还没开玩，仍可重新生成；玩家开口之后就不行了。
+		const stillOpen = await post(
+			running.origin,
+			"/api/stories/s1/openings/generate",
+			{},
+		);
+		expect(stillOpen.status).toBe(202);
+		store.appendNode({
+			storyId: "s1",
+			parentId: pickResult.node.id,
+			role: "user",
+			raw: "我拔剑。",
+		});
 		const blocked = await post(
 			running.origin,
 			"/api/stories/s1/openings/generate",
 			{},
 		);
 		expect(blocked.status).toBe(409);
+		expect(
+			(await post(running.origin, "/api/stories/s1/greetings/0", {})).status,
+		).toBe(409);
 		const body = await errorBody(blocked);
 		expect(body.error.code).toBe("conflict");
 	});

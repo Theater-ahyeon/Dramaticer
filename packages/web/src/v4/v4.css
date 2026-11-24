@@ -3442,3 +3442,67 @@ div:hover > .flr-acts,
 		display: none;
 	}
 }
+
+/* ---- 开场白切换与开局候选（ui-v2/03） ---- */
+.opening {
+	display: grid;
+	gap: 10px;
+	justify-items: start;
+	margin: 4px 32px 16px;
+}
+.greetnav {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font: 13px var(--f-ui);
+	color: var(--muted);
+}
+.greetnav button {
+	min-width: 32px;
+	min-height: 32px;
+	border: 1px solid var(--line);
+	border-radius: var(--r-md);
+	background: var(--raise);
+	color: var(--ink);
+	cursor: pointer;
+}
+.opencards {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	width: 100%;
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+	gap: 10px;
+}
+.opencard {
+	width: 100%;
+	height: 100%;
+	text-align: left;
+	padding: 12px 14px;
+	border: 1px solid var(--line);
+	border-radius: var(--r-lg);
+	background: var(--raise);
+	color: var(--ink);
+	font: 14px / 1.7 var(--f-prose);
+	cursor: pointer;
+	display: -webkit-box;
+	-webkit-line-clamp: 6;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+.opencard:hover:not(:disabled) {
+	border-color: var(--cinnabar);
+}
+@media (max-width: 760px) {
+	.opening {
+		margin-inline: 12px;
+	}
+	.opencards {
+		grid-auto-flow: column;
+		grid-template-columns: none;
+		grid-auto-columns: 78%;
+		overflow-x: auto;
+		scrollbar-width: none;
+	}
+}

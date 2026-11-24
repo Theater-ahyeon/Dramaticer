@@ -84,7 +84,8 @@ test("导演决策、候选行动、Trace、计划编辑与线索兑现", async 
 	await page
 		.locator(".branch-row")
 		.filter({ has: page.locator(".branch-role-assistant") })
-		.first()
+		// 第一条助手楼层是导卡时的开场白，没有生成记录；看最新一楼。
+		.last()
 		.locator(".branch-select")
 		.click();
 	const trace = page.locator('.director-section[aria-label="Trace"]');

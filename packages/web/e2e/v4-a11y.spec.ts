@@ -34,8 +34,9 @@ async function storyWithFloor(
 	const title = `键盘 ${Date.now()}`;
 	const id = await createImportedStory(page, title);
 	await page.goto(`/stories/${id}/play`);
+	// 导卡后第 1 楼是开场白。
 	await page.getByRole("button", { name: /^推进/ }).click();
-	await expect(committed(page)).toHaveCount(1, { timeout: 60_000 });
+	await expect(committed(page)).toHaveCount(2, { timeout: 60_000 });
 	return { id, title };
 }
 
@@ -66,7 +67,7 @@ test.describe("可访问性", () => {
 		// 故事：推进一步。
 		await tabTo(page, page.getByRole("button", { name: /^推进/ }));
 		await page.keyboard.press("Enter");
-		await expect(committed(page)).toHaveCount(2, { timeout: 60_000 });
+		await expect(committed(page)).toHaveCount(3, { timeout: 60_000 });
 
 		// 重写：选一个原因。
 		await tabTo(page, page.getByRole("button", { name: "重写", exact: true }));
@@ -126,7 +127,7 @@ test.describe("可访问性", () => {
 		await page.getByRole("button", { name: /^推进/ }).click();
 		await expect(page.getByRole("button", { name: "停下" })).toBeVisible();
 		expect(await running()).toBe(0);
-		await expect(committed(page)).toHaveCount(1, { timeout: 60_000 });
+		await expect(committed(page)).toHaveCount(2, { timeout: 60_000 });
 
 		// 换页与打开命令面板也一样。
 		await page.getByRole("link", { name: /记忆/ }).first().click();

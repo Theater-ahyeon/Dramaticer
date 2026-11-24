@@ -68,6 +68,8 @@ import {
 	type StoryDirectorPlanView,
 	type StoryEntitiesView,
 	type StoryFeatureView,
+	type StoryGreetingUseResult,
+	type StoryGreetingsView,
 	type StoryJobsView,
 	type StoryLoreView,
 	type StoryOpeningGenerateResult,
@@ -496,6 +498,23 @@ export class ApiClient {
 		return this.json<StoryOpeningGenerateResult>(
 			"POST",
 			`${storyPath(storyId)}/openings/generate`,
+		);
+	}
+
+	async getGreetings(storyId: string): Promise<StoryGreetingsView> {
+		return this.json<StoryGreetingsView>(
+			"GET",
+			`${storyPath(storyId)}/greetings`,
+		);
+	}
+
+	async chooseGreeting(
+		storyId: string,
+		index: number,
+	): Promise<StoryGreetingUseResult> {
+		return this.json<StoryGreetingUseResult>(
+			"POST",
+			`${storyPath(storyId)}/greetings/${index}`,
 		);
 	}
 

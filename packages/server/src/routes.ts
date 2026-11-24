@@ -65,6 +65,8 @@ import {
 	handleStoryBlueprintVersions,
 } from "./routes-outline.js";
 import {
+	handleGreetingUse,
+	handleGreetings,
 	handleImportAudit,
 	handleImportAuditEntryMemory,
 	handleImportAuditEntryUpdate,
@@ -284,6 +286,10 @@ export async function handleApiRequest(
 					requireMethod(method, ["GET"]);
 					handleOpenings(res, options, url, storyId);
 					return;
+				case "greetings":
+					requireMethod(method, ["GET"]);
+					handleGreetings(res, options, storyId);
+					return;
 				case "visual-profiles":
 					requireMethod(method, ["GET"]);
 					handleStoryVisualProfiles(res, options, storyId);
@@ -291,6 +297,11 @@ export async function handleApiRequest(
 				default:
 					break;
 			}
+		}
+		if (third === "greetings" && parts.length === 4 && parts[3] !== undefined) {
+			requireMethod(method, ["POST"]);
+			handleGreetingUse(res, options, storyId, parts[3]);
+			return;
 		}
 		if (third === "openings" && parts.length === 4 && parts[3] === "generate") {
 			requireMethod(method, ["POST"]);

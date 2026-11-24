@@ -11,6 +11,7 @@ import {
 	readStoryCardSnapshot,
 	readStoryFeatureState,
 	saveStoryCardSnapshot,
+	saveStoryGreetings,
 	saveWritingPreset,
 	storyCardVersion,
 	writeWritingEntries,
@@ -18,6 +19,7 @@ import {
 import {
 	type StCharacterCard,
 	importCharacterBookLore,
+	listCharacterGreetings,
 	mapPresetToWritingDials,
 	parseCharacterCardJson,
 	parseCharacterCardPng,
@@ -118,6 +120,28 @@ export function afterCardImport(
 	applyCardRecommendedConfig(store, storyId, config, {
 		applySettings: firstLoad,
 	});
+	const greetings = listCharacterGreetings(card).map((greeting) =>
+		fillGreetingNames(greeting.text, card.name),
+	);
+	saveStoryGreetings(store, storyId, greetings);
+	// 空故事导卡后，第一条开场白立即成为开场楼层；换开场白、选候选都在开玩之前。
+	const first = greetings[0];
+	if (first !== undefined && store.getHead(storyId) === null) {
+		store.appendNode({
+			storyId,
+			parentId: null,
+			role: "assistant",
+			raw: first,
+		});
+	}
+}
+
+/** 开场白里的角色名占位换成卡名，玩家名占位换成「你」；其余原样保留。 */
+function fillGreetingNames(text: string, cardName: string): string {
+	return text
+		.replace(/\{\{char\}\}/gi, cardName)
+		.replace(/\{\{user\}\}/gi, "你")
+		.trim();
 }
 
 export async function handleCardRoute(

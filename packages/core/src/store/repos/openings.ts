@@ -209,7 +209,7 @@ export class OpeningsRepo extends StoreRepo {
 	}
 
 	/**
-	 * 选中一条待选候选：把它的正文原样追加为故事根部的首个助手楼层，
+	 * 选中一条待选候选：把它的正文原样追加为故事根部的助手楼层并设为当前开场，
 	 * 状态改为 chosen，同一故事其余待选候选改为 discarded。
 	 */
 	chooseOpeningCandidate(
@@ -229,10 +229,15 @@ export class OpeningsRepo extends StoreRepo {
 					`开场候选 ${id} 的状态是 ${candidate.status}，只有 pending 可以选中`,
 				);
 			}
-			const head = this.store.getHead(candidate.storyId);
-			if (head !== null) {
+			// 开场白也是根部助手楼层；只要还没开玩（全是根部助手楼层），候选就能替换开场。
+			const started = this.db
+				.prepare(
+					"SELECT id FROM nodes WHERE story_id = ? AND (parent_id IS NOT NULL OR role != 'assistant') LIMIT 1",
+				)
+				.get(candidate.storyId) as { id: string } | undefined;
+			if (started !== undefined) {
 				throw new Error(
-					`故事 ${candidate.storyId} 已经有楼层 ${head.id}，开场候选只能成为首个楼层`,
+					`故事 ${candidate.storyId} 已经有楼层 ${started.id}，开场候选只能替换开场`,
 				);
 			}
 			const node = this.store.appendNode({
