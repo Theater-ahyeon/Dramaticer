@@ -15,3 +15,4 @@ export * from "./summary.js";
 export * from "./view.js";
 export * from "./situation.js";
 export * from "./notebook.js";
+export * from "./quote.js";
