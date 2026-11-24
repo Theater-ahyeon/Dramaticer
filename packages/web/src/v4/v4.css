@@ -3212,3 +3212,233 @@ button.reroll-reason {
 	font: 500 14.5px var(--f-ui);
 	margin: 16px 0 10px;
 }
+
+/* ---- 故事页输入台与楼层操作（ui-v2/02） ---- */
+.cmp {
+	padding: 10px 12px;
+}
+.opts {
+	margin-bottom: 8px;
+}
+.opt {
+	display: inline-flex;
+	align-items: stretch;
+	max-width: 100%;
+}
+.opt .chip {
+	border-top-right-radius: 0;
+	border-bottom-right-radius: 0;
+	min-width: 0;
+}
+.chip-edit {
+	border: 1px solid transparent;
+	border-left: 1px solid var(--line);
+	background: var(--raise);
+	color: var(--muted);
+	border-radius: 0 var(--r-lg) var(--r-lg) 0;
+	padding: 0 9px;
+	font-size: 12px;
+	cursor: pointer;
+}
+.chip-edit:hover {
+	color: var(--ink);
+}
+.say {
+	align-items: flex-end;
+}
+.cmp-more-btn {
+	padding: 9px 10px;
+	line-height: 1;
+	font-size: 16px;
+	color: var(--muted);
+}
+.pushsplit {
+	position: relative;
+	display: inline-flex;
+}
+.pushsplit > .btn.gold:first-child {
+	border-radius: var(--r-md) 0 0 var(--r-md);
+	padding: 10px 16px;
+	white-space: nowrap;
+}
+.pushsplit > .btn.caret {
+	border-radius: 0 var(--r-md) var(--r-md) 0;
+	padding: 10px 9px;
+	border-left: 1px solid color-mix(in srgb, var(--on-cinnabar) 35%, transparent);
+}
+.pushmenu {
+	position: absolute;
+	right: 0;
+	bottom: calc(100% + 6px);
+	z-index: 20;
+	min-width: 220px;
+	display: grid;
+	padding: 6px;
+	border: 1px solid var(--line);
+	border-radius: var(--r-lg);
+	background: var(--sheet);
+	box-shadow: var(--lift);
+}
+.pushmenu button {
+	display: grid;
+	gap: 2px;
+	text-align: left;
+	padding: 8px 10px;
+	border: 0;
+	border-radius: var(--r-md);
+	background: none;
+	color: var(--ink);
+	font: inherit;
+	cursor: pointer;
+}
+.pushmenu button:hover,
+.pushmenu button:focus-visible {
+	background: var(--soft);
+}
+.pushmenu small {
+	color: var(--muted);
+	font-size: 12px;
+}
+.flr-acts {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 2px;
+	padding: 0 24px 6px;
+	opacity: 0;
+	transition: opacity var(--dur);
+}
+.flr-acts button {
+	border: 0;
+	background: none;
+	color: var(--muted);
+	font-size: 12.5px;
+	padding: 4px 8px;
+	border-radius: var(--r-md);
+	cursor: pointer;
+}
+.flr-acts button:hover:not(:disabled) {
+	color: var(--ink);
+	background: var(--soft);
+}
+.flr-acts button:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+div:hover > .flr-acts,
+.flr-acts:focus-within {
+	opacity: 1;
+}
+@media (hover: none) {
+	.flr-acts {
+		opacity: 1;
+	}
+}
+.fixbox {
+	display: grid;
+	gap: 8px;
+	margin: 4px 32px 12px;
+	padding: 12px 14px;
+	border: 1px solid var(--line);
+	border-radius: var(--r-lg);
+	background: var(--raise);
+}
+.fixbox label {
+	display: grid;
+	gap: 4px;
+	font-size: 12.5px;
+	color: var(--muted);
+}
+.fixbox textarea {
+	font: 14px / 1.6 var(--f-prose);
+	color: var(--ink);
+	background: var(--field);
+	border: 1px solid var(--line);
+	border-radius: var(--r-md);
+	padding: 8px 10px;
+	resize: vertical;
+}
+.fixbox-acts {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+}
+.undo-choice {
+	display: inline-flex;
+	gap: 8px;
+}
+.statusline {
+	list-style: none;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin: 10px 0;
+	padding: 0;
+}
+.statusline li {
+	padding: 2px 10px;
+	border-radius: var(--r-lg);
+	background: var(--soft);
+	font: 13px var(--f-ui);
+	color: var(--ink);
+}
+.statusline li span {
+	color: var(--muted);
+	margin-right: 6px;
+}
+.branchsel {
+	max-width: 240px;
+	font: 13px var(--f-ui);
+	color: var(--ink);
+	background: var(--field);
+	border: 1px solid var(--line);
+	border-radius: var(--r-md);
+	padding: 4px 8px;
+}
+@media (max-width: 760px) {
+	.cmp {
+		margin: 4px 8px 8px;
+		padding: 8px;
+	}
+	.opts {
+		flex-wrap: nowrap;
+		overflow-x: auto;
+		scrollbar-width: none;
+	}
+	.opt {
+		flex: none;
+		max-width: 80vw;
+	}
+	.say textarea {
+		max-height: 30vh;
+	}
+	.flr-acts,
+	.fixbox,
+	.why {
+		padding-inline: 12px;
+		margin-inline: 12px;
+	}
+	.branchsel {
+		max-width: 46vw;
+	}
+}
+
+/* 「本轮」已经收在「⋯」里，展开时就地排开，不再浮层盖住推进按钮或伸出屏幕。 */
+.meta .once[open] {
+	flex-basis: 100%;
+}
+.meta .once-list {
+	position: static;
+	width: auto;
+	max-width: none;
+	margin-top: 8px;
+	padding: 0;
+	border: 0;
+	background: none;
+	box-shadow: none;
+}
+@media (max-width: 760px) {
+	/* 手机上主按钮只写「推进」，档位在旁边的下拉里，给输入框留宽度。 */
+	.pushsplit .steplbl {
+		display: none;
+	}
+}

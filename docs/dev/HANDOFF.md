@@ -3,21 +3,20 @@
 > 每次收尾时完整重写，不超过 40 行。长期有效的注意事项写进 `docs/dev/NOTES.md`。
 
 ## 最近一次
-- 2026-11-20（人工会话，很长）。人类确认 v5 方案（`docs/proposals/v5.md` 定稿，ADR-0168），工单在 `.scratch/` 的 `ui-v2`、`memory-v5`、`direction-v5`、`canon`、`image-v2`、`card-ui`，共 25 张。
-- 本会话做完：
-  - 许可证 AGPL-3.0、GitHub Actions 门禁、vitest 拆 unit/eval、旧脚本归档。
-  - 写作条目（预设的位置与深度注入）与 NovelAI 基础后端（ADR-0167）。
-  - AGENTS.md 的 I6、I9、I11 按人类授权改写（HUMAN-26）；未动 `.devloop/protected.sha`，devloop 下次启动自动接受。
-  - **ui-v2/01 完成**：全局设置页 `/settings`（连接向导、高级配置、外观）、书架新建故事弹窗、保存密钥与模型列表接口、无渠道文件可启动（ADR-0169）。
-- 门禁：`pnpm check` 通过（unit 298 文件）；ui-v2/01 相关 e2e 全过，此前一次全量 e2e 83 过、3 跳过（之后只改了书架按钮与外壳，相关用例已重跑）。
+- 2026-11-23（人工会话）。**ui-v2/02 完成**：故事页输入台与楼层操作（发送/推进切换、推进档位下拉、选项直发与铅笔填入、「⋯」收写法与批注且批注默认关、每楼重写/改这句/从这里分支/上下文、撤回导演安排二选一、标题旁分支下拉）；状态批注改人话（`routes-next.ts` 的 `stateNote`），状态块改短标签。
+- 人类会话中提了两条要求，已登记在 `INBOX.md` 未处理：
+  1. 前端少放解释性文案。已写进 `ui-v2/spec.md` 原则，故事页已收紧；其余页面（如停靠栏「还没有剧情线。写几楼之后…」）随 ui-v2 后续工单收。
+  2. 设计不能只以人类自己的数据为准，要面向所有玩家、避免过拟合个人习惯。已改 `ui-v2/spec.md` 的参照说明；**下个会话先分拣这条**：写 ADR 进 DESIGN 原则，复查 v5 提案与各规格里以人类本机数据为唯一依据的地方。
+- 门禁：`pnpm check` 通过（unit 298 文件）。全量 e2e 80 过、7 败；失败已逐个处理：a11y 与 v4-story 改用例并修了手机「本轮」浮层溢出；director/ledger/openings 单独重跑通过（当时与 `pnpm check` 并发争用）。故事页相关 5 个 spec 两个视口 17 过。
 
 ## 下一步
-1. `ui-v2/02` 故事页输入台与楼层操作（v5 §8.2）。动手前读人类 TauriTavern 的界面设置作参照（只读 settings，不读 secrets）。
-2. 之后按 `.scratch/README.md` 的 v5 顺序：ui-v2 03–05 → memory-v5 → canon → card-ui / image-v2 → ui-v2/06。
+1. 分拣 INBOX 两条（见上）。
+2. `ui-v2/03`，之后按 `.scratch/README.md` 的 v5 顺序：ui-v2 03–05 → memory-v5 → canon → card-ui / image-v2 → ui-v2/06。
 
 ## 眼下要注意
+- 全量 e2e 不要和 `pnpm check` 同时跑，会出假失败。
 - 手机底栏现在 8 项（多了「全局」），`ui-v2/05` 拆「更多」后回到 7 项；`v4-shell.spec.ts` 的数量与 `.navs .ind` 宽度要一起改。
-- 读人类本机 ST 数据时：settings.json 有 19 MB，只用脚本列结构并打码；打码规则要覆盖 `novelaiApi` 这类不含 key 字样的字段。
+- 手机上推进主按钮只写「推进」（档位文字 `.steplbl` 在窄屏隐藏）；楼层操作条在触屏常显。
+- 读人类本机 ST 数据时：只用脚本列结构并打码；它只是参考样本之一。
 - 远端：只推 `main`；`backup/main-original` 与旧 `spec/*`、`ticket/*` 分支不要推。
-- 新存储方法写进领域仓储并加进 `story-store.ts` 的 `Pick<…>` 与 `DELEGATES`；新路由参数校验只用 `routes-common.ts`。
-- server 读 core 的 `dist`：改了 core 导出后先构建 core；单跑 e2e 前先构建 web 与 server。
+- server 读 core 的 `dist`：改了 core 导出后先构建 core；单跑 e2e 前先 `pnpm build`。

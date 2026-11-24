@@ -112,7 +112,7 @@ test.describe("命令面板与手机全流程", () => {
 
 		// 重写：选中原因后才发出请求，旧楼层留在树里。
 		const beforeReroll = await totalNodeCount(page, storyId);
-		const rewrite = page.locator(".acts").getByRole("button", { name: "重写" });
+		const rewrite = page.getByRole("button", { name: "重写", exact: true });
 		await expect(rewrite).toBeEnabled({ timeout: 60_000 });
 		await rewrite.click();
 		await expect(page.locator(".why")).toBeVisible();

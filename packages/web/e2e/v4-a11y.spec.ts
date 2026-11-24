@@ -69,10 +69,7 @@ test.describe("可访问性", () => {
 		await expect(committed(page)).toHaveCount(2, { timeout: 60_000 });
 
 		// 重写：选一个原因。
-		await tabTo(
-			page,
-			page.locator(".acts").getByRole("button", { name: "重写" }),
-		);
+		await tabTo(page, page.getByRole("button", { name: "重写", exact: true }));
 		await page.keyboard.press("Enter");
 		await expect(page.locator(".why")).toBeVisible();
 		const regenerated = page.waitForResponse(
@@ -127,7 +124,7 @@ test.describe("可访问性", () => {
 
 		// 正在写的时候：光标、呼吸灯、按钮都不动。
 		await page.getByRole("button", { name: /^推进/ }).click();
-		await expect(page.locator(".writing")).toBeVisible();
+		await expect(page.getByRole("button", { name: "停下" })).toBeVisible();
 		expect(await running()).toBe(0);
 		await expect(committed(page)).toHaveCount(1, { timeout: 60_000 });
 

@@ -69,16 +69,10 @@ interface FloorsView {
 type Mode = "fast" | "plan" | "deep";
 type Step = "advance" | "quick" | "jump";
 
-const STEP_HINT: Record<Step, string> = {
-	advance: "在这一场里往下走一步",
-	quick: "把这一场走完，换下一场",
-	jump: "跳到下一件大事发生的时刻",
-};
-
-const MODE_HINT: Record<Mode, string> = {
-	fast: "快速：写一遍就交",
-	plan: "规划：先理清再写；你点推进或选项时已经提前备好",
-	deep: "深度：起草、自查、修改后再交，最慢最细",
+const STEP_LABEL: Record<Step, string> = {
+	advance: "一步",
+	quick: "一场",
+	jump: "跳跃",
 };
 
 /** 每种写法在写作期间依次点亮的阶段；快速写法只有正文一段。 */
@@ -225,6 +219,29 @@ function Prose({
 				// 行动选项放到输入台上，不在正文里重复。
 				if (kind === "options" || kind === "hidden") return null;
 				if (kind === "status" && hideStatus) return null;
+				if (kind === "status") {
+					const pairs = plainTextOf(item.content)
+						.split(/\n+/)
+						.map((line) => line.trim())
+						.filter((line) => line.length > 0)
+						.map((line) => {
+							const at = line.search(/[:：]/);
+							return at < 0
+								? { k: "", v: line }
+								: { k: line.slice(0, at).trim(), v: line.slice(at + 1).trim() };
+						});
+					return (
+						<ul className="statusline" key={key} aria-label="状态">
+							{pairs.map((pair, position) => (
+								// biome-ignore lint/suspicious/noArrayIndexKey: 状态行没有稳定的 id
+								<li key={position}>
+									{pair.k === "" ? null : <span>{pair.k}</span>}
+									{pair.v}
+								</li>
+							))}
+						</ul>
+					);
+				}
 				if (kind === "thinking") {
 					return (
 						<details key={key}>
@@ -313,9 +330,24 @@ export function Play() {
 	const [step, setStep] = useState<Step>("advance");
 	const [text, setText] = useState("");
 	const [whyOpen, setWhyOpen] = useState(false);
-	const [notesOn, setNotesOn] = useState(
-		() => localStorage.getItem("dramaticer.notes") !== "off",
-	);
+	// 批注默认关：正文是主角，系统记了什么去检视器或记事里看。
+	const [notesOn, setNotesOn] = useState(() => {
+		try {
+			return localStorage.getItem("dramaticer.notes") === "on";
+		} catch {
+			return false;
+		}
+	});
+	const [moreOpen, setMoreOpen] = useState(false);
+	const [pushMenu, setPushMenu] = useState(false);
+	const [fix, setFix] = useState<{
+		readonly nodeId: string;
+		readonly quote: string;
+	} | null>(null);
+	const [fixText, setFixText] = useState("");
+	const [fixBusy, setFixBusy] = useState(false);
+	const [undoFor, setUndoFor] = useState<string | null>(null);
+	const tree = useLoad(() => api.getTree(storyId), [storyId]);
 	const [streaming, setStreaming] = useState<Streaming | null>(null);
 	const [actions, setActions] = useState<readonly string[]>([]);
 	const [dockTab, setDockTab] = useState<DockTab>("dir");
@@ -395,8 +427,32 @@ export function Play() {
 		path.reload();
 		floors.reload();
 		dock.reload();
+		tree.reload();
 		setDockTick((value) => value + 1);
-	}, [path.reload, floors.reload, dock.reload]);
+	}, [path.reload, floors.reload, dock.reload, tree.reload]);
+
+	// 每个叶子是一条分支；只有一条时不显示分支选择。
+	const branches = useMemo(() => {
+		const data = tree.data;
+		if (data === null) return [];
+		const byId = new Map(data.nodes.map((node) => [node.id, node] as const));
+		const depth = (id: string): number => {
+			let count = 0;
+			let current = byId.get(id);
+			while (current !== undefined) {
+				count += 1;
+				current =
+					current.parentId === null ? undefined : byId.get(current.parentId);
+			}
+			return count;
+		};
+		return data.nodes
+			.filter((node) => node.childIds.length === 0)
+			.map((node) => ({
+				id: node.id,
+				label: `第 ${depth(node.id)} 楼 · ${node.preview.slice(0, 18)}`,
+			}));
+	}, [tree.data]);
 
 	const consume = async (
 		events: AsyncGenerator<SseEvent>,
@@ -487,46 +543,103 @@ export function Play() {
 	const submit = () => {
 		const message = text.trim();
 		if (message === "") {
-			toast("先写点什么，或者直接按「推进」");
+			toast("输入为空");
 			return;
 		}
 		setText("");
 		send(message, null);
 	};
 
-	const reroll = (reason: RerollReason, label: string) => {
+	const reroll = (reason: RerollReason | null, label: string) => {
 		if (lastAssistant === undefined) return;
 		const controller = new AbortController();
 		abort.current = controller;
 		stage.pulse(1);
 		void consume(
-			api.streamRegenerate(lastAssistant.id, { reason }, controller.signal),
+			api.streamRegenerate(
+				lastAssistant.id,
+				reason === null ? {} : { reason },
+				controller.signal,
+			),
 			{
 				mode,
 				said: null,
-				pushLabel: `重写 · ${label}`,
+				pushLabel: reason === null ? "重写" : `重写 · ${label}`,
 				text: "",
 				blocks: null,
 				stages: [],
 				checks: [],
 				error: null,
 			},
-		).then(() =>
-			toast(`已带着「${label}」重写。上一版还在，可以在分支里切回去`),
-		);
+		).then(() => toast("已重写"));
+	};
+
+	const startFix = (nodeId: string) => {
+		const selection = window.getSelection();
+		const floor = document.getElementById(`floor-${nodeId}`);
+		const selected =
+			selection !== null &&
+			floor !== null &&
+			selection.anchorNode !== null &&
+			floor.contains(selection.anchorNode)
+				? selection.toString().trim()
+				: "";
+		setFix({ nodeId, quote: selected });
+		setFixText("");
+	};
+
+	const submitFix = async () => {
+		if (fix === null) return;
+		setFixBusy(true);
+		try {
+			await api.correctNode(fix.nodeId, {
+				quote: fix.quote.trim(),
+				instruction: fixText.trim(),
+			});
+			setFix(null);
+			toast("已改写");
+			refresh();
+		} catch (error) {
+			toast(errorText(error));
+		} finally {
+			setFixBusy(false);
+		}
+	};
+
+	const branchHere = async (nodeId: string, no: number | undefined) => {
+		try {
+			await api.setHead(storyId, nodeId);
+			toast(`已回到第 ${no ?? "?"} 楼`);
+			refresh();
+		} catch (error) {
+			toast(errorText(error));
+		}
+	};
+
+	const switchBranch = async (leafId: string) => {
+		try {
+			await api.setHead(storyId, leafId);
+			refresh();
+		} catch (error) {
+			toast(errorText(error));
+		}
 	};
 
 	const changeMode = (value: Mode) => {
 		setMode(value);
-		toast(MODE_HINT[value]);
 		api.updateSettings(storyId, { turnMode: value as "fast" }).catch(() => {});
 	};
 
-	const undo = async (nodeId: string) => {
+	const undo = async (nodeId: string, rewrite: boolean) => {
+		setUndoFor(null);
 		try {
 			await api.call("POST", sp(storyId, "/director/undo"), { nodeId });
-			toast("已撤回，这条线不会再出现。要重写这一楼吗？点「重写」");
-			refresh();
+			if (rewrite && nodeId === lastAssistant?.id) {
+				reroll("avoid-line", "别推这条线");
+			} else {
+				toast("已撤回");
+				refresh();
+			}
 		} catch (error) {
 			toast(errorText(error));
 		}
@@ -567,7 +680,7 @@ export function Play() {
 		useCallback(
 			() => [
 				{ label: "推进一步", run: () => send(PUSH_TURN_TEXT, "advance") },
-				{ label: "看它这一轮看到了什么", run: showContext },
+				{ label: "查看上下文", run: showContext },
 				{
 					label: notesOn ? "关掉批注" : "打开批注",
 					run: () => setNotesOn((v) => !v),
@@ -578,7 +691,11 @@ export function Play() {
 	);
 
 	useEffect(() => {
-		localStorage.setItem("dramaticer.notes", notesOn ? "on" : "off");
+		try {
+			localStorage.setItem("dramaticer.notes", notesOn ? "on" : "off");
+		} catch {
+			// 隐私模式下存不了，只影响下次打开时的默认值。
+		}
 	}, [notesOn]);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: 新楼层出现或开始写时滚到最后
@@ -617,6 +734,29 @@ export function Play() {
 							<Cover storyId={storyId} title={title} />
 							<h1>{title}</h1>
 						</div>
+						{branches.length > 1 ? (
+							<select
+								className="branchsel"
+								aria-label="分支"
+								value={
+									branches.find((branch) => branch.id === tree.data?.headNodeId)
+										?.id ?? ""
+								}
+								onChange={(event) => void switchBranch(event.target.value)}
+								disabled={busy}
+							>
+								{branches.find(
+									(branch) => branch.id === tree.data?.headNodeId,
+								) === undefined ? (
+									<option value="">当前位置（中途）</option>
+								) : null}
+								{branches.map((branch) => (
+									<option key={branch.id} value={branch.id}>
+										{branch.label}
+									</option>
+								))}
+							</select>
+						) : null}
 						<span className="label">第 {nodes.length} 楼</span>
 						<button
 							type="button"
@@ -637,7 +777,7 @@ export function Play() {
 					<div id="script">
 						{nodes.length === 0 && path.data !== null ? (
 							<p className="v4empty" style={{ padding: "24px 28px" }}>
-								这个故事还没有第一楼。写下你的开场，或者按「推进」让故事自己开始。
+								暂无内容
 							</p>
 						) : null}
 						{nodes.map((node) => {
@@ -706,18 +846,148 @@ export function Play() {
 													{note.undoLineId === undefined ? null : (
 														<>
 															<br />
-															<button
-																type="button"
-																onClick={() => undo(node.id)}
-															>
-																这不是我要的
-															</button>
+															{undoFor === node.id ? (
+																<span className="undo-choice">
+																	<button
+																		type="button"
+																		onClick={() => void undo(node.id, false)}
+																	>
+																		仅撤回
+																	</button>
+																	{node.id === lastId ? (
+																		<button
+																			type="button"
+																			onClick={() => void undo(node.id, true)}
+																		>
+																			撤回并重写
+																		</button>
+																	) : null}
+																</span>
+															) : (
+																<button
+																	type="button"
+																	onClick={() => setUndoFor(node.id)}
+																>
+																	撤回
+																</button>
+															)}
 														</>
 													)}
 												</div>
 											))}
 										</aside>
 									</article>
+									<div
+										className="flr-acts"
+										aria-label={`第 ${meta?.no ?? "?"} 楼的操作`}
+									>
+										{node.id === lastId ? (
+											<button
+												type="button"
+												disabled={busy}
+												aria-expanded={whyOpen}
+												onClick={() => setWhyOpen((value) => !value)}
+											>
+												重写
+											</button>
+										) : null}
+										<button
+											type="button"
+											disabled={busy}
+											onClick={() => startFix(node.id)}
+										>
+											改这句
+										</button>
+										{node.id === lastId ? null : (
+											<button
+												type="button"
+												disabled={busy}
+												onClick={() => void branchHere(node.id, meta?.no)}
+											>
+												从这里分支
+											</button>
+										)}
+										<button type="button" onClick={showContext}>
+											上下文
+										</button>
+									</div>
+									{node.id === lastId && whyOpen ? (
+										<div className="why">
+											<span>原因</span>
+											<button
+												type="button"
+												className="chip"
+												onClick={() => reroll(null, "")}
+											>
+												直接重写
+											</button>
+											{WHY.map((item) => (
+												<button
+													type="button"
+													className="chip"
+													key={item.reason}
+													onClick={() => reroll(item.reason, item.label)}
+												>
+													{item.label}
+												</button>
+											))}
+										</div>
+									) : null}
+									{fix?.nodeId === node.id ? (
+										<form
+											className="fixbox"
+											aria-label="改这句"
+											onSubmit={(event) => {
+												event.preventDefault();
+												void submitFix();
+											}}
+										>
+											<label>
+												<span>要改的原文</span>
+												<textarea
+													rows={2}
+													value={fix.quote}
+													placeholder="原句"
+													onChange={(event) =>
+														setFix({
+															nodeId: fix.nodeId,
+															quote: event.target.value,
+														})
+													}
+												/>
+											</label>
+											<label>
+												<span>改成什么样</span>
+												<textarea
+													rows={2}
+													value={fixText}
+													placeholder="改成…"
+													onChange={(event) => setFixText(event.target.value)}
+												/>
+											</label>
+											<div className="fixbox-acts">
+												<button
+													type="button"
+													className="btn ghost sm"
+													onClick={() => setFix(null)}
+													disabled={fixBusy}
+												>
+													取消
+												</button>
+												<button
+													type="submit"
+													className="btn gold sm"
+													disabled={
+														fixBusy ||
+														fix.quote.trim() === "" ||
+														fixText.trim() === ""
+													}
+												>
+													{fixBusy ? "改写中…" : "只改这一段"}
+												</button>
+											</div>
+										</form>
+									) : null}
 								</div>
 							);
 						})}
@@ -800,50 +1070,6 @@ export function Play() {
 							</>
 						)}
 					</div>
-					<div className="acts">
-						<button
-							type="button"
-							className="btn ghost sm"
-							disabled={busy || lastAssistant === undefined}
-							onClick={() => setWhyOpen((value) => !value)}
-						>
-							重写
-						</button>
-						<button
-							type="button"
-							className="btn ghost sm"
-							onClick={showContext}
-						>
-							它看到了什么
-						</button>
-						{busy ? (
-							<>
-								<output className="writing">正在写</output>
-								<button
-									type="button"
-									className="btn ghost sm"
-									onClick={() => abort.current?.abort()}
-								>
-									停下
-								</button>
-							</>
-						) : null}
-					</div>
-					{whyOpen ? (
-						<div className="why">
-							<span>哪里不满意？</span>
-							{WHY.map((item) => (
-								<button
-									type="button"
-									className="chip"
-									key={item.reason}
-									onClick={() => reroll(item.reason, item.label)}
-								>
-									{item.label}
-								</button>
-							))}
-						</div>
-					) : null}
 					{/* 输入台里的按钮不抢走输入框的焦点：手机键盘不收起，打字时收起的导航也不会
 					    在按下与松开之间弹回来，让点击落空。键盘的 Tab 照常能聚焦按钮。 */}
 					<div
@@ -855,83 +1081,134 @@ export function Play() {
 							}
 						}}
 					>
-						<div className="opts">
-							{actions.slice(0, 5).map((action) => (
-								<button
-									type="button"
-									className="chip"
-									key={action}
-									onClick={() => setText(action)}
-								>
-									{action}
-								</button>
-							))}
-						</div>
-						<div className="push">
+						{actions.length > 0 && !busy ? (
+							<div className="opts">
+								{actions.slice(0, 4).map((action) => (
+									<span className="opt" key={action}>
+										<button
+											type="button"
+											className="chip"
+											onClick={() => send(action, null)}
+										>
+											{action}
+										</button>
+										<button
+											type="button"
+											className="chip-edit"
+											aria-label={`改一改再发：${action}`}
+											title="改后再发"
+											onClick={() => setText(action)}
+										>
+											✎
+										</button>
+									</span>
+								))}
+							</div>
+						) : null}
+						<div className="say">
 							<button
 								type="button"
-								className="btn gold"
-								disabled={busy}
-								onClick={() => send(PUSH_TURN_TEXT, step)}
+								className="btn ghost cmp-more-btn"
+								aria-label="写法与本轮设置"
+								aria-expanded={moreOpen}
+								onClick={() => setMoreOpen((value) => !value)}
 							>
-								推进 ▸
+								⋯
 							</button>
-							<Seg<Step>
-								label="推进多少"
-								value={step}
-								onChange={setStep}
-								options={[
-									{ v: "advance", label: "一步" },
-									{ v: "quick", label: "一场" },
-									{ v: "jump", label: "跳跃" },
-								]}
-							/>
-							<small id="stepHint">{STEP_HINT[step]}</small>
-						</div>
-						<div className="say">
 							<textarea
 								rows={1}
+								aria-label="输入行动或对话"
 								value={text}
-								placeholder="写下你的行动或台词。只要你写了，导演就不插手"
+								placeholder="输入行动或对话"
 								onChange={(event) => setText(event.target.value)}
 								onKeyDown={(event) => {
 									if (
 										event.key === "Enter" &&
 										!event.shiftKey &&
-										!event.nativeEvent.isComposing
+										!event.nativeEvent.isComposing &&
+										!narrowScreen()
 									) {
 										event.preventDefault();
-										submit();
+										if (text.trim() !== "") submit();
 									}
 								}}
 							/>
-							<button
-								type="button"
-								className="btn"
-								disabled={busy}
-								onClick={submit}
-							>
-								发送
-							</button>
+							{busy ? (
+								<button
+									type="button"
+									className="btn"
+									onClick={() => abort.current?.abort()}
+								>
+									停下
+								</button>
+							) : text.trim() !== "" ? (
+								<button type="button" className="btn gold" onClick={submit}>
+									发送
+								</button>
+							) : (
+								<div className="pushsplit">
+									<button
+										type="button"
+										className="btn gold"
+										onClick={() => send(PUSH_TURN_TEXT, step)}
+									>
+										推进<span className="steplbl"> · {STEP_LABEL[step]}</span>
+									</button>
+									<button
+										type="button"
+										className="btn gold caret"
+										aria-label="选择推进多少"
+										aria-haspopup="menu"
+										aria-expanded={pushMenu}
+										onClick={() => setPushMenu((value) => !value)}
+									>
+										▾
+									</button>
+									{pushMenu ? (
+										<div className="pushmenu" role="menu" aria-label="推进多少">
+											{(["advance", "quick", "jump"] as const).map((value) => (
+												<button
+													type="button"
+													role="menuitem"
+													key={value}
+													onClick={() => {
+														setStep(value);
+														setPushMenu(false);
+														send(PUSH_TURN_TEXT, value);
+													}}
+												>
+													{STEP_LABEL[value]}
+												</button>
+											))}
+										</div>
+									) : null}
+								</div>
+							)}
 						</div>
-						<div className="meta">
-							<Seg<Mode>
-								small
-								label="写法"
-								value={mode}
-								onChange={changeMode}
-								options={[
-									{ v: "fast", label: "快速" },
-									{ v: "plan", label: "规划" },
-									{ v: "deep", label: "深度" },
-								]}
-							/>
-							<Tog pressed={notesOn} onChange={setNotesOn}>
-								批注
-							</Tog>
-							<OncePanel switches={switchView} once={once} onChange={setOnce} />
-							<span className="num">{costLine(lastMeta)}</span>
-						</div>
+						{moreOpen ? (
+							<div className="meta">
+								<Seg<Mode>
+									small
+									label="写法"
+									value={mode}
+									onChange={changeMode}
+									options={[
+										{ v: "fast", label: "快速" },
+										{ v: "plan", label: "规划" },
+										{ v: "deep", label: "深度" },
+									]}
+								/>
+								<Tog pressed={notesOn} onChange={setNotesOn}>
+									批注
+								</Tog>
+								<OncePanel
+									switches={switchView}
+									once={once}
+									onChange={setOnce}
+								/>
+								<span className="num">{costLine(lastMeta)}</span>
+							</div>
+						) : null}
 					</div>
 				</div>
 				{dockOpen ? (

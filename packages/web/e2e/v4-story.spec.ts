@@ -151,29 +151,41 @@ test.describe("故事页：正文、批注与输入台", () => {
 		await page.goto(`/stories/${storyId}/play`);
 		await expect(page.locator('[data-view="play"]')).toBeVisible();
 
-		// 书页式正文、场次条与页边批注。
+		// 写法、批注与本轮开关收在输入台的「⋯」里；批注默认关，这里打开。
+		await page.getByRole("button", { name: "写法与本轮设置" }).click();
+		const notesToggle = page.locator(".meta .tog", { hasText: "批注" });
+		await expect(notesToggle).toHaveAttribute("aria-pressed", "false");
+		await notesToggle.click();
+
+		// 书页式正文、场次条与页边批注（人话，不显示内部路径）。
 		await expect(page.locator(".sheet-head h1")).toHaveText(title);
 		await expect(page.locator("#script .prose p").first()).toContainText(
 			"门厅里只剩一盏灯",
 		);
 		await expect(page.locator(".slate").first()).toContainText("第 1 场");
 		await expect(page.locator(".slate").first()).toContainText("在场：林雪");
-		await expect(page.locator(".notes .note").first()).toContainText("状态");
+		// 手机上批注按楼折叠，这里只确认有批注且是人话。
+		await expect(page.locator(".notes .note").first()).toBeAttached();
+		await expect(page.locator(".notes").first()).not.toContainText(" · status");
 		await expect(page.locator(".notes .fno").first()).toHaveText("第 1 楼");
 		await expectNoHorizontalOverflow(page);
 		await observeStages(page);
 
-		const push = page.getByRole("button", { name: /^推进/ });
-		const stepGroup = page.getByRole("group", { name: "推进多少" });
+		// 推进的档位在推进按钮旁的下拉里，选中即发出。
+		const pushWith = async (label: string) => {
+			await page.getByRole("button", { name: "选择推进多少" }).click();
+			await page
+				.getByRole("menuitem", { name: new RegExp(`^${label}`) })
+				.click();
+		};
 		const modeGroup = page.getByRole("group", { name: "写法" });
 		const committed = page
 			.locator(".notes .fno")
 			.filter({ hasText: /^第 \d+ 楼$/ });
 
 		// 快速写法：推进「一场」把档位带进请求，等待期间显示正文进度。
-		await stepGroup.getByRole("button", { name: "一场" }).click();
 		await resetStageLog(page);
-		await push.click();
+		await pushWith("一场");
 		await expect
 			.poll(() => stageLog(page), { timeout: 30_000 })
 			.toEqual(expect.arrayContaining(["写正文"]));
@@ -188,9 +200,8 @@ test.describe("故事页：正文、批注与输入台", () => {
 
 		// 规划写法：请求带 plan，进度按挑记忆、角色意图、定计划依次出现。
 		await modeGroup.getByRole("button", { name: "规划" }).click();
-		await stepGroup.getByRole("button", { name: "跳跃" }).click();
 		await resetStageLog(page);
-		await push.click();
+		await pushWith("跳跃");
 		await expect
 			.poll(() => stageLog(page), { timeout: 30_000 })
 			.toEqual(
@@ -204,9 +215,8 @@ test.describe("故事页：正文、批注与输入台", () => {
 
 		// 深度写法：请求带 deep，自查项与阶段都随进度出现。
 		await modeGroup.getByRole("button", { name: "深度" }).click();
-		await stepGroup.getByRole("button", { name: "一步" }).click();
 		await resetStageLog(page);
-		await push.click();
+		await pushWith("一步");
 		await expect
 			.poll(() => stageLog(page), { timeout: 30_000 })
 			.toEqual(expect.arrayContaining(["起草", "自查"]));
@@ -218,7 +228,7 @@ test.describe("故事页：正文、批注与输入台", () => {
 
 		// 重写：原因带进请求，也写进偏好信号。
 		const before = await totalNodeCount(page, storyId);
-		await page.locator(".acts").getByRole("button", { name: "重写" }).click();
+		await page.getByRole("button", { name: "重写", exact: true }).click();
 		await expect(page.locator(".why")).toBeVisible();
 		await page.locator(".why .chip", { hasText: "太短" }).click();
 		await expect
@@ -235,7 +245,6 @@ test.describe("故事页：正文、批注与输入台", () => {
 			.toBeGreaterThan(before);
 
 		// 批注整体关闭后再打开，正文仍然可读。
-		const notesToggle = page.locator(".meta .tog", { hasText: "批注" });
 		await expect(notesToggle).toHaveAttribute("aria-pressed", "true");
 		await notesToggle.click();
 		await expect(page.locator("#sheet")).toHaveClass(/nonotes/);
@@ -254,6 +263,10 @@ test.describe("故事页：正文、批注与输入台", () => {
 		const storyId = `e2e-v4-layout-${stamp}`;
 		await createStory(page, storyId, `排版 ${stamp}`);
 		seedFirstFloor(storyId);
+		// 这个用例检查批注的排版，先把批注打开（默认关）。
+		await page.addInitScript(() =>
+			localStorage.setItem("dramaticer.notes", "on"),
+		);
 
 		// 桌面：正文一栏居中，批注在正文右边，停靠栏在书页右侧且不用滚动就能看到。
 		await page.setViewportSize({ width: 1440, height: 900 });
@@ -298,10 +311,17 @@ test.describe("故事页：正文、批注与输入台", () => {
 		expect((cmpBox?.y ?? 0) + (cmpBox?.height ?? 0)).toBeLessThanOrEqual(
 			railBox?.y ?? 0,
 		);
-		for (const name of [/^推进/, "发送"]) {
-			const box = await page.getByRole("button", { name }).boundingBox();
-			expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
-		}
+		// 空着时主按钮是推进，有字时变成发送。
+		const pushBox = await page
+			.getByRole("button", { name: /^推进/ })
+			.boundingBox();
+		expect(pushBox?.height ?? 0).toBeGreaterThanOrEqual(44);
+		await page.locator(".say textarea").fill("看看门外");
+		const sendBox = await page
+			.getByRole("button", { name: "发送" })
+			.boundingBox();
+		expect(sendBox?.height ?? 0).toBeGreaterThanOrEqual(44);
+		await page.locator(".say textarea").fill("");
 
 		// 打字时收起底部导航，输入台贴到底部。
 		await page.locator(".say textarea").focus();
@@ -315,7 +335,10 @@ test.describe("故事页：正文、批注与输入台", () => {
 		// 停靠栏是底部抽屉：「它看到了什么」直接打开上下文，拉手收起。
 		const drawer = page.locator(".dockwrap");
 		await expect(page.locator("#dock")).toBeHidden();
-		await page.getByRole("button", { name: "它看到了什么" }).click();
+		await page
+			.getByRole("button", { name: "上下文", exact: true })
+			.first()
+			.click();
 		await expect(drawer).toHaveClass(/open/);
 		await expect(page.locator("#dock")).toBeVisible();
 		await expect(
@@ -344,6 +367,7 @@ test.describe("故事页：正文、批注与输入台", () => {
 			}
 		});
 		await page.goto(`/stories/${storyId}/play`);
+		await page.getByRole("button", { name: "写法与本轮设置" }).click();
 		const once = page.locator(".once");
 		await once.locator("summary").click();
 		const tools = once.getByRole("button", { name: "工具查阅" });

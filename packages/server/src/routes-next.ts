@@ -301,14 +301,7 @@ function storyFloors(options: ApiRouteOptions, storyId: string) {
 				}
 			}
 			for (const diff of store.getStateDiffs(node.id).slice(0, 6)) {
-				notes.push({
-					tone: "plain",
-					title: diff.path[0] === "userWill" ? "偏好" : "状态",
-					text:
-						diff.op === "delete"
-							? `${diff.path.join(" · ")}：移除`
-							: `${diff.path.join(" · ")}：${summarize(diff.value)}`,
-				});
+				notes.push(stateNote(diff.path, diff.op === "delete", diff.value));
 			}
 			const trace = store.getTurnTrace(node.id);
 			if (trace !== null) {
@@ -368,4 +361,66 @@ async function backgroundHealthView(
 	} catch {
 		return { ...health, roles: [] };
 	}
+}
+
+/** 状态路径第一段是分类；批注标题用分类的中文名，正文只说「谁的什么变成了什么」。 */
+const STATE_CATEGORY: Readonly<Record<string, string>> = {
+	userWill: "偏好",
+	character: "人物",
+	characters: "人物",
+	clue: "线索",
+	clues: "线索",
+	location: "地点",
+	locations: "地点",
+	item: "物品",
+	items: "物品",
+	player: "主角",
+	world: "世界",
+	scene: "场面",
+	relationship: "关系",
+	relationships: "关系",
+};
+
+const STATE_FIELD: Readonly<Record<string, string>> = {
+	status: "状态",
+	mood: "情绪",
+	location: "位置",
+	text: "内容",
+	hp: "体力",
+	health: "体力",
+	outfit: "衣着",
+	clothes: "衣着",
+	pose: "姿势",
+	action: "行为",
+	attitude: "态度",
+	affection: "好感",
+	trust: "信任",
+	knows: "知道",
+	alive: "生死",
+	owner: "归属",
+	count: "数量",
+	note: "备注",
+};
+
+function stateNote(
+	path: readonly string[],
+	removed: boolean,
+	value: unknown,
+): { tone: "plain"; title: string; text: string } {
+	const [head = "", ...rest] = path;
+	const title = STATE_CATEGORY[head] ?? "状态";
+	const segments = STATE_CATEGORY[head] === undefined ? path : rest;
+	const [subject, ...fields] = segments;
+	const field = fields.map((part) => STATE_FIELD[part] ?? part).join("的");
+	const who =
+		subject === undefined
+			? title
+			: field.length === 0
+				? subject
+				: `${subject}的${field}`;
+	return {
+		tone: "plain",
+		title,
+		text: removed ? `${who}：不再记录` : `${who}：${summarize(value)}`,
+	};
 }
