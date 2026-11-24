@@ -161,6 +161,10 @@
 - 重逢注入、知情标注、档案归档的开关需要故事有实体能力；测试夹具要 `upsertEntity` 一个实体，否则这些开关取关闭值。
 - 后台保底（ADR-0165）：模型的 `fallback` 只对后台岗位生效（`StoryRuntimeManager` 的 `#backgroundClient`），只在 `LlmAllChannelsFailedError` 时切换，流式请求已经推送内容就不切。后台是否暂停由 `readBackgroundHealth` 从任务表算，只认「模型 X 的所有渠道都失败了」这类错误，解析错误不算；新错误格式要同步那条正则。错误摘要会截短并去掉像密钥的长串，但仍不要把密钥写进错误信息。
 
+- 局面更新（memory-v5/01）：场记（`scene_log`）打开时就是每楼唯一的后台调用，顺带行动选项（功能页「行动选项」关掉时不要）、事件（写进 `memory_events`，并标记该楼已抽取）与用户意志（只看紧挨这一楼的玩家消息）。`MERGED_INTO_SITUATION` 里的分散每楼任务（events、settle、scene、user_will、memory_revision、candidate_actions、lore_prefilter）这时不建任务；场记关掉时照旧。CLI `work --kind` 指名的类型不受合并规则影响。顺带部分格式不对只丢那部分并记进场记的 repairs，不打回整条。
+- 场末整理（`scene_archive`）滞后一楼：场末那一楼还是 head 时不编译，玩家在它之后再输入才编译。测试里要给场末楼层接一条玩家楼层。
+- 每个后台任务记下实际的模型调用与 token（`background_jobs.llm_calls/llm_tokens`，迁移 74，由 drain 给处理器套计数客户端）；检视器按 `ONE_TIME_JOB_KINDS`（开局、导入分型、角色外观，原著导入加在这里）与插图分三类。e2e 假渠道按场记提示词里出现的「- options：」等行作答。
+
 ## 新界面的视觉层（2026-11-16 起）
 
 - 2026-11-19 起（ADR-0162、`ui-lite`）：没有 three.js 场景、指针光、卡片倾斜与开场动画，也不打包字体；`stage.pulse` / `setWriting` 保留为空操作级别的接口，页面可以照常调用。下面关于三维背景的旧条目已过时，以 `.scratch/ui-lite/spec.md` 为准。

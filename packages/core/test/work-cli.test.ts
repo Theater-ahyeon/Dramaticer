@@ -337,15 +337,15 @@ describe("dramaticer work", () => {
 		}
 		const executed: string[] = [];
 		const registry = createBackgroundJobRegistry({
-			settle: {
+			gap_probe: {
 				handler: (context) => {
-					executed.push(`settle:${context.job.nodeId}`);
+					executed.push(`gap_probe:${context.job.nodeId}`);
 				},
 				enqueue: "settled",
 			},
-			events: {
+			deferred_probe: {
 				handler: (context) => {
-					executed.push(`events:${context.job.nodeId}`);
+					executed.push(`deferred_probe:${context.job.nodeId}`);
 				},
 				tier: "deferred",
 			},
@@ -366,7 +366,7 @@ describe("dramaticer work", () => {
 			["work", "--db", dbPath, "--gap-seconds", "10", "--limit", "1"],
 			dependencies,
 		);
-		expect(executed).toEqual(["settle:n-a"]);
+		expect(executed).toEqual(["gap_probe:n-a"]);
 		expect(short.gapBacklog.counts).toEqual({
 			pending: 1,
 			running: 0,
@@ -382,10 +382,10 @@ describe("dramaticer work", () => {
 			dependencies,
 		);
 		expect(executed).toEqual([
-			"settle:n-a",
-			"events:n-a",
-			"events:n-b",
-			"settle:n-c",
+			"gap_probe:n-a",
+			"deferred_probe:n-a",
+			"deferred_probe:n-b",
+			"gap_probe:n-c",
 		]);
 		expect(long.gapBacklog.unfinishedRatio).toBe(0);
 

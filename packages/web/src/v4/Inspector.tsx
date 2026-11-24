@@ -193,7 +193,15 @@ function StoryInspector({ storyId }: { readonly storyId: string }) {
 							<dd className="num">
 								{average(calls.perFloor, calls.floors)}（{calls.floors} 楼）
 							</dd>
-							<dt>一次性任务</dt>
+							<dt>每楼 token</dt>
+							<dd className="num">
+								{calls.floors === 0
+									? "—"
+									: formatTokens(
+											Math.round(calls.perFloorTokens / calls.floors),
+										)}
+							</dd>
+							<dt>一次性导入</dt>
 							<dd className="num">{calls.oneTime}</dd>
 							<dt>插图</dt>
 							<dd className="num">{calls.images}</dd>

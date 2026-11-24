@@ -370,6 +370,7 @@ export interface StoryStore
 			| "listBackgroundJobs"
 			| "requeueRunningBackgroundJobs"
 			| "startBackgroundJob"
+			| "addBackgroundJobUsage"
 			| "finishBackgroundJob"
 			| "failBackgroundJob"
 			| "deferBackgroundJob"
@@ -802,6 +803,7 @@ const DELEGATES: Readonly<Record<keyof Repos, readonly string[]>> = {
 		"listBackgroundJobs",
 		"requeueRunningBackgroundJobs",
 		"startBackgroundJob",
+		"addBackgroundJobUsage",
 		"finishBackgroundJob",
 		"failBackgroundJob",
 		"deferBackgroundJob",

@@ -2140,6 +2140,15 @@ export function buildMigrations(
 				"ALTER TABLE image_workflows ADD COLUMN kind TEXT NOT NULL DEFAULT 'comfyui' CHECK (kind IN ('comfyui', 'novelai'))",
 			],
 		},
+		{
+			version: 74,
+			description:
+				"后台任务记下实际的模型调用次数与 token，检视器按它算每楼调用",
+			statements: [
+				"ALTER TABLE background_jobs ADD COLUMN llm_calls INTEGER NOT NULL DEFAULT 0 CHECK (llm_calls >= 0)",
+				"ALTER TABLE background_jobs ADD COLUMN llm_tokens INTEGER NOT NULL DEFAULT 0 CHECK (llm_tokens >= 0)",
+			],
+		},
 	];
 }
 

@@ -185,6 +185,8 @@ describe("场次归档", () => {
 	it("场次结束时一次调用写下归档，现场景次重跑覆盖同一行", async () => {
 		const { store, path } = openTempStore();
 		seedScene(store);
+		// 场末整理滞后一楼：玩家在场末那一楼之后发出下一条输入才编译。
+		append(store, "u2", "a2", "user", "我等着。");
 		saveLog(store, "a2", false);
 		const { client, requests } = createFakeClient([
 			ARCHIVE,
@@ -253,6 +255,7 @@ describe("场次归档", () => {
 			role: "assistant",
 			raw: "老师把真相告诉商人。",
 		});
+		append(store, "u3", "a3", "user", "然后呢？");
 		saveLog(store, "a2", true);
 		saveLog(store, "a3", true);
 		const first = JSON.stringify({
@@ -308,6 +311,7 @@ describe("场次归档", () => {
 	it("线索必须是台账里的 id，标为收了的必须已兑现", async () => {
 		const { store } = openTempStore();
 		seedScene(store);
+		append(store, "u2", "a2", "user", "我等着。");
 		saveLog(store, "a2", true);
 		store.appendStateDiffs([
 			{
@@ -356,7 +360,7 @@ describe("场次归档", () => {
 		expect(store.getSceneArchive("a1")?.floorCount).toBe(1);
 	});
 
-	it("场次结束前不建任务，结束后入队并归档一次", async () => {
+	it("场次结束前不建任务；场末那一楼之后玩家再输入才入队，并且只归档一次", async () => {
 		const { store } = openTempStore();
 		seedScene(store);
 		const registry = createDefaultBackgroundJobRegistry();
@@ -375,6 +379,11 @@ describe("场次归档", () => {
 		expect(before.runs).toEqual([]);
 
 		saveLog(store, "a2", true);
+		// 场末那一楼还是最新一楼：玩家可能重写它，先不编译。
+		const lagging = await drainBackgroundJobs(options);
+		expect(lagging.runs).toEqual([]);
+
+		append(store, "u2", "a2", "user", "我等着。");
 		const after = await drainBackgroundJobs(options);
 		expect(after.runs).toHaveLength(1);
 		expect(after.runs[0]?.nodeId).toBeNull();

@@ -2,6 +2,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
 	ILLUSTRATE_JOB_KIND,
+	ONE_TIME_JOB_KINDS,
 	type StateDiff,
 	type Story,
 	type StoryStore,
@@ -210,11 +211,25 @@ export function handleJobs(
 	requireStory(options.store, storyId);
 	const counts = options.store.countBackgroundJobs({ storyId });
 	const jobs = options.store.listBackgroundJobs({ storyId });
-	const calls = { perFloor: 0, oneTime: 0, images: 0, floors: 0 };
+	const calls = {
+		perFloor: 0,
+		oneTime: 0,
+		images: 0,
+		floors: 0,
+		perFloorTokens: 0,
+		oneTimeTokens: 0,
+	};
 	for (const job of jobs) {
-		if (job.kind === ILLUSTRATE_JOB_KIND) calls.images += job.attempts;
-		else if (job.nodeId === null) calls.oneTime += job.attempts;
-		else calls.perFloor += job.attempts;
+		const count = job.llmCalls ?? 0;
+		const tokens = job.llmTokens ?? 0;
+		if (job.kind === ILLUSTRATE_JOB_KIND) calls.images += count;
+		else if (ONE_TIME_JOB_KINDS.includes(job.kind)) {
+			calls.oneTime += count;
+			calls.oneTimeTokens += tokens;
+		} else {
+			calls.perFloor += count;
+			calls.perFloorTokens += tokens;
+		}
 	}
 	calls.floors = options.store
 		.listStoryNodes(storyId)

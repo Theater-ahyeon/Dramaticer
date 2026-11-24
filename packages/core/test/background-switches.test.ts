@@ -2,9 +2,11 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, expect, it, onTestFinished } from "vitest";
 import {
+	MERGED_INTO_SITUATION,
 	StoryStore,
 	createDefaultBackgroundJobRegistry,
 	createMemorySlotProvider,
+	readSituationParts,
 	readStoryBackgroundSwitches,
 	readStoryFeatureState,
 	readStoryFeatureView,
@@ -96,15 +98,39 @@ describe("后台开关跟随功能页", () => {
 });
 
 describe("其余接通的功能开关", () => {
-	it("行动选项开关决定是否生成候选行动", () => {
+	it("场记打开时是每楼唯一的局面更新：分散的每楼调用不再建任务，选项跟随开关", () => {
 		const store = openStory();
 		const registry = createDefaultBackgroundJobRegistry();
+		const merged = resolveStoryBackgroundKinds(
+			registry,
+			readStoryBackgroundSwitches(store, "s1"),
+		);
+		expect(merged).toContain("scene_log");
+		for (const kind of MERGED_INTO_SITUATION) {
+			expect(merged).not.toContain(kind);
+		}
+		expect(readSituationParts(store, "s1")).toEqual({
+			options: true,
+			events: true,
+			will: true,
+		});
+		store.updateStorySettings("s1", { featureSwitches: { choices: false } });
+		expect(readSituationParts(store, "s1").options).toBe(false);
+	});
+
+	it("场记关掉时回到分散调用，行动选项开关决定是否生成候选行动", () => {
+		const store = openStory();
+		const registry = createDefaultBackgroundJobRegistry();
+		store.updateStorySettings("s1", { featureSwitches: { scribe: false } });
 		const on = resolveStoryBackgroundKinds(
 			registry,
 			readStoryBackgroundSwitches(store, "s1"),
 		);
 		expect(on).toContain("candidate_actions");
-		store.updateStorySettings("s1", { featureSwitches: { choices: false } });
+		expect(on).toContain("events");
+		store.updateStorySettings("s1", {
+			featureSwitches: { scribe: false, choices: false },
+		});
 		const off = resolveStoryBackgroundKinds(
 			registry,
 			readStoryBackgroundSwitches(store, "s1"),

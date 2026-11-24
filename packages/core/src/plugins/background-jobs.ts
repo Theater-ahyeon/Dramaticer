@@ -53,6 +53,7 @@ import {
 import {
 	SCENE_LOG_JOB_KIND,
 	createSceneLogHandler,
+	readSituationParts,
 } from "../ledger/scene-log.js";
 import { SETTLE_JOB_KIND, createSettleHandler } from "../ledger/settle.js";
 import {
@@ -194,7 +195,7 @@ export const BACKGROUND_JOB_PLUGINS: readonly BackgroundJobPlugin[] = [
 		enqueue: "settled",
 	}),
 	backgroundJobPlugin(SCENE_LOG_JOB_PLUGIN, SCENE_LOG_JOB_KIND, {
-		handler: createSceneLogHandler(),
+		handler: createSceneLogHandler({ parts: readSituationParts }),
 		enqueue: "settled",
 	}),
 	backgroundJobPlugin(SCENE_ARCHIVE_JOB_PLUGIN, SCENE_ARCHIVE_JOB_KIND, {

@@ -21,6 +21,8 @@ interface BackgroundJobRow {
 	readonly created_at: string;
 	readonly started_at: string | null;
 	readonly finished_at: string | null;
+	readonly llm_calls?: number;
+	readonly llm_tokens?: number;
 }
 
 export interface EnqueueBackgroundJobsInput {
@@ -86,6 +88,8 @@ function rowToBackgroundJob(row: BackgroundJobRow): BackgroundJob {
 		createdAt: row.created_at,
 		startedAt: row.started_at,
 		finishedAt: row.finished_at,
+		llmCalls: row.llm_calls ?? 0,
+		llmTokens: row.llm_tokens ?? 0,
 	};
 }
 
@@ -457,6 +461,26 @@ export class BackgroundRepo extends StoreRepo {
 			)
 			.run(at, id);
 		return this.#requireBackgroundJob(id);
+	}
+
+	/** 累加一次执行里实际发出的模型调用与 token；成功、失败、退回都要记。 */
+	addBackgroundJobUsage(
+		id: number,
+		usage: { readonly calls: number; readonly tokens: number },
+	): void {
+		assertBackgroundJobId(id);
+		if (usage.calls === 0 && usage.tokens === 0) return;
+		this.db
+			.prepare(
+				`UPDATE background_jobs
+				SET llm_calls = llm_calls + ?, llm_tokens = llm_tokens + ?
+				WHERE id = ?`,
+			)
+			.run(
+				Math.max(0, Math.trunc(usage.calls)),
+				Math.max(0, Math.trunc(usage.tokens)),
+				id,
+			);
 	}
 
 	/** 把 running 任务标为 done，并清空上一次失败的错误。 */

@@ -240,7 +240,8 @@ describe("后台任务执行", () => {
 		]);
 		expect(seen).toHaveLength(2);
 		expect(seen[0]?.store).toBe(store);
-		expect(seen[0]?.client).toBe(unusedClient);
+		// 处理器拿到的是套了调用计数的同一个客户端：方法照常转发。
+		expect(seen[0]?.client.complete).toBeTypeOf("function");
 		expect(seen[0]?.job.nodeId).toBe("n-a");
 		expect(seen[0]?.job.status).toBe("running");
 		const jobs = store.listBackgroundJobs({ storyId: "s1" });

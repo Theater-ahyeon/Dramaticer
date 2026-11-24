@@ -538,17 +538,18 @@ describe("POST /api/stories/:id/turns", () => {
 		const gate = Promise.withResolvers<void>();
 		const ran: string[] = [];
 		const registry = createBackgroundJobRegistry({
-			settle: {
+			// 用不会被「局面更新」合并掉的类型名，只看调度顺序。
+			first_probe: {
 				enqueue: "settled",
 				handler: async ({ job }) => {
-					ran.push(`settle:${job.nodeId ?? ""}`);
+					ran.push(`first_probe:${job.nodeId ?? ""}`);
 					await gate.promise;
 				},
 			},
-			events: {
+			second_probe: {
 				enqueue: "settled",
 				handler: async ({ job }) => {
-					ran.push(`events:${job.nodeId ?? ""}`);
+					ran.push(`second_probe:${job.nodeId ?? ""}`);
 					await gate.promise;
 				},
 			},
@@ -570,7 +571,7 @@ describe("POST /api/stories/:id/turns", () => {
 		const frames = await new FrameStream(response).readAll();
 		expect(eventNames(frames).at(-1)).toBe("turn.completed");
 		await vi.waitFor(() => expect(ran.length).toBeGreaterThan(0));
-		expect(ran[0]).toMatch(/^settle:/);
+		expect(ran[0]).toMatch(/^first_probe:/);
 		gate.resolve();
 		await vi.waitFor(() =>
 			expect(running.store.countBackgroundJobs({ storyId: "s1" }).done).toBe(3),

@@ -5,6 +5,7 @@ import {
 	DEEP_TURN_TOOLS,
 	DEFAULT_TOOL_KERNEL,
 	FAST_TURN_TOOLS,
+	MERGED_INTO_SITUATION,
 	READ_TOOLS,
 	TOOL_PLUGINS,
 	type ToolPlugin,
@@ -210,7 +211,9 @@ describe("内置后台任务插件", () => {
 		expect(on).toContain("scene_log");
 		expect(on).toContain("scene_archive");
 		expect(on).toContain("gap_pass");
-		expect(on).toHaveLength(registry.size);
+		// 场记打开时它是每楼唯一的局面更新，分散的每楼调用不再建任务。
+		expect(on).toHaveLength(registry.size - MERGED_INTO_SITUATION.length);
+		for (const kind of MERGED_INTO_SITUATION) expect(on).not.toContain(kind);
 	});
 
 	it("静态任务插件的注册表条目与插件清单一致", () => {

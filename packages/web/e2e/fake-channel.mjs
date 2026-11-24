@@ -246,8 +246,47 @@ function eventBatch(userContent) {
 	);
 }
 
+/** 每楼的局面更新（场记）：按提示词里要的部分作答。 */
+function sceneLog(system) {
+	return JSON.stringify({
+		beat: "试探",
+		states: [],
+		present: ["林雪"],
+		sceneEnds: false,
+		...(system.includes("- sceneCard：")
+			? {
+					sceneCard: {
+						present: [{ who: "林雪", want: "确认门外是谁" }],
+						change: "门外的人现身",
+					},
+				}
+			: {}),
+		...(system.includes("- options：")
+			? {
+					options: [`候选行动一（${Date.now()}）`, "候选行动二", "候选行动三"],
+				}
+			: {}),
+		...(system.includes("- events：")
+			? {
+					events: [
+						{
+							text: "门被推开",
+							participants: ["林雪"],
+							knowers: ["*"],
+							importance: 0.6,
+							storyTime: "雨夜",
+							location: "门厅",
+						},
+					],
+				}
+			: {}),
+		...(system.includes("- will：") ? { will: [] } : {}),
+	});
+}
+
 function backgroundResponse(body) {
 	const system = systemText(body);
+	if (system.includes("你是故事的场记")) return sceneLog(system);
 	if (system.includes("你是故事台账的结算器")) return "[]";
 	if (system.includes("你是故事记忆抽取器")) {
 		return eventBatch(

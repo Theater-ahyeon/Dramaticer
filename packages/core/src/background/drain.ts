@@ -1,4 +1,4 @@
-import type { LlmClient } from "../llm/types.js";
+import type { LlmClient, LlmResult } from "../llm/types.js";
 import type { StoryStore } from "../store/story-store.js";
 import {
 	type BackgroundJob,
@@ -178,14 +178,16 @@ export async function drainBackgroundJobs(
 			job.id,
 			new Date(now()).toISOString(),
 		);
+		const usage = { calls: 0, tokens: 0 };
 		try {
 			await type.handler({
 				store,
-				client: options.client,
+				client: countingClient(options.client, usage),
 				job: running,
 				...(options.signal === undefined ? {} : { signal: options.signal }),
 			});
 		} catch (error) {
+			store.addBackgroundJobUsage(job.id, usage);
 			if (error instanceof BackgroundJobDeferredError) {
 				const deferred = store.deferBackgroundJob(job.id);
 				runs.push({
@@ -226,6 +228,7 @@ export async function drainBackgroundJobs(
 			});
 			continue;
 		}
+		store.addBackgroundJobUsage(job.id, usage);
 		const done = store.finishBackgroundJob(
 			job.id,
 			new Date(now()).toISOString(),
@@ -240,6 +243,34 @@ export async function drainBackgroundJobs(
 		});
 	}
 	return { enqueued: enqueued.length, discarded, runs };
+}
+
+/**
+ * 给处理器的客户端套一层计数：每次实际发出的请求与 token 记到任务上，
+ * 检视器按它算每楼的后台调用（缓存命中不算）。
+ */
+function countingClient(
+	client: LlmClient,
+	usage: { calls: number; tokens: number },
+): LlmClient {
+	const record = (result: LlmResult): LlmResult => {
+		if (result.cached !== true) {
+			usage.calls += Math.max(1, result.attempts ?? 1);
+		}
+		usage.tokens += result.usage?.totalTokens ?? 0;
+		return result;
+	};
+	// 用代理保留客户端原型上的其他方法（流式等），只拦 complete。
+	return new Proxy(client, {
+		get(target, property, receiver) {
+			if (property === "complete") {
+				return async (...args: Parameters<LlmClient["complete"]>) =>
+					record(await target.complete(...args));
+			}
+			const value = Reflect.get(target, property, receiver);
+			return typeof value === "function" ? value.bind(target) : value;
+		},
+	});
 }
 
 function resolveKinds(

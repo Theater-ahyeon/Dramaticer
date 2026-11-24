@@ -82,6 +82,60 @@ describe("GET /api/stories/:id/jobs", () => {
 		]);
 	});
 
+	it("按实际模型调用分三类：每楼预算、一次性导入、插图", async () => {
+		const running = await startTestServer();
+		const store = running.store;
+		store.createStory({ id: "s1", title: "测试故事" });
+		store.appendNode({
+			storyId: "s1",
+			parentId: null,
+			role: "assistant",
+			raw: "开场",
+		});
+		const run = (
+			kind: string,
+			condition: "settled" | "story",
+			calls: number,
+			tokens: number,
+		) => {
+			const [job] =
+				condition === "story"
+					? store.enqueueStoryBackgroundJobs({
+							storyId: "s1",
+							kinds: [kind],
+							createdAt: "2026-11-24T00:00:00.000Z",
+						})
+					: store.enqueueMissingBackgroundJobs({
+							storyId: "s1",
+							kinds: [kind],
+							conditions: { [kind]: "settled" },
+							createdAt: "2026-11-24T00:00:00.000Z",
+						});
+			if (job === undefined) throw new Error(`${kind} 没有入队`);
+			store.startBackgroundJob(job.id);
+			store.addBackgroundJobUsage(job.id, { calls, tokens });
+			store.finishBackgroundJob(job.id);
+		};
+		run("scene_log", "settled", 1, 400);
+		run("scene_archive", "story", 1, 600);
+		run("opening", "story", 2, 900);
+		run("illustrate", "story", 1, 0);
+		// 不调模型的任务（向量入库）不算调用。
+		run("embeddings", "settled", 0, 0);
+
+		const view = (await (
+			await fetch(`${running.origin}/api/stories/s1/jobs`)
+		).json()) as StoryJobsView;
+		expect(view.calls).toEqual({
+			perFloor: 2,
+			oneTime: 2,
+			images: 1,
+			floors: 1,
+			perFloorTokens: 1000,
+			oneTimeTokens: 900,
+		});
+	});
+
 	it("故事不存在返回 404，非 GET 返回 405", async () => {
 		const running = await startTestServer();
 		const missing = await fetch(`${running.origin}/api/stories/missing/jobs`);

@@ -14,7 +14,13 @@ import {
 	rejectUnknownKeys,
 } from "../json.js";
 import { type LlmMessage, NO_CONTINUATION } from "../llm/types.js";
+import {
+	type ExtractedEvent,
+	parseEventExtraction,
+	recordExtractedEvents,
+} from "../memory/extract.js";
 import { parseJsonOutputObject } from "../memory/json-output.js";
+import { readStoryFeatureState } from "../settings/features.js";
 import type { StoryStore } from "../store/story-store.js";
 import type { StateDiffOp, StoryTime, TimelineNode } from "../timeline.js";
 import { readSceneSegments } from "./scenes.js";
@@ -25,6 +31,12 @@ import {
 	prepareSettlementForNodes,
 } from "./settle.js";
 import { type LedgerRepair, assertLedgerRepairs } from "./settlement.js";
+import {
+	type CapturedUserWill,
+	applyCapturedUserWills,
+	parseUserWillResponse,
+	readExistingWills,
+} from "./user-will.js";
 
 export const SCENE_LOG_JOB_KIND = "scene_log";
 
@@ -52,7 +64,42 @@ const RESPONSE_KEYS = [
 	"sceneCard",
 	"bits",
 	"conditions",
+	"options",
+	"events",
+	"will",
 ] as const;
+
+/** 局面更新顺带产出的行动选项条数范围。 */
+const OPTION_MIN = 2;
+const OPTION_MAX = 4;
+
+/**
+ * 局面更新（v5）在场记这一次调用里顺带产出的部分；每楼只发这一次后台调用，
+ * 替代候选行动、事件抽取与用户意志的分散调用。
+ */
+export interface SituationParts {
+	/** 2–4 条行动选项；功能页「行动选项」关掉时不要。 */
+	readonly options: boolean;
+	/** 这一楼值得记住的事件，写进只追加的记录表。 */
+	readonly events: boolean;
+	/** 最近一条玩家消息里跨楼层有效的偏好、底线与纠正。 */
+	readonly will: boolean;
+}
+
+export const NO_SITUATION_PARTS: SituationParts = {
+	options: false,
+	events: false,
+	will: false,
+};
+
+/** 按故事的功能开关决定这一楼的局面更新要顺带哪些部分。 */
+export function readSituationParts(
+	store: StoryStore,
+	storyId: string,
+): SituationParts {
+	const features = readStoryFeatureState(store, storyId).values;
+	return { options: features.choices === true, events: true, will: true };
+}
 
 const CONDITION_KEYS = ["id", "matched", "reason"] as const;
 
@@ -278,6 +325,10 @@ export interface SceneLogParseInput {
 		readonly id: string;
 		readonly text: string;
 	}[];
+	/** 要顺带的部分；不传时只解析场记本身。 */
+	readonly parts?: SituationParts;
+	/** 用户意志的引文只能来自这些玩家楼层。 */
+	readonly players?: readonly TimelineNode[];
 }
 
 export interface ParsedSceneLog {
@@ -290,6 +341,9 @@ export interface ParsedSceneLog {
 	readonly conditions: readonly SceneLogConditionJudgment[];
 	readonly quotes: SceneLogQuoteStats;
 	readonly repairs: readonly LedgerRepair[];
+	readonly options: readonly string[];
+	readonly events: readonly ExtractedEvent[];
+	readonly will: readonly CapturedUserWill[];
 }
 
 /**
@@ -355,6 +409,7 @@ export function parseSceneLogResponse(
 					JSON.stringify({ judgments: record.conditions }),
 					input.conditions.map((condition) => condition.id),
 				);
+	const parts = input.parts ?? NO_SITUATION_PARTS;
 	return {
 		beat,
 		states,
@@ -365,7 +420,100 @@ export function parseSceneLogResponse(
 		conditions,
 		quotes: { submitted, verified },
 		repairs,
+		options: parts.options ? readOptions(record.options, repairs) : [],
+		events: parts.events ? readEvents(record.events, repairs) : [],
+		will: parts.will ? readWill(record.will, input.players ?? [], repairs) : [],
 	};
+}
+
+/**
+ * 顺带的部分格式不对时只丢掉这一部分并记进 repairs，场记本身照常落地：
+ * v5 的校验只拦冲突与泄密，格式问题由程序修复，不打回。
+ */
+function readOptions(value: unknown, repairs: LedgerRepair[]): string[] {
+	if (value === undefined || value === null) return [];
+	if (!Array.isArray(value)) {
+		repairs.push({
+			path: ["options"],
+			action: "delete",
+			reason: "场记记录.options 不是数组，已丢弃",
+		});
+		return [];
+	}
+	const options = dedupe(
+		value
+			.filter((item): item is string => typeof item === "string")
+			.map((item) => item.trim())
+			.filter((item) => item.length > 0),
+	).slice(0, OPTION_MAX);
+	if (options.length < OPTION_MIN) {
+		if (value.length > 0) {
+			repairs.push({
+				path: ["options"],
+				action: "delete",
+				reason: `场记记录.options 少于 ${OPTION_MIN} 条可用选项，已丢弃`,
+			});
+		}
+		return [];
+	}
+	return options;
+}
+
+function readEvents(
+	value: unknown,
+	repairs: LedgerRepair[],
+): readonly ExtractedEvent[] {
+	if (value === undefined || value === null) return [];
+	if (!Array.isArray(value)) {
+		repairs.push({
+			path: ["events"],
+			action: "delete",
+			reason: "场记记录.events 不是数组，已丢弃",
+		});
+		return [];
+	}
+	const events: ExtractedEvent[] = [];
+	for (const [index, item] of value.entries()) {
+		try {
+			events.push(...parseEventExtraction(JSON.stringify([item])));
+		} catch (error) {
+			repairs.push({
+				path: ["events", String(index)],
+				action: "delete",
+				reason: `场记记录.events[${index}]：${error instanceof Error ? error.message : String(error)}`,
+			});
+		}
+	}
+	return events;
+}
+
+function readWill(
+	value: unknown,
+	players: readonly TimelineNode[],
+	repairs: LedgerRepair[],
+): readonly CapturedUserWill[] {
+	if (value === undefined || value === null) return [];
+	if (!Array.isArray(value)) {
+		repairs.push({
+			path: ["will"],
+			action: "delete",
+			reason: "场记记录.will 不是数组，已丢弃",
+		});
+		return [];
+	}
+	const captured: CapturedUserWill[] = [];
+	for (const [index, item] of value.entries()) {
+		try {
+			captured.push(...parseUserWillResponse(JSON.stringify([item]), players));
+		} catch (error) {
+			repairs.push({
+				path: ["will", String(index)],
+				action: "delete",
+				reason: `场记记录.will[${index}]：${error instanceof Error ? error.message : String(error)}`,
+			});
+		}
+	}
+	return captured;
 }
 
 /**
@@ -464,6 +612,8 @@ export interface SceneLogHandlerOptions {
 	readonly windowFloors?: number;
 	/** 覆盖客户端默认模型；不设置时使用客户端的默认模型（settler 角色）。 */
 	readonly model?: string;
+	/** 按故事决定这一楼顺带哪些部分；不设置时只写场记本身。 */
+	readonly parts?: (store: StoryStore, storyId: string) => SituationParts;
 }
 
 /** 只放在有剧情小品时出现的说明。 */
@@ -471,6 +621,7 @@ function buildSystemPrompt(
 	hasBits: boolean,
 	hasConditions: boolean,
 	sceneStarts: boolean,
+	parts: SituationParts = NO_SITUATION_PARTS,
 ): string {
 	const shape = [
 		'"beat":"试探"',
@@ -485,6 +636,17 @@ function buildSystemPrompt(
 		...(hasBits ? ['"bits":[]'] : []),
 		...(hasConditions
 			? ['"conditions":[{"id":"…","matched":true,"reason":"…"}]']
+			: []),
+		...(parts.options ? ['"options":["我先把信收好","问她刚才去了哪里"]'] : []),
+		...(parts.events
+			? [
+					'"events":[{"text":"凛把信交给了老师","participants":["凛","老师"],"knowers":["凛","老师"],"importance":0.6,"quote":"原文里的原句"}]',
+				]
+			: []),
+		...(parts.will
+			? [
+					'"will":[{"kind":"preference","text":"剧情保持轻松","sourceQuote":"玩家原话"}]',
+				]
 			: []),
 	];
 	return [
@@ -511,6 +673,21 @@ function buildSystemPrompt(
 					"- conditions：对给定文本条件的判断，必须为每一条给出恰好一条记录，id 与输入完全一致。",
 				]
 			: []),
+		...(parts.options
+			? [
+					`- options：玩家下一步可以直接发送的 ${OPTION_MIN} 到 ${OPTION_MAX} 条行动或台词，第一人称，具体到人和物，互不重复，不复述已经发生的事。`,
+				]
+			: []),
+		...(parts.events
+			? [
+					"- events：这一楼里之后仍可能被提起的事实性事件，没有就给空数组。knowers 为空数组表示公开；quote 逐字摘自这一楼的正文。用克制、中性的表述概括。",
+				]
+			: []),
+		...(parts.will
+			? [
+					"- will：只看最近一条玩家消息里玩家明确说出的、跨楼层仍然有效的偏好（preference）、底线（boundary）或纠正（correction）；角色台词与这一轮的具体行动不算；已经记录过的不要重复；sourceQuote 逐字摘自玩家原话。没有就给空数组。",
+				]
+			: []),
 		"命名空间与路径：",
 		...LEDGER_PATH_GUIDE,
 	].join("\n");
@@ -524,6 +701,7 @@ function buildUserContent(
 		readonly id: string;
 		readonly text: string;
 	}[],
+	knownWills: readonly string[] = [],
 ): string {
 	const lines: string[] = [
 		"当前台账快照（截至这一楼）：",
@@ -545,6 +723,10 @@ function buildUserContent(
 	if (conditions.length > 0) {
 		lines.push("", "待判断的文本条件：");
 		lines.push(JSON.stringify(conditions));
+	}
+	if (knownWills.length > 0) {
+		lines.push("", "已经记录过的玩家要求：");
+		for (const text of knownWills) lines.push(`- ${text}`);
 	}
 	return lines.join("\n");
 }
@@ -585,6 +767,16 @@ export function createSceneLogHandler(
 			item.floorIds.includes(nodeId),
 		);
 		const sceneStarts = segment !== undefined && segment.startNodeId === nodeId;
+		const parts = options.parts?.(store, job.storyId) ?? NO_SITUATION_PARTS;
+		// 用户意志只看紧挨这一楼的那条玩家消息；更早的消息已经被前面的楼层看过。
+		const lastPlayer = [...floors]
+			.reverse()
+			.find((item) => item.role === "user" && item.raw.trim().length > 0);
+		const players = lastPlayer === undefined ? [] : [lastPlayer];
+		const effective: SituationParts = {
+			...parts,
+			will: parts.will && players.length > 0,
+		};
 		const messages: LlmMessage[] = [
 			{
 				role: "system",
@@ -592,6 +784,7 @@ export function createSceneLogHandler(
 					bits.length > 0,
 					conditions.length > 0,
 					sceneStarts,
+					effective,
 				),
 			},
 			{
@@ -601,6 +794,7 @@ export function createSceneLogHandler(
 					floors,
 					bits,
 					conditions,
+					effective.will ? readExistingWills(store, nodeId).texts : [],
 				),
 			},
 		];
@@ -619,6 +813,8 @@ export function createSceneLogHandler(
 			sceneStarts,
 			bits,
 			conditions,
+			parts: effective,
+			players,
 		});
 		const window = prepareSettlementForNodes(store, job.storyId, [nodeId]);
 		if (window === null) {
@@ -674,6 +870,28 @@ export function createSceneLogHandler(
 			quotes: parsed.quotes,
 			repairs: [...parsed.repairs, ...(settlementRepairs ?? [])],
 		});
+		// 顺带的部分都挂在这一楼上：楼层被重写后它们随旧楼一起离开当前路径。
+		if (effective.options && parsed.options.length > 0) {
+			store.replaceDirectorCandidateActions({
+				storyId: job.storyId,
+				nodeId,
+				actions: parsed.options.map((text) => ({
+					kind: "action" as const,
+					text,
+				})),
+			});
+		}
+		if (effective.events) {
+			recordExtractedEvents(
+				store,
+				job.storyId,
+				{ floors: [node], span: [node], before: null, after: null },
+				[{ nodeId, events: parsed.events }],
+			);
+		}
+		if (effective.will && parsed.will.length > 0) {
+			applyCapturedUserWills(store, job.storyId, nodeId, parsed.will);
+		}
 	};
 }
 

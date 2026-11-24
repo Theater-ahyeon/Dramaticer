@@ -259,6 +259,9 @@ function findSceneNeedingArchive(
 	const scenes = readSceneSegments(store, head.id, maxSceneFloors);
 	for (const segment of scenes) {
 		if (segment.endNodeId === null || segment.boundary === null) continue;
+		// 场末整理滞后一楼：场末那一楼还是 head 时玩家仍可能重写它，等玩家在它
+		// 之后发出下一条输入再编译，免得重写造成重复编译（v5 §3.2）。
+		if (segment.endNodeId === head.id) continue;
 		const archive = store.getSceneArchive(segment.endNodeId);
 		if (archive === null) {
 			return {

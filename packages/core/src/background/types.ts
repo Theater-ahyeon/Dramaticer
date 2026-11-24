@@ -70,6 +70,10 @@ export interface BackgroundJob {
 	readonly createdAt: string;
 	readonly startedAt: string | null;
 	readonly finishedAt: string | null;
+	/** 累计实际发出的模型调用次数（含失败的执行）；旧数据为 0。 */
+	readonly llmCalls?: number;
+	/** 累计的 token（输入加输出）。 */
+	readonly llmTokens?: number;
 }
 
 export interface BackgroundJobContext {

@@ -35,14 +35,18 @@ export interface StoryJobsView {
 	/** 按最近一次错误时间倒序，最多 5 条。 */
 	readonly recentErrors: readonly StoryJobErrorView[];
 	/**
-	 * 后台调用次数（按任务尝试次数计），分三类：跟楼层走的、一次性的故事级任务（开局、
-	 * 导入分型、角色外观）、玩家开的插图。`floors` 是助手楼层数，用来算每楼平均。
+	 * 实际发出的后台模型调用次数，分三类（v5 §3.2 的预算口径）：计入每楼预算的
+	 * （局面更新、场末整理、章末清点、预跑）、一次性的导入任务（开局、导入分型、
+	 * 角色外观、原著导入）、玩家开的插图。`floors` 是助手楼层数，用来算每楼平均。
+	 * `*Tokens` 是对应调用的 token 合计。
 	 */
 	readonly calls: {
 		readonly perFloor: number;
 		readonly oneTime: number;
 		readonly images: number;
 		readonly floors: number;
+		readonly perFloorTokens: number;
+		readonly oneTimeTokens: number;
 	};
 }
 
