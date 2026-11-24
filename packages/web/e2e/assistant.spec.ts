@@ -1,10 +1,5 @@
 import { type Page, expect, test } from "@playwright/test";
-import {
-	createImportedStory,
-	login,
-	openStoryTab,
-	pathNodeCount,
-} from "./helpers";
+import { createImportedStory, login, pathNodeCount } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
 	await login(page);
@@ -37,7 +32,8 @@ async function pathHead(page: Page, storyId: string): Promise<string | null> {
 
 test("打开、关闭后继续运行、路由切换与刷新后恢复会话", async ({ page }) => {
 	const storyId = await createImportedStory(page, "助手抽屉");
-	await openStoryTab(page, storyId, "chat");
+	await page.goto(`/stories/${storyId}/play`);
+	await page.locator('[data-view="play"]').waitFor();
 	const nodesBefore = await pathNodeCount(page, storyId);
 	const headBefore = await pathHead(page, storyId);
 
@@ -54,7 +50,7 @@ test("打开、关闭后继续运行、路由切换与刷新后恢复会话", as
 	const badge = page.locator(".assistant-badge");
 	await expect(badge).toContainText("助手运行中");
 
-	await page.locator(".story-tabs").getByRole("link", { name: "台账" }).click();
+	await page.locator(".rail").getByRole("link", { name: "记忆" }).click();
 	await expect(badge).toContainText("助手运行中");
 	// 跑完之后状态徽标收起，从快捷键再打开。
 	await expect(badge).toHaveCount(0, { timeout: 20_000 });
@@ -82,7 +78,8 @@ test("打开、关闭后继续运行、路由切换与刷新后恢复会话", as
 
 test("刷新后从 status 与 after 续读正在运行的助手", async ({ page }) => {
 	const storyId = await createImportedStory(page, "助手重连");
-	await openStoryTab(page, storyId, "chat");
+	await page.goto(`/stories/${storyId}/play`);
+	await page.locator('[data-view="play"]').waitFor();
 	await openDrawer(page);
 	await newConversation(page);
 	await sendAssistantMessage(page, "慢速回答重连");
@@ -105,7 +102,8 @@ test("刷新后从 status 与 after 续读正在运行的助手", async ({ page 
 test("用量环与手动压缩显示摘要与省略来源", async ({ page }) => {
 	const storyId = "e2e-assistant-context";
 	const conversationId = "e2e-assistant-context-conversation";
-	await openStoryTab(page, storyId, "chat");
+	await page.goto(`/stories/${storyId}/play`);
+	await page.locator('[data-view="play"]').waitFor();
 	await openDrawer(page);
 	await page
 		.locator(".assistant-conversation-open", { hasText: "上下文压缩测试" })
@@ -148,7 +146,8 @@ test("用量环与手动压缩显示摘要与省略来源", async ({ page }) => 
 
 test("改名、搜索、删除与取消运行", async ({ page }) => {
 	const storyId = await createImportedStory(page, "助手会话管理");
-	await openStoryTab(page, storyId, "chat");
+	await page.goto(`/stories/${storyId}/play`);
+	await page.locator('[data-view="play"]').waitFor();
 	await openDrawer(page);
 
 	await newConversation(page);
@@ -187,7 +186,8 @@ test("改名、搜索、删除与取消运行", async ({ page }) => {
 
 test("待确认面板审阅动作与台账卡并同步数量", async ({ page }) => {
 	const storyId = `e2e-assistant-review-${test.info().project.name}`;
-	await openStoryTab(page, storyId, "chat");
+	await page.goto(`/stories/${storyId}/play`);
+	await page.locator('[data-view="play"]').waitFor();
 	await expect(page.locator(".assistant-badge-count")).toHaveText("8");
 
 	await openDrawer(page);

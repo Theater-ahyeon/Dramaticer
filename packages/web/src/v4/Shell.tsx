@@ -137,17 +137,13 @@ export function Shell() {
 				? "settings"
 				: location.pathname.split("/")[3];
 	const viewIndex = NAV.findIndex((item) => item.view === current);
-	// 书架第 0 格，五个主页面第 1 到 5 格，「更多」第 6 格，全局设置最后一格。
+	// 书架第 0 格，五个主页面第 1 到 5 格，全局设置最后一格。
 	const activeIndex =
 		current === "library"
 			? 0
 			: current === "settings"
-				? NAV.length + 2
-				: viewIndex >= 0
-					? viewIndex + 1
-					: NAV.length + 1;
-	const onTools =
-		current !== "library" && current !== "settings" && viewIndex < 0;
+				? NAV.length + 1
+				: Math.max(viewIndex, 0) + 1;
 
 	const commands = useMemo(() => {
 		const visit = (path: string) => travel(path, () => navigate(path));
@@ -179,15 +175,7 @@ export function Shell() {
 			go("设置 · 写作", "prefs");
 			go("设置 · 功能", "prefs?tab=feat");
 			go("设置 · 模型", "prefs?tab=model");
-			go("导入卡或世界书", "import");
-			go("导入体检", "audit");
-			go("分支", "branches");
-			go("台账", "ledger");
-			go("连载", "serial");
-			go("导演面板", "director");
-			go("生图", "images");
-			go("高级设置", "settings");
-			go("旧版对话", "chat");
+			go("设置 · 高级", "prefs?tab=adv");
 		}
 		if (palette) {
 			for (const provider of pageCommands) {
@@ -266,14 +254,6 @@ export function Shell() {
 									{item.label}
 								</TLink>
 							))}
-							<TLink
-								className="nav"
-								to={base === null ? "/" : `${base}/import`}
-								aria-current={onTools ? "page" : undefined}
-							>
-								<i>匣</i>
-								更多
-							</TLink>
 							<TLink
 								className="nav"
 								to="/settings"

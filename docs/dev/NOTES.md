@@ -24,14 +24,13 @@
 - 场面卡与章级规划目标测试：`pnpm exec vitest run packages/core/test/scene-card.test.ts packages/core/test/chapter-plan.test.ts`。
 - 连载视图目标测试：`pnpm exec vitest run packages/core/test/serial.test.ts`。
 - 导出成书目标测试：`pnpm exec vitest run packages/core/test/serial-book.test.ts packages/server/test/serial.test.ts packages/web/test/api-client.test.ts`（server 用例先 `pnpm run typecheck`）。
-- 连载页面目标测试：`pnpm exec vitest run packages/web/test/serial-view.test.ts`。
-- 连载页 e2e：`cd packages/web && pnpm exec playwright test serial.spec.ts`（需要先构建 server 与 web）。
+- 连载 e2e：`cd packages/web && pnpm exec playwright test serial.spec.ts`；连载的四块数据只剩接口，导出在故事页标题旁「⋯」。
 - 玩家编辑变更卡与接口目标测试：`pnpm exec vitest run packages/core/test/ledger-cards.test.ts packages/server/test/panels.test.ts packages/web/test/api-client.test.ts`（server 用例先 `pnpm run typecheck`）。
 - 人物档案与知情标注目标测试：`pnpm exec vitest run packages/core/test/character-profile.test.ts packages/core/test/scene-archive.test.ts`。
 - 重逢注入目标测试：`pnpm exec vitest run packages/core/test/reunion.test.ts`。
 - 推进档位接口目标测试：`pnpm exec vitest run packages/server/test/turns.test.ts -t "推进档位"`（先 `pnpm run typecheck`）。
 - 重 roll 原因目标测试：`pnpm exec vitest run packages/core/test/reroll-reason.test.ts packages/core/test/preferences.test.ts packages/server/test/turns.test.ts packages/web/test/api-client.test.ts packages/web/test/push-reroll.test.ts`。
-- 推进与重 roll 的 e2e：`cd packages/web && pnpm exec playwright test chat.spec.ts`（需要先 `pnpm --filter @dramaticer/server... --filter @dramaticer/web... build`）。
+- 故事页的推进、重写、改这句、分支 e2e：`v5-composer.spec.ts`、`v4-story.spec.ts`；旧聊天页迁来的思考折叠、选项偏好、深度追加要求、场面控制在 `v5-play-extras.spec.ts`（都要先 `pnpm --filter @dramaticer/server... --filter @dramaticer/web... build`）。
 - 就地纠正与场面控制目标测试：`pnpm exec vitest run packages/core/test/scene-control.test.ts packages/server/test/branches.test.ts packages/server/test/turns.test.ts packages/web/test/scene-control.test.ts`。
 - 检定工具与工具注册表目标测试：`pnpm exec vitest run packages/core/test/rule-tool.test.ts packages/core/test/plugin-background-tools.test.ts packages/core/test/deep-tools.test.ts packages/web/test/deep-turn.test.ts`。
 - 结算与合并调用目标测试：`pnpm exec vitest run packages/core/test/ledger-settle.test.ts packages/core/test/gap-pass.test.ts`。
@@ -123,7 +122,7 @@
 - 写法对照的三种写法落在同一次运行里：快速是 `turnMode: "fast"` 且清掉 `writingMode`，规划是快速加 `writingMode: "plan"`，深度是 `turnMode: "deep"`。每个分支点、写法与重复各复制一份数据库，玩家消息固定不重新生成。胜率以快速为对照；矛盾率用各写法自己的台账探针，分母只含一致与矛盾；每楼调用数是写作客户端的非缓存请求数，含规划准备与深度工具往返。G0 未通过时 `turn-mode-compare` 在任何模型调用前失败。
 - 故事图片：`story_media` 是唯一的图片索引，文件不放进数据库；封面无图时永远返回占位图。
 - e2e 的 `serve.mjs` 启动时清空 `.devloop/scratch/e2e/work`；Playwright 的 mobile 与 desktop 两个项目共用同一个数据库，测试标题必须带唯一 id。`serial.spec.ts` 用固定故事 `e2e-serial`。
-- 台账页只在选中楼层后渲染故事级区块；e2e 要显示立绘得先给故事补一层。
+- 人物立绘显示在记事页百科条目标题旁（`.page img.portrait`），只有卡里带立绘的人物才有图；e2e 要显示立绘得先给故事补一层。
 - 合并后台调用（场记）必须先通过结算一致率对照才能切默认；`gapPassEnabled` 与 `sceneLogEnabled` 在对照通过前保持关闭。
 - 重 roll 的原因可以省略；界面先弹出六项原因，选中后才重写。原因进 swipe 载荷的 `reason`、写成一条来源为玩家的长期纠正，并以 system 消息追加在历史与导演之后（ADR-0149）。
 - 结构化 JSON 请求一律使用 `NO_CONTINUATION`；正文写作与散文类后台输出保留续写。
@@ -138,7 +137,7 @@
 - 渠道读取不返回密钥值；`propose_channels_change` 四个段必须给全。压缩记录只追加。
 - web 源码不能 import `@dramaticer/core` 的运行时值（会把 `better-sqlite3` 与 `node:*` 打进前端包导致整页白屏），类型导入可以；助手类型从 `@dramaticer/protocol` 取。
 - 上下文排布的设置只对内置默认模板生效；模板表单的 `SLOT_CHOICES` 必须覆盖 `CONTEXT_SLOT_NAMES` 的全部槽位。
-- 移动端工具导航是固定 10 列栅格（聊天、导入、体检、分支、台账、连载、导演、生图、设置、渠道）；新增 tab 时同步改 `styles.css` 的 `repeat(10, …)` 与 `v4/StoryTool.tsx` 的 `TABS`。
+- 手机底栏 7 项（书架、故事、记忆、大纲、设定、设置、全局）；增删导航时同步改 `v4.css` 里 `.navs .ind` 的 `calc(100% / 7)` 与 `v4-shell.spec.ts` 的数量。
 - 深度的故事数据文件树由 `tools/workspace-tools.ts` 从存储现算，故事文件只读；只有 `草稿.md` 能写与打补丁。新增文件要同时出现在 `listWorkspacePaths` 与 `readWorkspaceFile`，路径改动要同步 `web/src/chat/deep-turn.ts` 的工具文字。
 
 ## 导演（2026-11-15 起）
@@ -176,7 +175,7 @@
 - 样式的先后顺序是定死的：`main.tsx` 先引 `styles.css`，再引 `App`（带进 `v4.css`）。`v4.css` 里有全局的 `button`、`input` 基础样式和工具页的覆盖规则，顺序反了旧规则会盖回来。颜色变量写在 `html:root` 上，旧页面的 `--surface`、`--text` 等也在这里接到新变量。
 - 带 `backdrop-filter` 的玻璃面板不要加三维变换（`perspective`、`rotateX/Y`），否则模糊会失效；要倾斜就只倾斜里面的图。
 - 场景的着色器直接输出显示用的颜色，`scene.ts` 里关了 three 的色彩管理；天空和水面的倒影共用 `skyColor`，改天空要两边一起看。机器带不动时场景会自己降渲染分辨率。
-- 新页面与工具面板都在 `v4/`：主页面是 `v4/*.tsx`，仍在用的旧工具面板在 `v4/panels/`，由 `v4/StoryTool.tsx` 提供助手抽屉与 `.story-content` 外壳。目录不要命名为 `tools/`，biome 的忽略规则会跳过它。
+- 新页面都在 `v4/`（ui-v2/05 起没有 `v4/panels/` 与 `StoryTool`）：主页面是 `v4/*.tsx`；从旧面板留下来复用的组件也在 `v4/`——`AdvancedSettings`（本故事设置的「高级」分页）、`ImageSettings`（`storyId` 为 null 时是全局设置里的生图后端与 workflow，否则是设定页的视觉档案）、`ImportInto`（设定页里展开的导入）、`ChannelsAdvanced`。旧面板的样式仍在 `v4/panels.css`。目录不要命名为 `tools/`，biome 的忽略规则会跳过它。
 - 承载内容的大块统一用「玻璃面板」那组选择器；新加页面的容器要加进去，否则文字直接落在动的背景上。
 - 系统设了「减少动效」时：背景不跑循环，只在换页时重画；转场和入场动画关闭。新加动效要守这一条。
 - 给新界面截图：起 `node e2e/serve.mjs`，用 Playwright 的 chromium 加 `--enable-unsafe-swiftshader` 才有 WebGL。

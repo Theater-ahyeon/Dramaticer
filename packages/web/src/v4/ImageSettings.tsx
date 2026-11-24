@@ -6,8 +6,7 @@ import type {
 	StoryVisualProfilesView,
 } from "@dramaticer/protocol";
 import { type ReactNode, useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
-import { api } from "../../api";
+import { api } from "../api";
 import {
 	IMAGE_SLOT_LABELS,
 	IMAGE_SLOT_NAMES,
@@ -20,9 +19,9 @@ import {
 	resolveImportSlots,
 	slotRefLabel,
 	workflowNameFromFile,
-} from "../../chat/image-form";
-import { settingsErrorsFromFailure } from "../../chat/settings-form";
-import { ErrorNotice } from "../../components/ErrorNotice";
+} from "../chat/image-form";
+import { settingsErrorsFromFailure } from "../chat/settings-form";
+import { ErrorNotice } from "../components/ErrorNotice";
 import { NovelAiTemplateForm } from "./NovelAiTemplate";
 
 type VisualProfile = StoryVisualProfilesView["profiles"][number];
@@ -86,8 +85,13 @@ function ProviderRow({ provider }: { readonly provider: ImageProviderView }) {
 	);
 }
 
-export function ImagesTool() {
-	const { storyId } = useParams();
+/** 生图配置。全局设置里显示后端与 workflow，设定页里显示这个故事的视觉档案。 */
+export function ImageSettings({
+	storyId,
+}: {
+	readonly storyId: string | null;
+}) {
+	const part = storyId === null ? "backends" : "profiles";
 	const [providers, setProviders] = useState<readonly ImageProviderView[]>([]);
 	const [workflows, setWorkflows] = useState<readonly ImageWorkflowView[]>([]);
 	const [profiles, setProfiles] = useState<readonly VisualProfile[]>([]);
@@ -111,25 +115,28 @@ export function ImagesTool() {
 	};
 
 	const reloadProfiles = async (): Promise<void> => {
-		if (storyId === undefined) return;
+		if (storyId === null) return;
 		const view = await api.getVisualProfiles(storyId);
 		setProfiles(view.profiles);
 	};
 
 	useEffect(() => {
-		if (storyId === undefined) return;
 		let active = true;
 		setLoadError(null);
 		void (async () => {
 			try {
-				const [providerView, workflowView, profileView] = await Promise.all([
-					api.getImageProviders(),
-					api.getImageWorkflows(),
-					api.getVisualProfiles(storyId),
-				]);
+				if (storyId === null) {
+					const [providerView, workflowView] = await Promise.all([
+						api.getImageProviders(),
+						api.getImageWorkflows(),
+					]);
+					if (!active) return;
+					setProviders(providerView.providers);
+					setWorkflows(workflowView.workflows);
+					return;
+				}
+				const profileView = await api.getVisualProfiles(storyId);
 				if (!active) return;
-				setProviders(providerView.providers);
-				setWorkflows(workflowView.workflows);
 				setProfiles(profileView.profiles);
 			} catch (error) {
 				if (active) setLoadError(error);
@@ -238,7 +245,7 @@ export function ImagesTool() {
 	};
 
 	const regenerateProfiles = (): void => {
-		if (storyId === undefined || profileBusy) return;
+		if (storyId === null || profileBusy) return;
 		setProfileBusy(true);
 		setErrors([]);
 		setNotice(null);
@@ -265,214 +272,208 @@ export function ImagesTool() {
 			.finally(() => setProfileBusy(false));
 	};
 
-	if (storyId === undefined) {
-		return (
-			<section className="panel">
-				<p>地址里缺少故事 id。</p>
-			</section>
-		);
-	}
-
 	return (
 		<div className="settings-page image-page">
-			<header className="ledger-floor-head">
-				<h1>生图</h1>
-				<p className="ledger-meta">
-					ComfyUI workflow 与角色视觉档案；生图模式与频率在故事设置里。
-				</p>
-			</header>
 			<ErrorNotice error={loadError} />
-			<section className="director-section" aria-label="生图后端">
-				<header className="director-section-head">
-					<h2>生图后端</h2>
-					<span className="ledger-tag">{providers.length} 个 provider</span>
-				</header>
-				{providers.length === 0 ? (
-					<p className="muted">
-						没有配置生图后端。把 `data/images.yaml` 放到服务端并重启后可用。
-					</p>
-				) : (
-					<ul className="image-provider-list">
-						{providers.map((provider) => (
-							<ProviderRow key={provider.id} provider={provider} />
-						))}
-					</ul>
-				)}
-			</section>
-			<section className="director-section" aria-label="导入 workflow">
-				<header className="director-section-head">
-					<h2>导入 workflow</h2>
-				</header>
-				<div className="settings-grid">
-					<Field label="workflow JSON 文件">
-						<input
-							type="file"
-							accept="application/json,.json"
-							onChange={(event) => {
-								const file = event.target.files?.[0];
-								event.target.value = "";
-								if (file !== undefined) handleFile(file);
-							}}
-							disabled={busy}
-						/>
-					</Field>
-					<Field label="workflow 名称">
-						<input
-							type="text"
-							value={name}
-							onChange={(event) => setName(event.target.value)}
-							disabled={busy}
-						/>
-					</Field>
-				</div>
-				{detection === null ? null : (
-					<>
-						<p className="muted">
-							自动识别完成。候选插槽必须逐项确认后才能保存
-							{detection.unresolved.length === 0
-								? "。"
-								: `；需要确认：${detection.unresolved
-										.map((slot) => IMAGE_SLOT_LABELS[slot])
-										.join("、")}。`}
-						</p>
+			{part === "backends" ? (
+				<>
+					<section className="director-section" aria-label="生图后端">
+						<header className="director-section-head">
+							<h2>生图后端</h2>
+							<span className="ledger-tag">{providers.length} 个 provider</span>
+						</header>
+						{providers.length === 0 ? (
+							<p className="muted">
+								没有配置生图后端。把 `data/images.yaml` 放到服务端并重启后可用。
+							</p>
+						) : (
+							<ul className="image-provider-list">
+								{providers.map((provider) => (
+									<ProviderRow key={provider.id} provider={provider} />
+								))}
+							</ul>
+						)}
+					</section>
+					<section className="director-section" aria-label="导入 workflow">
+						<header className="director-section-head">
+							<h2>导入 workflow</h2>
+						</header>
 						<div className="settings-grid">
-							{IMAGE_SLOT_NAMES.map((slot) => (
-								<Field key={slot} label={IMAGE_SLOT_LABELS[slot]}>
-									<select
-										value={selections[slot]}
-										onChange={(event) =>
-											updateSelection(slot, event.target.value)
-										}
-										disabled={busy}
-									>
-										<option value="">
-											{slot === "positive" || slot === "seed"
-												? "请选择"
-												: "不使用"}
-										</option>
-										{detection.candidates[slot].map((ref, index) => (
-											<option
-												key={`${ref.nodeId}-${ref.input}`}
-												value={String(index)}
+							<Field label="workflow JSON 文件">
+								<input
+									type="file"
+									accept="application/json,.json"
+									onChange={(event) => {
+										const file = event.target.files?.[0];
+										event.target.value = "";
+										if (file !== undefined) handleFile(file);
+									}}
+									disabled={busy}
+								/>
+							</Field>
+							<Field label="workflow 名称">
+								<input
+									type="text"
+									value={name}
+									onChange={(event) => setName(event.target.value)}
+									disabled={busy}
+								/>
+							</Field>
+						</div>
+						{detection === null ? null : (
+							<>
+								<p className="muted">
+									自动识别完成。候选插槽必须逐项确认后才能保存
+									{detection.unresolved.length === 0
+										? "。"
+										: `；需要确认：${detection.unresolved
+												.map((slot) => IMAGE_SLOT_LABELS[slot])
+												.join("、")}。`}
+								</p>
+								<div className="settings-grid">
+									{IMAGE_SLOT_NAMES.map((slot) => (
+										<Field key={slot} label={IMAGE_SLOT_LABELS[slot]}>
+											<select
+												value={selections[slot]}
+												onChange={(event) =>
+													updateSelection(slot, event.target.value)
+												}
+												disabled={busy}
 											>
-												{slotRefLabel(ref.nodeId, ref.input)}
-											</option>
-										))}
-									</select>
-								</Field>
-							))}
-						</div>
-						<div className="plan-toolbar">
-							<button type="button" onClick={saveWorkflow} disabled={busy}>
-								{busy ? "正在保存…" : "确认插槽并保存"}
-							</button>
-							<button type="button" onClick={resetImport} disabled={busy}>
-								取消
-							</button>
-						</div>
-					</>
-				)}
-			</section>
-			{providers.some((provider) => provider.api === "novelai") ? (
-				<NovelAiTemplateForm
-					providers={providers
-						.filter((provider) => provider.api === "novelai")
-						.map((provider) => provider.id)}
-					onSaved={() => void reloadWorkflows()}
-				/>
+												<option value="">
+													{slot === "positive" || slot === "seed"
+														? "请选择"
+														: "不使用"}
+												</option>
+												{detection.candidates[slot].map((ref, index) => (
+													<option
+														key={`${ref.nodeId}-${ref.input}`}
+														value={String(index)}
+													>
+														{slotRefLabel(ref.nodeId, ref.input)}
+													</option>
+												))}
+											</select>
+										</Field>
+									))}
+								</div>
+								<div className="plan-toolbar">
+									<button type="button" onClick={saveWorkflow} disabled={busy}>
+										{busy ? "正在保存…" : "确认插槽并保存"}
+									</button>
+									<button type="button" onClick={resetImport} disabled={busy}>
+										取消
+									</button>
+								</div>
+							</>
+						)}
+					</section>
+					{providers.some((provider) => provider.api === "novelai") ? (
+						<NovelAiTemplateForm
+							providers={providers
+								.filter((provider) => provider.api === "novelai")
+								.map((provider) => provider.id)}
+							onSaved={() => void reloadWorkflows()}
+						/>
+					) : null}
+					<section className="director-section" aria-label="workflow 列表">
+						<header className="director-section-head">
+							<h2>已保存的 workflow</h2>
+							<span className="ledger-tag">{workflows.length} 个</span>
+						</header>
+						{workflows.length === 0 ? (
+							<p className="muted">还没有保存 workflow。</p>
+						) : (
+							<ul className="image-workflow-list">
+								{workflows.map((record) => (
+									<li
+										className="image-workflow-card"
+										key={record.id}
+										data-workflow={record.name}
+									>
+										<div className="image-workflow-head">
+											<strong>{record.name}</strong>
+											<span className="ledger-tag">{record.provider}</span>
+										</div>
+										<p className="ledger-meta">
+											{describeWorkflowSlots(record)}
+										</p>
+										<p className="muted">更新于 {record.updatedAt}</p>
+										<button
+											type="button"
+											className="plan-remove"
+											onClick={() => deleteWorkflow(record)}
+											disabled={deletingId !== null}
+										>
+											{deletingId === record.id ? "正在删除…" : "删除"}
+										</button>
+									</li>
+								))}
+							</ul>
+						)}
+					</section>
+				</>
 			) : null}
-			<section className="director-section" aria-label="workflow 列表">
-				<header className="director-section-head">
-					<h2>已保存的 workflow</h2>
-					<span className="ledger-tag">{workflows.length} 个</span>
-				</header>
-				{workflows.length === 0 ? (
-					<p className="muted">还没有保存 workflow。</p>
-				) : (
-					<ul className="image-workflow-list">
-						{workflows.map((record) => (
-							<li
-								className="image-workflow-card"
-								key={record.id}
-								data-workflow={record.name}
-							>
-								<div className="image-workflow-head">
-									<strong>{record.name}</strong>
-									<span className="ledger-tag">{record.provider}</span>
-								</div>
-								<p className="ledger-meta">{describeWorkflowSlots(record)}</p>
-								<p className="muted">更新于 {record.updatedAt}</p>
-								<button
-									type="button"
-									className="plan-remove"
-									onClick={() => deleteWorkflow(record)}
-									disabled={deletingId !== null}
-								>
-									{deletingId === record.id ? "正在删除…" : "删除"}
-								</button>
-							</li>
-						))}
-					</ul>
-				)}
-			</section>
-			<section className="director-section" aria-label="角色视觉档案">
-				<header className="director-section-head">
-					<h2>角色视觉档案</h2>
-					<span className="ledger-tag">{profiles.length} 人</span>
-				</header>
-				<div className="plan-toolbar">
-					<button
-						type="button"
-						onClick={regenerateProfiles}
-						disabled={profileBusy}
-					>
-						{profileBusy ? "正在入队…" : "重新生成视觉档案"}
-					</button>
-					<button
-						type="button"
-						onClick={refreshProfiles}
-						disabled={profileBusy}
-					>
-						刷新档案
-					</button>
-				</div>
-				{profiles.length === 0 ? (
-					<p className="muted">
-						还没有视觉档案；导入角色卡后会自动生成，也可以手动重新生成。
-					</p>
-				) : (
-					<ul className="image-profile-list">
-						{profiles.map((record) => (
-							<li className="image-profile-card" key={record.character}>
-								<div className="image-workflow-head">
-									<strong>{record.character}</strong>
-									<span className="ledger-tag">
-										{PROFILE_SOURCE_LABELS[record.source] ?? record.source}
-									</span>
-								</div>
-								<dl className="image-profile-fields">
-									<div>
-										<dt>基础外貌</dt>
-										<dd>{record.profile.base.join("、") || "未提供"}</dd>
+			{part === "profiles" ? (
+				<section className="director-section" aria-label="角色视觉档案">
+					<header className="director-section-head">
+						<h2>角色视觉档案</h2>
+						<span className="ledger-tag">{profiles.length} 人</span>
+					</header>
+					<div className="plan-toolbar">
+						<button
+							type="button"
+							onClick={regenerateProfiles}
+							disabled={profileBusy}
+						>
+							{profileBusy ? "正在入队…" : "重新生成视觉档案"}
+						</button>
+						<button
+							type="button"
+							onClick={refreshProfiles}
+							disabled={profileBusy}
+						>
+							刷新档案
+						</button>
+					</div>
+					{profiles.length === 0 ? (
+						<p className="muted">
+							还没有视觉档案；导入角色卡后会自动生成，也可以手动重新生成。
+						</p>
+					) : (
+						<ul className="image-profile-list">
+							{profiles.map((record) => (
+								<li className="image-profile-card" key={record.character}>
+									<div className="image-workflow-head">
+										<strong>{record.character}</strong>
+										<span className="ledger-tag">
+											{PROFILE_SOURCE_LABELS[record.source] ?? record.source}
+										</span>
 									</div>
-									<div>
-										<dt>默认服装</dt>
-										<dd>{record.profile.defaultOutfit}</dd>
-									</div>
-									<div>
-										<dt>负向标签</dt>
-										<dd>{record.profile.negative.join("、") || "无"}</dd>
-									</div>
-									<div>
-										<dt>更新时间</dt>
-										<dd>{record.updatedAt}</dd>
-									</div>
-								</dl>
-							</li>
-						))}
-					</ul>
-				)}
-			</section>
+									<dl className="image-profile-fields">
+										<div>
+											<dt>基础外貌</dt>
+											<dd>{record.profile.base.join("、") || "未提供"}</dd>
+										</div>
+										<div>
+											<dt>默认服装</dt>
+											<dd>{record.profile.defaultOutfit}</dd>
+										</div>
+										<div>
+											<dt>负向标签</dt>
+											<dd>{record.profile.negative.join("、") || "无"}</dd>
+										</div>
+										<div>
+											<dt>更新时间</dt>
+											<dd>{record.updatedAt}</dd>
+										</div>
+									</dl>
+								</li>
+							))}
+						</ul>
+					)}
+				</section>
+			) : null}
 			{errors.length > 0 ? (
 				<ul className="settings-errors" role="alert">
 					{errors.map((error, index) => (

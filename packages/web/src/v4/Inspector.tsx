@@ -1,12 +1,14 @@
 import type { ChannelProbeResult } from "@dramaticer/protocol";
 import { useEffect, useState } from "react";
-import { api } from "../api";
+import { ApiError, api } from "../api";
+import { type RunTimelineView, buildRunTimeline } from "../chat/run-timeline";
 import { RerollStats } from "./RerollStats";
 import { errorText, formatTokens, sp, useLoad } from "./ui";
 
 // 检视器：研发与排障用的数字都在这里，一级界面不放（v5 §8.1）。
 
 interface FloorCost {
+	readonly nodeId: string;
 	readonly no: number;
 	readonly cost: {
 		readonly input: number | null;
@@ -149,6 +151,9 @@ function StoryInspector({ storyId }: { readonly storyId: string }) {
 					</dl>
 				)}
 			</section>
+			{last === undefined ? null : (
+				<RunSection key={last.nodeId} nodeId={last.nodeId} />
+			)}
 			<section aria-label="上下文">
 				<h3>
 					上下文
@@ -223,6 +228,49 @@ function StoryInspector({ storyId }: { readonly storyId: string }) {
 				<RerollStats storyId={storyId} />
 			</section>
 		</>
+	);
+}
+
+/** 这一楼的运行记录：模型请求、工具调用、草稿与追加要求。快速写法不写运行记录。 */
+function RunSection({ nodeId }: { readonly nodeId: string }) {
+	const [view, setView] = useState<RunTimelineView | "none" | string | null>(
+		null,
+	);
+	useEffect(() => {
+		let active = true;
+		api
+			.getNodeRun(nodeId)
+			.then((run) => {
+				if (active) setView(buildRunTimeline(run));
+			})
+			.catch((error: unknown) => {
+				if (!active) return;
+				setView(
+					error instanceof ApiError && error.status === 404
+						? "none"
+						: errorText(error),
+				);
+			});
+		return () => {
+			active = false;
+		};
+	}, [nodeId]);
+	if (view === null || view === "none") return null;
+	return (
+		<section aria-label="运行记录">
+			<h3>运行记录 · {typeof view === "string" ? "" : view.statusLabel}</h3>
+			{typeof view === "string" ? (
+				<p className="v4err">{view}</p>
+			) : (
+				<ol className="insplist run-steps">
+					{view.rows.map((row) => (
+						<li key={row.seq}>
+							<b>{row.label}</b> {row.detail}
+						</li>
+					))}
+				</ol>
+			)}
+		</section>
 	);
 }
 

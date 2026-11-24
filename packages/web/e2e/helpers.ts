@@ -70,38 +70,21 @@ export async function createImportedStory(
 	return id;
 }
 
-export async function openStoryTab(
-	page: Page,
-	storyId: string,
-	tab:
-		| "chat"
-		| "branches"
-		| "ledger"
-		| "serial"
-		| "director"
-		| "settings"
-		| "channels",
-): Promise<void> {
-	await page.goto(`/stories/${storyId}/${tab}`);
-	await page.locator(".story-content").waitFor();
-}
-
+/** 在故事页发一轮并等它写完。调用前页面要停在 `/stories/:id/play`。 */
 export async function sendTurn(
 	page: Page,
 	storyId: string,
 	text: string,
 ): Promise<void> {
 	const before = await pathNodeCount(page, storyId);
-	const composer = page.getByLabel("玩家行动");
-	await composer.fill(text);
-	await composer.press("Enter");
+	await page.locator(".say textarea").fill(text);
+	await page.getByRole("button", { name: "发送" }).click();
 	await expect
 		.poll(() => pathNodeCount(page, storyId), { timeout: 30_000 })
-		.toBeGreaterThan(before);
-	await expect(page.locator(".composer-send")).toBeVisible({ timeout: 30_000 });
-	await expect(
-		page.locator(".floor-assistant").filter({ hasText: text }).last(),
-	).toBeVisible({ timeout: 30_000 });
+		.toBeGreaterThan(before + 1);
+	await expect(page.getByRole("button", { name: "停下" })).toHaveCount(0, {
+		timeout: 30_000,
+	});
 }
 
 export function readPreferenceCounts(storyId: string): Map<string, number> {

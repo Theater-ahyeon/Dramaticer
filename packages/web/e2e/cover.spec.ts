@@ -109,7 +109,7 @@ test.describe("卡面图与人物立绘", () => {
 		await login(page, PASSWORD);
 	});
 
-	test("PNG 卡在书架、游玩页、导入页显示封面，人物档案显示立绘", async ({
+	test("PNG 卡在书架、故事页、设定页显示封面，记事百科显示立绘", async ({
 		page,
 	}) => {
 		const id = `e2e-cover-${Date.now()}`;
@@ -117,15 +117,17 @@ test.describe("卡面图与人物立绘", () => {
 		await createStory(page, id, title);
 		const png = buildPngCard(PNG_CARD);
 
-		await page.goto(`/stories/${id}/import`);
-		await page.getByLabel("角色卡文件").setInputFiles({
+		await page.goto(`/stories/${id}/lore`);
+		await page.getByRole("button", { name: "导入", exact: true }).click();
+		const form = page.getByRole("region", { name: "导入" });
+		await form.getByLabel("角色卡文件").setInputFiles({
 			name: "card.png",
 			mimeType: "image/png",
 			buffer: png,
 		});
-		await page.getByRole("button", { name: "导入", exact: true }).click();
-		await expect(page.locator(".import-result h2")).toHaveText("林雪");
-		await expectImageLoaded(page.locator(".import-head img.story-cover"));
+		await form.getByRole("button", { name: "导入", exact: true }).click();
+		await expect(form.locator(".import-result h2")).toHaveText("林雪");
+		await expectImageLoaded(page.locator(`[data-view="lore"] img.cover`));
 		seedFloor(id);
 
 		const cover = await page.request.get(`/api/stories/${id}/media/cover`);
@@ -139,13 +141,12 @@ test.describe("卡面图与人物立绘", () => {
 		);
 		await expectImageLoaded(shelfCover);
 
-		await page.goto(`/stories/${id}/chat`);
-		await page.locator(".story-content").waitFor();
-		await expectImageLoaded(page.locator(".story-title-row img.story-cover"));
+		await page.goto(`/stories/${id}/play`);
+		await expectImageLoaded(page.locator(`[data-view="play"] img.cover`));
 
-		await page.goto(`/stories/${id}/ledger`);
-		await page.locator(".story-content").waitFor();
-		await expectImageLoaded(page.locator(".ledger-portrait"));
+		await page.goto(`/stories/${id}/memory`);
+		await page.locator(".plist button", { hasText: "林雪" }).first().click();
+		await expectImageLoaded(page.locator(".page img.portrait"));
 	});
 
 	test("没有卡面图的故事显示 2:3 占位图", async ({ page }) => {

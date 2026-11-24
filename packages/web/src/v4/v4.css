@@ -490,7 +490,7 @@ html.theme-swap img.cover {
 		gap: 0;
 	}
 	.navs .ind {
-		width: calc(100% / 8);
+		width: calc(100% / 7);
 		height: 100%;
 		transform: translateX(calc(var(--i, 0) * 100%));
 	}
@@ -1303,13 +1303,6 @@ img.cover {
 	height: 1px;
 	background: color-mix(in srgb, var(--gold) 35%, transparent);
 }
-.acts {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	gap: 4px;
-	padding: 0 24px 8px;
-}
 .writing {
 	display: inline-flex;
 	align-items: center;
@@ -1727,7 +1720,6 @@ img.cover {
 	.cmp .chip,
 	.cmp .tog,
 	.once > summary,
-	.acts .btn,
 	.dockbtn {
 		min-height: 44px;
 	}
@@ -1825,9 +1817,6 @@ img.cover {
 	.pushmark,
 	.why {
 		margin-inline: 18px;
-	}
-	.acts {
-		padding-inline: 10px;
 	}
 	.slate {
 		flex-wrap: wrap;
@@ -2851,81 +2840,6 @@ img.cover {
 }
 
 /* ---- 工具页（导入、分支、台账、渠道等旧面板，ui-lite/05 再细调） ---- */
-.app .story-layout {
-	display: flex;
-	flex-direction: column;
-	align-items: stretch;
-	gap: 18px;
-}
-.app .story-sidebar {
-	width: auto;
-	position: static;
-	display: flex;
-	flex-direction: column;
-	gap: 14px;
-	padding: 18px 22px;
-	border: 1px solid var(--line);
-	border-radius: var(--r-lg);
-	background: var(--sheet);
-	box-shadow: var(--shadow);
-}
-.app .story-heading > a {
-	font-size: var(--t-xs);
-	letter-spacing: 0.12em;
-	color: var(--muted);
-	text-decoration: none;
-}
-.app .story-heading h1 {
-	font: 400 var(--t-2xl) / var(--lh-tight) var(--f-display);
-	color: var(--ink);
-}
-.app .story-id {
-	font: 11px var(--f-data);
-	overflow-wrap: anywhere;
-}
-.app .story-cover {
-	height: auto;
-	border-radius: var(--r-sm);
-	border-color: var(--line);
-	box-shadow: var(--shadow);
-}
-.app .story-tabs {
-	position: static;
-	display: flex;
-	flex-direction: row;
-	flex-wrap: wrap;
-	gap: 6px;
-	padding: 0;
-	border: 0;
-	background: none;
-	overflow-x: auto;
-	scrollbar-width: none;
-}
-.app .story-tab {
-	flex: none;
-	padding: 6px 16px;
-	border: 1px solid var(--line);
-	border-radius: var(--r-pill);
-	background: var(--sheet);
-	color: var(--muted);
-	font-size: var(--t-sm);
-	text-decoration: none;
-	transition: color var(--dur), border-color var(--dur), background var(--dur);
-}
-.app .story-tab:hover {
-	color: var(--ink);
-	border-color: var(--line-strong);
-}
-.app .story-tab.active {
-	color: var(--on-cinnabar);
-	font-weight: 600;
-	border-color: var(--cinnabar);
-	background: var(--cinnabar);
-}
-.app .story-content {
-	padding-bottom: 0;
-	min-width: 0;
-}
 .panel {
 	position: relative;
 	border: 1px solid var(--line);
@@ -2942,7 +2856,6 @@ img.cover {
 	margin: 18vh auto 0;
 	text-align: center;
 }
-.app .story-content a,
 .panel a {
 	color: var(--cinnabar-ink);
 }
@@ -2950,32 +2863,6 @@ img.cover {
 	background: var(--bad-wash);
 	border-color: color-mix(in srgb, var(--bad) 40%, transparent);
 	border-radius: var(--r-md);
-}
-.badge,
-.ledger-badge,
-.branch-badge {
-	border: 1px solid var(--line);
-}
-.branch-badge,
-.serial-export,
-.ledger-badge {
-	color: var(--on-cinnabar);
-}
-.story-content form button[type="submit"],
-.serial-export {
-	border-color: var(--cinnabar);
-	background: var(--cinnabar);
-	color: var(--on-cinnabar);
-	font-weight: 600;
-}
-.story-content pre,
-.story-content code {
-	font-family: var(--f-data);
-}
-.story-content table th {
-	color: var(--muted);
-	font-weight: 500;
-	letter-spacing: 0.1em;
 }
 .block-whisper {
 	border-left-color: var(--muted);
@@ -2997,21 +2884,6 @@ img.cover {
 	border-color: var(--line);
 	background: var(--sheet);
 	color: var(--ink);
-}
-button.candidate-action,
-button.reroll-reason {
-	border-color: var(--line-strong);
-}
-.branch-row-on-path > .branch-row-inner {
-	background: var(--cinnabar-wash);
-}
-.branch-role-assistant {
-	background: var(--soft);
-	color: var(--ink);
-}
-.branch-confirm,
-.ledger-diff-delete {
-	background: var(--bad-wash);
 }
 /* 抽屉：从右侧滑出的一整张纸。 */
 .assistant-drawer {
@@ -3298,6 +3170,38 @@ button.reroll-reason {
 .pushmenu small {
 	color: var(--muted);
 	font-size: 12px;
+}
+/* 标题旁的「⋯」：导出、本故事设置、检视器；菜单向下展开。 */
+.headmenu {
+	position: relative;
+}
+.headmenu .pushmenu {
+	top: calc(100% + 6px);
+	bottom: auto;
+	min-width: 160px;
+}
+.pushmenu a {
+	padding: 8px 10px;
+	border-radius: var(--r-md);
+	color: var(--ink);
+	text-decoration: none;
+}
+.pushmenu a:hover,
+.pushmenu a:focus-visible {
+	background: var(--soft);
+}
+.scenectl {
+	display: inline-flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
+}
+.jumpto .v4in {
+	width: 120px;
+}
+#script > .older {
+	display: block;
+	margin: 12px auto 0;
 }
 .flr-acts {
 	display: flex;
@@ -3604,4 +3508,30 @@ div:hover > .flr-acts,
 		width: 100vw;
 		border-left: 0;
 	}
+}
+
+.page .portrait {
+	width: 48px;
+	height: 64px;
+	object-fit: cover;
+	border-radius: var(--r-md);
+	border: 1px solid var(--line);
+}
+
+/* 设定页里展开的导入：一张卡片，表单一行排开。 */
+.import-into {
+	margin: 4px 0 18px;
+	padding: 16px 18px;
+	border: 1px solid var(--line);
+	border-radius: var(--r-lg);
+	background: var(--sheet);
+}
+.import-into .import-form {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 12px 16px;
+	align-items: flex-end;
+}
+[data-view="lore"] .image-page {
+	margin-top: 22px;
 }

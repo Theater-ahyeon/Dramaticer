@@ -1,6 +1,6 @@
 import type { NovelAiParameters } from "@dramaticer/core";
 import { type ReactNode, useState } from "react";
-import { api } from "../../api";
+import { api } from "../api";
 
 // 与 core 的 DEFAULT_NOVELAI_PARAMETERS 一致；前端不引入 core 的运行时代码。
 const DEFAULTS: NovelAiParameters = {

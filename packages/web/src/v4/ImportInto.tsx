@@ -2,12 +2,10 @@ import type {
 	ImportStoryCounts,
 	ImportStoryRequest,
 	ImportStoryResult,
-	StoryView,
 } from "@dramaticer/protocol";
-import { type ChangeEvent, type FormEvent, useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { api } from "../../api";
-import { ErrorNotice } from "../../components/ErrorNotice";
+import { type ChangeEvent, type FormEvent, useState } from "react";
+import { api } from "../api";
+import { ErrorNotice } from "../components/ErrorNotice";
 
 type CardFile =
 	| { readonly format: "png"; readonly data: string }
@@ -16,42 +14,20 @@ type CardFile =
 			readonly data: string;
 	  };
 
-export function ImportTool() {
-	const { storyId } = useParams();
-	const [story, setStory] = useState<StoryView | null>(null);
+/** 往已有故事里再导入一张卡或世界书；设定页里展开使用。 */
+export function ImportInto({
+	storyId,
+	onDone,
+}: {
+	readonly storyId: string;
+	readonly onDone: () => void;
+}) {
 	const [cardFile, setCardFile] = useState<CardFile | null>(null);
 	const [worlds, setWorlds] = useState<readonly string[]>([]);
 	const [reading, setReading] = useState(false);
 	const [busy, setBusy] = useState(false);
 	const [result, setResult] = useState<ImportStoryResult | null>(null);
 	const [error, setError] = useState<unknown>(null);
-
-	useEffect(() => {
-		if (storyId === undefined) return;
-		let active = true;
-		setStory(null);
-		setResult(null);
-		setError(null);
-		api
-			.getStory(storyId)
-			.then((value) => {
-				if (active) setStory(value);
-			})
-			.catch((value: unknown) => {
-				if (active) setError(value);
-			});
-		return () => {
-			active = false;
-		};
-	}, [storyId]);
-
-	if (storyId === undefined) {
-		return (
-			<section className="panel">
-				<p>地址里缺少故事 id。</p>
-			</section>
-		);
-	}
 
 	const onCardChange = async (
 		event: ChangeEvent<HTMLInputElement>,
@@ -103,7 +79,7 @@ export function ImportTool() {
 			};
 			const imported = await api.importCard(storyId, request);
 			setResult(imported);
-			setStory(imported.story);
+			onDone();
 		} catch (value) {
 			setError(value);
 		} finally {
@@ -112,23 +88,7 @@ export function ImportTool() {
 	};
 
 	return (
-		<section className="panel">
-			<header className="import-head">
-				<img
-					className="story-cover story-cover-large"
-					src={api.storyCoverUrl(storyId)}
-					alt={`${story?.title ?? "故事"} 的封面`}
-					width={240}
-					height={360}
-				/>
-				<div>
-					<h1>{story?.title ?? "故事"} · 导入</h1>
-					<p className="muted">
-						封面取自卡片文件本身；没有图片的卡用按标题生成的占位图。导入只读取卡片与
-						世界书，不改写原文件。
-					</p>
-				</div>
-			</header>
+		<section className="import-into" aria-label="导入">
 			<ErrorNotice error={error} />
 			<form className="import-form" onSubmit={onSubmit}>
 				<label className="import-field">
@@ -151,21 +111,11 @@ export function ImportTool() {
 				<button type="submit" disabled={busy || reading || cardFile === null}>
 					{busy ? "导入中…" : "导入"}
 				</button>
-				<p className="muted">
-					{cardFile === null
-						? "还没有选择角色卡。"
-						: worlds.length === 0
-							? "已选择角色卡，没有额外的世界书。"
-							: `已选择角色卡与 ${worlds.length} 个世界书文件。`}
-				</p>
 			</form>
 			{result === null ? null : (
 				<div className="import-result">
 					<h2>{result.cardName}</h2>
 					<ImportCounts counts={result.imported} />
-					<Link className="import-audit-link" to={`/stories/${storyId}/audit`}>
-						查看导入体检
-					</Link>
 				</div>
 			)}
 		</section>

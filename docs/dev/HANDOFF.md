@@ -3,21 +3,17 @@
 > 每次收尾时完整重写，不超过 40 行。长期有效的注意事项写进 `docs/dev/NOTES.md`。
 
 ## 最近一次
-- 2026-11-24：**ui-v2/04 完成**：检视器（`v4/Inspector.tsx`）与助手挂到外壳（`v4/shell-actions.ts` 提供 `openAssistant`/`openInspector`）；一级界面去掉 token 与耗时数字；`StoryTool` 不再自带助手。
-- 2026-11-23 续：INBOX 两条已分拣（ADR-0170 / DESIGN 原则 12「面向所有玩家」；少解释文案写进 ui-v2 规格）。**ui-v2/03 完成**：导卡后开场白即首楼，开玩前可换开场白、选开局候选卡片、换一批（`core/src/opening/greetings.ts`）。
-- 2026-11-23（人工会话）。**ui-v2/02 完成**：故事页输入台与楼层操作（发送/推进切换、推进档位下拉、选项直发与铅笔填入、「⋯」收写法与批注且批注默认关、每楼重写/改这句/从这里分支/上下文、撤回导演安排二选一、标题旁分支下拉）；状态批注改人话（`routes-next.ts` 的 `stateNote`），状态块改短标签。
-- 人类会话中提了两条要求，已登记在 `INBOX.md` 未处理：
-  1. 前端少放解释性文案。已写进 `ui-v2/spec.md` 原则，故事页已收紧；其余页面（如停靠栏「还没有剧情线。写几楼之后…」）随 ui-v2 后续工单收。
-  2. 设计不能只以人类自己的数据为准，要面向所有玩家、避免过拟合个人习惯。已改 `ui-v2/spec.md` 的参照说明；**下个会话先分拣这条**：写 ADR 进 DESIGN 原则，复查 v5 提案与各规格里以人类本机数据为唯一依据的地方。
-- 门禁：`pnpm check` 通过（unit 298 文件）。全量 e2e 80 过、7 败；失败已逐个处理：a11y 与 v4-story 改用例并修了手机「本轮」浮层溢出；director/ledger/openings 单独重跑通过（当时与 `pnpm check` 并发争用）。故事页相关 5 个 spec 两个视口 17 过。
+- 2026-11-24（人工会话，人类要求「完成全部工作」，按 v5 顺序连续做）。
+- **ui-v2/05 完成**：拆除「更多」与 9 个旧面板、`StoryTool`、无人引用的组件与 CSS（`panels.css` 少了约 1800 行）。迁移去向：导入、插件残留转初始记忆、视觉档案 → 设定页；生图后端与 workflow → 全局设置；旧「故事设置」→ 本故事设置的「高级」分页；导出 → 故事页标题旁「⋯」；场面控制（结束这一场、跳到）→ 输入台「⋯」；深度写法运行中「追加」→ 输入台；运行记录 → 检视器；立绘 → 记事百科；故事页加了「更早的楼层」。变更卡与连载阅读视图只剩接口（v5 记事页会重做）。
+- e2e：被删面板的用例都迁移了（`v5-play-extras`、`branches`、`director`、`ledger`、`serial`、`pagination`、`cover`、`import-audit` 等），相关 71 个通过；`openings` 并发跑偶发失败、单跑通过（已知的后台队列积压）。
 
 ## 下一步
-1. `ui-v2/05` 拆除「更多」（手机上记事 / 设定页要补检视器与助手入口），之后按 `.scratch/README.md` 的 v5 顺序：ui-v2 03–05 → memory-v5 → canon → card-ui / image-v2 → ui-v2/06。
+1. `memory-v5/01`，之后按 `.scratch/README.md` 的 v5 顺序：memory-v5 → direction-v5 → canon → card-ui / image-v2 → ui-v2/06。
 
 ## 眼下要注意
-- 全量 e2e 后段桌面端 director / ledger / openings 会因后台队列积压假失败，单独重跑确认（见 NOTES「开场」）。导卡建的故事现在一开始就有 1 楼开场白。
-- 手机底栏现在 8 项（多了「全局」），`ui-v2/05` 拆「更多」后回到 7 项；`v4-shell.spec.ts` 的数量与 `.navs .ind` 宽度要一起改。
-- 手机上推进主按钮只写「推进」（档位文字 `.steplbl` 在窄屏隐藏）；楼层操作条在触屏常显。
+- 手机底栏现在 7 项；`.navs .ind` 是 `calc(100% / 7)`。
+- e2e 的 `helpers.sendTurn` 现在走故事页（`.say textarea` + 「发送」），调用前页面要停在 `/play`；`openStoryTab` 已删除。
+- 全量 e2e 后段桌面端 director / ledger / openings 会因后台队列积压假失败，单独重跑确认。
 - 读人类本机 ST 数据时：只用脚本列结构并打码；它只是参考样本之一。
 - 远端：只推 `main`；`backup/main-original` 与旧 `spec/*`、`ticket/*` 分支不要推。
 - server 读 core 的 `dist`：改了 core 导出后先构建 core；单跑 e2e 前先 `pnpm build`。

@@ -1,7 +1,9 @@
 import type { ImportEntryKind, ImportMode } from "@dramaticer/core";
 import { useEffect, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
+import { ImageSettings } from "./ImageSettings";
+import { ImportInto } from "./ImportInto";
 import {
 	Cover,
 	Seg,
@@ -26,6 +28,7 @@ interface Entry {
 	readonly edited: boolean;
 	readonly disabled: boolean;
 	readonly locked: boolean;
+	readonly memory: boolean;
 }
 
 interface LoreView {
@@ -77,6 +80,7 @@ export function Lore() {
 		[storyId],
 	);
 	const [filter, setFilter] = useState<string>("all");
+	const [importing, setImporting] = useState(false);
 	const [open, setOpen] = useState<string | null>(null);
 	const [draft, setDraft] = useState("");
 	const [preview, setPreview] = useState<{
@@ -205,15 +209,25 @@ export function Lore() {
 					>
 						恢复原卡
 					</button>
-					<Link
+					<button
+						type="button"
 						className="btn"
-						style={{ textDecoration: "none" }}
-						to={`/stories/${encodeURIComponent(storyId)}/import`}
+						aria-expanded={importing}
+						onClick={() => setImporting((value) => !value)}
 					>
 						导入
-					</Link>
+					</button>
 				</div>
 			</div>
+			{importing ? (
+				<ImportInto
+					storyId={storyId}
+					onDone={() => {
+						lore.reload();
+						story.reload();
+					}}
+				/>
+			) : null}
 			<div className="audit">
 				<div>
 					<div
@@ -294,6 +308,9 @@ export function Lore() {
 									</span>{" "}
 									{entry.edited ? (
 										<span className="pill gold">你改的</span>
+									) : null}
+									{entry.memory ? (
+										<span className="pill mute">初始记忆</span>
 									) : null}
 								</h3>
 								<div className="when">
@@ -429,6 +446,29 @@ export function Lore() {
 									>
 										修改历史
 									</button>
+									{entry.kind === "plugin-residue" ? (
+										<button
+											type="button"
+											className="btn sm"
+											aria-pressed={entry.memory}
+											onClick={() =>
+												act(
+													() =>
+														api.updateImportAuditEntryMemory(
+															storyId,
+															entry.source,
+															{ memory: !entry.memory },
+														),
+													() => {
+														lore.reload();
+														toast(entry.memory ? "已撤销" : "已转为初始记忆");
+													},
+												)
+											}
+										>
+											{entry.memory ? "撤销转换" : "转为初始记忆"}
+										</button>
+									) : null}
 									{entry.edited || entry.disabled ? (
 										<button
 											type="button"
@@ -512,6 +552,7 @@ export function Lore() {
 					</div>
 				</>
 			) : null}
+			<ImageSettings storyId={storyId} />
 		</section>
 	);
 }

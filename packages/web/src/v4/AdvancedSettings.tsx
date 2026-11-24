@@ -5,16 +5,16 @@ import type {
 	StoryTemplateView,
 } from "@dramaticer/protocol";
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { api } from "../../api";
+import { Link } from "react-router-dom";
+import { api } from "../api";
 import {
 	DIRECTOR_INTENSITY_CHOICES,
 	DIRECTOR_MODE_CHOICES,
-} from "../../chat/director-view";
+} from "../chat/director-view";
 import {
 	IMAGE_MODE_CHOICES,
 	type ImageSettingsDraft,
-} from "../../chat/image-form";
+} from "../chat/image-form";
 import {
 	DEEP_NUMBER_FIELDS,
 	DIRECTOR_NUMBER_FIELDS,
@@ -34,15 +34,15 @@ import {
 	describeSettingsPath,
 	parseSettingsDraft,
 	settingsErrorsFromFailure,
-} from "../../chat/settings-form";
+} from "../chat/settings-form";
 import {
 	type TemplateFormDraft,
 	buildContextTemplate,
 	templateDraftFrom,
 	validateTemplateDraft,
-} from "../../chat/template-form";
-import { ErrorNotice } from "../../components/ErrorNotice";
-import { TemplateEditor } from "../../components/settings/TemplateEditor";
+} from "../chat/template-form";
+import { ErrorNotice } from "../components/ErrorNotice";
+import { TemplateEditor } from "../components/settings/TemplateEditor";
 
 const DEFAULT_TEMPLATE_NAME = "内置默认模板";
 
@@ -72,8 +72,8 @@ function Field({
 	);
 }
 
-export function SettingsTool() {
-	const { storyId } = useParams();
+/** 本故事设置的「高级」分页：模型参数、历史块、导演参数与上下文模板。 */
+export function AdvancedSettings({ storyId }: { readonly storyId: string }) {
 	const [settings, setSettings] = useState<StorySettings | null>(null);
 	const [draft, setDraft] = useState<SettingsFormDraft | null>(null);
 	const [templates, setTemplates] = useState<readonly ContextTemplateRecord[]>(
@@ -106,7 +106,6 @@ export function SettingsTool() {
 	const requestRef = useRef(0);
 
 	useEffect(() => {
-		if (storyId === undefined) return;
 		let active = true;
 		requestRef.current += 1;
 		setSettings(null);
@@ -155,7 +154,6 @@ export function SettingsTool() {
 	}, [storyId]);
 
 	const reload = async (): Promise<void> => {
-		if (storyId === undefined) return;
 		const request = requestRef.current + 1;
 		requestRef.current = request;
 		const [loadedSettings, list, view, workflows] = await Promise.all([
@@ -215,7 +213,7 @@ export function SettingsTool() {
 	};
 
 	const saveSettings = (): void => {
-		if (storyId === undefined || draft === null || settingsBusy) return;
+		if (draft === null || settingsBusy) return;
 		const parsed = parseSettingsDraft(draft);
 		setSettingsErrors(parsed.errors);
 		setSettingsSaved(false);
@@ -236,12 +234,7 @@ export function SettingsTool() {
 	};
 
 	const saveTemplate = (): void => {
-		if (
-			storyId === undefined ||
-			templateDraft === null ||
-			selectedTemplateId === null ||
-			templateBusy
-		) {
+		if (templateDraft === null || selectedTemplateId === null || templateBusy) {
 			return;
 		}
 		const errors = validateTemplateDraft(templateDraft);
@@ -267,7 +260,7 @@ export function SettingsTool() {
 	};
 
 	const copyTemplate = (): void => {
-		if (storyId === undefined || templateDraft === null || templateBusy) return;
+		if (templateDraft === null || templateBusy) return;
 		const name = copyName.trim();
 		if (name.length === 0) {
 			setTemplateErrors([{ path: "name", message: "新模板名称不能为空" }]);
@@ -294,7 +287,7 @@ export function SettingsTool() {
 	};
 
 	const applyTemplateChoice = (): void => {
-		if (storyId === undefined || draft === null || settingsBusy) return;
+		if (draft === null || settingsBusy) return;
 		setSettingsBusy(true);
 		void api
 			.updateSettings(storyId, {
@@ -343,10 +336,7 @@ export function SettingsTool() {
 	return (
 		<div className="settings-page">
 			<header className="ledger-floor-head">
-				<h1>故事设置</h1>
-				<p className="ledger-meta">
-					保存后下一回合生效；模板改动在保存模板或设为故事默认后生效。
-				</p>
+				<p className="ledger-meta">保存后下一轮生效。</p>
 			</header>
 			<ErrorNotice error={loadError} />
 			{settings === null || draft === null ? (
@@ -637,8 +627,8 @@ export function SettingsTool() {
 							</Field>
 						</div>
 						<p className="muted">
-							workflow 的导入与角色视觉档案在{" "}
-							<Link to="../images">生图面板</Link>。
+							workflow 在<Link to="/settings">设置</Link>
+							里导入；视觉档案在设定页。
 						</p>
 					</section>
 					<section className="director-section" aria-label="历史块策略">

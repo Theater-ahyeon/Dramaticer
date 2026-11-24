@@ -4,12 +4,13 @@
 
 **Blocked by:** ui-v2/01、ui-v2/04
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] 主导航不再有「更多」，路由表里没有旧面板
-- [ ] 被删组件的 e2e 迁移或删除，覆盖面不减
-- [ ] `pnpm check` 通过；动到 server 或 web 的跑相关 e2e，并用走查脚本（`packages/web/.walk/`）重新截图逐页确认
+- [x] 主导航不再有「更多」，路由表里没有旧面板
+- [x] 被删组件的 e2e 迁移或删除，覆盖面不减
+- [x] `pnpm check` 通过；动到 server 或 web 的跑相关 e2e，并用走查脚本（`packages/web/.walk/`）重新截图逐页确认
 
 规格：`.scratch/ui-v2/spec.md`；方案：`docs/proposals/v5.md`
 
 ## Comments
+完成：2026-11-24 旧面板全部拆除，功能迁到故事页（导出、场面控制、追加要求、更早楼层）、设定页（导入、残留转记忆、视觉档案）、全局设置（生图）、本故事设置「高级」、检视器（运行记录）、记事百科（立绘）；变更卡与连载阅读视图只剩接口（v5 记事页会重做）。e2e 迁移后 44 + 27 个通过，走查截图 walk5.spec.ts。

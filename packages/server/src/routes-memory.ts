@@ -581,6 +581,8 @@ function loreCopyView(options: ApiRouteOptions, storyId: string) {
 			edited: item.edited,
 			disabled: item.disabled,
 			locked: item.locked,
+			// 插件残留转成初始记忆后不再常驻，只在命中时按记忆带入。
+			memory: record?.memory === true,
 		};
 	});
 	const settings = store.getStorySettings(storyId);

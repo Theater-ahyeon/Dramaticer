@@ -6,6 +6,7 @@ import type {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
+import { AdvancedSettings } from "./AdvancedSettings";
 import { usePaletteCommands } from "./Shell";
 import { WritingEntries } from "./WritingEntries";
 import { type Theme, onThemeChange, setTheme, storedTheme } from "./stage";
@@ -110,6 +111,7 @@ const TABS = [
 	["write", "写作"],
 	["feat", "功能"],
 	["model", "模型"],
+	["adv", "高级"],
 ] as const;
 
 /** 设置页：写作选项、功能开关与档位、模型。 */
@@ -547,21 +549,9 @@ export function Prefs() {
 							选渠道和模型 ›
 						</Link>
 					</div>
-					<div className="dial">
-						<div>
-							<h3>高级设置</h3>
-							<p>上下文模板、导演的细项、出图工作流。</p>
-						</div>
-						<Link
-							className="btn"
-							style={{ textDecoration: "none" }}
-							to={`/stories/${encodeURIComponent(storyId)}/settings`}
-						>
-							打开 ›
-						</Link>
-					</div>
 				</div>
 			) : null}
+			{tab === "adv" ? <AdvancedSettings storyId={storyId} /> : null}
 		</section>
 	);
 }

@@ -59,14 +59,16 @@ test.describe("命令面板与手机全流程", () => {
 		await createStory(page, storyId);
 
 		// 导入：在窄屏上选卡、提交，并看到卡片自身的数量统计。
-		await page.goto(`/stories/${storyId}/import`);
-		await page.getByLabel("角色卡文件").setInputFiles({
+		await page.goto(`/stories/${storyId}/lore`);
+		await page.getByRole("button", { name: "导入", exact: true }).click();
+		const form = page.getByRole("region", { name: "导入" });
+		await form.getByLabel("角色卡文件").setInputFiles({
 			name: "lin-xue.json",
 			mimeType: "application/json",
 			buffer: Buffer.from(JSON.stringify(CARD), "utf8"),
 		});
-		await page.getByRole("button", { name: "导入", exact: true }).click();
-		await expect(page.locator(".import-result h2")).toHaveText("林雪");
+		await form.getByRole("button", { name: "导入", exact: true }).click();
+		await expect(form.locator(".import-result h2")).toHaveText("林雪");
 		await expectNoHorizontalOverflow(page);
 
 		// 命令面板：先跳到大纲，再回到故事页。

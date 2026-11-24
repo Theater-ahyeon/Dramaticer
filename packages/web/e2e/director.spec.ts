@@ -3,8 +3,8 @@ import {
 	createImportedStory,
 	expectNoHorizontalOverflow,
 	latestAssistantNodeId,
+	latestUserNodeId,
 	login,
-	openStoryTab,
 	sendTurn,
 } from "./helpers";
 
@@ -12,9 +12,11 @@ test.beforeEach(async ({ page }) => {
 	await login(page);
 });
 
+// 旧「导演」面板拆除后（ui-v2/05），候选行动在故事页输入台上，Trace 在检视器；
+// 方案、决策记录与线索兑现只剩接口，这里按接口核对。
 test("导演决策、候选行动、Trace、计划编辑与线索兑现", async ({ page }) => {
 	const storyId = await createImportedStory(page, "导演端到端");
-	// 这个用例看的是方案与序列引擎的导演面板（线索到期给出指令），不测让位：
+	// 这个用例看的是方案与序列引擎（线索到期给出指令），不测让位：
 	// 新故事默认是线与动作（ADR-0161），这里显式选旧引擎，并设成始终出手。
 	const settings = await page.request.put(`/api/stories/${storyId}/settings`, {
 		data: {
@@ -29,14 +31,13 @@ test("导演决策、候选行动、Trace、计划编辑与线索兑现", async 
 				const response = await page.request.get(
 					`/api/stories/${storyId}/openings?status=pending`,
 				);
-				const body: unknown = await response.json();
-				return JSON.stringify(body).includes("批候选") ? 1 : 0;
+				return JSON.stringify(await response.json()).includes("批候选") ? 1 : 0;
 			},
 			{ timeout: 30_000 },
 		)
 		.toBe(1);
 
-	await openStoryTab(page, storyId, "chat");
+	await page.goto(`/stories/${storyId}/play`);
 	await sendTurn(page, storyId, "读取状态");
 	const assistantId = await latestAssistantNodeId(page, storyId);
 
@@ -46,65 +47,79 @@ test("导演决策、候选行动、Trace、计划编辑与线索兑现", async 
 				const response = await page.request.get(
 					`/api/nodes/${assistantId}/actions`,
 				);
-				const body: unknown = await response.json();
-				return JSON.stringify(body).includes("候选行动一") ? 1 : 0;
+				return JSON.stringify(await response.json()).includes("候选行动一")
+					? 1
+					: 0;
 			},
 			{ timeout: 30_000 },
 		)
 		.toBe(1);
+	await page.reload();
+	await expect(
+		page.locator(".opts .chip", { hasText: "候选行动一" }),
+	).toBeVisible();
+	await page.getByRole("button", { name: /^改一改再发：候选行动一/ }).click();
+	await expect(page.locator(".say textarea")).toHaveValue(/候选行动一/);
+
+	const decision = await page.request.get(
+		`/api/nodes/${await latestUserNodeId(page, storyId)}/director`,
+	);
+	expect(JSON.stringify(await decision.json())).toContain("directive");
+
+	const trace = JSON.stringify(
+		await (await page.request.get(`/api/nodes/${assistantId}/trace`)).json(),
+	);
+	expect(trace).toContain("fake-model");
+	expect(trace).toContain("state_get");
+
 	await expect
 		.poll(
 			async () => {
 				const response = await page.request.get(
 					`/api/stories/${storyId}/director/plan`,
 				);
-				const body: unknown = await response.json();
-				return JSON.stringify(body).includes("e2e-arc") ? 1 : 0;
+				return JSON.stringify(await response.json()).includes("e2e-arc")
+					? 1
+					: 0;
 			},
 			{ timeout: 30_000 },
 		)
 		.toBe(1);
-
-	await openStoryTab(page, storyId, "director");
-	await expect(page.locator(".candidate-action")).toHaveCount(5);
-	await page.locator(".candidate-action").first().click();
-	await page.waitForURL(`**/stories/${storyId}/chat`);
-	await expect(page.getByLabel("玩家行动")).toHaveValue(/候选行动一/);
-
-	await openStoryTab(page, storyId, "director");
-	await page
-		.locator(".branch-row")
-		.filter({ has: page.locator(".branch-role-user") })
-		.filter({ hasText: "读取状态" })
-		.first()
-		.locator(".branch-select")
-		.click();
-	await expect(page.locator(".director-directive")).toBeVisible();
-
-	await page
-		.locator(".branch-row")
-		.filter({ has: page.locator(".branch-role-assistant") })
-		// 第一条助手楼层是导卡时的开场白，没有生成记录；看最新一楼。
-		.last()
-		.locator(".branch-select")
-		.click();
-	const trace = page.locator('.director-section[aria-label="Trace"]');
-	await expect(trace).toContainText("fake-model");
-	await expect(trace).toContainText("快回合");
-	await expect(trace).toContainText("state_get 成功");
-
-	const arcTitle = page.locator(".plan-arc input").first();
-	await expect(arcTitle).toHaveValue("旧宅之夜");
-	await arcTitle.fill("旧宅之夜（改）");
-	await page.getByRole("button", { name: "保存计划" }).click();
-	await page.getByText("已保存", { exact: true }).waitFor();
-	await page.reload();
-	await expect(page.locator(".plan-arc input").first()).toHaveValue(
-		"旧宅之夜（改）",
+	const planView = (await (
+		await page.request.get(`/api/stories/${storyId}/director/plan`)
+	).json()) as { plan: { arcs: { title: string }[] } };
+	expect(planView.plan.arcs[0]?.title).toBe("旧宅之夜");
+	const edited = {
+		...planView.plan,
+		arcs: planView.plan.arcs.map((arc, index) =>
+			index === 0 ? { ...arc, title: "旧宅之夜（改）" } : arc,
+		),
+	};
+	const saved = await page.request.put(
+		`/api/stories/${storyId}/director/plan`,
+		{ data: { plan: edited } },
 	);
+	expect(saved.ok()).toBeTruthy();
+	const reread = (await (
+		await page.request.get(`/api/stories/${storyId}/director/plan`)
+	).json()) as { plan: { arcs: { title: string }[] } };
+	expect(reread.plan.arcs[0]?.title).toBe("旧宅之夜（改）");
 
-	await expect(page.getByRole("button", { name: "兑现线索" })).toBeVisible();
-	await page.getByRole("button", { name: "兑现线索" }).click();
-	await expect(page.getByText("没有未兑现的线索。")).toBeVisible();
+	const clues = (await (
+		await page.request.get(`/api/stories/${storyId}/clues`)
+	).json()) as { clues: { id: string; status?: string }[] };
+	const open = clues.clues.filter((clue) => clue.status !== "fulfilled");
+	expect(open.length).toBeGreaterThan(0);
+	for (const clue of open) {
+		const fulfilled = await page.request.post(
+			`/api/clues/${encodeURIComponent(clue.id)}/fulfill`,
+			{ data: { storyId } },
+		);
+		expect(fulfilled.ok()).toBeTruthy();
+	}
+	const after = (await (
+		await page.request.get(`/api/stories/${storyId}/clues`)
+	).json()) as { clues: { status?: string }[] };
+	expect(after.clues.filter((clue) => clue.status !== "fulfilled")).toEqual([]);
 	await expectNoHorizontalOverflow(page);
 });

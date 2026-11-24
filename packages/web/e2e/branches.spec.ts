@@ -1,71 +1,53 @@
-import { type Page, expect, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import {
 	createImportedStory,
 	expectNoHorizontalOverflow,
+	latestAssistantNodeId,
 	login,
-	openStoryTab,
-	sendTurn,
 	totalNodeCount,
 } from "./helpers";
-
-function assistantRow(page: Page, text: string) {
-	return page
-		.locator(".branch-row")
-		.filter({ has: page.locator(".branch-role-assistant") })
-		.filter({ hasText: text })
-		.first()
-		.locator(".branch-select");
-}
 
 test.beforeEach(async ({ page }) => {
 	await login(page);
 });
 
-test("编辑与改写新建分支，旧楼层保留，head 可以切换回去", async ({ page }) => {
+// 旧「分支」面板拆除后（ui-v2/05），分支在故事页标题旁的下拉里切换。
+// 编辑与改写都新建楼层（I4），旧楼层保留在树里。
+test("编辑与改写新建分支，旧楼层保留，故事页的分支下拉能切换回去", async ({
+	page,
+}) => {
 	const storyId = await createImportedStory(page, "分支端到端");
-	await openStoryTab(page, storyId, "chat");
-	await sendTurn(page, storyId, "分支起点");
-	await openStoryTab(page, storyId, "branches");
-	await page.locator(".branch-select").first().waitFor();
+	const first = await latestAssistantNodeId(page, storyId);
+	const before = await totalNodeCount(page, storyId);
 
-	await assistantRow(page, "分支起点").click();
-	await page.getByRole("button", { name: "编辑正文" }).click();
-	await page.getByLabel("编辑后的正文").fill("编辑出来的新分支");
-	await page.getByRole("button", { name: "保存编辑" }).click();
-	await expect(
-		page.locator(".branch-preview", { hasText: "编辑出来的新分支" }),
-	).toBeVisible();
-	const afterEdit = await totalNodeCount(page, storyId);
+	const edited = await page.request.post(`/api/nodes/${first}/edit`, {
+		data: { text: "编辑出来的新分支" },
+	});
+	expect(edited.ok()).toBeTruthy();
+	const swiped = await page.request.post(`/api/nodes/${first}/swipe`, {
+		data: { text: "改写出来的分支" },
+	});
+	expect(swiped.ok()).toBeTruthy();
+	expect(await totalNodeCount(page, storyId)).toBe(before + 2);
 
-	await assistantRow(page, "分支起点").click();
-	await page.getByRole("button", { name: "改写（新建分支）" }).click();
-	await page.getByLabel("新分支的正文").fill("改写出来的分支");
-	await page.getByRole("button", { name: "新建分支", exact: true }).click();
-	await expect(
-		page.locator(".branch-preview", { hasText: "改写出来的分支" }),
-	).toBeVisible();
-	await expect
-		.poll(() => totalNodeCount(page, storyId))
-		.toBeGreaterThan(afterEdit);
+	await page.goto(`/stories/${storyId}/play`);
+	const branch = page.getByRole("combobox", { name: "分支" });
+	await expect(branch).toBeVisible();
+	const options = branch.locator("option");
+	await expect(options.filter({ hasText: "编辑出来的新分支" })).toHaveCount(1);
+	await expect(options.filter({ hasText: "改写出来的分支" })).toHaveCount(1);
 
-	await page
-		.locator(".branch-row")
+	const editedValue = await options
 		.filter({ hasText: "编辑出来的新分支" })
-		.first()
-		.locator(".branch-select")
-		.click();
-	const rawBeforeSwitch = await page.locator(".branch-detail-raw").innerText();
-	expect(rawBeforeSwitch).toContain("编辑出来的新分支");
-	await page.getByRole("button", { name: "切换到此楼层" }).click();
-	await page.getByRole("button", { name: "确认切换" }).click();
-	await expect(page.locator(".branch-row-head .branch-preview")).toContainText(
-		"编辑出来的新分支",
-	);
+		.getAttribute("value");
+	await branch.selectOption(editedValue ?? "");
+	await expect(page.locator("#script")).toContainText("编辑出来的新分支");
 
-	await assistantRow(page, "分支起点").click();
-	await expect(page.locator(".branch-detail-raw")).toContainText("分支起点");
-	await expect(page.locator(".branch-detail-raw")).not.toContainText(
-		"编辑出来的新分支",
-	);
+	const originalValue = await options
+		.filter({ hasText: "门外的雨" })
+		.getAttribute("value");
+	await branch.selectOption(originalValue ?? "");
+	await expect(page.locator("#script")).toContainText("门外的雨下了一整夜");
+	await expect(page.locator("#script")).not.toContainText("编辑出来的新分支");
 	await expectNoHorizontalOverflow(page);
 });

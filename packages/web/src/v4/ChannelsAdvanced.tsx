@@ -1,7 +1,7 @@
 import type { LlmModelProbe } from "@dramaticer/core";
 import type { ChannelsView } from "@dramaticer/protocol";
 import { type ReactNode, useEffect, useState } from "react";
-import { api } from "../../api";
+import { api } from "../api";
 import {
 	CHANNEL_API_CHOICES,
 	type ChannelFormDraft,
@@ -14,9 +14,9 @@ import {
 	newChannelDraft,
 	newModelDraft,
 	parseChannelsDraft,
-} from "../../chat/channels-form";
-import { settingsErrorsFromFailure } from "../../chat/settings-form";
-import { ErrorNotice } from "../../components/ErrorNotice";
+} from "../chat/channels-form";
+import { settingsErrorsFromFailure } from "../chat/settings-form";
+import { ErrorNotice } from "../components/ErrorNotice";
 
 function Field({
 	label,
@@ -91,7 +91,7 @@ function ProbeSummary({ probe }: { readonly probe: LlmModelProbe }) {
 	);
 }
 
-export function ChannelsTool() {
+export function ChannelsAdvanced() {
 	const [view, setView] = useState<ChannelsView | null>(null);
 	const [draft, setDraft] = useState<ChannelsFormDraft | null>(null);
 	const [loadError, setLoadError] = useState<unknown>(null);

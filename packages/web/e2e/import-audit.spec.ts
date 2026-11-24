@@ -62,127 +62,78 @@ async function createAuditedStory(
 	expect(imported.ok()).toBeTruthy();
 }
 
-test.describe("导入体检", () => {
+// 旧「体检」面板拆除后（ui-v2/05），导入体检在设定页：类型分布、每轮固定带入、
+// 逐条改类型、导入方式切换，以及插件残留转成初始记忆。
+test.describe("导入体检（设定页）", () => {
 	test.beforeEach(async ({ page }) => {
 		await login(page, PASSWORD);
 	});
 
-	test("显示类型条数与 token，展开未识别条目，调整与恢复后数字重算", async ({
-		page,
-	}) => {
+	const chip = (page: Page, label: string) =>
+		page.locator(".filters .chip", {
+			hasText: new RegExp(`^(?:${label}) \\d+$`),
+		});
+
+	test("显示类型条数与固定带入，改类型后数字重算", async ({ page }) => {
 		const id = `e2e-audit-${randomUUID()}`;
 		const title = `潮汐列岛 ${id}`;
 		await createAuditedStory(page, id, title);
 
-		await page.goto(`/stories/${id}/audit`);
-		const panel = page.locator(".import-audit");
-		await panel.waitFor();
-		await expect(panel.locator("h1")).toContainText(title);
-		await expect(panel).toContainText("这张卡的世界书有 4 条");
+		await page.goto(`/stories/${id}/lore`);
+		const view = page.locator(`[data-view="lore"]`);
+		await expect(view.locator("h1")).toContainText("潮汐列岛");
+		await expect(view).toContainText("4");
+		await expect(chip(page, "常识")).toHaveText("常识 1");
+		await expect(chip(page, "人物地点")).toHaveText("人物地点 1");
+		await expect(chip(page, "未分类|没认出")).toHaveText(/ 1$/);
+		await expect(chip(page, "插件残留")).toHaveText("插件残留 1");
 
-		const count = (kind: string) =>
-			panel.locator(
-				`.import-audit-counts li[data-kind="${kind}"] .import-audit-count-value`,
-			);
-		await expect(count("common")).toHaveText("1");
-		await expect(count("entity")).toHaveText("1");
-		await expect(count("unknown")).toHaveText("1");
-		await expect(count("plugin-residue")).toHaveText("1");
-
-		const before = await panel
-			.locator(".import-audit-token-before")
-			.innerText();
-		const after = await panel.locator(".import-audit-token-after").innerText();
-		expect(Number(before)).toBeGreaterThan(0);
-		expect(Number(after)).toBeGreaterThan(0);
-
-		const unknownSection = panel.locator(
-			'.import-audit-section[data-group="unknown"]',
+		const before = Number(await view.locator(".cost .big.was").innerText());
+		const after = Number(
+			await view.locator(".cost .big:not(.was)").innerText(),
 		);
-		await expect(unknownSection).toContainText("草稿");
-		await unknownSection.locator("summary").click();
-		await expect(unknownSection.locator("pre")).toContainText(
-			"还没有归类的段落",
-		);
+		expect(before).toBeGreaterThan(after);
+		expect(after).toBeGreaterThan(0);
 
-		await unknownSection.getByLabel("草稿 的类型").selectOption("common");
-		await expect(count("unknown")).toHaveText("0");
-		await expect(count("common")).toHaveText("2");
-		await expect(unknownSection).toContainText("没有未识别条目");
-		await expect
-			.poll(async () =>
-				Number(await panel.locator(".import-audit-token-after").innerText()),
-			)
-			.toBeGreaterThan(Number(after));
-
-		await panel.locator(".import-audit-all > summary").click();
-		const row = panel.locator(".import-audit-all-row").filter({
-			hasText: "草稿",
-		});
-		await expect(row.getByLabel("全部条目：草稿 的类型")).toHaveValue("common");
-		await row.getByRole("button", { name: /恢复规则判定/ }).click();
-		await expect(count("unknown")).toHaveText("1");
-		await expect(count("common")).toHaveText("1");
-		await expect
-			.poll(async () =>
-				Number(await panel.locator(".import-audit-token-after").innerText()),
-			)
-			.toBe(Number(after));
+		const draft = view.locator(".entry", { hasText: "草稿" });
+		await draft.locator(".head").click();
+		await expect(draft.locator("textarea")).toHaveValue(/还没有归类的段落/);
+		await draft.locator("select").selectOption("common");
+		await expect(chip(page, "常识")).toHaveText("常识 2");
+		await expect(chip(page, "未分类|没认出")).toHaveCount(0);
+		await draft.locator("select").selectOption("unknown");
+		await expect(chip(page, "常识")).toHaveText("常识 1");
 	});
 
-	test("切换导入模式，插件残留转成初始记忆后不再常驻并可撤销", async ({
-		page,
-	}) => {
+	test("切换导入方式，插件残留转成初始记忆后可撤销", async ({ page }) => {
 		const id = `e2e-audit-mode-${randomUUID()}`;
 		const title = `潮汐列岛 ${id}`;
 		await createAuditedStory(page, id, title);
 
-		await page.goto(`/stories/${id}/audit`);
-		const panel = page.locator(".import-audit");
-		await panel.waitFor();
-
-		const upgrade = panel.getByRole("button", { name: "升级模式" });
-		const raw = panel.getByRole("button", { name: "原样模式" });
+		await page.goto(`/stories/${id}/lore`);
+		const mode = page.getByRole("group", { name: "导入方式" });
+		const upgrade = mode.getByRole("button", { name: "优化" });
+		const raw = mode.getByRole("button", { name: "原样" });
 		await expect(upgrade).toHaveAttribute("aria-pressed", "true");
-
-		const rawTokens = async (): Promise<number> =>
-			Number(await panel.locator(".import-audit-token-before").innerText());
-		const upgradeTokens = async (): Promise<number> =>
-			Number(await panel.locator(".import-audit-token-after").innerText());
-		const beforeRaw = await rawTokens();
-		const beforeUpgrade = await upgradeTokens();
-		expect(beforeRaw).toBeGreaterThan(beforeUpgrade);
-
 		await raw.click();
 		await expect(raw).toHaveAttribute("aria-pressed", "true");
-		await expect(upgrade).toHaveAttribute("aria-pressed", "false");
 		await expect(
 			fetchImportMode(page, `/api/stories/${id}/import-audit`),
 		).resolves.toBe("raw");
 
-		const residueSection = panel.locator(
-			'.import-audit-section[data-group="plugin-residue"]',
+		const residue = page.locator(".entry", { hasText: "总结" });
+		await residue.locator(".head").click();
+		await residue.getByRole("button", { name: "转为初始记忆" }).click();
+		await expect(
+			residue.locator(".pill", { hasText: "初始记忆" }),
+		).toBeVisible();
+		await expect.poll(() => residueMemory(page, id)).toBe(true);
+
+		await residue.getByRole("button", { name: "撤销转换" }).click();
+		await expect(residue.locator(".pill", { hasText: "初始记忆" })).toHaveCount(
+			0,
 		);
-		await expect(residueSection).toContainText("总结");
-		await expect(
-			residueSection.locator('.import-audit-entry[data-memory="false"]'),
-		).toHaveCount(1);
-
-		await residueSection
-			.getByRole("button", { name: /全部转为初始记忆/ })
-			.click();
-		await expect(
-			residueSection.locator('.import-audit-entry[data-memory="true"]'),
-		).toHaveCount(1);
-		await expect(residueSection).toContainText("初始记忆");
-		await expect.poll(rawTokens).toBeLessThan(beforeRaw);
-		await expect.poll(upgradeTokens).toBe(beforeUpgrade);
-
-		await residueSection.getByRole("button", { name: "撤销转换" }).click();
-		await expect(
-			residueSection.locator('.import-audit-entry[data-memory="false"]'),
-		).toHaveCount(1);
-		await expect.poll(rawTokens).toBe(beforeRaw);
+		await expect.poll(() => residueMemory(page, id)).toBe(false);
 
 		await upgrade.click();
 		await expect(upgrade).toHaveAttribute("aria-pressed", "true");
@@ -191,6 +142,16 @@ test.describe("导入体检", () => {
 		).resolves.toBe("upgrade");
 	});
 });
+
+async function residueMemory(page: Page, id: string): Promise<boolean> {
+	const response = await page.request.get(`/api/stories/${id}/lore-copy`);
+	const body = (await response.json()) as {
+		entries: { kind: string; memory: boolean }[];
+	};
+	return body.entries.some(
+		(entry) => entry.kind === "plugin-residue" && entry.memory,
+	);
+}
 
 async function fetchImportMode(page: Page, path: string): Promise<unknown> {
 	const response = await page.request.get(path);

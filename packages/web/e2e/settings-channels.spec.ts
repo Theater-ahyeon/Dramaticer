@@ -4,7 +4,6 @@ import {
 	createImportedStory,
 	expectNoHorizontalOverflow,
 	login,
-	openStoryTab,
 } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
@@ -13,8 +12,8 @@ test.beforeEach(async ({ page }) => {
 
 test("故事设置保存后刷新仍在，模板复制后编辑并保存", async ({ page }) => {
 	const storyId = await createImportedStory(page, "设置端到端");
-	await openStoryTab(page, storyId, "settings");
-	await expect(page.getByRole("heading", { name: "故事设置" })).toBeVisible();
+	await page.goto(`/stories/${storyId}/prefs?tab=adv`);
+	await expect(page.getByLabel("上下文预算 token")).toBeVisible();
 
 	await page.getByLabel("上下文预算 token").fill("9000");
 	const deepCalls = page.getByLabel("深回合工具调用上限");

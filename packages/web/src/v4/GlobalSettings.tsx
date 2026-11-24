@@ -2,7 +2,8 @@ import type { ChannelsView } from "@dramaticer/protocol";
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { ChannelWizard } from "./ChannelWizard";
-import { ChannelsTool } from "./panels/Channels";
+import { ChannelsAdvanced } from "./ChannelsAdvanced";
+import { ImageSettings } from "./ImageSettings";
 import { type Theme, onThemeChange, setTheme, storedTheme } from "./stage";
 import { Seg, errorText } from "./ui";
 
@@ -13,7 +14,7 @@ const ROLE_LABELS: Readonly<Record<string, string>> = {
 	judge: "评测",
 };
 
-/** 全局设置：模型与渠道、外观。不属于任何一个故事。 */
+/** 全局设置：模型与渠道、生图、外观。不属于任何一个故事。 */
 export function GlobalSettings() {
 	const [view, setView] = useState<ChannelsView | null>(null);
 	const [error, setError] = useState<string | null>(null);
@@ -82,10 +83,15 @@ export function GlobalSettings() {
 						/>
 						<details className="advanced">
 							<summary>高级配置（多渠道、保底、岗位、嵌入模型）</summary>
-							<ChannelsTool key={advanced} />
+							<ChannelsAdvanced key={advanced} />
 						</details>
 					</>
 				) : null}
+			</div>
+
+			<div className="card-block">
+				<h2>生图</h2>
+				<ImageSettings storyId={null} />
 			</div>
 
 			<div className="card-block">

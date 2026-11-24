@@ -377,6 +377,18 @@ export function Memory() {
 									gap: 10,
 								}}
 							>
+								<img
+									key={page.id}
+									className="portrait"
+									src={api.storyPortraitUrl(storyId, page.name)}
+									alt={`${page.name}的立绘`}
+									width={48}
+									height={64}
+									// 只有卡里带立绘的人物才有图，其余页面不占位。
+									onError={(event) => {
+										event.currentTarget.hidden = true;
+									}}
+								/>
 								<h2>{page.name}</h2>
 								<span className="pill teal">{page.kind}</span>
 								{page.uptoFloor > 0 ? (

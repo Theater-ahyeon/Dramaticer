@@ -2,6 +2,7 @@ import type { RerollReason, StoryFeatureSwitchView } from "@dramaticer/core";
 import { parseBlocks } from "@dramaticer/core/blocks";
 import {
 	type DisplayedContent,
+	type SceneControlRequest,
 	type SseEvent,
 	type StoryPath,
 	type StoryView,
@@ -29,6 +30,7 @@ import { stage } from "./stage";
 import {
 	Cover,
 	Seg,
+	TLink,
 	Tog,
 	errorText,
 	formatTokens,
@@ -141,6 +143,8 @@ interface Streaming {
 	readonly stages: readonly string[];
 	readonly checks: readonly string[];
 	readonly error: string | null;
+	/** 运行 id；有它才能在运行中追加要求。 */
+	readonly runId: string | null;
 }
 
 /** 输入台的「本轮」：几个影响这一轮怎么写的开关，只随下一次发送生效。 */
@@ -285,15 +289,20 @@ function collectOptions(items: readonly DisplayedContent[]): string[] {
 	return lines;
 }
 
+const PAGE = 60;
+
 /** 故事页：书页式正文、页边批注、玻璃输入台，右侧是停靠栏。 */
 export function Play() {
 	const { storyId = "" } = useParams();
 	const toast = useToast();
 	const shell = useShellActions();
 	const story = useLoad<StoryView>(() => api.getStory(storyId), [storyId]);
+	// 先读最近 60 楼；往上翻时一次多读 60 楼。
+	const [limit, setLimit] = useState(PAGE);
+	const olderRef = useRef(false);
 	const path = useLoad<StoryPath>(
-		() => api.getPath(storyId, { limit: 60 }),
-		[storyId],
+		() => api.getPath(storyId, { limit }),
+		[storyId, limit],
 	);
 	const floors = useLoad<FloorsView>(
 		() => api.get<FloorsView>(sp(storyId, "/floors")),
@@ -330,6 +339,8 @@ export function Play() {
 		}
 	});
 	const [moreOpen, setMoreOpen] = useState(false);
+	const [headMenu, setHeadMenu] = useState(false);
+	const [jumpTo, setJumpTo] = useState("");
 	const [pushMenu, setPushMenu] = useState(false);
 	const [fix, setFix] = useState<{
 		readonly nodeId: string;
@@ -459,6 +470,9 @@ export function Play() {
 		try {
 			for await (const event of events) {
 				switch (event.event) {
+					case "turn.started":
+						update({ runId: event.data.runId });
+						break;
 					case "text.delta":
 						update({ text: state.text + event.data.delta });
 						break;
@@ -527,6 +541,7 @@ export function Play() {
 				stages: [],
 				checks: [],
 				error: null,
+				runId: null,
 			},
 		);
 	};
@@ -561,6 +576,7 @@ export function Play() {
 				stages: [],
 				checks: [],
 				error: null,
+				runId: null,
 			},
 		).then(() => toast("已重写"));
 	};
@@ -594,6 +610,51 @@ export function Play() {
 			toast(errorText(error));
 		} finally {
 			setFixBusy(false);
+		}
+	};
+
+	const steer = async () => {
+		const message = text.trim();
+		const runId = streaming?.runId ?? null;
+		if (message === "" || runId === null) return;
+		try {
+			await api.steerTurn(storyId, runId, { text: message });
+			setText("");
+			toast("已追加");
+		} catch (error) {
+			toast(errorText(error));
+		}
+	};
+
+	const sceneControl = async (request: SceneControlRequest, done: string) => {
+		if (lastAssistant === undefined) return;
+		try {
+			await api.sceneControl(lastAssistant.id, request);
+			toast(done);
+			refresh();
+		} catch (error) {
+			toast(errorText(error));
+		}
+	};
+
+	const exportBook = async () => {
+		setHeadMenu(false);
+		try {
+			const book = await api.exportBook(storyId);
+			const url = URL.createObjectURL(
+				new Blob([book.markdown], { type: "text/markdown;charset=utf-8" }),
+			);
+			const link = document.createElement("a");
+			link.href = url;
+			link.download = book.fileName;
+			link.rel = "noopener";
+			document.body.appendChild(link);
+			link.click();
+			link.remove();
+			window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+			toast("已导出");
+		} catch (error) {
+			toast(errorText(error));
 		}
 	};
 
@@ -691,6 +752,11 @@ export function Play() {
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: 新楼层出现或开始写时滚到最后
 	useEffect(() => {
+		// 往上加载更早的楼层时留在原处。
+		if (olderRef.current) {
+			olderRef.current = false;
+			return;
+		}
 		lastRef.current?.scrollIntoView({ block: "nearest" });
 	}, [nodes.length, streaming === null]);
 
@@ -747,6 +813,42 @@ export function Play() {
 							</select>
 						) : null}
 						<span className="label">第 {nodes.length} 楼</span>
+						<div className="headmenu">
+							<button
+								type="button"
+								className="btn ghost sm"
+								aria-label="故事菜单"
+								aria-haspopup="menu"
+								aria-expanded={headMenu}
+								onClick={() => setHeadMenu((value) => !value)}
+							>
+								⋯
+							</button>
+							{headMenu ? (
+								<div className="pushmenu" role="menu" aria-label="故事菜单">
+									<button
+										type="button"
+										role="menuitem"
+										onClick={() => void exportBook()}
+									>
+										导出
+									</button>
+									<TLink role="menuitem" to={sp(storyId, "/prefs")}>
+										本故事设置
+									</TLink>
+									<button
+										type="button"
+										role="menuitem"
+										onClick={() => {
+											setHeadMenu(false);
+											shell.openInspector();
+										}}
+									>
+										检视器
+									</button>
+								</div>
+							) : null}
+						</div>
 						<button
 							type="button"
 							className="btn sm dockbtn"
@@ -764,6 +866,18 @@ export function Play() {
 						</details>
 					) : null}
 					<div id="script">
+						{path.data?.hasMore ? (
+							<button
+								type="button"
+								className="btn ghost sm older"
+								onClick={() => {
+									olderRef.current = true;
+									setLimit((value) => value + PAGE);
+								}}
+							>
+								更早的楼层
+							</button>
+						) : null}
 						{nodes.length === 0 && path.data !== null ? (
 							<p className="v4empty" style={{ padding: "24px 28px" }}>
 								暂无内容
@@ -1085,7 +1199,14 @@ export function Play() {
 										<button
 											type="button"
 											className="chip"
-											onClick={() => send(action, null)}
+											onClick={() => {
+												// 选了哪个选项是偏好信号；记录失败不影响发送。
+												if (lastId !== null)
+													api
+														.recordChoice(lastId, { text: action })
+														.catch(() => {});
+												send(action, null);
+											}}
 										>
 											{action}
 										</button>
@@ -1130,6 +1251,15 @@ export function Play() {
 									}
 								}}
 							/>
+							{busy && text.trim() !== "" && streaming?.runId != null ? (
+								<button
+									type="button"
+									className="btn gold"
+									onClick={() => void steer()}
+								>
+									追加
+								</button>
+							) : null}
 							{busy ? (
 								<button
 									type="button"
@@ -1203,6 +1333,41 @@ export function Play() {
 									once={once}
 									onChange={setOnce}
 								/>
+								{lastAssistant === undefined ? null : (
+									<div className="scenectl" aria-label="场面">
+										<button
+											type="button"
+											className="btn ghost sm"
+											disabled={busy}
+											onClick={() =>
+												void sceneControl({ kind: "end-scene" }, "这一场已结束")
+											}
+										>
+											结束这一场
+										</button>
+										<form
+											className="jumpto"
+											onSubmit={(event) => {
+												event.preventDefault();
+												const time = jumpTo.trim();
+												if (time === "") return;
+												setJumpTo("");
+												void sceneControl(
+													{ kind: "jump-time", time },
+													`已跳到${time}`,
+												);
+											}}
+										>
+											<input
+												className="v4in"
+												aria-label="跳到的时间"
+												placeholder="跳到…"
+												value={jumpTo}
+												onChange={(event) => setJumpTo(event.target.value)}
+											/>
+										</form>
+									</div>
+								)}
 								<button
 									type="button"
 									className="btn ghost sm"
