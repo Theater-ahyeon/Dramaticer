@@ -6,6 +6,7 @@ import {
 	createHistorySlotProvider,
 	createLoreSlotProvider,
 	createMemorySlotProvider,
+	createPagesSlotProvider,
 	createPersonaSlotProvider,
 	createProfileSlotProvider,
 	createRawHistorySlotProvider,
@@ -49,6 +50,7 @@ export const DIRECTOR_SLOT_PLUGIN = "slot.director";
 export const USER_WILL_SLOT_PLUGIN = "slot.user-will";
 export const SITUATION_SLOT_PLUGIN = "slot.situation";
 export const WORLD_INDEX_SLOT_PLUGIN = "slot.world-index";
+export const PAGES_SLOT_PLUGIN = "slot.pages";
 
 export interface CharacterSlotConfig {
 	/** 为空表示故事没有导入角色卡，插件不注册槽位。 */
@@ -225,6 +227,17 @@ export const worldIndexSlotPlugin: PluginDefinition = {
 	},
 };
 
+export const pagesSlotPlugin: PluginDefinition = {
+	name: PAGES_SLOT_PLUGIN,
+	apply(context, config) {
+		const values = slotConfig(PAGES_SLOT_PLUGIN, config);
+		context.slot(
+			"pages",
+			createPagesSlotProvider(requireSlotStore(PAGES_SLOT_PLUGIN, values)),
+		);
+	},
+};
+
 export const sceneSlotPlugin: PluginDefinition = {
 	name: SCENE_SLOT_PLUGIN,
 	apply(context, config) {
@@ -382,6 +395,7 @@ export const SLOT_PLUGINS: readonly PluginDefinition[] = [
 	stateSlotPlugin,
 	situationSlotPlugin,
 	worldIndexSlotPlugin,
+	pagesSlotPlugin,
 	summarySlotPlugin,
 	memorySlotPlugin,
 	loreSlotPlugin,

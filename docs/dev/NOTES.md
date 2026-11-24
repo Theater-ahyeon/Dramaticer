@@ -169,6 +169,8 @@
 
 - 故事记事（memory-v5/03，`memory/notebook.ts`）：`notebook_versions` 只追加（触发器禁止改），每版是整页快照（现在、底色、经历），挂在产生它的楼层上，沿路径取最近一版；初版由 `ensureNotebookInit`（GET /memory 与故事级任务 `notebook_init`，不调模型）从卡描述、台账与已归档场次拼出。场末整理（`scene_archive` 同一次调用）输出 `notebook` 补丁，`applyNotebookPatches` 跳过锁定节，同一场重编译按场末楼层替换经历。世界索引的一行简介优先取记事页「现在」。
 
+- 上下文六节（memory-v5/04）：默认模板是 character、lore、summary、history、world_index、situation、pages、memory、director、user_will、protocol。`pages`（相关页面）注入在场者与玩家提到的久未出场者的记事页整页；检索（`memory`）在整个故事放得下时不触发，事件命中带「当时：所在场摘要或前一楼原文」。profile、reunion、blueprint、state、scene、scene_card 仍可在自定义模板里用。
+
 ## 新界面的视觉层（2026-11-16 起）
 
 - 2026-11-19 起（ADR-0162、`ui-lite`）：没有 three.js 场景、指针光、卡片倾斜与开场动画，也不打包字体；`stage.pulse` / `setWriting` 保留为空操作级别的接口，页面可以照常调用。下面关于三维背景的旧条目已过时，以 `.scratch/ui-lite/spec.md` 为准。

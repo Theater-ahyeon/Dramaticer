@@ -68,6 +68,7 @@ import {
 	loreEntryContentKey,
 	loreEntryMatchScore,
 } from "../memory/lore.js";
+import { readNotebookPages } from "../memory/notebook.js";
 import { renderSituationCard, renderWorldIndex } from "../memory/situation.js";
 import type { SummaryLevel } from "../memory/summary.js";
 import { retrieveMemory } from "../retrieval/hybrid.js";
@@ -343,6 +344,90 @@ export function createSituationSlotProvider(
 						line.source,
 					),
 				),
+			};
+		},
+	};
+}
+
+/** 相关页面里每页最多带的经历条数；更早的在归档里，检索命中时再带。 */
+const PAGE_PAST_LIMIT = 6;
+
+/**
+ * 相关页面（v5 §3.3 第四节）：在场者与被提到的久未出场者的记事页整页
+ * （现在、底色、最近的经历）。功能页「故事记事」关掉时不注入。
+ */
+export function createPagesSlotProvider(
+	store: StoryStore,
+): ContextSlotProvider {
+	const estimator = createTokenEstimator();
+	return {
+		packKey: "pages",
+		provide(request): ContextSlotContent | null {
+			if (request.nodeId === null) return null;
+			const features = readStoryFeatureState(
+				store,
+				request.storyId,
+				request.featureOverrides,
+			).values;
+			if (features.notebook === false) return null;
+			const nodeId = request.nodeId;
+			const pages = readNotebookPages(store, request.storyId, nodeId);
+			if (pages.length === 0) return null;
+			const names: string[] = [
+				...(store.getLatestSceneLogOnPath(nodeId)?.present ?? []),
+			];
+			if (features.reunion === true) {
+				const path = store.getPathToNode(nodeId);
+				const lastUser = [...path]
+					.reverse()
+					.find((node) => node.role === "user");
+				if (lastUser !== undefined) {
+					for (const mention of selectReunionMentions({
+						store,
+						storyId: request.storyId,
+						nodeId,
+						triggerText: lastUser.raw,
+					})) {
+						names.push(mention.candidate.name);
+					}
+				}
+			}
+			const wanted = new Set(names);
+			const blocks: string[] = [];
+			const items: ContextTraceItem[] = [];
+			for (const page of pages) {
+				if (!wanted.has(page.name)) continue;
+				const past = page.past
+					.slice(-PAGE_PAST_LIMIT)
+					.map(
+						(entry) =>
+							`${entry.fromFloor === null ? "" : `[F${entry.fromFloor}${entry.toFloor !== null && entry.toFloor !== entry.fromFloor ? `–F${entry.toFloor}` : ""}] `}${entry.text}`,
+					);
+				const lines = [
+					page.now.trim().length > 0 ? `现在：${page.now.trim()}` : null,
+					page.base.trim().length > 0 ? `底色：${page.base.trim()}` : null,
+					past.length > 0
+						? `经历：\n${past.map((line) => `- ${line}`).join("\n")}`
+						: null,
+				].filter((line): line is string => line !== null);
+				if (lines.length === 0) continue;
+				const block = `${page.name}：\n${lines.join("\n")}`;
+				blocks.push(block);
+				items.push(
+					contextItem(page.name, estimator(block), {
+						kind: "wiki",
+						id: page.entityId,
+						name: page.name,
+					}),
+				);
+			}
+			if (blocks.length === 0) return null;
+			return {
+				messages: [
+					{ role: "system", content: `相关页面：\n${blocks.join("\n\n")}` },
+				],
+				source: `pages:${blocks.length} 页`,
+				items,
 			};
 		},
 	};
@@ -978,6 +1063,23 @@ export function createMemorySlotProvider(
 				const rightPosition = positions.get(right.nodeId) ?? -1;
 				return leftPosition - rightPosition;
 			});
+			// 父文档回溯（v5 §3.3）：事件是孤立的一句话，带上它所在场的摘要；
+			// 还没归档的场带前一楼原文，让模型知道这句话发生在什么情境里。
+			const archives = store.listSceneArchivesAlongPath(request.nodeId);
+			const sceneOf = (nodeId: string): string | null => {
+				const at = positions.get(nodeId);
+				if (at === undefined) return null;
+				for (const archive of archives) {
+					const start = positions.get(archive.startNodeId);
+					const end = positions.get(archive.endNodeId);
+					if (start === undefined || end === undefined) continue;
+					if (at >= start && at <= end) return archive.summary;
+				}
+				const previous = pathBefore[at - 1];
+				if (previous === undefined) return null;
+				const raw = previous.raw.trim();
+				return raw.length > 120 ? `${raw.slice(0, 120)}…` : raw;
+			};
 			const items: ContextTraceItem[] = [];
 			for (const hit of orderedHits) {
 				if (seen.has(hit.nodeId)) continue;
@@ -995,6 +1097,10 @@ export function createMemorySlotProvider(
 						);
 					}
 					text = events.map((event) => event.text).join("；");
+					const context = sceneOf(hit.nodeId);
+					if (context !== null && context.length > 0) {
+						text = `${text}（当时：${context}）`;
+					}
 				} else if (hit.parentText !== null) {
 					text = hit.parentText;
 				} else {

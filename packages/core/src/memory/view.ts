@@ -910,7 +910,7 @@ const CONTEXT_CATEGORIES: readonly {
 	{
 		id: "wiki",
 		label: "百科",
-		slots: ["world_index", "profile", "reunion"],
+		slots: ["world_index", "pages", "profile", "reunion"],
 		page: "memory",
 		tab: "wiki",
 	},

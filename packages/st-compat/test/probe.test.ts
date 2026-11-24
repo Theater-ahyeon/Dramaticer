@@ -336,12 +336,12 @@ describe("一致性探针", () => {
 		expect(messages.at(-1)?.content).toContain("请回忆");
 		expect(judge.requests[0]?.messages[0]?.content).toContain("一致性裁判");
 		expect(judge.requests[0]?.messages[1]?.content).toContain(PROBE_ANSWER);
+		// v5 起台账以「此刻局面」一段进上下文（memory-v5/02）。
 		const stateSegment = probe.context.find(
-			(segment) => segment.slot === "state",
+			(segment) => segment.slot === "situation",
 		);
-		if (stateSegment === undefined) throw new Error("探针没有保存台账段");
-		expect(stateSegment.segmentId).toBe("state");
-		expect(stateSegment.source).toContain("diff");
+		if (stateSegment === undefined) throw new Error("探针没有保存局面段");
+		expect(stateSegment.segmentId).toBe("situation");
 		expect(stateSegment.text).toContain("山门");
 		expect(probe.context.map((segment) => segment.segmentId)).toContain(
 			"history",

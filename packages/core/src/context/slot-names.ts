@@ -7,6 +7,7 @@ export const CONTEXT_SLOT_NAMES = [
 	"state",
 	"situation",
 	"world_index",
+	"pages",
 	"memory",
 	"history",
 	"scene",

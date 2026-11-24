@@ -114,6 +114,7 @@ const DEFAULT_SEGMENTS: Readonly<Record<string, ContextSegment>> = {
 		slot: "world_index",
 		priority: 84,
 	},
+	pages: { id: "pages", kind: "slot", slot: "pages", priority: 58 },
 	memory: { id: "memory", kind: "slot", slot: "memory", priority: 60 },
 	scene: { id: "scene", kind: "slot", slot: "scene", priority: 55 },
 	profile: {
@@ -156,7 +157,9 @@ const DEFAULT_SEGMENTS: Readonly<Record<string, ContextSegment>> = {
 export const DEFAULT_CONTEXT_SEGMENT_ORDER: Readonly<
 	Record<ContextLayout, readonly string[]>
 > = {
-	// v5 §3.1：原来的状态、现场分析与场面卡由世界索引与此刻局面取代。
+	// v5 §3.3 的六节：卡与写作条目（character、lore）、世界索引、此刻局面、
+	// 相关页面（记事页整页与检索命中）、方向（只在推进时）、最近原文（远粗近细）。
+	// 状态、现场分析、场面卡、人物档案、重逢档案与蓝图摘要不再在默认模板里。
 	volatility: [
 		"character",
 		"lore",
@@ -164,10 +167,8 @@ export const DEFAULT_CONTEXT_SEGMENT_ORDER: Readonly<
 		"history",
 		"world_index",
 		"situation",
+		"pages",
 		"memory",
-		"profile",
-		"reunion",
-		"blueprint",
 		"director",
 		"user_will",
 		WRITING_CONTRACT_SEGMENT_ID,
@@ -177,13 +178,11 @@ export const DEFAULT_CONTEXT_SEGMENT_ORDER: Readonly<
 		"lore",
 		"world_index",
 		"situation",
-		"summary",
+		"pages",
 		"memory",
-		"profile",
-		"reunion",
-		"blueprint",
 		"director",
 		"user_will",
+		"summary",
 		"history",
 		WRITING_CONTRACT_SEGMENT_ID,
 	],

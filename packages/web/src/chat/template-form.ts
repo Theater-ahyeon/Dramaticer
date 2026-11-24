@@ -31,6 +31,7 @@ export const SLOT_CHOICES: readonly {
 	{ value: "state", label: "状态" },
 	{ value: "situation", label: "此刻局面" },
 	{ value: "world_index", label: "世界索引" },
+	{ value: "pages", label: "相关页面" },
 	{ value: "memory", label: "记忆" },
 	{ value: "history", label: "历史" },
 	{ value: "scene", label: "现场分析" },

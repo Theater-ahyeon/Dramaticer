@@ -289,10 +289,18 @@ describe("人物档案", () => {
 		expect(content?.messages[0]?.content).toContain("门卫不在场、不知情");
 		expect(content?.source).toBe("profile:2 人，知情标注 2 场");
 
+		// 人物档案不在 v5 的默认模板里（由相关页面取代），自定义模板照样能用。
+		const base = createDefaultContextTemplate({
+			structuredOutput: "text-tags",
+		});
 		const assembled = await assembleContext({
-			template: createDefaultContextTemplate({
-				structuredOutput: "text-tags",
-			}),
+			template: {
+				...base,
+				segments: [
+					{ id: "profile", kind: "slot", slot: "profile", priority: 53 },
+					...base.segments,
+				],
+			},
 			budgetTokens: 100_000,
 			storyId: "s1",
 			nodeId: "a4",
