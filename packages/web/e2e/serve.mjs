@@ -14,6 +14,17 @@ mkdirSync(workDir, { recursive: true });
 const fake = await startFakeChannel({
 	streamDelayMs: Number(process.env.E2E_FAKE_STREAM_DELAY_MS ?? "0"),
 });
+const imagesPath = join(workDir, "images.yaml");
+writeFileSync(
+	imagesPath,
+	`providers:
+  comfy:
+    api: comfyui
+    baseUrl: ${fake.baseUrl}/comfy
+    apiKey: ""
+`,
+	"utf8",
+);
 const channelsPath = join(workDir, "channels.yaml");
 writeFileSync(
 	channelsPath,
@@ -742,6 +753,11 @@ const running = await serverModule.startServer({
 		path: channelsPath,
 		env: { E2E_FAKE_KEY: "e2e-key" },
 		envFile: join(workDir, ".env"),
+	},
+	images: {
+		path: imagesPath,
+		env: {},
+		mediaDir: join(workDir, "images"),
 	},
 	log: (line) => console.log(`[e2e] ${line}`),
 });

@@ -4,6 +4,8 @@ import type {
 	ComfyUiWorkflow,
 	ImageConfig,
 	ImageMode,
+	ImageReplacementRule,
+	ImageTrigger,
 } from "@dramaticer/core";
 import type { ImageWorkflowDetectionView } from "@dramaticer/protocol";
 
@@ -19,6 +21,16 @@ export const IMAGE_MODE_CHOICES: readonly {
 	{ value: "off", label: "关闭" },
 	{ value: "manual", label: "手动" },
 	{ value: "auto", label: "自动（模型可以调用 illustrate）" },
+];
+
+export const IMAGE_TRIGGER_CHOICES: readonly {
+	readonly value: ImageTrigger | "off";
+	readonly label: string;
+}[] = [
+	{ value: "scene_end", label: "每场末" },
+	{ value: "floor", label: "每楼" },
+	{ value: "manual", label: "手动" },
+	{ value: "off", label: "关" },
 ];
 
 export const IMAGE_SLOT_NAMES = [
@@ -44,13 +56,26 @@ const IMAGE_FIELD_LABELS: Readonly<Record<string, string>> = {
 	workflowId: "生图 workflow",
 	maxPerFloor: "每楼最多插图",
 	minFloorsBetween: "两次插图的最小楼层间隔",
+	trigger: "触发频率",
+	recentPromptHistory: "参考的最近提示词条数",
+	replacementRules: "提示词替换规则",
 };
+
+export interface ImageReplacementRuleDraft {
+	readonly pattern: string;
+	readonly replacement: string;
+	readonly isRegex: boolean;
+	readonly enabled: boolean;
+}
 
 export interface ImageSettingsDraft {
 	readonly mode: ImageMode;
 	readonly workflowId: string;
 	readonly maxPerFloor: string;
 	readonly minFloorsBetween: string;
+	readonly trigger: ImageTrigger;
+	readonly recentPromptHistory: string;
+	readonly replacementRules: readonly ImageReplacementRuleDraft[];
 }
 
 export function buildImageSettingsDraft(
@@ -61,6 +86,14 @@ export function buildImageSettingsDraft(
 		workflowId: config.workflowId,
 		maxPerFloor: String(config.maxPerFloor),
 		minFloorsBetween: String(config.minFloorsBetween),
+		trigger: config.trigger,
+		recentPromptHistory: String(config.recentPromptHistory),
+		replacementRules: config.replacementRules.map((rule) => ({
+			pattern: rule.pattern,
+			replacement: rule.replacement,
+			isRegex: rule.isRegex,
+			enabled: rule.enabled,
+		})),
 	};
 }
 
@@ -84,6 +117,13 @@ export function parseImageSettingsDraft(draft: ImageSettingsDraft): {
 		100,
 		errors,
 	);
+	const recentPromptHistory = parseBoundedInteger(
+		draft.recentPromptHistory,
+		"imageConfig.recentPromptHistory",
+		0,
+		10,
+		errors,
+	);
 	const workflowId = draft.workflowId.trim();
 	if (draft.mode !== "off" && workflowId.length === 0) {
 		errors.push({
@@ -91,12 +131,43 @@ export function parseImageSettingsDraft(draft: ImageSettingsDraft): {
 			message: "生图模式不是关闭时必须选择 workflow",
 		});
 	}
+	const replacementRules: ImageReplacementRule[] = [];
+	draft.replacementRules.forEach((rule, index) => {
+		const pattern = rule.pattern.trim();
+		if (pattern.length === 0) {
+			errors.push({
+				path: `imageConfig.replacementRules.${index}.pattern`,
+				message: "替换规则的查找内容不能为空",
+			});
+			return;
+		}
+		if (rule.isRegex) {
+			try {
+				new RegExp(pattern, "g");
+			} catch (error) {
+				errors.push({
+					path: `imageConfig.replacementRules.${index}.pattern`,
+					message: `不是合法正则：${error instanceof Error ? error.message : String(error)}`,
+				});
+				return;
+			}
+		}
+		replacementRules.push({
+			pattern,
+			replacement: rule.replacement,
+			isRegex: rule.isRegex,
+			enabled: rule.enabled,
+		});
+	});
 	return {
 		config: {
 			mode: draft.mode,
 			workflowId,
 			maxPerFloor: maxPerFloor ?? 1,
 			minFloorsBetween: minFloorsBetween ?? 0,
+			trigger: draft.trigger,
+			recentPromptHistory: recentPromptHistory ?? 0,
+			replacementRules,
 		},
 		errors,
 	};

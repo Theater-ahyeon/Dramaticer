@@ -2,6 +2,7 @@ import type {
 	BlueprintSuggestionStatus,
 	CharacterOutfit,
 	CharacterVisualProfile,
+	ImageReplacementRule,
 	NodeImageRecord,
 	TagLibraryEntry,
 	WritingEntry,
@@ -110,7 +111,9 @@ import {
 	type StoryGreetingsView,
 	type StoryImageImportRequest,
 	type StoryImageImportResult,
+	type StoryImageOrganizeResult,
 	type StoryImageOrganizerEntriesView,
+	type StoryImageOrganizerRulesView,
 	type StoryJobsView,
 	type StoryLoreView,
 	type StoryOpeningGenerateResult,
@@ -1176,6 +1179,40 @@ export class ApiClient {
 			"POST",
 			`${storyPath(storyId)}/images/import-st`,
 			request,
+		);
+	}
+
+	async getImageOrganizerRules(
+		storyId: string,
+	): Promise<StoryImageOrganizerRulesView> {
+		return this.json<StoryImageOrganizerRulesView>(
+			"GET",
+			`${storyPath(storyId)}/image-organizer/rules`,
+		);
+	}
+
+	async saveImageOrganizerRules(
+		storyId: string,
+		rules: {
+			readonly trigger: string;
+			readonly recentPromptHistory: number;
+			readonly replacementRules: readonly ImageReplacementRule[];
+		},
+	): Promise<StoryImageOrganizerRulesView> {
+		return this.json<StoryImageOrganizerRulesView>(
+			"PUT",
+			`${storyPath(storyId)}/image-organizer/rules`,
+			rules,
+		);
+	}
+
+	async organizeNodeImages(
+		storyId: string,
+		nodeId: string,
+	): Promise<StoryImageOrganizeResult> {
+		return this.json<StoryImageOrganizeResult>(
+			"POST",
+			`${storyPath(storyId)}/nodes/${encodeURIComponent(nodeId)}/organize-images`,
 		);
 	}
 

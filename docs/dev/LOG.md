@@ -521,3 +521,4 @@
 - 2026-11-27 card-ui/01 完成：插件内核的楼层渲染器扩展点、声明式 floor-renderer、故事页主题自适应沙箱与高度上报、五方法交互桥白名单（writeState 经台账校验）、联网允许名单与脚本域名检测、迁移 82 的沙箱拒绝记录与检视器展示；pnpm check、v5-card-ui 桌面/手机与相关 e2e、walk13 走查通过
 - 2026-11-27 card-ui/02 完成：酒馆显示层美化正则与启用的 tavern_helper 脚本转成故事级渲染插件（st-content-regex / st-helper-host），同 iframe 内渲染并接交互桥，变量走 mvu.* 经结算器；渲染器可逐个开关，关掉回原文；pnpm check、v5-card-ui 桌面/手机、v5-inspector/v4-lore/v4-story 与 walk14 走查通过
 - 2026-11-27 image-v2/01 完成：视觉档案扩成 12 格与锁定，独立服装与标签库进迁移 83；标签库按关键词触发；写作条目加画面整理作用域；st-compat 独立解析智绘姬角色/服装库与生图预设；设定页编辑与两个导入入口；pnpm check、v5-image-profiles 桌面/手机、v4-lore/v4-prefs 与 walk15 走查通过
+- 2026-11-27 image-v2/02 完成：画面整理后台岗位、段落/标题/整理结果进迁移 84；程序展开分格档案与独立服装并做替换、全角清洗与去重；触发频率（每场末/每楼/手动）与替换规则进故事设置，手动整理接口与最近结果预览；出图失败重试直接复用整理提示词，整理失败不影响正文；pnpm check、v5-image-organizer 桌面/手机、v5-image-profiles/v4-prefs/v4-story 与 walk16 走查通过

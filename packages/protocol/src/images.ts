@@ -5,6 +5,12 @@ import type {
 	ComfyUiSlotName,
 	ComfyUiSlots,
 	ComfyUiWorkflow,
+	ImageOrganizerAngle,
+	ImageOrganizerBody,
+	ImageOrganizerCenter,
+	ImageOrganizerExposure,
+	ImageReplacementRule,
+	ImageTrigger,
 	ImageWorkflowRecord,
 	NodeImageStatus,
 	TagLibraryEntry,
@@ -48,6 +54,22 @@ export interface StoryCharacterOutfitsView {
 export interface StoryTagLibraryView {
 	readonly storyId: string;
 	readonly entries: readonly TagLibraryEntry[];
+}
+
+/** 画面整理的触发频率与提示词后处理配置。 */
+export interface StoryImageOrganizerRulesView {
+	readonly storyId: string;
+	readonly trigger: ImageTrigger;
+	readonly recentPromptHistory: number;
+	readonly replacementRules: readonly ImageReplacementRule[];
+}
+
+/** `POST /api/stories/:id/nodes/:nodeId/organize-images` 的结果；整理在后台执行。 */
+export interface StoryImageOrganizeResult {
+	readonly storyId: string;
+	readonly nodeId: string;
+	readonly jobId: number;
+	readonly kind: string;
 }
 
 /** 画面整理的写作条目；`scope` 固定为 image_organizer。 */
@@ -104,6 +126,23 @@ export interface NodeImage {
 	readonly width: number | null;
 	readonly height: number | null;
 	readonly error: string | null;
+	/** 插在第几段之后；0 表示开头。 */
+	readonly insertAfterParagraph: number | null;
+	readonly title: string | null;
+	readonly prompt: string | null;
+	readonly negativePrompt: string | null;
+}
+
+/** 画面整理里一个人物的结构化选择；供界面与重绘复用。 */
+export interface NodeImageOrganizerCharacter {
+	readonly name: string;
+	readonly angle: ImageOrganizerAngle;
+	readonly body: ImageOrganizerBody;
+	readonly exposure: ImageOrganizerExposure;
+	readonly outfitName: string | null;
+	readonly action: string | null;
+	readonly negative: string | null;
+	readonly center: ImageOrganizerCenter | null;
 }
 
 /** `GET /api/nodes/:id/images` 的载荷。 */

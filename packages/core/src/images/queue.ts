@@ -96,13 +96,19 @@ async function runOneImage(input: {
 	if (!input.config.providers.has(provider)) {
 		throw new Error(`图像 provider 没有配置：${provider}`);
 	}
-	const state = store.getStateSnapshot(image.nodeId).state;
-	const compiled = compileImagePrompt({
-		profiles: input.profiles,
-		state,
-		request: image.request,
-		style: input.style,
-	});
+	// 画面整理或重绘已经把最终提示词写进记录；重试时直接复用，不再重跑整理。
+	const reusable = image.prompt !== null && image.organizerResult !== null;
+	const compiled = reusable
+		? {
+				prompt: image.prompt as string,
+				negativePrompt: image.negativePrompt ?? "",
+			}
+		: compileImagePrompt({
+				profiles: input.profiles,
+				state: store.getStateSnapshot(image.nodeId).state,
+				request: image.request,
+				style: input.style,
+			});
 	const running = store.startNodeImage(image.id, {
 		prompt: compiled.prompt,
 		negativePrompt: compiled.negativePrompt,

@@ -2,6 +2,11 @@ import { createServer } from "node:http";
 
 const WRITER_PATH = "/writer/v1/chat/completions";
 const BACKGROUND_PATH = "/background/v1/chat/completions";
+const COMFY_PREFIX = "/comfy";
+const PNG_1PX = Buffer.from(
+	"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+	"base64",
+);
 
 function textOf(content) {
 	if (typeof content === "string") return content;
@@ -389,8 +394,37 @@ function canonCompile(body) {
 	});
 }
 
+function imageOrganizer(body) {
+	const user = lastUserText(body);
+	if (user.includes("整理失败")) return "not json";
+	return JSON.stringify({
+		images: [
+			{
+				insertAfterParagraph: 1,
+				title: "门厅的灯",
+				scene: "林雪站在门厅，手提一盏灯，雨声贴着窗。",
+				composition: "wide shot；cinematic lighting",
+				characters: [
+					{
+						name: "林雪",
+						angle: "front",
+						body: "upper",
+						exposure: "clothed",
+						outfitName: "深蓝校服",
+						action: "holding a lantern；warm light",
+						negative: "bad hands",
+						center: { x: 0.5, y: 0.5 },
+					},
+				],
+				negativePrompt: "blurry",
+			},
+		],
+	});
+}
+
 function backgroundResponse(body) {
 	const system = systemText(body);
+	if (system.includes("你是画面整理师")) return imageOrganizer(body);
 	if (system.includes("你是原著的事件抽取器")) return canonExtraction(body);
 	if (system.includes("你是原著的人物与别名合并器")) return canonCompile(body);
 	if (system.includes("你是原著的时间线编者")) return canonCompile(body);
@@ -440,6 +474,44 @@ export async function startFakeChannel(options = {}) {
 			res.end(
 				JSON.stringify({ data: [{ id: "fake-writer" }, { id: "fake-alt" }] }),
 			);
+			return;
+		}
+		// 出图用的小型 ComfyUI：提交即完成，下载一张 1×1 PNG。
+		if (req.url === `${COMFY_PREFIX}/prompt` && req.method === "POST") {
+			req.resume();
+			req.on("end", () => {
+				res.writeHead(200, { "Content-Type": "application/json" });
+				res.end(JSON.stringify({ prompt_id: "fake-prompt" }));
+			});
+			return;
+		}
+		if (
+			req.method === "GET" &&
+			req.url?.startsWith(`${COMFY_PREFIX}/history/`)
+		) {
+			const promptId = req.url.slice(`${COMFY_PREFIX}/history/`.length);
+			res.writeHead(200, { "Content-Type": "application/json" });
+			res.end(
+				JSON.stringify({
+					[promptId]: {
+						outputs: {
+							9: {
+								images: [
+									{ filename: "fake.png", subfolder: "", type: "output" },
+								],
+							},
+						},
+					},
+				}),
+			);
+			return;
+		}
+		if (req.method === "GET" && req.url?.startsWith(`${COMFY_PREFIX}/view?`)) {
+			res.writeHead(200, {
+				"Content-Type": "image/png",
+				"Content-Length": PNG_1PX.length,
+			});
+			res.end(PNG_1PX);
 			return;
 		}
 		if (req.method !== "POST") {

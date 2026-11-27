@@ -1,6 +1,7 @@
 import { normalizeEntityName } from "../entity.js";
 import { assertPlainObject, rejectUnknownKeys } from "../json.js";
 import type { NovelAiParameters } from "./novelai-params.js";
+import type { ImageOrganizerResult } from "./organizer.js";
 import type { ImagePromptRequest } from "./prompt.js";
 import type { ComfyUiSlots, ComfyUiWorkflow } from "./slots.js";
 import {
@@ -22,6 +23,26 @@ export function isImageMode(value: unknown): value is ImageMode {
 	);
 }
 
+/** 画面整理的触发频率；`manual` 只由玩家手动触发。 */
+export const IMAGE_TRIGGERS = ["scene_end", "floor", "manual"] as const;
+
+export type ImageTrigger = (typeof IMAGE_TRIGGERS)[number];
+
+export function isImageTrigger(value: unknown): value is ImageTrigger {
+	return (
+		typeof value === "string" &&
+		(IMAGE_TRIGGERS as readonly string[]).includes(value)
+	);
+}
+
+/** 提示词替换规则：字面或合法正则；只影响出图提示词，不改正文。 */
+export interface ImageReplacementRule {
+	readonly pattern: string;
+	readonly replacement: string;
+	readonly isRegex: boolean;
+	readonly enabled: boolean;
+}
+
 /** 故事的出图配置；`mode` 只有 auto 会把 illustrate 工具发给模型。 */
 export interface ImageConfig {
 	readonly mode: ImageMode;
@@ -31,18 +52,31 @@ export interface ImageConfig {
 	readonly maxPerFloor: number;
 	/** 两次出图之间至少隔多少个助手楼层。 */
 	readonly minFloorsBetween: number;
+	/** 画面整理何时自动运行。 */
+	readonly trigger: ImageTrigger;
+	/** 整理输入里附带的最近出图提示词条数。 */
+	readonly recentPromptHistory: number;
+	readonly replacementRules: readonly ImageReplacementRule[];
 }
 
 export const MIN_IMAGES_PER_FLOOR = 1;
 export const MAX_IMAGES_PER_FLOOR = 4;
 export const MIN_IMAGE_FLOOR_GAP = 0;
 export const MAX_IMAGE_FLOOR_GAP = 100;
+export const MIN_RECENT_IMAGE_PROMPTS = 0;
+export const MAX_RECENT_IMAGE_PROMPTS = 10;
+export const MAX_IMAGE_REPLACEMENT_RULES = 32;
+export const MAX_IMAGE_REPLACEMENT_PATTERN_CHARS = 200;
+export const MAX_IMAGE_REPLACEMENT_VALUE_CHARS = 200;
 
 export const DEFAULT_IMAGE_CONFIG: ImageConfig = {
 	mode: "off",
 	workflowId: "",
 	maxPerFloor: 1,
 	minFloorsBetween: 3,
+	trigger: "scene_end",
+	recentPromptHistory: 3,
+	replacementRules: [],
 };
 
 const IMAGE_CONFIG_KEYS = [
@@ -50,7 +84,62 @@ const IMAGE_CONFIG_KEYS = [
 	"workflowId",
 	"maxPerFloor",
 	"minFloorsBetween",
+	"trigger",
+	"recentPromptHistory",
+	"replacementRules",
 ] as const;
+
+function assertReplacementRule(
+	value: unknown,
+	label: string,
+): ImageReplacementRule {
+	if (typeof value !== "object" || value === null || Array.isArray(value)) {
+		throw new Error(`${label} 必须是 JSON 对象`);
+	}
+	const record = value as Record<string, unknown>;
+	rejectUnknownKeys(
+		record,
+		["pattern", "replacement", "isRegex", "enabled"],
+		label,
+	);
+	const pattern = record.pattern;
+	if (
+		typeof pattern !== "string" ||
+		pattern.length === 0 ||
+		pattern.length > MAX_IMAGE_REPLACEMENT_PATTERN_CHARS
+	) {
+		throw new Error(
+			`${label}.pattern 必须是 1 到 ${MAX_IMAGE_REPLACEMENT_PATTERN_CHARS} 个字符的字符串`,
+		);
+	}
+	const replacement = record.replacement;
+	if (
+		typeof replacement !== "string" ||
+		replacement.length > MAX_IMAGE_REPLACEMENT_VALUE_CHARS
+	) {
+		throw new Error(
+			`${label}.replacement 必须是不超过 ${MAX_IMAGE_REPLACEMENT_VALUE_CHARS} 个字符的字符串`,
+		);
+	}
+	const isRegex = record.isRegex ?? false;
+	if (typeof isRegex !== "boolean") {
+		throw new Error(`${label}.isRegex 必须是布尔值`);
+	}
+	const enabled = record.enabled ?? true;
+	if (typeof enabled !== "boolean") {
+		throw new Error(`${label}.enabled 必须是布尔值`);
+	}
+	if (isRegex) {
+		try {
+			new RegExp(pattern, "g");
+		} catch (error) {
+			throw new Error(
+				`${label}.pattern 不是合法正则：${error instanceof Error ? error.message : String(error)}`,
+			);
+		}
+	}
+	return { pattern, replacement, isRegex, enabled };
+}
 
 /** 校验故事设置里的出图配置；范围与工具注册、频率检查共用。 */
 export function assertImageConfig(
@@ -87,11 +176,42 @@ export function assertImageConfig(
 			`${label}.minFloorsBetween 必须是 ${MIN_IMAGE_FLOOR_GAP} 到 ${MAX_IMAGE_FLOOR_GAP} 之间的整数`,
 		);
 	}
+	const trigger = record.trigger ?? DEFAULT_IMAGE_CONFIG.trigger;
+	if (!isImageTrigger(trigger)) {
+		throw new Error(`${label}.trigger 只能是 ${IMAGE_TRIGGERS.join("、")}`);
+	}
+	const recentPromptHistory =
+		record.recentPromptHistory ?? DEFAULT_IMAGE_CONFIG.recentPromptHistory;
+	if (
+		typeof recentPromptHistory !== "number" ||
+		!Number.isInteger(recentPromptHistory) ||
+		recentPromptHistory < MIN_RECENT_IMAGE_PROMPTS ||
+		recentPromptHistory > MAX_RECENT_IMAGE_PROMPTS
+	) {
+		throw new Error(
+			`${label}.recentPromptHistory 必须是 ${MIN_RECENT_IMAGE_PROMPTS} 到 ${MAX_RECENT_IMAGE_PROMPTS} 之间的整数`,
+		);
+	}
+	const rawRules = record.replacementRules ?? [];
+	if (!Array.isArray(rawRules)) {
+		throw new Error(`${label}.replacementRules 必须是数组`);
+	}
+	if (rawRules.length > MAX_IMAGE_REPLACEMENT_RULES) {
+		throw new Error(
+			`${label}.replacementRules 最多 ${MAX_IMAGE_REPLACEMENT_RULES} 条`,
+		);
+	}
+	const replacementRules = rawRules.map((rule, index) =>
+		assertReplacementRule(rule, `${label}.replacementRules[${index}]`),
+	);
 	return {
 		mode: record.mode,
 		workflowId: record.workflowId.trim(),
 		maxPerFloor,
 		minFloorsBetween,
+		trigger,
+		recentPromptHistory,
+		replacementRules,
 	};
 }
 
@@ -122,6 +242,12 @@ export interface NodeImageRecord {
 	readonly request: ImagePromptRequest;
 	readonly prompt: string | null;
 	readonly negativePrompt: string | null;
+	/** 画面整理给出的插入位置：插在第几段之后，0 表示开头。 */
+	readonly insertAfterParagraph: number | null;
+	/** 画面整理给出的短标题。 */
+	readonly title: string | null;
+	/** 画面整理的完整结构化结果与展开后的提示词；出图重试与重绘复用它。 */
+	readonly organizerResult: ImageOrganizerResult | null;
 	readonly workflowId: string;
 	readonly seed: number | null;
 	readonly attempts: number;
@@ -140,6 +266,12 @@ export interface NewNodeImageInput {
 	readonly request: ImagePromptRequest;
 	readonly workflowId: string;
 	readonly seed: number | null;
+	/** 画面整理已经展开好的提示词；给出时出图任务直接复用。 */
+	readonly prompt?: string | null;
+	readonly negativePrompt?: string | null;
+	readonly insertAfterParagraph?: number | null;
+	readonly title?: string | null;
+	readonly organizerResult?: ImageOrganizerResult | null;
 	readonly createdAt?: string;
 }
 

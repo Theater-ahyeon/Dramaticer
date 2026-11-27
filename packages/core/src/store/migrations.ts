@@ -2488,6 +2488,17 @@ export function buildMigrations(
 					ON tag_library_entries(story_id, category, priority)`,
 			],
 		},
+		{
+			version: 84,
+			description:
+				"画面整理（v5 §6）：楼层插图记录插入段落、标题与整理结果；结果里的展开提示词供出图重试与重绘复用",
+			statements: [
+				`ALTER TABLE node_images ADD COLUMN insert_after_paragraph INTEGER
+					CHECK (insert_after_paragraph IS NULL OR insert_after_paragraph >= 0)`,
+				"ALTER TABLE node_images ADD COLUMN title TEXT",
+				"ALTER TABLE node_images ADD COLUMN organizer_result TEXT",
+			],
+		},
 	];
 }
 

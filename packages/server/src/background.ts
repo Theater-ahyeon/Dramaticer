@@ -1,6 +1,7 @@
 import {
 	type BackgroundJobRegistry,
 	type EmbeddingClient,
+	ILLUSTRATE_JOB_KIND,
 	type IllustrateHandlerOptions,
 	type LlmClient,
 	type StoryStore,
@@ -136,6 +137,26 @@ export class BackgroundScheduler {
 			signal: this.#controller.signal,
 			...(this.#now === undefined ? {} : { now: this.#now }),
 		});
+		// 画面整理会插一批待出图记录；队列已经取过待办，这里补一轮只跑插图。
+		const followsImageOrganize =
+			registry.has(ILLUSTRATE_JOB_KIND) &&
+			this.#store.countBackgroundJobs({
+				storyId,
+				kinds: [ILLUSTRATE_JOB_KIND],
+			}).pending > 0;
+		if (followsImageOrganize && !this.#controller.signal.aborted) {
+			await drainBackgroundJobs({
+				store: this.#store,
+				registry,
+				client,
+				storyId,
+				kinds: [ILLUSTRATE_JOB_KIND],
+				...(this.#limit === undefined ? {} : { limit: this.#limit }),
+				sessionEnded: true,
+				signal: this.#controller.signal,
+				...(this.#now === undefined ? {} : { now: this.#now }),
+			});
+		}
 		const failed = result.runs.filter((run) => run.status === "failed").length;
 		this.#log(
 			`后台任务 ${storyId}：新增 ${result.enqueued} 条，执行 ${result.runs.length} 条（失败 ${failed}，丢弃 ${result.discarded}）`,

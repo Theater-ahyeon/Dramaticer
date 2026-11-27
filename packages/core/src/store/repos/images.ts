@@ -2,6 +2,7 @@
 // 公开方法由 StoryStore 原样委托过来，签名不变；跨领域调用经 this.store。
 import { randomUUID } from "node:crypto";
 import { assertNovelAiParameters } from "../../images/novelai-params.js";
+import { assertImageOrganizerResult } from "../../images/organizer.js";
 import {
 	type CharacterOutfit,
 	type CharacterOutfitInput,
@@ -55,6 +56,9 @@ interface NodeImageRow {
 	readonly request: string;
 	readonly prompt: string | null;
 	readonly negative_prompt: string | null;
+	readonly insert_after_paragraph: number | null;
+	readonly title: string | null;
+	readonly organizer_result: string | null;
 	readonly workflow_id: string;
 	readonly seed: number | null;
 	readonly attempts: number;
@@ -198,6 +202,15 @@ function rowToNodeImage(row: NodeImageRow): NodeImageRecord {
 		),
 		prompt: row.prompt,
 		negativePrompt: row.negative_prompt,
+		insertAfterParagraph: row.insert_after_paragraph,
+		title: row.title,
+		organizerResult:
+			row.organizer_result === null
+				? null
+				: assertImageOrganizerResult(
+						JSON.parse(row.organizer_result) as unknown,
+						`图片记录 ${row.id} 的 organizerResult`,
+					),
 		workflowId: row.workflow_id,
 		seed: row.seed,
 		attempts: row.attempts,
@@ -440,6 +453,35 @@ export class ImagesRepo extends StoreRepo {
 		if (this.getImageWorkflow(input.workflowId) === null) {
 			throw new Error(`图片 workflow 不存在：${input.workflowId}`);
 		}
+		const prompt = input.prompt ?? null;
+		if (prompt !== null && typeof prompt !== "string") {
+			throw new Error("图片记录的 prompt 必须是字符串或 null");
+		}
+		const negativePrompt = input.negativePrompt ?? null;
+		if (negativePrompt !== null && typeof negativePrompt !== "string") {
+			throw new Error("图片记录的 negativePrompt 必须是字符串或 null");
+		}
+		const insertAfterParagraph = input.insertAfterParagraph ?? null;
+		if (
+			insertAfterParagraph !== null &&
+			(!Number.isInteger(insertAfterParagraph) || insertAfterParagraph < 0)
+		) {
+			throw new Error("图片记录的 insertAfterParagraph 必须是非负整数或 null");
+		}
+		const title = input.title ?? null;
+		if (
+			title !== null &&
+			(typeof title !== "string" || title.trim().length === 0)
+		) {
+			throw new Error("图片记录的 title 必须是非空字符串或 null");
+		}
+		const organizerResult =
+			input.organizerResult === undefined || input.organizerResult === null
+				? null
+				: assertImageOrganizerResult(input.organizerResult);
+		if (organizerResult !== null && prompt === null) {
+			throw new Error("带整理结果的图片记录必须同时给出展开后的 prompt");
+		}
 		const createdAt = input.createdAt ?? new Date().toISOString();
 		assertNonEmptyString(createdAt, "图片记录的创建时间");
 		const id = randomUUID();
@@ -448,9 +490,10 @@ export class ImagesRepo extends StoreRepo {
 			this.db
 				.prepare(
 					`INSERT INTO node_images
-						(id, story_id, node_id, ordinal, status, request, workflow_id,
-						 seed, attempts, created_at, updated_at)
-					VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, 0, ?, ?)`,
+						(id, story_id, node_id, ordinal, status, request, prompt,
+						 negative_prompt, insert_after_paragraph, title, organizer_result,
+						 workflow_id, seed, attempts, created_at, updated_at)
+					VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
 				)
 				.run(
 					id,
@@ -458,6 +501,13 @@ export class ImagesRepo extends StoreRepo {
 					input.nodeId,
 					ordinal,
 					serializeJsonValue(request, "图片记录的 request"),
+					prompt,
+					negativePrompt,
+					insertAfterParagraph,
+					title,
+					organizerResult === null
+						? null
+						: serializeJsonValue(organizerResult, "图片记录的 organizerResult"),
 					input.workflowId,
 					input.seed,
 					createdAt,

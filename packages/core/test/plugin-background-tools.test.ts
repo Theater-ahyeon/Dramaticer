@@ -149,6 +149,7 @@ describe("内置后台任务插件", () => {
 			"opening",
 			"opening_candidates",
 			"visual_profile",
+			"image_organize",
 			"director_plan",
 			"plan_prepare",
 			"plan_review",
@@ -173,6 +174,7 @@ describe("内置后台任务插件", () => {
 			["opening", "story", "gap"],
 			["opening_candidates", "story", "gap"],
 			["visual_profile", "story", "gap"],
+			["image_organize", "story", "gap"],
 			["director_plan", "story", "deferred"],
 			["plan_prepare", "story", "gap"],
 			["plan_review", "story", "gap"],
@@ -192,6 +194,7 @@ describe("内置后台任务插件", () => {
 		expect(registry.get("blueprint_suggestion")?.needsRun).toBeTypeOf(
 			"function",
 		);
+		expect(registry.get("image_organize")?.needsRun).toBeTypeOf("function");
 		expect(registry.get("settle")?.needsRun).toBeUndefined();
 	});
 

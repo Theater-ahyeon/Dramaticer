@@ -9,6 +9,8 @@ import type {
 	NodeImagesView,
 	StoryCharacterOutfitsView,
 	StoryImageImportResult,
+	StoryImageOrganizeResult,
+	StoryImageOrganizerRulesView,
 	StoryPath,
 	StoryTagLibraryView,
 	StoryVisualProfileGenerateResult,
@@ -827,6 +829,10 @@ describe("生图接口", () => {
 				width: 512,
 				height: 768,
 				error: null,
+				insertAfterParagraph: null,
+				title: null,
+				prompt: null,
+				negativePrompt: null,
 			},
 			{
 				id: "img-later",
@@ -837,6 +843,10 @@ describe("生图接口", () => {
 				width: null,
 				height: null,
 				error: null,
+				insertAfterParagraph: null,
+				title: null,
+				prompt: null,
+				negativePrompt: null,
 			},
 		]);
 		expect(path.nodes[1]?.images).toEqual([]);
@@ -973,5 +983,140 @@ describe("生图接口", () => {
 
 		const response = await request(running.origin, "/api/images/img/file");
 		expect(response.status).toBe(401);
+	});
+
+	it("画面整理的触发频率与替换规则可以保存并读回", async () => {
+		const { running } = await startImagesServer();
+		running.store.createStory({ id: "s1", title: "整理" });
+		const initial = await request(
+			running.origin,
+			"/api/stories/s1/image-organizer/rules",
+		);
+		expect(initial.status).toBe(200);
+		expect((await initial.json()) as StoryImageOrganizerRulesView).toEqual({
+			storyId: "s1",
+			trigger: "scene_end",
+			recentPromptHistory: 3,
+			replacementRules: [],
+		});
+
+		const saved = await request(
+			running.origin,
+			"/api/stories/s1/image-organizer/rules",
+			"PUT",
+			{
+				trigger: "floor",
+				recentPromptHistory: 5,
+				replacementRules: [
+					{
+						pattern: "门厅",
+						replacement: "大厅",
+						isRegex: false,
+						enabled: true,
+					},
+				],
+			},
+		);
+		expect(saved.status).toBe(200);
+		expect((await saved.json()) as StoryImageOrganizerRulesView).toMatchObject({
+			trigger: "floor",
+			recentPromptHistory: 5,
+			replacementRules: [
+				{ pattern: "门厅", replacement: "大厅", isRegex: false, enabled: true },
+			],
+		});
+		const reloaded = await request(
+			running.origin,
+			"/api/stories/s1/image-organizer/rules",
+		);
+		expect(
+			(await reloaded.json()) as StoryImageOrganizerRulesView,
+		).toMatchObject({ trigger: "floor", recentPromptHistory: 5 });
+
+		const invalid = await request(
+			running.origin,
+			"/api/stories/s1/image-organizer/rules",
+			"PUT",
+			{
+				replacementRules: [{ pattern: "(", replacement: "x", isRegex: true }],
+			},
+		);
+		expect(invalid.status).toBe(400);
+		expect((await invalid.json()) as ApiErrorResponse).toMatchObject({
+			error: { code: "bad_request" },
+		});
+	});
+
+	it("手动触发画面整理只入队，关闭或缺少 workflow 时拒绝", async () => {
+		const { running } = await startImagesServer();
+		running.store.createStory({ id: "s1", title: "手动整理" });
+		const node = running.store.appendNode({
+			id: "n1",
+			storyId: "s1",
+			parentId: null,
+			role: "assistant",
+			raw: "第一段。\n\n第二段。",
+		});
+		const savedWorkflow = running.store.saveImageWorkflow({
+			name: "默认",
+			provider: "comfy",
+			payload: workflow() as never,
+			slots: SLOTS,
+		});
+		running.store.updateStorySettings("s1", {
+			imageConfig: {
+				mode: "manual",
+				workflowId: savedWorkflow.id,
+				maxPerFloor: 1,
+				minFloorsBetween: 0,
+				trigger: "manual",
+				recentPromptHistory: 3,
+				replacementRules: [],
+			},
+		});
+		const response = await request(
+			running.origin,
+			`/api/stories/s1/nodes/${node.id}/organize-images`,
+			"POST",
+		);
+		expect(response.status).toBe(202);
+		expect((await response.json()) as StoryImageOrganizeResult).toMatchObject({
+			storyId: "s1",
+			nodeId: "n1",
+			kind: "image_organize",
+		});
+		const jobs = running.store.listBackgroundJobs({
+			storyId: "s1",
+			kinds: ["image_organize"],
+		});
+		expect(jobs).toHaveLength(1);
+		expect(jobs[0]?.status).toBe("pending");
+
+		running.store.updateStorySettings("s1", {
+			imageConfig: {
+				...running.store.getStorySettings("s1").imageConfig,
+				mode: "off",
+			},
+		});
+		const off = await request(
+			running.origin,
+			`/api/stories/s1/nodes/${node.id}/organize-images`,
+			"POST",
+		);
+		expect(off.status).toBe(409);
+
+		running.store.updateStorySettings("s1", {
+			imageConfig: {
+				...running.store.getStorySettings("s1").imageConfig,
+				mode: "manual",
+				workflowId: "",
+			},
+		});
+		const noWorkflow = await request(
+			running.origin,
+			`/api/stories/s1/nodes/${node.id}/organize-images`,
+			"POST",
+		);
+		expect(noWorkflow.status).toBe(409);
 	});
 });

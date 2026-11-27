@@ -1,10 +1,17 @@
 import type {
 	ContextTemplateRecord,
 	ImageWorkflowView,
+	NodeImage,
 	StorySettings,
 	StoryTemplateView,
 } from "@dramaticer/protocol";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import {
+	type ReactNode,
+	useCallback,
+	useEffect,
+	useRef,
+	useState,
+} from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
 import {
@@ -12,7 +19,7 @@ import {
 	DIRECTOR_MODE_CHOICES,
 } from "../chat/director-view";
 import {
-	IMAGE_MODE_CHOICES,
+	IMAGE_TRIGGER_CHOICES,
 	type ImageSettingsDraft,
 } from "../chat/image-form";
 import {
@@ -103,7 +110,33 @@ export function AdvancedSettings({ storyId }: { readonly storyId: string }) {
 	>([]);
 	const [templateBusy, setTemplateBusy] = useState(false);
 	const [templateSaved, setTemplateSaved] = useState(false);
+	const [organizerBusy, setOrganizerBusy] = useState(false);
+	const [organizerNotice, setOrganizerNotice] = useState<string | null>(null);
+	const [organizerHead, setOrganizerHead] = useState<string | null>(null);
+	const [organizerImages, setOrganizerImages] = useState<readonly NodeImage[]>(
+		[],
+	);
 	const requestRef = useRef(0);
+
+	const refreshOrganizer = useCallback((): void => {
+		void api
+			.getPath(storyId)
+			.then((path) => {
+				const node = [...path.nodes]
+					.reverse()
+					.find((item) => item.role === "assistant");
+				setOrganizerHead(node?.id ?? null);
+				setOrganizerImages(node?.images ?? []);
+			})
+			.catch(() => {
+				setOrganizerHead(null);
+				setOrganizerImages([]);
+			});
+	}, [storyId]);
+
+	useEffect(() => {
+		refreshOrganizer();
+	}, [refreshOrganizer]);
 
 	useEffect(() => {
 		let active = true;
@@ -200,6 +233,35 @@ export function AdvancedSettings({ storyId }: { readonly storyId: string }) {
 				: { ...previous, image: { ...previous.image, ...patch } },
 		);
 		setSettingsSaved(false);
+	};
+
+	const updateReplacementRules = (
+		rules: ImageSettingsDraft["replacementRules"],
+	): void => {
+		updateImage({ replacementRules: rules });
+	};
+
+	const organizeCurrentFloor = (): void => {
+		if (organizerBusy) return;
+		if (organizerHead === null) {
+			setOrganizerNotice("当前路径上还没有助手楼层");
+			return;
+		}
+		setOrganizerBusy(true);
+		setOrganizerNotice(null);
+		void api
+			.organizeNodeImages(storyId, organizerHead)
+			.then((result) => {
+				setOrganizerNotice(
+					`已排入后台整理（任务 ${result.jobId}）；稍后刷新结果`,
+				);
+			})
+			.catch((error: unknown) => {
+				setSettingsErrors(settingsErrorsFromFailure(error));
+			})
+			.finally(() => {
+				setOrganizerBusy(false);
+			});
 	};
 
 	const setDirectorNumber = (key: DirectorNumberKey, value: string): void => {
@@ -545,25 +607,37 @@ export function AdvancedSettings({ storyId }: { readonly storyId: string }) {
 						<header className="director-section-head">
 							<h2>生图</h2>
 							<span className="ledger-tag">
-								{draft.image.mode === "auto"
-									? "模型可以调用 illustrate"
-									: draft.image.mode === "manual"
-										? "只允许手动登记"
-										: "已关闭"}
+								{draft.image.mode === "off"
+									? "已关闭"
+									: draft.image.trigger === "floor"
+										? "每楼整理一张"
+										: draft.image.trigger === "manual"
+											? "只手动整理"
+											: "每场末整理一张"}
 							</span>
 						</header>
 						<div className="settings-grid">
-							<Field label="生图模式">
+							<Field label="触发频率">
 								<select
-									value={draft.image.mode}
-									onChange={(event) =>
-										updateImage({
-											mode: event.target.value as ImageSettingsDraft["mode"],
-										})
+									value={
+										draft.image.mode === "off" ? "off" : draft.image.trigger
 									}
+									onChange={(event) => {
+										const value = event.target.value as
+											| ImageSettingsDraft["trigger"]
+											| "off";
+										if (value === "off") {
+											updateImage({ mode: "off" });
+											return;
+										}
+										updateImage({
+											trigger: value,
+											mode: value === "manual" ? "manual" : "auto",
+										});
+									}}
 									disabled={settingsBusy}
 								>
-									{IMAGE_MODE_CHOICES.map((choice) => (
+									{IMAGE_TRIGGER_CHOICES.map((choice) => (
 										<option key={choice.value} value={choice.value}>
 											{choice.label}
 										</option>
@@ -607,7 +681,160 @@ export function AdvancedSettings({ storyId }: { readonly storyId: string }) {
 									disabled={settingsBusy}
 								/>
 							</Field>
+							<Field label="参考最近提示词条数（0 到 10）">
+								<input
+									type="text"
+									inputMode="numeric"
+									value={draft.image.recentPromptHistory}
+									onChange={(event) =>
+										updateImage({
+											recentPromptHistory: event.target.value,
+										})
+									}
+									disabled={settingsBusy}
+								/>
+							</Field>
 						</div>
+						<div className="settings-override" aria-label="提示词替换规则">
+							<p className="ledger-meta">替换规则</p>
+							{draft.image.replacementRules.map((rule, index) => (
+								// biome-ignore lint/suspicious/noArrayIndexKey: 规则按位置编辑，查找内容可能还没填
+								<div className="plan-field-row" key={index}>
+									<Field label={`规则 ${index + 1} 查找`}>
+										<input
+											type="text"
+											value={rule.pattern}
+											onChange={(event) =>
+												updateReplacementRules(
+													draft.image.replacementRules.map((item, position) =>
+														position === index
+															? { ...item, pattern: event.target.value }
+															: item,
+													),
+												)
+											}
+											disabled={settingsBusy}
+										/>
+									</Field>
+									<Field label={`规则 ${index + 1} 替换为`}>
+										<input
+											type="text"
+											value={rule.replacement}
+											onChange={(event) =>
+												updateReplacementRules(
+													draft.image.replacementRules.map((item, position) =>
+														position === index
+															? { ...item, replacement: event.target.value }
+															: item,
+													),
+												)
+											}
+											disabled={settingsBusy}
+										/>
+									</Field>
+									<label className="plan-check">
+										<input
+											type="checkbox"
+											checked={rule.isRegex}
+											onChange={(event) =>
+												updateReplacementRules(
+													draft.image.replacementRules.map((item, position) =>
+														position === index
+															? { ...item, isRegex: event.target.checked }
+															: item,
+													),
+												)
+											}
+											disabled={settingsBusy}
+										/>
+										<span>正则</span>
+									</label>
+									<label className="plan-check">
+										<input
+											type="checkbox"
+											checked={rule.enabled}
+											onChange={(event) =>
+												updateReplacementRules(
+													draft.image.replacementRules.map((item, position) =>
+														position === index
+															? { ...item, enabled: event.target.checked }
+															: item,
+													),
+												)
+											}
+											disabled={settingsBusy}
+										/>
+										<span>启用</span>
+									</label>
+									<button
+										type="button"
+										className="plan-remove"
+										onClick={() =>
+											updateReplacementRules(
+												draft.image.replacementRules.filter(
+													(_item, position) => position !== index,
+												),
+											)
+										}
+										disabled={settingsBusy}
+									>
+										删除
+									</button>
+								</div>
+							))}
+							<button
+								type="button"
+								onClick={() =>
+									updateReplacementRules([
+										...draft.image.replacementRules,
+										{
+											pattern: "",
+											replacement: "",
+											isRegex: false,
+											enabled: true,
+										},
+									])
+								}
+								disabled={settingsBusy}
+							>
+								新增替换规则
+							</button>
+						</div>
+						<div className="plan-toolbar" aria-label="画面整理">
+							<button
+								type="button"
+								onClick={organizeCurrentFloor}
+								disabled={organizerBusy}
+							>
+								{organizerBusy ? "正在整理…" : "整理当前楼层画面"}
+							</button>
+							<button type="button" onClick={refreshOrganizer}>
+								刷新结果
+							</button>
+							{organizerNotice === null ? null : (
+								<span className="ledger-tag">{organizerNotice}</span>
+							)}
+						</div>
+						{organizerImages.length === 0 ? (
+							<p className="muted">当前楼层还没有画面整理结果。</p>
+						) : (
+							<ul className="image-workflow-list" aria-label="最近的画面整理">
+								{organizerImages.map((image) => (
+									<li className="image-workflow-card" key={image.id}>
+										<div className="image-workflow-head">
+											<strong>{image.title ?? "未命名插图"}</strong>
+											<span className="ledger-tag">{image.status}</span>
+										</div>
+										<p className="ledger-meta">
+											{image.insertAfterParagraph === null
+												? "插入位置未记录"
+												: `插在第 ${image.insertAfterParagraph} 段之后`}
+										</p>
+										<p className="muted">{image.prompt ?? "还没有提示词"}</p>
+									</li>
+								))}
+							</ul>
+						)}
 						<p className="muted">
 							workflow 在<Link to="/settings">设置</Link>
 							里导入；视觉档案在设定页。

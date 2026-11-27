@@ -302,3 +302,14 @@
 - 智绘姬兼容导入在 `st-compat/src/image-import/`：`characters.ts` 读角色库/服装库（角色列表、12 格或平铺分格、角色下或根部服装），`prompts.ts` 读生图预设（有关键词的进标签库，其余进画面整理条目）。服务端只经 `POST /api/stories/:id/images/import-st` 调用它，core 不依赖 st-compat。
 - 接口：`PUT .../visual-profiles`、`GET|PUT .../outfits`、`GET|PUT .../image-tags`、`GET .../image-organizer/entries`、`POST .../images/import-st`。设定页由 `v4/VisualProfileEditor.tsx` 提供分格、服装、标签库、整理条目与两个导入按钮。
 - e2e 在 `v5-image-profiles.spec.ts`（桌面/手机：导入、锁定、编辑并刷新保留、服装新增、标签编辑、整理条目与存储作用域），走查脚本 `.walk/walk15.spec.ts`。
+
+## 画面整理（2026-11-27 起，image-v2/02）
+
+- `node_images` 在迁移 84 新增 `insert_after_paragraph`、`title`、`organizer_result`；`organizer_result` 存完整的结构化结果与展开后的提示词、人物级负面和坐标，出图重试与重绘直接复用，不再重跑整理模型。
+- 画面整理任务 `image_organize` 是故事级、`gap` 档：`needsRun` 先看手动请求（存在故事 kv `images.organizeRequests`），再按 `trigger`（`scene_end` / `floor` / `manual`）与 `mode` 找第一个未整理过的落定助手楼层。一次只整理一楼，成功后才消费手动请求并排 `illustrate`。
+- 输入收集在 `collectImageOrganizerInput`：目标楼按段落编号、上一楼、在场者记事页、世界索引、按关键词命中的标签库、`scope: "image_organizer"` 的写作条目、人物与服装短表、最近 N 条出图提示词。所有来源只读。
+- 展开在 `expandImageOrganizerResult`：每个人物按 `angle × body × exposure` 调 `expandVisualProfile`，显式 `outfitName` 优先、否则按台账当前服装与默认服装取一套；没有档案的人物只保留名字与动作。
+- 后处理管线在 `images/compile.ts`：替换规则（字面或合法正则）→ 全角标点清洗 → 按逗号归一化去重。人物级提示词与总提示词都走同一条管线。
+- 服务端：`POST /api/stories/:id/nodes/:nodeId/organize-images` 手动入队；`GET|PUT .../image-organizer/rules` 读写触发频率、最近提示词条数与替换规则。设置的图片配置仍随故事设置保存。
+- 后台调度在整理成功后补一轮只跑 `illustrate`，避免出图要等到下一次玩家输入。整理失败只让后台任务记 failed，正文与楼层读取不受影响。
+- e2e 在 `v5-image-organizer.spec.ts`（桌面/手机：设置落定、自动整理、手动再整理、图像后端、失败不影响正文），走查脚本 `.walk/walk16.spec.ts`。

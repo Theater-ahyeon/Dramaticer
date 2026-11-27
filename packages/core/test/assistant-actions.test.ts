@@ -419,6 +419,9 @@ describe("助手待确认动作", () => {
 			workflowId: "wf-1",
 			maxPerFloor: 2,
 			minFloorsBetween: 4,
+			trigger: "scene_end",
+			recentPromptHistory: 3,
+			replacementRules: [],
 		});
 	});
 

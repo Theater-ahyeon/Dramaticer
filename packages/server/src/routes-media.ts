@@ -2,6 +2,7 @@
 import { readFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
+	type BackgroundJob,
 	type CharacterOutfitInput,
 	type CharacterVisualProfile,
 	type ComfyUiSlots,
@@ -11,12 +12,14 @@ import {
 	type NodeImageRecord,
 	type TagLibraryEntryInput,
 	assertComfyUiSlots,
+	assertImageConfig,
 	detectComfyUiSlots,
 	emptyImagesConfig,
 	enqueueIllustrateBackgroundJob,
 	loadImagesConfig,
 	parseComfyUiWorkflow,
 	readWritingEntries,
+	requestImageOrganization,
 	resolveImageProvider,
 	saveNovelAiTemplate,
 	validateImagePromptRequest,
@@ -29,7 +32,9 @@ import type {
 	NodeImagesView,
 	StoryCharacterOutfitsView,
 	StoryImageImportResult,
+	StoryImageOrganizeResult,
 	StoryImageOrganizerEntriesView,
+	StoryImageOrganizerRulesView,
 	StoryTagLibraryView,
 	StoryVisualProfilesView,
 } from "@dramaticer/protocol";
@@ -65,6 +70,10 @@ export function toNodeImage(record: NodeImageRecord): NodeImage {
 		width: record.width,
 		height: record.height,
 		error: record.error,
+		insertAfterParagraph: record.insertAfterParagraph,
+		title: record.title,
+		prompt: record.prompt,
+		negativePrompt: record.negativePrompt,
 	};
 }
 
@@ -226,6 +235,107 @@ export function handleStoryImageOrganizerEntries(
 		),
 	};
 	sendJson(res, 200, view);
+}
+
+/** `GET/PUT /api/stories/:id/image-organizer/rules`：触发频率与替换规则。 */
+export function handleStoryImageOrganizerRules(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	storyId: string,
+): void {
+	requireStory(options.store, storyId);
+	const config = options.store.getStorySettings(storyId).imageConfig;
+	const view: StoryImageOrganizerRulesView = {
+		storyId,
+		trigger: config.trigger,
+		recentPromptHistory: config.recentPromptHistory,
+		replacementRules: config.replacementRules,
+	};
+	sendJson(res, 200, view);
+}
+
+export async function handleStoryImageOrganizerRulesSave(
+	req: IncomingMessage,
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	storyId: string,
+): Promise<void> {
+	requireStory(options.store, storyId);
+	const body = await readObjectBody(req, options.maxJsonBodyBytes);
+	assertKnownKeys(body, ["trigger", "recentPromptHistory", "replacementRules"]);
+	const current = options.store.getStorySettings(storyId).imageConfig;
+	try {
+		const next = assertImageConfig({ ...current, ...body }, "画面整理配置");
+		options.store.updateStorySettings(storyId, { imageConfig: next });
+	} catch (error) {
+		throw toBadRequest(error, "imageConfig");
+	}
+	const config = options.store.getStorySettings(storyId).imageConfig;
+	const view: StoryImageOrganizerRulesView = {
+		storyId,
+		trigger: config.trigger,
+		recentPromptHistory: config.recentPromptHistory,
+		replacementRules: config.replacementRules,
+	};
+	sendJson(res, 200, view);
+}
+
+/** `POST /api/stories/:id/nodes/:nodeId/organize-images`：手动整理某楼画面。 */
+export function handleNodeOrganizeImages(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	storyId: string,
+	nodeId: string,
+): void {
+	requireStory(options.store, storyId);
+	const node = requireNode(options.store, nodeId);
+	if (node.storyId !== storyId) {
+		throw new HttpError(
+			404,
+			"not_found",
+			`楼层 ${nodeId} 不属于故事 ${storyId}`,
+		);
+	}
+	if (node.role !== "assistant") {
+		throw fieldError("nodeId", `楼层 ${nodeId} 不是助手楼层，不能整理插图`);
+	}
+	const pathIds = new Set(
+		options.store.getPathToHead(storyId).map((item) => item.id),
+	);
+	if (!pathIds.has(nodeId)) {
+		throw new HttpError(409, "conflict", `楼层 ${nodeId} 不在当前路径上`);
+	}
+	const settings = options.store.getStorySettings(storyId);
+	if (settings.imageConfig.mode === "off") {
+		throw new HttpError(409, "conflict", "生图模式已关闭");
+	}
+	const workflowId = settings.imageConfig.workflowId.trim();
+	const workflow =
+		workflowId.length === 0 ? null : options.store.getImageWorkflow(workflowId);
+	if (workflow === null) {
+		throw new HttpError(409, "conflict", "故事没有选择可用的生图 workflow");
+	}
+	if (!options.imagesConfig.providers.has(workflow.provider)) {
+		throw new HttpError(
+			409,
+			"conflict",
+			`生图 workflow 的 provider 没有配置：${workflow.provider}`,
+		);
+	}
+	let job: BackgroundJob;
+	try {
+		job = requestImageOrganization(options.store, storyId, nodeId);
+	} catch (error) {
+		throw toBadRequest(error, "nodeId");
+	}
+	options.scheduler?.schedule(storyId);
+	const view: StoryImageOrganizeResult = {
+		storyId,
+		nodeId,
+		jobId: job.id,
+		kind: job.kind,
+	};
+	sendJson(res, 202, view);
 }
 
 /** `POST /api/stories/:id/images/import-st`：角色 / 服装库或生图预设。 */

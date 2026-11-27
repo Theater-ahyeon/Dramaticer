@@ -39,10 +39,13 @@ import {
 	handleImageWorkflows,
 	handleNodeImageList,
 	handleNodeImages,
+	handleNodeOrganizeImages,
 	handleNovelAiTemplateSave,
 	handleStoryCover,
 	handleStoryImageImport,
 	handleStoryImageOrganizerEntries,
+	handleStoryImageOrganizerRules,
+	handleStoryImageOrganizerRulesSave,
 	handleStoryImageTags,
 	handleStoryImageTagsSave,
 	handleStoryOutfits,
@@ -435,6 +438,28 @@ export async function handleApiRequest(
 		) {
 			requireMethod(method, ["GET"]);
 			handleStoryImageOrganizerEntries(res, options, storyId);
+			return;
+		}
+		if (
+			third === "image-organizer" &&
+			parts.length === 4 &&
+			parts[3] === "rules"
+		) {
+			if (method === "PUT") {
+				await handleStoryImageOrganizerRulesSave(req, res, options, storyId);
+				return;
+			}
+			requireMethod(method, ["GET"]);
+			handleStoryImageOrganizerRules(res, options, storyId);
+			return;
+		}
+		if (
+			third === "nodes" &&
+			parts.length === 5 &&
+			parts[4] === "organize-images"
+		) {
+			requireMethod(method, ["POST"]);
+			handleNodeOrganizeImages(res, options, storyId, parts[3] as string);
 			return;
 		}
 		if (third === "canon" && parts.length > 3) {

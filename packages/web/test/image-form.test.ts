@@ -34,41 +34,82 @@ const DETECTION: ImageWorkflowDetectionView = {
 };
 
 describe("生图表单", () => {
-	it("设置草稿往返转换保留四个字段", () => {
+	it("设置草稿往返转换保留触发频率、历史条数与替换规则", () => {
 		const config = {
 			mode: "auto" as const,
 			workflowId: "wf-1",
 			maxPerFloor: 2,
 			minFloorsBetween: 7,
+			trigger: "floor" as const,
+			recentPromptHistory: 4,
+			replacementRules: [
+				{ pattern: "门厅", replacement: "大厅", isRegex: false, enabled: true },
+			],
 		};
 		expect(buildImageSettingsDraft(config)).toEqual({
 			mode: "auto",
 			workflowId: "wf-1",
 			maxPerFloor: "2",
 			minFloorsBetween: "7",
+			trigger: "floor",
+			recentPromptHistory: "4",
+			replacementRules: [
+				{ pattern: "门厅", replacement: "大厅", isRegex: false, enabled: true },
+			],
 		});
 		const parsed = parseImageSettingsDraft(buildImageSettingsDraft(config));
 		expect(parsed.errors).toEqual([]);
 		expect(parsed.config).toEqual(config);
 	});
 
-	it("越界数值与未选 workflow 各自产生字段错误", () => {
+	it("越界数值、未选 workflow 与空替换规则各自产生字段错误", () => {
 		const parsed = parseImageSettingsDraft({
 			mode: "manual",
 			workflowId: "  ",
 			maxPerFloor: "0",
 			minFloorsBetween: "101",
+			trigger: "manual",
+			recentPromptHistory: "11",
+			replacementRules: [
+				{
+					pattern: "",
+					replacement: "x",
+					isRegex: false,
+					enabled: true,
+				},
+			],
 		});
 		expect(parsed.errors.map((error) => error.path)).toEqual([
 			"imageConfig.maxPerFloor",
 			"imageConfig.minFloorsBetween",
+			"imageConfig.recentPromptHistory",
 			"imageConfig.workflowId",
+			"imageConfig.replacementRules.0.pattern",
 		]);
 		expect(parsed.config).toMatchObject({
 			maxPerFloor: 1,
 			minFloorsBetween: 0,
+			recentPromptHistory: 0,
 			workflowId: "",
+			replacementRules: [],
 		});
+	});
+
+	it("非法正则的替换规则在保存前被拒绝", () => {
+		const parsed = parseImageSettingsDraft({
+			mode: "auto",
+			workflowId: "wf-1",
+			maxPerFloor: "1",
+			minFloorsBetween: "0",
+			trigger: "scene_end",
+			recentPromptHistory: "3",
+			replacementRules: [
+				{ pattern: "(", replacement: "x", isRegex: true, enabled: true },
+			],
+		});
+		expect(parsed.errors.map((error) => error.path)).toEqual([
+			"imageConfig.replacementRules.0.pattern",
+		]);
 	});
 
 	it("关闭模式允许 workflow 为空", () => {
@@ -77,6 +118,9 @@ describe("生图表单", () => {
 			workflowId: "",
 			maxPerFloor: "1",
 			minFloorsBetween: "0",
+			trigger: "scene_end",
+			recentPromptHistory: "3",
+			replacementRules: [],
 		});
 		expect(parsed.errors).toEqual([]);
 		expect(parsed.config.mode).toBe("off");

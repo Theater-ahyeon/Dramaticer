@@ -210,11 +210,15 @@ export function matchTagLibraryEntries(
 	);
 }
 
-/** 把命中的条目按分类分组；画面整理按这个顺序拼提示词。 */
-export function groupTagLibraryEntries(entries: readonly TagLibraryEntry[]): {
+export interface TagLibraryGroup {
 	readonly category: TagLibraryCategory;
 	readonly entries: TagLibraryEntry[];
-}[] {
+}
+
+/** 把命中的条目按分类分组；画面整理按这个顺序拼提示词。 */
+export function groupTagLibraryEntries(
+	entries: readonly TagLibraryEntry[],
+): TagLibraryGroup[] {
 	const groups = new Map<TagLibraryCategory, TagLibraryEntry[]>();
 	for (const entry of sortTagLibraryEntries(entries)) {
 		const list = groups.get(entry.category);

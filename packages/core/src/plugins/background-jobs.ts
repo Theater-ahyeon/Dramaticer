@@ -30,6 +30,11 @@ import {
 	directorPlanNeedsRun,
 } from "../director/planner.js";
 import {
+	IMAGE_ORGANIZER_JOB_KIND,
+	createImageOrganizerHandler,
+	imageOrganizerNeedsRun,
+} from "../images/organizer.js";
+import {
 	VISUAL_PROFILE_JOB_KIND,
 	createVisualProfileHandler,
 	visualProfileNeedsRun,
@@ -126,6 +131,7 @@ export const SCENE_ARCHIVE_JOB_PLUGIN = "background.scene-archive";
 export const OPENING_JOB_PLUGIN = "background.opening";
 export const OPENING_CANDIDATES_JOB_PLUGIN = "background.opening-candidates";
 export const VISUAL_PROFILE_JOB_PLUGIN = "background.visual-profile";
+export const IMAGE_ORGANIZER_JOB_PLUGIN = "background.image-organizer";
 export const ILLUSTRATE_JOB_PLUGIN = "background.illustrate";
 export const DIRECTOR_PLAN_JOB_PLUGIN = "background.director-plan";
 export const CHAPTER_PLAN_JOB_PLUGIN = "background.chapter-plan";
@@ -237,6 +243,12 @@ export const BACKGROUND_JOB_PLUGINS: readonly BackgroundJobPlugin[] = [
 		enqueue: "story",
 		tier: "gap",
 		needsRun: visualProfileNeedsRun,
+	}),
+	backgroundJobPlugin(IMAGE_ORGANIZER_JOB_PLUGIN, IMAGE_ORGANIZER_JOB_KIND, {
+		handler: createImageOrganizerHandler(),
+		enqueue: "story",
+		tier: "gap",
+		needsRun: imageOrganizerNeedsRun,
 	}),
 ];
 
