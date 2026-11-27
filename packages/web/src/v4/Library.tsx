@@ -79,6 +79,9 @@ export function Library() {
 	return (
 		<section data-view="library">
 			<div className="lib-bar">
+				<TLink className="btn" to="/canon">
+					原著
+				</TLink>
 				<button
 					type="button"
 					className="btn gold"

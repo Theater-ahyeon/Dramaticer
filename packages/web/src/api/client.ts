@@ -9,6 +9,12 @@ import {
 	type BlueprintSuggestionAcceptRequest,
 	type BlueprintSuggestionAcceptResult,
 	type BlueprintSuggestionRejectResult,
+	type CanonBookDetailView,
+	type CanonBookView,
+	type CanonBooksView,
+	type CanonChapterDetailView,
+	type CanonChapterRecord,
+	type CanonChapterUpdateRequest,
 	type ChannelProbeRequest,
 	type ChannelProbeResult,
 	type ChannelsUpdateRequest,
@@ -33,6 +39,8 @@ import {
 	type ImportAuditEntryMemoryUpdateResult,
 	type ImportAuditMemoryConvertResult,
 	type ImportAuditReportView,
+	type ImportCanonBookRequest,
+	type ImportCanonBookResult,
 	type ImportStoryRequest,
 	type ImportStoryResult,
 	type NodeActionResult,
@@ -315,6 +323,75 @@ export class ApiClient {
 			"DELETE",
 			`/api/templates/${encodeURIComponent(templateId)}`,
 		);
+	}
+
+	async listCanonBooks(): Promise<readonly CanonBookView[]> {
+		const view = await this.json<CanonBooksView>("GET", "/api/canon/books");
+		return view.books;
+	}
+
+	async importCanonBook(
+		request: ImportCanonBookRequest,
+	): Promise<ImportCanonBookResult> {
+		return this.json<ImportCanonBookResult>(
+			"POST",
+			"/api/canon/books",
+			request,
+		);
+	}
+
+	async getCanonBook(bookId: string): Promise<CanonBookDetailView> {
+		return this.json<CanonBookDetailView>("GET", canonBookPath(bookId));
+	}
+
+	async getCanonChapter(
+		bookId: string,
+		chapterId: string,
+	): Promise<CanonChapterRecord> {
+		const view = await this.json<CanonChapterDetailView>(
+			"GET",
+			`${canonBookPath(bookId)}/chapters/${encodeURIComponent(chapterId)}`,
+		);
+		return view.chapter;
+	}
+
+	async updateCanonChapter(
+		bookId: string,
+		chapterId: string,
+		request: CanonChapterUpdateRequest,
+	): Promise<CanonChapterRecord> {
+		const view = await this.json<CanonChapterDetailView>(
+			"PATCH",
+			`${canonBookPath(bookId)}/chapters/${encodeURIComponent(chapterId)}`,
+			request,
+		);
+		return view.chapter;
+	}
+
+	async mergeCanonChapter(
+		bookId: string,
+		chapterId: string,
+	): Promise<CanonBookDetailView> {
+		return this.json<CanonBookDetailView>(
+			"POST",
+			`${canonBookPath(bookId)}/chapters/${encodeURIComponent(chapterId)}/merge-next`,
+		);
+	}
+
+	async splitCanonChapter(
+		bookId: string,
+		chapterId: string,
+		paragraphIndex: number,
+	): Promise<CanonBookDetailView> {
+		return this.json<CanonBookDetailView>(
+			"POST",
+			`${canonBookPath(bookId)}/chapters/${encodeURIComponent(chapterId)}/split`,
+			{ paragraphIndex },
+		);
+	}
+
+	async deleteCanonBook(bookId: string): Promise<void> {
+		await this.send("DELETE", canonBookPath(bookId));
 	}
 
 	async getClues(storyId: string): Promise<StoryCluesView> {
@@ -881,6 +958,10 @@ export class ApiClient {
 
 function storyPath(storyId: string): string {
 	return `/api/stories/${encodeURIComponent(storyId)}`;
+}
+
+function canonBookPath(bookId: string): string {
+	return `/api/canon/books/${encodeURIComponent(bookId)}`;
 }
 
 function nodePath(nodeId: string): string {

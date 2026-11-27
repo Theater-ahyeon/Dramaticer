@@ -198,3 +198,12 @@
 - 「还在开场」= 所有楼层都是根部助手楼层（`core/src/opening/greetings.ts` 的 `storyAtOpening`）。这期间可以换开场白（`POST /greetings/:index`，同正文的根楼层复用）、选候选（新建根楼层并设为 head）、重新生成候选；玩家一开口就结束。
 - 用 `createImportedStory` 建的 e2e 故事一开始就有 1 楼（开场白），数楼层的断言要算上它。
 - 全量 e2e 跑到后段时，桌面端的 director / ledger / openings 常因后台队列积压（前面用例留下的任务）等不到候选或事件而失败，单独重跑能过；这是测试环境问题，不是功能回归。根治要给 e2e 的后台调度加按故事隔离或清队列，尚未做。
+
+## 原著（2026-11-27 起，canon/01）
+
+- 编码识别在 `core/src/canon/decode.ts`：BOM → 无 BOM UTF-16 的 0 字节特征 → 严格 UTF-8 → 严格 GB18030，两种都失败才抛错，不做有损替换。`TextDecoder("gb18030")` 在 Node 24 可用。
+- 分章在 `core/src/canon/split.ts`：卷只携带 `volumeTitle`，不单独成章；序章/尾声/番外按标题词判断类型；无标号短行要同时满足前后空行、上一章至少 20 字、下一行至少 20 字且整行无句读，才当标题。以「第」开头的短行（第三天、第一次）不当标题。第一个标题之前的书名页不足 60 字丢弃，超过则作为「卷首」保留。整本没有标题时按 6000 字分成「第 N 部分」，短文本只有一章「全文」。
+- 存储迁移 76：`canon_books`、`canon_chapters`（`paragraphs` 是 JSON 数组，`STRICT`，章随书 `ON DELETE CASCADE`）。`repos/canon.ts` 的合并与拆分先把序号整体加 `RENUMBER_OFFSET`（1,000,000）再逐行写回 1..N，否则会撞 `UNIQUE (book_id, ordinal)`；每次变更后用 `#recountBook` 重算书的章数与字数。
+- 分章列表接口不带 `paragraphs`；原文只在 `GET /api/canon/books/:bookId/chapters/:chapterId` 返回。导入请求只接受 `text` 或 `dataBase64` 之一，导入路由的请求体上限是 `CANON_IMPORT_MAX_BODY_BYTES`（48 MB），其余接口仍用 `maxJsonBodyBytes`。
+- 页面是 `/canon`（书架 + 上传）与 `/canon/:bookId`（分章预览与编辑）。导航栏仍是 7 项：入口在书架的 `lib-bar` 与命令面板「原著 · 导入与分章」，`/canon*` 高亮「书架」那一格。
+- 新增迁移要同步 `assistant-store.test.ts` 的 schema 版本断言（现在是 76）。

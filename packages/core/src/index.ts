@@ -2,6 +2,7 @@ export * from "./assistant/index.js";
 export * from "./background/index.js";
 export * from "./blocks/index.js";
 export * from "./blueprint/index.js";
+export * from "./canon/index.js";
 export * from "./chat/index.js";
 export * from "./cli/index.js";
 export * from "./context/index.js";
@@ -44,8 +45,11 @@ export * from "./store/settings.js";
 export * from "./store/story-media.js";
 export type {
 	AppendNodeInput,
+	CanonChapterSplitResult,
+	CanonChapterUpdate,
 	ChunkSearchMatch,
 	ChunkVectorForNode,
+	CreateCanonBookInput,
 	CreateStoryInput,
 	ListEntitiesOptions,
 	RecordEventExtractionsInput,

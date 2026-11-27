@@ -133,9 +133,11 @@ export function Shell() {
 	const current =
 		location.pathname === "/"
 			? "library"
-			: location.pathname.startsWith("/settings")
-				? "settings"
-				: location.pathname.split("/")[3];
+			: location.pathname.startsWith("/canon")
+				? "library"
+				: location.pathname.startsWith("/settings")
+					? "settings"
+					: location.pathname.split("/")[3];
 	const viewIndex = NAV.findIndex((item) => item.view === current);
 	// 书架第 0 格，五个主页面第 1 到 5 格，全局设置最后一格。
 	const activeIndex =
@@ -149,6 +151,7 @@ export function Shell() {
 		const visit = (path: string) => travel(path, () => navigate(path));
 		const list: { label: string; kind: string; run: () => void }[] = [
 			{ label: "去书架", kind: "前往", run: () => visit("/") },
+			{ label: "原著 · 导入与分章", kind: "前往", run: () => visit("/canon") },
 			{ label: "打开检视器", kind: "执行", run: openInspector },
 			{
 				label: "设置 · 模型与渠道",

@@ -1,4 +1,5 @@
 export * from "./assistant.js";
+export * from "./canon.js";
 export * from "./channels.js";
 export * from "./direction.js";
 export * from "./errors.js";

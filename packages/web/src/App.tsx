@@ -1,5 +1,7 @@
 import { Link, Navigate, Route, Routes } from "react-router-dom";
 import { Backdrop } from "./v4/Backdrop";
+import { CanonLibrary } from "./v4/Canon";
+import { CanonBook } from "./v4/CanonBook";
 import { DirectionPage } from "./v4/Direction";
 import { GlobalSettings } from "./v4/GlobalSettings";
 import { Library } from "./v4/Library";
@@ -25,6 +27,8 @@ function AppRoutes() {
 			<Route path="/login" element={<Login />} />
 			<Route element={<Shell />}>
 				<Route path="/" element={<Library />} />
+				<Route path="/canon" element={<CanonLibrary />} />
+				<Route path="/canon/:bookId" element={<CanonBook />} />
 				<Route path="/settings" element={<GlobalSettings />} />
 				<Route path="/stories/:storyId/play" element={<Play />} />
 				<Route path="/stories/:storyId/memory" element={<Memory />} />

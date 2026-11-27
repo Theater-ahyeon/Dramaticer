@@ -14,6 +14,7 @@ import {
 } from "./migrations.js";
 import { AssistantRepo } from "./repos/assistant.js";
 import { BackgroundRepo } from "./repos/background.js";
+import { CanonRepo } from "./repos/canon.js";
 import { DirectorLinesRepo } from "./repos/director-lines.js";
 import { DirectorPlanRepo } from "./repos/director-plan.js";
 import { EntitiesRepo } from "./repos/entities.js";
@@ -62,11 +63,17 @@ export type {
 	ListBlueprintSuggestionsOptions,
 	SaveBlueprintSuggestionsInput,
 } from "./repos/outline.js";
+export type {
+	CanonChapterSplitResult,
+	CanonChapterUpdate,
+	CreateCanonBookInput,
+} from "./repos/canon.js";
 
 const REPOS = Symbol("StoryStore.repos");
 
 interface Repos {
 	readonly stories: StoriesRepo;
+	readonly canon: CanonRepo;
 	readonly entities: EntitiesRepo;
 	readonly nodes: NodesRepo;
 	readonly ledger: LedgerRepo;
@@ -377,6 +384,19 @@ export interface StoryStore
 			| "failBackgroundJob"
 			| "deferBackgroundJob"
 			| "discardBackgroundJob"
+		>,
+		Pick<
+			CanonRepo,
+			| "createCanonBook"
+			| "listCanonBooks"
+			| "getCanonBook"
+			| "listCanonChapters"
+			| "listCanonChapterRecords"
+			| "getCanonChapter"
+			| "updateCanonChapter"
+			| "mergeCanonChapterWithNext"
+			| "splitCanonChapter"
+			| "deleteCanonBook"
 		> {}
 
 export class StoryStore {
@@ -397,6 +417,7 @@ export class StoryStore {
 		this.#chunkStrategy = chunkStrategy;
 		this[REPOS] = {
 			stories: new StoriesRepo(db, this, embeddingDimensions, chunkStrategy),
+			canon: new CanonRepo(db, this, embeddingDimensions, chunkStrategy),
 			entities: new EntitiesRepo(db, this, embeddingDimensions, chunkStrategy),
 			nodes: new NodesRepo(db, this, embeddingDimensions, chunkStrategy),
 			ledger: new LedgerRepo(db, this, embeddingDimensions, chunkStrategy),
@@ -812,6 +833,18 @@ const DELEGATES: Readonly<Record<keyof Repos, readonly string[]>> = {
 		"failBackgroundJob",
 		"deferBackgroundJob",
 		"discardBackgroundJob",
+	],
+	canon: [
+		"createCanonBook",
+		"listCanonBooks",
+		"getCanonBook",
+		"listCanonChapters",
+		"listCanonChapterRecords",
+		"getCanonChapter",
+		"updateCanonChapter",
+		"mergeCanonChapterWithNext",
+		"splitCanonChapter",
+		"deleteCanonBook",
 	],
 };
 

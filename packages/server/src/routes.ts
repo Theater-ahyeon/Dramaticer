@@ -17,6 +17,7 @@ import {
 } from "./assistant.js";
 import type { BackgroundScheduler } from "./background.js";
 import { HttpError, sendJson } from "./http.js";
+import { handleCanonRoute } from "./routes-canon.js";
 import {
 	applyChannelsActionPayload,
 	handleChannelKey,
@@ -184,6 +185,10 @@ export async function handleApiRequest(
 	}
 	const parts = pathSegments(url.pathname);
 	const [first, second, third] = parts;
+	if (first === "canon") {
+		await handleCanonRoute(req, res, url, method, options);
+		return;
+	}
 	if (first === "stories") {
 		if (second === undefined) {
 			await handleStories(req, res, method, options);

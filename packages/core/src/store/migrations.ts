@@ -2175,6 +2175,39 @@ export function buildMigrations(
 				END`,
 			],
 		},
+		{
+			version: 76,
+			description:
+				"原著（v5 §5.3）：书与按章分段的原文；章可按段落合并、拆分、改标题",
+			statements: [
+				`CREATE TABLE canon_books (
+					id TEXT PRIMARY KEY,
+					title TEXT NOT NULL,
+					filename TEXT,
+					encoding TEXT NOT NULL,
+					char_count INTEGER NOT NULL CHECK (char_count >= 0),
+					chapter_count INTEGER NOT NULL CHECK (chapter_count >= 0),
+					status TEXT NOT NULL DEFAULT 'ready'
+						CHECK (status IN ('ready', 'extracting', 'extracted', 'failed')),
+					created_at TEXT NOT NULL
+				) STRICT`,
+				`CREATE TABLE canon_chapters (
+					id TEXT PRIMARY KEY,
+					book_id TEXT NOT NULL REFERENCES canon_books(id) ON DELETE CASCADE,
+					ordinal INTEGER NOT NULL CHECK (ordinal >= 1),
+					volume_title TEXT,
+					title TEXT NOT NULL,
+					kind TEXT NOT NULL
+						CHECK (kind IN ('chapter', 'prologue', 'epilogue', 'extra')),
+					paragraphs TEXT NOT NULL,
+					paragraph_count INTEGER NOT NULL CHECK (paragraph_count >= 0),
+					char_count INTEGER NOT NULL CHECK (char_count >= 0),
+					created_at TEXT NOT NULL,
+					UNIQUE (book_id, ordinal)
+				) STRICT`,
+				"CREATE INDEX canon_chapters_book ON canon_chapters(book_id, ordinal)",
+			],
+		},
 	];
 }
 
