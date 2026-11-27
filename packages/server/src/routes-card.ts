@@ -21,7 +21,10 @@ import {
 } from "@dramaticer/core";
 import {
 	type StCharacterCard,
+	type StPreset,
 	importCharacterBookLore,
+	importStCardUi,
+	importStPresetRegexes,
 	listCharacterGreetings,
 	mapPresetToWritingDials,
 	parseCharacterCardJson,
@@ -120,12 +123,13 @@ export function afterCardImport(
 			installStoryFloorRenderer(store, storyId, plugin, "card");
 		}
 	}
+	// 酒馆的美化正则与助手脚本转成故事上的渲染插件；原文仍然只读（I8）。
+	const stCardUi = importStCardUi(store, storyId, card);
 	// 沙箱默认不联网；卡里出现的外部域名先列出来，玩家逐个允许。
-	recordStorySandboxDetectedDomains(
-		store,
-		storyId,
-		scanSandboxDomains(JSON.stringify(card.raw)),
-	);
+	recordStorySandboxDetectedDomains(store, storyId, [
+		...scanSandboxDomains(JSON.stringify(card.raw)),
+		...stCardUi.domains,
+	]);
 	saveStoryCardSnapshot(store, storyId, {
 		name: card.name,
 		version: storyCardVersion(data),
@@ -286,10 +290,13 @@ export async function handleCardRoute(
 		if (typeof body.preset !== "string")
 			throw fieldError("preset", "必须提供预设文件的内容");
 		let result: ReturnType<typeof mapPresetToWritingDials>;
+		let preset: StPreset;
+		let cardName: string | null;
 		try {
-			const cardName = store.getStorySettings(storyId)?.cardName ?? null;
+			cardName = store.getStorySettings(storyId)?.cardName ?? null;
+			preset = parsePresetJson(body.preset);
 			result = mapPresetToWritingDials(
-				parsePresetJson(body.preset),
+				preset,
 				typeof body.name === "string" ? body.name : "预设",
 				cardName === null ? {} : { char: cardName },
 			);
@@ -299,6 +306,14 @@ export async function handleCardRoute(
 				error instanceof Error ? error.message : String(error),
 			);
 		}
+		// 预设带的显示层美化正则也进故事，与卡里的正则一起在沙箱里渲染。
+		const stPreset = importStPresetRegexes(
+			store,
+			storyId,
+			preset.regexScripts,
+			cardName ?? "预设",
+		);
+		recordStorySandboxDetectedDomains(store, storyId, stPreset.domains);
 		// 预设里对应不上选项的条目按原来的位置与角色成为写作条目，替换上一份预设的条目。
 		writeWritingEntries(store, storyId, result.entries);
 		const view = saveWritingPreset(

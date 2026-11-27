@@ -80,6 +80,50 @@ function floorRendererPlugin(overrides: Record<string, unknown> = {}) {
 	};
 }
 
+function stCard(): string {
+	return JSON.stringify({
+		spec: "chara_card_v2",
+		spec_version: "2.0",
+		data: {
+			name: "星轨",
+			description: "状态栏与助手脚本。",
+			first_mes: "<stat>气力：3</stat>\n雨停了。",
+			extensions: {
+				regex_scripts: [
+					{
+						id: "status",
+						scriptName: "状态栏",
+						findRegex: "/<stat>([\\s\\S]*?)<\\/stat>/g",
+						replaceString:
+							'<div class="statusbar" id="status"><span id="energy">$1</span><button id="rest" type="button" onclick="rest()">休息</button></div>',
+						trimStrings: [],
+						placement: [2],
+						disabled: false,
+						markdownOnly: false,
+						promptOnly: false,
+						runOnEdit: false,
+					},
+				],
+				tavern_helper: {
+					scripts: [
+						{
+							id: "s1",
+							name: "状态脚本",
+							content:
+								"// https://example.com/status.js\nwindow.rest = function () { eventEmit('status:rest'); };",
+							enabled: true,
+							type: "script",
+							info: "",
+							button: {},
+							data: {},
+						},
+					],
+				},
+			},
+		},
+	});
+}
+
 function cardWithRenderer(plugin: Record<string, unknown>): string {
 	return JSON.stringify({
 		spec: "chara_card_v2",
@@ -132,6 +176,7 @@ describe("楼层渲染接口", () => {
 				plugin: "test.card-ui",
 				name: "测试状态栏",
 				permissions: ["sendMessage"],
+				enabled: true,
 			},
 		]);
 
@@ -308,6 +353,108 @@ describe("楼层渲染接口", () => {
 		expect(
 			rejections.rejections.map((item) => item.reason).join(" | "),
 		).toMatch(/未知台账命名空间/);
+	});
+
+	it("酒馆卡的美化正则与助手脚本进沙箱；关掉后回到原文", async () => {
+		const running = await startTestServer();
+		const storyId = "sandbox-st-card";
+		expect(
+			(
+				await post(running.origin, "/api/stories", {
+					id: storyId,
+					title: "酒馆卡",
+				})
+			).status,
+		).toBe(201);
+		const imported = await post(
+			running.origin,
+			`/api/stories/${storyId}/import`,
+			{
+				card: { format: "json", data: stCard() },
+			},
+		);
+		expect(imported.status).toBe(200);
+		const path = (await (
+			await request(running.origin, `/api/stories/${storyId}/path`)
+		).json()) as StoryPath;
+		const nodeId = path.nodes.find((item) => item.role === "assistant")?.id;
+		if (nodeId === undefined) throw new Error("导入后没有开场楼层");
+
+		const sandbox = (await (
+			await request(running.origin, `/api/stories/${storyId}/sandbox`)
+		).json()) as StorySandboxView;
+		expect(sandbox.renderers.map((item) => [item.id, item.enabled])).toEqual([
+			["st-content-regex", true],
+			["st-helper-host", true],
+		]);
+		expect(sandbox.detectedDomains).toContain("example.com");
+
+		const rendered = (await (
+			await post(running.origin, `/api/stories/${storyId}/render`, {
+				nodeIds: [nodeId],
+			})
+		).json()) as StoryRenderView;
+		expect(rendered.floors[0]?.renderer).toBe("st-helper-host");
+		expect(rendered.floors[0]?.html).toContain('class="statusbar"');
+		expect(rendered.floors[0]?.html).toContain("气力：3");
+		expect(rendered.floors[0]?.script).toContain("window.rest");
+		expect(rendered.floors[0]?.permissions).toContain("writeState");
+		const raw = (await (
+			await request(running.origin, `/api/stories/${storyId}/path`)
+		).json()) as StoryPath;
+		expect(raw.nodes.find((item) => item.id === nodeId)?.raw).toContain(
+			"<stat>气力：3</stat>",
+		);
+
+		const written = await post(
+			running.origin,
+			`/api/stories/${storyId}/sandbox/state`,
+			{
+				renderer: "st-helper-host",
+				nodeId,
+				write: { path: ["mvu", "energy"], op: "set", value: 4 },
+			},
+		);
+		expect(written.status).toBe(200);
+
+		// 只关美化正则：助手脚本继续运行，但标签按原文显示。
+		await post(
+			running.origin,
+			`/api/stories/${storyId}/sandbox/renderers/st-content-regex`,
+			{ enabled: false },
+		);
+		const withoutRegex = (await (
+			await post(running.origin, `/api/stories/${storyId}/render`, {
+				nodeIds: [nodeId],
+			})
+		).json()) as StoryRenderView;
+		expect(withoutRegex.floors[0]?.renderer).toBe("st-helper-host");
+		expect(withoutRegex.floors[0]?.html).toContain("&lt;stat&gt;");
+		expect(withoutRegex.floors[0]?.html).not.toContain('class="statusbar"');
+
+		// 两个都关：不再认领，正文由前端按原文显示。
+		await post(
+			running.origin,
+			`/api/stories/${storyId}/sandbox/renderers/st-helper-host`,
+			{ enabled: false },
+		);
+		const closed = (await (
+			await post(running.origin, `/api/stories/${storyId}/render`, {
+				nodeIds: [nodeId],
+			})
+		).json()) as StoryRenderView;
+		expect(closed.floors[0]?.renderer).toBeNull();
+		expect(closed.floors[0]?.html).toBeNull();
+		const denied = await post(
+			running.origin,
+			`/api/stories/${storyId}/sandbox/state`,
+			{
+				renderer: "st-helper-host",
+				nodeId,
+				write: { path: ["mvu", "energy"], op: "set", value: 5 },
+			},
+		);
+		expect(denied.status).toBe(403);
 	});
 
 	it("没有渲染器认领的楼层返回空结果，正文照常显示", async () => {

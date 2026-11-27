@@ -181,6 +181,15 @@ export function Lore() {
 			},
 		);
 
+	const toggleRenderer = (id: string, name: string, enabled: boolean) =>
+		act(
+			() => api.setFloorRendererEnabled(storyId, id, enabled),
+			() => {
+				sandbox.reload();
+				toast(enabled ? `已开启 ${name}` : `已关闭 ${name}，正文按原文显示`);
+			},
+		);
+
 	return (
 		<section data-view="lore">
 			<div className="vh">
@@ -309,6 +318,13 @@ export function Lore() {
 															.map((item) => BRIDGE_LABEL[item] ?? item)
 															.join("、")}
 											</span>
+											<Sw
+												checked={renderer.enabled}
+												label={`启用 ${renderer.name}`}
+												onChange={(value) =>
+													toggleRenderer(renderer.id, renderer.name, value)
+												}
+											/>
 										</li>
 									))}
 								</ul>

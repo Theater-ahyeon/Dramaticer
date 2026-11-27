@@ -12,9 +12,9 @@ import {
 	listSandboxRejections,
 	parseDeclarativePlugin,
 	readLedger,
-	readStoryFloorRenderers,
 	readStorySandboxDomains,
 	recordSandboxRejection,
+	setStoryFloorRendererEnabled,
 	storySandboxRendererSummaries,
 	validateLedgerDiff,
 } from "@dramaticer/core";
@@ -27,8 +27,14 @@ import type {
 	StoryRenderView,
 	StorySandboxView,
 } from "@dramaticer/protocol";
+import {
+	isStRendererId,
+	readStCardUiConfig,
+	setStRendererEnabled,
+	stRendererSummaries,
+} from "@dramaticer/st-compat";
 import { HttpError, sendJson } from "./http.js";
-import { renderStoryFloors } from "./renderers.js";
+import { renderStoryFloors, storyRendererPermissions } from "./renderers.js";
 import {
 	assertKnownKeys,
 	fieldError,
@@ -55,7 +61,10 @@ export function sandboxView(
 		storyId,
 		allowedDomains: domains.allowed,
 		detectedDomains: domains.detected,
-		renderers: storySandboxRendererSummaries(store, storyId),
+		renderers: [
+			...storySandboxRendererSummaries(store, storyId),
+			...stRendererSummaries(readStCardUiConfig(store, storyId)),
+		],
 	};
 }
 
@@ -128,6 +137,26 @@ export async function handleStorySandboxRoute(
 			...sandboxView(options.store, storyId),
 			allowedDomains: allowed,
 		});
+		return;
+	}
+	if (rest[0] === "renderers" && rest.length === 2) {
+		requireMethod(method, ["POST"]);
+		const body = await readObjectBody(req, options.maxJsonBodyBytes);
+		assertKnownKeys(body, ["enabled"]);
+		if (typeof body.enabled !== "boolean") {
+			throw fieldError("enabled", "enabled 必须是布尔值");
+		}
+		const id = rest[1] as string;
+		try {
+			if (isStRendererId(id)) {
+				setStRendererEnabled(options.store, storyId, id, body.enabled);
+			} else {
+				setStoryFloorRendererEnabled(options.store, storyId, id, body.enabled);
+			}
+		} catch (error) {
+			throw toBadRequest(error, "enabled");
+		}
+		sendJson(res, 200, sandboxView(options.store, storyId));
 		return;
 	}
 	if (rest[0] === "renderers" && rest.length === 1) {
@@ -209,13 +238,19 @@ export async function handleStorySandboxRoute(
 		);
 		const write = requireObject(body.write, "write");
 		assertKnownKeys(write, ["path", "op", "value"], "write");
-		const stored = readStoryFloorRenderers(options.store, storyId).find(
-			(entry) => entry.id === renderer,
+		const permissions = storyRendererPermissions(
+			options.store,
+			storyId,
+			renderer,
 		);
-		if (stored === undefined) {
-			throw new HttpError(403, "forbidden", `未知的楼层渲染器：${renderer}`);
+		if (permissions === null) {
+			throw new HttpError(
+				403,
+				"forbidden",
+				`未知或已关闭的楼层渲染器：${renderer}`,
+			);
 		}
-		if (!stored.definition.payload.permissions.includes("writeState")) {
+		if (!permissions.includes("writeState")) {
 			recordSandboxRejection(options.store, {
 				storyId,
 				nodeId: node.id,

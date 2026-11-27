@@ -207,6 +207,22 @@ export function readFloorRenderBlocks(
 	return blocks;
 }
 
+/**
+ * 声明里的正则写法：`/pattern/flags` 按字面量解析，其余按普通源码解析。
+ * 字面量形式让跨行匹配这类需要标志的来源能原样写进 JSON。
+ */
+export function parseFloorRendererPattern(source: string): RegExp {
+	const literal = /^\/([\s\S]+)\/([dgimsuvy]*)$/.exec(source);
+	if (literal !== null) {
+		try {
+			return new RegExp(literal[1] ?? "", literal[2]);
+		} catch {
+			// 字面量解析失败时按普通源码再试一次，由调用方看到真正的错误。
+		}
+	}
+	return new RegExp(source);
+}
+
 export function escapeFloorHtml(text: string): string {
 	return text
 		.split("&")
@@ -230,7 +246,9 @@ export function createDeclarativeFloorRenderer(
 		id: payload.id,
 		name: payload.name,
 		blockTypes: payload.blockTypes,
-		patterns: payload.patterns.map((source) => new RegExp(source)),
+		patterns: payload.patterns.map((source) =>
+			parseFloorRendererPattern(source),
+		),
 		permissions: payload.permissions,
 		render: (input) => ({
 			html: payload.template

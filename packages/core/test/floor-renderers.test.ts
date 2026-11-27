@@ -20,7 +20,9 @@ import {
 	recordSandboxRejection,
 	recordStorySandboxDetectedDomains,
 	scanSandboxDomains,
+	setStoryFloorRendererEnabled,
 	setStorySandboxAllowedDomains,
+	storySandboxRendererSummaries,
 } from "../src/index.js";
 
 function declarativeFloorRenderer(
@@ -233,6 +235,22 @@ describe("声明式楼层渲染器", () => {
 		expect(() => parseRenderer({ patterns: ["["] })).toThrow();
 	});
 
+	it("正则可以写成 /pattern/flags，跨行匹配照常认领", async () => {
+		const plugin = parseRenderer({
+			blockTypes: [],
+			patterns: ["/<stat>[\\s\\S]*?<\\/stat>/s"],
+		});
+		expect(createDeclarativeFloorRenderer(plugin).patterns[0]?.flags).toBe("s");
+		const kernel = new LiteKernel();
+		await kernel.load(createDeclarativeFloorRendererPlugin(plugin));
+		const outcome = await kernel.renderFloor({
+			nodeId: "n",
+			raw: "<stat>气力：3\n雨停了</stat>",
+		});
+		expect(outcome.floor?.renderer).toBe("test-status");
+		await kernel.dispose();
+	});
+
 	it("声明式插件装载进内核后可以渲染楼层", async () => {
 		const plugin = parseRenderer();
 		const kernel = new LiteKernel();
@@ -311,6 +329,27 @@ describe("沙箱联网允许名单", () => {
 		expect(readStorySandboxDomains(store, "s1").detected).toEqual([
 			"example.com",
 		]);
+	});
+
+	it("渲染器可以关掉再打开，摘要里带着开关状态", () => {
+		const { store } = openStore();
+		store.createStory({ id: "s1", title: "沙箱" });
+		installStoryFloorRenderer(store, "s1", parseRenderer(), "card");
+		const closed = setStoryFloorRendererEnabled(
+			store,
+			"s1",
+			"test-status",
+			false,
+		);
+		expect(closed.enabled).toBe(false);
+		expect(storySandboxRendererSummaries(store, "s1")).toEqual([
+			expect.objectContaining({ id: "test-status", enabled: false }),
+		]);
+		// 重装同一张卡保留玩家的开关。
+		installStoryFloorRenderer(store, "s1", parseRenderer(), "card");
+		expect(readStoryFloorRenderers(store, "s1")[0]?.enabled).toBe(false);
+		setStoryFloorRendererEnabled(store, "s1", "test-status", true);
+		expect(readStoryFloorRenderers(store, "s1")[0]?.enabled).toBe(true);
 	});
 });
 

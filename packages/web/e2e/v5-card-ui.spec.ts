@@ -40,6 +40,60 @@ const CARD = {
 	},
 };
 
+const ST_CARD = {
+	spec: "chara_card_v2",
+	spec_version: "2.0",
+	data: {
+		name: "星轨",
+		description: "状态栏、按钮与酒馆助手脚本。",
+		first_mes: "<stat>气力：3</stat>\n门外的雨停了。",
+		extensions: {
+			regex_scripts: [
+				{
+					id: "status",
+					scriptName: "状态栏",
+					findRegex: "/<stat>([\\s\\S]*?)<\\/stat>/g",
+					replaceString:
+						'<div class="statusbar" id="status"><span id="energy">$1</span><button id="rest" type="button" onclick="rest()">休息</button></div>',
+					trimStrings: [],
+					placement: [2],
+					disabled: false,
+					markdownOnly: false,
+					promptOnly: false,
+					runOnEdit: false,
+				},
+			],
+			tavern_helper: {
+				scripts: [
+					{
+						id: "s1",
+						name: "状态脚本",
+						content: [
+							'eventOn("status:rest", function () {',
+							'  var node = document.getElementById("energy");',
+							'  var current = Number(String(node.textContent).replace(/[^0-9]/g, ""));',
+							"  var next = current + 1;",
+							'  node.textContent = "气力：" + next;',
+							'  insertOrAssignVariable("energy", next);',
+							'  triggerSlash("/send 我休息了一会儿");',
+							"});",
+							"window.rest = function () { eventEmit('status:rest'); };",
+							'var saved = getVariable("energy");',
+							'var bar = document.getElementById("energy");',
+							'if (bar && typeof saved === "number") bar.textContent = "气力：" + saved;',
+						].join("\n"),
+						enabled: true,
+						type: "script",
+						info: "",
+						button: {},
+						data: {},
+					},
+				],
+			},
+		},
+	},
+};
+
 test.beforeEach(async ({ page }) => {
 	await login(page);
 });
@@ -55,6 +109,50 @@ async function importCardStory(page: Page): Promise<string> {
 	});
 	expect(imported.ok()).toBeTruthy();
 	return id;
+}
+
+async function importStCardStory(
+	page: Page,
+): Promise<{ storyId: string; nodeId: string }> {
+	const id = `e2e-st-card-${randomUUID()}`;
+	const created = await page.request.post("/api/stories", {
+		data: { id, title: "酒馆前端" },
+	});
+	expect(created.ok()).toBeTruthy();
+	const imported = await page.request.post(`/api/stories/${id}/import`, {
+		headers: { "Content-Type": "application/json" },
+		data: JSON.stringify({
+			card: { format: "json", data: JSON.stringify(ST_CARD) },
+		}),
+	});
+	if (!imported.ok()) {
+		throw new Error(`导入酒馆卡失败：${await imported.text()}`);
+	}
+	const path = await page.request.get(`/api/stories/${id}/path`);
+	const body = (await path.json()) as {
+		nodes: readonly { id: string; role: string }[];
+	};
+	const node = body.nodes.find((item) => item.role === "assistant");
+	if (node === undefined) throw new Error("导入后没有开场楼层");
+	return { storyId: id, nodeId: node.id };
+}
+
+async function mvuValue(
+	page: Page,
+	storyId: string,
+	nodeId: string,
+	key: string,
+): Promise<unknown> {
+	const query = new URLSearchParams({
+		nodeId,
+		path: JSON.stringify(["mvu", key]),
+	});
+	const response = await page.request.get(
+		`/api/stories/${storyId}/sandbox/state?${query.toString()}`,
+	);
+	expect(response.ok()).toBeTruthy();
+	const body = (await response.json()) as { value: unknown };
+	return body.value;
 }
 
 async function rejectionKinds(page: Page, storyId: string): Promise<string[]> {
@@ -141,4 +239,45 @@ test("沙箱楼层按钮能发消息；未声明调用与被拦的联网都进�
 		.getAttribute("content");
 	expect(cspAfter).toContain("https://cdn.example.com");
 	await expect(allowedFrame.locator("#value")).toHaveText("气力：3");
+});
+
+test("酒馆卡的状态栏与按钮在沙箱里可点；关掉渲染插件后回到原文", async ({
+	page,
+}) => {
+	const { storyId, nodeId } = await importStCardStory(page);
+	await page.goto(`/stories/${storyId}/play`);
+	const frame = page.frameLocator('iframe[title^="楼层渲染"]').first();
+	await expect(frame.locator("#energy")).toHaveText("气力：3");
+	await expect(frame.getByRole("button", { name: "休息" })).toBeVisible();
+
+	// 按钮经助手脚本 → 事件总线 → 写 mvu.*（结算器校验）→ 发消息。
+	await frame.getByRole("button", { name: "休息" }).click();
+	await expect(frame.locator("#energy")).toHaveText("气力：4");
+	await expect(
+		page.locator(".said").filter({ hasText: "我休息了一会儿" }).first(),
+	).toBeVisible();
+	await expect
+		.poll(() => mvuValue(page, storyId, nodeId, "energy"), {
+			timeout: 15_000,
+		})
+		.toBe(4);
+	// 重新渲染后从台账读回变量，状态栏仍然显示 4。
+	await expect(frame.locator("#energy")).toHaveText("气力：4");
+
+	// 设定页逐个关掉渲染插件。
+	await page.goto(`/stories/${storyId}/lore`);
+	const perms = page.getByRole("region", { name: "卡片脚本与联网" });
+	const regexSwitch = perms.getByRole("switch", { name: "启用 酒馆美化正则" });
+	await expect(regexSwitch).toHaveAttribute("aria-checked", "true");
+	await regexSwitch.click();
+	await expect(regexSwitch).toHaveAttribute("aria-checked", "false");
+	const helperSwitch = perms.getByRole("switch", { name: "启用 酒馆助手脚本" });
+	await expect(helperSwitch).toHaveAttribute("aria-checked", "true");
+	await helperSwitch.click();
+	await expect(helperSwitch).toHaveAttribute("aria-checked", "false");
+
+	// 回到故事页：没有 iframe，楼层按原文显示。
+	await page.goto(`/stories/${storyId}/play`);
+	await expect(page.locator('iframe[title^="楼层渲染"]')).toHaveCount(0);
+	await expect(page.locator(".prose").first()).toContainText("气力：3");
 });

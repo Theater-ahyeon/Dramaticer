@@ -31,6 +31,7 @@ import { type LedgerNamespace, isLedgerNamespace } from "../ledger/schema.js";
 import {
 	type FloorBridgeCapability,
 	assertFloorBridgeCapabilities,
+	parseFloorRendererPattern,
 } from "./floor-renderers.js";
 import { readVersionRange } from "./versions.js";
 
@@ -730,7 +731,7 @@ function parseFloorRendererPayload(
 			if (value.length > 1_000) {
 				throw new Error(`${path}.patterns 里的正则不能超过 1000 个字符`);
 			}
-			new RegExp(value);
+			parseFloorRendererPattern(value);
 		},
 	);
 	if (blockTypes.length === 0 && patterns.length === 0) {

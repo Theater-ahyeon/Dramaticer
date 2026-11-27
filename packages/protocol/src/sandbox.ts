@@ -37,6 +37,13 @@ export interface StoryFloorRendererView {
 	readonly plugin: string;
 	readonly name: string;
 	readonly permissions: readonly FloorBridgeCapability[];
+	/** 关掉后这个渲染器不再认领楼层，正文回到原生显示。 */
+	readonly enabled: boolean;
+}
+
+/** 开启或关掉一个楼层渲染器；id 可以来自卡、玩家安装或 ST 兼容层。 */
+export interface SandboxRendererUpdateRequest {
+	readonly enabled: boolean;
 }
 
 /** 设置页的沙箱区块：允许的域名、脚本里检测到的域名与渲染器。 */

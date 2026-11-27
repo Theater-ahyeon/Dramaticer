@@ -519,3 +519,4 @@
 - 2026-11-27 canon/05 完成：原著窗口每轮当前一件、推进给接下来 1–3 件或待推进件数、话术/原文叠加与偏离说明；游标沿楼层树回退并由场记 canonCompleted 推进；防剧透按游标章节切片人物页与世界索引；死人剔除话术、缺席标注；扮演人物进 persona；迁移 80；pnpm check、v5-canon-window 与相关 e2e、walk11 走查通过
 - 2026-11-27 canon/06 完成：记事「原著」分页与事件轨道（已演/当前/未来/关键转折）、按格版本化编辑（标题/概要/缩写/话术/原文）、撤销与回到旧版本、从这里开始；迁移 81 的 canon_event_edits 只追加，窗口/走向/场记统一读有效内容；core/server 单测、v5-canon-page 桌面/手机 e2e、相关 e2e 与 walk12 走查通过
 - 2026-11-27 card-ui/01 完成：插件内核的楼层渲染器扩展点、声明式 floor-renderer、故事页主题自适应沙箱与高度上报、五方法交互桥白名单（writeState 经台账校验）、联网允许名单与脚本域名检测、迁移 82 的沙箱拒绝记录与检视器展示；pnpm check、v5-card-ui 桌面/手机与相关 e2e、walk13 走查通过
+- 2026-11-27 card-ui/02 完成：酒馆显示层美化正则与启用的 tavern_helper 脚本转成故事级渲染插件（st-content-regex / st-helper-host），同 iframe 内渲染并接交互桥，变量走 mvu.* 经结算器；渲染器可逐个开关，关掉回原文；pnpm check、v5-card-ui 桌面/手机、v5-inspector/v4-lore/v4-story 与 walk14 走查通过

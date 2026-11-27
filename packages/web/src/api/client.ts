@@ -323,6 +323,18 @@ export class ApiClient {
 		);
 	}
 
+	async setFloorRendererEnabled(
+		storyId: string,
+		id: string,
+		enabled: boolean,
+	): Promise<StorySandboxView> {
+		return this.json<StorySandboxView>(
+			"POST",
+			`${storyPath(storyId)}/sandbox/renderers/${encodeURIComponent(id)}`,
+			{ enabled },
+		);
+	}
+
 	async installFloorRenderer(
 		storyId: string,
 		plugin: unknown,

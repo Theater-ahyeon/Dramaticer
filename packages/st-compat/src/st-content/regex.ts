@@ -173,6 +173,15 @@ function filterString(
 	return finalString;
 }
 
+/** 脚本实际使用的正则；宏替换与 `substituteRegex` 都已处理。 */
+export function stRegexForScript(
+	script: StRegexScript,
+	substitute?: StMacroSubstitute,
+): RegExp | null {
+	const engine = substitute ?? createStMacroEngine().substitute;
+	return stRegexFromString(findRegexString(script, engine));
+}
+
 function findRegexString(
 	script: StRegexScript,
 	substitute: StMacroSubstitute,
@@ -198,7 +207,7 @@ export function runStRegexScript(
 ): string {
 	if (script.disabled || rawString.length === 0) return rawString;
 	const substitute = options.substitute ?? createStMacroEngine().substitute;
-	const findRegex = stRegexFromString(findRegexString(script, substitute));
+	const findRegex = stRegexForScript(script, substitute);
 	if (findRegex === null) return rawString;
 	return rawString.replace(findRegex, (match: string, ...args: unknown[]) => {
 		const groups = args[args.length - 1];

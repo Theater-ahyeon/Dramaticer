@@ -282,3 +282,12 @@
 - 前端运行时不要从 `@dramaticer/core` 主入口取沙箱工具：主入口会带进 better-sqlite3 等 Node 模块，整包进浏览器会白屏。浏览器安全的子入口是 `@dramaticer/core/sandbox`（`src/sandbox/browser.ts`，只导出能力白名单、域名扫描与 CSP）。
 - e2e 在 `v5-card-ui.spec.ts`（合成卡渲染按钮发消息、未声明写状态与外部域名进检视器、域名允许后刷新仍在、CSP 带上域名），走查脚本是 `.walk/walk13.spec.ts`；测试卡在卡扩展里直接声明渲染器，不需要测试专用路由。
 
+### 酒馆美化正则与助手脚本（card-ui/02）
+
+- 转换与存储都在 `st-compat/src/st-renderer/`：显示层正则取 `extensions.regex_scripts` 与预设 `regexScripts`（未禁用、非 `promptOnly`、`markdownOnly` 或作用位置 0/2），助手脚本取 `extensions.tavern_helper.scripts` 里 `enabled && type === "script"` 的条目；配置存在 `story_kv` 的 `st.compat.cardUi`，core 不认识这个键。
+- 两个渲染器 id：`st-content-regex`（酒馆美化正则）与 `st-helper-host`（酒馆助手脚本）。`createStCardFloorRenderer` 每次渲染请求按配置现算：只开正则时用前者；助手脚本开着时用后者，并把正则与脚本合成同一个 iframe（内核一层只认领一个渲染器）。关掉正则只影响替换，关掉两个就返回 `null`，正文回到 `Prose`。
+- 助手脚本的垫片在 `st-compat/src/st-renderer/shim.ts`：`getVariables` 读渲染时嵌入的 `mvu` 快照，写入走 `window.dramaticerBridge.writeState` 落到 `mvu.*`；`triggerSlash("/send …")`、`/setinput`、`/trigger` 映射到发消息、填输入框与 iframe 内事件总线；`eventOn`/`eventEmit` 在 iframe 内同步，不跨楼层。`setChatMessages` 直接抛错，楼层原文不可改（I4）。
+- 声明式 `floor-renderer` 的 `patterns` 可以写 `/pattern/flags` 字面量；ST 的显示正则靠这个把 `s` 标志带进认领条件。
+- 渲染器可以关掉：`story_kv` 里的 `sandbox.renderers` 记录带 `enabled`，旧记录缺省按开启；`POST /api/stories/:id/sandbox/renderers/:id` 传 `{enabled}` 同时处理声明式与 ST 渲染器，`GET .../sandbox` 的列表带 `enabled`，设定页的开关直接改它。
+- e2e 新增在 `v5-card-ui.spec.ts`（状态栏与按钮、点击写 `mvu.energy` 并发消息、设定页关掉两个插件后没有 iframe、原文 `<stat>` 可见），走查脚本 `.walk/walk14.spec.ts`。
+
