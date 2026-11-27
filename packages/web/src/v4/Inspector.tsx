@@ -49,6 +49,14 @@ const MODE_LABEL: Readonly<Record<string, string>> = {
 	deep: "深度",
 };
 
+const EXTRACTION_LABELS: Readonly<Record<string, string>> = {
+	idle: "未开始",
+	running: "抽取中",
+	paused: "已暂停",
+	done: "已完成",
+	failed: "有失败章",
+};
+
 const SUPPORT: Readonly<Record<string, string>> = {
 	supported: "支持",
 	unsupported: "不支持",
@@ -94,6 +102,7 @@ export function Inspector({
 					</button>
 				</header>
 				{storyId === null ? null : <StoryInspector storyId={storyId} />}
+				<CanonExtractionSection />
 				<ProbeSection />
 			</aside>
 		</>
@@ -277,6 +286,42 @@ function RunSection({ nodeId }: { readonly nodeId: string }) {
 						</li>
 					))}
 				</ol>
+			)}
+		</section>
+	);
+}
+
+/** 原著抽取总览：一次性导入，不算进每楼后台调用预算。 */
+function CanonExtractionSection() {
+	const overview = useLoad(() => api.getCanonExtractionOverview(), []);
+	const books = overview.data?.books ?? [];
+	return (
+		<section aria-label="原著抽取">
+			<h3>原著抽取</h3>
+			<p className="muted">一次性导入，不计入每楼后台预算。</p>
+			{overview.error !== null ? (
+				<p className="v4err">{overview.error}</p>
+			) : books.length === 0 ? (
+				<p className="muted">还没有原著</p>
+			) : (
+				<ul className="insplist">
+					{books.map(({ book, extraction }) => (
+						<li key={book.id}>
+							<b>{book.title}</b>{" "}
+							{extraction === null
+								? "未开始"
+								: `${
+										EXTRACTION_LABELS[extraction.status] ?? extraction.status
+									} · ${extraction.doneChapters}/${extraction.totalChapters} 章${
+										extraction.failedChapters === 0
+											? ""
+											: ` · 失败 ${extraction.failedChapters}`
+									} · ${extraction.llmCalls} 次 · ${formatTokens(
+										extraction.llmTokens,
+									)} token`}
+						</li>
+					))}
+				</ul>
 			)}
 		</section>
 	);

@@ -13,8 +13,12 @@ import {
 	type CanonBookView,
 	type CanonBooksView,
 	type CanonChapterDetailView,
+	type CanonChapterExtractRequest,
 	type CanonChapterRecord,
 	type CanonChapterUpdateRequest,
+	type CanonEstimateView,
+	type CanonExtractionOverviewView,
+	type CanonExtractionView,
 	type ChannelProbeRequest,
 	type ChannelProbeResult,
 	type ChannelsUpdateRequest,
@@ -392,6 +396,55 @@ export class ApiClient {
 
 	async deleteCanonBook(bookId: string): Promise<void> {
 		await this.send("DELETE", canonBookPath(bookId));
+	}
+
+	async getCanonEstimate(bookId: string): Promise<CanonEstimateView> {
+		return this.json<CanonEstimateView>(
+			"GET",
+			`${canonBookPath(bookId)}/estimate`,
+		);
+	}
+
+	async getCanonExtraction(
+		bookId: string,
+		chapterId?: string,
+	): Promise<CanonExtractionView> {
+		const query = new URLSearchParams();
+		if (chapterId !== undefined) query.set("chapterId", chapterId);
+		return this.json<CanonExtractionView>(
+			"GET",
+			`${canonBookPath(bookId)}/extract${queryText(query)}`,
+		);
+	}
+
+	async startCanonExtraction(bookId: string): Promise<CanonExtractionView> {
+		return this.json<CanonExtractionView>(
+			"POST",
+			`${canonBookPath(bookId)}/extract/start`,
+		);
+	}
+
+	async pauseCanonExtraction(bookId: string): Promise<CanonExtractionView> {
+		return this.json<CanonExtractionView>(
+			"POST",
+			`${canonBookPath(bookId)}/extract/pause`,
+		);
+	}
+
+	async reextractCanonChapter(
+		bookId: string,
+		chapterId: string,
+		request: CanonChapterExtractRequest,
+	): Promise<CanonExtractionView> {
+		return this.json<CanonExtractionView>(
+			"POST",
+			`${canonBookPath(bookId)}/chapters/${encodeURIComponent(chapterId)}/extract`,
+			request,
+		);
+	}
+
+	async getCanonExtractionOverview(): Promise<CanonExtractionOverviewView> {
+		return this.json<CanonExtractionOverviewView>("GET", "/api/canon/extract");
 	}
 
 	async getClues(storyId: string): Promise<StoryCluesView> {

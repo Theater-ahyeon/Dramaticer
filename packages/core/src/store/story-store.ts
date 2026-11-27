@@ -64,8 +64,12 @@ export type {
 	SaveBlueprintSuggestionsInput,
 } from "./repos/outline.js";
 export type {
+	CanonChapterExtractionDefaults,
+	CanonChapterExtractionPatch,
 	CanonChapterSplitResult,
 	CanonChapterUpdate,
+	CanonChunkResultsInput,
+	CanonEntityInput,
 	CreateCanonBookInput,
 } from "./repos/canon.js";
 
@@ -397,6 +401,28 @@ export interface StoryStore
 			| "mergeCanonChapterWithNext"
 			| "splitCanonChapter"
 			| "deleteCanonBook"
+			| "getCanonExtraction"
+			| "ensureCanonExtraction"
+			| "markCanonExtractionRunning"
+			| "pauseCanonExtraction"
+			| "finishCanonExtraction"
+			| "addCanonExtractionUsage"
+			| "refreshCanonExtraction"
+			| "markInterruptedCanonExtractions"
+			| "ensureCanonChapterExtraction"
+			| "getCanonChapterExtraction"
+			| "listCanonChapterExtractions"
+			| "setCanonChapterExtraction"
+			| "resetCanonChapterExtraction"
+			| "clearCanonChapterResults"
+			| "insertCanonChunkResults"
+			| "listCanonEntities"
+			| "upsertCanonEntities"
+			| "replaceCanonEntities"
+			| "listCanonEvents"
+			| "listCanonTimeline"
+			| "listCanonVoices"
+			| "listCanonFacts"
 		> {}
 
 export class StoryStore {
@@ -845,6 +871,28 @@ const DELEGATES: Readonly<Record<keyof Repos, readonly string[]>> = {
 		"mergeCanonChapterWithNext",
 		"splitCanonChapter",
 		"deleteCanonBook",
+		"getCanonExtraction",
+		"ensureCanonExtraction",
+		"markCanonExtractionRunning",
+		"pauseCanonExtraction",
+		"finishCanonExtraction",
+		"addCanonExtractionUsage",
+		"refreshCanonExtraction",
+		"markInterruptedCanonExtractions",
+		"ensureCanonChapterExtraction",
+		"getCanonChapterExtraction",
+		"listCanonChapterExtractions",
+		"setCanonChapterExtraction",
+		"resetCanonChapterExtraction",
+		"clearCanonChapterResults",
+		"insertCanonChunkResults",
+		"listCanonEntities",
+		"upsertCanonEntities",
+		"replaceCanonEntities",
+		"listCanonEvents",
+		"listCanonTimeline",
+		"listCanonVoices",
+		"listCanonFacts",
 	],
 };
 

@@ -3785,3 +3785,176 @@ div:hover > .flr-acts,
 		max-height: 280px;
 	}
 }
+
+/* ---- 原著抽取（canon/02） ---- */
+.canon-extract {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	margin-bottom: 14px;
+}
+.canon-extract-stats dl {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+	gap: 8px;
+	margin: 0;
+}
+.canon-extract-stats dl > div {
+	padding: 8px 10px;
+	border: 1px solid var(--line);
+	border-radius: var(--r-sm);
+	background: var(--soft);
+}
+.canon-extract-stats dt {
+	color: var(--muted);
+	font-size: var(--t-xs);
+}
+.canon-extract-stats dd {
+	margin: 2px 0 0;
+	font: 500 var(--t-md) var(--f-data);
+}
+.canon-extract-stats > p {
+	margin: 8px 0 0;
+	font-size: var(--t-sm);
+	line-height: 1.6;
+}
+.canon-extract-controls {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+}
+.canon-extract-state {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 10px;
+	font-size: var(--t-sm);
+}
+.canon-extract-buttons {
+	display: flex;
+	gap: 8px;
+}
+.canon-status {
+	display: inline-flex;
+	align-items: center;
+	padding: 1px 8px;
+	border-radius: 999px;
+	background: var(--soft);
+	color: var(--muted);
+	font: 500 var(--t-xs) var(--f-ui);
+	white-space: nowrap;
+}
+.canon-status[data-status="running"] {
+	background: var(--cinnabar-wash);
+	color: var(--cinnabar-ink);
+}
+.canon-status[data-status="done"] {
+	background: var(--ok-wash);
+	color: var(--ok);
+}
+.canon-status[data-status="failed"] {
+	background: var(--bad-wash);
+	color: var(--bad);
+}
+.canon-chmeta {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
+}
+.canon-tabs {
+	display: flex;
+	gap: 6px;
+	margin: 12px 0 4px;
+	border-bottom: 1px solid var(--line);
+}
+.canon-tab {
+	padding: 6px 12px;
+	border: 0;
+	border-bottom: 2px solid transparent;
+	background: none;
+	color: var(--muted);
+	font: inherit;
+	cursor: pointer;
+}
+.canon-tab.on {
+	border-bottom-color: var(--cinnabar);
+	color: var(--ink);
+}
+.canon-results {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+	margin-top: 10px;
+}
+.canon-results h3 {
+	margin: 0 0 6px;
+	font: 500 var(--t-sm) var(--f-ui);
+	color: var(--cinnabar-ink);
+}
+.canon-events,
+.canon-voices,
+.canon-facts {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.canon-events > li,
+.canon-facts > li {
+	padding: 10px 12px;
+	border: 1px solid var(--line);
+	border-radius: var(--r-sm);
+	background: var(--sheet);
+}
+.canon-events p,
+.canon-facts p {
+	margin: 4px 0;
+	line-height: 1.7;
+}
+.canon-event-head,
+.canon-facts > li > div {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+}
+.canon-events dl {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr);
+	gap: 2px 10px;
+	margin: 6px 0 0;
+	font-size: var(--t-sm);
+}
+.canon-events dt {
+	color: var(--muted);
+}
+.canon-events dd {
+	margin: 0;
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+.canon-badge {
+	display: inline-flex;
+	align-items: center;
+	padding: 0 6px;
+	border: 1px solid var(--cinnabar);
+	border-radius: 999px;
+	color: var(--cinnabar-ink);
+	font: 500 var(--t-xs) var(--f-ui);
+}
+.canon-voices li {
+	padding: 6px 0;
+	border-bottom: 1px dashed var(--line);
+	line-height: 1.7;
+}
+@media (max-width: 820px) {
+	.canon-extract-controls {
+		align-items: flex-start;
+		flex-direction: column;
+	}
+}

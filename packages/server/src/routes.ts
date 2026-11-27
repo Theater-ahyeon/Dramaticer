@@ -16,6 +16,7 @@ import {
 	handleAssistantRequest,
 } from "./assistant.js";
 import type { BackgroundScheduler } from "./background.js";
+import type { CanonExtractionWorker } from "./canon-worker.js";
 import { HttpError, sendJson } from "./http.js";
 import { handleCanonRoute } from "./routes-canon.js";
 import {
@@ -123,6 +124,8 @@ export interface ApiRouteOptions {
 	readonly turns: TurnCoordinator;
 	readonly runs: TurnRunRegistry;
 	readonly scheduler?: BackgroundScheduler | null;
+	/** 原著抽取的后台调度；没有配置渠道时为 null。 */
+	readonly canonWorker?: CanonExtractionWorker | null;
 	readonly log: (line: string) => void;
 	readonly heartbeatMs: number;
 	readonly now?: () => number;

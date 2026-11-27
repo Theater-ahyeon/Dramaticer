@@ -37,6 +37,7 @@ import {
 	type BackgroundRegistryFactory,
 	BackgroundScheduler,
 } from "./background.js";
+import { CanonExtractionWorker } from "./canon-worker.js";
 import { repoRoot } from "./config.js";
 import {
 	HttpError,
@@ -126,6 +127,7 @@ interface HandlerOptions {
 	readonly turns: TurnCoordinator;
 	readonly runs: TurnRunRegistry;
 	readonly scheduler: BackgroundScheduler | null;
+	readonly canonWorker: CanonExtractionWorker | null;
 	readonly channelsPath: string | null;
 	readonly channelsEnv: Record<string, string | undefined>;
 	readonly envFile: string | null;
@@ -192,6 +194,8 @@ export async function startServer(
 	// 上一个进程在执行中途退出时留下的 running 行不在 drain 的候选里，先退回待办。
 	store.requeueRunningBackgroundJobs();
 	store.requeueRunningNodeImages();
+	// 原著抽取不自动续跑：上次进程留下的 running 退回 paused，等玩家点继续。
+	store.markInterruptedCanonExtractions();
 	// 上一次进程留下的深回合运行没有结束，保留事件并标为中断。
 	store.markInterruptedTurnRuns();
 	// 助手运行不在进程里排队：上一次进程留下的 running 直接标为中断。
@@ -233,6 +237,14 @@ export async function startServer(
 					log,
 					...(options.now === undefined ? {} : { now: options.now }),
 				});
+	const canonWorker =
+		runtime === null
+			? null
+			: new CanonExtractionWorker({
+					store,
+					runtime: { get: () => runtime.bookBackground() },
+					log,
+				});
 	const server = http.createServer(
 		createRequestHandler({
 			store,
@@ -249,6 +261,7 @@ export async function startServer(
 			turns,
 			runs,
 			scheduler,
+			canonWorker,
 			channelsPath: channels?.path ?? null,
 			channelsEnv,
 			envFile: channels?.envFile ?? null,
@@ -280,6 +293,7 @@ export async function startServer(
 			closed = true;
 			await turns.abortAll();
 			await assistantRuns.abortAll();
+			await canonWorker?.close();
 			await scheduler?.close();
 			const finished = Promise.withResolvers<void>();
 			server.close((error) =>
@@ -385,6 +399,7 @@ async function handleRequest(
 			turns: options.turns,
 			runs: options.runs,
 			scheduler: options.scheduler,
+			canonWorker: options.canonWorker,
 			channelsPath: options.channelsPath,
 			channelsEnv: options.channelsEnv,
 			envFile: options.envFile,

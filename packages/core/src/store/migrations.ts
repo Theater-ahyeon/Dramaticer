@@ -2208,6 +2208,106 @@ export function buildMigrations(
 				"CREATE INDEX canon_chapters_book ON canon_chapters(book_id, ordinal)",
 			],
 		},
+		{
+			version: 77,
+			description:
+				"原著抽取（v5 §5.3）：任务进度、按块状态、事件、话术、带章节锚点的实体事实与书级名册",
+			statements: [
+				`CREATE TABLE canon_extractions (
+					book_id TEXT PRIMARY KEY REFERENCES canon_books(id) ON DELETE CASCADE,
+					status TEXT NOT NULL DEFAULT 'idle'
+						CHECK (status IN ('idle', 'running', 'paused', 'done', 'failed')),
+					model TEXT,
+					total_chapters INTEGER NOT NULL DEFAULT 0 CHECK (total_chapters >= 0),
+					done_chapters INTEGER NOT NULL DEFAULT 0 CHECK (done_chapters >= 0),
+					failed_chapters INTEGER NOT NULL DEFAULT 0 CHECK (failed_chapters >= 0),
+					llm_calls INTEGER NOT NULL DEFAULT 0 CHECK (llm_calls >= 0),
+					llm_tokens INTEGER NOT NULL DEFAULT 0 CHECK (llm_tokens >= 0),
+					last_error TEXT,
+					started_at TEXT,
+					updated_at TEXT NOT NULL
+				) STRICT`,
+				`CREATE TABLE canon_chapter_extractions (
+					chapter_id TEXT PRIMARY KEY
+						REFERENCES canon_chapters(id) ON DELETE CASCADE,
+					book_id TEXT NOT NULL REFERENCES canon_books(id) ON DELETE CASCADE,
+					chapter_ordinal INTEGER NOT NULL CHECK (chapter_ordinal >= 1),
+					status TEXT NOT NULL DEFAULT 'pending'
+						CHECK (status IN ('pending', 'running', 'done', 'failed')),
+					chunks TEXT NOT NULL DEFAULT '[]',
+					last_error TEXT,
+					tokens INTEGER NOT NULL DEFAULT 0 CHECK (tokens >= 0),
+					updated_at TEXT NOT NULL
+				) STRICT`,
+				`CREATE INDEX canon_chapter_extractions_book
+					ON canon_chapter_extractions(book_id, chapter_ordinal)`,
+				`CREATE TABLE canon_entities (
+					book_id TEXT NOT NULL REFERENCES canon_books(id) ON DELETE CASCADE,
+					name TEXT NOT NULL,
+					aliases TEXT NOT NULL DEFAULT '[]',
+					kind TEXT NOT NULL
+						CHECK (kind IN ('人物', '地点', '势力', '物品', '其他')),
+					first_chapter_ordinal INTEGER NOT NULL
+						CHECK (first_chapter_ordinal >= 1),
+					last_chapter_ordinal INTEGER NOT NULL
+						CHECK (last_chapter_ordinal >= 1),
+					PRIMARY KEY (book_id, name)
+				) STRICT`,
+				`CREATE TABLE canon_events (
+					id INTEGER PRIMARY KEY AUTOINCREMENT,
+					book_id TEXT NOT NULL REFERENCES canon_books(id) ON DELETE CASCADE,
+					chapter_id TEXT NOT NULL
+						REFERENCES canon_chapters(id) ON DELETE CASCADE,
+					chapter_ordinal INTEGER NOT NULL CHECK (chapter_ordinal >= 1),
+					seq INTEGER NOT NULL CHECK (seq >= 1),
+					title TEXT NOT NULL,
+					summary TEXT NOT NULL,
+					digest TEXT NOT NULL,
+					participants TEXT NOT NULL DEFAULT '[]',
+					location TEXT,
+					time_text TEXT,
+					paragraph_start INTEGER NOT NULL CHECK (paragraph_start >= 1),
+					paragraph_end INTEGER NOT NULL CHECK (paragraph_end >= 1),
+					is_interlude INTEGER NOT NULL DEFAULT 0
+						CHECK (is_interlude IN (0, 1)),
+					created_at TEXT NOT NULL,
+					UNIQUE (chapter_id, seq),
+					CHECK (paragraph_end >= paragraph_start)
+				) STRICT`,
+				`CREATE INDEX canon_events_book
+					ON canon_events(book_id, chapter_ordinal, is_interlude, seq)`,
+				`CREATE TABLE canon_voices (
+					id INTEGER PRIMARY KEY AUTOINCREMENT,
+					book_id TEXT NOT NULL REFERENCES canon_books(id) ON DELETE CASCADE,
+					chapter_id TEXT NOT NULL
+						REFERENCES canon_chapters(id) ON DELETE CASCADE,
+					chapter_ordinal INTEGER NOT NULL CHECK (chapter_ordinal >= 1),
+					ordinal INTEGER NOT NULL CHECK (ordinal >= 1),
+					character TEXT NOT NULL,
+					kind TEXT NOT NULL CHECK (kind IN ('speech', 'thought')),
+					text TEXT NOT NULL,
+					created_at TEXT NOT NULL,
+					UNIQUE (chapter_id, ordinal)
+				) STRICT`,
+				`CREATE INDEX canon_voices_book
+					ON canon_voices(book_id, chapter_ordinal)`,
+				`CREATE TABLE canon_facts (
+					id INTEGER PRIMARY KEY AUTOINCREMENT,
+					book_id TEXT NOT NULL REFERENCES canon_books(id) ON DELETE CASCADE,
+					chapter_id TEXT NOT NULL
+						REFERENCES canon_chapters(id) ON DELETE CASCADE,
+					chapter_ordinal INTEGER NOT NULL CHECK (chapter_ordinal >= 1),
+					entity_name TEXT NOT NULL,
+					aliases TEXT NOT NULL DEFAULT '[]',
+					entity_kind TEXT NOT NULL
+						CHECK (entity_kind IN ('人物', '地点', '势力', '物品', '其他')),
+					fact TEXT NOT NULL,
+					created_at TEXT NOT NULL
+				) STRICT`,
+				`CREATE INDEX canon_facts_book
+					ON canon_facts(book_id, chapter_ordinal)`,
+			],
+		},
 	];
 }
 

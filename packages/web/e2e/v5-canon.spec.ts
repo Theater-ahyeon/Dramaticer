@@ -113,4 +113,45 @@ test.describe("原著导入与分章", () => {
 		);
 		await expectNoHorizontalOverflow(page);
 	});
+
+	test("预估、抽取进度、失败章重跑与结果查看", async ({ page }, testInfo) => {
+		const title = `原著抽取 ${testInfo.project.name}`;
+		await upload(page, title, "canon-sample.txt", fixture("canon-sample.txt"));
+		const pageView = page.locator('[data-view="canonbook"]');
+		const estimate = pageView.locator('section[aria-label="抽取预估与进度"]');
+		await expect(estimate).toContainText("章数");
+		await expect(estimate).toContainText("参考费率");
+		await expect(estimate.locator("dl").first()).toContainText("8");
+
+		await page.getByRole("button", { name: "开始抽取" }).click();
+		const state = pageView.locator(".canon-extract-state");
+		await expect(state.locator(".canon-status")).toHaveText("有失败章", {
+			timeout: 30_000,
+		});
+		await expect(state).toContainText("7/8 章");
+		await expect(state).toContainText("失败 1 章");
+
+		// 失败章显示校验错误，重跑后补齐。
+		await page.getByRole("button", { name: /第二章 旧信/ }).click();
+		await expect(page.locator(".canon-chapter .v4err")).toContainText(
+			"没有在本块原文出现",
+		);
+		await page.getByRole("button", { name: "重跑这一章" }).click();
+		await expect(state.locator(".canon-status")).toHaveText("已完成", {
+			timeout: 30_000,
+		});
+		await expect(state).toContainText("8/8 章");
+
+		// 结果视图：事件、话术与章节锚点。
+		await page.getByRole("tab", { name: "抽取结果" }).click();
+		await expect(page.locator(".canon-events")).toContainText("原著事件");
+		await expect(page.locator(".canon-events")).toContainText("第 3 章");
+		await expect(page.locator(".canon-voices")).toContainText("想");
+
+		// 番外标为插叙。
+		await page.getByRole("button", { name: /番外 师父的茶/ }).click();
+		await page.getByRole("tab", { name: "抽取结果" }).click();
+		await expect(page.locator(".canon-events .canon-badge")).toHaveText("插叙");
+		await expectNoHorizontalOverflow(page);
+	});
 });

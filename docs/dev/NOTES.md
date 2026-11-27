@@ -206,4 +206,15 @@
 - 存储迁移 76：`canon_books`、`canon_chapters`（`paragraphs` 是 JSON 数组，`STRICT`，章随书 `ON DELETE CASCADE`）。`repos/canon.ts` 的合并与拆分先把序号整体加 `RENUMBER_OFFSET`（1,000,000）再逐行写回 1..N，否则会撞 `UNIQUE (book_id, ordinal)`；每次变更后用 `#recountBook` 重算书的章数与字数。
 - 分章列表接口不带 `paragraphs`；原文只在 `GET /api/canon/books/:bookId/chapters/:chapterId` 返回。导入请求只接受 `text` 或 `dataBase64` 之一，导入路由的请求体上限是 `CANON_IMPORT_MAX_BODY_BYTES`（48 MB），其余接口仍用 `maxJsonBodyBytes`。
 - 页面是 `/canon`（书架 + 上传）与 `/canon/:bookId`（分章预览与编辑）。导航栏仍是 7 项：入口在书架的 `lib-bar` 与命令面板「原著 · 导入与分章」，`/canon*` 高亮「书架」那一格。
-- 新增迁移要同步 `assistant-store.test.ts` 的 schema 版本断言（现在是 76）。
+- 新增迁移要同步 `assistant-store.test.ts` 的 schema 版本断言（现在是 77）。
+
+### 抽取与预估（canon/02）
+
+- 预估在 `core/src/canon/estimate.ts`：`planCanonChunks` 按段落装块（`CANON_CHUNK_MAX_CHARS = 20000`），单段超限时独占一块。输入 token = 原文 token + 每块 400 token 模板开销 + 每块当前名册；输出按每块 1200 token。没有配置单价时用参考费率（输入 ¥2/百万、输出 ¥8/百万），界面显示「参考费率」并说明以渠道账单为准。
+- 提示词在 `core/src/canon/prompt.ts`：系统提示词首句是「你是原著的事件抽取器」，e2e 假渠道按这句话分流；用户消息里有 `<原著>`、`<本章>`、`<名册>`、`<块 段落="起-止">` 与带段落号的原文。
+- 抽取引擎在 `core/src/canon/extract.ts`。每块调用一次，返回后先 `parseCanonExtractionResponse` 再 `validateCanonChunkExtraction`：参与人物（或名册里的别名）必须在本块原文出现，段落范围必须在块内。校验失败只把该块标 failed；已通过的块保留。`mode: "resume"` 只跑非 done 的块，`"full"` 清掉这一章结果并按剩余结果重建名册。
+- 别名归并发生在写库前：事实里的 name 与 aliases 先按当前名册解析成标准名，事件参与人物与话术人物一起用标准名；书级名册 `canon_entities` 每块增量 upsert。插叙事件存 `is_interlude = 1`，`listCanonTimeline` 排除它们，`listCanonEvents` 保留。
+- 迁移 77：`canon_extractions`（每本书一条）、`canon_chapter_extractions`（chunks 是 JSON 数组）、`canon_events`、`canon_voices`（每人每章最多 5 条，写库时计数）、`canon_facts`、`canon_entities`。事件、话术、事实都带 `chapter_ordinal`；合并或拆分章节后 `#syncChapterOrdinals` 用 join 子查询统一改锚点，并丢掉受影响章的抽取结果。
+- 后台调度在 `server/src/canon-worker.ts`：一次只跑一本书，按队列依次执行；暂停由路由写库，引擎在每块之间检查状态，已完成章保留。服务端启动时 `markInterruptedCanonExtractions` 把 running 退回 paused。抽取不写 `background_jobs`，所以不计入每楼后台调用预算。
+- 接口：`GET /api/canon/books/:bookId/estimate`、`POST .../extract/start|pause`、`POST .../chapters/:chapterId/extract`（body `{mode}`）、`GET .../extract[?chapterId=]`、`GET /api/canon/extract`（检视器总览）。开始与单章重跑在没有后台模型时返回 409。
+- e2e 假渠道里 `canonExtraction` 按块返回事件；「第二章 旧信」第一次故意给出原文里没有的参与人物，用来验证失败块重跑，随后同块第二次返回合格结果。这个规则按书名、章序号与块范围分别计数。

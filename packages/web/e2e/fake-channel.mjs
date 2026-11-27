@@ -284,8 +284,72 @@ function sceneLog(system) {
 	});
 }
 
+const canonAttempts = new Map();
+
+/** 原著逐章抽取：按提示词里的块返回事件、话术与实体增量。 */
+function canonExtraction(body) {
+	const user = lastUserText(body);
+	const book = /<原著>([\s\S]*?)<\/原著>/.exec(user)?.[1] ?? "";
+	const chapter = /<本章 序号="(\d+)" 标题="([^"]*)">/.exec(user);
+	const block = /<块 段落="(\d+)-(\d+)">\n([\s\S]*?)\n<\/块>/.exec(user);
+	const start = Number(block?.[1] ?? "1");
+	const end = Number(block?.[2] ?? "1");
+	const text = block?.[3] ?? "";
+	const key = `${book}:${chapter?.[1] ?? "0"}:${start}-${end}`;
+	const attempt = (canonAttempts.get(key) ?? 0) + 1;
+	canonAttempts.set(key, attempt);
+	// 旧信这一章第一次故意给出不在原文里的人，用来验证失败块单独重跑。
+	if (attempt === 1 && text.includes("山门勿归")) {
+		return JSON.stringify({
+			events: [
+				{
+					title: "不合格的事件",
+					summary: "参与人物不在本块原文。",
+					digest: "第一句。第二句。第三句。",
+					participants: ["不存在的人"],
+					location: null,
+					time: null,
+					paragraphStart: start,
+					paragraphEnd: end,
+					isInterlude: false,
+				},
+			],
+			voices: [],
+			facts: [],
+		});
+	}
+	const name = ["少年", "守门人", "师父", "林言"].find((item) =>
+		text.includes(item),
+	);
+	const isInterlude = (chapter?.[2] ?? "").includes("番外");
+	return JSON.stringify({
+		events: [
+			{
+				title: `原著事件 ${start}`,
+				summary: `第 ${start} 段的事件。`,
+				digest: "第一句。第二句。第三句。",
+				participants: name === undefined ? [] : [name],
+				location: "山门",
+				time: "清晨",
+				paragraphStart: start,
+				paragraphEnd: end,
+				isInterlude,
+			},
+		],
+		voices:
+			name === undefined
+				? []
+				: [{ character: name, kind: "thought", text: "这是合成的心声。" }],
+		facts:
+			name === undefined
+				? []
+				: [{ name, aliases: [], kind: "人物", fact: "合成的人物事实。" }],
+	});
+}
+
 function backgroundResponse(body) {
 	const system = systemText(body);
+	if (system.includes("你是原著的事件抽取器")) return canonExtraction(body);
 	if (system.includes("你是故事的场记")) return sceneLog(system);
 	if (system.includes("你是故事台账的结算器")) return "[]";
 	if (system.includes("你是故事记忆抽取器")) {

@@ -6,8 +6,10 @@ import {
 	type CanonChapterRecord,
 	type CanonChapterSplitResult,
 	type NewCanonChapter,
+	beginCanonExtraction,
 	canonBookTitle,
 	decodeCanonBytes,
+	estimateCanonExtraction,
 	isCanonChapterKind,
 	isJsonObject,
 	splitCanonText,
@@ -16,7 +18,11 @@ import type {
 	CanonBookDetailView,
 	CanonBooksView,
 	CanonChapterDetailView,
+	CanonChapterExtractRequest,
 	CanonChapterUpdateRequest,
+	CanonEstimateView,
+	CanonExtractionOverviewView,
+	CanonExtractionView,
 	ImportCanonBookResult,
 } from "@dramaticer/protocol";
 import { HttpError, readJsonBody, sendEmpty, sendJson } from "./http.js";
@@ -127,6 +133,42 @@ async function importCanonBook(
 	sendJson(res, 201, result);
 }
 
+function requireCanonWorker(
+	options: ApiRouteOptions,
+): NonNullable<ApiRouteOptions["canonWorker"]> {
+	const worker = options.canonWorker;
+	if (worker === null || worker === undefined) {
+		throw new HttpError(409, "conflict", "还没有配置模型渠道，不能抽取原著");
+	}
+	return worker;
+}
+
+function canonExtractionView(
+	options: ApiRouteOptions,
+	bookId: string,
+	chapterId?: string,
+): CanonExtractionView {
+	const extraction =
+		options.store.getCanonExtraction(bookId) ??
+		options.store.ensureCanonExtraction(bookId);
+	const chapterProgress = new Map(
+		options.store
+			.listCanonChapterExtractions(bookId)
+			.map((item) => [item.chapterId, item]),
+	);
+	return {
+		extraction,
+		chapters: options.store.listCanonChapters(bookId).map((chapter) => ({
+			chapter,
+			extraction: chapterProgress.get(chapter.id) ?? null,
+		})),
+		events: options.store.listCanonEvents(bookId, { chapterId }),
+		voices: options.store.listCanonVoices(bookId, { chapterId }),
+		facts: options.store.listCanonFacts(bookId, { chapterId }),
+		entities: options.store.listCanonEntities(bookId),
+	};
+}
+
 export async function handleCanonRoute(
 	req: IncomingMessage,
 	res: ServerResponse,
@@ -135,7 +177,21 @@ export async function handleCanonRoute(
 	options: ApiRouteOptions,
 ): Promise<void> {
 	const parts = pathSegments(url.pathname);
-	if (parts[0] !== "canon" || parts[1] !== "books") {
+	if (parts[0] !== "canon") {
+		throw new HttpError(404, "not_found", "没有这个接口");
+	}
+	if (parts[1] === "extract" && parts.length === 2) {
+		requireMethod(method, ["GET"]);
+		const overview: CanonExtractionOverviewView = {
+			books: options.store.listCanonBooks().map((book) => ({
+				book,
+				extraction: options.store.getCanonExtraction(book.id),
+			})),
+		};
+		sendJson(res, 200, overview);
+		return;
+	}
+	if (parts[1] !== "books") {
 		throw new HttpError(404, "not_found", "没有这个接口");
 	}
 	const bookId = parts[2];
@@ -168,9 +224,96 @@ export async function handleCanonRoute(
 		sendJson(res, 200, view);
 		return;
 	}
+	if (parts[3] === "estimate" && parts.length === 4) {
+		requireMethod(method, ["GET"]);
+		requireCanonBook(options, bookId);
+		const model =
+			options.canonWorker === null || options.canonWorker === undefined
+				? null
+				: await options.canonWorker.modelAlias();
+		const chapters = options.store.listCanonChapterRecords(bookId);
+		const view: CanonEstimateView = estimateCanonExtraction({
+			bookId,
+			chapters: chapters.map((chapter) => ({ paragraphs: chapter.paragraphs })),
+			model,
+			roster: options.store.listCanonEntities(bookId).map((entity) => ({
+				name: entity.name,
+				aliases: entity.aliases,
+				kind: entity.kind,
+			})),
+		});
+		sendJson(res, 200, view);
+		return;
+	}
+	if (parts[3] === "extract") {
+		if (parts.length === 4) {
+			requireMethod(method, ["GET"]);
+			requireCanonBook(options, bookId);
+			const chapterId = url.searchParams.get("chapterId") ?? undefined;
+			if (chapterId !== undefined) {
+				requireCanonChapter(options, bookId, chapterId);
+			}
+			sendJson(res, 200, canonExtractionView(options, bookId, chapterId));
+			return;
+		}
+		const action = parts[4];
+		if (action !== "start" && action !== "pause") {
+			throw new HttpError(404, "not_found", "没有这个接口");
+		}
+		if (parts.length !== 5) {
+			throw new HttpError(404, "not_found", "没有这个接口");
+		}
+		requireMethod(method, ["POST"]);
+		requireCanonBook(options, bookId);
+		if (action === "pause") {
+			options.store.pauseCanonExtraction(bookId);
+			sendJson(res, 200, canonExtractionView(options, bookId));
+			return;
+		}
+		const worker = requireCanonWorker(options);
+		const model = await worker.modelAlias();
+		if (model === null) {
+			throw new HttpError(
+				409,
+				"conflict",
+				"没有可用的后台模型：在设置里配置 background 或 settler 角色",
+			);
+		}
+		beginCanonExtraction(options.store, bookId, model);
+		worker.startBook(bookId);
+		sendJson(res, 202, canonExtractionView(options, bookId));
+		return;
+	}
 	const chapterId = parts[4];
 	if (parts[3] !== "chapters" || chapterId === undefined) {
 		throw new HttpError(404, "not_found", "没有这个接口");
+	}
+	if (parts.length === 6 && parts[5] === "extract") {
+		requireMethod(method, ["POST"]);
+		requireCanonBook(options, bookId);
+		requireCanonChapter(options, bookId, chapterId);
+		const body = await readObjectBody(req, options.maxJsonBodyBytes);
+		assertKnownKeys(body, ["mode"]);
+		let mode: CanonChapterExtractRequest["mode"] = "resume";
+		if (body.mode !== undefined) {
+			if (body.mode !== "resume" && body.mode !== "full") {
+				throw fieldError("mode", "mode 只能是 resume 或 full");
+			}
+			mode = body.mode;
+		}
+		const worker = requireCanonWorker(options);
+		const model = await worker.modelAlias();
+		if (model === null) {
+			throw new HttpError(
+				409,
+				"conflict",
+				"没有可用的后台模型：在设置里配置 background 或 settler 角色",
+			);
+		}
+		options.store.markCanonExtractionRunning(bookId, model);
+		worker.reextractChapter(bookId, chapterId, mode);
+		sendJson(res, 202, canonExtractionView(options, bookId, chapterId));
+		return;
 	}
 	if (parts.length === 5) {
 		if (method === "GET") {

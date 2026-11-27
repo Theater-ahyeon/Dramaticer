@@ -5,13 +5,31 @@ import {
 	CANON_TEXT_ENCODINGS,
 	type CanonBookRecord,
 	type CanonBookStatus,
+	type CanonChapterExtractionRecord,
+	type CanonChapterExtractionStatus,
 	type CanonChapterKind,
 	type CanonChapterRecord,
 	type CanonChapterSummary,
+	type CanonChunkPlan,
+	type CanonChunkProgress,
+	type CanonEntityKind,
+	type CanonEntityRecord,
+	type CanonEventRecord,
+	type CanonExtractedEvent,
+	type CanonExtractedFact,
+	type CanonExtractedVoice,
+	type CanonExtractionRecord,
+	type CanonExtractionStatus,
+	type CanonFactRecord,
+	type CanonVoiceKind,
+	type CanonVoiceRecord,
 	type NewCanonChapter,
 	assertCanonChapterKind,
 	countCanonChars,
 	isCanonBookStatus,
+	isCanonChapterExtractionStatus,
+	isCanonEntityKind,
+	isCanonExtractionStatus,
 } from "../../canon/index.js";
 import { StoreRepo } from "./base.js";
 
@@ -32,6 +50,35 @@ export interface CanonChapterUpdate {
 export interface CanonChapterSplitResult {
 	readonly first: CanonChapterRecord;
 	readonly second: CanonChapterRecord;
+}
+
+/** 名册重建与块结果写入的输入；章节锚点在这里一并带上（I12）。 */
+export interface CanonEntityInput {
+	readonly name: string;
+	readonly aliases: readonly string[];
+	readonly kind: CanonEntityKind;
+	readonly chapterOrdinal: number;
+}
+
+export interface CanonChunkResultsInput {
+	readonly bookId: string;
+	readonly chapterId: string;
+	readonly chapterOrdinal: number;
+	readonly events: readonly CanonExtractedEvent[];
+	readonly voices: readonly CanonExtractedVoice[];
+	readonly facts: readonly CanonExtractedFact[];
+}
+
+export interface CanonChapterExtractionPatch {
+	readonly status: CanonChapterExtractionStatus;
+	readonly chunks: readonly CanonChunkProgress[];
+	readonly lastError: string | null;
+	readonly tokens: number;
+}
+
+export interface CanonChapterExtractionDefaults {
+	readonly chapterOrdinal: number;
+	readonly chunks: readonly CanonChunkPlan[];
 }
 
 interface CanonBookRow {
@@ -55,6 +102,82 @@ interface CanonChapterRow {
 	readonly paragraphs: string;
 	readonly paragraph_count: number;
 	readonly char_count: number;
+	readonly created_at: string;
+}
+
+interface CanonExtractionRow {
+	readonly book_id: string;
+	readonly status: string;
+	readonly model: string | null;
+	readonly total_chapters: number;
+	readonly done_chapters: number;
+	readonly failed_chapters: number;
+	readonly llm_calls: number;
+	readonly llm_tokens: number;
+	readonly last_error: string | null;
+	readonly started_at: string | null;
+	readonly updated_at: string;
+}
+
+interface CanonChapterExtractionRow {
+	readonly chapter_id: string;
+	readonly book_id: string;
+	readonly chapter_ordinal: number;
+	readonly status: string;
+	readonly chunks: string;
+	readonly last_error: string | null;
+	readonly tokens: number;
+	readonly updated_at: string;
+}
+
+interface CanonEntityRow {
+	readonly book_id: string;
+	readonly name: string;
+	readonly aliases: string;
+	readonly kind: string;
+	readonly first_chapter_ordinal: number;
+	readonly last_chapter_ordinal: number;
+}
+
+interface CanonEventRow {
+	readonly id: number;
+	readonly book_id: string;
+	readonly chapter_id: string;
+	readonly chapter_ordinal: number;
+	readonly seq: number;
+	readonly title: string;
+	readonly summary: string;
+	readonly digest: string;
+	readonly participants: string;
+	readonly location: string | null;
+	readonly time_text: string | null;
+	readonly paragraph_start: number;
+	readonly paragraph_end: number;
+	readonly is_interlude: number;
+	readonly created_at: string;
+}
+
+interface CanonVoiceRow {
+	readonly id: number;
+	readonly book_id: string;
+	readonly chapter_id: string;
+	readonly chapter_ordinal: number;
+	readonly ordinal: number;
+	readonly character: string;
+	readonly kind: string;
+	readonly text: string;
+	readonly created_at: string;
+}
+
+interface CanonFactRow {
+	readonly id: number;
+	readonly book_id: string;
+	readonly chapter_id: string;
+	readonly chapter_ordinal: number;
+	readonly entity_name: string;
+	readonly aliases: string;
+	readonly entity_kind: string;
+	readonly fact: string;
 	readonly created_at: string;
 }
 
@@ -110,6 +233,182 @@ function rowToChapterRecord(row: CanonChapterRow): CanonChapterRecord {
 	return {
 		...rowToChapterSummary(row),
 		paragraphs: parseParagraphs(row.paragraphs, `章节 ${row.id} 的原文`),
+		createdAt: row.created_at,
+	};
+}
+
+function readExtractionStatus(value: string): CanonExtractionStatus {
+	if (!isCanonExtractionStatus(value)) {
+		throw new Error(`原著抽取状态不合法：${value}`);
+	}
+	return value;
+}
+
+function readChapterExtractionStatus(
+	value: string,
+): CanonChapterExtractionStatus {
+	if (!isCanonChapterExtractionStatus(value)) {
+		throw new Error(`章节抽取状态不合法：${value}`);
+	}
+	return value;
+}
+
+function readVoiceKind(value: string): CanonVoiceKind {
+	if (value !== "speech" && value !== "thought") {
+		throw new Error(`话术类别不合法：${value}`);
+	}
+	return value;
+}
+
+function readEntityKind(value: string): CanonEntityKind {
+	if (!isCanonEntityKind(value)) {
+		throw new Error(`实体类别不合法：${value}`);
+	}
+	return value;
+}
+
+function parseStringArray(value: string, label: string): readonly string[] {
+	const parsed: unknown = JSON.parse(value);
+	if (!Array.isArray(parsed)) throw new Error(`${label} 不是字符串数组`);
+	return parsed.map((item, index) => {
+		if (typeof item !== "string" || item.trim().length === 0) {
+			throw new Error(`${label} 第 ${index + 1} 项不是非空字符串`);
+		}
+		return item;
+	});
+}
+
+function parseChunkProgress(
+	value: string,
+	label: string,
+): readonly CanonChunkProgress[] {
+	const parsed: unknown = JSON.parse(value);
+	if (!Array.isArray(parsed)) throw new Error(`${label} 不是块数组`);
+	return parsed.map((item, index) => {
+		if (typeof item !== "object" || item === null || Array.isArray(item)) {
+			throw new Error(`${label} 第 ${index + 1} 块不是对象`);
+		}
+		const record = item as Record<string, unknown>;
+		const status = record.status;
+		if (
+			status !== "pending" &&
+			status !== "running" &&
+			status !== "done" &&
+			status !== "failed"
+		) {
+			throw new Error(`${label} 第 ${index + 1} 块的状态不合法`);
+		}
+		if (
+			typeof record.index !== "number" ||
+			typeof record.startParagraph !== "number" ||
+			typeof record.endParagraph !== "number" ||
+			typeof record.charCount !== "number" ||
+			typeof record.tokens !== "number" ||
+			(record.error !== null && typeof record.error !== "string")
+		) {
+			throw new Error(`${label} 第 ${index + 1} 块的字段不完整`);
+		}
+		return {
+			index: record.index,
+			startParagraph: record.startParagraph,
+			endParagraph: record.endParagraph,
+			charCount: record.charCount,
+			status,
+			error: record.error,
+			tokens: record.tokens,
+		};
+	});
+}
+
+function rowToExtraction(row: CanonExtractionRow): CanonExtractionRecord {
+	return {
+		bookId: row.book_id,
+		status: readExtractionStatus(row.status),
+		model: row.model,
+		totalChapters: row.total_chapters,
+		doneChapters: row.done_chapters,
+		failedChapters: row.failed_chapters,
+		llmCalls: row.llm_calls,
+		llmTokens: row.llm_tokens,
+		lastError: row.last_error,
+		startedAt: row.started_at,
+		updatedAt: row.updated_at,
+	};
+}
+
+function rowToChapterExtraction(
+	row: CanonChapterExtractionRow,
+): CanonChapterExtractionRecord {
+	return {
+		chapterId: row.chapter_id,
+		bookId: row.book_id,
+		chapterOrdinal: row.chapter_ordinal,
+		status: readChapterExtractionStatus(row.status),
+		chunks: parseChunkProgress(row.chunks, `章节 ${row.chapter_id} 的块进度`),
+		lastError: row.last_error,
+		tokens: row.tokens,
+		updatedAt: row.updated_at,
+	};
+}
+
+function rowToEntity(row: CanonEntityRow): CanonEntityRecord {
+	return {
+		bookId: row.book_id,
+		name: row.name,
+		aliases: parseStringArray(row.aliases, `实体 ${row.name} 的别名`),
+		kind: readEntityKind(row.kind),
+		firstChapterOrdinal: row.first_chapter_ordinal,
+		lastChapterOrdinal: row.last_chapter_ordinal,
+	};
+}
+
+function rowToEvent(row: CanonEventRow): CanonEventRecord {
+	return {
+		id: row.id,
+		bookId: row.book_id,
+		chapterId: row.chapter_id,
+		chapterOrdinal: row.chapter_ordinal,
+		seq: row.seq,
+		title: row.title,
+		summary: row.summary,
+		digest: row.digest,
+		participants: parseStringArray(
+			row.participants,
+			`事件 ${row.id} 的参与人物`,
+		),
+		location: row.location,
+		timeText: row.time_text,
+		paragraphStart: row.paragraph_start,
+		paragraphEnd: row.paragraph_end,
+		isInterlude: row.is_interlude === 1,
+		createdAt: row.created_at,
+	};
+}
+
+function rowToVoice(row: CanonVoiceRow): CanonVoiceRecord {
+	return {
+		id: row.id,
+		bookId: row.book_id,
+		chapterId: row.chapter_id,
+		chapterOrdinal: row.chapter_ordinal,
+		ordinal: row.ordinal,
+		character: row.character,
+		kind: readVoiceKind(row.kind),
+		text: row.text,
+		createdAt: row.created_at,
+	};
+}
+
+function rowToFact(row: CanonFactRow): CanonFactRecord {
+	return {
+		id: row.id,
+		bookId: row.book_id,
+		chapterId: row.chapter_id,
+		chapterOrdinal: row.chapter_ordinal,
+		entityName: row.entity_name,
+		aliases: parseStringArray(row.aliases, `事实 ${row.id} 的别名`),
+		entityKind: readEntityKind(row.entity_kind),
+		fact: row.fact,
 		createdAt: row.created_at,
 	};
 }
@@ -285,8 +584,11 @@ export class CanonRepo extends StoreRepo {
 			this.db
 				.prepare("DELETE FROM canon_chapters WHERE book_id = ? AND id = ?")
 				.run(bookId, next.id);
+			this.#dropChapterExtraction(chapterId);
 			this.#renumberChapters(bookId);
+			this.#syncChapterOrdinals(bookId);
 		})();
+		this.refreshCanonExtraction(bookId);
 		return this.getCanonChapter(bookId, chapterId);
 	}
 
@@ -364,7 +666,10 @@ export class CanonRepo extends StoreRepo {
 			ids.splice(position + 1, 0, secondId);
 			this.#assignOrdinals(bookId, ids);
 			this.#recountBook(bookId);
+			this.#dropChapterExtraction(chapterId);
+			this.#syncChapterOrdinals(bookId);
 		})();
+		this.refreshCanonExtraction(bookId);
 		const first = this.getCanonChapter(bookId, chapterId);
 		const second = this.getCanonChapter(bookId, secondId);
 		if (first === null || second === null) {
@@ -378,6 +683,623 @@ export class CanonRepo extends StoreRepo {
 			.prepare("DELETE FROM canon_books WHERE id = ?")
 			.run(bookId);
 		return result.changes > 0;
+	}
+
+	getCanonExtraction(bookId: string): CanonExtractionRecord | null {
+		const row = this.db
+			.prepare("SELECT * FROM canon_extractions WHERE book_id = ?")
+			.get(bookId) as CanonExtractionRow | undefined;
+		return row === undefined ? null : rowToExtraction(row);
+	}
+
+	/** 还没有抽取任务时建一条 idle；总章数取当前分章数。 */
+	ensureCanonExtraction(bookId: string): CanonExtractionRecord {
+		this.#requireBook(bookId);
+		const now = new Date().toISOString();
+		const total = this.#chapterCount(bookId);
+		this.db
+			.prepare(
+				`INSERT OR IGNORE INTO canon_extractions
+				(book_id, status, model, total_chapters, done_chapters,
+				 failed_chapters, llm_calls, llm_tokens, last_error, started_at, updated_at)
+				VALUES (?, 'idle', NULL, ?, 0, 0, 0, 0, NULL, NULL, ?)`,
+			)
+			.run(bookId, total, now);
+		const record = this.getCanonExtraction(bookId);
+		if (record === null) throw new Error(`原著 ${bookId} 的抽取任务创建失败`);
+		return record;
+	}
+
+	markCanonExtractionRunning(
+		bookId: string,
+		model: string | null,
+	): CanonExtractionRecord {
+		const current = this.ensureCanonExtraction(bookId);
+		const now = new Date().toISOString();
+		this.db
+			.prepare(
+				`UPDATE canon_extractions
+				SET status = 'running', model = ?, last_error = NULL,
+					started_at = ?, updated_at = ?
+				WHERE book_id = ?`,
+			)
+			.run(model, current.startedAt ?? now, now, bookId);
+		this.#syncBookStatus(bookId, "running");
+		return this.#requireExtraction(bookId);
+	}
+
+	pauseCanonExtraction(bookId: string): CanonExtractionRecord {
+		const current = this.ensureCanonExtraction(bookId);
+		if (current.status !== "running") return current;
+		this.db
+			.prepare(
+				`UPDATE canon_extractions
+				SET status = 'paused', updated_at = ?
+				WHERE book_id = ?`,
+			)
+			.run(new Date().toISOString(), bookId);
+		this.#syncBookStatus(bookId, "paused");
+		return this.#requireExtraction(bookId);
+	}
+
+	/** 全书跑完或中断后写终态；计数由 refreshCanonExtraction 重新数。 */
+	finishCanonExtraction(
+		bookId: string,
+		status: "done" | "failed" | "paused",
+		lastError: string | null,
+	): CanonExtractionRecord {
+		this.ensureCanonExtraction(bookId);
+		this.db
+			.prepare(
+				`UPDATE canon_extractions
+				SET status = ?, last_error = ?, updated_at = ?
+				WHERE book_id = ?`,
+			)
+			.run(status, lastError, new Date().toISOString(), bookId);
+		this.refreshCanonExtraction(bookId);
+		this.#syncBookStatus(bookId, status);
+		return this.#requireExtraction(bookId);
+	}
+
+	addCanonExtractionUsage(bookId: string, calls: number, tokens: number): void {
+		if (calls < 0 || tokens < 0) throw new Error("调用次数与 token 不能是负数");
+		this.db
+			.prepare(
+				`UPDATE canon_extractions
+				SET llm_calls = llm_calls + ?, llm_tokens = llm_tokens + ?,
+					updated_at = ?
+				WHERE book_id = ?`,
+			)
+			.run(calls, tokens, new Date().toISOString(), bookId);
+	}
+
+	/**
+	 * 重新数总章数与完成、失败章数。正在跑或已暂停的任务保留状态，
+	 * 其余按实际进度回到 done / failed / idle。
+	 */
+	refreshCanonExtraction(bookId: string): CanonExtractionRecord {
+		const current = this.ensureCanonExtraction(bookId);
+		const counts = this.db
+			.prepare(
+				`SELECT
+					(SELECT COUNT(*) FROM canon_chapters WHERE book_id = ?) AS total,
+					(SELECT COUNT(*) FROM canon_chapter_extractions
+						WHERE book_id = ? AND status = 'done') AS done,
+					(SELECT COUNT(*) FROM canon_chapter_extractions
+						WHERE book_id = ? AND status = 'failed') AS failed`,
+			)
+			.get(bookId, bookId, bookId) as {
+			readonly total: number;
+			readonly done: number;
+			readonly failed: number;
+		};
+		let status = current.status;
+		if (status !== "running" && status !== "paused") {
+			if (counts.total > 0 && counts.done === counts.total) {
+				status = "done";
+			} else if (counts.failed > 0) {
+				status = "failed";
+			} else {
+				status = "idle";
+			}
+		}
+		this.db
+			.prepare(
+				`UPDATE canon_extractions
+				SET total_chapters = ?, done_chapters = ?, failed_chapters = ?,
+					status = ?, updated_at = ?
+				WHERE book_id = ?`,
+			)
+			.run(
+				counts.total,
+				counts.done,
+				counts.failed,
+				status,
+				new Date().toISOString(),
+				bookId,
+			);
+		this.#syncBookStatus(bookId, status);
+		return this.#requireExtraction(bookId);
+	}
+
+	/** 进程中断时把 running 退回 paused，块退回 pending，便于下次续跑。 */
+	markInterruptedCanonExtractions(): number {
+		const rows = this.db
+			.prepare("SELECT book_id FROM canon_extractions WHERE status = 'running'")
+			.all() as { readonly book_id: string }[];
+		const now = new Date().toISOString();
+		this.db.transaction(() => {
+			for (const row of rows) {
+				this.db
+					.prepare(
+						`UPDATE canon_extractions
+						SET status = 'paused', updated_at = ?
+						WHERE book_id = ?`,
+					)
+					.run(now, row.book_id);
+				this.db
+					.prepare(
+						`UPDATE canon_chapter_extractions
+						SET status = 'pending', updated_at = ?
+						WHERE book_id = ? AND status = 'running'`,
+					)
+					.run(now, row.book_id);
+				this.#syncBookStatus(row.book_id, "paused");
+			}
+		})();
+		return rows.length;
+	}
+
+	ensureCanonChapterExtraction(
+		bookId: string,
+		chapterId: string,
+		defaults: CanonChapterExtractionDefaults,
+	): CanonChapterExtractionRecord {
+		const now = new Date().toISOString();
+		const chunks: CanonChunkProgress[] = defaults.chunks.map((chunk) => ({
+			...chunk,
+			status: "pending",
+			error: null,
+			tokens: 0,
+		}));
+		this.db
+			.prepare(
+				`INSERT OR IGNORE INTO canon_chapter_extractions
+				(chapter_id, book_id, chapter_ordinal, status, chunks,
+				 last_error, tokens, updated_at)
+				VALUES (?, ?, ?, 'pending', ?, NULL, 0, ?)`,
+			)
+			.run(
+				chapterId,
+				bookId,
+				defaults.chapterOrdinal,
+				JSON.stringify(chunks),
+				now,
+			);
+		const record = this.getCanonChapterExtraction(chapterId);
+		if (record === null) {
+			throw new Error(`章节 ${chapterId} 的抽取进度创建失败`);
+		}
+		return record;
+	}
+
+	getCanonChapterExtraction(
+		chapterId: string,
+	): CanonChapterExtractionRecord | null {
+		const row = this.db
+			.prepare("SELECT * FROM canon_chapter_extractions WHERE chapter_id = ?")
+			.get(chapterId) as CanonChapterExtractionRow | undefined;
+		return row === undefined ? null : rowToChapterExtraction(row);
+	}
+
+	listCanonChapterExtractions(
+		bookId: string,
+	): readonly CanonChapterExtractionRecord[] {
+		const rows = this.db
+			.prepare(
+				`SELECT * FROM canon_chapter_extractions
+				WHERE book_id = ? ORDER BY chapter_ordinal ASC`,
+			)
+			.all(bookId) as CanonChapterExtractionRow[];
+		return rows.map(rowToChapterExtraction);
+	}
+
+	setCanonChapterExtraction(
+		bookId: string,
+		chapterId: string,
+		patch: CanonChapterExtractionPatch,
+	): CanonChapterExtractionRecord {
+		this.db
+			.prepare(
+				`UPDATE canon_chapter_extractions
+				SET status = ?, chunks = ?, last_error = ?, tokens = ?, updated_at = ?
+				WHERE book_id = ? AND chapter_id = ?`,
+			)
+			.run(
+				patch.status,
+				JSON.stringify(patch.chunks),
+				patch.lastError,
+				patch.tokens,
+				new Date().toISOString(),
+				bookId,
+				chapterId,
+			);
+		const record = this.getCanonChapterExtraction(chapterId);
+		if (record === null) {
+			throw new Error(`章节 ${chapterId} 的抽取进度不存在`);
+		}
+		return record;
+	}
+
+	/** 整章重跑：进度换回按当前原文重新切的块，旧结果由调用方清理。 */
+	resetCanonChapterExtraction(
+		bookId: string,
+		chapterId: string,
+		defaults: CanonChapterExtractionDefaults,
+	): CanonChapterExtractionRecord {
+		const chunks: CanonChunkProgress[] = defaults.chunks.map((chunk) => ({
+			...chunk,
+			status: "pending",
+			error: null,
+			tokens: 0,
+		}));
+		this.db
+			.prepare(
+				`INSERT INTO canon_chapter_extractions
+				(chapter_id, book_id, chapter_ordinal, status, chunks,
+				 last_error, tokens, updated_at)
+				VALUES (?, ?, ?, 'pending', ?, NULL, 0, ?)
+				ON CONFLICT(chapter_id) DO UPDATE SET
+					status = 'pending', chunks = excluded.chunks,
+					last_error = NULL, tokens = 0, updated_at = excluded.updated_at`,
+			)
+			.run(
+				chapterId,
+				bookId,
+				defaults.chapterOrdinal,
+				JSON.stringify(chunks),
+				new Date().toISOString(),
+			);
+		const record = this.getCanonChapterExtraction(chapterId);
+		if (record === null) {
+			throw new Error(`章节 ${chapterId} 的抽取进度重建失败`);
+		}
+		return record;
+	}
+
+	clearCanonChapterResults(chapterId: string): void {
+		this.db.transaction(() => {
+			this.db
+				.prepare("DELETE FROM canon_events WHERE chapter_id = ?")
+				.run(chapterId);
+			this.db
+				.prepare("DELETE FROM canon_voices WHERE chapter_id = ?")
+				.run(chapterId);
+			this.db
+				.prepare("DELETE FROM canon_facts WHERE chapter_id = ?")
+				.run(chapterId);
+		})();
+	}
+
+	/** 一块的结果整体落库；事件段落范围与参与人物已在引擎里校验过。 */
+	insertCanonChunkResults(input: CanonChunkResultsInput): void {
+		const now = new Date().toISOString();
+		this.db.transaction(() => {
+			let seq = (
+				this.db
+					.prepare(
+						"SELECT COALESCE(MAX(seq), 0) AS seq FROM canon_events WHERE chapter_id = ?",
+					)
+					.get(input.chapterId) as { readonly seq: number }
+			).seq;
+			const insertEvent = this.db.prepare(
+				`INSERT INTO canon_events
+				(book_id, chapter_id, chapter_ordinal, seq, title, summary, digest,
+				 participants, location, time_text, paragraph_start, paragraph_end,
+				 is_interlude, created_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			);
+			for (const event of input.events) {
+				seq += 1;
+				insertEvent.run(
+					input.bookId,
+					input.chapterId,
+					input.chapterOrdinal,
+					seq,
+					event.title,
+					event.summary,
+					event.digest,
+					JSON.stringify(event.participants),
+					event.location,
+					event.timeText,
+					event.paragraphStart,
+					event.paragraphEnd,
+					event.isInterlude ? 1 : 0,
+					now,
+				);
+			}
+			const countVoices = this.db.prepare(
+				"SELECT COUNT(*) AS count FROM canon_voices WHERE chapter_id = ? AND character = ?",
+			);
+			const textExists = this.db.prepare(
+				"SELECT 1 FROM canon_voices WHERE chapter_id = ? AND character = ? AND text = ?",
+			);
+			let voiceOrdinal = (
+				this.db
+					.prepare(
+						"SELECT COALESCE(MAX(ordinal), 0) AS ordinal FROM canon_voices WHERE chapter_id = ?",
+					)
+					.get(input.chapterId) as { readonly ordinal: number }
+			).ordinal;
+			const insertVoice = this.db.prepare(
+				`INSERT INTO canon_voices
+				(book_id, chapter_id, chapter_ordinal, ordinal, character, kind, text, created_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			);
+			for (const voice of input.voices) {
+				const existing = (
+					countVoices.get(input.chapterId, voice.character) as {
+						readonly count: number;
+					}
+				).count;
+				if (existing >= 5) continue;
+				if (textExists.get(input.chapterId, voice.character, voice.text)) {
+					continue;
+				}
+				voiceOrdinal += 1;
+				insertVoice.run(
+					input.bookId,
+					input.chapterId,
+					input.chapterOrdinal,
+					voiceOrdinal,
+					voice.character,
+					voice.kind,
+					voice.text,
+					now,
+				);
+			}
+			const insertFact = this.db.prepare(
+				`INSERT INTO canon_facts
+				(book_id, chapter_id, chapter_ordinal, entity_name, aliases,
+				 entity_kind, fact, created_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			);
+			for (const fact of input.facts) {
+				insertFact.run(
+					input.bookId,
+					input.chapterId,
+					input.chapterOrdinal,
+					fact.name,
+					JSON.stringify(fact.aliases),
+					fact.kind,
+					fact.fact,
+					now,
+				);
+			}
+		})();
+	}
+
+	listCanonEntities(bookId: string): readonly CanonEntityRecord[] {
+		const rows = this.db
+			.prepare(
+				"SELECT * FROM canon_entities WHERE book_id = ? ORDER BY first_chapter_ordinal ASC, name ASC",
+			)
+			.all(bookId) as CanonEntityRow[];
+		return rows.map(rowToEntity);
+	}
+
+	upsertCanonEntities(
+		bookId: string,
+		entries: readonly CanonEntityInput[],
+	): void {
+		const select = this.db.prepare(
+			"SELECT * FROM canon_entities WHERE book_id = ? AND name = ?",
+		);
+		const upsert = this.db.prepare(
+			`INSERT INTO canon_entities
+			(book_id, name, aliases, kind, first_chapter_ordinal, last_chapter_ordinal)
+			VALUES (?, ?, ?, ?, ?, ?)
+			ON CONFLICT(book_id, name) DO UPDATE SET
+				aliases = excluded.aliases,
+				kind = excluded.kind,
+				first_chapter_ordinal = excluded.first_chapter_ordinal,
+				last_chapter_ordinal = excluded.last_chapter_ordinal`,
+		);
+		this.db.transaction(() => {
+			for (const entry of entries) {
+				const existing = select.get(bookId, entry.name) as
+					| CanonEntityRow
+					| undefined;
+				const aliases = new Set(
+					existing === undefined
+						? []
+						: parseStringArray(existing.aliases, `实体 ${entry.name} 的别名`),
+				);
+				for (const alias of entry.aliases) {
+					if (alias !== entry.name) aliases.add(alias);
+				}
+				upsert.run(
+					bookId,
+					entry.name,
+					JSON.stringify([...aliases]),
+					entry.kind,
+					existing === undefined
+						? entry.chapterOrdinal
+						: Math.min(existing.first_chapter_ordinal, entry.chapterOrdinal),
+					existing === undefined
+						? entry.chapterOrdinal
+						: Math.max(existing.last_chapter_ordinal, entry.chapterOrdinal),
+				);
+			}
+		})();
+	}
+
+	/** 整章重跑后按剩余结果重建名册，避免旧别名继续影响下一章。 */
+	replaceCanonEntities(
+		bookId: string,
+		entries: readonly CanonEntityInput[],
+	): void {
+		this.db.transaction(() => {
+			this.db
+				.prepare("DELETE FROM canon_entities WHERE book_id = ?")
+				.run(bookId);
+			for (const entry of entries) {
+				this.db
+					.prepare(
+						`INSERT INTO canon_entities
+						(book_id, name, aliases, kind, first_chapter_ordinal, last_chapter_ordinal)
+						VALUES (?, ?, ?, ?, ?, ?)
+						ON CONFLICT(book_id, name) DO UPDATE SET
+							aliases = excluded.aliases,
+							kind = excluded.kind,
+							first_chapter_ordinal = MIN(
+								canon_entities.first_chapter_ordinal, excluded.first_chapter_ordinal
+							),
+							last_chapter_ordinal = MAX(
+								canon_entities.last_chapter_ordinal, excluded.last_chapter_ordinal
+							)`,
+					)
+					.run(
+						bookId,
+						entry.name,
+						JSON.stringify(entry.aliases),
+						entry.kind,
+						entry.chapterOrdinal,
+						entry.chapterOrdinal,
+					);
+			}
+		})();
+	}
+
+	listCanonEvents(
+		bookId: string,
+		options: { readonly chapterId?: string } = {},
+	): readonly CanonEventRecord[] {
+		const rows = this.db
+			.prepare(
+				`SELECT * FROM canon_events
+				WHERE book_id = ? AND (? IS NULL OR chapter_id = ?)
+				ORDER BY chapter_ordinal ASC, paragraph_start ASC, seq ASC`,
+			)
+			.all(
+				bookId,
+				options.chapterId ?? null,
+				options.chapterId ?? null,
+			) as CanonEventRow[];
+		return rows.map(rowToEvent);
+	}
+
+	/** 主时间线：插叙、回忆、梦境不进这里，只留在事件全量里。 */
+	listCanonTimeline(
+		bookId: string,
+		options: { readonly chapterId?: string } = {},
+	): readonly CanonEventRecord[] {
+		const rows = this.db
+			.prepare(
+				`SELECT * FROM canon_events
+				WHERE book_id = ? AND is_interlude = 0
+					AND (? IS NULL OR chapter_id = ?)
+				ORDER BY chapter_ordinal ASC, paragraph_start ASC, seq ASC`,
+			)
+			.all(
+				bookId,
+				options.chapterId ?? null,
+				options.chapterId ?? null,
+			) as CanonEventRow[];
+		return rows.map(rowToEvent);
+	}
+
+	listCanonVoices(
+		bookId: string,
+		options: { readonly chapterId?: string } = {},
+	): readonly CanonVoiceRecord[] {
+		const rows = this.db
+			.prepare(
+				`SELECT * FROM canon_voices
+				WHERE book_id = ? AND (? IS NULL OR chapter_id = ?)
+				ORDER BY chapter_ordinal ASC, ordinal ASC`,
+			)
+			.all(
+				bookId,
+				options.chapterId ?? null,
+				options.chapterId ?? null,
+			) as CanonVoiceRow[];
+		return rows.map(rowToVoice);
+	}
+
+	listCanonFacts(
+		bookId: string,
+		options: { readonly chapterId?: string } = {},
+	): readonly CanonFactRecord[] {
+		const rows = this.db
+			.prepare(
+				`SELECT * FROM canon_facts
+				WHERE book_id = ? AND (? IS NULL OR chapter_id = ?)
+				ORDER BY chapter_ordinal ASC, id ASC`,
+			)
+			.all(
+				bookId,
+				options.chapterId ?? null,
+				options.chapterId ?? null,
+			) as CanonFactRow[];
+		return rows.map(rowToFact);
+	}
+
+	#chapterCount(bookId: string): number {
+		return (
+			this.db
+				.prepare(
+					"SELECT COUNT(*) AS count FROM canon_chapters WHERE book_id = ?",
+				)
+				.get(bookId) as { readonly count: number }
+		).count;
+	}
+
+	#requireExtraction(bookId: string): CanonExtractionRecord {
+		const record = this.getCanonExtraction(bookId);
+		if (record === null) throw new Error(`原著 ${bookId} 的抽取任务不存在`);
+		return record;
+	}
+
+	#dropChapterExtraction(chapterId: string): void {
+		this.db
+			.prepare("DELETE FROM canon_chapter_extractions WHERE chapter_id = ?")
+			.run(chapterId);
+		this.clearCanonChapterResults(chapterId);
+	}
+
+	/** 章节序号变化后，所有锚点一起跟上；不然后面的防剧透切片会错位。 */
+	#syncChapterOrdinals(bookId: string): void {
+		for (const table of [
+			"canon_chapter_extractions",
+			"canon_events",
+			"canon_voices",
+			"canon_facts",
+		]) {
+			this.db
+				.prepare(
+					`UPDATE ${table}
+					SET chapter_ordinal = (
+						SELECT ordinal FROM canon_chapters WHERE id = ${table}.chapter_id
+					)
+					WHERE book_id = ?`,
+				)
+				.run(bookId);
+		}
+	}
+
+	#syncBookStatus(bookId: string, status: CanonExtractionStatus): void {
+		const mapped: CanonBookStatus =
+			status === "running"
+				? "extracting"
+				: status === "done"
+					? "extracted"
+					: status === "failed"
+						? "failed"
+						: "ready";
+		this.db
+			.prepare("UPDATE canon_books SET status = ? WHERE id = ?")
+			.run(mapped, bookId);
 	}
 
 	#requireBook(bookId: string): CanonBookRecord {

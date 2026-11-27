@@ -34,6 +34,12 @@ export type RuntimeEmbedderFactory = (
 export const BACKGROUND_MODEL_ALIAS = "background";
 export const DEFAULT_EMBEDDING_ALIAS = "default";
 
+/** 不挂在故事上的后台任务（原著抽取）用这份客户端与模型别名。 */
+export interface BookBackgroundRuntime {
+	readonly client: LlmStreamingClient;
+	readonly model: string;
+}
+
 /** 一个故事跑一回合需要的全部东西；设置或渠道配置变化后整体重建。 */
 export interface StoryRuntime {
 	readonly settings: StorySettings;
@@ -72,6 +78,10 @@ export class StoryRuntimeManager {
 	readonly #createClient: RuntimeClientFactory;
 	readonly #createEmbedder: RuntimeEmbedderFactory;
 	readonly #cache = new Map<string, CachedRuntime>();
+	#bookBackground: {
+		readonly key: string;
+		readonly runtime: BookBackgroundRuntime | null;
+	} | null = null;
 
 	constructor(options: StoryRuntimeManagerOptions) {
 		this.#store = options.store;
@@ -92,6 +102,23 @@ export class StoryRuntimeManager {
 		if (cached?.key === key) return cached.runtime;
 		const runtime = await this.#build(storyId, settings, config);
 		this.#cache.set(storyId, { key, runtime });
+		return runtime;
+	}
+
+	/**
+	 * 原著抽取不绑定故事：按后台角色（settler）取模型，配置变化后重建客户端。
+	 * 没有可用的后台模型时返回 null，由调用方把任务标为失败。
+	 */
+	async bookBackground(): Promise<BookBackgroundRuntime | null> {
+		const config = await this.#loadConfig();
+		const key = configFingerprint(config);
+		if (this.#bookBackground?.key === key) return this.#bookBackground.runtime;
+		const alias = backgroundRoleAlias(config, "settler");
+		const runtime =
+			alias === null
+				? null
+				: { client: this.#backgroundClient(config, alias), model: alias };
+		this.#bookBackground = { key, runtime };
 		return runtime;
 	}
 
