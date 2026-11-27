@@ -60,7 +60,13 @@ type ContextSource =
 	| { readonly kind: "card"; readonly id: "character" | "persona" }
 	| { readonly kind: "outline"; readonly id: string }
 	| { readonly kind: "slot"; readonly slot: string }
-	| { readonly kind: "segment"; readonly segmentId: string };
+	| { readonly kind: "segment"; readonly segmentId: string }
+	| {
+			readonly kind: "canon";
+			readonly bookId: string;
+			readonly eventId: number;
+			readonly chapterOrdinal: number;
+	  };
 
 interface ContextItemView {
 	readonly label: string;
@@ -103,6 +109,8 @@ function contextHref(base: string, item: ContextItemView): string {
 			return `${base}/play?node=${encodeURIComponent(source.nodeId)}`;
 		case "card":
 			return `${base}/prefs?tab=model`;
+		case "canon":
+			return `${base}/prefs?tab=write`;
 		default:
 			return `${base}/${item.page}${item.tab === null ? "" : `?tab=${item.tab}`}`;
 	}

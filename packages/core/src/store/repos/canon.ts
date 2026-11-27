@@ -33,6 +33,7 @@ import {
 	type CanonStoryBindingRecord,
 	type CanonVoiceKind,
 	type CanonVoiceRecord,
+	type CanonWindowMode,
 	type NewCanonChapter,
 	assertCanonChapterKind,
 	countCanonChars,
@@ -42,6 +43,7 @@ import {
 	isCanonEntityKind,
 	isCanonExtractionStatus,
 	isCanonIdentityKind,
+	isCanonWindowMode,
 } from "../../canon/index.js";
 import { StoreRepo } from "./base.js";
 import { assertNonEmptyString, readBooleanColumn } from "./shared.js";
@@ -547,7 +549,14 @@ export interface SaveStoryCanonBindingInput {
 	readonly playerEntityName: string;
 	readonly playerPage: CanonPlayerPage | null;
 	readonly allowFullBookSpoilers?: boolean;
+	readonly windowMode?: CanonWindowMode;
 	readonly createdAt?: string;
+}
+
+export interface CanonStorySettingsUpdate {
+	readonly allowFullBookSpoilers?: boolean;
+	readonly windowMode?: CanonWindowMode;
+	readonly pendingAdvance?: number;
 }
 
 export interface SaveCanonCursorInput {
@@ -556,6 +565,7 @@ export interface SaveCanonCursorInput {
 	readonly eventId: number;
 	readonly eventOrdinal: number;
 	readonly chapterOrdinal: number;
+	readonly fromHere?: boolean;
 	readonly createdAt?: string;
 }
 
@@ -568,6 +578,8 @@ interface StoryCanonRow {
 	readonly player_entity_name: string;
 	readonly player_page: string | null;
 	readonly allow_full_book_spoilers: number;
+	readonly window_mode: string;
+	readonly pending_advance: number;
 	readonly created_at: string;
 }
 
@@ -577,6 +589,7 @@ interface CanonCursorRow {
 	readonly event_id: number;
 	readonly event_ordinal: number;
 	readonly chapter_ordinal: number;
+	readonly from_here: number;
 	readonly created_at: string;
 }
 
@@ -612,6 +625,11 @@ function rowToStoryCanon(row: StoryCanonRow): CanonStoryBindingRecord {
 			`故事 ${row.story_id} 的扮演身份不合法：${row.identity_kind}`,
 		);
 	}
+	if (!isCanonWindowMode(row.window_mode)) {
+		throw new Error(
+			`故事 ${row.story_id} 的原著窗口模式不合法：${row.window_mode}`,
+		);
+	}
 	return {
 		storyId: row.story_id,
 		bookId: row.book_id,
@@ -624,6 +642,8 @@ function rowToStoryCanon(row: StoryCanonRow): CanonStoryBindingRecord {
 			row.allow_full_book_spoilers,
 			`故事 ${row.story_id} 的 allowFullBookSpoilers`,
 		),
+		windowMode: row.window_mode,
+		pendingAdvance: row.pending_advance,
 		createdAt: row.created_at,
 	};
 }
@@ -635,6 +655,10 @@ function rowToCursor(row: CanonCursorRow): CanonCursorRecord {
 		eventId: row.event_id,
 		eventOrdinal: row.event_ordinal,
 		chapterOrdinal: row.chapter_ordinal,
+		fromHere: readBooleanColumn(
+			row.from_here,
+			`故事 ${row.story_id} 游标 ${row.node_id} 的 fromHere`,
+		),
 		createdAt: row.created_at,
 	};
 }
@@ -2057,13 +2081,17 @@ export class CanonRepo extends StoreRepo {
 		}
 		const createdAt = input.createdAt ?? new Date().toISOString();
 		const allow = input.allowFullBookSpoilers === true;
+		const windowMode = input.windowMode ?? "summary_voice";
+		if (!isCanonWindowMode(windowMode)) {
+			throw new Error(`原著窗口模式不合法：${String(windowMode)}`);
+		}
 		this.db
 			.prepare(
 				`INSERT INTO story_canon
 					(story_id, book_id, start_event_id, start_chapter_ordinal,
 					 identity_kind, player_entity_name, player_page,
-					 allow_full_book_spoilers, created_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+					 allow_full_book_spoilers, window_mode, pending_advance, created_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
 			)
 			.run(
 				input.storyId,
@@ -2074,6 +2102,7 @@ export class CanonRepo extends StoreRepo {
 				input.playerEntityName,
 				input.playerPage === null ? null : JSON.stringify(input.playerPage),
 				allow ? 1 : 0,
+				windowMode,
 				createdAt,
 			);
 		const saved = this.getStoryCanonBinding(input.storyId);
@@ -2089,6 +2118,45 @@ export class CanonRepo extends StoreRepo {
 			.prepare("SELECT * FROM story_canon WHERE story_id = ?")
 			.get(storyId) as StoryCanonRow | undefined;
 		return row === undefined ? null : rowToStoryCanon(row);
+	}
+
+	/** 合并式更新原著的窗口设置；未出现的字段保持原值。 */
+	updateStoryCanonSettings(
+		storyId: string,
+		update: CanonStorySettingsUpdate,
+	): CanonStoryBindingRecord {
+		assertNonEmptyString(storyId, "故事 id");
+		const current = this.getStoryCanonBinding(storyId);
+		if (current === null) {
+			throw new Error(`故事 ${storyId} 还没有绑定原著`);
+		}
+		const windowMode = update.windowMode ?? current.windowMode;
+		if (!isCanonWindowMode(windowMode)) {
+			throw new Error(`原著窗口模式不合法：${String(update.windowMode)}`);
+		}
+		const pendingAdvance =
+			update.pendingAdvance === undefined
+				? current.pendingAdvance
+				: update.pendingAdvance;
+		if (!Number.isInteger(pendingAdvance) || pendingAdvance < 0) {
+			throw new Error("待推进件数必须是非负整数");
+		}
+		const allow =
+			update.allowFullBookSpoilers === undefined
+				? current.allowFullBookSpoilers
+				: update.allowFullBookSpoilers;
+		this.db
+			.prepare(
+				`UPDATE story_canon
+				SET allow_full_book_spoilers = ?, window_mode = ?, pending_advance = ?
+				WHERE story_id = ?`,
+			)
+			.run(allow ? 1 : 0, windowMode, pendingAdvance, storyId);
+		const saved = this.getStoryCanonBinding(storyId);
+		if (saved === null) {
+			throw new Error(`故事 ${storyId} 的原著设置写入后读取失败`);
+		}
+		return saved;
 	}
 
 	/**
@@ -2130,12 +2198,13 @@ export class CanonRepo extends StoreRepo {
 		this.db
 			.prepare(
 				`INSERT INTO canon_cursors
-					(story_id, node_id, event_id, event_ordinal, chapter_ordinal, created_at)
-				VALUES (?, ?, ?, ?, ?, ?)
+					(story_id, node_id, event_id, event_ordinal, chapter_ordinal, from_here, created_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?)
 				ON CONFLICT (story_id, node_id) DO UPDATE SET
 					event_id = excluded.event_id,
 					event_ordinal = excluded.event_ordinal,
 					chapter_ordinal = excluded.chapter_ordinal,
+					from_here = excluded.from_here,
 					created_at = excluded.created_at`,
 			)
 			.run(
@@ -2144,6 +2213,7 @@ export class CanonRepo extends StoreRepo {
 				input.eventId,
 				input.eventOrdinal,
 				input.chapterOrdinal,
+				input.fromHere === true ? 1 : 0,
 				createdAt,
 			);
 		const saved = this.getCanonCursor(input.storyId, input.nodeId);

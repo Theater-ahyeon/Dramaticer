@@ -3,6 +3,12 @@ import {
 	requireJobNodeId,
 } from "../background/types.js";
 import {
+	type ResolvedCanonCursor,
+	advanceCanonCursor,
+	holdCanonCursor,
+	resolveCanonCursor,
+} from "../canon/cursor.js";
+import {
 	collectDirectorBitJudgmentInput,
 	parseDirectorBitJudgmentResponse,
 } from "../director/bit-judgments.js";
@@ -71,6 +77,7 @@ const RESPONSE_KEYS = [
 	"options",
 	"events",
 	"will",
+	"canonCompleted",
 ] as const;
 
 /** 局面更新顺带产出的行动选项条数范围。 */
@@ -348,6 +355,8 @@ export interface ParsedSceneLog {
 	readonly options: readonly string[];
 	readonly events: readonly ExtractedEvent[];
 	readonly will: readonly CapturedUserWill[];
+	/** 本楼是否演完了当前原著事件；故事没有绑定原著时为 null。 */
+	readonly canonCompleted: boolean | null;
 }
 
 /**
@@ -417,6 +426,10 @@ export function parseSceneLogResponse(
 					input.conditions.map((condition) => condition.id),
 				);
 	const parts = input.parts ?? NO_SITUATION_PARTS;
+	const canonCompleted = record.canonCompleted;
+	if (canonCompleted !== undefined && typeof canonCompleted !== "boolean") {
+		throw new Error("场记记录.canonCompleted 必须是布尔值");
+	}
 	return {
 		beat,
 		states,
@@ -430,6 +443,7 @@ export function parseSceneLogResponse(
 		options: parts.options ? readOptions(record.options, repairs) : [],
 		events: parts.events ? readEvents(record.events, repairs) : [],
 		will: parts.will ? readWill(record.will, input.players ?? [], repairs) : [],
+		canonCompleted: canonCompleted ?? null,
 	};
 }
 
@@ -629,6 +643,7 @@ function buildSystemPrompt(
 	hasConditions: boolean,
 	sceneStarts: boolean,
 	parts: SituationParts = NO_SITUATION_PARTS,
+	hasCanon = false,
 ): string {
 	const shape = [
 		'"beat":"试探"',
@@ -655,6 +670,7 @@ function buildSystemPrompt(
 					'"will":[{"kind":"preference","text":"剧情保持轻松","sourceQuote":"玩家原话"}]',
 				]
 			: []),
+		...(hasCanon ? ['"canonCompleted":false'] : []),
 	];
 	return [
 		"你是故事的场记。回复落定后，你为这一楼写一条记录。只输出一个 JSON 对象，不要解释、前后缀或代码块标记。",
@@ -695,6 +711,11 @@ function buildSystemPrompt(
 					"- will：只看最近一条玩家消息里玩家明确说出的、跨楼层仍然有效的偏好（preference）、底线（boundary）或纠正（correction）；角色台词与这一轮的具体行动不算；已经记录过的不要重复；sourceQuote 逐字摘自玩家原话。没有就给空数组。",
 				]
 			: []),
+		...(hasCanon
+			? [
+					"- canonCompleted：当前原著事件是否已经在这一楼演完，只判断是或否；不要写任何时刻格式，也不要为了对上原著而硬推剧情。",
+				]
+			: []),
 		"命名空间与路径：",
 		...LEDGER_PATH_GUIDE,
 	].join("\n");
@@ -709,13 +730,25 @@ function buildUserContent(
 		readonly text: string;
 	}[],
 	knownWills: readonly string[] = [],
+	canon: ResolvedCanonCursor | null = null,
 ): string {
 	const lines: string[] = [
 		"当前台账快照（截至这一楼）：",
 		JSON.stringify(snapshot),
 		"",
-		"最近楼层的原文：",
 	];
+	if (canon !== null) {
+		lines.push(
+			"当前原著事件（只判断这一楼是否演完，不写时刻）：",
+			`- 「${canon.event.title}」（第 ${canon.chapterOrdinal} 章）`,
+			`- 概要：${canon.event.summary}`,
+			canon.event.digest.trim().length === 0
+				? ""
+				: `- 缩写：${canon.event.digest}`,
+			"",
+		);
+	}
+	lines.push("最近楼层的原文：");
 	for (const node of floors) {
 		lines.push(`<楼层 id="${node.id}" 角色="${node.role}">`);
 		lines.push(node.raw);
@@ -784,6 +817,7 @@ export function createSceneLogHandler(
 			...parts,
 			will: parts.will && players.length > 0,
 		};
+		const canon = resolveCanonCursor(store, job.storyId, nodeId);
 		const messages: LlmMessage[] = [
 			{
 				role: "system",
@@ -792,6 +826,7 @@ export function createSceneLogHandler(
 					conditions.length > 0,
 					sceneStarts,
 					effective,
+					canon !== null,
 				),
 			},
 			{
@@ -802,6 +837,7 @@ export function createSceneLogHandler(
 					bits,
 					conditions,
 					effective.will ? readExistingWills(store, nodeId).texts : [],
+					canon,
 				),
 			},
 		];
@@ -877,6 +913,24 @@ export function createSceneLogHandler(
 			quotes: parsed.quotes,
 			repairs: [...parsed.repairs, ...(settlementRepairs ?? [])],
 		});
+		// 原著游标：只有模型明确说这一楼演完了当前事件才前进；玩家偏离或
+		// 没演完时原地写回。「从这里开始」的待演出游标先消费一格，不自动前进。
+		if (canon !== null) {
+			const anchored = canon.cursor?.fromHere === true;
+			const advanced =
+				parsed.canonCompleted === true && !anchored
+					? advanceCanonCursor(store, job.storyId, nodeId)
+					: null;
+			if (advanced === null) {
+				holdCanonCursor(
+					store,
+					job.storyId,
+					nodeId,
+					canon,
+					anchored && parsed.canonCompleted !== true,
+				);
+			}
+		}
 		// 被拦下的泄密写入进检视器的拒收列表。
 		for (const repair of parsed.repairs) {
 			if (!repair.reason.startsWith(SECRET_LEAK_REASON)) continue;

@@ -18,6 +18,7 @@ import type {
 	CanonStartingPage,
 	CanonStoryBindingRecord,
 	CanonVoiceRecord,
+	CanonWindowMode,
 	CanonWorldIndex,
 } from "@dramaticer/core";
 import type { ImportStoryRequest, StoryView } from "./story.js";
@@ -40,8 +41,18 @@ export type {
 	CanonStartingPage,
 	CanonStoryBindingRecord,
 	CanonVoiceRecord,
+	CanonWindowMode,
 	CanonWorldIndex,
 };
+
+export interface CanonTimelineEntryView {
+	readonly id: number;
+	readonly title: string;
+	readonly summary: string;
+	readonly eventOrdinal: number;
+	readonly chapterOrdinal: number;
+	readonly isTurningPoint: boolean;
+}
 
 /** 原著书：书名、编码、总字数、章数与状态。 */
 export type CanonBookView = CanonBookRecord;
@@ -158,9 +169,27 @@ export interface StoryCanonBindingView {
 	/** 扮演原著人物时的开局切片；自创人物为 null。 */
 	readonly playerPage: CanonPlayerPage | null;
 	readonly allowFullBookSpoilers: boolean;
+	readonly windowMode: CanonWindowMode;
+	readonly pendingAdvance: number;
 	readonly createdAt: string;
-	/** 当前楼层的游标；没有楼层时为最近一次写入的游标。 */
+	/** 当前路径上的游标；没有楼层时为最近一次写入的游标。 */
 	readonly cursor: CanonCursorRecord | null;
+	/** 当前演到的原著事件与后续情节点；界面选「从这里开始」用。 */
+	readonly currentEvent: CanonEventRecord | null;
+	readonly timeline: readonly CanonTimelineEntryView[];
+}
+
+/** 故事级原著设置：防剧透开关、窗口内容与待推进件数。 */
+export interface StoryCanonSettingsRequest {
+	readonly allowFullBookSpoilers?: boolean;
+	readonly windowMode?: CanonWindowMode;
+	readonly pendingAdvance?: number;
+}
+
+/** 「从这里开始」：把当前楼层的游标拖到指定主时间线事件。 */
+export interface StoryCanonCursorRequest {
+	readonly eventId: number;
+	readonly nodeId?: string;
 }
 
 export interface StoryCanonView {

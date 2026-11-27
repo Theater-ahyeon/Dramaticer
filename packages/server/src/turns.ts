@@ -463,6 +463,10 @@ async function streamTurn(stream: StreamTurnOptions): Promise<void> {
 				commit: deep.commit,
 			});
 		}
+		// 「推进 N 件」只消费这一轮；回合落定后清空待办。
+		if (options.store.getStoryCanonBinding(storyId) !== null) {
+			options.store.updateStoryCanonSettings(storyId, { pendingAdvance: 0 });
+		}
 		if (result.trace.llm.stopReason === "aborted") {
 			sse.send("turn.error", {
 				code: "upstream_error",
@@ -489,7 +493,7 @@ async function streamTurn(stream: StreamTurnOptions): Promise<void> {
 			sendStarted(null);
 			sse.send("turn.error", toTurnError(error));
 			options.log(
-				`回合失败：${error instanceof Error ? error.name : "未知错误"}`,
+				`回合失败：${error instanceof Error ? (error.stack ?? error.message) : String(error)}`,
 			);
 		}
 	} finally {

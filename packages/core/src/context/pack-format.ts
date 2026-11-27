@@ -51,6 +51,8 @@ export interface ContextPackFingerprintInput {
 	readonly providers: ContextSlotProviders | undefined;
 	/** 本轮临时开关；不同的临时开关不复用同一个包。 */
 	readonly featureOverrides?: Readonly<Record<string, unknown>> | null;
+	/** 本轮推进档位；原著窗口在推进时给的内容不同，不能复用旧包。 */
+	readonly directorPush?: string | null;
 }
 
 /**
@@ -90,6 +92,7 @@ export function contextPackFingerprint(
 		Object.keys(input.featureOverrides).length === 0
 			? {}
 			: { featureOverrides: sortedEntries(input.featureOverrides) }),
+		directorPush: input.directorPush ?? null,
 	});
 	return createHash("sha256").update(serialised).digest("hex");
 }
@@ -326,6 +329,24 @@ function assertTraceItems(value: unknown, label: string): void {
 			case "outline":
 				assertNonEmptyStringField(source.id, `${sourceLabel}.id`);
 				return;
+			case "canon": {
+				assertNonEmptyStringField(source.bookId, `${sourceLabel}.bookId`);
+				if (
+					typeof source.eventId !== "number" ||
+					!Number.isInteger(source.eventId) ||
+					source.eventId < 1
+				) {
+					throw new Error(`${sourceLabel}.eventId 必须是正整数`);
+				}
+				if (
+					typeof source.chapterOrdinal !== "number" ||
+					!Number.isInteger(source.chapterOrdinal) ||
+					source.chapterOrdinal < 1
+				) {
+					throw new Error(`${sourceLabel}.chapterOrdinal 必须是正整数`);
+				}
+				return;
+			}
 			default:
 				throw new Error(`${sourceLabel}.kind 不合法：${source.kind}`);
 		}

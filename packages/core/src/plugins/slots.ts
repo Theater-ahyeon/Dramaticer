@@ -1,6 +1,7 @@
 import type { HistoryBlockPolicy } from "../blocks/history.js";
 import {
 	createBlueprintSlotProvider,
+	createCanonWindowSlotProvider,
 	createCharacterSlotProvider,
 	createHistorySlotProvider,
 	createLoreSlotProvider,
@@ -47,6 +48,7 @@ export const USER_WILL_SLOT_PLUGIN = "slot.user-will";
 export const SITUATION_SLOT_PLUGIN = "slot.situation";
 export const WORLD_INDEX_SLOT_PLUGIN = "slot.world-index";
 export const PAGES_SLOT_PLUGIN = "slot.pages";
+export const CANON_WINDOW_SLOT_PLUGIN = "slot.canon-window";
 
 export interface CharacterSlotConfig {
 	/** 为空表示故事没有导入角色卡，插件不注册槽位。 */
@@ -56,6 +58,8 @@ export interface CharacterSlotConfig {
 export interface PersonaSlotConfig {
 	/** 为空表示故事没有设置人设，插件不注册槽位。 */
 	readonly persona: string | null;
+	/** 有存储时，扮演原著人物的资料随游标章节解锁。 */
+	readonly store?: StoryStore;
 }
 
 export interface HistorySlotConfig {
@@ -142,7 +146,15 @@ export const personaSlotPlugin: PluginDefinition = {
 		const values = slotConfig(PERSONA_SLOT_PLUGIN, config);
 		const persona = optionalSlotText(PERSONA_SLOT_PLUGIN, values, "persona");
 		if (persona === null || persona.trim().length === 0) return;
-		context.slot("persona", createPersonaSlotProvider(persona));
+		context.slot(
+			"persona",
+			createPersonaSlotProvider(
+				persona,
+				values.store === undefined
+					? undefined
+					: requireSlotStore(PERSONA_SLOT_PLUGIN, values),
+			),
+		);
 	},
 };
 
@@ -211,6 +223,19 @@ export const worldIndexSlotPlugin: PluginDefinition = {
 			"world_index",
 			createWorldIndexSlotProvider(
 				requireSlotStore(WORLD_INDEX_SLOT_PLUGIN, values),
+			),
+		);
+	},
+};
+
+export const canonWindowSlotPlugin: PluginDefinition = {
+	name: CANON_WINDOW_SLOT_PLUGIN,
+	apply(context, config) {
+		const values = slotConfig(CANON_WINDOW_SLOT_PLUGIN, config);
+		context.slot(
+			"director",
+			createCanonWindowSlotProvider(
+				requireSlotStore(CANON_WINDOW_SLOT_PLUGIN, values),
 			),
 		);
 	},
@@ -360,6 +385,7 @@ export const SLOT_PLUGINS: readonly PluginDefinition[] = [
 	situationSlotPlugin,
 	worldIndexSlotPlugin,
 	pagesSlotPlugin,
+	canonWindowSlotPlugin,
 	summarySlotPlugin,
 	memorySlotPlugin,
 	loreSlotPlugin,

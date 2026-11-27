@@ -748,10 +748,12 @@ describe("设置接口", () => {
 		).json()) as { template: { segments: readonly { id: string }[] } };
 		expect(fullView.template.segments.map((segment) => segment.id)).toEqual([
 			"character",
+			"persona",
 			"lore",
 			"world_index",
 			"situation",
 			"pages",
+			"director",
 			"memory",
 			"user_will",
 			"summary",

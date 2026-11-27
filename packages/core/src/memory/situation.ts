@@ -26,7 +26,8 @@ const CHARACTER_FIELDS: readonly { field: string; label: string }[] = [
 	{ field: "outfit", label: "穿" },
 ];
 
-const DEAD = /死|亡|身故|遇害|阵亡/;
+/** 局面层判断「已死」的状态关键词；原著窗口的死人剔除共用这一条。 */
+export const DEAD_STATUS_PATTERN = /死|亡|身故|遇害|阵亡/;
 
 /** 局面卡按结构渲染的台账命名空间；其余路径原样列出。 */
 const KNOWN_NAMESPACES: ReadonlySet<string> = new Set([
@@ -221,7 +222,7 @@ export function renderSituationCard(
 
 	const dead = characters.filter((person) => {
 		const status = textOf(person.fields.get("status")?.value);
-		return status !== null && DEAD.test(status);
+		return status !== null && DEAD_STATUS_PATTERN.test(status);
 	});
 	if (dead.length > 0) {
 		const first = [...(dead[0]?.fields.values() ?? [])][0];

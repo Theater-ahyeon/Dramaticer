@@ -16,6 +16,7 @@ import type { PluginDefinition, PluginKernel } from "./contracts.js";
 import { createPluginKernel } from "./runtime.js";
 import {
 	BLUEPRINT_SLOT_PLUGIN,
+	CANON_WINDOW_SLOT_PLUGIN,
 	CHARACTER_SLOT_PLUGIN,
 	HISTORY_SLOT_PLUGIN,
 	LORE_SLOT_PLUGIN,
@@ -91,7 +92,10 @@ export async function createNaiveChatSlots(
 ): Promise<ChatSlotSet> {
 	return composeSlotSet(NAIVE_SLOT_PLUGINS, {
 		[CHARACTER_SLOT_PLUGIN]: { prompt: options.characterPrompt },
-		[PERSONA_SLOT_PLUGIN]: { persona: options.persona },
+		[PERSONA_SLOT_PLUGIN]: {
+			persona: options.persona,
+			store: options.store,
+		},
 		[RAW_HISTORY_SLOT_PLUGIN]: {
 			store: options.store,
 			limit: options.historyLimit,
@@ -103,6 +107,8 @@ export interface StandardChatSlotsOptions {
 	readonly store: StoryStore;
 	/** 为空表示故事还没有导入角色卡，角色槽位记为缺失。 */
 	readonly characterPrompt: string | null;
+	/** 玩家人设；扮演原著人物时随游标章节解锁。 */
+	readonly persona?: string | null;
 	readonly embedder?: EmbeddingClient | null;
 	readonly reranker?: RerankClient | null;
 	/** 块的 prompt 视图策略；不设置时使用默认策略。 */
@@ -119,7 +125,10 @@ export async function createStandardChatSlots(
 	const reranker = options.reranker ?? null;
 	return composeSlotSet(BUILTIN_PLUGINS, {
 		[CHARACTER_SLOT_PLUGIN]: { prompt: options.characterPrompt },
-		[PERSONA_SLOT_PLUGIN]: { persona: null },
+		[PERSONA_SLOT_PLUGIN]: {
+			persona: options.persona ?? null,
+			store: options.store,
+		},
 		[HISTORY_SLOT_PLUGIN]: {
 			store: options.store,
 			policy: options.historyBlockPolicy,
@@ -131,6 +140,7 @@ export async function createStandardChatSlots(
 		[SITUATION_SLOT_PLUGIN]: { store: options.store },
 		[WORLD_INDEX_SLOT_PLUGIN]: { store: options.store },
 		[PAGES_SLOT_PLUGIN]: { store: options.store },
+		[CANON_WINDOW_SLOT_PLUGIN]: { store: options.store },
 		[SUMMARY_SLOT_PLUGIN]: { store: options.store },
 		[MEMORY_SLOT_PLUGIN]: {
 			store: options.store,

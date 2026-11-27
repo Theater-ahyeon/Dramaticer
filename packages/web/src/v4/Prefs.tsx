@@ -128,6 +128,7 @@ export function Prefs() {
 		[storyId],
 	);
 	const features = useLoad(() => api.getStoryFeatures(storyId), [storyId]);
+	const canon = useLoad(() => api.getStoryCanon(storyId), [storyId]);
 	const stats = useLoad<FeatureStats>(
 		() => api.get(sp(storyId, "/features/stats")),
 		[storyId],
@@ -243,6 +244,57 @@ export function Prefs() {
 
 			{tab === "write" && writing.data !== null ? (
 				<div id="dials">
+					{canon.data?.bound === null ||
+					canon.data?.bound === undefined ? null : (
+						<div className="dial" data-canon-settings="">
+							<div>
+								<h3>原著窗口</h3>
+								<p>
+									《{canon.data.bound.bookTitle}》当前演到「
+									{canon.data.bound.currentEvent?.title ?? "—"}」。
+									关掉「知道全书」时，人物页、世界索引和窗口只取游标之前的内容。
+								</p>
+							</div>
+							<div className="stat" style={{ flexWrap: "wrap", gap: 8 }}>
+								<span>允许模型知道全书</span>
+								<Sw
+									label="允许模型知道全书"
+									checked={canon.data.bound.allowFullBookSpoilers}
+									onChange={(value) =>
+										act(
+											() =>
+												api.updateStoryCanonSettings(storyId, {
+													allowFullBookSpoilers: value,
+												}),
+											() => canon.reload(),
+										)
+									}
+								/>
+								<Seg<string>
+									small
+									label="原著窗口内容"
+									value={canon.data.bound.windowMode}
+									options={[
+										{ v: "summary_only", label: "概要" },
+										{ v: "summary_voice", label: "概要+话术" },
+										{ v: "full_text", label: "原文" },
+									]}
+									onChange={(value) =>
+										act(
+											() =>
+												api.updateStoryCanonSettings(storyId, {
+													windowMode: value as
+														| "summary_only"
+														| "summary_voice"
+														| "full_text",
+												}),
+											() => canon.reload(),
+										)
+									}
+								/>
+							</div>
+						</div>
+					)}
 					<div className="dial">
 						<div>
 							<h3>外观</h3>

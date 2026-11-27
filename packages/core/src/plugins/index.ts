@@ -96,6 +96,7 @@ export {
 } from "./turn-hooks.js";
 export {
 	BLUEPRINT_SLOT_PLUGIN,
+	CANON_WINDOW_SLOT_PLUGIN,
 	CHARACTER_SLOT_PLUGIN,
 	HISTORY_SLOT_PLUGIN,
 	LORE_SLOT_PLUGIN,
@@ -115,6 +116,7 @@ export {
 	SUMMARY_SLOT_PLUGIN,
 	USER_WILL_SLOT_PLUGIN,
 	blueprintSlotPlugin,
+	canonWindowSlotPlugin,
 	characterSlotPlugin,
 	historySlotPlugin,
 	loreSlotPlugin,

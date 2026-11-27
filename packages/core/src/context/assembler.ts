@@ -1,4 +1,5 @@
 import type { HistoryViewTrace } from "../blocks/history.js";
+import type { DirectorPush } from "../director/lines.js";
 import {
 	type TurnHookBudget,
 	type TurnHookTraceEntry,
@@ -32,6 +33,8 @@ export interface ContextSlotRequest {
 	readonly budget?: TurnHookBudget;
 	/** 本轮临时开关；提供者读功能开关时叠在故事设置上（DESIGN §22）。 */
 	readonly featureOverrides?: FeatureSwitchOverrides;
+	/** 这一轮玩家是否按了推进；原著窗口据此决定要不要给「接下来」几件。 */
+	readonly directorPush?: DirectorPush | null;
 }
 
 /** 槽位内容里需要随上下文包复核的引用。 */
@@ -86,7 +89,13 @@ export type ContextItemSource =
 	| { readonly kind: "card"; readonly id: "character" | "persona" }
 	| { readonly kind: "outline"; readonly id: string }
 	| { readonly kind: "slot"; readonly slot: ContextSlotName }
-	| { readonly kind: "segment"; readonly segmentId: string };
+	| { readonly kind: "segment"; readonly segmentId: string }
+	| {
+			readonly kind: "canon";
+			readonly bookId: string;
+			readonly eventId: number;
+			readonly chapterOrdinal: number;
+	  };
 
 /** 上下文里一条可单独定位的内容；tokens 由槽位提供者估算。 */
 export interface ContextTraceItem {
@@ -148,6 +157,8 @@ export interface ContextAssemblyInput {
 	readonly hookBudgetMs?: number;
 	/** 本轮临时开关，原样交给每个槽位提供者。 */
 	readonly featureOverrides?: FeatureSwitchOverrides;
+	/** 本轮推进档位；原著窗口据此在推进时多给「接下来」几件。 */
+	readonly directorPush?: DirectorPush | null;
 }
 
 export type ContextTraceStatus =
@@ -426,6 +437,9 @@ async function resolveSegment(
 		...(input.featureOverrides === undefined
 			? {}
 			: { featureOverrides: input.featureOverrides }),
+		...(input.directorPush === undefined
+			? {}
+			: { directorPush: input.directorPush }),
 	};
 	let content: ContextSlotContent | null;
 	let hook: TurnHookTraceEntry | undefined;

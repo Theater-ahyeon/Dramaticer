@@ -175,6 +175,7 @@ export class StoryRuntimeManager {
 		const slots = await createStandardChatSlots({
 			store: this.#store,
 			characterPrompt: settings.characterPrompt,
+			persona: settings.persona,
 			embedder,
 			reranker,
 			historyBlockPolicy: settings.historyBlockPolicy,

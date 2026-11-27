@@ -482,6 +482,7 @@ export async function generateAssistantTurn(
 		profile,
 		providers,
 		featureOverrides: options.featureOverrides ?? null,
+		directorPush: options.directorPush ?? null,
 	});
 	const cached = loadReusableContextPack(
 		options.store,
@@ -502,6 +503,7 @@ export async function generateAssistantTurn(
 			options.featureOverrides === null
 				? {}
 				: { featureOverrides: options.featureOverrides }),
+			directorPush: options.directorPush ?? null,
 		}));
 	const slotHooks = assembled.hooks ?? [];
 	// 跳过的提供者按缺失处理，缺了槽位的包不能被后续回合复用。

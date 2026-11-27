@@ -445,6 +445,23 @@ export interface CanonPlayerPage {
 	readonly entries: readonly CanonBaseEntry[];
 }
 
+/** 原著窗口的叠加方式（v5 §5.5）：默认概要加话术。 */
+export const CANON_WINDOW_MODES = [
+	"summary_only",
+	"summary_voice",
+	"full_text",
+] as const;
+
+export type CanonWindowMode = (typeof CANON_WINDOW_MODES)[number];
+
+export function isCanonWindowMode(value: unknown): value is CanonWindowMode {
+	return (
+		value === "summary_only" ||
+		value === "summary_voice" ||
+		value === "full_text"
+	);
+}
+
 /** 一个故事与一本原著的绑定；每个故事最多一条。 */
 export interface CanonStoryBindingRecord {
 	readonly storyId: string;
@@ -457,6 +474,9 @@ export interface CanonStoryBindingRecord {
 	readonly playerPage: CanonPlayerPage | null;
 	/** 默认关；打开后上下文才能取到游标之后的内容。 */
 	readonly allowFullBookSpoilers: boolean;
+	readonly windowMode: CanonWindowMode;
+	/** 玩家点了「推进 N 件」后还没被这一轮消费的件数；回合结束清零。 */
+	readonly pendingAdvance: number;
 	readonly createdAt: string;
 }
 
@@ -467,5 +487,7 @@ export interface CanonCursorRecord {
 	readonly eventId: number;
 	readonly eventOrdinal: number;
 	readonly chapterOrdinal: number;
+	/** 「从这里开始」刚写入、还没被一楼演过；这一楼不自动前进。 */
+	readonly fromHere: boolean;
 	readonly createdAt: string;
 }

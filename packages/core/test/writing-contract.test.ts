@@ -11,12 +11,14 @@ import { openTempStore } from "./temp-store.js";
 
 const DEFAULT_SEGMENT_ORDER = [
 	"character",
+	"persona",
 	"lore",
 	"summary",
 	"history",
 	"world_index",
 	"situation",
 	"pages",
+	"director",
 	"memory",
 	"user_will",
 	"protocol",
@@ -24,10 +26,12 @@ const DEFAULT_SEGMENT_ORDER = [
 
 const FULL_SEGMENT_ORDER = [
 	"character",
+	"persona",
 	"lore",
 	"world_index",
 	"situation",
 	"pages",
+	"director",
 	"memory",
 	"user_will",
 	"summary",
@@ -76,6 +80,7 @@ describe("写作契约段", () => {
 		});
 		expect(template.segments.slice(0, -1)).toEqual([
 			{ id: "character", kind: "slot", slot: "character", priority: 90 },
+			{ id: "persona", kind: "slot", slot: "persona", priority: 95 },
 			{ id: "lore", kind: "slot", slot: "lore", priority: 80 },
 			{
 				id: "world_index",
@@ -85,6 +90,7 @@ describe("写作契约段", () => {
 			},
 			{ id: "situation", kind: "slot", slot: "situation", priority: 86 },
 			{ id: "pages", kind: "slot", slot: "pages", priority: 58 },
+			{ id: "director", kind: "slot", slot: "director", priority: 56 },
 			{ id: "memory", kind: "slot", slot: "memory", priority: 60 },
 			{ id: "user_will", kind: "slot", slot: "user_will", priority: 110 },
 			{ id: "summary", kind: "slot", slot: "summary", priority: 70 },

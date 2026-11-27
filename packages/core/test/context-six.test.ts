@@ -16,12 +16,14 @@ describe("默认模板的六节", () => {
 		}).segments.map((segment) => segment.id);
 		expect(ids).toEqual([
 			"character",
+			"persona",
 			"lore",
 			"summary",
 			"history",
 			"world_index",
 			"situation",
 			"pages",
+			"director",
 			"memory",
 			"user_will",
 			"protocol",

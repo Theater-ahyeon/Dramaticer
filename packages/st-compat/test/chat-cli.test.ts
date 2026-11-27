@@ -191,12 +191,14 @@ describe("dramaticer chat", () => {
 			const trace = store.getTurnTrace(nodes[2]?.id ?? "");
 			expect(trace?.context.entries.map((entry) => entry.segmentId)).toEqual([
 				"character",
+				"persona",
 				"lore",
 				"summary",
 				"history",
 				"world_index",
 				"situation",
 				"pages",
+				"director",
 				"memory",
 				"user_will",
 				"protocol",

@@ -8,6 +8,12 @@ import {
 	formatWritingBlueprintSummary,
 	readWritingBlueprintSummary,
 } from "../blueprint/summary.js";
+import {
+	buildCanonWorldIndex,
+	sliceCanonEntityPage,
+} from "../canon/compile.js";
+import { resolveCanonCursor } from "../canon/cursor.js";
+import { buildCanonWindow, renderCanonPlayerPersona } from "../canon/window.js";
 import type {
 	ContextItemSource,
 	ContextSlotContent,
@@ -16,7 +22,10 @@ import type {
 	RetrievalInjectionTrace,
 } from "../context/assembler.js";
 import type { ContextMessage } from "../context/template.js";
-import { collectDirectorLineHistoryIds } from "../director/lines.js";
+import {
+	collectDirectorLineHistoryIds,
+	readPlayerIntent,
+} from "../director/lines.js";
 import { DEFAULT_DIRECTOR_CONFIG } from "../director/types.js";
 import { readEffectiveLore } from "../edits/index.js";
 import { normalizeEntityName } from "../entity.js";
@@ -54,7 +63,11 @@ import {
 	loreEntryMatchScore,
 } from "../memory/lore.js";
 import { readNotebookPages } from "../memory/notebook.js";
-import { renderSituationCard, renderWorldIndex } from "../memory/situation.js";
+import {
+	WORLD_INDEX_MAX_CHARS,
+	renderSituationCard,
+	renderWorldIndex,
+} from "../memory/situation.js";
 import type { SummaryLevel } from "../memory/summary.js";
 import { retrieveMemory } from "../retrieval/hybrid.js";
 import { readStoryFeatureState } from "../settings/features.js";
@@ -357,10 +370,19 @@ export function createPagesSlotProvider(
 			if (features.notebook === false) return null;
 			const nodeId = request.nodeId;
 			const pages = readNotebookPages(store, request.storyId, nodeId);
-			if (pages.length === 0) return null;
+			const binding = store.getStoryCanonBinding(request.storyId);
+			const canon =
+				binding === null
+					? null
+					: resolveCanonCursor(store, request.storyId, nodeId);
 			const names: string[] = [
 				...(store.getLatestSceneLogOnPath(nodeId)?.present ?? []),
 			];
+			if (canon !== null) {
+				for (const participant of canon.event.participants) {
+					names.push(participant);
+				}
+			}
 			if (features.reunion === true) {
 				const path = store.getPathToNode(nodeId);
 				const lastUser = [...path]
@@ -377,34 +399,95 @@ export function createPagesSlotProvider(
 					}
 				}
 			}
+			if (pages.length === 0 && canon === null) return null;
 			const wanted = new Set(names);
+			const notebookByName = new Map(pages.map((page) => [page.name, page]));
+			const canonEntities =
+				binding === null ? [] : store.listCanonCompiledEntities(binding.bookId);
+			const canonByName = new Map<string, (typeof canonEntities)[number]>();
+			for (const entity of canonEntities) {
+				canonByName.set(entity.name, entity);
+				for (const alias of entity.aliases) canonByName.set(alias, entity);
+			}
 			const blocks: string[] = [];
 			const items: ContextTraceItem[] = [];
+			const renderPage = (
+				name: string,
+				base: string,
+				now: string,
+				past: readonly string[],
+				source: ContextItemSource,
+			): void => {
+				const lines = [
+					now.trim().length > 0 ? `现在：${now.trim()}` : null,
+					base.trim().length > 0 ? `底色：${base.trim()}` : null,
+					past.length > 0
+						? `经历：\n${past.map((line) => `- ${line}`).join("\n")}`
+						: null,
+				].filter((line): line is string => line !== null);
+				if (lines.length === 0) return;
+				const block = `${name}：\n${lines.join("\n")}`;
+				blocks.push(block);
+				items.push(contextItem(name, estimator(block), source));
+			};
 			for (const page of pages) {
 				if (!wanted.has(page.name)) continue;
+				if (binding !== null && page.name === binding.playerEntityName)
+					continue;
 				const past = page.past
 					.slice(-PAGE_PAST_LIMIT)
 					.map(
 						(entry) =>
 							`${entry.fromFloor === null ? "" : `[F${entry.fromFloor}${entry.toFloor !== null && entry.toFloor !== entry.fromFloor ? `–F${entry.toFloor}` : ""}] `}${entry.text}`,
 					);
-				const lines = [
-					page.now.trim().length > 0 ? `现在：${page.now.trim()}` : null,
-					page.base.trim().length > 0 ? `底色：${page.base.trim()}` : null,
-					past.length > 0
-						? `经历：\n${past.map((line) => `- ${line}`).join("\n")}`
-						: null,
-				].filter((line): line is string => line !== null);
-				if (lines.length === 0) continue;
-				const block = `${page.name}：\n${lines.join("\n")}`;
-				blocks.push(block);
-				items.push(
-					contextItem(page.name, estimator(block), {
+				const compiled = canonByName.get(page.name);
+				if (binding === null || compiled === undefined) {
+					renderPage(page.name, page.base, page.now, past, {
 						kind: "wiki",
 						id: page.entityId,
 						name: page.name,
-					}),
-				);
+					});
+					continue;
+				}
+				const slice =
+					binding.allowFullBookSpoilers || canon === null
+						? compiled
+						: sliceCanonEntityPage(compiled, canon.chapterOrdinal);
+				if (slice === null) continue;
+				renderPage(page.name, slice.base, page.now, past, {
+					kind: "canon",
+					bookId: binding.bookId,
+					eventId: canon?.event.id ?? binding.startEventId,
+					chapterOrdinal:
+						("entries" in slice
+							? slice.entries.at(-1)?.chapterOrdinal
+							: slice.baseEntries.at(-1)?.chapterOrdinal) ??
+						canon?.chapterOrdinal ??
+						binding.startChapterOrdinal,
+				});
+			}
+			// 原著人物还没建记事页时，游标所在章节的在场者与窗口参与者也给一页。
+			for (const name of wanted) {
+				if (binding === null || canon === null) break;
+				if (name === binding.playerEntityName) continue;
+				const compiled = canonByName.get(name);
+				if (compiled === undefined) continue;
+				if (compiled.name === binding.playerEntityName) continue;
+				if (notebookByName.has(compiled.name)) continue;
+				const slice = binding.allowFullBookSpoilers
+					? compiled
+					: sliceCanonEntityPage(compiled, canon.chapterOrdinal);
+				if (slice === null) continue;
+				renderPage(compiled.name, slice.base, "", [], {
+					kind: "canon",
+					bookId: binding.bookId,
+					eventId: canon.event.id,
+					chapterOrdinal:
+						("entries" in slice
+							? slice.entries.at(-1)?.chapterOrdinal
+							: slice.baseEntries.at(-1)?.chapterOrdinal) ??
+						canon.chapterOrdinal,
+				});
 			}
 			if (blocks.length === 0) return null;
 			return {
@@ -435,17 +518,121 @@ export function createWorldIndexSlotProvider(
 					.values.notebook !== false;
 			if (!on) return null;
 			const index = renderWorldIndex(store, request.storyId, request.nodeId);
-			if (index === null) return null;
+			const binding = store.getStoryCanonBinding(request.storyId);
+			const canon =
+				binding === null
+					? null
+					: resolveCanonCursor(store, request.storyId, request.nodeId);
+			if (binding === null || canon === null) {
+				if (index === null) return null;
+				return {
+					messages: [{ role: "system", content: index.text }],
+					source: `world_index:${index.lines.length} 行`,
+					items: index.lines.map((line) =>
+						contextItem(
+							line.text.split("——")[0] ?? "",
+							estimator(line.text),
+							line.source,
+						),
+					),
+				};
+			}
+			const book = store.getCanonBook(binding.bookId);
+			const canonNames = new Set(
+				store
+					.listCanonCompiledEntities(binding.bookId)
+					.map((entity) => entity.name),
+			);
+			const canonIndex = buildCanonWorldIndex(
+				store,
+				binding.bookId,
+				binding.allowFullBookSpoilers
+					? (book?.chapterCount ?? canon.chapterOrdinal)
+					: canon.chapterOrdinal,
+				{ maxChars: WORLD_INDEX_MAX_CHARS },
+			);
+			const lines: {
+				readonly text: string;
+				readonly source: ContextItemSource;
+			}[] = [];
+			for (const line of canonIndex?.lines ?? []) {
+				if (line.entityName === binding.playerEntityName) continue;
+				lines.push({
+					text: line.text,
+					source: {
+						kind: "canon",
+						bookId: binding.bookId,
+						eventId: canon.event.id,
+						chapterOrdinal: canon.chapterOrdinal,
+					},
+				});
+			}
+			for (const line of index?.lines ?? []) {
+				const name = line.text.split("——")[0] ?? "";
+				if (canonNames.has(name) || name === binding.playerEntityName) continue;
+				lines.push({ text: line.text, source: line.source });
+			}
+			if (lines.length === 0) return null;
+			const kept: typeof lines = [];
+			let used = 0;
+			for (const line of lines) {
+				if (kept.length > 0 && used + line.text.length > WORLD_INDEX_MAX_CHARS)
+					break;
+				kept.push(line);
+				used += line.text.length;
+			}
+			const text = ["世界索引：", ...kept.map((line) => `- ${line.text}`)].join(
+				"\n",
+			);
 			return {
-				messages: [{ role: "system", content: index.text }],
-				source: `world_index:${index.lines.length} 行`,
-				items: index.lines.map((line) =>
+				messages: [{ role: "system", content: text }],
+				source: `world_index:${kept.length} 行`,
+				items: kept.map((line) =>
 					contextItem(
 						line.text.split("——")[0] ?? "",
 						estimator(line.text),
 						line.source,
 					),
 				),
+			};
+		},
+	};
+}
+
+/**
+ * 原著窗口（canon/05）：每轮给当前一件，推进时加接下来 1–3 件或玩家指定的
+ * 件数。窗口模式、防剧透切片与死人剔除都在 `buildCanonWindow` 里完成。
+ */
+export function createCanonWindowSlotProvider(
+	store: StoryStore,
+): ContextSlotProvider {
+	return {
+		packKey: "canon_window",
+		provide(request): ContextSlotContent | null {
+			if (request.nodeId === null) return null;
+			const binding = store.getStoryCanonBinding(request.storyId);
+			if (binding === null) return null;
+			const node = store.getNode(request.nodeId);
+			const playerMessage =
+				node !== null && node.role === "user" ? node.raw : null;
+			const intent = readPlayerIntent(
+				playerMessage,
+				request.directorPush ?? null,
+			);
+			const upcoming =
+				binding.pendingAdvance > 0
+					? binding.pendingAdvance
+					: intent.kind === "push"
+						? 3
+						: 0;
+			const window = buildCanonWindow(store, request.storyId, request.nodeId, {
+				upcoming,
+			});
+			if (window === null) return null;
+			return {
+				messages: [{ role: "system", content: window.text }],
+				source: window.source,
+				items: window.items,
 			};
 		},
 	};
@@ -1695,6 +1882,7 @@ export function createCharacterSlotProvider(
 /** persona 槽位使用故事设置里的玩家人设；来源只记录长度，不重复正文。 */
 export function createPersonaSlotProvider(
 	persona: string,
+	store?: StoryStore,
 ): ContextSlotProvider {
 	if (typeof persona !== "string" || persona.trim().length === 0) {
 		throw new Error("persona 必须是非空字符串");
@@ -1702,7 +1890,19 @@ export function createPersonaSlotProvider(
 	const estimator = createTokenEstimator();
 	return {
 		packKey: `persona:${persona}`,
-		provide(): ContextSlotContent {
+		provide(request): ContextSlotContent {
+			// 扮演原著人物时，玩家角色资料随游标章节解锁；其余故事照原样注入。
+			const canon =
+				store === undefined
+					? null
+					: renderCanonPlayerPersona(store, request.storyId, request.nodeId);
+			if (canon !== null) {
+				return {
+					messages: [{ role: "system", content: canon.text }],
+					source: `persona:${canon.text.length} 字符`,
+					items: [contextItem("玩家人设", estimator(canon.text), canon.source)],
+				};
+			}
 			return {
 				messages: [{ role: "system", content: persona }],
 				source: `persona:${persona.length} 字符`,

@@ -2386,6 +2386,20 @@ export function buildMigrations(
 				) STRICT`,
 			],
 		},
+		{
+			version: 80,
+			description:
+				"原著窗口（v5 §5.5）：窗口模式、待推进件数，以及「从这里开始」的待演出游标",
+			statements: [
+				`ALTER TABLE story_canon ADD COLUMN window_mode TEXT NOT NULL
+					DEFAULT 'summary_voice'
+					CHECK (window_mode IN ('summary_only', 'summary_voice', 'full_text'))`,
+				`ALTER TABLE story_canon ADD COLUMN pending_advance INTEGER NOT NULL
+					DEFAULT 0 CHECK (pending_advance >= 0)`,
+				`ALTER TABLE canon_cursors ADD COLUMN from_here INTEGER NOT NULL
+					DEFAULT 0 CHECK (from_here IN (0, 1))`,
+			],
+		},
 	];
 }
 

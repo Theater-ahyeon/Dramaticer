@@ -3063,11 +3063,15 @@ img.cover {
 .pushmenu a:focus-visible {
 	background: var(--soft);
 }
-.scenectl {
+.scenectl,
+.canonctl {
 	display: inline-flex;
 	flex-wrap: wrap;
 	align-items: center;
 	gap: 6px;
+}
+.canonctl .v4in {
+	max-width: 180px;
 }
 .jumpto .v4in {
 	width: 120px;

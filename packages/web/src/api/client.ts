@@ -84,6 +84,8 @@ import {
 	type StoryBlueprintVersionsView,
 	type StoryBlueprintView,
 	type StoryBookExport,
+	type StoryCanonCursorRequest,
+	type StoryCanonSettingsRequest,
 	type StoryCanonView,
 	type StoryCluesView,
 	type StoryDirectorPlanRequest,
@@ -512,6 +514,36 @@ export class ApiClient {
 
 	async getStoryCanon(storyId: string): Promise<StoryCanonView> {
 		return this.json<StoryCanonView>("GET", `${storyPath(storyId)}/canon`);
+	}
+
+	async updateStoryCanonSettings(
+		storyId: string,
+		request: StoryCanonSettingsRequest,
+	): Promise<StoryCanonView> {
+		return this.json<StoryCanonView>(
+			"PATCH",
+			`${storyPath(storyId)}/canon/settings`,
+			request,
+		);
+	}
+
+	async startCanonFromHere(
+		storyId: string,
+		request: StoryCanonCursorRequest,
+	): Promise<{ readonly canon: StoryCanonView }> {
+		return this.json<{ readonly canon: StoryCanonView }>(
+			"POST",
+			`${storyPath(storyId)}/canon/cursor`,
+			request,
+		);
+	}
+
+	async advanceCanon(storyId: string, count: number): Promise<StoryCanonView> {
+		return this.json<StoryCanonView>(
+			"POST",
+			`${storyPath(storyId)}/canon/advance`,
+			{ count },
+		);
 	}
 
 	async getClues(storyId: string): Promise<StoryCluesView> {

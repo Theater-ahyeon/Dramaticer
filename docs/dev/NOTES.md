@@ -244,3 +244,16 @@
 - `POST /api/canon/start-story` 一步建故事并可选叠加角色卡；卡的导入在同一个事务里，`importCardContent({ skipCharacterEntity: true })` 跳过卡自己的角色实体（避免与原著扮演人物或 NPC 混淆），保留文风/规则类世界书条目、`characterPrompt`、推荐配置与卡版本。卡的开场白不会成为楼层，因为原著首楼已经先写入。
 - `GET /api/stories/:id/canon` 返回 `{ bound: null }` 或绑定详情（书名、开局事件标题、扮演身份、`player_page`、当前楼层游标）；游标缺失时退回最近写入的一条。
 - 新建故事弹窗的「从原著开局」只列 `compilation.status === "done"` 的书；人物下拉取所选开局章节的切片，所以只出现已出场人物。e2e 在 `v5-canon-start.spec.ts`，走查脚本是 `.walk/walk10.spec.ts`。
+
+### 原著窗口与游标（canon/05）
+
+- 迁移 80：`story_canon.window_mode`（`summary_only` / `summary_voice` / `full_text`，默认第二个）、`story_canon.pending_advance`（默认 0）、`canon_cursors.from_here`（「从这里开始」刚写入时为 1）。
+- `core/src/canon/cursor.ts` 沿 `getPathToNode(nodeId)` 从近到远找 `canon_cursors`；没有楼上游标时退回开局事件。删楼与切换分支都靠这条路径自然回退。`eventOrdinal` 是主时间线 1-based 序号，事件被删时按 `eventId` 重新定位。
+- 「从这里开始」把当前 head（或指定楼层）写成 `fromHere = true`；局面更新这一楼即使 `canonCompleted === true` 也不前进，只把同一事件写回并把 `fromHere` 清掉，下一楼才允许推进。玩家偏离或模型没给 `canonCompleted` 时游标原地不动。
+- 局面更新（`ledger/scene-log.ts`）只在绑定原著的楼层附上当前事件；提示词里的 `canonCompleted` 是布尔判断，不要求任何时刻格式。解析后由 `advanceCanonCursor` / `holdCanonCursor` 写游标。
+- 窗口在 `core/src/canon/window.ts`：当前 1 件 + 需要时接下来 N 件（推进默认 3，待推进件数优先）。`windowMode` 决定叠加话术还是原文；原文只在 `hasText` 且有对应章段落时出现，单件截到 2000 字。死人按局面状态（`DEAD_STATUS_PATTERN`）标注并剔除其话术；明确不在场且地点不同的参与者标注「不在场，无法按原著发生」。
+- 上下文槽位 `director` 由 `createCanonWindowSlotProvider` 提供；默认模板在 `pages` 之后加了 `director` 段。槽位 Trace 的每条来源是 `{ kind: "canon", bookId, eventId, chapterOrdinal }`，上下文包校验也认这个 kind。
+- `world_index` 与 `pages` 在绑定原著且 `allowFullBookSpoilers === false` 时用游标章节重新切片：世界索引只列 `firstChapterOrdinal <= cursor.chapterOrdinal` 的实体，人物页底色只取锚点不晚于游标的条目；打开开关才用完整底色。扮演的原著人物只进 `persona`，不进 `pages` / `world_index`。
+- `createStandardChatSlots` 现在接收 `persona` 与 `store`，默认模板也加了 `persona` 段；扮演原著人物时 `createPersonaSlotProvider` 按游标动态重建玩家角色资料。
+- 接口：`PATCH /api/stories/:id/canon/settings`（`allowFullBookSpoilers` / `windowMode` / `pendingAdvance`）、`POST .../canon/advance`（`{count}`，只写待办）、`POST .../canon/cursor`（`{eventId, nodeId?}`，「从这里开始」）。回合落定后 server 清空 `pendingAdvance`。
+- e2e 在 `v5-canon-window.spec.ts`，走查脚本是 `.walk/walk11.spec.ts`；`turns.ts` 的回合失败日志现在带堆栈，排 SSE 的「生成失败」先看服务端输出。

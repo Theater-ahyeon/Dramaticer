@@ -5,6 +5,7 @@ import {
 	type CanonChapterKind,
 	type CanonChapterRecord,
 	type CanonChapterSplitResult,
+	type CanonCursorRecord,
 	type CanonPackage,
 	type CanonPackageImportResult,
 	type CanonStartResult,
@@ -20,8 +21,14 @@ import {
 	importCanonPackage,
 	isCanonChapterKind,
 	isCanonIdentityKind,
+	isCanonWindowMode,
 	isJsonObject,
+	resolveCanonCursor,
+	setCanonAllowFullBookSpoilers,
+	setCanonPendingAdvance,
+	setCanonWindowMode,
 	splitCanonText,
+	startCanonFromHere,
 	startCanonStory,
 } from "@dramaticer/core";
 import type {
@@ -245,37 +252,160 @@ export function readStoryCanonView(
 	const binding = options.store.getStoryCanonBinding(storyId);
 	if (binding === null) return { bound: null };
 	const book = options.store.getCanonBook(binding.bookId);
-	const event = options.store
+	const startEvent = options.store
 		.listCanonEvents(binding.bookId)
 		.find((item) => item.id === binding.startEventId);
 	const head = options.store.getHead(storyId);
+	const resolved = resolveCanonCursor(options.store, storyId, head?.id ?? null);
 	const cursor =
+		resolved?.cursor ??
 		(head === null ? null : options.store.getCanonCursor(storyId, head.id)) ??
 		options.store.getLatestCanonCursor(storyId);
+	const timeline = (resolved?.timeline ?? []).map((event, index) => ({
+		id: event.id,
+		title: event.title,
+		summary: event.summary,
+		eventOrdinal: index + 1,
+		chapterOrdinal: event.chapterOrdinal,
+		isTurningPoint: event.isTurningPoint,
+	}));
 	const view: StoryCanonBindingView = {
 		storyId: binding.storyId,
 		bookId: binding.bookId,
 		bookTitle: book?.title ?? "",
 		startEventId: binding.startEventId,
-		startEventTitle: event?.title ?? "",
+		startEventTitle: startEvent?.title ?? "",
 		startChapterOrdinal: binding.startChapterOrdinal,
 		identityKind: binding.identityKind,
 		playerEntityName: binding.playerEntityName,
 		playerPage: binding.playerPage,
 		allowFullBookSpoilers: binding.allowFullBookSpoilers,
+		windowMode: binding.windowMode,
+		pendingAdvance: binding.pendingAdvance,
 		createdAt: binding.createdAt,
 		cursor,
+		currentEvent: resolved?.event ?? startEvent ?? null,
+		timeline,
 	};
 	return { bound: view };
 }
 
-export function handleStoryCanon(
+function parseIntInRange(
+	value: unknown,
+	label: string,
+	min: number,
+	max: number,
+): number {
+	if (
+		typeof value !== "number" ||
+		!Number.isInteger(value) ||
+		value < min ||
+		value > max
+	) {
+		throw fieldError(label, `${label} 必须是 ${min} 到 ${max} 之间的整数`);
+	}
+	return value;
+}
+
+/** `/api/stories/:id/canon` 与它的子路径：读绑定、改窗口设置、从这里开始、推进 N 件。 */
+export async function handleStoryCanonRoute(
+	req: IncomingMessage,
 	res: ServerResponse,
+	url: URL,
+	method: string,
 	options: ApiRouteOptions,
 	storyId: string,
-): void {
+): Promise<void> {
 	requireStory(options.store, storyId);
-	sendJson(res, 200, readStoryCanonView(options, storyId));
+	const parts = pathSegments(url.pathname);
+	const action = parts[3];
+	if (action === undefined) {
+		requireMethod(method, ["GET"]);
+		sendJson(res, 200, readStoryCanonView(options, storyId));
+		return;
+	}
+	if (options.store.getStoryCanonBinding(storyId) === null) {
+		throw new HttpError(404, "not_found", "这个故事没有绑定原著");
+	}
+	if (action === "settings") {
+		requireMethod(method, ["PATCH"]);
+		const body = await readObjectBody(req, options.maxJsonBodyBytes);
+		assertKnownKeys(body, [
+			"allowFullBookSpoilers",
+			"windowMode",
+			"pendingAdvance",
+		]);
+		if (body.allowFullBookSpoilers !== undefined) {
+			if (typeof body.allowFullBookSpoilers !== "boolean") {
+				throw fieldError(
+					"allowFullBookSpoilers",
+					"allowFullBookSpoilers 必须是布尔值",
+				);
+			}
+			setCanonAllowFullBookSpoilers(
+				options.store,
+				storyId,
+				body.allowFullBookSpoilers,
+			);
+		}
+		if (body.windowMode !== undefined) {
+			if (!isCanonWindowMode(body.windowMode)) {
+				throw fieldError(
+					"windowMode",
+					"windowMode 只能是 summary_only、summary_voice 或 full_text",
+				);
+			}
+			setCanonWindowMode(options.store, storyId, body.windowMode);
+		}
+		if (body.pendingAdvance !== undefined) {
+			const count = parseIntInRange(
+				body.pendingAdvance,
+				"pendingAdvance",
+				0,
+				20,
+			);
+			setCanonPendingAdvance(options.store, storyId, count);
+		}
+		sendJson(res, 200, readStoryCanonView(options, storyId));
+		return;
+	}
+	if (action === "advance") {
+		requireMethod(method, ["POST"]);
+		const body = await readObjectBody(req, options.maxJsonBodyBytes);
+		assertKnownKeys(body, ["count"]);
+		const count = parseIntInRange(body.count ?? 1, "count", 1, 20);
+		setCanonPendingAdvance(options.store, storyId, count);
+		sendJson(res, 200, readStoryCanonView(options, storyId));
+		return;
+	}
+	if (action === "cursor") {
+		requireMethod(method, ["POST"]);
+		const body = await readObjectBody(req, options.maxJsonBodyBytes);
+		assertKnownKeys(body, ["eventId", "nodeId"]);
+		const eventId = parseIntInRange(
+			body.eventId,
+			"eventId",
+			1,
+			Number.MAX_SAFE_INTEGER,
+		);
+		if (body.nodeId !== undefined && typeof body.nodeId !== "string") {
+			throw fieldError("nodeId", "nodeId 必须是字符串");
+		}
+		let cursor: CanonCursorRecord;
+		try {
+			cursor = startCanonFromHere(
+				options.store,
+				storyId,
+				eventId,
+				typeof body.nodeId === "string" ? body.nodeId : undefined,
+			);
+		} catch (error) {
+			throw toBadRequest(error, "canon");
+		}
+		sendJson(res, 200, { cursor, canon: readStoryCanonView(options, storyId) });
+		return;
+	}
+	throw new HttpError(404, "not_found", "没有这个接口");
 }
 
 /** 一步建故事并装原著；可选叠加一张角色卡提供文风与规则。 */

@@ -314,6 +314,7 @@ export function Play() {
 	);
 	const settings = useLoad(() => api.getSettings(storyId), [storyId]);
 	const features = useLoad(() => api.getStoryFeatures(storyId), [storyId]);
+	const canon = useLoad(() => api.getStoryCanon(storyId), [storyId]);
 	const switchView = useMemo(
 		() =>
 			new Map(
@@ -346,6 +347,7 @@ export function Play() {
 	const [headMenu, setHeadMenu] = useState(false);
 	const [jumpTo, setJumpTo] = useState("");
 	const [pushMenu, setPushMenu] = useState(false);
+	const [fromHere, setFromHere] = useState("");
 	const [fix, setFix] = useState<{
 		readonly nodeId: string;
 		readonly quote: string;
@@ -448,12 +450,13 @@ export function Play() {
 	}, [pushMenu, storyId]);
 
 	const refresh = useCallback(() => {
+		canon.reload();
 		path.reload();
 		floors.reload();
 		dock.reload();
 		tree.reload();
 		setDockTick((value) => value + 1);
-	}, [path.reload, floors.reload, dock.reload, tree.reload]);
+	}, [canon.reload, path.reload, floors.reload, dock.reload, tree.reload]);
 
 	// 每个叶子是一条分支；只有一条时不显示分支选择。
 	const branches = useMemo(() => {
@@ -702,6 +705,29 @@ export function Play() {
 	const changeMode = (value: Mode) => {
 		setMode(value);
 		api.updateSettings(storyId, { turnMode: value as "fast" }).catch(() => {});
+	};
+
+	const advanceCanon = async (count: number) => {
+		try {
+			await api.advanceCanon(storyId, count);
+			canon.reload();
+			send(PUSH_TURN_TEXT, step);
+		} catch (error) {
+			toast(errorText(error));
+		}
+	};
+
+	const jumpCanon = async () => {
+		const eventId = Number(fromHere);
+		if (!Number.isInteger(eventId) || eventId < 1) return;
+		try {
+			await api.startCanonFromHere(storyId, { eventId });
+			setFromHere("");
+			toast("已从这里开始");
+			refresh();
+		} catch (error) {
+			toast(errorText(error));
+		}
 	};
 
 	const undo = async (nodeId: string, rewrite: boolean) => {
@@ -1337,6 +1363,37 @@ export function Play() {
 													))}
 												</>
 											)}
+											{canon.data?.bound === null ||
+											canon.data?.bound === undefined ? null : (
+												<>
+													<small className="menuhead">原著</small>
+													<button
+														type="button"
+														role="menuitem"
+														data-canon-advance="1"
+														onClick={() => {
+															setPushMenu(false);
+															void advanceCanon(1);
+														}}
+													>
+														推进到下一件
+													</button>
+													{([2, 3] as const).map((count) => (
+														<button
+															type="button"
+															role="menuitem"
+															key={count}
+															data-canon-advance={count}
+															onClick={() => {
+																setPushMenu(false);
+																void advanceCanon(count);
+															}}
+														>
+															推进 {count} 件
+														</button>
+													))}
+												</>
+											)}
 											<small className="menuhead">走多远</small>
 											{(["advance", "quick", "jump"] as const).map((value) => (
 												<button
@@ -1418,6 +1475,38 @@ export function Play() {
 												onChange={(event) => setJumpTo(event.target.value)}
 											/>
 										</form>
+									</div>
+								)}
+								{canon.data?.bound === null ||
+								canon.data?.bound === undefined ? null : (
+									<div className="canonctl" aria-label="原著">
+										<span>
+											原著 · {canon.data.bound.currentEvent?.title ?? "—"}
+											{canon.data.bound.pendingAdvance > 0
+												? ` · 待推进 ${canon.data.bound.pendingAdvance} 件`
+												: ""}
+										</span>
+										<select
+											className="v4in"
+											aria-label="从这里开始"
+											value={fromHere}
+											onChange={(event) => setFromHere(event.target.value)}
+										>
+											<option value="">从这里开始…</option>
+											{canon.data.bound.timeline.map((event) => (
+												<option key={event.id} value={event.id}>
+													{event.eventOrdinal}. {event.title}
+												</option>
+											))}
+										</select>
+										<button
+											type="button"
+											className="btn ghost sm"
+											disabled={fromHere === "" || busy}
+											onClick={() => void jumpCanon()}
+										>
+											跳到这里
+										</button>
 									</div>
 								)}
 								<button

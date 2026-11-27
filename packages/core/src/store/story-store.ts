@@ -72,6 +72,7 @@ export type {
 	CanonCompiledEntityInput,
 	CanonEntityInput,
 	CanonEventTimelinePatch,
+	CanonStorySettingsUpdate,
 	CreateCanonBookInput,
 	SaveCanonCursorInput,
 	SaveStoryCanonBindingInput,
@@ -440,6 +441,7 @@ export interface StoryStore
 			| "importCanonPackage"
 			| "saveStoryCanonBinding"
 			| "getStoryCanonBinding"
+			| "updateStoryCanonSettings"
 			| "saveCanonCursor"
 			| "getCanonCursor"
 			| "listCanonCursors"
@@ -927,6 +929,7 @@ const DELEGATES: Readonly<Record<keyof Repos, readonly string[]>> = {
 		"importCanonPackage",
 		"saveStoryCanonBinding",
 		"getStoryCanonBinding",
+		"updateStoryCanonSettings",
 		"saveCanonCursor",
 		"getCanonCursor",
 		"listCanonCursors",

@@ -98,6 +98,7 @@ export function createBlockFormatSegment(
 /** 默认模板的各个段落；顺序由 `DEFAULT_CONTEXT_SEGMENT_ORDER` 决定。 */
 const DEFAULT_SEGMENTS: Readonly<Record<string, ContextSegment>> = {
 	character: { id: "character", kind: "slot", slot: "character", priority: 90 },
+	persona: { id: "persona", kind: "slot", slot: "persona", priority: 95 },
 	lore: { id: "lore", kind: "slot", slot: "lore", priority: 80 },
 	summary: { id: "summary", kind: "slot", slot: "summary", priority: 70 },
 	history: { id: "history", kind: "slot", slot: "history", priority: 100 },
@@ -115,6 +116,7 @@ const DEFAULT_SEGMENTS: Readonly<Record<string, ContextSegment>> = {
 		priority: 84,
 	},
 	pages: { id: "pages", kind: "slot", slot: "pages", priority: 58 },
+	director: { id: "director", kind: "slot", slot: "director", priority: 56 },
 	memory: { id: "memory", kind: "slot", slot: "memory", priority: 60 },
 	scene: { id: "scene", kind: "slot", slot: "scene", priority: 55 },
 	profile: {
@@ -161,22 +163,26 @@ export const DEFAULT_CONTEXT_SEGMENT_ORDER: Readonly<
 	// 状态、现场分析、场面卡、人物档案、重逢档案与蓝图摘要不再在默认模板里。
 	volatility: [
 		"character",
+		"persona",
 		"lore",
 		"summary",
 		"history",
 		"world_index",
 		"situation",
 		"pages",
+		"director",
 		"memory",
 		"user_will",
 		WRITING_CONTRACT_SEGMENT_ID,
 	],
 	full: [
 		"character",
+		"persona",
 		"lore",
 		"world_index",
 		"situation",
 		"pages",
+		"director",
 		"memory",
 		"user_will",
 		"summary",

@@ -13,6 +13,8 @@ import {
 	readBlueprintTension,
 	readBlueprintView,
 } from "../blueprint/index.js";
+import { resolveCanonCursor } from "../canon/cursor.js";
+import type { CanonWindowMode } from "../canon/types.js";
 import type { DirectorLineKind, DirectorLineState } from "../director/lines.js";
 import { DIRECTOR_LINE_KIND_LABELS } from "../director/lines.js";
 import { readEffectiveEdits } from "../edits/index.js";
@@ -79,7 +81,26 @@ export interface PushDirection {
 	readonly id: string;
 	readonly text: string;
 	readonly detail: string | null;
-	readonly from: "want" | "open";
+	readonly from: "want" | "open" | "canon";
+}
+
+/** 剧情走向页上的原著位置；没有绑定原著时为 null。 */
+export interface CanonDirectionView {
+	readonly bookId: string;
+	readonly bookTitle: string;
+	readonly eventId: number;
+	readonly eventOrdinal: number;
+	readonly chapterOrdinal: number;
+	readonly title: string;
+	readonly summary: string;
+	readonly upcoming: readonly {
+		readonly id: number;
+		readonly title: string;
+		readonly summary: string;
+	}[];
+	readonly pendingAdvance: number;
+	readonly windowMode: CanonWindowMode;
+	readonly allowFullBookSpoilers: boolean;
 }
 
 /** 剧情走向一页：两栏与约束、剧透设置。 */
@@ -96,6 +117,8 @@ export interface DirectionView {
 	readonly maxOpenPromises: number;
 	/** 故事已经有楼层，可以新增方向。 */
 	readonly canAdd: boolean;
+	/** 原著故事当前演到的事件与接下来几件。 */
+	readonly canon: CanonDirectionView | null;
 }
 
 /** 编辑命令返回的结果：写入后重新读出的整页内容。 */
@@ -435,6 +458,45 @@ export function readDirectionView(
 			: left.introducedDepth - right.introducedDepth,
 	);
 
+	const resolvedCanon =
+		head === null ? null : resolveCanonCursor(store, storyId, head);
+	const book =
+		resolvedCanon === null
+			? null
+			: store.getCanonBook(resolvedCanon.binding.bookId);
+	const canon: CanonDirectionView | null =
+		resolvedCanon === null
+			? null
+			: {
+					bookId: resolvedCanon.binding.bookId,
+					bookTitle: book?.title ?? "",
+					eventId: resolvedCanon.event.id,
+					eventOrdinal: resolvedCanon.eventOrdinal,
+					chapterOrdinal: resolvedCanon.chapterOrdinal,
+					title: resolvedCanon.event.title,
+					summary: resolvedCanon.event.summary,
+					upcoming: resolvedCanon.timeline
+						.slice(resolvedCanon.index + 1, resolvedCanon.index + 4)
+						.map((event) => ({
+							id: event.id,
+							title: event.title,
+							summary: event.summary,
+						})),
+					pendingAdvance: resolvedCanon.binding.pendingAdvance,
+					windowMode: resolvedCanon.binding.windowMode,
+					allowFullBookSpoilers: resolvedCanon.binding.allowFullBookSpoilers,
+				};
+	const canonPicks: PushDirection[] =
+		resolvedCanon === null
+			? []
+			: resolvedCanon.timeline
+					.slice(resolvedCanon.index, resolvedCanon.index + MAX_PUSH_DIRECTIONS)
+					.map((event) => ({
+						id: `canon:${event.id}`,
+						text: event.title,
+						detail: event.summary,
+						from: "canon" as const,
+					}));
 	return {
 		storyId,
 		nodeId: head,
@@ -442,9 +504,13 @@ export function readDirectionView(
 		tension: readBlueprintTension(entries) ?? "loose",
 		wants,
 		opens,
-		pushDirections: pushDirectionsFromView(wants, opens),
+		pushDirections: [
+			...canonPicks,
+			...pushDirectionsFromView(wants, opens),
+		].slice(0, MAX_PUSH_DIRECTIONS),
 		hidden: visible.hidden,
 		maxOpenPromises: readStoryPromiseLimit(store, storyId),
 		canAdd: head !== null,
+		canon,
 	};
 }

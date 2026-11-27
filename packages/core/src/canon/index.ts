@@ -1,5 +1,6 @@
 export * from "./compile.js";
 export * from "./compile-prompt.js";
+export * from "./cursor.js";
 export * from "./decode.js";
 export * from "./estimate.js";
 export * from "./extract.js";
@@ -8,3 +9,4 @@ export * from "./prompt.js";
 export * from "./split.js";
 export * from "./start.js";
 export * from "./types.js";
+export * from "./window.js";
