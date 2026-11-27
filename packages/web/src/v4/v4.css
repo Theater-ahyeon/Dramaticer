@@ -3633,6 +3633,13 @@ div:hover > .flr-acts,
 	color: var(--muted);
 	font-size: var(--t-sm);
 }
+.canon-drop-package {
+	flex-direction: row;
+	align-items: baseline;
+	justify-content: center;
+	gap: 10px;
+	padding: 12px 16px;
+}
 .canon-books {
 	display: grid;
 	grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -3951,6 +3958,96 @@ div:hover > .flr-acts,
 	padding: 6px 0;
 	border-bottom: 1px dashed var(--line);
 	line-height: 1.7;
+}
+/* ---- 全书汇编（canon/03） ---- */
+.canon-compile {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+.canon-compile-head,
+.canon-compile-buttons {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 10px;
+}
+.canon-compile-head h2 {
+	margin: 0;
+	font: 500 var(--t-md) var(--f-ui);
+	color: var(--cinnabar-ink);
+}
+.canon-export-check {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	color: var(--muted);
+	font: var(--t-sm) var(--f-ui);
+}
+.canon-entity-view {
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+}
+.canon-preview {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 10px;
+	color: var(--muted);
+	font: var(--t-sm) var(--f-ui);
+}
+.canon-preview input {
+	width: 72px;
+	margin: 0 4px;
+	padding: 4px 6px;
+	border: 1px solid var(--line);
+	border-radius: var(--r-sm);
+	background: var(--sheet);
+	color: var(--ink);
+	font: inherit;
+}
+.canon-worldindex {
+	margin: 0;
+	padding: 10px 12px;
+	border: 1px solid var(--line);
+	border-radius: var(--r-sm);
+	background: var(--sheet);
+	font: var(--t-sm) var(--f-ui);
+	line-height: 1.8;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+.canon-entities,
+.canon-base {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.canon-entities > li > p {
+	margin: 6px 0;
+	line-height: 1.7;
+}
+.canon-base li {
+	padding-left: 10px;
+	border-left: 2px solid var(--line);
+}
+.canon-base p {
+	margin: 2px 0;
+	line-height: 1.7;
+}
+.canon-timeline {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+.canon-timeline h3 {
+	margin: 0 0 6px;
+	font: 500 var(--t-sm) var(--f-ui);
+	color: var(--cinnabar-ink);
 }
 @media (max-width: 820px) {
 	.canon-extract-controls {

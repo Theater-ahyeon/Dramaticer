@@ -14,10 +14,13 @@ import type {
 	LlmStream,
 } from "@dramaticer/core";
 import type {
+	CanonCompiledView,
 	CanonEstimateView,
 	CanonExtractionOverviewView,
 	CanonExtractionView,
+	CanonPackageView,
 	ImportCanonBookResult,
+	ImportCanonPackageResult,
 } from "@dramaticer/protocol";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { type RunningServer, startServer } from "../src/index.js";
@@ -121,10 +124,53 @@ function fakeResult(text: string): LlmResult {
 	};
 }
 
+function systemText(request: LlmRequest): string {
+	return (
+		request.messages.find((message) => message.role === "system")?.content ?? ""
+	);
+}
+
+/** 汇编三类提示词的假回复；抽取提示词返回 null 交给 fakeResponse。 */
+function compileResponse(request: LlmRequest): string | null {
+	const system = systemText(request);
+	if (system.includes("人物与别名合并器")) {
+		return JSON.stringify({ merges: [] });
+	}
+	if (system.includes("时间线编者")) {
+		return JSON.stringify({ turningPoints: [] });
+	}
+	if (!system.includes("人物页编者")) return null;
+	const blocks = [
+		...userText(request).matchAll(
+			/<实体 名="([^"]+)" 类别="[^"]*" 首章="(\d+)" 末章="(\d+)">([\s\S]*?)<\/实体>/g,
+		),
+	];
+	return JSON.stringify({
+		entities: blocks.map((block) => {
+			const name = block[1] ?? "";
+			const chapters = new Set<number>();
+			for (const entry of (block[4] ?? "").matchAll(/\[第 (\d+) 章\]/g)) {
+				chapters.add(Number(entry[1]));
+			}
+			return {
+				name,
+				lead: `${name}的服务端合成简介。`,
+				entries: [...chapters]
+					.sort((left, right) => left - right)
+					.map((chapter) => ({
+						chapter,
+						text: `到第 ${chapter} 章时关于${name}的合成底色。`,
+					})),
+			};
+		}),
+	});
+}
+
 function fakeClient(): LlmClient {
 	return {
 		async complete(request) {
-			return fakeResult(fakeResponse(request));
+			const compiled = compileResponse(request);
+			return fakeResult(compiled ?? fakeResponse(request));
 		},
 	};
 }
@@ -305,5 +351,171 @@ describe("原著抽取接口", () => {
 			{ method: "POST" },
 		);
 		expect(response.status).toBe(409);
+	});
+});
+
+async function getCompiled(
+	origin: string,
+	bookId: string,
+	upToChapter?: number,
+): Promise<CanonCompiledView> {
+	const query = upToChapter === undefined ? "" : `?upToChapter=${upToChapter}`;
+	const response = await fetch(
+		`${origin}/api/canon/books/${bookId}/compiled${query}`,
+	);
+	expect(response.status).toBe(200);
+	return (await response.json()) as CanonCompiledView;
+}
+
+async function waitForCompiled(
+	origin: string,
+	bookId: string,
+): Promise<CanonCompiledView> {
+	const deadline = Date.now() + 10_000;
+	let last: CanonCompiledView | null = null;
+	while (Date.now() < deadline) {
+		const view = await getCompiled(origin, bookId);
+		last = view;
+		if (view.compilation.status === "done") return view;
+		if (view.compilation.status === "failed") break;
+		await new Promise((resolve) => setTimeout(resolve, 25));
+	}
+	throw new Error(
+		`汇编没有完成：${last?.compilation.status ?? "无记录"} ${last?.compilation.lastError ?? ""}`,
+	);
+}
+
+async function postJson(url: string, body: unknown): Promise<Response> {
+	return fetch(url, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(body),
+	});
+}
+
+describe("全书汇编与原著包接口", () => {
+	it("汇编、按游标预览、导出与导入一条链路", async () => {
+		const { running } = await startTestServer(true);
+		const origin = running.origin;
+		const imported = await importSample(origin);
+		const bookId = imported.book.id;
+		expect(imported.book.hasText).toBe(true);
+
+		// 抽取完成前不能汇编。
+		const tooEarly = await fetch(
+			`${origin}/api/canon/books/${bookId}/compile`,
+			{ method: "POST" },
+		);
+		expect(tooEarly.status).toBe(409);
+
+		await fetch(`${origin}/api/canon/books/${bookId}/extract/start`, {
+			method: "POST",
+		});
+		await waitForDone(origin, bookId);
+
+		const startCompile = await fetch(
+			`${origin}/api/canon/books/${bookId}/compile`,
+			{ method: "POST" },
+		);
+		expect(startCompile.status).toBe(202);
+		const started = (await startCompile.json()) as CanonCompiledView;
+		expect(started.compilation.status).toBe("running");
+
+		const compiled = await waitForCompiled(origin, bookId);
+		expect(compiled.entities.length).toBeGreaterThan(0);
+		expect(compiled.entities.every((entity) => entity.lead.length > 0)).toBe(
+			true,
+		);
+		expect(
+			compiled.entities.every((entity) => entity.baseEntries.length > 0),
+		).toBe(true);
+		const main = compiled.events.filter((event) => !event.isInterlude);
+		const interludes = compiled.events.filter((event) => event.isInterlude);
+		expect(
+			main
+				.map((event) => event.timelineOrder)
+				.sort((a, b) => (a ?? 0) - (b ?? 0)),
+		).toEqual(main.map((_, index) => index + 1));
+		expect(interludes.every((event) => event.timelineOrder === null)).toBe(
+			true,
+		);
+		expect(compiled.compilation.llmCalls).toBeGreaterThanOrEqual(3);
+
+		const preview = await getCompiled(origin, bookId, 1);
+		expect(preview.worldIndex?.text).toContain("世界索引：");
+		expect(preview.pages?.length ?? 0).toBeGreaterThan(0);
+		for (const page of preview.pages ?? []) {
+			expect(page.entries.every((entry) => entry.chapterOrdinal <= 1)).toBe(
+				true,
+			);
+		}
+
+		const exportResponse = await fetch(
+			`${origin}/api/canon/books/${bookId}/export?includeText=0`,
+		);
+		expect(exportResponse.status).toBe(200);
+		expect(exportResponse.headers.get("content-disposition")).toContain(
+			"attachment",
+		);
+		const pkg = (await exportResponse.json()) as CanonPackageView;
+		const serialized = JSON.stringify(pkg);
+		expect(serialized).not.toContain("山门外的雨下了整夜");
+		expect(serialized).not.toContain('"paragraphs"');
+
+		const withTextResponse = await fetch(
+			`${origin}/api/canon/books/${bookId}/export?includeText=1`,
+		);
+		const withText = (await withTextResponse.json()) as CanonPackageView;
+		expect(withText.chapters[0]?.paragraphs?.length ?? 0).toBeGreaterThan(0);
+
+		const importResponse = await postJson(
+			`${origin}/api/canon/packages/import`,
+			{ package: pkg },
+		);
+		expect(importResponse.status).toBe(201);
+		const copy = (await importResponse.json()) as ImportCanonPackageResult;
+		expect(copy.book.hasText).toBe(false);
+		expect(copy.book.status).toBe("extracted");
+		const copyCompiled = await getCompiled(origin, copy.book.id);
+		expect(copyCompiled.compilation.status).toBe("done");
+		expect(copyCompiled.compilation.llmCalls).toBe(0);
+		expect(copyCompiled.entities).toHaveLength(compiled.entities.length);
+		const copyExtraction = await fetch(
+			`${origin}/api/canon/books/${copy.book.id}/extract`,
+		);
+		const copyExtractionView =
+			(await copyExtraction.json()) as CanonExtractionView;
+		expect(copyExtractionView.extraction.status).toBe("done");
+		expect(copyExtractionView.extraction.llmCalls).toBe(0);
+		const copyPreview = await getCompiled(origin, copy.book.id, 1);
+		expect(copyPreview.worldIndex?.text).toContain("世界索引：");
+
+		// 不含原文的原著包不需要再汇编。
+		const recompile = await fetch(
+			`${origin}/api/canon/books/${copy.book.id}/compile`,
+			{ method: "POST" },
+		);
+		expect(recompile.status).toBe(409);
+
+		const overviewResponse = await fetch(`${origin}/api/canon/extract`);
+		const overview =
+			(await overviewResponse.json()) as CanonExtractionOverviewView;
+		const entry = overview.books.find((item) => item.book.id === bookId);
+		expect(entry?.compilation?.status).toBe("done");
+		expect(entry?.compilation?.llmCalls).toBeGreaterThanOrEqual(3);
+	});
+
+	it("拒绝别的 JSON 与错误的 includeText", async () => {
+		const { running } = await startTestServer(true);
+		const origin = running.origin;
+		const imported = await importSample(origin);
+		const bad = await postJson(`${origin}/api/canon/packages/import`, {
+			package: { format: "not-a-package" },
+		});
+		expect(bad.status).toBe(400);
+		const badQuery = await fetch(
+			`${origin}/api/canon/books/${imported.book.id}/export?includeText=2`,
+		);
+		expect(badQuery.status).toBe(400);
 	});
 });

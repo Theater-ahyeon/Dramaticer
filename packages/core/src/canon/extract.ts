@@ -501,8 +501,10 @@ function canonicalizeExtraction(
 		return name;
 	};
 	const facts: CanonExtractedFact[] = [];
+	const appeared = new Set<string>();
 	for (const fact of extraction.facts) {
 		const name = resolve(fact.name);
+		appeared.add(name);
 		const aliases = [...new Set(fact.aliases.map(resolve))].filter(
 			(alias) => alias !== name,
 		);
@@ -538,6 +540,7 @@ function canonicalizeExtraction(
 	}));
 	for (const event of events) {
 		for (const participant of event.participants) {
+			appeared.add(participant);
 			if (!known.has(participant)) {
 				known.set(participant, {
 					name: participant,
@@ -548,11 +551,18 @@ function canonicalizeExtraction(
 			}
 		}
 	}
+	for (const voice of voices) appeared.add(voice.character);
 	return {
 		events,
 		voices,
 		facts,
-		entities: [...known.values()],
+		// 只有这一章真正出现的实体才把末章推到这一章；名册里其余实体保持原范围。
+		entities: [...known.values()].map((entity) => ({
+			...entity,
+			chapterOrdinal: appeared.has(entity.name)
+				? chapterOrdinal
+				: entity.chapterOrdinal,
+		})),
 	};
 }
 

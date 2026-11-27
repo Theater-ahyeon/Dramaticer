@@ -4,12 +4,17 @@ import type {
 	CanonChapterKind,
 	CanonChapterRecord,
 	CanonChapterSummary,
+	CanonCompilationRecord,
+	CanonCompiledEntityRecord,
 	CanonEntityRecord,
 	CanonEventRecord,
 	CanonExtractionEstimate,
 	CanonExtractionRecord,
 	CanonFactRecord,
+	CanonPackage,
+	CanonStartingPage,
 	CanonVoiceRecord,
+	CanonWorldIndex,
 } from "@dramaticer/core";
 
 export type {
@@ -17,12 +22,16 @@ export type {
 	CanonChapterExtractionRecord,
 	CanonChapterKind,
 	CanonChapterRecord,
+	CanonCompilationRecord,
+	CanonCompiledEntityRecord,
 	CanonEntityRecord,
 	CanonEventRecord,
 	CanonExtractionEstimate,
 	CanonExtractionRecord,
 	CanonFactRecord,
+	CanonStartingPage,
 	CanonVoiceRecord,
+	CanonWorldIndex,
 };
 
 /** 原著书：书名、编码、总字数、章数与状态。 */
@@ -95,9 +104,34 @@ export interface CanonChapterExtractRequest {
 export interface CanonExtractionOverviewEntry {
 	readonly book: CanonBookRecord;
 	readonly extraction: CanonExtractionRecord | null;
+	readonly compilation: CanonCompilationRecord | null;
 }
 
 /** 检视器的原著抽取总览；一次性导入，不计入每楼后台预算。 */
 export interface CanonExtractionOverviewView {
 	readonly books: readonly CanonExtractionOverviewEntry[];
+}
+
+/** 全书汇编的结果：实体页、事件轨道与话术；带截止章节时附防剧透切片预览。 */
+export interface CanonCompiledView {
+	readonly compilation: CanonCompilationRecord;
+	readonly entities: readonly CanonCompiledEntityRecord[];
+	readonly events: readonly CanonEventRecord[];
+	readonly voices: readonly CanonVoiceRecord[];
+	readonly facts: readonly CanonFactRecord[];
+	/** 只有 `?upToChapter=` 时生成。 */
+	readonly pages: readonly CanonStartingPage[] | null;
+	readonly worldIndex: CanonWorldIndex | null;
+}
+
+/** 原著故事包的 JSON；导入前由 core 校验。 */
+export type CanonPackageView = CanonPackage;
+
+export interface ImportCanonPackageRequest {
+	readonly package: CanonPackage;
+}
+
+export interface ImportCanonPackageResult {
+	readonly book: CanonBookView;
+	readonly chapters: readonly CanonChapterView[];
 }

@@ -1,4 +1,4 @@
-import type { CanonBookView } from "@dramaticer/protocol";
+import type { CanonBookView, CanonPackageView } from "@dramaticer/protocol";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api";
@@ -6,6 +6,7 @@ import { BOOK_STATUS_LABELS, formatChars } from "./canon-labels";
 import { TLink, errorText, useLoad, useToast } from "./ui";
 
 const MAX_FILE_BYTES = 32 * 1024 * 1024;
+const MAX_PACKAGE_BYTES = 64 * 1024 * 1024;
 
 function bytesToBase64(bytes: Uint8Array): string {
 	let binary = "";
@@ -46,6 +47,30 @@ export function CanonLibrary() {
 			toast(
 				`已导入《${result.book.title}》，分为 ${result.book.chapterCount} 章`,
 			);
+			navigate(`/canon/${encodeURIComponent(result.book.id)}`);
+		} catch (error) {
+			toast(errorText(error));
+		} finally {
+			setBusy(false);
+		}
+	};
+
+	const uploadPackage = async (file: File) => {
+		if (!file.name.toLowerCase().endsWith(".json")) {
+			toast("只能导入 .json 原著包");
+			return;
+		}
+		if (file.size > MAX_PACKAGE_BYTES) {
+			toast("原著包超过 64 MB");
+			return;
+		}
+		setBusy(true);
+		try {
+			const raw: unknown = JSON.parse(await file.text());
+			const result = await api.importCanonPackage({
+				package: raw as CanonPackageView,
+			});
+			toast(`已导入《${result.book.title}》，无需再抽取`);
 			navigate(`/canon/${encodeURIComponent(result.book.id)}`);
 		} catch (error) {
 			toast(errorText(error));
@@ -101,6 +126,21 @@ export function CanonLibrary() {
 					/>
 					<strong>{busy ? "正在分章…" : "选择 txt 文件，或拖到这里"}</strong>
 					<span>UTF-8、UTF-16、GB18030 自动识别</span>
+				</label>
+				<label className="canon-drop canon-drop-package">
+					<input
+						type="file"
+						accept=".json,application/json"
+						hidden
+						disabled={busy}
+						onChange={(event) => {
+							const file = event.target.files?.[0];
+							event.target.value = "";
+							if (file !== undefined && !busy) void uploadPackage(file);
+						}}
+					/>
+					<strong>导入原著包（.json）</strong>
+					<span>已汇编好的原著，导入后直接能开局，不用重新抽取</span>
 				</label>
 			</div>
 			{books.error !== null ? (

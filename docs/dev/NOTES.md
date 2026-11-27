@@ -206,7 +206,7 @@
 - 存储迁移 76：`canon_books`、`canon_chapters`（`paragraphs` 是 JSON 数组，`STRICT`，章随书 `ON DELETE CASCADE`）。`repos/canon.ts` 的合并与拆分先把序号整体加 `RENUMBER_OFFSET`（1,000,000）再逐行写回 1..N，否则会撞 `UNIQUE (book_id, ordinal)`；每次变更后用 `#recountBook` 重算书的章数与字数。
 - 分章列表接口不带 `paragraphs`；原文只在 `GET /api/canon/books/:bookId/chapters/:chapterId` 返回。导入请求只接受 `text` 或 `dataBase64` 之一，导入路由的请求体上限是 `CANON_IMPORT_MAX_BODY_BYTES`（48 MB），其余接口仍用 `maxJsonBodyBytes`。
 - 页面是 `/canon`（书架 + 上传）与 `/canon/:bookId`（分章预览与编辑）。导航栏仍是 7 项：入口在书架的 `lib-bar` 与命令面板「原著 · 导入与分章」，`/canon*` 高亮「书架」那一格。
-- 新增迁移要同步 `assistant-store.test.ts` 的 schema 版本断言（现在是 77）。
+- 新增迁移要同步 `assistant-store.test.ts` 的 schema 版本断言（现在是 78）。
 
 ### 抽取与预估（canon/02）
 
@@ -218,3 +218,18 @@
 - 后台调度在 `server/src/canon-worker.ts`：一次只跑一本书，按队列依次执行；暂停由路由写库，引擎在每块之间检查状态，已完成章保留。服务端启动时 `markInterruptedCanonExtractions` 把 running 退回 paused。抽取不写 `background_jobs`，所以不计入每楼后台调用预算。
 - 接口：`GET /api/canon/books/:bookId/estimate`、`POST .../extract/start|pause`、`POST .../chapters/:chapterId/extract`（body `{mode}`）、`GET .../extract[?chapterId=]`、`GET /api/canon/extract`（检视器总览）。开始与单章重跑在没有后台模型时返回 409。
 - e2e 假渠道里 `canonExtraction` 按块返回事件；「第二章 旧信」第一次故意给出原文里没有的参与人物，用来验证失败块重跑，随后同块第二次返回合格结果。这个规则按书名、章序号与块范围分别计数。
+
+### 全书汇编与原著包（canon/03）
+
+- 迁移 78：`canon_books.has_text`（不含原文的导入包为 0）、`canon_compilations`（每本书一条，idle/running/done/failed）、`canon_compiled_entities`（标准名、别名、一行简介 `lead`、底色 `base` 与带章节锚点的 `base_entries`）、`canon_events.timeline_order` 与 `is_turning_point`。
+- 汇编在 `core/src/canon/compile.ts`，三步固定顺序：合并别名 → 排主时间线与标关键转折 → 生成实体页；提示词在 `compile-prompt.ts`，系统首句分别是「你是原著的人物与别名合并器」「你是原著的时间线编者」「你是原著的人物页编者」，e2e 假渠道按这三句分流。
+- 合并是程序加模型：别名重叠（同类别）直接合并；同姓人物与名字包含关系作为候选交给模型确认。`applyCanonEntityMerges` 一次改写 `canon_entities`、`canon_facts.entity_name/aliases`、`canon_events.participants`、`canon_voices.character`，重复汇编不会再次改变结果。
+- 抽取时名册的首末章要算上事件参与与话术：`canonicalizeExtraction` 用 `appeared` 集合把出现在本块的实体推到本章，否则名册的末章永远停在第一次抽取。
+- 时间线由程序按章节、段落与章内序号排 1..N；插叙写 `timeline_order = NULL`；模型只标关键转折（事件编号必须在这一批里）。
+- 实体页一次调用最多 4 个实体（`CANON_PAGES_PER_CALL`）；`lead` 不超过 60 字，底色条目章节必须落在实体出现范围内，重复的（章节+正文）条目会被去掉。`compileCanonEntityPages` 会用事实、事件与话术的章节合并出真实出现范围。
+- 防剧透切片是纯函数：`sliceCanonEntityPage`、`buildCanonStartingPages`、`renderCanonWorldIndex`/`buildCanonWorldIndex`。实体只在 `firstChapterOrdinal <= upToChapter` 时出现，底色只取锚点不晚于游标的条目；世界索引每行 `${name}——${lead}`，预算 240 字。
+- 原著包在 `core/src/canon/package.ts`：`format: "dramaticer-canon-package"`、`version: 1`；默认不含 `paragraphs`，也不带本机路径。导入时按章序号重建新 id，写入 `status='extracted'`、抽取 done（每章 done、0 次调用）、汇编 done，因此不需要模型。
+- 导入不含原文的包时 `has_text = 0`：原著页隐藏抽取预估与抽取按钮，只留汇编信息与实体/时间线；`POST .../compile` 对这类书返回 409。
+- 接口：`POST /api/canon/books/:bookId/compile`（202）、`GET .../compiled[?upToChapter=]`（带截止章节时附 `pages` 与 `worldIndex`）、`GET .../export?includeText=0|1`（附件下载）、`POST /api/canon/packages/import`（请求体 `{package}`，上限同 txt 导入的 48 MB）。检视器总览每条现在带 `compilation`。
+- 汇编任务与抽取共用 `server/src/canon-worker.ts` 的队列，任务用 `kind: "extract" | "compile"` 区分；服务端启动时 `markInterruptedCanonCompilations` 把 running 标为失败，玩家可以重新汇编。
+- e2e 假渠道的 `canonCompile` 返回空合并、把本批最后一个事件标为转折、按实体块里的章节生成底色；走查脚本是 `.walk/walk9.spec.ts`。

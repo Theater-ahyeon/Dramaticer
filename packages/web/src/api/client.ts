@@ -16,9 +16,11 @@ import {
 	type CanonChapterExtractRequest,
 	type CanonChapterRecord,
 	type CanonChapterUpdateRequest,
+	type CanonCompiledView,
 	type CanonEstimateView,
 	type CanonExtractionOverviewView,
 	type CanonExtractionView,
+	type CanonPackageView,
 	type ChannelProbeRequest,
 	type ChannelProbeResult,
 	type ChannelsUpdateRequest,
@@ -45,6 +47,8 @@ import {
 	type ImportAuditReportView,
 	type ImportCanonBookRequest,
 	type ImportCanonBookResult,
+	type ImportCanonPackageRequest,
+	type ImportCanonPackageResult,
 	type ImportStoryRequest,
 	type ImportStoryResult,
 	type NodeActionResult,
@@ -445,6 +449,51 @@ export class ApiClient {
 
 	async getCanonExtractionOverview(): Promise<CanonExtractionOverviewView> {
 		return this.json<CanonExtractionOverviewView>("GET", "/api/canon/extract");
+	}
+
+	/** 全书汇编：合并别名、排时间线、生成实体页；后台跑。 */
+	async compileCanonBook(bookId: string): Promise<CanonCompiledView> {
+		return this.json<CanonCompiledView>(
+			"POST",
+			`${canonBookPath(bookId)}/compile`,
+		);
+	}
+
+	async getCanonCompiled(
+		bookId: string,
+		upToChapter?: number,
+	): Promise<CanonCompiledView> {
+		const query = new URLSearchParams();
+		if (upToChapter !== undefined) {
+			query.set("upToChapter", String(upToChapter));
+		}
+		return this.json<CanonCompiledView>(
+			"GET",
+			`${canonBookPath(bookId)}/compiled${queryText(query)}`,
+		);
+	}
+
+	async exportCanonPackage(
+		bookId: string,
+		includeText: boolean,
+	): Promise<CanonPackageView> {
+		const query = new URLSearchParams({
+			includeText: includeText ? "1" : "0",
+		});
+		return this.json<CanonPackageView>(
+			"GET",
+			`${canonBookPath(bookId)}/export${queryText(query)}`,
+		);
+	}
+
+	async importCanonPackage(
+		request: ImportCanonPackageRequest,
+	): Promise<ImportCanonPackageResult> {
+		return this.json<ImportCanonPackageResult>(
+			"POST",
+			"/api/canon/packages/import",
+			request,
+		);
 	}
 
 	async getClues(storyId: string): Promise<StoryCluesView> {

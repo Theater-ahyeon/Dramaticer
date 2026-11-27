@@ -5,11 +5,18 @@ import {
 	type CanonChapterKind,
 	type CanonChapterRecord,
 	type CanonChapterSplitResult,
+	type CanonPackage,
+	type CanonPackageImportResult,
 	type NewCanonChapter,
 	beginCanonExtraction,
+	buildCanonStartingPages,
+	buildCanonWorldIndex,
 	canonBookTitle,
+	canonPackageFilename,
 	decodeCanonBytes,
 	estimateCanonExtraction,
+	exportCanonPackage,
+	importCanonPackage,
 	isCanonChapterKind,
 	isJsonObject,
 	splitCanonText,
@@ -20,16 +27,19 @@ import type {
 	CanonChapterDetailView,
 	CanonChapterExtractRequest,
 	CanonChapterUpdateRequest,
+	CanonCompiledView,
 	CanonEstimateView,
 	CanonExtractionOverviewView,
 	CanonExtractionView,
 	ImportCanonBookResult,
+	ImportCanonPackageResult,
 } from "@dramaticer/protocol";
 import { HttpError, readJsonBody, sendEmpty, sendJson } from "./http.js";
 import {
 	assertKnownKeys,
 	fieldError,
 	pathSegments,
+	queryInteger,
 	readObjectBody,
 	requireMethod,
 	toBadRequest,
@@ -138,7 +148,11 @@ function requireCanonWorker(
 ): NonNullable<ApiRouteOptions["canonWorker"]> {
 	const worker = options.canonWorker;
 	if (worker === null || worker === undefined) {
-		throw new HttpError(409, "conflict", "还没有配置模型渠道，不能抽取原著");
+		throw new HttpError(
+			409,
+			"conflict",
+			"还没有配置模型渠道，不能调用原著的后台模型",
+		);
 	}
 	return worker;
 }
@@ -169,6 +183,37 @@ function canonExtractionView(
 	};
 }
 
+function requireCanonCompilation(options: ApiRouteOptions, bookId: string) {
+	const compilation = options.store.getCanonCompilation(bookId);
+	if (compilation === null) {
+		throw new HttpError(409, "conflict", "这本原著还没有汇编任务");
+	}
+	return compilation;
+}
+
+/** 汇编结果；带截止章节时附上防剧透切片后的记事页与世界索引预览。 */
+function canonCompiledView(
+	options: ApiRouteOptions,
+	bookId: string,
+	upToChapter?: number,
+): CanonCompiledView {
+	return {
+		compilation: requireCanonCompilation(options, bookId),
+		entities: options.store.listCanonCompiledEntities(bookId),
+		events: options.store.listCanonEvents(bookId),
+		voices: options.store.listCanonVoices(bookId),
+		facts: options.store.listCanonFacts(bookId),
+		pages:
+			upToChapter === undefined
+				? null
+				: buildCanonStartingPages(options.store, bookId, upToChapter),
+		worldIndex:
+			upToChapter === undefined
+				? null
+				: buildCanonWorldIndex(options.store, bookId, upToChapter),
+	};
+}
+
 export async function handleCanonRoute(
 	req: IncomingMessage,
 	res: ServerResponse,
@@ -186,9 +231,33 @@ export async function handleCanonRoute(
 			books: options.store.listCanonBooks().map((book) => ({
 				book,
 				extraction: options.store.getCanonExtraction(book.id),
+				compilation: options.store.getCanonCompilation(book.id),
 			})),
 		};
 		sendJson(res, 200, overview);
+		return;
+	}
+	if (parts[1] === "packages" && parts[2] === "import" && parts.length === 3) {
+		requireMethod(method, ["POST"]);
+		const body = await readJsonBody(req, CANON_IMPORT_MAX_BODY_BYTES);
+		if (!isJsonObject(body)) {
+			throw fieldError("body", "请求体必须是 JSON 对象");
+		}
+		assertKnownKeys(body, ["package"]);
+		if (body.package === undefined) {
+			throw fieldError("package", "缺少 package");
+		}
+		let created: CanonPackageImportResult;
+		try {
+			created = importCanonPackage(options.store, body.package);
+		} catch (error) {
+			throw toBadRequest(error, "package");
+		}
+		const result: ImportCanonPackageResult = {
+			book: created.book,
+			chapters: created.chapters,
+		};
+		sendJson(res, 201, result);
 		return;
 	}
 	if (parts[1] !== "books") {
@@ -222,6 +291,68 @@ export async function handleCanonRoute(
 			chapters: options.store.listCanonChapters(bookId),
 		};
 		sendJson(res, 200, view);
+		return;
+	}
+	if (parts[3] === "compile" && parts.length === 4) {
+		requireMethod(method, ["POST"]);
+		const book = requireCanonBook(options, bookId);
+		if (!book.hasText) {
+			throw new HttpError(409, "conflict", "这本原著包不含原文，不需要汇编");
+		}
+		if (options.store.getCanonExtraction(bookId)?.status !== "done") {
+			throw new HttpError(409, "conflict", "按章抽取还没有完成，不能汇编");
+		}
+		const worker = requireCanonWorker(options);
+		const model = await worker.modelAlias();
+		if (model === null) {
+			throw new HttpError(
+				409,
+				"conflict",
+				"没有可用的后台模型：在设置里配置 background 或 settler 角色",
+			);
+		}
+		options.store.ensureCanonCompilation(bookId);
+		options.store.markCanonCompilationRunning(bookId, model);
+		worker.startCompile(bookId);
+		sendJson(res, 202, canonCompiledView(options, bookId));
+		return;
+	}
+	if (parts[3] === "compiled" && parts.length === 4) {
+		requireMethod(method, ["GET"]);
+		const book = requireCanonBook(options, bookId);
+		const upToChapter = queryInteger(
+			url,
+			"upToChapter",
+			1,
+			Math.max(book.chapterCount, 1),
+		);
+		options.store.ensureCanonCompilation(bookId);
+		sendJson(res, 200, canonCompiledView(options, bookId, upToChapter));
+		return;
+	}
+	if (parts[3] === "export" && parts.length === 4) {
+		requireMethod(method, ["GET"]);
+		requireCanonBook(options, bookId);
+		const raw = url.searchParams.get("includeText");
+		if (raw !== null && raw !== "0" && raw !== "1") {
+			throw fieldError("includeText", "includeText 只能是 0 或 1");
+		}
+		let payload: CanonPackage;
+		try {
+			payload = exportCanonPackage(options.store, bookId, {
+				includeText: raw === "1",
+			});
+		} catch (error) {
+			throw new HttpError(
+				409,
+				"conflict",
+				error instanceof Error ? error.message : String(error),
+			);
+		}
+		const filename = canonPackageFilename(options.store, bookId);
+		sendJson(res, 200, payload, {
+			"Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
+		});
 		return;
 	}
 	if (parts[3] === "estimate" && parts.length === 4) {

@@ -55,6 +55,8 @@ export interface CanonBookRecord {
 	readonly charCount: number;
 	readonly chapterCount: number;
 	readonly status: CanonBookStatus;
+	/** 导入的原著包不带原文时为 false；不能抽取，但可以直接用汇编结果开局。 */
+	readonly hasText: boolean;
 	readonly createdAt: string;
 }
 
@@ -217,6 +219,10 @@ export interface CanonEventRecord {
 	readonly paragraphEnd: number;
 	/** 插叙、回忆、梦境；只作为人物经历，不进主时间线。 */
 	readonly isInterlude: boolean;
+	/** 主时间线顺序 1..N；插叙不进主时间线，这里为 null。 */
+	readonly timelineOrder: number | null;
+	/** 关键转折；开局选事件与走向参考用。 */
+	readonly isTurningPoint: boolean;
 	readonly createdAt: string;
 }
 
@@ -244,6 +250,143 @@ export interface CanonFactRecord {
 	readonly entityKind: CanonEntityKind;
 	readonly fact: string;
 	readonly createdAt: string;
+}
+
+/** 全书汇编任务：一本原著一条，idle → running → done / failed。 */
+export type CanonCompilationStatus = "idle" | "running" | "done" | "failed";
+
+export const CANON_COMPILATION_STATUSES: readonly CanonCompilationStatus[] = [
+	"idle",
+	"running",
+	"done",
+	"failed",
+];
+
+export function isCanonCompilationStatus(
+	value: unknown,
+): value is CanonCompilationStatus {
+	return (
+		value === "idle" ||
+		value === "running" ||
+		value === "done" ||
+		value === "failed"
+	);
+}
+
+export interface CanonCompilationRecord {
+	readonly bookId: string;
+	readonly status: CanonCompilationStatus;
+	readonly model: string | null;
+	readonly llmCalls: number;
+	readonly llmTokens: number;
+	readonly lastError: string | null;
+	readonly startedAt: string | null;
+	readonly updatedAt: string;
+}
+
+/** 底色条目带章节锚点，防剧透切片就是按它过滤（v5 §5.4）。 */
+export interface CanonBaseEntry {
+	readonly chapterOrdinal: number;
+	readonly text: string;
+}
+
+/** 汇编后的实体页：标准名、合并后的别名、一行简介与带锚点的底色。 */
+export interface CanonCompiledEntityRecord {
+	readonly bookId: string;
+	readonly name: string;
+	readonly aliases: readonly string[];
+	readonly kind: CanonEntityKind;
+	readonly lead: string;
+	readonly base: string;
+	readonly baseEntries: readonly CanonBaseEntry[];
+	readonly firstChapterOrdinal: number;
+	readonly lastChapterOrdinal: number;
+}
+
+/** 汇编第一步的合并结果：把 `mergedFrom` 里的名字都归到 `canonicalName`。 */
+export interface CanonEntityMerge {
+	readonly canonicalName: string;
+	readonly aliases: readonly string[];
+	readonly mergedFrom: readonly string[];
+}
+
+/** 原著故事包（v5 §5.3、§5.6）：默认不含原文，导入后直接可玩。 */
+export const CANON_PACKAGE_FORMAT = "dramaticer-canon-package";
+export const CANON_PACKAGE_VERSION = 1;
+
+export interface CanonPackageBook {
+	readonly title: string;
+	readonly filename: string | null;
+	readonly encoding: string;
+	readonly charCount: number;
+	readonly chapterCount: number;
+	readonly hasText: boolean;
+}
+
+export interface CanonPackageChapter {
+	readonly ordinal: number;
+	readonly volumeTitle: string | null;
+	readonly title: string;
+	readonly kind: CanonChapterKind;
+	readonly charCount: number;
+	readonly paragraphCount: number;
+	/** 只有导出时选择「包含原文」才有。 */
+	readonly paragraphs?: readonly string[];
+}
+
+export interface CanonPackageEvent {
+	readonly chapterOrdinal: number;
+	readonly seq: number;
+	readonly title: string;
+	readonly summary: string;
+	readonly digest: string;
+	readonly participants: readonly string[];
+	readonly location: string | null;
+	readonly timeText: string | null;
+	readonly paragraphStart: number;
+	readonly paragraphEnd: number;
+	readonly isInterlude: boolean;
+	readonly timelineOrder: number | null;
+	readonly isTurningPoint: boolean;
+}
+
+export interface CanonPackageVoice {
+	readonly chapterOrdinal: number;
+	readonly ordinal: number;
+	readonly character: string;
+	readonly kind: CanonVoiceKind;
+	readonly text: string;
+}
+
+export interface CanonPackageFact {
+	readonly chapterOrdinal: number;
+	readonly entityName: string;
+	readonly aliases: readonly string[];
+	readonly entityKind: CanonEntityKind;
+	readonly fact: string;
+}
+
+export interface CanonPackageEntity {
+	readonly name: string;
+	readonly aliases: readonly string[];
+	readonly kind: CanonEntityKind;
+	readonly lead: string;
+	readonly base: string;
+	readonly baseEntries: readonly CanonBaseEntry[];
+	readonly firstChapterOrdinal: number;
+	readonly lastChapterOrdinal: number;
+}
+
+export interface CanonPackage {
+	readonly format: typeof CANON_PACKAGE_FORMAT;
+	readonly version: typeof CANON_PACKAGE_VERSION;
+	readonly exportedAt: string;
+	readonly book: CanonPackageBook;
+	readonly chapters: readonly CanonPackageChapter[];
+	readonly entities: readonly CanonPackageEntity[];
+	readonly events: readonly CanonPackageEvent[];
+	readonly voices: readonly CanonPackageVoice[];
+	readonly facts: readonly CanonPackageFact[];
 }
 
 /** 模型对一块原文返回的结构；校验通过后才落库。 */

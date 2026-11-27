@@ -69,7 +69,9 @@ export type {
 	CanonChapterSplitResult,
 	CanonChapterUpdate,
 	CanonChunkResultsInput,
+	CanonCompiledEntityInput,
 	CanonEntityInput,
+	CanonEventTimelinePatch,
 	CreateCanonBookInput,
 } from "./repos/canon.js";
 
@@ -423,6 +425,17 @@ export interface StoryStore
 			| "listCanonTimeline"
 			| "listCanonVoices"
 			| "listCanonFacts"
+			| "getCanonCompilation"
+			| "ensureCanonCompilation"
+			| "markCanonCompilationRunning"
+			| "addCanonCompilationUsage"
+			| "finishCanonCompilation"
+			| "markInterruptedCanonCompilations"
+			| "listCanonCompiledEntities"
+			| "replaceCanonCompiledEntities"
+			| "applyCanonEntityMerges"
+			| "applyCanonEventTimeline"
+			| "importCanonPackage"
 		> {}
 
 export class StoryStore {
@@ -893,6 +906,17 @@ const DELEGATES: Readonly<Record<keyof Repos, readonly string[]>> = {
 		"listCanonTimeline",
 		"listCanonVoices",
 		"listCanonFacts",
+		"getCanonCompilation",
+		"ensureCanonCompilation",
+		"markCanonCompilationRunning",
+		"addCanonCompilationUsage",
+		"finishCanonCompilation",
+		"markInterruptedCanonCompilations",
+		"listCanonCompiledEntities",
+		"replaceCanonCompiledEntities",
+		"applyCanonEntityMerges",
+		"applyCanonEventTimeline",
+		"importCanonPackage",
 	],
 };
 

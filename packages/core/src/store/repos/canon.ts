@@ -3,6 +3,7 @@
 import { randomUUID } from "node:crypto";
 import {
 	CANON_TEXT_ENCODINGS,
+	type CanonBaseEntry,
 	type CanonBookRecord,
 	type CanonBookStatus,
 	type CanonChapterExtractionRecord,
@@ -12,7 +13,11 @@ import {
 	type CanonChapterSummary,
 	type CanonChunkPlan,
 	type CanonChunkProgress,
+	type CanonCompilationRecord,
+	type CanonCompilationStatus,
+	type CanonCompiledEntityRecord,
 	type CanonEntityKind,
+	type CanonEntityMerge,
 	type CanonEntityRecord,
 	type CanonEventRecord,
 	type CanonExtractedEvent,
@@ -21,6 +26,7 @@ import {
 	type CanonExtractionRecord,
 	type CanonExtractionStatus,
 	type CanonFactRecord,
+	type CanonPackage,
 	type CanonVoiceKind,
 	type CanonVoiceRecord,
 	type NewCanonChapter,
@@ -28,6 +34,7 @@ import {
 	countCanonChars,
 	isCanonBookStatus,
 	isCanonChapterExtractionStatus,
+	isCanonCompilationStatus,
 	isCanonEntityKind,
 	isCanonExtractionStatus,
 } from "../../canon/index.js";
@@ -81,6 +88,25 @@ export interface CanonChapterExtractionDefaults {
 	readonly chunks: readonly CanonChunkPlan[];
 }
 
+/** 汇编写回的实体页；书 id 由 store 补齐。 */
+export interface CanonCompiledEntityInput {
+	readonly name: string;
+	readonly aliases: readonly string[];
+	readonly kind: CanonEntityKind;
+	readonly lead: string;
+	readonly base: string;
+	readonly baseEntries: readonly CanonBaseEntry[];
+	readonly firstChapterOrdinal: number;
+	readonly lastChapterOrdinal: number;
+}
+
+/** 主时间线顺序与关键转折一起写回，避免两次全表扫描。 */
+export interface CanonEventTimelinePatch {
+	readonly eventId: number;
+	readonly timelineOrder: number | null;
+	readonly isTurningPoint: boolean;
+}
+
 interface CanonBookRow {
 	readonly id: string;
 	readonly title: string;
@@ -89,6 +115,7 @@ interface CanonBookRow {
 	readonly char_count: number;
 	readonly chapter_count: number;
 	readonly status: string;
+	readonly has_text: number;
 	readonly created_at: string;
 }
 
@@ -154,6 +181,8 @@ interface CanonEventRow {
 	readonly paragraph_start: number;
 	readonly paragraph_end: number;
 	readonly is_interlude: number;
+	readonly timeline_order: number | null;
+	readonly is_turning_point: number;
 	readonly created_at: string;
 }
 
@@ -179,6 +208,29 @@ interface CanonFactRow {
 	readonly entity_kind: string;
 	readonly fact: string;
 	readonly created_at: string;
+}
+
+interface CanonCompilationRow {
+	readonly book_id: string;
+	readonly status: string;
+	readonly model: string | null;
+	readonly llm_calls: number;
+	readonly llm_tokens: number;
+	readonly last_error: string | null;
+	readonly started_at: string | null;
+	readonly updated_at: string;
+}
+
+interface CanonCompiledEntityRow {
+	readonly book_id: string;
+	readonly name: string;
+	readonly aliases: string;
+	readonly kind: string;
+	readonly lead: string;
+	readonly base: string;
+	readonly base_entries: string;
+	readonly first_chapter_ordinal: number;
+	readonly last_chapter_ordinal: number;
 }
 
 const RENUMBER_OFFSET = 1_000_000;
@@ -212,6 +264,7 @@ function rowToBook(row: CanonBookRow): CanonBookRecord {
 		charCount: row.char_count,
 		chapterCount: row.chapter_count,
 		status: readStatus(row.status),
+		hasText: row.has_text === 1,
 		createdAt: row.created_at,
 	};
 }
@@ -275,6 +328,31 @@ function parseStringArray(value: string, label: string): readonly string[] {
 			throw new Error(`${label} 第 ${index + 1} 项不是非空字符串`);
 		}
 		return item;
+	});
+}
+
+function parseBaseEntries(
+	value: string,
+	label: string,
+): readonly CanonBaseEntry[] {
+	const parsed: unknown = JSON.parse(value);
+	if (!Array.isArray(parsed)) throw new Error(`${label} 不是底色数组`);
+	return parsed.map((item, index) => {
+		if (typeof item !== "object" || item === null || Array.isArray(item)) {
+			throw new Error(`${label} 第 ${index + 1} 项不是对象`);
+		}
+		const record = item as Record<string, unknown>;
+		if (
+			typeof record.chapterOrdinal !== "number" ||
+			!Number.isInteger(record.chapterOrdinal) ||
+			record.chapterOrdinal < 1
+		) {
+			throw new Error(`${label} 第 ${index + 1} 项的章节号不合法`);
+		}
+		if (typeof record.text !== "string" || record.text.trim().length === 0) {
+			throw new Error(`${label} 第 ${index + 1} 项的正文不能为空`);
+		}
+		return { chapterOrdinal: record.chapterOrdinal, text: record.text };
 	});
 }
 
@@ -381,6 +459,8 @@ function rowToEvent(row: CanonEventRow): CanonEventRecord {
 		paragraphStart: row.paragraph_start,
 		paragraphEnd: row.paragraph_end,
 		isInterlude: row.is_interlude === 1,
+		timelineOrder: row.timeline_order,
+		isTurningPoint: row.is_turning_point === 1,
 		createdAt: row.created_at,
 	};
 }
@@ -410,6 +490,45 @@ function rowToFact(row: CanonFactRow): CanonFactRecord {
 		entityKind: readEntityKind(row.entity_kind),
 		fact: row.fact,
 		createdAt: row.created_at,
+	};
+}
+
+function readCompilationStatus(value: string): CanonCompilationStatus {
+	if (!isCanonCompilationStatus(value)) {
+		throw new Error(`原著汇编状态不合法：${value}`);
+	}
+	return value;
+}
+
+function rowToCompilation(row: CanonCompilationRow): CanonCompilationRecord {
+	return {
+		bookId: row.book_id,
+		status: readCompilationStatus(row.status),
+		model: row.model,
+		llmCalls: row.llm_calls,
+		llmTokens: row.llm_tokens,
+		lastError: row.last_error,
+		startedAt: row.started_at,
+		updatedAt: row.updated_at,
+	};
+}
+
+function rowToCompiledEntity(
+	row: CanonCompiledEntityRow,
+): CanonCompiledEntityRecord {
+	return {
+		bookId: row.book_id,
+		name: row.name,
+		aliases: parseStringArray(row.aliases, `汇编实体 ${row.name} 的别名`),
+		kind: readEntityKind(row.kind),
+		lead: row.lead,
+		base: row.base,
+		baseEntries: parseBaseEntries(
+			row.base_entries,
+			`汇编实体 ${row.name} 的底色`,
+		),
+		firstChapterOrdinal: row.first_chapter_ordinal,
+		lastChapterOrdinal: row.last_chapter_ordinal,
 	};
 }
 
@@ -1243,6 +1362,508 @@ export class CanonRepo extends StoreRepo {
 				options.chapterId ?? null,
 			) as CanonFactRow[];
 		return rows.map(rowToFact);
+	}
+
+	// ---- 全书汇编（canon/03）----
+
+	getCanonCompilation(bookId: string): CanonCompilationRecord | null {
+		const row = this.db
+			.prepare("SELECT * FROM canon_compilations WHERE book_id = ?")
+			.get(bookId) as CanonCompilationRow | undefined;
+		return row === undefined ? null : rowToCompilation(row);
+	}
+
+	ensureCanonCompilation(bookId: string): CanonCompilationRecord {
+		this.#requireBook(bookId);
+		this.db
+			.prepare(
+				`INSERT OR IGNORE INTO canon_compilations
+				(book_id, status, model, llm_calls, llm_tokens, last_error,
+				 started_at, updated_at)
+				VALUES (?, 'idle', NULL, 0, 0, NULL, NULL, ?)`,
+			)
+			.run(bookId, new Date().toISOString());
+		return this.#requireCompilation(bookId);
+	}
+
+	markCanonCompilationRunning(
+		bookId: string,
+		model: string | null,
+	): CanonCompilationRecord {
+		const current = this.ensureCanonCompilation(bookId);
+		const now = new Date().toISOString();
+		this.db
+			.prepare(
+				`UPDATE canon_compilations
+				SET status = 'running', model = ?, last_error = NULL,
+					started_at = ?, updated_at = ?
+				WHERE book_id = ?`,
+			)
+			.run(model, current.startedAt ?? now, now, bookId);
+		return this.#requireCompilation(bookId);
+	}
+
+	addCanonCompilationUsage(
+		bookId: string,
+		calls: number,
+		tokens: number,
+	): void {
+		if (calls < 0 || tokens < 0) throw new Error("调用次数与 token 不能是负数");
+		this.db
+			.prepare(
+				`UPDATE canon_compilations
+				SET llm_calls = llm_calls + ?, llm_tokens = llm_tokens + ?,
+					updated_at = ?
+				WHERE book_id = ?`,
+			)
+			.run(calls, tokens, new Date().toISOString(), bookId);
+	}
+
+	finishCanonCompilation(
+		bookId: string,
+		status: "done" | "failed",
+		lastError: string | null,
+	): CanonCompilationRecord {
+		this.ensureCanonCompilation(bookId);
+		this.db
+			.prepare(
+				`UPDATE canon_compilations
+				SET status = ?, last_error = ?, updated_at = ?
+				WHERE book_id = ?`,
+			)
+			.run(status, lastError, new Date().toISOString(), bookId);
+		return this.#requireCompilation(bookId);
+	}
+
+	/** 进程中断时把 running 退回 failed，玩家可以重新汇编。 */
+	markInterruptedCanonCompilations(): number {
+		const result = this.db
+			.prepare(
+				`UPDATE canon_compilations
+				SET status = 'failed', last_error = '汇编被中断', updated_at = ?
+				WHERE status = 'running'`,
+			)
+			.run(new Date().toISOString());
+		return result.changes;
+	}
+
+	listCanonCompiledEntities(
+		bookId: string,
+	): readonly CanonCompiledEntityRecord[] {
+		const rows = this.db
+			.prepare(
+				`SELECT * FROM canon_compiled_entities
+				WHERE book_id = ?
+				ORDER BY first_chapter_ordinal ASC, name ASC`,
+			)
+			.all(bookId) as CanonCompiledEntityRow[];
+		return rows.map(rowToCompiledEntity);
+	}
+
+	replaceCanonCompiledEntities(
+		bookId: string,
+		entries: readonly CanonCompiledEntityInput[],
+	): void {
+		this.db.transaction(() => {
+			this.db
+				.prepare("DELETE FROM canon_compiled_entities WHERE book_id = ?")
+				.run(bookId);
+			const insert = this.db.prepare(
+				`INSERT INTO canon_compiled_entities
+				(book_id, name, aliases, kind, lead, base, base_entries,
+				 first_chapter_ordinal, last_chapter_ordinal)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			);
+			for (const entry of entries) {
+				const entries2 = [...entry.baseEntries].sort(
+					(left, right) => left.chapterOrdinal - right.chapterOrdinal,
+				);
+				insert.run(
+					bookId,
+					entry.name,
+					JSON.stringify(entry.aliases),
+					entry.kind,
+					entry.lead,
+					entry.base,
+					JSON.stringify(entries2),
+					entry.firstChapterOrdinal,
+					entry.lastChapterOrdinal,
+				);
+			}
+		})();
+	}
+
+	/**
+	 * 把合并组落到已有数据上：名册合并，事件参与人物、话术人物与事实实体名
+	 * 一起改成标准名。抽取阶段的别名归并漏掉的同名与别名在这里收口。
+	 */
+	applyCanonEntityMerges(
+		bookId: string,
+		merges: readonly CanonEntityMerge[],
+	): readonly CanonEntityRecord[] {
+		if (merges.length === 0) return this.listCanonEntities(bookId);
+		const owner = new Map<string, CanonEntityMerge>();
+		for (const merge of merges) {
+			for (const name of merge.mergedFrom) {
+				if (owner.has(name)) {
+					throw new Error(`实体「${name}」出现在多个合并组里`);
+				}
+				owner.set(name, merge);
+			}
+		}
+		const resolve = (name: string): string =>
+			owner.get(name)?.canonicalName ?? name;
+		this.db.transaction(() => {
+			const rows = this.db
+				.prepare("SELECT * FROM canon_entities WHERE book_id = ?")
+				.all(bookId) as CanonEntityRow[];
+			const groups = new Map<
+				string,
+				{
+					aliases: Set<string>;
+					kind: CanonEntityKind;
+					first: number;
+					last: number;
+				}
+			>();
+			for (const row of rows) {
+				const canonical = resolve(row.name);
+				const kind = readEntityKind(row.kind);
+				const group = groups.get(canonical) ?? {
+					aliases: new Set<string>(),
+					kind,
+					first: row.first_chapter_ordinal,
+					last: row.last_chapter_ordinal,
+				};
+				groups.set(canonical, group);
+				if (row.name === canonical) group.kind = kind;
+				group.first = Math.min(group.first, row.first_chapter_ordinal);
+				group.last = Math.max(group.last, row.last_chapter_ordinal);
+				for (const alias of parseStringArray(
+					row.aliases,
+					`实体 ${row.name} 的别名`,
+				)) {
+					if (resolve(alias) !== canonical) group.aliases.add(alias);
+				}
+				if (row.name !== canonical) group.aliases.add(row.name);
+			}
+			for (const merge of merges) {
+				const group = groups.get(merge.canonicalName);
+				if (group === undefined) {
+					throw new Error(`合并组的标准名「${merge.canonicalName}」不在书里`);
+				}
+				for (const alias of merge.aliases) {
+					if (resolve(alias) !== merge.canonicalName) {
+						group.aliases.add(alias);
+					}
+				}
+				for (const name of merge.mergedFrom) {
+					if (name !== merge.canonicalName) group.aliases.add(name);
+				}
+			}
+			this.db
+				.prepare("DELETE FROM canon_entities WHERE book_id = ?")
+				.run(bookId);
+			const insert = this.db.prepare(
+				`INSERT INTO canon_entities
+				(book_id, name, aliases, kind, first_chapter_ordinal, last_chapter_ordinal)
+				VALUES (?, ?, ?, ?, ?, ?)`,
+			);
+			for (const [canonical, group] of groups) {
+				insert.run(
+					bookId,
+					canonical,
+					JSON.stringify([...group.aliases]),
+					group.kind,
+					group.first,
+					group.last,
+				);
+			}
+			const facts = this.db
+				.prepare(
+					"SELECT id, entity_name, aliases FROM canon_facts WHERE book_id = ?",
+				)
+				.all(bookId) as {
+				readonly id: number;
+				readonly entity_name: string;
+				readonly aliases: string;
+			}[];
+			const updateFact = this.db.prepare(
+				"UPDATE canon_facts SET entity_name = ?, aliases = ? WHERE id = ?",
+			);
+			for (const fact of facts) {
+				const name = resolve(fact.entity_name);
+				const aliases = [
+					...new Set(
+						parseStringArray(fact.aliases, `事实 ${fact.id} 的别名`).map(
+							resolve,
+						),
+					),
+				].filter((alias) => alias !== name);
+				updateFact.run(name, JSON.stringify(aliases), fact.id);
+			}
+			const events = this.db
+				.prepare("SELECT id, participants FROM canon_events WHERE book_id = ?")
+				.all(bookId) as {
+				readonly id: number;
+				readonly participants: string;
+			}[];
+			const updateEvent = this.db.prepare(
+				"UPDATE canon_events SET participants = ? WHERE id = ?",
+			);
+			for (const event of events) {
+				const before = parseStringArray(
+					event.participants,
+					`事件 ${event.id} 的参与人物`,
+				);
+				const after = [...new Set(before.map(resolve))];
+				if (
+					after.length !== before.length ||
+					after.some((name, index) => name !== before[index])
+				) {
+					updateEvent.run(JSON.stringify(after), event.id);
+				}
+			}
+			const updateVoice = this.db.prepare(
+				"UPDATE canon_voices SET character = ? WHERE book_id = ? AND character = ?",
+			);
+			for (const [name, merge] of owner) {
+				if (name === merge.canonicalName) continue;
+				updateVoice.run(merge.canonicalName, bookId, name);
+			}
+		})();
+		return this.listCanonEntities(bookId);
+	}
+
+	/** 主时间线顺序 1..N；插叙写 null。 */
+	applyCanonEventTimeline(
+		bookId: string,
+		patches: readonly CanonEventTimelinePatch[],
+	): void {
+		const update = this.db.prepare(
+			`UPDATE canon_events
+			SET timeline_order = ?, is_turning_point = ?
+			WHERE book_id = ? AND id = ?`,
+		);
+		this.db.transaction(() => {
+			for (const patch of patches) {
+				update.run(
+					patch.timelineOrder,
+					patch.isTurningPoint ? 1 : 0,
+					bookId,
+					patch.eventId,
+				);
+			}
+		})();
+	}
+
+	/**
+	 * 导入原著包：书、章、汇编实体、事件轨道、话术与事实一次写入，
+	 * 抽取与汇编都标成完成，不再调用模型。
+	 */
+	importCanonPackage(pkg: CanonPackage): {
+		readonly book: CanonBookRecord;
+		readonly chapters: readonly CanonChapterSummary[];
+	} {
+		const title = pkg.book.title.trim();
+		if (title.length === 0) throw new Error("原著包的书名不能为空");
+		if (pkg.chapters.length === 0) throw new Error("原著包至少要有一章");
+		const now = new Date().toISOString();
+		const bookId = randomUUID();
+		const chapters = pkg.chapters.map((chapter, index) => {
+			if (chapter.ordinal !== index + 1) {
+				throw new Error(
+					`原著包的章节序号必须从 1 连续编号，第 ${index + 1} 项是 ${chapter.ordinal}`,
+				);
+			}
+			const title2 = chapter.title.trim();
+			if (title2.length === 0) {
+				throw new Error(`原著包第 ${chapter.ordinal} 章的标题不能为空`);
+			}
+			const paragraphs = chapter.paragraphs ?? [];
+			if (chapter.paragraphs !== undefined && paragraphs.length === 0) {
+				throw new Error(`原著包第 ${chapter.ordinal} 章标了原文却是空的`);
+			}
+			return {
+				id: randomUUID(),
+				ordinal: chapter.ordinal,
+				volumeTitle: chapter.volumeTitle,
+				title: title2,
+				kind: assertCanonChapterKind(chapter.kind, "原著包章节类型"),
+				paragraphs,
+				paragraphCount:
+					paragraphs.length > 0 ? paragraphs.length : chapter.paragraphCount,
+				charCount:
+					paragraphs.length > 0
+						? countCanonChars(paragraphs)
+						: chapter.charCount,
+			};
+		});
+		const hasText = chapters.some((chapter) => chapter.paragraphs.length > 0);
+		const charCount = chapters.reduce(
+			(total, chapter) => total + chapter.charCount,
+			0,
+		);
+		const chapterIdByOrdinal = new Map(
+			chapters.map((chapter) => [chapter.ordinal, chapter.id]),
+		);
+		const requireChapterId = (ordinal: number): string => {
+			const id = chapterIdByOrdinal.get(ordinal);
+			if (id === undefined) {
+				throw new Error(`原著包里的事件或话术引用了不存在的第 ${ordinal} 章`);
+			}
+			return id;
+		};
+		this.db.transaction(() => {
+			this.db
+				.prepare(
+					`INSERT INTO canon_books
+					(id, title, filename, encoding, char_count, chapter_count,
+					 status, has_text, created_at)
+					VALUES (?, ?, ?, ?, ?, ?, 'extracted', ?, ?)`,
+				)
+				.run(
+					bookId,
+					title,
+					pkg.book.filename,
+					pkg.book.encoding,
+					charCount,
+					chapters.length,
+					hasText ? 1 : 0,
+					now,
+				);
+			const insertChapter = this.db.prepare(
+				`INSERT INTO canon_chapters
+				(id, book_id, ordinal, volume_title, title, kind, paragraphs,
+				 paragraph_count, char_count, created_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			);
+			for (const chapter of chapters) {
+				insertChapter.run(
+					chapter.id,
+					bookId,
+					chapter.ordinal,
+					chapter.volumeTitle,
+					chapter.title,
+					chapter.kind,
+					JSON.stringify(chapter.paragraphs),
+					chapter.paragraphCount,
+					chapter.charCount,
+					now,
+				);
+			}
+			const insertEvent = this.db.prepare(
+				`INSERT INTO canon_events
+				(book_id, chapter_id, chapter_ordinal, seq, title, summary, digest,
+				 participants, location, time_text, paragraph_start, paragraph_end,
+				 is_interlude, timeline_order, is_turning_point, created_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			);
+			for (const event of pkg.events) {
+				insertEvent.run(
+					bookId,
+					requireChapterId(event.chapterOrdinal),
+					event.chapterOrdinal,
+					event.seq,
+					event.title,
+					event.summary,
+					event.digest,
+					JSON.stringify(event.participants),
+					event.location,
+					event.timeText,
+					event.paragraphStart,
+					event.paragraphEnd,
+					event.isInterlude ? 1 : 0,
+					event.timelineOrder,
+					event.isTurningPoint ? 1 : 0,
+					now,
+				);
+			}
+			const insertVoice = this.db.prepare(
+				`INSERT INTO canon_voices
+				(book_id, chapter_id, chapter_ordinal, ordinal, character, kind, text, created_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			);
+			for (const voice of pkg.voices) {
+				insertVoice.run(
+					bookId,
+					requireChapterId(voice.chapterOrdinal),
+					voice.chapterOrdinal,
+					voice.ordinal,
+					voice.character,
+					voice.kind,
+					voice.text,
+					now,
+				);
+			}
+			const insertFact = this.db.prepare(
+				`INSERT INTO canon_facts
+				(book_id, chapter_id, chapter_ordinal, entity_name, aliases,
+				 entity_kind, fact, created_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			);
+			for (const fact of pkg.facts) {
+				insertFact.run(
+					bookId,
+					requireChapterId(fact.chapterOrdinal),
+					fact.chapterOrdinal,
+					fact.entityName,
+					JSON.stringify(fact.aliases),
+					fact.entityKind,
+					fact.fact,
+					now,
+				);
+			}
+			this.replaceCanonCompiledEntities(
+				bookId,
+				pkg.entities.map((entity) => ({
+					name: entity.name,
+					aliases: entity.aliases,
+					kind: entity.kind,
+					lead: entity.lead,
+					base: entity.base,
+					baseEntries: entity.baseEntries,
+					firstChapterOrdinal: entity.firstChapterOrdinal,
+					lastChapterOrdinal: entity.lastChapterOrdinal,
+				})),
+			);
+			this.db
+				.prepare(
+					`INSERT INTO canon_extractions
+					(book_id, status, model, total_chapters, done_chapters,
+					 failed_chapters, llm_calls, llm_tokens, last_error,
+					 started_at, updated_at)
+					VALUES (?, 'done', NULL, ?, ?, 0, 0, 0, NULL, ?, ?)`,
+				)
+				.run(bookId, chapters.length, chapters.length, now, now);
+			const insertChapterExtraction = this.db.prepare(
+				`INSERT INTO canon_chapter_extractions
+				(chapter_id, book_id, chapter_ordinal, status, chunks,
+				 last_error, tokens, updated_at)
+				VALUES (?, ?, ?, 'done', '[]', NULL, 0, ?)`,
+			);
+			for (const chapter of chapters) {
+				insertChapterExtraction.run(chapter.id, bookId, chapter.ordinal, now);
+			}
+			this.db
+				.prepare(
+					`INSERT INTO canon_compilations
+					(book_id, status, model, llm_calls, llm_tokens, last_error,
+					 started_at, updated_at)
+					VALUES (?, 'done', NULL, 0, 0, NULL, ?, ?)`,
+				)
+				.run(bookId, now, now);
+		})();
+		return {
+			book: this.#requireBook(bookId),
+			chapters: this.listCanonChapters(bookId),
+		};
+	}
+
+	#requireCompilation(bookId: string): CanonCompilationRecord {
+		const record = this.getCanonCompilation(bookId);
+		if (record === null) throw new Error(`原著 ${bookId} 的汇编任务不存在`);
+		return record;
 	}
 
 	#chapterCount(bookId: string): number {

@@ -347,9 +347,54 @@ function canonExtraction(body) {
 	});
 }
 
+/** 全书汇编：别名合并、关键转折与实体页。 */
+function canonCompile(body) {
+	const system = systemText(body);
+	const user = lastUserText(body);
+	if (system.includes("人物与别名合并器")) {
+		return JSON.stringify({ merges: [] });
+	}
+	if (system.includes("时间线编者")) {
+		const ids = [...user.matchAll(/- \[(\d+)\] /g)].map((match) =>
+			Number(match[1]),
+		);
+		const last = ids.at(-1);
+		return JSON.stringify({
+			turningPoints: last === undefined ? [] : [last],
+		});
+	}
+	const blocks = [
+		...user.matchAll(
+			/<实体 名="([^"]+)" 类别="[^"]*" 首章="(\d+)" 末章="(\d+)">([\s\S]*?)<\/实体>/g,
+		),
+	];
+	return JSON.stringify({
+		entities: blocks.map((block) => {
+			const name = block[1] ?? "";
+			const chapters = new Set();
+			for (const entry of (block[4] ?? "").matchAll(/\[第 (\d+) 章\]/g)) {
+				chapters.add(Number(entry[1]));
+			}
+			return {
+				name,
+				lead: `${name}的合成简介，山门故事里的一个人。`,
+				entries: [...chapters]
+					.sort((left, right) => left - right)
+					.map((chapter) => ({
+						chapter,
+						text: `到第 ${chapter} 章时关于${name}的合成底色。`,
+					})),
+			};
+		}),
+	});
+}
+
 function backgroundResponse(body) {
 	const system = systemText(body);
 	if (system.includes("你是原著的事件抽取器")) return canonExtraction(body);
+	if (system.includes("你是原著的人物与别名合并器")) return canonCompile(body);
+	if (system.includes("你是原著的时间线编者")) return canonCompile(body);
+	if (system.includes("你是原著的人物页编者")) return canonCompile(body);
 	if (system.includes("你是故事的场记")) return sceneLog(system);
 	if (system.includes("你是故事台账的结算器")) return "[]";
 	if (system.includes("你是故事记忆抽取器")) {

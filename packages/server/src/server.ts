@@ -196,6 +196,8 @@ export async function startServer(
 	store.requeueRunningNodeImages();
 	// 原著抽取不自动续跑：上次进程留下的 running 退回 paused，等玩家点继续。
 	store.markInterruptedCanonExtractions();
+	// 全书汇编同样不自动续跑：上次进程留下的 running 标为失败，可以重新汇编。
+	store.markInterruptedCanonCompilations();
 	// 上一次进程留下的深回合运行没有结束，保留事件并标为中断。
 	store.markInterruptedTurnRuns();
 	// 助手运行不在进程里排队：上一次进程留下的 running 直接标为中断。

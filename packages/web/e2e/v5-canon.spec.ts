@@ -25,7 +25,7 @@ async function upload(
 	await page.goto("/canon");
 	await expect(page.locator('[data-view="canon"]')).toBeVisible();
 	await page.getByLabel("书名").fill(title);
-	await page.locator('input[type="file"]').setInputFiles({
+	await page.locator('input[accept=".txt,text/plain"]').setInputFiles({
 		name,
 		mimeType: "text/plain",
 		buffer,
@@ -152,6 +152,83 @@ test.describe("原著导入与分章", () => {
 		await page.getByRole("button", { name: /番外 师父的茶/ }).click();
 		await page.getByRole("tab", { name: "抽取结果" }).click();
 		await expect(page.locator(".canon-events .canon-badge")).toHaveText("插叙");
+		await expectNoHorizontalOverflow(page);
+	});
+
+	test("全书汇编、实体与世界索引、时间线、导出与导入不重抽", async ({
+		page,
+	}, testInfo) => {
+		const title = `原著汇编 ${testInfo.project.name}`;
+		await upload(page, title, "canon-sample.txt", fixture("canon-sample.txt"));
+		const pageView = page.locator('[data-view="canonbook"]');
+		const state = pageView.locator(".canon-extract-state");
+
+		// 先完成抽取（旧信这一章第一次故意失败）。
+		await page.getByRole("button", { name: "开始抽取" }).click();
+		await expect(state.locator(".canon-status")).toHaveText("有失败章", {
+			timeout: 30_000,
+		});
+		await page.getByRole("button", { name: /第二章 旧信/ }).click();
+		await page.getByRole("button", { name: "重跑这一章" }).click();
+		await expect(state.locator(".canon-status")).toHaveText("已完成", {
+			timeout: 30_000,
+		});
+
+		// 全书汇编：合并别名、排时间线、生成实体页。
+		await page.getByRole("button", { name: "全书汇编" }).click();
+		const compileStatus = pageView.locator(".canon-compile .canon-status");
+		await expect(compileStatus).toHaveText("已汇编", { timeout: 60_000 });
+		await expect(pageView.locator(".canon-compile")).toContainText("个实体");
+
+		// 人物与世界索引：按章节游标切片，早期不含后期出场的实体。
+		await page.getByRole("tab", { name: "人物与世界索引" }).click();
+		await expect(page.locator(".canon-worldindex")).toContainText("世界索引：");
+		await expect(page.locator(".canon-worldindex")).toContainText("守门人——");
+		await expect(page.locator(".canon-entities > li")).not.toHaveCount(0);
+		await page.getByLabel("截至章节").fill("1");
+		await expect(page.locator(".canon-worldindex")).not.toContainText("少年——");
+		await page.getByLabel("截至章节").fill("8");
+		await expect(page.locator(".canon-worldindex")).toContainText("少年——");
+		await expectNoHorizontalOverflow(page);
+
+		// 时间线：主线顺序、关键转折与插叙。
+		await page.getByRole("tab", { name: "时间线" }).click();
+		await expect(page.locator(".canon-timeline")).toContainText("主时间线");
+		await expect(page.locator(".canon-timeline")).toContainText("关键转折");
+		await expect(page.locator(".canon-timeline")).toContainText("插叙");
+
+		// 导出：默认不勾选包含原文，包里没有段落字段。
+		await expect(page.getByLabel("包含原文")).not.toBeChecked();
+		const downloadPromise = page.waitForEvent("download");
+		await page.getByRole("button", { name: "导出原著包" }).click();
+		const download = await downloadPromise;
+		const downloadedPath = await download.path();
+		if (downloadedPath === null) throw new Error("没有拿到下载的原著包");
+		const raw = readFileSync(downloadedPath, "utf8");
+		expect(raw).not.toContain('"paragraphs"');
+		expect(raw).not.toContain("山门外的雨下了整夜");
+		const pkg = JSON.parse(raw) as {
+			readonly entities: readonly { readonly name: string }[];
+		};
+		expect(pkg.entities.length).toBeGreaterThan(0);
+
+		// 导入他人的原著包：直接是已汇编状态，不需要再抽取。
+		await page.goto("/canon");
+		await expect(page.locator('[data-view="canon"]')).toBeVisible();
+		await page.locator('input[accept=".json,application/json"]').setInputFiles({
+			name: "copy.canon.json",
+			mimeType: "application/json",
+			buffer: Buffer.from(raw, "utf8"),
+		});
+		await page.waitForURL(/\/canon\/[^/]+$/, { timeout: 30_000 });
+		await expect(pageView.locator(".canon-compile .canon-status")).toHaveText(
+			"已汇编",
+		);
+		await expect(pageView).toContainText("这本原著包不含原文");
+		await expect(state.locator(".canon-status")).toHaveText("已完成");
+		await expect(state).toContainText("0 次调用");
+		await page.getByRole("tab", { name: "人物与世界索引" }).click();
+		await expect(page.locator(".canon-entities > li")).not.toHaveCount(0);
 		await expectNoHorizontalOverflow(page);
 	});
 });

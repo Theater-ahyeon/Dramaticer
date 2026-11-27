@@ -57,6 +57,13 @@ const EXTRACTION_LABELS: Readonly<Record<string, string>> = {
 	failed: "有失败章",
 };
 
+const COMPILATION_LABELS: Readonly<Record<string, string>> = {
+	idle: "未汇编",
+	running: "汇编中",
+	done: "已汇编",
+	failed: "汇编失败",
+};
+
 const SUPPORT: Readonly<Record<string, string>> = {
 	supported: "支持",
 	unsupported: "不支持",
@@ -295,9 +302,17 @@ function RunSection({ nodeId }: { readonly nodeId: string }) {
 function CanonExtractionSection() {
 	const overview = useLoad(() => api.getCanonExtractionOverview(), []);
 	const books = overview.data?.books ?? [];
+	const compiling = books.some(
+		(item) => item.compilation?.status === "running",
+	);
+	useEffect(() => {
+		if (!compiling) return;
+		const timer = setInterval(() => overview.reload(), 1_500);
+		return () => clearInterval(timer);
+	}, [compiling, overview.reload]);
 	return (
 		<section aria-label="原著抽取">
-			<h3>原著抽取</h3>
+			<h3>原著抽取与全书汇编</h3>
 			<p className="muted">一次性导入，不计入每楼后台预算。</p>
 			{overview.error !== null ? (
 				<p className="v4err">{overview.error}</p>
@@ -305,9 +320,9 @@ function CanonExtractionSection() {
 				<p className="muted">还没有原著</p>
 			) : (
 				<ul className="insplist">
-					{books.map(({ book, extraction }) => (
+					{books.map(({ book, extraction, compilation }) => (
 						<li key={book.id}>
-							<b>{book.title}</b>{" "}
+							<b>{book.title}</b> {book.hasText ? "" : "原著包（不含原文） · "}
 							{extraction === null
 								? "未开始"
 								: `${
@@ -319,6 +334,17 @@ function CanonExtractionSection() {
 									} · ${extraction.llmCalls} 次 · ${formatTokens(
 										extraction.llmTokens,
 									)} token`}
+							<span className="label">
+								{" · "}
+								{compilation === null
+									? "未汇编"
+									: `汇编：${
+											COMPILATION_LABELS[compilation.status] ??
+											compilation.status
+										} · ${compilation.llmCalls} 次 · ${formatTokens(
+											compilation.llmTokens,
+										)} token`}
+							</span>
 						</li>
 					))}
 				</ul>

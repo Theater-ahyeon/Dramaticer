@@ -5,6 +5,7 @@ import {
 	extractCanonChapter,
 	finalizeCanonExtraction,
 	runCanonBookExtraction,
+	runCanonCompilation,
 } from "@dramaticer/core";
 
 /** 后台模型客户端与别名；story 运行时的 `bookBackground()` 直接满足这个形状。 */
@@ -27,6 +28,7 @@ interface CanonWorkerTask {
 	readonly bookId: string;
 	readonly chapterId: string | null;
 	readonly mode: "resume" | "full";
+	readonly kind: "extract" | "compile";
 }
 
 /**
@@ -41,6 +43,7 @@ export class CanonExtractionWorker {
 	readonly #controller = new AbortController();
 	#pump: Promise<void> | null = null;
 	#activeBookId: string | null = null;
+	#activeKind: CanonWorkerTask["kind"] | null = null;
 	#closed = false;
 
 	constructor(options: CanonExtractionWorkerOptions) {
@@ -50,7 +53,7 @@ export class CanonExtractionWorker {
 	}
 
 	startBook(bookId: string): void {
-		this.#enqueue({ bookId, chapterId: null, mode: "resume" });
+		this.#enqueue({ bookId, chapterId: null, mode: "resume", kind: "extract" });
 	}
 
 	reextractChapter(
@@ -58,7 +61,11 @@ export class CanonExtractionWorker {
 		chapterId: string,
 		mode: "resume" | "full",
 	): void {
-		this.#enqueue({ bookId, chapterId, mode });
+		this.#enqueue({ bookId, chapterId, mode, kind: "extract" });
+	}
+
+	startCompile(bookId: string): void {
+		this.#enqueue({ bookId, chapterId: null, mode: "resume", kind: "compile" });
 	}
 
 	/** 预估页显示的后台模型；没有可用模型时返回 null。 */
@@ -86,12 +93,19 @@ export class CanonExtractionWorker {
 
 	#enqueue(task: CanonWorkerTask): void {
 		if (this.#closed) return;
-		if (this.#activeBookId === task.bookId && task.chapterId === null) return;
+		if (
+			this.#activeBookId === task.bookId &&
+			this.#activeKind === task.kind &&
+			task.chapterId === null
+		) {
+			return;
+		}
 		const duplicate = this.#queue.some(
 			(item) =>
 				item.bookId === task.bookId &&
 				item.chapterId === task.chapterId &&
-				item.mode === task.mode,
+				item.mode === task.mode &&
+				item.kind === task.kind,
 		);
 		if (!duplicate) this.#queue.push(task);
 		if (this.#pump === null) this.#pump = this.#runQueue();
@@ -103,19 +117,33 @@ export class CanonExtractionWorker {
 				const task = this.#queue.shift();
 				if (task === undefined) break;
 				this.#activeBookId = task.bookId;
+				this.#activeKind = task.kind;
 				try {
 					await this.#runTask(task);
 				} catch (error) {
 					const message =
 						error instanceof Error ? error.message : String(error);
-					this.#log(`原著抽取失败：${message}`);
+					this.#log(
+						task.kind === "compile"
+							? `全书汇编失败：${message}`
+							: `原著抽取失败：${message}`,
+					);
 					try {
-						this.#store.finishCanonExtraction(task.bookId, "failed", message);
+						if (task.kind === "compile") {
+							this.#store.finishCanonCompilation(
+								task.bookId,
+								"failed",
+								message,
+							);
+						} else {
+							this.#store.finishCanonExtraction(task.bookId, "failed", message);
+						}
 					} catch {
 						// 书可能已被删除；没有可写的进度行。
 					}
 				} finally {
 					this.#activeBookId = null;
+					this.#activeKind = null;
 				}
 			}
 		} finally {
@@ -124,16 +152,37 @@ export class CanonExtractionWorker {
 	}
 
 	async #runTask(task: CanonWorkerTask): Promise<void> {
-		const extraction = this.#store.getCanonExtraction(task.bookId);
-		// 排队期间被暂停的任务不启动；开始按钮会重新排进来。
-		if (extraction?.status !== "running") return;
+		const pending =
+			task.kind === "compile"
+				? this.#store.getCanonCompilation(task.bookId)?.status === "running"
+				: this.#store.getCanonExtraction(task.bookId)?.status === "running";
+		// 排队期间被暂停或取消的任务不启动；开始按钮会重新排进来。
+		if (!pending) return;
 		const runtime = await this.#runtime.get();
 		if (runtime === null) {
-			this.#store.finishCanonExtraction(
-				task.bookId,
-				"failed",
-				"没有可用的后台模型：在设置里配置 background 或 settler 角色",
-			);
+			if (task.kind === "compile") {
+				this.#store.finishCanonCompilation(
+					task.bookId,
+					"failed",
+					"没有可用的后台模型：在设置里配置 background 或 settler 角色",
+				);
+			} else {
+				this.#store.finishCanonExtraction(
+					task.bookId,
+					"failed",
+					"没有可用的后台模型：在设置里配置 background 或 settler 角色",
+				);
+			}
+			return;
+		}
+		if (task.kind === "compile") {
+			await runCanonCompilation({
+				store: this.#store,
+				client: runtime.client,
+				model: runtime.model,
+				bookId: task.bookId,
+				signal: this.#controller.signal,
+			});
 			return;
 		}
 		if (task.chapterId === null) {

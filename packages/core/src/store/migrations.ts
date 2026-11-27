@@ -2308,6 +2308,52 @@ export function buildMigrations(
 					ON canon_facts(book_id, chapter_ordinal)`,
 			],
 		},
+		{
+			version: 78,
+			description:
+				"全书汇编（v5 §5.3、§5.4）：每本原著一条汇编任务、合并后的实体页（一行简介与带章节锚点的底色）、主时间线顺序与关键转折；导入的原著包可能不带原文",
+			statements: [
+				`ALTER TABLE canon_books
+					ADD COLUMN has_text INTEGER NOT NULL DEFAULT 1
+						CHECK (has_text IN (0, 1))`,
+				`CREATE TABLE canon_compilations (
+					book_id TEXT PRIMARY KEY REFERENCES canon_books(id) ON DELETE CASCADE,
+					status TEXT NOT NULL DEFAULT 'idle'
+						CHECK (status IN ('idle', 'running', 'done', 'failed')),
+					model TEXT,
+					llm_calls INTEGER NOT NULL DEFAULT 0 CHECK (llm_calls >= 0),
+					llm_tokens INTEGER NOT NULL DEFAULT 0 CHECK (llm_tokens >= 0),
+					last_error TEXT,
+					started_at TEXT,
+					updated_at TEXT NOT NULL
+				) STRICT`,
+				`CREATE TABLE canon_compiled_entities (
+					book_id TEXT NOT NULL REFERENCES canon_books(id) ON DELETE CASCADE,
+					name TEXT NOT NULL,
+					aliases TEXT NOT NULL DEFAULT '[]',
+					kind TEXT NOT NULL
+						CHECK (kind IN ('人物', '地点', '势力', '物品', '其他')),
+					lead TEXT NOT NULL,
+					base TEXT NOT NULL,
+					base_entries TEXT NOT NULL DEFAULT '[]',
+					first_chapter_ordinal INTEGER NOT NULL
+						CHECK (first_chapter_ordinal >= 1),
+					last_chapter_ordinal INTEGER NOT NULL
+						CHECK (last_chapter_ordinal >= 1),
+					PRIMARY KEY (book_id, name)
+				) STRICT`,
+				`CREATE INDEX canon_compiled_entities_book
+					ON canon_compiled_entities(book_id, first_chapter_ordinal)`,
+				`ALTER TABLE canon_events
+					ADD COLUMN timeline_order INTEGER
+						CHECK (timeline_order IS NULL OR timeline_order >= 1)`,
+				`ALTER TABLE canon_events
+					ADD COLUMN is_turning_point INTEGER NOT NULL DEFAULT 0
+						CHECK (is_turning_point IN (0, 1))`,
+				`CREATE INDEX canon_events_timeline
+					ON canon_events(book_id, timeline_order)`,
+			],
+		},
 	];
 }
 
