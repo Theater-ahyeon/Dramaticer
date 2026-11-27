@@ -25,6 +25,8 @@ export interface NovelAiProviderConfig {
 	readonly baseUrl: string;
 	readonly apiKey: string;
 	readonly timeoutMs: number;
+	/** 本地队列的每分钟请求上限；默认 10。 */
+	readonly maxRequestsPerMinute: number;
 }
 
 export type ImageProviderConfig = ComfyUiProviderConfig | NovelAiProviderConfig;
@@ -34,6 +36,7 @@ export interface ImagesConfig {
 }
 
 export const NOVELAI_DEFAULT_BASE_URL = "https://image.novelai.net";
+export const NOVELAI_DEFAULT_MAX_REQUESTS_PER_MINUTE = 10;
 const NOVELAI_DEFAULT_TIMEOUT_MS = 120_000;
 
 const DEFAULT_TIMEOUT_MS = 300_000;
@@ -45,6 +48,7 @@ const PROVIDER_KEYS = [
 	"apiKey",
 	"timeoutMs",
 	"pollIntervalMs",
+	"maxRequestsPerMinute",
 ];
 
 /** 没有 `images.yaml` 时的配置：生图功能关闭。 */
@@ -142,10 +146,18 @@ function parseProvider(
 				`${label}.timeoutMs`,
 				NOVELAI_DEFAULT_TIMEOUT_MS,
 			),
+			maxRequestsPerMinute: optionalPositiveInt(
+				value.maxRequestsPerMinute,
+				`${label}.maxRequestsPerMinute`,
+				NOVELAI_DEFAULT_MAX_REQUESTS_PER_MINUTE,
+			),
 		};
 	}
 	if (api !== "comfyui") {
 		throw new Error(`${label}.api 只能是 ${IMAGE_PROVIDER_APIS.join("、")}`);
+	}
+	if (value.maxRequestsPerMinute !== undefined) {
+		throw new Error(`${label}.maxRequestsPerMinute 只对 novelai 有效`);
 	}
 	const baseUrl = interpolateEnvRefs(
 		requireString(value.baseUrl, `${label}.baseUrl`),

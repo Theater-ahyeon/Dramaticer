@@ -22,6 +22,10 @@ writeFileSync(
     api: comfyui
     baseUrl: ${fake.baseUrl}/comfy
     apiKey: ""
+  novelai:
+    api: novelai
+    apiKey: \${E2E_NAI_KEY}
+    maxRequestsPerMinute: 60
 `,
 	"utf8",
 );
@@ -756,7 +760,7 @@ const running = await serverModule.startServer({
 	},
 	images: {
 		path: imagesPath,
-		env: {},
+		env: { E2E_NAI_KEY: "e2e-novelai-key" },
 		mediaDir: join(workDir, "images"),
 	},
 	log: (line) => console.log(`[e2e] ${line}`),

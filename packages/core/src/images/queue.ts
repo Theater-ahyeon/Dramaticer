@@ -12,6 +12,7 @@ import {
 } from "./client.js";
 import type { ImagesConfig } from "./config.js";
 import { imageExtensionOf, readImageDimensions } from "./media.js";
+import type { NovelAiCharacterPrompt } from "./novelai.js";
 import { type ImagePromptStyle, compileImagePrompt } from "./prompt.js";
 import type { CharacterVisualProfile, NodeImageRecord } from "./types.js";
 
@@ -78,6 +79,25 @@ export function createIllustrateHandler(
 	};
 }
 
+/** 从整理结果里取出这一条记录对应的人物；提示词被改过时退化为空数组。 */
+function organizerCharacters(
+	image: NodeImageRecord,
+): readonly NovelAiCharacterPrompt[] {
+	const result = image.organizerResult;
+	if (result === null || image.prompt === null) return [];
+	const negativePrompt = image.negativePrompt ?? "";
+	const expanded = result.expanded.find(
+		(entry) =>
+			entry.prompt === image.prompt && entry.negativePrompt === negativePrompt,
+	);
+	if (expanded === undefined) return [];
+	return expanded.characters.map((character) => ({
+		prompt: character.prompt,
+		negativePrompt: character.negative,
+		center: character.center,
+	}));
+}
+
 async function runOneImage(input: {
 	readonly store: StoryStore;
 	readonly image: NodeImageRecord;
@@ -113,14 +133,17 @@ async function runOneImage(input: {
 		prompt: compiled.prompt,
 		negativePrompt: compiled.negativePrompt,
 	});
+	const fixedSeed =
+		workflow.kind === "novelai" ? workflow.payload.fixedSeed : null;
 	try {
 		const generated = await input.clientFor(provider).generate({
 			template: workflow,
 			prompt: compiled.prompt,
 			negativePrompt: compiled.negativePrompt,
-			seed: running.seed ?? 0,
+			seed: fixedSeed ?? running.seed ?? 0,
 			width: null,
 			height: null,
+			characters: organizerCharacters(running),
 		});
 		const extension = imageExtensionOf(generated.mediaType);
 		const fileName = `${image.storyId}/${image.id}.${extension}`;

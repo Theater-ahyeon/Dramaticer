@@ -298,7 +298,7 @@ async function importWorkflow(
 	);
 	const raw = await readWorkflowFile(parsed.file);
 	const workflow = parseComfyUiWorkflow(raw, "workflow");
-	const provider = resolveImageProvider(config);
+	const provider = resolveImageProvider(config, undefined, "comfyui");
 	const detection = detectComfyUiSlots(workflow);
 	logDetection(detection, log);
 	let slots: ComfyUiSlots;

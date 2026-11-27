@@ -313,3 +313,15 @@
 - 服务端：`POST /api/stories/:id/nodes/:nodeId/organize-images` 手动入队；`GET|PUT .../image-organizer/rules` 读写触发频率、最近提示词条数与替换规则。设置的图片配置仍随故事设置保存。
 - 后台调度在整理成功后补一轮只跑 `illustrate`，避免出图要等到下一次玩家输入。整理失败只让后台任务记 failed，正文与楼层读取不受影响。
 - e2e 在 `v5-image-organizer.spec.ts`（桌面/手机：设置落定、自动整理、手动再整理、图像后端、失败不影响正文），走查脚本 `.walk/walk16.spec.ts`。
+
+## NovelAI 按模型族生成请求（2026-11-27 起，image-v2/03）
+
+- `novelai-params.ts` 的模板参数新增 `mediumTier`、`negativePreset`、`fixedSeed`、`useCoords`、`straightAlpha`、`tagHintQt`、`tagHintUcPreset`；旧模板 JSON 缺这些字段时由 `assertNovelAiParameters` 补默认值，`model` 接受任意非空自定义 id。
+- `detectNovelAiFamily` 只看模型 id 是否含 `nai-diffusion-5` / `nai-diffusion-4`，其余归 V3。V5 的 Medium 档在 `resolveNovelAiModel` 里加 `-medium` 后缀，已带后缀不重复。
+- 请求体在 `buildNovelAiRequestBody`：V3 把人物提示词与人物负面拼回扁平字段，不发 `v4_prompt` 与 `characterPrompts`；V4.x 用 `v4_prompt` / `v4_negative_prompt` / `characterPrompts`，`varietyBoost` 时按尺寸算 `skip_cfg_above_sigma`；V5 用 `params_version: 4`，不发跳过 CFG、旧参考数组与默认噪点表，写 `straight_alpha` 与 `tag_hint_*`。
+- 负面预设的 `ucPreset` 数值：Heavy 0、Light 1、Furry 2、Human 3、None 4；非 None 的预设词由程序拼进负面提示词。`tag_hint_uc_preset` 的数值与 `ucPreset` 不同（None 0、Heavy 2、Light 3、Human 4、Furry 5）。
+- 出图任务从 `node_images.organizer_result.expanded` 里按 prompt 与 negative 找到本条记录对应的人物，把 `{prompt, negativePrompt, center}` 传给客户端；模板 `fixedSeed` 非空时优先于楼层 seed。
+- NovelAI 客户端同一 provider 串行，按 `maxRequestsPerMinute`（`images.yaml` 的 provider 字段，默认 10）滑动窗口排队；429 先看 `Retry-After`，否则从 `retryBaseDelayMs` 翻倍，默认最多再试 3 次。测试注入 `sleep` / `now`，不真实等待。
+- `images import`（ComfyUI workflow）现在只在 comfyui 后端里选 provider；配置里同时有 NovelAI 后端时不会因「多个 provider」失败。
+- e2e 在 `v5-novelai-template.spec.ts`（桌面/手机：自定义模型、Medium、负面预设、固定 seed 与 V5 开关保存后回读），e2e 的 `serve.mjs` 给 images.yaml 加了一个假 NovelAI 后端；走查脚本 `.walk/walk17.spec.ts`。
+- `novelai.live.test.ts` 读仓库根 `.env` 的 `NOVELAI_API_KEY`，没有令牌时整组跳过；有令牌才真的请求官方接口出一张小图。

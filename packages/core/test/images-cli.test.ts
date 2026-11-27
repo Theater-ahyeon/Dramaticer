@@ -292,7 +292,7 @@ describe("runImagesCli", () => {
 				],
 				deps(context),
 			),
-		).rejects.toThrow(/没有配置图像 provider/);
+		).rejects.toThrow(/没有配置 comfyui 图像 provider/);
 	});
 
 	it("profiles 列出档案，--generate 与后台任务共用处理器", async () => {

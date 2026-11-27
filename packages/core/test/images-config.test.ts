@@ -6,6 +6,7 @@ import { loadImagesConfig, parseImagesConfig } from "../src/index.js";
 const env = {
 	COMFY_URL: "http://127.0.0.1:8188",
 	COMFY_KEY: "comfy-secret",
+	NAI_KEY: "pst-test",
 };
 
 function configText(overrides = ""): string {
@@ -45,6 +46,31 @@ describe("parseImagesConfig", () => {
 			timeoutMs: 120_000,
 			pollIntervalMs: 250,
 		});
+	});
+
+	it("NovelAI 默认每分钟 10 次，可覆盖；comfyui 不接受该字段", () => {
+		const text = `providers:
+  nai:
+    api: novelai
+    apiKey: \${NAI_KEY}
+    maxRequestsPerMinute: 3
+`;
+		expect(parseImagesConfig(text, env).providers.get("nai")).toMatchObject({
+			api: "novelai",
+			maxRequestsPerMinute: 3,
+		});
+		const defaulted = text.replace("    maxRequestsPerMinute: 3\n", "");
+		expect(
+			parseImagesConfig(defaulted, env).providers.get("nai")
+				?.maxRequestsPerMinute,
+		).toBe(10);
+		const comfy = configText().replace(
+			"    apiKey: ${COMFY_KEY}",
+			"    apiKey: ${COMFY_KEY}\n    maxRequestsPerMinute: 3",
+		);
+		expect(() => parseImagesConfig(comfy, env)).toThrow(
+			/images\.yaml\.providers\.comfy\.maxRequestsPerMinute/,
+		);
 	});
 
 	it("providers 为空时返回空配置", () => {

@@ -1,7 +1,7 @@
 import { createComfyUiClient } from "./comfyui.js";
 import type { ComfyUiClientOptions, ComfyUiFetch } from "./comfyui.js";
 import type { ImageProviderConfig } from "./config.js";
-import { createNovelAiClient } from "./novelai.js";
+import { type NovelAiCharacterPrompt, createNovelAiClient } from "./novelai.js";
 import type { ImageWorkflowRecord } from "./types.js";
 
 /** 一次出图的输入：模板决定后端与参数，其余由出图任务按楼层填入。 */
@@ -12,6 +12,8 @@ export interface ImageGenerateInput {
 	readonly seed: number;
 	readonly width: number | null;
 	readonly height: number | null;
+	/** 画面整理展开的多人物提示词；ComfyUI 忽略。 */
+	readonly characters?: readonly NovelAiCharacterPrompt[];
 }
 
 export interface ImageGenerated {
@@ -45,7 +47,11 @@ export function createDefaultImageClientFactory(
 		options.fetch ?? ((url: string, init?: RequestInit) => fetch(url, init));
 	return (provider) => {
 		if (provider.api === "novelai") {
-			const client = createNovelAiClient(provider, { fetch: fetchImpl });
+			const client = createNovelAiClient(provider, {
+				fetch: fetchImpl,
+				...(options.sleep === undefined ? {} : { sleep: options.sleep }),
+				...(options.now === undefined ? {} : { now: options.now }),
+			});
 			return {
 				generate(input) {
 					if (input.template.kind !== "novelai") {
@@ -58,6 +64,7 @@ export function createDefaultImageClientFactory(
 						prompt: input.prompt,
 						negativePrompt: input.negativePrompt,
 						seed: input.seed,
+						characters: input.characters ?? [],
 					});
 				},
 			};

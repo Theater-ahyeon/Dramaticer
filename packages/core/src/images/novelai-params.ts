@@ -1,5 +1,35 @@
 import { assertPlainObject, rejectUnknownKeys } from "../json.js";
 
+/** NovelAI 的负面预设；数值与官方请求里的 `ucPreset` 一致。 */
+export const NOVELAI_NEGATIVE_PRESETS = [
+	"heavy",
+	"light",
+	"human_focus",
+	"furry_focus",
+	"none",
+] as const;
+
+export type NovelAiNegativePreset = (typeof NOVELAI_NEGATIVE_PRESETS)[number];
+
+export function isNovelAiNegativePreset(
+	value: unknown,
+): value is NovelAiNegativePreset {
+	return (
+		typeof value === "string" &&
+		(NOVELAI_NEGATIVE_PRESETS as readonly string[]).includes(value)
+	);
+}
+
+export const NOVELAI_UC_PRESET_VALUES: Readonly<
+	Record<NovelAiNegativePreset, number>
+> = {
+	heavy: 0,
+	light: 1,
+	furry_focus: 2,
+	human_focus: 3,
+	none: 4,
+};
+
 /**
  * NovelAI 出图模板的参数。字段名用本项目自己的写法，请求时再换成 NovelAI 的字段；
  * 提示词、负面提示词与 seed 由出图任务按楼层填入，不放在模板里。
@@ -21,6 +51,19 @@ export interface NovelAiParameters {
 	readonly qualityTags: string;
 	/** 放在负面提示词最前面的固定标签。 */
 	readonly negativeTags: string;
+	/** V5 的 Medium 档；其余模型忽略。 */
+	readonly mediumTier: boolean;
+	readonly negativePreset: NovelAiNegativePreset;
+	/** 非空时出图固定使用这个 seed；为空时用楼层登记的 seed。 */
+	readonly fixedSeed: number | null;
+	/** 人物有坐标时是否按坐标排布；关闭时交给 AI 默认位置。 */
+	readonly useCoords: boolean;
+	/** V5 的 `straight_alpha`。 */
+	readonly straightAlpha: boolean;
+	/** V5 的 `tag_hint_qt`。 */
+	readonly tagHintQt: boolean;
+	/** V5 的 `tag_hint_uc_preset`。 */
+	readonly tagHintUcPreset: boolean;
 }
 
 export const DEFAULT_NOVELAI_PARAMETERS: NovelAiParameters = {
@@ -37,6 +80,13 @@ export const DEFAULT_NOVELAI_PARAMETERS: NovelAiParameters = {
 	qualityTags: "best quality, amazing quality, very aesthetic, absurdres",
 	negativeTags:
 		"lowres, bad anatomy, bad hands, text, error, worst quality, jpeg artifacts, watermark, signature",
+	mediumTier: false,
+	negativePreset: "heavy",
+	fixedSeed: null,
+	useCoords: false,
+	straightAlpha: false,
+	tagHintQt: false,
+	tagHintUcPreset: false,
 };
 
 const KEYS = Object.keys(
@@ -78,6 +128,28 @@ function text(value: unknown, label: string, allowEmpty: boolean): string {
 
 function bool(value: unknown, label: string): boolean {
 	if (typeof value !== "boolean") throw new Error(`${label} 必须是布尔值`);
+	return value;
+}
+
+function nullableSeed(value: unknown, label: string): number | null {
+	if (value === null) return null;
+	if (
+		typeof value !== "number" ||
+		!Number.isInteger(value) ||
+		value < 0 ||
+		value > Number.MAX_SAFE_INTEGER
+	) {
+		throw new Error(
+			`${label} 必须是 0 到 ${Number.MAX_SAFE_INTEGER} 之间的整数或 null`,
+		);
+	}
+	return value;
+}
+
+function negativePreset(value: unknown, label: string): NovelAiNegativePreset {
+	if (!isNovelAiNegativePreset(value)) {
+		throw new Error(`${label} 只能是 ${NOVELAI_NEGATIVE_PRESETS.join("、")}`);
+	}
 	return value;
 }
 
@@ -126,5 +198,15 @@ export function assertNovelAiParameters(
 		varietyBoost: bool(merged.varietyBoost, `${label}.varietyBoost`),
 		qualityTags: text(merged.qualityTags, `${label}.qualityTags`, true),
 		negativeTags: text(merged.negativeTags, `${label}.negativeTags`, true),
+		mediumTier: bool(merged.mediumTier, `${label}.mediumTier`),
+		negativePreset: negativePreset(
+			merged.negativePreset,
+			`${label}.negativePreset`,
+		),
+		fixedSeed: nullableSeed(merged.fixedSeed, `${label}.fixedSeed`),
+		useCoords: bool(merged.useCoords, `${label}.useCoords`),
+		straightAlpha: bool(merged.straightAlpha, `${label}.straightAlpha`),
+		tagHintQt: bool(merged.tagHintQt, `${label}.tagHintQt`),
+		tagHintUcPreset: bool(merged.tagHintUcPreset, `${label}.tagHintUcPreset`),
 	};
 }
