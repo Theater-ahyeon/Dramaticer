@@ -174,7 +174,7 @@ describe("场记对照工具", () => {
 		expect(formatSceneLogCompare(result)).toContain("样本 2 个助手楼层");
 	});
 
-	it("引文对不上只拒绝该条，并计入引文命中率与路径差异", async () => {
+	it("引文对不上仍按楼层锚点写入，但计入引文命中率与路径差异", async () => {
 		const independent = openStore();
 		const merged = openStore();
 		seedStory(independent);
@@ -236,17 +236,17 @@ describe("场记对照工具", () => {
 			mergedClient: mergedClient.client,
 		});
 
-		expect(result.merged.diffs).toBe(1);
+		expect(result.merged.diffs).toBe(2);
 		expect(result.quotes).toEqual({
 			submitted: 2,
 			verified: 1,
 			rejected: 1,
 			hitRate: 0.5,
 		});
-		expect(result.agreement.pathIntersection).toBe(1);
+		expect(result.agreement.pathIntersection).toBe(2);
 		expect(result.agreement.pathUnion).toBe(2);
-		expect(result.agreement.pathAgreement).toBe(0.5);
-		expect(result.merged.repairs).toBeGreaterThanOrEqual(1);
+		expect(result.agreement.pathAgreement).toBe(1);
+		expect(result.merged.repairs).toBe(0);
 		expect(result.merged.failures).toEqual([]);
 	});
 

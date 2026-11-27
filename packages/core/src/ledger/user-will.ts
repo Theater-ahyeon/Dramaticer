@@ -6,6 +6,7 @@ import {
 import { assertPlainObject, isJsonObject, rejectUnknownKeys } from "../json.js";
 import { type LlmMessage, NO_CONTINUATION } from "../llm/types.js";
 import { parseJsonOutputArray } from "../memory/json-output.js";
+import { quoteMatches } from "../memory/quote.js";
 import type { StoryStore } from "../store/story-store.js";
 import type { NewStateDiff, TimelineNode } from "../timeline.js";
 import { readLedger } from "./read.js";
@@ -253,7 +254,7 @@ export function findQuoteNode(
 ): TimelineNode | null {
 	for (let index = playerNodes.length - 1; index >= 0; index -= 1) {
 		const node = playerNodes[index];
-		if (node?.raw.includes(quote)) return node;
+		if (node !== undefined && quoteMatches(node.raw, quote)) return node;
 	}
 	return null;
 }

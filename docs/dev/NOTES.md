@@ -171,6 +171,8 @@
 
 - 上下文六节（memory-v5/04）：默认模板是 character、lore、summary、history、world_index、situation、pages、memory、director、user_will、protocol。`pages`（相关页面）注入在场者与玩家提到的久未出场者的记事页整页；检索（`memory`）在整个故事放得下时不触发，事件命中带「当时：所在场摘要或前一楼原文」。profile、reunion、blueprint、state、scene、scene_card 仍可在自定义模板里用。
 
+- 出处放宽（memory-v5/05）：所有引文核对用 `quoteMatches`（去标点包含，或相邻两字重合 ≥ 60%），对不上照样写入；后台写入只因「与玩家锁定的事实冲突」「让未知情者知道了秘密」两种原因被拒（后者：knowledge 写入的引文在原文里对不上）。
+
 ## 新界面的视觉层（2026-11-16 起）
 
 - 2026-11-19 起（ADR-0162、`ui-lite`）：没有 three.js 场景、指针光、卡片倾斜与开场动画，也不打包字体；`stage.pulse` / `setWriting` 保留为空操作级别的接口，页面可以照常调用。下面关于三维背景的旧条目已过时，以 `.scratch/ui-lite/spec.md` 为准。

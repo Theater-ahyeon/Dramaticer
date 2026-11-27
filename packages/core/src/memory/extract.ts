@@ -8,6 +8,7 @@ import type { StoryStore } from "../store/story-store.js";
 import type { TimelineNode } from "../timeline.js";
 import { EVENT_WINDOW_FLOORS, type NewMemoryEventInput } from "./event.js";
 import { parseJsonOutputArray } from "./json-output.js";
+import { quoteMatches } from "./quote.js";
 
 export interface ExtractedEvent {
 	readonly text: string;
@@ -59,7 +60,7 @@ const SYSTEM_PROMPT = [
 	'- participants 与 knowers：字符串数组，元素都不能为空。knowers 为空数组表示公开事件；不确定谁知道时用 ["*"]。',
 	"- importance：0 到 1 之间的数字，越重要越接近 1。",
 	"- storyTime 与 location：可选；不确定就省略。",
-	"- quote：从该楼层原文里逐字复制的一句话，作为这条记录的出处；必须一字不差，对不上的记录会被拒绝。",
+	"- quote：从该楼层原文里摘一句话作为这条记录的出处，尽量照抄原句。",
 	"事件描述用克制、非露骨的中性表述概括发生了什么与谁参与，不要复制原文中的露骨措辞。",
 	"没有值得记住的事件时省略该楼层；一个事件都没有时输出 []。不要把楼层里没有出现的信息编进事件。",
 ].join("\n");
@@ -250,19 +251,11 @@ export function recordExtractedEvents(
 		let ordinal = 0;
 		for (const event of batch.events) {
 			const quote = event.quote ?? null;
-			// 出处必须是源楼层里的原话：对不上的记录不写入，只留下拒绝原因。
-			if (quote !== null && !raw.includes(quote.trim())) {
-				store.recordMemoryRejection({
-					storyId,
-					nodeId: batch.nodeId,
-					kind: "record",
-					text: event.text,
-					reason: `出处不是这一楼的原话：${quote}`,
-				});
-				continue;
-			}
+			// 出处按楼层锚点记（v5 §3.5）：引文宽松匹配才留作摘录，对不上也照样写入。
 			const id = randomUUID();
-			if (quote !== null) quotes.push({ eventId: id, quote: quote.trim() });
+			if (quote !== null && quoteMatches(raw, quote)) {
+				quotes.push({ eventId: id, quote: quote.trim() });
+			}
 			events.push({
 				id,
 				storyId,

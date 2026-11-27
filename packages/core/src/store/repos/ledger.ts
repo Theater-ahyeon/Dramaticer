@@ -853,7 +853,7 @@ export class LedgerRepo extends StoreRepo {
 				nodeId: input.nodeId,
 				kind: "state",
 				text: `${input.path.join(".")} ← ${input.op === "set" ? JSON.stringify(input.value) : "删除"}`,
-				reason: `这一项被玩家锁定，${input.source} 的写入没有生效`,
+				reason: `与玩家锁定的事实冲突，${input.source} 的写入没有生效`,
 			});
 		}
 		return kept;

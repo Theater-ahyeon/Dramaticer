@@ -37,7 +37,7 @@ function windowOf(store: StoryStore, nodeId: string): EventWindow {
 }
 
 describe("记忆记录", () => {
-	it("出处不是源楼层原话时拒绝并留下可读的原因", () => {
+	it("引文对不上时照样按楼层锚点写入，不留摘录也不拒收（v5 §3.5）", () => {
 		const { store } = openTempStore();
 		store.createStory({ id: "s1", title: "测试" });
 		append(store, "a1", null, "assistant", "凛站在教室门口。");
@@ -59,21 +59,19 @@ describe("记忆记录", () => {
 			},
 		]);
 
-		expect(store.countEventsForNode("a1")).toBe(0);
-		expect(readMemoryRecords(store, "s1", "a1")).toEqual([]);
-		const rejections = store.listMemoryRejections("s1");
-		expect(rejections).toHaveLength(1);
-		expect(rejections[0]).toMatchObject({
+		expect(store.countEventsForNode("a1")).toBe(1);
+		expect(readMemoryRecords(store, "s1", "a1")[0]).toMatchObject({
 			nodeId: "a1",
-			kind: "record",
-			text: "凛在教室门口等人",
+			floorNo: 1,
+			quote: null,
 		});
-		expect(rejections[0]?.reason).toContain("出处不是这一楼的原话");
-		expect(rejections[0]?.reason).toContain("她一直在门口等着");
+		expect(store.listMemoryRejections("s1")).toEqual([]);
 
-		recordExtractedEvents(store, "s1", windowOf(store, "a1"), [
+		append(store, "u1", "a1", "user", "我走过去。");
+		append(store, "a2", "u1", "assistant", "凛站在教室门口，没回头。");
+		recordExtractedEvents(store, "s1", windowOf(store, "a2"), [
 			{
-				nodeId: "a1",
+				nodeId: "a2",
 				events: [
 					{
 						text: "凛在教室门口等人",
@@ -82,20 +80,15 @@ describe("记忆记录", () => {
 						importance: 0.4,
 						storyTime: null,
 						location: null,
-						quote: "凛站在教室门口。",
+						quote: "凛站在教室门口！",
 					},
 				],
 			},
 		]);
 
-		const records = readMemoryRecords(store, "s1", "a1");
-		expect(records).toHaveLength(1);
-		expect(records[0]).toMatchObject({
-			kind: "event",
-			nodeId: "a1",
-			floorNo: 1,
-			quote: "凛站在教室门口。",
-		});
+		// 宽松匹配的引文（标点不同）照样留作摘录。
+		const records = readMemoryRecords(store, "s1", "a2");
+		expect(records.map((record) => record.quote)).toContain("凛站在教室门口！");
 	});
 
 	it("分支切换后只读到当前路径上的记录与事实", () => {

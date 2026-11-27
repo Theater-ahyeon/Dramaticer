@@ -299,7 +299,7 @@ describe("记忆的玩家修改接口", () => {
 		);
 		expect(leftView.rejections[0]).toMatchObject({ kind: "state" });
 		expect(leftView.rejections[0]?.text).toContain("操场");
-		expect(leftView.rejections[0]?.reason).toContain("被玩家锁定");
+		expect(leftView.rejections[0]?.reason).toContain("与玩家锁定的事实冲突");
 
 		const page = leftView.pages.find((candidate) => candidate.name === "凛");
 		if (page === undefined) throw new Error("没有凛的百科页面");

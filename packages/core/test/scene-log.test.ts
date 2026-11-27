@@ -142,7 +142,7 @@ describe("场记任务", () => {
 		expect(log?.states[0]?.sourceQuote).toBe("把书合上");
 	});
 
-	it("引文对不上的条目整条拒绝并记原因，其余条目照常写入", async () => {
+	it("引文对不上照样按楼层锚点写入；没有得知经过的知情写入作为泄密拒收", async () => {
 		const { store } = openTempStore();
 		seedStory(store);
 		const response = JSON.stringify({
@@ -168,6 +168,13 @@ describe("场记任务", () => {
 					value: "平静",
 					confidence: 0.5,
 				},
+				{
+					path: ["knowledge", "老师", "信的内容"],
+					op: "set",
+					value: { factId: "旧信", text: "信里写着凛的秘密" },
+					confidence: 0.6,
+					sourceQuote: "老师读完了信",
+				},
 			],
 			present: ["凛"],
 			sceneEnds: true,
@@ -179,19 +186,23 @@ describe("场记任务", () => {
 		expect(readLedger(store, "a2", ["scene", "current"])).toEqual({
 			place: "教室",
 		});
-		expect(readLedger(store, "a2", ["item", "旧信"])).toBeUndefined();
+		expect(readLedger(store, "a2", ["item", "旧信"])).toEqual({ holder: "凛" });
 		expect(readLedger(store, "a2", ["character", "凛"])).toBeUndefined();
+		expect(readLedger(store, "a2", ["knowledge", "老师"])).toBeUndefined();
 		const log = store.getSceneLog("a2");
 		expect(log?.sceneEnds).toBe(true);
-		expect(log?.quotes).toEqual({ submitted: 3, verified: 1 });
-		expect(log?.states).toHaveLength(1);
-		expect(log?.repairs).toHaveLength(2);
-		expect(log?.repairs.map((repair) => repair.action)).toEqual([
-			"delete",
-			"delete",
+		expect(log?.quotes).toEqual({ submitted: 4, verified: 1 });
+		expect(log?.states).toHaveLength(2);
+		expect(log?.repairs.map((repair) => repair.reason)).toEqual([
+			expect.stringContaining("sourceQuote"),
+			expect.stringContaining("让未知情者知道了秘密"),
 		]);
-		expect(log?.repairs[0]?.reason).toContain("sourceQuote 不在楼层");
-		expect(log?.repairs[1]?.reason).toContain("sourceQuote");
+		const rejections = store.listMemoryRejections("s1");
+		expect(rejections.map((item) => item.reason)).toContain(
+			"让未知情者知道了秘密，原文里没有得知的经过",
+		);
+		// 拒收理由里不再有「引文不逐字」。
+		for (const item of rejections) expect(item.reason).not.toContain("原话");
 	});
 
 	it("空输出整次失败，不写入任何记录", async () => {

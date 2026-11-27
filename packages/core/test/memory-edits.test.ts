@@ -129,7 +129,7 @@ describe("玩家直接修改记忆", () => {
 		const rejections = store.listMemoryRejections("s1");
 		expect(rejections).toHaveLength(1);
 		expect(rejections[0]).toMatchObject({ kind: "state", nodeId: "a2" });
-		expect(rejections[0]?.reason).toContain("被玩家锁定");
+		expect(rejections[0]?.reason).toContain("与玩家锁定的事实冲突");
 		expect(rejections[0]?.text).toContain("操场");
 
 		const other = readMemoryState(store, "s1", "a3")[0];

@@ -20,6 +20,7 @@ import {
 	recordExtractedEvents,
 } from "../memory/extract.js";
 import { parseJsonOutputObject } from "../memory/json-output.js";
+import { quoteMatches } from "../memory/quote.js";
 import { readStoryFeatureState } from "../settings/features.js";
 import type { StoryStore } from "../store/story-store.js";
 import type { StateDiffOp, StoryTime, TimelineNode } from "../timeline.js";
@@ -39,6 +40,9 @@ import {
 } from "./user-will.js";
 
 export const SCENE_LOG_JOB_KIND = "scene_log";
+
+/** 后台写入被拒的第二种原因（v5 §3.5）；另一种是与玩家锁定的事实冲突。 */
+export const SECRET_LEAK_REASON = "让未知情者知道了秘密，原文里没有得知的经过";
 
 /** 场记读取的最近楼层数；默认 6，与现场分析一致。 */
 export const SCENE_LOG_WINDOW_FLOORS = 6;
@@ -377,14 +381,17 @@ export function parseSceneLogResponse(
 		submitted += 1;
 		const label = `场记记录.states[${index}]`;
 		const quote = quoteOf(value);
-		if (quote !== null && input.floorRaw.includes(quote)) verified += 1;
+		const matched = quote !== null && quoteMatches(input.floorRaw, quote);
+		if (matched) verified += 1;
 		try {
 			const state = readProposedState(value, label);
-			if (!input.floorRaw.includes(state.sourceQuote)) {
+			// v5 §3.5：引文只用来定位，对不上照样按楼层锚点写入；只有「谁得知了
+			// 什么」必须在原文里有得知的经过，否则就是让未知情者知道了秘密。
+			if (!matched && state.path[0] === "knowledge") {
 				repairs.push({
 					path: state.path,
 					action: "delete",
-					reason: `${label}.sourceQuote 不在楼层 ${input.nodeId} 的原文里：${state.sourceQuote}`,
+					reason: `${SECRET_LEAK_REASON}：${state.path.join(".")}`,
 				});
 				continue;
 			}
@@ -654,7 +661,7 @@ function buildSystemPrompt(
 		`{${shape.join(",")}}`,
 		`- beat：这一楼的节拍标签，一个短语，例如 ${BEAT_EXAMPLES}。`,
 		"- states：这一楼确立的硬状态变化。只写位置、衣着、伤势、持有物、故事时间、在场者与卡定义的变量这类下一楼必须对得上的项；性格、关系史这类软知识不要写。",
-		"- 每条 states 必须带 sourceQuote，逐字摘自这一楼的正文，不要改写、概括或跨楼层拼接；对不上整条被拒绝。",
+		"- 每条 states 带 sourceQuote，摘自这一楼正文里支撑它的原句，尽量照抄。knowledge（谁得知了什么）必须是正文里确实写了得知的经过。",
 		"- op 只能是 set 或 delete；delete 不能带 value；confidence 是 0 到 1 的数字。",
 		"- present：这一楼结束时在场的人物名称，用卡里的写法。",
 		"- sceneEnds：这一楼是否结束了一个场次。",
@@ -680,7 +687,7 @@ function buildSystemPrompt(
 			: []),
 		...(parts.events
 			? [
-					"- events：这一楼里之后仍可能被提起的事实性事件，没有就给空数组。knowers 为空数组表示公开；quote 逐字摘自这一楼的正文。用克制、中性的表述概括。",
+					"- events：这一楼里之后仍可能被提起的事实性事件，没有就给空数组。knowers 为空数组表示公开；quote 摘自这一楼正文里的原句。用克制、中性的表述概括。",
 				]
 			: []),
 		...(parts.will
@@ -870,6 +877,17 @@ export function createSceneLogHandler(
 			quotes: parsed.quotes,
 			repairs: [...parsed.repairs, ...(settlementRepairs ?? [])],
 		});
+		// 被拦下的泄密写入进检视器的拒收列表。
+		for (const repair of parsed.repairs) {
+			if (!repair.reason.startsWith(SECRET_LEAK_REASON)) continue;
+			store.recordMemoryRejection({
+				storyId: job.storyId,
+				nodeId,
+				kind: "state",
+				text: repair.path.join("."),
+				reason: SECRET_LEAK_REASON,
+			});
+		}
 		// 顺带的部分都挂在这一楼上：楼层被重写后它们随旧楼一起离开当前路径。
 		if (effective.options && parsed.options.length > 0) {
 			store.replaceDirectorCandidateActions({

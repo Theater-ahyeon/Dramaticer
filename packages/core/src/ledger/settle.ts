@@ -16,6 +16,7 @@ import {
 } from "../json.js";
 import { type LlmMessage, NO_CONTINUATION } from "../llm/types.js";
 import { parseJsonOutputArray } from "../memory/json-output.js";
+import { quoteMatches } from "../memory/quote.js";
 import type { StoryStore } from "../store/story-store.js";
 import type {
 	NewStateDiff,
@@ -168,7 +169,7 @@ interface SettlerProposal {
 		readonly value: unknown;
 		readonly storyTime: StoryTime | null;
 		readonly confidence: number;
-		/** 正文里支撑这条事实的原句；模型没给时为 null，给了就必须逐字出现在楼层原文里。 */
+		/** 正文里支撑这条事实的原句；模型没给时为 null，只用来定位，宽松匹配。 */
 		readonly sourceQuote: string | null;
 	};
 	readonly reason: string | null;
@@ -908,14 +909,17 @@ function planFloor(
 		const path = canonicalizePath(proposal.diff.path, canonical);
 		const key = JSON.stringify(path);
 		if (covered.has(key)) continue;
+		// v5 §3.5：引文只用来定位，对不上照样按楼层锚点写入；「谁得知了什么」
+		// 例外，原文里没有得知经过就是泄密。
 		if (
+			path[0] === "knowledge" &&
 			proposal.diff.sourceQuote !== null &&
-			!floor.raw.includes(proposal.diff.sourceQuote)
+			!quoteMatches(floor.raw, proposal.diff.sourceQuote)
 		) {
 			rejections.push({
 				path,
 				action: "delete",
-				reason: `${label}.sourceQuote 不在楼层原文里：${proposal.diff.sourceQuote}`,
+				reason: `${label}：让未知情者知道了秘密，原文里没有得知的经过`,
 			});
 			continue;
 		}
