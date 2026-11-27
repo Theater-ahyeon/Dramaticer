@@ -491,3 +491,119 @@ export interface CanonCursorRecord {
 	readonly fromHere: boolean;
 	readonly createdAt: string;
 }
+
+// 玩家就地改原著事件（v5 §5.5）：按格保存，每格一条只追加的版本记录；
+// 底层抽取出的原文表不动，窗口与原著页读当前楼层路径上各格的最新一版。
+
+export const CANON_EVENT_FIELDS = [
+	"title",
+	"summary",
+	"digest",
+	"voices",
+	"passage",
+] as const;
+
+export type CanonEventField = (typeof CANON_EVENT_FIELDS)[number];
+
+export function isCanonEventField(value: unknown): value is CanonEventField {
+	return (
+		typeof value === "string" &&
+		(CANON_EVENT_FIELDS as readonly string[]).includes(value)
+	);
+}
+
+export type CanonEventEditSource = "player" | "rollback";
+
+export function isCanonEventEditSource(
+	value: unknown,
+): value is CanonEventEditSource {
+	return value === "player" || value === "rollback";
+}
+
+/** 玩家版话术：一句话是谁说的、说还是想。 */
+export interface CanonEventVoiceEdit {
+	readonly character: string;
+	readonly kind: CanonVoiceKind;
+	readonly text: string;
+}
+
+/** 每格的取值：文本格是字符串，话术格是数组，原文格是段落数组。 */
+export type CanonEventFieldValue =
+	| string
+	| readonly CanonEventVoiceEdit[]
+	| readonly string[];
+
+export interface CanonEventEditRecord {
+	readonly id: number;
+	readonly storyId: string;
+	readonly eventId: number;
+	/** 产生这一版的楼层；null 表示对所有分支都可见。 */
+	readonly nodeId: string | null;
+	readonly field: CanonEventField;
+	readonly value: CanonEventFieldValue;
+	readonly source: CanonEventEditSource;
+	readonly note: string | null;
+	readonly createdAt: string;
+}
+
+function requiredText(value: unknown, label: string): string {
+	if (typeof value !== "string" || value.trim().length === 0) {
+		throw new Error(`${label}不能为空`);
+	}
+	return value.trim();
+}
+
+/** 写入与读取都走这里：校验并按格归一化，拒绝多余字段。 */
+export function assertCanonEventFieldValue(
+	field: CanonEventField,
+	value: unknown,
+): CanonEventFieldValue {
+	switch (field) {
+		case "title":
+			return requiredText(value, "标题");
+		case "summary":
+			return requiredText(value, "概要");
+		case "digest":
+			if (typeof value !== "string") {
+				throw new Error("缩写必须是字符串");
+			}
+			return value.trim();
+		case "voices": {
+			if (!Array.isArray(value)) {
+				throw new Error("话术必须是数组");
+			}
+			return value.map((item, index): CanonEventVoiceEdit => {
+				const label = `第 ${index + 1} 条话术`;
+				if (typeof item !== "object" || item === null) {
+					throw new Error(`${label}必须是对象`);
+				}
+				const record = item as Record<string, unknown>;
+				if (!onlyVoiceKeys(record)) {
+					throw new Error(`${label}有无法识别的字段`);
+				}
+				if (record.kind !== "speech" && record.kind !== "thought") {
+					throw new Error(`${label}的类型必须是 speech 或 thought`);
+				}
+				return {
+					character: requiredText(record.character, `${label}的人物`),
+					kind: record.kind,
+					text: requiredText(record.text, `${label}的内容`),
+				};
+			});
+		}
+		case "passage": {
+			if (!Array.isArray(value)) {
+				throw new Error("原文必须是段落数组");
+			}
+			return value.map((paragraph, index) =>
+				requiredText(paragraph, `第 ${index + 1} 段原文`),
+			);
+		}
+	}
+}
+
+function onlyVoiceKeys(record: Record<string, unknown>): boolean {
+	return Object.keys(record).every(
+		(key) => key === "character" || key === "kind" || key === "text",
+	);
+}

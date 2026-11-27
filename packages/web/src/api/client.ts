@@ -18,6 +18,8 @@ import {
 	type CanonChapterUpdateRequest,
 	type CanonCompiledView,
 	type CanonEstimateView,
+	type CanonEventEditRequest,
+	type CanonEventRollbackRequest,
 	type CanonExtractionOverviewView,
 	type CanonExtractionView,
 	type CanonPackageView,
@@ -85,6 +87,7 @@ import {
 	type StoryBlueprintView,
 	type StoryBookExport,
 	type StoryCanonCursorRequest,
+	type StoryCanonPageView,
 	type StoryCanonSettingsRequest,
 	type StoryCanonView,
 	type StoryCluesView,
@@ -514,6 +517,37 @@ export class ApiClient {
 
 	async getStoryCanon(storyId: string): Promise<StoryCanonView> {
 		return this.json<StoryCanonView>("GET", `${storyPath(storyId)}/canon`);
+	}
+
+	async getStoryCanonPage(storyId: string): Promise<StoryCanonPageView> {
+		return this.json<StoryCanonPageView>(
+			"GET",
+			`${storyPath(storyId)}/canon/page`,
+		);
+	}
+
+	async editCanonEvent(
+		storyId: string,
+		eventId: number,
+		request: CanonEventEditRequest,
+	): Promise<StoryCanonPageView> {
+		return this.json<StoryCanonPageView>(
+			"POST",
+			`${storyPath(storyId)}/canon/events/${eventId}/edit`,
+			request,
+		);
+	}
+
+	async rollbackCanonEvent(
+		storyId: string,
+		eventId: number,
+		request: CanonEventRollbackRequest,
+	): Promise<StoryCanonPageView> {
+		return this.json<StoryCanonPageView>(
+			"POST",
+			`${storyPath(storyId)}/canon/events/${eventId}/rollback`,
+			request,
+		);
 	}
 
 	async updateStoryCanonSettings(

@@ -74,6 +74,7 @@ export type {
 	CanonEventTimelinePatch,
 	CanonStorySettingsUpdate,
 	CreateCanonBookInput,
+	AppendCanonEventEditInput,
 	SaveCanonCursorInput,
 	SaveStoryCanonBindingInput,
 } from "./repos/canon.js";
@@ -446,6 +447,8 @@ export interface StoryStore
 			| "getCanonCursor"
 			| "listCanonCursors"
 			| "getLatestCanonCursor"
+			| "appendCanonEventEdit"
+			| "listCanonEventEdits"
 		> {}
 
 export class StoryStore {
@@ -934,6 +937,8 @@ const DELEGATES: Readonly<Record<keyof Repos, readonly string[]>> = {
 		"getCanonCursor",
 		"listCanonCursors",
 		"getLatestCanonCursor",
+		"appendCanonEventEdit",
+		"listCanonEventEdits",
 	],
 };
 

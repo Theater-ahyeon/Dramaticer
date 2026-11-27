@@ -2400,6 +2400,33 @@ export function buildMigrations(
 					DEFAULT 0 CHECK (from_here IN (0, 1))`,
 			],
 		},
+		{
+			version: 81,
+			description:
+				"玩家改原著（v5 §5.5）：按格版本化的事件编辑，只追加；底层原文表不动，沿楼层路径取各格最新一版",
+			statements: [
+				`CREATE TABLE canon_event_edits (
+					id INTEGER PRIMARY KEY AUTOINCREMENT,
+					story_id TEXT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+					event_id INTEGER NOT NULL
+						REFERENCES canon_events(id) ON DELETE CASCADE,
+					node_id TEXT REFERENCES nodes(id) ON DELETE CASCADE,
+					field TEXT NOT NULL
+						CHECK (field IN ('title', 'summary', 'digest', 'voices', 'passage')),
+					value TEXT NOT NULL,
+					source TEXT NOT NULL CHECK (source IN ('player', 'rollback')),
+					note TEXT,
+					created_at TEXT NOT NULL
+				) STRICT`,
+				`CREATE INDEX canon_event_edits_story_event
+					ON canon_event_edits(story_id, event_id, field, id)`,
+				`CREATE TRIGGER canon_event_edits_immutable
+				BEFORE UPDATE ON canon_event_edits
+				BEGIN
+					SELECT RAISE(ABORT, '原著事件修改只追加，不可修改');
+				END`,
+			],
+		},
 	];
 }
 

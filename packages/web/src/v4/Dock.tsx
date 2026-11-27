@@ -110,7 +110,7 @@ function contextHref(base: string, item: ContextItemView): string {
 		case "card":
 			return `${base}/prefs?tab=model`;
 		case "canon":
-			return `${base}/prefs?tab=write`;
+			return `${base}/memory?tab=canon&event=${source.eventId}`;
 		default:
 			return `${base}/${item.page}${item.tab === null ? "" : `?tab=${item.tab}`}`;
 	}

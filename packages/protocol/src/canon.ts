@@ -8,6 +8,9 @@ import type {
 	CanonCompiledEntityRecord,
 	CanonCursorRecord,
 	CanonEntityRecord,
+	CanonEventEditSource,
+	CanonEventField,
+	CanonEventFieldValue,
 	CanonEventRecord,
 	CanonExtractionEstimate,
 	CanonExtractionRecord,
@@ -17,6 +20,7 @@ import type {
 	CanonPlayerPage,
 	CanonStartingPage,
 	CanonStoryBindingRecord,
+	CanonVoiceKind,
 	CanonVoiceRecord,
 	CanonWindowMode,
 	CanonWorldIndex,
@@ -32,6 +36,9 @@ export type {
 	CanonCompiledEntityRecord,
 	CanonCursorRecord,
 	CanonEntityRecord,
+	CanonEventEditSource,
+	CanonEventField,
+	CanonEventFieldValue,
 	CanonEventRecord,
 	CanonExtractionEstimate,
 	CanonExtractionRecord,
@@ -40,6 +47,7 @@ export type {
 	CanonPlayerPage,
 	CanonStartingPage,
 	CanonStoryBindingRecord,
+	CanonVoiceKind,
 	CanonVoiceRecord,
 	CanonWindowMode,
 	CanonWorldIndex,
@@ -194,6 +202,85 @@ export interface StoryCanonCursorRequest {
 
 export interface StoryCanonView {
 	readonly bound: StoryCanonBindingView | null;
+}
+
+/** 事件在轨道上的位置：已演、当前、未来。 */
+export type CanonPageEventState = "past" | "current" | "future";
+
+export interface CanonPageVoiceView {
+	readonly character: string;
+	readonly kind: CanonVoiceKind;
+	readonly text: string;
+}
+
+/** 某一格的某一版；界面展开版本列表与「回到这一版」用。 */
+export interface CanonPageVersionView {
+	readonly id: number;
+	readonly field: CanonEventField;
+	readonly value: CanonEventFieldValue;
+	readonly source: CanonEventEditSource;
+	readonly nodeId: string | null;
+	readonly note: string | null;
+	readonly createdAt: string;
+}
+
+/** 原著页上的一件事件：有效内容、轨道状态与全部可见版本。 */
+export interface CanonPageEventView {
+	readonly id: number;
+	/** 1-based 主时间线序号。 */
+	readonly eventOrdinal: number;
+	readonly chapterOrdinal: number;
+	readonly state: CanonPageEventState;
+	readonly title: string;
+	readonly summary: string;
+	readonly digest: string;
+	readonly participants: readonly string[];
+	readonly location: string | null;
+	readonly timeText: string | null;
+	readonly isTurningPoint: boolean;
+	readonly voices: readonly CanonPageVoiceView[];
+	readonly passage: readonly string[];
+	readonly baseVoices: readonly CanonPageVoiceView[];
+	readonly basePassage: readonly string[];
+	/** 原著包不带原文时，原文格只能放本局的参考片段。 */
+	readonly hasText: boolean;
+	readonly editedFields: readonly CanonEventField[];
+	readonly versions: readonly CanonPageVersionView[];
+}
+
+export interface CanonPageBindingView {
+	readonly storyId: string;
+	readonly bookId: string;
+	readonly bookTitle: string;
+	readonly chapterCount: number;
+	readonly hasText: boolean;
+	readonly identityKind: CanonIdentityKind;
+	readonly playerEntityName: string;
+	readonly allowFullBookSpoilers: boolean;
+	readonly windowMode: CanonWindowMode;
+	readonly pendingAdvance: number;
+	readonly cursor: CanonCursorRecord | null;
+	readonly currentEventId: number;
+	readonly events: readonly CanonPageEventView[];
+}
+
+/** 记忆页的原著分页；未绑定原著时 `bound` 为 null。 */
+export interface StoryCanonPageView {
+	readonly bound: CanonPageBindingView | null;
+}
+
+/** 改一格：标题、概要、缩写是字符串，话术与原文是数组。 */
+export interface CanonEventEditRequest {
+	readonly field: CanonEventField;
+	readonly value: unknown;
+	readonly nodeId?: string | null;
+}
+
+/** 撤销：给版本号，或者给格名回到这一格的上一版。 */
+export interface CanonEventRollbackRequest {
+	readonly versionId?: number;
+	readonly field?: CanonEventField;
+	readonly nodeId?: string | null;
 }
 
 /** 一步完成：建故事、装原著、可选叠加一张角色卡。 */

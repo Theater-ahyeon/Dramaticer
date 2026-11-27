@@ -8,6 +8,7 @@ import {
 	holdCanonCursor,
 	resolveCanonCursor,
 } from "../canon/cursor.js";
+import { readEffectiveCanonEvent } from "../canon/edits.js";
 import {
 	collectDirectorBitJudgmentInput,
 	parseDirectorBitJudgmentResponse,
@@ -817,7 +818,20 @@ export function createSceneLogHandler(
 			...parts,
 			will: parts.will && players.length > 0,
 		};
-		const canon = resolveCanonCursor(store, job.storyId, nodeId);
+		const resolvedCanon = resolveCanonCursor(store, job.storyId, nodeId);
+		// 场记提示词里引用的标题与概要也要用玩家改过的版本。
+		const canon =
+			resolvedCanon === null
+				? null
+				: {
+						...resolvedCanon,
+						event: readEffectiveCanonEvent(
+							store,
+							job.storyId,
+							nodeId,
+							resolvedCanon.event,
+						).event,
+					};
 		const messages: LlmMessage[] = [
 			{
 				role: "system",

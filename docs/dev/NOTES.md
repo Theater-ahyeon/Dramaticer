@@ -257,3 +257,13 @@
 - `createStandardChatSlots` 现在接收 `persona` 与 `store`，默认模板也加了 `persona` 段；扮演原著人物时 `createPersonaSlotProvider` 按游标动态重建玩家角色资料。
 - 接口：`PATCH /api/stories/:id/canon/settings`（`allowFullBookSpoilers` / `windowMode` / `pendingAdvance`）、`POST .../canon/advance`（`{count}`，只写待办）、`POST .../canon/cursor`（`{eventId, nodeId?}`，「从这里开始」）。回合落定后 server 清空 `pendingAdvance`。
 - e2e 在 `v5-canon-window.spec.ts`，走查脚本是 `.walk/walk11.spec.ts`；`turns.ts` 的回合失败日志现在带堆栈，排 SSE 的「生成失败」先看服务端输出。
+
+### 原著页与事件编辑（canon/06）
+
+- 迁移 81：`canon_event_edits`（`STRICT`）：`story_id`、`event_id`、`node_id`（可为 null）、`field`（`title` / `summary` / `digest` / `voices` / `passage`）、`value`（JSON）、`source`（`player` / `rollback`）、`note`、`created_at`；`BEFORE UPDATE` 触发器直接中止，底层 `canon_events`、`canon_voices`、`canon_chapters` 一律不改。
+- `core/src/canon/edits.ts`：`readEffectiveCanonEvent` 沿 `getPathToNode` 取每格最新一版，没有改过的格用抽取结果（标题/概要/缩写来自事件，话术来自本章 `canon_voices`，原文来自章段落范围）；`listEffectiveCanonTimeline` 再按游标标 `past` / `current` / `future`。分支与删楼因此自然隔离。
+- 窗口、走向页与场记提示词都改用有效内容：`buildCanonWindow` 的标题、概要、缩写、话术、原文全部走 `readEffectiveCanonEvent`；原文截断到 2000 字仍在窗口里做。`direction/view.ts` 的当前事件、接下来 3 件与推进方向用有效时间线；`ledger/scene-log.ts` 附给场记的事件标题与概要同样换成玩家改过的版本。
+- 撤销是追加一条内容相同的新记录（`source: "rollback"`），旧记录不动；按格撤销时取当前路径上该格的上一版，只有一版时回到抽取结果。指定 `versionId` 时直接复制那一版的值，不要求它在当前分支可见。
+- 接口：`GET /api/stories/:id/canon/page`（未绑定时 `{ bound: null }`）、`POST .../canon/events/:eventId/edit`（`{field, value, nodeId?}`，默认 head）、`POST .../canon/events/:eventId/rollback`（`{versionId?}` 或 `{field?}`）。两个写接口都返回最新分页视图。
+- 记事页「原著」分页只在绑定原著时出现；直接打开 `?tab=canon` 且未绑定会给出原著书架链接。布局在 `Memory.tsx` 的 `CanonBoard` 与 `v4.css` 的 `.canonpage`（桌面两栏、820px 以下上下排列）。停靠栏上下文里的原著条目「去修改」跳到 `/memory?tab=canon&event=<id>` 并选中该事件。
+- e2e 在 `v5-canon-page.spec.ts`（编辑进入窗口、撤销刷新仍在、从未来事件从这里开始），走查脚本是 `.walk/walk12.spec.ts`。

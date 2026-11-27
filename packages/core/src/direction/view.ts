@@ -14,6 +14,7 @@ import {
 	readBlueprintView,
 } from "../blueprint/index.js";
 import { resolveCanonCursor } from "../canon/cursor.js";
+import { listEffectiveCanonTimeline } from "../canon/edits.js";
 import type { CanonWindowMode } from "../canon/types.js";
 import type { DirectorLineKind, DirectorLineState } from "../director/lines.js";
 import { DIRECTOR_LINE_KIND_LABELS } from "../director/lines.js";
@@ -464,23 +465,29 @@ export function readDirectionView(
 		resolvedCanon === null
 			? null
 			: store.getCanonBook(resolvedCanon.binding.bookId);
-	const canon: CanonDirectionView | null =
+	const canonTimeline =
 		resolvedCanon === null
+			? []
+			: listEffectiveCanonTimeline(store, storyId, head);
+	const canonCurrent =
+		resolvedCanon === null ? undefined : canonTimeline[resolvedCanon.index];
+	const canon: CanonDirectionView | null =
+		resolvedCanon === null || canonCurrent === undefined
 			? null
 			: {
 					bookId: resolvedCanon.binding.bookId,
 					bookTitle: book?.title ?? "",
-					eventId: resolvedCanon.event.id,
+					eventId: canonCurrent.event.id,
 					eventOrdinal: resolvedCanon.eventOrdinal,
 					chapterOrdinal: resolvedCanon.chapterOrdinal,
-					title: resolvedCanon.event.title,
-					summary: resolvedCanon.event.summary,
-					upcoming: resolvedCanon.timeline
+					title: canonCurrent.event.title,
+					summary: canonCurrent.event.summary,
+					upcoming: canonTimeline
 						.slice(resolvedCanon.index + 1, resolvedCanon.index + 4)
-						.map((event) => ({
-							id: event.id,
-							title: event.title,
-							summary: event.summary,
+						.map((entry) => ({
+							id: entry.event.id,
+							title: entry.event.title,
+							summary: entry.event.summary,
 						})),
 					pendingAdvance: resolvedCanon.binding.pendingAdvance,
 					windowMode: resolvedCanon.binding.windowMode,
@@ -489,12 +496,12 @@ export function readDirectionView(
 	const canonPicks: PushDirection[] =
 		resolvedCanon === null
 			? []
-			: resolvedCanon.timeline
+			: canonTimeline
 					.slice(resolvedCanon.index, resolvedCanon.index + MAX_PUSH_DIRECTIONS)
-					.map((event) => ({
-						id: `canon:${event.id}`,
-						text: event.title,
-						detail: event.summary,
+					.map((entry) => ({
+						id: `canon:${entry.event.id}`,
+						text: entry.event.title,
+						detail: entry.event.summary,
 						from: "canon" as const,
 					}));
 	return {

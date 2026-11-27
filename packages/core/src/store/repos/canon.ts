@@ -20,6 +20,9 @@ import {
 	type CanonEntityKind,
 	type CanonEntityMerge,
 	type CanonEntityRecord,
+	type CanonEventEditRecord,
+	type CanonEventEditSource,
+	type CanonEventField,
 	type CanonEventRecord,
 	type CanonExtractedEvent,
 	type CanonExtractedFact,
@@ -36,11 +39,14 @@ import {
 	type CanonWindowMode,
 	type NewCanonChapter,
 	assertCanonChapterKind,
+	assertCanonEventFieldValue,
 	countCanonChars,
 	isCanonBookStatus,
 	isCanonChapterExtractionStatus,
 	isCanonCompilationStatus,
 	isCanonEntityKind,
+	isCanonEventEditSource,
+	isCanonEventField,
 	isCanonExtractionStatus,
 	isCanonIdentityKind,
 	isCanonWindowMode,
@@ -569,6 +575,18 @@ export interface SaveCanonCursorInput {
 	readonly createdAt?: string;
 }
 
+export interface AppendCanonEventEditInput {
+	readonly storyId: string;
+	readonly eventId: number;
+	/** 产生这一版的楼层；null 表示对所有分支可见。 */
+	readonly nodeId: string | null;
+	readonly field: CanonEventField;
+	readonly value: unknown;
+	readonly source: CanonEventEditSource;
+	readonly note?: string | null;
+	readonly createdAt?: string;
+}
+
 interface StoryCanonRow {
 	readonly story_id: string;
 	readonly book_id: string;
@@ -590,6 +608,18 @@ interface CanonCursorRow {
 	readonly event_ordinal: number;
 	readonly chapter_ordinal: number;
 	readonly from_here: number;
+	readonly created_at: string;
+}
+
+interface CanonEventEditRow {
+	readonly id: number;
+	readonly story_id: string;
+	readonly event_id: number;
+	readonly node_id: string | null;
+	readonly field: string;
+	readonly value: string;
+	readonly source: string;
+	readonly note: string | null;
 	readonly created_at: string;
 }
 
@@ -659,6 +689,26 @@ function rowToCursor(row: CanonCursorRow): CanonCursorRecord {
 			row.from_here,
 			`故事 ${row.story_id} 游标 ${row.node_id} 的 fromHere`,
 		),
+		createdAt: row.created_at,
+	};
+}
+
+function rowToEventEdit(row: CanonEventEditRow): CanonEventEditRecord {
+	if (!isCanonEventField(row.field)) {
+		throw new Error(`原著事件修改的格不合法：${row.field}`);
+	}
+	if (!isCanonEventEditSource(row.source)) {
+		throw new Error(`原著事件修改的来源不合法：${row.source}`);
+	}
+	return {
+		id: row.id,
+		storyId: row.story_id,
+		eventId: row.event_id,
+		nodeId: row.node_id,
+		field: row.field,
+		value: assertCanonEventFieldValue(row.field, JSON.parse(row.value)),
+		source: row.source,
+		note: row.note,
 		createdAt: row.created_at,
 	};
 }
@@ -2253,6 +2303,83 @@ export class CanonRepo extends StoreRepo {
 			)
 			.get(storyId) as CanonCursorRow | undefined;
 		return row === undefined ? null : rowToCursor(row);
+	}
+
+	/**
+	 * 追加一版原著事件的某一格。底层 `canon_events` 不动；事件必须属于这个
+	 * 故事绑定的原著，楼层必须属于这个故事。
+	 */
+	appendCanonEventEdit(input: AppendCanonEventEditInput): CanonEventEditRecord {
+		assertNonEmptyString(input.storyId, "故事 id");
+		if (!isCanonEventField(input.field)) {
+			throw new Error(`原著事件修改的格不合法：${String(input.field)}`);
+		}
+		if (!isCanonEventEditSource(input.source)) {
+			throw new Error(`原著事件修改的来源不合法：${String(input.source)}`);
+		}
+		const binding = this.getStoryCanonBinding(input.storyId);
+		if (binding === null) {
+			throw new Error(`故事 ${input.storyId} 还没有绑定原著`);
+		}
+		const event = this.db
+			.prepare("SELECT book_id FROM canon_events WHERE id = ?")
+			.get(input.eventId) as { readonly book_id: string } | undefined;
+		if (event === undefined) {
+			throw new Error(`原著事件不存在：${input.eventId}`);
+		}
+		if (event.book_id !== binding.bookId) {
+			throw new Error(`原著事件 ${input.eventId} 不属于绑定的原著`);
+		}
+		if (input.nodeId !== null) {
+			const node = this.store.getNode(input.nodeId);
+			if (node === null) {
+				throw new Error(`楼层节点不存在：${input.nodeId}`);
+			}
+			if (node.storyId !== input.storyId) {
+				throw new Error(`楼层 ${input.nodeId} 属于另一个故事`);
+			}
+		}
+		const value = assertCanonEventFieldValue(input.field, input.value);
+		const createdAt = input.createdAt ?? new Date().toISOString();
+		const result = this.db
+			.prepare(
+				`INSERT INTO canon_event_edits
+					(story_id, event_id, node_id, field, value, source, note, created_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			)
+			.run(
+				input.storyId,
+				input.eventId,
+				input.nodeId,
+				input.field,
+				JSON.stringify(value),
+				input.source,
+				input.note === undefined ? null : input.note,
+				createdAt,
+			);
+		const row = this.db
+			.prepare("SELECT * FROM canon_event_edits WHERE id = ?")
+			.get(Number(result.lastInsertRowid)) as CanonEventEditRow | undefined;
+		if (row === undefined) {
+			throw new Error("原著事件修改写入后读取失败");
+		}
+		return rowToEventEdit(row);
+	}
+
+	/** 一个故事的全部事件修改，按写入顺序；调用方按楼层路径筛选。 */
+	listCanonEventEdits(
+		storyId: string,
+		eventId?: number,
+	): readonly CanonEventEditRecord[] {
+		assertNonEmptyString(storyId, "故事 id");
+		const rows = this.db
+			.prepare(
+				`SELECT * FROM canon_event_edits
+				WHERE story_id = ? AND (? IS NULL OR event_id = ?)
+				ORDER BY id ASC`,
+			)
+			.all(storyId, eventId ?? null, eventId ?? null) as CanonEventEditRow[];
+		return rows.map(rowToEventEdit);
 	}
 
 	#syncBookStatus(bookId: string, status: CanonExtractionStatus): void {

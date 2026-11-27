@@ -8,12 +8,13 @@ import type { StoryStore } from "../store/story-store.js";
 import { type TokenEstimator, createTokenEstimator } from "../tokens.js";
 import { sliceCanonEntityPage } from "./compile.js";
 import { resolveCanonCursor } from "./cursor.js";
+import { readEffectiveCanonEvent } from "./edits.js";
 import type {
 	CanonBookRecord,
 	CanonCompiledEntityRecord,
 	CanonEventRecord,
+	CanonEventVoiceEdit,
 	CanonStoryBindingRecord,
-	CanonVoiceRecord,
 	CanonWindowMode,
 } from "./types.js";
 
@@ -28,7 +29,7 @@ export interface CanonWindowEventBlock {
 	readonly event: CanonEventRecord;
 	readonly dead: readonly string[];
 	readonly absent: readonly string[];
-	readonly voices: readonly CanonVoiceRecord[];
+	readonly voices: readonly CanonEventVoiceEdit[];
 	readonly paragraphs: readonly string[];
 	readonly text: string;
 }
@@ -124,8 +125,7 @@ function absentOf(
 }
 
 function voiceLines(
-	voices: readonly CanonVoiceRecord[],
-	event: CanonEventRecord,
+	voices: readonly CanonEventVoiceEdit[],
 	dead: readonly string[],
 	lookup: EntityLookup,
 ): string[] {
@@ -134,36 +134,25 @@ function voiceLines(
 	for (const voice of voices) {
 		const name = canonicalName(lookup, voice.character) ?? voice.character;
 		if (deadSet.has(name)) continue;
-		if (voice.chapterOrdinal !== event.chapterOrdinal) continue;
 		const label = voice.kind === "speech" ? "说" : "想";
 		lines.push(`- ${name}（${label}）：「${voice.text}」`);
 	}
 	return lines;
 }
 
-function paragraphsOf(
-	store: StoryStore,
-	book: CanonBookRecord,
-	event: CanonEventRecord,
-): string[] {
-	if (!book.hasText) return [];
-	const chapter = store.getCanonChapter(book.id, event.chapterId);
-	if (chapter === null) return [];
-	const start = Math.max(1, event.paragraphStart);
-	const end = Math.min(chapter.paragraphs.length, event.paragraphEnd);
-	const picked = chapter.paragraphs.slice(start - 1, end);
-	let joined = picked.join("\n");
-	if (joined.length > CANON_EVENT_TEXT_MAX_CHARS) {
-		joined = `${joined.slice(0, CANON_EVENT_TEXT_MAX_CHARS)}…`;
-	}
-	return joined.length === 0 ? [] : [joined];
+/** 原文与玩家改过的段落同样按单件上限截断。 */
+function truncateParagraphs(paragraphs: readonly string[]): string[] {
+	const joined = paragraphs.join("\n");
+	if (joined.length === 0) return [];
+	if (joined.length <= CANON_EVENT_TEXT_MAX_CHARS) return [joined];
+	return [`${joined.slice(0, CANON_EVENT_TEXT_MAX_CHARS)}…`];
 }
 
 function renderEventBlock(input: {
 	readonly event: CanonEventRecord;
 	readonly dead: readonly string[];
 	readonly absent: readonly string[];
-	readonly voices: readonly CanonVoiceRecord[];
+	readonly voices: readonly CanonEventVoiceEdit[];
 	readonly paragraphs: readonly string[];
 	readonly mode: CanonWindowMode;
 	readonly includeVoices: boolean;
@@ -186,7 +175,7 @@ function renderEventBlock(input: {
 		absent.length > 0 ? `${absent.join("、")} 不在场，无法按原著发生` : null,
 	].filter((line): line is string => line !== null);
 	if (input.includeVoices && mode !== "summary_only") {
-		const rendered = voiceLines(voices, event, dead, lookup);
+		const rendered = voiceLines(voices, dead, lookup);
 		if (rendered.length > 0) lines.push("话术：", ...rendered);
 	}
 	if (mode === "full_text" && paragraphs.length > 0) {
@@ -223,22 +212,22 @@ export function buildCanonWindow(
 	const book = store.getCanonBook(resolved.binding.bookId);
 	if (book === null) return null;
 	const lookup = buildEntityLookup(store, storyId, nodeId, resolved.binding);
-	const voices = store.listCanonVoices(book.id);
 	const events = resolved.timeline.slice(
 		resolved.index,
 		resolved.index + 1 + Math.max(0, options.upcoming),
 	);
 	const blocks = events.map((event, index) => {
+		const effective = readEffectiveCanonEvent(store, storyId, nodeId, event);
 		const participants = participantsOf(event, lookup);
 		const absent = absentOf(event, lookup, index === 0);
 		return renderEventBlock({
-			event,
+			event: effective.event,
 			dead: participants.dead,
 			absent,
-			voices,
+			voices: effective.voices,
 			paragraphs:
 				resolved.binding.windowMode === "full_text"
-					? paragraphsOf(store, book, event)
+					? truncateParagraphs(effective.passage)
 					: [],
 			mode: resolved.binding.windowMode,
 			includeVoices: true,

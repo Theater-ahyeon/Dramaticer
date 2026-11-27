@@ -1,3 +1,11 @@
+import type {
+	CanonEventField,
+	CanonPageBindingView,
+	CanonPageEventView,
+	CanonPageVersionView,
+	CanonPageVoiceView,
+	StoryCanonPageView,
+} from "@dramaticer/protocol";
 import {
 	Fragment,
 	type ReactNode,
@@ -10,6 +18,7 @@ import { api } from "../api";
 import { usePaletteCommands } from "./Shell";
 import {
 	Editable,
+	TLink,
 	errorText,
 	parseValue,
 	showValue,
@@ -101,6 +110,7 @@ interface MemoryView {
 
 const TABS = [
 	["wiki", "故事记事"],
+	["canon", "原著"],
 	["state", "此刻局面"],
 	["secret", "秘密"],
 	["line", "时间线"],
@@ -409,6 +419,533 @@ function LinkedText({
 	);
 }
 
+const CANON_FIELD_LABELS: Readonly<Record<CanonEventField, string>> = {
+	title: "标题",
+	summary: "概要",
+	digest: "缩写",
+	voices: "话术",
+	passage: "原文",
+};
+
+const CANON_STATE_LABELS: Readonly<
+	Record<CanonPageEventView["state"], string>
+> = {
+	past: "已演",
+	current: "当前",
+	future: "未来",
+};
+
+function canonValueText(version: CanonPageVersionView): string {
+	let text: string;
+	if (version.field === "voices") {
+		const voices = version.value as readonly CanonPageVoiceView[];
+		text =
+			voices.length === 0
+				? "（没有话术）"
+				: voices
+						.map(
+							(voice) =>
+								`${voice.character}${voice.kind === "speech" ? "说" : "想"}：${voice.text}`,
+						)
+						.join("；");
+	} else if (version.field === "passage") {
+		const paragraphs = version.value as readonly string[];
+		text = paragraphs.length === 0 ? "（没有原文）" : paragraphs.join(" / ");
+	} else {
+		text = version.value as string;
+		if (text.trim().length === 0) text = "（空）";
+	}
+	return text.length > 90 ? `${text.slice(0, 90)}…` : text;
+}
+
+/** 一格：标题、概要、缩写、话术或原文；带版本列表与一键撤销。 */
+function CanonField({
+	label,
+	field,
+	event,
+	onRollback,
+	children,
+}: {
+	readonly label: string;
+	readonly field: CanonEventField;
+	readonly event: CanonPageEventView;
+	readonly onRollback: (request: {
+		readonly field?: CanonEventField;
+		readonly versionId?: number;
+	}) => Promise<void>;
+	readonly children: ReactNode;
+}) {
+	const [open, setOpen] = useState(false);
+	const versions = event.versions.filter((version) => version.field === field);
+	const edited = event.editedFields.includes(field);
+	return (
+		<section className="canonfield" aria-label={label}>
+			<div className="canonfieldhead">
+				<span className="label">{label}</span>
+				{edited ? <span className="pill gold">你改的</span> : null}
+				<button
+					type="button"
+					className="btn ghost sm"
+					aria-expanded={open}
+					onClick={() => setOpen(!open)}
+				>
+					版本 {versions.length}
+				</button>
+				{versions.length === 0 ? null : (
+					<button
+						type="button"
+						className="btn ghost sm"
+						onClick={() => void onRollback({ field })}
+					>
+						撤销
+					</button>
+				)}
+			</div>
+			{children}
+			{open && versions.length > 0 ? (
+				<ol className="canonversions">
+					{versions.map((version, index) => (
+						<li key={version.id}>
+							<span className="pill mute">
+								{version.source === "player" ? "你改的" : "撤销"}
+							</span>{" "}
+							<span className="canonvtext">{canonValueText(version)}</span>{" "}
+							{index === 0 ? null : (
+								<button
+									type="button"
+									className="btn sm"
+									onClick={() => void onRollback({ versionId: version.id })}
+								>
+									回到这一版
+								</button>
+							)}
+						</li>
+					))}
+				</ol>
+			) : null}
+		</section>
+	);
+}
+
+/** 记忆页的原著分页：左边事件轨道，右边有效内容与按格编辑。 */
+function CanonBoard({
+	storyId,
+	binding,
+	focusEventId,
+	onChanged,
+}: {
+	readonly storyId: string;
+	readonly binding: CanonPageBindingView;
+	readonly focusEventId: number | null;
+	readonly onChanged: () => void;
+}) {
+	const toast = useToast();
+	const [page, setPage] = useState(binding);
+	const [selectedId, setSelectedId] = useState(
+		focusEventId ?? binding.currentEventId,
+	);
+	const [voiceDraft, setVoiceDraft] = useState<{
+		character: string;
+		kind: "speech" | "thought";
+		text: string;
+	}>({ character: "", kind: "speech", text: "" });
+	const [passageDraft, setPassageDraft] = useState("");
+
+	useEffect(() => setPage(binding), [binding]);
+	useEffect(() => {
+		if (focusEventId !== null) setSelectedId(focusEventId);
+	}, [focusEventId]);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: 换选中事件时清空草稿
+	useEffect(() => {
+		setVoiceDraft({ character: "", kind: "speech", text: "" });
+		setPassageDraft("");
+	}, [selectedId]);
+
+	const selected =
+		page.events.find((event) => event.id === selectedId) ??
+		page.events.find((event) => event.id === page.currentEventId) ??
+		page.events[0] ??
+		null;
+
+	const apply = (view: StoryCanonPageView) => {
+		if (view.bound !== null) setPage(view.bound);
+		onChanged();
+	};
+
+	const edit = async (field: CanonEventField, value: unknown) => {
+		if (selected === null) return;
+		try {
+			const view = await api.editCanonEvent(storyId, selected.id, {
+				field,
+				value,
+			});
+			apply(view);
+			toast("已保存，下一轮生效");
+		} catch (error) {
+			// 校验失败时把改坏的那一处恢复成服务端内容。
+			onChanged();
+			toast(errorText(error));
+		}
+	};
+
+	const rollback = async (request: {
+		readonly field?: CanonEventField;
+		readonly versionId?: number;
+	}) => {
+		if (selected === null) return;
+		try {
+			const view = await api.rollbackCanonEvent(storyId, selected.id, request);
+			apply(view);
+			toast("已回到上一版");
+		} catch (error) {
+			toast(errorText(error));
+		}
+	};
+
+	const startHere = async (eventId: number) => {
+		try {
+			await api.startCanonFromHere(storyId, { eventId });
+			const view = await api.getStoryCanonPage(storyId);
+			apply(view);
+			setSelectedId(eventId);
+			toast("已从这里开始，下一楼按这件演");
+		} catch (error) {
+			toast(errorText(error));
+		}
+	};
+
+	const voices = selected?.voices ?? [];
+	const saveVoices = (next: readonly CanonPageVoiceView[]) =>
+		void edit("voices", next);
+
+	return (
+		<div className="canonpage">
+			<div className="canontrack" aria-label="原著事件轨道">
+				<div className="canonbook">
+					<h2>{page.bookTitle}</h2>
+					<span className="pill mute">第 {page.chapterCount} 章</span>
+					<TLink to={`/canon/${encodeURIComponent(page.bookId)}`}>
+						原著书架
+					</TLink>
+				</div>
+				{page.events.length === 0 ? (
+					<p className="v4empty">这本原著还没有排好事件时间线。</p>
+				) : (
+					<ol className="canonlist">
+						{page.events.map((event) => (
+							<li key={event.id}>
+								<button
+									type="button"
+									aria-pressed={event.id === selected?.id}
+									data-focus={`canon-${event.id}`}
+									onClick={() => setSelectedId(event.id)}
+								>
+									<span
+										className={`pill ${event.state === "current" ? "teal" : "mute"}`}
+									>
+										{CANON_STATE_LABELS[event.state]}
+									</span>
+									<span className="canontitle">{event.title}</span>
+									{event.isTurningPoint ? (
+										<span className="pill gold">关键转折</span>
+									) : null}
+									{event.editedFields.length > 0 ? (
+										<span className="pill gold">已改</span>
+									) : null}
+									<small>第 {event.chapterOrdinal} 章</small>
+								</button>
+								<button
+									type="button"
+									className="btn ghost sm"
+									onClick={() => void startHere(event.id)}
+								>
+									从这里开始
+								</button>
+							</li>
+						))}
+					</ol>
+				)}
+			</div>
+			{selected === null ? (
+				<p className="v4empty">选中左边的一件事件，看它的概要与原话。</p>
+			) : (
+				<article className="canondetail">
+					<div className="canonhead">
+						<h2>{selected.title}</h2>
+						<span
+							className={`pill ${selected.state === "current" ? "teal" : "mute"}`}
+						>
+							{CANON_STATE_LABELS[selected.state]}
+						</span>
+						{selected.isTurningPoint ? (
+							<span className="pill gold">关键转折</span>
+						) : null}
+						<span className="pill mute">第 {selected.chapterOrdinal} 章</span>
+						<button
+							type="button"
+							className="btn ghost sm"
+							onClick={() => void startHere(selected.id)}
+						>
+							从这里开始
+						</button>
+					</div>
+					{selected.location === null ? null : (
+						<p className="muted">地点：{selected.location}</p>
+					)}
+					{selected.timeText === null ? null : (
+						<p className="muted">时间：{selected.timeText}</p>
+					)}
+
+					<CanonField
+						label={CANON_FIELD_LABELS.title}
+						field="title"
+						event={selected}
+						onRollback={rollback}
+					>
+						<Editable
+							value={selected.title}
+							onCommit={(text) => void edit("title", text)}
+						/>
+					</CanonField>
+
+					<CanonField
+						label={CANON_FIELD_LABELS.summary}
+						field="summary"
+						event={selected}
+						onRollback={rollback}
+					>
+						<Editable
+							value={selected.summary}
+							onCommit={(text) => void edit("summary", text)}
+						/>
+					</CanonField>
+
+					<CanonField
+						label={CANON_FIELD_LABELS.digest}
+						field="digest"
+						event={selected}
+						onRollback={rollback}
+					>
+						<Editable
+							value={selected.digest}
+							placeholder="（还没有缩写）"
+							onCommit={(text) => void edit("digest", text)}
+						/>
+					</CanonField>
+
+					<CanonField
+						label={CANON_FIELD_LABELS.voices}
+						field="voices"
+						event={selected}
+						onRollback={rollback}
+					>
+						{voices.length === 0 ? (
+							<p className="muted">还没有话术。</p>
+						) : (
+							<ul className="canonvoices">
+								{voices.map((voice, index) => (
+									// biome-ignore lint/suspicious/noArrayIndexKey: 话术按顺序排列，增删后按位置改
+									<li key={index}>
+										<Editable
+											as="span"
+											className="canonwho"
+											value={voice.character}
+											onCommit={(text) =>
+												saveVoices(
+													voices.map((item, at) =>
+														at === index ? { ...item, character: text } : item,
+													),
+												)
+											}
+										/>
+										<select
+											value={voice.kind}
+											aria-label={`${voice.character}的话术类型`}
+											onChange={(event_) =>
+												saveVoices(
+													voices.map((item, at) =>
+														at === index
+															? {
+																	...item,
+																	kind:
+																		event_.target.value === "thought"
+																			? "thought"
+																			: "speech",
+																}
+															: item,
+													),
+												)
+											}
+										>
+											<option value="speech">说</option>
+											<option value="thought">想</option>
+										</select>
+										<Editable
+											as="span"
+											className="canonvtext"
+											value={voice.text}
+											onCommit={(text) =>
+												saveVoices(
+													voices.map((item, at) =>
+														at === index ? { ...item, text } : item,
+													),
+												)
+											}
+										/>
+										<button
+											type="button"
+											className="btn ghost sm"
+											onClick={() =>
+												saveVoices(voices.filter((_, at) => at !== index))
+											}
+										>
+											删掉
+										</button>
+									</li>
+								))}
+							</ul>
+						)}
+						<div className="canonadd">
+							<input
+								value={voiceDraft.character}
+								placeholder="谁"
+								aria-label="话术人物"
+								onChange={(event_) =>
+									setVoiceDraft({
+										...voiceDraft,
+										character: event_.target.value,
+									})
+								}
+							/>
+							<select
+								value={voiceDraft.kind}
+								aria-label="新话术的类型"
+								onChange={(event_) =>
+									setVoiceDraft({
+										...voiceDraft,
+										kind:
+											event_.target.value === "thought" ? "thought" : "speech",
+									})
+								}
+							>
+								<option value="speech">说</option>
+								<option value="thought">想</option>
+							</select>
+							<input
+								value={voiceDraft.text}
+								placeholder="一句原话"
+								aria-label="话术内容"
+								onChange={(event_) =>
+									setVoiceDraft({ ...voiceDraft, text: event_.target.value })
+								}
+							/>
+							<button
+								type="button"
+								className="btn sm"
+								disabled={
+									voiceDraft.character.trim().length === 0 ||
+									voiceDraft.text.trim().length === 0
+								}
+								onClick={() => {
+									saveVoices([
+										...voices,
+										{
+											character: voiceDraft.character.trim(),
+											kind: voiceDraft.kind,
+											text: voiceDraft.text.trim(),
+										},
+									]);
+									setVoiceDraft({
+										character: "",
+										kind: "speech",
+										text: "",
+									});
+								}}
+							>
+								加上
+							</button>
+						</div>
+					</CanonField>
+
+					<CanonField
+						label={CANON_FIELD_LABELS.passage}
+						field="passage"
+						event={selected}
+						onRollback={rollback}
+					>
+						{selected.passage.length === 0 ? (
+							<p className="muted">
+								{selected.hasText
+									? "这一件没有对应的原文段落。"
+									: "当前原著包未包含原文，可以写一段本局的参考片段。"}
+							</p>
+						) : (
+							<div className="canonpassage">
+								{selected.passage.map((paragraph, index) => (
+									// biome-ignore lint/suspicious/noArrayIndexKey: 段落按顺序排列，增删后按位置改
+									<div key={index} className="canonpara">
+										<Editable
+											value={paragraph}
+											onCommit={(text) =>
+												void edit(
+													"passage",
+													selected.passage.map((item, at) =>
+														at === index ? text : item,
+													),
+												)
+											}
+										/>
+										<button
+											type="button"
+											className="btn ghost sm"
+											onClick={() =>
+												void edit(
+													"passage",
+													selected.passage.filter((_, at) => at !== index),
+												)
+											}
+										>
+											删掉
+										</button>
+									</div>
+								))}
+							</div>
+						)}
+						{!selected.hasText && selected.passage.length > 0 ? (
+							<p className="muted">
+								当前原著包未包含原文，这里是本局的参考片段。
+							</p>
+						) : null}
+						<div className="canonadd">
+							<textarea
+								rows={2}
+								value={passageDraft}
+								placeholder="加一段原文或本局参考片段"
+								aria-label="新原文段落"
+								onChange={(event_) => setPassageDraft(event_.target.value)}
+							/>
+							<button
+								type="button"
+								className="btn sm"
+								disabled={passageDraft.trim().length === 0}
+								onClick={() => {
+									void edit("passage", [
+										...selected.passage,
+										passageDraft.trim(),
+									]);
+									setPassageDraft("");
+								}}
+							>
+								加一段
+							</button>
+						</div>
+					</CanonField>
+				</article>
+			)}
+		</div>
+	);
+}
+
 /** 记忆页：百科、状态、秘密、时间线、偏好，全部可以就地修改。 */
 export function Memory() {
 	const { storyId = "" } = useParams();
@@ -421,8 +958,18 @@ export function Memory() {
 	const tab = (
 		TABS.some(([id]) => id === search.get("tab")) ? search.get("tab") : "wiki"
 	) as Tab;
+	// 原著分页只在需要时拉完整内容；其他分页只查绑定，决定要不要显示「原著」。
+	const canonBinding = useLoad(() => api.getStoryCanon(storyId), [storyId]);
+	const canon = useLoad(
+		() =>
+			tab === "canon" ? api.getStoryCanonPage(storyId) : Promise.resolve(null),
+		[storyId, tab],
+	);
 	const pageParam = search.get("page");
 	const focus = search.get("focus");
+	const eventParam = search.get("event");
+	const focusEventId =
+		eventParam !== null && /^\d+$/.test(eventParam) ? Number(eventParam) : null;
 	const [pageId, setPageId] = useState<string | null>(pageParam);
 	const [raw, setRaw] = useState<ReadonlySet<string>>(new Set());
 	const [history, setHistory] = useState<string | null>(null);
@@ -437,6 +984,7 @@ export function Memory() {
 		useCallback(
 			() => [
 				{ label: "记忆 · 故事记事", run: () => goTab("wiki") },
+				{ label: "记忆 · 原著", run: () => goTab("canon") },
 				{ label: "记忆 · 此刻局面", run: () => goTab("state") },
 				{ label: "记忆 · 秘密", run: () => goTab("secret") },
 				{ label: "记忆 · 时间线", run: () => goTab("line") },
@@ -516,7 +1064,12 @@ export function Memory() {
 				</div>
 			</div>
 			<div className="subtabs">
-				{TABS.map(([id, label]) => (
+				{TABS.filter(
+					([id]) =>
+						id !== "canon" ||
+						canonBinding.data?.bound != null ||
+						tab === "canon",
+				).map(([id, label]) => (
 					<button
 						type="button"
 						key={id}
@@ -527,6 +1080,26 @@ export function Memory() {
 					</button>
 				))}
 			</div>
+
+			{tab === "canon" ? (
+				canon.error !== null ? (
+					<div className="v4err">{canon.error}</div>
+				) : canon.data === null ? (
+					<p className="v4empty">正在读取原著…</p>
+				) : canon.data.bound === null ? (
+					<p className="v4empty">
+						这个故事还没有绑定原著。去 <TLink to="/canon">原著书架</TLink>{" "}
+						挑一本，或者从原著开头新建故事。
+					</p>
+				) : (
+					<CanonBoard
+						storyId={storyId}
+						binding={canon.data.bound}
+						focusEventId={focusEventId}
+						onChanged={canon.reload}
+					/>
+				)
+			) : null}
 
 			{tab === "wiki" ? (
 				<div className="wiki">

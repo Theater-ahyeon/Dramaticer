@@ -2,6 +2,7 @@ export * from "./compile.js";
 export * from "./compile-prompt.js";
 export * from "./cursor.js";
 export * from "./decode.js";
+export * from "./edits.js";
 export * from "./estimate.js";
 export * from "./extract.js";
 export * from "./package.js";
