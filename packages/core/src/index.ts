@@ -5,6 +5,7 @@ export * from "./blueprint/index.js";
 export * from "./chat/index.js";
 export * from "./cli/index.js";
 export * from "./context/index.js";
+export * from "./direction/index.js";
 export * from "./director/index.js";
 export * from "./edits/index.js";
 export * from "./entity.js";

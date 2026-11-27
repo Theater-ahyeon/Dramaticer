@@ -331,6 +331,30 @@ describe("ApiClient", () => {
 		]);
 	});
 
+	it("剧情走向按故事读写", async () => {
+		const { client, calls } = clientFor(() =>
+			jsonResponse({ storyId: "s1", wants: [], opens: [] }),
+		);
+		await client.getDirection("s 1");
+		await client.editDirection("s 1", {
+			op: "edit-want",
+			id: "premise:question",
+			text: "换个问题",
+		});
+
+		expect(calls.map((call) => [call.init.method, call.url])).toEqual([
+			["GET", "/api/stories/s%201/direction"],
+			["POST", "/api/stories/s%201/direction/edit"],
+		]);
+		const editCall = calls[1];
+		if (editCall === undefined) throw new Error("缺少请求");
+		expect(readBody(editCall.init)).toEqual({
+			op: "edit-want",
+			id: "premise:question",
+			text: "换个问题",
+		});
+	});
+
 	it("蓝图建议按故事登记与列出，决定走上层路径", async () => {
 		const { client, calls } = clientFor(() =>
 			jsonResponse({ storyId: "s1", status: "pending", suggestions: [] }),

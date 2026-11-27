@@ -3,18 +3,18 @@
 > 每次收尾时完整重写，不超过 40 行。长期有效的注意事项写进 `docs/dev/NOTES.md`。
 
 ## 最近一次
-- 2026-11-24（人工会话，按 v5 顺序连续做）。
-- **memory-v5/05 完成**：引文核对统一走 `memory/quote.ts` 的 `quoteMatches`（事件抽取、场记、结算器、用户意志）。引文只用来定位，对不上照样按楼层锚点写入；后台写入只因「与玩家锁定的事实冲突」「让未知情者知道了秘密（knowledge 写入在原文里没有得知经过）」被拒收，理由进检视器。提示词去掉「对不上整条被拒绝」。记忆层的变更卡（memory_revision）不再生成，界面无入口；助手提出的台账修改仍走助手待确认面板。记事三张活页就地编辑、自动锁定、可撤销，`v5-notebook.spec.ts` 各一条 e2e。
-- `pnpm check` 与 `v5-notebook.spec.ts` e2e 通过。**memory-v5 01–05 全部完成**，其中 04 的基准回放没跑。
+- 2026-11-27（工单 `direction-v5/01`）。
+- 剧情走向一页：新增 core `direction/`（`readDirectionView` 只读派生两栏，`applyDirectionEdit` 写回原存储），server `GET/POST /api/stories/:id/direction[/edit]`，web `Direction.tsx`。`/stories/:id/outline` 现在渲染剧情走向页，导航标签「走向」，停靠栏导演页复用同一套紧凑视图。
+- 旧故事没有迁移步骤：大纲、里程碑、主线方向、本场目标、场记笔记、剧情线都从原表派生。新增方向写成 `line` 的玩家修改并自动锁定；场记笔记的改写与收下用 `player_edits` 的 `note` 种类。
+- 验证：`pnpm check` 通过；`v5-direction`（编辑与锁定，页面与停靠栏）、`v4-outline`、`v4-dock`、`v4-polish`、`director` 的 e2e 通过；走查 `walk6` 截图已看（`v5-01-direction-{d,m}.png`、`v5-01-dock-dir-{d,m}.png`）。
+- 删除了旧 `.bp/.premise/.vol/.ms/.idea/.sug` 样式与停靠栏的置顶、静音、导演安排列表；楼层批注里的撤回仍在。
 
 ## 下一步
-1. `direction-v5/01`（剧情走向一页），然后 `direction-v5/02`。
-2. 之后：canon 01–06 → card-ui / image-v2 → ui-v2/06（全站文案清洗）。
+1. `direction-v5/02`：推进方向菜单与删减（删八种动作与 `mechanisms` 引擎，做推进菜单，保留章末清点）。
 
 ## 眼下要注意
-- 手机底栏现在 7 项；`.navs .ind` 是 `calc(100% / 7)`。
-- e2e 的 `helpers.sendTurn` 走故事页（`.say textarea` + 「发送」），调用前页面要停在 `/play`。
+- 走向页的行 id 是写入键（`premise:*`、`volume:<id>`、`milestone:<id>`、`line:<id>`、`scene`、`note:<id>`）；改规则要同步 `assertDirectionEdit` 与 e2e。
+- `02` 的新逻辑继续走 `POST /api/stories/:id/direction/edit`，不要塞回 `/director/line`、`/blueprint/edit`；旧接口保留给后台与尚未迁移的模块。
+- e2e 的 `helpers.sendTurn` 走故事页；调用前页面要停在 `/play`。
 - 全量 e2e 后段桌面端 director / ledger / openings 会因后台队列积压假失败，单独重跑确认。
-- 读人类本机 ST 数据时：只用脚本列结构并打码；它只是参考样本之一。
-- 远端：只推 `main`；`backup/main-original` 与旧 `spec/*`、`ticket/*` 分支不要推。
 - server 读 core 的 `dist`：改了 core 导出后先构建 core；单跑 e2e 前先 `pnpm build`。

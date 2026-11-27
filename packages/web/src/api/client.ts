@@ -16,6 +16,9 @@ import {
 	type ContextTemplateRecord,
 	type CreateContextTemplateRequest,
 	type CreateStoryRequest,
+	type DirectionEditRequest,
+	type DirectionEditResult,
+	type DirectionView,
 	type FulfillClueRequest,
 	type FulfillClueResult,
 	type ImageProvidersView,
@@ -377,6 +380,21 @@ export class ApiClient {
 		return this.json<StoryBlueprintView>(
 			"GET",
 			`${storyPath(storyId)}/blueprint${queryText(query)}`,
+		);
+	}
+
+	async getDirection(storyId: string): Promise<DirectionView> {
+		return this.json<DirectionView>("GET", `${storyPath(storyId)}/direction`);
+	}
+
+	async editDirection(
+		storyId: string,
+		request: DirectionEditRequest,
+	): Promise<DirectionEditResult> {
+		return this.json<DirectionEditResult>(
+			"POST",
+			`${storyPath(storyId)}/direction/edit`,
+			request,
 		);
 	}
 

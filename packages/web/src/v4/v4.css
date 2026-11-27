@@ -2070,138 +2070,6 @@ img.cover {
 	}
 }
 
-/* ---- 大纲 ---- */
-.bp {
-	display: grid;
-	grid-template-columns: minmax(0, 1fr) 350px;
-	gap: 28px;
-	align-items: start;
-}
-@media (max-width: 1040px) {
-	.bp {
-		grid-template-columns: minmax(0, 1fr);
-	}
-}
-.premise {
-	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-	gap: 12px;
-	margin-bottom: 18px;
-}
-.premise > div {
-	position: relative;
-	background: var(--sheet);
-	border: 1px solid var(--line);
-	border-radius: var(--r-lg);
-	padding: 16px 18px;
-	box-shadow: var(--shadow);
-	transition: border-color var(--dur);
-}
-.premise > div:hover {
-	border-color: var(--line-strong);
-}
-.premise p {
-	font: 15px / 1.75 var(--f-prose);
-	margin-top: 4px;
-}
-.vol {
-	margin-top: 22px;
-}
-.vol:first-child {
-	margin-top: 0;
-}
-.vol > header {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: baseline;
-	gap: 6px 14px;
-	padding-bottom: 10px;
-	border-bottom: 1px solid var(--line);
-}
-.vol h2 {
-	font: 400 var(--t-xl) var(--f-display);
-}
-.vol > header p {
-	color: var(--muted);
-	font-size: 13px;
-}
-.ms {
-	position: relative;
-	display: grid;
-	grid-template-columns: 18px minmax(0, 1fr);
-	gap: 14px;
-	padding: 14px 8px;
-	margin-inline: -8px;
-	border-bottom: 1px solid var(--soft);
-	border-radius: var(--r-md);
-	transition: background var(--dur);
-}
-.ms:hover {
-	background: var(--soft);
-}
-.ms .dot {
-	width: 12px;
-	height: 12px;
-	border-radius: 50%;
-	border: 2px solid var(--muted);
-	margin-top: 7px;
-	justify-self: center;
-}
-.ms.done .dot {
-	background: var(--ok);
-	border-color: var(--ok);
-}
-.ms.blocked .dot {
-	border-color: var(--bad);
-}
-.ms.live .dot {
-	border-color: var(--gold);
-	background: var(--gold);
-	box-shadow: 0 0 0 4px var(--gold-wash);
-}
-.ms h3 {
-	font: 600 16.5px / 1.6 var(--f-prose);
-}
-.ms .tags {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 6px;
-	margin-top: 6px;
-	align-items: center;
-}
-.ms .sub {
-	font-size: 13px;
-	color: var(--muted);
-	margin-top: 6px;
-}
-.ms .fix {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 8px;
-	margin-top: 10px;
-}
-.sug p {
-	font-size: 13.5px;
-	margin: 6px 0 10px;
-}
-.sug .row,
-.idea .row {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 8px;
-}
-.idea {
-	padding: 16px;
-}
-.idea textarea {
-	width: 100%;
-	min-height: 92px;
-	resize: vertical;
-	padding: 10px 12px;
-	font: 15px / 1.7 var(--f-prose);
-	margin: 6px 0 8px;
-}
-
 /* ---- 设定 ---- */
 .audit {
 	display: grid;
@@ -3576,4 +3444,145 @@ div:hover > .flr-acts,
 }
 .nb > .btn {
 	justify-self: start;
+}
+
+/* 剧情走向：想发生的与还没收的线两栏。 */
+.dirhead {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex-wrap: wrap;
+	margin: 0 0 14px;
+}
+.dirgrid {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+	gap: 18px 26px;
+	align-items: start;
+}
+.dircol {
+	min-width: 0;
+	padding: 4px 16px 12px;
+	border: 1px solid var(--line);
+	border-radius: var(--r-lg);
+	background: var(--sheet);
+}
+.dircolhead {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 10px;
+	flex-wrap: wrap;
+}
+.dircolhead h2 {
+	margin: 10px 0 6px;
+	font-size: 13px;
+	font-weight: 500;
+	letter-spacing: 0.14em;
+	color: var(--muted);
+}
+.dircolhead .v4empty {
+	margin: 6px 0;
+	padding: 0;
+}
+.dirrow {
+	padding: 11px 0;
+	border-bottom: 1px solid var(--soft);
+}
+.dirrow:last-of-type {
+	border-bottom: 0;
+}
+.dirrow.kind-milestone {
+	padding-left: 18px;
+}
+.dirrow.off {
+	opacity: 0.55;
+}
+.dirtags {
+	display: flex;
+	gap: 6px;
+	flex-wrap: wrap;
+	margin-bottom: 3px;
+}
+.dirrow h3 {
+	margin: 2px 0;
+	font-size: 15px;
+	font-weight: 500;
+	line-height: 1.7;
+}
+.dirrow h3:empty::before {
+	content: attr(data-placeholder);
+	color: var(--muted);
+	opacity: 0.6;
+}
+.dirrow .sub {
+	margin: 2px 0 0;
+	color: var(--muted);
+	font-size: var(--t-xs);
+	line-height: 1.7;
+}
+.dirctl {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	margin-top: 4px;
+}
+.diradd,
+.dirask {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+.diradd {
+	margin-top: 10px;
+}
+.diradd input,
+.dirask input {
+	flex: 1;
+	min-width: 0;
+	padding: 7px 10px;
+	border: 1px solid var(--line);
+	border-radius: var(--r-md);
+	background: var(--bg);
+	color: var(--ink);
+	font: inherit;
+	font-size: 14px;
+}
+.dirside {
+	display: grid;
+	gap: 10px;
+	margin-top: 18px;
+}
+.dirask input {
+	flex: 1 1 240px;
+}
+.dirsug {
+	padding: 10px 12px;
+	border: 1px solid var(--line);
+	border-radius: var(--r-md);
+	background: var(--sheet);
+}
+.dirsug p {
+	margin: 6px 0;
+	font-size: 13px;
+	color: var(--muted);
+}
+.dock .dirgrid {
+	grid-template-columns: 1fr;
+	gap: 14px;
+}
+.dock .dircol {
+	padding: 0;
+	border: 0;
+	background: none;
+}
+.dock .dircolhead h2 {
+	margin-top: 4px;
+	font-size: 12px;
+}
+@media (max-width: 900px) {
+	.dirgrid {
+		grid-template-columns: 1fr;
+	}
 }

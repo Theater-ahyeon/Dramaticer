@@ -47,7 +47,7 @@ function lastStory(): string | null {
 const NAV = [
 	{ view: "play", glyph: "文", label: "故事" },
 	{ view: "memory", glyph: "忆", label: "记忆" },
-	{ view: "outline", glyph: "纲", label: "大纲" },
+	{ view: "outline", glyph: "走", label: "走向" },
 	{ view: "lore", glyph: "设", label: "设定" },
 	{ view: "prefs", glyph: "调", label: "设置" },
 ] as const;
@@ -170,7 +170,7 @@ export function Shell() {
 			go("打开记忆 · 秘密", "memory?tab=secret");
 			go("打开记忆 · 时间线", "memory?tab=line");
 			go("打开记忆 · 偏好", "memory?tab=rule");
-			go("打开大纲", "outline");
+			go("打开剧情走向", "outline");
 			go("改设定", "lore");
 			go("设置 · 写作", "prefs");
 			go("设置 · 功能", "prefs?tab=feat");

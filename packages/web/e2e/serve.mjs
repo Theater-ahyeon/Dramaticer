@@ -573,6 +573,160 @@ for (const project of ["mobile", "desktop"]) {
 	});
 }
 
+// 剧情走向页的固定样本：两栏都齐，场记笔记与剧情线按引入楼层从老到新，
+// 带一条可编辑的关键事件与一条 AI 补的关键事件。
+for (const project of ["mobile", "desktop"]) {
+	const storyId = `e2e-direction-${project}`;
+	seedStore.createStory({ id: storyId, title: `剧情走向 ${project}` });
+	const first = seedStore.appendNode({
+		id: `${storyId}-a1`,
+		storyId,
+		parentId: null,
+		role: "assistant",
+		raw: "雾港的灯在雨里亮了三次。",
+	});
+	const user = seedStore.appendNode({
+		id: `${storyId}-u1`,
+		storyId,
+		parentId: first.id,
+		role: "user",
+		raw: "我沿着码头往前走。",
+	});
+	const head = seedStore.appendNode({
+		id: `${storyId}-a2`,
+		storyId,
+		parentId: user.id,
+		role: "assistant",
+		raw: "贺九把手按在第一只货箱上。",
+	});
+	seedStore.saveStoryBlueprintBaseline(storyId, [
+		{
+			id: "premise",
+			kind: "premise",
+			source: "player",
+			locked: true,
+			coreQuestion: "这座灯塔，究竟为谁而亮？",
+			tone: "潮湿、克制",
+			endings: [],
+			redLines: ["第三卷之前，阿蘅不能出事"],
+			tension: "loose",
+		},
+		{
+			id: "vol-1",
+			kind: "volume",
+			source: "player",
+			locked: false,
+			title: "卷一 · 雾起",
+			coreQuestion: "那箱货里到底是什么",
+			startState: "你刚到雾港",
+			endState: "第一箱货被截下",
+		},
+		{
+			id: "m-locked",
+			kind: "milestone",
+			source: "player",
+			locked: true,
+			volumeId: "vol-1",
+			want: "在七号码头截下贺九的第一箱货",
+			prerequisites: [],
+			after: [],
+			hardness: "hard",
+		},
+		{
+			id: "m-open",
+			kind: "milestone",
+			source: "player",
+			locked: false,
+			volumeId: "vol-1",
+			want: "阿蘅把值更簿交到你手上",
+			prerequisites: [],
+			after: [],
+			hardness: "soft",
+		},
+		{
+			id: "m-ai",
+			kind: "milestone",
+			source: "ai",
+			locked: false,
+			volumeId: "vol-1",
+			want: "阿蘅发现你一直没把报告的事告诉她",
+			prerequisites: [],
+			after: [],
+			hardness: "soft",
+		},
+	]);
+	seedStore.saveDirectorLines({
+		nodeId: first.id,
+		storyId,
+		diffs: [
+			{
+				action: "set",
+				line: {
+					id: "rel-old",
+					kind: "relationship",
+					who: "阿蘅",
+					want: "把值更簿交给你",
+					obstacle: "她还没拿定主意",
+					countdown: null,
+					preparations: [],
+				},
+			},
+		],
+	});
+	seedStore.insertPlotNotes([
+		{
+			id: `${storyId}-note-old`,
+			storyId,
+			sourceNodeId: first.id,
+			text: "值更簿缺的那一页",
+			createdAt: "2020-01-01T00:00:00.000Z",
+		},
+	]);
+	seedStore.saveDirectorLines({
+		nodeId: head.id,
+		storyId,
+		diffs: [
+			{
+				action: "set",
+				line: {
+					id: "prom-new",
+					kind: "promise",
+					who: "贺九",
+					want: "那箱货里有一盏灯",
+					obstacle: "箱子的锁没开",
+					countdown: null,
+					preparations: [],
+				},
+			},
+		],
+	});
+	seedStore.insertPlotNotes([
+		{
+			id: `${storyId}-note-new`,
+			storyId,
+			sourceNodeId: head.id,
+			text: "码头尽头多了一艘没有名字的船",
+			createdAt: "2020-01-02T00:00:00.000Z",
+		},
+	]);
+	seedStore.saveSceneLog({
+		nodeId: head.id,
+		storyId,
+		beat: "对峙",
+		present: ["贺九"],
+		sceneEnds: false,
+		sceneCard: {
+			present: [{ who: "贺九", want: "让你先开价" }],
+			change: "贺九把货箱的钥匙推到你面前",
+		},
+		bits: [],
+		conditions: [],
+		states: [],
+		quotes: { submitted: 0, verified: 0 },
+		repairs: [],
+	});
+}
+
 seedStore.close();
 
 const serverModule = await import(

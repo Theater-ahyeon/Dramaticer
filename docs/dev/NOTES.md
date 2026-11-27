@@ -86,6 +86,8 @@
 - 章末清点记录只追加：同一楼层第二次写入直接失败，UPDATE 被触发器拒绝。写入前必须用 `assertChapterReviewMatchesLines` 对照当前路径。
 - `focus` 固定 2–3 条且不能包含同一份清点里 `retire` 的伏笔；`promises` 只写清点之前已经存在的 `promise` 线。
 - 章级规划输出先写清点再写线：`saveDirectorChapterPlan` 保证同一事务。
+- 剧情走向（`direction-v5/01`）：`core/src/direction/view.ts` 的 `readDirectionView` 是只读派生，不复制存储；大纲条目、剧情线、本场目标与场记笔记仍由原来的表写入。两栏的 `id` 就是写入键（`premise:question|tone|red-lines`、`volume:<id>`、`milestone:<id>`、`line:<id>`、`scene`、`note:<id>`），写入统一走 `POST /api/stories/:id/direction/edit`，命令校验在 `assertDirectionEdit`。
+- 走向页把主线方向（kind `main`）放进「想发生的」，其余剧情线与 `plot_notes` 里未收的笔记放进「还没收的线」，按引入时的助手楼层深度升序；章末清点里 `retire` 的伏笔不再算未收。新增方向写成 `line` 的玩家修改并自动锁定；场记笔记的改写与收下用 `player_edits` 的 `note` 种类（原 `plot_notes` 行不变）。界面里两栏的行 id 是 `data-id`，样式类用 `kind-*`，不要给行加 `.premise`、`.ms` 这类旧类名。
 - `story_settings.director_organization` 的 CHECK 允许 `mechanisms`、`bits`、`lines`；新增组织方式时要重建表并同步 `assistant-store.test.ts` 的 schema 版本。
 - 场记对照、导入审计、规则执行、状态定义、场面卡、人物档案、重逢注入的既有口径保持不变；参考上一次交接的注意事项与对应 ADR。
 - 世界书槽位在导入过的故事里 Trace 来源带「升级」或「原样」前缀；改这个字符串时要同步 `packages/st-compat/test/chat-cli.test.ts`。

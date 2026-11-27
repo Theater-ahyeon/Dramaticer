@@ -308,7 +308,7 @@ test.describe("故事页停靠栏：导演、记忆与上下文", () => {
 		await login(page);
 	});
 
-	test("剧情线能置顶与静音，导演安排能撤回，上下文每一条都能跳到修改处", async ({
+	test("剧情走向两栏能就地编辑与锁定，上下文每一条都能跳到修改处", async ({
 		page,
 	}) => {
 		const stamp = Date.now();
@@ -323,39 +323,32 @@ test.describe("故事页停靠栏：导演、记忆与上下文", () => {
 		await expect(dock).toBeVisible();
 		await expectNoHorizontalOverflow(page);
 
-		// 导演一页：剧情线、伏笔与导演做过什么。
-		const threads = dock.locator(".thread");
-		const heJiu = threads.filter({
-			has: page.locator("h3", { hasText: /^贺九想要/ }),
-		});
-		const linXue = threads.filter({
-			has: page.locator("h3", { hasText: /^林雪想要/ }),
-		});
-		await expect(threads).toHaveCount(2);
-		await expect(dock).toContainText("没收 1 / 上限");
+		// 导演一页：想发生的与还没收的线两栏，能就地编辑与锁定。
+		const wants = dock.locator('[data-column="wants"]');
+		const opens = dock.locator('[data-column="opens"]');
+		await expect(wants).toContainText("雨声停了");
+		await expect(wants).toContainText("林雪想要找到那封信的寄件人");
+		await expect(opens).toContainText("贺九想要把灯塔里的灯搬空");
+		await expect(opens).toContainText("阿蘅想要值更簿缺的那一页");
 
-		// 置顶：这条线排到最前，按钮变成取消置顶。
-		await heJiu.getByRole("button", { name: "我想看这条" }).click();
-		await expect(heJiu).toHaveClass(/pin/);
-		await expect(threads.first()).toContainText("贺九");
-		await expect(heJiu.getByRole("button", { name: "取消置顶" })).toBeVisible();
+		const thread = opens.locator('.dirrow[data-id="line:l2"]');
+		await thread.locator("h3").fill("贺九想要把灯塔里的灯搬空（改）");
+		await thread.locator("h3").press("Enter");
+		await expect
+			.poll(async () => {
+				const response = await page.request.get(
+					`/api/stories/${storyId}/direction`,
+				);
+				const view = (await response.json()) as {
+					opens: readonly { id: string; text: string }[];
+				};
+				return view.opens.find((item) => item.id === "line:l2")?.text;
+			})
+			.toBe("贺九想要把灯塔里的灯搬空（改）");
 
-		// 静音：这一条变灰，可以恢复。
-		await heJiu.getByRole("button", { name: "别再提了" }).click();
-		await expect(heJiu).toHaveClass(/off/);
-		await expect(heJiu.getByRole("button", { name: "恢复" })).toBeVisible();
-
-		// 撤回导演安排：安排变成已撤回，它推的那条线被静音。
-		const move = dock
-			.locator(".rows > div")
-			.filter({ hasText: "接球" })
-			.first();
-		await expect(move).toContainText("第 1 楼");
-		await move.getByRole("button", { name: "撤回" }).click();
-		await expect(
-			dock.locator(".rows > div").filter({ hasText: "已撤回" }).first(),
-		).toBeVisible();
-		await expect(linXue).toHaveClass(/off/);
+		const promise = opens.locator('.dirrow[data-id="line:l3"]');
+		await promise.getByRole("button", { name: "锁定" }).click();
+		await expect(promise.getByRole("button", { name: "已锁定" })).toBeVisible();
 		await expectNoHorizontalOverflow(page);
 
 		// 上下文：每一条带着自己的去向。

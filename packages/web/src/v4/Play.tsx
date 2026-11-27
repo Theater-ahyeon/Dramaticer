@@ -1406,22 +1406,6 @@ export function Play() {
 						tab={dockTab}
 						onTab={setDockTab}
 						tick={dockTick}
-						moves={(floors.data?.floors ?? [])
-							.flatMap((meta) =>
-								meta.notes
-									.filter((note) => note.title.startsWith("导演"))
-									.map((note) => ({
-										key: `${meta.nodeId}:${note.title}`,
-										label: note.title.replace("导演 · ", ""),
-										no: meta.no,
-										nodeId: meta.nodeId,
-										...(note.undoLineId === undefined
-											? {}
-											: { undoLineId: note.undoLineId }),
-									})),
-							)
-							.reverse()
-							.slice(0, 8)}
 						onChanged={refresh}
 					/>
 				</div>

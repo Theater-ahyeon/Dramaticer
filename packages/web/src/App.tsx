@@ -1,11 +1,11 @@
 import { Link, Navigate, Route, Routes } from "react-router-dom";
 import { Backdrop } from "./v4/Backdrop";
+import { DirectionPage } from "./v4/Direction";
 import { GlobalSettings } from "./v4/GlobalSettings";
 import { Library } from "./v4/Library";
 import { Login } from "./v4/Login";
 import { Lore } from "./v4/Lore";
 import { Memory } from "./v4/Memory";
-import { Outline } from "./v4/Outline";
 import { Play } from "./v4/Play";
 import { Prefs } from "./v4/Prefs";
 import { Shell } from "./v4/Shell";
@@ -28,7 +28,7 @@ function AppRoutes() {
 				<Route path="/settings" element={<GlobalSettings />} />
 				<Route path="/stories/:storyId/play" element={<Play />} />
 				<Route path="/stories/:storyId/memory" element={<Memory />} />
-				<Route path="/stories/:storyId/outline" element={<Outline />} />
+				<Route path="/stories/:storyId/outline" element={<DirectionPage />} />
 				<Route path="/stories/:storyId/lore" element={<Lore />} />
 				<Route path="/stories/:storyId/prefs" element={<Prefs />} />
 				<Route

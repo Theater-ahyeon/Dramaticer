@@ -1,5 +1,6 @@
 export * from "./assistant.js";
 export * from "./channels.js";
+export * from "./direction.js";
 export * from "./errors.js";
 export * from "./images.js";
 export * from "./import-audit.js";

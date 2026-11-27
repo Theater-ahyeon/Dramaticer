@@ -71,9 +71,9 @@ test.describe("命令面板与手机全流程", () => {
 		await expect(form.locator(".import-result h2")).toHaveText("林雪");
 		await expectNoHorizontalOverflow(page);
 
-		// 命令面板：先跳到大纲，再回到故事页。
-		await palette(page, "打开大纲");
-		await expect(page.locator('[data-view="outline"]')).toBeVisible();
+		// 命令面板：先跳到剧情走向，再回到故事页。
+		await palette(page, "打开剧情走向");
+		await expect(page.locator('[data-view="direction"]')).toBeVisible();
 		await expect(page).toHaveURL(new RegExp(`/stories/${storyId}/outline$`));
 		await palette(page, "继续写故事");
 		await expect(page.locator('[data-view="play"]')).toBeVisible();

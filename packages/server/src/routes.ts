@@ -26,6 +26,7 @@ import {
 	readAssistantChannelsSnapshot,
 } from "./routes-channels.js";
 import { pathSegments, requireMethod, requireStory } from "./routes-common.js";
+import { handleDirectionRoute } from "./routes-direction.js";
 import {
 	handleImageFile,
 	handleImageProviders,
@@ -361,6 +362,9 @@ export async function handleApiRequest(
 		) {
 			requireMethod(method, ["POST"]);
 			handleStoryVisualProfilesGenerate(res, options, storyId);
+			return;
+		}
+		if (await handleDirectionRoute(req, res, method, options, storyId, parts)) {
 			return;
 		}
 		if (
