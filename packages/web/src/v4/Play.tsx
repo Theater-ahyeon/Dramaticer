@@ -1,4 +1,5 @@
 import type {
+	ImageWorkflowRecord,
 	PushDirection,
 	RerollReason,
 	StoryFeatureSwitchView,
@@ -7,6 +8,8 @@ import { parseBlocks } from "@dramaticer/core/blocks";
 import {
 	type DisplayedContent,
 	type FloorRenderView,
+	type ImageWorkflowsView,
+	type NodeImage,
 	type SceneControlRequest,
 	type SseEvent,
 	type StoryPath,
@@ -23,6 +26,7 @@ import { BlockContent } from "../components/chat/BlockContent";
 import { FloorFrame } from "../components/chat/FloorFrame";
 import { BackgroundNotice } from "./BackgroundNotice";
 import { Dock, type DockTab } from "./Dock";
+import { FloorImage, FloorImageList } from "./FloorImages";
 import { Opening } from "./Opening";
 import { usePaletteCommands } from "./Shell";
 import {
@@ -199,18 +203,55 @@ function narrowScreen(): boolean {
 	return window.matchMedia("(max-width: 760px)").matches;
 }
 
+interface ParagraphCursor {
+	count: number;
+}
+
+/**
+ * 正文渲染。插图按段落序号插在对应段落之后；没有段落位置或超出段落数的
+ * 插图排在楼层末尾。插件渲染的楼层由调用方把插图统一放到下方。
+ */
 function Prose({
 	items,
 	nodeId,
 	hideStatus = false,
+	images = [],
+	workflows = [],
+	onImagesChanged,
+	cursor,
 }: {
 	readonly items: readonly DisplayedContent[];
 	readonly nodeId: string | null;
 	/** 功能页关掉「状态面板」时不显示状态栏块。 */
 	readonly hideStatus?: boolean;
+	readonly images?: readonly NodeImage[];
+	readonly workflows?: readonly ImageWorkflowRecord[];
+	readonly onImagesChanged?: () => void;
+	/** 递归渲染内部块时共享同一份段落计数。 */
+	readonly cursor?: ParagraphCursor;
 }) {
+	const root = cursor === undefined;
+	const position = cursor ?? { count: 0 };
+	const grouped = new Map<number, NodeImage[]>();
+	for (const image of images) {
+		const at = image.insertAfterParagraph;
+		if (at === null) continue;
+		const list = grouped.get(at);
+		if (list === undefined) grouped.set(at, [image]);
+		else list.push(image);
+	}
+	const renderImage = (image: NodeImage) => (
+		<FloorImage
+			key={image.id}
+			image={image}
+			workflows={workflows}
+			onChanged={onImagesChanged ?? (() => {})}
+		/>
+	);
+
 	return (
 		<>
+			{root ? (grouped.get(0) ?? []).map((image) => renderImage(image)) : null}
 			{items.map((item, index) => {
 				const key = `${index}`;
 				if (item.kind === "text") {
@@ -218,15 +259,21 @@ function Prose({
 						.split(/\n+/)
 						.map((line) => line.trim())
 						.filter((line) => line.length > 0)
-						.map((line, position) => (
-							<p
-								// biome-ignore lint/suspicious/noArrayIndexKey: 段落没有稳定的 id
-								key={`${key}-${position}`}
-								className={isDialogueLine(line) ? "dlg" : undefined}
-							>
-								{line}
-							</p>
-						));
+						.flatMap((line, lineIndex) => {
+							position.count += 1;
+							return [
+								<p
+									// biome-ignore lint/suspicious/noArrayIndexKey: 段落没有稳定的 id
+									key={`${key}-${lineIndex}`}
+									className={isDialogueLine(line) ? "dlg" : undefined}
+								>
+									{line}
+								</p>,
+								...(grouped.get(position.count) ?? []).map((image) =>
+									renderImage(image),
+								),
+							];
+						});
 				}
 				const kind = blockViewKind(item);
 				// 行动选项放到输入台上，不在正文里重复。
@@ -245,9 +292,9 @@ function Prose({
 						});
 					return (
 						<ul className="statusline" key={key} aria-label="状态">
-							{pairs.map((pair, position) => (
+							{pairs.map((pair, pairIndex) => (
 								// biome-ignore lint/suspicious/noArrayIndexKey: 状态行没有稳定的 id
-								<li key={position}>
+								<li key={pairIndex}>
 									{pair.k === "" ? null : <span>{pair.k}</span>}
 									{pair.v}
 								</li>
@@ -270,6 +317,10 @@ function Prose({
 							items={item.content}
 							nodeId={nodeId}
 							hideStatus={hideStatus}
+							images={images}
+							workflows={workflows}
+							onImagesChanged={onImagesChanged}
+							cursor={position}
 						/>
 					);
 				}
@@ -282,6 +333,16 @@ function Prose({
 					/>
 				);
 			})}
+			{root
+				? images
+						.filter(
+							(image) =>
+								image.insertAfterParagraph === null ||
+								image.insertAfterParagraph > position.count,
+						)
+						.sort((left, right) => left.ordinal - right.ordinal)
+						.map((image) => renderImage(image))
+				: null}
 		</>
 	);
 }
@@ -316,6 +377,10 @@ export function Play() {
 		[storyId],
 	);
 	const settings = useLoad(() => api.getSettings(storyId), [storyId]);
+	const imageWorkflows = useLoad<ImageWorkflowsView>(
+		() => api.getImageWorkflows(),
+		[],
+	);
 	const features = useLoad(() => api.getStoryFeatures(storyId), [storyId]);
 	const canon = useLoad(() => api.getStoryCanon(storyId), [storyId]);
 	const switchView = useMemo(
@@ -367,6 +432,11 @@ export function Play() {
 	// 手机上停靠栏是底部抽屉，批注折叠成每楼末尾的小标记。
 	const [dockOpen, setDockOpen] = useState(false);
 	const [openNotes, setOpenNotes] = useState<ReadonlySet<string>>(new Set());
+	const [organizing, setOrganizing] = useState<ReadonlySet<string>>(new Set());
+	const [imageHint, setImageHint] = useState<{
+		readonly nodeId: string;
+		readonly text: string;
+	} | null>(null);
 	const [search] = useSearchParams();
 	const focusNode = search.get("node");
 	const abort = useRef<AbortController | null>(null);
@@ -498,6 +568,72 @@ export function Play() {
 		tree.reload();
 		setDockTick((value) => value + 1);
 	}, [canon.reload, path.reload, floors.reload, dock.reload, tree.reload]);
+
+	// 有插图在画、或刚点了「画这一幕」时轮询路径，直到结果落定或整理出记录。
+	const imagesWorking = nodes.some((node) =>
+		node.images.some(
+			(image) => image.status === "pending" || image.status === "running",
+		),
+	);
+	useEffect(() => {
+		if (!imagesWorking && organizing.size === 0) return;
+		const timer = setInterval(() => path.reload(), 1_500);
+		return () => clearInterval(timer);
+	}, [imagesWorking, organizing.size, path.reload]);
+	useEffect(() => {
+		if (organizing.size === 0) return;
+		const arrived = nodes.filter(
+			(node) => organizing.has(node.id) && node.images.length > 0,
+		);
+		if (arrived.length === 0) return;
+		setOrganizing((previous) => {
+			const next = new Set(previous);
+			for (const node of arrived) next.delete(node.id);
+			return next;
+		});
+	}, [nodes, organizing]);
+	// 整理可能一张图都没给出；不要让轮询一直跑下去。
+	useEffect(() => {
+		if (organizing.size === 0) return;
+		const timer = setTimeout(() => setOrganizing(new Set()), 45_000);
+		return () => clearTimeout(timer);
+	}, [organizing]);
+
+	const organizeImages = (nodeId: string) => {
+		const config = settings.data?.imageConfig;
+		if (config === undefined) return;
+		if (config.mode === "off") {
+			setImageHint({
+				nodeId,
+				text: "生图模式已关闭；先在故事设置的「生图」里开启。",
+			});
+			return;
+		}
+		const workflowId = config.workflowId.trim();
+		const ready = (imageWorkflows.data?.workflows ?? []).some(
+			(workflow) => workflow.id === workflowId,
+		);
+		if (workflowId === "" || !ready) {
+			setImageHint({
+				nodeId,
+				text: "还没有可用的生图模板；先在故事设置的「生图」里选择 workflow。",
+			});
+			return;
+		}
+		setImageHint(null);
+		setOrganizing((previous) => new Set(previous).add(nodeId));
+		api
+			.organizeNodeImages(storyId, nodeId)
+			.then(() => toast("已排入后台画面整理"))
+			.catch((error: unknown) => {
+				setOrganizing((previous) => {
+					const next = new Set(previous);
+					next.delete(nodeId);
+					return next;
+				});
+				toast(errorText(error));
+			});
+	};
 
 	// 每个叶子是一条分支；只有一条时不显示分支选择。
 	const branches = useMemo(() => {
@@ -1009,26 +1145,36 @@ export function Play() {
 													items={parsed.get(node.id) ?? []}
 													nodeId={node.id}
 													hideStatus={!statusOn}
+													images={node.images}
+													workflows={imageWorkflows.data?.workflows ?? []}
+													onImagesChanged={() => path.reload()}
 												/>
 											) : (
-												<FloorFrame
-													storyId={storyId}
-													render={frame}
-													allowedDomains={sandbox.data?.allowedDomains ?? []}
-													onSendMessage={(message) => send(message, null)}
-													onFillInput={setText}
-													onRejected={(rejection) => {
-														api
-															.recordSandboxRejection(storyId, {
-																nodeId: rejection.nodeId,
-																renderer: rejection.renderer,
-																kind: rejection.kind,
-																target: rejection.target,
-																reason: rejection.reason,
-															})
-															.catch(() => {});
-													}}
-												/>
+												<>
+													<FloorFrame
+														storyId={storyId}
+														render={frame}
+														allowedDomains={sandbox.data?.allowedDomains ?? []}
+														onSendMessage={(message) => send(message, null)}
+														onFillInput={setText}
+														onRejected={(rejection) => {
+															api
+																.recordSandboxRejection(storyId, {
+																	nodeId: rejection.nodeId,
+																	renderer: rejection.renderer,
+																	kind: rejection.kind,
+																	target: rejection.target,
+																	reason: rejection.reason,
+																})
+																.catch(() => {});
+														}}
+													/>
+													<FloorImageList
+														images={node.images}
+														workflows={imageWorkflows.data?.workflows ?? []}
+														onChanged={() => path.reload()}
+													/>
+												</>
 											)}
 										</div>
 										<aside
@@ -1093,6 +1239,7 @@ export function Play() {
 									</article>
 									<div
 										className="flr-acts"
+										data-node-id={node.id}
 										aria-label={`第 ${meta?.no ?? "?"} 楼的操作`}
 									>
 										{node.id === lastId ? (
@@ -1121,10 +1268,27 @@ export function Play() {
 												从这里分支
 											</button>
 										)}
+										<button
+											type="button"
+											disabled={busy || organizing.has(node.id)}
+											onClick={() => organizeImages(node.id)}
+										>
+											{organizing.has(node.id) ? "整理中…" : "画这一幕"}
+										</button>
 										<button type="button" onClick={showContext}>
 											上下文
 										</button>
 									</div>
+									{imageHint?.nodeId === node.id ? (
+										<output className="image-hint">
+											{imageHint.text}{" "}
+											<TLink
+												to={`/stories/${encodeURIComponent(storyId)}/prefs?tab=adv`}
+											>
+												去故事设置
+											</TLink>
+										</output>
+									) : null}
 									{node.id === lastId && whyOpen ? (
 										<div className="why">
 											<span>原因</span>

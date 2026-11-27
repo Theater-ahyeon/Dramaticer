@@ -3189,6 +3189,137 @@ div:hover > .flr-acts,
 	justify-content: flex-end;
 	gap: 8px;
 }
+/* 楼层插图：按段落位置插在正文里；图片之外的菜单与表单都在同一张卡片里。 */
+.floor-ill {
+	margin: 14px 0;
+	padding: 0;
+	border: 1px solid var(--line);
+	border-radius: var(--r-lg);
+	background: var(--raise);
+	overflow: hidden;
+}
+.floor-ill-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 5px 10px;
+	border-bottom: 1px solid var(--line);
+}
+.floor-ill-head figcaption {
+	flex: 1;
+	font: 12.5px var(--f-ui);
+	color: var(--muted);
+}
+.floor-ill-more {
+	border: 0;
+	background: none;
+	color: var(--muted);
+	font-size: 16px;
+	line-height: 1;
+	padding: 2px 6px;
+	border-radius: var(--r-md);
+	cursor: pointer;
+}
+.floor-ill-more:hover {
+	color: var(--ink);
+	background: var(--soft);
+}
+.floor-ill-img {
+	display: block;
+	width: 100%;
+	padding: 0;
+	border: 0;
+	background: var(--soft);
+	cursor: zoom-in;
+}
+.floor-ill-img img {
+	display: block;
+	width: 100%;
+	height: auto;
+	max-height: 70vh;
+	object-fit: contain;
+}
+.floor-ill-menu {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 2px;
+	padding: 5px 8px;
+	border-top: 1px solid var(--line);
+}
+.floor-ill-menu button {
+	border: 0;
+	background: none;
+	color: var(--muted);
+	font: 12.5px var(--f-ui);
+	padding: 4px 8px;
+	border-radius: var(--r-md);
+	cursor: pointer;
+}
+.floor-ill-menu button:hover:not(:disabled) {
+	color: var(--ink);
+	background: var(--soft);
+}
+.floor-ill-menu button:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+.floor-ill-panel {
+	display: grid;
+	gap: 8px;
+	padding: 10px 12px;
+	border-top: 1px solid var(--line);
+}
+.floor-ill-panel label {
+	display: grid;
+	gap: 4px;
+	font: 12.5px var(--f-ui);
+	color: var(--muted);
+}
+.floor-ill-panel textarea,
+.floor-ill-panel select {
+	font: 13.5px / 1.6 var(--f-prose);
+	color: var(--ink);
+	background: var(--field);
+	border: 1px solid var(--line);
+	border-radius: var(--r-md);
+	padding: 7px 9px;
+	resize: vertical;
+}
+.floor-ill-panel-acts {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+}
+.floor-ill.pending {
+	display: block;
+	padding: 8px 12px;
+	border-style: dashed;
+	background: var(--soft);
+	font: 12.5px var(--f-ui);
+	color: var(--muted);
+}
+.floor-ill.failed {
+	border-color: var(--danger);
+}
+.floor-ill-err {
+	margin: 0;
+	padding: 8px 12px;
+	font: 12.5px / 1.5 var(--f-ui);
+	color: var(--danger);
+}
+.floor-ill-end {
+	margin-top: 12px;
+}
+.image-hint {
+	display: block;
+	flex-basis: 100%;
+	margin: 2px 0 0;
+	font: 12.5px / 1.5 var(--f-ui);
+	color: var(--muted);
+}
+.image-hint a {
+	color: var(--gold-ink);
+}
 .undo-choice {
 	display: inline-flex;
 	gap: 8px;

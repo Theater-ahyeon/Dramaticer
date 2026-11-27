@@ -30,8 +30,10 @@ import {
 import { pathSegments, requireMethod, requireStory } from "./routes-common.js";
 import { handleDirectionRoute } from "./routes-direction.js";
 import {
+	handleImageDelete,
 	handleImageFile,
 	handleImageProviders,
+	handleImageRedraw,
 	handleImageRetry,
 	handleImageWorkflowDelete,
 	handleImageWorkflowDetect,
@@ -584,6 +586,20 @@ export async function handleApiRequest(
 		if (parts.length === 3 && third === "retry") {
 			requireMethod(method, ["POST"]);
 			handleImageRetry(res, options, second);
+			return;
+		}
+		if (parts.length === 3 && third === "redraw") {
+			requireMethod(method, ["POST"]);
+			await handleImageRedraw(req, res, options, second);
+			return;
+		}
+		if (
+			parts.length === 2 &&
+			second !== "providers" &&
+			second !== "workflows"
+		) {
+			requireMethod(method, ["DELETE"]);
+			await handleImageDelete(res, options, second);
 			return;
 		}
 		if (parts.length === 3 && third === "file") {

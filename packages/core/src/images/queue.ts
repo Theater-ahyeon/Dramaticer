@@ -84,7 +84,7 @@ function organizerCharacters(
 	image: NodeImageRecord,
 ): readonly NovelAiCharacterPrompt[] {
 	const result = image.organizerResult;
-	if (result === null || image.prompt === null) return [];
+	if (image.promptEdited || result === null || image.prompt === null) return [];
 	const negativePrompt = image.negativePrompt ?? "";
 	const expanded = result.expanded.find(
 		(entry) =>
@@ -116,8 +116,8 @@ async function runOneImage(input: {
 	if (!input.config.providers.has(provider)) {
 		throw new Error(`图像 provider 没有配置：${provider}`);
 	}
-	// 画面整理或重绘已经把最终提示词写进记录；重试时直接复用，不再重跑整理。
-	const reusable = image.prompt !== null && image.organizerResult !== null;
+	// 画面整理、改提示词或重绘已经把最终提示词写进记录；重试时直接复用。
+	const reusable = image.prompt !== null;
 	const compiled = reusable
 		? {
 				prompt: image.prompt as string,

@@ -1,5 +1,5 @@
 // server 路由：出图工作流、楼层插图、媒体文件、卡面与立绘（refactor/06 从 routes.ts 拆出）。
-import { readFile } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
 	type BackgroundJob,
@@ -10,6 +10,7 @@ import {
 	type ImagePromptRequest,
 	ImageWorkflowInUseError,
 	type NodeImageRecord,
+	type NodeImageRedrawOptions,
 	type TagLibraryEntryInput,
 	assertComfyUiSlots,
 	assertImageConfig,
@@ -29,6 +30,7 @@ import type {
 	ImageWorkflowDetectionView,
 	ImageWorkflowsView,
 	NodeImage,
+	NodeImageDeleteResult,
 	NodeImagesView,
 	StoryCharacterOutfitsView,
 	StoryImageImportResult,
@@ -65,7 +67,7 @@ export function toNodeImage(record: NodeImageRecord): NodeImage {
 		status: record.status,
 		url:
 			record.status === "done"
-				? `/api/images/${encodeURIComponent(record.id)}/file`
+				? `/api/images/${encodeURIComponent(record.id)}/file?v=${encodeURIComponent(record.updatedAt)}`
 				: null,
 		width: record.width,
 		height: record.height,
@@ -74,6 +76,8 @@ export function toNodeImage(record: NodeImageRecord): NodeImage {
 		title: record.title,
 		prompt: record.prompt,
 		negativePrompt: record.negativePrompt,
+		workflowId: record.workflowId,
+		seed: record.seed,
 	};
 }
 
@@ -530,6 +534,125 @@ export function handleImageRetry(
 	options.scheduler?.schedule(image.storyId);
 	const view: NodeImageRecord = retried;
 	sendJson(res, 200, view);
+}
+
+/** `POST /api/images/:id/redraw`：换 seed、改提示词或换模板后重新入队。 */
+export async function handleImageRedraw(
+	req: IncomingMessage,
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	imageId: string,
+): Promise<void> {
+	const image = options.store.getNodeImage(imageId);
+	if (image === null) {
+		throw new HttpError(404, "not_found", `图片记录不存在：${imageId}`);
+	}
+	if (image.status === "running") {
+		throw new HttpError(409, "conflict", `图片记录 ${imageId} 正在出图`);
+	}
+	const body = await readObjectBody(req, options.maxJsonBodyBytes);
+	assertKnownKeys(body, [
+		"mode",
+		"prompt",
+		"negativePrompt",
+		"workflowId",
+		"seed",
+	]);
+	let redraw: NodeImageRedrawOptions;
+	if (body.mode === "new_seed") {
+		redraw = { mode: "new_seed" };
+	} else if (body.mode === "edit_prompt") {
+		const prompt = requireText(body.prompt, "prompt");
+		let negativePrompt: string | null | undefined;
+		if (Object.hasOwn(body, "negativePrompt")) {
+			if (body.negativePrompt === null) negativePrompt = null;
+			else if (typeof body.negativePrompt === "string") {
+				negativePrompt = body.negativePrompt;
+			} else {
+				throw fieldError(
+					"negativePrompt",
+					"negativePrompt 必须是字符串或 null",
+				);
+			}
+		}
+		let seed: number | undefined;
+		if (Object.hasOwn(body, "seed")) {
+			if (
+				typeof body.seed !== "number" ||
+				!Number.isInteger(body.seed) ||
+				body.seed < 0 ||
+				body.seed > Number.MAX_SAFE_INTEGER
+			) {
+				throw fieldError("seed", "seed 必须是非负整数");
+			}
+			seed = body.seed;
+		}
+		redraw = {
+			mode: "edit_prompt",
+			prompt,
+			...(negativePrompt === undefined ? {} : { negativePrompt }),
+			...(seed === undefined ? {} : { seed }),
+		};
+	} else if (body.mode === "switch_workflow") {
+		const workflowId = requireText(body.workflowId, "workflowId");
+		const workflow = options.store.getImageWorkflow(workflowId);
+		if (workflow === null) {
+			throw fieldError("workflowId", `图片 workflow 不存在：${workflowId}`);
+		}
+		if (!options.imagesConfig.providers.has(workflow.provider)) {
+			throw new HttpError(
+				409,
+				"conflict",
+				`图片 workflow 的 provider 没有配置：${workflow.provider}`,
+			);
+		}
+		redraw = { mode: "switch_workflow", workflowId: workflow.id };
+	} else {
+		throw fieldError(
+			"mode",
+			"mode 只能是 new_seed、edit_prompt 或 switch_workflow",
+		);
+	}
+	let updated: NodeImageRecord;
+	try {
+		updated = options.store.redrawNodeImage(imageId, redraw);
+	} catch (error) {
+		throw toBadRequest(error, "mode");
+	}
+	await removeImageFile(options.imagesMediaDir, image);
+	enqueueIllustrateBackgroundJob(options.store, image.storyId);
+	options.scheduler?.schedule(image.storyId);
+	const view: NodeImage = toNodeImage(updated);
+	sendJson(res, 200, view);
+}
+
+/** `DELETE /api/images/:id`：删除插图记录，有生成文件时一并清理。 */
+export async function handleImageDelete(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	imageId: string,
+): Promise<void> {
+	const image = options.store.getNodeImage(imageId);
+	if (image === null) {
+		throw new HttpError(404, "not_found", `图片记录不存在：${imageId}`);
+	}
+	if (image.status === "running") {
+		throw new HttpError(409, "conflict", `图片记录 ${imageId} 正在出图`);
+	}
+	options.store.deleteNodeImage(imageId);
+	await removeImageFile(options.imagesMediaDir, image);
+	const view: NodeImageDeleteResult = { deleted: true, id: imageId };
+	sendJson(res, 200, view);
+}
+
+async function removeImageFile(
+	mediaDir: string,
+	image: NodeImageRecord,
+): Promise<void> {
+	if (image.fileName === null) return;
+	const filePath = await resolveMediaFile(mediaDir, image.fileName);
+	if (filePath === null) return;
+	await rm(filePath, { force: true });
 }
 
 export async function handleNodeImages(

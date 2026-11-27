@@ -285,6 +285,8 @@ export interface StoryStore
 			| "failNodeImage"
 			| "requeueRunningNodeImages"
 			| "retryNodeImage"
+			| "redrawNodeImage"
+			| "deleteNodeImage"
 			| "listCharacterOutfits"
 			| "getCharacterOutfit"
 			| "replaceCharacterOutfits"
@@ -793,6 +795,8 @@ const DELEGATES: Readonly<Record<keyof Repos, readonly string[]>> = {
 		"failNodeImage",
 		"requeueRunningNodeImages",
 		"retryNodeImage",
+		"redrawNodeImage",
+		"deleteNodeImage",
 		"listCharacterOutfits",
 		"getCharacterOutfit",
 		"replaceCharacterOutfits",

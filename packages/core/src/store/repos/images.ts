@@ -28,6 +28,7 @@ import {
 	type ImageWorkflowRecord,
 	type NewNodeImageInput,
 	type NodeImageRecord,
+	type NodeImageRedrawOptions,
 	type SaveImageWorkflowInput,
 	isNodeImageStatus,
 } from "../../images/types.js";
@@ -59,6 +60,7 @@ interface NodeImageRow {
 	readonly insert_after_paragraph: number | null;
 	readonly title: string | null;
 	readonly organizer_result: string | null;
+	readonly prompt_edited: number;
 	readonly workflow_id: string;
 	readonly seed: number | null;
 	readonly attempts: number;
@@ -211,6 +213,7 @@ function rowToNodeImage(row: NodeImageRow): NodeImageRecord {
 						JSON.parse(row.organizer_result) as unknown,
 						`图片记录 ${row.id} 的 organizerResult`,
 					),
+		promptEdited: row.prompt_edited === 1,
 		workflowId: row.workflow_id,
 		seed: row.seed,
 		attempts: row.attempts,
@@ -486,7 +489,11 @@ export class ImagesRepo extends StoreRepo {
 		assertNonEmptyString(createdAt, "图片记录的创建时间");
 		const id = randomUUID();
 		this.db.transaction((): void => {
-			const ordinal = this.countNodeImages(input.nodeId);
+			const next = this.db
+				.prepare(
+					"SELECT COALESCE(MAX(ordinal), -1) + 1 AS ordinal FROM node_images WHERE node_id = ?",
+				)
+				.get(input.nodeId) as { readonly ordinal: number };
 			this.db
 				.prepare(
 					`INSERT INTO node_images
@@ -499,7 +506,7 @@ export class ImagesRepo extends StoreRepo {
 					id,
 					input.storyId,
 					input.nodeId,
-					ordinal,
+					next.ordinal,
 					serializeJsonValue(request, "图片记录的 request"),
 					prompt,
 					negativePrompt,
@@ -666,6 +673,80 @@ export class ImagesRepo extends StoreRepo {
 			)
 			.run(new Date().toISOString(), id);
 		return this.#requireNodeImage(id);
+	}
+
+	/**
+	 * 重绘：换 seed、改提示词或换模板。三种方式都清空旧图片元数据并退回待出图，
+	 * 楼层原文不动。改过的提示词会留下标记，出图时不再套用旧的整理展开结果。
+	 */
+	redrawNodeImage(
+		id: string,
+		options: NodeImageRedrawOptions,
+	): NodeImageRecord {
+		const image = this.#requireNodeImage(id);
+		if (image.status === "running") {
+			throw new Error(`图片记录 ${id} 正在出图，不能重绘`);
+		}
+		let seed = image.seed;
+		let prompt = image.prompt;
+		let negativePrompt = image.negativePrompt;
+		let workflowId = image.workflowId;
+		let promptEdited = image.promptEdited;
+		if (options.mode === "new_seed") {
+			seed = nextSeed(image.seed);
+		} else if (options.mode === "edit_prompt") {
+			const text = options.prompt.trim();
+			if (text.length === 0) {
+				throw new Error("图片记录的新提示词不能为空");
+			}
+			prompt = text;
+			if (options.negativePrompt !== undefined) {
+				negativePrompt =
+					options.negativePrompt === null
+						? null
+						: options.negativePrompt.trim() || null;
+			}
+			if (options.seed !== undefined) {
+				assertImageSeed(options.seed);
+				seed = options.seed;
+			}
+			promptEdited = true;
+		} else {
+			const target = options.workflowId.trim();
+			if (this.getImageWorkflow(target) === null) {
+				throw new Error(`图片 workflow 不存在：${target}`);
+			}
+			workflowId = target;
+		}
+		this.db
+			.prepare(
+				`UPDATE node_images
+				SET status = 'pending', attempts = 0, error = NULL,
+					prompt = ?, negative_prompt = ?, workflow_id = ?, seed = ?,
+					prompt_edited = ?, file_name = NULL, media_type = NULL,
+					width = NULL, height = NULL, updated_at = ?
+				WHERE id = ?`,
+			)
+			.run(
+				prompt,
+				negativePrompt,
+				workflowId,
+				seed,
+				promptEdited ? 1 : 0,
+				new Date().toISOString(),
+				id,
+			);
+		return this.#requireNodeImage(id);
+	}
+
+	/** 删除一条插图记录；不触动楼层原文，已生成的文件由调用方清理。 */
+	deleteNodeImage(id: string): NodeImageRecord {
+		const image = this.#requireNodeImage(id);
+		if (image.status === "running") {
+			throw new Error(`图片记录 ${id} 正在出图，不能删除`);
+		}
+		this.db.prepare("DELETE FROM node_images WHERE id = ?").run(id);
+		return image;
 	}
 
 	/** 故事里的独立服装，按人物与名称排序。 */
@@ -986,4 +1067,22 @@ export class ImagesRepo extends StoreRepo {
 		if (image === null) throw new Error(`图片记录不存在：${id}`);
 		return image;
 	}
+}
+
+function assertImageSeed(seed: number): void {
+	if (
+		typeof seed !== "number" ||
+		!Number.isInteger(seed) ||
+		seed < 0 ||
+		seed > Number.MAX_SAFE_INTEGER
+	) {
+		throw new Error("图片记录的 seed 必须是非负整数");
+	}
+}
+
+/** 换 seed 重绘时保证新 seed 与旧的不同。 */
+function nextSeed(current: number | null): number {
+	let seed = Math.floor(Math.random() * 2_147_483_648);
+	while (seed === current) seed = Math.floor(Math.random() * 2_147_483_648);
+	return seed;
 }

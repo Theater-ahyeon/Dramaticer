@@ -131,6 +131,22 @@ export interface NodeImage {
 	readonly title: string | null;
 	readonly prompt: string | null;
 	readonly negativePrompt: string | null;
+	readonly workflowId: string;
+	readonly seed: number | null;
+}
+
+/** 三种重绘方式；改提示词时 `workflowId` 与 `seed` 不用给。 */
+export interface NodeImageRedrawRequest {
+	readonly mode: "new_seed" | "edit_prompt" | "switch_workflow";
+	readonly prompt?: string;
+	readonly negativePrompt?: string | null;
+	readonly workflowId?: string;
+	readonly seed?: number;
+}
+
+export interface NodeImageDeleteResult {
+	readonly deleted: true;
+	readonly id: string;
 }
 
 /** 画面整理里一个人物的结构化选择；供界面与重绘复用。 */

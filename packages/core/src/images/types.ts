@@ -248,6 +248,8 @@ export interface NodeImageRecord {
 	readonly title: string | null;
 	/** 画面整理的完整结构化结果与展开后的提示词；出图重试与重绘复用它。 */
 	readonly organizerResult: ImageOrganizerResult | null;
+	/** 玩家改过提示词；出图时以记录里的提示词为准，不再取整理结果里的人物。 */
+	readonly promptEdited: boolean;
 	readonly workflowId: string;
 	readonly seed: number | null;
 	readonly attempts: number;
@@ -274,6 +276,18 @@ export interface NewNodeImageInput {
 	readonly organizerResult?: ImageOrganizerResult | null;
 	readonly createdAt?: string;
 }
+
+/** 重绘的方式：换 seed、改提示词或换模板；三种都重置为待出图。 */
+export type NodeImageRedrawOptions =
+	| { readonly mode: "new_seed" }
+	| {
+			readonly mode: "edit_prompt";
+			readonly prompt: string;
+			readonly negativePrompt?: string | null;
+			/** 不给出时沿用原来的 seed。 */
+			readonly seed?: number;
+	  }
+	| { readonly mode: "switch_workflow"; readonly workflowId: string };
 
 export const IMAGE_WORKFLOW_KINDS = ["comfyui", "novelai"] as const;
 

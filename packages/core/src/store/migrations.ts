@@ -2499,6 +2499,15 @@ export function buildMigrations(
 				"ALTER TABLE node_images ADD COLUMN organizer_result TEXT",
 			],
 		},
+		{
+			version: 85,
+			description:
+				"插图重绘（v5 §6）：记录玩家改过的提示词，出图时不再套用旧的整理展开结果",
+			statements: [
+				`ALTER TABLE node_images ADD COLUMN prompt_edited INTEGER NOT NULL DEFAULT 0
+					CHECK (prompt_edited IN (0, 1))`,
+			],
+		},
 	];
 }
 

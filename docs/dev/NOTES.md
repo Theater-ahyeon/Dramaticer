@@ -325,3 +325,14 @@
 - `images import`（ComfyUI workflow）现在只在 comfyui 后端里选 provider；配置里同时有 NovelAI 后端时不会因「多个 provider」失败。
 - e2e 在 `v5-novelai-template.spec.ts`（桌面/手机：自定义模型、Medium、负面预设、固定 seed 与 V5 开关保存后回读），e2e 的 `serve.mjs` 给 images.yaml 加了一个假 NovelAI 后端；走查脚本 `.walk/walk17.spec.ts`。
 - `novelai.live.test.ts` 读仓库根 `.env` 的 `NOVELAI_API_KEY`，没有令牌时整组跳过；有令牌才真的请求官方接口出一张小图。
+
+## 插图插段与重绘（2026-11-27 起，image-v2/04）
+
+- `node_images` 在迁移 85 新增 `prompt_edited`。玩家改过提示词后，出图任务以记录里的 `prompt` / `negativePrompt` 为最终文本，`organizerCharacters` 返回空数组，不会再拿旧 `organizer_result.expanded` 里的人物提示词覆盖玩家修改。
+- `ImagesRepo.redrawNodeImage(id, options)` 支持 `new_seed`（保证新 seed 与旧的不同）、`edit_prompt`（可带 `seed`，不给就沿用原来的）、`switch_workflow`（保留 prompt 与整理结果）。三种都重置为 `pending`、`attempts = 0`、`error = null`，并清掉文件元数据；楼层原文不动。
+- `deleteNodeImage` 只删 `node_images` 一行。服务端 `DELETE /api/images/:id` 再用 `resolveMediaFile` 校验后清理生成文件；正在出图的记录拒绝重绘与删除（409）。
+- 新插图的序号取 `MAX(ordinal) + 1`，删掉中间的图后再加不会撞 `UNIQUE (node_id, ordinal)`。
+- `toNodeImage` 返回 `workflowId` 与 `seed`；`url` 带 `v=updatedAt`，同一张图重绘后不会命中旧缓存。
+- 故事页 `Prose` 按 1-based 段落序号插 `<figure class="floor-ill">`：`0` 在第一段前，`k` 在第 k 段之后，`null` 或超出段落数排在楼层末尾；插件渲染的楼层由 `FloorImageList` 统一放在正文下方。
+- 插图菜单在 `v4/FloorImages.tsx`：重绘（换 seed）、改提示词后重绘（内联提示词与负面）、换模板、删除；failed 另加重试。助手楼层操作区（`.flr-acts`，带 `data-node-id`）加「画这一幕」，未选 workflow 或关闭生图时给提示与故事设置链接。
+- e2e `v5-image-inline.spec.ts`（桌面/手机：段落位置、三种重绘、删除不改原文、手动画这一幕）；假 ComfyUI 把正向提示词编进图片宽度，测试据此确认后端收到的就是玩家改过的文本。走查脚本 `.walk/walk18.spec.ts`。

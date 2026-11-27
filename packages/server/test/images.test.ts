@@ -1,4 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type {
@@ -6,6 +12,7 @@ import type {
 	ImageProvidersView,
 	ImageWorkflowDetectionView,
 	ImageWorkflowsView,
+	NodeImage,
 	NodeImagesView,
 	StoryCharacterOutfitsView,
 	StoryImageImportResult,
@@ -825,7 +832,9 @@ describe("生图接口", () => {
 				nodeId: "n1",
 				ordinal: 0,
 				status: "done",
-				url: "/api/images/img-first/file",
+				url: `/api/images/img-first/file?v=${encodeURIComponent(
+					"2026-11-09T00:00:00.000Z",
+				)}`,
 				width: 512,
 				height: 768,
 				error: null,
@@ -833,6 +842,8 @@ describe("生图接口", () => {
 				title: null,
 				prompt: null,
 				negativePrompt: null,
+				workflowId: savedWorkflow.id,
+				seed: null,
 			},
 			{
 				id: "img-later",
@@ -847,6 +858,8 @@ describe("生图接口", () => {
 				title: null,
 				prompt: null,
 				negativePrompt: null,
+				workflowId: savedWorkflow.id,
+				seed: null,
 			},
 		]);
 		expect(path.nodes[1]?.images).toEqual([]);
@@ -1118,5 +1131,206 @@ describe("生图接口", () => {
 			"POST",
 		);
 		expect(noWorkflow.status).toBe(409);
+	});
+});
+
+describe("插图重绘与删除", () => {
+	it("三种重绘更新记录并重新入队，楼层原文不变", async () => {
+		const { running } = await startImagesServer();
+		running.store.createStory({ id: "s1", title: "重绘" });
+		running.store.appendNode({
+			id: "n1",
+			storyId: "s1",
+			parentId: null,
+			role: "assistant",
+			raw: "第一段。\n\n第二段。\n\n第三段。",
+		});
+		const first = running.store.saveImageWorkflow({
+			name: "模板一",
+			provider: "comfy",
+			payload: workflow() as never,
+			slots: SLOTS,
+		});
+		const second = running.store.saveImageWorkflow({
+			name: "模板二",
+			provider: "comfy",
+			payload: workflow("另一只猫") as never,
+			slots: SLOTS,
+		});
+		const image = running.store.insertNodeImage({
+			storyId: "s1",
+			nodeId: "n1",
+			request: { scene: "门厅" },
+			workflowId: first.id,
+			seed: 7,
+			prompt: "原提示词",
+			negativePrompt: "原负面",
+			insertAfterParagraph: 1,
+			title: "门厅的灯",
+		});
+		const edited = await request(
+			running.origin,
+			`/api/images/${image.id}/redraw`,
+			"POST",
+			{
+				mode: "edit_prompt",
+				prompt: " 玩家改过的提示词 ",
+				negativePrompt: "玩家负面",
+			},
+		);
+		expect(edited.status).toBe(200);
+		const editedView = (await edited.json()) as NodeImage;
+		expect(editedView).toMatchObject({
+			id: image.id,
+			status: "pending",
+			url: null,
+			insertAfterParagraph: 1,
+			title: "门厅的灯",
+			prompt: "玩家改过的提示词",
+			negativePrompt: "玩家负面",
+			workflowId: first.id,
+			seed: 7,
+			error: null,
+		});
+		expect(running.store.getNodeImage(image.id)?.promptEdited).toBe(true);
+		expect(
+			running.store.listBackgroundJobs({
+				storyId: "s1",
+				kinds: ["illustrate"],
+			}),
+		).toHaveLength(1);
+
+		const switched = await request(
+			running.origin,
+			`/api/images/${image.id}/redraw`,
+			"POST",
+			{ mode: "switch_workflow", workflowId: second.id },
+		);
+		expect(switched.status).toBe(200);
+		const switchedView = (await switched.json()) as NodeImage;
+		expect(switchedView).toMatchObject({
+			workflowId: second.id,
+			prompt: "玩家改过的提示词",
+			seed: 7,
+			status: "pending",
+		});
+
+		const redrawn = await request(
+			running.origin,
+			`/api/images/${image.id}/redraw`,
+			"POST",
+			{ mode: "new_seed" },
+		);
+		expect(redrawn.status).toBe(200);
+		const redrawnView = (await redrawn.json()) as NodeImage;
+		expect(redrawnView.seed).not.toBe(7);
+		expect(redrawnView).toMatchObject({
+			prompt: "玩家改过的提示词",
+			negativePrompt: "玩家负面",
+			workflowId: second.id,
+			status: "pending",
+		});
+		expect(running.store.getNode("n1")?.raw).toBe(
+			"第一段。\n\n第二段。\n\n第三段。",
+		);
+	});
+
+	it("删除插图清理记录与生成文件，原文不变；缺失与参数错误各自报错", async () => {
+		const { running, dir } = await startImagesServer();
+		running.store.createStory({ id: "s1", title: "删除" });
+		running.store.appendNode({
+			id: "n1",
+			storyId: "s1",
+			parentId: null,
+			role: "assistant",
+			raw: "第一段。\n\n第二段。",
+		});
+		const saved = running.store.saveImageWorkflow({
+			name: "模板",
+			provider: "comfy",
+			payload: workflow() as never,
+			slots: SLOTS,
+		});
+		const image = running.store.insertNodeImage({
+			storyId: "s1",
+			nodeId: "n1",
+			request: { scene: "门厅" },
+			workflowId: saved.id,
+			seed: 3,
+		});
+		running.store.startNodeImage(image.id, {
+			prompt: "p",
+			negativePrompt: "n",
+		});
+		running.store.finishNodeImage(image.id, {
+			fileName: "s1/done.png",
+			mediaType: "image/png",
+			width: 8,
+			height: 8,
+		});
+		const mediaDir = join(dir, "images", "s1");
+		mkdirSync(mediaDir, { recursive: true });
+		const filePath = join(mediaDir, "done.png");
+		writeFileSync(filePath, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+		expect((running.store.getNodeImage(image.id) ?? null)?.status).toBe("done");
+
+		const runningImage = running.store.insertNodeImage({
+			storyId: "s1",
+			nodeId: "n1",
+			request: { scene: "正在画" },
+			workflowId: saved.id,
+			seed: 4,
+		});
+		running.store.startNodeImage(runningImage.id, {
+			prompt: "p",
+			negativePrompt: "n",
+		});
+		const busyRedraw = await request(
+			running.origin,
+			`/api/images/${runningImage.id}/redraw`,
+			"POST",
+			{ mode: "new_seed" },
+		);
+		expect(busyRedraw.status).toBe(409);
+		const busyDelete = await request(
+			running.origin,
+			`/api/images/${runningImage.id}`,
+			"DELETE",
+		);
+		expect(busyDelete.status).toBe(409);
+		running.store.requeueRunningNodeImages("s1");
+
+		const invalid = await request(
+			running.origin,
+			`/api/images/${image.id}/redraw`,
+			"POST",
+			{ mode: "unknown" },
+		);
+		expect(invalid.status).toBe(400);
+		const missingWorkflow = await request(
+			running.origin,
+			`/api/images/${image.id}/redraw`,
+			"POST",
+			{ mode: "switch_workflow", workflowId: "missing" },
+		);
+		expect(missingWorkflow.status).toBe(400);
+
+		const removed = await request(
+			running.origin,
+			`/api/images/${image.id}`,
+			"DELETE",
+		);
+		expect(removed.status).toBe(200);
+		expect(await removed.json()).toEqual({ deleted: true, id: image.id });
+		expect(running.store.getNodeImage(image.id)).toBeNull();
+		expect(existsSync(filePath)).toBe(false);
+		expect(running.store.getNode("n1")?.raw).toBe("第一段。\n\n第二段。");
+
+		const missing = await request(
+			running.origin,
+			"/api/images/missing",
+			"DELETE",
+		);
+		expect(missing.status).toBe(404);
 	});
 });

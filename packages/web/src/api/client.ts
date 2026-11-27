@@ -67,6 +67,9 @@ import {
 	type NodeCorrectResult,
 	type NodeDirectorView,
 	type NodeEventsView,
+	type NodeImage,
+	type NodeImageDeleteResult,
+	type NodeImageRedrawRequest,
 	type NodeImagesView,
 	type NodeLedgerView,
 	type NodeRegenerateRequest,
@@ -1059,6 +1062,24 @@ export class ApiClient {
 		return this.json<NodeImageRecord>(
 			"POST",
 			`/api/images/${encodeURIComponent(imageId)}/retry`,
+		);
+	}
+
+	async redrawImage(
+		imageId: string,
+		request: NodeImageRedrawRequest,
+	): Promise<NodeImage> {
+		return this.json<NodeImage>(
+			"POST",
+			`/api/images/${encodeURIComponent(imageId)}/redraw`,
+			request,
+		);
+	}
+
+	async deleteImage(imageId: string): Promise<NodeImageDeleteResult> {
+		return this.json<NodeImageDeleteResult>(
+			"DELETE",
+			`/api/images/${encodeURIComponent(imageId)}`,
 		);
 	}
 

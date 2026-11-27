@@ -1,12 +1,65 @@
 import { createServer } from "node:http";
+import { deflateSync } from "node:zlib";
 
 const WRITER_PATH = "/writer/v1/chat/completions";
 const BACKGROUND_PATH = "/background/v1/chat/completions";
 const COMFY_PREFIX = "/comfy";
-const PNG_1PX = Buffer.from(
-	"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
-	"base64",
-);
+const PNG_SIGNATURE = Buffer.from([
+	0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+]);
+const CRC_TABLE = (() => {
+	const table = new Int32Array(256);
+	for (let index = 0; index < 256; index += 1) {
+		let value = index;
+		for (let bit = 0; bit < 8; bit += 1) {
+			value = (value & 1) === 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+		}
+		table[index] = value;
+	}
+	return table;
+})();
+
+function crc32(bytes) {
+	let value = -1;
+	for (const byte of bytes)
+		value = CRC_TABLE[(value ^ byte) & 0xff] ^ (value >>> 8);
+	return (value ^ -1) >>> 0;
+}
+
+function pngChunk(type, data) {
+	const length = Buffer.alloc(4);
+	length.writeUInt32BE(data.length);
+	const payload = Buffer.concat([Buffer.from(type), data]);
+	const crc = Buffer.alloc(4);
+	crc.writeUInt32BE(crc32(payload));
+	return Buffer.concat([length, payload, crc]);
+}
+
+/** 每次生成把正向提示词编进宽度，测试能确认后端收到的就是玩家改过的文本。 */
+function promptWidth(prompt) {
+	let hash = 2166136261;
+	for (let index = 0; index < prompt.length; index += 1) {
+		hash = Math.imul(hash ^ prompt.charCodeAt(index), 16777619);
+	}
+	return 40 + ((hash >>> 0) % 400);
+}
+
+function generatedPng(generation, prompt) {
+	const width = promptWidth(prompt);
+	const height = 60 + (generation % 400);
+	const header = Buffer.alloc(13);
+	header.writeUInt32BE(width, 0);
+	header.writeUInt32BE(height, 4);
+	header[8] = 8;
+	header[9] = 0;
+	const raw = Buffer.alloc((width + 1) * height);
+	return Buffer.concat([
+		PNG_SIGNATURE,
+		pngChunk("IHDR", header),
+		pngChunk("IDAT", deflateSync(raw)),
+		pngChunk("IEND", Buffer.alloc(0)),
+	]);
+}
 
 function textOf(content) {
 	if (typeof content === "string") return content;
@@ -467,6 +520,8 @@ export async function startFakeChannel(options = {}) {
 	const port = options.port ?? 0;
 	// 流式响应的间隔让界面有机会把中间状态画出来；0 表示尽快发完。
 	const streamDelayMs = options.streamDelayMs ?? 0;
+	let comfyGeneration = 0;
+	const comfyJobs = new Map();
 	const server = createServer((req, res) => {
 		// 设置页向导获取模型列表时请求 `/models`。
 		if (req.method === "GET" && req.url?.endsWith("/v1/models")) {
@@ -476,12 +531,24 @@ export async function startFakeChannel(options = {}) {
 			);
 			return;
 		}
-		// 出图用的小型 ComfyUI：提交即完成，下载一张 1×1 PNG。
+		// 出图用的小型 ComfyUI：提交即完成，按生成序号返回不同尺寸的 PNG。
 		if (req.url === `${COMFY_PREFIX}/prompt` && req.method === "POST") {
-			req.resume();
+			const chunks = [];
+			req.on("data", (chunk) => chunks.push(chunk));
 			req.on("end", () => {
+				comfyGeneration += 1;
+				let positive = "";
+				try {
+					const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+					positive = body.prompt?.["6"]?.inputs?.text ?? "";
+				} catch {
+					positive = "";
+				}
+				comfyJobs.set(comfyGeneration, { positive });
 				res.writeHead(200, { "Content-Type": "application/json" });
-				res.end(JSON.stringify({ prompt_id: "fake-prompt" }));
+				res.end(
+					JSON.stringify({ prompt_id: `fake-prompt-${comfyGeneration}` }),
+				);
 			});
 			return;
 		}
@@ -490,6 +557,7 @@ export async function startFakeChannel(options = {}) {
 			req.url?.startsWith(`${COMFY_PREFIX}/history/`)
 		) {
 			const promptId = req.url.slice(`${COMFY_PREFIX}/history/`.length);
+			const generation = Number(promptId.replace("fake-prompt-", "")) || 1;
 			res.writeHead(200, { "Content-Type": "application/json" });
 			res.end(
 				JSON.stringify({
@@ -497,7 +565,11 @@ export async function startFakeChannel(options = {}) {
 						outputs: {
 							9: {
 								images: [
-									{ filename: "fake.png", subfolder: "", type: "output" },
+									{
+										filename: `fake-${generation}.png`,
+										subfolder: "",
+										type: "output",
+									},
 								],
 							},
 						},
@@ -507,11 +579,18 @@ export async function startFakeChannel(options = {}) {
 			return;
 		}
 		if (req.method === "GET" && req.url?.startsWith(`${COMFY_PREFIX}/view?`)) {
+			const query = new URL(req.url, "http://127.0.0.1");
+			const match = /fake-(\d+)\.png/.exec(
+				query.searchParams.get("filename") ?? "",
+			);
+			const generation = match === null ? 1 : Number(match[1]);
+			const job = comfyJobs.get(generation);
+			const bytes = generatedPng(generation, job?.positive ?? "");
 			res.writeHead(200, {
 				"Content-Type": "image/png",
-				"Content-Length": PNG_1PX.length,
+				"Content-Length": bytes.length,
 			});
-			res.end(PNG_1PX);
+			res.end(bytes);
 			return;
 		}
 		if (req.method !== "POST") {
