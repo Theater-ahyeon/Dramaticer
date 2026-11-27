@@ -279,7 +279,7 @@ function NotebookBlock({
 				</div>
 				<Editable
 					value={page.now}
-					placeholder="此刻的处境与打算"
+					placeholder="现在的处境"
 					onCommit={(text) => void save({ section: "now", text })}
 				/>
 			</div>
@@ -290,7 +290,7 @@ function NotebookBlock({
 				</div>
 				<Editable
 					value={page.base}
-					placeholder="卡里的设定与不可逆的转折"
+					placeholder="开场前的设定"
 					onCommit={(text) => void save({ section: "base", text })}
 				/>
 			</div>
@@ -667,7 +667,7 @@ function CanonBoard({
 				)}
 			</div>
 			{selected === null ? (
-				<p className="v4empty">选中左边的一件事件，看它的概要与原话。</p>
+				<p className="v4empty">选中左边的事件查看详情。</p>
 			) : (
 				<article className="canondetail">
 					<div className="canonhead">
@@ -728,7 +728,7 @@ function CanonBoard({
 					>
 						<Editable
 							value={selected.digest}
-							placeholder="（还没有缩写）"
+							placeholder="缩写"
 							onCommit={(text) => void edit("digest", text)}
 						/>
 					</CanonField>
@@ -1058,9 +1058,6 @@ export function Memory() {
 			<div className="vh">
 				<div>
 					<h1>记忆</h1>
-					<p>
-						系统记下的每一样东西都在这里。点任何一句就能改；你改过的会锁定，不会再被自动覆盖。原文永远不动。
-					</p>
 				</div>
 			</div>
 			<div className="subtabs">
@@ -1105,9 +1102,7 @@ export function Memory() {
 				<div className="wiki">
 					<div className="plist">
 						{data.pages.length === 0 ? (
-							<p className="v4empty">
-								还没有页面。写几楼之后，自动记录会把人物和地点整理出来。
-							</p>
+							<p className="v4empty">还没有页面。写几楼之后会出现。</p>
 						) : null}
 						{data.pages.map((item) => {
 							const header =
@@ -1574,7 +1569,7 @@ export function Memory() {
 			{tab === "line" ? (
 				<div className="spine">
 					{data.timeline.length === 0 ? (
-						<p className="v4empty">一场结束后，这里会出现它的摘要。</p>
+						<p className="v4empty">暂无内容</p>
 					) : null}
 					{data.timeline.map((scene, index) => (
 						<details
@@ -1681,7 +1676,7 @@ export function Memory() {
 						<textarea
 							rows={1}
 							value={rule}
-							placeholder="加一条：例如「不要替我说话」"
+							placeholder="加一条偏好"
 							onChange={(event) => setRule(event.target.value)}
 						/>
 						<button

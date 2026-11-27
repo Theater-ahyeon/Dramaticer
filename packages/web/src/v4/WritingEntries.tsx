@@ -85,7 +85,7 @@ export function WritingEntries({
 					<h3>写作条目</h3>
 					<p>
 						{visible.length === 0
-							? "导入预设后，没对应上选项的条目会出现在这里，按预设里原来的位置发给模型。也可以自己加。"
+							? "导入预设后，未匹配的条目在这里；也可以自己加。"
 							: `共 ${visible.length} 条，启用 ${visible.filter((entry) => entry.enabled).length} 条。受上面「文风包」开关控制。`}
 					</p>
 				</div>

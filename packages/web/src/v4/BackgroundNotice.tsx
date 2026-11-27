@@ -4,8 +4,8 @@ import { api } from "../api";
 import { MODEL_ROLE_CHOICES } from "../chat/channels-form";
 import { TLink, sp } from "./ui";
 
-// 后台失败可见（refactor/03）：后台任务连续因为渠道失败而出错时，故事页顶部告诉
-// 玩家「记忆与导演暂停了」以及原因；后台恢复后自动消失，关掉的同一条不再出现。
+// 后台失败可见（refactor/03）：后台任务连续因为渠道失败而出错时，故事页顶部显示
+// 「后台任务连续失败 N 次」与原因；后台恢复后自动消失，关掉的同一条不再出现。
 
 export type BackgroundHealthView = BackgroundHealth & {
 	readonly roles: readonly LlmModelRole[];
@@ -84,19 +84,15 @@ export function BackgroundNotice({
 	return (
 		<output className="bgnotice">
 			<div>
-				<b>记忆与导演暂停了</b>
+				<b>后台任务连续失败 {health.failures} 次</b>
 				<p>
-					{describeRoles(health.roles)}连续 {health.failures} 次失败
+					{describeRoles(health.roles)}失败
 					{where === "" ? "" : `（${where}）`}
 					{health.error === null ? "" : `：${health.error}`}
-					。正文照常能写，后台恢复后会把落下的楼层补上。
 				</p>
 			</div>
-			<TLink
-				className="btn sm"
-				to={`/stories/${encodeURIComponent(storyId)}/channels`}
-			>
-				去渠道设置
+			<TLink className="btn sm" to="/settings">
+				检查渠道
 			</TLink>
 			<button
 				type="button"
@@ -110,7 +106,7 @@ export function BackgroundNotice({
 					setDismissed(signature);
 				}}
 			>
-				知道了
+				关闭
 			</button>
 		</output>
 	);

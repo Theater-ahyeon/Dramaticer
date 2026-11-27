@@ -100,9 +100,9 @@ const DIALS: readonly {
 		title: "思考",
 		hint: "写之前想多久",
 		choices: [
-			["off", "不想"],
-			["low", "想一下"],
-			["high", "多想"],
+			["off", "关闭"],
+			["low", "低"],
+			["high", "高"],
 		],
 	},
 ];
@@ -181,9 +181,9 @@ export function Prefs() {
 					features.reload();
 					toast(
 						{
-							lite: "省：只留最必要的几项",
-							standard: "均衡：记忆和导演都开",
-							immersive: "全开：加上提前备好、插图和配乐",
+							lite: "轻量",
+							standard: "标准",
+							immersive: "完整",
 						}[tier],
 					);
 				},
@@ -194,9 +194,9 @@ export function Prefs() {
 	usePaletteCommands(
 		useCallback(
 			() => [
-				{ label: "档位 · 省", run: () => setTier("lite") },
-				{ label: "档位 · 均衡", run: () => setTier("standard") },
-				{ label: "档位 · 全开", run: () => setTier("immersive") },
+				{ label: "档位 · 轻量", run: () => setTier("lite") },
+				{ label: "档位 · 标准", run: () => setTier("standard") },
+				{ label: "档位 · 完整", run: () => setTier("immersive") },
 			],
 			[setTier],
 		),
@@ -216,15 +216,14 @@ export function Prefs() {
 			<div className="vh">
 				<div>
 					<h1>设置</h1>
-					<p>每一项都能随时开、随时关。晚开的功能会在后台把前面的楼层补上。</p>
 				</div>
 				<Seg<FeatureTier>
 					label="档位"
 					value={features.data?.tier ?? null}
 					options={[
-						{ v: "lite", label: "省" },
-						{ v: "standard", label: "均衡" },
-						{ v: "immersive", label: "全开" },
+						{ v: "lite", label: "轻量" },
+						{ v: "standard", label: "标准" },
+						{ v: "immersive", label: "完整" },
 					]}
 					onChange={setTier}
 				/>
@@ -252,7 +251,7 @@ export function Prefs() {
 								<p>
 									《{canon.data.bound.bookTitle}》当前演到「
 									{canon.data.bound.currentEvent?.title ?? "—"}」。
-									关掉「知道全书」时，人物页、世界索引和窗口只取游标之前的内容。
+									关掉「知道全书」时，人物页与世界索引只取游标之前的内容。
 								</p>
 							</div>
 							<div className="stat" style={{ flexWrap: "wrap", gap: 8 }}>
@@ -298,7 +297,7 @@ export function Prefs() {
 					<div className="dial">
 						<div>
 							<h3>外观</h3>
-							<p>亮是纸，暗是墨；跟随系统时随设备的深浅色自动切换</p>
+							<p>跟随系统时随设备切换深浅色</p>
 						</div>
 						<Seg<Theme>
 							label="外观"
@@ -350,8 +349,8 @@ export function Prefs() {
 							<h3>导入的预设</h3>
 							<p>
 								{writing.data.preset === null
-									? "还没有导入预设。导入后，能对应上的条目会变成上面的选项，其余成为下面的写作条目。"
-									: `「${writing.data.preset.name}」共 ${writing.data.preset.total} 条：${writing.data.preset.mapped} 条变成了上面的选项，${writing.data.preset.packCount} 条成为写作条目。开关关掉后写作条目全部不发。`}
+									? "还没有导入预设。"
+									: `「${writing.data.preset.name}」共 ${writing.data.preset.total} 条：${writing.data.preset.mapped} 条变成上面的选项，${writing.data.preset.packCount} 条成为写作条目。`}
 							</p>
 							<div className="stat">
 								<button
@@ -403,9 +402,9 @@ export function Prefs() {
 							<p>
 								{writing.data.recommended === null
 									? "这张卡没有带推荐的写作选项。"
-									: `这张卡带了推荐配置；你的调整叠在它上面（${Object.keys(writing.data.overrides).length} 项）。`}
+									: `这张卡带了推荐配置（你改过 ${Object.keys(writing.data.overrides).length} 项）。`}
 								{card.data?.card
-									? ` 故事固定在卡的 ${card.data.card.version.slice(0, 8)} 版（${new Date(card.data.card.importedAt).toLocaleDateString()} 载入）。`
+									? ` 卡版本 ${card.data.card.version.slice(0, 8)}（${new Date(card.data.card.importedAt).toLocaleDateString()} 载入）。`
 									: ""}
 							</p>
 							<div className="stat">
@@ -414,7 +413,7 @@ export function Prefs() {
 									className="btn ghost sm"
 									onClick={() => cardFile.current?.click()}
 								>
-									卡更新了？对比并升级
+									对比并升级卡
 								</button>
 								<input
 									ref={cardFile}
@@ -513,7 +512,7 @@ export function Prefs() {
 													{item.wired ? null : (
 														<span
 															className="pending-tag"
-															title="这个开关的值已保存，但运行时还没有读取它"
+															title="已保存，运行时尚未读取"
 														>
 															尚未生效
 														</span>
@@ -577,7 +576,6 @@ export function Prefs() {
 					<div className="dial">
 						<div>
 							<h3>渠道与模型</h3>
-							<p>写正文、后台记账、每章规划各用哪个模型；密钥只存在本机。</p>
 							{(channelWarnings.data ?? []).length > 0 ? (
 								<ul className="channel-warnings" aria-label="渠道配置提醒">
 									{(channelWarnings.data ?? []).map((warning) => (
@@ -588,8 +586,8 @@ export function Prefs() {
 							<div className="stat">
 								<span>
 									{card.data?.recommendedMode
-										? `这张卡推荐的写法：${{ fast: "快速", plan: "规划", deep: "深度" }[card.data.recommendedMode] ?? card.data.recommendedMode}；导入不会替你切换，写法只在你在本页「实验」里选择时改变`
-										: "写法在本页「实验」里选择，默认快速"}
+										? `这张卡推荐：${{ fast: "快速", plan: "规划", deep: "深度" }[card.data.recommendedMode] ?? card.data.recommendedMode}`
+										: "写法在「实验」里选择，默认快速"}
 								</span>
 							</div>
 						</div>
@@ -598,7 +596,7 @@ export function Prefs() {
 							style={{ textDecoration: "none" }}
 							to="/settings"
 						>
-							选渠道和模型 ›
+							选渠道和模型
 						</Link>
 					</div>
 				</div>

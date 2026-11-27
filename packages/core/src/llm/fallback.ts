@@ -124,7 +124,7 @@ export function readChannelWarnings(config: LlmChannelsConfig): string[] {
 		warnings.push(
 			config.models.has(conventional)
 				? `后台模型 ${alias} 没有指向保底：有 ${conventional} 但 ${alias} 没写 fallback: ${conventional}`
-				: `后台模型 ${alias} 没有配置保底（fallback）：主渠道失败时记忆与导演会暂停`,
+				: `后台模型 ${alias} 没有配置保底（fallback）：主渠道失败时后台任务会中断`,
 		);
 	}
 	return warnings;

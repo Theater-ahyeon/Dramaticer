@@ -336,3 +336,10 @@
 - 故事页 `Prose` 按 1-based 段落序号插 `<figure class="floor-ill">`：`0` 在第一段前，`k` 在第 k 段之后，`null` 或超出段落数排在楼层末尾；插件渲染的楼层由 `FloorImageList` 统一放在正文下方。
 - 插图菜单在 `v4/FloorImages.tsx`：重绘（换 seed）、改提示词后重绘（内联提示词与负面）、换模板、删除；failed 另加重试。助手楼层操作区（`.flr-acts`，带 `data-node-id`）加「画这一幕」，未选 workflow 或关闭生图时给提示与故事设置链接。
 - e2e `v5-image-inline.spec.ts`（桌面/手机：段落位置、三种重绘、删除不改原文、手动画这一幕）；假 ComfyUI 把正向提示词编进图片宽度，测试据此确认后端收到的就是玩家改过的文本。走查脚本 `.walk/walk18.spec.ts`。
+
+## 界面文案（2026-11-27 起，ui-v2/06）
+
+- 文案对照表在 `docs/proposals/v5.md` §8.3；界面只用人话和标准软件术语，不写解释架构的句子，不用「它」指代模型。
+- 档位界面字是「轻量 / 标准 / 完整」（存储值仍是 `lite / standard / immersive`）；思考是「关闭 / 低 / 高」（`off / low / high`）；剧情线状态是「进行中 / 已偏离 / 已达成」；识别不出类型的条目叫「未分类」。`GLOSSARY.md` 与界面同步，改词要同时改两处。
+- 后台失败条在 `v4/BackgroundNotice.tsx`：标题是「后台任务连续失败 N 次」，按钮「检查渠道」跳到全局设置 `/settings`；故事下没有 `/channels` 路由。
+- 文案改动会打击以文字定位的 e2e（`v4-prefs`、`v4-outline`、`background-notice`、`import-audit` 等），改完先全局搜索旧词；走查脚本 `.walk/walk19.spec.ts` 覆盖书架、故事、记忆、走向、设定、设置、全局设置、检视器、404 与后台失败条。

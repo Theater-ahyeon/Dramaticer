@@ -62,7 +62,7 @@ export function GlobalSettings() {
 								})}
 							</ul>
 						) : (
-							<p className="muted">还没有连接模型。填好下面几项就能开始。</p>
+							<p className="muted">还没有连接模型。</p>
 						)}
 						{view.warnings.length > 0 ? (
 							<ul className="channel-warnings" aria-label="配置提醒">

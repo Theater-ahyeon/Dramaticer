@@ -85,7 +85,7 @@ export function CanonLibrary() {
 				<div>
 					<span className="label">原著</span>
 					<h1>原著书架</h1>
-					<p>导入小说原文，按章查看与调整，之后可以从这里抽取事件。</p>
+					<p>导入小说原文，按章查看。</p>
 				</div>
 				<TLink className="btn ghost sm" to="/">
 					回到书架
@@ -95,7 +95,7 @@ export function CanonLibrary() {
 				<input
 					type="text"
 					aria-label="书名"
-					placeholder="书名（默认用文件名）"
+					placeholder="书名"
 					value={title}
 					onChange={(event) => setTitle(event.target.value)}
 				/>
@@ -140,7 +140,7 @@ export function CanonLibrary() {
 						}}
 					/>
 					<strong>导入原著包（.json）</strong>
-					<span>已汇编好的原著，导入后直接能开局，不用重新抽取</span>
+					<span>导入后直接能开局</span>
 				</label>
 			</div>
 			{books.error !== null ? (

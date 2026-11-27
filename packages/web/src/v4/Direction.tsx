@@ -51,7 +51,7 @@ function WantRow({
 					{pill === null ? null : (
 						<span className={`pill ${pill[0]}`}>{pill[1]}</span>
 					)}
-					{item.done ? <span className="pill ok">已发生</span> : null}
+					{item.done ? <span className="pill ok">已达成</span> : null}
 				</div>
 				<Editable
 					as="h3"
@@ -217,7 +217,7 @@ export function DirectionPanel({
 							)
 						}
 					>
-						AI 写的先别给我看
+						隐藏 AI 写的
 					</Tog>
 				</div>
 			)}
@@ -226,14 +226,10 @@ export function DirectionPanel({
 					<div className="dircolhead">
 						<h2>想发生的</h2>
 						{data.hidden === null ? null : (
-							<p className="v4empty">
-								AI 还补了 {data.hidden.total} 条，已按你的设置隐藏。
-							</p>
+							<p className="v4empty">AI 另有 {data.hidden.total} 条已隐藏。</p>
 						)}
 					</div>
-					{data.wants.length === 0 ? (
-						<p className="v4empty">还没有写下要发生的事。</p>
-					) : null}
+					{data.wants.length === 0 ? <p className="v4empty">暂无内容</p> : null}
 					{data.wants.map((item) => (
 						<WantRow
 							key={item.id}
@@ -252,7 +248,7 @@ export function DirectionPanel({
 						<div className="diradd">
 							<input
 								value={draft}
-								placeholder="写下一件你想看到的事"
+								placeholder="写下一件想看到的事"
 								onChange={(event) => setDraft(event.target.value)}
 								onKeyDown={(event) => {
 									if (event.key !== "Enter" || draft.trim() === "") return;
@@ -278,9 +274,7 @@ export function DirectionPanel({
 					<div className="dircolhead">
 						<h2>还没收的线</h2>
 					</div>
-					{data.opens.length === 0 ? (
-						<p className="v4empty">没有没收的线。</p>
-					) : null}
+					{data.opens.length === 0 ? <p className="v4empty">暂无内容</p> : null}
 					{data.opens.map((item) => (
 						<OpenRow
 							key={item.id}
@@ -362,7 +356,7 @@ export function DirectionPage() {
 				<div className="dirask">
 					<input
 						value={idea}
-						placeholder="写下你的想法（可选）"
+						placeholder="补充想法（可选）"
 						onChange={(event) => setIdea(event.target.value)}
 					/>
 					{OPERATIONS.map((item) => (
@@ -377,7 +371,7 @@ export function DirectionPage() {
 					))}
 				</div>
 				<div className="label">
-					<span>AI 的建议 · 逐条决定</span>
+					<span>AI 建议</span>
 					<button
 						type="button"
 						className="btn ghost sm"

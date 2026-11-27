@@ -2,7 +2,7 @@ import type { StoryStore } from "../store/story-store.js";
 import type { BackgroundJob } from "./types.js";
 
 // 后台失败可见（refactor/03）：从任务表直接算，不新增存储。最近连续几条任务都因为
-// 模型渠道失败而出错，就认为记忆与导演暂停了；只要有一条成功就恢复。
+// 模型渠道失败而出错，就认为后台任务已中断；只要有一条成功就恢复。
 
 export const BACKGROUND_PAUSE_THRESHOLD = 3;
 const RECENT_JOBS = 30;

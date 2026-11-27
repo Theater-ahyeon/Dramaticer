@@ -85,7 +85,7 @@ test.describe("导入体检（设定页）", () => {
 		await expect(view).toContainText("4");
 		await expect(chip(page, "常识")).toHaveText("常识 1");
 		await expect(chip(page, "人物地点")).toHaveText("人物地点 1");
-		await expect(chip(page, "未分类|没认出")).toHaveText(/ 1$/);
+		await expect(chip(page, "未分类")).toHaveText(/ 1$/);
 		await expect(chip(page, "插件残留")).toHaveText("插件残留 1");
 
 		const before = Number(await view.locator(".cost .big.was").innerText());
@@ -100,7 +100,7 @@ test.describe("导入体检（设定页）", () => {
 		await expect(draft.locator("textarea")).toHaveValue(/还没有归类的段落/);
 		await draft.locator("select").selectOption("common");
 		await expect(chip(page, "常识")).toHaveText("常识 2");
-		await expect(chip(page, "未分类|没认出")).toHaveCount(0);
+		await expect(chip(page, "未分类")).toHaveCount(0);
 		await draft.locator("select").selectOption("unknown");
 		await expect(chip(page, "常识")).toHaveText("常识 1");
 	});

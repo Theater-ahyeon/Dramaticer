@@ -322,11 +322,11 @@ export function ChannelWizard({
 				/>
 			</label>
 			<label>
-				<span>后台模型（记忆整理等，可选更便宜的）</span>
+				<span>后台模型（可选）</span>
 				<input
 					list="wizard-models"
 					value={background}
-					placeholder="留空则与正文相同"
+					placeholder="同正文"
 					onChange={(event) => setBackground(event.target.value)}
 					disabled={busy}
 				/>

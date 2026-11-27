@@ -345,10 +345,7 @@ export function VisualProfileEditor({
 				<header className="director-section-head">
 					<h2>导入智绘姬</h2>
 				</header>
-				<p className="muted">
-					导入只读取公开字段；角色 /
-					服装库写成分格视觉档案与独立服装，生图预设按关键词拆成标签库与画面整理条目。
-				</p>
+				<p className="muted">支持角色/服装库与生图预设。</p>
 				<div className="settings-grid">
 					<Field label="智绘姬角色/服装 JSON">
 						<input
@@ -406,9 +403,7 @@ export function VisualProfileEditor({
 					</button>
 				</div>
 				{profiles.length === 0 ? (
-					<p className="muted">
-						还没有视觉档案；导入角色卡后会自动生成，也可以手动生成或导入智绘姬角色库。
-					</p>
+					<p className="muted">还没有视觉档案；可以生成或导入。</p>
 				) : (
 					<ul className="image-profile-list">
 						{profiles.map((record) => (
@@ -842,9 +837,7 @@ export function VisualProfileEditor({
 					</button>
 				</div>
 				{storyTags.length === 0 ? (
-					<p className="muted">
-						还没有标签库条目；导入生图预设里有触发关键词的条目会出现在这里。
-					</p>
+					<p className="muted">还没有标签库条目。</p>
 				) : (
 					<ul className="image-workflow-list">
 						{storyTags.map((entry) => (
@@ -1057,9 +1050,7 @@ export function VisualProfileEditor({
 					<h2>画面整理条目</h2>
 					<span className="ledger-tag">{organizerEntries.length} 条</span>
 				</header>
-				<p className="muted">
-					这些条目只发给画面整理，不会混进正文回合。生图预设里没有触发词的条目会出现在这里。
-				</p>
+				<p className="muted">只用于画面整理。</p>
 				<div className="plan-toolbar">
 					<button type="button" disabled={busy} onClick={newOrganizerEntry}>
 						新增整理条目

@@ -380,7 +380,7 @@ export function Shell() {
 							<input
 								// biome-ignore lint/a11y/noAutofocus: 面板打开就是为了输入
 								autoFocus
-								placeholder="去哪里，或者做什么"
+								placeholder="搜索页面或动作"
 								autoComplete="off"
 								value={query}
 								onChange={(event) => {
@@ -425,9 +425,7 @@ export function Shell() {
 									</li>
 								))}
 							</ul>
-							{commands.length === 0 ? (
-								<p className="none">没有找到。换个说法试试</p>
-							) : null}
+							{commands.length === 0 ? <p className="none">没有结果</p> : null}
 							<footer>
 								<span>
 									<span className="kbd">↑</span>

@@ -22,8 +22,7 @@ export function RerollStats({ storyId }: { readonly storyId: string }) {
 			<h2>重写率</h2>
 			<p className="rr-lead">
 				每百楼重写 <b className="num">{data.total.perHundred}</b> 次（
-				{data.total.floors} 楼里重写 {data.total.rerolls}{" "}
-				次）。越低说明越少需要你返工。
+				{data.total.floors} 楼里重写 {data.total.rerolls} 次）。
 			</p>
 			<div className="tblwrap rr-wrap">
 				<table className="tbl rr">

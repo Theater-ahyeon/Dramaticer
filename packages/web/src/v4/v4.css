@@ -2722,15 +2722,9 @@ img.cover {
 	letter-spacing: 0.03em;
 	color: var(--ink);
 }
-.login-tag {
-	margin: 0 0 22px;
-	font: var(--t-sm) var(--f-prose);
-	letter-spacing: 0.4em;
-	text-indent: 0.4em;
-	color: var(--muted);
-}
 .login-card form {
 	width: 100%;
+	margin-top: 22px;
 	display: grid;
 	gap: 10px;
 }

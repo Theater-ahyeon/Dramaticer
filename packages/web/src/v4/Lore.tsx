@@ -75,7 +75,7 @@ const KIND: Record<string, { label: string; color: string; when: string }> = {
 	presentation: { label: "素材", color: "--line", when: "显示用，不进正文" },
 	options: { label: "选项", color: "--teal", when: "作者留下的选项" },
 	"plugin-residue": { label: "插件残留", color: "--soft", when: "不使用" },
-	unknown: { label: "没认出", color: "--soft", when: "按关键词命中时" },
+	unknown: { label: "未分类", color: "--soft", when: "按关键词命中时" },
 };
 
 /** 设定页：这个故事自己的设定副本，改它不影响卡库里的原卡。 */
@@ -198,8 +198,7 @@ export function Lore() {
 					<div>
 						<h1>设定 · {data.cardName ?? title}</h1>
 						<p>
-							这张卡的设定有 {data.entries.length}{" "}
-							条，已按用法分好类。改的是这个故事自己的副本，卡库里的原卡不受影响。
+							共 {data.entries.length} 条，改的是这个故事自己的副本。
 							{edited > 0 ? `你改过 ${edited} 条。` : ""}
 						</p>
 					</div>
@@ -217,11 +216,7 @@ export function Lore() {
 								() => api.updateSettings(storyId, { importMode: value }),
 								() => {
 									lore.reload();
-									toast(
-										value === "raw"
-											? "原样：照酒馆的方式运行，脚本和正则照常生效"
-											: "优化：条目按用法分开处理",
-									);
+									toast(value === "raw" ? "已切到原样" : "已切到优化");
 								},
 							)
 						}
@@ -234,7 +229,7 @@ export function Lore() {
 								() => api.call("POST", sp(storyId, "/lore-copy/restore")),
 								() => {
 									lore.reload();
-									toast("已恢复成卡的原样（你的修改保留在历史里，可以找回）");
+									toast("已恢复成卡的原样");
 								},
 							)
 						}
@@ -292,9 +287,7 @@ export function Lore() {
 			</div>
 			<section className="sandbox-perms" aria-label="卡片脚本与联网">
 				<h2>卡片脚本与联网</h2>
-				<p>
-					沙箱默认不联网。卡里的脚本要访问某个域名时，先在这里逐个允许；允许名单只属于这个故事。
-				</p>
+				<p>卡里的脚本要用某个域名时，先在这里允许。允许名单只属于这个故事。</p>
 				{sandbox.error !== null ? (
 					<p className="v4err">{sandbox.error}</p>
 				) : sandboxData === null ? (

@@ -1291,7 +1291,7 @@ export function Play() {
 									) : null}
 									{node.id === lastId && whyOpen ? (
 										<div className="why">
-											<span>原因</span>
+											<span>重写原因（可选）</span>
 											<button
 												type="button"
 												className="chip"

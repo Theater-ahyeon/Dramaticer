@@ -351,7 +351,7 @@ test.describe("故事页：正文、批注与输入台", () => {
 		);
 		await page.locator(".say textarea").blur();
 
-		// 停靠栏是底部抽屉：「它看到了什么」直接打开上下文，拉手收起。
+		// 停靠栏是底部抽屉：「上下文」直接打开上下文，拉手收起。
 		const drawer = page.locator(".dockwrap");
 		await expect(page.locator("#dock")).toBeHidden();
 		await page

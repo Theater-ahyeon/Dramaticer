@@ -3,23 +3,21 @@
 > 每次收尾时完整重写，不超过 40 行。长期有效的注意事项写进 `docs/dev/NOTES.md`。
 
 ## 最近一次
-- 2026-11-27（工单 `image-v2/04`）。**M-D 呈现阶段（`card-ui` 01–02、`image-v2` 01–04）全部完成**。
-- 迁移 85 给 `node_images` 加 `prompt_edited`；玩家改过的提示词不再被旧 `organizer_result.expanded` 里的人物提示词覆盖，出图以记录里的文本为准。
-- `ImagesRepo.redrawNodeImage` 支持换 seed、改提示词、换模板三种重绘，都重置为 `pending` 并清空旧文件元数据；`deleteNodeImage` 只删插图记录，服务端顺带清理安全的生成文件。正在出图的记录拒绝重绘与删除。
-- 新插图序号改用 `MAX(ordinal)+1`，删掉中间的图后再加不会撞唯一约束。
-- `toNodeImage` 返回 `workflowId`、`seed`，`url` 带 `v=updatedAt`，重绘后不会命中旧缓存。
-- 故事页 `Prose` 按 1-based 段落序号插入 `<figure class="floor-ill">`；`0` 在第一段前，`k` 在第 k 段后，`null` 或超出段落数放楼层末尾；插件渲染楼层由 `FloorImageList` 统一放在正文下方。
-- 插图菜单（`v4/FloorImages.tsx`）：重绘（换 seed）、改提示词后重绘、换模板、删除；failed 另加重试。助手楼层操作区加「画这一幕」，未选 workflow 或关闭生图时给提示与故事设置链接。
-- 验证：`pnpm check` 通过（2577 用例通过、7 个 live 跳过）；`v5-image-inline`、`v5-image-organizer`、`v5-image-profiles`、`v5-novelai-template`、`v4-story` 桌面/手机 e2e 通过；`walk18` 截图已看。
-- 假 ComfyUI 把正向提示词编进图片宽度，e2e 据此确认后端收到的就是玩家改过的文本。
+- 2026-11-27（工单 `ui-v2/06`）。**v5 的 25 张工单（M-A 至 M-E）全部完成**：`ui-v2` 01–06、`memory-v5` 01–05、`direction-v5` 01–02、`canon` 01–06、`card-ui` 01–02、`image-v2` 01–04。
+- 全站文案按 `docs/proposals/v5.md` §8.3 清洗：404 用「页面不存在」；「上下文」「输入行动或对话」「重写原因（可选）」「撤回」；思考关闭/低/高；档位轻量/标准/完整；剧情线状态进行中/已偏离/已达成；未分类；后台失败条改为「后台任务连续失败 N 次：原因」。
+- 后台失败条的「检查渠道」原指向不存在的 `/stories/:id/channels`，现指全局设置 `/settings`；故事下没有渠道路由。
+- 删除标题下的架构说明与文艺腔：登录标语、记忆/设置副标题、设定与原著说明、导入兼容说明、模板覆盖说明、画面整理作用域说明等；占位符只留操作。
+- `GLOSSARY.md` 同步界面术语（思考三档、档位三档、剧情走向状态、未分类、未收的线）。
+- server 的后台保底提醒同步改成「主渠道失败时后台任务会中断」。
+- 验证：`pnpm check` 通过（2577 用例、7 个 live 跳过）；受影响 e2e 59 项通过（v4-story 首跑一次阶段条没等到「正文」，单跑 6/6 通过，属既有偶发）；`walk19` 桌面与手机各 10 页截图已逐张看过。
 
 ## 下一步
-1. **M-E 收尾：`ui-v2/06` 全站文案清洗**。
+1. 没有待做的工单。下一阶段按 `docs/DESIGN.md` 与人类新需求开新功能目录。
 2. 人类填入 `NOVELAI_API_KEY` 后跑一次 `pnpm vitest run packages/core/test/novelai.live.test.ts`，勾掉 `image-v2/03` 工单最后一项。
 
 ## 眼下要注意
 - server 与 e2e 读 core 的 `dist`：改 core/st-compat 后先 `pnpm run build` 再跑 e2e。
-- 插图插段序号按渲染出来的 `<p>` 数（思考、状态栏、选项块不算段落）；编辑或重写后段落数变了，旧图可能落到末尾。
+- 界面文案对照表在 `docs/proposals/v5.md` §8.3；改词要同步 `GLOSSARY.md` 与以文字定位的 e2e。走查命令 `cd packages/web && npx playwright test -c .walk/walk.config.ts .walk/walk19.spec.ts`。
 - 回写提示词只改 `node_images`，任何情况下都不碰楼层 `raw`（I4/I8）。
 - 插图接口的 `url` 带更新时间版本；改文件名或缓存策略时同步改 `toNodeImage` 与相关测试。
-- `.walk/` 不入库；走查命令 `cd packages/web && npx playwright test -c .walk/walk.config.ts .walk/walk18.spec.ts`。
+- `.walk/` 不入库；截图落在 `.devloop/scratch/walk/`。

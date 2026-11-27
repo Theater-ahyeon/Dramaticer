@@ -60,7 +60,7 @@ test.describe("新界面设置页", () => {
 			.click();
 		await expect(page.locator("html")).not.toHaveAttribute("data-theme", /.+/);
 
-		// 功能页：默认均衡档。
+		// 功能页：默认标准档。
 		await page
 			.locator(".subtabs")
 			.getByRole("button", { name: "功能" })
@@ -78,7 +78,7 @@ test.describe("新界面设置页", () => {
 		await expect(rerolls).toContainText("未选原因");
 		await page.keyboard.press("Escape");
 		const tier = page.locator(".vh .seg");
-		await expect(tier.getByRole("button", { name: "均衡" })).toHaveAttribute(
+		await expect(tier.getByRole("button", { name: "标准" })).toHaveAttribute(
 			"aria-pressed",
 			"true",
 		);
@@ -87,16 +87,16 @@ test.describe("新界面设置页", () => {
 		const standardSum = await enabledCount(page);
 		expect(standardSum).toBeGreaterThan(0);
 
-		// 全开：一批开关被打开，合计变大。
-		await tier.getByRole("button", { name: "全开" }).click();
+		// 完整：一批开关被打开，合计变大。
+		await tier.getByRole("button", { name: "完整" }).click();
 		await expect(scribe).toHaveAttribute("aria-checked", "true");
 		const prepare = page.getByRole("switch", { name: "提前备好" });
 		await expect(prepare).toHaveAttribute("aria-checked", "true");
 		const immersiveSum = await enabledCount(page);
 		expect(immersiveSum).toBeGreaterThan(standardSum);
 
-		// 省：同一批开关被关掉，合计变小。
-		await tier.getByRole("button", { name: "省" }).click();
+		// 轻量：同一批开关被关掉，合计变小。
+		await tier.getByRole("button", { name: "轻量" }).click();
 		await expect(scribe).toHaveAttribute("aria-checked", "false");
 		await expect(prepare).toHaveAttribute("aria-checked", "false");
 		const liteSum = await enabledCount(page);
@@ -107,7 +107,7 @@ test.describe("新界面设置页", () => {
 		await expect(total).not.toContainText("token");
 
 		// 逐项开关：关掉场记后少一项，刷新后保持。
-		await tier.getByRole("button", { name: "均衡" }).click();
+		await tier.getByRole("button", { name: "标准" }).click();
 		await expect(scribe).toHaveAttribute("aria-checked", "true");
 		const beforeToggle = await enabledCount(page);
 		await scribe.click();

@@ -533,9 +533,6 @@ export function AdvancedSettings({ storyId }: { readonly storyId: string }) {
 								</Field>
 							))}
 						</div>
-						<p className="muted">
-							模板里的深回合配置可以覆盖工具白名单、工具调用上限与时长上限。
-						</p>
 					</section>
 					<section className="director-section" aria-label="角色与视角">
 						<header className="director-section-head">
@@ -1212,9 +1209,7 @@ export function AdvancedSettings({ storyId }: { readonly storyId: string }) {
 										<span className="ledger-tag">已保存</span>
 									) : null}
 								</div>
-								<p className="muted">
-									内置默认模板不能直接保存；先复制为新模板，再编辑保存。
-								</p>
+								<p className="muted">内置模板不能直接保存，先复制。</p>
 							</>
 						)}
 					</section>
@@ -1243,10 +1238,7 @@ export function AdvancedSettings({ storyId }: { readonly storyId: string }) {
 								</select>
 							</Field>
 						</div>
-						<p className="muted">
-							默认是快速写法。规划与深度是实验写法，程序不会自动切换；
-							选过之后可以在故事页输入台看到并改回快速。
-						</p>
+						<p className="muted">默认快速。规划与深度在故事页输入台切换。</p>
 					</section>
 				</>
 			)}

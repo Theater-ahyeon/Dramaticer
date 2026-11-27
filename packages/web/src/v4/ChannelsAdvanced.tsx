@@ -60,7 +60,7 @@ function KeyState({
 	return (
 		<p className="channel-key-warning" role="alert">
 			密钥变量 {channel.apiKeyEnv}{" "}
-			没有设置；保存会被拒绝，直到在服务端环境里填好它。
+			没有设置；保存会被拒绝，直到在服务端环境里填好这个变量。
 		</p>
 	);
 }
@@ -355,7 +355,7 @@ export function ChannelsAdvanced() {
 			<header className="ledger-floor-head">
 				<h1>渠道与模型岗位</h1>
 				<p className="ledger-meta">
-					保存会整份替换渠道配置：这里列出的渠道、模型与嵌入提供方才会保留。密钥只写环境变量名，界面不显示密钥值。
+					保存会整份替换渠道配置；密钥只写环境变量名。
 				</p>
 			</header>
 			<ErrorNotice error={loadError} />
@@ -433,9 +433,8 @@ export function ChannelsAdvanced() {
 							})}
 						</div>
 						<p className="muted">
-							评测裁判与正文写作必须来自不同的模型家族（按模型 id
-							识别）；当前生效：正文 {view.roles.writer ?? "没有"}，裁判{" "}
-							{view.roles.judge ?? "没有"}。
+							裁判与正文须来自不同模型家族；当前：正文{" "}
+							{view.roles.writer ?? "没有"}，裁判 {view.roles.judge ?? "没有"}。
 						</p>
 					</section>
 

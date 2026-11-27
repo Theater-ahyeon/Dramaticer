@@ -56,7 +56,7 @@ export function Library() {
 			<section data-view="library">
 				<div className="v4err">{stories.error}</div>
 				<p className="v4empty">
-					需要登录的话去 <Link to="/login">登录</Link>。
+					请先 <Link to="/login">登录</Link>。
 				</p>
 			</section>
 		);
@@ -130,13 +130,13 @@ export function Library() {
 								<b>
 									<Num value={latestOverview?.lines ?? 0} />
 								</b>
-								条剧情线在走
+								剧情线
 							</span>
 							<span>
 								<b>
 									<Num value={latestOverview?.openPromises ?? 0} />
 								</b>
-								个伏笔没收
+								未收的线
 							</span>
 							<span>{ago(latestOverview?.updatedAt ?? null)}</span>
 						</div>

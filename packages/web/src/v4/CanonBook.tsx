@@ -355,9 +355,7 @@ export function CanonBook() {
 						)}
 					</div>
 				) : (
-					<p className="muted">
-						这本原著包不含原文：实体、时间线与话术已经就绪，不需要抽取，也没有可查看的原文。
-					</p>
+					<p className="muted">这本原著包不含原文。</p>
 				)}
 				<div className="canon-extract-controls">
 					<div className="canon-extract-state">
@@ -434,9 +432,7 @@ export function CanonBook() {
 						{compiledEntities.length} 个实体 · {mainEvents.length} 件主线事件
 					</span>
 				</div>
-				<p className="muted">
-					合并同名与别名、排定时间线与关键转折、给每个实体写一行简介与记事页底色。一次后台跑完，不计入每楼的调用预算。
-				</p>
+				<p className="muted">合并别名、排定时间线与关键转折，一次后台跑完。</p>
 				<div className="canon-compile-buttons">
 					<button
 						type="button"
@@ -749,9 +745,7 @@ function CanonEntityPages({
 					/>
 					章
 				</label>
-				<span className="label">
-					只显示不晚于这一章的底色与世界索引条目，防剧透。
-				</span>
+				<span className="label">只显示这一章之前的内容。</span>
 			</div>
 			<section className="page" aria-label="世界索引">
 				<h3>世界索引</h3>

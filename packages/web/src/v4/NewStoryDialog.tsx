@@ -385,9 +385,7 @@ export function NewStoryDialog({ onClose }: { readonly onClose: () => void }) {
 								{canonLoading ? "正在读取原著…" : "正在准备原著列表…"}
 							</p>
 						) : canonBooks.length === 0 ? (
-							<p className="muted">
-								还没有汇编过的原著。先到原著书架导入 txt，完成全书汇编后再回来。
-							</p>
+							<p className="muted">还没有汇编过的原著。</p>
 						) : (
 							<>
 								<label className="field">
@@ -446,9 +444,7 @@ export function NewStoryDialog({ onClose }: { readonly onClose: () => void }) {
 								/>
 								{identity === "canon" ? (
 									canonPages.length === 0 ? (
-										<p className="muted">
-											这一幕之前还没有出场的人物，可以改用自创人物。
-										</p>
+										<p className="muted">可以改用自创人物。</p>
 									) : (
 										<>
 											<label className="field">
@@ -492,7 +488,7 @@ export function NewStoryDialog({ onClose }: { readonly onClose: () => void }) {
 											<span>人设（可选）</span>
 											<textarea
 												value={customPersona}
-												placeholder="身份、来历、与原著人物的关系"
+												placeholder="身份与来历"
 												rows={3}
 												onChange={(event) =>
 													setCustomPersona(event.target.value)
@@ -539,9 +535,7 @@ export function NewStoryDialog({ onClose }: { readonly onClose: () => void }) {
 										if (file !== undefined) setCanonCard(file);
 									}}
 								/>
-								<p className="muted">
-									原著提供世界与时间线；卡只取文风、规则与推荐配置，卡里的开场白不会替换原著开局。
-								</p>
+								<p className="muted">卡只提供文风与规则。</p>
 							</>
 						)}
 					</div>

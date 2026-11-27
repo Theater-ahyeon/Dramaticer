@@ -61,15 +61,16 @@ test("后台暂停时故事页顶部提示原因，可以关掉，恢复后自�
 	await page.goto(`/stories/${storyId}/play`);
 	const notice = page.locator(".bgnotice");
 	await expect(notice).toBeVisible();
-	await expect(notice).toContainText("记忆与导演暂停了");
+	await expect(notice).toContainText("后台任务连续失败 3 次");
 	await expect(notice).toContainText("渠道 bg");
 	await expect(notice).toContainText("402");
-	await expect(
-		notice.getByRole("link", { name: "去渠道设置" }),
-	).toHaveAttribute("href", `/stories/${storyId}/channels`);
+	await expect(notice.getByRole("link", { name: "检查渠道" })).toHaveAttribute(
+		"href",
+		"/settings",
+	);
 
 	// 关掉后同一条不再出现。
-	await notice.getByRole("button", { name: "知道了" }).click();
+	await notice.getByRole("button", { name: "关闭" }).click();
 	await expect(notice).toHaveCount(0);
 	await reloadAndWaitForHealth(page, storyId);
 	await expect(page.locator(".bgnotice")).toHaveCount(0);

@@ -61,15 +61,15 @@ test.describe("剧情走向页", () => {
 		).toHaveAttribute("aria-pressed", "true");
 
 		// AI 写的部分可以对玩家隐藏，并告诉玩家藏了几条。
-		await page.getByRole("button", { name: "AI 写的先别给我看" }).click();
+		await page.getByRole("button", { name: "隐藏 AI 写的" }).click();
 		await expect(page.locator('[data-id="milestone:m-ai"]')).toHaveCount(0);
 		await expect(
-			page.locator('[data-view="direction"]').getByText("AI 还补了 1 条"),
+			page.locator('[data-view="direction"]').getByText("AI 另有 1 条已隐藏"),
 		).toBeVisible();
 		await page.reload();
 		await expect(page.locator('[data-id="milestone:m-ai"]')).toHaveCount(0);
 		await expect(
-			page.getByRole("button", { name: "AI 写的先别给我看" }),
+			page.getByRole("button", { name: "隐藏 AI 写的" }),
 		).toHaveAttribute("aria-pressed", "true");
 
 		await expectNoHorizontalOverflow(page);
