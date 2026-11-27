@@ -9,6 +9,12 @@ import type {
 } from "../context/assembler.js";
 import type { ContextMessage, ContextSlotName } from "../context/template.js";
 import type { DeepToolDefinition, ToolPhase } from "../tools/registry.js";
+import type {
+	FloorRenderOutcome,
+	FloorRenderRequest,
+	FloorRendererDefinition,
+	RegisteredFloorRenderer,
+} from "./floor-renderers.js";
 import type { RewrittenRequest } from "./turn-hooks.js";
 
 export type PluginState =
@@ -34,6 +40,7 @@ export interface KernelSnapshot {
 	readonly blockTypes: readonly string[];
 	readonly backgroundJobs: readonly string[];
 	readonly tools: readonly string[];
+	readonly floorRenderers: readonly string[];
 	readonly services: readonly string[];
 }
 
@@ -59,6 +66,8 @@ export interface PluginContext {
 	backgroundJob(kind: string, entry: BackgroundJobEntry): void;
 	/** 注册一个模型可调用的工具；阶段决定快回合与深回合是否开放。 */
 	tool(definition: DeepToolDefinition, phases: readonly ToolPhase[]): void;
+	/** 注册一个楼层渲染器；卸载或重载时自动回收。 */
+	floorRenderer(definition: FloorRendererDefinition): void;
 	/** 一次性定时器；卸载或重载时自动清除。 */
 	timeout(callback: () => void, delayMs: number): () => void;
 	/** 周期定时器；卸载或重载时自动清除。 */
@@ -110,6 +119,13 @@ export interface PluginKernel {
 	tool(name: string): DeepToolDefinition | null;
 	/** 某个回合模式开放的工具，按注册顺序。 */
 	tools(phase: ToolPhase): readonly DeepToolDefinition[];
+	/** 已注册的楼层渲染器，按注册顺序；先注册的优先认领。 */
+	floorRenderers(): readonly RegisteredFloorRenderer[];
+	/** 按注册顺序匹配并渲染一个楼层；抛错或超时的渲染器跳过。 */
+	renderFloor(
+		request: FloorRenderRequest,
+		budgetMs?: number,
+	): Promise<FloorRenderOutcome>;
 	service<T>(name: string): T | undefined;
 	on(name: string, listener: EventListener): () => void;
 	emit(name: string, ...args: unknown[]): void;

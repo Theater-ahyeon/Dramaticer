@@ -20,7 +20,7 @@ function pluginWith(kind: string, payload: unknown): Record<string, unknown> {
 }
 
 describe("声明式插件外壳", () => {
-	it("七种类型都有合法样例并通过解析", () => {
+	it("八种类型都有合法样例并通过解析", () => {
 		const ledger = parseDeclarativePlugin(
 			pluginWith("ledger-schema", {
 				namespace: "character",
@@ -80,6 +80,18 @@ describe("声明式插件外壳", () => {
 			}),
 		);
 		expect(skill.kind).toBe("skill");
+
+		const floor = parseDeclarativePlugin(
+			pluginWith("floor-renderer", {
+				name: "状态栏",
+				blockTypes: ["状态栏"],
+				permissions: ["sendMessage"],
+				template: "<div>{{content}}</div>",
+			}),
+		);
+		if (floor.kind !== "floor-renderer") throw new Error("kind");
+		expect(floor.payload.id).toBe("test.plugin");
+		expect(floor.payload.patterns).toEqual([]);
 
 		const director = parseDeclarativePlugin(
 			pluginWith("director-config", {

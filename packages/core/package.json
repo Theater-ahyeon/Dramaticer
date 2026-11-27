@@ -15,6 +15,11 @@
 			"types": "./dist/blocks/index.d.ts",
 			"import": "./dist/blocks/index.js",
 			"default": "./dist/blocks/index.js"
+		},
+		"./sandbox": {
+			"types": "./dist/sandbox/browser.d.ts",
+			"import": "./dist/sandbox/browser.js",
+			"default": "./dist/sandbox/browser.js"
 		}
 	},
 	"scripts": {

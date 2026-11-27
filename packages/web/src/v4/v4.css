@@ -808,6 +808,7 @@ html.theme-swap img.cover {
 .tblwrap,
 .spine,
 .audit,
+.sandbox-perms,
 .idea,
 .grp,
 #entries,
@@ -823,6 +824,7 @@ html.theme-swap img.cover {
 .page,
 .spine,
 .audit,
+.sandbox-perms,
 .idea,
 .grp,
 #entries,
@@ -831,6 +833,50 @@ html.theme-swap img.cover {
 #vols,
 [data-view="memory"] > div:not([class]) {
 	padding: clamp(16px, 2.4vw, 28px);
+}
+/* 卡片脚本：允许名单与渲染器权限就地和卡片设定一起管。 */
+.sandbox-perms {
+	margin-top: 18px;
+}
+.sandbox-perms h2 {
+	font-size: var(--t-lg);
+	margin: 0 0 6px;
+}
+.sandbox-perms > p {
+	color: var(--muted);
+	font-size: var(--t-sm);
+	max-width: 46em;
+}
+.sandbox-block {
+	margin-top: 14px;
+}
+.sandbox-block h3 {
+	font-size: var(--t-base);
+	margin: 0 0 6px;
+}
+.sandbox-block ul {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: grid;
+	gap: 6px;
+}
+.domainlist li {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 6px 0;
+	border-top: 1px solid var(--line);
+	font-family: var(--f-data);
+	font-size: var(--t-sm);
+}
+/* 楼层渲染 iframe：高度由沙箱上报，父页面不再出现第二条滚动条。 */
+.floor-sandbox iframe {
+	display: block;
+	width: 100%;
+	border: 0;
+	background: transparent;
 }
 /* 卡片：面板里的小块。 */
 .card,

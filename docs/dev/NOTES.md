@@ -267,3 +267,18 @@
 - 接口：`GET /api/stories/:id/canon/page`（未绑定时 `{ bound: null }`）、`POST .../canon/events/:eventId/edit`（`{field, value, nodeId?}`，默认 head）、`POST .../canon/events/:eventId/rollback`（`{versionId?}` 或 `{field?}`）。两个写接口都返回最新分页视图。
 - 记事页「原著」分页只在绑定原著时出现；直接打开 `?tab=canon` 且未绑定会给出原著书架链接。布局在 `Memory.tsx` 的 `CanonBoard` 与 `v4.css` 的 `.canonpage`（桌面两栏、820px 以下上下排列）。停靠栏上下文里的原著条目「去修改」跳到 `/memory?tab=canon&event=<id>` 并选中该事件。
 - e2e 在 `v5-canon-page.spec.ts`（编辑进入窗口、撤销刷新仍在、从未来事件从这里开始），走查脚本是 `.walk/walk12.spec.ts`。
+
+## 卡片前端（2026-11-27 起，card-ui/01）
+
+- 插件内核的第六个扩展点：`PluginContext.floorRenderer(definition)` 注册，`PluginKernel.floorRenderers()` 读注册项，`renderFloor({nodeId, raw, state}, budgetMs?)` 按注册顺序认领。认领条件是 `blockTypes`（楼层里出现的标签名）或 `patterns`（正则），至少一个；`permissions` 只能取 `FLOOR_BRIDGE_CAPABILITIES` 的五个名字。渲染器抛错或超过默认 500 毫秒被跳过并记进 `failures`，正文按原生方式显示（I8：只派生，不改原文）。
+- 声明式插件新增 `floor-renderer`：`payload` 为 `{id?, name, blockTypes?, patterns?, permissions?, template, script?, style?}`，`id` 缺省用插件名；模板里的 `{{content}}` 换成转义后的楼层原文。`core/src/plugins/declarative.ts` 解析，`core/src/plugins/floor-renderers.ts` 转成内核插件。
+- 故事级存储：迁移 82 建 `sandbox_rejections`（`id`、`story_id`、`node_id` 可空、`renderer`、`kind` bridge/network、`target`、`reason`、`created_at`）。允许名单、检测结果与渲染器都在 `story_kv`：`sandbox.allowedDomains`、`sandbox.detectedDomains`、`sandbox.renderers`；默认都是空，沙箱默认不联网。读写函数在 `core/src/sandbox/story-sandbox.ts`。
+- 导入卡时 `afterCardImport` 把 `extensions.dramaticer.plugins` 里的楼层渲染器装到故事上，并扫描整张卡 JSON 的 http/https 域名作为检测结果（只作展示，默认全部未允许）。玩家在设定页逐个允许，`POST /api/stories/:id/sandbox/domains` 立即写入并返回最新视图。
+- 接口：`POST .../render`（`{nodeIds}`，最多 200，只渲染路径上已有的助手楼层）、`GET .../sandbox`、`POST .../sandbox/domains`、`POST .../sandbox/renderers`（更新渲染器脚本）、`GET|POST .../sandbox/rejections`、`GET .../sandbox/state?nodeId&path=JSON`、`POST .../sandbox/state`（`{renderer, nodeId, write}`）。
+- 服务端渲染 `server/src/renderers.ts` 每个请求用一个 `LiteKernel` 装载故事上的声明式渲染器，按楼层读 `readLedger(store, nodeId)` 作为可见状态，返回 `{renderer, name, html, script, style, permissions, failures}`。没有渲染器或渲染失败时 `renderer: null`。
+- 交互桥在 `web/src/chat/floor-sandbox.ts` 与 `components/chat/FloorFrame.tsx`：iframe 只用 `sandbox="allow-scripts"`，父页面校验 `event.source` 与 `origin === "null"`；五个方法必须同时在白名单和渲染器 `permissions` 里，否则回传错误并 `POST` 拒绝记录。`writeState` 在服务端按存储的渲染器权限再查一次，写入前跑 `validateLedgerDiff`，再 `appendStateDiffs`（I12、I16）；未知渲染器或未声明 `writeState` 一律 403 并记录。
+- CSP 由 `buildSandboxContentSecurityPolicy(allowedDomains)` 生成：`default-src 'none'`，脚本/样式/图片/字体/媒体只加允许域名的 http/https，`connect-src` 另加 ws/wss，空名单是 `'none'`。沙箱脚本另外拦截 `fetch`、`XMLHttpRequest.open`、`WebSocket` 并监听 `securitypolicyviolation`，一律把被拦的地址报给父页面。
+- 主题：`readFloorSandboxTheme()` 抄父页面 `data-theme` 与 `v4.css` 的颜色/字体变量进 iframe，主题切换时 `postMessage` 更新；高度由 iframe 的 `ResizeObserver` 与 `MutationObserver` 上报，父页面夹在 1–10000 像素，避免双滚动条。
+- 前端运行时不要从 `@dramaticer/core` 主入口取沙箱工具：主入口会带进 better-sqlite3 等 Node 模块，整包进浏览器会白屏。浏览器安全的子入口是 `@dramaticer/core/sandbox`（`src/sandbox/browser.ts`，只导出能力白名单、域名扫描与 CSP）。
+- e2e 在 `v5-card-ui.spec.ts`（合成卡渲染按钮发消息、未声明写状态与外部域名进检视器、域名允许后刷新仍在、CSP 带上域名），走查脚本是 `.walk/walk13.spec.ts`；测试卡在卡扩展里直接声明渲染器，不需要测试专用路由。
+

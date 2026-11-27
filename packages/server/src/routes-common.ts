@@ -136,6 +136,27 @@ export function inferSettingsPath(error: unknown): string {
 	return "body";
 }
 
+/** 交互桥读状态时的路径参数：JSON 数组，省略表示整个台账。 */
+export function pathFromQuery(url: URL): string[] {
+	const raw = url.searchParams.get("path");
+	if (raw === null) return [];
+	let value: unknown;
+	try {
+		value = JSON.parse(raw);
+	} catch {
+		throw fieldError("path", "path 必须是 JSON 数组");
+	}
+	if (!Array.isArray(value) || value.length === 0) {
+		throw fieldError("path", "path 必须是非空数组");
+	}
+	return value.map((segment, index) => {
+		if (typeof segment !== "string" || segment.length === 0) {
+			throw fieldError(`path[${index}]`, "路径段必须是非空字符串");
+		}
+		return segment;
+	});
+}
+
 export function pathSegments(pathname: string): string[] {
 	const body = pathname.slice("/api/".length);
 	if (body.length === 0) return [];

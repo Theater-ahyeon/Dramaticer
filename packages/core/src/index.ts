@@ -37,6 +37,7 @@ export * from "./retrieval/chunk-index.js";
 export * from "./retrieval/chunk-text.js";
 export * from "./retrieval/hybrid.js";
 export * from "./run-log.js";
+export * from "./sandbox/index.js";
 export * from "./serial/index.js";
 export * from "./settings/index.js";
 export * from "./state.js";

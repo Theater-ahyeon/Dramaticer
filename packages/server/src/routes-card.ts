@@ -3,6 +3,7 @@ import {
 	type JsonValue,
 	type StoryStore,
 	applyCardRecommendedConfig,
+	installStoryFloorRenderer,
 	isJsonObject,
 	parseCardRecommendedConfig,
 	parseDramaticerCardExtension,
@@ -10,9 +11,11 @@ import {
 	readMemorySecrets,
 	readStoryCardSnapshot,
 	readStoryFeatureState,
+	recordStorySandboxDetectedDomains,
 	saveStoryCardSnapshot,
 	saveStoryGreetings,
 	saveWritingPreset,
+	scanSandboxDomains,
 	storyCardVersion,
 	writeWritingEntries,
 } from "@dramaticer/core";
@@ -112,6 +115,17 @@ export function afterCardImport(
 	const extension = parseDramaticerCardExtension(card.extensions.dramaticer);
 	const config = extension.config ?? null;
 	const recommendation = parseCardRecommendedConfig(config);
+	for (const plugin of extension.plugins) {
+		if (plugin.kind === "floor-renderer") {
+			installStoryFloorRenderer(store, storyId, plugin, "card");
+		}
+	}
+	// 沙箱默认不联网；卡里出现的外部域名先列出来，玩家逐个允许。
+	recordStorySandboxDetectedDomains(
+		store,
+		storyId,
+		scanSandboxDomains(JSON.stringify(card.raw)),
+	);
 	saveStoryCardSnapshot(store, storyId, {
 		name: card.name,
 		version: storyCardVersion(data),

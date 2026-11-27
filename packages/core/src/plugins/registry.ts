@@ -13,6 +13,11 @@ import {
 import type { DeepToolDefinition, ToolPhase } from "../tools/registry.js";
 import { createDeepToolRegistry, isToolPhase } from "../tools/registry.js";
 import type { RegisteredBackgroundJob } from "./contracts.js";
+import {
+	type FloorRendererDefinition,
+	type RegisteredFloorRenderer,
+	assertFloorRendererDefinition,
+} from "./floor-renderers.js";
 
 interface RegisteredSlot {
 	readonly plugin: string;
@@ -39,6 +44,10 @@ export class ExtensionRegistry {
 		RegisteredBackgroundJob
 	>();
 	private readonly toolsByName = new Map<string, RegisteredTool>();
+	private readonly floorRenderersById = new Map<
+		string,
+		RegisteredFloorRenderer
+	>();
 
 	addSlot(
 		name: string,
@@ -124,6 +133,27 @@ export class ExtensionRegistry {
 			if (this.toolsByName.get(definition.name)?.plugin !== plugin) return;
 			this.toolsByName.delete(definition.name);
 		};
+	}
+
+	/** 注册楼层渲染器；id 在内核里唯一，先注册的先认领。 */
+	addFloorRenderer(
+		plugin: string,
+		definition: FloorRendererDefinition,
+	): () => void {
+		assertFloorRendererDefinition(definition);
+		if (this.floorRenderersById.has(definition.id)) {
+			throw new Error(`楼层渲染器重复注册：${definition.id}`);
+		}
+		const registered: RegisteredFloorRenderer = { plugin, definition };
+		this.floorRenderersById.set(definition.id, registered);
+		return () => {
+			if (this.floorRenderersById.get(definition.id) !== registered) return;
+			this.floorRenderersById.delete(definition.id);
+		};
+	}
+
+	floorRenderers(): readonly RegisteredFloorRenderer[] {
+		return [...this.floorRenderersById.values()];
 	}
 
 	slots(): Record<string, readonly string[]> {

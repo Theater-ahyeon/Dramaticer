@@ -28,6 +28,10 @@ import {
 	rejectUnknownKeys,
 } from "../json.js";
 import { type LedgerNamespace, isLedgerNamespace } from "../ledger/schema.js";
+import {
+	type FloorBridgeCapability,
+	assertFloorBridgeCapabilities,
+} from "./floor-renderers.js";
 import { readVersionRange } from "./versions.js";
 
 /** 声明式插件的格式标识；卡片打包与独立文件都使用同一个外壳。 */
@@ -44,6 +48,7 @@ export const DECLARATIVE_PLUGIN_KINDS = [
 	"plot-beat",
 	"context-template",
 	"block-renderer",
+	"floor-renderer",
 	"skill",
 	"director-config",
 	"event-pool",
@@ -95,6 +100,26 @@ export interface BlockRendererPayload {
 	readonly context: BlockContextStrategy;
 }
 
+/**
+ * 楼层渲染器：认领整层，产出在 `sandbox="allow-scripts"` iframe 里显示的
+ * HTML 与脚本。模板里的 `{{content}}` 换成转义后的楼层原文（I8）。
+ */
+export interface FloorRendererPayload {
+	/** 渲染器 id；省略时用插件名。 */
+	readonly id: string;
+	readonly name: string;
+	/** 认领的块类型名；与 patterns 至少提供一个。 */
+	readonly blockTypes: readonly string[];
+	/** 认领的正则源码；不允许带标志。 */
+	readonly patterns: readonly string[];
+	readonly permissions: readonly FloorBridgeCapability[];
+	readonly template: string;
+	readonly script?: string;
+	readonly style?: string;
+}
+
+export const FLOOR_RENDERER_TEXT_LIMIT = 200_000;
+
 export interface SkillPayload {
 	readonly name: string;
 	readonly description: string;
@@ -141,6 +166,11 @@ export interface BlockRendererPlugin extends DeclarativePluginBase {
 	readonly payload: BlockRendererPayload;
 }
 
+export interface FloorRendererPlugin extends DeclarativePluginBase {
+	readonly kind: "floor-renderer";
+	readonly payload: FloorRendererPayload;
+}
+
 export interface SkillPlugin extends DeclarativePluginBase {
 	readonly kind: "skill";
 	readonly payload: SkillPayload;
@@ -161,6 +191,7 @@ export type DeclarativePlugin =
 	| PlotBeatPlugin
 	| ContextTemplatePlugin
 	| BlockRendererPlugin
+	| FloorRendererPlugin
 	| SkillPlugin
 	| DirectorConfigPlugin
 	| EventPoolPlugin;
@@ -265,6 +296,14 @@ export function parseDeclarativePlugin(
 				kind: "block-renderer",
 				payload: parseBlockRendererPayload(object.payload, payloadPath),
 			};
+		case "floor-renderer": {
+			const payload = parseFloorRendererPayload(object.payload, payloadPath);
+			return {
+				...base,
+				kind: "floor-renderer",
+				payload: { ...payload, id: payload.id === "" ? name : payload.id },
+			};
+		}
 		case "skill":
 			return {
 				...base,
@@ -650,6 +689,107 @@ function parseBlockContext(value: unknown, path: string): BlockContextStrategy {
 		return context;
 	}
 	throw new Error(`${path}.kind 必须是 keep、drop、keep-depth 或 compress`);
+}
+
+function parseFloorRendererPayload(
+	value: unknown,
+	path: string,
+): FloorRendererPayload {
+	const object = assertPlainObject(value, path);
+	rejectUnknownKeys(
+		object,
+		[
+			"id",
+			"name",
+			"blockTypes",
+			"patterns",
+			"permissions",
+			"template",
+			"script",
+			"style",
+		],
+		path,
+	);
+	const id =
+		object.id === undefined ? "" : readNonEmptyString(object.id, `${path}.id`);
+	if (id.length > 200) throw new Error(`${path}.id 不能超过 200 个字符`);
+	const name = readNonEmptyString(object.name, `${path}.name`);
+	const blockTypes = parseStringList(
+		object.blockTypes,
+		`${path}.blockTypes`,
+		(value) => {
+			if (BLOCK_NAME_PATTERN.test(value)) {
+				throw new Error(`${path}.blockTypes 不能包含 '<'、'>'、'/' 或空白`);
+			}
+		},
+	);
+	const patterns = parseStringList(
+		object.patterns,
+		`${path}.patterns`,
+		(value) => {
+			if (value.length > 1_000) {
+				throw new Error(`${path}.patterns 里的正则不能超过 1000 个字符`);
+			}
+			new RegExp(value);
+		},
+	);
+	if (blockTypes.length === 0 && patterns.length === 0) {
+		throw new Error(`${path} 至少要声明 blockTypes 或 patterns`);
+	}
+	const template = readBoundedText(object.template, `${path}.template`);
+	const script =
+		object.script === undefined || object.script === null
+			? undefined
+			: readBoundedText(object.script, `${path}.script`);
+	const style =
+		object.style === undefined || object.style === null
+			? undefined
+			: readBoundedText(object.style, `${path}.style`);
+	return {
+		id,
+		name,
+		blockTypes,
+		patterns,
+		permissions: assertFloorBridgeCapabilities(
+			object.permissions,
+			`${path}.permissions`,
+		),
+		template,
+		...(script === undefined ? {} : { script }),
+		...(style === undefined ? {} : { style }),
+	};
+}
+
+function parseStringList(
+	value: unknown,
+	path: string,
+	assertItem: (value: string) => void,
+): string[] {
+	if (value === undefined) return [];
+	if (!Array.isArray(value)) {
+		throw new Error(`${path} 必须是数组`);
+	}
+	const seen = new Set<string>();
+	return value.map((item, index) => {
+		if (typeof item !== "string" || item.trim().length === 0) {
+			throw new Error(`${path}[${index}] 必须是非空字符串`);
+		}
+		assertItem(item);
+		if (seen.has(item)) throw new Error(`${path} 重复出现：${item}`);
+		seen.add(item);
+		return item;
+	});
+}
+
+/** 渲染器的模板、脚本与样式都有长度上限，避免一行声明撑爆存储。 */
+function readBoundedText(value: unknown, path: string): string {
+	if (typeof value !== "string") {
+		throw new Error(`${path} 必须是字符串`);
+	}
+	if (value.length > FLOOR_RENDERER_TEXT_LIMIT) {
+		throw new Error(`${path} 不能超过 ${FLOOR_RENDERER_TEXT_LIMIT} 个字符`);
+	}
+	return value;
 }
 
 function parseSkillPayload(value: unknown, path: string): SkillPayload {

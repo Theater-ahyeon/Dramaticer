@@ -25,6 +25,7 @@ import { MemoryRepo } from "./repos/memory.js";
 import { NodesRepo } from "./repos/nodes.js";
 import { OpeningsRepo } from "./repos/openings.js";
 import { OutlineRepo } from "./repos/outline.js";
+import { SandboxRepo } from "./repos/sandbox.js";
 import { ScenesRepo } from "./repos/scenes.js";
 import {
 	type StoryStoreOpenOptions,
@@ -98,6 +99,7 @@ interface Repos {
 	readonly turns: TurnsRepo;
 	readonly assistant: AssistantRepo;
 	readonly background: BackgroundRepo;
+	readonly sandbox: SandboxRepo;
 }
 
 export interface StoryStore
@@ -449,7 +451,8 @@ export interface StoryStore
 			| "getLatestCanonCursor"
 			| "appendCanonEventEdit"
 			| "listCanonEventEdits"
-		> {}
+		>,
+		Pick<SandboxRepo, "recordSandboxRejection" | "listSandboxRejections"> {}
 
 export class StoryStore {
 	readonly [REPOS]: Repos;
@@ -504,6 +507,7 @@ export class StoryStore {
 				embeddingDimensions,
 				chunkStrategy,
 			),
+			sandbox: new SandboxRepo(db, this, embeddingDimensions, chunkStrategy),
 		};
 	}
 
@@ -940,6 +944,7 @@ const DELEGATES: Readonly<Record<keyof Repos, readonly string[]>> = {
 		"appendCanonEventEdit",
 		"listCanonEventEdits",
 	],
+	sandbox: ["recordSandboxRejection", "listSandboxRejections"],
 };
 
 // 公开方法装到原型上，转给对应的领域仓储；签名由上面的接口合并给出。

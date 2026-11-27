@@ -1,4 +1,5 @@
 import type { ChannelProbeResult } from "@dramaticer/protocol";
+import type { SandboxRejectionsView } from "@dramaticer/protocol";
 import { useEffect, useState } from "react";
 import { ApiError, api } from "../api";
 import { type RunTimelineView, buildRunTimeline } from "../chat/run-timeline";
@@ -130,6 +131,10 @@ function StoryInspector({ storyId }: { readonly storyId: string }) {
 		() => api.get(sp(storyId, "/memory")),
 		[storyId],
 	);
+	const sandbox = useLoad<SandboxRejectionsView>(
+		() => api.getSandboxRejections(storyId),
+		[storyId],
+	);
 	const last = [...(floors.data?.floors ?? [])]
 		.reverse()
 		.find((floor) => floor.cost !== null);
@@ -243,6 +248,25 @@ function StoryInspector({ storyId }: { readonly storyId: string }) {
 						{memory.data?.rejections.map((item) => (
 							<li key={item.id}>
 								<b>{item.reason}</b> {item.text}
+							</li>
+						))}
+					</ul>
+				)}
+			</section>
+			<section aria-label="沙箱拒绝">
+				<h3>沙箱拒绝</h3>
+				{(sandbox.data?.rejections ?? []).length === 0 ? (
+					<p className="muted">无</p>
+				) : (
+					<ul className="insplist">
+						{sandbox.data?.rejections.map((item) => (
+							<li key={item.id}>
+								<b>{item.kind === "bridge" ? "交互桥" : "联网"}</b>{" "}
+								{item.renderer} · {item.target}：{item.reason}
+								<span className="label">
+									{" · "}
+									{new Date(item.createdAt).toLocaleString()}
+								</span>
 							</li>
 						))}
 					</ul>

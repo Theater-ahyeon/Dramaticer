@@ -14,6 +14,17 @@ import type {
 	SlotRunResult,
 } from "./contracts.js";
 import { EventBus } from "./events.js";
+import {
+	DEFAULT_FLOOR_RENDER_BUDGET_MS,
+	type FloorRenderFailure,
+	type FloorRenderOutcome,
+	type FloorRenderRequest,
+	type FloorRenderedContent,
+	type FloorRenderedFloor,
+	type RegisteredFloorRenderer,
+	floorRendererClaims,
+	readFloorRenderBlocks,
+} from "./floor-renderers.js";
 import { ExtensionRegistry } from "./registry.js";
 import {
 	REQUEST_REWRITE_HOOK,
@@ -102,6 +113,54 @@ export abstract class KernelSurface {
 		return this.registry.tools(phase);
 	}
 
+	/** 已注册的楼层渲染器，按注册顺序。 */
+	floorRenderers(): readonly RegisteredFloorRenderer[] {
+		return this.registry.floorRenderers();
+	}
+
+	/**
+	 * 按注册顺序匹配楼层：第一个认领且渲染成功的渲染器获胜。
+	 * 抛错或超时的渲染器跳过并记录原因，正文仍按原生方式兜底显示（I17 的精神）。
+	 */
+	async renderFloor(
+		request: FloorRenderRequest,
+		budgetMs: number = DEFAULT_FLOOR_RENDER_BUDGET_MS,
+	): Promise<FloorRenderOutcome> {
+		if (!Number.isInteger(budgetMs) || budgetMs <= 0) {
+			throw new Error(
+				`楼层渲染的时间预算必须是正整数毫秒，实际为 ${String(budgetMs)}`,
+			);
+		}
+		const blocks = readFloorRenderBlocks(request.raw);
+		const input = {
+			nodeId: request.nodeId,
+			raw: request.raw,
+			blocks,
+			state: request.state,
+		};
+		const failures: FloorRenderFailure[] = [];
+		for (const entry of this.registry.floorRenderers()) {
+			if (!floorRendererClaims(entry.definition, input)) continue;
+			try {
+				const content = await runWithinBudget(
+					() => entry.definition.render(input),
+					budgetMs,
+				);
+				if (content === null) continue;
+				return {
+					floor: renderedFloor(entry.definition, content),
+					failures,
+				};
+			} catch (error) {
+				failures.push({
+					renderer: entry.definition.id,
+					error: error instanceof Error ? error.message : String(error),
+				});
+			}
+		}
+		return { floor: null, failures };
+	}
+
 	on(name: string, listener: EventListener): () => void {
 		return this.bus.on(name, listener);
 	}
@@ -156,4 +215,56 @@ function assertRewrittenMessages(
 		}
 	}
 	return value as readonly ContextMessage[];
+}
+
+/** 渲染器抛出的错误原样上抛；超时也算失败，由调用方跳过并记录。 */
+async function runWithinBudget<T>(
+	run: () => T | PromiseLike<T>,
+	budgetMs: number,
+): Promise<T> {
+	const { promise: deadline, reject } = Promise.withResolvers<never>();
+	const timer = setTimeout(
+		() => reject(new Error(`超过楼层渲染时间预算 ${budgetMs} 毫秒`)),
+		budgetMs,
+	);
+	try {
+		return await Promise.race([Promise.resolve().then(run), deadline]);
+	} finally {
+		clearTimeout(timer);
+	}
+}
+
+/** 渲染结果只接受字符串；拿不到完整结构说明插件出错，直接失败并指出渲染器。 */
+function renderedFloor(
+	definition: RegisteredFloorRenderer["definition"],
+	content: FloorRenderedContent,
+): FloorRenderedFloor {
+	if (typeof content !== "object" || content === null) {
+		throw new Error(`楼层渲染器 ${definition.id} 必须返回渲染结果对象`);
+	}
+	if (typeof content.html !== "string") {
+		throw new Error(`楼层渲染器 ${definition.id} 必须返回 html 字符串`);
+	}
+	if (
+		content.script !== undefined &&
+		content.script !== null &&
+		typeof content.script !== "string"
+	) {
+		throw new Error(`楼层渲染器 ${definition.id} 的 script 必须是字符串`);
+	}
+	if (
+		content.style !== undefined &&
+		content.style !== null &&
+		typeof content.style !== "string"
+	) {
+		throw new Error(`楼层渲染器 ${definition.id} 的 style 必须是字符串`);
+	}
+	return {
+		renderer: definition.id,
+		name: definition.name,
+		html: content.html,
+		script: content.script ?? null,
+		style: content.style ?? null,
+		permissions: definition.permissions ?? [],
+	};
 }

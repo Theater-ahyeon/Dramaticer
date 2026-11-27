@@ -182,6 +182,9 @@ export class LiteKernel extends KernelSurface implements PluginKernel {
 			blockTypes: this.registry.blockTypes(),
 			backgroundJobs: this.registry.backgroundJobs().map((entry) => entry.kind),
 			tools: this.registry.toolNames(),
+			floorRenderers: this.registry
+				.floorRenderers()
+				.map((entry) => entry.definition.id),
 			services: this.activeServiceNames(),
 		};
 	}
@@ -283,6 +286,11 @@ export class LiteKernel extends KernelSurface implements PluginKernel {
 			tool: (toolDefinition, phases) => {
 				cleanups.push(
 					this.registry.addTool(definition.name, toolDefinition, phases),
+				);
+			},
+			floorRenderer: (rendererDefinition) => {
+				cleanups.push(
+					this.registry.addFloorRenderer(definition.name, rendererDefinition),
 				);
 			},
 			timeout: (callback, delayMs) => {

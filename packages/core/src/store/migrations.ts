@@ -2427,6 +2427,25 @@ export function buildMigrations(
 				END`,
 			],
 		},
+		{
+			version: 82,
+			description:
+				"卡片前端沙箱（v5 §7）：交互桥与联网拒绝记录；允许名单与检测结果存在故事的 kv 上，默认不联网",
+			statements: [
+				`CREATE TABLE sandbox_rejections (
+					id INTEGER PRIMARY KEY AUTOINCREMENT,
+					story_id TEXT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+					node_id TEXT REFERENCES nodes(id) ON DELETE SET NULL,
+					renderer TEXT NOT NULL,
+					kind TEXT NOT NULL CHECK (kind IN ('bridge', 'network')),
+					target TEXT NOT NULL,
+					reason TEXT NOT NULL,
+					created_at TEXT NOT NULL
+				) STRICT`,
+				`CREATE INDEX sandbox_rejections_story
+					ON sandbox_rejections(story_id, id)`,
+			],
+		},
 	];
 }
 

@@ -70,7 +70,13 @@ import {
 	type NodeTextRequest,
 	type ProposalDecisionAction,
 	type ProposalDecisionResult,
+	type RecordSandboxRejectionRequest,
 	SSE_EVENT_NAMES,
+	type SandboxRejectionView,
+	type SandboxRejectionsView,
+	type SandboxStateQueryView,
+	type SandboxStateWriteRequest,
+	type SandboxStateWriteResult,
 	type SceneControlRequest,
 	type SceneControlResult,
 	type SetHeadRequest,
@@ -106,6 +112,8 @@ import {
 	type StoryProposalCreateRequest,
 	type StoryProposalCreateResult,
 	type StoryProposalsView,
+	type StoryRenderView,
+	type StorySandboxView,
 	type StorySerialView,
 	type StorySettings,
 	type StorySettingsUpdate,
@@ -296,6 +304,84 @@ export class ApiClient {
 			"PUT",
 			`${storyPath(storyId)}/settings`,
 			update,
+		);
+	}
+
+	async getStorySandbox(storyId: string): Promise<StorySandboxView> {
+		return this.json<StorySandboxView>("GET", `${storyPath(storyId)}/sandbox`);
+	}
+
+	async updateSandboxDomain(
+		storyId: string,
+		domain: string,
+		allowed: boolean,
+	): Promise<StorySandboxView> {
+		return this.json<StorySandboxView>(
+			"POST",
+			`${storyPath(storyId)}/sandbox/domains`,
+			{ domain, allowed },
+		);
+	}
+
+	async installFloorRenderer(
+		storyId: string,
+		plugin: unknown,
+	): Promise<StorySandboxView> {
+		return this.json<StorySandboxView>(
+			"POST",
+			`${storyPath(storyId)}/sandbox/renderers`,
+			{ plugin },
+		);
+	}
+
+	async renderFloors(
+		storyId: string,
+		nodeIds: readonly string[],
+	): Promise<StoryRenderView> {
+		return this.json<StoryRenderView>("POST", `${storyPath(storyId)}/render`, {
+			nodeIds,
+		});
+	}
+
+	async getSandboxRejections(storyId: string): Promise<SandboxRejectionsView> {
+		return this.json<SandboxRejectionsView>(
+			"GET",
+			`${storyPath(storyId)}/sandbox/rejections`,
+		);
+	}
+
+	async recordSandboxRejection(
+		storyId: string,
+		request: RecordSandboxRejectionRequest,
+	): Promise<SandboxRejectionView> {
+		return this.json<SandboxRejectionView>(
+			"POST",
+			`${storyPath(storyId)}/sandbox/rejections`,
+			request,
+		);
+	}
+
+	async readSandboxState(
+		storyId: string,
+		nodeId: string,
+		path: readonly string[],
+	): Promise<SandboxStateQueryView> {
+		const query = new URLSearchParams({ nodeId });
+		if (path.length > 0) query.set("path", JSON.stringify(path));
+		return this.json<SandboxStateQueryView>(
+			"GET",
+			`${storyPath(storyId)}/sandbox/state?${query.toString()}`,
+		);
+	}
+
+	async writeSandboxState(
+		storyId: string,
+		request: SandboxStateWriteRequest,
+	): Promise<SandboxStateWriteResult> {
+		return this.json<SandboxStateWriteResult>(
+			"POST",
+			`${storyPath(storyId)}/sandbox/state`,
+			request,
 		);
 	}
 

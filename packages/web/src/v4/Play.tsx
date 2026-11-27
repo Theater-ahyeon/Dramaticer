@@ -6,9 +6,11 @@ import type {
 import { parseBlocks } from "@dramaticer/core/blocks";
 import {
 	type DisplayedContent,
+	type FloorRenderView,
 	type SceneControlRequest,
 	type SseEvent,
 	type StoryPath,
+	type StorySandboxView,
 	type StoryView,
 	toDisplayedBlocks,
 } from "@dramaticer/protocol";
@@ -18,6 +20,7 @@ import { api } from "../api";
 import { blockViewKind, optionLinesOf, plainTextOf } from "../chat/blocks";
 import { PUSH_TURN_TEXT, pushDirectionText } from "../chat/push";
 import { BlockContent } from "../components/chat/BlockContent";
+import { FloorFrame } from "../components/chat/FloorFrame";
 import { BackgroundNotice } from "./BackgroundNotice";
 import { Dock, type DockTab } from "./Dock";
 import { Opening } from "./Opening";
@@ -398,6 +401,44 @@ export function Play() {
 			),
 		[nodes],
 	);
+	const sandbox = useLoad<StorySandboxView>(
+		() => api.getStorySandbox(storyId),
+		[storyId],
+	);
+	const assistantIds = useMemo(
+		() =>
+			nodes.filter((node) => node.role === "assistant").map((node) => node.id),
+		[nodes],
+	);
+	// 渲染片断由服务端的插件内核派生；没有渲染器认领时这里只有空结果。
+	const [rendered, setRendered] = useState<
+		ReadonlyMap<string, FloorRenderView>
+	>(() => new Map());
+	useEffect(() => {
+		if (assistantIds.length === 0) {
+			setRendered(new Map());
+			return;
+		}
+		let active = true;
+		api
+			.renderFloors(storyId, assistantIds)
+			.then((view) => {
+				if (!active) return;
+				setRendered(
+					new Map(
+						view.floors
+							.filter((floor) => floor.renderer !== null)
+							.map((floor) => [floor.nodeId, floor] as const),
+					),
+				);
+			})
+			.catch(() => {
+				if (active) setRendered(new Map());
+			});
+		return () => {
+			active = false;
+		};
+	}, [storyId, assistantIds]);
 
 	// 从上下文跳过来时，直接翻到这一条对应的楼层。
 	useEffect(() => {
@@ -942,6 +983,7 @@ export function Play() {
 								);
 							}
 							if (node.role !== "assistant") return null;
+							const frame = rendered.get(node.id);
 							return (
 								<div key={node.id}>
 									{meta?.slate ? (
@@ -962,11 +1004,32 @@ export function Play() {
 										ref={node.id === lastId ? lastRef : undefined}
 									>
 										<div className="prose">
-											<Prose
-												items={parsed.get(node.id) ?? []}
-												nodeId={node.id}
-												hideStatus={!statusOn}
-											/>
+											{frame === undefined ? (
+												<Prose
+													items={parsed.get(node.id) ?? []}
+													nodeId={node.id}
+													hideStatus={!statusOn}
+												/>
+											) : (
+												<FloorFrame
+													storyId={storyId}
+													render={frame}
+													allowedDomains={sandbox.data?.allowedDomains ?? []}
+													onSendMessage={(message) => send(message, null)}
+													onFillInput={setText}
+													onRejected={(rejection) => {
+														api
+															.recordSandboxRejection(storyId, {
+																nodeId: rejection.nodeId,
+																renderer: rejection.renderer,
+																kind: rejection.kind,
+																target: rejection.target,
+																reason: rejection.reason,
+															})
+															.catch(() => {});
+													}}
+												/>
+											)}
 										</div>
 										<aside
 											className={

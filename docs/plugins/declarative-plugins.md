@@ -12,7 +12,7 @@
 | `formatVersion` | 是 | 固定为 `1`；不认识的版本直接拒绝 |
 | `name` | 是 | 插件名，只含小写字母、数字、`.`、`_`、`-`，并以字母或数字开头 |
 | `version` | 是 | 插件自身版本，形如 `1.2.3` 或 `1.2.3-beta.1` |
-| `kind` | 是 | `ledger-schema`、`plot-beat`、`context-template`、`block-renderer`、`skill`、`director-config`、`event-pool` 之一 |
+| `kind` | 是 | `ledger-schema`、`plot-beat`、`context-template`、`block-renderer`、`floor-renderer`、`skill`、`director-config`、`event-pool` 之一 |
 | `title` | 否 | 展示标题，非空字符串 |
 | `description` | 否 | 说明文字，非空字符串 |
 | `payload` | 是 | 由 `kind` 决定的结构，见下一节 |
@@ -34,7 +34,7 @@
 }
 ```
 
-## 七种负载
+## 八种负载
 
 ### `ledger-schema` 台账字段
 
@@ -112,6 +112,32 @@
 	"block": "状态栏",
 	"display": { "kind": "html", "template": "<dl class=\"status-bar\">{{content}}</dl>" },
 	"context": { "kind": "keep-depth", "depth": 2 }
+}
+```
+
+### `floor-renderer` 楼层渲染器
+
+| 字段 | 规则 |
+|---|---|
+| `id` | 渲染器 id，可选；省略时用插件名，同一个故事里不能重复 |
+| `name` | 显示名，非空字符串 |
+| `blockTypes` | 认领的块类型名数组，例如 `["状态栏"]` |
+| `patterns` | 认领的正则源码数组，不带标志；与 `blockTypes` 至少提供一个 |
+| `permissions` | 交互桥权限，只能取 `sendMessage`、`fillInput`、`readState`、`writeState`、`openImage` |
+| `template` | 非空 HTML 模板，`{{content}}` 换成转义后的楼层原文 |
+| `script` | 可选，在沙箱里执行的脚本正文 |
+| `style` | 可选，在沙箱里追加的样式 |
+
+楼层渲染器认领整层，在一个 `sandbox="allow-scripts"` 的 iframe 里显示，只派生显示内容，不修改楼层原文（I4、I8）。没有声明的交互桥方法调用会被拒绝并记进检视器；沙箱默认不联网，允许域名由玩家在故事的设定页逐个打开。
+
+```json
+{
+	"id": "status-bar",
+	"name": "状态栏",
+	"blockTypes": ["状态栏"],
+	"permissions": ["sendMessage"],
+	"template": "<dl class=\"status-bar\">{{content}}</dl>",
+	"script": "document.querySelector('button').addEventListener('click', function () { dramaticerBridge.sendMessage('继续'); });"
 }
 ```
 

@@ -1,4 +1,5 @@
 import type { ImportEntryKind, ImportMode } from "@dramaticer/core";
+import type { StorySandboxView } from "@dramaticer/protocol";
 import { useEffect, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
@@ -55,6 +56,14 @@ const EDIT_SOURCE: Record<EditRecord["source"], string> = {
 	rejected: "被挡下的写入",
 };
 
+const BRIDGE_LABEL: Readonly<Record<string, string>> = {
+	sendMessage: "发送消息",
+	fillInput: "填入输入框",
+	readState: "读状态",
+	writeState: "写状态",
+	openImage: "看图片",
+};
+
 const KIND: Record<string, { label: string; color: string; when: string }> = {
 	common: { label: "常识", color: "--ink", when: "每一轮都带" },
 	entity: { label: "人物地点", color: "--teal", when: "在场或被提到时" },
@@ -77,6 +86,10 @@ export function Lore() {
 	const story = useLoad(() => api.getStory(storyId), [storyId]);
 	const lore = useLoad<LoreView>(
 		() => api.get(sp(storyId, "/lore-copy")),
+		[storyId],
+	);
+	const sandbox = useLoad<StorySandboxView>(
+		() => api.getStorySandbox(storyId),
 		[storyId],
 	);
 	const [filter, setFilter] = useState<string>("all");
@@ -111,6 +124,7 @@ export function Lore() {
 	if (lore.error !== null) return <div className="v4err">{lore.error}</div>;
 	if (lore.data === null) return <p className="v4empty">正在读取设定…</p>;
 	const data = lore.data;
+	const sandboxData = sandbox.data;
 	const title = story.data?.title ?? "";
 	const shown = data.entries.filter(
 		(entry) => filter === "all" || entry.kind === filter,
@@ -155,6 +169,15 @@ export function Lore() {
 				lore.reload();
 				void loadHistory(entry);
 				toast("已回到那一版");
+			},
+		);
+
+	const toggleDomain = (domain: string, allowed: boolean) =>
+		act(
+			() => api.updateSandboxDomain(storyId, domain, allowed),
+			() => {
+				sandbox.reload();
+				toast(allowed ? `已允许 ${domain}` : `已取消允许 ${domain}`);
 			},
 		);
 
@@ -258,6 +281,61 @@ export function Lore() {
 					</span>
 				</div>
 			</div>
+			<section className="sandbox-perms" aria-label="卡片脚本与联网">
+				<h2>卡片脚本与联网</h2>
+				<p>
+					沙箱默认不联网。卡里的脚本要访问某个域名时，先在这里逐个允许；允许名单只属于这个故事。
+				</p>
+				{sandbox.error !== null ? (
+					<p className="v4err">{sandbox.error}</p>
+				) : sandboxData === null ? (
+					<p className="muted">正在读取…</p>
+				) : (
+					<>
+						<div className="sandbox-block">
+							<h3>楼层渲染器</h3>
+							{sandboxData.renderers.length === 0 ? (
+								<p className="muted">这张卡没有声明楼层渲染插件。</p>
+							) : (
+								<ul>
+									{sandboxData.renderers.map((renderer) => (
+										<li key={renderer.id}>
+											<b>{renderer.name}</b>
+											<span className="muted">
+												{" · "}
+												{renderer.permissions.length === 0
+													? "只显示，不调用界面"
+													: renderer.permissions
+															.map((item) => BRIDGE_LABEL[item] ?? item)
+															.join("、")}
+											</span>
+										</li>
+									))}
+								</ul>
+							)}
+						</div>
+						<div className="sandbox-block">
+							<h3>脚本里出现的域名</h3>
+							{sandboxData.detectedDomains.length === 0 ? (
+								<p className="muted">没有检测到外部域名。</p>
+							) : (
+								<ul className="domainlist">
+									{sandboxData.detectedDomains.map((domain) => (
+										<li key={domain}>
+											<span>{domain}</span>
+											<Sw
+												checked={sandboxData.allowedDomains.includes(domain)}
+												label={`允许 ${domain}`}
+												onChange={(value) => toggleDomain(domain, value)}
+											/>
+										</li>
+									))}
+								</ul>
+							)}
+						</div>
+					</>
+				)}
+			</section>
 			<div className="filters">
 				<button
 					type="button"

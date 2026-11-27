@@ -47,6 +47,7 @@ export * from "./code-plugin-installer.js";
 export * from "./installation.js";
 export * from "./contracts.js";
 export * from "./declarative.js";
+export * from "./floor-renderers.js";
 export * from "./display-state.js";
 export * from "./message-modification.js";
 export { EventBus } from "./events.js";

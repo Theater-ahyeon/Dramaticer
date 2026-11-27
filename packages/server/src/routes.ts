@@ -68,6 +68,10 @@ import {
 	handleStoryBlueprintVersions,
 } from "./routes-outline.js";
 import {
+	handleStoryRender,
+	handleStorySandboxRoute,
+} from "./routes-sandbox.js";
+import {
 	handleGreetingUse,
 	handleGreetings,
 	handleImportAudit,
@@ -224,6 +228,23 @@ export async function handleApiRequest(
 		) {
 			requireMethod(method, ["GET"]);
 			await handleStoryPortrait(res, options, storyId, parts[4]);
+			return;
+		}
+		if (third === "render" && parts.length === 3) {
+			requireMethod(method, ["POST"]);
+			await handleStoryRender(req, res, options, storyId);
+			return;
+		}
+		if (third === "sandbox") {
+			await handleStorySandboxRoute(
+				req,
+				res,
+				url,
+				method,
+				options,
+				storyId,
+				parts,
+			);
 			return;
 		}
 		if (parts.length === 3) {

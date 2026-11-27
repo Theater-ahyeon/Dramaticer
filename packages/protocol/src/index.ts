@@ -6,6 +6,7 @@ export * from "./errors.js";
 export * from "./images.js";
 export * from "./import-audit.js";
 export * from "./panels.js";
+export * from "./sandbox.js";
 export * from "./settings.js";
 export * from "./story.js";
 export * from "./turn.js";
