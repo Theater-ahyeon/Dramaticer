@@ -420,3 +420,52 @@ export interface CanonChunkExtraction {
 	readonly voices: readonly CanonExtractedVoice[];
 	readonly facts: readonly CanonExtractedFact[];
 }
+
+/** 玩家扮演谁：原著里已有的人物，或自创一个人物。 */
+export type CanonIdentityKind = "canon" | "custom";
+
+export const CANON_IDENTITY_KINDS: readonly CanonIdentityKind[] = [
+	"canon",
+	"custom",
+];
+
+export function isCanonIdentityKind(
+	value: unknown,
+): value is CanonIdentityKind {
+	return value === "canon" || value === "custom";
+}
+
+/** 开局时截取到的扮演人物页；只含开局章节前的底色，作为玩家角色资料存着。 */
+export interface CanonPlayerPage {
+	readonly name: string;
+	readonly kind: CanonEntityKind;
+	readonly aliases: readonly string[];
+	readonly lead: string;
+	readonly base: string;
+	readonly entries: readonly CanonBaseEntry[];
+}
+
+/** 一个故事与一本原著的绑定；每个故事最多一条。 */
+export interface CanonStoryBindingRecord {
+	readonly storyId: string;
+	readonly bookId: string;
+	readonly startEventId: number;
+	readonly startChapterOrdinal: number;
+	readonly identityKind: CanonIdentityKind;
+	readonly playerEntityName: string;
+	/** 扮演原著人物时的资料；自创人物时为 null。 */
+	readonly playerPage: CanonPlayerPage | null;
+	/** 默认关；打开后上下文才能取到游标之后的内容。 */
+	readonly allowFullBookSpoilers: boolean;
+	readonly createdAt: string;
+}
+
+/** 某一楼层演到的原著位置；游标是主时间线的事件序号。 */
+export interface CanonCursorRecord {
+	readonly storyId: string;
+	readonly nodeId: string;
+	readonly eventId: number;
+	readonly eventOrdinal: number;
+	readonly chapterOrdinal: number;
+	readonly createdAt: string;
+}

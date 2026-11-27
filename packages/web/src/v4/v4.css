@@ -2891,7 +2891,7 @@ img.cover {
 /* ---- 新建故事弹窗 ---- */
 .dialog.new-story {
 	width: min(520px, calc(100vw - 32px));
-	max-height: calc(100vh - 48px);
+	max-height: calc(86vh - 24px);
 	overflow: auto;
 	display: grid;
 	gap: 14px;
@@ -4053,5 +4053,16 @@ div:hover > .flr-acts,
 	.canon-extract-controls {
 		align-items: flex-start;
 		flex-direction: column;
+	}
+}
+
+/* 底部导航占住视口下缘，新建故事的长表单要在弹窗内部滚动并留出这一条。 */
+@media (max-width: 760px) {
+	.scrim {
+		padding: 10px 10px calc(84px + env(safe-area-inset-bottom, 0px));
+		overflow-y: auto;
+	}
+	.dialog.new-story {
+		max-height: calc(100vh - 104px - env(safe-area-inset-bottom, 0px));
 	}
 }

@@ -6,4 +6,5 @@ export * from "./extract.js";
 export * from "./package.js";
 export * from "./prompt.js";
 export * from "./split.js";
+export * from "./start.js";
 export * from "./types.js";

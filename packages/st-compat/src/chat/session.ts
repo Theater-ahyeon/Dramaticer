@@ -40,6 +40,8 @@ export interface ImportCardContentOptions {
 	readonly worlds?: readonly StWorldInfo[];
 	/** 本机已安装的声明式插件与玩法包；内置插件和卡随附插件自动计入。 */
 	readonly availableDependencies?: CardDependencyCatalog;
+	/** 叠加到原著故事时跳过卡自己的角色实体，只取文风、规则与推荐配置。 */
+	readonly skipCharacterEntity?: boolean;
 }
 
 export interface ImportedLoreTotals {
@@ -126,7 +128,9 @@ export function importCardContent(
 	options: ImportCardContentOptions,
 ): ImportedCardContent {
 	const { card } = options;
-	let entities = importCharacterCardEntity(store, storyId, card);
+	let entities: EntityImportResult = options.skipCharacterEntity
+		? { created: 0, merged: 0, aliases: 0, skipped: 0 }
+		: importCharacterCardEntity(store, storyId, card);
 	let lore: ImportedLoreTotals = { inserted: 0, existing: 0, skipped: 0 };
 	if (card.characterBook !== null) {
 		const result = importCharacterBookLore(

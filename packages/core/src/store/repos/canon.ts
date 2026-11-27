@@ -16,6 +16,7 @@ import {
 	type CanonCompilationRecord,
 	type CanonCompilationStatus,
 	type CanonCompiledEntityRecord,
+	type CanonCursorRecord,
 	type CanonEntityKind,
 	type CanonEntityMerge,
 	type CanonEntityRecord,
@@ -26,7 +27,10 @@ import {
 	type CanonExtractionRecord,
 	type CanonExtractionStatus,
 	type CanonFactRecord,
+	type CanonIdentityKind,
 	type CanonPackage,
+	type CanonPlayerPage,
+	type CanonStoryBindingRecord,
 	type CanonVoiceKind,
 	type CanonVoiceRecord,
 	type NewCanonChapter,
@@ -37,8 +41,10 @@ import {
 	isCanonCompilationStatus,
 	isCanonEntityKind,
 	isCanonExtractionStatus,
+	isCanonIdentityKind,
 } from "../../canon/index.js";
 import { StoreRepo } from "./base.js";
+import { assertNonEmptyString, readBooleanColumn } from "./shared.js";
 
 export interface CreateCanonBookInput {
 	readonly id?: string;
@@ -529,6 +535,107 @@ function rowToCompiledEntity(
 		),
 		firstChapterOrdinal: row.first_chapter_ordinal,
 		lastChapterOrdinal: row.last_chapter_ordinal,
+	};
+}
+
+export interface SaveStoryCanonBindingInput {
+	readonly storyId: string;
+	readonly bookId: string;
+	readonly startEventId: number;
+	readonly startChapterOrdinal: number;
+	readonly identityKind: CanonIdentityKind;
+	readonly playerEntityName: string;
+	readonly playerPage: CanonPlayerPage | null;
+	readonly allowFullBookSpoilers?: boolean;
+	readonly createdAt?: string;
+}
+
+export interface SaveCanonCursorInput {
+	readonly storyId: string;
+	readonly nodeId: string;
+	readonly eventId: number;
+	readonly eventOrdinal: number;
+	readonly chapterOrdinal: number;
+	readonly createdAt?: string;
+}
+
+interface StoryCanonRow {
+	readonly story_id: string;
+	readonly book_id: string;
+	readonly start_event_id: number;
+	readonly start_chapter_ordinal: number;
+	readonly identity_kind: string;
+	readonly player_entity_name: string;
+	readonly player_page: string | null;
+	readonly allow_full_book_spoilers: number;
+	readonly created_at: string;
+}
+
+interface CanonCursorRow {
+	readonly story_id: string;
+	readonly node_id: string;
+	readonly event_id: number;
+	readonly event_ordinal: number;
+	readonly chapter_ordinal: number;
+	readonly created_at: string;
+}
+
+function rowToPlayerPage(value: string | null): CanonPlayerPage | null {
+	if (value === null) return null;
+	const parsed = JSON.parse(value) as Record<string, unknown>;
+	if (typeof parsed !== "object" || parsed === null) {
+		throw new Error("原著扮演人物页必须是 JSON 对象");
+	}
+	const entries = parsed.entries;
+	if (!Array.isArray(entries)) {
+		throw new Error("原著扮演人物页缺少底色条目数组");
+	}
+	return {
+		name: typeof parsed.name === "string" ? parsed.name : "",
+		kind: readEntityKind(
+			typeof parsed.kind === "string" ? parsed.kind : String(parsed.kind),
+		),
+		aliases: Array.isArray(parsed.aliases)
+			? parsed.aliases.filter(
+					(item): item is string => typeof item === "string",
+				)
+			: [],
+		lead: typeof parsed.lead === "string" ? parsed.lead : "",
+		base: typeof parsed.base === "string" ? parsed.base : "",
+		entries: parseBaseEntries(JSON.stringify(entries), "原著扮演人物页的底色"),
+	};
+}
+
+function rowToStoryCanon(row: StoryCanonRow): CanonStoryBindingRecord {
+	if (!isCanonIdentityKind(row.identity_kind)) {
+		throw new Error(
+			`故事 ${row.story_id} 的扮演身份不合法：${row.identity_kind}`,
+		);
+	}
+	return {
+		storyId: row.story_id,
+		bookId: row.book_id,
+		startEventId: row.start_event_id,
+		startChapterOrdinal: row.start_chapter_ordinal,
+		identityKind: row.identity_kind,
+		playerEntityName: row.player_entity_name,
+		playerPage: rowToPlayerPage(row.player_page),
+		allowFullBookSpoilers: readBooleanColumn(
+			row.allow_full_book_spoilers,
+			`故事 ${row.story_id} 的 allowFullBookSpoilers`,
+		),
+		createdAt: row.created_at,
+	};
+}
+
+function rowToCursor(row: CanonCursorRow): CanonCursorRecord {
+	return {
+		storyId: row.story_id,
+		nodeId: row.node_id,
+		eventId: row.event_id,
+		eventOrdinal: row.event_ordinal,
+		chapterOrdinal: row.chapter_ordinal,
+		createdAt: row.created_at,
 	};
 }
 
@@ -1907,6 +2014,175 @@ export class CanonRepo extends StoreRepo {
 				)
 				.run(bookId);
 		}
+	}
+
+	/** 一个故事只能绑定一本原著；重复绑定直接失败，由调用方决定怎么处理。 */
+	saveStoryCanonBinding(
+		input: SaveStoryCanonBindingInput,
+	): CanonStoryBindingRecord {
+		assertNonEmptyString(input.storyId, "故事 id");
+		assertNonEmptyString(input.bookId, "原著 id");
+		assertNonEmptyString(input.playerEntityName, "扮演人物名");
+		if (this.store.getStory(input.storyId) === null) {
+			throw new Error(`故事不存在：${input.storyId}`);
+		}
+		this.#requireBook(input.bookId);
+		if (!isCanonIdentityKind(input.identityKind)) {
+			throw new Error(`扮演身份不合法：${String(input.identityKind)}`);
+		}
+		if (
+			!Number.isInteger(input.startChapterOrdinal) ||
+			input.startChapterOrdinal < 1
+		) {
+			throw new Error("开局章节必须是正整数");
+		}
+		const event = this.db
+			.prepare("SELECT book_id, chapter_ordinal FROM canon_events WHERE id = ?")
+			.get(input.startEventId) as
+			| { readonly book_id: string; readonly chapter_ordinal: number }
+			| undefined;
+		if (event === undefined) {
+			throw new Error(`原著事件不存在：${input.startEventId}`);
+		}
+		if (event.book_id !== input.bookId) {
+			throw new Error(
+				`原著事件 ${input.startEventId} 不属于原著 ${input.bookId}`,
+			);
+		}
+		if (input.identityKind === "canon" && input.playerPage === null) {
+			throw new Error("扮演原著人物时必须给出这个人物的资料");
+		}
+		if (this.getStoryCanonBinding(input.storyId) !== null) {
+			throw new Error(`故事 ${input.storyId} 已经绑定过原著`);
+		}
+		const createdAt = input.createdAt ?? new Date().toISOString();
+		const allow = input.allowFullBookSpoilers === true;
+		this.db
+			.prepare(
+				`INSERT INTO story_canon
+					(story_id, book_id, start_event_id, start_chapter_ordinal,
+					 identity_kind, player_entity_name, player_page,
+					 allow_full_book_spoilers, created_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			)
+			.run(
+				input.storyId,
+				input.bookId,
+				input.startEventId,
+				input.startChapterOrdinal,
+				input.identityKind,
+				input.playerEntityName,
+				input.playerPage === null ? null : JSON.stringify(input.playerPage),
+				allow ? 1 : 0,
+				createdAt,
+			);
+		const saved = this.getStoryCanonBinding(input.storyId);
+		if (saved === null) {
+			throw new Error(`故事 ${input.storyId} 的原著绑定写入后读取失败`);
+		}
+		return saved;
+	}
+
+	getStoryCanonBinding(storyId: string): CanonStoryBindingRecord | null {
+		assertNonEmptyString(storyId, "故事 id");
+		const row = this.db
+			.prepare("SELECT * FROM story_canon WHERE story_id = ?")
+			.get(storyId) as StoryCanonRow | undefined;
+		return row === undefined ? null : rowToStoryCanon(row);
+	}
+
+	/**
+	 * 写入某一楼层的原著游标；同一楼层重复写入覆盖旧游标。
+	 * 游标的事件必须属于这个故事绑定的原著，避免两本书混在一起。
+	 */
+	saveCanonCursor(input: SaveCanonCursorInput): CanonCursorRecord {
+		assertNonEmptyString(input.storyId, "故事 id");
+		assertNonEmptyString(input.nodeId, "楼层 id");
+		if (!Number.isInteger(input.eventOrdinal) || input.eventOrdinal < 1) {
+			throw new Error("原著游标的事件序号必须是正整数");
+		}
+		if (!Number.isInteger(input.chapterOrdinal) || input.chapterOrdinal < 1) {
+			throw new Error("原著游标的章节必须是正整数");
+		}
+		const binding = this.getStoryCanonBinding(input.storyId);
+		if (binding === null) {
+			throw new Error(`故事 ${input.storyId} 还没有绑定原著`);
+		}
+		const node = this.store.getNode(input.nodeId);
+		if (node === null) {
+			throw new Error(`楼层节点不存在：${input.nodeId}`);
+		}
+		if (node.storyId !== input.storyId) {
+			throw new Error(`楼层 ${input.nodeId} 属于另一个故事`);
+		}
+		const event = this.db
+			.prepare("SELECT book_id, chapter_ordinal FROM canon_events WHERE id = ?")
+			.get(input.eventId) as
+			| { readonly book_id: string; readonly chapter_ordinal: number }
+			| undefined;
+		if (event === undefined) {
+			throw new Error(`原著事件不存在：${input.eventId}`);
+		}
+		if (event.book_id !== binding.bookId) {
+			throw new Error(`原著事件 ${input.eventId} 不属于绑定的原著`);
+		}
+		const createdAt = input.createdAt ?? new Date().toISOString();
+		this.db
+			.prepare(
+				`INSERT INTO canon_cursors
+					(story_id, node_id, event_id, event_ordinal, chapter_ordinal, created_at)
+				VALUES (?, ?, ?, ?, ?, ?)
+				ON CONFLICT (story_id, node_id) DO UPDATE SET
+					event_id = excluded.event_id,
+					event_ordinal = excluded.event_ordinal,
+					chapter_ordinal = excluded.chapter_ordinal,
+					created_at = excluded.created_at`,
+			)
+			.run(
+				input.storyId,
+				input.nodeId,
+				input.eventId,
+				input.eventOrdinal,
+				input.chapterOrdinal,
+				createdAt,
+			);
+		const saved = this.getCanonCursor(input.storyId, input.nodeId);
+		if (saved === null) {
+			throw new Error(`原著游标写入后读取失败：${input.nodeId}`);
+		}
+		return saved;
+	}
+
+	getCanonCursor(storyId: string, nodeId: string): CanonCursorRecord | null {
+		assertNonEmptyString(storyId, "故事 id");
+		assertNonEmptyString(nodeId, "楼层 id");
+		const row = this.db
+			.prepare("SELECT * FROM canon_cursors WHERE story_id = ? AND node_id = ?")
+			.get(storyId, nodeId) as CanonCursorRow | undefined;
+		return row === undefined ? null : rowToCursor(row);
+	}
+
+	listCanonCursors(storyId: string): readonly CanonCursorRecord[] {
+		assertNonEmptyString(storyId, "故事 id");
+		const rows = this.db
+			.prepare(
+				`SELECT * FROM canon_cursors
+				WHERE story_id = ? ORDER BY created_at ASC, node_id ASC`,
+			)
+			.all(storyId) as CanonCursorRow[];
+		return rows.map(rowToCursor);
+	}
+
+	/** 最近写入的一个游标；当前楼没有游标时用它给界面一个可读的位置。 */
+	getLatestCanonCursor(storyId: string): CanonCursorRecord | null {
+		assertNonEmptyString(storyId, "故事 id");
+		const row = this.db
+			.prepare(
+				`SELECT * FROM canon_cursors
+				WHERE story_id = ? ORDER BY created_at DESC, node_id DESC LIMIT 1`,
+			)
+			.get(storyId) as CanonCursorRow | undefined;
+		return row === undefined ? null : rowToCursor(row);
 	}
 
 	#syncBookStatus(bookId: string, status: CanonExtractionStatus): void {

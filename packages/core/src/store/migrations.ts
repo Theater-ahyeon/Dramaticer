@@ -2354,6 +2354,38 @@ export function buildMigrations(
 					ON canon_events(book_id, timeline_order)`,
 			],
 		},
+		{
+			version: 79,
+			description:
+				"从原著开局（v5 §5.2）：故事与原著的绑定、扮演身份、开局事件，以及按楼层存的原著游标",
+			statements: [
+				`CREATE TABLE story_canon (
+					story_id TEXT PRIMARY KEY REFERENCES stories(id) ON DELETE CASCADE,
+					book_id TEXT NOT NULL REFERENCES canon_books(id) ON DELETE CASCADE,
+					start_event_id INTEGER NOT NULL
+						REFERENCES canon_events(id) ON DELETE CASCADE,
+					start_chapter_ordinal INTEGER NOT NULL
+						CHECK (start_chapter_ordinal >= 1),
+					identity_kind TEXT NOT NULL
+						CHECK (identity_kind IN ('canon', 'custom')),
+					player_entity_name TEXT NOT NULL,
+					player_page TEXT,
+					allow_full_book_spoilers INTEGER NOT NULL DEFAULT 0
+						CHECK (allow_full_book_spoilers IN (0, 1)),
+					created_at TEXT NOT NULL
+				) STRICT`,
+				`CREATE TABLE canon_cursors (
+					story_id TEXT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+					node_id TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+					event_id INTEGER NOT NULL
+						REFERENCES canon_events(id) ON DELETE CASCADE,
+					event_ordinal INTEGER NOT NULL CHECK (event_ordinal >= 1),
+					chapter_ordinal INTEGER NOT NULL CHECK (chapter_ordinal >= 1),
+					created_at TEXT NOT NULL,
+					PRIMARY KEY (story_id, node_id)
+				) STRICT`,
+			],
+		},
 	];
 }
 

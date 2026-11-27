@@ -73,6 +73,8 @@ export type {
 	CanonEntityInput,
 	CanonEventTimelinePatch,
 	CreateCanonBookInput,
+	SaveCanonCursorInput,
+	SaveStoryCanonBindingInput,
 } from "./repos/canon.js";
 
 const REPOS = Symbol("StoryStore.repos");
@@ -436,6 +438,12 @@ export interface StoryStore
 			| "applyCanonEntityMerges"
 			| "applyCanonEventTimeline"
 			| "importCanonPackage"
+			| "saveStoryCanonBinding"
+			| "getStoryCanonBinding"
+			| "saveCanonCursor"
+			| "getCanonCursor"
+			| "listCanonCursors"
+			| "getLatestCanonCursor"
 		> {}
 
 export class StoryStore {
@@ -917,6 +925,12 @@ const DELEGATES: Readonly<Record<keyof Repos, readonly string[]>> = {
 		"applyCanonEntityMerges",
 		"applyCanonEventTimeline",
 		"importCanonPackage",
+		"saveStoryCanonBinding",
+		"getStoryCanonBinding",
+		"saveCanonCursor",
+		"getCanonCursor",
+		"listCanonCursors",
+		"getLatestCanonCursor",
 	],
 };
 

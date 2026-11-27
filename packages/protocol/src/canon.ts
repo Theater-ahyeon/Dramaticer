@@ -6,16 +6,21 @@ import type {
 	CanonChapterSummary,
 	CanonCompilationRecord,
 	CanonCompiledEntityRecord,
+	CanonCursorRecord,
 	CanonEntityRecord,
 	CanonEventRecord,
 	CanonExtractionEstimate,
 	CanonExtractionRecord,
 	CanonFactRecord,
+	CanonIdentityKind,
 	CanonPackage,
+	CanonPlayerPage,
 	CanonStartingPage,
+	CanonStoryBindingRecord,
 	CanonVoiceRecord,
 	CanonWorldIndex,
 } from "@dramaticer/core";
+import type { ImportStoryRequest, StoryView } from "./story.js";
 
 export type {
 	CanonBookRecord,
@@ -24,12 +29,16 @@ export type {
 	CanonChapterRecord,
 	CanonCompilationRecord,
 	CanonCompiledEntityRecord,
+	CanonCursorRecord,
 	CanonEntityRecord,
 	CanonEventRecord,
 	CanonExtractionEstimate,
 	CanonExtractionRecord,
 	CanonFactRecord,
+	CanonIdentityKind,
+	CanonPlayerPage,
 	CanonStartingPage,
+	CanonStoryBindingRecord,
 	CanonVoiceRecord,
 	CanonWorldIndex,
 };
@@ -134,4 +143,45 @@ export interface ImportCanonPackageRequest {
 export interface ImportCanonPackageResult {
 	readonly book: CanonBookView;
 	readonly chapters: readonly CanonChapterView[];
+}
+
+/** 故事当前绑定的原著；未绑定时外层返回 `{ bound: null }`。 */
+export interface StoryCanonBindingView {
+	readonly storyId: string;
+	readonly bookId: string;
+	readonly bookTitle: string;
+	readonly startEventId: number;
+	readonly startEventTitle: string;
+	readonly startChapterOrdinal: number;
+	readonly identityKind: CanonIdentityKind;
+	readonly playerEntityName: string;
+	/** 扮演原著人物时的开局切片；自创人物为 null。 */
+	readonly playerPage: CanonPlayerPage | null;
+	readonly allowFullBookSpoilers: boolean;
+	readonly createdAt: string;
+	/** 当前楼层的游标；没有楼层时为最近一次写入的游标。 */
+	readonly cursor: CanonCursorRecord | null;
+}
+
+export interface StoryCanonView {
+	readonly bound: StoryCanonBindingView | null;
+}
+
+/** 一步完成：建故事、装原著、可选叠加一张角色卡。 */
+export interface StartCanonStoryRequest {
+	readonly title?: string;
+	readonly bookId: string;
+	readonly startEventId?: number;
+	readonly identityKind: CanonIdentityKind;
+	readonly playerName: string;
+	/** 自创人物的人设；扮演原著人物时忽略。 */
+	readonly persona?: string;
+	readonly card?: ImportStoryRequest["card"];
+	readonly worlds?: readonly string[];
+}
+
+export interface StartCanonStoryResult {
+	readonly story: StoryView;
+	readonly canon: StoryCanonBindingView;
+	readonly cardName: string | null;
 }

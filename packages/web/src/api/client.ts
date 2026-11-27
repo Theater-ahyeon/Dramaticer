@@ -73,6 +73,8 @@ import {
 	type SceneControlResult,
 	type SetHeadRequest,
 	type SseEvent,
+	type StartCanonStoryRequest,
+	type StartCanonStoryResult,
 	type StoryBlueprintDeviationView,
 	type StoryBlueprintEditRequest,
 	type StoryBlueprintEditResult,
@@ -82,6 +84,7 @@ import {
 	type StoryBlueprintVersionsView,
 	type StoryBlueprintView,
 	type StoryBookExport,
+	type StoryCanonView,
 	type StoryCluesView,
 	type StoryDirectorPlanRequest,
 	type StoryDirectorPlanView,
@@ -494,6 +497,21 @@ export class ApiClient {
 			"/api/canon/packages/import",
 			request,
 		);
+	}
+
+	/** 一步建故事并装原著；可选叠加一张角色卡提供文风与规则。 */
+	async startCanonStory(
+		request: StartCanonStoryRequest,
+	): Promise<StartCanonStoryResult> {
+		return this.json<StartCanonStoryResult>(
+			"POST",
+			"/api/canon/start-story",
+			request,
+		);
+	}
+
+	async getStoryCanon(storyId: string): Promise<StoryCanonView> {
+		return this.json<StoryCanonView>("GET", `${storyPath(storyId)}/canon`);
 	}
 
 	async getClues(storyId: string): Promise<StoryCluesView> {

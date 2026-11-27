@@ -7,6 +7,7 @@ import {
 	type CanonChapterSplitResult,
 	type CanonPackage,
 	type CanonPackageImportResult,
+	type CanonStartResult,
 	type NewCanonChapter,
 	beginCanonExtraction,
 	buildCanonStartingPages,
@@ -18,8 +19,10 @@ import {
 	exportCanonPackage,
 	importCanonPackage,
 	isCanonChapterKind,
+	isCanonIdentityKind,
 	isJsonObject,
 	splitCanonText,
+	startCanonStory,
 } from "@dramaticer/core";
 import type {
 	CanonBookDetailView,
@@ -33,8 +36,19 @@ import type {
 	CanonExtractionView,
 	ImportCanonBookResult,
 	ImportCanonPackageResult,
+	StartCanonStoryResult,
+	StoryCanonBindingView,
+	StoryCanonView,
 } from "@dramaticer/protocol";
+import {
+	type StCharacterCard,
+	importCardContent,
+	parseCharacterCardJson,
+	parseCharacterCardPng,
+	parseWorldInfoJson,
+} from "@dramaticer/st-compat";
 import { HttpError, readJsonBody, sendEmpty, sendJson } from "./http.js";
+import { afterCardImport } from "./routes-card.js";
 import {
 	assertKnownKeys,
 	fieldError,
@@ -42,9 +56,18 @@ import {
 	queryInteger,
 	readObjectBody,
 	requireMethod,
+	requireStory,
+	requireText,
 	toBadRequest,
 } from "./routes-common.js";
+import {
+	decodePngBase64,
+	parseCardPayload,
+	parseWorldPayload,
+	toStoryView,
+} from "./routes-stories.js";
 import type { ApiRouteOptions } from "./routes.js";
+import { saveImportedCardMedia } from "./story-media.js";
 
 /** 32 MB 的 txt 经 base64 是 43 MB，留出余量。 */
 export const CANON_IMPORT_MAX_BODY_BYTES = 48 * 1024 * 1024;
@@ -214,6 +237,181 @@ function canonCompiledView(
 	};
 }
 
+/** 当前故事绑定的原著、扮演身份与游标；给前端与 canon/05 用。 */
+export function readStoryCanonView(
+	options: ApiRouteOptions,
+	storyId: string,
+): StoryCanonView {
+	const binding = options.store.getStoryCanonBinding(storyId);
+	if (binding === null) return { bound: null };
+	const book = options.store.getCanonBook(binding.bookId);
+	const event = options.store
+		.listCanonEvents(binding.bookId)
+		.find((item) => item.id === binding.startEventId);
+	const head = options.store.getHead(storyId);
+	const cursor =
+		(head === null ? null : options.store.getCanonCursor(storyId, head.id)) ??
+		options.store.getLatestCanonCursor(storyId);
+	const view: StoryCanonBindingView = {
+		storyId: binding.storyId,
+		bookId: binding.bookId,
+		bookTitle: book?.title ?? "",
+		startEventId: binding.startEventId,
+		startEventTitle: event?.title ?? "",
+		startChapterOrdinal: binding.startChapterOrdinal,
+		identityKind: binding.identityKind,
+		playerEntityName: binding.playerEntityName,
+		playerPage: binding.playerPage,
+		allowFullBookSpoilers: binding.allowFullBookSpoilers,
+		createdAt: binding.createdAt,
+		cursor,
+	};
+	return { bound: view };
+}
+
+export function handleStoryCanon(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	storyId: string,
+): void {
+	requireStory(options.store, storyId);
+	sendJson(res, 200, readStoryCanonView(options, storyId));
+}
+
+/** 一步建故事并装原著；可选叠加一张角色卡提供文风与规则。 */
+async function startCanonStoryRoute(
+	req: IncomingMessage,
+	res: ServerResponse,
+	options: ApiRouteOptions,
+): Promise<void> {
+	const body = await readObjectBody(req, options.maxJsonBodyBytes);
+	assertKnownKeys(body, [
+		"title",
+		"bookId",
+		"startEventId",
+		"identityKind",
+		"playerName",
+		"persona",
+		"card",
+		"worlds",
+	]);
+	const bookId = requireText(body.bookId, "bookId");
+	if (!isCanonIdentityKind(body.identityKind)) {
+		throw fieldError("identityKind", "identityKind 只能是 canon 或 custom");
+	}
+	const identityKind = body.identityKind;
+	const playerName = requireText(body.playerName, "playerName");
+	if (body.title !== undefined && typeof body.title !== "string") {
+		throw fieldError("title", "title 必须是字符串");
+	}
+	const title =
+		typeof body.title === "string" && body.title.trim().length > 0
+			? body.title.trim()
+			: undefined;
+	if (body.persona !== undefined && typeof body.persona !== "string") {
+		throw fieldError("persona", "persona 必须是字符串");
+	}
+	const persona =
+		typeof body.persona === "string" && body.persona.trim().length > 0
+			? body.persona
+			: undefined;
+	let startEventId: number | undefined;
+	if (body.startEventId !== undefined) {
+		const value = body.startEventId;
+		if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
+			throw fieldError("startEventId", "startEventId 必须是正整数");
+		}
+		startEventId = value;
+	}
+	const request = {
+		card: body.card === undefined ? null : parseCardPayload(body.card),
+		worlds: parseWorldPayload(body.worlds),
+	};
+	let parsedCard: StCharacterCard | null = null;
+	let cardBytes: Uint8Array | null = null;
+	if (request.card !== null) {
+		try {
+			if (request.card.format === "png") {
+				cardBytes = decodePngBase64(request.card.data);
+				parsedCard = parseCharacterCardPng(cardBytes);
+			} else {
+				parsedCard = parseCharacterCardJson(request.card.data);
+			}
+		} catch (error) {
+			throw toBadRequest(error, "card");
+		}
+	}
+	const parsedWorlds = request.worlds.map((text, index) => {
+		try {
+			return parseWorldInfoJson(text);
+		} catch (error) {
+			throw toBadRequest(error, `worlds[${index}]`);
+		}
+	});
+
+	let outcome: {
+		readonly started: CanonStartResult;
+		readonly cardName: string | null;
+	};
+	try {
+		outcome = await options.store.runInTransaction(startCanonInTransaction);
+	} catch (error) {
+		throw toBadRequest(error, "canon");
+	}
+	async function startCanonInTransaction() {
+		const started = startCanonStory(options.store, {
+			bookId,
+			...(title === undefined ? {} : { title }),
+			...(startEventId === undefined ? {} : { startEventId }),
+			identity: {
+				kind: identityKind,
+				name: playerName,
+				...(persona === undefined ? {} : { persona }),
+			},
+		});
+		let cardName: string | null = null;
+		if (parsedCard !== null && request.card !== null) {
+			const imported = importCardContent(options.store, started.story.id, {
+				card: parsedCard,
+				worlds: parsedWorlds,
+				skipCharacterEntity: true,
+			});
+			options.store.updateStorySettings(started.story.id, {
+				cardName: imported.cardName,
+				characterPrompt: imported.characterPrompt,
+			});
+			await saveImportedCardMedia({
+				store: options.store,
+				storyId: started.story.id,
+				mediaDir: options.imagesMediaDir,
+				cardName: parsedCard.name,
+				pngBytes: cardBytes,
+			});
+			afterCardImport(
+				options.store,
+				started.story.id,
+				parsedCard,
+				request.card.data,
+			);
+			cardName = imported.cardName;
+		}
+		return { started, cardName };
+	}
+	const canonView = readStoryCanonView(options, outcome.started.story.id);
+	if (canonView.bound === null) {
+		throw new Error("原著绑定写入后读取失败");
+	}
+	const result: StartCanonStoryResult = {
+		story: toStoryView(
+			requireStory(options.store, outcome.started.story.id),
+			options.store,
+		),
+		canon: canonView.bound,
+		cardName: outcome.cardName,
+	};
+	sendJson(res, 201, result);
+}
+
 export async function handleCanonRoute(
 	req: IncomingMessage,
 	res: ServerResponse,
@@ -224,6 +422,11 @@ export async function handleCanonRoute(
 	const parts = pathSegments(url.pathname);
 	if (parts[0] !== "canon") {
 		throw new HttpError(404, "not_found", "没有这个接口");
+	}
+	if (parts[1] === "start-story" && parts.length === 2) {
+		requireMethod(method, ["POST"]);
+		await startCanonStoryRoute(req, res, options);
+		return;
 	}
 	if (parts[1] === "extract" && parts.length === 2) {
 		requireMethod(method, ["GET"]);

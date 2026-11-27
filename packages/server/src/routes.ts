@@ -18,7 +18,7 @@ import {
 import type { BackgroundScheduler } from "./background.js";
 import type { CanonExtractionWorker } from "./canon-worker.js";
 import { HttpError, sendJson } from "./http.js";
-import { handleCanonRoute } from "./routes-canon.js";
+import { handleCanonRoute, handleStoryCanon } from "./routes-canon.js";
 import {
 	applyChannelsActionPayload,
 	handleChannelKey,
@@ -262,6 +262,10 @@ export async function handleApiRequest(
 				case "head":
 					requireMethod(method, ["POST"]);
 					await handleHead(req, res, options, storyId);
+					return;
+				case "canon":
+					requireMethod(method, ["GET"]);
+					handleStoryCanon(res, options, storyId);
 					return;
 				case "clues":
 					requireMethod(method, ["GET"]);

@@ -206,7 +206,7 @@
 - 存储迁移 76：`canon_books`、`canon_chapters`（`paragraphs` 是 JSON 数组，`STRICT`，章随书 `ON DELETE CASCADE`）。`repos/canon.ts` 的合并与拆分先把序号整体加 `RENUMBER_OFFSET`（1,000,000）再逐行写回 1..N，否则会撞 `UNIQUE (book_id, ordinal)`；每次变更后用 `#recountBook` 重算书的章数与字数。
 - 分章列表接口不带 `paragraphs`；原文只在 `GET /api/canon/books/:bookId/chapters/:chapterId` 返回。导入请求只接受 `text` 或 `dataBase64` 之一，导入路由的请求体上限是 `CANON_IMPORT_MAX_BODY_BYTES`（48 MB），其余接口仍用 `maxJsonBodyBytes`。
 - 页面是 `/canon`（书架 + 上传）与 `/canon/:bookId`（分章预览与编辑）。导航栏仍是 7 项：入口在书架的 `lib-bar` 与命令面板「原著 · 导入与分章」，`/canon*` 高亮「书架」那一格。
-- 新增迁移要同步 `assistant-store.test.ts` 的 schema 版本断言（现在是 78）。
+- 新增迁移要同步 `assistant-store.test.ts` 的 schema 版本断言（现在是 79）。
 
 ### 抽取与预估（canon/02）
 
@@ -233,3 +233,14 @@
 - 接口：`POST /api/canon/books/:bookId/compile`（202）、`GET .../compiled[?upToChapter=]`（带截止章节时附 `pages` 与 `worldIndex`）、`GET .../export?includeText=0|1`（附件下载）、`POST /api/canon/packages/import`（请求体 `{package}`，上限同 txt 导入的 48 MB）。检视器总览每条现在带 `compilation`。
 - 汇编任务与抽取共用 `server/src/canon-worker.ts` 的队列，任务用 `kind: "extract" | "compile"` 区分；服务端启动时 `markInterruptedCanonCompilations` 把 running 标为失败，玩家可以重新汇编。
 - e2e 假渠道的 `canonCompile` 返回空合并、把本批最后一个事件标为转折、按实体块里的章节生成底色；走查脚本是 `.walk/walk9.spec.ts`。
+
+### 从原著开局（canon/04）
+
+- 迁移 79：`story_canon`（每故事一条绑定：书、开局事件与章节、扮演身份、玩家名、`player_page` JSON、`allow_full_book_spoilers` 默认 0）与 `canon_cursors`（主键 `story_id + node_id`，事件 id、主时间线序号、章节；随楼层 `ON DELETE CASCADE` 自然回退）。
+- `core/src/canon/start.ts` 的 `startCanonStory(store, input)` 不自己开事务，由调用方包在 `runInTransaction` 里，失败时故事与绑定一起回滚。给了 `storyId` 就用已有空故事（有楼层或已绑定都会失败）；没给就新建，标题空时用书名。
+- 开局事件缺省是主时间线第一件；`sortCanonTimelineEvents` 先按 `timelineOrder`（缺失时排最后）再按章节/段落/章内序号。实体与记事页来自 `buildCanonStartingPages(book.id, event.chapterOrdinal)`：凡 `firstChapterOrdinal` 晚于开局章节的都不进故事。
+- `identityKind === "canon"` 时该人物从实体与记事页里排除，切片资料写进 `story_canon.player_page`，同时把「你扮演<名>」、一行简介与截至开局章节的底色写进故事 `persona`；`custom` 时 persona 是「你扮演<名>」加玩家填的人设，全部已出场原著实体正常入库。
+- 首楼是程序写出的助手楼层（书名、事件标题、概要、地点、时间、在场），不调用模型；该楼层写入初始游标与最多 3 条主线方向（`canon-<eventId>`，want 是事件标题，obstacle 是概要），玩家可以直接改、删、锁。
+- `POST /api/canon/start-story` 一步建故事并可选叠加角色卡；卡的导入在同一个事务里，`importCardContent({ skipCharacterEntity: true })` 跳过卡自己的角色实体（避免与原著扮演人物或 NPC 混淆），保留文风/规则类世界书条目、`characterPrompt`、推荐配置与卡版本。卡的开场白不会成为楼层，因为原著首楼已经先写入。
+- `GET /api/stories/:id/canon` 返回 `{ bound: null }` 或绑定详情（书名、开局事件标题、扮演身份、`player_page`、当前楼层游标）；游标缺失时退回最近写入的一条。
+- 新建故事弹窗的「从原著开局」只列 `compilation.status === "done"` 的书；人物下拉取所选开局章节的切片，所以只出现已出场人物。e2e 在 `v5-canon-start.spec.ts`，走查脚本是 `.walk/walk10.spec.ts`。
