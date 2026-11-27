@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
 	DEFAULT_DIRECTOR_CONFIG,
-	type DirectorActionConfig,
 	type LlmClient,
 	type LlmRequest,
 	type LlmResult,
@@ -9,18 +8,13 @@ import {
 	createChapterPlanHandler,
 	createSceneLogHandler,
 	editSceneGoal,
-	readDirectorActionInput,
+	readBlueprintTension,
 	readEditHistory,
+	readEffectiveEdits,
 	readSceneGoal,
 	rollbackPlayerEdit,
 } from "../src/index.js";
 import { openTempStore } from "./temp-store.js";
-
-const ACTION_CONFIG: DirectorActionConfig = {
-	stallFloors: DEFAULT_DIRECTOR_CONFIG.stallFloors,
-	clueAgeWarning: DEFAULT_DIRECTOR_CONFIG.clueAgeWarning,
-	tensionStateDiffsPerFloor: DEFAULT_DIRECTOR_CONFIG.tensionStateDiffsPerFloor,
-};
 
 function llmResult(text: string): LlmResult {
 	return {
@@ -273,7 +267,7 @@ describe("规划的出处、锁定与回滚", () => {
 		expect(promiseHistory.at(-1)?.value).toMatchObject({ want: "把信烧掉" });
 	});
 
-	it("回滚剧情线后导演按恢复的内容做选择", () => {
+	it("回滚剧情线后恢复到玩家改之前的内容", () => {
 		const store = openStore();
 		seedChain(store, 1);
 		store.appendNode({
@@ -334,16 +328,18 @@ describe("规划的出处、锁定与回滚", () => {
 			locked: true,
 		});
 
-		const before = readDirectorActionInput(store, "s1", "u1", ACTION_CONFIG);
-		expect(before.lines[0]?.line.want).toBe("炸掉钟楼");
+		expect(
+			readEffectiveEdits(store, "s1", "u1", "line").get("main-1")?.value,
+		).toMatchObject({ want: "炸掉钟楼" });
 
 		rollbackPlayerEdit(store, "s1", "u1", first.id);
 
-		const after = readDirectorActionInput(store, "s1", "u1", ACTION_CONFIG);
-		expect(after.lines[0]?.line.want).toBe("先把凛送走");
+		expect(
+			readEffectiveEdits(store, "s1", "u1", "line").get("main-1")?.value,
+		).toMatchObject({ want: "先把凛送走" });
 	});
 
-	it("本场目标标明出处与锁定，导演按回滚后的目标接球", () => {
+	it("本场目标标明出处与锁定，回滚后有恢复的目标", () => {
 		const store = openStore();
 		seedChain(store, 1);
 		store.appendNode({
@@ -381,24 +377,17 @@ describe("规划的出处、锁定与回滚", () => {
 			source: "player",
 			locked: true,
 		});
-		expect(
-			readDirectorActionInput(store, "s1", "u1", ACTION_CONFIG).floors[0]
-				?.sceneCard?.change,
-		).toBe("凛把信留在桌上");
+		expect(readSceneGoal(store, "s1", "u1")?.change).toBe("凛把信留在桌上");
 
 		editSceneGoal(store, "s1", "u1", {
 			present: [{ who: "凛", want: "拿回那封信" }],
 			change: "凛烧掉那封信",
 		});
-		expect(
-			readDirectorActionInput(store, "s1", "u1", ACTION_CONFIG).floors[0]
-				?.sceneCard?.change,
-		).toBe("凛烧掉那封信");
+		expect(readSceneGoal(store, "s1", "u1")?.change).toBe("凛烧掉那封信");
 
 		rollbackPlayerEdit(store, "s1", "u1", first.id);
 
-		const selection = readDirectorActionInput(store, "s1", "u1", ACTION_CONFIG);
-		expect(selection.floors[0]?.sceneCard?.change).toBe("凛把信留在桌上");
+		expect(readSceneGoal(store, "s1", "u1")?.change).toBe("凛把信留在桌上");
 	});
 
 	it("锁定的本场目标不被场记覆盖，场记写下的目标只留作建议", async () => {
@@ -433,7 +422,7 @@ describe("规划的出处、锁定与回滚", () => {
 		expect(history.at(-1)?.value).toMatchObject({ change: "凛烧掉那封信" });
 	});
 
-	it("大纲回滚后导演按恢复的拉力走", () => {
+	it("大纲回滚后恢复到之前的拉力", () => {
 		const store = openStore();
 		seedChain(store, 1);
 		store.appendNode({
@@ -485,9 +474,9 @@ describe("规划的出处、锁定与回滚", () => {
 				},
 			],
 		});
-		expect(
-			readDirectorActionInput(store, "s1", "u1", ACTION_CONFIG).tension,
-		).toBe("loose");
+		expect(readBlueprintTension(store.readBlueprintEntries("u1"))).toBe(
+			"loose",
+		);
 
 		store.rollbackStoryBlueprint({
 			nodeId: "u1",
@@ -496,9 +485,9 @@ describe("规划的出处、锁定与回滚", () => {
 			versionSeq: 1,
 		});
 
-		expect(
-			readDirectorActionInput(store, "s1", "u1", ACTION_CONFIG).tension,
-		).toBe("tight");
+		expect(readBlueprintTension(store.readBlueprintEntries("u1"))).toBe(
+			"tight",
+		);
 	});
 });
 

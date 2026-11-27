@@ -11,8 +11,8 @@ import {
 	DEFAULT_CONTEXT_TEMPLATE_ID,
 	assertContextLayout,
 } from "../../context/template.js";
-import { assertDirectorConfig } from "../../director/evaluate.js";
 import { assertDirectorOrganizationKind } from "../../director/organization.js";
+import { assertDirectorConfig } from "../../director/types.js";
 import {
 	DEFAULT_DIRECTOR_CONFIG,
 	type DirectorConfig,

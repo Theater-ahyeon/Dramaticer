@@ -77,7 +77,6 @@ const USAGE = [
 	"  --probe-questions <path>  跑完后在最终 head 上提问的探针题文件",
 	"  --questions-out <path>    把跑后提问结果写成 JSON；汇报用 forgetting-report 读取",
 	"  --corpus <c>      跑后提问的来源标签 benchmark 或 legacy，默认 benchmark",
-	"  --opening <on|off> 覆盖故事的开局导演开关；off 把 openingFloors 设为 0",
 	"  --no-background   不补建也不执行后台任务",
 	"  --channels <path> 渠道配置，默认 data/channels.yaml",
 	"  --help            显示本说明",
@@ -188,15 +187,6 @@ export async function runPlaytestCli(
 						mode,
 						settings.contextLayout,
 					);
-		const directorConfig =
-			parsed.opening === "off"
-				? { ...settings.directorConfig, openingFloors: 0 }
-				: parsed.opening === "on"
-					? {
-							...settings.directorConfig,
-							openingFloors: DEFAULT_DIRECTOR_CONFIG.openingFloors,
-						}
-					: settings.directorConfig;
 		const providers =
 			parsed.profile === "naive"
 				? (
@@ -211,10 +201,8 @@ export async function runPlaytestCli(
 							store,
 							characterPrompt,
 							embedder,
-							directorConfig,
 							historyBlockPolicy: settings.historyBlockPolicy,
 							worldModel: settings.worldModel,
-							directorOrganization: settings.directorOrganization,
 						})
 					).providers;
 		await mkdir(path.dirname(parsed.outPath), { recursive: true });
@@ -277,7 +265,7 @@ export async function runPlaytestCli(
 			}
 		}
 		log(
-			`试玩：故事 ${parsed.storyId}，档位 ${parsed.profile}，第 ${startRound} 到 ${parsed.rounds} 轮，助手模型 ${parsed.model}，模拟用户模型 ${parsed.userModel}，开局 ${parsed.opening}，后台任务 ${background === null ? "关闭" : "开启"}，每轮裁判 ${turnJudge === null ? "关闭" : "开启"}`,
+			`试玩：故事 ${parsed.storyId}，档位 ${parsed.profile}，第 ${startRound} 到 ${parsed.rounds} 轮，助手模型 ${parsed.model}，模拟用户模型 ${parsed.userModel}，后台任务 ${background === null ? "关闭" : "开启"}，每轮裁判 ${turnJudge === null ? "关闭" : "开启"}`,
 		);
 		const result = await runPlaytest({
 			store,
@@ -418,7 +406,6 @@ interface PlaytestArgs {
 	readonly probeQuestionsPath: string | null;
 	readonly questionsOutPath: string | null;
 	readonly corpus: ForgettingCorpus;
-	readonly opening: "on" | "off" | "settings";
 	readonly noBackground: boolean;
 	readonly outPath: string;
 	readonly resume: boolean;
@@ -452,7 +439,6 @@ function parsePlaytestArgs(args: readonly string[]): PlaytestArgs {
 		"probe-questions": true,
 		"questions-out": true,
 		corpus: true,
-		opening: true,
 		channels: true,
 	};
 	const allowedFlags: Readonly<Record<string, true>> = {
@@ -528,15 +514,6 @@ function parsePlaytestArgs(args: readonly string[]): PlaytestArgs {
 		judgeModelValue === undefined
 			? null
 			: requireText(judgeModelValue, "--judge-model");
-	const openingValue = values.get("opening");
-	if (
-		openingValue !== undefined &&
-		openingValue !== "on" &&
-		openingValue !== "off"
-	) {
-		throw new Error(`--opening 只接受 on 或 off，收到 ${openingValue}`);
-	}
-	const opening = openingValue ?? "settings";
 	const outPath =
 		values.get("out") ??
 		path.join(repoRoot, "eval-private", "reports", "playtest.jsonl");
@@ -596,7 +573,6 @@ function parsePlaytestArgs(args: readonly string[]): PlaytestArgs {
 		probeQuestionsPath,
 		questionsOutPath,
 		corpus,
-		opening,
 		noBackground: flags.has("no-background"),
 		outPath,
 		resume,

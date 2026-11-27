@@ -520,7 +520,7 @@ export default function activate(api) {
 		expect(registry.tool("plugin_lookup")).toBeNull();
 	});
 
-	it("Director 机制的注册被拒绝并写 Trace，插件继续运行", async () => {
+	it("代码插件不能再注册 Director 机制，激活直接失败", async () => {
 		const dir = tempPluginDir();
 		writePlugin(
 			dir,
@@ -531,33 +531,9 @@ export default function activate(api) {
 `,
 		);
 		const runtime = await start(dir, makeManifest());
-		await waitForTrace(
-			runtime,
-			(entry) =>
-				entry.kind === "registration" &&
-				entry.action === "mechanism" &&
-				entry.outcome === "rejected",
+		await waitForState(runtime, "failed");
+		expect(runtime.trace.some((entry) => entry.action === "mechanism")).toBe(
+			false,
 		);
-		expect(runtime.state).toBe("active");
-		const rejected = runtime.trace.find(
-			(entry) =>
-				entry.kind === "registration" &&
-				entry.action === "mechanism" &&
-				entry.outcome === "rejected",
-		);
-		expect(rejected?.reason).toContain("同步纯函数");
 	});
 });
-
-async function waitForTrace(
-	runtime: CodePluginRuntime,
-	predicate: (entry: CodePluginRuntime["trace"][number]) => boolean,
-	timeoutMs = 30_000,
-): Promise<void> {
-	const startedAt = Date.now();
-	while (Date.now() - startedAt < timeoutMs) {
-		if (runtime.trace.some(predicate)) return;
-		await sleep(20);
-	}
-	throw new Error(`等待 Trace 记录超时：${runtime.status.reason ?? ""}`);
-}

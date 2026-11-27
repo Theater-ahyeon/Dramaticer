@@ -280,7 +280,6 @@ describe("卡片能力判断", () => {
 			"search",
 			"prepare",
 			"review",
-			"director",
 			"promiseLimit",
 			"choices",
 			// 出图由生图设置负责，不在功能页显示（ADR-0164）。
@@ -408,19 +407,13 @@ describe("卡片能力判断", () => {
 			"presentation",
 			"compat",
 		]);
-		const director = view.groups
+		const prepare = view.groups
 			.flatMap((group) => group.switches)
-			.find((item) => item.id === "director");
-		expect(director).toMatchObject({
-			kind: "choice",
-			value: "push",
-			label: "导演",
-			description: "你按推进时，从剧情线里挑一个具体的下一步",
+			.find((item) => item.id === "prepare");
+		expect(prepare).toMatchObject({
+			kind: "toggle",
+			value: false,
+			label: "提前备好",
 		});
-		expect(director?.choices.map((choice) => choice.label)).toEqual([
-			"关",
-			"仅推进时",
-			"始终",
-		]);
 	});
 });

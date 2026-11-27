@@ -1,7 +1,5 @@
 import {
 	type ContextTemplate,
-	type DirectorConfig,
-	type DirectorMechanism,
 	type EmbeddingClient,
 	type LlmReasoningLevel,
 	type LlmStreamingClient,
@@ -136,7 +134,10 @@ export async function runDirectorReplay(
 	return { turns };
 }
 
-/** 从 Trace 的导演片段读出被选中的机制。 */
+/**
+ * 从 Trace 的导演片段读出被选中的机制。每拍动作选择删除后新运行不再有
+ * 这一片段，只用于读旧 Trace；新楼层恒为 null。
+ */
 export function directorMechanismFromTrace(trace: TurnTrace): string | null {
 	const entry = trace.context.entries.find(
 		(candidate) => candidate.segmentId === DIRECTOR_SEGMENT_ID,
@@ -158,8 +159,6 @@ export interface ChatReplayGeneratorOptions {
 	/** 工具传输；不设置时走原生函数调用。 */
 	readonly toolTransport?: LlmToolTransport;
 	readonly budgetTokens: number;
-	readonly directorConfig: DirectorConfig;
-	readonly mechanisms?: readonly DirectorMechanism[];
 	readonly embedder?: EmbeddingClient | null;
 	readonly model?: string;
 	readonly maxTokens?: number;
@@ -177,11 +176,6 @@ export function createChatReplayGenerator(
 		const providers = await createChatProviders(store, {
 			card: options.card,
 			embedder: options.embedder,
-			directorConfig: options.directorConfig,
-			// 回放用的是历史里的玩家消息，要量的是导演出手时的效果。
-			directorWhen: "always",
-			directorOrganization: settings.directorOrganization,
-			mechanisms: options.mechanisms,
 			historyBlockPolicy: settings.historyBlockPolicy,
 			worldModel: settings.worldModel,
 		});

@@ -225,7 +225,7 @@ export const FEATURE_SWITCHES: readonly FeatureSwitchDefinition[] = [
 		id: "prepare",
 		group: "director",
 		label: "提前备好",
-		description: "规划写法下，趁你在想的时候把推进和每个选项先准备好",
+		description: "规划写法下，趁你在想的时候先把推进准备好",
 		capability: null,
 		kind: "toggle",
 		// 每一楼之后要多跑一批准备调用，只在全开档默认打开。
@@ -247,8 +247,8 @@ export const FEATURE_SWITCHES: readonly FeatureSwitchDefinition[] = [
 	defineSwitch({
 		id: "director",
 		group: "director",
-		label: "导演",
-		description: "你按推进时，从剧情线里挑一个具体的下一步",
+		label: "导演（旧版）",
+		description: "旧版每拍安排；已经删除，只为读旧的覆盖值保留",
 		capability: null,
 		kind: "choice",
 		choices: [
@@ -660,7 +660,6 @@ export const WIRED_FEATURE_SWITCHES: ReadonlySet<FeatureSwitchId> =
 		"reunion",
 		"prepare",
 		"review",
-		"director",
 		"knows",
 		"promiseLimit",
 		"rules",
@@ -676,10 +675,11 @@ export const WIRED_FEATURE_SWITCHES: ReadonlySet<FeatureSwitchId> =
 /**
  * 与别处重复的开关不在功能页显示：思考由写作页的 `reasoning` 负责，原样兼容由
  * 导入方式 `importMode` 负责，出图由生图设置的 `imageConfig.mode` 负责
- * （ADR-0163 及其补充）。定义保留，旧的覆盖值照常能读。
+ * （ADR-0163 及其补充）。`director` 随每拍动作选择一起删除，定义只为读旧覆盖值。
+ * 定义保留，旧的覆盖值照常能读。
  */
 export const HIDDEN_FEATURE_SWITCHES: ReadonlySet<FeatureSwitchId> =
-	new Set<FeatureSwitchId>(["think", "raw", "draw"]);
+	new Set<FeatureSwitchId>(["think", "raw", "draw", "director"]);
 
 /** 未兑现伏笔上限以功能页为准；`directorConfig.maxOpenPromises` 不再生效。 */
 export function readStoryPromiseLimit(

@@ -2,11 +2,9 @@ import { readFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
 	type BackgroundHealth,
-	DIRECTOR_ACTION_LABELS,
 	LLM_MODEL_ROLE_NAMES,
 	type LlmModelRole,
 	countOpenPromises,
-	isDirectorActionKind,
 	parseChannelsConfig,
 	readBackgroundHealth,
 	readDirectorArrangementLineId,
@@ -273,7 +271,6 @@ function storyFloors(options: ApiRouteOptions, storyId: string) {
 					? null
 					: store.getDirectorDecision(node.parentId));
 			if (decision !== null) {
-				const action = decision.signals.action;
 				const lineId = decision.signals.lineId;
 				const reason =
 					decision.mechanisms.find((item) => item.triggered)?.reason ??
@@ -294,7 +291,7 @@ function storyFloors(options: ApiRouteOptions, storyId: string) {
 				} else {
 					notes.push({
 						tone: "gold",
-						title: `导演 · ${isDirectorActionKind(action) ? DIRECTOR_ACTION_LABELS[action] : "安排"}`,
+						title: "导演 · 旧的每拍安排",
 						text: reason,
 						...(typeof lineId === "string" ? { undoLineId: lineId } : {}),
 					});

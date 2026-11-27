@@ -9,10 +9,6 @@ import {
 import { contextPackFingerprint } from "../context/pack-format.js";
 import { loadReusableContextPack, saveContextPack } from "../context/pack.js";
 import type { ContextTemplate } from "../context/template.js";
-import {
-	type DirectorIntensity,
-	resolveDirectorIntensity,
-} from "../director/intensity.js";
 import type { DirectorPush } from "../director/lines.js";
 import { formatDirectorNotes } from "../director/notes.js";
 import {
@@ -119,12 +115,6 @@ import {
 	DEFAULT_CHAT_PROFILE,
 	assertChatProfile,
 } from "./profile.js";
-import {
-	createDirectorSlotProvider,
-	createReunionSlotProvider,
-	isDirectorSlotProvider,
-	isReunionSlotProvider,
-} from "./providers.js";
 import { detectContextLayout } from "./template.js";
 
 export interface ChatTurnOptions {
@@ -157,9 +147,7 @@ export interface ChatTurnOptions {
 	readonly profile?: ChatProfile;
 	/** 读取工具软上限；不设置时使用故事设置。 */
 	readonly maxReadRounds?: number | null;
-	/** 单轮导演强度；优先于导演槽位配置里的值。 */
-	readonly directorIntensity?: DirectorIntensity | null;
-	/** 单轮推进档位；优先于导演槽位上的值。 */
+	/** 单轮推进档位；规划准备按它取对应的备稿。 */
 	readonly directorPush?: DirectorPush | null;
 	/** 本轮临时开关：只影响这一轮，叠在功能页的设置上（DESIGN §22）。 */
 	readonly featureOverrides?: FeatureSwitchOverrides | null;
@@ -362,61 +350,6 @@ function selectDeepTurnTools(
 	);
 }
 
-/**
- * 单轮强度与推进档位覆盖导演槽位上的值。槽位携带了评估用的配置与机制，
- * 这里只重建导演槽位与跟随它的重逢槽位，其它槽位原样复用。
- */
-function resolveTurnProviders(options: {
-	readonly store: StoryStore;
-	readonly providers?: ContextSlotProviders;
-	readonly directorIntensity?: DirectorIntensity | null;
-	readonly directorPush?: DirectorPush | null;
-}): ContextSlotProviders | undefined {
-	const requestedIntensity = options.directorIntensity ?? null;
-	const requestedPush = options.directorPush ?? null;
-	if (requestedIntensity === null && requestedPush === null) {
-		return options.providers;
-	}
-	const director = options.providers?.director;
-	if (director === undefined) {
-		throw new Error("指定了单轮导演参数，但上下文槽位里没有导演槽位");
-	}
-	if (!isDirectorSlotProvider(director)) {
-		throw new Error("指定了单轮导演参数，但导演槽位没有携带配置");
-	}
-	const reunion = options.providers?.reunion;
-	const reunionOverride =
-		requestedPush !== null &&
-		reunion !== undefined &&
-		isReunionSlotProvider(reunion)
-			? {
-					reunion: {
-						...createReunionSlotProvider(options.store, {
-							...reunion.options,
-							directorPush: requestedPush,
-						}),
-						...(reunion.plugin === undefined ? {} : { plugin: reunion.plugin }),
-					},
-				}
-			: {};
-	return {
-		...options.providers,
-		director: {
-			...createDirectorSlotProvider(options.store, {
-				config:
-					requestedIntensity === null
-						? director.config
-						: resolveDirectorIntensity(director.config, requestedIntensity),
-				engine: director.engine,
-				push: requestedPush ?? director.push,
-				...(director.when === null ? {} : { when: director.when }),
-			}),
-			...(director.plugin === undefined ? {} : { plugin: director.plugin }),
-		},
-		...reunionOverride,
-	};
-}
-
 interface ExtraContextEntry {
 	/** 写进上下文构成的来源，例如 `writing:写作选项`。 */
 	readonly source: string;
@@ -472,7 +405,7 @@ export async function runChatTurn(
 		options.turnMode,
 		options.maxReadRounds,
 	);
-	const providers = resolveTurnProviders(options);
+	const providers = options.providers;
 	const head = options.store.getHead(options.storyId);
 
 	const userNode = options.store.appendNode({
@@ -484,9 +417,7 @@ export async function runChatTurn(
 	return generateAssistantTurn({
 		...options,
 		providers,
-		directorIntensity: null,
-		// 导演槽位已经按这一轮的档位重建；推进档位还要给规划准备用，
-		// 生成过程本身不再按它重建槽位。
+		// 推进档位给规划准备用，生成过程不再按它重建槽位。
 		directorPush: options.directorPush ?? null,
 		userNodeId: userNode.id,
 		turnMode: resolved.mode,
@@ -544,12 +475,11 @@ export async function generateAssistantTurn(
 	}
 	const writesLedger = profile === "native";
 	const now = options.now ?? Date.now;
-	const providers = resolveTurnProviders(options);
+	const providers = options.providers;
 	const fingerprint = contextPackFingerprint({
 		template: options.template,
 		budgetTokens: options.budgetTokens,
 		profile,
-		directorIntensity: options.directorIntensity ?? null,
 		providers,
 		featureOverrides: options.featureOverrides ?? null,
 	});

@@ -132,7 +132,7 @@ describe("ApiClient", () => {
 		});
 	});
 
-	it("回合流解析事件、带上 mode 与 intensity 和 signal", async () => {
+	it("回合流解析事件、带上 mode 与 signal", async () => {
 		const { client, calls } = clientFor(() =>
 			sseResponse(
 				'event: text.delta\ndata: {"delta":"甲"}\n\n' +
@@ -143,7 +143,7 @@ describe("ApiClient", () => {
 		const events = [];
 		for await (const event of client.streamTurn(
 			"s1",
-			{ text: "继续", mode: "fast", intensity: "natural" },
+			{ text: "继续", mode: "fast" },
 			controller.signal,
 		)) {
 			events.push(event);
@@ -159,7 +159,6 @@ describe("ApiClient", () => {
 		expect(readBody(call.init)).toEqual({
 			text: "继续",
 			mode: "fast",
-			intensity: "natural",
 		});
 	});
 

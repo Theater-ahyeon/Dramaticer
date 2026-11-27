@@ -120,8 +120,6 @@ const CTX_COLOR: Record<string, string> = {
 	other: "--soft",
 };
 
-type DirectorWhen = "off" | "push" | "always";
-
 /** 故事页右侧的停靠栏：导演、记忆、上下文三页。 */
 export function Dock({
 	storyId,
@@ -137,10 +135,6 @@ export function Dock({
 	readonly onChanged: () => void;
 }) {
 	const act = useAct();
-	const features = useLoad(
-		() => api.getStoryFeatures(storyId),
-		[storyId, tick],
-	);
 	const memory = useLoad<DockView>(
 		() => api.get(sp(storyId, "/dock")),
 		[storyId, tick],
@@ -157,10 +151,6 @@ export function Dock({
 			setCategory(categories[0].id);
 		}
 	}, [category, categories]);
-
-	const when = (features.data?.groups
-		.flatMap((group) => group.switches)
-		.find((item) => item.id === "director")?.value ?? "push") as DirectorWhen;
 
 	const base = `/stories/${encodeURIComponent(storyId)}`;
 	const active = categories.find((item) => item.id === category) ?? null;
@@ -189,28 +179,6 @@ export function Dock({
 
 			{tab === "dir" ? (
 				<div className="sec">
-					<div className="label">
-						<span>导演何时出手</span>
-						<Seg<DirectorWhen>
-							small
-							label="导演何时出手"
-							value={when}
-							options={[
-								{ v: "off", label: "关" },
-								{ v: "push", label: "仅推进时" },
-								{ v: "always", label: "始终" },
-							]}
-							onChange={(value) =>
-								act(
-									() =>
-										api.updateSettings(storyId, {
-											featureSwitches: { director: value },
-										}),
-									() => features.reload(),
-								)
-							}
-						/>
-					</div>
 					<DirectionPanel
 						storyId={storyId}
 						compact

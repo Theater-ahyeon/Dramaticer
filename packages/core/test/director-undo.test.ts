@@ -1,14 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
-	DEFAULT_DIRECTOR_CONFIG,
 	type DirectorLine,
 	REROLL_REASON_WILLS,
 	type StoryStore,
-	readDirectorActionInput,
 	readDirectorArrangementLineId,
 	readDirectorInterferenceStats,
 	readLedger,
-	selectDirectorAction,
 	undoDirectorArrangement,
 } from "../src/index.js";
 import { openTempStore } from "./temp-store.js";
@@ -75,11 +72,10 @@ function selectionLineId(store: StoryStore): string | null {
 }
 
 describe("撤回导演安排", () => {
-	it("撤回静音那条线并记进偏好，恢复后重新参与选择", async () => {
+	it("撤回静音那条线并记进偏好，恢复时只删掉静音", async () => {
 		const { store } = openTempStore();
 		seedStory(store);
 
-		expect(selectionLineId(store)).toBe("line-1");
 		expect(readDirectorArrangementLineId(store, "s1", "n2")).toBe("line-1");
 
 		await undoDirectorArrangement({
@@ -92,7 +88,6 @@ describe("撤回导演安排", () => {
 		expect(store.listMutedDirectorLines("s1")).toEqual([
 			{ lineId: "line-1", nodeId: "n2", createdAt: expect.any(String) },
 		]);
-		expect(selectionLineId(store)).toBeNull();
 		const wills = readLedger(store, "n2", ["userWill"]) as Record<
 			string,
 			{ kind: string; text: string }
@@ -105,9 +100,7 @@ describe("撤回导演安排", () => {
 		]);
 
 		store.unmuteDirectorLine("s1", "line-1");
-
 		expect(store.listMutedDirectorLines("s1")).toEqual([]);
-		expect(selectionLineId(store)).toBe("line-1");
 	});
 
 	it("重复撤回不重复写偏好，恢复时只删掉静音", async () => {
@@ -133,7 +126,7 @@ describe("撤回导演安排", () => {
 		).toHaveLength(1);
 
 		store.unmuteDirectorLine("s1", "line-1");
-		expect(selectionLineId(store)).toBe("line-1");
+		expect(store.listMutedDirectorLines("s1")).toEqual([]);
 	});
 });
 

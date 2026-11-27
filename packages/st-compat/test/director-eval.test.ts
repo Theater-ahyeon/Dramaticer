@@ -1,18 +1,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-	DEFAULT_DIRECTOR_CONFIG,
-	type LlmResult,
-	type LlmStreamingClient,
-	type StoryStore,
-	StoryStore as StoryStoreClass,
-	type TimelineNode,
-	type TurnTrace,
-	createDefaultContextTemplate,
-	createEventStream,
-} from "@dramaticer/core";
+import type { StoryStore, TimelineNode, TurnTrace } from "@dramaticer/core";
 import { describe, expect, it } from "vitest";
-import { parseCharacterCardFile } from "../src/character-card.js";
 import {
 	measureBeatCosine,
 	measureBlockRepetition,
@@ -22,8 +11,6 @@ import {
 } from "../src/evalset/director-eval.js";
 import {
 	type ReplayGenerator,
-	createChatReplayGenerator,
-	directorMechanismFromTrace,
 	runDirectorReplay,
 } from "../src/evalset/director-replay.js";
 
@@ -316,130 +303,4 @@ function insertVectors(
 	store.insertChunkVectors(
 		chunks.map((chunk) => ({ chunkId: chunk.chunkId, embedding: vector })),
 	);
-}
-
-describe("createChatReplayGenerator 与导演开关", () => {
-	it("开启时写入决策并注入导演消息，关闭时两者都没有", async () => {
-		const card = await parseCharacterCardFile(
-			path.join(fixturesPath, "chat-card.json"),
-		);
-		const onStore = seedDirectorStory();
-		const onClient = fakeClient("他沿着石阶走进雨里。");
-		const onGenerator = createChatReplayGenerator({
-			card,
-			client: onClient,
-			template: template(),
-			structuredOutput: "text-tags",
-			budgetTokens: 8_000,
-			directorConfig: {
-				...DEFAULT_DIRECTOR_CONFIG,
-				clueAgeWarning: 0,
-			},
-			model: "fake",
-		});
-		const onOutcome = await runDirectorReplay({
-			store: onStore,
-			storyId: "s1",
-			userTexts: ["我走向古井。"],
-			generate: onGenerator,
-		});
-		const onTurn = onOutcome.turns[0];
-		expect(onTurn?.directorSelected).toBe("clue");
-		const onDecision = onStore.getDirectorDecision(onTurn?.userNodeId ?? "");
-		expect(onDecision).not.toBeNull();
-		expect(
-			onDecision?.mechanisms.find((record) => record.name === "clue")
-				?.triggered,
-		).toBe(true);
-		expect(directorMechanismFromTrace(onTurn?.trace as TurnTrace)).toBe("clue");
-
-		const offStore = seedDirectorStory();
-		const offClient = fakeClient("他沿着石阶走进雨里。");
-		const offGenerator = createChatReplayGenerator({
-			card,
-			client: offClient,
-			template: template(),
-			structuredOutput: "text-tags",
-			budgetTokens: 8_000,
-			directorConfig: {
-				...DEFAULT_DIRECTOR_CONFIG,
-				mode: "off",
-				clueAgeWarning: 0,
-			},
-			model: "fake",
-		});
-		const offOutcome = await runDirectorReplay({
-			store: offStore,
-			storyId: "s1",
-			userTexts: ["我走向古井。"],
-			generate: offGenerator,
-		});
-		const offTurn = offOutcome.turns[0];
-		expect(offTurn?.directorSelected).toBeNull();
-		expect(offStore.getDirectorDecision(offTurn?.userNodeId ?? "")).toBeNull();
-	});
-});
-
-function seedDirectorStory(): StoryStore {
-	const store = StoryStoreClass.open(":memory:");
-	store.createStory({ id: "s1", title: "回放" });
-	// 这组用例量的是方案与序列引擎的线索到期注入。
-	store.updateStorySettings("s1", { directorOrganization: "mechanisms" });
-	store.appendNode({
-		id: "n-greeting",
-		storyId: "s1",
-		parentId: null,
-		role: "assistant",
-		raw: "雨夜，古井旁。",
-	});
-	store.insertPlotNotes([
-		{
-			storyId: "s1",
-			sourceNodeId: "n-greeting",
-			text: "青铜匕首藏在古井里",
-		},
-	]);
-	return store;
-}
-
-function template() {
-	return createDefaultContextTemplate({ structuredOutput: "text-tags" });
-}
-
-function fakeClient(reply: string): LlmStreamingClient {
-	const result: LlmResult = {
-		text: reply,
-		reasoning: "",
-		toolCalls: [],
-		finishReason: "stop",
-		stopReason: "stop",
-		model: "fake-model",
-		channel: "fake",
-		usage: {
-			promptTokens: 5,
-			completionTokens: 6,
-			totalTokens: 11,
-			reasoningTokens: 0,
-			cachedTokens: 0,
-		},
-		raw: null,
-		cached: false,
-		attempts: 1,
-		rounds: 1,
-		truncation: null,
-		continuation: { text: reply, reasoning: "" },
-	};
-	return {
-		async complete() {
-			return result;
-		},
-		stream() {
-			return createEventStream(async (emit) => {
-				for (const char of reply) {
-					emit({ type: "text_delta", delta: char });
-				}
-				return result;
-			});
-		},
-	};
 }

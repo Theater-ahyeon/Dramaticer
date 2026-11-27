@@ -16,23 +16,8 @@ import type {
 	RetrievalInjectionTrace,
 } from "../context/assembler.js";
 import type { ContextMessage } from "../context/template.js";
-import type { DirectorPush, DirectorWhen } from "../director/lines.js";
-import {
-	collectDirectorLineHistoryIds,
-	readDirectorActionInput,
-	selectDirectorAction,
-} from "../director/lines.js";
-import {
-	DEFAULT_DIRECTOR_ORGANIZATION,
-	type DirectorEngine,
-	type DirectorOrganizationKind,
-	createDirectorEngine,
-} from "../director/organization.js";
-import {
-	DEFAULT_DIRECTOR_CONFIG,
-	type DirectorConfig,
-	type DirectorMechanism,
-} from "../director/types.js";
+import { collectDirectorLineHistoryIds } from "../director/lines.js";
+import { DEFAULT_DIRECTOR_CONFIG } from "../director/types.js";
 import { readEffectiveLore } from "../edits/index.js";
 import { normalizeEntityName } from "../entity.js";
 import { type JsonObject, type JsonValue, isJsonObject } from "../json.js";
@@ -739,16 +724,12 @@ export function createProfileSlotProvider(
 	};
 }
 
-/** 重逢注入的配置；导演建议只在线组织方式下作为「被安排登场」的触发文本。 */
+/** 重逢注入的配置。 */
 export interface ReunionSlotProviderOptions {
 	/** 「最近窗口」的楼数；不设置时与默认历史窗口一致。 */
 	readonly recentFloors?: number;
 	/** 每个人物最多列出的未了结事项条数，默认 3。 */
 	readonly unresolvedLimit?: number;
-	readonly directorConfig?: DirectorConfig;
-	readonly directorOrganization?: DirectorOrganizationKind;
-	/** 单轮推进档位；随导演槽位一起重建。 */
-	readonly directorPush?: DirectorPush | null;
 }
 
 export interface ReunionSlotProvider extends ContextSlotProvider {
@@ -762,7 +743,7 @@ export function isReunionSlotProvider(
 }
 
 /**
- * 久未出场的人物、地点与物品被提到或被导演安排登场时，注入它们的档案：
+ * 久未出场的人物、地点与物品被提到时，注入它们的档案：
  * 上次出场的场次、当时的关系与未了结的事。触发是纯程序判断，不调用模型。
  */
 export function createReunionSlotProvider(
@@ -774,17 +755,10 @@ export function createReunionSlotProvider(
 	if (!Number.isInteger(unresolvedLimit) || unresolvedLimit < 1) {
 		throw new Error("重逢注入的未了结条数上限必须是正整数");
 	}
-	const config = options.directorConfig ?? DEFAULT_DIRECTOR_CONFIG;
-	const organization =
-		options.directorOrganization ?? DEFAULT_DIRECTOR_ORGANIZATION;
-	const push = options.directorPush ?? null;
 	const providerOptions: ReunionSlotProviderOptions = {
 		...options,
 		recentFloors: options.recentFloors,
 		unresolvedLimit,
-		directorConfig: config,
-		directorOrganization: organization,
-		directorPush: push,
 	};
 	const estimator = createTokenEstimator();
 	return {
@@ -792,7 +766,6 @@ export function createReunionSlotProvider(
 		packKey: JSON.stringify({
 			recentFloors: providerOptions.recentFloors ?? null,
 			unresolvedLimit,
-			director: { config, organization, push },
 		}),
 		provide(request): ContextSlotContent | null {
 			const nodeId =
@@ -805,29 +778,8 @@ export function createReunionSlotProvider(
 				return null;
 			const path = store.getPathToNode(nodeId);
 			const lastUser = [...path].reverse().find((node) => node.role === "user");
-			const trigger: string[] = [];
-			if (lastUser !== undefined) trigger.push(lastUser.raw);
-			const when = readStoryFeatureState(
-				store,
-				request.storyId,
-				request.featureOverrides,
-			).values.director;
-			if (organization === "lines" && config.mode !== "off" && when !== "off") {
-				const selection = selectDirectorAction(
-					readDirectorActionInput(
-						store,
-						request.storyId,
-						nodeId,
-						config,
-						push,
-						when,
-					),
-				);
-				if (selection !== null && selection.directive !== "") {
-					trigger.push(selection.directive);
-				}
-			}
-			if (trigger.length === 0) return null;
+			if (lastUser === undefined) return null;
+			const trigger = [lastUser.raw];
 			const mentions = selectReunionMentions({
 				store,
 				storyId: request.storyId,
@@ -1710,106 +1662,6 @@ function readLorePrefilterForRequest(
 	if (node.parentId === null) return null;
 	const parent = store.getLorePrefilter(node.parentId);
 	return parent !== null && parent.storyId === storyId ? parent : null;
-}
-
-export interface DirectorSlotProviderOptions {
-	/** 不设置时使用默认配置（透明模式、线索阈值 12 楼、上限 5 条）。 */
-	readonly config?: DirectorConfig;
-	/** 机制型引擎使用的机制序列；其他组织方式忽略。 */
-	readonly mechanisms?: readonly DirectorMechanism[];
-	/** 导演的组织方式；不设置时使用现有机制序列。 */
-	readonly organization?: DirectorOrganizationKind;
-	/** 复用已有引擎；单轮强度覆盖时用它保留同一套组织方式。 */
-	readonly engine?: DirectorEngine;
-	/** 单轮的推进档位；不设置时是常规回合。 */
-	readonly push?: DirectorPush | null;
-	/** 导演何时出手；不设置时读故事的「导演」功能开关。 */
-	readonly when?: "off" | DirectorWhen;
-}
-
-/** 导演槽位把评估用的配置与引擎一起带出来，单轮强度覆盖时据此重建。 */
-export interface DirectorSlotProvider extends ContextSlotProvider {
-	readonly config: DirectorConfig;
-	readonly engine: DirectorEngine;
-	readonly push: DirectorPush | null;
-	/** 显式指定的出手时机；null 表示每次读故事的「导演」功能开关。 */
-	readonly when: "off" | DirectorWhen | null;
-}
-
-export function isDirectorSlotProvider(
-	value: ContextSlotProvider,
-): value is DirectorSlotProvider {
-	if (!("config" in value)) return false;
-	return value.config !== undefined;
-}
-
-/** 导演建议拼进玩家消息末尾时统一附上的尾注。 */
-export const DIRECTOR_SUFFIX_NOTE = "玩家行动优先，你可以按剧情需要调整。";
-
-/**
- * 按组织方式评估导演，有建议时返回一段拼接到本轮最后一条玩家消息末尾的 suffix。
- * 评估结果写入该楼层的决策记录；mode 为 off 时既不产出 suffix 也不写记录。
- */
-export function createDirectorSlotProvider(
-	store: StoryStore,
-	options: DirectorSlotProviderOptions = {},
-): DirectorSlotProvider {
-	const config = options.config ?? DEFAULT_DIRECTOR_CONFIG;
-	const engine =
-		options.engine ??
-		createDirectorEngine(
-			options.organization ?? DEFAULT_DIRECTOR_ORGANIZATION,
-			{ mechanisms: options.mechanisms },
-		);
-	const estimator = createTokenEstimator();
-	return {
-		config,
-		engine,
-		push: options.push ?? null,
-		when: options.when ?? null,
-		packKey: JSON.stringify({
-			config,
-			organization: engine.kind,
-			mechanisms: engine.mechanismNames,
-			push: options.push ?? null,
-		}),
-		provide(request): ContextSlotContent | null {
-			const nodeId =
-				request.nodeId ?? store.getHead(request.storyId)?.id ?? null;
-			if (nodeId === null) return null;
-			// 「导演」功能开关决定何时出手：关闭时不评估，仅推进时由引擎让位。
-			const when =
-				options.when ??
-				readStoryFeatureState(store, request.storyId, request.featureOverrides)
-					.values.director;
-			if (when === "off") return null;
-			const suggestion = engine.evaluate({
-				store,
-				storyId: request.storyId,
-				nodeId,
-				config,
-				push: options.push ?? null,
-				when,
-			});
-			if (suggestion === null) return null;
-			const suffix = `【导演】${suggestion.directive}\n${DIRECTOR_SUFFIX_NOTE}`;
-			const retired =
-				engine.retiredKind === null
-					? ""
-					: `（旧设置 ${engine.retiredKind} 已按 lines 运行）`;
-			return {
-				messages: [],
-				suffix,
-				source: `director:${suggestion.mechanism}${retired}`,
-				items: [
-					contextItem(suggestion.mechanism, estimator(suffix), {
-						kind: "outline",
-						id: "director",
-					}),
-				],
-			};
-		},
-	};
 }
 
 /** 角色槽位使用导入时保存的卡提示词；来源只记录长度，不重复正文。 */

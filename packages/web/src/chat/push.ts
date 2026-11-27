@@ -14,6 +14,14 @@ export const PUSH_CHOICES: readonly {
 /** 推进按钮发出的玩家消息；候选行动里固定的一项也用它。 */
 export const PUSH_TURN_TEXT = "（让故事自己走）";
 
+/**
+ * 点选推进菜单里的方向时发出的玩家消息。方向写在消息里，
+ * 这样楼层原文、重试与重新生成都能带回同一个方向。
+ */
+export function pushDirectionText(direction: string): string {
+	return `（推进方向：${direction}）`;
+}
+
 export const DEFAULT_PUSH: DirectorPush = "advance";
 
 export function pushLabel(push: DirectorPush): string {

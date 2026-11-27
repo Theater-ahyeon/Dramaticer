@@ -10,7 +10,6 @@ import {
 	type ContextSlotName,
 	isContextSlotName,
 } from "../context/slot-names.js";
-import type { DirectorMechanism } from "../director/types.js";
 import type { DeepToolDefinition, ToolPhase } from "../tools/registry.js";
 import { createDeepToolRegistry, isToolPhase } from "../tools/registry.js";
 import type { RegisteredBackgroundJob } from "./contracts.js";
@@ -18,11 +17,6 @@ import type { RegisteredBackgroundJob } from "./contracts.js";
 interface RegisteredSlot {
 	readonly plugin: string;
 	readonly provider: ContextSlotProvider;
-}
-
-interface RegisteredMechanism {
-	readonly plugin: string;
-	readonly mechanism: DirectorMechanism;
 }
 
 interface RegisteredBlockType {
@@ -39,7 +33,6 @@ interface RegisteredTool {
 /** 扩展点注册表；每次注册返回一个幂等的撤销函数。 */
 export class ExtensionRegistry {
 	private readonly slotsByName = new Map<ContextSlotName, RegisteredSlot[]>();
-	private readonly mechanismsByName = new Map<string, RegisteredMechanism>();
 	private readonly blockTypesByName = new Map<string, RegisteredBlockType>();
 	private readonly backgroundJobsByKind = new Map<
 		string,
@@ -69,23 +62,6 @@ export class ExtensionRegistry {
 			if (index < 0) return;
 			current.splice(index, 1);
 			if (current.length === 0) this.slotsByName.delete(name);
-		};
-	}
-
-	addMechanism(plugin: string, mechanism: DirectorMechanism): () => void {
-		if (mechanism.name.length === 0) {
-			throw new Error("Director 机制名不能为空");
-		}
-		if (typeof mechanism.evaluate !== "function") {
-			throw new Error(`Director 机制 ${mechanism.name} 必须有 evaluate 方法`);
-		}
-		if (this.mechanismsByName.has(mechanism.name)) {
-			throw new Error(`Director 机制重复注册：${mechanism.name}`);
-		}
-		this.mechanismsByName.set(mechanism.name, { plugin, mechanism });
-		return () => {
-			if (this.mechanismsByName.get(mechanism.name)?.plugin !== plugin) return;
-			this.mechanismsByName.delete(mechanism.name);
 		};
 	}
 
@@ -160,10 +136,6 @@ export class ExtensionRegistry {
 
 	slotProviders(name: ContextSlotName): readonly RegisteredSlot[] {
 		return this.slotsByName.get(name) ?? [];
-	}
-
-	mechanisms(): readonly RegisteredMechanism[] {
-		return [...this.mechanismsByName.values()];
 	}
 
 	blockType(name: string): BlockTypeDefinition | null {

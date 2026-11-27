@@ -271,7 +271,7 @@ describe("重逢注入", () => {
 		expect(mentions).toEqual([]);
 	});
 
-	it("导演安排登场时按导演建议触发", () => {
+	it("剧情线里的角色不会仅凭剧情线登场", () => {
 		const store = seed();
 		store.saveDirectorLines({
 			nodeId: "a1",
@@ -291,14 +291,8 @@ describe("重逢注入", () => {
 				},
 			],
 		});
-		const provider = createReunionSlotProvider(store, {
-			recentFloors: 2,
-			directorOrganization: "lines",
-			directorPush: "jump",
-		});
+		const provider = createReunionSlotProvider(store, { recentFloors: 2 });
 		append(store, "u5", "a4", "user", "继续。");
-		const content = provider.provide(request("u5"));
-		expect(content?.messages[0]?.content).toContain("凛（人物）");
-		expect(content?.source).toBe("reunion:人物 1");
+		expect(provider.provide(request("u5"))).toBeNull();
 	});
 });

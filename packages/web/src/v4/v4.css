@@ -3039,6 +3039,10 @@ img.cover {
 	color: var(--muted);
 	font-size: 12px;
 }
+.pushmenu .menuhead {
+	padding: 4px 10px 2px;
+	letter-spacing: 0.08em;
+}
 /* 标题旁的「⋯」：导出、本故事设置、检视器；菜单向下展开。 */
 .headmenu {
 	position: relative;

@@ -536,8 +536,8 @@ export function Prefs() {
 							<div className="stat">
 								<span>
 									{card.data?.recommendedMode
-										? `这张卡推荐的写法：${{ fast: "快速", plan: "规划", deep: "深度" }[card.data.recommendedMode] ?? card.data.recommendedMode}；导入不会替你切换，写法只在你于故事页的输入台点选时改变`
-										: "写法在故事页的输入台旁切换"}
+										? `这张卡推荐的写法：${{ fast: "快速", plan: "规划", deep: "深度" }[card.data.recommendedMode] ?? card.data.recommendedMode}；导入不会替你切换，写法只在你在本页「实验」里选择时改变`
+										: "写法在本页「实验」里选择，默认快速"}
 								</span>
 							</div>
 						</div>

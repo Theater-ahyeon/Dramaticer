@@ -392,7 +392,7 @@ export function isPlanWritingMode(store: StoryStore, storyId: string): boolean {
 	return store.getStoryValue(storyId, WRITING_MODE_KEY) === "plan";
 }
 
-/** 后台任务类型：回复落定后把推进三档与每个行动选项的准备阶段先跑完。 */
+/** 后台任务类型：回复落定后把推进的准备阶段先跑一遍。 */
 export const PLAN_PREPARE_JOB_KIND = "plan_prepare";
 
 /** 「提前备好」开关：关掉时既不备，也不吃以前备下的结果。 */
@@ -402,9 +402,6 @@ export function isPlanPrepareEnabled(
 ): boolean {
 	return readStoryFeatureState(store, storyId).values.prepare === true;
 }
-
-/** 一次最多为几个行动选项提前准备：候选固定的四条行动加一条场景变化。 */
-const MAX_PREPARED_ACTIONS = 5;
 
 function prepareAnchor(store: StoryStore, storyId: string): string | null {
 	const head = store.getHead(storyId);
@@ -423,7 +420,7 @@ export function planPrepareNeedsRun(
 	return store.getStoryValue(storyId, preparedKey(anchor)) === null;
 }
 
-/** 间隙里的提前准备：命中时回合内只剩一次正文调用。 */
+/** 间隙里的提前准备：只为推进备一次，命中时回合内只剩一次正文调用（I11）。 */
 export function createPlanPrepareHandler(
 	options: { readonly client?: LlmClient } = {},
 ): BackgroundJobHandler {
@@ -432,29 +429,20 @@ export function createPlanPrepareHandler(
 		const anchor = prepareAnchor(store, job.storyId);
 		if (anchor === null) return;
 		if (store.getStoryValue(job.storyId, preparedKey(anchor)) !== null) return;
-		const inputs: { message: string; push: DirectorPush | null }[] = [
-			{ message: "", push: "advance" },
-			{ message: "", push: "quick" },
-			{ message: "", push: "jump" },
-			...store
-				.listDirectorCandidateActions(anchor)
-				.slice(0, MAX_PREPARED_ACTIONS)
-				.map((action) => ({ message: action.text, push: null })),
-		];
+		const item = { message: "", push: "advance" as DirectorPush };
 		const prepared: Record<string, JsonValue> = {};
-		for (const item of inputs) {
-			// 玩家已经发了新的一楼：剩下的不用备了。
-			if (store.getHead(job.storyId)?.id !== anchor) break;
-			const result = await runPlanPhases({
-				store,
-				client: options.client ?? client,
-				storyId: job.storyId,
-				anchorNodeId: anchor,
-				playerMessage: item.message,
-				push: item.push,
-				signal,
-			});
-			if (result.text === "") continue;
+		// 玩家已经发了新的一楼：不用备了。
+		if (store.getHead(job.storyId)?.id !== anchor) return;
+		const result = await runPlanPhases({
+			store,
+			client: options.client ?? client,
+			storyId: job.storyId,
+			anchorNodeId: anchor,
+			playerMessage: item.message,
+			push: item.push,
+			signal,
+		});
+		if (result.text !== "") {
 			prepared[planInputKey(item.message, item.push)] = {
 				text: result.text,
 				phases: result.trace.phases as unknown as JsonValue,

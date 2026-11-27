@@ -58,14 +58,13 @@
 - 迁移 v72 之后 `assistant-store.test.ts` 的版本断言是 72；新增迁移要同步这个数字。`player_edits`、`memory_rejections`、`memory_event_quotes` 都只有 INSERT 与 SELECT 接口，UPDATE/DELETE 由触发器拒绝；回滚是再追加一条修改。
 - 默认蓝图只由卡导入写入（`saveStoryBlueprintBaseline`），是故事级、与楼层无关的起点；不要把它写成楼层记录，也不要为了导入蓝图创建假楼层。条目按 id 排序后保存，读取顺序与 `applyBlueprintDiffs` 一致。
 - 默认蓝图参加锁定检查：AI 不能改卡里锁定的条目。替换或清空默认蓝图不删除楼层上的修改记录；版本列表不把默认蓝图算成一版。
-- 剧透过滤只在 `GET /api/stories/:id/blueprint` 上生效；不要把 `readBlueprintView` 的过滤结果写回存储，也不要让导演、章级规划、动作引擎或建议接受读过滤后的视图。建议列表是玩家主动发起的，不按剧透隐藏。
+- 剧透过滤只在 `GET /api/stories/:id/blueprint` 上生效；不要把 `readBlueprintView` 的过滤结果写回存储，也不要让章级规划或建议接受读过滤后的视图。建议列表是玩家主动发起的，不按剧透隐藏。
 - 导出只改 `extensions.dramaticer.blueprint`：用 `attachBlueprintExtension` 深拷贝 `raw`，V1 写根节点、V2/V3 写 `data` 节点；条目为空时删掉该字段。不要手写 JSON 拼接，也不要把蓝图写进 `data` 根节点。
 - 里程碑铺垫线的 id 只由 `milestonePromiseLineId` 生成：`milestone.` 加 sha256(里程碑 id + `\u0000` + 条件文本) 的前 16 位。改公式会让已有铺垫线换 id，下一章会重复补写，必须同时迁移线记录。
 - 补写只发生在章级规划里；`chapterPlanNeedsRun` 的门槛（导演打开、这一场收尾、至少两条线、距上次清点够 `chapterFloors`、该楼层没有清点与线记录）不满足时不会补写。不要把补写塞进 `acceptBlueprintSuggestion`，那会让接受建议受伏笔上限影响。
 - 里程碑达成没有单独的字段：前提条件对应的线在路径上都出现过、并且现在都不在 `readDirectorLineStates` 里才算 `reached`。没有前提条件的里程碑无法由伏笔账证明达成，`reached` 恒为 false，它仍然是最近方向但不生成线。
 - 四态检查里 `lost` 先于 `achieved` 判定：章末清点显式 `retire` 的前提条件意味着方向已被放弃。只有 `blocked` 与 `lost` 带三个选择；检查本身不改写蓝图，也不该在任何后台任务里自动采纳其中一个。
 - 历史线 id 只能从 `listDirectorLinesAlongPath` 取；不要用 `readDirectorLineStates` 判断「是否出现过」。
-- 拉力只在 `lines` 组织方式、且玩家没有手动选推进档位时生效；`push` 的候选集合完全由推进档位决定。
 - 蓝图总纲的 `tension` 是必填字段，但解析时缺失按 `loose` 补齐；新增总纲条目时写明档位。
 - 写作选项与卡的推荐（`packages/core/src/settings/card-config.ts`）：写作选项存在 `writing.recommended` / `writing.overrides`，写法与开关的推荐存在 `card.recommended`，卡版本存在 `card`。卡载入时只有第一次应用写法与开关；升级只换推荐和 `card.version`，玩家的调整保留。`DELETE /api/stories/:id/writing` 同时清写作调整并重新应用推荐，别改成只清写作。
 - 卡的推荐配置对应测试：`pnpm exec vitest run packages/core/test/card-recommended.test.ts packages/server/test/stories.test.ts`（server 用例先 `pnpm run typecheck`）。
@@ -80,15 +79,14 @@
 - 线的存储写法与导演手记一致：每个楼层一行、`diffs` 是 `set`/`delete` 数组、沿路径从根开始累加；同一楼层重复写入直接失败。倒计时的有效余量用 `directorLineRemaining`。
 - 规划对象的玩家修改都走 `player_edits`：剧情线与伏笔的 kind 是 `line`，本场目标是 `scene`。本场目标挂在当前场次开始的楼层上，读取时以当前楼层为路径锚点；换一场后旧的修改自动不再生效。
 - `saveDirectorLines` 拒绝改动玩家锁定的线，锁定后的章级规划只留下 `rejected` 记录，不再写入线；场记写本场目标时同样先用 `guardBackgroundWrite`，被挡下的内容只留作建议。
-- 导演动作输入只把当前场次的本场目标放在最新一楼；历史的楼层保留当时写下的那张卡。回滚剧情线或本场目标后，下一次 `readDirectorActionInput` 直接读到恢复的内容。
-- 八种动作的判定口径、优先级与常量写在 ADR-0143；`selectDirectorAction` 只接受内存输入，不读数据库、不调用模型。需要读场记、线与决策记录时用 `readDirectorActionInput`。
+- 剧情线与本场目标的当前内容用 `readDirectorLineStates` 与 `readSceneGoal` 读；玩家修改经 `readEffectiveEdits` 生效。回滚剧情线或本场目标后，下一次读到的就是恢复的内容。
 - 推进档位是**单轮参数**，不写故事设置；`push` 只接受 `advance`、`quick`、`jump`，`null` 表示常规回合。
 - 章末清点记录只追加：同一楼层第二次写入直接失败，UPDATE 被触发器拒绝。写入前必须用 `assertChapterReviewMatchesLines` 对照当前路径。
 - `focus` 固定 2–3 条且不能包含同一份清点里 `retire` 的伏笔；`promises` 只写清点之前已经存在的 `promise` 线。
 - 章级规划输出先写清点再写线：`saveDirectorChapterPlan` 保证同一事务。
 - 剧情走向（`direction-v5/01`）：`core/src/direction/view.ts` 的 `readDirectionView` 是只读派生，不复制存储；大纲条目、剧情线、本场目标与场记笔记仍由原来的表写入。两栏的 `id` 就是写入键（`premise:question|tone|red-lines`、`volume:<id>`、`milestone:<id>`、`line:<id>`、`scene`、`note:<id>`），写入统一走 `POST /api/stories/:id/direction/edit`，命令校验在 `assertDirectionEdit`。
 - 走向页把主线方向（kind `main`）放进「想发生的」，其余剧情线与 `plot_notes` 里未收的笔记放进「还没收的线」，按引入时的助手楼层深度升序；章末清点里 `retire` 的伏笔不再算未收。新增方向写成 `line` 的玩家修改并自动锁定；场记笔记的改写与收下用 `player_edits` 的 `note` 种类（原 `plot_notes` 行不变）。界面里两栏的行 id 是 `data-id`，样式类用 `kind-*`，不要给行加 `.premise`、`.ms` 这类旧类名。
-- `story_settings.director_organization` 的 CHECK 允许 `mechanisms`、`bits`、`lines`；新增组织方式时要重建表并同步 `assistant-store.test.ts` 的 schema 版本。
+- `story_settings.director_organization` 的 CHECK 仍允许旧值 `mechanisms`、`bits`、`lines`；读设置时旧值降级成 `lines`，新代码只写 `lines`。重建表时要同步 `assistant-store.test.ts` 的 schema 版本。
 - 场记对照、导入审计、规则执行、状态定义、场面卡、人物档案、重逢注入的既有口径保持不变；参考上一次交接的注意事项与对应 ADR。
 - 世界书槽位在导入过的故事里 Trace 来源带「升级」或「原样」前缀；改这个字符串时要同步 `packages/st-compat/test/chat-cli.test.ts`。
 - 升级模式不注入状态定义、条件内容、事件与舞台、写作指令、表现资源、作者选项、插件残留与未识别条目。
@@ -118,17 +116,17 @@
 - EJS 沙箱的时间预算按墙钟计；测试不要用接近 worker 启动耗时的预算。
 - 换行统一用 LF：`.gitattributes` 声明 `* text=auto eol=lf`，biome 的默认换行也是 LF。新建文件用 LF 写入，提交前跑一次 `pnpm exec biome check --write <文件>`。
 - 修改 `AGENTS.md`、`CLAUDE.md`、`scripts/check-invariants.mjs`、`tools/devloop/` 的请求写进 HUMAN.md。
-- 不变量：I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I8 显示与 prompt 从原文派生，I9 导演实时选择用纯程序，I11 间隙优先，I12 台账唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖其他工作区包，I16–I18 插件约束。
+- 不变量：I6 双模式只由玩家切换，I7 不做多 agent 并行讨论，I8 显示与 prompt 从原文派生，I9 推进方向由程序从剧情走向取出供玩家点选、没有每拍动作选择，I11 间隙优先且预跑只针对推进，I12 台账唯一事实来源，I13 尊重模型能动性，I14 本地 ST 额度需申请，I15 core 不依赖其他工作区包，I16–I18 插件约束。
 - 规划写法的阶段顺序由 `PLAN_TURN_STEPS` 决定：三个准备阶段、正文、可选复查；Trace 的 `plan.schedule` 记的就是它。角色意图每个在场角色单独一次调用，只带他自己知道的公开事件、自身状态与被告知的秘密，不要把全部角色的材料合进一次调用。复查是 `plan_review` 后台任务，结果写成兄弟楼层且不移动 head，玩家自己切换过去。
-- 提前备好是 `plan_prepare` 后台任务：`prepare` 开关打开时，在间隙对推进三档与当前楼层的每条候选行动各跑一遍准备阶段，结果按前一楼与输入存进故事值；命中时回合内只剩正文调用，自由输入时在回合内准备并把阶段进度写进 `turn.progress`。开关关掉后既不建任务，也不使用以前备下的结果。候选行动固定四条加一条场景变化，准备上限按五条算。
+- 提前备好是 `plan_prepare` 后台任务：`prepare` 开关打开时，在间隙只为推进（`push: "advance"`）跑一遍准备阶段，结果按前一楼存进故事值；命中时回合内只剩正文调用，自由输入时在回合内准备并把阶段进度写进 `turn.progress`。开关关掉后既不建任务，也不使用以前备下的结果。不要为其他推进档位或行动选项预跑（I11）。
 - 写法对照的三种写法落在同一次运行里：快速是 `turnMode: "fast"` 且清掉 `writingMode`，规划是快速加 `writingMode: "plan"`，深度是 `turnMode: "deep"`。每个分支点、写法与重复各复制一份数据库，玩家消息固定不重新生成。胜率以快速为对照；矛盾率用各写法自己的台账探针，分母只含一致与矛盾；每楼调用数是写作客户端的非缓存请求数，含规划准备与深度工具往返。G0 未通过时 `turn-mode-compare` 在任何模型调用前失败。
 - 故事图片：`story_media` 是唯一的图片索引，文件不放进数据库；封面无图时永远返回占位图。
 - e2e 的 `serve.mjs` 启动时清空 `.devloop/scratch/e2e/work`；Playwright 的 mobile 与 desktop 两个项目共用同一个数据库，测试标题必须带唯一 id。`serial.spec.ts` 用固定故事 `e2e-serial`。
 - 人物立绘显示在记事页百科条目标题旁（`.page img.portrait`），只有卡里带立绘的人物才有图；e2e 要显示立绘得先给故事补一层。
 - 合并后台调用（场记）必须先通过结算一致率对照才能切默认；`gapPassEnabled` 与 `sceneLogEnabled` 在对照通过前保持关闭。
-- 重 roll 的原因可以省略；界面先弹出六项原因，选中后才重写。原因进 swipe 载荷的 `reason`、写成一条来源为玩家的长期纠正，并以 system 消息追加在历史与导演之后（ADR-0149）。
+- 重 roll 的原因可以省略；界面先弹出六项原因，选中后才重写。原因进 swipe 载荷的 `reason`、写成一条来源为玩家的长期纠正，并以 system 消息追加在历史之后（ADR-0149）。
 - 结构化 JSON 请求一律使用 `NO_CONTINUATION`；正文写作与散文类后台输出保留续写。
-- 世界模型只用故事设置 `worldModel` 选择；状态槽位的 `packKey` 必须带种类（`state:<kind>`）。导演组织方式只用 `directorOrganization` 选择。
+- 世界模型只用故事设置 `worldModel` 选择；状态槽位的 `packKey` 必须带种类（`state:<kind>`）。
 - 剧情小品的条件是 `{kind:"text", text}` 或 `{kind:"ledger", query}`；兜底小品必须省略条件。
 - 实体档案（`wiki`）的写入路径是 `["profile", "<人物>"]`；`world_wiki_revisions` 只追加。
 - 显示状态只在当前会话；需要跨进程显示时由台账快照重新渲染。共存适配器在 `apply` 之后按轮调用 `afterTurn`；插件写错直接让运行失败。
@@ -142,16 +140,15 @@
 - 手机底栏 7 项（书架、故事、记忆、大纲、设定、设置、全局）；增删导航时同步改 `v4.css` 里 `.navs .ind` 的 `calc(100% / 7)` 与 `v4-shell.spec.ts` 的数量。
 - 深度的故事数据文件树由 `tools/workspace-tools.ts` 从存储现算，故事文件只读；只有 `草稿.md` 能写与打补丁。新增文件要同时出现在 `listWorkspacePaths` 与 `readWorkspaceFile`，路径改动要同步 `web/src/chat/deep-turn.ts` 的工具文字。
 
-## 导演（2026-11-15 起）
+## 导演与剧情走向（2026-11-27 起）
 
-- 导演何时出手由故事的「导演」功能开关决定，三个档位默认都是「仅推进时」。玩家的自由输入不论长短都让位，让位时不注入任何东西；只有推进按钮或「继续、推进剧情」这类固定说法才出手（`readPlayerIntent`）。
-- `when` 只决定这一轮没有玩家消息时是否接手：`push` 不出手，`always` 才评估；玩家写了自己的行动时两种档位都让位，不看字数。直接调用 `createDirectorSlotProvider` 或 `createStandardChatSlots` 的测试与工具需要在没有玩家消息的回合里驱动导演时，传 `when: "always"` / `directorWhen: "always"`。
-- 让位的动作选择返回空指令；引擎写决策记录（`signals.action` 为 `yield`），不返回建议。
-- 章末清点只把上一次清点之后、玩家自己写的自由输入当作这一章的变化；推进类固定说法不算。这些变化写进提示词，模型据此删线、改写 want 与 obstacle，或把伏笔声明为 retire。
-- 线可以带 `mustInterrupt: true`：玩家自由输入时这条线倒计时到点会盖过让位，决策信号带 `interrupt`；每场只允许一次，计数从当前路径往回数到上一场结束（`readDirectorActionInput` 的 `interruptedThisScene`）。
-- 撤回导演安排（`undoDirectorArrangement`）在同一个事务里静音那条线，并写一条 `avoid-line` 的长期偏好；重复撤回不会重复写同一句偏好。恢复用 `unmuteDirectorLine`，之后这条线重新参与选择。干扰统计只数 swipe 偏好里的「没听我的」「别推这条线」，按被放弃的回复上有没有决策记录分成导演开、关两组。
-
-- 新故事默认 `directorOrganization: lines`（ADR-0161）。测 v3 方案与序列、剧情小品行为的测试与工具必须显式传 `organization: "mechanisms"` / `"bits"`，或在故事设置里写明；`dramaticer chat` 新建故事时自己写成 `mechanisms`，因为 `--director`、`--intensity` 只对它有意义。
+- 每拍不再有程序选择的动作，也没有 `mechanisms` 引擎（direction-v5/02）。不要恢复 `selectDirectorAction` 之类按拍注入建议的路径；玩家没点推进菜单时，这一轮没有方向干预。
+- 推进菜单的方向由 `readDirectionView().pushDirections` 当场派生：先取最老的未收线（未静音），再补一条「想发生的」里未完成的关键事件、主线方向或本场目标，最后补第二条未收线，最多 3 条。
+- 玩家点选方向时，界面把方向写进玩家消息（`（推进方向：…）`），`push` 单轮参数照旧决定走一步、一场还是跳跃；楼层原文因此保留方向，重试与重新生成都能带回。
+- 章末清点照旧（`chapter` / `chapter-plan`），只把上一次清点之后玩家自己写的自由输入当作这一章的变化；推进类固定说法不算。
+- 旧楼层的导演决策（`director_decisions`）只读兼容：`undoDirectorArrangement` 仍能静音那条线并写 `avoid-line` 偏好，重复撤回不重复写；新楼层不写决策。
+- 故事设置的 `directorOrganization` 只为读旧库：`mechanisms` 与 `bits` 都降级成 `lines`；`director` 功能开关已隐藏并标成旧版。
+- 规划与深度写法只在故事设置「高级 → 实验」里选，默认快速；故事页输入台只列快速，当前是实验写法时额外列出当前那一项。程序不会自动切换（I6）。
 
 ## 功能开关与后台任务（2026-11-19 起）
 

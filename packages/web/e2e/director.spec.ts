@@ -13,18 +13,11 @@ test.beforeEach(async ({ page }) => {
 });
 
 // 旧「导演」面板拆除后（ui-v2/05），候选行动在故事页输入台上，Trace 在检视器；
-// 方案、决策记录与线索兑现只剩接口，这里按接口核对。
-test("导演决策、候选行动、Trace、计划编辑与线索兑现", async ({ page }) => {
+// 方案、计划与线索兑现只剩接口，这里按接口核对。
+test("候选行动、Trace、计划编辑与线索兑现（不再每拍写决策）", async ({
+	page,
+}) => {
 	const storyId = await createImportedStory(page, "导演端到端");
-	// 这个用例看的是方案与序列引擎（线索到期给出指令），不测让位：
-	// 新故事默认是线与动作（ADR-0161），这里显式选旧引擎，并设成始终出手。
-	const settings = await page.request.put(`/api/stories/${storyId}/settings`, {
-		data: {
-			directorOrganization: "mechanisms",
-			featureSwitches: { director: "always" },
-		},
-	});
-	expect(settings.ok()).toBeTruthy();
 	await expect
 		.poll(
 			async () => {
@@ -61,10 +54,11 @@ test("导演决策、候选行动、Trace、计划编辑与线索兑现", async 
 	await page.getByRole("button", { name: /^改一改再发：候选行动一/ }).click();
 	await expect(page.locator(".say textarea")).toHaveValue(/候选行动一/);
 
+	// 每拍没有程序选择的动作，新楼层不写导演决策。
 	const decision = await page.request.get(
 		`/api/nodes/${await latestUserNodeId(page, storyId)}/director`,
 	);
-	expect(JSON.stringify(await decision.json())).toContain("directive");
+	expect(JSON.stringify(await decision.json())).toContain('"decision":null');
 
 	const trace = JSON.stringify(
 		await (await page.request.get(`/api/nodes/${assistantId}/trace`)).json(),

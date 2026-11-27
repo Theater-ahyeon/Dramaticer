@@ -6,7 +6,6 @@ import {
 	type ChatTurnResult,
 	DEFAULT_CHAT_PROFILE,
 	DEFAULT_DIRECTOR_CONFIG,
-	type DirectorIntensity,
 	type DirectorMode,
 	type LlmChannelsConfig,
 	type LlmStreamingClient,
@@ -19,7 +18,6 @@ import {
 	createRerankClient,
 	createStandardChatSlots,
 	isChatProfile,
-	isDirectorIntensity,
 	isDirectorMode,
 	isTurnMode,
 	loadChannelsConfig,
@@ -58,7 +56,7 @@ export interface ChatCliDependencies {
 }
 
 const USAGE =
-	"用法：dramaticer chat --story <id> --user <text> [--card <path>] [--world <path>] [--profile <native|naive>] [--persona <text>] [--director <off|transparent|blind>] [--intensity <setup|natural|detonate>] [--mode <fast|deep>] [--db <path>] [--model <alias>] [--budget <tokens>] [--max-tokens <n>] [--temperature <x>]";
+	"用法：dramaticer chat --story <id> --user <text> [--card <path>] [--world <path>] [--profile <native|naive>] [--persona <text>] [--director <off|transparent|blind>] [--mode <fast|deep>] [--db <path>] [--model <alias>] [--budget <tokens>] [--max-tokens <n>] [--temperature <x>]";
 
 interface ChatArgs {
 	readonly storyId: string;
@@ -72,8 +70,6 @@ interface ChatArgs {
 	readonly maxTokens: number | null;
 	readonly temperature: number | null;
 	readonly directorMode: DirectorMode;
-	/** 单轮导演强度；不传时用导演配置里的值。 */
-	readonly directorIntensity: DirectorIntensity | null;
 	/** 单轮模式；不传时用故事设置里的锁定值。 */
 	readonly turnMode: TurnMode | null;
 	readonly profile: ChatProfile;
@@ -147,11 +143,6 @@ export async function runChatCli(
 				id: parsed.storyId,
 				title: card.name.trim().length > 0 ? card.name : parsed.storyId,
 			});
-			// --director 的透明 / 盲盒与 --intensity 只对方案与序列引擎有意义；
-			// 新故事的库默认是线与动作（ADR-0161），这里显式保留 CLI 的语义。
-			store.updateStorySettings(parsed.storyId, {
-				directorOrganization: "mechanisms",
-			});
 			const greeting = card.firstMessage.trim();
 			if (greeting.length > 0) {
 				store.appendNode({
@@ -175,6 +166,14 @@ export async function runChatCli(
 				? null
 				: importCardContent(store, parsed.storyId, { card, worlds });
 		const settings = store.getStorySettings(parsed.storyId);
+		if (parsed.directorMode !== settings.directorConfig.mode) {
+			store.updateStorySettings(parsed.storyId, {
+				directorConfig: {
+					...settings.directorConfig,
+					mode: parsed.directorMode,
+				},
+			});
+		}
 		if (imported !== null) {
 			store.updateStorySettings(parsed.storyId, {
 				cardName: imported.cardName,
@@ -228,15 +227,8 @@ export async function runChatCli(
 						characterPrompt,
 						embedder,
 						reranker,
-						directorConfig: {
-							...DEFAULT_DIRECTOR_CONFIG,
-							mode: parsed.directorMode,
-						},
-						// 命令行是排障与回放用的入口，没有推进按钮：导演照常评估每一轮。
-						directorWhen: "always",
 						historyBlockPolicy: settings.historyBlockPolicy,
 						worldModel: settings.worldModel,
-						directorOrganization: settings.directorOrganization,
 					});
 		const result = await runChatTurn({
 			store,
@@ -251,7 +243,6 @@ export async function runChatCli(
 			profile: parsed.profile,
 			toolTransport: resolveToolTransport(model),
 			turnMode: parsed.turnMode,
-			directorIntensity: parsed.directorIntensity,
 			model: modelAlias,
 			embedder,
 			reranker,
@@ -297,7 +288,6 @@ function parseChatArgs(args: readonly string[]): ChatArgs {
 		"max-tokens": true,
 		temperature: true,
 		director: true,
-		intensity: true,
 		mode: true,
 		profile: true,
 		persona: true,
@@ -345,7 +335,6 @@ function parseChatArgs(args: readonly string[]): ChatArgs {
 	const maxTokens = values.get("max-tokens");
 	const temperature = values.get("temperature");
 	const director = values.get("director");
-	const intensity = values.get("intensity");
 	const turnModeValue = values.get("mode");
 	const profileValue = values.get("profile");
 	const personaValue = values.get("persona");
@@ -357,13 +346,8 @@ function parseChatArgs(args: readonly string[]): ChatArgs {
 		director === undefined
 			? DEFAULT_DIRECTOR_CONFIG.mode
 			: parseDirector(director);
-	const directorIntensity =
-		intensity === undefined ? null : parseIntensity(intensity);
 	if (profile === "naive" && director !== undefined && directorMode !== "off") {
 		throw new Error(`朴素模式没有导演，--director 只能是 off；${USAGE}`);
-	}
-	if (profile === "naive" && directorIntensity !== null) {
-		throw new Error(`朴素模式没有导演，不要传 --intensity；${USAGE}`);
 	}
 	return {
 		storyId,
@@ -381,7 +365,6 @@ function parseChatArgs(args: readonly string[]): ChatArgs {
 		temperature:
 			temperature === undefined ? null : parseTemperature(temperature),
 		directorMode,
-		directorIntensity,
 		turnMode: turnModeValue === undefined ? null : parseTurnMode(turnModeValue),
 		profile,
 		persona:
@@ -426,15 +409,6 @@ function parseDirector(value: string): DirectorMode {
 	if (!isDirectorMode(value)) {
 		throw new Error(
 			`--director 只接受 off、transparent 或 blind，收到 ${value}；${USAGE}`,
-		);
-	}
-	return value;
-}
-
-function parseIntensity(value: string): DirectorIntensity {
-	if (!isDirectorIntensity(value)) {
-		throw new Error(
-			`--intensity 只接受 setup、natural 或 detonate，收到 ${value}；${USAGE}`,
 		);
 	}
 	return value;

@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { type PluginDefinition, createPluginKernel } from "../src/index.js";
 import {
 	createBlockPlugin,
-	createDirectorPlugin,
 	createScenePlugin,
 	weatherServicePlugin,
 } from "./plugin-fixtures.js";
@@ -22,12 +21,7 @@ afterEach(() => {
 describe("createPluginKernel", () => {
 	it("按数组顺序装载插件并按插件名传入配置", async () => {
 		const kernel = await createPluginKernel({
-			plugins: [
-				createScenePlugin(),
-				weatherServicePlugin,
-				createDirectorPlugin(),
-				createBlockPlugin(),
-			],
+			plugins: [createScenePlugin(), weatherServicePlugin, createBlockPlugin()],
 			configs: { "test/weather-service": { unit: "f" } },
 		});
 
@@ -36,11 +30,9 @@ describe("createPluginKernel", () => {
 			"active",
 			"active",
 			"active",
-			"active",
 		]);
 		expect(snapshot.missingServices).toEqual([]);
 		expect(snapshot.slots.scene).toEqual(["test/scene-weather"]);
-		expect(snapshot.mechanisms).toEqual(["test/weather"]);
 		expect(snapshot.blockTypes).toEqual(["weather"]);
 		expect(snapshot.services).toEqual(["weather"]);
 

@@ -13,11 +13,11 @@ import {
 	assertContextTemplate,
 	assertContextTemplateDeepTurn,
 } from "../context/template.js";
-import { assertDirectorConfig } from "../director/evaluate.js";
 import {
 	type DramaticerEventDefinition,
 	parseDramaticerEventDefinitions,
 } from "../director/event-definition.js";
+import { assertDirectorConfig } from "../director/types.js";
 import {
 	DEFAULT_DIRECTOR_CONFIG,
 	type DirectorConfig,

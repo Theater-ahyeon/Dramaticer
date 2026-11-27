@@ -52,11 +52,6 @@ export * from "./message-modification.js";
 export { EventBus } from "./events.js";
 export { KernelSurface } from "./kernel-surface.js";
 export { LiteKernel } from "./lite-kernel.js";
-export {
-	type MechanismPlugin,
-	DEFAULT_MECHANISM_KERNEL,
-	MECHANISM_PLUGINS,
-} from "./mechanisms.js";
 export { createStaticKernel } from "./static-kernel.js";
 export * from "./playpack.js";
 export {
@@ -102,7 +97,6 @@ export {
 export {
 	BLUEPRINT_SLOT_PLUGIN,
 	CHARACTER_SLOT_PLUGIN,
-	DIRECTOR_SLOT_PLUGIN,
 	HISTORY_SLOT_PLUGIN,
 	LORE_SLOT_PLUGIN,
 	MEMORY_SLOT_PLUGIN,
@@ -122,7 +116,6 @@ export {
 	USER_WILL_SLOT_PLUGIN,
 	blueprintSlotPlugin,
 	characterSlotPlugin,
-	directorSlotPlugin,
 	historySlotPlugin,
 	loreSlotPlugin,
 	memorySlotPlugin,

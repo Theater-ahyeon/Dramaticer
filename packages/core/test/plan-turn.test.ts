@@ -11,7 +11,6 @@ import {
 	PLAN_REVIEW_JOB_KIND,
 	PLAN_TURN_STEPS,
 	createDefaultContextTemplate,
-	createDirectorSlotProvider,
 	createHistorySlotProvider,
 	createPlanPrepareHandler,
 	createPlanReviewHandler,
@@ -24,7 +23,7 @@ import {
 	runChatTurn,
 	runPlanPhases,
 } from "../src/index.js";
-import type { DirectorPush, StoryStore } from "../src/index.js";
+import type { StoryStore } from "../src/index.js";
 import { openTempStore } from "./temp-store.js";
 
 const USAGE = {
@@ -450,7 +449,7 @@ describe("规划写法", () => {
 		expect(planReviewNeedsRun(other.store, "s1")).toBe(false);
 	});
 
-	it("间隙里备好推进三档与每个行动选项，命中时回合内只剩正文", async () => {
+	it("间隙里只为推进备一次，其他档位与行动选项不预跑", async () => {
 		const { store } = openTempStore();
 		seedPlanStory(store);
 		store.setStoryValue("s1", "writingMode", "plan");
@@ -479,61 +478,40 @@ describe("规划写法", () => {
 			job: jobFor("s1", PLAN_PREPARE_JOB_KIND),
 		});
 
-		const pushes: readonly DirectorPush[] = ["advance", "quick", "jump"];
-		for (const push of pushes) {
+		expect(
+			readPreparedPlan(store, "s1", "a1", "(让故事自己走)", "advance")?.text,
+		).toContain("本轮准备");
+		for (const push of ["quick", "jump"] as const) {
 			expect(
-				readPreparedPlan(store, "s1", "a1", "(让故事自己走)", push)?.text,
-			).toContain("本轮准备");
+				readPreparedPlan(store, "s1", "a1", "(让故事自己走)", push),
+			).toBeNull();
 		}
 		for (const text of optionTexts) {
-			expect(readPreparedPlan(store, "s1", "a1", text, null)?.text).toContain(
-				"本轮准备",
-			);
+			expect(readPreparedPlan(store, "s1", "a1", text, null)).toBeNull();
 		}
+		expect(prepare.requests.length).toBeGreaterThan(0);
 		expect(planPrepareNeedsRun(store, "s1")).toBe(false);
 
 		const turn = scriptedClient();
-		const result = await runChatTurn({
+		const pushed = await runChatTurn({
 			store,
 			client: turn.client,
 			storyId: "s1",
-			userText: optionTexts[0] as string,
-			template: createDefaultContextTemplate({ structuredOutput: "text-tags" }),
+			userText: "(让故事自己走)",
+			directorPush: "advance",
+			template: createDefaultContextTemplate({
+				structuredOutput: "text-tags",
+			}),
 			providers: providers(store),
 			budgetTokens: 40_000,
 			structuredOutput: "text-tags",
 			model: "fake",
 		});
-
 		expect(turn.requests).toHaveLength(1);
 		expect(requestText(turn.requests[0] as LlmRequest)).toContain(
 			"【本轮准备】",
 		);
-		expect(store.getTurnTrace(result.node.id)?.plan?.prepared).toBe(true);
-
-		for (const push of pushes) {
-			store.setHead("s1", "a1");
-			const pushTurn = scriptedClient();
-			const pushed = await runChatTurn({
-				store,
-				client: pushTurn.client,
-				storyId: "s1",
-				userText: "(让故事自己走)",
-				directorPush: push,
-				template: createDefaultContextTemplate({
-					structuredOutput: "text-tags",
-				}),
-				providers: {
-					...providers(store),
-					director: createDirectorSlotProvider(store),
-				},
-				budgetTokens: 40_000,
-				structuredOutput: "text-tags",
-				model: "fake",
-			});
-			expect(pushTurn.requests).toHaveLength(1);
-			expect(store.getTurnTrace(pushed.node.id)?.plan?.prepared).toBe(true);
-		}
+		expect(store.getTurnTrace(pushed.node.id)?.plan?.prepared).toBe(true);
 	});
 
 	it("玩家键入继续这类固定说法时命中备好的推进结果", async () => {

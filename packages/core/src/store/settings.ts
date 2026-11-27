@@ -28,12 +28,12 @@ import {
 	assertContextLayout,
 	assertContextTemplate,
 } from "../context/template.js";
-import { assertDirectorConfig } from "../director/evaluate.js";
 import {
 	DEFAULT_DIRECTOR_ORGANIZATION,
 	type DirectorOrganizationKind,
 	assertDirectorOrganizationKind,
 } from "../director/organization.js";
+import { assertDirectorConfig } from "../director/types.js";
 import {
 	DEFAULT_DIRECTOR_CONFIG,
 	type DirectorConfig,

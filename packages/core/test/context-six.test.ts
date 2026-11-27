@@ -10,7 +10,7 @@ import { openTempStore } from "./temp-store.js";
 // memory-v5/04：上下文收拢为六节。
 
 describe("默认模板的六节", () => {
-	it("卡与写作条目、世界索引、此刻局面、相关页面、方向、最近原文，加偏好与写作契约", () => {
+	it("卡与写作条目、世界索引、此刻局面、相关页面、最近原文，加偏好与写作契约", () => {
 		const ids = createDefaultContextTemplate({
 			structuredOutput: "text-tags",
 		}).segments.map((segment) => segment.id);
@@ -23,7 +23,6 @@ describe("默认模板的六节", () => {
 			"situation",
 			"pages",
 			"memory",
-			"director",
 			"user_will",
 			"protocol",
 		]);

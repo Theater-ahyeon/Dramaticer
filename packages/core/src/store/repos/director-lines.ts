@@ -794,7 +794,10 @@ export class DirectorLinesRepo extends StoreRepo {
 		return rows.map(rowToDirectorCandidateAction);
 	}
 
-	/** 写入某个楼层的导演决策；同一楼层重复评估时覆盖旧记录。 */
+	/**
+	 * 写入某个楼层的旧版导演决策。每拍动作选择删除后运行时不再调用，
+	 * 只为旧数据迁移与测试夹具保留；同一楼层重复写入会覆盖旧记录。
+	 */
 	saveDirectorDecision(input: NewDirectorDecisionInput): DirectorDecision {
 		const normalised = this.#normaliseDirectorDecision(input);
 		this.db

@@ -226,9 +226,6 @@ const api = {
 	blockType: function (definition) {
 		post({ type: "register", kind: "block-type", definition: definition });
 	},
-	mechanism: function (name) {
-		post({ type: "register", kind: "mechanism", name: name });
-	},
 	onDispose: function (cleanup) {
 		if (typeof cleanup !== "function") {
 			throw new Error("卸载回调必须是函数");
@@ -922,8 +919,7 @@ export class CodePluginRuntime {
 				action: "mechanism",
 				outcome: "rejected",
 				target: typeof message.name === "string" ? message.name : null,
-				reason:
-					"Director 机制必须是同步纯函数（I9），代码插件不能注册；请改用声明式插件或后台任务",
+				reason: "Director 机制已经删除；请改用后台任务或上下文槽位",
 			});
 			return;
 		}

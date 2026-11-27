@@ -1,9 +1,5 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import type {
-	ContextSlotContent,
-	DirectorMechanism,
-	PluginDefinition,
-} from "../src/index.js";
+import type { ContextSlotContent, PluginDefinition } from "../src/index.js";
 
 export interface WeatherService {
 	forecast(city: string): string;
@@ -65,31 +61,6 @@ export function createScenePlugin(intro = "海雾正在升起"): PluginDefinitio
 					};
 				},
 			});
-		},
-	};
-}
-
-/** Director 机制：同步纯函数，注入 weather 服务。 */
-export function createDirectorPlugin(): PluginDefinition {
-	return {
-		name: "test/director-weather",
-		inject: ["weather"],
-		apply(ctx) {
-			const mechanism: DirectorMechanism = {
-				name: "test/weather",
-				evaluate: (context) => ({
-					triggered: true,
-					reason: "天气突变",
-					suggestion: {
-						mechanism: "test/weather",
-						priority: 30,
-						directive: `${ctx.service<WeatherService>("weather")?.forecast("港口") ?? "风浪"}，让角色寻找遮蔽`,
-						signals: { nodeId: context.nodeId },
-					},
-					signals: { nodeId: context.nodeId },
-				}),
-			};
-			ctx.directorMechanism(mechanism);
 		},
 	};
 }

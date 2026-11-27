@@ -18,7 +18,6 @@ const DEFAULT_SEGMENT_ORDER = [
 	"situation",
 	"pages",
 	"memory",
-	"director",
 	"user_will",
 	"protocol",
 ];
@@ -30,7 +29,6 @@ const FULL_SEGMENT_ORDER = [
 	"situation",
 	"pages",
 	"memory",
-	"director",
 	"user_will",
 	"summary",
 	"history",
@@ -88,7 +86,6 @@ describe("写作契约段", () => {
 			{ id: "situation", kind: "slot", slot: "situation", priority: 86 },
 			{ id: "pages", kind: "slot", slot: "pages", priority: 58 },
 			{ id: "memory", kind: "slot", slot: "memory", priority: 60 },
-			{ id: "director", kind: "slot", slot: "director", priority: 50 },
 			{ id: "user_will", kind: "slot", slot: "user_will", priority: 110 },
 			{ id: "summary", kind: "slot", slot: "summary", priority: 70 },
 			{ id: "history", kind: "slot", slot: "history", priority: 100 },

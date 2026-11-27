@@ -150,8 +150,6 @@ export class StoryRuntimeManager {
 			characterPrompt: settings.characterPrompt,
 			embedder,
 			reranker,
-			directorConfig: settings.directorConfig,
-			directorOrganization: settings.directorOrganization,
 			historyBlockPolicy: settings.historyBlockPolicy,
 			worldModel: settings.worldModel,
 		});

@@ -1,6 +1,5 @@
 import type {
 	BlockDisplayStrategy,
-	DirectorIntensity,
 	DirectorPush,
 	FeatureSwitchOverrides,
 	LlmUsage,
@@ -18,8 +17,6 @@ export interface TurnRequest {
 	readonly text: string;
 	/** 单轮模式；省略时使用故事设置的 `turnMode`。 */
 	readonly mode?: TurnMode;
-	/** 单轮导演强度；省略时使用导演配置的强度。 */
-	readonly intensity?: DirectorIntensity;
 	/** 单轮推进档位；省略时是常规回合。 */
 	readonly push?: DirectorPush;
 	/** 本轮临时开关：只影响这一轮，叠在功能页的设置上；省略时按功能页。 */

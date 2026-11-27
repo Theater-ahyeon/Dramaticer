@@ -338,10 +338,6 @@ async function runOneReplay(input: RunOneReplayOptions): Promise<MeasuredRun> {
 	});
 	try {
 		store.setHead(input.storyId, input.branch.nodeId);
-		const config: DirectorConfig = {
-			...input.directorConfig,
-			mode: input.mode === "on" ? "transparent" : "off",
-		};
 		const generator = createChatReplayGenerator({
 			card: input.card,
 			client: input.options.client,
@@ -350,7 +346,6 @@ async function runOneReplay(input: RunOneReplayOptions): Promise<MeasuredRun> {
 			}),
 			structuredOutput: input.options.structuredOutput,
 			budgetTokens: input.options.budgetTokens,
-			directorConfig: config,
 			embedder: input.options.embedder,
 			model: input.options.modelAlias,
 			reasoning: "low",

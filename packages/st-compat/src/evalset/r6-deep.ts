@@ -533,10 +533,8 @@ async function runStory(options: StoryRunOptions): Promise<R6DeepRunRecord> {
 			store,
 			characterPrompt: settings.characterPrompt,
 			embedder: options.embedder,
-			directorConfig: settings.directorConfig,
 			historyBlockPolicy: settings.historyBlockPolicy,
 			worldModel: settings.worldModel,
-			directorOrganization: settings.directorOrganization,
 		});
 		let run: MutableRun;
 		if (existing === null) {

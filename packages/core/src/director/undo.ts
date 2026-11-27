@@ -2,7 +2,7 @@ import { applyRerollReasonWill } from "../preferences/reroll.js";
 import type { StoryStore } from "../store/story-store.js";
 
 /**
- * 撤回的楼层上能读到的导演安排所指向的线；决策记在玩家楼层上，
+ * 旧楼层批注上的导演安排所指向的线；决策记在玩家楼层上，
  * 界面传回复楼层时要往上找一层。没有安排时返回 null。
  */
 export function readDirectorArrangementLineId(
@@ -37,7 +37,7 @@ export interface DirectorUndoResult {
 }
 
 /**
- * 撤回一条导演安排：静音那条线，并把「别推这条线」写成长期偏好。
+ * 撤回一条旧楼层的导演安排：静音那条线，并把「别推这条线」写成长期偏好。
  * 两者在同一个事务里，避免出现静音了却没记下偏好的状态。
  */
 export async function undoDirectorArrangement(

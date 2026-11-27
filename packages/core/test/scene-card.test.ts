@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
 	DEFAULT_DIRECTOR_CONFIG,
-	type DirectorActionInput,
 	type LlmClient,
 	type LlmRequest,
 	type LlmResult,
@@ -9,7 +8,6 @@ import {
 	type StoryStore,
 	createSceneCardSlotProvider,
 	createSceneLogHandler,
-	selectDirectorAction,
 } from "../src/index.js";
 import { openTempStore } from "./temp-store.js";
 
@@ -216,35 +214,5 @@ describe("场面卡", () => {
 			directorConfig: { ...DEFAULT_DIRECTOR_CONFIG, mode: "off" },
 		});
 		expect(provider.provide(request("s1", "a1"))).toBeNull();
-	});
-
-	it("动作的接球用场面卡目标替换场记收尾代理", () => {
-		const input: DirectorActionInput = {
-			floorDepth: 2,
-			playerMessage: null,
-			push: null,
-			floors: [
-				{
-					beat: "试探",
-					present: ["凛"],
-					sceneEnds: false,
-					sceneCard: CARD,
-					stateChanges: 1,
-				},
-			],
-			lines: [],
-			recentActions: [],
-			config: {
-				stallFloors: 3,
-				clueAgeWarning: 12,
-				tensionStateDiffsPerFloor: 2,
-			},
-		};
-
-		const selection = selectDirectorAction(input);
-		expect(selection?.action).toBe("catch");
-		expect(selection?.reason).toContain("凛离开教室，把信交出去");
-		expect(selection?.directive).toContain("凛想要拿回那封信");
-		expect(selection?.signals.sceneGoal).toBe("凛离开教室，把信交出去");
 	});
 });

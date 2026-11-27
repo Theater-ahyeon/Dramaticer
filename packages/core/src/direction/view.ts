@@ -73,6 +73,15 @@ export interface DirectionOpenItem {
 	readonly introducedDepth: number;
 }
 
+/** 推进菜单里的一个方向：从走向页的两栏里取，越老越靠前。 */
+export interface PushDirection {
+	/** 对应走向页那一行的 id。 */
+	readonly id: string;
+	readonly text: string;
+	readonly detail: string | null;
+	readonly from: "want" | "open";
+}
+
 /** 剧情走向一页：两栏与约束、剧透设置。 */
 export interface DirectionView {
 	readonly storyId: string;
@@ -81,6 +90,8 @@ export interface DirectionView {
 	readonly tension: BlueprintTension;
 	readonly wants: readonly DirectionWantItem[];
 	readonly opens: readonly DirectionOpenItem[];
+	/** 推进菜单里给玩家点选的 2–3 个方向。 */
+	readonly pushDirections: readonly PushDirection[];
 	readonly hidden: BlueprintHiddenCounts | null;
 	readonly maxOpenPromises: number;
 	/** 故事已经有楼层，可以新增方向。 */
@@ -196,6 +207,56 @@ function milestoneItem(
 		volumeId: milestone.volumeId,
 		deletable: true,
 	};
+}
+
+/** 推进菜单最多给几个方向。 */
+export const MAX_PUSH_DIRECTIONS = 3;
+
+/**
+ * 推进菜单的方向：还没收的线越老越靠前，再补上「想发生的」里还没达成的
+ * 关键事件、主线方向与本场目标。两条线都为空时没有方向可点。
+ */
+function pushDirectionsFromView(
+	wants: readonly DirectionWantItem[],
+	opens: readonly DirectionOpenItem[],
+): PushDirection[] {
+	const openPicks: PushDirection[] = opens
+		.filter((item) => !item.muted && item.text !== "")
+		.map((item) => ({
+			id: item.id,
+			text: item.text,
+			detail: item.detail,
+			from: "open" as const,
+		}));
+	const wantPicks: PushDirection[] = wants
+		.filter(
+			(item) =>
+				!item.done &&
+				item.text !== "" &&
+				(item.kind === "milestone" ||
+					item.kind === "line" ||
+					item.kind === "scene"),
+		)
+		.map((item) => ({
+			id: item.id,
+			text: item.text,
+			detail: item.detail,
+			from: "want" as const,
+		}));
+	const picks: PushDirection[] = [];
+	const seen = new Set<string>();
+	const push = (item: PushDirection | undefined): void => {
+		if (item === undefined || seen.has(item.text)) return;
+		seen.add(item.text);
+		picks.push(item);
+	};
+	push(openPicks[0]);
+	push(wantPicks[0]);
+	for (const item of [...openPicks.slice(1), ...wantPicks.slice(1)]) {
+		if (picks.length >= MAX_PUSH_DIRECTIONS) break;
+		push(item);
+	}
+	return picks;
 }
 
 /**
@@ -381,6 +442,7 @@ export function readDirectionView(
 		tension: readBlueprintTension(entries) ?? "loose",
 		wants,
 		opens,
+		pushDirections: pushDirectionsFromView(wants, opens),
 		hidden: visible.hidden,
 		maxOpenPromises: readStoryPromiseLimit(store, storyId),
 		canAdd: head !== null,

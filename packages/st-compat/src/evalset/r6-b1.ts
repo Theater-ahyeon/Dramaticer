@@ -549,10 +549,8 @@ async function runSample(options: B1RunOptions): Promise<R6B1RunRecord> {
 			store,
 			characterPrompt: settings.characterPrompt,
 			embedder: options.embedder,
-			directorConfig: settings.directorConfig,
 			historyBlockPolicy: settings.historyBlockPolicy,
 			worldModel: settings.worldModel,
-			directorOrganization: settings.directorOrganization,
 		});
 		const run: MutableRun =
 			existing === null

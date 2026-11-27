@@ -64,7 +64,7 @@ function settingsFixture(
 		deepRecentToolSteps: 4,
 		viewpoint: null,
 		directorConfig: DIRECTOR,
-		directorOrganization: "mechanisms",
+		directorOrganization: "lines",
 		historyBlockPolicy: { mode: "default", overrides: {} },
 		contextLayout: "volatility",
 		sceneLogEnabled: false,

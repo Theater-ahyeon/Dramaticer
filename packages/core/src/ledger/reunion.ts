@@ -87,7 +87,7 @@ export interface ReunionSelectionInput {
 	readonly store: StoryStore;
 	readonly storyId: string;
 	readonly nodeId: string;
-	/** 本轮玩家消息与导演建议拼起来的文本。 */
+	/** 本轮玩家消息；重逢判断只看玩家提到了谁。 */
 	readonly triggerText: string;
 	/** 「最近窗口」的楼数，默认与默认历史窗口一致。 */
 	readonly recentFloors?: number;

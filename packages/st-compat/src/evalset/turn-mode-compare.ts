@@ -380,10 +380,8 @@ async function runCandidate(
 			store,
 			characterPrompt: settings.characterPrompt,
 			embedder: options.embedder,
-			directorConfig: settings.directorConfig,
 			historyBlockPolicy: settings.historyBlockPolicy,
 			worldModel: settings.worldModel,
-			directorOrganization: settings.directorOrganization,
 		});
 		run = {
 			format: TURN_MODE_RUN_FORMAT,

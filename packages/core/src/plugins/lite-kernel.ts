@@ -179,9 +179,6 @@ export class LiteKernel extends KernelSurface implements PluginKernel {
 			plugins,
 			missingServices,
 			slots: this.registry.slots(),
-			mechanisms: this.registry
-				.mechanisms()
-				.map((entry) => entry.mechanism.name),
 			blockTypes: this.registry.blockTypes(),
 			backgroundJobs: this.registry.backgroundJobs().map((entry) => entry.kind),
 			tools: this.registry.toolNames(),
@@ -258,9 +255,6 @@ export class LiteKernel extends KernelSurface implements PluginKernel {
 			name: definition.name,
 			slot: (name, provider) => {
 				cleanups.push(this.registry.addSlot(name, definition.name, provider));
-			},
-			directorMechanism: (mechanism) => {
-				cleanups.push(this.registry.addMechanism(definition.name, mechanism));
 			},
 			blockType: (blockDefinition) => {
 				cleanups.push(

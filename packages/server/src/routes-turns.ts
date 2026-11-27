@@ -1,7 +1,6 @@
 // server 路由：回合、运行中追加要求、重写与就地纠正、场面控制（refactor/06 从 routes.ts 拆出）。
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
-	type DirectorIntensity,
 	type DirectorPush,
 	type FeatureSwitchOverrides,
 	type RerollReason,
@@ -14,7 +13,6 @@ import {
 	TurnGuidanceError,
 	type TurnMode,
 	WRITING_MODE_KEY,
-	assertDirectorIntensity,
 	assertDirectorPush,
 	assertFeatureSwitchOverrides,
 	assertRerollReason,
@@ -61,11 +59,10 @@ export async function handleTurns(
 ): Promise<void> {
 	requireStory(options.store, storyId);
 	const body = await readObjectBody(req, options.maxJsonBodyBytes);
-	assertKnownKeys(body, ["text", "mode", "intensity", "push", "features"]);
+	assertKnownKeys(body, ["text", "mode", "push", "features"]);
 	const text = requireText(body.text, "text");
 	rememberWritingMode(options.store, storyId, body.mode);
 	await handleTurnStream(res, storyId, text, options, {
-		directorIntensity: readOptionalIntensity(body.intensity),
 		directorPush: readOptionalPush(body.push),
 		turnMode: readOptionalMode(body.mode),
 		featureOverrides: readOptionalFeatures(body.features),
@@ -156,20 +153,6 @@ export function withWritingMode(
 		isPlanWritingMode(store, settings.storyId)
 		? { ...settings, turnMode: "plan" }
 		: settings;
-}
-
-export function readOptionalIntensity(
-	value: unknown,
-): DirectorIntensity | null {
-	if (value === undefined) return null;
-	try {
-		return assertDirectorIntensity(value, "回合的 intensity");
-	} catch (error) {
-		throw fieldError(
-			"intensity",
-			error instanceof Error ? error.message : "回合的 intensity 不合法",
-		);
-	}
 }
 
 export function readOptionalPush(value: unknown): DirectorPush | null {

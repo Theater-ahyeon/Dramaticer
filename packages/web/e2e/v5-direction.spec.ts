@@ -1,5 +1,5 @@
 import { type Page, expect, test } from "@playwright/test";
-import { expectNoHorizontalOverflow, login } from "./helpers";
+import { expectNoHorizontalOverflow, login, pathNodeCount } from "./helpers";
 
 /** 手机上停靠栏是底部抽屉，先从故事页打开；桌面上它一直在。 */
 async function openDock(page: Page): Promise<void> {
@@ -19,6 +19,10 @@ interface DirectionItem {
 interface DirectionView {
 	readonly wants: readonly DirectionItem[];
 	readonly opens: readonly DirectionItem[];
+	readonly pushDirections: readonly {
+		readonly id: string;
+		readonly text: string;
+	}[];
 }
 
 async function readDirection(
@@ -154,5 +158,87 @@ test.describe("剧情走向一页", () => {
 		await expect(
 			page.locator('#dock .dirrow[data-id="line:prom-new"] .lock'),
 		).toHaveAttribute("aria-pressed", "true");
+	});
+
+	test("推进菜单给 2–3 个方向，点选后带着方向发送", async ({
+		page,
+	}, testInfo) => {
+		const storyId = `e2e-direction-${testInfo.project.name}`;
+		await page.goto(`/stories/${storyId}/play`);
+
+		const view = await readDirection(page, storyId);
+		expect(view.pushDirections.length).toBeGreaterThanOrEqual(2);
+		expect(view.pushDirections.length).toBeLessThanOrEqual(3);
+		const first = view.pushDirections[0];
+		if (first === undefined) throw new Error("走向页没有推进方向");
+
+		await page.getByRole("button", { name: "选择推进多少" }).click();
+		const menu = page.locator('.pushmenu[aria-label="推进"]');
+		await expect(menu).toBeVisible();
+		const items = menu.locator("[data-direction]");
+		await expect(items).toHaveCount(view.pushDirections.length);
+		await expect(items.first()).toContainText(first.text);
+		await expect(menu).toContainText("走多远");
+
+		const before = await pathNodeCount(page, storyId);
+		await items.first().click();
+		await expect
+			.poll(() => pathNodeCount(page, storyId), { timeout: 30_000 })
+			.toBe(before + 2);
+		await expect(page.locator(".said").last()).toContainText(
+			`推进方向：${first.text}`,
+		);
+		await expectNoHorizontalOverflow(page);
+	});
+
+	test("规划与深度写法收在设置的实验区", async ({ page }, testInfo) => {
+		const storyId = `e2e-direction-${testInfo.project.name}`;
+		await page.goto(`/stories/${storyId}/prefs?tab=adv`);
+
+		const experiment = page.locator('section[aria-label="实验"]');
+		await expect(experiment).toBeVisible();
+		const writing = experiment.locator("select");
+		await expect(writing).toHaveValue("fast");
+		await expect(writing.locator("option")).toHaveText([
+			"快速（默认）",
+			"规划（实验）",
+			"深度（实验）",
+		]);
+
+		await writing.selectOption("plan");
+		await page.getByRole("button", { name: "保存故事设置" }).click();
+		await expect
+			.poll(async () => {
+				const response = await page.request.get(
+					`/api/stories/${storyId}/settings`,
+				);
+				const settings = (await response.json()) as { turnMode: string };
+				return settings.turnMode;
+			})
+			.toBe("plan");
+
+		// 故事页常规展开区不把实验写法列为常规选项。
+		await page.goto(`/stories/${storyId}/play`);
+		await page.getByRole("button", { name: "写法与本轮设置" }).click();
+		const modes = page.locator(".meta").getByRole("group", { name: "写法" });
+		await expect(modes.getByRole("button")).toHaveText([
+			"快速",
+			"规划（实验）",
+		]);
+
+		await page.goto(`/stories/${storyId}/prefs?tab=adv`);
+		await page
+			.locator('section[aria-label="实验"] select')
+			.selectOption("fast");
+		await page.getByRole("button", { name: "保存故事设置" }).click();
+		await expect
+			.poll(async () => {
+				const response = await page.request.get(
+					`/api/stories/${storyId}/settings`,
+				);
+				const settings = (await response.json()) as { turnMode: string };
+				return settings.turnMode;
+			})
+			.toBe("fast");
 	});
 });

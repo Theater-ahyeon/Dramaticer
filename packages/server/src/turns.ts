@@ -2,7 +2,6 @@ import type { ServerResponse } from "node:http";
 import {
 	type ChatTurnResult,
 	DeepTurnWithoutCommitError,
-	type DirectorIntensity,
 	type DirectorPush,
 	type FeatureSwitchOverrides,
 	type GenerateAssistantTurnOptions,
@@ -152,8 +151,6 @@ interface StreamTurnOptions {
 }
 
 export interface TurnRequestInputs {
-	/** 单轮导演强度；请求没给时为 null。 */
-	readonly directorIntensity?: DirectorIntensity | null;
 	/** 单轮推进档位；请求没给时为 null。 */
 	readonly directorPush?: DirectorPush | null;
 	/** 单轮模式；请求没给时为 null，使用故事设置。 */
@@ -207,7 +204,6 @@ export async function handleTurnStream(
 				...turnOptions(runtime, storyId, options),
 				userNodeId,
 				turnMode,
-				directorIntensity: inputs.directorIntensity ?? null,
 				directorPush: inputs.directorPush ?? null,
 				featureOverrides: inputs.featureOverrides ?? null,
 				signal,

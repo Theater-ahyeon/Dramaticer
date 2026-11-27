@@ -428,24 +428,6 @@ export function AdvancedSettings({ storyId }: { readonly storyId: string }) {
 									))}
 								</select>
 							</Field>
-							<Field label="回合模式">
-								<select
-									value={draft.turnMode}
-									onChange={(event) =>
-										updateDraft({
-											turnMode: event.target
-												.value as SettingsFormDraft["turnMode"],
-										})
-									}
-									disabled={settingsBusy}
-								>
-									{TURN_MODE_CHOICES.map((choice) => (
-										<option key={choice.value} value={choice.value}>
-											{choice.label}
-										</option>
-									))}
-								</select>
-							</Field>
 							<Field label="读取工具软上限">
 								<input
 									type="text"
@@ -1008,6 +990,36 @@ export function AdvancedSettings({ storyId }: { readonly storyId: string }) {
 								</p>
 							</>
 						)}
+					</section>
+					<section className="director-section" aria-label="实验">
+						<header className="director-section-head">
+							<h2>实验</h2>
+							<span className="ledger-tag">只在你自己选择时生效</span>
+						</header>
+						<div className="settings-grid">
+							<Field label="写法">
+								<select
+									value={draft.turnMode}
+									onChange={(event) =>
+										updateDraft({
+											turnMode: event.target
+												.value as SettingsFormDraft["turnMode"],
+										})
+									}
+									disabled={settingsBusy}
+								>
+									{TURN_MODE_CHOICES.map((choice) => (
+										<option key={choice.value} value={choice.value}>
+											{choice.label}
+										</option>
+									))}
+								</select>
+							</Field>
+						</div>
+						<p className="muted">
+							默认是快速写法。规划与深度是实验写法，程序不会自动切换；
+							选过之后可以在故事页输入台看到并改回快速。
+						</p>
 					</section>
 				</>
 			)}

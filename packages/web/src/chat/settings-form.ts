@@ -52,12 +52,15 @@ export const REASONING_CHOICES: readonly {
 	{ value: "max", label: "最大" },
 ];
 
+export type WritingModeChoice = TurnMode | "plan";
+
 export const TURN_MODE_CHOICES: readonly {
-	readonly value: TurnMode;
+	readonly value: WritingModeChoice;
 	readonly label: string;
 }[] = [
-	{ value: "fast", label: "快回合" },
-	{ value: "deep", label: "深回合" },
+	{ value: "fast", label: "快速（默认）" },
+	{ value: "plan", label: "规划（实验）" },
+	{ value: "deep", label: "深度（实验）" },
 ];
 
 export const HISTORY_MODE_CHOICES: readonly {
@@ -330,7 +333,7 @@ export interface SettingsFormDraft {
 	readonly temperature: string;
 	readonly maxTokens: string;
 	readonly reasoning: LlmReasoningLevel;
-	readonly turnMode: TurnMode;
+	readonly turnMode: WritingModeChoice;
 	readonly maxReadRounds: string;
 	readonly deep: Readonly<Record<DeepNumberKey, string>>;
 	readonly viewpoint: string;
@@ -352,7 +355,7 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
 	temperature: "温度",
 	maxTokens: "输出上限 token",
 	reasoning: "思考档位",
-	turnMode: "回合模式",
+	turnMode: "写法",
 	maxReadRounds: "读取工具软上限",
 	deepMaxToolCalls: "深回合工具调用上限",
 	deepTimeoutMs: "深回合时长上限",
@@ -665,7 +668,7 @@ export function parseSettingsDraft(draft: SettingsFormDraft): {
 		temperature: temperature ?? 0,
 		maxTokens: maxTokens ?? 1,
 		reasoning: draft.reasoning,
-		turnMode: draft.turnMode,
+		turnMode: draft.turnMode as TurnMode,
 		maxReadRounds: maxReadRounds ?? 0,
 		deepMaxToolCalls:
 			deep.deepMaxToolCalls ?? DEEP_MAX_TOOL_CALLS_RANGE.minimum,

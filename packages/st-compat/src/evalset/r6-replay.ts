@@ -500,10 +500,8 @@ async function runPoint(options: ReplayRunOptions): Promise<R6ReplayRunRecord> {
 			store,
 			characterPrompt: settings.characterPrompt,
 			embedder: options.embedder,
-			directorConfig: settings.directorConfig,
 			historyBlockPolicy: settings.historyBlockPolicy,
 			worldModel: settings.worldModel,
-			directorOrganization: settings.directorOrganization,
 		});
 		const run: MutableRun =
 			existing === null

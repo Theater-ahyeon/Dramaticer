@@ -48,7 +48,6 @@ export interface ContextPackFingerprintInput {
 	readonly template: ContextTemplate;
 	readonly budgetTokens: number;
 	readonly profile: ChatProfile;
-	readonly directorIntensity: string | null;
 	readonly providers: ContextSlotProviders | undefined;
 	/** 本轮临时开关；不同的临时开关不复用同一个包。 */
 	readonly featureOverrides?: Readonly<Record<string, unknown>> | null;
@@ -85,7 +84,6 @@ export function contextPackFingerprint(
 		template: input.template,
 		budgetTokens: input.budgetTokens,
 		profile: input.profile,
-		directorIntensity: input.directorIntensity,
 		providers: providerKeys(input.providers),
 		...(input.featureOverrides === undefined ||
 		input.featureOverrides === null ||

@@ -788,10 +788,8 @@ async function runProfile(
 						store,
 						characterPrompt: settings.characterPrompt,
 						embedder: options.embedder,
-						directorConfig: settings.directorConfig,
 						historyBlockPolicy: settings.historyBlockPolicy,
 						worldModel: settings.worldModel,
-						directorOrganization: settings.directorOrganization,
 					});
 		const warmup =
 			existing === null

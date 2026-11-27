@@ -7,8 +7,6 @@ import {
 	CONTEXT_SLOT_NAMES,
 	type ContextSlotName,
 } from "../context/template.js";
-import type { DirectorOrganizationKind } from "../director/organization.js";
-import type { DirectorConfig, DirectorMechanism } from "../director/types.js";
 import type { EmbeddingClient } from "../llm/embeddings.js";
 import type { RerankClient } from "../llm/rerank.js";
 import type { StoryStore } from "../store/story-store.js";
@@ -19,7 +17,6 @@ import { createPluginKernel } from "./runtime.js";
 import {
 	BLUEPRINT_SLOT_PLUGIN,
 	CHARACTER_SLOT_PLUGIN,
-	DIRECTOR_SLOT_PLUGIN,
 	HISTORY_SLOT_PLUGIN,
 	LORE_SLOT_PLUGIN,
 	MEMORY_SLOT_PLUGIN,
@@ -108,11 +105,6 @@ export interface StandardChatSlotsOptions {
 	readonly characterPrompt: string | null;
 	readonly embedder?: EmbeddingClient | null;
 	readonly reranker?: RerankClient | null;
-	readonly directorConfig?: DirectorConfig;
-	readonly directorOrganization?: DirectorOrganizationKind;
-	readonly mechanisms?: readonly DirectorMechanism[];
-	/** 导演何时出手；不设置时读故事的「导演」功能开关（默认仅推进时）。 */
-	readonly directorWhen?: "off" | "push" | "always";
 	/** 块的 prompt 视图策略；不设置时使用默认策略。 */
 	readonly historyBlockPolicy?: HistoryBlockPolicy;
 	/** 世界模型的表示方式；不设置时使用台账。 */
@@ -150,18 +142,9 @@ export async function createStandardChatSlots(
 		[PROFILE_SLOT_PLUGIN]: { store: options.store },
 		[REUNION_SLOT_PLUGIN]: {
 			store: options.store,
-			config: options.directorConfig,
-			organization: options.directorOrganization,
 		},
 		[SCENE_CARD_SLOT_PLUGIN]: { store: options.store },
 		[BLUEPRINT_SLOT_PLUGIN]: { store: options.store },
-		[DIRECTOR_SLOT_PLUGIN]: {
-			store: options.store,
-			config: options.directorConfig,
-			organization: options.directorOrganization,
-			mechanisms: options.mechanisms,
-			when: options.directorWhen,
-		},
 		[USER_WILL_SLOT_PLUGIN]: { store: options.store },
 	});
 }

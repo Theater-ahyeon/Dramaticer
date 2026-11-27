@@ -105,7 +105,7 @@ describe("故事设置", () => {
 			deepRecentToolSteps: 6,
 			viewpoint: "山神",
 			directorConfig: { ...DEFAULT_DIRECTOR_CONFIG, mode: "off" },
-			directorOrganization: "bits",
+			directorOrganization: "lines",
 			historyBlockPolicy: {
 				mode: "full",
 				overrides: { 选项: { kind: "drop" } },
@@ -140,7 +140,7 @@ describe("故事设置", () => {
 				deepRecentToolSteps: 6,
 				viewpoint: "山神",
 				directorConfig: { mode: "off" },
-				directorOrganization: "bits",
+				directorOrganization: "lines",
 				historyBlockPolicy: {
 					mode: "full",
 					overrides: { 选项: { kind: "drop" } },

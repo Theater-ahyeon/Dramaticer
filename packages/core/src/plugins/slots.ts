@@ -2,7 +2,6 @@ import type { HistoryBlockPolicy } from "../blocks/history.js";
 import {
 	createBlueprintSlotProvider,
 	createCharacterSlotProvider,
-	createDirectorSlotProvider,
 	createHistorySlotProvider,
 	createLoreSlotProvider,
 	createMemorySlotProvider,
@@ -19,8 +18,6 @@ import {
 	createUserWillSlotProvider,
 	createWorldIndexSlotProvider,
 } from "../chat/providers.js";
-import type { DirectorOrganizationKind } from "../director/organization.js";
-import type { DirectorConfig, DirectorMechanism } from "../director/types.js";
 import type { EmbeddingClient } from "../llm/embeddings.js";
 import type { RerankClient } from "../llm/rerank.js";
 import type { StoryStore } from "../store/story-store.js";
@@ -46,7 +43,6 @@ export const PROFILE_SLOT_PLUGIN = "slot.profile";
 export const REUNION_SLOT_PLUGIN = "slot.reunion";
 export const SCENE_CARD_SLOT_PLUGIN = "slot.scene-card";
 export const BLUEPRINT_SLOT_PLUGIN = "slot.blueprint";
-export const DIRECTOR_SLOT_PLUGIN = "slot.director";
 export const USER_WILL_SLOT_PLUGIN = "slot.user-will";
 export const SITUATION_SLOT_PLUGIN = "slot.situation";
 export const WORLD_INDEX_SLOT_PLUGIN = "slot.world-index";
@@ -93,13 +89,6 @@ export interface LoreSlotConfig {
 	readonly store: StoryStore;
 	readonly tokenLimit?: number;
 	readonly tokenEstimator?: TokenEstimator;
-}
-
-export interface DirectorSlotConfig {
-	readonly store: StoryStore;
-	readonly config?: DirectorConfig;
-	readonly organization?: DirectorOrganizationKind;
-	readonly mechanisms?: readonly DirectorMechanism[];
 }
 
 export interface StoreSlotConfig {
@@ -269,10 +258,6 @@ export const reunionSlotPlugin: PluginDefinition = {
 			createReunionSlotProvider(requireSlotStore(REUNION_SLOT_PLUGIN, values), {
 				recentFloors: values.recentFloors as number | undefined,
 				unresolvedLimit: values.unresolvedLimit as number | undefined,
-				directorConfig: values.config as DirectorConfig | undefined,
-				directorOrganization: values.organization as
-					| DirectorOrganizationKind
-					| undefined,
 			}),
 		);
 	},
@@ -366,27 +351,6 @@ export const loreSlotPlugin: PluginDefinition = {
 	},
 };
 
-export const directorSlotPlugin: PluginDefinition = {
-	name: DIRECTOR_SLOT_PLUGIN,
-	apply(context, config) {
-		const values = slotConfig(DIRECTOR_SLOT_PLUGIN, config);
-		const store = requireSlotStore(DIRECTOR_SLOT_PLUGIN, values);
-		context.slot(
-			"director",
-			createDirectorSlotProvider(store, {
-				config: values.config as DirectorConfig | undefined,
-				organization: values.organization as
-					| DirectorOrganizationKind
-					| undefined,
-				mechanisms: values.mechanisms as
-					| readonly DirectorMechanism[]
-					| undefined,
-				when: values.when as "off" | "push" | "always" | undefined,
-			}),
-		);
-	},
-};
-
 /** 全部内置槽位插件；顺序即内核装载顺序。 */
 export const SLOT_PLUGINS: readonly PluginDefinition[] = [
 	characterSlotPlugin,
@@ -404,7 +368,6 @@ export const SLOT_PLUGINS: readonly PluginDefinition[] = [
 	reunionSlotPlugin,
 	sceneCardSlotPlugin,
 	blueprintSlotPlugin,
-	directorSlotPlugin,
 	userWillSlotPlugin,
 ];
 

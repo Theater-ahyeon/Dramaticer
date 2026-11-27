@@ -1,4 +1,8 @@
-import type { RerollReason, StoryFeatureSwitchView } from "@dramaticer/core";
+import type {
+	PushDirection,
+	RerollReason,
+	StoryFeatureSwitchView,
+} from "@dramaticer/core";
 import { parseBlocks } from "@dramaticer/core/blocks";
 import {
 	type DisplayedContent,
@@ -12,7 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { blockViewKind, optionLinesOf, plainTextOf } from "../chat/blocks";
-import { PUSH_TURN_TEXT } from "../chat/push";
+import { PUSH_TURN_TEXT, pushDirectionText } from "../chat/push";
 import { BlockContent } from "../components/chat/BlockContent";
 import { BackgroundNotice } from "./BackgroundNotice";
 import { Dock, type DockTab } from "./Dock";
@@ -352,6 +356,7 @@ export function Play() {
 	const tree = useLoad(() => api.getTree(storyId), [storyId]);
 	const [streaming, setStreaming] = useState<Streaming | null>(null);
 	const [actions, setActions] = useState<readonly string[]>([]);
+	const [directions, setDirections] = useState<readonly PushDirection[]>([]);
 	const [dockTab, setDockTab] = useState<DockTab>("dir");
 	const [dockTick, setDockTick] = useState(0);
 	// 手机上停靠栏是底部抽屉，批注折叠成每楼末尾的小标记。
@@ -424,6 +429,23 @@ export function Play() {
 			active = false;
 		};
 	}, [lastId, parsed]);
+
+	// 打开推进菜单时才读剧情走向：方向由走向页的两栏当场派生，不额外占后台调用。
+	useEffect(() => {
+		if (!pushMenu) return;
+		let active = true;
+		api
+			.getDirection(storyId)
+			.then((view) => {
+				if (active) setDirections(view.pushDirections);
+			})
+			.catch(() => {
+				if (active) setDirections([]);
+			});
+		return () => {
+			active = false;
+		};
+	}, [pushMenu, storyId]);
 
 	const refresh = useCallback(() => {
 		path.reload();
@@ -1292,7 +1314,30 @@ export function Play() {
 										▾
 									</button>
 									{pushMenu ? (
-										<div className="pushmenu" role="menu" aria-label="推进多少">
+										<div className="pushmenu" role="menu" aria-label="推进">
+											{directions.length === 0 ? null : (
+												<>
+													<small className="menuhead">往哪走</small>
+													{directions.map((direction) => (
+														<button
+															type="button"
+															role="menuitem"
+															key={direction.id}
+															data-direction={direction.id}
+															onClick={() => {
+																setPushMenu(false);
+																send(pushDirectionText(direction.text), step);
+															}}
+														>
+															<span>{direction.text}</span>
+															{direction.detail === null ? null : (
+																<small>{direction.detail}</small>
+															)}
+														</button>
+													))}
+												</>
+											)}
+											<small className="menuhead">走多远</small>
 											{(["advance", "quick", "jump"] as const).map((value) => (
 												<button
 													type="button"
@@ -1321,8 +1366,15 @@ export function Play() {
 									onChange={changeMode}
 									options={[
 										{ v: "fast", label: "快速" },
-										{ v: "plan", label: "规划" },
-										{ v: "deep", label: "深度" },
+										...(mode === "fast"
+											? []
+											: [
+													{
+														v: mode,
+														label:
+															mode === "plan" ? "规划（实验）" : "深度（实验）",
+													},
+												]),
 									]}
 								/>
 								<Tog pressed={notesOn} onChange={setNotesOn}>

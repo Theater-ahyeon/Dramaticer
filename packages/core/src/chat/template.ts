@@ -141,7 +141,6 @@ const DEFAULT_SEGMENTS: Readonly<Record<string, ContextSegment>> = {
 		slot: "blueprint",
 		priority: 54,
 	},
-	director: { id: "director", kind: "slot", slot: "director", priority: 50 },
 	user_will: {
 		id: "user_will",
 		kind: "slot",
@@ -169,7 +168,6 @@ export const DEFAULT_CONTEXT_SEGMENT_ORDER: Readonly<
 		"situation",
 		"pages",
 		"memory",
-		"director",
 		"user_will",
 		WRITING_CONTRACT_SEGMENT_ID,
 	],
@@ -180,7 +178,6 @@ export const DEFAULT_CONTEXT_SEGMENT_ORDER: Readonly<
 		"situation",
 		"pages",
 		"memory",
-		"director",
 		"user_will",
 		"summary",
 		"history",

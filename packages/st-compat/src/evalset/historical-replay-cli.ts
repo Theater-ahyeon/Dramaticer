@@ -597,10 +597,8 @@ async function buildTurnContext(
 			store,
 			characterPrompt: options.characterPrompt,
 			embedder: null,
-			directorConfig: settings.directorConfig,
 			historyBlockPolicy: settings.historyBlockPolicy,
 			worldModel: settings.worldModel,
-			directorOrganization: settings.directorOrganization,
 		})
 	).providers;
 	const naive = (

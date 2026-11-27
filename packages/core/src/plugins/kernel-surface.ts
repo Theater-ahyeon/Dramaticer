@@ -6,11 +6,6 @@ import type {
 	ContextSlotRequest,
 } from "../context/assembler.js";
 import type { ContextMessage, ContextSlotName } from "../context/template.js";
-import type {
-	DirectorMechanism,
-	DirectorMechanismContext,
-	DirectorMechanismResult,
-} from "../director/types.js";
 import type { DeepToolDefinition, ToolPhase } from "../tools/registry.js";
 import type {
 	EventListener,
@@ -80,23 +75,6 @@ export abstract class KernelSurface {
 			current = assertRewrittenMessages(run.value, plugin);
 		}
 		return { messages: current, hooks };
-	}
-
-	runMechanisms(context: DirectorMechanismContext): readonly {
-		plugin: string;
-		name: string;
-		result: DirectorMechanismResult;
-	}[] {
-		return this.registry.mechanisms().map((entry) => ({
-			plugin: entry.plugin,
-			name: entry.mechanism.name,
-			result: entry.mechanism.evaluate(context),
-		}));
-	}
-
-	/** 已注册的 Director 机制，按注册顺序。 */
-	mechanisms(): readonly DirectorMechanism[] {
-		return this.registry.mechanisms().map((entry) => entry.mechanism);
 	}
 
 	blockType(name: string): BlockTypeDefinition | null {

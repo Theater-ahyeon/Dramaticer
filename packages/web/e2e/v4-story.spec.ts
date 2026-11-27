@@ -178,7 +178,6 @@ test.describe("故事页：正文、批注与输入台", () => {
 				.getByRole("menuitem", { name: new RegExp(`^${label}`) })
 				.click();
 		};
-		const modeGroup = page.getByRole("group", { name: "写法" });
 		const committed = page
 			.locator(".notes .fno")
 			.filter({ hasText: /^第 \d+ 楼$/ });
@@ -203,8 +202,14 @@ test.describe("故事页：正文、批注与输入台", () => {
 		await expect(spent).toContainText("40");
 		await page.keyboard.press("Escape");
 
-		// 规划写法：请求带 plan，进度按挑记忆、角色意图、定计划依次出现。
-		await modeGroup.getByRole("button", { name: "规划" }).click();
+		// 规划写法：在设置里选，请求带 plan，进度按挑记忆、角色意图、定计划依次出现。
+		await page.request.put(`/api/stories/${storyId}/settings`, {
+			data: { turnMode: "plan" },
+		});
+		await page.reload();
+		await expect(
+			page.getByRole("button", { name: "选择推进多少" }),
+		).toBeVisible();
 		await resetStageLog(page);
 		await pushWith("跳跃");
 		await expect
@@ -218,8 +223,14 @@ test.describe("故事页：正文、批注与输入台", () => {
 			push: "jump",
 		});
 
-		// 深度写法：请求带 deep，自查项与阶段都随进度出现。
-		await modeGroup.getByRole("button", { name: "深度" }).click();
+		// 深度写法：同样在设置里选，请求带 deep，自查项与阶段都随进度出现。
+		await page.request.put(`/api/stories/${storyId}/settings`, {
+			data: { turnMode: "deep" },
+		});
+		await page.reload();
+		await expect(
+			page.getByRole("button", { name: "选择推进多少" }),
+		).toBeVisible();
 		await resetStageLog(page);
 		await pushWith("一步");
 		await expect
@@ -250,6 +261,9 @@ test.describe("故事页：正文、批注与输入台", () => {
 			.toBeGreaterThan(before);
 
 		// 批注整体关闭后再打开，正文仍然可读。
+		if ((await page.locator(".meta").count()) === 0) {
+			await page.getByRole("button", { name: "写法与本轮设置" }).click();
+		}
 		await expect(notesToggle).toHaveAttribute("aria-pressed", "true");
 		await notesToggle.click();
 		await expect(page.locator("#sheet")).toHaveClass(/nonotes/);

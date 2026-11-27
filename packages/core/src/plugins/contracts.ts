@@ -8,11 +8,6 @@ import type {
 	ContextSlotRequest,
 } from "../context/assembler.js";
 import type { ContextMessage, ContextSlotName } from "../context/template.js";
-import type {
-	DirectorMechanism,
-	DirectorMechanismContext,
-	DirectorMechanismResult,
-} from "../director/types.js";
 import type { DeepToolDefinition, ToolPhase } from "../tools/registry.js";
 import type { RewrittenRequest } from "./turn-hooks.js";
 
@@ -36,7 +31,6 @@ export interface KernelSnapshot {
 	/** 所有阻塞插件缺少的服务；已经由某个插件声明的服务不算缺失。 */
 	readonly missingServices: readonly string[];
 	readonly slots: Readonly<Record<string, readonly string[]>>;
-	readonly mechanisms: readonly string[];
 	readonly blockTypes: readonly string[];
 	readonly backgroundJobs: readonly string[];
 	readonly tools: readonly string[];
@@ -58,7 +52,6 @@ export type EventListener = {
 export interface PluginContext {
 	readonly name: string;
 	slot(name: ContextSlotName, provider: ContextSlotProvider): void;
-	directorMechanism(mechanism: DirectorMechanism): void;
 	blockType(definition: BlockTypeDefinition): void;
 	provide<T>(name: string, value: T): void;
 	service<T>(name: string): T | undefined;
@@ -109,13 +102,6 @@ export interface PluginKernel {
 		messages: readonly ContextMessage[],
 		budgetMs?: number,
 	): Promise<RewrittenRequest>;
-	runMechanisms(context: DirectorMechanismContext): readonly {
-		plugin: string;
-		name: string;
-		result: DirectorMechanismResult;
-	}[];
-	/** 已注册的 Director 机制，按注册顺序。 */
-	mechanisms(): readonly DirectorMechanism[];
 	blockType(name: string): BlockTypeDefinition | null;
 	/** 已注册的块类型名，按注册顺序。 */
 	blockTypes(): readonly string[];

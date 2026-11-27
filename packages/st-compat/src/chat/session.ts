@@ -7,9 +7,6 @@ import {
 	type ContextTemplate,
 	DEFAULT_CONTEXT_TEMPLATE_ID,
 	type DeclarativePlugin,
-	type DirectorConfig,
-	type DirectorMechanism,
-	type DirectorOrganizationKind,
 	type EmbeddingClient,
 	type EventPoolUpsertResult,
 	type HistoryBlockPolicy,
@@ -177,12 +174,6 @@ export interface CreateChatProvidersOptions {
 	readonly card: StCharacterCard;
 	readonly embedder?: EmbeddingClient | null;
 	readonly reranker?: RerankClient | null;
-	readonly directorConfig?: DirectorConfig;
-	/** 导演何时出手；不设置时读故事的「导演」功能开关。 */
-	readonly directorWhen?: "off" | "push" | "always";
-	/** 故事设置里的导演组织方式；不设置时使用现有机制序列。 */
-	readonly directorOrganization?: DirectorOrganizationKind;
-	readonly mechanisms?: readonly DirectorMechanism[];
 	/** 故事设置里的历史块策略；不设置时使用默认策略。 */
 	readonly historyBlockPolicy?: HistoryBlockPolicy;
 	/** 故事设置里的世界模型表示方式；不设置时使用台账。 */
@@ -202,10 +193,6 @@ export async function createChatProviders(
 		characterPrompt: renderCharacterPrompt(options.card),
 		embedder: options.embedder,
 		reranker: options.reranker,
-		directorConfig: options.directorConfig,
-		directorWhen: options.directorWhen,
-		directorOrganization: options.directorOrganization,
-		mechanisms: options.mechanisms,
 		historyBlockPolicy: options.historyBlockPolicy,
 		worldModel: options.worldModel,
 	});

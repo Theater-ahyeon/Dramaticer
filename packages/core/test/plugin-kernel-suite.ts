@@ -1,14 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type {
 	ContextSlotRequest,
-	DirectorMechanismContext,
 	PluginDefinition,
 	PluginKernel,
 } from "../src/index.js";
 import {
 	createBlockPlugin,
 	createCyclePlugins,
-	createDirectorPlugin,
 	createListenerPlugin,
 	createScenePlugin,
 	weatherServicePlugin,
@@ -22,16 +20,9 @@ const slotRequest: ContextSlotRequest = {
 	state: null,
 };
 
-/** 机制只读 nodeId，store 与 config 由真实运行时提供。 */
-const directorContext = {
-	storyId: "story-1",
-	nodeId: "node-1",
-} as unknown as DirectorMechanismContext;
-
 async function loadWeatherStack(kernel: PluginKernel): Promise<void> {
 	await kernel.load(weatherServicePlugin);
 	await kernel.load(createScenePlugin());
-	await kernel.load(createDirectorPlugin());
 	await kernel.load(createBlockPlugin());
 }
 
@@ -40,17 +31,15 @@ export function describeKernel(
 	createKernel: () => PluginKernel,
 ): void {
 	describe(label, () => {
-		it("装载三个扩展点后可以从注册表取到实现", async () => {
+		it("装载两个扩展点后可以从注册表取到实现", async () => {
 			const kernel = createKernel();
 			await loadWeatherStack(kernel);
 
 			const snapshot = kernel.snapshot();
 			expect(snapshot.slots.scene).toEqual(["test/scene-weather"]);
-			expect(snapshot.mechanisms).toEqual(["test/weather"]);
 			expect(snapshot.blockTypes).toEqual(["weather"]);
 			expect(snapshot.services).toEqual(["weather"]);
 			expect(snapshot.plugins.map((plugin) => plugin.state)).toEqual([
-				"active",
 				"active",
 				"active",
 				"active",
@@ -63,10 +52,6 @@ export function describeKernel(
 				"灯塔 18 °C",
 			);
 
-			const mechanisms = kernel.runMechanisms(directorContext);
-			expect(mechanisms[0]?.result.suggestion?.directive).toContain(
-				"港口 18 °C",
-			);
 			expect(kernel.blockType("weather")?.context).toEqual({ kind: "drop" });
 
 			await kernel.dispose();
@@ -123,31 +108,9 @@ export function describeKernel(
 			await kernel.dispose();
 		});
 
-		it("同名 Director 机制与块类型重复注册失败且不留下半成品", async () => {
+		it("同名块类型重复注册失败且不留下半成品", async () => {
 			const kernel = createKernel();
 			await kernel.load(weatherServicePlugin);
-			await kernel.load(createDirectorPlugin());
-			const duplicateMechanism: PluginDefinition = {
-				name: "test/director-copy",
-				apply(ctx) {
-					ctx.directorMechanism({
-						name: "test/weather",
-						evaluate: () => ({
-							triggered: false,
-							reason: "副本",
-							suggestion: null,
-							signals: {},
-						}),
-					});
-				},
-			};
-			const failedMechanism = await kernel.load(duplicateMechanism);
-			expect(failedMechanism.state).toBe("failed");
-			expect(failedMechanism.reason).toContain(
-				"Director 机制重复注册：test/weather",
-			);
-			expect(kernel.snapshot().mechanisms).toEqual(["test/weather"]);
-
 			await kernel.load(createBlockPlugin());
 			const duplicateBlock: PluginDefinition = {
 				name: "test/block-copy",
@@ -187,7 +150,7 @@ export function describeKernel(
 			await kernel.dispose();
 		});
 
-		it("卸载回收槽位、机制、块类型与服务", async () => {
+		it("卸载回收槽位、块类型与服务", async () => {
 			const kernel = createKernel();
 			await loadWeatherStack(kernel);
 			await kernel.load(
@@ -196,12 +159,10 @@ export function describeKernel(
 			expect(await kernel.serial("test/event")).toEqual(["hit"]);
 
 			await kernel.unload("test/scene-weather");
-			await kernel.unload("test/director-weather");
 			await kernel.unload("test/block-weather");
 			await kernel.unload("test/listener");
 			const snapshot = kernel.snapshot();
 			expect(snapshot.slots).toEqual({});
-			expect(snapshot.mechanisms).toEqual([]);
 			expect(snapshot.blockTypes).toEqual([]);
 			expect(await kernel.serial("test/event")).toEqual([]);
 
