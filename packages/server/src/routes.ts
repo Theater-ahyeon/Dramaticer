@@ -41,7 +41,14 @@ import {
 	handleNodeImages,
 	handleNovelAiTemplateSave,
 	handleStoryCover,
+	handleStoryImageImport,
+	handleStoryImageOrganizerEntries,
+	handleStoryImageTags,
+	handleStoryImageTagsSave,
+	handleStoryOutfits,
+	handleStoryOutfitsSave,
 	handleStoryPortrait,
+	handleStoryVisualProfilesSave,
 } from "./routes-media.js";
 import { handleNextStoryRoute } from "./routes-next.js";
 import {
@@ -324,8 +331,28 @@ export async function handleApiRequest(
 					handleGreetings(res, options, storyId);
 					return;
 				case "visual-profiles":
+					if (method === "PUT") {
+						await handleStoryVisualProfilesSave(req, res, options, storyId);
+						return;
+					}
 					requireMethod(method, ["GET"]);
 					handleStoryVisualProfiles(res, options, storyId);
+					return;
+				case "outfits":
+					if (method === "PUT") {
+						await handleStoryOutfitsSave(req, res, options, storyId);
+						return;
+					}
+					requireMethod(method, ["GET"]);
+					handleStoryOutfits(res, options, storyId);
+					return;
+				case "image-tags":
+					if (method === "PUT") {
+						await handleStoryImageTagsSave(req, res, options, storyId);
+						return;
+					}
+					requireMethod(method, ["GET"]);
+					handleStoryImageTags(res, options, storyId);
 					return;
 				default:
 					break;
@@ -394,6 +421,20 @@ export async function handleApiRequest(
 		) {
 			requireMethod(method, ["POST"]);
 			handleStoryVisualProfilesGenerate(res, options, storyId);
+			return;
+		}
+		if (third === "images" && parts.length === 4 && parts[3] === "import-st") {
+			requireMethod(method, ["POST"]);
+			await handleStoryImageImport(req, res, options, storyId);
+			return;
+		}
+		if (
+			third === "image-organizer" &&
+			parts.length === 4 &&
+			parts[3] === "entries"
+		) {
+			requireMethod(method, ["GET"]);
+			handleStoryImageOrganizerEntries(res, options, storyId);
 			return;
 		}
 		if (third === "canon" && parts.length > 3) {

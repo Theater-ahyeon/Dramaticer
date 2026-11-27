@@ -3,23 +3,24 @@
 > 每次收尾时完整重写，不超过 40 行。长期有效的注意事项写进 `docs/dev/NOTES.md`。
 
 ## 最近一次
-- 2026-11-27（工单 `card-ui/02`）。**M-D 呈现**：酒馆美化正则与助手脚本作为渲染插件。
-- `st-compat/src/st-renderer/` 把卡里的显示层 `regex_scripts`（含预设 `regexScripts`）与启用的 `tavern_helper.scripts` 转成故事级渲染配置（`story_kv` 的 `st.compat.cardUi`）；core 不出现 ST 概念。
-- 两个渲染器 id：`st-content-regex`（美化正则）与 `st-helper-host`（助手脚本）。助手开着时把正则与脚本合成同一个 iframe；只开正则时单独渲染。
-- iframe 内的垫片把 `getVariables` 等映射到 `window.dramaticerBridge`，写入落 `mvu.*` 并经结算器；`eventOn`/`eventEmit` 在 iframe 内同步；`/send`、`/setinput`、`/trigger` 可用；`setChatMessages` 直接抛错。
-- 渲染器记录新增 `enabled`；`POST /api/stories/:id/sandbox/renderers/:id` 开关声明式与 ST 渲染器，设定页「卡片脚本与联网」逐个开关，关掉两个后 `render` 返回空、正文走 `Prose`。
-- 声明式 `floor-renderer.patterns` 支持 `/pattern/flags` 字面量。
-- 验证：`pnpm check` 通过；`v5-card-ui` 桌面/手机（含新增 ST 卡状态栏与按钮、关插件回原文）、`v5-inspector`、`v4-lore`、`v4-story`；`walk14` 桌面/手机截图已看。
+- 2026-11-27（工单 `image-v2/01`）。**分格视觉档案、独立服装、标签库与智绘姬导入**。
+- 视觉档案新增 `locked` 与 12 格 `slots`；迁移 83 建 `character_outfits` 与 `tag_library_entries`。
+- `expandVisualProfile` 按视角 × 部位 × 着装状态取格，空格回退 base；着装时按上身/全身可见或隐藏拼服装标签。
+- 写作条目加 `scope`（`turn` / `image_organizer`），正文回合只发 `turn`；设定页两套编辑互不覆盖。
+- `st-compat/src/image-import/` 解析角色/服装库与生图预设；后者有关键词的进标签库，其余进画面整理条目。
+- 接口：`PUT .../visual-profiles`、`GET|PUT .../outfits`、`GET|PUT .../image-tags`、`GET .../image-organizer/entries`、`POST .../images/import-st`。
+- 设定页的 `v4/VisualProfileEditor.tsx` 提供分格、服装、标签库、整理条目与两个导入按钮。
+- 浏览器取分格/标签常量用 `@dramaticer/core/image-vocabulary`；core 主入口会带进 better-sqlite3，Vite 包会白屏。
+- 验证：`pnpm check` 通过；`v5-image-profiles` 桌面/手机、`v4-lore`、`v4-prefs` 通过；`walk15` 桌面/手机截图已看。
 
 ## 下一步
-1. `image-v2/01`（分格视觉档案、服装与标签库）。
-2. 设计与验收依据：`docs/proposals/v5.md` 对应章节与 `.scratch/<功能>/spec.md`。
+1. `image-v2/02`（画面整理）：用 `matchTagLibraryEntries` 与 `expandVisualProfile` 组装整理输入与程序展开。
+2. 设计与验收依据：`docs/proposals/v5.md` 第六节与 `.scratch/image-v2/issues/02-scene-prompter.md`。
 
 ## 眼下要注意
-- 迁移版本仍是 82，`card-ui/02` 没有新迁移。
-- server 与 e2e 读 core 的 `dist`：改了 core/st-compat 先 `pnpm run build`（或让 e2e 脚本构建）再跑 e2e。
-- ST 渲染器的 iframe 里没有 jQuery；只保证 `document` 与垫片里的 API。卡脚本用 `$`/`jQuery` 时不会工作。
-- 显示层正则命中后替换结果按 HTML 插入；未命中时原文转义显示。沙箱仍只隔离在 `allow-scripts` iframe 里，联网按故事允许名单。
-- e2e 里 `page.request.post` 对这个合成卡的嵌套 JSON 曾出现空请求体，导入时显式 `Content-Type` + `JSON.stringify`。
-- `v4-lore` 与 `v4-story` 在同一服务进程里连续跑时，`v4-story` 的规划阶段偶发观察不到「正文」（回合本身已提交）；两个 spec 单独跑都通过。与本工单改动无关，后续若再遇到先按 e2e 观察时序问题排查。
-- `.walk/` 不入库；走查命令 `cd packages/web && npx playwright test -c .walk/walk.config.ts .walk/walk14.spec.ts`。
+- 迁移版本 83；新增故事表要在 `story-store.ts` 的 DELEGATES 里登记，否则 `StoryStore` 上没有方法。
+- server 与 e2e 读 core 的 `dist`：改了 core/st-compat 先 `pnpm run build` 再跑 e2e。
+- `VisualProfileEditor` 保存时整体替换故事档案/服装/标签列表；全局标签只展示，不在替换范围。
+- 智绘姬导入只按公开字段独立解析，不复制其提示词；未知分格形状直接报错，不静默丢弃。
+- e2e 中一次导入的角色数与服装数以合成文件为准；改 fixture 时同步改断言。
+- `.walk/` 不入库；走查命令 `cd packages/web && npx playwright test -c .walk/walk.config.ts .walk/walk15.spec.ts`。

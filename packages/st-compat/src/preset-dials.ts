@@ -203,6 +203,7 @@ export function mapPresetToWritingDials(
 				? (prompt.injectionOrder ?? DEFAULT_INJECTION_ORDER)
 				: position,
 			enabled: true,
+			scope: "turn",
 		});
 	}
 	const packText = pack.join("\n\n");

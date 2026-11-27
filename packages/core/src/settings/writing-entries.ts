@@ -16,6 +16,13 @@ export const WRITING_ENTRY_PLACEMENTS = [
 
 export type WritingEntryPlacement = (typeof WRITING_ENTRY_PLACEMENTS)[number];
 
+/**
+ * 条目用在哪个回合槽位：正文回合，或者画面整理。两套互不混入。
+ */
+export const WRITING_ENTRY_SCOPES = ["turn", "image_organizer"] as const;
+
+export type WritingEntryScope = (typeof WRITING_ENTRY_SCOPES)[number];
+
 export interface WritingEntry {
 	readonly id: string;
 	readonly name: string;
@@ -27,6 +34,7 @@ export interface WritingEntry {
 	/** 同一位置（同一深度）里从小到大排列。 */
 	readonly order: number;
 	readonly enabled: boolean;
+	readonly scope: WritingEntryScope;
 }
 
 /** 只防失控：条数、单条与总字数的上限。 */
@@ -42,6 +50,13 @@ function isPlacement(value: unknown): value is WritingEntryPlacement {
 	return (
 		typeof value === "string" &&
 		(WRITING_ENTRY_PLACEMENTS as readonly string[]).includes(value)
+	);
+}
+
+function isScope(value: unknown): value is WritingEntryScope {
+	return (
+		typeof value === "string" &&
+		(WRITING_ENTRY_SCOPES as readonly string[]).includes(value)
 	);
 }
 
@@ -111,6 +126,10 @@ export function assertWritingEntries(
 		if (typeof enabled !== "boolean") {
 			throw new Error(`${at}.enabled 必须是布尔值`);
 		}
+		const scope = raw.scope ?? "turn";
+		if (!isScope(scope)) {
+			throw new Error(`${at}.scope 只能是 ${WRITING_ENTRY_SCOPES.join("、")}`);
+		}
 		return {
 			id,
 			name: name.length === 0 ? `条目 ${index + 1}` : name,
@@ -120,6 +139,7 @@ export function assertWritingEntries(
 			depth: placement === "in-history" ? depth : 0,
 			order,
 			enabled,
+			scope,
 		};
 	});
 }
@@ -182,7 +202,12 @@ export function applyWritingEntries(
 ): { messages: LlmMessage[]; trace: WritingEntryTrace[] } {
 	const active = entries
 		.map((entry, index) => ({ entry, index }))
-		.filter(({ entry }) => entry.enabled && entry.content.trim().length > 0)
+		.filter(
+			({ entry }) =>
+				entry.scope === "turn" &&
+				entry.enabled &&
+				entry.content.trim().length > 0,
+		)
 		.sort(
 			(left, right) =>
 				left.entry.order - right.entry.order || left.index - right.index,

@@ -3,7 +3,6 @@ import type {
 	ImageProviderView,
 	ImageWorkflowDetectionView,
 	ImageWorkflowView,
-	StoryVisualProfilesView,
 } from "@dramaticer/protocol";
 import { type ReactNode, useEffect, useState } from "react";
 import { api } from "../api";
@@ -23,14 +22,7 @@ import {
 import { settingsErrorsFromFailure } from "../chat/settings-form";
 import { ErrorNotice } from "../components/ErrorNotice";
 import { NovelAiTemplateForm } from "./NovelAiTemplate";
-
-type VisualProfile = StoryVisualProfilesView["profiles"][number];
-
-const PROFILE_SOURCE_LABELS: Readonly<Record<string, string>> = {
-	model: "模型生成",
-	player: "玩家填写",
-	import: "导入",
-};
+import { VisualProfileEditor } from "./VisualProfileEditor";
 
 function Field({
 	label,
@@ -94,7 +86,6 @@ export function ImageSettings({
 	const part = storyId === null ? "backends" : "profiles";
 	const [providers, setProviders] = useState<readonly ImageProviderView[]>([]);
 	const [workflows, setWorkflows] = useState<readonly ImageWorkflowView[]>([]);
-	const [profiles, setProfiles] = useState<readonly VisualProfile[]>([]);
 	const [loadError, setLoadError] = useState<unknown>(null);
 	const [name, setName] = useState("");
 	const [workflow, setWorkflow] = useState<ComfyUiWorkflow | null>(null);
@@ -106,7 +97,6 @@ export function ImageSettings({
 	const [errors, setErrors] = useState<readonly ImageFieldError[]>([]);
 	const [notice, setNotice] = useState<string | null>(null);
 	const [busy, setBusy] = useState(false);
-	const [profileBusy, setProfileBusy] = useState(false);
 	const [deletingId, setDeletingId] = useState<string | null>(null);
 
 	const reloadWorkflows = async (): Promise<void> => {
@@ -114,30 +104,19 @@ export function ImageSettings({
 		setWorkflows(view.workflows);
 	};
 
-	const reloadProfiles = async (): Promise<void> => {
-		if (storyId === null) return;
-		const view = await api.getVisualProfiles(storyId);
-		setProfiles(view.profiles);
-	};
-
 	useEffect(() => {
+		if (storyId !== null) return;
 		let active = true;
 		setLoadError(null);
 		void (async () => {
 			try {
-				if (storyId === null) {
-					const [providerView, workflowView] = await Promise.all([
-						api.getImageProviders(),
-						api.getImageWorkflows(),
-					]);
-					if (!active) return;
-					setProviders(providerView.providers);
-					setWorkflows(workflowView.workflows);
-					return;
-				}
-				const profileView = await api.getVisualProfiles(storyId);
+				const [providerView, workflowView] = await Promise.all([
+					api.getImageProviders(),
+					api.getImageWorkflows(),
+				]);
 				if (!active) return;
-				setProfiles(profileView.profiles);
+				setProviders(providerView.providers);
+				setWorkflows(workflowView.workflows);
 			} catch (error) {
 				if (active) setLoadError(error);
 			}
@@ -242,34 +221,6 @@ export function ImageSettings({
 			.finally(() => {
 				setDeletingId(null);
 			});
-	};
-
-	const regenerateProfiles = (): void => {
-		if (storyId === null || profileBusy) return;
-		setProfileBusy(true);
-		setErrors([]);
-		setNotice(null);
-		void api
-			.generateVisualProfiles(storyId)
-			.then((result) => {
-				setNotice(`视觉档案已加入后台队列（任务 ${result.jobId}）`);
-			})
-			.catch((error: unknown) => {
-				setErrors(settingsErrorsFromFailure(error));
-			})
-			.finally(() => {
-				setProfileBusy(false);
-			});
-	};
-
-	const refreshProfiles = (): void => {
-		if (profileBusy) return;
-		setProfileBusy(true);
-		setErrors([]);
-		void reloadProfiles()
-			.then(() => setNotice("视觉档案已刷新"))
-			.catch((error: unknown) => setErrors(settingsErrorsFromFailure(error)))
-			.finally(() => setProfileBusy(false));
 	};
 
 	return (
@@ -414,65 +365,8 @@ export function ImageSettings({
 					</section>
 				</>
 			) : null}
-			{part === "profiles" ? (
-				<section className="director-section" aria-label="角色视觉档案">
-					<header className="director-section-head">
-						<h2>角色视觉档案</h2>
-						<span className="ledger-tag">{profiles.length} 人</span>
-					</header>
-					<div className="plan-toolbar">
-						<button
-							type="button"
-							onClick={regenerateProfiles}
-							disabled={profileBusy}
-						>
-							{profileBusy ? "正在入队…" : "重新生成视觉档案"}
-						</button>
-						<button
-							type="button"
-							onClick={refreshProfiles}
-							disabled={profileBusy}
-						>
-							刷新档案
-						</button>
-					</div>
-					{profiles.length === 0 ? (
-						<p className="muted">
-							还没有视觉档案；导入角色卡后会自动生成，也可以手动重新生成。
-						</p>
-					) : (
-						<ul className="image-profile-list">
-							{profiles.map((record) => (
-								<li className="image-profile-card" key={record.character}>
-									<div className="image-workflow-head">
-										<strong>{record.character}</strong>
-										<span className="ledger-tag">
-											{PROFILE_SOURCE_LABELS[record.source] ?? record.source}
-										</span>
-									</div>
-									<dl className="image-profile-fields">
-										<div>
-											<dt>基础外貌</dt>
-											<dd>{record.profile.base.join("、") || "未提供"}</dd>
-										</div>
-										<div>
-											<dt>默认服装</dt>
-											<dd>{record.profile.defaultOutfit}</dd>
-										</div>
-										<div>
-											<dt>负向标签</dt>
-											<dd>{record.profile.negative.join("、") || "无"}</dd>
-										</div>
-										<div>
-											<dt>更新时间</dt>
-											<dd>{record.updatedAt}</dd>
-										</div>
-									</dl>
-								</li>
-							))}
-						</ul>
-					)}
-				</section>
+			{part === "profiles" && storyId !== null ? (
+				<VisualProfileEditor storyId={storyId} />
 			) : null}
 			{errors.length > 0 ? (
 				<ul className="settings-errors" role="alert">

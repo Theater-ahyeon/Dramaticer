@@ -16,6 +16,11 @@
 			"import": "./dist/blocks/index.js",
 			"default": "./dist/blocks/index.js"
 		},
+		"./image-vocabulary": {
+			"types": "./dist/images/vocabulary.d.ts",
+			"import": "./dist/images/vocabulary.js",
+			"default": "./dist/images/vocabulary.js"
+		},
 		"./sandbox": {
 			"types": "./dist/sandbox/browser.d.ts",
 			"import": "./dist/sandbox/browser.js",

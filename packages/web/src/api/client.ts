@@ -1,6 +1,10 @@
 import type {
 	BlueprintSuggestionStatus,
+	CharacterOutfit,
+	CharacterVisualProfile,
 	NodeImageRecord,
+	TagLibraryEntry,
+	WritingEntry,
 } from "@dramaticer/core";
 import {
 	API_ERROR_CODES,
@@ -96,6 +100,7 @@ import {
 	type StoryCanonPageView,
 	type StoryCanonSettingsRequest,
 	type StoryCanonView,
+	type StoryCharacterOutfitsView,
 	type StoryCluesView,
 	type StoryDirectorPlanRequest,
 	type StoryDirectorPlanView,
@@ -103,6 +108,9 @@ import {
 	type StoryFeatureView,
 	type StoryGreetingUseResult,
 	type StoryGreetingsView,
+	type StoryImageImportRequest,
+	type StoryImageImportResult,
+	type StoryImageOrganizerEntriesView,
 	type StoryJobsView,
 	type StoryLoreView,
 	type StoryOpeningGenerateResult,
@@ -117,6 +125,7 @@ import {
 	type StorySerialView,
 	type StorySettings,
 	type StorySettingsUpdate,
+	type StoryTagLibraryView,
 	type StoryTemplateView,
 	type StoryTree,
 	type StoryView,
@@ -1098,6 +1107,75 @@ export class ApiClient {
 		return this.json<StoryVisualProfileGenerateResult>(
 			"POST",
 			`${storyPath(storyId)}/visual-profiles/generate`,
+		);
+	}
+
+	async saveVisualProfiles(
+		storyId: string,
+		profiles: readonly CharacterVisualProfile[],
+	): Promise<StoryVisualProfilesView> {
+		return this.json<StoryVisualProfilesView>(
+			"PUT",
+			`${storyPath(storyId)}/visual-profiles`,
+			{ profiles },
+		);
+	}
+
+	async getCharacterOutfits(
+		storyId: string,
+	): Promise<StoryCharacterOutfitsView> {
+		return this.json<StoryCharacterOutfitsView>(
+			"GET",
+			`${storyPath(storyId)}/outfits`,
+		);
+	}
+
+	async saveCharacterOutfits(
+		storyId: string,
+		outfits: readonly CharacterOutfit[],
+	): Promise<StoryCharacterOutfitsView> {
+		return this.json<StoryCharacterOutfitsView>(
+			"PUT",
+			`${storyPath(storyId)}/outfits`,
+			{ outfits },
+		);
+	}
+
+	async getStoryTagLibrary(storyId: string): Promise<StoryTagLibraryView> {
+		return this.json<StoryTagLibraryView>(
+			"GET",
+			`${storyPath(storyId)}/image-tags`,
+		);
+	}
+
+	async saveStoryTagLibrary(
+		storyId: string,
+		entries: readonly TagLibraryEntry[],
+	): Promise<StoryTagLibraryView> {
+		return this.json<StoryTagLibraryView>(
+			"PUT",
+			`${storyPath(storyId)}/image-tags`,
+			{ entries },
+		);
+	}
+
+	async getImageOrganizerEntries(
+		storyId: string,
+	): Promise<StoryImageOrganizerEntriesView> {
+		return this.json<StoryImageOrganizerEntriesView>(
+			"GET",
+			`${storyPath(storyId)}/image-organizer/entries`,
+		);
+	}
+
+	async importStoryImage(
+		storyId: string,
+		request: StoryImageImportRequest,
+	): Promise<StoryImageImportResult> {
+		return this.json<StoryImageImportResult>(
+			"POST",
+			`${storyPath(storyId)}/images/import-st`,
+			request,
 		);
 	}
 

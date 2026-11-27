@@ -30,6 +30,7 @@ function entry(patch: Partial<WritingEntry> & { id: string }): WritingEntry {
 		depth: 0,
 		order: 0,
 		enabled: true,
+		scope: "turn",
 		...patch,
 	};
 }
@@ -90,6 +91,17 @@ describe("写作条目的放置", () => {
 		]);
 		expect(contents(messages)).toEqual(contents(BASE));
 		expect(trace).toEqual([]);
+	});
+
+	it("画面整理条目不会混进正文回合", () => {
+		const { messages, trace } = applyWritingEntries(BASE, [
+			entry({ id: "正文" }),
+			entry({ id: "整理", scope: "image_organizer" }),
+		]);
+		expect(contents(messages)).toEqual([...contents(BASE), "内容-正文"]);
+		expect(trace.map((item) => item.source)).toEqual([
+			"writing:条目 正文（历史之后）",
+		]);
 	});
 
 	it("校验拒绝重复 id、未知位置与越界深度", () => {

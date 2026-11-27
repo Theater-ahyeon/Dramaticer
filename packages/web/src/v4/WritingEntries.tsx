@@ -36,10 +36,17 @@ export function WritingEntries({
 	const act = useAct();
 	const [open, setOpen] = useState<string | null>(null);
 	const [draft, setDraft] = useState<WritingEntry | null>(null);
+	const visible = entries.filter((entry) => entry.scope !== "image_organizer");
 
 	const save = (next: readonly WritingEntry[]) =>
 		act(
-			() => api.call("PUT", sp(storyId, "/writing/entries"), { entries: next }),
+			() =>
+				api.call("PUT", sp(storyId, "/writing/entries"), {
+					entries: [
+						...entries.filter((entry) => entry.scope === "image_organizer"),
+						...next,
+					],
+				}),
 			() => {
 				setOpen(null);
 				setDraft(null);
@@ -60,15 +67,16 @@ export function WritingEntries({
 			role: "system",
 			placement: "after-history",
 			depth: 0,
-			order: entries.length,
+			order: visible.length,
 			enabled: true,
+			scope: "turn",
 		};
 		setOpen(entry.id);
 		setDraft(entry);
 	};
 
 	const editing = draft !== null && open === draft.id;
-	const isNew = editing && !entries.some((entry) => entry.id === draft.id);
+	const isNew = editing && !visible.some((entry) => entry.id === draft.id);
 
 	return (
 		<div className="dial entries">
@@ -76,9 +84,9 @@ export function WritingEntries({
 				<div>
 					<h3>写作条目</h3>
 					<p>
-						{entries.length === 0
+						{visible.length === 0
 							? "导入预设后，没对应上选项的条目会出现在这里，按预设里原来的位置发给模型。也可以自己加。"
-							: `共 ${entries.length} 条，启用 ${entries.filter((entry) => entry.enabled).length} 条。受上面「文风包」开关控制。`}
+							: `共 ${visible.length} 条，启用 ${visible.filter((entry) => entry.enabled).length} 条。受上面「文风包」开关控制。`}
 					</p>
 				</div>
 				<button type="button" className="btn ghost sm" onClick={add}>
@@ -86,7 +94,7 @@ export function WritingEntries({
 				</button>
 			</div>
 			<ul className="entry-list">
-				{[...entries, ...(isNew && draft !== null ? [draft] : [])].map(
+				{[...visible, ...(isNew && draft !== null ? [draft] : [])].map(
 					(entry) => (
 						<li key={entry.id} data-off={entry.enabled ? undefined : ""}>
 							{editing && draft?.id === entry.id ? (
@@ -95,8 +103,8 @@ export function WritingEntries({
 									onSubmit={(event) => {
 										event.preventDefault();
 										const next = isNew
-											? [...entries, draft]
-											: entries.map((item) =>
+											? [...visible, draft]
+											: visible.map((item) =>
 													item.id === draft.id ? draft : item,
 												);
 										void save(next);
@@ -186,7 +194,7 @@ export function WritingEntries({
 												className="btn ghost sm danger"
 												onClick={() =>
 													void save(
-														entries.filter((item) => item.id !== entry.id),
+														visible.filter((item) => item.id !== entry.id),
 													)
 												}
 											>
@@ -210,7 +218,7 @@ export function WritingEntries({
 										checked={entry.enabled}
 										onChange={(enabled) =>
 											void save(
-												entries.map((item) =>
+												visible.map((item) =>
 													item.id === entry.id ? { ...item, enabled } : item,
 												),
 											)

@@ -2,11 +2,26 @@
 // 公开方法由 StoryStore 原样委托过来，签名不变；跨领域调用经 this.store。
 import { randomUUID } from "node:crypto";
 import { assertNovelAiParameters } from "../../images/novelai-params.js";
+import {
+	type CharacterOutfit,
+	type CharacterOutfitInput,
+	type SaveCharacterOutfitsInput,
+	assertUniqueCharacterOutfits,
+	normalizeCharacterOutfit,
+} from "../../images/outfits.js";
 import { validateImagePromptRequest } from "../../images/request.js";
 import {
 	assertComfyUiSlots,
 	parseComfyUiWorkflow,
 } from "../../images/slots.js";
+import {
+	type SaveTagLibraryEntriesInput,
+	type TagLibraryEntry,
+	type TagLibraryEntryInput,
+	assertUniqueTagLibraryEntries,
+	normalizeTagLibraryEntry,
+	sortTagLibraryEntries,
+} from "../../images/tags.js";
 import {
 	ImageWorkflowInUseError,
 	type ImageWorkflowRecord,
@@ -50,6 +65,84 @@ interface NodeImageRow {
 	readonly error: string | null;
 	readonly created_at: string;
 	readonly updated_at: string;
+}
+
+interface CharacterOutfitRow {
+	readonly id: string;
+	readonly story_id: string;
+	readonly character: string;
+	readonly name: string;
+	readonly upper_visible: string;
+	readonly upper_hidden: string;
+	readonly full_visible: string;
+	readonly full_hidden: string;
+	readonly is_default: number;
+	readonly locked: number;
+	readonly created_at: string;
+	readonly updated_at: string;
+}
+
+interface TagLibraryEntryRow {
+	readonly id: string;
+	readonly story_id: string | null;
+	readonly scope: string;
+	readonly category: string;
+	readonly name: string;
+	readonly content: string;
+	readonly keywords: string;
+	readonly constant: number;
+	readonly enabled: number;
+	readonly priority: number;
+	readonly created_at: string;
+	readonly updated_at: string;
+}
+
+function rowToCharacterOutfit(row: CharacterOutfitRow): CharacterOutfit {
+	return normalizeCharacterOutfit(
+		{
+			id: row.id,
+			storyId: row.story_id,
+			character: row.character,
+			name: row.name,
+			upperVisible: JSON.parse(row.upper_visible) as unknown,
+			upperHidden: JSON.parse(row.upper_hidden) as unknown,
+			fullVisible: JSON.parse(row.full_visible) as unknown,
+			fullHidden: JSON.parse(row.full_hidden) as unknown,
+			isDefault: row.is_default === 1,
+			locked: row.locked === 1,
+		},
+		{
+			id: row.id,
+			storyId: row.story_id,
+			createdAt: row.created_at,
+			updatedAt: row.updated_at,
+		},
+		`服装 ${row.id}`,
+	);
+}
+
+function rowToTagLibraryEntry(row: TagLibraryEntryRow): TagLibraryEntry {
+	return normalizeTagLibraryEntry(
+		{
+			id: row.id,
+			storyId: row.story_id,
+			scope: row.scope,
+			category: row.category,
+			name: row.name,
+			content: row.content,
+			keywords: JSON.parse(row.keywords) as unknown,
+			constant: row.constant === 1,
+			enabled: row.enabled === 1,
+			priority: row.priority,
+		},
+		{
+			id: row.id,
+			storyId: row.story_id ?? "",
+			createdAt: row.created_at,
+			updatedAt: row.updated_at,
+		},
+		`标签库条目 ${row.id}`,
+	);
 }
 
 function rowToImageWorkflow(row: ImageWorkflowRow): ImageWorkflowRecord {
@@ -523,6 +616,319 @@ export class ImagesRepo extends StoreRepo {
 			)
 			.run(new Date().toISOString(), id);
 		return this.#requireNodeImage(id);
+	}
+
+	/** 故事里的独立服装，按人物与名称排序。 */
+	listCharacterOutfits(storyId: string): CharacterOutfit[] {
+		assertNonEmptyString(storyId, "故事 id");
+		if (!this.store.getStory(storyId)) {
+			throw new Error(`故事不存在：${storyId}`);
+		}
+		const rows = this.db
+			.prepare(
+				`SELECT * FROM character_outfits
+				WHERE story_id = ?
+				ORDER BY character, name`,
+			)
+			.all(storyId) as CharacterOutfitRow[];
+		return rows.map(rowToCharacterOutfit);
+	}
+
+	getCharacterOutfit(id: string): CharacterOutfit | null {
+		assertNonEmptyString(id, "服装 id");
+		const row = this.db
+			.prepare("SELECT * FROM character_outfits WHERE id = ?")
+			.get(id) as CharacterOutfitRow | undefined;
+		return row === undefined ? null : rowToCharacterOutfit(row);
+	}
+
+	/** 整体替换故事的服装表；删除不在新列表里的行。 */
+	replaceCharacterOutfits(input: SaveCharacterOutfitsInput): CharacterOutfit[] {
+		assertNonEmptyString(input.storyId, "服装的故事 id");
+		if (!this.store.getStory(input.storyId)) {
+			throw new Error(`故事不存在：${input.storyId}`);
+		}
+		if (!Array.isArray(input.outfits)) {
+			throw new Error("服装列表必须是数组");
+		}
+		const now = new Date().toISOString();
+		const normalized = input.outfits.map((outfit, index) => {
+			const model = normalizeCharacterOutfit(
+				outfit,
+				{
+					id: outfit.id ?? randomUUID(),
+					storyId: input.storyId,
+					createdAt: now,
+					updatedAt: now,
+				},
+				`服装[${index}]`,
+			);
+			if (model.storyId !== input.storyId) {
+				throw new Error(
+					`服装[${index}] 属于故事 ${model.storyId}，不能写进 ${input.storyId}`,
+				);
+			}
+			return model;
+		});
+		assertUniqueCharacterOutfits(normalized);
+		const insert = this.db.prepare(
+			`INSERT INTO character_outfits
+				(id, story_id, character, name, upper_visible, upper_hidden,
+				 full_visible, full_hidden, is_default, locked, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		);
+		this.db.transaction(() => {
+			this.db
+				.prepare("DELETE FROM character_outfits WHERE story_id = ?")
+				.run(input.storyId);
+			for (const outfit of normalized) {
+				insert.run(
+					outfit.id,
+					outfit.storyId,
+					outfit.character,
+					outfit.name,
+					serializeJsonValue(outfit.upperVisible, "服装的 upperVisible"),
+					serializeJsonValue(outfit.upperHidden, "服装的 upperHidden"),
+					serializeJsonValue(outfit.fullVisible, "服装的 fullVisible"),
+					serializeJsonValue(outfit.fullHidden, "服装的 fullHidden"),
+					outfit.isDefault ? 1 : 0,
+					outfit.locked ? 1 : 0,
+					outfit.createdAt,
+					outfit.updatedAt,
+				);
+			}
+		})();
+		return this.listCharacterOutfits(input.storyId);
+	}
+
+	/** 按人物与名称写入一套服装；同名更新，同一人物只保留一套默认。 */
+	upsertCharacterOutfit(input: CharacterOutfitInput): CharacterOutfit {
+		const now = new Date().toISOString();
+		const storyId = input.storyId ?? "";
+		assertNonEmptyString(storyId, "服装的故事 id");
+		if (!this.store.getStory(storyId)) {
+			throw new Error(`故事不存在：${storyId}`);
+		}
+		const model = normalizeCharacterOutfit(
+			input,
+			{
+				id: input.id ?? randomUUID(),
+				storyId,
+				createdAt: input.createdAt ?? now,
+				updatedAt: input.updatedAt ?? now,
+			},
+			"服装",
+		);
+		const existing = this.db
+			.prepare(
+				`SELECT * FROM character_outfits
+				WHERE story_id = ? AND character = ? AND name = ?`,
+			)
+			.get(model.storyId, model.character, model.name) as
+			| CharacterOutfitRow
+			| undefined;
+		const id = existing?.id ?? model.id;
+		const createdAt = existing?.created_at ?? model.createdAt;
+		this.db.transaction(() => {
+			if (model.isDefault) {
+				this.db
+					.prepare(
+						`UPDATE character_outfits SET is_default = 0
+						WHERE story_id = ? AND character = ? AND name <> ?`,
+					)
+					.run(model.storyId, model.character, model.name);
+			}
+			this.db
+				.prepare(
+					`INSERT INTO character_outfits
+						(id, story_id, character, name, upper_visible, upper_hidden,
+						 full_visible, full_hidden, is_default, locked, created_at, updated_at)
+					VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+					ON CONFLICT (id) DO UPDATE SET
+						character = excluded.character,
+						name = excluded.name,
+						upper_visible = excluded.upper_visible,
+						upper_hidden = excluded.upper_hidden,
+						full_visible = excluded.full_visible,
+						full_hidden = excluded.full_hidden,
+						is_default = excluded.is_default,
+						locked = excluded.locked,
+						updated_at = excluded.updated_at`,
+				)
+				.run(
+					id,
+					model.storyId,
+					model.character,
+					model.name,
+					serializeJsonValue(model.upperVisible, "服装的 upperVisible"),
+					serializeJsonValue(model.upperHidden, "服装的 upperHidden"),
+					serializeJsonValue(model.fullVisible, "服装的 fullVisible"),
+					serializeJsonValue(model.fullHidden, "服装的 fullHidden"),
+					model.isDefault ? 1 : 0,
+					model.locked ? 1 : 0,
+					createdAt,
+					model.updatedAt,
+				);
+		})();
+		const row = this.db
+			.prepare(
+				`SELECT * FROM character_outfits
+				WHERE story_id = ? AND character = ? AND name = ?`,
+			)
+			.get(model.storyId, model.character, model.name) as
+			| CharacterOutfitRow
+			| undefined;
+		if (row === undefined) throw new Error(`服装写入后读取失败：${model.name}`);
+		return rowToCharacterOutfit(row);
+	}
+
+	deleteCharacterOutfit(id: string): void {
+		assertNonEmptyString(id, "服装 id");
+		const result = this.db
+			.prepare("DELETE FROM character_outfits WHERE id = ?")
+			.run(id);
+		if (result.changes === 0) throw new Error(`服装不存在：${id}`);
+	}
+
+	/** 故事的标签库条目，加上全局条目，按分类、优先级与名称排序。 */
+	listTagLibraryEntries(storyId: string): TagLibraryEntry[] {
+		assertNonEmptyString(storyId, "故事 id");
+		if (!this.store.getStory(storyId)) {
+			throw new Error(`故事不存在：${storyId}`);
+		}
+		const rows = this.db
+			.prepare(
+				`SELECT * FROM tag_library_entries
+				WHERE story_id = ? OR scope = 'global'`,
+			)
+			.all(storyId) as TagLibraryEntryRow[];
+		return sortTagLibraryEntries(rows.map(rowToTagLibraryEntry));
+	}
+
+	/** 整体替换故事自己的标签库；全局条目不在替换范围内。 */
+	replaceTagLibraryEntries(
+		input: SaveTagLibraryEntriesInput,
+	): TagLibraryEntry[] {
+		assertNonEmptyString(input.storyId, "标签库的故事 id");
+		if (!this.store.getStory(input.storyId)) {
+			throw new Error(`故事不存在：${input.storyId}`);
+		}
+		if (!Array.isArray(input.entries)) {
+			throw new Error("标签库条目必须是数组");
+		}
+		const now = new Date().toISOString();
+		const normalized = input.entries.map((entry, index) => {
+			const model = normalizeTagLibraryEntry(
+				entry,
+				{
+					id: entry.id ?? randomUUID(),
+					storyId: input.storyId,
+					createdAt: entry.createdAt ?? now,
+					updatedAt: entry.updatedAt ?? now,
+				},
+				`标签库条目[${index}]`,
+			);
+			if (model.scope !== "story" || model.storyId !== input.storyId) {
+				throw new Error(`标签库条目[${index}] 必须属于故事 ${input.storyId}`);
+			}
+			return model;
+		});
+		assertUniqueTagLibraryEntries(normalized);
+		const insert = this.db.prepare(
+			`INSERT INTO tag_library_entries
+				(id, story_id, scope, category, name, content, keywords,
+				 constant, enabled, priority, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		);
+		this.db.transaction(() => {
+			this.db
+				.prepare(
+					"DELETE FROM tag_library_entries WHERE story_id = ? AND scope = 'story'",
+				)
+				.run(input.storyId);
+			for (const entry of normalized) {
+				insert.run(
+					entry.id,
+					entry.storyId,
+					entry.scope,
+					entry.category,
+					entry.name,
+					entry.content,
+					serializeJsonValue(entry.keywords, "标签库条目的 keywords"),
+					entry.constant ? 1 : 0,
+					entry.enabled ? 1 : 0,
+					entry.priority,
+					entry.createdAt,
+					entry.updatedAt,
+				);
+			}
+		})();
+		return this.listTagLibraryEntries(input.storyId);
+	}
+
+	/** 写入一条标签库条目；已存在同 id 时更新。 */
+	upsertTagLibraryEntry(input: TagLibraryEntryInput): TagLibraryEntry {
+		const now = new Date().toISOString();
+		const storyId = input.storyId === undefined ? "" : input.storyId;
+		const model = normalizeTagLibraryEntry(
+			input,
+			{
+				id: input.id ?? randomUUID(),
+				storyId: storyId ?? "",
+				createdAt: input.createdAt ?? now,
+				updatedAt: input.updatedAt ?? now,
+			},
+			"标签库条目",
+		);
+		if (model.scope === "story" && model.storyId !== null) {
+			if (!this.store.getStory(model.storyId)) {
+				throw new Error(`故事不存在：${model.storyId}`);
+			}
+		}
+		this.db
+			.prepare(
+				`INSERT INTO tag_library_entries
+					(id, story_id, scope, category, name, content, keywords,
+					 constant, enabled, priority, created_at, updated_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				ON CONFLICT (id) DO UPDATE SET
+					category = excluded.category,
+					name = excluded.name,
+					content = excluded.content,
+					keywords = excluded.keywords,
+					constant = excluded.constant,
+					enabled = excluded.enabled,
+					priority = excluded.priority,
+					updated_at = excluded.updated_at`,
+			)
+			.run(
+				model.id,
+				model.storyId,
+				model.scope,
+				model.category,
+				model.name,
+				model.content,
+				serializeJsonValue(model.keywords, "标签库条目的 keywords"),
+				model.constant ? 1 : 0,
+				model.enabled ? 1 : 0,
+				model.priority,
+				model.createdAt,
+				model.updatedAt,
+			);
+		const row = this.db
+			.prepare("SELECT * FROM tag_library_entries WHERE id = ?")
+			.get(model.id) as TagLibraryEntryRow | undefined;
+		if (row === undefined)
+			throw new Error(`标签库条目写入后读取失败：${model.id}`);
+		return rowToTagLibraryEntry(row);
+	}
+
+	deleteTagLibraryEntry(id: string): void {
+		assertNonEmptyString(id, "标签库条目 id");
+		const result = this.db
+			.prepare("DELETE FROM tag_library_entries WHERE id = ?")
+			.run(id);
+		if (result.changes === 0) throw new Error(`标签库条目不存在：${id}`);
 	}
 
 	#requireNodeImage(id: string): NodeImageRecord {

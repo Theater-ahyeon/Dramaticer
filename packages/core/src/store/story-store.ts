@@ -285,6 +285,15 @@ export interface StoryStore
 			| "failNodeImage"
 			| "requeueRunningNodeImages"
 			| "retryNodeImage"
+			| "listCharacterOutfits"
+			| "getCharacterOutfit"
+			| "replaceCharacterOutfits"
+			| "upsertCharacterOutfit"
+			| "deleteCharacterOutfit"
+			| "listTagLibraryEntries"
+			| "replaceTagLibraryEntries"
+			| "upsertTagLibraryEntry"
+			| "deleteTagLibraryEntry"
 		>,
 		Pick<
 			MemoryRepo,
@@ -784,6 +793,15 @@ const DELEGATES: Readonly<Record<keyof Repos, readonly string[]>> = {
 		"failNodeImage",
 		"requeueRunningNodeImages",
 		"retryNodeImage",
+		"listCharacterOutfits",
+		"getCharacterOutfit",
+		"replaceCharacterOutfits",
+		"upsertCharacterOutfit",
+		"deleteCharacterOutfit",
+		"listTagLibraryEntries",
+		"replaceTagLibraryEntries",
+		"upsertTagLibraryEntry",
+		"deleteTagLibraryEntry",
 	],
 	memory: [
 		"appendNotebookVersion",

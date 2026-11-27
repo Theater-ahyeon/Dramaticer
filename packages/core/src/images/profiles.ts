@@ -218,9 +218,19 @@ export function createVisualProfileHandler(
 			NO_CONTINUATION,
 		);
 		const profiles = parseVisualProfilesResponse(result.text, input.knownNames);
+		const lockedNames = new Set(
+			store
+				.listCharacterVisualProfiles(job.storyId)
+				.filter((record) => record.profile.locked)
+				.map((record) => normalizeEntityName(record.character)),
+		);
+		const unlocked = profiles.filter(
+			(profile) => !lockedNames.has(normalizeEntityName(profile.character)),
+		);
+		if (unlocked.length === 0) return;
 		store.saveCharacterVisualProfiles({
 			storyId: job.storyId,
-			profiles,
+			profiles: unlocked,
 			source: "model",
 		});
 	};

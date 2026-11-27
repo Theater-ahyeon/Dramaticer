@@ -1,4 +1,5 @@
 import type {
+	CharacterOutfit,
 	CharacterVisualProfileRecord,
 	ComfyUiSlotCandidates,
 	ComfyUiSlotName,
@@ -6,6 +7,8 @@ import type {
 	ComfyUiWorkflow,
 	ImageWorkflowRecord,
 	NodeImageStatus,
+	TagLibraryEntry,
+	WritingEntry,
 } from "@dramaticer/core";
 
 /** 生图后端的状态；不包含密钥值。 */
@@ -33,6 +36,38 @@ export interface StoryVisualProfileGenerateResult {
 	readonly storyId: string;
 	readonly jobId: number;
 	readonly kind: string;
+}
+
+/** `GET/PUT /api/stories/:id/outfits` 的载荷；服装独立于外貌档案。 */
+export interface StoryCharacterOutfitsView {
+	readonly storyId: string;
+	readonly outfits: readonly CharacterOutfit[];
+}
+
+/** `GET/PUT /api/stories/:id/image-tags` 的载荷；故事条目与全局条目都返回。 */
+export interface StoryTagLibraryView {
+	readonly storyId: string;
+	readonly entries: readonly TagLibraryEntry[];
+}
+
+/** 画面整理的写作条目；`scope` 固定为 image_organizer。 */
+export interface StoryImageOrganizerEntriesView {
+	readonly storyId: string;
+	readonly entries: readonly WritingEntry[];
+}
+
+/** `POST /api/stories/:id/images/import-st` 的请求体。 */
+export interface StoryImageImportRequest {
+	readonly kind: "characters" | "preset";
+	readonly data: unknown;
+}
+
+export interface StoryImageImportResult {
+	readonly storyId: string;
+	readonly profiles: number;
+	readonly outfits: number;
+	readonly tagEntries: number;
+	readonly writingEntries: number;
 }
 
 export type ImageWorkflowView = ImageWorkflowRecord;

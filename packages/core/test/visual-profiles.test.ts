@@ -162,6 +162,21 @@ describe("视觉档案字段校验", () => {
 			negative: [],
 			seed: null,
 			backends: {},
+			locked: false,
+			slots: {
+				face: {
+					front: { clothed: [], bare: [] },
+					back: { clothed: [], bare: [] },
+				},
+				upper: {
+					front: { clothed: [], bare: [] },
+					back: { clothed: [], bare: [] },
+				},
+				full: {
+					front: { clothed: [], bare: [] },
+					back: { clothed: [], bare: [] },
+				},
+			},
 		});
 	});
 
@@ -353,6 +368,30 @@ describe("视觉档案任务", () => {
 		expect(
 			store.getCharacterVisualProfile("s1", "阿岚")?.profile.defaultOutfit,
 		).toBe("白色风衣");
+	});
+
+	it("锁定的档案不被后台自动生成覆盖", async () => {
+		const { store } = openTempStore();
+		seedStory(store);
+		store.saveCharacterVisualProfiles({
+			storyId: "s1",
+			source: "player",
+			profiles: [
+				assertCharacterVisualProfile(
+					profile("凛", { base: ["锁定外貌"], locked: true }),
+				),
+			],
+		});
+		const { client } = createFakeClient([
+			profilesJson([profile("凛", { base: ["模型外貌"] }), profile("阿岚")]),
+		]);
+
+		await createVisualProfileHandler()({ store, client, job: storyJob() });
+
+		expect(store.getCharacterVisualProfile("s1", "凛")?.profile.base).toEqual([
+			"锁定外貌",
+		]);
+		expect(store.getCharacterVisualProfile("s1", "阿岚")).not.toBeNull();
 	});
 
 	it("没有角色卡与常驻世界书时不入队也不调用模型", async () => {

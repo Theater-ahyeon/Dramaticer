@@ -4,14 +4,16 @@
 
 **Blocked by:** 无
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] 分格展开按可见性取对应格
-- [ ] 标签库按关键词触发进整理输入
-- [ ] 导入合成的智绘姬格式文件成功
-- [ ] 导入智绘姬生图提示词预设：按关键词触发的条目转成标签库，其余转成画面整理的写作条目
-- [ ] `pnpm check` 通过；动到 server 或 web 的跑相关 e2e，并用走查脚本（`packages/web/.walk/`）重新截图逐页确认
+- [x] 分格展开按可见性取对应格
+- [x] 标签库按关键词触发进整理输入
+- [x] 导入合成的智绘姬格式文件成功
+- [x] 导入智绘姬生图提示词预设：按关键词触发的条目转成标签库，其余转成画面整理的写作条目
+- [x] `pnpm check` 通过；动到 server 或 web 的跑相关 e2e，并用走查脚本（`packages/web/.walk/`）重新截图逐页确认
 
 规格：`.scratch/image-v2/spec.md`；方案：`docs/proposals/v5.md`
 
 ## Comments
+
+完成：2026-11-27 分格档案、独立服装、标签库、画面整理作用域与智绘姬兼容导入；`pnpm check`、`v5-image-profiles` 桌面/手机、`v4-lore`、`v4-prefs` 与 `walk15` 走查通过。

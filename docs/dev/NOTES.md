@@ -291,3 +291,14 @@
 - 渲染器可以关掉：`story_kv` 里的 `sandbox.renderers` 记录带 `enabled`，旧记录缺省按开启；`POST /api/stories/:id/sandbox/renderers/:id` 传 `{enabled}` 同时处理声明式与 ST 渲染器，`GET .../sandbox` 的列表带 `enabled`，设定页的开关直接改它。
 - e2e 新增在 `v5-card-ui.spec.ts`（状态栏与按钮、点击写 `mvu.energy` 并发消息、设定页关掉两个插件后没有 iframe、原文 `<stat>` 可见），走查脚本 `.walk/walk14.spec.ts`。
 
+
+## 剧情插图（2026-11-27 起，image-v2/01）
+
+- 分格与标签库的词表在 `core/src/images/vocabulary.ts`，只含常量与纯类型。浏览器要取这些常量时用子入口 `@dramaticer/core/image-vocabulary`；不要从 core 主入口取值，主入口会把 better-sqlite3 带进 Vite 包并白屏。
+- 视觉档案的 JSON 增加 `locked` 与 `slots`（脸/上身/全身 × 正/背 × 着装/裸露）；旧行没有这两个字段时分别补 `false` 与全空 12 格。`assertCharacterVisualProfile` 仍然拒绝未知字段。
+- 展开纯函数是 `expandVisualProfile`：按视角 × 部位 × 着装状态取一格，空格回退 `base`；着装时按画面里上身/全身可见或隐藏拼服装的对应标签。`selectCharacterOutfit` 按显式选择、台账 `outfitPath`、默认服装的顺序取一套。
+- 独立服装在迁移 83 的 `character_outfits`，一套服装存上身/全身 × 可见/隐藏四组标签；同一人物最多一套默认。标签库在 `tag_library_entries`，与写作条目同构，故事条目与全局条目共存，替换只动故事条目。
+- 写作条目增加 `scope`（默认 `turn`）；画面整理专用条目是 `image_organizer`，`applyWritingEntries` 只发 `turn`，两套编辑界面分别只显示并保留自己那套。
+- 智绘姬兼容导入在 `st-compat/src/image-import/`：`characters.ts` 读角色库/服装库（角色列表、12 格或平铺分格、角色下或根部服装），`prompts.ts` 读生图预设（有关键词的进标签库，其余进画面整理条目）。服务端只经 `POST /api/stories/:id/images/import-st` 调用它，core 不依赖 st-compat。
+- 接口：`PUT .../visual-profiles`、`GET|PUT .../outfits`、`GET|PUT .../image-tags`、`GET .../image-organizer/entries`、`POST .../images/import-st`。设定页由 `v4/VisualProfileEditor.tsx` 提供分格、服装、标签库、整理条目与两个导入按钮。
+- e2e 在 `v5-image-profiles.spec.ts`（桌面/手机：导入、锁定、编辑并刷新保留、服装新增、标签编辑、整理条目与存储作用域），走查脚本 `.walk/walk15.spec.ts`。

@@ -1,0 +1,88 @@
+{
+	"format": "zhihuji.character-library",
+	"characters": [
+		{
+			"name": "凛",
+			"base": ["black long hair", "red eyes"],
+			"negative": ["bad hands"],
+			"locked": true,
+			"slots": {
+				"face": {
+					"front": {
+						"clothed": ["face front clothed"],
+						"bare": ["face front bare"]
+					},
+					"back": {
+						"clothed": ["face back clothed"],
+						"bare": ["face back bare"]
+					}
+				},
+				"upper": {
+					"front": {
+						"clothed": ["upper front clothed"],
+						"bare": ["upper front bare"]
+					},
+					"back": {
+						"clothed": ["upper back clothed"],
+						"bare": ["upper back bare"]
+					}
+				},
+				"full": {
+					"front": {
+						"clothed": ["full front clothed"],
+						"bare": ["full front bare"]
+					},
+					"back": {
+						"clothed": ["full back clothed"],
+						"bare": ["full back bare"]
+					}
+				}
+			},
+			"outfits": [
+				{
+					"name": "深蓝校服",
+					"upper": {
+						"visible": ["navy blazer"],
+						"hidden": ["navy collar"]
+					},
+					"full": {
+						"visible": ["pleated skirt"],
+						"hidden": ["skirt hem"]
+					},
+					"default": true
+				},
+				{
+					"name": "白色礼服",
+					"upperVisible": ["white dress"],
+					"upperHidden": ["white sleeve"],
+					"fullVisible": ["long gown"],
+					"fullHidden": ["gown train"],
+					"locked": true
+				}
+			]
+		},
+		{
+			"name": "阿岚",
+			"basePrompt": "short silver hair, amber eyes",
+			"facePrompt": "sharp eyes",
+			"costumes": [
+				{
+					"name": "灰色夹克",
+					"upper": {
+						"visible": ["grey jacket"],
+						"hidden": ["jacket collar"]
+					},
+					"default": true
+				}
+			]
+		}
+	],
+	"outfits": [
+		{
+			"character": "凛",
+			"name": "雨衣",
+			"fullVisible": ["raincoat"],
+			"fullHidden": ["raincoat hood"]
+		}
+	]
+}

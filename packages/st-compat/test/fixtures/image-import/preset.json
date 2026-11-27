@@ -1,0 +1,37 @@
+{
+	"name": "智绘姬生图预设",
+	"prompts": [
+		{
+			"name": "动作·拔剑",
+			"category": "动作",
+			"content": "dynamic pose, sword swing",
+			"keywords": ["拔剑", "sword"],
+			"enabled": true,
+			"priority": 5
+		},
+		{
+			"name": "表情·微笑",
+			"type": "expression",
+			"content": "soft smile",
+			"keys": "微笑,smile",
+			"enabled": true
+		},
+		{
+			"name": "画风",
+			"content": "clean lineart, muted colors",
+			"enabled": true
+		},
+		{
+			"name": "常驻构图",
+			"type": "composition",
+			"content": "cinematic composition",
+			"constant": true,
+			"enabled": true
+		},
+		{
+			"name": "停用条目",
+			"content": "keep this off",
+			"enabled": false
+		}
+	]
+}

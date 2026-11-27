@@ -2446,6 +2446,48 @@ export function buildMigrations(
 					ON sandbox_rejections(story_id, id)`,
 			],
 		},
+		{
+			version: 83,
+			description:
+				"剧情插图（v5 §6）：独立服装按上身 / 全身 × 可见 / 隐藏存标签；标签库与写作条目同构，按关键词触发",
+			statements: [
+				`CREATE TABLE character_outfits (
+					id TEXT PRIMARY KEY,
+					story_id TEXT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+					character TEXT NOT NULL CHECK (length(character) > 0),
+					name TEXT NOT NULL CHECK (length(name) > 0),
+					upper_visible TEXT NOT NULL,
+					upper_hidden TEXT NOT NULL,
+					full_visible TEXT NOT NULL,
+					full_hidden TEXT NOT NULL,
+					is_default INTEGER NOT NULL DEFAULT 0 CHECK (is_default IN (0, 1)),
+					locked INTEGER NOT NULL DEFAULT 0 CHECK (locked IN (0, 1)),
+					created_at TEXT NOT NULL,
+					updated_at TEXT NOT NULL,
+					UNIQUE (story_id, character, name)
+				) STRICT`,
+				`CREATE INDEX character_outfits_story
+					ON character_outfits(story_id, character)`,
+				`CREATE TABLE tag_library_entries (
+					id TEXT PRIMARY KEY,
+					story_id TEXT REFERENCES stories(id) ON DELETE CASCADE,
+					scope TEXT NOT NULL DEFAULT 'story' CHECK (scope IN ('story', 'global')),
+					category TEXT NOT NULL
+						CHECK (category IN ('action', 'pose', 'composition', 'expression', 'clothing', 'scene', 'style', 'other')),
+					name TEXT NOT NULL CHECK (length(name) > 0),
+					content TEXT NOT NULL CHECK (length(content) > 0),
+					keywords TEXT NOT NULL,
+					constant INTEGER NOT NULL DEFAULT 0 CHECK (constant IN (0, 1)),
+					enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+					priority INTEGER NOT NULL DEFAULT 0,
+					created_at TEXT NOT NULL,
+					updated_at TEXT NOT NULL,
+					CHECK ((scope = 'story' AND story_id IS NOT NULL) OR (scope = 'global' AND story_id IS NULL))
+				) STRICT`,
+				`CREATE INDEX tag_library_entries_story
+					ON tag_library_entries(story_id, category, priority)`,
+			],
+		},
 	];
 }
 

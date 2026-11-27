@@ -3,6 +3,7 @@ import {
 	type CharacterVisualProfile,
 	DEFAULT_IMAGE_NEGATIVE_PROMPT,
 	compileImagePrompt,
+	emptyVisualSlotGrid,
 } from "../src/index.js";
 
 const rin: CharacterVisualProfile = {
@@ -13,6 +14,8 @@ const rin: CharacterVisualProfile = {
 	negative: ["glasses", "glasses"],
 	seed: null,
 	backends: {},
+	locked: false,
+	slots: emptyVisualSlotGrid(),
 };
 
 const lan: CharacterVisualProfile = {
@@ -23,6 +26,8 @@ const lan: CharacterVisualProfile = {
 	negative: ["smile"],
 	seed: 7,
 	backends: {},
+	locked: false,
+	slots: emptyVisualSlotGrid(),
 };
 
 describe("标签式提示词", () => {

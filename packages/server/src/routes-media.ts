@@ -2,17 +2,21 @@
 import { readFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
+	type CharacterOutfitInput,
+	type CharacterVisualProfile,
 	type ComfyUiSlots,
 	type ComfyUiWorkflow,
 	type ImagePromptRequest,
 	ImageWorkflowInUseError,
 	type NodeImageRecord,
+	type TagLibraryEntryInput,
 	assertComfyUiSlots,
 	detectComfyUiSlots,
 	emptyImagesConfig,
 	enqueueIllustrateBackgroundJob,
 	loadImagesConfig,
 	parseComfyUiWorkflow,
+	readWritingEntries,
 	resolveImageProvider,
 	saveNovelAiTemplate,
 	validateImagePromptRequest,
@@ -23,7 +27,16 @@ import type {
 	ImageWorkflowsView,
 	NodeImage,
 	NodeImagesView,
+	StoryCharacterOutfitsView,
+	StoryImageImportResult,
+	StoryImageOrganizerEntriesView,
+	StoryTagLibraryView,
+	StoryVisualProfilesView,
 } from "@dramaticer/protocol";
+import {
+	importImageCharacterLibrary,
+	importImagePromptPreset,
+} from "@dramaticer/st-compat";
 import { renderCoverPlaceholder } from "./cover-placeholder.js";
 import { HttpError, sendEmpty, sendJson } from "./http.js";
 import {
@@ -84,6 +97,186 @@ export function handleImageWorkflows(
 		workflows: options.store.listImageWorkflows(),
 	};
 	sendJson(res, 200, view);
+}
+
+/** `PUT /api/stories/:id/visual-profiles`：玩家保存 12 格与锁定。 */
+export async function handleStoryVisualProfilesSave(
+	req: IncomingMessage,
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	storyId: string,
+): Promise<void> {
+	requireStory(options.store, storyId);
+	const body = await readObjectBody(req, options.maxJsonBodyBytes);
+	assertKnownKeys(body, ["profiles"]);
+	if (!Array.isArray(body.profiles)) {
+		throw fieldError("profiles", "profiles 必须是数组");
+	}
+	if (body.profiles.length > 0) {
+		try {
+			options.store.saveCharacterVisualProfiles({
+				storyId,
+				profiles: body.profiles as readonly CharacterVisualProfile[],
+				source: "player",
+			});
+		} catch (error) {
+			throw toBadRequest(error, "profiles");
+		}
+	}
+	const view: StoryVisualProfilesView = {
+		storyId,
+		profiles: options.store.listCharacterVisualProfiles(storyId),
+	};
+	sendJson(res, 200, view);
+}
+
+export function handleStoryOutfits(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	storyId: string,
+): void {
+	requireStory(options.store, storyId);
+	const view: StoryCharacterOutfitsView = {
+		storyId,
+		outfits: options.store.listCharacterOutfits(storyId),
+	};
+	sendJson(res, 200, view);
+}
+
+/** `PUT /api/stories/:id/outfits`：整体保存服装表，支持增删改。 */
+export async function handleStoryOutfitsSave(
+	req: IncomingMessage,
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	storyId: string,
+): Promise<void> {
+	requireStory(options.store, storyId);
+	const body = await readObjectBody(req, options.maxJsonBodyBytes);
+	assertKnownKeys(body, ["outfits"]);
+	if (!Array.isArray(body.outfits)) {
+		throw fieldError("outfits", "outfits 必须是数组");
+	}
+	try {
+		options.store.replaceCharacterOutfits({
+			storyId,
+			outfits: body.outfits as readonly CharacterOutfitInput[],
+		});
+	} catch (error) {
+		throw toBadRequest(error, "outfits");
+	}
+	const view: StoryCharacterOutfitsView = {
+		storyId,
+		outfits: options.store.listCharacterOutfits(storyId),
+	};
+	sendJson(res, 200, view);
+}
+
+export function handleStoryImageTags(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	storyId: string,
+): void {
+	requireStory(options.store, storyId);
+	const view: StoryTagLibraryView = {
+		storyId,
+		entries: options.store.listTagLibraryEntries(storyId),
+	};
+	sendJson(res, 200, view);
+}
+
+/** `PUT /api/stories/:id/image-tags`：整体保存故事标签库，支持开关与删除。 */
+export async function handleStoryImageTagsSave(
+	req: IncomingMessage,
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	storyId: string,
+): Promise<void> {
+	requireStory(options.store, storyId);
+	const body = await readObjectBody(req, options.maxJsonBodyBytes);
+	assertKnownKeys(body, ["entries"]);
+	if (!Array.isArray(body.entries)) {
+		throw fieldError("entries", "entries 必须是数组");
+	}
+	try {
+		options.store.replaceTagLibraryEntries({
+			storyId,
+			entries: body.entries as readonly TagLibraryEntryInput[],
+		});
+	} catch (error) {
+		throw toBadRequest(error, "entries");
+	}
+	const view: StoryTagLibraryView = {
+		storyId,
+		entries: options.store.listTagLibraryEntries(storyId),
+	};
+	sendJson(res, 200, view);
+}
+
+/** `GET /api/stories/:id/image-organizer/entries`：画面整理专用的写作条目。 */
+export function handleStoryImageOrganizerEntries(
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	storyId: string,
+): void {
+	requireStory(options.store, storyId);
+	const view: StoryImageOrganizerEntriesView = {
+		storyId,
+		entries: readWritingEntries(options.store, storyId).filter(
+			(entry) => entry.scope === "image_organizer",
+		),
+	};
+	sendJson(res, 200, view);
+}
+
+/** `POST /api/stories/:id/images/import-st`：角色 / 服装库或生图预设。 */
+export async function handleStoryImageImport(
+	req: IncomingMessage,
+	res: ServerResponse,
+	options: ApiRouteOptions,
+	storyId: string,
+): Promise<void> {
+	requireStory(options.store, storyId);
+	const body = await readObjectBody(req, options.maxJsonBodyBytes);
+	assertKnownKeys(body, ["kind", "data"]);
+	if (body.kind !== "characters" && body.kind !== "preset") {
+		throw fieldError("kind", "kind 只能是 characters 或 preset");
+	}
+	if (!Object.hasOwn(body, "data")) {
+		throw fieldError("data", "data 必须提供");
+	}
+	let result: StoryImageImportResult;
+	try {
+		if (body.kind === "characters") {
+			const imported = importImageCharacterLibrary(
+				options.store,
+				storyId,
+				body.data,
+			);
+			result = {
+				storyId,
+				profiles: imported.profiles,
+				outfits: imported.outfits,
+				tagEntries: 0,
+				writingEntries: 0,
+			};
+		} else {
+			const imported = importImagePromptPreset(
+				options.store,
+				storyId,
+				body.data,
+			);
+			result = {
+				storyId,
+				profiles: 0,
+				outfits: 0,
+				tagEntries: imported.tagEntries,
+				writingEntries: imported.writingEntries,
+			};
+		}
+	} catch (error) {
+		throw toBadRequest(error, "data");
+	}
+	sendJson(res, 200, result);
 }
 
 export async function handleImageWorkflowDetect(

@@ -539,6 +539,49 @@ button.scene-control[aria-pressed="true"] {
 	font-size: 0.82rem;
 }
 
+.visual-slot-grid {
+	display: grid;
+	gap: 10px;
+	margin-top: 10px;
+}
+
+.visual-slot-part {
+	margin: 0;
+	padding: 8px 10px;
+	border: 1px solid var(--border);
+	border-radius: var(--r-sm);
+}
+
+.visual-slot-part legend {
+	padding: 0 4px;
+	color: var(--muted);
+	font-size: 0.82rem;
+}
+
+.visual-slot-row {
+	display: grid;
+	grid-template-columns: 44px minmax(0, 1fr) minmax(0, 1fr);
+	align-items: end;
+	gap: 8px;
+	margin-top: 6px;
+}
+
+.image-profile-editor {
+	margin-top: 10px;
+	padding-top: 10px;
+	border-top: 1px dashed var(--border);
+}
+
+@media (max-width: 720px) {
+	.visual-slot-row {
+		grid-template-columns: 1fr;
+	}
+
+	.image-profile-editor .settings-grid {
+		grid-template-columns: 1fr;
+	}
+}
+
 .image-profile-fields > div {
 	display: flex;
 	gap: 6px;

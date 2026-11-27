@@ -3,6 +3,13 @@ import { assertPlainObject, rejectUnknownKeys } from "../json.js";
 import type { NovelAiParameters } from "./novelai-params.js";
 import type { ImagePromptRequest } from "./prompt.js";
 import type { ComfyUiSlots, ComfyUiWorkflow } from "./slots.js";
+import {
+	VISUAL_DRESS_STATES,
+	VISUAL_SLOT_PARTS,
+	VISUAL_SLOT_VIEWS,
+	type VisualSlotGrid,
+	emptyVisualSlotGrid,
+} from "./vocabulary.js";
 
 export const IMAGE_MODES = ["off", "manual", "auto"] as const;
 
@@ -186,7 +193,7 @@ export type SaveImageWorkflowInput =
  */
 export interface CharacterVisualProfile {
 	readonly character: string;
-	/** 基础外貌标签，按稳定特征排列。 */
+	/** 基础外貌标签，按稳定特征排列；分格为空时用它。 */
 	readonly base: readonly string[];
 	readonly defaultOutfit: string;
 	/** 台账里当前服装的路径；为空表示始终使用 defaultOutfit。 */
@@ -195,6 +202,9 @@ export interface CharacterVisualProfile {
 	/** 固定 seed；为空时由出图任务自行生成。 */
 	readonly seed: number | null;
 	readonly backends: Readonly<Record<string, never>>;
+	/** 锁定后后台自动生成不会覆盖这个人物。 */
+	readonly locked: boolean;
+	readonly slots: VisualSlotGrid;
 }
 
 export const VISUAL_PROFILE_SOURCES = ["model", "player", "import"] as const;
@@ -218,6 +228,8 @@ const PROFILE_FIELDS = [
 	"negative",
 	"seed",
 	"backends",
+	"locked",
+	"slots",
 ] as const;
 
 const MAX_PROFILE_SEED = Number.MAX_SAFE_INTEGER;
@@ -279,6 +291,45 @@ function requireEmptyBackends(
 	return {};
 }
 
+function requireSlotGrid(value: unknown, label: string): VisualSlotGrid {
+	const record = assertPlainObject(value, label);
+	rejectUnknownKeys(record, VISUAL_SLOT_PARTS, label);
+	const grid = emptyVisualSlotGrid();
+	const mutable: Record<string, unknown> = {};
+	for (const part of VISUAL_SLOT_PARTS) {
+		const rawPart = record[part];
+		if (rawPart === undefined) {
+			mutable[part] = grid[part];
+			continue;
+		}
+		const partLabel = `${label}.${part}`;
+		const partRecord = assertPlainObject(rawPart, partLabel);
+		rejectUnknownKeys(partRecord, VISUAL_SLOT_VIEWS, partLabel);
+		const partViews: Record<string, unknown> = {};
+		for (const view of VISUAL_SLOT_VIEWS) {
+			const rawView = partRecord[view];
+			if (rawView === undefined) {
+				partViews[view] = grid[part][view];
+				continue;
+			}
+			const viewLabel = `${partLabel}.${view}`;
+			const viewRecord = assertPlainObject(rawView, viewLabel);
+			rejectUnknownKeys(viewRecord, VISUAL_DRESS_STATES, viewLabel);
+			const states: Record<string, unknown> = {};
+			for (const state of VISUAL_DRESS_STATES) {
+				const rawState = viewRecord[state];
+				states[state] =
+					rawState === undefined
+						? []
+						: requireTagList(rawState, `${viewLabel}.${state}`, true);
+			}
+			partViews[view] = states;
+		}
+		mutable[part] = partViews;
+	}
+	return mutable as VisualSlotGrid;
+}
+
 /** 校验视觉档案的字段形状；人物是否已知由调用方判断。 */
 export function assertCharacterVisualProfile(
 	value: unknown,
@@ -308,6 +359,14 @@ export function assertCharacterVisualProfile(
 		record.backends === undefined
 			? {}
 			: requireEmptyBackends(record.backends, `${label}.backends`);
+	const locked = record.locked ?? false;
+	if (typeof locked !== "boolean") {
+		throw new Error(`${label}.locked 必须是布尔值`);
+	}
+	const slots =
+		record.slots === undefined
+			? emptyVisualSlotGrid()
+			: requireSlotGrid(record.slots, `${label}.slots`);
 	return {
 		character,
 		base,
@@ -316,6 +375,8 @@ export function assertCharacterVisualProfile(
 		negative,
 		seed,
 		backends,
+		locked,
+		slots,
 	};
 }
 

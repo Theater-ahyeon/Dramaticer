@@ -7,7 +7,10 @@ import type {
 	ImageWorkflowDetectionView,
 	ImageWorkflowsView,
 	NodeImagesView,
+	StoryCharacterOutfitsView,
+	StoryImageImportResult,
 	StoryPath,
+	StoryTagLibraryView,
 	StoryVisualProfileGenerateResult,
 	StoryVisualProfilesView,
 } from "@dramaticer/protocol";
@@ -484,6 +487,21 @@ describe("生图接口", () => {
 						negative: ["眼镜"],
 						seed: 42,
 						backends: {},
+						locked: false,
+						slots: {
+							face: {
+								front: { clothed: [], bare: [] },
+								back: { clothed: [], bare: [] },
+							},
+							upper: {
+								front: { clothed: [], bare: [] },
+								back: { clothed: [], bare: [] },
+							},
+							full: {
+								front: { clothed: [], bare: [] },
+								back: { clothed: [], bare: [] },
+							},
+						},
 					},
 					source: "model",
 					createdAt: timestamp,
@@ -545,6 +563,211 @@ describe("生图接口", () => {
 			"POST",
 		);
 		expect(missing.status).toBe(404);
+	});
+
+	it("分格档案、独立服装与标签库可保存；兼容导入分到正确存储", async () => {
+		const { running } = await startImagesServer();
+		running.store.createStory({ id: "s1", title: "测试" });
+
+		const savedProfile = await request(
+			running.origin,
+			"/api/stories/s1/visual-profiles",
+			"PUT",
+			{
+				profiles: [
+					{
+						character: "凛",
+						base: ["黑长直"],
+						defaultOutfit: "深蓝校服",
+						locked: true,
+						slots: {
+							face: {
+								front: { clothed: ["冷静的脸"], bare: ["素颜"] },
+							},
+						},
+					},
+				],
+			},
+		);
+		expect(savedProfile.status).toBe(200);
+		const profileView = (await savedProfile.json()) as StoryVisualProfilesView;
+		expect(profileView.profiles[0]?.profile.locked).toBe(true);
+		expect(profileView.profiles[0]?.profile.slots.face.front.clothed).toEqual([
+			"冷静的脸",
+		]);
+		expect(profileView.profiles[0]?.profile.slots.upper.back.bare).toEqual([]);
+
+		const savedOutfits = await request(
+			running.origin,
+			"/api/stories/s1/outfits",
+			"PUT",
+			{
+				outfits: [
+					{
+						id: "o1",
+						character: "凛",
+						name: "深蓝校服",
+						upperVisible: ["blazer"],
+						upperHidden: ["collar"],
+						fullVisible: ["skirt"],
+						isDefault: true,
+					},
+					{
+						id: "o2",
+						character: "凛",
+						name: "礼服",
+						fullVisible: ["gown"],
+					},
+				],
+			},
+		);
+		expect(savedOutfits.status).toBe(200);
+		const outfitView = (await savedOutfits.json()) as StoryCharacterOutfitsView;
+		expect(outfitView.outfits.map((outfit) => outfit.name)).toEqual([
+			"深蓝校服",
+			"礼服",
+		]);
+		expect(
+			outfitView.outfits.find((outfit) => outfit.name === "深蓝校服")
+				?.upperHidden,
+		).toEqual(["collar"]);
+		const duplicateDefaults = await request(
+			running.origin,
+			"/api/stories/s1/outfits",
+			"PUT",
+			{
+				outfits: [
+					{ character: "凛", name: "A", isDefault: true },
+					{ character: "凛", name: "B", isDefault: true },
+				],
+			},
+		);
+		expect(duplicateDefaults.status).toBe(400);
+
+		const savedTags = await request(
+			running.origin,
+			"/api/stories/s1/image-tags",
+			"PUT",
+			{
+				entries: [
+					{
+						id: "t1",
+						category: "action",
+						name: "拔剑",
+						content: "dynamic pose",
+						keywords: ["拔剑"],
+					},
+					{
+						id: "t2",
+						category: "composition",
+						name: "夜景",
+						content: "cinematic",
+						constant: true,
+					},
+				],
+			},
+		);
+		expect(savedTags.status).toBe(200);
+		const tagView = (await savedTags.json()) as StoryTagLibraryView;
+		expect(tagView.entries.map((entry) => entry.name)).toEqual([
+			"拔剑",
+			"夜景",
+		]);
+		expect(tagView.entries[0]?.keywords).toEqual(["拔剑"]);
+		expect(tagView.entries[1]?.constant).toBe(true);
+		const badTag = await request(
+			running.origin,
+			"/api/stories/s1/image-tags",
+			"PUT",
+			{
+				entries: [{ category: "动作", name: "错类", content: "x" }],
+			},
+		);
+		expect(badTag.status).toBe(400);
+
+		const charactersImport = await request(
+			running.origin,
+			"/api/stories/s1/images/import-st",
+			"POST",
+			{
+				kind: "characters",
+				data: {
+					characters: [
+						{
+							name: "阿岚",
+							base: ["银发"],
+							slots: {
+								face: { front: { clothed: ["冷眼"] } },
+							},
+							outfits: [
+								{
+									name: "夹克",
+									upper: { visible: ["jacket"] },
+									default: true,
+								},
+							],
+						},
+					],
+				},
+			},
+		);
+		expect(charactersImport.status).toBe(200);
+		expect((await charactersImport.json()) as StoryImageImportResult).toEqual({
+			storyId: "s1",
+			profiles: 1,
+			outfits: 1,
+			tagEntries: 0,
+			writingEntries: 0,
+		});
+		expect(running.store.listCharacterVisualProfiles("s1")).toHaveLength(2);
+		expect(running.store.listCharacterOutfits("s1")).toHaveLength(3);
+
+		const presetImport = await request(
+			running.origin,
+			"/api/stories/s1/images/import-st",
+			"POST",
+			{
+				kind: "preset",
+				data: {
+					prompts: [
+						{
+							name: "挥剑",
+							category: "动作",
+							content: "sword swing",
+							keywords: ["挥剑"],
+						},
+						{ name: "画风", content: "clean lineart" },
+					],
+				},
+			},
+		);
+		expect(presetImport.status).toBe(200);
+		expect((await presetImport.json()) as StoryImageImportResult).toEqual({
+			storyId: "s1",
+			profiles: 0,
+			outfits: 0,
+			tagEntries: 1,
+			writingEntries: 1,
+		});
+		const tagsAfter = await request(
+			running.origin,
+			"/api/stories/s1/image-tags",
+		);
+		const tagsAfterView = (await tagsAfter.json()) as StoryTagLibraryView;
+		expect(tagsAfterView.entries.map((entry) => entry.name)).toContain("挥剑");
+		const writing = (await (
+			await request(running.origin, "/api/stories/s1/writing")
+		).json()) as {
+			entries: readonly { name: string; scope: string }[];
+		};
+		expect(
+			writing.entries.filter((entry) => entry.scope === "image_organizer"),
+		).toEqual([
+			expect.objectContaining({ name: "画风", scope: "image_organizer" }),
+		]);
+		expect(
+			writing.entries.filter((entry) => entry.scope === "turn"),
+		).toHaveLength(0);
 	});
 
 	it("path 与节点图片接口返回按 ordinal 排序的图片，url 只在 done 时出现", async () => {
