@@ -258,7 +258,7 @@ export function CanonBook() {
 			<section data-view="canonbook">
 				<div className="vh">
 					<h1>原著</h1>
-					<TLink className="btn ghost sm" to="/canon">
+					<TLink className="btn sm" to="/canon">
 						全部原著
 					</TLink>
 				</div>
@@ -305,9 +305,20 @@ export function CanonBook() {
 						<p className="canon-file">{book.filename}</p>
 					)}
 				</div>
-				<TLink className="btn ghost sm" to="/canon">
-					全部原著
-				</TLink>
+				<div className="vh-tools">
+					<TLink className="btn sm" to="/canon">
+						全部原著
+					</TLink>
+					<button
+						type="button"
+						className="btn sm"
+						disabled={busy}
+						title="原文与分章都会删除，无法恢复"
+						onClick={remove}
+					>
+						删除原著
+					</button>
+				</div>
 			</div>
 			<section className="page canon-extract" aria-label="抽取预估与进度">
 				{book.hasText ? (
@@ -425,7 +436,7 @@ export function CanonBook() {
 					{compilation === null ? null : (
 						<span className="label">
 							{compilation.llmCalls} 次调用 ·{" "}
-							{formatTokens(compilation.llmTokens)} token
+							{formatTokens(compilation.llmTokens)} token ·{" "}
 						</span>
 					)}
 					<span className="label">
@@ -433,6 +444,13 @@ export function CanonBook() {
 					</span>
 				</div>
 				<p className="muted">合并别名、排定时间线与关键转折，一次后台跑完。</p>
+				{extractionStatus === "done" ? null : (
+					<p className="muted">
+						{book.hasText
+							? "先抽取完所有章节，才能汇编成人物、世界索引与主线。"
+							: "这本原著包不含原文，只能查看已有汇编结果。"}
+					</p>
+				)}
 				<div className="canon-compile-buttons">
 					<button
 						type="button"
@@ -620,13 +638,16 @@ export function CanonBook() {
 											onChange={(event) =>
 												setSplitAt(Number(event.target.value))
 											}
+											disabled={(chapter.data?.paragraphs.length ?? 0) < 2}
 										/>
 										段后拆分
 									</label>
 									<button
 										type="button"
 										className="btn sm"
-										disabled={busy}
+										disabled={
+											busy || (chapter.data?.paragraphs.length ?? 0) < 2
+										}
 										onClick={split}
 									>
 										拆分
@@ -638,15 +659,6 @@ export function CanonBook() {
 										onClick={mergeNext}
 									>
 										与下一章合并
-									</button>
-									<span className="spacer" />
-									<button
-										type="button"
-										className="btn ghost sm"
-										disabled={busy}
-										onClick={remove}
-									>
-										删除原著
 									</button>
 								</div>
 								{selectedProgress?.lastError === null ||

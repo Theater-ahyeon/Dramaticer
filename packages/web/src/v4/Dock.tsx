@@ -118,15 +118,15 @@ function contextHref(base: string, item: ContextItemView): string {
 }
 
 const CTX_COLOR: Record<string, string> = {
-	pref: "--gold",
-	timeline: "--muted",
-	raw: "--line",
-	state: "--teal",
-	record: "--ok",
-	wiki: "--ok",
-	lore: "--bad",
-	director: "--gold-ink",
-	other: "--soft",
+	pref: "--ctx-pref",
+	timeline: "--ctx-timeline",
+	raw: "--ctx-raw",
+	state: "--ctx-state",
+	record: "--ctx-record",
+	wiki: "--ctx-wiki",
+	lore: "--ctx-lore",
+	director: "--ctx-director",
+	other: "--ctx-other",
 };
 
 /** 故事页右侧的停靠栏：导演、记忆、上下文三页。 */
@@ -294,6 +294,12 @@ export function Dock({
 				<div className="sec">
 					<div className="label">
 						<span>本轮上下文</span>
+						{context.data?.breakdown === null ||
+						context.data?.breakdown === undefined ? null : (
+							<span className="num">
+								共 {formatTokens(context.data.breakdown.totalTokens)}
+							</span>
+						)}
 					</div>
 					{context.data !== null && context.data.breakdown === null ? (
 						<p className="v4empty" style={{ padding: 0 }}>

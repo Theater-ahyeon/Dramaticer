@@ -769,6 +769,13 @@ button.scene-control[aria-pressed="true"] {
 
 /* 输入框旁的助手入口；抽屉覆盖在右侧，不改变聊天区宽度。 */
 
+.assistant-scrim {
+	position: fixed;
+	inset: 0;
+	z-index: 39;
+	background: color-mix(in srgb, var(--ink) 18%, transparent);
+}
+
 .assistant-drawer {
 	position: fixed;
 	top: 0;
@@ -777,10 +784,26 @@ button.scene-control[aria-pressed="true"] {
 	z-index: 40;
 	display: flex;
 	flex-direction: column;
-	width: min(520px, 100vw);
+	width: min(580px, 100vw);
 	background: var(--bg);
 	border-left: 1px solid var(--border);
 	box-shadow: var(--lift);
+}
+
+.assistant-close {
+	border: 0;
+	background: none;
+	color: var(--muted);
+	padding: 4px 8px;
+	border-radius: var(--r-sm);
+}
+
+.assistant-empty {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 10px;
+	padding: 16px 8px;
 }
 
 .assistant-drawer[hidden] {
@@ -802,7 +825,7 @@ button.scene-control[aria-pressed="true"] {
 
 .assistant-body {
 	display: grid;
-	grid-template-columns: minmax(140px, 0.8fr) minmax(0, 1.6fr);
+	grid-template-columns: minmax(170px, 0.85fr) minmax(0, 1.55fr);
 	flex: 1;
 	min-height: 0;
 }

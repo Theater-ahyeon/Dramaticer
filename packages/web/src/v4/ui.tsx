@@ -162,10 +162,12 @@ export function Sw({
 	checked,
 	onChange,
 	label,
+	disabled,
 }: {
 	readonly checked: boolean;
 	readonly onChange: (value: boolean) => void;
 	readonly label: string;
+	readonly disabled?: boolean;
 }) {
 	return (
 		<button
@@ -174,6 +176,7 @@ export function Sw({
 			role="switch"
 			aria-checked={checked}
 			aria-label={label}
+			disabled={disabled}
 			onClick={() => onChange(!checked)}
 		/>
 	);

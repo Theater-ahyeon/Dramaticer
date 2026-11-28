@@ -189,7 +189,11 @@ function NewStoryCard({ onOpen }: { readonly onOpen: () => void }) {
 				＋
 			</span>
 			<h2>新建故事</h2>
-			<p>导入角色卡，或空白开局</p>
+			<p>
+				导入角色卡
+				<br />
+				或空白开局
+			</p>
 		</button>
 	);
 }

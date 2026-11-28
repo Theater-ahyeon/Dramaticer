@@ -530,6 +530,17 @@ export function AdvancedSettings({ storyId }: { readonly storyId: string }) {
 										}
 										disabled={settingsBusy}
 									/>
+									{field.key === "deepTimeoutMs" &&
+									Number(draft.deep.deepTimeoutMs) > 0 &&
+									Number.isFinite(Number(draft.deep.deepTimeoutMs)) ? (
+										<small className="muted">
+											约{" "}
+											{Math.round(
+												(Number(draft.deep.deepTimeoutMs) / 60000) * 10,
+											) / 10}{" "}
+											分钟
+										</small>
+									) : null}
 								</Field>
 							))}
 						</div>

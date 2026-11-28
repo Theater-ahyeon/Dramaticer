@@ -217,16 +217,19 @@ export function Prefs() {
 				<div>
 					<h1>设置</h1>
 				</div>
-				<Seg<FeatureTier>
-					label="档位"
-					value={features.data?.tier ?? null}
-					options={[
-						{ v: "lite", label: "轻量" },
-						{ v: "standard", label: "标准" },
-						{ v: "immersive", label: "完整" },
-					]}
-					onChange={setTier}
-				/>
+				<div className="tier-pick">
+					<span className="label">每轮后台开销</span>
+					<Seg<FeatureTier>
+						label="档位"
+						value={features.data?.tier ?? null}
+						options={[
+							{ v: "lite", label: "轻量" },
+							{ v: "standard", label: "标准" },
+							{ v: "immersive", label: "完整" },
+						]}
+						onChange={setTier}
+					/>
+				</div>
 			</div>
 			<div className="subtabs">
 				{TABS.map(([id, label]) => (
@@ -390,8 +393,12 @@ export function Prefs() {
 							<Sw
 								label="文风包"
 								checked={writing.data.dials.stylePack === true}
+								disabled={writing.data.preset === null}
 								onChange={(value) => setDial({ stylePack: value })}
 							/>
+							{writing.data.preset === null ? (
+								<span className="muted">导入预设后可用</span>
+							) : null}
 						</div>
 					</div>
 					<WritingEntries
@@ -522,9 +529,11 @@ export function Prefs() {
 													)}
 												</h3>
 												{item.description ? <p>{item.description}</p> : null}
-												<div className="stat">
-													<span>{stats.data?.uses[item.id] ?? "—"}</span>
-												</div>
+												{stats.data?.uses[item.id] === undefined ? null : (
+													<div className="stat">
+														<span>{stats.data.uses[item.id]}</span>
+													</div>
+												)}
 											</div>
 											{item.kind === "toggle" ? (
 												<Sw
@@ -590,8 +599,11 @@ export function Prefs() {
 								<span>
 									{card.data?.recommendedMode
 										? `这张卡推荐：${{ fast: "快速", plan: "规划", deep: "深度" }[card.data.recommendedMode] ?? card.data.recommendedMode}`
-										: "写法在「实验」里选择，默认快速"}
+										: "写法在「高级 → 实验」里选择，默认快速"}
 								</span>
+								<Link className="btn ghost sm" to="?tab=adv">
+									去实验选择写法
+								</Link>
 							</div>
 						</div>
 						<Link

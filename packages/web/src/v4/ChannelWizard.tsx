@@ -304,7 +304,7 @@ export function ChannelWizard({
 			<div className="wizard-row">
 				<button
 					type="button"
-					className="btn ghost"
+					className="btn"
 					onClick={() => void fetchModels()}
 					disabled={busy || baseUrl.trim() === "" || !keyReady}
 				>

@@ -368,6 +368,19 @@ function NotebookBlock({
 	);
 }
 
+/** 百科简介在展示时清掉卡模板的痕迹：作者注释、包裹标签与 Markdown 记号。存储值不动。 */
+function formatWikiLead(text: string): string {
+	let out = text.replace(/\{\{\/\/[\s\S]*?(?:\}\}|$)/g, "");
+	out = out.replace(/<\/?(?:角色定位|rule|规则|设定|人物|角色)>/gi, "");
+	out = out
+		.split("\n")
+		.filter((line) => !/^\s*<\/?[^<>]{1,30}>\s*$/.test(line))
+		.map((line) => line.replace(/^\s*[-*]\s+/, "· "))
+		.join("\n");
+	out = out.replace(/\*\*(.+?)\*\*/g, "$1");
+	return out.replace(/\n{3,}/g, "\n\n").trim();
+}
+
 function LinkedText({
 	text,
 	className,
@@ -375,6 +388,7 @@ function LinkedText({
 	self,
 	open,
 	onCommit,
+	formatText,
 }: {
 	readonly text: string;
 	readonly className?: string;
@@ -382,9 +396,12 @@ function LinkedText({
 	readonly self: string;
 	readonly open: (id: string) => void;
 	readonly onCommit: (text: string) => void;
+	/** 只在展示时整理格式；编辑与提交仍用原文。 */
+	readonly formatText?: (text: string) => string;
 }) {
 	const [editing, setEditing] = useState(false);
 	if (!editing) {
+		const display = formatText === undefined ? text : formatText(text);
 		return (
 			<p
 				className={className}
@@ -396,7 +413,7 @@ function LinkedText({
 				}}
 				style={{ cursor: "text" }}
 			>
-				{linkify(text, pages, self, open)}
+				{linkify(display, pages, self, open)}
 			</p>
 		);
 	}
@@ -1169,7 +1186,7 @@ export function Memory() {
 								) : null}
 								<button
 									type="button"
-									className="btn ghost sm"
+									className="btn sm"
 									onClick={() => {
 										memory.reload();
 										toast("已从记录重新整理这一页；你锁定的句子保持不变");
@@ -1181,6 +1198,7 @@ export function Memory() {
 							<LinkedText
 								className="lead"
 								text={page.lead || "（还没有简介，点这里写一句）"}
+								formatText={formatWikiLead}
 								pages={data.pages}
 								self={page.id}
 								open={setPageId}

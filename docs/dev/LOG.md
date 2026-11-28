@@ -528,3 +528,4 @@
 - 2026-11-27 v5 收口验证与文档同步：修复 BackgroundScheduler 默认排空上限与 channels 并发写竞争（atomic-write + 探测重读），修通 playtest/runner 与 v2-setup/v4-story/v4-dock e2e 竞争条件，同步 DESIGN/README/NOTES/HANDOFF 至 v5 现实；pnpm check（2579 unit passed，7 live skipped）与 pnpm e2e（135 passed，3 skipped，首屏 JS 171.5 KB / CSS 15.7 KB gzip）全绿通过
 - 2026-11-28 真卡导入与 UI/沙箱渲染修复：修复空内容审计校验、分隔线实体名、128 MB 原子建卡导入（实卡 150/150 通过）；修复 st-renderer 内部块过滤/围栏拆包/ESM 脚本隔离与 floor-sandbox DOMContentLoaded 激活；补齐开新场缺失 sceneCard 自动修复及桌面/移动端界面、Dock 图例、菜单与子页面细节打磨
 - 2026-11-28 交互完善与暗色/移动端修复：新增迁移 v86 与 DELETE /api/stories/:id 软移出、故事页内联重命名/移动端助手入口/沙箱内联域名放行（并修正 prefs/lore 路由前缀）；修复暗色模式 srcdoc iframe 白底问题、移动端菜单左侧裁切、助手搜索换行、开场按钮与锁定胶囊及楼层操作可见性；pnpm check 与 pnpm e2e 全绿通过
+- 2026-11-28 全站截图评审修复与收口：完成 30 张截图评审修复，完善 Play/Dock/Shell/AssistantDrawer/Memory/CanonBook/Prefs/AdvancedSettings/ImageSettings/Library/ChannelWizard/NewStoryDialog 等 14 个组件与 CSS 深色令牌，移除 Dock 一级界面 token 字样，pnpm check 与 pnpm e2e 全绿通过

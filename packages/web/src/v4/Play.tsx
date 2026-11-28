@@ -90,6 +90,12 @@ const STEP_LABEL: Record<Step, string> = {
 	jump: "跳跃",
 };
 
+const STEP_HINT: Record<Step, string> = {
+	advance: "只走一拍",
+	quick: "把这一场走完",
+	jump: "跳到下一件大事",
+};
+
 /** 每种写法在写作期间依次点亮的阶段；快速写法只有正文一段。 */
 const MODE_STAGES: Record<Mode, readonly string[]> = {
 	fast: ["写正文"],
@@ -450,7 +456,34 @@ export function Play() {
 	const abort = useRef<AbortController | null>(null);
 	const lastRef = useRef<HTMLElement | null>(null);
 	const dockRef = useRef<HTMLDivElement | null>(null);
+	const sheetRef = useRef<HTMLDivElement | null>(null);
+	const cmpRef = useRef<HTMLDivElement | null>(null);
 	const bgTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+	// 输入台会随选项和「⋯」展开变高。把实际高度写进 CSS 变量，正文留白与滚动定位跟着变，
+	// 滚到底时最后几行不会被浮层盖住。
+	useEffect(() => {
+		const cmp = cmpRef.current;
+		const sheet = sheetRef.current;
+		if (cmp === null || sheet === null) return;
+		const sync = () => {
+			sheet.style.setProperty("--cmp-h", `${cmp.offsetHeight}px`);
+		};
+		sync();
+		const observer = new ResizeObserver(sync);
+		observer.observe(cmp);
+		return () => observer.disconnect();
+	}, []);
+
+	// 顶上那条细线只在真正写作时出现，空闲时不留下一条像卡住的线。
+	useEffect(() => {
+		const root = document.documentElement;
+		if (streaming === null) delete root.dataset.writing;
+		else root.dataset.writing = "";
+		return () => {
+			delete root.dataset.writing;
+		};
+	}, [streaming]);
 
 	useEffect(() => {
 		const stored = settings.data?.turnMode as Mode | undefined;
@@ -1004,6 +1037,27 @@ export function Play() {
 		}
 	};
 
+	const allowAllBlockedDomains = async () => {
+		const allowed = new Set(sandbox.data?.allowedDomains ?? []);
+		const targets = blockedDomains.filter((domain) => !allowed.has(domain));
+		if (targets.length === 0) return;
+		setAllowingDomain("*");
+		try {
+			for (const domain of targets) {
+				await api.updateSandboxDomain(storyId, domain, true);
+			}
+			sandbox.reload();
+			setBlockedDomains((previous) =>
+				previous.filter((domain) => !targets.includes(domain)),
+			);
+			toast(`已放行 ${targets.length} 个域名`);
+		} catch (error) {
+			toast(errorText(error));
+		} finally {
+			setAllowingDomain(null);
+		}
+	};
+
 	const changeMode = (value: Mode) => {
 		setMode(value);
 		api.updateSettings(storyId, { turnMode: value as "fast" }).catch(() => {});
@@ -1143,7 +1197,11 @@ export function Play() {
 		<section data-view="play">
 			<BackgroundNotice storyId={storyId} tick={dockTick} />
 			<div className="play">
-				<div className={notesOn ? "sheet" : "sheet nonotes"} id="sheet">
+				<div
+					className={notesOn ? "sheet" : "sheet nonotes"}
+					id="sheet"
+					ref={sheetRef}
+				>
 					<div className="sheet-head">
 						<div className="ttl">
 							<Cover storyId={storyId} title={title} />
@@ -1357,14 +1415,22 @@ export function Play() {
 									>
 										<div className="prose">
 											{frame === undefined ? (
-												<Prose
-													items={parsed.get(node.id) ?? []}
-													nodeId={node.id}
-													hideStatus={!statusOn}
-													images={node.images}
-													workflows={imageWorkflows.data?.workflows ?? []}
-													onImagesChanged={() => path.reload()}
-												/>
+												<>
+													<Prose
+														items={parsed.get(node.id) ?? []}
+														nodeId={node.id}
+														hideStatus={!statusOn}
+														images={node.images}
+														workflows={imageWorkflows.data?.workflows ?? []}
+														onImagesChanged={() => path.reload()}
+													/>
+													{meta?.no === 1 &&
+													(parsed.get(node.id) ?? []).length === 0 ? (
+														<p className="flr-empty">
+															这一楼没有可显示的正文：开场白是空白或只含卡片脚本。直接输入行动就能开始。
+														</p>
+													) : null}
+												</>
 											) : (
 												<>
 													<FloorFrame
@@ -1691,25 +1757,42 @@ export function Play() {
 					{unallowedBlocked.length > 0 && !sandboxDismissed ? (
 						<output className="sandbox-notice">
 							<span>
-								卡片试图加载外部资源（{unallowedBlocked.join("、")}
-								），已按安全沙箱拦截。
+								{unallowedBlocked.length === 1
+									? `卡片试图加载外部资源（${unallowedBlocked[0]}），已按安全沙箱拦截。`
+									: `卡片请求了 ${unallowedBlocked.length} 个外部域名（${unallowedBlocked
+											.slice(0, 3)
+											.join(
+												"、",
+											)}${unallowedBlocked.length > 3 ? " 等" : ""}），已按安全沙箱拦截。`}
 							</span>
-							{unallowedBlocked.map((domain) => (
+							{unallowedBlocked.length === 1 ? (
 								<button
 									type="button"
-									key={domain}
 									className="btn sm"
-									disabled={allowingDomain === domain}
-									onClick={() => void allowBlockedDomain(domain)}
+									disabled={allowingDomain !== null}
+									onClick={() =>
+										void allowBlockedDomain(unallowedBlocked[0] ?? "")
+									}
 								>
-									{allowingDomain === domain ? "放行中…" : `允许 ${domain}`}
+									{allowingDomain === unallowedBlocked[0]
+										? "放行中…"
+										: `允许 ${unallowedBlocked[0]}`}
 								</button>
-							))}
+							) : (
+								<button
+									type="button"
+									className="btn sm"
+									disabled={allowingDomain !== null}
+									onClick={() => void allowAllBlockedDomains()}
+								>
+									{allowingDomain === "*" ? "放行中…" : "放行全部"}
+								</button>
+							)}
 							<TLink
 								className="btn ghost sm"
 								to={`/stories/${encodeURIComponent(storyId)}/lore`}
 							>
-								设定
+								管理设定
 							</TLink>
 							<button
 								type="button"
@@ -1724,6 +1807,7 @@ export function Play() {
 					    在按下与松开之间弹回来，让点击落空。键盘的 Tab 照常能聚焦按钮。 */}
 					<div
 						className="cmp"
+						ref={cmpRef}
 						data-busy={busy ? "" : undefined}
 						onMouseDown={(event) => {
 							if ((event.target as HTMLElement).closest("button") !== null) {
@@ -1891,13 +1975,22 @@ export function Play() {
 													type="button"
 													role="menuitem"
 													key={value}
+													aria-current={step === value ? "true" : undefined}
 													onClick={() => {
 														setStep(value);
 														setPushMenu(false);
 														send(PUSH_TURN_TEXT, value);
 													}}
 												>
-													{STEP_LABEL[value]}
+													<span>
+														{STEP_LABEL[value]}
+														{step === value ? (
+															<span className="stepmark" aria-hidden="true">
+																✓
+															</span>
+														) : null}
+													</span>
+													<small>{STEP_HINT[value]}</small>
 												</button>
 											))}
 										</div>
@@ -1907,113 +2000,134 @@ export function Play() {
 						</div>
 						{moreOpen ? (
 							<div className="meta">
-								<Seg<Mode>
-									small
-									label="写法"
-									value={mode}
-									onChange={changeMode}
-									options={[
-										{ v: "fast", label: "快速" },
-										...(mode === "fast"
-											? []
-											: [
-													{
-														v: mode,
-														label:
-															mode === "plan" ? "规划（实验）" : "深度（实验）",
-													},
-												]),
-									]}
-								/>
-								<Tog pressed={notesOn} onChange={setNotesOn}>
-									批注
-								</Tog>
-								<OncePanel
-									switches={switchView}
-									once={once}
-									onChange={setOnce}
-								/>
-								{lastAssistant === undefined ? null : (
-									<div className="scenectl" aria-label="场面">
-										<button
-											type="button"
-											className="btn ghost sm"
-											disabled={busy}
-											onClick={() =>
-												void sceneControl({ kind: "end-scene" }, "这一场已结束")
-											}
-										>
-											结束这一场
-										</button>
-										<form
-											className="jumpto"
-											onSubmit={(event) => {
-												event.preventDefault();
-												const time = jumpTo.trim();
-												if (time === "") return;
-												setJumpTo("");
-												void sceneControl(
-													{ kind: "jump-time", time },
-													`已跳到${time}`,
-												);
-											}}
-										>
-											<input
+								<div className="metagroup" aria-label="写法与开关">
+									<span className="label metatitle">写法与开关</span>
+									<Seg<Mode>
+										small
+										label="写法"
+										value={mode}
+										onChange={changeMode}
+										options={[
+											{ v: "fast", label: "快速" },
+											...(mode === "fast"
+												? []
+												: [
+														{
+															v: mode,
+															label:
+																mode === "plan"
+																	? "规划（实验）"
+																	: "深度（实验）",
+														},
+													]),
+										]}
+									/>
+									<Tog pressed={notesOn} onChange={setNotesOn}>
+										批注
+									</Tog>
+									<OncePanel
+										switches={switchView}
+										once={once}
+										onChange={setOnce}
+									/>
+								</div>
+								<div className="metagroup" aria-label="场景跳转">
+									<span className="label metatitle">场景跳转</span>
+									{lastAssistant === undefined ? null : (
+										<div className="scenectl">
+											<button
+												type="button"
+												className="btn sm"
+												disabled={busy}
+												onClick={() =>
+													void sceneControl(
+														{ kind: "end-scene" },
+														"这一场已结束",
+													)
+												}
+											>
+												结束这一场
+											</button>
+											<form
+												className="jumpto"
+												onSubmit={(event) => {
+													event.preventDefault();
+													const time = jumpTo.trim();
+													if (time === "") return;
+													setJumpTo("");
+													void sceneControl(
+														{ kind: "jump-time", time },
+														`已跳到${time}`,
+													);
+												}}
+											>
+												<span className="jumpto-label">跳到</span>
+												<input
+													className="v4in"
+													aria-label="跳到的时间"
+													placeholder="某个时间"
+													value={jumpTo}
+													onChange={(event) => setJumpTo(event.target.value)}
+												/>
+												<button
+													type="submit"
+													className="btn sm"
+													disabled={busy || jumpTo.trim() === ""}
+												>
+													跳转
+												</button>
+											</form>
+										</div>
+									)}
+									{canon.data?.bound === null ||
+									canon.data?.bound === undefined ? null : (
+										<div className="canonctl" aria-label="原著">
+											<span>
+												原著 · {canon.data.bound.currentEvent?.title ?? "—"}
+												{canon.data.bound.pendingAdvance > 0
+													? ` · 待推进 ${canon.data.bound.pendingAdvance} 件`
+													: ""}
+											</span>
+											<select
 												className="v4in"
-												aria-label="跳到的时间"
-												placeholder="跳到…"
-												value={jumpTo}
-												onChange={(event) => setJumpTo(event.target.value)}
-											/>
-										</form>
-									</div>
-								)}
-								{canon.data?.bound === null ||
-								canon.data?.bound === undefined ? null : (
-									<div className="canonctl" aria-label="原著">
-										<span>
-											原著 · {canon.data.bound.currentEvent?.title ?? "—"}
-											{canon.data.bound.pendingAdvance > 0
-												? ` · 待推进 ${canon.data.bound.pendingAdvance} 件`
-												: ""}
-										</span>
-										<select
-											className="v4in"
-											aria-label="从这里开始"
-											value={fromHere}
-											onChange={(event) => setFromHere(event.target.value)}
-										>
-											<option value="">从这里开始…</option>
-											{canon.data.bound.timeline.map((event) => (
-												<option key={event.id} value={event.id}>
-													{event.eventOrdinal}. {event.title}
-												</option>
-											))}
-										</select>
-										<button
-											type="button"
-											className="btn ghost sm"
-											disabled={fromHere === "" || busy}
-											onClick={() => void jumpCanon()}
-										>
-											跳到这里
-										</button>
-									</div>
-								)}
-								<button
-									type="button"
-									className="btn ghost sm"
-									onClick={shell.openInspector}
-								>
-									检视器
-								</button>
-								<button
-									type="button"
-									className="btn ghost sm"
-									onClick={shell.openAssistant}
-								>
-									助手
-								</button>
+												aria-label="从这里开始"
+												value={fromHere}
+												onChange={(event) => setFromHere(event.target.value)}
+											>
+												<option value="">从这里开始…</option>
+												{canon.data.bound.timeline.map((event) => (
+													<option key={event.id} value={event.id}>
+														{event.eventOrdinal}. {event.title}
+													</option>
+												))}
+											</select>
+											<button
+												type="button"
+												className="btn sm"
+												disabled={fromHere === "" || busy}
+												onClick={() => void jumpCanon()}
+											>
+												跳到这里
+											</button>
+										</div>
+									)}
+								</div>
+								<div className="metagroup metatools" aria-label="工具">
+									<button
+										type="button"
+										className="btn ghost sm meta-tool"
+										onClick={shell.openInspector}
+									>
+										检视器
+									</button>
+									<button
+										type="button"
+										className="btn ghost sm meta-tool"
+										onClick={shell.openAssistant}
+									>
+										助手
+									</button>
+								</div>
 							</div>
 						) : null}
 					</div>

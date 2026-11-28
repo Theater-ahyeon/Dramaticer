@@ -67,6 +67,58 @@ const THEME_LABEL: Record<Theme, string> = {
 	light: "亮",
 };
 
+/** 外观按钮的三态图标：太阳、月亮、半明半暗。 */
+function ThemeIcon({ theme }: { readonly theme: Theme }) {
+	if (theme === "dark") {
+		return (
+			<svg
+				viewBox="0 0 24 24"
+				width="18"
+				height="18"
+				aria-hidden="true"
+				fill="none"
+				stroke="currentColor"
+				strokeWidth="1.6"
+				strokeLinecap="round"
+				strokeLinejoin="round"
+			>
+				<path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z" />
+			</svg>
+		);
+	}
+	if (theme === "auto") {
+		return (
+			<svg
+				viewBox="0 0 24 24"
+				width="18"
+				height="18"
+				aria-hidden="true"
+				fill="none"
+				stroke="currentColor"
+				strokeWidth="1.6"
+			>
+				<circle cx="12" cy="12" r="8" />
+				<path d="M12 4a8 8 0 0 0 0 16Z" fill="currentColor" stroke="none" />
+			</svg>
+		);
+	}
+	return (
+		<svg
+			viewBox="0 0 24 24"
+			width="18"
+			height="18"
+			aria-hidden="true"
+			fill="none"
+			stroke="currentColor"
+			strokeWidth="1.6"
+			strokeLinecap="round"
+		>
+			<circle cx="12" cy="12" r="4.2" />
+			<path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5 5l1.6 1.6M17.4 17.4 19 19M19 5l-1.6 1.6M6.6 17.4 5 19" />
+		</svg>
+	);
+}
+
 /** 命令面板里除了跳转之外的动作，由当前页面登记。 */
 export interface PaletteCommand {
 	readonly label: string;
@@ -100,6 +152,7 @@ export function Shell() {
 	const [theme, setThemeState] = useState<Theme>(storedTheme);
 	const [assistantOpen, setAssistantOpen] = useState(false);
 	const [inspectorOpen, setInspectorOpen] = useState(false);
+	const [toolsOpen, setToolsOpen] = useState(false);
 	const [assistantSummary, setAssistantSummary] = useState<AssistantSummary>(
 		EMPTY_ASSISTANT_SUMMARY,
 	);
@@ -238,7 +291,10 @@ export function Shell() {
 				setInspectorOpen((value) => !value);
 				return;
 			}
-			if (event.key === "Escape") setAssistantOpen(false);
+			if (event.key === "Escape") {
+				setAssistantOpen(false);
+				setToolsOpen(false);
+			}
 			if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
 				event.preventDefault();
 				setPalette((value) => !value);
@@ -301,6 +357,16 @@ export function Shell() {
 							</TLink>
 						</div>
 						<span className="sp" />
+						<button
+							type="button"
+							className="btn ghost toolsbtn"
+							aria-label="工具"
+							aria-haspopup="menu"
+							aria-expanded={toolsOpen}
+							onClick={() => setToolsOpen((value) => !value)}
+						>
+							⋯
+						</button>
 						{storyId === null ? null : (
 							<button
 								type="button"
@@ -335,7 +401,9 @@ export function Shell() {
 								setTheme(value);
 							}}
 						>
-							<span className="orb" />
+							<span className="orb">
+								<ThemeIcon theme={theme} />
+							</span>
 						</button>
 						<button
 							type="button"
@@ -350,6 +418,42 @@ export function Shell() {
 							<span className="kbd">Ctrl K</span>
 						</button>
 					</nav>
+					{toolsOpen ? (
+						<div className="toolmenu" role="menu" aria-label="工具">
+							<button
+								type="button"
+								role="menuitem"
+								onClick={() => {
+									const value = nextTheme(theme);
+									setThemeState(value);
+									setTheme(value);
+								}}
+							>
+								外观：{THEME_LABEL[theme]}，点一下切换
+							</button>
+							<button
+								type="button"
+								role="menuitem"
+								disabled={storyId === null}
+								onClick={() => {
+									setToolsOpen(false);
+									openAssistant();
+								}}
+							>
+								助手
+							</button>
+							<button
+								type="button"
+								role="menuitem"
+								onClick={() => {
+									setToolsOpen(false);
+									openInspector();
+								}}
+							>
+								检视器
+							</button>
+						</div>
+					) : null}
 					<main className="main">
 						<div className="inner" key={location.pathname}>
 							<Outlet />

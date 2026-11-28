@@ -363,7 +363,7 @@ export function NewStoryDialog({ onClose }: { readonly onClose: () => void }) {
 							<div className="world-pick">
 								<button
 									type="button"
-									className="btn ghost sm"
+									className="btn sm"
 									onClick={() => worldInput.current?.click()}
 									disabled={busy}
 								>
@@ -574,7 +574,7 @@ export function NewStoryDialog({ onClose }: { readonly onClose: () => void }) {
 					<footer>
 						<button
 							type="button"
-							className="btn ghost"
+							className="btn"
 							onClick={onClose}
 							disabled={busy}
 						>
@@ -583,7 +583,11 @@ export function NewStoryDialog({ onClose }: { readonly onClose: () => void }) {
 						<button
 							type="submit"
 							className="btn gold"
-							disabled={busy || (mode === "canon" && canonBooks === null)}
+							disabled={
+								busy ||
+								(mode === "canon" && canonBooks === null) ||
+								(mode === "card" && card === null)
+							}
 						>
 							{busy ? "正在创建…" : "开始"}
 						</button>

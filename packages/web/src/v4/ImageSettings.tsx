@@ -88,6 +88,7 @@ export function ImageSettings({
 	const [workflows, setWorkflows] = useState<readonly ImageWorkflowView[]>([]);
 	const [loadError, setLoadError] = useState<unknown>(null);
 	const [name, setName] = useState("");
+	const [pendingFile, setPendingFile] = useState<File | null>(null);
 	const [workflow, setWorkflow] = useState<ComfyUiWorkflow | null>(null);
 	const [detection, setDetection] = useState<ImageWorkflowDetectionView | null>(
 		null,
@@ -128,19 +129,26 @@ export function ImageSettings({
 
 	const resetImport = (): void => {
 		setWorkflow(null);
+		setPendingFile(null);
 		setDetection(null);
 		setSelections(emptySlotSelections());
 		setErrors([]);
 		setNotice(null);
 	};
 
-	const handleFile = (file: File): void => {
+	// 选文件只准备名称；点「导入并识别」才解析与识别插槽，避免选错文件就发请求。
+	const chooseFile = (file: File): void => {
 		resetImport();
+		setPendingFile(file);
 		setName(workflowNameFromFile(file.name));
+	};
+
+	const importFile = (): void => {
+		if (pendingFile === null || busy) return;
 		setBusy(true);
 		void (async () => {
 			try {
-				const parsed = parseWorkflowText(await file.text());
+				const parsed = parseWorkflowText(await pendingFile.text());
 				if (parsed.error !== null || parsed.workflow === null) {
 					setErrors([
 						{ path: "workflow", message: parsed.error ?? "workflow 为空" },
@@ -258,7 +266,7 @@ export function ImageSettings({
 									onChange={(event) => {
 										const file = event.target.files?.[0];
 										event.target.value = "";
-										if (file !== undefined) handleFile(file);
+										if (file !== undefined) chooseFile(file);
 									}}
 									disabled={busy}
 								/>
@@ -271,6 +279,21 @@ export function ImageSettings({
 									disabled={busy}
 								/>
 							</Field>
+						</div>
+						<div className="plan-toolbar">
+							<button
+								type="button"
+								className="btn gold sm"
+								disabled={busy || pendingFile === null || name.trim() === ""}
+								onClick={importFile}
+							>
+								{busy ? "识别中…" : "导入并识别"}
+							</button>
+							<span className="muted">
+								{pendingFile === null
+									? "先选一个 workflow JSON 文件"
+									: `已选 ${pendingFile.name}`}
+							</span>
 						</div>
 						{detection === null ? null : (
 							<>

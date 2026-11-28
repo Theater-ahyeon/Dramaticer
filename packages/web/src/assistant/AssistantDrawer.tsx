@@ -653,430 +653,461 @@ export function AssistantDrawer({
 		status?.status ?? active?.status ?? "idle";
 
 	return (
-		<aside
-			className="assistant-drawer"
-			aria-label="应用内助手"
-			aria-hidden={!open}
-			hidden={!open}
-		>
-			<header className="assistant-head">
-				<h2>助手</h2>
-				<div
-					className="assistant-view-tabs"
-					role="tablist"
-					aria-label="助手视图"
-				>
-					<button
-						type="button"
-						role="tab"
-						aria-selected={view === "chat"}
-						className={view === "chat" ? "active" : undefined}
-						onClick={() => setView("chat")}
+		<>
+			{open ? (
+				// biome-ignore lint/a11y/useKeyWithClickEvents: Esc 在窗口上处理
+				<div className="assistant-scrim" aria-hidden="true" onClick={onClose} />
+			) : null}
+			<aside
+				className="assistant-drawer"
+				aria-label="应用内助手"
+				aria-hidden={!open}
+				hidden={!open}
+			>
+				<header className="assistant-head">
+					<h2>助手</h2>
+					<div
+						className="assistant-view-tabs"
+						role="tablist"
+						aria-label="助手视图"
 					>
-						对话
-					</button>
+						<button
+							type="button"
+							role="tab"
+							aria-selected={view === "chat"}
+							className={view === "chat" ? "active" : undefined}
+							onClick={() => setView("chat")}
+						>
+							对话
+						</button>
+						<button
+							type="button"
+							role="tab"
+							aria-selected={view === "review"}
+							className={view === "review" ? "active" : undefined}
+							onClick={() => setView("review")}
+						>
+							待确认{pendingActions === 0 ? "" : `（${pendingActions}）`}
+						</button>
+					</div>
 					<button
+						ref={closeButtonRef}
 						type="button"
-						role="tab"
-						aria-selected={view === "review"}
-						className={view === "review" ? "active" : undefined}
-						onClick={() => setView("review")}
+						className="assistant-close"
+						onClick={onClose}
+						aria-label="关闭助手"
 					>
-						待确认{pendingActions === 0 ? "" : `（${pendingActions}）`}
+						✕
 					</button>
-				</div>
-				<button
-					ref={closeButtonRef}
-					type="button"
-					onClick={onClose}
-					aria-label="关闭助手"
-				>
-					关闭
-				</button>
-			</header>
-			<ErrorNotice error={error} />
-			<div className="assistant-body">
-				<section className="assistant-conversations" aria-label="会话列表">
-					<form className="assistant-search" onSubmit={search}>
-						<input
-							type="search"
-							aria-label="搜索会话"
-							placeholder="搜索标题或消息"
-							value={searchInput}
-							onChange={(event) => setSearchInput(event.target.value)}
-						/>
-						<button type="submit">搜索</button>
-						{query.length === 0 ? null : (
-							<button type="button" onClick={clearSearch}>
-								清除
-							</button>
-						)}
-					</form>
-					<button
-						type="button"
-						className="assistant-new"
-						disabled={busy}
-						onClick={() => {
-							void createConversation();
-						}}
-					>
-						新建会话
-					</button>
-					{listLoading ? <p className="muted">正在读取会话…</p> : null}
-					<ErrorNotice error={listError} />
-					<ul className="assistant-conversation-list">
-						{list.conversations.map((conversation) => {
-							const match = matchFor(list, conversation.id);
-							const isActive = conversation.id === list.activeId;
-							return (
-								<li
-									key={conversation.id}
-									className="assistant-conversation-item"
-								>
-									<button
-										type="button"
-										className={
-											isActive
-												? "assistant-conversation-open active"
-												: "assistant-conversation-open"
-										}
-										aria-current={isActive ? "true" : undefined}
-										onClick={() =>
-											setList((previous) =>
-												selectConversation(previous, conversation.id),
-											)
-										}
+				</header>
+				<ErrorNotice error={error} />
+				<div className="assistant-body">
+					<section className="assistant-conversations" aria-label="会话列表">
+						<form className="assistant-search" onSubmit={search}>
+							<input
+								type="search"
+								aria-label="搜索会话"
+								placeholder="搜索标题或消息"
+								value={searchInput}
+								onChange={(event) => setSearchInput(event.target.value)}
+							/>
+							<button type="submit">搜索</button>
+							{query.length === 0 ? null : (
+								<button type="button" onClick={clearSearch}>
+									清除
+								</button>
+							)}
+						</form>
+						<button
+							type="button"
+							className="assistant-new"
+							disabled={busy}
+							onClick={() => {
+								void createConversation();
+							}}
+						>
+							新建会话
+						</button>
+						{listLoading ? <p className="muted">正在读取会话…</p> : null}
+						<ErrorNotice error={listError} />
+						<ul className="assistant-conversation-list">
+							{list.conversations.map((conversation) => {
+								const match = matchFor(list, conversation.id);
+								const isActive = conversation.id === list.activeId;
+								return (
+									<li
+										key={conversation.id}
+										className="assistant-conversation-item"
 									>
-										<span className="assistant-conversation-title">
-											{conversation.title}
-										</span>
-										<span className="assistant-conversation-meta">
-											{skillName(skills, conversation.skill)} ·{" "}
-											{conversationStatusLabel(conversation.status)}
-											{match === null ? "" : ` · ${match.snippet}`}
-										</span>
-									</button>
-									<div className="assistant-conversation-actions">
 										<button
 											type="button"
-											onClick={() => {
-												setRenamingId(conversation.id);
-												setRenameValue(conversation.title);
-												setConfirmDeleteId(null);
-											}}
+											className={
+												isActive
+													? "assistant-conversation-open active"
+													: "assistant-conversation-open"
+											}
+											aria-current={isActive ? "true" : undefined}
+											onClick={() =>
+												setList((previous) =>
+													selectConversation(previous, conversation.id),
+												)
+											}
 										>
-											改名
+											<span className="assistant-conversation-title">
+												{conversation.title}
+											</span>
+											<span className="assistant-conversation-meta">
+												{skillName(skills, conversation.skill)} ·{" "}
+												{conversationStatusLabel(conversation.status)}
+												{match === null ? "" : ` · ${match.snippet}`}
+											</span>
 										</button>
-										{confirmDeleteId === conversation.id ? (
-											<>
+										<div className="assistant-conversation-actions">
+											<button
+												type="button"
+												onClick={() => {
+													setRenamingId(conversation.id);
+													setRenameValue(conversation.title);
+													setConfirmDeleteId(null);
+												}}
+											>
+												改名
+											</button>
+											{confirmDeleteId === conversation.id ? (
+												<>
+													<button
+														type="button"
+														className="assistant-danger"
+														disabled={busy}
+														onClick={() => {
+															void deleteConversation(conversation.id);
+														}}
+													>
+														确定删除
+													</button>
+													<button
+														type="button"
+														onClick={() => setConfirmDeleteId(null)}
+													>
+														取消
+													</button>
+												</>
+											) : (
 												<button
 													type="button"
-													className="assistant-danger"
-													disabled={busy}
-													onClick={() => {
-														void deleteConversation(conversation.id);
-													}}
+													onClick={() => setConfirmDeleteId(conversation.id)}
 												>
-													确定删除
+													删除
 												</button>
+											)}
+										</div>
+										{renamingId === conversation.id ? (
+											<form
+												className="assistant-rename"
+												onSubmit={(event) => {
+													event.preventDefault();
+													void renameConversation(conversation.id, renameValue);
+												}}
+											>
+												<input
+													type="text"
+													aria-label="会话标题"
+													value={renameValue}
+													onChange={(event) =>
+														setRenameValue(event.target.value)
+													}
+												/>
+												<button type="submit">保存</button>
 												<button
 													type="button"
-													onClick={() => setConfirmDeleteId(null)}
+													onClick={() => setRenamingId(null)}
 												>
 													取消
 												</button>
-											</>
-										) : (
-											<button
-												type="button"
-												onClick={() => setConfirmDeleteId(conversation.id)}
+											</form>
+										) : null}
+									</li>
+								);
+							})}
+						</ul>
+					</section>
+					{view === "review" ? (
+						<ReviewPanel
+							actions={reviewActions}
+							cards={reviewCards}
+							conversations={reviewConversationList}
+							filter={reviewFilter}
+							onFilterChange={setReviewFilter}
+							busyId={reviewBusyId}
+							error={reviewError}
+							onApproveAction={(id) => void approveReviewAction(id)}
+							onRejectAction={(id, reason) =>
+								void rejectReviewAction(id, reason)
+							}
+							onApproveCard={(id) => void decideReviewCard(id, "approve")}
+							onRejectCard={(id) => void decideReviewCard(id, "reject")}
+						/>
+					) : (
+						<section className="assistant-conversation" aria-label="当前会话">
+							{active === null ? (
+								<div className="assistant-empty">
+									<p className="muted">
+										还没有会话。建一个之后，助手会在这里回答，也能帮你改记忆、设定与设置。
+									</p>
+									<button
+										type="button"
+										className="btn gold"
+										disabled={busy}
+										onClick={() => {
+											void createConversation();
+										}}
+									>
+										新建一个会话
+									</button>
+								</div>
+							) : (
+								<>
+									<div className="assistant-controls">
+										<label>
+											技能
+											<select
+												value={active.skill}
+												disabled={busy}
+												onChange={(event) => {
+													const skill = event.target.value;
+													if (!isAssistantSkillId(skill)) return;
+													void updateConversation({ skill });
+												}}
 											>
-												删除
-											</button>
-										)}
-									</div>
-									{renamingId === conversation.id ? (
-										<form
-											className="assistant-rename"
-											onSubmit={(event) => {
-												event.preventDefault();
-												void renameConversation(conversation.id, renameValue);
-											}}
-										>
-											<input
-												type="text"
-												aria-label="会话标题"
-												value={renameValue}
-												onChange={(event) => setRenameValue(event.target.value)}
-											/>
-											<button type="submit">保存</button>
-											<button type="button" onClick={() => setRenamingId(null)}>
-												取消
-											</button>
-										</form>
-									) : null}
-								</li>
-							);
-						})}
-					</ul>
-				</section>
-				{view === "review" ? (
-					<ReviewPanel
-						actions={reviewActions}
-						cards={reviewCards}
-						conversations={reviewConversationList}
-						filter={reviewFilter}
-						onFilterChange={setReviewFilter}
-						busyId={reviewBusyId}
-						error={reviewError}
-						onApproveAction={(id) => void approveReviewAction(id)}
-						onRejectAction={(id, reason) => void rejectReviewAction(id, reason)}
-						onApproveCard={(id) => void decideReviewCard(id, "approve")}
-						onRejectCard={(id) => void decideReviewCard(id, "reject")}
-					/>
-				) : (
-					<section className="assistant-conversation" aria-label="当前会话">
-						{active === null ? (
-							<p className="muted">新建会话后，助手会在这里回答。</p>
-						) : (
-							<>
-								<div className="assistant-controls">
-									<label>
-										技能
-										<select
-											value={active.skill}
-											disabled={busy}
-											onChange={(event) => {
-												const skill = event.target.value;
-												if (!isAssistantSkillId(skill)) return;
-												void updateConversation({ skill });
-											}}
-										>
-											{skills.map((skill) => (
-												<option key={skill.id} value={skill.id}>
-													{skill.name}
-												</option>
-											))}
-										</select>
-									</label>
-									<label>
-										权限
-										<select
-											value={active.permission}
-											disabled={busy}
-											onChange={(event) =>
-												void updateConversation({
-													permission: event.target.value as AssistantPermission,
-												})
-											}
-										>
-											{ASSISTANT_PERMISSION_OPTIONS.map((option) => (
-												<option key={option.value} value={option.value}>
-													{option.label}
-												</option>
-											))}
-										</select>
-									</label>
-									<label>
-										思考
-										<select
-											value={active.thinking}
-											disabled={busy}
-											onChange={(event) =>
-												void updateConversation({
-													thinking: event.target.value as AssistantThinking,
-												})
-											}
-										>
-											{ASSISTANT_THINKING_OPTIONS.map((option) => (
-												<option key={option.value} value={option.value}>
-													{option.label}
-												</option>
-											))}
-										</select>
-									</label>
-									<label>
-										模型
-										<select
-											value={active.modelAlias ?? ""}
-											disabled={busy}
-											onChange={(event) =>
-												void updateConversation({
-													modelAlias:
-														event.target.value.length === 0
-															? null
-															: event.target.value,
-												})
-											}
-										>
-											<option value="">默认（writer 岗位）</option>
-											{models
-												.filter((model) => model.enabled)
-												.map((model) => (
-													<option key={model.alias} value={model.alias}>
-														{model.alias}
+												{skills.map((skill) => (
+													<option key={skill.id} value={skill.id}>
+														{skill.name}
 													</option>
 												))}
-										</select>
-									</label>
-									<span className="assistant-status">
-										{conversationStatusLabel(statusValue)}
-									</span>
-									{detail === null ? null : (
-										<ContextRing usage={detail.context} />
-									)}
-									{canCancel(statusValue) ? (
-										<button type="button" onClick={() => void cancelRun()}>
-											取消运行
-										</button>
-									) : null}
-								</div>
-								<ErrorNotice
-									error={
-										isAssistantFailure(statusValue) && run.error === null
-											? new Error(
-													`上次运行${conversationStatusLabel(statusValue)}`,
-												)
-											: null
-									}
-								/>
-								<div className="assistant-messages" aria-live="polite">
-									{detail?.compaction === null ||
-									detail?.compaction === undefined ? null : (
-										<details className="assistant-compaction">
-											<summary>
-												已压缩 {detail.compaction.omittedMessageIds.length}{" "}
-												条消息
-											</summary>
-											<p className="muted">
-												省略序号：
-												{formatOrdinalRanges(
-													detail.compaction.omittedMessageIds,
-												)}
-											</p>
-											<pre>{detail.compaction.summary}</pre>
-										</details>
-									)}
-									{messages.map((message, index) => (
-										<article
-											key={`${message.ordinal}-${index}`}
-											className={`assistant-message assistant-message-${message.role}`}
-										>
-											<p className="assistant-message-role">
-												{messageRoleLabel(message.role)}
-											</p>
-											<pre>{message.text}</pre>
-										</article>
-									))}
-									{running ? (
-										<article className="assistant-message assistant-message-assistant">
-											<p className="assistant-message-role">
-												助手{run.status === "running" ? "（运行中）" : ""}
-											</p>
-											<pre>
-												{run.text.length === 0 ? "正在思考…" : run.text}
-											</pre>
-										</article>
-									) : run.error === null ? null : (
-										<ErrorNotice error={new Error(run.error)} />
-									)}
-									{run.thinking.length === 0 ? null : (
-										<details className="assistant-thinking">
-											<summary>思考过程</summary>
-											<pre>{run.thinking}</pre>
-										</details>
-									)}
-									{run.tools.length === 0 ? null : (
-										<details className="assistant-tools">
-											<summary>工具活动（{run.tools.length}）</summary>
-											<ul>
-												{run.tools.map((tool, index) => (
-													<li key={`${index}-${tool.name}`}>
-														<span>{tool.name}</span>
-														{tool.deniedPermission === null ? null : (
-															<span className="assistant-denied">
-																被拒绝（{tool.deniedPermission}）
-															</span>
-														)}
-														{tool.ok === null ? (
-															<span className="muted">进行中</span>
-														) : (
-															<span className="muted">
-																{tool.ok ? "成功" : "失败"}
-															</span>
-														)}
-														{tool.reason === null ? null : (
-															<span className="muted">{tool.reason}</span>
-														)}
-														{tool.arguments === null ? null : (
-															<pre>{JSON.stringify(tool.arguments)}</pre>
-														)}
-														{tool.result === null ? null : (
-															<pre>{JSON.stringify(tool.result, null, 2)}</pre>
-														)}
-													</li>
+											</select>
+										</label>
+										<label>
+											权限
+											<select
+												value={active.permission}
+												disabled={busy}
+												onChange={(event) =>
+													void updateConversation({
+														permission: event.target
+															.value as AssistantPermission,
+													})
+												}
+											>
+												{ASSISTANT_PERMISSION_OPTIONS.map((option) => (
+													<option key={option.value} value={option.value}>
+														{option.label}
+													</option>
 												))}
-											</ul>
-										</details>
-									)}
-								</div>
-								<form
-									className="assistant-compact"
-									onSubmit={(event) => {
-										event.preventDefault();
-										void compactContext();
-									}}
-								>
-									<input
-										type="text"
-										aria-label="压缩要求"
-										placeholder="压缩要求（可选）"
-										value={compactInput}
-										onChange={(event) => setCompactInput(event.target.value)}
+											</select>
+										</label>
+										<label>
+											思考
+											<select
+												value={active.thinking}
+												disabled={busy}
+												onChange={(event) =>
+													void updateConversation({
+														thinking: event.target.value as AssistantThinking,
+													})
+												}
+											>
+												{ASSISTANT_THINKING_OPTIONS.map((option) => (
+													<option key={option.value} value={option.value}>
+														{option.label}
+													</option>
+												))}
+											</select>
+										</label>
+										<label>
+											模型
+											<select
+												value={active.modelAlias ?? ""}
+												disabled={busy}
+												onChange={(event) =>
+													void updateConversation({
+														modelAlias:
+															event.target.value.length === 0
+																? null
+																: event.target.value,
+													})
+												}
+											>
+												<option value="">默认（writer 岗位）</option>
+												{models
+													.filter((model) => model.enabled)
+													.map((model) => (
+														<option key={model.alias} value={model.alias}>
+															{model.alias}
+														</option>
+													))}
+											</select>
+										</label>
+										<span className="assistant-status">
+											{conversationStatusLabel(statusValue)}
+										</span>
+										{detail === null ? null : (
+											<ContextRing usage={detail.context} />
+										)}
+										{canCancel(statusValue) ? (
+											<button type="button" onClick={() => void cancelRun()}>
+												取消运行
+											</button>
+										) : null}
+									</div>
+									<ErrorNotice
+										error={
+											isAssistantFailure(statusValue) && run.error === null
+												? new Error(
+														`上次运行${conversationStatusLabel(statusValue)}`,
+													)
+												: null
+										}
 									/>
-									<button
-										type="submit"
-										disabled={busy || running || detail === null}
+									<div className="assistant-messages" aria-live="polite">
+										{detail?.compaction === null ||
+										detail?.compaction === undefined ? null : (
+											<details className="assistant-compaction">
+												<summary>
+													已压缩 {detail.compaction.omittedMessageIds.length}{" "}
+													条消息
+												</summary>
+												<p className="muted">
+													省略序号：
+													{formatOrdinalRanges(
+														detail.compaction.omittedMessageIds,
+													)}
+												</p>
+												<pre>{detail.compaction.summary}</pre>
+											</details>
+										)}
+										{messages.map((message, index) => (
+											<article
+												key={`${message.ordinal}-${index}`}
+												className={`assistant-message assistant-message-${message.role}`}
+											>
+												<p className="assistant-message-role">
+													{messageRoleLabel(message.role)}
+												</p>
+												<pre>{message.text}</pre>
+											</article>
+										))}
+										{running ? (
+											<article className="assistant-message assistant-message-assistant">
+												<p className="assistant-message-role">
+													助手{run.status === "running" ? "（运行中）" : ""}
+												</p>
+												<pre>
+													{run.text.length === 0 ? "正在思考…" : run.text}
+												</pre>
+											</article>
+										) : run.error === null ? null : (
+											<ErrorNotice error={new Error(run.error)} />
+										)}
+										{run.thinking.length === 0 ? null : (
+											<details className="assistant-thinking">
+												<summary>思考过程</summary>
+												<pre>{run.thinking}</pre>
+											</details>
+										)}
+										{run.tools.length === 0 ? null : (
+											<details className="assistant-tools">
+												<summary>工具活动（{run.tools.length}）</summary>
+												<ul>
+													{run.tools.map((tool, index) => (
+														<li key={`${index}-${tool.name}`}>
+															<span>{tool.name}</span>
+															{tool.deniedPermission === null ? null : (
+																<span className="assistant-denied">
+																	被拒绝（{tool.deniedPermission}）
+																</span>
+															)}
+															{tool.ok === null ? (
+																<span className="muted">进行中</span>
+															) : (
+																<span className="muted">
+																	{tool.ok ? "成功" : "失败"}
+																</span>
+															)}
+															{tool.reason === null ? null : (
+																<span className="muted">{tool.reason}</span>
+															)}
+															{tool.arguments === null ? null : (
+																<pre>{JSON.stringify(tool.arguments)}</pre>
+															)}
+															{tool.result === null ? null : (
+																<pre>
+																	{JSON.stringify(tool.result, null, 2)}
+																</pre>
+															)}
+														</li>
+													))}
+												</ul>
+											</details>
+										)}
+									</div>
+									<form
+										className="assistant-compact"
+										onSubmit={(event) => {
+											event.preventDefault();
+											void compactContext();
+										}}
 									>
-										压缩上下文
-									</button>
-								</form>
-								<form
-									className="assistant-composer"
-									onSubmit={(event) => {
-										event.preventDefault();
-										void sendMessage();
-									}}
-								>
-									<textarea
-										aria-label="给助手的消息"
-										rows={3}
-										value={input}
-										onChange={(event) => setInput(event.target.value)}
-										onKeyDown={(event) => {
-											if (event.key !== "Enter" || event.shiftKey) return;
+										<input
+											type="text"
+											aria-label="压缩要求"
+											placeholder="压缩要求（可选）"
+											value={compactInput}
+											onChange={(event) => setCompactInput(event.target.value)}
+										/>
+										<button
+											type="submit"
+											disabled={busy || running || detail === null}
+										>
+											压缩上下文
+										</button>
+									</form>
+									<form
+										className="assistant-composer"
+										onSubmit={(event) => {
 											event.preventDefault();
 											void sendMessage();
 										}}
-									/>
-									<div className="assistant-composer-actions">
-										<span className="muted">
-											{conversationStatusLabel(statusValue)}
-										</span>
-										<button
-											type="submit"
-											disabled={streaming || input.trim().length === 0}
-										>
-											发送
-										</button>
-									</div>
-								</form>
-							</>
-						)}
-					</section>
-				)}
-			</div>
-		</aside>
+									>
+										<textarea
+											aria-label="给助手的消息"
+											rows={3}
+											value={input}
+											onChange={(event) => setInput(event.target.value)}
+											onKeyDown={(event) => {
+												if (event.key !== "Enter" || event.shiftKey) return;
+												event.preventDefault();
+												void sendMessage();
+											}}
+										/>
+										<div className="assistant-composer-actions">
+											<span className="muted">
+												{conversationStatusLabel(statusValue)}
+											</span>
+											<button
+												type="submit"
+												disabled={streaming || input.trim().length === 0}
+											>
+												发送
+											</button>
+										</div>
+									</form>
+								</>
+							)}
+						</section>
+					)}
+				</div>
+			</aside>
+		</>
 	);
 }
 

@@ -67,7 +67,14 @@ function WantRow({
 								type="button"
 								className="lock"
 								aria-pressed={item.locked}
-								disabled={busy}
+								disabled={busy || item.text.trim() === ""}
+								title={
+									item.text.trim() === ""
+										? "先写下这一条再锁定"
+										: item.locked
+											? "解锁"
+											: "锁定后后台不再改写"
+								}
 								onClick={() => onLock(!item.locked)}
 							>
 								{item.locked ? "已锁定" : "锁定"}
@@ -130,7 +137,14 @@ function OpenRow({
 						type="button"
 						className="lock"
 						aria-pressed={item.locked}
-						disabled={busy}
+						disabled={busy || item.text.trim() === ""}
+						title={
+							item.text.trim() === ""
+								? "先写下这一条再锁定"
+								: item.locked
+									? "解锁"
+									: "锁定后后台不再改写"
+						}
 						onClick={() => onLock(!item.locked)}
 					>
 						{item.locked ? "已锁定" : "锁定"}
@@ -372,11 +386,7 @@ export function DirectionPage() {
 				</div>
 				<div className="label">
 					<span>AI 建议</span>
-					<button
-						type="button"
-						className="btn ghost sm"
-						onClick={suggestions.reload}
-					>
+					<button type="button" className="btn sm" onClick={suggestions.reload}>
 						刷新
 					</button>
 				</div>
