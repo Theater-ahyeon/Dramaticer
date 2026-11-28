@@ -28,6 +28,12 @@ const USAGE = {
 	cachedTokens: 0,
 };
 
+// 时间预算断言用：Node 的 setTimeout 会提前约 1 毫秒触发（实测 20ms 定时器
+// 最快 19.17ms），下界留 2 毫秒容差；上界留 500 毫秒，挡住「预算没生效、
+// 拖到默认值或秒级卡顿」的回归。
+const HOOK_BUDGET_MS = 20;
+const EARLY_TOLERANCE_MS = 2;
+
 function createFakeClient(resultText: string): {
 	client: LlmStreamingClient;
 	requests: LlmRequest[];
@@ -104,7 +110,7 @@ describe("槽位提供者的时间预算", () => {
 			budgetTokens: 4_000,
 			storyId: "s1",
 			providers,
-			hookBudgetMs: 20,
+			hookBudgetMs: HOOK_BUDGET_MS,
 		});
 
 		const memory = assembled.trace.entries.find(
@@ -123,15 +129,21 @@ describe("槽位提供者的时间预算", () => {
 			hook: "memory",
 			outcome: "timeout",
 		});
-		expect(timeout?.reason).toContain("超过时间预算 20 毫秒");
-		expect(timeout?.durationMs).toBeGreaterThanOrEqual(20);
+		expect(timeout?.reason).toContain(`超过时间预算 ${HOOK_BUDGET_MS} 毫秒`);
+		// 耗时必须真的等够了预算：记成 0 或没把预算传给定时器都会跌破下界。
+		expect(timeout?.durationMs).toBeGreaterThanOrEqual(
+			HOOK_BUDGET_MS - EARLY_TOLERANCE_MS,
+		);
+		expect(timeout?.durationMs).toBeLessThan(HOOK_BUDGET_MS + 500);
 
 		const normal = assembled.hooks?.find(
 			(hook) => hook.plugin === "test/character",
 		);
 		expect(normal?.outcome).toBe("ok");
 		expect(normal?.reason).toBeNull();
-		expect(typeof normal?.durationMs).toBe("number");
+		// 没花时间的钩子记的是量出来的耗时，不是预算值。
+		expect(Number.isFinite(normal?.durationMs)).toBe(true);
+		expect(normal?.durationMs).toBeLessThan(HOOK_BUDGET_MS);
 	});
 
 	it("没有插件名的提供者不做计时，Trace 里没有钩子字段", async () => {
@@ -271,8 +283,9 @@ describe("钩子时间预算", () => {
 			},
 		});
 		expect(run.value).toBe("内容");
-		expect(remainingDuringRun).toBeGreaterThan(0);
-		expect(remainingDuringRun).toBeLessThanOrEqual(500);
+		// 预算 500 减去收尾预留 50，钩子跑起来时剩余应靠近 450。
+		expect(remainingDuringRun).toBeGreaterThanOrEqual(440);
+		expect(remainingDuringRun).toBeLessThanOrEqual(450);
 	});
 
 	it("没有记录模板时 Trace 不带 templates 字段", async () => {
@@ -349,7 +362,7 @@ describe("组装后的请求改写", () => {
 
 		const result = await kernel.rewriteRequest(
 			[{ role: "user", content: "原文" }],
-			20,
+			HOOK_BUDGET_MS,
 		);
 
 		expect(result.messages.map((message) => message.content)).toEqual([
@@ -360,7 +373,13 @@ describe("组装后的请求改写", () => {
 			plugin: "test/rewrite-slow",
 			outcome: "timeout",
 		});
-		expect(result.hooks[0]?.reason).toContain("超过时间预算 20 毫秒");
+		expect(result.hooks[0]?.reason).toContain(
+			`超过时间预算 ${HOOK_BUDGET_MS} 毫秒`,
+		);
+		expect(result.hooks[0]?.durationMs).toBeGreaterThanOrEqual(
+			HOOK_BUDGET_MS - EARLY_TOLERANCE_MS,
+		);
+		expect(result.hooks[0]?.durationMs).toBeLessThan(HOOK_BUDGET_MS + 500);
 		expect(result.hooks[1]?.outcome).toBe("ok");
 
 		await kernel.dispose();
