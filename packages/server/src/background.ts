@@ -38,7 +38,7 @@ export interface BackgroundSchedulerOptions {
 }
 
 /**
- * 回合结束后在后台补建并执行任务。队列按故事先来先做，任何时刻只有一个
+ * 回合结束后在后台补建并执行任务。队列按最近调度的故事优先，任何时刻只有一个
  * drain 在跑；每个 drain 内部也按任务创建顺序逐个执行。
  */
 export class BackgroundScheduler {
@@ -50,6 +50,8 @@ export class BackgroundScheduler {
 	readonly #now: (() => number) | undefined;
 	readonly #illustrate: IllustrateHandlerOptions | null;
 	readonly #queue: string[] = [];
+	readonly #priorities = new Map<string, number>();
+	#nextPriority = 0;
 	readonly #controller = new AbortController();
 	#pump: Promise<void> | null = null;
 	#closed = false;
@@ -71,10 +73,14 @@ export class BackgroundScheduler {
 		this.#illustrate = options.illustrate ?? null;
 	}
 
-	/** 把一个故事排进后台队列；同一个故事已经在队列里时合并成一次。 */
+	/** 把一个故事排进后台队列；最近调度的故事排在最前，重复调度只保留一次。 */
 	schedule(storyId: string): void {
 		if (this.#closed) return;
-		if (!this.#queue.includes(storyId)) this.#queue.push(storyId);
+		const index = this.#queue.indexOf(storyId);
+		if (index !== -1) this.#queue.splice(index, 1);
+		this.#nextPriority += 1;
+		this.#priorities.set(storyId, this.#nextPriority);
+		this.#queue.unshift(storyId);
 		if (this.#pump === null) this.#pump = this.#runQueue();
 	}
 
@@ -99,39 +105,56 @@ export class BackgroundScheduler {
 			while (!this.#closed) {
 				const storyId = this.#queue.shift();
 				if (storyId === undefined) break;
+				let more = false;
 				try {
-					await this.#runStory(storyId);
+					more = await this.#runStory(storyId);
 				} catch (error) {
 					this.#log(
 						`后台任务失败：${error instanceof Error ? error.message : String(error)}`,
 					);
 				}
+				if (!more || this.#closed) {
+					this.#priorities.delete(storyId);
+					continue;
+				}
+				// 按最近一次调度排序放回队列：更新的故事排在它前面，旧的积压排在后面。
+				const priority = this.#priorities.get(storyId) ?? 0;
+				let index = 0;
+				while (
+					index < this.#queue.length &&
+					(this.#priorities.get(this.#queue[index] ?? "") ?? 0) > priority
+				) {
+					index += 1;
+				}
+				this.#queue.splice(index, 0, storyId);
 			}
 		} finally {
 			this.#pump = null;
 		}
 	}
 
-	async #runStory(storyId: string): Promise<void> {
+	/** 跑一轮任务；还有下一轮可跑时返回 true。 */
+	async #runStory(storyId: string): Promise<boolean> {
 		const runtime = await this.#runtime.get(storyId);
 		const client = runtime.backgroundClient;
 		if (client === null) {
 			this.#log("后台任务跳过：没有可用的后台客户端");
-			return;
+			return false;
 		}
 		const registry = this.#createRegistry(runtime);
 		const kinds = resolveStoryBackgroundKinds(
 			registry,
 			readStoryBackgroundSwitches(this.#store, storyId),
 		);
-		if (kinds.length === 0) return;
+		if (kinds.length === 0) return false;
+		const limitOpt = this.#limit === undefined ? {} : { limit: this.#limit };
 		const result = await drainBackgroundJobs({
 			store: this.#store,
 			registry,
 			client,
 			storyId,
 			kinds,
-			...(this.#limit === undefined ? {} : { limit: this.#limit }),
+			...limitOpt,
 			// 服务端不知道玩家下次什么时候输入；一轮结束后按间隙已经耗尽处理。
 			sessionEnded: true,
 			signal: this.#controller.signal,
@@ -144,22 +167,33 @@ export class BackgroundScheduler {
 				storyId,
 				kinds: [ILLUSTRATE_JOB_KIND],
 			}).pending > 0;
+		let runs = result.runs;
 		if (followsImageOrganize && !this.#controller.signal.aborted) {
-			await drainBackgroundJobs({
+			const followUp = await drainBackgroundJobs({
 				store: this.#store,
 				registry,
 				client,
 				storyId,
 				kinds: [ILLUSTRATE_JOB_KIND],
-				...(this.#limit === undefined ? {} : { limit: this.#limit }),
+				...limitOpt,
 				sessionEnded: true,
 				signal: this.#controller.signal,
 				...(this.#now === undefined ? {} : { now: this.#now }),
 			});
+			runs = [...runs, ...followUp.runs];
 		}
-		const failed = result.runs.filter((run) => run.status === "failed").length;
+		const failed = runs.filter((run) => run.status === "failed").length;
 		this.#log(
-			`后台任务 ${storyId}：新增 ${result.enqueued} 条，执行 ${result.runs.length} 条（失败 ${failed}，丢弃 ${result.discarded}）`,
+			`后台任务 ${storyId}：新增 ${result.enqueued} 条，执行 ${runs.length} 条（失败 ${failed}，丢弃 ${result.discarded}）`,
+		);
+		// 仅在显式配置单轮上限、且本轮跑满上限、未遇到失败退回 pending 时换手给其他故事。
+		const stalled = runs.some((run) => run.status === "pending");
+		const pending = this.#store.countBackgroundJobs({ storyId }).pending;
+		return (
+			this.#limit !== undefined &&
+			!stalled &&
+			runs.length >= this.#limit &&
+			pending > 0
 		);
 	}
 }

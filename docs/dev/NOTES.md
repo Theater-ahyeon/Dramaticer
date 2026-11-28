@@ -197,7 +197,7 @@
 - 导卡时 `afterCardImport` 把卡的开场白（首条加备用）存进故事值 `opening.greetings`，空故事立即用第一条建根部助手楼层；`{{char}}` 换卡名、`{{user}}` 换「你」，其余宏原样。
 - 「还在开场」= 所有楼层都是根部助手楼层（`core/src/opening/greetings.ts` 的 `storyAtOpening`）。这期间可以换开场白（`POST /greetings/:index`，同正文的根楼层复用）、选候选（新建根楼层并设为 head）、重新生成候选；玩家一开口就结束。
 - 用 `createImportedStory` 建的 e2e 故事一开始就有 1 楼（开场白），数楼层的断言要算上它。
-- 全量 e2e 跑到后段时，桌面端的 director / ledger / openings 常因后台队列积压（前面用例留下的任务）等不到候选或事件而失败，单独重跑能过；这是测试环境问题，不是功能回归。根治要给 e2e 的后台调度加按故事隔离或清队列，尚未做。
+- 全量 e2e 跑到后段时，桌面端的 director / ledger / openings 曾因后台队列积压（前面用例留下的任务）等不到候选或事件而失败。`BackgroundScheduler.schedule` 现在把故事移到队头，并且每个故事一轮只跑一条任务就换手，一个故事的积压不会挡住刚切过来的故事。原著抽取另有 `canon-worker`，不占 `background_jobs`，一次只跑一本书。
 
 ## 原著（2026-11-27 起，canon/01）
 
@@ -215,7 +215,7 @@
 - 抽取引擎在 `core/src/canon/extract.ts`。每块调用一次，返回后先 `parseCanonExtractionResponse` 再 `validateCanonChunkExtraction`：参与人物（或名册里的别名）必须在本块原文出现，段落范围必须在块内。校验失败只把该块标 failed；已通过的块保留。`mode: "resume"` 只跑非 done 的块，`"full"` 清掉这一章结果并按剩余结果重建名册。
 - 别名归并发生在写库前：事实里的 name 与 aliases 先按当前名册解析成标准名，事件参与人物与话术人物一起用标准名；书级名册 `canon_entities` 每块增量 upsert。插叙事件存 `is_interlude = 1`，`listCanonTimeline` 排除它们，`listCanonEvents` 保留。
 - 迁移 77：`canon_extractions`（每本书一条）、`canon_chapter_extractions`（chunks 是 JSON 数组）、`canon_events`、`canon_voices`（每人每章最多 5 条，写库时计数）、`canon_facts`、`canon_entities`。事件、话术、事实都带 `chapter_ordinal`；合并或拆分章节后 `#syncChapterOrdinals` 用 join 子查询统一改锚点，并丢掉受影响章的抽取结果。
-- 后台调度在 `server/src/canon-worker.ts`：一次只跑一本书，按队列依次执行；暂停由路由写库，引擎在每块之间检查状态，已完成章保留。服务端启动时 `markInterruptedCanonExtractions` 把 running 退回 paused。抽取不写 `background_jobs`，所以不计入每楼后台调用预算。
+- 后台调度在 `server/src/canon-worker.ts`：一次只跑一本书，新任务排到队头，暂停由路由写库，引擎在每块之间检查状态，已完成章保留。服务端启动时 `markInterruptedCanonExtractions` 把 running 退回 paused。抽取不写 `background_jobs`，所以不计入每楼后台调用预算。
 - 接口：`GET /api/canon/books/:bookId/estimate`、`POST .../extract/start|pause`、`POST .../chapters/:chapterId/extract`（body `{mode}`）、`GET .../extract[?chapterId=]`、`GET /api/canon/extract`（检视器总览）。开始与单章重跑在没有后台模型时返回 409。
 - e2e 假渠道里 `canonExtraction` 按块返回事件；「第二章 旧信」第一次故意给出原文里没有的参与人物，用来验证失败块重跑，随后同块第二次返回合格结果。这个规则按书名、章序号与块范围分别计数。
 

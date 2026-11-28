@@ -3,21 +3,17 @@
 > 每次收尾时完整重写，不超过 40 行。长期有效的注意事项写进 `docs/dev/NOTES.md`。
 
 ## 最近一次
-- 2026-11-27（工单 `ui-v2/06`）。**v5 的 25 张工单（M-A 至 M-E）全部完成**：`ui-v2` 01–06、`memory-v5` 01–05、`direction-v5` 01–02、`canon` 01–06、`card-ui` 01–02、`image-v2` 01–04。
-- 全站文案按 `docs/proposals/v5.md` §8.3 清洗：404 用「页面不存在」；「上下文」「输入行动或对话」「重写原因（可选）」「撤回」；思考关闭/低/高；档位轻量/标准/完整；剧情线状态进行中/已偏离/已达成；未分类；后台失败条改为「后台任务连续失败 N 次：原因」。
-- 后台失败条的「检查渠道」原指向不存在的 `/stories/:id/channels`，现指全局设置 `/settings`；故事下没有渠道路由。
-- 删除标题下的架构说明与文艺腔：登录标语、记忆/设置副标题、设定与原著说明、导入兼容说明、模板覆盖说明、画面整理作用域说明等；占位符只留操作。
-- `GLOSSARY.md` 同步界面术语（思考三档、档位三档、剧情走向状态、未分类、未收的线）。
-- server 的后台保底提醒同步改成「主渠道失败时后台任务会中断」。
-- 验证：`pnpm check` 通过（2577 用例、7 个 live 跳过）；受影响 e2e 59 项通过（v4-story 首跑一次阶段条没等到「正文」，单跑 6/6 通过，属既有偶发）；`walk19` 桌面与手机各 10 页截图已逐张看过。
+- 2026-11-27（全仓收口与全量门禁验证）。在 v5 全部 25 张工单完成后完成收口，全仓 `pnpm check` 与 `pnpm e2e` 零失败通过：
+  - 后台调度与文件写入：恢复 `BackgroundScheduler` 默认排空上限为不传 `limit`（走 `DEFAULT_BACKGROUND_JOB_LIMIT`）并保留最近调度故事队头优先；抽取 `packages/server/src/atomic-write.ts` 对同一路径串行排队并对 Windows 瞬时 `EPERM`/`EBUSY`/`EACCES` 改名重试，同时让 `handleChannelProbe` 在体检结束后重读最新 `channels.yaml` 再写回探测结果，避免并发修改互相覆盖。
+  - E2E 稳定性修复：适配 `playtest/runner.ts` 至 v5 界面与接口；`v4-story.spec.ts` 在刷新后补充 `observeStages`；`v2-setup.spec.ts` 连接向导等待「已保存，测试通过」再恢复配置，消除 `probeChannel` 异步覆盖 `channels.yaml` 的竞争；`v4-dock.spec.ts` 的 `seedDockStory` 补写 `scene_log` 已完成任务记录，防止后台调度覆写预设 `scene_card`。
+  - 文档对齐：`docs/DESIGN.md`、`README.md` 与 `docs/dev/NOTES.md` 同步至 v5 现实（三速记忆、剧情走向两栏与推进方向、原著工作流、楼层渲染沙箱、分格视觉档案与画面整理、最新测试数字与体积预算）。
+- 验证：`pnpm check` 全绿（不变量通过、typecheck 通过、biome 1001 文件零错误、unit 305 文件 2,579 用例通过 / 7 live 测试按预期跳过）；`pnpm e2e` 全绿（首屏 JS 171.5 / 200 KB，CSS 15.7 / 40 KB gzip，Playwright 135 项通过 / 3 项按预期跳过，0 失败）。
 
 ## 下一步
-1. 没有待做的工单。下一阶段按 `docs/DESIGN.md` 与人类新需求开新功能目录。
-2. 人类填入 `NOVELAI_API_KEY` 后跑一次 `pnpm vitest run packages/core/test/novelai.live.test.ts`，勾掉 `image-v2/03` 工单最后一项。
+1. 没有待做的开发工单。`.scratch/refactor/issues/07-eval-package.md` 按人类指示（`2026-11-19`「暂时不用评测」）继续延后。
+2. 人类填入 `NOVELAI_API_KEY` 后跑一次 `pnpm vitest run packages/core/test/novelai.live.test.ts`，核对 `image-v2/03` 的 live 验收项。
+3. 后续进入真卡长线试玩（100+ 楼北极星指标）与 `.scratch/PARKED.md` 中的 Post-MVP 事项。
 
 ## 眼下要注意
-- server 与 e2e 读 core 的 `dist`：改 core/st-compat 后先 `pnpm run build` 再跑 e2e。
-- 界面文案对照表在 `docs/proposals/v5.md` §8.3；改词要同步 `GLOSSARY.md` 与以文字定位的 e2e。走查命令 `cd packages/web && npx playwright test -c .walk/walk.config.ts .walk/walk19.spec.ts`。
-- 回写提示词只改 `node_images`，任何情况下都不碰楼层 `raw`（I4/I8）。
-- 插图接口的 `url` 带更新时间版本；改文件名或缓存策略时同步改 `toNodeImage` 与相关测试。
-- `.walk/` 不入库；截图落在 `.devloop/scratch/walk/`。
+- server 与 e2e 读取 `core`/`protocol`/`st-compat` 的 `dist`；修改上述包后需先构建再单独跑 e2e（`pnpm e2e` 会自动触发完整构建）。
+- e2e 共享同一个后台 `BackgroundScheduler`：在测试里直接向 SQLite 写入已结算内容（如 `scene_logs`）时，需一并写入对应的 `done` 状态 `background_jobs` 记录，避免后台队列重复覆盖。

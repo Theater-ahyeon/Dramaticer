@@ -210,6 +210,7 @@ test.describe("故事页：正文、批注与输入台", () => {
 		await expect(
 			page.getByRole("button", { name: "选择推进多少" }),
 		).toBeVisible();
+		await observeStages(page);
 		await resetStageLog(page);
 		await pushWith("跳跃");
 		await expect
@@ -231,6 +232,7 @@ test.describe("故事页：正文、批注与输入台", () => {
 		await expect(
 			page.getByRole("button", { name: "选择推进多少" }),
 		).toBeVisible();
+		await observeStages(page);
 		await resetStageLog(page);
 		await pushWith("一步");
 		await expect

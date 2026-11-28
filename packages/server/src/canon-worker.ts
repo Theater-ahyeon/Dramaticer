@@ -107,7 +107,7 @@ export class CanonExtractionWorker {
 				item.mode === task.mode &&
 				item.kind === task.kind,
 		);
-		if (!duplicate) this.#queue.push(task);
+		if (!duplicate) this.#queue.unshift(task);
 		if (this.#pump === null) this.#pump = this.#runQueue();
 	}
 

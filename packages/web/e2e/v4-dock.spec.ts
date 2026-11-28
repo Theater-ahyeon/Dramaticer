@@ -84,6 +84,10 @@ function seedDockStory(storyId: string, loreId: string): string {
 			}),
 		);
 		db.prepare(
+			`INSERT OR IGNORE INTO background_jobs (story_id, node_id, kind, status, attempts, last_error, created_at, started_at, finished_at)
+			 VALUES (?, ?, 'scene_log', 'done', 1, NULL, ?, ?, ?)`,
+		).run(storyId, nodeId, createdAt, createdAt, createdAt);
+		db.prepare(
 			`INSERT INTO state_diffs (story_id, node_id, ordinal, path, op, value, reason, source, created_at)
 			 VALUES (?, ?, 0, ?, 'set', ?, '听到门后的脚步', 'settler', ?)`,
 		).run(storyId, nodeId, statusPath, JSON.stringify("警觉"), createdAt);

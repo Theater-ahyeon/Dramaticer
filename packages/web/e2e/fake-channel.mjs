@@ -642,10 +642,11 @@ export async function startFakeChannel(options = {}) {
 				return;
 			}
 			if (req.url === BACKGROUND_PATH) {
+				// 后台任务不在界面上流式显示，按真实等待会让整仓 e2e 被积压拖住。
 				streamText(
 					res,
 					splitForStream(backgroundResponse(body)),
-					streamDelayMs,
+					options.backgroundStreamDelayMs ?? 0,
 				);
 				return;
 			}

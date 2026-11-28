@@ -1,6 +1,5 @@
 // server 路由：渠道配置、渠道体检与助手读取的渠道快照（refactor/06 从 routes.ts 拆出）。
-import { randomUUID } from "node:crypto";
-import { readFile, rename, rm, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
 	type AssistantChannelsSnapshot,
@@ -26,6 +25,7 @@ import type {
 	EmbeddingUpdateInput,
 	ModelUpdateInput,
 } from "@dramaticer/protocol";
+import { writeFileAtomic } from "./atomic-write.js";
 import { ENV_NAME_PATTERN, assertEnvValue, upsertEnvFile } from "./env-file.js";
 import { HttpError, sendJson } from "./http.js";
 import {
@@ -165,13 +165,17 @@ export async function handleChannelProbe(
 			{ path: "alias" },
 		);
 	}
-	let candidate: string;
-	try {
-		candidate = setModelProbeInText(text, alias, probe, filePath);
-	} catch (error) {
-		throw configError(error, filePath);
+	const latestText = await readChannelsText(filePath);
+	const latestConfig = parseChannelsText(latestText, options, filePath);
+	if (latestConfig.models.has(alias)) {
+		let candidate: string;
+		try {
+			candidate = setModelProbeInText(latestText, alias, probe, filePath);
+		} catch (error) {
+			throw configError(error, filePath);
+		}
+		await writeChannelsText(filePath, candidate);
 	}
-	await writeChannelsText(filePath, candidate);
 	const result: ChannelProbeResult = { alias, channel: channelId, probe };
 	sendJson(res, 200, result);
 }
@@ -234,12 +238,9 @@ export async function writeChannelsText(
 	filePath: string,
 	text: string,
 ): Promise<void> {
-	const tempPath = `${filePath}.${randomUUID()}.tmp`;
 	try {
-		await writeFile(tempPath, text, "utf8");
-		await rename(tempPath, filePath);
+		await writeFileAtomic(filePath, text);
 	} catch (error) {
-		await rm(tempPath, { force: true }).catch(() => undefined);
 		throw new HttpError(
 			500,
 			"internal",

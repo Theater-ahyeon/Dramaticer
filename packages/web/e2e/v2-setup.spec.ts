@@ -72,7 +72,7 @@ test("全局设置的连接向导：填地址与密钥、获取模型、保存�
 		await expect(page.getByRole("status")).toContainText("共 2 个模型");
 		await page.getByLabel("正文模型").fill("fake-writer");
 		await page.getByRole("button", { name: "保存并测试" }).click();
-		await expect(page.getByRole("status")).toContainText("已保存", {
+		await expect(page.getByRole("status")).toContainText("已保存，测试通过", {
 			timeout: 30_000,
 		});
 		await expect(page.locator("body")).not.toContainText("wizard-secret-key");
@@ -97,7 +97,10 @@ test("全局设置的连接向导：填地址与密钥、获取模型、保存�
 		expect(envText).toContain("wizard-secret-key");
 		await expectNoHorizontalOverflow(page);
 	} finally {
-		await page.request.put("/api/channels", { data: toUpdate(before) });
+		const restored = await page.request.put("/api/channels", {
+			data: toUpdate(before),
+		});
+		expect(restored.ok()).toBeTruthy();
 	}
 });
 

@@ -84,7 +84,7 @@ describe("server 后台任务调度", () => {
 		await scheduler.close();
 	});
 
-	it("多个故事按排入顺序逐个执行，任一时刻只有一个处理器在跑", async () => {
+	it("多个故事逐个执行，任一时刻只有一个处理器在跑", async () => {
 		const store = tempStore();
 		seedStory(store, "s1");
 		seedStory(store, "s2");
@@ -116,6 +116,69 @@ describe("server 后台任务调度", () => {
 		expect(started).toEqual(["s1", "s2"]);
 		expect(order).toEqual(["s1", "s2"]);
 		expect(maxActive).toBe(1);
+		await scheduler.close();
+	});
+
+	it("重复调度把故事移到队头，不被先入队的积压饿死", async () => {
+		const store = tempStore();
+		seedStory(store, "s1");
+		seedStory(store, "s2");
+		seedStory(store, "s3");
+		const gate = Promise.withResolvers<void>();
+		const started: string[] = [];
+		const scheduler = new BackgroundScheduler({
+			store,
+			runtime: runtimeSource(),
+			limit: 1,
+			createRegistry: () =>
+				registryOf(async ({ job }) => {
+					started.push(job.storyId);
+					await gate.promise;
+				}),
+			log: () => undefined,
+		});
+		scheduler.schedule("s1");
+		await vi.waitFor(() => expect(started).toEqual(["s1"]));
+		scheduler.schedule("s2");
+		scheduler.schedule("s3");
+		scheduler.schedule("s3");
+		gate.resolve();
+		await scheduler.waitForIdle();
+		expect(started).toEqual(["s1", "s3", "s2"]);
+		await scheduler.close();
+	});
+
+	it("一个故事的积压不会挡住刚切过来的故事", async () => {
+		const store = tempStore();
+		seedStory(store, "s1");
+		const head = store.getHead("s1");
+		if (head === null) throw new Error("故事没有 head");
+		store.appendNode({
+			storyId: "s1",
+			parentId: head.id,
+			role: "assistant",
+			raw: "第二楼",
+		});
+		seedStory(store, "s2");
+		const gate = Promise.withResolvers<void>();
+		const started: string[] = [];
+		const scheduler = new BackgroundScheduler({
+			store,
+			runtime: runtimeSource(),
+			limit: 1,
+			createRegistry: () =>
+				registryOf(async ({ job }) => {
+					started.push(job.storyId);
+					await gate.promise;
+				}),
+			log: () => undefined,
+		});
+		scheduler.schedule("s1");
+		await vi.waitFor(() => expect(started).toEqual(["s1"]));
+		scheduler.schedule("s2");
+		gate.resolve();
+		await scheduler.waitForIdle();
+		expect(started).toEqual(["s1", "s2", "s1"]);
 		await scheduler.close();
 	});
 

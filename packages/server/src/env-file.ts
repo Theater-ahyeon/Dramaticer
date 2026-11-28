@@ -1,5 +1,5 @@
-import { randomUUID } from "node:crypto";
-import { readFile, rename, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
+import { writeFileAtomic } from "./atomic-write.js";
 
 /** 环境变量名：大写字母开头，只含大写字母、数字与下划线。 */
 export const ENV_NAME_PATTERN = /^[A-Z][A-Z0-9_]{1,63}$/;
@@ -51,7 +51,5 @@ export async function upsertEnvFile(
 		while (next.length > 0 && next[next.length - 1] === "") next.pop();
 		next.push(line, "");
 	}
-	const tempPath = `${filePath}.${randomUUID()}.tmp`;
-	await writeFile(tempPath, next.join("\n"), { encoding: "utf8", mode: 0o600 });
-	await rename(tempPath, filePath);
+	await writeFileAtomic(filePath, next.join("\n"), { mode: 0o600 });
 }

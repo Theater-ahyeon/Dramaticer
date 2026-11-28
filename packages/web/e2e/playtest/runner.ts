@@ -35,7 +35,6 @@ import { generateSimulatedUserMessage } from "../../src/playtest/user";
 import {
 	createImportedStory,
 	login,
-	openStoryTab,
 	pathNodeCount,
 	totalNodeCount,
 } from "../helpers";
@@ -62,6 +61,14 @@ export interface PlaytestDependencies {
 }
 
 const TRANSCRIPT_FLOORS = 12;
+
+/** 打开故事页并等正文容器就绪；v5 起不再有「聊天 / 分支」两个分页。 */
+async function openStory(page: Page, storyId: string): Promise<void> {
+	await page.goto(`/stories/${encodeURIComponent(storyId)}/play`);
+	await expect(page.locator('[data-view="play"]')).toBeVisible({
+		timeout: 30_000,
+	});
+}
 
 interface PlaytestLastEdit {
 	readonly originalNodeId: string;
@@ -101,7 +108,7 @@ export async function runPlaytest(
 	const startedAt = progress?.startedAt ?? new Date().toISOString();
 	const records: PlaytestRecord[] = previousRecords;
 	const characterNames = await fetchCharacterNames(page, storyId);
-	await openStoryTab(page, storyId, "chat");
+	await openStory(page, storyId);
 	let openingCandidates: PlaytestRoundRecord["openingCandidates"] = null;
 	if (records.length === 0) {
 		const openingCount = await waitForCount(
@@ -290,7 +297,7 @@ export async function runPlaytest(
 			};
 			records.push(record);
 			saveProgress(config, storyId, startedAt, records);
-			await openStoryTab(page, storyId, "chat");
+			await openStory(page, storyId);
 		} catch (error) {
 			const failureScreenshot = join(
 				config.screenshotDir,
@@ -544,16 +551,17 @@ async function editHead(
 	if (originalNodeId === null) throw new Error("没有可编辑的楼层");
 	const original = await fetchNode(page, storyId, originalNodeId);
 	const beforeCount = await totalNodeCount(page, storyId);
-	await openStoryTab(page, storyId, "branches");
-	await page.locator(".branch-row-head .branch-select").first().click();
-	await expect(page.locator(".branch-detail-raw")).toBeVisible({
-		timeout: timeoutMs,
-	});
-	await page.getByRole("button", { name: "编辑正文" }).click();
 	const marker = `〔试玩编辑第${round}轮〕`;
 	const editedRaw = `${marker}\n${original.raw}`;
-	await page.getByLabel("编辑后的正文").fill(editedRaw);
-	await page.getByRole("button", { name: "保存编辑" }).click();
+	const response = await page.request.post(
+		`/api/nodes/${encodeURIComponent(originalNodeId)}/edit`,
+		{ data: { text: editedRaw } },
+	);
+	if (!response.ok()) {
+		throw new Error(
+			`编辑楼层失败：HTTP ${response.status()} ${await response.text()}`,
+		);
+	}
 	await expect
 		.poll(() => totalNodeCount(page, storyId), { timeout: timeoutMs })
 		.toBeGreaterThan(beforeCount);
@@ -601,14 +609,18 @@ async function switchBranch(
 		target === lastEdit.originalNodeId
 			? lastEdit.originalPreview
 			: lastEdit.editedPreview;
-	await openStoryTab(page, storyId, "branches");
-	const preview = page
-		.locator(".branch-preview")
-		.filter({ hasText: new RegExp(`^${escapeRegExp(targetPreview)}$`) });
-	await expect(preview).toHaveCount(1, { timeout: 15_000 });
-	await preview.first().click();
-	await page.getByRole("button", { name: "切换到此楼层" }).click();
-	await page.getByRole("button", { name: "确认切换" }).click();
+	await openStory(page, storyId);
+	const branch = page.getByRole("combobox", { name: "分支" });
+	await expect(branch).toBeVisible();
+	const option = branch.locator("option").filter({
+		hasText: targetPreview.slice(0, 18),
+	});
+	await expect(option).toHaveCount(1);
+	const value = await option.getAttribute("value");
+	if (value === null || value === "") {
+		throw new Error("分支下拉里没有可切换的目标楼层");
+	}
+	await branch.selectOption(value);
 	await expect
 		.poll(async () => (await fetchTree(page, storyId)).headNodeId, {
 			timeout: timeoutMs,
@@ -626,10 +638,6 @@ async function switchBranch(
 
 function previewOf(raw: string): string {
 	return raw.replace(/\s+/g, " ").trim().slice(0, 80);
-}
-
-function escapeRegExp(text: string): string {
-	return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 async function describeFailure(page: Page, error: unknown): Promise<string> {
