@@ -978,6 +978,8 @@ html.theme-swap img.cover {
 }
 img.cover {
 	object-fit: cover;
+	/* 封面比 2:3 长的时候居中裁切会裁掉头像，靠上对齐。 */
+	object-position: top center;
 }
 [contenteditable] {
 	border-radius: var(--r-sm);
@@ -3783,6 +3785,10 @@ div:hover > .flr-acts,
 	color: var(--ink);
 	font-weight: 600;
 }
+/* 拒收记录里有完整网址，长串不能把检视器撑出横向滚动。 */
+.insplist li {
+	overflow-wrap: anywhere;
+}
 .insprobe {
 	display: grid;
 	gap: 6px;
@@ -3811,6 +3817,8 @@ div:hover > .flr-acts,
 	width: 48px;
 	height: 64px;
 	object-fit: cover;
+	/* 立绘与封面用同一张图，容器比 2:3 宽，同样靠上对齐。 */
+	object-position: top center;
 	border-radius: var(--r-md);
 	border: 1px solid var(--line);
 }

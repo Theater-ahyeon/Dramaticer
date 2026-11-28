@@ -75,6 +75,24 @@ describe("楼层沙箱文档", () => {
 		expect(document).not.toContain("</script><img");
 		expect(document).toContain("\\u003c/script");
 	});
+
+	it("外链图片加载失败时换成一行文字，不留裂图", () => {
+		const document = build();
+		expect(document).toContain("floor-img-missing");
+		expect(document).toContain("图片没能显示");
+		expect(document).toContain('target.tagName !== "IMG"');
+	});
+
+	it("图片失败的监听在内容注入之前注册，并挂在捕获阶段", () => {
+		const document = build();
+		const listener = document.indexOf('target.tagName !== "IMG"');
+		expect(listener).toBeGreaterThan(0);
+		expect(listener).toBeLessThan(document.indexOf("innerHTML = config.html"));
+		// error 不冒泡，只有捕获阶段能拿到图片的失败事件。
+		expect(/,\s*true\s*\)/.test(document.slice(listener, listener + 900))).toBe(
+			true,
+		);
+	});
 });
 
 describe("楼层沙箱消息白名单", () => {
