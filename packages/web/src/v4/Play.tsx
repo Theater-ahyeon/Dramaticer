@@ -1378,9 +1378,7 @@ export function Play() {
 							</button>
 						) : null}
 						{nodes.length === 0 && path.data !== null ? (
-							<p className="v4empty" style={{ padding: "24px 28px" }}>
-								暂无内容
-							</p>
+							<p className="v4empty lede">暂无内容</p>
 						) : null}
 						{nodes.map((node) => {
 							const meta = metaById.get(node.id);

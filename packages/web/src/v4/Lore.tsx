@@ -465,7 +465,7 @@ export function Lore() {
 											</option>
 										))}
 									</select>
-									<label style={{ fontSize: 13 }}>
+									<label className="fine">
 										<input
 											type="checkbox"
 											checked={entry.constant}
