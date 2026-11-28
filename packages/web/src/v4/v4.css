@@ -2829,6 +2829,19 @@ img.cover {
 	color: var(--muted);
 	padding: 24px 0;
 }
+/* 挤在面板里的小块空态不要那 24px 的上下留白。 */
+.v4empty.flush {
+	padding: 0;
+}
+/* 整页主栏的空态：左右留白对齐楼层正文（`.flr` 的 28px）。 */
+.v4empty.lede {
+	padding: 24px 28px;
+}
+/* 辅助小字固定 --t-sm 一档；带上 .muted 是为了对冲 panels.css 里 .muted 的字号。 */
+.fine,
+.muted.fine {
+	font-size: var(--t-sm);
+}
 .v4err {
 	color: var(--bad);
 	background: var(--bad-wash);

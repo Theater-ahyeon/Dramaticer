@@ -248,9 +248,7 @@ export function Dock({
 						</div>
 					))}
 					{memory.data !== null && memory.data.present.length === 0 ? (
-						<p className="v4empty" style={{ padding: 0 }}>
-							自动记录还没有记下这一场谁在场。
-						</p>
+						<p className="v4empty flush">自动记录还没有记下这一场谁在场。</p>
 					) : null}
 					<div className="label">
 						<span>秘密</span>
@@ -258,9 +256,7 @@ export function Dock({
 					<div className="rows">
 						{(memory.data?.secrets ?? []).length === 0 &&
 						memory.data !== null ? (
-							<p className="muted" style={{ fontSize: 13 }}>
-								暂无
-							</p>
+							<p className="muted fine">暂无</p>
 						) : (
 							(memory.data?.secrets ?? []).map((secret) => (
 								<div key={secret.id}>
@@ -275,9 +271,7 @@ export function Dock({
 					</div>
 					<div className="rows">
 						{(memory.data?.soon ?? []).length === 0 && memory.data !== null ? (
-							<p className="muted" style={{ fontSize: 13 }}>
-								暂无
-							</p>
+							<p className="muted fine">暂无</p>
 						) : (
 							(memory.data?.soon ?? []).map((person) => (
 								<div key={person.pageId}>
@@ -302,9 +296,7 @@ export function Dock({
 						)}
 					</div>
 					{context.data !== null && context.data.breakdown === null ? (
-						<p className="v4empty" style={{ padding: 0 }}>
-							暂无
-						</p>
+						<p className="v4empty flush">暂无</p>
 					) : null}
 					<div className="ctxbar">
 						{categories.map((item) => (
