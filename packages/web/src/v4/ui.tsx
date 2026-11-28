@@ -28,16 +28,19 @@ export function useLoad<T>(
 ): {
 	data: T | null;
 	error: string | null;
+	pending: boolean;
 	reload: () => void;
 } {
 	const [data, setData] = useState<T | null>(null);
 	const [error, setError] = useState<string | null>(null);
+	const [pending, setPending] = useState(true);
 	const [tick, setTick] = useState(0);
 	const loader = useRef(load);
 	loader.current = load;
 	// biome-ignore lint/correctness/useExhaustiveDependencies: 依赖由调用方给出
 	useEffect(() => {
 		let active = true;
+		setPending(true);
 		loader
 			.current()
 			.then((value) => {
@@ -47,13 +50,16 @@ export function useLoad<T>(
 			})
 			.catch((value: unknown) => {
 				if (active) setError(errorText(value));
+			})
+			.finally(() => {
+				if (active) setPending(false);
 			});
 		return () => {
 			active = false;
 		};
 	}, [...deps, tick]);
 	const reload = useCallback(() => setTick((value) => value + 1), []);
-	return { data, error, reload };
+	return { data, error, pending, reload };
 }
 
 interface ToastState {

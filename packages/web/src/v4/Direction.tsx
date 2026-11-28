@@ -8,6 +8,7 @@ import type {
 import { useCallback, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api } from "../api";
+import { formatFloorTime } from "../chat/format";
 import { usePaletteCommands } from "./Shell";
 import { Editable, Seg, Tog, useAct, useLoad, useToast } from "./ui";
 
@@ -441,7 +442,7 @@ export function DirectionPage() {
 								<div key={`${version.nodeId}-${version.seq}`}>
 									<span>
 										{version.source === "ai" ? "AI" : "你"} · {version.changes}{" "}
-										处修改 · {new Date(version.createdAt).toLocaleString()}
+										处修改 · {formatFloorTime(version.createdAt)}
 									</span>
 									<span>
 										<button

@@ -2,6 +2,7 @@ import type { ChannelProbeResult } from "@dramaticer/protocol";
 import type { SandboxRejectionsView } from "@dramaticer/protocol";
 import { useEffect, useState } from "react";
 import { ApiError, api } from "../api";
+import { formatFloorTime } from "../chat/format";
 import { type RunTimelineView, buildRunTimeline } from "../chat/run-timeline";
 import { RerollStats } from "./RerollStats";
 import { errorText, formatTokens, sp, useLoad } from "./ui";
@@ -117,6 +118,18 @@ export function Inspector({
 	);
 }
 
+/** 五个小节共用的空态：先看读取失败，再看是不是还在读。 */
+function SectionState({
+	pending,
+	error,
+}: {
+	readonly pending: boolean;
+	readonly error: string | null;
+}) {
+	if (error !== null) return <p className="v4err">{error}</p>;
+	return <p className="muted">{pending ? "正在读取…" : "暂无"}</p>;
+}
+
 function StoryInspector({ storyId }: { readonly storyId: string }) {
 	const floors = useLoad<{ floors: readonly FloorCost[] }>(
 		() => api.get(sp(storyId, "/floors")),
@@ -148,7 +161,7 @@ function StoryInspector({ storyId }: { readonly storyId: string }) {
 			<section aria-label="本轮">
 				<h3>本轮{last === undefined ? "" : ` · 第 ${last.no} 楼`}</h3>
 				{cost === null ? (
-					<p className="muted">暂无</p>
+					<SectionState pending={floors.pending} error={floors.error} />
 				) : (
 					<dl>
 						<dt>写法</dt>
@@ -183,7 +196,7 @@ function StoryInspector({ storyId }: { readonly storyId: string }) {
 						: ` · ${formatTokens(breakdown.totalTokens)}`}
 				</h3>
 				{breakdown === null ? (
-					<p className="muted">暂无</p>
+					<SectionState pending={context.pending} error={context.error} />
 				) : (
 					<dl>
 						{breakdown.categories.map((item) => (
@@ -198,7 +211,7 @@ function StoryInspector({ storyId }: { readonly storyId: string }) {
 			<section aria-label="后台任务">
 				<h3>后台任务</h3>
 				{counts === undefined || calls === undefined ? (
-					<p className="muted">暂无</p>
+					<SectionState pending={jobs.pending} error={jobs.error} />
 				) : (
 					<>
 						<dl>
@@ -242,7 +255,7 @@ function StoryInspector({ storyId }: { readonly storyId: string }) {
 			<section aria-label="拒收">
 				<h3>拒收</h3>
 				{(memory.data?.rejections ?? []).length === 0 ? (
-					<p className="muted">无</p>
+					<SectionState pending={memory.pending} error={memory.error} />
 				) : (
 					<ul className="insplist">
 						{memory.data?.rejections.map((item) => (
@@ -256,7 +269,7 @@ function StoryInspector({ storyId }: { readonly storyId: string }) {
 			<section aria-label="沙箱拒绝">
 				<h3>沙箱拒绝</h3>
 				{(sandbox.data?.rejections ?? []).length === 0 ? (
-					<p className="muted">无</p>
+					<SectionState pending={sandbox.pending} error={sandbox.error} />
 				) : (
 					<ul className="insplist">
 						{sandbox.data?.rejections.map((item) => (
@@ -265,7 +278,7 @@ function StoryInspector({ storyId }: { readonly storyId: string }) {
 								{item.renderer} · {item.target}：{item.reason}
 								<span className="label">
 									{" · "}
-									{new Date(item.createdAt).toLocaleString()}
+									{formatFloorTime(item.createdAt)}
 								</span>
 							</li>
 						))}
