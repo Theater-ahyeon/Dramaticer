@@ -118,6 +118,17 @@ body {
 	font: 18px / var(--lh-prose, 1.9) var(--f-prose, "Source Han Serif SC", serif);
 }
 img { max-width: 100%; height: auto; }
+.floor-img-missing {
+	display: inline-block;
+	max-width: 100%;
+	overflow-wrap: anywhere;
+	padding: 2px 8px;
+	border: 1px dashed currentColor;
+	border-radius: 6px;
+	color: var(--muted, #6b6258);
+	font-size: 0.86em;
+	line-height: 1.6;
+}
 </style>
 </head>
 <body>
@@ -249,6 +260,32 @@ img { max-width: 100%; height: auto; }
 		style.textContent = config.style;
 		document.head.appendChild(style);
 	}
+	// 卡片里的外链图片在沙箱里多半加载不出来：把裂图标换成一行说明。
+	// 注册在注入内容之前，保证图片请求发起时监听已在位。
+	document.addEventListener(
+		"error",
+		function (event) {
+			var target = event.target;
+			if (!target || target.tagName !== "IMG") return;
+			// 等一拍再换：让内容自己的 onerror 先跑，它可能换个 src 自己兜底。
+			window.setTimeout(function () {
+				if (!target.parentNode) return;
+				if (target.complete && target.naturalWidth > 0) return;
+				var alt = (target.getAttribute("alt") || "").trim();
+				if (alt === "") {
+					// 装饰图不占位，直接描掉，不留一行空白。
+					target.parentNode.removeChild(target);
+					return;
+				}
+				var note = document.createElement("span");
+				note.className = "floor-img-missing";
+				note.textContent =
+					"图片没能显示：" + (alt.length > 60 ? alt.slice(0, 60) + "…" : alt);
+				target.parentNode.replaceChild(note, target);
+			}, 0);
+		},
+		true
+	);
 	var nativeAddEventListener = document.addEventListener.bind(document);
 	var deferredReadyCallbacks = [];
 	var deferDomContentLoaded = true;
