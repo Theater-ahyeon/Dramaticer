@@ -243,7 +243,9 @@ export function DirectionPanel({
 							<p className="v4empty">AI 另有 {data.hidden.total} 条已隐藏。</p>
 						)}
 					</div>
-					{data.wants.length === 0 ? <p className="v4empty">暂无内容</p> : null}
+					{data.wants.length === 0 ? (
+						<p className="v4empty dircolempty">暂无内容</p>
+					) : null}
 					{data.wants.map((item) => (
 						<WantRow
 							key={item.id}
@@ -288,7 +290,9 @@ export function DirectionPanel({
 					<div className="dircolhead">
 						<h2>还没收的线</h2>
 					</div>
-					{data.opens.length === 0 ? <p className="v4empty">暂无内容</p> : null}
+					{data.opens.length === 0 ? (
+						<p className="v4empty dircolempty">暂无内容</p>
+					) : null}
 					{data.opens.map((item) => (
 						<OpenRow
 							key={item.id}

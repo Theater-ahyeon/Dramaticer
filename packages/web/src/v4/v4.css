@@ -523,12 +523,13 @@ html.theme-swap img.cover {
 	}
 	.rail {
 		position: fixed;
-		inset: auto 10px calc(10px + env(safe-area-inset-bottom, 0px)) 10px;
+		inset: auto 6px calc(6px + env(safe-area-inset-bottom, 0px)) 6px;
 		top: auto;
 		height: auto;
 		margin: 0;
 		flex-direction: row;
-		padding: 5px;
+		gap: 2px;
+		padding: 4px;
 		border-radius: var(--r-lg);
 		box-shadow: var(--lift);
 	}
@@ -551,7 +552,7 @@ html.theme-swap img.cover {
 	.rail a.nav {
 		width: auto;
 		flex: 1;
-		height: 54px;
+		height: 56px;
 		font-size: 10.5px;
 	}
 	.rail a.nav i {
@@ -568,9 +569,9 @@ html.theme-swap img.cover {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		min-width: 36px;
-		height: 44px;
-		padding: 0 6px;
+		min-width: 32px;
+		height: 56px;
+		padding: 0 3px;
 		flex: none;
 	}
 }
@@ -2051,15 +2052,6 @@ img.cover {
 		flex-basis: 100%;
 		border-left: 0;
 		border-top: 1px solid var(--line);
-	}
-	.opts {
-		flex-wrap: nowrap;
-		overflow-x: auto;
-		scrollbar-width: none;
-	}
-	.opts .chip {
-		flex: none;
-		max-width: 80vw;
 	}
 	#stepHint,
 	.meta .num {
@@ -3561,17 +3553,10 @@ div:hover > .flr-acts,
 		max-width: calc(100% - 16px);
 	}
 	.opts {
-		flex-wrap: nowrap;
-		overflow-x: auto;
-		scrollbar-width: none;
-		max-width: 100%;
-	}
-	.opt {
-		flex: none;
-		max-width: calc(100% - 4px);
-	}
-	.opt .chip {
-		max-width: calc(100vw - 104px);
+		/* 换行后封顶两行多，超过就纵向滚动，不把输入台顶到半屏高。 */
+		max-height: 96px;
+		overflow-y: auto;
+		overscroll-behavior: contain;
 	}
 	.say textarea {
 		max-height: 30vh;
@@ -4054,9 +4039,11 @@ div:hover > .flr-acts,
 	display: grid;
 	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 	gap: 18px 26px;
-	align-items: start;
+	align-items: stretch;
 }
 .dircol {
+	display: flex;
+	flex-direction: column;
 	min-width: 0;
 	padding: 4px 16px 12px;
 	border: 1px solid var(--line);
@@ -4080,6 +4067,23 @@ div:hover > .flr-acts,
 .dircolhead .v4empty {
 	margin: 6px 0;
 	padding: 0;
+}
+/* 空的一栏拉成与另一栏同高，空态在空白里居中，两栏底线对得上。 */
+.dircol > .dircolempty {
+	margin: auto 0;
+	padding: 22px 12px;
+	border: 1px dashed var(--line);
+	border-radius: var(--r-md);
+	background: var(--bg);
+	font-size: var(--t-sm);
+	line-height: 1.8;
+	text-align: center;
+}
+.dock .dircolempty {
+	margin: 6px 0 0;
+	padding: 14px 10px;
+	border: 0;
+	background: none;
 }
 .dirrow {
 	padding: 11px 0;
