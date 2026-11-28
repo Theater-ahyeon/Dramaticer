@@ -2508,6 +2508,11 @@ export function buildMigrations(
 					CHECK (prompt_edited IN (0, 1))`,
 			],
 		},
+		{
+			version: 86,
+			description: "书架移出：故事支持软归档，保留不可变楼层与日志约束",
+			statements: ["ALTER TABLE stories ADD COLUMN archived_at TEXT"],
+		},
 	];
 }
 

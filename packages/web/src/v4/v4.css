@@ -1124,6 +1124,47 @@ img.cover {
 	padding: 20px 32px 16px;
 	border-bottom: 1px solid var(--soft);
 }
+.sheet-tools {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px 12px;
+	margin-left: auto;
+}
+.rename-bar {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	padding: 8px 32px 12px;
+	border-bottom: 1px solid var(--soft);
+	background: var(--raise);
+}
+.rename-bar input {
+	flex: 1;
+	min-width: 0;
+}
+.sandbox-notice {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	margin: 8px 32px 4px;
+	padding: 10px 14px;
+	border: 1px solid var(--line);
+	border-radius: var(--r-md);
+	background: var(--raise);
+	font-size: 13px;
+	color: var(--muted);
+}
+#script {
+	padding-bottom: 20px;
+}
+.flr,
+.opening,
+#script > div:last-child {
+	scroll-margin-bottom: 185px;
+}
 .ttl {
 	display: flex;
 	align-items: center;
@@ -2085,15 +2126,35 @@ img.cover {
 .lead a:hover {
 	text-decoration-color: var(--gold);
 }
+.lead {
+	white-space: pre-line;
+}
+.nbsec [contenteditable] {
+	min-height: 28px;
+	padding: 4px 8px;
+	border: 1px dashed transparent;
+	border-radius: var(--r-sm);
+}
+.nbsec [contenteditable]:empty {
+	border-color: var(--line);
+	background: var(--field);
+}
 .lock {
-	border: 0;
-	background: none;
-	padding: 2px 4px;
+	border: 1px solid var(--line);
+	border-radius: var(--r-pill);
+	background: var(--field);
+	padding: 2px 10px;
 	color: var(--muted);
 	font-size: 12px;
-	transition: color var(--dur);
+	transition: color var(--dur), border-color var(--dur), background var(--dur);
+}
+.lock:hover:not(:disabled) {
+	border-color: var(--line-strong);
+	color: var(--ink);
 }
 .lock[aria-pressed="true"] {
+	border-color: var(--gold);
+	background: var(--gold-wash);
 	color: var(--gold-ink);
 }
 .tblwrap {
@@ -3164,6 +3225,9 @@ img.cover {
 .pushmenu button:focus-visible {
 	background: var(--soft);
 }
+.pushmenu button.danger {
+	color: var(--bad);
+}
 .pushmenu small {
 	color: var(--muted);
 	font-size: 12px;
@@ -3213,7 +3277,7 @@ img.cover {
 	flex-wrap: wrap;
 	gap: 2px;
 	padding: 0 24px 6px;
-	opacity: 0;
+	opacity: 0.72;
 	transition: opacity var(--dur);
 }
 .flr-acts button {
@@ -3466,6 +3530,21 @@ div:hover > .flr-acts,
 	.branchsel {
 		max-width: 100%;
 		min-width: 0;
+	}
+	.headmenu .pushmenu {
+		left: 0;
+		right: auto;
+		max-width: calc(100vw - 48px);
+	}
+	.rename-bar,
+	.sandbox-notice {
+		margin-inline: 12px;
+		padding-inline: 12px;
+	}
+	.flr,
+	.opening,
+	#script > div:last-child {
+		scroll-margin-bottom: 220px;
 	}
 }
 

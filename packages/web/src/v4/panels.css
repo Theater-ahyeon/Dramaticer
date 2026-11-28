@@ -827,6 +827,10 @@ button.scene-control[aria-pressed="true"] {
 	min-width: 0;
 }
 
+.assistant-search button {
+	white-space: nowrap;
+	flex-shrink: 0;
+}
 .assistant-search button,
 .assistant-new,
 .assistant-conversation-actions button,

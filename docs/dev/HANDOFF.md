@@ -3,11 +3,11 @@
 > 每次收尾时完整重写，不超过 40 行。长期有效的注意事项写进 `docs/dev/NOTES.md`。
 
 ## 最近一次
-- 2026-11-28（真卡导入与端到端体验修复）。围绕真实角色卡导入、楼层沙箱渲染、AI 回复清洗与 v4/v5 桌面/移动端界面细节完成以下修复：
-  - **角色卡与世界书导入全通**：放宽 `lore` 审计对停用/无名/空内容条目的校验（与 `st-compat` 审计语义对齐）；`entity-import` 跳过标点分隔线条目名；故事/卡片/世界书/原著导入放宽单包体上限至 128 MB 并增加 `POST /api/stories/from-card` 事务化原子接口，避免导入失败留下 0 楼孤儿故事。
-  - **酒馆卡片前端与沙箱渲染**：`st-renderer` 先用 `BlockParser` 剔除内部写入/隐藏块并清理未消费 MVU 标签，拆开 Markdown ````html` 围栏与外层文档壳，在纯文本间隙保持换行同时给 HTML 容器切回 `white-space: normal` 消除大块空白；`shim.ts` 改为逐段隔离执行脚本并用 `<script type="module">` 承载 ESM 脚本，避免单个模块导入报错拖垮后续脚本；`floor-sandbox` 支持触发延迟登记的 `DOMContentLoaded` 回调与内联 `<script>` 激活。
-  - **场面卡修复与交互打磨**：`scene-log` 在开新场缺少 `sceneCard` 时按在场人物与本楼变化自动补齐并记入 `repairs`；`direction/view` 空核心问题默认未锁定；`Inspector` 仅在非快速模式请求 `run` 详情（消除快回合 404）；`Shell` 校验缓存故事有效性并对齐 `助`/`检` 按钮外观；修正窄屏（390px）横向裁切、推进/故事菜单自动关闭、Dock 记忆空态与上下文图例、`Library`/`Memory`/`Lore`/`Prefs`/`GlobalSettings` 展示细节。
-- 实卡试玩与复测：`150/150` 张真实角色卡校验通过；两张多脚本高复杂度实卡经界面导入并完成实时模型回合与桌面/移动截图复核，全量 `pnpm check` 与 `pnpm e2e` 通过。
+- 2026-11-28（交互链路完善与暗色/移动端修复，第 2 轮收口）。在真卡导入与沙箱渲染修复后继续排查并完善交互细节：
+  - **故事重命名与安全移出书架**：新增迁移 v86（`stories.archived_at`），`StoryStore.archiveStory` 与 `DELETE /api/stories/:id` 在不触碰只追加表 `BEFORE DELETE` 触发器的前提下支持安全移出已产生楼层的故事；故事页「⋯」菜单补齐内联「重命名」「移出书架（二次确认）」「助手（移动端可达）」与修复后的 `/stories/:id/prefs` 跳转。
+  - **楼层阅读与沙箱内联控制**：`Play` 增加 `.sandbox-notice`（拦截外部资源时当场提供一键放行域名或前往 `/stories/:id/lore` 设定）及 `FloorFrame` 按允许域名重建沙箱；`.opening` 按钮改为明确描边样式；`.flr-acts` 默认半透明可见、`.lock` 改为胶囊态；`#script` 增加底部留白与 `scroll-margin-bottom` 避免输入台遮挡最新段落；`.lead` 保留换行与空白可编辑区虚线提示。
+  - **暗色模式与移动端细节**：`floor-sandbox` 补齐 `color-scheme` 与父页主题同步，消除暗色模式下 srcdoc iframe 出现白底白字的问题；移动端「⋯」故事菜单左对齐防出界、助手搜索按钮单行显示、无效故事 404 提供返回书架入口。
+- 验证：实时浏览器试玩与暗色/移动端截图复核通过，最终全量 `pnpm check` 与 `pnpm e2e` 零失败通过。
 
 ## 下一步
 1. 没有待做的开发工单。`.scratch/refactor/issues/07-eval-package.md` 按人类指示（`2026-11-19`「暂时不用评测」）继续延后。

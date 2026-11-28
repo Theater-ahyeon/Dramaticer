@@ -157,6 +157,7 @@ export function FloorFrame({
 	return (
 		<div className="floor-sandbox">
 			<iframe
+				key={`${render.nodeId}:${allowedDomains.join(",")}`}
 				ref={frameRef}
 				title={`楼层渲染：${render.name ?? renderer}`}
 				sandbox={FLOOR_SANDBOX_ATTRIBUTES}

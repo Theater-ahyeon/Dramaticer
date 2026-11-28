@@ -112,10 +112,15 @@ export async function handleStory(
 	options: ApiRouteOptions,
 	storyId: string,
 ): Promise<void> {
-	requireMethod(method, ["GET", "PATCH"]);
+	requireMethod(method, ["GET", "PATCH", "DELETE"]);
 	const story = requireStory(options.store, storyId);
 	if (method === "GET") {
 		sendJson(res, 200, toStoryView(story, options.store));
+		return;
+	}
+	if (method === "DELETE") {
+		options.store.archiveStory(story.id);
+		sendJson(res, 200, { archived: true });
 		return;
 	}
 	const body = await readObjectBody(req, options.maxJsonBodyBytes);

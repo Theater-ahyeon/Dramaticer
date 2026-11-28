@@ -94,12 +94,17 @@ export function Opening({
 			<div className="opening">
 				<button
 					type="button"
-					className="btn ghost sm"
+					className="btn sm"
 					disabled={disabled}
 					onClick={regenerate}
 				>
 					生成开局候选
 				</button>
+				{waitingSince !== null ? (
+					<span className="muted" style={{ fontSize: 12.5 }}>
+						后台正在构思开局候选…
+					</span>
+				) : null}
 			</div>
 		);
 	}
@@ -149,7 +154,7 @@ export function Opening({
 			) : null}
 			<button
 				type="button"
-				className="btn ghost sm"
+				className="btn sm"
 				disabled={disabled || manual}
 				onClick={regenerate}
 			>

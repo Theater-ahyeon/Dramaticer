@@ -1051,4 +1051,32 @@ describe("书架楼层编号", () => {
 		expect(view.floors.at(-1)?.no).toBe(85);
 		expect(view.floors.at(-1)?.nodeId).toBe(view.headNodeId);
 	});
+
+	it("DELETE /api/stories/:id 即使已有楼层也可安全移出书架", async () => {
+		const { running } = await startTestServer();
+		await post(running.origin, "/api/stories", {
+			id: "story-del",
+			title: "待移除",
+		});
+		running.store.appendNode({
+			storyId: "story-del",
+			parentId: null,
+			role: "assistant",
+			raw: "开场。",
+		});
+
+		const del = await request(running.origin, "/api/stories/story-del", {
+			method: "DELETE",
+		});
+		expect(del.status).toBe(200);
+		expect(
+			await request(running.origin, "/api/stories/story-del"),
+		).toMatchObject({
+			status: 404,
+		});
+		const list = (await (
+			await request(running.origin, "/api/stories")
+		).json()) as { id: string }[];
+		expect(list.some((item) => item.id === "story-del")).toBe(false);
+	});
 });

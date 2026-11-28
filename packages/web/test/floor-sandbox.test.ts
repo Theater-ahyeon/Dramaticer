@@ -44,6 +44,9 @@ describe("楼层沙箱文档", () => {
 	it("主题变量与 data-theme 一起进沙箱", () => {
 		const document = build();
 		expect(document).toContain('data-theme="dark"');
+		expect(document).toContain(
+			'html[data-theme="dark"] { color-scheme: dark; }',
+		);
 		expect(document).toContain("--ink");
 		expect(document).toContain("#ebe5da");
 		expect(document).toContain("--paper");

@@ -107,6 +107,11 @@ export function buildFloorSandboxDocument(
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="${escapeAttribute(csp)}">
 <style>
+html { color-scheme: light; }
+html[data-theme="dark"] { color-scheme: dark; }
+@media (prefers-color-scheme: dark) {
+	html:not([data-theme="light"]) { color-scheme: dark; }
+}
 html, body { margin: 0; padding: 0; background: transparent; }
 body {
 	color: var(--ink, #211d18);

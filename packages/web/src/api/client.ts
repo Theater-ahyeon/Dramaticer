@@ -240,6 +240,13 @@ export class ApiClient {
 		return this.json<StoryView>("PATCH", storyPath(storyId), request);
 	}
 
+	async deleteStory(storyId: string): Promise<{ readonly archived: boolean }> {
+		return this.json<{ readonly archived: boolean }>(
+			"DELETE",
+			storyPath(storyId),
+		);
+	}
+
 	async importCard(
 		storyId: string,
 		request: ImportStoryRequest,

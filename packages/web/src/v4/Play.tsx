@@ -18,7 +18,7 @@ import {
 	toDisplayedBlocks,
 } from "@dramaticer/protocol";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useParams, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { blockViewKind, optionLinesOf, plainTextOf } from "../chat/blocks";
 import { PUSH_TURN_TEXT, pushDirectionText } from "../chat/push";
@@ -362,6 +362,7 @@ const PAGE = 60;
 /** 故事页：书页式正文、页边批注、玻璃输入台，右侧是停靠栏。 */
 export function Play() {
 	const { storyId = "" } = useParams();
+	const navigate = useNavigate();
 	const toast = useToast();
 	const shell = useShellActions();
 	const story = useLoad<StoryView>(() => api.getStory(storyId), [storyId]);
@@ -413,6 +414,13 @@ export function Play() {
 	});
 	const [moreOpen, setMoreOpen] = useState(false);
 	const [headMenu, setHeadMenu] = useState(false);
+	const [renaming, setRenaming] = useState(false);
+	const [renameDraft, setRenameDraft] = useState("");
+	const [renameBusy, setRenameBusy] = useState(false);
+	const [confirmRemove, setConfirmRemove] = useState(false);
+	const [blockedDomains, setBlockedDomains] = useState<string[]>([]);
+	const [sandboxDismissed, setSandboxDismissed] = useState(false);
+	const [allowingDomain, setAllowingDomain] = useState<string | null>(null);
 	const [jumpTo, setJumpTo] = useState("");
 	const [pushMenu, setPushMenu] = useState(false);
 	const [fromHere, setFromHere] = useState("");
@@ -448,6 +456,19 @@ export function Play() {
 		const stored = settings.data?.turnMode as Mode | undefined;
 		if (stored !== undefined) setMode(stored);
 	}, [settings.data]);
+
+	// 换故事或开关菜单时复位临时拦截/确认态。
+	// biome-ignore lint/correctness/useExhaustiveDependencies: 切换故事时清零
+	useEffect(() => {
+		setBlockedDomains([]);
+		setSandboxDismissed(false);
+		setRenaming(false);
+		setConfirmRemove(false);
+	}, [storyId]);
+
+	useEffect(() => {
+		if (!headMenu) setConfirmRemove(false);
+	}, [headMenu]);
 
 	useEffect(() => {
 		if (!pushMenu && !headMenu && !moreOpen) return;
@@ -933,6 +954,56 @@ export function Play() {
 		}
 	};
 
+	const saveRename = async () => {
+		const next = renameDraft.trim();
+		if (next === "") {
+			toast("标题不能为空");
+			return;
+		}
+		setRenameBusy(true);
+		try {
+			await api.updateStory(storyId, { title: next });
+			setRenaming(false);
+			story.reload();
+			toast("已重命名");
+		} catch (error) {
+			toast(errorText(error));
+		} finally {
+			setRenameBusy(false);
+		}
+	};
+
+	const removeStory = async () => {
+		try {
+			await api.deleteStory(storyId);
+			try {
+				localStorage.removeItem("dramaticer.lastStory");
+			} catch {
+				// 隐私模式忽略。
+			}
+			toast("已移出书架");
+			navigate("/");
+		} catch (error) {
+			toast(errorText(error));
+		}
+	};
+
+	const allowBlockedDomain = async (domain: string) => {
+		setAllowingDomain(domain);
+		try {
+			await api.updateSandboxDomain(storyId, domain, true);
+			sandbox.reload();
+			setBlockedDomains((previous) =>
+				previous.filter((item) => item !== domain),
+			);
+			toast(`已放行 ${domain}`);
+		} catch (error) {
+			toast(errorText(error));
+		} finally {
+			setAllowingDomain(null);
+		}
+	};
+
 	const changeMode = (value: Mode) => {
 		setMode(value);
 		api.updateSettings(storyId, { turnMode: value as "fast" }).catch(() => {});
@@ -1046,8 +1117,18 @@ export function Play() {
 		return () => stage.setWriting(false);
 	}, [busy]);
 
-	if (path.error !== null) return <div className="v4err">{path.error}</div>;
+	if (path.error !== null) {
+		return (
+			<div className="v4err">
+				{path.error} <TLink to="/">回到书架</TLink>
+			</div>
+		);
+	}
 	const title = story.data?.title ?? "";
+	const allowedSet = new Set(sandbox.data?.allowedDomains ?? []);
+	const unallowedBlocked = blockedDomains.filter(
+		(domain) => !allowedSet.has(domain),
+	);
 	const stageNames = streaming === null ? [] : MODE_STAGES[streaming.mode];
 	const stageReached =
 		streaming === null
@@ -1068,76 +1149,157 @@ export function Play() {
 							<Cover storyId={storyId} title={title} />
 							<h1>{title}</h1>
 						</div>
-						{branches.length > 1 ? (
-							<select
-								className="branchsel"
-								aria-label="分支"
-								value={
-									branches.find((branch) => branch.id === tree.data?.headNodeId)
-										?.id ?? ""
-								}
-								onChange={(event) => void switchBranch(event.target.value)}
-								disabled={busy}
-							>
-								{branches.find(
-									(branch) => branch.id === tree.data?.headNodeId,
-								) === undefined ? (
-									<option value="">当前位置（中途）</option>
+						<div className="sheet-tools">
+							{branches.length > 1 ? (
+								<select
+									className="branchsel"
+									aria-label="分支"
+									value={
+										branches.find(
+											(branch) => branch.id === tree.data?.headNodeId,
+										)?.id ?? ""
+									}
+									onChange={(event) => void switchBranch(event.target.value)}
+									disabled={busy}
+								>
+									{branches.find(
+										(branch) => branch.id === tree.data?.headNodeId,
+									) === undefined ? (
+										<option value="">当前位置（中途）</option>
+									) : null}
+									{branches.map((branch) => (
+										<option key={branch.id} value={branch.id}>
+											{branch.label}
+										</option>
+									))}
+								</select>
+							) : null}
+							<span className="label">第 {nodes.length} 楼</span>
+							<div className="headmenu">
+								<button
+									type="button"
+									className="btn ghost sm"
+									aria-label="故事菜单"
+									aria-haspopup="menu"
+									aria-expanded={headMenu}
+									onClick={() => setHeadMenu((value) => !value)}
+								>
+									⋯
+								</button>
+								{headMenu ? (
+									<div className="pushmenu" role="menu" aria-label="故事菜单">
+										<button
+											type="button"
+											role="menuitem"
+											onClick={() => {
+												setHeadMenu(false);
+												setRenameDraft(title);
+												setRenaming(true);
+											}}
+										>
+											重命名
+										</button>
+										<button
+											type="button"
+											role="menuitem"
+											onClick={() => void exportBook()}
+										>
+											导出
+										</button>
+										<TLink
+											role="menuitem"
+											to={`/stories/${encodeURIComponent(storyId)}/prefs`}
+										>
+											本故事设置
+										</TLink>
+										<button
+											type="button"
+											role="menuitem"
+											onClick={() => {
+												setHeadMenu(false);
+												shell.openAssistant();
+											}}
+										>
+											助手
+										</button>
+										<button
+											type="button"
+											role="menuitem"
+											onClick={() => {
+												setHeadMenu(false);
+												shell.openInspector();
+											}}
+										>
+											检视器
+										</button>
+										{confirmRemove ? (
+											<button
+												type="button"
+												role="menuitem"
+												className="danger"
+												onClick={() => {
+													setHeadMenu(false);
+													void removeStory();
+												}}
+											>
+												确认移出书架
+											</button>
+										) : (
+											<button
+												type="button"
+												role="menuitem"
+												className="danger"
+												onClick={() => setConfirmRemove(true)}
+											>
+												移出书架
+											</button>
+										)}
+									</div>
 								) : null}
-								{branches.map((branch) => (
-									<option key={branch.id} value={branch.id}>
-										{branch.label}
-									</option>
-								))}
-							</select>
-						) : null}
-						<span className="label">第 {nodes.length} 楼</span>
-						<div className="headmenu">
+							</div>
+							<button
+								type="button"
+								className="btn sm dockbtn"
+								aria-expanded={dockOpen}
+								aria-controls="dock"
+								onClick={() => setDockOpen(true)}
+							>
+								导演 · 记忆 · 上下文
+							</button>
+						</div>
+					</div>
+					{renaming ? (
+						<form
+							className="rename-bar"
+							onSubmit={(event) => {
+								event.preventDefault();
+								void saveRename();
+							}}
+						>
+							<input
+								className="v4in"
+								aria-label="故事新标题"
+								value={renameDraft}
+								onChange={(event) => setRenameDraft(event.target.value)}
+								disabled={renameBusy}
+							/>
+							<button
+								type="submit"
+								className="btn gold sm"
+								disabled={renameBusy || renameDraft.trim() === ""}
+							>
+								{renameBusy ? "保存中…" : "保存"}
+							</button>
 							<button
 								type="button"
 								className="btn ghost sm"
-								aria-label="故事菜单"
-								aria-haspopup="menu"
-								aria-expanded={headMenu}
-								onClick={() => setHeadMenu((value) => !value)}
+								onClick={() => setRenaming(false)}
+								disabled={renameBusy}
 							>
-								⋯
+								取消
 							</button>
-							{headMenu ? (
-								<div className="pushmenu" role="menu" aria-label="故事菜单">
-									<button
-										type="button"
-										role="menuitem"
-										onClick={() => void exportBook()}
-									>
-										导出
-									</button>
-									<TLink role="menuitem" to={sp(storyId, "/prefs")}>
-										本故事设置
-									</TLink>
-									<button
-										type="button"
-										role="menuitem"
-										onClick={() => {
-											setHeadMenu(false);
-											shell.openInspector();
-										}}
-									>
-										检视器
-									</button>
-								</div>
-							) : null}
-						</div>
-						<button
-							type="button"
-							className="btn sm dockbtn"
-							aria-expanded={dockOpen}
-							aria-controls="dock"
-							onClick={() => setDockOpen(true)}
-						>
-							导演 · 记忆 · 上下文
-						</button>
-					</div>
+						</form>
+					) : null}
 					{dock.data?.recap ? (
 						<details className="recapbox" open>
 							<summary>上回说到</summary>
@@ -1212,6 +1374,22 @@ export function Play() {
 														onSendMessage={(message) => send(message, null)}
 														onFillInput={setText}
 														onRejected={(rejection) => {
+															if (rejection.kind === "network") {
+																try {
+																	const host = new URL(
+																		rejection.target,
+																	).hostname.toLowerCase();
+																	if (host !== "") {
+																		setBlockedDomains((previous) =>
+																			previous.includes(host)
+																				? previous
+																				: [...previous, host],
+																		);
+																	}
+																} catch {
+																	// 忽略非 URL 目标。
+																}
+															}
 															api
 																.recordSandboxRejection(storyId, {
 																	nodeId: rejection.nodeId,
@@ -1510,6 +1688,38 @@ export function Play() {
 							</>
 						)}
 					</div>
+					{unallowedBlocked.length > 0 && !sandboxDismissed ? (
+						<output className="sandbox-notice">
+							<span>
+								卡片试图加载外部资源（{unallowedBlocked.join("、")}
+								），已按安全沙箱拦截。
+							</span>
+							{unallowedBlocked.map((domain) => (
+								<button
+									type="button"
+									key={domain}
+									className="btn sm"
+									disabled={allowingDomain === domain}
+									onClick={() => void allowBlockedDomain(domain)}
+								>
+									{allowingDomain === domain ? "放行中…" : `允许 ${domain}`}
+								</button>
+							))}
+							<TLink
+								className="btn ghost sm"
+								to={`/stories/${encodeURIComponent(storyId)}/lore`}
+							>
+								设定
+							</TLink>
+							<button
+								type="button"
+								className="btn ghost sm"
+								onClick={() => setSandboxDismissed(true)}
+							>
+								忽略
+							</button>
+						</output>
+					) : null}
 					{/* 输入台里的按钮不抢走输入框的焦点：手机键盘不收起，打字时收起的导航也不会
 					    在按下与松开之间弹回来，让点击落空。键盘的 Tab 照常能聚焦按钮。 */}
 					<div

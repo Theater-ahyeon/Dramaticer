@@ -108,6 +108,7 @@ export interface StoryStore
 			| "createStory"
 			| "getStory"
 			| "updateStoryTitle"
+			| "archiveStory"
 			| "listStories"
 			| "insertStoryMedia"
 			| "clearStoryMedia"
@@ -626,6 +627,7 @@ const DELEGATES: Readonly<Record<keyof Repos, readonly string[]>> = {
 		"createStory",
 		"getStory",
 		"updateStoryTitle",
+		"archiveStory",
 		"listStories",
 		"insertStoryMedia",
 		"clearStoryMedia",

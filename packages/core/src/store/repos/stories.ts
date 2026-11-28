@@ -365,7 +365,9 @@ export class StoriesRepo extends StoreRepo {
 
 	getStory(id: string): Story | null {
 		const row = this.db
-			.prepare("SELECT id, title, created_at FROM stories WHERE id = ?")
+			.prepare(
+				"SELECT id, title, created_at FROM stories WHERE id = ? AND archived_at IS NULL",
+			)
 			.get(id) as StoryRow | undefined;
 		return row ? rowToStory(row) : null;
 	}
@@ -375,7 +377,11 @@ export class StoriesRepo extends StoreRepo {
 		if (!this.getStory(id)) {
 			throw new Error(`故事不存在：${id}`);
 		}
-		this.db.prepare("UPDATE stories SET title = ? WHERE id = ?").run(title, id);
+		this.db
+			.prepare(
+				"UPDATE stories SET title = ? WHERE id = ? AND archived_at IS NULL",
+			)
+			.run(title, id);
 		const story = this.getStory(id);
 		if (!story) {
 			throw new Error(`故事更新后读取失败：${id}`);
@@ -383,9 +389,22 @@ export class StoriesRepo extends StoreRepo {
 		return story;
 	}
 
+	archiveStory(id: string): void {
+		if (!this.getStory(id)) {
+			throw new Error(`故事不存在：${id}`);
+		}
+		this.db
+			.prepare(
+				"UPDATE stories SET archived_at = ? WHERE id = ? AND archived_at IS NULL",
+			)
+			.run(new Date().toISOString(), id);
+	}
+
 	listStories(): Story[] {
 		const rows = this.db
-			.prepare("SELECT id, title, created_at FROM stories ORDER BY rowid ASC")
+			.prepare(
+				"SELECT id, title, created_at FROM stories WHERE archived_at IS NULL ORDER BY rowid ASC",
+			)
 			.all() as StoryRow[];
 		return rows.map(rowToStory);
 	}
