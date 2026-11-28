@@ -11,7 +11,7 @@
 
 ## 下一步
 1. 没有待做的开发工单。`.scratch/refactor/issues/07-eval-package.md` 按人类指示（`2026-11-19`「暂时不用评测」）继续延后。
-2. 人类填入 `NOVELAI_API_KEY` 后跑一次 `pnpm vitest run packages/core/test/novelai.live.test.ts`，核对 `image-v2/03` 的 live 验收项。
+2. 人类填入 `NOVELAI_API_KEY` 后跑一次 `DRAMATICER_LIVE=1 pnpm vitest run packages/core/test/novelai.live.test.ts`，核对 `image-v2/03` 的 live 验收项。
 3. 后续 UI/UX PR 细化建议（可交由协作 agent 提 PR）：`floor-sandbox.ts` 拦截外链图片时回退为单行文本提示；`Inspector.tsx` 沙箱 URL 换行与同域合并；`.subtabs` 动效与 `/outline` `/memory` 空表对齐；`Library` 封面首屏单字占位与 `top center` 裁剪；移动端 `.opts` 换行/渐变遮罩与底栏「更多」收纳。
 
 ## 眼下要注意
