@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadDotEnv } from "../env.js";
+import { loadDotEnv, loadDotEnvIfPresent } from "../env.js";
 import {
 	type LlmChannelsConfig,
 	loadChannelsConfig,
@@ -292,7 +292,7 @@ async function importWorkflow(
 	log: (message: string) => void,
 ): Promise<ImagesCliResult> {
 	const envPath = dependencies.envPath ?? path.join(repoRoot, ".env");
-	if (existsSync(envPath)) (dependencies.loadEnv ?? loadDotEnv)(envPath);
+	loadDotEnvIfPresent(envPath, dependencies.loadEnv ?? loadDotEnv);
 	const config = await (dependencies.loadConfig ?? loadImagesConfig)(
 		parsed.imagesPath,
 	);
