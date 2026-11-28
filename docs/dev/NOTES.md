@@ -324,7 +324,7 @@
 - NovelAI 客户端同一 provider 串行，按 `maxRequestsPerMinute`（`images.yaml` 的 provider 字段，默认 10）滑动窗口排队；429 先看 `Retry-After`，否则从 `retryBaseDelayMs` 翻倍，默认最多再试 3 次。测试注入 `sleep` / `now`，不真实等待。
 - `images import`（ComfyUI workflow）现在只在 comfyui 后端里选 provider；配置里同时有 NovelAI 后端时不会因「多个 provider」失败。
 - e2e 在 `v5-novelai-template.spec.ts`（桌面/手机：自定义模型、Medium、负面预设、固定 seed 与 V5 开关保存后回读），e2e 的 `serve.mjs` 给 images.yaml 加了一个假 NovelAI 后端；走查脚本 `.walk/walk17.spec.ts`。
-- `novelai.live.test.ts` 读仓库根 `.env` 的 `NOVELAI_API_KEY`，没有令牌时整组跳过；有令牌才真的请求官方接口出一张小图。
+- `novelai.live.test.ts` 与其它 live 用例同一口径：`DRAMATICER_LIVE=1` 才跑，开关没打开时整组跳过、不碰网络；开了开关才读仓库根 `.env` 的 `NOVELAI_API_KEY`，`.env` 不在或没这个令牌时报出缺令牌，有令牌才真的请求官方接口出一张小图。
 
 ## 插图插段与重绘（2026-11-27 起，image-v2/04）
 

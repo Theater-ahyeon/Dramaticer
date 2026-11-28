@@ -16,3 +16,18 @@ export function loadDotEnv(envPath: string): void {
 		process.env[name] = value;
 	}
 }
+
+/**
+ * 有 .env 才加载，没有就跳过。
+ *
+ * 给「缺文件不算错」的调用方用：CI 与没配过 .env 的机器上没有这个文件，
+ * 直接调 loadDotEnv 会抛错。返回是否真的加载了。
+ */
+export function loadDotEnvIfPresent(
+	envPath: string,
+	load: (path: string) => void = loadDotEnv,
+): boolean {
+	if (!existsSync(envPath)) return false;
+	load(envPath);
+	return true;
+}
