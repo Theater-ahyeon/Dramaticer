@@ -180,8 +180,13 @@ function directorLinesView(options: ApiRouteOptions, storyId: string) {
 
 /** 去掉块标签后的正文开头，给书架与「上回说到」用。 */
 function plainExcerpt(raw: string, max: number): string {
-	const text = raw
-		.replace(/<([a-zA-Z_][\w-]*)[^>]*>[\s\S]*?<\/\1>/g, "")
+	let text = raw.replace(/```[\s\S]*?```/g, "");
+	for (let pass = 0; pass < 6; pass += 1) {
+		const next = text.replace(/<([a-zA-Z_][\w-]*)[^>]*>[\s\S]*?<\/\1>/g, "");
+		if (next === text) break;
+		text = next;
+	}
+	text = text
 		.replace(/<[^>]+>/g, "")
 		.replace(/\s+/g, " ")
 		.trim();

@@ -244,6 +244,20 @@ img { max-width: 100%; height: auto; }
 		style.textContent = config.style;
 		document.head.appendChild(style);
 	}
+	var nativeAddEventListener = document.addEventListener.bind(document);
+	var deferredReadyCallbacks = [];
+	var deferDomContentLoaded = true;
+	document.addEventListener = function (type, listener, options) {
+		if (
+			deferDomContentLoaded &&
+			type === "DOMContentLoaded" &&
+			typeof listener === "function"
+		) {
+			deferredReadyCallbacks.push(listener);
+			return;
+		}
+		return nativeAddEventListener(type, listener, options);
+	};
 	if (config.html) {
 		document.getElementById("floor-root").innerHTML = config.html;
 	}
@@ -251,6 +265,32 @@ img { max-width: 100%; height: auto; }
 		var script = document.createElement("script");
 		script.textContent = config.script;
 		document.body.appendChild(script);
+	}
+	if (config.html) {
+		var floorRoot = document.getElementById("floor-root");
+		var inlineScripts = floorRoot ? floorRoot.querySelectorAll("script") : [];
+		for (var scriptIndex = 0; scriptIndex < inlineScripts.length; scriptIndex += 1) {
+			var oldScript = inlineScripts[scriptIndex];
+			var nextScript = document.createElement("script");
+			for (var attrIndex = 0; attrIndex < oldScript.attributes.length; attrIndex += 1) {
+				var attr = oldScript.attributes[attrIndex];
+				nextScript.setAttribute(attr.name, attr.value);
+			}
+			if (!oldScript.src) {
+				nextScript.textContent = oldScript.textContent || "";
+			}
+			if (oldScript.parentNode) {
+				oldScript.parentNode.replaceChild(nextScript, oldScript);
+			}
+		}
+	}
+	deferDomContentLoaded = false;
+	for (var readyIndex = 0; readyIndex < deferredReadyCallbacks.length; readyIndex += 1) {
+		try {
+			deferredReadyCallbacks[readyIndex].call(document, new Event("DOMContentLoaded"));
+		} catch (error) {
+			console.error("[floor-sandbox] DOMContentLoaded 回调失败", error);
+		}
 	}
 	if (typeof ResizeObserver === "function") {
 		new ResizeObserver(postHeight).observe(document.documentElement);

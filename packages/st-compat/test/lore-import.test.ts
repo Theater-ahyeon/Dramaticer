@@ -145,4 +145,30 @@ describe("角色卡内嵌世界书", () => {
 			source: "character-book:山神:7",
 		});
 	});
+
+	it("跳过只有标点分隔符的名称和空正文条目，同时保留完整导入审计", () => {
+		const book = {
+			entries: [
+				{
+					id: 1,
+					keys: [],
+					comment: "↓↓↓↓↓↓↓↓↓↓",
+					content: "分隔说明",
+					enabled: true,
+				},
+				{
+					id: 2,
+					keys: ["占位"],
+					comment: "占位条目",
+					content: "",
+					enabled: true,
+				},
+			],
+		};
+		const store = openStore();
+		const result = importCharacterBookLore(store, "s1", book, "测试卡");
+		expect(result.inserted).toBe(0);
+		expect(result.skipped).toBe(2);
+		expect(store.listImportAuditEntries("s1")).toHaveLength(2);
+	});
 });

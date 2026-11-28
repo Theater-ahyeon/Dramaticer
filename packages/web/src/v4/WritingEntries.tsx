@@ -89,7 +89,7 @@ export function WritingEntries({
 							: `共 ${visible.length} 条，启用 ${visible.filter((entry) => entry.enabled).length} 条。受上面「文风包」开关控制。`}
 					</p>
 				</div>
-				<button type="button" className="btn ghost sm" onClick={add}>
+				<button type="button" className="btn sm" onClick={add}>
 					新建
 				</button>
 			</div>

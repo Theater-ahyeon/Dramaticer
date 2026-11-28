@@ -110,7 +110,9 @@ export function importCharacterCardEntity(
 
 export function worldEntryName(entry: StWorldInfoEntry): string | null {
 	const comment = entry.comment.trim();
-	if (comment.length > 0) return comment;
+	if (comment.length > 0 && normalizeEntityName(comment).length > 0) {
+		return comment;
+	}
 	for (const key of entry.keys) {
 		const trimmed = key.trim();
 		if (trimmed.length > 0 && normalizeEntityName(trimmed).length > 0) {

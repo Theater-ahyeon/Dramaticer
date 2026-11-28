@@ -355,7 +355,7 @@ export function Prefs() {
 							<div className="stat">
 								<button
 									type="button"
-									className="btn ghost sm"
+									className="btn sm"
 									onClick={() => presetFile.current?.click()}
 								>
 									导入预设文件
@@ -385,11 +385,14 @@ export function Prefs() {
 								/>
 							</div>
 						</div>
-						<Sw
-							label="文风包"
-							checked={writing.data.dials.stylePack === true}
-							onChange={(value) => setDial({ stylePack: value })}
-						/>
+						<div className="sw-row">
+							<span className="num">文风包</span>
+							<Sw
+								label="文风包"
+								checked={writing.data.dials.stylePack === true}
+								onChange={(value) => setDial({ stylePack: value })}
+							/>
+						</div>
 					</div>
 					<WritingEntries
 						storyId={storyId}

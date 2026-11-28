@@ -6,6 +6,7 @@ import {
 	useState,
 } from "react";
 import { Outlet, useLocation, useNavigate, useParams } from "react-router-dom";
+import { api } from "../api";
 import {
 	AssistantDrawer,
 	type AssistantSummary,
@@ -41,6 +42,14 @@ function lastStory(): string | null {
 		return localStorage.getItem(LAST_STORY_KEY);
 	} catch {
 		return null;
+	}
+}
+
+function forgetStory(): void {
+	try {
+		localStorage.removeItem(LAST_STORY_KEY);
+	} catch {
+		// 隐私模式下忽略即可。
 	}
 }
 
@@ -83,7 +92,8 @@ export function Shell() {
 	const params = useParams();
 	const location = useLocation();
 	const navigate = useNavigate();
-	const storyId = params.storyId ?? lastStory();
+	const [validatedStoryId, setValidatedStoryId] = useState<string | null>(null);
+	const storyId = params.storyId ?? validatedStoryId;
 	const [palette, setPalette] = useState(false);
 	const [query, setQuery] = useState("");
 	const [selected, setSelected] = useState(0);
@@ -118,7 +128,29 @@ export function Shell() {
 	useEffect(() => onThemeChange(setThemeState), []);
 
 	useEffect(() => {
-		if (params.storyId !== undefined) rememberStory(params.storyId);
+		if (params.storyId !== undefined) {
+			rememberStory(params.storyId);
+			setValidatedStoryId(params.storyId);
+			return;
+		}
+		const cached = lastStory();
+		if (cached === null) {
+			setValidatedStoryId(null);
+			return;
+		}
+		let active = true;
+		api
+			.getStory(cached)
+			.then(() => {
+				if (active) setValidatedStoryId(cached);
+			})
+			.catch(() => {
+				forgetStory();
+				if (active) setValidatedStoryId(null);
+			});
+		return () => {
+			active = false;
+		};
 	}, [params.storyId]);
 
 	// 新页面一提交就回到顶部，并告诉转场可以拍新画面了。
@@ -249,8 +281,10 @@ export function Shell() {
 							{NAV.map((item) => (
 								<TLink
 									key={item.view}
-									className="nav"
+									className={base === null ? "nav disabled" : "nav"}
 									to={base === null ? "/" : `${base}/${item.view}`}
+									aria-disabled={base === null ? true : undefined}
+									title={base === null ? "先在书架打开一个故事" : undefined}
 									aria-current={current === item.view ? "page" : undefined}
 								>
 									<i>{item.glyph}</i>
@@ -275,7 +309,8 @@ export function Shell() {
 								title="助手（Ctrl+Shift+A）"
 								onClick={openAssistant}
 							>
-								助
+								<i>助</i>
+								<span>助手</span>
 							</button>
 						)}
 						<button
@@ -285,7 +320,8 @@ export function Shell() {
 							title="检视器（Ctrl+.）"
 							onClick={openInspector}
 						>
-							检
+							<i>检</i>
+							<span>检视</span>
 						</button>
 						<button
 							type="button"

@@ -39,6 +39,7 @@ import {
 	requireMethod,
 	requireStory,
 } from "./routes-common.js";
+import { CARD_IMPORT_MAX_BODY_BYTES } from "./routes-stories.js";
 import type { ApiRouteOptions } from "./routes.js";
 
 /** 每个功能开关每轮在后台大约多花的 token；只用于设置页的合计。 */
@@ -188,7 +189,10 @@ export async function handleCardRoute(
 	if (third === "card" && fourth === "diff" && parts.length === 4) {
 		requireMethod(method, ["POST"]);
 		requireStory(options.store, storyId);
-		const body = await readObjectBody(req, options.maxJsonBodyBytes);
+		const body = await readObjectBody(
+			req,
+			Math.max(options.maxJsonBodyBytes, CARD_IMPORT_MAX_BODY_BYTES),
+		);
 		const { card, data } = parseCard(body.card);
 		const current = readStoryCardSnapshot(store, storyId);
 		const same = current !== null && current.version === storyCardVersion(data);

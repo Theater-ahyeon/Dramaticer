@@ -235,7 +235,8 @@ export function ImageSettings({
 						</header>
 						{providers.length === 0 ? (
 							<p className="muted">
-								没有配置生图后端。把 `data/images.yaml` 放到服务端并重启后可用。
+								没有配置生图后端。把 <code>data/images.yaml</code>{" "}
+								放到服务端并重启后可用。
 							</p>
 						) : (
 							<ul className="image-provider-list">

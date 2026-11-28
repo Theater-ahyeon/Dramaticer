@@ -143,15 +143,24 @@ describe("场面卡", () => {
 		expect(store.getSceneLog("a1")?.sceneCard).toEqual(CARD);
 	});
 
-	it("开新场缺少场面卡整次拒绝", async () => {
+	it("开新场缺少场面卡时按在场人物与本楼变化自动补齐并记入 repairs", async () => {
 		const { store } = openTempStore();
 		seedStory(store);
 		const { client } = createFakeClient([RESPONSE_WITHOUT_CARD]);
 
-		await expect(
-			createSceneLogHandler()({ store, client, job: jobFor("s1", "a1") }),
-		).rejects.toThrow("sceneCard");
-		expect(store.getSceneLog("a1")).toBeNull();
+		await createSceneLogHandler()({ store, client, job: jobFor("s1", "a1") });
+		const log = store.getSceneLog("a1");
+		expect(log?.sceneCard).toEqual({
+			present: [{ who: "凛", want: "应对当前局面" }],
+			change: "试探",
+		});
+		expect(log?.repairs).toEqual([
+			{
+				path: ["sceneCard"],
+				action: "fill",
+				reason: "开新场缺少 sceneCard，已按在场人物与本楼变化自动补齐",
+			},
+		]);
 	});
 
 	it("非开场的楼层给出场面卡时丢弃并记入 repairs", async () => {

@@ -34,6 +34,7 @@ import {
 	type ChannelsView,
 	type ContextTemplateRecord,
 	type CreateContextTemplateRequest,
+	type CreateStoryFromCardRequest,
 	type CreateStoryRequest,
 	type DirectionEditRequest,
 	type DirectionEditResult,
@@ -206,6 +207,16 @@ export class ApiClient {
 
 	async createStory(request: CreateStoryRequest): Promise<StoryView> {
 		return this.json<StoryView>("POST", "/api/stories", request);
+	}
+
+	async createStoryFromCard(
+		request: CreateStoryFromCardRequest,
+	): Promise<ImportStoryResult> {
+		return this.json<ImportStoryResult>(
+			"POST",
+			"/api/stories/from-card",
+			request,
+		);
 	}
 
 	async getStory(storyId: string): Promise<StoryView> {

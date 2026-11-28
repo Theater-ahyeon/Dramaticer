@@ -246,20 +246,24 @@ export function NewStoryDialog({ onClose }: { readonly onClose: () => void }) {
 		setBusy(true);
 		try {
 			const name = title.trim();
-			const story = await api.createStory({
-				title: name.length > 0 ? name : mode === "card" ? "新故事" : "空白故事",
-			});
 			if (mode === "card" && card !== null) {
-				const result = await api.importCard(story.id, {
-					card: await readCard(card),
-					...(worlds.length === 0
-						? {}
-						: { worlds: await Promise.all(worlds.map((file) => file.text())) }),
+				const parsedCard = await readCard(card);
+				const parsedWorlds =
+					worlds.length === 0
+						? undefined
+						: await Promise.all(worlds.map((file) => file.text()));
+				const result = await api.createStoryFromCard({
+					...(name.length > 0 ? { title: name } : {}),
+					card: parsedCard,
+					...(parsedWorlds === undefined ? {} : { worlds: parsedWorlds }),
 				});
-				if (name.length === 0 && result.cardName.trim().length > 0) {
-					await api.updateStory(story.id, { title: result.cardName.trim() });
-				}
+				onClose();
+				navigate(`/stories/${encodeURIComponent(result.story.id)}/play`);
+				return;
 			}
+			const story = await api.createStory({
+				title: name.length > 0 ? name : "空白故事",
+			});
 			onClose();
 			navigate(`/stories/${encodeURIComponent(story.id)}/play`);
 		} catch (value) {
@@ -280,302 +284,312 @@ export function NewStoryDialog({ onClose }: { readonly onClose: () => void }) {
 				if (event.target === event.currentTarget && !busy) onClose();
 			}}
 		>
-			<form
-				className="dialog new-story"
+			{/* biome-ignore lint/a11y/useSemanticElements: 弹窗随状态挂载，不用 dialog 元素的开合接口 */}
+			<div
+				role="dialog"
+				aria-modal="true"
 				aria-label="新建故事"
-				onSubmit={(event) => {
-					event.preventDefault();
-					void submit();
-				}}
+				style={{ display: "contents" }}
 			>
-				<header>
-					<h2>新建故事</h2>
-					<button
-						type="button"
-						className="btn ghost sm"
-						aria-label="关闭"
-						onClick={onClose}
-						disabled={busy}
-					>
-						✕
-					</button>
-				</header>
-				<Seg<Mode>
-					label="开局方式"
-					value={mode}
-					options={[
-						{ v: "card", label: "导入角色卡" },
-						{ v: "blank", label: "空白开局" },
-						{ v: "canon", label: "从原著开局" },
-					]}
-					onChange={setMode}
-				/>
-				{mode === "card" ? (
-					<>
+				<form
+					className="dialog new-story"
+					aria-label="新建故事"
+					onSubmit={(event) => {
+						event.preventDefault();
+						void submit();
+					}}
+				>
+					<header>
+						<h2>新建故事</h2>
 						<button
 							type="button"
-							className="dropzone"
-							data-dragging={dragging ? "" : undefined}
-							onClick={() => cardInput.current?.click()}
-							onDragOver={(event) => {
-								event.preventDefault();
-								setDragging(true);
-							}}
-							onDragLeave={() => setDragging(false)}
-							onDrop={onDrop}
+							className="btn ghost sm"
+							aria-label="关闭"
+							onClick={onClose}
 							disabled={busy}
 						>
-							{card === null ? (
-								<>
-									<b>选择角色卡</b>
-									<span>PNG 或 JSON，也可以拖到这里</span>
-								</>
-							) : (
-								<>
-									<b>{card.name}</b>
-									<span>点击更换</span>
-								</>
-							)}
+							✕
 						</button>
-						<input
-							ref={cardInput}
-							type="file"
-							accept=".png,.json,image/png,application/json"
-							hidden
-							aria-label="角色卡文件"
-							onChange={(event) => {
-								const file = event.target.files?.[0];
-								event.target.value = "";
-								if (file !== undefined) setCard(file);
-							}}
-						/>
-						<div className="world-pick">
+					</header>
+					<Seg<Mode>
+						label="开局方式"
+						value={mode}
+						options={[
+							{ v: "card", label: "导入角色卡" },
+							{ v: "blank", label: "空白开局" },
+							{ v: "canon", label: "从原著开局" },
+						]}
+						onChange={setMode}
+					/>
+					{mode === "card" ? (
+						<>
 							<button
 								type="button"
-								className="btn ghost sm"
-								onClick={() => worldInput.current?.click()}
+								className="dropzone"
+								data-dragging={dragging ? "" : undefined}
+								onClick={() => cardInput.current?.click()}
+								onDragOver={(event) => {
+									event.preventDefault();
+									setDragging(true);
+								}}
+								onDragLeave={() => setDragging(false)}
+								onDrop={onDrop}
 								disabled={busy}
 							>
-								添加世界书（可选）
+								{card === null ? (
+									<>
+										<b>选择角色卡</b>
+										<span>PNG 或 JSON，也可以拖到这里</span>
+									</>
+								) : (
+									<>
+										<b>{card.name}</b>
+										<span>点击更换</span>
+									</>
+								)}
 							</button>
-							<span className="muted">
-								{worlds.length === 0
-									? "卡里自带的世界书会一起导入"
-									: worlds.map((file) => file.name).join("、")}
-							</span>
 							<input
-								ref={worldInput}
+								ref={cardInput}
 								type="file"
-								accept=".json,application/json"
-								multiple
+								accept=".png,.json,image/png,application/json"
 								hidden
-								aria-label="世界书文件"
+								aria-label="角色卡文件"
 								onChange={(event) => {
-									setWorlds([...(event.target.files ?? [])]);
+									const file = event.target.files?.[0];
 									event.target.value = "";
+									if (file !== undefined) setCard(file);
 								}}
 							/>
-						</div>
-					</>
-				) : null}
-				{mode === "canon" ? (
-					<div className="canon-start">
-						{canonBooks === null ? (
-							<p className="muted">
-								{canonLoading ? "正在读取原著…" : "正在准备原著列表…"}
-							</p>
-						) : canonBooks.length === 0 ? (
-							<p className="muted">还没有汇编过的原著。</p>
-						) : (
-							<>
-								<label className="field">
-									<span>原著</span>
-									<select
-										aria-label="原著"
-										value={canonBookId}
-										onChange={(event) => setCanonBookId(event.target.value)}
-										disabled={busy}
-									>
-										{canonBooks.map((item) => (
-											<option key={item.id} value={item.id}>
-												{item.title}
-											</option>
-										))}
-									</select>
-								</label>
-								<label className="field">
-									<span>开局事件</span>
-									<select
-										aria-label="开局事件"
-										value={canonEventId === null ? "" : String(canonEventId)}
-										onChange={(event) => {
-											const value = Number(event.target.value);
-											setCanonEventId(
-												Number.isInteger(value) && value > 0 ? value : null,
-											);
-										}}
-										disabled={busy || canonEvents.length === 0}
-									>
-										{canonEvents.length === 0 ? (
-											<option value="">没有主时间线事件</option>
-										) : null}
-										{canonEvents.map((item, index) => (
-											<option key={item.id} value={String(item.id)}>
-												{`${index + 1}. ${item.title}${
-													item.isTurningPoint ? "（关键转折）" : ""
-												}`}
-											</option>
-										))}
-									</select>
-								</label>
-								{event === null ? null : (
-									<p className="muted">
-										第 {event.chapterOrdinal} 章 · {event.summary}
-									</p>
-								)}
-								<Seg<Identity>
-									label="扮演身份"
-									value={identity}
-									options={[
-										{ v: "canon", label: "原著人物" },
-										{ v: "custom", label: "自创人物" },
-									]}
-									onChange={setIdentity}
+							<div className="world-pick">
+								<button
+									type="button"
+									className="btn ghost sm"
+									onClick={() => worldInput.current?.click()}
+									disabled={busy}
+								>
+									添加世界书（可选）
+								</button>
+								<span className="muted">
+									{worlds.length === 0
+										? "卡里自带的世界书会一起导入"
+										: worlds.map((file) => file.name).join("、")}
+								</span>
+								<input
+									ref={worldInput}
+									type="file"
+									accept=".json,application/json"
+									multiple
+									hidden
+									aria-label="世界书文件"
+									onChange={(event) => {
+										setWorlds([...(event.target.files ?? [])]);
+										event.target.value = "";
+									}}
 								/>
-								{identity === "canon" ? (
-									canonPages.length === 0 ? (
-										<p className="muted">可以改用自创人物。</p>
+							</div>
+						</>
+					) : null}
+					{mode === "canon" ? (
+						<div className="canon-start">
+							{canonBooks === null ? (
+								<p className="muted">
+									{canonLoading ? "正在读取原著…" : "正在准备原著列表…"}
+								</p>
+							) : canonBooks.length === 0 ? (
+								<p className="muted">还没有汇编过的原著。</p>
+							) : (
+								<>
+									<label className="field">
+										<span>原著</span>
+										<select
+											aria-label="原著"
+											value={canonBookId}
+											onChange={(event) => setCanonBookId(event.target.value)}
+											disabled={busy}
+										>
+											{canonBooks.map((item) => (
+												<option key={item.id} value={item.id}>
+													{item.title}
+												</option>
+											))}
+										</select>
+									</label>
+									<label className="field">
+										<span>开局事件</span>
+										<select
+											aria-label="开局事件"
+											value={canonEventId === null ? "" : String(canonEventId)}
+											onChange={(event) => {
+												const value = Number(event.target.value);
+												setCanonEventId(
+													Number.isInteger(value) && value > 0 ? value : null,
+												);
+											}}
+											disabled={busy || canonEvents.length === 0}
+										>
+											{canonEvents.length === 0 ? (
+												<option value="">没有主时间线事件</option>
+											) : null}
+											{canonEvents.map((item, index) => (
+												<option key={item.id} value={String(item.id)}>
+													{`${index + 1}. ${item.title}${
+														item.isTurningPoint ? "（关键转折）" : ""
+													}`}
+												</option>
+											))}
+										</select>
+									</label>
+									{event === null ? null : (
+										<p className="muted">
+											第 {event.chapterOrdinal} 章 · {event.summary}
+										</p>
+									)}
+									<Seg<Identity>
+										label="扮演身份"
+										value={identity}
+										options={[
+											{ v: "canon", label: "原著人物" },
+											{ v: "custom", label: "自创人物" },
+										]}
+										onChange={setIdentity}
+									/>
+									{identity === "canon" ? (
+										canonPages.length === 0 ? (
+											<p className="muted">可以改用自创人物。</p>
+										) : (
+											<>
+												<label className="field">
+													<span>扮演人物</span>
+													<select
+														aria-label="扮演人物"
+														value={characterName}
+														onChange={(event) =>
+															setCharacterName(event.target.value)
+														}
+														disabled={busy}
+													>
+														{canonPages.map((page) => (
+															<option key={page.name} value={page.name}>
+																{page.name}
+															</option>
+														))}
+													</select>
+												</label>
+												{selectedPage === undefined ? null : (
+													<p className="muted">
+														{selectedPage.lead.length === 0
+															? "开局前还没有简介。"
+															: selectedPage.lead}
+													</p>
+												)}
+											</>
+										)
 									) : (
 										<>
 											<label className="field">
-												<span>扮演人物</span>
-												<select
-													aria-label="扮演人物"
-													value={characterName}
+												<span>扮演名字</span>
+												<input
+													value={customName}
+													placeholder="你在这个故事里的名字"
 													onChange={(event) =>
-														setCharacterName(event.target.value)
+														setCustomName(event.target.value)
 													}
 													disabled={busy}
-												>
-													{canonPages.map((page) => (
-														<option key={page.name} value={page.name}>
-															{page.name}
-														</option>
-													))}
-												</select>
+												/>
 											</label>
-											{selectedPage === undefined ? null : (
-												<p className="muted">
-													{selectedPage.lead.length === 0
-														? "开局前还没有简介。"
-														: selectedPage.lead}
-												</p>
-											)}
-										</>
-									)
-								) : (
-									<>
-										<label className="field">
-											<span>扮演名字</span>
-											<input
-												value={customName}
-												placeholder="你在这个故事里的名字"
-												onChange={(event) => setCustomName(event.target.value)}
-												disabled={busy}
-											/>
-										</label>
-										<label className="field">
-											<span>人设（可选）</span>
-											<textarea
-												value={customPersona}
-												placeholder="身份与来历"
-												rows={3}
-												onChange={(event) =>
-													setCustomPersona(event.target.value)
-												}
-												disabled={busy}
-											/>
-										</label>
-									</>
-								)}
-								<button
-									type="button"
-									className="dropzone"
-									data-dragging={canonDragging ? "" : undefined}
-									onClick={() => canonCardInput.current?.click()}
-									onDragOver={(event) => {
-										event.preventDefault();
-										setCanonDragging(true);
-									}}
-									onDragLeave={() => setCanonDragging(false)}
-									onDrop={onCanonDrop}
-									disabled={busy}
-								>
-									{canonCard === null ? (
-										<>
-											<b>叠加角色卡（可选，提供文风与规则）</b>
-											<span>PNG 或 JSON，也可以拖到这里</span>
-										</>
-									) : (
-										<>
-											<b>{canonCard.name}</b>
-											<span>点击更换</span>
+											<label className="field">
+												<span>人设（可选）</span>
+												<textarea
+													value={customPersona}
+													placeholder="身份与来历"
+													rows={3}
+													onChange={(event) =>
+														setCustomPersona(event.target.value)
+													}
+													disabled={busy}
+												/>
+											</label>
 										</>
 									)}
-								</button>
-								<input
-									ref={canonCardInput}
-									type="file"
-									accept=".png,.json,image/png,application/json"
-									hidden
-									aria-label="叠加角色卡文件"
-									onChange={(event) => {
-										const file = event.target.files?.[0];
-										event.target.value = "";
-										if (file !== undefined) setCanonCard(file);
-									}}
-								/>
-								<p className="muted">卡只提供文风与规则。</p>
-							</>
-						)}
-					</div>
-				) : null}
-				<label className="field">
-					<span>标题</span>
-					<input
-						value={title}
-						placeholder={
-							mode === "card"
-								? "留空则用卡的名字"
-								: mode === "canon"
-									? book === null
-										? "留空则用书名"
-										: `留空则用《${book.title}》`
-									: "空白故事"
-						}
-						onChange={(event) => setTitle(event.target.value)}
-						disabled={busy}
-					/>
-				</label>
-				{error === null ? null : <p className="v4err">{error}</p>}
-				<footer>
-					<button
-						type="button"
-						className="btn ghost"
-						onClick={onClose}
-						disabled={busy}
-					>
-						取消
-					</button>
-					<button
-						type="submit"
-						className="btn gold"
-						disabled={busy || (mode === "canon" && canonBooks === null)}
-					>
-						{busy ? "正在创建…" : "开始"}
-					</button>
-				</footer>
-			</form>
+									<button
+										type="button"
+										className="dropzone"
+										data-dragging={canonDragging ? "" : undefined}
+										onClick={() => canonCardInput.current?.click()}
+										onDragOver={(event) => {
+											event.preventDefault();
+											setCanonDragging(true);
+										}}
+										onDragLeave={() => setCanonDragging(false)}
+										onDrop={onCanonDrop}
+										disabled={busy}
+									>
+										{canonCard === null ? (
+											<>
+												<b>叠加角色卡（可选，提供文风与规则）</b>
+												<span>PNG 或 JSON，也可以拖到这里</span>
+											</>
+										) : (
+											<>
+												<b>{canonCard.name}</b>
+												<span>点击更换</span>
+											</>
+										)}
+									</button>
+									<input
+										ref={canonCardInput}
+										type="file"
+										accept=".png,.json,image/png,application/json"
+										hidden
+										aria-label="叠加角色卡文件"
+										onChange={(event) => {
+											const file = event.target.files?.[0];
+											event.target.value = "";
+											if (file !== undefined) setCanonCard(file);
+										}}
+									/>
+									<p className="muted">卡只提供文风与规则。</p>
+								</>
+							)}
+						</div>
+					) : null}
+					<label className="field">
+						<span>标题</span>
+						<input
+							value={title}
+							placeholder={
+								mode === "card"
+									? "留空则用卡的名字"
+									: mode === "canon"
+										? book === null
+											? "留空则用书名"
+											: `留空则用《${book.title}》`
+										: "空白故事"
+							}
+							onChange={(event) => setTitle(event.target.value)}
+							disabled={busy}
+						/>
+					</label>
+					{error === null ? null : <p className="v4err">{error}</p>}
+					<footer>
+						<button
+							type="button"
+							className="btn ghost"
+							onClick={onClose}
+							disabled={busy}
+						>
+							取消
+						</button>
+						<button
+							type="submit"
+							className="btn gold"
+							disabled={busy || (mode === "canon" && canonBooks === null)}
+						>
+							{busy ? "正在创建…" : "开始"}
+						</button>
+					</footer>
+				</form>
+			</div>
 		</div>
 	);
 }

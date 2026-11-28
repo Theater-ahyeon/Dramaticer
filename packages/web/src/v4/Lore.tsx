@@ -273,6 +273,19 @@ export function Lore() {
 							/>
 						))}
 					</div>
+					<div className="audit-legend" aria-label="类型图例">
+						{data.kinds.map((item) => (
+							<span key={item.kind} className="legenditem">
+								<i
+									style={{
+										background: `var(${KIND[item.kind]?.color ?? "--soft"})`,
+									}}
+								/>
+								<span>{KIND[item.kind]?.label ?? item.kind}</span>
+								<span className="num">{item.count}</span>
+							</span>
+						))}
+					</div>
 				</div>
 				<div className="cost">
 					<span className="label">每轮固定带入</span>
@@ -302,15 +315,17 @@ export function Lore() {
 								<ul>
 									{sandboxData.renderers.map((renderer) => (
 										<li key={renderer.id}>
-											<b>{renderer.name}</b>
-											<span className="muted">
-												{" · "}
-												{renderer.permissions.length === 0
-													? "只显示，不调用界面"
-													: renderer.permissions
-															.map((item) => BRIDGE_LABEL[item] ?? item)
-															.join("、")}
-											</span>
+											<div className="sandbox-renderer-info">
+												<b>{renderer.name}</b>
+												<span className="muted">
+													{" · "}
+													{renderer.permissions.length === 0
+														? "只显示，不调用界面"
+														: renderer.permissions
+																.map((item) => BRIDGE_LABEL[item] ?? item)
+																.join("、")}
+												</span>
+											</div>
 											<Sw
 												checked={renderer.enabled}
 												label={`启用 ${renderer.name}`}

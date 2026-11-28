@@ -172,7 +172,7 @@ function StoryInspector({ storyId }: { readonly storyId: string }) {
 					</dl>
 				)}
 			</section>
-			{last === undefined ? null : (
+			{last === undefined || cost === null || cost.mode === "fast" ? null : (
 				<RunSection key={last.nodeId} nodeId={last.nodeId} />
 			)}
 			<section aria-label="上下文">

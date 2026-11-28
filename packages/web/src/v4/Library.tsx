@@ -115,9 +115,11 @@ export function Library() {
 						</span>
 						<h1>{latest.title}</h1>
 						<p className="recap">
-							{latestOverview === undefined || latestOverview.recap === ""
-								? "暂无内容"
-								: latestOverview.recap}
+							{latestOverview === undefined
+								? "正在读取概要…"
+								: latestOverview.recap === ""
+									? "暂无内容"
+									: latestOverview.recap}
 						</p>
 						<div className="stats">
 							<span>
@@ -138,7 +140,14 @@ export function Library() {
 								</b>
 								未收的线
 							</span>
-							<span>{ago(latestOverview?.updatedAt ?? null)}</span>
+							<span>
+								<b className="stat-text">
+									{latestOverview === undefined
+										? "…"
+										: ago(latestOverview.updatedAt)}
+								</b>
+								最近更新
+							</span>
 						</div>
 						<TLink className="btn gold lg" to={link(latest)}>
 							接着写 ▸

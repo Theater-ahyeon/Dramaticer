@@ -17,6 +17,7 @@ import {
 	readSerialView,
 } from "@dramaticer/core";
 import type {
+	CreateStoryFromCardRequest,
 	CreateStoryRequest,
 	FulfillClueResult,
 	ImportCharacterCard,
@@ -45,6 +46,9 @@ import {
 } from "@dramaticer/st-compat";
 import { HttpError, sendJson } from "./http.js";
 import { afterCardImport } from "./routes-card.js";
+
+/** 大图角色卡（40–90 MB PNG 经 base64 编码后约 55–120 MB）单独放宽请求体上限。 */
+export const CARD_IMPORT_MAX_BODY_BYTES = 128 * 1024 * 1024;
 import {
 	assertKnownKeys,
 	fieldError,
@@ -124,20 +128,11 @@ export async function handleStory(
 	sendJson(res, 200, toStoryView(saved, options.store));
 }
 
-export async function handleImport(
-	req: IncomingMessage,
-	res: ServerResponse,
-	method: string,
-	options: ApiRouteOptions,
-	storyId: string,
-): Promise<void> {
-	requireMethod(method, ["POST"]);
-	requireStory(options.store, storyId);
-	const body = await readObjectBody(req, options.maxJsonBodyBytes);
-	assertKnownKeys(body, ["card", "worlds"]);
-	const card = parseCardPayload(body.card);
-	const worlds = parseWorldPayload(body.worlds);
-	const request: ImportStoryRequest = { card, worlds };
+function parseCardAndWorlds(request: ImportStoryRequest): {
+	readonly parsedCard: StCharacterCard;
+	readonly cardBytes: Uint8Array | null;
+	readonly parsedWorlds: ReturnType<typeof parseWorldInfoJson>[];
+} {
 	let parsedCard: StCharacterCard;
 	let cardBytes: Uint8Array | null = null;
 	try {
@@ -150,20 +145,29 @@ export async function handleImport(
 	} catch (error) {
 		throw toBadRequest(error, "card");
 	}
-	const parsedWorlds = request.worlds?.map((text, index) => {
-		try {
-			return parseWorldInfoJson(text);
-		} catch (error) {
-			throw toBadRequest(error, `worlds[${index}]`);
-		}
-	});
+	const parsedWorlds =
+		request.worlds?.map((text, index) => {
+			try {
+				return parseWorldInfoJson(text);
+			} catch (error) {
+				throw toBadRequest(error, `worlds[${index}]`);
+			}
+		}) ?? [];
+	return { parsedCard, cardBytes, parsedWorlds };
+}
 
+async function applyImportInTransaction(
+	options: ApiRouteOptions,
+	storyId: string,
+	request: ImportStoryRequest,
+	parsed: ReturnType<typeof parseCardAndWorlds>,
+): Promise<ImportedCardContent> {
 	let imported: ImportedCardContent;
 	try {
 		imported = await options.store.runInTransaction(async () => {
 			const result = importCardContent(options.store, storyId, {
-				card: parsedCard,
-				worlds: parsedWorlds,
+				card: parsed.parsedCard,
+				worlds: parsed.parsedWorlds,
 			});
 			options.store.updateStorySettings(storyId, {
 				cardName: result.cardName,
@@ -173,19 +177,132 @@ export async function handleImport(
 				store: options.store,
 				storyId,
 				mediaDir: options.imagesMediaDir,
-				cardName: parsedCard.name,
-				pngBytes: cardBytes,
+				cardName: parsed.parsedCard.name,
+				pngBytes: parsed.cardBytes,
 			});
 			return result;
 		});
 	} catch (error) {
 		throw toBadRequest(error, "card");
 	}
-
-	afterCardImport(options.store, storyId, parsedCard, request.card.data);
+	afterCardImport(options.store, storyId, parsed.parsedCard, request.card.data);
 	enqueueOpeningBackgroundJobs(options.store, storyId);
 	enqueueVisualProfileBackgroundJob(options.store, storyId);
 	options.scheduler?.schedule(storyId);
+	return imported;
+}
+
+export async function handleCreateFromCard(
+	req: IncomingMessage,
+	res: ServerResponse,
+	method: string,
+	options: ApiRouteOptions,
+): Promise<void> {
+	requireMethod(method, ["POST"]);
+	const body = await readObjectBody(
+		req,
+		Math.max(options.maxJsonBodyBytes, CARD_IMPORT_MAX_BODY_BYTES),
+	);
+	assertKnownKeys(body, ["title", "card", "worlds"]);
+	const customTitle =
+		typeof body.title === "string" && body.title.trim().length > 0
+			? body.title.trim()
+			: null;
+	if (body.title !== undefined && typeof body.title !== "string") {
+		throw fieldError("title", "title 必须是字符串");
+	}
+	const card = parseCardPayload(body.card);
+	const worlds = parseWorldPayload(body.worlds);
+	const request: CreateStoryFromCardRequest = {
+		...(customTitle === null ? {} : { title: customTitle }),
+		card,
+		worlds,
+	};
+	const parsed = parseCardAndWorlds(request);
+	const initialTitle =
+		customTitle ??
+		(parsed.parsedCard.name.trim().length > 0
+			? parsed.parsedCard.name.trim()
+			: "新故事");
+	let storyId = "";
+	let imported: ImportedCardContent;
+	try {
+		imported = await options.store.runInTransaction(async () => {
+			const created = options.store.createStory({ title: initialTitle });
+			storyId = created.id;
+			const result = importCardContent(options.store, storyId, {
+				card: parsed.parsedCard,
+				worlds: parsed.parsedWorlds,
+			});
+			const finalTitle =
+				customTitle ??
+				(result.cardName.trim().length > 0
+					? result.cardName.trim()
+					: initialTitle);
+			if (finalTitle !== initialTitle) {
+				options.store.updateStoryTitle(storyId, finalTitle);
+			}
+			options.store.updateStorySettings(storyId, {
+				cardName: result.cardName,
+				characterPrompt: result.characterPrompt,
+			});
+			await saveImportedCardMedia({
+				store: options.store,
+				storyId,
+				mediaDir: options.imagesMediaDir,
+				cardName: parsed.parsedCard.name,
+				pngBytes: parsed.cardBytes,
+			});
+			return result;
+		});
+	} catch (error) {
+		throw toBadRequest(error, "card");
+	}
+	afterCardImport(options.store, storyId, parsed.parsedCard, request.card.data);
+	enqueueOpeningBackgroundJobs(options.store, storyId);
+	enqueueVisualProfileBackgroundJob(options.store, storyId);
+	options.scheduler?.schedule(storyId);
+	const result: ImportStoryResult = {
+		story: toStoryView(requireStory(options.store, storyId), options.store),
+		cardName: imported.cardName,
+		settings: options.store.getStorySettings(storyId),
+		imported: {
+			entities: imported.entities,
+			lore: imported.lore,
+			events: imported.events,
+			npcAgendas: imported.npcAgendas,
+			bits: imported.bits,
+			rules: imported.rules,
+			dependencies: imported.dependencies,
+		},
+	};
+	sendJson(res, 201, result);
+}
+
+export async function handleImport(
+	req: IncomingMessage,
+	res: ServerResponse,
+	method: string,
+	options: ApiRouteOptions,
+	storyId: string,
+): Promise<void> {
+	requireMethod(method, ["POST"]);
+	requireStory(options.store, storyId);
+	const body = await readObjectBody(
+		req,
+		Math.max(options.maxJsonBodyBytes, CARD_IMPORT_MAX_BODY_BYTES),
+	);
+	assertKnownKeys(body, ["card", "worlds"]);
+	const card = parseCardPayload(body.card);
+	const worlds = parseWorldPayload(body.worlds);
+	const request: ImportStoryRequest = { card, worlds };
+	const parsed = parseCardAndWorlds(request);
+	const imported = await applyImportInTransaction(
+		options,
+		storyId,
+		request,
+		parsed,
+	);
 	const result: ImportStoryResult = {
 		story: toStoryView(requireStory(options.store, storyId), options.store),
 		cardName: imported.cardName,

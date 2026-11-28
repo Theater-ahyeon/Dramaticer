@@ -75,6 +75,7 @@ import {
 	toBadRequest,
 } from "./routes-common.js";
 import {
+	CARD_IMPORT_MAX_BODY_BYTES,
 	decodePngBase64,
 	parseCardPayload,
 	parseWorldPayload,
@@ -583,7 +584,10 @@ async function startCanonStoryRoute(
 	res: ServerResponse,
 	options: ApiRouteOptions,
 ): Promise<void> {
-	const body = await readObjectBody(req, options.maxJsonBodyBytes);
+	const body = await readObjectBody(
+		req,
+		Math.max(options.maxJsonBodyBytes, CARD_IMPORT_MAX_BODY_BYTES),
+	);
 	assertKnownKeys(body, [
 		"title",
 		"bookId",

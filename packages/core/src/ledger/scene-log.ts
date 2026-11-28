@@ -417,7 +417,14 @@ export function parseSceneLogResponse(
 	const present = record.present.map((name, index) =>
 		requireNonEmptyString(name, `场记记录.present[${index}]`),
 	);
-	const sceneCard = readSceneCard(record.sceneCard, input.sceneStarts, repairs);
+	const dedupedPresent = dedupe(present);
+	const sceneCard = readSceneCard(
+		record.sceneCard,
+		input.sceneStarts,
+		dedupedPresent,
+		beat,
+		repairs,
+	);
 	const bits = readBits(record.bits, input.bits, repairs);
 	const conditions =
 		input.conditions.length === 0
@@ -434,7 +441,7 @@ export function parseSceneLogResponse(
 	return {
 		beat,
 		states,
-		present: dedupe(present),
+		present: dedupedPresent,
 		sceneEnds: record.sceneEnds,
 		sceneCard,
 		bits,
@@ -545,11 +552,21 @@ function readWill(
 function readSceneCard(
 	value: unknown,
 	sceneStarts: boolean,
+	present: readonly string[],
+	beat: string,
 	repairs: LedgerRepair[],
 ): SceneCard | null {
 	if (value === undefined || value === null) {
 		if (sceneStarts) {
-			throw new Error("场记记录.sceneCard 必须给出这一场的场面卡");
+			repairs.push({
+				path: ["sceneCard"],
+				action: "fill",
+				reason: "开新场缺少 sceneCard，已按在场人物与本楼变化自动补齐",
+			});
+			return {
+				present: present.map((who) => ({ who, want: "应对当前局面" })),
+				change: beat,
+			};
 		}
 		return null;
 	}

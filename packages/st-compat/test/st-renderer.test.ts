@@ -170,6 +170,80 @@ describe("酒馆卡片渲染插件", () => {
 		]);
 	});
 
+	it("过滤内部状态块与未渲染 MVU 标签，拆开 Markdown HTML 围栏并隔离 ESM 脚本", () => {
+		const store = openStore();
+		store.createStory({ id: "s1", title: "真实卡" });
+		const card = parseCharacterCardJson(
+			JSON.stringify({
+				spec: "chara_card_v2",
+				spec_version: "2.0",
+				data: {
+					name: "阿璃",
+					first_mes: "开场。",
+					extensions: {
+						regex_scripts: [
+							{
+								id: "panel",
+								scriptName: "面板",
+								findRegex: "<StatusPlaceHolderImpl/>",
+								replaceString:
+									'```html\n<!doctype html>\n<html><head><style>.p{color:red}</style></head><body>\n  <div class="p">\n    状态\n  </div>\n</body></html>\n```',
+								trimStrings: [],
+								placement: [2],
+								disabled: false,
+								markdownOnly: false,
+								promptOnly: false,
+								runOnEdit: false,
+							},
+						],
+						tavern_helper: {
+							scripts: [
+								{
+									id: "esm",
+									name: "ESM 模块",
+									content: 'import "https://example.com/esm.js";',
+									enabled: true,
+									type: "script",
+									info: "",
+									button: {},
+									data: {},
+								},
+								{
+									id: "classic",
+									name: "经典脚本",
+									content: "window.classicReady = true;",
+									enabled: true,
+									type: "script",
+									info: "",
+									button: {},
+									data: {},
+								},
+							],
+						},
+					},
+				},
+			}),
+		);
+		importStCardUi(store, "s1", card);
+		const renderer = createStCardFloorRenderer(readStCardUiConfig(store, "s1"));
+		const rendered = renderer?.render({
+			nodeId: "n1",
+			raw: '正文第一段。\n正文第二段。\n<UpdateVariable><JSONPatch>[{"op":"replace","path":"/a","value":1}]</JSONPatch></UpdateVariable>\n<StatusPlaceHolderImpl/>\n<state_update>{"path":["x"],"op":"set","value":1}</state_update>\n<plot_note>{"text":"内部笔记"}</plot_note>',
+			blocks: [],
+			state: undefined,
+		});
+		expect(rendered?.html).toContain('data-st-html="true"');
+		expect(rendered?.html).toContain("正文第一段。<br>正文第二段。");
+		expect(rendered?.html).toContain('<div class="p">\n    状态\n  </div>');
+		expect(rendered?.html).not.toContain("```html");
+		expect(rendered?.html).not.toContain("<!doctype");
+		expect(rendered?.html).not.toContain("JSONPatch");
+		expect(rendered?.html).not.toContain("state_update");
+		expect(rendered?.html).not.toContain("plot_note");
+		expect(rendered?.script).toContain('"isModule":true');
+		expect(rendered?.script).toContain("window.classicReady = true;");
+	});
+
 	it("没有正则也没有脚本时清掉旧配置", () => {
 		const store = openStore();
 		seed(store);

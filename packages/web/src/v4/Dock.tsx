@@ -5,6 +5,7 @@ import { DirectionPanel } from "./Direction";
 import {
 	Editable,
 	Seg,
+	formatTokens,
 	parseValue,
 	showValue,
 	sp,
@@ -255,23 +256,36 @@ export function Dock({
 						<span>秘密</span>
 					</div>
 					<div className="rows">
-						{(memory.data?.secrets ?? []).map((secret) => (
-							<div key={secret.id}>
-								<span>{secret.text}</span>
-								<span>{secret.unaware.join("、")}不知道</span>
-							</div>
-						))}
+						{(memory.data?.secrets ?? []).length === 0 &&
+						memory.data !== null ? (
+							<p className="muted" style={{ fontSize: 13 }}>
+								暂无
+							</p>
+						) : (
+							(memory.data?.secrets ?? []).map((secret) => (
+								<div key={secret.id}>
+									<span>{secret.text}</span>
+									<span>{secret.unaware.join("、")}不知道</span>
+								</div>
+							))
+						)}
 					</div>
 					<div className="label">
 						<span>快要相关</span>
 					</div>
 					<div className="rows">
-						{(memory.data?.soon ?? []).map((person) => (
-							<div key={person.pageId}>
-								<span>{person.name}</span>
-								<span>{person.floorsAgo} 楼没出场</span>
-							</div>
-						))}
+						{(memory.data?.soon ?? []).length === 0 && memory.data !== null ? (
+							<p className="muted" style={{ fontSize: 13 }}>
+								暂无
+							</p>
+						) : (
+							(memory.data?.soon ?? []).map((person) => (
+								<div key={person.pageId}>
+									<span>{person.name}</span>
+									<span>{person.floorsAgo} 楼没出场</span>
+								</div>
+							))
+						)}
 					</div>
 				</div>
 			) : null}
@@ -302,6 +316,25 @@ export function Dock({
 							/>
 						))}
 					</div>
+					{categories.length === 0 ? null : (
+						<div className="ctxlegend" aria-label="上下文分类图例">
+							{categories.map((item) => (
+								<span
+									key={item.id}
+									className="legenditem"
+									data-active={item.id === category || undefined}
+								>
+									<i
+										style={{
+											background: `var(${CTX_COLOR[item.id] ?? "--soft"})`,
+										}}
+									/>
+									<span>{item.label}</span>
+									<span className="num">{formatTokens(item.tokens)}</span>
+								</span>
+							))}
+						</div>
+					)}
 					<div className="rows ctxitems">
 						{active === null ? null : (
 							<>

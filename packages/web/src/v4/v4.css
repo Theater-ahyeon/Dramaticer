@@ -234,9 +234,13 @@ option {
 	background: var(--sheet);
 	color: var(--ink);
 }
-button:disabled {
+button:disabled,
+.btn:disabled {
 	cursor: default;
-	opacity: 0.5;
+	opacity: 0.65;
+	background: var(--soft);
+	border-color: var(--line);
+	color: var(--muted);
 }
 :focus-visible {
 	outline: 2px solid var(--cinnabar);
@@ -403,6 +407,12 @@ html.theme-swap img.cover {
 }
 .rail a.nav:hover {
 	color: var(--ink);
+}
+.rail a.nav.disabled {
+	opacity: 0.45;
+}
+.rail a.nav.disabled:hover {
+	color: var(--muted);
 }
 .rail a.nav:hover i {
 	border-color: var(--line-strong);
@@ -861,6 +871,18 @@ html.theme-swap img.cover {
 	display: grid;
 	gap: 6px;
 }
+.sandbox-block li {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 8px 0;
+	border-top: 1px solid var(--soft);
+}
+.sandbox-renderer-info {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
 .domainlist li {
 	display: flex;
 	align-items: center;
@@ -990,6 +1012,10 @@ img.cover {
 	font-variant-numeric: tabular-nums;
 	color: var(--ink);
 }
+.hero .stats b.stat-text {
+	font-size: var(--t-lg);
+	line-height: 1.35;
+}
 /* 书架：卡面图排成封面网格，书名与进度在封面下面。 */
 .shelf {
 	display: grid;
@@ -1078,6 +1104,13 @@ img.cover {
 	gap: 24px;
 	align-items: start;
 }
+.play > * {
+	min-width: 0;
+}
+.sheet {
+	min-width: 0;
+	overflow-x: clip;
+}
 /* 停靠栏的外层要和书页一样高，里面的粘性定位才有地方可粘。 */
 .play > div:last-child {
 	align-self: stretch;
@@ -1162,6 +1195,9 @@ img.cover {
 	gap: 24px;
 	padding: 18px 28px;
 }
+.flr > * {
+	min-width: 0;
+}
 .flr:hover::before {
 	opacity: 1;
 }
@@ -1187,6 +1223,8 @@ img.cover {
 	max-width: 35em;
 	margin-inline: auto;
 	width: 100%;
+	min-width: 0;
+	overflow-wrap: anywhere;
 	font-size: 18px;
 }
 .prose p {
@@ -1674,6 +1712,49 @@ img.cover {
 .ctxitems > div {
 	align-items: center;
 }
+.ctxlegend,
+.audit-legend {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px 10px;
+	margin-top: 8px;
+	font-size: 12px;
+	color: var(--muted);
+}
+.legendchip,
+.legenditem {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	border: 1px solid transparent;
+	border-radius: var(--r-pill);
+	padding: 2px 7px;
+	background: none;
+	color: var(--muted);
+	font-size: 12px;
+}
+.legendchip:hover,
+.legendchip[aria-pressed="true"],
+.legenditem[data-active="true"] {
+	border-color: var(--line);
+	background: var(--raise);
+	color: var(--ink);
+}
+.legendchip i,
+.legenditem i {
+	display: inline-block;
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	flex: none;
+}
+.sw-row {
+	display: inline-flex;
+	align-items: center;
+	gap: 10px;
+	font-size: 12.5px;
+	color: var(--muted);
+}
 .who-card h3 {
 	font: 400 20px var(--f-display);
 }
@@ -1866,6 +1947,11 @@ img.cover {
 	}
 	.slate {
 		flex-wrap: wrap;
+	}
+	.slate span {
+		white-space: normal;
+		min-width: 0;
+		overflow-wrap: anywhere;
 	}
 	.slate .who {
 		flex-basis: 100%;
@@ -2992,6 +3078,8 @@ img.cover {
 .global-settings .wizard-title {
 	font: 500 14.5px var(--f-ui);
 	margin: 16px 0 10px;
+	border-bottom: 0;
+	text-decoration: none;
 }
 
 /* ---- 故事页输入台与楼层操作（ui-v2/02） ---- */
@@ -3350,15 +3438,21 @@ div:hover > .flr-acts,
 	.cmp {
 		margin: 4px 8px 8px;
 		padding: 8px;
+		min-width: 0;
+		max-width: calc(100% - 16px);
 	}
 	.opts {
 		flex-wrap: nowrap;
 		overflow-x: auto;
 		scrollbar-width: none;
+		max-width: 100%;
 	}
 	.opt {
 		flex: none;
-		max-width: 80vw;
+		max-width: calc(100% - 4px);
+	}
+	.opt .chip {
+		max-width: calc(100vw - 104px);
 	}
 	.say textarea {
 		max-height: 30vh;
@@ -3370,7 +3464,8 @@ div:hover > .flr-acts,
 		margin-inline: 12px;
 	}
 	.branchsel {
-		max-width: 46vw;
+		max-width: 100%;
+		min-width: 0;
 	}
 }
 
@@ -3461,12 +3556,32 @@ div:hover > .flr-acts,
 
 /* ---- 检视器与外壳上的工具按钮（ui-v2/04） ---- */
 .btn.toolbtn {
-	width: 40px;
-	height: 40px;
-	padding: 0;
+	width: 68px;
+	height: auto;
+	padding: 6px 0;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
 	justify-content: center;
-	font: 15px var(--f-prose);
+	gap: 2px;
+	font: var(--t-xs) var(--f-ui);
+	letter-spacing: 0.08em;
 	color: var(--muted);
+}
+.btn.toolbtn i {
+	font: normal 17px / 28px var(--f-display);
+	width: 30px;
+	height: 30px;
+	text-align: center;
+	border: 1px solid var(--line);
+	border-radius: var(--r-sm);
+	background: var(--field);
+	color: var(--ink);
+	transition: border-color var(--dur), background var(--dur);
+}
+.btn.toolbtn:hover i {
+	border-color: var(--line-strong);
+	background: var(--raise);
 }
 .inspscrim {
 	position: fixed;

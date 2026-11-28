@@ -3,11 +3,11 @@
 > 每次收尾时完整重写，不超过 40 行。长期有效的注意事项写进 `docs/dev/NOTES.md`。
 
 ## 最近一次
-- 2026-11-27（全仓收口与全量门禁验证）。在 v5 全部 25 张工单完成后完成收口，全仓 `pnpm check` 与 `pnpm e2e` 零失败通过：
-  - 后台调度与文件写入：恢复 `BackgroundScheduler` 默认排空上限为不传 `limit`（走 `DEFAULT_BACKGROUND_JOB_LIMIT`）并保留最近调度故事队头优先；抽取 `packages/server/src/atomic-write.ts` 对同一路径串行排队并对 Windows 瞬时 `EPERM`/`EBUSY`/`EACCES` 改名重试，同时让 `handleChannelProbe` 在体检结束后重读最新 `channels.yaml` 再写回探测结果，避免并发修改互相覆盖。
-  - E2E 稳定性修复：适配 `playtest/runner.ts` 至 v5 界面与接口；`v4-story.spec.ts` 在刷新后补充 `observeStages`；`v2-setup.spec.ts` 连接向导等待「已保存，测试通过」再恢复配置，消除 `probeChannel` 异步覆盖 `channels.yaml` 的竞争；`v4-dock.spec.ts` 的 `seedDockStory` 补写 `scene_log` 已完成任务记录，防止后台调度覆写预设 `scene_card`。
-  - 文档对齐：`docs/DESIGN.md`、`README.md` 与 `docs/dev/NOTES.md` 同步至 v5 现实（三速记忆、剧情走向两栏与推进方向、原著工作流、楼层渲染沙箱、分格视觉档案与画面整理、最新测试数字与体积预算）。
-- 验证：`pnpm check` 全绿（不变量通过、typecheck 通过、biome 1001 文件零错误、unit 305 文件 2,579 用例通过 / 7 live 测试按预期跳过）；`pnpm e2e` 全绿（首屏 JS 171.5 / 200 KB，CSS 15.7 / 40 KB gzip，Playwright 135 项通过 / 3 项按预期跳过，0 失败）。
+- 2026-11-28（真卡导入与端到端体验修复）。围绕真实角色卡导入、楼层沙箱渲染、AI 回复清洗与 v4/v5 桌面/移动端界面细节完成以下修复：
+  - **角色卡与世界书导入全通**：放宽 `lore` 审计对停用/无名/空内容条目的校验（与 `st-compat` 审计语义对齐）；`entity-import` 跳过标点分隔线条目名；故事/卡片/世界书/原著导入放宽单包体上限至 128 MB 并增加 `POST /api/stories/from-card` 事务化原子接口，避免导入失败留下 0 楼孤儿故事。
+  - **酒馆卡片前端与沙箱渲染**：`st-renderer` 先用 `BlockParser` 剔除内部写入/隐藏块并清理未消费 MVU 标签，拆开 Markdown ````html` 围栏与外层文档壳，在纯文本间隙保持换行同时给 HTML 容器切回 `white-space: normal` 消除大块空白；`shim.ts` 改为逐段隔离执行脚本并用 `<script type="module">` 承载 ESM 脚本，避免单个模块导入报错拖垮后续脚本；`floor-sandbox` 支持触发延迟登记的 `DOMContentLoaded` 回调与内联 `<script>` 激活。
+  - **场面卡修复与交互打磨**：`scene-log` 在开新场缺少 `sceneCard` 时按在场人物与本楼变化自动补齐并记入 `repairs`；`direction/view` 空核心问题默认未锁定；`Inspector` 仅在非快速模式请求 `run` 详情（消除快回合 404）；`Shell` 校验缓存故事有效性并对齐 `助`/`检` 按钮外观；修正窄屏（390px）横向裁切、推进/故事菜单自动关闭、Dock 记忆空态与上下文图例、`Library`/`Memory`/`Lore`/`Prefs`/`GlobalSettings` 展示细节。
+- 实卡试玩与复测：`150/150` 张真实角色卡校验通过；两张多脚本高复杂度实卡经界面导入并完成实时模型回合与桌面/移动截图复核，全量 `pnpm check` 与 `pnpm e2e` 通过。
 
 ## 下一步
 1. 没有待做的开发工单。`.scratch/refactor/issues/07-eval-package.md` 按人类指示（`2026-11-19`「暂时不用评测」）继续延后。

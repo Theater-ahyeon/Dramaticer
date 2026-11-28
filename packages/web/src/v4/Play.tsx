@@ -442,11 +442,46 @@ export function Play() {
 	const abort = useRef<AbortController | null>(null);
 	const lastRef = useRef<HTMLElement | null>(null);
 	const dockRef = useRef<HTMLDivElement | null>(null);
+	const bgTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
 	useEffect(() => {
 		const stored = settings.data?.turnMode as Mode | undefined;
 		if (stored !== undefined) setMode(stored);
 	}, [settings.data]);
+
+	useEffect(() => {
+		if (!pushMenu && !headMenu && !moreOpen) return;
+		const onKeyDown = (event: KeyboardEvent) => {
+			if (event.key !== "Escape") return;
+			setPushMenu(false);
+			setHeadMenu(false);
+			setMoreOpen(false);
+		};
+		const onPointerDown = (event: PointerEvent) => {
+			const target = event.target as HTMLElement | null;
+			if (target === null) return;
+			if (pushMenu && target.closest(".pushsplit") === null) {
+				setPushMenu(false);
+			}
+			if (headMenu && target.closest(".headmenu") === null) {
+				setHeadMenu(false);
+			}
+		};
+		window.addEventListener("keydown", onKeyDown);
+		window.addEventListener("pointerdown", onPointerDown);
+		return () => {
+			window.removeEventListener("keydown", onKeyDown);
+			window.removeEventListener("pointerdown", onPointerDown);
+		};
+	}, [pushMenu, headMenu, moreOpen]);
+
+	useEffect(
+		() => () => {
+			for (const timer of bgTimers.current) clearTimeout(timer);
+			bgTimers.current = [];
+		},
+		[],
+	);
 
 	const nodes = path.data?.nodes ?? [];
 	const metaById = useMemo(
@@ -708,12 +743,29 @@ export function Play() {
 			update({ error: errorText(error) });
 		}
 		abort.current = null;
-		if (state.error === null) setStreaming(null);
+		if (state.error === null) {
+			setStreaming(null);
+			for (const timer of bgTimers.current) clearTimeout(timer);
+			bgTimers.current = [
+				setTimeout(() => {
+					floors.reload();
+					dock.reload();
+					setDockTick((value) => value + 1);
+				}, 4_000),
+				setTimeout(() => {
+					floors.reload();
+					dock.reload();
+					setDockTick((value) => value + 1);
+				}, 12_000),
+			];
+		}
 		refresh();
 	};
 
 	const send = (message: string, push: Step | null) => {
 		if (streaming !== null && streaming.error === null) return;
+		setPushMenu(false);
+		setHeadMenu(false);
 		const controller = new AbortController();
 		abort.current = controller;
 		stage.pulse(push === null ? 0.8 : 1.3);
@@ -760,6 +812,8 @@ export function Play() {
 
 	const reroll = (reason: RerollReason | null, label: string) => {
 		if (lastAssistant === undefined) return;
+		setPushMenu(false);
+		setHeadMenu(false);
 		const controller = new AbortController();
 		abort.current = controller;
 		stage.pulse(1);

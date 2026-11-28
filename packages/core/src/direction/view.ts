@@ -158,7 +158,7 @@ function pathDepths(store: StoryStore, nodeId: string): Map<string, number> {
 
 function premiseItems(premise: BlueprintPremise | null): DirectionWantItem[] {
 	const source = premise?.source ?? "player";
-	const locked = premise?.locked ?? true;
+	const locked = premise?.locked ?? false;
 	const base = {
 		kind: "premise" as const,
 		source,

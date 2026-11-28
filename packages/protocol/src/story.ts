@@ -80,6 +80,11 @@ export interface ImportStoryRequest {
 	readonly worlds?: readonly string[];
 }
 
+export interface CreateStoryFromCardRequest extends ImportStoryRequest {
+	/** 不填或为空时取卡片名称。 */
+	readonly title?: string;
+}
+
 export interface ImportStoryCounts {
 	readonly entities: {
 		readonly created: number;

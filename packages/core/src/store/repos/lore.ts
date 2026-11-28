@@ -614,8 +614,8 @@ export class LoreRepo extends StoreRepo {
 		if (typeof input.title !== "string") {
 			throw new Error(`${label} 的 title 必须是字符串`);
 		}
-		if (typeof input.content !== "string" || input.content.length === 0) {
-			throw new Error(`${label} 的 content 必须是非空字符串`);
+		if (typeof input.content !== "string") {
+			throw new Error(`${label} 的 content 必须是字符串`);
 		}
 		const matches = assertImportEntryMatches(
 			input.matches,

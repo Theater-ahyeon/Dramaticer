@@ -172,9 +172,19 @@ describe("导入分型结果", () => {
 				auditEntry({ rulePrimary: "entity" }),
 			]),
 		).toThrow("必须出现在命中类型里");
+		expect(
+			store.saveImportAuditEntries("s1", [
+				auditEntry({
+					source: "character-book:山神:empty",
+					content: "",
+				}),
+			]),
+		).toHaveLength(1);
 		expect(() =>
-			store.saveImportAuditEntries("s1", [auditEntry({ content: "" })]),
-		).toThrow("content 必须是非空字符串");
+			store.saveImportAuditEntries("s1", [
+				auditEntry({ content: 123 as never }),
+			]),
+		).toThrow("content 必须是字符串");
 		expect(() =>
 			store.saveImportAuditEntries("s1", [auditEntry(), auditEntry()]),
 		).toThrow("source 重复");

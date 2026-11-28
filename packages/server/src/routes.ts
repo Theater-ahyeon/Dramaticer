@@ -103,6 +103,7 @@ import {
 } from "./routes-setup.js";
 import {
 	handleClueFulfill,
+	handleCreateFromCard,
 	handleEntities,
 	handleHead,
 	handleImport,
@@ -211,6 +212,10 @@ export async function handleApiRequest(
 	if (first === "stories") {
 		if (second === undefined) {
 			await handleStories(req, res, method, options);
+			return;
+		}
+		if (second === "from-card" && third === undefined) {
+			await handleCreateFromCard(req, res, method, options);
 			return;
 		}
 		const storyId = second;

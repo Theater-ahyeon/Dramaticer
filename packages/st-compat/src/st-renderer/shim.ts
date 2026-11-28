@@ -23,21 +23,13 @@ export function buildStCardUiScript(input: StCardUiScriptInput): string {
 		mvu: input.mvu,
 		events: input.events,
 	}).replaceAll("<", "\\u003c");
-	const scriptBlocks = input.scripts
-		.map(
-			(script) => `try {
-	(function () {
-		return (async function () {
-${script.content}
-		})();
-	})().catch(function (error) {
-		console.error("[st-compat] 脚本「${escapeJavascript(script.name)}」失败：" + error);
-	});
-} catch (error) {
-	console.error("[st-compat] 脚本「${escapeJavascript(script.name)}」无法执行：" + error);
-}`,
-		)
-		.join("\n");
+	const scriptsJson = JSON.stringify(
+		input.scripts.map((script) => ({
+			name: script.name,
+			content: script.content,
+			isModule: isEsModuleScript(script.content),
+		})),
+	).replaceAll("<", "\\u003c");
 	return String.raw`(function () {
 	"use strict";
 	var boot = ${bootstrap};
@@ -270,14 +262,44 @@ ${script.content}
 	window.TavernHelper = api;
 	window.tavern_events = boot.events;
 
-${scriptBlocks}
+	var scripts = ${scriptsJson};
+	scripts.forEach(function (entry) {
+		if (typeof document !== "undefined" && document.body) {
+			var element = document.createElement("script");
+			if (entry.isModule) {
+				element.type = "module";
+				element.textContent = entry.content;
+				element.addEventListener("error", function (event) {
+					console.error("[st-compat] 模块脚本「" + entry.name + "」加载失败", event);
+				});
+			} else {
+				element.textContent =
+					"try {\n\t(function () {\n\t\treturn (async function () {\n" +
+					entry.content +
+					"\n\t\t})();\n\t})().catch(function (error) {\n\t\tconsole.error(" +
+					JSON.stringify("[st-compat] 脚本「" + entry.name + "」失败：") +
+					" + error);\n\t});\n} catch (error) {\n\tconsole.error(" +
+					JSON.stringify("[st-compat] 脚本「" + entry.name + "」无法执行：") +
+					" + error);\n}";
+			}
+			document.body.appendChild(element);
+			return;
+		}
+		if (entry.isModule) return;
+		try {
+			var runner = new Function("return (async function () {\n" + entry.content + "\n})();");
+			Promise.resolve(runner()).catch(function (error) {
+				console.error("[st-compat] 脚本「" + entry.name + "」失败：" + error);
+			});
+		} catch (error) {
+			console.error("[st-compat] 脚本「" + entry.name + "」无法执行：" + error);
+		}
+	});
 })();`;
 }
 
-function escapeJavascript(text: string): string {
-	return text
-		.replaceAll("\\", "\\\\")
-		.replaceAll("'", "\\'")
-		.replaceAll("\n", "\\n")
-		.replaceAll("\r", "\\r");
+function isEsModuleScript(content: string): boolean {
+	return /^\s*(?:import(?:\s+[\s\S]*?\s+from\s+|\s*["'])|export\s+)/m.test(
+		content,
+	);
 }

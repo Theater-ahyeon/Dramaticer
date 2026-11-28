@@ -207,10 +207,12 @@ function NotebookBlock({
 	storyId,
 	page,
 	onChanged,
+	duplicateBase = false,
 }: {
 	readonly storyId: string;
 	readonly page: NotebookPage;
 	readonly onChanged: () => void;
+	readonly duplicateBase?: boolean;
 }) {
 	const toast = useToast();
 	const [versions, setVersions] = useState<
@@ -288,11 +290,19 @@ function NotebookBlock({
 					<span className="label">底色</span>
 					{lockButton("base")}
 				</div>
-				<Editable
-					value={page.base}
-					placeholder="开场前的设定"
-					onCommit={(text) => void save({ section: "base", text })}
-				/>
+				{duplicateBase ? (
+					<Editable
+						value=""
+						placeholder="同上方「来自设定」，点此单独改写"
+						onCommit={(text) => void save({ section: "base", text })}
+					/>
+				) : (
+					<Editable
+						value={page.base}
+						placeholder="开场前的设定"
+						onCommit={(text) => void save({ section: "base", text })}
+					/>
+				)}
 			</div>
 			<div className="nbsec">
 				<div className="nbhead">
@@ -1239,6 +1249,10 @@ export function Memory() {
 										storyId={storyId}
 										page={note}
 										onChanged={memory.reload}
+										duplicateBase={
+											note.base.trim() !== "" &&
+											note.base.trim() === page.lead.trim()
+										}
 									/>
 								);
 							})()}
